@@ -1,0 +1,67 @@
+module RDF.Graph.Executable
+
+open FStar.String
+open FStar.List.Tot
+
+(** 1. Concrete Types for Execution **)
+// We choose string for blank nodes so they can be extracted as simple values
+type bnode_id = string
+type iri = string
+
+(** 2. Refined IRIs **)
+let is_iri s =
+  String.length s > 0 &&
+  (let rec has_colon i =
+     if i >= String.length s then false
+     else if String.index s i = FStar.Char.char_of_int 58 then true
+     else has_colon (i + 1)
+   in has_colon 0)
+
+type wf_iri = s:iri{is_iri s}
+
+let rdf_lang_string : wf_iri = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"
+
+(** 3. Literals with Runtime Checks **)
+noeq type literal = {
+  lexical_form : string;
+  datatype     : wf_iri;
+  lang_tag     : option string;
+}
+
+let literal_wf (l:literal) : bool =
+  match l.lang_tag with
+  | None   -> l.datatype <> rdf_lang_string
+  | Some _ -> l.datatype = rdf_lang_string
+
+type wf_literal = l:literal{literal_wf l}
+
+(** 4. Terms and Triples **)
+type rdf_term =
+  | T_IRI     : wf_iri -> rdf_term
+  | T_BNode   : bnode_id -> rdf_term
+  | T_Literal : wf_literal -> rdf_term
+
+type subject =
+  | S_IRI : wf_iri -> subject
+  | S_BNode : bnode_id -> subject
+
+noeq type triple = {
+  s : subject;
+  p : wf_iri;
+  o : rdf_term;
+}
+
+(** 5. Executable Graph (List-based) **)
+// Using a list instead of a Set allows the code to be compiled and run
+type rdf_graph = list triple
+
+let empty_graph : rdf_graph = []
+
+// Computes the set of all blank nodes in the graph
+let rec graph_bnodes (g:rdf_graph) : list bnode_id =
+  match g with
+  | [] -> []
+  | hd :: tl ->
+      let nodes = match hd.s with | S_BNode id -> [id] | _ -> [] in
+      let obj_nodes = match hd.o with | T_BNode id -> [id] | _ -> [] in
+      nodes @ obj_nodes @ (graph_bnodes tl)
