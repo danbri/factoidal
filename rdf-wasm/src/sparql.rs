@@ -13,6 +13,7 @@
 //! - PREFIX declarations
 
 use crate::rdf::{self, RdfGraph, RdfTerm, Subject, Triple};
+use regex::RegexBuilder;
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -35,7 +36,7 @@ impl TermValue {
     fn from_rdf_term(t: &RdfTerm) -> Self {
         match t {
             RdfTerm::Iri(i) => TermValue::Iri(i.as_str().to_string()),
-            RdfTerm::BNode(b) => TermValue::BNode(b.id().to_string()),
+            RdfTerm::BNode(b) => TermValue::BNode(format!("b{}", b.id())),
             RdfTerm::Literal(l) => TermValue::Literal {
                 lexical: l.lexical_form.clone(),
                 datatype: l.datatype.as_str().to_string(),
@@ -47,7 +48,7 @@ impl TermValue {
     fn from_subject(s: &Subject) -> Self {
         match s {
             Subject::Iri(i) => TermValue::Iri(i.as_str().to_string()),
-            Subject::BNode(b) => TermValue::BNode(b.id().to_string()),
+            Subject::BNode(b) => TermValue::BNode(format!("b{}", b.id())),
         }
     }
 
@@ -833,14 +834,29 @@ fn eval_filter(filter: &Filter, binding: &Binding) -> bool {
             let lv = eval_filter_expr(left, binding);
             let rv = eval_filter_expr(right, binding);
             match (lv, rv) {
-                (Some(l), Some(r)) => match op {
-                    CompOp::Eq => l == r,
-                    CompOp::Ne => l != r,
-                    CompOp::Lt => l < r,
-                    CompOp::Gt => l > r,
-                    CompOp::Le => l <= r,
-                    CompOp::Ge => l >= r,
-                },
+                (Some(l), Some(r)) => {
+                    // Try numeric comparison first
+                    if let (Ok(ln), Ok(rn)) = (l.parse::<f64>(), r.parse::<f64>()) {
+                        match op {
+                            CompOp::Eq => (ln - rn).abs() < f64::EPSILON,
+                            CompOp::Ne => (ln - rn).abs() >= f64::EPSILON,
+                            CompOp::Lt => ln < rn,
+                            CompOp::Gt => ln > rn,
+                            CompOp::Le => ln <= rn,
+                            CompOp::Ge => ln >= rn,
+                        }
+                    } else {
+                        // Fall back to string comparison
+                        match op {
+                            CompOp::Eq => l == r,
+                            CompOp::Ne => l != r,
+                            CompOp::Lt => l < r,
+                            CompOp::Gt => l > r,
+                            CompOp::Le => l <= r,
+                            CompOp::Ge => l >= r,
+                        }
+                    }
+                }
                 _ => false,
             }
         }
@@ -872,11 +888,16 @@ fn eval_filter(filter: &Filter, binding: &Binding) -> bool {
         Filter::FnRegex(expr, pattern, flags) => {
             if let Some(val) = eval_filter_expr(expr, binding) {
                 let case_insensitive = flags.as_ref().map_or(false, |f| f.contains('i'));
-                if case_insensitive {
-                    val.to_lowercase()
-                        .contains(&pattern.to_lowercase())
-                } else {
-                    val.contains(pattern.as_str())
+                let dot_matches_newline = flags.as_ref().map_or(false, |f| f.contains('s'));
+                let multi_line = flags.as_ref().map_or(false, |f| f.contains('m'));
+                match RegexBuilder::new(pattern)
+                    .case_insensitive(case_insensitive)
+                    .dot_matches_new_line(dot_matches_newline)
+                    .multi_line(multi_line)
+                    .build()
+                {
+                    Ok(re) => re.is_match(&val),
+                    Err(_) => false, // invalid regex pattern → no match
                 }
             } else {
                 false
@@ -1172,5 +1193,219 @@ mod tests {
         )
         .unwrap();
         assert_eq!(r.rows.len(), 1); // Alice knows Bob, Bob has name
+    }
+
+    #[test]
+    fn empty_graph_query() {
+        let g = RdfGraph::new();
+        let r = execute(&g, "SELECT * WHERE { ?s ?p ?o }").unwrap();
+        assert_eq!(r.rows.len(), 0);
+    }
+
+    #[test]
+    fn no_matches() {
+        let g = test_graph();
+        let r = execute(
+            &g,
+            "SELECT ?s WHERE { ?s <http://example.org/nonexistent> ?o }",
+        )
+        .unwrap();
+        assert_eq!(r.rows.len(), 0);
+    }
+
+    #[test]
+    fn invalid_query_errors() {
+        let g = test_graph();
+        assert!(execute(&g, "NOT SPARQL").is_err());
+        assert!(execute(&g, "SELECT").is_err());
+        assert!(execute(&g, "SELECT * WHERE").is_err());
+    }
+
+    #[test]
+    fn regex_actual_pattern() {
+        let g = test_graph();
+        // ^A matches "Alice" but not "Bob"
+        let r = execute(
+            &g,
+            r#"PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+               SELECT ?name WHERE {
+                 ?s foaf:name ?name .
+                 FILTER (REGEX(STR(?name), "^A"))
+               }"#,
+        )
+        .unwrap();
+        assert_eq!(r.rows.len(), 1);
+
+        // Case-insensitive regex
+        let r = execute(
+            &g,
+            r#"PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+               SELECT ?name WHERE {
+                 ?s foaf:name ?name .
+                 FILTER (REGEX(STR(?name), "^b", "i"))
+               }"#,
+        )
+        .unwrap();
+        assert_eq!(r.rows.len(), 1);
+
+        // Regex with character class
+        let r = execute(
+            &g,
+            r#"PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+               SELECT ?name WHERE {
+                 ?s foaf:name ?name .
+                 FILTER (REGEX(STR(?name), "[aeiou]ce$"))
+               }"#,
+        )
+        .unwrap();
+        assert_eq!(r.rows.len(), 1); // "Alice" matches [aeiou]ce$
+    }
+
+    #[test]
+    fn numeric_comparison() {
+        let mut g = RdfGraph::new();
+        let xsd_int = Iri::new("http://www.w3.org/2001/XMLSchema#integer").unwrap();
+        for (name, age) in [("Alice", "30"), ("Bob", "2"), ("Charlie", "10")] {
+            g.add(Triple {
+                s: Subject::Iri(Iri::new(&format!("http://example.org/{}", name.to_lowercase())).unwrap()),
+                p: Iri::new("http://example.org/age").unwrap(),
+                o: RdfTerm::Literal(Literal::new(age, xsd_int.clone(), None).unwrap()),
+            });
+        }
+
+        // String comparison would give "10" < "2" = true (wrong), "30" < "2" = false
+        // Numeric comparison: 10 > 2 (correct)
+        let r = execute(
+            &g,
+            r#"SELECT ?s ?age WHERE {
+                 ?s <http://example.org/age> ?age .
+                 FILTER (?age > "5")
+               }"#,
+        )
+        .unwrap();
+        assert_eq!(r.rows.len(), 2); // Alice (30) and Charlie (10), NOT Bob (2)
+    }
+
+    #[test]
+    fn limit_zero() {
+        let g = test_graph();
+        let r = execute(&g, "SELECT * WHERE { ?s ?p ?o } LIMIT 0").unwrap();
+        assert_eq!(r.rows.len(), 0);
+    }
+
+    #[test]
+    fn offset_beyond_results() {
+        let g = test_graph();
+        let r = execute(&g, "SELECT * WHERE { ?s ?p ?o } OFFSET 100").unwrap();
+        assert_eq!(r.rows.len(), 0);
+    }
+
+    #[test]
+    fn order_by_asc_desc() {
+        let g = test_graph();
+        let r = execute(
+            &g,
+            "PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+             SELECT ?name WHERE { ?s foaf:name ?name } ORDER BY ASC(?name)",
+        )
+        .unwrap();
+        assert_eq!(r.rows.len(), 2);
+        // Alice < Bob lexicographically
+        let first = r.rows[0][0].as_ref().unwrap();
+        assert!(first.contains("Alice"));
+
+        let r = execute(
+            &g,
+            "PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+             SELECT ?name WHERE { ?s foaf:name ?name } ORDER BY DESC(?name)",
+        )
+        .unwrap();
+        let first = r.rows[0][0].as_ref().unwrap();
+        assert!(first.contains("Bob"));
+    }
+
+    #[test]
+    fn filter_isiri_isliteral_isblank() {
+        let mut g = RdfGraph::new();
+        g.add(Triple {
+            s: Subject::Iri(Iri::new("http://example.org/a").unwrap()),
+            p: Iri::new("http://example.org/p").unwrap(),
+            o: RdfTerm::Iri(Iri::new("http://example.org/b").unwrap()),
+        });
+        g.add(Triple {
+            s: Subject::Iri(Iri::new("http://example.org/a").unwrap()),
+            p: Iri::new("http://example.org/q").unwrap(),
+            o: RdfTerm::Literal(Literal::plain("text")),
+        });
+        g.add(Triple {
+            s: Subject::Iri(Iri::new("http://example.org/a").unwrap()),
+            p: Iri::new("http://example.org/r").unwrap(),
+            o: RdfTerm::BNode(BNode::new(999)),
+        });
+
+        let r = execute(&g, "SELECT ?o WHERE { ?s ?p ?o . FILTER (ISIRI(?o)) }").unwrap();
+        assert_eq!(r.rows.len(), 1);
+
+        let r = execute(&g, "SELECT ?o WHERE { ?s ?p ?o . FILTER (ISLITERAL(?o)) }").unwrap();
+        assert_eq!(r.rows.len(), 1);
+
+        let r = execute(&g, "SELECT ?o WHERE { ?s ?p ?o . FILTER (ISBLANK(?o)) }").unwrap();
+        assert_eq!(r.rows.len(), 1);
+    }
+
+    #[test]
+    fn filter_boolean_operators() {
+        let g = test_graph();
+        // AND
+        let r = execute(
+            &g,
+            r#"PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+               SELECT ?name WHERE {
+                 ?s foaf:name ?name .
+                 FILTER (ISLITERAL(?name) && LANG(?name) = "en")
+               }"#,
+        )
+        .unwrap();
+        assert_eq!(r.rows.len(), 1);
+
+        // OR
+        let r = execute(
+            &g,
+            r#"PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+               SELECT ?name WHERE {
+                 ?s foaf:name ?name .
+                 FILTER (LANG(?name) = "en" || STR(?name) = "Alice")
+               }"#,
+        )
+        .unwrap();
+        assert_eq!(r.rows.len(), 2);
+    }
+
+    #[test]
+    fn filter_contains_strstarts_strends() {
+        let g = test_graph();
+        let r = execute(
+            &g,
+            r#"PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+               SELECT ?name WHERE { ?s foaf:name ?name . FILTER (CONTAINS(STR(?name), "lic")) }"#,
+        )
+        .unwrap();
+        assert_eq!(r.rows.len(), 1); // Alice
+
+        let r = execute(
+            &g,
+            r#"PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+               SELECT ?name WHERE { ?s foaf:name ?name . FILTER (STRSTARTS(STR(?name), "A")) }"#,
+        )
+        .unwrap();
+        assert_eq!(r.rows.len(), 1);
+
+        let r = execute(
+            &g,
+            r#"PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+               SELECT ?name WHERE { ?s foaf:name ?name . FILTER (STRENDS(STR(?name), "ob")) }"#,
+        )
+        .unwrap();
+        assert_eq!(r.rows.len(), 1); // Bob
     }
 }

@@ -34,10 +34,31 @@ fn iri_display() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn bnode_id() {
-    let b = BNode::new("b1");
-    assert_eq!(b.id(), "b1");
+fn bnode_numeric_id() {
+    let b = BNode::new(1);
+    assert_eq!(b.id(), 1);
     assert_eq!(format!("{b}"), "_:b1");
+}
+
+#[test]
+fn bnode_from_str_numeric() {
+    let b = BNode::from_str("42");
+    assert_eq!(b.id(), 42);
+    assert_eq!(format!("{b}"), "_:b42");
+}
+
+#[test]
+fn bnode_from_str_prefixed() {
+    let b = BNode::from_str("b7");
+    assert_eq!(b.id(), 7);
+    assert_eq!(format!("{b}"), "_:b7");
+}
+
+#[test]
+fn bnode_auto_unique() {
+    let b1 = BNode::auto();
+    let b2 = BNode::auto();
+    assert_ne!(b1.id(), b2.id());
 }
 
 // ---------------------------------------------------------------------------
@@ -119,7 +140,7 @@ fn sample_graph() -> RdfGraph {
         o: RdfTerm::Iri(Iri::new("http://example.org/bob").unwrap()),
     });
     g.add(Triple {
-        s: Subject::BNode(BNode::new("b1")),
+        s: Subject::BNode(BNode::new(100)),
         p: Iri::new("http://xmlns.com/foaf/0.1/name").unwrap(),
         o: RdfTerm::Literal(Literal::lang("Robert", "en")),
     });
@@ -172,7 +193,7 @@ fn graph_remove_not_found() {
 fn graph_bnodes() {
     let g = sample_graph();
     let ids = g.bnodes();
-    assert!(ids.contains(&"b1".to_string()));
+    assert!(ids.contains(&100));
 }
 
 #[test]
@@ -204,6 +225,15 @@ fn graph_empty() {
     assert!(g.is_empty());
     assert_eq!(g.len(), 0);
     assert_eq!(g.bnodes().len(), 0);
+}
+
+#[test]
+fn graph_clear() {
+    let mut g = sample_graph();
+    assert_eq!(g.len(), 3);
+    g.clear();
+    assert_eq!(g.len(), 0);
+    assert!(g.is_empty());
 }
 
 #[test]

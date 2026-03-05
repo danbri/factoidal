@@ -25,6 +25,10 @@ export class JsRdfGraph {
      */
     bnodes(): string;
     /**
+     * Remove all triples from the graph.
+     */
+    clear(): void;
+    /**
      * Find triples by predicate IRI; returns JSON array.
      */
     findByPredicate(predicate_iri: string): string;
@@ -71,6 +75,7 @@ export interface InitOutput {
     readonly jsrdfgraph_addTripleLang: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => [number, number];
     readonly jsrdfgraph_addTripleTyped: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => [number, number];
     readonly jsrdfgraph_bnodes: (a: number) => [number, number];
+    readonly jsrdfgraph_clear: (a: number) => void;
     readonly jsrdfgraph_findByPredicate: (a: number, b: number, c: number) => [number, number];
     readonly jsrdfgraph_findBySubject: (a: number, b: number, c: number) => [number, number];
     readonly jsrdfgraph_new: () => number;
