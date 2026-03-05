@@ -14,9 +14,7 @@ Core goals:
 - Support **strict compliance environments** (finance, healthcare, defense, regulated AI)
 - Integrate with modern **supply-chain attestation ecosystems**
 
-The main architecture and rationale are documented here:
-
--> `docs/verified-rdf-transform-design.md`
+The main architecture and rationale are documented in `docs/designissues/`.
 
 ### Key Concepts
 
@@ -98,9 +96,11 @@ factoidal/
 ├── docs/
 │   ├── pkg/                   # WASM build artifacts (committed)
 │   ├── index.html             # Interactive demo (uses real WASM)
-│   ├── verified-rdf-transform-design.md  # Design document (original)
-│   ├── designissues.md        # Design issues (concise)
-│   ├── designissues-graphflow.md  # Graph transform design (full)
+│   ├── designissues/
+│   │   ├── overview.md            # Design issues overview
+│   │   ├── graphflow.md           # Graph transform design (full)
+│   │   ├── attestation-model.md   # Combined attestation data model + architecture
+│   │   └── grounding-analysis.md  # Grounding analysis
 │   └── tests.html             # Browser integration tests
 └── CLAUDE.md                  # This file
 ```
@@ -286,9 +286,12 @@ Current F* spec covers ~160 lines. Formalization gap by module:
 
 ## Design Documents
 
-- [`docs/designissues-graphflow.md`](docs/designissues-graphflow.md) — Full verified RDF transform system design (graphs as assertable objects, transform certificates, evidence chains, verifiable credentials)
-- [`docs/designissues.md`](docs/designissues.md) — Design issues overview
-- [`docs/verified-rdf-transform-design.md`](docs/verified-rdf-transform-design.md) — Original design document
+All design documents live under `docs/designissues/`:
+
+- [`docs/designissues/attestation-model.md`](docs/designissues/attestation-model.md) — Combined reference: system overview, architecture, RDF attestation data model (transform events, shadow graphs, verification workflow)
+- [`docs/designissues/graphflow.md`](docs/designissues/graphflow.md) — Graph transform system design (assertable graphs, transform certificates, evidence chains, verifiable credentials)
+- [`docs/designissues/overview.md`](docs/designissues/overview.md) — Design issues overview
+- [`docs/designissues/grounding-analysis.md`](docs/designissues/grounding-analysis.md) — Grounding analysis
 
 ## Build & Test
 
