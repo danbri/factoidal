@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Factoidal — RDF Core 1.1 Graph Explorer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #0f172a; color: #e2e8f0;
+    max-width: 960px; margin: 0 auto; padding: 1.5rem;
+    line-height: 1.5;
+  }
+  h1 { color: #38bdf8; font-size: 1.5rem; }
+  .subtitle { color: #64748b; margin-bottom: 1.25rem; font-size: 0.875rem; }
+  h2 { color: #94a3b8; font-size: 0.875rem; text-transform: uppercase;
+       letter-spacing: 0.05em; margin: 1.25rem 0 0.5rem; }
+
+  /* Forms */
+  .row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+  input, select {
+    background: #1e293b; color: #e2e8f0; border: 1px solid #334155;
+    padding: 0.4rem 0.6rem; border-radius: 0.375rem; font-size: 0.8125rem;
+    flex: 1; min-width: 120px;
+  }
+  input::placeholder { color: #475569; }
+  button {
+    background: #1e293b; color: #38bdf8; border: 1px solid #334155;
+    padding: 0.4rem 0.85rem; border-radius: 0.375rem; cursor: pointer;
+    font-size: 0.8125rem; transition: background 0.15s; white-space: nowrap;
+  }
+  button:hover { background: #334155; }
+  button.primary { background: #0284c7; color: #fff; border-color: #0284c7; }
+  button.primary:hover { background: #0369a1; }
+  button.danger { color: #f87171; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 0; margin-bottom: 0; }
+  .tab {
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    border-bottom: none; padding: 0.375rem 0.85rem; cursor: pointer;
+    font-size: 0.8125rem; border-radius: 0.375rem 0.375rem 0 0;
+    margin-right: -1px;
+  }
+  .tab.active { background: #1e293b; color: #38bdf8; border-bottom: 1px solid #1e293b;
+                position: relative; z-index: 1; }
+
+  /* Output */
+  pre {
+    background: #1e293b; border: 1px solid #334155; border-radius: 0 0.5rem 0.5rem 0.5rem;
+    padding: 1rem; overflow-x: auto; font-size: 0.75rem;
+    line-height: 1.6; white-space: pre-wrap; min-height: 120px; max-height: 400px;
+    overflow-y: auto;
+  }
+
+  /* Stats */
+  .stats { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+  .stat {
+    background: #1e293b; border: 1px solid #334155; border-radius: 0.375rem;
+    padding: 0.3rem 0.65rem; font-size: 0.8125rem;
+  }
+  .stat b { color: #38bdf8; }
+
+  /* Triple table */
+  table { width: 100%; border-collapse: collapse; font-size: 0.75rem; margin-bottom: 0.75rem; }
+  th { text-align: left; color: #64748b; padding: 0.35rem 0.5rem;
+       border-bottom: 1px solid #334155; font-weight: 500; }
+  td { padding: 0.35rem 0.5rem; border-bottom: 1px solid #1e293b; word-break: break-all; }
+  tr:hover td { background: #1e293b; }
+  td .iri { color: #38bdf8; }
+  td .bnode { color: #a78bfa; }
+  td .literal { color: #4ade80; }
+  td .lang { color: #fbbf24; }
+  td .datatype { color: #94a3b8; font-size: 0.6875rem; }
+  .del-btn { color: #f87171; cursor: pointer; background: none; border: none;
+             font-size: 0.75rem; padding: 0.1rem 0.3rem; }
+
+  /* Toast */
+  #toast {
+    position: fixed; bottom: 1.5rem; right: 1.5rem; background: #334155;
+    color: #e2e8f0; padding: 0.5rem 1rem; border-radius: 0.5rem;
+    font-size: 0.8125rem; opacity: 0; transition: opacity 0.3s;
+    pointer-events: none;
+  }
+  #toast.show { opacity: 1; }
+  #toast.error { background: #7f1d1d; color: #fca5a5; }
+
+  /* Prefixes */
+  .prefix-list { font-size: 0.75rem; color: #64748b; margin-bottom: 0.5rem; }
+  .prefix-list code { color: #94a3b8; }
+
+  @media (max-width: 600px) {
+    .row { flex-direction: column; }
+    input, select { min-width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Factoidal</h1>
+<p class="subtitle">RDF Core 1.1 Graph Explorer &mdash; pure JavaScript, no dependencies</p>
+
+<div id="stats" class="stats"></div>
+
+<h2>Add Triple</h2>
+<div class="prefix-list">
+  Prefixes: <code>ex:</code> = example.org &middot; <code>foaf:</code> &middot;
+  <code>rdf:</code> &middot; <code>rdfs:</code> &middot; <code>schema:</code> &middot;
+  <code>xsd:</code> &middot; blank nodes: <code>_:id</code>
+</div>
+<div class="row">
+  <input id="inp-s" placeholder="Subject  (ex:alice)">
+  <input id="inp-p" placeholder="Predicate  (foaf:name)">
+  <input id="inp-o" placeholder="Object  (IRI, _:b, or literal text)">
+</div>
+<div class="row">
+  <input id="inp-lang" placeholder="Lang tag (optional, e.g. en)" style="max-width:160px">
+  <input id="inp-dt" placeholder="Datatype (optional, e.g. xsd:integer)" style="max-width:220px">
+  <button class="primary" id="btn-add">Add Triple</button>
+</div>
+
+<h2>Quick Actions</h2>
+<div class="row">
+  <button id="btn-sample">Load FOAF Sample</button>
+  <button id="btn-schema">Load Schema.org Sample</button>
+  <button id="btn-clear-graph" class="danger">Clear Graph</button>
+</div>
+
+<h2>Graph</h2>
+<div id="triple-table"></div>
+
+<h2>Output</h2>
+<div class="tabs">
+  <div class="tab active" data-view="ntriples">N-Triples</div>
+  <div class="tab" data-view="json">JSON</div>
+  <div class="tab" data-view="bnodes">Blank Nodes</div>
+  <div class="tab" data-view="subjects">By Subject</div>
+</div>
+<pre id="output"></pre>
+
+<div id="toast"></div>
+
+<script>
+// =========================================================================
+//  RDF Core 1.1  —  Pure JS implementation (mirrors F* spec / Rust lib)
+// =========================================================================
+
+const RDF_LANG_STRING = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString";
+const XSD_STRING      = "http://www.w3.org/2001/XMLSchema#string";
+
+const PREFIXES = {
+  "rdf:":    "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+  "rdfs:":   "http://www.w3.org/2000/01/rdf-schema#",
+  "xsd:":    "http://www.w3.org/2001/XMLSchema#",
+  "foaf:":   "http://xmlns.com/foaf/0.1/",
+  "schema:": "http://schema.org/",
+  "ex:":     "http://example.org/",
+  "dc:":     "http://purl.org/dc/elements/1.1/",
+  "dct:":    "http://purl.org/dc/terms/",
+  "skos:":   "http://www.w3.org/2004/02/skos/core#",
+  "owl:":    "http://www.w3.org/2002/07/owl#",
+};
+
+function expandPrefix(s) {
+  for (const [prefix, iri] of Object.entries(PREFIXES)) {
+    if (s.startsWith(prefix)) return iri + s.slice(prefix.length);
+  }
+  return s;
+}
+
+function compactIri(iri) {
+  for (const [prefix, full] of Object.entries(PREFIXES)) {
+    if (iri.startsWith(full)) return prefix + iri.slice(full.length);
+  }
+  return iri;
+}
+
+// -- Iri (refined: non-empty, contains ':') --
+class Iri {
+  constructor(s) {
+    if (!s || !s.includes(":")) throw new Error(`Invalid IRI: "${s}"`);
+    this.value = s;
+  }
+  toString() { return `<${this.value}>`; }
+  toJSON() { return this.value; }
+  equals(other) { return other instanceof Iri && this.value === other.value; }
+}
+
+// -- BNode --
+class BNode {
+  constructor(id) { this.id = id; }
+  toString() { return `_:${this.id}`; }
+  toJSON() { return `_:${this.id}`; }
+  equals(other) { return other instanceof BNode && this.id === other.id; }
+}
+
+// -- Literal (well-formedness enforced) --
+class Literal {
+  constructor(lexical, datatype, langTag = null) {
+    if (langTag && datatype.value !== RDF_LANG_STRING)
+      throw new Error("Language-tagged literal must have datatype rdf:langString");
+    if (!langTag && datatype.value === RDF_LANG_STRING)
+      throw new Error("Datatype rdf:langString requires a language tag");
+    this.lexical = lexical;
+    this.datatype = datatype;
+    this.langTag = langTag;
+  }
+  static plain(lex) { return new Literal(lex, new Iri(XSD_STRING)); }
+  static lang(lex, tag) { return new Literal(lex, new Iri(RDF_LANG_STRING), tag); }
+  toString() {
+    if (this.langTag) return `"${this.lexical}"@${this.langTag}`;
+    if (this.datatype.value !== XSD_STRING) return `"${this.lexical}"^^${this.datatype}`;
+    return `"${this.lexical}"`;
+  }
+  toJSON() {
+    const o = { lexical: this.lexical, datatype: this.datatype.value };
+    if (this.langTag) o.lang = this.langTag;
+    return o;
+  }
+  equals(other) {
+    return other instanceof Literal &&
+      this.lexical === other.lexical &&
+      this.datatype.equals(other.datatype) &&
+      this.langTag === other.langTag;
+  }
+}
+
+// -- RdfTerm / Subject wrappers --
+function termEquals(a, b) {
+  if (a.constructor !== b.constructor) return false;
+  return a.equals(b);
+}
+
+// -- Triple --
+class Triple {
+  constructor(s, p, o) { this.s = s; this.p = p; this.o = o; }
+  equals(other) {
+    return termEquals(this.s, other.s) &&
+           this.p.equals(other.p) &&
+           termEquals(this.o, other.o);
+  }
+  toString() { return `${this.s} ${this.p} ${this.o} .`; }
+  toJSON() { return { s: this.s.toJSON(), p: this.p.toJSON(), o: this.o.toJSON() }; }
+}
+
+// -- RdfGraph --
+class RdfGraph {
+  constructor() { this.triples = []; }
+
+  add(triple) {
+    if (!this.triples.some(t => t.equals(triple))) {
+      this.triples.push(triple);
+    }
+  }
+
+  remove(index) { this.triples.splice(index, 1); }
+
+  get size() { return this.triples.length; }
+
+  bnodes() {
+    const ids = new Set();
+    for (const t of this.triples) {
+      if (t.s instanceof BNode) ids.add(t.s.id);
+      if (t.o instanceof BNode) ids.add(t.o.id);
+    }
+    return [...ids];
+  }
+
+  findBySubject(iri) {
+    return this.triples.filter(t => t.s instanceof Iri && t.s.value === iri);
+  }
+
+  findByPredicate(iri) {
+    return this.triples.filter(t => t.p.value === iri);
+  }
+
+  subjects() {
+    const map = {};
+    for (const t of this.triples) {
+      const key = t.s.toString();
+      (map[key] = map[key] || []).push(t);
+    }
+    return map;
+  }
+
+  toNTriples() { return this.triples.map(t => t.toString()).join("\n"); }
+  toJSON() { return JSON.stringify(this.triples.map(t => t.toJSON()), null, 2); }
+}
+
+
+// =========================================================================
+//  UI
+// =========================================================================
+
+const graph = new RdfGraph();
+let currentView = "ntriples";
+
+const $ = id => document.getElementById(id);
+const toast = (msg, err = false) => {
+  const el = $("toast");
+  el.textContent = msg;
+  el.className = err ? "show error" : "show";
+  setTimeout(() => el.className = "", 2500);
+};
+
+function parseSubject(raw) {
+  const s = expandPrefix(raw.trim());
+  if (s.startsWith("_:")) return new BNode(s.slice(2));
+  return new Iri(s);
+}
+
+function parseObject(raw, langTag, datatype) {
+  const s = expandPrefix(raw.trim());
+  // Explicit blank node
+  if (s.startsWith("_:")) return new BNode(s.slice(2));
+  // If lang tag provided -> language-tagged literal
+  if (langTag) return Literal.lang(raw.trim(), langTag);
+  // If datatype provided -> typed literal
+  if (datatype) {
+    const dt = new Iri(expandPrefix(datatype));
+    return new Literal(raw.trim(), dt);
+  }
+  // If it looks like an IRI (contains :// or known prefix expanded)
+  if (s.includes(":")) {
+    try { return new Iri(s); } catch (_) { /* fall through */ }
+  }
+  // Default: plain string literal
+  return Literal.plain(raw.trim());
+}
+
+function addTriple() {
+  const sRaw = $("inp-s").value.trim();
+  const pRaw = $("inp-p").value.trim();
+  const oRaw = $("inp-o").value.trim();
+  const lang = $("inp-lang").value.trim() || null;
+  const dt   = $("inp-dt").value.trim() || null;
+
+  if (!sRaw || !pRaw || !oRaw) { toast("Subject, predicate, and object are required.", true); return; }
+
+  try {
+    const s = parseSubject(sRaw);
+    const p = new Iri(expandPrefix(pRaw));
+    const o = parseObject(oRaw, lang, dt);
+    const before = graph.size;
+    graph.add(new Triple(s, p, o));
+    if (graph.size === before) { toast("Duplicate triple — not added."); }
+    else { toast("Triple added."); }
+    $("inp-s").value = ""; $("inp-p").value = ""; $("inp-o").value = "";
+    $("inp-lang").value = ""; $("inp-dt").value = "";
+    render();
+  } catch (e) { toast(e.message, true); }
+}
+
+function renderStats() {
+  $("stats").innerHTML =
+    `<span class="stat">Triples: <b>${graph.size}</b></span>` +
+    `<span class="stat">Blank nodes: <b>${graph.bnodes().length}</b></span>` +
+    `<span class="stat">Subjects: <b>${Object.keys(graph.subjects()).length}</b></span>`;
+}
+
+function termHtml(term) {
+  if (term instanceof Iri) return `<span class="iri">${compactIri(term.value)}</span>`;
+  if (term instanceof BNode) return `<span class="bnode">_:${term.id}</span>`;
+  if (term instanceof Literal) {
+    let h = `<span class="literal">"${term.lexical}"</span>`;
+    if (term.langTag) h += `<span class="lang">@${term.langTag}</span>`;
+    else if (term.datatype.value !== XSD_STRING)
+      h += `<span class="datatype">^^${compactIri(term.datatype.value)}</span>`;
+    return h;
+  }
+  return String(term);
+}
+
+function renderTable() {
+  if (graph.size === 0) {
+    $("triple-table").innerHTML = '<p style="color:#475569;font-size:0.8125rem">No triples yet. Add some or load a sample.</p>';
+    return;
+  }
+  let html = '<table><tr><th>Subject</th><th>Predicate</th><th>Object</th><th></th></tr>';
+  graph.triples.forEach((t, i) => {
+    html += `<tr>
+      <td>${termHtml(t.s)}</td>
+      <td>${termHtml(t.p)}</td>
+      <td>${termHtml(t.o)}</td>
+      <td><button class="del-btn" onclick="removeTriple(${i})">✕</button></td>
+    </tr>`;
+  });
+  html += '</table>';
+  $("triple-table").innerHTML = html;
+}
+
+function renderOutput() {
+  const out = $("output");
+  switch (currentView) {
+    case "ntriples": out.textContent = graph.toNTriples() || "(empty graph)"; break;
+    case "json":     out.textContent = graph.toJSON(); break;
+    case "bnodes":   out.textContent = JSON.stringify(graph.bnodes(), null, 2); break;
+    case "subjects": {
+      const subj = graph.subjects();
+      let text = "";
+      for (const [s, triples] of Object.entries(subj)) {
+        text += `${s}\n`;
+        for (const t of triples) text += `  ${t.p} ${t.o}\n`;
+        text += "\n";
+      }
+      out.textContent = text || "(empty graph)";
+      break;
+    }
+  }
+}
+
+function render() { renderStats(); renderTable(); renderOutput(); }
+
+function removeTriple(i) { graph.remove(i); render(); toast("Triple removed."); }
+
+// Make accessible from inline onclick
+window.removeTriple = removeTriple;
+
+function loadFoafSample() {
+  const EX = "http://example.org/", FOAF = "http://xmlns.com/foaf/0.1/",
+        RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
+  const triples = [
+    [new Iri(EX+"alice"), new Iri(RDF+"type"),   new Iri(FOAF+"Person")],
+    [new Iri(EX+"alice"), new Iri(FOAF+"name"),  Literal.plain("Alice")],
+    [new Iri(EX+"alice"), new Iri(FOAF+"knows"), new Iri(EX+"bob")],
+    [new Iri(EX+"alice"), new Iri(FOAF+"knows"), new BNode("anon1")],
+    [new Iri(EX+"alice"), new Iri(EX+"age"),     new Literal("30", new Iri("http://www.w3.org/2001/XMLSchema#integer"))],
+    [new Iri(EX+"bob"),   new Iri(RDF+"type"),   new Iri(FOAF+"Person")],
+    [new Iri(EX+"bob"),   new Iri(FOAF+"name"),  Literal.lang("Bob", "en")],
+    [new Iri(EX+"bob"),   new Iri(FOAF+"name"),  Literal.lang("Roberto", "it")],
+    [new Iri(EX+"bob"),   new Iri(FOAF+"mbox"),  new Iri("mailto:bob@example.org")],
+    [new BNode("anon1"),  new Iri(FOAF+"name"),  Literal.plain("Charlie")],
+    [new BNode("anon1"),  new Iri(RDF+"type"),   new Iri(FOAF+"Person")],
+  ];
+  for (const [s, p, o] of triples) graph.add(new Triple(s, p, o));
+  render(); toast(`FOAF sample loaded (${graph.size} triples).`);
+}
+
+function loadSchemaSample() {
+  const S = "http://schema.org/", EX = "http://example.org/",
+        RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
+  const triples = [
+    [new Iri(EX+"factoidal"), new Iri(RDF+"type"),     new Iri(S+"SoftwareSourceCode")],
+    [new Iri(EX+"factoidal"), new Iri(S+"name"),       Literal.plain("Factoidal")],
+    [new Iri(EX+"factoidal"), new Iri(S+"description"),Literal.lang("RDF Core 1.1 graph explorer","en")],
+    [new Iri(EX+"factoidal"), new Iri(S+"license"),    new Iri("https://www.apache.org/licenses/LICENSE-2.0")],
+    [new Iri(EX+"factoidal"), new Iri(S+"programmingLanguage"), Literal.plain("JavaScript")],
+    [new Iri(EX+"factoidal"), new Iri(S+"programmingLanguage"), Literal.plain("Rust")],
+    [new Iri(EX+"factoidal"), new Iri(S+"author"),     new BNode("author1")],
+    [new BNode("author1"),    new Iri(RDF+"type"),     new Iri(S+"Person")],
+    [new BNode("author1"),    new Iri(S+"name"),       Literal.plain("Dan Brickley")],
+  ];
+  for (const [s, p, o] of triples) graph.add(new Triple(s, p, o));
+  render(); toast(`Schema.org sample loaded (${graph.size} triples).`);
+}
+
+// -- Event wiring --
+$("btn-add").addEventListener("click", addTriple);
+$("btn-sample").addEventListener("click", loadFoafSample);
+$("btn-schema").addEventListener("click", loadSchemaSample);
+$("btn-clear-graph").addEventListener("click", () => {
+  graph.triples = []; render(); toast("Graph cleared.");
+});
+
+// Enter key in inputs
+for (const id of ["inp-s","inp-p","inp-o","inp-lang","inp-dt"]) {
+  $(id).addEventListener("keydown", e => { if (e.key === "Enter") addTriple(); });
+}
+
+// Tabs
+document.querySelectorAll(".tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    currentView = tab.dataset.view;
+    renderOutput();
+  });
+});
+
+// Initial render
+render();
+</script>
+</body>
+</html>
