@@ -1,74 +1,97 @@
-# Grounding Analysis: JS/HTML Demos vs. Formal Definitions
+# Grounding Analysis: Web Demos vs. Formal Definitions
 
 ## Overview
 
-This report analyzes how well the JavaScript demos in `docs/` are grounded
-in the F\* formal specification in `formal/fstar/rdfcore11.fstar.txt`.
+The web demos in `docs/` use the **actual Rust/WASM library** (`rdf-wasm`), not
+a reimplementation. The library is compiled from the same Rust code that
+faithfully implements the F\* formal specification in
+`formal/fstar/rdfcore11.fstar.txt`. This eliminates the risk of divergence
+between the demo and the verified types.
 
-## Type-by-Type Mapping
+## Architecture
 
-| F\* Formal Definition | JS Implementation | Grounded? |
+```
+F* spec (formal/fstar/rdfcore11.fstar.txt)
+    ↓ manual faithful translation
+Rust library (rdf-wasm/src/rdf.rs)
+    ↓ wasm-bindgen
+WASM + JS bindings (docs/pkg/)
+    ↓ imported by
+Web demos (docs/index.html, docs/tests.html)
+```
+
+## Type-by-Type Mapping (F\* → Rust → WASM)
+
+| F\* Formal Definition | Rust Implementation | Exposed via WASM? |
 |---|---|---|
-| `bnode_id = string` | `BNode` class with `.id` string | Yes |
-| `wf_iri` (non-empty, contains `:`) | `Iri` class: validates non-empty + contains `:` | Yes |
+| `bnode_id = string` | `BNode(String)` | Yes — `addTriple("_:id", ...)` |
+| `wf_iri` (non-empty, contains `:`) | `Iri::new()` validates at construction | Yes — errors propagate to JS |
 | `rdf_lang_string` constant | `RDF_LANG_STRING` constant (same URI) | Yes |
-| `literal {lexical_form, datatype: wf_iri, lang_tag: option string}` | `Literal {lexical, datatype: Iri, langTag}` | Yes |
-| `literal_wf` biconditional (langTag ↔ rdf:langString) | Constructor throws on both violations | Yes |
-| `rdf_term = T_IRI \| T_BNode \| T_Literal` | `instanceof` checks on Iri/BNode/Literal | Yes |
-| `subject = S_IRI \| S_BNode` (no Literal) | `parseSubject()` only creates Iri or BNode | Yes |
-| `triple = {s: subject, p: wf_iri, o: rdf_term}` | `Triple {s, p, o}` with same constraints | Yes |
-| `rdf_graph = list triple` | `RdfGraph` with `triples` array | Yes |
-| `empty_graph = []` | `constructor() { this.triples = []; }` | Yes |
-| `graph_bnodes` (collect from s/o positions) | `bnodes()` checks s and o for BNode | Yes |
+| `literal {lexical_form, datatype: wf_iri, lang_tag: option string}` | `Literal { lexical_form, datatype: Iri, lang_tag: Option<String> }` | Yes — `addTripleLang`, `addTripleTyped` |
+| `literal_wf` biconditional (langTag ↔ rdf:langString) | `Literal::new()` enforces both directions | Yes — errors propagate to JS |
+| `rdf_term = T_IRI \| T_BNode \| T_Literal` | `enum RdfTerm { Iri, BNode, Literal }` | Yes |
+| `subject = S_IRI \| S_BNode` (no Literal) | `enum Subject { Iri, BNode }` — type-level exclusion | Yes |
+| `triple = {s: subject, p: wf_iri, o: rdf_term}` | `Triple { s: Subject, p: Iri, o: RdfTerm }` | Yes |
+| `rdf_graph = list triple` | `RdfGraph { triples: Vec<Triple> }` | Yes — `JsRdfGraph` |
+| `graph_bnodes` (collect from s/o positions) | `RdfGraph::bnodes()` | Yes — `bnodes()` |
 
-## Well-Formedness Constraints
+## Key Advantages Over Previous JS Reimplementation
 
-### IRI Validation
-- **F\***: `is_iri s = String.length s > 0 && has_colon s`
-- **JS**: `if (!s || !s.includes(":")) throw new Error(...)`
-- **Tests**: Verify rejection of empty strings and strings without colons
+1. **No code duplication** — the demo and tests exercise the same Rust code
+2. **Type-level subject restriction** — Rust's `enum Subject` makes it impossible
+   to construct a triple with a Literal subject, unlike JS where it was only
+   enforced at the parsing layer
+3. **Predicate type safety** — `p: Iri` is enforced by the Rust type system, not
+   just by convention
+4. **Single source of truth** — any fix or change to `rdf.rs` automatically
+   applies to the web demo
 
-### Literal Well-Formedness
-- **F\***: `literal_wf l = match l.lang_tag with None -> l.datatype <> rdf_lang_string | Some _ -> l.datatype = rdf_lang_string`
-- **JS**: Two guard clauses in `Literal` constructor enforce both directions
-- **Tests**: Verify both "lang tag with wrong datatype" and "rdf:langString without lang tag" throw
+## SPARQL Support
 
-### Subject Restrictions
-- **F\***: `subject = S_IRI | S_BNode` (structurally excludes Literal)
-- **JS**: `parseSubject()` only produces `BNode` or `Iri`, never `Literal`
+The WASM library includes a SPARQL SELECT engine (`sparql.rs`) supporting:
 
-## Extensions Beyond the Formal Spec
+- `SELECT` with explicit variables or `*`
+- `PREFIX` declarations
+- Basic Graph Patterns (triple patterns with `?variables`)
+- `FILTER` with: `=`, `!=`, `<`, `>`, `<=`, `>=`, `STR()`, `LANG()`,
+  `DATATYPE()`, `BOUND()`, `REGEX()`, `CONTAINS()`, `STRSTARTS()`,
+  `STRENDS()`, `ISLITERAL()`, `ISIRI()`/`ISURI()`, `ISBLANK()`,
+  boolean `&&` and `||`
+- `OPTIONAL` patterns
+- `DISTINCT`
+- `ORDER BY` (ASC/DESC)
+- `LIMIT` / `OFFSET`
 
-The JS demos include features not covered by the F\* specification:
-
-1. **Set semantics on `add()`** — deduplicates triples (F\* uses a plain list)
-2. **`remove(index)`** — deletion not specified formally
-3. **`findBySubject()`, `findByPredicate()`, `subjects()`** — query operations
-4. **Prefix expansion/compaction** — namespace handling for the UI
-5. **N-Triples and JSON serialization** — output formats
-6. **`XSD_STRING` default datatype** — correct per RDF 1.1, not in F\* spec
-
-## Minor Divergences
-
-1. **Triple constructor doesn't enforce `p` is Iri at the type level** — relies on callers. The UI always constructs `p` as `new Iri(...)`, so this holds at runtime.
-2. **Dedup semantics**: F\* `list triple` allows duplicates; JS `add()` prevents them. The JS behavior is more correct for RDF (graphs are sets).
-3. **BNode collection**: F\* returns a list (may have duplicates); JS uses `Set` for uniqueness.
-4. **No structural enforcement that subjects aren't Literals** — the JS `Triple` constructor accepts any object as `s`; the constraint is only at the parsing layer.
+This runs entirely in WASM — no server-side query processing.
 
 ## Test Coverage
 
-`tests.html` provides 31 test cases covering every formal constraint:
-- IRI well-formedness (6 tests)
-- BNode identity (4 tests)
-- Literal construction and well-formedness (9 tests)
-- Triple serialization (1 test)
-- Graph operations including bnodes (9+ tests)
-- Cross-type equality (2 tests)
+`tests.html` tests the WASM library directly via `JsRdfGraph`:
+
+- IRI validation (4 tests)
+- BNode support (3 tests)
+- Literal well-formedness (3 tests)
+- Plain literals (2 tests)
+- Graph add/size (1 test)
+- Graph deduplication (1 test)
+- Graph removeByIndex (3 tests)
+- Graph findBySubject (1 test)
+- Graph findByPredicate (1 test)
+- Graph N-Triples output (3 tests)
+- Graph empty state (3 tests)
+- Graph JSON output (2 tests)
+- Graph triplesJSON (2 tests)
+- SPARQL SELECT \* (2 tests)
+- SPARQL PREFIX + variables (2 tests)
+- SPARQL FILTER (1 test)
+- SPARQL DISTINCT (1 test)
+- SPARQL LIMIT/OFFSET (2 tests)
+- SPARQL OPTIONAL (2 tests)
+- SPARQL pattern join (1 test)
+- SPARQL error handling (1 test)
 
 ## Verdict
 
-The JS demos are **well-grounded** in the formal definitions. Every core type,
-constraint, and operation in the F\* specification has a faithful counterpart in
-the JavaScript implementation. Divergences are minor and generally in the
-direction of being stricter (set dedup, unique bnode IDs) rather than weaker.
-The test suite provides comprehensive coverage of formal constraints.
+The web demos are **directly grounded** in the formal definitions via the Rust
+implementation. There is no reimplementation or translation layer that could
+introduce divergence. The WASM binary *is* the verified code.

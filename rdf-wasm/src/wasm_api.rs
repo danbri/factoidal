@@ -113,6 +113,35 @@ impl JsRdfGraph {
     pub fn to_json(&self) -> String {
         serde_json::to_string_pretty(&self.inner).unwrap_or_else(|_| "{}".into())
     }
+
+    /// Remove a triple by its index (0-based).
+    #[wasm_bindgen(js_name = removeByIndex)]
+    pub fn remove_by_index(&mut self, index: usize) -> Result<(), JsError> {
+        let triples = self.inner.triples();
+        if index >= triples.len() {
+            return Err(JsError::new("Index out of bounds"));
+        }
+        let triple = triples[index].clone();
+        self.inner
+            .remove(&triple)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    /// Return all triples as a JSON array with s/p/o structure.
+    #[wasm_bindgen(js_name = triplesJSON)]
+    pub fn triples_json(&self) -> String {
+        let triples: Vec<_> = self.inner.triples().iter().collect();
+        triples_to_json(&triples)
+    }
+
+    /// Execute a SPARQL SELECT query. Returns JSON with `variables` and `rows`.
+    #[wasm_bindgen(js_name = sparqlQuery)]
+    pub fn sparql_query(&self, query: &str) -> Result<String, JsError> {
+        let result = crate::sparql::execute(&self.inner, query)
+            .map_err(|e| JsError::new(&e))?;
+        serde_json::to_string_pretty(&result)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
 }
 
 // ---------------------------------------------------------------------------
