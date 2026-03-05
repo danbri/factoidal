@@ -215,17 +215,41 @@ impl Parser {
 
     fn parse_query(&mut self) -> Result<ParsedQuery, String> {
         let mut prefixes = HashMap::new();
+        let mut base_iri: Option<String> = None;
 
-        // Parse PREFIX declarations
-        while self.peek().map(|t| t.to_uppercase()) == Some("PREFIX".to_string()) {
-            self.next()?; // PREFIX
-            let prefix = self.next()?; // e.g. "foaf:"
-            let iri_tok = self.next()?; // e.g. "<http://...>"
-            let iri = iri_tok
-                .trim_start_matches('<')
-                .trim_end_matches('>')
-                .to_string();
-            prefixes.insert(prefix.trim_end_matches(':').to_string(), iri);
+        // Parse PREFIX and BASE declarations
+        loop {
+            match self.peek().map(|t| t.to_uppercase()) {
+                Some(ref s) if s == "PREFIX" => {
+                    self.next()?; // PREFIX
+                    let prefix = self.next()?; // e.g. "foaf:"
+                    let iri_tok = self.next()?; // e.g. "<http://...>"
+                    let iri = iri_tok
+                        .trim_start_matches('<')
+                        .trim_end_matches('>')
+                        .to_string();
+                    prefixes.insert(prefix.trim_end_matches(':').to_string(), iri);
+                }
+                Some(ref s) if s == "BASE" => {
+                    self.next()?; // BASE
+                    let iri_tok = self.next()?;
+                    base_iri = Some(
+                        iri_tok
+                            .trim_start_matches('<')
+                            .trim_end_matches('>')
+                            .to_string(),
+                    );
+                    // Register base as empty prefix for resolving relative IRIs
+                }
+                _ => break,
+            }
+        }
+
+        // If we have a BASE, use it to resolve empty prefix
+        if let Some(ref base) = base_iri {
+            if !prefixes.contains_key("") {
+                prefixes.insert(String::new(), base.clone());
+            }
         }
 
         self.expect("SELECT")?;
@@ -252,7 +276,10 @@ impl Parser {
             }
         }
 
-        self.expect("WHERE")?;
+        // WHERE keyword is optional in SPARQL
+        if self.peek().map(|t| t.to_uppercase()) == Some("WHERE".to_string()) {
+            self.next()?; // consume WHERE
+        }
         self.expect("{")?;
 
         let where_clauses = self.parse_where_body()?;

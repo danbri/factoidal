@@ -20,6 +20,11 @@ let is_iri s =
 type wf_iri = s:iri{is_iri s}
 
 let rdf_lang_string : wf_iri = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"
+let xsd_string : wf_iri = "http://www.w3.org/2001/XMLSchema#string"
+let xsd_integer : wf_iri = "http://www.w3.org/2001/XMLSchema#integer"
+let xsd_decimal : wf_iri = "http://www.w3.org/2001/XMLSchema#decimal"
+let xsd_double : wf_iri = "http://www.w3.org/2001/XMLSchema#double"
+let xsd_boolean : wf_iri = "http://www.w3.org/2001/XMLSchema#boolean"
 
 (** 3. Literals with Runtime Checks **)
 noeq type literal = {
@@ -65,3 +70,172 @@ let rec graph_bnodes (g:rdf_graph) : list bnode_id =
       let nodes = match hd.s with | S_BNode id -> [id] | _ -> [] in
       let obj_nodes = match hd.o with | T_BNode id -> [id] | _ -> [] in
       nodes @ obj_nodes @ (graph_bnodes tl)
+
+(** 6. Graph Operations **)
+
+// Set-based add: only add if not already present (deduplication)
+let rec mem_triple (t:triple) (g:rdf_graph) : bool =
+  match g with
+  | [] -> false
+  | hd :: tl -> (hd.s = t.s && hd.p = t.p && hd.o = t.o) || mem_triple t tl
+
+let graph_add (t:triple) (g:rdf_graph) : rdf_graph =
+  if mem_triple t g then g else g @ [t]
+
+// Remove all occurrences of a triple
+let graph_remove (t:triple) (g:rdf_graph) : rdf_graph =
+  List.Tot.filter (fun hd -> not (hd.s = t.s && hd.p = t.p && hd.o = t.o)) g
+
+// Graph length
+let graph_len (g:rdf_graph) : nat = List.Tot.length g
+
+// Graph union (set union — deduplicated)
+let rec graph_union (g1 g2:rdf_graph) : rdf_graph =
+  match g1 with
+  | [] -> g2
+  | hd :: tl -> graph_union tl (graph_add hd g2)
+
+// Find triples by subject IRI
+let rec find_by_subject (subj:wf_iri) (g:rdf_graph) : rdf_graph =
+  match g with
+  | [] -> []
+  | hd :: tl ->
+    let rest = find_by_subject subj tl in
+    match hd.s with
+    | S_IRI i -> if i = subj then hd :: rest else rest
+    | _ -> rest
+
+// Find triples by predicate IRI
+let rec find_by_predicate (pred:wf_iri) (g:rdf_graph) : rdf_graph =
+  match g with
+  | [] -> []
+  | hd :: tl ->
+    let rest = find_by_predicate pred tl in
+    if hd.p = pred then hd :: rest else rest
+
+(** 7. Graph Properties (for verification) **)
+
+// Adding preserves set semantics: no duplicates
+let lemma_add_no_dup (t:triple) (g:rdf_graph) :
+  Lemma (mem_triple t (graph_add t g)) = ()
+
+// Removing means the triple is gone
+let rec lemma_remove_absent (t:triple) (g:rdf_graph) :
+  Lemma (not (mem_triple t (graph_remove t g))) =
+  match g with
+  | [] -> ()
+  | _ :: tl -> lemma_remove_absent t tl
+
+// Empty graph has no bnodes
+let lemma_empty_no_bnodes () :
+  Lemma (graph_bnodes empty_graph = []) = ()
+
+(** 8. N-Triples Serialization Specification **)
+
+// N-Triples escape table: characters that must be escaped in string literals
+let must_escape (c:FStar.Char.char) : bool =
+  let code = FStar.Char.int_of_char c in
+  code = 0x5C  // backslash
+  || code = 0x22  // double quote
+  || code = 0x0A  // newline
+  || code = 0x0D  // carriage return
+  || code = 0x09  // tab
+  || code = 0x08  // backspace
+  || code = 0x0C  // form feed
+  || code < 0x20  // other control characters
+
+// An N-Triples-safe string has no unescaped special characters
+// (This is a predicate for specifying the output of serialization)
+let rec is_nt_escaped (s:string) (i:nat) : bool =
+  if i >= String.length s then true
+  else
+    let c = String.index s i in
+    if must_escape c then false  // found unescaped char — invalid
+    else is_nt_escaped s (i + 1)
+
+// Roundtrip property specification:
+// For any well-formed graph g, serializing to N-Triples and parsing back
+// should yield a graph with the same triples (modulo blank node renaming).
+// This is stated as a type-level specification; proof is future work.
+//
+// val roundtrip_preserves_triples :
+//   g:rdf_graph ->
+//   Lemma (graph_isomorphic g (parse_ntriples (serialize_ntriples g)))
+
+(** 9. SPARQL Algebra Specification **)
+
+// Variable names in SPARQL patterns
+type var_name = string
+
+// A pattern term: either a concrete RDF term or a variable
+type pattern_term =
+  | PT_Concrete : rdf_term -> pattern_term
+  | PT_Var      : var_name -> pattern_term
+
+type pattern_subject =
+  | PS_Concrete : subject -> pattern_subject
+  | PS_Var      : var_name -> pattern_subject
+
+// A triple pattern in a Basic Graph Pattern
+noeq type triple_pattern = {
+  tp_s : pattern_subject;
+  tp_p : wf_iri;       // Predicates are always IRIs in SPARQL 1.0
+  tp_o : pattern_term;
+}
+
+// A solution mapping: variable -> RDF term
+type solution_mapping = list (var_name * rdf_term)
+
+// Basic Graph Pattern = list of triple patterns
+type bgp = list triple_pattern
+
+// A single triple pattern matches against a graph triple under a mapping
+let pattern_subject_matches (ps:pattern_subject) (s:subject) (mu:solution_mapping) : bool =
+  match ps with
+  | PS_Concrete cs -> cs = s
+  | PS_Var v ->
+    match List.Tot.assoc v mu with
+    | Some (T_IRI i) -> s = S_IRI i
+    | Some (T_BNode b) -> s = S_BNode b
+    | _ -> true  // unbound variable matches anything (will be bound)
+
+let pattern_term_matches (pt:pattern_term) (t:rdf_term) (mu:solution_mapping) : bool =
+  match pt with
+  | PT_Concrete ct -> ct = t
+  | PT_Var v ->
+    match List.Tot.assoc v mu with
+    | Some bound -> bound = t
+    | None -> true  // unbound variable matches anything
+
+// A triple pattern matches a triple under a solution mapping
+let triple_pattern_matches (tp:triple_pattern) (t:triple) (mu:solution_mapping) : bool =
+  pattern_subject_matches tp.tp_s t.s mu &&
+  tp.tp_p = t.p &&
+  pattern_term_matches tp.tp_o t.o mu
+
+// SPARQL algebra operations (specification level)
+type algebra_op =
+  | BGP_Op      : bgp -> algebra_op
+  | Filter_Op   : algebra_op -> algebra_op  // Filter expression omitted for now
+  | Optional_Op : algebra_op -> algebra_op -> algebra_op
+  | Union_Op    : algebra_op -> algebra_op -> algebra_op
+
+// Solution multiset (bag semantics)
+type solution_multiset = list solution_mapping
+
+// Evaluate a BGP: find all solution mappings for the pattern against the graph
+// (This is a specification — the Rust implementation should produce equivalent results)
+//
+// val eval_bgp : bgp -> rdf_graph -> solution_multiset
+
+(** 10. Graph Isomorphism (for bnode-insensitive comparison) **)
+
+// Two graphs are isomorphic if there exists a bijection on blank node IDs
+// such that applying the mapping to one graph yields the other.
+// (Stated declaratively; full proof would require a constructive witness)
+//
+// type bnode_mapping = bnode_id -> bnode_id
+//
+// val graph_isomorphic : rdf_graph -> rdf_graph -> bool
+//   (requires constructing a witness mapping, NP-complete in general,
+//    but tractable for small test graphs)

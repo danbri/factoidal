@@ -5,6 +5,7 @@
 mod rdf;
 pub mod ntriples;
 pub mod sparql;
+pub mod turtle;
 mod wasm_api;
 
 pub use rdf::*;
