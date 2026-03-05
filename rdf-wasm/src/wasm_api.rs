@@ -114,6 +114,12 @@ impl JsRdfGraph {
         serde_json::to_string_pretty(&self.inner).unwrap_or_else(|_| "{}".into())
     }
 
+    /// Remove all triples from the graph.
+    #[wasm_bindgen]
+    pub fn clear(&mut self) {
+        self.inner.clear();
+    }
+
     /// Remove a triple by its index (0-based).
     #[wasm_bindgen(js_name = removeByIndex)]
     pub fn remove_by_index(&mut self, index: usize) -> Result<(), JsError> {
@@ -150,7 +156,7 @@ impl JsRdfGraph {
 
 fn parse_subject(s: &str) -> Result<rdf::Subject, JsError> {
     if let Some(id) = s.strip_prefix("_:") {
-        Ok(rdf::Subject::BNode(rdf::BNode::new(id)))
+        Ok(rdf::Subject::BNode(rdf::BNode::from_str(id)))
     } else {
         rdf::Iri::new(s)
             .map(rdf::Subject::Iri)
@@ -160,7 +166,7 @@ fn parse_subject(s: &str) -> Result<rdf::Subject, JsError> {
 
 fn parse_object(o: &str) -> Result<rdf::RdfTerm, JsError> {
     if let Some(id) = o.strip_prefix("_:") {
-        Ok(rdf::RdfTerm::BNode(rdf::BNode::new(id)))
+        Ok(rdf::RdfTerm::BNode(rdf::BNode::from_str(id)))
     } else if o.contains(':') {
         rdf::Iri::new(o)
             .map(rdf::RdfTerm::Iri)

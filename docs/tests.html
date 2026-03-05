@@ -74,20 +74,27 @@ suite("IRI validation");
   assertThrows(() => g.addTriple("http://ex.org/s", "noscheme", "http://ex.org/o"), "rejects predicate without colon");
 }
 
-// -- BNode support --
+// -- BNode support (integer IDs) --
 suite("BNode support");
 {
   const g = new JsRdfGraph();
   g.addTriple("_:b1", "http://ex.org/p", "http://ex.org/o");
   assert(g.size === 1, "blank node subject accepted");
   const bnodes = JSON.parse(g.bnodes());
-  assert(bnodes.includes("b1"), "bnode id detected in subject");
+  assert(bnodes.includes(1), "bnode integer id detected in subject");
 }
 {
   const g = new JsRdfGraph();
   g.addTriple("http://ex.org/s", "http://ex.org/p", "_:b2");
   const bnodes = JSON.parse(g.bnodes());
-  assert(bnodes.includes("b2"), "bnode id detected in object");
+  assert(bnodes.includes(2), "bnode integer id detected in object");
+}
+{
+  // N-Triples format uses _:bN
+  const g = new JsRdfGraph();
+  g.addTriple("_:b50", "http://ex.org/p", "value");
+  const nt = g.toNTriples();
+  assert(nt.includes("_:b50"), "bnode displayed as _:b<N> in N-Triples");
 }
 
 // -- Literal well-formedness --

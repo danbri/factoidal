@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -63,25 +64,49 @@ impl fmt::Display for Iri {
 }
 
 // ---------------------------------------------------------------------------
-// Blank Node
+// Blank Node (integer-identified)
 // ---------------------------------------------------------------------------
 
+static BNODE_COUNTER: AtomicU64 = AtomicU64::new(1);
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct BNode(String);
+pub struct BNode(u64);
 
 impl BNode {
-    pub fn new(id: &str) -> Self {
-        BNode(id.to_string())
+    /// Create a blank node with an explicit numeric ID.
+    pub fn new(id: u64) -> Self {
+        BNode(id)
     }
 
-    pub fn id(&self) -> &str {
-        &self.0
+    /// Create a blank node from a string like "b1" or "42", parsing the
+    /// numeric suffix. If the string has no numeric content, auto-assigns
+    /// a fresh ID.
+    pub fn from_str(s: &str) -> Self {
+        // Try to parse the whole string as a number, or strip a leading
+        // alphabetic prefix (e.g. "b1" → 1, "node42" → 42).
+        let digits: String = s.chars().skip_while(|c| !c.is_ascii_digit()).collect();
+        if let Ok(n) = digits.parse::<u64>() {
+            // Bump the counter past this ID so auto-gen won't collide.
+            let _ = BNODE_COUNTER.fetch_max(n + 1, Ordering::Relaxed);
+            BNode(n)
+        } else {
+            BNode::auto()
+        }
+    }
+
+    /// Auto-generate a blank node with a fresh unique ID.
+    pub fn auto() -> Self {
+        BNode(BNODE_COUNTER.fetch_add(1, Ordering::Relaxed))
+    }
+
+    pub fn id(&self) -> u64 {
+        self.0
     }
 }
 
 impl fmt::Display for BNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "_:{}", self.0)
+        write!(f, "_:b{}", self.0)
     }
 }
 
@@ -243,22 +268,26 @@ impl RdfGraph {
         self.triples.is_empty()
     }
 
+    pub fn clear(&mut self) {
+        self.triples.clear();
+    }
+
     pub fn triples(&self) -> &[Triple] {
         &self.triples
     }
 
     /// Return all blank-node IDs in the graph (mirrors F* `graph_bnodes`).
-    pub fn bnodes(&self) -> Vec<String> {
-        let mut ids: Vec<String> = Vec::new();
+    pub fn bnodes(&self) -> Vec<u64> {
+        let mut ids: Vec<u64> = Vec::new();
         for t in &self.triples {
             if let Subject::BNode(b) = &t.s {
-                if !ids.contains(&b.id().to_string()) {
-                    ids.push(b.id().to_string());
+                if !ids.contains(&b.id()) {
+                    ids.push(b.id());
                 }
             }
             if let RdfTerm::BNode(b) = &t.o {
-                if !ids.contains(&b.id().to_string()) {
-                    ids.push(b.id().to_string());
+                if !ids.contains(&b.id()) {
+                    ids.push(b.id());
                 }
             }
         }

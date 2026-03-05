@@ -92,6 +92,12 @@ export class JsRdfGraph {
         }
     }
     /**
+     * Remove all triples from the graph.
+     */
+    clear() {
+        wasm.jsrdfgraph_clear(this.__wbg_ptr);
+    }
+    /**
      * Find triples by predicate IRI; returns JSON array.
      * @param {string} predicate_iri
      * @returns {string}

@@ -6,6 +6,7 @@ export const jsrdfgraph_addTriple: (a: number, b: number, c: number, d: number, 
 export const jsrdfgraph_addTripleLang: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => [number, number];
 export const jsrdfgraph_addTripleTyped: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => [number, number];
 export const jsrdfgraph_bnodes: (a: number) => [number, number];
+export const jsrdfgraph_clear: (a: number) => void;
 export const jsrdfgraph_findByPredicate: (a: number, b: number, c: number) => [number, number];
 export const jsrdfgraph_findBySubject: (a: number, b: number, c: number) => [number, number];
 export const jsrdfgraph_new: () => number;

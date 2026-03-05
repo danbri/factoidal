@@ -295,7 +295,7 @@ function termHtml(term) {
       return `<span class="iri">${compactIri(term.Iri)}</span>`;
     }
     if (term.BNode !== undefined) {
-      return `<span class="bnode">_:${term.BNode}</span>`;
+      return `<span class="bnode">_:b${term.BNode}</span>`;
     }
     if (term.Literal !== undefined) {
       const lit = term.Literal;
@@ -360,14 +360,14 @@ function loadFoafSample() {
     graph.addTriple(EX+"alice", RDF+"type",   FOAF+"Person");
     graph.addTriple(EX+"alice", FOAF+"name",  "Alice");
     graph.addTriple(EX+"alice", FOAF+"knows", EX+"bob");
-    graph.addTriple(EX+"alice", FOAF+"knows", "_:anon1");
+    graph.addTriple(EX+"alice", FOAF+"knows", "_:b101");
     graph.addTripleTyped(EX+"alice", EX+"age", "30", "http://www.w3.org/2001/XMLSchema#integer");
     graph.addTriple(EX+"bob",   RDF+"type",   FOAF+"Person");
     graph.addTripleLang(EX+"bob", FOAF+"name", "Bob", "en");
     graph.addTripleLang(EX+"bob", FOAF+"name", "Roberto", "it");
     graph.addTriple(EX+"bob",   FOAF+"mbox",  "mailto:bob@example.org");
-    graph.addTriple("_:anon1",  FOAF+"name",  "Charlie");
-    graph.addTriple("_:anon1",  RDF+"type",   FOAF+"Person");
+    graph.addTriple("_:b101",  FOAF+"name",  "Charlie");
+    graph.addTriple("_:b101",  RDF+"type",   FOAF+"Person");
     render();
     toast(`FOAF sample loaded (${graph.size} triples).`);
   } catch (e) { toast(e.message, true); }
@@ -383,9 +383,9 @@ function loadSchemaSample() {
     graph.addTriple(EX+"factoidal", S+"license",    "https://www.apache.org/licenses/LICENSE-2.0");
     graph.addTriple(EX+"factoidal", S+"programmingLanguage", "Rust");
     graph.addTriple(EX+"factoidal", S+"programmingLanguage", "JavaScript");
-    graph.addTriple(EX+"factoidal", S+"author",     "_:author1");
-    graph.addTriple("_:author1",    RDF+"type",     S+"Person");
-    graph.addTriple("_:author1",    S+"name",       "Dan Brickley");
+    graph.addTriple(EX+"factoidal", S+"author",     "_:b201");
+    graph.addTriple("_:b201",    RDF+"type",     S+"Person");
+    graph.addTriple("_:b201",    S+"name",       "Dan Brickley");
     render();
     toast(`Schema.org sample loaded (${graph.size} triples).`);
   } catch (e) { toast(e.message, true); }
@@ -464,11 +464,7 @@ $("btn-add").addEventListener("click", addTriple);
 $("btn-sample").addEventListener("click", loadFoafSample);
 $("btn-schema").addEventListener("click", loadSchemaSample);
 $("btn-clear-graph").addEventListener("click", () => {
-  // Rebuild the graph (WASM doesn't have a clear method)
-  // We remove all triples by index from the end
-  while (graph.size > 0) {
-    graph.removeByIndex(0);
-  }
+  graph.clear();
   render();
   $("sparql-results").innerHTML = '';
   toast("Graph cleared.");
