@@ -170,7 +170,22 @@ impl Literal {
 
 impl fmt::Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "\"{}\"", self.lexical_form)?;
+        // N-Triples requires escaping special characters in string literals
+        write!(f, "\"")?;
+        for c in self.lexical_form.chars() {
+            match c {
+                '\\' => write!(f, "\\\\")?,
+                '"' => write!(f, "\\\"")?,
+                '\n' => write!(f, "\\n")?,
+                '\r' => write!(f, "\\r")?,
+                '\t' => write!(f, "\\t")?,
+                '\u{0008}' => write!(f, "\\b")?,
+                '\u{000C}' => write!(f, "\\f")?,
+                c if (c as u32) < 0x20 => write!(f, "\\u{:04X}", c as u32)?,
+                c => write!(f, "{c}")?,
+            }
+        }
+        write!(f, "\"")?;
         if let Some(tag) = &self.lang_tag {
             write!(f, "@{tag}")
         } else if self.datatype.as_str() != XSD_STRING {

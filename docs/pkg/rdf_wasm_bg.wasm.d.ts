@@ -10,6 +10,7 @@ export const jsrdfgraph_clear: (a: number) => void;
 export const jsrdfgraph_findByPredicate: (a: number, b: number, c: number) => [number, number];
 export const jsrdfgraph_findBySubject: (a: number, b: number, c: number) => [number, number];
 export const jsrdfgraph_new: () => number;
+export const jsrdfgraph_parseNTriples: (a: number, b: number, c: number) => [number, number, number];
 export const jsrdfgraph_removeByIndex: (a: number, b: number) => [number, number];
 export const jsrdfgraph_size: (a: number) => number;
 export const jsrdfgraph_sparqlQuery: (a: number, b: number, c: number) => [number, number, number, number];
