@@ -90,14 +90,17 @@ factoidal/
 │   │   ├── rdf_tests.rs       # Core RDF type tests (25)
 │   │   ├── w3c_ntriples.rs    # W3C N-Triples test suite (72)
 │   │   ├── w3c_turtle.rs      # W3C Turtle test suite (69+74+80)
-│   │   └── w3c_sparql.rs      # W3C SPARQL 1.0 test harness
+│   │   ├── w3c_sparql.rs      # W3C SPARQL 1.0 test harness
+│   │   └── sparql_large_graph.rs  # Large graph integration tests (17)
 │   └── build.sh               # WASM build + copy to docs/pkg/
 ├── tests/
 │   └── w3c/                   # Git submodule: github.com/w3c/rdf-tests
 ├── docs/
 │   ├── pkg/                   # WASM build artifacts (committed)
 │   ├── index.html             # Interactive demo (uses real WASM)
-│   ├── verified-rdf-transform-design.md  # Design document
+│   ├── verified-rdf-transform-design.md  # Design document (original)
+│   ├── designissues.md        # Design issues (concise)
+│   ├── designissues-graphflow.md  # Graph transform design (full)
 │   └── tests.html             # Browser integration tests
 └── CLAUDE.md                  # This file
 ```
@@ -106,6 +109,10 @@ factoidal/
 
 ### Done
 - [x] F* specification of RDF Core 1.1 types (wf_iri, wf_literal, triple, graph)
+- [x] F* specification of graph operations (add, remove, union, find_by_subject, find_by_predicate)
+- [x] F* specification of graph properties with proofs (add_no_dup, remove_absent, empty_no_bnodes)
+- [x] F* specification of N-Triples serialization (escape table, nt_escaped predicate)
+- [x] F* specification of SPARQL algebra basics (pattern terms, BGPs, solution mappings)
 - [x] Rust implementation faithful to F* spec (rdf.rs)
 - [x] N-Triples parser with full escape sequence support (ntriples.rs)
 - [x] **Turtle parser** with full W3C compliance (turtle.rs)
@@ -116,6 +123,7 @@ factoidal/
 - [x] W3C N-Triples test suite: **72/72 passing**
 - [x] W3C Turtle test suite: **69/69 positive syntax, 74/74 negative syntax, 80/80 eval**
 - [x] W3C SPARQL 1.0 test harness: **13/79 passing** (16.5%) — baseline established
+- [x] Large graph SPARQL integration tests: **17 passing** (117-triple graph, multi-hop joins, OPTIONAL, DISTINCT, ORDER BY, FILTER)
 - [x] Core RDF unit tests: **25 passing**
 - [x] SPARQL unit tests: **28 passing**
 - [x] Turtle unit tests: **14 passing**
@@ -134,12 +142,13 @@ factoidal/
 
 ### In Progress
 - [ ] SPARQL parser improvements (literals in patterns, BASE resolution, REGEX filters)
-- [ ] F* <-> Rust verification alignment
+- [ ] F* <-> Rust verification alignment (see Formalization Roadmap below)
 - [ ] W3C SPARQL test suite coverage expansion
 
 ### Planned
-- [ ] Extend F* spec to cover N-Triples serialization with roundtrip proof
-- [ ] Extend F* spec to cover SPARQL algebra
+- [ ] Extend F* spec to cover N-Triples roundtrip proof (specification written, proof pending)
+- [ ] Extend F* spec to cover full SPARQL evaluation semantics
+- [ ] Formalize Turtle grammar and IRI resolution in F*
 - [ ] Turtle serializer in Rust
 - [ ] N-Quads support
 - [ ] SPARQL CONSTRUCT, ASK, DESCRIBE
@@ -152,14 +161,22 @@ factoidal/
 
 The Rust types in `rdf.rs` mirror the F* spec in `formal/fstar/rdfcore11.fstar.txt`:
 
-| F* Type | Rust Type | Enforcement |
+| F* Type/Function | Rust Type/Function | Status |
 |---------|-----------|-------------|
-| `wf_iri` (non-empty, has `:`) | `Iri` with `new()` validation | `Result<Self, RdfError>` |
-| `wf_literal` (lang<->langString) | `Literal` with `new()` validation | `Result<Self, RdfError>` |
-| `subject = S_IRI \| S_BNode` | `enum Subject { Iri, BNode }` | Compile-time (no Literal variant) |
-| `rdf_term = T_IRI \| T_BNode \| T_Literal` | `enum RdfTerm { Iri, BNode, Literal }` | Compile-time |
-| `triple = {s; p; o}` | `struct Triple { s, p, o }` | Type-level |
-| `rdf_graph = list triple` | `RdfGraph(Vec<Triple>)` | Set semantics via duplicate rejection |
+| `wf_iri` (non-empty, has `:`) | `Iri` with `new()` validation | Aligned |
+| `wf_literal` (lang<->langString) | `Literal` with `new()` validation | Aligned |
+| `subject = S_IRI \| S_BNode` | `enum Subject { Iri, BNode }` | Aligned |
+| `rdf_term = T_IRI \| T_BNode \| T_Literal` | `enum RdfTerm { Iri, BNode, Literal }` | Aligned |
+| `triple = {s; p; o}` | `struct Triple { s, p, o }` | Aligned |
+| `rdf_graph = list triple` | `RdfGraph(Vec<Triple>)` | Aligned |
+| `graph_add` (set-based) | `RdfGraph::add()` | Aligned |
+| `graph_remove` | `RdfGraph::remove()` | Aligned |
+| `graph_bnodes` | `RdfGraph::bnodes()` | Aligned (u64 vs string) |
+| `find_by_subject` | `RdfGraph::find_by_subject()` | Aligned |
+| `find_by_predicate` | `RdfGraph::find_by_predicate()` | Aligned |
+| `graph_union` | Not yet in Rust | Pending |
+| `triple_pattern` / `bgp` | `sparql.rs` pattern matching | Spec only |
+| `must_escape` / `is_nt_escaped` | `Literal::fmt()` escape logic | Spec only |
 
 ### Verification Approaches
 
@@ -167,10 +184,77 @@ The Rust types in `rdf.rs` mirror the F* spec in `formal/fstar/rdfcore11.fstar.t
 2. **Parallel spec + shared tests** — maintain F* spec and Rust impl separately, validate both against W3C test suites.
 3. **Low* extraction** — rewrite F* spec in Low* subset, extract to C/WASM via KaRaMeL. Production-proven (HACL*, EverParse) but requires significant spec rewrite.
 
+## Formalization Roadmap
+
+Current F* spec covers ~160 lines. Formalization gap by module:
+
+| Module | Rust LOC | F* Coverage | Feasibility | Priority |
+|--------|----------|-------------|-------------|----------|
+| **rdf.rs** | 345 | ~70% | High — extend graph ops | Done (graph_add, remove, union, find) |
+| **ntriples.rs** | 365 | ~15% | Medium — grammar + roundtrip | Escape spec written, parser grammar next |
+| **turtle.rs** | 1,198 | 0% | Hard — complex grammar, Unicode | Long-term (IRI resolution, collections) |
+| **sparql.rs** | 1,438 | ~10% | Medium — SPARQL algebra | BGP/pattern specs written, eval pending |
+| **wasm_api.rs** | 194 | 0% | Low priority — binding layer | Not planned |
+
+### F* Proofs Completed
+- `lemma_add_no_dup`: Adding a triple guarantees it's in the graph
+- `lemma_remove_absent`: Removing a triple guarantees it's gone
+- `lemma_empty_no_bnodes`: Empty graph has no blank nodes
+
+### F* Specifications Written (proofs pending)
+- N-Triples escape table and `is_nt_escaped` predicate
+- Roundtrip property: `graph_isomorphic g (parse(serialize g))`
+- SPARQL triple pattern matching against solution mappings
+- BGP evaluation specification
+
+### Next Formalization Targets
+1. N-Triples grammar as F* inductive type (production rules)
+2. SPARQL OPTIONAL semantics (left outer join)
+3. Graph canonicalization specification
+4. FILTER expression evaluation rules
+
+## W3C Test Report
+
+### Execution Time (debug build, single-threaded)
+
+| Test Suite | Tests | Time | Notes |
+|-----------|-------|------|-------|
+| Unit tests (rdf, sparql, turtle, ntriples) | 42 | 0.01s | Core types, parsers, query engine |
+| Core RDF type tests | 25 | 0.01s | Iri, Literal, Triple, Graph |
+| Large graph SPARQL integration | 17 | 0.04s | 117-triple graph, multi-hop joins |
+| W3C N-Triples | 72 | 0.02s | 72/72 (100%) |
+| W3C SPARQL 1.0 | 6 harness tests | 0.07s | 13/79 individual (16.5%) |
+| W3C Turtle | 3 harness tests | 0.07s | 223/223 individual (100%) |
+| **Total** | **165** | **~0.22s** | All passing |
+
+### W3C Compliance Summary
+
+| Spec | Coverage | Status |
+|------|----------|--------|
+| N-Triples (RDF 1.1) | 72/72 (100%) | Complete |
+| Turtle (RDF 1.1) | 223/223 (100%) | Complete (69 pos + 74 neg + 80 eval) |
+| SPARQL 1.0 | 13/79 (16.5%) | In progress — see scorecard |
+
+### SPARQL 1.0 Improvement Path
+
+| Blocker | Tests Unlockable | Effort |
+|---------|-----------------|--------|
+| Literal values in triple patterns | ~15 (basic suite) | Medium |
+| FILTER REGEX parsing (`FILTER REGEX(?x, "pat")`) | ~17 (regex suite) | Medium |
+| Arithmetic operators (+, -, *, /) | ~14 (expr-ops) | Low |
+| BASE IRI resolution in queries | ~5 (basic) | Low |
+| `$var` syntax (alternative to `?var`) | ~3 | Low |
+
+## Design Documents
+
+- [`docs/designissues-graphflow.md`](docs/designissues-graphflow.md) — Full verified RDF transform system design (graphs as assertable objects, transform certificates, evidence chains, verifiable credentials)
+- [`docs/designissues.md`](docs/designissues.md) — Design issues overview
+- [`docs/verified-rdf-transform-design.md`](docs/verified-rdf-transform-design.md) — Original design document
+
 ## Build & Test
 
 ```bash
-# Run all Rust tests (148 total)
+# Run all Rust tests (165 total)
 cd rdf-wasm && cargo test
 
 # Build WASM
