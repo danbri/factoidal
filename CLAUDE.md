@@ -91,6 +91,11 @@ factoidal/
 │   │   ├── w3c_sparql.rs      # W3C SPARQL 1.0 test harness
 │   │   └── sparql_large_graph.rs  # Large graph integration tests (17)
 │   └── build.sh               # WASM build + copy to docs/pkg/
+├── kgx/                         # Knowledge Graph eXchange (from google/schemarama)
+│   ├── wikidata/
+│   │   ├── basic/               # 20 SPARQL CONSTRUCT queries (raw Wikidata IRIs)
+│   │   └── bioschemas/          # 20 SPARQL CONSTRUCT queries (Schema.org/Bioschemas vocab)
+│   └── README.md
 ├── tests/
 │   └── w3c/                   # Git submodule: github.com/w3c/rdf-tests
 ├── docs/
@@ -101,6 +106,7 @@ factoidal/
 │   │   ├── graphflow.md               # Graph transform design (full)
 │   │   ├── attestation-model.md       # Combined attestation data model + architecture
 │   │   ├── fstar-lean4-formalisation.md  # F*/Lean4 RDF formalisation survey
+│   │   ├── kgx-pipeline.md           # KGX materialization pipeline + attestation plan
 │   │   └── grounding-analysis.md      # Grounding analysis
 │   └── tests.html             # Browser integration tests
 └── CLAUDE.md                  # This file
@@ -178,6 +184,7 @@ factoidal/
 - [ ] SPARQL parser improvements (literals in patterns, BASE resolution, REGEX filters)
 - [ ] F* <-> Rust verification alignment (see Formalization Roadmap below)
 - [ ] W3C SPARQL test suite coverage expansion
+- [ ] KGX pipeline: materialization runner with attestation logging (see `docs/designissues/kgx-pipeline.md`)
 
 ### Planned
 - [ ] Extend F* spec to cover N-Triples roundtrip proof (specification written, proof pending)
@@ -188,6 +195,9 @@ factoidal/
 - [ ] SPARQL CONSTRUCT, ASK, DESCRIBE
 - [ ] SPARQL aggregates (COUNT, SUM, AVG, GROUP BY, HAVING)
 - [ ] SPARQL property paths
+- [ ] KGX materialization via QLever (40 SPARQL CONSTRUCT queries against Wikidata)
+- [ ] Attestation logger with verifiable timestamps (RFC 3161 TSA integration)
+- [ ] KGX graph assembly: parse materialized Turtle, merge, canonicalize, sign
 - [ ] Storage abstraction (verified interface in F*, SQLite/IndexedDB backends)
 - [ ] Hax (Rust->F*) or Low* extraction pipeline for verified WASM
 
@@ -220,7 +230,7 @@ The Rust types in `rdf.rs` mirror the F* spec in `formal/fstar/rdfcore11.fstar.t
 
 ## Formalization Roadmap
 
-Current F* spec covers ~160 lines. Formalization gap by module:
+Current F* spec covers ~241 lines. Formalization gap by module:
 
 | Module | Rust LOC | F* Coverage | Feasibility | Priority |
 |--------|----------|-------------|-------------|----------|
@@ -257,7 +267,7 @@ Current F* spec covers ~160 lines. Formalization gap by module:
 | Core RDF type tests | 25 | 0.01s | Iri, Literal, Triple, Graph |
 | Large graph SPARQL integration | 17 | 0.04s | 117-triple graph, multi-hop joins |
 | W3C N-Triples | 72 | 0.02s | 72/72 (100%) |
-| W3C SPARQL (1.0 + 1.1) | 13 harness tests | 0.38s | 32/436 individual (7.3%) |
+| W3C SPARQL (1.0 + 1.1) | 13 harness tests | 0.40s | 32/436 individual (7.3%, 286ms query time) |
 | W3C Turtle | 3 harness tests | 0.07s | 223/223 individual (100%) |
 | **Total** | **172** | **~0.53s** | All passing |
 
@@ -269,7 +279,7 @@ Current F* spec covers ~160 lines. Formalization gap by module:
 | Turtle (RDF 1.1) | 223/223 (100%) | Complete (69 pos + 74 neg + 80 eval) |
 | SPARQL 1.0 | 30/234 (12.8%) | In progress — 21 suites evaluated |
 | SPARQL 1.1 | 2/202 (1.0%) | Baseline — 11 query suites evaluated |
-| **SPARQL combined** | **32/436 (7.3%)** | **32 suites, ~375ms** |
+| **SPARQL combined** | **32/436 (7.3%)** | **32 suites, ~286ms** |
 
 ### SPARQL Improvement Path
 
@@ -294,6 +304,7 @@ All design documents live under `docs/designissues/`:
 - [`docs/designissues/overview.md`](docs/designissues/overview.md) — Design issues overview
 - [`docs/designissues/grounding-analysis.md`](docs/designissues/grounding-analysis.md) — Grounding analysis
 - [`docs/designissues/fstar-lean4-formalisation.md`](docs/designissues/fstar-lean4-formalisation.md) — Survey of F\* and Lean 4 RDF 1.1 formalisations (CoqRDF, RDF.lean, portability assessment, module boundaries, proof obligations)
+- [`docs/designissues/kgx-pipeline.md`](docs/designissues/kgx-pipeline.md) — KGX materialization pipeline: QLever execution, attestation logging, verifiable timestamps, graph assembly
 
 ## Build & Test
 
