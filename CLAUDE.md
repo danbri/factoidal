@@ -122,7 +122,7 @@ factoidal/
 - [x] Web demo using real WASM library (docs/index.html)
 - [x] W3C N-Triples test suite: **72/72 passing**
 - [x] W3C Turtle test suite: **69/69 positive syntax, 74/74 negative syntax, 80/80 eval**
-- [x] W3C SPARQL 1.0 test harness: **13/79 passing** (16.5%) — baseline established
+- [x] W3C SPARQL test harness: **32/436 passing** (7.3%) across 1.0 + 1.1 combined
 - [x] Large graph SPARQL integration tests: **17 passing** (117-triple graph, multi-hop joins, OPTIONAL, DISTINCT, ORDER BY, FILTER)
 - [x] Core RDF unit tests: **25 passing**
 - [x] SPARQL unit tests: **28 passing**
@@ -130,15 +130,48 @@ factoidal/
 - [x] N-Triples roundtrip verification in tests
 - [x] W3C rdf-tests git submodule integrated
 
-### W3C SPARQL 1.0 Scorecard
+### W3C SPARQL Combined Scorecard (1.0 + 1.1)
 
-| Suite        | Pass | Total | Rate   | Key blockers                            |
-|-------------|------|-------|--------|-----------------------------------------|
-| basic       | 1    | 27    | 3.7%   | BASE IRI resolution, literal patterns   |
-| distinct    | 6    | 11    | 54.5%  | Numeric value comparison                |
-| regex       | 0    | 17    | 0.0%   | FILTER REGEX parsing                    |
-| expr-ops    | 3    | 17    | 17.6%  | Arithmetic operators (+, -, *)          |
-| expr-builtin| 3    | 7     | 42.9%  | Expression binding                      |
+**SPARQL 1.0** (21 suites):
+
+| Suite               | Pass | Total | Rate   | Key blockers                              |
+|--------------------|------|-------|--------|-------------------------------------------|
+| algebra            | 3    | 14    | 21.4%  | Nested OPTIONAL, GRAPH, sub-SELECT        |
+| basic              | 1    | 27    | 3.7%   | Literal patterns, BASE resolution, lists  |
+| bnode-coreference  | 1    | 1     | 100%   | -                                         |
+| boolean-eff-value  | 0    | 7     | 0.0%   | Boolean effective value semantics          |
+| bound              | 1    | 1     | 100%   | -                                         |
+| cast               | 0    | 7     | 0.0%   | Casting functions                         |
+| distinct           | 6    | 11    | 54.5%  | Numeric value comparison                  |
+| expr-builtin       | 5    | 24    | 20.8%  | Unbound var handling, expression parsing  |
+| expr-equals        | 0    | 15    | 0.0%   | Value equality semantics                  |
+| expr-ops           | 3    | 17    | 17.6%  | Arithmetic operators (+, -, *)            |
+| i18n               | 2    | 5     | 40.0%  | Unicode normalization                     |
+| open-world         | 3    | 18    | 16.7%  | Open-world semantics, UNION               |
+| optional           | 0    | 7     | 0.0%   | OPTIONAL result mismatch                  |
+| optional-filter    | 0    | 6     | 0.0%   | FILTER inside OPTIONAL                    |
+| reduced            | 0    | 2     | 0.0%   | REDUCED modifier                          |
+| regex              | 0    | 21    | 0.0%   | FILTER REGEX parsing                      |
+| solution-seq       | 0    | 13    | 0.0%   | ORDER BY + solution sequences             |
+| sort               | 3    | 4     | 75.0%  | Complex sort keys                         |
+| triple-match       | 2    | 4     | 50.0%  | Named graph matching                      |
+| type-promotion     | 0    | 30    | 0.0%   | Numeric type promotion                    |
+
+**SPARQL 1.1** (11 suites):
+
+| Suite              | Pass | Total | Rate   | Key blockers                              |
+|-------------------|------|-------|--------|-------------------------------------------|
+| aggregates        | 0    | 35    | 0.0%   | COUNT, SUM, AVG, GROUP BY, HAVING         |
+| bind              | 0    | 10    | 0.0%   | BIND clause                               |
+| bindings          | 0    | 11    | 0.0%   | VALUES clause                             |
+| cast              | 0    | 6     | 0.0%   | Casting functions                         |
+| exists            | 0    | 6     | 0.0%   | EXISTS / NOT EXISTS                       |
+| functions         | 0    | 74    | 0.0%   | SPARQL 1.1 built-in functions             |
+| grouping          | 2    | 4     | 50.0%  | Complex GROUP BY expressions              |
+| negation          | 0    | 11    | 0.0%   | MINUS, NOT EXISTS                         |
+| project-expression| 0    | 7     | 0.0%   | SELECT expressions                        |
+| property-path     | 0    | 29    | 0.0%   | Property path operators                   |
+| subquery          | 0    | 9     | 0.0%   | Sub-SELECT                                |
 
 ### In Progress
 - [ ] SPARQL parser improvements (literals in patterns, BASE resolution, REGEX filters)
@@ -223,9 +256,9 @@ Current F* spec covers ~160 lines. Formalization gap by module:
 | Core RDF type tests | 25 | 0.01s | Iri, Literal, Triple, Graph |
 | Large graph SPARQL integration | 17 | 0.04s | 117-triple graph, multi-hop joins |
 | W3C N-Triples | 72 | 0.02s | 72/72 (100%) |
-| W3C SPARQL 1.0 | 6 harness tests | 0.07s | 13/79 individual (16.5%) |
+| W3C SPARQL (1.0 + 1.1) | 13 harness tests | 0.38s | 32/436 individual (7.3%) |
 | W3C Turtle | 3 harness tests | 0.07s | 223/223 individual (100%) |
-| **Total** | **165** | **~0.22s** | All passing |
+| **Total** | **172** | **~0.53s** | All passing |
 
 ### W3C Compliance Summary
 
@@ -233,17 +266,23 @@ Current F* spec covers ~160 lines. Formalization gap by module:
 |------|----------|--------|
 | N-Triples (RDF 1.1) | 72/72 (100%) | Complete |
 | Turtle (RDF 1.1) | 223/223 (100%) | Complete (69 pos + 74 neg + 80 eval) |
-| SPARQL 1.0 | 13/79 (16.5%) | In progress — see scorecard |
+| SPARQL 1.0 | 30/234 (12.8%) | In progress — 21 suites evaluated |
+| SPARQL 1.1 | 2/202 (1.0%) | Baseline — 11 query suites evaluated |
+| **SPARQL combined** | **32/436 (7.3%)** | **32 suites, ~375ms** |
 
-### SPARQL 1.0 Improvement Path
+### SPARQL Improvement Path
 
 | Blocker | Tests Unlockable | Effort |
 |---------|-----------------|--------|
-| Literal values in triple patterns | ~15 (basic suite) | Medium |
-| FILTER REGEX parsing (`FILTER REGEX(?x, "pat")`) | ~17 (regex suite) | Medium |
+| Literal values in triple patterns | ~40 (basic, optional, sort, etc.) | Medium |
+| FILTER REGEX parsing (`FILTER REGEX(?x, "pat")`) | ~21 (regex suite) | Medium |
 | Arithmetic operators (+, -, *, /) | ~14 (expr-ops) | Low |
 | BASE IRI resolution in queries | ~5 (basic) | Low |
-| `$var` syntax (alternative to `?var`) | ~3 | Low |
+| UNION support | ~10 (open-world, optional) | Medium |
+| Sub-SELECT / nested queries | ~20 (algebra, subquery) | High |
+| Aggregates (COUNT, SUM, GROUP BY) | ~35 (1.1 aggregates) | High |
+| Property paths | ~29 (1.1 property-path) | High |
+| 1.1 built-in functions (STRLEN, SUBSTR, etc.) | ~74 (1.1 functions) | Medium |
 
 ## Design Documents
 
@@ -254,7 +293,7 @@ Current F* spec covers ~160 lines. Formalization gap by module:
 ## Build & Test
 
 ```bash
-# Run all Rust tests (165 total)
+# Run all Rust tests (172 total)
 cd rdf-wasm && cargo test
 
 # Build WASM

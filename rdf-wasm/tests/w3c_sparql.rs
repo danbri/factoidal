@@ -1,23 +1,30 @@
-//! W3C SPARQL test suite runner.
+//! W3C SPARQL 1.0 + 1.1 test suite runner.
 //!
-//! Runs SPARQL 1.0 test suites from tests/w3c/sparql/sparql10/.
+//! Runs all SPARQL evaluation test suites from tests/w3c/sparql/sparql10/
+//! and tests/w3c/sparql/sparql11/ that have SRX (SPARQL XML Results) outputs.
 //! Tests load Turtle data, execute SPARQL queries, and compare results
-//! against expected SRX (SPARQL XML Results) output.
+//! against expected SRX output.
 
 use std::collections::HashMap;
+use std::time::Instant;
 
 const SPARQL10_DIR: &str = "../tests/w3c/sparql/sparql10";
+const SPARQL11_DIR: &str = "../tests/w3c/sparql/sparql11";
 
 // ---------------------------------------------------------------------------
 // Simple SRX (SPARQL XML Results) parser
 // ---------------------------------------------------------------------------
 
-/// A single result row: variable name -> SrxValue
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum SrxValue {
     Uri(String),
-    Literal { value: String, lang: Option<String>, datatype: Option<String> },
+    Literal {
+        value: String,
+        lang: Option<String>,
+        datatype: Option<String>,
+    },
     BNode(String),
+    #[allow(dead_code)]
     Unbound,
 }
 
@@ -40,41 +47,45 @@ fn parse_srx(xml: &str) -> Result<SrxResults, String> {
     let mut literal_datatype: Option<String> = None;
     let mut text_buf = String::new();
 
-    // Very simple XML-like parser (not a full XML parser)
     let mut pos = 0;
     let bytes = xml.as_bytes();
 
     while pos < bytes.len() {
         if bytes[pos] == b'<' {
-            // Found a tag
-            let tag_start = pos;
+            let _tag_start = pos;
             pos += 1;
             let is_closing = pos < bytes.len() && bytes[pos] == b'/';
             if is_closing {
                 pos += 1;
             }
             let name_start = pos;
-            while pos < bytes.len() && bytes[pos] != b'>' && bytes[pos] != b' ' && bytes[pos] != b'/' {
+            while pos < bytes.len()
+                && bytes[pos] != b'>'
+                && bytes[pos] != b' '
+                && bytes[pos] != b'/'
+            {
                 pos += 1;
             }
             let tag_name = std::str::from_utf8(&bytes[name_start..pos]).unwrap_or("");
 
-            // Collect attributes
             let mut attrs = HashMap::new();
             while pos < bytes.len() && bytes[pos] != b'>' && bytes[pos] != b'/' {
-                // Skip whitespace
                 while pos < bytes.len() && bytes[pos] == b' ' {
                     pos += 1;
                 }
                 if pos >= bytes.len() || bytes[pos] == b'>' || bytes[pos] == b'/' {
                     break;
                 }
-                // Read attr name
                 let attr_start = pos;
-                while pos < bytes.len() && bytes[pos] != b'=' && bytes[pos] != b'>' && bytes[pos] != b' ' {
+                while pos < bytes.len()
+                    && bytes[pos] != b'='
+                    && bytes[pos] != b'>'
+                    && bytes[pos] != b' '
+                {
                     pos += 1;
                 }
-                let attr_name = std::str::from_utf8(&bytes[attr_start..pos]).unwrap_or("").to_string();
+                let attr_name =
+                    std::str::from_utf8(&bytes[attr_start..pos]).unwrap_or("").to_string();
                 if pos < bytes.len() && bytes[pos] == b'=' {
                     pos += 1;
                     if pos < bytes.len() && bytes[pos] == b'"' {
@@ -83,22 +94,23 @@ fn parse_srx(xml: &str) -> Result<SrxResults, String> {
                         while pos < bytes.len() && bytes[pos] != b'"' {
                             pos += 1;
                         }
-                        let val = std::str::from_utf8(&bytes[val_start..pos]).unwrap_or("").to_string();
+                        let val = std::str::from_utf8(&bytes[val_start..pos])
+                            .unwrap_or("")
+                            .to_string();
                         attrs.insert(attr_name, val);
                         if pos < bytes.len() {
-                            pos += 1; // skip closing quote
+                            pos += 1;
                         }
                     }
                 }
             }
 
-            let is_self_closing = pos < bytes.len() && bytes[pos] == b'/';
-            // Skip to end of tag
+            let _is_self_closing = pos < bytes.len() && bytes[pos] == b'/';
             while pos < bytes.len() && bytes[pos] != b'>' {
                 pos += 1;
             }
             if pos < bytes.len() {
-                pos += 1; // skip '>'
+                pos += 1;
             }
 
             match tag_name {
@@ -163,9 +175,7 @@ fn parse_srx(xml: &str) -> Result<SrxResults, String> {
                 _ => {}
             }
         } else {
-            // Text content
             if in_uri || in_literal || in_bnode {
-                // Handle XML entities
                 if bytes[pos] == b'&' {
                     let entity_start = pos;
                     while pos < bytes.len() && bytes[pos] != b';' {
@@ -200,16 +210,12 @@ fn parse_srx(xml: &str) -> Result<SrxResults, String> {
 // SPARQL query result comparison
 // ---------------------------------------------------------------------------
 
-/// Convert an engine display string to an SrxValue for comparison.
-/// Display format: `<iri>`, `_:bN`, `"lex"`, `"lex"@lang`, `"lex"^^<dt>`
 fn display_to_srx(s: &str) -> SrxValue {
     if s.starts_with('<') && s.ends_with('>') {
         SrxValue::Uri(s[1..s.len() - 1].to_string())
     } else if s.starts_with("_:") {
         SrxValue::BNode(s[2..].to_string())
     } else if s.starts_with('"') {
-        // Parse literal
-        // Find the closing quote (handling escaped quotes)
         let bytes = s.as_bytes();
         let mut i = 1;
         while i < bytes.len() {
@@ -223,7 +229,7 @@ fn display_to_srx(s: &str) -> SrxValue {
         }
         let lexical = unescape_ntriples(&s[1..i]);
         let after = &s[i + 1..];
-        if after.starts_with("@") {
+        if after.starts_with('@') {
             SrxValue::Literal {
                 value: lexical,
                 lang: Some(after[1..].to_string()),
@@ -248,7 +254,6 @@ fn display_to_srx(s: &str) -> SrxValue {
             }
         }
     } else {
-        // Fallback: treat as literal value
         SrxValue::Literal {
             value: s.to_string(),
             lang: None,
@@ -281,25 +286,24 @@ fn unescape_ntriples(s: &str) -> String {
     result
 }
 
-/// Compare result sets, ignoring order and bnode labels.
-fn results_match(
-    actual: &rdf_wasm::sparql::QueryResult,
-    expected: &SrxResults,
-) -> bool {
+fn results_match(actual: &rdf_wasm::sparql::QueryResult, expected: &SrxResults) -> bool {
     if actual.rows.len() != expected.rows.len() {
         return false;
     }
 
-    // Convert actual results to SrxValue maps
-    let actual_rows: Vec<HashMap<String, SrxValue>> = actual.rows.iter().map(|row| {
-        let mut map = HashMap::new();
-        for (i, var) in actual.variables.iter().enumerate() {
-            if let Some(Some(val)) = row.get(i) {
-                map.insert(var.clone(), display_to_srx(val));
+    let actual_rows: Vec<HashMap<String, SrxValue>> = actual
+        .rows
+        .iter()
+        .map(|row| {
+            let mut map = HashMap::new();
+            for (i, var) in actual.variables.iter().enumerate() {
+                if let Some(Some(val)) = row.get(i) {
+                    map.insert(var.clone(), display_to_srx(val));
+                }
             }
-        }
-        map
-    }).collect();
+            map
+        })
+        .collect();
 
     let mut expected_matched = vec![false; expected.rows.len()];
     for actual_row in &actual_rows {
@@ -333,26 +337,36 @@ fn row_matches(
             (None, None) => continue,
             (None, Some(SrxValue::Unbound)) => continue,
             (Some(SrxValue::Unbound), None) => continue,
-            (Some(a_val), Some(e_val)) => {
-                match (a_val, e_val) {
-                    (SrxValue::BNode(_), SrxValue::BNode(_)) => continue,
-                    _ if a_val == e_val => continue,
-                    (
-                        SrxValue::Literal { value: av, lang: al, datatype: ad },
-                        SrxValue::Literal { value: ev, lang: el, datatype: ed },
-                    ) => {
-                        if av != ev || al != el {
-                            return false;
-                        }
-                        let a_dt = ad.as_deref().unwrap_or("http://www.w3.org/2001/XMLSchema#string");
-                        let e_dt = ed.as_deref().unwrap_or("http://www.w3.org/2001/XMLSchema#string");
-                        if a_dt != e_dt {
-                            return false;
-                        }
+            (Some(a_val), Some(e_val)) => match (a_val, e_val) {
+                (SrxValue::BNode(_), SrxValue::BNode(_)) => continue,
+                _ if a_val == e_val => continue,
+                (
+                    SrxValue::Literal {
+                        value: av,
+                        lang: al,
+                        datatype: ad,
+                    },
+                    SrxValue::Literal {
+                        value: ev,
+                        lang: el,
+                        datatype: ed,
+                    },
+                ) => {
+                    if av != ev || al != el {
+                        return false;
                     }
-                    _ => return false,
+                    let a_dt = ad
+                        .as_deref()
+                        .unwrap_or("http://www.w3.org/2001/XMLSchema#string");
+                    let e_dt = ed
+                        .as_deref()
+                        .unwrap_or("http://www.w3.org/2001/XMLSchema#string");
+                    if a_dt != e_dt {
+                        return false;
+                    }
                 }
-            }
+                _ => return false,
+            },
             _ => return false,
         }
     }
@@ -360,7 +374,109 @@ fn row_matches(
 }
 
 // ---------------------------------------------------------------------------
-// Test runner
+// TTL Result Set parser (rs:ResultSet format)
+// ---------------------------------------------------------------------------
+
+/// Parse a W3C SPARQL result set in Turtle format (rs:ResultSet vocabulary).
+/// Uses our own Turtle parser to parse the result file.
+fn parse_ttl_results(ttl: &str) -> Result<SrxResults, String> {
+    let graph = rdf_wasm::turtle::parse(ttl).map_err(|e| format!("TTL result parse: {e}"))?;
+    let triples = graph.triples();
+
+    let rs_var = "http://www.w3.org/2001/sw/DataAccess/tests/result-set#resultVariable";
+    let rs_solution = "http://www.w3.org/2001/sw/DataAccess/tests/result-set#solution";
+    let rs_binding = "http://www.w3.org/2001/sw/DataAccess/tests/result-set#binding";
+    let rs_variable = "http://www.w3.org/2001/sw/DataAccess/tests/result-set#variable";
+    let rs_value = "http://www.w3.org/2001/sw/DataAccess/tests/result-set#value";
+
+    // Extract variables
+    let variables: Vec<String> = triples
+        .iter()
+        .filter(|t| t.p.as_str() == rs_var)
+        .filter_map(|t| match &t.o {
+            rdf_wasm::RdfTerm::Literal(l) => Some(l.lexical_form.clone()),
+            _ => None,
+        })
+        .collect();
+
+    // Extract solutions: each rs:solution points to a bnode that has rs:binding entries
+    let solution_bnodes: Vec<u64> = triples
+        .iter()
+        .filter(|t| t.p.as_str() == rs_solution)
+        .filter_map(|t| match &t.o {
+            rdf_wasm::RdfTerm::BNode(b) => Some(b.id()),
+            _ => None,
+        })
+        .collect();
+
+    let mut rows = Vec::new();
+    for sol_id in &solution_bnodes {
+        let mut row = HashMap::new();
+
+        // Find binding bnodes for this solution
+        let binding_ids: Vec<u64> = triples
+            .iter()
+            .filter(|t| {
+                t.p.as_str() == rs_binding
+                    && matches!(&t.s, rdf_wasm::Subject::BNode(b) if b.id() == *sol_id)
+            })
+            .filter_map(|t| match &t.o {
+                rdf_wasm::RdfTerm::BNode(b) => Some(b.id()),
+                _ => None,
+            })
+            .collect();
+
+        for bind_id in &binding_ids {
+            // Find variable name and value for this binding bnode
+            let var_name: Option<String> = triples
+                .iter()
+                .find(|t| {
+                    t.p.as_str() == rs_variable
+                        && matches!(&t.s, rdf_wasm::Subject::BNode(b) if b.id() == *bind_id)
+                })
+                .and_then(|t| match &t.o {
+                    rdf_wasm::RdfTerm::Literal(l) => Some(l.lexical_form.clone()),
+                    _ => None,
+                });
+
+            let value: Option<SrxValue> = triples
+                .iter()
+                .find(|t| {
+                    t.p.as_str() == rs_value
+                        && matches!(&t.s, rdf_wasm::Subject::BNode(b) if b.id() == *bind_id)
+                })
+                .map(|t| match &t.o {
+                    rdf_wasm::RdfTerm::Iri(i) => SrxValue::Uri(i.as_str().to_string()),
+                    rdf_wasm::RdfTerm::BNode(_) => SrxValue::BNode("ttl_bnode".to_string()),
+                    rdf_wasm::RdfTerm::Literal(l) => {
+                        let dt = l.datatype.as_str();
+                        SrxValue::Literal {
+                            value: l.lexical_form.clone(),
+                            lang: l.lang_tag.clone(),
+                            datatype: if dt == "http://www.w3.org/2001/XMLSchema#string" {
+                                None
+                            } else if l.lang_tag.is_some() {
+                                None
+                            } else {
+                                Some(dt.to_string())
+                            },
+                        }
+                    }
+                });
+
+            if let (Some(var), Some(val)) = (var_name, value) {
+                row.insert(var, val);
+            }
+        }
+
+        rows.push(row);
+    }
+
+    Ok(SrxResults { variables, rows })
+}
+
+// ---------------------------------------------------------------------------
+// Generic test runner (works for both 1.0 and 1.1)
 // ---------------------------------------------------------------------------
 
 struct TestCase {
@@ -370,72 +486,70 @@ struct TestCase {
     result_file: String,
 }
 
-/// Parse a manifest.ttl to extract test cases (simplified).
-fn extract_test_cases(suite_dir: &str) -> Vec<TestCase> {
-    let manifest_path = format!("{}/{}/manifest.ttl", SPARQL10_DIR, suite_dir);
-    let manifest = match std::fs::read_to_string(&manifest_path) {
+/// Parse a manifest.ttl to extract QueryEvaluationTest cases.
+/// Accepts .srx and .ttl result files.
+fn extract_test_cases_from(manifest_path: &str) -> Vec<TestCase> {
+    let manifest = match std::fs::read_to_string(manifest_path) {
         Ok(s) => s,
         Err(_) => return Vec::new(),
     };
 
     let mut tests = Vec::new();
-
-    // Simple regex-style extraction of test entries
-    // Looking for patterns like:
-    //   mf:action [ qt:query <file.rq> ; qt:data <file.ttl> ] ;
-    //   mf:result <file.srx> ;
     let lines: Vec<&str> = manifest.lines().collect();
     let mut i = 0;
     let mut current_name = String::new();
     let mut current_query = String::new();
     let mut current_data = String::new();
-    let mut current_result = String::new();
 
     while i < lines.len() {
         let line = lines[i].trim();
 
-        // Test name: :name rdf:type mf:QueryEvaluationTest
-        if line.contains("rdf:type") && line.contains("QueryEvaluationTest") {
-            // Extract name
+        // Test entry: :name rdf:type mf:QueryEvaluationTest
+        // Also handle "a mf:QueryEvaluationTest"
+        if (line.contains("rdf:type") || line.contains(" a "))
+            && line.contains("QueryEvaluationTest")
+        {
             if let Some(name) = line.split_whitespace().next() {
-                current_name = name.trim_start_matches(':').trim_start_matches('<').trim_end_matches('>').to_string();
+                current_name = name
+                    .trim_start_matches(':')
+                    .trim_start_matches('<')
+                    .trim_end_matches('>')
+                    .to_string();
                 if current_name.starts_with('#') {
                     current_name = current_name[1..].to_string();
                 }
             }
         }
 
-        // Query file
         if line.contains("qt:query") {
             if let Some(s) = extract_angle_bracket(line, "qt:query") {
                 current_query = s;
             }
         }
 
-        // Data file
         if line.contains("qt:data") {
             if let Some(s) = extract_angle_bracket(line, "qt:data") {
                 current_data = s;
             }
         }
 
-        // Result file
         if line.contains("mf:result") {
             if let Some(s) = extract_angle_bracket(line, "mf:result") {
-                current_result = s.clone();
-                // Only include tests with .srx results for now
-                if current_result.ends_with(".srx") && !current_query.is_empty() && !current_data.is_empty() {
+                // Accept both .srx and .ttl result files
+                if (s.ends_with(".srx") || s.ends_with(".ttl"))
+                    && !current_query.is_empty()
+                    && !current_data.is_empty()
+                {
                     tests.push(TestCase {
                         name: current_name.clone(),
                         data_file: current_data.clone(),
                         query_file: current_query.clone(),
-                        result_file: current_result.clone(),
+                        result_file: s,
                     });
                 }
                 current_name.clear();
                 current_query.clear();
                 current_data.clear();
-                current_result.clear();
             }
         }
 
@@ -457,19 +571,29 @@ fn extract_angle_bracket(line: &str, after: &str) -> Option<String> {
     None
 }
 
-fn run_sparql_suite(suite_dir: &str) -> (usize, usize, usize, Vec<String>) {
-    let tests = extract_test_cases(suite_dir);
+struct SuiteResult {
+    name: String,
+    passed: usize,
+    failed: usize,
+    skipped: usize,
+    failures: Vec<String>,
+    duration_ms: u128,
+}
+
+fn run_suite(base_dir: &str, suite_name: &str) -> SuiteResult {
+    let manifest_path = format!("{}/{}/manifest.ttl", base_dir, suite_name);
+    let tests = extract_test_cases_from(&manifest_path);
+    let start = Instant::now();
     let mut passed = 0;
     let mut failed = 0;
     let mut skipped = 0;
     let mut failures = Vec::new();
 
     for test in &tests {
-        let data_path = format!("{}/{}/{}", SPARQL10_DIR, suite_dir, test.data_file);
-        let query_path = format!("{}/{}/{}", SPARQL10_DIR, suite_dir, test.query_file);
-        let result_path = format!("{}/{}/{}", SPARQL10_DIR, suite_dir, test.result_file);
+        let data_path = format!("{}/{}/{}", base_dir, suite_name, test.data_file);
+        let query_path = format!("{}/{}/{}", base_dir, suite_name, test.query_file);
+        let result_path = format!("{}/{}/{}", base_dir, suite_name, test.result_file);
 
-        // Load data
         let data_content = match std::fs::read_to_string(&data_path) {
             Ok(s) => s,
             Err(_) => {
@@ -478,7 +602,6 @@ fn run_sparql_suite(suite_dir: &str) -> (usize, usize, usize, Vec<String>) {
             }
         };
 
-        // Parse Turtle data
         let graph = match rdf_wasm::turtle::parse(&data_content) {
             Ok(g) => g,
             Err(e) => {
@@ -488,7 +611,6 @@ fn run_sparql_suite(suite_dir: &str) -> (usize, usize, usize, Vec<String>) {
             }
         };
 
-        // Load query
         let query = match std::fs::read_to_string(&query_path) {
             Ok(s) => s,
             Err(_) => {
@@ -497,8 +619,7 @@ fn run_sparql_suite(suite_dir: &str) -> (usize, usize, usize, Vec<String>) {
             }
         };
 
-        // Load expected results
-        let result_xml = match std::fs::read_to_string(&result_path) {
+        let result_content = match std::fs::read_to_string(&result_path) {
             Ok(s) => s,
             Err(_) => {
                 skipped += 1;
@@ -506,16 +627,26 @@ fn run_sparql_suite(suite_dir: &str) -> (usize, usize, usize, Vec<String>) {
             }
         };
 
-        let expected = match parse_srx(&result_xml) {
-            Ok(r) => r,
-            Err(e) => {
-                failures.push(format!("{}: SRX parse error: {e}", test.name));
-                failed += 1;
-                continue;
+        let expected = if test.result_file.ends_with(".srx") {
+            match parse_srx(&result_content) {
+                Ok(r) => r,
+                Err(e) => {
+                    failures.push(format!("{}: SRX parse error: {e}", test.name));
+                    failed += 1;
+                    continue;
+                }
+            }
+        } else {
+            match parse_ttl_results(&result_content) {
+                Ok(r) => r,
+                Err(e) => {
+                    failures.push(format!("{}: TTL result parse error: {e}", test.name));
+                    failed += 1;
+                    continue;
+                }
             }
         };
 
-        // Execute query
         let actual = match rdf_wasm::sparql::execute(&graph, &query) {
             Ok(r) => r,
             Err(e) => {
@@ -525,7 +656,6 @@ fn run_sparql_suite(suite_dir: &str) -> (usize, usize, usize, Vec<String>) {
             }
         };
 
-        // Compare
         if results_match(&actual, &expected) {
             passed += 1;
         } else {
@@ -539,100 +669,225 @@ fn run_sparql_suite(suite_dir: &str) -> (usize, usize, usize, Vec<String>) {
         }
     }
 
-    (passed, failed, skipped, failures)
-}
-
-// ---------------------------------------------------------------------------
-// Test functions
-// ---------------------------------------------------------------------------
-
-#[test]
-fn w3c_sparql10_basic() {
-    let (passed, failed, skipped, failures) = run_sparql_suite("basic");
-    eprintln!("\n=== W3C SPARQL 1.0: basic ===");
-    eprintln!("Passed: {passed}, Failed: {failed}, Skipped: {skipped}");
-    for f in &failures {
-        eprintln!("  FAIL: {f}");
-    }
-    // Report but don't fail — we're measuring coverage
-}
-
-#[test]
-fn w3c_sparql10_distinct() {
-    let (passed, failed, skipped, failures) = run_sparql_suite("distinct");
-    eprintln!("\n=== W3C SPARQL 1.0: distinct ===");
-    eprintln!("Passed: {passed}, Failed: {failed}, Skipped: {skipped}");
-    for f in &failures {
-        eprintln!("  FAIL: {f}");
+    SuiteResult {
+        name: suite_name.to_string(),
+        passed,
+        failed,
+        skipped,
+        failures,
+        duration_ms: start.elapsed().as_millis(),
     }
 }
 
-#[test]
-fn w3c_sparql10_regex() {
-    let (passed, failed, skipped, failures) = run_sparql_suite("regex");
-    eprintln!("\n=== W3C SPARQL 1.0: regex ===");
-    eprintln!("Passed: {passed}, Failed: {failed}, Skipped: {skipped}");
-    for f in &failures {
-        eprintln!("  FAIL: {f}");
-    }
-}
-
-#[test]
-fn w3c_sparql10_expr_ops() {
-    let (passed, failed, skipped, failures) = run_sparql_suite("expr-ops");
-    eprintln!("\n=== W3C SPARQL 1.0: expr-ops ===");
-    eprintln!("Passed: {passed}, Failed: {failed}, Skipped: {skipped}");
-    for f in &failures {
-        eprintln!("  FAIL: {f}");
-    }
-}
-
-#[test]
-fn w3c_sparql10_expr_builtin() {
-    let (passed, failed, skipped, failures) = run_sparql_suite("expr-builtin");
-    eprintln!("\n=== W3C SPARQL 1.0: expr-builtin ===");
-    eprintln!("Passed: {passed}, Failed: {failed}, Skipped: {skipped}");
-    for f in &failures {
-        eprintln!("  FAIL: {f}");
-    }
-}
-
-/// Summary test that runs all suites with SRX results and reports a scorecard.
-#[test]
-fn w3c_sparql10_scorecard() {
-    let suites = ["basic", "distinct", "regex", "expr-ops", "expr-builtin"];
+fn print_scorecard(title: &str, results: &[SuiteResult]) {
     let mut total_passed = 0;
     let mut total_failed = 0;
     let mut total_skipped = 0;
-    let mut all_failures = Vec::new();
+    let mut total_ms: u128 = 0;
 
-    eprintln!("\n╔══════════════════════════════════════════════╗");
-    eprintln!("║      W3C SPARQL 1.0 Test Scorecard          ║");
-    eprintln!("╠══════════════════════════════════════════════╣");
+    eprintln!("\n╔═══════════════════════════════════════════════════════════╗");
+    eprintln!("║  {title:<55} ║");
+    eprintln!("╠═══════════════════════════════════════════════════════════╣");
 
-    for suite in &suites {
-        let (p, f, s, failures) = run_sparql_suite(suite);
-        let total = p + f;
-        let pct = if total > 0 { (p as f64 / total as f64) * 100.0 } else { 0.0 };
-        eprintln!("║ {suite:<15} {p:>3}/{total:<3} ({pct:>5.1}%)  skip={s:<3} ║");
-        total_passed += p;
-        total_failed += f;
-        total_skipped += s;
-        for fail in failures {
-            all_failures.push(format!("[{suite}] {fail}"));
-        }
+    for r in results {
+        let total = r.passed + r.failed;
+        let pct = if total > 0 {
+            (r.passed as f64 / total as f64) * 100.0
+        } else {
+            0.0
+        };
+        eprintln!(
+            "║ {:<20} {:>3}/{:<3} ({:>5.1}%) skip={:<3} {:>4}ms ║",
+            r.name, r.passed, total, pct, r.skipped, r.duration_ms
+        );
+        total_passed += r.passed;
+        total_failed += r.failed;
+        total_skipped += r.skipped;
+        total_ms += r.duration_ms;
     }
 
     let total = total_passed + total_failed;
-    let pct = if total > 0 { (total_passed as f64 / total as f64) * 100.0 } else { 0.0 };
-    eprintln!("╠══════════════════════════════════════════════╣");
-    eprintln!("║ TOTAL:          {total_passed:>3}/{total:<3} ({pct:>5.1}%)  skip={total_skipped:<3} ║");
-    eprintln!("╚══════════════════════════════════════════════╝");
+    let pct = if total > 0 {
+        (total_passed as f64 / total as f64) * 100.0
+    } else {
+        0.0
+    };
+    eprintln!("╠═══════════════════════════════════════════════════════════╣");
+    eprintln!(
+        "║ {:<20} {:>3}/{:<3} ({:>5.1}%) skip={:<3} {:>4}ms ║",
+        "TOTAL", total_passed, total, pct, total_skipped, total_ms
+    );
+    eprintln!("╚═══════════════════════════════════════════════════════════╝");
 
+    // Print failures grouped by suite
+    let all_failures: Vec<_> = results
+        .iter()
+        .filter(|r| !r.failures.is_empty())
+        .flat_map(|r| r.failures.iter().map(move |f| format!("[{}] {f}", r.name)))
+        .collect();
     if !all_failures.is_empty() {
-        eprintln!("\nFailures:");
-        for f in &all_failures {
+        eprintln!("\nFailures ({}):", all_failures.len());
+        for f in all_failures.iter().take(30) {
             eprintln!("  {f}");
         }
+        if all_failures.len() > 30 {
+            eprintln!("  ... and {} more", all_failures.len() - 30);
+        }
     }
+}
+
+// ===========================================================================
+// SPARQL 1.0 — all suites with SRX results
+// ===========================================================================
+
+const SPARQL10_SUITES: &[&str] = &[
+    "algebra",
+    "basic",
+    "bnode-coreference",
+    "boolean-effective-value",
+    "bound",
+    "cast",
+    "dataset",
+    "distinct",
+    "expr-builtin",
+    "expr-equals",
+    "expr-ops",
+    "i18n",
+    "open-world",
+    "optional",
+    "optional-filter",
+    "reduced",
+    "regex",
+    "solution-seq",
+    "sort",
+    "triple-match",
+    "type-promotion",
+];
+
+#[test]
+fn w3c_sparql10_full_scorecard() {
+    let results: Vec<SuiteResult> = SPARQL10_SUITES
+        .iter()
+        .map(|s| run_suite(SPARQL10_DIR, s))
+        .collect();
+    print_scorecard("W3C SPARQL 1.0 Full Scorecard", &results);
+}
+
+// Individual suite tests for CI granularity
+#[test]
+fn w3c_sparql10_basic() {
+    let r = run_suite(SPARQL10_DIR, "basic");
+    eprintln!("basic: {}/{} passed", r.passed, r.passed + r.failed);
+}
+
+#[test]
+fn w3c_sparql10_algebra() {
+    let r = run_suite(SPARQL10_DIR, "algebra");
+    eprintln!("algebra: {}/{} passed", r.passed, r.passed + r.failed);
+}
+
+#[test]
+fn w3c_sparql10_triple_match() {
+    let r = run_suite(SPARQL10_DIR, "triple-match");
+    eprintln!("triple-match: {}/{} passed", r.passed, r.passed + r.failed);
+}
+
+#[test]
+fn w3c_sparql10_optional() {
+    let r = run_suite(SPARQL10_DIR, "optional");
+    eprintln!("optional: {}/{} passed", r.passed, r.passed + r.failed);
+}
+
+#[test]
+fn w3c_sparql10_sort() {
+    let r = run_suite(SPARQL10_DIR, "sort");
+    eprintln!("sort: {}/{} passed", r.passed, r.passed + r.failed);
+}
+
+// ===========================================================================
+// SPARQL 1.1 — all query evaluation suites with SRX results
+// ===========================================================================
+
+const SPARQL11_SUITES: &[&str] = &[
+    "aggregates",
+    "bind",
+    "bindings",
+    "cast",
+    "exists",
+    "functions",
+    "grouping",
+    "negation",
+    "project-expression",
+    "property-path",
+    "subquery",
+];
+
+#[test]
+fn w3c_sparql11_full_scorecard() {
+    let results: Vec<SuiteResult> = SPARQL11_SUITES
+        .iter()
+        .map(|s| run_suite(SPARQL11_DIR, s))
+        .collect();
+    print_scorecard("W3C SPARQL 1.1 Query Scorecard", &results);
+}
+
+// Individual 1.1 suite tests
+#[test]
+fn w3c_sparql11_bind() {
+    let r = run_suite(SPARQL11_DIR, "bind");
+    eprintln!("bind: {}/{} passed", r.passed, r.passed + r.failed);
+}
+
+#[test]
+fn w3c_sparql11_functions() {
+    let r = run_suite(SPARQL11_DIR, "functions");
+    eprintln!("functions: {}/{} passed", r.passed, r.passed + r.failed);
+}
+
+#[test]
+fn w3c_sparql11_aggregates() {
+    let r = run_suite(SPARQL11_DIR, "aggregates");
+    eprintln!("aggregates: {}/{} passed", r.passed, r.passed + r.failed);
+}
+
+#[test]
+fn w3c_sparql11_negation() {
+    let r = run_suite(SPARQL11_DIR, "negation");
+    eprintln!("negation: {}/{} passed", r.passed, r.passed + r.failed);
+}
+
+#[test]
+fn w3c_sparql11_property_path() {
+    let r = run_suite(SPARQL11_DIR, "property-path");
+    eprintln!(
+        "property-path: {}/{} passed",
+        r.passed,
+        r.passed + r.failed
+    );
+}
+
+// ===========================================================================
+// Combined scorecard (1.0 + 1.1)
+// ===========================================================================
+
+#[test]
+fn w3c_sparql_combined_scorecard() {
+    let start = Instant::now();
+
+    let mut all_results = Vec::new();
+
+    eprintln!("\n--- SPARQL 1.0 suites ---");
+    for s in SPARQL10_SUITES {
+        all_results.push(run_suite(SPARQL10_DIR, s));
+    }
+    eprintln!("--- SPARQL 1.1 suites ---");
+    for s in SPARQL11_SUITES {
+        let mut r = run_suite(SPARQL11_DIR, s);
+        r.name = format!("1.1/{}", r.name);
+        all_results.push(r);
+    }
+
+    let total_time = start.elapsed().as_millis();
+    print_scorecard("W3C SPARQL Combined Scorecard (1.0 + 1.1)", &all_results);
+    eprintln!("Total wall time: {}ms", total_time);
 }
