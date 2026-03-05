@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RDF Core 1.1 — Unit Tests</title>
+<style>
+  body { font-family: monospace; background: #0f172a; color: #e2e8f0; padding: 1.5rem; }
+  h1 { color: #38bdf8; font-size: 1.25rem; margin-bottom: 1rem; }
+  .pass { color: #4ade80; } .fail { color: #f87171; }
+  .suite { color: #94a3b8; margin-top: 1rem; margin-bottom: 0.25rem; font-weight: bold; }
+  .result { margin-left: 1rem; font-size: 0.875rem; }
+  #summary { margin-top: 1.5rem; font-size: 1rem; padding: 0.5rem;
+             border: 1px solid #334155; border-radius: 0.375rem; }
+</style>
+</head>
+<body>
+<h1>RDF Core 1.1 — Unit Tests</h1>
+<div id="log"></div>
+<div id="summary"></div>
+
+<script>
+// =========================================================================
+//  Inline the RDF library (same code as docs/index.html)
+// =========================================================================
+
+const RDF_LANG_STRING = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString";
+const XSD_STRING      = "http://www.w3.org/2001/XMLSchema#string";
+
+class Iri {
+  constructor(s) {
+    if (!s || !s.includes(":")) throw new Error(`Invalid IRI: "${s}"`);
+    this.value = s;
+  }
+  toString() { return `<${this.value}>`; }
+  toJSON() { return this.value; }
+  equals(other) { return other instanceof Iri && this.value === other.value; }
+}
+
+class BNode {
+  constructor(id) { this.id = id; }
+  toString() { return `_:${this.id}`; }
+  toJSON() { return `_:${this.id}`; }
+  equals(other) { return other instanceof BNode && this.id === other.id; }
+}
+
+class Literal {
+  constructor(lexical, datatype, langTag = null) {
+    if (langTag && datatype.value !== RDF_LANG_STRING)
+      throw new Error("Language-tagged literal must have datatype rdf:langString");
+    if (!langTag && datatype.value === RDF_LANG_STRING)
+      throw new Error("Datatype rdf:langString requires a language tag");
+    this.lexical = lexical;
+    this.datatype = datatype;
+    this.langTag = langTag;
+  }
+  static plain(lex) { return new Literal(lex, new Iri(XSD_STRING)); }
+  static lang(lex, tag) { return new Literal(lex, new Iri(RDF_LANG_STRING), tag); }
+  toString() {
+    if (this.langTag) return `"${this.lexical}"@${this.langTag}`;
+    if (this.datatype.value !== XSD_STRING) return `"${this.lexical}"^^${this.datatype}`;
+    return `"${this.lexical}"`;
+  }
+  toJSON() {
+    const o = { lexical: this.lexical, datatype: this.datatype.value };
+    if (this.langTag) o.lang = this.langTag;
+    return o;
+  }
+  equals(other) {
+    return other instanceof Literal &&
+      this.lexical === other.lexical &&
+      this.datatype.equals(other.datatype) &&
+      this.langTag === other.langTag;
+  }
+}
+
+function termEquals(a, b) {
+  if (a.constructor !== b.constructor) return false;
+  return a.equals(b);
+}
+
+class Triple {
+  constructor(s, p, o) { this.s = s; this.p = p; this.o = o; }
+  equals(other) {
+    return termEquals(this.s, other.s) &&
+           this.p.equals(other.p) &&
+           termEquals(this.o, other.o);
+  }
+  toString() { return `${this.s} ${this.p} ${this.o} .`; }
+  toJSON() { return { s: this.s.toJSON(), p: this.p.toJSON(), o: this.o.toJSON() }; }
+}
+
+class RdfGraph {
+  constructor() { this.triples = []; }
+  add(triple) {
+    if (!this.triples.some(t => t.equals(triple))) this.triples.push(triple);
+  }
+  remove(index) { this.triples.splice(index, 1); }
+  get size() { return this.triples.length; }
+  bnodes() {
+    const ids = new Set();
+    for (const t of this.triples) {
+      if (t.s instanceof BNode) ids.add(t.s.id);
+      if (t.o instanceof BNode) ids.add(t.o.id);
+    }
+    return [...ids];
+  }
+  findBySubject(iri) {
+    return this.triples.filter(t => t.s instanceof Iri && t.s.value === iri);
+  }
+  findByPredicate(iri) {
+    return this.triples.filter(t => t.p.value === iri);
+  }
+  toNTriples() { return this.triples.map(t => t.toString()).join("\n"); }
+  toJSON() { return JSON.stringify(this.triples.map(t => t.toJSON()), null, 2); }
+}
+
+// =========================================================================
+//  Test runner
+// =========================================================================
+
+let passed = 0, failed = 0;
+const log = document.getElementById("log");
+
+function suite(name) {
+  const el = document.createElement("div");
+  el.className = "suite";
+  el.textContent = name;
+  log.appendChild(el);
+}
+
+function assert(condition, name) {
+  const el = document.createElement("div");
+  el.className = "result";
+  if (condition) {
+    passed++;
+    el.innerHTML = `<span class="pass">PASS</span> ${name}`;
+  } else {
+    failed++;
+    el.innerHTML = `<span class="fail">FAIL</span> ${name}`;
+  }
+  log.appendChild(el);
+}
+
+function assertThrows(fn, name) {
+  let threw = false;
+  try { fn(); } catch (_) { threw = true; }
+  assert(threw, name);
+}
+
+// =========================================================================
+//  Tests
+// =========================================================================
+
+// -- IRI --
+suite("IRI");
+assert(new Iri("http://example.org/foo").value === "http://example.org/foo", "valid IRI");
+assert(new Iri("http://example.org/x").toString() === "<http://example.org/x>", "IRI display");
+assertThrows(() => new Iri(""), "rejects empty string");
+assertThrows(() => new Iri("noscheme"), "rejects string without colon");
+assert(new Iri("http://a.org/x").equals(new Iri("http://a.org/x")), "IRI equality (same)");
+assert(!new Iri("http://a.org/x").equals(new Iri("http://a.org/y")), "IRI equality (different)");
+
+// -- BNode --
+suite("BNode");
+assert(new BNode("b1").id === "b1", "BNode id");
+assert(new BNode("b1").toString() === "_:b1", "BNode display");
+assert(new BNode("b1").equals(new BNode("b1")), "BNode equality (same)");
+assert(!new BNode("b1").equals(new BNode("b2")), "BNode equality (different)");
+
+// -- Literal --
+suite("Literal — plain");
+{
+  const lit = Literal.plain("hello");
+  assert(lit.lexical === "hello", "lexical form");
+  assert(lit.datatype.value === XSD_STRING, "datatype is xsd:string");
+  assert(lit.langTag === null, "no lang tag");
+  assert(lit.toString() === '"hello"', "display");
+}
+
+suite("Literal — language-tagged");
+{
+  const lit = Literal.lang("bonjour", "fr");
+  assert(lit.langTag === "fr", "lang tag");
+  assert(lit.datatype.value === RDF_LANG_STRING, "datatype is rdf:langString");
+  assert(lit.toString() === '"bonjour"@fr', "display");
+}
+
+suite("Literal — typed");
+{
+  const dt = new Iri("http://www.w3.org/2001/XMLSchema#integer");
+  const lit = new Literal("42", dt);
+  assert(lit.toString() === '"42"^^<http://www.w3.org/2001/XMLSchema#integer>', "display");
+}
+
+suite("Literal — well-formedness");
+assertThrows(
+  () => new Literal("hello", new Iri(XSD_STRING), "en"),
+  "rejects lang tag with non-langString datatype"
+);
+assertThrows(
+  () => new Literal("hello", new Iri(RDF_LANG_STRING)),
+  "rejects rdf:langString without lang tag"
+);
+
+suite("Literal — equality");
+assert(Literal.plain("a").equals(Literal.plain("a")), "plain literals equal");
+assert(!Literal.plain("a").equals(Literal.plain("b")), "different lexical not equal");
+assert(Literal.lang("x","en").equals(Literal.lang("x","en")), "lang literals equal");
+assert(!Literal.lang("x","en").equals(Literal.lang("x","fr")), "different lang not equal");
+
+// -- Triple --
+suite("Triple");
+{
+  const t = new Triple(
+    new Iri("http://example.org/s"),
+    new Iri("http://example.org/p"),
+    Literal.plain("value")
+  );
+  assert(t.toString() === '<http://example.org/s> <http://example.org/p> "value" .', "N-Triple format");
+}
+
+// -- RdfGraph --
+function sampleGraph() {
+  const g = new RdfGraph();
+  const EX = "http://example.org/", FOAF = "http://xmlns.com/foaf/0.1/";
+  g.add(new Triple(new Iri(EX+"alice"), new Iri(FOAF+"name"), Literal.plain("Alice")));
+  g.add(new Triple(new Iri(EX+"alice"), new Iri(FOAF+"knows"), new Iri(EX+"bob")));
+  g.add(new Triple(new BNode("b1"), new Iri(FOAF+"name"), Literal.lang("Robert","en")));
+  return g;
+}
+
+suite("RdfGraph — basic");
+{
+  const g = sampleGraph();
+  assert(g.size === 3, "size after add");
+}
+
+suite("RdfGraph — no duplicates");
+{
+  const g = sampleGraph();
+  g.add(new Triple(new Iri("http://example.org/alice"), new Iri("http://xmlns.com/foaf/0.1/name"), Literal.plain("Alice")));
+  assert(g.size === 3, "duplicate not added");
+}
+
+suite("RdfGraph — remove");
+{
+  const g = sampleGraph();
+  g.remove(0);
+  assert(g.size === 2, "size after remove");
+}
+
+suite("RdfGraph — bnodes");
+{
+  const g = sampleGraph();
+  const bn = g.bnodes();
+  assert(bn.length === 1, "one blank node");
+  assert(bn[0] === "b1", "correct bnode id");
+}
+
+suite("RdfGraph — bnodes in object position");
+{
+  const g = new RdfGraph();
+  g.add(new Triple(new Iri("http://example.org/a"), new Iri("http://example.org/p"), new BNode("obj1")));
+  assert(g.bnodes().includes("obj1"), "bnode in object detected");
+}
+
+suite("RdfGraph — findBySubject");
+{
+  const g = sampleGraph();
+  const results = g.findBySubject("http://example.org/alice");
+  assert(results.length === 2, "finds both alice triples");
+}
+
+suite("RdfGraph — findByPredicate");
+{
+  const g = sampleGraph();
+  const results = g.findByPredicate("http://xmlns.com/foaf/0.1/name");
+  assert(results.length === 2, "finds both name triples");
+}
+
+suite("RdfGraph — toNTriples");
+{
+  const g = sampleGraph();
+  const nt = g.toNTriples();
+  assert(nt.includes("<http://example.org/alice>"), "contains alice IRI");
+  assert(nt.includes('"Alice"'), "contains Alice literal");
+  assert(nt.includes('"Robert"@en'), "contains Robert lang literal");
+}
+
+suite("RdfGraph — empty graph");
+{
+  const g = new RdfGraph();
+  assert(g.size === 0, "size is 0");
+  assert(g.bnodes().length === 0, "no bnodes");
+  assert(g.toNTriples() === "", "empty N-Triples");
+}
+
+suite("RdfGraph — JSON round-trip");
+{
+  const g = sampleGraph();
+  const json = g.toJSON();
+  const parsed = JSON.parse(json);
+  assert(Array.isArray(parsed), "JSON parses to array");
+  assert(parsed.length === 3, "correct triple count in JSON");
+}
+
+suite("Cross-type equality");
+assert(!new Iri("http://a.org/x").equals(new BNode("x")), "IRI != BNode");
+assert(!Literal.plain("x").equals(new Iri("http://x.org/x")), "Literal != IRI");
+
+// =========================================================================
+//  Summary
+// =========================================================================
+
+const total = passed + failed;
+const summary = document.getElementById("summary");
+if (failed === 0) {
+  summary.innerHTML = `<span class="pass">ALL ${total} TESTS PASSED</span>`;
+  summary.style.borderColor = "#4ade80";
+} else {
+  summary.innerHTML = `<span class="fail">${failed} FAILED</span> / ${total} total`;
+  summary.style.borderColor = "#f87171";
+}
+</script>
+</body>
+</html>
