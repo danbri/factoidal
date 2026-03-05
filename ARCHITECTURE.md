@@ -123,7 +123,7 @@ negative syntax, and evaluation tests. The JS runner `rdf-test-suite.js`
 | **SQLite** | Oxigraph (sled→RocksDB), rdflib (SQLAlchemy) | Single-file, embedded, good for small-medium |
 | **PostgreSQL** | Virtuoso, Blazegraph (custom), Jena SDB | ACID, scalable, SQL-based indexing (SPO/POS/OSP) |
 | **Binary/mmap** | HDT, Jena TDB, Oxigraph (RocksDB) | Compact, fast range scans, memory-mapped |
-| **HTTP ranges** | Linked Data Fragments (TPF), LDES | Lazy-load pages of triples via HTTP Range headers |
+| **HTTP ranges** | Linked Data Fragments (TPF), LDES | Hypermedia-paged triple pattern fragments |
 
 ### How persistence fits with F\* formalities
 
@@ -176,15 +176,24 @@ The key insight: **verify the logic, specify the storage interface, trust the st
 - OS-level I/O, mmap, file locking
 - Network transport (HTTP, TLS)
 
-**Precedents:**
+**Precedents (verified systems that exist today):**
 
-- **EverParse** — verified parsers for binary formats, used in Windows kernel
-- **HACL\*** — verified crypto, extracted to C/WASM
-- **Fiat-Crypto** — verified field arithmetic (different prover, same idea)
-- **FSCQ** (MIT) — fully verified file system in Coq
-- **Verdi** — verified distributed systems framework (Coq)
+- **EverParse** — verified parsers for binary formats; 30k lines of verified C in the
+  Windows Hyper-V networking stack (100+ message formats). Proves roundtrip correctness,
+  safety (no buffer overflows), non-malleability (injective parsing), and completeness.
+  Directly applicable to verified N-Triples/Turtle serialization.
+- **HACL\*** — verified crypto, extracted to C/WASM, deployed in Firefox/Linux/mbedTLS
+- **Benzaken et al. (ITP 2018, CPP 2019)** — Coq-verified SQL physical algebra proven to
+  correctly implement logical SQL algebra. First mechanized proof of SQL / relational algebra
+  equivalence. **Directly adaptable to SPARQL algebra verification.**
+- **"Toward a Verified RDBMS" (POPL 2010)** — full relational DB in Coq with verified B+ trees,
+  query optimization proven correct w.r.t. both semantics and cost
+- **Verified B+-trees** in Isabelle/HOL (arXiv:2208.09066) — separation logic proofs
+- **FSCQ** (MIT, SOSP 2015) — first file system with machine-checked crash safety proofs
+- **Argosy** (MIT, PLDI 2019) — modular verification of layered storage with crash recovery
 - **CertiKOS** — verified concurrent OS kernel (Yale, Coq)
-- **IronFleet** (Microsoft) — verified distributed systems in Dafny
+
+**No one has built a verified triple store or SPARQL engine yet**, but every building block exists.
 
 ### Practical persistence roadmap for Factoidal
 
@@ -204,6 +213,12 @@ The key insight: **verify the logic, specify the storage interface, trust the st
 - SRI hashes on each fragment for integrity
 
 **For the Rust/WASM path specifically:**
-- Oxigraph (Rust, SPARQL-compliant, RocksDB backend) is the natural reference
-- Could use Aeneas to translate Rust core → F\* for verification
-- Or maintain parallel F\* spec + Rust impl with shared test suites
+- **Oxigraph** (Rust, SPARQL-compliant, RocksDB backend) is the closest prior art:
+  - 11 key-value tables: `id2str` mapping + 9 quad index orderings (SPO, SOP, PSO, etc.)
+  - Big-endian encoding for efficient range queries
+  - In-memory mode (hash set + MVCC) for WASM builds
+  - Transaction isolation via RocksDB snapshots ("repeatable read")
+- Could use Hax to translate Rust core → F\* for verification
+- Or maintain parallel F\* spec + Rust impl with shared W3C test suites
+- **HDT** format worth considering for read-only/archival use: memory-mappable succinct
+  data structures, 5x smaller than Virtuoso, all of DBpedia fits in 8GB RAM
