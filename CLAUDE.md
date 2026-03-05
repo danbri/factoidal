@@ -97,10 +97,11 @@ factoidal/
 │   ├── pkg/                   # WASM build artifacts (committed)
 │   ├── index.html             # Interactive demo (uses real WASM)
 │   ├── designissues/
-│   │   ├── overview.md            # Design issues overview
-│   │   ├── graphflow.md           # Graph transform design (full)
-│   │   ├── attestation-model.md   # Combined attestation data model + architecture
-│   │   └── grounding-analysis.md  # Grounding analysis
+│   │   ├── overview.md                # Design issues overview
+│   │   ├── graphflow.md               # Graph transform design (full)
+│   │   ├── attestation-model.md       # Combined attestation data model + architecture
+│   │   ├── fstar-lean4-formalisation.md  # F*/Lean4 RDF formalisation survey
+│   │   └── grounding-analysis.md      # Grounding analysis
 │   └── tests.html             # Browser integration tests
 └── CLAUDE.md                  # This file
 ```
@@ -292,6 +293,7 @@ All design documents live under `docs/designissues/`:
 - [`docs/designissues/graphflow.md`](docs/designissues/graphflow.md) — Graph transform system design (assertable graphs, transform certificates, evidence chains, verifiable credentials)
 - [`docs/designissues/overview.md`](docs/designissues/overview.md) — Design issues overview
 - [`docs/designissues/grounding-analysis.md`](docs/designissues/grounding-analysis.md) — Grounding analysis
+- [`docs/designissues/fstar-lean4-formalisation.md`](docs/designissues/fstar-lean4-formalisation.md) — Survey of F\* and Lean 4 RDF 1.1 formalisations (CoqRDF, RDF.lean, portability assessment, module boundaries, proof obligations)
 
 ## Build & Test
 
