@@ -41,6 +41,10 @@ export class JsRdfGraph {
      */
     constructor();
     /**
+     * Parse N-Triples data and add all triples to this graph.
+     */
+    parseNTriples(input: string): number;
+    /**
      * Remove a triple by its index (0-based).
      */
     removeByIndex(index: number): void;
@@ -79,6 +83,7 @@ export interface InitOutput {
     readonly jsrdfgraph_findByPredicate: (a: number, b: number, c: number) => [number, number];
     readonly jsrdfgraph_findBySubject: (a: number, b: number, c: number) => [number, number];
     readonly jsrdfgraph_new: () => number;
+    readonly jsrdfgraph_parseNTriples: (a: number, b: number, c: number) => [number, number, number];
     readonly jsrdfgraph_removeByIndex: (a: number, b: number) => [number, number];
     readonly jsrdfgraph_size: (a: number) => number;
     readonly jsrdfgraph_sparqlQuery: (a: number, b: number, c: number) => [number, number, number, number];

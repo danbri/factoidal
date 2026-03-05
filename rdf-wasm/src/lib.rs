@@ -3,6 +3,7 @@
 //! Targets WebAssembly with JavaScript bindings via wasm-bindgen.
 
 mod rdf;
+pub mod ntriples;
 pub mod sparql;
 mod wasm_api;
 

@@ -148,6 +148,18 @@ impl JsRdfGraph {
         serde_json::to_string_pretty(&result)
             .map_err(|e| JsError::new(&e.to_string()))
     }
+
+    /// Parse N-Triples data and add all triples to this graph.
+    #[wasm_bindgen(js_name = parseNTriples)]
+    pub fn parse_ntriples(&mut self, input: &str) -> Result<usize, JsError> {
+        let parsed = crate::ntriples::parse(input)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let count = parsed.len();
+        for triple in parsed.triples().iter() {
+            self.inner.add(triple.clone());
+        }
+        Ok(count)
+    }
 }
 
 // ---------------------------------------------------------------------------
