@@ -1,3 +1,5 @@
+> **STATUS: HISTORICAL INTEREST ONLY** — Line numbers and structure described here refer to an earlier version of `sparql.rs` (1893 lines; now ~2922 lines). Many features listed as "not implemented" have since been added. Retained for reference only.
+
 # SPARQL Engine Implementation Guide
 
 Internal developer reference for `rdf-wasm/src/sparql.rs` (1893 lines).

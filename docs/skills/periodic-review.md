@@ -152,4 +152,4 @@ Ensure consistency between:
 - CLAUDE.md verification pipeline status ↔ actual toolchain state
 - docs/designissues/ links in CLAUDE.md ↔ actual files
 - docs/skills/ references ↔ actual files
-- **ARCHITECTURE.md KaRaMeL pipeline description ↔ CLAUDE.md verification sections**
+- **CLAUDE.md verification pipeline status ↔ actual KaRaMeL toolchain state**

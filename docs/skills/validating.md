@@ -108,7 +108,7 @@ The large graph test (`sparql_large_graph.rs`) validates real-world query patter
 N-Triples roundtrip: parse → serialize → parse → compare. Verified in unit tests.
 Turtle: parse → N-Triples serialize → parse → compare. Used in W3C eval tests.
 
-**F* spec target:** The roundtrip property `graph_isomorphic g (parse(serialize g))` is specified in `rdfcore11.fstar.txt` — proof pending, and a priority for Low* rewrite and KaRaMeL extraction (see ARCHITECTURE.md Phase 1).
+**F* spec target:** The roundtrip property `graph_isomorphic g (parse(serialize g))` is specified in `rdfcore11.fstar.txt` — proof pending, and a priority for Low* rewrite and KaRaMeL extraction.
 
 ## Future: Hax Integration (Rust → F* verification)
 

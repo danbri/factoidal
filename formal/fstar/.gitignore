@@ -1,1 +1,10 @@
 *.verified
+*.ml
+*.krml
+*.cmi
+*.cmx
+*.cmo
+*.o
+*.byte
+ocaml-output/example
+ocaml-output/w3c_tests

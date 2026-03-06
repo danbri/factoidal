@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Factoidal — F*-Extracted W3C SPARQL Tests</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #0f172a; color: #e2e8f0;
+    max-width: 960px; margin: 0 auto; padding: 1.5rem;
+    line-height: 1.5;
+  }
+  h1 { color: #38bdf8; font-size: 1.5rem; margin-bottom: 0.25rem; }
+  h2 { color: #94a3b8; font-size: 1rem; margin: 1.5rem 0 0.75rem;
+       text-transform: uppercase; letter-spacing: 0.05em; }
+  .subtitle { color: #64748b; margin-bottom: 1rem; font-size: 0.875rem; }
+  .nav { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; font-size: 0.8125rem; }
+  .nav a { color: #38bdf8; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .nav span { color: #475569; }
+  button {
+    background: #0284c7; color: #fff; border: none;
+    padding: 0.5rem 1rem; border-radius: 0.375rem; cursor: pointer;
+    font-size: 0.875rem; margin: 0.75rem 0;
+  }
+  button:hover { background: #0369a1; }
+  button:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+  .summary-box {
+    display: flex; gap: 1.5rem; margin: 1rem 0; flex-wrap: wrap;
+  }
+  .stat {
+    background: #1e293b; border: 1px solid #334155; border-radius: 0.5rem;
+    padding: 1rem 1.5rem; text-align: center; min-width: 120px;
+  }
+  .stat .number { font-size: 2rem; font-weight: bold; }
+  .stat .label { font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; }
+  .stat.pass .number { color: #4ade80; }
+  .stat.fail .number { color: #f87171; }
+  .stat.total .number { color: #38bdf8; }
+  .stat.pct .number { color: #fbbf24; }
+  table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.8125rem; }
+  th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #1e293b; }
+  th { color: #94a3b8; font-size: 0.75rem; text-transform: uppercase;
+       background: #1e293b; position: sticky; top: 0; }
+  tr:hover { background: #1e293b; }
+  .bar { width: 120px; height: 8px; border-radius: 4px; background: #334155;
+         overflow: hidden; display: inline-block; vertical-align: middle; }
+  .bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+  .bar-fill.green { background: #4ade80; }
+  .bar-fill.yellow { background: #fbbf24; }
+  .bar-fill.red { background: #f87171; }
+  .pass { color: #4ade80; }
+  .fail { color: #f87171; }
+  .status-tag { display: inline-block; padding: 0.125rem 0.5rem; border-radius: 0.25rem;
+                font-size: 0.6875rem; font-weight: 600; }
+  .status-tag.full { background: #064e3b; color: #4ade80; }
+  .status-tag.partial { background: #422006; color: #fbbf24; }
+  .status-tag.none { background: #450a0a; color: #f87171; }
+  pre {
+    background: #1e293b; border: 1px solid #334155; border-radius: 0.375rem;
+    padding: 1rem; font-size: 0.6875rem; overflow-x: auto; color: #94a3b8;
+    max-height: 400px; overflow-y: auto; white-space: pre-wrap;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+  .info { color: #94a3b8; font-size: 0.8125rem; margin: 0.5rem 0; }
+  .status-msg { padding: 0.375rem 0.75rem; border-radius: 0.375rem; display: inline-block;
+            font-size: 0.8125rem; margin: 0.5rem 0; }
+  .status-msg.running { background: #1e293b; border: 1px solid #fbbf24; color: #fbbf24; }
+  .status-msg.done { background: #064e3b; border: 1px solid #065f46; color: #4ade80; }
+  footer { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #334155;
+           color: #475569; font-size: 0.75rem; }
+  .note { background: #1e293b; border-left: 3px solid #38bdf8; padding: 0.75rem 1rem;
+          margin: 1rem 0; font-size: 0.8125rem; color: #94a3b8; }
+</style>
+</head>
+<body>
+
+<h1>W3C SPARQL Test Results</h1>
+<div class="subtitle">F*-extracted SPARQL algebra engine &mdash; tested against W3C-style test patterns</div>
+<div class="nav">
+  <a href="index.html">Overview</a> <span>/</span>
+  <a href="demo.html">Demo</a> <span>/</span>
+  <span>Tests</span>
+</div>
+
+<div class="note">
+  <strong>Note:</strong> These tests exercise the SPARQL algebra evaluator extracted from F* specifications.
+  They construct graphs and queries programmatically (no parser needed) and verify results match
+  expected output. The test categories mirror the
+  <a href="https://www.w3.org/2009/sparql/docs/tests/">W3C SPARQL test suite</a> structure.
+</div>
+
+<button id="runBtn" onclick="runTests()">Run Tests in Browser</button>
+<div id="statusMsg"></div>
+
+<div id="results" style="display:none;">
+  <h2>Summary</h2>
+  <div class="summary-box" id="summaryBox"></div>
+
+  <h2>Suite Results</h2>
+  <table>
+    <thead>
+      <tr><th>Suite</th><th>Pass</th><th>Total</th><th>Rate</th><th>Status</th><th>Bar</th></tr>
+    </thead>
+    <tbody id="suiteTable"></tbody>
+  </table>
+
+  <h2>Full Output</h2>
+  <pre id="rawOutput"></pre>
+</div>
+
+<div id="placeholder">
+  <h2>Expected Results (from native OCaml run)</h2>
+  <p class="info">Click "Run Tests in Browser" to execute live, or see the pre-computed results below.</p>
+  <div class="summary-box">
+    <div class="stat pass"><div class="number">41</div><div class="label">Passed</div></div>
+    <div class="stat fail"><div class="number">9</div><div class="label">Failed</div></div>
+    <div class="stat total"><div class="number">50</div><div class="label">Total</div></div>
+    <div class="stat pct"><div class="number">82%</div><div class="label">Pass Rate</div></div>
+  </div>
+  <table>
+    <thead>
+      <tr><th>Suite</th><th>Pass</th><th>Total</th><th>Rate</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>basic (BGP)</td><td class="pass">8</td><td>8</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
+      <tr><td>bound</td><td class="pass">4</td><td>4</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
+      <tr><td>bnode-coreference</td><td class="pass">3</td><td>3</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
+      <tr><td>distinct</td><td class="pass">1</td><td>1</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
+      <tr><td>reduced</td><td class="pass">1</td><td>1</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
+      <tr><td>sort / solution-seq</td><td class="pass">3</td><td>3</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
+      <tr><td>union</td><td class="pass">3</td><td>3</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
+      <tr><td>optional</td><td class="pass">2</td><td>2</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
+      <tr><td>regex</td><td class="pass">3</td><td>3</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
+      <tr><td>expr-builtin</td><td class="pass">3</td><td>3</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
+      <tr><td>string-functions (1.1)</td><td class="pass">3</td><td>3</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
+      <tr><td>bind</td><td class="pass">2</td><td>2</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
+      <tr><td>project-expression</td><td class="pass">1</td><td>1</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
+      <tr><td>i18n</td><td class="pass">1</td><td>1</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
+      <tr><td>negation (MINUS)</td><td class="pass">2</td><td>2</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
+      <tr><td>numeric-functions (1.1)</td><td class="pass">1</td><td>2</td><td>50%</td><td><span class="status-tag partial">PARTIAL</span></td></tr>
+      <tr><td>expr-equals</td><td class="fail">0</td><td>2</td><td>0%</td><td><span class="status-tag none">BLOCKED</span></td></tr>
+      <tr><td>expr-ops</td><td class="fail">0</td><td>2</td><td>0%</td><td><span class="status-tag none">BLOCKED</span></td></tr>
+      <tr><td>exists</td><td class="fail">0</td><td>4</td><td>0%</td><td><span class="status-tag none">BLOCKED</span></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Known Blockers</h2>
+  <table>
+    <thead><tr><th>Category</th><th>Tests</th><th>Issue</th></tr></thead>
+    <tbody>
+      <tr><td>expr-equals, expr-ops, numeric</td><td>5</td><td>Numeric literal value comparison: <code>E_NumericLit(Z.t)</code> vs <code>T_Literal</code> with <code>xsd:integer</code> datatype requires parsing the literal's lexical form</td></tr>
+      <tr><td>exists</td><td>4</td><td><code>E_Exists</code>/<code>E_NotExists</code> variable substitution in patterns needs <code>eval_pattern</code> access (forward reference limitation in extraction)</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<footer>
+  Factoidal &mdash; Verified RDF Transform System &mdash;
+  Pipeline: F* &rarr; OCaml &rarr; js_of_ocaml &rarr; Browser
+</footer>
+
+<script>
+const resultsDiv = document.getElementById('results');
+const placeholder = document.getElementById('placeholder');
+const statusMsg = document.getElementById('statusMsg');
+const runBtn = document.getElementById('runBtn');
+
+function runTests() {
+  statusMsg.innerHTML = '<span class="status-msg running">Running W3C tests in browser...</span>';
+  runBtn.disabled = true;
+
+  const lines = [];
+  const origLog = console.log;
+  const origError = console.error;
+
+  console.log = function() {
+    const msg = Array.from(arguments).join(' ');
+    lines.push(msg);
+  };
+  console.error = function() {
+    const msg = Array.from(arguments).join(' ');
+    lines.push('[ERROR] ' + msg);
+  };
+
+  const script = document.createElement('script');
+  script.src = 'w3c-tests.js';
+  script.onload = function() {
+    console.log = origLog;
+    console.error = origError;
+
+    const fullOutput = lines.join('\n');
+    document.getElementById('rawOutput').textContent = fullOutput;
+
+    // Parse JSON results
+    const jsonMatch = fullOutput.match(/<!-- JSON_RESULTS\n([\s\S]*?)\nJSON_RESULTS -->/);
+    if (jsonMatch) {
+      try {
+        const data = JSON.parse(jsonMatch[1]);
+        renderResults(data);
+      } catch(e) {
+        console.error('Failed to parse JSON results:', e);
+      }
+    }
+
+    placeholder.style.display = 'none';
+    resultsDiv.style.display = 'block';
+    statusMsg.innerHTML = '<span class="status-msg done">Tests complete</span>';
+    runBtn.disabled = false;
+    script.remove();
+  };
+  script.onerror = function() {
+    console.log = origLog;
+    console.error = origError;
+    statusMsg.innerHTML = '<span class="status-msg" style="background:#450a0a;border:1px solid #7f1d1d;color:#f87171;">Error loading w3c-tests.js</span>';
+    runBtn.disabled = false;
+  };
+  document.body.appendChild(script);
+}
+
+function renderResults(data) {
+  // Summary boxes
+  const pct = Math.round(data.passed / data.total * 100);
+  document.getElementById('summaryBox').innerHTML = `
+    <div class="stat pass"><div class="number">${data.passed}</div><div class="label">Passed</div></div>
+    <div class="stat fail"><div class="number">${data.failed}</div><div class="label">Failed</div></div>
+    <div class="stat total"><div class="number">${data.total}</div><div class="label">Total</div></div>
+    <div class="stat pct"><div class="number">${pct}%</div><div class="label">Pass Rate</div></div>
+  `;
+
+  // Suite table
+  const tbody = document.getElementById('suiteTable');
+  tbody.innerHTML = '';
+  data.suites.forEach(s => {
+    const rate = Math.round(s.pass / s.total * 100);
+    const tag = rate === 100 ? '<span class="status-tag full">FULL</span>'
+              : rate > 0 ? '<span class="status-tag partial">PARTIAL</span>'
+              : '<span class="status-tag none">BLOCKED</span>';
+    const barClass = rate === 100 ? 'green' : rate > 0 ? 'yellow' : 'red';
+    const passClass = s.pass === s.total ? 'pass' : s.pass > 0 ? '' : 'fail';
+    tbody.innerHTML += `<tr>
+      <td>${s.name}</td>
+      <td class="${passClass}">${s.pass}</td>
+      <td>${s.total}</td>
+      <td>${rate}%</td>
+      <td>${tag}</td>
+      <td><div class="bar"><div class="bar-fill ${barClass}" style="width:${rate}%"></div></div></td>
+    </tr>`;
+  });
+}
+</script>
+
+</body>
+</html>
