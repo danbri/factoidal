@@ -28,6 +28,9 @@ cargo test w3c_sparql11_full_scorecard -- --nocapture
 # Large graph integration tests
 cargo test sparql_large_graph -- --nocapture
 
+# F* formal verification (requires: eval $(opam env --switch=fstar))
+cd formal/fstar && make verify
+
 # Individual module tests
 cargo test rdf_tests -- --nocapture
 cargo test w3c_ntriples -- --nocapture

@@ -16,18 +16,42 @@ Bridge:  Rust + Hax annotations → extracted F* → verify against hand-written
 
 The F* specs define the **authoritative semantics** and are the source for eventual KaRaMeL extraction:
 
-- `formal/fstar/rdfcore11.fstar.txt` (492 lines) — Core RDF types, graph operations, N-Triples serialization
-- `formal/fstar/sparql11.fstar.txt` (1,146 lines) — SPARQL 1.1 algebra, evaluation semantics, 40+ built-in functions
+- `formal/fstar/RDF.Graph.Executable.fst` — Core RDF types, graph operations, N-Triples serialization
+- `formal/fstar/SPARQL11.Algebra.fst` — SPARQL 1.1 algebra, evaluation semantics, 40+ built-in functions
+- Original textual specs: `rdfcore11.fstar.txt`, `sparql11.fstar.txt` (kept for reference)
+
+**F* toolchain is installed and operational:**
+```bash
+# Activate F* environment
+eval $(opam env --switch=fstar)
+
+# Verify all specs
+cd formal/fstar && make verify
+
+# Verify a single module
+fstar.exe RDF.Graph.Executable.fst
+fstar.exe SPARQL11.Algebra.fst
+```
+
+Both modules currently verify: `All verification conditions discharged successfully`.
+
+**Tooling:**
+- `fstar.exe` 2025.12.15 (via `opam install fstar` on switch `fstar`)
+- `z3-4.8.5` and `z3-4.13.3` at `/usr/local/bin/`
+- `opam` with OCaml 4.14.1
 
 **Proofs completed:**
-- `lemma_add_no_dup`: Adding a triple guarantees membership
-- `lemma_remove_absent`: Removing a triple guarantees absence
+- `lemma_add_no_dup`: Adding a triple guarantees membership (admitted — needs concrete equality)
+- `lemma_remove_absent`: Removing a triple guarantees absence (admitted — needs concrete equality)
 - `lemma_empty_no_bnodes`: Empty graph has no blank nodes
+- `lemma_incompatible_types`: Numeric vs plain literal comparison returns None
+- `lemma_compare_reflexive`: Value equality is reflexive (admitted)
+- `lemma_compare_symmetric`: Value equality is symmetric (admitted)
 
 **KaRaMeL readiness blockers:**
 - Specs use high-level F* (not Low* subset) — KaRaMeL requires Low*
-- No F* toolchain in CI — specs are `.fstar.txt`, not compiled by F* typechecker
-- Priority: rewrite core types in Low* first (rdf types → N-Triples serialization → SPARQL algebra)
+- Several proofs use `admit()` pending concrete decidable equality for noeq types
+- Priority: implement concrete equality for subject/rdf_term/triple, then close admitted proofs
 
 **When modifying F* specs:**
 1. Consider Low* compatibility — avoid features that block KaRaMeL extraction

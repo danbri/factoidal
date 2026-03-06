@@ -504,15 +504,36 @@ cd rdf-wasm && cargo test
 # Build WASM
 cd rdf-wasm && ./build.sh
 
+# Verify F* specifications
+eval $(opam env --switch=fstar) && cd formal/fstar && make verify
+
 # Serve demo locally
 cd docs && python3 -m http.server 8080
 ```
+
+### F* Toolchain
+
+The F* formal verification toolchain is installed and operational:
+
+- **F* compiler**: `fstar.exe` (2025.12.15) — installed via opam (`opam install fstar`)
+- **Z3 SMT solver**: `z3-4.8.5` and `z3-4.13.3` — required by F* for proof discharge
+- **opam switch**: `fstar` (OCaml 4.14.1)
+
+To activate the F* environment: `eval $(opam env --switch=fstar)`
+
+Both F* modules currently verify successfully:
+- `formal/fstar/RDF.Graph.Executable.fst` — RDF core types, graph operations, properties
+- `formal/fstar/SPARQL11.Algebra.fst` — SPARQL algebra, evaluation semantics, built-in functions
+
+The `.fst` files are the compilable versions; the `.fstar.txt` files are kept as the original textual specs. The architecture for F*'s role in the project is documented in [`docs/designissues/fstar_role.md`](docs/designissues/fstar_role.md).
 
 ## Key Dependencies
 
 - `wasm-bindgen` — Rust<->JS WASM bindings
 - `serde` / `serde_json` — serialization
 - `regex` — SPARQL REGEX function support
+- `fstar` — F* formal verification compiler (opam)
+- `z3` — SMT solver (z3-4.8.5, z3-4.13.3)
 - `wasm-pack` — WASM build toolchain
 
 ## Development Notes
