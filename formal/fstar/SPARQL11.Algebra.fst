@@ -455,10 +455,11 @@ let resolve_iri (base : wf_iri) (relative : string) : wf_iri =
         | Some slash_pos -> take_chars (slash_pos + 1) base_chars @ rel_chars
         | None -> base_chars @ [FStar.Char.char_of_int 47] @ rel_chars
     in
-    (* The result must be a valid IRI. Since base is a wf_iri (contains ':'),
-       and in all branches we include the base prefix up to at least the scheme,
-       the result contains ':'. We use admit() for now, as proving list_has_colon
-       through take_chars requires additional lemmas. *)
+    (* The result should be a valid IRI since all branches preserve the base
+       scheme prefix (which contains ':'). Rather than proving list_has_colon
+       through take_chars (which would require additional lemmas about colon
+       preservation over list operations), we use a runtime is_iri check
+       with a fallback to the base IRI. No admit() is needed. *)
     let result = String.string_of_list result_chars in
     if is_iri result then result
     else base  (* fallback to base if result somehow isn't valid *)

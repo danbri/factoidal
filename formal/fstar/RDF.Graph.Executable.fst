@@ -228,7 +228,22 @@ let must_escape (c:FStar.Char.char) : bool =
 // (This is a predicate for specifying the output of serialization)
 (* Checks that no character in s needs escaping.
    Recursive definition over string index; termination assumed. *)
-assume val is_nt_escaped : string -> nat -> bool
+let rec is_nt_escaped_list (cs : list FStar.Char.char) : bool =
+  match cs with
+  | [] -> true
+  | c :: rest ->
+    let code = FStar.Char.int_of_char c in
+    if code < 0x20 || code = 0x22 || code = 0x5C then false
+    else is_nt_escaped_list rest
+
+let is_nt_escaped (s : string) (n : nat) : bool =
+  let cs = String.list_of_string s in
+  let rec drop_n (l : list FStar.Char.char) (k : nat) : list FStar.Char.char =
+    match l with
+    | [] -> []
+    | _ :: tl -> if k = 0 then l else drop_n tl (k - 1)
+  in
+  is_nt_escaped_list (drop_n cs n)
 
 // Roundtrip property specification:
 // For any well-formed graph g, serializing to N-Triples and parsing back
@@ -357,7 +372,8 @@ type sparql_value =
 
 // String comparison helper (lexicographic, same as OCaml/Rust string ordering)
 // We leave this abstract; F* string comparison via = suffices for equality.
-assume val string_lt : string -> string -> bool
+let string_lt (s1 s2 : string) : bool =
+  String.compare s1 s2 < 0
 
 // Typed value comparison — returns None for type errors (incompatible types)
 // Mirrors typed_compare in sparql.rs
@@ -505,7 +521,13 @@ let sparql_strlen (s : string) : nat =
 // SUBSTR: 1-indexed substring extraction
 // start is 1-indexed per SPARQL spec; length is optional
 // Mirrors the Rust SUBSTR implementation which converts to 0-indexed internally
-assume val string_substring : string -> nat -> nat -> string
+let string_substring (s : string) (i : nat) (len : nat) : string =
+  let slen = String.length s in
+  if i >= slen then ""
+  else
+    let max_len = slen - i in
+    let actual_len = if len <= max_len then len else max_len in
+    String.sub s i actual_len
 
 let sparql_substr (s : string) (start : nat) (len : option nat) : string =
   let start_idx = if start > 0 then start - 1 else 0 in
@@ -515,13 +537,15 @@ let sparql_substr (s : string) (start : nat) (len : option nat) : string =
   | None   -> string_substring s start_idx remaining
 
 // UCASE: convert all characters to upper case
-assume val string_to_upper : string -> string
+let string_to_upper (s : string) : string =
+  String.uppercase s
 
 let sparql_ucase (s : string) : string =
   string_to_upper s
 
 // LCASE: convert all characters to lower case
-assume val string_to_lower : string -> string
+let string_to_lower (s : string) : string =
+  String.lowercase s
 
 let sparql_lcase (s : string) : string =
   string_to_lower s
