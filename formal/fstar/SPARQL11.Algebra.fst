@@ -400,28 +400,89 @@ type solution_sequence = list solution_mapping
 
 (** 7.1 Pattern matching — triple pattern against a triple **)
 
-(* A pattern term matches an RDF term under a solution mapping *)
-assume val pattern_term_matches :
-  pattern_term -> rdf_term -> solution_mapping -> bool
+(* Convert a subject to an rdf_term for binding *)
+let subject_to_term (s : subject) : rdf_term =
+  match s with
+  | S_IRI i -> T_IRI i
+  | S_BNode b -> T_BNode b
 
-(* A pattern subject matches a subject under a solution mapping *)
-assume val pattern_subject_matches :
-  pattern_subject -> subject -> solution_mapping -> bool
+(* Try to bind a pattern subject against a concrete subject.
+   If the pattern is a concrete value, check equality.
+   If it's a variable, check existing binding or add new one. *)
+let try_bind_subject (ps : pattern_subject) (s : subject) (mu : solution_mapping)
+  : option solution_mapping =
+  match ps with
+  | PS_IRI i ->
+    (match s with
+     | S_IRI i' -> if i = i' then Some mu else None
+     | _ -> None)
+  | PS_BNode b ->
+    (match s with
+     | S_BNode b' -> if b = b' then Some mu else None
+     | _ -> None)
+  | PS_Var v ->
+    let term = subject_to_term s in
+    match sm_lookup v mu with
+    | Some existing -> if rdf_term_eq existing term then Some mu else None
+    | None -> Some (sm_bind v term mu)
 
-(* A triple pattern matches a graph triple, producing extended mapping.
-   Literal matching: a plain literal pattern (no explicit datatype, no lang tag)
-   matches only terms with datatype xsd:string (or empty datatype, per RDF 1.1
-   where untyped literals are implicitly xsd:string). A pattern with explicit
-   datatype matches only terms with that exact datatype. *)
-assume val tp_match :
-  triple_pattern -> triple -> solution_mapping -> option solution_mapping
+(* Try to bind a pattern term against a concrete RDF term. *)
+let try_bind_term (pt : pattern_term) (t : rdf_term) (mu : solution_mapping)
+  : option solution_mapping =
+  match pt with
+  | PT_IRI i ->
+    (match t with
+     | T_IRI i' -> if i = i' then Some mu else None
+     | _ -> None)
+  | PT_BNode b ->
+    (match t with
+     | T_BNode b' -> if b = b' then Some mu else None
+     | _ -> None)
+  | PT_Literal l ->
+    (match t with
+     | T_Literal l' -> if literal_eq l l' then Some mu else None
+     | _ -> None)
+  | PT_Var v ->
+    match sm_lookup v mu with
+    | Some existing -> if rdf_term_eq existing t then Some mu else None
+    | None -> Some (sm_bind v t mu)
 
-(** 7.2 BGP evaluation: all matching solution mappings from the graph **)
+(* A pattern term matches an RDF term under a solution mapping — CONCRETE *)
+let pattern_term_matches (pt : pattern_term) (t : rdf_term) (mu : solution_mapping) : bool =
+  Some? (try_bind_term pt t mu)
 
-(* eval_bgp returns all solution mappings μ such that applying μ to each
-   triple pattern yields a triple in the graph.
-   Per SPARQL semantics, this is the natural join of individual pattern evaluations. *)
-assume val eval_bgp : bgp -> rdf_graph -> solution_sequence
+(* A pattern subject matches a subject under a solution mapping — CONCRETE *)
+let pattern_subject_matches (ps : pattern_subject) (s : subject) (mu : solution_mapping) : bool =
+  Some? (try_bind_subject ps s mu)
+
+(* A triple pattern matches a graph triple, producing extended mapping — CONCRETE.
+   Threads bindings: subject → predicate → object. *)
+let tp_match (tp : triple_pattern) (t : triple) (mu : solution_mapping)
+  : option solution_mapping =
+  match try_bind_subject tp.tp_s t.s mu with
+  | None -> None
+  | Some mu1 ->
+    (* Predicate is pattern_term; graph triple predicate is wf_iri → wrap as T_IRI *)
+    match try_bind_term tp.tp_p (T_IRI t.p) mu1 with
+    | None -> None
+    | Some mu2 -> try_bind_term tp.tp_o t.o mu2
+
+(** 7.2 BGP evaluation — CONCRETE **)
+
+(* Evaluate a single triple pattern against the graph, extending a given mapping *)
+let eval_single_tp (tp : triple_pattern) (g : rdf_graph) (mu : solution_mapping)
+  : solution_sequence =
+  List.Tot.filter_map (fun t -> tp_match tp t mu) g
+
+(* Evaluate a BGP: for each triple pattern, extend existing mappings.
+   Empty BGP matches everything with the empty mapping.
+   Per SPARQL semantics: eval(BGP) = Join of individual pattern evaluations. *)
+let rec eval_bgp (patterns : bgp) (g : rdf_graph) : solution_sequence =
+  match patterns with
+  | [] -> [sm_empty]
+  | tp :: rest ->
+    let sub_results = eval_bgp rest g in
+    List.Tot.concatMap (fun mu -> eval_single_tp tp g mu) sub_results
 
 (** 7.3 Core algebra operations (§18.5) **)
 
