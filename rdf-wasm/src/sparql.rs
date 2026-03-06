@@ -2457,7 +2457,16 @@ fn eval_filter(filter: &Filter, binding: &Binding) -> Option<bool> {
             }
         }
         Filter::FnRegex(expr, pattern, flags) => {
-            if let Some(val) = eval_filter_expr(expr, binding) {
+            // REGEX is defined only for string literals (xsd:string, rdf:langString, simple literals)
+            let val = if let FilterExpr::Variable(name) = expr {
+                match binding.get(name) {
+                    Some(TermValue::Literal { lexical, .. }) => Some(lexical.clone()),
+                    _ => None, // IRIs, BNodes → type error
+                }
+            } else {
+                eval_filter_expr(expr, binding)
+            };
+            if let Some(val) = val {
                 let case_insensitive = flags.as_ref().map_or(false, |f| f.contains('i'));
                 let dot_matches_newline = flags.as_ref().map_or(false, |f| f.contains('s'));
                 let multi_line = flags.as_ref().map_or(false, |f| f.contains('m'));
