@@ -196,7 +196,7 @@ factoidal/
 - [ ] **Layer 2: Query composition** — Sub-SELECT, MINUS, GRAPH, VALUES
 - [ ] **Layer 3: Aggregation pipeline** — GROUP BY → aggregate functions → HAVING
 - [ ] **Layer 4: Property paths** — sequence, alternative, inverse, transitive closure
-- [ ] **Layer 6: Query forms** — ASK, CONSTRUCT, DESCRIBE
+- [ ] **Layer 6: DESCRIBE** — implementation-defined, low priority
 - [ ] Extend F* spec to cover N-Triples roundtrip proof (specification written, proof pending)
 - [ ] Formalize Turtle grammar and IRI resolution in F*
 - [ ] Turtle serializer in Rust
@@ -306,6 +306,7 @@ The foundational join/filter/union machinery that everything else depends on.
 | DISTINCT, REDUCED | ✅ Done | |
 | ORDER BY, LIMIT/OFFSET | ✅ Done (11/13) | Edge cases remain |
 | NOT EXISTS / EXISTS | ⚠️ Partial (3/6) | Basic patterns work, complex nesting pending |
+| ASK query form | Pending | Trivial — evaluate SELECT, return boolean |
 
 **Layer 1 — Type System & Value Space** 🔜 Next priority
 
@@ -330,6 +331,7 @@ These features let queries nest and compose — prerequisite for real-world SPAR
 | VALUES clause | ~10 remaining (bindings) | Partial (1/11) | Inline data injection |
 | MINUS | ~8 (negation) | Pending | Anti-join semantics — straightforward once joins are solid |
 | GRAPH keyword (named graph patterns) | ~4 (algebra) + ~2 (triple-match) | Pending | Requires dataset model (default + named graphs) |
+| CONSTRUCT query form | ~2 (subquery) | Pending | Template-based graph construction from bindings — **required for KGX pipeline** |
 
 **Layer 3 — Aggregation Pipeline** 📋 After Layer 2
 
@@ -369,13 +371,9 @@ over structural layers.
 | Numeric functions | ABS, ROUND, CEIL, FLOOR | ~4 (1.1/functions) | ✅ Done |
 | REGEX edge cases | Quantifiers, anchors | ~7 remaining (regex) | Partial |
 
-**Layer 6 — Query Forms** 📋 Future
+**Layer 6 — DESCRIBE** 📋 Future
 
-| Component | Notes |
-|-----------|-------|
-| ASK | Trivial — evaluate SELECT, return boolean |
-| CONSTRUCT | Template-based graph construction from bindings |
-| DESCRIBE | Implementation-defined |
+Implementation-defined query form. Low priority — not needed for core compliance or KGX.
 
 ### Design Principle: Spec Before Code
 
