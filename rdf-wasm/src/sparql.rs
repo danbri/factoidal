@@ -210,8 +210,15 @@ struct SelectExpr {
     var: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum QueryForm {
+    Select,
+    Ask,
+}
+
 #[derive(Debug)]
 struct ParsedQuery {
+    form: QueryForm,
     prefixes: HashMap<String, String>,
     variables: Vec<String>, // empty = SELECT *
     select_exprs: Vec<SelectExpr>, // (expr AS ?var) in SELECT
@@ -305,45 +312,61 @@ impl Parser {
             }
         }
 
-        self.expect("SELECT")?;
+        // Parse query form: SELECT or ASK
+        let form_token = self.peek().map(|t| t.to_uppercase());
+        let form = match form_token.as_deref() {
+            Some("SELECT") => {
+                self.next()?;
+                QueryForm::Select
+            }
+            Some("ASK") => {
+                self.next()?;
+                QueryForm::Ask
+            }
+            _ => return Err("Expected 'SELECT' or 'ASK'".into()),
+        };
 
-        let distinct = self.peek().map(|t| t.to_uppercase()) == Some("DISTINCT".to_string());
-        if distinct {
-            self.next()?;
-        }
-        // REDUCED is implementation-defined — we treat it as a no-op (keep all rows)
-        if self.peek().map(|t| t.to_uppercase()) == Some("REDUCED".to_string()) {
-            self.next()?;
-        }
-
-        // Variables and SELECT expressions
         let mut variables = Vec::new();
         let mut select_exprs = Vec::new();
-        if self.peek() == Some("*") {
-            self.next()?;
-        } else {
-            while let Some(t) = self.peek() {
-                if t.starts_with('?') || t.starts_with('$') {
-                    variables.push(self.next()?[1..].to_string());
-                } else if t == "(" {
-                    // SELECT expression: (expr AS ?var)
-                    self.next()?; // (
-                    let filter = self.parse_filter()?;
-                    self.expect("AS")?;
-                    let var = self.next()?;
-                    if !var.starts_with('?') && !var.starts_with('$') {
-                        return Err(format!("Expected variable after AS, got '{var}'"));
-                    }
-                    self.expect(")")?;
-                    let var_name = var[1..].to_string();
-                    variables.push(var_name.clone());
-                    select_exprs.push(SelectExpr { expr: filter, var: var_name });
-                } else {
-                    break;
-                }
+        let mut distinct = false;
+
+        if form == QueryForm::Select {
+            distinct = self.peek().map(|t| t.to_uppercase()) == Some("DISTINCT".to_string());
+            if distinct {
+                self.next()?;
             }
-            if variables.is_empty() {
-                return Err("Expected variable list or * after SELECT".into());
+            // REDUCED is implementation-defined — we treat it as a no-op (keep all rows)
+            if self.peek().map(|t| t.to_uppercase()) == Some("REDUCED".to_string()) {
+                self.next()?;
+            }
+
+            // Variables and SELECT expressions
+            if self.peek() == Some("*") {
+                self.next()?;
+            } else {
+                while let Some(t) = self.peek() {
+                    if t.starts_with('?') || t.starts_with('$') {
+                        variables.push(self.next()?[1..].to_string());
+                    } else if t == "(" {
+                        // SELECT expression: (expr AS ?var)
+                        self.next()?; // (
+                        let filter = self.parse_filter()?;
+                        self.expect("AS")?;
+                        let var = self.next()?;
+                        if !var.starts_with('?') && !var.starts_with('$') {
+                            return Err(format!("Expected variable after AS, got '{var}'"));
+                        }
+                        self.expect(")")?;
+                        let var_name = var[1..].to_string();
+                        variables.push(var_name.clone());
+                        select_exprs.push(SelectExpr { expr: filter, var: var_name });
+                    } else {
+                        break;
+                    }
+                }
+                if variables.is_empty() {
+                    return Err("Expected variable list or * after SELECT".into());
+                }
             }
         }
 
@@ -416,6 +439,7 @@ impl Parser {
         }
 
         Ok(ParsedQuery {
+            form,
             prefixes,
             variables,
             select_exprs,
@@ -2423,20 +2447,33 @@ fn evaluate_clauses(
 // Public API
 // ---------------------------------------------------------------------------
 
-/// Result of a SPARQL SELECT query.
+/// Result of a SPARQL query (SELECT or ASK).
 #[derive(Debug, Clone, Serialize)]
 pub struct QueryResult {
     pub variables: Vec<String>,
     pub rows: Vec<Vec<Option<String>>>,
+    /// For ASK queries: true if at least one solution exists, false otherwise.
+    /// For SELECT queries: None.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub boolean: Option<bool>,
 }
 
-/// Execute a SPARQL SELECT query against the given graph.
+/// Execute a SPARQL query (SELECT or ASK) against the given graph.
 pub fn execute(graph: &RdfGraph, query_str: &str) -> Result<QueryResult, String> {
     let mut parser = Parser::new(query_str);
     let query = parser.parse_query()?;
 
     let initial = vec![Binding::new()];
     let mut results = evaluate_clauses(&query.where_clauses, graph, initial, &query.prefixes);
+
+    // ASK: return boolean result immediately — no projection, ordering, etc.
+    if query.form == QueryForm::Ask {
+        return Ok(QueryResult {
+            variables: Vec::new(),
+            rows: Vec::new(),
+            boolean: Some(!results.is_empty()),
+        });
+    }
 
     // Evaluate SELECT expressions (e.g., (expr AS ?var))
     if !query.select_exprs.is_empty() {
@@ -2589,6 +2626,7 @@ pub fn execute(graph: &RdfGraph, query_str: &str) -> Result<QueryResult, String>
     Ok(QueryResult {
         variables: vars,
         rows,
+        boolean: None,
     })
 }
 
@@ -2918,5 +2956,51 @@ mod tests {
         )
         .unwrap();
         assert_eq!(r.rows.len(), 1); // Bob
+    }
+
+    #[test]
+    fn test_ask_true() {
+        let g = test_graph();
+        let r = execute(&g, "ASK { ?s ?p ?o }").unwrap();
+        assert_eq!(r.boolean, Some(true));
+        assert!(r.variables.is_empty());
+        assert!(r.rows.is_empty());
+    }
+
+    #[test]
+    fn test_ask_false() {
+        let g = test_graph();
+        let r = execute(
+            &g,
+            "ASK { <http://example.org/nonexistent> ?p ?o }",
+        )
+        .unwrap();
+        assert_eq!(r.boolean, Some(false));
+    }
+
+    #[test]
+    fn test_ask_with_prefix() {
+        let g = test_graph();
+        let r = execute(
+            &g,
+            r#"PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+               ASK { ?s foaf:name "Alice" }"#,
+        )
+        .unwrap();
+        assert_eq!(r.boolean, Some(true));
+    }
+
+    #[test]
+    fn test_ask_with_where_keyword() {
+        let g = test_graph();
+        let r = execute(&g, "ASK WHERE { ?s ?p ?o }").unwrap();
+        assert_eq!(r.boolean, Some(true));
+    }
+
+    #[test]
+    fn test_ask_empty_graph() {
+        let g = RdfGraph::new();
+        let r = execute(&g, "ASK { ?s ?p ?o }").unwrap();
+        assert_eq!(r.boolean, Some(false));
     }
 }
