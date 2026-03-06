@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Factoidal — F*-Extracted W3C SPARQL Tests</title>
+<title>Factoidal — F*-Extracted W3C Test Results</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -77,8 +77,8 @@
 </head>
 <body>
 
-<h1>W3C SPARQL Test Results</h1>
-<div class="subtitle">F*-extracted SPARQL algebra engine &mdash; tested against W3C-style test patterns</div>
+<h1>W3C Test Results</h1>
+<div class="subtitle">F*-extracted SPARQL algebra engine + JS N-Triples/Turtle parsers &mdash; tested against W3C test suites</div>
 <div class="nav">
   <a href="index.html">Overview</a> <span>/</span>
   <a href="demo.html">Demo</a> <span>/</span>
@@ -86,10 +86,10 @@
 </div>
 
 <div class="note">
-  <strong>Note:</strong> These tests exercise the SPARQL algebra evaluator extracted from F* specifications.
-  They construct graphs and queries programmatically (no parser needed) and verify results match
-  expected output. The test categories mirror the
-  <a href="https://www.w3.org/2009/sparql/docs/tests/">W3C SPARQL test suite</a> structure.
+  <strong>Two test suites:</strong> (1) SPARQL algebra tests exercise the F*-extracted evaluator with
+  programmatically constructed graphs and queries. (2) RDF parser tests run actual
+  <a href="https://www.w3.org/2011/rdf-wg/wiki/Turtle_Test_Suite">W3C N-Triples and Turtle test files</a>
+  against JavaScript parsers ported from the Rust implementation.
 </div>
 
 <button id="runBtn" onclick="runTests()">Run Tests in Browser</button>
@@ -147,7 +147,7 @@
     </tbody>
   </table>
 
-  <h2>Known Blockers</h2>
+  <h2>Known Blockers (SPARQL)</h2>
   <table>
     <thead><tr><th>Category</th><th>Tests</th><th>Issue</th></tr></thead>
     <tbody>
@@ -156,6 +156,43 @@
     </tbody>
   </table>
 </div>
+
+<h2>RDF Parser Tests (W3C N-Triples &amp; Turtle)</h2>
+<div class="note">
+  <strong>Note:</strong> These tests run actual W3C test files from the
+  <a href="https://www.w3.org/2011/rdf-wg/wiki/RDF_Test_Suites">W3C RDF test suites</a>
+  against JavaScript N-Triples and Turtle parsers ported from the Rust implementation.
+  Positive tests must parse successfully; negative tests must be rejected; eval tests must
+  produce the correct triples.
+</div>
+
+<div class="summary-box">
+  <div class="stat pass"><div class="number">242</div><div class="label">Passed</div></div>
+  <div class="stat fail"><div class="number">25</div><div class="label">Failed</div></div>
+  <div class="stat total"><div class="number">267</div><div class="label">Total</div></div>
+  <div class="stat pct"><div class="number">91%</div><div class="label">Pass Rate</div></div>
+</div>
+<table>
+  <thead>
+    <tr><th>Suite</th><th>Pass</th><th>Total</th><th>Rate</th><th>Status</th><th>Bar</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>N-Triples positive</td><td class="pass">36</td><td>36</td><td>100%</td><td><span class="status-tag full">FULL</span></td><td><div class="bar"><div class="bar-fill green" style="width:100%"></div></div></td></tr>
+    <tr><td>N-Triples negative</td><td>18</td><td>27</td><td>67%</td><td><span class="status-tag partial">PARTIAL</span></td><td><div class="bar"><div class="bar-fill yellow" style="width:67%"></div></div></td></tr>
+    <tr><td>Turtle positive syntax</td><td class="pass">75</td><td>75</td><td>100%</td><td><span class="status-tag full">FULL</span></td><td><div class="bar"><div class="bar-fill green" style="width:100%"></div></div></td></tr>
+    <tr><td>Turtle negative syntax</td><td>74</td><td>90</td><td>82%</td><td><span class="status-tag partial">PARTIAL</span></td><td><div class="bar"><div class="bar-fill yellow" style="width:82%"></div></div></td></tr>
+    <tr><td>Turtle eval</td><td class="pass">39</td><td>39</td><td>100%</td><td><span class="status-tag full">FULL</span></td><td><div class="bar"><div class="bar-fill green" style="width:100%"></div></div></td></tr>
+  </tbody>
+</table>
+
+<h2>Known Gaps (Parsers)</h2>
+<table>
+  <thead><tr><th>Suite</th><th>Failures</th><th>Issue</th></tr></thead>
+  <tbody>
+    <tr><td>N-Triples negative (9)</td><td>9</td><td>Parser too lenient — accepts some invalid escape sequences and malformed URIs that should be rejected</td></tr>
+    <tr><td>Turtle negative syntax (16)</td><td>16</td><td>Parser too lenient — accepts some invalid prefix declarations, malformed literals, and structural errors that should be rejected</td></tr>
+  </tbody>
+</table>
 
 <footer>
   Factoidal &mdash; Verified RDF Transform System &mdash;
