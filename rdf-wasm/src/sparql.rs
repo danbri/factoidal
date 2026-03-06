@@ -124,6 +124,8 @@ enum Filter {
     FnStrStarts(FilterExpr, FilterExpr),
     FnStrEnds(FilterExpr, FilterExpr),
     FnIsNumeric(FilterExpr),
+    FnSameTerm(FilterExpr, FilterExpr),
+    FnLangMatches(FilterExpr, FilterExpr),
 }
 
 #[derive(Debug, Clone)]
@@ -202,6 +204,7 @@ enum WhereClause {
     Union(Vec<WhereClause>),           // right side of UNION (legacy, appended to previous)
     UnionGroup(Vec<Vec<WhereClause>>), // { } UNION { } UNION { } — list of branches
     Bind(FilterExpr, String),         // BIND(expr AS ?var)
+    Minus(Vec<WhereClause>),          // MINUS { ... } — anti-join
 }
 
 #[derive(Debug, Clone)]
@@ -220,6 +223,7 @@ enum QueryForm {
 struct ParsedQuery {
     form: QueryForm,
     prefixes: HashMap<String, String>,
+    base_iri: Option<String>,
     variables: Vec<String>, // empty = SELECT *
     select_exprs: Vec<SelectExpr>, // (expr AS ?var) in SELECT
     distinct: bool,
@@ -305,8 +309,17 @@ impl Parser {
             }
         }
 
-        // If we have a BASE, use it to resolve empty prefix
+        // Resolve prefix namespace IRIs against BASE
         if let Some(ref base) = base_iri {
+            let mut resolved_prefixes = HashMap::new();
+            for (k, v) in &prefixes {
+                if v.is_empty() || (!v.contains("://") && !v.starts_with("urn:")) {
+                    resolved_prefixes.insert(k.clone(), resolve_iri_against_base(base, v));
+                } else {
+                    resolved_prefixes.insert(k.clone(), v.clone());
+                }
+            }
+            prefixes = resolved_prefixes;
             if !prefixes.contains_key("") {
                 prefixes.insert(String::new(), base.clone());
             }
@@ -441,6 +454,7 @@ impl Parser {
         Ok(ParsedQuery {
             form,
             prefixes,
+            base_iri,
             variables,
             select_exprs,
             distinct,
@@ -516,6 +530,15 @@ impl Parser {
                     self.next()?;
                 }
                 clauses.push(WhereClause::Optional(inner));
+            } else if upper == "MINUS" {
+                self.next()?; // MINUS
+                self.expect("{")?;
+                let inner = self.parse_where_body()?;
+                self.expect("}")?;
+                if self.peek() == Some(".") {
+                    self.next()?;
+                }
+                clauses.push(WhereClause::Minus(inner));
             } else if upper == "UNION" {
                 // UNION — combine previous group with next group
                 self.next()?; // UNION
@@ -886,6 +909,24 @@ impl Parser {
                 self.expect(")")?;
                 return Ok(Filter::FnIsNumeric(expr));
             }
+            "SAMETERM" => {
+                self.next()?;
+                self.expect("(")?;
+                let a = self.parse_filter_expr()?;
+                self.expect(",")?;
+                let b = self.parse_filter_expr()?;
+                self.expect(")")?;
+                return Ok(Filter::FnSameTerm(a, b));
+            }
+            "LANGMATCHES" => {
+                self.next()?;
+                self.expect("(")?;
+                let a = self.parse_filter_expr()?;
+                self.expect(",")?;
+                let b = self.parse_filter_expr()?;
+                self.expect(")")?;
+                return Ok(Filter::FnLangMatches(a, b));
+            }
             _ => {}
         }
 
@@ -944,6 +985,19 @@ impl Parser {
     }
 
     fn parse_filter_expr(&mut self) -> Result<FilterExpr, String> {
+        let left = self.parse_filter_expr_primary()?;
+        // Check for arithmetic operators after primary expression
+        if let Some(op) = self.peek() {
+            if matches!(op, "+" | "-" | "*" | "/") {
+                let arith_op = self.next()?;
+                let right = self.parse_filter_expr_primary()?;
+                return Ok(FilterExpr::Arithmetic(Box::new(left), arith_op, Box::new(right)));
+            }
+        }
+        Ok(left)
+    }
+
+    fn parse_filter_expr_primary(&mut self) -> Result<FilterExpr, String> {
         let t = self.peek().ok_or("Unexpected end in filter expression")?.to_string();
         let upper = t.to_uppercase();
 
@@ -1241,39 +1295,77 @@ fn tokenize(input: &str) -> Vec<String> {
         }
         // Single-char tokens
         if matches!(chars[i], '{' | '}' | '(' | ')' | '.' | ',' | '*' | '=' | '<' | '>' | '!' | ';' | '[' | ']') {
-            // But < could start an IRI
+            // < could start an IRI or be a comparison operator
             if chars[i] == '<' {
-                let start = i;
-                i += 1;
-                while i < len && chars[i] != '>' {
+                // IRI if next char is a letter, colon, slash, or underscore (not whitespace/digit/operator)
+                // < is IRI start if followed by: letter, colon, slash, underscore, hash, ?, or >
+                // < is operator if followed by: whitespace, digit, =, +, -, (, ?, !, or EOF
+                let next_ch = if i + 1 < len { Some(chars[i + 1]) } else { None };
+                let is_iri = match next_ch {
+                    Some('>') => true, // <>
+                    Some(c) if c.is_alphabetic() || c == '/' || c == '_' || c == '#' || c == ':' => true,
+                    _ => false,
+                };
+                if is_iri {
+                    let start = i;
                     i += 1;
+                    while i < len && chars[i] != '>' {
+                        i += 1;
+                    }
+                    if i < len {
+                        i += 1; // consume >
+                    }
+                    let iri: String = chars[start..i].iter().collect();
+                    tokens.push(iri);
+                    continue;
                 }
-                if i < len {
-                    i += 1; // consume >
-                }
-                let iri: String = chars[start..i].iter().collect();
-                tokens.push(iri);
-                continue;
+                // Otherwise fall through to emit '<' as operator
             }
             tokens.push(chars[i].to_string());
             i += 1;
             continue;
         }
-        // String literal
-        if chars[i] == '"' {
+        // String literal (single or triple-quoted)
+        if chars[i] == '"' || chars[i] == '\'' {
+            let quote_char = chars[i];
             let start = i;
-            i += 1;
-            while i < len && chars[i] != '"' {
-                if chars[i] == '\\' {
-                    i += 1; // skip escaped char
+            // Check for triple-quoted string
+            let triple = i + 2 < len && chars[i + 1] == quote_char && chars[i + 2] == quote_char;
+            if triple {
+                i += 3; // skip opening """
+                loop {
+                    if i + 2 < len && chars[i] == quote_char && chars[i + 1] == quote_char && chars[i + 2] == quote_char {
+                        i += 3; // consume closing """
+                        break;
+                    }
+                    if i >= len { break; }
+                    if chars[i] == '\\' { i += 1; } // skip escaped char
+                    i += 1;
                 }
+            } else {
                 i += 1;
-            }
-            if i < len {
-                i += 1; // consume closing "
+                while i < len && chars[i] != quote_char {
+                    if chars[i] == '\\' {
+                        i += 1; // skip escaped char
+                    }
+                    i += 1;
+                }
+                if i < len {
+                    i += 1; // consume closing quote
+                }
             }
             let s: String = chars[start..i].iter().collect();
-            tokens.push(s);
+            // Normalize triple-quoted to regular double-quoted for downstream processing
+            let normalized = if triple {
+                let inner = &s[3..s.len()-3];
+                format!("\"{}\"", inner)
+            } else if quote_char == '\'' {
+                let inner = &s[1..s.len()-1];
+                format!("\"{}\"", inner)
+            } else {
+                s
+            };
+            tokens.push(normalized);
             // Check for @lang immediately after
             if i < len && chars[i] == '@' {
                 let ls = i;
@@ -1313,14 +1405,52 @@ fn tokenize(input: &str) -> Vec<String> {
 // Evaluation
 // ---------------------------------------------------------------------------
 
+/// Resolve a relative IRI against a base IRI per RFC 3986.
+fn resolve_iri_against_base(base: &str, relative: &str) -> String {
+    if relative.is_empty() {
+        return base.to_string();
+    }
+    // If relative has a scheme, it's absolute
+    if relative.contains("://") || relative.starts_with("urn:") {
+        return relative.to_string();
+    }
+    // Fragment reference
+    if relative.starts_with('#') {
+        // Remove any existing fragment from base, append new one
+        if let Some(pos) = base.rfind('#') {
+            return format!("{}{}", &base[..pos], relative);
+        }
+        return format!("{}{}", base, relative);
+    }
+    // Relative path: find the last '/' in base path and append
+    if let Some(pos) = base.rfind('/') {
+        format!("{}{}", &base[..pos + 1], relative)
+    } else {
+        format!("{}/{}", base, relative)
+    }
+}
+
 fn resolve_element(
     elem: &PatternElement,
     prefixes: &HashMap<String, String>,
+    base_iri: &Option<String>,
 ) -> PatternElement {
     match elem {
         PatternElement::PrefixedName(prefix, local) => {
             if let Some(base) = prefixes.get(prefix) {
                 PatternElement::Iri(format!("{base}{local}"))
+            } else {
+                elem.clone()
+            }
+        }
+        PatternElement::Iri(iri) => {
+            // Resolve relative IRIs against BASE
+            if let Some(ref base) = base_iri {
+                if !iri.contains("://") && !iri.starts_with("urn:") {
+                    PatternElement::Iri(resolve_iri_against_base(base, iri))
+                } else {
+                    elem.clone()
+                }
             } else {
                 elem.clone()
             }
@@ -1375,6 +1505,12 @@ fn match_element(elem: &PatternElement, term: &TermValue) -> Option<Option<(Stri
                     if datatype != d {
                         return None;
                     }
+                } else if lang.is_none() {
+                    // Plain literal pattern (no datatype, no lang) should only match
+                    // xsd:string or simple literals per RDF 1.1 semantics
+                    if datatype != rdf::XSD_STRING && !datatype.is_empty() {
+                        return None;
+                    }
                 }
                 Some(None)
             } else {
@@ -1390,10 +1526,11 @@ fn match_triple(
     triple: &Triple,
     existing: &Binding,
     prefixes: &HashMap<String, String>,
+    base_iri: &Option<String>,
 ) -> Option<Binding> {
-    let s_elem = resolve_element(&pattern.s, prefixes);
-    let p_elem = resolve_element(&pattern.p, prefixes);
-    let o_elem = resolve_element(&pattern.o, prefixes);
+    let s_elem = resolve_element(&pattern.s, prefixes, base_iri);
+    let p_elem = resolve_element(&pattern.p, prefixes, base_iri);
+    let o_elem = resolve_element(&pattern.o, prefixes, base_iri);
 
     let s_term = TermValue::from_subject(&triple.s);
     let p_term = TermValue::Iri(triple.p.as_str().to_string());
@@ -1424,7 +1561,7 @@ fn match_triple(
 }
 
 /// Typed filter value for type-aware SPARQL comparisons.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 enum TypedFilterValue {
     Iri(String),
     BNode(String),
@@ -1821,6 +1958,29 @@ fn is_numeric_type(dt: &str) -> bool {
     dt == XSD_INTEGER || dt == XSD_DECIMAL || dt == XSD_DOUBLE || dt == XSD_FLOAT
 }
 
+/// Unescape SPARQL string escape sequences: \\ → \, \n → newline, \t → tab, etc.
+fn unescape_sparql_string(s: &str) -> String {
+    let mut result = String::new();
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('\\') => result.push('\\'),
+                Some('n') => result.push('\n'),
+                Some('r') => result.push('\r'),
+                Some('t') => result.push('\t'),
+                Some('"') => result.push('"'),
+                Some('\'') => result.push('\''),
+                Some(other) => { result.push('\\'); result.push(other); }
+                None => result.push('\\'),
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
 fn term_to_typed(tv: &TermValue) -> TypedFilterValue {
     match tv {
         TermValue::Iri(s) => TypedFilterValue::Iri(s.clone()),
@@ -1952,7 +2112,7 @@ fn eval_filter_expr_typed(expr: &FilterExpr, binding: &Binding) -> Option<TypedF
             }
         }
         FilterExpr::FnIf(cond, then_expr, else_expr) => {
-            if eval_filter(cond, binding) {
+            if eval_filter(cond, binding).unwrap_or(false) {
                 eval_filter_expr_typed(then_expr, binding)
             } else {
                 eval_filter_expr_typed(else_expr, binding)
@@ -2097,12 +2257,10 @@ fn eval_filter_expr_typed(expr: &FilterExpr, binding: &Binding) -> Option<TypedF
             let rv = eval_filter_expr_typed(right, binding)?;
             let ln = match &lv {
                 TypedFilterValue::NumericLiteral(n, _) => *n,
-                TypedFilterValue::PlainLiteral(s) => s.parse::<f64>().ok()?,
                 _ => return None,
             };
             let rn = match &rv {
                 TypedFilterValue::NumericLiteral(n, _) => *n,
-                TypedFilterValue::PlainLiteral(s) => s.parse::<f64>().ok()?,
                 _ => return None,
             };
             let result = match op.as_str() {
@@ -2216,127 +2374,216 @@ fn eval_filter_expr(expr: &FilterExpr, binding: &Binding) -> Option<String> {
     eval_filter_expr_typed(expr, binding).map(|v| v.as_string())
 }
 
-fn eval_filter(filter: &Filter, binding: &Binding) -> bool {
+/// Three-valued FILTER evaluation: Some(true), Some(false), or None (type error).
+/// Per SPARQL spec, errors propagate through NOT and are absorbed by AND/OR.
+fn eval_filter(filter: &Filter, binding: &Binding) -> Option<bool> {
     match filter {
         Filter::Comparison(left, op, right) => {
             let lv = eval_filter_expr_typed(left, binding);
             let rv = eval_filter_expr_typed(right, binding);
             match (lv, rv) {
-                (Some(l), Some(r)) => typed_compare(&l, &r, op).unwrap_or(false),
-                _ => false,
+                (Some(l), Some(r)) => typed_compare(&l, &r, op),
+                _ => None,
             }
         }
-        Filter::And(a, b) => eval_filter(a, binding) && eval_filter(b, binding),
-        Filter::Or(a, b) => eval_filter(a, binding) || eval_filter(b, binding),
-        Filter::Not(inner) => !eval_filter(inner, binding),
+        // Three-valued AND: false AND error = false, true AND error = error
+        Filter::And(a, b) => {
+            let av = eval_filter(a, binding);
+            let bv = eval_filter(b, binding);
+            match (av, bv) {
+                (Some(false), _) | (_, Some(false)) => Some(false),
+                (Some(true), Some(true)) => Some(true),
+                _ => None,
+            }
+        }
+        // Three-valued OR: true OR error = true, false OR error = error
+        Filter::Or(a, b) => {
+            let av = eval_filter(a, binding);
+            let bv = eval_filter(b, binding);
+            match (av, bv) {
+                (Some(true), _) | (_, Some(true)) => Some(true),
+                (Some(false), Some(false)) => Some(false),
+                _ => None,
+            }
+        }
+        // Three-valued NOT: !error = error
+        Filter::Not(inner) => eval_filter(inner, binding).map(|v| !v),
         Filter::BooleanEffectiveValue(expr) => {
-            // SPARQL boolean effective value:
-            // - bound variable with non-empty string → true
-            // - "true"^^xsd:boolean → true
+            // SPARQL boolean effective value (three-valued):
+            // - "true"^^xsd:boolean or "1"^^xsd:boolean → true
             // - non-zero numeric → true
-            // - "" or "0" or "false" or unbound → false
+            // - non-empty xsd:string or rdf:langString → true
+            // - IRIs, BNodes, unknown typed literals, unbound → error (None)
             match expr {
                 FilterExpr::Variable(name) => {
                     if let Some(val) = binding.get(name) {
                         match val {
                             TermValue::Literal { lexical, datatype, .. } => {
                                 if datatype == "http://www.w3.org/2001/XMLSchema#boolean" {
-                                    lexical == "true" || lexical == "1"
+                                    Some(lexical == "true" || lexical == "1")
                                 } else if datatype == "http://www.w3.org/2001/XMLSchema#integer"
                                     || datatype == "http://www.w3.org/2001/XMLSchema#decimal"
                                     || datatype == "http://www.w3.org/2001/XMLSchema#double"
                                     || datatype == "http://www.w3.org/2001/XMLSchema#float"
                                 {
-                                    lexical.parse::<f64>().map_or(false, |n| n != 0.0)
+                                    Some(lexical.parse::<f64>().map_or(false, |n| n != 0.0))
+                                } else if datatype == "http://www.w3.org/2001/XMLSchema#string"
+                                    || datatype == "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"
+                                {
+                                    Some(!lexical.is_empty())
                                 } else {
-                                    !lexical.is_empty()
+                                    None // unknown datatype → type error
                                 }
                             }
-                            TermValue::Iri(_) | TermValue::BNode(_) => true,
+                            TermValue::Iri(_) | TermValue::BNode(_) => None,
                         }
                     } else {
-                        false // unbound → false
+                        None // unbound → error
                     }
                 }
                 _ => {
                     if let Some(val) = eval_filter_expr(expr, binding) {
-                        !val.is_empty() && val != "0" && val != "false"
+                        Some(!val.is_empty() && val != "0" && val != "false")
                     } else {
-                        false
+                        None
                     }
                 }
             }
         }
-        Filter::FnBound(var) => binding.contains_key(var),
+        Filter::FnBound(var) => Some(binding.contains_key(var)),
         Filter::FnIsLiteral(expr) => {
             if let FilterExpr::Variable(name) = expr {
-                matches!(binding.get(name), Some(TermValue::Literal { .. }))
+                Some(matches!(binding.get(name), Some(TermValue::Literal { .. })))
             } else {
-                false
+                Some(false)
             }
         }
         Filter::FnIsIri(expr) => {
             if let FilterExpr::Variable(name) = expr {
-                matches!(binding.get(name), Some(TermValue::Iri(_)))
+                Some(matches!(binding.get(name), Some(TermValue::Iri(_))))
             } else {
-                false
+                Some(false)
             }
         }
         Filter::FnIsBlank(expr) => {
             if let FilterExpr::Variable(name) = expr {
-                matches!(binding.get(name), Some(TermValue::BNode(_)))
+                Some(matches!(binding.get(name), Some(TermValue::BNode(_))))
             } else {
-                false
+                Some(false)
             }
         }
         Filter::FnRegex(expr, pattern, flags) => {
-            if let Some(val) = eval_filter_expr(expr, binding) {
+            // REGEX is defined only for string literals (xsd:string, rdf:langString, simple literals)
+            let val = if let FilterExpr::Variable(name) = expr {
+                match binding.get(name) {
+                    Some(TermValue::Literal { lexical, .. }) => Some(lexical.clone()),
+                    _ => None, // IRIs, BNodes → type error
+                }
+            } else {
+                eval_filter_expr(expr, binding)
+            };
+            if let Some(val) = val {
                 let case_insensitive = flags.as_ref().map_or(false, |f| f.contains('i'));
                 let dot_matches_newline = flags.as_ref().map_or(false, |f| f.contains('s'));
                 let multi_line = flags.as_ref().map_or(false, |f| f.contains('m'));
-                match RegexBuilder::new(pattern)
+                let quote_meta = flags.as_ref().map_or(false, |f| f.contains('q'));
+                let extended = flags.as_ref().map_or(false, |f| f.contains('x'));
+                // Unescape SPARQL string escapes in pattern
+                let mut unescaped = unescape_sparql_string(pattern);
+                // q flag: treat pattern as literal (no metacharacters)
+                if quote_meta {
+                    unescaped = regex::escape(&unescaped);
+                }
+                // x flag: strip unescaped whitespace and #-comments
+                if extended {
+                    let mut result = String::new();
+                    let mut pchars = unescaped.chars().peekable();
+                    while let Some(c) = pchars.next() {
+                        if c == '\\' {
+                            result.push(c);
+                            if let Some(nc) = pchars.next() { result.push(nc); }
+                        } else if c == '#' {
+                            // Skip to end of line
+                            while pchars.peek().is_some() && *pchars.peek().unwrap() != '\n' {
+                                pchars.next();
+                            }
+                        } else if c.is_whitespace() {
+                            // Skip unescaped whitespace
+                        } else {
+                            result.push(c);
+                        }
+                    }
+                    unescaped = result;
+                }
+                match RegexBuilder::new(&unescaped)
                     .case_insensitive(case_insensitive)
                     .dot_matches_new_line(dot_matches_newline)
                     .multi_line(multi_line)
                     .build()
                 {
-                    Ok(re) => re.is_match(&val),
-                    Err(_) => false, // invalid regex pattern → no match
+                    Ok(re) => Some(re.is_match(&val)),
+                    Err(_) => None,
                 }
             } else {
-                false
+                None
             }
         }
         Filter::FnContains(a, b) => {
             let av = eval_filter_expr(a, binding);
             let bv = eval_filter_expr(b, binding);
             match (av, bv) {
-                (Some(a), Some(b)) => a.contains(&b),
-                _ => false,
+                (Some(a), Some(b)) => Some(a.contains(&b)),
+                _ => None,
             }
         }
         Filter::FnStrStarts(a, b) => {
             let av = eval_filter_expr(a, binding);
             let bv = eval_filter_expr(b, binding);
             match (av, bv) {
-                (Some(a), Some(b)) => a.starts_with(&b),
-                _ => false,
+                (Some(a), Some(b)) => Some(a.starts_with(&b)),
+                _ => None,
             }
         }
         Filter::FnStrEnds(a, b) => {
             let av = eval_filter_expr(a, binding);
             let bv = eval_filter_expr(b, binding);
             match (av, bv) {
-                (Some(a), Some(b)) => a.ends_with(&b),
-                _ => false,
+                (Some(a), Some(b)) => Some(a.ends_with(&b)),
+                _ => None,
             }
         }
         Filter::FnIsNumeric(expr) => {
             if let FilterExpr::Variable(name) = expr {
-                matches!(binding.get(name), Some(TermValue::Literal { datatype, .. })
-                    if is_numeric_type(datatype))
+                Some(matches!(binding.get(name), Some(TermValue::Literal { datatype, .. })
+                    if is_numeric_type(datatype)))
             } else {
-                matches!(eval_filter_expr_typed(expr, binding), Some(TypedFilterValue::NumericLiteral(..)))
+                Some(matches!(eval_filter_expr_typed(expr, binding), Some(TypedFilterValue::NumericLiteral(..))))
+            }
+        }
+        Filter::FnSameTerm(a, b) => {
+            let av = eval_filter_expr_typed(a, binding);
+            let bv = eval_filter_expr_typed(b, binding);
+            match (av, bv) {
+                (Some(l), Some(r)) => Some(l == r),
+                _ => None,
+            }
+        }
+        Filter::FnLangMatches(a, b) => {
+            let av = eval_filter_expr(a, binding);
+            let bv = eval_filter_expr(b, binding);
+            match (av, bv) {
+                (Some(lang), Some(range)) => {
+                    if range == "*" {
+                        Some(!lang.is_empty())
+                    } else {
+                        // BCP 47 basic matching: case-insensitive prefix match
+                        let lang_lower = lang.to_lowercase();
+                        let range_lower = range.to_lowercase();
+                        Some(lang_lower == range_lower
+                            || lang_lower.starts_with(&format!("{}-", range_lower)))
+                    }
+                }
+                _ => None,
             }
         }
     }
@@ -2347,6 +2594,7 @@ fn evaluate_clauses(
     graph: &RdfGraph,
     initial: Vec<Binding>,
     prefixes: &HashMap<String, String>,
+    base_iri: &Option<String>,
 ) -> Vec<Binding> {
     let mut results = initial;
 
@@ -2356,7 +2604,7 @@ fn evaluate_clauses(
                 let mut new_results = Vec::new();
                 for binding in &results {
                     for triple in graph.triples() {
-                        if let Some(new_binding) = match_triple(pattern, triple, binding, prefixes)
+                        if let Some(new_binding) = match_triple(pattern, triple, binding, prefixes, base_iri)
                         {
                             new_results.push(new_binding);
                         }
@@ -2365,17 +2613,47 @@ fn evaluate_clauses(
                 results = new_results;
             }
             WhereClause::Filter(filter) => {
-                results.retain(|b| eval_filter(filter, b));
+                results.retain(|b| eval_filter(filter, b).unwrap_or(false));
             }
             WhereClause::Optional(inner_clauses) => {
+                // SPARQL algebra: OPTIONAL { P FILTER(F) } = LeftJoin(current, P, F)
+                // Split inner clauses into pattern clauses and filter clauses.
+                // If patterns match but filters fail, fall back to original binding.
+                let patterns: Vec<WhereClause> = inner_clauses
+                    .iter()
+                    .filter(|c| !matches!(c, WhereClause::Filter(_)))
+                    .cloned()
+                    .collect();
+                let filters: Vec<&Filter> = inner_clauses
+                    .iter()
+                    .filter_map(|c| match c {
+                        WhereClause::Filter(f) => Some(f),
+                        _ => None,
+                    })
+                    .collect();
+
                 let mut new_results = Vec::new();
                 for binding in &results {
-                    let matched =
-                        evaluate_clauses(inner_clauses, graph, vec![binding.clone()], prefixes);
-                    if matched.is_empty() {
+                    let pattern_matched =
+                        evaluate_clauses(&patterns, graph, vec![binding.clone()], prefixes, base_iri);
+                    if pattern_matched.is_empty() {
+                        // No pattern match — keep original binding
                         new_results.push(binding.clone());
+                    } else if filters.is_empty() {
+                        // No filters — all pattern matches pass through
+                        new_results.extend(pattern_matched);
                     } else {
-                        new_results.extend(matched);
+                        // Apply filters to pattern-matched rows
+                        let filtered: Vec<Binding> = pattern_matched
+                            .into_iter()
+                            .filter(|b| filters.iter().all(|f| eval_filter(f, b).unwrap_or(false)))
+                            .collect();
+                        if filtered.is_empty() {
+                            // All matched rows failed the filter — fall back to original binding
+                            new_results.push(binding.clone());
+                        } else {
+                            new_results.extend(filtered);
+                        }
                     }
                 }
                 results = new_results;
@@ -2383,7 +2661,7 @@ fn evaluate_clauses(
             WhereClause::Union(right_clauses) => {
                 // Evaluate right branch from scratch, union with current results
                 let right_results =
-                    evaluate_clauses(right_clauses, graph, vec![Binding::new()], prefixes);
+                    evaluate_clauses(right_clauses, graph, vec![Binding::new()], prefixes, base_iri);
                 results.extend(right_results);
             }
             WhereClause::UnionGroup(branches) => {
@@ -2392,10 +2670,26 @@ fn evaluate_clauses(
                 for branch in branches {
                     // Each branch starts from current results (join semantics)
                     let branch_results =
-                        evaluate_clauses(branch, graph, results.clone(), prefixes);
+                        evaluate_clauses(branch, graph, results.clone(), prefixes, base_iri);
                     union_results.extend(branch_results);
                 }
                 results = union_results;
+            }
+            WhereClause::Minus(inner_clauses) => {
+                // MINUS: anti-join per SPARQL spec §18.5
+                // Ω1 Minus Ω2 = { μ1 ∈ Ω1 | ∄ μ2 ∈ Ω2: compatible(μ1,μ2) ∧ dom(μ1)∩dom(μ2) ≠ ∅ }
+                let rhs = evaluate_clauses(inner_clauses, graph, vec![Binding::new()], prefixes, base_iri);
+                results.retain(|mu1| {
+                    !rhs.iter().any(|mu2| {
+                        // Check domains overlap
+                        let shared_vars: Vec<&String> = mu1.keys().filter(|k| mu2.contains_key(*k)).collect();
+                        if shared_vars.is_empty() {
+                            return false; // disjoint domains → keep mu1
+                        }
+                        // Check compatibility: shared variables must have equal values
+                        shared_vars.iter().all(|k| mu1.get(*k) == mu2.get(*k))
+                    })
+                });
             }
             WhereClause::Bind(expr, var_name) => {
                 for binding in &mut results {
@@ -2432,7 +2726,9 @@ fn evaluate_clauses(
                                 lang: None,
                             },
                         };
-                        binding.insert(var_name.clone(), term_val);
+                        if !binding.contains_key(var_name) {
+                            binding.insert(var_name.clone(), term_val);
+                        }
                     }
                     // If expression evaluates to None, variable stays unbound (per SPARQL spec)
                 }
@@ -2464,7 +2760,7 @@ pub fn execute(graph: &RdfGraph, query_str: &str) -> Result<QueryResult, String>
     let query = parser.parse_query()?;
 
     let initial = vec![Binding::new()];
-    let mut results = evaluate_clauses(&query.where_clauses, graph, initial, &query.prefixes);
+    let mut results = evaluate_clauses(&query.where_clauses, graph, initial, &query.prefixes, &query.base_iri);
 
     // ASK: return boolean result immediately — no projection, ordering, etc.
     if query.form == QueryForm::Ask {

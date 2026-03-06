@@ -1,5 +1,15 @@
 # Testing the Factoidal Engine
 
+## Role of Tests in the Verification Pipeline
+
+Tests serve **two purposes** in this project:
+
+1. **Behavioral validation (now):** W3C test suites validate that the Rust implementation and F* specs produce correct results. This is the interim validation strategy while the KaRaMeL extraction pipeline is being built.
+
+2. **Extraction validation (target):** When KaRaMeL-extracted WASM replaces the manual Rust implementation, the same W3C tests validate the *extracted* code. The tests don't go away — they become the acceptance criteria for verified output.
+
+The F* specs are the primary deliverable; tests validate both the current Rust code and the future extracted code against the W3C standard.
+
 ## Test Infrastructure
 
 ### Running Tests
@@ -17,6 +27,9 @@ cargo test w3c_sparql11_full_scorecard -- --nocapture
 
 # Large graph integration tests
 cargo test sparql_large_graph -- --nocapture
+
+# F* formal verification (requires: eval $(opam env --switch=fstar))
+cd formal/fstar && make verify
 
 # Individual module tests
 cargo test rdf_tests -- --nocapture
@@ -87,3 +100,19 @@ When making SPARQL engine changes:
 - No benchmark suite (only wall-clock timing in scorecard)
 - No property-based testing (QuickCheck/proptest for roundtrip properties)
 - No concurrency tests (single-threaded only currently)
+- **No F* typechecker integration** — F* specs are `.fstar.txt` files, not compiled/checked by F* toolchain
+- **No Hax extraction tests** — no Rust → F* extraction or verification against hand-written spec
+- **No KaRaMeL extraction tests** — no F* → C/WASM extraction pipeline in CI
+
+## Verification Pipeline Test Targets
+
+When the KaRaMeL extraction pipeline is operational, these test categories apply to the *extracted* code:
+
+| Test Category | Current Target | Future Target |
+|--------------|---------------|---------------|
+| W3C N-Triples | Rust/WASM | KaRaMeL-extracted WASM |
+| W3C Turtle | Rust/WASM | KaRaMeL-extracted WASM |
+| W3C SPARQL | Rust/WASM | KaRaMeL-extracted WASM |
+| Roundtrip verification | Rust unit tests | F* proof (Low* + KaRaMeL) |
+| Type invariants | Rust type system | F* refinement types (machine-checked) |
+| Graph operation correctness | Unit tests | F* lemmas (machine-checked proofs) |
