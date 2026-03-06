@@ -25,13 +25,26 @@ let is_iri (s : string) : bool =
 
 type wf_iri = s:iri{is_iri s}
 
-(* Well-known IRI constants. We assert they satisfy is_iri via axioms. *)
-assume val rdf_lang_string : wf_iri
-assume val xsd_string : wf_iri
-assume val xsd_integer : wf_iri
-assume val xsd_decimal : wf_iri
-assume val xsd_double : wf_iri
-assume val xsd_boolean : wf_iri
+(* Well-known IRI constants — concrete string values with normalization hints.
+   F* normalizer verifies is_iri at compile time. *)
+let rdf_lang_string : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"
+let xsd_string : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#string");
+  "http://www.w3.org/2001/XMLSchema#string"
+let xsd_integer : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#integer");
+  "http://www.w3.org/2001/XMLSchema#integer"
+let xsd_decimal : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#decimal");
+  "http://www.w3.org/2001/XMLSchema#decimal"
+let xsd_double : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#double");
+  "http://www.w3.org/2001/XMLSchema#double"
+let xsd_boolean : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#boolean");
+  "http://www.w3.org/2001/XMLSchema#boolean"
 
 (** 3. Literals with Runtime Checks **)
 noeq type literal = {

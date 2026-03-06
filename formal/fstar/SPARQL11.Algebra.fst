@@ -26,63 +26,92 @@ module SPARQL11.Algebra
 
 open FStar.String
 open FStar.List.Tot
+open RDF.Graph.Executable
 
 (** ====================================================================== **)
-(** Part 1: Imported RDF Types (from RDF.Graph.Executable)                  **)
+(** Part 1: Concrete RDF Types (imported from RDF.Graph.Executable)         **)
 (** ====================================================================== **)
 
-(* We assume the RDF core types from rdfcore11.fstar.txt *)
-assume type wf_iri : Type
-assume type bnode_id : Type
-assume type wf_literal : Type
-assume type rdf_term : Type
-assume type subject : Type
-assume type triple : Type
-assume type rdf_graph : Type
-assume type solution_mapping : Type
+(* Core types (wf_iri, bnode_id, wf_literal, rdf_term, subject, triple,
+   rdf_graph, solution_mapping, var_name) are imported via open.
+   Constructors T_IRI, T_BNode, T_Literal, S_IRI, S_BNode are in scope.
+   Equality functions subject_eq, literal_eq, rdf_term_eq, triple_eq
+   are in scope with concrete implementations and proved reflexivity. *)
 
-(* RDF term constructors *)
-assume val T_IRI : wf_iri -> rdf_term
-assume val T_BNode : bnode_id -> rdf_term
-assume val T_Literal : wf_literal -> rdf_term
+(* Literal field accessors — concrete via record projection *)
+let lit_lexical (l : wf_literal) : string = l.lexical_form
+let lit_datatype (l : wf_literal) : wf_iri = l.datatype
+let lit_lang (l : wf_literal) : option string = l.lang_tag
 
-(* Literal accessors *)
-assume val lit_lexical : wf_literal -> string
-assume val lit_datatype : wf_literal -> wf_iri
-assume val lit_lang : wf_literal -> option string
+(* IRI string extraction — wf_iri is a refined string, so identity *)
+let iri_to_string (i : wf_iri) : string = i
+let string_to_iri (s : string) : option wf_iri =
+  if is_iri s then Some s else None
 
-(* IRI string extraction *)
-assume val iri_to_string : wf_iri -> string
-assume val string_to_iri : string -> option wf_iri
+(* Well-known datatype IRIs: reuse from RDF.Graph.Executable where available.
+   rdf_lang_string, xsd_string, xsd_integer, xsd_decimal, xsd_double,
+   xsd_boolean are imported via open. Additional SPARQL-needed IRIs: *)
+let rdf_langString : wf_iri = rdf_lang_string  (* camelCase alias *)
+let xsd_float : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#float");
+  "http://www.w3.org/2001/XMLSchema#float"
+let xsd_dateTime : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#dateTime");
+  "http://www.w3.org/2001/XMLSchema#dateTime"
+let xsd_date : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#date");
+  "http://www.w3.org/2001/XMLSchema#date"
+let xsd_time : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#time");
+  "http://www.w3.org/2001/XMLSchema#time"
+let xsd_duration : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#duration");
+  "http://www.w3.org/2001/XMLSchema#duration"
+let xsd_dayTimeDuration : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#dayTimeDuration");
+  "http://www.w3.org/2001/XMLSchema#dayTimeDuration"
+let xsd_yearMonthDuration : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#yearMonthDuration");
+  "http://www.w3.org/2001/XMLSchema#yearMonthDuration"
 
-(* Well-known datatype IRIs *)
-assume val xsd_string : wf_iri
-assume val xsd_integer : wf_iri
-assume val xsd_decimal : wf_iri
-assume val xsd_double : wf_iri
-assume val xsd_float : wf_iri
-assume val xsd_boolean : wf_iri
-assume val xsd_dateTime : wf_iri
-assume val xsd_date : wf_iri
-assume val xsd_time : wf_iri
-assume val xsd_duration : wf_iri
-assume val xsd_dayTimeDuration : wf_iri
-assume val xsd_yearMonthDuration : wf_iri
-assume val rdf_langString : wf_iri
+(* Solution mapping operations — concrete implementations *)
+let sm_empty : solution_mapping = []
 
-(* Solution mapping operations *)
-assume val sm_empty : solution_mapping
-assume val sm_lookup : string -> solution_mapping -> option rdf_term
-assume val sm_bind : string -> rdf_term -> solution_mapping -> solution_mapping
-assume val sm_domain : solution_mapping -> list string
-assume val sm_compatible : solution_mapping -> solution_mapping -> bool
-assume val sm_merge : solution_mapping -> solution_mapping -> solution_mapping
+let sm_lookup (v : string) (mu : solution_mapping) : option rdf_term =
+  List.Tot.assoc v mu
 
-(* Graph operations *)
-assume val graph_triples : rdf_graph -> list triple
-assume val triple_subject : triple -> subject
-assume val triple_predicate : triple -> wf_iri
-assume val triple_object : triple -> rdf_term
+let sm_bind (v : string) (t : rdf_term) (mu : solution_mapping) : solution_mapping =
+  (v, t) :: mu
+
+let sm_domain (mu : solution_mapping) : list string =
+  List.Tot.map fst mu
+
+(* Two mappings are compatible if shared variables bind to equal terms *)
+let rec sm_compatible (mu1 mu2 : solution_mapping) : bool =
+  match mu1 with
+  | [] -> true
+  | (v, t) :: rest ->
+    (match List.Tot.assoc v mu2 with
+     | None -> sm_compatible rest mu2
+     | Some t2 -> rdf_term_eq t t2 && sm_compatible rest mu2)
+
+(* Merge: mu1 bindings take priority; add non-overlapping from mu2 *)
+let rec sm_merge_aux (mu1 : solution_mapping) (mu2 : solution_mapping) : solution_mapping =
+  match mu2 with
+  | [] -> mu1
+  | (v, t) :: rest ->
+    if Some? (List.Tot.assoc v mu1)
+    then sm_merge_aux mu1 rest
+    else sm_merge_aux ((v, t) :: mu1) rest
+
+let sm_merge (mu1 mu2 : solution_mapping) : solution_mapping =
+  sm_merge_aux mu1 mu2
+
+(* Graph operations — concrete via list/record access *)
+let graph_triples (g : rdf_graph) : list triple = g
+let triple_subject (t : triple) : subject = t.s
+let triple_predicate (t : triple) : wf_iri = t.p
+let triple_object (t : triple) : rdf_term = t.o
 
 (** ====================================================================== **)
 (** Part 2: SPARQL 1.1 Variable and Pattern Types                          **)
@@ -432,7 +461,12 @@ let union (omega1 omega2 : solution_sequence) : solution_sequence =
 (* Minus (§18.5) *)
 (* Ω1 Minus Ω2 = { μ1 | μ1 ∈ Ω1, ∀ μ2 ∈ Ω2:
      ¬compatible(μ1, μ2) ∨ dom(μ1) ∩ dom(μ2) = ∅ } *)
-assume val domains_disjoint : solution_mapping -> solution_mapping -> bool
+(* domains_disjoint: true if no variable appears in both mappings — CONCRETE *)
+let rec domains_disjoint (mu1 mu2 : solution_mapping) : bool =
+  match mu1 with
+  | [] -> true
+  | (v, _) :: rest ->
+    not (Some? (List.Tot.assoc v mu2)) && domains_disjoint rest mu2
 
 let minus (omega1 omega2 : solution_sequence) : solution_sequence =
   List.Tot.filter
@@ -489,21 +523,25 @@ type eval_result =
   | ER_Dbl   : string -> eval_result       (* double as string [S4] *)
   | ER_Error : eval_result                 (* type error / unbound *)
 
-assume val ebv : eval_result -> bool
-(* Specification:
-   ebv (ER_Bool b)   = b
-   ebv (ER_Num n)    = n <> 0
-   ebv (ER_Dec s)    = s <> "0" && s <> "0.0" && s <> ""
-   ebv (ER_Dbl s)    = s <> "0" && s <> "0.0" && s <> "NaN" && s <> ""
-   ebv (ER_Term (T_Literal l)) =
-     if lit_datatype l = xsd_boolean then lit_lexical l = "true" || lit_lexical l = "1"
-     else if lit_datatype l = xsd_string then String.length (lit_lexical l) > 0
-     else if lit_datatype l = rdf_langString then String.length (lit_lexical l) > 0
-     else if is_numeric_type (lit_datatype l) then parse_numeric (lit_lexical l) <> 0
-     else false  (* type error → false *)
-   ebv (ER_Term _)   = false
-   ebv ER_Error       = false
-*)
+(* Effective Boolean Value — CONCRETE implementation (§17.2.2) *)
+let ebv (v : eval_result) : bool =
+  match v with
+  | ER_Bool b   -> b
+  | ER_Num n    -> n <> 0
+  | ER_Dec s    -> s <> "0" && s <> "0.0" && s <> ""
+  | ER_Dbl s    -> s <> "0" && s <> "0.0" && s <> "NaN" && s <> ""
+  | ER_Term (T_Literal l) ->
+    if lit_datatype l = xsd_boolean
+    then lit_lexical l = "true" || lit_lexical l = "1"
+    else if lit_datatype l = xsd_string
+    then String.length (lit_lexical l) > 0
+    else if lit_datatype l = rdf_langString
+    then String.length (lit_lexical l) > 0
+    else if is_numeric_datatype (lit_datatype l)
+    then lit_lexical l <> "0" && lit_lexical l <> "0.0" && lit_lexical l <> ""
+    else false  (* unknown type → type error → false *)
+  | ER_Term _   -> false   (* IRI/BNode have no boolean interpretation *)
+  | ER_Error    -> false
 
 (** 8.2 Expression evaluation function **)
 
@@ -582,8 +620,9 @@ let fn_isLiteral (v : eval_result) : eval_result =
   | ER_Error -> ER_Error
   | _ -> ER_Bool false
 
-(* isNumeric: true if the value is a numeric type or parses as numeric *)
-assume val is_numeric_datatype : wf_iri -> bool
+(* isNumeric: true if the datatype IRI is one of the XSD numeric types — CONCRETE *)
+let is_numeric_datatype (dt : wf_iri) : bool =
+  dt = xsd_integer || dt = xsd_decimal || dt = xsd_double || dt = xsd_float
 
 let fn_isNumeric (v : eval_result) : eval_result =
   match v with
@@ -596,30 +635,33 @@ let fn_isNumeric (v : eval_result) : eval_result =
 
 (** 9.2 Accessor functions (§17.4.2) **)
 
-(* STR: string representation of an RDF term *)
-assume val fn_str : eval_result -> eval_result
-(* Specification:
-   fn_str (ER_Term (T_IRI i))     = ER_Term (T_Literal {lexical=iri_to_string i, datatype=xsd_string, lang=None})
-   fn_str (ER_Term (T_Literal l)) = ER_Term (T_Literal {lexical=lit_lexical l, datatype=xsd_string, lang=None})
-   fn_str ER_Error                = ER_Error
-*)
+(* Helper: construct a plain xsd:string literal *)
+let mk_plain_literal (s : string) : wf_literal =
+  { lexical_form = s; datatype = xsd_string; lang_tag = None }
 
-(* LANG: language tag of a literal *)
-assume val fn_lang : eval_result -> eval_result
-(* Specification:
-   fn_lang (ER_Term (T_Literal l)) =
-     match lit_lang l with
-     | Some tag -> ER_Term (plain_literal tag)
-     | None     -> ER_Term (plain_literal "")
-   fn_lang _ = ER_Error
-*)
+(* STR: string representation of an RDF term — CONCRETE *)
+let fn_str (v : eval_result) : eval_result =
+  match v with
+  | ER_Term (T_IRI i) -> ER_Term (T_Literal (mk_plain_literal (iri_to_string i)))
+  | ER_Term (T_Literal l) -> ER_Term (T_Literal (mk_plain_literal (lit_lexical l)))
+  | ER_Term (T_BNode b) -> ER_Term (T_Literal (mk_plain_literal b))
+  | ER_Error -> ER_Error
+  | _ -> ER_Error
 
-(* DATATYPE: datatype IRI of a literal *)
-assume val fn_datatype : eval_result -> eval_result
-(* Specification:
-   fn_datatype (ER_Term (T_Literal l)) = ER_Term (T_IRI (lit_datatype l))
-   fn_datatype _ = ER_Error
-*)
+(* LANG: language tag of a literal — CONCRETE *)
+let fn_lang (v : eval_result) : eval_result =
+  match v with
+  | ER_Term (T_Literal l) ->
+    (match lit_lang l with
+     | Some tag -> ER_Term (T_Literal (mk_plain_literal tag))
+     | None     -> ER_Term (T_Literal (mk_plain_literal "")))
+  | _ -> ER_Error
+
+(* DATATYPE: datatype IRI of a literal — CONCRETE *)
+let fn_datatype (v : eval_result) : eval_result =
+  match v with
+  | ER_Term (T_Literal l) -> ER_Term (T_IRI (lit_datatype l))
+  | _ -> ER_Error
 
 (** 9.3 String functions (§17.4.3) **)
 
@@ -627,7 +669,7 @@ assume val fn_datatype : eval_result -> eval_result
    and xsd:string typed literals. Lang-tagged strings are handled
    specially per function. [S3] Unicode handled via assumed primitives. *)
 
-assume val string_length : string -> nat
+let string_length (s : string) : nat = String.length s
 assume val string_substring : string -> nat -> option nat -> string
 assume val string_upper : string -> string
 assume val string_lower : string -> string
@@ -716,17 +758,21 @@ assume val dt_tz : string -> option string         (* timezone string e.g. "Z", 
 
 (** 9.7 Constructor functions (§17.4.1.8) **)
 
-(* STRDT(lexical, datatype) → typed literal *)
-assume val fn_strdt : string -> wf_iri -> rdf_term
+(* STRDT(lexical, datatype) → typed literal — CONCRETE *)
+let fn_strdt (lex : string) (dt : wf_iri) : rdf_term =
+  if dt = rdf_lang_string
+  then T_Literal ({ lexical_form = lex; datatype = xsd_string; lang_tag = None })  (* reject langString without lang *)
+  else T_Literal ({ lexical_form = lex; datatype = dt; lang_tag = None })
 
-(* STRLANG(lexical, lang) → lang-tagged literal *)
-assume val fn_strlang : string -> string -> rdf_term
+(* STRLANG(lexical, lang) → lang-tagged literal — CONCRETE *)
+let fn_strlang (lex : string) (lang : string) : rdf_term =
+  T_Literal ({ lexical_form = lex; datatype = rdf_lang_string; lang_tag = Some lang })
 
 (** 9.8 sameTerm (§17.4.1.7) **)
 
 (* sameTerm returns true iff two terms are identical RDF terms
-   (stricter than = which does value comparison) *)
-assume val same_term : rdf_term -> rdf_term -> bool
+   (stricter than = which does value comparison) — CONCRETE *)
+let same_term (t1 t2 : rdf_term) : bool = rdf_term_eq t1 t2
 
 (** 9.9 langMatches (§17.4.1.4) **)
 
@@ -855,8 +901,18 @@ let reduced_solutions (omega : solution_sequence) : solution_sequence = omega
 
 (** 11.3 OFFSET / LIMIT (§18.4) **)
 
-assume val list_drop : nat -> list 'a -> list 'a
-assume val list_take : nat -> list 'a -> list 'a
+(* list_drop/list_take — CONCRETE implementations *)
+let rec list_drop (n : nat) (l : list 'a) : list 'a =
+  if n = 0 then l
+  else match l with
+    | [] -> []
+    | _ :: tl -> list_drop (n - 1) tl
+
+let rec list_take (n : nat) (l : list 'a) : list 'a =
+  if n = 0 then []
+  else match l with
+    | [] -> []
+    | hd :: tl -> hd :: list_take (n - 1) tl
 
 let slice_solutions (offset : option nat) (limit : option nat) (omega : solution_sequence)
   : solution_sequence =
@@ -869,8 +925,14 @@ let slice_solutions (offset : option nat) (limit : option nat) (omega : solution
 
 (** 11.4 Projection (§18.4) **)
 
-(* Project solution mappings to selected variables *)
-assume val project : list var_name -> solution_mapping -> solution_mapping
+(* Project solution mapping to selected variables — CONCRETE *)
+let rec project (vars : list var_name) (mu : solution_mapping) : solution_mapping =
+  match mu with
+  | [] -> []
+  | (v, t) :: rest ->
+    if List.Tot.mem v vars
+    then (v, t) :: project vars rest
+    else project vars rest
 
 let project_solutions (vars : list var_name) (omega : solution_sequence)
   : solution_sequence =
