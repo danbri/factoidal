@@ -136,7 +136,7 @@ factoidal/
 - [x] Web demo using real WASM library (docs/index.html)
 - [x] W3C N-Triples test suite: **72/72 passing**
 - [x] W3C Turtle test suite: **69/69 positive syntax, 74/74 negative syntax, 80/80 eval**
-- [x] W3C SPARQL test harness: **93/436 passing** (21.3%) across 1.0 + 1.1 combined
+- [x] W3C SPARQL test harness: **115/436 passing** (26.4%) across 1.0 + 1.1 combined
 - [x] Large graph SPARQL integration tests: **17 passing** (117-triple graph, multi-hop joins, OPTIONAL, DISTINCT, ORDER BY, FILTER)
 - [x] Core RDF unit tests: **25 passing**
 - [x] SPARQL unit tests: **28 passing**
@@ -151,22 +151,22 @@ factoidal/
 | Suite               | Pass | Total | Rate   | Key blockers                              |
 |--------------------|------|-------|--------|-------------------------------------------|
 | algebra            | 5    | 14    | 35.7%  | GRAPH keyword, nested scope               |
-| basic              | 15   | 27    | 55.6%  | BASE resolution, list patterns, quotes    |
+| basic              | 16   | 27    | 59.3%  | BASE resolution, list patterns, quotes    |
 | bnode-coreference  | 1    | 1     | 100%   | -                                         |
 | boolean-eff-value  | 5    | 7     | 71.4%  | Typed literal BEV                         |
 | bound              | 1    | 1     | 100%   | -                                         |
 | cast               | 0    | 7     | 0.0%   | Casting functions                         |
 | distinct           | 7    | 11    | 63.6%  | Numeric value comparison                  |
 | expr-builtin       | 9    | 24    | 37.5%  | Complex expression parsing                |
-| expr-equals        | 1    | 15    | 6.7%   | Value equality semantics                  |
+| expr-equals        | 9    | 15    | 60.0%  | Cross-graph equality, remaining edge cases|
 | expr-ops           | 9    | 17    | 52.9%  | Division, type promotion                  |
 | i18n               | 2    | 5     | 40.0%  | Unicode normalization                     |
-| open-world         | 5    | 18    | 27.8%  | UNION scope, complex filters              |
+| open-world         | 7    | 18    | 38.9%  | UNION scope, complex filters              |
 | optional           | 1    | 7     | 14.3%  | OPTIONAL result ordering                  |
 | optional-filter    | 1    | 6     | 16.7%  | FILTER inside OPTIONAL                    |
 | reduced            | 0    | 2     | 0.0%   | REDUCED modifier                          |
 | regex              | 14   | 21    | 66.7%  | Quantifier edge cases                     |
-| solution-seq       | 0    | 13    | 0.0%   | ORDER BY + solution sequences             |
+| solution-seq       | 11   | 13    | 84.6%  | OFFSET edge cases                         |
 | sort               | 4    | 4     | 100%   | -                                         |
 | triple-match       | 2    | 4     | 50.0%  | Named graph matching                      |
 | type-promotion     | 0    | 30    | 0.0%   | Numeric type promotion                    |
@@ -274,7 +274,7 @@ Current F* spec covers ~241 lines. Formalization gap by module:
 | Core RDF type tests | 25 | 0.01s | Iri, Literal, Triple, Graph |
 | Large graph SPARQL integration | 17 | 0.04s | 117-triple graph, multi-hop joins |
 | W3C N-Triples | 72 | 0.02s | 72/72 (100%) |
-| W3C SPARQL (1.0 + 1.1) | 13 harness tests | 0.45s | 93/436 individual (21.3%, ~390ms query time) |
+| W3C SPARQL (1.0 + 1.1) | 13 harness tests | 0.45s | 115/436 individual (26.4%, ~390ms query time) |
 | W3C Turtle | 3 harness tests | 0.07s | 223/223 individual (100%) |
 | **Total** | **172** | **~0.53s** | All passing |
 
@@ -284,9 +284,9 @@ Current F* spec covers ~241 lines. Formalization gap by module:
 |------|----------|--------|
 | N-Triples (RDF 1.1) | 72/72 (100%) | Complete |
 | Turtle (RDF 1.1) | 223/223 (100%) | Complete (69 pos + 74 neg + 80 eval) |
-| SPARQL 1.0 | 82/234 (35.0%) | In progress — 21 suites evaluated |
+| SPARQL 1.0 | 104/234 (44.4%) | In progress — 21 suites evaluated |
 | SPARQL 1.1 | 11/202 (5.4%) | Growing — 11 suites evaluated |
-| **SPARQL combined** | **93/436 (21.3%)** | **32 suites, ~390ms** |
+| **SPARQL combined** | **115/436 (26.4%)** | **32 suites, ~390ms** |
 
 ### SPARQL Improvement Path
 
@@ -298,9 +298,9 @@ Current F* spec covers ~241 lines. Formalization gap by module:
 | ~~Boolean effective value~~ | ~~7~~ | ~~Low~~ | Done (5/7) |
 | ~~UNION support~~ | ~~10~~ | ~~Medium~~ | Done |
 | BASE IRI resolution in queries | ~5 (basic) | Low | Pending |
-| Value equality semantics | ~14 (expr-equals) | Medium | Pending |
+| Value equality semantics | ~14 (expr-equals) | Medium | Mostly done (9/15) |
 | Numeric type promotion | ~30 (type-promotion) | Medium | Pending |
-| Solution sequences (ORDER BY edge cases) | ~13 | Medium | Pending |
+| Solution sequences (ORDER BY edge cases) | ~13 | Medium | Mostly done (11/13) |
 | Casting functions | ~13 (cast) | Medium | Pending |
 | Sub-SELECT / nested queries | ~20 (algebra, subquery) | High | Pending |
 | Aggregates (COUNT, SUM, GROUP BY) | ~35 (1.1 aggregates) | High | Pending |

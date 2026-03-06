@@ -375,7 +375,7 @@ impl Parser {
                 // Check if next token is a function name (like REGEX, BOUND, etc.)
                 // or if it starts with (
                 let next = self.peek().ok_or("Unexpected end after FILTER")?;
-                let next_upper = next.to_uppercase();
+                let _next_upper = next.to_uppercase();
                 let needs_outer_paren = next == "(";
                 if needs_outer_paren {
                     self.next()?; // (
@@ -444,26 +444,46 @@ impl Parser {
                 let s = self.parse_pattern_element()?;
                 let p = self.parse_pattern_element()?;
                 let o = self.parse_pattern_element()?;
+                clauses.push(WhereClause::Pattern(TriplePattern { s: s.clone(), p: p.clone(), o }));
+                // Handle , for object list (same subject+predicate, different objects)
+                while self.peek() == Some(",") {
+                    self.next()?; // ,
+                    let o2 = self.parse_pattern_element()?;
+                    clauses.push(WhereClause::Pattern(TriplePattern {
+                        s: s.clone(),
+                        p: p.clone(),
+                        o: o2,
+                    }));
+                }
                 // Handle ; for property list (same subject, different predicates)
                 while self.peek() == Some(";") {
                     self.next()?; // ;
-                    // Check if next is } or another statement start (end of property list)
-                    if self.peek() == Some("}") || self.peek().is_none() {
+                    // Check if next is } or . or another non-predicate (end of property list)
+                    if self.peek() == Some("}") || self.peek() == Some(".") || self.peek().is_none() {
                         break;
                     }
                     let p2 = self.parse_pattern_element()?;
                     let o2 = self.parse_pattern_element()?;
                     clauses.push(WhereClause::Pattern(TriplePattern {
                         s: s.clone(),
-                        p: p2,
+                        p: p2.clone(),
                         o: o2,
                     }));
+                    // Handle , after ; (object list for new predicate)
+                    while self.peek() == Some(",") {
+                        self.next()?; // ,
+                        let o3 = self.parse_pattern_element()?;
+                        clauses.push(WhereClause::Pattern(TriplePattern {
+                            s: s.clone(),
+                            p: p2.clone(),
+                            o: o3,
+                        }));
+                    }
                 }
                 // optional .
                 if self.peek() == Some(".") {
                     self.next()?;
                 }
-                clauses.push(WhereClause::Pattern(TriplePattern { s, p, o }));
             }
         }
 
@@ -547,15 +567,27 @@ impl Parser {
                 parts[0].to_string(),
                 parts.get(1).unwrap_or(&"").to_string(),
             ))
-        } else if t == "[" {
-            // Blank node — skip to ]
-            // For now, just create a fresh variable
+        } else if t == "[]" {
+            // Blank node [] tokenized as single token — anonymous blank node
             let bnode_var = format!("__bnode_{}", self.pos);
-            while self.peek() != Some("]") && self.peek().is_some() {
-                self.next()?;
-            }
+            Ok(PatternElement::Variable(bnode_var))
+        } else if t == "[" {
+            // Blank node [] — anonymous blank node, acts as a fresh variable
+            let bnode_var = format!("__bnode_{}", self.pos);
+            // Handle empty [] or property list [ :p :o ; :p2 :o2 ]
             if self.peek() == Some("]") {
                 self.next()?; // ]
+            } else {
+                // Skip property list content until matching ]
+                let mut depth = 1;
+                while depth > 0 {
+                    match self.peek() {
+                        Some("[") => { self.next()?; depth += 1; }
+                        Some("]") => { self.next()?; depth -= 1; }
+                        Some(_) => { self.next()?; }
+                        None => break,
+                    }
+                }
             }
             Ok(PatternElement::Variable(bnode_var))
         } else {
@@ -838,7 +870,7 @@ fn tokenize(input: &str) -> Vec<String> {
             }
         }
         // Single-char tokens
-        if matches!(chars[i], '{' | '}' | '(' | ')' | '.' | ',' | '*' | '=' | '<' | '>' | '!' | ';') {
+        if matches!(chars[i], '{' | '}' | '(' | ')' | '.' | ',' | '*' | '=' | '<' | '>' | '!' | ';' | '[' | ']') {
             // But < could start an IRI
             if chars[i] == '<' {
                 let start = i;
@@ -1021,34 +1053,94 @@ fn match_triple(
     Some(new_bindings)
 }
 
-fn eval_filter_expr(expr: &FilterExpr, binding: &Binding) -> Option<String> {
-    match expr {
-        FilterExpr::Variable(name) => binding.get(name).map(|v| v.as_str_value().to_string()),
-        FilterExpr::StringLit(s) => Some(s.clone()),
-        FilterExpr::NumericLit(n) => Some(n.to_string()),
-        FilterExpr::IriLit(s) => Some(s.clone()),
-        FilterExpr::FnStr(inner) => {
-            if let FilterExpr::Variable(name) = inner.as_ref() {
-                binding.get(name).map(|v| v.as_str_value().to_string())
+/// Typed filter value for type-aware SPARQL comparisons.
+#[derive(Debug, Clone)]
+enum TypedFilterValue {
+    Iri(String),
+    BNode(String),
+    PlainLiteral(String),         // xsd:string or untyped
+    LangLiteral(String, String),  // lexical, lang tag
+    NumericLiteral(f64, String),  // numeric value, datatype IRI
+    TypedLiteral(String, String), // lexical, datatype IRI (non-numeric, non-string)
+    BooleanLiteral(bool),
+}
+
+impl TypedFilterValue {
+    fn as_string(&self) -> String {
+        match self {
+            TypedFilterValue::Iri(s) | TypedFilterValue::BNode(s) => s.clone(),
+            TypedFilterValue::PlainLiteral(s) => s.clone(),
+            TypedFilterValue::LangLiteral(s, _) => s.clone(),
+            TypedFilterValue::NumericLiteral(n, _) => n.to_string(),
+            TypedFilterValue::TypedLiteral(s, _) => s.clone(),
+            TypedFilterValue::BooleanLiteral(b) => if *b { "true" } else { "false" }.to_string(),
+        }
+    }
+
+    fn is_numeric(&self) -> bool {
+        matches!(self, TypedFilterValue::NumericLiteral(..))
+    }
+}
+
+const XSD_INTEGER: &str = "http://www.w3.org/2001/XMLSchema#integer";
+const XSD_DECIMAL: &str = "http://www.w3.org/2001/XMLSchema#decimal";
+const XSD_DOUBLE: &str = "http://www.w3.org/2001/XMLSchema#double";
+const XSD_FLOAT: &str = "http://www.w3.org/2001/XMLSchema#float";
+const XSD_BOOLEAN: &str = "http://www.w3.org/2001/XMLSchema#boolean";
+
+fn is_numeric_type(dt: &str) -> bool {
+    dt == XSD_INTEGER || dt == XSD_DECIMAL || dt == XSD_DOUBLE || dt == XSD_FLOAT
+}
+
+fn term_to_typed(tv: &TermValue) -> TypedFilterValue {
+    match tv {
+        TermValue::Iri(s) => TypedFilterValue::Iri(s.clone()),
+        TermValue::BNode(s) => TypedFilterValue::BNode(s.clone()),
+        TermValue::Literal { lexical, datatype, lang } => {
+            if let Some(l) = lang {
+                TypedFilterValue::LangLiteral(lexical.clone(), l.clone())
+            } else if datatype == XSD_BOOLEAN {
+                TypedFilterValue::BooleanLiteral(lexical == "true" || lexical == "1")
+            } else if is_numeric_type(datatype) {
+                if let Ok(n) = lexical.parse::<f64>() {
+                    TypedFilterValue::NumericLiteral(n, datatype.clone())
+                } else {
+                    TypedFilterValue::TypedLiteral(lexical.clone(), datatype.clone())
+                }
+            } else if datatype == rdf::XSD_STRING {
+                TypedFilterValue::PlainLiteral(lexical.clone())
             } else {
-                eval_filter_expr(inner, binding)
+                TypedFilterValue::TypedLiteral(lexical.clone(), datatype.clone())
             }
+        }
+    }
+}
+
+fn eval_filter_expr_typed(expr: &FilterExpr, binding: &Binding) -> Option<TypedFilterValue> {
+    match expr {
+        FilterExpr::Variable(name) => binding.get(name).map(term_to_typed),
+        FilterExpr::StringLit(s) => Some(TypedFilterValue::PlainLiteral(s.clone())),
+        FilterExpr::NumericLit(n) => Some(TypedFilterValue::NumericLiteral(*n, XSD_INTEGER.to_string())),
+        FilterExpr::IriLit(s) => Some(TypedFilterValue::Iri(s.clone())),
+        FilterExpr::FnStr(inner) => {
+            let v = eval_filter_expr_typed(inner, binding)?;
+            Some(TypedFilterValue::PlainLiteral(v.as_string()))
         }
         FilterExpr::FnLang(inner) => {
             if let FilterExpr::Variable(name) = inner.as_ref() {
                 if let Some(TermValue::Literal { lang, .. }) = binding.get(name) {
-                    Some(lang.clone().unwrap_or_default())
+                    Some(TypedFilterValue::PlainLiteral(lang.clone().unwrap_or_default()))
                 } else {
-                    Some(String::new())
+                    Some(TypedFilterValue::PlainLiteral(String::new()))
                 }
             } else {
-                Some(String::new())
+                Some(TypedFilterValue::PlainLiteral(String::new()))
             }
         }
         FilterExpr::FnDatatype(inner) => {
             if let FilterExpr::Variable(name) = inner.as_ref() {
                 if let Some(TermValue::Literal { datatype, .. }) = binding.get(name) {
-                    Some(datatype.clone())
+                    Some(TypedFilterValue::Iri(datatype.clone()))
                 } else {
                     None
                 }
@@ -1057,54 +1149,136 @@ fn eval_filter_expr(expr: &FilterExpr, binding: &Binding) -> Option<String> {
             }
         }
         FilterExpr::Arithmetic(left, op, right) => {
-            let lv = eval_filter_expr(left, binding)?.parse::<f64>().ok()?;
-            let rv = eval_filter_expr(right, binding)?.parse::<f64>().ok()?;
+            let lv = eval_filter_expr_typed(left, binding)?;
+            let rv = eval_filter_expr_typed(right, binding)?;
+            let ln = match &lv {
+                TypedFilterValue::NumericLiteral(n, _) => *n,
+                TypedFilterValue::PlainLiteral(s) => s.parse::<f64>().ok()?,
+                _ => return None,
+            };
+            let rn = match &rv {
+                TypedFilterValue::NumericLiteral(n, _) => *n,
+                TypedFilterValue::PlainLiteral(s) => s.parse::<f64>().ok()?,
+                _ => return None,
+            };
             let result = match op.as_str() {
-                "+" => lv + rv,
-                "-" => lv - rv,
-                "*" => lv * rv,
+                "+" => ln + rn,
+                "-" => ln - rn,
+                "*" => ln * rn,
                 "/" => {
-                    if rv == 0.0 {
-                        return None;
-                    }
-                    lv / rv
+                    if rn == 0.0 { return None; }
+                    ln / rn
                 }
                 _ => return None,
             };
-            Some(result.to_string())
+            // Determine result type: promote to double if either is double/decimal
+            let dt = match (&lv, &rv) {
+                (TypedFilterValue::NumericLiteral(_, ld), TypedFilterValue::NumericLiteral(_, rd)) => {
+                    if ld == XSD_DOUBLE || rd == XSD_DOUBLE { XSD_DOUBLE }
+                    else if ld == XSD_DECIMAL || rd == XSD_DECIMAL { XSD_DECIMAL }
+                    else { XSD_INTEGER }
+                }
+                _ => XSD_DOUBLE,
+            };
+            Some(TypedFilterValue::NumericLiteral(result, dt.to_string()))
         }
     }
+}
+
+/// SPARQL value equality (=) with type awareness.
+/// Returns None for type errors (incomparable types).
+fn typed_compare(lv: &TypedFilterValue, rv: &TypedFilterValue, op: &CompOp) -> Option<bool> {
+    match (lv, rv) {
+        // Numeric vs numeric: cross-type comparison allowed
+        (TypedFilterValue::NumericLiteral(ln, _), TypedFilterValue::NumericLiteral(rn, _)) => {
+            Some(match op {
+                CompOp::Eq => (ln - rn).abs() < f64::EPSILON,
+                CompOp::Ne => (ln - rn).abs() >= f64::EPSILON,
+                CompOp::Lt => ln < rn,
+                CompOp::Gt => ln > rn,
+                CompOp::Le => ln <= rn,
+                CompOp::Ge => ln >= rn,
+            })
+        }
+        // Boolean vs boolean
+        (TypedFilterValue::BooleanLiteral(l), TypedFilterValue::BooleanLiteral(r)) => {
+            Some(match op {
+                CompOp::Eq => l == r,
+                CompOp::Ne => l != r,
+                _ => return None,
+            })
+        }
+        // Plain literal vs plain literal: string comparison
+        (TypedFilterValue::PlainLiteral(l), TypedFilterValue::PlainLiteral(r)) => {
+            Some(match op {
+                CompOp::Eq => l == r,
+                CompOp::Ne => l != r,
+                CompOp::Lt => l < r,
+                CompOp::Gt => l > r,
+                CompOp::Le => l <= r,
+                CompOp::Ge => l >= r,
+            })
+        }
+        // Lang literals: equal only if both lexical and lang match
+        (TypedFilterValue::LangLiteral(llex, llang), TypedFilterValue::LangLiteral(rlex, rlang)) => {
+            Some(match op {
+                CompOp::Eq => llex == rlex && llang.to_lowercase() == rlang.to_lowercase(),
+                CompOp::Ne => llex != rlex || llang.to_lowercase() != rlang.to_lowercase(),
+                _ => return None,
+            })
+        }
+        // IRI vs IRI
+        (TypedFilterValue::Iri(l), TypedFilterValue::Iri(r)) => {
+            Some(match op {
+                CompOp::Eq => l == r,
+                CompOp::Ne => l != r,
+                CompOp::Lt => l < r,
+                CompOp::Gt => l > r,
+                CompOp::Le => l <= r,
+                CompOp::Ge => l >= r,
+            })
+        }
+        // BNode vs BNode
+        (TypedFilterValue::BNode(l), TypedFilterValue::BNode(r)) => {
+            Some(match op {
+                CompOp::Eq => l == r,
+                CompOp::Ne => l != r,
+                _ => return None,
+            })
+        }
+        // Same unknown typed literals: compare if same datatype
+        (TypedFilterValue::TypedLiteral(llex, ldt), TypedFilterValue::TypedLiteral(rlex, rdt)) => {
+            if ldt == rdt {
+                // Same datatype: lexical comparison for ordering
+                Some(match op {
+                    CompOp::Eq => llex == rlex,
+                    CompOp::Ne => llex != rlex,
+                    CompOp::Lt => llex < rlex,
+                    CompOp::Gt => llex > rlex,
+                    CompOp::Le => llex <= rlex,
+                    CompOp::Ge => llex >= rlex,
+                })
+            } else {
+                // Different unknown types: type error
+                None
+            }
+        }
+        // Incompatible types (plain vs numeric, etc.): type error → None
+        _ => None,
+    }
+}
+
+fn eval_filter_expr(expr: &FilterExpr, binding: &Binding) -> Option<String> {
+    eval_filter_expr_typed(expr, binding).map(|v| v.as_string())
 }
 
 fn eval_filter(filter: &Filter, binding: &Binding) -> bool {
     match filter {
         Filter::Comparison(left, op, right) => {
-            let lv = eval_filter_expr(left, binding);
-            let rv = eval_filter_expr(right, binding);
+            let lv = eval_filter_expr_typed(left, binding);
+            let rv = eval_filter_expr_typed(right, binding);
             match (lv, rv) {
-                (Some(l), Some(r)) => {
-                    // Try numeric comparison first
-                    if let (Ok(ln), Ok(rn)) = (l.parse::<f64>(), r.parse::<f64>()) {
-                        match op {
-                            CompOp::Eq => (ln - rn).abs() < f64::EPSILON,
-                            CompOp::Ne => (ln - rn).abs() >= f64::EPSILON,
-                            CompOp::Lt => ln < rn,
-                            CompOp::Gt => ln > rn,
-                            CompOp::Le => ln <= rn,
-                            CompOp::Ge => ln >= rn,
-                        }
-                    } else {
-                        // Fall back to string comparison
-                        match op {
-                            CompOp::Eq => l == r,
-                            CompOp::Ne => l != r,
-                            CompOp::Lt => l < r,
-                            CompOp::Gt => l > r,
-                            CompOp::Le => l <= r,
-                            CompOp::Ge => l >= r,
-                        }
-                    }
-                }
+                (Some(l), Some(r)) => typed_compare(&l, &r, op).unwrap_or(false),
                 _ => false,
             }
         }
@@ -1582,7 +1756,7 @@ mod tests {
             &g,
             r#"SELECT ?s ?age WHERE {
                  ?s <http://example.org/age> ?age .
-                 FILTER (?age > "5")
+                 FILTER (?age > 5)
                }"#,
         )
         .unwrap();
