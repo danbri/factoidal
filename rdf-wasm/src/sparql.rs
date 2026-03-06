@@ -944,6 +944,19 @@ impl Parser {
     }
 
     fn parse_filter_expr(&mut self) -> Result<FilterExpr, String> {
+        let left = self.parse_filter_expr_primary()?;
+        // Check for arithmetic operators after primary expression
+        if let Some(op) = self.peek() {
+            if matches!(op, "+" | "-" | "*" | "/") {
+                let arith_op = self.next()?;
+                let right = self.parse_filter_expr_primary()?;
+                return Ok(FilterExpr::Arithmetic(Box::new(left), arith_op, Box::new(right)));
+            }
+        }
+        Ok(left)
+    }
+
+    fn parse_filter_expr_primary(&mut self) -> Result<FilterExpr, String> {
         let t = self.peek().ok_or("Unexpected end in filter expression")?.to_string();
         let upper = t.to_uppercase();
 

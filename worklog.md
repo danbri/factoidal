@@ -41,6 +41,17 @@ Only `xsd:string` and `rdf:langString` use non-empty check. All other typed lite
 **Fix #13 — Arithmetic type strictness (sparql.rs:2098-2105)**
 Removed `PlainLiteral` coercion arms. Arithmetic now returns `None` for non-numeric operands.
 
+### 2026-03-06: Arithmetic in expressions (parser fix)
+
+`parse_filter_expr` could not handle arithmetic operators (`+`, `-`, `*`, `/`).
+Expressions like `datatype(?l + ?r)` inside FILTER failed with `"Expected ')', got '+'"`.
+
+**Fix:** Split `parse_filter_expr` into `parse_filter_expr` (handles arithmetic) and
+`parse_filter_expr_primary` (handles atoms/functions). The outer function checks for
+arithmetic operators after parsing a primary expression.
+
+**Impact:** type-promotion suite 0/30 → 30/30 (100%). Total: 161 → 191 (+30).
+
 ### Remaining divergences (not bugs, or deferred)
 
 | # | Area | Decision |
