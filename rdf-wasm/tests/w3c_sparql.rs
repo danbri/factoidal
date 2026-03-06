@@ -727,7 +727,7 @@ fn print_scorecard(title: &str, results: &[SuiteResult]) {
         .collect();
     if !all_failures.is_empty() {
         eprintln!("\nFailures ({}):", all_failures.len());
-        for f in all_failures.iter().take(30) {
+        for f in all_failures.iter().take(300) {
             eprintln!("  {f}");
         }
         if all_failures.len() > 30 {
