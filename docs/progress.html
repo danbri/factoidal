@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Factoidal — W3C Test Progress</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    max-width: 960px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+    background: #fafafa;
+    color: #1a1a1a;
+  }
+  h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+  .subtitle { color: #666; margin-bottom: 2rem; }
+  canvas { display: block; margin: 0 auto; }
+  .chart-container {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+  th, td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid #eee; }
+  th { font-weight: 600; color: #555; }
+  .mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.8rem; }
+  .bar { display: inline-block; height: 14px; border-radius: 2px; vertical-align: middle; }
+  .bar-nt { background: #22c55e; }
+  .bar-turtle { background: #3b82f6; }
+  .bar-sparql { background: #f59e0b; }
+  .legend { display: flex; gap: 1.5rem; margin-bottom: 1rem; font-size: 0.875rem; }
+  .legend-item { display: flex; align-items: center; gap: 0.4rem; }
+  .legend-swatch { width: 14px; height: 14px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<h1>Factoidal — W3C Test Progress</h1>
+<p class="subtitle">Formally verified RDF toolkit test coverage over time</p>
+
+<div class="chart-container">
+  <div class="legend">
+    <div class="legend-item"><div class="legend-swatch" style="background:#22c55e"></div> N-Triples (72/72)</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#3b82f6"></div> Turtle (223/223)</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#f59e0b"></div> SPARQL (159/436)</div>
+  </div>
+  <canvas id="chart" width="900" height="400"></canvas>
+</div>
+
+<h2 style="font-size:1.2rem">Commit History</h2>
+<table>
+  <thead>
+    <tr><th>Time</th><th>Commit</th><th>N-Triples</th><th>Turtle</th><th>SPARQL</th><th>Milestone</th></tr>
+  </thead>
+  <tbody id="tableBody"></tbody>
+</table>
+
+<script>
+const data = [
+  { time: "Mar 5 17:12", hash: "bcf7aef", nt: 0, turtle: 0, sparql: 0, total_sparql: 0, label: "Initial commit" },
+  { time: "Mar 5 22:36", hash: "43d7603", nt: 72, turtle: 0, sparql: 0, total_sparql: 0, label: "N-Triples 72/72" },
+  { time: "Mar 5 23:11", hash: "a5496c1", nt: 72, turtle: 223, sparql: 0, total_sparql: 0, label: "Turtle 223/223" },
+  { time: "Mar 5 23:39", hash: "5a36f95", nt: 72, turtle: 223, sparql: 32, total_sparql: 436, label: "SPARQL harness (32 suites)" },
+  { time: "Mar 6 00:05", hash: "2f0cb65", nt: 72, turtle: 223, sparql: 93, total_sparql: 436, label: "Literals, UNION, FILTER (+61)" },
+  { time: "Mar 6 00:58", hash: "4a201fc", nt: 72, turtle: 223, sparql: 115, total_sparql: 436, label: "OPTIONAL, EXISTS (+22)" },
+  { time: "Mar 6 01:22", hash: "5d885bf", nt: 72, turtle: 223, sparql: 122, total_sparql: 436, label: "Expression fixes (+7)" },
+  { time: "Mar 6 01:27", hash: "6b9eddf", nt: 72, turtle: 223, sparql: 141, total_sparql: 436, label: "SELECT expr, BIND (+19)" },
+  { time: "Mar 6 01:50", hash: "8300bb1", nt: 72, turtle: 223, sparql: 159, total_sparql: 436, label: "Hash, date/time, STRDT (+18)" },
+  { time: "Mar 6 02:30", hash: "036f12d", nt: 72, turtle: 223, sparql: 159, total_sparql: 436, label: "ASK query form" },
+];
+
+// Draw chart
+const canvas = document.getElementById('chart');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+const PAD = { top: 20, right: 30, bottom: 60, left: 50 };
+const plotW = W - PAD.left - PAD.right;
+const plotH = H - PAD.top - PAD.bottom;
+
+const maxY = 460; // slightly above max total
+const n = data.length;
+
+function x(i) { return PAD.left + (i / (n - 1)) * plotW; }
+function y(v) { return PAD.top + plotH - (v / maxY) * plotH; }
+
+// Grid
+ctx.strokeStyle = '#eee';
+ctx.lineWidth = 1;
+for (let v = 0; v <= maxY; v += 50) {
+  ctx.beginPath();
+  ctx.moveTo(PAD.left, y(v));
+  ctx.lineTo(W - PAD.right, y(v));
+  ctx.stroke();
+  ctx.fillStyle = '#999';
+  ctx.font = '11px system-ui';
+  ctx.textAlign = 'right';
+  ctx.fillText(v, PAD.left - 8, y(v) + 4);
+}
+
+// Draw stacked area: SPARQL (bottom), Turtle (middle), N-Triples (top)
+function drawArea(getData, color, alpha) {
+  ctx.fillStyle = color;
+  ctx.globalAlpha = alpha;
+  ctx.beginPath();
+  ctx.moveTo(x(0), y(0));
+  for (let i = 0; i < n; i++) ctx.lineTo(x(i), y(getData(i)));
+  ctx.lineTo(x(n-1), y(0));
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function drawLine(getData, color, width) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    if (i === 0) ctx.moveTo(x(i), y(getData(i)));
+    else ctx.lineTo(x(i), y(getData(i)));
+  }
+  ctx.stroke();
+}
+
+// Stacked: total = sparql + turtle + nt
+const totalAt = i => data[i].sparql + data[i].turtle + data[i].nt;
+const turtleSparqlAt = i => data[i].sparql + data[i].turtle;
+const sparqlAt = i => data[i].sparql;
+
+// Areas (bottom to top)
+drawArea(totalAt, '#22c55e', 0.25);
+drawArea(turtleSparqlAt, '#3b82f6', 0.25);
+drawArea(sparqlAt, '#f59e0b', 0.25);
+
+// Lines
+drawLine(totalAt, '#22c55e', 2.5);
+drawLine(turtleSparqlAt, '#3b82f6', 2.5);
+drawLine(sparqlAt, '#f59e0b', 2.5);
+
+// Dots
+for (let i = 0; i < n; i++) {
+  [[totalAt(i), '#22c55e'], [turtleSparqlAt(i), '#3b82f6'], [sparqlAt(i), '#f59e0b']].forEach(([val, col]) => {
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.arc(x(i), y(val), 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+}
+
+// X labels
+ctx.fillStyle = '#666';
+ctx.font = '10px system-ui';
+ctx.textAlign = 'center';
+for (let i = 0; i < n; i++) {
+  ctx.save();
+  ctx.translate(x(i), H - PAD.bottom + 12);
+  ctx.rotate(-Math.PI / 4);
+  ctx.textAlign = 'right';
+  ctx.fillText(data[i].time, 0, 0);
+  ctx.restore();
+}
+
+// Y axis label
+ctx.save();
+ctx.translate(14, PAD.top + plotH / 2);
+ctx.rotate(-Math.PI / 2);
+ctx.textAlign = 'center';
+ctx.fillStyle = '#666';
+ctx.font = '12px system-ui';
+ctx.fillText('W3C Tests Passing', 0, 0);
+ctx.restore();
+
+// Current totals annotation
+ctx.fillStyle = '#333';
+ctx.font = 'bold 12px system-ui';
+ctx.textAlign = 'left';
+const lastI = n - 1;
+ctx.fillStyle = '#f59e0b';
+ctx.fillText(`${data[lastI].sparql}/436`, x(lastI) + 8, y(sparqlAt(lastI)) + 4);
+ctx.fillStyle = '#3b82f6';
+ctx.fillText(`+223`, x(lastI) + 8, y(turtleSparqlAt(lastI)) + 4);
+ctx.fillStyle = '#22c55e';
+ctx.fillText(`+72`, x(lastI) + 8, y(totalAt(lastI)) + 4);
+
+// Table
+const tbody = document.getElementById('tableBody');
+data.forEach(d => {
+  const tr = document.createElement('tr');
+  const sparqlPct = d.total_sparql > 0 ? ` (${(100*d.sparql/d.total_sparql).toFixed(1)}%)` : '';
+  tr.innerHTML = `
+    <td class="mono">${d.time}</td>
+    <td class="mono">${d.hash}</td>
+    <td>${d.nt}/72 <span class="bar bar-nt" style="width:${d.nt/72*60}px"></span></td>
+    <td>${d.turtle}/223 <span class="bar bar-turtle" style="width:${d.turtle/223*60}px"></span></td>
+    <td>${d.sparql}${d.total_sparql ? '/'+d.total_sparql : ''}${sparqlPct} <span class="bar bar-sparql" style="width:${d.total_sparql ? d.sparql/d.total_sparql*60 : 0}px"></span></td>
+    <td>${d.label}</td>`;
+  tbody.appendChild(tr);
+});
+</script>
+</body>
+</html>
