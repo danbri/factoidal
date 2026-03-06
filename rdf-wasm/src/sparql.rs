@@ -114,6 +114,7 @@ enum Filter {
     And(Box<Filter>, Box<Filter>),
     Or(Box<Filter>, Box<Filter>),
     Not(Box<Filter>),
+    BooleanEffectiveValue(FilterExpr),
     FnBound(String),
     FnIsLiteral(FilterExpr),
     FnIsIri(FilterExpr),
@@ -128,9 +129,12 @@ enum Filter {
 enum FilterExpr {
     Variable(String),
     StringLit(String),
+    NumericLit(f64),
+    IriLit(String),
     FnStr(Box<FilterExpr>),
     FnLang(Box<FilterExpr>),
     FnDatatype(Box<FilterExpr>),
+    Arithmetic(Box<FilterExpr>, String, Box<FilterExpr>), // left, op (+,-,*,/), right
 }
 
 #[derive(Debug, Clone)]
@@ -160,6 +164,8 @@ enum WhereClause {
     Pattern(TriplePattern),
     Filter(Filter),
     Optional(Vec<WhereClause>),
+    Union(Vec<WhereClause>),           // right side of UNION (legacy, appended to previous)
+    UnionGroup(Vec<Vec<WhereClause>>), // { } UNION { } UNION { } — list of branches
 }
 
 #[derive(Debug)]
@@ -365,9 +371,19 @@ impl Parser {
             let upper = t.to_uppercase();
             if upper == "FILTER" {
                 self.next()?; // FILTER
-                self.expect("(")?;
+                // SPARQL allows both FILTER(expr) and FILTER expr
+                // Check if next token is a function name (like REGEX, BOUND, etc.)
+                // or if it starts with (
+                let next = self.peek().ok_or("Unexpected end after FILTER")?;
+                let next_upper = next.to_uppercase();
+                let needs_outer_paren = next == "(";
+                if needs_outer_paren {
+                    self.next()?; // (
+                }
                 let filter = self.parse_filter()?;
-                self.expect(")")?;
+                if needs_outer_paren {
+                    self.expect(")")?;
+                }
                 // optional trailing .
                 if self.peek() == Some(".") {
                     self.next()?;
@@ -383,11 +399,66 @@ impl Parser {
                     self.next()?;
                 }
                 clauses.push(WhereClause::Optional(inner));
+            } else if upper == "UNION" {
+                // UNION — combine previous group with next group
+                self.next()?; // UNION
+                self.expect("{")?;
+                let right = self.parse_where_body()?;
+                self.expect("}")?;
+                // optional trailing .
+                if self.peek() == Some(".") {
+                    self.next()?;
+                }
+                clauses.push(WhereClause::Union(right));
+            } else if t == "{" {
+                // Sub-group pattern (can be left side of UNION)
+                self.next()?; // {
+                let inner = self.parse_where_body()?;
+                self.expect("}")?;
+                // Check if followed by UNION
+                if self.peek().map(|s| s.to_uppercase()) == Some("UNION".to_string()) {
+                    // This is the left side of a UNION
+                    let mut union_branches = vec![inner];
+                    while self.peek().map(|s| s.to_uppercase()) == Some("UNION".to_string()) {
+                        self.next()?; // UNION
+                        self.expect("{")?;
+                        let branch = self.parse_where_body()?;
+                        self.expect("}")?;
+                        union_branches.push(branch);
+                    }
+                    // optional trailing .
+                    if self.peek() == Some(".") {
+                        self.next()?;
+                    }
+                    clauses.push(WhereClause::UnionGroup(union_branches));
+                } else {
+                    // Just a sub-group, inline it
+                    clauses.extend(inner);
+                    // optional trailing .
+                    if self.peek() == Some(".") {
+                        self.next()?;
+                    }
+                }
             } else {
                 // Triple pattern
                 let s = self.parse_pattern_element()?;
                 let p = self.parse_pattern_element()?;
                 let o = self.parse_pattern_element()?;
+                // Handle ; for property list (same subject, different predicates)
+                while self.peek() == Some(";") {
+                    self.next()?; // ;
+                    // Check if next is } or another statement start (end of property list)
+                    if self.peek() == Some("}") || self.peek().is_none() {
+                        break;
+                    }
+                    let p2 = self.parse_pattern_element()?;
+                    let o2 = self.parse_pattern_element()?;
+                    clauses.push(WhereClause::Pattern(TriplePattern {
+                        s: s.clone(),
+                        p: p2,
+                        o: o2,
+                    }));
+                }
                 // optional .
                 if self.peek() == Some(".") {
                     self.next()?;
@@ -401,15 +472,32 @@ impl Parser {
 
     fn parse_pattern_element(&mut self) -> Result<PatternElement, String> {
         let t = self.next()?;
-        if t.starts_with('?') {
+        if t.starts_with('?') || t.starts_with('$') {
             Ok(PatternElement::Variable(t[1..].to_string()))
+        } else if t == "a" {
+            // 'a' is shorthand for rdf:type
+            Ok(PatternElement::Iri(
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#type".to_string(),
+            ))
         } else if t.starts_with('<') && t.ends_with('>') {
             Ok(PatternElement::Iri(
                 t[1..t.len() - 1].to_string(),
             ))
-        } else if t.starts_with('"') {
+        } else if t.starts_with('"') || t.starts_with('\'') {
             // String literal — may have @lang or ^^type
-            let lexical = t.trim_matches('"').to_string();
+            let quote_char = t.chars().next().unwrap();
+            // Handle triple-quoted strings
+            let lexical = if t.starts_with("\"\"\"") || t.starts_with("'''") {
+                let q3 = &t[..3];
+                let end_q3 = if t.len() >= 6 && t.ends_with(q3) {
+                    t[3..t.len()-3].to_string()
+                } else {
+                    t[3..].trim_end_matches(quote_char).to_string()
+                };
+                end_q3
+            } else {
+                t[1..t.len()-1].to_string()
+            };
             let mut lang = None;
             let mut datatype = None;
             if let Some(next) = self.peek() {
@@ -418,14 +506,40 @@ impl Parser {
                 } else if next == "^^" {
                     self.next()?; // ^^
                     let dt = self.next()?;
-                    datatype = Some(
-                        dt.trim_start_matches('<')
-                            .trim_end_matches('>')
-                            .to_string(),
-                    );
+                    if dt.contains(':') && !dt.starts_with('<') {
+                        // Prefixed datatype like xsd:integer
+                        datatype = Some(dt.to_string());
+                    } else {
+                        datatype = Some(
+                            dt.trim_start_matches('<')
+                                .trim_end_matches('>')
+                                .to_string(),
+                        );
+                    }
                 }
             }
             Ok(PatternElement::Literal(lexical, lang, datatype))
+        } else if t == "true" || t == "false" {
+            // Boolean literal
+            Ok(PatternElement::Literal(
+                t.to_string(),
+                None,
+                Some("http://www.w3.org/2001/XMLSchema#boolean".to_string()),
+            ))
+        } else if t.chars().next().map_or(false, |c| c.is_ascii_digit() || c == '+' || c == '-') {
+            // Numeric literal
+            let datatype = if t.contains('.') {
+                "http://www.w3.org/2001/XMLSchema#decimal"
+            } else if t.contains('e') || t.contains('E') {
+                "http://www.w3.org/2001/XMLSchema#double"
+            } else {
+                "http://www.w3.org/2001/XMLSchema#integer"
+            };
+            Ok(PatternElement::Literal(
+                t.to_string(),
+                None,
+                Some(datatype.to_string()),
+            ))
         } else if t.contains(':') {
             // Prefixed name like foaf:name
             let parts: Vec<&str> = t.splitn(2, ':').collect();
@@ -433,6 +547,17 @@ impl Parser {
                 parts[0].to_string(),
                 parts.get(1).unwrap_or(&"").to_string(),
             ))
+        } else if t == "[" {
+            // Blank node — skip to ]
+            // For now, just create a fresh variable
+            let bnode_var = format!("__bnode_{}", self.pos);
+            while self.peek() != Some("]") && self.peek().is_some() {
+                self.next()?;
+            }
+            if self.peek() == Some("]") {
+                self.next()?; // ]
+            }
+            Ok(PatternElement::Variable(bnode_var))
         } else {
             Err(format!("Unexpected token in pattern: '{t}'"))
         }
@@ -556,20 +681,58 @@ impl Parser {
             _ => {}
         }
 
-        // Comparison: expr OP expr
+        // Comparison: expr OP expr, or bare expression (boolean effective value)
         let left = self.parse_filter_expr()?;
-        let op_tok = self.next()?;
-        let op = match op_tok.as_str() {
-            "=" => CompOp::Eq,
-            "!=" => CompOp::Ne,
-            "<" => CompOp::Lt,
-            ">" => CompOp::Gt,
-            "<=" => CompOp::Le,
-            ">=" => CompOp::Ge,
-            other => return Err(format!("Unknown comparison operator: '{other}'")),
-        };
-        let right = self.parse_filter_expr()?;
-        Ok(Filter::Comparison(left, op, right))
+        // Check if next token is a comparison operator
+        if let Some(op_tok) = self.peek() {
+            let op = match op_tok {
+                "=" => Some(CompOp::Eq),
+                "!=" => Some(CompOp::Ne),
+                "<" => Some(CompOp::Lt),
+                ">" => Some(CompOp::Gt),
+                "<=" => Some(CompOp::Le),
+                ">=" => Some(CompOp::Ge),
+                // Arithmetic operators — parse as comparison with special handling
+                "+" | "-" | "*" | "/" => {
+                    // Parse arithmetic expression: left OP right [CMP right2]
+                    let arith_op = self.next()?;
+                    let right_expr = self.parse_filter_expr()?;
+                    // Check if there's a comparison after
+                    if let Some(cmp) = self.peek() {
+                        let cmp_op = match cmp {
+                            "=" => Some(CompOp::Eq),
+                            "!=" => Some(CompOp::Ne),
+                            "<" => Some(CompOp::Lt),
+                            ">" => Some(CompOp::Gt),
+                            "<=" => Some(CompOp::Le),
+                            ">=" => Some(CompOp::Ge),
+                            _ => None,
+                        };
+                        if let Some(op) = cmp_op {
+                            self.next()?;
+                            let rhs = self.parse_filter_expr()?;
+                            return Ok(Filter::Comparison(
+                                FilterExpr::Arithmetic(Box::new(left), arith_op, Box::new(right_expr)),
+                                op,
+                                rhs,
+                            ));
+                        }
+                    }
+                    // No comparison — treat as boolean effective value of arithmetic
+                    return Ok(Filter::BooleanEffectiveValue(
+                        FilterExpr::Arithmetic(Box::new(left), arith_op, Box::new(right_expr)),
+                    ));
+                }
+                _ => None,
+            };
+            if let Some(op) = op {
+                self.next()?; // consume the operator
+                let right = self.parse_filter_expr()?;
+                return Ok(Filter::Comparison(left, op, right));
+            }
+        }
+        // No comparison operator — boolean effective value
+        Ok(Filter::BooleanEffectiveValue(left))
     }
 
     fn parse_filter_expr(&mut self) -> Result<FilterExpr, String> {
@@ -600,14 +763,40 @@ impl Parser {
             }
             _ => {
                 let tok = self.next()?;
-                if tok.starts_with('?') {
+                if tok.starts_with('?') || tok.starts_with('$') {
                     Ok(FilterExpr::Variable(tok[1..].to_string()))
-                } else if tok.starts_with('"') {
-                    Ok(FilterExpr::StringLit(tok.trim_matches('"').to_string()))
+                } else if tok.starts_with('"') || tok.starts_with('\'') {
+                    let lexical = tok[1..tok.len()-1].to_string();
+                    // Check for ^^datatype
+                    if self.peek() == Some("^^") {
+                        self.next()?; // ^^
+                        let dt = self.next()?;
+                        let _dt_iri = dt.trim_start_matches('<').trim_end_matches('>');
+                        // Return as string lit (for comparison purposes)
+                        Ok(FilterExpr::StringLit(lexical))
+                    } else if let Some(next) = self.peek() {
+                        if next.starts_with('@') {
+                            self.next()?; // @lang
+                        }
+                        Ok(FilterExpr::StringLit(lexical))
+                    } else {
+                        Ok(FilterExpr::StringLit(lexical))
+                    }
                 } else if tok.starts_with('<') && tok.ends_with('>') {
-                    Ok(FilterExpr::StringLit(
+                    Ok(FilterExpr::IriLit(
                         tok[1..tok.len() - 1].to_string(),
                     ))
+                } else if tok == "true" || tok == "false" {
+                    Ok(FilterExpr::StringLit(tok))
+                } else if tok.chars().next().map_or(false, |c| c.is_ascii_digit() || c == '+' || c == '-') {
+                    if let Ok(n) = tok.parse::<f64>() {
+                        Ok(FilterExpr::NumericLit(n))
+                    } else {
+                        Ok(FilterExpr::StringLit(tok))
+                    }
+                } else if tok.contains(':') {
+                    // Prefixed name in filter — treat as string for now
+                    Ok(FilterExpr::StringLit(tok))
                 } else {
                     Ok(FilterExpr::StringLit(tok))
                 }
@@ -734,6 +923,19 @@ fn resolve_element(
                 elem.clone()
             }
         }
+        PatternElement::Literal(lex, lang, Some(dt)) if dt.contains(':') && !dt.starts_with("http") => {
+            // Resolve prefixed datatype like xsd:integer
+            let parts: Vec<&str> = dt.splitn(2, ':').collect();
+            if let Some(base) = prefixes.get(parts[0]) {
+                PatternElement::Literal(
+                    lex.clone(),
+                    lang.clone(),
+                    Some(format!("{}{}", base, parts.get(1).unwrap_or(&""))),
+                )
+            } else {
+                elem.clone()
+            }
+        }
         other => other.clone(),
     }
 }
@@ -823,6 +1025,8 @@ fn eval_filter_expr(expr: &FilterExpr, binding: &Binding) -> Option<String> {
     match expr {
         FilterExpr::Variable(name) => binding.get(name).map(|v| v.as_str_value().to_string()),
         FilterExpr::StringLit(s) => Some(s.clone()),
+        FilterExpr::NumericLit(n) => Some(n.to_string()),
+        FilterExpr::IriLit(s) => Some(s.clone()),
         FilterExpr::FnStr(inner) => {
             if let FilterExpr::Variable(name) = inner.as_ref() {
                 binding.get(name).map(|v| v.as_str_value().to_string())
@@ -851,6 +1055,23 @@ fn eval_filter_expr(expr: &FilterExpr, binding: &Binding) -> Option<String> {
             } else {
                 None
             }
+        }
+        FilterExpr::Arithmetic(left, op, right) => {
+            let lv = eval_filter_expr(left, binding)?.parse::<f64>().ok()?;
+            let rv = eval_filter_expr(right, binding)?.parse::<f64>().ok()?;
+            let result = match op.as_str() {
+                "+" => lv + rv,
+                "-" => lv - rv,
+                "*" => lv * rv,
+                "/" => {
+                    if rv == 0.0 {
+                        return None;
+                    }
+                    lv / rv
+                }
+                _ => return None,
+            };
+            Some(result.to_string())
         }
     }
 }
@@ -890,6 +1111,44 @@ fn eval_filter(filter: &Filter, binding: &Binding) -> bool {
         Filter::And(a, b) => eval_filter(a, binding) && eval_filter(b, binding),
         Filter::Or(a, b) => eval_filter(a, binding) || eval_filter(b, binding),
         Filter::Not(inner) => !eval_filter(inner, binding),
+        Filter::BooleanEffectiveValue(expr) => {
+            // SPARQL boolean effective value:
+            // - bound variable with non-empty string → true
+            // - "true"^^xsd:boolean → true
+            // - non-zero numeric → true
+            // - "" or "0" or "false" or unbound → false
+            match expr {
+                FilterExpr::Variable(name) => {
+                    if let Some(val) = binding.get(name) {
+                        match val {
+                            TermValue::Literal { lexical, datatype, .. } => {
+                                if datatype == "http://www.w3.org/2001/XMLSchema#boolean" {
+                                    lexical == "true" || lexical == "1"
+                                } else if datatype == "http://www.w3.org/2001/XMLSchema#integer"
+                                    || datatype == "http://www.w3.org/2001/XMLSchema#decimal"
+                                    || datatype == "http://www.w3.org/2001/XMLSchema#double"
+                                    || datatype == "http://www.w3.org/2001/XMLSchema#float"
+                                {
+                                    lexical.parse::<f64>().map_or(false, |n| n != 0.0)
+                                } else {
+                                    !lexical.is_empty()
+                                }
+                            }
+                            TermValue::Iri(_) | TermValue::BNode(_) => true,
+                        }
+                    } else {
+                        false // unbound → false
+                    }
+                }
+                _ => {
+                    if let Some(val) = eval_filter_expr(expr, binding) {
+                        !val.is_empty() && val != "0" && val != "false"
+                    } else {
+                        false
+                    }
+                }
+            }
+        }
         Filter::FnBound(var) => binding.contains_key(var),
         Filter::FnIsLiteral(expr) => {
             if let FilterExpr::Variable(name) = expr {
@@ -994,6 +1253,23 @@ fn evaluate_clauses(
                     }
                 }
                 results = new_results;
+            }
+            WhereClause::Union(right_clauses) => {
+                // Evaluate right branch from scratch, union with current results
+                let right_results =
+                    evaluate_clauses(right_clauses, graph, vec![Binding::new()], prefixes);
+                results.extend(right_results);
+            }
+            WhereClause::UnionGroup(branches) => {
+                // Evaluate each branch independently, union all results
+                let mut union_results = Vec::new();
+                for branch in branches {
+                    // Each branch starts from current results (join semantics)
+                    let branch_results =
+                        evaluate_clauses(branch, graph, results.clone(), prefixes);
+                    union_results.extend(branch_results);
+                }
+                results = union_results;
             }
         }
     }
