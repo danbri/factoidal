@@ -32,6 +32,8 @@ enum SrxValue {
 struct SrxResults {
     variables: Vec<String>,
     rows: Vec<HashMap<String, SrxValue>>,
+    /// For ASK results: Some(true/false). For SELECT results: None.
+    boolean: Option<bool>,
 }
 
 fn parse_srx(xml: &str) -> Result<SrxResults, String> {
@@ -43,6 +45,8 @@ fn parse_srx(xml: &str) -> Result<SrxResults, String> {
     let mut in_uri = false;
     let mut in_literal = false;
     let mut in_bnode = false;
+    let mut in_boolean = false;
+    let mut boolean_result: Option<bool> = None;
     let mut literal_lang: Option<String> = None;
     let mut literal_datatype: Option<String> = None;
     let mut text_buf = String::new();
@@ -172,10 +176,19 @@ fn parse_srx(xml: &str) -> Result<SrxResults, String> {
                     current_value = Some(SrxValue::BNode(text_buf.clone()));
                     text_buf.clear();
                 }
+                "boolean" if !is_closing => {
+                    in_boolean = true;
+                    text_buf.clear();
+                }
+                "boolean" if is_closing => {
+                    in_boolean = false;
+                    boolean_result = Some(text_buf.trim() == "true");
+                    text_buf.clear();
+                }
                 _ => {}
             }
         } else {
-            if in_uri || in_literal || in_bnode {
+            if in_uri || in_literal || in_bnode || in_boolean {
                 if bytes[pos] == b'&' {
                     let entity_start = pos;
                     while pos < bytes.len() && bytes[pos] != b';' {
@@ -203,7 +216,7 @@ fn parse_srx(xml: &str) -> Result<SrxResults, String> {
         }
     }
 
-    Ok(SrxResults { variables, rows })
+    Ok(SrxResults { variables, rows, boolean: boolean_result })
 }
 
 // ---------------------------------------------------------------------------
@@ -287,6 +300,11 @@ fn unescape_ntriples(s: &str) -> String {
 }
 
 fn results_match(actual: &rdf_wasm::sparql::QueryResult, expected: &SrxResults) -> bool {
+    // ASK query: compare boolean results
+    if let Some(expected_bool) = expected.boolean {
+        return actual.boolean == Some(expected_bool);
+    }
+
     if actual.rows.len() != expected.rows.len() {
         return false;
     }
@@ -472,7 +490,7 @@ fn parse_ttl_results(ttl: &str) -> Result<SrxResults, String> {
         rows.push(row);
     }
 
-    Ok(SrxResults { variables, rows })
+    Ok(SrxResults { variables, rows, boolean: None })
 }
 
 // ---------------------------------------------------------------------------
