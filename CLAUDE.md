@@ -336,7 +336,7 @@ Current F* spec covers ~1,638 lines (rdfcore11: 492, sparql11: 1,146). Formaliza
 
 ### F* Proofs Completed (all verified, zero admit() calls)
 
-**RDF.Graph.Executable.fst** (zero admit, 5 remaining assume val for string library functions):
+**RDF.Graph.Executable.fst** (zero admit, zero assume val — fully concrete verified module):
 - `lemma_add_no_dup`: Adding a triple guarantees it's in the graph (proved via triple_eq reflexivity)
 - `lemma_remove_absent`: Removing a triple guarantees it's gone (proved by induction on graph)
 - `lemma_empty_no_bnodes`: Empty graph has no blank nodes
@@ -347,21 +347,30 @@ Current F* spec covers ~1,638 lines (rdfcore11: 492, sparql11: 1,146). Formaliza
 - Equality reflexivity lemmas: `subject_eq_refl`, `literal_eq_refl`, `rdf_term_eq_refl`, `triple_eq_refl`
 - `lemma_mem_triple_append`: mem_triple finds a triple appended to a list
 
-**SPARQL11.Algebra.fst** (7 remaining assume val — regex engine + crypto hashes only):
+**SPARQL11.Algebra.fst** (7 remaining assume val — 1 forward decl + regex engine + 5 crypto hashes):
 - `lemma_union_assoc`: Union is associative
 - `lemma_union_nil_l/r`: Union with empty is identity
 - `lemma_filter_union`: Filter distributes over union
 - `lemma_offset_zero`: OFFSET 0 is identity
 - `lemma_filter_mem`: Elements of filter are in original list
+- `lemma_filter_true`: Filter with always-true predicate is identity
+- `lemma_join_empty_l/r`: Join with empty operand is []
+- `lemma_minus_empty_r`: Minus with empty right operand is identity
+- `lemma_union_length`: Union length = sum of operand lengths
+- `lemma_bgp_empty_graph`: BGP evaluation against empty graph is []
 - `lemma_sm_compatible_refl`: Solution mapping compatibility is reflexive
 - `lemma_sm_merge_empty_l/r`: Merge with empty is identity
 - `lemma_domains_disjoint_empty_l`: Empty mapping is disjoint with any
 
 ### Concrete Implementations (replacing assume val)
 
-**RDF.Graph.Executable.fst:**
+**RDF.Graph.Executable.fst (zero assume val — fully concrete):**
 - `string_contains_colon`: Concrete via `list_of_string` (was `assume val`)
 - `subject_eq`, `literal_eq`, `rdf_term_eq`: Concrete decidable equality by pattern matching
+- `is_nt_escaped`: N-Triples escape checking via char code inspection
+- `string_lt`: Lexicographic comparison via String.compare
+- `string_substring`: Bounds-checked substring via String.sub
+- `string_to_upper`, `string_to_lower`: Via String.uppercase/lowercase
 - IRI constants (`xsd_string`, `rdf_lang_string`, etc.): Concrete strings with `assert_norm` verification
 
 **SPARQL11.Algebra.fst** (7 remaining assume val — regex engine + crypto hashes only):
