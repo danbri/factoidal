@@ -123,6 +123,7 @@ enum Filter {
     FnContains(FilterExpr, FilterExpr),
     FnStrStarts(FilterExpr, FilterExpr),
     FnStrEnds(FilterExpr, FilterExpr),
+    FnIsNumeric(FilterExpr),
 }
 
 #[derive(Debug, Clone)]
@@ -131,9 +132,25 @@ enum FilterExpr {
     StringLit(String),
     NumericLit(f64),
     IriLit(String),
+    BooleanLit(bool),
     FnStr(Box<FilterExpr>),
     FnLang(Box<FilterExpr>),
     FnDatatype(Box<FilterExpr>),
+    FnStrLen(Box<FilterExpr>),
+    FnSubStr(Box<FilterExpr>, Box<FilterExpr>, Option<Box<FilterExpr>>), // str, start, len?
+    FnUCase(Box<FilterExpr>),
+    FnLCase(Box<FilterExpr>),
+    FnConcat(Vec<FilterExpr>),
+    FnAbs(Box<FilterExpr>),
+    FnCeil(Box<FilterExpr>),
+    FnFloor(Box<FilterExpr>),
+    FnRound(Box<FilterExpr>),
+    FnIf(Box<Filter>, Box<FilterExpr>, Box<FilterExpr>),
+    FnCoalesce(Vec<FilterExpr>),
+    FnStrBefore(Box<FilterExpr>, Box<FilterExpr>),
+    FnStrAfter(Box<FilterExpr>, Box<FilterExpr>),
+    FnEncodeForUri(Box<FilterExpr>),
+    FnReplace(Box<FilterExpr>, String, String, Option<String>), // str, pattern, replacement, flags
     Arithmetic(Box<FilterExpr>, String, Box<FilterExpr>), // left, op (+,-,*,/), right
 }
 
@@ -166,6 +183,7 @@ enum WhereClause {
     Optional(Vec<WhereClause>),
     Union(Vec<WhereClause>),           // right side of UNION (legacy, appended to previous)
     UnionGroup(Vec<Vec<WhereClause>>), // { } UNION { } UNION { } — list of branches
+    Bind(FilterExpr, String),         // BIND(expr AS ?var)
 }
 
 #[derive(Debug)]
@@ -262,6 +280,10 @@ impl Parser {
 
         let distinct = self.peek().map(|t| t.to_uppercase()) == Some("DISTINCT".to_string());
         if distinct {
+            self.next()?;
+        }
+        // REDUCED is implementation-defined — we treat it as a no-op (keep all rows)
+        if self.peek().map(|t| t.to_uppercase()) == Some("REDUCED".to_string()) {
             self.next()?;
         }
 
@@ -389,6 +411,33 @@ impl Parser {
                     self.next()?;
                 }
                 clauses.push(WhereClause::Filter(filter));
+            } else if upper == "BIND" {
+                self.next()?; // BIND
+                self.expect("(")?;
+                let expr = self.parse_filter_expr()?;
+                // Handle arithmetic: expr OP expr AS ?var
+                let expr = if let Some(op) = self.peek() {
+                    if matches!(op, "+" | "-" | "*" | "/") {
+                        let arith_op = self.next()?;
+                        let right = self.parse_filter_expr()?;
+                        FilterExpr::Arithmetic(Box::new(expr), arith_op, Box::new(right))
+                    } else {
+                        expr
+                    }
+                } else {
+                    expr
+                };
+                self.expect("AS")?;
+                let var = self.next()?;
+                if !var.starts_with('?') && !var.starts_with('$') {
+                    return Err(format!("BIND expects a variable after AS, got '{var}'"));
+                }
+                self.expect(")")?;
+                // optional trailing .
+                if self.peek() == Some(".") {
+                    self.next()?;
+                }
+                clauses.push(WhereClause::Bind(expr, var[1..].to_string()));
             } else if upper == "OPTIONAL" {
                 self.next()?; // OPTIONAL
                 self.expect("{")?;
@@ -710,6 +759,13 @@ impl Parser {
                 self.expect(")")?;
                 return Ok(Filter::FnStrEnds(a, b));
             }
+            "ISNUMERIC" => {
+                self.next()?;
+                self.expect("(")?;
+                let expr = self.parse_filter_expr()?;
+                self.expect(")")?;
+                return Ok(Filter::FnIsNumeric(expr));
+            }
             _ => {}
         }
 
@@ -793,6 +849,148 @@ impl Parser {
                 self.expect(")")?;
                 Ok(FilterExpr::FnDatatype(Box::new(inner)))
             }
+            "STRLEN" => {
+                self.next()?;
+                self.expect("(")?;
+                let inner = self.parse_filter_expr()?;
+                self.expect(")")?;
+                Ok(FilterExpr::FnStrLen(Box::new(inner)))
+            }
+            "SUBSTR" | "SUBSTRING" => {
+                self.next()?;
+                self.expect("(")?;
+                let s = self.parse_filter_expr()?;
+                self.expect(",")?;
+                let start = self.parse_filter_expr()?;
+                let len = if self.peek() == Some(",") {
+                    self.next()?;
+                    Some(Box::new(self.parse_filter_expr()?))
+                } else {
+                    None
+                };
+                self.expect(")")?;
+                Ok(FilterExpr::FnSubStr(Box::new(s), Box::new(start), len))
+            }
+            "UCASE" => {
+                self.next()?;
+                self.expect("(")?;
+                let inner = self.parse_filter_expr()?;
+                self.expect(")")?;
+                Ok(FilterExpr::FnUCase(Box::new(inner)))
+            }
+            "LCASE" => {
+                self.next()?;
+                self.expect("(")?;
+                let inner = self.parse_filter_expr()?;
+                self.expect(")")?;
+                Ok(FilterExpr::FnLCase(Box::new(inner)))
+            }
+            "CONCAT" => {
+                self.next()?;
+                self.expect("(")?;
+                let mut args = vec![self.parse_filter_expr()?];
+                while self.peek() == Some(",") {
+                    self.next()?;
+                    args.push(self.parse_filter_expr()?);
+                }
+                self.expect(")")?;
+                Ok(FilterExpr::FnConcat(args))
+            }
+            "ABS" => {
+                self.next()?;
+                self.expect("(")?;
+                let inner = self.parse_filter_expr()?;
+                self.expect(")")?;
+                Ok(FilterExpr::FnAbs(Box::new(inner)))
+            }
+            "CEIL" => {
+                self.next()?;
+                self.expect("(")?;
+                let inner = self.parse_filter_expr()?;
+                self.expect(")")?;
+                Ok(FilterExpr::FnCeil(Box::new(inner)))
+            }
+            "FLOOR" => {
+                self.next()?;
+                self.expect("(")?;
+                let inner = self.parse_filter_expr()?;
+                self.expect(")")?;
+                Ok(FilterExpr::FnFloor(Box::new(inner)))
+            }
+            "ROUND" => {
+                self.next()?;
+                self.expect("(")?;
+                let inner = self.parse_filter_expr()?;
+                self.expect(")")?;
+                Ok(FilterExpr::FnRound(Box::new(inner)))
+            }
+            "IF" => {
+                self.next()?;
+                self.expect("(")?;
+                let cond = self.parse_filter()?;
+                self.expect(",")?;
+                let then_expr = self.parse_filter_expr()?;
+                self.expect(",")?;
+                let else_expr = self.parse_filter_expr()?;
+                self.expect(")")?;
+                Ok(FilterExpr::FnIf(Box::new(cond), Box::new(then_expr), Box::new(else_expr)))
+            }
+            "COALESCE" => {
+                self.next()?;
+                self.expect("(")?;
+                let mut args = Vec::new();
+                if self.peek() != Some(")") {
+                    args.push(self.parse_filter_expr()?);
+                    while self.peek() == Some(",") {
+                        self.next()?;
+                        args.push(self.parse_filter_expr()?);
+                    }
+                }
+                self.expect(")")?;
+                Ok(FilterExpr::FnCoalesce(args))
+            }
+            "STRBEFORE" => {
+                self.next()?;
+                self.expect("(")?;
+                let a = self.parse_filter_expr()?;
+                self.expect(",")?;
+                let b = self.parse_filter_expr()?;
+                self.expect(")")?;
+                Ok(FilterExpr::FnStrBefore(Box::new(a), Box::new(b)))
+            }
+            "STRAFTER" => {
+                self.next()?;
+                self.expect("(")?;
+                let a = self.parse_filter_expr()?;
+                self.expect(",")?;
+                let b = self.parse_filter_expr()?;
+                self.expect(")")?;
+                Ok(FilterExpr::FnStrAfter(Box::new(a), Box::new(b)))
+            }
+            "ENCODE_FOR_URI" => {
+                self.next()?;
+                self.expect("(")?;
+                let inner = self.parse_filter_expr()?;
+                self.expect(")")?;
+                Ok(FilterExpr::FnEncodeForUri(Box::new(inner)))
+            }
+            "REPLACE" => {
+                self.next()?;
+                self.expect("(")?;
+                let s = self.parse_filter_expr()?;
+                self.expect(",")?;
+                let pattern = self.next()?.trim_matches('"').to_string();
+                self.expect(",")?;
+                let replacement = self.next()?.trim_matches('"').to_string();
+                let flags = if self.peek() == Some(",") {
+                    self.next()?;
+                    Some(self.next()?.trim_matches('"').to_string())
+                } else {
+                    None
+                };
+                self.expect(")")?;
+                Ok(FilterExpr::FnReplace(Box::new(s), pattern, replacement, flags))
+            }
             _ => {
                 let tok = self.next()?;
                 if tok.starts_with('?') || tok.starts_with('$') {
@@ -819,7 +1017,7 @@ impl Parser {
                         tok[1..tok.len() - 1].to_string(),
                     ))
                 } else if tok == "true" || tok == "false" {
-                    Ok(FilterExpr::StringLit(tok))
+                    Ok(FilterExpr::BooleanLit(tok == "true"))
                 } else if tok.chars().next().map_or(false, |c| c.is_ascii_digit() || c == '+' || c == '-') {
                     if let Ok(n) = tok.parse::<f64>() {
                         Ok(FilterExpr::NumericLit(n))
@@ -1148,6 +1346,140 @@ fn eval_filter_expr_typed(expr: &FilterExpr, binding: &Binding) -> Option<TypedF
                 None
             }
         }
+        FilterExpr::BooleanLit(b) => Some(TypedFilterValue::BooleanLiteral(*b)),
+        FilterExpr::FnStrLen(inner) => {
+            let v = eval_filter_expr_typed(inner, binding)?;
+            let len = v.as_string().chars().count() as f64;
+            Some(TypedFilterValue::NumericLiteral(len, XSD_INTEGER.to_string()))
+        }
+        FilterExpr::FnSubStr(s, start, len) => {
+            let sv = eval_filter_expr_typed(s, binding)?.as_string();
+            let start_val = match eval_filter_expr_typed(start, binding)? {
+                TypedFilterValue::NumericLiteral(n, _) => n as usize,
+                _ => return None,
+            };
+            // SPARQL SUBSTR is 1-indexed
+            let start_idx = if start_val > 0 { start_val - 1 } else { 0 };
+            let chars: Vec<char> = sv.chars().collect();
+            let result = if let Some(len_expr) = len {
+                let len_val = match eval_filter_expr_typed(len_expr, binding)? {
+                    TypedFilterValue::NumericLiteral(n, _) => n as usize,
+                    _ => return None,
+                };
+                chars.iter().skip(start_idx).take(len_val).collect()
+            } else {
+                chars.iter().skip(start_idx).collect()
+            };
+            Some(TypedFilterValue::PlainLiteral(result))
+        }
+        FilterExpr::FnUCase(inner) => {
+            let v = eval_filter_expr_typed(inner, binding)?;
+            match v {
+                TypedFilterValue::PlainLiteral(s) => Some(TypedFilterValue::PlainLiteral(s.to_uppercase())),
+                TypedFilterValue::LangLiteral(s, l) => Some(TypedFilterValue::LangLiteral(s.to_uppercase(), l)),
+                _ => Some(TypedFilterValue::PlainLiteral(v.as_string().to_uppercase())),
+            }
+        }
+        FilterExpr::FnLCase(inner) => {
+            let v = eval_filter_expr_typed(inner, binding)?;
+            match v {
+                TypedFilterValue::PlainLiteral(s) => Some(TypedFilterValue::PlainLiteral(s.to_lowercase())),
+                TypedFilterValue::LangLiteral(s, l) => Some(TypedFilterValue::LangLiteral(s.to_lowercase(), l)),
+                _ => Some(TypedFilterValue::PlainLiteral(v.as_string().to_lowercase())),
+            }
+        }
+        FilterExpr::FnConcat(args) => {
+            let mut result = String::new();
+            for arg in args {
+                let v = eval_filter_expr_typed(arg, binding)?;
+                result.push_str(&v.as_string());
+            }
+            Some(TypedFilterValue::PlainLiteral(result))
+        }
+        FilterExpr::FnAbs(inner) => {
+            match eval_filter_expr_typed(inner, binding)? {
+                TypedFilterValue::NumericLiteral(n, dt) => Some(TypedFilterValue::NumericLiteral(n.abs(), dt)),
+                _ => None,
+            }
+        }
+        FilterExpr::FnCeil(inner) => {
+            match eval_filter_expr_typed(inner, binding)? {
+                TypedFilterValue::NumericLiteral(n, dt) => Some(TypedFilterValue::NumericLiteral(n.ceil(), dt)),
+                _ => None,
+            }
+        }
+        FilterExpr::FnFloor(inner) => {
+            match eval_filter_expr_typed(inner, binding)? {
+                TypedFilterValue::NumericLiteral(n, dt) => Some(TypedFilterValue::NumericLiteral(n.floor(), dt)),
+                _ => None,
+            }
+        }
+        FilterExpr::FnRound(inner) => {
+            match eval_filter_expr_typed(inner, binding)? {
+                TypedFilterValue::NumericLiteral(n, dt) => Some(TypedFilterValue::NumericLiteral(n.round(), dt)),
+                _ => None,
+            }
+        }
+        FilterExpr::FnIf(cond, then_expr, else_expr) => {
+            if eval_filter(cond, binding) {
+                eval_filter_expr_typed(then_expr, binding)
+            } else {
+                eval_filter_expr_typed(else_expr, binding)
+            }
+        }
+        FilterExpr::FnCoalesce(args) => {
+            for arg in args {
+                if let Some(v) = eval_filter_expr_typed(arg, binding) {
+                    return Some(v);
+                }
+            }
+            None
+        }
+        FilterExpr::FnStrBefore(a, b) => {
+            let av = eval_filter_expr_typed(a, binding)?.as_string();
+            let bv = eval_filter_expr_typed(b, binding)?.as_string();
+            if let Some(pos) = av.find(&bv) {
+                Some(TypedFilterValue::PlainLiteral(av[..pos].to_string()))
+            } else {
+                Some(TypedFilterValue::PlainLiteral(String::new()))
+            }
+        }
+        FilterExpr::FnStrAfter(a, b) => {
+            let av = eval_filter_expr_typed(a, binding)?.as_string();
+            let bv = eval_filter_expr_typed(b, binding)?.as_string();
+            if let Some(pos) = av.find(&bv) {
+                Some(TypedFilterValue::PlainLiteral(av[pos + bv.len()..].to_string()))
+            } else {
+                Some(TypedFilterValue::PlainLiteral(String::new()))
+            }
+        }
+        FilterExpr::FnEncodeForUri(inner) => {
+            let v = eval_filter_expr_typed(inner, binding)?.as_string();
+            let encoded: String = v.chars().map(|c| {
+                if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '~') {
+                    c.to_string()
+                } else {
+                    let mut buf = [0u8; 4];
+                    c.encode_utf8(&mut buf);
+                    buf[..c.len_utf8()].iter().map(|b| format!("%{:02X}", b)).collect()
+                }
+            }).collect();
+            Some(TypedFilterValue::PlainLiteral(encoded))
+        }
+        FilterExpr::FnReplace(s, pattern, replacement, flags) => {
+            let sv = eval_filter_expr_typed(s, binding)?.as_string();
+            let case_insensitive = flags.as_ref().map_or(false, |f| f.contains('i'));
+            match RegexBuilder::new(pattern)
+                .case_insensitive(case_insensitive)
+                .build()
+            {
+                Ok(re) => {
+                    let result = re.replace_all(&sv, replacement.as_str()).to_string();
+                    Some(TypedFilterValue::PlainLiteral(result))
+                }
+                Err(_) => None,
+            }
+        }
         FilterExpr::Arithmetic(left, op, right) => {
             let lv = eval_filter_expr_typed(left, binding)?;
             let rv = eval_filter_expr_typed(right, binding)?;
@@ -1387,6 +1719,14 @@ fn eval_filter(filter: &Filter, binding: &Binding) -> bool {
                 _ => false,
             }
         }
+        Filter::FnIsNumeric(expr) => {
+            if let FilterExpr::Variable(name) = expr {
+                matches!(binding.get(name), Some(TermValue::Literal { datatype, .. })
+                    if is_numeric_type(datatype))
+            } else {
+                matches!(eval_filter_expr_typed(expr, binding), Some(TypedFilterValue::NumericLiteral(..)))
+            }
+        }
     }
 }
 
@@ -1444,6 +1784,46 @@ fn evaluate_clauses(
                     union_results.extend(branch_results);
                 }
                 results = union_results;
+            }
+            WhereClause::Bind(expr, var_name) => {
+                for binding in &mut results {
+                    if let Some(typed_val) = eval_filter_expr_typed(expr, binding) {
+                        let term_val = match typed_val {
+                            TypedFilterValue::Iri(s) => TermValue::Iri(s),
+                            TypedFilterValue::BNode(s) => TermValue::BNode(s),
+                            TypedFilterValue::PlainLiteral(s) => TermValue::Literal {
+                                lexical: s,
+                                datatype: rdf::XSD_STRING.to_string(),
+                                lang: None,
+                            },
+                            TypedFilterValue::LangLiteral(s, l) => TermValue::Literal {
+                                lexical: s,
+                                datatype: "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString".to_string(),
+                                lang: Some(l),
+                            },
+                            TypedFilterValue::NumericLiteral(n, dt) => {
+                                let lexical = if dt == XSD_INTEGER {
+                                    format!("{}", n as i64)
+                                } else {
+                                    n.to_string()
+                                };
+                                TermValue::Literal { lexical, datatype: dt, lang: None }
+                            }
+                            TypedFilterValue::TypedLiteral(s, dt) => TermValue::Literal {
+                                lexical: s,
+                                datatype: dt,
+                                lang: None,
+                            },
+                            TypedFilterValue::BooleanLiteral(b) => TermValue::Literal {
+                                lexical: if b { "true" } else { "false" }.to_string(),
+                                datatype: XSD_BOOLEAN.to_string(),
+                                lang: None,
+                            },
+                        };
+                        binding.insert(var_name.clone(), term_val);
+                    }
+                    // If expression evaluates to None, variable stays unbound (per SPARQL spec)
+                }
             }
         }
     }
