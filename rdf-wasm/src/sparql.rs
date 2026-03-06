@@ -1254,19 +1254,31 @@ fn tokenize(input: &str) -> Vec<String> {
         }
         // Single-char tokens
         if matches!(chars[i], '{' | '}' | '(' | ')' | '.' | ',' | '*' | '=' | '<' | '>' | '!' | ';' | '[' | ']') {
-            // But < could start an IRI
+            // < could start an IRI or be a comparison operator
             if chars[i] == '<' {
-                let start = i;
-                i += 1;
-                while i < len && chars[i] != '>' {
+                // IRI if next char is a letter, colon, slash, or underscore (not whitespace/digit/operator)
+                // < is IRI start if followed by: letter, colon, slash, underscore, hash, ?, or >
+                // < is operator if followed by: whitespace, digit, =, +, -, (, ?, !, or EOF
+                let next_ch = if i + 1 < len { Some(chars[i + 1]) } else { None };
+                let is_iri = match next_ch {
+                    Some('>') => true, // <>
+                    Some(c) if c.is_alphabetic() || c == '/' || c == '_' || c == '#' || c == ':' => true,
+                    _ => false,
+                };
+                if is_iri {
+                    let start = i;
                     i += 1;
+                    while i < len && chars[i] != '>' {
+                        i += 1;
+                    }
+                    if i < len {
+                        i += 1; // consume >
+                    }
+                    let iri: String = chars[start..i].iter().collect();
+                    tokens.push(iri);
+                    continue;
                 }
-                if i < len {
-                    i += 1; // consume >
-                }
-                let iri: String = chars[start..i].iter().collect();
-                tokens.push(iri);
-                continue;
+                // Otherwise fall through to emit '<' as operator
             }
             tokens.push(chars[i].to_string());
             i += 1;

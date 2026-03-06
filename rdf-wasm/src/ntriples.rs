@@ -3,6 +3,7 @@
 //! Parses the N-Triples format into `Triple` values.
 //! Reference: <https://www.w3.org/TR/n-triples/>
 
+use std::collections::HashMap;
 use crate::rdf::{BNode, Iri, Literal, RdfGraph, RdfTerm, Subject, Triple};
 
 #[derive(Debug)]
@@ -20,20 +21,21 @@ impl std::fmt::Display for ParseError {
 /// Parse an N-Triples document into an RdfGraph.
 pub fn parse(input: &str) -> Result<RdfGraph, ParseError> {
     let mut graph = RdfGraph::new();
+    let mut bnode_labels: HashMap<String, BNode> = HashMap::new();
     for (line_num, line) in input.lines().enumerate() {
         let line = line.trim();
         // Skip empty lines and comments
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        let triple = parse_triple(line, line_num + 1)?;
+        let triple = parse_triple(line, line_num + 1, &mut bnode_labels)?;
         graph.add(triple);
     }
     Ok(graph)
 }
 
 /// Parse a single N-Triples line into a Triple.
-fn parse_triple(line: &str, line_num: usize) -> Result<Triple, ParseError> {
+fn parse_triple(line: &str, line_num: usize, bnode_labels: &mut HashMap<String, BNode>) -> Result<Triple, ParseError> {
     let mut chars = line.chars().peekable();
     let err = |msg: &str| ParseError {
         line: line_num,
@@ -51,7 +53,7 @@ fn parse_triple(line: &str, line_num: usize) -> Result<Triple, ParseError> {
     } else if chars.peek() == Some(&'_') {
         let (id, dc) = parse_bnode_label(&mut chars).map_err(|m| err(&m))?;
         dot_consumed = dc;
-        Subject::BNode(BNode::from_str(&id))
+        Subject::BNode(bnode_labels.entry(id).or_insert_with(BNode::auto).clone())
     } else {
         return Err(err("Expected '<' or '_:' for subject"));
     };
@@ -77,7 +79,7 @@ fn parse_triple(line: &str, line_num: usize) -> Result<Triple, ParseError> {
     } else if chars.peek() == Some(&'_') {
         let (id, dc) = parse_bnode_label(&mut chars).map_err(|m| err(&m))?;
         dot_consumed = dc;
-        RdfTerm::BNode(BNode::from_str(&id))
+        RdfTerm::BNode(bnode_labels.entry(id).or_insert_with(BNode::auto).clone())
     } else if chars.peek() == Some(&'"') {
         parse_literal(&mut chars).map_err(|m| err(&m))?
     } else {

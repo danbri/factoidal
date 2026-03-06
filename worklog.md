@@ -67,6 +67,29 @@ pass for unbound variables and unknown-datatype literals.
 
 **Impact:** boolean-effective-value 6/7 → 7/7 (100%). Total: 191 → 192 (+1).
 
+### 2026-03-06: Blank node identity + tokenizer `<` fix
+
+**Bug A — Blank node identity not preserved across triples.**
+Both Turtle and N-Triples parsers called `BNode::from_str(label)` per occurrence,
+which generated fresh IDs for non-numeric labels (fell through to `BNode::auto()`).
+`_:a` in one triple got a different ID than `_:a` in another triple.
+
+**Fix:** Added `HashMap<String, BNode>` to both parsers (`bnode_labels` field in
+TurtleParser, local map in ntriples::parse). Labels map to their first-assigned ID.
+
+**Bug B — Tokenizer `<` always parsed as IRI start.**
+`FILTER(?price < 15)` was tokenized as `<` + ` 15) ...` = one malformed IRI token.
+
+**Fix:** `<` is only treated as IRI start if followed by a letter, `/`, `_`, `#`, `:`,
+or `>` (for `<>`). Otherwise emitted as operator token.
+
+**Impact:**
+- distinct: 7/11 → 11/11 (100%)
+- optional: 1/7 → 4/7 (+3)
+- optional-filter: 1/6 → 5/6 (+4)
+- expr-ops: 9/17 → 10/17 (+1)
+- Total: 192 → 204 (+12). Running total from baseline: 159 → 204 (+45, 36.5% → 46.8%).
+
 ### Remaining divergences (not bugs, or deferred)
 
 | # | Area | Decision |
