@@ -40,18 +40,23 @@ Both modules currently verify: `All verification conditions discharged successfu
 - `z3-4.8.5` and `z3-4.13.3` at `/usr/local/bin/`
 - `opam` with OCaml 4.14.1
 
-**Proofs completed:**
-- `lemma_add_no_dup`: Adding a triple guarantees membership (admitted — needs concrete equality)
-- `lemma_remove_absent`: Removing a triple guarantees absence (admitted — needs concrete equality)
+**Proofs completed (all verified, zero admit() in RDF.Graph.Executable.fst):**
+- `lemma_add_no_dup`: Adding a triple guarantees membership — **proved** via triple_eq reflexivity
+- `lemma_remove_absent`: Removing a triple guarantees absence — **proved** by induction
 - `lemma_empty_no_bnodes`: Empty graph has no blank nodes
 - `lemma_incompatible_types`: Numeric vs plain literal comparison returns None
-- `lemma_compare_reflexive`: Value equality is reflexive (admitted)
-- `lemma_compare_symmetric`: Value equality is symmetric (admitted)
+- `lemma_compare_reflexive`: Value equality is reflexive — **proved** by case analysis
+- `lemma_compare_symmetric`: Value equality is symmetric — **proved** by case analysis
+- `lemma_bind_preserves_existing`: BIND does not overwrite existing bindings — **proved**
+- Equality reflexivity lemmas for subject, literal, rdf_term, triple — all **proved**
+
+**Concrete implementations (formerly assume val):**
+- `string_contains_colon`: implemented via `list_of_string` + recursive char scan
+- `subject_eq`, `literal_eq`, `rdf_term_eq`: implemented by constructor pattern matching
 
 **KaRaMeL readiness blockers:**
 - Specs use high-level F* (not Low* subset) — KaRaMeL requires Low*
-- Several proofs use `admit()` pending concrete decidable equality for noeq types
-- Priority: implement concrete equality for subject/rdf_term/triple, then close admitted proofs
+- Remaining `assume val` declarations are for string library functions (string_lt, substring, etc.) and well-known IRI constants — not equality/proof blockers
 
 **When modifying F* specs:**
 1. Consider Low* compatibility — avoid features that block KaRaMeL extraction

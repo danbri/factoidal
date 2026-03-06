@@ -334,10 +334,25 @@ Current F* spec covers ~1,638 lines (rdfcore11: 492, sparql11: 1,146). Formaliza
 - Prove correctness against W3C SPARQL algebra spec
 - Model: Benzaken et al. (ITP 2018) verified SQL algebra in Coq
 
-### F* Proofs Completed
-- `lemma_add_no_dup`: Adding a triple guarantees it's in the graph
-- `lemma_remove_absent`: Removing a triple guarantees it's gone
+### F* Proofs Completed (all verified, zero admit() calls)
+- `lemma_add_no_dup`: Adding a triple guarantees it's in the graph (proved via triple_eq reflexivity)
+- `lemma_remove_absent`: Removing a triple guarantees it's gone (proved by induction on graph)
 - `lemma_empty_no_bnodes`: Empty graph has no blank nodes
+- `lemma_compare_reflexive`: Value equality is reflexive for all SPARQL value types
+- `lemma_compare_symmetric`: Value equality is symmetric for all comparable types
+- `lemma_incompatible_types`: Numeric vs plain literal comparison returns None
+- `lemma_bind_preserves_existing`: BIND does not overwrite existing variable bindings
+- `lemma_subject_eq_refl`: Subject equality is reflexive
+- `lemma_literal_eq_refl`: Literal equality is reflexive
+- `lemma_rdf_term_eq_refl`: RDF term equality is reflexive
+- `lemma_triple_eq_refl`: Triple equality is reflexive
+- `lemma_mem_triple_append`: mem_triple finds a triple appended to a list
+
+### Concrete Implementations (replacing assume val)
+- `string_contains_colon`: Concrete implementation via `list_of_string` (was `assume val`)
+- `subject_eq`: Concrete decidable equality by constructor pattern matching (was `assume val`)
+- `literal_eq`: Concrete decidable equality comparing all three fields
+- `rdf_term_eq`: Concrete decidable equality by constructor pattern matching (was `assume val`)
 
 ### F* Specifications Written (proofs pending)
 - N-Triples escape table and `is_nt_escaped` predicate

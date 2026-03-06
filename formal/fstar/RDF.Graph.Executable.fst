@@ -10,9 +10,15 @@ type iri = string
 
 (** 2. Refined IRIs **)
 (* An IRI must be non-empty and contain a colon.
-   We use an assume val for the colon check to avoid termination issues
-   with recursive string traversal. *)
-assume val string_contains_colon : string -> bool
+   We implement the colon check via list_of_string to avoid
+   termination issues with string index traversal. *)
+let rec list_has_colon (cs : list FStar.Char.char) : bool =
+  match cs with
+  | [] -> false
+  | c :: rest -> FStar.Char.int_of_char c = 0x3A || list_has_colon rest
+
+let string_contains_colon (s : string) : bool =
+  list_has_colon (String.list_of_string s)
 
 let is_iri (s : string) : bool =
   String.length s > 0 && string_contains_colon s
@@ -51,11 +57,28 @@ noeq type subject =
   | S_IRI : wf_iri -> subject
   | S_BNode : bnode_id -> subject
 
-(* Decidable equality for subjects and terms.
-   These are assumed for now; a full proof would pattern-match on constructors
-   and compare the string contents. *)
-assume val subject_eq : subject -> subject -> bool
-assume val rdf_term_eq : rdf_term -> rdf_term -> bool
+(* Decidable equality for subjects — concrete implementation.
+   Pattern-match on constructors and compare the underlying strings.
+   wf_iri and bnode_id are both string, which is eqtype. *)
+let subject_eq (s1 s2 : subject) : bool =
+  match s1, s2 with
+  | S_IRI i1, S_IRI i2 -> i1 = i2
+  | S_BNode b1, S_BNode b2 -> b1 = b2
+  | _, _ -> false
+
+(* Decidable equality for literals — compare all three fields. *)
+let literal_eq (l1 l2 : literal) : bool =
+  l1.lexical_form = l2.lexical_form &&
+  l1.datatype = l2.datatype &&
+  l1.lang_tag = l2.lang_tag
+
+(* Decidable equality for RDF terms — concrete implementation. *)
+let rdf_term_eq (t1 t2 : rdf_term) : bool =
+  match t1, t2 with
+  | T_IRI i1, T_IRI i2 -> i1 = i2
+  | T_BNode b1, T_BNode b2 -> b1 = b2
+  | T_Literal l1, T_Literal l2 -> literal_eq l1 l2
+  | _, _ -> false
 
 noeq type triple = {
   s : subject;
@@ -123,17 +146,52 @@ let rec find_by_predicate (pred:wf_iri) (g:rdf_graph) : rdf_graph =
     let rest = find_by_predicate pred tl in
     if hd.p = pred then hd :: rest else rest
 
-(** 7. Graph Properties (for verification) **)
+(** 7. Equality Reflexivity Lemmas **)
 
-// Adding preserves set semantics: no duplicates
-// (Proof requires reflexivity of triple_eq; admitted until concrete equality is provided)
+// subject_eq is reflexive
+let lemma_subject_eq_refl (s : subject) : Lemma (subject_eq s s = true) =
+  match s with
+  | S_IRI _ -> ()
+  | S_BNode _ -> ()
+
+// literal_eq is reflexive
+let lemma_literal_eq_refl (l : literal) : Lemma (literal_eq l l = true) = ()
+
+// rdf_term_eq is reflexive
+let lemma_rdf_term_eq_refl (t : rdf_term) : Lemma (rdf_term_eq t t = true) =
+  match t with
+  | T_IRI _ -> ()
+  | T_BNode _ -> ()
+  | T_Literal l -> lemma_literal_eq_refl l
+
+// triple_eq is reflexive
+let lemma_triple_eq_refl (t : triple) : Lemma (triple_eq t t = true) =
+  lemma_subject_eq_refl t.s;
+  lemma_rdf_term_eq_refl t.o
+
+// mem_triple finds t at the end of a list
+let rec lemma_mem_triple_append (t : triple) (g : rdf_graph) :
+  Lemma (mem_triple t (g @ [t]) = true) =
+  match g with
+  | [] -> lemma_triple_eq_refl t
+  | hd :: tl ->
+    if triple_eq hd t then ()
+    else lemma_mem_triple_append t tl
+
+(** 8. Graph Properties (verified) **)
+
+// Adding a triple guarantees it's in the graph — PROVED (no more admit)
 let lemma_add_no_dup (t:triple) (g:rdf_graph) :
-  Lemma (mem_triple t (graph_add t g)) = admit ()
+  Lemma (mem_triple t (graph_add t g)) =
+  if mem_triple t g then ()
+  else lemma_mem_triple_append t g
 
-// Removing means the triple is gone
-// (Proof requires that triple_eq is correct w.r.t. negation; admitted for now)
-let lemma_remove_absent (t:triple) (g:rdf_graph) :
-  Lemma (not (mem_triple t (graph_remove t g))) = admit ()
+// Removing a triple guarantees it's gone — PROVED (no more admit)
+let rec lemma_remove_absent (t:triple) (g:rdf_graph) :
+  Lemma (not (mem_triple t (graph_remove t g))) =
+  match g with
+  | [] -> ()
+  | _ :: tl -> lemma_remove_absent t tl
 
 // Empty graph has no bnodes
 let lemma_empty_no_bnodes () :
@@ -463,7 +521,7 @@ let rec sparql_concat (args : list string) : string =
 
 (** 15. Properties and Lemmas **)
 
-// Comparison reflexivity: any value that supports Eq is equal to itself
+// Comparison reflexivity: any value that supports Eq is equal to itself — PROVED
 let lemma_compare_reflexive (v : sparql_value) :
   Lemma (match v with
          | SV_Numeric _ _      -> value_compare v v Eq = Some true
@@ -473,12 +531,28 @@ let lemma_compare_reflexive (v : sparql_value) :
          | SV_BNode _          -> value_compare v v Eq = Some true
          | SV_Boolean _        -> value_compare v v Eq = Some true
          | SV_TypedLiteral _ _ -> value_compare v v Eq = Some true) =
-  admit ()
+  match v with
+  | SV_Numeric _ _      -> ()
+  | SV_PlainLiteral _   -> ()
+  | SV_LangLiteral _ _  -> ()
+  | SV_Iri _            -> ()
+  | SV_BNode _          -> ()
+  | SV_Boolean _        -> ()
+  | SV_TypedLiteral _ _ -> ()
 
-// Comparison symmetry for equality: Eq is symmetric for all comparable types
+// Comparison symmetry for equality: Eq is symmetric for all comparable types — PROVED
 let lemma_compare_symmetric (a b : sparql_value) :
   Lemma (value_compare a b Eq = value_compare b a Eq) =
-  admit ()
+  match a, b with
+  | SV_Numeric _ _, SV_Numeric _ _             -> ()
+  | SV_Boolean _, SV_Boolean _                  -> ()
+  | SV_PlainLiteral _, SV_PlainLiteral _        -> ()
+  | SV_LangLiteral _ _, SV_LangLiteral _ _      -> ()
+  | SV_Iri _, SV_Iri _                          -> ()
+  | SV_BNode _, SV_BNode _                      -> ()
+  | SV_TypedLiteral _ dt1, SV_TypedLiteral _ dt2 ->
+    if dt1 = dt2 then () else ()
+  | _, _ -> ()
 
 // Incompatible type comparison: numeric vs plain literal returns None
 let lemma_incompatible_types (n : int) (nt : numeric_type) (s : string) :
@@ -488,13 +562,12 @@ let lemma_incompatible_types (n : int) (nt : numeric_type) (s : string) :
   ()
 
 // BIND preserves existing bindings: if a variable is already bound,
-// apply_bind does not modify the solution mapping
-(* BIND preserves existing bindings: if a variable is already bound,
-   apply_bind does not modify the solution mapping.
-   Admitted because rdf_term is noeq; proof requires custom assoc with
-   decidable equality on var_name (which works, since var_name = string). *)
-assume val lemma_bind_preserves_existing :
-  eval:filter_expr_eval -> var:var_name -> mu:solution_mapping ->
+// apply_bind does not modify the solution mapping — PROVED
+let lemma_bind_preserves_existing
+  (eval:filter_expr_eval) (var:var_name) (mu:solution_mapping) :
   Lemma (match List.Tot.assoc var mu with
          | Some _ -> apply_bind eval var mu == mu
-         | None -> True)
+         | None -> True) =
+  match List.Tot.assoc var mu with
+  | Some _ -> ()  // bind_eval returns None when var is already bound → apply_bind returns mu
+  | None -> ()    // trivially True
