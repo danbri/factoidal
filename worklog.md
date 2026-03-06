@@ -90,6 +90,31 @@ or `>` (for `<>`). Otherwise emitted as operator token.
 - expr-ops: 9/17 → 10/17 (+1)
 - Total: 192 → 204 (+12). Running total from baseline: 159 → 204 (+45, 36.5% → 46.8%).
 
+### 2026-03-06: sameTerm, langMatches, regex flags, triple-quoted strings
+
+**sameTerm()** — Added `Filter::FnSameTerm` variant. RDF term identity comparison
+(stricter than `=`; same lexical + same datatype = same term).
+
+**langMatches()** — Added `Filter::FnLangMatches` variant. BCP 47 basic matching:
+`langMatches(lang(?x), "*")` checks non-empty lang tag; `langMatches(lang(?x), "en")`
+does case-insensitive prefix match.
+
+**Regex q/x flags** — `q` flag escapes metacharacters (literal match). `x` flag strips
+unescaped whitespace and `#`-comments from pattern.
+
+**SPARQL string unescape** — Regex patterns now have `\\` → `\`, `\n` → newline, etc.
+applied before compilation. Previously `"example\\.com"` retained double backslash.
+
+**Triple-quoted strings** — Tokenizer now handles `"""..."""` and `'''...'''`.
+Normalized to regular double-quoted strings for downstream processing.
+
+**Impact:**
+- regex: 14/21 → 20/21 (95.2%)
+- basic: 20/27 → 22/27 (+2)
+- expr-builtin: 9/24 → 10/24 (+1)
+- 1.1/functions: 32/74 → 33/74 (+1)
+- Total: 204 → 214 (+10). Running total: 159 → 214 (+55, 36.5% → 49.1%).
+
 ### Remaining divergences (not bugs, or deferred)
 
 | # | Area | Decision |

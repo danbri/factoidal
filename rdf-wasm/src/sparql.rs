@@ -124,6 +124,8 @@ enum Filter {
     FnStrStarts(FilterExpr, FilterExpr),
     FnStrEnds(FilterExpr, FilterExpr),
     FnIsNumeric(FilterExpr),
+    FnSameTerm(FilterExpr, FilterExpr),
+    FnLangMatches(FilterExpr, FilterExpr),
 }
 
 #[derive(Debug, Clone)]
@@ -886,6 +888,24 @@ impl Parser {
                 self.expect(")")?;
                 return Ok(Filter::FnIsNumeric(expr));
             }
+            "SAMETERM" => {
+                self.next()?;
+                self.expect("(")?;
+                let a = self.parse_filter_expr()?;
+                self.expect(",")?;
+                let b = self.parse_filter_expr()?;
+                self.expect(")")?;
+                return Ok(Filter::FnSameTerm(a, b));
+            }
+            "LANGMATCHES" => {
+                self.next()?;
+                self.expect("(")?;
+                let a = self.parse_filter_expr()?;
+                self.expect(",")?;
+                let b = self.parse_filter_expr()?;
+                self.expect(")")?;
+                return Ok(Filter::FnLangMatches(a, b));
+            }
             _ => {}
         }
 
@@ -1284,21 +1304,47 @@ fn tokenize(input: &str) -> Vec<String> {
             i += 1;
             continue;
         }
-        // String literal
-        if chars[i] == '"' {
+        // String literal (single or triple-quoted)
+        if chars[i] == '"' || chars[i] == '\'' {
+            let quote_char = chars[i];
             let start = i;
-            i += 1;
-            while i < len && chars[i] != '"' {
-                if chars[i] == '\\' {
-                    i += 1; // skip escaped char
+            // Check for triple-quoted string
+            let triple = i + 2 < len && chars[i + 1] == quote_char && chars[i + 2] == quote_char;
+            if triple {
+                i += 3; // skip opening """
+                loop {
+                    if i + 2 < len && chars[i] == quote_char && chars[i + 1] == quote_char && chars[i + 2] == quote_char {
+                        i += 3; // consume closing """
+                        break;
+                    }
+                    if i >= len { break; }
+                    if chars[i] == '\\' { i += 1; } // skip escaped char
+                    i += 1;
                 }
+            } else {
                 i += 1;
-            }
-            if i < len {
-                i += 1; // consume closing "
+                while i < len && chars[i] != quote_char {
+                    if chars[i] == '\\' {
+                        i += 1; // skip escaped char
+                    }
+                    i += 1;
+                }
+                if i < len {
+                    i += 1; // consume closing quote
+                }
             }
             let s: String = chars[start..i].iter().collect();
-            tokens.push(s);
+            // Normalize triple-quoted to regular double-quoted for downstream processing
+            let normalized = if triple {
+                let inner = &s[3..s.len()-3];
+                format!("\"{}\"", inner)
+            } else if quote_char == '\'' {
+                let inner = &s[1..s.len()-1];
+                format!("\"{}\"", inner)
+            } else {
+                s
+            };
+            tokens.push(normalized);
             // Check for @lang immediately after
             if i < len && chars[i] == '@' {
                 let ls = i;
@@ -1449,7 +1495,7 @@ fn match_triple(
 }
 
 /// Typed filter value for type-aware SPARQL comparisons.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 enum TypedFilterValue {
     Iri(String),
     BNode(String),
@@ -1844,6 +1890,29 @@ fn extract_timezone_string(dt_str: &str) -> String {
 
 fn is_numeric_type(dt: &str) -> bool {
     dt == XSD_INTEGER || dt == XSD_DECIMAL || dt == XSD_DOUBLE || dt == XSD_FLOAT
+}
+
+/// Unescape SPARQL string escape sequences: \\ → \, \n → newline, \t → tab, etc.
+fn unescape_sparql_string(s: &str) -> String {
+    let mut result = String::new();
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('\\') => result.push('\\'),
+                Some('n') => result.push('\n'),
+                Some('r') => result.push('\r'),
+                Some('t') => result.push('\t'),
+                Some('"') => result.push('"'),
+                Some('\'') => result.push('\''),
+                Some(other) => { result.push('\\'); result.push(other); }
+                None => result.push('\\'),
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
 }
 
 fn term_to_typed(tv: &TermValue) -> TypedFilterValue {
@@ -2342,14 +2411,43 @@ fn eval_filter(filter: &Filter, binding: &Binding) -> Option<bool> {
                 let case_insensitive = flags.as_ref().map_or(false, |f| f.contains('i'));
                 let dot_matches_newline = flags.as_ref().map_or(false, |f| f.contains('s'));
                 let multi_line = flags.as_ref().map_or(false, |f| f.contains('m'));
-                match RegexBuilder::new(pattern)
+                let quote_meta = flags.as_ref().map_or(false, |f| f.contains('q'));
+                let extended = flags.as_ref().map_or(false, |f| f.contains('x'));
+                // Unescape SPARQL string escapes in pattern
+                let mut unescaped = unescape_sparql_string(pattern);
+                // q flag: treat pattern as literal (no metacharacters)
+                if quote_meta {
+                    unescaped = regex::escape(&unescaped);
+                }
+                // x flag: strip unescaped whitespace and #-comments
+                if extended {
+                    let mut result = String::new();
+                    let mut pchars = unescaped.chars().peekable();
+                    while let Some(c) = pchars.next() {
+                        if c == '\\' {
+                            result.push(c);
+                            if let Some(nc) = pchars.next() { result.push(nc); }
+                        } else if c == '#' {
+                            // Skip to end of line
+                            while pchars.peek().is_some() && *pchars.peek().unwrap() != '\n' {
+                                pchars.next();
+                            }
+                        } else if c.is_whitespace() {
+                            // Skip unescaped whitespace
+                        } else {
+                            result.push(c);
+                        }
+                    }
+                    unescaped = result;
+                }
+                match RegexBuilder::new(&unescaped)
                     .case_insensitive(case_insensitive)
                     .dot_matches_new_line(dot_matches_newline)
                     .multi_line(multi_line)
                     .build()
                 {
                     Ok(re) => Some(re.is_match(&val)),
-                    Err(_) => None, // invalid regex pattern → error
+                    Err(_) => None,
                 }
             } else {
                 None
@@ -2385,6 +2483,32 @@ fn eval_filter(filter: &Filter, binding: &Binding) -> Option<bool> {
                     if is_numeric_type(datatype)))
             } else {
                 Some(matches!(eval_filter_expr_typed(expr, binding), Some(TypedFilterValue::NumericLiteral(..))))
+            }
+        }
+        Filter::FnSameTerm(a, b) => {
+            let av = eval_filter_expr_typed(a, binding);
+            let bv = eval_filter_expr_typed(b, binding);
+            match (av, bv) {
+                (Some(l), Some(r)) => Some(l == r),
+                _ => None,
+            }
+        }
+        Filter::FnLangMatches(a, b) => {
+            let av = eval_filter_expr(a, binding);
+            let bv = eval_filter_expr(b, binding);
+            match (av, bv) {
+                (Some(lang), Some(range)) => {
+                    if range == "*" {
+                        Some(!lang.is_empty())
+                    } else {
+                        // BCP 47 basic matching: case-insensitive prefix match
+                        let lang_lower = lang.to_lowercase();
+                        let range_lower = range.to_lowercase();
+                        Some(lang_lower == range_lower
+                            || lang_lower.starts_with(&format!("{}-", range_lower)))
+                    }
+                }
+                _ => None,
             }
         }
     }
