@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Factoidal — F*-Extracted SPARQL Demo</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #0f172a; color: #e2e8f0;
+    max-width: 960px; margin: 0 auto; padding: 1.5rem;
+    line-height: 1.5;
+  }
+  h1 { color: #38bdf8; font-size: 1.5rem; margin-bottom: 0.25rem; }
+  .subtitle { color: #64748b; margin-bottom: 1rem; font-size: 0.875rem; }
+  .nav { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; font-size: 0.8125rem; }
+  .nav a { color: #38bdf8; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .nav span { color: #475569; }
+  button {
+    background: #0284c7; color: #fff; border: none;
+    padding: 0.5rem 1rem; border-radius: 0.375rem; cursor: pointer;
+    font-size: 0.875rem; margin: 0.75rem 0;
+  }
+  button:hover { background: #0369a1; }
+  button:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+  pre {
+    background: #1e293b; border: 1px solid #334155; border-radius: 0.375rem;
+    padding: 1rem; font-size: 0.75rem; overflow-x: auto; color: #cbd5e1;
+    max-height: 600px; overflow-y: auto; white-space: pre-wrap;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+  .status { padding: 0.375rem 0.75rem; border-radius: 0.375rem; display: inline-block;
+            font-size: 0.8125rem; margin: 0.5rem 0; }
+  .status.running { background: #1e293b; border: 1px solid #fbbf24; color: #fbbf24; }
+  .status.done { background: #064e3b; border: 1px solid #065f46; color: #4ade80; }
+  .info { color: #94a3b8; font-size: 0.8125rem; margin: 0.5rem 0; }
+</style>
+</head>
+<body>
+
+<h1>F*-Extracted SPARQL Engine — Live Demo</h1>
+<div class="subtitle">Running formally verified RDF/SPARQL code extracted from F* via OCaml to JavaScript</div>
+<div class="nav">
+  <a href="index.html">Overview</a> <span>/</span>
+  <span>Demo</span> <span>/</span>
+  <a href="tests.html">Tests</a>
+</div>
+
+<p class="info">
+  This runs the F*-extracted SPARQL engine directly in your browser.
+  It builds a 12-triple FOAF graph and executes SPARQL queries against it &mdash;
+  BGP matching, multi-hop joins, SELECT DISTINCT, find-by-subject, and graph union.
+</p>
+
+<button id="runBtn" onclick="runDemo()">Run F*-Extracted SPARQL Engine</button>
+<div id="status"></div>
+
+<pre id="output">(click "Run" to execute the F*-extracted SPARQL engine)</pre>
+
+<script>
+const output = document.getElementById('output');
+const status = document.getElementById('status');
+const runBtn = document.getElementById('runBtn');
+
+function runDemo() {
+  output.textContent = '';
+  status.innerHTML = '<span class="status running">Running...</span>';
+  runBtn.disabled = true;
+
+  // Capture console.log output from js_of_ocaml
+  const lines = [];
+  const origLog = console.log;
+  const origError = console.error;
+
+  // js_of_ocaml uses caml_ml_output_char / caml_ml_flush for Printf
+  // which writes to a buffer and flushes. We intercept via process.stdout shim.
+  // But in browser, it uses console.log. Let's capture both.
+  console.log = function() {
+    const msg = Array.from(arguments).join(' ');
+    lines.push(msg);
+  };
+  console.error = function() {
+    const msg = Array.from(arguments).join(' ');
+    lines.push('[ERROR] ' + msg);
+  };
+
+  // Load and run the script
+  const script = document.createElement('script');
+  script.src = 'factoidal-fstar.js';
+  script.onload = function() {
+    console.log = origLog;
+    console.error = origError;
+
+    // js_of_ocaml may write to stdout buffer, check if we captured anything
+    if (lines.length === 0) {
+      // Fallback: read from the js_of_ocaml stdout buffer if available
+      output.textContent = '(Output was written to internal buffer — see browser console)';
+    } else {
+      output.textContent = lines.join('\n');
+    }
+    status.innerHTML = '<span class="status done">Complete</span>';
+    runBtn.disabled = false;
+
+    // Clean up script tag
+    script.remove();
+  };
+  script.onerror = function() {
+    console.log = origLog;
+    console.error = origError;
+    output.textContent = 'Error: Failed to load factoidal-fstar.js';
+    status.innerHTML = '';
+    runBtn.disabled = false;
+  };
+  document.body.appendChild(script);
+}
+</script>
+
+</body>
+</html>

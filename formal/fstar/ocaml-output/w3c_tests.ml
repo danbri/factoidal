@@ -577,4 +577,16 @@ let () =
   Printf.printf "========================================\n";
   Printf.printf "TOTAL: %d/%d passed (%d failed)\n" !tests_passed !tests_run !tests_failed;
   Printf.printf "========================================\n";
+
+  (* JSON output for browser consumption *)
+  Printf.printf "\n<!-- JSON_RESULTS\n";
+  Printf.printf "{\"passed\":%d,\"total\":%d,\"failed\":%d,\"suites\":[" !tests_passed !tests_run !tests_failed;
+  let suites = List.rev !suite_results in
+  List.iteri (fun i (name, pass, total) ->
+    if i > 0 then Printf.printf ",";
+    Printf.printf "{\"name\":\"%s\",\"pass\":%d,\"total\":%d}" name pass total
+  ) suites;
+  Printf.printf "]}\n";
+  Printf.printf "JSON_RESULTS -->\n";
+
   if !tests_failed > 0 then exit 1
