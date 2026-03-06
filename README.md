@@ -1,58 +1,64 @@
 # Factoidal
 
-An RDF Core 1.1 graph library with a formal F\* specification, a Rust/WebAssembly implementation, SPARQL query support, and an interactive browser demo.
+A formally verified RDF graph library with F\* specifications, KaRaMeL-extracted C, a Rust/WebAssembly implementation, SPARQL query engine, and an interactive browser demo.
 
 ## Overview
 
-Factoidal provides a formally-specified RDF graph library that compiles to WebAssembly for use in browsers and Node.js. The web demo uses the **real WASM library** — no reimplementation, no divergence from the verified types.
+Factoidal provides a formally-specified RDF graph library targeting high-trust environments. The F\* specifications are **not documentation** — they are the source for verified C extraction via KaRaMeL.
 
 ```
-F* spec → Rust library → WASM + JS bindings → Web demo & tests
+F* spec → verify proofs → KaRaMeL → C (1,710 lines extracted)
+F* spec → Rust impl → WASM + JS bindings → Web demo & tests
 ```
 
-- **Formal specification** — An F\* model defining RDF terms, triples, and graphs with refinement types for well-formedness constraints
-- **Rust/WASM library** — A faithful implementation of the spec with JavaScript bindings via `wasm-bindgen`, including a SPARQL SELECT engine
-- **Interactive demo** — A browser-based RDF graph explorer with SPARQL query panel, powered by the WASM library, deployable via GitHub Pages
+- **Formally verified** — 3,317 lines of F\* with zero `admit()`, 16+ proved lemmas, zero assume val in the RDF module
+- **C extraction working** — KaRaMeL extracts verified C from the RDF module (`make extract-c`)
+- **W3C compliant** — N-Triples 100%, Turtle 100%, SPARQL 36.5% (159/436) and growing
+- **Interactive demo** — Browser-based RDF graph explorer + SPARQL, powered by the real WASM library
 
 ## Project Structure
 
 ```
 factoidal/
 ├── formal/fstar/
-│   └── rdfcore11.fstar.txt    # F* formal specification
+│   ├── RDF.Graph.Executable.fst     # Verified RDF types + graph ops (586 lines, 0 assume val)
+│   ├── SPARQL11.Algebra.fst         # Verified SPARQL algebra (2731 lines, 7 assume val)
+│   ├── c-output/                    # KaRaMeL-extracted C (1710 lines)
+│   └── Makefile                     # verify + extract-c targets
 ├── rdf-wasm/
 │   ├── src/
-│   │   ├── rdf.rs             # Core RDF types and graph logic
+│   │   ├── rdf.rs             # Core RDF types (mirrors F* spec)
+│   │   ├── ntriples.rs        # N-Triples parser (W3C RDF 1.1)
+│   │   ├── turtle.rs          # Turtle parser (W3C RDF 1.1)
 │   │   ├── sparql.rs          # SPARQL SELECT engine
-│   │   └── wasm_api.rs        # JavaScript/WASM bindings
-│   ├── demo/
-│   │   ├── demo.js            # Usage examples (Node.js + browser)
-│   │   └── index.html         # Browser demo
-│   ├── tests/
-│   │   └── rdf_tests.rs       # Rust unit tests
+│   │   ├── wasm_api.rs        # wasm-bindgen JS bindings
+│   │   └── lib.rs             # Module declarations
+│   ├── tests/                 # W3C test suites + unit tests (172 passing)
 │   └── build.sh               # WASM build script
+├── tests/w3c/                 # Git submodule: github.com/w3c/rdf-tests
 └── docs/
     ├── pkg/                   # WASM build artifacts (committed)
     ├── index.html             # Interactive RDF graph explorer + SPARQL
-    ├── tests.html             # WASM integration tests
-    └── GROUNDING_ANALYSIS.md  # Formal spec ↔ implementation mapping
+    └── designissues/          # Architecture and design documents
 ```
 
 ## Building
 
-Requires [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/):
-
 ```bash
-cd rdf-wasm
-./build.sh
-cp pkg/rdf_wasm_bg.wasm pkg/rdf_wasm.js pkg/rdf_wasm.d.ts pkg/rdf_wasm_bg.wasm.d.ts ../docs/pkg/
-```
+# Run all Rust tests (172 passing)
+cd rdf-wasm && cargo test
 
-To run the demo locally:
+# Verify F* specifications
+eval $(opam env --switch=fstar) && cd formal/fstar && make verify
 
-```bash
-cd docs
-python3 -m http.server 8080
+# Extract verified C from RDF module
+eval $(opam env --switch=fstar) && cd formal/fstar && make extract-c
+
+# Build WASM (requires wasm-pack)
+cd rdf-wasm && ./build.sh
+
+# Serve demo locally
+cd docs && python3 -m http.server 8080
 ```
 
 ## Usage
@@ -85,14 +91,23 @@ const result = JSON.parse(graph.sparqlQuery(`
 // { variables: ["person", "name"], rows: [["<http://example.org/alice>", "\"Alicia\"@es"]] }
 ```
 
-Supported SPARQL features: `SELECT` (with `*` or named variables), `PREFIX`, `FILTER` (comparison operators, `STR`, `LANG`, `DATATYPE`, `BOUND`, `REGEX`, `CONTAINS`, `STRSTARTS`, `STRENDS`, `ISLITERAL`, `ISIRI`, `ISBLANK`, `&&`, `||`), `OPTIONAL`, `DISTINCT`, `ORDER BY`, `LIMIT`, `OFFSET`.
+Supported SPARQL features: `SELECT`, `PREFIX`, `BASE`, `FILTER`, `OPTIONAL`, `UNION`, `MINUS`, `BIND`, `VALUES`, `EXISTS`/`NOT EXISTS`, `DISTINCT`, `REDUCED`, `ORDER BY`, `LIMIT`, `OFFSET`, and 30+ built-in functions.
+
+## Verification Status
+
+| Component | F\* Lines | assume val | Proved Lemmas | C Extraction |
+|-----------|----------|------------|---------------|--------------|
+| RDF Core  | 586      | 0          | 9             | ✅ 1,710 lines |
+| SPARQL    | 2,731    | 7 (regex + crypto) | 16+    | ❌ blocked (noeq) |
+
+The F\* specs use zero `admit()` calls — all proofs are machine-checked. See [CLAUDE.md](CLAUDE.md) for the full verification roadmap.
 
 ## Key Design Decisions
 
-- **IRI well-formedness** — IRIs must be non-empty and contain a `:` character, enforced at construction time in Rust
-- **Literal constraints** — The language-tag ↔ `rdf:langString` biconditional from the RDF spec is enforced by `Literal::new()`
-- **Set semantics** — Duplicate triples are rejected on insert (extending the F\* list-based model)
-- **Subjects exclude literals** — Rust's `enum Subject { Iri, BNode }` makes this a compile-time guarantee, not a runtime check
+- **F\* specs are primary** — they are the source for verified C extraction, not documentation
+- **Spec + Impl pattern** — high-level specs for readability/proofs, Low\* implementations for C extraction
+- **IRI well-formedness** — IRIs must be non-empty and contain `:`, enforced at construction time
+- **Literal constraints** — The language-tag ↔ `rdf:langString` biconditional is enforced by `Literal::new()`
 - **No JS reimplementation** — The web demo imports the WASM binary directly; the same Rust code runs everywhere
 
 ## License

@@ -12,6 +12,16 @@ verify: $(addsuffix .verified, $(MODULES))
 	$(FSTAR) $<
 	@touch $@
 
+# Extract verified C from RDF module via KaRaMeL.
+#
+# Suppressed warnings (see c-output/README.md for details):
+#   -9:  Static initializers needed (empty_graph global)
+#   -11: Closures/lambdas not in Low* (translated to function pointers)
+#   -15: GC types, math integers — extracted C leaks memory without GC
+#
+# These warnings reflect that the F* source is high-level, not Low*.
+# The extracted C is logically correct but not standalone.
+# Fix: create RDF.Graph.Impl.fst in Low* subset (Phase 1 of extraction roadmap).
 extract-c: c-output/RDF_Graph_Executable.c
 
 c-output/RDF_Graph_Executable.c: RDF.Graph.Executable.fst

@@ -117,7 +117,12 @@ KaRaMeL itself is unverified OCaml — it's in the trusted computing base. Verif
 ```
 factoidal/
 ├── formal/fstar/
-│   └── rdfcore11.fstar.txt    # F* formal specification (RDF Core 1.1)
+│   ├── RDF.Graph.Executable.fst     # F* verified RDF module (586 lines, zero assume val)
+│   ├── SPARQL11.Algebra.fst         # F* verified SPARQL module (2731 lines, 7 assume val)
+│   ├── c-output/                    # KaRaMeL-extracted C (1710 lines from RDF module)
+│   ├── rdfcore11.fstar.txt          # Original textual spec (historical)
+│   ├── sparql11.fstar.txt           # Original textual spec (historical)
+│   └── Makefile                     # verify + extract-c targets
 ├── rdf-wasm/
 │   ├── src/
 │   │   ├── rdf.rs             # Core RDF types (mirrors F* spec)
@@ -157,6 +162,7 @@ factoidal/
 │   │   ├── validating.md             # Correctness validation layers
 │   │   ├── optimising.md             # Engine optimization guide
 │   │   └── periodic-review.md        # Review hooks and accuracy audits
+│   ├── history/                       # Archived docs (HISTORICAL INTEREST ONLY)
 │   └── tests.html             # Browser integration tests
 └── CLAUDE.md                  # This file
 ```
@@ -230,16 +236,21 @@ factoidal/
 | subquery          | 0    | 9     | 0.0%   | Sub-SELECT                                |
 
 ### In Progress
-- [ ] **Layer 1: Type system** — XSD numeric type promotion, casting functions, value equality (next priority)
-- [ ] F* <-> Rust verification alignment — extend `sparql11.fstar.txt` alongside implementation
+- [ ] **Low\* rewrite of RDF core** — create `RDF.Graph.Impl.fst` (Low\* subset) alongside existing Spec; extract standalone C
+- [ ] **Layer 1: Type system** — XSD numeric type promotion, casting functions, value equality (Rust engine)
 - [ ] KGX pipeline: materialization runner with attestation logging (see `docs/designissues/kgx-pipeline.md`)
 
-### Planned — Verification Pipeline (highest priority)
-- [ ] **Low* rewrite of core types** — rewrite `rdfcore11.fstar.txt` in Low* subset for KaRaMeL extraction
-- [ ] **N-Triples roundtrip proof** — specification written, prove in Low*, extract verified serializer via KaRaMeL
-- [ ] **Hax integration** — annotate Rust with `#[hax::ensures(...)]`, extract F*, verify against hand-written spec
-- [ ] **KaRaMeL CI pipeline** — verify F* proofs → extract to C/WASM → sign with wasmsign2 → SLSA attestation
-- [ ] **EverParse-style parser extraction** — verified N-Triples/Turtle parsers extracted from F* format specs
+### Done — Verification Pipeline
+- [x] **KaRaMeL extraction pipeline** — built from source, RDF module → 1,710 lines C (`make extract-c`)
+- [x] **F\* specs fully concrete** — RDF: zero assume val; SPARQL: 7 assume val (regex + crypto only)
+
+### Planned — Verification Pipeline
+- [ ] **Low\* Impl modules** — `RDF.Graph.Impl.fst` proving equivalence with Spec, using machine types
+- [ ] **Fix SPARQL noeq types** — convert to regular types with decidable equality for extraction
+- [ ] **N-Triples roundtrip proof** — specification written, prove in Low\*, extract verified serializer
+- [ ] **Hax integration** — annotate Rust with `#[hax::ensures(...)]`, extract F\*, verify against hand-written spec
+- [ ] **KaRaMeL CI pipeline** — verify F\* proofs → extract to C/WASM → sign with wasmsign2 → SLSA attestation
+- [ ] **EverParse-style parser extraction** — verified N-Triples/Turtle parsers extracted from F\* format specs
 
 ### Planned — SPARQL Engine Layers
 - [ ] **Layer 2: Query composition** — Sub-SELECT, MINUS, GRAPH, VALUES
@@ -281,14 +292,16 @@ The Rust types in `rdf.rs` mirror the F* spec in `formal/fstar/rdfcore11.fstar.t
 
 The project has **two converging verification paths**. Both require the F* specs to be complete and correct — the specs are the project's primary deliverable, not supplementary documentation.
 
-**Path A: KaRaMeL extraction (target architecture)**
+**Path A: KaRaMeL extraction (target architecture)** ✅ Pipeline working
 ```
-F* Low* spec → F* typechecker (verify) → erase proofs → KaRaMeL → C/WASM
+F* spec → F* typechecker (verify) → erase proofs → KaRaMeL → C
 ```
 - Production-proven: HACL* (Firefox, Linux kernel), EverParse (Windows Hyper-V)
-- **Current blocker:** F* specs use high-level F*, not Low* subset. Need Low* rewrite.
-- **Precedent:** EverParse extracts verified parsers — directly applicable to N-Triples/Turtle serialization roundtrip proofs.
-- **Priority:** Phase 1 target is verified N-Triples serialize/deserialize.
+- **Pipeline operational:** KaRaMeL built from source, RDF module extracts to 1,710 lines of C
+- **Current state:** Extracted C uses high-level F* features (GC lists, closures, math integers) — works but leaks memory and needs compat.h. Not standalone C yet.
+- **Next step:** Low* rewrite of core types → standalone C without GC dependency
+- **SPARQL module blocked:** `noeq` types prevent extraction. Need to convert to regular types.
+- **Precedent:** EverParse extracts verified parsers — directly applicable to N-Triples/Turtle.
 
 **Path B: Hax verification (bridge for current Rust)**
 ```
@@ -306,32 +319,56 @@ Rust code + #[hax::ensures(...)] → Hax → extracted F* → verify against han
 
 The F* specs are **not documentation** — they are the source code for the verified WASM binary. Every line of F* spec written is progress toward replacing the manual Rust implementation with KaRaMeL-extracted verified code.
 
-Current F* spec covers ~1,638 lines (rdfcore11: 492, sparql11: 1,146). Formalization gap by module:
+Current F* spec covers ~3,317 lines (RDF.Graph.Executable: 586, SPARQL11.Algebra: 2,731).
 
-| Module | Rust LOC | F* Coverage | KaRaMeL Readiness | Priority |
-|--------|----------|-------------|-------------------|----------|
-| **rdf.rs** | 345 | ~70% | Needs Low* rewrite | High — closest to extraction |
-| **ntriples.rs** | 365 | ~15% | Needs EverParse-style spec | High — Phase 1 extraction target |
-| **turtle.rs** | 1,198 | 0% | Hard — complex grammar | Long-term |
-| **sparql.rs** | 2,922 | ~15% | Algebra spec growing | Medium — after core types |
-| **wasm_api.rs** | 194 | 0% | Binding layer, not extracted | Not applicable |
+| Module | Rust LOC | F* LOC | F* Coverage | KaRaMeL Status | Priority |
+|--------|----------|--------|-------------|----------------|----------|
+| **rdf.rs** | 345 | 586 | ~90% | ✅ Extracts to 1,710 lines C (with compat) | High — Low* rewrite next |
+| **ntriples.rs** | 365 | ~80 | ~15% | Needs EverParse-style spec | High — Phase 1 target |
+| **turtle.rs** | 1,198 | 0 | 0% | Hard — complex grammar | Long-term |
+| **sparql.rs** | 2,922 | 2,731 | ~85% | ❌ Blocked by `noeq` types | Medium — fix noeq first |
+| **wasm_api.rs** | 194 | 0 | 0% | Binding layer, not extracted | Not applicable |
+
+### Low\* Rewrite Strategy: Spec + Impl Modules
+
+The standard F\* pattern (used by HACL\*, EverParse) keeps high-level specs alongside Low\* implementations:
+
+```
+RDF.Graph.Spec.fst          ← current high-level spec (readable, proofs, lemmas)
+RDF.Graph.Impl.fst          ← Low* implementation (extractable to standalone C)
+  - imports Spec
+  - proves: impl_fn ≡ Spec.spec_fn (refinement)
+  - uses: Buffer.t, UInt32.t, C.String.t (machine types)
+```
+
+The Spec module is never deleted — it remains the **readable, provable reference**. The Impl module proves it correctly implements the Spec, then KaRaMeL extracts only the Impl to C. This gives:
+- Readable proofs in Spec (no Low\* clutter)
+- Standalone C from Impl (no GC, no compat.h)
+- Machine-checked equivalence between the two
 
 ### KaRaMeL Extraction Phases
 
-**Phase 1 — Verified serialization (near-term)**
-- Rewrite N-Triples serialize/deserialize specs in Low* subset
+**Phase 0 — Pipeline proof-of-concept** ✅ Done
+- KaRaMeL built from source on OCaml 4.14 / F\* 2025.12.15
+- RDF module extracts to 1,710 lines of C (with GC/compat dependencies)
+- Makefile target: `make extract-c`
+- **Caveat:** extracted C uses GC lists, closures, math integers — correct but leaks memory
+
+**Phase 1 — Verified core types in Low\* (next)**
+- Create `RDF.Graph.Impl.fst` using `Buffer.t`, `UInt32.t`, `C.String.t`
+- Prove equivalence with `RDF.Graph.Executable.fst` (Spec)
+- Extract to standalone C via KaRaMeL — no GC, no compat.h
+- Key types: `wf_iri`, `wf_literal`, `triple`, `rdf_graph`
+
+**Phase 2 — Verified N-Triples serialization**
+- Low\* serialize/deserialize for N-Triples format
 - Prove roundtrip correctness: `graph_isomorphic g (parse(serialize g))`
-- Extract to WASM via KaRaMeL
 - Model: EverParse verified parsers
+- Extract to standalone C/WASM via KaRaMeL
 
-**Phase 2 — Verified core types (medium-term)**
-- Rewrite `rdf.rs` types in Low* (wf_iri, wf_literal, triple, graph)
-- Extract graph operations to WASM
-- Verify with wasmsign2 + SLSA attestation
-
-**Phase 3 — Verified SPARQL algebra (longer-term)**
-- SPARQL algebra evaluation as pure function `query × graph → result_set`
-- Prove correctness against W3C SPARQL algebra spec
+**Phase 3 — SPARQL module extraction**
+- Fix `noeq` types in SPARQL11.Algebra.fst (convert to regular `type` with decidable equality)
+- Create Low\* implementation module for SPARQL evaluation
 - Model: Benzaken et al. (ITP 2018) verified SQL algebra in Coq
 
 ### F* Proofs Completed (all verified, zero admit() calls)
@@ -414,10 +451,10 @@ Current F* spec covers ~1,638 lines (rdfcore11: 492, sparql11: 1,146). Formaliza
 - Roundtrip property: `graph_isomorphic g (parse(serialize g))`
 
 ### Next Formalization Targets
-1. N-Triples grammar as F* inductive type (production rules)
-2. Concrete `eval_expr` implementation (recursive expression evaluator)
-3. Graph canonicalization specification
-4. Low* rewrite of core types for KaRaMeL extraction
+1. **`RDF.Graph.Impl.fst`** — Low\* implementation of core types (Buffer.t, UInt32.t, C.String.t)
+2. **Fix SPARQL `noeq` types** — enable KaRaMeL extraction of SPARQL module
+3. N-Triples grammar as F\* inductive type (production rules)
+4. Graph canonicalization specification
 
 ## W3C Test Report
 
@@ -575,25 +612,33 @@ cd rdf-wasm && ./build.sh
 # Verify F* specifications
 eval $(opam env --switch=fstar) && cd formal/fstar && make verify
 
+# Extract verified C from RDF module via KaRaMeL
+eval $(opam env --switch=fstar) && cd formal/fstar && make extract-c
+
 # Serve demo locally
 cd docs && python3 -m http.server 8080
 ```
 
-### F* Toolchain
+### F\* Toolchain
 
-The F* formal verification toolchain is installed and operational:
+The F\* formal verification and extraction toolchain is installed and operational:
 
-- **F* compiler**: `fstar.exe` (2025.12.15) — installed via opam (`opam install fstar`)
-- **Z3 SMT solver**: `z3-4.8.5` and `z3-4.13.3` — required by F* for proof discharge
+- **F\* compiler**: `fstar.exe` (2025.12.15) — installed via opam
+- **KaRaMeL**: built from source (git HEAD) — F\* to C extraction
+- **Z3 SMT solver**: `z3-4.8.5` and `z3-4.13.3` — required by F\* for proof discharge
 - **opam switch**: `fstar` (OCaml 4.14.1)
 
-To activate the F* environment: `eval $(opam env --switch=fstar)`
+To activate the F\* environment: `eval $(opam env --switch=fstar)`
 
-Both F* modules currently verify successfully:
-- `formal/fstar/RDF.Graph.Executable.fst` — RDF core types, graph operations, properties
-- `formal/fstar/SPARQL11.Algebra.fst` — SPARQL algebra, evaluation semantics, built-in functions
+Both F\* modules verify successfully:
+- `formal/fstar/RDF.Graph.Executable.fst` — RDF core types, graph operations, properties (zero assume val)
+- `formal/fstar/SPARQL11.Algebra.fst` — SPARQL algebra, evaluation semantics, built-in functions (7 assume val)
 
-The `.fst` files are the compilable versions; the `.fstar.txt` files are kept as the original textual specs. The architecture for F*'s role in the project is documented in [`docs/designissues/fstar_role.md`](docs/designissues/fstar_role.md).
+KaRaMeL extraction status:
+- **RDF module** → 1,710 lines C in `formal/fstar/c-output/` (with GC/compat deps — see c-output/README.md)
+- **SPARQL module** → blocked by `noeq` types (empty extraction)
+
+The `.fst` files are the compilable versions; the `.fstar.txt` files are the original textual specs (historical). The architecture for F\*'s role in the project is documented in [`docs/designissues/fstar_role.md`](docs/designissues/fstar_role.md).
 
 ## Key Dependencies
 
