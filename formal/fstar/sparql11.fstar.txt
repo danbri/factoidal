@@ -336,6 +336,32 @@ and query = {
   q_modifier : solution_modifier;
 }
 
+(** 6.1 IRI resolution against BASE (§5.1.1) **)
+
+(* Resolve a relative IRI reference against a base IRI per RFC 3986.
+   If the reference has a scheme, it is returned as-is.
+   Fragment references (#foo) are appended to the base (after removing
+   any existing fragment). Otherwise, the reference replaces the last
+   path segment of the base. *)
+assume val resolve_iri : wf_iri -> string -> wf_iri
+
+(* Prefix namespace IRIs are resolved against BASE during parsing.
+   All IRIs in the query body are then resolved against BASE.
+   This ensures that relative IRIs like <x> or <#x> become absolute. *)
+let resolve_query_iri (base : option wf_iri) (rel : string) : option wf_iri =
+  match base with
+  | Some b -> Some (resolve_iri b rel)
+  | None -> string_to_iri rel
+
+(** 6.2 SPARQL string escape processing (§19.7) **)
+
+(* SPARQL string literals support escape sequences.
+   The unescape function converts:
+     \\ → \, \n → newline, \r → carriage return, \t → tab,
+     \" → ", \' → ', \uXXXX → Unicode char, \UXXXXXXXX → Unicode char.
+   This is applied to regex patterns before compilation. *)
+assume val unescape_sparql_string : string -> string
+
 (** ====================================================================== **)
 (** Part 7: SPARQL 1.1 Evaluation Semantics (§18.5, §18.6)                **)
 (** ====================================================================== **)
@@ -642,9 +668,15 @@ let fn_encode_for_uri_spec (s : string) : string = string_encode_uri s
 let fn_replace_spec (s pattern replacement : string) (flags : option string) : string =
   string_replace s pattern replacement flags
 
-(* REGEX *)
+(* REGEX — XPath/XQuery regex matching (§17.2.4.2)
+   Flags: i = case-insensitive, s = dot matches newline, m = multi-line,
+          q = quote metacharacters (literal match), x = extended (strip whitespace).
+   The pattern string undergoes SPARQL string unescape processing before
+   compilation: \\ → \, \n → newline, etc.
+   When q flag is set, all regex metacharacters in the pattern are escaped.
+   When x flag is set, unescaped whitespace and #-comments are stripped. *)
 let fn_regex_spec (s pattern : string) (flags : option string) : bool =
-  regex_match s pattern flags
+  regex_match s (unescape_sparql_string pattern) flags
 
 (** 9.4 Numeric functions (§17.4.4) **)
 
@@ -691,6 +723,34 @@ assume val fn_strlang : string -> string -> rdf_term
 (* sameTerm returns true iff two terms are identical RDF terms
    (stricter than = which does value comparison) *)
 assume val same_term : rdf_term -> rdf_term -> bool
+
+(** 9.9 langMatches (§17.4.1.4) **)
+
+(* langMatches tests whether a language tag matches a language range
+   per BCP 47 basic filtering (RFC 4647 §3.3.1).
+   - langMatches(tag, "*") succeeds iff tag is non-empty
+   - langMatches(tag, range) succeeds iff tag equals range (case-insensitive)
+     or tag has range as a case-insensitive prefix followed by '-' *)
+let fn_langMatches_spec (tag range : string) : bool =
+  if range = "*" then
+    strlen tag > 0
+  else
+    let tag_lower = string_lowercase tag in
+    let range_lower = string_lowercase range in
+    tag_lower = range_lower ||
+    string_starts_with tag_lower (strcat range_lower "-")
+
+(** 9.10 REGEX type constraint (§17.2) **)
+
+(* REGEX is defined only for string arguments (xsd:string, rdf:langString,
+   simple literals). When applied to an IRI or BNode, it raises a type error.
+   This is modeled by returning option bool rather than bool. *)
+let fn_regex_typed (term : rdf_term) (pattern : string) (flags : option string)
+    : option bool =
+  match term with
+  | T_Literal lit -> Some (regex_match (lit_lexical lit) pattern flags)
+  | T_IRI _ -> None       (* type error *)
+  | T_BNode _ -> None     (* type error *)
 
 (** ====================================================================== **)
 (** Part 10: SPARQL 1.1 Aggregation (§18.5.1)                             **)
