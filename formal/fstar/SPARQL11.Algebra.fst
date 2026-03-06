@@ -541,27 +541,79 @@ let minus (omega1 omega2 : solution_sequence) : solution_sequence =
 let filter_solutions (e : expr) (omega : solution_sequence) : solution_sequence =
   List.Tot.filter (eval_expr_ebv e) omega
 
-(** 7.4 Graph pattern evaluation (§18.6) **)
+(** 7.4 Graph pattern evaluation (§18.6) — CONCRETE **)
 
-(* Evaluate a group graph pattern against an RDF graph.
-   This is the core recursive evaluation function.
-   [S6] GRAPH patterns evaluated against single default graph only for now. *)
-assume val eval_pattern : group_graph_pattern -> rdf_graph -> solution_sequence
+(* Helper: convert eval_result to rdf_term for BIND *)
+let er_to_term (v : eval_result) : option rdf_term =
+  match v with
+  | ER_Term t -> Some t
+  | ER_Bool true -> Some (T_Literal (mk_plain_literal "true"))
+  | ER_Bool false -> Some (T_Literal (mk_plain_literal "false"))
+  | ER_Num n -> Some (T_Literal ({ lexical_form = string_of_int n;
+                                    datatype = xsd_integer; lang_tag = None }))
+  | ER_Dec s -> Some (T_Literal ({ lexical_form = s;
+                                    datatype = xsd_decimal; lang_tag = None }))
+  | ER_Dbl s -> Some (T_Literal ({ lexical_form = s;
+                                    datatype = xsd_double; lang_tag = None }))
+  | ER_Error -> None
 
-(* Specification of eval_pattern behavior (declarative, not executable):
+(* Evaluate a group graph pattern against an RDF graph — CONCRETE.
+   [S6] GRAPH patterns evaluated against single default graph only.
+   [S1] Property paths deferred.
+   Sub-SELECT deferred (requires eval_select_query). *)
+let rec eval_pattern (p : group_graph_pattern) (g : rdf_graph)
+  : Tot solution_sequence (decreases p) =
+  match p with
+  | GP_BGP bgp -> eval_bgp bgp g
 
-   eval_pattern (GP_BGP bgp) G           = eval_bgp bgp G
-   eval_pattern (GP_Join P1 P2) G        = join (eval P1 G) (eval P2 G)
-   eval_pattern (GP_LeftJoin P1 P2 e) G  = left_join (eval P1 G) (eval P2 G) e
-   eval_pattern (GP_Filter e P) G        = filter_solutions e (eval P G)
-   eval_pattern (GP_Union P1 P2) G       = union (eval P1 G) (eval P2 G)
-   eval_pattern (GP_Minus P1 P2) G       = minus (eval P1 G) (eval P2 G)
-   eval_pattern GP_Empty G               = [sm_empty]
-   eval_pattern (GP_Bind e v P) G        = extend each μ in eval P G with v=eval(e,μ)
-   eval_pattern (GP_Values vars rows) G  = inline data as solution sequence
-   eval_pattern (GP_SubSelect q) G       = eval_query q G
-   eval_pattern (GP_PropertyPath s p o) G = eval_property_path s p o G  [S1]
-*)
+  | GP_Join p1 p2 ->
+    join (eval_pattern p1 g) (eval_pattern p2 g)
+
+  | GP_LeftJoin p1 p2 filter_e ->
+    left_join (eval_pattern p1 g) (eval_pattern p2 g) filter_e
+
+  | GP_Filter e p' ->
+    filter_solutions e (eval_pattern p' g)
+
+  | GP_Union p1 p2 ->
+    union (eval_pattern p1 g) (eval_pattern p2 g)
+
+  | GP_Minus p1 p2 ->
+    minus (eval_pattern p1 g) (eval_pattern p2 g)
+
+  | GP_Empty -> [sm_empty]
+
+  | GP_Bind e v p' ->
+    let omega = eval_pattern p' g in
+    List.Tot.map
+      (fun mu ->
+        match er_to_term (eval_expr e mu) with
+        | Some t ->
+          (* Only bind if variable is not already bound *)
+          (match sm_lookup v mu with
+           | Some _ -> mu  (* preserve existing binding *)
+           | None -> sm_bind v t mu)
+        | None -> mu)  (* error → leave mapping unchanged *)
+      omega
+
+  | GP_Values vars rows ->
+    eval_values vars rows
+
+  | GP_Graph _ p' ->
+    (* [S6] Named graph patterns: evaluate against default graph *)
+    eval_pattern p' g
+
+  | GP_Service _ _ _ ->
+    (* SERVICE: remote execution, not supported *)
+    []
+
+  | GP_SubSelect _ ->
+    (* Sub-SELECT: requires eval_select_query, deferred *)
+    []
+
+  | GP_PropertyPath _ _ _ ->
+    (* [S1] Property paths: deferred *)
+    []
 
 (** ====================================================================== **)
 (** Part 8: SPARQL 1.1 Expression Evaluation (§17)                         **)
@@ -604,58 +656,374 @@ let ebv (v : eval_result) : bool =
   | ER_Term _   -> false   (* IRI/BNode have no boolean interpretation *)
   | ER_Error    -> false
 
-(** 8.2 Expression evaluation function **)
+(** 8.2 Expression evaluation function — CONCRETE **)
 
-(* Full expression evaluation: expr × solution_mapping → eval_result *)
-assume val eval_expr : expr -> solution_mapping -> eval_result
+(* Helper: extract string from eval_result for string function dispatch *)
+let er_to_string (v : eval_result) : option string =
+  match v with
+  | ER_Term (T_Literal l) -> Some (lit_lexical l)
+  | ER_Term (T_IRI i) -> Some (iri_to_string i)
+  | _ -> None
 
-(* Specification (selected cases):
+(* Helper: wrap string result as plain literal *)
+let er_string (s : string) : eval_result =
+  ER_Term (T_Literal (mk_plain_literal s))
 
-   eval_expr (E_Var v) μ =
-     match sm_lookup v μ with
+(* Helper: evaluate arithmetic on integers *)
+let eval_arith_int (op : arith_op) (a b : int) : eval_result =
+  match op with
+  | Add -> ER_Num (a + b)
+  | Sub -> ER_Num (a - b)
+  | Mul -> ER_Num (a * b)
+  | Div -> if b = 0 then ER_Error else ER_Num (a / b)
+
+(* Helper: extract the xsd:dateTime lexical form from a literal *)
+let er_to_datetime_lex (v : eval_result) : option string =
+  match v with
+  | ER_Term (T_Literal l) ->
+    if lit_datatype l = xsd_dateTime then Some (lit_lexical l) else None
+  | _ -> None
+
+(* Full expression evaluation: expr × solution_mapping → eval_result — CONCRETE.
+   EXISTS/NOT EXISTS require graph context — delegated to eval_pattern.
+   This function does not take a graph parameter; EXISTS/NOT EXISTS return ER_Error.
+   Use eval_exists/eval_not_exists (Part 17) for graph-aware evaluation. *)
+let rec eval_expr (e : expr) (mu : solution_mapping)
+  : Tot eval_result (decreases e) =
+  match e with
+  (* Primary expressions *)
+  | E_Var v ->
+    (match sm_lookup v mu with
      | Some t -> ER_Term t
-     | None   -> ER_Error
+     | None -> ER_Error)
+  | E_IRI i -> ER_Term (T_IRI i)
+  | E_Literal l -> ER_Term (T_Literal l)
+  | E_BoolLit b -> ER_Bool b
+  | E_NumericLit n -> ER_Num n
+  | E_DecimalLit s -> ER_Dec s
+  | E_DoubleLit s -> ER_Dbl s
 
-   eval_expr (E_Arith Add e1 e2) μ =
-     match eval_expr e1 μ, eval_expr e2 μ with
-     | ER_Num a, ER_Num b -> ER_Num (a + b)
-     | _, _ -> ER_Error  (* type error *)
+  (* Arithmetic *)
+  | E_Arith op e1 e2 ->
+    (match eval_expr e1 mu, eval_expr e2 mu with
+     | ER_Num a, ER_Num b -> eval_arith_int op a b
+     | _, _ -> ER_Error)
+  | E_UnaryMinus e1 ->
+    (match eval_expr e1 mu with
+     | ER_Num n -> ER_Num (0 - n)
+     | _ -> ER_Error)
+  | E_UnaryPlus e1 -> eval_expr e1 mu
 
-   eval_expr (E_Compare op e1 e2) μ =
-     ER_Bool (value_compare (eval_expr e1 μ) (eval_expr e2 μ) op)
+  (* Comparison *)
+  | E_Compare op e1 e2 ->
+    (match value_compare (eval_expr e1 mu) (eval_expr e2 mu) op with
+     | Some b -> ER_Bool b
+     | None -> ER_Error)
 
-   eval_expr (E_And e1 e2) μ =
-     ER_Bool (ebv (eval_expr e1 μ) && ebv (eval_expr e2 μ))
+  (* Logical connectives *)
+  | E_And e1 e2 -> ER_Bool (ebv (eval_expr e1 mu) && ebv (eval_expr e2 mu))
+  | E_Or e1 e2 -> ER_Bool (ebv (eval_expr e1 mu) || ebv (eval_expr e2 mu))
+  | E_Not e1 -> ER_Bool (not (ebv (eval_expr e1 mu)))
 
-   eval_expr (E_Or e1 e2) μ =
-     ER_Bool (ebv (eval_expr e1 μ) || ebv (eval_expr e2 μ))
+  (* Type tests *)
+  | E_IsIRI e1 -> fn_isIRI (eval_expr e1 mu)
+  | E_IsBlank e1 -> fn_isBlank (eval_expr e1 mu)
+  | E_IsLiteral e1 -> fn_isLiteral (eval_expr e1 mu)
+  | E_IsNumeric e1 -> fn_isNumeric (eval_expr e1 mu)
 
-   eval_expr (E_Not e) μ =
-     ER_Bool (not (ebv (eval_expr e μ)))
+  (* Accessors *)
+  | E_Str e1 -> fn_str (eval_expr e1 mu)
+  | E_Lang e1 -> fn_lang (eval_expr e1 mu)
+  | E_Datatype e1 -> fn_datatype (eval_expr e1 mu)
+  | E_IRI_fn e1 ->
+    (match eval_expr e1 mu with
+     | ER_Term (T_IRI i) -> ER_Term (T_IRI i)
+     | ER_Term (T_Literal l) -> ER_Term (T_IRI (string_to_iri (lit_lexical l)))
+     | _ -> ER_Error)
 
-   eval_expr (E_Bound v) μ =
-     ER_Bool (Some? (sm_lookup v μ))
+  (* Term constructors *)
+  | E_StrDt e1 e2 ->
+    (match er_to_string (eval_expr e1 mu), eval_expr e2 mu with
+     | Some s, ER_Term (T_IRI dt) -> ER_Term (fn_strdt s dt)
+     | _, _ -> ER_Error)
+  | E_StrLang e1 e2 ->
+    (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu) with
+     | Some s, Some lang -> ER_Term (fn_strlang s lang)
+     | _, _ -> ER_Error)
 
-   eval_expr (E_If cond then_e else_e) μ =
-     if ebv (eval_expr cond μ) then eval_expr then_e μ
-     else eval_expr else_e μ
+  (* BOUND *)
+  | E_Bound v -> ER_Bool (Some? (sm_lookup v mu))
 
-   eval_expr (E_Coalesce es) μ =
-     first non-error result from evaluating es left-to-right
+  (* Conditional *)
+  | E_If cond then_e else_e ->
+    if ebv (eval_expr cond mu) then eval_expr then_e mu
+    else eval_expr else_e mu
+  | E_Coalesce es -> eval_coalesce es mu
+  | E_In ev es ->
+    let v = eval_expr ev mu in
+    eval_in v es mu
+  | E_NotIn ev es ->
+    let v = eval_expr ev mu in
+    (match eval_in v es mu with
+     | ER_Bool b -> ER_Bool (not b)
+     | other -> other)
 
-   eval_expr (E_Exists P) μ =
-     ER_Bool (List.Tot.length (eval_pattern P G) > 0)
-     (* Note: requires access to the active graph G *)
-*)
+  (* String functions *)
+  | E_StrLen e1 ->
+    (match er_to_string (eval_expr e1 mu) with
+     | Some s -> ER_Num (string_length s)
+     | None -> ER_Error)
+  | E_Substr e1 e2 e3_opt ->
+    (match er_to_string (eval_expr e1 mu), eval_expr e2 mu with
+     | Some s, ER_Num start ->
+       let len_opt = match e3_opt with
+         | Some e3 -> (match eval_expr e3 mu with
+                       | ER_Num n -> Some n
+                       | _ -> None)
+         | None -> None
+       in er_string (fn_substr_spec s start len_opt)
+     | _, _ -> ER_Error)
+  | E_UCase e1 ->
+    (match er_to_string (eval_expr e1 mu) with
+     | Some s -> er_string (string_upper s)
+     | None -> ER_Error)
+  | E_LCase e1 ->
+    (match er_to_string (eval_expr e1 mu) with
+     | Some s -> er_string (string_lower s)
+     | None -> ER_Error)
+  | E_StrStarts e1 e2 ->
+    (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu) with
+     | Some s, Some prefix -> ER_Bool (string_starts_with s prefix)
+     | _, _ -> ER_Error)
+  | E_StrEnds e1 e2 ->
+    (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu) with
+     | Some s, Some suffix -> ER_Bool (string_ends_with s suffix)
+     | _, _ -> ER_Error)
+  | E_Contains e1 e2 ->
+    (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu) with
+     | Some s, Some sub -> ER_Bool (string_contains s sub)
+     | _, _ -> ER_Error)
+  | E_StrBefore e1 e2 ->
+    (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu) with
+     | Some s, Some arg -> er_string (string_before s arg)
+     | _, _ -> ER_Error)
+  | E_StrAfter e1 e2 ->
+    (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu) with
+     | Some s, Some arg -> er_string (string_after s arg)
+     | _, _ -> ER_Error)
+  | E_Concat es -> eval_concat es mu
+  | E_EncodeForUri e1 ->
+    (match er_to_string (eval_expr e1 mu) with
+     | Some s -> er_string (string_encode_uri s)
+     | None -> ER_Error)
+  | E_Replace e1 e2 e3 e4_opt ->
+    (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu),
+           er_to_string (eval_expr e3 mu) with
+     | Some s, Some pat, Some rep ->
+       let flags = match e4_opt with
+         | Some e4 -> er_to_string (eval_expr e4 mu)
+         | None -> None
+       in er_string (string_replace s pat rep flags)
+     | _, _, _ -> ER_Error)
+  | E_Regex e1 e2 e3_opt ->
+    (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu) with
+     | Some s, Some pat ->
+       let flags = match e3_opt with
+         | Some e3 -> er_to_string (eval_expr e3 mu)
+         | None -> None
+       in ER_Bool (fn_regex_spec s pat flags)
+     | _, _ -> ER_Error)
 
-(** 8.3 Value comparison (§17.3) **)
+  (* Numeric functions *)
+  | E_Abs e1 ->
+    (match eval_expr e1 mu with
+     | ER_Num n -> ER_Num (int_abs n)
+     | _ -> ER_Error)
+  | E_Round e1 ->
+    (match eval_expr e1 mu with
+     | ER_Num n -> ER_Num n
+     | ER_Dec s -> ER_Num (int_round s)
+     | _ -> ER_Error)
+  | E_Ceil e1 ->
+    (match eval_expr e1 mu with
+     | ER_Num n -> ER_Num n
+     | ER_Dec s -> ER_Num (int_ceil s)
+     | _ -> ER_Error)
+  | E_Floor e1 ->
+    (match eval_expr e1 mu with
+     | ER_Num n -> ER_Num n
+     | ER_Dec s -> ER_Num (int_floor s)
+     | _ -> ER_Error)
 
-(* SPARQL value comparison with type-aware semantics.
+  (* Hash functions *)
+  | E_MD5 e1 ->
+    (match er_to_string (eval_expr e1 mu) with
+     | Some s -> er_string (hash_md5 s)
+     | None -> ER_Error)
+  | E_SHA1 e1 ->
+    (match er_to_string (eval_expr e1 mu) with
+     | Some s -> er_string (hash_sha1 s)
+     | None -> ER_Error)
+  | E_SHA256 e1 ->
+    (match er_to_string (eval_expr e1 mu) with
+     | Some s -> er_string (hash_sha256 s)
+     | None -> ER_Error)
+  | E_SHA384 e1 ->
+    (match er_to_string (eval_expr e1 mu) with
+     | Some s -> er_string (hash_sha384 s)
+     | None -> ER_Error)
+  | E_SHA512 e1 ->
+    (match er_to_string (eval_expr e1 mu) with
+     | Some s -> er_string (hash_sha512 s)
+     | None -> ER_Error)
+
+  (* Date/time functions *)
+  | E_Now -> ER_Error  (* requires runtime context *)
+  | E_Year e1 ->
+    (match er_to_datetime_lex (eval_expr e1 mu) with
+     | Some s -> (match dt_year s with Some n -> ER_Num n | None -> ER_Error)
+     | None -> ER_Error)
+  | E_Month e1 ->
+    (match er_to_datetime_lex (eval_expr e1 mu) with
+     | Some s -> (match dt_month s with Some n -> ER_Num n | None -> ER_Error)
+     | None -> ER_Error)
+  | E_Day e1 ->
+    (match er_to_datetime_lex (eval_expr e1 mu) with
+     | Some s -> (match dt_day s with Some n -> ER_Num n | None -> ER_Error)
+     | None -> ER_Error)
+  | E_Hours e1 ->
+    (match er_to_datetime_lex (eval_expr e1 mu) with
+     | Some s -> (match dt_hours s with Some n -> ER_Num n | None -> ER_Error)
+     | None -> ER_Error)
+  | E_Minutes e1 ->
+    (match er_to_datetime_lex (eval_expr e1 mu) with
+     | Some s -> (match dt_minutes s with Some n -> ER_Num n | None -> ER_Error)
+     | None -> ER_Error)
+  | E_Seconds e1 ->
+    (match er_to_datetime_lex (eval_expr e1 mu) with
+     | Some s -> (match dt_seconds s with Some ds -> ER_Dec ds | None -> ER_Error)
+     | None -> ER_Error)
+  | E_Timezone e1 ->
+    (match er_to_datetime_lex (eval_expr e1 mu) with
+     | Some s -> (match dt_timezone s with Some tz -> er_string tz | None -> ER_Error)
+     | None -> ER_Error)
+  | E_Tz e1 ->
+    (match er_to_datetime_lex (eval_expr e1 mu) with
+     | Some s -> (match dt_tz s with Some tz -> er_string tz | None -> ER_Error)
+     | None -> ER_Error)
+
+  (* SameTerm *)
+  | E_SameTerm e1 e2 ->
+    (match eval_expr e1 mu, eval_expr e2 mu with
+     | ER_Term t1, ER_Term t2 -> ER_Bool (same_term t1 t2)
+     | _, _ -> ER_Error)
+
+  (* EXISTS / NOT EXISTS — require graph context, delegated *)
+  | E_Exists _ -> ER_Error
+  | E_NotExists _ -> ER_Error
+
+  (* Aggregates — evaluated in aggregation context, not here *)
+  | E_Aggregate _ _ _ -> ER_Error
+
+  (* Function call — extensible, not handled here *)
+  | E_FunctionCall _ _ -> ER_Error
+
+(* Coalesce: first non-error result from list *)
+and eval_coalesce (es : list expr) (mu : solution_mapping)
+  : Tot eval_result (decreases es) =
+  match es with
+  | [] -> ER_Error
+  | e :: rest ->
+    (match eval_expr e mu with
+     | ER_Error -> eval_coalesce rest mu
+     | v -> v)
+
+(* IN: check if value equals any in list *)
+and eval_in (v : eval_result) (es : list expr) (mu : solution_mapping)
+  : Tot eval_result (decreases es) =
+  match es with
+  | [] -> ER_Bool false
+  | e :: rest ->
+    (match value_compare v (eval_expr e mu) CmpEq with
+     | Some true -> ER_Bool true
+     | _ -> eval_in v rest mu)
+
+(* CONCAT: concatenate string results *)
+and eval_concat (es : list expr) (mu : solution_mapping)
+  : Tot eval_result (decreases es) =
+  match es with
+  | [] -> er_string ""
+  | e :: rest ->
+    (match er_to_string (eval_expr e mu), eval_concat rest mu with
+     | Some s, ER_Term (T_Literal l) ->
+       er_string (strcat s (lit_lexical l))
+     | _, _ -> ER_Error)
+
+(* eval_expr_ebv: EBV of expression evaluation — CONCRETE *)
+let eval_expr_ebv (e : expr) (mu : solution_mapping) : bool =
+  ebv (eval_expr e mu)
+
+(** 8.3 Value comparison (§17.3) — CONCRETE **)
+
+(* Apply a comparison operator to an integer ordering result (-1, 0, 1) *)
+let apply_comp_op (cmp : int) (op : comp_op) : bool =
+  match op with
+  | CmpEq -> cmp = 0
+  | CmpNe -> cmp <> 0
+  | CmpLt -> cmp < 0
+  | CmpGt -> cmp > 0
+  | CmpLe -> cmp <= 0
+  | CmpGe -> cmp >= 0
+
+(* Compare two integers *)
+let int_compare (a b : int) : int =
+  if a < b then -1 else if a = b then 0 else 1
+
+(* SPARQL value comparison with type-aware semantics — CONCRETE.
    Returns None for type errors (incompatible types).
    Cross-numeric comparison is always permitted.
    Same-type xsd:string, xsd:dateTime, etc. use natural ordering.
    Different simple literal types → type error. *)
-assume val value_compare : eval_result -> eval_result -> comp_op -> option bool
+let value_compare (v1 v2 : eval_result) (op : comp_op) : option bool =
+  match v1, v2 with
+  (* Integer vs integer *)
+  | ER_Num a, ER_Num b -> Some (apply_comp_op (int_compare a b) op)
+  (* Boolean vs boolean: false < true *)
+  | ER_Bool a, ER_Bool b ->
+    let ia = if a then 1 else 0 in
+    let ib = if b then 1 else 0 in
+    Some (apply_comp_op (int_compare ia ib) op)
+  (* Decimal vs decimal: lexicographic (approximate — proper decimal comparison deferred [S4]) *)
+  | ER_Dec a, ER_Dec b -> Some (apply_comp_op (String.compare a b) op)
+  (* Double vs double *)
+  | ER_Dbl a, ER_Dbl b -> Some (apply_comp_op (String.compare a b) op)
+  (* Cross-numeric: integer vs decimal/double — promote integer to string *)
+  | ER_Num a, ER_Dec b -> Some (apply_comp_op (String.compare (string_of_int a) b) op)
+  | ER_Dec a, ER_Num b -> Some (apply_comp_op (String.compare a (string_of_int b)) op)
+  | ER_Num a, ER_Dbl b -> Some (apply_comp_op (String.compare (string_of_int a) b) op)
+  | ER_Dbl a, ER_Num b -> Some (apply_comp_op (String.compare a (string_of_int b)) op)
+  | ER_Dec a, ER_Dbl b -> Some (apply_comp_op (String.compare a b) op)
+  | ER_Dbl a, ER_Dec b -> Some (apply_comp_op (String.compare a b) op)
+  (* Term comparisons *)
+  | ER_Term (T_IRI i1), ER_Term (T_IRI i2) ->
+    Some (apply_comp_op (String.compare (iri_to_string i1) (iri_to_string i2)) op)
+  | ER_Term (T_Literal l1), ER_Term (T_Literal l2) ->
+    (* Same-type literals: compare lexical forms *)
+    if lit_datatype l1 = lit_datatype l2
+    then
+      (* For lang-tagged strings, also check lang tag match for equality *)
+      if lit_lang l1 = lit_lang l2
+      then Some (apply_comp_op (String.compare (lit_lexical l1) (lit_lexical l2)) op)
+      else (match op with
+            | CmpEq -> Some false
+            | CmpNe -> Some true
+            | _ -> None)
+    else None  (* incompatible types *)
+  (* Error propagation *)
+  | ER_Error, _ -> None
+  | _, ER_Error -> None
+  (* All other combinations: type error *)
+  | _, _ -> None
 
 (** ====================================================================== **)
 (** Part 9: SPARQL 1.1 Built-in Functions (§17.4)                         **)
@@ -731,15 +1099,57 @@ let fn_datatype (v : eval_result) : eval_result =
    specially per function. [S3] Unicode handled via assumed primitives. *)
 
 let string_length (s : string) : nat = String.length s
-assume val string_substring : string -> nat -> option nat -> string
-assume val string_upper : string -> string
-assume val string_lower : string -> string
-assume val string_contains : string -> string -> bool
-assume val string_starts_with : string -> string -> bool
-assume val string_ends_with : string -> string -> bool
+
+(* List-based string operations for contains/starts_with/ends_with *)
+let rec list_is_prefix (#a:eqtype) (prefix lst : list a) : Tot bool (decreases prefix) =
+  match prefix, lst with
+  | [], _ -> true
+  | _, [] -> false
+  | x :: xs, y :: ys -> x = y && list_is_prefix xs ys
+
+let rec list_contains_sublist (#a:eqtype) (needle haystack : list a) : Tot bool (decreases haystack) =
+  match haystack with
+  | [] -> Nil? needle
+  | _ :: rest -> list_is_prefix needle haystack || list_contains_sublist needle rest
+
+(* SUBSTR: extract substring — CONCRETE via FStar.String.sub *)
+let string_substring (s : string) (start : nat) (len : option nat) : string =
+  let slen = String.length s in
+  let start' = if start >= slen then slen else start in
+  let actual_len = match len with
+    | Some l -> if start' + l > slen then slen - start' else l
+    | None -> slen - start'
+  in
+  if actual_len = 0 || start' >= slen then ""
+  else String.sub s start' actual_len
+
+(* UCASE / LCASE — CONCRETE via FStar.String *)
+let string_upper (s : string) : string = String.uppercase s
+let string_lower (s : string) : string = String.lowercase s
+
+(* CONTAINS — CONCRETE via list_of_string *)
+let string_contains (s sub : string) : bool =
+  list_contains_sublist (String.list_of_string sub) (String.list_of_string s)
+
+(* STRSTARTS — CONCRETE via list_of_string *)
+let string_starts_with (s prefix : string) : bool =
+  list_is_prefix (String.list_of_string prefix) (String.list_of_string s)
+
+(* STRENDS — CONCRETE via reversed lists *)
+let string_ends_with (s suffix : string) : bool =
+  list_is_prefix
+    (List.Tot.rev (String.list_of_string suffix))
+    (List.Tot.rev (String.list_of_string s))
+
+(* STRBEFORE / STRAFTER — require finding a substring position.
+   Complex with pure functional strings; kept as assumed for now. *)
 assume val string_before : string -> string -> string
 assume val string_after : string -> string -> string
-assume val string_concat : list string -> string
+
+(* CONCAT — CONCRETE via FStar.String.concat *)
+let string_concat (args : list string) : string = String.concat "" args
+
+(* ENCODE_FOR_URI, REPLACE, REGEX — require complex string processing *)
 assume val string_encode_uri : string -> string
 assume val string_replace : string -> string -> string -> option string -> string
 assume val regex_match : string -> string -> option string -> bool
@@ -787,7 +1197,10 @@ let fn_regex_spec (s pattern : string) (flags : option string) : bool =
 
 (** 9.4 Numeric functions (§17.4.4) **)
 
-assume val int_abs : int -> int
+(* ABS: absolute value — CONCRETE *)
+let int_abs (n : int) : int = if n >= 0 then n else 0 - n
+
+(* ROUND, CEIL, FLOOR: operate on decimal strings [S4] — require parsing *)
 assume val int_round : string -> int    (* decimal string → rounded int [S4] *)
 assume val int_ceil : string -> int     (* decimal string → ceiling [S4] *)
 assume val int_floor : string -> int    (* decimal string → floor [S4] *)
