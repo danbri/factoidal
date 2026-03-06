@@ -1455,9 +1455,60 @@ type group = {
   g_solutions : solution_sequence; (* solutions in this group *)
 }
 
-(* Partition a solution sequence by GROUP BY expressions *)
-assume val group_by :
-  list group_condition -> solution_sequence -> list group
+(* Evaluate a single group condition against a solution mapping to get a key value *)
+let eval_group_condition (gc : group_condition) (mu : solution_mapping) : eval_result =
+  match gc with
+  | GC_Var v ->
+    (match sm_lookup v mu with
+     | Some t -> ER_Term t
+     | None -> ER_Error)
+  | GC_Expr e _ -> eval_expr e mu
+  | GC_BuiltIn e -> eval_expr e mu
+
+(* Evaluate all group conditions against a solution mapping to get the full key *)
+let eval_group_key (conds : list group_condition) (mu : solution_mapping) : list eval_result =
+  List.Tot.map (fun gc -> eval_group_condition gc mu) conds
+
+(* Check if two eval_result values are equal by SPARQL ordering *)
+let er_equal (a b : eval_result) : bool =
+  sparql_order a b = 0
+
+(* Check if two group keys (lists of eval_result) are equal *)
+let rec keys_equal (k1 k2 : list eval_result) : Tot bool (decreases k1) =
+  match k1, k2 with
+  | [], [] -> true
+  | a :: rest1, b :: rest2 -> er_equal a b && keys_equal rest1 rest2
+  | _, _ -> false
+
+(* Find an existing group with a matching key, or return None *)
+let rec find_group (key : list eval_result) (groups : list group)
+  : Tot (option (list group & group & list group)) (decreases groups) =
+  match groups with
+  | [] -> None
+  | g :: rest ->
+    if keys_equal key g.g_key then Some ([], g, rest)
+    else
+      (match find_group key rest with
+       | None -> None
+       | Some (before, found, after) -> Some (g :: before, found, after))
+
+(* Add a solution mapping to the correct group, creating a new group if needed.
+   O(n) scan per insertion — simple algorithm. *)
+let add_to_groups (key : list eval_result) (mu : solution_mapping) (groups : list group) : list group =
+  match find_group key groups with
+  | Some (before, g, after) ->
+    before @ [{ g with g_solutions = g.g_solutions @ [mu] }] @ after
+  | None ->
+    groups @ [{ g_key = key; g_solutions = [mu] }]
+
+(* Partition a solution sequence by GROUP BY expressions — CONCRETE implementation *)
+let group_by (conds : list group_condition) (omega : solution_sequence) : list group =
+  List.Tot.fold_left
+    (fun (groups : list group) (mu : solution_mapping) ->
+      let key = eval_group_key conds mu in
+      add_to_groups key mu groups)
+    []
+    omega
 
 (* When no GROUP BY is specified, the entire sequence is one group *)
 let implicit_group (omega : solution_sequence) : list group =
@@ -1465,38 +1516,110 @@ let implicit_group (omega : solution_sequence) : list group =
 
 (** 10.2 Aggregate evaluation **)
 
-(* Evaluate an aggregate function over a group *)
-assume val eval_aggregate :
-  aggregate_fn -> bool (* distinct *) -> expr -> group -> eval_result
+(* Collect evaluated results for an expression over all solutions in a group *)
+let eval_over_group (e : expr) (g : group) : list eval_result =
+  List.Tot.map (fun mu -> eval_expr e mu) g.g_solutions
 
-(* Specification (selected):
-   eval_aggregate Agg_Count false (E_Var "*") g =
-     ER_Num (List.Tot.length g.g_solutions)
+(* Filter out ER_Error values *)
+let filter_non_error (vals : list eval_result) : list eval_result =
+  List.Tot.filter (fun v -> not (ER_Error? v)) vals
 
-   eval_aggregate Agg_Count false e g =
-     ER_Num (count of μ in g.g_solutions where eval_expr e μ <> ER_Error)
+(* Remove duplicate eval_results using sparql_order for equality *)
+let rec dedup_er (vals : list eval_result) : Tot (list eval_result) (decreases vals) =
+  match vals with
+  | [] -> []
+  | v :: rest ->
+    if List.Tot.existsb (fun x -> er_equal v x) rest
+    then dedup_er rest
+    else v :: dedup_er rest
 
-   eval_aggregate Agg_Count true e g =
-     ER_Num (count of distinct non-error values)
+(* Sum a list of eval_results, keeping only ER_Num values *)
+let rec sum_nums (vals : list eval_result) : Tot int (decreases vals) =
+  match vals with
+  | [] -> 0
+  | ER_Num n :: rest -> n + sum_nums rest
+  | _ :: rest -> sum_nums rest
 
-   eval_aggregate Agg_Sum false e g =
-     ER_Num (sum of numeric values of eval_expr e μ for μ in g.g_solutions)
+(* Count numeric values in a list *)
+let rec count_nums (vals : list eval_result) : Tot int (decreases vals) =
+  match vals with
+  | [] -> 0
+  | ER_Num _ :: rest -> 1 + count_nums rest
+  | _ :: rest -> count_nums rest
 
-   eval_aggregate Agg_Avg false e g =
-     ER_Dec (sum / count as decimal)
+(* Find minimum eval_result by sparql_order *)
+let rec find_min (vals : list eval_result) : Tot eval_result (decreases vals) =
+  match vals with
+  | [] -> ER_Error
+  | [v] -> v
+  | v :: rest ->
+    let m = find_min rest in
+    if sparql_order v m <= 0 then v else m
 
-   eval_aggregate Agg_Min false e g =
-     minimum value by SPARQL ordering
+(* Find maximum eval_result by sparql_order *)
+let rec find_max (vals : list eval_result) : Tot eval_result (decreases vals) =
+  match vals with
+  | [] -> ER_Error
+  | [v] -> v
+  | v :: rest ->
+    let m = find_max rest in
+    if sparql_order v m >= 0 then v else m
 
-   eval_aggregate Agg_Max false e g =
-     maximum value by SPARQL ordering
+(* Collect string representations from eval_results, skipping non-stringifiable *)
+let rec collect_strings (vals : list eval_result) : Tot (list string) (decreases vals) =
+  match vals with
+  | [] -> []
+  | v :: rest ->
+    (match er_to_string v with
+     | Some s -> s :: collect_strings rest
+     | None -> collect_strings rest)
 
-   eval_aggregate (Agg_GroupConcat sep) false e g =
-     ER_Term (plain_literal (concat with separator))
+(* Find the first non-error result *)
+let rec first_non_error (vals : list eval_result) : Tot eval_result (decreases vals) =
+  match vals with
+  | [] -> ER_Error
+  | v :: rest -> if ER_Error? v then first_non_error rest else v
 
-   eval_aggregate Agg_Sample false e g =
-     first non-error value (implementation-defined)
-*)
+(* Evaluate an aggregate function over a group — CONCRETE implementation (§18.5) *)
+let eval_aggregate (fn : aggregate_fn) (distinct : bool) (e : expr) (g : group) : eval_result =
+  match fn with
+  | Agg_Count ->
+    (* COUNT(*) counts all solutions; COUNT(expr) counts non-error evaluations *)
+    (match e with
+     | E_Var "*" -> ER_Num (List.Tot.length g.g_solutions)
+     | _ ->
+       let vals = filter_non_error (eval_over_group e g) in
+       let vals = if distinct then dedup_er vals else vals in
+       ER_Num (List.Tot.length vals))
+  | Agg_Sum ->
+    let vals = filter_non_error (eval_over_group e g) in
+    let vals = if distinct then dedup_er vals else vals in
+    ER_Num (sum_nums vals)
+  | Agg_Avg ->
+    let vals = filter_non_error (eval_over_group e g) in
+    let vals = if distinct then dedup_er vals else vals in
+    let s = sum_nums vals in
+    let c = count_nums vals in
+    if c > 0
+    then ER_Dec (string_of_int (s / c) ^ "." ^ string_of_int (int_abs ((op_Multiply (s - op_Multiply (s / c) c) 1000) / c)))
+    else ER_Num 0
+  | Agg_Min ->
+    let vals = filter_non_error (eval_over_group e g) in
+    let vals = if distinct then dedup_er vals else vals in
+    find_min vals
+  | Agg_Max ->
+    let vals = filter_non_error (eval_over_group e g) in
+    let vals = if distinct then dedup_er vals else vals in
+    find_max vals
+  | Agg_GroupConcat sep_opt ->
+    let vals = filter_non_error (eval_over_group e g) in
+    let vals = if distinct then dedup_er vals else vals in
+    let sep = (match sep_opt with | Some s -> s | None -> " ") in
+    let strs = collect_strings vals in
+    ER_Term (T_Literal (mk_plain_literal (String.concat sep strs)))
+  | Agg_Sample ->
+    let vals = eval_over_group e g in
+    first_non_error vals
 
 (** 10.3 HAVING filter **)
 
@@ -1765,10 +1888,110 @@ let eval_select_query (q : query) (g : rdf_graph) : solution_sequence =
 type path_result = list (rdf_term * rdf_term)
 
 (* Evaluate a property path over a graph *)
-assume val eval_property_path :
-  property_path -> rdf_graph -> path_result
 
-(* Specification:
+(* Helper: check if an rdf_term is not a literal (can serve as a subject in inverse paths) *)
+let is_not_literal (t : rdf_term) : bool =
+  match t with
+  | T_Literal _ -> false
+  | _ -> true
+
+(* Helper: equality for path result pairs *)
+let path_pair_eq (p1 p2 : rdf_term * rdf_term) : bool =
+  let (a1, b1) = p1 in
+  let (a2, b2) = p2 in
+  rdf_term_eq a1 a2 && rdf_term_eq b1 b2
+
+(* Helper: deduplicate path results *)
+let dedup_path (pairs : path_result) : path_result =
+  List.Tot.deduplicate path_pair_eq pairs
+
+(* Helper: collect IRIs from a negated property set *)
+let rec negated_iris (ps : list property_path) : Tot (list wf_iri) (decreases ps) =
+  match ps with
+  | [] -> []
+  | PP_IRI i :: rest -> i :: negated_iris rest
+  | PP_Inverse (PP_IRI i) :: rest -> i :: negated_iris rest
+  | _ :: rest -> negated_iris rest
+
+(* Helper: check if an IRI is in a list *)
+let rec iri_in_list (iri : wf_iri) (iris : list wf_iri) : Tot bool (decreases iris) =
+  match iris with
+  | [] -> false
+  | hd :: tl -> if hd = iri then true else iri_in_list iri tl
+
+(* Helper: collect all nodes mentioned in a graph (as rdf_terms) *)
+let graph_nodes (g : rdf_graph) : list rdf_term =
+  let subj_nodes = List.Tot.map (fun (t : triple) -> subject_to_term t.s) g in
+  let obj_nodes = List.Tot.map (fun (t : triple) -> t.o) g in
+  dedup_path (List.Tot.map (fun (n : rdf_term) -> (n, n)) (subj_nodes @ obj_nodes))
+
+(* Concrete implementation of property path evaluation.
+   [S1] ZeroOrMore and OneOrMore use single-step evaluation (simplified). *)
+let rec eval_property_path (p : property_path) (g : rdf_graph)
+  : Tot path_result (decreases p) =
+  match p with
+  | PP_IRI iri ->
+    (* { (s, o) | (s, iri, o) ∈ G } *)
+    List.Tot.concatMap
+      (fun (t : triple) ->
+        if t.p = iri then [(subject_to_term t.s, t.o)] else [])
+      g
+
+  | PP_Inverse pp ->
+    (* { (o, s) | (s, o) ∈ eval pp G }, filtering out pairs where o is a literal *)
+    let pairs = eval_property_path pp g in
+    List.Tot.concatMap
+      (fun (pair : rdf_term * rdf_term) ->
+        let (s, o) = pair in
+        if is_not_literal o then [(o, s)] else [])
+      pairs
+
+  | PP_Sequence p1 p2 ->
+    (* { (s, o) | ∃ mid. (s, mid) ∈ eval p1 G ∧ (mid, o) ∈ eval p2 G } *)
+    let r1 = eval_property_path p1 g in
+    let r2 = eval_property_path p2 g in
+    dedup_path
+      (List.Tot.concatMap
+        (fun (pair1 : rdf_term * rdf_term) ->
+          let (s, mid1) = pair1 in
+          List.Tot.concatMap
+            (fun (pair2 : rdf_term * rdf_term) ->
+              let (mid2, o) = pair2 in
+              if rdf_term_eq mid1 mid2 then [(s, o)] else [])
+            r2)
+        r1)
+
+  | PP_Alternative p1 p2 ->
+    (* eval p1 G ∪ eval p2 G *)
+    dedup_path (eval_property_path p1 g @ eval_property_path p2 g)
+
+  | PP_ZeroOrOne pp ->
+    (* { (x, x) | x ∈ nodes(G) } ∪ eval pp G *)
+    let reflexive = graph_nodes g in
+    let step = eval_property_path pp g in
+    dedup_path (List.Tot.map (fun (pair : rdf_term * rdf_term) -> fst pair, fst pair) reflexive @ step)
+
+  | PP_ZeroOrMore pp ->
+    (* [S1] Simplified: reflexive pairs ∪ single-step evaluation.
+       Full implementation requires transitive-reflexive closure with cycle detection. *)
+    let reflexive = graph_nodes g in
+    let step = eval_property_path pp g in
+    dedup_path (List.Tot.map (fun (pair : rdf_term * rdf_term) -> fst pair, fst pair) reflexive @ step)
+
+  | PP_OneOrMore pp ->
+    (* [S1] Simplified: single-step evaluation only.
+       Full implementation requires transitive closure with cycle detection. *)
+    eval_property_path pp g
+
+  | PP_NegatedSet ps ->
+    (* { (s, o) | (s, p, o) ∈ G, p ∉ iris(ps) } *)
+    let excluded = negated_iris ps in
+    List.Tot.concatMap
+      (fun (t : triple) ->
+        if iri_in_list t.p excluded then [] else [(subject_to_term t.s, t.o)])
+      g
+
+(* Specification (retained for reference):
 
    eval_property_path (PP_IRI iri) G =
      { (s, o) | (s, iri, o) ∈ G }
@@ -2073,8 +2296,50 @@ let xsd_cast (v : eval_result) (target : cast_target) : option eval_result =
    The pattern is evaluated in the context of the current solution mapping μ:
    variables already bound in μ are substituted into the pattern before evaluation. *)
 
-assume val substitute_pattern :
-  solution_mapping -> group_graph_pattern -> group_graph_pattern
+let substitute_pattern_term (mu : solution_mapping) (pt : pattern_term) : pattern_term =
+  match pt with
+  | PT_Var v ->
+    (match sm_lookup v mu with
+     | Some (T_IRI i) -> PT_IRI i
+     | Some (T_BNode b) -> PT_BNode b
+     | Some (T_Literal l) -> PT_Literal l
+     | None -> PT_Var v)
+  | _ -> pt
+
+let substitute_pattern_subject (mu : solution_mapping) (ps : pattern_subject) : pattern_subject =
+  match ps with
+  | PS_Var v ->
+    (match sm_lookup v mu with
+     | Some (T_IRI i) -> PS_IRI i
+     | Some (T_BNode b) -> PS_BNode b
+     | Some (T_Literal _) -> PS_Var v  (* literals cannot be subjects *)
+     | None -> PS_Var v)
+  | _ -> ps
+
+let substitute_triple_pattern (mu : solution_mapping) (tp : triple_pattern) : triple_pattern =
+  { tp_s = substitute_pattern_subject mu tp.tp_s;
+    tp_p = substitute_pattern_term mu tp.tp_p;
+    tp_o = substitute_pattern_term mu tp.tp_o }
+
+let substitute_bgp (mu : solution_mapping) (b : bgp) : bgp =
+  List.Tot.map (substitute_triple_pattern mu) b
+
+let rec substitute_pattern (mu : solution_mapping) (p : group_graph_pattern)
+  : Tot group_graph_pattern (decreases p) =
+  match p with
+  | GP_BGP b -> GP_BGP (substitute_bgp mu b)
+  | GP_Join p1 p2 -> GP_Join (substitute_pattern mu p1) (substitute_pattern mu p2)
+  | GP_LeftJoin p1 p2 e -> GP_LeftJoin (substitute_pattern mu p1) (substitute_pattern mu p2) e
+  | GP_Filter e p1 -> GP_Filter e (substitute_pattern mu p1)
+  | GP_Union p1 p2 -> GP_Union (substitute_pattern mu p1) (substitute_pattern mu p2)
+  | GP_Graph gt p1 -> GP_Graph (substitute_pattern_term mu gt) (substitute_pattern mu p1)
+  | GP_Minus p1 p2 -> GP_Minus (substitute_pattern mu p1) (substitute_pattern mu p2)
+  | GP_Bind e v p1 -> GP_Bind e v (substitute_pattern mu p1)
+  | GP_Values vars rows -> GP_Values vars rows
+  | GP_Service iri p1 silent -> GP_Service iri p1 silent
+  | GP_SubSelect q -> GP_SubSelect q
+  | GP_PropertyPath ps pp pt -> GP_PropertyPath (substitute_pattern_subject mu ps) pp (substitute_pattern_term mu pt)
+  | GP_Empty -> GP_Empty
 
 let eval_exists (pattern : group_graph_pattern) (mu : solution_mapping)
   (graph : rdf_graph) : bool =

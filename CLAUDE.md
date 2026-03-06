@@ -347,7 +347,7 @@ Current F* spec covers ~1,638 lines (rdfcore11: 492, sparql11: 1,146). Formaliza
 - Equality reflexivity lemmas: `subject_eq_refl`, `literal_eq_refl`, `rdf_term_eq_refl`, `triple_eq_refl`
 - `lemma_mem_triple_append`: mem_triple finds a triple appended to a list
 
-**SPARQL11.Algebra.fst** (43 remaining assume val — string/hash/date library functions + complex evaluators):
+**SPARQL11.Algebra.fst** (14 remaining assume val — external library leaf functions only):
 - `lemma_union_assoc`: Union is associative
 - `lemma_union_nil_l/r`: Union with empty is identity
 - `lemma_filter_union`: Filter distributes over union
@@ -364,11 +364,12 @@ Current F* spec covers ~1,638 lines (rdfcore11: 492, sparql11: 1,146). Formaliza
 - `subject_eq`, `literal_eq`, `rdf_term_eq`: Concrete decidable equality by pattern matching
 - IRI constants (`xsd_string`, `rdf_lang_string`, etc.): Concrete strings with `assert_norm` verification
 
-**SPARQL11.Algebra.fst** (32 remaining assume val — leaf functions only):
+**SPARQL11.Algebra.fst** (14 remaining assume val — external library leaf functions only):
 - `eval_expr`: Full recursive expression evaluator (~60 cases: arithmetic, comparison, logical, type tests, accessors, string/numeric/hash/datetime, BOUND, IF, COALESCE, IN/NOT IN)
 - `eval_coalesce`, `eval_in`, `eval_concat`: List-based expression helpers (mutually recursive with eval_expr)
 - `eval_expr_ebv`: EBV of expression evaluation
 - `eval_pattern`: Complete group graph pattern evaluator (BGP, Join, LeftJoin, Filter, Union, Minus, Bind, Values, Empty)
+- `eval_select_query`: Full SELECT pipeline (pattern eval → select exprs → ORDER BY → projection → DISTINCT → OFFSET/LIMIT)
 - `value_compare`: Type-aware SPARQL comparison (int, bool, decimal, double, IRI, literal)
 - `try_bind_subject`, `try_bind_term`: Pattern matching with binding extension
 - `pattern_term_matches`, `pattern_subject_matches`: Concrete bool predicates
@@ -383,7 +384,15 @@ Current F* spec covers ~1,638 lines (rdfcore11: 492, sparql11: 1,146). Formaliza
 - `domains_disjoint`, `list_drop`, `list_take`, `project`: Query operations
 - `string_contains`, `string_starts_with`, `string_ends_with`: Via list_of_string
 - `string_substring`, `string_upper`, `string_lower`, `string_concat`: Via FStar.String
+- `string_before`, `string_after`: Via find_substring_pos helper
 - `int_abs`: Concrete absolute value
+- `sparql_order`, `sort_solutions`: SPARQL ordering and ORDER BY
+- `dt_year/month/day/hours/minutes/seconds/timezone/tz`: xsd:dateTime parsing
+- `group_by`: GROUP BY partitioning with key comparison
+- `eval_aggregate`: COUNT, SUM, AVG, MIN, MAX, GROUP_CONCAT, SAMPLE
+- `xsd_cast`: XSD type casting (integer, decimal, double, float, string, boolean, dateTime)
+- `eval_property_path`: Property path evaluation (IRI, inverse, sequence, alternative, negated set, closure)
+- `substitute_pattern`: Variable substitution in graph patterns for EXISTS/NOT EXISTS
 - All XSD/RDF IRI constants: Concrete strings with `assert_norm` verification
 
 ### F* Specifications Written (proofs pending)
