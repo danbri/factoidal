@@ -55,7 +55,25 @@ See the design document for details.
 
 ## Vision
 
-A **formally verified RDF toolkit** where every layer — types, parsing, querying, serialization — traces back to F* specifications. The Rust/WASM implementation is the single source of truth; the web demo consumes it directly. No JS reimplementations, no external addon scripts, no divergence.
+A **formally verified RDF toolkit** where every layer — types, parsing, querying, serialization — traces back to F* specifications. The **end goal** is verified WASM extracted directly from F* via KaRaMeL, not manually-written Rust that happens to mirror a spec.
+
+### Target Architecture: F* → KaRaMeL → Verified WASM
+
+```
+F* formal spec (Low* subset)
+    │
+    ├── verify proofs (F* typechecker)
+    ├── erase proofs
+    └── KaRaMeL extraction → C or WASM (verified binary)
+                                │
+                            wasmsign2 + SLSA attestation
+                                │
+                            Signed, verified WASM module
+```
+
+This is production-proven: **HACL\*** crypto code extracted this way runs in Firefox, the Linux kernel, Python, mbedTLS, Tezos, and WireGuard. **EverParse** extracts verified parsers to C/WASM for Windows Hyper-V networking. The toolchain exists; the project's job is to apply it to RDF/SPARQL.
+
+### Current Architecture (interim — converging toward target)
 
 ```
 F* formal spec  ->  Rust implementation  ->  WASM + JS bindings  ->  Web demo & tests
@@ -63,12 +81,36 @@ F* formal spec  ->  Rust implementation  ->  WASM + JS bindings  ->  Web demo & 
   verified          W3C test suite           real library, not a copy
 ```
 
+The Rust/WASM implementation is the current working system. The F* specs are **not just documentation** — they are the foundation for the KaRaMeL extraction pipeline. Every F* spec written today is an investment toward the target architecture. The gap to close:
+
+1. **Rewrite core F* specs in Low\* subset** (required for KaRaMeL extraction)
+2. **Set up KaRaMeL toolchain** in CI (F* → C/WASM extraction)
+3. **Sign extracted WASM** with wasmsign2 + Sigstore/cosign attestation
+4. **Retire manual Rust implementation** once extracted WASM covers the same surface
+
+### Parallel verification path: Hax (Rust → F*)
+
+[Hax](https://github.com/hacspec/hax) translates Rust subset → F* for verification. This is the **bridge** between the current Rust implementation and the F* specs:
+
+1. Annotate Rust code with `#[hax::ensures(...)]` attributes
+2. Extract F* from annotated Rust
+3. Verify extracted F* against hand-written spec
+4. Any divergence = bug in Rust or spec
+
+This gives machine-checked verification of the Rust code *now*, while the Low*/KaRaMeL pipeline matures.
+
+### Trust boundary
+
+KaRaMeL itself is unverified OCaml — it's in the trusted computing base. Verification guarantees hold at the F* source level. The CI pipeline should: verify F* proofs → extract via KaRaMeL → sign with wasmsign2 → publish SLSA attestation.
+
 ## Principles
 
 - **No cobbling.** Everything lives in Rust/WASM/F*. No external JS reimplementations.
 - **Verify, don't trust.** F* specs define correctness; Rust implements; W3C tests validate.
 - **One implementation.** The web demo uses the real WASM binary. Same code everywhere.
 - **Incremental formalization.** Start with executable specs, progressively tighten to proofs.
+- **F* specs are not documentation.** They are the source for verified WASM extraction via KaRaMeL. Every spec written is a step toward the target architecture.
+- **Spec before code.** For new features, write the F* specification first (or concurrently). This prevents rework and ensures the verification pipeline stays aligned.
 
 ## Architecture
 
@@ -192,12 +234,20 @@ factoidal/
 - [ ] F* <-> Rust verification alignment — extend `sparql11.fstar.txt` alongside implementation
 - [ ] KGX pipeline: materialization runner with attestation logging (see `docs/designissues/kgx-pipeline.md`)
 
-### Planned (in architectural order)
+### Planned — Verification Pipeline (highest priority)
+- [ ] **Low* rewrite of core types** — rewrite `rdfcore11.fstar.txt` in Low* subset for KaRaMeL extraction
+- [ ] **N-Triples roundtrip proof** — specification written, prove in Low*, extract verified serializer via KaRaMeL
+- [ ] **Hax integration** — annotate Rust with `#[hax::ensures(...)]`, extract F*, verify against hand-written spec
+- [ ] **KaRaMeL CI pipeline** — verify F* proofs → extract to C/WASM → sign with wasmsign2 → SLSA attestation
+- [ ] **EverParse-style parser extraction** — verified N-Triples/Turtle parsers extracted from F* format specs
+
+### Planned — SPARQL Engine Layers
 - [ ] **Layer 2: Query composition** — Sub-SELECT, MINUS, GRAPH, VALUES
 - [ ] **Layer 3: Aggregation pipeline** — GROUP BY → aggregate functions → HAVING
 - [ ] **Layer 4: Property paths** — sequence, alternative, inverse, transitive closure
 - [ ] **Layer 6: DESCRIBE** — implementation-defined, low priority
-- [ ] Extend F* spec to cover N-Triples roundtrip proof (specification written, proof pending)
+
+### Planned — Other
 - [ ] Formalize Turtle grammar and IRI resolution in F*
 - [ ] Turtle serializer in Rust
 - [ ] N-Quads support
@@ -205,7 +255,6 @@ factoidal/
 - [ ] Attestation logger with verifiable timestamps (RFC 3161 TSA integration)
 - [ ] KGX graph assembly: parse materialized Turtle, merge, canonicalize, sign
 - [ ] Storage abstraction (verified interface in F*, SQLite/IndexedDB backends)
-- [ ] Hax (Rust->F*) or Low* extraction pipeline for verified WASM
 
 ## F* <-> Rust Correspondence
 
@@ -228,23 +277,62 @@ The Rust types in `rdf.rs` mirror the F* spec in `formal/fstar/rdfcore11.fstar.t
 | `triple_pattern` / `bgp` | `sparql.rs` pattern matching | Spec only |
 | `must_escape` / `is_nt_escaped` | `Literal::fmt()` escape logic | Spec only |
 
-### Verification Approaches
+### Verification Pipeline (current status and target)
 
-1. **Hax** (github.com/hacspec/hax) — translates Rust subset -> F* for verification. Most promising for this project since we already have both Rust and F*.
-2. **Parallel spec + shared tests** — maintain F* spec and Rust impl separately, validate both against W3C test suites.
-3. **Low* extraction** — rewrite F* spec in Low* subset, extract to C/WASM via KaRaMeL. Production-proven (HACL*, EverParse) but requires significant spec rewrite.
+The project has **two converging verification paths**. Both require the F* specs to be complete and correct — the specs are the project's primary deliverable, not supplementary documentation.
 
-## Formalization Roadmap
+**Path A: KaRaMeL extraction (target architecture)**
+```
+F* Low* spec → F* typechecker (verify) → erase proofs → KaRaMeL → C/WASM
+```
+- Production-proven: HACL* (Firefox, Linux kernel), EverParse (Windows Hyper-V)
+- **Current blocker:** F* specs use high-level F*, not Low* subset. Need Low* rewrite.
+- **Precedent:** EverParse extracts verified parsers — directly applicable to N-Triples/Turtle serialization roundtrip proofs.
+- **Priority:** Phase 1 target is verified N-Triples serialize/deserialize (see ARCHITECTURE.md Phase 1).
 
-Current F* spec covers ~241 lines. Formalization gap by module:
+**Path B: Hax verification (bridge for current Rust)**
+```
+Rust code + #[hax::ensures(...)] → Hax → extracted F* → verify against hand-written spec
+```
+- Validates the existing Rust implementation against F* specs with machine-checked proofs.
+- **Current blocker:** Hax integration not yet set up. Monthly review item to track readiness.
+- **Value:** Gives machine-checked verification *now* while Low*/KaRaMeL pipeline matures.
 
-| Module | Rust LOC | F* Coverage | Feasibility | Priority |
-|--------|----------|-------------|-------------|----------|
-| **rdf.rs** | 345 | ~70% | High — extend graph ops | Done (graph_add, remove, union, find) |
-| **ntriples.rs** | 365 | ~15% | Medium — grammar + roundtrip | Escape spec written, parser grammar next |
-| **turtle.rs** | 1,198 | 0% | Hard — complex grammar, Unicode | Long-term (IRI resolution, collections) |
-| **sparql.rs** | 2,922 | ~15% | Medium — SPARQL algebra | BGP/pattern specs + typed value comparison + SPARQL 1.1 algebra spec |
-| **wasm_api.rs** | 194 | 0% | Low priority — binding layer | Not planned |
+**Path C: Parallel spec + shared tests (interim, currently active)**
+- Maintain F* spec and Rust impl separately, validate both against W3C test suites.
+- **This is the fallback**, not the goal. It validates behavior but doesn't constitute machine-checked proof.
+
+## Formalization Roadmap (toward KaRaMeL extraction)
+
+The F* specs are **not documentation** — they are the source code for the verified WASM binary. Every line of F* spec written is progress toward replacing the manual Rust implementation with KaRaMeL-extracted verified code.
+
+Current F* spec covers ~1,638 lines (rdfcore11: 492, sparql11: 1,146). Formalization gap by module:
+
+| Module | Rust LOC | F* Coverage | KaRaMeL Readiness | Priority |
+|--------|----------|-------------|-------------------|----------|
+| **rdf.rs** | 345 | ~70% | Needs Low* rewrite | High — closest to extraction |
+| **ntriples.rs** | 365 | ~15% | Needs EverParse-style spec | High — Phase 1 extraction target |
+| **turtle.rs** | 1,198 | 0% | Hard — complex grammar | Long-term |
+| **sparql.rs** | 2,922 | ~15% | Algebra spec growing | Medium — after core types |
+| **wasm_api.rs** | 194 | 0% | Binding layer, not extracted | Not applicable |
+
+### KaRaMeL Extraction Phases
+
+**Phase 1 — Verified serialization (near-term)**
+- Rewrite N-Triples serialize/deserialize specs in Low* subset
+- Prove roundtrip correctness: `graph_isomorphic g (parse(serialize g))`
+- Extract to WASM via KaRaMeL
+- Model: EverParse verified parsers
+
+**Phase 2 — Verified core types (medium-term)**
+- Rewrite `rdf.rs` types in Low* (wf_iri, wf_literal, triple, graph)
+- Extract graph operations to WASM
+- Verify with wasmsign2 + SLSA attestation
+
+**Phase 3 — Verified SPARQL algebra (longer-term)**
+- SPARQL algebra evaluation as pure function `query × graph → result_set`
+- Prove correctness against W3C SPARQL algebra spec
+- Model: Benzaken et al. (ITP 2018) verified SQL algebra in Coq
 
 ### F* Proofs Completed
 - `lemma_add_no_dup`: Adding a triple guarantees it's in the graph
@@ -375,11 +463,15 @@ over structural layers.
 
 Implementation-defined query form. Low priority — not needed for core compliance or KGX.
 
-### Design Principle: Spec Before Code
+### Design Principle: Spec Before Code — F* Specs Are the Primary Deliverable
 
-For Layers 1–4, write the F* specification first (or concurrently), then implement.
-This prevents rework and maintains the project's formal verification alignment.
-The `formal/fstar/sparql11.fstar.txt` spec should grow alongside the Rust implementation.
+For Layers 1–4, write the F* specification first (or concurrently), then implement in Rust.
+This is not just good practice — the F* specs are the source for KaRaMeL-extracted verified WASM.
+Every F* spec written today directly advances the target architecture.
+
+- `formal/fstar/sparql11.fstar.txt` should grow alongside the Rust implementation
+- New specs should be written with Low* extraction in mind (avoid high-level features that block KaRaMeL)
+- When adding Rust code, check: "could this be extracted from F* instead?"
 
 ## Design Documents
 
