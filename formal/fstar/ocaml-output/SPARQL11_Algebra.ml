@@ -1322,9 +1322,18 @@ let string_replace (s : Prims.string) (pattern : Prims.string)
       (replace_all_chars (FStar_String.list_of_string s)
          (FStar_String.list_of_string pattern)
          (FStar_String.list_of_string replacement))
-let regex_match (uu___ : Prims.string) (uu___1 : Prims.string)
-  (uu___2 : Prims.string FStar_Pervasives_Native.option) : Prims.bool=
-  failwith "Not yet implemented: SPARQL11.Algebra.regex_match"
+let regex_match (text : Prims.string) (pattern : Prims.string)
+  (flags : Prims.string FStar_Pervasives_Native.option) : Prims.bool=
+  try
+    let case_insensitive = match flags with
+      | FStar_Pervasives_Native.Some f -> String.contains f 'i'
+      | FStar_Pervasives_Native.None -> false in
+    let re = if case_insensitive
+      then Str.regexp_case_fold pattern
+      else Str.regexp pattern in
+    (try let _ = Str.search_forward re text 0 in true
+     with Not_found -> false)
+  with _ -> false
 let fn_strlen_spec (s : Prims.string) : Prims.nat= string_length s
 let fn_substr_spec (s : Prims.string) (start : Prims.nat)
   (len : Prims.nat FStar_Pervasives_Native.option) : Prims.string=
@@ -1893,12 +1902,16 @@ let join (omega1 : solution_sequence) (omega2 : solution_sequence) :
             if sm_compatible mu1 mu2
             then FStar_Pervasives_Native.Some (sm_merge mu1 mu2)
             else FStar_Pervasives_Native.None) omega2) omega1
-let eval_expr_ebv (uu___ : expr)
-  (uu___1 : RDF_Graph_Executable.solution_mapping) : Prims.bool=
-  failwith "Not yet implemented: SPARQL11.Algebra.eval_expr_ebv"
-let eval_expr_fwd (uu___ : expr)
-  (uu___1 : RDF_Graph_Executable.solution_mapping) : eval_result=
-  failwith "Not yet implemented: SPARQL11.Algebra.eval_expr_fwd"
+let eval_expr_ebv_ref : (expr -> RDF_Graph_Executable.solution_mapping -> Prims.bool) ref =
+  ref (fun _ _ -> failwith "eval_expr_ebv not yet wired")
+let eval_expr_fwd_ref : (expr -> RDF_Graph_Executable.solution_mapping -> eval_result) ref =
+  ref (fun _ _ -> failwith "eval_expr_fwd not yet wired")
+let eval_expr_ebv (e : expr)
+  (mu : RDF_Graph_Executable.solution_mapping) : Prims.bool=
+  !eval_expr_ebv_ref e mu
+let eval_expr_fwd (e : expr)
+  (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
+  !eval_expr_fwd_ref e mu
 let left_join (omega1 : solution_sequence) (omega2 : solution_sequence)
   (filter_expr : expr) : solution_sequence=
   FStar_List_Tot_Base.concatMap
@@ -2264,6 +2277,10 @@ and eval_concat (es : expr Prims.list)
           (RDF_Graph_Executable.T_Literal l)) ->
            er_string (Prims.strcat s (lit_lexical l))
        | (uu___, uu___1) -> ER_Error)
+(* Wire up the forward-declared eval_expr_ebv/fwd to the real implementations *)
+let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
+let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)
+
 type group = {
   g_key: eval_result Prims.list ;
   g_solutions: solution_sequence }
