@@ -1,3 +1,7 @@
 *.verified
 *.ml
 *.krml
+*.cmi
+*.cmx
+*.o
+ocaml-output/example
