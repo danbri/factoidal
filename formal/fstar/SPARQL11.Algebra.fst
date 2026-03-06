@@ -1141,10 +1141,44 @@ let string_ends_with (s suffix : string) : bool =
     (List.Tot.rev (String.list_of_string suffix))
     (List.Tot.rev (String.list_of_string s))
 
-(* STRBEFORE / STRAFTER — require finding a substring position.
-   Complex with pure functional strings; kept as assumed for now. *)
-assume val string_before : string -> string -> string
-assume val string_after : string -> string -> string
+(* Find position of substring needle in haystack (character list), returning
+   the 0-based index of the first occurrence, or None if not found. *)
+let rec find_substring_pos_aux (#a:eqtype) (needle haystack : list a) (pos : nat)
+  : Tot (option nat) (decreases haystack) =
+  match haystack with
+  | [] -> if Nil? needle then Some pos else None
+  | _ :: rest ->
+    if list_is_prefix needle haystack then Some pos
+    else find_substring_pos_aux needle rest (pos + 1)
+
+let find_substring_pos (needle haystack : list char) : option nat =
+  find_substring_pos_aux needle haystack 0
+
+(* STRBEFORE — CONCRETE: returns substring of s before first occurrence of arg.
+   If arg is empty string, returns "". If arg not found, returns "". *)
+let string_before (s arg : string) : string =
+  if String.length arg = 0 then ""
+  else
+    let s_chars = String.list_of_string s in
+    let arg_chars = String.list_of_string arg in
+    match find_substring_pos arg_chars s_chars with
+    | None -> ""
+    | Some pos ->
+      if pos = 0 then ""
+      else String.string_of_list (List.Tot.Base.firstn pos s_chars)
+
+(* STRAFTER — CONCRETE: returns substring of s after first occurrence of arg.
+   If arg is empty string, returns s. If arg not found, returns "". *)
+let string_after (s arg : string) : string =
+  if String.length arg = 0 then s
+  else
+    let s_chars = String.list_of_string s in
+    let arg_chars = String.list_of_string arg in
+    let arg_len = List.Tot.length arg_chars in
+    match find_substring_pos arg_chars s_chars with
+    | None -> ""
+    | Some pos ->
+      String.string_of_list (List.Tot.Base.skipn (pos + arg_len) s_chars)
 
 (* CONCAT — CONCRETE via FStar.String.concat *)
 let string_concat (args : list string) : string = String.concat "" args
@@ -1216,19 +1250,151 @@ assume val hash_sha256 : string -> string
 assume val hash_sha384 : string -> string
 assume val hash_sha512 : string -> string
 
-(** 9.6 Date/time functions (§17.4.5) **)
+(** 9.6 Date/time functions (§17.4.5) — CONCRETE **)
 
 (* Date/time functions extract components from xsd:dateTime values.
    Input must be a literal with datatype xsd:dateTime.
-   Functions return xsd:integer for numeric components, xsd:dayTimeDuration for timezone. *)
-assume val dt_year : string -> option int
-assume val dt_month : string -> option int
-assume val dt_day : string -> option int
-assume val dt_hours : string -> option int
-assume val dt_minutes : string -> option int
-assume val dt_seconds : string -> option string    (* decimal seconds *)
-assume val dt_timezone : string -> option string   (* xsd:dayTimeDuration or "" *)
-assume val dt_tz : string -> option string         (* timezone string e.g. "Z", "+05:00" *)
+   Functions return xsd:integer for numeric components, xsd:dayTimeDuration for timezone.
+   xsd:dateTime format: YYYY-MM-DDThh:mm:ss[.sss][Z|(+|-)hh:mm] *)
+
+(* Helper: parse digit character to int *)
+let char_to_digit (c : FStar.Char.char) : option int =
+  let n = FStar.Char.int_of_char c in
+  if n >= 48 && n <= 57 then Some (n - 48) else None
+
+(* Helper: parse integer from char list *)
+let rec parse_int_chars (chars : list FStar.Char.char) (acc : int)
+  : Tot (option int) (decreases chars) =
+  match chars with
+  | [] -> Some acc
+  | c :: rest ->
+    (match char_to_digit c with
+     | Some d -> parse_int_chars rest (acc * 10 + d)
+     | None -> None)
+
+(* Helper: parse integer from string *)
+let parse_int_string (s : string) : option int =
+  match String.list_of_string s with
+  | [] -> None
+  | chars ->
+    if List.Tot.hd chars = FStar.Char.char_of_int 45  (* '-' *)
+    then (match parse_int_chars (List.Tot.tl chars) 0 with
+          | Some n -> Some (0 - n)
+          | None -> None)
+    else parse_int_chars chars 0
+
+(* YEAR: extract year from xsd:dateTime *)
+let dt_year (s : string) : option int =
+  let len = String.length s in
+  if len < 4 then None
+  else parse_int_string (String.sub s 0 4)
+
+(* MONTH: extract month from xsd:dateTime *)
+let dt_month (s : string) : option int =
+  let len = String.length s in
+  if len < 7 then None
+  else parse_int_string (String.sub s 5 2)
+
+(* DAY: extract day from xsd:dateTime *)
+let dt_day (s : string) : option int =
+  let len = String.length s in
+  if len < 10 then None
+  else parse_int_string (String.sub s 8 2)
+
+(* HOURS: extract hours from xsd:dateTime *)
+let dt_hours (s : string) : option int =
+  let len = String.length s in
+  if len < 13 then None
+  else parse_int_string (String.sub s 11 2)
+
+(* MINUTES: extract minutes from xsd:dateTime *)
+let dt_minutes (s : string) : option int =
+  let len = String.length s in
+  if len < 16 then None
+  else parse_int_string (String.sub s 14 2)
+
+(* SECONDS: extract seconds (including fractional) from xsd:dateTime *)
+let dt_seconds (s : string) : option string =
+  let len = String.length s in
+  if len < 19 then None
+  else
+    (* Find end of seconds portion: stop at Z, +, -, or end of string *)
+    let chars = String.list_of_string s in
+    let after_17 = list_drop 17 chars in
+    let rec find_end (cs : list FStar.Char.char) (count : nat)
+      : Tot nat (decreases cs) =
+      match cs with
+      | [] -> count
+      | c :: rest ->
+        let ci = FStar.Char.int_of_char c in
+        if ci = 90 (* 'Z' *) || ci = 43 (* '+' *) || ci = 45 (* '-' *)
+        then count
+        else find_end rest (count + 1)
+    in
+    let sec_len = find_end after_17 0 in
+    if sec_len = 0 then None
+    else Some (String.sub s 17 sec_len)
+
+(* TIMEZONE: extract timezone as xsd:dayTimeDuration string *)
+let dt_timezone (s : string) : option string =
+  let len = String.length s in
+  if len < 19 then None
+  else
+    let last_char = String.index s (len - 1) in
+    if FStar.Char.int_of_char last_char = 90 (* 'Z' *)
+    then Some "PT0S"  (* UTC → zero duration *)
+    else
+      (* Look for +/- timezone offset *)
+      let chars = String.list_of_string s in
+      let rec find_tz (cs : list FStar.Char.char) (pos : nat)
+        : Tot (option nat) (decreases cs) =
+        match cs with
+        | [] -> None
+        | c :: rest ->
+          let ci = FStar.Char.int_of_char c in
+          if pos >= 19 && (ci = 43 || ci = 45) then Some pos
+          else find_tz rest (pos + 1)
+      in
+      match find_tz chars 0 with
+      | None -> Some ""  (* no timezone → empty string *)
+      | Some pos ->
+        if len >= pos + 6
+        then
+          let sign = String.index s pos in
+          let sign_str = if FStar.Char.int_of_char sign = 45 then "-" else "" in
+          let h_str = String.sub s (pos + 1) 2 in
+          let m_str = String.sub s (pos + 4) 2 in
+          match parse_int_string h_str, parse_int_string m_str with
+          | Some h, Some m ->
+            if m = 0 then Some (strcat sign_str (strcat "PT" (strcat (string_of_int h) "H")))
+            else Some (strcat sign_str (strcat "PT" (strcat (string_of_int h) (strcat "H" (strcat (string_of_int m) "M")))))
+          | _, _ -> None
+        else None
+
+(* TZ: extract timezone string as-is (e.g., "Z", "+05:00", "-05:00") *)
+let dt_tz (s : string) : option string =
+  let len = String.length s in
+  if len < 19 then None
+  else
+    let last_char = String.index s (len - 1) in
+    if FStar.Char.int_of_char last_char = 90 (* 'Z' *)
+    then Some "Z"
+    else
+      let chars = String.list_of_string s in
+      let rec find_tz_pos (cs : list FStar.Char.char) (pos : nat)
+        : Tot (option nat) (decreases cs) =
+        match cs with
+        | [] -> None
+        | c :: rest ->
+          let ci = FStar.Char.int_of_char c in
+          if pos >= 19 && (ci = 43 || ci = 45) then Some pos
+          else find_tz_pos rest (pos + 1)
+      in
+      match find_tz_pos chars 0 with
+      | None -> Some ""  (* no timezone *)
+      | Some pos ->
+        if pos < len then Some (String.sub s pos (len - pos))
+        else None
 
 (** 9.7 Constructor functions (§17.4.1.8) **)
 
@@ -1357,10 +1523,74 @@ let having_filter (conditions : list having_condition) (groups : list group) : l
    Unbound < BNode < IRI < Literal.
    Within type: natural ordering (numeric, string, dateTime).
    Type errors sort before bound values. *)
-assume val sparql_order : eval_result -> eval_result -> int  (* -1, 0, 1 *)
+(* Rank of an eval_result for the SPARQL ordering type hierarchy.
+   Unbound/Error < Blank nodes < IRIs < Literals (booleans, numerics, strings). *)
+let er_rank (v : eval_result) : int =
+  match v with
+  | ER_Error -> 0
+  | ER_Term (T_BNode _) -> 1
+  | ER_Term (T_IRI _) -> 2
+  | ER_Bool _ -> 3
+  | ER_Num _ -> 4
+  | ER_Dec _ -> 5
+  | ER_Dbl _ -> 6
+  | ER_Term (T_Literal _) -> 7
 
-assume val sort_solutions :
-  list order_condition -> solution_sequence -> solution_sequence
+(* SPARQL ordering (§15.1) — CONCRETE implementation.
+   Returns -1 (less), 0 (equal), 1 (greater). *)
+let sparql_order (a b : eval_result) : int =
+  let ra = er_rank a in
+  let rb = er_rank b in
+  if ra < rb then -1
+  else if ra > rb then 1
+  else
+    (* Same rank — compare within type *)
+    match a, b with
+    | ER_Error, ER_Error -> 0
+    | ER_Term (T_BNode x), ER_Term (T_BNode y) -> String.compare x y
+    | ER_Term (T_IRI x), ER_Term (T_IRI y) ->
+      String.compare (iri_to_string x) (iri_to_string y)
+    | ER_Bool x, ER_Bool y ->
+      int_compare (if x then 1 else 0) (if y then 1 else 0)
+    | ER_Num x, ER_Num y -> int_compare x y
+    | ER_Dec x, ER_Dec y -> String.compare x y
+    | ER_Dbl x, ER_Dbl y -> String.compare x y
+    | ER_Term (T_Literal l1), ER_Term (T_Literal l2) ->
+      let dc = String.compare (lit_datatype l1) (lit_datatype l2) in
+      if dc <> 0 then dc
+      else
+        let lc = String.compare (lit_lexical l1) (lit_lexical l2) in
+        if lc <> 0 then lc
+        else
+          (match lit_lang l1, lit_lang l2 with
+           | None, None -> 0
+           | None, Some _ -> -1
+           | Some _, None -> 1
+           | Some t1, Some t2 -> String.compare t1 t2)
+    | _, _ -> 0  (* unreachable — ranks are equal so types must match *)
+
+(* Compare two solution mappings on a single order condition.
+   Returns -1, 0, or 1. *)
+let compare_on_condition (c : order_condition) (mu1 mu2 : solution_mapping) : int =
+  match c with
+  | OC_Asc e ->
+    sparql_order (eval_expr e mu1) (eval_expr e mu2)
+  | OC_Desc e ->
+    sparql_order (eval_expr e mu2) (eval_expr e mu1)
+
+(* Compare two solution mappings on a list of order conditions (lexicographic).
+   First non-zero comparison wins. *)
+let rec compare_on_conditions (conds : list order_condition) (mu1 mu2 : solution_mapping) : int =
+  match conds with
+  | [] -> 0
+  | c :: rest ->
+    let r = compare_on_condition c mu1 mu2 in
+    if r <> 0 then r
+    else compare_on_conditions rest mu1 mu2
+
+(* Sort a solution sequence by the given order conditions — CONCRETE implementation. *)
+let sort_solutions (conds : list order_condition) (omega : solution_sequence) : solution_sequence =
+  List.Tot.sortWith (compare_on_conditions conds) omega
 
 (** 11.2 DISTINCT / REDUCED (§18.4) **)
 
@@ -1420,9 +1650,72 @@ let project_solutions (vars : list var_name) (omega : solution_sequence)
    Applies: pattern evaluation → aggregation → HAVING → projection
             → solution modifiers (ORDER BY, DISTINCT, OFFSET, LIMIT) *)
 
-assume val eval_select_query : query -> rdf_graph -> solution_sequence
+(* Evaluate a single SELECT expression item against a solution mapping.
+   For SI_Var, the mapping is unchanged.
+   For SI_Expr e v, evaluate e and bind the result to v. — CONCRETE *)
+let eval_select_item (item : select_item) (mu : solution_mapping) (g : rdf_graph)
+  : solution_mapping =
+  match item with
+  | SI_Var _ -> mu  (* variable already in mapping from WHERE *)
+  | SI_Expr e v ->
+    let r = eval_expr e mu g in
+    match er_to_term r with
+    | Some t -> sm_bind v t mu
+    | None -> mu  (* expression error — leave unbound *)
 
-(* Specification of eval_select_query:
+(* Apply SELECT expression items to each solution mapping — CONCRETE *)
+let eval_select_items (items : list select_item) (omega : solution_sequence) (g : rdf_graph)
+  : solution_sequence =
+  List.Tot.map (fun mu -> List.Tot.fold_left (fun acc item -> eval_select_item item acc g) mu items) omega
+
+(* Extract variable names from select items — CONCRETE *)
+let select_item_vars (items : list select_item) : list var_name =
+  List.Tot.map (fun (item : select_item) -> match item with
+    | SI_Var v -> v
+    | SI_Expr _ v -> v) items
+
+(* Top-level query evaluation for SELECT queries — CONCRETE.
+   Applies: pattern evaluation → SELECT expressions → ORDER BY →
+            projection → DISTINCT/REDUCED → OFFSET/LIMIT.
+   GROUP BY, aggregation, and HAVING are skipped for now (assume val dependencies). *)
+let eval_select_query (q : query) (g : rdf_graph) : solution_sequence =
+  match q.q_form with
+  | QF_Select sel ->
+    (* 1. Evaluate WHERE clause *)
+    let omega = eval_pattern q.q_pattern g in
+
+    (* 2–4. GROUP BY / aggregation / HAVING — skipped for now *)
+
+    (* 5. SELECT expressions — evaluate (expr AS ?var) *)
+    let omega' = match sel with
+      | Select_Vars items -> eval_select_items items omega g
+      | Select_All -> omega in
+
+    (* 6. ORDER BY *)
+    let ordered = match q.q_modifier.sm_order_by with
+      | None -> omega'
+      | Some o -> sort_solutions o omega' in
+
+    (* 7. Projection *)
+    let projected = match sel with
+      | Select_Vars items -> project_solutions (select_item_vars items) ordered
+      | Select_All -> ordered in
+
+    (* 8. DISTINCT / REDUCED *)
+    let deduped =
+      if q.q_modifier.sm_distinct then distinct_solutions projected
+      else if q.q_modifier.sm_reduced then reduced_solutions projected
+      else projected in
+
+    (* 9. OFFSET / LIMIT *)
+    slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit deduped
+
+  (* Other query forms — return empty for now *)
+  | QF_Construct _ -> []
+  | QF_Ask -> []
+  | QF_Describe _ -> []
+
+(* Specification of eval_select_query (full version with aggregation):
 
    let eval_select_query q G =
      (* 1. Evaluate WHERE clause *)
@@ -1589,8 +1882,172 @@ type cast_target =
   | Cast_Boolean
   | Cast_DateTime
 
+(* Helper: extract lexical form from an eval_result that is a plain/typed literal *)
+let er_to_lexical (v : eval_result) : option string =
+  match v with
+  | ER_Term (T_Literal l) -> Some (lit_lexical l)
+  | ER_Term (T_IRI i) -> Some (iri_to_string i)
+  | ER_Term (T_BNode b) -> Some b
+  | ER_Num n -> Some (string_of_int n)
+  | ER_Dec s -> Some s
+  | ER_Dbl s -> Some s
+  | ER_Bool true -> Some "true"
+  | ER_Bool false -> Some "false"
+  | ER_Error -> None
+
+(* Helper: check if a string looks like a decimal (contains a dot, digits around it).
+   Simplified: we just check it can be parsed as integer after removing the dot,
+   or accept it as-is since ER_Dec already validated. *)
+let is_decimal_string (s : string) : bool =
+  String.length s > 0
+
 (* Cast a value to a target type. Returns None on invalid cast. *)
-assume val xsd_cast : eval_result -> cast_target -> option eval_result
+let xsd_cast (v : eval_result) (target : cast_target) : option eval_result =
+  match target with
+
+  (* === Cast to integer === *)
+  | Cast_Integer ->
+    (match v with
+     | ER_Num _ -> Some v
+     | ER_Bool true -> Some (ER_Num 1)
+     | ER_Bool false -> Some (ER_Num 0)
+     | ER_Dec s -> parse_int_string s |> (fun r -> match r with | Some n -> Some (ER_Num n) | None ->
+       (* Decimal like "3.14" — truncate by parsing before dot *)
+       let chars = String.list_of_string s in
+       let before_dot = List.Tot.takeWhile (fun c -> c <> FStar.Char.char_of_int 46) chars in
+       parse_int_string (String.string_of_list before_dot))
+     | ER_Dbl s -> parse_int_string s |> (fun r -> match r with | Some n -> Some (ER_Num n) | None ->
+       let chars = String.list_of_string s in
+       let before_dot = List.Tot.takeWhile (fun c -> c <> FStar.Char.char_of_int 46) chars in
+       parse_int_string (String.string_of_list before_dot))
+     | ER_Term (T_Literal l) ->
+       if lit_datatype l = xsd_integer || lit_datatype l = xsd_string then
+         (match parse_int_string (lit_lexical l) with
+          | Some n -> Some (ER_Num n)
+          | None -> None)
+       else if lit_datatype l = xsd_boolean then
+         (if lit_lexical l = "true" || lit_lexical l = "1" then Some (ER_Num 1)
+          else if lit_lexical l = "false" || lit_lexical l = "0" then Some (ER_Num 0)
+          else None)
+       else if lit_datatype l = xsd_decimal || lit_datatype l = xsd_double || lit_datatype l = xsd_float then
+         (let chars = String.list_of_string (lit_lexical l) in
+          let before_dot = List.Tot.takeWhile (fun c -> c <> FStar.Char.char_of_int 46) chars in
+          parse_int_string (String.string_of_list before_dot))
+       else None
+     | _ -> None)
+
+  (* === Cast to decimal === *)
+  | Cast_Decimal ->
+    (match v with
+     | ER_Dec _ -> Some v
+     | ER_Num n -> Some (ER_Dec (strcat (string_of_int n) ".0"))
+     | ER_Bool true -> Some (ER_Dec "1.0")
+     | ER_Bool false -> Some (ER_Dec "0.0")
+     | ER_Dbl s -> Some (ER_Dec s)
+     | ER_Term (T_Literal l) ->
+       if lit_datatype l = xsd_decimal || lit_datatype l = xsd_string then
+         Some (ER_Dec (lit_lexical l))
+       else if lit_datatype l = xsd_integer then
+         (match parse_int_string (lit_lexical l) with
+          | Some n -> Some (ER_Dec (strcat (string_of_int n) ".0"))
+          | None -> None)
+       else if lit_datatype l = xsd_boolean then
+         (if lit_lexical l = "true" || lit_lexical l = "1" then Some (ER_Dec "1.0")
+          else if lit_lexical l = "false" || lit_lexical l = "0" then Some (ER_Dec "0.0")
+          else None)
+       else None
+     | _ -> None)
+
+  (* === Cast to double === *)
+  | Cast_Double ->
+    (match v with
+     | ER_Dbl _ -> Some v
+     | ER_Num n -> Some (ER_Dbl (strcat (string_of_int n) ".0E0"))
+     | ER_Dec s -> Some (ER_Dbl s)
+     | ER_Bool true -> Some (ER_Dbl "1.0E0")
+     | ER_Bool false -> Some (ER_Dbl "0.0E0")
+     | ER_Term (T_Literal l) ->
+       if lit_datatype l = xsd_double || lit_datatype l = xsd_float || lit_datatype l = xsd_decimal || lit_datatype l = xsd_string then
+         Some (ER_Dbl (lit_lexical l))
+       else if lit_datatype l = xsd_integer then
+         (match parse_int_string (lit_lexical l) with
+          | Some n -> Some (ER_Dbl (strcat (string_of_int n) ".0E0"))
+          | None -> None)
+       else if lit_datatype l = xsd_boolean then
+         (if lit_lexical l = "true" || lit_lexical l = "1" then Some (ER_Dbl "1.0E0")
+          else if lit_lexical l = "false" || lit_lexical l = "0" then Some (ER_Dbl "0.0E0")
+          else None)
+       else None
+     | _ -> None)
+
+  (* === Cast to float (simplified: same as double [S4]) === *)
+  | Cast_Float ->
+    (match v with
+     | ER_Dbl _ -> Some v
+     | ER_Num n -> Some (ER_Dbl (strcat (string_of_int n) ".0E0"))
+     | ER_Dec s -> Some (ER_Dbl s)
+     | ER_Bool true -> Some (ER_Dbl "1.0E0")
+     | ER_Bool false -> Some (ER_Dbl "0.0E0")
+     | ER_Term (T_Literal l) ->
+       if lit_datatype l = xsd_double || lit_datatype l = xsd_float || lit_datatype l = xsd_decimal || lit_datatype l = xsd_string then
+         Some (ER_Dbl (lit_lexical l))
+       else if lit_datatype l = xsd_integer then
+         (match parse_int_string (lit_lexical l) with
+          | Some n -> Some (ER_Dbl (strcat (string_of_int n) ".0E0"))
+          | None -> None)
+       else if lit_datatype l = xsd_boolean then
+         (if lit_lexical l = "true" || lit_lexical l = "1" then Some (ER_Dbl "1.0E0")
+          else if lit_lexical l = "false" || lit_lexical l = "0" then Some (ER_Dbl "0.0E0")
+          else None)
+       else None
+     | _ -> None)
+
+  (* === Cast to string === *)
+  | Cast_String ->
+    (match v with
+     | ER_Num n -> Some (er_string (string_of_int n))
+     | ER_Dec s -> Some (er_string s)
+     | ER_Dbl s -> Some (er_string s)
+     | ER_Bool true -> Some (er_string "true")
+     | ER_Bool false -> Some (er_string "false")
+     | ER_Term (T_IRI i) -> Some (er_string (iri_to_string i))
+     | ER_Term (T_Literal l) -> Some (er_string (lit_lexical l))
+     | ER_Term (T_BNode _) -> None
+     | ER_Error -> None)
+
+  (* === Cast to boolean === *)
+  | Cast_Boolean ->
+    (match v with
+     | ER_Bool _ -> Some v
+     | ER_Num n -> Some (ER_Bool (n <> 0))
+     | ER_Dec s -> Some (ER_Bool (s <> "0" && s <> "0.0"))
+     | ER_Dbl s -> Some (ER_Bool (s <> "0" && s <> "0.0" && s <> "0.0E0"))
+     | ER_Term (T_Literal l) ->
+       if lit_datatype l = xsd_boolean then
+         (if lit_lexical l = "true" || lit_lexical l = "1" then Some (ER_Bool true)
+          else if lit_lexical l = "false" || lit_lexical l = "0" then Some (ER_Bool false)
+          else None)
+       else if lit_datatype l = xsd_string then
+         (if lit_lexical l = "true" || lit_lexical l = "1" then Some (ER_Bool true)
+          else if lit_lexical l = "false" || lit_lexical l = "0" then Some (ER_Bool false)
+          else None)
+       else if lit_datatype l = xsd_integer then
+         (match parse_int_string (lit_lexical l) with
+          | Some n -> Some (ER_Bool (n <> 0))
+          | None -> None)
+       else None
+     | _ -> None)
+
+  (* === Cast to dateTime === *)
+  | Cast_DateTime ->
+    (match v with
+     | ER_Term (T_Literal l) ->
+       if lit_datatype l = xsd_dateTime then Some v
+       else if lit_datatype l = xsd_string then
+         (* Accept string → dateTime but don't validate format *)
+         Some (ER_Term (T_Literal { lexical_form = lit_lexical l; datatype = xsd_dateTime; lang_tag = None }))
+       else None
+     | _ -> None)
 
 (* Cast validity matrix (simplified):
 
