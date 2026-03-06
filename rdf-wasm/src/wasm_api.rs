@@ -50,6 +50,9 @@ impl JsRdfGraph {
         lexical: &str,
         lang: &str,
     ) -> Result<(), JsError> {
+        if lang.is_empty() {
+            return Err(JsError::new("Language tag must not be empty"));
+        }
         let s = parse_subject(subject)?;
         let p = rdf::Iri::new(predicate).map_err(|e| JsError::new(&e.to_string()))?;
         let o = rdf::RdfTerm::Literal(rdf::Literal::lang(lexical, lang));

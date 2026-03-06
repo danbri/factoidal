@@ -38,6 +38,17 @@
   .legend { display: flex; gap: 1.5rem; margin-bottom: 1rem; font-size: 0.875rem; }
   .legend-item { display: flex; align-items: center; gap: 0.4rem; }
   .legend-swatch { width: 14px; height: 14px; border-radius: 2px; }
+  .suite-table { margin-top: 0.5rem; }
+  .suite-table th { font-size: 0.8rem; }
+  .suite-table td { font-size: 0.8rem; padding: 0.35rem 0.75rem; }
+  .bar-pass { background: #22c55e; }
+  .bar-fail { background: #ef4444; }
+  .bar-stack { display: inline-flex; height: 14px; border-radius: 2px; overflow: hidden; vertical-align: middle; }
+  .pct-100 { color: #22c55e; font-weight: 600; }
+  .pct-0 { color: #ef4444; font-weight: 600; }
+  .section-header { display: flex; align-items: center; gap: 0.5rem; margin-top: 1.5rem; margin-bottom: 0.5rem; }
+  .section-header h3 { font-size: 1rem; margin: 0; }
+  .section-badge { font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 10px; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -48,7 +59,7 @@
   <div class="legend">
     <div class="legend-item"><div class="legend-swatch" style="background:#22c55e"></div> N-Triples (72/72)</div>
     <div class="legend-item"><div class="legend-swatch" style="background:#3b82f6"></div> Turtle (223/223)</div>
-    <div class="legend-item"><div class="legend-swatch" style="background:#f59e0b"></div> SPARQL (159/436)</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#f59e0b"></div> SPARQL (159/436, 277 failing)</div>
   </div>
   <canvas id="chart" width="900" height="400"></canvas>
 </div>
@@ -60,6 +71,8 @@
   </thead>
   <tbody id="tableBody"></tbody>
 </table>
+
+<div id="suiteBreakdown"></div>
 
 <script>
 const data = [
@@ -204,6 +217,79 @@ data.forEach(d => {
     <td>${d.label}</td>`;
   tbody.appendChild(tr);
 });
+
+// SPARQL suite breakdown tables
+const sparql10 = [
+  { suite: "algebra", pass: 5, total: 14, blocker: "GRAPH keyword, nested scope" },
+  { suite: "basic", pass: 20, total: 27, blocker: "BASE resolution, list patterns" },
+  { suite: "bnode-coreference", pass: 1, total: 1, blocker: "-" },
+  { suite: "boolean-eff-value", pass: 5, total: 7, blocker: "Typed literal BEV" },
+  { suite: "bound", pass: 1, total: 1, blocker: "-" },
+  { suite: "cast", pass: 0, total: 7, blocker: "Casting functions" },
+  { suite: "distinct", pass: 7, total: 11, blocker: "Numeric value comparison" },
+  { suite: "expr-builtin", pass: 9, total: 24, blocker: "Complex expression parsing" },
+  { suite: "expr-equals", pass: 9, total: 15, blocker: "Cross-graph equality" },
+  { suite: "expr-ops", pass: 9, total: 17, blocker: "Division, type promotion" },
+  { suite: "i18n", pass: 2, total: 5, blocker: "Unicode normalization" },
+  { suite: "open-world", pass: 7, total: 18, blocker: "UNION scope, complex filters" },
+  { suite: "optional", pass: 1, total: 7, blocker: "OPTIONAL result ordering" },
+  { suite: "optional-filter", pass: 1, total: 6, blocker: "FILTER inside OPTIONAL" },
+  { suite: "reduced", pass: 2, total: 2, blocker: "-" },
+  { suite: "regex", pass: 14, total: 21, blocker: "Quantifier edge cases" },
+  { suite: "solution-seq", pass: 11, total: 13, blocker: "OFFSET edge cases" },
+  { suite: "sort", pass: 4, total: 4, blocker: "-" },
+  { suite: "triple-match", pass: 2, total: 4, blocker: "Named graph matching" },
+  { suite: "type-promotion", pass: 0, total: 30, blocker: "Numeric type promotion" },
+];
+
+const sparql11 = [
+  { suite: "aggregates", pass: 0, total: 35, blocker: "COUNT, SUM, AVG, GROUP BY, HAVING" },
+  { suite: "bind", pass: 3, total: 10, blocker: "Complex BIND expressions" },
+  { suite: "bindings", pass: 1, total: 11, blocker: "VALUES clause" },
+  { suite: "cast", pass: 0, total: 6, blocker: "Casting functions" },
+  { suite: "exists", pass: 3, total: 6, blocker: "Complex EXISTS patterns" },
+  { suite: "functions", pass: 31, total: 74, blocker: "Remaining 1.1 built-in functions" },
+  { suite: "grouping", pass: 2, total: 4, blocker: "Complex GROUP BY expressions" },
+  { suite: "negation", pass: 2, total: 11, blocker: "MINUS, complex NOT EXISTS" },
+  { suite: "project-expression", pass: 7, total: 7, blocker: "-" },
+  { suite: "property-path", pass: 0, total: 29, blocker: "Property path operators" },
+  { suite: "subquery", pass: 0, total: 9, blocker: "Sub-SELECT" },
+];
+
+function buildSuiteTable(suites, title, containerId) {
+  const totalPass = suites.reduce((s, r) => s + r.pass, 0);
+  const totalAll = suites.reduce((s, r) => s + r.total, 0);
+  const totalFail = totalAll - totalPass;
+  const pct = (100 * totalPass / totalAll).toFixed(1);
+
+  let html = `<div class="section-header">
+    <h3>${title}</h3>
+    <span class="section-badge" style="background:#fef3c7;color:#92400e">${totalPass}/${totalAll} (${pct}%) — ${totalFail} failing</span>
+  </div>
+  <table class="suite-table">
+    <thead><tr><th>Suite</th><th>Pass</th><th>Fail</th><th>Total</th><th>Rate</th><th></th><th>Key Blockers</th></tr></thead>
+    <tbody>`;
+
+  suites.forEach(r => {
+    const fail = r.total - r.pass;
+    const rate = (100 * r.pass / r.total).toFixed(1);
+    const passW = Math.round(r.pass / r.total * 60);
+    const failW = 60 - passW;
+    const rateClass = rate === '100.0' ? ' class="pct-100"' : (rate === '0.0' ? ' class="pct-0"' : '');
+    html += `<tr>
+      <td>${r.suite}</td><td>${r.pass}</td><td>${fail}</td><td>${r.total}</td>
+      <td${rateClass}>${rate}%</td>
+      <td><div class="bar-stack" style="width:60px">${passW > 0 ? `<span class="bar-pass" style="width:${passW}px"></span>` : ''}${failW > 0 ? `<span class="bar-fail" style="width:${failW}px"></span>` : ''}</div></td>
+      <td>${r.blocker}</td></tr>`;
+  });
+
+  html += '</tbody></table>';
+  return html;
+}
+
+document.getElementById('suiteBreakdown').innerHTML =
+  buildSuiteTable(sparql10, 'SPARQL 1.0 Suite Breakdown', 'sparql10') +
+  buildSuiteTable(sparql11, 'SPARQL 1.1 Suite Breakdown', 'sparql11');
 </script>
 </body>
 </html>
