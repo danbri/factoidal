@@ -1965,7 +1965,7 @@ fn eval_filter_expr_typed(expr: &FilterExpr, binding: &Binding) -> Option<TypedF
             }
         }
         FilterExpr::FnIf(cond, then_expr, else_expr) => {
-            if eval_filter(cond, binding) {
+            if eval_filter(cond, binding).unwrap_or(false) {
                 eval_filter_expr_typed(then_expr, binding)
             } else {
                 eval_filter_expr_typed(else_expr, binding)
@@ -2227,81 +2227,102 @@ fn eval_filter_expr(expr: &FilterExpr, binding: &Binding) -> Option<String> {
     eval_filter_expr_typed(expr, binding).map(|v| v.as_string())
 }
 
-fn eval_filter(filter: &Filter, binding: &Binding) -> bool {
+/// Three-valued FILTER evaluation: Some(true), Some(false), or None (type error).
+/// Per SPARQL spec, errors propagate through NOT and are absorbed by AND/OR.
+fn eval_filter(filter: &Filter, binding: &Binding) -> Option<bool> {
     match filter {
         Filter::Comparison(left, op, right) => {
             let lv = eval_filter_expr_typed(left, binding);
             let rv = eval_filter_expr_typed(right, binding);
             match (lv, rv) {
-                (Some(l), Some(r)) => typed_compare(&l, &r, op).unwrap_or(false),
-                _ => false,
+                (Some(l), Some(r)) => typed_compare(&l, &r, op),
+                _ => None,
             }
         }
-        Filter::And(a, b) => eval_filter(a, binding) && eval_filter(b, binding),
-        Filter::Or(a, b) => eval_filter(a, binding) || eval_filter(b, binding),
-        Filter::Not(inner) => !eval_filter(inner, binding),
+        // Three-valued AND: false AND error = false, true AND error = error
+        Filter::And(a, b) => {
+            let av = eval_filter(a, binding);
+            let bv = eval_filter(b, binding);
+            match (av, bv) {
+                (Some(false), _) | (_, Some(false)) => Some(false),
+                (Some(true), Some(true)) => Some(true),
+                _ => None,
+            }
+        }
+        // Three-valued OR: true OR error = true, false OR error = error
+        Filter::Or(a, b) => {
+            let av = eval_filter(a, binding);
+            let bv = eval_filter(b, binding);
+            match (av, bv) {
+                (Some(true), _) | (_, Some(true)) => Some(true),
+                (Some(false), Some(false)) => Some(false),
+                _ => None,
+            }
+        }
+        // Three-valued NOT: !error = error
+        Filter::Not(inner) => eval_filter(inner, binding).map(|v| !v),
         Filter::BooleanEffectiveValue(expr) => {
-            // SPARQL boolean effective value:
-            // - bound variable with non-empty string → true
-            // - "true"^^xsd:boolean → true
+            // SPARQL boolean effective value (three-valued):
+            // - "true"^^xsd:boolean or "1"^^xsd:boolean → true
             // - non-zero numeric → true
-            // - "" or "0" or "false" or unbound → false
+            // - non-empty xsd:string or rdf:langString → true
+            // - IRIs, BNodes, unknown typed literals, unbound → error (None)
             match expr {
                 FilterExpr::Variable(name) => {
                     if let Some(val) = binding.get(name) {
                         match val {
                             TermValue::Literal { lexical, datatype, .. } => {
                                 if datatype == "http://www.w3.org/2001/XMLSchema#boolean" {
-                                    lexical == "true" || lexical == "1"
+                                    Some(lexical == "true" || lexical == "1")
                                 } else if datatype == "http://www.w3.org/2001/XMLSchema#integer"
                                     || datatype == "http://www.w3.org/2001/XMLSchema#decimal"
                                     || datatype == "http://www.w3.org/2001/XMLSchema#double"
                                     || datatype == "http://www.w3.org/2001/XMLSchema#float"
                                 {
-                                    lexical.parse::<f64>().map_or(false, |n| n != 0.0)
+                                    Some(lexical.parse::<f64>().map_or(false, |n| n != 0.0))
                                 } else if datatype == "http://www.w3.org/2001/XMLSchema#string"
                                     || datatype == "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"
                                 {
-                                    !lexical.is_empty()
+                                    Some(!lexical.is_empty())
                                 } else {
-                                    false
+                                    None // unknown datatype → type error
                                 }
                             }
-                            TermValue::Iri(_) | TermValue::BNode(_) => false,
+                            TermValue::Iri(_) | TermValue::BNode(_) => None,
                         }
                     } else {
-                        false // unbound → false
+                        None // unbound → error
                     }
                 }
                 _ => {
                     if let Some(val) = eval_filter_expr(expr, binding) {
-                        !val.is_empty() && val != "0" && val != "false"
+                        Some(!val.is_empty() && val != "0" && val != "false")
                     } else {
-                        false
+                        None
                     }
                 }
             }
         }
-        Filter::FnBound(var) => binding.contains_key(var),
+        Filter::FnBound(var) => Some(binding.contains_key(var)),
         Filter::FnIsLiteral(expr) => {
             if let FilterExpr::Variable(name) = expr {
-                matches!(binding.get(name), Some(TermValue::Literal { .. }))
+                Some(matches!(binding.get(name), Some(TermValue::Literal { .. })))
             } else {
-                false
+                Some(false)
             }
         }
         Filter::FnIsIri(expr) => {
             if let FilterExpr::Variable(name) = expr {
-                matches!(binding.get(name), Some(TermValue::Iri(_)))
+                Some(matches!(binding.get(name), Some(TermValue::Iri(_))))
             } else {
-                false
+                Some(false)
             }
         }
         Filter::FnIsBlank(expr) => {
             if let FilterExpr::Variable(name) = expr {
-                matches!(binding.get(name), Some(TermValue::BNode(_)))
+                Some(matches!(binding.get(name), Some(TermValue::BNode(_))))
             } else {
-                false
+                Some(false)
             }
         }
         Filter::FnRegex(expr, pattern, flags) => {
@@ -2315,43 +2336,43 @@ fn eval_filter(filter: &Filter, binding: &Binding) -> bool {
                     .multi_line(multi_line)
                     .build()
                 {
-                    Ok(re) => re.is_match(&val),
-                    Err(_) => false, // invalid regex pattern → no match
+                    Ok(re) => Some(re.is_match(&val)),
+                    Err(_) => None, // invalid regex pattern → error
                 }
             } else {
-                false
+                None
             }
         }
         Filter::FnContains(a, b) => {
             let av = eval_filter_expr(a, binding);
             let bv = eval_filter_expr(b, binding);
             match (av, bv) {
-                (Some(a), Some(b)) => a.contains(&b),
-                _ => false,
+                (Some(a), Some(b)) => Some(a.contains(&b)),
+                _ => None,
             }
         }
         Filter::FnStrStarts(a, b) => {
             let av = eval_filter_expr(a, binding);
             let bv = eval_filter_expr(b, binding);
             match (av, bv) {
-                (Some(a), Some(b)) => a.starts_with(&b),
-                _ => false,
+                (Some(a), Some(b)) => Some(a.starts_with(&b)),
+                _ => None,
             }
         }
         Filter::FnStrEnds(a, b) => {
             let av = eval_filter_expr(a, binding);
             let bv = eval_filter_expr(b, binding);
             match (av, bv) {
-                (Some(a), Some(b)) => a.ends_with(&b),
-                _ => false,
+                (Some(a), Some(b)) => Some(a.ends_with(&b)),
+                _ => None,
             }
         }
         Filter::FnIsNumeric(expr) => {
             if let FilterExpr::Variable(name) = expr {
-                matches!(binding.get(name), Some(TermValue::Literal { datatype, .. })
-                    if is_numeric_type(datatype))
+                Some(matches!(binding.get(name), Some(TermValue::Literal { datatype, .. })
+                    if is_numeric_type(datatype)))
             } else {
-                matches!(eval_filter_expr_typed(expr, binding), Some(TypedFilterValue::NumericLiteral(..)))
+                Some(matches!(eval_filter_expr_typed(expr, binding), Some(TypedFilterValue::NumericLiteral(..))))
             }
         }
     }
@@ -2380,7 +2401,7 @@ fn evaluate_clauses(
                 results = new_results;
             }
             WhereClause::Filter(filter) => {
-                results.retain(|b| eval_filter(filter, b));
+                results.retain(|b| eval_filter(filter, b).unwrap_or(false));
             }
             WhereClause::Optional(inner_clauses) => {
                 // SPARQL algebra: OPTIONAL { P FILTER(F) } = LeftJoin(current, P, F)
@@ -2413,7 +2434,7 @@ fn evaluate_clauses(
                         // Apply filters to pattern-matched rows
                         let filtered: Vec<Binding> = pattern_matched
                             .into_iter()
-                            .filter(|b| filters.iter().all(|f| eval_filter(f, b)))
+                            .filter(|b| filters.iter().all(|f| eval_filter(f, b).unwrap_or(false)))
                             .collect();
                         if filtered.is_empty() {
                             // All matched rows failed the filter — fall back to original binding

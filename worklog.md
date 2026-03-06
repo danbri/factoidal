@@ -52,6 +52,21 @@ arithmetic operators after parsing a primary expression.
 
 **Impact:** type-promotion suite 0/30 → 30/30 (100%). Total: 161 → 191 (+30).
 
+### 2026-03-06: Three-valued FILTER logic
+
+`eval_filter` returned `bool`, but SPARQL uses three-valued logic (true/false/error).
+`!error` was becoming `true` instead of staying `error`. This caused `FILTER(! ?w)` to
+pass for unbound variables and unknown-datatype literals.
+
+**Fix:** Changed `eval_filter` return type from `bool` to `Option<bool>`.
+- `None` = type error (row excluded from results)
+- `Not(inner)`: `None.map(|v| !v)` = `None` (error propagates)
+- `And`: false ∧ error = false, true ∧ error = error
+- `Or`: true ∨ error = true, false ∨ error = error
+- All call sites use `.unwrap_or(false)` — errors exclude the row
+
+**Impact:** boolean-effective-value 6/7 → 7/7 (100%). Total: 191 → 192 (+1).
+
 ### Remaining divergences (not bugs, or deferred)
 
 | # | Area | Decision |
