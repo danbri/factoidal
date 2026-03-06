@@ -2097,12 +2097,10 @@ fn eval_filter_expr_typed(expr: &FilterExpr, binding: &Binding) -> Option<TypedF
             let rv = eval_filter_expr_typed(right, binding)?;
             let ln = match &lv {
                 TypedFilterValue::NumericLiteral(n, _) => *n,
-                TypedFilterValue::PlainLiteral(s) => s.parse::<f64>().ok()?,
                 _ => return None,
             };
             let rn = match &rv {
                 TypedFilterValue::NumericLiteral(n, _) => *n,
-                TypedFilterValue::PlainLiteral(s) => s.parse::<f64>().ok()?,
                 _ => return None,
             };
             let result = match op.as_str() {
@@ -2248,11 +2246,15 @@ fn eval_filter(filter: &Filter, binding: &Binding) -> bool {
                                     || datatype == "http://www.w3.org/2001/XMLSchema#float"
                                 {
                                     lexical.parse::<f64>().map_or(false, |n| n != 0.0)
-                                } else {
+                                } else if datatype == "http://www.w3.org/2001/XMLSchema#string"
+                                    || datatype == "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"
+                                {
                                     !lexical.is_empty()
+                                } else {
+                                    false
                                 }
                             }
-                            TermValue::Iri(_) | TermValue::BNode(_) => true,
+                            TermValue::Iri(_) | TermValue::BNode(_) => false,
                         }
                     } else {
                         false // unbound → false
@@ -2368,14 +2370,44 @@ fn evaluate_clauses(
                 results.retain(|b| eval_filter(filter, b));
             }
             WhereClause::Optional(inner_clauses) => {
+                // SPARQL algebra: OPTIONAL { P FILTER(F) } = LeftJoin(current, P, F)
+                // Split inner clauses into pattern clauses and filter clauses.
+                // If patterns match but filters fail, fall back to original binding.
+                let patterns: Vec<WhereClause> = inner_clauses
+                    .iter()
+                    .filter(|c| !matches!(c, WhereClause::Filter(_)))
+                    .cloned()
+                    .collect();
+                let filters: Vec<&Filter> = inner_clauses
+                    .iter()
+                    .filter_map(|c| match c {
+                        WhereClause::Filter(f) => Some(f),
+                        _ => None,
+                    })
+                    .collect();
+
                 let mut new_results = Vec::new();
                 for binding in &results {
-                    let matched =
-                        evaluate_clauses(inner_clauses, graph, vec![binding.clone()], prefixes);
-                    if matched.is_empty() {
+                    let pattern_matched =
+                        evaluate_clauses(&patterns, graph, vec![binding.clone()], prefixes);
+                    if pattern_matched.is_empty() {
+                        // No pattern match — keep original binding
                         new_results.push(binding.clone());
+                    } else if filters.is_empty() {
+                        // No filters — all pattern matches pass through
+                        new_results.extend(pattern_matched);
                     } else {
-                        new_results.extend(matched);
+                        // Apply filters to pattern-matched rows
+                        let filtered: Vec<Binding> = pattern_matched
+                            .into_iter()
+                            .filter(|b| filters.iter().all(|f| eval_filter(f, b)))
+                            .collect();
+                        if filtered.is_empty() {
+                            // All matched rows failed the filter — fall back to original binding
+                            new_results.push(binding.clone());
+                        } else {
+                            new_results.extend(filtered);
+                        }
                     }
                 }
                 results = new_results;
@@ -2432,7 +2464,9 @@ fn evaluate_clauses(
                                 lang: None,
                             },
                         };
-                        binding.insert(var_name.clone(), term_val);
+                        if !binding.contains_key(var_name) {
+                            binding.insert(var_name.clone(), term_val);
+                        }
                     }
                     // If expression evaluates to None, variable stays unbound (per SPARQL spec)
                 }
