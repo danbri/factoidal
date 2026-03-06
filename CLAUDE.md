@@ -347,7 +347,7 @@ Current F* spec covers ~1,638 lines (rdfcore11: 492, sparql11: 1,146). Formaliza
 - Equality reflexivity lemmas: `subject_eq_refl`, `literal_eq_refl`, `rdf_term_eq_refl`, `triple_eq_refl`
 - `lemma_mem_triple_append`: mem_triple finds a triple appended to a list
 
-**SPARQL11.Algebra.fst** (14 remaining assume val — external library leaf functions only):
+**SPARQL11.Algebra.fst** (7 remaining assume val — regex engine + crypto hashes only):
 - `lemma_union_assoc`: Union is associative
 - `lemma_union_nil_l/r`: Union with empty is identity
 - `lemma_filter_union`: Filter distributes over union
@@ -364,7 +364,7 @@ Current F* spec covers ~1,638 lines (rdfcore11: 492, sparql11: 1,146). Formaliza
 - `subject_eq`, `literal_eq`, `rdf_term_eq`: Concrete decidable equality by pattern matching
 - IRI constants (`xsd_string`, `rdf_lang_string`, etc.): Concrete strings with `assert_norm` verification
 
-**SPARQL11.Algebra.fst** (14 remaining assume val — external library leaf functions only):
+**SPARQL11.Algebra.fst** (7 remaining assume val — regex engine + crypto hashes only):
 - `eval_expr`: Full recursive expression evaluator (~60 cases: arithmetic, comparison, logical, type tests, accessors, string/numeric/hash/datetime, BOUND, IF, COALESCE, IN/NOT IN)
 - `eval_coalesce`, `eval_in`, `eval_concat`: List-based expression helpers (mutually recursive with eval_expr)
 - `eval_expr_ebv`: EBV of expression evaluation
@@ -385,7 +385,12 @@ Current F* spec covers ~1,638 lines (rdfcore11: 492, sparql11: 1,146). Formaliza
 - `string_contains`, `string_starts_with`, `string_ends_with`: Via list_of_string
 - `string_substring`, `string_upper`, `string_lower`, `string_concat`: Via FStar.String
 - `string_before`, `string_after`: Via find_substring_pos helper
+- `string_encode_uri`: Percent-encoding per RFC 3986
+- `string_replace`: Literal string replacement via char-list scan
 - `int_abs`: Concrete absolute value
+- `int_round`, `int_ceil`, `int_floor`: Decimal string rounding via split_decimal helper
+- `resolve_iri`: IRI resolution (scheme+authority extraction, relative path handling)
+- `unescape_sparql_string`: SPARQL string escape processing
 - `sparql_order`, `sort_solutions`: SPARQL ordering and ORDER BY
 - `dt_year/month/day/hours/minutes/seconds/timezone/tz`: xsd:dateTime parsing
 - `group_by`: GROUP BY partitioning with key comparison

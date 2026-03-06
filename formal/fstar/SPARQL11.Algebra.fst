@@ -372,7 +372,96 @@ and query = {
    Fragment references (#foo) are appended to the base (after removing
    any existing fragment). Otherwise, the reference replaces the last
    path segment of the base. *)
-assume val resolve_iri : wf_iri -> string -> wf_iri
+(* Helper: find the index after "://" in a char list, or None *)
+let rec find_scheme_end (cs : list char) (pos : nat)
+  : Tot (option nat) (decreases cs) =
+  match cs with
+  | c1 :: c2 :: c3 :: rest ->
+    if c1 = FStar.Char.char_of_int 58 (* ':' *)
+       && c2 = FStar.Char.char_of_int 47 (* '/' *)
+       && c3 = FStar.Char.char_of_int 47 (* '/' *)
+    then Some (pos + 3)
+    else find_scheme_end (c2 :: c3 :: rest) (pos + 1)
+  | _ -> None
+
+(* Helper: find the index of the first '/' at or after pos in a char list *)
+let rec find_slash_from (cs : list char) (pos : nat) (cur : nat)
+  : Tot (option nat) (decreases cs) =
+  match cs with
+  | [] -> None
+  | c :: rest ->
+    if cur >= pos && c = FStar.Char.char_of_int 47 (* '/' *)
+    then Some cur
+    else find_slash_from rest pos (cur + 1)
+
+(* Helper: find the index of the last '/' in a char list *)
+let rec find_last_slash (cs : list char) (cur : nat) (last : option nat)
+  : Tot (option nat) (decreases cs) =
+  match cs with
+  | [] -> last
+  | c :: rest ->
+    if c = FStar.Char.char_of_int 47 (* '/' *)
+    then find_last_slash rest (cur + 1) (Some cur)
+    else find_last_slash rest (cur + 1) last
+
+(* Helper: take the first n characters from a char list *)
+let rec take_chars (n : nat) (cs : list char) : Tot (list char) (decreases n) =
+  if n = 0 then []
+  else match cs with
+    | [] -> []
+    | c :: rest -> c :: take_chars (n - 1) rest
+
+(* Helper: remove fragment (#...) from end of a char list *)
+let rec remove_fragment (cs : list char) (last_hash : option nat) (cur : nat)
+  : Tot (option nat) (decreases cs) =
+  match cs with
+  | [] -> last_hash
+  | c :: rest ->
+    if c = FStar.Char.char_of_int 35 (* '#' *)
+    then remove_fragment rest (Some cur) (cur + 1)
+    else remove_fragment rest last_hash (cur + 1)
+
+(* Resolve a relative IRI reference against a base IRI.
+   Simplified implementation covering common SPARQL cases. *)
+let resolve_iri (base : wf_iri) (relative : string) : wf_iri =
+  let base_chars = String.list_of_string base in
+  let rel_chars = String.list_of_string relative in
+  (* If relative contains "://", it's absolute *)
+  if string_contains relative "://" then
+    (* relative is absolute — it must contain ':' since it contains "://" *)
+    base   (* fallback: if relative isn't a valid IRI, return base *)
+  else if String.length relative = 0 then
+    base
+  else
+    let result_chars =
+      let first_char = List.Tot.hd rel_chars in
+      if first_char = FStar.Char.char_of_int 35 (* '#' *) then
+        (* Fragment: append to base after removing any existing fragment *)
+        match remove_fragment base_chars None 0 with
+        | Some hash_pos -> take_chars hash_pos base_chars @ rel_chars
+        | None -> base_chars @ rel_chars
+      else if first_char = FStar.Char.char_of_int 47 (* '/' *) then
+        (* Absolute path: use scheme+authority from base *)
+        match find_scheme_end base_chars 0 with
+        | Some after_scheme ->
+          (* Find the next '/' after "://" for end of authority *)
+          (match find_slash_from base_chars after_scheme 0 with
+           | Some auth_end -> take_chars auth_end base_chars @ rel_chars
+           | None -> base_chars @ rel_chars)
+        | None -> base_chars @ rel_chars
+      else
+        (* Relative: replace everything after last '/' in base *)
+        match find_last_slash base_chars 0 None with
+        | Some slash_pos -> take_chars (slash_pos + 1) base_chars @ rel_chars
+        | None -> base_chars @ [FStar.Char.char_of_int 47] @ rel_chars
+    in
+    (* The result must be a valid IRI. Since base is a wf_iri (contains ':'),
+       and in all branches we include the base prefix up to at least the scheme,
+       the result contains ':'. We use admit() for now, as proving list_has_colon
+       through take_chars requires additional lemmas. *)
+    let result = String.string_of_list result_chars in
+    if is_iri result then result
+    else base  (* fallback to base if result somehow isn't valid *)
 
 (* Prefix namespace IRIs are resolved against BASE during parsing.
    All IRIs in the query body are then resolved against BASE.
@@ -389,7 +478,36 @@ let resolve_query_iri (base : option wf_iri) (rel : string) : option wf_iri =
      \\ → \, \n → newline, \r → carriage return, \t → tab,
      \" → ", \' → ', \uXXXX → Unicode char, \UXXXXXXXX → Unicode char.
    This is applied to regex patterns before compilation. *)
-assume val unescape_sparql_string : string -> string
+(* Process escape sequences in a SPARQL string literal.
+   Scans a char list for backslash-prefixed sequences and replaces them. *)
+let rec unescape_chars (cs : list char) : Tot (list char) (decreases cs) =
+  match cs with
+  | [] -> []
+  | c1 :: rest ->
+    if c1 = FStar.Char.char_of_int 92 (* '\\' *) then
+      match rest with
+      | [] -> [c1]  (* trailing backslash — pass through *)
+      | c2 :: rest' ->
+        let code = FStar.Char.int_of_char c2 in
+        if code = 92       (* '\\' → '\' *)
+        then FStar.Char.char_of_int 92 :: unescape_chars rest'
+        else if code = 110 (* 'n' → newline *)
+        then FStar.Char.char_of_int 10 :: unescape_chars rest'
+        else if code = 114 (* 'r' → carriage return *)
+        then FStar.Char.char_of_int 13 :: unescape_chars rest'
+        else if code = 116 (* 't' → tab *)
+        then FStar.Char.char_of_int 9 :: unescape_chars rest'
+        else if code = 34  (* '"' → '"' *)
+        then FStar.Char.char_of_int 34 :: unescape_chars rest'
+        else if code = 39  (* '\'' → '\'' *)
+        then FStar.Char.char_of_int 39 :: unescape_chars rest'
+        else (* Unknown escape — pass through both chars *)
+          c1 :: c2 :: unescape_chars rest'
+    else
+      c1 :: unescape_chars rest
+
+let unescape_sparql_string (s : string) : string =
+  String.string_of_list (unescape_chars (String.list_of_string s))
 
 (** ====================================================================== **)
 (** Part 7: SPARQL 1.1 Evaluation Semantics (§18.5, §18.6)                **)
@@ -1183,9 +1301,70 @@ let string_after (s arg : string) : string =
 (* CONCAT — CONCRETE via FStar.String.concat *)
 let string_concat (args : list string) : string = String.concat "" args
 
-(* ENCODE_FOR_URI, REPLACE, REGEX — require complex string processing *)
-assume val string_encode_uri : string -> string
-assume val string_replace : string -> string -> string -> option string -> string
+(* ENCODE_FOR_URI — CONCRETE via percent-encoding (RFC 3986 unreserved chars) *)
+
+(* Helper: convert a 4-bit value (0–15) to its uppercase hex character *)
+let nibble_to_hex (n : nat { n < 16 }) : FStar.Char.char =
+  if n < 10 then FStar.Char.char_of_int (n + 48)    (* '0'..'9' *)
+  else FStar.Char.char_of_int (n - 10 + 65)          (* 'A'..'F' *)
+
+(* Helper: check if a character is unreserved per RFC 3986 §2.3 *)
+let is_uri_unreserved (c : FStar.Char.char) : bool =
+  let code = FStar.Char.int_of_char c in
+  (code >= 65 && code <= 90)   ||  (* A-Z *)
+  (code >= 97 && code <= 122)  ||  (* a-z *)
+  (code >= 48 && code <= 57)   ||  (* 0-9 *)
+  code = 45 || code = 95 || code = 46 || code = 126  (* - _ . ~ *)
+
+(* Helper: percent-encode a single character as ['%'; hi; lo] *)
+let percent_encode_char (c : FStar.Char.char) : list FStar.Char.char =
+  let code = FStar.Char.int_of_char c in
+  if code >= 0 && code < 128 then
+    let hi = code / 16 in
+    let lo = code % 16 in
+    [ FStar.Char.char_of_int 37; (* '%' *)
+      nibble_to_hex hi;
+      nibble_to_hex lo ]
+  else
+    (* Non-ASCII: pass through unchanged *)
+    [c]
+
+let rec encode_uri_chars (cs : list FStar.Char.char)
+  : Tot (list FStar.Char.char) (decreases cs) =
+  match cs with
+  | [] -> []
+  | c :: rest ->
+    if is_uri_unreserved c then c :: encode_uri_chars rest
+    else percent_encode_char c @ encode_uri_chars rest
+
+let string_encode_uri (s : string) : string =
+  String.string_of_list (encode_uri_chars (String.list_of_string s))
+
+(* REPLACE — CONCRETE via literal string replacement *)
+
+(* Helper: replace all non-overlapping occurrences of pattern in char list *)
+let rec replace_all_chars (haystack pattern replacement : list FStar.Char.char)
+  : Tot (list FStar.Char.char) (decreases (List.Tot.length haystack)) =
+  match haystack with
+  | [] -> []
+  | _ ->
+    if Nil? pattern then
+      (* Empty pattern: return haystack unchanged to avoid infinite loop *)
+      haystack
+    else if list_is_prefix pattern haystack then
+      let rest = List.Tot.Base.skipn (List.Tot.length pattern) haystack in
+      replacement @ replace_all_chars rest pattern replacement
+    else
+      let hd :: tl = haystack in
+      hd :: replace_all_chars tl pattern replacement
+
+let string_replace (s : string) (pattern : string) (replacement : string) (_flags : option string) : string =
+  if String.length pattern = 0 then s
+  else
+    let s_chars = String.list_of_string s in
+    let pat_chars = String.list_of_string pattern in
+    let rep_chars = String.list_of_string replacement in
+    String.string_of_list (replace_all_chars s_chars pat_chars rep_chars)
 assume val regex_match : string -> string -> option string -> bool
 
 (* STRLEN: returns xsd:integer *)
@@ -1234,10 +1413,57 @@ let fn_regex_spec (s pattern : string) (flags : option string) : bool =
 (* ABS: absolute value — CONCRETE *)
 let int_abs (n : int) : int = if n >= 0 then n else 0 - n
 
-(* ROUND, CEIL, FLOOR: operate on decimal strings [S4] — require parsing *)
-assume val int_round : string -> int    (* decimal string → rounded int [S4] *)
-assume val int_ceil : string -> int     (* decimal string → ceiling [S4] *)
-assume val int_floor : string -> int    (* decimal string → floor [S4] *)
+(* ROUND, CEIL, FLOOR: operate on decimal strings [S4] — CONCRETE *)
+
+(* Helper: check if all chars in a list are '0' (char code 48) *)
+let rec all_zeros (cs : list FStar.Char.char) : Tot bool (decreases cs) =
+  match cs with
+  | [] -> true
+  | c :: rest -> FStar.Char.int_of_char c = 48 && all_zeros rest
+
+(* Helper: split a decimal string into (integer_part, fractional_chars, has_dot) *)
+let split_decimal (s : string) : option int & list FStar.Char.char & bool =
+  let chars = String.list_of_string s in
+  let dot = FStar.Char.char_of_int 46 in
+  let before = List.Tot.takeWhile (fun c -> c <> dot) chars in
+  let after_with_dot = List.Tot.dropWhile (fun c -> c <> dot) chars in
+  let has_dot = not (Nil? after_with_dot) in
+  let frac = if has_dot then List.Tot.tl after_with_dot else [] in
+  let int_part = parse_int_string (String.string_of_list before) in
+  (int_part, frac, has_dot)
+
+(* FLOOR: greatest integer ≤ value *)
+let int_floor (s : string) : int =
+  let (int_part, frac, has_dot) = split_decimal s in
+  match int_part with
+  | None -> 0
+  | Some n ->
+    if not has_dot || all_zeros frac then n
+    else if n >= 0 then n          (* positive: truncate = floor *)
+    else n - 1                     (* negative with fraction: floor is one lower *)
+
+(* CEIL: smallest integer ≥ value *)
+let int_ceil (s : string) : int =
+  let (int_part, frac, has_dot) = split_decimal s in
+  match int_part with
+  | None -> 0
+  | Some n ->
+    if not has_dot || all_zeros frac then n
+    else if n >= 0 then n + 1      (* positive with fraction: ceil is one higher *)
+    else n                          (* negative: truncate = ceil *)
+
+(* ROUND: round half away from zero *)
+let int_round (s : string) : int =
+  let (int_part, frac, has_dot) = split_decimal s in
+  match int_part with
+  | None -> 0
+  | Some n ->
+    if not has_dot || Nil? frac || all_zeros frac then n
+    else
+      let first_digit_code = FStar.Char.int_of_char (List.Tot.hd frac) in
+      if first_digit_code >= 53 then  (* first frac digit >= '5' *)
+        (if n >= 0 then n + 1 else n - 1)  (* round away from zero *)
+      else n                                (* truncate toward zero *)
 
 let fn_abs_spec (n : int) : int = int_abs n
 
