@@ -136,7 +136,7 @@ factoidal/
 - [x] Web demo using real WASM library (docs/index.html)
 - [x] W3C N-Triples test suite: **72/72 passing**
 - [x] W3C Turtle test suite: **69/69 positive syntax, 74/74 negative syntax, 80/80 eval**
-- [x] W3C SPARQL test harness: **93/436 passing** (21.3%) across 1.0 + 1.1 combined
+- [x] W3C SPARQL test harness: **159/436 passing** (36.5%) across 1.0 + 1.1 combined
 - [x] Large graph SPARQL integration tests: **17 passing** (117-triple graph, multi-hop joins, OPTIONAL, DISTINCT, ORDER BY, FILTER)
 - [x] Core RDF unit tests: **25 passing**
 - [x] SPARQL unit tests: **28 passing**
@@ -151,22 +151,22 @@ factoidal/
 | Suite               | Pass | Total | Rate   | Key blockers                              |
 |--------------------|------|-------|--------|-------------------------------------------|
 | algebra            | 5    | 14    | 35.7%  | GRAPH keyword, nested scope               |
-| basic              | 15   | 27    | 55.6%  | BASE resolution, list patterns, quotes    |
+| basic              | 20   | 27    | 74.1%  | BASE resolution, list patterns            |
 | bnode-coreference  | 1    | 1     | 100%   | -                                         |
 | boolean-eff-value  | 5    | 7     | 71.4%  | Typed literal BEV                         |
 | bound              | 1    | 1     | 100%   | -                                         |
 | cast               | 0    | 7     | 0.0%   | Casting functions                         |
 | distinct           | 7    | 11    | 63.6%  | Numeric value comparison                  |
 | expr-builtin       | 9    | 24    | 37.5%  | Complex expression parsing                |
-| expr-equals        | 1    | 15    | 6.7%   | Value equality semantics                  |
+| expr-equals        | 9    | 15    | 60.0%  | Cross-graph equality, remaining edge cases|
 | expr-ops           | 9    | 17    | 52.9%  | Division, type promotion                  |
 | i18n               | 2    | 5     | 40.0%  | Unicode normalization                     |
-| open-world         | 5    | 18    | 27.8%  | UNION scope, complex filters              |
+| open-world         | 7    | 18    | 38.9%  | UNION scope, complex filters              |
 | optional           | 1    | 7     | 14.3%  | OPTIONAL result ordering                  |
 | optional-filter    | 1    | 6     | 16.7%  | FILTER inside OPTIONAL                    |
-| reduced            | 0    | 2     | 0.0%   | REDUCED modifier                          |
+| reduced            | 2    | 2     | 100%   | -                                         |
 | regex              | 14   | 21    | 66.7%  | Quantifier edge cases                     |
-| solution-seq       | 0    | 13    | 0.0%   | ORDER BY + solution sequences             |
+| solution-seq       | 11   | 13    | 84.6%  | OFFSET edge cases                         |
 | sort               | 4    | 4     | 100%   | -                                         |
 | triple-match       | 2    | 4     | 50.0%  | Named graph matching                      |
 | type-promotion     | 0    | 30    | 0.0%   | Numeric type promotion                    |
@@ -176,32 +176,31 @@ factoidal/
 | Suite              | Pass | Total | Rate   | Key blockers                              |
 |-------------------|------|-------|--------|-------------------------------------------|
 | aggregates        | 0    | 35    | 0.0%   | COUNT, SUM, AVG, GROUP BY, HAVING         |
-| bind              | 0    | 10    | 0.0%   | BIND clause                               |
+| bind              | 3    | 10    | 30.0%  | Complex BIND expressions                  |
 | bindings          | 1    | 11    | 9.1%   | VALUES clause                             |
 | cast              | 0    | 6     | 0.0%   | Casting functions                         |
 | exists            | 3    | 6     | 50.0%  | Complex EXISTS patterns                   |
-| functions         | 3    | 74    | 4.1%   | SPARQL 1.1 built-in functions             |
+| functions         | 31   | 74    | 41.9%  | Remaining 1.1 built-in functions          |
 | grouping          | 2    | 4     | 50.0%  | Complex GROUP BY expressions              |
 | negation          | 2    | 11    | 18.2%  | MINUS, complex NOT EXISTS                 |
-| project-expression| 0    | 7     | 0.0%   | SELECT expressions                        |
+| project-expression| 7    | 7     | 100%   | -                                         |
 | property-path     | 0    | 29    | 0.0%   | Property path operators                   |
 | subquery          | 0    | 9     | 0.0%   | Sub-SELECT                                |
 
 ### In Progress
-- [ ] SPARQL parser improvements (literals in patterns, BASE resolution, REGEX filters)
-- [ ] F* <-> Rust verification alignment (see Formalization Roadmap below)
-- [ ] W3C SPARQL test suite coverage expansion
+- [ ] **Layer 1: Type system** — XSD numeric type promotion, casting functions, value equality (next priority)
+- [ ] F* <-> Rust verification alignment — extend `sparql11.fstar.txt` alongside implementation
 - [ ] KGX pipeline: materialization runner with attestation logging (see `docs/designissues/kgx-pipeline.md`)
 
-### Planned
+### Planned (in architectural order)
+- [ ] **Layer 2: Query composition** — Sub-SELECT, MINUS, GRAPH, VALUES
+- [ ] **Layer 3: Aggregation pipeline** — GROUP BY → aggregate functions → HAVING
+- [ ] **Layer 4: Property paths** — sequence, alternative, inverse, transitive closure
+- [ ] **Layer 6: DESCRIBE** — implementation-defined, low priority
 - [ ] Extend F* spec to cover N-Triples roundtrip proof (specification written, proof pending)
-- [ ] Extend F* spec to cover full SPARQL evaluation semantics
 - [ ] Formalize Turtle grammar and IRI resolution in F*
 - [ ] Turtle serializer in Rust
 - [ ] N-Quads support
-- [ ] SPARQL CONSTRUCT, ASK, DESCRIBE
-- [ ] SPARQL aggregates (COUNT, SUM, AVG, GROUP BY, HAVING)
-- [ ] SPARQL property paths
 - [ ] KGX materialization via QLever (40 SPARQL CONSTRUCT queries against Wikidata)
 - [ ] Attestation logger with verifiable timestamps (RFC 3161 TSA integration)
 - [ ] KGX graph assembly: parse materialized Turtle, merge, canonicalize, sign
@@ -244,7 +243,7 @@ Current F* spec covers ~241 lines. Formalization gap by module:
 | **rdf.rs** | 345 | ~70% | High — extend graph ops | Done (graph_add, remove, union, find) |
 | **ntriples.rs** | 365 | ~15% | Medium — grammar + roundtrip | Escape spec written, parser grammar next |
 | **turtle.rs** | 1,198 | 0% | Hard — complex grammar, Unicode | Long-term (IRI resolution, collections) |
-| **sparql.rs** | 1,438 | ~10% | Medium — SPARQL algebra | BGP/pattern specs written, eval pending |
+| **sparql.rs** | 2,922 | ~15% | Medium — SPARQL algebra | BGP/pattern specs + typed value comparison + SPARQL 1.1 algebra spec |
 | **wasm_api.rs** | 194 | 0% | Low priority — binding layer | Not planned |
 
 ### F* Proofs Completed
@@ -274,7 +273,7 @@ Current F* spec covers ~241 lines. Formalization gap by module:
 | Core RDF type tests | 25 | 0.01s | Iri, Literal, Triple, Graph |
 | Large graph SPARQL integration | 17 | 0.04s | 117-triple graph, multi-hop joins |
 | W3C N-Triples | 72 | 0.02s | 72/72 (100%) |
-| W3C SPARQL (1.0 + 1.1) | 13 harness tests | 0.45s | 93/436 individual (21.3%, ~390ms query time) |
+| W3C SPARQL (1.0 + 1.1) | 13 harness tests | 0.45s | 115/436 individual (26.4%, ~390ms query time) |
 | W3C Turtle | 3 harness tests | 0.07s | 223/223 individual (100%) |
 | **Total** | **172** | **~0.53s** | All passing |
 
@@ -284,28 +283,103 @@ Current F* spec covers ~241 lines. Formalization gap by module:
 |------|----------|--------|
 | N-Triples (RDF 1.1) | 72/72 (100%) | Complete |
 | Turtle (RDF 1.1) | 223/223 (100%) | Complete (69 pos + 74 neg + 80 eval) |
-| SPARQL 1.0 | 82/234 (35.0%) | In progress — 21 suites evaluated |
-| SPARQL 1.1 | 11/202 (5.4%) | Growing — 11 suites evaluated |
-| **SPARQL combined** | **93/436 (21.3%)** | **32 suites, ~390ms** |
+| SPARQL 1.0 | 110/234 (47.0%) | In progress — 21 suites evaluated |
+| SPARQL 1.1 | 49/202 (24.3%) | Growing — 11 suites evaluated |
+| **SPARQL combined** | **159/436 (36.5%)** | **32 suites, ~500ms** |
 
-### SPARQL Improvement Path
+### SPARQL Implementation Roadmap (Architecture-Driven)
 
-| Blocker | Tests Unlockable | Effort | Status |
-|---------|-----------------|--------|--------|
-| ~~Literal values in triple patterns~~ | ~~40~~ | ~~Medium~~ | Done |
-| ~~FILTER REGEX parsing~~ | ~~21~~ | ~~Medium~~ | Done (14/21) |
-| ~~Arithmetic operators (+, -, *, /)~~ | ~~14~~ | ~~Low~~ | Done (9/17) |
-| ~~Boolean effective value~~ | ~~7~~ | ~~Low~~ | Done (5/7) |
-| ~~UNION support~~ | ~~10~~ | ~~Medium~~ | Done |
-| BASE IRI resolution in queries | ~5 (basic) | Low | Pending |
-| Value equality semantics | ~14 (expr-equals) | Medium | Pending |
-| Numeric type promotion | ~30 (type-promotion) | Medium | Pending |
-| Solution sequences (ORDER BY edge cases) | ~13 | Medium | Pending |
-| Casting functions | ~13 (cast) | Medium | Pending |
-| Sub-SELECT / nested queries | ~20 (algebra, subquery) | High | Pending |
-| Aggregates (COUNT, SUM, GROUP BY) | ~35 (1.1 aggregates) | High | Pending |
-| Property paths | ~29 (1.1 property-path) | High | Pending |
-| 1.1 built-in functions (STRLEN, SUBSTR, etc.) | ~74 (1.1 functions) | Medium | Pending |
+Implementation is ordered by **architectural layer**, not by individual test score impact.
+Each layer builds on the one below. Leaf functions (hash, string, date/time) are added
+last — they're easy to slot in once the evaluation pipeline is sound.
+
+**Layer 0 — Core Algebra (the evaluation model)** ✅ Mostly done
+
+The foundational join/filter/union machinery that everything else depends on.
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| BGP evaluation (triple pattern matching) | ✅ Done | Core of all queries |
+| OPTIONAL (left outer join) | ⚠️ Partial (1/7) | Semantics correct but result ordering, nested OPTIONAL need work |
+| UNION | ✅ Done | |
+| FILTER (boolean expressions) | ✅ Done | Core comparisons, AND/OR/NOT |
+| DISTINCT, REDUCED | ✅ Done | |
+| ORDER BY, LIMIT/OFFSET | ✅ Done (11/13) | Edge cases remain |
+| NOT EXISTS / EXISTS | ⚠️ Partial (3/6) | Basic patterns work, complex nesting pending |
+| ASK query form | Pending | Trivial — evaluate SELECT, return boolean |
+
+**Layer 1 — Type System & Value Space** 🔜 Next priority
+
+Correct value comparison underpins everything from FILTER to ORDER BY to aggregates.
+Getting this right now prevents rework later.
+
+| Component | Tests Affected | Status | Notes |
+|-----------|---------------|--------|-------|
+| XSD numeric type promotion (integer→decimal→float→double) | ~30 (type-promotion) + ripple across expr-ops, distinct | Pending | Needs clean promotion hierarchy in typed_compare |
+| Casting functions (xsd:integer(), xsd:string(), etc.) | ~13 (cast suites) | Pending | Build on type promotion |
+| Value equality semantics (RDF term equality vs value equality) | ~6 remaining (expr-equals) | Mostly done | Edge cases: typed vs untyped literals |
+| Boolean effective value (complete) | ~2 remaining | Mostly done | Typed literal BEV |
+
+**Layer 2 — Query Composition** 📋 After Layer 1
+
+These features let queries nest and compose — prerequisite for real-world SPARQL.
+
+| Component | Tests Affected | Status | Notes |
+|-----------|---------------|--------|-------|
+| Sub-SELECT (nested queries) | ~9 (subquery) + ~5 (algebra) | Pending | Requires recursive evaluate_query; also unblocks subquery suite |
+| BIND clause (complete) | ~7 remaining (bind) | Partial (3/10) | Basic BIND works, complex expressions pending |
+| VALUES clause | ~10 remaining (bindings) | Partial (1/11) | Inline data injection |
+| MINUS | ~8 (negation) | Pending | Anti-join semantics — straightforward once joins are solid |
+| GRAPH keyword (named graph patterns) | ~4 (algebra) + ~2 (triple-match) | Pending | Requires dataset model (default + named graphs) |
+| CONSTRUCT query form | ~2 (subquery) | Pending | Template-based graph construction from bindings — **required for KGX pipeline** |
+
+**Layer 3 — Aggregation Pipeline** 📋 After Layer 2
+
+Aggregates require a clean evaluation pipeline: GROUP BY partitioning → aggregate
+functions → HAVING filter → projection. Build the pipeline, then add functions.
+
+| Component | Tests Affected | Status | Notes |
+|-----------|---------------|--------|-------|
+| GROUP BY partitioning | ~4 (grouping) + prerequisite for aggregates | Partial (2/4) | |
+| Aggregate functions (COUNT, SUM, AVG, MIN, MAX, SAMPLE, GROUP_CONCAT) | ~35 (aggregates) | Pending | Pipeline first, functions second |
+| HAVING (post-aggregation filter) | included in aggregates | Pending | Reuses FILTER machinery |
+
+**Layer 4 — Property Paths** 📋 After Layer 2
+
+Graph traversal extension — essentially a mini regex engine over the graph.
+
+| Component | Tests Affected | Status | Notes |
+|-----------|---------------|--------|-------|
+| Simple property paths (single IRI) | ~5 | Pending | Trivial — same as triple pattern |
+| Sequence (/) and alternative (\|) | ~8 | Pending | Finite composition |
+| Inverse (^) | ~4 | Pending | Reverse edge traversal |
+| Zero-or-more (*), one-or-more (+), zero-or-one (?) | ~8 | Pending | Recursive closure — needs cycle detection |
+| Negated property sets (!) | ~4 | Pending | |
+
+**Layer 5 — Leaf Functions** 📋 Ongoing (low priority)
+
+Built-in functions that operate on individual values. These are architecturally
+trivial — each is an isolated pure function. Add as needed but don't prioritize
+over structural layers.
+
+| Category | Examples | Tests Affected | Status |
+|----------|----------|---------------|--------|
+| String functions | STRLEN, SUBSTR, UCASE, LCASE, ENCODE_FOR_URI, REPLACE | ~20 remaining (1.1/functions) | Partial — many done |
+| Hash functions | MD5, SHA1, SHA256, SHA384, SHA512 | ~5 (1.1/functions) | ✅ Done |
+| Date/time accessors | YEAR, MONTH, DAY, HOURS, MINUTES, SECONDS, TZ | ~8 (1.1/functions) | ✅ Done |
+| Term constructors | STRDT, STRLANG, IRI, BNODE | ~4 (1.1/functions) | ✅ Partial |
+| Numeric functions | ABS, ROUND, CEIL, FLOOR | ~4 (1.1/functions) | ✅ Done |
+| REGEX edge cases | Quantifiers, anchors | ~7 remaining (regex) | Partial |
+
+**Layer 6 — DESCRIBE** 📋 Future
+
+Implementation-defined query form. Low priority — not needed for core compliance or KGX.
+
+### Design Principle: Spec Before Code
+
+For Layers 1–4, write the F* specification first (or concurrently), then implement.
+This prevents rework and maintains the project's formal verification alignment.
+The `formal/fstar/sparql11.fstar.txt` spec should grow alongside the Rust implementation.
 
 ## Design Documents
 
