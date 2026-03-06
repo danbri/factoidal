@@ -76,6 +76,18 @@
   .del-btn { color: #f87171; cursor: pointer; background: none; border: none;
              font-size: 0.75rem; padding: 0.1rem 0.3rem; }
 
+  /* Page tabs (Explorer / Dev) */
+  .page-tabs { display: flex; gap: 0; margin-bottom: 1.25rem; border-bottom: 1px solid #334155; }
+  .page-tab {
+    background: transparent; color: #64748b; border: none; border-bottom: 2px solid transparent;
+    padding: 0.5rem 1rem; cursor: pointer; font-size: 0.9rem; font-weight: 500;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .page-tab:hover { color: #94a3b8; }
+  .page-tab.active { color: #38bdf8; border-bottom-color: #38bdf8; }
+  .page-panel { display: none; }
+  .page-panel.active { display: block; }
+
   /* Toast */
   #toast {
     position: fixed; bottom: 1.5rem; right: 1.5rem; background: #334155;
@@ -85,6 +97,41 @@
   }
   #toast.show { opacity: 1; }
   #toast.error { background: #7f1d1d; color: #fca5a5; }
+
+  /* Dev tab */
+  .dev-section { margin-bottom: 1.5rem; }
+  .dev-section h3 {
+    color: #94a3b8; font-size: 0.8125rem; text-transform: uppercase;
+    letter-spacing: 0.05em; margin-bottom: 0.5rem; border-bottom: 1px solid #1e293b;
+    padding-bottom: 0.25rem;
+  }
+  .dev-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.5rem; }
+  .dev-card {
+    background: #1e293b; border: 1px solid #334155; border-radius: 0.375rem;
+    padding: 0.5rem 0.75rem; text-decoration: none; color: #e2e8f0;
+    transition: border-color 0.15s, background 0.15s; display: block;
+  }
+  .dev-card:hover { border-color: #38bdf8; background: #1e293b; }
+  .dev-card .dev-path { color: #38bdf8; font-size: 0.8125rem; font-family: 'SF Mono', 'Fira Code', monospace; }
+  .dev-card .dev-desc { color: #94a3b8; font-size: 0.75rem; margin-top: 0.15rem; }
+  .dev-badge {
+    display: inline-block; font-size: 0.6875rem; padding: 0.1rem 0.4rem;
+    border-radius: 0.25rem; margin-right: 0.3rem; font-weight: 500;
+  }
+  .dev-badge.rust { background: #7f1d1d33; color: #f87171; border: 1px solid #f8717133; }
+  .dev-badge.fstar { background: #7c3aed22; color: #a78bfa; border: 1px solid #a78bfa33; }
+  .dev-badge.doc { background: #0284c722; color: #38bdf8; border: 1px solid #38bdf833; }
+  .dev-badge.test { background: #16a34a22; color: #4ade80; border: 1px solid #4ade8033; }
+  .dev-badge.sparql { background: #d9770622; color: #fbbf24; border: 1px solid #fbbf2433; }
+  .dev-badge.html { background: #0e749022; color: #22d3ee; border: 1px solid #22d3ee33; }
+  .dev-badge.config { background: #475569; color: #cbd5e1; border: 1px solid #64748b; }
+  .dev-links { display: flex; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; }
+  .dev-links a {
+    color: #38bdf8; text-decoration: none; font-size: 0.8125rem;
+    padding: 0.25rem 0.6rem; border: 1px solid #334155; border-radius: 0.25rem;
+    transition: border-color 0.15s;
+  }
+  .dev-links a:hover { border-color: #38bdf8; }
 
   /* Prefixes */
   .prefix-list { font-size: 0.75rem; color: #64748b; margin-bottom: 0.5rem; }
@@ -128,6 +175,264 @@
 <h1>Factoidal</h1>
 <p class="subtitle">RDF Core 1.1 Graph Explorer — powered by Rust/WebAssembly</p>
 
+<div class="page-tabs">
+  <button class="page-tab active" data-panel="explorer">Explorer</button>
+  <button class="page-tab" data-panel="dev">Dev</button>
+</div>
+
+<div id="panel-dev" class="page-panel">
+
+<p style="color:#94a3b8;font-size:0.8125rem;margin-bottom:1rem">
+  Source files, specs, docs, tests, and tools in the Factoidal repo.
+</p>
+
+<div class="dev-links">
+  <a href="https://github.com/danbri/factoidal" target="_blank">GitHub repo</a>
+  <a href="tests.html">Browser tests</a>
+  <a href="progress.html">W3C progress chart</a>
+</div>
+
+<div class="dev-section">
+  <h3>Rust Implementation</h3>
+  <div class="dev-grid">
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/rdf-wasm/src/rdf.rs" target="_blank">
+      <span class="dev-badge rust">Rust</span>
+      <span class="dev-path">rdf-wasm/src/rdf.rs</span>
+      <div class="dev-desc">Core RDF types: Iri, Literal, Triple, RdfGraph (mirrors F* spec)</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/rdf-wasm/src/ntriples.rs" target="_blank">
+      <span class="dev-badge rust">Rust</span>
+      <span class="dev-path">rdf-wasm/src/ntriples.rs</span>
+      <div class="dev-desc">N-Triples parser with full escape sequence support</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/rdf-wasm/src/turtle.rs" target="_blank">
+      <span class="dev-badge rust">Rust</span>
+      <span class="dev-path">rdf-wasm/src/turtle.rs</span>
+      <div class="dev-desc">Turtle parser — full W3C RDF 1.1 compliance</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/rdf-wasm/src/sparql.rs" target="_blank">
+      <span class="dev-badge rust">Rust</span>
+      <span class="dev-path">rdf-wasm/src/sparql.rs</span>
+      <div class="dev-desc">SPARQL SELECT/ASK engine: BGP, FILTER, OPTIONAL, UNION, ORDER BY, LIMIT</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/rdf-wasm/src/wasm_api.rs" target="_blank">
+      <span class="dev-badge rust">Rust</span>
+      <span class="dev-path">rdf-wasm/src/wasm_api.rs</span>
+      <div class="dev-desc">WASM bindings via wasm-bindgen (JS API surface)</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/rdf-wasm/src/lib.rs" target="_blank">
+      <span class="dev-badge rust">Rust</span>
+      <span class="dev-path">rdf-wasm/src/lib.rs</span>
+      <div class="dev-desc">Module declarations</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/rdf-wasm/Cargo.toml" target="_blank">
+      <span class="dev-badge config">Config</span>
+      <span class="dev-path">rdf-wasm/Cargo.toml</span>
+      <div class="dev-desc">Crate configuration, dependencies</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/rdf-wasm/build.sh" target="_blank">
+      <span class="dev-badge config">Config</span>
+      <span class="dev-path">rdf-wasm/build.sh</span>
+      <div class="dev-desc">WASM build + copy to docs/pkg/</div>
+    </a>
+  </div>
+</div>
+
+<div class="dev-section">
+  <h3>F* Formal Specifications</h3>
+  <div class="dev-grid">
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/formal/fstar/rdfcore11.fstar.txt" target="_blank">
+      <span class="dev-badge fstar">F*</span>
+      <span class="dev-path">formal/fstar/rdfcore11.fstar.txt</span>
+      <div class="dev-desc">RDF Core 1.1 types, graph ops, proofs (wf_iri, wf_literal, graph_add)</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/formal/fstar/sparql11.fstar.txt" target="_blank">
+      <span class="dev-badge fstar">F*</span>
+      <span class="dev-path">formal/fstar/sparql11.fstar.txt</span>
+      <div class="dev-desc">SPARQL algebra basics: pattern terms, BGPs, solution mappings</div>
+    </a>
+  </div>
+</div>
+
+<div class="dev-section">
+  <h3>Tests</h3>
+  <div class="dev-grid">
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/rdf-wasm/tests/rdf_tests.rs" target="_blank">
+      <span class="dev-badge test">Test</span>
+      <span class="dev-path">rdf-wasm/tests/rdf_tests.rs</span>
+      <div class="dev-desc">Core RDF type tests (25 tests)</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/rdf-wasm/tests/w3c_ntriples.rs" target="_blank">
+      <span class="dev-badge test">Test</span>
+      <span class="dev-path">rdf-wasm/tests/w3c_ntriples.rs</span>
+      <div class="dev-desc">W3C N-Triples test suite (72/72)</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/rdf-wasm/tests/w3c_turtle.rs" target="_blank">
+      <span class="dev-badge test">Test</span>
+      <span class="dev-path">rdf-wasm/tests/w3c_turtle.rs</span>
+      <div class="dev-desc">W3C Turtle test suite (223/223)</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/rdf-wasm/tests/w3c_sparql.rs" target="_blank">
+      <span class="dev-badge test">Test</span>
+      <span class="dev-path">rdf-wasm/tests/w3c_sparql.rs</span>
+      <div class="dev-desc">W3C SPARQL 1.0 + 1.1 test harness (159/436)</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/rdf-wasm/tests/sparql_large_graph.rs" target="_blank">
+      <span class="dev-badge test">Test</span>
+      <span class="dev-path">rdf-wasm/tests/sparql_large_graph.rs</span>
+      <div class="dev-desc">Large graph integration tests (17 tests, 117-triple graph)</div>
+    </a>
+  </div>
+</div>
+
+<div class="dev-section">
+  <h3>Design Documents</h3>
+  <div class="dev-grid">
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/docs/designissues/overview.md" target="_blank">
+      <span class="dev-badge doc">Doc</span>
+      <span class="dev-path">docs/designissues/overview.md</span>
+      <div class="dev-desc">Design issues overview</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/docs/designissues/graphflow.md" target="_blank">
+      <span class="dev-badge doc">Doc</span>
+      <span class="dev-path">docs/designissues/graphflow.md</span>
+      <div class="dev-desc">Graph transform design: assertable graphs, certificates, evidence chains</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/docs/designissues/attestation-model.md" target="_blank">
+      <span class="dev-badge doc">Doc</span>
+      <span class="dev-path">docs/designissues/attestation-model.md</span>
+      <div class="dev-desc">Attestation data model + architecture</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/docs/designissues/fstar-lean4-formalisation.md" target="_blank">
+      <span class="dev-badge doc">Doc</span>
+      <span class="dev-path">docs/designissues/fstar-lean4-formalisation.md</span>
+      <div class="dev-desc">F*/Lean4 RDF formalisation survey (CoqRDF, RDF.lean)</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/docs/designissues/kgx-pipeline.md" target="_blank">
+      <span class="dev-badge doc">Doc</span>
+      <span class="dev-path">docs/designissues/kgx-pipeline.md</span>
+      <div class="dev-desc">KGX materialization pipeline + attestation plan</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/docs/designissues/grounding-analysis.md" target="_blank">
+      <span class="dev-badge doc">Doc</span>
+      <span class="dev-path">docs/designissues/grounding-analysis.md</span>
+      <div class="dev-desc">Grounding analysis</div>
+    </a>
+  </div>
+</div>
+
+<div class="dev-section">
+  <h3>Skills &amp; Knowledge Base</h3>
+  <div class="dev-grid">
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/docs/skills/testing.md" target="_blank">
+      <span class="dev-badge doc">Skill</span>
+      <span class="dev-path">docs/skills/testing.md</span>
+      <div class="dev-desc">Test infrastructure, W3C harness guide</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/docs/skills/measuring.md" target="_blank">
+      <span class="dev-badge doc">Skill</span>
+      <span class="dev-path">docs/skills/measuring.md</span>
+      <div class="dev-desc">Performance and coverage measurement</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/docs/skills/improving-sparql.md" target="_blank">
+      <span class="dev-badge doc">Skill</span>
+      <span class="dev-path">docs/skills/improving-sparql.md</span>
+      <div class="dev-desc">SPARQL engine improvement strategy</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/docs/skills/validating.md" target="_blank">
+      <span class="dev-badge doc">Skill</span>
+      <span class="dev-path">docs/skills/validating.md</span>
+      <div class="dev-desc">Correctness validation layers</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/docs/skills/optimising.md" target="_blank">
+      <span class="dev-badge doc">Skill</span>
+      <span class="dev-path">docs/skills/optimising.md</span>
+      <div class="dev-desc">Engine optimization guide</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/docs/skills/periodic-review.md" target="_blank">
+      <span class="dev-badge doc">Skill</span>
+      <span class="dev-path">docs/skills/periodic-review.md</span>
+      <div class="dev-desc">Review hooks and accuracy audits</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/docs/skills/sparql-impl.md" target="_blank">
+      <span class="dev-badge doc">Skill</span>
+      <span class="dev-path">docs/skills/sparql-impl.md</span>
+      <div class="dev-desc">SPARQL implementation details</div>
+    </a>
+  </div>
+</div>
+
+<div class="dev-section">
+  <h3>KGX — Knowledge Graph eXchange</h3>
+  <div class="dev-grid">
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/kgx/README.md" target="_blank">
+      <span class="dev-badge doc">Doc</span>
+      <span class="dev-path">kgx/README.md</span>
+      <div class="dev-desc">KGX overview (from google/schemarama)</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/tree/main/kgx/wikidata/basic" target="_blank">
+      <span class="dev-badge sparql">SPARQL</span>
+      <span class="dev-path">kgx/wikidata/basic/</span>
+      <div class="dev-desc">20 CONSTRUCT queries (raw Wikidata IRIs)</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/tree/main/kgx/wikidata/bioschemas" target="_blank">
+      <span class="dev-badge sparql">SPARQL</span>
+      <span class="dev-path">kgx/wikidata/bioschemas/</span>
+      <div class="dev-desc">20 CONSTRUCT queries (Schema.org/Bioschemas vocab)</div>
+    </a>
+  </div>
+</div>
+
+<div class="dev-section">
+  <h3>Web / Demo</h3>
+  <div class="dev-grid">
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/docs/index.html" target="_blank">
+      <span class="dev-badge html">HTML</span>
+      <span class="dev-path">docs/index.html</span>
+      <div class="dev-desc">This interactive demo (uses real WASM)</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/docs/tests.html" target="_blank">
+      <span class="dev-badge html">HTML</span>
+      <span class="dev-path">docs/tests.html</span>
+      <div class="dev-desc">Browser-based integration tests</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/docs/progress.html" target="_blank">
+      <span class="dev-badge html">HTML</span>
+      <span class="dev-path">docs/progress.html</span>
+      <div class="dev-desc">W3C test progress chart over time</div>
+    </a>
+  </div>
+</div>
+
+<div class="dev-section">
+  <h3>Project Root</h3>
+  <div class="dev-grid">
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/CLAUDE.md" target="_blank">
+      <span class="dev-badge config">Config</span>
+      <span class="dev-path">CLAUDE.md</span>
+      <div class="dev-desc">Project goals, progress, architecture, verification roadmap</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/ARCHITECTURE.md" target="_blank">
+      <span class="dev-badge doc">Doc</span>
+      <span class="dev-path">ARCHITECTURE.md</span>
+      <div class="dev-desc">Architecture overview</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/README.md" target="_blank">
+      <span class="dev-badge doc">Doc</span>
+      <span class="dev-path">README.md</span>
+      <div class="dev-desc">Project README</div>
+    </a>
+    <a class="dev-card" href="https://github.com/danbri/factoidal/blob/main/LICENSE" target="_blank">
+      <span class="dev-badge config">Config</span>
+      <span class="dev-path">LICENSE</span>
+      <div class="dev-desc">License file</div>
+    </a>
+  </div>
+</div>
+
+</div><!-- panel-dev -->
+
+<div id="panel-explorer" class="page-panel active">
 <div id="loading" style="color:#475569;font-size:0.8125rem">Loading WASM module…</div>
 <div id="app" style="display:none">
 
@@ -187,6 +492,7 @@ WHERE {
 <div id="sparql-results" class="sparql-results"></div>
 
 </div><!-- #app -->
+</div><!-- panel-explorer -->
 
 <div id="toast"></div>
 
@@ -498,6 +804,17 @@ document.querySelectorAll(".example-btn").forEach(btn => {
     if (EXAMPLE_QUERIES[key]) {
       $("sparql-input").value = EXAMPLE_QUERIES[key];
     }
+  });
+});
+
+// -- Page tabs (Explorer / Dev) --
+document.querySelectorAll(".page-tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".page-tab").forEach(t => t.classList.remove("active"));
+    document.querySelectorAll(".page-panel").forEach(p => p.classList.remove("active"));
+    tab.classList.add("active");
+    const panel = document.getElementById("panel-" + tab.dataset.panel);
+    if (panel) panel.classList.add("active");
   });
 });
 
