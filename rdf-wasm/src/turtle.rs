@@ -855,16 +855,15 @@ impl<'a> TurtleParser<'a> {
         }
         self.skip_ws_and_comments();
 
-        // Read prefix name (before colon)
+        // Read prefix name (before colon) — supports Unicode prefix names
         let mut prefix = String::new();
-        while let Some(b) = self.peek() {
-            if b == b':' {
-                break;
-            } else if b == b' ' || b == b'\t' {
+        while self.pos < self.input.len() {
+            let ch = self.peek_char().unwrap_or('\0');
+            if ch == ':' || ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' {
                 break;
             } else {
-                prefix.push(b as char);
-                self.pos += 1;
+                prefix.push(ch);
+                self.pos += ch.len_utf8();
             }
         }
         self.expect(b':')?;

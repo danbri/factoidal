@@ -379,7 +379,11 @@ assume val pattern_term_matches :
 assume val pattern_subject_matches :
   pattern_subject -> subject -> solution_mapping -> bool
 
-(* A triple pattern matches a graph triple, producing extended mapping *)
+(* A triple pattern matches a graph triple, producing extended mapping.
+   Literal matching: a plain literal pattern (no explicit datatype, no lang tag)
+   matches only terms with datatype xsd:string (or empty datatype, per RDF 1.1
+   where untyped literals are implicitly xsd:string). A pattern with explicit
+   datatype matches only terms with that exact datatype. *)
 assume val tp_match :
   triple_pattern -> triple -> solution_mapping -> option solution_mapping
 

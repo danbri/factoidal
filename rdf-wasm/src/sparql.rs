@@ -204,6 +204,7 @@ enum WhereClause {
     Union(Vec<WhereClause>),           // right side of UNION (legacy, appended to previous)
     UnionGroup(Vec<Vec<WhereClause>>), // { } UNION { } UNION { } — list of branches
     Bind(FilterExpr, String),         // BIND(expr AS ?var)
+    Minus(Vec<WhereClause>),          // MINUS { ... } — anti-join
 }
 
 #[derive(Debug, Clone)]
@@ -529,6 +530,15 @@ impl Parser {
                     self.next()?;
                 }
                 clauses.push(WhereClause::Optional(inner));
+            } else if upper == "MINUS" {
+                self.next()?; // MINUS
+                self.expect("{")?;
+                let inner = self.parse_where_body()?;
+                self.expect("}")?;
+                if self.peek() == Some(".") {
+                    self.next()?;
+                }
+                clauses.push(WhereClause::Minus(inner));
             } else if upper == "UNION" {
                 // UNION — combine previous group with next group
                 self.next()?; // UNION
@@ -1493,6 +1503,12 @@ fn match_element(elem: &PatternElement, term: &TermValue) -> Option<Option<(Stri
                 }
                 if let Some(d) = dt {
                     if datatype != d {
+                        return None;
+                    }
+                } else if lang.is_none() {
+                    // Plain literal pattern (no datatype, no lang) should only match
+                    // xsd:string or simple literals per RDF 1.1 semantics
+                    if datatype != rdf::XSD_STRING && !datatype.is_empty() {
                         return None;
                     }
                 }
@@ -2658,6 +2674,22 @@ fn evaluate_clauses(
                     union_results.extend(branch_results);
                 }
                 results = union_results;
+            }
+            WhereClause::Minus(inner_clauses) => {
+                // MINUS: anti-join per SPARQL spec §18.5
+                // Ω1 Minus Ω2 = { μ1 ∈ Ω1 | ∄ μ2 ∈ Ω2: compatible(μ1,μ2) ∧ dom(μ1)∩dom(μ2) ≠ ∅ }
+                let rhs = evaluate_clauses(inner_clauses, graph, vec![Binding::new()], prefixes, base_iri);
+                results.retain(|mu1| {
+                    !rhs.iter().any(|mu2| {
+                        // Check domains overlap
+                        let shared_vars: Vec<&String> = mu1.keys().filter(|k| mu2.contains_key(*k)).collect();
+                        if shared_vars.is_empty() {
+                            return false; // disjoint domains → keep mu1
+                        }
+                        // Check compatibility: shared variables must have equal values
+                        shared_vars.iter().all(|k| mu1.get(*k) == mu2.get(*k))
+                    })
+                });
             }
             WhereClause::Bind(expr, var_name) => {
                 for binding in &mut results {

@@ -90,6 +90,30 @@ or `>` (for `<>`). Otherwise emitted as operator token.
 - expr-ops: 9/17 → 10/17 (+1)
 - Total: 192 → 204 (+12). Running total from baseline: 159 → 204 (+45, 36.5% → 46.8%).
 
+### 2026-03-06: MINUS, plain literal matching, Unicode prefix, REGEX type-check
+
+**MINUS anti-join** — Implemented `WhereClause::Minus` per F* spec (§18.5): retain μ1
+only if no μ2 in RHS is compatible with overlapping domains. +2 negation tests.
+
+**Plain literal matching** — Untyped literal patterns now only match `xsd:string`
+literals (not custom-typed). Per RDF 1.1, `"x"` ≠ `"x"^^:someType`. Fixes quotes-3.
+basic suite now **27/27 (100%)**.
+
+**Unicode prefix names** — Turtle `@prefix` directive now reads chars (not bytes),
+fixing CJK prefix names like `@prefix 食: <...>`.
+
+**REGEX type-check** — REGEX returns type error for IRI/BNode arguments. +1 regex test.
+
+**F* spec updates** — Added langMatches spec (BCP 47 matching), fn_regex_typed
+(type constraint), resolve_query_iri (BASE resolution), unescape_sparql_string,
+literal matching semantics documentation.
+
+**Impact:**
+- basic: 26→27/27 (100%) — literal matching fix
+- negation: 2→4/11 — MINUS support
+- regex: still 20/21 — type-check fix
+- Total: 222 → 228 (+6). Running total: 159 → 228 (+69, 36.5% → 52.3%).
+
 ### 2026-03-06: BASE IRI resolution + Turtle relative IRIs
 
 **SPARQL BASE resolution** — Relative IRIs like `<x>`, `<#x>` in query body now resolve
