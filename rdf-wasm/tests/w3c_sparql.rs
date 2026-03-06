@@ -397,8 +397,12 @@ fn row_matches(
 
 /// Parse a W3C SPARQL result set in Turtle format (rs:ResultSet vocabulary).
 /// Uses our own Turtle parser to parse the result file.
-fn parse_ttl_results(ttl: &str) -> Result<SrxResults, String> {
-    let graph = rdf_wasm::turtle::parse(ttl).map_err(|e| format!("TTL result parse: {e}"))?;
+fn parse_ttl_results(ttl: &str, base_iri: Option<&str>) -> Result<SrxResults, String> {
+    let graph = if let Some(base) = base_iri {
+        rdf_wasm::turtle::parse_with_base(ttl, base)
+    } else {
+        rdf_wasm::turtle::parse(ttl)
+    }.map_err(|e| format!("TTL result parse: {e}"))?;
     let triples = graph.triples();
 
     let rs_var = "http://www.w3.org/2001/sw/DataAccess/tests/result-set#resultVariable";
@@ -620,7 +624,11 @@ fn run_suite(base_dir: &str, suite_name: &str) -> SuiteResult {
             }
         };
 
-        let graph = match rdf_wasm::turtle::parse(&data_content) {
+        // Use absolute file path as base IRI so relative IRIs in data files resolve correctly
+        let abs_data_path = std::fs::canonicalize(&data_path)
+            .unwrap_or_else(|_| std::path::PathBuf::from(&data_path));
+        let data_base_iri = format!("file://{}", abs_data_path.display());
+        let graph = match rdf_wasm::turtle::parse_with_base(&data_content, &data_base_iri) {
             Ok(g) => g,
             Err(e) => {
                 failures.push(format!("{}: Turtle parse error: {e}", test.name));
@@ -655,7 +663,10 @@ fn run_suite(base_dir: &str, suite_name: &str) -> SuiteResult {
                 }
             }
         } else {
-            match parse_ttl_results(&result_content) {
+            let abs_result_path = std::fs::canonicalize(&result_path)
+                .unwrap_or_else(|_| std::path::PathBuf::from(&result_path));
+            let result_base_iri = format!("file://{}", abs_result_path.display());
+            match parse_ttl_results(&result_content, Some(&result_base_iri)) {
                 Ok(r) => r,
                 Err(e) => {
                     failures.push(format!("{}: TTL result parse error: {e}", test.name));

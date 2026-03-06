@@ -90,6 +90,20 @@ or `>` (for `<>`). Otherwise emitted as operator token.
 - expr-ops: 9/17 → 10/17 (+1)
 - Total: 192 → 204 (+12). Running total from baseline: 159 → 204 (+45, 36.5% → 46.8%).
 
+### 2026-03-06: BASE IRI resolution + Turtle relative IRIs
+
+**SPARQL BASE resolution** — Relative IRIs like `<x>`, `<#x>` in query body now resolve
+against declared BASE. PREFIX namespace IRIs (e.g., `PREFIX : <>`) also resolve against BASE.
+
+**Turtle base IRI in test harness** — SPARQL test data files now parsed with `parse_with_base`
+using the file's absolute path as base IRI. Fixes relative IRIs like `<abc>`, `<>` in test data.
+
+**Impact:**
+- basic: 22→26/27 (96.3%) — 4 base-prefix tests fixed
+- expr-builtin: 10→13/24 — langMatches data files now parse
+- triple-match: 2→3/4 — fred@edu relative IRI
+- Total: 214 → 222 (+8). Running total: 159 → 222 (+63, 36.5% → 50.9%).
+
 ### 2026-03-06: sameTerm, langMatches, regex flags, triple-quoted strings
 
 **sameTerm()** — Added `Filter::FnSameTerm` variant. RDF term identity comparison

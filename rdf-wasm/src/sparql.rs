@@ -222,6 +222,7 @@ enum QueryForm {
 struct ParsedQuery {
     form: QueryForm,
     prefixes: HashMap<String, String>,
+    base_iri: Option<String>,
     variables: Vec<String>, // empty = SELECT *
     select_exprs: Vec<SelectExpr>, // (expr AS ?var) in SELECT
     distinct: bool,
@@ -307,8 +308,17 @@ impl Parser {
             }
         }
 
-        // If we have a BASE, use it to resolve empty prefix
+        // Resolve prefix namespace IRIs against BASE
         if let Some(ref base) = base_iri {
+            let mut resolved_prefixes = HashMap::new();
+            for (k, v) in &prefixes {
+                if v.is_empty() || (!v.contains("://") && !v.starts_with("urn:")) {
+                    resolved_prefixes.insert(k.clone(), resolve_iri_against_base(base, v));
+                } else {
+                    resolved_prefixes.insert(k.clone(), v.clone());
+                }
+            }
+            prefixes = resolved_prefixes;
             if !prefixes.contains_key("") {
                 prefixes.insert(String::new(), base.clone());
             }
@@ -443,6 +453,7 @@ impl Parser {
         Ok(ParsedQuery {
             form,
             prefixes,
+            base_iri,
             variables,
             select_exprs,
             distinct,
@@ -1384,14 +1395,52 @@ fn tokenize(input: &str) -> Vec<String> {
 // Evaluation
 // ---------------------------------------------------------------------------
 
+/// Resolve a relative IRI against a base IRI per RFC 3986.
+fn resolve_iri_against_base(base: &str, relative: &str) -> String {
+    if relative.is_empty() {
+        return base.to_string();
+    }
+    // If relative has a scheme, it's absolute
+    if relative.contains("://") || relative.starts_with("urn:") {
+        return relative.to_string();
+    }
+    // Fragment reference
+    if relative.starts_with('#') {
+        // Remove any existing fragment from base, append new one
+        if let Some(pos) = base.rfind('#') {
+            return format!("{}{}", &base[..pos], relative);
+        }
+        return format!("{}{}", base, relative);
+    }
+    // Relative path: find the last '/' in base path and append
+    if let Some(pos) = base.rfind('/') {
+        format!("{}{}", &base[..pos + 1], relative)
+    } else {
+        format!("{}/{}", base, relative)
+    }
+}
+
 fn resolve_element(
     elem: &PatternElement,
     prefixes: &HashMap<String, String>,
+    base_iri: &Option<String>,
 ) -> PatternElement {
     match elem {
         PatternElement::PrefixedName(prefix, local) => {
             if let Some(base) = prefixes.get(prefix) {
                 PatternElement::Iri(format!("{base}{local}"))
+            } else {
+                elem.clone()
+            }
+        }
+        PatternElement::Iri(iri) => {
+            // Resolve relative IRIs against BASE
+            if let Some(ref base) = base_iri {
+                if !iri.contains("://") && !iri.starts_with("urn:") {
+                    PatternElement::Iri(resolve_iri_against_base(base, iri))
+                } else {
+                    elem.clone()
+                }
             } else {
                 elem.clone()
             }
@@ -1461,10 +1510,11 @@ fn match_triple(
     triple: &Triple,
     existing: &Binding,
     prefixes: &HashMap<String, String>,
+    base_iri: &Option<String>,
 ) -> Option<Binding> {
-    let s_elem = resolve_element(&pattern.s, prefixes);
-    let p_elem = resolve_element(&pattern.p, prefixes);
-    let o_elem = resolve_element(&pattern.o, prefixes);
+    let s_elem = resolve_element(&pattern.s, prefixes, base_iri);
+    let p_elem = resolve_element(&pattern.p, prefixes, base_iri);
+    let o_elem = resolve_element(&pattern.o, prefixes, base_iri);
 
     let s_term = TermValue::from_subject(&triple.s);
     let p_term = TermValue::Iri(triple.p.as_str().to_string());
@@ -2519,6 +2569,7 @@ fn evaluate_clauses(
     graph: &RdfGraph,
     initial: Vec<Binding>,
     prefixes: &HashMap<String, String>,
+    base_iri: &Option<String>,
 ) -> Vec<Binding> {
     let mut results = initial;
 
@@ -2528,7 +2579,7 @@ fn evaluate_clauses(
                 let mut new_results = Vec::new();
                 for binding in &results {
                     for triple in graph.triples() {
-                        if let Some(new_binding) = match_triple(pattern, triple, binding, prefixes)
+                        if let Some(new_binding) = match_triple(pattern, triple, binding, prefixes, base_iri)
                         {
                             new_results.push(new_binding);
                         }
@@ -2559,7 +2610,7 @@ fn evaluate_clauses(
                 let mut new_results = Vec::new();
                 for binding in &results {
                     let pattern_matched =
-                        evaluate_clauses(&patterns, graph, vec![binding.clone()], prefixes);
+                        evaluate_clauses(&patterns, graph, vec![binding.clone()], prefixes, base_iri);
                     if pattern_matched.is_empty() {
                         // No pattern match — keep original binding
                         new_results.push(binding.clone());
@@ -2585,7 +2636,7 @@ fn evaluate_clauses(
             WhereClause::Union(right_clauses) => {
                 // Evaluate right branch from scratch, union with current results
                 let right_results =
-                    evaluate_clauses(right_clauses, graph, vec![Binding::new()], prefixes);
+                    evaluate_clauses(right_clauses, graph, vec![Binding::new()], prefixes, base_iri);
                 results.extend(right_results);
             }
             WhereClause::UnionGroup(branches) => {
@@ -2594,7 +2645,7 @@ fn evaluate_clauses(
                 for branch in branches {
                     // Each branch starts from current results (join semantics)
                     let branch_results =
-                        evaluate_clauses(branch, graph, results.clone(), prefixes);
+                        evaluate_clauses(branch, graph, results.clone(), prefixes, base_iri);
                     union_results.extend(branch_results);
                 }
                 results = union_results;
@@ -2668,7 +2719,7 @@ pub fn execute(graph: &RdfGraph, query_str: &str) -> Result<QueryResult, String>
     let query = parser.parse_query()?;
 
     let initial = vec![Binding::new()];
-    let mut results = evaluate_clauses(&query.where_clauses, graph, initial, &query.prefixes);
+    let mut results = evaluate_clauses(&query.where_clauses, graph, initial, &query.prefixes, &query.base_iri);
 
     // ASK: return boolean result immediately — no projection, ordering, etc.
     if query.form == QueryForm::Ask {
