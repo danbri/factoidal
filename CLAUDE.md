@@ -335,6 +335,8 @@ Current F* spec covers ~1,638 lines (rdfcore11: 492, sparql11: 1,146). Formaliza
 - Model: Benzaken et al. (ITP 2018) verified SQL algebra in Coq
 
 ### F* Proofs Completed (all verified, zero admit() calls)
+
+**RDF.Graph.Executable.fst** (zero admit, 5 remaining assume val for string library functions):
 - `lemma_add_no_dup`: Adding a triple guarantees it's in the graph (proved via triple_eq reflexivity)
 - `lemma_remove_absent`: Removing a triple guarantees it's gone (proved by induction on graph)
 - `lemma_empty_no_bnodes`: Empty graph has no blank nodes
@@ -342,29 +344,49 @@ Current F* spec covers ~1,638 lines (rdfcore11: 492, sparql11: 1,146). Formaliza
 - `lemma_compare_symmetric`: Value equality is symmetric for all comparable types
 - `lemma_incompatible_types`: Numeric vs plain literal comparison returns None
 - `lemma_bind_preserves_existing`: BIND does not overwrite existing variable bindings
-- `lemma_subject_eq_refl`: Subject equality is reflexive
-- `lemma_literal_eq_refl`: Literal equality is reflexive
-- `lemma_rdf_term_eq_refl`: RDF term equality is reflexive
-- `lemma_triple_eq_refl`: Triple equality is reflexive
+- Equality reflexivity lemmas: `subject_eq_refl`, `literal_eq_refl`, `rdf_term_eq_refl`, `triple_eq_refl`
 - `lemma_mem_triple_append`: mem_triple finds a triple appended to a list
 
+**SPARQL11.Algebra.fst** (43 remaining assume val — string/hash/date library functions + complex evaluators):
+- `lemma_union_assoc`: Union is associative
+- `lemma_union_nil_l/r`: Union with empty is identity
+- `lemma_filter_union`: Filter distributes over union
+- `lemma_offset_zero`: OFFSET 0 is identity
+- `lemma_filter_mem`: Elements of filter are in original list
+- `lemma_sm_compatible_refl`: Solution mapping compatibility is reflexive
+- `lemma_sm_merge_empty_l/r`: Merge with empty is identity
+- `lemma_domains_disjoint_empty_l`: Empty mapping is disjoint with any
+
 ### Concrete Implementations (replacing assume val)
-- `string_contains_colon`: Concrete implementation via `list_of_string` (was `assume val`)
-- `subject_eq`: Concrete decidable equality by constructor pattern matching (was `assume val`)
-- `literal_eq`: Concrete decidable equality comparing all three fields
-- `rdf_term_eq`: Concrete decidable equality by constructor pattern matching (was `assume val`)
+
+**RDF.Graph.Executable.fst:**
+- `string_contains_colon`: Concrete via `list_of_string` (was `assume val`)
+- `subject_eq`, `literal_eq`, `rdf_term_eq`: Concrete decidable equality by pattern matching
+- IRI constants (`xsd_string`, `rdf_lang_string`, etc.): Concrete strings with `assert_norm` verification
+
+**SPARQL11.Algebra.fst** (imports concrete types from RDF.Graph.Executable via `open`):
+- `try_bind_subject`, `try_bind_term`: Pattern matching with binding extension
+- `pattern_term_matches`, `pattern_subject_matches`: Concrete bool predicates
+- `tp_match`: Triple pattern matching threading subject→predicate→object
+- `eval_single_tp`, `eval_bgp`: Full BGP evaluation via concatMap
+- `sm_empty/lookup/bind/domain/compatible/merge`: Solution mapping operations
+- `graph_triples`, `triple_subject/predicate/object`: Graph accessors
+- `lit_lexical/datatype/lang`, `iri_to_string`, `string_to_iri`: Literal/IRI accessors
+- `fn_str`, `fn_lang`, `fn_datatype`, `fn_strdt`, `fn_strlang`: SPARQL accessor functions
+- `ebv`: Effective Boolean Value (§17.2.2)
+- `same_term`, `is_numeric_datatype`: Term comparison functions
+- `domains_disjoint`, `list_drop`, `list_take`, `project`: Query operations
+- All XSD/RDF IRI constants: Concrete strings with `assert_norm` verification
 
 ### F* Specifications Written (proofs pending)
 - N-Triples escape table and `is_nt_escaped` predicate
 - Roundtrip property: `graph_isomorphic g (parse(serialize g))`
-- SPARQL triple pattern matching against solution mappings
-- BGP evaluation specification
 
 ### Next Formalization Targets
 1. N-Triples grammar as F* inductive type (production rules)
-2. SPARQL OPTIONAL semantics (left outer join)
+2. Concrete `eval_expr` implementation (recursive expression evaluator)
 3. Graph canonicalization specification
-4. FILTER expression evaluation rules
+4. Low* rewrite of core types for KaRaMeL extraction
 
 ## W3C Test Report
 
