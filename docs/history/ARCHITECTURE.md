@@ -1,3 +1,5 @@
+> **STATUS: HISTORICAL INTEREST ONLY** — This document predates the authoritative project description in `CLAUDE.md`. Retained for reference but no longer maintained.
+
 # Factoidal: Architecture Analysis & Roadmap
 
 ## Q1: Is the JS wrapping more correct than the WASM?

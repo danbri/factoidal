@@ -1,3 +1,5 @@
+> **STATUS: HISTORICAL INTEREST ONLY** — All bugs listed below have been fixed. This worklog documents the 2026-03-06 spec alignment audit and is retained for reference only.
+
 # Worklog: F* Spec Alignment
 
 **Baseline tag:** `spec-alignment-v0` (commit 7223568)

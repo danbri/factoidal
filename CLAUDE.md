@@ -288,7 +288,7 @@ F* Low* spec → F* typechecker (verify) → erase proofs → KaRaMeL → C/WASM
 - Production-proven: HACL* (Firefox, Linux kernel), EverParse (Windows Hyper-V)
 - **Current blocker:** F* specs use high-level F*, not Low* subset. Need Low* rewrite.
 - **Precedent:** EverParse extracts verified parsers — directly applicable to N-Triples/Turtle serialization roundtrip proofs.
-- **Priority:** Phase 1 target is verified N-Triples serialize/deserialize (see ARCHITECTURE.md Phase 1).
+- **Priority:** Phase 1 target is verified N-Triples serialize/deserialize.
 
 **Path B: Hax verification (bridge for current Rust)**
 ```
