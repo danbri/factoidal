@@ -1,0 +1,15 @@
+# Note: This query times out on the full Wikidata endpoint due to
+# the enormous number of taxon instances. Use with LIMIT or targeted filters.
+PREFIX schema: <https://schema.org/>
+PREFIX bio: <https://bioschemas.org/> # tmp
+PREFIX wikibase: <http://wikiba.se/ontology#>
+
+CONSTRUCT {
+?taxon a bio:Taxon.
+}
+
+WHERE {
+{?taxon wdt:P31/wdt:P279* wd:Q16521.} # timesout
+
+SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en" }
+}

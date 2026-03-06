@@ -91,6 +91,11 @@ factoidal/
 │   │   ├── w3c_sparql.rs      # W3C SPARQL 1.0 test harness
 │   │   └── sparql_large_graph.rs  # Large graph integration tests (17)
 │   └── build.sh               # WASM build + copy to docs/pkg/
+├── kgx/                         # Knowledge Graph eXchange (from google/schemarama)
+│   ├── wikidata/
+│   │   ├── basic/               # 20 SPARQL CONSTRUCT queries (raw Wikidata IRIs)
+│   │   └── bioschemas/          # 20 SPARQL CONSTRUCT queries (Schema.org/Bioschemas vocab)
+│   └── README.md
 ├── tests/
 │   └── w3c/                   # Git submodule: github.com/w3c/rdf-tests
 ├── docs/
@@ -101,7 +106,15 @@ factoidal/
 │   │   ├── graphflow.md               # Graph transform design (full)
 │   │   ├── attestation-model.md       # Combined attestation data model + architecture
 │   │   ├── fstar-lean4-formalisation.md  # F*/Lean4 RDF formalisation survey
+│   │   ├── kgx-pipeline.md           # KGX materialization pipeline + attestation plan
 │   │   └── grounding-analysis.md      # Grounding analysis
+│   ├── skills/
+│   │   ├── testing.md                 # Test infrastructure and W3C harness guide
+│   │   ├── measuring.md              # Performance and coverage measurement
+│   │   ├── improving-sparql.md       # SPARQL engine improvement strategy
+│   │   ├── validating.md             # Correctness validation layers
+│   │   ├── optimising.md             # Engine optimization guide
+│   │   └── periodic-review.md        # Review hooks and accuracy audits
 │   └── tests.html             # Browser integration tests
 └── CLAUDE.md                  # This file
 ```
@@ -123,7 +136,7 @@ factoidal/
 - [x] Web demo using real WASM library (docs/index.html)
 - [x] W3C N-Triples test suite: **72/72 passing**
 - [x] W3C Turtle test suite: **69/69 positive syntax, 74/74 negative syntax, 80/80 eval**
-- [x] W3C SPARQL test harness: **32/436 passing** (7.3%) across 1.0 + 1.1 combined
+- [x] W3C SPARQL test harness: **93/436 passing** (21.3%) across 1.0 + 1.1 combined
 - [x] Large graph SPARQL integration tests: **17 passing** (117-triple graph, multi-hop joins, OPTIONAL, DISTINCT, ORDER BY, FILTER)
 - [x] Core RDF unit tests: **25 passing**
 - [x] SPARQL unit tests: **28 passing**
@@ -137,24 +150,24 @@ factoidal/
 
 | Suite               | Pass | Total | Rate   | Key blockers                              |
 |--------------------|------|-------|--------|-------------------------------------------|
-| algebra            | 3    | 14    | 21.4%  | Nested OPTIONAL, GRAPH, sub-SELECT        |
-| basic              | 1    | 27    | 3.7%   | Literal patterns, BASE resolution, lists  |
+| algebra            | 5    | 14    | 35.7%  | GRAPH keyword, nested scope               |
+| basic              | 15   | 27    | 55.6%  | BASE resolution, list patterns, quotes    |
 | bnode-coreference  | 1    | 1     | 100%   | -                                         |
-| boolean-eff-value  | 0    | 7     | 0.0%   | Boolean effective value semantics          |
+| boolean-eff-value  | 5    | 7     | 71.4%  | Typed literal BEV                         |
 | bound              | 1    | 1     | 100%   | -                                         |
 | cast               | 0    | 7     | 0.0%   | Casting functions                         |
-| distinct           | 6    | 11    | 54.5%  | Numeric value comparison                  |
-| expr-builtin       | 5    | 24    | 20.8%  | Unbound var handling, expression parsing  |
-| expr-equals        | 0    | 15    | 0.0%   | Value equality semantics                  |
-| expr-ops           | 3    | 17    | 17.6%  | Arithmetic operators (+, -, *)            |
+| distinct           | 7    | 11    | 63.6%  | Numeric value comparison                  |
+| expr-builtin       | 9    | 24    | 37.5%  | Complex expression parsing                |
+| expr-equals        | 1    | 15    | 6.7%   | Value equality semantics                  |
+| expr-ops           | 9    | 17    | 52.9%  | Division, type promotion                  |
 | i18n               | 2    | 5     | 40.0%  | Unicode normalization                     |
-| open-world         | 3    | 18    | 16.7%  | Open-world semantics, UNION               |
-| optional           | 0    | 7     | 0.0%   | OPTIONAL result mismatch                  |
-| optional-filter    | 0    | 6     | 0.0%   | FILTER inside OPTIONAL                    |
+| open-world         | 5    | 18    | 27.8%  | UNION scope, complex filters              |
+| optional           | 1    | 7     | 14.3%  | OPTIONAL result ordering                  |
+| optional-filter    | 1    | 6     | 16.7%  | FILTER inside OPTIONAL                    |
 | reduced            | 0    | 2     | 0.0%   | REDUCED modifier                          |
-| regex              | 0    | 21    | 0.0%   | FILTER REGEX parsing                      |
+| regex              | 14   | 21    | 66.7%  | Quantifier edge cases                     |
 | solution-seq       | 0    | 13    | 0.0%   | ORDER BY + solution sequences             |
-| sort               | 3    | 4     | 75.0%  | Complex sort keys                         |
+| sort               | 4    | 4     | 100%   | -                                         |
 | triple-match       | 2    | 4     | 50.0%  | Named graph matching                      |
 | type-promotion     | 0    | 30    | 0.0%   | Numeric type promotion                    |
 
@@ -164,12 +177,12 @@ factoidal/
 |-------------------|------|-------|--------|-------------------------------------------|
 | aggregates        | 0    | 35    | 0.0%   | COUNT, SUM, AVG, GROUP BY, HAVING         |
 | bind              | 0    | 10    | 0.0%   | BIND clause                               |
-| bindings          | 0    | 11    | 0.0%   | VALUES clause                             |
+| bindings          | 1    | 11    | 9.1%   | VALUES clause                             |
 | cast              | 0    | 6     | 0.0%   | Casting functions                         |
-| exists            | 0    | 6     | 0.0%   | EXISTS / NOT EXISTS                       |
-| functions         | 0    | 74    | 0.0%   | SPARQL 1.1 built-in functions             |
+| exists            | 3    | 6     | 50.0%  | Complex EXISTS patterns                   |
+| functions         | 3    | 74    | 4.1%   | SPARQL 1.1 built-in functions             |
 | grouping          | 2    | 4     | 50.0%  | Complex GROUP BY expressions              |
-| negation          | 0    | 11    | 0.0%   | MINUS, NOT EXISTS                         |
+| negation          | 2    | 11    | 18.2%  | MINUS, complex NOT EXISTS                 |
 | project-expression| 0    | 7     | 0.0%   | SELECT expressions                        |
 | property-path     | 0    | 29    | 0.0%   | Property path operators                   |
 | subquery          | 0    | 9     | 0.0%   | Sub-SELECT                                |
@@ -178,6 +191,7 @@ factoidal/
 - [ ] SPARQL parser improvements (literals in patterns, BASE resolution, REGEX filters)
 - [ ] F* <-> Rust verification alignment (see Formalization Roadmap below)
 - [ ] W3C SPARQL test suite coverage expansion
+- [ ] KGX pipeline: materialization runner with attestation logging (see `docs/designissues/kgx-pipeline.md`)
 
 ### Planned
 - [ ] Extend F* spec to cover N-Triples roundtrip proof (specification written, proof pending)
@@ -188,6 +202,9 @@ factoidal/
 - [ ] SPARQL CONSTRUCT, ASK, DESCRIBE
 - [ ] SPARQL aggregates (COUNT, SUM, AVG, GROUP BY, HAVING)
 - [ ] SPARQL property paths
+- [ ] KGX materialization via QLever (40 SPARQL CONSTRUCT queries against Wikidata)
+- [ ] Attestation logger with verifiable timestamps (RFC 3161 TSA integration)
+- [ ] KGX graph assembly: parse materialized Turtle, merge, canonicalize, sign
 - [ ] Storage abstraction (verified interface in F*, SQLite/IndexedDB backends)
 - [ ] Hax (Rust->F*) or Low* extraction pipeline for verified WASM
 
@@ -220,7 +237,7 @@ The Rust types in `rdf.rs` mirror the F* spec in `formal/fstar/rdfcore11.fstar.t
 
 ## Formalization Roadmap
 
-Current F* spec covers ~160 lines. Formalization gap by module:
+Current F* spec covers ~241 lines. Formalization gap by module:
 
 | Module | Rust LOC | F* Coverage | Feasibility | Priority |
 |--------|----------|-------------|-------------|----------|
@@ -257,7 +274,7 @@ Current F* spec covers ~160 lines. Formalization gap by module:
 | Core RDF type tests | 25 | 0.01s | Iri, Literal, Triple, Graph |
 | Large graph SPARQL integration | 17 | 0.04s | 117-triple graph, multi-hop joins |
 | W3C N-Triples | 72 | 0.02s | 72/72 (100%) |
-| W3C SPARQL (1.0 + 1.1) | 13 harness tests | 0.38s | 32/436 individual (7.3%) |
+| W3C SPARQL (1.0 + 1.1) | 13 harness tests | 0.45s | 93/436 individual (21.3%, ~390ms query time) |
 | W3C Turtle | 3 harness tests | 0.07s | 223/223 individual (100%) |
 | **Total** | **172** | **~0.53s** | All passing |
 
@@ -267,23 +284,28 @@ Current F* spec covers ~160 lines. Formalization gap by module:
 |------|----------|--------|
 | N-Triples (RDF 1.1) | 72/72 (100%) | Complete |
 | Turtle (RDF 1.1) | 223/223 (100%) | Complete (69 pos + 74 neg + 80 eval) |
-| SPARQL 1.0 | 30/234 (12.8%) | In progress — 21 suites evaluated |
-| SPARQL 1.1 | 2/202 (1.0%) | Baseline — 11 query suites evaluated |
-| **SPARQL combined** | **32/436 (7.3%)** | **32 suites, ~375ms** |
+| SPARQL 1.0 | 82/234 (35.0%) | In progress — 21 suites evaluated |
+| SPARQL 1.1 | 11/202 (5.4%) | Growing — 11 suites evaluated |
+| **SPARQL combined** | **93/436 (21.3%)** | **32 suites, ~390ms** |
 
 ### SPARQL Improvement Path
 
-| Blocker | Tests Unlockable | Effort |
-|---------|-----------------|--------|
-| Literal values in triple patterns | ~40 (basic, optional, sort, etc.) | Medium |
-| FILTER REGEX parsing (`FILTER REGEX(?x, "pat")`) | ~21 (regex suite) | Medium |
-| Arithmetic operators (+, -, *, /) | ~14 (expr-ops) | Low |
-| BASE IRI resolution in queries | ~5 (basic) | Low |
-| UNION support | ~10 (open-world, optional) | Medium |
-| Sub-SELECT / nested queries | ~20 (algebra, subquery) | High |
-| Aggregates (COUNT, SUM, GROUP BY) | ~35 (1.1 aggregates) | High |
-| Property paths | ~29 (1.1 property-path) | High |
-| 1.1 built-in functions (STRLEN, SUBSTR, etc.) | ~74 (1.1 functions) | Medium |
+| Blocker | Tests Unlockable | Effort | Status |
+|---------|-----------------|--------|--------|
+| ~~Literal values in triple patterns~~ | ~~40~~ | ~~Medium~~ | Done |
+| ~~FILTER REGEX parsing~~ | ~~21~~ | ~~Medium~~ | Done (14/21) |
+| ~~Arithmetic operators (+, -, *, /)~~ | ~~14~~ | ~~Low~~ | Done (9/17) |
+| ~~Boolean effective value~~ | ~~7~~ | ~~Low~~ | Done (5/7) |
+| ~~UNION support~~ | ~~10~~ | ~~Medium~~ | Done |
+| BASE IRI resolution in queries | ~5 (basic) | Low | Pending |
+| Value equality semantics | ~14 (expr-equals) | Medium | Pending |
+| Numeric type promotion | ~30 (type-promotion) | Medium | Pending |
+| Solution sequences (ORDER BY edge cases) | ~13 | Medium | Pending |
+| Casting functions | ~13 (cast) | Medium | Pending |
+| Sub-SELECT / nested queries | ~20 (algebra, subquery) | High | Pending |
+| Aggregates (COUNT, SUM, GROUP BY) | ~35 (1.1 aggregates) | High | Pending |
+| Property paths | ~29 (1.1 property-path) | High | Pending |
+| 1.1 built-in functions (STRLEN, SUBSTR, etc.) | ~74 (1.1 functions) | Medium | Pending |
 
 ## Design Documents
 
@@ -294,6 +316,18 @@ All design documents live under `docs/designissues/`:
 - [`docs/designissues/overview.md`](docs/designissues/overview.md) — Design issues overview
 - [`docs/designissues/grounding-analysis.md`](docs/designissues/grounding-analysis.md) — Grounding analysis
 - [`docs/designissues/fstar-lean4-formalisation.md`](docs/designissues/fstar-lean4-formalisation.md) — Survey of F\* and Lean 4 RDF 1.1 formalisations (CoqRDF, RDF.lean, portability assessment, module boundaries, proof obligations)
+- [`docs/designissues/kgx-pipeline.md`](docs/designissues/kgx-pipeline.md) — KGX materialization pipeline: QLever execution, attestation logging, verifiable timestamps, graph assembly
+
+### Skills & Knowledge Base
+
+Operational knowledge for testing, measuring, and improving the platform lives in `docs/skills/`:
+
+- [`docs/skills/testing.md`](docs/skills/testing.md) — Test infrastructure, W3C harness, test quality checklist
+- [`docs/skills/measuring.md`](docs/skills/measuring.md) — Coverage metrics, performance measurement, regression detection
+- [`docs/skills/improving-sparql.md`](docs/skills/improving-sparql.md) — SPARQL engine improvement strategy (tiered by impact)
+- [`docs/skills/validating.md`](docs/skills/validating.md) — F* alignment, W3C compliance, roundtrip verification
+- [`docs/skills/optimising.md`](docs/skills/optimising.md) — Query execution, indexing, WASM optimization
+- [`docs/skills/periodic-review.md`](docs/skills/periodic-review.md) — Review hooks, accuracy audits, update triggers
 
 ## Build & Test
 
