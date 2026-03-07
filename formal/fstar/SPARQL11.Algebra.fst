@@ -1417,13 +1417,32 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
     (match value_compare v1 v2 op with
      | Some b -> ER_Bool b
      | None ->
-       (* For =/!=, incomparable types produce a definite answer:
-          values of different types are not equal. For ordering ops
-          (<, >, <=, >=), incomparable types are a genuine error. *)
-       (match op with
-        | CmpEq -> ER_Bool false
-        | CmpNe -> ER_Bool true
-        | _ -> ER_Error))
+       (* Incomparable types: SPARQL open-world semantics.
+          For same-term comparisons (both IRI or both same-type literal), we know.
+          For different types, it's an error — we can't determine equality. *)
+       (match v1, v2 with
+        | ER_Term (T_IRI i1), ER_Term (T_IRI i2) ->
+          (* Same kind: we can definitively compare *)
+          (match op with | CmpEq -> ER_Bool (i1 = i2) | CmpNe -> ER_Bool (i1 <> i2) | _ -> ER_Error)
+        | ER_Term (T_BNode b1), ER_Term (T_BNode b2) ->
+          (match op with | CmpEq -> ER_Bool (b1 = b2) | CmpNe -> ER_Bool (b1 <> b2) | _ -> ER_Error)
+        | ER_Term (T_Literal l1), ER_Term (T_Literal l2) ->
+          if lit_datatype l1 = lit_datatype l2 then
+            (* Same datatype — can compare lexically for =/!= *)
+            (match op with
+             | CmpEq -> ER_Bool (lit_lexical l1 = lit_lexical l2 &&
+                                 (match lit_lang l1, lit_lang l2 with
+                                  | Some t1, Some t2 -> string_lower t1 = string_lower t2
+                                  | None, None -> true
+                                  | _, _ -> false))
+             | CmpNe -> ER_Bool (lit_lexical l1 <> lit_lexical l2 ||
+                                 (match lit_lang l1, lit_lang l2 with
+                                  | Some t1, Some t2 -> string_lower t1 <> string_lower t2
+                                  | None, None -> false
+                                  | _, _ -> true))
+             | _ -> ER_Error)
+          else ER_Error  (* Different datatypes — open-world error *)
+        | _, _ -> ER_Error))
 
   (* Logical connectives *)
   | E_And e1 e2 -> ER_Bool (ebv (eval_expr e1 mu) && ebv (eval_expr e2 mu))

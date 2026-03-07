@@ -2087,10 +2087,47 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
         (match value_compare v1 v2 op with
          | FStar_Pervasives_Native.Some b -> ER_Bool b
          | FStar_Pervasives_Native.None ->
-             (match op with
-              | CmpEq -> ER_Bool false
-              | CmpNe -> ER_Bool true
-              | uu___1 -> ER_Error))
+             (match (v1, v2) with
+              | (ER_Term (RDF_Graph_Executable.T_IRI i1), ER_Term
+                 (RDF_Graph_Executable.T_IRI i2)) ->
+                  (match op with
+                   | CmpEq -> ER_Bool (i1 = i2)
+                   | CmpNe -> ER_Bool (i1 <> i2)
+                   | uu___1 -> ER_Error)
+              | (ER_Term (RDF_Graph_Executable.T_BNode b1), ER_Term
+                 (RDF_Graph_Executable.T_BNode b2)) ->
+                  (match op with
+                   | CmpEq -> ER_Bool (b1 = b2)
+                   | CmpNe -> ER_Bool (b1 <> b2)
+                   | uu___1 -> ER_Error)
+              | (ER_Term (RDF_Graph_Executable.T_Literal l1), ER_Term
+                 (RDF_Graph_Executable.T_Literal l2)) ->
+                  if (lit_datatype l1) = (lit_datatype l2)
+                  then
+                    (match op with
+                     | CmpEq ->
+                         ER_Bool
+                           (((lit_lexical l1) = (lit_lexical l2)) &&
+                              ((match ((lit_lang l1), (lit_lang l2)) with
+                                | (FStar_Pervasives_Native.Some t1,
+                                   FStar_Pervasives_Native.Some t2) ->
+                                    (string_lower t1) = (string_lower t2)
+                                | (FStar_Pervasives_Native.None,
+                                   FStar_Pervasives_Native.None) -> true
+                                | (uu___1, uu___2) -> false)))
+                     | CmpNe ->
+                         ER_Bool
+                           (((lit_lexical l1) <> (lit_lexical l2)) ||
+                              ((match ((lit_lang l1), (lit_lang l2)) with
+                                | (FStar_Pervasives_Native.Some t1,
+                                   FStar_Pervasives_Native.Some t2) ->
+                                    (string_lower t1) <> (string_lower t2)
+                                | (FStar_Pervasives_Native.None,
+                                   FStar_Pervasives_Native.None) -> false
+                                | (uu___1, uu___2) -> true)))
+                     | uu___1 -> ER_Error)
+                  else ER_Error
+              | (uu___1, uu___2) -> ER_Error))
   | E_And (e1, e2) ->
       ER_Bool ((ebv (eval_expr e1 mu)) && (ebv (eval_expr e2 mu)))
   | E_Or (e1, e2) ->
