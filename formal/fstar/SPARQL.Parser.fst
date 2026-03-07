@@ -135,7 +135,57 @@ let is_pn_chars (c : FStar.Char.char) : bool =
 (** Lexical productions                                                     **)
 (** ====================================================================== **)
 
-(** Parse an IRI reference: <...> **)
+(* Hex digit value *)
+let hex_value (c : FStar.Char.char) : option int =
+  let code = FStar.Char.int_of_char c in
+  if code >= 0x30 && code <= 0x39 then Some (code - 0x30)
+  else if code >= 0x41 && code <= 0x46 then Some (code - 0x41 + 10)
+  else if code >= 0x61 && code <= 0x66 then Some (code - 0x61 + 10)
+  else None
+
+(* Parse N hex digits and return codepoint *)
+let parse_hex_codepoint (ps : pstate) (n : nat) : option (int * pstate) =
+  let rec go (ps : pstate) (acc : int) (remaining : nat)
+    : Tot (option (int * pstate)) (decreases remaining) =
+    if remaining = 0 then Some (acc, ps)
+    else match ps_peek ps with
+    | None -> None
+    | Some c ->
+      match hex_value c with
+      | None -> None
+      | Some v -> go (ps_advance ps 1) (op_Multiply acc 16 + v) (remaining - 1)
+  in
+  go ps 0 n
+
+(* Encode a Unicode codepoint as UTF-8 chars — returns empty for invalid codepoints *)
+let codepoint_to_chars (cp : int) : list FStar.Char.char =
+  (* Reject surrogates and out-of-range codepoints *)
+  if cp >= 0xD800 && cp <= 0xDFFF then []
+  else if cp < 0 || cp > 0x10FFFF then []
+  else [FStar.Char.char_of_int cp]
+
+(* Process \uXXXX or \UXXXXXXXX escape, returning chars and advanced pstate *)
+let parse_unicode_escape (ps : pstate) : option (list FStar.Char.char * pstate) =
+  match ps_peek ps with
+  | Some c when FStar.Char.int_of_char c = 0x75 (* 'u' *) ->
+    let ps = ps_advance ps 1 in
+    (match parse_hex_codepoint ps 4 with
+     | Some (cp, ps) ->
+       let chars = codepoint_to_chars cp in
+       if Nil? chars then None  (* Invalid codepoint — reject *)
+       else Some (chars, ps)
+     | None -> None)
+  | Some c when FStar.Char.int_of_char c = 0x55 (* 'U' *) ->
+    let ps = ps_advance ps 1 in
+    (match parse_hex_codepoint ps 8 with
+     | Some (cp, ps) ->
+       let chars = codepoint_to_chars cp in
+       if Nil? chars then None
+       else Some (chars, ps)
+     | None -> None)
+  | _ -> None
+
+(** Parse an IRI reference: <...> with \u escape support **)
 let parse_iriref (ps : pstate) : option (string * pstate) =
   let ps = skip_ws ps in
   match ps_peek ps with
@@ -147,6 +197,11 @@ let parse_iriref (ps : pstate) : option (string * pstate) =
       | Some c ->
         if FStar.Char.int_of_char c = 0x3E (* '>' *) then
           Some (String.string_of_list (List.Tot.rev acc), ps_advance ps 1)
+        else if FStar.Char.int_of_char c = 0x5C (* '\\' *) then
+          let ps = ps_advance ps 1 in
+          (match parse_unicode_escape ps with
+           | Some (chars, ps) -> collect ps (List.Tot.rev chars @ acc)
+           | None -> None)
         else
           collect (ps_advance ps 1) (c :: acc)
     in
@@ -255,7 +310,10 @@ let parse_iri (ps : pstate) (prefixes : list (string * wf_iri))
          (* Try resolving against base stored in prefixes *)
          let base = List.Tot.assoc "__base__" prefixes in
          let resolved = resolve_relative_iri base iri in
-         if is_iri resolved then Some (resolved, ps) else None
+         if is_iri resolved then Some (resolved, ps)
+         else
+           (* Accept relative IRIs as-is (valid in SPARQL grammar even without base) *)
+           if String.length iri > 0 then Some (iri, ps) else None
      | None -> None)
   | _ -> parse_pname_ln ps prefixes
 
@@ -287,16 +345,28 @@ and parse_string_inner (ps : pstate) (qcode : int) : option (string * pstate) =
              Some (String.string_of_list (List.Tot.rev acc), ps_advance ps 3)
            | _ -> collect (ps_advance ps 1) (ch :: acc))
         else if FStar.Char.int_of_char ch = 0x5C then
-          (match ps_char_at ps 1 with
+          let ps1 = ps_advance ps 1 in
+          (match ps_peek ps1 with
            | None -> None
            | Some c2 ->
-             let escaped = match FStar.Char.int_of_char c2 with
-               | 0x6E -> FStar.Char.char_of_int 0x0A
-               | 0x74 -> FStar.Char.char_of_int 0x09
-               | 0x72 -> FStar.Char.char_of_int 0x0D
-               | _ -> c2
-             in
-             collect (ps_advance ps 2) (escaped :: acc))
+             let c2code = FStar.Char.int_of_char c2 in
+             if c2code = 0x75 || c2code = 0x55 then
+               (match parse_unicode_escape ps1 with
+                | Some (chars, ps') -> collect ps' (List.Tot.rev chars @ acc)
+                | None -> None)
+             else
+               let escaped = match c2code with
+                 | 0x6E -> FStar.Char.char_of_int 0x0A
+                 | 0x74 -> FStar.Char.char_of_int 0x09
+                 | 0x72 -> FStar.Char.char_of_int 0x0D
+                 | 0x62 -> FStar.Char.char_of_int 0x08
+                 | 0x66 -> FStar.Char.char_of_int 0x0C
+                 | 0x5C -> FStar.Char.char_of_int 0x5C
+                 | 0x22 -> FStar.Char.char_of_int 0x22
+                 | 0x27 -> FStar.Char.char_of_int 0x27
+                 | _ -> c2
+               in
+               collect (ps_advance ps 2) (escaped :: acc))
         else collect (ps_advance ps 1) (ch :: acc)
     in
     collect ps []
@@ -309,19 +379,29 @@ and parse_string_inner (ps : pstate) (qcode : int) : option (string * pstate) =
         if FStar.Char.int_of_char ch = qcode then
           Some (String.string_of_list (List.Tot.rev acc), ps_advance ps 1)
         else if FStar.Char.int_of_char ch = 0x5C then
-          (match ps_char_at ps 1 with
+          let ps1 = ps_advance ps 1 in
+          (match ps_peek ps1 with
            | None -> None
            | Some c2 ->
-             let escaped = match FStar.Char.int_of_char c2 with
-               | 0x6E -> FStar.Char.char_of_int 0x0A
-               | 0x74 -> FStar.Char.char_of_int 0x09
-               | 0x72 -> FStar.Char.char_of_int 0x0D
-               | 0x5C -> FStar.Char.char_of_int 0x5C
-               | 0x22 -> FStar.Char.char_of_int 0x22
-               | 0x27 -> FStar.Char.char_of_int 0x27
-               | _ -> c2
-             in
-             collect (ps_advance ps 2) (escaped :: acc))
+             let c2code = FStar.Char.int_of_char c2 in
+             if c2code = 0x75 || c2code = 0x55 then
+               (* \uXXXX or \UXXXXXXXX *)
+               (match parse_unicode_escape ps1 with
+                | Some (chars, ps') -> collect ps' (List.Tot.rev chars @ acc)
+                | None -> None)
+             else
+               let escaped = match c2code with
+                 | 0x6E -> FStar.Char.char_of_int 0x0A  (* \n *)
+                 | 0x74 -> FStar.Char.char_of_int 0x09  (* \t *)
+                 | 0x72 -> FStar.Char.char_of_int 0x0D  (* \r *)
+                 | 0x62 -> FStar.Char.char_of_int 0x08  (* \b *)
+                 | 0x66 -> FStar.Char.char_of_int 0x0C  (* \f *)
+                 | 0x5C -> FStar.Char.char_of_int 0x5C  (* \\ *)
+                 | 0x22 -> FStar.Char.char_of_int 0x22  (* \" *)
+                 | 0x27 -> FStar.Char.char_of_int 0x27  (* \' *)
+                 | _ -> c2
+               in
+               collect (ps_advance ps 2) (escaped :: acc))
         else if FStar.Char.int_of_char ch = 0x0A || FStar.Char.int_of_char ch = 0x0D then
           None
         else collect (ps_advance ps 1) (ch :: acc)
@@ -2654,6 +2734,51 @@ let parse_query (input : string) : option query =
                    };
                  })
                | None -> None)))
+    | None ->
+    (* Try DESCRIBE *)
+    match ps_consume ps "DESCRIBE" with
+    | Some ps ->
+      let ps = skip_ws ps in
+      (* Parse DESCRIBE targets: IRIs and/or variables, or * *)
+      let rec parse_describe_targets (acc : list pattern_term) (ps : pstate)
+        : list pattern_term * pstate =
+        let ps = skip_ws ps in
+        match parse_iri ps prefixes with
+        | Some (iri, ps) -> parse_describe_targets (PT_IRI iri :: acc) ps
+        | None ->
+          match parse_variable ps with
+          | Some (v, ps) -> parse_describe_targets (PT_Var v :: acc) ps
+          | None -> (List.Tot.rev acc, ps)
+      in
+      let ps0 = ps in
+      let (targets, ps) = match ps_consume ps "*" with
+        | Some ps -> ([], ps)  (* DESCRIBE * *)
+        | None -> parse_describe_targets [] ps
+      in
+      (* Optional WHERE clause *)
+      let ps = skip_ws ps in
+      let ps_bk = ps in
+      let ps = match ps_consume ps "WHERE" with | Some ps -> ps | None -> ps in
+      let pattern = match parse_group_graph_pattern ps prefixes with
+        | Some (p, ps') -> Some (p, ps')
+        | None -> Some (GP_Empty, ps_bk)
+      in
+      (match pattern with
+       | Some (pat, ps) ->
+         Some ({
+           q_base = base;
+           q_prefixes = prefixes;
+           q_form = QF_Describe targets;
+           q_dataset = [];
+           q_pattern = pat;
+           q_group_by = None;
+           q_having = None;
+           q_modifier = {
+             sm_order_by = None; sm_distinct = false; sm_reduced = false;
+             sm_offset = None; sm_limit = None;
+           };
+         })
+       | None -> None)
     | None ->
     match parse_select_clause ps prefixes with
     | None -> None
