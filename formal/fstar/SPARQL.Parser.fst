@@ -1499,8 +1499,8 @@ and parse_ggp_body (ps : pstate) (prefixes : list (string * wf_iri))
     if ps_starts_with_ci ps "SELECT" then
       parse_sub_select_inline ps prefixes
     else
-      (* Try to parse elements *)
-      parse_ggp_elements ps prefixes GP_Empty
+      (* Try to parse elements, collecting FILTERs to apply at end per SPARQL spec §18.2.4.2 *)
+      parse_ggp_elements ps prefixes GP_Empty []
 
 (* Sub-SELECT parser — parses SELECT ... WHERE { ... } GROUP BY ... HAVING ...
    within a group graph pattern. Uses the same mutual recursion as parse_group_graph_pattern. *)
@@ -1724,11 +1724,16 @@ and parse_sub_select_inline (ps : pstate) (prefixes : list (string * wf_iri))
         Some (GP_SubSelect sub_q, ps)
 
 and parse_ggp_elements (ps : pstate) (prefixes : list (string * wf_iri)) (acc : group_graph_pattern)
+  (filters : list expr)
   : option (group_graph_pattern * pstate) =
   let ps = skip_ws ps in
+  (* Helper: wrap accumulated pattern with collected FILTERs *)
+  let apply_filters (pat : group_graph_pattern) (fs : list expr) : group_graph_pattern =
+    List.Tot.fold_left (fun p f -> GP_Filter f p) pat fs
+  in
   match ps_peek ps with
-  | None -> Some (acc, ps)
-  | Some c when FStar.Char.int_of_char c = 0x7D (* '}' *) -> Some (acc, ps)
+  | None -> Some (apply_filters acc filters, ps)
+  | Some c when FStar.Char.int_of_char c = 0x7D (* '}' *) -> Some (apply_filters acc filters, ps)
   | _ ->
     (* Try OPTIONAL *)
     match ps_consume ps "OPTIONAL" with
@@ -1739,22 +1744,22 @@ and parse_ggp_elements (ps : pstate) (prefixes : list (string * wf_iri)) (acc : 
          (* Skip optional trailing dot after OPTIONAL block *)
          let ps' = skip_ws ps' in
          let ps' = match ps_consume ps' "." with | Some p -> p | None -> ps' in
-         parse_ggp_elements ps' prefixes new_acc
-       | None -> Some (acc, ps))
+         parse_ggp_elements ps' prefixes new_acc filters
+       | None -> Some (apply_filters acc filters, ps))
     | None ->
-    (* Try FILTER *)
+    (* Try FILTER — collect and apply at end of group per SPARQL spec §18.2.4.2 *)
     match ps_consume ps "FILTER" with
     | Some ps_after ->
       let ps_after = skip_ws ps_after in
       (* FILTER can be FILTER(expr) or FILTER expr *)
       (match parse_filter_constraint ps_after prefixes with
        | Some (filter_expr, ps') ->
-         let new_acc = GP_Filter filter_expr acc in
+         (* Collect filter, don't apply yet *)
          (* Skip optional '.' *)
          let ps' = skip_ws ps' in
          let ps' = match ps_consume ps' "." with | Some ps' -> ps' | None -> ps' in
-         parse_ggp_elements ps' prefixes new_acc
-       | None -> Some (acc, ps))
+         parse_ggp_elements ps' prefixes acc (filter_expr :: filters)
+       | None -> Some (apply_filters acc filters, ps))
     | None ->
     (* Try UNION — after a group *)
     match ps_consume ps "UNION" with
@@ -1762,8 +1767,8 @@ and parse_ggp_elements (ps : pstate) (prefixes : list (string * wf_iri)) (acc : 
       (match parse_group_graph_pattern ps_after prefixes with
        | Some (right, ps') ->
          let new_acc = GP_Union acc right in
-         parse_ggp_elements ps' prefixes new_acc
-       | None -> Some (acc, ps))
+         parse_ggp_elements ps' prefixes new_acc filters
+       | None -> Some (apply_filters acc filters, ps))
     | None ->
     (* Try MINUS *)
     match ps_consume ps "MINUS" with
@@ -1771,8 +1776,8 @@ and parse_ggp_elements (ps : pstate) (prefixes : list (string * wf_iri)) (acc : 
       (match parse_group_graph_pattern ps_after prefixes with
        | Some (minus_pat, ps') ->
          let new_acc = GP_Minus acc minus_pat in
-         parse_ggp_elements ps' prefixes new_acc
-       | None -> Some (acc, ps))
+         parse_ggp_elements ps' prefixes new_acc filters
+       | None -> Some (apply_filters acc filters, ps))
     | None ->
     (* Try BIND(expr AS ?var) *)
     match ps_consume ps "BIND" with
@@ -1792,12 +1797,12 @@ and parse_ggp_elements (ps : pstate) (prefixes : list (string * wf_iri)) (acc : 
                      let new_acc = GP_Bind e v acc in
                      let ps' = skip_ws ps' in
                      let ps' = match ps_consume ps' "." with | Some p -> p | None -> ps' in
-                     parse_ggp_elements ps' prefixes new_acc
-                   | None -> Some (acc, ps))
-                | None -> Some (acc, ps))
-             | None -> Some (acc, ps))
-          | None -> Some (acc, ps))
-       | None -> Some (acc, ps))
+                     parse_ggp_elements ps' prefixes new_acc filters
+                   | None -> Some (apply_filters acc filters, ps))
+                | None -> Some (apply_filters acc filters, ps))
+             | None -> Some (apply_filters acc filters, ps))
+          | None -> Some (apply_filters acc filters, ps))
+       | None -> Some (apply_filters acc filters, ps))
     | None ->
     (* Try VALUES *)
     match ps_consume ps "VALUES" with
@@ -1806,8 +1811,8 @@ and parse_ggp_elements (ps : pstate) (prefixes : list (string * wf_iri)) (acc : 
        | Some (vars, rows, ps') ->
          let new_acc = if acc = GP_Empty then GP_Values vars rows
                        else GP_Join acc (GP_Values vars rows) in
-         parse_ggp_elements ps' prefixes new_acc
-       | None -> Some (acc, ps))
+         parse_ggp_elements ps' prefixes new_acc filters
+       | None -> Some (apply_filters acc filters, ps))
     | None ->
     (* Try sub-group { ... } *)
     match ps_peek ps with
@@ -1823,10 +1828,10 @@ and parse_ggp_elements (ps : pstate) (prefixes : list (string * wf_iri)) (acc : 
             (match parse_group_graph_pattern ps'' prefixes with
              | Some (right, ps'') ->
                let new_acc = GP_Union new_acc right in
-               parse_ggp_elements ps'' prefixes new_acc
-             | None -> parse_ggp_elements ps' prefixes new_acc)
-          | None -> parse_ggp_elements ps' prefixes new_acc)
-       | None -> Some (acc, ps))
+               parse_ggp_elements ps'' prefixes new_acc filters
+             | None -> parse_ggp_elements ps' prefixes new_acc filters)
+          | None -> parse_ggp_elements ps' prefixes new_acc filters)
+       | None -> Some (apply_filters acc filters, ps))
     | _ ->
     (* Try triple patterns *)
     match parse_triples_block ps prefixes with
@@ -1837,8 +1842,8 @@ and parse_ggp_elements (ps : pstate) (prefixes : list (string * wf_iri)) (acc : 
       (* Skip optional '.' *)
       let ps' = skip_ws ps' in
       let ps' = match ps_consume ps' "." with | Some p -> p | None -> ps' in
-      parse_ggp_elements ps' prefixes new_acc
-    | _ -> Some (acc, ps)
+      parse_ggp_elements ps' prefixes new_acc filters
+    | _ -> Some (apply_filters acc filters, ps)
 
 and parse_filter_constraint (ps : pstate) (prefixes : list (string * wf_iri))
   : option (expr * pstate) =
