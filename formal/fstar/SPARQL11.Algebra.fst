@@ -1391,7 +1391,14 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
   | E_Compare op e1 e2 ->
     (match value_compare (eval_expr e1 mu) (eval_expr e2 mu) op with
      | Some b -> ER_Bool b
-     | None -> ER_Error)
+     | None ->
+       (* For =/!=, incomparable types produce a definite answer:
+          values of different types are not equal. For ordering ops
+          (<, >, <=, >=), incomparable types are a genuine error. *)
+       (match op with
+        | CmpEq -> ER_Bool false
+        | CmpNe -> ER_Bool true
+        | _ -> ER_Error))
 
   (* Logical connectives *)
   | E_And e1 e2 -> ER_Bool (ebv (eval_expr e1 mu) && ebv (eval_expr e2 mu))

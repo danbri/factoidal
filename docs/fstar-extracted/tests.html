@@ -116,10 +116,10 @@
   <h2>Expected Results (from native OCaml run)</h2>
   <p class="info">Click "Run Tests in Browser" to execute live, or see the pre-computed results below.</p>
   <div class="summary-box">
-    <div class="stat pass"><div class="number">41</div><div class="label">Passed</div></div>
-    <div class="stat fail"><div class="number">9</div><div class="label">Failed</div></div>
+    <div class="stat pass"><div class="number">50</div><div class="label">Passed</div></div>
+    <div class="stat fail"><div class="number">0</div><div class="label">Failed</div></div>
     <div class="stat total"><div class="number">50</div><div class="label">Total</div></div>
-    <div class="stat pct"><div class="number">82%</div><div class="label">Pass Rate</div></div>
+    <div class="stat pct"><div class="number">100%</div><div class="label">Pass Rate</div></div>
   </div>
   <table>
     <thead>
@@ -136,24 +136,15 @@
       <tr><td>optional</td><td class="pass">2</td><td>2</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
       <tr><td>regex</td><td class="pass">3</td><td>3</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
       <tr><td>expr-builtin</td><td class="pass">3</td><td>3</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
+      <tr><td>expr-equals</td><td class="pass">2</td><td>2</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
+      <tr><td>expr-ops</td><td class="pass">2</td><td>2</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
       <tr><td>string-functions (1.1)</td><td class="pass">3</td><td>3</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
       <tr><td>bind</td><td class="pass">2</td><td>2</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
+      <tr><td>exists</td><td class="pass">4</td><td>4</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
       <tr><td>project-expression</td><td class="pass">1</td><td>1</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
       <tr><td>i18n</td><td class="pass">1</td><td>1</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
       <tr><td>negation (MINUS)</td><td class="pass">2</td><td>2</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
-      <tr><td>numeric-functions (1.1)</td><td class="pass">1</td><td>2</td><td>50%</td><td><span class="status-tag partial">PARTIAL</span></td></tr>
-      <tr><td>expr-equals</td><td class="fail">0</td><td>2</td><td>0%</td><td><span class="status-tag none">BLOCKED</span></td></tr>
-      <tr><td>expr-ops</td><td class="fail">0</td><td>2</td><td>0%</td><td><span class="status-tag none">BLOCKED</span></td></tr>
-      <tr><td>exists</td><td class="fail">0</td><td>4</td><td>0%</td><td><span class="status-tag none">BLOCKED</span></td></tr>
-    </tbody>
-  </table>
-
-  <h2>Known Blockers (SPARQL)</h2>
-  <table>
-    <thead><tr><th>Category</th><th>Tests</th><th>Issue</th></tr></thead>
-    <tbody>
-      <tr><td>expr-equals, expr-ops, numeric</td><td>5</td><td>Numeric literal value comparison: <code>E_NumericLit(Z.t)</code> vs <code>T_Literal</code> with <code>xsd:integer</code> datatype requires parsing the literal's lexical form</td></tr>
-      <tr><td>exists</td><td>4</td><td><code>E_Exists</code>/<code>E_NotExists</code> variable substitution in patterns needs <code>eval_pattern</code> access (forward reference limitation in extraction)</td></tr>
+      <tr><td>numeric-functions (1.1)</td><td class="pass">2</td><td>2</td><td>100%</td><td><span class="status-tag full">FULL</span></td></tr>
     </tbody>
   </table>
 </div>
