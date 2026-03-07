@@ -36,11 +36,14 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   mkdir -p "$OUTDIR"
   fstar.exe --lax --codegen OCaml --odir "$OUTDIR" RDF.Graph.Executable.fst 2>&1 | grep -E "Extracted|Error|error" || true
   fstar.exe --lax --codegen OCaml --odir "$OUTDIR" SPARQL11.Algebra.fst 2>&1 | grep -E "Extracted|Error|error" || true
+  fstar.exe --lax --codegen OCaml --odir "$OUTDIR" SPARQL.Parser.fst 2>&1 | grep -E "Extracted|Error|error" || true
   echo "  RDF:    $(wc -l < "$OUTDIR/RDF_Graph_Executable.ml") lines"
   echo "  SPARQL: $(wc -l < "$OUTDIR/SPARQL11_Algebra.ml") lines"
+  echo "  Parser: $(wc -l < "$OUTDIR/SPARQL_Parser.ml") lines"
 
   # Apply post-extraction patches (wire assume-val stubs, add regex_match)
   ./ocaml-patches.sh "$OUTDIR/SPARQL11_Algebra.ml"
+  ./parser-patches.sh "$OUTDIR/SPARQL_Parser.ml"
   echo ""
 fi
 
@@ -55,11 +58,17 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     -o example 2>&1 | grep -i error || true
   echo "  Built: example ($(wc -c < example) bytes)"
 
-  # W3C test binary
+  # W3C algebra test binary (programmatic — not parser-driven)
   ocamlfind ocamlopt -package fstar.lib,str -linkpkg -w -8 \
     RDF_Graph_Executable.ml SPARQL11_Algebra.ml w3c_tests.ml \
     -o w3c_tests 2>&1 | grep -i error || true
   echo "  Built: w3c_tests ($(wc -c < w3c_tests) bytes)"
+
+  # W3C SPARQL test binary (F*-extracted parser + evaluator vs real .rq files)
+  ocamlfind ocamlopt -package fstar.lib,str -linkpkg -w -8-26 \
+    RDF_Graph_Executable.ml SPARQL11_Algebra.ml SPARQL_Parser.ml w3c_sparql_tests.ml \
+    -o w3c_sparql_tests 2>&1 | grep -i error || true
+  echo "  Built: w3c_sparql_tests ($(wc -c < w3c_sparql_tests) bytes)"
 
   cd ..
   echo ""

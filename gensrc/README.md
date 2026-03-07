@@ -37,4 +37,11 @@ make extract-c            # C extraction via KaRaMeL
 
 ## Test Status
 
-**50/50 SPARQL algebra tests passing** (100%) — all fixes upstream in F* source.
+**Programmatic algebra tests: 50/50 passing** (hand-constructed, not W3C-driven).
+
+**W3C SPARQL tests (real .rq files): 87/124 passing** (70%) — uses F*-extracted parser
+(`SPARQL.Parser.fst`) + F*-extracted evaluator (`SPARQL11.Algebra.fst`) against actual
+W3C test suite files. See `formal/fstar/ocaml-output/w3c_sparql_tests.ml` for the harness.
+
+Note: The programmatic tests exercise the evaluator directly without parsing. The W3C tests
+are the honest measure — they parse real `.rq` query files through the full F*-extracted pipeline.

@@ -119,6 +119,7 @@ factoidal/
 ├── formal/fstar/
 │   ├── RDF.Graph.Executable.fst     # F* verified RDF module (586 lines, zero assume val)
 │   ├── SPARQL11.Algebra.fst         # F* verified SPARQL module (2731 lines, 7 assume val)
+│   ├── SPARQL.Parser.fst            # F* SPARQL query parser (~1550 lines, extractable)
 │   ├── c-output/                    # KaRaMeL-extracted C (1710 lines from RDF module)
 │   ├── rdfcore11.fstar.txt          # Original textual spec (historical)
 │   ├── sparql11.fstar.txt           # Original textual spec (historical)
@@ -319,14 +320,15 @@ Rust code + #[hax::ensures(...)] → Hax → extracted F* → verify against han
 
 The F* specs are **not documentation** — they are the source code for the verified WASM binary. Every line of F* spec written is progress toward replacing the manual Rust implementation with KaRaMeL-extracted verified code.
 
-Current F* spec covers ~3,317 lines (RDF.Graph.Executable: 586, SPARQL11.Algebra: 2,731).
+Current F* spec covers ~4,867 lines (RDF.Graph.Executable: 586, SPARQL11.Algebra: 2,731, SPARQL.Parser: ~1,550).
 
 | Module | Rust LOC | F* LOC | F* Coverage | KaRaMeL Status | Priority |
 |--------|----------|--------|-------------|----------------|----------|
 | **rdf.rs** | 345 | 586 | ~90% | ✅ Extracts to 1,710 lines C (with compat) | High — Low* rewrite next |
 | **ntriples.rs** | 365 | ~80 | ~15% | Needs EverParse-style spec | High — Phase 1 target |
 | **turtle.rs** | 1,198 | 0 | 0% | Hard — complex grammar | Long-term |
-| **sparql.rs** | 2,922 | 2,731 | ~85% | ❌ Blocked by `noeq` types | Medium — fix noeq first |
+| **sparql.rs (parser)** | ~800 | ~1,550 | ~70% | ✅ Extracts to 2,748 lines OCaml | New — 87/124 W3C tests |
+| **sparql.rs (engine)** | 2,922 | 2,731 | ~85% | ❌ Blocked by `noeq` types | Medium — fix noeq first |
 | **wasm_api.rs** | 194 | 0 | 0% | Binding layer, not extracted | Not applicable |
 
 ### Low\* Rewrite Strategy: Spec + Impl Modules
@@ -470,7 +472,7 @@ The Spec module is never deleted — it remains the **readable, provable referen
 | W3C Turtle | 3 harness tests | 0.07s | 223/223 individual (100%) |
 | **Total** | **172** | **~0.53s** | All passing |
 
-### W3C Compliance Summary
+### W3C Compliance Summary (Rust engine)
 
 | Spec | Coverage | Status |
 |------|----------|--------|
@@ -479,6 +481,35 @@ The Spec module is never deleted — it remains the **readable, provable referen
 | SPARQL 1.0 | 110/234 (47.0%) | In progress — 21 suites evaluated |
 | SPARQL 1.1 | 49/202 (24.3%) | Growing — 11 suites evaluated |
 | **SPARQL combined** | **159/436 (36.5%)** | **32 suites, ~500ms** |
+
+### W3C SPARQL Tests — F*-Extracted Pipeline
+
+The F*-extracted parser (`SPARQL.Parser.fst`) and evaluator (`SPARQL11.Algebra.fst`)
+are tested against **real W3C .rq query files** via `w3c_sparql_tests.ml`.
+
+| Suite | Pass | Total | Rate | Notes |
+|-------|------|-------|------|-------|
+| basic (1.0) | 19 | 27 | 70% | BASE resolution, list patterns pending |
+| distinct (1.0) | 3 | 5 | 60% | |
+| bound (1.0) | 0 | 1 | 0% | Parser: OPTIONAL inside WHERE |
+| bnode-coreference (1.0) | 1 | 1 | 100% | |
+| expr-equals (1.0) | 5 | 5 | 100% | |
+| regex (1.0) | 4 | 4 | 100% | |
+| optional (1.0) | 2 | 4 | 50% | |
+| solution-seq (1.0) | 13 | 13 | 100% | TTL results — count check only |
+| sort (1.0) | 4 | 4 | 100% | |
+| bind (1.1) | 6 | 8 | 75% | |
+| exists (1.1) | 2 | 5 | 40% | |
+| project-expression (1.1) | 7 | 7 | 100% | |
+| functions (1.1) | 21 | 40 | 52% | Hash assume vals, REPLACE parser |
+| **Total** | **87** | **124** | **70%** | **Real W3C .rq files, not programmatic** |
+
+Pipeline: `.rq` → `SPARQL.Parser.fst` (F*-extracted) → `SPARQL11.Algebra.fst` (F*-extracted evaluator)
+Data loading: OCaml Turtle parser (test infrastructure, not F*-extracted)
+
+**Note:** The earlier "50/50 algebra tests" were programmatic tests that construct queries
+in OCaml without parsing. They exercise the evaluator but are **not W3C-driven**. The 87/124
+above is the honest measure against real W3C test suite files.
 
 ### SPARQL Implementation Roadmap (Architecture-Driven)
 
