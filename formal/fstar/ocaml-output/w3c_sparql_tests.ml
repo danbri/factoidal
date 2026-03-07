@@ -1150,6 +1150,77 @@ let aggregates_tests =
   List.map (fun (name, data, query, result) ->
     { tc_name = "aggregates/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
 
+let algebra_tests =
+  let dir = sparql_base ^ "sparql10/algebra/" in
+  let files = [
+    ("two-nested-opt", "two-nested-opt.ttl", "two-nested-opt.rq", "two-nested-opt.srx");
+    ("two-nested-opt-alt", "two-nested-opt.ttl", "two-nested-opt-alt.rq", "two-nested-opt-alt.srx");
+    ("opt-filter-1", "opt-filter-1.ttl", "opt-filter-1.rq", "opt-filter-1.srx");
+    ("opt-filter-2", "opt-filter-2.ttl", "opt-filter-2.rq", "opt-filter-2.srx");
+    ("opt-filter-3", "opt-filter-3.ttl", "opt-filter-3.rq", "opt-filter-3.srx");
+    ("filter-placement-1", "data-2.ttl", "filter-placement-1.rq", "filter-placement-1.srx");
+    ("filter-placement-2", "data-2.ttl", "filter-placement-2.rq", "filter-placement-2.srx");
+    ("filter-placement-3", "data-2.ttl", "filter-placement-3.rq", "filter-placement-3.srx");
+    ("filter-nested-1", "data-1.ttl", "filter-nested-1.rq", "filter-nested-1.srx");
+    ("filter-nested-2", "data-1.ttl", "filter-nested-2.rq", "filter-nested-2.srx");
+    ("filter-scope-1", "data-2.ttl", "filter-scope-1.rq", "filter-scope-1.srx");
+    ("var-scope-join-1", "var-scope-join-1.ttl", "var-scope-join-1.rq", "var-scope-join-1.srx");
+    ("join-combo-1", "join-combo-graph-2.ttl", "join-combo-1.rq", "join-combo-1.srx");
+  ] in
+  let basic = List.map (fun (name, data, query, result) ->
+    { tc_name = "algebra/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files in
+  (* join-combo-2 needs a named graph *)
+  basic @ [{ tc_name = "algebra/join-combo-2"; tc_query = dir ^ "join-combo-2.rq"; tc_data = dir ^ "join-combo-graph-2.ttl";
+             tc_result = dir ^ "join-combo-2.srx";
+             tc_named_graphs = [("file:join-combo-graph-1.ttl", dir ^ "join-combo-graph-1.ttl")] }]
+
+let subquery_tests =
+  let dir = sparql_base ^ "sparql11/subquery/" in
+  (* Only include tests with .ttl data files (our harness doesn't support RDF/XML) *)
+  let files = [
+    ("sq11", "sq11.ttl", "sq11.rq", "sq11.srx");
+    ("sq12", "sq12.ttl", "sq12.rq", "sq12.srx");
+    ("sq13", "sq13.ttl", "sq13.rq", "sq13.srx");
+    ("sq14", "sq14.ttl", "sq14.rq", "sq14.srx");
+  ] in
+  List.map (fun (name, data, query, result) ->
+    { tc_name = "subquery/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
+
+let bindings_tests =
+  let dir = sparql_base ^ "sparql11/bindings/" in
+  let files = [
+    ("values01", "data01.ttl", "values01.rq", "values01.srx");
+    ("values02", "data02.ttl", "values02.rq", "values02.srx");
+    ("values03", "data03.ttl", "values03.rq", "values03.srx");
+    ("values04", "data04.ttl", "values04.rq", "values04.srx");
+    ("values05", "data05.ttl", "values05.rq", "values05.srx");
+    ("values06", "data06.ttl", "values06.rq", "values06.srx");
+    ("values07", "data07.ttl", "values07.rq", "values07.srx");
+    ("values08", "data08.ttl", "values08.rq", "values08.srx");
+    ("inline01", "data01.ttl", "inline01.rq", "inline01.srx");
+    ("inline02", "data02.ttl", "inline02.rq", "inline02.srx");
+  ] in
+  List.map (fun (name, data, query, result) ->
+    { tc_name = "bindings/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
+
+let property_path_tests =
+  let dir = sparql_base ^ "sparql11/property-path/" in
+  (* Only tests with .ttl data files *)
+  let files = [
+    ("pp01", "pp01.ttl", "pp01.rq", "pp01.srx");
+    ("pp03", "pp03.ttl", "pp03.rq", "pp03.srx");
+    ("pp05", "pp05.ttl", "pp05.rq", "pp05.srx");
+    ("pp08", "pp08.ttl", "pp08.rq", "pp08.srx");
+    ("pp09", "pp09.ttl", "pp09.rq", "pp09.srx");
+    ("pp10", "pp10.ttl", "pp10.rq", "pp10.srx");
+    ("pp11", "pp11.ttl", "pp11.rq", "pp11.srx");
+    ("pp13", "pp13.ttl", "pp13.rq", "pp13.srx");
+    ("pp14", "pp14.ttl", "pp14.rq", "pp14.srx");
+    ("pp37", "pp37.ttl", "pp37.rq", "pp37.srx");
+  ] in
+  List.map (fun (name, data, query, result) ->
+    { tc_name = "property-path/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
+
 (* ====================================================================== *)
 (* Main entry point                                                         *)
 (* ====================================================================== *)
@@ -1199,6 +1270,10 @@ let () =
   run_suite "project-expression (W3C SPARQL 1.1)" project_expr_tests;
   run_suite "functions (W3C SPARQL 1.1)" functions_tests;
   run_suite "aggregates (W3C SPARQL 1.1)" aggregates_tests;
+  run_suite "algebra (W3C SPARQL 1.0)" algebra_tests;
+  run_suite "subquery (W3C SPARQL 1.1)" subquery_tests;
+  run_suite "bindings (W3C SPARQL 1.1)" bindings_tests;
+  run_suite "property-path (W3C SPARQL 1.1)" property_path_tests;
 
   Printf.printf "\n================================================================\n";
   Printf.printf "SUMMARY\n";
