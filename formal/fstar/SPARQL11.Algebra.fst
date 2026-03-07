@@ -539,6 +539,22 @@ let apply_comp_op (cmp : int) (op : comp_op) : bool =
 let int_compare (a b : int) : int =
   if a < b then -1 else if a = b then 0 else 1
 
+(* Check if an xsd:date/dateTime string has a timezone suffix (Z, +HH:MM, -HH:MM) *)
+let has_timezone (s : string) : bool =
+  let len = String.length s in
+  if len < 1 then false
+  else if String.sub s (len - 1) 1 = "Z" then true
+  else if len >= 6 then
+    let suffix = String.sub s (len - 6) 6 in
+    let c0 = String.sub suffix 0 1 in
+    (c0 = "+" || c0 = "-") && String.sub suffix 3 1 = ":"
+  else false
+
+(* Extract YYYY-MM-DD date part (first 10 chars) from xsd:date string *)
+let date_part (s : string) : string =
+  if String.length s >= 10 then String.sub s 0 10
+  else s
+
 let value_compare (v1 v2 : eval_result) (op : comp_op) : option bool =
   match v1, v2 with
   | ER_Num a, ER_Num b -> Some (apply_comp_op (int_compare a b) op)
@@ -589,7 +605,29 @@ let value_compare (v1 v2 : eval_result) (op : comp_op) : option bool =
           | _, _ -> false
         in
         if lang_match
-        then Some (apply_comp_op (String.compare (lit_lexical l1) (lit_lexical l2)) op)
+        then
+          if dt = xsd_date then
+            (* XSD date comparison: if one has timezone and other doesn't,
+               same date part → indeterminate; different date parts → compare on date *)
+            let s1 = lit_lexical l1 in
+            let s2 = lit_lexical l2 in
+            let tz1 = has_timezone s1 in
+            let tz2 = has_timezone s2 in
+            if tz1 = tz2 then
+              (* Same timezone status: compare lexically *)
+              Some (apply_comp_op (String.compare s1 s2) op)
+            else
+              (* Different timezone status *)
+              let dp1 = date_part s1 in
+              let dp2 = date_part s2 in
+              if dp1 = dp2 then
+                (* Same date, different TZ status → indeterminate *)
+                None
+              else
+                (* Different dates: compare on date part (deterministic) *)
+                Some (apply_comp_op (String.compare dp1 dp2) op)
+          else
+            Some (apply_comp_op (String.compare (lit_lexical l1) (lit_lexical l2)) op)
         else (match op with
               | CmpEq -> Some false
               | CmpNe -> Some true
@@ -599,7 +637,14 @@ let value_compare (v1 v2 : eval_result) (op : comp_op) : option bool =
         if lit_lexical l1 = lit_lexical l2 && lit_lang l1 = lit_lang l2
         then (match op with | CmpEq -> Some true | CmpNe -> Some false | _ -> None)
         else None  (* Different lexical forms with unknown datatype — can't determine *)
-    else None
+    else
+      (* Different datatypes *)
+      let d1 = lit_datatype l1 in
+      let d2 = lit_datatype l2 in
+      (* dateTime vs date are distinguishable value spaces *)
+      if (d1 = xsd_dateTime && d2 = xsd_date) || (d1 = xsd_date && d2 = xsd_dateTime)
+      then (match op with | CmpEq -> Some false | CmpNe -> Some true | _ -> None)
+      else None
   | ER_Error, _ -> None
   | _, ER_Error -> None
   | _, _ -> None
@@ -1496,8 +1541,27 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
                 if lit_lexical l1 = lit_lexical l2 && lit_lang l1 = lit_lang l2
                 then (match op with | CmpEq -> ER_Bool true | CmpNe -> ER_Bool false | _ -> ER_Error)
                 else ER_Error
+              else if dt = xsd_date then
+                (* xsd:date: timezone-aware comparison *)
+                let s1 = lit_lexical l1 in
+                let s2 = lit_lexical l2 in
+                let tz1 = has_timezone s1 in
+                let tz2 = has_timezone s2 in
+                if tz1 = tz2 then
+                  (match op with
+                   | CmpEq -> ER_Bool (s1 = s2)
+                   | CmpNe -> ER_Bool (s1 <> s2)
+                   | _ -> ER_Error)
+                else
+                  let dp1 = date_part s1 in
+                  let dp2 = date_part s2 in
+                  if dp1 = dp2 then ER_Error  (* same date, different TZ → indeterminate *)
+                  else (match op with
+                        | CmpEq -> ER_Bool false
+                        | CmpNe -> ER_Bool true
+                        | _ -> ER_Error)
               else
-              (* Known non-numeric datatype — can compare lexically for =/!= *)
+              (* Known non-numeric non-date datatype — can compare lexically for =/!= *)
               (match op with
                | CmpEq -> ER_Bool (lit_lexical l1 = lit_lexical l2 &&
                                    (match lit_lang l1, lit_lang l2 with
@@ -1527,6 +1591,9 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
             if dt1 = rdf_langString || dt2 = rdf_langString then
               (* Cross-kind: lang-tagged vs non-lang-tagged are always distinguishable,
                  regardless of whether the other type is known or unknown *)
+              (match op with | CmpEq -> ER_Bool false | CmpNe -> ER_Bool true | _ -> ER_Error)
+            else if (dt1 = xsd_dateTime && dt2 = xsd_date) || (dt1 = xsd_date && dt2 = xsd_dateTime) then
+              (* dateTime vs date are distinguishable value spaces *)
               (match op with | CmpEq -> ER_Bool false | CmpNe -> ER_Bool true | _ -> ER_Error)
             else
               (* Two non-lang-tagged typed literals with different datatypes.

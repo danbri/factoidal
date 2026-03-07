@@ -1740,7 +1740,21 @@ and parse_ggp_elements (ps : pstate) (prefixes : list (string * wf_iri)) (acc : 
     | Some ps_after ->
       (match parse_group_graph_pattern ps_after prefixes with
        | Some (opt_pat, ps') ->
-         let new_acc = GP_LeftJoin acc opt_pat (E_BoolLit true) in
+         (* Per SPARQL §18.2.4: OPTIONAL { P FILTER(F) } → LeftJoin(A, P, F)
+            Extract outermost GP_Filter(s) from opt_pat and use as LeftJoin filter *)
+         let rec extract_filters (p : group_graph_pattern)
+           (acc_f : list expr) : group_graph_pattern * list expr =
+           match p with
+           | GP_Filter f inner -> extract_filters inner (f :: acc_f)
+           | _ -> (p, acc_f)
+         in
+         let (inner_pat, opt_filters) = extract_filters opt_pat [] in
+         let combined_filter = match opt_filters with
+           | [] -> E_BoolLit true
+           | [f] -> f
+           | f :: rest -> List.Tot.fold_left (fun a b -> E_And a b) f rest
+         in
+         let new_acc = GP_LeftJoin acc inner_pat combined_filter in
          (* Skip optional trailing dot after OPTIONAL block *)
          let ps' = skip_ws ps' in
          let ps' = match ps_consume ps' "." with | Some p -> p | None -> ps' in

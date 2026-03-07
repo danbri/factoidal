@@ -1089,6 +1089,26 @@ let int_compare (a : Prims.int) (b : Prims.int) : Prims.int=
   if a < b
   then (Prims.of_int (-1))
   else if a = b then Prims.int_zero else Prims.int_one
+let has_timezone (s : Prims.string) : Prims.bool=
+  let len = FStar_String.strlen s in
+  if len < Prims.int_one
+  then false
+  else
+    if (FStar_String.sub s (len - Prims.int_one) Prims.int_one) = "Z"
+    then true
+    else
+      if len >= (Prims.of_int (6))
+      then
+        (let suffix =
+           FStar_String.sub s (len - (Prims.of_int (6))) (Prims.of_int (6)) in
+         let c0 = FStar_String.sub suffix Prims.int_zero Prims.int_one in
+         ((c0 = "+") || (c0 = "-")) &&
+           ((FStar_String.sub suffix (Prims.of_int (3)) Prims.int_one) = ":"))
+      else false
+let date_part (s : Prims.string) : Prims.string=
+  if (FStar_String.strlen s) >= (Prims.of_int (10))
+  then FStar_String.sub s Prims.int_zero (Prims.of_int (10))
+  else s
 let value_compare (v1 : eval_result) (v2 : eval_result) (op : comp_op) :
   Prims.bool FStar_Pervasives_Native.option=
   match (v1, v2) with
@@ -1172,10 +1192,29 @@ let value_compare (v1 : eval_result) (v2 : eval_result) (op : comp_op) :
                  | (uu___1, uu___2) -> false in
                if lang_match
                then
-                 FStar_Pervasives_Native.Some
-                   (apply_comp_op
-                      (FStar_String.compare (lit_lexical l1) (lit_lexical l2))
-                      op)
+                 (if dt = xsd_date
+                  then
+                    let s1 = lit_lexical l1 in
+                    let s2 = lit_lexical l2 in
+                    let tz1 = has_timezone s1 in
+                    let tz2 = has_timezone s2 in
+                    (if tz1 = tz2
+                     then
+                       FStar_Pervasives_Native.Some
+                         (apply_comp_op (FStar_String.compare s1 s2) op)
+                     else
+                       (let dp1 = date_part s1 in
+                        let dp2 = date_part s2 in
+                        if dp1 = dp2
+                        then FStar_Pervasives_Native.None
+                        else
+                          FStar_Pervasives_Native.Some
+                            (apply_comp_op (FStar_String.compare dp1 dp2) op)))
+                  else
+                    FStar_Pervasives_Native.Some
+                      (apply_comp_op
+                         (FStar_String.compare (lit_lexical l1)
+                            (lit_lexical l2)) op))
                else
                  (match op with
                   | CmpEq -> FStar_Pervasives_Native.Some false
@@ -1191,7 +1230,18 @@ let value_compare (v1 : eval_result) (v2 : eval_result) (op : comp_op) :
               | CmpNe -> FStar_Pervasives_Native.Some false
               | uu___1 -> FStar_Pervasives_Native.None)
            else FStar_Pervasives_Native.None)
-      else FStar_Pervasives_Native.None
+      else
+        (let d1 = lit_datatype l1 in
+         let d2 = lit_datatype l2 in
+         if
+           ((d1 = xsd_dateTime) && (d2 = xsd_date)) ||
+             ((d1 = xsd_date) && (d2 = xsd_dateTime))
+         then
+           match op with
+           | CmpEq -> FStar_Pervasives_Native.Some false
+           | CmpNe -> FStar_Pervasives_Native.Some true
+           | uu___1 -> FStar_Pervasives_Native.None
+         else FStar_Pervasives_Native.None)
   | (ER_Error, uu___) -> FStar_Pervasives_Native.None
   | (uu___, ER_Error) -> FStar_Pervasives_Native.None
   | (uu___, uu___1) -> FStar_Pervasives_Native.None
@@ -2202,34 +2252,59 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
                              | uu___1 -> ER_Error
                            else ER_Error)
                         else
-                          (match op with
-                           | CmpEq ->
-                               ER_Bool
-                                 (((lit_lexical l1) = (lit_lexical l2)) &&
-                                    ((match ((lit_lang l1), (lit_lang l2))
-                                      with
-                                      | (FStar_Pervasives_Native.Some t1,
-                                         FStar_Pervasives_Native.Some t2) ->
-                                          (string_lower t1) =
-                                            (string_lower t2)
-                                      | (FStar_Pervasives_Native.None,
-                                         FStar_Pervasives_Native.None) ->
-                                          true
-                                      | (uu___2, uu___3) -> false)))
-                           | CmpNe ->
-                               ER_Bool
-                                 (((lit_lexical l1) <> (lit_lexical l2)) ||
-                                    ((match ((lit_lang l1), (lit_lang l2))
-                                      with
-                                      | (FStar_Pervasives_Native.Some t1,
-                                         FStar_Pervasives_Native.Some t2) ->
-                                          (string_lower t1) <>
-                                            (string_lower t2)
-                                      | (FStar_Pervasives_Native.None,
-                                         FStar_Pervasives_Native.None) ->
-                                          false
-                                      | (uu___2, uu___3) -> true)))
-                           | uu___2 -> ER_Error))
+                          if dt = xsd_date
+                          then
+                            (let s1 = lit_lexical l1 in
+                             let s2 = lit_lexical l2 in
+                             let tz1 = has_timezone s1 in
+                             let tz2 = has_timezone s2 in
+                             if tz1 = tz2
+                             then
+                               match op with
+                               | CmpEq -> ER_Bool (s1 = s2)
+                               | CmpNe -> ER_Bool (s1 <> s2)
+                               | uu___2 -> ER_Error
+                             else
+                               (let dp1 = date_part s1 in
+                                let dp2 = date_part s2 in
+                                if dp1 = dp2
+                                then ER_Error
+                                else
+                                  (match op with
+                                   | CmpEq -> ER_Bool false
+                                   | CmpNe -> ER_Bool true
+                                   | uu___4 -> ER_Error)))
+                          else
+                            (match op with
+                             | CmpEq ->
+                                 ER_Bool
+                                   (((lit_lexical l1) = (lit_lexical l2)) &&
+                                      ((match ((lit_lang l1), (lit_lang l2))
+                                        with
+                                        | (FStar_Pervasives_Native.Some t1,
+                                           FStar_Pervasives_Native.Some t2)
+                                            ->
+                                            (string_lower t1) =
+                                              (string_lower t2)
+                                        | (FStar_Pervasives_Native.None,
+                                           FStar_Pervasives_Native.None) ->
+                                            true
+                                        | (uu___3, uu___4) -> false)))
+                             | CmpNe ->
+                                 ER_Bool
+                                   (((lit_lexical l1) <> (lit_lexical l2)) ||
+                                      ((match ((lit_lang l1), (lit_lang l2))
+                                        with
+                                        | (FStar_Pervasives_Native.Some t1,
+                                           FStar_Pervasives_Native.Some t2)
+                                            ->
+                                            (string_lower t1) <>
+                                              (string_lower t2)
+                                        | (FStar_Pervasives_Native.None,
+                                           FStar_Pervasives_Native.None) ->
+                                            false
+                                        | (uu___3, uu___4) -> true)))
+                             | uu___3 -> ER_Error))
                      else
                        (match op with
                         | CmpEq ->
@@ -2254,7 +2329,16 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
                        | CmpEq -> ER_Bool false
                        | CmpNe -> ER_Bool true
                        | uu___2 -> ER_Error
-                     else ER_Error)
+                     else
+                       if
+                         ((dt1 = xsd_dateTime) && (dt2 = xsd_date)) ||
+                           ((dt1 = xsd_date) && (dt2 = xsd_dateTime))
+                       then
+                         (match op with
+                          | CmpEq -> ER_Bool false
+                          | CmpNe -> ER_Bool true
+                          | uu___3 -> ER_Error)
+                       else ER_Error)
               | (ER_Term uu___1, ER_Term uu___2) ->
                   (match op with
                    | CmpEq -> ER_Bool false
