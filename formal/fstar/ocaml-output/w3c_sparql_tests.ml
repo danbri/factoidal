@@ -883,14 +883,14 @@ let functions_tests =
     ("sha384-02", "hash-unicode.ttl", "sha384-02.rq", "sha384-02.srx");
     ("sha512-01", "data.ttl", "sha512-01.rq", "sha512-01.srx");
     ("sha512-02", "hash-unicode.ttl", "sha512-02.rq", "sha512-02.srx");
-    ("if01", "data.ttl", "if01.rq", "if01.srx");
-    ("if02", "data.ttl", "if02.rq", "if02.srx");
+    ("if01", "data2.ttl", "if01.rq", "if01.srx");
+    ("if02", "data2.ttl", "if02.rq", "if02.srx");
     ("coalesce01", "data-coalesce.ttl", "coalesce01.rq", "coalesce01.srx");
     ("coalesce-empty", "data.ttl", "coalesce-empty.rq", "coalesce-empty.srx");
     ("strbefore01a", "data2.ttl", "strbefore01.rq", "strbefore01a.srx");
-    ("strbefore02", "data2.ttl", "strbefore02.rq", "strbefore02.srx");
+    ("strbefore02", "data4.ttl", "strbefore02.rq", "strbefore02.srx");
     ("strafter01a", "data2.ttl", "strafter01.rq", "strafter01a.srx");
-    ("strafter02", "data2.ttl", "strafter02.rq", "strafter02.srx");
+    ("strafter02", "data4.ttl", "strafter02.rq", "strafter02.srx");
     ("replace01", "data3.ttl", "replace01.rq", "replace01.srx");
     ("replace02", "data3.ttl", "replace02.rq", "replace02.srx");
     ("replace03", "data3.ttl", "replace03.rq", "replace03.srx");
@@ -1080,6 +1080,62 @@ let expr_builtin_tests =
   List.map (fun (name, data, query, result) ->
     { tc_name = "expr-builtin/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
 
+let boolean_effective_value_tests =
+  let dir = sparql_base ^ "sparql10/boolean-effective-value/" in
+  let files = [
+    ("dawg-boolean-literal", "data-1.ttl", "query-boolean-literal.rq", "result-boolean-literal.ttl");
+    ("dawg-bev-1", "data-1.ttl", "query-bev-1.rq", "result-bev-1.ttl");
+    ("dawg-bev-2", "data-1.ttl", "query-bev-2.rq", "result-bev-2.ttl");
+    ("dawg-bev-3", "data-1.ttl", "query-bev-3.rq", "result-bev-3.ttl");
+    ("dawg-bev-4", "data-1.ttl", "query-bev-4.rq", "result-bev-4.ttl");
+    ("dawg-bev-5", "data-2.ttl", "query-bev-5.rq", "result-bev-5.ttl");
+    ("dawg-bev-6", "data-2.ttl", "query-bev-6.rq", "result-bev-6.ttl");
+  ] in
+  List.map (fun (name, data, query, result) ->
+    { tc_name = "boolean-eff-value/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+
+let optional_filter_tests =
+  let dir = sparql_base ^ "sparql10/optional-filter/" in
+  let files = [
+    ("dawg-optional-filter-001", "data-1.ttl", "expr-1.rq", "expr-1-result.ttl");
+    ("dawg-optional-filter-002", "data-1.ttl", "expr-2.rq", "expr-2-result.ttl");
+    ("dawg-optional-filter-003", "data-1.ttl", "expr-3.rq", "expr-3-result.ttl");
+    ("dawg-optional-filter-004", "data-1.ttl", "expr-4.rq", "expr-4-result.ttl");
+    ("dawg-optional-filter-005-not-simplified", "data-1.ttl", "expr-5.rq", "expr-5-result-not-simplified.ttl");
+  ] in
+  List.map (fun (name, data, query, result) ->
+    { tc_name = "optional-filter/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+
+let triple_match_tests =
+  let dir = sparql_base ^ "sparql10/triple-match/" in
+  let files = [
+    ("dawg-triple-pattern-001", "data-01.ttl", "dawg-tp-01.rq", "result-tp-01.ttl");
+    ("dawg-triple-pattern-002", "data-01.ttl", "dawg-tp-02.rq", "result-tp-02.ttl");
+    ("dawg-triple-pattern-003", "data-02.ttl", "dawg-tp-03.rq", "result-tp-03.ttl");
+    ("dawg-triple-pattern-004", "dawg-data-01.ttl", "dawg-tp-04.rq", "result-tp-04.ttl");
+  ] in
+  List.map (fun (name, data, query, result) ->
+    { tc_name = "triple-match/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+
+let aggregates_tests =
+  let dir = sparql_base ^ "sparql11/aggregates/" in
+  let files = [
+    ("agg01", "agg01.ttl", "agg01.rq", "agg01.srx");
+    ("agg02", "agg01.ttl", "agg02.rq", "agg02.srx");
+    ("agg03", "agg01.ttl", "agg03.rq", "agg03.srx");
+    ("agg04", "agg01.ttl", "agg04.rq", "agg04.srx");
+    ("agg05", "agg01.ttl", "agg05.rq", "agg05.srx");
+    ("agg06", "agg01.ttl", "agg06.rq", "agg06.srx");
+    ("agg07", "agg01.ttl", "agg07.rq", "agg07.srx");
+    ("agg08", "agg08.ttl", "agg08.rq", "agg08.srx");
+    ("agg08b", "agg08.ttl", "agg08b.rq", "agg08b.srx");
+    ("agg-groupconcat-1", "agg-groupconcat-1.ttl", "agg-groupconcat-1.rq", "agg-groupconcat-1.srx");
+    ("agg-groupconcat-2", "agg-groupconcat-1.ttl", "agg-groupconcat-2.rq", "agg-groupconcat-2.srx");
+    ("agg-groupconcat-3", "agg-groupconcat-1.ttl", "agg-groupconcat-3.rq", "agg-groupconcat-3.srx");
+  ] in
+  List.map (fun (name, data, query, result) ->
+    { tc_name = "aggregates/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+
 (* ====================================================================== *)
 (* Main entry point                                                         *)
 (* ====================================================================== *)
@@ -1119,12 +1175,16 @@ let () =
   run_suite "reduced (W3C SPARQL 1.0)" reduced_tests;
   run_suite "solution-seq (W3C SPARQL 1.0)" solution_seq_tests;
   run_suite "sort (W3C SPARQL 1.0)" sort_tests;
+  run_suite "boolean-eff-value (W3C SPARQL 1.0)" boolean_effective_value_tests;
+  run_suite "optional-filter (W3C SPARQL 1.0)" optional_filter_tests;
+  run_suite "triple-match (W3C SPARQL 1.0)" triple_match_tests;
   run_suite "bind (W3C SPARQL 1.1)" bind_tests;
   run_suite "exists (W3C SPARQL 1.1)" exists_tests;
   run_suite "negation (W3C SPARQL 1.1)" negation_tests;
   run_suite "grouping (W3C SPARQL 1.1)" grouping_tests;
   run_suite "project-expression (W3C SPARQL 1.1)" project_expr_tests;
   run_suite "functions (W3C SPARQL 1.1)" functions_tests;
+  run_suite "aggregates (W3C SPARQL 1.1)" aggregates_tests;
 
   Printf.printf "\n================================================================\n";
   Printf.printf "SUMMARY\n";

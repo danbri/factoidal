@@ -1523,6 +1523,15 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
   | E_Abs e1 ->
     (match eval_expr e1 mu with
      | ER_Num n -> ER_Num (int_abs n)
+     | ER_Dec s ->
+       (* Remove leading minus if present *)
+       if String.length s > 0 && String.sub s 0 1 = "-" then
+         ER_Dec (String.sub s 1 (String.length s - 1))
+       else ER_Dec s
+     | ER_Dbl s ->
+       if String.length s > 0 && String.sub s 0 1 = "-" then
+         ER_Dbl (String.sub s 1 (String.length s - 1))
+       else ER_Dbl s
      | _ -> ER_Error)
   | E_Round e1 ->
     (match eval_expr e1 mu with

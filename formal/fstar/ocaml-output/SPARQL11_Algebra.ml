@@ -1390,16 +1390,16 @@ let fn_langMatches_spec (tag : Prims.string) (range : Prims.string) :
     (let ltag = string_lower tag in
      let lrange = string_lower range in
      (ltag = lrange) || (string_starts_with ltag (Prims.strcat lrange "-")))
-let hash_md5 (uu___ : Prims.string) : Prims.string=
-  failwith "Not yet implemented: SPARQL11.Algebra.hash_md5"
-let hash_sha1 (uu___ : Prims.string) : Prims.string=
-  failwith "Not yet implemented: SPARQL11.Algebra.hash_sha1"
-let hash_sha256 (uu___ : Prims.string) : Prims.string=
-  failwith "Not yet implemented: SPARQL11.Algebra.hash_sha256"
-let hash_sha384 (uu___ : Prims.string) : Prims.string=
-  failwith "Not yet implemented: SPARQL11.Algebra.hash_sha384"
-let hash_sha512 (uu___ : Prims.string) : Prims.string=
-  failwith "Not yet implemented: SPARQL11.Algebra.hash_sha512"
+let hash_md5 (s : Prims.string) : Prims.string=
+  Digestif.MD5.digest_string s |> Digestif.MD5.to_hex
+let hash_sha1 (s : Prims.string) : Prims.string=
+  Digestif.SHA1.digest_string s |> Digestif.SHA1.to_hex
+let hash_sha256 (s : Prims.string) : Prims.string=
+  Digestif.SHA256.digest_string s |> Digestif.SHA256.to_hex
+let hash_sha384 (s : Prims.string) : Prims.string=
+  Digestif.SHA384.digest_string s |> Digestif.SHA384.to_hex
+let hash_sha512 (s : Prims.string) : Prims.string=
+  Digestif.SHA512.digest_string s |> Digestif.SHA512.to_hex
 let int_abs (n : Prims.int) : Prims.int=
   if n >= Prims.int_zero then n else Prims.int_zero - n
 let fn_abs_spec (n : Prims.int) : Prims.int= int_abs n
@@ -2192,6 +2192,24 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
   | E_Abs e1 ->
       (match eval_expr e1 mu with
        | ER_Num n -> ER_Num (int_abs n)
+       | ER_Dec s ->
+           if
+             ((FStar_String.strlen s) > Prims.int_zero) &&
+               ((FStar_String.sub s Prims.int_zero Prims.int_one) = "-")
+           then
+             ER_Dec
+               (FStar_String.sub s Prims.int_one
+                  ((FStar_String.strlen s) - Prims.int_one))
+           else ER_Dec s
+       | ER_Dbl s ->
+           if
+             ((FStar_String.strlen s) > Prims.int_zero) &&
+               ((FStar_String.sub s Prims.int_zero Prims.int_one) = "-")
+           then
+             ER_Dbl
+               (FStar_String.sub s Prims.int_one
+                  ((FStar_String.strlen s) - Prims.int_one))
+           else ER_Dbl s
        | uu___ -> ER_Error)
   | E_Round e1 ->
       (match eval_expr e1 mu with
@@ -2292,7 +2310,29 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
   | E_Exists uu___ -> ER_Error
   | E_NotExists uu___ -> ER_Error
   | E_Aggregate (uu___, uu___1, uu___2) -> ER_Error
-  | E_FunctionCall (uu___, uu___1) -> ER_Error
+  | E_FunctionCall (iri, args) ->
+      if iri = "sparql:langMatches"
+      then
+        (match args with
+         | e1::e2::[] ->
+             let r1 = eval_expr e1 mu in
+             let r2 = eval_expr e2 mu in
+             let get_str r =
+               match r with
+               | ER_Term (RDF_Graph_Executable.T_Literal l) ->
+                   FStar_Pervasives_Native.Some (lit_lexical l)
+               | uu___ -> FStar_Pervasives_Native.None in
+             (match ((get_str r1), (get_str r2)) with
+              | (FStar_Pervasives_Native.Some s1,
+                 FStar_Pervasives_Native.Some s2) ->
+                  let tag = FStar_String.lowercase s1 in
+                  let range = FStar_String.lowercase s2 in
+                  if range = "*"
+                  then ER_Bool ((FStar_String.strlen tag) > Prims.int_zero)
+                  else ER_Bool (string_starts_with tag range)
+              | (uu___, uu___1) -> ER_Error)
+         | uu___ -> ER_Error)
+      else ER_Error
 and eval_coalesce (es : expr Prims.list)
   (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
   match es with
