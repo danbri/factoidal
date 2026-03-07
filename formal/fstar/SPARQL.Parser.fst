@@ -1032,6 +1032,80 @@ and try_1arg_fallback (ps : pstate) (prefixes : list (string * wf_iri))
      | Some (args, ps') -> Some (E_Concat args, ps')
      | None -> None)
   | None ->
+  (* Aggregate functions: COUNT, SUM, AVG, MIN, MAX, SAMPLE, GROUP_CONCAT *)
+  let try_agg (kw : string) (mk : aggregate_fn) : option (expr * pstate) =
+    match ps_consume ps kw with
+    | None -> None
+    | Some ps' ->
+      let ps' = skip_ws ps' in
+      match ps_expect ps' "(" with
+      | None -> None
+      | Some ps' ->
+        let ps' = skip_ws ps' in
+        let (is_distinct, ps') = match ps_consume ps' "DISTINCT" with
+          | Some ps' -> (true, ps')
+          | None -> (false, ps')
+        in
+        let ps' = skip_ws ps' in
+        (* COUNT can take * *)
+        match ps_consume ps' "*" with
+        | Some ps' ->
+          (match ps_expect ps' ")" with
+           | Some ps' -> Some (E_Aggregate mk is_distinct (E_BoolLit true), ps')
+           | None -> None)
+        | None ->
+          match parse_expr ps' prefixes with
+          | None -> None
+          | Some (e, ps') ->
+            match ps_expect ps' ")" with
+            | None -> None
+            | Some ps' -> Some (E_Aggregate mk is_distinct e, ps')
+  in
+  match try_agg "COUNT" Agg_Count with | Some r -> Some r | None ->
+  match try_agg "SUM" Agg_Sum with | Some r -> Some r | None ->
+  match try_agg "AVG" Agg_Avg with | Some r -> Some r | None ->
+  match try_agg "MIN" Agg_Min with | Some r -> Some r | None ->
+  match try_agg "MAX" Agg_Max with | Some r -> Some r | None ->
+  match try_agg "SAMPLE" Agg_Sample with | Some r -> Some r | None ->
+  (* GROUP_CONCAT with optional SEPARATOR *)
+  match ps_consume ps "GROUP_CONCAT" with
+  | Some ps' ->
+    let ps' = skip_ws ps' in
+    (match ps_expect ps' "(" with
+     | Some ps' ->
+       let ps' = skip_ws ps' in
+       let (is_distinct, ps') = match ps_consume ps' "DISTINCT" with
+         | Some ps' -> (true, ps')
+         | None -> (false, ps')
+       in
+       (match parse_expr ps' prefixes with
+        | Some (e, ps') ->
+          let ps' = skip_ws ps' in
+          (* Check for ; SEPARATOR = "..." *)
+          (match ps_consume ps' ";" with
+           | Some ps' ->
+             let ps' = skip_ws ps' in
+             (match ps_consume ps' "SEPARATOR" with
+              | Some ps' ->
+                let ps' = skip_ws ps' in
+                (match ps_consume ps' "=" with
+                 | Some ps' ->
+                   let ps' = skip_ws ps' in
+                   (match parse_string_literal ps' with
+                    | Some (sep, ps') ->
+                      (match ps_expect ps' ")" with
+                       | Some ps' -> Some (E_Aggregate (Agg_GroupConcat (Some sep)) is_distinct e, ps')
+                       | None -> None)
+                    | None -> None)
+                 | None -> None)
+              | None -> None)
+           | None ->
+             match ps_expect ps' ")" with
+             | Some ps' -> Some (E_Aggregate (Agg_GroupConcat None) is_distinct e, ps')
+             | None -> None)
+        | None -> None)
+     | None -> None)
+  | None ->
   None
 
 and parse_expr_list (ps : pstate) (prefixes : list (string * wf_iri))
@@ -1084,15 +1158,15 @@ and parse_pattern_subject (ps : pstate) (prefixes : list (string * wf_iri))
           | _ -> (String.string_of_list (List.Tot.rev acc), ps)
         in
         let (label, ps) = collect ps [] in
-        Some (PS_BNode label, ps)
+        Some (PS_Var ("?_:" ^ label), ps)
       | None ->
-        (* Anonymous blank node [] *)
+        (* Anonymous blank node [] or blank node property list [ pred obj ; ... ] *)
         match ps_consume ps "[" with
         | Some ps ->
           let ps = skip_ws ps in
           (match ps_consume ps "]" with
-           | Some ps -> Some (PS_BNode "anon", ps)  (* simplified *)
-           | None -> None)
+           | Some ps -> Some (PS_Var ("?_anon" ^ string_of_int ps.pos), ps)
+           | None -> None)  (* [ pred obj ] handled in parse_triples_block *)
         | None ->
           (* RDF list syntax: () is rdf:nil *)
           let ps = skip_ws ps in
@@ -1170,7 +1244,7 @@ and parse_pattern_term (ps : pstate) (prefixes : list (string * wf_iri))
                 in
                 collect ps []
               in
-              Some (PT_BNode label, ps)
+              Some (PT_Var ("?_:" ^ label), ps)
             | None ->
               (* RDF list syntax: () is rdf:nil *)
               let ps0 = skip_ws ps_start in
@@ -1183,6 +1257,36 @@ and parse_pattern_term (ps : pstate) (prefixes : list (string * wf_iri))
 (** Parse triple patterns within a group, handling ';' and ',' shortcuts **)
 and parse_triples_block (ps : pstate) (prefixes : list (string * wf_iri))
   : option (list triple_pattern * pstate) =
+  let ps = skip_ws ps in
+  (* Check for blank node property list [ pred obj ; ... ] in subject position *)
+  match ps_peek ps with
+  | Some c when FStar.Char.int_of_char c = 0x5B (* '[' *) ->
+    let ps_bk = ps in
+    let ps' = ps_advance ps 1 in
+    let ps' = skip_ws ps' in
+    (match ps_peek ps' with
+     | Some c when FStar.Char.int_of_char c = 0x5D (* ']' — empty [] as subject *) ->
+       let ps' = ps_advance ps' 1 in
+       let bnode_var = "?_anon" ^ string_of_int ps_bk.pos in
+       parse_predicate_object_list (PS_Var bnode_var) ps' prefixes
+     | Some _ ->
+       (* Non-empty blank node property list as subject *)
+       let bnode_var = "?_bpl" ^ string_of_int ps_bk.pos in
+       let bnode_subj = PS_Var bnode_var in
+       (match parse_predicate_object_list bnode_subj ps' prefixes with
+        | Some (bnode_triples, ps') ->
+          let ps' = skip_ws ps' in
+          (match ps_consume ps' "]" with
+           | Some ps' ->
+             (* The bnode may have further pred-obj pairs *)
+             let ps' = skip_ws ps' in
+             (match parse_predicate_object_list bnode_subj ps' prefixes with
+              | Some (more, ps') -> Some (bnode_triples @ more, ps')
+              | None -> Some (bnode_triples, ps'))
+           | None -> None)
+        | None -> None)
+     | None -> None)
+  | _ ->
   match parse_pattern_subject ps prefixes with
   | None -> Some ([], ps)
   | Some (subj, ps) ->
@@ -1229,6 +1333,96 @@ and parse_predicate_object_list (subj : pattern_subject) (ps : pstate) (prefixes
 and parse_object_list (subj : pattern_subject) (pred : pattern_term) (ps : pstate) (prefixes : list (string * wf_iri))
   : option (list triple_pattern * pstate) =
   let ps = skip_ws ps in
+  (* Check for blank node property list [ pred obj ; ... ] in object position *)
+  match ps_peek ps with
+  | Some c when FStar.Char.int_of_char c = 0x5B (* '[' *) ->
+    let ps_bk = ps in
+    let ps = ps_advance ps 1 in
+    let ps = skip_ws ps in
+    (match ps_peek ps with
+     | Some c when FStar.Char.int_of_char c = 0x5D (* ']' — empty [] *) ->
+       let bnode_var = "?_anon" ^ string_of_int ps_bk.pos in
+       let obj = PT_Var bnode_var in
+       let tp = { tp_s = subj; tp_p = pred; tp_o = obj } in
+       let ps = ps_advance ps 1 in
+       let ps' = skip_ws ps in
+       (match ps_consume ps' "," with
+        | Some ps' ->
+          (match parse_object_list subj pred ps' prefixes with
+           | Some (more, ps') -> Some (tp :: more, ps')
+           | None -> Some ([tp], ps))
+        | None -> Some ([tp], ps))
+     | _ ->
+       (* Non-empty blank node property list *)
+       let bnode_var = "?_bpl" ^ string_of_int ps_bk.pos in
+       let bnode_subj = PS_Var bnode_var in
+       (match parse_predicate_object_list bnode_subj ps prefixes with
+        | Some (bnode_triples, ps) ->
+          let ps = skip_ws ps in
+          (match ps_consume ps "]" with
+           | Some ps ->
+             let obj = PT_Var bnode_var in
+             let tp = { tp_s = subj; tp_p = pred; tp_o = obj } in
+             let ps' = skip_ws ps in
+             (match ps_consume ps' "," with
+              | Some ps' ->
+                (match parse_object_list subj pred ps' prefixes with
+                 | Some (more, ps') -> Some (tp :: bnode_triples @ more, ps')
+                 | None -> Some (tp :: bnode_triples, ps))
+              | None -> Some (tp :: bnode_triples, ps))
+           | None -> None)
+        | None -> None))
+  | Some c when FStar.Char.int_of_char c = 0x28 (* '(' — RDF collection *) ->
+    let ps_bk = ps in
+    let ps = ps_advance ps 1 in
+    let ps = skip_ws ps in
+    (match ps_peek ps with
+     | Some c when FStar.Char.int_of_char c = 0x29 (* ')' — empty list *) ->
+       let obj = PT_IRI "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil" in
+       let tp = { tp_s = subj; tp_p = pred; tp_o = obj } in
+       let ps = ps_advance ps 1 in
+       let ps' = skip_ws ps in
+       (match ps_consume ps' "," with
+        | Some ps' ->
+          (match parse_object_list subj pred ps' prefixes with
+           | Some (more, ps') -> Some (tp :: more, ps')
+           | None -> Some ([tp], ps))
+        | None -> Some ([tp], ps))
+     | _ ->
+       (* Non-empty RDF collection: (item1 item2 ...) *)
+       let rdf_first = "http://www.w3.org/1999/02/22-rdf-syntax-ns#first" in
+       let rdf_rest = "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest" in
+       let rdf_nil = "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil" in
+       let rec parse_list_items (ps : pstate) (counter : nat)
+         : option (pattern_term * list triple_pattern * pstate) =
+         let ps = skip_ws ps in
+         match ps_peek ps with
+         | Some c when FStar.Char.int_of_char c = 0x29 (* ')' *) ->
+           Some (PT_IRI rdf_nil, [], ps_advance ps 1)
+         | _ ->
+           match parse_pattern_term ps prefixes with
+           | None -> None
+           | Some (item, ps) ->
+             let node_var = "?_list" ^ string_of_int ps_bk.pos ^ "_" ^ string_of_int counter in
+             match parse_list_items ps (counter + 1) with
+             | None -> None
+             | Some (rest_term, rest_triples, ps) ->
+               let first_tp = { tp_s = PS_Var node_var; tp_p = PT_IRI rdf_first; tp_o = item } in
+               let rest_tp = { tp_s = PS_Var node_var; tp_p = PT_IRI rdf_rest; tp_o = rest_term } in
+               Some (PT_Var node_var, first_tp :: rest_tp :: rest_triples, ps)
+       in
+       match parse_list_items ps 0 with
+       | None -> None
+       | Some (list_head, list_triples, ps) ->
+         let tp = { tp_s = subj; tp_p = pred; tp_o = list_head } in
+         let ps' = skip_ws ps in
+         (match ps_consume ps' "," with
+          | Some ps' ->
+            (match parse_object_list subj pred ps' prefixes with
+             | Some (more, ps') -> Some (tp :: list_triples @ more, ps')
+             | None -> Some (tp :: list_triples, ps))
+          | None -> Some (tp :: list_triples, ps)))
+  | _ ->
   match parse_pattern_term ps prefixes with
   | None -> None
   | Some (obj, ps) ->
@@ -1306,6 +1500,15 @@ and parse_ggp_elements (ps : pstate) (prefixes : list (string * wf_iri)) (acc : 
       (match parse_group_graph_pattern ps_after prefixes with
        | Some (right, ps') ->
          let new_acc = GP_Union acc right in
+         parse_ggp_elements ps' prefixes new_acc
+       | None -> Some (acc, ps))
+    | None ->
+    (* Try MINUS *)
+    match ps_consume ps "MINUS" with
+    | Some ps_after ->
+      (match parse_group_graph_pattern ps_after prefixes with
+       | Some (minus_pat, ps') ->
+         let new_acc = GP_Minus acc minus_pat in
          parse_ggp_elements ps' prefixes new_acc
        | None -> Some (acc, ps))
     | None ->

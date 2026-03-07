@@ -200,7 +200,7 @@ let turtle_parse (content : string) : triple list =
     | _ -> parse_pname ()
   in
 
-  let parse_object () : rdf_term option =
+  let rec parse_object () : rdf_term option =
     skip_ws ();
     match peek () with
     | Some '<' ->
@@ -241,7 +241,42 @@ let turtle_parse (content : string) : triple list =
         advance 1;
         incr bnode_counter;
         Some (T_BNode (Printf.sprintf "anon_%d" !bnode_counter))
-      end else None
+      end else begin
+        (* Blank node property list [ pred obj ; pred obj ; ... ] *)
+        incr bnode_counter;
+        let bn = Printf.sprintf "bpl_%d" !bnode_counter in
+        let bnode_subj = S_BNode bn in
+        let rec parse_bpl_po () =
+          skip_ws ();
+          match parse_iri () with
+          | None -> ()
+          | Some pred ->
+            let rec parse_bpl_objs () =
+              skip_ws ();
+              match parse_object () with
+              | None -> ()
+              | Some obj ->
+                triples := { s = bnode_subj; p = pred; o = obj } :: !triples;
+                skip_ws ();
+                if !pos < len && content.[!pos] = ',' then begin
+                  advance 1;
+                  parse_bpl_objs ()
+                end
+            in
+            parse_bpl_objs ();
+            skip_ws ();
+            if !pos < len && content.[!pos] = ';' then begin
+              advance 1;
+              skip_ws ();
+              if !pos < len && content.[!pos] <> ']' then
+                parse_bpl_po ()
+            end
+        in
+        parse_bpl_po ();
+        skip_ws ();
+        if !pos < len && content.[!pos] = ']' then advance 1;
+        Some (T_BNode bn)
+      end
     | Some c when (c >= '0' && c <= '9') || c = '+' || c = '-' ->
       let start = !pos in
       if c = '+' || c = '-' then advance 1;
@@ -269,6 +304,45 @@ let turtle_parse (content : string) : triple list =
     | Some 'f' when starts_with "false" ->
       advance 5;
       Some (T_Literal { lexical_form = "false"; datatype = xsd_boolean; lang_tag = None })
+    | Some '(' ->
+      advance 1;
+      skip_ws ();
+      if !pos < len && content.[!pos] = ')' then begin
+        advance 1;
+        Some (T_IRI "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil")
+      end else begin
+        (* RDF collection (a b c) → linked list of bnodes *)
+        let rdf_first = "http://www.w3.org/1999/02/22-rdf-syntax-ns#first" in
+        let rdf_rest = "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest" in
+        let rdf_nil = "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil" in
+        let head_bn = ref "" in
+        let prev_bn = ref "" in
+        let rec parse_items () =
+          skip_ws ();
+          if !pos < len && content.[!pos] = ')' then begin
+            advance 1;
+            (* Close list: link last node's rdf:rest to rdf:nil *)
+            if !prev_bn <> "" then
+              triples := { s = S_BNode !prev_bn; p = rdf_rest; o = T_IRI rdf_nil } :: !triples
+          end else
+            match parse_object () with
+            | None -> ()
+            | Some item ->
+              incr bnode_counter;
+              let bn = Printf.sprintf "list_%d" !bnode_counter in
+              if !head_bn = "" then head_bn := bn;
+              (* Link previous node to this one *)
+              if !prev_bn <> "" then
+                triples := { s = S_BNode !prev_bn; p = rdf_rest; o = T_BNode bn } :: !triples;
+              (* This node's rdf:first *)
+              triples := { s = S_BNode bn; p = rdf_first; o = item } :: !triples;
+              prev_bn := bn;
+              parse_items ()
+        in
+        parse_items ();
+        if !head_bn <> "" then Some (T_BNode !head_bn)
+        else Some (T_IRI rdf_nil)
+      end
     | _ ->
       (* Try IRI *)
       (match parse_iri () with
@@ -297,7 +371,42 @@ let turtle_parse (content : string) : triple list =
         advance 1;
         incr bnode_counter;
         Some (S_BNode (Printf.sprintf "anon_%d" !bnode_counter))
-      end else None
+      end else begin
+        (* Blank node property list in subject position *)
+        incr bnode_counter;
+        let bn = Printf.sprintf "bpl_%d" !bnode_counter in
+        let bnode_subj = S_BNode bn in
+        let rec parse_bpl_po () =
+          skip_ws ();
+          match parse_iri () with
+          | None -> ()
+          | Some pred ->
+            let rec parse_bpl_objs () =
+              skip_ws ();
+              match parse_object () with
+              | None -> ()
+              | Some obj ->
+                triples := { s = bnode_subj; p = pred; o = obj } :: !triples;
+                skip_ws ();
+                if !pos < len && content.[!pos] = ',' then begin
+                  advance 1;
+                  parse_bpl_objs ()
+                end
+            in
+            parse_bpl_objs ();
+            skip_ws ();
+            if !pos < len && content.[!pos] = ';' then begin
+              advance 1;
+              skip_ws ();
+              if !pos < len && content.[!pos] <> ']' then
+                parse_bpl_po ()
+            end
+        in
+        parse_bpl_po ();
+        skip_ws ();
+        if !pos < len && content.[!pos] = ']' then advance 1;
+        Some (S_BNode bn)
+      end
     | _ ->
       (match parse_pname () with
        | Some iri -> Some (S_IRI iri)
@@ -415,6 +524,11 @@ type srx_binding = { var: string; value: string; kind: string (* "uri" | "litera
 type srx_result = srx_binding list
 
 let parse_srx (content : string) : srx_result list option =
+  (* Only parse XML/SRX files — skip Turtle result files *)
+  let trimmed = String.trim content in
+  if String.length trimmed = 0 then None
+  else if trimmed.[0] <> '<' && trimmed.[0] <> '?' then None  (* Not XML *)
+  else
   (* Very minimal XML parser — just extract <result>/<binding> elements *)
   let results = ref [] in
   let len = String.length content in
@@ -651,8 +765,8 @@ let basic_tests =
     ("base-prefix-5", "data-1.ttl", "base-prefix-5.rq", "base-prefix-5.srx");
     ("list-1", "data-2.ttl", "list-1.rq", "list-1.srx");
     ("list-2", "data-2.ttl", "list-2.rq", "list-2.srx");
-    ("list-3", "data-5.ttl", "list-3.rq", "list-3.srx");
-    ("list-4", "data-5.ttl", "list-4.rq", "list-4.srx");
+    ("list-3", "data-2.ttl", "list-3.rq", "list-3.srx");
+    ("list-4", "data-2.ttl", "list-4.rq", "list-4.srx");
   ]
 
 let distinct_tests =
