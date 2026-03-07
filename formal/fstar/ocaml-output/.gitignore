@@ -3,6 +3,7 @@ nt_tests
 w3c_tests
 example
 debug_test
+w3c_sparql_tests
 *.cmi
 *.cmo
 *.cmx
