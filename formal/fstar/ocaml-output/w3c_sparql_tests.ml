@@ -740,8 +740,11 @@ let functions_tests =
   let files = [
     ("strdt01", "data.ttl", "strdt01.rq", "strdt01.srx");
     ("strdt02", "data.ttl", "strdt02.rq", "strdt02.srx");
+    ("strdt03", "data.ttl", "strdt03.rq", "strdt03.srx");
     ("strlang01", "data.ttl", "strlang01.rq", "strlang01.srx");
     ("strlang02", "data.ttl", "strlang02.rq", "strlang02.srx");
+    ("strlang03", "data.ttl", "strlang03.rq", "strlang03.srx");
+    ("isnumeric01", "data.ttl", "isnumeric01.rq", "isnumeric01.srx");
     ("contains01", "data.ttl", "contains01.rq", "contains01.srx");
     ("starts01", "data.ttl", "starts01.rq", "starts01.srx");
     ("ends01", "data.ttl", "ends01.rq", "ends01.srx");
@@ -749,27 +752,41 @@ let functions_tests =
     ("substring02", "data.ttl", "substring02.rq", "substring02.srx");
     ("ucase01", "data.ttl", "ucase01.rq", "ucase01.srx");
     ("lcase01", "data.ttl", "lcase01.rq", "lcase01.srx");
+    ("length01", "data.ttl", "length01.rq", "length01.srx");
     ("concat01", "data.ttl", "concat01.rq", "concat01.srx");
     ("concat02", "data2.ttl", "concat02.rq", "concat02.srx");
+    ("concat-empty", "data.ttl", "concat-empty.rq", "concat-empty.srx");
+    ("concat-single", "data.ttl", "concat-single.rq", "concat-single.srx");
+    ("plus-1", "data-builtin-3.ttl", "plus-1-corrected.rq", "plus-1-corrected.srx");
+    ("plus-2", "data-builtin-3.ttl", "plus-2-corrected.rq", "plus-2-corrected.srx");
     ("md5-01", "data.ttl", "md5-01.rq", "md5-01.srx");
-    ("md5-02", "hash-unicode.ttl", "md5-02.rq", "md5-02.srx");
+    ("md5-02", "data.ttl", "md5-02.rq", "md5-02.srx");
     ("sha1-01", "data.ttl", "sha1-01.rq", "sha1-01.srx");
     ("sha1-02", "hash-unicode.ttl", "sha1-02.rq", "sha1-02.srx");
     ("sha256-01", "data.ttl", "sha256-01.rq", "sha256-01.srx");
     ("sha256-02", "hash-unicode.ttl", "sha256-02.rq", "sha256-02.srx");
+    ("sha384-01", "data.ttl", "sha384-01.rq", "sha384-01.srx");
+    ("sha384-02", "hash-unicode.ttl", "sha384-02.rq", "sha384-02.srx");
+    ("sha512-01", "data.ttl", "sha512-01.rq", "sha512-01.srx");
+    ("sha512-02", "hash-unicode.ttl", "sha512-02.rq", "sha512-02.srx");
     ("if01", "data.ttl", "if01.rq", "if01.srx");
     ("if02", "data.ttl", "if02.rq", "if02.srx");
     ("coalesce01", "data-coalesce.ttl", "coalesce01.rq", "coalesce01.srx");
+    ("coalesce-empty", "data.ttl", "coalesce-empty.rq", "coalesce-empty.srx");
     ("strbefore01a", "data2.ttl", "strbefore01.rq", "strbefore01a.srx");
+    ("strbefore02", "data2.ttl", "strbefore02.rq", "strbefore02.srx");
     ("strafter01a", "data2.ttl", "strafter01.rq", "strafter01a.srx");
+    ("strafter02", "data2.ttl", "strafter02.rq", "strafter02.srx");
     ("replace01", "data3.ttl", "replace01.rq", "replace01.srx");
     ("replace02", "data3.ttl", "replace02.rq", "replace02.srx");
     ("replace03", "data3.ttl", "replace03.rq", "replace03.srx");
+    ("replace-case-insensitive", "data3.ttl", "replace-case-insensitive.rq", "replace-case-insensitive.srx");
     ("abs01", "data.ttl", "abs01.rq", "abs01.srx");
     ("ceil01", "data.ttl", "ceil01.rq", "ceil01.srx");
     ("floor01", "data.ttl", "floor01.rq", "floor01.srx");
     ("round01", "data.ttl", "round01.rq", "round01.srx");
     ("iri01", "data.ttl", "iri01.rq", "iri01.srx");
+    ("iri02", "data.ttl", "iri02.rq", "iri02.srx");
     ("bnode01", "data.ttl", "bnode01.rq", "bnode01.srx");
     ("bnode02", "data.ttl", "bnode02.rq", "bnode02.srx");
     ("in01", "data.ttl", "in01.rq", "in01.srx");
@@ -778,6 +795,14 @@ let functions_tests =
     ("notin02", "data.ttl", "notin02.rq", "notin02.srx");
     ("now01", "data.ttl", "now01.rq", "now01.srx");
     ("encode01", "data.ttl", "encode01.rq", "encode01.srx");
+    ("hours-01", "data.ttl", "hours-01.rq", "hours-01.srx");
+    ("minutes-01", "data.ttl", "minutes-01.rq", "minutes-01.srx");
+    ("seconds-01", "data.ttl", "seconds-01.rq", "seconds-01.srx");
+    ("year-01", "data.ttl", "year-01.rq", "year-01.srx");
+    ("month-01", "data.ttl", "month-01.rq", "month-01.srx");
+    ("day-01", "data.ttl", "day-01.rq", "day-01.srx");
+    ("timezone-01", "data.ttl", "timezone-01.rq", "timezone-01.srx");
+    ("tz-01", "data.ttl", "tz-01.rq", "tz-01.srx");
   ] in
   List.map (fun (name, data, query, result) ->
     { tc_name = "functions/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
@@ -828,6 +853,119 @@ let sort_tests =
   List.map (fun (name, data, query, result) ->
     { tc_name = "sort/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
 
+let expr_ops_tests =
+  let dir = sparql_base ^ "sparql10/expr-ops/" in
+  let files = [
+    ("unplus-1", "data.ttl", "query-unplus-1.rq", "result-unplus-1.srx");
+    ("unminus-1", "data.ttl", "query-unminus-1.rq", "result-unminus-1.srx");
+    ("plus-1", "data.ttl", "query-plus-1.rq", "result-plus-1.srx");
+    ("minus-1", "data.ttl", "query-minus-1.rq", "result-minus-1.srx");
+    ("mul-1", "data.ttl", "query-mul-1.rq", "result-mul-1.srx");
+    ("ge-1", "data.ttl", "query-ge-1.rq", "result-ge-1.srx");
+    ("le-1", "data.ttl", "query-le-1.rq", "result-le-1.srx");
+    ("le-2", "data-dateTime.ttl", "query-le-2.rq", "result-dateTime-le-2.srx");
+    ("ge-2", "data-dateTime.ttl", "query-ge-2.rq", "result-dateTime-ge-2.srx");
+    ("lt-2", "data-dateTime.ttl", "query-lt-2.rq", "result-dateTime-lt-2.srx");
+    ("gt-2", "data-dateTime.ttl", "query-gt-2.rq", "result-dateTime-gt-2.srx");
+    ("add-numbers", "data-numbers.ttl", "query-add-numbers-cast.rq", "result-add-numbers-cast.srx");
+    ("subtract-numbers", "data-numbers.ttl", "query-subtract-numbers-cast.rq", "result-subtract-numbers-cast.srx");
+    ("multiply-numbers", "data-numbers.ttl", "query-multiply-numbers-cast.rq", "result-multiply-numbers-cast.srx");
+    ("divide-numbers", "data-numbers.ttl", "query-divide-numbers-cast.rq", "result-divide-numbers-cast.srx");
+    ("unplus-2", "data-numbers.ttl", "query-unplus-2.rq", "result-unplus-2.srx");
+    ("unminus-2", "data-numbers.ttl", "query-unminus-2.rq", "result-unminus-2.srx");
+  ] in
+  List.map (fun (name, data, query, result) ->
+    { tc_name = "expr-ops/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+
+let open_world_tests =
+  let dir = sparql_base ^ "sparql10/open-world/" in
+  let files = [
+    ("open-eq-01", "data-1.ttl", "open-eq-01.rq", "open-eq-01-result.srx");
+    ("open-eq-02", "data-1.ttl", "open-eq-02.rq", "open-eq-02-result.srx");
+    ("open-eq-03", "data-1.ttl", "open-eq-03.rq", "open-eq-03-result.srx");
+    ("open-eq-04", "data-1.ttl", "open-eq-04.rq", "open-eq-04-result.srx");
+    ("open-eq-05", "data-1.ttl", "open-eq-05.rq", "open-eq-05-result.srx");
+    ("open-eq-06", "data-1.ttl", "open-eq-06.rq", "open-eq-06-result.srx");
+    ("open-eq-07", "data-2.ttl", "open-eq-07.rq", "open-eq-07-result.srx");
+    ("open-eq-08", "data-2.ttl", "open-eq-08.rq", "open-eq-08-result.srx");
+    ("open-eq-09", "data-2.ttl", "open-eq-09.rq", "open-eq-09-result.srx");
+    ("open-eq-10", "data-2.ttl", "open-eq-10.rq", "open-eq-10-result.srx");
+    ("open-eq-11", "data-2.ttl", "open-eq-11.rq", "open-eq-11-result.srx");
+    ("open-eq-12", "data-2.ttl", "open-eq-12.rq", "open-eq-12-result.srx");
+    ("date-1", "data-3.ttl", "date-1.rq", "date-1-result.srx");
+    ("date-2", "data-3.ttl", "date-2.rq", "date-2-result.srx");
+    ("date-3", "data-3.ttl", "date-3.rq", "date-3-result.srx");
+    ("date-4", "data-3.ttl", "date-4.rq", "date-4-result.srx");
+    ("open-cmp-01", "data-4.ttl", "open-cmp-01.rq", "open-cmp-01-result.srx");
+    ("open-cmp-02", "data-4.ttl", "open-cmp-02.rq", "open-cmp-02-result.srx");
+  ] in
+  List.map (fun (name, data, query, result) ->
+    { tc_name = "open-world/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+
+let negation_tests =
+  let dir = sparql_base ^ "sparql11/negation/" in
+  let files = [
+    ("subsetByExcl01", "subsetByExcl.ttl", "subsetByExcl01.rq", "subsetByExcl01.srx");
+    ("subsetByExcl02", "subsetByExcl.ttl", "subsetByExcl02.rq", "subsetByExcl02.srx");
+    ("temporalProximity01", "temporalProximity01.ttl", "temporalProximity01.rq", "temporalProximity01.srx");
+    ("subset-01", "set-data.ttl", "subset-01.rq", "subset-01.srx");
+    ("subset-02", "set-data.ttl", "subset-02.rq", "subset-02.srx");
+    ("set-equals-1", "set-data.ttl", "set-equals-1.rq", "set-equals-1.srx");
+    ("subset-03", "set-data.ttl", "subset-03.rq", "subset-03.srx");
+    ("exists-01", "set-data.ttl", "exists-01.rq", "exists-01.srx");
+    ("exists-02", "set-data.ttl", "exists-02.rq", "exists-02.srx");
+    ("full-minuend", "full-minuend.ttl", "full-minuend.rq", "full-minuend.srx");
+    ("part-minuend", "part-minuend.ttl", "part-minuend.rq", "part-minuend.srx");
+  ] in
+  List.map (fun (name, data, query, result) ->
+    { tc_name = "negation/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+
+let grouping_tests =
+  let dir = sparql_base ^ "sparql11/grouping/" in
+  let files = [
+    ("group01", "group-data-1.ttl", "group01.rq", "group01.srx");
+    ("group03", "group-data-1.ttl", "group03.rq", "group03.srx");
+    ("group04", "group-data-1.ttl", "group04.rq", "group04.srx");
+    ("group05", "group-data-2.ttl", "group05.rq", "group05.srx");
+  ] in
+  List.map (fun (name, data, query, result) ->
+    { tc_name = "grouping/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+
+let ask_tests =
+  let dir = sparql_base ^ "sparql10/ask/" in
+  let files = [
+    ("ask-1", "data.ttl", "ask-1.rq", "ask-1.srx");
+    ("ask-4", "data.ttl", "ask-4.rq", "ask-4.srx");
+    ("ask-7", "data.ttl", "ask-7.rq", "ask-7.srx");
+    ("ask-8", "data.ttl", "ask-8.rq", "ask-8.srx");
+  ] in
+  List.map (fun (name, data, query, result) ->
+    { tc_name = "ask/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+
+let reduced_tests =
+  let dir = sparql_base ^ "sparql10/reduced/" in
+  let files = [
+    ("reduced-1", "reduced-star.ttl", "reduced-1.rq", "reduced-1.srx");
+    ("reduced-2", "reduced-str.ttl", "reduced-2.rq", "reduced-2.srx");
+  ] in
+  List.map (fun (name, data, query, result) ->
+    { tc_name = "reduced/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+
+let expr_builtin_tests =
+  let dir = sparql_base ^ "sparql10/expr-builtin/" in
+  let files = [
+    ("q-str-1", "data-builtin-1.ttl", "q-str-1.rq", "result-str-1.srx");
+    ("q-str-2", "data-builtin-1.ttl", "q-str-2.rq", "result-str-2.srx");
+    ("q-str-3", "data-builtin-1.ttl", "q-str-3.rq", "result-str-3.srx");
+    ("q-str-4", "data-builtin-1.ttl", "q-str-4.rq", "result-str-4.srx");
+    ("q-lang-1", "data-builtin-2.ttl", "q-lang-1.rq", "result-lang-1.srx");
+    ("q-lang-2", "data-builtin-2.ttl", "q-lang-2.rq", "result-lang-2.srx");
+    ("q-lang-3", "data-builtin-2.ttl", "q-lang-3.rq", "result-lang-3.srx");
+    ("q-datatype-1", "data-builtin-2.ttl", "q-datatype-1.rq", "result-datatype-1.srx");
+  ] in
+  List.map (fun (name, data, query, result) ->
+    { tc_name = "expr-builtin/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+
 (* ====================================================================== *)
 (* Main entry point                                                         *)
 (* ====================================================================== *)
@@ -858,12 +996,19 @@ let () =
   run_suite "bound (W3C SPARQL 1.0)" bound_tests;
   run_suite "bnode-coreference (W3C SPARQL 1.0)" bnode_coreference_tests;
   run_suite "expr-equals (W3C SPARQL 1.0)" expr_equals_tests;
+  run_suite "expr-builtin (W3C SPARQL 1.0)" expr_builtin_tests;
+  run_suite "expr-ops (W3C SPARQL 1.0)" expr_ops_tests;
   run_suite "regex (W3C SPARQL 1.0)" regex_tests;
   run_suite "optional (W3C SPARQL 1.0)" optional_tests;
+  run_suite "open-world (W3C SPARQL 1.0)" open_world_tests;
+  run_suite "ask (W3C SPARQL 1.0)" ask_tests;
+  run_suite "reduced (W3C SPARQL 1.0)" reduced_tests;
   run_suite "solution-seq (W3C SPARQL 1.0)" solution_seq_tests;
   run_suite "sort (W3C SPARQL 1.0)" sort_tests;
   run_suite "bind (W3C SPARQL 1.1)" bind_tests;
   run_suite "exists (W3C SPARQL 1.1)" exists_tests;
+  run_suite "negation (W3C SPARQL 1.1)" negation_tests;
+  run_suite "grouping (W3C SPARQL 1.1)" grouping_tests;
   run_suite "project-expression (W3C SPARQL 1.1)" project_expr_tests;
   run_suite "functions (W3C SPARQL 1.1)" functions_tests;
 

@@ -63,6 +63,12 @@ content = content.replace(
     'let () = eval_exists_fwd_ref := (fun p mu g -> eval_exists p mu g)\nlet eval_not_exists'
 )
 
+# Replace hash function stubs with real implementations using digestif
+for (name, mod_name) in [('md5', 'MD5'), ('sha1', 'SHA1'), ('sha256', 'SHA256'), ('sha384', 'SHA384'), ('sha512', 'SHA512')]:
+    stub = f'let hash_{name} (uu___ : Prims.string) : Prims.string=\n  failwith "Not yet implemented: SPARQL11.Algebra.hash_{name}"'
+    impl = f'let hash_{name} (s : Prims.string) : Prims.string=\n  Digestif.{mod_name}.digest_string s |> Digestif.{mod_name}.to_hex'
+    content = content.replace(stub, impl)
+
 with open(filepath, 'w') as f:
     f.write(content)
 PYEOF

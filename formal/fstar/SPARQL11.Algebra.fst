@@ -1610,8 +1610,27 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
   (* Aggregates — evaluated in aggregation context, not here *)
   | E_Aggregate _ _ _ -> ER_Error
 
-  (* Function call — extensible, not handled here *)
-  | E_FunctionCall _ _ -> ER_Error
+  (* Function call — handle known SPARQL builtins *)
+  | E_FunctionCall iri args ->
+    if iri = "sparql:langMatches" then
+      match args with
+      | [e1; e2] ->
+        let r1 = eval_expr e1 mu in
+        let r2 = eval_expr e2 mu in
+        let get_str (r : eval_result) : option string =
+          match r with
+          | ER_Term (T_Literal l) -> Some (lit_lexical l)
+          | _ -> None
+        in
+        (match get_str r1, get_str r2 with
+         | Some s1, Some s2 ->
+           let tag = String.lowercase s1 in
+           let range = String.lowercase s2 in
+           if range = "*" then ER_Bool (String.length tag > 0)
+           else ER_Bool (string_starts_with tag range)
+         | _, _ -> ER_Error)
+      | _ -> ER_Error
+    else ER_Error
 
 (* Coalesce: first non-error result from list *)
 and eval_coalesce (es : list expr) (mu : solution_mapping)

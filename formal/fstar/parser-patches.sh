@@ -31,11 +31,11 @@ content = content.replace(
   (Prims.nat * pstate) FStar_Pervasives_Native.option=
   let rec go ps acc any =
     match ps_peek ps with
-    | FStar_Pervasives_Native.Some c when FStar_Char.int_of_char c >= 0x30 && FStar_Char.int_of_char c <= 0x39 ->
-      go (ps_advance ps Prims.int_one) (acc * (Prims.of_int (10)) + Prims.of_int (FStar_Char.int_of_char c - 0x30)) true
+    | FStar_Pervasives_Native.Some c when Z.geq (FStar_Char.int_of_char c) (Z.of_int 0x30) && Z.leq (FStar_Char.int_of_char c) (Z.of_int 0x39) ->
+      go (ps_advance ps Prims.int_one) (Z.add (Z.mul acc (Z.of_int 10)) (Z.sub (FStar_Char.int_of_char c) (Z.of_int 0x30))) true
     | _ -> if any then FStar_Pervasives_Native.Some (acc, ps) else FStar_Pervasives_Native.None
   in
-  go ps Prims.int_zero false'''
+  go ps Z.zero false'''
 )
 
 # Fix integer parsing: replace E_NumericLit 0 placeholder with actual parsing

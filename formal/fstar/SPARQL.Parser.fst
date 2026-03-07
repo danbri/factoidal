@@ -208,6 +208,40 @@ let parse_pname_ln (ps : pstate) (prefixes : list (string * wf_iri))
       let full_iri = base_iri ^ local in
       if is_iri full_iri then Some (full_iri, ps) else None
 
+(** Resolve a potentially relative IRI against a base IRI **)
+let resolve_relative_iri (base : option wf_iri) (iri : string) : string =
+  if String.length iri = 0 then
+    (match base with | Some b -> b | None -> iri)
+  else
+    let chars = list_of_string iri in
+    let rec has_scheme (cs : list FStar.Char.char) : bool =
+      match cs with
+      | [] -> false
+      | c :: rest ->
+        let code = FStar.Char.int_of_char c in
+        if code = 0x3A then true
+        else if code = 0x2F then false
+        else if is_alpha c || is_digit c || code = 0x2B || code = 0x2D || code = 0x2E then
+          has_scheme rest
+        else false
+    in
+    if has_scheme chars then iri
+    else
+      match base with
+      | None -> iri
+      | Some b ->
+        if String.length iri > 0 && String.sub iri 0 1 = "#" then
+          b ^ iri
+        else
+          let blen = String.length b in
+          let rec find_last_slash (i : nat) : nat =
+            if i = 0 then 0
+            else if String.sub b (i - 1) 1 = "/" then i
+            else find_last_slash (i - 1)
+          in
+          let prefix_str = String.sub b 0 (find_last_slash blen) in
+          prefix_str ^ iri
+
 (** Parse any IRI — either <iriref> or prefix:local **)
 let parse_iri (ps : pstate) (prefixes : list (string * wf_iri))
   : option (wf_iri * pstate) =
@@ -216,7 +250,12 @@ let parse_iri (ps : pstate) (prefixes : list (string * wf_iri))
   | Some c when FStar.Char.int_of_char c = 0x3C ->
     (match parse_iriref ps with
      | Some (iri, ps) ->
-       if is_iri iri then Some (iri, ps) else None
+       if is_iri iri then Some (iri, ps)
+       else
+         (* Try resolving against base stored in prefixes *)
+         let base = List.Tot.assoc "__base__" prefixes in
+         let resolved = resolve_relative_iri base iri in
+         if is_iri resolved then Some (resolved, ps) else None
      | None -> None)
   | _ -> parse_pname_ln ps prefixes
 
@@ -421,7 +460,9 @@ let parse_prefix_decl (ps : pstate) (prefixes : list (string * wf_iri))
         else if String.length iri = 0 then
           let dummy : wf_iri = (assert_norm (is_iri "urn:empty:"); "urn:empty:") in
           Some ((prefix, dummy), ps)
-        else None
+        else
+          (* Return raw string — prologue will resolve against BASE *)
+          Some ((prefix, iri), ps)
 
 let parse_base_decl (ps : pstate) : option (wf_iri * pstate) =
   let ps = skip_ws ps in
@@ -441,7 +482,11 @@ let rec parse_prologue (ps : pstate) (base : option wf_iri) (prefixes : list (st
   | Some (iri, ps) -> parse_prologue ps (Some iri) prefixes
   | None ->
     match parse_prefix_decl ps prefixes with
-    | Some ((prefix, iri), ps) -> parse_prologue ps base ((prefix, iri) :: prefixes)
+    | Some ((prefix, raw_iri), ps) ->
+      (* Resolve prefix IRI against base *)
+      let resolved = resolve_relative_iri base raw_iri in
+      let iri = if is_iri resolved then resolved else raw_iri in
+      parse_prologue ps base ((prefix, iri) :: prefixes)
     | None -> (base, prefixes, ps)
 
 (** ====================================================================== **)
@@ -868,6 +913,7 @@ and try_1arg_fallback (ps : pstate) (prefixes : list (string * wf_iri))
               | None -> None
               | Some ps' -> Some (mk e1 e2, ps')
   in
+  match try2 "LANGMATCHES" (fun a b -> E_FunctionCall "sparql:langMatches" [a; b]) with | Some r -> Some r | None ->
   match try2 "STRSTARTS" (fun a b -> E_StrStarts a b) with | Some r -> Some r | None ->
   match try2 "STRENDS" (fun a b -> E_StrEnds a b) with | Some r -> Some r | None ->
   match try2 "CONTAINS" (fun a b -> E_Contains a b) with | Some r -> Some r | None ->
@@ -876,6 +922,72 @@ and try_1arg_fallback (ps : pstate) (prefixes : list (string * wf_iri))
   match try2 "STRDT" (fun a b -> E_StrDt a b) with | Some r -> Some r | None ->
   match try2 "STRLANG" (fun a b -> E_StrLang a b) with | Some r -> Some r | None ->
   match try2 "SAMETERM" (fun a b -> E_SameTerm a b) with | Some r -> Some r | None ->
+  (* REPLACE(str, pattern, replacement [, flags]) *)
+  match ps_consume ps "REPLACE" with
+  | Some ps' ->
+    let ps' = skip_ws ps' in
+    (match ps_expect ps' "(" with
+     | Some ps' ->
+       (match parse_expr ps' prefixes with
+        | Some (e1, ps') ->
+          (match ps_expect ps' "," with
+           | Some ps' ->
+             (match parse_expr ps' prefixes with
+              | Some (e2, ps') ->
+                (match ps_expect ps' "," with
+                 | Some ps' ->
+                   (match parse_expr ps' prefixes with
+                    | Some (e3, ps') ->
+                      let ps'' = skip_ws ps' in
+                      (match ps_consume ps'' "," with
+                       | Some ps'' ->
+                         (match parse_expr ps'' prefixes with
+                          | Some (e4, ps'') ->
+                            (match ps_expect ps'' ")" with
+                             | Some ps'' -> Some (E_Replace e1 e2 e3 (Some e4), ps'')
+                             | None -> None)
+                          | None -> None)
+                       | None ->
+                         match ps_expect ps' ")" with
+                         | Some ps' -> Some (E_Replace e1 e2 e3 None, ps')
+                         | None -> None)
+                    | None -> None)
+                 | None -> None)
+              | None -> None)
+           | None -> None)
+        | None -> None)
+     | None -> None)
+  | None ->
+  (* NOW() — zero-arg *)
+  match ps_consume ps "NOW" with
+  | Some ps' ->
+    let ps' = skip_ws ps' in
+    (match ps_expect ps' "(" with
+     | Some ps' ->
+       (match ps_expect ps' ")" with
+        | Some ps' -> Some (E_Now, ps')
+        | None -> None)
+     | None -> None)
+  | None ->
+  (* BNODE — zero or one arg *)
+  match ps_consume ps "BNODE" with
+  | Some ps' ->
+    let ps' = skip_ws ps' in
+    (match ps_expect ps' "(" with
+     | Some ps' ->
+       let ps' = skip_ws ps' in
+       (match ps_peek ps' with
+        | Some c when FStar.Char.int_of_char c = 0x29 (* ')' *) ->
+          Some (E_FunctionCall "sparql:bnode" [], ps_advance ps' 1)
+        | _ ->
+          match parse_expr ps' prefixes with
+          | Some (e, ps') ->
+            (match ps_expect ps' ")" with
+             | Some ps' -> Some (E_FunctionCall "sparql:bnode" [e], ps')
+             | None -> None)
+          | None -> None)
+     | None -> None)
+  | None ->
   (* SUBSTR(str, start [, len]) *)
   match ps_consume ps "SUBSTR" with
   | Some ps' ->
@@ -981,7 +1093,14 @@ and parse_pattern_subject (ps : pstate) (prefixes : list (string * wf_iri))
           (match ps_consume ps "]" with
            | Some ps -> Some (PS_BNode "anon", ps)  (* simplified *)
            | None -> None)
-        | None -> None
+        | None ->
+          (* RDF list syntax: () is rdf:nil *)
+          let ps = skip_ws ps in
+          match ps_consume ps "()" with
+          | Some ps ->
+            let rdf_nil = "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil" in
+            Some (PS_IRI rdf_nil, ps)
+          | None -> None
 
 and parse_pattern_term (ps : pstate) (prefixes : list (string * wf_iri))
   : option (pattern_term * pstate) =
@@ -1052,7 +1171,14 @@ and parse_pattern_term (ps : pstate) (prefixes : list (string * wf_iri))
                 collect ps []
               in
               Some (PT_BNode label, ps)
-            | None -> None
+            | None ->
+              (* RDF list syntax: () is rdf:nil *)
+              let ps0 = skip_ws ps_start in
+              match ps_consume ps0 "()" with
+              | Some ps0 ->
+                let rdf_nil = "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil" in
+                Some (PT_IRI rdf_nil, ps0)
+              | None -> None
 
 (** Parse triple patterns within a group, handling ';' and ',' shortcuts **)
 and parse_triples_block (ps : pstate) (prefixes : list (string * wf_iri))
@@ -1154,6 +1280,9 @@ and parse_ggp_elements (ps : pstate) (prefixes : list (string * wf_iri)) (acc : 
       (match parse_group_graph_pattern ps_after prefixes with
        | Some (opt_pat, ps') ->
          let new_acc = GP_LeftJoin acc opt_pat (E_BoolLit true) in
+         (* Skip optional trailing dot after OPTIONAL block *)
+         let ps' = skip_ws ps' in
+         let ps' = match ps_consume ps' "." with | Some p -> p | None -> ps' in
          parse_ggp_elements ps' prefixes new_acc
        | None -> Some (acc, ps))
     | None ->
@@ -1519,6 +1648,11 @@ let rec parse_having (ps : pstate) (prefixes : list (string * wf_iri))
 let parse_query (input : string) : option query =
   let ps = mk_pstate input in
   let (base, prefixes, ps) = parse_prologue ps None [] in
+  (* Store base in prefixes for IRI resolution *)
+  let prefixes = match base with
+    | Some b -> ("__base__", b) :: prefixes
+    | None -> prefixes
+  in
   (* Parse query form *)
   let ps = skip_ws ps in
   match ps_consume ps "ASK" with
