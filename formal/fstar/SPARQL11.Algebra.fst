@@ -559,12 +559,34 @@ let value_compare (v1 v2 : eval_result) (op : comp_op) : option bool =
   | ER_Term (T_Literal l1), ER_Term (T_Literal l2) ->
     if lit_datatype l1 = lit_datatype l2
     then
-      if lit_lang l1 = lit_lang l2
-      then Some (apply_comp_op (String.compare (lit_lexical l1) (lit_lexical l2)) op)
-      else (match op with
-            | CmpEq -> Some false
-            | CmpNe -> Some true
-            | _ -> None)
+      let dt = lit_datatype l1 in
+      (* Only do value comparison for known datatypes.
+         Unknown datatypes: sameTerm is decidable, but value != is not. *)
+      let is_known =
+        dt = xsd_string || dt = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString" ||
+        dt = xsd_integer || dt = xsd_decimal || dt = xsd_double || dt = xsd_boolean ||
+        dt = "http://www.w3.org/2001/XMLSchema#float" ||
+        dt = "http://www.w3.org/2001/XMLSchema#date" ||
+        dt = "http://www.w3.org/2001/XMLSchema#dateTime"
+      in
+      if is_known then
+        (* Compare language tags case-insensitively per RDF semantics *)
+        let lang_match = match lit_lang l1, lit_lang l2 with
+          | Some t1, Some t2 -> string_lower t1 = string_lower t2
+          | None, None -> true
+          | _, _ -> false
+        in
+        if lang_match
+        then Some (apply_comp_op (String.compare (lit_lexical l1) (lit_lexical l2)) op)
+        else (match op with
+              | CmpEq -> Some false
+              | CmpNe -> Some true
+              | _ -> None)
+      else
+        (* Unknown datatype: only sameTerm is decidable *)
+        if lit_lexical l1 = lit_lexical l2 && lit_lang l1 = lit_lang l2
+        then (match op with | CmpEq -> Some true | CmpNe -> Some false | _ -> None)
+        else None  (* Different lexical forms with unknown datatype — can't determine *)
     else None
   | ER_Error, _ -> None
   | _, ER_Error -> None
@@ -1254,6 +1276,9 @@ assume val eval_expr_fwd : expr -> solution_mapping -> eval_result
 (* EXISTS/NOT EXISTS need graph context — forward ref to concrete eval_exists *)
 assume val eval_exists_fwd : group_graph_pattern -> solution_mapping -> rdf_graph -> bool
 
+(* Sub-SELECT needs eval_select_query — forward ref *)
+assume val eval_select_query_fwd : query -> rdf_graph -> solution_sequence
+
 (* LeftJoin (OPTIONAL): join + unmatched from left *)
 let left_join (omega1 omega2 : solution_sequence) (filter_expr : expr) : solution_sequence =
   List.Tot.concatMap
@@ -1353,9 +1378,9 @@ let rec eval_pattern (p : group_graph_pattern) (g : rdf_graph)
     (* SERVICE: remote execution, not supported *)
     []
 
-  | GP_SubSelect _ ->
-    (* Sub-SELECT: requires eval_select_query, deferred *)
-    []
+  | GP_SubSelect q ->
+    (* Sub-SELECT: evaluate the sub-query independently *)
+    eval_select_query_fwd q g
 
   | GP_PropertyPath _ _ _ ->
     (* [S1] Property paths: deferred *)
@@ -1428,20 +1453,66 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
           (match op with | CmpEq -> ER_Bool (b1 = b2) | CmpNe -> ER_Bool (b1 <> b2) | _ -> ER_Error)
         | ER_Term (T_Literal l1), ER_Term (T_Literal l2) ->
           if lit_datatype l1 = lit_datatype l2 then
-            (* Same datatype — can compare lexically for =/!= *)
-            (match op with
-             | CmpEq -> ER_Bool (lit_lexical l1 = lit_lexical l2 &&
-                                 (match lit_lang l1, lit_lang l2 with
-                                  | Some t1, Some t2 -> string_lower t1 = string_lower t2
-                                  | None, None -> true
-                                  | _, _ -> false))
-             | CmpNe -> ER_Bool (lit_lexical l1 <> lit_lexical l2 ||
-                                 (match lit_lang l1, lit_lang l2 with
-                                  | Some t1, Some t2 -> string_lower t1 <> string_lower t2
-                                  | None, None -> false
-                                  | _, _ -> true))
-             | _ -> ER_Error)
-          else ER_Error  (* Different datatypes — open-world error *)
+            let dt = lit_datatype l1 in
+            (* For known datatypes (xsd:string, rdf:langString), lexical comparison is valid.
+               For unknown datatypes, only sameTerm is valid — open-world assumption. *)
+            let is_known_dt =
+              dt = xsd_string || dt = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString" ||
+              dt = xsd_integer || dt = xsd_decimal || dt = xsd_double || dt = xsd_boolean ||
+              dt = "http://www.w3.org/2001/XMLSchema#float" ||
+              dt = "http://www.w3.org/2001/XMLSchema#date" ||
+              dt = "http://www.w3.org/2001/XMLSchema#dateTime"
+            in
+            if is_known_dt then
+              (* Known datatype — can compare lexically for =/!= *)
+              (match op with
+               | CmpEq -> ER_Bool (lit_lexical l1 = lit_lexical l2 &&
+                                   (match lit_lang l1, lit_lang l2 with
+                                    | Some t1, Some t2 -> string_lower t1 = string_lower t2
+                                    | None, None -> true
+                                    | _, _ -> false))
+               | CmpNe -> ER_Bool (lit_lexical l1 <> lit_lexical l2 ||
+                                   (match lit_lang l1, lit_lang l2 with
+                                    | Some t1, Some t2 -> string_lower t1 <> string_lower t2
+                                    | None, None -> false
+                                    | _, _ -> true))
+               | _ -> ER_Error)
+            else
+              (* Unknown datatype: sameTerm only *)
+              (match op with
+               | CmpEq -> ER_Bool (lit_lexical l1 = lit_lexical l2 &&
+                                   lit_lang l1 = lit_lang l2)
+               | CmpNe -> if lit_lexical l1 = lit_lexical l2 && lit_lang l1 = lit_lang l2
+                           then ER_Bool false  (* sameTerm → not != *)
+                           else ER_Error       (* can't determine → error *)
+               | _ -> ER_Error)
+          else
+            (* Different datatypes *)
+            let dt1 = lit_datatype l1 in
+            let dt2 = lit_datatype l2 in
+            let is_known_1 =
+              dt1 = xsd_string || dt1 = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString" ||
+              dt1 = xsd_integer || dt1 = xsd_decimal || dt1 = xsd_double || dt1 = xsd_boolean ||
+              dt1 = "http://www.w3.org/2001/XMLSchema#float" ||
+              dt1 = "http://www.w3.org/2001/XMLSchema#date" ||
+              dt1 = "http://www.w3.org/2001/XMLSchema#dateTime"
+            in
+            let is_known_2 =
+              dt2 = xsd_string || dt2 = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString" ||
+              dt2 = xsd_integer || dt2 = xsd_decimal || dt2 = xsd_double || dt2 = xsd_boolean ||
+              dt2 = "http://www.w3.org/2001/XMLSchema#float" ||
+              dt2 = "http://www.w3.org/2001/XMLSchema#date" ||
+              dt2 = "http://www.w3.org/2001/XMLSchema#dateTime"
+            in
+            if is_known_1 && is_known_2 then
+              (* Both known different types: clearly not equal *)
+              (match op with | CmpEq -> ER_Bool false | CmpNe -> ER_Bool true | _ -> ER_Error)
+            else
+              ER_Error  (* Unknown datatype involved — open-world error *)
+        (* Cross-kind comparisons: IRI vs Literal, IRI vs BNode, BNode vs Literal.
+           These are clearly different — = is false, != is true. *)
+        | ER_Term _, ER_Term _ ->
+          (match op with | CmpEq -> ER_Bool false | CmpNe -> ER_Bool true | _ -> ER_Error)
         | _, _ -> ER_Error))
 
   (* Logical connectives *)

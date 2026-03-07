@@ -510,6 +510,28 @@ let rec parse_prologue (ps : pstate) (base : option wf_iri) (prefixes : list (st
 
 (** Forward declarations via mutual recursion **)
 
+(* Inline nat parser for sub-SELECT LIMIT/OFFSET — defined outside mutual recursion *)
+let parse_nat_digits_inline (ps : pstate) : option (nat * pstate) =
+  let ps = skip_ws ps in
+  let start = ps.pos in
+  let rec skip_digits (ps : pstate) : pstate =
+    match ps_peek ps with
+    | Some c when is_digit c -> skip_digits (ps_advance ps 1)
+    | _ -> ps
+  in
+  let ps2 = skip_digits ps in
+  if ps2.pos = start then None
+  else
+    let s = String.sub ps.inp start (ps2.pos - start) in
+    let chars = list_of_string s in
+    let rec to_int (cs : list FStar.Char.char) (acc : int) : int =
+      match cs with
+      | [] -> acc
+      | c :: rest -> to_int rest (op_Multiply acc 10 + (FStar.Char.int_of_char c - 0x30))
+    in
+    let n = to_int chars 0 in
+    if n >= 0 then Some (n, ps2) else None
+
 let rec parse_expr (ps : pstate) (prefixes : list (string * wf_iri))
   : option (expr * pstate) =
   parse_or_expr ps prefixes
@@ -1473,8 +1495,233 @@ and parse_ggp_body (ps : pstate) (prefixes : list (string * wf_iri))
   | Some c when FStar.Char.int_of_char c = 0x7D (* '}' *) ->
     Some (GP_Empty, ps)
   | _ ->
-    (* Try to parse elements *)
-    parse_ggp_elements ps prefixes GP_Empty
+    (* Check for sub-SELECT: { SELECT ... } *)
+    if ps_starts_with_ci ps "SELECT" then
+      parse_sub_select_inline ps prefixes
+    else
+      (* Try to parse elements *)
+      parse_ggp_elements ps prefixes GP_Empty
+
+(* Sub-SELECT parser — parses SELECT ... WHERE { ... } GROUP BY ... HAVING ...
+   within a group graph pattern. Uses the same mutual recursion as parse_group_graph_pattern. *)
+and parse_sub_select_inline (ps : pstate) (prefixes : list (string * wf_iri))
+  : option (group_graph_pattern * pstate) =
+  (* Parse SELECT keyword *)
+  match ps_consume ps "SELECT" with
+  | None -> None
+  | Some ps ->
+    let ps = skip_ws ps in
+    (* DISTINCT / REDUCED *)
+    let (is_distinct, is_reduced, ps) =
+      match ps_consume ps "DISTINCT" with
+      | Some ps -> (true, false, ps)
+      | None ->
+        match ps_consume ps "REDUCED" with
+        | Some ps -> (false, true, ps)
+        | None -> (false, false, ps)
+    in
+    let ps = skip_ws ps in
+    (* Parse select items: * or variable/expression list *)
+    let parse_sel_items (ps : pstate)
+      : option (select_clause * pstate) =
+      match ps_consume ps "*" with
+      | Some ps -> Some (Select_All, ps)
+      | None ->
+        let rec parse_items (acc : list select_item) (ps : pstate) : option (list select_item * pstate) =
+          let ps = skip_ws ps in
+          (* Try (expr AS ?var) *)
+          match ps_peek ps with
+          | Some c when FStar.Char.int_of_char c = 0x28 (* '(' *) ->
+            let ps' = ps_advance ps 1 in
+            (match parse_expr ps' prefixes with
+             | Some (e, ps') ->
+               let ps' = skip_ws ps' in
+               (match ps_consume ps' "AS" with
+                | Some ps' ->
+                  (match parse_variable ps' with
+                   | Some (v, ps') ->
+                     (match ps_expect ps' ")" with
+                      | Some ps' -> parse_items (SI_Expr e v :: acc) ps'
+                      | None -> if Nil? acc then None else Some (List.Tot.rev acc, ps))
+                   | None -> if Nil? acc then None else Some (List.Tot.rev acc, ps))
+                | None -> if Nil? acc then None else Some (List.Tot.rev acc, ps))
+             | None -> if Nil? acc then None else Some (List.Tot.rev acc, ps))
+          | _ ->
+            match parse_variable ps with
+            | Some (v, ps) -> parse_items (SI_Var v :: acc) ps
+            | None ->
+              if Nil? acc then None
+              else Some (List.Tot.rev acc, ps)
+        in
+        match parse_items [] ps with
+        | Some (items, ps) -> Some (Select_Vars items, ps)
+        | None -> None
+    in
+    match parse_sel_items ps with
+    | None -> None
+    | Some (sel, ps) ->
+      let ps = skip_ws ps in
+      (* WHERE clause *)
+      let ps = match ps_consume ps "WHERE" with | Some ps -> ps | None -> ps in
+      match parse_group_graph_pattern ps prefixes with
+      | None -> None
+      | Some (pattern, ps) ->
+        (* GROUP BY *)
+        let ps = skip_ws ps in
+        let (gb, ps) =
+          if ps_starts_with_ci ps "GROUP" then
+            let ps_bk = ps in
+            match ps_consume ps "GROUP" with
+            | Some ps ->
+              let ps = skip_ws ps in
+              (match ps_consume ps "BY" with
+               | Some ps ->
+                 let rec parse_gc (acc : list group_condition) (ps : pstate)
+                   : list group_condition * pstate =
+                   let ps = skip_ws ps in
+                   match parse_variable ps with
+                   | Some (v, ps) -> parse_gc (GC_Var v :: acc) ps
+                   | None ->
+                     (match ps_peek ps with
+                      | Some c when FStar.Char.int_of_char c = 0x28 ->
+                        let ps' = ps_advance ps 1 in
+                        (match parse_expr ps' prefixes with
+                         | Some (e, ps') ->
+                           let ps' = skip_ws ps' in
+                           (match ps_consume ps' "AS" with
+                            | Some ps' ->
+                              (match parse_variable ps' with
+                               | Some (v, ps') ->
+                                 (match ps_expect ps' ")" with
+                                  | Some ps' -> parse_gc (GC_Expr e (Some v) :: acc) ps'
+                                  | None -> (List.Tot.rev acc, ps))
+                               | None -> (List.Tot.rev acc, ps))
+                            | None ->
+                              (match ps_expect ps' ")" with
+                               | Some ps' -> parse_gc (GC_Expr e None :: acc) ps'
+                               | None -> (List.Tot.rev acc, ps)))
+                         | None -> (List.Tot.rev acc, ps))
+                      | _ -> (List.Tot.rev acc, ps))
+                 in
+                 let (gc, ps) = parse_gc [] ps in
+                 if Nil? gc then (None, ps_bk)
+                 else (Some gc, ps)
+               | None -> (None, ps_bk))
+            | None -> (None, ps_bk)
+          else (None, ps)
+        in
+        (* HAVING *)
+        let ps = skip_ws ps in
+        let (hv, ps) =
+          if ps_starts_with_ci ps "HAVING" then
+            match ps_consume ps "HAVING" with
+            | Some ps ->
+              let rec parse_hc (acc : list expr) (ps : pstate)
+                : list expr * pstate =
+                let ps = skip_ws ps in
+                match ps_peek ps with
+                | Some c when FStar.Char.int_of_char c = 0x28 ->
+                  let ps' = ps_advance ps 1 in
+                  (match parse_expr ps' prefixes with
+                   | Some (e, ps') ->
+                     (match ps_expect ps' ")" with
+                      | Some ps' -> parse_hc (e :: acc) ps'
+                      | None -> (List.Tot.rev acc, ps))
+                   | None -> (List.Tot.rev acc, ps))
+                | _ -> (List.Tot.rev acc, ps)
+              in
+              let (hc, ps) = parse_hc [] ps in
+              if Nil? hc then (None, ps) else (Some hc, ps)
+            | None -> (None, ps)
+          else (None, ps)
+        in
+        (* ORDER BY *)
+        let ps = skip_ws ps in
+        let (ob, ps) =
+          if ps_starts_with_ci ps "ORDER" then
+            match ps_consume ps "ORDER" with
+            | Some ps ->
+              let ps = skip_ws ps in
+              (match ps_consume ps "BY" with
+               | Some ps ->
+                 let rec parse_oc (acc : list order_condition) (ps : pstate)
+                   : list order_condition * pstate =
+                   let ps = skip_ws ps in
+                   match ps_consume ps "ASC" with
+                   | Some ps' ->
+                     let ps' = skip_ws ps' in
+                     (match ps_expect ps' "(" with
+                      | Some ps' ->
+                        (match parse_expr ps' prefixes with
+                         | Some (e, ps') ->
+                           (match ps_expect ps' ")" with
+                            | Some ps' -> parse_oc (OC_Asc e :: acc) ps'
+                            | None -> (List.Tot.rev acc, ps))
+                         | None -> (List.Tot.rev acc, ps))
+                      | None -> (List.Tot.rev acc, ps))
+                   | None ->
+                     match ps_consume ps "DESC" with
+                     | Some ps' ->
+                       let ps' = skip_ws ps' in
+                       (match ps_expect ps' "(" with
+                        | Some ps' ->
+                          (match parse_expr ps' prefixes with
+                           | Some (e, ps') ->
+                             (match ps_expect ps' ")" with
+                              | Some ps' -> parse_oc (OC_Desc e :: acc) ps'
+                              | None -> (List.Tot.rev acc, ps))
+                           | None -> (List.Tot.rev acc, ps))
+                        | None -> (List.Tot.rev acc, ps))
+                     | None ->
+                       match parse_expr ps prefixes with
+                       | Some (e, ps) -> parse_oc (OC_Asc e :: acc) ps
+                       | None -> (List.Tot.rev acc, ps)
+                 in
+                 let (oc, ps) = parse_oc [] ps in
+                 if Nil? oc then (None, ps) else (Some oc, ps)
+               | None -> (None, ps))
+            | None -> (None, ps)
+          else (None, ps)
+        in
+        (* LIMIT *)
+        let ps = skip_ws ps in
+        let (l, ps) =
+          if ps_starts_with_ci ps "LIMIT" then
+            match ps_consume ps "LIMIT" with
+            | Some ps -> let ps = skip_ws ps in
+              (match parse_nat_digits_inline ps with
+               | Some (n, ps) -> (Some n, ps) | None -> (None, ps))
+            | None -> (None, ps)
+          else (None, ps)
+        in
+        (* OFFSET *)
+        let ps = skip_ws ps in
+        let (o, ps) =
+          if ps_starts_with_ci ps "OFFSET" then
+            match ps_consume ps "OFFSET" with
+            | Some ps -> let ps = skip_ws ps in
+              (match parse_nat_digits_inline ps with
+               | Some (n, ps) -> (Some n, ps) | None -> (None, ps))
+            | None -> (None, ps)
+          else (None, ps)
+        in
+        let sub_q : query = {
+          q_base = None;
+          q_prefixes = prefixes;
+          q_form = QF_Select sel;
+          q_dataset = [];
+          q_pattern = pattern;
+          q_group_by = gb;
+          q_having = hv;
+          q_modifier = {
+            sm_order_by = ob;
+            sm_distinct = is_distinct;
+            sm_reduced = is_reduced;
+            sm_offset = o;
+            sm_limit = l;
+          };
+        } in
+        Some (GP_SubSelect sub_q, ps)
 
 and parse_ggp_elements (ps : pstate) (prefixes : list (string * wf_iri)) (acc : group_graph_pattern)
   : option (group_graph_pattern * pstate) =

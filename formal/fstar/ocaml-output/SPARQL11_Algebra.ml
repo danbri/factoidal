@@ -1131,16 +1131,48 @@ let value_compare (v1 : eval_result) (v2 : eval_result) (op : comp_op) :
      (RDF_Graph_Executable.T_Literal l2)) ->
       if (lit_datatype l1) = (lit_datatype l2)
       then
-        (if (lit_lang l1) = (lit_lang l2)
+        let dt = lit_datatype l1 in
+        let is_known =
+          ((((((((dt = RDF_Graph_Executable.xsd_string) ||
+                   (dt =
+                      "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"))
+                  || (dt = RDF_Graph_Executable.xsd_integer))
+                 || (dt = RDF_Graph_Executable.xsd_decimal))
+                || (dt = RDF_Graph_Executable.xsd_double))
+               || (dt = RDF_Graph_Executable.xsd_boolean))
+              || (dt = "http://www.w3.org/2001/XMLSchema#float"))
+             || (dt = "http://www.w3.org/2001/XMLSchema#date"))
+            || (dt = "http://www.w3.org/2001/XMLSchema#dateTime") in
+        (if is_known
          then
-           FStar_Pervasives_Native.Some
-             (apply_comp_op
-                (FStar_String.compare (lit_lexical l1) (lit_lexical l2)) op)
+           let lang_match =
+             match ((lit_lang l1), (lit_lang l2)) with
+             | (FStar_Pervasives_Native.Some t1, FStar_Pervasives_Native.Some
+                t2) -> (string_lower t1) = (string_lower t2)
+             | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.None)
+                 -> true
+             | (uu___, uu___1) -> false in
+           (if lang_match
+            then
+              FStar_Pervasives_Native.Some
+                (apply_comp_op
+                   (FStar_String.compare (lit_lexical l1) (lit_lexical l2))
+                   op)
+            else
+              (match op with
+               | CmpEq -> FStar_Pervasives_Native.Some false
+               | CmpNe -> FStar_Pervasives_Native.Some true
+               | uu___1 -> FStar_Pervasives_Native.None))
          else
-           (match op with
-            | CmpEq -> FStar_Pervasives_Native.Some false
-            | CmpNe -> FStar_Pervasives_Native.Some true
-            | uu___1 -> FStar_Pervasives_Native.None))
+           if
+             ((lit_lexical l1) = (lit_lexical l2)) &&
+               ((lit_lang l1) = (lit_lang l2))
+           then
+             (match op with
+              | CmpEq -> FStar_Pervasives_Native.Some true
+              | CmpNe -> FStar_Pervasives_Native.Some false
+              | uu___1 -> FStar_Pervasives_Native.None)
+           else FStar_Pervasives_Native.None)
       else FStar_Pervasives_Native.None
   | (ER_Error, uu___) -> FStar_Pervasives_Native.None
   | (uu___, ER_Error) -> FStar_Pervasives_Native.None
@@ -1950,6 +1982,8 @@ let eval_expr_fwd_ref : (expr -> RDF_Graph_Executable.solution_mapping -> eval_r
   ref (fun _ _ -> failwith "eval_expr_fwd not yet wired")
 let eval_exists_fwd_ref : (group_graph_pattern -> RDF_Graph_Executable.solution_mapping -> RDF_Graph_Executable.rdf_graph -> Prims.bool) ref =
   ref (fun _ _ _ -> failwith "eval_exists_fwd not yet wired")
+let eval_select_query_fwd_ref : (query -> RDF_Graph_Executable.rdf_graph -> solution_sequence) ref =
+  ref (fun _ _ -> failwith "eval_select_query_fwd not yet wired")
 let eval_expr_ebv (e : expr)
   (mu : RDF_Graph_Executable.solution_mapping) : Prims.bool=
   !eval_expr_ebv_ref e mu
@@ -1960,6 +1994,9 @@ let eval_exists_fwd (p : group_graph_pattern)
   (mu : RDF_Graph_Executable.solution_mapping)
   (g : RDF_Graph_Executable.rdf_graph) : Prims.bool=
   !eval_exists_fwd_ref p mu g
+let eval_select_query_fwd (q : query)
+  (g : RDF_Graph_Executable.rdf_graph) : solution_sequence=
+  !eval_select_query_fwd_ref q g
 let left_join (omega1 : solution_sequence) (omega2 : solution_sequence)
   (filter_expr : expr) : solution_sequence=
   FStar_List_Tot_Base.concatMap
@@ -2033,7 +2070,7 @@ let rec eval_pattern (p : group_graph_pattern)
   | GP_Values (vars, rows) -> eval_values vars rows
   | GP_Graph (uu___, p') -> eval_pattern p' g
   | GP_Service (uu___, uu___1, uu___2) -> []
-  | GP_SubSelect uu___ -> []
+  | GP_SubSelect q -> eval_select_query_fwd q g
   | GP_PropertyPath (uu___, uu___1, uu___2) -> []
 let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
   eval_result=
@@ -2104,29 +2141,96 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
                  (RDF_Graph_Executable.T_Literal l2)) ->
                   if (lit_datatype l1) = (lit_datatype l2)
                   then
-                    (match op with
-                     | CmpEq ->
-                         ER_Bool
-                           (((lit_lexical l1) = (lit_lexical l2)) &&
-                              ((match ((lit_lang l1), (lit_lang l2)) with
-                                | (FStar_Pervasives_Native.Some t1,
-                                   FStar_Pervasives_Native.Some t2) ->
-                                    (string_lower t1) = (string_lower t2)
-                                | (FStar_Pervasives_Native.None,
-                                   FStar_Pervasives_Native.None) -> true
-                                | (uu___1, uu___2) -> false)))
-                     | CmpNe ->
-                         ER_Bool
-                           (((lit_lexical l1) <> (lit_lexical l2)) ||
-                              ((match ((lit_lang l1), (lit_lang l2)) with
-                                | (FStar_Pervasives_Native.Some t1,
-                                   FStar_Pervasives_Native.Some t2) ->
-                                    (string_lower t1) <> (string_lower t2)
-                                | (FStar_Pervasives_Native.None,
-                                   FStar_Pervasives_Native.None) -> false
-                                | (uu___1, uu___2) -> true)))
-                     | uu___1 -> ER_Error)
-                  else ER_Error
+                    let dt = lit_datatype l1 in
+                    let is_known_dt =
+                      ((((((((dt = RDF_Graph_Executable.xsd_string) ||
+                               (dt =
+                                  "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"))
+                              || (dt = RDF_Graph_Executable.xsd_integer))
+                             || (dt = RDF_Graph_Executable.xsd_decimal))
+                            || (dt = RDF_Graph_Executable.xsd_double))
+                           || (dt = RDF_Graph_Executable.xsd_boolean))
+                          || (dt = "http://www.w3.org/2001/XMLSchema#float"))
+                         || (dt = "http://www.w3.org/2001/XMLSchema#date"))
+                        || (dt = "http://www.w3.org/2001/XMLSchema#dateTime") in
+                    (if is_known_dt
+                     then
+                       match op with
+                       | CmpEq ->
+                           ER_Bool
+                             (((lit_lexical l1) = (lit_lexical l2)) &&
+                                ((match ((lit_lang l1), (lit_lang l2)) with
+                                  | (FStar_Pervasives_Native.Some t1,
+                                     FStar_Pervasives_Native.Some t2) ->
+                                      (string_lower t1) = (string_lower t2)
+                                  | (FStar_Pervasives_Native.None,
+                                     FStar_Pervasives_Native.None) -> true
+                                  | (uu___1, uu___2) -> false)))
+                       | CmpNe ->
+                           ER_Bool
+                             (((lit_lexical l1) <> (lit_lexical l2)) ||
+                                ((match ((lit_lang l1), (lit_lang l2)) with
+                                  | (FStar_Pervasives_Native.Some t1,
+                                     FStar_Pervasives_Native.Some t2) ->
+                                      (string_lower t1) <> (string_lower t2)
+                                  | (FStar_Pervasives_Native.None,
+                                     FStar_Pervasives_Native.None) -> false
+                                  | (uu___1, uu___2) -> true)))
+                       | uu___1 -> ER_Error
+                     else
+                       (match op with
+                        | CmpEq ->
+                            ER_Bool
+                              (((lit_lexical l1) = (lit_lexical l2)) &&
+                                 ((lit_lang l1) = (lit_lang l2)))
+                        | CmpNe ->
+                            if
+                              ((lit_lexical l1) = (lit_lexical l2)) &&
+                                ((lit_lang l1) = (lit_lang l2))
+                            then ER_Bool false
+                            else ER_Error
+                        | uu___2 -> ER_Error))
+                  else
+                    (let dt1 = lit_datatype l1 in
+                     let dt2 = lit_datatype l2 in
+                     let is_known_1 =
+                       ((((((((dt1 = RDF_Graph_Executable.xsd_string) ||
+                                (dt1 =
+                                   "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"))
+                               || (dt1 = RDF_Graph_Executable.xsd_integer))
+                              || (dt1 = RDF_Graph_Executable.xsd_decimal))
+                             || (dt1 = RDF_Graph_Executable.xsd_double))
+                            || (dt1 = RDF_Graph_Executable.xsd_boolean))
+                           ||
+                           (dt1 = "http://www.w3.org/2001/XMLSchema#float"))
+                          || (dt1 = "http://www.w3.org/2001/XMLSchema#date"))
+                         ||
+                         (dt1 = "http://www.w3.org/2001/XMLSchema#dateTime") in
+                     let is_known_2 =
+                       ((((((((dt2 = RDF_Graph_Executable.xsd_string) ||
+                                (dt2 =
+                                   "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"))
+                               || (dt2 = RDF_Graph_Executable.xsd_integer))
+                              || (dt2 = RDF_Graph_Executable.xsd_decimal))
+                             || (dt2 = RDF_Graph_Executable.xsd_double))
+                            || (dt2 = RDF_Graph_Executable.xsd_boolean))
+                           ||
+                           (dt2 = "http://www.w3.org/2001/XMLSchema#float"))
+                          || (dt2 = "http://www.w3.org/2001/XMLSchema#date"))
+                         ||
+                         (dt2 = "http://www.w3.org/2001/XMLSchema#dateTime") in
+                     if is_known_1 && is_known_2
+                     then
+                       match op with
+                       | CmpEq -> ER_Bool false
+                       | CmpNe -> ER_Bool true
+                       | uu___2 -> ER_Error
+                     else ER_Error)
+              | (ER_Term uu___1, ER_Term uu___2) ->
+                  (match op with
+                   | CmpEq -> ER_Bool false
+                   | CmpNe -> ER_Bool true
+                   | uu___3 -> ER_Error)
               | (uu___1, uu___2) -> ER_Error))
   | E_And (e1, e2) ->
       ER_Bool ((ebv (eval_expr e1 mu)) && (ebv (eval_expr e2 mu)))
@@ -2857,6 +2961,7 @@ let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph) :
   | QF_Describe uu___ -> []
 type path_result =
   (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list
+let () = eval_select_query_fwd_ref := (fun q g -> eval_select_query q g)
 let is_not_literal (t : RDF_Graph_Executable.rdf_term) : Prims.bool=
   match t with
   | RDF_Graph_Executable.T_Literal uu___ -> false

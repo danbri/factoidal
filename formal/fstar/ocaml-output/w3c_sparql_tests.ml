@@ -99,6 +99,10 @@ let turtle_parse (content : string) : triple list =
         (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c = '_' || c = '-' || c = '.' || c = '/' || c = '%') do
         incr pos
       done;
+      (* Strip trailing dots — per Turtle spec, local part cannot end with '.' *)
+      while !pos > local_start && content.[!pos - 1] = '.' do
+        decr pos
+      done;
       let local = String.sub content local_start (!pos - local_start) in
       match List.assoc_opt prefix !prefixes with
       | Some base -> Some (base ^ local)
