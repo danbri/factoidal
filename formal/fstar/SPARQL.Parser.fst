@@ -1761,6 +1761,43 @@ and parse_ggp_elements (ps : pstate) (prefixes : list (string * wf_iri)) (acc : 
          parse_ggp_elements ps' prefixes new_acc filters
        | None -> Some (apply_filters acc filters, ps))
     | None ->
+    (* Try GRAPH keyword: GRAPH VarOrIri GroupGraphPattern *)
+    match ps_consume ps "GRAPH" with
+    | Some ps_after ->
+      let ps_after = skip_ws ps_after in
+      (* Parse VarOrIri *)
+      let graph_term_opt =
+        if ps_starts_with ps_after "?" || ps_starts_with ps_after "$" then
+          match parse_variable ps_after with
+          | Some (v, ps') -> Some (PT_Var v, ps')
+          | None -> None
+        else
+          (* Try full IRI first, then fall back to iriref for relative IRIs *)
+          match parse_iri ps_after prefixes with
+          | Some (iri, ps') -> Some (PT_IRI iri, ps')
+          | None ->
+            match parse_iriref ps_after with
+            | Some (raw, ps') ->
+              (* Relative IRI with no base — make it a valid IRI with file: scheme *)
+              let as_iri = "file:" ^ raw in
+              if is_iri as_iri then Some (PT_IRI as_iri, ps')
+              else None
+            | None -> None
+      in
+      (match graph_term_opt with
+       | Some (gt, ps') ->
+         let ps' = skip_ws ps' in
+         (match parse_group_graph_pattern ps' prefixes with
+          | Some (graph_pat, ps'') ->
+            let graph_node = GP_Graph gt graph_pat in
+            let new_acc = if acc = GP_Empty then graph_node
+                          else GP_Join acc graph_node in
+            let ps'' = skip_ws ps'' in
+            let ps'' = match ps_consume ps'' "." with | Some p -> p | None -> ps'' in
+            parse_ggp_elements ps'' prefixes new_acc filters
+          | None -> Some (apply_filters acc filters, ps))
+       | None -> Some (apply_filters acc filters, ps))
+    | None ->
     (* Try FILTER — collect and apply at end of group per SPARQL spec §18.2.4.2 *)
     match ps_consume ps "FILTER" with
     | Some ps_after ->

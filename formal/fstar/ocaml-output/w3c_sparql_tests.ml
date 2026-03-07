@@ -676,6 +676,7 @@ type test_case = {
   tc_query : string;   (* path to .rq file *)
   tc_data : string;    (* path to data file *)
   tc_result : string;  (* path to .srx file *)
+  tc_named_graphs : (string * string) list;  (* (graph_name_IRI, data_file_path) *)
 }
 
 let run_test (tc : test_case) : unit =
@@ -697,6 +698,12 @@ let run_test (tc : test_case) : unit =
         else
           turtle_parse data_str
     in
+    (* Load named graphs *)
+    let named_graphs = List.filter_map (fun (name, path) ->
+      match read_file path with
+      | None -> None
+      | Some data_str -> Some (name, turtle_parse data_str)) tc.tc_named_graphs
+    in
     (* Parse query with F*-extracted parser *)
     match parse_query query_str with
     | None ->
@@ -711,7 +718,7 @@ let run_test (tc : test_case) : unit =
       in
       (* Evaluate query with F*-extracted evaluator *)
       (try
-        let results = eval_select_query query graph in
+        let results = eval_select_query query graph named_graphs in
         let expected_count = match expected with
           | None -> -1
           | Some rows -> List.length rows
@@ -742,7 +749,7 @@ let run_test (tc : test_case) : unit =
 let basic_tests =
   let dir = sparql_base ^ "sparql10/basic/" in
   List.map (fun (name, data, query, result) ->
-    { tc_name = "basic/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result })
+    { tc_name = "basic/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] })
   [
     ("bgp-no-match", "data-7.ttl", "bgp-no-match.rq", "bgp-no-match.srx");
     ("spoo-1", "data-6.ttl", "spoo-1.rq", "spoo-1.srx");
@@ -783,11 +790,11 @@ let distinct_tests =
     ("distinct-star-1", "data-star.ttl", "distinct-star-1.rq", "distinct-star-1.srx");
   ] in
   List.map (fun (name, data, query, result) ->
-    { tc_name = "distinct/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+    { tc_name = "distinct/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
 
 let bound_tests =
   let dir = sparql_base ^ "sparql10/bound/" in
-  [{ tc_name = "bound/dawg-bound-query-001"; tc_query = dir ^ "bound1.rq"; tc_data = dir ^ "data.ttl"; tc_result = dir ^ "bound1-result.srx" }]
+  [{ tc_name = "bound/dawg-bound-query-001"; tc_query = dir ^ "bound1.rq"; tc_data = dir ^ "data.ttl"; tc_result = dir ^ "bound1-result.srx"; tc_named_graphs = [] }]
 
 let expr_equals_tests =
   let dir = sparql_base ^ "sparql10/expr-equals/" in
@@ -799,7 +806,7 @@ let expr_equals_tests =
     ("eq-5", "data-eq.ttl", "query-eq-5.rq", "result-eq-5.srx");
   ] in
   List.map (fun (name, data, query, result) ->
-    { tc_name = "expr-equals/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+    { tc_name = "expr-equals/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
 
 let regex_tests =
   let dir = sparql_base ^ "sparql10/regex/" in
@@ -810,7 +817,7 @@ let regex_tests =
     ("regex-query-004", "regex-data-01.ttl", "regex-query-004.rq", "regex-result-004.srx");
   ] in
   List.map (fun (name, data, query, result) ->
-    { tc_name = "regex/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+    { tc_name = "regex/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
 
 let bind_tests =
   let dir = sparql_base ^ "sparql11/bind/" in
@@ -825,19 +832,22 @@ let bind_tests =
     ("bind08", "data.ttl", "bind08.rq", "bind08.srx");
   ] in
   List.map (fun (name, data, query, result) ->
-    { tc_name = "bind/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+    { tc_name = "bind/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
 
 let exists_tests =
   let dir = sparql_base ^ "sparql11/exists/" in
   let files = [
     ("exists01", "exists01.ttl", "exists01.rq", "exists01.srx");
     ("exists02", "exists01.ttl", "exists02.rq", "exists02.srx");
-    ("exists03", "exists01.ttl", "exists03.rq", "exists03.srx");
     ("exists04", "exists01.ttl", "exists04.rq", "exists04.srx");
     ("exists05", "exists01.ttl", "exists05.rq", "exists05.srx");
   ] in
-  List.map (fun (name, data, query, result) ->
-    { tc_name = "exists/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+  let basic = List.map (fun (name, data, query, result) ->
+    { tc_name = "exists/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files in
+  (* exists03 needs a named graph *)
+  basic @ [{ tc_name = "exists/exists03"; tc_query = dir ^ "exists03.rq"; tc_data = dir ^ "exists01.ttl";
+             tc_result = dir ^ "exists03.srx";
+             tc_named_graphs = [("file:exists02.ttl", dir ^ "exists02.ttl")] }]
 
 let project_expr_tests =
   let dir = sparql_base ^ "sparql11/project-expression/" in
@@ -851,7 +861,7 @@ let project_expr_tests =
     ("projexp07", "projexp07.ttl", "projexp07.rq", "projexp07.srx");
   ] in
   List.map (fun (name, data, query, result) ->
-    { tc_name = "project-expression/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+    { tc_name = "project-expression/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
 
 let functions_tests =
   let dir = sparql_base ^ "sparql11/functions/" in
@@ -923,7 +933,7 @@ let functions_tests =
     ("tz-01", "data.ttl", "tz-01.rq", "tz-01.srx");
   ] in
   List.map (fun (name, data, query, result) ->
-    { tc_name = "functions/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+    { tc_name = "functions/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
 
 let solution_seq_tests =
   let dir = sparql_base ^ "sparql10/solution-seq/" in
@@ -943,11 +953,11 @@ let solution_seq_tests =
     ("slice-24", "data.ttl", "slice-24.rq", "slice-results-24.ttl");
   ] in
   List.map (fun (name, data, query, result) ->
-    { tc_name = "solution-seq/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+    { tc_name = "solution-seq/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
 
 let bnode_coreference_tests =
   let dir = sparql_base ^ "sparql10/bnode-coreference/" in
-  [{ tc_name = "bnode-coreference/dawg-bnode-coref-001"; tc_query = dir ^ "query.rq"; tc_data = dir ^ "data.ttl"; tc_result = dir ^ "result.srx" }]
+  [{ tc_name = "bnode-coreference/dawg-bnode-coref-001"; tc_query = dir ^ "query.rq"; tc_data = dir ^ "data.ttl"; tc_result = dir ^ "result.srx"; tc_named_graphs = [] }]
 
 let optional_tests =
   let dir = sparql_base ^ "sparql10/optional/" in
@@ -958,7 +968,7 @@ let optional_tests =
     ("dawg-union-001", "data-opt-3.ttl", "q-opt-complex-1.rq", "result-opt-complex-1.srx");
   ] in
   List.map (fun (name, data, query, result) ->
-    { tc_name = "optional/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+    { tc_name = "optional/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
 
 let sort_tests =
   let dir = sparql_base ^ "sparql10/sort/" in
@@ -969,7 +979,7 @@ let sort_tests =
     ("dawg-sort-6", "data-sort-6.ttl", "query-sort-6.rq", "result-sort-6.srx");
   ] in
   List.map (fun (name, data, query, result) ->
-    { tc_name = "sort/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+    { tc_name = "sort/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
 
 let expr_ops_tests =
   let dir = sparql_base ^ "sparql10/expr-ops/" in
@@ -993,7 +1003,7 @@ let expr_ops_tests =
     ("unminus-2", "data-numbers.ttl", "query-unminus-2.rq", "result-unminus-2.srx");
   ] in
   List.map (fun (name, data, query, result) ->
-    { tc_name = "expr-ops/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+    { tc_name = "expr-ops/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
 
 let open_world_tests =
   let dir = sparql_base ^ "sparql10/open-world/" in
@@ -1018,7 +1028,7 @@ let open_world_tests =
     ("open-cmp-02", "data-4.ttl", "open-cmp-02.rq", "open-cmp-02-result.srx");
   ] in
   List.map (fun (name, data, query, result) ->
-    { tc_name = "open-world/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+    { tc_name = "open-world/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
 
 let negation_tests =
   let dir = sparql_base ^ "sparql11/negation/" in
@@ -1036,7 +1046,7 @@ let negation_tests =
     ("part-minuend", "part-minuend.ttl", "part-minuend.rq", "part-minuend.srx");
   ] in
   List.map (fun (name, data, query, result) ->
-    { tc_name = "negation/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+    { tc_name = "negation/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
 
 let grouping_tests =
   let dir = sparql_base ^ "sparql11/grouping/" in
@@ -1047,7 +1057,7 @@ let grouping_tests =
     ("group05", "group-data-2.ttl", "group05.rq", "group05.srx");
   ] in
   List.map (fun (name, data, query, result) ->
-    { tc_name = "grouping/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+    { tc_name = "grouping/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
 
 let ask_tests =
   let dir = sparql_base ^ "sparql10/ask/" in
@@ -1058,7 +1068,7 @@ let ask_tests =
     ("ask-8", "data.ttl", "ask-8.rq", "ask-8.srx");
   ] in
   List.map (fun (name, data, query, result) ->
-    { tc_name = "ask/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+    { tc_name = "ask/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
 
 let reduced_tests =
   let dir = sparql_base ^ "sparql10/reduced/" in
@@ -1067,7 +1077,7 @@ let reduced_tests =
     ("reduced-2", "reduced-str.ttl", "reduced-2.rq", "reduced-2.srx");
   ] in
   List.map (fun (name, data, query, result) ->
-    { tc_name = "reduced/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+    { tc_name = "reduced/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
 
 let expr_builtin_tests =
   let dir = sparql_base ^ "sparql10/expr-builtin/" in
@@ -1082,7 +1092,7 @@ let expr_builtin_tests =
     ("q-datatype-1", "data-builtin-2.ttl", "q-datatype-1.rq", "result-datatype-1.srx");
   ] in
   List.map (fun (name, data, query, result) ->
-    { tc_name = "expr-builtin/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+    { tc_name = "expr-builtin/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
 
 let boolean_effective_value_tests =
   let dir = sparql_base ^ "sparql10/boolean-effective-value/" in
@@ -1096,7 +1106,7 @@ let boolean_effective_value_tests =
     ("dawg-bev-6", "data-2.ttl", "query-bev-6.rq", "result-bev-6.ttl");
   ] in
   List.map (fun (name, data, query, result) ->
-    { tc_name = "boolean-eff-value/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+    { tc_name = "boolean-eff-value/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
 
 let optional_filter_tests =
   let dir = sparql_base ^ "sparql10/optional-filter/" in
@@ -1108,7 +1118,7 @@ let optional_filter_tests =
     ("dawg-optional-filter-005-not-simplified", "data-1.ttl", "expr-5.rq", "expr-5-result-not-simplified.ttl");
   ] in
   List.map (fun (name, data, query, result) ->
-    { tc_name = "optional-filter/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+    { tc_name = "optional-filter/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
 
 let triple_match_tests =
   let dir = sparql_base ^ "sparql10/triple-match/" in
@@ -1119,7 +1129,7 @@ let triple_match_tests =
     ("dawg-triple-pattern-004", "dawg-data-01.ttl", "dawg-tp-04.rq", "result-tp-04.ttl");
   ] in
   List.map (fun (name, data, query, result) ->
-    { tc_name = "triple-match/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+    { tc_name = "triple-match/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
 
 let aggregates_tests =
   let dir = sparql_base ^ "sparql11/aggregates/" in
@@ -1138,7 +1148,7 @@ let aggregates_tests =
     ("agg-groupconcat-3", "agg-groupconcat-1.ttl", "agg-groupconcat-3.rq", "agg-groupconcat-3.srx");
   ] in
   List.map (fun (name, data, query, result) ->
-    { tc_name = "aggregates/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files
+    { tc_name = "aggregates/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
 
 (* ====================================================================== *)
 (* Main entry point                                                         *)

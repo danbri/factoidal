@@ -33,35 +33,41 @@ sed -i 's/failwith "Not yet implemented: SPARQL11.Algebra.hash_sha384"/Digestif.
 sed -i 's/^let hash_sha512 (uu___ : Prims.string) : Prims.string=$/let hash_sha512 (s : Prims.string) : Prims.string=/' "$FILE"
 sed -i 's/failwith "Not yet implemented: SPARQL11.Algebra.hash_sha512"/Digestif.SHA512.digest_string s |> Digestif.SHA512.to_hex/' "$FILE"
 
-# 3. Patch eval_expr_ebv, eval_expr_fwd, eval_exists_fwd with ref cells
+# 3. Patch eval_expr_ebv, eval_expr_fwd, eval_exists_fwd, eval_select_query_fwd with ref cells
 python3 -c "
 import re
 with open('$FILE', 'r') as f:
     content = f.read()
 
-# Replace the three assume val stubs with ref cell pattern
+# Replace the assume val stubs with ref cell pattern
 old = '''let eval_expr_ebv (uu___ : expr)
   (uu___1 : RDF_Graph_Executable.solution_mapping) : Prims.bool=
   failwith \"Not yet implemented: SPARQL11.Algebra.eval_expr_ebv\"
 let eval_expr_fwd (uu___ : expr)
   (uu___1 : RDF_Graph_Executable.solution_mapping) : eval_result=
   failwith \"Not yet implemented: SPARQL11.Algebra.eval_expr_fwd\"
+type named_graph_dataset =
+  (Prims.string * RDF_Graph_Executable.rdf_graph) Prims.list
 let eval_exists_fwd (uu___ : group_graph_pattern)
   (uu___1 : RDF_Graph_Executable.solution_mapping)
-  (uu___2 : RDF_Graph_Executable.rdf_graph) : Prims.bool=
+  (uu___2 : RDF_Graph_Executable.rdf_graph) (uu___3 : named_graph_dataset) :
+  Prims.bool=
   failwith \"Not yet implemented: SPARQL11.Algebra.eval_exists_fwd\"
 let eval_select_query_fwd (uu___ : query)
-  (uu___1 : RDF_Graph_Executable.rdf_graph) : solution_sequence=
+  (uu___1 : RDF_Graph_Executable.rdf_graph) (uu___2 : named_graph_dataset) :
+  solution_sequence=
   failwith \"Not yet implemented: SPARQL11.Algebra.eval_select_query_fwd\"'''
 
-new = '''let eval_expr_ebv_ref : (expr -> RDF_Graph_Executable.solution_mapping -> Prims.bool) ref =
+new = '''type named_graph_dataset =
+  (Prims.string * RDF_Graph_Executable.rdf_graph) Prims.list
+let eval_expr_ebv_ref : (expr -> RDF_Graph_Executable.solution_mapping -> Prims.bool) ref =
   ref (fun _ _ -> failwith \"eval_expr_ebv not yet wired\")
 let eval_expr_fwd_ref : (expr -> RDF_Graph_Executable.solution_mapping -> eval_result) ref =
   ref (fun _ _ -> failwith \"eval_expr_fwd not yet wired\")
-let eval_exists_fwd_ref : (group_graph_pattern -> RDF_Graph_Executable.solution_mapping -> RDF_Graph_Executable.rdf_graph -> Prims.bool) ref =
-  ref (fun _ _ _ -> failwith \"eval_exists_fwd not yet wired\")
-let eval_select_query_fwd_ref : (query -> RDF_Graph_Executable.rdf_graph -> solution_sequence) ref =
-  ref (fun _ _ -> failwith \"eval_select_query_fwd not yet wired\")
+let eval_exists_fwd_ref : (group_graph_pattern -> RDF_Graph_Executable.solution_mapping -> RDF_Graph_Executable.rdf_graph -> named_graph_dataset -> Prims.bool) ref =
+  ref (fun _ _ _ _ -> failwith \"eval_exists_fwd not yet wired\")
+let eval_select_query_fwd_ref : (query -> RDF_Graph_Executable.rdf_graph -> named_graph_dataset -> solution_sequence) ref =
+  ref (fun _ _ _ -> failwith \"eval_select_query_fwd not yet wired\")
 let eval_expr_ebv (e : expr)
   (mu : RDF_Graph_Executable.solution_mapping) : Prims.bool=
   !eval_expr_ebv_ref e mu
@@ -70,11 +76,11 @@ let eval_expr_fwd (e : expr)
   !eval_expr_fwd_ref e mu
 let eval_exists_fwd (p : group_graph_pattern)
   (mu : RDF_Graph_Executable.solution_mapping)
-  (g : RDF_Graph_Executable.rdf_graph) : Prims.bool=
-  !eval_exists_fwd_ref p mu g
+  (g : RDF_Graph_Executable.rdf_graph) (ds : named_graph_dataset) : Prims.bool=
+  !eval_exists_fwd_ref p mu g ds
 let eval_select_query_fwd (q : query)
-  (g : RDF_Graph_Executable.rdf_graph) : solution_sequence=
-  !eval_select_query_fwd_ref q g'''
+  (g : RDF_Graph_Executable.rdf_graph) (ds : named_graph_dataset) : solution_sequence=
+  !eval_select_query_fwd_ref q g ds'''
 
 content = content.replace(old, new)
 
@@ -86,12 +92,12 @@ type group = {'''
 content = content.replace('type group = {', wire1)
 
 # Wire up eval_exists_fwd_ref after eval_not_exists
-target = 'Prims.op_Negation (eval_exists pattern mu graph)\n'
-content = content.replace(target, target + 'let () = eval_exists_fwd_ref := (fun p mu g -> eval_exists p mu g)\n', 1)
+target = 'Prims.op_Negation (eval_exists pattern mu graph ds)\n'
+content = content.replace(target, target + 'let () = eval_exists_fwd_ref := (fun p mu g ds -> eval_exists p mu g ds)\n', 1)
 
 # Wire up eval_select_query_fwd_ref after eval_select_query definition
 target2 = 'let is_not_literal (t : RDF_Graph_Executable.rdf_term)'
-wire2 = 'let () = eval_select_query_fwd_ref := (fun q g -> eval_select_query q g)\n' + target2
+wire2 = 'let () = eval_select_query_fwd_ref := (fun q g ds -> eval_select_query q g ds)\n' + target2
 content = content.replace(target2, wire2, 1)
 
 with open('$FILE', 'w') as f:

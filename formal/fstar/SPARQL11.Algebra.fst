@@ -1330,25 +1330,28 @@ let join (omega1 omega2 : solution_sequence) : solution_sequence =
 assume val eval_expr_ebv : expr -> solution_mapping -> bool
 assume val eval_expr_fwd : expr -> solution_mapping -> eval_result
 
+(* Named graph dataset: list of (graph_name_IRI, graph) pairs *)
+let named_graph_dataset = list (string * rdf_graph)
+
 (* EXISTS/NOT EXISTS need graph context — forward ref to concrete eval_exists *)
-assume val eval_exists_fwd : group_graph_pattern -> solution_mapping -> rdf_graph -> bool
+assume val eval_exists_fwd : group_graph_pattern -> solution_mapping -> rdf_graph -> named_graph_dataset -> bool
 
 (* Sub-SELECT needs eval_select_query — forward ref *)
-assume val eval_select_query_fwd : query -> rdf_graph -> solution_sequence
+assume val eval_select_query_fwd : query -> rdf_graph -> named_graph_dataset -> solution_sequence
 
 (* Graph-aware filter expression evaluator: handles E_Exists/E_NotExists
    within compound expressions (E_And, E_Or, E_Not).
    Plain eval_expr cannot handle EXISTS because it lacks graph context. *)
-let rec eval_filter_with_graph (e : expr) (mu : solution_mapping) (g : rdf_graph) : eval_result =
+let rec eval_filter_with_graph (e : expr) (mu : solution_mapping) (g : rdf_graph) (ds : named_graph_dataset) : eval_result =
   match e with
-  | E_Exists sub_p -> ER_Bool (eval_exists_fwd sub_p mu g)
-  | E_NotExists sub_p -> ER_Bool (not (eval_exists_fwd sub_p mu g))
+  | E_Exists sub_p -> ER_Bool (eval_exists_fwd sub_p mu g ds)
+  | E_NotExists sub_p -> ER_Bool (not (eval_exists_fwd sub_p mu g ds))
   | E_And e1 e2 ->
-    ER_Bool (ebv (eval_filter_with_graph e1 mu g) && ebv (eval_filter_with_graph e2 mu g))
+    ER_Bool (ebv (eval_filter_with_graph e1 mu g ds) && ebv (eval_filter_with_graph e2 mu g ds))
   | E_Or e1 e2 ->
-    ER_Bool (ebv (eval_filter_with_graph e1 mu g) || ebv (eval_filter_with_graph e2 mu g))
+    ER_Bool (ebv (eval_filter_with_graph e1 mu g ds) || ebv (eval_filter_with_graph e2 mu g ds))
   | E_Not e1 ->
-    ER_Bool (not (ebv (eval_filter_with_graph e1 mu g)))
+    ER_Bool (not (ebv (eval_filter_with_graph e1 mu g ds)))
   | _ -> eval_expr_fwd e mu
 
 (* LeftJoin (OPTIONAL): join + unmatched from left *)
@@ -1397,33 +1400,33 @@ let minus (omega1 omega2 : solution_sequence) : solution_sequence =
    [S6] GRAPH patterns evaluated against single default graph only.
    [S1] Property paths deferred.
    Sub-SELECT deferred (requires eval_select_query). *)
-let rec eval_pattern (p : group_graph_pattern) (g : rdf_graph)
+let rec eval_pattern (p : group_graph_pattern) (g : rdf_graph) (ds : named_graph_dataset)
   : Tot solution_sequence (decreases p) =
   match p with
   | GP_BGP bgp -> eval_bgp bgp g
 
   | GP_Join p1 p2 ->
-    join (eval_pattern p1 g) (eval_pattern p2 g)
+    join (eval_pattern p1 g ds) (eval_pattern p2 g ds)
 
   | GP_LeftJoin p1 p2 filter_e ->
-    left_join (eval_pattern p1 g) (eval_pattern p2 g) filter_e
+    left_join (eval_pattern p1 g ds) (eval_pattern p2 g ds) filter_e
 
   | GP_Filter e p' ->
-    let omega = eval_pattern p' g in
+    let omega = eval_pattern p' g ds in
     (* Use graph-aware filter evaluator to handle EXISTS/NOT EXISTS
        even when nested inside compound expressions (AND, OR, NOT) *)
-    List.Tot.filter (fun mu -> ebv (eval_filter_with_graph e mu g)) omega
+    List.Tot.filter (fun mu -> ebv (eval_filter_with_graph e mu g ds)) omega
 
   | GP_Union p1 p2 ->
-    union (eval_pattern p1 g) (eval_pattern p2 g)
+    union (eval_pattern p1 g ds) (eval_pattern p2 g ds)
 
   | GP_Minus p1 p2 ->
-    minus (eval_pattern p1 g) (eval_pattern p2 g)
+    minus (eval_pattern p1 g ds) (eval_pattern p2 g ds)
 
   | GP_Empty -> [sm_empty]
 
   | GP_Bind e v p' ->
-    let omega = eval_pattern p' g in
+    let omega = eval_pattern p' g ds in
     List.Tot.map
       (fun mu ->
         match er_to_term (eval_expr_fwd e mu) with
@@ -1437,9 +1440,25 @@ let rec eval_pattern (p : group_graph_pattern) (g : rdf_graph)
   | GP_Values vars rows ->
     eval_values vars rows
 
-  | GP_Graph _ p' ->
-    (* [S6] Named graph patterns: evaluate against default graph *)
-    eval_pattern p' g
+  | GP_Graph gt p' ->
+    (* GRAPH keyword: evaluate pattern against named graph(s) *)
+    (match gt with
+     | PT_IRI iri ->
+       (* GRAPH <iri> { P }: evaluate P against the named graph identified by iri *)
+       (match List.Tot.assoc (iri_to_string iri) ds with
+        | Some ng -> eval_pattern p' ng ds
+        | None -> [])
+     | PT_Var v ->
+       (* GRAPH ?var { P }: evaluate P against each named graph, bind ?var *)
+       List.Tot.concatMap
+         (fun (name, ng) ->
+           let omega = eval_pattern p' ng ds in
+           List.Tot.map (fun mu ->
+             match string_to_iri name with
+             | Some iri -> sm_bind v (T_IRI iri) mu
+             | None -> mu) omega)
+         ds
+     | _ -> [])
 
   | GP_Service _ _ _ ->
     (* SERVICE: remote execution, not supported *)
@@ -1447,7 +1466,7 @@ let rec eval_pattern (p : group_graph_pattern) (g : rdf_graph)
 
   | GP_SubSelect q ->
     (* Sub-SELECT: evaluate the sub-query independently *)
-    eval_select_query_fwd q g
+    eval_select_query_fwd q g ds
 
   | GP_PropertyPath _ _ _ ->
     (* [S1] Property paths: deferred *)
@@ -2329,11 +2348,11 @@ let select_item_vars (items : list select_item) : list var_name =
    Applies: pattern evaluation → SELECT expressions → ORDER BY →
             projection → DISTINCT/REDUCED → OFFSET/LIMIT.
    GROUP BY, aggregation, and HAVING are skipped for now (assume val dependencies). *)
-let eval_select_query (q : query) (g : rdf_graph) : solution_sequence =
+let eval_select_query (q : query) (g : rdf_graph) (ds : named_graph_dataset) : solution_sequence =
   match q.q_form with
   | QF_Select sel ->
     (* 1. Evaluate WHERE clause *)
-    let omega = eval_pattern q.q_pattern g in
+    let omega = eval_pattern q.q_pattern g ds in
 
     (* 2–5. GROUP BY / aggregation / HAVING / SELECT expressions *)
     let omega' = match sel with
@@ -2880,13 +2899,13 @@ let rec substitute_pattern (mu : solution_mapping) (p : group_graph_pattern)
   | GP_Empty -> GP_Empty
 
 let eval_exists (pattern : group_graph_pattern) (mu : solution_mapping)
-  (graph : rdf_graph) : bool =
+  (graph : rdf_graph) (ds : named_graph_dataset) : bool =
   let substituted = substitute_pattern mu pattern in
-  List.Tot.length (eval_pattern substituted graph) > 0
+  List.Tot.length (eval_pattern substituted graph ds) > 0
 
 let eval_not_exists (pattern : group_graph_pattern) (mu : solution_mapping)
-  (graph : rdf_graph) : bool =
-  not (eval_exists pattern mu graph)
+  (graph : rdf_graph) (ds : named_graph_dataset) : bool =
+  not (eval_exists pattern mu graph ds)
 
 (** ====================================================================== **)
 (** Part 18: SPARQL 1.1 Sub-SELECT (§12)                                  **)
