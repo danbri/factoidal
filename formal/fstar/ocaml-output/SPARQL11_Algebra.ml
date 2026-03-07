@@ -1145,24 +1145,42 @@ let value_compare (v1 : eval_result) (v2 : eval_result) (op : comp_op) :
             || (dt = "http://www.w3.org/2001/XMLSchema#dateTime") in
         (if is_known
          then
-           let lang_match =
-             match ((lit_lang l1), (lit_lang l2)) with
-             | (FStar_Pervasives_Native.Some t1, FStar_Pervasives_Native.Some
-                t2) -> (string_lower t1) = (string_lower t2)
-             | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.None)
-                 -> true
-             | (uu___, uu___1) -> false in
-           (if lang_match
+           let is_numeric_dt =
+             (((dt = RDF_Graph_Executable.xsd_integer) ||
+                 (dt = RDF_Graph_Executable.xsd_decimal))
+                || (dt = RDF_Graph_Executable.xsd_double))
+               || (dt = "http://www.w3.org/2001/XMLSchema#float") in
+           (if is_numeric_dt
             then
-              FStar_Pervasives_Native.Some
-                (apply_comp_op
-                   (FStar_String.compare (lit_lexical l1) (lit_lexical l2))
-                   op)
+              (if
+                 ((lit_lexical l1) = (lit_lexical l2)) &&
+                   ((lit_lang l1) = (lit_lang l2))
+               then
+                 match op with
+                 | CmpEq -> FStar_Pervasives_Native.Some true
+                 | CmpNe -> FStar_Pervasives_Native.Some false
+                 | uu___ -> FStar_Pervasives_Native.None
+               else FStar_Pervasives_Native.None)
             else
-              (match op with
-               | CmpEq -> FStar_Pervasives_Native.Some false
-               | CmpNe -> FStar_Pervasives_Native.Some true
-               | uu___1 -> FStar_Pervasives_Native.None))
+              (let lang_match =
+                 match ((lit_lang l1), (lit_lang l2)) with
+                 | (FStar_Pervasives_Native.Some t1,
+                    FStar_Pervasives_Native.Some t2) ->
+                     (string_lower t1) = (string_lower t2)
+                 | (FStar_Pervasives_Native.None,
+                    FStar_Pervasives_Native.None) -> true
+                 | (uu___1, uu___2) -> false in
+               if lang_match
+               then
+                 FStar_Pervasives_Native.Some
+                   (apply_comp_op
+                      (FStar_String.compare (lit_lexical l1) (lit_lexical l2))
+                      op)
+               else
+                 (match op with
+                  | CmpEq -> FStar_Pervasives_Native.Some false
+                  | CmpNe -> FStar_Pervasives_Native.Some true
+                  | uu___2 -> FStar_Pervasives_Native.None)))
          else
            if
              ((lit_lexical l1) = (lit_lexical l2)) &&
@@ -2155,28 +2173,51 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
                         || (dt = "http://www.w3.org/2001/XMLSchema#dateTime") in
                     (if is_known_dt
                      then
-                       match op with
-                       | CmpEq ->
-                           ER_Bool
-                             (((lit_lexical l1) = (lit_lexical l2)) &&
-                                ((match ((lit_lang l1), (lit_lang l2)) with
-                                  | (FStar_Pervasives_Native.Some t1,
-                                     FStar_Pervasives_Native.Some t2) ->
-                                      (string_lower t1) = (string_lower t2)
-                                  | (FStar_Pervasives_Native.None,
-                                     FStar_Pervasives_Native.None) -> true
-                                  | (uu___1, uu___2) -> false)))
-                       | CmpNe ->
-                           ER_Bool
-                             (((lit_lexical l1) <> (lit_lexical l2)) ||
-                                ((match ((lit_lang l1), (lit_lang l2)) with
-                                  | (FStar_Pervasives_Native.Some t1,
-                                     FStar_Pervasives_Native.Some t2) ->
-                                      (string_lower t1) <> (string_lower t2)
-                                  | (FStar_Pervasives_Native.None,
-                                     FStar_Pervasives_Native.None) -> false
-                                  | (uu___1, uu___2) -> true)))
-                       | uu___1 -> ER_Error
+                       let is_numeric =
+                         (((dt = RDF_Graph_Executable.xsd_integer) ||
+                             (dt = RDF_Graph_Executable.xsd_decimal))
+                            || (dt = RDF_Graph_Executable.xsd_double))
+                           || (dt = "http://www.w3.org/2001/XMLSchema#float") in
+                       (if is_numeric
+                        then
+                          (if
+                             ((lit_lexical l1) = (lit_lexical l2)) &&
+                               ((lit_lang l1) = (lit_lang l2))
+                           then
+                             match op with
+                             | CmpEq -> ER_Bool true
+                             | CmpNe -> ER_Bool false
+                             | uu___1 -> ER_Error
+                           else ER_Error)
+                        else
+                          (match op with
+                           | CmpEq ->
+                               ER_Bool
+                                 (((lit_lexical l1) = (lit_lexical l2)) &&
+                                    ((match ((lit_lang l1), (lit_lang l2))
+                                      with
+                                      | (FStar_Pervasives_Native.Some t1,
+                                         FStar_Pervasives_Native.Some t2) ->
+                                          (string_lower t1) =
+                                            (string_lower t2)
+                                      | (FStar_Pervasives_Native.None,
+                                         FStar_Pervasives_Native.None) ->
+                                          true
+                                      | (uu___2, uu___3) -> false)))
+                           | CmpNe ->
+                               ER_Bool
+                                 (((lit_lexical l1) <> (lit_lexical l2)) ||
+                                    ((match ((lit_lang l1), (lit_lang l2))
+                                      with
+                                      | (FStar_Pervasives_Native.Some t1,
+                                         FStar_Pervasives_Native.Some t2) ->
+                                          (string_lower t1) <>
+                                            (string_lower t2)
+                                      | (FStar_Pervasives_Native.None,
+                                         FStar_Pervasives_Native.None) ->
+                                          false
+                                      | (uu___2, uu___3) -> true)))
+                           | uu___2 -> ER_Error))
                      else
                        (match op with
                         | CmpEq ->
@@ -2193,33 +2234,9 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
                   else
                     (let dt1 = lit_datatype l1 in
                      let dt2 = lit_datatype l2 in
-                     let is_known_1 =
-                       ((((((((dt1 = RDF_Graph_Executable.xsd_string) ||
-                                (dt1 =
-                                   "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"))
-                               || (dt1 = RDF_Graph_Executable.xsd_integer))
-                              || (dt1 = RDF_Graph_Executable.xsd_decimal))
-                             || (dt1 = RDF_Graph_Executable.xsd_double))
-                            || (dt1 = RDF_Graph_Executable.xsd_boolean))
-                           ||
-                           (dt1 = "http://www.w3.org/2001/XMLSchema#float"))
-                          || (dt1 = "http://www.w3.org/2001/XMLSchema#date"))
-                         ||
-                         (dt1 = "http://www.w3.org/2001/XMLSchema#dateTime") in
-                     let is_known_2 =
-                       ((((((((dt2 = RDF_Graph_Executable.xsd_string) ||
-                                (dt2 =
-                                   "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"))
-                               || (dt2 = RDF_Graph_Executable.xsd_integer))
-                              || (dt2 = RDF_Graph_Executable.xsd_decimal))
-                             || (dt2 = RDF_Graph_Executable.xsd_double))
-                            || (dt2 = RDF_Graph_Executable.xsd_boolean))
-                           ||
-                           (dt2 = "http://www.w3.org/2001/XMLSchema#float"))
-                          || (dt2 = "http://www.w3.org/2001/XMLSchema#date"))
-                         ||
-                         (dt2 = "http://www.w3.org/2001/XMLSchema#dateTime") in
-                     if is_known_1 && is_known_2
+                     let rdf_langString1 =
+                       "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString" in
+                     if (dt1 = rdf_langString1) || (dt2 = rdf_langString1)
                      then
                        match op with
                        | CmpEq -> ER_Bool false
@@ -2895,9 +2912,23 @@ let select_has_aggregates (items : select_item Prims.list) : Prims.bool=
        match item with
        | SI_Expr (e, uu___) -> expr_has_aggregate e
        | SI_Var uu___ -> false) items
-let eval_group_select (items : select_item Prims.list) (grp : group) :
-  RDF_Graph_Executable.solution_mapping=
+let eval_group_select (items : select_item Prims.list)
+  (conds : group_condition Prims.list FStar_Pervasives_Native.option)
+  (grp : group) : RDF_Graph_Executable.solution_mapping=
   let base_mu = match grp.g_solutions with | mu::uu___ -> mu | [] -> sm_empty in
+  let base_mu1 =
+    match conds with
+    | FStar_Pervasives_Native.None -> base_mu
+    | FStar_Pervasives_Native.Some gc_list ->
+        FStar_List_Tot_Base.fold_left
+          (fun mu gc ->
+             match gc with
+             | GC_Expr (e, FStar_Pervasives_Native.Some v) ->
+                 let r = eval_expr e mu in
+                 (match er_to_term r with
+                  | FStar_Pervasives_Native.Some t -> sm_bind v t mu
+                  | FStar_Pervasives_Native.None -> mu)
+             | uu___ -> mu) base_mu gc_list in
   FStar_List_Tot_Base.fold_left
     (fun mu item ->
        match item with
@@ -2906,10 +2937,12 @@ let eval_group_select (items : select_item Prims.list) (grp : group) :
            let r = eval_expr_group e grp mu in
            (match er_to_term r with
             | FStar_Pervasives_Native.Some t -> sm_bind v t mu
-            | FStar_Pervasives_Native.None -> mu)) base_mu items
+            | FStar_Pervasives_Native.None -> mu)) base_mu1 items
 let eval_aggregate_query (items : select_item Prims.list)
+  (conds : group_condition Prims.list FStar_Pervasives_Native.option)
   (groups : group Prims.list) : solution_sequence=
-  FStar_List_Tot_Base.map (fun grp -> eval_group_select items grp) groups
+  FStar_List_Tot_Base.map (fun grp -> eval_group_select items conds grp)
+    groups
 let select_item_vars (items : select_item Prims.list) : var_name Prims.list=
   FStar_List_Tot_Base.map
     (fun item -> match item with | SI_Var v -> v | SI_Expr (uu___, v) -> v)
@@ -2935,7 +2968,7 @@ let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph) :
                 | FStar_Pervasives_Native.None -> groups
                 | FStar_Pervasives_Native.Some conds ->
                     having_filter conds groups in
-              eval_aggregate_query items groups1
+              eval_aggregate_query items q.q_group_by groups1
             else eval_select_items items omega g
         | Select_All -> omega in
       let ordered =

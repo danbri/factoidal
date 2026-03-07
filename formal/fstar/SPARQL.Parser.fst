@@ -1168,10 +1168,10 @@ and parse_expr_list (ps : pstate) (prefixes : list (string * wf_iri))
              | None -> None)
           | None ->
             match ps_expect ps ")" with
-            | Some ps -> Some (List.Tot.rev (e :: acc), ps)
+            | Some ps -> Some (List.Tot.rev acc, ps)
             | None -> None
         in
-        loop [] ps
+        loop [e] ps
 
 (** ====================================================================== **)
 (** Triple pattern and group graph pattern parser                           **)

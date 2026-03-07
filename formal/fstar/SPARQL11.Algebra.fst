@@ -570,6 +570,18 @@ let value_compare (v1 v2 : eval_result) (op : comp_op) : option bool =
         dt = "http://www.w3.org/2001/XMLSchema#dateTime"
       in
       if is_known then
+        (* For numeric types that weren't promoted to ER_Num/ER_Dec/ER_Dbl,
+           the values are ill-typed — comparison is undefined *)
+        let is_numeric_dt =
+          dt = xsd_integer || dt = xsd_decimal || dt = xsd_double ||
+          dt = "http://www.w3.org/2001/XMLSchema#float"
+        in
+        if is_numeric_dt then
+          (* Ill-typed numeric literals: only sameTerm is valid *)
+          if lit_lexical l1 = lit_lexical l2 && lit_lang l1 = lit_lang l2
+          then (match op with | CmpEq -> Some true | CmpNe -> Some false | _ -> None)
+          else None
+        else
         (* Compare language tags case-insensitively per RDF semantics *)
         let lang_match = match lit_lang l1, lit_lang l2 with
           | Some t1, Some t2 -> string_lower t1 = string_lower t2
@@ -1464,7 +1476,18 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
               dt = "http://www.w3.org/2001/XMLSchema#dateTime"
             in
             if is_known_dt then
-              (* Known datatype — can compare lexically for =/!= *)
+              (* For numeric types reaching fallback, values are ill-typed → error *)
+              let is_numeric =
+                dt = xsd_integer || dt = xsd_decimal || dt = xsd_double ||
+                dt = "http://www.w3.org/2001/XMLSchema#float"
+              in
+              if is_numeric then
+                (* Ill-typed numeric: only sameTerm is valid *)
+                if lit_lexical l1 = lit_lexical l2 && lit_lang l1 = lit_lang l2
+                then (match op with | CmpEq -> ER_Bool true | CmpNe -> ER_Bool false | _ -> ER_Error)
+                else ER_Error
+              else
+              (* Known non-numeric datatype — can compare lexically for =/!= *)
               (match op with
                | CmpEq -> ER_Bool (lit_lexical l1 = lit_lexical l2 &&
                                    (match lit_lang l1, lit_lang l2 with
@@ -1490,25 +1513,15 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
             (* Different datatypes *)
             let dt1 = lit_datatype l1 in
             let dt2 = lit_datatype l2 in
-            let is_known_1 =
-              dt1 = xsd_string || dt1 = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString" ||
-              dt1 = xsd_integer || dt1 = xsd_decimal || dt1 = xsd_double || dt1 = xsd_boolean ||
-              dt1 = "http://www.w3.org/2001/XMLSchema#float" ||
-              dt1 = "http://www.w3.org/2001/XMLSchema#date" ||
-              dt1 = "http://www.w3.org/2001/XMLSchema#dateTime"
-            in
-            let is_known_2 =
-              dt2 = xsd_string || dt2 = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString" ||
-              dt2 = xsd_integer || dt2 = xsd_decimal || dt2 = xsd_double || dt2 = xsd_boolean ||
-              dt2 = "http://www.w3.org/2001/XMLSchema#float" ||
-              dt2 = "http://www.w3.org/2001/XMLSchema#date" ||
-              dt2 = "http://www.w3.org/2001/XMLSchema#dateTime"
-            in
-            if is_known_1 && is_known_2 then
-              (* Both known different types: clearly not equal *)
+            let rdf_langString = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString" in
+            if dt1 = rdf_langString || dt2 = rdf_langString then
+              (* Cross-kind: lang-tagged vs non-lang-tagged are always distinguishable,
+                 regardless of whether the other type is known or unknown *)
               (match op with | CmpEq -> ER_Bool false | CmpNe -> ER_Bool true | _ -> ER_Error)
             else
-              ER_Error  (* Unknown datatype involved — open-world error *)
+              (* Two non-lang-tagged typed literals with different datatypes.
+                 Per SPARQL open-world semantics, comparison is undefined → error *)
+              ER_Error
         (* Cross-kind comparisons: IRI vs Literal, IRI vs BNode, BNode vs Literal.
            These are clearly different — = is false, != is true. *)
         | ER_Term _, ER_Term _ ->
@@ -2192,10 +2205,25 @@ let select_has_aggregates (items : list select_item) : bool =
     | SI_Var _ -> false) items
 
 (* Evaluate SELECT items for a single group, producing one solution mapping *)
-let eval_group_select (items : list select_item) (grp : group) : solution_mapping =
+let eval_group_select (items : list select_item) (conds : option (list group_condition)) (grp : group) : solution_mapping =
   let base_mu = match grp.g_solutions with
     | mu :: _ -> mu  (* Start with variables from first solution in group *)
     | [] -> sm_empty
+  in
+  (* Bind GROUP BY alias variables (expr AS ?var) to their evaluated values *)
+  let base_mu = match conds with
+    | None -> base_mu
+    | Some gc_list ->
+      List.Tot.fold_left
+        (fun (mu : solution_mapping) (gc : group_condition) ->
+          match gc with
+          | GC_Expr e (Some v) ->
+            let r = eval_expr e mu in
+            (match er_to_term r with
+             | Some t -> sm_bind v t mu
+             | None -> mu)
+          | _ -> mu)
+        base_mu gc_list
   in
   List.Tot.fold_left
     (fun (mu : solution_mapping) (item : select_item) ->
@@ -2210,9 +2238,9 @@ let eval_group_select (items : list select_item) (grp : group) : solution_mappin
     items
 
 (* Evaluate aggregate query: group, aggregate, produce one row per group *)
-let eval_aggregate_query (items : list select_item) (groups : list group)
+let eval_aggregate_query (items : list select_item) (conds : option (list group_condition)) (groups : list group)
   : solution_sequence =
-  List.Tot.map (fun grp -> eval_group_select items grp) groups
+  List.Tot.map (fun grp -> eval_group_select items conds grp) groups
 
 (* Extract variable names from select items — CONCRETE *)
 let select_item_vars (items : list select_item) : list var_name =
@@ -2241,7 +2269,7 @@ let eval_select_query (q : query) (g : rdf_graph) : solution_sequence =
           let groups = match q.q_having with
             | None -> groups
             | Some conds -> having_filter conds groups in
-          eval_aggregate_query items groups
+          eval_aggregate_query items q.q_group_by groups
         else
           eval_select_items items omega g
       | Select_All -> omega in
