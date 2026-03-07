@@ -1819,18 +1819,37 @@ and parse_ggp_elements (ps : pstate) (prefixes : list (string * wf_iri)) (acc : 
     | Some c when FStar.Char.int_of_char c = 0x7B (* '{' *) ->
       (match parse_group_graph_pattern ps prefixes with
        | Some (sub, ps') ->
-         let new_acc = if acc = GP_Empty then sub
-                       else GP_Join acc sub in
-         (* Check for UNION after sub-group *)
+         (* Check for UNION after sub-group — DON'T join with acc yet,
+            since UNION binds tighter than the implicit join with
+            preceding patterns per SPARQL grammar §13.2 *)
          let ps' = skip_ws ps' in
          (match ps_consume ps' "UNION" with
           | Some ps'' ->
-            (match parse_group_graph_pattern ps'' prefixes with
-             | Some (right, ps'') ->
-               let new_acc = GP_Union new_acc right in
-               parse_ggp_elements ps'' prefixes new_acc filters
-             | None -> parse_ggp_elements ps' prefixes new_acc filters)
-          | None -> parse_ggp_elements ps' prefixes new_acc filters)
+            (* Parse UNION chain: sub UNION right [UNION right2 ...] *)
+            let rec parse_union_chain (left : group_graph_pattern) (ps : pstate)
+              : option (group_graph_pattern * pstate) =
+              match parse_group_graph_pattern ps prefixes with
+              | Some (right, ps') ->
+                let union_pat = GP_Union left right in
+                let ps' = skip_ws ps' in
+                (match ps_consume ps' "UNION" with
+                 | Some ps'' -> parse_union_chain union_pat ps''
+                 | None -> Some (union_pat, ps'))
+              | None -> Some (left, ps)
+            in
+            (match parse_union_chain sub ps'' with
+             | Some (union_pat, ps') ->
+               let new_acc = if acc = GP_Empty then union_pat
+                             else GP_Join acc union_pat in
+               parse_ggp_elements ps' prefixes new_acc filters
+             | None ->
+               let new_acc = if acc = GP_Empty then sub
+                             else GP_Join acc sub in
+               parse_ggp_elements ps' prefixes new_acc filters)
+          | None ->
+            let new_acc = if acc = GP_Empty then sub
+                          else GP_Join acc sub in
+            parse_ggp_elements ps' prefixes new_acc filters)
        | None -> Some (apply_filters acc filters, ps))
     | _ ->
     (* Try triple patterns *)
