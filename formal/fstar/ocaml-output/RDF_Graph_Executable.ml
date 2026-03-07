@@ -441,3 +441,486 @@ let rec sparql_concat (args : Prims.string Prims.list) : Prims.string=
   match args with
   | [] -> ""
   | hd::tl -> FStar_String.concat "" [hd; sparql_concat tl]
+type chars = FStar_Char.char Prims.list
+let char_code (c : FStar_Char.char) : Prims.int= FStar_Char.int_of_char c
+let is_valid_codepoint (n : Prims.int) : Prims.bool=
+  ((n >= Prims.int_zero) && (n < (Prims.of_int (0xd7ff)))) ||
+    ((n >= (Prims.of_int (0xe000))) && (n <= (Prims.parse_int "0x10ffff")))
+let mk_char_safe (n : Prims.nat) : FStar_Char.char= FStar_Char.char_of_int n
+let mk_char (n : Prims.int) : FStar_Char.char=
+  if (n >= Prims.int_zero) && (n < (Prims.of_int (0xd7ff)))
+  then mk_char_safe n
+  else
+    if (n >= (Prims.of_int (0xe000))) && (n <= (Prims.parse_int "0x10ffff"))
+    then mk_char_safe n
+    else mk_char_safe (Prims.of_int (0xFFFD))
+type 'a parse_result = ('a * chars) FStar_Pervasives_Native.option
+let rec skip_ws (cs : chars) : chars=
+  match cs with
+  | [] -> []
+  | c::rest ->
+      let code = char_code c in
+      if (code = (Prims.of_int (0x20))) || (code = (Prims.of_int (0x09)))
+      then skip_ws rest
+      else cs
+let rec skip_to_eol (cs : chars) : chars=
+  match cs with
+  | [] -> []
+  | c::rest ->
+      let code = char_code c in
+      if (code = (Prims.of_int (0x0A))) || (code = (Prims.of_int (0x0D)))
+      then cs
+      else skip_to_eol rest
+let skip_eol (cs : chars) : chars=
+  match cs with
+  | [] -> []
+  | c1::rest ->
+      if (char_code c1) = (Prims.of_int (0x0D))
+      then
+        (match rest with
+         | c2::rest2 ->
+             if (char_code c2) = (Prims.of_int (0x0A)) then rest2 else rest
+         | [] -> [])
+      else if (char_code c1) = (Prims.of_int (0x0A)) then rest else cs
+let parse_escape (cs : chars) : FStar_Char.char parse_result=
+  match cs with
+  | [] -> FStar_Pervasives_Native.None
+  | c::rest ->
+      let code = char_code c in
+      if code = (Prims.of_int (0x74))
+      then
+        FStar_Pervasives_Native.Some ((mk_char (Prims.of_int (0x09))), rest)
+      else
+        if code = (Prims.of_int (0x6E))
+        then
+          FStar_Pervasives_Native.Some
+            ((mk_char (Prims.of_int (0x0A))), rest)
+        else
+          if code = (Prims.of_int (0x72))
+          then
+            FStar_Pervasives_Native.Some
+              ((mk_char (Prims.of_int (0x0D))), rest)
+          else
+            if code = (Prims.of_int (0x62))
+            then
+              FStar_Pervasives_Native.Some
+                ((mk_char (Prims.of_int (0x08))), rest)
+            else
+              if code = (Prims.of_int (0x66))
+              then
+                FStar_Pervasives_Native.Some
+                  ((mk_char (Prims.of_int (0x0C))), rest)
+              else
+                if code = (Prims.of_int (0x22))
+                then
+                  FStar_Pervasives_Native.Some
+                    ((mk_char (Prims.of_int (0x22))), rest)
+                else
+                  if code = (Prims.of_int (0x27))
+                  then
+                    FStar_Pervasives_Native.Some
+                      ((mk_char (Prims.of_int (0x27))), rest)
+                  else
+                    if code = (Prims.of_int (0x5C))
+                    then
+                      FStar_Pervasives_Native.Some
+                        ((mk_char (Prims.of_int (0x5C))), rest)
+                    else FStar_Pervasives_Native.None
+let hex_digit_val (c : FStar_Char.char) :
+  Prims.int FStar_Pervasives_Native.option=
+  let code = char_code c in
+  if (code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))
+  then FStar_Pervasives_Native.Some (code - (Prims.of_int (0x30)))
+  else
+    if (code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x46)))
+    then
+      FStar_Pervasives_Native.Some
+        ((code - (Prims.of_int (0x41))) + (Prims.of_int (10)))
+    else
+      if (code >= (Prims.of_int (0x61))) && (code <= (Prims.of_int (0x66)))
+      then
+        FStar_Pervasives_Native.Some
+          ((code - (Prims.of_int (0x61))) + (Prims.of_int (10)))
+      else FStar_Pervasives_Native.None
+let rec parse_hex_chars (cs : chars) (n : Prims.nat) (acc : Prims.nat) :
+  (Prims.nat * chars) FStar_Pervasives_Native.option=
+  if n = Prims.int_zero
+  then FStar_Pervasives_Native.Some (acc, cs)
+  else
+    (match cs with
+     | [] -> FStar_Pervasives_Native.None
+     | c::rest ->
+         (match hex_digit_val c with
+          | FStar_Pervasives_Native.Some v ->
+              let acc' = (acc * (Prims.of_int (16))) + v in
+              parse_hex_chars rest (n - Prims.int_one) acc'
+          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None))
+let parse_unicode_escape (cs : chars) : FStar_Char.char parse_result=
+  match cs with
+  | [] -> FStar_Pervasives_Native.None
+  | c::rest ->
+      let code = char_code c in
+      if code = (Prims.of_int (0x75))
+      then
+        (match parse_hex_chars rest (Prims.of_int (4)) Prims.int_zero with
+         | FStar_Pervasives_Native.Some (cp, rest2) ->
+             FStar_Pervasives_Native.Some ((mk_char cp), rest2)
+         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+      else
+        if code = (Prims.of_int (0x55))
+        then
+          (match parse_hex_chars rest (Prims.of_int (8)) Prims.int_zero with
+           | FStar_Pervasives_Native.Some (cp, rest2) ->
+               FStar_Pervasives_Native.Some ((mk_char cp), rest2)
+           | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+        else FStar_Pervasives_Native.None
+let rec parse_string_chars (cs : chars) (acc : chars) (fuel : Prims.nat) :
+  Prims.string parse_result=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (match cs with
+     | [] -> FStar_Pervasives_Native.None
+     | c::rest ->
+         let code = char_code c in
+         if code = (Prims.of_int (0x22))
+         then
+           FStar_Pervasives_Native.Some
+             ((FStar_String.string_of_list (FStar_List_Tot_Base.rev acc)),
+               rest)
+         else
+           if code = (Prims.of_int (0x5C))
+           then
+             (match rest with
+              | [] -> FStar_Pervasives_Native.None
+              | c2::uu___2 ->
+                  let c2code = char_code c2 in
+                  if
+                    (c2code = (Prims.of_int (0x75))) ||
+                      (c2code = (Prims.of_int (0x55)))
+                  then
+                    (match parse_unicode_escape rest with
+                     | FStar_Pervasives_Native.Some (ch, rest2) ->
+                         parse_string_chars rest2 (ch :: acc)
+                           (fuel - Prims.int_one)
+                     | FStar_Pervasives_Native.None ->
+                         FStar_Pervasives_Native.None)
+                  else
+                    (match parse_escape rest with
+                     | FStar_Pervasives_Native.Some (ch, rest2) ->
+                         parse_string_chars rest2 (ch :: acc)
+                           (fuel - Prims.int_one)
+                     | FStar_Pervasives_Native.None ->
+                         FStar_Pervasives_Native.None))
+           else
+             if
+               (code = (Prims.of_int (0x0A))) ||
+                 (code = (Prims.of_int (0x0D)))
+             then FStar_Pervasives_Native.None
+             else parse_string_chars rest (c :: acc) (fuel - Prims.int_one))
+let rec parse_iri_chars (cs : chars) (acc : chars) (fuel : Prims.nat) :
+  Prims.string parse_result=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (match cs with
+     | [] -> FStar_Pervasives_Native.None
+     | c::rest ->
+         let code = char_code c in
+         if code = (Prims.of_int (0x3E))
+         then
+           FStar_Pervasives_Native.Some
+             ((FStar_String.string_of_list (FStar_List_Tot_Base.rev acc)),
+               rest)
+         else
+           if code = (Prims.of_int (0x5C))
+           then
+             (match parse_unicode_escape rest with
+              | FStar_Pervasives_Native.Some (ch, rest2) ->
+                  parse_iri_chars rest2 (ch :: acc) (fuel - Prims.int_one)
+              | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+           else
+             if code <= (Prims.of_int (0x20))
+             then FStar_Pervasives_Native.None
+             else parse_iri_chars rest (c :: acc) (fuel - Prims.int_one))
+let parse_iriref (cs : chars) : Prims.string parse_result=
+  match cs with
+  | [] -> FStar_Pervasives_Native.None
+  | c::rest ->
+      if (char_code c) = (Prims.of_int (0x3C))
+      then parse_iri_chars rest [] (FStar_List_Tot_Base.length rest)
+      else FStar_Pervasives_Native.None
+let is_pn_chars_u (code : Prims.int) : Prims.bool=
+  (((code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x5A)))) ||
+     ((code >= (Prims.of_int (0x61))) && (code <= (Prims.of_int (0x7A)))))
+    || (code = (Prims.of_int (0x5F)))
+let is_pn_chars (code : Prims.int) : Prims.bool=
+  (((is_pn_chars_u code) ||
+      ((code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))))
+     || (code = (Prims.of_int (0x2D))))
+    || (code = (Prims.of_int (0xB7)))
+let rec strip_trailing_dots (acc : chars) (dots : chars) : (chars * chars)=
+  match acc with
+  | c::rest ->
+      if (char_code c) = (Prims.of_int (0x2E))
+      then strip_trailing_dots rest (c :: dots)
+      else (acc, dots)
+  | [] -> (acc, dots)
+let rec parse_bnode_label_chars (cs : chars) (acc : chars) (fuel : Prims.nat)
+  : Prims.string parse_result=
+  if fuel = Prims.int_zero
+  then
+    let uu___ = strip_trailing_dots acc [] in
+    match uu___ with
+    | (trimmed, dots) ->
+        FStar_Pervasives_Native.Some
+          ((FStar_String.string_of_list (FStar_List_Tot_Base.rev trimmed)),
+            (FStar_List_Tot_Base.append dots cs))
+  else
+    (match cs with
+     | [] ->
+         let uu___1 = strip_trailing_dots acc [] in
+         (match uu___1 with
+          | (trimmed, _dots) ->
+              FStar_Pervasives_Native.Some
+                ((FStar_String.string_of_list
+                    (FStar_List_Tot_Base.rev trimmed)), []))
+     | c::rest ->
+         let code = char_code c in
+         if (is_pn_chars code) || (code = (Prims.of_int (0x2E)))
+         then parse_bnode_label_chars rest (c :: acc) (fuel - Prims.int_one)
+         else
+           (let uu___2 = strip_trailing_dots acc [] in
+            match uu___2 with
+            | (trimmed, dots) ->
+                FStar_Pervasives_Native.Some
+                  ((FStar_String.string_of_list
+                      (FStar_List_Tot_Base.rev trimmed)),
+                    (FStar_List_Tot_Base.append dots cs))))
+let parse_blank_node (cs : chars) : Prims.string parse_result=
+  match cs with
+  | c1::c2::rest ->
+      if
+        ((char_code c1) = (Prims.of_int (0x5F))) &&
+          ((char_code c2) = (Prims.of_int (0x3A)))
+      then
+        (match rest with
+         | c3::uu___ ->
+             let code3 = char_code c3 in
+             if
+               (is_pn_chars_u code3) ||
+                 ((code3 >= (Prims.of_int (0x30))) &&
+                    (code3 <= (Prims.of_int (0x39))))
+             then
+               parse_bnode_label_chars rest []
+                 (FStar_List_Tot_Base.length rest)
+             else FStar_Pervasives_Native.None
+         | [] -> FStar_Pervasives_Native.None)
+      else FStar_Pervasives_Native.None
+  | uu___ -> FStar_Pervasives_Native.None
+let is_alpha (code : Prims.int) : Prims.bool=
+  ((code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x5A)))) ||
+    ((code >= (Prims.of_int (0x61))) && (code <= (Prims.of_int (0x7A))))
+let is_alnum (code : Prims.int) : Prims.bool=
+  (is_alpha code) ||
+    ((code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39))))
+let rec parse_lang_rest (cs : chars) (acc : chars) (fuel : Prims.nat) :
+  Prims.string parse_result=
+  if fuel = Prims.int_zero
+  then
+    FStar_Pervasives_Native.Some
+      ((FStar_String.string_of_list (FStar_List_Tot_Base.rev acc)), cs)
+  else
+    (match cs with
+     | [] ->
+         FStar_Pervasives_Native.Some
+           ((FStar_String.string_of_list (FStar_List_Tot_Base.rev acc)), [])
+     | c::rest ->
+         let code = char_code c in
+         if (is_alnum code) || (code = (Prims.of_int (0x2D)))
+         then parse_lang_rest rest (c :: acc) (fuel - Prims.int_one)
+         else
+           FStar_Pervasives_Native.Some
+             ((FStar_String.string_of_list (FStar_List_Tot_Base.rev acc)),
+               cs))
+let parse_langtag (cs : chars) : Prims.string parse_result=
+  match cs with
+  | [] -> FStar_Pervasives_Native.None
+  | c::rest ->
+      if (char_code c) = (Prims.of_int (0x40))
+      then
+        (match rest with
+         | c2::uu___ ->
+             if is_alpha (char_code c2)
+             then parse_lang_rest rest [] (FStar_List_Tot_Base.length rest)
+             else FStar_Pervasives_Native.None
+         | [] -> FStar_Pervasives_Native.None)
+      else FStar_Pervasives_Native.None
+let parse_nt_subject (cs : chars) : subject parse_result=
+  match parse_iriref cs with
+  | FStar_Pervasives_Native.Some (iri_str, rest) ->
+      if is_iri iri_str
+      then FStar_Pervasives_Native.Some ((S_IRI iri_str), rest)
+      else FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.None ->
+      (match parse_blank_node cs with
+       | FStar_Pervasives_Native.Some (label, rest) ->
+           FStar_Pervasives_Native.Some ((S_BNode label), rest)
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+let parse_nt_predicate (cs : chars) : wf_iri parse_result=
+  match parse_iriref cs with
+  | FStar_Pervasives_Native.Some (iri_str, rest) ->
+      if is_iri iri_str
+      then FStar_Pervasives_Native.Some (iri_str, rest)
+      else FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+let mk_wf_literal (lex : Prims.string) (dt : wf_iri)
+  (lang : Prims.string FStar_Pervasives_Native.option) :
+  wf_literal FStar_Pervasives_Native.option=
+  let l = { lexical_form = lex; datatype = dt; lang_tag = lang } in
+  if literal_wf l
+  then FStar_Pervasives_Native.Some l
+  else FStar_Pervasives_Native.None
+let parse_nt_literal (cs : chars) : wf_literal parse_result=
+  match cs with
+  | [] -> FStar_Pervasives_Native.None
+  | c::rest ->
+      if (char_code c) <> (Prims.of_int (0x22))
+      then FStar_Pervasives_Native.None
+      else
+        (match parse_string_chars rest [] (FStar_List_Tot_Base.length rest)
+         with
+         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+         | FStar_Pervasives_Native.Some (lexical, after_str) ->
+             let mk_result lit rest1 =
+               match lit with
+               | FStar_Pervasives_Native.Some l ->
+                   FStar_Pervasives_Native.Some (l, rest1)
+               | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None in
+             (match after_str with
+              | c1::c2::rest2 ->
+                  if
+                    ((char_code c1) = (Prims.of_int (0x5E))) &&
+                      ((char_code c2) = (Prims.of_int (0x5E)))
+                  then
+                    (match parse_iriref rest2 with
+                     | FStar_Pervasives_Native.Some (dt, rest3) ->
+                         if is_iri dt
+                         then
+                           mk_result
+                             (mk_wf_literal lexical dt
+                                FStar_Pervasives_Native.None) rest3
+                         else FStar_Pervasives_Native.None
+                     | FStar_Pervasives_Native.None ->
+                         FStar_Pervasives_Native.None)
+                  else
+                    if (char_code c1) = (Prims.of_int (0x40))
+                    then
+                      (match parse_langtag after_str with
+                       | FStar_Pervasives_Native.Some (lang, rest3) ->
+                           mk_result
+                             (mk_wf_literal lexical rdf_lang_string
+                                (FStar_Pervasives_Native.Some lang)) rest3
+                       | FStar_Pervasives_Native.None ->
+                           FStar_Pervasives_Native.None)
+                    else
+                      mk_result
+                        (mk_wf_literal lexical xsd_string
+                           FStar_Pervasives_Native.None) after_str
+              | c1::[] ->
+                  if (char_code c1) = (Prims.of_int (0x40))
+                  then
+                    (match parse_langtag after_str with
+                     | FStar_Pervasives_Native.Some (lang, rest3) ->
+                         mk_result
+                           (mk_wf_literal lexical rdf_lang_string
+                              (FStar_Pervasives_Native.Some lang)) rest3
+                     | FStar_Pervasives_Native.None ->
+                         FStar_Pervasives_Native.None)
+                  else
+                    mk_result
+                      (mk_wf_literal lexical xsd_string
+                         FStar_Pervasives_Native.None) after_str
+              | [] ->
+                  mk_result
+                    (mk_wf_literal lexical xsd_string
+                       FStar_Pervasives_Native.None) []))
+let parse_nt_object (cs : chars) : rdf_term parse_result=
+  match parse_iriref cs with
+  | FStar_Pervasives_Native.Some (iri_str, rest) ->
+      if is_iri iri_str
+      then FStar_Pervasives_Native.Some ((T_IRI iri_str), rest)
+      else FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.None ->
+      (match parse_blank_node cs with
+       | FStar_Pervasives_Native.Some (label, rest) ->
+           FStar_Pervasives_Native.Some ((T_BNode label), rest)
+       | FStar_Pervasives_Native.None ->
+           (match parse_nt_literal cs with
+            | FStar_Pervasives_Native.Some (lit, rest) ->
+                FStar_Pervasives_Native.Some ((T_Literal lit), rest)
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None))
+let require_ws (cs : chars) : chars FStar_Pervasives_Native.option=
+  match cs with
+  | [] -> FStar_Pervasives_Native.None
+  | c::uu___ ->
+      let code = char_code c in
+      if (code = (Prims.of_int (0x20))) || (code = (Prims.of_int (0x09)))
+      then FStar_Pervasives_Native.Some (skip_ws cs)
+      else FStar_Pervasives_Native.None
+let parse_nt_triple (cs : chars) : triple parse_result=
+  match parse_nt_subject cs with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some (subj, after_s) ->
+      let after_ws1 = skip_ws after_s in
+      (match parse_nt_predicate after_ws1 with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some (pred, after_p) ->
+           let after_ws2 = skip_ws after_p in
+           (match parse_nt_object after_ws2 with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some (obj, after_o) ->
+                let after_ws3 = skip_ws after_o in
+                (match after_ws3 with
+                 | c::rest ->
+                     if (char_code c) = (Prims.of_int (0x2E))
+                     then
+                       FStar_Pervasives_Native.Some
+                         ({ s = subj; p = pred; o = obj }, (skip_ws rest))
+                     else FStar_Pervasives_Native.None
+                 | [] -> FStar_Pervasives_Native.None)))
+let rec parse_nt_lines (cs : chars) (acc : triple Prims.list)
+  (fuel : Prims.nat) : triple Prims.list FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.Some (FStar_List_Tot_Base.rev acc)
+  else
+    (let cs1 = skip_ws cs in
+     match cs1 with
+     | [] -> FStar_Pervasives_Native.Some (FStar_List_Tot_Base.rev acc)
+     | c::rest ->
+         let code = char_code c in
+         if (code = (Prims.of_int (0x0A))) || (code = (Prims.of_int (0x0D)))
+         then parse_nt_lines (skip_eol cs1) acc (fuel - Prims.int_one)
+         else
+           if code = (Prims.of_int (0x23))
+           then
+             parse_nt_lines (skip_eol (skip_to_eol rest)) acc
+               (fuel - Prims.int_one)
+           else
+             (match parse_nt_triple cs1 with
+              | FStar_Pervasives_Native.Some (t, rest2) ->
+                  parse_nt_lines (skip_eol rest2) (t :: acc)
+                    (fuel - Prims.int_one)
+              | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None))
+let parse_ntriples (s : Prims.string) :
+  rdf_graph FStar_Pervasives_Native.option=
+  let cs = FStar_String.list_of_string s in
+  parse_nt_lines cs [] (FStar_List_Tot_Base.length cs)
+let parse_ntriples_graph (s : Prims.string) :
+  rdf_graph FStar_Pervasives_Native.option=
+  match parse_ntriples s with
+  | FStar_Pervasives_Native.Some triples ->
+      FStar_Pervasives_Native.Some
+        (FStar_List_Tot_Base.fold_left (fun g t -> graph_add t g) empty_graph
+           triples)
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None

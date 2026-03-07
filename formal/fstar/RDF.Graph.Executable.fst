@@ -608,3 +608,404 @@ let lemma_bind_preserves_existing
   match List.Tot.assoc var mu with
   | Some _ -> ()  // bind_eval returns None when var is already bound → apply_bind returns mu
   | None -> ()    // trivially True
+
+(** ====================================================================== **)
+(** 16. N-Triples Parser — Concrete, Extractable                           **)
+(** ====================================================================== **)
+(* W3C N-Triples grammar (RDF 1.1 N-Triples):
+   ntriplesDoc  ::= (triple | comment | blank_line)*
+   triple       ::= subject WS+ predicate WS+ object WS* '.' WS*
+   subject      ::= IRIREF | BLANK_NODE_LABEL
+   predicate    ::= IRIREF
+   object       ::= IRIREF | BLANK_NODE_LABEL | literal
+   literal      ::= STRING_LITERAL_QUOTE ('^^' IRIREF | LANGTAG)?
+   IRIREF       ::= '<' ([^#x00-#x20<>"{}|^`\] | UCHAR)* '>'
+   BLANK_NODE_LABEL ::= '_:' (PN_CHARS_U | [0-9]) ((PN_CHARS | '.')* PN_CHARS)?
+   STRING_LITERAL_QUOTE ::= '"' ([^#x22#x5C#xA#xD] | ECHAR | UCHAR)* '"'
+   ECHAR        ::= '\' [tbnrf"'\]
+   LANGTAG      ::= '@' [a-zA-Z]+ ('-' [a-zA-Z0-9]+)*
+   WS           ::= #x20 | #x09
+
+   Parser operates on list FStar.Char.char for extractability.
+   Returns option (list triple) — None on parse error. *)
+
+type chars = list FStar.Char.char
+
+let char_code (c : FStar.Char.char) : int = FStar.Char.int_of_char c
+
+(* Safe char construction with valid Unicode code point *)
+let is_valid_codepoint (n : int) : bool =
+  n >= 0 && n < 0xd7ff || n >= 0xe000 && n <= 0x10ffff
+
+let mk_char_safe (n : nat{n < 0xd7ff \/ (n >= 0xe000 /\ n <= 0x10ffff)})
+  : FStar.Char.char = FStar.Char.char_of_int n
+
+let mk_char (n : int) : FStar.Char.char =
+  if n >= 0 && n < 0xd7ff then mk_char_safe n
+  else if n >= 0xe000 && n <= 0x10ffff then mk_char_safe n
+  else mk_char_safe 0xFFFD  (* replacement character *)
+
+(* Parse result: remaining chars + parsed value *)
+type parse_result (a:Type) = option (a * chars)
+
+(* Skip whitespace (space and tab only in N-Triples) *)
+let rec skip_ws (cs : chars) : Tot chars (decreases (List.Tot.length cs)) =
+  match cs with
+  | [] -> []
+  | c :: rest ->
+    let code = char_code c in
+    if code = 0x20 || code = 0x09 then skip_ws rest
+    else cs
+
+(* Skip to end of line (for comments) *)
+let rec skip_to_eol (cs : chars) : Tot chars (decreases (List.Tot.length cs)) =
+  match cs with
+  | [] -> []
+  | c :: rest ->
+    let code = char_code c in
+    if code = 0x0A || code = 0x0D then cs
+    else skip_to_eol rest
+
+(* Skip line ending: LF, CR, or CRLF *)
+let skip_eol (cs : chars) : chars =
+  match cs with
+  | [] -> []
+  | c1 :: rest ->
+    if char_code c1 = 0x0D then
+      (match rest with
+       | c2 :: rest2 -> if char_code c2 = 0x0A then rest2 else rest
+       | [] -> [])
+    else if char_code c1 = 0x0A then rest
+    else cs
+
+(* Parse N-Triples escape sequence after backslash *)
+let parse_escape (cs : chars) : parse_result FStar.Char.char =
+  match cs with
+  | [] -> None
+  | c :: rest ->
+    let code = char_code c in
+    if code = 0x74 then Some (mk_char 0x09, rest)       (* \t → tab *)
+    else if code = 0x6E then Some (mk_char 0x0A, rest)  (* \n → newline *)
+    else if code = 0x72 then Some (mk_char 0x0D, rest)  (* \r → CR *)
+    else if code = 0x62 then Some (mk_char 0x08, rest)  (* \b → backspace *)
+    else if code = 0x66 then Some (mk_char 0x0C, rest)  (* \f → form feed *)
+    else if code = 0x22 then Some (mk_char 0x22, rest)  (* \" → quote *)
+    else if code = 0x27 then Some (mk_char 0x27, rest)  (* \' → single quote *)
+    else if code = 0x5C then Some (mk_char 0x5C, rest)  (* \\ → backslash *)
+    else None  (* invalid escape *)
+
+(* Parse hex digit → int value *)
+let hex_digit_val (c : FStar.Char.char) : option int =
+  let code = char_code c in
+  if code >= 0x30 && code <= 0x39 then Some (code - 0x30)       (* 0-9 *)
+  else if code >= 0x41 && code <= 0x46 then Some (code - 0x41 + 10)  (* A-F *)
+  else if code >= 0x61 && code <= 0x66 then Some (code - 0x61 + 10)  (* a-f *)
+  else None
+
+(* Parse N hex digits, accumulating the code point value *)
+let rec parse_hex_chars (cs : chars) (n : nat) (acc : nat)
+  : Tot (option (nat * chars)) (decreases n) =
+  if n = 0 then Some (acc, cs)
+  else match cs with
+  | [] -> None
+  | c :: rest ->
+    (match hex_digit_val c with
+     | Some v ->
+       let acc' = op_Multiply acc 16 + v in
+       parse_hex_chars rest (n - 1) acc'
+     | None -> None)
+
+(* Parse a Unicode escape (\uXXXX or \UXXXXXXXX) *)
+let parse_unicode_escape (cs : chars) : parse_result FStar.Char.char =
+  match cs with
+  | [] -> None
+  | c :: rest ->
+    let code = char_code c in
+    if code = 0x75 then  (* \u → 4 hex digits *)
+      (match parse_hex_chars rest 4 0 with
+       | Some (cp, rest2) -> Some (mk_char cp, rest2)
+       | None -> None)
+    else if code = 0x55 then  (* \U → 8 hex digits *)
+      (match parse_hex_chars rest 8 0 with
+       | Some (cp, rest2) -> Some (mk_char cp, rest2)
+       | None -> None)
+    else None
+
+(* Parse string content between quotes, handling escapes.
+   fuel parameter ensures termination. *)
+let rec parse_string_chars (cs : chars) (acc : chars) (fuel : nat)
+  : Tot (parse_result string) (decreases fuel) =
+  if fuel = 0 then None
+  else match cs with
+  | [] -> None  (* unterminated string *)
+  | c :: rest ->
+    let code = char_code c in
+    if code = 0x22 then  (* closing quote *)
+      Some (String.string_of_list (List.Tot.rev acc), rest)
+    else if code = 0x5C then  (* backslash — escape *)
+      (match rest with
+       | [] -> None
+       | c2 :: _ ->
+         let c2code = char_code c2 in
+         if c2code = 0x75 || c2code = 0x55 then  (* \u or \U *)
+           (match parse_unicode_escape rest with
+            | Some (ch, rest2) -> parse_string_chars rest2 (ch :: acc) (fuel - 1)
+            | None -> None)
+         else
+           (match parse_escape rest with
+            | Some (ch, rest2) -> parse_string_chars rest2 (ch :: acc) (fuel - 1)
+            | None -> None))
+    else if code = 0x0A || code = 0x0D then None  (* bare newline in string *)
+    else parse_string_chars rest (c :: acc) (fuel - 1)
+
+(* Parse IRIREF: '<' chars '>' with escape handling *)
+let rec parse_iri_chars (cs : chars) (acc : chars) (fuel : nat)
+  : Tot (parse_result string) (decreases fuel) =
+  if fuel = 0 then None
+  else match cs with
+  | [] -> None
+  | c :: rest ->
+    let code = char_code c in
+    if code = 0x3E then  (* '>' — end of IRI *)
+      Some (String.string_of_list (List.Tot.rev acc), rest)
+    else if code = 0x5C then  (* backslash — Unicode escape in IRI *)
+      (match parse_unicode_escape rest with
+       | Some (ch, rest2) -> parse_iri_chars rest2 (ch :: acc) (fuel - 1)
+       | None -> None)
+    else if code <= 0x20 then None  (* control chars / space not allowed *)
+    else parse_iri_chars rest (c :: acc) (fuel - 1)
+
+let parse_iriref (cs : chars) : parse_result string =
+  match cs with
+  | [] -> None
+  | c :: rest ->
+    if char_code c = 0x3C then  (* '<' *)
+      parse_iri_chars rest [] (List.Tot.length rest)
+    else None
+
+(* Parse blank node label: '_:' name *)
+let is_pn_chars_u (code : int) : bool =
+  (code >= 0x41 && code <= 0x5A) ||  (* A-Z *)
+  (code >= 0x61 && code <= 0x7A) ||  (* a-z *)
+  code = 0x5F                         (* _ *)
+
+let is_pn_chars (code : int) : bool =
+  is_pn_chars_u code ||
+  (code >= 0x30 && code <= 0x39) ||  (* 0-9 *)
+  code = 0x2D ||                      (* - *)
+  code = 0xB7                         (* middle dot *)
+
+(* Strip trailing dots from accumulated blank node label chars.
+   W3C grammar: BLANK_NODE_LABEL cannot end with '.'
+   Returns (trimmed_acc, dots_to_return_to_input) *)
+let rec strip_trailing_dots (acc : chars) (dots : chars)
+  : Tot (chars * chars) (decreases (List.Tot.length acc)) =
+  match acc with
+  | c :: rest ->
+    if char_code c = 0x2E then strip_trailing_dots rest (c :: dots)
+    else (acc, dots)
+  | [] -> (acc, dots)
+
+let rec parse_bnode_label_chars (cs : chars) (acc : chars) (fuel : nat)
+  : Tot (parse_result string) (decreases fuel) =
+  if fuel = 0 then
+    let (trimmed, dots) = strip_trailing_dots acc [] in
+    Some (String.string_of_list (List.Tot.rev trimmed), List.Tot.append dots cs)
+  else match cs with
+  | [] ->
+    let (trimmed, _dots) = strip_trailing_dots acc [] in
+    Some (String.string_of_list (List.Tot.rev trimmed), [])
+  | c :: rest ->
+    let code = char_code c in
+    if is_pn_chars code || code = 0x2E then
+      parse_bnode_label_chars rest (c :: acc) (fuel - 1)
+    else
+      let (trimmed, dots) = strip_trailing_dots acc [] in
+      Some (String.string_of_list (List.Tot.rev trimmed), List.Tot.append dots cs)
+
+let parse_blank_node (cs : chars) : parse_result string =
+  match cs with
+  | c1 :: c2 :: rest ->
+    if char_code c1 = 0x5F && char_code c2 = 0x3A then  (* '_:' *)
+      (match rest with
+       | c3 :: _ ->
+         let code3 = char_code c3 in
+         if is_pn_chars_u code3 || (code3 >= 0x30 && code3 <= 0x39) then
+           parse_bnode_label_chars rest [] (List.Tot.length rest)
+         else None
+       | [] -> None)
+    else None
+  | _ -> None
+
+(* Parse language tag: '@' [a-zA-Z]+ ('-' [a-zA-Z0-9]+)* *)
+let is_alpha (code : int) : bool =
+  (code >= 0x41 && code <= 0x5A) || (code >= 0x61 && code <= 0x7A)
+
+let is_alnum (code : int) : bool =
+  is_alpha code || (code >= 0x30 && code <= 0x39)
+
+let rec parse_lang_rest (cs : chars) (acc : chars) (fuel : nat)
+  : Tot (parse_result string) (decreases fuel) =
+  if fuel = 0 then Some (String.string_of_list (List.Tot.rev acc), cs)
+  else match cs with
+  | [] -> Some (String.string_of_list (List.Tot.rev acc), [])
+  | c :: rest ->
+    let code = char_code c in
+    if is_alnum code || code = 0x2D then  (* alphanumeric or '-' *)
+      parse_lang_rest rest (c :: acc) (fuel - 1)
+    else
+      Some (String.string_of_list (List.Tot.rev acc), cs)
+
+let parse_langtag (cs : chars) : parse_result string =
+  match cs with
+  | [] -> None
+  | c :: rest ->
+    if char_code c = 0x40 then  (* '@' *)
+      (match rest with
+       | c2 :: _ ->
+         if is_alpha (char_code c2) then
+           parse_lang_rest rest [] (List.Tot.length rest)
+         else None
+       | [] -> None)
+    else None
+
+(* Parse N-Triples subject: IRIREF | BLANK_NODE_LABEL *)
+let parse_nt_subject (cs : chars) : parse_result subject =
+  match parse_iriref cs with
+  | Some (iri_str, rest) ->
+    if is_iri iri_str then Some (S_IRI iri_str, rest) else None
+  | None ->
+    (match parse_blank_node cs with
+     | Some (label, rest) -> Some (S_BNode label, rest)
+     | None -> None)
+
+(* Parse N-Triples predicate: IRIREF only *)
+let parse_nt_predicate (cs : chars) : parse_result wf_iri =
+  match parse_iriref cs with
+  | Some (iri_str, rest) ->
+    if is_iri iri_str then Some (iri_str, rest) else None
+  | None -> None
+
+(* Construct a well-formed literal, returning None if invariants fail *)
+let mk_wf_literal (lex : string) (dt : wf_iri) (lang : option string) : option wf_literal =
+  let l = { lexical_form = lex; datatype = dt; lang_tag = lang } in
+  if literal_wf l then Some l else None
+
+(* Parse N-Triples literal: '"' string '"' [ '^^' IRIREF | '@' langtag ] *)
+let parse_nt_literal (cs : chars) : parse_result wf_literal =
+  match cs with
+  | [] -> None
+  | c :: rest ->
+    if char_code c <> 0x22 then None  (* must start with quote *)
+    else
+      (match parse_string_chars rest [] (List.Tot.length rest) with
+       | None -> None
+       | Some (lexical, after_str) ->
+         (* Check for datatype or language tag *)
+         let mk_result (lit : option wf_literal) (rest : chars) : parse_result wf_literal =
+           match lit with Some l -> Some (l, rest) | None -> None
+         in
+         (match after_str with
+          | c1 :: c2 :: rest2 ->
+            if char_code c1 = 0x5E && char_code c2 = 0x5E then  (* '^^' *)
+              (match parse_iriref rest2 with
+               | Some (dt, rest3) ->
+                 if is_iri dt then mk_result (mk_wf_literal lexical dt None) rest3
+                 else None
+               | None -> None)
+            else if char_code c1 = 0x40 then  (* '@' *)
+              (match parse_langtag after_str with
+               | Some (lang, rest3) ->
+                 mk_result (mk_wf_literal lexical rdf_lang_string (Some lang)) rest3
+               | None -> None)
+            else  (* plain string literal *)
+              mk_result (mk_wf_literal lexical xsd_string None) after_str
+          | [c1] ->
+            if char_code c1 = 0x40 then
+              (match parse_langtag after_str with
+               | Some (lang, rest3) ->
+                 mk_result (mk_wf_literal lexical rdf_lang_string (Some lang)) rest3
+               | None -> None)
+            else
+              mk_result (mk_wf_literal lexical xsd_string None) after_str
+          | [] ->
+            mk_result (mk_wf_literal lexical xsd_string None) []))
+
+(* Parse N-Triples object: IRIREF | BLANK_NODE_LABEL | literal *)
+let parse_nt_object (cs : chars) : parse_result rdf_term =
+  match parse_iriref cs with
+  | Some (iri_str, rest) ->
+    if is_iri iri_str then Some (T_IRI iri_str, rest) else None
+  | None ->
+    (match parse_blank_node cs with
+     | Some (label, rest) -> Some (T_BNode label, rest)
+     | None ->
+       (match parse_nt_literal cs with
+        | Some (lit, rest) -> Some (T_Literal lit, rest)
+        | None -> None))
+
+(* Require at least one whitespace character *)
+let require_ws (cs : chars) : option chars =
+  match cs with
+  | [] -> None
+  | c :: _ ->
+    let code = char_code c in
+    if code = 0x20 || code = 0x09 then Some (skip_ws cs)
+    else None
+
+(* Parse a single N-Triples triple: subject WS* predicate WS* object WS* '.'
+   N-Triples tokens are self-delimiting (<...>, _:..., "...") so whitespace
+   between them is consumed but not strictly required. *)
+let parse_nt_triple (cs : chars) : parse_result triple =
+  match parse_nt_subject cs with
+  | None -> None
+  | Some (subj, after_s) ->
+    let after_ws1 = skip_ws after_s in
+    (match parse_nt_predicate after_ws1 with
+     | None -> None
+     | Some (pred, after_p) ->
+       let after_ws2 = skip_ws after_p in
+       (match parse_nt_object after_ws2 with
+        | None -> None
+        | Some (obj, after_o) ->
+          let after_ws3 = skip_ws after_o in
+          (match after_ws3 with
+           | c :: rest ->
+             if char_code c = 0x2E then  (* '.' *)
+               Some ({ s = subj; p = pred; o = obj }, skip_ws rest)
+             else None
+           | [] -> None)))
+
+(* Parse an entire N-Triples document into a list of triples.
+   Handles blank lines and # comments.
+   fuel parameter ensures termination. *)
+let rec parse_nt_lines (cs : chars) (acc : list triple) (fuel : nat)
+  : Tot (option (list triple)) (decreases fuel) =
+  if fuel = 0 then Some (List.Tot.rev acc)
+  else
+    let cs = skip_ws cs in
+    match cs with
+    | [] -> Some (List.Tot.rev acc)
+    | c :: rest ->
+      let code = char_code c in
+      if code = 0x0A || code = 0x0D then  (* blank line *)
+        parse_nt_lines (skip_eol cs) acc (fuel - 1)
+      else if code = 0x23 then  (* '#' comment *)
+        parse_nt_lines (skip_eol (skip_to_eol rest)) acc (fuel - 1)
+      else
+        (match parse_nt_triple cs with
+         | Some (t, rest2) ->
+           parse_nt_lines (skip_eol rest2) (t :: acc) (fuel - 1)
+         | None -> None)
+
+(* Top-level N-Triples parser: string → option rdf_graph *)
+let parse_ntriples (s : string) : option rdf_graph =
+  let cs = String.list_of_string s in
+  parse_nt_lines cs [] (List.Tot.length cs)
+
+(* Build graph from parsed triples (with deduplication) *)
+let parse_ntriples_graph (s : string) : option rdf_graph =
+  match parse_ntriples s with
+  | Some triples ->
+    Some (List.Tot.fold_left (fun g t -> graph_add t g) empty_graph triples)
+  | None -> None
