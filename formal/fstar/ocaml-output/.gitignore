@@ -1,0 +1,10 @@
+# Compiled OCaml binaries (build artifacts)
+nt_tests
+w3c_tests
+example
+debug_test
+*.cmi
+*.cmo
+*.cmx
+*.o
+*.a
