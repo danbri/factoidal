@@ -1158,6 +1158,10 @@ let fn_isBlank (v : eval_result) : eval_result=
 let fn_isLiteral (v : eval_result) : eval_result=
   match v with
   | ER_Term (RDF_Graph_Executable.T_Literal uu___) -> ER_Bool true
+  | ER_Num uu___ -> ER_Bool true
+  | ER_Dec uu___ -> ER_Bool true
+  | ER_Dbl uu___ -> ER_Bool true
+  | ER_Bool uu___ -> ER_Bool true
   | ER_Error -> ER_Error
   | uu___ -> ER_Bool false
 let fn_isNumeric (v : eval_result) : eval_result=
@@ -1198,11 +1202,27 @@ let fn_lang (v : eval_result) : eval_result=
            ER_Term (RDF_Graph_Executable.T_Literal (mk_plain_literal tag))
        | FStar_Pervasives_Native.None ->
            ER_Term (RDF_Graph_Executable.T_Literal (mk_plain_literal "")))
+  | ER_Num uu___ ->
+      ER_Term (RDF_Graph_Executable.T_Literal (mk_plain_literal ""))
+  | ER_Dec uu___ ->
+      ER_Term (RDF_Graph_Executable.T_Literal (mk_plain_literal ""))
+  | ER_Dbl uu___ ->
+      ER_Term (RDF_Graph_Executable.T_Literal (mk_plain_literal ""))
+  | ER_Bool uu___ ->
+      ER_Term (RDF_Graph_Executable.T_Literal (mk_plain_literal ""))
   | uu___ -> ER_Error
 let fn_datatype (v : eval_result) : eval_result=
   match v with
   | ER_Term (RDF_Graph_Executable.T_Literal l) ->
       ER_Term (RDF_Graph_Executable.T_IRI (lit_datatype l))
+  | ER_Num uu___ ->
+      ER_Term (RDF_Graph_Executable.T_IRI RDF_Graph_Executable.xsd_integer)
+  | ER_Dec uu___ ->
+      ER_Term (RDF_Graph_Executable.T_IRI RDF_Graph_Executable.xsd_decimal)
+  | ER_Dbl uu___ ->
+      ER_Term (RDF_Graph_Executable.T_IRI RDF_Graph_Executable.xsd_double)
+  | ER_Bool uu___ ->
+      ER_Term (RDF_Graph_Executable.T_IRI RDF_Graph_Executable.xsd_boolean)
   | uu___ -> ER_Error
 let rec find_substring_pos_aux :
   'a .
@@ -1838,6 +1858,19 @@ let try_bind_subject (ps : pattern_subject)
            else FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.None ->
            FStar_Pervasives_Native.Some (sm_bind v term mu))
+let literal_eq_ci_lang (l1 : RDF_Graph_Executable.literal)
+  (l2 : RDF_Graph_Executable.literal) : Prims.bool=
+  ((l1.RDF_Graph_Executable.lexical_form =
+      l2.RDF_Graph_Executable.lexical_form)
+     && (l1.RDF_Graph_Executable.datatype = l2.RDF_Graph_Executable.datatype))
+    &&
+    (match ((l1.RDF_Graph_Executable.lang_tag),
+             (l2.RDF_Graph_Executable.lang_tag))
+     with
+     | (FStar_Pervasives_Native.Some t1, FStar_Pervasives_Native.Some t2) ->
+         (string_lower t1) = (string_lower t2)
+     | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.None) -> true
+     | (uu___, uu___1) -> false)
 let try_bind_term (pt : pattern_term) (t : RDF_Graph_Executable.rdf_term)
   (mu : RDF_Graph_Executable.solution_mapping) :
   RDF_Graph_Executable.solution_mapping FStar_Pervasives_Native.option=
@@ -1859,7 +1892,7 @@ let try_bind_term (pt : pattern_term) (t : RDF_Graph_Executable.rdf_term)
   | PT_Literal l ->
       (match t with
        | RDF_Graph_Executable.T_Literal l' ->
-           if RDF_Graph_Executable.literal_eq l l'
+           if literal_eq_ci_lang l l'
            then FStar_Pervasives_Native.Some mu
            else FStar_Pervasives_Native.None
        | uu___ -> FStar_Pervasives_Native.None)
@@ -2046,13 +2079,18 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
        | uu___ -> ER_Error)
   | E_UnaryPlus e1 -> eval_expr e1 mu
   | E_Compare (op, e1, e2) ->
-      (match value_compare (eval_expr e1 mu) (eval_expr e2 mu) op with
-       | FStar_Pervasives_Native.Some b -> ER_Bool b
-       | FStar_Pervasives_Native.None ->
-           (match op with
-            | CmpEq -> ER_Bool false
-            | CmpNe -> ER_Bool true
-            | uu___ -> ER_Error))
+      let v1 = eval_expr e1 mu in
+      let v2 = eval_expr e2 mu in
+      if (uu___is_ER_Error v1) || (uu___is_ER_Error v2)
+      then ER_Error
+      else
+        (match value_compare v1 v2 op with
+         | FStar_Pervasives_Native.Some b -> ER_Bool b
+         | FStar_Pervasives_Native.None ->
+             (match op with
+              | CmpEq -> ER_Bool false
+              | CmpNe -> ER_Bool true
+              | uu___1 -> ER_Error))
   | E_And (e1, e2) ->
       ER_Bool ((ebv (eval_expr e1 mu)) && (ebv (eval_expr e2 mu)))
   | E_Or (e1, e2) ->

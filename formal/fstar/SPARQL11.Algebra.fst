@@ -586,6 +586,7 @@ let fn_isBlank (v : eval_result) : eval_result =
 let fn_isLiteral (v : eval_result) : eval_result =
   match v with
   | ER_Term (T_Literal _) -> ER_Bool true
+  | ER_Num _ | ER_Dec _ | ER_Dbl _ | ER_Bool _ -> ER_Bool true
   | ER_Error -> ER_Error
   | _ -> ER_Bool false
 
@@ -616,11 +617,18 @@ let fn_lang (v : eval_result) : eval_result =
     (match lit_lang l with
      | Some tag -> ER_Term (T_Literal (mk_plain_literal tag))
      | None     -> ER_Term (T_Literal (mk_plain_literal "")))
+  | ER_Num _ | ER_Dec _ | ER_Dbl _ | ER_Bool _ ->
+    (* Promoted numeric/boolean values have no language tag *)
+    ER_Term (T_Literal (mk_plain_literal ""))
   | _ -> ER_Error
 
 let fn_datatype (v : eval_result) : eval_result =
   match v with
   | ER_Term (T_Literal l) -> ER_Term (T_IRI (lit_datatype l))
+  | ER_Num _ -> ER_Term (T_IRI xsd_integer)
+  | ER_Dec _ -> ER_Term (T_IRI xsd_decimal)
+  | ER_Dbl _ -> ER_Term (T_IRI xsd_double)
+  | ER_Bool _ -> ER_Term (T_IRI xsd_boolean)
   | _ -> ER_Error
 
 (* String helper functions *)
@@ -1162,6 +1170,15 @@ let try_bind_subject (ps : pattern_subject) (s : subject) (mu : solution_mapping
     | None -> Some (sm_bind v term mu)
 
 (* Try to bind a pattern term against a concrete RDF term. *)
+(* Literal equality with case-insensitive language tag comparison *)
+let literal_eq_ci_lang (l1 l2 : literal) : bool =
+  l1.lexical_form = l2.lexical_form &&
+  l1.datatype = l2.datatype &&
+  (match l1.lang_tag, l2.lang_tag with
+   | Some t1, Some t2 -> string_lower t1 = string_lower t2
+   | None, None -> true
+   | _, _ -> false)
+
 let try_bind_term (pt : pattern_term) (t : rdf_term) (mu : solution_mapping)
   : option solution_mapping =
   match pt with
@@ -1175,7 +1192,7 @@ let try_bind_term (pt : pattern_term) (t : rdf_term) (mu : solution_mapping)
      | _ -> None)
   | PT_Literal l ->
     (match t with
-     | T_Literal l' -> if literal_eq l l' then Some mu else None
+     | T_Literal l' -> if literal_eq_ci_lang l l' then Some mu else None
      | _ -> None)
   | PT_Var v ->
     match sm_lookup v mu with
@@ -1392,7 +1409,12 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
 
   (* Comparison *)
   | E_Compare op e1 e2 ->
-    (match value_compare (eval_expr e1 mu) (eval_expr e2 mu) op with
+    let v1 = eval_expr e1 mu in
+    let v2 = eval_expr e2 mu in
+    (* If either operand is an error, the comparison is an error *)
+    if ER_Error? v1 || ER_Error? v2 then ER_Error
+    else
+    (match value_compare v1 v2 op with
      | Some b -> ER_Bool b
      | None ->
        (* For =/!=, incomparable types produce a definite answer:
