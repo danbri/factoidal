@@ -6,15 +6,18 @@ A formally verified RDF graph library with F\* specifications, KaRaMeL-extracted
 
 Factoidal provides a formally-specified RDF graph library targeting high-trust environments. The F\* specifications are **not documentation** — they are the source for verified C extraction via KaRaMeL.
 
+**[Live F\*-extracted engine and W3C test results](https://danbri.github.io/factoidal/fstar-extracted/)**
+
 ```
 F* spec → verify proofs → KaRaMeL → C (1,710 lines extracted)
-F* spec → Rust impl → WASM + JS bindings → Web demo & tests
+F* spec → OCaml extraction → JS → browser-runnable W3C tests
+F* spec → Rust impl → WASM + JS bindings → Web demo
 ```
 
 - **Formally verified** — 3,317 lines of F\* with zero `admit()`, 16+ proved lemmas, zero assume val in the RDF module
 - **C extraction working** — KaRaMeL extracts verified C from the RDF module (`make extract-c`)
 - **W3C compliant** — N-Triples 100%, Turtle 100%, SPARQL 36.5% (159/436) and growing
-- **Interactive demo** — Browser-based RDF graph explorer + SPARQL, powered by the real WASM library
+- **F\*-extracted SPARQL engine** — runs W3C test suites directly in the browser from F\* OCaml extraction
 
 ## Project Structure
 
