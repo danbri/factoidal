@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Factoidal — Path to 100% W3C Compliance</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #0f172a; color: #e2e8f0;
+    max-width: 960px; margin: 0 auto; padding: 1.5rem;
+    line-height: 1.5;
+  }
+  h1 { color: #38bdf8; font-size: 1.5rem; margin-bottom: 0.25rem; }
+  h2 { color: #94a3b8; font-size: 1rem; margin: 2rem 0 0.75rem;
+       text-transform: uppercase; letter-spacing: 0.05em; }
+  h3 { color: #e2e8f0; font-size: 0.9375rem; margin: 1.25rem 0 0.5rem; }
+  .subtitle { color: #64748b; margin-bottom: 1rem; font-size: 0.875rem; }
+  .nav { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; font-size: 0.8125rem; }
+  .nav a { color: #38bdf8; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .nav span { color: #475569; }
+  a { color: #38bdf8; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.8125rem; }
+  th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #1e293b; }
+  th { color: #94a3b8; font-size: 0.75rem; text-transform: uppercase;
+       background: #1e293b; position: sticky; top: 0; }
+  tr:hover { background: #1e293b; }
+  code { background: #1e293b; padding: 0.125rem 0.375rem; border-radius: 0.25rem;
+         font-size: 0.8125rem; font-family: 'SF Mono', 'Fira Code', monospace; }
+  pre {
+    background: #1e293b; border: 1px solid #334155; border-radius: 0.375rem;
+    padding: 1rem; font-size: 0.75rem; overflow-x: auto; color: #cbd5e1;
+    margin: 0.75rem 0; font-family: 'SF Mono', 'Fira Code', monospace;
+    line-height: 1.6;
+  }
+  .note { background: #1e293b; border-left: 3px solid #38bdf8; padding: 0.75rem 1rem;
+          margin: 1rem 0; font-size: 0.8125rem; color: #94a3b8; }
+  .fix-box { background: #1e293b; border-left: 3px solid #4ade80; padding: 0.75rem 1rem;
+             margin: 0.75rem 0; font-size: 0.8125rem; color: #94a3b8; }
+  .fix-box strong { color: #4ade80; }
+  .warn-box { background: #1e293b; border-left: 3px solid #fbbf24; padding: 0.75rem 1rem;
+              margin: 0.75rem 0; font-size: 0.8125rem; color: #94a3b8; }
+  .warn-box strong { color: #fbbf24; }
+  .pass { color: #4ade80; }
+  .fail { color: #f87171; }
+  .effort-tag { display: inline-block; padding: 0.125rem 0.5rem; border-radius: 0.25rem;
+                font-size: 0.6875rem; font-weight: 600; }
+  .effort-tag.easy { background: #064e3b; color: #4ade80; }
+  .effort-tag.medium { background: #422006; color: #fbbf24; }
+  .effort-tag.hard { background: #450a0a; color: #f87171; }
+  p { font-size: 0.875rem; color: #94a3b8; margin: 0.5rem 0; }
+  ul, ol { font-size: 0.875rem; color: #94a3b8; margin: 0.5rem 0 0.5rem 1.5rem; }
+  li { margin: 0.25rem 0; }
+  footer { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #334155;
+           color: #475569; font-size: 0.75rem; }
+
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                  gap: 1rem; margin: 1rem 0; }
+  .summary-card { background: #1e293b; border: 1px solid #334155; border-radius: 0.5rem;
+                  padding: 1rem; }
+  .summary-card .title { font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; }
+  .summary-card .current { font-size: 1.5rem; font-weight: bold; }
+  .summary-card .target { font-size: 0.875rem; color: #4ade80; }
+  .summary-card .delta { font-size: 0.75rem; color: #fbbf24; }
+</style>
+</head>
+<body>
+
+<h1>Path to 100%</h1>
+<div class="subtitle">Detailed analysis of every W3C test failure and the fix required</div>
+<div class="nav">
+  <a href="index.html">Overview</a> <span>/</span>
+  <a href="demo.html">Demo</a> <span>/</span>
+  <a href="tests.html">Tests</a> <span>/</span>
+  <span>Path to 100%</span>
+</div>
+
+<div class="summary-grid">
+  <div class="summary-card">
+    <div class="title">RDF Parsers (N-Triples + Turtle)</div>
+    <div class="current" style="color:#fbbf24">242 / 267</div>
+    <div class="target">Target: 267 / 267</div>
+    <div class="delta">25 failures across 6 validation gaps</div>
+  </div>
+  <div class="summary-card">
+    <div class="title">SPARQL Algebra (F*-extracted)</div>
+    <div class="current" style="color:#fbbf24">41 / 50</div>
+    <div class="target">Target: 50 / 50</div>
+    <div class="delta">9 failures across 2 root causes</div>
+  </div>
+  <div class="summary-card">
+    <div class="title">Combined</div>
+    <div class="current" style="color:#fbbf24">283 / 317</div>
+    <div class="target">Target: 317 / 317</div>
+    <div class="delta">34 fixes needed &mdash; all tractable</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2>Part 1: RDF Parser Failures (25 tests)</h2>
+<!-- ============================================================ -->
+
+<div class="note">
+  All 25 parser failures are in <strong>negative syntax tests</strong> &mdash; the parsers accept invalid
+  input that should be rejected. Positive parsing and eval tests are already at 100%.
+  Each fix adds a validation check; no architectural changes needed.
+</div>
+
+<!-- Fix 1 -->
+<h3>Fix 1: Reject surrogate code points (U+D800&ndash;U+DFFF)</h3>
+<p><span class="effort-tag easy">Easy</span> &mdash; 10 Turtle failures</p>
+
+<table>
+  <thead><tr><th>Test File</th><th>Invalid Input</th></tr></thead>
+  <tbody>
+    <tr><td>turtle-syntax-bad-numeric-escape-01..08.ttl</td><td><code>\uD800</code> or <code>\uDFFF</code> in string literals (all 4 quote styles)</td></tr>
+    <tr><td>turtle-syntax-bad-numeric-escape-09.ttl</td><td><code>\uD800</code> in IRI</td></tr>
+    <tr><td>turtle-syntax-bad-numeric-escape-10.ttl</td><td><code>\uDFFF</code> in IRI</td></tr>
+  </tbody>
+</table>
+
+<div class="fix-box">
+  <strong>Fix:</strong> In <code>parseHexEsc(n)</code> (Turtle line 284, N-Triples line 193), add a range check
+  after <code>parseInt(hex, 16)</code>:
+<pre>const cp = parseInt(hex, 16);
+if (cp >= 0xD800 && cp <= 0xDFFF)
+  throw this.err('Surrogate code points U+D800..U+DFFF not allowed');</pre>
+  Node.js <code>String.fromCodePoint(0xD800)</code> silently succeeds, so the check must be explicit.
+  Apply the same fix to both the Turtle and N-Triples <code>parseHexEsc</code> functions.
+</div>
+
+<!-- Fix 2 -->
+<h3>Fix 2: Reject relative IRIs in N-Triples</h3>
+<p><span class="effort-tag easy">Easy</span> &mdash; 4 N-Triples failures</p>
+
+<table>
+  <thead><tr><th>Test File</th><th>Invalid Input</th><th>Position</th></tr></thead>
+  <tbody>
+    <tr><td>nt-syntax-bad-uri-06.nt</td><td><code>&lt;s&gt;</code></td><td>subject</td></tr>
+    <tr><td>nt-syntax-bad-uri-07.nt</td><td><code>&lt;p&gt;</code></td><td>predicate</td></tr>
+    <tr><td>nt-syntax-bad-uri-08.nt</td><td><code>&lt;o&gt;</code></td><td>object</td></tr>
+    <tr><td>nt-syntax-bad-uri-09.nt</td><td><code>"foo"^^&lt;dt&gt;</code></td><td>datatype</td></tr>
+  </tbody>
+</table>
+
+<div class="fix-box">
+  <strong>Fix:</strong> N-Triples forbids relative IRIs (unlike Turtle which can resolve them against a base).
+  After <code>parseIriRef()</code> returns, validate the IRI contains a scheme (<code>:</code> character):
+<pre>const iri = parseIriRef();
+if (!iri.includes(':'))
+  throw new Error('Relative IRIs not allowed in N-Triples');</pre>
+  This check goes in the N-Triples parser only &mdash; Turtle correctly allows relative IRIs.
+</div>
+
+<!-- Fix 3 -->
+<h3>Fix 3: Reject disallowed characters in N-Triples IRIs</h3>
+<p><span class="effort-tag easy">Easy</span> &mdash; 1 N-Triples failure</p>
+
+<table>
+  <thead><tr><th>Test File</th><th>Invalid Input</th></tr></thead>
+  <tbody>
+    <tr><td>nt-syntax-bad-uri-01.nt</td><td><code>&lt;http://example/ space&gt;</code></td></tr>
+  </tbody>
+</table>
+
+<div class="fix-box">
+  <strong>Fix:</strong> The N-Triples IRIREF production excludes U+0000&ndash;U+0020, <code>&lt;</code>, <code>&gt;</code>,
+  <code>"</code>, <code>{</code>, <code>}</code>, <code>|</code>, <code>^</code>, <code>`</code>.
+  The Turtle parser already has this check (line 275); copy it to the N-Triples <code>parseIriRef()</code>:
+<pre>if (c === ' ' || c.charCodeAt(0) < 0x20)
+  throw new Error('Disallowed character in IRI');</pre>
+</div>
+
+<!-- Fix 4 -->
+<h3>Fix 4: Validate language tag first character</h3>
+<p><span class="effort-tag easy">Easy</span> &mdash; 1 N-Triples + 1 Turtle failure</p>
+
+<table>
+  <thead><tr><th>Test File</th><th>Invalid Input</th></tr></thead>
+  <tbody>
+    <tr><td>nt-syntax-bad-lang-01.nt</td><td><code>"string"@1</code></td></tr>
+    <tr><td>turtle-syntax-bad-lang-01.ttl</td><td><code>"string"@1</code></td></tr>
+  </tbody>
+</table>
+
+<div class="fix-box">
+  <strong>Fix:</strong> Per BCP 47 / LANGTAG production, the first subtag must be <code>[a-zA-Z]+</code>.
+  Digits are only valid in subsequent subtags after a hyphen. Add a check immediately after <code>@</code>:
+<pre>const first = peek();
+if (!/[a-zA-Z]/.test(first))
+  throw new Error('Language tag must start with a letter');</pre>
+  Apply to both N-Triples (<code>parseLiteral</code> line 177) and Turtle (<code>parseLiteralValue</code> line 509).
+</div>
+
+<!-- Fix 5 -->
+<h3>Fix 5: Validate N-Triples line completeness</h3>
+<p><span class="effort-tag easy">Easy</span> &mdash; 3 N-Triples failures</p>
+
+<table>
+  <thead><tr><th>Test File</th><th>Invalid Input</th><th>Issue</th></tr></thead>
+  <tbody>
+    <tr><td>nt-syntax-bad-string-05.nt</td><td><code>"""abc"""</code></td><td>Triple-quoted string (Turtle-only)</td></tr>
+    <tr><td>nt-syntax-bad-struct-01.nt</td><td><code>&lt;s&gt; &lt;p&gt; &lt;o&gt;, &lt;o2&gt; .</code></td><td>Comma object list (Turtle-only)</td></tr>
+    <tr><td>nt-syntax-bad-struct-02.nt</td><td><code>&lt;s&gt; &lt;p&gt; &lt;o&gt;; &lt;p2&gt; &lt;o2&gt; .</code></td><td>Semicolons (Turtle-only)</td></tr>
+  </tbody>
+</table>
+
+<div class="fix-box">
+  <strong>Fix:</strong> After parsing the object, verify only whitespace and <code>.</code> remain on the line.
+  Currently line 109&ndash;111 silently ignores trailing content. Replace with:
+<pre>skipWS();
+if (peek() !== '.') throw new Error('Expected "." after object');
+pos++;
+skipWS();
+if (pos < line.length) throw new Error('Unexpected content after "."');</pre>
+  This catches triple-quoted strings (parsed as empty string + trailing garbage),
+  comma-separated objects, and semicolon-separated predicates.
+</div>
+
+<!-- Fix 6 -->
+<h3>Fix 6: Reject prefix names ending with dot</h3>
+<p><span class="effort-tag easy">Easy</span> &mdash; 1 Turtle failure</p>
+
+<table>
+  <thead><tr><th>Test File</th><th>Invalid Input</th></tr></thead>
+  <tbody>
+    <tr><td>turtle-syntax-bad-missing-ns-dot-end.ttl</td><td><code>PREFIX invalid.: &lt;...&gt;</code></td></tr>
+  </tbody>
+</table>
+
+<div class="fix-box">
+  <strong>Fix:</strong> Per <code>PN_PREFIX</code> grammar: <code>PN_CHARS_BASE ((PN_CHARS | '.')* PN_CHARS)?</code>
+  &mdash; the last character cannot be a dot. After reading the prefix name, check:
+<pre>if (prefix.endsWith('.'))
+  throw this.err('Prefix name must not end with "."');</pre>
+</div>
+
+<!-- Fix 7 -->
+<h3>Fix 7: Fix dot-colon interaction in PN_LOCAL</h3>
+<p><span class="effort-tag medium">Medium</span> &mdash; 2 Turtle failures</p>
+
+<table>
+  <thead><tr><th>Test File</th><th>Invalid Input</th></tr></thead>
+  <tbody>
+    <tr><td>turtle-syntax-bad-n3-extras-03.ttl</td><td>N3-style path syntax with dots</td></tr>
+    <tr><td>turtle-syntax-bad-n3-extras-06.ttl</td><td><code>:a.:b.:c .</code></td></tr>
+  </tbody>
+</table>
+
+<div class="fix-box">
+  <strong>Fix:</strong> In <code>parsePnLocal()</code> (line 340&ndash;349), the dot lookahead incorrectly
+  includes <code>:</code> as a valid continuation character. Per the <code>PN_LOCAL</code> grammar,
+  a dot can only be followed by <code>PN_CHARS</code> (not <code>:</code>). Remove <code>next === ':'</code>
+  from the dot-continuation check at line 344:
+<pre>// Before (wrong):
+if (next && (isPnCharsUnicode(next) || next === ':' || next === '.' || ...))
+// After (correct):
+if (next && (isPnCharsUnicode(next) || next === '.' || next === '%' || next === '\\'))</pre>
+</div>
+
+<!-- Fix 8 -->
+<h3>Fix 8: Require mandatory period at end of statement</h3>
+<p><span class="effort-tag easy">Easy</span> &mdash; 2 Turtle failures</p>
+
+<table>
+  <thead><tr><th>Test File</th><th>Invalid Input</th></tr></thead>
+  <tbody>
+    <tr><td>turtle-syntax-bad-struct-08.ttl</td><td><code>&lt;s&gt; &lt;p&gt; &lt;o&gt;</code> (no period at EOF)</td></tr>
+    <tr><td>turtle-syntax-bad-struct-11.ttl</td><td><code>&lt;s&gt; &lt;p&gt; &lt;o&gt; ;</code> (trailing semicolon, no period)</td></tr>
+  </tbody>
+</table>
+
+<div class="fix-box">
+  <strong>Fix:</strong> In <code>parse()</code> (line 666&ndash;667), the <code>!this.atEnd()</code> guard
+  silently accepts missing periods at EOF. Remove the guard:
+<pre>// Before (wrong):
+if (this.peek() === '.') this.pos++;
+else if (!this.atEnd()) throw this.err("Expected '.' at end of statement");
+
+// After (correct):
+if (this.peek() === '.') this.pos++;
+else throw this.err("Expected '.' at end of statement");</pre>
+</div>
+
+<h3>Parser Fixes Summary</h3>
+<table>
+  <thead><tr><th>#</th><th>Fix</th><th>Tests Fixed</th><th>Effort</th><th>Files Changed</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Surrogate code point rejection</td><td class="pass">10</td><td><span class="effort-tag easy">Easy</span></td><td>rdf-parsers.js (2 locations)</td></tr>
+    <tr><td>2</td><td>Relative IRI rejection (N-Triples)</td><td class="pass">4</td><td><span class="effort-tag easy">Easy</span></td><td>rdf-parsers.js (1 location)</td></tr>
+    <tr><td>3</td><td>IRI character validation (N-Triples)</td><td class="pass">1</td><td><span class="effort-tag easy">Easy</span></td><td>rdf-parsers.js (1 location)</td></tr>
+    <tr><td>4</td><td>Language tag first-character</td><td class="pass">2</td><td><span class="effort-tag easy">Easy</span></td><td>rdf-parsers.js (2 locations)</td></tr>
+    <tr><td>5</td><td>N-Triples line completeness</td><td class="pass">3</td><td><span class="effort-tag easy">Easy</span></td><td>rdf-parsers.js (1 location)</td></tr>
+    <tr><td>6</td><td>Prefix name dot-ending</td><td class="pass">1</td><td><span class="effort-tag easy">Easy</span></td><td>rdf-parsers.js (1 location)</td></tr>
+    <tr><td>7</td><td>PN_LOCAL dot-colon interaction</td><td class="pass">2</td><td><span class="effort-tag medium">Medium</span></td><td>rdf-parsers.js (1 location)</td></tr>
+    <tr><td>8</td><td>Mandatory period at EOF</td><td class="pass">2</td><td><span class="effort-tag easy">Easy</span></td><td>rdf-parsers.js (1 location)</td></tr>
+    <tr><td></td><td><strong>Total</strong></td><td class="pass"><strong>25</strong></td><td></td><td></td></tr>
+  </tbody>
+</table>
+
+<!-- ============================================================ -->
+<h2>Part 2: SPARQL Algebra Failures (9 tests)</h2>
+<!-- ============================================================ -->
+
+<div class="note">
+  All 9 failures trace to exactly <strong>two root causes</strong> in the F*-extracted evaluator.
+  Both can be fixed either in the F* source (preferred) or by patching the extracted OCaml.
+</div>
+
+<!-- Root Cause A -->
+<h3>Root Cause A: Numeric literal type mismatch (5 failures)</h3>
+<p><span class="effort-tag medium">Medium</span> &mdash; affects expr-equals, expr-ops, numeric-functions</p>
+
+<div class="warn-box">
+  <strong>Problem:</strong> When <code>?v</code> is bound to <code>"10"^^xsd:integer</code>, variable lookup
+  (<code>E_Var</code>) returns <code>ER_Term(T_Literal{...})</code>. But a query literal like <code>7</code>
+  evaluates via <code>E_NumericLit</code> to <code>ER_Num(7)</code>. When <code>value_compare</code> sees
+  <code>(ER_Term, ER_Num)</code>, no match arm handles it &mdash; it falls through to the catch-all
+  returning <code>None</code>, which becomes <code>ER_Error</code>, and FILTER drops every row.
+</div>
+
+<table>
+  <thead><tr><th>Test</th><th>Query Filter</th><th>Expected</th><th>Got</th></tr></thead>
+  <tbody>
+    <tr><td>expr-equals / eq-int-1</td><td><code>FILTER(?o = 1)</code></td><td>1 result</td><td class="fail">0</td></tr>
+    <tr><td>expr-equals / ne-int-1</td><td><code>FILTER(?o != 1)</code></td><td>2 results</td><td class="fail">0</td></tr>
+    <tr><td>expr-ops / gt-7</td><td><code>FILTER(?v > 7)</code></td><td>2 results</td><td class="fail">0</td></tr>
+    <tr><td>expr-ops / le-10</td><td><code>FILTER(?v &lt;= 10)</code></td><td>2 results</td><td class="fail">0</td></tr>
+    <tr><td>numeric-functions / numeric-gt</td><td><code>FILTER(?v > 3)</code></td><td>1 result</td><td class="fail">0</td></tr>
+  </tbody>
+</table>
+
+<div class="fix-box">
+  <strong>Fix:</strong> Promote numeric-typed literals to native eval_result types at variable lookup.
+  In <code>SPARQL11.Algebra.fst</code>, change the <code>E_Var</code> case of <code>eval_expr</code>:
+<pre>| E_Var v ->
+    match sm_lookup v mu with
+    | Some (T_Literal l) ->
+        if lit_datatype l = xsd_integer then
+          ER_Num (parse_int (lit_lexical l))
+        else if lit_datatype l = xsd_decimal then
+          ER_Dec (lit_lexical l)
+        else if lit_datatype l = xsd_double then
+          ER_Dbl (lit_lexical l)
+        else ER_Term (T_Literal l)
+    | Some t -> ER_Term t
+    | None -> ER_Error</pre>
+  <strong>Interim OCaml patch:</strong> The same logic can be added to <code>ocaml-patches.sh</code>
+  to patch <code>SPARQL11_Algebra.ml</code> after extraction.
+</div>
+
+<!-- Root Cause B -->
+<h3>Root Cause B: EXISTS / NOT EXISTS stubbed out (4 failures)</h3>
+<p><span class="effort-tag hard">Hard</span> &mdash; affects exists suite</p>
+
+<div class="warn-box">
+  <strong>Problem:</strong> <code>E_Exists</code> and <code>E_NotExists</code> unconditionally return
+  <code>ER_Error</code> in the extracted OCaml (line 2252&ndash;2253). EXISTS needs to evaluate a
+  <strong>graph pattern</strong> against the <strong>current graph</strong>, but <code>eval_expr</code> only
+  receives <code>(expr, solution_mapping)</code> &mdash; it has no access to the graph. This is a
+  forward-reference / dependency cycle issue: <code>eval_expr</code> &rarr; <code>eval_pattern</code> &rarr;
+  <code>eval_expr_ebv</code> &rarr; <code>eval_expr</code>.
+</div>
+
+<table>
+  <thead><tr><th>Test</th><th>Query Filter</th><th>Expected</th><th>Got</th></tr></thead>
+  <tbody>
+    <tr><td>exists / exists</td><td><code>FILTER(EXISTS { ?s ex:q ?d })</code></td><td>1 result</td><td class="fail">0</td></tr>
+    <tr><td>exists / exists-val</td><td>(value check on above)</td><td>1 result</td><td class="fail">0</td></tr>
+    <tr><td>exists / not-exists</td><td><code>FILTER(NOT EXISTS { ?s ex:q ?d })</code></td><td>1 result</td><td class="fail">0</td></tr>
+    <tr><td>exists / not-exists-val</td><td>(value check on above)</td><td>1 result</td><td class="fail">0</td></tr>
+  </tbody>
+</table>
+
+<div class="fix-box">
+  <strong>Fix:</strong> Thread the graph into expression evaluation using the existing mutable-ref pattern.
+  The infrastructure is already in place &mdash; <code>substitute_pattern</code> (line 3109) exists,
+  and <code>eval_expr_ebv_ref</code> / <code>eval_expr_fwd_ref</code> already solve the
+  <code>eval_expr</code>&harr;<code>eval_pattern</code> cycle.
+  <br><br>
+  <strong>Option A (ref cell &mdash; OCaml-only, minimal change):</strong>
+<pre>let current_graph_ref = ref ([] : rdf_graph)
+
+(* In eval_pattern, before calling filter: *)
+current_graph_ref := g;
+
+(* In eval_expr: *)
+| E_Exists sub_pattern ->
+    let g = !current_graph_ref in
+    let substituted = substitute_pattern mu sub_pattern in
+    let results = eval_pattern substituted g in
+    ER_Bool (List.length results > 0)
+| E_NotExists sub_pattern ->
+    let g = !current_graph_ref in
+    let substituted = substitute_pattern mu sub_pattern in
+    let results = eval_pattern substituted g in
+    ER_Bool (List.length results = 0)</pre>
+  <strong>Option B (signature change &mdash; F* source, correct fix):</strong>
+  Change <code>eval_expr</code> to take <code>(expr, solution_mapping, rdf_graph)</code>.
+  This requires updating all callers in the F* source but produces a cleaner extraction.
+</div>
+
+<h3>SPARQL Fixes Summary</h3>
+<table>
+  <thead><tr><th>Root Cause</th><th>Tests Fixed</th><th>Effort</th><th>Where to Fix</th></tr></thead>
+  <tbody>
+    <tr><td>Numeric literal type promotion</td><td class="pass">5</td><td><span class="effort-tag medium">Medium</span></td><td>F* source (<code>eval_expr</code> E_Var case) or OCaml patch</td></tr>
+    <tr><td>EXISTS/NOT EXISTS implementation</td><td class="pass">4</td><td><span class="effort-tag hard">Hard</span></td><td>F* source (signature change) or OCaml ref-cell patch</td></tr>
+    <tr><td><strong>Total</strong></td><td class="pass"><strong>9</strong></td><td></td><td></td></tr>
+  </tbody>
+</table>
+
+<!-- ============================================================ -->
+<h2>Implementation Order</h2>
+<!-- ============================================================ -->
+
+<p>Recommended order by impact/effort ratio:</p>
+
+<ol>
+  <li><strong>Surrogate code points</strong> (Fix 1) &mdash; 10 tests, 2 lines of code</li>
+  <li><strong>N-Triples line completeness</strong> (Fix 5) &mdash; 3 tests, straightforward</li>
+  <li><strong>Relative IRI rejection</strong> (Fix 2) &mdash; 4 tests, 1 check</li>
+  <li><strong>Language tag validation</strong> (Fix 4) &mdash; 2 tests, 1 check in 2 places</li>
+  <li><strong>IRI character validation</strong> (Fix 3) &mdash; 1 test, copy from Turtle parser</li>
+  <li><strong>Mandatory period</strong> (Fix 8) &mdash; 2 tests, remove a guard</li>
+  <li><strong>Prefix dot-ending</strong> (Fix 6) &mdash; 1 test, 1 check</li>
+  <li><strong>Numeric type promotion</strong> (Root Cause A) &mdash; 5 tests, F* or OCaml patch</li>
+  <li><strong>PN_LOCAL dot-colon</strong> (Fix 7) &mdash; 2 tests, needs careful grammar analysis</li>
+  <li><strong>EXISTS/NOT EXISTS</strong> (Root Cause B) &mdash; 4 tests, threading graph through eval_expr</li>
+</ol>
+
+<div class="note">
+  Steps 1&ndash;7 are purely additive validation checks in <code>rdf-parsers.js</code>.
+  They can all be done in a single pass with no risk of regressions to passing tests.
+  Steps 8&ndash;10 require changes to the F* source or OCaml extraction patches.
+</div>
+
+<footer>
+  Factoidal &mdash; Verified RDF Transform System &mdash;
+  <a href="tests.html">Current test results</a>
+</footer>
+
+</body>
+</html>

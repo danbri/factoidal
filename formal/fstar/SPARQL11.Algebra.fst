@@ -1231,6 +1231,9 @@ let join (omega1 omega2 : solution_sequence) : solution_sequence =
 assume val eval_expr_ebv : expr -> solution_mapping -> bool
 assume val eval_expr_fwd : expr -> solution_mapping -> eval_result
 
+(* EXISTS/NOT EXISTS need graph context — forward ref to concrete eval_exists *)
+assume val eval_exists_fwd : group_graph_pattern -> solution_mapping -> rdf_graph -> bool
+
 (* LeftJoin (OPTIONAL): join + unmatched from left *)
 let left_join (omega1 omega2 : solution_sequence) (filter_expr : expr) : solution_sequence =
   List.Tot.concatMap
@@ -1289,7 +1292,15 @@ let rec eval_pattern (p : group_graph_pattern) (g : rdf_graph)
     left_join (eval_pattern p1 g) (eval_pattern p2 g) filter_e
 
   | GP_Filter e p' ->
-    filter_solutions_fwd e (eval_pattern p' g)
+    let omega = eval_pattern p' g in
+    (* EXISTS/NOT EXISTS require graph context — dispatch here rather than
+       through eval_expr which has no graph parameter. *)
+    (match e with
+     | E_Exists sub_p ->
+       List.Tot.filter (fun mu -> eval_exists_fwd sub_p mu g) omega
+     | E_NotExists sub_p ->
+       List.Tot.filter (fun mu -> not (eval_exists_fwd sub_p mu g)) omega
+     | _ -> filter_solutions_fwd e omega)
 
   | GP_Union p1 p2 ->
     union (eval_pattern p1 g) (eval_pattern p2 g)
@@ -1341,6 +1352,21 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
   (* Primary expressions *)
   | E_Var v ->
     (match sm_lookup v mu with
+     | Some (T_Literal l) ->
+       (* Promote numeric-typed literals to ER_Num/ER_Dec/ER_Dbl so that
+          value_compare works correctly against E_NumericLit etc. *)
+       if lit_datatype l = xsd_integer then
+         (match parse_int_string (lit_lexical l) with
+          | Some n -> ER_Num n
+          | None -> ER_Term (T_Literal l))
+       else if lit_datatype l = xsd_decimal then
+         ER_Dec (lit_lexical l)
+       else if lit_datatype l = xsd_double || lit_datatype l = xsd_float then
+         ER_Dbl (lit_lexical l)
+       else if lit_datatype l = xsd_boolean then
+         ER_Bool (lit_lexical l = "true" || lit_lexical l = "1")
+       else
+         ER_Term (T_Literal l)
      | Some t -> ER_Term t
      | None -> ER_Error)
   | E_IRI i -> ER_Term (T_IRI i)
