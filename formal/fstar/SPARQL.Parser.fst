@@ -200,7 +200,7 @@ let parse_pname_ln (ps : pstate) (prefixes : list (string * wf_iri))
       (* Collect local name *)
       let rec collect (ps : pstate) (acc : list FStar.Char.char) : (string * pstate) =
         match ps_peek ps with
-        | Some c when is_pn_chars c || FStar.Char.int_of_char c = 0x2F (* '/' *) ->
+        | Some c when is_pn_chars c ->
           collect (ps_advance ps 1) (c :: acc)
         | _ -> (String.string_of_list (List.Tot.rev acc), ps)
       in
@@ -531,6 +531,31 @@ let parse_nat_digits_inline (ps : pstate) : option (nat * pstate) =
     in
     let n = to_int chars 0 in
     if n >= 0 then Some (n, ps2) else None
+
+(** Predicate can be a simple term or a property path **)
+noeq type pred_or_path =
+  | Pred_Term : pattern_term -> pred_or_path
+  | Pred_Path : property_path -> pred_or_path
+
+(** Combine two group graph patterns via join **)
+let ggp_join (a : group_graph_pattern) (b : group_graph_pattern) : group_graph_pattern =
+  if a = GP_Empty then b
+  else if b = GP_Empty then a
+  else GP_Join a b
+
+(** Convert a list of triple patterns + property path patterns into a group_graph_pattern.
+    Consecutive triple patterns are grouped into a single GP_BGP. **)
+let rec triples_to_ggp (pending_tps : list triple_pattern) (rest : list (either triple_pattern (pattern_subject * property_path * pattern_term)))
+  : group_graph_pattern =
+  match rest with
+  | [] ->
+    if Nil? pending_tps then GP_Empty
+    else GP_BGP (List.Tot.rev pending_tps)
+  | Inl tp :: tl -> triples_to_ggp (tp :: pending_tps) tl
+  | Inr (s, pp, o) :: tl ->
+    let bgp_part = if Nil? pending_tps then GP_Empty else GP_BGP (List.Tot.rev pending_tps) in
+    let pp_part = GP_PropertyPath s pp o in
+    ggp_join (ggp_join bgp_part pp_part) (triples_to_ggp [] tl)
 
 let rec parse_expr (ps : pstate) (prefixes : list (string * wf_iri))
   : option (expr * pstate) =
@@ -1291,7 +1316,302 @@ and parse_pattern_term (ps : pstate) (prefixes : list (string * wf_iri))
                 Some (PT_IRI rdf_nil, ps0)
               | None -> None
 
+(** Property path parser — SPARQL 1.1 §9 **)
+and parse_property_path (ps : pstate) (prefixes : list (string * wf_iri))
+  : option (property_path * pstate) =
+  parse_path_alternative ps prefixes
+
+and parse_path_alternative (ps : pstate) (prefixes : list (string * wf_iri))
+  : option (property_path * pstate) =
+  match parse_path_sequence ps prefixes with
+  | None -> None
+  | Some (p, ps) ->
+    let rec loop (acc : property_path) (ps : pstate) : (property_path * pstate) =
+      let ps = skip_ws ps in
+      match ps_consume ps "|" with
+      | Some ps ->
+        let ps = skip_ws ps in
+        (match parse_path_sequence ps prefixes with
+         | Some (p2, ps) -> loop (PP_Alternative acc p2) ps
+         | None -> (acc, ps))
+      | None -> (acc, ps)
+    in
+    let (result, ps) = loop p ps in
+    Some (result, ps)
+
+and parse_path_sequence (ps : pstate) (prefixes : list (string * wf_iri))
+  : option (property_path * pstate) =
+  match parse_path_elt_or_inverse ps prefixes with
+  | None -> None
+  | Some (p, ps) ->
+    let rec loop (acc : property_path) (ps : pstate) : (property_path * pstate) =
+      let ps = skip_ws ps in
+      match ps_consume ps "/" with
+      | Some ps ->
+        let ps = skip_ws ps in
+        (match parse_path_elt_or_inverse ps prefixes with
+         | Some (p2, ps) -> loop (PP_Sequence acc p2) ps
+         | None -> (acc, ps))
+      | None -> (acc, ps)
+    in
+    let (result, ps) = loop p ps in
+    Some (result, ps)
+
+and parse_path_elt_or_inverse (ps : pstate) (prefixes : list (string * wf_iri))
+  : option (property_path * pstate) =
+  let ps = skip_ws ps in
+  match ps_consume ps "^" with
+  | Some ps ->
+    let ps = skip_ws ps in
+    (match parse_path_elt ps prefixes with
+     | Some (p, ps) -> Some (PP_Inverse p, ps)
+     | None -> None)
+  | None -> parse_path_elt ps prefixes
+
+and parse_path_elt (ps : pstate) (prefixes : list (string * wf_iri))
+  : option (property_path * pstate) =
+  match parse_path_primary ps prefixes with
+  | None -> None
+  | Some (p, ps) ->
+    let ps_nows = ps in
+    (* Check for path modifiers: *, +, ?, {n,m} *)
+    match ps_peek ps with
+    | Some c when FStar.Char.int_of_char c = 0x2A (* '*' *) ->
+      Some (PP_ZeroOrMore p, ps_advance ps 1)
+    | Some c when FStar.Char.int_of_char c = 0x2B (* '+' *) ->
+      Some (PP_OneOrMore p, ps_advance ps 1)
+    | Some c when FStar.Char.int_of_char c = 0x3F (* '?' *) ->
+      Some (PP_ZeroOrOne p, ps_advance ps 1)
+    | Some c when FStar.Char.int_of_char c = 0x7B (* '{' — counted path *) ->
+      let ps = ps_advance ps 1 in
+      let ps = skip_ws ps in
+      (match parse_nat_digits_inline ps with
+       | Some (n, ps) ->
+         let ps = skip_ws ps in
+         (match ps_consume ps "," with
+          | Some ps ->
+            let ps = skip_ws ps in
+            (match parse_nat_digits_inline ps with
+             | Some (m, ps) ->
+               let ps = skip_ws ps in
+               (match ps_consume ps "}" with
+                | Some ps ->
+                  (* {n,m} — expand to n fixed steps + (m-n) optional *)
+                  if n = 0 && m = 0 then Some (PP_ZeroLength, ps)  (* {0,0} identity *)
+                  else if n = 0 && m = 1 then Some (PP_ZeroOrOne p, ps)
+                  else Some (PP_ZeroOrMore p, ps)  (* approximate for now *)
+                | None -> Some (p, ps_nows))
+             | None ->
+               (match ps_consume ps "}" with
+                | Some ps -> Some (PP_ZeroOrMore p, ps)  (* {n,} *)
+                | None -> Some (p, ps_nows)))
+          | None ->
+            (match ps_consume ps "}" with
+             | Some ps ->
+               (* {n} — exactly n repetitions *)
+               if n = 0 then
+                 (* {0} means zero-length path — identity *)
+                 Some (PP_ZeroLength, ps)
+               else Some (p, ps)  (* {1} = p, higher counts approximate *)
+             | None -> Some (p, ps_nows)))
+       | None -> Some (p, ps_nows))
+    | _ -> Some (p, ps_nows)
+
+and parse_path_primary (ps : pstate) (prefixes : list (string * wf_iri))
+  : option (property_path * pstate) =
+  let ps = skip_ws ps in
+  match ps_peek ps with
+  | Some c when FStar.Char.int_of_char c = 0x28 (* '(' *) ->
+    let ps = ps_advance ps 1 in
+    (match parse_property_path ps prefixes with
+     | Some (p, ps) ->
+       let ps = skip_ws ps in
+       (match ps_consume ps ")" with
+        | Some ps -> Some (p, ps)
+        | None -> None)
+     | None -> None)
+  | Some c when FStar.Char.int_of_char c = 0x21 (* '!' — negated set *) ->
+    let ps = ps_advance ps 1 in
+    let ps = skip_ws ps in
+    (match ps_consume ps "(" with
+     | Some ps ->
+       (* Parse negated path set: !(iri1 | ^iri2 | ...) *)
+       let rec parse_neg_set (acc : list property_path) (ps : pstate) : option (list property_path * pstate) =
+         let ps = skip_ws ps in
+         match ps_consume ps ")" with
+         | Some ps -> Some (List.Tot.rev acc, ps)
+         | None ->
+           let ps = if not (Nil? acc) then
+             match ps_consume ps "|" with | Some ps -> ps | None -> ps
+           else ps in
+           let ps = skip_ws ps in
+           (match ps_consume ps "^" with
+            | Some ps ->
+              (match parse_iri ps prefixes with
+               | Some (iri, ps) -> parse_neg_set (PP_Inverse (PP_IRI iri) :: acc) ps
+               | None -> None)
+            | None ->
+              match parse_iri ps prefixes with
+              | Some (iri, ps) -> parse_neg_set (PP_IRI iri :: acc) ps
+              | None -> None)
+       in
+       (match parse_neg_set [] ps with
+        | Some (paths, ps) -> Some (PP_NegatedSet paths, ps)
+        | None -> None)
+     | None ->
+       (* Single negated IRI: !ex:p *)
+       (match ps_consume ps "^" with
+        | Some ps ->
+          (match parse_iri ps prefixes with
+           | Some (iri, ps) -> Some (PP_NegatedSet [PP_Inverse (PP_IRI iri)], ps)
+           | None -> None)
+        | None ->
+          match parse_iri ps prefixes with
+          | Some (iri, ps) -> Some (PP_NegatedSet [PP_IRI iri], ps)
+          | None -> None))
+  | Some c when FStar.Char.int_of_char c = 0x61 (* 'a' *) ->
+    (* Check for 'a' keyword = rdf:type *)
+    (match ps_char_at ps 1 with
+     | Some c2 when is_pn_chars c2 ->
+       (match parse_iri ps prefixes with
+        | Some (iri, ps) -> Some (PP_IRI iri, ps)
+        | None -> None)
+     | _ ->
+       let rdf_type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" in
+       Some (PP_IRI rdf_type, ps_advance ps 1))
+  | _ ->
+    match parse_iri ps prefixes with
+    | Some (iri, ps) -> Some (PP_IRI iri, ps)
+    | None -> None
+
+(** Parse a property path predicate with objects, producing GP_PropertyPath patterns.
+    Called when the predicate position contains path operators (/, *, +, ?, ^, !). **)
+and parse_path_object_list (subj : pattern_subject) (path : property_path) (ps : pstate) (prefixes : list (string * wf_iri))
+  : option (group_graph_pattern * pstate) =
+  let ps = skip_ws ps in
+  match parse_pattern_term ps prefixes with
+  | None -> None
+  | Some (obj, ps) ->
+    let pp = GP_PropertyPath subj path obj in
+    let ps' = skip_ws ps in
+    match ps_consume ps' "," with
+    | Some ps' ->
+      (match parse_path_object_list subj path ps' prefixes with
+       | Some (more, ps') -> Some (ggp_join pp more, ps')
+       | None -> Some (pp, ps))
+    | None -> Some (pp, ps)
+
+(** Parse a predicate+objects where the predicate may be a property path.
+    Returns Left(triple patterns) for simple IRI predicates, or Right(group_graph_pattern) for paths. **)
+and parse_pred_object_with_path (subj : pattern_subject) (ps : pstate) (prefixes : list (string * wf_iri))
+  : option (group_graph_pattern * pstate) =
+  let ps = skip_ws ps in
+  (* Try property path parsing — this handles both simple IRIs and complex paths *)
+  match parse_property_path ps prefixes with
+  | Some (path, ps) ->
+    (match path with
+     | PP_IRI iri ->
+       (* Simple IRI — use regular object list for triple patterns *)
+       (match parse_object_list subj (PT_IRI iri) ps prefixes with
+        | Some (tps, ps) ->
+          if Nil? tps then Some (GP_Empty, ps)
+          else Some (GP_BGP tps, ps)
+        | None -> None)
+     | _ ->
+       (* Complex property path — use path object list *)
+       parse_path_object_list subj path ps prefixes)
+  | None ->
+    (* Try 'a' keyword or variable as predicate *)
+    let ps_bk = ps in
+    (match ps_peek ps with
+     | Some c when FStar.Char.int_of_char c = 0x61 (* 'a' *) ->
+       (match ps_char_at ps 1 with
+        | Some c2 when is_pn_chars c2 ->
+          (match parse_pattern_term ps prefixes with
+           | Some (pred, ps) ->
+             (match parse_object_list subj pred ps prefixes with
+              | Some (tps, ps) -> Some (GP_BGP tps, ps)
+              | None -> None)
+           | None -> Some (GP_Empty, ps_bk))
+        | _ ->
+          let rdf_type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" in
+          let ps = ps_advance ps 1 in
+          (match parse_object_list subj (PT_IRI rdf_type) ps prefixes with
+           | Some (tps, ps) -> Some (GP_BGP tps, ps)
+           | None -> None))
+     | _ ->
+       (* Variable or other pattern term as predicate *)
+       (match parse_pattern_term ps prefixes with
+        | Some (pred, ps) ->
+          (match parse_object_list subj pred ps prefixes with
+           | Some (tps, ps) -> Some (GP_BGP tps, ps)
+           | None -> None)
+        | None -> Some (GP_Empty, ps_bk)))
+
+(** Parse a full predicate-object list with property path support **)
+and parse_predicate_object_list_pp (subj : pattern_subject) (ps : pstate) (prefixes : list (string * wf_iri))
+  : option (group_graph_pattern * pstate) =
+  match parse_pred_object_with_path subj ps prefixes with
+  | None -> Some (GP_Empty, ps)
+  | Some (result, ps) ->
+    if result = GP_Empty then Some (GP_Empty, ps)
+    else
+      let ps' = skip_ws ps in
+      match ps_consume ps' ";" with
+      | Some ps' ->
+        let ps' = skip_ws ps' in
+        (* Allow trailing semicolon *)
+        (match ps_peek ps' with
+         | Some c when FStar.Char.int_of_char c = 0x7D (* '}' *) || FStar.Char.int_of_char c = 0x2E (* '.' *) ->
+           Some (result, ps')
+         | None -> Some (result, ps')
+         | _ ->
+           match parse_predicate_object_list_pp subj ps' prefixes with
+           | Some (more, ps') ->
+             if more = GP_Empty then Some (result, ps')
+             else Some (ggp_join result more, ps')
+           | None -> Some (result, ps'))
+      | None -> Some (result, ps)
+
 (** Parse triple patterns within a group, handling ';' and ',' shortcuts **)
+and parse_triples_block_pp (ps : pstate) (prefixes : list (string * wf_iri))
+  : option (group_graph_pattern * pstate) =
+  let ps = skip_ws ps in
+  (* Check for blank node property list [ pred obj ; ... ] in subject position *)
+  match ps_peek ps with
+  | Some c when FStar.Char.int_of_char c = 0x5B (* '[' *) ->
+    let ps_bk = ps in
+    let ps' = ps_advance ps 1 in
+    let ps' = skip_ws ps' in
+    (match ps_peek ps' with
+     | Some c when FStar.Char.int_of_char c = 0x5D (* ']' — empty [] as subject *) ->
+       let ps' = ps_advance ps' 1 in
+       let bnode_var = "?_anon" ^ string_of_int ps_bk.pos in
+       parse_predicate_object_list_pp (PS_Var bnode_var) ps' prefixes
+     | Some _ ->
+       let bnode_var = "?_bpl" ^ string_of_int ps_bk.pos in
+       let bnode_subj = PS_Var bnode_var in
+       (match parse_predicate_object_list_pp bnode_subj ps' prefixes with
+        | Some (bnode_pat, ps') ->
+          let ps' = skip_ws ps' in
+          (match ps_consume ps' "]" with
+           | Some ps' ->
+             let ps' = skip_ws ps' in
+             (match parse_predicate_object_list_pp bnode_subj ps' prefixes with
+              | Some (more, ps') ->
+                if more = GP_Empty then Some (bnode_pat, ps')
+                else Some (ggp_join bnode_pat more, ps')
+              | None -> Some (bnode_pat, ps'))
+           | None -> None)
+        | None -> None)
+     | None -> None)
+  | _ ->
+  match parse_pattern_subject ps prefixes with
+  | None -> Some (GP_Empty, ps)
+  | Some (subj, ps) ->
+    parse_predicate_object_list_pp subj ps prefixes
+
+(** Legacy parse functions — kept for backwards compatibility **)
 and parse_triples_block (ps : pstate) (prefixes : list (string * wf_iri))
   : option (list triple_pattern * pstate) =
   let ps = skip_ws ps in
@@ -1903,12 +2223,10 @@ and parse_ggp_elements (ps : pstate) (prefixes : list (string * wf_iri)) (acc : 
             parse_ggp_elements ps' prefixes new_acc filters)
        | None -> Some (apply_filters acc filters, ps))
     | _ ->
-    (* Try triple patterns *)
-    match parse_triples_block ps prefixes with
-    | Some (tps, ps') when not (Nil? tps) ->
-      let bgp_pat = GP_BGP tps in
-      let new_acc = if acc = GP_Empty then bgp_pat
-                    else GP_Join acc bgp_pat in
+    (* Try triple patterns (with property path support) *)
+    match parse_triples_block_pp ps prefixes with
+    | Some (pat, ps') when not (pat = GP_Empty) ->
+      let new_acc = ggp_join acc pat in
       (* Skip optional '.' *)
       let ps' = skip_ws ps' in
       let ps' = match ps_consume ps' "." with | Some p -> p | None -> ps' in
@@ -1958,6 +2276,19 @@ and parse_values_clause (ps : pstate) (prefixes : list (string * wf_iri))
     | None -> None
     | Some ps ->
       let n_vars = List.Tot.length vars in
+      (* Parse a single term (IRI, literal, or UNDEF) *)
+      let parse_one_term (ps : pstate) : option (option rdf_term * pstate) =
+        let ps = skip_ws ps in
+        match ps_consume ps "UNDEF" with
+        | Some ps -> Some (None, ps)
+        | None ->
+          match parse_iri ps prefixes with
+          | Some (iri, ps) -> Some (Some (T_IRI iri), ps)
+          | None ->
+            match parse_rdf_literal ps prefixes with
+            | Some (lit, ps) -> Some (Some (T_Literal lit), ps)
+            | None -> None
+      in
       let rec parse_rows (acc : list (list (option rdf_term))) (ps : pstate) : option (list (list (option rdf_term)) * pstate) =
         let ps = skip_ws ps in
         match ps_consume ps "}" with
@@ -1970,21 +2301,20 @@ and parse_values_clause (ps : pstate) (prefixes : list (string * wf_iri))
               match ps_consume ps ")" with
               | Some ps -> Some (List.Tot.rev acc, ps)
               | None ->
-                match ps_consume ps "UNDEF" with
-                | Some ps -> parse_row (None :: acc) ps
-                | None ->
-                  (* Parse a term *)
-                  match parse_iri ps prefixes with
-                  | Some (iri, ps) -> parse_row (Some (T_IRI iri) :: acc) ps
-                  | None ->
-                    match parse_rdf_literal ps prefixes with
-                    | Some (lit, ps) -> parse_row (Some (T_Literal lit) :: acc) ps
-                    | None -> None
+                match parse_one_term ps with
+                | Some (t, ps) -> parse_row (t :: acc) ps
+                | None -> None
             in
             (match parse_row [] ps with
              | Some (row, ps) -> parse_rows (row :: acc) ps
              | None -> None)
-          | None -> None
+          | None ->
+            (* Single-variable VALUES: bare terms without parentheses *)
+            if n_vars = 1 then
+              match parse_one_term ps with
+              | Some (t, ps) -> parse_rows ([t] :: acc) ps
+              | None -> None
+            else None
       in
       (match parse_rows [] ps with
        | Some (rows, ps) -> Some (vars, rows, ps)
@@ -2294,6 +2624,17 @@ let parse_query (input : string) : option query =
             match parse_limit ps with
             | Some (n, ps) -> (Some n, ps)
             | None -> (l, ps)
+        in
+        (* Post-query VALUES clause (SPARQL 1.1 §13.2) *)
+        let ps = skip_ws ps in
+        let (pattern, _ps) = match ps_consume ps "VALUES" with
+          | Some ps_v ->
+            (match parse_values_clause ps_v prefixes with
+             | Some (vars, rows, ps') ->
+               (* Wrap pattern: Join(original_pattern, GP_Values(vars, rows)) *)
+               (GP_Join pattern (GP_Values vars rows), ps')
+             | None -> (pattern, ps))
+          | None -> (pattern, ps)
         in
         Some ({
           q_base = base;

@@ -6,6 +6,32 @@ This repository contains a clean-room implementation of a **formally grounded RD
 
 The system targets **post-ChatGPT infrastructure** where automated agents, data pipelines, and services must provide **cryptographically verifiable assertions about data and transformations**.
 
+### Compliance Target: Maximal W3C Conformance
+
+**The project's primary compliance goal is maximal conformance with the W3C Semantic Web standards stack.** This is non-negotiable and drives all implementation priorities.
+
+**Core specifications (MUST achieve maximal compliance):**
+
+- **RDF 1.1** — Concepts, Abstract Syntax, Semantics (W3C Recommendation)
+- **SPARQL 1.1** — Query Language, Update, Protocol, Graph Store HTTP Protocol, Federated Query, Service Description, Entailment Regimes (W3C Recommendation)
+- **RDFS** — RDF Schema 1.1 (W3C Recommendation)
+- **N-Triples** — RDF 1.1 N-Triples serialization (W3C Recommendation) ✅ 100%
+- **Turtle** — RDF 1.1 Turtle serialization (W3C Recommendation) ✅ 100%
+
+**Serialization formats (MUST support — foundation being laid):**
+
+- **N-Triples** ✅ Parser complete, 72/72 W3C tests
+- **Turtle** ✅ Parser complete, 223/223 W3C tests
+- **RDF/XML** — W3C Recommendation, required for legacy data interchange
+- **N3** (Notation3) — W3C Community Group Report, superset of Turtle with rules/logic
+- **JSON-LD** — W3C Recommendation, required for modern web integration
+- **N-Quads** — RDF 1.1 N-Quads, required for dataset serialization
+
+**Ontology/reasoning (practical OWL support):**
+
+- **OWL 2** — practical subset for real-world use (class hierarchies, property restrictions, reasoning)
+- Not targeting full OWL 2 DL theorem proving, but enough for Schema.org, SKOS, DCAT, and domain ontologies
+
 Core goals:
 
 - Treat **graphs as units of assertability**
@@ -13,6 +39,7 @@ Core goals:
 - Enable **formally verified reasoning kernels**
 - Support **strict compliance environments** (finance, healthcare, defense, regulated AI)
 - Integrate with modern **supply-chain attestation ecosystems**
+- **Achieve maximal W3C test suite compliance** across all supported specifications
 
 The main architecture and rationale are documented in `docs/designissues/`.
 
@@ -24,15 +51,7 @@ The main architecture and rationale are documented in `docs/designissues/`.
 - **Formal semantics verified in F\***
 - **Cryptographically signed assertions**
 - **Build provenance and runtime attestation**
-
-The system focuses initially on:
-
-- RDF dataset transforms
-- RDFS closure
-- deterministic canonicalization
-- signed result bundles
-
-Future work includes SPARQL evaluation kernels and trust-propagating graph pipelines.
+- **W3C specification conformance** as the correctness baseline
 
 ### Design Philosophy
 
@@ -118,8 +137,8 @@ KaRaMeL itself is unverified OCaml — it's in the trusted computing base. Verif
 factoidal/
 ├── formal/fstar/
 │   ├── RDF.Graph.Executable.fst     # F* verified RDF module (586 lines, zero assume val)
-│   ├── SPARQL11.Algebra.fst         # F* verified SPARQL module (2731 lines, 7 assume val)
-│   ├── SPARQL.Parser.fst            # F* SPARQL query parser (~1550 lines, extractable)
+│   ├── SPARQL11.Algebra.fst         # F* verified SPARQL module (2731 lines, 8 assume val)
+│   ├── SPARQL.Parser.fst            # F* SPARQL query parser (~2650 lines, extractable)
 │   ├── c-output/                    # KaRaMeL-extracted C (1710 lines from RDF module)
 │   ├── rdfcore11.fstar.txt          # Original textual spec (historical)
 │   ├── sparql11.fstar.txt           # Original textual spec (historical)
@@ -243,7 +262,7 @@ factoidal/
 
 ### Done — Verification Pipeline
 - [x] **KaRaMeL extraction pipeline** — built from source, RDF module → 1,710 lines C (`make extract-c`)
-- [x] **F\* specs fully concrete** — RDF: zero assume val; SPARQL: 7 assume val (regex + crypto only)
+- [x] **F\* specs fully concrete** — RDF: zero assume val; SPARQL: 8 assume val (regex + crypto only)
 
 ### Planned — Verification Pipeline
 - [ ] **Low\* Impl modules** — `RDF.Graph.Impl.fst` proving equivalence with Spec, using machine types
@@ -259,10 +278,22 @@ factoidal/
 - [ ] **Layer 4: Property paths** — sequence, alternative, inverse, transitive closure
 - [ ] **Layer 6: DESCRIBE** — implementation-defined, low priority
 
-### Planned — Other
-- [ ] Formalize Turtle grammar and IRI resolution in F*
+### Planned — Serialization Formats (toward full W3C coverage)
+- [ ] **RDF/XML parser** — W3C Recommendation, required for legacy data and many W3C test suites
+- [ ] **JSON-LD parser** — W3C Recommendation, required for modern web/API integration
+- [ ] **N3 (Notation3) parser** — superset of Turtle with rules and logic
+- [ ] **N-Quads support** — dataset serialization (N-Triples + graph name)
 - [ ] Turtle serializer in Rust
-- [ ] N-Quads support
+- [ ] Formalize Turtle grammar and IRI resolution in F*
+
+### Planned — RDFS & OWL
+- [ ] **RDFS closure** — subclass/subproperty inference, domain/range propagation
+- [ ] **OWL 2 practical subset** — class hierarchies, property restrictions, Schema.org/SKOS/DCAT reasoning
+- [ ] RDFS entailment regime for SPARQL (W3C SPARQL 1.1 Entailment Regimes)
+
+### Planned — Other
+- [ ] SPARQL CONSTRUCT query form (required for KGX pipeline)
+- [ ] SPARQL UPDATE operations (INSERT, DELETE, LOAD, CLEAR, DROP, COPY, MOVE, ADD)
 - [ ] KGX materialization via QLever (40 SPARQL CONSTRUCT queries against Wikidata)
 - [ ] Attestation logger with verifiable timestamps (RFC 3161 TSA integration)
 - [ ] KGX graph assembly: parse materialized Turtle, merge, canonicalize, sign
@@ -320,14 +351,14 @@ Rust code + #[hax::ensures(...)] → Hax → extracted F* → verify against han
 
 The F* specs are **not documentation** — they are the source code for the verified WASM binary. Every line of F* spec written is progress toward replacing the manual Rust implementation with KaRaMeL-extracted verified code.
 
-Current F* spec covers ~4,867 lines (RDF.Graph.Executable: 586, SPARQL11.Algebra: 2,731, SPARQL.Parser: ~1,550).
+Current F* spec covers ~6,843 lines (RDF.Graph.Executable: 1,011, SPARQL11.Algebra: 3,178, SPARQL.Parser: 2,654).
 
 | Module | Rust LOC | F* LOC | F* Coverage | KaRaMeL Status | Priority |
 |--------|----------|--------|-------------|----------------|----------|
 | **rdf.rs** | 345 | 586 | ~90% | ✅ Extracts to 1,710 lines C (with compat) | High — Low* rewrite next |
 | **ntriples.rs** | 365 | ~80 | ~15% | Needs EverParse-style spec | High — Phase 1 target |
 | **turtle.rs** | 1,198 | 0 | 0% | Hard — complex grammar | Long-term |
-| **sparql.rs (parser)** | ~800 | ~1,550 | ~70% | ✅ Extracts to 2,748 lines OCaml | 240/241 W3C tests |
+| **sparql.rs (parser)** | ~800 | ~2,650 | ~85% | ✅ Extracts to OCaml | 276/279 W3C tests |
 | **sparql.rs (engine)** | 2,922 | 2,731 | ~85% | ❌ Blocked by `noeq` types | Medium — fix noeq first |
 | **wasm_api.rs** | 194 | 0 | 0% | Binding layer, not extracted | Not applicable |
 
@@ -506,20 +537,24 @@ are tested against **real W3C .rq query files** via `w3c_sparql_tests.ml`.
 | boolean-eff-value (1.0) | 7 | 7 | 100% | |
 | optional-filter (1.0) | 5 | 5 | 100% | |
 | triple-match (1.0) | 4 | 4 | 100% | |
+| algebra (1.0) | 14 | 14 | 100% | |
 | bind (1.1) | 8 | 8 | 100% | |
-| exists (1.1) | 4 | 5 | 80% | exists03: needs GRAPH keyword |
+| exists (1.1) | 5 | 5 | 100% | |
 | negation (1.1) | 11 | 11 | 100% | |
 | grouping (1.1) | 4 | 4 | 100% | |
 | project-expression (1.1) | 7 | 7 | 100% | |
 | functions (1.1) | 65 | 65 | 100% | |
 | aggregates (1.1) | 12 | 12 | 100% | |
-| **Total** | **240** | **241** | **99.6%** | **Real W3C .rq files, 23/24 suites at 100%** |
+| subquery (1.1) | 2 | 4 | 50% | sq12/sq14: CONSTRUCT queries |
+| bindings (1.1) | 9 | 10 | 90% | inline02: needs sub-SELECT |
+| property-path (1.1) | 10 | 10 | 100% | |
+| **Total** | **276** | **279** | **98.9%** | **Real W3C .rq files, 25/28 suites at 100%** |
 
 Pipeline: `.rq` → `SPARQL.Parser.fst` (F*-extracted) → `SPARQL11.Algebra.fst` (F*-extracted evaluator)
 Data loading: OCaml Turtle parser (test infrastructure, not F*-extracted)
 
 **Note:** The earlier "50/50 algebra tests" were programmatic tests that construct queries
-in OCaml without parsing. They exercise the evaluator but are **not W3C-driven**. The 240/241
+in OCaml without parsing. They exercise the evaluator but are **not W3C-driven**. The 276/279
 above is the honest measure against real W3C test suite files.
 
 ### SPARQL Implementation Roadmap (Architecture-Driven)
@@ -579,17 +614,18 @@ functions → HAVING filter → projection. Build the pipeline, then add functio
 | Aggregate functions (COUNT, SUM, AVG, MIN, MAX, SAMPLE, GROUP_CONCAT) | ~35 (aggregates) | Pending | Pipeline first, functions second |
 | HAVING (post-aggregation filter) | included in aggregates | Pending | Reuses FILTER machinery |
 
-**Layer 4 — Property Paths** 📋 After Layer 2
+**Layer 4 — Property Paths** ✅ Done (10/10 W3C tests)
 
-Graph traversal extension — essentially a mini regex engine over the graph.
+Graph traversal extension — mini regex engine over the graph.
 
 | Component | Tests Affected | Status | Notes |
 |-----------|---------------|--------|-------|
-| Simple property paths (single IRI) | ~5 | Pending | Trivial — same as triple pattern |
-| Sequence (/) and alternative (\|) | ~8 | Pending | Finite composition |
-| Inverse (^) | ~4 | Pending | Reverse edge traversal |
-| Zero-or-more (*), one-or-more (+), zero-or-one (?) | ~8 | Pending | Recursive closure — needs cycle detection |
-| Negated property sets (!) | ~4 | Pending | |
+| Simple property paths (single IRI) | ~5 | ✅ Done | Same as triple pattern |
+| Sequence (/) and alternative (\|) | ~8 | ✅ Done | Finite composition |
+| Inverse (^) | ~4 | ✅ Done | Reverse edge traversal |
+| Zero-or-more (*), one-or-more (+), zero-or-one (?) | ~8 | ✅ Done | Transitive closure with cycle detection |
+| Negated property sets (!) | ~4 | ✅ Done | |
+| Counted repetition ({n}, {n,m}) | ~2 | ✅ Done | Zero-length path support |
 
 **Layer 5 — Leaf Functions** 📋 Ongoing (low priority)
 
@@ -674,7 +710,7 @@ To activate the F\* environment: `eval $(opam env --switch=fstar)`
 
 Both F\* modules verify successfully:
 - `formal/fstar/RDF.Graph.Executable.fst` — RDF core types, graph operations, properties (zero assume val)
-- `formal/fstar/SPARQL11.Algebra.fst` — SPARQL algebra, evaluation semantics, built-in functions (7 assume val)
+- `formal/fstar/SPARQL11.Algebra.fst` — SPARQL algebra, evaluation semantics, built-in functions (8 assume val)
 
 KaRaMeL extraction status:
 - **RDF module** → 1,710 lines C in `formal/fstar/c-output/` (with GC/compat deps — see c-output/README.md)

@@ -163,10 +163,8 @@ let parse_pname_ln (ps : pstate)
        | FStar_Pervasives_Native.Some base_iri ->
            let rec collect ps3 acc =
              match ps_peek ps3 with
-             | FStar_Pervasives_Native.Some c when
-                 (is_pn_chars c) ||
-                   ((FStar_Char.int_of_char c) = (Prims.of_int (0x2F)))
-                 -> collect (ps_advance ps3 Prims.int_one) (c :: acc)
+             | FStar_Pervasives_Native.Some c when is_pn_chars c ->
+                 collect (ps_advance ps3 Prims.int_one) (c :: acc)
              | uu___ ->
                  ((FStar_String.string_of_list (FStar_List_Tot_Base.rev acc)),
                    ps3) in
@@ -601,6 +599,47 @@ let parse_nat_digits_inline (ps : pstate) :
      if n >= Prims.int_zero
      then FStar_Pervasives_Native.Some (n, ps2)
      else FStar_Pervasives_Native.None)
+type pred_or_path =
+  | Pred_Term of SPARQL11_Algebra.pattern_term 
+  | Pred_Path of SPARQL11_Algebra.property_path 
+let uu___is_Pred_Term (projectee : pred_or_path) : Prims.bool=
+  match projectee with | Pred_Term _0 -> true | uu___ -> false
+let __proj__Pred_Term__item___0 (projectee : pred_or_path) :
+  SPARQL11_Algebra.pattern_term= match projectee with | Pred_Term _0 -> _0
+let uu___is_Pred_Path (projectee : pred_or_path) : Prims.bool=
+  match projectee with | Pred_Path _0 -> true | uu___ -> false
+let __proj__Pred_Path__item___0 (projectee : pred_or_path) :
+  SPARQL11_Algebra.property_path= match projectee with | Pred_Path _0 -> _0
+let ggp_join (a : SPARQL11_Algebra.group_graph_pattern)
+  (b : SPARQL11_Algebra.group_graph_pattern) :
+  SPARQL11_Algebra.group_graph_pattern=
+  if a = SPARQL11_Algebra.GP_Empty
+  then b
+  else
+    if b = SPARQL11_Algebra.GP_Empty
+    then a
+    else SPARQL11_Algebra.GP_Join (a, b)
+let rec triples_to_ggp
+  (pending_tps : SPARQL11_Algebra.triple_pattern Prims.list)
+  (rest :
+    (SPARQL11_Algebra.triple_pattern,
+      (SPARQL11_Algebra.pattern_subject * SPARQL11_Algebra.property_path *
+        SPARQL11_Algebra.pattern_term))
+      FStar_Pervasives.either Prims.list)
+  : SPARQL11_Algebra.group_graph_pattern=
+  match rest with
+  | [] ->
+      if Prims.uu___is_Nil pending_tps
+      then SPARQL11_Algebra.GP_Empty
+      else SPARQL11_Algebra.GP_BGP (FStar_List_Tot_Base.rev pending_tps)
+  | (FStar_Pervasives.Inl tp)::tl -> triples_to_ggp (tp :: pending_tps) tl
+  | (FStar_Pervasives.Inr (s, pp, o))::tl ->
+      let bgp_part =
+        if Prims.uu___is_Nil pending_tps
+        then SPARQL11_Algebra.GP_Empty
+        else SPARQL11_Algebra.GP_BGP (FStar_List_Tot_Base.rev pending_tps) in
+      let pp_part = SPARQL11_Algebra.GP_PropertyPath (s, pp, o) in
+      ggp_join (ggp_join bgp_part pp_part) (triples_to_ggp [] tl)
 let rec parse_expr (ps : pstate)
   (prefixes : (Prims.string * RDF_Graph_Executable.wf_iri) Prims.list) :
   (SPARQL11_Algebra.expr * pstate) FStar_Pervasives_Native.option=
@@ -2664,6 +2703,406 @@ and parse_pattern_term (ps : pstate)
                                    ((SPARQL11_Algebra.PT_IRI rdf_nil), ps01)
                              | FStar_Pervasives_Native.None ->
                                  FStar_Pervasives_Native.None)))))
+and parse_property_path (ps : pstate)
+  (prefixes : (Prims.string * RDF_Graph_Executable.wf_iri) Prims.list) :
+  (SPARQL11_Algebra.property_path * pstate) FStar_Pervasives_Native.option=
+  parse_path_alternative ps prefixes
+and parse_path_alternative (ps : pstate)
+  (prefixes : (Prims.string * RDF_Graph_Executable.wf_iri) Prims.list) :
+  (SPARQL11_Algebra.property_path * pstate) FStar_Pervasives_Native.option=
+  match parse_path_sequence ps prefixes with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some (p, ps1) ->
+      let rec loop acc ps2 =
+        let ps3 = skip_ws ps2 in
+        match ps_consume ps3 "|" with
+        | FStar_Pervasives_Native.Some ps4 ->
+            let ps5 = skip_ws ps4 in
+            (match parse_path_sequence ps5 prefixes with
+             | FStar_Pervasives_Native.Some (p2, ps6) ->
+                 loop (SPARQL11_Algebra.PP_Alternative (acc, p2)) ps6
+             | FStar_Pervasives_Native.None -> (acc, ps5))
+        | FStar_Pervasives_Native.None -> (acc, ps3) in
+      let uu___ = loop p ps1 in
+      (match uu___ with
+       | (result, ps2) -> FStar_Pervasives_Native.Some (result, ps2))
+and parse_path_sequence (ps : pstate)
+  (prefixes : (Prims.string * RDF_Graph_Executable.wf_iri) Prims.list) :
+  (SPARQL11_Algebra.property_path * pstate) FStar_Pervasives_Native.option=
+  match parse_path_elt_or_inverse ps prefixes with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some (p, ps1) ->
+      let rec loop acc ps2 =
+        let ps3 = skip_ws ps2 in
+        match ps_consume ps3 "/" with
+        | FStar_Pervasives_Native.Some ps4 ->
+            let ps5 = skip_ws ps4 in
+            (match parse_path_elt_or_inverse ps5 prefixes with
+             | FStar_Pervasives_Native.Some (p2, ps6) ->
+                 loop (SPARQL11_Algebra.PP_Sequence (acc, p2)) ps6
+             | FStar_Pervasives_Native.None -> (acc, ps5))
+        | FStar_Pervasives_Native.None -> (acc, ps3) in
+      let uu___ = loop p ps1 in
+      (match uu___ with
+       | (result, ps2) -> FStar_Pervasives_Native.Some (result, ps2))
+and parse_path_elt_or_inverse (ps : pstate)
+  (prefixes : (Prims.string * RDF_Graph_Executable.wf_iri) Prims.list) :
+  (SPARQL11_Algebra.property_path * pstate) FStar_Pervasives_Native.option=
+  let ps1 = skip_ws ps in
+  match ps_consume ps1 "^" with
+  | FStar_Pervasives_Native.Some ps2 ->
+      let ps3 = skip_ws ps2 in
+      (match parse_path_elt ps3 prefixes with
+       | FStar_Pervasives_Native.Some (p, ps4) ->
+           FStar_Pervasives_Native.Some
+             ((SPARQL11_Algebra.PP_Inverse p), ps4)
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+  | FStar_Pervasives_Native.None -> parse_path_elt ps1 prefixes
+and parse_path_elt (ps : pstate)
+  (prefixes : (Prims.string * RDF_Graph_Executable.wf_iri) Prims.list) :
+  (SPARQL11_Algebra.property_path * pstate) FStar_Pervasives_Native.option=
+  match parse_path_primary ps prefixes with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some (p, ps1) ->
+      let ps_nows = ps1 in
+      (match ps_peek ps1 with
+       | FStar_Pervasives_Native.Some c when
+           (FStar_Char.int_of_char c) = (Prims.of_int (0x2A)) ->
+           FStar_Pervasives_Native.Some
+             ((SPARQL11_Algebra.PP_ZeroOrMore p),
+               (ps_advance ps1 Prims.int_one))
+       | FStar_Pervasives_Native.Some c when
+           (FStar_Char.int_of_char c) = (Prims.of_int (0x2B)) ->
+           FStar_Pervasives_Native.Some
+             ((SPARQL11_Algebra.PP_OneOrMore p),
+               (ps_advance ps1 Prims.int_one))
+       | FStar_Pervasives_Native.Some c when
+           (FStar_Char.int_of_char c) = (Prims.of_int (0x3F)) ->
+           FStar_Pervasives_Native.Some
+             ((SPARQL11_Algebra.PP_ZeroOrOne p),
+               (ps_advance ps1 Prims.int_one))
+       | FStar_Pervasives_Native.Some c when
+           (FStar_Char.int_of_char c) = (Prims.of_int (0x7B)) ->
+           let ps2 = ps_advance ps1 Prims.int_one in
+           let ps3 = skip_ws ps2 in
+           (match parse_nat_digits_inline ps3 with
+            | FStar_Pervasives_Native.Some (n, ps4) ->
+                let ps5 = skip_ws ps4 in
+                (match ps_consume ps5 "," with
+                 | FStar_Pervasives_Native.Some ps6 ->
+                     let ps7 = skip_ws ps6 in
+                     (match parse_nat_digits_inline ps7 with
+                      | FStar_Pervasives_Native.Some (m, ps8) ->
+                          let ps9 = skip_ws ps8 in
+                          (match ps_consume ps9 "}" with
+                           | FStar_Pervasives_Native.Some ps10 ->
+                               if
+                                 (n = Prims.int_zero) && (m = Prims.int_zero)
+                               then
+                                 FStar_Pervasives_Native.Some
+                                   (SPARQL11_Algebra.PP_ZeroLength, ps10)
+                               else
+                                 if
+                                   (n = Prims.int_zero) &&
+                                     (m = Prims.int_one)
+                                 then
+                                   FStar_Pervasives_Native.Some
+                                     ((SPARQL11_Algebra.PP_ZeroOrOne p),
+                                       ps10)
+                                 else
+                                   FStar_Pervasives_Native.Some
+                                     ((SPARQL11_Algebra.PP_ZeroOrMore p),
+                                       ps10)
+                           | FStar_Pervasives_Native.None ->
+                               FStar_Pervasives_Native.Some (p, ps_nows))
+                      | FStar_Pervasives_Native.None ->
+                          (match ps_consume ps7 "}" with
+                           | FStar_Pervasives_Native.Some ps8 ->
+                               FStar_Pervasives_Native.Some
+                                 ((SPARQL11_Algebra.PP_ZeroOrMore p), ps8)
+                           | FStar_Pervasives_Native.None ->
+                               FStar_Pervasives_Native.Some (p, ps_nows)))
+                 | FStar_Pervasives_Native.None ->
+                     (match ps_consume ps5 "}" with
+                      | FStar_Pervasives_Native.Some ps6 ->
+                          if n = Prims.int_zero
+                          then
+                            FStar_Pervasives_Native.Some
+                              (SPARQL11_Algebra.PP_ZeroLength, ps6)
+                          else FStar_Pervasives_Native.Some (p, ps6)
+                      | FStar_Pervasives_Native.None ->
+                          FStar_Pervasives_Native.Some (p, ps_nows)))
+            | FStar_Pervasives_Native.None ->
+                FStar_Pervasives_Native.Some (p, ps_nows))
+       | uu___ -> FStar_Pervasives_Native.Some (p, ps_nows))
+and parse_path_primary (ps : pstate)
+  (prefixes : (Prims.string * RDF_Graph_Executable.wf_iri) Prims.list) :
+  (SPARQL11_Algebra.property_path * pstate) FStar_Pervasives_Native.option=
+  let ps1 = skip_ws ps in
+  match ps_peek ps1 with
+  | FStar_Pervasives_Native.Some c when
+      (FStar_Char.int_of_char c) = (Prims.of_int (0x28)) ->
+      let ps2 = ps_advance ps1 Prims.int_one in
+      (match parse_property_path ps2 prefixes with
+       | FStar_Pervasives_Native.Some (p, ps3) ->
+           let ps4 = skip_ws ps3 in
+           (match ps_consume ps4 ")" with
+            | FStar_Pervasives_Native.Some ps5 ->
+                FStar_Pervasives_Native.Some (p, ps5)
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+  | FStar_Pervasives_Native.Some c when
+      (FStar_Char.int_of_char c) = (Prims.of_int (0x21)) ->
+      let ps2 = ps_advance ps1 Prims.int_one in
+      let ps3 = skip_ws ps2 in
+      (match ps_consume ps3 "(" with
+       | FStar_Pervasives_Native.Some ps4 ->
+           let rec parse_neg_set acc ps5 =
+             let ps6 = skip_ws ps5 in
+             match ps_consume ps6 ")" with
+             | FStar_Pervasives_Native.Some ps7 ->
+                 FStar_Pervasives_Native.Some
+                   ((FStar_List_Tot_Base.rev acc), ps7)
+             | FStar_Pervasives_Native.None ->
+                 let ps7 =
+                   if Prims.op_Negation (Prims.uu___is_Nil acc)
+                   then
+                     match ps_consume ps6 "|" with
+                     | FStar_Pervasives_Native.Some ps8 -> ps8
+                     | FStar_Pervasives_Native.None -> ps6
+                   else ps6 in
+                 let ps8 = skip_ws ps7 in
+                 (match ps_consume ps8 "^" with
+                  | FStar_Pervasives_Native.Some ps9 ->
+                      (match parse_iri ps9 prefixes with
+                       | FStar_Pervasives_Native.Some (iri, ps10) ->
+                           parse_neg_set
+                             ((SPARQL11_Algebra.PP_Inverse
+                                 (SPARQL11_Algebra.PP_IRI iri)) :: acc) ps10
+                       | FStar_Pervasives_Native.None ->
+                           FStar_Pervasives_Native.None)
+                  | FStar_Pervasives_Native.None ->
+                      (match parse_iri ps8 prefixes with
+                       | FStar_Pervasives_Native.Some (iri, ps9) ->
+                           parse_neg_set ((SPARQL11_Algebra.PP_IRI iri) ::
+                             acc) ps9
+                       | FStar_Pervasives_Native.None ->
+                           FStar_Pervasives_Native.None)) in
+           (match parse_neg_set [] ps4 with
+            | FStar_Pervasives_Native.Some (paths, ps5) ->
+                FStar_Pervasives_Native.Some
+                  ((SPARQL11_Algebra.PP_NegatedSet paths), ps5)
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+       | FStar_Pervasives_Native.None ->
+           (match ps_consume ps3 "^" with
+            | FStar_Pervasives_Native.Some ps4 ->
+                (match parse_iri ps4 prefixes with
+                 | FStar_Pervasives_Native.Some (iri, ps5) ->
+                     FStar_Pervasives_Native.Some
+                       ((SPARQL11_Algebra.PP_NegatedSet
+                           [SPARQL11_Algebra.PP_Inverse
+                              (SPARQL11_Algebra.PP_IRI iri)]), ps5)
+                 | FStar_Pervasives_Native.None ->
+                     FStar_Pervasives_Native.None)
+            | FStar_Pervasives_Native.None ->
+                (match parse_iri ps3 prefixes with
+                 | FStar_Pervasives_Native.Some (iri, ps4) ->
+                     FStar_Pervasives_Native.Some
+                       ((SPARQL11_Algebra.PP_NegatedSet
+                           [SPARQL11_Algebra.PP_IRI iri]), ps4)
+                 | FStar_Pervasives_Native.None ->
+                     FStar_Pervasives_Native.None)))
+  | FStar_Pervasives_Native.Some c when
+      (FStar_Char.int_of_char c) = (Prims.of_int (0x61)) ->
+      (match ps_char_at ps1 Prims.int_one with
+       | FStar_Pervasives_Native.Some c2 when is_pn_chars c2 ->
+           (match parse_iri ps1 prefixes with
+            | FStar_Pervasives_Native.Some (iri, ps2) ->
+                FStar_Pervasives_Native.Some
+                  ((SPARQL11_Algebra.PP_IRI iri), ps2)
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+       | uu___ ->
+           let rdf_type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" in
+           FStar_Pervasives_Native.Some
+             ((SPARQL11_Algebra.PP_IRI rdf_type),
+               (ps_advance ps1 Prims.int_one)))
+  | uu___ ->
+      (match parse_iri ps1 prefixes with
+       | FStar_Pervasives_Native.Some (iri, ps2) ->
+           FStar_Pervasives_Native.Some ((SPARQL11_Algebra.PP_IRI iri), ps2)
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+and parse_path_object_list (subj : SPARQL11_Algebra.pattern_subject)
+  (path : SPARQL11_Algebra.property_path) (ps : pstate)
+  (prefixes : (Prims.string * RDF_Graph_Executable.wf_iri) Prims.list) :
+  (SPARQL11_Algebra.group_graph_pattern * pstate)
+    FStar_Pervasives_Native.option=
+  let ps1 = skip_ws ps in
+  match parse_pattern_term ps1 prefixes with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some (obj, ps2) ->
+      let pp = SPARQL11_Algebra.GP_PropertyPath (subj, path, obj) in
+      let ps' = skip_ws ps2 in
+      (match ps_consume ps' "," with
+       | FStar_Pervasives_Native.Some ps'1 ->
+           (match parse_path_object_list subj path ps'1 prefixes with
+            | FStar_Pervasives_Native.Some (more, ps'2) ->
+                FStar_Pervasives_Native.Some ((ggp_join pp more), ps'2)
+            | FStar_Pervasives_Native.None ->
+                FStar_Pervasives_Native.Some (pp, ps2))
+       | FStar_Pervasives_Native.None ->
+           FStar_Pervasives_Native.Some (pp, ps2))
+and parse_pred_object_with_path (subj : SPARQL11_Algebra.pattern_subject)
+  (ps : pstate)
+  (prefixes : (Prims.string * RDF_Graph_Executable.wf_iri) Prims.list) :
+  (SPARQL11_Algebra.group_graph_pattern * pstate)
+    FStar_Pervasives_Native.option=
+  let ps1 = skip_ws ps in
+  match parse_property_path ps1 prefixes with
+  | FStar_Pervasives_Native.Some (path, ps2) ->
+      (match path with
+       | SPARQL11_Algebra.PP_IRI iri ->
+           (match parse_object_list subj (SPARQL11_Algebra.PT_IRI iri) ps2
+                    prefixes
+            with
+            | FStar_Pervasives_Native.Some (tps, ps3) ->
+                if Prims.uu___is_Nil tps
+                then
+                  FStar_Pervasives_Native.Some
+                    (SPARQL11_Algebra.GP_Empty, ps3)
+                else
+                  FStar_Pervasives_Native.Some
+                    ((SPARQL11_Algebra.GP_BGP tps), ps3)
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+       | uu___ -> parse_path_object_list subj path ps2 prefixes)
+  | FStar_Pervasives_Native.None ->
+      let ps_bk = ps1 in
+      (match ps_peek ps1 with
+       | FStar_Pervasives_Native.Some c when
+           (FStar_Char.int_of_char c) = (Prims.of_int (0x61)) ->
+           (match ps_char_at ps1 Prims.int_one with
+            | FStar_Pervasives_Native.Some c2 when is_pn_chars c2 ->
+                (match parse_pattern_term ps1 prefixes with
+                 | FStar_Pervasives_Native.Some (pred, ps2) ->
+                     (match parse_object_list subj pred ps2 prefixes with
+                      | FStar_Pervasives_Native.Some (tps, ps3) ->
+                          FStar_Pervasives_Native.Some
+                            ((SPARQL11_Algebra.GP_BGP tps), ps3)
+                      | FStar_Pervasives_Native.None ->
+                          FStar_Pervasives_Native.None)
+                 | FStar_Pervasives_Native.None ->
+                     FStar_Pervasives_Native.Some
+                       (SPARQL11_Algebra.GP_Empty, ps_bk))
+            | uu___ ->
+                let rdf_type =
+                  "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" in
+                let ps2 = ps_advance ps1 Prims.int_one in
+                (match parse_object_list subj
+                         (SPARQL11_Algebra.PT_IRI rdf_type) ps2 prefixes
+                 with
+                 | FStar_Pervasives_Native.Some (tps, ps3) ->
+                     FStar_Pervasives_Native.Some
+                       ((SPARQL11_Algebra.GP_BGP tps), ps3)
+                 | FStar_Pervasives_Native.None ->
+                     FStar_Pervasives_Native.None))
+       | uu___ ->
+           (match parse_pattern_term ps1 prefixes with
+            | FStar_Pervasives_Native.Some (pred, ps2) ->
+                (match parse_object_list subj pred ps2 prefixes with
+                 | FStar_Pervasives_Native.Some (tps, ps3) ->
+                     FStar_Pervasives_Native.Some
+                       ((SPARQL11_Algebra.GP_BGP tps), ps3)
+                 | FStar_Pervasives_Native.None ->
+                     FStar_Pervasives_Native.None)
+            | FStar_Pervasives_Native.None ->
+                FStar_Pervasives_Native.Some
+                  (SPARQL11_Algebra.GP_Empty, ps_bk)))
+and parse_predicate_object_list_pp (subj : SPARQL11_Algebra.pattern_subject)
+  (ps : pstate)
+  (prefixes : (Prims.string * RDF_Graph_Executable.wf_iri) Prims.list) :
+  (SPARQL11_Algebra.group_graph_pattern * pstate)
+    FStar_Pervasives_Native.option=
+  match parse_pred_object_with_path subj ps prefixes with
+  | FStar_Pervasives_Native.None ->
+      FStar_Pervasives_Native.Some (SPARQL11_Algebra.GP_Empty, ps)
+  | FStar_Pervasives_Native.Some (result, ps1) ->
+      if result = SPARQL11_Algebra.GP_Empty
+      then FStar_Pervasives_Native.Some (SPARQL11_Algebra.GP_Empty, ps1)
+      else
+        (let ps' = skip_ws ps1 in
+         match ps_consume ps' ";" with
+         | FStar_Pervasives_Native.Some ps'1 ->
+             let ps'2 = skip_ws ps'1 in
+             (match ps_peek ps'2 with
+              | FStar_Pervasives_Native.Some c when
+                  ((FStar_Char.int_of_char c) = (Prims.of_int (0x7D))) ||
+                    ((FStar_Char.int_of_char c) = (Prims.of_int (0x2E)))
+                  -> FStar_Pervasives_Native.Some (result, ps'2)
+              | FStar_Pervasives_Native.None ->
+                  FStar_Pervasives_Native.Some (result, ps'2)
+              | uu___1 ->
+                  (match parse_predicate_object_list_pp subj ps'2 prefixes
+                   with
+                   | FStar_Pervasives_Native.Some (more, ps'3) ->
+                       if more = SPARQL11_Algebra.GP_Empty
+                       then FStar_Pervasives_Native.Some (result, ps'3)
+                       else
+                         FStar_Pervasives_Native.Some
+                           ((ggp_join result more), ps'3)
+                   | FStar_Pervasives_Native.None ->
+                       FStar_Pervasives_Native.Some (result, ps'2)))
+         | FStar_Pervasives_Native.None ->
+             FStar_Pervasives_Native.Some (result, ps1))
+and parse_triples_block_pp (ps : pstate)
+  (prefixes : (Prims.string * RDF_Graph_Executable.wf_iri) Prims.list) :
+  (SPARQL11_Algebra.group_graph_pattern * pstate)
+    FStar_Pervasives_Native.option=
+  let ps1 = skip_ws ps in
+  match ps_peek ps1 with
+  | FStar_Pervasives_Native.Some c when
+      (FStar_Char.int_of_char c) = (Prims.of_int (0x5B)) ->
+      let ps_bk = ps1 in
+      let ps' = ps_advance ps1 Prims.int_one in
+      let ps'1 = skip_ws ps' in
+      (match ps_peek ps'1 with
+       | FStar_Pervasives_Native.Some c1 when
+           (FStar_Char.int_of_char c1) = (Prims.of_int (0x5D)) ->
+           let ps'2 = ps_advance ps'1 Prims.int_one in
+           let bnode_var =
+             Prims.strcat "?_anon" (Prims.string_of_int ps_bk.pos) in
+           parse_predicate_object_list_pp (SPARQL11_Algebra.PS_Var bnode_var)
+             ps'2 prefixes
+       | FStar_Pervasives_Native.Some uu___ ->
+           let bnode_var =
+             Prims.strcat "?_bpl" (Prims.string_of_int ps_bk.pos) in
+           let bnode_subj = SPARQL11_Algebra.PS_Var bnode_var in
+           (match parse_predicate_object_list_pp bnode_subj ps'1 prefixes
+            with
+            | FStar_Pervasives_Native.Some (bnode_pat, ps'2) ->
+                let ps'3 = skip_ws ps'2 in
+                (match ps_consume ps'3 "]" with
+                 | FStar_Pervasives_Native.Some ps'4 ->
+                     let ps'5 = skip_ws ps'4 in
+                     (match parse_predicate_object_list_pp bnode_subj ps'5
+                              prefixes
+                      with
+                      | FStar_Pervasives_Native.Some (more, ps'6) ->
+                          if more = SPARQL11_Algebra.GP_Empty
+                          then FStar_Pervasives_Native.Some (bnode_pat, ps'6)
+                          else
+                            FStar_Pervasives_Native.Some
+                              ((ggp_join bnode_pat more), ps'6)
+                      | FStar_Pervasives_Native.None ->
+                          FStar_Pervasives_Native.Some (bnode_pat, ps'5))
+                 | FStar_Pervasives_Native.None ->
+                     FStar_Pervasives_Native.None)
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+  | uu___ ->
+      (match parse_pattern_subject ps1 prefixes with
+       | FStar_Pervasives_Native.None ->
+           FStar_Pervasives_Native.Some (SPARQL11_Algebra.GP_Empty, ps1)
+       | FStar_Pervasives_Native.Some (subj, ps2) ->
+           parse_predicate_object_list_pp subj ps2 prefixes)
 and parse_triples_block (ps : pstate)
   (prefixes : (Prims.string * RDF_Graph_Executable.wf_iri) Prims.list) :
   (SPARQL11_Algebra.triple_pattern Prims.list * pstate)
@@ -3775,25 +4214,17 @@ and parse_ggp_elements (ps : pstate)
                                                      ((apply_filters acc
                                                          filters), ps1))
                                           | uu___1 ->
-                                              (match parse_triples_block ps1
-                                                       prefixes
+                                              (match parse_triples_block_pp
+                                                       ps1 prefixes
                                                with
                                                | FStar_Pervasives_Native.Some
-                                                   (tps, ps') when
+                                                   (pat, ps') when
                                                    Prims.op_Negation
-                                                     (Prims.uu___is_Nil tps)
+                                                     (pat =
+                                                        SPARQL11_Algebra.GP_Empty)
                                                    ->
-                                                   let bgp_pat =
-                                                     SPARQL11_Algebra.GP_BGP
-                                                       tps in
                                                    let new_acc =
-                                                     if
-                                                       acc =
-                                                         SPARQL11_Algebra.GP_Empty
-                                                     then bgp_pat
-                                                     else
-                                                       SPARQL11_Algebra.GP_Join
-                                                         (acc, bgp_pat) in
+                                                     ggp_join acc pat in
                                                    let ps'1 = skip_ws ps' in
                                                    let ps'2 =
                                                      match ps_consume ps'1
@@ -3857,6 +4288,26 @@ and parse_values_clause (ps : pstate)
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some ps4 ->
            let n_vars = FStar_List_Tot_Base.length vars in
+           let parse_one_term ps5 =
+             let ps6 = skip_ws ps5 in
+             match ps_consume ps6 "UNDEF" with
+             | FStar_Pervasives_Native.Some ps7 ->
+                 FStar_Pervasives_Native.Some
+                   (FStar_Pervasives_Native.None, ps7)
+             | FStar_Pervasives_Native.None ->
+                 (match parse_iri ps6 prefixes with
+                  | FStar_Pervasives_Native.Some (iri, ps7) ->
+                      FStar_Pervasives_Native.Some
+                        ((FStar_Pervasives_Native.Some
+                            (RDF_Graph_Executable.T_IRI iri)), ps7)
+                  | FStar_Pervasives_Native.None ->
+                      (match parse_rdf_literal ps6 prefixes with
+                       | FStar_Pervasives_Native.Some (lit, ps7) ->
+                           FStar_Pervasives_Native.Some
+                             ((FStar_Pervasives_Native.Some
+                                 (RDF_Graph_Executable.T_Literal lit)), ps7)
+                       | FStar_Pervasives_Native.None ->
+                           FStar_Pervasives_Native.None)) in
            let rec parse_rows acc ps5 =
              let ps6 = skip_ws ps5 in
              match ps_consume ps6 "}" with
@@ -3873,36 +4324,25 @@ and parse_values_clause (ps : pstate)
                             FStar_Pervasives_Native.Some
                               ((FStar_List_Tot_Base.rev acc1), ps10)
                         | FStar_Pervasives_Native.None ->
-                            (match ps_consume ps9 "UNDEF" with
-                             | FStar_Pervasives_Native.Some ps10 ->
-                                 parse_row (FStar_Pervasives_Native.None ::
-                                   acc1) ps10
+                            (match parse_one_term ps9 with
+                             | FStar_Pervasives_Native.Some (t, ps10) ->
+                                 parse_row (t :: acc1) ps10
                              | FStar_Pervasives_Native.None ->
-                                 (match parse_iri ps9 prefixes with
-                                  | FStar_Pervasives_Native.Some (iri, ps10)
-                                      ->
-                                      parse_row
-                                        ((FStar_Pervasives_Native.Some
-                                            (RDF_Graph_Executable.T_IRI iri))
-                                        :: acc1) ps10
-                                  | FStar_Pervasives_Native.None ->
-                                      (match parse_rdf_literal ps9 prefixes
-                                       with
-                                       | FStar_Pervasives_Native.Some
-                                           (lit, ps10) ->
-                                           parse_row
-                                             ((FStar_Pervasives_Native.Some
-                                                 (RDF_Graph_Executable.T_Literal
-                                                    lit)) :: acc1) ps10
-                                       | FStar_Pervasives_Native.None ->
-                                           FStar_Pervasives_Native.None))) in
+                                 FStar_Pervasives_Native.None) in
                       (match parse_row [] ps7 with
                        | FStar_Pervasives_Native.Some (row, ps8) ->
                            parse_rows (row :: acc) ps8
                        | FStar_Pervasives_Native.None ->
                            FStar_Pervasives_Native.None)
                   | FStar_Pervasives_Native.None ->
-                      FStar_Pervasives_Native.None) in
+                      if n_vars = Prims.int_one
+                      then
+                        (match parse_one_term ps6 with
+                         | FStar_Pervasives_Native.Some (t, ps7) ->
+                             parse_rows ([t] :: acc) ps7
+                         | FStar_Pervasives_Native.None ->
+                             FStar_Pervasives_Native.None)
+                      else FStar_Pervasives_Native.None) in
            (match parse_rows [] ps4 with
             | FStar_Pervasives_Native.Some (rows, ps5) ->
                 FStar_Pervasives_Native.Some (vars, rows, ps5)
@@ -4368,36 +4808,65 @@ let parse_query (input : Prims.string) :
                                                          -> (l, ps13)) in
                                               (match uu___6 with
                                                | (l1, ps14) ->
-                                                   FStar_Pervasives_Native.Some
-                                                     {
-                                                       SPARQL11_Algebra.q_base
-                                                         = base;
-                                                       SPARQL11_Algebra.q_prefixes
-                                                         = prefixes1;
-                                                       SPARQL11_Algebra.q_form
-                                                         =
-                                                         (SPARQL11_Algebra.QF_Select
-                                                            sel);
-                                                       SPARQL11_Algebra.q_dataset
-                                                         = [];
-                                                       SPARQL11_Algebra.q_pattern
-                                                         = pattern;
-                                                       SPARQL11_Algebra.q_group_by
-                                                         = gb;
-                                                       SPARQL11_Algebra.q_having
-                                                         = hv;
-                                                       SPARQL11_Algebra.q_modifier
-                                                         =
-                                                         {
-                                                           SPARQL11_Algebra.sm_order_by
-                                                             = ob;
-                                                           SPARQL11_Algebra.sm_distinct
-                                                             = distinct;
-                                                           SPARQL11_Algebra.sm_reduced
-                                                             = reduced;
-                                                           SPARQL11_Algebra.sm_offset
-                                                             = o;
-                                                           SPARQL11_Algebra.sm_limit
-                                                             = l1
-                                                         }
-                                                     })))))))))
+                                                   let ps15 = skip_ws ps14 in
+                                                   let uu___7 =
+                                                     match ps_consume ps15
+                                                             "VALUES"
+                                                     with
+                                                     | FStar_Pervasives_Native.Some
+                                                         ps_v ->
+                                                         (match parse_values_clause
+                                                                  ps_v
+                                                                  prefixes1
+                                                          with
+                                                          | FStar_Pervasives_Native.Some
+                                                              (vars, rows,
+                                                               ps')
+                                                              ->
+                                                              ((SPARQL11_Algebra.GP_Join
+                                                                  (pattern,
+                                                                    (
+                                                                    SPARQL11_Algebra.GP_Values
+                                                                    (vars,
+                                                                    rows)))),
+                                                                ps')
+                                                          | FStar_Pervasives_Native.None
+                                                              ->
+                                                              (pattern, ps15))
+                                                     | FStar_Pervasives_Native.None
+                                                         -> (pattern, ps15) in
+                                                   (match uu___7 with
+                                                    | (pattern1, _ps) ->
+                                                        FStar_Pervasives_Native.Some
+                                                          {
+                                                            SPARQL11_Algebra.q_base
+                                                              = base;
+                                                            SPARQL11_Algebra.q_prefixes
+                                                              = prefixes1;
+                                                            SPARQL11_Algebra.q_form
+                                                              =
+                                                              (SPARQL11_Algebra.QF_Select
+                                                                 sel);
+                                                            SPARQL11_Algebra.q_dataset
+                                                              = [];
+                                                            SPARQL11_Algebra.q_pattern
+                                                              = pattern1;
+                                                            SPARQL11_Algebra.q_group_by
+                                                              = gb;
+                                                            SPARQL11_Algebra.q_having
+                                                              = hv;
+                                                            SPARQL11_Algebra.q_modifier
+                                                              =
+                                                              {
+                                                                SPARQL11_Algebra.sm_order_by
+                                                                  = ob;
+                                                                SPARQL11_Algebra.sm_distinct
+                                                                  = distinct;
+                                                                SPARQL11_Algebra.sm_reduced
+                                                                  = reduced;
+                                                                SPARQL11_Algebra.sm_offset
+                                                                  = o;
+                                                                SPARQL11_Algebra.sm_limit
+                                                                  = l1
+                                                              }
+                                                          }))))))))))

@@ -280,6 +280,7 @@ and property_path =
   | PP_OneOrMore     : property_path -> property_path              (* path+ [S1] *)
   | PP_ZeroOrOne     : property_path -> property_path              (* path? *)
   | PP_NegatedSet    : list property_path -> property_path         (* !(:a|:b|^:c) *)
+  | PP_ZeroLength    : property_path                               (* {0} — identity/reflexive only *)
 
 (** ====================================================================== **)
 (** Part 5: SPARQL 1.1 Graph Patterns (§18.2)                              **)
@@ -1339,6 +1340,9 @@ assume val eval_exists_fwd : group_graph_pattern -> solution_mapping -> rdf_grap
 (* Sub-SELECT needs eval_select_query — forward ref *)
 assume val eval_select_query_fwd : query -> rdf_graph -> named_graph_dataset -> solution_sequence
 
+(* Property path evaluation — forward ref to concrete eval_property_path *)
+assume val eval_property_path_fwd : property_path -> rdf_graph -> list (rdf_term * rdf_term)
+
 (* Graph-aware filter expression evaluator: handles E_Exists/E_NotExists
    within compound expressions (E_And, E_Or, E_Not).
    Plain eval_expr cannot handle EXISTS because it lacks graph context. *)
@@ -1468,9 +1472,27 @@ let rec eval_pattern (p : group_graph_pattern) (g : rdf_graph) (ds : named_graph
     (* Sub-SELECT: evaluate the sub-query independently *)
     eval_select_query_fwd q g ds
 
-  | GP_PropertyPath _ _ _ ->
-    (* [S1] Property paths: deferred *)
-    []
+  | GP_PropertyPath ps pp pt ->
+    (* Evaluate property path and bind subject/object variables *)
+    let pairs = eval_property_path_fwd pp g in
+    List.Tot.concatMap
+      (fun (pair : rdf_term * rdf_term) ->
+        let (s, o) = pair in
+        (* Try to match/bind subject *)
+        let mu0 : solution_mapping = [] in
+        let mu1 = match ps with
+          | PS_IRI iri -> if rdf_term_eq (T_IRI iri) s then Some mu0 else None
+          | PS_Var v -> Some (sm_bind v s mu0)
+        in
+        match mu1 with
+        | None -> []
+        | Some mu1 ->
+          (* Try to match/bind object *)
+          let mu2 = try_bind_term pt o mu1 in
+          match mu2 with
+          | None -> []
+          | Some mu2 -> [mu2])
+      pairs
 
 (** ====================================================================== **)
 (** Part 8: SPARQL 1.1 Expression Evaluation (§17)                         **)
@@ -2515,16 +2537,15 @@ let rec eval_property_path (p : property_path) (g : rdf_graph)
     (* { (s, o) | ∃ mid. (s, mid) ∈ eval p1 G ∧ (mid, o) ∈ eval p2 G } *)
     let r1 = eval_property_path p1 g in
     let r2 = eval_property_path p2 g in
-    dedup_path
-      (List.Tot.concatMap
-        (fun (pair1 : rdf_term * rdf_term) ->
-          let (s, mid1) = pair1 in
-          List.Tot.concatMap
-            (fun (pair2 : rdf_term * rdf_term) ->
-              let (mid2, o) = pair2 in
-              if rdf_term_eq mid1 mid2 then [(s, o)] else [])
-            r2)
-        r1)
+    List.Tot.concatMap
+      (fun (pair1 : rdf_term * rdf_term) ->
+        let (s, mid1) = pair1 in
+        List.Tot.concatMap
+          (fun (pair2 : rdf_term * rdf_term) ->
+            let (mid2, o) = pair2 in
+            if rdf_term_eq mid1 mid2 then [(s, o)] else [])
+          r2)
+      r1
 
   | PP_Alternative p1 p2 ->
     (* eval p1 G ∪ eval p2 G *)
@@ -2538,12 +2559,54 @@ let rec eval_property_path (p : property_path) (g : rdf_graph)
   | PP_ZeroOrMore pp ->
     let reflexive = List.Tot.map (fun (n : rdf_term) -> (n, n)) (graph_nodes g) in
     let step = eval_property_path pp g in
-    dedup_path (reflexive @ step)
+    (* Transitive closure: keep composing step with accumulated pairs *)
+    let rec closure (acc : path_result) (frontier : path_result) (fuel : nat)
+      : Tot path_result (decreases fuel) =
+      if fuel = 0 then acc
+      else
+        let new_pairs = List.Tot.concatMap
+          (fun (pair : rdf_term * rdf_term) ->
+            let (_, mid) = pair in
+            List.Tot.concatMap
+              (fun (s : rdf_term * rdf_term) ->
+                let (mid2, o) = s in
+                if rdf_term_eq mid mid2 then [(fst pair, o)] else [])
+              step)
+          frontier in
+        let novel = List.Tot.filter
+          (fun (p : rdf_term * rdf_term) ->
+            not (List.Tot.existsb (path_pair_eq p) acc))
+          new_pairs in
+        if Nil? novel then acc
+        else closure (acc @ novel) novel (fuel - 1)
+    in
+    let n_nodes = List.Tot.length (graph_nodes g) in
+    dedup_path (closure (reflexive @ step) step n_nodes)
 
   | PP_OneOrMore pp ->
-    (* [S1] Simplified: single-step evaluation only.
-       Full implementation requires transitive closure with cycle detection. *)
-    eval_property_path pp g
+    let step = eval_property_path pp g in
+    let rec closure (acc : path_result) (frontier : path_result) (fuel : nat)
+      : Tot path_result (decreases fuel) =
+      if fuel = 0 then acc
+      else
+        let new_pairs = List.Tot.concatMap
+          (fun (pair : rdf_term * rdf_term) ->
+            let (_, mid) = pair in
+            List.Tot.concatMap
+              (fun (s : rdf_term * rdf_term) ->
+                let (mid2, o) = s in
+                if rdf_term_eq mid mid2 then [(fst pair, o)] else [])
+              step)
+          frontier in
+        let novel = List.Tot.filter
+          (fun (p : rdf_term * rdf_term) ->
+            not (List.Tot.existsb (path_pair_eq p) acc))
+          new_pairs in
+        if Nil? novel then acc
+        else closure (acc @ novel) novel (fuel - 1)
+    in
+    let n_nodes = List.Tot.length (graph_nodes g) in
+    dedup_path (closure step step n_nodes)
 
   | PP_NegatedSet ps ->
     (* { (s, o) | (s, p, o) ∈ G, p ∉ iris(ps) } *)
@@ -2552,6 +2615,10 @@ let rec eval_property_path (p : property_path) (g : rdf_graph)
       (fun (t : triple) ->
         if iri_in_list t.p excluded then [] else [(subject_to_term t.s, t.o)])
       g
+
+  | PP_ZeroLength ->
+    (* {0} — identity/reflexive pairs only *)
+    List.Tot.map (fun (n : rdf_term) -> (n, n)) (graph_nodes g)
 
 (* Specification (retained for reference):
 

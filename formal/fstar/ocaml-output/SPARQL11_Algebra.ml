@@ -252,6 +252,7 @@ and property_path =
   | PP_OneOrMore of property_path 
   | PP_ZeroOrOne of property_path 
   | PP_NegatedSet of property_path Prims.list 
+  | PP_ZeroLength 
 and group_graph_pattern =
   | GP_BGP of bgp 
   | GP_Join of group_graph_pattern * group_graph_pattern 
@@ -660,6 +661,8 @@ let uu___is_PP_NegatedSet (projectee : property_path) : Prims.bool=
   match projectee with | PP_NegatedSet _0 -> true | uu___ -> false
 let __proj__PP_NegatedSet__item___0 (projectee : property_path) :
   property_path Prims.list= match projectee with | PP_NegatedSet _0 -> _0
+let uu___is_PP_ZeroLength (projectee : property_path) : Prims.bool=
+  match projectee with | PP_ZeroLength -> true | uu___ -> false
 let uu___is_GP_BGP (projectee : group_graph_pattern) : Prims.bool=
   match projectee with | GP_BGP _0 -> true | uu___ -> false
 let __proj__GP_BGP__item___0 (projectee : group_graph_pattern) : bgp=
@@ -2054,6 +2057,8 @@ let eval_exists_fwd_ref : (group_graph_pattern -> RDF_Graph_Executable.solution_
   ref (fun _ _ _ _ -> failwith "eval_exists_fwd not yet wired")
 let eval_select_query_fwd_ref : (query -> RDF_Graph_Executable.rdf_graph -> named_graph_dataset -> solution_sequence) ref =
   ref (fun _ _ _ -> failwith "eval_select_query_fwd not yet wired")
+let eval_property_path_fwd_ref : (property_path -> RDF_Graph_Executable.rdf_graph -> (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list) ref =
+  ref (fun _ _ -> failwith "eval_property_path_fwd not yet wired")
 let eval_expr_ebv (e : expr)
   (mu : RDF_Graph_Executable.solution_mapping) : Prims.bool=
   !eval_expr_ebv_ref e mu
@@ -2067,6 +2072,9 @@ let eval_exists_fwd (p : group_graph_pattern)
 let eval_select_query_fwd (q : query)
   (g : RDF_Graph_Executable.rdf_graph) (ds : named_graph_dataset) : solution_sequence=
   !eval_select_query_fwd_ref q g ds
+let eval_property_path_fwd (p : property_path)
+  (g : RDF_Graph_Executable.rdf_graph) : (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list=
+  !eval_property_path_fwd_ref p g
 let rec eval_filter_with_graph (e : expr)
   (mu : RDF_Graph_Executable.solution_mapping)
   (g : RDF_Graph_Executable.rdf_graph) (ds : named_graph_dataset) :
@@ -2173,7 +2181,30 @@ let rec eval_pattern (p : group_graph_pattern)
        | uu___ -> [])
   | GP_Service (uu___, uu___1, uu___2) -> []
   | GP_SubSelect q -> eval_select_query_fwd q g ds
-  | GP_PropertyPath (uu___, uu___1, uu___2) -> []
+  | GP_PropertyPath (ps, pp, pt) ->
+      let pairs = eval_property_path_fwd pp g in
+      FStar_List_Tot_Base.concatMap
+        (fun pair ->
+           let uu___ = pair in
+           match uu___ with
+           | (s, o) ->
+               let mu0 = [] in
+               let mu1 =
+                 match ps with
+                 | PS_IRI iri ->
+                     if
+                       RDF_Graph_Executable.rdf_term_eq
+                         (RDF_Graph_Executable.T_IRI iri) s
+                     then FStar_Pervasives_Native.Some mu0
+                     else FStar_Pervasives_Native.None
+                 | PS_Var v -> FStar_Pervasives_Native.Some (sm_bind v s mu0) in
+               (match mu1 with
+                | FStar_Pervasives_Native.None -> []
+                | FStar_Pervasives_Native.Some mu11 ->
+                    let mu2 = try_bind_term pt o mu11 in
+                    (match mu2 with
+                     | FStar_Pervasives_Native.None -> []
+                     | FStar_Pervasives_Native.Some mu21 -> [mu21]))) pairs
 let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
   eval_result=
   match e with
@@ -3185,20 +3216,19 @@ let rec eval_property_path (p : property_path)
   | PP_Sequence (p1, p2) ->
       let r1 = eval_property_path p1 g in
       let r2 = eval_property_path p2 g in
-      dedup_path
-        (FStar_List_Tot_Base.concatMap
-           (fun pair1 ->
-              let uu___ = pair1 in
-              match uu___ with
-              | (s, mid1) ->
-                  FStar_List_Tot_Base.concatMap
-                    (fun pair2 ->
-                       let uu___1 = pair2 in
-                       match uu___1 with
-                       | (mid2, o) ->
-                           if RDF_Graph_Executable.rdf_term_eq mid1 mid2
-                           then [(s, o)]
-                           else []) r2) r1)
+      FStar_List_Tot_Base.concatMap
+        (fun pair1 ->
+           let uu___ = pair1 in
+           match uu___ with
+           | (s, mid1) ->
+               FStar_List_Tot_Base.concatMap
+                 (fun pair2 ->
+                    let uu___1 = pair2 in
+                    match uu___1 with
+                    | (mid2, o) ->
+                        if RDF_Graph_Executable.rdf_term_eq mid1 mid2
+                        then [(s, o)]
+                        else []) r2) r1
   | PP_Alternative (p1, p2) ->
       dedup_path
         (FStar_List_Tot_Base.op_At (eval_property_path p1 g)
@@ -3212,8 +3242,71 @@ let rec eval_property_path (p : property_path)
       let reflexive =
         FStar_List_Tot_Base.map (fun n -> (n, n)) (graph_nodes g) in
       let step = eval_property_path pp g in
-      dedup_path (FStar_List_Tot_Base.op_At reflexive step)
-  | PP_OneOrMore pp -> eval_property_path pp g
+      let rec closure acc frontier fuel =
+        if fuel = Prims.int_zero
+        then acc
+        else
+          (let new_pairs =
+             FStar_List_Tot_Base.concatMap
+               (fun pair ->
+                  let uu___1 = pair in
+                  match uu___1 with
+                  | (uu___2, mid) ->
+                      FStar_List_Tot_Base.concatMap
+                        (fun s ->
+                           let uu___3 = s in
+                           match uu___3 with
+                           | (mid2, o) ->
+                               if RDF_Graph_Executable.rdf_term_eq mid mid2
+                               then [((FStar_Pervasives_Native.fst pair), o)]
+                               else []) step) frontier in
+           let novel =
+             FStar_List_Tot_Base.filter
+               (fun p1 ->
+                  Prims.op_Negation
+                    (FStar_List_Tot_Base.existsb (path_pair_eq p1) acc))
+               new_pairs in
+           if Prims.uu___is_Nil novel
+           then acc
+           else
+             closure (FStar_List_Tot_Base.op_At acc novel) novel
+               (fuel - Prims.int_one)) in
+      let n_nodes = FStar_List_Tot_Base.length (graph_nodes g) in
+      dedup_path
+        (closure (FStar_List_Tot_Base.op_At reflexive step) step n_nodes)
+  | PP_OneOrMore pp ->
+      let step = eval_property_path pp g in
+      let rec closure acc frontier fuel =
+        if fuel = Prims.int_zero
+        then acc
+        else
+          (let new_pairs =
+             FStar_List_Tot_Base.concatMap
+               (fun pair ->
+                  let uu___1 = pair in
+                  match uu___1 with
+                  | (uu___2, mid) ->
+                      FStar_List_Tot_Base.concatMap
+                        (fun s ->
+                           let uu___3 = s in
+                           match uu___3 with
+                           | (mid2, o) ->
+                               if RDF_Graph_Executable.rdf_term_eq mid mid2
+                               then [((FStar_Pervasives_Native.fst pair), o)]
+                               else []) step) frontier in
+           let novel =
+             FStar_List_Tot_Base.filter
+               (fun p1 ->
+                  Prims.op_Negation
+                    (FStar_List_Tot_Base.existsb (path_pair_eq p1) acc))
+               new_pairs in
+           if Prims.uu___is_Nil novel
+           then acc
+           else
+             closure (FStar_List_Tot_Base.op_At acc novel) novel
+               (fuel - Prims.int_one)) in
+      let n_nodes = FStar_List_Tot_Base.length (graph_nodes g) in
+      dedup_path (closure step step n_nodes)
   | PP_NegatedSet ps ->
       let excluded = negated_iris ps in
       FStar_List_Tot_Base.concatMap
@@ -3223,6 +3316,9 @@ let rec eval_property_path (p : property_path)
            else
              [((subject_to_term t.RDF_Graph_Executable.s),
                 (t.RDF_Graph_Executable.o))]) g
+  | PP_ZeroLength ->
+      FStar_List_Tot_Base.map (fun n -> (n, n)) (graph_nodes g)
+let () = eval_property_path_fwd_ref := (fun p g -> eval_property_path p g)
 type numeric_precision =
   | NP_Integer 
   | NP_Decimal 

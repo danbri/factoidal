@@ -56,7 +56,11 @@ let eval_exists_fwd (uu___ : group_graph_pattern)
 let eval_select_query_fwd (uu___ : query)
   (uu___1 : RDF_Graph_Executable.rdf_graph) (uu___2 : named_graph_dataset) :
   solution_sequence=
-  failwith \"Not yet implemented: SPARQL11.Algebra.eval_select_query_fwd\"'''
+  failwith \"Not yet implemented: SPARQL11.Algebra.eval_select_query_fwd\"
+let eval_property_path_fwd (uu___ : property_path)
+  (uu___1 : RDF_Graph_Executable.rdf_graph) :
+  (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list=
+  failwith \"Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd\"'''
 
 new = '''type named_graph_dataset =
   (Prims.string * RDF_Graph_Executable.rdf_graph) Prims.list
@@ -68,6 +72,8 @@ let eval_exists_fwd_ref : (group_graph_pattern -> RDF_Graph_Executable.solution_
   ref (fun _ _ _ _ -> failwith \"eval_exists_fwd not yet wired\")
 let eval_select_query_fwd_ref : (query -> RDF_Graph_Executable.rdf_graph -> named_graph_dataset -> solution_sequence) ref =
   ref (fun _ _ _ -> failwith \"eval_select_query_fwd not yet wired\")
+let eval_property_path_fwd_ref : (property_path -> RDF_Graph_Executable.rdf_graph -> (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list) ref =
+  ref (fun _ _ -> failwith \"eval_property_path_fwd not yet wired\")
 let eval_expr_ebv (e : expr)
   (mu : RDF_Graph_Executable.solution_mapping) : Prims.bool=
   !eval_expr_ebv_ref e mu
@@ -80,7 +86,10 @@ let eval_exists_fwd (p : group_graph_pattern)
   !eval_exists_fwd_ref p mu g ds
 let eval_select_query_fwd (q : query)
   (g : RDF_Graph_Executable.rdf_graph) (ds : named_graph_dataset) : solution_sequence=
-  !eval_select_query_fwd_ref q g ds'''
+  !eval_select_query_fwd_ref q g ds
+let eval_property_path_fwd (p : property_path)
+  (g : RDF_Graph_Executable.rdf_graph) : (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list=
+  !eval_property_path_fwd_ref p g'''
 
 content = content.replace(old, new)
 
@@ -99,6 +108,11 @@ content = content.replace(target, target + 'let () = eval_exists_fwd_ref := (fun
 target2 = 'let is_not_literal (t : RDF_Graph_Executable.rdf_term)'
 wire2 = 'let () = eval_select_query_fwd_ref := (fun q g ds -> eval_select_query q g ds)\n' + target2
 content = content.replace(target2, wire2, 1)
+
+# Wire up eval_property_path_fwd_ref after eval_property_path definition
+target3 = 'type numeric_precision ='
+wire3 = 'let () = eval_property_path_fwd_ref := (fun p g -> eval_property_path p g)\n' + target3
+content = content.replace(target3, wire3, 1)
 
 with open('$FILE', 'w') as f:
     f.write(content)
