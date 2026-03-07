@@ -433,15 +433,26 @@ let parse_numeric (ps : pstate) : option (expr * pstate) =
       (* Integer *)
       if ps_after_int.pos > start then
         let s = String.sub ps.inp start (ps_after_int.pos - start) in
-        (* Try to convert to int *)
-        Some (E_NumericLit 0, ps_after_int)  (* Placeholder — OCaml patch will fix int parsing *)
+        (* Parse integer from digit characters *)
+        let chars = list_of_string s in
+        let rec parse_int_chars (cs : list FStar.Char.char) (neg : bool) (acc : int) : int =
+          match cs with
+          | [] -> if neg then (0 - acc) else acc
+          | c :: rest ->
+            let code = FStar.Char.int_of_char c in
+            if code = 0x2B then parse_int_chars rest false acc
+            else if code = 0x2D then parse_int_chars rest true acc
+            else parse_int_chars rest neg (op_Multiply acc 10 + (code - 0x30))
+        in
+        let n = parse_int_chars chars false 0 in
+        Some (E_NumericLit n, ps_after_int)
       else None
 
 (** ====================================================================== **)
 (** Prefix and Base declarations                                            **)
 (** ====================================================================== **)
 
-let parse_prefix_decl (ps : pstate) (prefixes : list (string * wf_iri))
+let parse_prefix_decl (ps : pstate) (prefixes : list (string * wf_iri)) (base : option wf_iri)
   : option ((string * wf_iri) * pstate) =
   let ps = skip_ws ps in
   match ps_consume ps "PREFIX" with
@@ -458,8 +469,12 @@ let parse_prefix_decl (ps : pstate) (prefixes : list (string * wf_iri))
         if is_iri iri then
           Some ((prefix, iri), ps)
         else if String.length iri = 0 then
-          let dummy : wf_iri = (assert_norm (is_iri "urn:empty:"); "urn:empty:") in
-          Some ((prefix, dummy), ps)
+          (* Resolve empty IRI against BASE *)
+          (match base with
+           | Some b -> Some ((prefix, b), ps)
+           | None ->
+             let dummy : wf_iri = (assert_norm (is_iri "urn:empty:"); "urn:empty:") in
+             Some ((prefix, dummy), ps))
         else
           (* Return raw string — prologue will resolve against BASE *)
           Some ((prefix, iri), ps)
@@ -481,7 +496,7 @@ let rec parse_prologue (ps : pstate) (base : option wf_iri) (prefixes : list (st
   match parse_base_decl ps with
   | Some (iri, ps) -> parse_prologue ps (Some iri) prefixes
   | None ->
-    match parse_prefix_decl ps prefixes with
+    match parse_prefix_decl ps prefixes base with
     | Some ((prefix, raw_iri), ps) ->
       (* Resolve prefix IRI against base *)
       let resolved = resolve_relative_iri base raw_iri in
@@ -1760,7 +1775,27 @@ let rec parse_order_by (ps : pstate) (prefixes : list (string * wf_iri))
       in
       parse_conditions [] ps
 
-assume val parse_nat_digits : pstate -> option (nat * pstate)
+let parse_nat_digits (ps : pstate) : option (nat * pstate) =
+  let ps = skip_ws ps in
+  let start = ps.pos in
+  let rec skip_digits (ps : pstate) : pstate =
+    match ps_peek ps with
+    | Some c when is_digit c -> skip_digits (ps_advance ps 1)
+    | _ -> ps
+  in
+  let ps2 = skip_digits ps in
+  if ps2.pos = start then None
+  else
+    let s = String.sub ps.inp start (ps2.pos - start) in
+    (* Convert string to nat digit by digit *)
+    let chars = list_of_string s in
+    let rec to_int (cs : list FStar.Char.char) (acc : int) : int =
+      match cs with
+      | [] -> acc
+      | c :: rest -> to_int rest (op_Multiply acc 10 + (FStar.Char.int_of_char c - 0x30))
+    in
+    let n = to_int chars 0 in
+    if n >= 0 then Some (n, ps2) else None
 
 let parse_limit (ps : pstate) : option (nat * pstate) =
   let ps = skip_ws ps in

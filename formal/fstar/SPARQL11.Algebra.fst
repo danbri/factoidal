@@ -604,8 +604,11 @@ let fn_str (v : eval_result) : eval_result =
   | ER_Term (T_IRI i) -> ER_Term (T_Literal (mk_plain_literal (iri_to_string i)))
   | ER_Term (T_Literal l) -> ER_Term (T_Literal (mk_plain_literal (lit_lexical l)))
   | ER_Term (T_BNode b) -> ER_Term (T_Literal (mk_plain_literal b))
+  | ER_Num n -> ER_Term (T_Literal (mk_plain_literal (string_of_int n)))
+  | ER_Dec s -> ER_Term (T_Literal (mk_plain_literal s))
+  | ER_Dbl s -> ER_Term (T_Literal (mk_plain_literal s))
+  | ER_Bool b -> ER_Term (T_Literal (mk_plain_literal (if b then "true" else "false")))
   | ER_Error -> ER_Error
-  | _ -> ER_Error
 
 let fn_lang (v : eval_result) : eval_result =
   match v with
@@ -1900,18 +1903,46 @@ let eval_aggregate (fn : aggregate_fn) (distinct : bool) (e : expr) (g : group) 
     let vals = eval_over_group e g in
     first_non_error vals
 
+(* Evaluate an expression with aggregate support in the context of a group *)
+let rec eval_expr_group (e : expr) (grp : group) (mu : solution_mapping) : eval_result =
+  match e with
+  | E_Aggregate fn distinct inner_e ->
+    eval_aggregate fn distinct inner_e grp
+  | E_Arith op e1 e2 ->
+    let r1 = eval_expr_group e1 grp mu in
+    let r2 = eval_expr_group e2 grp mu in
+    (match r1, r2 with
+     | ER_Num a, ER_Num b -> eval_arith_int op a b
+     | _, _ -> ER_Error)
+  | E_And e1 e2 ->
+    ER_Bool (ebv (eval_expr_group e1 grp mu) && ebv (eval_expr_group e2 grp mu))
+  | E_Or e1 e2 ->
+    ER_Bool (ebv (eval_expr_group e1 grp mu) || ebv (eval_expr_group e2 grp mu))
+  | E_Not e1 ->
+    ER_Bool (not (ebv (eval_expr_group e1 grp mu)))
+  | E_Compare op e1 e2 ->
+    (match value_compare (eval_expr_group e1 grp mu) (eval_expr_group e2 grp mu) op with
+     | Some b -> ER_Bool b
+     | None ->
+       (match op with
+        | CmpEq -> ER_Bool false
+        | CmpNe -> ER_Bool true
+        | _ -> ER_Error))
+  | _ -> eval_expr e mu  (* For non-aggregate expressions, use regular eval *)
+
 (** 10.3 HAVING filter **)
 
-(* HAVING filters groups after aggregation *)
+(* HAVING filters groups after aggregation — evaluate conditions using group context *)
 let having_filter (conditions : list having_condition) (groups : list group) : list group =
   List.Tot.filter
     (fun g ->
+      let mu = match g.g_solutions with
+        | m :: _ -> m
+        | [] -> sm_empty
+      in
       List.Tot.for_all
         (fun cond ->
-          (* Evaluate the HAVING condition in the context of the group.
-             The condition can reference aggregate results.
-             We assume a special evaluation context for group-level expressions. *)
-          true (* [S2] concrete evaluation deferred *))
+          ebv (eval_expr_group cond g mu))
         conditions)
     groups
 
@@ -2031,6 +2062,46 @@ let eval_select_items (items : list select_item) (omega : solution_sequence) (g 
   : solution_sequence =
   List.Tot.map (fun mu -> List.Tot.fold_left (fun acc item -> eval_select_item item acc g) mu items) omega
 
+(* Check if an expression contains an aggregate *)
+let rec expr_has_aggregate (e : expr) : bool =
+  match e with
+  | E_Aggregate _ _ _ -> true
+  | E_Arith _ e1 e2 | E_Compare _ e1 e2
+  | E_And e1 e2 | E_Or e1 e2 ->
+    expr_has_aggregate e1 || expr_has_aggregate e2
+  | E_Not e1 -> expr_has_aggregate e1
+  | _ -> false
+
+(* Check if select items contain any aggregates *)
+let select_has_aggregates (items : list select_item) : bool =
+  List.Tot.existsb (fun (item : select_item) ->
+    match item with
+    | SI_Expr e _ -> expr_has_aggregate e
+    | SI_Var _ -> false) items
+
+(* Evaluate SELECT items for a single group, producing one solution mapping *)
+let eval_group_select (items : list select_item) (grp : group) : solution_mapping =
+  let base_mu = match grp.g_solutions with
+    | mu :: _ -> mu  (* Start with variables from first solution in group *)
+    | [] -> sm_empty
+  in
+  List.Tot.fold_left
+    (fun (mu : solution_mapping) (item : select_item) ->
+      match item with
+      | SI_Var v -> mu  (* Variable already in mapping from group key *)
+      | SI_Expr e v ->
+        let r = eval_expr_group e grp mu in
+        match er_to_term r with
+        | Some t -> sm_bind v t mu
+        | None -> mu)
+    base_mu
+    items
+
+(* Evaluate aggregate query: group, aggregate, produce one row per group *)
+let eval_aggregate_query (items : list select_item) (groups : list group)
+  : solution_sequence =
+  List.Tot.map (fun grp -> eval_group_select items grp) groups
+
 (* Extract variable names from select items — CONCRETE *)
 let select_item_vars (items : list select_item) : list var_name =
   List.Tot.map (fun (item : select_item) -> match item with
@@ -2047,11 +2118,20 @@ let eval_select_query (q : query) (g : rdf_graph) : solution_sequence =
     (* 1. Evaluate WHERE clause *)
     let omega = eval_pattern q.q_pattern g in
 
-    (* 2–4. GROUP BY / aggregation / HAVING — skipped for now *)
-
-    (* 5. SELECT expressions — evaluate (expr AS ?var) *)
+    (* 2–5. GROUP BY / aggregation / HAVING / SELECT expressions *)
     let omega' = match sel with
-      | Select_Vars items -> eval_select_items items omega g
+      | Select_Vars items ->
+        if select_has_aggregates items || Some? q.q_group_by then
+          (* Aggregate query: group → HAVING → aggregate → produce one row per group *)
+          let groups = match q.q_group_by with
+            | None -> implicit_group omega
+            | Some gc -> group_by gc omega in
+          let groups = match q.q_having with
+            | None -> groups
+            | Some conds -> having_filter conds groups in
+          eval_aggregate_query items groups
+        else
+          eval_select_items items omega g
       | Select_All -> omega in
 
     (* 6. ORDER BY *)

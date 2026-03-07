@@ -773,9 +773,9 @@ let distinct_tests =
   let dir = sparql_base ^ "sparql10/distinct/" in
   let files = [
     ("no-distinct-1", "data-num.ttl", "no-distinct-1.rq", "no-distinct-num.srx");
-    ("no-distinct-2", "data-str.ttl", "no-distinct-2.rq", "no-distinct-str.srx");
+    ("no-distinct-2", "data-str.ttl", "no-distinct-1.rq", "no-distinct-str.srx");
     ("distinct-1", "data-num.ttl", "distinct-1.rq", "distinct-num.srx");
-    ("distinct-2", "data-str.ttl", "distinct-2.rq", "distinct-str.srx");
+    ("distinct-2", "data-str.ttl", "distinct-1.rq", "distinct-str.srx");
     ("distinct-star-1", "data-star.ttl", "distinct-star-1.rq", "distinct-star-1.srx");
   ] in
   List.map (fun (name, data, query, result) ->
@@ -827,10 +827,10 @@ let exists_tests =
   let dir = sparql_base ^ "sparql11/exists/" in
   let files = [
     ("exists01", "exists01.ttl", "exists01.rq", "exists01.srx");
-    ("exists02", "exists02.ttl", "exists02.rq", "exists02.srx");
+    ("exists02", "exists01.ttl", "exists02.rq", "exists02.srx");
     ("exists03", "exists01.ttl", "exists03.rq", "exists03.srx");
     ("exists04", "exists01.ttl", "exists04.rq", "exists04.srx");
-    ("exists05", "exists05.ttl", "exists05.rq", "exists05.srx");
+    ("exists05", "exists01.ttl", "exists05.rq", "exists05.srx");
   ] in
   List.map (fun (name, data, query, result) ->
     { tc_name = "exists/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result }) files

@@ -1179,8 +1179,17 @@ let fn_str (v : eval_result) : eval_result=
         (RDF_Graph_Executable.T_Literal (mk_plain_literal (lit_lexical l)))
   | ER_Term (RDF_Graph_Executable.T_BNode b) ->
       ER_Term (RDF_Graph_Executable.T_Literal (mk_plain_literal b))
+  | ER_Num n ->
+      ER_Term
+        (RDF_Graph_Executable.T_Literal
+           (mk_plain_literal (Prims.string_of_int n)))
+  | ER_Dec s -> ER_Term (RDF_Graph_Executable.T_Literal (mk_plain_literal s))
+  | ER_Dbl s -> ER_Term (RDF_Graph_Executable.T_Literal (mk_plain_literal s))
+  | ER_Bool b ->
+      ER_Term
+        (RDF_Graph_Executable.T_Literal
+           (mk_plain_literal (if b then "true" else "false")))
   | ER_Error -> ER_Error
-  | uu___ -> ER_Error
 let fn_lang (v : eval_result) : eval_result=
   match v with
   | ER_Term (RDF_Graph_Executable.T_Literal l) ->
@@ -2357,10 +2366,8 @@ and eval_concat (es : expr Prims.list)
           (RDF_Graph_Executable.T_Literal l)) ->
            er_string (Prims.strcat s (lit_lexical l))
        | (uu___, uu___1) -> ER_Error)
-(* Wire up the forward-declared eval_expr_ebv/fwd/exists to the real implementations *)
 let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
 let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)
-
 type group = {
   g_key: eval_result Prims.list ;
   g_solutions: solution_sequence }
@@ -2574,11 +2581,44 @@ let eval_aggregate (fn : aggregate_fn) (distinct : Prims.bool) (e : expr)
         (RDF_Graph_Executable.T_Literal
            (mk_plain_literal (FStar_String.concat sep strs)))
   | Agg_Sample -> let vals = eval_over_group e g in first_non_error vals
+let rec eval_expr_group (e : expr) (grp : group)
+  (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
+  match e with
+  | E_Aggregate (fn, distinct, inner_e) ->
+      eval_aggregate fn distinct inner_e grp
+  | E_Arith (op, e1, e2) ->
+      let r1 = eval_expr_group e1 grp mu in
+      let r2 = eval_expr_group e2 grp mu in
+      (match (r1, r2) with
+       | (ER_Num a, ER_Num b) -> eval_arith_int op a b
+       | (uu___, uu___1) -> ER_Error)
+  | E_And (e1, e2) ->
+      ER_Bool
+        ((ebv (eval_expr_group e1 grp mu)) &&
+           (ebv (eval_expr_group e2 grp mu)))
+  | E_Or (e1, e2) ->
+      ER_Bool
+        ((ebv (eval_expr_group e1 grp mu)) ||
+           (ebv (eval_expr_group e2 grp mu)))
+  | E_Not e1 -> ER_Bool (Prims.op_Negation (ebv (eval_expr_group e1 grp mu)))
+  | E_Compare (op, e1, e2) ->
+      (match value_compare (eval_expr_group e1 grp mu)
+               (eval_expr_group e2 grp mu) op
+       with
+       | FStar_Pervasives_Native.Some b -> ER_Bool b
+       | FStar_Pervasives_Native.None ->
+           (match op with
+            | CmpEq -> ER_Bool false
+            | CmpNe -> ER_Bool true
+            | uu___ -> ER_Error))
+  | uu___ -> eval_expr e mu
 let having_filter (conditions : having_condition Prims.list)
   (groups : group Prims.list) : group Prims.list=
   FStar_List_Tot_Base.filter
-    (fun g -> FStar_List_Tot_Base.for_all (fun cond -> true) conditions)
-    groups
+    (fun g ->
+       let mu = match g.g_solutions with | m::uu___ -> m | [] -> sm_empty in
+       FStar_List_Tot_Base.for_all
+         (fun cond -> ebv (eval_expr_group cond g mu)) conditions) groups
 let compare_on_condition (c : order_condition)
   (mu1 : RDF_Graph_Executable.solution_mapping)
   (mu2 : RDF_Graph_Executable.solution_mapping) : Prims.int=
@@ -2659,6 +2699,38 @@ let eval_select_items (items : select_item Prims.list)
     (fun mu ->
        FStar_List_Tot_Base.fold_left
          (fun acc item -> eval_select_item item acc g) mu items) omega
+let rec expr_has_aggregate (e : expr) : Prims.bool=
+  match e with
+  | E_Aggregate (uu___, uu___1, uu___2) -> true
+  | E_Arith (uu___, e1, e2) ->
+      (expr_has_aggregate e1) || (expr_has_aggregate e2)
+  | E_Compare (uu___, e1, e2) ->
+      (expr_has_aggregate e1) || (expr_has_aggregate e2)
+  | E_And (e1, e2) -> (expr_has_aggregate e1) || (expr_has_aggregate e2)
+  | E_Or (e1, e2) -> (expr_has_aggregate e1) || (expr_has_aggregate e2)
+  | E_Not e1 -> expr_has_aggregate e1
+  | uu___ -> false
+let select_has_aggregates (items : select_item Prims.list) : Prims.bool=
+  FStar_List_Tot_Base.existsb
+    (fun item ->
+       match item with
+       | SI_Expr (e, uu___) -> expr_has_aggregate e
+       | SI_Var uu___ -> false) items
+let eval_group_select (items : select_item Prims.list) (grp : group) :
+  RDF_Graph_Executable.solution_mapping=
+  let base_mu = match grp.g_solutions with | mu::uu___ -> mu | [] -> sm_empty in
+  FStar_List_Tot_Base.fold_left
+    (fun mu item ->
+       match item with
+       | SI_Var v -> mu
+       | SI_Expr (e, v) ->
+           let r = eval_expr_group e grp mu in
+           (match er_to_term r with
+            | FStar_Pervasives_Native.Some t -> sm_bind v t mu
+            | FStar_Pervasives_Native.None -> mu)) base_mu items
+let eval_aggregate_query (items : select_item Prims.list)
+  (groups : group Prims.list) : solution_sequence=
+  FStar_List_Tot_Base.map (fun grp -> eval_group_select items grp) groups
 let select_item_vars (items : select_item Prims.list) : var_name Prims.list=
   FStar_List_Tot_Base.map
     (fun item -> match item with | SI_Var v -> v | SI_Expr (uu___, v) -> v)
@@ -2670,7 +2742,22 @@ let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph) :
       let omega = eval_pattern q.q_pattern g in
       let omega' =
         match sel with
-        | Select_Vars items -> eval_select_items items omega g
+        | Select_Vars items ->
+            if
+              (select_has_aggregates items) ||
+                (FStar_Pervasives_Native.uu___is_Some q.q_group_by)
+            then
+              let groups =
+                match q.q_group_by with
+                | FStar_Pervasives_Native.None -> implicit_group omega
+                | FStar_Pervasives_Native.Some gc -> group_by gc omega in
+              let groups1 =
+                match q.q_having with
+                | FStar_Pervasives_Native.None -> groups
+                | FStar_Pervasives_Native.Some conds ->
+                    having_filter conds groups in
+              eval_aggregate_query items groups1
+            else eval_select_items items omega g
         | Select_All -> omega in
       let ordered =
         match (q.q_modifier).sm_order_by with
@@ -3216,10 +3303,10 @@ let eval_exists (pattern : group_graph_pattern)
   let substituted = substitute_pattern mu pattern in
   (FStar_List_Tot_Base.length (eval_pattern substituted graph)) >
     Prims.int_zero
-let () = eval_exists_fwd_ref := (fun p mu g -> eval_exists p mu g)
 let eval_not_exists (pattern : group_graph_pattern)
   (mu : RDF_Graph_Executable.solution_mapping)
   (graph : RDF_Graph_Executable.rdf_graph) : Prims.bool=
   Prims.op_Negation (eval_exists pattern mu graph)
+let () = eval_exists_fwd_ref := (fun p mu g -> eval_exists p mu g)
 let filter_solutions (e : expr) (omega : solution_sequence) :
   solution_sequence= FStar_List_Tot_Base.filter (eval_expr_ebv e) omega
