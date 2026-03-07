@@ -569,8 +569,12 @@ let parse_srx (content : string) : srx_result list option =
   in
 
   (* Check if this is a boolean result (ASK query) *)
-  if (try let _ = Str.search_forward (Str.regexp_string "<boolean>") content 0 in true with Not_found -> false) then
-    Some []  (* ASK result — just return empty list *)
+  if (try let _ = Str.search_forward (Str.regexp_string "<boolean>") content 0 in true with Not_found -> false) then begin
+    (* ASK result — true means 1 result, false means 0 results *)
+    let is_true = try let _ = Str.search_forward (Str.regexp_string "<boolean>true</boolean>") content 0 in true with Not_found -> false in
+    if is_true then Some [[]]  (* 1 empty result row = true *)
+    else Some []  (* 0 rows = false *)
+  end
   else begin
     pos := 0;
     while find_tag "<result>" || find_tag "<result " do
@@ -679,44 +683,58 @@ type test_case = {
   tc_named_graphs : (string * string) list;  (* (graph_name_IRI, data_file_path) *)
 }
 
+let load_graph (path : string) : triple list =
+  match read_file path with
+  | None -> []
+  | Some data_str ->
+    if String.length path > 3 && String.sub path (String.length path - 3) 3 = ".nt" then
+      (match parse_ntriples data_str with
+       | Some triples -> triples
+       | None -> [])
+    else
+      turtle_parse data_str
+
 let run_test (tc : test_case) : unit =
   incr tests_run;
-  (* Load query *)
   match read_file tc.tc_query with
   | None ->
     incr tests_failed;
     Printf.printf "  SKIP: %s (query file not found: %s)\n" tc.tc_name tc.tc_query
   | Some query_str ->
-    (* Load data *)
-    let graph = match read_file tc.tc_data with
-      | None -> []
-      | Some data_str ->
-        if String.length tc.tc_data > 3 && String.sub tc.tc_data (String.length tc.tc_data - 3) 3 = ".nt" then
-          (match parse_ntriples data_str with
-           | Some triples -> triples
-           | None -> [])
-        else
-          turtle_parse data_str
-    in
-    (* Load named graphs *)
+    let graph = load_graph tc.tc_data in
     let named_graphs = List.filter_map (fun (name, path) ->
       match read_file path with
       | None -> None
       | Some data_str -> Some (name, turtle_parse data_str)) tc.tc_named_graphs
     in
-    (* Parse query with F*-extracted parser *)
     match parse_query query_str with
     | None ->
       incr tests_failed;
       incr parse_failures;
       Printf.printf "  FAIL: %s (F* parser failed)\n" tc.tc_name
     | Some query ->
-      (* Load expected results *)
+      (* Parse expected results — handles both .srx and .ttl result set format *)
       let expected = match read_file tc.tc_result with
         | None -> None
-        | Some srx_str -> parse_srx srx_str
+        | Some result_str ->
+          (* Try .srx first *)
+          match parse_srx result_str with
+          | Some _ as r -> r
+          | None ->
+            (* Try counting rs:solution in .ttl result set format *)
+            let count = ref 0 in
+            let len = String.length result_str in
+            let i = ref 0 in
+            while !i < len - 11 do
+              if String.sub result_str !i 11 = "rs:solution" then
+                (incr count; i := !i + 11)
+              else
+                incr i
+            done;
+            if !count > 0 then
+              Some (List.init !count (fun _ -> []))
+            else None
       in
-      (* Evaluate query with F*-extracted evaluator *)
       (try
         let results = eval_select_query query graph named_graphs in
         let expected_count = match expected with
@@ -728,7 +746,6 @@ let run_test (tc : test_case) : unit =
           incr tests_passed;
           Printf.printf "  PASS: %s (%d results)\n" tc.tc_name actual_count
         end else if expected_count < 0 then begin
-          (* No expected results file — just check it doesn't crash *)
           incr tests_passed;
           Printf.printf "  PASS: %s (%d results, no expected file)\n" tc.tc_name actual_count
         end else begin
@@ -741,6 +758,70 @@ let run_test (tc : test_case) : unit =
         incr tests_failed;
         incr eval_failures;
         Printf.printf "  FAIL: %s (evaluator error: %s)\n" tc.tc_name (Printexc.to_string e))
+
+(* ASK test: expects boolean result from ASK query *)
+type ask_test_case = {
+  at_name : string;
+  at_query : string;
+  at_data : string;
+  at_expected : bool;
+}
+
+let run_ask_test (tc : ask_test_case) : unit =
+  incr tests_run;
+  match read_file tc.at_query with
+  | None ->
+    incr tests_failed;
+    Printf.printf "  SKIP: %s (query file not found)\n" tc.at_name
+  | Some query_str ->
+    let graph = load_graph tc.at_data in
+    match parse_query query_str with
+    | None ->
+      incr tests_failed;
+      incr parse_failures;
+      Printf.printf "  FAIL: %s (F* parser failed)\n" tc.at_name
+    | Some query ->
+      (try
+        (* ASK: evaluate pattern, check if any results *)
+        let results = eval_select_query query graph [] in
+        let got = List.length results > 0 in
+        if got = tc.at_expected then begin
+          incr tests_passed;
+          Printf.printf "  PASS: %s (ASK=%b)\n" tc.at_name got
+        end else begin
+          incr tests_failed;
+          Printf.printf "  FAIL: %s (expected ASK=%b, got ASK=%b)\n" tc.at_name tc.at_expected got
+        end
+      with e ->
+        incr tests_failed;
+        incr eval_failures;
+        Printf.printf "  FAIL: %s (evaluator error: %s)\n" tc.at_name (Printexc.to_string e))
+
+(* Syntax test: just checks if parser accepts/rejects a query *)
+type syntax_test_case = {
+  st_name : string;
+  st_query : string;
+  st_positive : bool;  (* true = should parse, false = should reject *)
+}
+
+let run_syntax_test (tc : syntax_test_case) : unit =
+  incr tests_run;
+  match read_file tc.st_query with
+  | None ->
+    incr tests_failed;
+    Printf.printf "  SKIP: %s (query file not found)\n" tc.st_name
+  | Some query_str ->
+    let parsed = parse_query query_str <> None in
+    if parsed = tc.st_positive then begin
+      incr tests_passed;
+      Printf.printf "  PASS: %s (%s)\n" tc.st_name (if tc.st_positive then "parsed" else "rejected")
+    end else begin
+      incr tests_failed;
+      incr parse_failures;
+      Printf.printf "  FAIL: %s (expected %s, got %s)\n" tc.st_name
+        (if tc.st_positive then "parse success" else "parse failure")
+        (if parsed then "parsed" else "rejected")
+    end
 
 (* ====================================================================== *)
 (* W3C test suite definitions                                               *)
@@ -1205,21 +1286,295 @@ let bindings_tests =
 
 let property_path_tests =
   let dir = sparql_base ^ "sparql11/property-path/" in
-  (* Only tests with .ttl data files *)
   let files = [
     ("pp01", "pp01.ttl", "pp01.rq", "pp01.srx");
+    ("pp02", "pp01.ttl", "pp02.rq", "pp02.srx");
     ("pp03", "pp03.ttl", "pp03.rq", "pp03.srx");
     ("pp05", "pp05.ttl", "pp05.rq", "pp05.srx");
+    ("pp06", "pp08.ttl", "pp06.rq", "pp08.srx");
     ("pp08", "pp08.ttl", "pp08.rq", "pp08.srx");
     ("pp09", "pp09.ttl", "pp09.rq", "pp09.srx");
     ("pp10", "pp10.ttl", "pp10.rq", "pp10.srx");
     ("pp11", "pp11.ttl", "pp11.rq", "pp11.srx");
+    ("pp12", "pp11.ttl", "pp12.rq", "pp12.srx");
     ("pp13", "pp13.ttl", "pp13.rq", "pp13.srx");
     ("pp14", "pp14.ttl", "pp14.rq", "pp14.srx");
+    ("pp16", "pp16.ttl", "pp14.rq", "pp16.srx");
+    ("pp21", "data-diamond.ttl", "path-2-2.rq", "diamond-2.srx");
+    ("pp23", "data-diamond-tail.ttl", "path-2-2.rq", "diamond-tail-2.srx");
+    ("pp25", "data-diamond-loop.ttl", "path-2-2.rq", "diamond-loop-2.srx");
+    ("pp28a", "data-diamond-loop.ttl", "path-3-3.rq", "diamond-loop-5a.srx");
+    ("pp30", "path-p1.ttl", "path-p1.rq", "path-p1.srx");
+    ("pp31", "path-p1.ttl", "path-p2.rq", "path-p2.srx");
+    ("pp32", "path-p3.ttl", "path-p3.rq", "path-p3.srx");
+    ("pp33", "path-p3.ttl", "path-p4.rq", "path-p4.srx");
+    ("pp34", "clique3.ttl", "path-ng-01.rq", "pp36.srx");
     ("pp37", "pp37.ttl", "pp37.rq", "pp37.srx");
   ] in
   List.map (fun (name, data, query, result) ->
     { tc_name = "property-path/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
+
+(* SPARQL 1.0: cast *)
+let cast10_tests =
+  let dir = sparql_base ^ "sparql10/cast/" in
+  let files = [
+    ("cast-bool", "data.ttl", "cast-bool.rq", "cast-bool.srx");
+    ("cast-dT", "data.ttl", "cast-dT.rq", "cast-dT.srx");
+    ("cast-dbl", "data.ttl", "cast-dbl.rq", "cast-dbl.srx");
+    ("cast-dec", "data.ttl", "cast-dec.rq", "cast-dec.srx");
+    ("cast-flt", "data.ttl", "cast-flt.rq", "cast-flt.srx");
+    ("cast-int", "data.ttl", "cast-int.rq", "cast-int.srx");
+    ("cast-str", "data.ttl", "cast-str.rq", "cast-str.srx");
+  ] in
+  List.map (fun (name, data, query, result) ->
+    { tc_name = "cast/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
+
+(* SPARQL 1.1: cast *)
+let cast11_tests =
+  let dir = sparql_base ^ "sparql11/cast/" in
+  let files = [
+    ("cast-bool", "data.ttl", "cast-bool.rq", "cast-bool.srx");
+    ("cast-decimal", "data.ttl", "cast-decimal.rq", "cast-decimal.srx");
+    ("cast-double", "data.ttl", "cast-double.rq", "cast-double.srx");
+    ("cast-float", "data.ttl", "cast-float.rq", "cast-float.srx");
+    ("cast-int", "data.ttl", "cast-int.rq", "cast-int.srx");
+    ("cast-string", "data.ttl", "cast-string.rq", "cast-string.srx");
+  ] in
+  List.map (fun (name, data, query, result) ->
+    { tc_name = "cast/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
+
+(* SPARQL 1.0: type-promotion — ASK queries, expected boolean result *)
+let type_promotion_tests =
+  let dir = sparql_base ^ "sparql10/type-promotion/" in
+  let tests = [
+    ("tP-byte-short", true); ("tP-byte-short-fail", false);
+    ("tP-decimal-decimal", true);
+    ("tP-double-decimal", true); ("tP-double-decimal-fail", false);
+    ("tP-double-double", true);
+    ("tP-double-float", true); ("tP-double-float-fail", false);
+    ("tP-float-decimal", true); ("tP-float-decimal-fail", false);
+    ("tP-float-float", true);
+    ("tP-int-short", true); ("tP-int-short-fail", false);
+    ("tP-integer-short", true); ("tP-integer-short-fail", false);
+    ("tP-long-short", true); ("tP-long-short-fail", false);
+    ("tP-negativeInteger-short", true);
+    ("tP-nonNegativeInteger-short", true);
+    ("tP-nonPositiveInteger-short", true);
+    ("tP-positiveInteger-short", true);
+    ("tP-short-byte", true); ("tP-short-byte-fail", false);
+    ("tP-short-double", true); ("tP-short-double-fail", false);
+    ("tP-short-float", true); ("tP-short-float-fail", false);
+    ("tP-short-int", true); ("tP-short-int-fail", false);
+    ("tP-short-long", true); ("tP-short-long-fail", false);
+    ("tP-short-short", true);
+  ] in
+  List.map (fun (name, expected) ->
+    { at_name = "type-promotion/" ^ name; at_query = dir ^ name ^ ".rq";
+      at_data = dir ^ "tP.ttl"; at_expected = expected }) tests
+
+(* SPARQL 1.0: i18n — SELECT queries with .srx-like results in .ttl *)
+let i18n_tests =
+  let dir = sparql_base ^ "sparql10/i18n/" in
+  let files = [
+    ("kanji-01", "kanji.ttl", "kanji-01.rq", "kanji-01-results.ttl");
+    ("kanji-02", "kanji.ttl", "kanji-02.rq", "kanji-02-results.ttl");
+    ("normalization-01", "normalization-01.ttl", "normalization-01.rq", "normalization-01-results.ttl");
+    ("normalization-02", "normalization-02.ttl", "normalization-02.rq", "normalization-02-results.ttl");
+    ("normalization-03", "normalization-03.ttl", "normalization-03.rq", "normalization-03-results.ttl");
+  ] in
+  List.map (fun (name, data, query, result) ->
+    { tc_name = "i18n/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
+
+(* SPARQL 1.0: construct — CONSTRUCT queries (parse-only for now) *)
+let construct10_tests =
+  let dir = sparql_base ^ "sparql10/construct/" in
+  let files = [
+    ("query-construct-optional", "data-opt.ttl", "query-construct-optional.rq", "result-construct-optional.ttl");
+    ("query-ident", "data-ident.ttl", "query-ident.rq", "result-ident.ttl");
+    ("query-reif-1", "data-reif.ttl", "query-reif-1.rq", "result-reif.ttl");
+    ("query-reif-2", "data-reif.ttl", "query-reif-2.rq", "result-reif.ttl");
+    ("query-subgraph", "data-ident.ttl", "query-subgraph.rq", "result-subgraph.ttl");
+  ] in
+  List.map (fun (name, data, query, result) ->
+    { tc_name = "construct/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
+
+(* SPARQL 1.1: construct *)
+let construct11_tests =
+  let dir = sparql_base ^ "sparql11/construct/" in
+  let files = [
+    ("constructwhere01", "data.ttl", "constructwhere01.rq", "constructwhere01result.ttl");
+    ("constructwhere02", "data.ttl", "constructwhere02.rq", "constructwhere02result.ttl");
+    ("constructwhere03", "data.ttl", "constructwhere03.rq", "constructwhere03result.ttl");
+    ("constructwhere04", "data.ttl", "constructwhere04.rq", "constructwhere04result.ttl");
+  ] in
+  List.map (fun (name, data, query, result) ->
+    { tc_name = "construct/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result; tc_named_graphs = [] }) files
+
+(* SPARQL 1.0: graph — named graph queries *)
+let graph_tests =
+  let dir = sparql_base ^ "sparql10/graph/" in
+  let mk name data query result ngs =
+    { tc_name = "graph/" ^ name; tc_query = dir ^ query; tc_data = dir ^ data; tc_result = dir ^ result;
+      tc_named_graphs = List.map (fun (n, f) -> (n, dir ^ f)) ngs }
+  in
+  [
+    mk "graph-01" "data-g1.ttl" "graph-01.rq" "graph-01.srx"
+      [("http://example.org/data-g1.ttl", "data-g1.ttl")];
+    mk "graph-02" "data-g1.ttl" "graph-02.rq" "graph-02.srx"
+      [("http://example.org/data-g1.ttl", "data-g1.ttl"); ("http://example.org/data-g2.ttl", "data-g2.ttl")];
+    mk "graph-03" "data-g1.ttl" "graph-03.rq" "graph-03.srx"
+      [("http://example.org/data-g1.ttl", "data-g1.ttl"); ("http://example.org/data-g2.ttl", "data-g2.ttl")];
+    mk "graph-04" "data-g1.ttl" "graph-04.rq" "graph-04.srx"
+      [("http://example.org/data-g1.ttl", "data-g1.ttl"); ("http://example.org/data-g2.ttl", "data-g2.ttl")];
+    mk "graph-05" "" "graph-05.rq" "graph-05.srx"
+      [("http://example.org/data-g1.ttl", "data-g1.ttl"); ("http://example.org/data-g2.ttl", "data-g2.ttl");
+       ("http://example.org/data-g3.ttl", "data-g3.ttl"); ("http://example.org/data-g4.ttl", "data-g4.ttl")];
+    mk "graph-06" "" "graph-06.rq" "graph-06.srx"
+      [("http://example.org/data-g1.ttl", "data-g1.ttl"); ("http://example.org/data-g2.ttl", "data-g2.ttl")];
+    mk "graph-07" "" "graph-07.rq" "graph-07.srx"
+      [("http://example.org/data-g1.ttl", "data-g1.ttl"); ("http://example.org/data-g2.ttl", "data-g2.ttl")];
+    mk "graph-08" "data-g1.ttl" "graph-08.rq" "graph-08.srx"
+      [("http://example.org/data-g1.ttl", "data-g1.ttl"); ("http://example.org/data-g2.ttl", "data-g2.ttl")];
+    mk "graph-09" "data-g1.ttl" "graph-09.rq" "graph-09.srx"
+      [("http://example.org/data-g1.ttl", "data-g1.ttl"); ("http://example.org/data-g2.ttl", "data-g2.ttl")];
+    mk "graph-10" "" "graph-10.rq" "graph-10.srx"
+      [("http://example.org/data-g1.ttl", "data-g1.ttl"); ("http://example.org/data-g2.ttl", "data-g2.ttl");
+       ("http://example.org/data-g3.ttl", "data-g3.ttl"); ("http://example.org/data-g4.ttl", "data-g4.ttl")];
+    mk "graph-11" "" "graph-11.rq" "graph-11.srx"
+      [("http://example.org/data-g1.ttl", "data-g1.ttl"); ("http://example.org/data-g2.ttl", "data-g2.ttl");
+       ("http://example.org/data-g3.ttl", "data-g3.ttl"); ("http://example.org/data-g4.ttl", "data-g4.ttl")];
+  ]
+
+(* ====================================================================== *)
+(* Syntax test suites (parse-only, no evaluation)                          *)
+(* ====================================================================== *)
+
+(* Helper: build syntax test list from directory *)
+let mk_syntax_tests suite_name dir_path positives negatives =
+  let pos = List.map (fun name ->
+    { st_name = suite_name ^ "/" ^ name; st_query = dir_path ^ name ^ ".rq"; st_positive = true }) positives in
+  let neg = List.map (fun name ->
+    { st_name = suite_name ^ "/" ^ name; st_query = dir_path ^ name ^ ".rq"; st_positive = false }) negatives in
+  pos @ neg
+
+(* SPARQL 1.0: syntax-sparql1 — 81 positive syntax tests *)
+let syntax_sparql1_tests =
+  let dir = sparql_base ^ "sparql10/syntax-sparql1/" in
+  mk_syntax_tests "syntax-sparql1" dir [
+    "syntax-basic-01"; "syntax-basic-02"; "syntax-basic-03"; "syntax-basic-04"; "syntax-basic-05"; "syntax-basic-06";
+    "syntax-bnodes-01"; "syntax-bnodes-02"; "syntax-bnodes-03"; "syntax-bnodes-04"; "syntax-bnodes-05";
+    "syntax-expr-01"; "syntax-expr-02"; "syntax-expr-03"; "syntax-expr-04"; "syntax-expr-05";
+    "syntax-forms-01"; "syntax-forms-02";
+    "syntax-limit-offset-01"; "syntax-limit-offset-02"; "syntax-limit-offset-03"; "syntax-limit-offset-04";
+    "syntax-lists-01"; "syntax-lists-02"; "syntax-lists-03"; "syntax-lists-04"; "syntax-lists-05";
+    "syntax-lit-01"; "syntax-lit-02"; "syntax-lit-03"; "syntax-lit-04"; "syntax-lit-05"; "syntax-lit-06";
+    "syntax-lit-07"; "syntax-lit-08"; "syntax-lit-09"; "syntax-lit-10"; "syntax-lit-11"; "syntax-lit-12";
+    "syntax-lit-13"; "syntax-lit-14"; "syntax-lit-15"; "syntax-lit-16"; "syntax-lit-17"; "syntax-lit-18";
+    "syntax-lit-19"; "syntax-lit-20";
+    "syntax-order-01"; "syntax-order-02"; "syntax-order-03"; "syntax-order-04"; "syntax-order-05";
+    "syntax-order-06"; "syntax-order-07";
+    "syntax-pat-01"; "syntax-pat-02"; "syntax-pat-03"; "syntax-pat-04";
+    "syntax-qname-01"; "syntax-qname-02"; "syntax-qname-03"; "syntax-qname-04";
+    "syntax-qname-05"; "syntax-qname-06"; "syntax-qname-07"; "syntax-qname-08";
+    "syntax-struct-01"; "syntax-struct-02"; "syntax-struct-03"; "syntax-struct-05"; "syntax-struct-06";
+    "syntax-struct-07"; "syntax-struct-08"; "syntax-struct-09"; "syntax-struct-10"; "syntax-struct-11";
+    "syntax-struct-12"; "syntax-struct-13"; "syntax-struct-14";
+    "syntax-union-01"; "syntax-union-02";
+  ] []
+
+(* SPARQL 1.0: syntax-sparql2 — 53 positive syntax tests *)
+let syntax_sparql2_tests =
+  let dir = sparql_base ^ "sparql10/syntax-sparql2/" in
+  mk_syntax_tests "syntax-sparql2" dir [
+    "syntax-bnode-01"; "syntax-bnode-02"; "syntax-bnode-03";
+    "syntax-dataset-01"; "syntax-dataset-02"; "syntax-dataset-03"; "syntax-dataset-04";
+    "syntax-esc-01"; "syntax-esc-02"; "syntax-esc-03"; "syntax-esc-04"; "syntax-esc-05";
+    "syntax-form-ask-02";
+    "syntax-form-construct01"; "syntax-form-construct02"; "syntax-form-construct03";
+    "syntax-form-construct04"; "syntax-form-construct06";
+    "syntax-form-describe01"; "syntax-form-describe02";
+    "syntax-form-select-01"; "syntax-form-select-02";
+    "syntax-function-01"; "syntax-function-02"; "syntax-function-03"; "syntax-function-04";
+    "syntax-general-01"; "syntax-general-02"; "syntax-general-03"; "syntax-general-04";
+    "syntax-general-05"; "syntax-general-06"; "syntax-general-07"; "syntax-general-08";
+    "syntax-general-09"; "syntax-general-10"; "syntax-general-11"; "syntax-general-12";
+    "syntax-general-13"; "syntax-general-14";
+    "syntax-graph-01"; "syntax-graph-02"; "syntax-graph-03"; "syntax-graph-04"; "syntax-graph-05";
+    "syntax-keywords-01"; "syntax-keywords-02"; "syntax-keywords-03";
+    "syntax-lists-01"; "syntax-lists-02"; "syntax-lists-03"; "syntax-lists-04"; "syntax-lists-05";
+  ] []
+
+(* SPARQL 1.0: syntax-sparql3 — 9 positive, 42 negative *)
+let syntax_sparql3_tests =
+  let dir = sparql_base ^ "sparql10/syntax-sparql3/" in
+  mk_syntax_tests "syntax-sparql3" dir
+    ["syn-01"; "syn-02"; "syn-03"; "syn-04"; "syn-05"; "syn-06"; "syn-07"; "syn-08";
+     "syn-blabel-cross-filter"]
+    ["syn-bad-01"; "syn-bad-02"; "syn-bad-03"; "syn-bad-04"; "syn-bad-05"; "syn-bad-06";
+     "syn-bad-07"; "syn-bad-08"; "syn-bad-09"; "syn-bad-10"; "syn-bad-11"; "syn-bad-12";
+     "syn-bad-13"; "syn-bad-14"; "syn-bad-15"; "syn-bad-16"; "syn-bad-17"; "syn-bad-18";
+     "syn-bad-19"; "syn-bad-20"; "syn-bad-21"; "syn-bad-22"; "syn-bad-23"; "syn-bad-24";
+     "syn-bad-25"; "syn-bad-26"; "syn-bad-27"; "syn-bad-28"; "syn-bad-29"; "syn-bad-30"; "syn-bad-31";
+     "syn-bad-bnode-dot"; "syn-bad-bnodes-missing-pvalues-01"; "syn-bad-bnodes-missing-pvalues-02";
+     "syn-bad-empty-optional-01"; "syn-bad-empty-optional-02";
+     "syn-bad-filter-missing-parens"; "syn-bad-lone-list"; "syn-bad-lone-node";
+     "syn-blabel-cross-graph-bad"; "syn-blabel-cross-optional-bad"; "syn-blabel-cross-union-bad"]
+
+(* SPARQL 1.0: syntax-sparql4 — 4 positive, 8 negative *)
+let syntax_sparql4_tests =
+  let dir = sparql_base ^ "sparql10/syntax-sparql4/" in
+  mk_syntax_tests "syntax-sparql4" dir
+    ["syn-09"; "syn-10"; "syn-11"; "syn-leading-digits-in-prefixed-names"]
+    ["syn-bad-34"; "syn-bad-35"; "syn-bad-36"; "syn-bad-37"; "syn-bad-38";
+     "syn-bad-GRAPH-breaks-BGP"; "syn-bad-OPT-breaks-BGP"; "syn-bad-UNION-breaks-BGP"]
+
+(* SPARQL 1.0: syntax-sparql5 — 2 positive *)
+let syntax_sparql5_tests =
+  let dir = sparql_base ^ "sparql10/syntax-sparql5/" in
+  mk_syntax_tests "syntax-sparql5" dir
+    ["syntax-reduced-01"; "syntax-reduced-02"] []
+
+(* SPARQL 1.1: syntax-query — positive and negative *)
+let syntax_query11_pos_tests =
+  let dir = sparql_base ^ "sparql11/syntax-query/" in
+  mk_syntax_tests "syntax-query" dir [
+    "syntax-aggregate-01"; "syntax-aggregate-02"; "syntax-aggregate-03"; "syntax-aggregate-04";
+    "syntax-aggregate-05"; "syntax-aggregate-06"; "syntax-aggregate-07"; "syntax-aggregate-08";
+    "syntax-aggregate-09"; "syntax-aggregate-10"; "syntax-aggregate-11"; "syntax-aggregate-12";
+    "syntax-aggregate-13"; "syntax-aggregate-14"; "syntax-aggregate-15";
+    "syntax-bind-02";
+    "syntax-BINDscope1"; "syntax-BINDscope2"; "syntax-BINDscope3";
+    "syntax-BINDscope4"; "syntax-BINDscope5"; "syntax-BINDscope6"; "syntax-BINDscope7"; "syntax-BINDscope8";
+    "syntax-construct-where-01"; "syntax-construct-where-02";
+    "syntax-exists-01"; "syntax-exists-02"; "syntax-exists-03";
+    "syntax-minus-01";
+    "syntax-not-exists-01"; "syntax-not-exists-02"; "syntax-not-exists-03";
+    "syntax-oneof-01"; "syntax-oneof-02"; "syntax-oneof-03";
+    "syntax-propertyPaths-01";
+    "syntax-select-expr-01"; "syntax-select-expr-02"; "syntax-select-expr-03";
+    "syntax-select-expr-04"; "syntax-select-expr-05";
+    "syntax-SELECTscope1"; "syntax-SELECTscope3";
+    "syntax-subquery-01"; "syntax-subquery-02"; "syntax-subquery-03";
+    "syntax-bindings-01"; "syntax-bindings-02a"; "syntax-bindings-03a"; "syntax-bindings-05a"; "syntax-bindings-09";
+    "syn-pname-01"; "syn-pname-02"; "syn-pname-03"; "syn-pname-04"; "syn-pname-05";
+    "syn-pname-06"; "syn-pname-07"; "syn-pname-08"; "syn-pname-09";
+    "syn-pp-in-collection";
+    "syn-codepoint-escape-01";
+    "qname-escape-02"; "qname-escape-03";
+    "1val1STRING_LITERAL1_with_UTF8_boundaries"; "1val1STRING_LITERAL1_with_UTF8_boundaries_escaped";
+  ] []
+
+let syntax_query11_neg_tests =
+  let dir = sparql_base ^ "sparql11/syntax-query/" in
+  mk_syntax_tests "syntax-query-neg" dir []
+    ["syn-bad-01"; "syn-bad-02"; "syn-bad-03"; "syn-bad-04"; "syn-bad-05";
+     "syn-bad-06"; "syn-bad-07"; "syn-bad-08";
+     "syn-bad-pname-01"; "syn-bad-pname-02"; "syn-bad-pname-03"; "syn-bad-pname-04";
+     "syn-bad-pname-05"; "syn-bad-pname-06"; "syn-bad-pname-07"; "syn-bad-pname-08";
+     "syn-bad-pname-09"; "syn-bad-pname-10"; "syn-bad-pname-11"; "syn-bad-pname-12"; "syn-bad-pname-13";
+     "syn-bad-values-too-few"; "syn-bad-values-too-many";
+     "syn-codepoint-escape-bad-04"; "syn-codepoint-escape-bad-05";
+     "syn-invalid-codepoint-escaped-bad-01"]
 
 (* ====================================================================== *)
 (* Main entry point                                                         *)
@@ -1230,6 +1585,26 @@ let run_suite name tests =
   let before_pass = !tests_passed in
   let before_run = !tests_run in
   List.iter run_test tests;
+  let suite_pass = !tests_passed - before_pass in
+  let suite_total = !tests_run - before_run in
+  suite_results := (name, suite_pass, suite_total) :: !suite_results;
+  Printf.printf "  -- %s: %d/%d --\n" name suite_pass suite_total
+
+let run_ask_suite name tests =
+  Printf.printf "\n=== %s ===\n" name;
+  let before_pass = !tests_passed in
+  let before_run = !tests_run in
+  List.iter run_ask_test tests;
+  let suite_pass = !tests_passed - before_pass in
+  let suite_total = !tests_run - before_run in
+  suite_results := (name, suite_pass, suite_total) :: !suite_results;
+  Printf.printf "  -- %s: %d/%d --\n" name suite_pass suite_total
+
+let run_syntax_suite name tests =
+  Printf.printf "\n=== %s ===\n" name;
+  let before_pass = !tests_passed in
+  let before_run = !tests_run in
+  List.iter run_syntax_test tests;
   let suite_pass = !tests_passed - before_pass in
   let suite_total = !tests_run - before_run in
   suite_results := (name, suite_pass, suite_total) :: !suite_results;
@@ -1275,6 +1650,24 @@ let () =
   run_suite "bindings (W3C SPARQL 1.1)" bindings_tests;
   run_suite "property-path (W3C SPARQL 1.1)" property_path_tests;
 
+  (* New suites — showing ALL gaps *)
+  run_suite "cast (W3C SPARQL 1.0)" cast10_tests;
+  run_suite "cast (W3C SPARQL 1.1)" cast11_tests;
+  run_ask_suite "type-promotion (W3C SPARQL 1.0)" type_promotion_tests;
+  run_suite "i18n (W3C SPARQL 1.0)" i18n_tests;
+  run_suite "construct (W3C SPARQL 1.0)" construct10_tests;
+  run_suite "construct (W3C SPARQL 1.1)" construct11_tests;
+  run_suite "graph (W3C SPARQL 1.0)" graph_tests;
+
+  (* Syntax test suites *)
+  run_syntax_suite "syntax-sparql1 (W3C SPARQL 1.0)" syntax_sparql1_tests;
+  run_syntax_suite "syntax-sparql2 (W3C SPARQL 1.0)" syntax_sparql2_tests;
+  run_syntax_suite "syntax-sparql3 (W3C SPARQL 1.0)" syntax_sparql3_tests;
+  run_syntax_suite "syntax-sparql4 (W3C SPARQL 1.0)" syntax_sparql4_tests;
+  run_syntax_suite "syntax-sparql5 (W3C SPARQL 1.0)" syntax_sparql5_tests;
+  run_syntax_suite "syntax-query-pos (W3C SPARQL 1.1)" syntax_query11_pos_tests;
+  run_syntax_suite "syntax-query-neg (W3C SPARQL 1.1)" syntax_query11_neg_tests;
+
   Printf.printf "\n================================================================\n";
   Printf.printf "SUMMARY\n";
   Printf.printf "================================================================\n";
@@ -1283,6 +1676,6 @@ let () =
   Printf.printf "  Eval failures:  %d\n" !eval_failures;
   Printf.printf "\nSuite breakdown:\n";
   List.iter (fun (name, pass, total) ->
-    Printf.printf "  %-40s %d/%d (%d%%)\n" name pass total (if total > 0 then pass * 100 / total else 0)
+    Printf.printf "  %-50s %d/%d (%d%%)\n" name pass total (if total > 0 then pass * 100 / total else 0)
   ) (List.rev !suite_results);
   Printf.printf "================================================================\n"

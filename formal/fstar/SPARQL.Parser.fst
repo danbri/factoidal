@@ -1817,7 +1817,11 @@ and parse_ggp_body (ps : pstate) (prefixes : list (string * wf_iri))
   | _ ->
     (* Check for sub-SELECT: { SELECT ... } *)
     if ps_starts_with_ci ps "SELECT" then
-      parse_sub_select_inline ps prefixes
+      match parse_sub_select_inline ps prefixes with
+      | None -> None
+      | Some (sub, ps) ->
+        (* Continue parsing remaining elements (e.g. VALUES after sub-SELECT) *)
+        parse_ggp_elements ps prefixes sub []
     else
       (* Try to parse elements, collecting FILTERs to apply at end per SPARQL spec §18.2.4.2 *)
       parse_ggp_elements ps prefixes GP_Empty []
@@ -2547,7 +2551,9 @@ let parse_query (input : string) : option query =
   let ps = skip_ws ps in
   match ps_consume ps "ASK" with
   | Some ps ->
-    (* ASK query *)
+    (* ASK query — optional WHERE keyword *)
+    let ps = skip_ws ps in
+    let ps = match ps_consume ps "WHERE" with | Some ps -> ps | None -> ps in
     (match parse_group_graph_pattern ps prefixes with
      | Some (pattern, ps) ->
        Some ({
@@ -2568,6 +2574,87 @@ let parse_query (input : string) : option query =
        })
      | None -> None)
   | None ->
+    (* Try CONSTRUCT *)
+    match ps_consume ps "CONSTRUCT" with
+    | Some ps ->
+      let ps = skip_ws ps in
+      (* Two forms: CONSTRUCT { template } WHERE { pattern }
+         or CONSTRUCT WHERE { pattern } (template = pattern) *)
+      (match ps_consume ps "WHERE" with
+       | Some ps ->
+         (* CONSTRUCT WHERE { pattern } — template equals pattern *)
+         (match parse_group_graph_pattern ps prefixes with
+          | Some (pattern, ps) ->
+            (* Extract triple patterns from pattern for template *)
+            Some ({
+              q_base = base;
+              q_prefixes = prefixes;
+              q_form = QF_Construct [];  (* template = pattern, handled in eval *)
+              q_dataset = [];
+              q_pattern = pattern;
+              q_group_by = None;
+              q_having = None;
+              q_modifier = {
+                sm_order_by = None; sm_distinct = false; sm_reduced = false;
+                sm_offset = None; sm_limit = None;
+              };
+            })
+          | None -> None)
+       | None ->
+         (* CONSTRUCT { template } WHERE { pattern } *)
+         (match ps_consume ps "{" with
+          | None -> None
+          | Some ps ->
+            (* Parse template triple patterns — simplified: parse as triples block *)
+            let rec parse_template_triples (acc : list triple_pattern) (ps : pstate)
+              : list triple_pattern * pstate =
+              let ps = skip_ws ps in
+              match ps_peek ps with
+              | Some c when FStar.Char.int_of_char c = 0x7D (* '}' *) -> (List.Tot.rev acc, ps)
+              | None -> (List.Tot.rev acc, ps)
+              | _ ->
+                (* Parse subject *)
+                match parse_pattern_subject ps prefixes with
+                | None -> (List.Tot.rev acc, ps)
+                | Some (subj, ps) ->
+                  let ps = skip_ws ps in
+                  (* Parse predicate *)
+                  match parse_iri ps prefixes with
+                  | None -> (List.Tot.rev acc, ps)
+                  | Some (pred_iri, ps) ->
+                    let ps = skip_ws ps in
+                    (* Parse object *)
+                    match parse_pattern_term ps prefixes with
+                    | None -> (List.Tot.rev acc, ps)
+                    | Some (obj, ps) ->
+                      let ps = skip_ws ps in
+                      let tp : triple_pattern = { tp_s = subj; tp_p = PT_IRI pred_iri; tp_o = obj } in
+                      let ps = match ps_consume ps "." with | Some ps -> ps | None -> ps in
+                      parse_template_triples (tp :: acc) ps
+            in
+            let (template, ps) = parse_template_triples [] ps in
+            match ps_expect ps "}" with
+            | None -> None
+            | Some ps ->
+              let ps = skip_ws ps in
+              let ps = match ps_consume ps "WHERE" with | Some ps -> ps | None -> ps in
+              (match parse_group_graph_pattern ps prefixes with
+               | Some (pattern, ps) ->
+                 Some ({
+                   q_base = base;
+                   q_prefixes = prefixes;
+                   q_form = QF_Construct template;
+                   q_dataset = [];
+                   q_pattern = pattern;
+                   q_group_by = None;
+                   q_having = None;
+                   q_modifier = {
+                     sm_order_by = None; sm_distinct = false; sm_reduced = false;
+                     sm_offset = None; sm_limit = None;
+                   };
+                 })
+               | None -> None)))
+    | None ->
     match parse_select_clause ps prefixes with
     | None -> None
     | Some (sel, distinct, reduced, ps) ->

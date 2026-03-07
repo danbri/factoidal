@@ -2411,9 +2411,16 @@ let eval_select_query (q : query) (g : rdf_graph) (ds : named_graph_dataset) : s
     (* 9. OFFSET / LIMIT *)
     slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit deduped
 
+  (* ASK: evaluate WHERE clause, return results so caller can check non-empty *)
+  | QF_Ask ->
+    let omega = eval_pattern q.q_pattern g ds in
+    (* Return at most one result — ASK is boolean: non-empty = true *)
+    (match omega with
+     | [] -> []
+     | r :: _ -> [r])
+
   (* Other query forms — return empty for now *)
   | QF_Construct _ -> []
-  | QF_Ask -> []
   | QF_Describe _ -> []
 
 (* Specification of eval_select_query (full version with aggregation):
