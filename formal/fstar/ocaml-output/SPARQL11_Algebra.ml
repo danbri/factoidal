@@ -2015,6 +2015,24 @@ let eval_exists_fwd (p : group_graph_pattern)
 let eval_select_query_fwd (q : query)
   (g : RDF_Graph_Executable.rdf_graph) : solution_sequence=
   !eval_select_query_fwd_ref q g
+let rec eval_filter_with_graph (e : expr)
+  (mu : RDF_Graph_Executable.solution_mapping)
+  (g : RDF_Graph_Executable.rdf_graph) : eval_result=
+  match e with
+  | E_Exists sub_p -> ER_Bool (eval_exists_fwd sub_p mu g)
+  | E_NotExists sub_p ->
+      ER_Bool (Prims.op_Negation (eval_exists_fwd sub_p mu g))
+  | E_And (e1, e2) ->
+      ER_Bool
+        ((ebv (eval_filter_with_graph e1 mu g)) &&
+           (ebv (eval_filter_with_graph e2 mu g)))
+  | E_Or (e1, e2) ->
+      ER_Bool
+        ((ebv (eval_filter_with_graph e1 mu g)) ||
+           (ebv (eval_filter_with_graph e2 mu g)))
+  | E_Not e1 ->
+      ER_Bool (Prims.op_Negation (ebv (eval_filter_with_graph e1 mu g)))
+  | uu___ -> eval_expr_fwd e mu
 let left_join (omega1 : solution_sequence) (omega2 : solution_sequence)
   (filter_expr : expr) : solution_sequence=
   FStar_List_Tot_Base.concatMap
@@ -2064,14 +2082,8 @@ let rec eval_pattern (p : group_graph_pattern)
       left_join (eval_pattern p1 g) (eval_pattern p2 g) filter_e
   | GP_Filter (e, p') ->
       let omega = eval_pattern p' g in
-      (match e with
-       | E_Exists sub_p ->
-           FStar_List_Tot_Base.filter (fun mu -> eval_exists_fwd sub_p mu g)
-             omega
-       | E_NotExists sub_p ->
-           FStar_List_Tot_Base.filter
-             (fun mu -> Prims.op_Negation (eval_exists_fwd sub_p mu g)) omega
-       | uu___ -> filter_solutions_fwd e omega)
+      FStar_List_Tot_Base.filter
+        (fun mu -> ebv (eval_filter_with_graph e mu g)) omega
   | GP_Union (p1, p2) -> union (eval_pattern p1 g) (eval_pattern p2 g)
   | GP_Minus (p1, p2) -> minus (eval_pattern p1 g) (eval_pattern p2 g)
   | GP_Empty -> [sm_empty]

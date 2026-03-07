@@ -1291,6 +1291,21 @@ assume val eval_exists_fwd : group_graph_pattern -> solution_mapping -> rdf_grap
 (* Sub-SELECT needs eval_select_query — forward ref *)
 assume val eval_select_query_fwd : query -> rdf_graph -> solution_sequence
 
+(* Graph-aware filter expression evaluator: handles E_Exists/E_NotExists
+   within compound expressions (E_And, E_Or, E_Not).
+   Plain eval_expr cannot handle EXISTS because it lacks graph context. *)
+let rec eval_filter_with_graph (e : expr) (mu : solution_mapping) (g : rdf_graph) : eval_result =
+  match e with
+  | E_Exists sub_p -> ER_Bool (eval_exists_fwd sub_p mu g)
+  | E_NotExists sub_p -> ER_Bool (not (eval_exists_fwd sub_p mu g))
+  | E_And e1 e2 ->
+    ER_Bool (ebv (eval_filter_with_graph e1 mu g) && ebv (eval_filter_with_graph e2 mu g))
+  | E_Or e1 e2 ->
+    ER_Bool (ebv (eval_filter_with_graph e1 mu g) || ebv (eval_filter_with_graph e2 mu g))
+  | E_Not e1 ->
+    ER_Bool (not (ebv (eval_filter_with_graph e1 mu g)))
+  | _ -> eval_expr_fwd e mu
+
 (* LeftJoin (OPTIONAL): join + unmatched from left *)
 let left_join (omega1 omega2 : solution_sequence) (filter_expr : expr) : solution_sequence =
   List.Tot.concatMap
@@ -1350,14 +1365,9 @@ let rec eval_pattern (p : group_graph_pattern) (g : rdf_graph)
 
   | GP_Filter e p' ->
     let omega = eval_pattern p' g in
-    (* EXISTS/NOT EXISTS require graph context — dispatch here rather than
-       through eval_expr which has no graph parameter. *)
-    (match e with
-     | E_Exists sub_p ->
-       List.Tot.filter (fun mu -> eval_exists_fwd sub_p mu g) omega
-     | E_NotExists sub_p ->
-       List.Tot.filter (fun mu -> not (eval_exists_fwd sub_p mu g)) omega
-     | _ -> filter_solutions_fwd e omega)
+    (* Use graph-aware filter evaluator to handle EXISTS/NOT EXISTS
+       even when nested inside compound expressions (AND, OR, NOT) *)
+    List.Tot.filter (fun mu -> ebv (eval_filter_with_graph e mu g)) omega
 
   | GP_Union p1 p2 ->
     union (eval_pattern p1 g) (eval_pattern p2 g)
