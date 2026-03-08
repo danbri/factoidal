@@ -57,4 +57,4 @@ W3C conformance results
 ## Source
 
 - [github.com/danbri/factoidal](https://github.com/danbri/factoidal)
-- [F\* specifications](https://github.com/danbri/factoidal/tree/main/formal/fstar) — RDF.Graph.Executable.fst (610 lines), SPARQL11.Algebra.fst (2760 lines)
+- [F\* specifications](https://github.com/danbri/factoidal/tree/master/formal/fstar) — RDF.Graph.Executable.fst (610 lines), SPARQL11.Algebra.fst (2760 lines)
