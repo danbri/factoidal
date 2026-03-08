@@ -164,7 +164,10 @@ let read_manifest manifest_path =
   if input = "" then ([], None)
   else begin
     reset_bnodes ();
-    let base = "file://" ^ manifest_path in
+    let abs_path = if Filename.is_relative manifest_path then
+      Filename.concat (Sys.getcwd ()) manifest_path
+    else manifest_path in
+    let base = "file://" ^ abs_path in
     try
       let graph = parse_turtle input (Some base) in
       let assumed_base = extract_assumed_test_base graph in
@@ -239,7 +242,8 @@ let run_query_eval_test tc =
     | None -> acc
     | Some content ->
       reset_bnodes ();
-      let base = "file://" ^ df in
+      let abs_df = if Filename.is_relative df then Filename.concat (Sys.getcwd ()) df else df in
+      let base = "file://" ^ abs_df in
       let triples = if Filename.check_suffix df ".nt"
                     then parse_ntriples content
                     else parse_turtle content (Some base) in
@@ -353,7 +357,9 @@ let make_turtle_base assumed_base filepath =
   | Some base ->
     let filename = Filename.basename filepath in
     base ^ filename
-  | None -> "file://" ^ filepath
+  | None ->
+    let abs_fp = if Filename.is_relative filepath then Filename.concat (Sys.getcwd ()) filepath else filepath in
+    "file://" ^ abs_fp
 
 let run_rdf_test assumed_base tc =
   match tc.test_type with
