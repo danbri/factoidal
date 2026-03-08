@@ -1916,6 +1916,8 @@ let eval_exists_fwd_ref : (group_graph_pattern -> RDF_Graph_Executable.solution_
   ref (fun _ _ _ -> false)
 let eval_property_path_fwd_ref : (property_path -> RDF_Graph_Executable.rdf_graph -> (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list) ref =
   ref (fun _ _ -> [])
+let eval_subselect_fwd_ref : (query -> RDF_Graph_Executable.rdf_graph -> solution_sequence) ref =
+  ref (fun _ _ -> [])
 let eval_expr_ebv (e : expr)
   (mu : RDF_Graph_Executable.solution_mapping) : Prims.bool=
   !eval_expr_ebv_ref e mu
@@ -1926,6 +1928,9 @@ let eval_exists_fwd (uu___ : group_graph_pattern)
   (uu___1 : RDF_Graph_Executable.solution_mapping)
   (uu___2 : RDF_Graph_Executable.rdf_graph) : Prims.bool=
   !eval_exists_fwd_ref uu___ uu___1 uu___2
+let eval_subselect_fwd (uu___ : query)
+  (uu___1 : RDF_Graph_Executable.rdf_graph) : solution_sequence=
+  !eval_subselect_fwd_ref uu___ uu___1
 type path_result_fwd =
   (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list
 let eval_property_path_fwd (uu___ : property_path)
@@ -2059,7 +2064,7 @@ let rec eval_pattern (p : group_graph_pattern)
   | GP_Values (vars, rows) -> eval_values vars rows
   | GP_Graph (uu___, p') -> eval_pattern p' g
   | GP_Service (uu___, uu___1, uu___2) -> []
-  | GP_SubSelect uu___ -> []
+  | GP_SubSelect q -> eval_subselect_fwd q g
   | GP_PropertyPath (ps, pp, pt) ->
       let pairs = eval_property_path_fwd pp g in
       path_result_to_solutions ps pt pairs
@@ -2799,6 +2804,9 @@ let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph) :
   | QF_Describe uu___ -> []
 type path_result =
   (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list
+(* Wire up eval_subselect_fwd to the real eval_select_query *)
+let () = eval_subselect_fwd_ref := eval_select_query
+
 let is_not_literal (t : RDF_Graph_Executable.rdf_term) : Prims.bool=
   match t with
   | RDF_Graph_Executable.T_Literal uu___ -> false

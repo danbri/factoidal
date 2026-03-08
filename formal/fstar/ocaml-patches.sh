@@ -110,6 +110,8 @@ let eval_expr_fwd_ref : (expr -> RDF_Graph_Executable.solution_mapping -> eval_r
 let eval_exists_fwd_ref : (group_graph_pattern -> RDF_Graph_Executable.solution_mapping -> RDF_Graph_Executable.rdf_graph -> Prims.bool) ref =
   ref (fun _ _ _ -> false)
 let eval_property_path_fwd_ref : (property_path -> RDF_Graph_Executable.rdf_graph -> (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list) ref =
+  ref (fun _ _ -> [])
+let eval_subselect_fwd_ref : (query -> RDF_Graph_Executable.rdf_graph -> solution_sequence) ref =
   ref (fun _ _ -> [])'''
 )
 
@@ -117,6 +119,12 @@ let eval_property_path_fwd_ref : (property_path -> RDF_Graph_Executable.rdf_grap
 content = content.replace(
     '''  failwith \"Not yet implemented: SPARQL11.Algebra.eval_exists_fwd\"''',
     '''  !eval_exists_fwd_ref uu___ uu___1 uu___2'''
+)
+
+# 2e. Wire eval_subselect_fwd to the concrete eval_select_query.
+content = content.replace(
+    '''  failwith \"Not yet implemented: SPARQL11.Algebra.eval_subselect_fwd\"''',
+    '''  !eval_subselect_fwd_ref uu___ uu___1'''
 )
 
 # 2d. Wire eval_property_path_fwd to the concrete eval_property_path.
@@ -152,6 +160,15 @@ content = content.replace(
 let () = eval_property_path_fwd_ref := eval_property_path
 
 type numeric_precision ='''
+)
+
+# 6. Wire eval_subselect_fwd_ref after eval_select_query is defined
+content = content.replace(
+    'let is_not_literal',
+    '''(* Wire up eval_subselect_fwd to the real eval_select_query *)
+let () = eval_subselect_fwd_ref := eval_select_query
+
+let is_not_literal'''
 )
 
 with open('$FILE', 'w') as f:

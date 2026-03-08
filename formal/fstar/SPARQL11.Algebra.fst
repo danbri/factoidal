@@ -1234,6 +1234,10 @@ assume val eval_expr_fwd : expr -> solution_mapping -> eval_result
 (* EXISTS/NOT EXISTS need graph context — forward ref to concrete eval_exists *)
 assume val eval_exists_fwd : group_graph_pattern -> solution_mapping -> rdf_graph -> bool
 
+(* Sub-SELECT evaluation — concrete definition in Part 16, forward-declared
+   here so eval_pattern can use it for GP_SubSelect *)
+assume val eval_subselect_fwd : query -> rdf_graph -> solution_sequence
+
 (* Property path evaluation — concrete definition in Part 13, forward-declared
    here so eval_pattern can use it for GP_PropertyPath *)
 type path_result_fwd = list (rdf_term * rdf_term)
@@ -1366,9 +1370,9 @@ let rec eval_pattern (p : group_graph_pattern) (g : rdf_graph)
     (* SERVICE: remote execution, not supported *)
     []
 
-  | GP_SubSelect _ ->
-    (* Sub-SELECT: requires eval_select_query, deferred *)
-    []
+  | GP_SubSelect q ->
+    (* Sub-SELECT: recursively evaluate the inner SELECT query *)
+    eval_subselect_fwd q g
 
   | GP_PropertyPath ps pp pt ->
     (* Evaluate property path and convert results to solution mappings *)
