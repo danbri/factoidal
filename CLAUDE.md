@@ -31,8 +31,6 @@ formal/fstar/
   Makefile                     verify + extract-c targets
   build-ocaml.sh               F* -> OCaml -> js_of_ocaml pipeline
   ocaml-patches.sh             wires assume-val stubs (regex, forward refs)
-  rdfcore11.fstar.txt          historical textual spec
-  sparql11.fstar.txt           historical textual spec
   ocaml-output/
     RDF_Graph_Executable.ml    genuinely F*-extracted OCaml
     SPARQL11_Algebra.ml        genuinely F*-extracted OCaml (patched for assume vals)
@@ -68,6 +66,7 @@ Do not revive it. It exists only as a historical record of what went wrong.
 - `docs-fstar-extracted/` — js_of_ocaml output + HTML (rebuild from pipeline)
 - `docs-history/` — stale architecture docs
 - `c-output/` — KaRaMeL C extraction (legitimate but not standalone; needs Low\*)
+- `rdfcore11.fstar.txt`, `sparql11.fstar.txt` — historical textual specs (pre-`.fst`)
 
 ## The Plan
 
@@ -114,21 +113,54 @@ Working from W3C test failures, extend the F\* specification:
 - EverParse-style verified parsers for N-Triples/Turtle
 - CI: verify F\* -> extract -> test -> sign
 
-## F\* Toolchain Notes
+## Setup
 
-### Installation
-
-F\* and dependencies are installed via opam:
+### First-time clone
 
 ```bash
-# Activate the F* environment
+git clone --recurse-submodules https://github.com/danbri/factoidal.git
+cd factoidal
+
+# If already cloned without --recurse-submodules:
+git submodule update --init --recursive
+```
+
+The W3C test files live in `tests/w3c/` (submodule pointing to
+`github.com/w3c/rdf-tests`). Without initialising the submodule, the test
+runner will have no test data.
+
+### F\* toolchain (opam)
+
+F\* and its OCaml dependencies are managed via opam. If not already installed:
+
+```bash
+# Install opam if needed (https://opam.ocaml.org/doc/Install.html)
+# Then create the F* switch:
+opam switch create fstar ocaml-base-compiler.4.14.1
+eval $(opam env --switch=fstar)
+opam install fstar z3 js_of_ocaml js_of_ocaml-compiler zarith_stubs_js
+
+# Activate the F* environment (run in every new shell)
 eval $(opam env --switch=fstar)
 
 # Tools available after activation:
 #   fstar.exe    — F* compiler (2025.12.15)
-#   krml         — KaRaMeL C extractor
+#   krml         — KaRaMeL C extractor (if built from source)
 #   z3           — SMT solver (required by F*)
 #   ocamlfind    — OCaml package manager
+```
+
+### Verify everything is working
+
+```bash
+eval $(opam env --switch=fstar)
+cd formal/fstar
+
+# Check F* can verify the specs
+make verify
+
+# Check extraction + compilation works
+./build-ocaml.sh
 ```
 
 ### Key Commands
