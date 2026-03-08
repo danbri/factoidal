@@ -366,6 +366,7 @@ and query = {
   q_group_by : option (list group_condition);       (* [S2] *)
   q_having   : option (list having_condition);
   q_modifier : solution_modifier;
+  q_values   : option (list (list (var_name * rdf_term)));  (* Post-query VALUES *)
 }
 
 (** ====================================================================== **)
@@ -1425,6 +1426,14 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
   | E_UnaryMinus e1 ->
     (match eval_expr e1 mu with
      | ER_Num n -> ER_Num (0 - n)
+     | ER_Dec s ->
+       if string_starts_with s "-"
+       then ER_Dec (String.sub s 1 (String.length s - 1))
+       else ER_Dec (String.concat "" ["-"; s])
+     | ER_Dbl s ->
+       if string_starts_with s "-"
+       then ER_Dbl (String.sub s 1 (String.length s - 1))
+       else ER_Dbl (String.concat "" ["-"; s])
      | _ -> ER_Error)
   | E_UnaryPlus e1 -> eval_expr e1 mu
 
@@ -1946,9 +1955,14 @@ let having_filter (conditions : list having_condition) (groups : list group) : l
       List.Tot.for_all
         (fun cond ->
           (* Evaluate the HAVING condition in the context of the group.
-             The condition can reference aggregate results.
-             We assume a special evaluation context for group-level expressions. *)
-          true (* [S2] concrete evaluation deferred *))
+             Aggregate expressions are computed over the group's solutions;
+             other expressions use the representative (first) binding. *)
+          let v = match cond with
+            | E_Aggregate fn distinct sub_e -> eval_aggregate fn distinct sub_e g
+            | _ -> (match g.g_solutions with
+                    | mu :: _ -> eval_expr cond mu
+                    | [] -> ER_Error)
+          in ebv v)
         conditions)
     groups
 
@@ -2138,7 +2152,12 @@ let eval_select_query (q : query) (g : rdf_graph) : solution_sequence =
   match q.q_form with
   | QF_Select sel ->
     (* 1. Evaluate WHERE clause *)
-    let omega = eval_pattern q.q_pattern g in
+    let omega0 = eval_pattern q.q_pattern g in
+
+    (* 1b. Post-query VALUES — join against WHERE results *)
+    let omega = match q.q_values with
+      | None -> omega0
+      | Some vals -> join omega0 vals in
 
     (* 2. GROUP BY — partition into groups *)
     let needs_grouping = match q.q_group_by with

@@ -400,8 +400,27 @@ let parse_iri ps =
 let rec parse_primary_expr ps =
   match peek ps with
   | T_VAR v -> advance ps; E_Var v
-  | T_IRI i -> advance ps; E_IRI i
-  | T_PNAME pn -> advance ps; E_IRI (resolve_pname ps pn)
+  | T_IRI i ->
+    advance ps;
+    if peek ps = T_LPAREN then begin
+      (* IRI followed by '(' is a function call *)
+      advance ps;
+      let args = if peek ps = T_RPAREN then [] else parse_expr_list ps in
+      expect ps T_RPAREN;
+      E_FunctionCall (i, args)
+    end else
+      E_IRI i
+  | T_PNAME pn ->
+    advance ps;
+    let iri = resolve_pname ps pn in
+    if peek ps = T_LPAREN then begin
+      (* Prefixed name followed by '(' is a function call *)
+      advance ps;
+      let args = if peek ps = T_RPAREN then [] else parse_expr_list ps in
+      expect ps T_RPAREN;
+      E_FunctionCall (iri, args)
+    end else
+      E_IRI iri
   | T_TRUE -> advance ps; E_BoolLit true
   | T_FALSE -> advance ps; E_BoolLit false
   | T_INTEGER s -> advance ps; E_NumericLit (Z.of_string s)
@@ -791,8 +810,16 @@ and parse_group_graph_pattern ps =
   (* Check for sub-select *)
   if peek ps = T_SELECT then begin
     let q = parse_sub_select ps in
-    expect ps T_RBRACE;
-    GP_SubSelect q
+    (* Check for VALUES clause after sub-select but before closing brace *)
+    if peek ps = T_VALUES then begin
+      advance ps;
+      let (vars, rows) = parse_inline_data ps in
+      expect ps T_RBRACE;
+      GP_Join (GP_SubSelect q, GP_Values (vars, rows))
+    end else begin
+      expect ps T_RBRACE;
+      GP_SubSelect q
+    end
   end else begin
     let pat = parse_group_pattern_contents ps in
     expect ps T_RBRACE;
@@ -1128,6 +1155,24 @@ and parse_select_query ps =
     | _ -> raise (Parse_error "Expected integer after LIMIT")
   end else limit in
 
+  (* Post-query VALUES clause *)
+  let values = if peek ps = T_VALUES then begin
+    advance ps;
+    let (vars, rows) = parse_inline_data ps in
+    (* Convert VALUES (vars, rows) into solution_sequence *)
+    let mappings = List.filter_map (fun row ->
+      if List.length row <> List.length vars then None
+      else
+        let bindings = List.filter_map (fun (v, t_opt) ->
+          match t_opt with
+          | Some t -> Some (v, t)
+          | None -> None
+        ) (List.combine vars row) in
+        Some bindings
+    ) rows in
+    Some mappings
+  end else None in
+
   {
     q_base = ps.base;
     q_prefixes = Hashtbl.fold (fun k v acc -> (k, v) :: acc) ps.prefixes [];
@@ -1143,6 +1188,7 @@ and parse_select_query ps =
       sm_offset = offset;
       sm_limit = limit;
     };
+    q_values = values;
   }
 
 let parse_query input =
@@ -1197,6 +1243,7 @@ let parse_query input =
       q_having = None;
       q_modifier = { sm_order_by = None; sm_distinct = false; sm_reduced = false;
                      sm_offset = None; sm_limit = None };
+      q_values = None;
     }
   | T_CONSTRUCT ->
     advance ps;
@@ -1225,5 +1272,6 @@ let parse_query input =
       q_having = None;
       q_modifier = { sm_order_by = None; sm_distinct = false; sm_reduced = false;
                      sm_offset = None; sm_limit = None };
+      q_values = None;
     }
   | _ -> raise (Parse_error (Printf.sprintf "Expected SELECT, ASK, or CONSTRUCT at pos %d" ps.lx.pos))

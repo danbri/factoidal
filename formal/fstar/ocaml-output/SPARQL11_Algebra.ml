@@ -305,7 +305,11 @@ and query =
   q_pattern: group_graph_pattern ;
   q_group_by: group_condition Prims.list FStar_Pervasives_Native.option ;
   q_having: expr Prims.list FStar_Pervasives_Native.option ;
-  q_modifier: solution_modifier }
+  q_modifier: solution_modifier ;
+  q_values:
+    (var_name * RDF_Graph_Executable.rdf_term) Prims.list Prims.list
+      FStar_Pervasives_Native.option
+    }
 let uu___is_E_Var (projectee : expr) : Prims.bool=
   match projectee with | E_Var _0 -> true | uu___ -> false
 let __proj__E_Var__item___0 (projectee : expr) : var_name=
@@ -834,41 +838,47 @@ let __proj__Mkquery__item__q_base (projectee : query) :
   RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option=
   match projectee with
   | { q_base; q_prefixes; q_form; q_dataset; q_pattern; q_group_by; q_having;
-      q_modifier;_} -> q_base
+      q_modifier; q_values;_} -> q_base
 let __proj__Mkquery__item__q_prefixes (projectee : query) :
   (Prims.string * RDF_Graph_Executable.wf_iri) Prims.list=
   match projectee with
   | { q_base; q_prefixes; q_form; q_dataset; q_pattern; q_group_by; q_having;
-      q_modifier;_} -> q_prefixes
+      q_modifier; q_values;_} -> q_prefixes
 let __proj__Mkquery__item__q_form (projectee : query) : query_form=
   match projectee with
   | { q_base; q_prefixes; q_form; q_dataset; q_pattern; q_group_by; q_having;
-      q_modifier;_} -> q_form
+      q_modifier; q_values;_} -> q_form
 let __proj__Mkquery__item__q_dataset (projectee : query) :
   dataset_clause Prims.list=
   match projectee with
   | { q_base; q_prefixes; q_form; q_dataset; q_pattern; q_group_by; q_having;
-      q_modifier;_} -> q_dataset
+      q_modifier; q_values;_} -> q_dataset
 let __proj__Mkquery__item__q_pattern (projectee : query) :
   group_graph_pattern=
   match projectee with
   | { q_base; q_prefixes; q_form; q_dataset; q_pattern; q_group_by; q_having;
-      q_modifier;_} -> q_pattern
+      q_modifier; q_values;_} -> q_pattern
 let __proj__Mkquery__item__q_group_by (projectee : query) :
   group_condition Prims.list FStar_Pervasives_Native.option=
   match projectee with
   | { q_base; q_prefixes; q_form; q_dataset; q_pattern; q_group_by; q_having;
-      q_modifier;_} -> q_group_by
+      q_modifier; q_values;_} -> q_group_by
 let __proj__Mkquery__item__q_having (projectee : query) :
   expr Prims.list FStar_Pervasives_Native.option=
   match projectee with
   | { q_base; q_prefixes; q_form; q_dataset; q_pattern; q_group_by; q_having;
-      q_modifier;_} -> q_having
+      q_modifier; q_values;_} -> q_having
 let __proj__Mkquery__item__q_modifier (projectee : query) :
   solution_modifier=
   match projectee with
   | { q_base; q_prefixes; q_form; q_dataset; q_pattern; q_group_by; q_having;
-      q_modifier;_} -> q_modifier
+      q_modifier; q_values;_} -> q_modifier
+let __proj__Mkquery__item__q_values (projectee : query) :
+  (var_name * RDF_Graph_Executable.rdf_term) Prims.list Prims.list
+    FStar_Pervasives_Native.option=
+  match projectee with
+  | { q_base; q_prefixes; q_form; q_dataset; q_pattern; q_group_by; q_having;
+      q_modifier; q_values;_} -> q_values
 type having_condition = expr
 let rec list_filter_map :
   'a 'b .
@@ -2118,6 +2128,20 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
   | E_UnaryMinus e1 ->
       (match eval_expr e1 mu with
        | ER_Num n -> ER_Num (Prims.int_zero - n)
+       | ER_Dec s ->
+           if string_starts_with s "-"
+           then
+             ER_Dec
+               (FStar_String.sub s Prims.int_one
+                  ((FStar_String.strlen s) - Prims.int_one))
+           else ER_Dec (FStar_String.concat "" ["-"; s])
+       | ER_Dbl s ->
+           if string_starts_with s "-"
+           then
+             ER_Dbl
+               (FStar_String.sub s Prims.int_one
+                  ((FStar_String.strlen s) - Prims.int_one))
+           else ER_Dbl (FStar_String.concat "" ["-"; s])
        | uu___ -> ER_Error)
   | E_UnaryPlus e1 -> eval_expr e1 mu
   | E_Compare (op, e1, e2) ->
@@ -2676,8 +2700,18 @@ let eval_aggregate (fn : aggregate_fn) (distinct : Prims.bool) (e : expr)
 let having_filter (conditions : having_condition Prims.list)
   (groups : group Prims.list) : group Prims.list=
   FStar_List_Tot_Base.filter
-    (fun g -> FStar_List_Tot_Base.for_all (fun cond -> true) conditions)
-    groups
+    (fun g ->
+       FStar_List_Tot_Base.for_all
+         (fun cond ->
+            let v =
+              match cond with
+              | E_Aggregate (fn, distinct, sub_e) ->
+                  eval_aggregate fn distinct sub_e g
+              | uu___ ->
+                  (match g.g_solutions with
+                   | mu::uu___1 -> eval_expr cond mu
+                   | [] -> ER_Error) in
+            ebv v) conditions) groups
 let eval_expr_in_group (e : expr) (g : group) : eval_result=
   match e with
   | E_Aggregate (fn, distinct, sub_e) -> eval_aggregate fn distinct sub_e g
@@ -2806,7 +2840,11 @@ let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph) :
   solution_sequence=
   match q.q_form with
   | QF_Select sel ->
-      let omega = eval_pattern q.q_pattern g in
+      let omega0 = eval_pattern q.q_pattern g in
+      let omega =
+        match q.q_values with
+        | FStar_Pervasives_Native.None -> omega0
+        | FStar_Pervasives_Native.Some vals -> join omega0 vals in
       let needs_grouping =
         match q.q_group_by with
         | FStar_Pervasives_Native.Some uu___ -> true
