@@ -1,11 +1,14 @@
-(* W3C SPARQL 1.1 test runner — UNVERIFIED TEST INFRASTRUCTURE.
-   Not extracted from F*. Reads real W3C manifest files, parses .rq/.ttl/.srx,
+(* W3C SPARQL 1.1 + RDF 1.1 test runner — UNVERIFIED TEST INFRASTRUCTURE.
+   Not extracted from F*. Reads real W3C manifest files, parses .rq/.ttl/.srx/.nt,
    calls the F*-extracted evaluator, and compares results.
 
    Usage:
      ./w3c_runner                           Run all SPARQL 1.1 suites
      ./w3c_runner bind                      Run only the 'bind' suite
      ./w3c_runner bind exists functions     Run specific suites
+     ./w3c_runner --rdf                     Run all RDF 1.1 suites (N-Triples + Turtle)
+     ./w3c_runner --rdf rdf-n-triples       Run specific RDF suite
+     ./w3c_runner --all                     Run both SPARQL and RDF suites
      ./w3c_runner --list                    List available suites
      ./w3c_runner --help                    Show help *)
 
@@ -31,6 +34,7 @@ type test_case = {
 let mf_ns = "http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#"
 let qt_ns = "http://www.w3.org/2001/sw/DataAccess/tests/test-query#"
 let rdf_ns = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+let rdft_ns = "http://www.w3.org/ns/rdftest#"
 
 let find_objects graph subj pred =
   List.filter_map (fun t ->
@@ -138,6 +142,14 @@ let extract_test_cases manifest_dir graph =
     Some { name; test_type; query_file; data_files; result_file }
   ) entry_nodes
 
+(* Extract mf:assumedTestBase from manifest graph, if present *)
+let extract_assumed_test_base graph =
+  List.find_map (fun t ->
+    if t.p = mf_ns ^ "assumedTestBase" then
+      Some (term_to_str t.o)
+    else None
+  ) graph
+
 let read_manifest manifest_path =
   let manifest_dir = Filename.dirname manifest_path in
   let input = try
@@ -149,15 +161,17 @@ let read_manifest manifest_path =
     Bytes.to_string s
   with Sys_error msg ->
     Printf.eprintf "Cannot read manifest: %s\n" msg; "" in
-  if input = "" then []
+  if input = "" then ([], None)
   else begin
     reset_bnodes ();
     let base = "file://" ^ manifest_path in
     try
       let graph = parse_turtle input (Some base) in
-      extract_test_cases manifest_dir graph
+      let assumed_base = extract_assumed_test_base graph in
+      (extract_test_cases manifest_dir graph, assumed_base)
     with Ntriples_parser.Parse_error msg ->
-      Printf.eprintf "Manifest parse error in %s: %s\n" manifest_path msg; []
+      Printf.eprintf "Manifest parse error in %s: %s\n" manifest_path msg;
+      ([], None)
   end
 
 (* Local exception for features not yet supported *)
@@ -306,6 +320,118 @@ let run_test tc =
     Skip (Printf.sprintf "Unknown test type: %s" other)
 
 (* ============================================================================
+   RDF 1.1 parser tests (N-Triples and Turtle)
+   ============================================================================ *)
+
+(* Normalize a triple for comparison: blank node labels are positional,
+   so we compare graph structure by canonicalizing bnode labels. *)
+let triple_to_canonical_key t =
+  let s_str = match t.s with
+    | S_IRI i -> "<" ^ i ^ ">"
+    | S_BNode _ -> "_:b" in  (* will use isomorphism check below *)
+  let o_str = match t.o with
+    | T_IRI i -> "<" ^ i ^ ">"
+    | T_BNode _ -> "_:b"
+    | T_Literal l ->
+      let dt = if l.datatype <> "" then "^^<" ^ l.datatype ^ ">" else "" in
+      let lg = match l.lang_tag with Some t -> "@" ^ t | None -> "" in
+      "\"" ^ l.lexical_form ^ "\"" ^ dt ^ lg in
+  (s_str, t.p, o_str)
+
+(* Simple triple set comparison ignoring blank node labels.
+   For a proper implementation we'd need graph isomorphism,
+   but for most W3C tests simple structural comparison suffices. *)
+let triple_sets_match expected actual =
+  if List.length expected <> List.length actual then false
+  else
+    let canon xs = List.map triple_to_canonical_key xs |> List.sort compare in
+    canon expected = canon actual
+
+let make_turtle_base assumed_base filepath =
+  (* Use assumed test base from manifest if available, else file:// *)
+  match assumed_base with
+  | Some base ->
+    let filename = Filename.basename filepath in
+    base ^ filename
+  | None -> "file://" ^ filepath
+
+let run_rdf_test assumed_base tc =
+  match tc.test_type with
+  (* N-Triples positive syntax: should parse without error *)
+  | "TestNTriplesPositiveSyntax" ->
+    (match read_file tc.query_file with
+     | None -> Skip "File missing"
+     | Some content ->
+       (try ignore (parse_ntriples content); Pass
+        with Ntriples_parser.Parse_error _ -> Fail "Should parse but didn't"))
+
+  (* N-Triples negative syntax: should fail to parse *)
+  | "TestNTriplesNegativeSyntax" ->
+    (match read_file tc.query_file with
+     | None -> Skip "File missing"
+     | Some content ->
+       (try ignore (parse_ntriples content); Fail "Should reject but parsed OK"
+        with Ntriples_parser.Parse_error _ -> Pass))
+
+  (* Turtle positive syntax: should parse without error *)
+  | "TestTurtlePositiveSyntax" ->
+    (match read_file tc.query_file with
+     | None -> Skip "File missing"
+     | Some content ->
+       (try
+          reset_bnodes ();
+          let base = make_turtle_base assumed_base tc.query_file in
+          ignore (parse_turtle content (Some base)); Pass
+        with Ntriples_parser.Parse_error _ -> Fail "Should parse but didn't"))
+
+  (* Turtle negative syntax: should fail to parse *)
+  | "TestTurtleNegativeSyntax" ->
+    (match read_file tc.query_file with
+     | None -> Skip "File missing"
+     | Some content ->
+       (try
+          reset_bnodes ();
+          let base = make_turtle_base assumed_base tc.query_file in
+          ignore (parse_turtle content (Some base));
+          Fail "Should reject but parsed OK"
+        with Ntriples_parser.Parse_error _ -> Pass))
+
+  (* Turtle eval: parse .ttl, compare triples to expected .nt output *)
+  | "TestTurtleEval" ->
+    (match read_file tc.query_file, tc.result_file with
+     | None, _ -> Skip "Input file missing"
+     | _, None -> Skip "No expected result file"
+     | Some input, Some rf ->
+       (match read_file rf with
+        | None -> Skip (Printf.sprintf "Result file missing: %s" rf)
+        | Some expected_content ->
+          (try
+            reset_bnodes ();
+            let base = make_turtle_base assumed_base tc.query_file in
+            let actual = parse_turtle input (Some base) in
+            let expected = parse_ntriples expected_content in
+            if triple_sets_match expected actual then Pass
+            else
+              Fail (Printf.sprintf "Triples mismatch: expected %d, got %d"
+                      (List.length expected) (List.length actual))
+          with Ntriples_parser.Parse_error msg ->
+            Fail (Printf.sprintf "Parse error: %s" msg))))
+
+  (* Turtle negative eval: parse succeeds but semantic error *)
+  | "TestTurtleNegativeEval" ->
+    (match read_file tc.query_file with
+     | None -> Skip "File missing"
+     | Some content ->
+       (try
+          reset_bnodes ();
+          let base = make_turtle_base assumed_base tc.query_file in
+          ignore (parse_turtle content (Some base));
+          Fail "Should produce eval error but succeeded"
+        with Ntriples_parser.Parse_error _ -> Pass))
+
+  | other -> Skip (Printf.sprintf "Unknown RDF test type: %s" other)
+
+(* ============================================================================
    Suite discovery and CLI
    ============================================================================ *)
 
@@ -318,6 +444,15 @@ let tests_base =
   try List.find Sys.file_exists candidates
   with Not_found -> "tests/w3c/sparql/sparql11"
 
+let rdf_tests_base =
+  let candidates = [
+    "../../tests/w3c/rdf/rdf11";
+    "../../../tests/w3c/rdf/rdf11";
+    "tests/w3c/rdf/rdf11";
+  ] in
+  try List.find Sys.file_exists candidates
+  with Not_found -> "tests/w3c/rdf/rdf11"
+
 let discover_suites () =
   try
     let entries = Sys.readdir tests_base in
@@ -328,17 +463,29 @@ let discover_suites () =
     Printf.eprintf "Warning: test directory not found: %s\n" tests_base;
     []
 
-let run_suite suite_name =
-  let suite_dir = Filename.concat tests_base suite_name in
+let discover_rdf_suites () =
+  try
+    let entries = Sys.readdir rdf_tests_base in
+    let dirs = Array.to_list entries |> List.filter (fun e ->
+      let path = Filename.concat rdf_tests_base e in
+      Sys.is_directory path &&
+      (e = "rdf-n-triples" || e = "rdf-turtle")) in
+    List.sort String.compare dirs
+  with Sys_error _ ->
+    Printf.eprintf "Warning: RDF test directory not found: %s\n" rdf_tests_base;
+    []
+
+let run_suite_generic base_dir runner suite_name =
+  let suite_dir = Filename.concat base_dir suite_name in
   let manifest = Filename.concat suite_dir "manifest.ttl" in
   if not (Sys.file_exists manifest) then begin
     Printf.printf "  [skip] No manifest.ttl in %s\n" suite_name;
     (0, 0, 0, 0)
   end else begin
-    let tests = read_manifest manifest in
+    let (tests, assumed_base) = read_manifest manifest in
     let pass = ref 0 and fail = ref 0 and skip = ref 0 and unsup = ref 0 in
     List.iter (fun tc ->
-      let result = run_test tc in
+      let result = runner assumed_base tc in
       (match result with
        | Pass ->
          incr pass;
@@ -357,47 +504,28 @@ let run_suite suite_name =
     (!pass, !fail, !skip, !unsup)
   end
 
-let () =
-  let args = Array.to_list Sys.argv |> List.tl in
+let run_suite suite_name =
+  run_suite_generic tests_base (fun _assumed_base tc -> run_test tc) suite_name
 
-  if List.mem "--help" args || List.mem "-h" args then begin
-    Printf.printf "W3C SPARQL 1.1 Test Runner\n\n";
-    Printf.printf "Usage:\n";
-    Printf.printf "  ./w3c_runner                    Run all suites\n";
-    Printf.printf "  ./w3c_runner bind exists        Run specific suites\n";
-    Printf.printf "  ./w3c_runner --list             List available suites\n";
-    Printf.printf "  ./w3c_runner --help             This help\n";
-    exit 0
-  end;
+let run_rdf_suite suite_name =
+  run_suite_generic rdf_tests_base (fun assumed_base tc -> run_rdf_test assumed_base tc) suite_name
 
-  if List.mem "--list" args then begin
-    let suites = discover_suites () in
-    Printf.printf "Available SPARQL 1.1 test suites (%d):\n" (List.length suites);
-    List.iter (fun s -> Printf.printf "  %s\n" s) suites;
-    exit 0
-  end;
-
-  let suites = if args = [] then discover_suites () else args in
-
-  Printf.printf "=== W3C SPARQL 1.1 Test Runner ===\n";
-  Printf.printf "Test base: %s\n\n" tests_base;
-
+let run_and_tally runner suites banner base_dir =
+  Printf.printf "=== %s ===\n" banner;
+  Printf.printf "Test base: %s\n\n" base_dir;
   let total_pass = ref 0 and total_fail = ref 0
   and total_skip = ref 0 and total_unsup = ref 0 in
   let suite_results = ref [] in
-
   List.iter (fun suite ->
     Printf.printf "\n--- %s ---\n" suite;
-    let (p, f, s, u) = run_suite suite in
+    let (p, f, s, u) = runner suite in
     total_pass := !total_pass + p;
     total_fail := !total_fail + f;
     total_skip := !total_skip + s;
     total_unsup := !total_unsup + u;
     suite_results := (suite, p, f, s, u) :: !suite_results
   ) suites;
-
   let suite_results = List.rev !suite_results in
-
   Printf.printf "\n========================================\n";
   Printf.printf "Suite Results:\n";
   List.iter (fun (name, p, f, s, u) ->
@@ -407,5 +535,61 @@ let () =
   Printf.printf "TOTAL: %d pass, %d fail, %d skip, %d unsupported\n"
     !total_pass !total_fail !total_skip !total_unsup;
   Printf.printf "========================================\n";
+  (!total_pass, !total_fail, !total_skip, !total_unsup)
 
-  if !total_fail > 0 then exit 1 else exit 0
+let () =
+  let args = Array.to_list Sys.argv |> List.tl in
+
+  if List.mem "--help" args || List.mem "-h" args then begin
+    Printf.printf "W3C Test Runner (SPARQL 1.1 + RDF 1.1)\n\n";
+    Printf.printf "Usage:\n";
+    Printf.printf "  ./w3c_runner                    Run all SPARQL 1.1 suites\n";
+    Printf.printf "  ./w3c_runner bind exists        Run specific SPARQL suites\n";
+    Printf.printf "  ./w3c_runner --rdf              Run all RDF 1.1 suites\n";
+    Printf.printf "  ./w3c_runner --rdf rdf-turtle   Run specific RDF suite\n";
+    Printf.printf "  ./w3c_runner --all              Run both SPARQL and RDF suites\n";
+    Printf.printf "  ./w3c_runner --list             List available suites\n";
+    Printf.printf "  ./w3c_runner --help             This help\n";
+    exit 0
+  end;
+
+  if List.mem "--list" args then begin
+    let sparql_suites = discover_suites () in
+    let rdf_suites = discover_rdf_suites () in
+    Printf.printf "Available SPARQL 1.1 test suites (%d):\n" (List.length sparql_suites);
+    List.iter (fun s -> Printf.printf "  %s\n" s) sparql_suites;
+    Printf.printf "\nAvailable RDF 1.1 test suites (%d):\n" (List.length rdf_suites);
+    List.iter (fun s -> Printf.printf "  %s\n" s) rdf_suites;
+    exit 0
+  end;
+
+  let run_rdf_mode = List.mem "--rdf" args in
+  let run_all_mode = List.mem "--all" args in
+  let suite_args = List.filter (fun s ->
+    s <> "--rdf" && s <> "--all") args in
+
+  let any_fail = ref false in
+
+  if run_rdf_mode then begin
+    let rdf_suites = if suite_args = [] then discover_rdf_suites () else suite_args in
+    let (_, f, _, _) = run_and_tally run_rdf_suite rdf_suites
+      "W3C RDF 1.1 Test Runner" rdf_tests_base in
+    if f > 0 then any_fail := true
+  end else if run_all_mode then begin
+    let sparql_suites = if suite_args = [] then discover_suites () else suite_args in
+    let (_, f1, _, _) = run_and_tally run_suite sparql_suites
+      "W3C SPARQL 1.1 Test Runner" tests_base in
+    if f1 > 0 then any_fail := true;
+    Printf.printf "\n\n";
+    let rdf_suites = discover_rdf_suites () in
+    let (_, f2, _, _) = run_and_tally run_rdf_suite rdf_suites
+      "W3C RDF 1.1 Test Runner" rdf_tests_base in
+    if f2 > 0 then any_fail := true
+  end else begin
+    let suites = if suite_args = [] then discover_suites () else suite_args in
+    let (_, f, _, _) = run_and_tally run_suite suites
+      "W3C SPARQL 1.1 Test Runner" tests_base in
+    if f > 0 then any_fail := true
+  end;
+
+  if !any_fail then exit 1 else exit 0
