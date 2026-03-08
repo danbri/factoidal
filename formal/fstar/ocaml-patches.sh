@@ -93,6 +93,43 @@ content = content.replace(
   Digest.to_hex (Digest.string (\"sha512:\" ^ s))'''
 )
 
+# 2b2. Replace UUID/STRUUID hardcoded stubs with random UUID v4 generation.
+# The F* spec returns all-zeros placeholder; we replace with real random UUIDs
+# so W3C tests that REGEX-check the format will pass.
+content = content.replace(
+    '''          if iri_s = "http://www.w3.org/2005/xpath-functions#uuid"
+          then
+            ER_Term
+              (RDF_Graph_Executable.T_IRI
+                 "urn:uuid:00000000-0000-0000-0000-000000000000")
+          else
+            if iri_s = "http://www.w3.org/2005/xpath-functions#struuid"
+            then er_string "00000000-0000-0000-0000-000000000000"''',
+    '''          if iri_s = "http://www.w3.org/2005/xpath-functions#uuid"
+          then
+            let () = Random.self_init () in
+            let hex () = Printf.sprintf "%04x" (Random.int 0x10000) in
+            let s = Printf.sprintf "%s%s-%s-%s-%s-%s%s%s"
+              (hex ()) (hex ()) (hex ())
+              (Printf.sprintf "4%03x" (Random.int 0x1000))
+              (Printf.sprintf "%04x" (0x8000 lor (Random.int 0x4000)))
+              (hex ()) (hex ()) (hex ()) in
+            ER_Term
+              (RDF_Graph_Executable.T_IRI
+                 (Prims.strcat "urn:uuid:" s))
+          else
+            if iri_s = "http://www.w3.org/2005/xpath-functions#struuid"
+            then
+              let () = Random.self_init () in
+              let hex () = Printf.sprintf "%04x" (Random.int 0x10000) in
+              let s = Printf.sprintf "%s%s-%s-%s-%s-%s%s%s"
+                (hex ()) (hex ()) (hex ())
+                (Printf.sprintf "4%03x" (Random.int 0x1000))
+                (Printf.sprintf "%04x" (0x8000 lor (Random.int 0x4000)))
+                (hex ()) (hex ()) (hex ()) in
+              er_string s'''
+)
+
 # 2c. Wire eval_exists_fwd assume val stub.
 # eval_exists_fwd is declared as assume val in F* and extracted as failwith.
 # We need a forward ref because eval_exists is defined after eval_pattern.
@@ -160,6 +197,48 @@ content = content.replace(
 let () = eval_property_path_fwd_ref := eval_property_path
 
 type numeric_precision ='''
+)
+
+# 5b. Fix zero-length property path matching on empty graphs.
+# SPARQL semantics: ZeroOrMore/ZeroOrOne paths must include zero-length matches
+# for constant IRIs/BNodes from the query pattern, even when the graph is empty.
+# eval_property_path only generates reflexive pairs for nodes already in the graph,
+# so we augment GP_PropertyPath handling to add reflexive pairs for pattern constants.
+content = content.replace(
+    '''  | GP_PropertyPath (ps, pp, pt) ->
+      let pairs = eval_property_path_fwd pp g in
+      path_result_to_solutions ps pt pairs''',
+    '''  | GP_PropertyPath (ps, pp, pt) ->
+      let pairs = eval_property_path_fwd pp g in
+      (* SPARQL semantics: ZeroOrMore/ZeroOrOne paths must include zero-length
+         matches for any constant IRI/BNode in the pattern, even on empty graphs.
+         eval_property_path only generates reflexive pairs for nodes in the graph,
+         so we add reflexive pairs for constants from the query pattern here,
+         but only if they are not already present (to avoid duplicates). *)
+      let pairs = match pp with
+        | PP_ZeroOrMore _ | PP_ZeroOrOne _ ->
+            let constant_terms =
+              (match ps with
+               | PS_IRI i -> [RDF_Graph_Executable.T_IRI i]
+               | PS_BNode b -> [RDF_Graph_Executable.T_BNode b]
+               | PS_Var _ -> [])
+              @
+              (match pt with
+               | PT_IRI i -> [RDF_Graph_Executable.T_IRI i]
+               | PT_BNode b -> [RDF_Graph_Executable.T_BNode b]
+               | PT_Literal l -> [RDF_Graph_Executable.T_Literal l]
+               | PT_Var _ -> []) in
+            let has_reflexive t =
+              FStar_List_Tot_Base.existsb
+                (fun pair -> match pair with (s, o) ->
+                   RDF_Graph_Executable.rdf_term_eq s t &&
+                   RDF_Graph_Executable.rdf_term_eq o t) pairs in
+            let new_terms = FStar_List_Tot_Base.filter
+              (fun t -> not (has_reflexive t)) constant_terms in
+            let reflexive = FStar_List_Tot_Base.map (fun n -> (n, n)) new_terms in
+            FStar_List_Tot_Base.op_At pairs reflexive
+        | _ -> pairs in
+      path_result_to_solutions ps pt pairs'''
 )
 
 # 6. Wire eval_subselect_fwd_ref after eval_select_query is defined
