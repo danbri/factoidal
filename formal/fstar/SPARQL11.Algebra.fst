@@ -604,8 +604,11 @@ let fn_str (v : eval_result) : eval_result =
   | ER_Term (T_IRI i) -> ER_Term (T_Literal (mk_plain_literal (iri_to_string i)))
   | ER_Term (T_Literal l) -> ER_Term (T_Literal (mk_plain_literal (lit_lexical l)))
   | ER_Term (T_BNode b) -> ER_Term (T_Literal (mk_plain_literal b))
+  | ER_Num n -> ER_Term (T_Literal (mk_plain_literal (string_of_int n)))
+  | ER_Dec s -> ER_Term (T_Literal (mk_plain_literal s))
+  | ER_Dbl s -> ER_Term (T_Literal (mk_plain_literal s))
+  | ER_Bool b -> ER_Term (T_Literal (mk_plain_literal (if b then "true" else "false")))
   | ER_Error -> ER_Error
-  | _ -> ER_Error
 
 let fn_lang (v : eval_result) : eval_result =
   match v with
@@ -1554,6 +1557,14 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
   | E_Abs e1 ->
     (match eval_expr e1 mu with
      | ER_Num n -> ER_Num (int_abs n)
+     | ER_Dec s ->
+       if String.length s > 0 && String.index s 0 = FStar.Char.char_of_int 45 (* '-' *)
+       then ER_Dec (String.sub s 1 (String.length s - 1))
+       else ER_Dec s
+     | ER_Dbl s ->
+       if String.length s > 0 && String.index s 0 = FStar.Char.char_of_int 45
+       then ER_Dbl (String.sub s 1 (String.length s - 1))
+       else ER_Dbl s
      | _ -> ER_Error)
   | E_Round e1 ->
     (match eval_expr e1 mu with
@@ -1641,8 +1652,31 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
   (* Aggregates — evaluated in aggregation context, not here *)
   | E_Aggregate _ _ _ -> ER_Error
 
-  (* Function call — extensible, not handled here *)
-  | E_FunctionCall _ _ -> ER_Error
+  (* Function call — dispatch known IRIs *)
+  | E_FunctionCall iri args ->
+    (let iri_s = iri_to_string iri in
+     if iri_s = "http://www.w3.org/2005/xpath-functions#langMatches" then
+       match args with
+       | [e1; e2] ->
+         (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu) with
+          | Some tag, Some range -> ER_Bool (fn_langMatches_spec tag range)
+          | _, _ -> ER_Error)
+       | _ -> ER_Error
+     else if iri_s = "http://www.w3.org/2005/xpath-functions#rand" then
+       ER_Dbl "0.5"  (* deterministic stub for testing *)
+     else if iri_s = "http://www.w3.org/2005/xpath-functions#uuid" then
+       ER_Term (T_IRI "urn:uuid:00000000-0000-0000-0000-000000000000")
+     else if iri_s = "http://www.w3.org/2005/xpath-functions#struuid" then
+       er_string "00000000-0000-0000-0000-000000000000"
+     else if iri_s = "http://www.w3.org/2005/xpath-functions#bnode" then
+       match args with
+       | [] -> ER_Term (T_BNode "_:b0")
+       | [e1] ->
+         (match er_to_string (eval_expr e1 mu) with
+          | Some s -> ER_Term (T_BNode ("_:b" ^ s))
+          | None -> ER_Error)
+       | _ -> ER_Error
+     else ER_Error)
 
 (* Coalesce: first non-error result from list *)
 and eval_coalesce (es : list expr) (mu : solution_mapping)

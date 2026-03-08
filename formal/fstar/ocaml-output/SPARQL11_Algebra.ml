@@ -1179,8 +1179,17 @@ let fn_str (v : eval_result) : eval_result=
         (RDF_Graph_Executable.T_Literal (mk_plain_literal (lit_lexical l)))
   | ER_Term (RDF_Graph_Executable.T_BNode b) ->
       ER_Term (RDF_Graph_Executable.T_Literal (mk_plain_literal b))
+  | ER_Num n ->
+      ER_Term
+        (RDF_Graph_Executable.T_Literal
+           (mk_plain_literal (Prims.string_of_int n)))
+  | ER_Dec s -> ER_Term (RDF_Graph_Executable.T_Literal (mk_plain_literal s))
+  | ER_Dbl s -> ER_Term (RDF_Graph_Executable.T_Literal (mk_plain_literal s))
+  | ER_Bool b ->
+      ER_Term
+        (RDF_Graph_Executable.T_Literal
+           (mk_plain_literal (if b then "true" else "false")))
   | ER_Error -> ER_Error
-  | uu___ -> ER_Error
 let fn_lang (v : eval_result) : eval_result=
   match v with
   | ER_Term (RDF_Graph_Executable.T_Literal l) ->
@@ -2263,6 +2272,26 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
   | E_Abs e1 ->
       (match eval_expr e1 mu with
        | ER_Num n -> ER_Num (int_abs n)
+       | ER_Dec s ->
+           if
+             ((FStar_String.strlen s) > Prims.int_zero) &&
+               ((FStar_String.index s Prims.int_zero) =
+                  (FStar_Char.char_of_int (Prims.of_int (45))))
+           then
+             ER_Dec
+               (FStar_String.sub s Prims.int_one
+                  ((FStar_String.strlen s) - Prims.int_one))
+           else ER_Dec s
+       | ER_Dbl s ->
+           if
+             ((FStar_String.strlen s) > Prims.int_zero) &&
+               ((FStar_String.index s Prims.int_zero) =
+                  (FStar_Char.char_of_int (Prims.of_int (45))))
+           then
+             ER_Dbl
+               (FStar_String.sub s Prims.int_one
+                  ((FStar_String.strlen s) - Prims.int_one))
+           else ER_Dbl s
        | uu___ -> ER_Error)
   | E_Round e1 ->
       (match eval_expr e1 mu with
@@ -2363,7 +2392,46 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
   | E_Exists uu___ -> ER_Error
   | E_NotExists uu___ -> ER_Error
   | E_Aggregate (uu___, uu___1, uu___2) -> ER_Error
-  | E_FunctionCall (uu___, uu___1) -> ER_Error
+  | E_FunctionCall (iri, args) ->
+      let iri_s = iri_to_string iri in
+      if iri_s = "http://www.w3.org/2005/xpath-functions#langMatches"
+      then
+        (match args with
+         | e1::e2::[] ->
+             (match ((er_to_string (eval_expr e1 mu)),
+                      (er_to_string (eval_expr e2 mu)))
+              with
+              | (FStar_Pervasives_Native.Some tag,
+                 FStar_Pervasives_Native.Some range) ->
+                  ER_Bool (fn_langMatches_spec tag range)
+              | (uu___, uu___1) -> ER_Error)
+         | uu___ -> ER_Error)
+      else
+        if iri_s = "http://www.w3.org/2005/xpath-functions#rand"
+        then ER_Dbl "0.5"
+        else
+          if iri_s = "http://www.w3.org/2005/xpath-functions#uuid"
+          then
+            ER_Term
+              (RDF_Graph_Executable.T_IRI
+                 "urn:uuid:00000000-0000-0000-0000-000000000000")
+          else
+            if iri_s = "http://www.w3.org/2005/xpath-functions#struuid"
+            then er_string "00000000-0000-0000-0000-000000000000"
+            else
+              if iri_s = "http://www.w3.org/2005/xpath-functions#bnode"
+              then
+                (match args with
+                 | [] -> ER_Term (RDF_Graph_Executable.T_BNode "_:b0")
+                 | e1::[] ->
+                     (match er_to_string (eval_expr e1 mu) with
+                      | FStar_Pervasives_Native.Some s ->
+                          ER_Term
+                            (RDF_Graph_Executable.T_BNode
+                               (Prims.strcat "_:b" s))
+                      | FStar_Pervasives_Native.None -> ER_Error)
+                 | uu___4 -> ER_Error)
+              else ER_Error
 and eval_coalesce (es : expr Prims.list)
   (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
   match es with

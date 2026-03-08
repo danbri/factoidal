@@ -256,7 +256,17 @@ let next_token lx =
     | '<' ->
       if lx.pos + 1 < String.length lx.input && lx.input.[lx.pos + 1] = '=' then
         (lx.pos <- lx.pos + 2; T_LE)
-      else T_IRI (lex_iri lx)
+      else begin
+        (* Distinguish < (less-than) from <IRI>.
+           IRIs start with a scheme (letter) or are relative; they never start
+           with whitespace, digit, or end-of-input right after <. *)
+        let next_ch = if lx.pos + 1 < String.length lx.input
+                      then lx.input.[lx.pos + 1] else ' ' in
+        if next_ch = ' ' || next_ch = '\t' || next_ch = '\n' || next_ch = '\r'
+           || (next_ch >= '0' && next_ch <= '9') || next_ch = '-' then
+          (lx.pos <- lx.pos + 1; T_LT)
+        else T_IRI (lex_iri lx)
+      end
     | '>' ->
       lx.pos <- lx.pos + 1;
       if not (lex_at_end lx) && lex_peek lx = '=' then (lx.pos <- lx.pos + 1; T_GE)
@@ -444,7 +454,7 @@ let rec parse_primary_expr ps =
     let f = parse_expr ps in expect ps T_RPAREN;
     E_If (c, t, f)
   | T_COALESCE -> advance ps; expect ps T_LPAREN;
-    let args = parse_expr_list ps in
+    let args = if peek ps = T_RPAREN then [] else parse_expr_list ps in
     expect ps T_RPAREN; E_Coalesce args
   | T_EXISTS -> advance ps; E_Exists (parse_group_graph_pattern ps)
   | T_NOT ->
@@ -517,7 +527,7 @@ and parse_builtin_call ps tok =
       E_FunctionCall ("http://www.w3.org/2005/xpath-functions#bnode", [e])
   | T_CONCAT ->
     advance ps; expect ps T_LPAREN;
-    let args = parse_expr_list ps in
+    let args = if peek ps = T_RPAREN then [] else parse_expr_list ps in
     expect ps T_RPAREN; E_Concat args
   | T_SUBSTR | T_SUBSTRING ->
     advance ps; expect ps T_LPAREN;
@@ -636,7 +646,7 @@ and parse_multiplicative_expr ps =
   let rec loop left =
     match peek ps with
     | T_TIMES -> advance ps; loop (E_Arith (Mul, left, parse_primary_expr ps))
-    | T_DIVIDE -> advance ps; loop (E_Arith (Div, left, parse_primary_expr ps))
+    | T_DIVIDE | T_SLASH -> advance ps; loop (E_Arith (Div, left, parse_primary_expr ps))
     | _ -> left
   in loop left
 
