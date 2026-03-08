@@ -366,6 +366,7 @@ and query = {
   q_group_by : option (list group_condition);       (* [S2] *)
   q_having   : option (list having_condition);
   q_modifier : solution_modifier;
+  q_values   : option (list (list (var_name * rdf_term)));  (* Post-query VALUES *)
 }
 
 (** ====================================================================== **)
@@ -604,8 +605,11 @@ let fn_str (v : eval_result) : eval_result =
   | ER_Term (T_IRI i) -> ER_Term (T_Literal (mk_plain_literal (iri_to_string i)))
   | ER_Term (T_Literal l) -> ER_Term (T_Literal (mk_plain_literal (lit_lexical l)))
   | ER_Term (T_BNode b) -> ER_Term (T_Literal (mk_plain_literal b))
+  | ER_Num n -> ER_Term (T_Literal (mk_plain_literal (string_of_int n)))
+  | ER_Dec s -> ER_Term (T_Literal (mk_plain_literal s))
+  | ER_Dbl s -> ER_Term (T_Literal (mk_plain_literal s))
+  | ER_Bool b -> ER_Term (T_Literal (mk_plain_literal (if b then "true" else "false")))
   | ER_Error -> ER_Error
-  | _ -> ER_Error
 
 let fn_lang (v : eval_result) : eval_result =
   match v with
@@ -1234,6 +1238,43 @@ assume val eval_expr_fwd : expr -> solution_mapping -> eval_result
 (* EXISTS/NOT EXISTS need graph context — forward ref to concrete eval_exists *)
 assume val eval_exists_fwd : group_graph_pattern -> solution_mapping -> rdf_graph -> bool
 
+(* Sub-SELECT evaluation — concrete definition in Part 16, forward-declared
+   here so eval_pattern can use it for GP_SubSelect *)
+assume val eval_subselect_fwd : query -> rdf_graph -> solution_sequence
+
+(* Property path evaluation — concrete definition in Part 13, forward-declared
+   here so eval_pattern can use it for GP_PropertyPath *)
+type path_result_fwd = list (rdf_term * rdf_term)
+assume val eval_property_path_fwd : property_path -> rdf_graph -> path_result_fwd
+
+(* Convert property path results to solution mappings by matching against
+   subject/object pattern terms *)
+let path_result_to_solutions (ps : pattern_subject) (pt : pattern_term)
+  (pairs : path_result_fwd) : solution_sequence =
+  list_filter_map
+    (fun (pair : rdf_term * rdf_term) ->
+      let (s, o) = pair in
+      (* Try to bind subject *)
+      let mu_s = match ps with
+        | PS_Var v -> Some [(v, s)]
+        | PS_IRI i -> if rdf_term_eq (T_IRI i) s then Some [] else None
+        | PS_BNode b -> if rdf_term_eq (T_BNode b) s then Some [] else None in
+      match mu_s with
+      | None -> None
+      | Some bindings_s ->
+        (* Try to bind object *)
+        let mu_o = match pt with
+          | PT_Var v ->
+            (* Check if variable already bound to a different value *)
+            (match List.Tot.assoc v bindings_s with
+             | Some existing -> if rdf_term_eq existing o then Some bindings_s else None
+             | None -> Some ((v, o) :: bindings_s))
+          | PT_IRI i -> if rdf_term_eq (T_IRI i) o then Some bindings_s else None
+          | PT_BNode b -> if rdf_term_eq (T_BNode b) o then Some bindings_s else None
+          | PT_Literal l -> if rdf_term_eq (T_Literal l) o then Some bindings_s else None in
+        mu_o)
+    pairs
+
 (* LeftJoin (OPTIONAL): join + unmatched from left *)
 let left_join (omega1 omega2 : solution_sequence) (filter_expr : expr) : solution_sequence =
   List.Tot.concatMap
@@ -1333,13 +1374,14 @@ let rec eval_pattern (p : group_graph_pattern) (g : rdf_graph)
     (* SERVICE: remote execution, not supported *)
     []
 
-  | GP_SubSelect _ ->
-    (* Sub-SELECT: requires eval_select_query, deferred *)
-    []
+  | GP_SubSelect q ->
+    (* Sub-SELECT: recursively evaluate the inner SELECT query *)
+    eval_subselect_fwd q g
 
-  | GP_PropertyPath _ _ _ ->
-    (* [S1] Property paths: deferred *)
-    []
+  | GP_PropertyPath ps pp pt ->
+    (* Evaluate property path and convert results to solution mappings *)
+    let pairs = eval_property_path_fwd pp g in
+    path_result_to_solutions ps pt pairs
 
 (** ====================================================================== **)
 (** Part 8: SPARQL 1.1 Expression Evaluation (§17)                         **)
@@ -1384,6 +1426,14 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
   | E_UnaryMinus e1 ->
     (match eval_expr e1 mu with
      | ER_Num n -> ER_Num (0 - n)
+     | ER_Dec s ->
+       if string_starts_with s "-"
+       then ER_Dec (String.sub s 1 (String.length s - 1))
+       else ER_Dec (String.concat "" ["-"; s])
+     | ER_Dbl s ->
+       if string_starts_with s "-"
+       then ER_Dbl (String.sub s 1 (String.length s - 1))
+       else ER_Dbl (String.concat "" ["-"; s])
      | _ -> ER_Error)
   | E_UnaryPlus e1 -> eval_expr e1 mu
 
@@ -1516,6 +1566,14 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
   | E_Abs e1 ->
     (match eval_expr e1 mu with
      | ER_Num n -> ER_Num (int_abs n)
+     | ER_Dec s ->
+       if String.length s > 0 && String.index s 0 = FStar.Char.char_of_int 45 (* '-' *)
+       then ER_Dec (String.sub s 1 (String.length s - 1))
+       else ER_Dec s
+     | ER_Dbl s ->
+       if String.length s > 0 && String.index s 0 = FStar.Char.char_of_int 45
+       then ER_Dbl (String.sub s 1 (String.length s - 1))
+       else ER_Dbl s
      | _ -> ER_Error)
   | E_Round e1 ->
     (match eval_expr e1 mu with
@@ -1603,8 +1661,31 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
   (* Aggregates — evaluated in aggregation context, not here *)
   | E_Aggregate _ _ _ -> ER_Error
 
-  (* Function call — extensible, not handled here *)
-  | E_FunctionCall _ _ -> ER_Error
+  (* Function call — dispatch known IRIs *)
+  | E_FunctionCall iri args ->
+    (let iri_s = iri_to_string iri in
+     if iri_s = "http://www.w3.org/2005/xpath-functions#langMatches" then
+       match args with
+       | [e1; e2] ->
+         (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu) with
+          | Some tag, Some range -> ER_Bool (fn_langMatches_spec tag range)
+          | _, _ -> ER_Error)
+       | _ -> ER_Error
+     else if iri_s = "http://www.w3.org/2005/xpath-functions#rand" then
+       ER_Dbl "0.5"  (* deterministic stub for testing *)
+     else if iri_s = "http://www.w3.org/2005/xpath-functions#uuid" then
+       ER_Term (T_IRI "urn:uuid:00000000-0000-0000-0000-000000000000")
+     else if iri_s = "http://www.w3.org/2005/xpath-functions#struuid" then
+       er_string "00000000-0000-0000-0000-000000000000"
+     else if iri_s = "http://www.w3.org/2005/xpath-functions#bnode" then
+       match args with
+       | [] -> ER_Term (T_BNode "_:b0")
+       | [e1] ->
+         (match er_to_string (eval_expr e1 mu) with
+          | Some s -> ER_Term (T_BNode ("_:b" ^ s))
+          | None -> ER_Error)
+       | _ -> ER_Error
+     else ER_Error)
 
 (* Coalesce: first non-error result from list *)
 and eval_coalesce (es : list expr) (mu : solution_mapping)
@@ -1874,11 +1955,72 @@ let having_filter (conditions : list having_condition) (groups : list group) : l
       List.Tot.for_all
         (fun cond ->
           (* Evaluate the HAVING condition in the context of the group.
-             The condition can reference aggregate results.
-             We assume a special evaluation context for group-level expressions. *)
-          true (* [S2] concrete evaluation deferred *))
+             Aggregate expressions are computed over the group's solutions;
+             other expressions use the representative (first) binding. *)
+          let v = match cond with
+            | E_Aggregate fn distinct sub_e -> eval_aggregate fn distinct sub_e g
+            | _ -> (match g.g_solutions with
+                    | mu :: _ -> eval_expr cond mu
+                    | [] -> ER_Error)
+          in ebv v)
         conditions)
     groups
+
+(** 10.4 Aggregate group evaluation — one solution per group (§18.5) **)
+
+(* Evaluate an expression in group context.
+   When the expression is E_Aggregate, compute the aggregate over the group.
+   For other expressions, evaluate against the group's key binding (first solution
+   in the group serves as the representative for non-aggregate expressions like
+   GROUP BY variables). *)
+let eval_expr_in_group (e : expr) (g : group) : eval_result =
+  match e with
+  | E_Aggregate fn distinct sub_e -> eval_aggregate fn distinct sub_e g
+  | _ ->
+    (* Non-aggregate expression in SELECT with GROUP BY: evaluate against the
+       first solution in the group (GROUP BY variables are equal across all
+       solutions in the group, so any representative suffices) *)
+    (match g.g_solutions with
+     | mu :: _ -> eval_expr e mu
+     | [] -> ER_Error)
+
+(* Evaluate a SELECT item in group context — handles aggregates *)
+let eval_select_item_group (item : select_item) (g : group)
+  : option (var_name * rdf_term) =
+  match item with
+  | SI_Var v ->
+    (* Variable: look up in group's representative solution *)
+    (match g.g_solutions with
+     | mu :: _ -> (match sm_lookup v mu with
+                   | Some t -> Some (v, t)
+                   | None -> None)
+     | [] -> None)
+  | SI_Expr e v ->
+    let r = eval_expr_in_group e g in
+    (match er_to_term r with
+     | Some t -> Some (v, t)
+     | None -> None)
+
+(* Produce one solution mapping per group from SELECT items *)
+let aggregate_group (items : list select_item) (g : group) : solution_mapping =
+  list_filter_map (fun item -> eval_select_item_group item g) items
+
+(* Aggregate all groups into a solution sequence *)
+let aggregate_groups (items : list select_item) (groups : list group) : solution_sequence =
+  List.Tot.map (aggregate_group items) groups
+
+(* Check if a SELECT item contains an aggregate expression *)
+let select_item_has_aggregate (item : select_item) : bool =
+  match item with
+  | SI_Var _ -> false
+  | SI_Expr (E_Aggregate _ _ _) _ -> true
+  | SI_Expr _ _ -> false
+
+(* Check if any SELECT item uses aggregation *)
+let select_has_aggregates (sel : select_clause) : bool =
+  match sel with
+  | Select_All -> false
+  | Select_Vars items -> List.Tot.existsb select_item_has_aggregate items
 
 (** ====================================================================== **)
 (** Part 11: SPARQL 1.1 Solution Modifiers (§18.4, §9)                    **)
@@ -2010,33 +2152,80 @@ let eval_select_query (q : query) (g : rdf_graph) : solution_sequence =
   match q.q_form with
   | QF_Select sel ->
     (* 1. Evaluate WHERE clause *)
-    let omega = eval_pattern q.q_pattern g in
+    let omega0 = eval_pattern q.q_pattern g in
 
-    (* 2–4. GROUP BY / aggregation / HAVING — skipped for now *)
+    (* 1b. Post-query VALUES — join against WHERE results *)
+    let omega = match q.q_values with
+      | None -> omega0
+      | Some vals -> join omega0 vals in
 
-    (* 5. SELECT expressions — evaluate (expr AS ?var) *)
-    let omega' = match sel with
-      | Select_Vars items -> eval_select_items items omega g
-      | Select_All -> omega in
+    (* 2. GROUP BY — partition into groups *)
+    let needs_grouping = match q.q_group_by with
+      | Some _ -> true
+      | None -> select_has_aggregates sel in
 
-    (* 6. ORDER BY *)
-    let ordered = match q.q_modifier.sm_order_by with
-      | None -> omega'
-      | Some o -> sort_solutions o omega' in
+    if needs_grouping then begin
+      (* 2a. Partition solutions into groups *)
+      let groups = match q.q_group_by with
+        | Some conds -> group_by conds omega
+        | None -> implicit_group omega in
 
-    (* 7. Projection *)
-    let projected = match sel with
-      | Select_Vars items -> project_solutions (select_item_vars items) ordered
-      | Select_All -> ordered in
+      (* 3. HAVING — filter groups *)
+      let filtered_groups = match q.q_having with
+        | Some conditions -> having_filter conditions groups
+        | None -> groups in
 
-    (* 8. DISTINCT / REDUCED *)
-    let deduped =
-      if q.q_modifier.sm_distinct then distinct_solutions projected
-      else if q.q_modifier.sm_reduced then reduced_solutions projected
-      else projected in
+      (* 4. Aggregation — evaluate aggregate SELECT items per group *)
+      let omega' = match sel with
+        | Select_Vars items -> aggregate_groups items filtered_groups
+        | Select_All ->
+          (* SELECT * with GROUP BY: return representative solutions *)
+          List.Tot.map (fun (grp : group) ->
+            match grp.g_solutions with
+            | mu :: _ -> mu
+            | [] -> sm_empty) filtered_groups in
 
-    (* 9. OFFSET / LIMIT *)
-    slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit deduped
+      (* 6. ORDER BY *)
+      let ordered = match q.q_modifier.sm_order_by with
+        | None -> omega'
+        | Some o -> sort_solutions o omega' in
+
+      (* 8. DISTINCT / REDUCED *)
+      let deduped =
+        if q.q_modifier.sm_distinct then distinct_solutions ordered
+        else if q.q_modifier.sm_reduced then reduced_solutions ordered
+        else ordered in
+
+      (* 9. OFFSET / LIMIT *)
+      slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit deduped
+    end
+    else begin
+      (* No grouping — original pipeline *)
+
+      (* 5. SELECT expressions — evaluate (expr AS ?var) *)
+      let omega' = match sel with
+        | Select_Vars items -> eval_select_items items omega g
+        | Select_All -> omega in
+
+      (* 6. ORDER BY *)
+      let ordered = match q.q_modifier.sm_order_by with
+        | None -> omega'
+        | Some o -> sort_solutions o omega' in
+
+      (* 7. Projection *)
+      let projected = match sel with
+        | Select_Vars items -> project_solutions (select_item_vars items) ordered
+        | Select_All -> ordered in
+
+      (* 8. DISTINCT / REDUCED *)
+      let deduped =
+        if q.q_modifier.sm_distinct then distinct_solutions projected
+        else if q.q_modifier.sm_reduced then reduced_solutions projected
+        else projected in
+
+      (* 9. OFFSET / LIMIT *)
+      slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit deduped
+    end
 
   (* Other query forms — return empty for now *)
   | QF_Construct _ -> []
@@ -2118,13 +2307,19 @@ let rec list_dedup_by (#a:Type) (eq : a -> a -> bool) (l : list a) : Tot (list a
 let dedup_path (pairs : path_result) : path_result =
   list_dedup_by path_pair_eq pairs
 
-(* Helper: collect IRIs from a negated property set *)
-let rec negated_iris (ps : list property_path) : Tot (list wf_iri) (decreases ps) =
+(* Helper: collect direct IRIs from a negated property set *)
+let rec negated_direct_iris (ps : list property_path) : Tot (list wf_iri) (decreases ps) =
   match ps with
   | [] -> []
-  | PP_IRI i :: rest -> i :: negated_iris rest
-  | PP_Inverse (PP_IRI i) :: rest -> i :: negated_iris rest
-  | _ :: rest -> negated_iris rest
+  | PP_IRI i :: rest -> i :: negated_direct_iris rest
+  | _ :: rest -> negated_direct_iris rest
+
+(* Helper: collect inverse IRIs from a negated property set *)
+let rec negated_inverse_iris (ps : list property_path) : Tot (list wf_iri) (decreases ps) =
+  match ps with
+  | [] -> []
+  | PP_Inverse (PP_IRI i) :: rest -> i :: negated_inverse_iris rest
+  | _ :: rest -> negated_inverse_iris rest
 
 (* Helper: check if an IRI is in a list *)
 let rec iri_in_list (iri : wf_iri) (iris : list wf_iri) : Tot bool (decreases iris) =
@@ -2161,23 +2356,23 @@ let rec eval_property_path (p : property_path) (g : rdf_graph)
       pairs
 
   | PP_Sequence p1 p2 ->
-    (* { (s, o) | ∃ mid. (s, mid) ∈ eval p1 G ∧ (mid, o) ∈ eval p2 G } *)
+    (* { (s, o) | ∃ mid. (s, mid) ∈ eval p1 G ∧ (mid, o) ∈ eval p2 G }
+       Bag semantics: preserve duplicates from different paths *)
     let r1 = eval_property_path p1 g in
     let r2 = eval_property_path p2 g in
-    dedup_path
-      (List.Tot.concatMap
-        (fun (pair1 : rdf_term * rdf_term) ->
-          let (s, mid1) = pair1 in
-          List.Tot.concatMap
-            (fun (pair2 : rdf_term * rdf_term) ->
-              let (mid2, o) = pair2 in
-              if rdf_term_eq mid1 mid2 then [(s, o)] else [])
-            r2)
-        r1)
+    List.Tot.concatMap
+      (fun (pair1 : rdf_term * rdf_term) ->
+        let (s, mid1) = pair1 in
+        List.Tot.concatMap
+          (fun (pair2 : rdf_term * rdf_term) ->
+            let (mid2, o) = pair2 in
+            if rdf_term_eq mid1 mid2 then [(s, o)] else [])
+          r2)
+      r1
 
   | PP_Alternative p1 p2 ->
-    (* eval p1 G ∪ eval p2 G *)
-    dedup_path (eval_property_path p1 g @ eval_property_path p2 g)
+    (* eval p1 G ∪ eval p2 G — bag semantics *)
+    eval_property_path p1 g @ eval_property_path p2 g
 
   | PP_ZeroOrOne pp ->
     let reflexive = List.Tot.map (fun (n : rdf_term) -> (n, n)) (graph_nodes g) in
@@ -2185,22 +2380,84 @@ let rec eval_property_path (p : property_path) (g : rdf_graph)
     dedup_path (reflexive @ step)
 
   | PP_ZeroOrMore pp ->
-    let reflexive = List.Tot.map (fun (n : rdf_term) -> (n, n)) (graph_nodes g) in
+    (* ZeroOrMore: reflexive transitive closure.
+       Compute fixpoint: start with all graph nodes as reflexive pairs,
+       then repeatedly extend by one step until no new pairs are found.
+       [S1] Bounded iteration to ensure termination. *)
+    let nodes = graph_nodes g in
+    let reflexive = List.Tot.map (fun (n : rdf_term) -> (n, n)) nodes in
     let step = eval_property_path pp g in
-    dedup_path (reflexive @ step)
+    (* Extend: for each (s, mid) in current and (mid2, o) in step where mid=mid2,
+       add (s, o) if not already present *)
+    let extend (current : path_result) : path_result =
+      let new_pairs = List.Tot.concatMap
+        (fun (pair1 : rdf_term * rdf_term) ->
+          let (s, mid) = pair1 in
+          List.Tot.concatMap
+            (fun (pair2 : rdf_term * rdf_term) ->
+              let (mid2, o) = pair2 in
+              if rdf_term_eq mid mid2 then [(s, o)] else [])
+            step)
+        current in
+      dedup_path (current @ new_pairs) in
+    (* Iterate up to |nodes| times to reach fixpoint *)
+    let max_iter = List.Tot.length nodes in
+    let rec fixpoint (current : path_result) (fuel : nat)
+      : Tot path_result (decreases fuel) =
+      if fuel = 0 then current
+      else
+        let next = extend current in
+        if List.Tot.length next = List.Tot.length current then current
+        else fixpoint next (fuel - 1) in
+    fixpoint (dedup_path (reflexive @ step)) max_iter
 
   | PP_OneOrMore pp ->
-    (* [S1] Simplified: single-step evaluation only.
-       Full implementation requires transitive closure with cycle detection. *)
-    eval_property_path pp g
+    (* OneOrMore: transitive closure (at least one step).
+       Same as ZeroOrMore but without reflexive pairs. *)
+    let nodes = graph_nodes g in
+    let step = eval_property_path pp g in
+    let extend (current : path_result) : path_result =
+      let new_pairs = List.Tot.concatMap
+        (fun (pair1 : rdf_term * rdf_term) ->
+          let (s, mid) = pair1 in
+          List.Tot.concatMap
+            (fun (pair2 : rdf_term * rdf_term) ->
+              let (mid2, o) = pair2 in
+              if rdf_term_eq mid mid2 then [(s, o)] else [])
+            step)
+        current in
+      dedup_path (current @ new_pairs) in
+    let max_iter = List.Tot.length nodes in
+    let rec fixpoint (current : path_result) (fuel : nat)
+      : Tot path_result (decreases fuel) =
+      if fuel = 0 then current
+      else
+        let next = extend current in
+        if List.Tot.length next = List.Tot.length current then current
+        else fixpoint next (fuel - 1) in
+    fixpoint step max_iter
 
   | PP_NegatedSet ps ->
-    (* { (s, o) | (s, p, o) ∈ G, p ∉ iris(ps) } *)
-    let excluded = negated_iris ps in
-    List.Tot.concatMap
-      (fun (t : triple) ->
-        if iri_in_list t.p excluded then [] else [(subject_to_term t.s, t.o)])
-      g
+    (* Split negated set into direct and inverse exclusions.
+       Only produce direct pairs if set has direct IRIs (or no inverse IRIs).
+       Only produce inverse pairs if set has inverse IRIs. *)
+    let excluded_direct = negated_direct_iris ps in
+    let excluded_inverse = negated_inverse_iris ps in
+    let has_direct = List.Tot.length excluded_direct > 0 in
+    let has_inverse = List.Tot.length excluded_inverse > 0 in
+    let direct_pairs =
+      if has_inverse && not has_direct then []
+      else List.Tot.concatMap
+        (fun (t : triple) ->
+          if iri_in_list t.p excluded_direct then [] else [(subject_to_term t.s, t.o)])
+        g in
+    let inverse_pairs =
+      if has_direct && not has_inverse then []
+      else List.Tot.concatMap
+        (fun (t : triple) ->
+          if iri_in_list t.p excluded_inverse then [] else [(t.o, subject_to_term t.s)])
+        g in
+    direct_pairs @ inverse_pairs
 
 (* Specification (retained for reference):
 

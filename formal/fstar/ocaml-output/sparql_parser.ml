@@ -256,7 +256,17 @@ let next_token lx =
     | '<' ->
       if lx.pos + 1 < String.length lx.input && lx.input.[lx.pos + 1] = '=' then
         (lx.pos <- lx.pos + 2; T_LE)
-      else T_IRI (lex_iri lx)
+      else begin
+        (* Distinguish < (less-than) from <IRI>.
+           IRIs start with a scheme (letter) or are relative; they never start
+           with whitespace, digit, or end-of-input right after <. *)
+        let next_ch = if lx.pos + 1 < String.length lx.input
+                      then lx.input.[lx.pos + 1] else ' ' in
+        if next_ch = ' ' || next_ch = '\t' || next_ch = '\n' || next_ch = '\r'
+           || (next_ch >= '0' && next_ch <= '9') || next_ch = '-' then
+          (lx.pos <- lx.pos + 1; T_LT)
+        else T_IRI (lex_iri lx)
+      end
     | '>' ->
       lx.pos <- lx.pos + 1;
       if not (lex_at_end lx) && lex_peek lx = '=' then (lx.pos <- lx.pos + 1; T_GE)
@@ -390,8 +400,27 @@ let parse_iri ps =
 let rec parse_primary_expr ps =
   match peek ps with
   | T_VAR v -> advance ps; E_Var v
-  | T_IRI i -> advance ps; E_IRI i
-  | T_PNAME pn -> advance ps; E_IRI (resolve_pname ps pn)
+  | T_IRI i ->
+    advance ps;
+    if peek ps = T_LPAREN then begin
+      (* IRI followed by '(' is a function call *)
+      advance ps;
+      let args = if peek ps = T_RPAREN then [] else parse_expr_list ps in
+      expect ps T_RPAREN;
+      E_FunctionCall (i, args)
+    end else
+      E_IRI i
+  | T_PNAME pn ->
+    advance ps;
+    let iri = resolve_pname ps pn in
+    if peek ps = T_LPAREN then begin
+      (* Prefixed name followed by '(' is a function call *)
+      advance ps;
+      let args = if peek ps = T_RPAREN then [] else parse_expr_list ps in
+      expect ps T_RPAREN;
+      E_FunctionCall (iri, args)
+    end else
+      E_IRI iri
   | T_TRUE -> advance ps; E_BoolLit true
   | T_FALSE -> advance ps; E_BoolLit false
   | T_INTEGER s -> advance ps; E_NumericLit (Z.of_string s)
@@ -444,7 +473,7 @@ let rec parse_primary_expr ps =
     let f = parse_expr ps in expect ps T_RPAREN;
     E_If (c, t, f)
   | T_COALESCE -> advance ps; expect ps T_LPAREN;
-    let args = parse_expr_list ps in
+    let args = if peek ps = T_RPAREN then [] else parse_expr_list ps in
     expect ps T_RPAREN; E_Coalesce args
   | T_EXISTS -> advance ps; E_Exists (parse_group_graph_pattern ps)
   | T_NOT ->
@@ -517,7 +546,7 @@ and parse_builtin_call ps tok =
       E_FunctionCall ("http://www.w3.org/2005/xpath-functions#bnode", [e])
   | T_CONCAT ->
     advance ps; expect ps T_LPAREN;
-    let args = parse_expr_list ps in
+    let args = if peek ps = T_RPAREN then [] else parse_expr_list ps in
     expect ps T_RPAREN; E_Concat args
   | T_SUBSTR | T_SUBSTRING ->
     advance ps; expect ps T_LPAREN;
@@ -636,7 +665,7 @@ and parse_multiplicative_expr ps =
   let rec loop left =
     match peek ps with
     | T_TIMES -> advance ps; loop (E_Arith (Mul, left, parse_primary_expr ps))
-    | T_DIVIDE -> advance ps; loop (E_Arith (Div, left, parse_primary_expr ps))
+    | T_DIVIDE | T_SLASH -> advance ps; loop (E_Arith (Div, left, parse_primary_expr ps))
     | _ -> left
   in loop left
 
@@ -680,10 +709,9 @@ and parse_pattern_subject ps =
     (* [ :p :o ; ... ] blank node property list as subject *)
     let bnode = fresh_bnode ps in
     advance ps; (* skip [ *)
-    let triples = parse_property_list_not_empty ps (PS_BNode bnode) in
+    let (_triples, _paths) = parse_property_list_not_empty ps (PS_BNode bnode) in
     expect ps T_RBRACKET;
-    (* Return subject + extra triples *)
-    ignore triples; (* handled via side effect in caller *)
+    (* Triples and paths handled via side effect in caller *)
     PS_BNode bnode
   | _ -> raise (Parse_error (Printf.sprintf "Expected subject at pos %d" ps.lx.pos))
 
@@ -742,28 +770,28 @@ and parse_path_primary ps =
       advance ps;
       let paths = ref [] in
       let rec loop () =
-        paths := parse_path_primary ps :: !paths;
+        paths := parse_path_elt_or_inverse ps :: !paths;
         if peek ps = T_PIPE then (advance ps; loop ())
       in loop ();
       expect ps T_RPAREN;
       PP_NegatedSet (List.rev !paths)
     end else
-      PP_NegatedSet [parse_path_primary ps]
+      PP_NegatedSet [parse_path_elt_or_inverse ps]
   | _ -> raise (Parse_error (Printf.sprintf "Expected path at pos %d" ps.lx.pos))
 
 (* Parse a predicate-object list: ?p ?o [, ?o]* [; ?p ?o [, ?o]*]* *)
+(* Returns (triple_patterns, property_path_patterns) *)
 and parse_property_list_not_empty ps subject =
   let triples = ref [] in
+  let paths = ref [] in
   let rec parse_po () =
     let verb = parse_verb_or_path ps in
     let rec parse_objects () =
       let obj = parse_pattern_term ps in
       (match verb with
        | `Simple p -> triples := { tp_s = subject; tp_p = p; tp_o = obj } :: !triples
-       | `Path _path ->
-         (* Property path — need to emit GP_PropertyPath later *)
-         (* For now, store as triple with dummy predicate; will be handled at pattern level *)
-         triples := { tp_s = subject; tp_p = PT_IRI "urn:sparql:path:placeholder"; tp_o = obj } :: !triples);
+       | `Path path ->
+         paths := GP_PropertyPath (subject, path, obj) :: !paths);
       if peek ps = T_COMMA then (advance ps; parse_objects ())
     in
     parse_objects ();
@@ -774,7 +802,7 @@ and parse_property_list_not_empty ps subject =
     end
   in
   parse_po ();
-  List.rev !triples
+  (List.rev !triples, List.rev !paths)
 
 (* Parse the contents of a { } block — producing a group_graph_pattern *)
 and parse_group_graph_pattern ps =
@@ -782,8 +810,16 @@ and parse_group_graph_pattern ps =
   (* Check for sub-select *)
   if peek ps = T_SELECT then begin
     let q = parse_sub_select ps in
-    expect ps T_RBRACE;
-    GP_SubSelect q
+    (* Check for VALUES clause after sub-select but before closing brace *)
+    if peek ps = T_VALUES then begin
+      advance ps;
+      let (vars, rows) = parse_inline_data ps in
+      expect ps T_RBRACE;
+      GP_Join (GP_SubSelect q, GP_Values (vars, rows))
+    end else begin
+      expect ps T_RBRACE;
+      GP_SubSelect q
+    end
   end else begin
     let pat = parse_group_pattern_contents ps in
     expect ps T_RBRACE;
@@ -890,8 +926,12 @@ and parse_group_pattern_contents ps =
       (* Try to parse triple patterns *)
       (try
          let subject = parse_pattern_subject ps in
-         let triples = parse_property_list_not_empty ps subject in
+         let (triples, path_patterns) = parse_property_list_not_empty ps subject in
          current_bgp := List.rev_append triples !current_bgp;
+         if path_patterns <> [] then begin
+           flush_bgp ();
+           patterns := List.rev_append path_patterns !patterns
+         end;
          (match peek ps with T_DOT -> advance ps | _ -> ());
          loop ()
        with Parse_error _ -> ())
@@ -1115,6 +1155,24 @@ and parse_select_query ps =
     | _ -> raise (Parse_error "Expected integer after LIMIT")
   end else limit in
 
+  (* Post-query VALUES clause *)
+  let values = if peek ps = T_VALUES then begin
+    advance ps;
+    let (vars, rows) = parse_inline_data ps in
+    (* Convert VALUES (vars, rows) into solution_sequence *)
+    let mappings = List.filter_map (fun row ->
+      if List.length row <> List.length vars then None
+      else
+        let bindings = List.filter_map (fun (v, t_opt) ->
+          match t_opt with
+          | Some t -> Some (v, t)
+          | None -> None
+        ) (List.combine vars row) in
+        Some bindings
+    ) rows in
+    Some mappings
+  end else None in
+
   {
     q_base = ps.base;
     q_prefixes = Hashtbl.fold (fun k v acc -> (k, v) :: acc) ps.prefixes [];
@@ -1130,6 +1188,7 @@ and parse_select_query ps =
       sm_offset = offset;
       sm_limit = limit;
     };
+    q_values = values;
   }
 
 let parse_query input =
@@ -1184,6 +1243,7 @@ let parse_query input =
       q_having = None;
       q_modifier = { sm_order_by = None; sm_distinct = false; sm_reduced = false;
                      sm_offset = None; sm_limit = None };
+      q_values = None;
     }
   | T_CONSTRUCT ->
     advance ps;
@@ -1193,7 +1253,7 @@ let parse_query input =
       let triples = ref [] in
       while peek ps <> T_RBRACE && peek ps <> T_EOF do
         let subject = parse_pattern_subject ps in
-        let tps = parse_property_list_not_empty ps subject in
+        let (tps, _paths) = parse_property_list_not_empty ps subject in
         triples := List.rev_append tps !triples;
         (match peek ps with T_DOT -> advance ps | _ -> ())
       done;
@@ -1212,5 +1272,6 @@ let parse_query input =
       q_having = None;
       q_modifier = { sm_order_by = None; sm_distinct = false; sm_reduced = false;
                      sm_offset = None; sm_limit = None };
+      q_values = None;
     }
   | _ -> raise (Parse_error (Printf.sprintf "Expected SELECT, ASK, or CONSTRUCT at pos %d" ps.lx.pos))

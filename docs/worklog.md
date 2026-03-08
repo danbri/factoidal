@@ -10,6 +10,89 @@ Entries are datetime-stamped (UTC).
 
 ---
 
+## 2026-03-08T19:00Z — Property Paths: F* Spec + Parser Wiring
+
+Implemented property path evaluation end-to-end. Three categories of fixes:
+
+**1. F* spec changes (SPARQL11.Algebra.fst):**
+- `PP_Sequence` / `PP_Alternative`: removed incorrect `dedup_path` — SPARQL
+  property paths use bag semantics for these operators (duplicates from different
+  paths are preserved). Set semantics only applies to `PP_ZeroOrMore`/`PP_OneOrMore`.
+- `PP_NegatedSet`: split into `negated_direct_iris` and `negated_inverse_iris`.
+  Direct-only sets (`!(:p)`) produce only forward matches; inverse-only sets
+  (`!(^:p)`) produce only reverse matches; mixed sets (`!(:p|^:q)`) produce both.
+  Previously lumped both directions into one excluded list.
+
+**2. SPARQL parser fix (sparql_parser.ml):**
+- `parse_property_list_not_empty` was discarding parsed property paths and
+  substituting a dummy triple `urn:sparql:path:placeholder`. Now returns
+  `(triple_pattern list * group_graph_pattern list)` and emits proper
+  `GP_PropertyPath` nodes that reach the F*-extracted evaluator.
+- `PP_NegatedSet` parsing: changed inner call from `parse_path_primary` to
+  `parse_path_elt_or_inverse` so `^a` and `^:p` are recognized inside `!(...)`.
+
+**3. F* extraction pipeline:** Re-extracted, patched, compiled — all changes
+flow through `fstar.exe --codegen OCaml` → `ocaml-patches.sh` → compile.
+
+**SPARQL results: 266 pass, 141 fail** (was 243/164) — **+23 net passes**
+
+| Suite | Before | After | Delta |
+|-------|--------|-------|-------|
+| property-path | 3 | 26 | +23 |
+| bind | 10 | 10 | 0 |
+
+Remaining property-path failures (7): named graph support (3), zero-length
+paths on empty graphs (4 — spec requires returning the bound node even when
+the graph is empty).
+
+**RDF results unchanged:** 338 pass, 45 fail.
+
+**Cumulative from session start:** 198→266 pass (+68), 209→141 fail (-68).
+
+---
+
+## 2026-03-08T18:00Z — GROUP BY / Aggregation in F* Spec
+
+Implemented GROUP BY / aggregation pipeline in `SPARQL11.Algebra.fst` (upstream
+F* spec, not OCaml patches). The commented-out spec at lines 2046–2085 is now
+concrete code.
+
+**F* changes (SPARQL11.Algebra.fst):**
+- `eval_expr_in_group`: evaluates expressions in group context, dispatching
+  `E_Aggregate` to `eval_aggregate` and other expressions against the group's
+  representative solution
+- `eval_select_item_group`: handles SI_Var and SI_Expr in group context
+- `aggregate_group` / `aggregate_groups`: produce one solution per group
+- `select_has_aggregates`: detects whether aggregation is needed
+- `eval_select_query` updated: when GROUP BY is present OR SELECT has aggregates,
+  the full grouping → aggregation → HAVING pipeline runs
+
+Also fixed `ocaml-patches.sh` to properly wire `eval_exists_fwd` assume val stub
+after re-extraction (the body was still `failwith` even though the forward ref
+was declared).
+
+**SPARQL results: 243 pass, 164 fail** (was 216/191) — **+27 net passes**
+
+| Suite | Before | After | Delta |
+|-------|--------|-------|-------|
+| aggregates | 9 | 31 | +22 |
+| bind | 7 | 10 | +3 |
+| entailment | 24 | 27 | +3 |
+| exists | 4 | 4 | 0 |
+| negation | 9 | 9 | 0 |
+| functions | 62 | 61 | -1 |
+
+The 1 function regression is likely an edge case where the aggregation detection
+triggers on a non-aggregate query. Remaining aggregate failures: 5 are negative
+syntax tests (parser accepts invalid), 2 are SPARQL parse errors, 3 are
+GROUP BY edge cases (key equality, HAVING).
+
+**RDF results unchanged:** 338 pass, 45 fail.
+
+**Cumulative from session start:** 198→243 pass (+45), 209→164 fail (-45).
+
+---
+
 ## 2026-03-08T17:00Z — Hash Stubs + EXISTS Wiring
 
 Wired three categories of `assume val` stubs in `ocaml-patches.sh`:

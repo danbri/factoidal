@@ -93,10 +93,9 @@ content = content.replace(
   Digest.to_hex (Digest.string (\"sha512:\" ^ s))'''
 )
 
-# 2c. Wire EXISTS/NOT EXISTS in eval_pattern's GP_Filter case
-# The F* spec dispatches E_Exists/E_NotExists to eval_exists_fwd in GP_Filter,
-# but extraction lost this because eval_exists_fwd is assume val.
-# We need forward refs because eval_exists is defined after eval_pattern.
+# 2c. Wire eval_exists_fwd assume val stub.
+# eval_exists_fwd is declared as assume val in F* and extracted as failwith.
+# We need a forward ref because eval_exists is defined after eval_pattern.
 
 # Add forward ref declarations alongside the existing eval_expr refs
 content = content.replace(
@@ -109,20 +108,30 @@ let eval_expr_fwd_ref : (expr -> RDF_Graph_Executable.solution_mapping -> eval_r
 let eval_expr_fwd_ref : (expr -> RDF_Graph_Executable.solution_mapping -> eval_result) ref =
   ref (fun _ _ -> failwith \"eval_expr_fwd not yet wired\")
 let eval_exists_fwd_ref : (group_graph_pattern -> RDF_Graph_Executable.solution_mapping -> RDF_Graph_Executable.rdf_graph -> Prims.bool) ref =
-  ref (fun _ _ _ -> false)'''
+  ref (fun _ _ _ -> false)
+let eval_property_path_fwd_ref : (property_path -> RDF_Graph_Executable.rdf_graph -> (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list) ref =
+  ref (fun _ _ -> [])
+let eval_subselect_fwd_ref : (query -> RDF_Graph_Executable.rdf_graph -> solution_sequence) ref =
+  ref (fun _ _ -> [])'''
 )
 
-# Patch GP_Filter to use forward ref for EXISTS/NOT EXISTS
+# Replace eval_exists_fwd failwith body with forward ref dispatch
 content = content.replace(
-    '''  | GP_Filter (e, p') -> filter_solutions_fwd e (eval_pattern p' g)''',
-    '''  | GP_Filter (e, p') ->
-      let omega = eval_pattern p' g in
-      (match e with
-       | E_Exists sub_p ->
-         FStar_List_Tot_Base.filter (fun mu -> !eval_exists_fwd_ref sub_p mu g) omega
-       | E_NotExists sub_p ->
-         FStar_List_Tot_Base.filter (fun mu -> not (!eval_exists_fwd_ref sub_p mu g)) omega
-       | _ -> filter_solutions_fwd e omega)'''
+    '''  failwith \"Not yet implemented: SPARQL11.Algebra.eval_exists_fwd\"''',
+    '''  !eval_exists_fwd_ref uu___ uu___1 uu___2'''
+)
+
+# 2e. Wire eval_subselect_fwd to the concrete eval_select_query.
+content = content.replace(
+    '''  failwith \"Not yet implemented: SPARQL11.Algebra.eval_subselect_fwd\"''',
+    '''  !eval_subselect_fwd_ref uu___ uu___1'''
+)
+
+# 2d. Wire eval_property_path_fwd to the concrete eval_property_path.
+# Same forward-ref pattern: declare ref, replace failwith, wire after definition.
+content = content.replace(
+    '''  failwith \"Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd\"''',
+    '''  !eval_property_path_fwd_ref uu___ uu___1'''
 )
 
 # 3. Add wiring after eval_expr definition (before 'type group')
@@ -142,6 +151,24 @@ content = content.replace(
 let () = eval_exists_fwd_ref := eval_exists
 
 let filter_solutions (e : expr) (omega : solution_sequence) :'''
+)
+
+# 5. Wire eval_property_path_fwd_ref after eval_property_path is defined
+content = content.replace(
+    'type numeric_precision =',
+    '''(* Wire up eval_property_path_fwd to the real eval_property_path *)
+let () = eval_property_path_fwd_ref := eval_property_path
+
+type numeric_precision ='''
+)
+
+# 6. Wire eval_subselect_fwd_ref after eval_select_query is defined
+content = content.replace(
+    'let is_not_literal',
+    '''(* Wire up eval_subselect_fwd to the real eval_select_query *)
+let () = eval_subselect_fwd_ref := eval_select_query
+
+let is_not_literal'''
 )
 
 with open('$FILE', 'w') as f:
