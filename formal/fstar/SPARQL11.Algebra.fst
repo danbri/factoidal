@@ -1234,6 +1234,39 @@ assume val eval_expr_fwd : expr -> solution_mapping -> eval_result
 (* EXISTS/NOT EXISTS need graph context — forward ref to concrete eval_exists *)
 assume val eval_exists_fwd : group_graph_pattern -> solution_mapping -> rdf_graph -> bool
 
+(* Property path evaluation — concrete definition in Part 13, forward-declared
+   here so eval_pattern can use it for GP_PropertyPath *)
+type path_result_fwd = list (rdf_term * rdf_term)
+assume val eval_property_path_fwd : property_path -> rdf_graph -> path_result_fwd
+
+(* Convert property path results to solution mappings by matching against
+   subject/object pattern terms *)
+let path_result_to_solutions (ps : pattern_subject) (pt : pattern_term)
+  (pairs : path_result_fwd) : solution_sequence =
+  list_filter_map
+    (fun (pair : rdf_term * rdf_term) ->
+      let (s, o) = pair in
+      (* Try to bind subject *)
+      let mu_s = match ps with
+        | PS_Var v -> Some [(v, s)]
+        | PS_IRI i -> if rdf_term_eq (T_IRI i) s then Some [] else None
+        | PS_BNode b -> if rdf_term_eq (T_BNode b) s then Some [] else None in
+      match mu_s with
+      | None -> None
+      | Some bindings_s ->
+        (* Try to bind object *)
+        let mu_o = match pt with
+          | PT_Var v ->
+            (* Check if variable already bound to a different value *)
+            (match List.Tot.assoc v bindings_s with
+             | Some existing -> if rdf_term_eq existing o then Some bindings_s else None
+             | None -> Some ((v, o) :: bindings_s))
+          | PT_IRI i -> if rdf_term_eq (T_IRI i) o then Some bindings_s else None
+          | PT_BNode b -> if rdf_term_eq (T_BNode b) o then Some bindings_s else None
+          | PT_Literal l -> if rdf_term_eq (T_Literal l) o then Some bindings_s else None in
+        mu_o)
+    pairs
+
 (* LeftJoin (OPTIONAL): join + unmatched from left *)
 let left_join (omega1 omega2 : solution_sequence) (filter_expr : expr) : solution_sequence =
   List.Tot.concatMap
@@ -1337,9 +1370,10 @@ let rec eval_pattern (p : group_graph_pattern) (g : rdf_graph)
     (* Sub-SELECT: requires eval_select_query, deferred *)
     []
 
-  | GP_PropertyPath _ _ _ ->
-    (* [S1] Property paths: deferred *)
-    []
+  | GP_PropertyPath ps pp pt ->
+    (* Evaluate property path and convert results to solution mappings *)
+    let pairs = eval_property_path_fwd pp g in
+    path_result_to_solutions ps pt pairs
 
 (** ====================================================================== **)
 (** Part 8: SPARQL 1.1 Expression Evaluation (§17)                         **)
@@ -2216,13 +2250,19 @@ let rec list_dedup_by (#a:Type) (eq : a -> a -> bool) (l : list a) : Tot (list a
 let dedup_path (pairs : path_result) : path_result =
   list_dedup_by path_pair_eq pairs
 
-(* Helper: collect IRIs from a negated property set *)
-let rec negated_iris (ps : list property_path) : Tot (list wf_iri) (decreases ps) =
+(* Helper: collect direct IRIs from a negated property set *)
+let rec negated_direct_iris (ps : list property_path) : Tot (list wf_iri) (decreases ps) =
   match ps with
   | [] -> []
-  | PP_IRI i :: rest -> i :: negated_iris rest
-  | PP_Inverse (PP_IRI i) :: rest -> i :: negated_iris rest
-  | _ :: rest -> negated_iris rest
+  | PP_IRI i :: rest -> i :: negated_direct_iris rest
+  | _ :: rest -> negated_direct_iris rest
+
+(* Helper: collect inverse IRIs from a negated property set *)
+let rec negated_inverse_iris (ps : list property_path) : Tot (list wf_iri) (decreases ps) =
+  match ps with
+  | [] -> []
+  | PP_Inverse (PP_IRI i) :: rest -> i :: negated_inverse_iris rest
+  | _ :: rest -> negated_inverse_iris rest
 
 (* Helper: check if an IRI is in a list *)
 let rec iri_in_list (iri : wf_iri) (iris : list wf_iri) : Tot bool (decreases iris) =
@@ -2259,23 +2299,23 @@ let rec eval_property_path (p : property_path) (g : rdf_graph)
       pairs
 
   | PP_Sequence p1 p2 ->
-    (* { (s, o) | ∃ mid. (s, mid) ∈ eval p1 G ∧ (mid, o) ∈ eval p2 G } *)
+    (* { (s, o) | ∃ mid. (s, mid) ∈ eval p1 G ∧ (mid, o) ∈ eval p2 G }
+       Bag semantics: preserve duplicates from different paths *)
     let r1 = eval_property_path p1 g in
     let r2 = eval_property_path p2 g in
-    dedup_path
-      (List.Tot.concatMap
-        (fun (pair1 : rdf_term * rdf_term) ->
-          let (s, mid1) = pair1 in
-          List.Tot.concatMap
-            (fun (pair2 : rdf_term * rdf_term) ->
-              let (mid2, o) = pair2 in
-              if rdf_term_eq mid1 mid2 then [(s, o)] else [])
-            r2)
-        r1)
+    List.Tot.concatMap
+      (fun (pair1 : rdf_term * rdf_term) ->
+        let (s, mid1) = pair1 in
+        List.Tot.concatMap
+          (fun (pair2 : rdf_term * rdf_term) ->
+            let (mid2, o) = pair2 in
+            if rdf_term_eq mid1 mid2 then [(s, o)] else [])
+          r2)
+      r1
 
   | PP_Alternative p1 p2 ->
-    (* eval p1 G ∪ eval p2 G *)
-    dedup_path (eval_property_path p1 g @ eval_property_path p2 g)
+    (* eval p1 G ∪ eval p2 G — bag semantics *)
+    eval_property_path p1 g @ eval_property_path p2 g
 
   | PP_ZeroOrOne pp ->
     let reflexive = List.Tot.map (fun (n : rdf_term) -> (n, n)) (graph_nodes g) in
@@ -2283,22 +2323,84 @@ let rec eval_property_path (p : property_path) (g : rdf_graph)
     dedup_path (reflexive @ step)
 
   | PP_ZeroOrMore pp ->
-    let reflexive = List.Tot.map (fun (n : rdf_term) -> (n, n)) (graph_nodes g) in
+    (* ZeroOrMore: reflexive transitive closure.
+       Compute fixpoint: start with all graph nodes as reflexive pairs,
+       then repeatedly extend by one step until no new pairs are found.
+       [S1] Bounded iteration to ensure termination. *)
+    let nodes = graph_nodes g in
+    let reflexive = List.Tot.map (fun (n : rdf_term) -> (n, n)) nodes in
     let step = eval_property_path pp g in
-    dedup_path (reflexive @ step)
+    (* Extend: for each (s, mid) in current and (mid2, o) in step where mid=mid2,
+       add (s, o) if not already present *)
+    let extend (current : path_result) : path_result =
+      let new_pairs = List.Tot.concatMap
+        (fun (pair1 : rdf_term * rdf_term) ->
+          let (s, mid) = pair1 in
+          List.Tot.concatMap
+            (fun (pair2 : rdf_term * rdf_term) ->
+              let (mid2, o) = pair2 in
+              if rdf_term_eq mid mid2 then [(s, o)] else [])
+            step)
+        current in
+      dedup_path (current @ new_pairs) in
+    (* Iterate up to |nodes| times to reach fixpoint *)
+    let max_iter = List.Tot.length nodes in
+    let rec fixpoint (current : path_result) (fuel : nat)
+      : Tot path_result (decreases fuel) =
+      if fuel = 0 then current
+      else
+        let next = extend current in
+        if List.Tot.length next = List.Tot.length current then current
+        else fixpoint next (fuel - 1) in
+    fixpoint (dedup_path (reflexive @ step)) max_iter
 
   | PP_OneOrMore pp ->
-    (* [S1] Simplified: single-step evaluation only.
-       Full implementation requires transitive closure with cycle detection. *)
-    eval_property_path pp g
+    (* OneOrMore: transitive closure (at least one step).
+       Same as ZeroOrMore but without reflexive pairs. *)
+    let nodes = graph_nodes g in
+    let step = eval_property_path pp g in
+    let extend (current : path_result) : path_result =
+      let new_pairs = List.Tot.concatMap
+        (fun (pair1 : rdf_term * rdf_term) ->
+          let (s, mid) = pair1 in
+          List.Tot.concatMap
+            (fun (pair2 : rdf_term * rdf_term) ->
+              let (mid2, o) = pair2 in
+              if rdf_term_eq mid mid2 then [(s, o)] else [])
+            step)
+        current in
+      dedup_path (current @ new_pairs) in
+    let max_iter = List.Tot.length nodes in
+    let rec fixpoint (current : path_result) (fuel : nat)
+      : Tot path_result (decreases fuel) =
+      if fuel = 0 then current
+      else
+        let next = extend current in
+        if List.Tot.length next = List.Tot.length current then current
+        else fixpoint next (fuel - 1) in
+    fixpoint step max_iter
 
   | PP_NegatedSet ps ->
-    (* { (s, o) | (s, p, o) ∈ G, p ∉ iris(ps) } *)
-    let excluded = negated_iris ps in
-    List.Tot.concatMap
-      (fun (t : triple) ->
-        if iri_in_list t.p excluded then [] else [(subject_to_term t.s, t.o)])
-      g
+    (* Split negated set into direct and inverse exclusions.
+       Only produce direct pairs if set has direct IRIs (or no inverse IRIs).
+       Only produce inverse pairs if set has inverse IRIs. *)
+    let excluded_direct = negated_direct_iris ps in
+    let excluded_inverse = negated_inverse_iris ps in
+    let has_direct = List.Tot.length excluded_direct > 0 in
+    let has_inverse = List.Tot.length excluded_inverse > 0 in
+    let direct_pairs =
+      if has_inverse && not has_direct then []
+      else List.Tot.concatMap
+        (fun (t : triple) ->
+          if iri_in_list t.p excluded_direct then [] else [(subject_to_term t.s, t.o)])
+        g in
+    let inverse_pairs =
+      if has_direct && not has_inverse then []
+      else List.Tot.concatMap
+        (fun (t : triple) ->
+          if iri_in_list t.p excluded_inverse then [] else [(t.o, subject_to_term t.s)])
+        g in
+    direct_pairs @ inverse_pairs
 
 (* Specification (retained for reference):
 

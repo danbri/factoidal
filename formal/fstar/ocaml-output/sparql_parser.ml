@@ -680,10 +680,9 @@ and parse_pattern_subject ps =
     (* [ :p :o ; ... ] blank node property list as subject *)
     let bnode = fresh_bnode ps in
     advance ps; (* skip [ *)
-    let triples = parse_property_list_not_empty ps (PS_BNode bnode) in
+    let (_triples, _paths) = parse_property_list_not_empty ps (PS_BNode bnode) in
     expect ps T_RBRACKET;
-    (* Return subject + extra triples *)
-    ignore triples; (* handled via side effect in caller *)
+    (* Triples and paths handled via side effect in caller *)
     PS_BNode bnode
   | _ -> raise (Parse_error (Printf.sprintf "Expected subject at pos %d" ps.lx.pos))
 
@@ -742,28 +741,28 @@ and parse_path_primary ps =
       advance ps;
       let paths = ref [] in
       let rec loop () =
-        paths := parse_path_primary ps :: !paths;
+        paths := parse_path_elt_or_inverse ps :: !paths;
         if peek ps = T_PIPE then (advance ps; loop ())
       in loop ();
       expect ps T_RPAREN;
       PP_NegatedSet (List.rev !paths)
     end else
-      PP_NegatedSet [parse_path_primary ps]
+      PP_NegatedSet [parse_path_elt_or_inverse ps]
   | _ -> raise (Parse_error (Printf.sprintf "Expected path at pos %d" ps.lx.pos))
 
 (* Parse a predicate-object list: ?p ?o [, ?o]* [; ?p ?o [, ?o]*]* *)
+(* Returns (triple_patterns, property_path_patterns) *)
 and parse_property_list_not_empty ps subject =
   let triples = ref [] in
+  let paths = ref [] in
   let rec parse_po () =
     let verb = parse_verb_or_path ps in
     let rec parse_objects () =
       let obj = parse_pattern_term ps in
       (match verb with
        | `Simple p -> triples := { tp_s = subject; tp_p = p; tp_o = obj } :: !triples
-       | `Path _path ->
-         (* Property path — need to emit GP_PropertyPath later *)
-         (* For now, store as triple with dummy predicate; will be handled at pattern level *)
-         triples := { tp_s = subject; tp_p = PT_IRI "urn:sparql:path:placeholder"; tp_o = obj } :: !triples);
+       | `Path path ->
+         paths := GP_PropertyPath (subject, path, obj) :: !paths);
       if peek ps = T_COMMA then (advance ps; parse_objects ())
     in
     parse_objects ();
@@ -774,7 +773,7 @@ and parse_property_list_not_empty ps subject =
     end
   in
   parse_po ();
-  List.rev !triples
+  (List.rev !triples, List.rev !paths)
 
 (* Parse the contents of a { } block — producing a group_graph_pattern *)
 and parse_group_graph_pattern ps =
@@ -890,8 +889,12 @@ and parse_group_pattern_contents ps =
       (* Try to parse triple patterns *)
       (try
          let subject = parse_pattern_subject ps in
-         let triples = parse_property_list_not_empty ps subject in
+         let (triples, path_patterns) = parse_property_list_not_empty ps subject in
          current_bgp := List.rev_append triples !current_bgp;
+         if path_patterns <> [] then begin
+           flush_bgp ();
+           patterns := List.rev_append path_patterns !patterns
+         end;
          (match peek ps with T_DOT -> advance ps | _ -> ());
          loop ()
        with Parse_error _ -> ())
@@ -1193,7 +1196,7 @@ let parse_query input =
       let triples = ref [] in
       while peek ps <> T_RBRACE && peek ps <> T_EOF do
         let subject = parse_pattern_subject ps in
-        let tps = parse_property_list_not_empty ps subject in
+        let (tps, _paths) = parse_property_list_not_empty ps subject in
         triples := List.rev_append tps !triples;
         (match peek ps with T_DOT -> advance ps | _ -> ())
       done;

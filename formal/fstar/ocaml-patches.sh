@@ -108,13 +108,22 @@ let eval_expr_fwd_ref : (expr -> RDF_Graph_Executable.solution_mapping -> eval_r
 let eval_expr_fwd_ref : (expr -> RDF_Graph_Executable.solution_mapping -> eval_result) ref =
   ref (fun _ _ -> failwith \"eval_expr_fwd not yet wired\")
 let eval_exists_fwd_ref : (group_graph_pattern -> RDF_Graph_Executable.solution_mapping -> RDF_Graph_Executable.rdf_graph -> Prims.bool) ref =
-  ref (fun _ _ _ -> false)'''
+  ref (fun _ _ _ -> false)
+let eval_property_path_fwd_ref : (property_path -> RDF_Graph_Executable.rdf_graph -> (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list) ref =
+  ref (fun _ _ -> [])'''
 )
 
 # Replace eval_exists_fwd failwith body with forward ref dispatch
 content = content.replace(
     '''  failwith \"Not yet implemented: SPARQL11.Algebra.eval_exists_fwd\"''',
     '''  !eval_exists_fwd_ref uu___ uu___1 uu___2'''
+)
+
+# 2d. Wire eval_property_path_fwd to the concrete eval_property_path.
+# Same forward-ref pattern: declare ref, replace failwith, wire after definition.
+content = content.replace(
+    '''  failwith \"Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd\"''',
+    '''  !eval_property_path_fwd_ref uu___ uu___1'''
 )
 
 # 3. Add wiring after eval_expr definition (before 'type group')
@@ -134,6 +143,15 @@ content = content.replace(
 let () = eval_exists_fwd_ref := eval_exists
 
 let filter_solutions (e : expr) (omega : solution_sequence) :'''
+)
+
+# 5. Wire eval_property_path_fwd_ref after eval_property_path is defined
+content = content.replace(
+    'type numeric_precision =',
+    '''(* Wire up eval_property_path_fwd to the real eval_property_path *)
+let () = eval_property_path_fwd_ref := eval_property_path
+
+type numeric_precision ='''
 )
 
 with open('$FILE', 'w') as f:

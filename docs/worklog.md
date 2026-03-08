@@ -10,6 +10,47 @@ Entries are datetime-stamped (UTC).
 
 ---
 
+## 2026-03-08T19:00Z — Property Paths: F* Spec + Parser Wiring
+
+Implemented property path evaluation end-to-end. Three categories of fixes:
+
+**1. F* spec changes (SPARQL11.Algebra.fst):**
+- `PP_Sequence` / `PP_Alternative`: removed incorrect `dedup_path` — SPARQL
+  property paths use bag semantics for these operators (duplicates from different
+  paths are preserved). Set semantics only applies to `PP_ZeroOrMore`/`PP_OneOrMore`.
+- `PP_NegatedSet`: split into `negated_direct_iris` and `negated_inverse_iris`.
+  Direct-only sets (`!(:p)`) produce only forward matches; inverse-only sets
+  (`!(^:p)`) produce only reverse matches; mixed sets (`!(:p|^:q)`) produce both.
+  Previously lumped both directions into one excluded list.
+
+**2. SPARQL parser fix (sparql_parser.ml):**
+- `parse_property_list_not_empty` was discarding parsed property paths and
+  substituting a dummy triple `urn:sparql:path:placeholder`. Now returns
+  `(triple_pattern list * group_graph_pattern list)` and emits proper
+  `GP_PropertyPath` nodes that reach the F*-extracted evaluator.
+- `PP_NegatedSet` parsing: changed inner call from `parse_path_primary` to
+  `parse_path_elt_or_inverse` so `^a` and `^:p` are recognized inside `!(...)`.
+
+**3. F* extraction pipeline:** Re-extracted, patched, compiled — all changes
+flow through `fstar.exe --codegen OCaml` → `ocaml-patches.sh` → compile.
+
+**SPARQL results: 266 pass, 141 fail** (was 243/164) — **+23 net passes**
+
+| Suite | Before | After | Delta |
+|-------|--------|-------|-------|
+| property-path | 3 | 26 | +23 |
+| bind | 10 | 10 | 0 |
+
+Remaining property-path failures (7): named graph support (3), zero-length
+paths on empty graphs (4 — spec requires returning the bound node even when
+the graph is empty).
+
+**RDF results unchanged:** 338 pass, 45 fail.
+
+**Cumulative from session start:** 198→266 pass (+68), 209→141 fail (-68).
+
+---
+
 ## 2026-03-08T18:00Z — GROUP BY / Aggregation in F* Spec
 
 Implemented GROUP BY / aggregation pipeline in `SPARQL11.Algebra.fst` (upstream
