@@ -1009,6 +1009,14 @@ and parse_group_pattern_contents ps =
       flush_bgp ();
       (* Could be sub-select or nested group *)
       let sub = parse_group_graph_pattern ps in
+      (* Wrap GP_Bind/GP_LeftJoin/GP_Minus from nested groups so the
+         fold_left combiner does not rewrite them with outer-scope patterns.
+         A BIND in its own group { BIND(...) } must keep its own scope. *)
+      let sub = match sub with
+        | GP_Bind _ | GP_LeftJoin (GP_Empty, _, _) | GP_Minus (GP_Empty, _) ->
+          GP_Join (sub, GP_Empty)
+        | _ -> sub
+      in
       patterns := sub :: !patterns;
       (* Check for UNION after nested group *)
       if peek ps = T_UNION then begin
@@ -1504,6 +1512,19 @@ let validate_query (q : query) : query =
       in check_dups aliases
     | Select_All -> ())
   | _ -> ());
+  (* 2b. Check SELECTscope: if outer SELECT aliases to ?X and an inner sub-select
+     also projects ?X, reject *)
+  (match q.q_form with
+  | QF_Select (Select_Vars items) ->
+    let aliases = List.filter_map (fun item ->
+      match item with SI_Expr (_, v) -> Some v | _ -> None) items in
+    let inner_vars = pattern_vars q.q_pattern in
+    List.iter (fun v ->
+      if List.mem v inner_vars then
+        raise (Parse_error (Printf.sprintf
+          "Variable ?%s in SELECT expression already projected by sub-query" v))
+    ) aliases
+  | _ -> ());
   check_bind_scope q.q_pattern;
   (match q.q_form with
   | QF_Construct template when template = [] ->
@@ -1567,11 +1588,19 @@ let parse_query input =
     }
   | T_CONSTRUCT ->
     advance ps;
-    let template = if peek ps = T_LBRACE then begin
+    (* CONSTRUCT { template } WHERE { pattern }
+       or CONSTRUCT [FROM ...] WHERE { pattern } (WHERE pattern IS the template) *)
+    let has_template = peek ps = T_LBRACE in
+    let template = if has_template then begin
       advance ps;
       let triples = ref [] in
       while peek ps <> T_RBRACE && peek ps <> T_EOF do
         let subject = parse_pattern_subject ps in
+        (* Drain extras from subject *)
+        if !pending_extra_triples <> [] then begin
+          triples := List.rev_append !pending_extra_triples !triples;
+          pending_extra_triples := []
+        end;
         let (tps, _paths) = parse_property_list_not_empty ps subject in
         triples := List.rev_append tps !triples;
         (match peek ps with T_DOT -> advance ps | _ -> ())
@@ -1579,8 +1608,23 @@ let parse_query input =
       expect ps T_RBRACE;
       List.rev !triples
     end else [] in
+    (* Skip dataset clauses (FROM / FROM NAMED) *)
+    while (match peek ps with T_PNAME s -> String.uppercase_ascii s = "FROM" | _ -> false) do
+      advance ps;
+      (* Check for NAMED *)
+      (match peek ps with
+       | T_PNAME s when String.uppercase_ascii s = "NAMED" -> advance ps
+       | _ -> ());
+      ignore (parse_iri ps)
+    done;
     if peek ps = T_WHERE then advance ps;
     let pattern = parse_group_graph_pattern ps in
+    (* For CONSTRUCT WHERE (no explicit template), extract triples from the pattern *)
+    let template = if not has_template then
+      (match pattern with
+       | GP_BGP triples -> triples
+       | _ -> [])
+    else template in
     {
       q_base = ps.base;
       q_prefixes = Hashtbl.fold (fun k v acc -> (k, v) :: acc) ps.prefixes [];
