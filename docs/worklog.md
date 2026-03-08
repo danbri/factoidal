@@ -10,6 +10,34 @@ Entries are datetime-stamped (UTC).
 
 ---
 
+## 2026-03-08T17:00Z — Hash Stubs + EXISTS Wiring
+
+Wired three categories of `assume val` stubs in `ocaml-patches.sh`:
+
+1. **Hash functions** (MD5, SHA-1, SHA-256, SHA-384, SHA-512): OCaml `Digest`
+   stubs. MD5 produces correct results; SHA variants use Digest as placeholder
+   (OCaml stdlib only has MD5 — a proper crypto lib needed for SHA correctness).
+
+2. **eval_exists_fwd**: Forward-ref pattern (like eval_expr_ebv/fwd) wires the
+   `assume val` to the concrete `eval_exists` function. EXISTS/NOT EXISTS filters
+   now evaluate correctly.
+
+3. **GP_Filter patch**: Extraction lost the special E_Exists/E_NotExists dispatch
+   in GP_Filter. Patched to match on E_Exists/E_NotExists and call eval_exists
+   via the forward ref, falling back to filter_solutions_fwd for other exprs.
+
+**SPARQL results: 216 pass, 191 fail** (was 198/209) — **+18 passes**
+
+| Category | Before | After | Delta |
+|----------|--------|-------|-------|
+| functions | 52 | 62 | +10 |
+| negation | 4 | 9 | +5 |
+| exists | 1 | 4 | +3 |
+
+**RDF results unchanged:** 338 pass, 45 fail.
+
+---
+
 ## 2026-03-08T16:00Z — RDF 1.1 W3C Tests Added
 
 Added W3C RDF 1.1 conformance tests (N-Triples + Turtle) to the test runner.
