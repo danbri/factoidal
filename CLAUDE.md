@@ -36,6 +36,11 @@ formal/fstar/
     SPARQL11_Algebra.ml        genuinely F*-extracted OCaml (patched for assume vals)
     example.ml                 hand-written OCaml demo using extracted modules
     w3c_tests.ml               hand-written OCaml test harness (synthetic, not file-based)
+    ntriples_parser.ml         hand-written N-Triples parser (test infrastructure)
+    turtle_parser.ml           hand-written Turtle parser (test infrastructure)
+    srx_parser.ml              hand-written SPARQL Results XML parser (test infrastructure)
+    sparql_parser.ml           hand-written SPARQL 1.1 query parser (test infrastructure)
+    w3c_runner.ml              W3C manifest reader + test runner CLI (test infrastructure)
     fstar_int_stubs.js         js_of_ocaml int stubs
 ```
 
@@ -90,15 +95,27 @@ OCaml test runner (unverified I/O glue)
 W3C SPARQL 1.1 conformance results
 ```
 
-### Phase 1 — Run real W3C tests against extracted code
+### Phase 1 — Run real W3C tests against extracted code (DONE)
 
-1. Write an OCaml Turtle parser (test infrastructure, clearly marked unverified)
-2. Write an OCaml SPARQL query parser (test infrastructure)
-3. Write a manifest reader that loads W3C test suites from `tests/w3c/`
-4. Write an SRX (SPARQL Results XML) parser for expected results
-5. Build a test runner: load graph, parse query, call extracted `eval_select_query`,
-   compare results, report pass/fail
-6. Target: run ALL of `tests/w3c/sparql/sparql11/` — no cherry-picking
+All test infrastructure is written and working:
+
+1. N-Triples parser (ntriples_parser.ml)
+2. Turtle parser (turtle_parser.ml) — prefixes, base, collections, blank nodes, numerics
+3. SPARQL 1.1 query parser (sparql_parser.ml) — full syntax coverage
+4. SRX parser (srx_parser.ml) — SPARQL Results XML for expected results
+5. W3C manifest reader + test runner CLI (w3c_runner.ml)
+6. Runs ALL suites in `tests/w3c/sparql/sparql11/`
+
+**First test run results: 198 pass, 209 fail, 205 skip, 19 unsupported**
+
+Key passing suites: syntax-query (75/94), functions (52/75), bind (7/10),
+project-expression (6/7), entailment (24/70).
+
+Known failure categories (inputs for Phase 2):
+- Hash functions: assume vals not yet stubbed (hash_md5, hash_sha*)
+- EXISTS: eval_exists_fwd not wired
+- Property paths: eval returns [] (stub implementation)
+- Aggregates: partial support in F\* spec
 
 ### Phase 2 — Close gaps in F\* spec
 
@@ -129,12 +146,20 @@ The W3C test files live in `tests/w3c/` (submodule pointing to
 `github.com/w3c/rdf-tests`). Without initialising the submodule, the test
 runner will have no test data.
 
+### System prerequisites
+
+```bash
+# Debian/Ubuntu
+sudo apt-get install -y opam libgmp-dev pkg-config
+```
+
 ### F\* toolchain (opam)
 
 F\* and its OCaml dependencies are managed via opam. If not already installed:
 
 ```bash
-# Install opam if needed (https://opam.ocaml.org/doc/Install.html)
+# Initialize opam (first time only)
+opam init -y
 # Then create the F* switch:
 opam switch create fstar ocaml-base-compiler.4.14.1
 eval $(opam env --switch=fstar)
@@ -176,10 +201,22 @@ fstar.exe --lax --codegen OCaml --odir ocaml-output SPARQL11.Algebra.fst
 # Patch assume-val stubs
 ./ocaml-patches.sh ocaml-output/SPARQL11_Algebra.ml
 
-# Compile native OCaml binary
+# Compile native OCaml binary (example)
 cd ocaml-output
 ocamlfind ocamlopt -package fstar.lib,str -linkpkg -w -8 \
   RDF_Graph_Executable.ml SPARQL11_Algebra.ml example.ml -o example
+
+# Compile W3C test runner
+cd ocaml-output
+ocamlfind ocamlopt -package fstar.lib,str,zarith -linkpkg -w -8-26 \
+  RDF_Graph_Executable.ml SPARQL11_Algebra.ml \
+  ntriples_parser.ml turtle_parser.ml srx_parser.ml sparql_parser.ml \
+  w3c_runner.ml -o w3c_runner
+
+# Run W3C SPARQL 1.1 tests
+./w3c_runner                    # all suites
+./w3c_runner bind functions     # specific suites
+./w3c_runner --list             # list available suites
 
 # Full pipeline (extract + patch + compile + test + js)
 ./build-ocaml.sh
@@ -212,8 +249,10 @@ Manifests are Turtle files. Tests reference `.rq` (query), `.ttl` (data),
 - `z3` — SMT solver (z3-4.8.5, z3-4.13.3)
 - `fstar.lib` — F\* OCaml runtime library (opam)
 - `str` — OCaml regex library (for regex_match stub)
+- `zarith` — arbitrary-precision integers (F\* extracts `Prims.int` as `Z.t`)
 - `js_of_ocaml` — OCaml to JavaScript compiler (optional, for browser demos)
 - `zarith_stubs_js` — bigint stubs for js_of_ocaml (optional)
+- `libgmp-dev` — system package required by zarith (apt-get)
 
 ## Repository Structure
 
