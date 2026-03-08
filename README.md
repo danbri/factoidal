@@ -1,6 +1,8 @@
 # Factoidal
 
-A formally verified RDF graph library with F\* specifications, KaRaMeL-extracted C, a Rust/WebAssembly implementation, SPARQL query engine, and an interactive browser demo.
+A (eventually and partially) formally verified RDF graph library with F\* specifications, KaRaMeL-extracted C,
+wASM possibilities,
+SPARQL query engine.
 
 ## Overview
 
