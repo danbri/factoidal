@@ -1235,12 +1235,12 @@ let join (omega1 omega2 : solution_sequence) : solution_sequence =
 assume val eval_expr_ebv : expr -> solution_mapping -> bool
 assume val eval_expr_fwd : expr -> solution_mapping -> eval_result
 
-(* EXISTS/NOT EXISTS need graph context — forward ref to concrete eval_exists *)
-assume val eval_exists_fwd : group_graph_pattern -> solution_mapping -> rdf_graph -> bool
+(* EXISTS/NOT EXISTS need graph + dataset context — forward ref to concrete eval_exists *)
+assume val eval_exists_fwd : group_graph_pattern -> solution_mapping -> rdf_graph -> rdf_dataset -> bool
 
 (* Sub-SELECT evaluation — concrete definition in Part 16, forward-declared
    here so eval_pattern can use it for GP_SubSelect *)
-assume val eval_subselect_fwd : query -> rdf_graph -> solution_sequence
+assume val eval_subselect_fwd : query -> rdf_graph -> rdf_dataset -> solution_sequence
 
 (* Property path evaluation — concrete definition in Part 13, forward-declared
    here so eval_pattern can use it for GP_PropertyPath *)
@@ -1317,42 +1317,42 @@ let minus (omega1 omega2 : solution_sequence) : solution_sequence =
 
 (** 7.4 Graph pattern evaluation (§18.6) — CONCRETE **)
 
-(* Evaluate a group graph pattern against an RDF graph — CONCRETE.
-   [S6] GRAPH patterns evaluated against single default graph only.
+(* Evaluate a group graph pattern against an RDF graph and dataset — CONCRETE.
+   The dataset carries named graphs for GP_Graph evaluation.
    [S1] Property paths deferred.
    Sub-SELECT deferred (requires eval_select_query). *)
-let rec eval_pattern (p : group_graph_pattern) (g : rdf_graph)
+let rec eval_pattern (p : group_graph_pattern) (g : rdf_graph) (ds : rdf_dataset)
   : Tot solution_sequence (decreases p) =
   match p with
   | GP_BGP bgp -> eval_bgp bgp g
 
   | GP_Join p1 p2 ->
-    join (eval_pattern p1 g) (eval_pattern p2 g)
+    join (eval_pattern p1 g ds) (eval_pattern p2 g ds)
 
   | GP_LeftJoin p1 p2 filter_e ->
-    left_join (eval_pattern p1 g) (eval_pattern p2 g) filter_e
+    left_join (eval_pattern p1 g ds) (eval_pattern p2 g ds) filter_e
 
   | GP_Filter e p' ->
-    let omega = eval_pattern p' g in
+    let omega = eval_pattern p' g ds in
     (* EXISTS/NOT EXISTS require graph context — dispatch here rather than
        through eval_expr which has no graph parameter. *)
     (match e with
      | E_Exists sub_p ->
-       List.Tot.filter (fun mu -> eval_exists_fwd sub_p mu g) omega
+       List.Tot.filter (fun mu -> eval_exists_fwd sub_p mu g ds) omega
      | E_NotExists sub_p ->
-       List.Tot.filter (fun mu -> not (eval_exists_fwd sub_p mu g)) omega
+       List.Tot.filter (fun mu -> not (eval_exists_fwd sub_p mu g ds)) omega
      | _ -> filter_solutions_fwd e omega)
 
   | GP_Union p1 p2 ->
-    union (eval_pattern p1 g) (eval_pattern p2 g)
+    union (eval_pattern p1 g ds) (eval_pattern p2 g ds)
 
   | GP_Minus p1 p2 ->
-    minus (eval_pattern p1 g) (eval_pattern p2 g)
+    minus (eval_pattern p1 g ds) (eval_pattern p2 g ds)
 
   | GP_Empty -> [sm_empty]
 
   | GP_Bind e v p' ->
-    let omega = eval_pattern p' g in
+    let omega = eval_pattern p' g ds in
     List.Tot.map
       (fun mu ->
         match er_to_term (eval_expr_fwd e mu) with
@@ -1366,9 +1366,22 @@ let rec eval_pattern (p : group_graph_pattern) (g : rdf_graph)
   | GP_Values vars rows ->
     eval_values vars rows
 
-  | GP_Graph _ p' ->
-    (* [S6] Named graph patterns: evaluate against default graph *)
-    eval_pattern p' g
+  | GP_Graph gt p' ->
+    (* §18.6 GRAPH evaluation: evaluate p' against named graph(s) *)
+    (match gt with
+     | PT_IRI name ->
+       (* GRAPH <iri> { p } — evaluate p against the named graph identified by iri *)
+       (match lookup_named_graph name ds.ds_named with
+        | Some ng -> eval_pattern p' ng ds
+        | None -> [])  (* Named graph not in dataset → empty *)
+     | PT_Var v ->
+       (* GRAPH ?var { p } — iterate over all named graphs, binding ?var *)
+       List.Tot.concatMap
+         (fun (ng : named_graph) ->
+           let ng_results = eval_pattern p' ng.ng_graph ds in
+           List.Tot.map (fun mu -> sm_bind v (T_IRI ng.ng_name) mu) ng_results)
+         ds.ds_named
+     | _ -> eval_pattern p' g ds)  (* Other pattern terms: fallback to current graph *)
 
   | GP_Service _ _ _ ->
     (* SERVICE: remote execution, not supported *)
@@ -1376,7 +1389,7 @@ let rec eval_pattern (p : group_graph_pattern) (g : rdf_graph)
 
   | GP_SubSelect q ->
     (* Sub-SELECT: recursively evaluate the inner SELECT query *)
-    eval_subselect_fwd q g
+    eval_subselect_fwd q g ds
 
   | GP_PropertyPath ps pp pt ->
     (* Evaluate property path and convert results to solution mappings *)
@@ -2183,11 +2196,11 @@ let select_item_vars (items : list select_item) : list var_name =
    Applies: pattern evaluation → SELECT expressions → ORDER BY →
             projection → DISTINCT/REDUCED → OFFSET/LIMIT.
    GROUP BY, aggregation, and HAVING are skipped for now (assume val dependencies). *)
-let eval_select_query (q : query) (g : rdf_graph) : solution_sequence =
+let eval_select_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : solution_sequence =
   match q.q_form with
   | QF_Select sel ->
     (* 1. Evaluate WHERE clause *)
-    let omega0 = eval_pattern q.q_pattern g in
+    let omega0 = eval_pattern q.q_pattern g ds in
 
     (* 1b. Post-query VALUES — join against WHERE results *)
     let omega = match q.q_values with
@@ -2840,13 +2853,13 @@ let rec substitute_pattern (mu : solution_mapping) (p : group_graph_pattern)
   | GP_Empty -> GP_Empty
 
 let eval_exists (pattern : group_graph_pattern) (mu : solution_mapping)
-  (graph : rdf_graph) : bool =
+  (graph : rdf_graph) (ds : rdf_dataset) : bool =
   let substituted = substitute_pattern mu pattern in
-  List.Tot.length (eval_pattern substituted graph) > 0
+  List.Tot.length (eval_pattern substituted graph ds) > 0
 
 let eval_not_exists (pattern : group_graph_pattern) (mu : solution_mapping)
-  (graph : rdf_graph) : bool =
-  not (eval_exists pattern mu graph)
+  (graph : rdf_graph) (ds : rdf_dataset) : bool =
+  not (eval_exists pattern mu graph ds)
 
 (** ====================================================================== **)
 (** Part 18: SPARQL 1.1 Sub-SELECT (§12)                                  **)

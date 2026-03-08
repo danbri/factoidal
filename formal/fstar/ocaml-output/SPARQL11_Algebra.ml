@@ -2000,12 +2000,12 @@ let eval_expr_ebv_ref : (expr -> RDF_Graph_Executable.solution_mapping -> Prims.
   ref (fun _ _ -> failwith "eval_expr_ebv not yet wired")
 let eval_expr_fwd_ref : (expr -> RDF_Graph_Executable.solution_mapping -> eval_result) ref =
   ref (fun _ _ -> failwith "eval_expr_fwd not yet wired")
-let eval_exists_fwd_ref : (group_graph_pattern -> RDF_Graph_Executable.solution_mapping -> RDF_Graph_Executable.rdf_graph -> Prims.bool) ref =
-  ref (fun _ _ _ -> false)
+let eval_exists_fwd_ref : (group_graph_pattern -> RDF_Graph_Executable.solution_mapping -> RDF_Graph_Executable.rdf_graph -> RDF_Graph_Executable.rdf_dataset -> Prims.bool) ref =
+  ref (fun _ _ _ _ -> false)
 let eval_property_path_fwd_ref : (property_path -> RDF_Graph_Executable.rdf_graph -> (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list) ref =
   ref (fun _ _ -> [])
-let eval_subselect_fwd_ref : (query -> RDF_Graph_Executable.rdf_graph -> solution_sequence) ref =
-  ref (fun _ _ -> [])
+let eval_subselect_fwd_ref : (query -> RDF_Graph_Executable.rdf_graph -> RDF_Graph_Executable.rdf_dataset -> solution_sequence) ref =
+  ref (fun _ _ _ -> [])
 let eval_expr_ebv (e : expr)
   (mu : RDF_Graph_Executable.solution_mapping) : Prims.bool=
   !eval_expr_ebv_ref e mu
@@ -2014,11 +2014,13 @@ let eval_expr_fwd (e : expr)
   !eval_expr_fwd_ref e mu
 let eval_exists_fwd (uu___ : group_graph_pattern)
   (uu___1 : RDF_Graph_Executable.solution_mapping)
-  (uu___2 : RDF_Graph_Executable.rdf_graph) : Prims.bool=
-  !eval_exists_fwd_ref uu___ uu___1 uu___2
+  (uu___2 : RDF_Graph_Executable.rdf_graph)
+  (uu___3 : RDF_Graph_Executable.rdf_dataset) : Prims.bool=
+  !eval_exists_fwd_ref uu___ uu___1 uu___2 uu___3
 let eval_subselect_fwd (uu___ : query)
-  (uu___1 : RDF_Graph_Executable.rdf_graph) : solution_sequence=
-  !eval_subselect_fwd_ref uu___ uu___1
+  (uu___1 : RDF_Graph_Executable.rdf_graph)
+  (uu___2 : RDF_Graph_Executable.rdf_dataset) : solution_sequence=
+  !eval_subselect_fwd_ref uu___ uu___1 uu___2
 type path_result_fwd =
   (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list
 let eval_property_path_fwd (uu___ : property_path)
@@ -2120,27 +2122,29 @@ let minus (omega1 : solution_sequence) (omega2 : solution_sequence) :
                  (Prims.op_Negation (domains_disjoint mu1 mu2))) omega2))
     omega1
 let rec eval_pattern (p : group_graph_pattern)
-  (g : RDF_Graph_Executable.rdf_graph) : solution_sequence=
+  (g : RDF_Graph_Executable.rdf_graph)
+  (ds : RDF_Graph_Executable.rdf_dataset) : solution_sequence=
   match p with
   | GP_BGP bgp1 -> eval_bgp bgp1 g
-  | GP_Join (p1, p2) -> join (eval_pattern p1 g) (eval_pattern p2 g)
+  | GP_Join (p1, p2) -> join (eval_pattern p1 g ds) (eval_pattern p2 g ds)
   | GP_LeftJoin (p1, p2, filter_e) ->
-      left_join (eval_pattern p1 g) (eval_pattern p2 g) filter_e
+      left_join (eval_pattern p1 g ds) (eval_pattern p2 g ds) filter_e
   | GP_Filter (e, p') ->
-      let omega = eval_pattern p' g in
+      let omega = eval_pattern p' g ds in
       (match e with
        | E_Exists sub_p ->
-           FStar_List_Tot_Base.filter (fun mu -> eval_exists_fwd sub_p mu g)
-             omega
+           FStar_List_Tot_Base.filter
+             (fun mu -> eval_exists_fwd sub_p mu g ds) omega
        | E_NotExists sub_p ->
            FStar_List_Tot_Base.filter
-             (fun mu -> Prims.op_Negation (eval_exists_fwd sub_p mu g)) omega
+             (fun mu -> Prims.op_Negation (eval_exists_fwd sub_p mu g ds))
+             omega
        | uu___ -> filter_solutions_fwd e omega)
-  | GP_Union (p1, p2) -> union (eval_pattern p1 g) (eval_pattern p2 g)
-  | GP_Minus (p1, p2) -> minus (eval_pattern p1 g) (eval_pattern p2 g)
+  | GP_Union (p1, p2) -> union (eval_pattern p1 g ds) (eval_pattern p2 g ds)
+  | GP_Minus (p1, p2) -> minus (eval_pattern p1 g ds) (eval_pattern p2 g ds)
   | GP_Empty -> [sm_empty]
   | GP_Bind (e, v, p') ->
-      let omega = eval_pattern p' g in
+      let omega = eval_pattern p' g ds in
       FStar_List_Tot_Base.map
         (fun mu ->
            match er_to_term (eval_expr_fwd e mu) with
@@ -2150,9 +2154,28 @@ let rec eval_pattern (p : group_graph_pattern)
                 | FStar_Pervasives_Native.None -> sm_bind v t mu)
            | FStar_Pervasives_Native.None -> mu) omega
   | GP_Values (vars, rows) -> eval_values vars rows
-  | GP_Graph (uu___, p') -> eval_pattern p' g
+  | GP_Graph (gt, p') ->
+      (match gt with
+       | PT_IRI name ->
+           (match RDF_Graph_Executable.lookup_named_graph name
+                    ds.RDF_Graph_Executable.ds_named
+            with
+            | FStar_Pervasives_Native.Some ng -> eval_pattern p' ng ds
+            | FStar_Pervasives_Native.None -> [])
+       | PT_Var v ->
+           FStar_List_Tot_Base.concatMap
+             (fun ng ->
+                let ng_results =
+                  eval_pattern p' ng.RDF_Graph_Executable.ng_graph ds in
+                FStar_List_Tot_Base.map
+                  (fun mu ->
+                     sm_bind v
+                       (RDF_Graph_Executable.T_IRI
+                          (ng.RDF_Graph_Executable.ng_name)) mu) ng_results)
+             ds.RDF_Graph_Executable.ds_named
+       | uu___ -> eval_pattern p' g ds)
   | GP_Service (uu___, uu___1, uu___2) -> []
-  | GP_SubSelect q -> eval_subselect_fwd q g
+  | GP_SubSelect q -> eval_subselect_fwd q g ds
   | GP_PropertyPath (ps, pp, pt) ->
       let pairs = eval_property_path_fwd pp g in
       (* SPARQL semantics: ZeroOrMore/ZeroOrOne paths must include zero-length
@@ -2963,11 +2986,11 @@ let select_item_vars (items : select_item Prims.list) : var_name Prims.list=
   FStar_List_Tot_Base.map
     (fun item -> match item with | SI_Var v -> v | SI_Expr (uu___, v) -> v)
     items
-let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph) :
-  solution_sequence=
+let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
+  (ds : RDF_Graph_Executable.rdf_dataset) : solution_sequence=
   match q.q_form with
   | QF_Select sel ->
-      let omega0 = eval_pattern q.q_pattern g in
+      let omega0 = eval_pattern q.q_pattern g ds in
       let omega =
         match q.q_values with
         | FStar_Pervasives_Native.None -> omega0
@@ -3642,14 +3665,16 @@ let rec substitute_pattern (mu : RDF_Graph_Executable.solution_mapping)
   | GP_Empty -> GP_Empty
 let eval_exists (pattern : group_graph_pattern)
   (mu : RDF_Graph_Executable.solution_mapping)
-  (graph : RDF_Graph_Executable.rdf_graph) : Prims.bool=
+  (graph : RDF_Graph_Executable.rdf_graph)
+  (ds : RDF_Graph_Executable.rdf_dataset) : Prims.bool=
   let substituted = substitute_pattern mu pattern in
-  (FStar_List_Tot_Base.length (eval_pattern substituted graph)) >
+  (FStar_List_Tot_Base.length (eval_pattern substituted graph ds)) >
     Prims.int_zero
 let eval_not_exists (pattern : group_graph_pattern)
   (mu : RDF_Graph_Executable.solution_mapping)
-  (graph : RDF_Graph_Executable.rdf_graph) : Prims.bool=
-  Prims.op_Negation (eval_exists pattern mu graph)
+  (graph : RDF_Graph_Executable.rdf_graph)
+  (ds : RDF_Graph_Executable.rdf_dataset) : Prims.bool=
+  Prims.op_Negation (eval_exists pattern mu graph ds)
 (* Wire up eval_exists_fwd to the real eval_exists *)
 let () = eval_exists_fwd_ref := eval_exists
 

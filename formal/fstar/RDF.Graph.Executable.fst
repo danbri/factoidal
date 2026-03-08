@@ -108,6 +108,34 @@ type rdf_graph = list triple
 
 let empty_graph : rdf_graph = []
 
+(** 5b. RDF Dataset (§13.2 SPARQL) **)
+(* An RDF dataset comprises one default graph and zero or more named graphs.
+   Each named graph is identified by an IRI. *)
+type named_graph = {
+  ng_name : iri;
+  ng_graph : rdf_graph;
+}
+
+type rdf_dataset = {
+  ds_default : rdf_graph;
+  ds_named : list named_graph;
+}
+
+let empty_dataset : rdf_dataset = { ds_default = empty_graph; ds_named = [] }
+
+let make_dataset (default_g : rdf_graph) (named : list named_graph) : rdf_dataset =
+  { ds_default = default_g; ds_named = named }
+
+(* Look up a named graph by IRI *)
+let rec lookup_named_graph (name : iri) (named : list named_graph) : option rdf_graph =
+  match named with
+  | [] -> None
+  | ng :: rest -> if ng.ng_name = name then Some ng.ng_graph else lookup_named_graph name rest
+
+(* Collect all named graph IRIs *)
+let named_graph_iris (ds : rdf_dataset) : list iri =
+  List.Tot.map (fun ng -> ng.ng_name) ds.ds_named
+
 // Computes the set of all blank nodes in the graph
 let rec graph_bnodes (g:rdf_graph) : list bnode_id =
   match g with
