@@ -37,19 +37,89 @@ content = content.replace(
 )
 
 # 2. Replace regex_match stub with OCaml Str implementation
+# Includes XPath/Perl regex -> OCaml Str regex conversion (handles {n}, (), |, etc.)
 content = content.replace(
     '''let regex_match (uu___ : Prims.string) (uu___1 : Prims.string)
   (uu___2 : Prims.string FStar_Pervasives_Native.option) : Prims.bool=
   failwith \"Not yet implemented: SPARQL11.Algebra.regex_match\"''',
-    '''let regex_match (text : Prims.string) (pattern : Prims.string)
+    '''let xpath_to_str_regex (p : string) : string =
+  let open Stdlib in
+  let len = String.length p in
+  let buf = Buffer.create (len * 2) in
+  let i = ref 0 in
+  let last_atom = ref \"\" in
+  let set_atom s = last_atom := s; Buffer.add_string buf s in
+  while !i < len do
+    let c = p.[!i] in
+    if c = '\\\\' && !i + 1 < len then begin
+      let next = p.[!i + 1] in
+      if next = '(' || next = ')' || next = '|' || next = '?' ||
+         next = '{' || next = '}' || next = '+' || next = '*' then
+        (set_atom (String.make 1 next); i := !i + 2)
+      else if next = 'd' then (set_atom \"[0-9]\"; i := !i + 2)
+      else if next = 'D' then (set_atom \"[^0-9]\"; i := !i + 2)
+      else if next = 'w' then (set_atom \"[a-zA-Z0-9_]\"; i := !i + 2)
+      else if next = 'W' then (set_atom \"[^a-zA-Z0-9_]\"; i := !i + 2)
+      else if next = 's' then (set_atom \"[ \\\\t\\\\n\\\\r]\"; i := !i + 2)
+      else if next = 'S' then (set_atom \"[^ \\\\t\\\\n\\\\r]\"; i := !i + 2)
+      else (let s = String.sub p !i 2 in set_atom s; i := !i + 2)
+    end else if c = '(' then
+      (Buffer.add_string buf \"\\\\(\"; last_atom := \"\"; i := !i + 1)
+    else if c = ')' then
+      (Buffer.add_string buf \"\\\\)\"; last_atom := \"\\\\)\"; i := !i + 1)
+    else if c = '|' then
+      (Buffer.add_string buf \"\\\\|\"; last_atom := \"\"; i := !i + 1)
+    else if c = '?' then
+      (Buffer.add_string buf \"\\\\?\"; i := !i + 1)
+    else if c = '{' then begin
+      i := !i + 1;
+      let nb = Buffer.create 8 in
+      while !i < len && p.[!i] <> '}' && p.[!i] <> ',' do
+        Buffer.add_char nb p.[!i]; i := !i + 1 done;
+      let n = try int_of_string (Buffer.contents nb) with _ -> 1 in
+      if !i < len && p.[!i] = ',' then begin
+        i := !i + 1;
+        let mb = Buffer.create 8 in
+        while !i < len && p.[!i] <> '}' do
+          Buffer.add_char mb p.[!i]; i := !i + 1 done;
+        if !i < len then i := !i + 1;
+        let ms = Buffer.contents mb in
+        if ms = \"\" then begin
+          for _ = 2 to n do Buffer.add_string buf !last_atom done;
+          Buffer.add_string buf !last_atom; Buffer.add_char buf '*'
+        end else begin
+          let m = try int_of_string ms with _ -> n in
+          for _ = 2 to n do Buffer.add_string buf !last_atom done;
+          for _ = n + 1 to m do
+            Buffer.add_string buf !last_atom;
+            Buffer.add_string buf \"\\\\?\" done
+        end
+      end else begin
+        if !i < len then i := !i + 1;
+        for _ = 2 to n do Buffer.add_string buf !last_atom done
+      end
+    end else if c = '[' then begin
+      let start = !i in
+      i := !i + 1;
+      if !i < len && p.[!i] = '^' then i := !i + 1;
+      if !i < len && p.[!i] = ']' then i := !i + 1;
+      while !i < len && p.[!i] <> ']' do i := !i + 1 done;
+      if !i < len then i := !i + 1;
+      let cls = String.sub p start (!i - start) in
+      set_atom cls
+    end else (set_atom (String.make 1 c); i := !i + 1)
+  done;
+  Buffer.contents buf
+let regex_match (text : Prims.string) (pattern : Prims.string)
   (flags : Prims.string FStar_Pervasives_Native.option) : Prims.bool=
   try
     let case_insensitive = match flags with
       | FStar_Pervasives_Native.Some f -> String.contains f 'i'
       | FStar_Pervasives_Native.None -> false in
+    let converted = xpath_to_str_regex pattern in
     let re = if case_insensitive
-      then Str.regexp_case_fold pattern
-      else Str.regexp pattern in
+      then Str.regexp_case_fold converted
+      else Str.regexp converted in
     (try let _ = Str.search_forward re text 0 in true
      with Not_found -> false)
   with _ -> false'''
