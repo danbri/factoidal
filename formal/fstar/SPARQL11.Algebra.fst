@@ -1826,12 +1826,30 @@ let add_to_groups (key : list eval_result) (mu : solution_mapping) (groups : lis
   | None ->
     groups @ [{ g_key = key; g_solutions = [mu] }]
 
-(* Partition a solution sequence by GROUP BY expressions — CONCRETE implementation *)
+(* Extend a solution mapping with GROUP BY expression alias bindings.
+   For each GC_Expr (e, Some v), evaluate e against mu and bind v to the result. *)
+let extend_with_group_aliases (conds : list group_condition) (mu : solution_mapping)
+  : solution_mapping =
+  List.Tot.fold_left
+    (fun (acc : solution_mapping) (gc : group_condition) ->
+      match gc with
+      | GC_Expr e (Some v) ->
+        let r = eval_expr e mu in
+        (match er_to_term r with
+         | Some t -> sm_bind v t acc
+         | None -> acc)
+      | _ -> acc)
+    mu
+    conds
+
+(* Partition a solution sequence by GROUP BY expressions — CONCRETE implementation.
+   Also extends each solution mapping with alias bindings from GC_Expr (e, Some v). *)
 let group_by (conds : list group_condition) (omega : solution_sequence) : list group =
   List.Tot.fold_left
     (fun (groups : list group) (mu : solution_mapping) ->
       let key = eval_group_key conds mu in
-      add_to_groups key mu groups)
+      let mu' = extend_with_group_aliases conds mu in
+      add_to_groups key mu' groups)
     []
     omega
 
@@ -1948,41 +1966,58 @@ let eval_aggregate (fn : aggregate_fn) (distinct : bool) (e : expr) (g : group) 
 
 (** 10.3 HAVING filter **)
 
-(* HAVING filters groups after aggregation *)
+(* Rewrite an expression by replacing aggregate sub-expressions with their
+   pre-computed values.  This allows the standard eval_expr to evaluate
+   HAVING conditions like  COUNT(?O) > 2  —  the E_Aggregate node for
+   COUNT(?O) is replaced by E_NumericLit <computed count>, then eval_expr
+   can evaluate the comparison normally. *)
+let rec rewrite_aggregates (e : expr) (g : group) : Tot expr (decreases e) =
+  match e with
+  | E_Aggregate fn distinct sub_e ->
+    let r = eval_aggregate fn distinct sub_e g in
+    (match r with
+     | ER_Num n -> E_NumericLit n
+     | ER_Bool b -> E_BoolLit b
+     | ER_Dec s -> E_DecimalLit s
+     | ER_Dbl d -> E_DoubleLit d
+     | ER_Term t -> (match t with
+                     | T_IRI i -> E_IRI i
+                     | T_Literal l -> E_Literal l
+                     | _ -> E_BoolLit false)
+     | ER_Error -> E_BoolLit false)
+  | E_Compare op e1 e2 -> E_Compare op (rewrite_aggregates e1 g) (rewrite_aggregates e2 g)
+  | E_And e1 e2 -> E_And (rewrite_aggregates e1 g) (rewrite_aggregates e2 g)
+  | E_Or e1 e2 -> E_Or (rewrite_aggregates e1 g) (rewrite_aggregates e2 g)
+  | E_Arith op e1 e2 -> E_Arith op (rewrite_aggregates e1 g) (rewrite_aggregates e2 g)
+  | E_Not e1 -> E_Not (rewrite_aggregates e1 g)
+  | _ -> e  (* Leaf expressions pass through unchanged *)
+
+(* HAVING filters groups after aggregation.
+   Each HAVING condition is first rewritten to replace aggregate sub-expressions
+   with their computed values, then evaluated against the representative solution. *)
 let having_filter (conditions : list having_condition) (groups : list group) : list group =
   List.Tot.filter
     (fun g ->
+      let mu = match g.g_solutions with | mu :: _ -> mu | [] -> sm_empty in
       List.Tot.for_all
         (fun cond ->
-          (* Evaluate the HAVING condition in the context of the group.
-             Aggregate expressions are computed over the group's solutions;
-             other expressions use the representative (first) binding. *)
-          let v = match cond with
-            | E_Aggregate fn distinct sub_e -> eval_aggregate fn distinct sub_e g
-            | _ -> (match g.g_solutions with
-                    | mu :: _ -> eval_expr cond mu
-                    | [] -> ER_Error)
-          in ebv v)
+          let rewritten = rewrite_aggregates cond g in
+          ebv (eval_expr rewritten mu))
         conditions)
     groups
 
 (** 10.4 Aggregate group evaluation — one solution per group (§18.5) **)
 
 (* Evaluate an expression in group context.
-   When the expression is E_Aggregate, compute the aggregate over the group.
-   For other expressions, evaluate against the group's key binding (first solution
-   in the group serves as the representative for non-aggregate expressions like
-   GROUP BY variables). *)
+   Any E_Aggregate sub-expressions are rewritten to their computed values
+   over the group, then the result is evaluated against the representative
+   solution mapping (first in the group).  This handles both top-level
+   aggregates and nested ones (e.g., COUNT(?x) + 1). *)
 let eval_expr_in_group (e : expr) (g : group) : eval_result =
-  match e with
-  | E_Aggregate fn distinct sub_e -> eval_aggregate fn distinct sub_e g
-  | _ ->
-    (* Non-aggregate expression in SELECT with GROUP BY: evaluate against the
-       first solution in the group (GROUP BY variables are equal across all
-       solutions in the group, so any representative suffices) *)
-    (match g.g_solutions with
-     | mu :: _ -> eval_expr e mu
-     | [] -> ER_Error)
+  let rewritten = rewrite_aggregates e g in
+  match g.g_solutions with
+  | mu :: _ -> eval_expr rewritten mu
+  | [] -> eval_expr rewritten sm_empty
 
 (* Evaluate a SELECT item in group context — handles aggregates *)
 let eval_select_item_group (item : select_item) (g : group)

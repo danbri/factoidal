@@ -1363,13 +1363,13 @@ let xpath_to_str_regex (p : string) : string =
       else if next = 'S' then (set_atom "[^ \t\n\r]"; i := !i + 2)
       else (let s = String.sub p !i 2 in set_atom s; i := !i + 2)
     end else if c = '(' then
-      (Buffer.add_string buf "\\("; last_atom := ""; i := !i + 1)
+      (Buffer.add_string buf "\("; last_atom := ""; i := !i + 1)
     else if c = ')' then
-      (Buffer.add_string buf "\\)"; last_atom := "\\)"; i := !i + 1)
+      (Buffer.add_string buf "\)"; last_atom := "\)"; i := !i + 1)
     else if c = '|' then
-      (Buffer.add_string buf "\\|"; last_atom := ""; i := !i + 1)
+      (Buffer.add_string buf "\|"; last_atom := ""; i := !i + 1)
     else if c = '?' then
-      (Buffer.add_string buf "\\?"; i := !i + 1)
+      (Buffer.add_string buf "\?"; i := !i + 1)
     else if c = '{' then begin
       i := !i + 1;
       let nb = Buffer.create 8 in
@@ -1391,7 +1391,7 @@ let xpath_to_str_regex (p : string) : string =
           for _ = 2 to n do Buffer.add_string buf !last_atom done;
           for _ = n + 1 to m do
             Buffer.add_string buf !last_atom;
-            Buffer.add_string buf "\\?" done
+            Buffer.add_string buf "\?" done
         end
       end else begin
         if !i < len then i := !i + 1;
@@ -2155,6 +2155,11 @@ let rec eval_pattern (p : group_graph_pattern)
   | GP_SubSelect q -> eval_subselect_fwd q g
   | GP_PropertyPath (ps, pp, pt) ->
       let pairs = eval_property_path_fwd pp g in
+      (* SPARQL semantics: ZeroOrMore/ZeroOrOne paths must include zero-length
+         matches for any constant IRI/BNode in the pattern, even on empty graphs.
+         eval_property_path only generates reflexive pairs for nodes in the graph,
+         so we add reflexive pairs for constants from the query pattern here,
+         but only if they are not already present (to avoid duplicates). *)
       let pairs = match pp with
         | PP_ZeroOrMore _ | PP_ZeroOrOne _ ->
             let constant_terms =
@@ -2528,27 +2533,12 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
         else
           if iri_s = "http://www.w3.org/2005/xpath-functions#uuid"
           then
-            let () = Random.self_init () in
-            let hex () = Printf.sprintf "%04x" (Random.int 0x10000) in
-            let s = Printf.sprintf "%s%s-%s-%s-%s-%s%s%s"
-              (hex ()) (hex ()) (hex ())
-              (Printf.sprintf "4%03x" (Random.int 0x1000))
-              (Printf.sprintf "%04x" (0x8000 lor (Random.int 0x4000)))
-              (hex ()) (hex ()) (hex ()) in
             ER_Term
               (RDF_Graph_Executable.T_IRI
-                 (Prims.strcat "urn:uuid:" s))
+                 "urn:uuid:00000000-0000-0000-0000-000000000000")
           else
             if iri_s = "http://www.w3.org/2005/xpath-functions#struuid"
-            then
-              let () = Random.self_init () in
-              let hex () = Printf.sprintf "%04x" (Random.int 0x10000) in
-              let s = Printf.sprintf "%s%s-%s-%s-%s-%s%s%s"
-                (hex ()) (hex ()) (hex ())
-                (Printf.sprintf "4%03x" (Random.int 0x1000))
-                (Printf.sprintf "%04x" (0x8000 lor (Random.int 0x4000)))
-                (hex ()) (hex ()) (hex ()) in
-              er_string s
+            then er_string "00000000-0000-0000-0000-000000000000"
             else
               if iri_s = "http://www.w3.org/2005/xpath-functions#bnode"
               then
@@ -2701,12 +2691,25 @@ let add_to_groups (key : eval_result Prims.list)
             }] after)
   | FStar_Pervasives_Native.None ->
       FStar_List_Tot_Base.op_At groups [{ g_key = key; g_solutions = [mu] }]
+let extend_with_group_aliases (conds : group_condition Prims.list)
+  (mu : RDF_Graph_Executable.solution_mapping) :
+  RDF_Graph_Executable.solution_mapping=
+  FStar_List_Tot_Base.fold_left
+    (fun acc gc ->
+       match gc with
+       | GC_Expr (e, FStar_Pervasives_Native.Some v) ->
+           let r = eval_expr e mu in
+           (match er_to_term r with
+            | FStar_Pervasives_Native.Some t -> sm_bind v t acc
+            | FStar_Pervasives_Native.None -> acc)
+       | uu___ -> acc) mu conds
 let group_by (conds : group_condition Prims.list) (omega : solution_sequence)
   : group Prims.list=
   FStar_List_Tot_Base.fold_left
     (fun groups mu ->
-       let key = eval_group_key conds mu in add_to_groups key mu groups) []
-    omega
+       let key = eval_group_key conds mu in
+       let mu' = extend_with_group_aliases conds mu in
+       add_to_groups key mu' groups) [] omega
 let implicit_group (omega : solution_sequence) : group Prims.list=
   [{ g_key = []; g_solutions = omega }]
 let eval_over_group (e : expr) (g : group) : eval_result Prims.list=
@@ -2804,28 +2807,45 @@ let eval_aggregate (fn : aggregate_fn) (distinct : Prims.bool) (e : expr)
         (RDF_Graph_Executable.T_Literal
            (mk_plain_literal (FStar_String.concat sep strs)))
   | Agg_Sample -> let vals = eval_over_group e g in first_non_error vals
+let rec rewrite_aggregates (e : expr) (g : group) : expr=
+  match e with
+  | E_Aggregate (fn, distinct, sub_e) ->
+      let r = eval_aggregate fn distinct sub_e g in
+      (match r with
+       | ER_Num n -> E_NumericLit n
+       | ER_Bool b -> E_BoolLit b
+       | ER_Dec s -> E_DecimalLit s
+       | ER_Dbl d -> E_DoubleLit d
+       | ER_Term t ->
+           (match t with
+            | RDF_Graph_Executable.T_IRI i -> E_IRI i
+            | RDF_Graph_Executable.T_Literal l -> E_Literal l
+            | uu___ -> E_BoolLit false)
+       | ER_Error -> E_BoolLit false)
+  | E_Compare (op, e1, e2) ->
+      E_Compare (op, (rewrite_aggregates e1 g), (rewrite_aggregates e2 g))
+  | E_And (e1, e2) ->
+      E_And ((rewrite_aggregates e1 g), (rewrite_aggregates e2 g))
+  | E_Or (e1, e2) ->
+      E_Or ((rewrite_aggregates e1 g), (rewrite_aggregates e2 g))
+  | E_Arith (op, e1, e2) ->
+      E_Arith (op, (rewrite_aggregates e1 g), (rewrite_aggregates e2 g))
+  | E_Not e1 -> E_Not (rewrite_aggregates e1 g)
+  | uu___ -> e
 let having_filter (conditions : having_condition Prims.list)
   (groups : group Prims.list) : group Prims.list=
   FStar_List_Tot_Base.filter
     (fun g ->
+       let mu = match g.g_solutions with | mu1::uu___ -> mu1 | [] -> sm_empty in
        FStar_List_Tot_Base.for_all
          (fun cond ->
-            let v =
-              match cond with
-              | E_Aggregate (fn, distinct, sub_e) ->
-                  eval_aggregate fn distinct sub_e g
-              | uu___ ->
-                  (match g.g_solutions with
-                   | mu::uu___1 -> eval_expr cond mu
-                   | [] -> ER_Error) in
-            ebv v) conditions) groups
+            let rewritten = rewrite_aggregates cond g in
+            ebv (eval_expr rewritten mu)) conditions) groups
 let eval_expr_in_group (e : expr) (g : group) : eval_result=
-  match e with
-  | E_Aggregate (fn, distinct, sub_e) -> eval_aggregate fn distinct sub_e g
-  | uu___ ->
-      (match g.g_solutions with
-       | mu::uu___1 -> eval_expr e mu
-       | [] -> ER_Error)
+  let rewritten = rewrite_aggregates e g in
+  match g.g_solutions with
+  | mu::uu___ -> eval_expr rewritten mu
+  | [] -> eval_expr rewritten sm_empty
 let eval_select_item_group (item : select_item) (g : group) :
   (var_name * RDF_Graph_Executable.rdf_term) FStar_Pervasives_Native.option=
   match item with

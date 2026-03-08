@@ -51,7 +51,7 @@ content = content.replace(
   let set_atom s = last_atom := s; Buffer.add_string buf s in
   while !i < len do
     let c = p.[!i] in
-    if c = '\\\\' && !i + 1 < len then begin
+    if c = '\\\\\\\\' && !i + 1 < len then begin
       let next = p.[!i + 1] in
       if next = '(' || next = ')' || next = '|' || next = '?' ||
          next = '{' || next = '}' || next = '+' || next = '*' then
