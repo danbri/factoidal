@@ -10,6 +10,41 @@ Entries are datetime-stamped (UTC).
 
 ---
 
+## 2026-03-08T16:00Z — RDF 1.1 W3C Tests Added
+
+Added W3C RDF 1.1 conformance tests (N-Triples + Turtle) to the test runner.
+
+**New CLI options:**
+- `./w3c_runner --rdf` — run all RDF 1.1 suites
+- `./w3c_runner --rdf rdf-turtle` — run specific RDF suite
+- `./w3c_runner --all` — run both SPARQL 1.1 and RDF 1.1 suites
+- `./w3c_runner --list` — now lists both SPARQL and RDF suites
+
+**RDF 1.1 results: 338 pass, 45 fail (88.3%)**
+
+| Suite | Pass | Fail | Rate |
+|-------|------|------|------|
+| rdf-n-triples | 61 | 9 | 87.1% |
+| rdf-turtle | 277 | 36 | 88.5% |
+
+Test types supported:
+- `TestNTriplesPositiveSyntax` / `TestNTriplesNegativeSyntax`
+- `TestTurtlePositiveSyntax` / `TestTurtleNegativeSyntax`
+- `TestTurtleEval` (parse Turtle, compare triples to expected N-Triples)
+- `TestTurtleNegativeEval`
+
+Failure categories:
+- 22× parser too permissive (accepts invalid syntax — bad numeric escapes, bad
+  URIs, bad lang tags, bad struct)
+- 8× Unicode PN_CHARS_BASE handling (extended Unicode in prefix/local names)
+- 4× IRI resolution edge cases (RFC 3986)
+- 4× negative eval tests (parser doesn't detect semantic errors)
+- 2× parser too strict (turtle-syntax-prefix-02, turtle-syntax-number-11)
+
+SPARQL results unchanged at 198 pass, 209 fail.
+
+---
+
 ## 2026-03-08T14:00Z — Phase 1 Complete: W3C Test Infrastructure
 
 **Milestone:** First real W3C SPARQL 1.1 conformance run against F\*-extracted code.
