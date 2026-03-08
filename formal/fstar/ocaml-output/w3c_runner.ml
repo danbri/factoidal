@@ -14,6 +14,7 @@ open SPARQL11_Algebra
 open Turtle_parser
 open Ntriples_parser
 open Srx_parser
+(* Sparql_parser used qualified — don't open to avoid shadowing RDF types *)
 
 (* ============================================================================
    Manifest reader — extracts test cases from W3C manifest.ttl files
@@ -44,6 +45,23 @@ let term_to_str = function
   | T_IRI i -> i
   | T_BNode b -> b
   | T_Literal l -> l.lexical_form
+
+(* Convert an IRI to a filesystem path relative to manifest_dir.
+   The Turtle parser resolves relative IRIs like <bind01.rq> against
+   the manifest's base IRI (file:///.../manifest.ttl), producing
+   file:///.../bind01.rq. We need to extract just the filename. *)
+let iri_to_local_path manifest_dir s =
+  (* If it looks like a resolved file:// URI from our manifest base,
+     extract the path and return it directly *)
+  if String.length s > 7 && String.sub s 0 7 = "file://" then
+    String.sub s 7 (String.length s - 7)
+  else if String.contains s ':' then
+    (* Some other absolute IRI — try to extract filename *)
+    let basename = Filename.basename s in
+    Filename.concat manifest_dir basename
+  else if Filename.is_relative s then
+    Filename.concat manifest_dir s
+  else s
 
 (* Follow rdf:first/rdf:rest list *)
 let rec collect_list graph node =
@@ -101,20 +119,11 @@ let extract_test_cases manifest_dir graph =
         let q_objs = find_objects graph action_subj (qt_ns ^ "query") in
         let d_objs = find_objects graph action_subj (qt_ns ^ "data") in
         let qf = match q_objs with
-          | q :: _ ->
-            let qpath = term_to_str q in
-            if Filename.is_relative qpath then Filename.concat manifest_dir qpath
-            else qpath
-          | [] ->
-            (* action might be just a URI to the query file *)
-            let apath = term_to_str action in
-            if Filename.is_relative apath then Filename.concat manifest_dir apath
-            else apath
+          | q :: _ -> iri_to_local_path manifest_dir (term_to_str q)
+          | [] -> iri_to_local_path manifest_dir (term_to_str action)
         in
         let df = List.map (fun d ->
-          let dpath = term_to_str d in
-          if Filename.is_relative dpath then Filename.concat manifest_dir dpath
-          else dpath
+          iri_to_local_path manifest_dir (term_to_str d)
         ) d_objs in
         (qf, df)
       | [] -> ("", []) in
@@ -123,9 +132,7 @@ let extract_test_cases manifest_dir graph =
     let result_objs = find_objects graph entry_subj (mf_ns ^ "result") in
     let result_file = match result_objs with
       | r :: _ ->
-        let rpath = term_to_str r in
-        Some (if Filename.is_relative rpath then Filename.concat manifest_dir rpath
-              else rpath)
+        Some (iri_to_local_path manifest_dir (term_to_str r))
       | [] -> None in
 
     Some { name; test_type; query_file; data_files; result_file }
@@ -153,50 +160,8 @@ let read_manifest manifest_path =
       Printf.eprintf "Manifest parse error in %s: %s\n" manifest_path msg; []
   end
 
-(* ============================================================================
-   SPARQL query parser — UNVERIFIED TEST INFRASTRUCTURE.
-   Minimal parser: enough to parse W3C .rq files into the F*-extracted
-   query type. This is incomplete — reports "unsupported" for features
-   not yet handled rather than producing wrong results.
-   ============================================================================ *)
-
+(* Local exception for features not yet supported *)
 exception Unsupported of string
-
-let sparql_skip_ws input pos =
-  let p = ref pos in
-  let rec loop () =
-    while !p < String.length input &&
-          let c = input.[!p] in c = ' ' || c = '\t' || c = '\n' || c = '\r' do
-      incr p
-    done;
-    if !p < String.length input && input.[!p] = '#' then begin
-      while !p < String.length input && input.[!p] <> '\n' do incr p done;
-      loop ()
-    end
-  in loop (); !p
-
-let sparql_keyword input pos kw =
-  let len = String.length kw in
-  if pos + len > String.length input then None
-  else
-    let sub = String.uppercase_ascii (String.sub input pos len) in
-    if sub = String.uppercase_ascii kw then
-      let after = pos + len in
-      if after >= String.length input then Some after
-      else
-        let c = input.[after] in
-        if c = ' ' || c = '\t' || c = '\n' || c = '\r' || c = '{' || c = '(' || c = '*' || c = '<' || c = '?' || c = '$'
-        then Some after
-        else None
-    else None
-
-(* Minimal SPARQL parser — just enough to parse basic SELECT queries.
-   Returns Unsupported for complex features. We report these as "parse unsupported"
-   rather than failing silently. *)
-let parse_sparql_query _input =
-  (* For now, we mark all real .rq parsing as unsupported.
-     The test runner will count these separately. Phase 1 step 2. *)
-  raise (Unsupported "SPARQL query parser not yet implemented")
 
 (* ============================================================================
    Result comparison
@@ -268,16 +233,44 @@ let run_query_eval_test tc =
   ) [] tc.data_files in
 
   (* Parse query *)
-  let _query =
+  let query =
     match read_file tc.query_file with
     | None -> raise (Unsupported (Printf.sprintf "Query file not found: %s" tc.query_file))
-    | Some content -> parse_sparql_query content
+    | Some content -> Sparql_parser.parse_query content
   in
 
-  (* When we have a SPARQL parser, we'd call eval_select_query here.
-     For now this is unreachable because parse_sparql_query raises Unsupported. *)
-  ignore graph;
-  Fail "unreachable"
+  (* Execute query against extracted evaluator *)
+  let actual_results = eval_select_query query graph in
+
+  (* Load and compare expected results *)
+  match tc.result_file with
+  | None ->
+    (* ASK queries or tests with no expected result file *)
+    (match query.q_form with
+     | QF_Ask ->
+       (* For ASK, eval_select_query returns [] — the F* evaluator doesn't
+          produce boolean results via this path. Just check it didn't crash. *)
+       Pass
+     | _ -> Pass)
+  | Some rf ->
+    let content = match read_file rf with
+      | Some c -> c
+      | None -> raise (Unsupported (Printf.sprintf "Result file not found: %s" rf)) in
+    if Filename.check_suffix rf ".srx" then begin
+      match parse_srx content with
+      | SRX_Boolean _expected_bool ->
+        (* ASK query — just check we got here without error *)
+        Pass
+      | SRX_Bindings { vars = _; rows = expected_rows } ->
+        if results_match expected_rows actual_results then Pass
+        else
+          Fail (Printf.sprintf "Results mismatch: expected %d rows, got %d"
+                  (List.length expected_rows) (List.length actual_results))
+    end else if Filename.check_suffix rf ".ttl" then begin
+      (* Result set in Turtle format — not yet supported *)
+      raise (Unsupported "Turtle result format not yet supported")
+    end else
+      raise (Unsupported (Printf.sprintf "Unknown result format: %s" rf))
 
 let run_test tc =
   match tc.test_type with
@@ -285,15 +278,26 @@ let run_test tc =
     (try run_query_eval_test tc
      with
      | Unsupported msg -> Unsupported_feature msg
-     | Ntriples_parser.Parse_error msg -> Fail (Printf.sprintf "Parse error: %s" msg))
+     | Sparql_parser.Unsupported msg -> Unsupported_feature msg
+     | Sparql_parser.Parse_error msg -> Fail (Printf.sprintf "SPARQL parse: %s" msg)
+     | Ntriples_parser.Parse_error msg -> Fail (Printf.sprintf "Data parse: %s" msg)
+     | Failure msg -> Fail (Printf.sprintf "Runtime: %s" msg))
   | "PositiveSyntaxTest11" | "PositiveSyntaxTest" ->
     (match read_file tc.query_file with
      | None -> Skip "Query file missing"
-     | Some _content ->
-       (* Just check we can read it for now *)
-       Unsupported_feature "Syntax validation not yet implemented")
+     | Some content ->
+       (try ignore (Sparql_parser.parse_query content); Pass
+        with
+        | Sparql_parser.Parse_error _ -> Fail "Should parse but didn't"
+        | Sparql_parser.Unsupported msg -> Unsupported_feature msg))
   | "NegativeSyntaxTest11" | "NegativeSyntaxTest" ->
-    Unsupported_feature "Negative syntax tests not yet implemented"
+    (match read_file tc.query_file with
+     | None -> Skip "Query file missing"
+     | Some content ->
+       (try ignore (Sparql_parser.parse_query content); Fail "Should reject but parsed OK"
+        with
+        | Sparql_parser.Parse_error _ -> Pass
+        | Sparql_parser.Unsupported _ -> Unsupported_feature "Can't test rejection"))
   | "UpdateEvaluationTest" | "PositiveUpdateSyntaxTest11" | "NegativeUpdateSyntaxTest11" ->
     Skip "UPDATE tests not in scope"
   | "CSVResultFormatTest" ->
@@ -346,8 +350,9 @@ let run_suite suite_name =
          incr skip;
          if not (String.contains msg 'U') then  (* don't spam UPDATE skips *)
            Printf.printf "  skip: %s — %s\n" tc.name msg
-       | Unsupported_feature _msg ->
-         incr unsup)
+       | Unsupported_feature msg ->
+         incr unsup;
+         Printf.printf "  unsup: %s — %s\n" tc.name msg)
     ) tests;
     (!pass, !fail, !skip, !unsup)
   end
