@@ -89,6 +89,13 @@ let is_digit c = c >= '0' && c <= '9'
 let is_alnum c = is_alpha c || is_digit c
 let is_pn_char c = is_alnum c || c = '_' || c = '-' || c = '.' || Char.code c >= 0x80
 
+(* PN_LOCAL_ESC: valid characters after backslash in PN_LOCAL per SPARQL grammar.
+   Only: _~.-!$&'()*+,;=/?#@% *)
+let is_pn_local_esc c =
+  c = '_' || c = '~' || c = '.' || c = '-' || c = '!' || c = '$' || c = '&' ||
+  c = '\'' || c = '(' || c = ')' || c = '*' || c = '+' || c = ',' || c = ';' ||
+  c = '=' || c = '/' || c = '?' || c = '#' || c = '@' || c = '%'
+
 let lex_iri lx =
   lx.pos <- lx.pos + 1; (* skip < *)
   let buf = Buffer.create 64 in
@@ -152,10 +159,16 @@ and lex_string_escape lx =
   | '"' -> "\"" | '\'' -> "'" | '\\' -> "\\"
   | 'u' ->
     let hex = String.init 4 (fun _ -> lex_advance lx) in
-    Ntriples_parser.utf8_of_codepoint (int_of_string ("0x" ^ hex))
+    let cp = int_of_string ("0x" ^ hex) in
+    if cp >= 0xD800 && cp <= 0xDFFF then
+      raise (Parse_error (Printf.sprintf "Invalid surrogate codepoint: U+%04X" cp));
+    Ntriples_parser.utf8_of_codepoint cp
   | 'U' ->
     let hex = String.init 8 (fun _ -> lex_advance lx) in
-    Ntriples_parser.utf8_of_codepoint (int_of_string ("0x" ^ hex))
+    let cp = int_of_string ("0x" ^ hex) in
+    if cp >= 0xD800 && cp <= 0xDFFF then
+      raise (Parse_error (Printf.sprintf "Invalid surrogate codepoint: U+%04X" cp));
+    Ntriples_parser.utf8_of_codepoint cp
   | _ -> raise (Parse_error (Printf.sprintf "Invalid escape: \\%c" c))
 
 let lex_pname_or_keyword lx =
@@ -169,9 +182,14 @@ let lex_pname_or_keyword lx =
     while not (lex_at_end lx) &&
           let c = lex_peek lx in
           is_pn_char c || c = ':' || c = '%' || c = '\\' do
-      if lex_peek lx = '\\' then
-        (lx.pos <- lx.pos + 2)  (* skip escaped char *)
-      else
+      if lex_peek lx = '\\' then begin
+        lx.pos <- lx.pos + 1;
+        if lex_at_end lx then raise (Parse_error "Unterminated pname escape");
+        let esc = lex_peek lx in
+        if not (is_pn_local_esc esc) then
+          raise (Parse_error (Printf.sprintf "Invalid pname local escape: \\%c" esc));
+        lx.pos <- lx.pos + 1
+      end else
         lx.pos <- lx.pos + 1
     done;
     (* Remove trailing dots from the local part *)
@@ -332,7 +350,7 @@ let next_token lx =
       if lx.pos + 1 < String.length lx.input && lx.input.[lx.pos + 1] = ':' then begin
         lx.pos <- lx.pos + 2;
         let start = lx.pos in
-        while not (lex_at_end lx) && (is_pn_char (lex_peek lx) || lex_peek lx = ':') do
+        while not (lex_at_end lx) && is_pn_char (lex_peek lx) do
           lx.pos <- lx.pos + 1
         done;
         while lx.pos > start && lx.input.[lx.pos - 1] = '.' do lx.pos <- lx.pos - 1 done;
