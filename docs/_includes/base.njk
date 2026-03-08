@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }} — Factoidal</title>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; max-width: 760px; margin: 2em auto; padding: 0 1em; line-height: 1.6; color: #333; }
+  h1 { border-bottom: 2px solid #2d6a4f; padding-bottom: 0.3em; }
+  h2 { margin-top: 1.8em; }
+  a { color: #2d6a4f; }
+  nav { margin-bottom: 2em; font-size: 0.9em; }
+  nav a { margin-right: 1.2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ddd; padding: 0.4em 0.8em; text-align: left; }
+  th { background: #f5f5f5; }
+  pre { background: #f8f8f8; padding: 1em; overflow-x: auto; border-radius: 4px; }
+  code { background: #f0f0f0; padding: 0.15em 0.3em; border-radius: 3px; font-size: 0.9em; }
+  pre code { background: none; padding: 0; }
+  .score { font-size: 2em; font-weight: bold; color: #2d6a4f; }
+  footer { margin-top: 3em; border-top: 1px solid #ddd; padding-top: 1em; font-size: 0.9em; color: #666; }
+</style>
+</head>
+<body>
+<nav>
+  <a href="{{ '/' | url }}">Home</a>
+  <a href="{{ '/w3c-sparql11-test-report-2026-03-08/' | url }}">Test Report</a>
+  <a href="{{ '/worklog/' | url }}">Work Log</a>
+  <a href="https://github.com/danbri/factoidal">GitHub</a>
+</nav>
+{{ content | safe }}
+<footer>
+Factoidal — verified RDF/SPARQL from F*. Zero admits, zero hand-written implementations.
+</footer>
+</body>
+</html>

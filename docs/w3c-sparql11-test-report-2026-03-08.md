@@ -1,3 +1,8 @@
+---
+title: W3C SPARQL 1.1 Test Report
+layout: base.njk
+---
+
 # W3C SPARQL 1.1 Conformance Test Report
 
 **Date:** 2026-03-08

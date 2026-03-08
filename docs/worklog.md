@@ -1,3 +1,8 @@
+---
+title: Work Log
+layout: base.njk
+---
+
 # Factoidal Work Log
 
 Development log for the formally verified RDF/SPARQL implementation.
