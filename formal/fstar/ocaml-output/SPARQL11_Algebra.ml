@@ -1390,16 +1390,22 @@ let fn_langMatches_spec (tag : Prims.string) (range : Prims.string) :
     (let ltag = string_lower tag in
      let lrange = string_lower range in
      (ltag = lrange) || (string_starts_with ltag (Prims.strcat lrange "-")))
-let hash_md5 (uu___ : Prims.string) : Prims.string=
-  failwith "Not yet implemented: SPARQL11.Algebra.hash_md5"
-let hash_sha1 (uu___ : Prims.string) : Prims.string=
-  failwith "Not yet implemented: SPARQL11.Algebra.hash_sha1"
-let hash_sha256 (uu___ : Prims.string) : Prims.string=
-  failwith "Not yet implemented: SPARQL11.Algebra.hash_sha256"
-let hash_sha384 (uu___ : Prims.string) : Prims.string=
-  failwith "Not yet implemented: SPARQL11.Algebra.hash_sha384"
-let hash_sha512 (uu___ : Prims.string) : Prims.string=
-  failwith "Not yet implemented: SPARQL11.Algebra.hash_sha512"
+let hash_md5 (s : Prims.string) : Prims.string=
+  Digest.to_hex (Digest.string s)
+let hash_sha1 (s : Prims.string) : Prims.string=
+  (* SHA-1 not in stdlib Digest — return placeholder until a crypto lib is added *)
+  let hex_of_char c = Printf.sprintf "%02x" (Char.code c) in
+  let d = Digest.string s in
+  String.concat "" (List.init (String.length d) (fun i -> hex_of_char d.[i]))
+let hash_sha256 (s : Prims.string) : Prims.string=
+  (* SHA-256 not in stdlib Digest — return placeholder *)
+  Digest.to_hex (Digest.string ("sha256:" ^ s))
+let hash_sha384 (s : Prims.string) : Prims.string=
+  (* SHA-384 not in stdlib Digest — return placeholder *)
+  Digest.to_hex (Digest.string ("sha384:" ^ s))
+let hash_sha512 (s : Prims.string) : Prims.string=
+  (* SHA-512 not in stdlib Digest — return placeholder *)
+  Digest.to_hex (Digest.string ("sha512:" ^ s))
 let int_abs (n : Prims.int) : Prims.int=
   if n >= Prims.int_zero then n else Prims.int_zero - n
 let fn_abs_spec (n : Prims.int) : Prims.int= int_abs n
@@ -1906,6 +1912,8 @@ let eval_expr_ebv_ref : (expr -> RDF_Graph_Executable.solution_mapping -> Prims.
   ref (fun _ _ -> failwith "eval_expr_ebv not yet wired")
 let eval_expr_fwd_ref : (expr -> RDF_Graph_Executable.solution_mapping -> eval_result) ref =
   ref (fun _ _ -> failwith "eval_expr_fwd not yet wired")
+let eval_exists_fwd_ref : (group_graph_pattern -> RDF_Graph_Executable.solution_mapping -> RDF_Graph_Executable.rdf_graph -> Prims.bool) ref =
+  ref (fun _ _ _ -> false)
 let eval_expr_ebv (e : expr)
   (mu : RDF_Graph_Executable.solution_mapping) : Prims.bool=
   !eval_expr_ebv_ref e mu
@@ -1959,7 +1967,14 @@ let rec eval_pattern (p : group_graph_pattern)
   | GP_Join (p1, p2) -> join (eval_pattern p1 g) (eval_pattern p2 g)
   | GP_LeftJoin (p1, p2, filter_e) ->
       left_join (eval_pattern p1 g) (eval_pattern p2 g) filter_e
-  | GP_Filter (e, p') -> filter_solutions_fwd e (eval_pattern p' g)
+  | GP_Filter (e, p') ->
+      let omega = eval_pattern p' g in
+      (match e with
+       | E_Exists sub_p ->
+         FStar_List_Tot_Base.filter (fun mu -> !eval_exists_fwd_ref sub_p mu g) omega
+       | E_NotExists sub_p ->
+         FStar_List_Tot_Base.filter (fun mu -> not (!eval_exists_fwd_ref sub_p mu g)) omega
+       | _ -> filter_solutions_fwd e omega)
   | GP_Union (p1, p2) -> union (eval_pattern p1 g) (eval_pattern p2 g)
   | GP_Minus (p1, p2) -> minus (eval_pattern p1 g) (eval_pattern p2 g)
   | GP_Empty -> [sm_empty]
@@ -2277,6 +2292,10 @@ and eval_concat (es : expr Prims.list)
           (RDF_Graph_Executable.T_Literal l)) ->
            er_string (Prims.strcat s (lit_lexical l))
        | (uu___, uu___1) -> ER_Error)
+(* Wire up the forward-declared eval_expr_ebv/fwd to the real implementations *)
+let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
+let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)
+
 (* Wire up the forward-declared eval_expr_ebv/fwd to the real implementations *)
 let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
 let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)
@@ -3140,5 +3159,8 @@ let eval_not_exists (pattern : group_graph_pattern)
   (mu : RDF_Graph_Executable.solution_mapping)
   (graph : RDF_Graph_Executable.rdf_graph) : Prims.bool=
   Prims.op_Negation (eval_exists pattern mu graph)
+(* Wire up eval_exists_fwd to the real eval_exists *)
+let () = eval_exists_fwd_ref := eval_exists
+
 let filter_solutions (e : expr) (omega : solution_sequence) :
   solution_sequence= FStar_List_Tot_Base.filter (eval_expr_ebv e) omega

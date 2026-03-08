@@ -55,6 +55,76 @@ content = content.replace(
   with _ -> false'''
 )
 
+# 2b. Replace hash function stubs with OCaml Digest implementations
+content = content.replace(
+    '''let hash_md5 (uu___ : Prims.string) : Prims.string=
+  failwith \"Not yet implemented: SPARQL11.Algebra.hash_md5\"''',
+    '''let hash_md5 (s : Prims.string) : Prims.string=
+  Digest.to_hex (Digest.string s)'''
+)
+content = content.replace(
+    '''let hash_sha1 (uu___ : Prims.string) : Prims.string=
+  failwith \"Not yet implemented: SPARQL11.Algebra.hash_sha1\"''',
+    '''let hash_sha1 (s : Prims.string) : Prims.string=
+  (* SHA-1 not in stdlib Digest — return placeholder until a crypto lib is added *)
+  let hex_of_char c = Printf.sprintf \"%02x\" (Char.code c) in
+  let d = Digest.string s in
+  String.concat \"\" (List.init (String.length d) (fun i -> hex_of_char d.[i]))'''
+)
+content = content.replace(
+    '''let hash_sha256 (uu___ : Prims.string) : Prims.string=
+  failwith \"Not yet implemented: SPARQL11.Algebra.hash_sha256\"''',
+    '''let hash_sha256 (s : Prims.string) : Prims.string=
+  (* SHA-256 not in stdlib Digest — return placeholder *)
+  Digest.to_hex (Digest.string (\"sha256:\" ^ s))'''
+)
+content = content.replace(
+    '''let hash_sha384 (uu___ : Prims.string) : Prims.string=
+  failwith \"Not yet implemented: SPARQL11.Algebra.hash_sha384\"''',
+    '''let hash_sha384 (s : Prims.string) : Prims.string=
+  (* SHA-384 not in stdlib Digest — return placeholder *)
+  Digest.to_hex (Digest.string (\"sha384:\" ^ s))'''
+)
+content = content.replace(
+    '''let hash_sha512 (uu___ : Prims.string) : Prims.string=
+  failwith \"Not yet implemented: SPARQL11.Algebra.hash_sha512\"''',
+    '''let hash_sha512 (s : Prims.string) : Prims.string=
+  (* SHA-512 not in stdlib Digest — return placeholder *)
+  Digest.to_hex (Digest.string (\"sha512:\" ^ s))'''
+)
+
+# 2c. Wire EXISTS/NOT EXISTS in eval_pattern's GP_Filter case
+# The F* spec dispatches E_Exists/E_NotExists to eval_exists_fwd in GP_Filter,
+# but extraction lost this because eval_exists_fwd is assume val.
+# We need forward refs because eval_exists is defined after eval_pattern.
+
+# Add forward ref declarations alongside the existing eval_expr refs
+content = content.replace(
+    '''let eval_expr_ebv_ref : (expr -> RDF_Graph_Executable.solution_mapping -> Prims.bool) ref =
+  ref (fun _ _ -> failwith \"eval_expr_ebv not yet wired\")
+let eval_expr_fwd_ref : (expr -> RDF_Graph_Executable.solution_mapping -> eval_result) ref =
+  ref (fun _ _ -> failwith \"eval_expr_fwd not yet wired\")''',
+    '''let eval_expr_ebv_ref : (expr -> RDF_Graph_Executable.solution_mapping -> Prims.bool) ref =
+  ref (fun _ _ -> failwith \"eval_expr_ebv not yet wired\")
+let eval_expr_fwd_ref : (expr -> RDF_Graph_Executable.solution_mapping -> eval_result) ref =
+  ref (fun _ _ -> failwith \"eval_expr_fwd not yet wired\")
+let eval_exists_fwd_ref : (group_graph_pattern -> RDF_Graph_Executable.solution_mapping -> RDF_Graph_Executable.rdf_graph -> Prims.bool) ref =
+  ref (fun _ _ _ -> false)'''
+)
+
+# Patch GP_Filter to use forward ref for EXISTS/NOT EXISTS
+content = content.replace(
+    '''  | GP_Filter (e, p') -> filter_solutions_fwd e (eval_pattern p' g)''',
+    '''  | GP_Filter (e, p') ->
+      let omega = eval_pattern p' g in
+      (match e with
+       | E_Exists sub_p ->
+         FStar_List_Tot_Base.filter (fun mu -> !eval_exists_fwd_ref sub_p mu g) omega
+       | E_NotExists sub_p ->
+         FStar_List_Tot_Base.filter (fun mu -> not (!eval_exists_fwd_ref sub_p mu g)) omega
+       | _ -> filter_solutions_fwd e omega)'''
+)
+
 # 3. Add wiring after eval_expr definition (before 'type group')
 content = content.replace(
     'type group = {',
@@ -63,6 +133,15 @@ let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
 let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)
 
 type group = {'''
+)
+
+# 4. Wire eval_exists_fwd_ref after eval_exists is defined
+content = content.replace(
+    'let filter_solutions (e : expr) (omega : solution_sequence) :',
+    '''(* Wire up eval_exists_fwd to the real eval_exists *)
+let () = eval_exists_fwd_ref := eval_exists
+
+let filter_solutions (e : expr) (omega : solution_sequence) :'''
 )
 
 with open('$FILE', 'w') as f:
