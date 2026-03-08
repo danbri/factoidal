@@ -70,6 +70,9 @@ let utf8_of_codepoint cp =
     let b3 = 0x80 lor (cp land 0x3F) in
     Printf.sprintf "%c%c%c%c" (Char.chr b0) (Char.chr b1) (Char.chr b2) (Char.chr b3)
 
+(* Check if codepoint is a surrogate (invalid in UTF-8/RDF) *)
+let is_surrogate cp = cp >= 0xD800 && cp <= 0xDFFF
+
 let parse_hex_esc ps n =
   let hex = Buffer.create n in
   for _ = 1 to n do
@@ -78,7 +81,15 @@ let parse_hex_esc ps n =
     | _ -> raise (Parse_error "Invalid hex digit")
   done;
   let cp = int_of_string ("0x" ^ Buffer.contents hex) in
+  if is_surrogate cp then
+    raise (Parse_error (Printf.sprintf "Surrogate codepoint U+%04X not allowed" cp));
   utf8_of_codepoint cp
+
+(* Validate IRI characters: reject disallowed chars per RFC 3987 *)
+let is_invalid_iri_char c =
+  let code = Char.code c in
+  c = ' ' || c = '<' || c = '>' || c = '{' || c = '}' || c = '"' ||
+  c = '|' || c = '\\' || c = '^' || c = '`' || code < 0x20
 
 let parse_iri_ref ps =
   expect ps '<';
@@ -92,8 +103,32 @@ let parse_iri_ref ps =
        | Some 'u' -> Buffer.add_string buf (parse_hex_esc ps 4); loop ()
        | Some 'U' -> Buffer.add_string buf (parse_hex_esc ps 8); loop ()
        | _ -> raise (Parse_error "Invalid IRI escape"))
+    | Some c when is_invalid_iri_char c ->
+      raise (Parse_error (Printf.sprintf "Invalid char in IRI: U+%04X" (Char.code c)))
     | Some c -> Buffer.add_char buf c; loop ()
   in loop ()
+
+(* Validate that IRI is absolute (contains scheme ':') — required by N-Triples *)
+let validate_absolute_iri iri =
+  (* An absolute IRI must have a scheme, i.e., something like "http:" *)
+  let has_scheme =
+    try
+      let colon_pos = String.index iri ':' in
+      (* Everything before ':' must be scheme chars: letter followed by letter/digit/+/-/. *)
+      colon_pos > 0 &&
+      (let c = iri.[0] in (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) &&
+      (let ok = ref true in
+       for i = 1 to colon_pos - 1 do
+         let c = iri.[i] in
+         if not ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                 (c >= '0' && c <= '9') || c = '+' || c = '-' || c = '.') then
+           ok := false
+       done;
+       !ok)
+    with Not_found -> false
+  in
+  if not has_scheme then
+    raise (Parse_error (Printf.sprintf "Relative IRI not allowed in N-Triples: <%s>" iri))
 
 let is_bnode_char c =
   (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
@@ -130,6 +165,10 @@ let parse_string_escape ps =
   | _ -> raise (Parse_error "Invalid escape")
 
 let parse_literal ps =
+  (* N-Triples only allows simple "..." strings, not triple-quoted *)
+  if ps.pos + 2 < String.length ps.input &&
+     ps.input.[ps.pos] = '"' && ps.input.[ps.pos + 1] = '"' && ps.input.[ps.pos + 2] = '"' then
+    raise (Parse_error "Triple-quoted strings not allowed in N-Triples");
   expect ps '"';
   let buf = Buffer.create 64 in
   let rec loop () =
@@ -137,12 +176,18 @@ let parse_literal ps =
     | None -> raise (Parse_error "Unterminated literal")
     | Some '"' -> Buffer.contents buf
     | Some '\\' -> Buffer.add_string buf (parse_string_escape ps); loop ()
+    | Some '\n' | Some '\r' ->
+      raise (Parse_error "Newline not allowed in N-Triples string literal")
     | Some c -> Buffer.add_char buf c; loop ()
   in
   let lex = loop () in
   match peek ps with
   | Some '@' ->
     ps.pos <- ps.pos + 1;
+    (* Language tag must start with a letter per BCP 47 *)
+    (match peek ps with
+     | Some c when (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') -> ()
+     | _ -> raise (Parse_error "Language tag must start with a letter"));
     let lang = Buffer.create 8 in
     while ps.pos < String.length ps.input &&
           let c = ps.input.[ps.pos] in
@@ -158,6 +203,7 @@ let parse_literal ps =
                    ps.input.[ps.pos + 1] = '^' ->
     ps.pos <- ps.pos + 2;
     let dt = parse_iri_ref ps in
+    validate_absolute_iri dt;
     T_Literal { lexical_form = lex; datatype = dt; lang_tag = None }
   | _ ->
     T_Literal { lexical_form = lex; datatype = xsd_string; lang_tag = None }
@@ -170,7 +216,9 @@ let parse_nt_line line bnode_map =
     (* Subject *)
     let s = match peek ps with
       | Some '<' ->
-        let iri_str = parse_iri_ref ps in S_IRI iri_str
+        let iri_str = parse_iri_ref ps in
+        validate_absolute_iri iri_str;
+        S_IRI iri_str
       | Some '_' ->
         let label = parse_bnode_label ps in
         let id = match Hashtbl.find_opt bnode_map label with
@@ -180,15 +228,21 @@ let parse_nt_line line bnode_map =
       | _ -> raise (Parse_error "Expected subject")
     in
     skip_ws ps;
-    (* Predicate *)
+    (* Predicate — must be absolute IRI *)
     let p = match peek ps with
-      | Some '<' -> parse_iri_ref ps
+      | Some '<' ->
+        let iri_str = parse_iri_ref ps in
+        validate_absolute_iri iri_str;
+        iri_str
       | _ -> raise (Parse_error "Expected predicate")
     in
     skip_ws ps;
     (* Object *)
     let o = match peek ps with
-      | Some '<' -> T_IRI (parse_iri_ref ps)
+      | Some '<' ->
+        let iri_str = parse_iri_ref ps in
+        validate_absolute_iri iri_str;
+        T_IRI iri_str
       | Some '_' ->
         let label = parse_bnode_label ps in
         let id = match Hashtbl.find_opt bnode_map label with
@@ -199,7 +253,19 @@ let parse_nt_line line bnode_map =
       | _ -> raise (Parse_error "Expected object")
     in
     skip_ws ps;
-    (match peek ps with Some '.' -> ps.pos <- ps.pos + 1 | _ -> ());
+    (* N-Triples requires '.' terminator *)
+    (match peek ps with
+     | Some '.' -> ps.pos <- ps.pos + 1
+     | Some ',' -> raise (Parse_error "Comma not allowed in N-Triples")
+     | Some ';' -> raise (Parse_error "Semicolon not allowed in N-Triples")
+     | _ -> ());
+    (* After dot, only whitespace or comment allowed *)
+    skip_ws ps;
+    if not (at_end ps) then begin
+      match peek ps with
+      | Some '#' -> ()  (* comment — ok *)
+      | _ -> raise (Parse_error (Printf.sprintf "Extra content after triple at %d" ps.pos))
+    end;
     Some { s; p; o }
   end
 

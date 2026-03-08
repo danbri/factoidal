@@ -28,6 +28,7 @@ type test_case = {
   test_type : string;   (* "QueryEvaluationTest", "PositiveSyntaxTest11", etc. *)
   query_file : string;
   data_files : string list;
+  named_data_files : (string * string) list;  (* (graph_iri, file_path) *)
   result_file : string option;
 }
 
@@ -116,12 +117,13 @@ let extract_test_cases manifest_dir graph =
 
     (* Get action (blank node with qt:query, qt:data) *)
     let action_objs = find_objects graph entry_subj (mf_ns ^ "action") in
-    let query_file, data_files = match action_objs with
+    let query_file, data_files, named_data_files = match action_objs with
       | action :: _ ->
         let action_subj = match action with
           | T_IRI i -> S_IRI i | T_BNode b -> S_BNode b | _ -> S_IRI (term_to_str action) in
         let q_objs = find_objects graph action_subj (qt_ns ^ "query") in
         let d_objs = find_objects graph action_subj (qt_ns ^ "data") in
+        let gd_objs = find_objects graph action_subj (qt_ns ^ "graphData") in
         let qf = match q_objs with
           | q :: _ -> iri_to_local_path manifest_dir (term_to_str q)
           | [] -> iri_to_local_path manifest_dir (term_to_str action)
@@ -129,8 +131,12 @@ let extract_test_cases manifest_dir graph =
         let df = List.map (fun d ->
           iri_to_local_path manifest_dir (term_to_str d)
         ) d_objs in
-        (qf, df)
-      | [] -> ("", []) in
+        let ndf = List.map (fun d ->
+          let iri = term_to_str d in
+          (iri, iri_to_local_path manifest_dir iri)
+        ) gd_objs in
+        (qf, df, ndf)
+      | [] -> ("", [], []) in
 
     (* Get expected result *)
     let result_objs = find_objects graph entry_subj (mf_ns ^ "result") in
@@ -139,7 +145,7 @@ let extract_test_cases manifest_dir graph =
         Some (iri_to_local_path manifest_dir (term_to_str r))
       | [] -> None in
 
-    Some { name; test_type; query_file; data_files; result_file }
+    Some { name; test_type; query_file; data_files; named_data_files; result_file }
   ) entry_nodes
 
 (* Extract mf:assumedTestBase from manifest graph, if present *)
@@ -164,7 +170,10 @@ let read_manifest manifest_path =
   if input = "" then ([], None)
   else begin
     reset_bnodes ();
-    let base = "file://" ^ manifest_path in
+    let abs_path = if Filename.is_relative manifest_path then
+      Filename.concat (Sys.getcwd ()) manifest_path
+    else manifest_path in
+    let base = "file://" ^ abs_path in
     try
       let graph = parse_turtle input (Some base) in
       let assumed_base = extract_assumed_test_base graph in
@@ -232,19 +241,33 @@ let read_file path =
     Some (Bytes.to_string s)
   with Sys_error _ -> None
 
+let load_triples df =
+  match read_file df with
+  | None -> []
+  | Some content ->
+    reset_bnodes ();
+    let abs_df = if Filename.is_relative df then Filename.concat (Sys.getcwd ()) df else df in
+    let base = "file://" ^ abs_df in
+    if Filename.check_suffix df ".nt"
+    then parse_ntriples content
+    else if Filename.check_suffix df ".rdf"
+    then Rdf_xml_parser.parse_rdf_xml content (Some base)
+    else parse_turtle content (Some base)
+
 let run_query_eval_test tc =
-  (* Load data *)
+  (* Load default graph data *)
   let graph = List.fold_left (fun acc df ->
-    match read_file df with
-    | None -> acc
-    | Some content ->
-      reset_bnodes ();
-      let base = "file://" ^ df in
-      let triples = if Filename.check_suffix df ".nt"
-                    then parse_ntriples content
-                    else parse_turtle content (Some base) in
-      acc @ triples
+    acc @ load_triples df
   ) [] tc.data_files in
+
+  (* Load named graph data *)
+  let named_graphs = List.map (fun (iri, path) ->
+    let triples = load_triples path in
+    RDF_Graph_Executable.({ ng_name = iri; ng_graph = triples })
+  ) tc.named_data_files in
+
+  (* Construct dataset *)
+  let dataset = RDF_Graph_Executable.({ ds_default = graph; ds_named = named_graphs }) in
 
   (* Parse query *)
   let query =
@@ -254,7 +277,7 @@ let run_query_eval_test tc =
   in
 
   (* Execute query against extracted evaluator *)
-  let actual_results = eval_select_query query graph in
+  let actual_results = eval_select_query query graph dataset in
 
   (* Load and compare expected results *)
   match tc.result_file with
@@ -353,7 +376,9 @@ let make_turtle_base assumed_base filepath =
   | Some base ->
     let filename = Filename.basename filepath in
     base ^ filename
-  | None -> "file://" ^ filepath
+  | None ->
+    let abs_fp = if Filename.is_relative filepath then Filename.concat (Sys.getcwd ()) filepath else filepath in
+    "file://" ^ abs_fp
 
 let run_rdf_test assumed_base tc =
   match tc.test_type with
