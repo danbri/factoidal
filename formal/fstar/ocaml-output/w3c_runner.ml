@@ -246,6 +246,8 @@ let run_query_eval_test tc =
       let base = "file://" ^ abs_df in
       let triples = if Filename.check_suffix df ".nt"
                     then parse_ntriples content
+                    else if Filename.check_suffix df ".rdf"
+                    then Rdf_xml_parser.parse_rdf_xml content (Some base)
                     else parse_turtle content (Some base) in
       acc @ triples
   ) [] tc.data_files in
