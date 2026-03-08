@@ -1920,6 +1920,10 @@ let eval_expr_ebv (e : expr)
 let eval_expr_fwd (e : expr)
   (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
   !eval_expr_fwd_ref e mu
+let eval_exists_fwd (uu___ : group_graph_pattern)
+  (uu___1 : RDF_Graph_Executable.solution_mapping)
+  (uu___2 : RDF_Graph_Executable.rdf_graph) : Prims.bool=
+  !eval_exists_fwd_ref uu___ uu___1 uu___2
 let left_join (omega1 : solution_sequence) (omega2 : solution_sequence)
   (filter_expr : expr) : solution_sequence=
   FStar_List_Tot_Base.concatMap
@@ -1971,10 +1975,12 @@ let rec eval_pattern (p : group_graph_pattern)
       let omega = eval_pattern p' g in
       (match e with
        | E_Exists sub_p ->
-         FStar_List_Tot_Base.filter (fun mu -> !eval_exists_fwd_ref sub_p mu g) omega
+           FStar_List_Tot_Base.filter (fun mu -> eval_exists_fwd sub_p mu g)
+             omega
        | E_NotExists sub_p ->
-         FStar_List_Tot_Base.filter (fun mu -> not (!eval_exists_fwd_ref sub_p mu g)) omega
-       | _ -> filter_solutions_fwd e omega)
+           FStar_List_Tot_Base.filter
+             (fun mu -> Prims.op_Negation (eval_exists_fwd sub_p mu g)) omega
+       | uu___ -> filter_solutions_fwd e omega)
   | GP_Union (p1, p2) -> union (eval_pattern p1 g) (eval_pattern p2 g)
   | GP_Minus (p1, p2) -> minus (eval_pattern p1 g) (eval_pattern p2 g)
   | GP_Empty -> [sm_empty]
@@ -1998,6 +2004,27 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
   match e with
   | E_Var v ->
       (match sm_lookup v mu with
+       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_Literal l) ->
+           if (lit_datatype l) = RDF_Graph_Executable.xsd_integer
+           then
+             (match parse_int_string (lit_lexical l) with
+              | FStar_Pervasives_Native.Some n -> ER_Num n
+              | FStar_Pervasives_Native.None ->
+                  ER_Term (RDF_Graph_Executable.T_Literal l))
+           else
+             if (lit_datatype l) = RDF_Graph_Executable.xsd_decimal
+             then ER_Dec (lit_lexical l)
+             else
+               if
+                 ((lit_datatype l) = RDF_Graph_Executable.xsd_double) ||
+                   ((lit_datatype l) = xsd_float)
+               then ER_Dbl (lit_lexical l)
+               else
+                 if (lit_datatype l) = RDF_Graph_Executable.xsd_boolean
+                 then
+                   ER_Bool
+                     (((lit_lexical l) = "true") || ((lit_lexical l) = "1"))
+                 else ER_Term (RDF_Graph_Executable.T_Literal l)
        | FStar_Pervasives_Native.Some t -> ER_Term t
        | FStar_Pervasives_Native.None -> ER_Error)
   | E_IRI i -> ER_Term (RDF_Graph_Executable.T_IRI i)
@@ -2296,10 +2323,6 @@ and eval_concat (es : expr Prims.list)
 let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
 let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)
 
-(* Wire up the forward-declared eval_expr_ebv/fwd to the real implementations *)
-let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
-let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)
-
 type group = {
   g_key: eval_result Prims.list ;
   g_solutions: solution_sequence }
@@ -2518,6 +2541,46 @@ let having_filter (conditions : having_condition Prims.list)
   FStar_List_Tot_Base.filter
     (fun g -> FStar_List_Tot_Base.for_all (fun cond -> true) conditions)
     groups
+let eval_expr_in_group (e : expr) (g : group) : eval_result=
+  match e with
+  | E_Aggregate (fn, distinct, sub_e) -> eval_aggregate fn distinct sub_e g
+  | uu___ ->
+      (match g.g_solutions with
+       | mu::uu___1 -> eval_expr e mu
+       | [] -> ER_Error)
+let eval_select_item_group (item : select_item) (g : group) :
+  (var_name * RDF_Graph_Executable.rdf_term) FStar_Pervasives_Native.option=
+  match item with
+  | SI_Var v ->
+      (match g.g_solutions with
+       | mu::uu___ ->
+           (match sm_lookup v mu with
+            | FStar_Pervasives_Native.Some t ->
+                FStar_Pervasives_Native.Some (v, t)
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+       | [] -> FStar_Pervasives_Native.None)
+  | SI_Expr (e, v) ->
+      let r = eval_expr_in_group e g in
+      (match er_to_term r with
+       | FStar_Pervasives_Native.Some t ->
+           FStar_Pervasives_Native.Some (v, t)
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+let aggregate_group (items : select_item Prims.list) (g : group) :
+  RDF_Graph_Executable.solution_mapping=
+  list_filter_map (fun item -> eval_select_item_group item g) items
+let aggregate_groups (items : select_item Prims.list)
+  (groups : group Prims.list) : solution_sequence=
+  FStar_List_Tot_Base.map (aggregate_group items) groups
+let select_item_has_aggregate (item : select_item) : Prims.bool=
+  match item with
+  | SI_Var uu___ -> false
+  | SI_Expr (E_Aggregate (uu___, uu___1, uu___2), uu___3) -> true
+  | SI_Expr (uu___, uu___1) -> false
+let select_has_aggregates (sel : select_clause) : Prims.bool=
+  match sel with
+  | Select_All -> false
+  | Select_Vars items ->
+      FStar_List_Tot_Base.existsb select_item_has_aggregate items
 let compare_on_condition (c : order_condition)
   (mu1 : RDF_Graph_Executable.solution_mapping)
   (mu2 : RDF_Graph_Executable.solution_mapping) : Prims.int=
@@ -2607,28 +2670,66 @@ let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph) :
   match q.q_form with
   | QF_Select sel ->
       let omega = eval_pattern q.q_pattern g in
-      let omega' =
-        match sel with
-        | Select_Vars items -> eval_select_items items omega g
-        | Select_All -> omega in
-      let ordered =
-        match (q.q_modifier).sm_order_by with
-        | FStar_Pervasives_Native.None -> omega'
-        | FStar_Pervasives_Native.Some o -> sort_solutions o omega' in
-      let projected =
-        match sel with
-        | Select_Vars items ->
-            project_solutions (select_item_vars items) ordered
-        | Select_All -> ordered in
-      let deduped =
-        if (q.q_modifier).sm_distinct
-        then distinct_solutions projected
-        else
-          if (q.q_modifier).sm_reduced
-          then reduced_solutions projected
-          else projected in
-      slice_solutions (q.q_modifier).sm_offset (q.q_modifier).sm_limit
-        deduped
+      let needs_grouping =
+        match q.q_group_by with
+        | FStar_Pervasives_Native.Some uu___ -> true
+        | FStar_Pervasives_Native.None -> select_has_aggregates sel in
+      if needs_grouping
+      then
+        let groups =
+          match q.q_group_by with
+          | FStar_Pervasives_Native.Some conds -> group_by conds omega
+          | FStar_Pervasives_Native.None -> implicit_group omega in
+        let filtered_groups =
+          match q.q_having with
+          | FStar_Pervasives_Native.Some conditions ->
+              having_filter conditions groups
+          | FStar_Pervasives_Native.None -> groups in
+        let omega' =
+          match sel with
+          | Select_Vars items -> aggregate_groups items filtered_groups
+          | Select_All ->
+              FStar_List_Tot_Base.map
+                (fun grp ->
+                   match grp.g_solutions with
+                   | mu::uu___ -> mu
+                   | [] -> sm_empty) filtered_groups in
+        let ordered =
+          match (q.q_modifier).sm_order_by with
+          | FStar_Pervasives_Native.None -> omega'
+          | FStar_Pervasives_Native.Some o -> sort_solutions o omega' in
+        let deduped =
+          if (q.q_modifier).sm_distinct
+          then distinct_solutions ordered
+          else
+            if (q.q_modifier).sm_reduced
+            then reduced_solutions ordered
+            else ordered in
+        slice_solutions (q.q_modifier).sm_offset (q.q_modifier).sm_limit
+          deduped
+      else
+        (let omega' =
+           match sel with
+           | Select_Vars items -> eval_select_items items omega g
+           | Select_All -> omega in
+         let ordered =
+           match (q.q_modifier).sm_order_by with
+           | FStar_Pervasives_Native.None -> omega'
+           | FStar_Pervasives_Native.Some o -> sort_solutions o omega' in
+         let projected =
+           match sel with
+           | Select_Vars items ->
+               project_solutions (select_item_vars items) ordered
+           | Select_All -> ordered in
+         let deduped =
+           if (q.q_modifier).sm_distinct
+           then distinct_solutions projected
+           else
+             if (q.q_modifier).sm_reduced
+             then reduced_solutions projected
+             else projected in
+         slice_solutions (q.q_modifier).sm_offset (q.q_modifier).sm_limit
+           deduped)
   | QF_Construct uu___ -> []
   | QF_Ask -> []
   | QF_Describe uu___ -> []

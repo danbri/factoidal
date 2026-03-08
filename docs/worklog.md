@@ -10,6 +10,48 @@ Entries are datetime-stamped (UTC).
 
 ---
 
+## 2026-03-08T18:00Z — GROUP BY / Aggregation in F* Spec
+
+Implemented GROUP BY / aggregation pipeline in `SPARQL11.Algebra.fst` (upstream
+F* spec, not OCaml patches). The commented-out spec at lines 2046–2085 is now
+concrete code.
+
+**F* changes (SPARQL11.Algebra.fst):**
+- `eval_expr_in_group`: evaluates expressions in group context, dispatching
+  `E_Aggregate` to `eval_aggregate` and other expressions against the group's
+  representative solution
+- `eval_select_item_group`: handles SI_Var and SI_Expr in group context
+- `aggregate_group` / `aggregate_groups`: produce one solution per group
+- `select_has_aggregates`: detects whether aggregation is needed
+- `eval_select_query` updated: when GROUP BY is present OR SELECT has aggregates,
+  the full grouping → aggregation → HAVING pipeline runs
+
+Also fixed `ocaml-patches.sh` to properly wire `eval_exists_fwd` assume val stub
+after re-extraction (the body was still `failwith` even though the forward ref
+was declared).
+
+**SPARQL results: 243 pass, 164 fail** (was 216/191) — **+27 net passes**
+
+| Suite | Before | After | Delta |
+|-------|--------|-------|-------|
+| aggregates | 9 | 31 | +22 |
+| bind | 7 | 10 | +3 |
+| entailment | 24 | 27 | +3 |
+| exists | 4 | 4 | 0 |
+| negation | 9 | 9 | 0 |
+| functions | 62 | 61 | -1 |
+
+The 1 function regression is likely an edge case where the aggregation detection
+triggers on a non-aggregate query. Remaining aggregate failures: 5 are negative
+syntax tests (parser accepts invalid), 2 are SPARQL parse errors, 3 are
+GROUP BY edge cases (key equality, HAVING).
+
+**RDF results unchanged:** 338 pass, 45 fail.
+
+**Cumulative from session start:** 198→243 pass (+45), 209→164 fail (-45).
+
+---
+
 ## 2026-03-08T17:00Z — Hash Stubs + EXISTS Wiring
 
 Wired three categories of `assume val` stubs in `ocaml-patches.sh`:

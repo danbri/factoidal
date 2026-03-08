@@ -93,10 +93,9 @@ content = content.replace(
   Digest.to_hex (Digest.string (\"sha512:\" ^ s))'''
 )
 
-# 2c. Wire EXISTS/NOT EXISTS in eval_pattern's GP_Filter case
-# The F* spec dispatches E_Exists/E_NotExists to eval_exists_fwd in GP_Filter,
-# but extraction lost this because eval_exists_fwd is assume val.
-# We need forward refs because eval_exists is defined after eval_pattern.
+# 2c. Wire eval_exists_fwd assume val stub.
+# eval_exists_fwd is declared as assume val in F* and extracted as failwith.
+# We need a forward ref because eval_exists is defined after eval_pattern.
 
 # Add forward ref declarations alongside the existing eval_expr refs
 content = content.replace(
@@ -112,17 +111,10 @@ let eval_exists_fwd_ref : (group_graph_pattern -> RDF_Graph_Executable.solution_
   ref (fun _ _ _ -> false)'''
 )
 
-# Patch GP_Filter to use forward ref for EXISTS/NOT EXISTS
+# Replace eval_exists_fwd failwith body with forward ref dispatch
 content = content.replace(
-    '''  | GP_Filter (e, p') -> filter_solutions_fwd e (eval_pattern p' g)''',
-    '''  | GP_Filter (e, p') ->
-      let omega = eval_pattern p' g in
-      (match e with
-       | E_Exists sub_p ->
-         FStar_List_Tot_Base.filter (fun mu -> !eval_exists_fwd_ref sub_p mu g) omega
-       | E_NotExists sub_p ->
-         FStar_List_Tot_Base.filter (fun mu -> not (!eval_exists_fwd_ref sub_p mu g)) omega
-       | _ -> filter_solutions_fwd e omega)'''
+    '''  failwith \"Not yet implemented: SPARQL11.Algebra.eval_exists_fwd\"''',
+    '''  !eval_exists_fwd_ref uu___ uu___1 uu___2'''
 )
 
 # 3. Add wiring after eval_expr definition (before 'type group')

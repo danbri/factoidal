@@ -1880,6 +1880,62 @@ let having_filter (conditions : list having_condition) (groups : list group) : l
         conditions)
     groups
 
+(** 10.4 Aggregate group evaluation — one solution per group (§18.5) **)
+
+(* Evaluate an expression in group context.
+   When the expression is E_Aggregate, compute the aggregate over the group.
+   For other expressions, evaluate against the group's key binding (first solution
+   in the group serves as the representative for non-aggregate expressions like
+   GROUP BY variables). *)
+let eval_expr_in_group (e : expr) (g : group) : eval_result =
+  match e with
+  | E_Aggregate fn distinct sub_e -> eval_aggregate fn distinct sub_e g
+  | _ ->
+    (* Non-aggregate expression in SELECT with GROUP BY: evaluate against the
+       first solution in the group (GROUP BY variables are equal across all
+       solutions in the group, so any representative suffices) *)
+    (match g.g_solutions with
+     | mu :: _ -> eval_expr e mu
+     | [] -> ER_Error)
+
+(* Evaluate a SELECT item in group context — handles aggregates *)
+let eval_select_item_group (item : select_item) (g : group)
+  : option (var_name * rdf_term) =
+  match item with
+  | SI_Var v ->
+    (* Variable: look up in group's representative solution *)
+    (match g.g_solutions with
+     | mu :: _ -> (match sm_lookup v mu with
+                   | Some t -> Some (v, t)
+                   | None -> None)
+     | [] -> None)
+  | SI_Expr e v ->
+    let r = eval_expr_in_group e g in
+    (match er_to_term r with
+     | Some t -> Some (v, t)
+     | None -> None)
+
+(* Produce one solution mapping per group from SELECT items *)
+let aggregate_group (items : list select_item) (g : group) : solution_mapping =
+  list_filter_map (fun item -> eval_select_item_group item g) items
+
+(* Aggregate all groups into a solution sequence *)
+let aggregate_groups (items : list select_item) (groups : list group) : solution_sequence =
+  List.Tot.map (aggregate_group items) groups
+
+(* Check if a SELECT item contains an aggregate expression *)
+let select_item_has_aggregate (item : select_item) : bool =
+  match item with
+  | SI_Var _ -> false
+  | SI_Expr (E_Aggregate _ _ _) _ -> true
+  | SI_Expr _ _ -> false
+
+(* Check if any SELECT item uses aggregation *)
+let select_has_aggregates (sel : select_clause) : bool =
+  match sel with
+  | Select_All -> false
+  | Select_Vars items -> List.Tot.existsb select_item_has_aggregate items
+
 (** ====================================================================== **)
 (** Part 11: SPARQL 1.1 Solution Modifiers (§18.4, §9)                    **)
 (** ====================================================================== **)
@@ -2012,31 +2068,73 @@ let eval_select_query (q : query) (g : rdf_graph) : solution_sequence =
     (* 1. Evaluate WHERE clause *)
     let omega = eval_pattern q.q_pattern g in
 
-    (* 2–4. GROUP BY / aggregation / HAVING — skipped for now *)
+    (* 2. GROUP BY — partition into groups *)
+    let needs_grouping = match q.q_group_by with
+      | Some _ -> true
+      | None -> select_has_aggregates sel in
 
-    (* 5. SELECT expressions — evaluate (expr AS ?var) *)
-    let omega' = match sel with
-      | Select_Vars items -> eval_select_items items omega g
-      | Select_All -> omega in
+    if needs_grouping then begin
+      (* 2a. Partition solutions into groups *)
+      let groups = match q.q_group_by with
+        | Some conds -> group_by conds omega
+        | None -> implicit_group omega in
 
-    (* 6. ORDER BY *)
-    let ordered = match q.q_modifier.sm_order_by with
-      | None -> omega'
-      | Some o -> sort_solutions o omega' in
+      (* 3. HAVING — filter groups *)
+      let filtered_groups = match q.q_having with
+        | Some conditions -> having_filter conditions groups
+        | None -> groups in
 
-    (* 7. Projection *)
-    let projected = match sel with
-      | Select_Vars items -> project_solutions (select_item_vars items) ordered
-      | Select_All -> ordered in
+      (* 4. Aggregation — evaluate aggregate SELECT items per group *)
+      let omega' = match sel with
+        | Select_Vars items -> aggregate_groups items filtered_groups
+        | Select_All ->
+          (* SELECT * with GROUP BY: return representative solutions *)
+          List.Tot.map (fun (grp : group) ->
+            match grp.g_solutions with
+            | mu :: _ -> mu
+            | [] -> sm_empty) filtered_groups in
 
-    (* 8. DISTINCT / REDUCED *)
-    let deduped =
-      if q.q_modifier.sm_distinct then distinct_solutions projected
-      else if q.q_modifier.sm_reduced then reduced_solutions projected
-      else projected in
+      (* 6. ORDER BY *)
+      let ordered = match q.q_modifier.sm_order_by with
+        | None -> omega'
+        | Some o -> sort_solutions o omega' in
 
-    (* 9. OFFSET / LIMIT *)
-    slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit deduped
+      (* 8. DISTINCT / REDUCED *)
+      let deduped =
+        if q.q_modifier.sm_distinct then distinct_solutions ordered
+        else if q.q_modifier.sm_reduced then reduced_solutions ordered
+        else ordered in
+
+      (* 9. OFFSET / LIMIT *)
+      slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit deduped
+    end
+    else begin
+      (* No grouping — original pipeline *)
+
+      (* 5. SELECT expressions — evaluate (expr AS ?var) *)
+      let omega' = match sel with
+        | Select_Vars items -> eval_select_items items omega g
+        | Select_All -> omega in
+
+      (* 6. ORDER BY *)
+      let ordered = match q.q_modifier.sm_order_by with
+        | None -> omega'
+        | Some o -> sort_solutions o omega' in
+
+      (* 7. Projection *)
+      let projected = match sel with
+        | Select_Vars items -> project_solutions (select_item_vars items) ordered
+        | Select_All -> ordered in
+
+      (* 8. DISTINCT / REDUCED *)
+      let deduped =
+        if q.q_modifier.sm_distinct then distinct_solutions projected
+        else if q.q_modifier.sm_reduced then reduced_solutions projected
+        else projected in
+
+      (* 9. OFFSET / LIMIT *)
+      slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit deduped
+    end
 
   (* Other query forms — return empty for now *)
   | QF_Construct _ -> []
