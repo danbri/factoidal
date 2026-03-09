@@ -148,8 +148,7 @@ content = content.replace(
     '''let hash_sha384 (uu___ : Prims.string) : Prims.string=
   failwith \"Not yet implemented: SPARQL11.Algebra.hash_sha384\"''',
     '''let hash_sha384 (s : Prims.string) : Prims.string=
-  (* No Sha384 in sha package — use Sha512 truncated to 96 hex chars *)
-  String.sub (Sha512.to_hex (Sha512.string s)) 0 96'''
+  Digestif.SHA384.(to_hex (digest_string s))'''
 )
 content = content.replace(
     '''let hash_sha512 (uu___ : Prims.string) : Prims.string=

@@ -522,12 +522,50 @@ let er_string_preserve (s : string) (lang : option string) (dt : string) : eval_
   else er_string s
 
 (* Helper: evaluate arithmetic on integers *)
+// Simple decimal division for integer/integer -> decimal
+// Uses scaling by 10^16 for precision
+let int_div_decimal (a b : int) : string =
+  if b = 0 then "0.0"
+  else
+    let scale_factor = 10000000000000000 in  // 10^16
+    let scaled = op_Multiply a scale_factor in
+    let result = if b = 0 then 0 else scaled / b in
+    let abs_r = if result < 0 then 0 - result else result in
+    let sign = if result < 0 then "-" else "" in
+    let int_part = if scale_factor = 0 then 0 else abs_r / scale_factor in
+    let frac_part = abs_r - (op_Multiply int_part scale_factor) in
+    if frac_part = 0 then sign ^ string_of_int int_part ^ ".0"
+    else
+      // Build fractional string with leading zeros
+      let frac_str = string_of_int frac_part in
+      let frac_len = String.length frac_str in
+      let rec make_zeros_simple (n : nat) : Tot string (decreases n) =
+        if n = 0 then "" else "0" ^ make_zeros_simple (n - 1) in
+      let padded = if frac_len < 16 then make_zeros_simple (16 - frac_len) ^ frac_str else frac_str in
+      // Strip trailing zeros but keep at least one decimal digit
+      let chars = String.list_of_string padded in
+      let rec strip_tz (cs : list FStar.Char.char) : Tot (list FStar.Char.char) (decreases cs) =
+        match cs with
+        | [] -> [FStar.Char.char_of_int 48]  // "0"
+        | _ ->
+          let rev_cs = List.Tot.rev cs in
+          let rec drop_zeros (rs : list FStar.Char.char) : Tot (list FStar.Char.char) (decreases rs) =
+            match rs with
+            | c :: rest -> if FStar.Char.int_of_char c = 48 then drop_zeros rest else rs
+            | [] -> [FStar.Char.char_of_int 48] in
+          List.Tot.rev (drop_zeros rev_cs) in
+      let trimmed = String.string_of_list (strip_tz chars) in
+      sign ^ string_of_int int_part ^ "." ^ trimmed
+
 let eval_arith_int (op : arith_op) (a b : int) : eval_result =
   match op with
   | Add -> ER_Num (a + b)
   | Sub -> ER_Num (a - b)
   | Mul -> ER_Num (op_Multiply a b)
-  | Div -> if b = 0 then ER_Error else ER_Num (a / b)
+  | Div ->
+    // SPARQL spec: integer / integer = xsd:decimal
+    if b = 0 then ER_Error
+    else ER_Dec (int_div_decimal a b)
 
 (* Helper: extract the xsd:dateTime lexical form from a literal *)
 let er_to_datetime_lex (v : eval_result) : option string =
@@ -1131,6 +1169,25 @@ let dt_minutes (s : string) : option int =
   else parse_int_string (String.sub s 14 2)
 
 (* SECONDS: extract seconds (including fractional) from xsd:dateTime *)
+// Strip leading zeros from a numeric string, preserving at least one digit
+// and handling the decimal part correctly: "01.5" -> "1.5", "00" -> "0"
+let strip_leading_zeros_num (s : string) : string =
+  let chars = String.list_of_string s in
+  let zero_code = 48 in
+  let rec skip_zeros (cs : list FStar.Char.char) : Tot (list FStar.Char.char) (decreases cs) =
+    match cs with
+    | c :: rest ->
+      if FStar.Char.int_of_char c = zero_code then
+        (match rest with
+         | [] -> cs  // keep last zero
+         | c2 :: _ ->
+           let c2i = FStar.Char.int_of_char c2 in
+           if c2i = 46 then cs  // stop before decimal point: "0.5"
+           else skip_zeros rest)
+      else cs
+    | [] -> [FStar.Char.char_of_int zero_code] in
+  String.string_of_list (skip_zeros chars)
+
 let dt_seconds (s : string) : option string =
   let len = String.length s in
   if len < 19 then None
@@ -1149,7 +1206,8 @@ let dt_seconds (s : string) : option string =
     in
     let sec_len = find_end after_17 0 in
     if sec_len = 0 then None
-    else if 17 + sec_len <= String.length s then Some (String.sub s 17 sec_len)
+    else if 17 + sec_len <= String.length s then
+      Some (strip_leading_zeros_num (String.sub s 17 sec_len))
     else None
 
 (* TIMEZONE: extract timezone as xsd:dayTimeDuration string *)
@@ -1651,16 +1709,38 @@ let eval_xsd_cast (v : eval_result) (target_type : string) (full_iri : string) :
   | None -> ER_Error
   | Some lex ->
     if target_type = "integer" then
-      match parse_int_string lex with
-      | Some n -> ER_Num n
-      | None ->
-        // Try parsing as decimal and truncating
-        let (ip, _, _) = split_decimal lex in
-        (match ip with | Some n -> ER_Num n | None -> ER_Error)
+      // Boolean -> integer: true=1, false=0
+      (match v with
+       | ER_Bool b -> ER_Num (if b then 1 else 0)
+       | _ ->
+         match parse_int_string lex with
+         | Some n -> ER_Num n
+         | None ->
+           // Try parsing as decimal/double and truncating
+           (match parse_to_scaled lex with
+            | Some (sv, sc) ->
+              let divisor = pow10 sc in
+              ER_Num (if divisor = 0 then 0 else sv / divisor)
+            | None ->
+              match parse_double_to_scaled lex with
+              | Some (sv, sc) ->
+                let divisor = pow10 sc in
+                ER_Num (if divisor = 0 then 0 else sv / divisor)
+              | None ->
+                let (ip, _, _) = split_decimal lex in
+                (match ip with | Some n -> ER_Num n | None -> ER_Error)))
     else if target_type = "decimal" then
-      ER_Dec lex
+      // Boolean -> decimal: true="1.0", false="0.0"
+      (match v with
+       | ER_Bool b -> ER_Dec (if b then "1.0" else "0.0")
+       | ER_Num n -> ER_Dec (string_of_int n ^ ".0")
+       | _ -> ER_Dec lex)
     else if target_type = "float" || target_type = "double" then
-      ER_Dbl lex
+      // Boolean -> double/float: true="1.0E0", false="0.0E0"
+      (match v with
+       | ER_Bool b -> ER_Dbl (if b then "1.0E0" else "0.0E0")
+       | ER_Num n -> ER_Dbl (string_of_int n ^ ".0E0")
+       | _ -> ER_Dbl lex)
     else if target_type = "boolean" then
       // XSD boolean casting: numeric 0/0.0/0E0/NaN -> false, nonzero -> true
       // String: "true"/"1" -> true, "false"/"0" -> false
@@ -1782,8 +1862,13 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
      | Some s, ER_Term (T_IRI dt) -> ER_Term (fn_strdt s dt)
      | _, _ -> ER_Error)
   | E_StrLang e1 e2 ->
-    (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu) with
-     | Some s, Some lang -> ER_Term (fn_strlang s lang)
+    // STRLANG only works on simple literals (xsd:string, no lang tag)
+    let v1 = eval_expr e1 mu in
+    (match v1, er_to_string (eval_expr e2 mu) with
+     | ER_Term (T_Literal l), Some lang ->
+       if (lit_datatype l = xsd_string || lit_datatype l = "") && l.lang_tag = None
+       then ER_Term (fn_strlang (lit_lexical l) lang)
+       else ER_Error
      | _, _ -> ER_Error)
 
   (* BOUND *)
@@ -1846,12 +1931,22 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
   | E_StrBefore e1 e2 ->
     let v1 = eval_expr e1 mu in
     (match er_string_info v1, er_to_string (eval_expr e2 mu) with
-     | Some (s, lang, dt), Some arg -> er_string_preserve (string_before s arg) lang dt
+     | Some (s, lang, dt), Some arg ->
+       let result = string_before s arg in
+       // Per SPARQL spec: if arg not found, return ""^^xsd:string (no lang tag)
+       if String.length arg = 0 then er_string ""  // STRBEFORE(x, "") = ""
+       else if String.length result = 0 && not (string_contains s arg) then er_string ""
+       else er_string_preserve result lang dt
      | _, _ -> ER_Error)
   | E_StrAfter e1 e2 ->
     let v1 = eval_expr e1 mu in
     (match er_string_info v1, er_to_string (eval_expr e2 mu) with
-     | Some (s, lang, dt), Some arg -> er_string_preserve (string_after s arg) lang dt
+     | Some (s, lang, dt), Some arg ->
+       let result = string_after s arg in
+       // Per SPARQL spec: if arg not found, return ""^^xsd:string (no lang tag)
+       if String.length arg = 0 then er_string ""  // STRAFTER(x, "") = ""
+       else if String.length result = 0 && not (string_contains s arg) then er_string ""
+       else er_string_preserve result lang dt
      | _, _ -> ER_Error)
   | E_Concat es -> eval_concat es mu
   | E_EncodeForUri e1 ->
@@ -1960,7 +2055,12 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
      | None -> ER_Error)
   | E_Timezone e1 ->
     (match er_to_datetime_lex (eval_expr e1 mu) with
-     | Some s -> (match dt_timezone s with Some tz -> er_string tz | None -> ER_Error)
+     | Some s -> (match dt_timezone s with
+                  | Some "" -> ER_Error  // no timezone = unbound
+                  | Some tz -> ER_Term (T_Literal { lexical_form = tz;
+                               datatype = xsd_dayTimeDuration;
+                               lang_tag = None })
+                  | None -> ER_Error)
      | None -> ER_Error)
   | E_Tz e1 ->
     (match er_to_datetime_lex (eval_expr e1 mu) with
@@ -2041,13 +2141,27 @@ and eval_in (v : eval_result) (es : list expr) (mu : solution_mapping)
 (* CONCAT: concatenate string results *)
 and eval_concat (es : list expr) (mu : solution_mapping)
   : Tot eval_result (decreases es) =
+  // CONCAT preserves lang tag if all args share the same tag; otherwise xsd:string
   match es with
   | [] -> er_string ""
   | e :: rest ->
-    (match er_to_string (eval_expr e mu), eval_concat rest mu with
-     | Some s, ER_Term (T_Literal l) ->
-       er_string (strcat s (lit_lexical l))
-     | _, _ -> ER_Error)
+    let v = eval_expr e mu in
+    (match er_string_info v with
+     | Some (s, lang, dt) ->
+       (match eval_concat rest mu with
+        | ER_Term (T_Literal l) ->
+          let combined = strcat s (lit_lexical l) in
+          // Check if lang tags match
+          (match lang, l.lang_tag with
+           | Some l1, Some l2 ->
+             if string_lower l1 = string_lower l2 then
+               ER_Term (T_Literal { lexical_form = combined; datatype = rdf_lang_string; lang_tag = Some l1 })
+             else er_string combined
+           | None, None -> er_string combined
+           | _, _ -> er_string combined)
+        | ER_Error -> ER_Error
+        | _ -> ER_Error)
+     | None -> ER_Error)
 
 (* eval_expr_ebv is assumed above eval_pattern; assumed to equal ebv(eval_expr e mu) *)
 

@@ -1106,13 +1106,63 @@ let er_string_preserve (s : Prims.string)
                 })
          else er_string s)
   else er_string s
+let int_div_decimal (a : Prims.int) (b : Prims.int) : Prims.string=
+  if b = Prims.int_zero
+  then "0.0"
+  else
+    (let scale_factor = (Prims.parse_int "10000000000000000") in
+     let scaled = a * scale_factor in
+     let result = if b = Prims.int_zero then Prims.int_zero else scaled / b in
+     let abs_r =
+       if result < Prims.int_zero then Prims.int_zero - result else result in
+     let sign = if result < Prims.int_zero then "-" else "" in
+     let int_part =
+       if scale_factor = Prims.int_zero
+       then Prims.int_zero
+       else abs_r / scale_factor in
+     let frac_part = abs_r - (int_part * scale_factor) in
+     if frac_part = Prims.int_zero
+     then
+       Prims.strcat sign (Prims.strcat (Prims.string_of_int int_part) ".0")
+     else
+       (let frac_str = Prims.string_of_int frac_part in
+        let frac_len = FStar_String.strlen frac_str in
+        let rec make_zeros_simple n =
+          if n = Prims.int_zero
+          then ""
+          else Prims.strcat "0" (make_zeros_simple (n - Prims.int_one)) in
+        let padded =
+          if frac_len < (Prims.of_int (16))
+          then
+            Prims.strcat (make_zeros_simple ((Prims.of_int (16)) - frac_len))
+              frac_str
+          else frac_str in
+        let chars = FStar_String.list_of_string padded in
+        let rec strip_tz cs =
+          match cs with
+          | [] -> [FStar_Char.char_of_int (Prims.of_int (48))]
+          | uu___2 ->
+              let rev_cs = FStar_List_Tot_Base.rev cs in
+              let rec drop_zeros rs =
+                match rs with
+                | c::rest ->
+                    if (FStar_Char.int_of_char c) = (Prims.of_int (48))
+                    then drop_zeros rest
+                    else rs
+                | [] -> [FStar_Char.char_of_int (Prims.of_int (48))] in
+              FStar_List_Tot_Base.rev (drop_zeros rev_cs) in
+        let trimmed = FStar_String.string_of_list (strip_tz chars) in
+        Prims.strcat sign
+          (Prims.strcat (Prims.string_of_int int_part)
+             (Prims.strcat "." trimmed))))
 let eval_arith_int (op : arith_op) (a : Prims.int) (b : Prims.int) :
   eval_result=
   match op with
   | Add -> ER_Num (a + b)
   | Sub -> ER_Num (a - b)
   | Mul -> ER_Num (a * b)
-  | Div -> if b = Prims.int_zero then ER_Error else ER_Num (a / b)
+  | Div ->
+      if b = Prims.int_zero then ER_Error else ER_Dec (int_div_decimal a b)
 let er_to_datetime_lex (v : eval_result) :
   Prims.string FStar_Pervasives_Native.option=
   match v with
@@ -1540,8 +1590,7 @@ let hash_sha1 (s : Prims.string) : Prims.string=
 let hash_sha256 (s : Prims.string) : Prims.string=
   Sha256.to_hex (Sha256.string s)
 let hash_sha384 (s : Prims.string) : Prims.string=
-  (* No Sha384 in sha package — use Sha512 truncated to 96 hex chars *)
-  String.sub (Sha512.to_hex (Sha512.string s)) 0 96
+  Digestif.SHA384.(to_hex (digest_string s))
 let hash_sha512 (s : Prims.string) : Prims.string=
   Sha512.to_hex (Sha512.string s)
 let int_abs (n : Prims.int) : Prims.int=
@@ -1908,6 +1957,22 @@ let dt_minutes (s : Prims.string) : Prims.int FStar_Pervasives_Native.option=
   else
     parse_int_string
       (FStar_String.sub s (Prims.of_int (14)) (Prims.of_int (2)))
+let strip_leading_zeros_num (s : Prims.string) : Prims.string=
+  let chars = FStar_String.list_of_string s in
+  let zero_code = (Prims.of_int (48)) in
+  let rec skip_zeros cs =
+    match cs with
+    | c::rest ->
+        if (FStar_Char.int_of_char c) = zero_code
+        then
+          (match rest with
+           | [] -> cs
+           | c2::uu___ ->
+               let c2i = FStar_Char.int_of_char c2 in
+               if c2i = (Prims.of_int (46)) then cs else skip_zeros rest)
+        else cs
+    | [] -> [FStar_Char.char_of_int zero_code] in
+  FStar_String.string_of_list (skip_zeros chars)
 let dt_seconds (s : Prims.string) :
   Prims.string FStar_Pervasives_Native.option=
   let len = FStar_String.strlen s in
@@ -1933,7 +1998,8 @@ let dt_seconds (s : Prims.string) :
        if ((Prims.of_int (17)) + sec_len) <= (FStar_String.strlen s)
        then
          FStar_Pervasives_Native.Some
-           (FStar_String.sub s (Prims.of_int (17)) sec_len)
+           (strip_leading_zeros_num
+              (FStar_String.sub s (Prims.of_int (17)) sec_len))
        else FStar_Pervasives_Native.None)
 let dt_timezone (s : Prims.string) :
   Prims.string FStar_Pervasives_Native.option=
@@ -2508,21 +2574,50 @@ let eval_xsd_cast (v : eval_result) (target_type : Prims.string)
   | FStar_Pervasives_Native.Some lex ->
       if target_type = "integer"
       then
-        (match parse_int_string lex with
-         | FStar_Pervasives_Native.Some n -> ER_Num n
-         | FStar_Pervasives_Native.None ->
-             let uu___ = split_decimal lex in
-             (match uu___ with
-              | (ip, uu___1, uu___2) ->
-                  (match ip with
-                   | FStar_Pervasives_Native.Some n -> ER_Num n
-                   | FStar_Pervasives_Native.None -> ER_Error)))
+        (match v with
+         | ER_Bool b -> ER_Num (if b then Prims.int_one else Prims.int_zero)
+         | uu___ ->
+             (match parse_int_string lex with
+              | FStar_Pervasives_Native.Some n -> ER_Num n
+              | FStar_Pervasives_Native.None ->
+                  (match parse_to_scaled lex with
+                   | FStar_Pervasives_Native.Some (sv, sc) ->
+                       let divisor = pow10 sc in
+                       ER_Num
+                         (if divisor = Prims.int_zero
+                          then Prims.int_zero
+                          else sv / divisor)
+                   | FStar_Pervasives_Native.None ->
+                       (match parse_double_to_scaled lex with
+                        | FStar_Pervasives_Native.Some (sv, sc) ->
+                            let divisor = pow10 sc in
+                            ER_Num
+                              (if divisor = Prims.int_zero
+                               then Prims.int_zero
+                               else sv / divisor)
+                        | FStar_Pervasives_Native.None ->
+                            let uu___1 = split_decimal lex in
+                            (match uu___1 with
+                             | (ip, uu___2, uu___3) ->
+                                 (match ip with
+                                  | FStar_Pervasives_Native.Some n ->
+                                      ER_Num n
+                                  | FStar_Pervasives_Native.None -> ER_Error))))))
       else
         if target_type = "decimal"
-        then ER_Dec lex
+        then
+          (match v with
+           | ER_Bool b -> ER_Dec (if b then "1.0" else "0.0")
+           | ER_Num n -> ER_Dec (Prims.strcat (Prims.string_of_int n) ".0")
+           | uu___1 -> ER_Dec lex)
         else
           if (target_type = "float") || (target_type = "double")
-          then ER_Dbl lex
+          then
+            (match v with
+             | ER_Bool b -> ER_Dbl (if b then "1.0E0" else "0.0E0")
+             | ER_Num n ->
+                 ER_Dbl (Prims.strcat (Prims.string_of_int n) ".0E0")
+             | uu___2 -> ER_Dbl lex)
           else
             if target_type = "boolean"
             then
@@ -2678,11 +2773,18 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
           dt)) -> ER_Term (fn_strdt s dt)
        | (uu___, uu___1) -> ER_Error)
   | E_StrLang (e1, e2) ->
-      (match ((er_to_string (eval_expr e1 mu)),
-               (er_to_string (eval_expr e2 mu)))
-       with
-       | (FStar_Pervasives_Native.Some s, FStar_Pervasives_Native.Some lang)
-           -> ER_Term (fn_strlang s lang)
+      let v1 = eval_expr e1 mu in
+      (match (v1, (er_to_string (eval_expr e2 mu))) with
+       | (ER_Term (RDF_Graph_Executable.T_Literal l),
+          FStar_Pervasives_Native.Some lang) ->
+           if
+             (((lit_datatype l) = RDF_Graph_Executable.xsd_string) ||
+                ((lit_datatype l) = ""))
+               &&
+               (l.RDF_Graph_Executable.lang_tag =
+                  FStar_Pervasives_Native.None)
+           then ER_Term (fn_strlang (lit_lexical l) lang)
+           else ER_Error
        | (uu___, uu___1) -> ER_Error)
   | E_Bound v ->
       ER_Bool (FStar_Pervasives_Native.uu___is_Some (sm_lookup v mu))
@@ -2759,14 +2861,30 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
       (match ((er_string_info v1), (er_to_string (eval_expr e2 mu))) with
        | (FStar_Pervasives_Native.Some (s, lang, dt),
           FStar_Pervasives_Native.Some arg) ->
-           er_string_preserve (string_before s arg) lang dt
+           let result = string_before s arg in
+           if (FStar_String.strlen arg) = Prims.int_zero
+           then er_string ""
+           else
+             if
+               ((FStar_String.strlen result) = Prims.int_zero) &&
+                 (Prims.op_Negation (string_contains s arg))
+             then er_string ""
+             else er_string_preserve result lang dt
        | (uu___, uu___1) -> ER_Error)
   | E_StrAfter (e1, e2) ->
       let v1 = eval_expr e1 mu in
       (match ((er_string_info v1), (er_to_string (eval_expr e2 mu))) with
        | (FStar_Pervasives_Native.Some (s, lang, dt),
           FStar_Pervasives_Native.Some arg) ->
-           er_string_preserve (string_after s arg) lang dt
+           let result = string_after s arg in
+           if (FStar_String.strlen arg) = Prims.int_zero
+           then er_string ""
+           else
+             if
+               ((FStar_String.strlen result) = Prims.int_zero) &&
+                 (Prims.op_Negation (string_contains s arg))
+             then er_string ""
+             else er_string_preserve result lang dt
        | (uu___, uu___1) -> ER_Error)
   | E_Concat es -> eval_concat es mu
   | E_EncodeForUri e1 ->
@@ -2910,7 +3028,16 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
       (match er_to_datetime_lex (eval_expr e1 mu) with
        | FStar_Pervasives_Native.Some s ->
            (match dt_timezone s with
-            | FStar_Pervasives_Native.Some tz -> er_string tz
+            | FStar_Pervasives_Native.Some "" -> ER_Error
+            | FStar_Pervasives_Native.Some tz ->
+                ER_Term
+                  (RDF_Graph_Executable.T_Literal
+                     {
+                       RDF_Graph_Executable.lexical_form = tz;
+                       RDF_Graph_Executable.datatype = xsd_dayTimeDuration;
+                       RDF_Graph_Executable.lang_tag =
+                         FStar_Pervasives_Native.None
+                     })
             | FStar_Pervasives_Native.None -> ER_Error)
        | FStar_Pervasives_Native.None -> ER_Error)
   | E_Tz e1 ->
@@ -3006,11 +3133,33 @@ and eval_concat (es : expr Prims.list)
   match es with
   | [] -> er_string ""
   | e::rest ->
-      (match ((er_to_string (eval_expr e mu)), (eval_concat rest mu)) with
-       | (FStar_Pervasives_Native.Some s, ER_Term
-          (RDF_Graph_Executable.T_Literal l)) ->
-           er_string (Prims.strcat s (lit_lexical l))
-       | (uu___, uu___1) -> ER_Error)
+      let v = eval_expr e mu in
+      (match er_string_info v with
+       | FStar_Pervasives_Native.Some (s, lang, dt) ->
+           (match eval_concat rest mu with
+            | ER_Term (RDF_Graph_Executable.T_Literal l) ->
+                let combined = Prims.strcat s (lit_lexical l) in
+                (match (lang, (l.RDF_Graph_Executable.lang_tag)) with
+                 | (FStar_Pervasives_Native.Some l1,
+                    FStar_Pervasives_Native.Some l2) ->
+                     if (string_lower l1) = (string_lower l2)
+                     then
+                       ER_Term
+                         (RDF_Graph_Executable.T_Literal
+                            {
+                              RDF_Graph_Executable.lexical_form = combined;
+                              RDF_Graph_Executable.datatype =
+                                RDF_Graph_Executable.rdf_lang_string;
+                              RDF_Graph_Executable.lang_tag =
+                                (FStar_Pervasives_Native.Some l1)
+                            })
+                     else er_string combined
+                 | (FStar_Pervasives_Native.None,
+                    FStar_Pervasives_Native.None) -> er_string combined
+                 | (uu___, uu___1) -> er_string combined)
+            | ER_Error -> ER_Error
+            | uu___ -> ER_Error)
+       | FStar_Pervasives_Native.None -> ER_Error)
 (* Wire up the forward-declared eval_expr_ebv/fwd to the real implementations *)
 let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
 let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)
