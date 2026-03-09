@@ -478,8 +478,10 @@ let ebv (v : eval_result) : bool =
 let er_to_term (v : eval_result) : option rdf_term =
   match v with
   | ER_Term t -> Some t
-  | ER_Bool true -> Some (T_Literal (mk_plain_literal "true"))
-  | ER_Bool false -> Some (T_Literal (mk_plain_literal "false"))
+  | ER_Bool true -> Some (T_Literal ({ lexical_form = "true";
+                                       datatype = xsd_boolean; lang_tag = None }))
+  | ER_Bool false -> Some (T_Literal ({ lexical_form = "false";
+                                        datatype = xsd_boolean; lang_tag = None }))
   | ER_Num n -> Some (T_Literal ({ lexical_form = string_of_int n;
                                     datatype = xsd_integer; lang_tag = None }))
   | ER_Dec s -> Some (T_Literal ({ lexical_form = s;
@@ -499,13 +501,28 @@ let er_to_string (v : eval_result) : option string =
 let er_string (s : string) : eval_result =
   ER_Term (T_Literal (mk_plain_literal s))
 
+(* Helper: extract the lang tag from an eval_result (if it's a lang-tagged literal) *)
+let er_lang_tag (v : eval_result) : option string =
+  match v with
+  | ER_Term (T_Literal l) -> l.lang_tag
+  | _ -> None
+
+(* Helper: wrap string result preserving the lang tag from the source *)
+let er_string_with_lang (s : string) (v : eval_result) : eval_result =
+  match er_lang_tag v with
+  | Some lt ->
+    assert_norm (is_iri rdf_lang_string);
+    ER_Term (T_Literal { lexical_form = s; datatype = rdf_lang_string; lang_tag = Some lt })
+  | None -> er_string s
+
 (* Helper: evaluate arithmetic on integers *)
 let eval_arith_int (op : arith_op) (a b : int) : eval_result =
   match op with
   | Add -> ER_Num (a + b)
   | Sub -> ER_Num (a - b)
   | Mul -> ER_Num (op_Multiply a b)
-  | Div -> if b = 0 then ER_Error else ER_Num (a / b)
+  | Div -> if b = 0 then ER_Error
+           else ER_Dec (string_of_int (a / b) ^ ".0")
 
 (* Helper: extract the xsd:dateTime lexical form from a literal *)
 let er_to_datetime_lex (v : eval_result) : option string =
@@ -672,13 +689,32 @@ let is_uri_unreserved (c : FStar.Char.char) : bool =
   (code >= 48 && code <= 57)   ||
   code = 45 || code = 95 || code = 46 || code = 126
 
+(* Encode a single byte value (0-255) as %HH *)
+let percent_encode_byte (b : nat { b < 256 }) : list FStar.Char.char =
+  let hi = b / 16 in
+  let lo = b % 16 in
+  [ FStar.Char.char_of_int 37; nibble_to_hex hi; nibble_to_hex lo ]
+
+(* Encode a Unicode code point to percent-encoded UTF-8 bytes *)
 let percent_encode_char (c : FStar.Char.char) : list FStar.Char.char =
   let code = FStar.Char.int_of_char c in
-  if code >= 0 && code < 128 then
-    let hi = code / 16 in
-    let lo = code % 16 in
-    [ FStar.Char.char_of_int 37; nibble_to_hex hi; nibble_to_hex lo ]
-  else [c]
+  if code < 0x80 then
+    percent_encode_byte code
+  else if code < 0x800 then
+    let b1 = 0xC0 + (code / 64) in
+    let b2 = 0x80 + (code % 64) in
+    percent_encode_byte b1 @ percent_encode_byte b2
+  else if code < 0x10000 then
+    let b1 = 0xE0 + (code / 4096) in
+    let b2 = 0x80 + ((code / 64) % 64) in
+    let b3 = 0x80 + (code % 64) in
+    percent_encode_byte b1 @ percent_encode_byte b2 @ percent_encode_byte b3
+  else
+    let b1 = 0xF0 + (code / 262144) in
+    let b2 = 0x80 + ((code / 4096) % 64) in
+    let b3 = 0x80 + ((code / 64) % 64) in
+    let b4 = 0x80 + (code % 64) in
+    percent_encode_byte b1 @ percent_encode_byte b2 @ percent_encode_byte b3 @ percent_encode_byte b4
 
 let rec encode_uri_chars (cs : list FStar.Char.char)
   : Tot (list FStar.Char.char) (decreases cs) =
@@ -796,6 +832,106 @@ let parse_int_string (s : string) : option int =
           | Some n -> Some (0 - n)
           | None -> None)
     else parse_int_chars chars 0
+
+(* Helper: simple decimal arithmetic — parses "n.d" strings to scaled integers,
+   performs the operation, and converts back. Only handles simple cases. *)
+let parse_decimal_parts (s : string) : option (int & int & int) =
+  (* Returns (whole, frac, frac_digits) — e.g. "3.14" -> (3, 14, 2) *)
+  let chars = String.list_of_string s in
+  let rec find_dot (cs : list FStar.Char.char) (i : nat)
+    : Tot (option nat) (decreases cs) =
+    match cs with
+    | [] -> None
+    | c :: rest -> if FStar.Char.int_of_char c = 46 then Some i
+                   else find_dot rest (i + 1)
+  in
+  let len = String.length s in
+  match find_dot chars 0 with
+  | None ->
+    (match parse_int_string s with
+     | Some n -> Some (n, 0, 0)
+     | None -> None)
+  | Some dot_pos ->
+    if dot_pos = 0 then
+      let frac_s = String.sub s 1 (len - 1) in
+      let frac_digits = len - 1 in
+      (match parse_int_string frac_s with
+       | Some f -> Some (0, f, frac_digits)
+       | None -> None)
+    else
+      let whole_s = String.sub s 0 dot_pos in
+      let frac_s = if dot_pos + 1 < len then String.sub s (dot_pos + 1) (len - dot_pos - 1) else "0" in
+      let frac_digits = if dot_pos + 1 < len then len - dot_pos - 1 else 1 in
+      let is_neg = String.length whole_s > 0 && FStar.Char.int_of_char (List.Tot.hd (String.list_of_string whole_s)) = 45 in
+      (match parse_int_string whole_s, parse_int_string frac_s with
+       | Some whole, Some frac ->
+         let frac' = if is_neg then 0 - frac else frac in
+         Some (whole, frac', frac_digits)
+       | _, _ -> None)
+
+let rec pow10 (n : nat) : Tot int (decreases n) =
+  if n = 0 then 1
+  else op_Multiply 10 (pow10 (n - 1))
+
+let decimal_to_scaled (s : string) (target_digits : nat) : option int =
+  match parse_decimal_parts s with
+  | None -> None
+  | Some (whole, frac, frac_digits) ->
+    let scale = pow10 target_digits in
+    if frac_digits <= target_digits then
+      Some (op_Multiply whole scale + op_Multiply frac (pow10 (target_digits - frac_digits)))
+    else
+      Some (op_Multiply whole scale + frac / pow10 (frac_digits - target_digits))
+
+let rec strip_trailing_zeros (cs : list FStar.Char.char)
+  : Tot (list FStar.Char.char) (decreases cs) =
+  match cs with
+  | [] -> []
+  | _ ->
+    let rev = List.Tot.rev cs in
+    let rec drop_zeros (rs : list FStar.Char.char)
+      : Tot (list FStar.Char.char) (decreases rs) =
+      match rs with
+      | c :: rest -> if FStar.Char.int_of_char c = 48 then drop_zeros rest else c :: rest
+      | [] -> []
+    in
+    let trimmed = drop_zeros rev in
+    match trimmed with
+    | c :: _ -> if FStar.Char.int_of_char c = 46
+                then List.Tot.rev (FStar.Char.char_of_int 48 :: trimmed)
+                else List.Tot.rev trimmed
+    | [] -> [FStar.Char.char_of_int 48]
+
+let scaled_to_decimal (n : int) (digits : nat) : string =
+  let abs_n = if n < 0 then 0 - n else n in
+  let scale = pow10 digits in
+  let whole = abs_n / scale in
+  let frac = abs_n - op_Multiply whole scale in
+  let sign = if n < 0 then "-" else "" in
+  if digits = 0 then sign ^ string_of_int whole ^ ".0"
+  else
+    let frac_s = string_of_int frac in
+    let pad_len = digits - String.length frac_s in
+    let rec make_zeros (n : nat) : Tot string (decreases n) =
+      if n = 0 then "" else "0" ^ make_zeros (n - 1)
+    in
+    let raw = sign ^ string_of_int whole ^ "." ^ make_zeros pad_len ^ frac_s in
+    String.string_of_list (strip_trailing_zeros (String.list_of_string raw))
+
+let eval_arith_decimal (op : arith_op) (a b : string) : eval_result =
+  let digits = 6 in
+  match decimal_to_scaled a digits, decimal_to_scaled b digits with
+  | Some sa, Some sb ->
+    (match op with
+     | Add -> ER_Dec (scaled_to_decimal (sa + sb) digits)
+     | Sub -> ER_Dec (scaled_to_decimal (sa - sb) digits)
+     | Mul ->
+       let product = op_Multiply sa sb in
+       ER_Dec (scaled_to_decimal (product / pow10 digits) digits)
+     | Div ->
+       if sb = 0 then ER_Error
+       else ER_Dec (scaled_to_decimal (op_Multiply sa (pow10 digits) / sb) digits))
+  | _, _ -> ER_Error
 
 (* Decimal rounding helpers *)
 
@@ -916,7 +1052,21 @@ let dt_seconds (s : string) : option string =
     in
     let sec_len = find_end after_17 0 in
     if sec_len = 0 then None
-    else if 17 + sec_len <= String.length s then Some (String.sub s 17 sec_len)
+    else if 17 + sec_len <= String.length s then
+      let raw = String.sub s 17 sec_len in
+      (* Normalize: strip leading zeros for integer seconds, e.g. "01" -> "1" *)
+      let chars = String.list_of_string raw in
+      let rec strip_leading_zeros (cs : list FStar.Char.char)
+        : Tot (list FStar.Char.char) (decreases cs) =
+        match cs with
+        | c :: rest ->
+          if FStar.Char.int_of_char c = 48 && Cons? rest &&
+             FStar.Char.int_of_char (List.Tot.hd rest) <> 46
+          then strip_leading_zeros rest
+          else cs
+        | [] -> [FStar.Char.char_of_int 48]
+      in
+      Some (String.string_of_list (strip_leading_zeros chars))
     else None
 
 (* TIMEZONE: extract timezone as xsd:dayTimeDuration string *)
@@ -1435,6 +1585,9 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
   | E_Arith op e1 e2 ->
     (match eval_expr e1 mu, eval_expr e2 mu with
      | ER_Num a, ER_Num b -> eval_arith_int op a b
+     | ER_Dec a, ER_Dec b -> eval_arith_decimal op a b
+     | ER_Num a, ER_Dec b -> eval_arith_decimal op (string_of_int a ^ ".0") b
+     | ER_Dec a, ER_Num b -> eval_arith_decimal op a (string_of_int b ^ ".0")
      | _, _ -> ER_Error)
   | E_UnaryMinus e1 ->
     (match eval_expr e1 mu with
@@ -1513,7 +1666,8 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
      | Some s -> ER_Num (string_length s)
      | None -> ER_Error)
   | E_Substr e1 e2 e3_opt ->
-    (match er_to_string (eval_expr e1 mu), eval_expr e2 mu with
+    let v1 = eval_expr e1 mu in
+    (match er_to_string v1, eval_expr e2 mu with
      | Some s, ER_Num start ->
        if start < 0 then ER_Error
        else
@@ -1522,15 +1676,17 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
                          | ER_Num n -> if n >= 0 then Some n else None
                          | _ -> None)
            | None -> None
-         in er_string (fn_substr_spec s start len_opt)
+         in er_string_with_lang (fn_substr_spec s start len_opt) v1
      | _, _ -> ER_Error)
   | E_UCase e1 ->
-    (match er_to_string (eval_expr e1 mu) with
-     | Some s -> er_string (string_upper s)
+    let v1 = eval_expr e1 mu in
+    (match er_to_string v1 with
+     | Some s -> er_string_with_lang (string_upper s) v1
      | None -> ER_Error)
   | E_LCase e1 ->
-    (match er_to_string (eval_expr e1 mu) with
-     | Some s -> er_string (string_lower s)
+    let v1 = eval_expr e1 mu in
+    (match er_to_string v1 with
+     | Some s -> er_string_with_lang (string_lower s) v1
      | None -> ER_Error)
   | E_StrStarts e1 e2 ->
     (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu) with
@@ -1545,12 +1701,14 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
      | Some s, Some sub -> ER_Bool (string_contains s sub)
      | _, _ -> ER_Error)
   | E_StrBefore e1 e2 ->
-    (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu) with
-     | Some s, Some arg -> er_string (string_before s arg)
+    let v1 = eval_expr e1 mu in
+    (match er_to_string v1, er_to_string (eval_expr e2 mu) with
+     | Some s, Some arg -> er_string_with_lang (string_before s arg) v1
      | _, _ -> ER_Error)
   | E_StrAfter e1 e2 ->
-    (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu) with
-     | Some s, Some arg -> er_string (string_after s arg)
+    let v1 = eval_expr e1 mu in
+    (match er_to_string v1, er_to_string (eval_expr e2 mu) with
+     | Some s, Some arg -> er_string_with_lang (string_after s arg) v1
      | _, _ -> ER_Error)
   | E_Concat es -> eval_concat es mu
   | E_EncodeForUri e1 ->
@@ -1558,13 +1716,14 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
      | Some s -> er_string (string_encode_uri s)
      | None -> ER_Error)
   | E_Replace e1 e2 e3 e4_opt ->
-    (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu),
+    let v1 = eval_expr e1 mu in
+    (match er_to_string v1, er_to_string (eval_expr e2 mu),
            er_to_string (eval_expr e3 mu) with
      | Some s, Some pat, Some rep ->
        let flags = match e4_opt with
          | Some e4 -> er_to_string (eval_expr e4 mu)
          | None -> None
-       in er_string (string_replace s pat rep flags)
+       in er_string_with_lang (string_replace s pat rep flags) v1
      | _, _, _ -> ER_Error)
   | E_Regex e1 e2 e3_opt ->
     (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu) with
@@ -1591,17 +1750,17 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
   | E_Round e1 ->
     (match eval_expr e1 mu with
      | ER_Num n -> ER_Num n
-     | ER_Dec s -> ER_Num (int_round s)
+     | ER_Dec s -> ER_Dec (string_of_int (int_round s))
      | _ -> ER_Error)
   | E_Ceil e1 ->
     (match eval_expr e1 mu with
      | ER_Num n -> ER_Num n
-     | ER_Dec s -> ER_Num (int_ceil s)
+     | ER_Dec s -> ER_Dec (string_of_int (int_ceil s))
      | _ -> ER_Error)
   | E_Floor e1 ->
     (match eval_expr e1 mu with
      | ER_Num n -> ER_Num n
-     | ER_Dec s -> ER_Num (int_floor s)
+     | ER_Dec s -> ER_Dec (string_of_int (int_floor s))
      | _ -> ER_Error)
 
   (* Hash functions *)
@@ -1654,7 +1813,11 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
      | None -> ER_Error)
   | E_Timezone e1 ->
     (match er_to_datetime_lex (eval_expr e1 mu) with
-     | Some s -> (match dt_timezone s with Some tz -> er_string tz | None -> ER_Error)
+     | Some s -> (match dt_timezone s with
+                  | Some tz -> ER_Term (T_Literal { lexical_form = tz;
+                                                    datatype = xsd_dayTimeDuration;
+                                                    lang_tag = None })
+                  | None -> ER_Error)
      | None -> ER_Error)
   | E_Tz e1 ->
     (match er_to_datetime_lex (eval_expr e1 mu) with

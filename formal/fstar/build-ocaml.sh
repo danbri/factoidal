@@ -68,7 +68,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # N-Triples, Turtle, N-Quads, TriG, RDF/XML, SRX, and SPARQL queries.
   # Supports all RDF 1.1 test suites: rdf-n-triples, rdf-turtle, rdf-n-quads,
   # rdf-trig, rdf-xml, rdf-mt, plus all SPARQL 1.1 suites.
-  ocamlfind ocamlopt -package fstar.lib,str,zarith -linkpkg -w -8-14-26 \
+  ocamlfind ocamlopt -package fstar.lib,str,zarith,digestif -linkpkg -w -8-14-26 \
     RDF_Graph_Executable.ml SPARQL11_Algebra.ml \
     SPARQL11_Parser.ml \
     Parser_Combinators.ml Parser_NTriples.ml Parser_Turtle.ml \

@@ -303,14 +303,26 @@ let format_row row =
   String.concat ", " (List.map (fun (var, term) ->
     Printf.sprintf "?%s=%s" var (format_term term)) row)
 
+let lang_tag_equal lt1 lt2 =
+  match lt1, lt2 with
+  | None, None -> true
+  | Some t1, Some t2 -> String.lowercase_ascii t1 = String.lowercase_ascii t2
+  | _, _ -> false
+
+(* Compare datatypes: plain literal "" and xsd:string are equivalent per RDF 1.1 *)
+let datatype_equal d1 d2 =
+  let xsd_string = "http://www.w3.org/2001/XMLSchema#string" in
+  let normalize d = if d = "" then xsd_string else d in
+  normalize d1 = normalize d2
+
 let term_equal a b =
   match a, b with
   | T_IRI i1, T_IRI i2 -> i1 = i2
   | T_BNode _, T_BNode _ -> true  (* bnodes match any bnode *)
   | T_Literal l1, T_Literal l2 ->
     l1.lexical_form = l2.lexical_form &&
-    l1.datatype = l2.datatype &&
-    l1.lang_tag = l2.lang_tag
+    datatype_equal l1.datatype l2.datatype &&
+    lang_tag_equal l1.lang_tag l2.lang_tag
   | _ -> false
 
 let binding_row_matches expected actual =

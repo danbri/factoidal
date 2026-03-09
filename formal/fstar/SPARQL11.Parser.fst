@@ -471,8 +471,16 @@ let next_token (input : string) (p : pos) : lex_result =
       if not (at_end input (p + 1)) && char_code (peek_char input (p + 1)) = 0x3D
       then (Tok_LE, p + 2)
       else
-        let (iri, p') = scan_iri input (p + 1) in
-        (Tok_IRI iri, p')
+        (* Distinguish < (less-than) from <IRI> *)
+        (* IRI starts with < followed by a non-space, non->, non-{, non-} char *)
+        let next = if at_end input (p + 1) then 0x20
+                   else char_code (peek_char input (p + 1)) in
+        if next = 0x20 || next = 0x09 || next = 0x0A || next = 0x0D  (* whitespace *)
+           || next = 0x3E (* > — would be empty <> which is valid IRI, keep as IRI *)
+        then (Tok_LT, p + 1)
+        else
+          let (iri, p') = scan_iri input (p + 1) in
+          (Tok_IRI iri, p')
     end
     else if code = 0x3E (* > *) then
       if not (at_end input (p + 1)) && char_code (peek_char input (p + 1)) = 0x3D
@@ -767,14 +775,14 @@ and parse_compare_expr (pm : prefix_map) (ts : token_stream)
         | ParseErr msg -> ParseErr msg
         | ParseOk right rest'' -> ParseOk (E_Compare CmpGe left right) rest'')
      | Tok_IN :: Tok_LPAREN :: rest' ->
-       (match parse_expr_list pm rest' with
+       (match parse_expr_list_or_empty pm rest' with
         | ParseErr msg -> ParseErr msg
         | ParseOk args rest'' ->
           (match rest'' with
            | Tok_RPAREN :: rest''' -> ParseOk (E_In left args) rest'''
            | _ -> ParseErr "expected ) after IN list"))
      | Tok_NOT :: Tok_IN :: Tok_LPAREN :: rest' ->
-       (match parse_expr_list pm rest' with
+       (match parse_expr_list_or_empty pm rest' with
         | ParseErr msg -> ParseErr msg
         | ParseOk args rest'' ->
           (match rest'' with
@@ -1043,6 +1051,26 @@ and parse_primary_expr (pm : prefix_map) (ts : token_stream)
               | Tok_RPAREN :: rest4 -> ParseOk (E_Regex s pat None) rest4
               | _ -> ParseErr "expected , or ) in REGEX"))
         | _ -> ParseErr "expected , in REGEX"))
+  (* BNODE() and BNODE(expr) — zero or one argument *)
+  | Tok_BNODE_KW :: Tok_LPAREN :: Tok_RPAREN :: rest ->
+    let iri = "http://www.w3.org/2005/xpath-functions#bnode" in
+    if is_iri iri then ParseOk (E_FunctionCall iri []) rest
+    else ParseErr "internal: bnode IRI"
+  | Tok_BNODE_KW :: Tok_LPAREN :: rest ->
+    (match parse_expr pm rest with
+     | ParseErr msg -> ParseErr msg
+     | ParseOk e rest' ->
+       (match rest' with
+        | Tok_RPAREN :: rest'' ->
+          let iri = "http://www.w3.org/2005/xpath-functions#bnode" in
+          if is_iri iri then ParseOk (E_FunctionCall iri [e]) rest''
+          else ParseErr "internal: bnode IRI"
+        | _ -> ParseErr "expected ) after BNODE"))
+  (* RAND() — zero arguments *)
+  | Tok_RAND :: Tok_LPAREN :: Tok_RPAREN :: rest ->
+    let iri = "http://www.w3.org/2005/xpath-functions#rand" in
+    if is_iri iri then ParseOk (E_FunctionCall iri []) rest
+    else ParseErr "internal: rand IRI"
   | _ -> ParseErr "unexpected token in expression"
 
 (* Parse a string literal followed by optional langtag or ^^ datatype *)

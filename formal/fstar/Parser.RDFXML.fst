@@ -148,49 +148,208 @@ let rec has_scheme_chars (cs : list FStar.Char.char) (depth : nat) : bool =
 let is_absolute_iri (s : string) : bool =
   has_scheme_chars (String.list_of_string s) 0
 
-(* Resolve a relative IRI against a base IRI.
-   Simplified: handles fragment (#frag) and absolute IRIs.
-   For full RFC 3986 resolution, more logic would be needed. *)
+(* ------------------------------------------------------------------ *)
+(* RFC 3986 IRI Resolution                                            *)
+(* ------------------------------------------------------------------ *)
+
+(* Strip fragment from an IRI: "http://x/y#frag" -> "http://x/y" *)
+let strip_fragment (s : string) : string =
+  let chars = String.list_of_string s in
+  let rec take_before_hash (cs : list FStar.Char.char) (acc : list FStar.Char.char) : list FStar.Char.char =
+    match cs with
+    | [] -> List.Tot.rev acc
+    | c :: rest ->
+      if FStar.Char.int_of_char c = 0x23 then List.Tot.rev acc  (* '#' *)
+      else take_before_hash rest (c :: acc)
+  in
+  String.string_of_list (take_before_hash chars [])
+
+(* Find the end of scheme+authority in a base IRI.
+   For "http://example.org/path/file", return "http://example.org"
+   For "http://example.org:8080/path", return "http://example.org:8080" *)
+let get_scheme_authority (s : string) : string =
+  let chars = String.list_of_string s in
+  (* Find "://" then find the next "/" after it *)
+  let rec find_scheme_end (cs : list FStar.Char.char) (idx : nat) : option nat =
+    match cs with
+    | [] -> None
+    | c :: rest ->
+      if FStar.Char.int_of_char c = 0x3A then  (* ':' *)
+        (match rest with
+         | c2 :: c3 :: _ ->
+           if FStar.Char.int_of_char c2 = 0x2F && FStar.Char.int_of_char c3 = 0x2F then
+             Some (idx + 3)
+           else find_scheme_end rest (idx + 1)
+         | _ -> None)
+      else find_scheme_end rest (idx + 1)
+  in
+  match find_scheme_end chars 0 with
+  | None -> s
+  | Some auth_start ->
+    (* Find the next '/' after "://" which starts the path *)
+    let len = String.length s in
+    let rec find_path_start (idx : nat) : nat =
+      if idx >= len then len
+      else
+        let c = String.index s idx in
+        if FStar.Char.int_of_char c = 0x2F then idx
+        else find_path_start (idx + 1)
+    in
+    let path_start = find_path_start auth_start in
+    if path_start <= len then
+      String.sub s 0 path_start
+    else s
+
+(* Get the path component of a base IRI (after scheme+authority, before query/fragment) *)
+let get_path (s : string) : string =
+  let chars = String.list_of_string s in
+  let rec find_auth_end (cs : list FStar.Char.char) (idx : nat) : nat =
+    match cs with
+    | [] -> 0
+    | c :: rest ->
+      if FStar.Char.int_of_char c = 0x3A then
+        (match rest with
+         | c2 :: c3 :: _ ->
+           if FStar.Char.int_of_char c2 = 0x2F && FStar.Char.int_of_char c3 = 0x2F then
+             idx + 3
+           else find_auth_end rest (idx + 1)
+         | _ -> idx + 1)
+      else find_auth_end rest (idx + 1)
+  in
+  let auth_end = find_auth_end chars 0 in
+  let len = String.length s in
+  (* Skip past authority to first '/' *)
+  let rec find_path_start (idx : nat) : nat =
+    if idx >= len then len
+    else
+      let c = String.index s idx in
+      if FStar.Char.int_of_char c = 0x2F then idx
+      else find_path_start (idx + 1)
+  in
+  let path_start = find_path_start auth_end in
+  if path_start < len then
+    String.sub s path_start (len - path_start)
+  else "/"
+
+(* Merge a relative path with a base IRI's path.
+   If base has authority and empty path, result is "/" + rel.
+   Otherwise, strip the last segment from base path and append rel. *)
+let merge_paths (base : string) (rel : string) : string =
+  let base_no_frag = strip_fragment base in
+  let sa = get_scheme_authority base_no_frag in
+  let base_path = get_path base_no_frag in
+  (* Strip last segment from base_path (everything after the last '/') *)
+  let base_path_chars = String.list_of_string base_path in
+  let rec take_up_to_last_slash (cs : list FStar.Char.char) (best : list FStar.Char.char) (current : list FStar.Char.char) : list FStar.Char.char =
+    match cs with
+    | [] -> best
+    | c :: rest ->
+      let new_current = current @ [c] in
+      if FStar.Char.int_of_char c = 0x2F then
+        take_up_to_last_slash rest new_current new_current
+      else
+        take_up_to_last_slash rest best new_current
+  in
+  let prefix = take_up_to_last_slash base_path_chars [] [] in
+  String.concat "" [sa; String.string_of_list prefix; rel]
+
+(* Remove dot segments from a path per RFC 3986 Section 5.2.4.
+   Handles "." and ".." segments. *)
+let remove_dot_segments (path : string) : string =
+  let segments =
+    let chars = String.list_of_string path in
+    let rec split_on_slash (cs : list FStar.Char.char) (current : list FStar.Char.char) (acc : list string) : list string =
+      match cs with
+      | [] -> List.Tot.rev (String.string_of_list (List.Tot.rev current) :: acc)
+      | c :: rest ->
+        if FStar.Char.int_of_char c = 0x2F then
+          split_on_slash rest [] (String.string_of_list (List.Tot.rev current) :: acc)
+        else
+          split_on_slash rest (c :: current) acc
+    in
+    split_on_slash chars [] []
+  in
+  (* Process segments, building an output stack *)
+  let rec process (segs : list string) (out : list string) : list string =
+    match segs with
+    | [] -> List.Tot.rev out
+    | seg :: rest ->
+      if seg = "." then process rest out
+      else if seg = ".." then
+        let new_out = match out with
+          | [] -> []
+          | _ :: tl -> tl
+        in
+        process rest new_out
+      else
+        process rest (seg :: out)
+  in
+  let result_segs = process segments [] in
+  let joined = String.concat "/" result_segs in
+  (* Ensure leading slash if the original path had one *)
+  let chars0 = String.list_of_string path in
+  match chars0 with
+  | c :: _ ->
+    if FStar.Char.int_of_char c = 0x2F then
+      if String.length joined > 0 then
+        let jc0 = String.list_of_string joined in
+        (match jc0 with
+         | c2 :: _ ->
+           if FStar.Char.int_of_char c2 = 0x2F then joined
+           else String.concat "" ["/"; joined]
+         | [] -> "/")
+      else "/"
+    else joined
+  | [] -> joined
+
+(* Resolve a relative IRI against a base IRI per RFC 3986 Section 5.2. *)
 let resolve_iri (base : string) (rel : string) : string =
-  if String.length rel = 0 then base
+  if String.length rel = 0 then
+    (* Empty reference: return base without fragment *)
+    strip_fragment base
   else if is_absolute_iri rel then rel
   else
+    let base_no_frag = strip_fragment base in
     let chars = String.list_of_string rel in
     match chars with
     | c :: _ ->
-      if FStar.Char.int_of_char c = 0x23 then  (* '#' *)
-        String.concat "" [base; rel]
-      else if FStar.Char.int_of_char c = 0x2F then  (* '/' *)
-        (* Absolute path — find scheme+authority of base *)
-        String.concat "" [base; rel]
+      if FStar.Char.int_of_char c = 0x23 then  (* '#' — fragment only *)
+        String.concat "" [base_no_frag; rel]
+      else if FStar.Char.int_of_char c = 0x2F then
+        (match chars with
+         | _ :: c2 :: _ ->
+           if FStar.Char.int_of_char c2 = 0x2F then
+             (* "//authority/path" — network-path reference *)
+             (* Extract scheme from base *)
+             let base_chars = String.list_of_string base_no_frag in
+             let rec take_scheme (bcs : list FStar.Char.char) (acc : list FStar.Char.char) : string =
+               match bcs with
+               | [] -> ""
+               | bc :: brest ->
+                 if FStar.Char.int_of_char bc = 0x3A then  (* ':' *)
+                   String.string_of_list (List.Tot.rev (bc :: acc))
+                 else take_scheme brest (bc :: acc)
+             in
+             let scheme = take_scheme base_chars [] in
+             String.concat "" [scheme; rel]
+           else
+             (* "/path" — absolute-path reference *)
+             let sa = get_scheme_authority base_no_frag in
+             let resolved_path = remove_dot_segments rel in
+             String.concat "" [sa; resolved_path]
+         | _ ->
+           (* Just "/" *)
+           let sa = get_scheme_authority base_no_frag in
+           String.concat "" [sa; rel])
       else
-        (* Relative path — append to base after stripping last segment *)
-        let base_chars = String.list_of_string base in
-        let rec strip_last_segment (cs : list FStar.Char.char) (acc : list FStar.Char.char) : list FStar.Char.char =
-          match cs with
-          | [] -> List.Tot.rev acc
-          | [_] -> List.Tot.rev acc
-          | c2 :: rest ->
-            if FStar.Char.int_of_char c2 = 0x2F then  (* '/' *)
-              (* Check if rest has more slashes *)
-              strip_last_segment rest (c2 :: acc)
-            else
-              strip_last_segment rest (c2 :: acc)
-        in
-        (* Find last '/' and take everything up to and including it *)
-        let rec take_up_to_last_slash (cs : list FStar.Char.char) (best : list FStar.Char.char) (current : list FStar.Char.char) : list FStar.Char.char =
-          match cs with
-          | [] -> best
-          | c2 :: rest ->
-            let new_current = current @ [c2] in
-            if FStar.Char.int_of_char c2 = 0x2F then
-              take_up_to_last_slash rest new_current new_current
-            else
-              take_up_to_last_slash rest best new_current
-        in
-        let base_prefix = take_up_to_last_slash base_chars [] [] in
-        String.concat "" [String.string_of_list base_prefix; rel]
-    | [] -> base
+        (* Relative path — merge with base *)
+        let merged = merge_paths base_no_frag rel in
+        (* Extract scheme+authority from merged, then remove dot segments from path *)
+        let sa = get_scheme_authority merged in
+        let merged_path = get_path merged in
+        let clean_path = remove_dot_segments merged_path in
+        String.concat "" [sa; clean_path]
+    | [] -> base_no_frag
 
 
 (* ================================================================ *)
@@ -605,9 +764,33 @@ and process_property_children (st : rdfxml_state) (subj : subject) (children : l
     | [] -> empty_result st
     | child :: rest ->
       match child with
-      | XElement _ _ _ ->
+      | XElement tag _ _ ->
         let result1 = process_property_element st subj child (fuel - 1) in
-        let result2 = process_property_children result1.pr_state subj rest (fuel - 1) in
+        (* Figure out what the li_counter should be for the next sibling.
+           If this child was an rdf:li element, process_property_element
+           advanced the counter in st2 before processing children.
+           The correct next counter is: if rdf:li, then st.li_counter + 1;
+           otherwise, st.li_counter. Child processing may have changed it
+           (e.g., nested node elements reset and use their own counter),
+           so we compute the correct outer counter explicitly. *)
+        let st1_for_tag = update_state_from_attrs st (match child with XElement _ a _ -> a | _ -> []) in
+        let next_li_counter =
+          match resolve_name st1_for_tag tag with
+          | Some full_iri ->
+            if full_iri = String.concat "" [rdf_ns; "li"] then
+              st.li_counter + 1
+            else st.li_counter
+          | None -> st.li_counter
+        in
+        (* Preserve parent's base_iri, lang, namespaces, and correct li_counter.
+           Only propagate bnode_counter from child processing. *)
+        let sibling_st = { result1.pr_state with
+          base_iri = st.base_iri;
+          lang = st.lang;
+          namespaces = st.namespaces;
+          li_counter = next_li_counter;
+        } in
+        let result2 = process_property_children sibling_st subj rest (fuel - 1) in
         { pr_triples = result1.pr_triples @ result2.pr_triples;
           pr_state = result2.pr_state; }
       | _ ->
@@ -664,7 +847,20 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
           | Some "Collection" ->
             (* parseType="Collection" — RDF list *)
             let collection_result = process_collection st2 subj pred_iri children (fuel - 1) in
-            collection_result
+            (* For reification: the object of the main triple is the first element
+               of the collection triples (the link to list head or rdf:nil).
+               Extract the object from the first generated triple. *)
+            let reif_triples =
+              match find_attr "rdf:ID" attrs with
+              | Some _ ->
+                (match collection_result.pr_triples with
+                 | first_t :: _ ->
+                   maybe_reify st2 attrs subj pred_iri first_t.o
+                 | [] -> [])
+              | None -> []
+            in
+            { pr_triples = collection_result.pr_triples @ reif_triples;
+              pr_state = collection_result.pr_state; }
           | _ ->
             (* No parseType — normal property element *)
             (* Check for rdf:resource or rdf:nodeID attribute *)
@@ -825,7 +1021,16 @@ let rec process_node_elements (st : rdfxml_state) (nodes : list xml_node) (fuel 
       match node with
       | XElement _ _ _ ->
         let result1 = process_node_element st node (fuel - 1) in
-        let result2 = process_node_elements result1.pr_state rest (fuel - 1) in
+        (* Preserve parent's base_iri, lang, and namespaces for siblings.
+           Only propagate bnode_counter (and li_counter) between siblings,
+           since xml:base and xml:lang are scoped to the element and its
+           descendants, not to subsequent siblings. *)
+        let sibling_st = { result1.pr_state with
+          base_iri = st.base_iri;
+          lang = st.lang;
+          namespaces = st.namespaces;
+        } in
+        let result2 = process_node_elements sibling_st rest (fuel - 1) in
         { pr_triples = result1.pr_triples @ result2.pr_triples;
           pr_state = result2.pr_state; }
       | _ ->
