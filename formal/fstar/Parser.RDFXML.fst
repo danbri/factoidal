@@ -54,6 +54,8 @@ noeq type rdfxml_state = {
   lang : option string;                  (* inherited xml:lang *)
   bnode_counter : nat;                   (* counter for generating fresh blank nodes *)
   li_counter : nat;                      (* counter for rdf:li numbering *)
+  errors : list string;                  (* accumulated parse errors *)
+  seen_ids : list string;                (* rdf:ID values seen (for duplicate detection) *)
 }
 
 let initial_state (base : string) : rdfxml_state = {
@@ -62,7 +64,17 @@ let initial_state (base : string) : rdfxml_state = {
   lang = None;
   bnode_counter = 0;
   li_counter = 1;
+  errors = [];
+  seen_ids = [];
 }
+
+let add_error (st : rdfxml_state) (msg : string) : rdfxml_state =
+  { st with errors = msg :: st.errors }
+
+let has_errors (st : rdfxml_state) : bool =
+  match st.errors with
+  | [] -> false
+  | _ -> true
 
 let fresh_bnode (st : rdfxml_state) : (string * rdfxml_state) =
   let id = String.concat "" ["_:rdfxml_b"; string_of_int st.bnode_counter] in
@@ -121,6 +133,96 @@ let resolve_qname (st : rdfxml_state) (name : string) : option string =
     match find_colon_pos name with
     | Some _ -> None  (* has colon but prefix not found *)
     | None -> None    (* no colon — not a QName *)
+
+
+(* ================================================================ *)
+(* NCName validation (XML Namespaces)                                *)
+(* An NCName is an XML Name that does not contain colons.            *)
+(* NCName ::= Name minus (Char-star ':' Char-star)                   *)
+(* NameStartChar ::= Letter | '_'                                   *)
+(* NameChar ::= Letter | Digit | '.' | '-' | '_' | CombiningChar    *)
+(* ================================================================ *)
+
+let is_ncname_start_char (code : nat) : bool =
+  (* Letter or '_'.
+     Note: F* extraction to OCaml uses byte-level characters, so codes >= 0x80
+     represent UTF-8 continuation or leading bytes. We accept all non-ASCII
+     bytes as valid NCName characters since proper Unicode validation would
+     require UTF-8 decoding. *)
+  (code >= 0x41 && code <= 0x5A) ||   (* A-Z *)
+  code = 0x5F ||                        (* _ *)
+  (code >= 0x61 && code <= 0x7A) ||   (* a-z *)
+  (code >= 0x80)                        (* Non-ASCII: accept all for UTF-8 safety *)
+
+let is_ncname_char (code : nat) : bool =
+  is_ncname_start_char code ||
+  code = 0x2D ||   (* - *)
+  code = 0x2E ||   (* . *)
+  (code >= 0x30 && code <= 0x39) ||   (* 0-9 *)
+  code = 0xB7 ||
+  (code >= 0x300 && code <= 0x36F) ||
+  (code >= 0x203F && code <= 0x2040)
+
+let is_valid_ncname (s : string) : bool =
+  let chars = String.list_of_string s in
+  match chars with
+  | [] -> false
+  | first :: rest ->
+    let first_code = FStar.Char.int_of_char first in
+    if not (is_ncname_start_char first_code) then false
+    else
+      let rec check_rest (cs : list FStar.Char.char) : bool =
+        match cs with
+        | [] -> true
+        | c :: tl ->
+          let code = FStar.Char.int_of_char c in
+          if code = 0x3A then false  (* colon not allowed in NCName *)
+          else if is_ncname_char code then check_rest tl
+          else false
+      in
+      check_rest rest
+
+
+(* ================================================================ *)
+(* Forbidden RDF names (for node and property element validation)    *)
+(* Per RDF/XML Syntax Specification:                                 *)
+(*   - coreSyntaxTerms: RDF, ID, about, bagID, parseType, resource, *)
+(*     nodeID, datatype                                              *)
+(*   - syntaxTerms: coreSyntaxTerms + Description, li               *)
+(*   - oldTerms: aboutEach, aboutEachPrefix                          *)
+(* Node elements must NOT use: li, coreSyntaxTerms, oldTerms         *)
+(* Property elements must NOT use: Description, RDF, coreSyntaxTerms,*)
+(*   oldTerms                                                        *)
+(* ================================================================ *)
+
+let is_forbidden_node_element_name (full_iri : string) : bool =
+  full_iri = String.concat "" [rdf_ns; "RDF"] ||
+  full_iri = String.concat "" [rdf_ns; "ID"] ||
+  full_iri = String.concat "" [rdf_ns; "about"] ||
+  full_iri = String.concat "" [rdf_ns; "bagID"] ||
+  full_iri = String.concat "" [rdf_ns; "parseType"] ||
+  full_iri = String.concat "" [rdf_ns; "resource"] ||
+  full_iri = String.concat "" [rdf_ns; "nodeID"] ||
+  full_iri = String.concat "" [rdf_ns; "datatype"] ||
+  full_iri = String.concat "" [rdf_ns; "li"] ||
+  full_iri = String.concat "" [rdf_ns; "aboutEach"] ||
+  full_iri = String.concat "" [rdf_ns; "aboutEachPrefix"]
+
+let is_forbidden_property_element_name (full_iri : string) : bool =
+  full_iri = String.concat "" [rdf_ns; "Description"] ||
+  full_iri = String.concat "" [rdf_ns; "RDF"] ||
+  full_iri = String.concat "" [rdf_ns; "ID"] ||
+  full_iri = String.concat "" [rdf_ns; "about"] ||
+  full_iri = String.concat "" [rdf_ns; "bagID"] ||
+  full_iri = String.concat "" [rdf_ns; "parseType"] ||
+  full_iri = String.concat "" [rdf_ns; "resource"] ||
+  full_iri = String.concat "" [rdf_ns; "nodeID"] ||
+  full_iri = String.concat "" [rdf_ns; "datatype"] ||
+  full_iri = String.concat "" [rdf_ns; "aboutEach"] ||
+  full_iri = String.concat "" [rdf_ns; "aboutEachPrefix"]
+
+let is_forbidden_property_attribute_name (full_iri : string) : bool =
+  full_iri = String.concat "" [rdf_ns; "li"]
 
 
 (* ================================================================ *)
@@ -521,13 +623,40 @@ let make_reification_triples (reif_iri : string) (subj : subject) (pred_iri : st
       { s = reif_subj; p = rdf_object_iri; o = obj };
     ]
 
-(* Check for rdf:ID on a property element and generate reification triples if present *)
-let maybe_reify (st : rdfxml_state) (attrs : list xml_attribute) (subj : subject) (pred_iri : string) (obj : rdf_term) : list triple =
+(* Validate rdf:ID value: must be a valid NCName, and must not be
+   a duplicate within the same document (under the same base IRI).
+   Moved here so it is defined before maybe_reify which calls it. *)
+let validate_rdf_id (st : rdfxml_state) (id_val : string) : rdfxml_state =
+  let st1 = if not (is_valid_ncname id_val) then
+    add_error st (String.concat "" ["Invalid rdf:ID value (not an NCName): "; id_val])
+  else st in
+  let full_id = resolve_iri st1.base_iri (String.concat "" ["#"; id_val]) in
+  let rec mem_str (s : string) (l : list string) : bool =
+    match l with
+    | [] -> false
+    | x :: rest -> if x = s then true else mem_str s rest
+  in
+  if mem_str full_id st1.seen_ids then
+    add_error { st1 with seen_ids = full_id :: st1.seen_ids }
+      (String.concat "" ["Duplicate rdf:ID: "; id_val])
+  else
+    { st1 with seen_ids = full_id :: st1.seen_ids }
+
+(* Validate rdf:nodeID value: must be a valid NCName *)
+let validate_rdf_nodeID (st : rdfxml_state) (nid : string) : rdfxml_state =
+  if not (is_valid_ncname nid) then
+    add_error st (String.concat "" ["Invalid rdf:nodeID value (not an NCName): "; nid])
+  else st
+
+(* Check for rdf:ID on a property element and generate reification triples if present.
+   Also validates the rdf:ID value and tracks it for duplicate detection. *)
+let maybe_reify (st : rdfxml_state) (attrs : list xml_attribute) (subj : subject) (pred_iri : string) (obj : rdf_term) : (list triple * rdfxml_state) =
   match find_attr "rdf:ID" attrs with
   | Some id_val ->
-    let reif_iri = resolve_iri st.base_iri (String.concat "" ["#"; id_val]) in
-    make_reification_triples reif_iri subj pred_iri obj
-  | None -> []
+    let st1 = validate_rdf_id st id_val in
+    let reif_iri = resolve_iri st1.base_iri (String.concat "" ["#"; id_val]) in
+    (make_reification_triples reif_iri subj pred_iri obj, st1)
+  | None -> ([], st)
 
 
 (* Check if a property element has non-RDF property attributes.
@@ -608,6 +737,107 @@ let serialize_children_xml (children : list xml_node) : string =
   let strs = List.Tot.map (fun (c : xml_node) -> serialize_xml_node c 100) children in
   String.concat "" strs
 
+(* Canonical XML serialization for parseType="Literal".
+   Per Exclusive XML Canonicalization, namespace declarations from
+   enclosing elements that are in scope must be included on each element.
+   Self-closing tags are expanded to open+close form. *)
+
+(* Collect namespace declarations from state (prefix, uri) pairs,
+   excluding xml and xmlns which are implicit *)
+let rec collect_ns_attrs (nss : list (string * string)) : list (string * string) =
+  match nss with
+  | [] -> []
+  | (prefix, uri) :: rest ->
+    if prefix = "xml" || prefix = "xmlns" || prefix = "xsd" || prefix = "rdfs" then
+      collect_ns_attrs rest
+    else
+      (prefix, uri) :: collect_ns_attrs rest
+
+(* Sort namespace declarations alphabetically by prefix for canonical form *)
+(* String comparison for sorting *)
+let rec string_le_chars (cs1 : list FStar.Char.char) (cs2 : list FStar.Char.char) : bool =
+  match cs1, cs2 with
+  | [], _ -> true
+  | _, [] -> false
+  | c1 :: r1, c2 :: r2 ->
+    let v1 = FStar.Char.int_of_char c1 in
+    let v2 = FStar.Char.int_of_char c2 in
+    if v1 < v2 then true
+    else if v1 > v2 then false
+    else string_le_chars r1 r2
+
+let string_le (s1 : string) (s2 : string) : bool =
+  string_le_chars (String.list_of_string s1) (String.list_of_string s2)
+
+let rec insert_sorted (item : (string * string)) (lst : list (string * string)) : list (string * string) =
+  match lst with
+  | [] -> [item]
+  | (p2, u2) :: rest ->
+    let (p1, _u1) = item in
+    let key1 = if String.length p1 = 0 then "xmlns" else String.concat "" ["xmlns:"; p1] in
+    let key2 = if String.length p2 = 0 then "xmlns" else String.concat "" ["xmlns:"; p2] in
+    if string_le key1 key2 then item :: lst
+    else (p2, u2) :: insert_sorted item rest
+
+let rec sort_ns_list (nss : list (string * string)) : list (string * string) =
+  match nss with
+  | [] -> []
+  | item :: rest -> insert_sorted item (sort_ns_list rest)
+
+(* Check if an attribute is a namespace declaration *)
+let is_ns_decl_attr (name : string) : bool =
+  name = "xmlns" ||
+  (let chars = String.list_of_string name in
+   match chars with
+   | c1 :: c2 :: c3 :: c4 :: c5 :: c6 :: _ ->
+     FStar.Char.int_of_char c1 = 0x78 &&  (* x *)
+     FStar.Char.int_of_char c2 = 0x6D &&  (* m *)
+     FStar.Char.int_of_char c3 = 0x6C &&  (* l *)
+     FStar.Char.int_of_char c4 = 0x6E &&  (* n *)
+     FStar.Char.int_of_char c5 = 0x73 &&  (* s *)
+     FStar.Char.int_of_char c6 = 0x3A     (* : *)
+   | _ -> false)
+
+(* Filter out namespace declarations from attributes *)
+let rec filter_non_ns_attrs (attrs : list xml_attribute) : list xml_attribute =
+  match attrs with
+  | [] -> []
+  | a :: rest ->
+    if is_ns_decl_attr a.attr_name then filter_non_ns_attrs rest
+    else a :: filter_non_ns_attrs rest
+
+let rec serialize_xml_node_canonical (node : xml_node) (in_scope_ns : list (string * string)) (fuel : nat) : Tot string (decreases fuel) =
+  if fuel = 0 then ""
+  else
+    match node with
+    | XText t -> t
+    | XCDATA t -> t  (* In canonical form, CDATA sections are replaced by their content *)
+    | XComment _ -> ""  (* Comments removed in canonical form *)
+    | XElement tag attrs children ->
+      (* Build namespace attributes: in-scope namespaces that are not already declared *)
+      let sorted_ns = sort_ns_list in_scope_ns in
+      let ns_attr_strs = List.Tot.map (fun (ns_pair : (string * string)) ->
+        let (prefix, uri) = ns_pair in
+        if String.length prefix = 0 then
+          String.concat "" [" xmlns=\""; uri; "\""]
+        else
+          String.concat "" [" xmlns:"; prefix; "=\""; uri; "\""]) sorted_ns in
+      let ns_str = String.concat "" ns_attr_strs in
+      (* Regular attributes (non-namespace) sorted *)
+      let regular_attrs = filter_non_ns_attrs attrs in
+      let attr_strs = List.Tot.map (fun (a : xml_attribute) ->
+        String.concat "" [" "; a.attr_name; "=\""; a.attr_value; "\""]) regular_attrs in
+      let attr_str = String.concat "" attr_strs in
+      (* Always use open+close form (never self-closing) *)
+      let child_strs = List.Tot.map (fun (c : xml_node) -> serialize_xml_node_canonical c in_scope_ns (fuel - 1)) children in
+      let children_str = String.concat "" child_strs in
+      String.concat "" ["<"; tag; ns_str; attr_str; ">"; children_str; "</"; tag; ">"]
+
+let serialize_children_xml_canonical (st : rdfxml_state) (children : list xml_node) : string =
+  let in_scope_ns = collect_ns_attrs st.namespaces in
+  let strs = List.Tot.map (fun (c : xml_node) -> serialize_xml_node_canonical c in_scope_ns 100) children in
+  String.concat "" strs
+
 
 (* ================================================================ *)
 (* Core RDF/XML processing: node elements and property elements      *)
@@ -629,6 +859,41 @@ let add_triples (pr : process_result) (ts : list triple) : process_result =
   { pr with pr_triples = pr.pr_triples @ ts }
 
 
+(* Check for conflicting attributes on node elements:
+   Cannot have both rdf:nodeID and rdf:ID, or rdf:nodeID and rdf:about *)
+let validate_node_attrs (st : rdfxml_state) (attrs : list xml_attribute) : rdfxml_state =
+  let has_about = match find_attr "rdf:about" attrs with Some _ -> true | None -> false in
+  let has_id = match find_attr "rdf:ID" attrs with Some _ -> true | None -> false in
+  let has_nodeID = match find_attr "rdf:nodeID" attrs with Some _ -> true | None -> false in
+  let has_aboutEach = match find_attr "rdf:aboutEach" attrs with Some _ -> true | None -> false in
+  let has_aboutEachPrefix = match find_attr "rdf:aboutEachPrefix" attrs with Some _ -> true | None -> false in
+  let st1 = if has_nodeID && has_id then
+    add_error st "Cannot have both rdf:nodeID and rdf:ID on the same element"
+  else st in
+  let st2 = if has_nodeID && has_about then
+    add_error st1 "Cannot have both rdf:nodeID and rdf:about on the same element"
+  else st1 in
+  let st3 = if has_aboutEach then
+    add_error st2 "rdf:aboutEach is no longer permitted in RDF/XML"
+  else st2 in
+  if has_aboutEachPrefix then
+    add_error st3 "rdf:aboutEachPrefix is no longer permitted in RDF/XML"
+  else st3
+
+(* Check for conflicting attributes on property elements:
+   Cannot have both rdf:nodeID and rdf:resource,
+   Cannot have rdf:parseType with rdf:resource *)
+let validate_property_attrs (st : rdfxml_state) (attrs : list xml_attribute) : rdfxml_state =
+  let has_resource = match find_attr "rdf:resource" attrs with Some _ -> true | None -> false in
+  let has_nodeID = match find_attr "rdf:nodeID" attrs with Some _ -> true | None -> false in
+  let has_parseType = match find_attr "rdf:parseType" attrs with Some _ -> true | None -> false in
+  let st1 = if has_nodeID && has_resource then
+    add_error st "Cannot have both rdf:nodeID and rdf:resource on the same element"
+  else st in
+  if has_parseType && has_resource then
+    add_error st1 "Cannot have both rdf:parseType and rdf:resource on the same element"
+  else st1
+
 (* Determine the subject of a node element from its attributes:
    - rdf:about="uri" -> IRI subject
    - rdf:ID="name" -> IRI subject (base_iri + "#" + name)
@@ -636,28 +901,31 @@ let add_triples (pr : process_result) (ts : list triple) : process_result =
    - none of the above -> fresh blank node *)
 let determine_subject (st : rdfxml_state) (attrs : list xml_attribute)
   : (subject * rdfxml_state) =
+  let st0 = validate_node_attrs st attrs in
   match find_attr "rdf:about" attrs with
   | Some about_val ->
-    let iri = resolve_iri st.base_iri about_val in
-    if is_iri iri then (S_IRI iri, st)
+    let iri = resolve_iri st0.base_iri about_val in
+    if is_iri iri then (S_IRI iri, st0)
     else
-      let (bid, st') = fresh_bnode st in
+      let (bid, st') = fresh_bnode st0 in
       (S_BNode bid, st')
   | None ->
     match find_attr "rdf:ID" attrs with
     | Some id_val ->
-      let iri = resolve_iri st.base_iri (String.concat "" ["#"; id_val]) in
-      if is_iri iri then (S_IRI iri, st)
+      let st1 = validate_rdf_id st0 id_val in
+      let iri = resolve_iri st1.base_iri (String.concat "" ["#"; id_val]) in
+      if is_iri iri then (S_IRI iri, st1)
       else
-        let (bid, st') = fresh_bnode st in
+        let (bid, st') = fresh_bnode st1 in
         (S_BNode bid, st')
     | None ->
       match find_attr "rdf:nodeID" attrs with
       | Some nid ->
+        let st1 = validate_rdf_nodeID st0 nid in
         let bid = String.concat "" ["_:"; nid] in
-        (S_BNode bid, st)
+        (S_BNode bid, st1)
       | None ->
-        let (bid, st') = fresh_bnode st in
+        let (bid, st') = fresh_bnode st0 in
         (S_BNode bid, st')
 
 
@@ -674,8 +942,9 @@ let determine_property_object_from_attrs (st : rdfxml_state) (attrs : list xml_a
   | None ->
     match find_attr "rdf:nodeID" attrs with
     | Some nid ->
+      let st1 = validate_rdf_nodeID st nid in
       let bid = String.concat "" ["_:"; nid] in
-      Some (T_BNode bid, st)
+      Some (T_BNode bid, st1)
     | None -> None
 
 
@@ -720,6 +989,27 @@ let rec process_node_element (st : rdfxml_state) (node : xml_node) (fuel : nat)
     match node with
     | XElement tag attrs children ->
       let st1 = update_state_from_attrs st attrs in
+      (* Validate node element name *)
+      let st1 = match resolve_name st1 tag with
+        | Some full_tag_iri ->
+          if is_forbidden_node_element_name full_tag_iri then
+            add_error st1 (String.concat "" ["Forbidden node element name: "; full_tag_iri])
+          else st1
+        | None -> st1
+      in
+      (* Check for rdf:li as property attribute *)
+      let st1 = let rec check_li_attr (ats : list xml_attribute) (s : rdfxml_state) : rdfxml_state =
+        match ats with
+        | [] -> s
+        | a :: rest ->
+          let s1 = match resolve_name s a.attr_name with
+            | Some iri -> if is_forbidden_property_attribute_name iri then
+                add_error s (String.concat "" ["rdf:li is not allowed as a property attribute"])
+              else s
+            | None -> s
+          in
+          check_li_attr rest s1
+      in check_li_attr attrs st1 in
       (* Determine subject *)
       let (subj, st2) = determine_subject st1 attrs in
       (* Check if this is a typed node element (not rdf:Description) *)
@@ -804,6 +1094,16 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
     match node with
     | XElement tag attrs children ->
       let st1 = update_state_from_attrs st attrs in
+      (* Validate property element name *)
+      let st1 = match resolve_name st1 tag with
+        | Some full_iri ->
+          if is_forbidden_property_element_name full_iri then
+            add_error st1 (String.concat "" ["Forbidden property element name: "; full_iri])
+          else st1
+        | None -> st1
+      in
+      (* Validate property element attributes *)
+      let st1 = validate_property_attrs st1 attrs in
       (* Determine the predicate IRI *)
       let (pred_iri_opt, st2) =
         match resolve_name st1 tag with
@@ -824,13 +1124,13 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
           let parse_type = find_attr "rdf:parseType" attrs in
           match parse_type with
           | Some "Literal" ->
-            (* parseType="Literal" — serialize children as XML literal *)
-            let xml_content = serialize_children_xml children in
+            (* parseType="Literal" — serialize children as canonical XML literal *)
+            let xml_content = serialize_children_xml_canonical st2 children in
             if is_iri rdf_xmlliteral_iri then
               match make_typed_literal xml_content rdf_xmlliteral_iri with
               | Some obj ->
                 let t : triple = { s = subj; p = pred_iri; o = obj } in
-                let reif_triples = maybe_reify st2 attrs subj pred_iri obj in
+                let (reif_triples, _st_reif) = maybe_reify st2 attrs subj pred_iri obj in
                 { pr_triples = t :: reif_triples; pr_state = st2; }
               | None -> empty_result st2
             else empty_result st2
@@ -839,7 +1139,7 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
             let (bid, st3) = fresh_bnode st2 in
             let bnode_subj = S_BNode bid in
             let link_triple : triple = { s = subj; p = pred_iri; o = T_BNode bid } in
-            let reif_triples = maybe_reify st2 attrs subj pred_iri (T_BNode bid) in
+            let (reif_triples, _st_reif) = maybe_reify st2 attrs subj pred_iri (T_BNode bid) in
             let st4 = reset_li_counter st3 in
             let child_result = process_property_children st4 bnode_subj children (fuel - 1) in
             { pr_triples = link_triple :: reif_triples @ child_result.pr_triples;
@@ -855,7 +1155,7 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
               | Some _ ->
                 (match collection_result.pr_triples with
                  | first_t :: _ ->
-                   maybe_reify st2 attrs subj pred_iri first_t.o
+                   let (rt, _st_r) = maybe_reify st2 attrs subj pred_iri first_t.o in rt
                  | [] -> [])
               | None -> []
             in
@@ -880,7 +1180,7 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
                 | Some obj_s -> collect_property_attributes st3 obj_s attrs
                 | None -> []
               in
-              let reif_triples = maybe_reify st2 attrs subj pred_iri obj in
+              let (reif_triples, _st_reif) = maybe_reify st2 attrs subj pred_iri obj in
               { pr_triples = link_triple :: prop_attr_triples @ reif_triples;
                 pr_state = st3; }
             | None ->
@@ -905,7 +1205,7 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
                     | S_BNode b -> T_BNode b
                   in
                   let link_triple : triple = { s = subj; p = pred_iri; o = obj_term } in
-                  let reif_triples = maybe_reify st2 attrs subj pred_iri obj_term in
+                  let (reif_triples, _st_reif) = maybe_reify st2 attrs subj pred_iri obj_term in
                   { pr_triples = link_triple :: reif_triples @ node_result.pr_triples;
                     pr_state = node_result.pr_state; }
                 | [] -> empty_result st2  (* unreachable *)
@@ -919,7 +1219,7 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
                 let bnode_subj = S_BNode bid in
                 let link_triple : triple = { s = subj; p = pred_iri; o = T_BNode bid } in
                 let prop_attr_triples = collect_property_attributes st3 bnode_subj attrs in
-                let reif_triples = maybe_reify st2 attrs subj pred_iri (T_BNode bid) in
+                let (reif_triples, _st_reif) = maybe_reify st2 attrs subj pred_iri (T_BNode bid) in
                 { pr_triples = link_triple :: prop_attr_triples @ reif_triples;
                   pr_state = st3; }
               else
@@ -936,7 +1236,7 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
                 match obj_opt with
                 | Some obj ->
                   let t : triple = { s = subj; p = pred_iri; o = obj } in
-                  let reif_triples = maybe_reify st2 attrs subj pred_iri obj in
+                  let (reif_triples, _st_reif) = maybe_reify st2 attrs subj pred_iri obj in
                   { pr_triples = t :: reif_triples; pr_state = st2; }
                 | None -> empty_result st2
     | _ -> empty_result st
@@ -1042,37 +1342,43 @@ let rec process_node_elements (st : rdfxml_state) (nodes : list xml_node) (fuel 
 (* Entry point: process an XML document tree into RDF triples        *)
 (* ================================================================ *)
 
-let process_xml_tree (st : rdfxml_state) (root : xml_node) : list triple =
+let process_xml_tree (st : rdfxml_state) (root : xml_node) : option (list triple) =
   let fuel = 10000 in
   match root with
   | XElement tag attrs children ->
     let st1 = update_state_from_attrs st attrs in
-    (* Check if root is rdf:RDF *)
     let is_rdf_root =
       match resolve_name st1 tag with
       | Some full_iri -> full_iri = String.concat "" [rdf_ns; "RDF"]
       | None -> tag = "rdf:RDF"
     in
-    if is_rdf_root then
-      (* Process children as node elements *)
-      let result = process_node_elements st1 children fuel in
-      result.pr_triples
-    else
-      (* Root is a node element itself (rdf:RDF wrapper is optional) *)
-      let result = process_node_element st1 root fuel in
-      result.pr_triples
-  | _ -> []
+    let result =
+      if is_rdf_root then
+        process_node_elements st1 children fuel
+      else
+        process_node_element st1 root fuel
+    in
+    if has_errors result.pr_state then None
+    else Some result.pr_triples
+  | _ -> Some []
 
 
 (* ================================================================ *)
 (* Main entry point: parse XML string, then extract RDF triples      *)
+(* Returns None if the document has validation errors.               *)
 (* ================================================================ *)
 
-let parse_rdfxml_with_base (base_iri : string) (input : string) : list triple =
+let parse_rdfxml_with_base_opt (base_iri : string) (input : string) : option (list triple) =
   match parse_xml_document input with
   | Some root ->
     let st = initial_state base_iri in
     process_xml_tree st root
+  | None -> None
+
+(* Legacy entry points that return empty list on error *)
+let parse_rdfxml_with_base (base_iri : string) (input : string) : list triple =
+  match parse_rdfxml_with_base_opt base_iri input with
+  | Some triples -> triples
   | None -> []
 
 let parse_rdfxml (input : string) : list triple =

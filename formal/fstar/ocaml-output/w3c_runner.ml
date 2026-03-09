@@ -65,6 +65,16 @@ let parse_rdfxml_fstar input base_opt =
   | Some base -> Parser_RDFXML.parse_rdfxml_with_base base input
   | None -> Parser_RDFXML.parse_rdfxml input
 
+(* RDF/XML strict: raises on validation errors (for negative tests) *)
+let parse_rdfxml_fstar_strict input base_opt =
+  let result = match base_opt with
+    | Some base -> Parser_RDFXML.parse_rdfxml_with_base_opt base input
+    | None -> Parser_RDFXML.parse_rdfxml_with_base_opt "" input
+  in
+  match result with
+  | Some triples -> triples
+  | None -> failwith "RDF/XML validation error"
+
 (* SRX: F*-extracted *)
 let parse_srx_fstar content =
   (* Try boolean first, then bindings *)
@@ -860,7 +870,7 @@ let run_rdf_test assumed_base tc =
      | None -> Skip "File missing"
      | Some content ->
        (try
-          ignore (parse_rdfxml_fstar content None);
+          ignore (parse_rdfxml_fstar_strict content None);
           Fail "Should reject but parsed OK"
         with _ -> Pass))
 

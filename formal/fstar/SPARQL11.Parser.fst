@@ -34,6 +34,7 @@ type token =
   | Tok_GROUP | Tok_HAVING
   | Tok_LIMIT | Tok_OFFSET
   | Tok_IN | Tok_TRUE | Tok_FALSE | Tok_UNDEF
+  | Tok_FROM | Tok_NAMED
   | Tok_A  (* 'a' = rdf:type *)
   (* Delimiters *)
   | Tok_LBRACE | Tok_RBRACE | Tok_LPAREN | Tok_RPAREN
@@ -342,6 +343,8 @@ let keyword_to_token (word : string) : token =
   else if upper = "LIMIT" then Tok_LIMIT
   else if upper = "OFFSET" then Tok_OFFSET
   else if upper = "IN" then Tok_IN
+  else if upper = "FROM" then Tok_FROM
+  else if upper = "NAMED" then Tok_NAMED
   else if upper = "TRUE" then Tok_TRUE
   else if upper = "FALSE" then Tok_FALSE
   else if upper = "UNDEF" then Tok_UNDEF
@@ -1071,6 +1074,16 @@ and parse_primary_expr (pm : prefix_map) (ts : token_stream)
     let iri = "http://www.w3.org/2005/xpath-functions#rand" in
     if is_iri iri then ParseOk (E_FunctionCall iri []) rest
     else ParseErr "internal: rand IRI"
+  (* UUID() — zero arguments *)
+  | Tok_UUID :: Tok_LPAREN :: Tok_RPAREN :: rest ->
+    let iri = "http://www.w3.org/2005/xpath-functions#uuid" in
+    if is_iri iri then ParseOk (E_FunctionCall iri []) rest
+    else ParseErr "internal: uuid IRI"
+  (* STRUUID() — zero arguments *)
+  | Tok_STRUUID :: Tok_LPAREN :: Tok_RPAREN :: rest ->
+    let iri = "http://www.w3.org/2005/xpath-functions#struuid" in
+    if is_iri iri then ParseOk (E_FunctionCall iri []) rest
+    else ParseErr "internal: struuid IRI"
   | _ -> ParseErr "unexpected token in expression"
 
 (* Parse a string literal followed by optional langtag or ^^ datatype *)
@@ -1103,11 +1116,13 @@ and parse_iri_expr (pm : prefix_map) (iri : string) (ts : token_stream)
      | ParseOk args rest' ->
        (match rest' with
         | Tok_RPAREN :: rest'' ->
-          if is_iri iri then ParseOk (E_FunctionCall iri args) rest''
+          (* Accept any non-empty IRI from <...> syntax, even relative IRIs *)
+          if String.length iri > 0 then ParseOk (E_FunctionCall iri args) rest''
           else ParseErr "invalid IRI in function call"
         | _ -> ParseErr "expected ) after function args"))
   | _ ->
-    if is_iri iri then ParseOk (E_IRI iri) ts
+    (* Accept any non-empty IRI from <...> syntax, including relative IRIs like <x> *)
+    if String.length iri > 0 then ParseOk (E_IRI iri) ts
     else ParseErr "invalid IRI in expression"
 
 (* Parse one-arg built-in: ( expr ) *)
@@ -1253,6 +1268,8 @@ and parse_pattern_subject (pm : prefix_map) (fuel : nat) (ts : token_stream)
      | None -> ParseErr "undefined prefix in pattern subject")
   | Tok_BNODE b :: rest -> ParseOk (PS_BNode b) rest
   | Tok_ANON :: rest -> ParseOk (PS_BNode (fresh_bnode_id ())) rest
+  | Tok_LBRACKET :: Tok_RBRACKET :: rest ->
+    ParseOk (PS_BNode (fresh_bnode_id ())) rest
   | _ -> ParseErr "expected pattern subject"
 
 (* ================================================================== *)
@@ -1546,6 +1563,55 @@ and parse_group_elements (pm : prefix_map) (fuel : nat) (acc : group_graph_patte
         | _ ->
           let acc' = join_patterns acc sub in
           parse_group_elements pm (fuel - 1) acc' filters rest'))
+  | Tok_LBRACKET :: rest_after_bracket ->
+    (* Blank node with predicate-object list: [ pred obj ; ... ] *)
+    (match rest_after_bracket with
+     | Tok_RBRACKET :: rest_after_anon ->
+       (* Just [] — anonymous blank node as subject *)
+       let bnode_id = fresh_bnode_id () in
+       let subj = PS_BNode bnode_id in
+       (match rest_after_anon with
+        | Tok_DOT :: _ | Tok_RBRACE :: _ | [] ->
+          (* Standalone [] — not followed by predicate-object list *)
+          parse_group_elements pm (fuel - 1) acc filters rest_after_anon
+        | _ ->
+          (match parse_predicate_object_list pm (fuel - 1) subj rest_after_anon with
+           | ParseErr _ -> parse_group_elements pm (fuel - 1) acc filters rest_after_anon
+           | ParseOk pats rest' ->
+             let bgp = combine_patterns pats in
+             let acc' = join_patterns acc bgp in
+             let rest'' = match rest' with Tok_DOT :: r -> r | _ -> rest' in
+             parse_group_elements pm (fuel - 1) acc' filters rest''))
+     | _ ->
+       (* [ pred obj ; ... ] — blank node with embedded properties *)
+       let bnode_id = fresh_bnode_id () in
+       let subj = PS_BNode bnode_id in
+       (match parse_predicate_object_list pm (fuel - 1) subj rest_after_bracket with
+        | ParseErr msg -> ParseErr msg
+        | ParseOk inner_pats rest_after_inner ->
+          (match rest_after_inner with
+           | Tok_RBRACKET :: rest_after_close ->
+             (* Check if there are more predicates for this bnode subject *)
+             (match rest_after_close with
+              | Tok_DOT :: _ | Tok_RBRACE :: _ | Tok_SEMI :: Tok_RBRACE :: _ | [] ->
+                let bgp = combine_patterns inner_pats in
+                let acc' = join_patterns acc bgp in
+                let rest' = match rest_after_close with Tok_DOT :: r -> r | _ -> rest_after_close in
+                parse_group_elements pm (fuel - 1) acc' filters rest'
+              | _ ->
+                (* May have outer predicate-object list *)
+                (match parse_predicate_object_list pm (fuel - 1) subj rest_after_close with
+                 | ParseErr _ ->
+                   let bgp = combine_patterns inner_pats in
+                   let acc' = join_patterns acc bgp in
+                   let rest' = match rest_after_close with Tok_DOT :: r -> r | _ -> rest_after_close in
+                   parse_group_elements pm (fuel - 1) acc' filters rest'
+                 | ParseOk outer_pats rest' ->
+                   let bgp = combine_patterns (inner_pats @ outer_pats) in
+                   let acc' = join_patterns acc bgp in
+                   let rest'' = match rest' with Tok_DOT :: r -> r | _ -> rest' in
+                   parse_group_elements pm (fuel - 1) acc' filters rest''))
+           | _ -> ParseErr "expected ] after blank node property list")))
   | _ ->
     (* Try to parse triple patterns *)
     (match parse_pattern_subject pm (fuel - 1) ts with
@@ -1711,8 +1777,9 @@ and parse_select_query_body (pm : prefix_map) (fuel : nat) (distinct : bool)
   else match parse_select_clause pm ts with
   | ParseErr msg -> ParseErr msg
   | ParseOk select_cl rest ->
-    (* Skip optional WHERE keyword *)
-    let rest' = skip_where rest in
+    (* Skip optional dataset clauses and WHERE keyword *)
+    let rest0 = skip_dataset_clauses rest in
+    let rest' = skip_where rest0 in
     (match parse_group_graph_pattern pm (fuel - 1) rest' with
      | ParseErr msg -> ParseErr msg
      | ParseOk pattern rest'' ->
@@ -1722,6 +1789,16 @@ and parse_select_query_body (pm : prefix_map) (fuel : nat) (distinct : bool)
 and skip_where (ts : token_stream) : Tot token_stream (decreases 0) =
   match ts with
   | Tok_WHERE :: rest -> rest
+  | _ -> ts
+
+(* Skip FROM and FROM NAMED dataset clauses *)
+and skip_dataset_clauses (ts : token_stream)
+  : Tot token_stream (decreases (List.length ts)) =
+  match ts with
+  | Tok_FROM :: Tok_NAMED :: Tok_IRI _ :: rest -> skip_dataset_clauses rest
+  | Tok_FROM :: Tok_NAMED :: Tok_PNAME _ :: rest -> skip_dataset_clauses rest
+  | Tok_FROM :: Tok_IRI _ :: rest -> skip_dataset_clauses rest
+  | Tok_FROM :: Tok_PNAME _ :: rest -> skip_dataset_clauses rest
   | _ -> ts
 
 (* Parse all solution modifiers after the WHERE pattern *)
@@ -1972,7 +2049,8 @@ and parse_sparql_query (pm : prefix_map) (fuel : nat) (ts : token_stream)
     (match rest with
      | Tok_SELECT :: _ -> parse_select_query pm' (fuel - 1) rest
      | Tok_ASK :: rest' ->
-       let rest'' = match rest' with Tok_WHERE :: r -> r | _ -> rest' in
+       let rest1a = skip_dataset_clauses rest' in
+       let rest'' = match rest1a with Tok_WHERE :: r -> r | _ -> rest1a in
        (match parse_group_graph_pattern pm' (fuel - 1) rest'' with
         | ParseErr msg -> ParseErr msg
         | ParseOk pattern rest''' ->
@@ -1989,14 +2067,15 @@ and parse_sparql_query (pm : prefix_map) (fuel : nat) (ts : token_stream)
             q_values = None;
           }) rest''')
      | Tok_CONSTRUCT :: rest' ->
-       (* CONSTRUCT { template } WHERE { pattern } *)
+       (* CONSTRUCT { template } [dataset] WHERE { pattern }  OR  CONSTRUCT [dataset] WHERE { pattern } *)
        (match rest' with
         | Tok_LBRACE :: _ ->
           (* Has explicit template *)
           (match parse_construct_template pm' (fuel - 1) rest' with
            | ParseErr msg -> ParseErr msg
            | ParseOk template rest'' ->
-             let rest''' = match rest'' with Tok_WHERE :: r -> r | _ -> rest'' in
+             let rest2a = skip_dataset_clauses rest'' in
+             let rest''' = match rest2a with Tok_WHERE :: r -> r | _ -> rest2a in
              (match parse_group_graph_pattern pm' (fuel - 1) rest''' with
               | ParseErr msg -> ParseErr msg
               | ParseOk pattern rest'''' ->
@@ -2013,8 +2092,9 @@ and parse_sparql_query (pm : prefix_map) (fuel : nat) (ts : token_stream)
                   q_values = None;
                 }) rest''''))
         | _ ->
-          (* CONSTRUCT WHERE form *)
-          let rest'' = match rest' with Tok_WHERE :: r -> r | _ -> rest' in
+          (* CONSTRUCT WHERE form — may have dataset clauses before WHERE *)
+          let rest1a = skip_dataset_clauses rest' in
+          let rest'' = match rest1a with Tok_WHERE :: r -> r | _ -> rest1a in
           (match parse_group_graph_pattern pm' (fuel - 1) rest'' with
            | ParseErr msg -> ParseErr msg
            | ParseOk pattern rest''' ->

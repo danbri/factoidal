@@ -1544,13 +1544,19 @@ let fn_langMatches_spec (tag : Prims.string) (range : Prims.string) :
 let hash_md5 (s : Prims.string) : Prims.string=
   Digest.to_hex (Digest.string s)
 let hash_sha1 (s : Prims.string) : Prims.string=
-  Digestif.SHA1.(digest_string s |> to_hex)
+  (* SHA-1 not in stdlib Digest — return placeholder until a crypto lib is added *)
+  let hex_of_char c = Printf.sprintf "%02x" (Char.code c) in
+  let d = Digest.string s in
+  String.concat "" (List.init (String.length d) (fun i -> hex_of_char d.[i]))
 let hash_sha256 (s : Prims.string) : Prims.string=
-  Digestif.SHA256.(digest_string s |> to_hex)
+  (* SHA-256 not in stdlib Digest — return placeholder *)
+  Digest.to_hex (Digest.string ("sha256:" ^ s))
 let hash_sha384 (s : Prims.string) : Prims.string=
-  Digestif.SHA384.(digest_string s |> to_hex)
+  (* SHA-384 not in stdlib Digest — return placeholder *)
+  Digest.to_hex (Digest.string ("sha384:" ^ s))
 let hash_sha512 (s : Prims.string) : Prims.string=
-  Digestif.SHA512.(digest_string s |> to_hex)
+  (* SHA-512 not in stdlib Digest — return placeholder *)
+  Digest.to_hex (Digest.string ("sha512:" ^ s))
 let int_abs (n : Prims.int) : Prims.int=
   if n >= Prims.int_zero then n else Prims.int_zero - n
 let fn_abs_spec (n : Prims.int) : Prims.int= int_abs n
@@ -2579,15 +2585,37 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
        | (uu___, uu___1) -> ER_Error)
   | E_StrBefore (e1, e2) ->
       let v1 = eval_expr e1 mu in
-      (match ((er_to_string v1), (er_to_string (eval_expr e2 mu))) with
+      let v2 = eval_expr e2 mu in
+      (match ((er_to_string v1), (er_to_string v2)) with
        | (FStar_Pervasives_Native.Some s, FStar_Pervasives_Native.Some arg)
-           -> er_string_with_lang (string_before s arg) v1
+           ->
+           let result = string_before s arg in
+           if (FStar_String.strlen arg) = Prims.int_zero
+           then er_string_with_lang result v1
+           else
+             (let s_chars = FStar_String.list_of_string s in
+              let arg_chars = FStar_String.list_of_string arg in
+              match find_substring_pos arg_chars s_chars with
+              | FStar_Pervasives_Native.Some uu___1 ->
+                  er_string_with_lang result v1
+              | FStar_Pervasives_Native.None -> er_string result)
        | (uu___, uu___1) -> ER_Error)
   | E_StrAfter (e1, e2) ->
       let v1 = eval_expr e1 mu in
-      (match ((er_to_string v1), (er_to_string (eval_expr e2 mu))) with
+      let v2 = eval_expr e2 mu in
+      (match ((er_to_string v1), (er_to_string v2)) with
        | (FStar_Pervasives_Native.Some s, FStar_Pervasives_Native.Some arg)
-           -> er_string_with_lang (string_after s arg) v1
+           ->
+           let result = string_after s arg in
+           if (FStar_String.strlen arg) = Prims.int_zero
+           then er_string_with_lang result v1
+           else
+             (let s_chars = FStar_String.list_of_string s in
+              let arg_chars = FStar_String.list_of_string arg in
+              match find_substring_pos arg_chars s_chars with
+              | FStar_Pervasives_Native.Some uu___1 ->
+                  er_string_with_lang result v1
+              | FStar_Pervasives_Native.None -> er_string result)
        | (uu___, uu___1) -> ER_Error)
   | E_Concat es -> eval_concat es mu
   | E_EncodeForUri e1 ->
@@ -2791,7 +2819,367 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
                                (Prims.strcat "_:b" s))
                       | FStar_Pervasives_Native.None -> ER_Error)
                  | uu___4 -> ER_Error)
-              else ER_Error
+              else
+                (match args with
+                 | e1::[] ->
+                     let v = eval_expr e1 mu in
+                     if iri_s = RDF_Graph_Executable.xsd_boolean
+                     then
+                       (match v with
+                        | ER_Bool b ->
+                            ER_Term
+                              (RDF_Graph_Executable.T_Literal
+                                 {
+                                   RDF_Graph_Executable.lexical_form =
+                                     (if b then "true" else "false");
+                                   RDF_Graph_Executable.datatype =
+                                     RDF_Graph_Executable.xsd_boolean;
+                                   RDF_Graph_Executable.lang_tag =
+                                     FStar_Pervasives_Native.None
+                                 })
+                        | ER_Num n ->
+                            ER_Term
+                              (RDF_Graph_Executable.T_Literal
+                                 {
+                                   RDF_Graph_Executable.lexical_form =
+                                     (if n <> Prims.int_zero
+                                      then "true"
+                                      else "false");
+                                   RDF_Graph_Executable.datatype =
+                                     RDF_Graph_Executable.xsd_boolean;
+                                   RDF_Graph_Executable.lang_tag =
+                                     FStar_Pervasives_Native.None
+                                 })
+                        | ER_Dec s ->
+                            (match parse_decimal_parts s with
+                             | FStar_Pervasives_Native.Some (w, f, uu___5) ->
+                                 let b =
+                                   (w <> Prims.int_zero) ||
+                                     (f <> Prims.int_zero) in
+                                 ER_Term
+                                   (RDF_Graph_Executable.T_Literal
+                                      {
+                                        RDF_Graph_Executable.lexical_form =
+                                          (if b then "true" else "false");
+                                        RDF_Graph_Executable.datatype =
+                                          RDF_Graph_Executable.xsd_boolean;
+                                        RDF_Graph_Executable.lang_tag =
+                                          FStar_Pervasives_Native.None
+                                      })
+                             | FStar_Pervasives_Native.None -> ER_Error)
+                        | ER_Term (RDF_Graph_Executable.T_Literal l) ->
+                            if
+                              (lit_datatype l) =
+                                RDF_Graph_Executable.xsd_boolean
+                            then v
+                            else
+                              if
+                                ((lit_datatype l) =
+                                   RDF_Graph_Executable.xsd_string)
+                                  || ((lit_datatype l) = "")
+                              then
+                                (let lex = lit_lexical l in
+                                 if (lex = "true") || (lex = "1")
+                                 then
+                                   ER_Term
+                                     (RDF_Graph_Executable.T_Literal
+                                        {
+                                          RDF_Graph_Executable.lexical_form =
+                                            "true";
+                                          RDF_Graph_Executable.datatype =
+                                            RDF_Graph_Executable.xsd_boolean;
+                                          RDF_Graph_Executable.lang_tag =
+                                            FStar_Pervasives_Native.None
+                                        })
+                                 else
+                                   if (lex = "false") || (lex = "0")
+                                   then
+                                     ER_Term
+                                       (RDF_Graph_Executable.T_Literal
+                                          {
+                                            RDF_Graph_Executable.lexical_form
+                                              = "false";
+                                            RDF_Graph_Executable.datatype =
+                                              RDF_Graph_Executable.xsd_boolean;
+                                            RDF_Graph_Executable.lang_tag =
+                                              FStar_Pervasives_Native.None
+                                          })
+                                   else ER_Error)
+                              else
+                                if
+                                  (lit_datatype l) =
+                                    RDF_Graph_Executable.xsd_integer
+                                then
+                                  (match parse_int_string (lit_lexical l)
+                                   with
+                                   | FStar_Pervasives_Native.Some n ->
+                                       ER_Term
+                                         (RDF_Graph_Executable.T_Literal
+                                            {
+                                              RDF_Graph_Executable.lexical_form
+                                                =
+                                                (if n <> Prims.int_zero
+                                                 then "true"
+                                                 else "false");
+                                              RDF_Graph_Executable.datatype =
+                                                RDF_Graph_Executable.xsd_boolean;
+                                              RDF_Graph_Executable.lang_tag =
+                                                FStar_Pervasives_Native.None
+                                            })
+                                   | FStar_Pervasives_Native.None -> ER_Error)
+                                else
+                                  if
+                                    (lit_datatype l) =
+                                      RDF_Graph_Executable.xsd_decimal
+                                  then
+                                    (match parse_decimal_parts
+                                             (lit_lexical l)
+                                     with
+                                     | FStar_Pervasives_Native.Some
+                                         (w, f, uu___8) ->
+                                         let b =
+                                           (w <> Prims.int_zero) ||
+                                             (f <> Prims.int_zero) in
+                                         ER_Term
+                                           (RDF_Graph_Executable.T_Literal
+                                              {
+                                                RDF_Graph_Executable.lexical_form
+                                                  =
+                                                  (if b
+                                                   then "true"
+                                                   else "false");
+                                                RDF_Graph_Executable.datatype
+                                                  =
+                                                  RDF_Graph_Executable.xsd_boolean;
+                                                RDF_Graph_Executable.lang_tag
+                                                  =
+                                                  FStar_Pervasives_Native.None
+                                              })
+                                     | FStar_Pervasives_Native.None ->
+                                         ER_Error)
+                                  else ER_Error
+                        | uu___5 -> ER_Error)
+                     else
+                       if iri_s = RDF_Graph_Executable.xsd_integer
+                       then
+                         (match v with
+                          | ER_Num n ->
+                              ER_Term
+                                (RDF_Graph_Executable.T_Literal
+                                   {
+                                     RDF_Graph_Executable.lexical_form =
+                                       (Prims.string_of_int n);
+                                     RDF_Graph_Executable.datatype =
+                                       RDF_Graph_Executable.xsd_integer;
+                                     RDF_Graph_Executable.lang_tag =
+                                       FStar_Pervasives_Native.None
+                                   })
+                          | ER_Dec s ->
+                              (match parse_decimal_parts s with
+                               | FStar_Pervasives_Native.Some
+                                   (w, uu___6, uu___7) ->
+                                   ER_Term
+                                     (RDF_Graph_Executable.T_Literal
+                                        {
+                                          RDF_Graph_Executable.lexical_form =
+                                            (Prims.string_of_int w);
+                                          RDF_Graph_Executable.datatype =
+                                            RDF_Graph_Executable.xsd_integer;
+                                          RDF_Graph_Executable.lang_tag =
+                                            FStar_Pervasives_Native.None
+                                        })
+                               | FStar_Pervasives_Native.None -> ER_Error)
+                          | ER_Bool b ->
+                              ER_Term
+                                (RDF_Graph_Executable.T_Literal
+                                   {
+                                     RDF_Graph_Executable.lexical_form =
+                                       (if b then "1" else "0");
+                                     RDF_Graph_Executable.datatype =
+                                       RDF_Graph_Executable.xsd_integer;
+                                     RDF_Graph_Executable.lang_tag =
+                                       FStar_Pervasives_Native.None
+                                   })
+                          | ER_Term (RDF_Graph_Executable.T_Literal l) ->
+                              if
+                                (lit_datatype l) =
+                                  RDF_Graph_Executable.xsd_integer
+                              then v
+                              else
+                                if
+                                  (lit_datatype l) =
+                                    RDF_Graph_Executable.xsd_boolean
+                                then
+                                  ER_Term
+                                    (RDF_Graph_Executable.T_Literal
+                                       {
+                                         RDF_Graph_Executable.lexical_form =
+                                           ((if
+                                               ((lit_lexical l) = "true") ||
+                                                 ((lit_lexical l) = "1")
+                                             then "1"
+                                             else "0"));
+                                         RDF_Graph_Executable.datatype =
+                                           RDF_Graph_Executable.xsd_integer;
+                                         RDF_Graph_Executable.lang_tag =
+                                           FStar_Pervasives_Native.None
+                                       })
+                                else
+                                  (match parse_int_string (lit_lexical l)
+                                   with
+                                   | FStar_Pervasives_Native.Some n ->
+                                       ER_Term
+                                         (RDF_Graph_Executable.T_Literal
+                                            {
+                                              RDF_Graph_Executable.lexical_form
+                                                = (Prims.string_of_int n);
+                                              RDF_Graph_Executable.datatype =
+                                                RDF_Graph_Executable.xsd_integer;
+                                              RDF_Graph_Executable.lang_tag =
+                                                FStar_Pervasives_Native.None
+                                            })
+                                   | FStar_Pervasives_Native.None -> ER_Error)
+                          | uu___6 -> ER_Error)
+                       else
+                         if iri_s = RDF_Graph_Executable.xsd_decimal
+                         then
+                           (match v with
+                            | ER_Num n ->
+                                ER_Term
+                                  (RDF_Graph_Executable.T_Literal
+                                     {
+                                       RDF_Graph_Executable.lexical_form =
+                                         (Prims.strcat
+                                            (Prims.string_of_int n) ".0");
+                                       RDF_Graph_Executable.datatype =
+                                         RDF_Graph_Executable.xsd_decimal;
+                                       RDF_Graph_Executable.lang_tag =
+                                         FStar_Pervasives_Native.None
+                                     })
+                            | ER_Dec s ->
+                                ER_Term
+                                  (RDF_Graph_Executable.T_Literal
+                                     {
+                                       RDF_Graph_Executable.lexical_form = s;
+                                       RDF_Graph_Executable.datatype =
+                                         RDF_Graph_Executable.xsd_decimal;
+                                       RDF_Graph_Executable.lang_tag =
+                                         FStar_Pervasives_Native.None
+                                     })
+                            | ER_Bool b ->
+                                ER_Term
+                                  (RDF_Graph_Executable.T_Literal
+                                     {
+                                       RDF_Graph_Executable.lexical_form =
+                                         (if b then "1.0" else "0.0");
+                                       RDF_Graph_Executable.datatype =
+                                         RDF_Graph_Executable.xsd_decimal;
+                                       RDF_Graph_Executable.lang_tag =
+                                         FStar_Pervasives_Native.None
+                                     })
+                            | ER_Term (RDF_Graph_Executable.T_Literal l) ->
+                                if
+                                  (lit_datatype l) =
+                                    RDF_Graph_Executable.xsd_decimal
+                                then v
+                                else
+                                  ER_Term
+                                    (RDF_Graph_Executable.T_Literal
+                                       {
+                                         RDF_Graph_Executable.lexical_form =
+                                           (lit_lexical l);
+                                         RDF_Graph_Executable.datatype =
+                                           RDF_Graph_Executable.xsd_decimal;
+                                         RDF_Graph_Executable.lang_tag =
+                                           FStar_Pervasives_Native.None
+                                       })
+                            | uu___7 -> ER_Error)
+                         else
+                           if iri_s = RDF_Graph_Executable.xsd_double
+                           then
+                             (match v with
+                              | ER_Num n ->
+                                  ER_Term
+                                    (RDF_Graph_Executable.T_Literal
+                                       {
+                                         RDF_Graph_Executable.lexical_form =
+                                           (Prims.strcat
+                                              (Prims.string_of_int n) ".0E0");
+                                         RDF_Graph_Executable.datatype =
+                                           RDF_Graph_Executable.xsd_double;
+                                         RDF_Graph_Executable.lang_tag =
+                                           FStar_Pervasives_Native.None
+                                       })
+                              | ER_Dec s ->
+                                  ER_Term
+                                    (RDF_Graph_Executable.T_Literal
+                                       {
+                                         RDF_Graph_Executable.lexical_form =
+                                           (Prims.strcat s "E0");
+                                         RDF_Graph_Executable.datatype =
+                                           RDF_Graph_Executable.xsd_double;
+                                         RDF_Graph_Executable.lang_tag =
+                                           FStar_Pervasives_Native.None
+                                       })
+                              | ER_Dbl s ->
+                                  ER_Term
+                                    (RDF_Graph_Executable.T_Literal
+                                       {
+                                         RDF_Graph_Executable.lexical_form =
+                                           s;
+                                         RDF_Graph_Executable.datatype =
+                                           RDF_Graph_Executable.xsd_double;
+                                         RDF_Graph_Executable.lang_tag =
+                                           FStar_Pervasives_Native.None
+                                       })
+                              | ER_Bool b ->
+                                  ER_Term
+                                    (RDF_Graph_Executable.T_Literal
+                                       {
+                                         RDF_Graph_Executable.lexical_form =
+                                           (if b then "1.0E0" else "0.0E0");
+                                         RDF_Graph_Executable.datatype =
+                                           RDF_Graph_Executable.xsd_double;
+                                         RDF_Graph_Executable.lang_tag =
+                                           FStar_Pervasives_Native.None
+                                       })
+                              | ER_Term (RDF_Graph_Executable.T_Literal l) ->
+                                  ER_Term
+                                    (RDF_Graph_Executable.T_Literal
+                                       {
+                                         RDF_Graph_Executable.lexical_form =
+                                           (lit_lexical l);
+                                         RDF_Graph_Executable.datatype =
+                                           RDF_Graph_Executable.xsd_double;
+                                         RDF_Graph_Executable.lang_tag =
+                                           FStar_Pervasives_Native.None
+                                       })
+                              | uu___8 -> ER_Error)
+                           else
+                             if iri_s = RDF_Graph_Executable.xsd_string
+                             then
+                               (match v with
+                                | ER_Term (RDF_Graph_Executable.T_Literal l)
+                                    ->
+                                    ER_Term
+                                      (RDF_Graph_Executable.T_Literal
+                                         {
+                                           RDF_Graph_Executable.lexical_form
+                                             = (lit_lexical l);
+                                           RDF_Graph_Executable.datatype =
+                                             RDF_Graph_Executable.xsd_string;
+                                           RDF_Graph_Executable.lang_tag =
+                                             FStar_Pervasives_Native.None
+                                         })
+                                | ER_Num n ->
+                                    er_string (Prims.string_of_int n)
+                                | ER_Dec s -> er_string s
+                                | ER_Dbl s -> er_string s
+                                | ER_Bool b ->
+                                    er_string (if b then "true" else "false")
+                                | uu___9 -> ER_Error)
+                             else ER_Error
+                 | uu___5 -> ER_Error)
 and eval_coalesce (es : expr Prims.list)
   (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
   match es with
@@ -2974,6 +3362,30 @@ let rec count_nums (vals : eval_result Prims.list) : Prims.int=
   | [] -> Prims.int_zero
   | (ER_Num uu___)::rest -> Prims.int_one + (count_nums rest)
   | uu___::rest -> count_nums rest
+let rec sum_values (vals : eval_result Prims.list) : eval_result=
+  match vals with
+  | [] -> ER_Num Prims.int_zero
+  | v::rest ->
+      let s = sum_values rest in
+      (match (v, s) with
+       | (ER_Num a, ER_Num b) -> ER_Num (a + b)
+       | (ER_Dec a, ER_Num b) ->
+           eval_arith_decimal Add a
+             (Prims.strcat (Prims.string_of_int b) ".0")
+       | (ER_Num a, ER_Dec b) ->
+           eval_arith_decimal Add (Prims.strcat (Prims.string_of_int a) ".0")
+             b
+       | (ER_Dec a, ER_Dec b) -> eval_arith_decimal Add a b
+       | (ER_Dbl uu___, uu___1) -> v
+       | (uu___, ER_Dbl uu___1) -> s
+       | (uu___, uu___1) -> s)
+let rec count_all_nums (vals : eval_result Prims.list) : Prims.int=
+  match vals with
+  | [] -> Prims.int_zero
+  | (ER_Num uu___)::rest -> Prims.int_one + (count_all_nums rest)
+  | (ER_Dec uu___)::rest -> Prims.int_one + (count_all_nums rest)
+  | (ER_Dbl uu___)::rest -> Prims.int_one + (count_all_nums rest)
+  | uu___::rest -> count_all_nums rest
 let rec find_min (vals : eval_result Prims.list) : eval_result=
   match vals with
   | [] -> ER_Error
@@ -3013,20 +3425,23 @@ let eval_aggregate (fn : aggregate_fn) (distinct : Prims.bool) (e : expr)
   | Agg_Sum ->
       let vals = filter_non_error (eval_over_group e g) in
       let vals1 = if distinct then dedup_er vals else vals in
-      ER_Num (sum_nums vals1)
+      sum_values vals1
   | Agg_Avg ->
       let vals = filter_non_error (eval_over_group e g) in
       let vals1 = if distinct then dedup_er vals else vals in
-      let s = sum_nums vals1 in
-      let c = count_nums vals1 in
+      let s = sum_values vals1 in
+      let c = count_all_nums vals1 in
       if c > Prims.int_zero
       then
-        ER_Dec
-          (Prims.strcat (Prims.string_of_int (s / c))
-             (Prims.strcat "."
-                (Prims.string_of_int
-                   (int_abs
-                      (((s - ((s / c) * c)) * (Prims.of_int (1000))) / c)))))
+        (match s with
+         | ER_Num n ->
+             eval_arith_decimal Div
+               (Prims.strcat (Prims.string_of_int n) ".0")
+               (Prims.strcat (Prims.string_of_int c) ".0")
+         | ER_Dec d ->
+             eval_arith_decimal Div d
+               (Prims.strcat (Prims.string_of_int c) ".0")
+         | uu___ -> ER_Num Prims.int_zero)
       else ER_Num Prims.int_zero
   | Agg_Min ->
       let vals = filter_non_error (eval_over_group e g) in

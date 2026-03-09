@@ -1702,13 +1702,33 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
      | _, _ -> ER_Error)
   | E_StrBefore e1 e2 ->
     let v1 = eval_expr e1 mu in
-    (match er_to_string v1, er_to_string (eval_expr e2 mu) with
-     | Some s, Some arg -> er_string_with_lang (string_before s arg) v1
+    let v2 = eval_expr e2 mu in
+    (match er_to_string v1, er_to_string v2 with
+     | Some s, Some arg ->
+       (* Per SPARQL spec: if arg not found, return "" (plain). Otherwise preserve lang/dt. *)
+       let result = string_before s arg in
+       (* arg empty -> found at start -> preserve. arg found -> preserve. arg not found -> plain. *)
+       if String.length arg = 0 then er_string_with_lang result v1
+       else
+         let s_chars = String.list_of_string s in
+         let arg_chars = String.list_of_string arg in
+         (match find_substring_pos arg_chars s_chars with
+          | Some _ -> er_string_with_lang result v1
+          | None -> er_string result)
      | _, _ -> ER_Error)
   | E_StrAfter e1 e2 ->
     let v1 = eval_expr e1 mu in
-    (match er_to_string v1, er_to_string (eval_expr e2 mu) with
-     | Some s, Some arg -> er_string_with_lang (string_after s arg) v1
+    let v2 = eval_expr e2 mu in
+    (match er_to_string v1, er_to_string v2 with
+     | Some s, Some arg ->
+       let result = string_after s arg in
+       if String.length arg = 0 then er_string_with_lang result v1
+       else
+         let s_chars = String.list_of_string s in
+         let arg_chars = String.list_of_string arg in
+         (match find_substring_pos arg_chars s_chars with
+          | Some _ -> er_string_with_lang result v1
+          | None -> er_string result)
      | _, _ -> ER_Error)
   | E_Concat es -> eval_concat es mu
   | E_EncodeForUri e1 ->
@@ -1861,7 +1881,104 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
           | Some s -> ER_Term (T_BNode ("_:b" ^ s))
           | None -> ER_Error)
        | _ -> ER_Error
-     else ER_Error)
+     (* XSD cast functions *)
+     else match args with
+     | [e1] ->
+       let v = eval_expr e1 mu in
+       if iri_s = xsd_boolean then
+         (match v with
+          | ER_Bool b -> ER_Term (T_Literal { lexical_form = (if b then "true" else "false");
+                                              datatype = xsd_boolean; lang_tag = None })
+          | ER_Num n -> ER_Term (T_Literal { lexical_form = (if n <> 0 then "true" else "false");
+                                              datatype = xsd_boolean; lang_tag = None })
+          | ER_Dec s -> (match parse_decimal_parts s with
+                         | Some (w, f, _) ->
+                           let b = w <> 0 || f <> 0 in
+                           ER_Term (T_Literal { lexical_form = (if b then "true" else "false");
+                                                datatype = xsd_boolean; lang_tag = None })
+                         | None -> ER_Error)
+          | ER_Term (T_Literal l) ->
+            if lit_datatype l = xsd_boolean then v
+            else if lit_datatype l = xsd_string || lit_datatype l = "" then
+              let lex = lit_lexical l in
+              if lex = "true" || lex = "1" then
+                ER_Term (T_Literal { lexical_form = "true"; datatype = xsd_boolean; lang_tag = None })
+              else if lex = "false" || lex = "0" then
+                ER_Term (T_Literal { lexical_form = "false"; datatype = xsd_boolean; lang_tag = None })
+              else ER_Error
+            else if lit_datatype l = xsd_integer then
+              (match parse_int_string (lit_lexical l) with
+               | Some n -> ER_Term (T_Literal { lexical_form = (if n <> 0 then "true" else "false");
+                                                 datatype = xsd_boolean; lang_tag = None })
+               | None -> ER_Error)
+            else if lit_datatype l = xsd_decimal then
+              (match parse_decimal_parts (lit_lexical l) with
+               | Some (w, f, _) ->
+                 let b = w <> 0 || f <> 0 in
+                 ER_Term (T_Literal { lexical_form = (if b then "true" else "false");
+                                      datatype = xsd_boolean; lang_tag = None })
+               | None -> ER_Error)
+            else ER_Error
+          | _ -> ER_Error)
+       else if iri_s = xsd_integer then
+         (match v with
+          | ER_Num n -> ER_Term (T_Literal { lexical_form = string_of_int n;
+                                              datatype = xsd_integer; lang_tag = None })
+          | ER_Dec s -> (match parse_decimal_parts s with
+                         | Some (w, _, _) -> ER_Term (T_Literal { lexical_form = string_of_int w;
+                                                                   datatype = xsd_integer; lang_tag = None })
+                         | None -> ER_Error)
+          | ER_Bool b -> ER_Term (T_Literal { lexical_form = (if b then "1" else "0");
+                                               datatype = xsd_integer; lang_tag = None })
+          | ER_Term (T_Literal l) ->
+            if lit_datatype l = xsd_integer then v
+            else if lit_datatype l = xsd_boolean then
+              ER_Term (T_Literal { lexical_form = (if lit_lexical l = "true" || lit_lexical l = "1" then "1" else "0");
+                                   datatype = xsd_integer; lang_tag = None })
+            else (match parse_int_string (lit_lexical l) with
+                  | Some n -> ER_Term (T_Literal { lexical_form = string_of_int n;
+                                                    datatype = xsd_integer; lang_tag = None })
+                  | None -> ER_Error)
+          | _ -> ER_Error)
+       else if iri_s = xsd_decimal then
+         (match v with
+          | ER_Num n -> ER_Term (T_Literal { lexical_form = string_of_int n ^ ".0";
+                                              datatype = xsd_decimal; lang_tag = None })
+          | ER_Dec s -> ER_Term (T_Literal { lexical_form = s;
+                                              datatype = xsd_decimal; lang_tag = None })
+          | ER_Bool b -> ER_Term (T_Literal { lexical_form = (if b then "1.0" else "0.0");
+                                               datatype = xsd_decimal; lang_tag = None })
+          | ER_Term (T_Literal l) ->
+            if lit_datatype l = xsd_decimal then v
+            else ER_Term (T_Literal { lexical_form = lit_lexical l;
+                                      datatype = xsd_decimal; lang_tag = None })
+          | _ -> ER_Error)
+       else if iri_s = xsd_double then
+         (match v with
+          | ER_Num n -> ER_Term (T_Literal { lexical_form = string_of_int n ^ ".0E0";
+                                              datatype = xsd_double; lang_tag = None })
+          | ER_Dec s -> ER_Term (T_Literal { lexical_form = s ^ "E0";
+                                              datatype = xsd_double; lang_tag = None })
+          | ER_Dbl s -> ER_Term (T_Literal { lexical_form = s;
+                                              datatype = xsd_double; lang_tag = None })
+          | ER_Bool b -> ER_Term (T_Literal { lexical_form = (if b then "1.0E0" else "0.0E0");
+                                               datatype = xsd_double; lang_tag = None })
+          | ER_Term (T_Literal l) ->
+            ER_Term (T_Literal { lexical_form = lit_lexical l;
+                                 datatype = xsd_double; lang_tag = None })
+          | _ -> ER_Error)
+       else if iri_s = xsd_string then
+         (match v with
+          | ER_Term (T_Literal l) ->
+            ER_Term (T_Literal { lexical_form = lit_lexical l;
+                                 datatype = xsd_string; lang_tag = None })
+          | ER_Num n -> er_string (string_of_int n)
+          | ER_Dec s -> er_string s
+          | ER_Dbl s -> er_string s
+          | ER_Bool b -> er_string (if b then "true" else "false")
+          | _ -> ER_Error)
+       else ER_Error
+     | _ -> ER_Error)
 
 (* Coalesce: first non-error result from list *)
 and eval_coalesce (es : list expr) (mu : solution_mapping)
@@ -2066,6 +2183,30 @@ let rec count_nums (vals : list eval_result) : Tot int (decreases vals) =
   | ER_Num _ :: rest -> 1 + count_nums rest
   | _ :: rest -> count_nums rest
 
+(* Sum numeric values returning eval_result with type promotion *)
+let rec sum_values (vals : list eval_result) : Tot eval_result (decreases vals) =
+  match vals with
+  | [] -> ER_Num 0
+  | v :: rest ->
+    let s = sum_values rest in
+    (match v, s with
+     | ER_Num a, ER_Num b -> ER_Num (a + b)
+     | ER_Dec a, ER_Num b -> eval_arith_decimal Add a (string_of_int b ^ ".0")
+     | ER_Num a, ER_Dec b -> eval_arith_decimal Add (string_of_int a ^ ".0") b
+     | ER_Dec a, ER_Dec b -> eval_arith_decimal Add a b
+     | ER_Dbl _, _ -> v  (* double handling simplified *)
+     | _, ER_Dbl _ -> s
+     | _, _ -> s)
+
+(* Count all numeric values *)
+let rec count_all_nums (vals : list eval_result) : Tot int (decreases vals) =
+  match vals with
+  | [] -> 0
+  | ER_Num _ :: rest -> 1 + count_all_nums rest
+  | ER_Dec _ :: rest -> 1 + count_all_nums rest
+  | ER_Dbl _ :: rest -> 1 + count_all_nums rest
+  | _ :: rest -> count_all_nums rest
+
 (* Find minimum eval_result by sparql_order *)
 let rec find_min (vals : list eval_result) : Tot eval_result (decreases vals) =
   match vals with
@@ -2113,14 +2254,17 @@ let eval_aggregate (fn : aggregate_fn) (distinct : bool) (e : expr) (g : group) 
   | Agg_Sum ->
     let vals = filter_non_error (eval_over_group e g) in
     let vals = if distinct then dedup_er vals else vals in
-    ER_Num (sum_nums vals)
+    sum_values vals
   | Agg_Avg ->
     let vals = filter_non_error (eval_over_group e g) in
     let vals = if distinct then dedup_er vals else vals in
-    let s = sum_nums vals in
-    let c = count_nums vals in
+    let s = sum_values vals in
+    let c = count_all_nums vals in
     if c > 0
-    then ER_Dec (string_of_int (s / c) ^ "." ^ string_of_int (int_abs ((op_Multiply (s - op_Multiply (s / c) c) 1000) / c)))
+    then (match s with
+          | ER_Num n -> eval_arith_decimal Div (string_of_int n ^ ".0") (string_of_int c ^ ".0")
+          | ER_Dec d -> eval_arith_decimal Div d (string_of_int c ^ ".0")
+          | _ -> ER_Num 0)
     else ER_Num 0
   | Agg_Min ->
     let vals = filter_non_error (eval_over_group e g) in
