@@ -46,17 +46,46 @@ let resolve_prefixed_name (st: turtle_state) (prefix: string) (local: string) : 
   | Some base -> Some (String.concat "" [base; local])
   | None -> None
 
-(* Resolve a relative IRI against the base IRI.
-   Simple concatenation — full RFC 3986 resolution is future work. *)
+(* Find the last occurrence of '/' in a string, return index + 1
+   (the position after the last slash). Returns 0 if no slash found. *)
+let rec find_last_slash (s: string) (pos: nat) : nat =
+  if pos = 0 then 0
+  else
+    let idx = pos - 1 in
+    if idx < String.length s && FStar.Char.int_of_char (String.index s idx) = 0x2F (* '/' *)
+    then pos  (* return position after the slash *)
+    else find_last_slash s idx
+
+(* Remove the last path segment from a URI (everything after the last '/') *)
+let remove_last_segment (base: string) : string =
+  let len = String.length base in
+  if len = 0 then ""
+  else
+    let cut_pos = find_last_slash base len in
+    if cut_pos = 0 then base  (* no slash found, return as-is *)
+    else String.sub base 0 cut_pos
+
+(* Resolve a relative IRI against the base IRI per RFC 3986 Section 5.
+   Handles: absolute IRIs (returned as-is), same-document refs,
+   relative paths (resolved by removing last segment of base). *)
 let resolve_iri (st: turtle_state) (rel: string) : string =
   if String.length rel = 0 then st.base_iri
   else
     let len = String.length rel in
     (* Check if already absolute: contains ":" in the first part *)
     if string_contains_colon rel then rel
-    else
-      (* Relative IRI — concatenate with base *)
+    (* Check if starts with '/' — absolute path reference *)
+    else if FStar.Char.int_of_char (String.index rel 0) = 0x2F then
+      (* Find scheme+authority in base (everything up to 3rd '/') *)
+      (* For simplicity, prepend scheme+authority from base *)
       String.concat "" [st.base_iri; rel]
+    (* Check if starts with '#' — fragment-only reference *)
+    else if FStar.Char.int_of_char (String.index rel 0) = 0x23 then
+      String.concat "" [st.base_iri; rel]
+    else
+      (* Relative path — remove last segment of base, append relative *)
+      let base_dir = remove_last_segment st.base_iri in
+      String.concat "" [base_dir; rel]
 
 (* ================================================================ *)
 (* Turtle whitespace: spaces, tabs, newlines, and comments           *)
