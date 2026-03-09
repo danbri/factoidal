@@ -1390,9 +1390,87 @@ let string_replace (s : Prims.string) (pattern : Prims.string)
       (replace_all_chars (FStar_String.list_of_string s)
          (FStar_String.list_of_string pattern)
          (FStar_String.list_of_string replacement))
-let regex_match (uu___ : Prims.string) (uu___1 : Prims.string)
-  (uu___2 : Prims.string FStar_Pervasives_Native.option) : Prims.bool=
-  failwith "Not yet implemented: SPARQL11.Algebra.regex_match"
+let xpath_to_str_regex (p : string) : string =
+  let open Stdlib in
+  let len = String.length p in
+  let buf = Buffer.create (len * 2) in
+  let i = ref 0 in
+  let last_atom = ref "" in
+  let set_atom s = last_atom := s; Buffer.add_string buf s in
+  while !i < len do
+    let c = p.[!i] in
+    if c = '\\' && !i + 1 < len then begin
+      let next = p.[!i + 1] in
+      if next = '(' || next = ')' || next = '|' || next = '?' ||
+         next = '{' || next = '}' || next = '+' || next = '*' then
+        (set_atom (String.make 1 next); i := !i + 2)
+      else if next = 'd' then (set_atom "[0-9]"; i := !i + 2)
+      else if next = 'D' then (set_atom "[^0-9]"; i := !i + 2)
+      else if next = 'w' then (set_atom "[a-zA-Z0-9_]"; i := !i + 2)
+      else if next = 'W' then (set_atom "[^a-zA-Z0-9_]"; i := !i + 2)
+      else if next = 's' then (set_atom "[ \t\n\r]"; i := !i + 2)
+      else if next = 'S' then (set_atom "[^ \t\n\r]"; i := !i + 2)
+      else (let s = String.sub p !i 2 in set_atom s; i := !i + 2)
+    end else if c = '(' then
+      (Buffer.add_string buf "\("; last_atom := ""; i := !i + 1)
+    else if c = ')' then
+      (Buffer.add_string buf "\)"; last_atom := "\)"; i := !i + 1)
+    else if c = '|' then
+      (Buffer.add_string buf "\|"; last_atom := ""; i := !i + 1)
+    else if c = '?' then
+      (Buffer.add_string buf "\?"; i := !i + 1)
+    else if c = '{' then begin
+      i := !i + 1;
+      let nb = Buffer.create 8 in
+      while !i < len && p.[!i] <> '}' && p.[!i] <> ',' do
+        Buffer.add_char nb p.[!i]; i := !i + 1 done;
+      let n = try int_of_string (Buffer.contents nb) with _ -> 1 in
+      if !i < len && p.[!i] = ',' then begin
+        i := !i + 1;
+        let mb = Buffer.create 8 in
+        while !i < len && p.[!i] <> '}' do
+          Buffer.add_char mb p.[!i]; i := !i + 1 done;
+        if !i < len then i := !i + 1;
+        let ms = Buffer.contents mb in
+        if ms = "" then begin
+          for _ = 2 to n do Buffer.add_string buf !last_atom done;
+          Buffer.add_string buf !last_atom; Buffer.add_char buf '*'
+        end else begin
+          let m = try int_of_string ms with _ -> n in
+          for _ = 2 to n do Buffer.add_string buf !last_atom done;
+          for _ = n + 1 to m do
+            Buffer.add_string buf !last_atom;
+            Buffer.add_string buf "\?" done
+        end
+      end else begin
+        if !i < len then i := !i + 1;
+        for _ = 2 to n do Buffer.add_string buf !last_atom done
+      end
+    end else if c = '[' then begin
+      let start = !i in
+      i := !i + 1;
+      if !i < len && p.[!i] = '^' then i := !i + 1;
+      if !i < len && p.[!i] = ']' then i := !i + 1;
+      while !i < len && p.[!i] <> ']' do i := !i + 1 done;
+      if !i < len then i := !i + 1;
+      let cls = String.sub p start (!i - start) in
+      set_atom cls
+    end else (set_atom (String.make 1 c); i := !i + 1)
+  done;
+  Buffer.contents buf
+let regex_match (text : Prims.string) (pattern : Prims.string)
+  (flags : Prims.string FStar_Pervasives_Native.option) : Prims.bool=
+  try
+    let case_insensitive = match flags with
+      | FStar_Pervasives_Native.Some f -> String.contains f 'i'
+      | FStar_Pervasives_Native.None -> false in
+    let converted = xpath_to_str_regex pattern in
+    let re = if case_insensitive
+      then Str.regexp_case_fold converted
+      else Str.regexp converted in
+    (try let _ = Str.search_forward re text 0 in true
+     with Not_found -> false)
+  with _ -> false
 let fn_strlen_spec (s : Prims.string) : Prims.nat= string_length s
 let fn_substr_spec (s : Prims.string) (start : Prims.nat)
   (len : Prims.nat FStar_Pervasives_Native.option) : Prims.string=
@@ -1449,16 +1527,16 @@ let fn_langMatches_spec (tag : Prims.string) (range : Prims.string) :
     (let ltag = string_lower tag in
      let lrange = string_lower range in
      (ltag = lrange) || (string_starts_with ltag (Prims.strcat lrange "-")))
-let hash_md5 (uu___ : Prims.string) : Prims.string=
-  failwith "Not yet implemented: SPARQL11.Algebra.hash_md5"
-let hash_sha1 (uu___ : Prims.string) : Prims.string=
-  failwith "Not yet implemented: SPARQL11.Algebra.hash_sha1"
-let hash_sha256 (uu___ : Prims.string) : Prims.string=
-  failwith "Not yet implemented: SPARQL11.Algebra.hash_sha256"
-let hash_sha384 (uu___ : Prims.string) : Prims.string=
-  failwith "Not yet implemented: SPARQL11.Algebra.hash_sha384"
-let hash_sha512 (uu___ : Prims.string) : Prims.string=
-  failwith "Not yet implemented: SPARQL11.Algebra.hash_sha512"
+let hash_md5 (s : Prims.string) : Prims.string=
+  Digest.to_hex (Digest.string s)
+let hash_sha1 (s : Prims.string) : Prims.string=
+  Sha1.to_hex (Sha1.string s)
+let hash_sha256 (s : Prims.string) : Prims.string=
+  Sha256.to_hex (Sha256.string s)
+let hash_sha384 (s : Prims.string) : Prims.string=
+  Digestif.SHA384.(to_hex (digest_string s))
+let hash_sha512 (s : Prims.string) : Prims.string=
+  Sha512.to_hex (Sha512.string s)
 let int_abs (n : Prims.int) : Prims.int=
   if n >= Prims.int_zero then n else Prims.int_zero - n
 let fn_abs_spec (n : Prims.int) : Prims.int= int_abs n
@@ -2298,26 +2376,36 @@ let join (omega1 : solution_sequence) (omega2 : solution_sequence) :
             if sm_compatible mu1 mu2
             then FStar_Pervasives_Native.Some (sm_merge mu1 mu2)
             else FStar_Pervasives_Native.None) omega2) omega1
-let eval_expr_ebv (uu___ : expr)
-  (uu___1 : RDF_Graph_Executable.solution_mapping) : Prims.bool=
-  failwith "Not yet implemented: SPARQL11.Algebra.eval_expr_ebv"
-let eval_expr_fwd (uu___ : expr)
-  (uu___1 : RDF_Graph_Executable.solution_mapping) : eval_result=
-  failwith "Not yet implemented: SPARQL11.Algebra.eval_expr_fwd"
+let eval_expr_ebv_ref : (expr -> RDF_Graph_Executable.solution_mapping -> Prims.bool) ref =
+  ref (fun _ _ -> failwith "eval_expr_ebv not yet wired")
+let eval_expr_fwd_ref : (expr -> RDF_Graph_Executable.solution_mapping -> eval_result) ref =
+  ref (fun _ _ -> failwith "eval_expr_fwd not yet wired")
+let eval_exists_fwd_ref : (group_graph_pattern -> RDF_Graph_Executable.solution_mapping -> RDF_Graph_Executable.rdf_graph -> RDF_Graph_Executable.rdf_dataset -> Prims.bool) ref =
+  ref (fun _ _ _ _ -> false)
+let eval_property_path_fwd_ref : (property_path -> RDF_Graph_Executable.rdf_graph -> (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list) ref =
+  ref (fun _ _ -> [])
+let eval_subselect_fwd_ref : (query -> RDF_Graph_Executable.rdf_graph -> RDF_Graph_Executable.rdf_dataset -> solution_sequence) ref =
+  ref (fun _ _ _ -> [])
+let eval_expr_ebv (e : expr)
+  (mu : RDF_Graph_Executable.solution_mapping) : Prims.bool=
+  !eval_expr_ebv_ref e mu
+let eval_expr_fwd (e : expr)
+  (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
+  !eval_expr_fwd_ref e mu
 let eval_exists_fwd (uu___ : group_graph_pattern)
   (uu___1 : RDF_Graph_Executable.solution_mapping)
   (uu___2 : RDF_Graph_Executable.rdf_graph)
   (uu___3 : RDF_Graph_Executable.rdf_dataset) : Prims.bool=
-  failwith "Not yet implemented: SPARQL11.Algebra.eval_exists_fwd"
+  !eval_exists_fwd_ref uu___ uu___1 uu___2 uu___3
 let eval_subselect_fwd (uu___ : query)
   (uu___1 : RDF_Graph_Executable.rdf_graph)
   (uu___2 : RDF_Graph_Executable.rdf_dataset) : solution_sequence=
-  failwith "Not yet implemented: SPARQL11.Algebra.eval_subselect_fwd"
+  !eval_subselect_fwd_ref uu___ uu___1 uu___2
 type path_result_fwd =
   (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list
 let eval_property_path_fwd (uu___ : property_path)
   (uu___1 : RDF_Graph_Executable.rdf_graph) : path_result_fwd=
-  failwith "Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd"
+  !eval_property_path_fwd_ref uu___ uu___1
 let path_result_to_solutions (ps : pattern_subject) (pt : pattern_term)
   (pairs : path_result_fwd) : solution_sequence=
   list_filter_map
@@ -2473,6 +2561,34 @@ let rec eval_pattern (p : group_graph_pattern)
   | GP_SubSelect q -> eval_subselect_fwd q g ds
   | GP_PropertyPath (ps, pp, pt) ->
       let pairs = eval_property_path_fwd pp g in
+      (* SPARQL semantics: ZeroOrMore/ZeroOrOne paths must include zero-length
+         matches for any constant IRI/BNode in the pattern, even on empty graphs.
+         eval_property_path only generates reflexive pairs for nodes in the graph,
+         so we add reflexive pairs for constants from the query pattern here,
+         but only if they are not already present (to avoid duplicates). *)
+      let pairs = match pp with
+        | PP_ZeroOrMore _ | PP_ZeroOrOne _ ->
+            let constant_terms =
+              (match ps with
+               | PS_IRI i -> [RDF_Graph_Executable.T_IRI i]
+               | PS_BNode b -> [RDF_Graph_Executable.T_BNode b]
+               | PS_Var _ -> [])
+              @
+              (match pt with
+               | PT_IRI i -> [RDF_Graph_Executable.T_IRI i]
+               | PT_BNode b -> [RDF_Graph_Executable.T_BNode b]
+               | PT_Literal l -> [RDF_Graph_Executable.T_Literal l]
+               | PT_Var _ -> []) in
+            let has_reflexive t =
+              FStar_List_Tot_Base.existsb
+                (fun pair -> match pair with (s, o) ->
+                   RDF_Graph_Executable.rdf_term_eq s t &&
+                   RDF_Graph_Executable.rdf_term_eq o t) pairs in
+            let new_terms = FStar_List_Tot_Base.filter
+              (fun t -> not (has_reflexive t)) constant_terms in
+            let reflexive = FStar_List_Tot_Base.map (fun n -> (n, n)) new_terms in
+            FStar_List_Tot_Base.op_At pairs reflexive
+        | _ -> pairs in
       path_result_to_solutions ps pt pairs
 let eval_xsd_cast (v : eval_result) (target_type : Prims.string)
   (full_iri : Prims.string) : eval_result=
@@ -3145,6 +3261,10 @@ and eval_concat (es : expr Prims.list)
             | ER_Error -> ER_Error
             | uu___ -> ER_Error)
        | FStar_Pervasives_Native.None -> ER_Error)
+(* Wire up the forward-declared eval_expr_ebv/fwd to the real implementations *)
+let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
+let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)
+
 type group = {
   g_key: eval_result Prims.list ;
   g_solutions: solution_sequence }
@@ -3644,6 +3764,9 @@ let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
   | QF_Describe uu___ -> []
 type path_result =
   (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list
+(* Wire up eval_subselect_fwd to the real eval_select_query *)
+let () = eval_subselect_fwd_ref := eval_select_query
+
 let is_not_literal (t : RDF_Graph_Executable.rdf_term) : Prims.bool=
   match t with
   | RDF_Graph_Executable.T_Literal uu___ -> false
@@ -3836,6 +3959,9 @@ let rec eval_property_path (p : property_path)
                  [((t.RDF_Graph_Executable.o),
                     (subject_to_term t.RDF_Graph_Executable.s))]) g in
       FStar_List_Tot_Base.op_At direct_pairs inverse_pairs
+(* Wire up eval_property_path_fwd to the real eval_property_path *)
+let () = eval_property_path_fwd_ref := eval_property_path
+
 type numeric_precision =
   | NP_Integer 
   | NP_Decimal 
@@ -4253,5 +4379,8 @@ let eval_not_exists (pattern : group_graph_pattern)
   (graph : RDF_Graph_Executable.rdf_graph)
   (ds : RDF_Graph_Executable.rdf_dataset) : Prims.bool=
   Prims.op_Negation (eval_exists pattern mu graph ds)
+(* Wire up eval_exists_fwd to the real eval_exists *)
+let () = eval_exists_fwd_ref := eval_exists
+
 let filter_solutions (e : expr) (omega : solution_sequence) :
   solution_sequence= FStar_List_Tot_Base.filter (eval_expr_ebv e) omega
