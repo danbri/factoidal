@@ -478,8 +478,10 @@ let ebv (v : eval_result) : bool =
 let er_to_term (v : eval_result) : option rdf_term =
   match v with
   | ER_Term t -> Some t
-  | ER_Bool true -> Some (T_Literal (mk_plain_literal "true"))
-  | ER_Bool false -> Some (T_Literal (mk_plain_literal "false"))
+  | ER_Bool true -> Some (T_Literal ({ lexical_form = "true";
+                                       datatype = xsd_boolean; lang_tag = None }))
+  | ER_Bool false -> Some (T_Literal ({ lexical_form = "false";
+                                        datatype = xsd_boolean; lang_tag = None }))
   | ER_Num n -> Some (T_Literal ({ lexical_form = string_of_int n;
                                     datatype = xsd_integer; lang_tag = None }))
   | ER_Dec s -> Some (T_Literal ({ lexical_form = s;
@@ -498,6 +500,26 @@ let er_to_string (v : eval_result) : option string =
 (* Helper: wrap string result as plain literal *)
 let er_string (s : string) : eval_result =
   ER_Term (T_Literal (mk_plain_literal s))
+
+(* Helper: extract string + metadata from eval_result for string-preserving ops *)
+let er_string_info (v : eval_result) : option (string & option string & string) =
+  match v with
+  | ER_Term (T_Literal l) -> Some (lit_lexical l, l.lang_tag, l.datatype)
+  | _ -> None
+
+// Helper: wrap string result preserving language tag and datatype
+let er_string_preserve (s : string) (lang : option string) (dt : string) : eval_result =
+  if is_iri dt then
+    match lang with
+    | None ->
+      if dt <> rdf_lang_string then
+        ER_Term (T_Literal { lexical_form = s; datatype = dt; lang_tag = None })
+      else er_string s
+    | Some l ->
+      if dt = rdf_lang_string then
+        ER_Term (T_Literal { lexical_form = s; datatype = dt; lang_tag = Some l })
+      else er_string s
+  else er_string s
 
 (* Helper: evaluate arithmetic on integers *)
 let eval_arith_int (op : arith_op) (a b : int) : eval_result =
@@ -608,7 +630,8 @@ let fn_str (v : eval_result) : eval_result =
   | ER_Num n -> ER_Term (T_Literal (mk_plain_literal (string_of_int n)))
   | ER_Dec s -> ER_Term (T_Literal (mk_plain_literal s))
   | ER_Dbl s -> ER_Term (T_Literal (mk_plain_literal s))
-  | ER_Bool b -> ER_Term (T_Literal (mk_plain_literal (if b then "true" else "false")))
+  | ER_Bool b -> ER_Term (T_Literal ({ lexical_form = (if b then "true" else "false");
+                                       datatype = xsd_boolean; lang_tag = None }))
   | ER_Error -> ER_Error
 
 let fn_lang (v : eval_result) : eval_result =
@@ -864,6 +887,216 @@ let int_round (s : string) : int =
       if first_digit_code >= 53 then
         (if n >= 0 then n + 1 else n - 1)
       else n
+
+// Numeric type for aggregate type promotion
+type num_kind = | NK_Int | NK_Dec | NK_Dbl
+
+let promote_kind (a b : num_kind) : num_kind =
+  match a, b with
+  | NK_Dbl, _ | _, NK_Dbl -> NK_Dbl
+  | NK_Dec, _ | _, NK_Dec -> NK_Dec
+  | _, _ -> NK_Int
+
+// Power of 10
+let rec pow10 (n : nat) : Tot int (decreases n) =
+  if n = 0 then 1 else op_Multiply 10 (pow10 (n - 1))
+
+// Generate string of n zero characters
+let rec make_zeros (n : nat) : Tot string (decreases n) =
+  if n = 0 then "" else "0" ^ make_zeros (n - 1)
+
+// Pad string with leading zeros to reach target length
+let pad_left_zeros (s : string) (target : nat) : string =
+  let len = String.length s in
+  if len >= target then s
+  else make_zeros (target - len) ^ s
+
+// Strip trailing zeros from a string, keeping at least min_keep chars
+let rec strip_trailing_zeros_chars (cs : list FStar.Char.char)
+  : Tot (list FStar.Char.char) (decreases cs) =
+  match cs with
+  | [] -> []
+  | _ ->
+    let rev = List.Tot.rev cs in
+    let zero_c = FStar.Char.char_of_int 48 in
+    let stripped = list_drop_while (fun c -> c = zero_c) rev in
+    if Nil? stripped then [zero_c] // keep at least "0"
+    else List.Tot.rev stripped
+
+// Parse decimal string to (scaled_value, scale) where actual = scaled_value / 10^scale
+// "3.5" -> (35, 1), "1.0" -> (10, 1), "100" -> (100, 0), "-2.2" -> (-22, 1)
+let parse_to_scaled (s : string) : option (int & nat) =
+  let (ip, frac, has_dot) = split_decimal s in
+  match ip with
+  | None -> None
+  | Some int_part ->
+    let scale : nat = List.Tot.length frac in
+    if scale = 0 then Some (int_part, 0)
+    else
+      let frac_digits = String.string_of_list frac in
+      match parse_int_string frac_digits with
+      | None -> Some (op_Multiply int_part (pow10 scale), scale)
+      | Some f ->
+        let is_neg = int_part < 0 ||
+          (int_part = 0 && String.length s > 0 && String.sub s 0 1 = "-") in
+        let abs_scaled = op_Multiply (int_abs int_part) (pow10 scale) + int_abs f in
+        Some ((if is_neg then 0 - abs_scaled else abs_scaled), scale)
+
+// Parse double (E-notation) string to (scaled_value, scale)
+// "1.0E2" -> (100, 0), "2.0E-1" -> (20, 2), "3.0E4" -> (30000, 0)
+let parse_double_to_scaled (s : string) : option (int & nat) =
+  let chars = String.list_of_string s in
+  let e_upper = FStar.Char.char_of_int 69 in
+  let e_lower = FStar.Char.char_of_int 101 in
+  let before_e = list_take_while (fun c -> c <> e_upper && c <> e_lower) chars in
+  let after_e_with = list_drop_while (fun c -> c <> e_upper && c <> e_lower) chars in
+  if Nil? after_e_with then parse_to_scaled s
+  else
+    let exp_chars = List.Tot.tl after_e_with in
+    let mantissa_str = String.string_of_list before_e in
+    let exp_str = String.string_of_list exp_chars in
+    match parse_to_scaled mantissa_str, parse_int_string exp_str with
+    | Some (mval, mscale), Some exp ->
+      let effective_scale : int = mscale - exp in
+      if effective_scale <= 0 then
+        Some (op_Multiply mval (pow10 (0 - effective_scale)), 0)
+      else
+        Some (mval, effective_scale)
+    | _, _ -> None
+
+// Format a scaled value back to a decimal string
+// (67, 1) -> "6.7", (2220, 3) -> "2.220"
+let format_scaled_value (value : int) (scale : nat) : string =
+  if scale = 0 then string_of_int value
+  else
+    let is_neg = value < 0 in
+    let abs_val = int_abs value in
+    let p = pow10 scale in
+    if p = 0 then string_of_int value // unreachable: pow10 > 0
+    else
+      let int_part = abs_val / p in
+      let frac_part = abs_val - op_Multiply int_part p in
+      let frac_str = pad_left_zeros (string_of_int frac_part) scale in
+      let sign = if is_neg then "-" else "" in
+      sign ^ string_of_int int_part ^ "." ^ frac_str
+
+// Strip trailing zeros from decimal string, keeping at least one decimal digit
+let strip_trailing_decimal_zeros (s : string) : string =
+  let chars = String.list_of_string s in
+  let dot = FStar.Char.char_of_int 46 in
+  let before_dot = list_take_while (fun c -> c <> dot) chars in
+  let after_dot_with = list_drop_while (fun c -> c <> dot) chars in
+  if Nil? after_dot_with then s
+  else
+    let frac = List.Tot.tl after_dot_with in
+    let stripped = strip_trailing_zeros_chars frac in
+    String.string_of_list before_dot ^ "." ^ String.string_of_list stripped
+
+// Count digits of an integer (for E-notation formatting)
+let rec count_digits (n : nat) : Tot nat (decreases n) =
+  if n < 10 then 1 else 1 + count_digits (n / 10)
+
+// Format a (value, scale) pair as E-notation double string
+// (32100, 0) -> "3.21E4", (20, 2) -> "2.0E-1"
+let format_as_double (value : int) (scale : nat) : string =
+  if value = 0 then "0E0"
+  else
+    let is_neg = value < 0 in
+    let abs_val = int_abs value in
+    // Total number of digits in abs_val
+    let ndigits = count_digits abs_val in
+    // The exponent: position of first digit relative to units place
+    // For (32100, 0): 5 digits, exponent = 4, mantissa = 3.2100
+    // For (20, 2): 2 digits, actual = 0.20, exponent = -1, mantissa = 2.0
+    let exp : int = (ndigits - 1) - scale in
+    // Mantissa: abs_val with decimal point after first digit
+    // = abs_val / 10^(ndigits-1) . remainder
+    let mantissa_scale : nat = ndigits - 1 in
+    let mantissa_str = format_scaled_value abs_val mantissa_scale in
+    let stripped = strip_trailing_decimal_zeros mantissa_str in
+    let sign = if is_neg then "-" else "" in
+    sign ^ stripped ^ "E" ^ string_of_int exp
+
+// Get numeric kind and scaled representation from eval_result
+let er_to_numeric (v : eval_result) : option (int & nat & num_kind) =
+  match v with
+  | ER_Num n -> Some (n, 0, NK_Int)
+  | ER_Dec s ->
+    (match parse_to_scaled s with
+     | Some (sv, ss) -> Some (sv, ss, NK_Dec)
+     | None -> None)
+  | ER_Dbl s ->
+    (match parse_double_to_scaled s with
+     | Some (sv, ss) -> Some (sv, ss, NK_Dbl)
+     | None -> None)
+  | _ -> None
+
+// Add two scaled values, normalizing to the larger scale
+let add_scaled (v1 : int) (s1 : nat) (v2 : int) (s2 : nat) : (int & nat) =
+  if s1 >= s2 then
+    (v1 + op_Multiply v2 (pow10 (s1 - s2)), s1)
+  else
+    (op_Multiply v1 (pow10 (s2 - s1)) + v2, s2)
+
+// Sum numeric eval_results with type promotion
+let rec sum_numeric_acc (vals : list eval_result) (acc_val : int) (acc_scale : nat) (acc_kind : num_kind) (acc_count : nat)
+  : Tot (int & nat & num_kind & nat) (decreases vals) =
+  match vals with
+  | [] -> (acc_val, acc_scale, acc_kind, acc_count)
+  | v :: rest ->
+    match er_to_numeric v with
+    | Some (nv, ns, nk) ->
+      let (sv, ss) = add_scaled acc_val acc_scale nv ns in
+      sum_numeric_acc rest sv ss (promote_kind acc_kind nk) (acc_count + 1)
+    | None -> sum_numeric_acc rest acc_val acc_scale acc_kind acc_count
+
+// Format a numeric result based on the target kind
+let format_numeric_result (value : int) (scale : nat) (kind : num_kind) : eval_result =
+  match kind with
+  | NK_Int ->
+    if scale = 0 then ER_Num value
+    else let p = pow10 scale in
+         if p = 0 then ER_Num value else ER_Num (value / p)
+  | NK_Dec ->
+    let raw = format_scaled_value value scale in
+    ER_Dec (strip_trailing_decimal_zeros raw)
+  | NK_Dbl ->
+    ER_Dbl (format_as_double value scale)
+
+// Sum a list of numeric eval_results, returning the properly typed result
+let sum_numeric (vals : list eval_result) : eval_result =
+  let (v, s, k, c) = sum_numeric_acc vals 0 0 NK_Int 0 in
+  if c = 0 then ER_Num 0
+  else format_numeric_result v s k
+
+// Count numeric values in a list
+let rec count_numeric (vals : list eval_result) : Tot nat (decreases vals) =
+  match vals with
+  | [] -> 0
+  | v :: rest ->
+    (match er_to_numeric v with
+     | Some _ -> 1 + count_numeric rest
+     | None -> count_numeric rest)
+
+// Compute average with proper decimal arithmetic
+// AVG result is always decimal or double (never integer)
+let avg_numeric (vals : list eval_result) : eval_result =
+  let (sum_val, sum_scale, kind, count) = sum_numeric_acc vals 0 0 NK_Int 0 in
+  if count = 0 then ER_Num 0
+  else
+    // Promote kind: AVG of integers is decimal
+    let result_kind = if NK_Int? kind then NK_Dec else kind in
+    // Extend precision for division: multiply numerator by 10^extra_digits
+    let extra : nat = 10 in
+    let extended = op_Multiply sum_val (pow10 extra) in
+    let divided = if count = 0 then 0 else extended / count in
+    let result_scale = sum_scale + extra in
+    // Strip trailing zeros
+    let raw = format_scaled_value divided result_scale in
+    let stripped = strip_trailing_decimal_zeros raw in
+    match result_kind with
+    | NK_Dbl -> ER_Dbl (format_as_double divided result_scale)
+    | _ -> ER_Dec stripped
 
 (* xsd:dateTime component extraction — CONCRETE *)
 
@@ -1403,6 +1636,63 @@ let rec eval_pattern (p : group_graph_pattern) (g : rdf_graph) (ds : rdf_dataset
 (** eval_expr is mutually recursive with eval_pattern above.               **)
 (** ====================================================================== **)
 
+// XSD type casting: xsd:integer(), xsd:decimal(), xsd:boolean(), etc.
+let eval_xsd_cast (v : eval_result) (target_type : string) (full_iri : string) : eval_result =
+  let get_lex = match v with
+    | ER_Num n -> Some (string_of_int n)
+    | ER_Dec s -> Some s
+    | ER_Dbl s -> Some s
+    | ER_Bool b -> Some (if b then "true" else "false")
+    | ER_Term (T_Literal l) -> Some (lit_lexical l)
+    | ER_Term (T_IRI i) -> Some (iri_to_string i)
+    | _ -> None
+  in
+  match get_lex with
+  | None -> ER_Error
+  | Some lex ->
+    if target_type = "integer" then
+      match parse_int_string lex with
+      | Some n -> ER_Num n
+      | None ->
+        // Try parsing as decimal and truncating
+        let (ip, _, _) = split_decimal lex in
+        (match ip with | Some n -> ER_Num n | None -> ER_Error)
+    else if target_type = "decimal" then
+      ER_Dec lex
+    else if target_type = "float" || target_type = "double" then
+      ER_Dbl lex
+    else if target_type = "boolean" then
+      // XSD boolean casting: numeric 0/0.0/0E0/NaN -> false, nonzero -> true
+      // String: "true"/"1" -> true, "false"/"0" -> false
+      match v with
+      | ER_Num n -> ER_Bool (n <> 0)
+      | ER_Dec _ | ER_Dbl _ ->
+        (match parse_to_scaled lex with
+         | Some (sv, _) -> ER_Bool (sv <> 0)
+         | None ->
+           match parse_double_to_scaled lex with
+           | Some (sv, _) -> ER_Bool (sv <> 0)
+           | None -> ER_Error)
+      | ER_Bool b -> ER_Bool b
+      | _ ->
+        if lex = "true" || lex = "1" then ER_Bool true
+        else if lex = "false" || lex = "0" then ER_Bool false
+        else
+          // Try parsing as number
+          match parse_int_string lex with
+          | Some n -> ER_Bool (n <> 0)
+          | None ->
+            match parse_to_scaled lex with
+            | Some (sv, _) -> ER_Bool (sv <> 0)
+            | None -> ER_Error
+    else if target_type = "string" then
+      er_string lex
+    else
+      // Other XSD types: create a typed literal
+      if is_iri full_iri && full_iri <> rdf_lang_string then
+        ER_Term (T_Literal { lexical_form = lex; datatype = full_iri; lang_tag = None })
+      else ER_Error
+
 let rec eval_expr (e : expr) (mu : solution_mapping)
   : Tot eval_result (decreases e) =
   match e with
@@ -1519,8 +1809,9 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
      | Some s -> ER_Num (string_length s)
      | None -> ER_Error)
   | E_Substr e1 e2 e3_opt ->
-    (match er_to_string (eval_expr e1 mu), eval_expr e2 mu with
-     | Some s, ER_Num start ->
+    let v1 = eval_expr e1 mu in
+    (match er_string_info v1, eval_expr e2 mu with
+     | Some (s, lang, dt), ER_Num start ->
        if start < 0 then ER_Error
        else
          let len_opt = match e3_opt with
@@ -1528,15 +1819,17 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
                          | ER_Num n -> if n >= 0 then Some n else None
                          | _ -> None)
            | None -> None
-         in er_string (fn_substr_spec s start len_opt)
+         in er_string_preserve (fn_substr_spec s start len_opt) lang dt
      | _, _ -> ER_Error)
   | E_UCase e1 ->
-    (match er_to_string (eval_expr e1 mu) with
-     | Some s -> er_string (string_upper s)
+    let v1 = eval_expr e1 mu in
+    (match er_string_info v1 with
+     | Some (s, lang, dt) -> er_string_preserve (string_upper s) lang dt
      | None -> ER_Error)
   | E_LCase e1 ->
-    (match er_to_string (eval_expr e1 mu) with
-     | Some s -> er_string (string_lower s)
+    let v1 = eval_expr e1 mu in
+    (match er_string_info v1 with
+     | Some (s, lang, dt) -> er_string_preserve (string_lower s) lang dt
      | None -> ER_Error)
   | E_StrStarts e1 e2 ->
     (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu) with
@@ -1551,26 +1844,30 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
      | Some s, Some sub -> ER_Bool (string_contains s sub)
      | _, _ -> ER_Error)
   | E_StrBefore e1 e2 ->
-    (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu) with
-     | Some s, Some arg -> er_string (string_before s arg)
+    let v1 = eval_expr e1 mu in
+    (match er_string_info v1, er_to_string (eval_expr e2 mu) with
+     | Some (s, lang, dt), Some arg -> er_string_preserve (string_before s arg) lang dt
      | _, _ -> ER_Error)
   | E_StrAfter e1 e2 ->
-    (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu) with
-     | Some s, Some arg -> er_string (string_after s arg)
+    let v1 = eval_expr e1 mu in
+    (match er_string_info v1, er_to_string (eval_expr e2 mu) with
+     | Some (s, lang, dt), Some arg -> er_string_preserve (string_after s arg) lang dt
      | _, _ -> ER_Error)
   | E_Concat es -> eval_concat es mu
   | E_EncodeForUri e1 ->
+    // ENCODE_FOR_URI always returns xsd:string (no lang preservation per spec)
     (match er_to_string (eval_expr e1 mu) with
      | Some s -> er_string (string_encode_uri s)
      | None -> ER_Error)
   | E_Replace e1 e2 e3 e4_opt ->
-    (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu),
+    let v1 = eval_expr e1 mu in
+    (match er_string_info v1, er_to_string (eval_expr e2 mu),
            er_to_string (eval_expr e3 mu) with
-     | Some s, Some pat, Some rep ->
+     | Some (s, lang, dt), Some pat, Some rep ->
        let flags = match e4_opt with
          | Some e4 -> er_to_string (eval_expr e4 mu)
          | None -> None
-       in er_string (string_replace s pat rep flags)
+       in er_string_preserve (string_replace s pat rep flags) lang dt
      | _, _, _ -> ER_Error)
   | E_Regex e1 e2 e3_opt ->
     (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu) with
@@ -1597,17 +1894,20 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
   | E_Round e1 ->
     (match eval_expr e1 mu with
      | ER_Num n -> ER_Num n
-     | ER_Dec s -> ER_Num (int_round s)
+     | ER_Dec s -> ER_Dec (string_of_int (int_round s))
+     | ER_Dbl s -> ER_Dbl (string_of_int (int_round s))
      | _ -> ER_Error)
   | E_Ceil e1 ->
     (match eval_expr e1 mu with
      | ER_Num n -> ER_Num n
-     | ER_Dec s -> ER_Num (int_ceil s)
+     | ER_Dec s -> ER_Dec (string_of_int (int_ceil s))
+     | ER_Dbl s -> ER_Dbl (string_of_int (int_ceil s))
      | _ -> ER_Error)
   | E_Floor e1 ->
     (match eval_expr e1 mu with
      | ER_Num n -> ER_Num n
-     | ER_Dec s -> ER_Num (int_floor s)
+     | ER_Dec s -> ER_Dec (string_of_int (int_floor s))
+     | ER_Dbl s -> ER_Dbl (string_of_int (int_floor s))
      | _ -> ER_Error)
 
   (* Hash functions *)
@@ -1705,7 +2005,18 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
           | Some s -> ER_Term (T_BNode ("_:b" ^ s))
           | None -> ER_Error)
        | _ -> ER_Error
-     else ER_Error)
+     // XSD type constructor function calls (casting)
+     else
+       let xsd_ns = "http://www.w3.org/2001/XMLSchema#" in
+       if String.length iri_s > String.length xsd_ns &&
+          String.sub iri_s 0 (String.length xsd_ns) = xsd_ns then
+         match args with
+         | [e1] ->
+           let v = eval_expr e1 mu in
+           let target_type = String.sub iri_s (String.length xsd_ns) (String.length iri_s - String.length xsd_ns) in
+           eval_xsd_cast v target_type iri_s
+         | _ -> ER_Error
+       else ER_Error)
 
 (* Coalesce: first non-error result from list *)
 and eval_coalesce (es : list expr) (mu : solution_mapping)
@@ -1896,19 +2207,7 @@ let rec dedup_er (vals : list eval_result) : Tot (list eval_result) (decreases v
     then dedup_er rest
     else v :: dedup_er rest
 
-(* Sum a list of eval_results, keeping only ER_Num values *)
-let rec sum_nums (vals : list eval_result) : Tot int (decreases vals) =
-  match vals with
-  | [] -> 0
-  | ER_Num n :: rest -> n + sum_nums rest
-  | _ :: rest -> sum_nums rest
-
-(* Count numeric values in a list *)
-let rec count_nums (vals : list eval_result) : Tot int (decreases vals) =
-  match vals with
-  | [] -> 0
-  | ER_Num _ :: rest -> 1 + count_nums rest
-  | _ :: rest -> count_nums rest
+// These are now replaced by sum_numeric, count_numeric, avg_numeric above
 
 (* Find minimum eval_result by sparql_order *)
 let rec find_min (vals : list eval_result) : Tot eval_result (decreases vals) =
@@ -1957,15 +2256,11 @@ let eval_aggregate (fn : aggregate_fn) (distinct : bool) (e : expr) (g : group) 
   | Agg_Sum ->
     let vals = filter_non_error (eval_over_group e g) in
     let vals = if distinct then dedup_er vals else vals in
-    ER_Num (sum_nums vals)
+    sum_numeric vals
   | Agg_Avg ->
     let vals = filter_non_error (eval_over_group e g) in
     let vals = if distinct then dedup_er vals else vals in
-    let s = sum_nums vals in
-    let c = count_nums vals in
-    if c > 0
-    then ER_Dec (string_of_int (s / c) ^ "." ^ string_of_int (int_abs ((op_Multiply (s - op_Multiply (s / c) c) 1000) / c)))
-    else ER_Num 0
+    avg_numeric vals
   | Agg_Min ->
     let vals = filter_non_error (eval_over_group e g) in
     let vals = if distinct then dedup_er vals else vals in

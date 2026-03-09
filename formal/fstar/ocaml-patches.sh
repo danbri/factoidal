@@ -136,31 +136,26 @@ content = content.replace(
     '''let hash_sha1 (uu___ : Prims.string) : Prims.string=
   failwith \"Not yet implemented: SPARQL11.Algebra.hash_sha1\"''',
     '''let hash_sha1 (s : Prims.string) : Prims.string=
-  (* SHA-1 not in stdlib Digest — return placeholder until a crypto lib is added *)
-  let hex_of_char c = Printf.sprintf \"%02x\" (Char.code c) in
-  let d = Digest.string s in
-  String.concat \"\" (List.init (String.length d) (fun i -> hex_of_char d.[i]))'''
+  Sha1.to_hex (Sha1.string s)'''
 )
 content = content.replace(
     '''let hash_sha256 (uu___ : Prims.string) : Prims.string=
   failwith \"Not yet implemented: SPARQL11.Algebra.hash_sha256\"''',
     '''let hash_sha256 (s : Prims.string) : Prims.string=
-  (* SHA-256 not in stdlib Digest — return placeholder *)
-  Digest.to_hex (Digest.string (\"sha256:\" ^ s))'''
+  Sha256.to_hex (Sha256.string s)'''
 )
 content = content.replace(
     '''let hash_sha384 (uu___ : Prims.string) : Prims.string=
   failwith \"Not yet implemented: SPARQL11.Algebra.hash_sha384\"''',
     '''let hash_sha384 (s : Prims.string) : Prims.string=
-  (* SHA-384 not in stdlib Digest — return placeholder *)
-  Digest.to_hex (Digest.string (\"sha384:\" ^ s))'''
+  (* No Sha384 in sha package — use Sha512 truncated to 96 hex chars *)
+  String.sub (Sha512.to_hex (Sha512.string s)) 0 96'''
 )
 content = content.replace(
     '''let hash_sha512 (uu___ : Prims.string) : Prims.string=
   failwith \"Not yet implemented: SPARQL11.Algebra.hash_sha512\"''',
     '''let hash_sha512 (s : Prims.string) : Prims.string=
-  (* SHA-512 not in stdlib Digest — return placeholder *)
-  Digest.to_hex (Digest.string (\"sha512:\" ^ s))'''
+  Sha512.to_hex (Sha512.string s)'''
 )
 
 # 2b2. Replace UUID/STRUUID hardcoded stubs with random UUID v4 generation.

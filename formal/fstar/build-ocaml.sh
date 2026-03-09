@@ -63,7 +63,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   cd "$OUTDIR"
 
   # W3C test runner (reads real W3C manifests, calls F*-extracted code)
-  ocamlfind ocamlopt -package fstar.lib,str,zarith -linkpkg -w -8-14-26 \
+  ocamlfind ocamlopt -package fstar.lib,str,zarith,sha -linkpkg -w -8-14-26 \
     RDF_Graph_Executable.ml \
     Parser_Combinators.ml Parser_NTriples.ml Parser_Turtle.ml \
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
@@ -91,7 +91,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
   cd "$OUTDIR"
 
   # Build w3c_runner bytecode for js_of_ocaml
-  ocamlfind ocamlc -package fstar.lib,str,zarith -linkpkg -w -8-14-26 \
+  ocamlfind ocamlc -package fstar.lib,str,zarith,sha -linkpkg -w -8-14-26 \
     RDF_Graph_Executable.ml \
     Parser_Combinators.ml Parser_NTriples.ml Parser_Turtle.ml \
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \

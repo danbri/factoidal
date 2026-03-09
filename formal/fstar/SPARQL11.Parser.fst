@@ -498,6 +498,14 @@ noeq type parse_result (a : Type) =
 (* Token stream = list of tokens (produced by lexer) *)
 type token_stream = list token
 
+// Predicate can be a simple term or a property path
+noeq type verb_or_path =
+  | VSimple : pattern_term -> verb_or_path
+  | VPath   : property_path -> verb_or_path
+
+// Result of parsing solution modifiers (modifier + group_by + having)
+type modifier_result = solution_modifier & option (list group_condition) & option (list having_condition)
+
 (* Helper: check if a token is EOF *)
 let is_eof (t : token) : bool =
   match t with Tok_EOF -> true | _ -> false
@@ -947,7 +955,18 @@ and parse_primary_expr (pm : prefix_map) (fuel : nat) (ts : token_stream)
   | Tok_TIMEZONE -> parse_b1 pm (fuel-1) E_Timezone (parse_advance ts)
   | Tok_TZ -> parse_b1 pm (fuel-1) E_Tz (parse_advance ts)
   (* Built-in 2-arg functions *)
-  | Tok_LANGMATCHES -> parse_b2 pm (fuel-1) E_SameTerm (parse_advance ts)  (* Note: LANGMATCHES uses FunctionCall in eval *)
+  | Tok_LANGMATCHES ->
+    // LANGMATCHES(tag, range) is a 2-arg built-in; model as function call
+    let ts' = parse_advance ts in
+    (match parse_expect Tok_LPAREN ts' with
+     | ParseErr m -> ParseErr m
+     | ParseOk () ts1 ->
+       begin match parse_expr pm (fuel-1) ts1 with | ParseErr m -> ParseErr m | ParseOk e1 ts2 ->
+       begin match parse_expect Tok_COMMA ts2 with | ParseErr m -> ParseErr m | ParseOk () ts3 ->
+       begin match parse_expr pm (fuel-1) ts3 with | ParseErr m -> ParseErr m | ParseOk e2 ts4 ->
+       begin match parse_expect Tok_RPAREN ts4 with | ParseErr m -> ParseErr m | ParseOk () ts5 ->
+       ParseOk (E_FunctionCall "http://www.w3.org/2005/xpath-functions#langMatches" [e1; e2]) ts5
+       end end end end)
   | Tok_SAMETERM -> parse_b2 pm (fuel-1) E_SameTerm (parse_advance ts)
   | Tok_STRSTARTS -> parse_b2 pm (fuel-1) E_StrStarts (parse_advance ts)
   | Tok_STRENDS -> parse_b2 pm (fuel-1) E_StrEnds (parse_advance ts)
@@ -961,11 +980,64 @@ and parse_primary_expr (pm : prefix_map) (fuel : nat) (ts : token_stream)
   | Tok_IF -> parse_if_expr pm (fuel-1) (parse_advance ts)
   | Tok_COALESCE -> parse_coalesce pm (fuel-1) (parse_advance ts)
   | Tok_CONCAT -> parse_concat pm (fuel-1) (parse_advance ts)
-  | Tok_NOW -> ParseOk E_Now (parse_advance ts)
-  | Tok_RAND -> ParseErr "unsupported: RAND()"
-  | Tok_UUID -> ParseErr "unsupported: UUID()"
-  | Tok_STRUUID -> ParseErr "unsupported: STRUUID()"
-  | Tok_BNODE_KW -> ParseErr "unsupported: BNODE()"
+  | Tok_NOW ->
+    let ts' = parse_advance ts in
+    // NOW() requires parens
+    (match parse_peek ts' with
+     | Tok_LPAREN ->
+       let ts'' = parse_advance ts' in
+       (match parse_expect Tok_RPAREN ts'' with
+        | ParseErr _ -> ParseErr "expected ')' after NOW("
+        | ParseOk () ts''' -> ParseOk E_Now ts''')
+     | _ -> ParseOk E_Now ts')
+  | Tok_RAND ->
+    // RAND() -> E_FunctionCall with 0 args
+    let ts' = parse_advance ts in
+    (match parse_expect Tok_LPAREN ts' with
+     | ParseErr e -> ParseErr e
+     | ParseOk () ts'' ->
+       match parse_expect Tok_RPAREN ts'' with
+       | ParseErr _ -> ParseErr "expected ')' after RAND("
+       | ParseOk () ts''' ->
+         ParseOk (E_FunctionCall "http://www.w3.org/2005/xpath-functions#rand" []) ts''')
+  | Tok_UUID ->
+    let ts' = parse_advance ts in
+    (match parse_expect Tok_LPAREN ts' with
+     | ParseErr e -> ParseErr e
+     | ParseOk () ts'' ->
+       match parse_expect Tok_RPAREN ts'' with
+       | ParseErr _ -> ParseErr "expected ')' after UUID("
+       | ParseOk () ts''' ->
+         ParseOk (E_FunctionCall "http://www.w3.org/2005/xpath-functions#uuid" []) ts''')
+  | Tok_STRUUID ->
+    let ts' = parse_advance ts in
+    (match parse_expect Tok_LPAREN ts' with
+     | ParseErr e -> ParseErr e
+     | ParseOk () ts'' ->
+       match parse_expect Tok_RPAREN ts'' with
+       | ParseErr _ -> ParseErr "expected ')' after STRUUID("
+       | ParseOk () ts''' ->
+         ParseOk (E_FunctionCall "http://www.w3.org/2005/xpath-functions#struuid" []) ts''')
+  | Tok_BNODE_KW ->
+    // BNODE() or BNODE(expr)
+    let ts' = parse_advance ts in
+    (match parse_expect Tok_LPAREN ts' with
+     | ParseErr e -> ParseErr e
+     | ParseOk () ts'' ->
+       match parse_peek ts'' with
+       | Tok_RPAREN ->
+         // BNODE() - no args
+         let ts''' = parse_advance ts'' in
+         ParseOk (E_FunctionCall "http://www.w3.org/2005/xpath-functions#bnode" []) ts'''
+       | _ ->
+         // BNODE(expr)
+         match parse_expr pm (fuel-1) ts'' with
+         | ParseErr e -> ParseErr e
+         | ParseOk arg ts''' ->
+           match parse_expect Tok_RPAREN ts''' with
+           | ParseErr _ -> ParseErr "expected ')' after BNODE(expr"
+           | ParseOk () ts4 ->
+             ParseOk (E_FunctionCall "http://www.w3.org/2005/xpath-functions#bnode" [arg]) ts4)
   | Tok_REGEX -> parse_regex pm (fuel-1) (parse_advance ts)
   | Tok_REPLACE -> parse_replace pm (fuel-1) (parse_advance ts)
   | Tok_SUBSTR -> parse_substr pm (fuel-1) (parse_advance ts)
@@ -1324,17 +1396,14 @@ and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern) (t
   : Tot (parse_result group_graph_pattern) (decreases fuel) =
   if fuel = 0 then ParseOk acc ts
   else match parse_peek ts with
-  (* Try parsing triples if we see a term *)
+  // Try parsing triples if we see a term
   | Tok_VAR _ | Tok_IRI _ | Tok_PNAME _ | Tok_BNODE _ | Tok_LBRACKET
   | Tok_LPAREN | Tok_A | Tok_INTEGER _ | Tok_DECIMAL _ | Tok_DOUBLE _
   | Tok_STRING _ | Tok_TRUE | Tok_FALSE ->
-    (match parse_triples_block pm (fuel-1) [] ts with
+    (match parse_triples_block pm (fuel-1) GP_Empty ts with
      | ParseErr m -> ParseErr m
-     | ParseOk triples ts' ->
-       let acc' = if List.Tot.length triples = 0 then acc
-                  else match acc with
-                       | GP_Empty -> GP_BGP triples
-                       | _ -> GP_Join acc (GP_BGP triples) in
+     | ParseOk triples_ggp ts' ->
+       let acc' = ggp_join acc triples_ggp in
        let ts' = match parse_peek ts' with Tok_DOT -> parse_advance ts' | _ -> ts' in
        parse_ggp_body pm (fuel-1) acc' ts')
   | Tok_OPTIONAL ->
@@ -1413,7 +1482,12 @@ and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern) (t
            | _ -> ParseErr "expected variable after AS"
            end end end)
   | Tok_VALUES ->
-    ParseErr "unsupported: inline VALUES"
+    (match parse_values_clause pm (fuel-1) (parse_advance ts) with
+     | ParseErr m -> ParseErr m
+     | ParseOk g ts' ->
+       let acc' = ggp_join acc g in
+       let ts' = match parse_peek ts' with Tok_DOT -> parse_advance ts' | _ -> ts' in
+       parse_ggp_body pm (fuel-1) acc' ts')
   | Tok_LBRACE ->
     (* Nested GGP — could be UNION *)
     (match parse_group_or_union pm (fuel-1) ts with
@@ -1485,6 +1559,163 @@ and parse_service_iri (pm : prefix_map) (fuel : nat) (ts : token_stream)
   | Tok_VAR _ -> ParseErr "unsupported: variable SERVICE endpoint"
   | _ -> ParseErr "expected IRI for SERVICE"
 
+// ---- VALUES clause parsing ----
+// VALUES (?x ?y) { (val1 val2) (val3 UNDEF) ... }
+// or VALUES ?x { val1 val2 ... }
+
+// Parse a single data value: IRI, literal, or UNDEF
+and parse_data_value (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result (option rdf_term)) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_peek ts with
+  | Tok_UNDEF -> ParseOk None (parse_advance ts)
+  | Tok_IRI i ->
+    if is_iri i then ParseOk (Some (T_IRI i)) (parse_advance ts) else ParseErr "invalid IRI"
+  | Tok_PNAME pn ->
+    (match resolve_pname pn pm with
+     | Some iri -> if is_iri iri then ParseOk (Some (T_IRI iri)) (parse_advance ts) else ParseErr "invalid IRI"
+     | None -> ParseErr "unresolved prefix")
+  | Tok_STRING s ->
+    // Check for ^^datatype or @lang
+    let ts' = parse_advance ts in
+    (match parse_peek ts' with
+     | Tok_HATHAT ->
+       let ts'' = parse_advance ts' in
+       (match parse_peek ts'' with
+        | Tok_IRI dt ->
+          if is_iri dt then
+            (match make_typed_literal s dt with
+             | Some lit -> ParseOk (Some (T_Literal lit)) (parse_advance ts'')
+             | None -> ParseErr "invalid typed literal")
+          else ParseErr "invalid datatype IRI"
+        | Tok_PNAME pn ->
+          (match resolve_pname pn pm with
+           | Some dt ->
+             if is_iri dt then
+               (match make_typed_literal s dt with
+                | Some lit -> ParseOk (Some (T_Literal lit)) (parse_advance ts'')
+                | None -> ParseErr "invalid typed literal")
+             else ParseErr "invalid datatype IRI"
+           | None -> ParseErr "unresolved prefix")
+        | _ -> ParseErr "expected IRI after ^^")
+     | Tok_LANGTAG lang ->
+       ParseOk (Some (T_Literal (make_lang_literal s lang))) (parse_advance ts')
+     | _ -> ParseOk (Some (T_Literal (make_plain_literal s))) ts')
+  | Tok_INTEGER n ->
+    (match make_typed_literal n "http://www.w3.org/2001/XMLSchema#integer" with
+     | Some lit -> ParseOk (Some (T_Literal lit)) (parse_advance ts)
+     | None -> ParseErr "invalid integer")
+  | Tok_DECIMAL d ->
+    (match make_typed_literal d "http://www.w3.org/2001/XMLSchema#decimal" with
+     | Some lit -> ParseOk (Some (T_Literal lit)) (parse_advance ts)
+     | None -> ParseErr "invalid decimal")
+  | Tok_DOUBLE d ->
+    (match make_typed_literal d "http://www.w3.org/2001/XMLSchema#double" with
+     | Some lit -> ParseOk (Some (T_Literal lit)) (parse_advance ts)
+     | None -> ParseErr "invalid double")
+  | Tok_TRUE ->
+    (match make_typed_literal "true" "http://www.w3.org/2001/XMLSchema#boolean" with
+     | Some lit -> ParseOk (Some (T_Literal lit)) (parse_advance ts)
+     | None -> ParseErr "invalid boolean")
+  | Tok_FALSE ->
+    (match make_typed_literal "false" "http://www.w3.org/2001/XMLSchema#boolean" with
+     | Some lit -> ParseOk (Some (T_Literal lit)) (parse_advance ts)
+     | None -> ParseErr "invalid boolean")
+  | _ -> ParseErr "expected data value or UNDEF"
+
+// Parse a row of values: ( val1 val2 ... )
+and parse_values_row (pm : prefix_map) (fuel : nat) (n_vars : nat) (ts : token_stream)
+  : Tot (parse_result (list (option rdf_term))) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_expect Tok_LPAREN ts with
+  | ParseErr m -> ParseErr m
+  | ParseOk () ts' -> parse_values_row_items pm (fuel-1) n_vars [] ts'
+
+and parse_values_row_items (pm : prefix_map) (fuel : nat) (remaining : nat)
+  (acc : list (option rdf_term)) (ts : token_stream)
+  : Tot (parse_result (list (option rdf_term))) (decreases fuel) =
+  if fuel = 0 then ParseOk (List.Tot.rev acc) ts
+  else match parse_peek ts with
+  | Tok_RPAREN -> ParseOk (List.Tot.rev acc) (parse_advance ts)
+  | _ ->
+    (match parse_data_value pm (fuel-1) ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk v ts' -> parse_values_row_items pm (fuel-1) (if remaining > 0 then remaining - 1 else 0) (v :: acc) ts')
+
+// Parse multiple rows
+and parse_values_rows (pm : prefix_map) (fuel : nat) (n_vars : nat)
+  (acc : list (list (option rdf_term))) (ts : token_stream)
+  : Tot (parse_result (list (list (option rdf_term)))) (decreases fuel) =
+  if fuel = 0 then ParseOk (List.Tot.rev acc) ts
+  else match parse_peek ts with
+  | Tok_LPAREN ->
+    (match parse_values_row pm (fuel-1) n_vars ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk row ts' -> parse_values_rows pm (fuel-1) n_vars (row :: acc) ts')
+  | _ -> ParseOk (List.Tot.rev acc) ts
+
+// Parse variable list for VALUES: (?x ?y ...)
+and parse_values_vars (fuel : nat) (acc : list var_name) (ts : token_stream)
+  : Tot (parse_result (list var_name)) (decreases fuel) =
+  if fuel = 0 then ParseOk (List.Tot.rev acc) ts
+  else match parse_peek ts with
+  | Tok_VAR v -> parse_values_vars (fuel-1) (v :: acc) (parse_advance ts)
+  | _ -> ParseOk (List.Tot.rev acc) ts
+
+// Parse VALUES clause: after VALUES keyword consumed
+// VALUES (?x ?y) { (v1 v2) ... }  or  VALUES ?x { v1 v2 ... }
+and parse_values_clause (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result group_graph_pattern) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_peek ts with
+  | Tok_VAR v ->
+    // Single variable form: VALUES ?x { v1 v2 ... }
+    let ts' = parse_advance ts in
+    (match parse_expect Tok_LBRACE ts' with
+     | ParseErr m -> ParseErr m
+     | ParseOk () ts'' ->
+       begin match parse_single_var_values pm (fuel-1) [] ts'' with
+       | ParseErr m -> ParseErr m
+       | ParseOk vals ts''' ->
+         begin match parse_expect Tok_RBRACE ts''' with
+         | ParseErr m -> ParseErr m
+         | ParseOk () ts4 ->
+           let rows = List.Tot.map (fun v -> [v]) vals in
+           ParseOk (GP_Values [v] rows) ts4
+         end end)
+  | Tok_LPAREN ->
+    // Multi variable form: VALUES (?x ?y) { (v1 v2) ... }
+    let ts' = parse_advance ts in
+    (match parse_values_vars (fuel-1) [] ts' with
+     | ParseErr m -> ParseErr m
+     | ParseOk vars ts'' ->
+       begin match parse_expect Tok_RPAREN ts'' with
+       | ParseErr m -> ParseErr m
+       | ParseOk () ts''' ->
+         begin match parse_expect Tok_LBRACE ts''' with
+         | ParseErr m -> ParseErr m
+         | ParseOk () ts4 ->
+           begin match parse_values_rows pm (fuel-1) (List.Tot.length vars) [] ts4 with
+           | ParseErr m -> ParseErr m
+           | ParseOk rows ts5 ->
+             begin match parse_expect Tok_RBRACE ts5 with
+             | ParseErr m -> ParseErr m
+             | ParseOk () ts6 -> ParseOk (GP_Values vars rows) ts6
+             end end end end)
+  | _ -> ParseErr "expected variable or '(' after VALUES"
+
+// Parse single-variable VALUES data: v1 v2 v3 ... (no parens around each)
+and parse_single_var_values (pm : prefix_map) (fuel : nat)
+  (acc : list (option rdf_term)) (ts : token_stream)
+  : Tot (parse_result (list (option rdf_term))) (decreases fuel) =
+  if fuel = 0 then ParseOk (List.Tot.rev acc) ts
+  else match parse_peek ts with
+  | Tok_RBRACE -> ParseOk (List.Tot.rev acc) ts
+  | _ ->
+    (match parse_data_value pm (fuel-1) ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk v ts' -> parse_single_var_values pm (fuel-1) (v :: acc) ts')
+
 (* ---- Triples block parsing ---- *)
 
 (* Parse a single term as pattern_subject *)
@@ -1499,57 +1730,275 @@ and parse_subject (pm : prefix_map) (fuel : nat) (ts : token_stream)
      | Some iri -> if is_iri iri then ParseOk (PS_IRI iri) (parse_advance ts) else ParseErr "invalid IRI"
      | None -> ParseErr "unresolved prefix")
   | Tok_BNODE b -> ParseOk (PS_BNode b) (parse_advance ts)
+  | Tok_LBRACKET ->
+    // [] = anonymous blank node, or [ predObjList ] = blank node with properties
+    let bnode_id = fresh_bnode_id ts in
+    let ts' = parse_advance ts in
+    (match parse_peek ts' with
+     | Tok_RBRACKET -> ParseOk (PS_BNode bnode_id) (parse_advance ts')
+     | _ -> ParseErr "blank node property list as subject not yet supported")
   | _ -> ParseErr "expected subject"
 
-(* Parse a predicate as pattern_term *)
-and parse_predicate (pm : prefix_map) (fuel : nat) (ts : token_stream)
-  : Tot (parse_result pattern_term) (decreases fuel) =
+// Property path parsing: PathAlternative ::= PathSequence ( '|' PathSequence )*
+and parse_path_alternative (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result property_path) (decreases fuel) =
   if fuel = 0 then ParseErr "recursion limit"
-  else match parse_peek ts with
-  | Tok_VAR v -> ParseOk (PT_Var v) (parse_advance ts)
-  | Tok_A -> ParseOk (PT_IRI rdf_type_iri_str) (parse_advance ts)
-  | Tok_IRI i -> if is_iri i then ParseOk (PT_IRI i) (parse_advance ts) else ParseErr "invalid IRI"
-  | Tok_PNAME pn ->
-    (match resolve_pname pn pm with
-     | Some iri -> if is_iri iri then ParseOk (PT_IRI iri) (parse_advance ts) else ParseErr "invalid IRI"
-     | None -> ParseErr "unresolved prefix")
-  | _ -> ParseErr "expected predicate"
+  else match parse_path_sequence pm (fuel-1) ts with
+  | ParseErr m -> ParseErr m
+  | ParseOk p1 ts' -> parse_path_alt_rest pm (fuel-1) p1 ts'
 
-(* Parse an object as pattern_term *)
-and parse_object (pm : prefix_map) (fuel : nat) (ts : token_stream)
-  : Tot (parse_result pattern_term) (decreases fuel) =
+and parse_path_alt_rest (pm : prefix_map) (fuel : nat) (acc : property_path) (ts : token_stream)
+  : Tot (parse_result property_path) (decreases fuel) =
+  if fuel = 0 then ParseOk acc ts
+  else match parse_peek ts with
+  | Tok_PIPE ->
+    (match parse_path_sequence pm (fuel-1) (parse_advance ts) with
+     | ParseErr m -> ParseErr m
+     | ParseOk p2 ts' -> parse_path_alt_rest pm (fuel-1) (PP_Alternative acc p2) ts')
+  | _ -> ParseOk acc ts
+
+// PathSequence ::= PathEltOrInverse ( '/' PathEltOrInverse )*
+and parse_path_sequence (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result property_path) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_path_elt_or_inverse pm (fuel-1) ts with
+  | ParseErr m -> ParseErr m
+  | ParseOk p1 ts' -> parse_path_seq_rest pm (fuel-1) p1 ts'
+
+and parse_path_seq_rest (pm : prefix_map) (fuel : nat) (acc : property_path) (ts : token_stream)
+  : Tot (parse_result property_path) (decreases fuel) =
+  if fuel = 0 then ParseOk acc ts
+  else match parse_peek ts with
+  | Tok_SLASH ->
+    (match parse_path_elt_or_inverse pm (fuel-1) (parse_advance ts) with
+     | ParseErr m -> ParseErr m
+     | ParseOk p2 ts' -> parse_path_seq_rest pm (fuel-1) (PP_Sequence acc p2) ts')
+  | _ -> ParseOk acc ts
+
+// PathEltOrInverse ::= PathElt | '^' PathElt
+and parse_path_elt_or_inverse (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result property_path) (decreases fuel) =
   if fuel = 0 then ParseErr "recursion limit"
   else match parse_peek ts with
-  | Tok_VAR v -> ParseOk (PT_Var v) (parse_advance ts)
-  | Tok_IRI i -> if is_iri i then ParseOk (PT_IRI i) (parse_advance ts) else ParseErr "invalid IRI"
+  | Tok_CARET ->
+    (match parse_path_elt pm (fuel-1) (parse_advance ts) with
+     | ParseErr m -> ParseErr m
+     | ParseOk p ts' -> ParseOk (PP_Inverse p) ts')
+  | _ -> parse_path_elt pm (fuel-1) ts
+
+// PathElt ::= PathPrimary PathMod?   (PathMod ::= '?' | '*' | '+')
+and parse_path_elt (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result property_path) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_path_primary pm (fuel-1) ts with
+  | ParseErr m -> ParseErr m
+  | ParseOk p ts' ->
+    (match parse_peek ts' with
+     | Tok_STAR -> ParseOk (PP_ZeroOrMore p) (parse_advance ts')
+     | Tok_PLUS -> ParseOk (PP_OneOrMore p) (parse_advance ts')
+     | Tok_QMARK -> ParseOk (PP_ZeroOrOne p) (parse_advance ts')
+     | _ -> ParseOk p ts')
+
+// PathPrimary ::= iri | 'a' | '!' PathNegatedPropertySet | '(' Path ')'
+and parse_path_primary (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result property_path) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_peek ts with
+  | Tok_IRI i ->
+    if is_iri i then ParseOk (PP_IRI i) (parse_advance ts) else ParseErr "invalid IRI"
   | Tok_PNAME pn ->
     (match resolve_pname pn pm with
-     | Some iri -> if is_iri iri then ParseOk (PT_IRI iri) (parse_advance ts) else ParseErr "invalid IRI"
+     | Some iri -> if is_iri iri then ParseOk (PP_IRI iri) (parse_advance ts) else ParseErr "invalid IRI"
      | None -> ParseErr "unresolved prefix")
-  | Tok_BNODE b -> ParseOk (PT_BNode b) (parse_advance ts)
-  | Tok_STRING s -> parse_rdf_literal_pt pm (fuel-1) s (parse_advance ts)
+  | Tok_A -> ParseOk (PP_IRI rdf_type_iri_str) (parse_advance ts)
+  | Tok_BANG -> parse_path_negated pm (fuel-1) (parse_advance ts)
+  | Tok_LPAREN ->
+    (match parse_path_alternative pm (fuel-1) (parse_advance ts) with
+     | ParseErr m -> ParseErr m
+     | ParseOk p ts' ->
+       begin match parse_expect Tok_RPAREN ts' with
+       | ParseErr _ -> ParseErr "expected ')' after path"
+       | ParseOk () ts'' -> ParseOk p ts''
+       end)
+  | _ -> ParseErr "expected path primary"
+
+// PathNegatedPropertySet ::= PathOneInPropertySet | '(' PathOneInPropertySet ( '|' ... )* ')'
+and parse_path_negated (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result property_path) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_peek ts with
+  | Tok_LPAREN ->
+    (match parse_path_one_in_set_list pm (fuel-1) (parse_advance ts) with
+     | ParseErr m -> ParseErr m
+     | ParseOk ps ts' ->
+       begin match parse_expect Tok_RPAREN ts' with
+       | ParseErr _ -> ParseErr "expected ')' in negated path set"
+       | ParseOk () ts'' -> ParseOk (PP_NegatedSet ps) ts''
+       end)
+  | _ ->
+    (match parse_path_one_in_set pm (fuel-1) ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk p ts' -> ParseOk (PP_NegatedSet [p]) ts')
+
+// PathOneInPropertySet ::= iri | 'a' | '^' ( iri | 'a' )
+and parse_path_one_in_set (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result property_path) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_peek ts with
+  | Tok_IRI i ->
+    if is_iri i then ParseOk (PP_IRI i) (parse_advance ts) else ParseErr "invalid IRI"
+  | Tok_PNAME pn ->
+    (match resolve_pname pn pm with
+     | Some iri -> if is_iri iri then ParseOk (PP_IRI iri) (parse_advance ts) else ParseErr "invalid IRI"
+     | None -> ParseErr "unresolved prefix")
+  | Tok_A -> ParseOk (PP_IRI rdf_type_iri_str) (parse_advance ts)
+  | Tok_CARET ->
+    let ts' = parse_advance ts in
+    (match parse_peek ts' with
+     | Tok_IRI i ->
+       if is_iri i then ParseOk (PP_Inverse (PP_IRI i)) (parse_advance ts') else ParseErr "invalid IRI"
+     | Tok_PNAME pn ->
+       (match resolve_pname pn pm with
+        | Some iri -> if is_iri iri then ParseOk (PP_Inverse (PP_IRI iri)) (parse_advance ts') else ParseErr "invalid IRI"
+        | None -> ParseErr "unresolved prefix")
+     | Tok_A -> ParseOk (PP_Inverse (PP_IRI rdf_type_iri_str)) (parse_advance ts')
+     | _ -> ParseErr "expected IRI or 'a' after ^ in negated set")
+  | _ -> ParseErr "expected path element in negated set"
+
+// List of PathOneInPropertySet separated by '|'
+and parse_path_one_in_set_list (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result (list property_path)) (decreases fuel) =
+  if fuel = 0 then ParseOk [] ts
+  else match parse_path_one_in_set pm (fuel-1) ts with
+  | ParseErr m -> ParseErr m
+  | ParseOk p ts' ->
+    (match parse_peek ts' with
+     | Tok_PIPE ->
+       (match parse_path_one_in_set_list pm (fuel-1) (parse_advance ts') with
+        | ParseErr m -> ParseErr m
+        | ParseOk ps ts'' -> ParseOk (p :: ps) ts'')
+     | _ -> ParseOk [p] ts')
+
+// Parse verb (predicate): try property path, determine if simple or complex
+and parse_verb (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result verb_or_path) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else
+  // Variable as predicate — always simple
+  match parse_peek ts with
+  | Tok_VAR v -> ParseOk (VSimple (PT_Var v)) (parse_advance ts)
+  | _ ->
+    // Try to parse as property path
+    (match parse_path_alternative pm (fuel-1) ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk pp ts' ->
+       // If it's just a simple IRI, return as VSimple for regular triple
+       (match pp with
+        | PP_IRI iri -> ParseOk (VSimple (PT_IRI iri)) ts'
+        | _ -> ParseOk (VPath pp) ts'))
+
+// Generate a fresh blank node ID based on token stream position
+and fresh_bnode_id (ts : token_stream) : string =
+  "_:bnode_" ^ string_of_int (List.Tot.length ts)
+
+// Parse an object as (pattern_term, extra_triples)
+// The extra_triples GGP contains triples generated by blank node property lists or collections
+and parse_object_with_extras (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result (pattern_term & group_graph_pattern)) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_peek ts with
+  | Tok_VAR v -> ParseOk (PT_Var v, GP_Empty) (parse_advance ts)
+  | Tok_IRI i -> if is_iri i then ParseOk (PT_IRI i, GP_Empty) (parse_advance ts) else ParseErr "invalid IRI"
+  | Tok_PNAME pn ->
+    (match resolve_pname pn pm with
+     | Some iri -> if is_iri iri then ParseOk (PT_IRI iri, GP_Empty) (parse_advance ts) else ParseErr "invalid IRI"
+     | None -> ParseErr "unresolved prefix")
+  | Tok_BNODE b -> ParseOk (PT_BNode b, GP_Empty) (parse_advance ts)
+  | Tok_STRING s ->
+    (match parse_rdf_literal_pt pm (fuel-1) s (parse_advance ts) with
+     | ParseErr m -> ParseErr m
+     | ParseOk pt ts' -> ParseOk (pt, GP_Empty) ts')
   | Tok_INTEGER n ->
     (match make_typed_literal n "http://www.w3.org/2001/XMLSchema#integer" with
-     | Some lit -> ParseOk (PT_Literal lit) (parse_advance ts)
+     | Some lit -> ParseOk (PT_Literal lit, GP_Empty) (parse_advance ts)
      | None -> ParseErr "invalid integer literal")
   | Tok_DECIMAL d ->
     (match make_typed_literal d "http://www.w3.org/2001/XMLSchema#decimal" with
-     | Some lit -> ParseOk (PT_Literal lit) (parse_advance ts)
+     | Some lit -> ParseOk (PT_Literal lit, GP_Empty) (parse_advance ts)
      | None -> ParseErr "invalid decimal literal")
   | Tok_DOUBLE d ->
     (match make_typed_literal d "http://www.w3.org/2001/XMLSchema#double" with
-     | Some lit -> ParseOk (PT_Literal lit) (parse_advance ts)
+     | Some lit -> ParseOk (PT_Literal lit, GP_Empty) (parse_advance ts)
      | None -> ParseErr "invalid double literal")
   | Tok_TRUE ->
     (match make_typed_literal "true" "http://www.w3.org/2001/XMLSchema#boolean" with
-     | Some lit -> ParseOk (PT_Literal lit) (parse_advance ts)
+     | Some lit -> ParseOk (PT_Literal lit, GP_Empty) (parse_advance ts)
      | None -> ParseErr "invalid boolean literal")
   | Tok_FALSE ->
     (match make_typed_literal "false" "http://www.w3.org/2001/XMLSchema#boolean" with
-     | Some lit -> ParseOk (PT_Literal lit) (parse_advance ts)
+     | Some lit -> ParseOk (PT_Literal lit, GP_Empty) (parse_advance ts)
      | None -> ParseErr "invalid boolean literal")
-  | Tok_A -> ParseOk (PT_IRI rdf_type_iri_str) (parse_advance ts)
+  | Tok_A -> ParseOk (PT_IRI rdf_type_iri_str, GP_Empty) (parse_advance ts)
+  | Tok_LBRACKET ->
+    // Blank node property list: [ pred obj ; ... ]
+    let bnode_id = fresh_bnode_id ts in
+    let ts' = parse_advance ts in
+    (match parse_peek ts' with
+     | Tok_RBRACKET ->
+       // Empty [] = anonymous blank node
+       ParseOk (PT_BNode bnode_id, GP_Empty) (parse_advance ts')
+     | _ ->
+       // [ predObjList ] = blank node with properties
+       let bnode_subj = PS_BNode bnode_id in
+       (match parse_pred_obj_list pm (fuel-1) bnode_subj GP_Empty ts' with
+        | ParseErr m -> ParseErr m
+        | ParseOk extra_triples ts'' ->
+          (match parse_expect Tok_RBRACKET ts'' with
+           | ParseErr _ -> ParseErr "expected ']' after blank node property list"
+           | ParseOk () ts''' ->
+             ParseOk (PT_BNode bnode_id, extra_triples) ts''')))
+  | Tok_LPAREN ->
+    // Collection: ( item1 item2 ... ) -> rdf:first/rdf:rest chain
+    parse_collection pm (fuel-1) (parse_advance ts)
   | _ -> ParseErr "expected object"
+
+// Parse an RDF collection ( item1 item2 ... ) into rdf:first/rdf:rest chain
+and parse_collection (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result (pattern_term & group_graph_pattern)) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_peek ts with
+  | Tok_RPAREN ->
+    // Empty collection = rdf:nil
+    ParseOk (PT_IRI "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil", GP_Empty) (parse_advance ts)
+  | _ ->
+    // Parse first item
+    (match parse_object_with_extras pm (fuel-1) ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk (item, item_extras) ts' ->
+       let bnode_id = fresh_bnode_id ts in
+       let bnode_subj = PS_BNode bnode_id in
+       // Parse rest of collection
+       (match parse_collection pm (fuel-1) ts' with
+        | ParseErr m -> ParseErr m
+        | ParseOk (rest_term, rest_extras) ts'' ->
+          // Build triples: _:b rdf:first item . _:b rdf:rest rest .
+          let first_triple = { tp_s = bnode_subj;
+                               tp_p = PT_IRI "http://www.w3.org/1999/02/22-rdf-syntax-ns#first";
+                               tp_o = item } in
+          let rest_triple = { tp_s = bnode_subj;
+                              tp_p = PT_IRI "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest";
+                              tp_o = rest_term } in
+          let triples = GP_BGP [first_triple; rest_triple] in
+          let all_extras = ggp_join (ggp_join triples item_extras) rest_extras in
+          ParseOk (PT_BNode bnode_id, all_extras) ts''))
+
+// Legacy wrapper for parse_object (returns just pattern_term, no extras)
+and parse_object (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result pattern_term) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_object_with_extras pm (fuel-1) ts with
+  | ParseErr m -> ParseErr m
+  | ParseOk (pt, _) ts' -> ParseOk pt ts'
 
 (* Parse RDF literal as pattern_term: string already consumed *)
 and parse_rdf_literal_pt (pm : prefix_map) (fuel : nat) (s : string) (ts : token_stream)
@@ -1578,64 +2027,96 @@ and parse_rdf_literal_pt (pm : prefix_map) (fuel : nat) (s : string) (ts : token
   | Tok_LANGTAG lang -> ParseOk (PT_Literal (make_lang_literal s lang)) (parse_advance ts)
   | _ -> ParseOk (PT_Literal (make_plain_literal s)) ts
 
-(* Parse object list: obj1, obj2, obj3 *)
-and parse_object_list (pm : prefix_map) (fuel : nat) (subj : pattern_subject)
-  (pred : pattern_term) (acc : list triple_pattern) (ts : token_stream)
-  : Tot (parse_result (list triple_pattern)) (decreases fuel) =
-  if fuel = 0 then ParseOk (List.Tot.rev acc) ts
-  else match parse_object pm (fuel-1) ts with
+// Helper: join two group_graph_patterns
+and ggp_join (a b : group_graph_pattern) : group_graph_pattern =
+  match a with GP_Empty -> b | _ -> match b with GP_Empty -> a | _ -> GP_Join a b
+
+// Helper: add a triple or path pattern to a GGP accumulator
+and ggp_add_triple (acc : group_graph_pattern) (tp : triple_pattern) : group_graph_pattern =
+  match acc with
+  | GP_BGP ts -> GP_BGP (ts @ [tp])
+  | GP_Empty -> GP_BGP [tp]
+  | _ -> GP_Join acc (GP_BGP [tp])
+
+and ggp_add_pp (acc : group_graph_pattern) (s : pattern_subject) (pp : property_path) (o : pattern_term) : group_graph_pattern =
+  ggp_join acc (GP_PropertyPath s pp o)
+
+// Parse object list for simple predicates: obj1, obj2, obj3
+and parse_object_list_simple (pm : prefix_map) (fuel : nat) (subj : pattern_subject)
+  (pred : pattern_term) (acc : group_graph_pattern) (ts : token_stream)
+  : Tot (parse_result group_graph_pattern) (decreases fuel) =
+  if fuel = 0 then ParseOk acc ts
+  else match parse_object_with_extras pm (fuel-1) ts with
   | ParseErr m -> ParseErr m
-  | ParseOk obj ts' ->
-    let tp = { tp_s = subj; tp_p = pred; tp_o = obj } in
+  | ParseOk (obj, extras) ts' ->
+    let acc' = ggp_add_triple acc { tp_s = subj; tp_p = pred; tp_o = obj } in
+    let acc' = ggp_join acc' extras in
     begin match parse_peek ts' with
-    | Tok_COMMA -> parse_object_list pm (fuel-1) subj pred (tp :: acc) (parse_advance ts')
-    | _ -> ParseOk (List.Tot.rev (tp :: acc)) ts'
+    | Tok_COMMA -> parse_object_list_simple pm (fuel-1) subj pred acc' (parse_advance ts')
+    | _ -> ParseOk acc' ts'
     end
 
-(* Parse predicate-object list: pred objList ; pred objList ; ... *)
-and parse_pred_obj_list (pm : prefix_map) (fuel : nat) (subj : pattern_subject)
-  (acc : list triple_pattern) (ts : token_stream)
-  : Tot (parse_result (list triple_pattern)) (decreases fuel) =
-  if fuel = 0 then ParseOk (List.Tot.rev acc) ts
-  else match parse_predicate pm (fuel-1) ts with
+// Parse object list for property path predicates: obj1, obj2, obj3
+and parse_object_list_path (pm : prefix_map) (fuel : nat) (subj : pattern_subject)
+  (pp : property_path) (acc : group_graph_pattern) (ts : token_stream)
+  : Tot (parse_result group_graph_pattern) (decreases fuel) =
+  if fuel = 0 then ParseOk acc ts
+  else match parse_object_with_extras pm (fuel-1) ts with
   | ParseErr m -> ParseErr m
-  | ParseOk pred ts' ->
-    begin match parse_object_list pm (fuel-1) subj pred acc ts' with
+  | ParseOk (obj, extras) ts' ->
+    let acc' = ggp_add_pp acc subj pp obj in
+    let acc' = ggp_join acc' extras in
+    begin match parse_peek ts' with
+    | Tok_COMMA -> parse_object_list_path pm (fuel-1) subj pp acc' (parse_advance ts')
+    | _ -> ParseOk acc' ts'
+    end
+
+// Parse predicate-object list: verb objList ; verb objList ; ...
+and parse_pred_obj_list (pm : prefix_map) (fuel : nat) (subj : pattern_subject)
+  (acc : group_graph_pattern) (ts : token_stream)
+  : Tot (parse_result group_graph_pattern) (decreases fuel) =
+  if fuel = 0 then ParseOk acc ts
+  else match parse_verb pm (fuel-1) ts with
+  | ParseErr m -> ParseErr m
+  | ParseOk verb ts' ->
+    let r = match verb with
+      | VSimple pred -> parse_object_list_simple pm (fuel-1) subj pred acc ts'
+      | VPath pp -> parse_object_list_path pm (fuel-1) subj pp acc ts'
+    in
+    begin match r with
     | ParseErr m -> ParseErr m
-    | ParseOk triples ts'' ->
+    | ParseOk acc' ts'' ->
       begin match parse_peek ts'' with
       | Tok_SEMI ->
         let ts''' = parse_advance ts'' in
-        (* Semicolon may be followed by another pred-obj or just end *)
         (match parse_peek ts''' with
          | Tok_DOT | Tok_RBRACE | Tok_OPTIONAL | Tok_MINUS_KW | Tok_FILTER
          | Tok_BIND | Tok_GRAPH | Tok_SERVICE | Tok_VALUES | Tok_UNION
-         | Tok_LBRACE | Tok_RBRACKET | Tok_EOF -> ParseOk triples ts'''
-         | _ -> parse_pred_obj_list pm (fuel-1) subj triples ts''')
-      | _ -> ParseOk triples ts''
+         | Tok_LBRACE | Tok_RBRACKET | Tok_EOF -> ParseOk acc' ts'''
+         | _ -> parse_pred_obj_list pm (fuel-1) subj acc' ts''')
+      | _ -> ParseOk acc' ts''
       end end
 
-(* Parse a triples block: one or more triple patterns separated by dots *)
-and parse_triples_block (pm : prefix_map) (fuel : nat) (acc : list triple_pattern) (ts : token_stream)
-  : Tot (parse_result (list triple_pattern)) (decreases fuel) =
+// Parse a triples block: one or more triple patterns separated by dots
+and parse_triples_block (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern) (ts : token_stream)
+  : Tot (parse_result group_graph_pattern) (decreases fuel) =
   if fuel = 0 then ParseOk acc ts
   else match parse_subject pm (fuel-1) ts with
-  | ParseErr m -> ParseOk acc ts  (* not a triples block, return what we have *)
+  | ParseErr m -> ParseOk acc ts
   | ParseOk subj ts' ->
     begin match parse_pred_obj_list pm (fuel-1) subj acc ts' with
     | ParseErr m -> ParseErr m
-    | ParseOk triples ts'' ->
+    | ParseOk acc' ts'' ->
       begin match parse_peek ts'' with
       | Tok_DOT ->
         let ts''' = parse_advance ts'' in
-        (* Check if there are more triples *)
         (match parse_peek ts''' with
          | Tok_VAR _ | Tok_IRI _ | Tok_PNAME _ | Tok_BNODE _ | Tok_LBRACKET
          | Tok_LPAREN | Tok_A | Tok_INTEGER _ | Tok_DECIMAL _ | Tok_DOUBLE _
          | Tok_STRING _ | Tok_TRUE | Tok_FALSE ->
-           parse_triples_block pm (fuel-1) triples ts'''
-         | _ -> ParseOk triples ts''')
-      | _ -> ParseOk triples ts''
+           parse_triples_block pm (fuel-1) acc' ts'''
+         | _ -> ParseOk acc' ts''')
+      | _ -> ParseOk acc' ts''
       end end
 
 (* ---- SELECT query parsing ---- *)
@@ -1651,7 +2132,7 @@ and parse_select_query (pm : prefix_map) (fuel : nat) (ts : token_stream)
        (match parse_peek ts' with
         | Tok_SELECT -> parse_select_body pm' (fuel-1) base ts'
         | Tok_ASK -> parse_ask_body pm' (fuel-1) base ts'
-        | Tok_CONSTRUCT -> ParseErr "unsupported: CONSTRUCT queries"
+        | Tok_CONSTRUCT -> parse_construct_body pm' (fuel-1) base ts'
         | Tok_DESCRIBE -> ParseErr "unsupported: DESCRIBE queries"
         | _ -> ParseErr "expected SELECT, ASK, CONSTRUCT, or DESCRIBE"))
 
@@ -1707,18 +2188,27 @@ and parse_select_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (ts 
         | ParseOk pattern ts5 ->
           begin match parse_solution_modifier pm (fuel-1) ts5 with
           | ParseErr m -> ParseErr m
-          | ParseOk modifier ts6 ->
+          | ParseOk (modifier, gb, hv) ts6 ->
+            // Check for post-query VALUES clause
+            let (vals, ts7) = begin match parse_peek ts6 with
+              | Tok_VALUES ->
+                (match parse_values_clause pm (fuel-1) (parse_advance ts6) with
+                 | ParseOk (GP_Values vars rows) ts' -> (Some (vars, rows), ts')
+                 | _ -> (None, ts6))
+              | _ -> (None, ts6) end in
             ParseOk ({
               q_base = base;
               q_prefixes = pm;
               q_form = QF_Select sel;
               q_dataset = ds;
-              q_pattern = pattern;
-              q_group_by = None;
-              q_having = None;
+              q_pattern = (match vals with
+                | Some (vars, rows) -> ggp_join pattern (GP_Values vars rows)
+                | None -> pattern);
+              q_group_by = gb;
+              q_having = hv;
               q_modifier = { modifier with sm_distinct = dist; sm_reduced = red };
               q_values = None
-            }) ts6
+            }) ts7
           end end end end end
 
 (* Parse ASK body *)
@@ -1742,6 +2232,33 @@ and parse_ask_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (ts : t
           q_values = None
         }) ts3
       end end end
+
+// Parse CONSTRUCT body
+and parse_construct_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (ts : token_stream)
+  : Tot (parse_result query) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else begin
+    let ts' = parse_advance ts in  // consume CONSTRUCT
+    begin match parse_peek ts' with
+    | Tok_WHERE | Tok_LBRACE ->
+      // CONSTRUCT WHERE { pattern } or CONSTRUCT { template } WHERE { pattern }
+      let ts' = match parse_peek ts' with Tok_WHERE -> parse_advance ts' | _ -> ts' in
+      begin match parse_group_graph_pattern pm (fuel-1) ts' with
+      | ParseErr m -> ParseErr m
+      | ParseOk pattern ts'' ->
+        begin match parse_solution_modifier pm (fuel-1) ts'' with
+        | ParseErr m -> ParseErr m
+        | ParseOk (modifier, gb, hv) ts''' ->
+          ParseOk ({
+            q_base = base; q_prefixes = pm;
+            q_form = QF_Construct [];
+            q_dataset = []; q_pattern = pattern;
+            q_group_by = gb; q_having = hv;
+            q_modifier = modifier; q_values = None
+          }) ts'''
+        end end
+    | _ -> ParseErr "expected WHERE or '{' after CONSTRUCT"
+    end end
 
 (* Parse SELECT variables: * | (Var | (expr AS Var))+ *)
 and parse_select_vars (pm : prefix_map) (fuel : nat) (ts : token_stream)
@@ -1784,58 +2301,175 @@ and parse_skip_from (fuel : nat) (ts : token_stream)
   if fuel = 0 then ParseOk [] ts
   else ParseOk [] ts  (* TODO: parse FROM clauses *)
 
-(* Skip GROUP BY expressions (simplified — consumes var/paren tokens) *)
-and skip_group_by_exprs (fuel : nat) (ts : token_stream)
-  : Tot token_stream (decreases fuel) =
-  if fuel = 0 then ts
+// Parse GROUP BY condition: Var | BuiltInCall | FunctionCall | '(' Expression (AS Var)? ')'
+and parse_group_condition (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result group_condition) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
   else match parse_peek ts with
-  | Tok_VAR _ -> skip_group_by_exprs (fuel - 1) (parse_advance ts)
-  | Tok_LPAREN -> skip_group_by_exprs (fuel - 1) (parse_advance ts)
-  | _ -> ts
+  | Tok_VAR v -> ParseOk (GC_Var v) (parse_advance ts)
+  | Tok_LPAREN ->
+    (match parse_expr pm (fuel-1) (parse_advance ts) with
+     | ParseErr m -> ParseErr m
+     | ParseOk e ts' ->
+       begin match parse_peek ts' with
+       | Tok_AS ->
+         let ts'' = parse_advance ts' in
+         (match parse_peek ts'' with
+          | Tok_VAR v ->
+            (match parse_expect Tok_RPAREN (parse_advance ts'') with
+             | ParseErr m -> ParseErr m
+             | ParseOk () ts''' -> ParseOk (GC_Expr e (Some v)) ts''')
+          | _ -> ParseErr "expected variable after AS")
+       | Tok_RPAREN -> ParseOk (GC_Expr e None) (parse_advance ts')
+       | _ -> ParseErr "expected ')' or AS in GROUP BY"
+       end)
+  | _ ->
+    // Built-in call: parse as expression
+    (match parse_expr pm (fuel-1) ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk e ts' -> ParseOk (GC_BuiltIn e) ts')
 
-(* Skip ORDER BY expressions (simplified) *)
-and skip_order_by_exprs (fuel : nat) (ts : token_stream)
-  : Tot token_stream (decreases fuel) =
-  if fuel = 0 then ts
+// Parse GROUP BY conditions list
+and parse_group_by_list (pm : prefix_map) (fuel : nat)
+  (acc : list group_condition) (ts : token_stream)
+  : Tot (parse_result (list group_condition)) (decreases fuel) =
+  if fuel = 0 then ParseOk (List.Tot.rev acc) ts
   else match parse_peek ts with
-  | Tok_ASC | Tok_DESC | Tok_VAR _ | Tok_LPAREN ->
-    skip_order_by_exprs (fuel - 1) (parse_advance ts)
-  | _ -> ts
+  | Tok_VAR _ | Tok_LPAREN | Tok_STR | Tok_LANG | Tok_LANGMATCHES | Tok_DATATYPE
+  | Tok_BOUND | Tok_IF | Tok_IRI_KW | Tok_URI | Tok_CONCAT | Tok_STRLEN
+  | Tok_UCASE | Tok_LCASE | Tok_ENCODE_FOR_URI | Tok_CONTAINS | Tok_STRSTARTS
+  | Tok_STRENDS | Tok_STRBEFORE | Tok_STRAFTER | Tok_REPLACE | Tok_REGEX | Tok_SUBSTR
+  | Tok_ABS | Tok_CEIL | Tok_FLOOR | Tok_ROUND | Tok_ISIRI | Tok_ISBLANK
+  | Tok_ISLITERAL | Tok_ISNUMERIC | Tok_SAMETERM | Tok_COALESCE | Tok_IRI _ | Tok_PNAME _ ->
+    (match parse_group_condition pm (fuel-1) ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk gc ts' -> parse_group_by_list pm (fuel-1) (gc :: acc) ts')
+  | _ -> ParseOk (List.Tot.rev acc) ts
 
-(* Skip HAVING expressions (simplified) *)
-and skip_having_exprs (fuel : nat) (ts : token_stream)
-  : Tot token_stream (decreases fuel) =
-  if fuel = 0 then ts
+// Parse ORDER BY condition: ASC/DESC(expr) | Var | BuiltInCall | '(' expr ')'
+and parse_order_condition (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result order_condition) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
   else match parse_peek ts with
-  | Tok_LPAREN -> skip_having_exprs (fuel - 1) (parse_advance ts)
-  | _ -> ts
+  | Tok_ASC ->
+    let ts' = parse_advance ts in
+    (match parse_expect Tok_LPAREN ts' with
+     | ParseErr _ ->
+       // ASC without parens -- treat as ascending on next expression
+       (match parse_expr pm (fuel-1) ts' with
+        | ParseErr m -> ParseErr m
+        | ParseOk e ts'' -> ParseOk (OC_Asc e) ts'')
+     | ParseOk () ts'' ->
+       (match parse_expr pm (fuel-1) ts'' with
+        | ParseErr m -> ParseErr m
+        | ParseOk e ts''' ->
+          begin match parse_expect Tok_RPAREN ts''' with
+          | ParseErr m -> ParseErr m
+          | ParseOk () ts4 -> ParseOk (OC_Asc e) ts4
+          end))
+  | Tok_DESC ->
+    let ts' = parse_advance ts in
+    (match parse_expect Tok_LPAREN ts' with
+     | ParseErr _ ->
+       (match parse_expr pm (fuel-1) ts' with
+        | ParseErr m -> ParseErr m
+        | ParseOk e ts'' -> ParseOk (OC_Desc e) ts'')
+     | ParseOk () ts'' ->
+       (match parse_expr pm (fuel-1) ts'' with
+        | ParseErr m -> ParseErr m
+        | ParseOk e ts''' ->
+          begin match parse_expect Tok_RPAREN ts''' with
+          | ParseErr m -> ParseErr m
+          | ParseOk () ts4 -> ParseOk (OC_Desc e) ts4
+          end))
+  | Tok_VAR v -> ParseOk (OC_Asc (E_Var v)) (parse_advance ts)
+  | Tok_LPAREN ->
+    (match parse_expr pm (fuel-1) (parse_advance ts) with
+     | ParseErr m -> ParseErr m
+     | ParseOk e ts' ->
+       begin match parse_expect Tok_RPAREN ts' with
+       | ParseErr m -> ParseErr m
+       | ParseOk () ts'' -> ParseOk (OC_Asc e) ts''
+       end)
+  | _ ->
+    (match parse_expr pm (fuel-1) ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk e ts' -> ParseOk (OC_Asc e) ts')
 
-(* Parse solution modifier: GROUP BY, HAVING, ORDER BY, LIMIT, OFFSET *)
+// Parse ORDER BY conditions list
+and parse_order_by_list (pm : prefix_map) (fuel : nat)
+  (acc : list order_condition) (ts : token_stream)
+  : Tot (parse_result (list order_condition)) (decreases fuel) =
+  if fuel = 0 then ParseOk (List.Tot.rev acc) ts
+  else match parse_peek ts with
+  | Tok_ASC | Tok_DESC | Tok_VAR _ | Tok_LPAREN | Tok_IRI _ | Tok_PNAME _
+  | Tok_STR | Tok_LANG | Tok_LANGMATCHES | Tok_DATATYPE | Tok_BOUND
+  | Tok_IF | Tok_IRI_KW | Tok_URI | Tok_CONCAT | Tok_ISIRI | Tok_ISBLANK
+  | Tok_ISLITERAL | Tok_ISNUMERIC | Tok_SAMETERM | Tok_COALESCE ->
+    (match parse_order_condition pm (fuel-1) ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk oc ts' -> parse_order_by_list pm (fuel-1) (oc :: acc) ts')
+  | _ -> ParseOk (List.Tot.rev acc) ts
+
+// Parse HAVING conditions (list of expressions in parens or constraint)
+and parse_having_list (pm : prefix_map) (fuel : nat)
+  (acc : list expr) (ts : token_stream)
+  : Tot (parse_result (list expr)) (decreases fuel) =
+  if fuel = 0 then ParseOk (List.Tot.rev acc) ts
+  else match parse_peek ts with
+  | Tok_LPAREN ->
+    (match parse_expr pm (fuel-1) (parse_advance ts) with
+     | ParseErr m -> ParseErr m
+     | ParseOk e ts' ->
+       begin match parse_expect Tok_RPAREN ts' with
+       | ParseErr m -> ParseErr m
+       | ParseOk () ts'' -> parse_having_list pm (fuel-1) (e :: acc) ts''
+       end)
+  | Tok_STR | Tok_LANG | Tok_LANGMATCHES | Tok_DATATYPE | Tok_BOUND
+  | Tok_IF | Tok_IRI_KW | Tok_URI | Tok_CONCAT | Tok_ISIRI | Tok_ISBLANK
+  | Tok_ISLITERAL | Tok_ISNUMERIC | Tok_SAMETERM | Tok_COALESCE
+  | Tok_EXISTS | Tok_NOT | Tok_REGEX ->
+    (match parse_primary_expr pm (fuel-1) ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk e ts' -> parse_having_list pm (fuel-1) (e :: acc) ts')
+  | _ -> ParseOk (List.Tot.rev acc) ts
+
+// Parse solution modifier: GROUP BY, HAVING, ORDER BY, LIMIT, OFFSET
+// Returns (modifier, group_by, having)
 and parse_solution_modifier (pm : prefix_map) (fuel : nat) (ts : token_stream)
-  : Tot (parse_result solution_modifier) (decreases fuel) =
-  if fuel = 0 then ParseOk default_modifier ts
+  : Tot (parse_result modifier_result) (decreases fuel) =
+  if fuel = 0 then ParseOk (default_modifier, None, None) ts
   else
-    (* GROUP BY *)
-    let ts = match parse_peek ts with
+    // GROUP BY
+    let (gb, ts) = begin match parse_peek ts with
       | Tok_GROUP ->
         let ts' = parse_advance ts in
         (match parse_peek ts' with
-         | Tok_BY -> skip_group_by_exprs (fuel-1) (parse_advance ts')
-         | _ -> ts)
-      | _ -> ts in
-    (* HAVING *)
-    let ts = match parse_peek ts with
-      | Tok_HAVING -> skip_having_exprs (fuel-1) (parse_advance ts)
-      | _ -> ts in
-    (* ORDER BY *)
-    let ts = match parse_peek ts with
+         | Tok_BY ->
+           (match parse_group_by_list pm (fuel-1) [] (parse_advance ts') with
+            | ParseOk conds ts'' -> (Some conds, ts'')
+            | ParseErr _ -> (None, ts))
+         | _ -> (None, ts))
+      | _ -> (None, ts) end in
+    // HAVING
+    let (hv, ts) = begin match parse_peek ts with
+      | Tok_HAVING ->
+        (match parse_having_list pm (fuel-1) [] (parse_advance ts) with
+         | ParseOk conds ts' -> (Some conds, ts')
+         | ParseErr _ -> (None, ts))
+      | _ -> (None, ts) end in
+    // ORDER BY
+    let (ob, ts) = begin match parse_peek ts with
       | Tok_ORDER ->
         let ts' = parse_advance ts in
         (match parse_peek ts' with
-         | Tok_BY -> skip_order_by_exprs (fuel-1) (parse_advance ts')
-         | _ -> ts)
-      | _ -> ts in
-    (* LIMIT *)
+         | Tok_BY ->
+           (match parse_order_by_list pm (fuel-1) [] (parse_advance ts') with
+            | ParseOk conds ts'' -> (Some conds, ts'')
+            | ParseErr _ -> (None, ts))
+         | _ -> (None, ts))
+      | _ -> (None, ts) end in
+    // LIMIT
     let (limit, ts) = begin match parse_peek ts with
       | Tok_LIMIT ->
         let ts' = parse_advance ts in
@@ -1846,7 +2480,7 @@ and parse_solution_modifier (pm : prefix_map) (fuel : nat) (ts : token_stream)
             | None -> (None, ts'))
          | _ -> (None, ts'))
       | _ -> (None, ts) end in
-    (* OFFSET *)
+    // OFFSET
     let (offset, ts) = begin match parse_peek ts with
       | Tok_OFFSET ->
         let ts' = parse_advance ts in
@@ -1857,10 +2491,11 @@ and parse_solution_modifier (pm : prefix_map) (fuel : nat) (ts : token_stream)
             | None -> (None, ts'))
          | _ -> (None, ts'))
       | _ -> (None, ts) end in
-    ParseOk ({
-      sm_order_by = None; sm_distinct = false; sm_reduced = false;
+    let modifier = {
+      sm_order_by = ob; sm_distinct = false; sm_reduced = false;
       sm_offset = offset; sm_limit = limit
-    }) ts
+    } in
+    ParseOk (modifier, gb, hv) ts
 
 #pop-options
 

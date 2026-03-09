@@ -1439,6 +1439,22 @@ let uu___is_ParseErr (projectee : 'a parse_result) : Prims.bool=
 let __proj__ParseErr__item__msg (projectee : 'a parse_result) : Prims.string=
   match projectee with | ParseErr msg -> msg
 type token_stream = token Prims.list
+type verb_or_path =
+  | VSimple of SPARQL11_Algebra.pattern_term 
+  | VPath of SPARQL11_Algebra.property_path 
+let uu___is_VSimple (projectee : verb_or_path) : Prims.bool=
+  match projectee with | VSimple _0 -> true | uu___ -> false
+let __proj__VSimple__item___0 (projectee : verb_or_path) :
+  SPARQL11_Algebra.pattern_term= match projectee with | VSimple _0 -> _0
+let uu___is_VPath (projectee : verb_or_path) : Prims.bool=
+  match projectee with | VPath _0 -> true | uu___ -> false
+let __proj__VPath__item___0 (projectee : verb_or_path) :
+  SPARQL11_Algebra.property_path= match projectee with | VPath _0 -> _0
+type modifier_result =
+  (SPARQL11_Algebra.solution_modifier * SPARQL11_Algebra.group_condition
+    Prims.list FStar_Pervasives_Native.option *
+    SPARQL11_Algebra.having_condition Prims.list
+    FStar_Pervasives_Native.option)
 let is_eof (t : token) : Prims.bool=
   match t with | Tok_EOF -> true | uu___ -> false
 let rec tokenize_acc (input : Prims.string) (p : pos)
@@ -2120,9 +2136,26 @@ and parse_primary_expr (pm : prefix_map) (fuel : Prims.nat)
          parse_b1 pm (fuel - Prims.int_one)
            (fun uu___1 -> SPARQL11_Algebra.E_Tz uu___1) (parse_advance ts)
      | Tok_LANGMATCHES ->
-         parse_b2 pm (fuel - Prims.int_one)
-           (fun uu___1 uu___2 -> SPARQL11_Algebra.E_SameTerm (uu___1, uu___2))
-           (parse_advance ts)
+         let ts' = parse_advance ts in
+         (match parse_expect Tok_LPAREN ts' with
+          | ParseErr m -> ParseErr m
+          | ParseOk ((), ts1) ->
+              (match parse_expr pm (fuel - Prims.int_one) ts1 with
+               | ParseErr m -> ParseErr m
+               | ParseOk (e1, ts2) ->
+                   (match parse_expect Tok_COMMA ts2 with
+                    | ParseErr m -> ParseErr m
+                    | ParseOk ((), ts3) ->
+                        (match parse_expr pm (fuel - Prims.int_one) ts3 with
+                         | ParseErr m -> ParseErr m
+                         | ParseOk (e2, ts4) ->
+                             (match parse_expect Tok_RPAREN ts4 with
+                              | ParseErr m -> ParseErr m
+                              | ParseOk ((), ts5) ->
+                                  ParseOk
+                                    ((SPARQL11_Algebra.E_FunctionCall
+                                        ("http://www.w3.org/2005/xpath-functions#langMatches",
+                                          [e1; e2])), ts5))))))
      | Tok_SAMETERM ->
          parse_b2 pm (fuel - Prims.int_one)
            (fun uu___1 uu___2 -> SPARQL11_Algebra.E_SameTerm (uu___1, uu___2))
@@ -2163,11 +2196,76 @@ and parse_primary_expr (pm : prefix_map) (fuel : Prims.nat)
          parse_coalesce pm (fuel - Prims.int_one) (parse_advance ts)
      | Tok_CONCAT ->
          parse_concat pm (fuel - Prims.int_one) (parse_advance ts)
-     | Tok_NOW -> ParseOk (SPARQL11_Algebra.E_Now, (parse_advance ts))
-     | Tok_RAND -> ParseErr "unsupported: RAND()"
-     | Tok_UUID -> ParseErr "unsupported: UUID()"
-     | Tok_STRUUID -> ParseErr "unsupported: STRUUID()"
-     | Tok_BNODE_KW -> ParseErr "unsupported: BNODE()"
+     | Tok_NOW ->
+         let ts' = parse_advance ts in
+         (match parse_peek ts' with
+          | Tok_LPAREN ->
+              let ts'' = parse_advance ts' in
+              (match parse_expect Tok_RPAREN ts'' with
+               | ParseErr uu___1 -> ParseErr "expected ')' after NOW("
+               | ParseOk ((), ts''') ->
+                   ParseOk (SPARQL11_Algebra.E_Now, ts'''))
+          | uu___1 -> ParseOk (SPARQL11_Algebra.E_Now, ts'))
+     | Tok_RAND ->
+         let ts' = parse_advance ts in
+         (match parse_expect Tok_LPAREN ts' with
+          | ParseErr e -> ParseErr e
+          | ParseOk ((), ts'') ->
+              (match parse_expect Tok_RPAREN ts'' with
+               | ParseErr uu___1 -> ParseErr "expected ')' after RAND("
+               | ParseOk ((), ts''') ->
+                   ParseOk
+                     ((SPARQL11_Algebra.E_FunctionCall
+                         ("http://www.w3.org/2005/xpath-functions#rand", [])),
+                       ts''')))
+     | Tok_UUID ->
+         let ts' = parse_advance ts in
+         (match parse_expect Tok_LPAREN ts' with
+          | ParseErr e -> ParseErr e
+          | ParseOk ((), ts'') ->
+              (match parse_expect Tok_RPAREN ts'' with
+               | ParseErr uu___1 -> ParseErr "expected ')' after UUID("
+               | ParseOk ((), ts''') ->
+                   ParseOk
+                     ((SPARQL11_Algebra.E_FunctionCall
+                         ("http://www.w3.org/2005/xpath-functions#uuid", [])),
+                       ts''')))
+     | Tok_STRUUID ->
+         let ts' = parse_advance ts in
+         (match parse_expect Tok_LPAREN ts' with
+          | ParseErr e -> ParseErr e
+          | ParseOk ((), ts'') ->
+              (match parse_expect Tok_RPAREN ts'' with
+               | ParseErr uu___1 -> ParseErr "expected ')' after STRUUID("
+               | ParseOk ((), ts''') ->
+                   ParseOk
+                     ((SPARQL11_Algebra.E_FunctionCall
+                         ("http://www.w3.org/2005/xpath-functions#struuid",
+                           [])), ts''')))
+     | Tok_BNODE_KW ->
+         let ts' = parse_advance ts in
+         (match parse_expect Tok_LPAREN ts' with
+          | ParseErr e -> ParseErr e
+          | ParseOk ((), ts'') ->
+              (match parse_peek ts'' with
+               | Tok_RPAREN ->
+                   let ts''' = parse_advance ts'' in
+                   ParseOk
+                     ((SPARQL11_Algebra.E_FunctionCall
+                         ("http://www.w3.org/2005/xpath-functions#bnode", [])),
+                       ts''')
+               | uu___1 ->
+                   (match parse_expr pm (fuel - Prims.int_one) ts'' with
+                    | ParseErr e -> ParseErr e
+                    | ParseOk (arg, ts''') ->
+                        (match parse_expect Tok_RPAREN ts''' with
+                         | ParseErr uu___2 ->
+                             ParseErr "expected ')' after BNODE(expr"
+                         | ParseOk ((), ts4) ->
+                             ParseOk
+                               ((SPARQL11_Algebra.E_FunctionCall
+                                   ("http://www.w3.org/2005/xpath-functions#bnode",
+                                     [arg])), ts4)))))
      | Tok_REGEX -> parse_regex pm (fuel - Prims.int_one) (parse_advance ts)
      | Tok_REPLACE ->
          parse_replace pm (fuel - Prims.int_one) (parse_advance ts)
@@ -2646,247 +2744,156 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
   else
     (match parse_peek ts with
      | Tok_VAR uu___1 ->
-         (match parse_triples_block pm (fuel - Prims.int_one) [] ts with
+         (match parse_triples_block pm (fuel - Prims.int_one)
+                  SPARQL11_Algebra.GP_Empty ts
+          with
           | ParseErr m -> ParseErr m
-          | ParseOk (triples, ts') ->
-              let acc' =
-                if (FStar_List_Tot_Base.length triples) = Prims.int_zero
-                then acc
-                else
-                  (match acc with
-                   | SPARQL11_Algebra.GP_Empty ->
-                       SPARQL11_Algebra.GP_BGP triples
-                   | uu___3 ->
-                       SPARQL11_Algebra.GP_Join
-                         (acc, (SPARQL11_Algebra.GP_BGP triples))) in
+          | ParseOk (triples_ggp, ts') ->
+              let acc' = ggp_join acc triples_ggp in
               let ts'1 =
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___2 -> ts' in
               parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
      | Tok_IRI uu___1 ->
-         (match parse_triples_block pm (fuel - Prims.int_one) [] ts with
+         (match parse_triples_block pm (fuel - Prims.int_one)
+                  SPARQL11_Algebra.GP_Empty ts
+          with
           | ParseErr m -> ParseErr m
-          | ParseOk (triples, ts') ->
-              let acc' =
-                if (FStar_List_Tot_Base.length triples) = Prims.int_zero
-                then acc
-                else
-                  (match acc with
-                   | SPARQL11_Algebra.GP_Empty ->
-                       SPARQL11_Algebra.GP_BGP triples
-                   | uu___3 ->
-                       SPARQL11_Algebra.GP_Join
-                         (acc, (SPARQL11_Algebra.GP_BGP triples))) in
+          | ParseOk (triples_ggp, ts') ->
+              let acc' = ggp_join acc triples_ggp in
               let ts'1 =
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___2 -> ts' in
               parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
      | Tok_PNAME uu___1 ->
-         (match parse_triples_block pm (fuel - Prims.int_one) [] ts with
+         (match parse_triples_block pm (fuel - Prims.int_one)
+                  SPARQL11_Algebra.GP_Empty ts
+          with
           | ParseErr m -> ParseErr m
-          | ParseOk (triples, ts') ->
-              let acc' =
-                if (FStar_List_Tot_Base.length triples) = Prims.int_zero
-                then acc
-                else
-                  (match acc with
-                   | SPARQL11_Algebra.GP_Empty ->
-                       SPARQL11_Algebra.GP_BGP triples
-                   | uu___3 ->
-                       SPARQL11_Algebra.GP_Join
-                         (acc, (SPARQL11_Algebra.GP_BGP triples))) in
+          | ParseOk (triples_ggp, ts') ->
+              let acc' = ggp_join acc triples_ggp in
               let ts'1 =
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___2 -> ts' in
               parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
      | Tok_BNODE uu___1 ->
-         (match parse_triples_block pm (fuel - Prims.int_one) [] ts with
+         (match parse_triples_block pm (fuel - Prims.int_one)
+                  SPARQL11_Algebra.GP_Empty ts
+          with
           | ParseErr m -> ParseErr m
-          | ParseOk (triples, ts') ->
-              let acc' =
-                if (FStar_List_Tot_Base.length triples) = Prims.int_zero
-                then acc
-                else
-                  (match acc with
-                   | SPARQL11_Algebra.GP_Empty ->
-                       SPARQL11_Algebra.GP_BGP triples
-                   | uu___3 ->
-                       SPARQL11_Algebra.GP_Join
-                         (acc, (SPARQL11_Algebra.GP_BGP triples))) in
+          | ParseOk (triples_ggp, ts') ->
+              let acc' = ggp_join acc triples_ggp in
               let ts'1 =
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___2 -> ts' in
               parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
      | Tok_LBRACKET ->
-         (match parse_triples_block pm (fuel - Prims.int_one) [] ts with
+         (match parse_triples_block pm (fuel - Prims.int_one)
+                  SPARQL11_Algebra.GP_Empty ts
+          with
           | ParseErr m -> ParseErr m
-          | ParseOk (triples, ts') ->
-              let acc' =
-                if (FStar_List_Tot_Base.length triples) = Prims.int_zero
-                then acc
-                else
-                  (match acc with
-                   | SPARQL11_Algebra.GP_Empty ->
-                       SPARQL11_Algebra.GP_BGP triples
-                   | uu___2 ->
-                       SPARQL11_Algebra.GP_Join
-                         (acc, (SPARQL11_Algebra.GP_BGP triples))) in
+          | ParseOk (triples_ggp, ts') ->
+              let acc' = ggp_join acc triples_ggp in
               let ts'1 =
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___1 -> ts' in
               parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
      | Tok_LPAREN ->
-         (match parse_triples_block pm (fuel - Prims.int_one) [] ts with
+         (match parse_triples_block pm (fuel - Prims.int_one)
+                  SPARQL11_Algebra.GP_Empty ts
+          with
           | ParseErr m -> ParseErr m
-          | ParseOk (triples, ts') ->
-              let acc' =
-                if (FStar_List_Tot_Base.length triples) = Prims.int_zero
-                then acc
-                else
-                  (match acc with
-                   | SPARQL11_Algebra.GP_Empty ->
-                       SPARQL11_Algebra.GP_BGP triples
-                   | uu___2 ->
-                       SPARQL11_Algebra.GP_Join
-                         (acc, (SPARQL11_Algebra.GP_BGP triples))) in
+          | ParseOk (triples_ggp, ts') ->
+              let acc' = ggp_join acc triples_ggp in
               let ts'1 =
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___1 -> ts' in
               parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
      | Tok_A ->
-         (match parse_triples_block pm (fuel - Prims.int_one) [] ts with
+         (match parse_triples_block pm (fuel - Prims.int_one)
+                  SPARQL11_Algebra.GP_Empty ts
+          with
           | ParseErr m -> ParseErr m
-          | ParseOk (triples, ts') ->
-              let acc' =
-                if (FStar_List_Tot_Base.length triples) = Prims.int_zero
-                then acc
-                else
-                  (match acc with
-                   | SPARQL11_Algebra.GP_Empty ->
-                       SPARQL11_Algebra.GP_BGP triples
-                   | uu___2 ->
-                       SPARQL11_Algebra.GP_Join
-                         (acc, (SPARQL11_Algebra.GP_BGP triples))) in
+          | ParseOk (triples_ggp, ts') ->
+              let acc' = ggp_join acc triples_ggp in
               let ts'1 =
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___1 -> ts' in
               parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
      | Tok_INTEGER uu___1 ->
-         (match parse_triples_block pm (fuel - Prims.int_one) [] ts with
+         (match parse_triples_block pm (fuel - Prims.int_one)
+                  SPARQL11_Algebra.GP_Empty ts
+          with
           | ParseErr m -> ParseErr m
-          | ParseOk (triples, ts') ->
-              let acc' =
-                if (FStar_List_Tot_Base.length triples) = Prims.int_zero
-                then acc
-                else
-                  (match acc with
-                   | SPARQL11_Algebra.GP_Empty ->
-                       SPARQL11_Algebra.GP_BGP triples
-                   | uu___3 ->
-                       SPARQL11_Algebra.GP_Join
-                         (acc, (SPARQL11_Algebra.GP_BGP triples))) in
+          | ParseOk (triples_ggp, ts') ->
+              let acc' = ggp_join acc triples_ggp in
               let ts'1 =
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___2 -> ts' in
               parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
      | Tok_DECIMAL uu___1 ->
-         (match parse_triples_block pm (fuel - Prims.int_one) [] ts with
+         (match parse_triples_block pm (fuel - Prims.int_one)
+                  SPARQL11_Algebra.GP_Empty ts
+          with
           | ParseErr m -> ParseErr m
-          | ParseOk (triples, ts') ->
-              let acc' =
-                if (FStar_List_Tot_Base.length triples) = Prims.int_zero
-                then acc
-                else
-                  (match acc with
-                   | SPARQL11_Algebra.GP_Empty ->
-                       SPARQL11_Algebra.GP_BGP triples
-                   | uu___3 ->
-                       SPARQL11_Algebra.GP_Join
-                         (acc, (SPARQL11_Algebra.GP_BGP triples))) in
+          | ParseOk (triples_ggp, ts') ->
+              let acc' = ggp_join acc triples_ggp in
               let ts'1 =
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___2 -> ts' in
               parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
      | Tok_DOUBLE uu___1 ->
-         (match parse_triples_block pm (fuel - Prims.int_one) [] ts with
+         (match parse_triples_block pm (fuel - Prims.int_one)
+                  SPARQL11_Algebra.GP_Empty ts
+          with
           | ParseErr m -> ParseErr m
-          | ParseOk (triples, ts') ->
-              let acc' =
-                if (FStar_List_Tot_Base.length triples) = Prims.int_zero
-                then acc
-                else
-                  (match acc with
-                   | SPARQL11_Algebra.GP_Empty ->
-                       SPARQL11_Algebra.GP_BGP triples
-                   | uu___3 ->
-                       SPARQL11_Algebra.GP_Join
-                         (acc, (SPARQL11_Algebra.GP_BGP triples))) in
+          | ParseOk (triples_ggp, ts') ->
+              let acc' = ggp_join acc triples_ggp in
               let ts'1 =
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___2 -> ts' in
               parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
      | Tok_STRING uu___1 ->
-         (match parse_triples_block pm (fuel - Prims.int_one) [] ts with
+         (match parse_triples_block pm (fuel - Prims.int_one)
+                  SPARQL11_Algebra.GP_Empty ts
+          with
           | ParseErr m -> ParseErr m
-          | ParseOk (triples, ts') ->
-              let acc' =
-                if (FStar_List_Tot_Base.length triples) = Prims.int_zero
-                then acc
-                else
-                  (match acc with
-                   | SPARQL11_Algebra.GP_Empty ->
-                       SPARQL11_Algebra.GP_BGP triples
-                   | uu___3 ->
-                       SPARQL11_Algebra.GP_Join
-                         (acc, (SPARQL11_Algebra.GP_BGP triples))) in
+          | ParseOk (triples_ggp, ts') ->
+              let acc' = ggp_join acc triples_ggp in
               let ts'1 =
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___2 -> ts' in
               parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
      | Tok_TRUE ->
-         (match parse_triples_block pm (fuel - Prims.int_one) [] ts with
+         (match parse_triples_block pm (fuel - Prims.int_one)
+                  SPARQL11_Algebra.GP_Empty ts
+          with
           | ParseErr m -> ParseErr m
-          | ParseOk (triples, ts') ->
-              let acc' =
-                if (FStar_List_Tot_Base.length triples) = Prims.int_zero
-                then acc
-                else
-                  (match acc with
-                   | SPARQL11_Algebra.GP_Empty ->
-                       SPARQL11_Algebra.GP_BGP triples
-                   | uu___2 ->
-                       SPARQL11_Algebra.GP_Join
-                         (acc, (SPARQL11_Algebra.GP_BGP triples))) in
+          | ParseOk (triples_ggp, ts') ->
+              let acc' = ggp_join acc triples_ggp in
               let ts'1 =
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___1 -> ts' in
               parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
      | Tok_FALSE ->
-         (match parse_triples_block pm (fuel - Prims.int_one) [] ts with
+         (match parse_triples_block pm (fuel - Prims.int_one)
+                  SPARQL11_Algebra.GP_Empty ts
+          with
           | ParseErr m -> ParseErr m
-          | ParseOk (triples, ts') ->
-              let acc' =
-                if (FStar_List_Tot_Base.length triples) = Prims.int_zero
-                then acc
-                else
-                  (match acc with
-                   | SPARQL11_Algebra.GP_Empty ->
-                       SPARQL11_Algebra.GP_BGP triples
-                   | uu___2 ->
-                       SPARQL11_Algebra.GP_Join
-                         (acc, (SPARQL11_Algebra.GP_BGP triples))) in
+          | ParseOk (triples_ggp, ts') ->
+              let acc' = ggp_join acc triples_ggp in
               let ts'1 =
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
@@ -3013,7 +3020,18 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                                   parse_ggp_body pm (fuel - Prims.int_one)
                                     acc' ts51)
                          | uu___1 -> ParseErr "expected variable after AS"))))
-     | Tok_VALUES -> ParseErr "unsupported: inline VALUES"
+     | Tok_VALUES ->
+         (match parse_values_clause pm (fuel - Prims.int_one)
+                  (parse_advance ts)
+          with
+          | ParseErr m -> ParseErr m
+          | ParseOk (g, ts') ->
+              let acc' = ggp_join acc g in
+              let ts'1 =
+                match parse_peek ts' with
+                | Tok_DOT -> parse_advance ts'
+                | uu___1 -> ts' in
+              parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
      | Tok_LBRACE ->
          (match parse_group_or_union pm (fuel - Prims.int_one) ts with
           | ParseErr m -> ParseErr m
@@ -3112,6 +3130,253 @@ and parse_service_iri (pm : prefix_map) (fuel : Prims.nat)
           | FStar_Pervasives_Native.None -> ParseErr "unresolved prefix")
      | Tok_VAR uu___1 -> ParseErr "unsupported: variable SERVICE endpoint"
      | uu___1 -> ParseErr "expected IRI for SERVICE")
+and parse_data_value (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
+  :
+  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_peek ts with
+     | Tok_UNDEF ->
+         ParseOk (FStar_Pervasives_Native.None, (parse_advance ts))
+     | Tok_IRI i ->
+         if RDF_Graph_Executable.is_iri i
+         then
+           ParseOk
+             ((FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI i)),
+               (parse_advance ts))
+         else ParseErr "invalid IRI"
+     | Tok_PNAME pn ->
+         (match resolve_pname pn pm with
+          | FStar_Pervasives_Native.Some iri ->
+              if RDF_Graph_Executable.is_iri iri
+              then
+                ParseOk
+                  ((FStar_Pervasives_Native.Some
+                      (RDF_Graph_Executable.T_IRI iri)), (parse_advance ts))
+              else ParseErr "invalid IRI"
+          | FStar_Pervasives_Native.None -> ParseErr "unresolved prefix")
+     | Tok_STRING s ->
+         let ts' = parse_advance ts in
+         (match parse_peek ts' with
+          | Tok_HATHAT ->
+              let ts'' = parse_advance ts' in
+              (match parse_peek ts'' with
+               | Tok_IRI dt ->
+                   if RDF_Graph_Executable.is_iri dt
+                   then
+                     (match make_typed_literal s dt with
+                      | FStar_Pervasives_Native.Some lit ->
+                          ParseOk
+                            ((FStar_Pervasives_Native.Some
+                                (RDF_Graph_Executable.T_Literal lit)),
+                              (parse_advance ts''))
+                      | FStar_Pervasives_Native.None ->
+                          ParseErr "invalid typed literal")
+                   else ParseErr "invalid datatype IRI"
+               | Tok_PNAME pn ->
+                   (match resolve_pname pn pm with
+                    | FStar_Pervasives_Native.Some dt ->
+                        if RDF_Graph_Executable.is_iri dt
+                        then
+                          (match make_typed_literal s dt with
+                           | FStar_Pervasives_Native.Some lit ->
+                               ParseOk
+                                 ((FStar_Pervasives_Native.Some
+                                     (RDF_Graph_Executable.T_Literal lit)),
+                                   (parse_advance ts''))
+                           | FStar_Pervasives_Native.None ->
+                               ParseErr "invalid typed literal")
+                        else ParseErr "invalid datatype IRI"
+                    | FStar_Pervasives_Native.None ->
+                        ParseErr "unresolved prefix")
+               | uu___1 -> ParseErr "expected IRI after ^^")
+          | Tok_LANGTAG lang ->
+              ParseOk
+                ((FStar_Pervasives_Native.Some
+                    (RDF_Graph_Executable.T_Literal
+                       (make_lang_literal s lang))), (parse_advance ts'))
+          | uu___1 ->
+              ParseOk
+                ((FStar_Pervasives_Native.Some
+                    (RDF_Graph_Executable.T_Literal (make_plain_literal s))),
+                  ts'))
+     | Tok_INTEGER n ->
+         (match make_typed_literal n
+                  "http://www.w3.org/2001/XMLSchema#integer"
+          with
+          | FStar_Pervasives_Native.Some lit ->
+              ParseOk
+                ((FStar_Pervasives_Native.Some
+                    (RDF_Graph_Executable.T_Literal lit)),
+                  (parse_advance ts))
+          | FStar_Pervasives_Native.None -> ParseErr "invalid integer")
+     | Tok_DECIMAL d ->
+         (match make_typed_literal d
+                  "http://www.w3.org/2001/XMLSchema#decimal"
+          with
+          | FStar_Pervasives_Native.Some lit ->
+              ParseOk
+                ((FStar_Pervasives_Native.Some
+                    (RDF_Graph_Executable.T_Literal lit)),
+                  (parse_advance ts))
+          | FStar_Pervasives_Native.None -> ParseErr "invalid decimal")
+     | Tok_DOUBLE d ->
+         (match make_typed_literal d
+                  "http://www.w3.org/2001/XMLSchema#double"
+          with
+          | FStar_Pervasives_Native.Some lit ->
+              ParseOk
+                ((FStar_Pervasives_Native.Some
+                    (RDF_Graph_Executable.T_Literal lit)),
+                  (parse_advance ts))
+          | FStar_Pervasives_Native.None -> ParseErr "invalid double")
+     | Tok_TRUE ->
+         (match make_typed_literal "true"
+                  "http://www.w3.org/2001/XMLSchema#boolean"
+          with
+          | FStar_Pervasives_Native.Some lit ->
+              ParseOk
+                ((FStar_Pervasives_Native.Some
+                    (RDF_Graph_Executable.T_Literal lit)),
+                  (parse_advance ts))
+          | FStar_Pervasives_Native.None -> ParseErr "invalid boolean")
+     | Tok_FALSE ->
+         (match make_typed_literal "false"
+                  "http://www.w3.org/2001/XMLSchema#boolean"
+          with
+          | FStar_Pervasives_Native.Some lit ->
+              ParseOk
+                ((FStar_Pervasives_Native.Some
+                    (RDF_Graph_Executable.T_Literal lit)),
+                  (parse_advance ts))
+          | FStar_Pervasives_Native.None -> ParseErr "invalid boolean")
+     | uu___1 -> ParseErr "expected data value or UNDEF")
+and parse_values_row (pm : prefix_map) (fuel : Prims.nat)
+  (n_vars : Prims.nat) (ts : token_stream) :
+  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option Prims.list
+    parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_expect Tok_LPAREN ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk ((), ts') ->
+         parse_values_row_items pm (fuel - Prims.int_one) n_vars [] ts')
+and parse_values_row_items (pm : prefix_map) (fuel : Prims.nat)
+  (remaining : Prims.nat)
+  (acc :
+    RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option Prims.list)
+  (ts : token_stream) :
+  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option Prims.list
+    parse_result=
+  if fuel = Prims.int_zero
+  then ParseOk ((FStar_List_Tot_Base.rev acc), ts)
+  else
+    (match parse_peek ts with
+     | Tok_RPAREN ->
+         ParseOk ((FStar_List_Tot_Base.rev acc), (parse_advance ts))
+     | uu___1 ->
+         (match parse_data_value pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (v, ts') ->
+              parse_values_row_items pm (fuel - Prims.int_one)
+                (if remaining > Prims.int_zero
+                 then remaining - Prims.int_one
+                 else Prims.int_zero) (v :: acc) ts'))
+and parse_values_rows (pm : prefix_map) (fuel : Prims.nat)
+  (n_vars : Prims.nat)
+  (acc :
+    RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option Prims.list
+      Prims.list)
+  (ts : token_stream) :
+  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option Prims.list
+    Prims.list parse_result=
+  if fuel = Prims.int_zero
+  then ParseOk ((FStar_List_Tot_Base.rev acc), ts)
+  else
+    (match parse_peek ts with
+     | Tok_LPAREN ->
+         (match parse_values_row pm (fuel - Prims.int_one) n_vars ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (row, ts') ->
+              parse_values_rows pm (fuel - Prims.int_one) n_vars (row :: acc)
+                ts')
+     | uu___1 -> ParseOk ((FStar_List_Tot_Base.rev acc), ts))
+and parse_values_vars (fuel : Prims.nat)
+  (acc : SPARQL11_Algebra.var_name Prims.list) (ts : token_stream) :
+  SPARQL11_Algebra.var_name Prims.list parse_result=
+  if fuel = Prims.int_zero
+  then ParseOk ((FStar_List_Tot_Base.rev acc), ts)
+  else
+    (match parse_peek ts with
+     | Tok_VAR v ->
+         parse_values_vars (fuel - Prims.int_one) (v :: acc)
+           (parse_advance ts)
+     | uu___1 -> ParseOk ((FStar_List_Tot_Base.rev acc), ts))
+and parse_values_clause (pm : prefix_map) (fuel : Prims.nat)
+  (ts : token_stream) : SPARQL11_Algebra.group_graph_pattern parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_peek ts with
+     | Tok_VAR v ->
+         let ts' = parse_advance ts in
+         (match parse_expect Tok_LBRACE ts' with
+          | ParseErr m -> ParseErr m
+          | ParseOk ((), ts'') ->
+              (match parse_single_var_values pm (fuel - Prims.int_one) []
+                       ts''
+               with
+               | ParseErr m -> ParseErr m
+               | ParseOk (vals, ts''') ->
+                   (match parse_expect Tok_RBRACE ts''' with
+                    | ParseErr m -> ParseErr m
+                    | ParseOk ((), ts4) ->
+                        let rows =
+                          FStar_List_Tot_Base.map (fun v1 -> [v1]) vals in
+                        ParseOk
+                          ((SPARQL11_Algebra.GP_Values ([v], rows)), ts4))))
+     | Tok_LPAREN ->
+         let ts' = parse_advance ts in
+         (match parse_values_vars (fuel - Prims.int_one) [] ts' with
+          | ParseErr m -> ParseErr m
+          | ParseOk (vars, ts'') ->
+              (match parse_expect Tok_RPAREN ts'' with
+               | ParseErr m -> ParseErr m
+               | ParseOk ((), ts''') ->
+                   (match parse_expect Tok_LBRACE ts''' with
+                    | ParseErr m -> ParseErr m
+                    | ParseOk ((), ts4) ->
+                        (match parse_values_rows pm (fuel - Prims.int_one)
+                                 (FStar_List_Tot_Base.length vars) [] ts4
+                         with
+                         | ParseErr m -> ParseErr m
+                         | ParseOk (rows, ts5) ->
+                             (match parse_expect Tok_RBRACE ts5 with
+                              | ParseErr m -> ParseErr m
+                              | ParseOk ((), ts6) ->
+                                  ParseOk
+                                    ((SPARQL11_Algebra.GP_Values (vars, rows)),
+                                      ts6))))))
+     | uu___1 -> ParseErr "expected variable or '(' after VALUES")
+and parse_single_var_values (pm : prefix_map) (fuel : Prims.nat)
+  (acc :
+    RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option Prims.list)
+  (ts : token_stream) :
+  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option Prims.list
+    parse_result=
+  if fuel = Prims.int_zero
+  then ParseOk ((FStar_List_Tot_Base.rev acc), ts)
+  else
+    (match parse_peek ts with
+     | Tok_RBRACE -> ParseOk ((FStar_List_Tot_Base.rev acc), ts)
+     | uu___1 ->
+         (match parse_data_value pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (v, ts') ->
+              parse_single_var_values pm (fuel - Prims.int_one) (v :: acc)
+                ts'))
 and parse_subject (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
   SPARQL11_Algebra.pattern_subject parse_result=
   if fuel = Prims.int_zero
@@ -3133,59 +3398,287 @@ and parse_subject (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
           | FStar_Pervasives_Native.None -> ParseErr "unresolved prefix")
      | Tok_BNODE b ->
          ParseOk ((SPARQL11_Algebra.PS_BNode b), (parse_advance ts))
+     | Tok_LBRACKET ->
+         let bnode_id = fresh_bnode_id ts in
+         let ts' = parse_advance ts in
+         (match parse_peek ts' with
+          | Tok_RBRACKET ->
+              ParseOk
+                ((SPARQL11_Algebra.PS_BNode bnode_id), (parse_advance ts'))
+          | uu___1 ->
+              ParseErr
+                "blank node property list as subject not yet supported")
      | uu___1 -> ParseErr "expected subject")
-and parse_predicate (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
-  : SPARQL11_Algebra.pattern_term parse_result=
+and parse_path_alternative (pm : prefix_map) (fuel : Prims.nat)
+  (ts : token_stream) : SPARQL11_Algebra.property_path parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_path_sequence pm (fuel - Prims.int_one) ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk (p1, ts') ->
+         parse_path_alt_rest pm (fuel - Prims.int_one) p1 ts')
+and parse_path_alt_rest (pm : prefix_map) (fuel : Prims.nat)
+  (acc : SPARQL11_Algebra.property_path) (ts : token_stream) :
+  SPARQL11_Algebra.property_path parse_result=
+  if fuel = Prims.int_zero
+  then ParseOk (acc, ts)
+  else
+    (match parse_peek ts with
+     | Tok_PIPE ->
+         (match parse_path_sequence pm (fuel - Prims.int_one)
+                  (parse_advance ts)
+          with
+          | ParseErr m -> ParseErr m
+          | ParseOk (p2, ts') ->
+              parse_path_alt_rest pm (fuel - Prims.int_one)
+                (SPARQL11_Algebra.PP_Alternative (acc, p2)) ts')
+     | uu___1 -> ParseOk (acc, ts))
+and parse_path_sequence (pm : prefix_map) (fuel : Prims.nat)
+  (ts : token_stream) : SPARQL11_Algebra.property_path parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_path_elt_or_inverse pm (fuel - Prims.int_one) ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk (p1, ts') ->
+         parse_path_seq_rest pm (fuel - Prims.int_one) p1 ts')
+and parse_path_seq_rest (pm : prefix_map) (fuel : Prims.nat)
+  (acc : SPARQL11_Algebra.property_path) (ts : token_stream) :
+  SPARQL11_Algebra.property_path parse_result=
+  if fuel = Prims.int_zero
+  then ParseOk (acc, ts)
+  else
+    (match parse_peek ts with
+     | Tok_SLASH ->
+         (match parse_path_elt_or_inverse pm (fuel - Prims.int_one)
+                  (parse_advance ts)
+          with
+          | ParseErr m -> ParseErr m
+          | ParseOk (p2, ts') ->
+              parse_path_seq_rest pm (fuel - Prims.int_one)
+                (SPARQL11_Algebra.PP_Sequence (acc, p2)) ts')
+     | uu___1 -> ParseOk (acc, ts))
+and parse_path_elt_or_inverse (pm : prefix_map) (fuel : Prims.nat)
+  (ts : token_stream) : SPARQL11_Algebra.property_path parse_result=
   if fuel = Prims.int_zero
   then ParseErr "recursion limit"
   else
     (match parse_peek ts with
-     | Tok_VAR v -> ParseOk ((SPARQL11_Algebra.PT_Var v), (parse_advance ts))
-     | Tok_A ->
-         ParseOk
-           ((SPARQL11_Algebra.PT_IRI rdf_type_iri_str), (parse_advance ts))
+     | Tok_CARET ->
+         (match parse_path_elt pm (fuel - Prims.int_one) (parse_advance ts)
+          with
+          | ParseErr m -> ParseErr m
+          | ParseOk (p, ts') ->
+              ParseOk ((SPARQL11_Algebra.PP_Inverse p), ts'))
+     | uu___1 -> parse_path_elt pm (fuel - Prims.int_one) ts)
+and parse_path_elt (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
+  SPARQL11_Algebra.property_path parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_path_primary pm (fuel - Prims.int_one) ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk (p, ts') ->
+         (match parse_peek ts' with
+          | Tok_STAR ->
+              ParseOk
+                ((SPARQL11_Algebra.PP_ZeroOrMore p), (parse_advance ts'))
+          | Tok_PLUS ->
+              ParseOk
+                ((SPARQL11_Algebra.PP_OneOrMore p), (parse_advance ts'))
+          | Tok_QMARK ->
+              ParseOk
+                ((SPARQL11_Algebra.PP_ZeroOrOne p), (parse_advance ts'))
+          | uu___1 -> ParseOk (p, ts')))
+and parse_path_primary (pm : prefix_map) (fuel : Prims.nat)
+  (ts : token_stream) : SPARQL11_Algebra.property_path parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_peek ts with
      | Tok_IRI i ->
          if RDF_Graph_Executable.is_iri i
-         then ParseOk ((SPARQL11_Algebra.PT_IRI i), (parse_advance ts))
+         then ParseOk ((SPARQL11_Algebra.PP_IRI i), (parse_advance ts))
          else ParseErr "invalid IRI"
      | Tok_PNAME pn ->
          (match resolve_pname pn pm with
           | FStar_Pervasives_Native.Some iri ->
               if RDF_Graph_Executable.is_iri iri
               then
-                ParseOk ((SPARQL11_Algebra.PT_IRI iri), (parse_advance ts))
+                ParseOk ((SPARQL11_Algebra.PP_IRI iri), (parse_advance ts))
               else ParseErr "invalid IRI"
           | FStar_Pervasives_Native.None -> ParseErr "unresolved prefix")
-     | uu___1 -> ParseErr "expected predicate")
-and parse_object (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
-  SPARQL11_Algebra.pattern_term parse_result=
+     | Tok_A ->
+         ParseOk
+           ((SPARQL11_Algebra.PP_IRI rdf_type_iri_str), (parse_advance ts))
+     | Tok_BANG ->
+         parse_path_negated pm (fuel - Prims.int_one) (parse_advance ts)
+     | Tok_LPAREN ->
+         (match parse_path_alternative pm (fuel - Prims.int_one)
+                  (parse_advance ts)
+          with
+          | ParseErr m -> ParseErr m
+          | ParseOk (p, ts') ->
+              (match parse_expect Tok_RPAREN ts' with
+               | ParseErr uu___1 -> ParseErr "expected ')' after path"
+               | ParseOk ((), ts'') -> ParseOk (p, ts'')))
+     | uu___1 -> ParseErr "expected path primary")
+and parse_path_negated (pm : prefix_map) (fuel : Prims.nat)
+  (ts : token_stream) : SPARQL11_Algebra.property_path parse_result=
   if fuel = Prims.int_zero
   then ParseErr "recursion limit"
   else
     (match parse_peek ts with
-     | Tok_VAR v -> ParseOk ((SPARQL11_Algebra.PT_Var v), (parse_advance ts))
+     | Tok_LPAREN ->
+         (match parse_path_one_in_set_list pm (fuel - Prims.int_one)
+                  (parse_advance ts)
+          with
+          | ParseErr m -> ParseErr m
+          | ParseOk (ps, ts') ->
+              (match parse_expect Tok_RPAREN ts' with
+               | ParseErr uu___1 ->
+                   ParseErr "expected ')' in negated path set"
+               | ParseOk ((), ts'') ->
+                   ParseOk ((SPARQL11_Algebra.PP_NegatedSet ps), ts'')))
+     | uu___1 ->
+         (match parse_path_one_in_set pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (p, ts') ->
+              ParseOk ((SPARQL11_Algebra.PP_NegatedSet [p]), ts')))
+and parse_path_one_in_set (pm : prefix_map) (fuel : Prims.nat)
+  (ts : token_stream) : SPARQL11_Algebra.property_path parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_peek ts with
      | Tok_IRI i ->
          if RDF_Graph_Executable.is_iri i
-         then ParseOk ((SPARQL11_Algebra.PT_IRI i), (parse_advance ts))
+         then ParseOk ((SPARQL11_Algebra.PP_IRI i), (parse_advance ts))
          else ParseErr "invalid IRI"
      | Tok_PNAME pn ->
          (match resolve_pname pn pm with
           | FStar_Pervasives_Native.Some iri ->
               if RDF_Graph_Executable.is_iri iri
               then
-                ParseOk ((SPARQL11_Algebra.PT_IRI iri), (parse_advance ts))
+                ParseOk ((SPARQL11_Algebra.PP_IRI iri), (parse_advance ts))
+              else ParseErr "invalid IRI"
+          | FStar_Pervasives_Native.None -> ParseErr "unresolved prefix")
+     | Tok_A ->
+         ParseOk
+           ((SPARQL11_Algebra.PP_IRI rdf_type_iri_str), (parse_advance ts))
+     | Tok_CARET ->
+         let ts' = parse_advance ts in
+         (match parse_peek ts' with
+          | Tok_IRI i ->
+              if RDF_Graph_Executable.is_iri i
+              then
+                ParseOk
+                  ((SPARQL11_Algebra.PP_Inverse (SPARQL11_Algebra.PP_IRI i)),
+                    (parse_advance ts'))
+              else ParseErr "invalid IRI"
+          | Tok_PNAME pn ->
+              (match resolve_pname pn pm with
+               | FStar_Pervasives_Native.Some iri ->
+                   if RDF_Graph_Executable.is_iri iri
+                   then
+                     ParseOk
+                       ((SPARQL11_Algebra.PP_Inverse
+                           (SPARQL11_Algebra.PP_IRI iri)),
+                         (parse_advance ts'))
+                   else ParseErr "invalid IRI"
+               | FStar_Pervasives_Native.None -> ParseErr "unresolved prefix")
+          | Tok_A ->
+              ParseOk
+                ((SPARQL11_Algebra.PP_Inverse
+                    (SPARQL11_Algebra.PP_IRI rdf_type_iri_str)),
+                  (parse_advance ts'))
+          | uu___1 -> ParseErr "expected IRI or 'a' after ^ in negated set")
+     | uu___1 -> ParseErr "expected path element in negated set")
+and parse_path_one_in_set_list (pm : prefix_map) (fuel : Prims.nat)
+  (ts : token_stream) :
+  SPARQL11_Algebra.property_path Prims.list parse_result=
+  if fuel = Prims.int_zero
+  then ParseOk ([], ts)
+  else
+    (match parse_path_one_in_set pm (fuel - Prims.int_one) ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk (p, ts') ->
+         (match parse_peek ts' with
+          | Tok_PIPE ->
+              (match parse_path_one_in_set_list pm (fuel - Prims.int_one)
+                       (parse_advance ts')
+               with
+               | ParseErr m -> ParseErr m
+               | ParseOk (ps, ts'') -> ParseOk ((p :: ps), ts''))
+          | uu___1 -> ParseOk ([p], ts')))
+and parse_verb (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
+  verb_or_path parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_peek ts with
+     | Tok_VAR v ->
+         ParseOk ((VSimple (SPARQL11_Algebra.PT_Var v)), (parse_advance ts))
+     | uu___1 ->
+         (match parse_path_alternative pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (pp, ts') ->
+              (match pp with
+               | SPARQL11_Algebra.PP_IRI iri ->
+                   ParseOk ((VSimple (SPARQL11_Algebra.PT_IRI iri)), ts')
+               | uu___2 -> ParseOk ((VPath pp), ts'))))
+and fresh_bnode_id (ts : token_stream) : Prims.string=
+  Prims.strcat "_:bnode_"
+    (Prims.string_of_int (FStar_List_Tot_Base.length ts))
+and parse_object_with_extras (pm : prefix_map) (fuel : Prims.nat)
+  (ts : token_stream) :
+  (SPARQL11_Algebra.pattern_term * SPARQL11_Algebra.group_graph_pattern)
+    parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_peek ts with
+     | Tok_VAR v ->
+         ParseOk
+           (((SPARQL11_Algebra.PT_Var v), SPARQL11_Algebra.GP_Empty),
+             (parse_advance ts))
+     | Tok_IRI i ->
+         if RDF_Graph_Executable.is_iri i
+         then
+           ParseOk
+             (((SPARQL11_Algebra.PT_IRI i), SPARQL11_Algebra.GP_Empty),
+               (parse_advance ts))
+         else ParseErr "invalid IRI"
+     | Tok_PNAME pn ->
+         (match resolve_pname pn pm with
+          | FStar_Pervasives_Native.Some iri ->
+              if RDF_Graph_Executable.is_iri iri
+              then
+                ParseOk
+                  (((SPARQL11_Algebra.PT_IRI iri), SPARQL11_Algebra.GP_Empty),
+                    (parse_advance ts))
               else ParseErr "invalid IRI"
           | FStar_Pervasives_Native.None -> ParseErr "unresolved prefix")
      | Tok_BNODE b ->
-         ParseOk ((SPARQL11_Algebra.PT_BNode b), (parse_advance ts))
+         ParseOk
+           (((SPARQL11_Algebra.PT_BNode b), SPARQL11_Algebra.GP_Empty),
+             (parse_advance ts))
      | Tok_STRING s ->
-         parse_rdf_literal_pt pm (fuel - Prims.int_one) s (parse_advance ts)
+         (match parse_rdf_literal_pt pm (fuel - Prims.int_one) s
+                  (parse_advance ts)
+          with
+          | ParseErr m -> ParseErr m
+          | ParseOk (pt, ts') ->
+              ParseOk ((pt, SPARQL11_Algebra.GP_Empty), ts'))
      | Tok_INTEGER n ->
          (match make_typed_literal n
                   "http://www.w3.org/2001/XMLSchema#integer"
           with
           | FStar_Pervasives_Native.Some lit ->
-              ParseOk ((SPARQL11_Algebra.PT_Literal lit), (parse_advance ts))
+              ParseOk
+                (((SPARQL11_Algebra.PT_Literal lit),
+                   SPARQL11_Algebra.GP_Empty), (parse_advance ts))
           | FStar_Pervasives_Native.None ->
               ParseErr "invalid integer literal")
      | Tok_DECIMAL d ->
@@ -3193,7 +3686,9 @@ and parse_object (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
                   "http://www.w3.org/2001/XMLSchema#decimal"
           with
           | FStar_Pervasives_Native.Some lit ->
-              ParseOk ((SPARQL11_Algebra.PT_Literal lit), (parse_advance ts))
+              ParseOk
+                (((SPARQL11_Algebra.PT_Literal lit),
+                   SPARQL11_Algebra.GP_Empty), (parse_advance ts))
           | FStar_Pervasives_Native.None ->
               ParseErr "invalid decimal literal")
      | Tok_DOUBLE d ->
@@ -3201,14 +3696,18 @@ and parse_object (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
                   "http://www.w3.org/2001/XMLSchema#double"
           with
           | FStar_Pervasives_Native.Some lit ->
-              ParseOk ((SPARQL11_Algebra.PT_Literal lit), (parse_advance ts))
+              ParseOk
+                (((SPARQL11_Algebra.PT_Literal lit),
+                   SPARQL11_Algebra.GP_Empty), (parse_advance ts))
           | FStar_Pervasives_Native.None -> ParseErr "invalid double literal")
      | Tok_TRUE ->
          (match make_typed_literal "true"
                   "http://www.w3.org/2001/XMLSchema#boolean"
           with
           | FStar_Pervasives_Native.Some lit ->
-              ParseOk ((SPARQL11_Algebra.PT_Literal lit), (parse_advance ts))
+              ParseOk
+                (((SPARQL11_Algebra.PT_Literal lit),
+                   SPARQL11_Algebra.GP_Empty), (parse_advance ts))
           | FStar_Pervasives_Native.None ->
               ParseErr "invalid boolean literal")
      | Tok_FALSE ->
@@ -3216,13 +3715,94 @@ and parse_object (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
                   "http://www.w3.org/2001/XMLSchema#boolean"
           with
           | FStar_Pervasives_Native.Some lit ->
-              ParseOk ((SPARQL11_Algebra.PT_Literal lit), (parse_advance ts))
+              ParseOk
+                (((SPARQL11_Algebra.PT_Literal lit),
+                   SPARQL11_Algebra.GP_Empty), (parse_advance ts))
           | FStar_Pervasives_Native.None ->
               ParseErr "invalid boolean literal")
      | Tok_A ->
          ParseOk
-           ((SPARQL11_Algebra.PT_IRI rdf_type_iri_str), (parse_advance ts))
+           (((SPARQL11_Algebra.PT_IRI rdf_type_iri_str),
+              SPARQL11_Algebra.GP_Empty), (parse_advance ts))
+     | Tok_LBRACKET ->
+         let bnode_id = fresh_bnode_id ts in
+         let ts' = parse_advance ts in
+         (match parse_peek ts' with
+          | Tok_RBRACKET ->
+              ParseOk
+                (((SPARQL11_Algebra.PT_BNode bnode_id),
+                   SPARQL11_Algebra.GP_Empty), (parse_advance ts'))
+          | uu___1 ->
+              let bnode_subj = SPARQL11_Algebra.PS_BNode bnode_id in
+              (match parse_pred_obj_list pm (fuel - Prims.int_one) bnode_subj
+                       SPARQL11_Algebra.GP_Empty ts'
+               with
+               | ParseErr m -> ParseErr m
+               | ParseOk (extra_triples, ts'') ->
+                   (match parse_expect Tok_RBRACKET ts'' with
+                    | ParseErr uu___2 ->
+                        ParseErr
+                          "expected ']' after blank node property list"
+                    | ParseOk ((), ts''') ->
+                        ParseOk
+                          (((SPARQL11_Algebra.PT_BNode bnode_id),
+                             extra_triples), ts'''))))
+     | Tok_LPAREN ->
+         parse_collection pm (fuel - Prims.int_one) (parse_advance ts)
      | uu___1 -> ParseErr "expected object")
+and parse_collection (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
+  :
+  (SPARQL11_Algebra.pattern_term * SPARQL11_Algebra.group_graph_pattern)
+    parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_peek ts with
+     | Tok_RPAREN ->
+         ParseOk
+           (((SPARQL11_Algebra.PT_IRI
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"),
+              SPARQL11_Algebra.GP_Empty), (parse_advance ts))
+     | uu___1 ->
+         (match parse_object_with_extras pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk ((item, item_extras), ts') ->
+              let bnode_id = fresh_bnode_id ts in
+              let bnode_subj = SPARQL11_Algebra.PS_BNode bnode_id in
+              (match parse_collection pm (fuel - Prims.int_one) ts' with
+               | ParseErr m -> ParseErr m
+               | ParseOk ((rest_term, rest_extras), ts'') ->
+                   let first_triple =
+                     {
+                       SPARQL11_Algebra.tp_s = bnode_subj;
+                       SPARQL11_Algebra.tp_p =
+                         (SPARQL11_Algebra.PT_IRI
+                            "http://www.w3.org/1999/02/22-rdf-syntax-ns#first");
+                       SPARQL11_Algebra.tp_o = item
+                     } in
+                   let rest_triple =
+                     {
+                       SPARQL11_Algebra.tp_s = bnode_subj;
+                       SPARQL11_Algebra.tp_p =
+                         (SPARQL11_Algebra.PT_IRI
+                            "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest");
+                       SPARQL11_Algebra.tp_o = rest_term
+                     } in
+                   let triples =
+                     SPARQL11_Algebra.GP_BGP [first_triple; rest_triple] in
+                   let all_extras =
+                     ggp_join (ggp_join triples item_extras) rest_extras in
+                   ParseOk
+                     (((SPARQL11_Algebra.PT_BNode bnode_id), all_extras),
+                       ts''))))
+and parse_object (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
+  SPARQL11_Algebra.pattern_term parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_object_with_extras pm (fuel - Prims.int_one) ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk ((pt, uu___1), ts') -> ParseOk (pt, ts'))
 and parse_rdf_literal_pt (pm : prefix_map) (fuel : Prims.nat)
   (s : Prims.string) (ts : token_stream) :
   SPARQL11_Algebra.pattern_term parse_result=
@@ -3265,66 +3845,115 @@ and parse_rdf_literal_pt (pm : prefix_map) (fuel : Prims.nat)
              (parse_advance ts))
      | uu___1 ->
          ParseOk ((SPARQL11_Algebra.PT_Literal (make_plain_literal s)), ts))
-and parse_object_list (pm : prefix_map) (fuel : Prims.nat)
+and ggp_join (a : SPARQL11_Algebra.group_graph_pattern)
+  (b : SPARQL11_Algebra.group_graph_pattern) :
+  SPARQL11_Algebra.group_graph_pattern=
+  match a with
+  | SPARQL11_Algebra.GP_Empty -> b
+  | uu___ ->
+      (match b with
+       | SPARQL11_Algebra.GP_Empty -> a
+       | uu___1 -> SPARQL11_Algebra.GP_Join (a, b))
+and ggp_add_triple (acc : SPARQL11_Algebra.group_graph_pattern)
+  (tp : SPARQL11_Algebra.triple_pattern) :
+  SPARQL11_Algebra.group_graph_pattern=
+  match acc with
+  | SPARQL11_Algebra.GP_BGP ts ->
+      SPARQL11_Algebra.GP_BGP (FStar_List_Tot_Base.op_At ts [tp])
+  | SPARQL11_Algebra.GP_Empty -> SPARQL11_Algebra.GP_BGP [tp]
+  | uu___ -> SPARQL11_Algebra.GP_Join (acc, (SPARQL11_Algebra.GP_BGP [tp]))
+and ggp_add_pp (acc : SPARQL11_Algebra.group_graph_pattern)
+  (s : SPARQL11_Algebra.pattern_subject)
+  (pp : SPARQL11_Algebra.property_path) (o : SPARQL11_Algebra.pattern_term) :
+  SPARQL11_Algebra.group_graph_pattern=
+  ggp_join acc (SPARQL11_Algebra.GP_PropertyPath (s, pp, o))
+and parse_object_list_simple (pm : prefix_map) (fuel : Prims.nat)
   (subj : SPARQL11_Algebra.pattern_subject)
   (pred : SPARQL11_Algebra.pattern_term)
-  (acc : SPARQL11_Algebra.triple_pattern Prims.list) (ts : token_stream) :
-  SPARQL11_Algebra.triple_pattern Prims.list parse_result=
+  (acc : SPARQL11_Algebra.group_graph_pattern) (ts : token_stream) :
+  SPARQL11_Algebra.group_graph_pattern parse_result=
   if fuel = Prims.int_zero
-  then ParseOk ((FStar_List_Tot_Base.rev acc), ts)
+  then ParseOk (acc, ts)
   else
-    (match parse_object pm (fuel - Prims.int_one) ts with
+    (match parse_object_with_extras pm (fuel - Prims.int_one) ts with
      | ParseErr m -> ParseErr m
-     | ParseOk (obj, ts') ->
-         let tp =
-           {
-             SPARQL11_Algebra.tp_s = subj;
-             SPARQL11_Algebra.tp_p = pred;
-             SPARQL11_Algebra.tp_o = obj
-           } in
+     | ParseOk ((obj, extras), ts') ->
+         let acc' =
+           ggp_add_triple acc
+             {
+               SPARQL11_Algebra.tp_s = subj;
+               SPARQL11_Algebra.tp_p = pred;
+               SPARQL11_Algebra.tp_o = obj
+             } in
+         let acc'1 = ggp_join acc' extras in
          (match parse_peek ts' with
           | Tok_COMMA ->
-              parse_object_list pm (fuel - Prims.int_one) subj pred (tp ::
-                acc) (parse_advance ts')
-          | uu___1 -> ParseOk ((FStar_List_Tot_Base.rev (tp :: acc)), ts')))
+              parse_object_list_simple pm (fuel - Prims.int_one) subj pred
+                acc'1 (parse_advance ts')
+          | uu___1 -> ParseOk (acc'1, ts')))
+and parse_object_list_path (pm : prefix_map) (fuel : Prims.nat)
+  (subj : SPARQL11_Algebra.pattern_subject)
+  (pp : SPARQL11_Algebra.property_path)
+  (acc : SPARQL11_Algebra.group_graph_pattern) (ts : token_stream) :
+  SPARQL11_Algebra.group_graph_pattern parse_result=
+  if fuel = Prims.int_zero
+  then ParseOk (acc, ts)
+  else
+    (match parse_object_with_extras pm (fuel - Prims.int_one) ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk ((obj, extras), ts') ->
+         let acc' = ggp_add_pp acc subj pp obj in
+         let acc'1 = ggp_join acc' extras in
+         (match parse_peek ts' with
+          | Tok_COMMA ->
+              parse_object_list_path pm (fuel - Prims.int_one) subj pp acc'1
+                (parse_advance ts')
+          | uu___1 -> ParseOk (acc'1, ts')))
 and parse_pred_obj_list (pm : prefix_map) (fuel : Prims.nat)
   (subj : SPARQL11_Algebra.pattern_subject)
-  (acc : SPARQL11_Algebra.triple_pattern Prims.list) (ts : token_stream) :
-  SPARQL11_Algebra.triple_pattern Prims.list parse_result=
+  (acc : SPARQL11_Algebra.group_graph_pattern) (ts : token_stream) :
+  SPARQL11_Algebra.group_graph_pattern parse_result=
   if fuel = Prims.int_zero
-  then ParseOk ((FStar_List_Tot_Base.rev acc), ts)
+  then ParseOk (acc, ts)
   else
-    (match parse_predicate pm (fuel - Prims.int_one) ts with
+    (match parse_verb pm (fuel - Prims.int_one) ts with
      | ParseErr m -> ParseErr m
-     | ParseOk (pred, ts') ->
-         (match parse_object_list pm (fuel - Prims.int_one) subj pred acc ts'
-          with
+     | ParseOk (verb, ts') ->
+         let r =
+           match verb with
+           | VSimple pred ->
+               parse_object_list_simple pm (fuel - Prims.int_one) subj pred
+                 acc ts'
+           | VPath pp ->
+               parse_object_list_path pm (fuel - Prims.int_one) subj pp acc
+                 ts' in
+         (match r with
           | ParseErr m -> ParseErr m
-          | ParseOk (triples, ts'') ->
+          | ParseOk (acc', ts'') ->
               (match parse_peek ts'' with
                | Tok_SEMI ->
                    let ts''' = parse_advance ts'' in
                    (match parse_peek ts''' with
-                    | Tok_DOT -> ParseOk (triples, ts''')
-                    | Tok_RBRACE -> ParseOk (triples, ts''')
-                    | Tok_OPTIONAL -> ParseOk (triples, ts''')
-                    | Tok_MINUS_KW -> ParseOk (triples, ts''')
-                    | Tok_FILTER -> ParseOk (triples, ts''')
-                    | Tok_BIND -> ParseOk (triples, ts''')
-                    | Tok_GRAPH -> ParseOk (triples, ts''')
-                    | Tok_SERVICE -> ParseOk (triples, ts''')
-                    | Tok_VALUES -> ParseOk (triples, ts''')
-                    | Tok_UNION -> ParseOk (triples, ts''')
-                    | Tok_LBRACE -> ParseOk (triples, ts''')
-                    | Tok_RBRACKET -> ParseOk (triples, ts''')
-                    | Tok_EOF -> ParseOk (triples, ts''')
+                    | Tok_DOT -> ParseOk (acc', ts''')
+                    | Tok_RBRACE -> ParseOk (acc', ts''')
+                    | Tok_OPTIONAL -> ParseOk (acc', ts''')
+                    | Tok_MINUS_KW -> ParseOk (acc', ts''')
+                    | Tok_FILTER -> ParseOk (acc', ts''')
+                    | Tok_BIND -> ParseOk (acc', ts''')
+                    | Tok_GRAPH -> ParseOk (acc', ts''')
+                    | Tok_SERVICE -> ParseOk (acc', ts''')
+                    | Tok_VALUES -> ParseOk (acc', ts''')
+                    | Tok_UNION -> ParseOk (acc', ts''')
+                    | Tok_LBRACE -> ParseOk (acc', ts''')
+                    | Tok_RBRACKET -> ParseOk (acc', ts''')
+                    | Tok_EOF -> ParseOk (acc', ts''')
                     | uu___1 ->
                         parse_pred_obj_list pm (fuel - Prims.int_one) subj
-                          triples ts''')
-               | uu___1 -> ParseOk (triples, ts''))))
+                          acc' ts''')
+               | uu___1 -> ParseOk (acc', ts''))))
 and parse_triples_block (pm : prefix_map) (fuel : Prims.nat)
-  (acc : SPARQL11_Algebra.triple_pattern Prims.list) (ts : token_stream) :
-  SPARQL11_Algebra.triple_pattern Prims.list parse_result=
+  (acc : SPARQL11_Algebra.group_graph_pattern) (ts : token_stream) :
+  SPARQL11_Algebra.group_graph_pattern parse_result=
   if fuel = Prims.int_zero
   then ParseOk (acc, ts)
   else
@@ -3334,52 +3963,52 @@ and parse_triples_block (pm : prefix_map) (fuel : Prims.nat)
          (match parse_pred_obj_list pm (fuel - Prims.int_one) subj acc ts'
           with
           | ParseErr m -> ParseErr m
-          | ParseOk (triples, ts'') ->
+          | ParseOk (acc', ts'') ->
               (match parse_peek ts'' with
                | Tok_DOT ->
                    let ts''' = parse_advance ts'' in
                    (match parse_peek ts''' with
                     | Tok_VAR uu___1 ->
-                        parse_triples_block pm (fuel - Prims.int_one) triples
+                        parse_triples_block pm (fuel - Prims.int_one) acc'
                           ts'''
                     | Tok_IRI uu___1 ->
-                        parse_triples_block pm (fuel - Prims.int_one) triples
+                        parse_triples_block pm (fuel - Prims.int_one) acc'
                           ts'''
                     | Tok_PNAME uu___1 ->
-                        parse_triples_block pm (fuel - Prims.int_one) triples
+                        parse_triples_block pm (fuel - Prims.int_one) acc'
                           ts'''
                     | Tok_BNODE uu___1 ->
-                        parse_triples_block pm (fuel - Prims.int_one) triples
+                        parse_triples_block pm (fuel - Prims.int_one) acc'
                           ts'''
                     | Tok_LBRACKET ->
-                        parse_triples_block pm (fuel - Prims.int_one) triples
+                        parse_triples_block pm (fuel - Prims.int_one) acc'
                           ts'''
                     | Tok_LPAREN ->
-                        parse_triples_block pm (fuel - Prims.int_one) triples
+                        parse_triples_block pm (fuel - Prims.int_one) acc'
                           ts'''
                     | Tok_A ->
-                        parse_triples_block pm (fuel - Prims.int_one) triples
+                        parse_triples_block pm (fuel - Prims.int_one) acc'
                           ts'''
                     | Tok_INTEGER uu___1 ->
-                        parse_triples_block pm (fuel - Prims.int_one) triples
+                        parse_triples_block pm (fuel - Prims.int_one) acc'
                           ts'''
                     | Tok_DECIMAL uu___1 ->
-                        parse_triples_block pm (fuel - Prims.int_one) triples
+                        parse_triples_block pm (fuel - Prims.int_one) acc'
                           ts'''
                     | Tok_DOUBLE uu___1 ->
-                        parse_triples_block pm (fuel - Prims.int_one) triples
+                        parse_triples_block pm (fuel - Prims.int_one) acc'
                           ts'''
                     | Tok_STRING uu___1 ->
-                        parse_triples_block pm (fuel - Prims.int_one) triples
+                        parse_triples_block pm (fuel - Prims.int_one) acc'
                           ts'''
                     | Tok_TRUE ->
-                        parse_triples_block pm (fuel - Prims.int_one) triples
+                        parse_triples_block pm (fuel - Prims.int_one) acc'
                           ts'''
                     | Tok_FALSE ->
-                        parse_triples_block pm (fuel - Prims.int_one) triples
+                        parse_triples_block pm (fuel - Prims.int_one) acc'
                           ts'''
-                    | uu___1 -> ParseOk (triples, ts'''))
-               | uu___1 -> ParseOk (triples, ts''))))
+                    | uu___1 -> ParseOk (acc', ts'''))
+               | uu___1 -> ParseOk (acc', ts''))))
 and parse_select_query (pm : prefix_map) (fuel : Prims.nat)
   (ts : token_stream) : SPARQL11_Algebra.query parse_result=
   if fuel = Prims.int_zero
@@ -3393,7 +4022,8 @@ and parse_select_query (pm : prefix_map) (fuel : Prims.nat)
           | Tok_SELECT ->
               parse_select_body pm' (fuel - Prims.int_one) base ts'
           | Tok_ASK -> parse_ask_body pm' (fuel - Prims.int_one) base ts'
-          | Tok_CONSTRUCT -> ParseErr "unsupported: CONSTRUCT queries"
+          | Tok_CONSTRUCT ->
+              parse_construct_body pm' (fuel - Prims.int_one) base ts'
           | Tok_DESCRIBE -> ParseErr "unsupported: DESCRIBE queries"
           | uu___1 -> ParseErr "expected SELECT, ASK, CONSTRUCT, or DESCRIBE"))
 and parse_prologue (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
@@ -3463,33 +4093,59 @@ and parse_select_body (pm : prefix_map) (fuel : Prims.nat)
                                  (fuel - Prims.int_one) ts5
                          with
                          | ParseErr m -> ParseErr m
-                         | ParseOk (modifier, ts6) ->
-                             ParseOk
-                               ({
-                                  SPARQL11_Algebra.q_base = base;
-                                  SPARQL11_Algebra.q_prefixes = pm;
-                                  SPARQL11_Algebra.q_form =
-                                    (SPARQL11_Algebra.QF_Select sel);
-                                  SPARQL11_Algebra.q_dataset = ds;
-                                  SPARQL11_Algebra.q_pattern = pattern;
-                                  SPARQL11_Algebra.q_group_by =
-                                    FStar_Pervasives_Native.None;
-                                  SPARQL11_Algebra.q_having =
-                                    FStar_Pervasives_Native.None;
-                                  SPARQL11_Algebra.q_modifier =
-                                    {
-                                      SPARQL11_Algebra.sm_order_by =
-                                        (modifier.SPARQL11_Algebra.sm_order_by);
-                                      SPARQL11_Algebra.sm_distinct = dist;
-                                      SPARQL11_Algebra.sm_reduced = red;
-                                      SPARQL11_Algebra.sm_offset =
-                                        (modifier.SPARQL11_Algebra.sm_offset);
-                                      SPARQL11_Algebra.sm_limit =
-                                        (modifier.SPARQL11_Algebra.sm_limit)
-                                    };
-                                  SPARQL11_Algebra.q_values =
-                                    FStar_Pervasives_Native.None
-                                }, ts6))))))
+                         | ParseOk ((modifier, gb, hv), ts6) ->
+                             let uu___2 =
+                               match parse_peek ts6 with
+                               | Tok_VALUES ->
+                                   (match parse_values_clause pm
+                                            (fuel - Prims.int_one)
+                                            (parse_advance ts6)
+                                    with
+                                    | ParseOk
+                                        (SPARQL11_Algebra.GP_Values
+                                         (vars, rows), ts'1)
+                                        ->
+                                        ((FStar_Pervasives_Native.Some
+                                            (vars, rows)), ts'1)
+                                    | uu___3 ->
+                                        (FStar_Pervasives_Native.None, ts6))
+                               | uu___3 ->
+                                   (FStar_Pervasives_Native.None, ts6) in
+                             (match uu___2 with
+                              | (vals, ts7) ->
+                                  ParseOk
+                                    ({
+                                       SPARQL11_Algebra.q_base = base;
+                                       SPARQL11_Algebra.q_prefixes = pm;
+                                       SPARQL11_Algebra.q_form =
+                                         (SPARQL11_Algebra.QF_Select sel);
+                                       SPARQL11_Algebra.q_dataset = ds;
+                                       SPARQL11_Algebra.q_pattern =
+                                         ((match vals with
+                                           | FStar_Pervasives_Native.Some
+                                               (vars, rows) ->
+                                               ggp_join pattern
+                                                 (SPARQL11_Algebra.GP_Values
+                                                    (vars, rows))
+                                           | FStar_Pervasives_Native.None ->
+                                               pattern));
+                                       SPARQL11_Algebra.q_group_by = gb;
+                                       SPARQL11_Algebra.q_having = hv;
+                                       SPARQL11_Algebra.q_modifier =
+                                         {
+                                           SPARQL11_Algebra.sm_order_by =
+                                             (modifier.SPARQL11_Algebra.sm_order_by);
+                                           SPARQL11_Algebra.sm_distinct =
+                                             dist;
+                                           SPARQL11_Algebra.sm_reduced = red;
+                                           SPARQL11_Algebra.sm_offset =
+                                             (modifier.SPARQL11_Algebra.sm_offset);
+                                           SPARQL11_Algebra.sm_limit =
+                                             (modifier.SPARQL11_Algebra.sm_limit)
+                                         };
+                                       SPARQL11_Algebra.q_values =
+                                         FStar_Pervasives_Native.None
+                                     }, ts7)))))))
 and parse_ask_body (pm : prefix_map) (fuel : Prims.nat)
   (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
   (ts : token_stream) : SPARQL11_Algebra.query parse_result=
@@ -3520,6 +4176,67 @@ and parse_ask_body (pm : prefix_map) (fuel : Prims.nat)
                    SPARQL11_Algebra.q_modifier = default_modifier;
                    SPARQL11_Algebra.q_values = FStar_Pervasives_Native.None
                  }, ts3)))
+and parse_construct_body (pm : prefix_map) (fuel : Prims.nat)
+  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (ts : token_stream) : SPARQL11_Algebra.query parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (let ts' = parse_advance ts in
+     match parse_peek ts' with
+     | Tok_WHERE ->
+         let ts'1 =
+           match parse_peek ts' with
+           | Tok_WHERE -> parse_advance ts'
+           | uu___1 -> ts' in
+         (match parse_group_graph_pattern pm (fuel - Prims.int_one) ts'1 with
+          | ParseErr m -> ParseErr m
+          | ParseOk (pattern, ts'') ->
+              (match parse_solution_modifier pm (fuel - Prims.int_one) ts''
+               with
+               | ParseErr m -> ParseErr m
+               | ParseOk ((modifier, gb, hv), ts''') ->
+                   ParseOk
+                     ({
+                        SPARQL11_Algebra.q_base = base;
+                        SPARQL11_Algebra.q_prefixes = pm;
+                        SPARQL11_Algebra.q_form =
+                          (SPARQL11_Algebra.QF_Construct []);
+                        SPARQL11_Algebra.q_dataset = [];
+                        SPARQL11_Algebra.q_pattern = pattern;
+                        SPARQL11_Algebra.q_group_by = gb;
+                        SPARQL11_Algebra.q_having = hv;
+                        SPARQL11_Algebra.q_modifier = modifier;
+                        SPARQL11_Algebra.q_values =
+                          FStar_Pervasives_Native.None
+                      }, ts''')))
+     | Tok_LBRACE ->
+         let ts'1 =
+           match parse_peek ts' with
+           | Tok_WHERE -> parse_advance ts'
+           | uu___1 -> ts' in
+         (match parse_group_graph_pattern pm (fuel - Prims.int_one) ts'1 with
+          | ParseErr m -> ParseErr m
+          | ParseOk (pattern, ts'') ->
+              (match parse_solution_modifier pm (fuel - Prims.int_one) ts''
+               with
+               | ParseErr m -> ParseErr m
+               | ParseOk ((modifier, gb, hv), ts''') ->
+                   ParseOk
+                     ({
+                        SPARQL11_Algebra.q_base = base;
+                        SPARQL11_Algebra.q_prefixes = pm;
+                        SPARQL11_Algebra.q_form =
+                          (SPARQL11_Algebra.QF_Construct []);
+                        SPARQL11_Algebra.q_dataset = [];
+                        SPARQL11_Algebra.q_pattern = pattern;
+                        SPARQL11_Algebra.q_group_by = gb;
+                        SPARQL11_Algebra.q_having = hv;
+                        SPARQL11_Algebra.q_modifier = modifier;
+                        SPARQL11_Algebra.q_values =
+                          FStar_Pervasives_Native.None
+                      }, ts''')))
+     | uu___1 -> ParseErr "expected WHERE or '{' after CONSTRUCT")
 and parse_select_vars (pm : prefix_map) (fuel : Prims.nat)
   (ts : token_stream) : SPARQL11_Algebra.select_clause parse_result=
   if fuel = Prims.int_zero
@@ -3565,110 +4282,594 @@ and parse_select_items (pm : prefix_map) (fuel : Prims.nat)
 and parse_skip_from (fuel : Prims.nat) (ts : token_stream) :
   SPARQL11_Algebra.dataset_clause Prims.list parse_result=
   if fuel = Prims.int_zero then ParseOk ([], ts) else ParseOk ([], ts)
-and skip_group_by_exprs (fuel : Prims.nat) (ts : token_stream) :
-  token_stream=
+and parse_group_condition (pm : prefix_map) (fuel : Prims.nat)
+  (ts : token_stream) : SPARQL11_Algebra.group_condition parse_result=
   if fuel = Prims.int_zero
-  then ts
+  then ParseErr "recursion limit"
+  else
+    (match parse_peek ts with
+     | Tok_VAR v -> ParseOk ((SPARQL11_Algebra.GC_Var v), (parse_advance ts))
+     | Tok_LPAREN ->
+         (match parse_expr pm (fuel - Prims.int_one) (parse_advance ts) with
+          | ParseErr m -> ParseErr m
+          | ParseOk (e, ts') ->
+              (match parse_peek ts' with
+               | Tok_AS ->
+                   let ts'' = parse_advance ts' in
+                   (match parse_peek ts'' with
+                    | Tok_VAR v ->
+                        (match parse_expect Tok_RPAREN (parse_advance ts'')
+                         with
+                         | ParseErr m -> ParseErr m
+                         | ParseOk ((), ts''') ->
+                             ParseOk
+                               ((SPARQL11_Algebra.GC_Expr
+                                   (e, (FStar_Pervasives_Native.Some v))),
+                                 ts'''))
+                    | uu___1 -> ParseErr "expected variable after AS")
+               | Tok_RPAREN ->
+                   ParseOk
+                     ((SPARQL11_Algebra.GC_Expr
+                         (e, FStar_Pervasives_Native.None)),
+                       (parse_advance ts'))
+               | uu___1 -> ParseErr "expected ')' or AS in GROUP BY"))
+     | uu___1 ->
+         (match parse_expr pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (e, ts') ->
+              ParseOk ((SPARQL11_Algebra.GC_BuiltIn e), ts')))
+and parse_group_by_list (pm : prefix_map) (fuel : Prims.nat)
+  (acc : SPARQL11_Algebra.group_condition Prims.list) (ts : token_stream) :
+  SPARQL11_Algebra.group_condition Prims.list parse_result=
+  if fuel = Prims.int_zero
+  then ParseOk ((FStar_List_Tot_Base.rev acc), ts)
   else
     (match parse_peek ts with
      | Tok_VAR uu___1 ->
-         skip_group_by_exprs (fuel - Prims.int_one) (parse_advance ts)
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
      | Tok_LPAREN ->
-         skip_group_by_exprs (fuel - Prims.int_one) (parse_advance ts)
-     | uu___1 -> ts)
-and skip_order_by_exprs (fuel : Prims.nat) (ts : token_stream) :
-  token_stream=
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_STR ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_LANG ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_LANGMATCHES ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_DATATYPE ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_BOUND ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_IF ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_IRI_KW ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_URI ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_CONCAT ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_STRLEN ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_UCASE ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_LCASE ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_ENCODE_FOR_URI ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_CONTAINS ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_STRSTARTS ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_STRENDS ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_STRBEFORE ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_STRAFTER ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_REPLACE ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_REGEX ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_SUBSTR ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_ABS ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_CEIL ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_FLOOR ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_ROUND ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_ISIRI ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_ISBLANK ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_ISLITERAL ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_ISNUMERIC ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_SAMETERM ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_COALESCE ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_IRI uu___1 ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | Tok_PNAME uu___1 ->
+         (match parse_group_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (gc, ts') ->
+              parse_group_by_list pm (fuel - Prims.int_one) (gc :: acc) ts')
+     | uu___1 -> ParseOk ((FStar_List_Tot_Base.rev acc), ts))
+and parse_order_condition (pm : prefix_map) (fuel : Prims.nat)
+  (ts : token_stream) : SPARQL11_Algebra.order_condition parse_result=
   if fuel = Prims.int_zero
-  then ts
+  then ParseErr "recursion limit"
   else
     (match parse_peek ts with
      | Tok_ASC ->
-         skip_order_by_exprs (fuel - Prims.int_one) (parse_advance ts)
+         let ts' = parse_advance ts in
+         (match parse_expect Tok_LPAREN ts' with
+          | ParseErr uu___1 ->
+              (match parse_expr pm (fuel - Prims.int_one) ts' with
+               | ParseErr m -> ParseErr m
+               | ParseOk (e, ts'') ->
+                   ParseOk ((SPARQL11_Algebra.OC_Asc e), ts''))
+          | ParseOk ((), ts'') ->
+              (match parse_expr pm (fuel - Prims.int_one) ts'' with
+               | ParseErr m -> ParseErr m
+               | ParseOk (e, ts''') ->
+                   (match parse_expect Tok_RPAREN ts''' with
+                    | ParseErr m -> ParseErr m
+                    | ParseOk ((), ts4) ->
+                        ParseOk ((SPARQL11_Algebra.OC_Asc e), ts4))))
      | Tok_DESC ->
-         skip_order_by_exprs (fuel - Prims.int_one) (parse_advance ts)
-     | Tok_VAR uu___1 ->
-         skip_order_by_exprs (fuel - Prims.int_one) (parse_advance ts)
+         let ts' = parse_advance ts in
+         (match parse_expect Tok_LPAREN ts' with
+          | ParseErr uu___1 ->
+              (match parse_expr pm (fuel - Prims.int_one) ts' with
+               | ParseErr m -> ParseErr m
+               | ParseOk (e, ts'') ->
+                   ParseOk ((SPARQL11_Algebra.OC_Desc e), ts''))
+          | ParseOk ((), ts'') ->
+              (match parse_expr pm (fuel - Prims.int_one) ts'' with
+               | ParseErr m -> ParseErr m
+               | ParseOk (e, ts''') ->
+                   (match parse_expect Tok_RPAREN ts''' with
+                    | ParseErr m -> ParseErr m
+                    | ParseOk ((), ts4) ->
+                        ParseOk ((SPARQL11_Algebra.OC_Desc e), ts4))))
+     | Tok_VAR v ->
+         ParseOk
+           ((SPARQL11_Algebra.OC_Asc (SPARQL11_Algebra.E_Var v)),
+             (parse_advance ts))
      | Tok_LPAREN ->
-         skip_order_by_exprs (fuel - Prims.int_one) (parse_advance ts)
-     | uu___1 -> ts)
-and skip_having_exprs (fuel : Prims.nat) (ts : token_stream) : token_stream=
+         (match parse_expr pm (fuel - Prims.int_one) (parse_advance ts) with
+          | ParseErr m -> ParseErr m
+          | ParseOk (e, ts') ->
+              (match parse_expect Tok_RPAREN ts' with
+               | ParseErr m -> ParseErr m
+               | ParseOk ((), ts'') ->
+                   ParseOk ((SPARQL11_Algebra.OC_Asc e), ts'')))
+     | uu___1 ->
+         (match parse_expr pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (e, ts') -> ParseOk ((SPARQL11_Algebra.OC_Asc e), ts')))
+and parse_order_by_list (pm : prefix_map) (fuel : Prims.nat)
+  (acc : SPARQL11_Algebra.order_condition Prims.list) (ts : token_stream) :
+  SPARQL11_Algebra.order_condition Prims.list parse_result=
   if fuel = Prims.int_zero
-  then ts
+  then ParseOk ((FStar_List_Tot_Base.rev acc), ts)
+  else
+    (match parse_peek ts with
+     | Tok_ASC ->
+         (match parse_order_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (oc, ts') ->
+              parse_order_by_list pm (fuel - Prims.int_one) (oc :: acc) ts')
+     | Tok_DESC ->
+         (match parse_order_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (oc, ts') ->
+              parse_order_by_list pm (fuel - Prims.int_one) (oc :: acc) ts')
+     | Tok_VAR uu___1 ->
+         (match parse_order_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (oc, ts') ->
+              parse_order_by_list pm (fuel - Prims.int_one) (oc :: acc) ts')
+     | Tok_LPAREN ->
+         (match parse_order_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (oc, ts') ->
+              parse_order_by_list pm (fuel - Prims.int_one) (oc :: acc) ts')
+     | Tok_IRI uu___1 ->
+         (match parse_order_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (oc, ts') ->
+              parse_order_by_list pm (fuel - Prims.int_one) (oc :: acc) ts')
+     | Tok_PNAME uu___1 ->
+         (match parse_order_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (oc, ts') ->
+              parse_order_by_list pm (fuel - Prims.int_one) (oc :: acc) ts')
+     | Tok_STR ->
+         (match parse_order_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (oc, ts') ->
+              parse_order_by_list pm (fuel - Prims.int_one) (oc :: acc) ts')
+     | Tok_LANG ->
+         (match parse_order_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (oc, ts') ->
+              parse_order_by_list pm (fuel - Prims.int_one) (oc :: acc) ts')
+     | Tok_LANGMATCHES ->
+         (match parse_order_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (oc, ts') ->
+              parse_order_by_list pm (fuel - Prims.int_one) (oc :: acc) ts')
+     | Tok_DATATYPE ->
+         (match parse_order_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (oc, ts') ->
+              parse_order_by_list pm (fuel - Prims.int_one) (oc :: acc) ts')
+     | Tok_BOUND ->
+         (match parse_order_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (oc, ts') ->
+              parse_order_by_list pm (fuel - Prims.int_one) (oc :: acc) ts')
+     | Tok_IF ->
+         (match parse_order_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (oc, ts') ->
+              parse_order_by_list pm (fuel - Prims.int_one) (oc :: acc) ts')
+     | Tok_IRI_KW ->
+         (match parse_order_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (oc, ts') ->
+              parse_order_by_list pm (fuel - Prims.int_one) (oc :: acc) ts')
+     | Tok_URI ->
+         (match parse_order_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (oc, ts') ->
+              parse_order_by_list pm (fuel - Prims.int_one) (oc :: acc) ts')
+     | Tok_CONCAT ->
+         (match parse_order_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (oc, ts') ->
+              parse_order_by_list pm (fuel - Prims.int_one) (oc :: acc) ts')
+     | Tok_ISIRI ->
+         (match parse_order_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (oc, ts') ->
+              parse_order_by_list pm (fuel - Prims.int_one) (oc :: acc) ts')
+     | Tok_ISBLANK ->
+         (match parse_order_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (oc, ts') ->
+              parse_order_by_list pm (fuel - Prims.int_one) (oc :: acc) ts')
+     | Tok_ISLITERAL ->
+         (match parse_order_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (oc, ts') ->
+              parse_order_by_list pm (fuel - Prims.int_one) (oc :: acc) ts')
+     | Tok_ISNUMERIC ->
+         (match parse_order_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (oc, ts') ->
+              parse_order_by_list pm (fuel - Prims.int_one) (oc :: acc) ts')
+     | Tok_SAMETERM ->
+         (match parse_order_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (oc, ts') ->
+              parse_order_by_list pm (fuel - Prims.int_one) (oc :: acc) ts')
+     | Tok_COALESCE ->
+         (match parse_order_condition pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (oc, ts') ->
+              parse_order_by_list pm (fuel - Prims.int_one) (oc :: acc) ts')
+     | uu___1 -> ParseOk ((FStar_List_Tot_Base.rev acc), ts))
+and parse_having_list (pm : prefix_map) (fuel : Prims.nat)
+  (acc : SPARQL11_Algebra.expr Prims.list) (ts : token_stream) :
+  SPARQL11_Algebra.expr Prims.list parse_result=
+  if fuel = Prims.int_zero
+  then ParseOk ((FStar_List_Tot_Base.rev acc), ts)
   else
     (match parse_peek ts with
      | Tok_LPAREN ->
-         skip_having_exprs (fuel - Prims.int_one) (parse_advance ts)
-     | uu___1 -> ts)
+         (match parse_expr pm (fuel - Prims.int_one) (parse_advance ts) with
+          | ParseErr m -> ParseErr m
+          | ParseOk (e, ts') ->
+              (match parse_expect Tok_RPAREN ts' with
+               | ParseErr m -> ParseErr m
+               | ParseOk ((), ts'') ->
+                   parse_having_list pm (fuel - Prims.int_one) (e :: acc)
+                     ts''))
+     | Tok_STR ->
+         (match parse_primary_expr pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (e, ts') ->
+              parse_having_list pm (fuel - Prims.int_one) (e :: acc) ts')
+     | Tok_LANG ->
+         (match parse_primary_expr pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (e, ts') ->
+              parse_having_list pm (fuel - Prims.int_one) (e :: acc) ts')
+     | Tok_LANGMATCHES ->
+         (match parse_primary_expr pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (e, ts') ->
+              parse_having_list pm (fuel - Prims.int_one) (e :: acc) ts')
+     | Tok_DATATYPE ->
+         (match parse_primary_expr pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (e, ts') ->
+              parse_having_list pm (fuel - Prims.int_one) (e :: acc) ts')
+     | Tok_BOUND ->
+         (match parse_primary_expr pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (e, ts') ->
+              parse_having_list pm (fuel - Prims.int_one) (e :: acc) ts')
+     | Tok_IF ->
+         (match parse_primary_expr pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (e, ts') ->
+              parse_having_list pm (fuel - Prims.int_one) (e :: acc) ts')
+     | Tok_IRI_KW ->
+         (match parse_primary_expr pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (e, ts') ->
+              parse_having_list pm (fuel - Prims.int_one) (e :: acc) ts')
+     | Tok_URI ->
+         (match parse_primary_expr pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (e, ts') ->
+              parse_having_list pm (fuel - Prims.int_one) (e :: acc) ts')
+     | Tok_CONCAT ->
+         (match parse_primary_expr pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (e, ts') ->
+              parse_having_list pm (fuel - Prims.int_one) (e :: acc) ts')
+     | Tok_ISIRI ->
+         (match parse_primary_expr pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (e, ts') ->
+              parse_having_list pm (fuel - Prims.int_one) (e :: acc) ts')
+     | Tok_ISBLANK ->
+         (match parse_primary_expr pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (e, ts') ->
+              parse_having_list pm (fuel - Prims.int_one) (e :: acc) ts')
+     | Tok_ISLITERAL ->
+         (match parse_primary_expr pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (e, ts') ->
+              parse_having_list pm (fuel - Prims.int_one) (e :: acc) ts')
+     | Tok_ISNUMERIC ->
+         (match parse_primary_expr pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (e, ts') ->
+              parse_having_list pm (fuel - Prims.int_one) (e :: acc) ts')
+     | Tok_SAMETERM ->
+         (match parse_primary_expr pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (e, ts') ->
+              parse_having_list pm (fuel - Prims.int_one) (e :: acc) ts')
+     | Tok_COALESCE ->
+         (match parse_primary_expr pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (e, ts') ->
+              parse_having_list pm (fuel - Prims.int_one) (e :: acc) ts')
+     | Tok_EXISTS ->
+         (match parse_primary_expr pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (e, ts') ->
+              parse_having_list pm (fuel - Prims.int_one) (e :: acc) ts')
+     | Tok_NOT ->
+         (match parse_primary_expr pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (e, ts') ->
+              parse_having_list pm (fuel - Prims.int_one) (e :: acc) ts')
+     | Tok_REGEX ->
+         (match parse_primary_expr pm (fuel - Prims.int_one) ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk (e, ts') ->
+              parse_having_list pm (fuel - Prims.int_one) (e :: acc) ts')
+     | uu___1 -> ParseOk ((FStar_List_Tot_Base.rev acc), ts))
 and parse_solution_modifier (pm : prefix_map) (fuel : Prims.nat)
-  (ts : token_stream) : SPARQL11_Algebra.solution_modifier parse_result=
+  (ts : token_stream) : modifier_result parse_result=
   if fuel = Prims.int_zero
-  then ParseOk (default_modifier, ts)
+  then
+    ParseOk
+      ((default_modifier, FStar_Pervasives_Native.None,
+         FStar_Pervasives_Native.None), ts)
   else
-    (let ts1 =
+    (let uu___1 =
        match parse_peek ts with
        | Tok_GROUP ->
            let ts' = parse_advance ts in
            (match parse_peek ts' with
             | Tok_BY ->
-                skip_group_by_exprs (fuel - Prims.int_one)
-                  (parse_advance ts')
-            | uu___1 -> ts)
-       | uu___1 -> ts in
-     let ts2 =
-       match parse_peek ts1 with
-       | Tok_HAVING ->
-           skip_having_exprs (fuel - Prims.int_one) (parse_advance ts1)
-       | uu___1 -> ts1 in
-     let ts3 =
-       match parse_peek ts2 with
-       | Tok_ORDER ->
-           let ts' = parse_advance ts2 in
-           (match parse_peek ts' with
-            | Tok_BY ->
-                skip_order_by_exprs (fuel - Prims.int_one)
-                  (parse_advance ts')
-            | uu___1 -> ts2)
-       | uu___1 -> ts2 in
-     let uu___1 =
-       match parse_peek ts3 with
-       | Tok_LIMIT ->
-           let ts' = parse_advance ts3 in
-           (match parse_peek ts' with
-            | Tok_INTEGER n ->
-                (match parse_int_str n with
-                 | FStar_Pervasives_Native.Some i ->
-                     ((FStar_Pervasives_Native.Some i), (parse_advance ts'))
-                 | FStar_Pervasives_Native.None ->
-                     (FStar_Pervasives_Native.None, ts'))
-            | uu___2 -> (FStar_Pervasives_Native.None, ts'))
-       | uu___2 -> (FStar_Pervasives_Native.None, ts3) in
+                (match parse_group_by_list pm (fuel - Prims.int_one) []
+                         (parse_advance ts')
+                 with
+                 | ParseOk (conds, ts'') ->
+                     ((FStar_Pervasives_Native.Some conds), ts'')
+                 | ParseErr uu___2 -> (FStar_Pervasives_Native.None, ts))
+            | uu___2 -> (FStar_Pervasives_Native.None, ts))
+       | uu___2 -> (FStar_Pervasives_Native.None, ts) in
      match uu___1 with
-     | (limit, ts4) ->
+     | (gb, ts1) ->
          let uu___2 =
-           match parse_peek ts4 with
-           | Tok_OFFSET ->
-               let ts' = parse_advance ts4 in
-               (match parse_peek ts' with
-                | Tok_INTEGER n ->
-                    (match parse_int_str n with
-                     | FStar_Pervasives_Native.Some i ->
-                         ((FStar_Pervasives_Native.Some i),
-                           (parse_advance ts'))
-                     | FStar_Pervasives_Native.None ->
-                         (FStar_Pervasives_Native.None, ts'))
-                | uu___3 -> (FStar_Pervasives_Native.None, ts'))
-           | uu___3 -> (FStar_Pervasives_Native.None, ts4) in
+           match parse_peek ts1 with
+           | Tok_HAVING ->
+               (match parse_having_list pm (fuel - Prims.int_one) []
+                        (parse_advance ts1)
+                with
+                | ParseOk (conds, ts') ->
+                    ((FStar_Pervasives_Native.Some conds), ts')
+                | ParseErr uu___3 -> (FStar_Pervasives_Native.None, ts1))
+           | uu___3 -> (FStar_Pervasives_Native.None, ts1) in
          (match uu___2 with
-          | (offset, ts5) ->
-              ParseOk
-                ({
-                   SPARQL11_Algebra.sm_order_by =
-                     FStar_Pervasives_Native.None;
-                   SPARQL11_Algebra.sm_distinct = false;
-                   SPARQL11_Algebra.sm_reduced = false;
-                   SPARQL11_Algebra.sm_offset = offset;
-                   SPARQL11_Algebra.sm_limit = limit
-                 }, ts5)))
+          | (hv, ts2) ->
+              let uu___3 =
+                match parse_peek ts2 with
+                | Tok_ORDER ->
+                    let ts' = parse_advance ts2 in
+                    (match parse_peek ts' with
+                     | Tok_BY ->
+                         (match parse_order_by_list pm (fuel - Prims.int_one)
+                                  [] (parse_advance ts')
+                          with
+                          | ParseOk (conds, ts'') ->
+                              ((FStar_Pervasives_Native.Some conds), ts'')
+                          | ParseErr uu___4 ->
+                              (FStar_Pervasives_Native.None, ts2))
+                     | uu___4 -> (FStar_Pervasives_Native.None, ts2))
+                | uu___4 -> (FStar_Pervasives_Native.None, ts2) in
+              (match uu___3 with
+               | (ob, ts3) ->
+                   let uu___4 =
+                     match parse_peek ts3 with
+                     | Tok_LIMIT ->
+                         let ts' = parse_advance ts3 in
+                         (match parse_peek ts' with
+                          | Tok_INTEGER n ->
+                              (match parse_int_str n with
+                               | FStar_Pervasives_Native.Some i ->
+                                   ((FStar_Pervasives_Native.Some i),
+                                     (parse_advance ts'))
+                               | FStar_Pervasives_Native.None ->
+                                   (FStar_Pervasives_Native.None, ts'))
+                          | uu___5 -> (FStar_Pervasives_Native.None, ts'))
+                     | uu___5 -> (FStar_Pervasives_Native.None, ts3) in
+                   (match uu___4 with
+                    | (limit, ts4) ->
+                        let uu___5 =
+                          match parse_peek ts4 with
+                          | Tok_OFFSET ->
+                              let ts' = parse_advance ts4 in
+                              (match parse_peek ts' with
+                               | Tok_INTEGER n ->
+                                   (match parse_int_str n with
+                                    | FStar_Pervasives_Native.Some i ->
+                                        ((FStar_Pervasives_Native.Some i),
+                                          (parse_advance ts'))
+                                    | FStar_Pervasives_Native.None ->
+                                        (FStar_Pervasives_Native.None, ts'))
+                               | uu___6 ->
+                                   (FStar_Pervasives_Native.None, ts'))
+                          | uu___6 -> (FStar_Pervasives_Native.None, ts4) in
+                        (match uu___5 with
+                         | (offset, ts5) ->
+                             let modifier =
+                               {
+                                 SPARQL11_Algebra.sm_order_by = ob;
+                                 SPARQL11_Algebra.sm_distinct = false;
+                                 SPARQL11_Algebra.sm_reduced = false;
+                                 SPARQL11_Algebra.sm_offset = offset;
+                                 SPARQL11_Algebra.sm_limit = limit
+                               } in
+                             ParseOk ((modifier, gb, hv), ts5))))))
 let parse_sparql (input : Prims.string) :
   SPARQL11_Algebra.query parse_result=
   let tokens = tokenize input in
