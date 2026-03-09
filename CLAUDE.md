@@ -288,12 +288,15 @@ make verify
 # Extract + compile + test
 ./build-ocaml.sh
 
-# Run W3C SPARQL 1.1 tests (requires w3c_runner compiled separately)
+# Run W3C tests (w3c_runner is now built by build-ocaml.sh compile step)
 cd ocaml-output
+# Manual compilation if needed:
 ocamlfind ocamlopt -package fstar.lib,str,zarith -linkpkg -w -8-14-26 \
   RDF_Graph_Executable.ml SPARQL11_Algebra.ml \
-  ntriples_parser.ml turtle_parser.ml rdf_xml_parser.ml \
-  srx_parser.ml sparql_parser.ml w3c_runner.ml -o w3c_runner
+  Parser_Combinators.ml Parser_NTriples.ml Parser_Turtle.ml \
+  Parser_XML.ml Parser_NQuads.ml Parser_TriG.ml \
+  Parser_SRX.ml Parser_RDFXML.ml \
+  ntriples_parser.ml sparql_parser.ml w3c_runner.ml -o w3c_runner
 ./w3c_runner                    # all SPARQL suites
 ./w3c_runner --rdf              # RDF parser suites
 ./w3c_runner --all              # both
