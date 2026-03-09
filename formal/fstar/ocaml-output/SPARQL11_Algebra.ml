@@ -2006,6 +2006,12 @@ let eval_property_path_fwd_ref : (property_path -> RDF_Graph_Executable.rdf_grap
   ref (fun _ _ -> [])
 let eval_subselect_fwd_ref : (query -> RDF_Graph_Executable.rdf_graph -> RDF_Graph_Executable.rdf_dataset -> solution_sequence) ref =
   ref (fun _ _ _ -> [])
+let eval_exists_fwd_ref : (group_graph_pattern -> RDF_Graph_Executable.solution_mapping -> RDF_Graph_Executable.rdf_graph -> RDF_Graph_Executable.rdf_dataset -> Prims.bool) ref =
+  ref (fun _ _ _ _ -> false)
+let eval_property_path_fwd_ref : (property_path -> RDF_Graph_Executable.rdf_graph -> (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list) ref =
+  ref (fun _ _ -> [])
+let eval_subselect_fwd_ref : (query -> RDF_Graph_Executable.rdf_graph -> RDF_Graph_Executable.rdf_dataset -> solution_sequence) ref =
+  ref (fun _ _ _ -> [])
 let eval_expr_ebv (e : expr)
   (mu : RDF_Graph_Executable.solution_mapping) : Prims.bool=
   !eval_expr_ebv_ref e mu
@@ -2618,6 +2624,10 @@ and eval_concat (es : expr Prims.list)
 let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
 let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)
 
+(* Wire up the forward-declared eval_expr_ebv/fwd to the real implementations *)
+let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
+let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)
+
 type group = {
   g_key: eval_result Prims.list ;
   g_solutions: solution_sequence }
@@ -3077,6 +3087,9 @@ type path_result =
 (* Wire up eval_subselect_fwd to the real eval_select_query *)
 let () = eval_subselect_fwd_ref := eval_select_query
 
+(* Wire up eval_subselect_fwd to the real eval_select_query *)
+let () = eval_subselect_fwd_ref := eval_select_query
+
 let is_not_literal (t : RDF_Graph_Executable.rdf_term) : Prims.bool=
   match t with
   | RDF_Graph_Executable.T_Literal uu___ -> false
@@ -3269,6 +3282,9 @@ let rec eval_property_path (p : property_path)
                  [((t.RDF_Graph_Executable.o),
                     (subject_to_term t.RDF_Graph_Executable.s))]) g in
       FStar_List_Tot_Base.op_At direct_pairs inverse_pairs
+(* Wire up eval_property_path_fwd to the real eval_property_path *)
+let () = eval_property_path_fwd_ref := eval_property_path
+
 (* Wire up eval_property_path_fwd to the real eval_property_path *)
 let () = eval_property_path_fwd_ref := eval_property_path
 
@@ -3689,6 +3705,9 @@ let eval_not_exists (pattern : group_graph_pattern)
   (graph : RDF_Graph_Executable.rdf_graph)
   (ds : RDF_Graph_Executable.rdf_dataset) : Prims.bool=
   Prims.op_Negation (eval_exists pattern mu graph ds)
+(* Wire up eval_exists_fwd to the real eval_exists *)
+let () = eval_exists_fwd_ref := eval_exists
+
 (* Wire up eval_exists_fwd to the real eval_exists *)
 let () = eval_exists_fwd_ref := eval_exists
 

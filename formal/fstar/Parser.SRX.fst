@@ -50,11 +50,13 @@ let tag_matches (expected: string) (actual: string) : bool =
 
 (* Find the first child element matching a tag name (namespace-flexible) *)
 let find_child (tag: string) (children: list xml_node) : option xml_node =
-  List.Tot.find (fun (node: xml_node) ->
+  match List.Tot.find (fun (node: xml_node) ->
     match node with
     | XElement t _ _ -> tag_matches tag t
     | _ -> false
-  ) children
+  ) children with
+  | Some n -> Some n
+  | None -> None
 
 (* Find all child elements matching a tag name (namespace-flexible) *)
 let find_children (tag: string) (children: list xml_node) : list xml_node =
@@ -70,14 +72,10 @@ let get_attr (name: string) (attrs: list xml_attribute) : option string =
   | Some a -> Some a.attr_value
   | None -> None
 
-(* Collect text content from an xml_node (concatenating all text/cdata children) *)
-let rec collect_text (node: xml_node) : string =
-  match node with
-  | XText t -> t
-  | XCDATA t -> t
-  | XComment _ -> ""
-  | XElement _ _ children ->
-    String.concat "" (List.Tot.map collect_text children)
+(* Collect text content from an xml_node (concatenating all text/cdata children).
+   Delegates to text_content from Parser.XML which has proper mutual-recursion
+   termination proof via text_content_list. *)
+let collect_text (node: xml_node) : string = text_content node
 
 
 (* ================================================================ *)

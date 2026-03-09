@@ -99,24 +99,29 @@ The F\* RDF graph spec uses **syntactic equality only**. It lacks:
 
 These are not exotic features — they are what the W3C rdf-mt test suite tests.
 
-### Temporary OCaml Test Infrastructure (to be replaced)
+### OCaml Output (extracted + test glue)
 
 ```
 formal/fstar/ocaml-output/
-  RDF_Graph_Executable.ml    genuinely F*-extracted OCaml
-  SPARQL11_Algebra.ml        genuinely F*-extracted OCaml (patched for assume vals)
-  SPARQL11_Parser.ml         genuinely F*-extracted OCaml
+  RDF_Graph_Executable.ml    F*-extracted OCaml
+  SPARQL11_Algebra.ml        F*-extracted OCaml (patched for assume vals)
+  SPARQL11_Parser.ml         F*-extracted SPARQL parser
+  Parser_Combinators.ml      F*-extracted parser combinators
+  Parser_NTriples.ml         F*-extracted N-Triples parser
+  Parser_Turtle.ml           F*-extracted Turtle parser
+  Parser_NQuads.ml           F*-extracted N-Quads parser
+  Parser_TriG.ml             F*-extracted TriG parser
+  Parser_XML.ml              F*-extracted XML parser
+  Parser_RDFXML.ml           F*-extracted RDF/XML parser
+  Parser_SRX.ml              F*-extracted SRX (SPARQL Results XML) parser
+  Parser_CSVResults.ml       F*-extracted CSV/TSV results parser
   example.ml                 hand-written demo (TEMPORARY)
   w3c_tests.ml               hand-written test harness (TEMPORARY)
-  ntriples_parser.ml         hand-written N-Triples parser (TEMPORARY — replace with F*)
-  turtle_parser.ml           hand-written Turtle parser (TEMPORARY — replace with F*)
-  srx_parser.ml              hand-written SRX parser (TEMPORARY — replace with F*)
-  sparql_parser.ml           hand-written SPARQL parser (TEMPORARY — replace with F*)
-  sparql_parser_bridge.ml    bridge for F*-extracted SPARQL parser
-  rdf_xml_parser.ml          hand-written RDF/XML parser (TEMPORARY — replace with F*)
   w3c_runner.ml              W3C manifest reader + test runner CLI (I/O glue)
   fstar_int_stubs.js         js_of_ocaml int stubs
 ```
+
+Hand-coded parsers have been moved to `junk/do_not_use/hand_coded_parsers/`.
 
 ### assume val inventory (SPARQL11.Algebra.fst)
 
@@ -136,25 +141,24 @@ formal/fstar/ocaml-output/
 
 ### W3C Test Results (as of 2026-03-09)
 
-**SPARQL 1.1 (344 pass, 61 fail, 205 skip, 21 unsupported)**
+**SPARQL 1.1 (0 pass, 0 fail, 205 skip, 426 unsupported)**
 
-Tests the F\*-extracted SPARQL evaluator against W3C SPARQL 1.1 test suites.
-Perfect suites: syntax-query (94/94), functions (75/75), bind (10/10),
-cast (6/6), grouping (6/6).
-Main failure areas: entailment (43 fail — needs RDFS inference in F\*),
-service (7 fail — needs federation), aggregates (3 fail).
-Skips: 205 UPDATE operations (not in F\* spec).
+All SPARQL eval/syntax tests are unsupported because the F\* SPARQL parser
+(SPARQL11.Parser.fst) has `assume val` stubs for `parse_expr`,
+`parse_group_graph_pattern`, and `parse_select_query`. The hand-coded OCaml
+SPARQL parser has been removed. SPARQL tests will resume once the F\* parser
+stubs are implemented. Skips: 205 UPDATE operations (not in F\* spec).
 
-**RDF 1.1 Parser Tests (383 pass, 0 fail)**
+**RDF 1.1 (644 pass, 387 fail)**
 
-Tests **hand-written OCaml parsers** (NOT the F\* spec) against N-Triples (70)
-and Turtle (313) syntax+eval suites. This score reflects parser quality only.
-Missing suites: N-Quads, TriG, RDF/XML (parsers not yet written in F\*).
+Tests F\*-extracted parsers against all RDF 1.1 suites: N-Triples (41/70),
+Turtle (203/313), N-Quads (53/87), TriG (223/356), RDF/XML (91/166),
+rdf-mt (33/39).
 
-**RDF 1.1 Model Theory (0 pass, 0 fail — NOT YET RUN)**
+**RDF 1.1 Model Theory (33 pass, 6 fail)**
 
-The rdf-mt suite (48 tests) tests actual RDF graph semantics: literal
-equivalence, datatype handling, RDFS closure rules. These require fixes to
+The rdf-mt suite tests actual RDF graph semantics: literal
+equivalence, datatype handling, RDFS closure rules. Remaining failures require
 RDF.Graph.Executable.fst before they can pass. This is the real measure of
 whether the F\* RDF implementation is correct.
 
@@ -279,8 +283,8 @@ eval $(opam env --switch=fstar)
 ### Install z3 (CRITICAL — verification cannot work without it)
 
 **This project is about verified code. z3 is not optional.** Every session must
-ensure z3 is available before doing any F\* work. Without z3, `--lax` extraction
-still works but verification is skipped — which defeats the entire purpose.
+ensure z3 is available before doing any F\* work. Without z3, extraction and
+verification will fail.
 
 ```bash
 # Check if z3 is available:
@@ -298,9 +302,9 @@ ln -sf /usr/local/bin/z3-4.13.3 /usr/local/bin/z3
 z3-4.13.3 --version  # must show "Z3 version 4.13.3"
 ```
 
-**Do NOT skip verification with `--lax` as a workaround for missing z3.**
-Install z3 first, then verify. The `--lax` flag is only for faster extraction
-during development — it must not be the only mode used.
+**Do NOT use `--lax` at all.** All F\* modules must verify and extract without
+`--lax`. The `--lax` flag is banned — it defeats the purpose of formal
+verification. Install z3 first, then verify and extract.
 
 ### Quick verification
 
@@ -329,7 +333,7 @@ ocamlfind ocamlopt -package fstar.lib,str,zarith -linkpkg -w -8-14-26 \
 
 ### Extraction notes
 
-- `--lax` skips proof checking during extraction (faster; use `make verify` separately)
+- **Never use `--lax`** — all modules must verify before extraction
 - `--codegen OCaml` erases proofs, ghost code, spec-only material
 - Extracted `.ml` files use `FStar_*` runtime from `fstar.lib` opam package
 - `assume val` declarations extract as `failwith "Not yet implemented"` — must be patched

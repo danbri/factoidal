@@ -35,25 +35,21 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   echo "--- Step 1: F* → OCaml extraction ---"
   mkdir -p "$OUTDIR"
 
-  # Core verified modules — extracted WITHOUT --lax (fully verified)
-  echo "  Extracting verified core modules..."
-  fstar.exe --codegen OCaml --odir "$OUTDIR" RDF.Graph.Executable.fst 2>&1 | grep -E "Extracted|Error|error" || true
-  fstar.exe --codegen OCaml --odir "$OUTDIR" SPARQL11.Algebra.fst 2>&1 | grep -E "Extracted|Error|error" || true
-  echo "  RDF:    $(wc -l < "$OUTDIR/RDF_Graph_Executable.ml") lines"
-  echo "  SPARQL: $(wc -l < "$OUTDIR/SPARQL11_Algebra.ml") lines"
-
-  # Parser modules — extracted with --lax (verification WIP, see Phase 3)
-  # These will move to verified extraction as their proofs are completed.
-  echo "  Extracting parser modules (--lax, verification WIP)..."
-  for fst in SPARQL11.Parser.fst Parser.Combinators.fst \
+  # All modules extracted with full verification (no --lax)
+  echo "  Extracting all F* modules (verified)..."
+  for fst in RDF.Graph.Executable.fst SPARQL11.Algebra.fst \
+             Parser.Combinators.fst SPARQL11.Parser.fst \
              Parser.NTriples.fst Parser.Turtle.fst \
              Parser.NQuads.fst Parser.TriG.fst \
              Parser.XML.fst Parser.RDFXML.fst \
              Parser.SRX.fst Parser.CSVResults.fst; do
     if [ -f "$fst" ]; then
-      fstar.exe --lax --codegen OCaml --odir "$OUTDIR" "$fst" 2>&1 | grep -E "Extracted|Error|error" || true
+      echo "    $fst"
+      fstar.exe --codegen OCaml --odir "$OUTDIR" "$fst" 2>&1 | grep -E "Extracted|Error|error" || true
     fi
   done
+  echo "  RDF:    $(wc -l < "$OUTDIR/RDF_Graph_Executable.ml") lines"
+  echo "  SPARQL: $(wc -l < "$OUTDIR/SPARQL11_Algebra.ml") lines"
 
   # Apply post-extraction patches (wire assume-val stubs, add regex_match)
   ./ocaml-patches.sh "$OUTDIR/SPARQL11_Algebra.ml"
@@ -63,6 +59,8 @@ fi
 # Step 2: Compile native OCaml binaries
 if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   echo "--- Step 2: Compile native OCaml ---"
+  # Clean stale compilation artifacts to avoid signature mismatches
+  rm -f "$OUTDIR"/*.cmi "$OUTDIR"/*.cmx "$OUTDIR"/*.cmo "$OUTDIR"/*.o
   cd "$OUTDIR"
 
   # Example binary

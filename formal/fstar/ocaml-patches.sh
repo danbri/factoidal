@@ -325,3 +325,23 @@ with open('$FILE', 'w') as f:
 "
 
 echo "  Patches applied successfully."
+
+# ======================================================================
+# SPARQL11_Parser.ml patches — wire assume-val scanner FFI stubs
+# Simple stubs for char_at, substring, string_upper.
+# The parser functions (parse_expr etc.) remain unimplemented (assume val)
+# until they are written in F*. sparql_query_bridge.ml handles this by
+# raising Unsupported before those are reached.
+# ======================================================================
+
+PARSER_FILE="$(dirname "$FILE")/SPARQL11_Parser.ml"
+
+if [[ -f "$PARSER_FILE" ]]; then
+  echo "  Patching $PARSER_FILE (scanner stubs)..."
+  sed -i 's/  failwith "Not yet implemented: SPARQL11.Parser.char_at"/  Char.code (String.get uu___ (Z.to_int uu___1))/' "$PARSER_FILE"
+  sed -i 's/failwith "Not yet implemented: SPARQL11.Parser.substring"/String.sub uu___ (Z.to_int uu___1) (Z.to_int uu___2)/' "$PARSER_FILE"
+  sed -i 's/  failwith "Not yet implemented: SPARQL11.Parser.string_upper"/  String.uppercase_ascii uu___/' "$PARSER_FILE"
+  echo "  SPARQL11_Parser.ml patches applied successfully."
+else
+  echo "  SPARQL11_Parser.ml not found, skipping parser patches."
+fi

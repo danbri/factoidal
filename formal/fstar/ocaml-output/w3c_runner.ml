@@ -2,9 +2,10 @@
    Not extracted from F*. Reads real W3C manifest files, parses .rq/.ttl/.srx/.nt,
    calls the F*-extracted evaluator, and compares results.
 
-   Uses F*-extracted parsers (Parser_NTriples, Parser_Turtle, etc.) for all
-   RDF serialization parsing. Hand-written parsers are only used for SPARQL
-   queries (sparql_parser.ml) until SPARQL11.Parser.fst is complete.
+   Uses F*-extracted parsers for all parsing. SPARQL query parsing is via
+   sparql_query_bridge.ml which wraps the F*-extracted SPARQL11_Parser.
+   The F* SPARQL parser has assume val stubs — until those are implemented,
+   SPARQL evaluation tests will be marked as unsupported.
 
    Usage:
      ./w3c_runner                           Run all SPARQL 1.1 suites
@@ -18,7 +19,7 @@
 
 open RDF_Graph_Executable
 open SPARQL11_Algebra
-(* Sparql_parser used qualified — don't open to avoid shadowing RDF types *)
+(* Sparql_query_bridge used qualified — don't open to avoid shadowing RDF types *)
 
 (* ============================================================================
    Parser wrappers — thin adapters over F*-extracted parsers
@@ -213,6 +214,9 @@ let extract_assumed_test_base graph =
     else None
   ) graph
 
+(* Verbose mode: show detailed mismatch info *)
+let verbose_mode = ref false
+
 let read_manifest manifest_path =
   let manifest_dir = Filename.dirname manifest_path in
   let input = try
@@ -232,6 +236,8 @@ let read_manifest manifest_path =
     let base = "file://" ^ abs_path in
     try
       let graph = parse_turtle_fstar input (Some base) in
+      if !verbose_mode then
+        Printf.eprintf "  DEBUG: manifest %s -> %d triples\n" manifest_path (List.length graph);
       let assumed_base = extract_assumed_test_base graph in
       (extract_test_cases manifest_dir graph, assumed_base)
     with e ->
@@ -241,9 +247,6 @@ let read_manifest manifest_path =
 
 (* Local exception for features not yet supported *)
 exception Unsupported of string
-
-(* Verbose mode: show detailed mismatch info *)
-let verbose_mode = ref false
 
 let term_to_verbose_string t =
   match t with
@@ -343,7 +346,7 @@ let run_query_eval_test tc =
   let query =
     match read_file tc.query_file with
     | None -> raise (Unsupported (Printf.sprintf "Query file not found: %s" tc.query_file))
-    | Some content -> Sparql_parser.parse_query content
+    | Some content -> Sparql_query_bridge.parse_query content
   in
 
   (* Execute query against extracted evaluator *)
@@ -400,25 +403,25 @@ let run_test tc =
     (try run_query_eval_test tc
      with
      | Unsupported msg -> Unsupported_feature msg
-     | Sparql_parser.Unsupported msg -> Unsupported_feature msg
-     | Sparql_parser.Parse_error msg -> Fail (Printf.sprintf "SPARQL parse: %s" msg)
+     | Sparql_query_bridge.Unsupported msg -> Unsupported_feature msg
+     | Sparql_query_bridge.Parse_error msg -> Fail (Printf.sprintf "SPARQL parse: %s" msg)
      | Failure msg -> Fail (Printf.sprintf "Runtime: %s" msg))
   | "PositiveSyntaxTest11" | "PositiveSyntaxTest" ->
     (match read_file tc.query_file with
      | None -> Skip "Query file missing"
      | Some content ->
-       (try ignore (Sparql_parser.parse_query content); Pass
+       (try ignore (Sparql_query_bridge.parse_query content); Pass
         with
-        | Sparql_parser.Parse_error _ -> Fail "Should parse but didn't"
-        | Sparql_parser.Unsupported msg -> Unsupported_feature msg))
+        | Sparql_query_bridge.Parse_error _ -> Fail "Should parse but didn't"
+        | Sparql_query_bridge.Unsupported msg -> Unsupported_feature msg))
   | "NegativeSyntaxTest11" | "NegativeSyntaxTest" ->
     (match read_file tc.query_file with
      | None -> Skip "Query file missing"
      | Some content ->
-       (try ignore (Sparql_parser.parse_query content); Fail "Should reject but parsed OK"
+       (try ignore (Sparql_query_bridge.parse_query content); Fail "Should reject but parsed OK"
         with
-        | Sparql_parser.Parse_error _ -> Pass
-        | Sparql_parser.Unsupported _ -> Unsupported_feature "Can't test rejection"))
+        | Sparql_query_bridge.Parse_error _ -> Pass
+        | Sparql_query_bridge.Unsupported _ -> Unsupported_feature "Can't test rejection"))
   | "UpdateEvaluationTest" | "PositiveUpdateSyntaxTest11" | "NegativeUpdateSyntaxTest11" ->
     Skip "UPDATE tests not in scope"
   | "CSVResultFormatTest" ->

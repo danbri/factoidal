@@ -30,6 +30,17 @@ open FStar.List.Tot
 open Parser.Combinators
 open RDF.Graph.Executable
 
+(** Helper: construct a T_Literal only if well-formed *)
+let mk_literal (lexical : string) (dt : string) (lang : option string) : option rdf_term =
+  if is_iri dt then
+    let lit : literal = {
+      lexical_form = lexical;
+      datatype = dt;
+      lang_tag = lang
+    } in
+    if literal_wf lit then Some (T_Literal lit) else None
+  else None
+
 (* ================================================================ *)
 (* Helper: line splitting                                           *)
 (* ================================================================ *)
@@ -62,6 +73,10 @@ let split_lines (s : string) : list string =
   List.Tot.map String.string_of_list char_lists
 
 (** Remove trailing empty lines (common in files ending with newline) *)
+let rev_length_lemma (#a:Type) (l : list a)
+  : Lemma (List.Tot.length (List.Tot.rev l) = List.Tot.length l)
+  = List.Tot.rev_length l
+
 let rec remove_trailing_empty (lines : list string)
   : Tot (list string) (decreases (List.Tot.length lines)) =
   match lines with
@@ -72,7 +87,11 @@ let rec remove_trailing_empty (lines : list string)
      | [] -> []
      | last :: rest ->
        if String.length last = 0
-       then remove_trailing_empty (List.Tot.rev rest)
+       then begin
+         rev_length_lemma rest;
+         rev_length_lemma lines;
+         remove_trailing_empty (List.Tot.rev rest)
+       end
        else lines)
 
 (* ================================================================ *)
@@ -239,12 +258,7 @@ let parse_csv_value (field : string) : option rdf_term =
     Some (T_IRI field)
   else
     (* Plain literal — CSV format does not preserve datatype info *)
-    let lit : literal = {
-      lexical_form = field;
-      datatype = xsd_string;
-      lang_tag = None
-    } in
-    Some (T_Literal lit)
+    mk_literal field xsd_string None
 
 (** Parse a CSV data row into a list of optional rdf_terms *)
 let parse_csv_row (line : string) : list (option rdf_term) =
@@ -365,7 +379,7 @@ let parse_tsv_quoted_literal (s : string) : option rdf_term =
     let caret_pos = find_double_caret cs 0 in
     match caret_pos with
     | Some cp ->
-      if cp >= 2 then  (* at least "x"^^<dt> *)
+      if cp >= 2 && cp <= len then  (* at least "x"^^<dt>, and in bounds *)
         let quoted_part = String.sub s 0 cp in
         let lexical = strip_quotes quoted_part in
         let rest_str = if cp + 2 < len then String.sub s (cp + 2) (len - cp - 2) else "" in
@@ -373,12 +387,7 @@ let parse_tsv_quoted_literal (s : string) : option rdf_term =
         (match extract_angle_iri rest_str with
          | Some dt_str ->
            if is_iri dt_str then
-             let lit : literal = {
-               lexical_form = lexical;
-               datatype = dt_str;
-               lang_tag = None
-             } in
-             Some (T_Literal lit)
+             mk_literal lexical dt_str None
            else None
          | None -> None)
       else None
@@ -387,45 +396,25 @@ let parse_tsv_quoted_literal (s : string) : option rdf_term =
       let at_pos = find_last_at cs 0 in
       (match at_pos with
        | Some ap ->
-         if ap >= 2 then  (* at least "x"@lang *)
+         if ap >= 2 && ap < len then  (* at least "x"@lang, and in bounds *)
            (* Verify that character before @ is a closing quote *)
            let prev_char = String.index s (ap - 1) in
            if FStar.Char.int_of_char prev_char = 0x22 then  (* '"' *)
              let quoted_part = String.sub s 0 ap in
              let lexical = strip_quotes quoted_part in
              let lang = if ap + 1 < len then String.sub s (ap + 1) (len - ap - 1) else "" in
-             let lit : literal = {
-               lexical_form = lexical;
-               datatype = rdf_lang_string;
-               lang_tag = Some lang
-             } in
-             Some (T_Literal lit)
+             mk_literal lexical rdf_lang_string (Some lang)
            else
              (* @ is inside the string, treat as plain literal *)
              let lexical = strip_quotes s in
-             let lit : literal = {
-               lexical_form = lexical;
-               datatype = xsd_string;
-               lang_tag = None
-             } in
-             Some (T_Literal lit)
+             mk_literal lexical xsd_string None
          else
            let lexical = strip_quotes s in
-           let lit : literal = {
-             lexical_form = lexical;
-             datatype = xsd_string;
-             lang_tag = None
-           } in
-           Some (T_Literal lit)
+           mk_literal lexical xsd_string None
        | None ->
          (* Plain quoted string — xsd:string *)
          let lexical = strip_quotes s in
-         let lit : literal = {
-           lexical_form = lexical;
-           datatype = xsd_string;
-           lang_tag = None
-         } in
-         Some (T_Literal lit))
+         mk_literal lexical xsd_string None)
 
 (** Check if a string looks like an integer: optional sign + digits *)
 let rec is_all_digits (cs : list FStar.Char.char)
@@ -504,44 +493,19 @@ let parse_tsv_value (field : string) : option rdf_term =
           Some (T_BNode (bnode_label field))
         else
           (* Fallback: treat as plain literal *)
-          let lit : literal = {
-            lexical_form = field;
-            datatype = xsd_string;
-            lang_tag = None
-          } in
-          Some (T_Literal lit)
+          mk_literal field xsd_string None
       else if is_integer_str field then
         (* Bare integer *)
-        let lit : literal = {
-          lexical_form = field;
-          datatype = xsd_integer;
-          lang_tag = None
-        } in
-        Some (T_Literal lit)
+        mk_literal field xsd_integer None
       else if is_double_str field then
         (* Bare double (must check before decimal since doubles also have dots) *)
-        let lit : literal = {
-          lexical_form = field;
-          datatype = xsd_double;
-          lang_tag = None
-        } in
-        Some (T_Literal lit)
+        mk_literal field xsd_double None
       else if is_decimal_str field then
         (* Bare decimal *)
-        let lit : literal = {
-          lexical_form = field;
-          datatype = xsd_decimal;
-          lang_tag = None
-        } in
-        Some (T_Literal lit)
+        mk_literal field xsd_decimal None
       else
         (* Fallback: plain literal *)
-        let lit : literal = {
-          lexical_form = field;
-          datatype = xsd_string;
-          lang_tag = None
-        } in
-        Some (T_Literal lit)
+        mk_literal field xsd_string None
     | [] -> None
 
 (** Parse a TSV data row into a list of optional rdf_terms *)

@@ -33,7 +33,7 @@ let parse_graph_label : parser iri =
       let ch = String.index input pos in
       let code = FStar.Char.int_of_char ch in
       if code = 0x3C then (* '<' — IRI *)
-        parse_iri input pos
+        parse_iri_raw input pos
       else if code = 0x5F then (* '_' — blank node *)
         (* Blank nodes as graph names: parse and prefix with "_:" *)
         begin match parse_bnode input pos with
@@ -105,8 +105,10 @@ let parse_nquad : parser (triple * option iri) =
                     else
                       let dot = String.index input pos8 in
                       if FStar.Char.int_of_char dot = 0x2E then
-                        let t : triple = { s = subj; p = pred; o = obj } in
-                        ParseOk (t, graph_opt) (pos8 + 1)
+                        if is_iri pred then
+                          let t : triple = { s = subj; p = pred; o = obj } in
+                          ParseOk (t, graph_opt) (pos8 + 1)
+                        else ParseFail "invalid predicate IRI" pos4
                       else
                         ParseFail "expected '.'" pos8
                   | ParseFail msg fpos -> ParseFail msg fpos
@@ -178,9 +180,9 @@ let rec parse_nquads_acc (input:string) (pos:nat) (ds:rdf_dataset) (fuel:nat)
     if pos >= len then ds
     else
       (* Skip whitespace (space/tab) *)
-      let pos1 = match pws input pos with
-                 | ParseOk () p -> p
-                 | _ -> pos in
+      let pos1 : nat = match pws input pos with
+                       | ParseOk () p -> p
+                       | _ -> pos in
       if pos1 >= len then ds
       else
         let ch = String.index input pos1 in
@@ -236,7 +238,7 @@ let parse_nquads (input:string) : rdf_dataset =
 (* ================================================================ *)
 
 (** A quad is a triple plus an optional graph name *)
-type nquad = {
+noeq type nquad = {
   nq_triple : triple;
   nq_graph  : option iri;
 }
@@ -250,9 +252,9 @@ let rec parse_nquads_flat_acc (input:string) (pos:nat) (acc:list nquad) (fuel:na
     if pos >= len then List.Tot.rev acc
     else
       (* Skip whitespace (space/tab) *)
-      let pos1 = match pws input pos with
-                 | ParseOk () p -> p
-                 | _ -> pos in
+      let pos1 : nat = match pws input pos with
+                       | ParseOk () p -> p
+                       | _ -> pos in
       if pos1 >= len then List.Tot.rev acc
       else
         let ch = String.index input pos1 in

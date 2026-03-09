@@ -97,6 +97,7 @@ let split_qname (name : string) : (string * string) =
   | Some pos ->
     let len = String.length name in
     if pos = 0 then ("", name)
+    else if pos >= len then (name, "")
     else if pos + 1 >= len then (String.sub name 0 pos, "")
     else (String.sub name 0 pos, String.sub name (pos + 1) (len - pos - 1))
   | None -> ("", name)
@@ -397,7 +398,7 @@ let serialize_children_xml (children : list xml_node) : string =
 (* ================================================================ *)
 
 (* Forward declaration types for the result of processing *)
-type process_result = {
+noeq type process_result = {
   pr_triples : list triple;
   pr_state : rdfxml_state;
 }
@@ -559,35 +560,40 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
   else
     match node with
     | XElement tag attrs children ->
+      begin
       let st1 = update_state_from_attrs st attrs in
       (* Determine the predicate IRI *)
       let (pred_iri_opt, st2) =
-        match resolve_name st1 tag with
+        begin match resolve_name st1 tag with
         | Some full_iri ->
           if full_iri = String.concat "" [rdf_ns; "li"] then
             let (li_iri, st') = next_li st1 in
-            (Some li_iri, st')
+            if is_iri li_iri then (Some li_iri, st')
+            else (None, st')
           else
-            (Some full_iri, st1)
+            if is_iri full_iri then (Some full_iri, st1)
+            else (None, st1)
         | None -> (None, st1)
+        end
       in
-      match pred_iri_opt with
+      begin match pred_iri_opt with
       | None -> empty_result st2
       | Some pred_iri ->
         if not (is_iri pred_iri) then empty_result st2
         else
           (* Check for rdf:parseType *)
           let parse_type = find_attr "rdf:parseType" attrs in
-          match parse_type with
+          begin match parse_type with
           | Some "Literal" ->
             (* parseType="Literal" — serialize children as XML literal *)
             let xml_content = serialize_children_xml children in
             if is_iri rdf_xmlliteral_iri then
-              match make_typed_literal xml_content rdf_xmlliteral_iri with
+              begin match make_typed_literal xml_content rdf_xmlliteral_iri with
               | Some obj ->
                 let t : triple = { s = subj; p = pred_iri; o = obj } in
                 { pr_triples = [t]; pr_state = st2; }
               | None -> empty_result st2
+              end
             else empty_result st2
           | Some "Resource" ->
             (* parseType="Resource" — implicit blank node *)
@@ -605,21 +611,23 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
           | _ ->
             (* No parseType — normal property element *)
             (* Check for rdf:resource or rdf:nodeID attribute *)
-            match determine_property_object_from_attrs st2 attrs with
+            begin match determine_property_object_from_attrs st2 attrs with
             | Some (obj, st3) ->
               (* Object specified by attribute *)
               let link_triple : triple = { s = subj; p = pred_iri; o = obj } in
               (* Also check for property attributes on this property element *)
               let obj_subj_opt =
-                match obj with
+                begin match obj with
                 | T_IRI i -> if is_iri i then Some (S_IRI i) else None
                 | T_BNode b -> Some (S_BNode b)
                 | _ -> None
+                end
               in
               let prop_attr_triples =
-                match obj_subj_opt with
+                begin match obj_subj_opt with
                 | Some obj_s -> collect_property_attributes st3 obj_s attrs
                 | None -> []
+                end
               in
               { pr_triples = link_triple :: prop_attr_triples;
                 pr_state = st3; }
@@ -632,38 +640,45 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
                 | XElement _ _ _ -> true
                 | _ -> false) children in
               if List.Tot.length child_elements_list > 0 then
-                (* Child elements present — this is a node element as object *)
-                match child_elements_list with
+                begin match child_elements_list with
                 | child_elem :: _ ->
                   let node_result = process_node_element st2 child_elem (fuel - 1) in
                   (* The subject of the child node becomes the object *)
                   let child_subj = determine_subject (update_state_from_attrs st2 (element_attrs child_elem)) (element_attrs child_elem) in
                   let (child_s, st3) = child_subj in
                   let obj_term =
-                    match child_s with
+                    begin match child_s with
                     | S_IRI i -> T_IRI i
                     | S_BNode b -> T_BNode b
+                    end
                   in
                   let link_triple : triple = { s = subj; p = pred_iri; o = obj_term } in
                   { pr_triples = link_triple :: node_result.pr_triples;
                     pr_state = node_result.pr_state; }
-                | [] -> empty_result st2  (* unreachable *)
+                | [] -> empty_result st2
+                end
               else
                 (* Text content only — literal object *)
                 let text_val = collect_text children in
                 let obj_opt =
-                  match datatype_opt with
+                  begin match datatype_opt with
                   | Some dt ->
                     let full_dt = resolve_iri st2.base_iri dt in
                     make_typed_literal text_val full_dt
                   | None ->
                     make_plain_literal text_val st2.lang
+                  end
                 in
-                match obj_opt with
+                begin match obj_opt with
                 | Some obj ->
                   let t : triple = { s = subj; p = pred_iri; o = obj } in
                   { pr_triples = [t]; pr_state = st2; }
                 | None -> empty_result st2
+                end
+            end
+          end
+      end
+      end
     | _ -> empty_result st
 
 and process_collection (st : rdfxml_state) (subj : subject) (pred_iri : string) (items : list xml_node) (fuel : nat)
@@ -696,6 +711,8 @@ and build_collection_list (st : rdfxml_state) (subj : subject) (pred_iri : strin
         { pr_triples = [t]; pr_state = st; }
       else empty_result st
     | item :: rest ->
+      if not (is_iri pred_iri) then empty_result st
+      else
       (* Create a list node *)
       let (list_bid, st2) = fresh_bnode st in
       let list_node = S_BNode list_bid in
@@ -712,24 +729,24 @@ and build_collection_list (st : rdfxml_state) (subj : subject) (pred_iri : strin
         | S_BNode b -> T_BNode b
       in
       (* rdf:first triple *)
-      let first_triple : triple = { s = list_node; p = rdf_first_iri; o = item_term } in
-      let first_triple_opt =
-        if is_iri rdf_first_iri then
-          Some first_triple
-        else None
-      in
-      (* Process rest of list: rdf:rest links to next node or rdf:nil *)
-      let rest_result =
-        if is_iri rdf_rest_iri then
-          build_collection_list st3 list_node rdf_rest_iri rest (fuel - 1)
-        else empty_result st3
-      in
-      let all_triples =
-        match first_triple_opt with
-        | Some ft -> link_triple :: ft :: item_result.pr_triples @ rest_result.pr_triples
-        | None -> link_triple :: item_result.pr_triples @ rest_result.pr_triples
-      in
-      { pr_triples = all_triples; pr_state = rest_result.pr_state; }
+      if is_iri rdf_first_iri then
+        let first_triple : triple = { s = list_node; p = rdf_first_iri; o = item_term } in
+        (* Process rest of list: rdf:rest links to next node or rdf:nil *)
+        let rest_result =
+          if is_iri rdf_rest_iri then
+            build_collection_list st3 list_node rdf_rest_iri rest (fuel - 1)
+          else empty_result st3
+        in
+        let all_triples = link_triple :: first_triple :: item_result.pr_triples @ rest_result.pr_triples in
+        { pr_triples = all_triples; pr_state = rest_result.pr_state; }
+      else
+        let rest_result =
+          if is_iri rdf_rest_iri then
+            build_collection_list st3 list_node rdf_rest_iri rest (fuel - 1)
+          else empty_result st3
+        in
+        let all_triples = link_triple :: item_result.pr_triples @ rest_result.pr_triples in
+        { pr_triples = all_triples; pr_state = rest_result.pr_state; }
 
 
 (* ================================================================ *)

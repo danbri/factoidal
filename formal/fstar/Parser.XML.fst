@@ -415,7 +415,7 @@ let rec parse_children (input:string) (pos:nat) (fuel:nat)
               end
             end
           else
-            begin match parse_xml_element input pos fuel with
+            begin match parse_xml_element input pos (fuel - 1) with
             | ParseOk elem pos' ->
               begin match parse_children input pos' (fuel - 1) with
               | ParseOk rest pos'' -> ParseOk (elem :: rest) pos''
@@ -444,7 +444,7 @@ and parse_xml_element (input:string) (pos:nat) (fuel:nat)
       begin match parse_xml_name input pos1 with
       | ParseOk tag pos2 ->
         let len = String.length input in
-        let attr_fuel = len - pos2 + 1 in
+        let attr_fuel = if pos2 <= len then len - pos2 + 1 else 1 in
         begin match parse_attributes input pos2 attr_fuel with
         | ParseOk attrs pos3 ->
           begin match skip_xml_space input pos3 with
@@ -560,13 +560,18 @@ let find_attr (name:string) (attrs:list xml_attribute) : option string =
   | Some a -> Some a.attr_value
   | None -> None
 
-let rec text_content (node:xml_node) : string =
+let rec text_content (node:xml_node) : Tot string (decreases node) =
   match node with
   | XText t -> t
   | XCDATA t -> t
   | XComment _ -> ""
   | XElement _ _ children ->
-    String.concat "" (List.Tot.map text_content children)
+    String.concat "" (text_content_list children)
+
+and text_content_list (nodes:list xml_node) : Tot (list string) (decreases nodes) =
+  match nodes with
+  | [] -> []
+  | hd :: tl -> text_content hd :: text_content_list tl
 
 let child_elements (tag:string) (node:xml_node) : list xml_node =
   match node with
