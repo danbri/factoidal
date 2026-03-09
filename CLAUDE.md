@@ -1,5 +1,31 @@
 # Factoidal — Verified RDF/SPARQL from F*
 
+## :warning: F* Comment Syntax — DANGER :warning:
+
+**F\* comments `(* ... *)` support NESTING.** Any `*)` inside a comment
+prematurely closes it, and any `(*` opens a new nesting level. This means
+constructs containing `*)` will **silently corrupt the rest of your file**
+when placed inside comments.
+
+**This WILL break:**
+```fstar
+(* ARQ algebra example
+   construct(*)
+*)
+```
+The `*)` inside `construct(*)` closes the comment. Everything after it becomes
+code. F\* then reports a syntax error **hundreds of lines later**, making
+debugging extremely difficult.
+
+**Safe alternatives:**
+- Reword to avoid parens-star: `(* COUNT-star special case *)`
+- Use `//` line comments (F\* supports them): `// COUNT(*) special case`
+- Escape or rephrase: `(* SELECT vars-or-star ... *)`
+
+**Rule: Never put `*)` or `(*` inside an F\* block comment.** Grep your `.fst`
+files for these sequences if you get mysterious syntax errors far from the
+actual cause.
+
 ## What This Project Is
 
 A formally verified RDF/SPARQL implementation. The **F\* specifications are the
