@@ -76,20 +76,46 @@ let parse_trig_graph_name (st : Parser_Turtle.turtle_state)
   else
     (let c = FStar_String.index input pos in
      let code = FStar_Char.int_of_char c in
-     if code = (Prims.of_int (0x5F))
+     if code = (Prims.of_int (0x5B))
      then
-       match Parser_NTriples.parse_bnode input pos with
-       | Parser_Combinators.ParseOk (b, pos') ->
-           let bnode_iri = FStar_String.concat "" ["_:"; b] in
-           Parser_Combinators.ParseOk ((bnode_iri, st), pos')
-       | Parser_Combinators.ParseFail (msg, fpos) ->
-           Parser_Combinators.ParseFail (msg, fpos)
+       (if
+          ((pos + Prims.int_one) < len) &&
+            ((FStar_Char.int_of_char
+                (FStar_String.index input (pos + Prims.int_one)))
+               = (Prims.of_int (0x5D)))
+        then
+          let bnode_id =
+            FStar_String.concat ""
+              ["_:trig_anon_";
+              Prims.string_of_int st.Parser_Turtle.bnode_counter] in
+          let st' =
+            {
+              Parser_Turtle.prefixes = (st.Parser_Turtle.prefixes);
+              Parser_Turtle.base_iri = (st.Parser_Turtle.base_iri);
+              Parser_Turtle.bnode_counter =
+                (st.Parser_Turtle.bnode_counter + Prims.int_one)
+            } in
+          Parser_Combinators.ParseOk
+            ((bnode_id, st'), (pos + (Prims.of_int (2))))
+        else
+          Parser_Combinators.ParseFail
+            ("expected ']' after '[' for anonymous blank node graph name",
+              pos))
      else
-       (match Parser_Turtle.parse_turtle_iri st input pos with
-        | Parser_Combinators.ParseOk (i, pos') ->
-            Parser_Combinators.ParseOk ((i, st), pos')
-        | Parser_Combinators.ParseFail (msg, fpos) ->
-            Parser_Combinators.ParseFail (msg, fpos)))
+       if code = (Prims.of_int (0x5F))
+       then
+         (match Parser_NTriples.parse_bnode input pos with
+          | Parser_Combinators.ParseOk (b, pos') ->
+              let bnode_iri = FStar_String.concat "" ["_:"; b] in
+              Parser_Combinators.ParseOk ((bnode_iri, st), pos')
+          | Parser_Combinators.ParseFail (msg, fpos) ->
+              Parser_Combinators.ParseFail (msg, fpos))
+       else
+         (match Parser_Turtle.parse_turtle_iri st input pos with
+          | Parser_Combinators.ParseOk (i, pos') ->
+              Parser_Combinators.ParseOk ((i, st), pos')
+          | Parser_Combinators.ParseFail (msg, fpos) ->
+              Parser_Combinators.ParseFail (msg, fpos)))
 let char_to_lower (c : FStar_Char.char) : FStar_Char.char=
   let code = FStar_Char.int_of_char c in
   if (code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x5A)))
@@ -216,8 +242,8 @@ let rec parse_graph_body_strict (st : Parser_Turtle.turtle_state)
                     | Parser_Combinators.ParseOk (uu___5, uu___6) ->
                         FStar_Pervasives_Native.None
                     | Parser_Combinators.ParseFail (uu___5, uu___6) ->
-                        (match Parser_Turtle.parse_turtle_statement_strict st
-                                 input pos1 fuel
+                        (match Parser_Turtle.parse_turtle_statement st input
+                                 pos1 fuel
                          with
                          | Parser_Combinators.ParseOk ((triples, st'), pos2)
                              ->

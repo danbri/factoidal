@@ -287,6 +287,22 @@ exception Unsupported of string
    Result comparison
    ============================================================================ *)
 
+let format_term t =
+  match t with
+  | T_IRI i -> Printf.sprintf "<%s>" i
+  | T_BNode b -> Printf.sprintf "_:%s" b
+  | T_Literal l ->
+    (match l.lang_tag with
+     | Some lt -> Printf.sprintf "\"%s\"@%s" l.lexical_form lt
+     | None ->
+       if l.datatype = "" || l.datatype = "http://www.w3.org/2001/XMLSchema#string"
+       then Printf.sprintf "\"%s\"" l.lexical_form
+       else Printf.sprintf "\"%s\"^^<%s>" l.lexical_form l.datatype)
+
+let format_row row =
+  String.concat ", " (List.map (fun (var, term) ->
+    Printf.sprintf "?%s=%s" var (format_term term)) row)
+
 let term_equal a b =
   match a, b with
   | T_IRI i1, T_IRI i2 -> i1 = i2
@@ -396,9 +412,26 @@ let run_query_eval_test tc =
         Pass
       | `SRX_Bindings (_vars, expected_rows) ->
         if results_match expected_rows actual_results then Pass
-        else
-          Fail (Printf.sprintf "Results mismatch: expected %d rows, got %d"
-                  (List.length expected_rows) (List.length actual_results))
+        else begin
+          let unmatched_expected = List.filter (fun exp_row ->
+            not (List.exists (binding_row_matches exp_row) actual_results)
+          ) expected_rows in
+          let unmatched_actual = List.filter (fun act_row ->
+            not (List.exists (fun exp_row -> binding_row_matches exp_row act_row) expected_rows)
+          ) actual_results in
+          let debug = Buffer.create 256 in
+          Buffer.add_string debug (Printf.sprintf "Results mismatch: expected %d rows, got %d"
+                  (List.length expected_rows) (List.length actual_results));
+          if unmatched_expected <> [] then begin
+            Buffer.add_string debug "\n    Unmatched expected rows:";
+            List.iter (fun row -> Buffer.add_string debug (Printf.sprintf "\n      %s" (format_row row))) unmatched_expected
+          end;
+          if unmatched_actual <> [] then begin
+            Buffer.add_string debug "\n    Unmatched actual rows:";
+            List.iter (fun row -> Buffer.add_string debug (Printf.sprintf "\n      %s" (format_row row))) unmatched_actual
+          end;
+          Fail (Buffer.contents debug)
+        end
     end else if Filename.check_suffix rf ".ttl" then begin
       (* Result set in Turtle format — not yet supported *)
       raise (Unsupported "Turtle result format not yet supported")
@@ -605,8 +638,36 @@ let make_turtle_base assumed_base filepath =
   (* Use assumed test base from manifest if available, else file:// *)
   match assumed_base with
   | Some base ->
-    let filename = Filename.basename filepath in
-    base ^ filename
+    (* The assumed base from the manifest corresponds to the manifest directory.
+       Test files may be in subdirectories (e.g., rdf-ns-prefix-confusion/test0004.rdf).
+       We need to find the relative path from the manifest directory, not just basename.
+       The manifest dir is the parent of the file's directory tree within the test suite. *)
+    let abs_fp = if Filename.is_relative filepath then
+      Filename.concat (Sys.getcwd ()) filepath else filepath in
+    (* Find the manifest directory: look for the suite root by matching
+       the assumed base path structure. The assumed base ends with the suite
+       path (e.g., "rdf-xml/"), and we need the relative path from there. *)
+    let try_extract_relative () =
+      (* Walk up from the file to find a directory containing manifest.ttl *)
+      let rec find_manifest_dir dir depth =
+        if depth > 10 then None
+        else if Sys.file_exists (Filename.concat dir "manifest.ttl") then Some dir
+        else find_manifest_dir (Filename.dirname dir) (depth + 1)
+      in
+      match find_manifest_dir (Filename.dirname abs_fp) 0 with
+      | Some mdir ->
+        let mdir_len = String.length mdir in
+        let fp_len = String.length abs_fp in
+        if fp_len > mdir_len + 1 then
+          (* +1 for the '/' separator *)
+          let rel = String.sub abs_fp (mdir_len + 1) (fp_len - mdir_len - 1) in
+          base ^ rel
+        else
+          base ^ (Filename.basename filepath)
+      | None ->
+        base ^ (Filename.basename filepath)
+    in
+    try_extract_relative ()
   | None ->
     let abs_fp = if Filename.is_relative filepath then Filename.concat (Sys.getcwd ()) filepath else filepath in
     "file://" ^ abs_fp

@@ -1487,7 +1487,16 @@ let parse_turtle_statement (st: turtle_state) (input: string) (pos: nat) (fuel: 
                           (* Some Turtle allows missing final dot — be lenient *)
                           ParseOk (all_triples, st2) pos5
                       end
-                    | ParseFail msg fpos -> ParseFail msg fpos
+                    | ParseFail msg fpos ->
+                      (* If subject was a blank node property list (starts with '[')
+                         and had internal triples, the predicate-object list is optional.
+                         But for collections (starts with '('), a predicate-object list is required. *)
+                      let subject_was_bnode_proplist =
+                        pos1 < len && int_of_char (String.index input pos1) = 0x5B in
+                      if List.Tot.length subj_res.sr_triples > 0 && subject_was_bnode_proplist then
+                        ParseOk (subj_res.sr_triples, subj_res.sr_state) pos3
+                      else
+                        ParseFail msg fpos
                     end
               end
             | ParseFail msg fpos -> ParseFail msg fpos

@@ -2304,8 +2304,24 @@ let parse_turtle_statement (st : turtle_state) (input : Prims.string)
                                                   ((all_triples, st2), pos5))
                                      | Parser_Combinators.ParseFail
                                          (msg, fpos) ->
-                                         Parser_Combinators.ParseFail
-                                           (msg, fpos))))
+                                         let subject_was_bnode_proplist =
+                                           (pos1 < len) &&
+                                             ((FStar_Char.int_of_char
+                                                 (FStar_String.index input
+                                                    pos1))
+                                                = (Prims.of_int (0x5B))) in
+                                         if
+                                           ((FStar_List_Tot_Base.length
+                                               subj_res.sr_triples)
+                                              > Prims.int_zero)
+                                             && subject_was_bnode_proplist
+                                         then
+                                           Parser_Combinators.ParseOk
+                                             (((subj_res.sr_triples),
+                                                (subj_res.sr_state)), pos3)
+                                         else
+                                           Parser_Combinators.ParseFail
+                                             (msg, fpos))))
                       | Parser_Combinators.ParseFail (msg, fpos) ->
                           Parser_Combinators.ParseFail (msg, fpos)))))
 let parse_turtle_statement_strict (st : turtle_state) (input : Prims.string)
@@ -2344,6 +2360,11 @@ let parse_turtle_statement_strict (st : turtle_state) (input : Prims.string)
                             bnode_counter = (st.bnode_counter)
                           }), pos2)
                  | Parser_Combinators.ParseFail (uu___4, uu___5) ->
+                     let is_bnode_property_list =
+                       (pos1 < len) &&
+                         ((FStar_Char.int_of_char
+                             (FStar_String.index input pos1))
+                            = (Prims.of_int (0x5B))) in
                      (match parse_turtle_subject st input pos1 fuel with
                       | Parser_Combinators.ParseOk (subj_res, pos2) ->
                           (match turtle_ws input pos2 with
@@ -2351,9 +2372,10 @@ let parse_turtle_statement_strict (st : turtle_state) (input : Prims.string)
                                if pos3 >= len
                                then
                                  (if
-                                    (FStar_List_Tot_Base.length
-                                       subj_res.sr_triples)
-                                      > Prims.int_zero
+                                    ((FStar_List_Tot_Base.length
+                                        subj_res.sr_triples)
+                                       > Prims.int_zero)
+                                      && is_bnode_property_list
                                   then
                                     Parser_Combinators.ParseFail
                                       ("expected '.' after triples", pos3)
@@ -2368,9 +2390,10 @@ let parse_turtle_statement_strict (st : turtle_state) (input : Prims.string)
                                       (Prims.of_int (0x2E))
                                   then
                                     (if
-                                       (FStar_List_Tot_Base.length
-                                          subj_res.sr_triples)
-                                         > Prims.int_zero
+                                       ((FStar_List_Tot_Base.length
+                                           subj_res.sr_triples)
+                                          > Prims.int_zero)
+                                         && is_bnode_property_list
                                      then
                                        Parser_Combinators.ParseOk
                                          (((subj_res.sr_triples),

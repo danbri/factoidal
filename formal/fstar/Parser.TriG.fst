@@ -76,7 +76,15 @@ let parse_trig_graph_name (st: turtle_state) (input: string) (pos: nat)
   else
     let c = String.index input pos in
     let code = int_of_char c in
-    if code = 0x5F then (* '_' — blank node graph name *)
+    if code = 0x5B then (* '[' — check for anonymous blank node '[]' *)
+      if pos + 1 < len && int_of_char (String.index input (pos + 1)) = 0x5D then
+        (* [] — anonymous blank node as graph name *)
+        let bnode_id = String.concat "" ["_:trig_anon_"; string_of_int st.bnode_counter] in
+        let st' = { st with bnode_counter = st.bnode_counter + 1 } in
+        ParseOk (bnode_id, st') (pos + 2)
+      else
+        ParseFail "expected ']' after '[' for anonymous blank node graph name" pos
+    else if code = 0x5F then (* '_' — blank node graph name *)
       begin match parse_bnode input pos with
       | ParseOk b pos' ->
         let bnode_iri = String.concat "" ["_:"; b] in
@@ -176,8 +184,9 @@ let rec parse_graph_body (st: turtle_state) (input: string) (pos: nat)
           end
 
 (** Strict version of parse_graph_body: propagates errors instead of skipping.
-    Uses parse_turtle_statement_strict to require '.' after triples
-    and rejects directives inside graph blocks. *)
+    Uses parse_turtle_statement (lenient about trailing dot, since TriG allows
+    optional dot before '}') but rejects directives inside graph blocks and
+    propagates parse failures. *)
 let rec parse_graph_body_strict (st: turtle_state) (input: string) (pos: nat)
     (acc: list triple) (fuel: nat)
   : Tot (option (list triple & turtle_state & nat)) (decreases fuel) =
@@ -200,8 +209,8 @@ let rec parse_graph_body_strict (st: turtle_state) (input: string) (pos: nat)
             begin match parse_base_directive input pos1 with
             | ParseOk _ _ -> None  (* @base/BASE not allowed inside { } *)
             | ParseFail _ _ ->
-              (* Try to parse a strict Turtle statement *)
-              begin match parse_turtle_statement_strict st input pos1 fuel with
+              (* Parse a Turtle statement (lenient about dot — TriG allows optional dot before '}') *)
+              begin match parse_turtle_statement st input pos1 fuel with
               | ParseOk (triples, st') pos2 ->
                 if pos2 = pos1 then
                   None  (* No progress — error *)

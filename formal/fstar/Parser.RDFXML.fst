@@ -334,6 +334,67 @@ let make_triple (subj : subject) (pred_iri : string) (obj : rdf_term) : option t
 
 
 (* ================================================================ *)
+(* Reification support                                              *)
+(* When a property element has rdf:ID="name", the generated triple  *)
+(* is reified: 4 additional triples are created that describe the   *)
+(* original triple as an rdf:Statement.                             *)
+(* ================================================================ *)
+
+let rdf_statement_iri : string = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Statement"
+let rdf_subject_iri : string = "http://www.w3.org/1999/02/22-rdf-syntax-ns#subject"
+let rdf_predicate_iri : string = "http://www.w3.org/1999/02/22-rdf-syntax-ns#predicate"
+let rdf_object_iri : string = "http://www.w3.org/1999/02/22-rdf-syntax-ns#object"
+
+(* Generate reification triples for a given triple and reification IRI *)
+let make_reification_triples (reif_iri : string) (subj : subject) (pred_iri : string) (obj : rdf_term) : list triple =
+  if not (is_iri reif_iri) then []
+  else if not (is_iri rdf_type_iri && is_iri rdf_statement_iri && is_iri rdf_subject_iri && is_iri rdf_predicate_iri && is_iri rdf_object_iri && is_iri pred_iri) then []
+  else
+    let reif_subj = S_IRI reif_iri in
+    let subj_term = match subj with
+      | S_IRI i -> T_IRI i
+      | S_BNode b -> T_BNode b
+    in
+    [
+      { s = reif_subj; p = rdf_type_iri; o = T_IRI rdf_statement_iri };
+      { s = reif_subj; p = rdf_subject_iri; o = subj_term };
+      { s = reif_subj; p = rdf_predicate_iri; o = T_IRI pred_iri };
+      { s = reif_subj; p = rdf_object_iri; o = obj };
+    ]
+
+(* Check for rdf:ID on a property element and generate reification triples if present *)
+let maybe_reify (st : rdfxml_state) (attrs : list xml_attribute) (subj : subject) (pred_iri : string) (obj : rdf_term) : list triple =
+  match find_attr "rdf:ID" attrs with
+  | Some id_val ->
+    let reif_iri = resolve_iri st.base_iri (String.concat "" ["#"; id_val]) in
+    make_reification_triples reif_iri subj pred_iri obj
+  | None -> []
+
+
+(* Check if a property element has non-RDF property attributes.
+   These are attributes that are not xml/xmlns/rdf-syntax attributes.
+   When such attributes are present on an empty property element
+   (without rdf:resource, rdf:nodeID, or rdf:parseType), an implicit
+   blank node is created as the object. *)
+let rec has_property_attributes (st : rdfxml_state) (attrs : list xml_attribute) : bool =
+  match attrs with
+  | [] -> false
+  | attr :: rest ->
+    if is_xml_or_xmlns_attr attr.attr_name then
+      has_property_attributes st rest
+    else
+      match resolve_name st attr.attr_name with
+      | Some full_iri ->
+        if is_rdf_syntax_attr full_iri then
+          has_property_attributes st rest
+        else if full_iri = rdf_type_iri then
+          true  (* rdf:type as property attribute counts *)
+        else
+          true  (* Non-RDF attribute found *)
+      | None -> has_property_attributes st rest
+
+
+(* ================================================================ *)
 (* Collect text content from child nodes                             *)
 (* ================================================================ *)
 
@@ -586,7 +647,8 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
               match make_typed_literal xml_content rdf_xmlliteral_iri with
               | Some obj ->
                 let t : triple = { s = subj; p = pred_iri; o = obj } in
-                { pr_triples = [t]; pr_state = st2; }
+                let reif_triples = maybe_reify st2 attrs subj pred_iri obj in
+                { pr_triples = t :: reif_triples; pr_state = st2; }
               | None -> empty_result st2
             else empty_result st2
           | Some "Resource" ->
@@ -594,9 +656,10 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
             let (bid, st3) = fresh_bnode st2 in
             let bnode_subj = S_BNode bid in
             let link_triple : triple = { s = subj; p = pred_iri; o = T_BNode bid } in
+            let reif_triples = maybe_reify st2 attrs subj pred_iri (T_BNode bid) in
             let st4 = reset_li_counter st3 in
             let child_result = process_property_children st4 bnode_subj children (fuel - 1) in
-            { pr_triples = link_triple :: child_result.pr_triples;
+            { pr_triples = link_triple :: reif_triples @ child_result.pr_triples;
               pr_state = child_result.pr_state; }
           | Some "Collection" ->
             (* parseType="Collection" — RDF list *)
@@ -621,7 +684,8 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
                 | Some obj_s -> collect_property_attributes st3 obj_s attrs
                 | None -> []
               in
-              { pr_triples = link_triple :: prop_attr_triples;
+              let reif_triples = maybe_reify st2 attrs subj pred_iri obj in
+              { pr_triples = link_triple :: prop_attr_triples @ reif_triples;
                 pr_state = st3; }
             | None ->
               (* Check for rdf:datatype *)
@@ -645,9 +709,23 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
                     | S_BNode b -> T_BNode b
                   in
                   let link_triple : triple = { s = subj; p = pred_iri; o = obj_term } in
-                  { pr_triples = link_triple :: node_result.pr_triples;
+                  let reif_triples = maybe_reify st2 attrs subj pred_iri obj_term in
+                  { pr_triples = link_triple :: reif_triples @ node_result.pr_triples;
                     pr_state = node_result.pr_state; }
                 | [] -> empty_result st2  (* unreachable *)
+              else if has_property_attributes st2 attrs then
+                (* Empty property element with property attributes —
+                   create an implicit blank node as object.
+                   Per RDF/XML spec production [6.12]: emptyPropertyElt.
+                   When there are property attributes but no rdf:resource/rdf:nodeID,
+                   a fresh blank node is created and property attributes are set on it. *)
+                let (bid, st3) = fresh_bnode st2 in
+                let bnode_subj = S_BNode bid in
+                let link_triple : triple = { s = subj; p = pred_iri; o = T_BNode bid } in
+                let prop_attr_triples = collect_property_attributes st3 bnode_subj attrs in
+                let reif_triples = maybe_reify st2 attrs subj pred_iri (T_BNode bid) in
+                { pr_triples = link_triple :: prop_attr_triples @ reif_triples;
+                  pr_state = st3; }
               else
                 (* Text content only — literal object *)
                 let text_val = collect_text children in
@@ -662,7 +740,8 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
                 match obj_opt with
                 | Some obj ->
                   let t : triple = { s = subj; p = pred_iri; o = obj } in
-                  { pr_triples = [t]; pr_state = st2; }
+                  let reif_triples = maybe_reify st2 attrs subj pred_iri obj in
+                  { pr_triples = t :: reif_triples; pr_state = st2; }
                 | None -> empty_result st2
     | _ -> empty_result st
 
