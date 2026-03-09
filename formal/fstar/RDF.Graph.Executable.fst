@@ -79,11 +79,23 @@ let subject_eq (s1 s2 : subject) : bool =
   | S_BNode b1, S_BNode b2 -> b1 = b2
   | _, _ -> false
 
-(* Decidable equality for literals — compare all three fields. *)
+(* Case-insensitive language tag comparison per RDF 1.1 §3.3.
+   Language tags like @en-US and @en-us denote the same value. *)
+let lang_tag_eq (t1 t2 : string) : bool =
+  String.lowercase t1 = String.lowercase t2
+
+let lang_tag_option_eq (t1 t2 : option string) : bool =
+  match t1, t2 with
+  | None, None -> true
+  | Some s1, Some s2 -> lang_tag_eq s1 s2
+  | _, _ -> false
+
+(* Decidable equality for literals — compare all three fields.
+   Language tags are compared case-insensitively per RDF 1.1. *)
 let literal_eq (l1 l2 : literal) : bool =
   l1.lexical_form = l2.lexical_form &&
   l1.datatype = l2.datatype &&
-  l1.lang_tag = l2.lang_tag
+  lang_tag_option_eq l1.lang_tag l2.lang_tag
 
 (* Decidable equality for RDF terms — concrete implementation. *)
 let rdf_term_eq (t1 t2 : rdf_term) : bool =
@@ -91,6 +103,36 @@ let rdf_term_eq (t1 t2 : rdf_term) : bool =
   | T_IRI i1, T_IRI i2 -> i1 = i2
   | T_BNode b1, T_BNode b2 -> b1 = b2
   | T_Literal l1, T_Literal l2 -> literal_eq l1 l2
+  | _, _ -> false
+
+(* RDF 1.1 value equality for literals.
+   In RDF 1.1, a plain literal "foo" is equivalent to "foo"^^xsd:string.
+   Both have datatype xsd:string and no language tag. This function handles
+   the case where one literal might have an explicit xsd:string datatype
+   annotation and the other might be a "plain" literal (which also has
+   datatype xsd:string per RDF 1.1 abstract syntax). *)
+let literal_value_eq (l1 l2 : literal) : bool =
+  (* Same lexical form is always required *)
+  l1.lexical_form = l2.lexical_form &&
+  (* Language tags compared case-insensitively *)
+  lang_tag_option_eq l1.lang_tag l2.lang_tag &&
+  (* Datatypes must match. Since RDF 1.1 mandates that plain literals
+     have datatype xsd:string, both forms already carry xsd:string
+     as their datatype in a well-formed representation. We compare
+     datatypes directly — if both are xsd:string they match. *)
+  l1.datatype = l2.datatype
+
+(* RDF 1.1 value equality for terms.
+   Extends rdf_term_eq with value-space semantics:
+   - Language tags compared case-insensitively (via literal_eq)
+   - Plain literal / xsd:string equivalence (via literal_value_eq)
+   Note: datatype value equivalence (e.g. "010"^^xsd:integer = "10"^^xsd:integer)
+   is NOT yet implemented — that requires numeric normalization in F*. *)
+let rdf_term_value_eq (t1 t2 : rdf_term) : bool =
+  match t1, t2 with
+  | T_IRI i1, T_IRI i2 -> i1 = i2
+  | T_BNode b1, T_BNode b2 -> b1 = b2
+  | T_Literal l1, T_Literal l2 -> literal_value_eq l1 l2
   | _, _ -> false
 
 noeq type triple = {
@@ -435,10 +477,11 @@ let value_compare (lv rv : sparql_value) (op : comp_op) : option bool =
           | Ge -> l = r || string_lt r l)
 
   // Lang literal × lang literal: eq/ne only, both lexical and lang must match
+  // Language tags compared case-insensitively per RDF 1.1
   | SV_LangLiteral llex llang, SV_LangLiteral rlex rlang ->
     (match op with
-     | Eq -> Some (llex = rlex && llang = rlang)
-     | Ne -> Some (llex <> rlex || llang <> rlang)
+     | Eq -> Some (llex = rlex && lang_tag_eq llang rlang)
+     | Ne -> Some (llex <> rlex || not (lang_tag_eq llang rlang))
      | _  -> None)
 
   // IRI × IRI: full ordering via string comparison

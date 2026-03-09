@@ -29,6 +29,18 @@ Rust/JS/OCaml/anything that "mirrors" a spec.
    language tag normalization, RDFS closure rules. These are core requirements,
    not "just inference." Dismissing them is wrong.
 
+## Agent Work Strategy
+
+When working on this project with Claude Code:
+
+- **Use subagents aggressively for parallelism.** Launch multiple subagents for
+  independent tasks (e.g., F\* verification + OCaml compilation + test running).
+  Never get blocked waiting on one thing when other work can proceed.
+- **Top-level Claude is the coordinator.** Don't get distracted doing deep work
+  that a subagent could handle. Keep subagents productive and track their results.
+- **Never block.** If one task is waiting, start another. Use background agents
+  for long-running operations (F\* verification, test runs).
+
 ## Anti-Patterns — Do NOT Repeat These Mistakes
 
 Previous Claude sessions made these errors. Read and internalize:
