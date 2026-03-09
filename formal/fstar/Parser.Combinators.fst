@@ -110,38 +110,28 @@ let popt (#a:Type) (p: parser a) : parser (option a) =
 (* Recursive combinators (fuel-based for termination)                *)
 (* ================================================================ *)
 
-(** Zero or more: parse repeatedly until failure. Uses fuel for termination. *)
-let rec pmany (#a:Type) (p: parser a) (input:string) (fuel:nat)
-  : Tot (parse_result (list a)) (decreases fuel) =
-  if fuel = 0 then ParseOk [] (String.length input)  (* out of fuel = stop *)
-  else
-    (* We need a starting position — derive from prior call or start at 0.
-       The trick: pmany is always called with fuel = length input - pos + 1 initially.
-       We use a helper that takes pos explicitly. *)
-    ParseOk [] 0  (* placeholder — real impl is pmany_from below *)
-
-(** Helper: pmany starting from a given position *)
-let rec pmany_from (#a:Type) (p: parser a) (input:string) (pos:nat) (fuel:nat)
+(** Internal: zero or more with explicit fuel for termination *)
+let rec pmany_fuel (#a:Type) (p: parser a) (input:string) (pos:nat) (fuel:nat)
   : Tot (parse_result (list a)) (decreases fuel) =
   if fuel = 0 then ParseOk [] pos
   else
     match p input pos with
     | ParseOk v pos' ->
       if pos' = pos then
-        (* Parser succeeded but didn't advance — stop to avoid infinite loop *)
+        (* Parser succeeded but didn't advance -- stop to avoid infinite loop *)
         ParseOk [v] pos'
       else
-        begin match pmany_from p input pos' (fuel - 1) with
+        begin match pmany_fuel p input pos' (fuel - 1) with
         | ParseOk vs pos'' -> ParseOk (v :: vs) pos''
         | ParseFail msg fpos -> ParseFail msg fpos
         end
     | ParseFail _ _ -> ParseOk [] pos
 
-(** Overwrite pmany to use the proper implementation *)
-let pmany' (#a:Type) (p: parser a) (input:string) (pos:nat)
+(** Zero or more: parse repeatedly until failure *)
+let pmany (#a:Type) (p: parser a) (input:string) (pos:nat)
   : parse_result (list a) =
   let fuel = String.length input - pos + 1 in
-  if fuel >= 0 then pmany_from p input pos fuel
+  if fuel >= 0 then pmany_fuel p input pos fuel
   else ParseOk [] pos
 
 (** One or more: parse at least one, then zero or more *)
@@ -151,7 +141,7 @@ let pmany1_from (#a:Type) (p: parser a) (input:string) (pos:nat) (fuel:nat)
   | ParseOk v pos' ->
     if pos' = pos then ParseOk [v] pos'
     else
-      begin match pmany_from p input pos' fuel with
+      begin match pmany_fuel p input pos' fuel with
       | ParseOk vs pos'' -> ParseOk (v :: vs) pos''
       | ParseFail msg fpos -> ParseFail msg fpos
       end
