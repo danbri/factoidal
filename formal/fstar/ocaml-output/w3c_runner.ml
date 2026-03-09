@@ -272,14 +272,32 @@ let row_to_verbose_string row =
    Result comparison
    ============================================================================ *)
 
+(* Parse a numeric string (integer, decimal, or double) to a float for comparison *)
+let parse_numeric_value s =
+  try Some (float_of_string s) with _ -> None
+
+(* Check if two xsd:double or xsd:decimal values are numerically equal *)
+let numeric_literal_equal l1 l2 =
+  let xsd_double = "http://www.w3.org/2001/XMLSchema#double" in
+  let xsd_decimal = "http://www.w3.org/2001/XMLSchema#decimal" in
+  let xsd_integer = "http://www.w3.org/2001/XMLSchema#integer" in
+  let is_numeric dt = dt = xsd_double || dt = xsd_decimal || dt = xsd_integer in
+  if is_numeric l1.datatype && is_numeric l2.datatype then
+    match parse_numeric_value l1.lexical_form, parse_numeric_value l2.lexical_form with
+    | Some v1, Some v2 -> v1 = v2
+    | _ -> false
+  else false
+
 let term_equal a b =
   match a, b with
   | T_IRI i1, T_IRI i2 -> i1 = i2
   | T_BNode _, T_BNode _ -> true  (* bnodes match any bnode *)
   | T_Literal l1, T_Literal l2 ->
-    l1.lexical_form = l2.lexical_form &&
-    l1.datatype = l2.datatype &&
-    l1.lang_tag = l2.lang_tag
+    (l1.lexical_form = l2.lexical_form &&
+     l1.datatype = l2.datatype &&
+     l1.lang_tag = l2.lang_tag) ||
+    (* Fall back to numeric value comparison for xsd numeric types *)
+    (l1.datatype = l2.datatype && numeric_literal_equal l1 l2)
   | _ -> false
 
 let binding_row_matches expected actual =

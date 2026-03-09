@@ -600,36 +600,7 @@ let apply_comp_op (cmp : int) (op : comp_op) : bool =
 let int_compare (a b : int) : int =
   if a < b then -1 else if a = b then 0 else 1
 
-let value_compare (v1 v2 : eval_result) (op : comp_op) : option bool =
-  match v1, v2 with
-  | ER_Num a, ER_Num b -> Some (apply_comp_op (int_compare a b) op)
-  | ER_Bool a, ER_Bool b ->
-    let ia = if a then 1 else 0 in
-    let ib = if b then 1 else 0 in
-    Some (apply_comp_op (int_compare ia ib) op)
-  | ER_Dec a, ER_Dec b -> Some (apply_comp_op (String.compare a b) op)
-  | ER_Dbl a, ER_Dbl b -> Some (apply_comp_op (String.compare a b) op)
-  | ER_Num a, ER_Dec b -> Some (apply_comp_op (String.compare (string_of_int a) b) op)
-  | ER_Dec a, ER_Num b -> Some (apply_comp_op (String.compare a (string_of_int b)) op)
-  | ER_Num a, ER_Dbl b -> Some (apply_comp_op (String.compare (string_of_int a) b) op)
-  | ER_Dbl a, ER_Num b -> Some (apply_comp_op (String.compare a (string_of_int b)) op)
-  | ER_Dec a, ER_Dbl b -> Some (apply_comp_op (String.compare a b) op)
-  | ER_Dbl a, ER_Dec b -> Some (apply_comp_op (String.compare a b) op)
-  | ER_Term (T_IRI i1), ER_Term (T_IRI i2) ->
-    Some (apply_comp_op (String.compare (iri_to_string i1) (iri_to_string i2)) op)
-  | ER_Term (T_Literal l1), ER_Term (T_Literal l2) ->
-    if lit_datatype l1 = lit_datatype l2
-    then
-      if lit_lang l1 = lit_lang l2
-      then Some (apply_comp_op (String.compare (lit_lexical l1) (lit_lexical l2)) op)
-      else (match op with
-            | CmpEq -> Some false
-            | CmpNe -> Some true
-            | _ -> None)
-    else None
-  | ER_Error, _ -> None
-  | _, ER_Error -> None
-  | _, _ -> None
+// value_compare is defined after numeric parsing helpers (needed for cross-type comparison)
 
 (* Node type testing functions *)
 let fn_isIRI (v : eval_result) : eval_result =
@@ -1052,8 +1023,12 @@ let format_as_double (value : int) (scale : nat) : string =
     let mantissa_scale : nat = ndigits - 1 in
     let mantissa_str = format_scaled_value abs_val mantissa_scale in
     let stripped = strip_trailing_decimal_zeros mantissa_str in
+    // Ensure mantissa always has a decimal point (e.g., "4.0" not "4")
+    let with_dot = if string_contains stripped "."
+                   then stripped
+                   else stripped ^ ".0" in
     let sign = if is_neg then "-" else "" in
-    sign ^ stripped ^ "E" ^ string_of_int exp
+    sign ^ with_dot ^ "E" ^ string_of_int exp
 
 // Get numeric kind and scaled representation from eval_result
 let er_to_numeric (v : eval_result) : option (int & nat & num_kind) =
@@ -1068,6 +1043,47 @@ let er_to_numeric (v : eval_result) : option (int & nat & num_kind) =
      | Some (sv, ss) -> Some (sv, ss, NK_Dbl)
      | None -> None)
   | _ -> None
+
+// Compare two numeric eval_results by their actual numeric value
+// Returns -1 (less), 0 (equal), 1 (greater), or None if either is non-numeric
+let numeric_compare (a b : eval_result) : option int =
+  match er_to_numeric a, er_to_numeric b with
+  | Some (v1, s1, _), Some (v2, s2, _) ->
+    // Normalize to the same scale for comparison
+    let (nv1, nv2) =
+      if s1 >= s2 then (v1, op_Multiply v2 (pow10 (s1 - s2)))
+      else (op_Multiply v1 (pow10 (s2 - s1)), v2) in
+    Some (int_compare nv1 nv2)
+  | _, _ -> None
+
+// Typed value comparison using numeric_compare for cross-type numeric comparison
+let value_compare (v1 v2 : eval_result) (op : comp_op) : option bool =
+  match v1, v2 with
+  | ER_Num _, ER_Num _ | ER_Num _, ER_Dec _ | ER_Num _, ER_Dbl _
+  | ER_Dec _, ER_Num _ | ER_Dec _, ER_Dec _ | ER_Dec _, ER_Dbl _
+  | ER_Dbl _, ER_Num _ | ER_Dbl _, ER_Dec _ | ER_Dbl _, ER_Dbl _ ->
+    (match numeric_compare v1 v2 with
+     | Some cmp -> Some (apply_comp_op cmp op)
+     | None -> None)
+  | ER_Bool a, ER_Bool b ->
+    let ia = if a then 1 else 0 in
+    let ib = if b then 1 else 0 in
+    Some (apply_comp_op (int_compare ia ib) op)
+  | ER_Term (T_IRI i1), ER_Term (T_IRI i2) ->
+    Some (apply_comp_op (String.compare (iri_to_string i1) (iri_to_string i2)) op)
+  | ER_Term (T_Literal l1), ER_Term (T_Literal l2) ->
+    if lit_datatype l1 = lit_datatype l2
+    then
+      if lit_lang l1 = lit_lang l2
+      then Some (apply_comp_op (String.compare (lit_lexical l1) (lit_lexical l2)) op)
+      else (match op with
+            | CmpEq -> Some false
+            | CmpNe -> Some true
+            | _ -> None)
+    else None
+  | ER_Error, _ -> None
+  | _, ER_Error -> None
+  | _, _ -> None
 
 // Add two scaled values, normalizing to the larger scale
 let add_scaled (v1 : int) (s1 : nat) (v2 : int) (s2 : nat) : (int & nat) =
@@ -1734,13 +1750,37 @@ let eval_xsd_cast (v : eval_result) (target_type : string) (full_iri : string) :
       (match v with
        | ER_Bool b -> ER_Dec (if b then "1.0" else "0.0")
        | ER_Num n -> ER_Dec (string_of_int n ^ ".0")
-       | _ -> ER_Dec lex)
+       | ER_Dec _ -> ER_Dec lex
+       | _ ->
+         // Validate the lexical form is a valid decimal or integer
+         (match parse_to_scaled lex with
+          | Some _ -> ER_Dec lex
+          | None ->
+            match parse_int_string lex with
+            | Some n -> ER_Dec (string_of_int n ^ ".0")
+            | None -> ER_Error))
     else if target_type = "float" || target_type = "double" then
       // Boolean -> double/float: true="1.0E0", false="0.0E0"
       (match v with
        | ER_Bool b -> ER_Dbl (if b then "1.0E0" else "0.0E0")
        | ER_Num n -> ER_Dbl (string_of_int n ^ ".0E0")
-       | _ -> ER_Dbl lex)
+       | ER_Dbl _ -> ER_Dbl lex
+       | ER_Dec _ ->
+         // Decimal to double: validate it's a valid decimal
+         (match parse_to_scaled lex with
+          | Some _ -> ER_Dbl lex
+          | None -> ER_Error)
+       | _ ->
+         // Validate the lexical form is actually a valid double/decimal/integer
+         (match parse_double_to_scaled lex with
+          | Some _ -> ER_Dbl lex
+          | None ->
+            match parse_to_scaled lex with
+            | Some _ -> ER_Dbl lex
+            | None ->
+              match parse_int_string lex with
+              | Some n -> ER_Dbl (string_of_int n ^ ".0E0")
+              | None -> ER_Error))
     else if target_type = "boolean" then
       // XSD boolean casting: numeric 0/0.0/0E0/NaN -> false, nonzero -> true
       // String: "true"/"1" -> true, "false"/"0" -> false
@@ -1805,9 +1845,39 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
 
   (* Arithmetic *)
   | E_Arith op e1 e2 ->
-    (match eval_expr e1 mu, eval_expr e2 mu with
+    (let v1 = eval_expr e1 mu in
+     let v2 = eval_expr e2 mu in
+     match v1, v2 with
      | ER_Num a, ER_Num b -> eval_arith_int op a b
-     | _, _ -> ER_Error)
+     | _ ->
+       // Cross-type numeric arithmetic using scaled representation
+       (match er_to_numeric v1, er_to_numeric v2 with
+        | Some (a, sa, ka), Some (b, sb, kb) ->
+          let result_kind = promote_kind ka kb in
+          // For division, always produce decimal (or double if either operand is double)
+          let result_kind = if Div? op && NK_Int? result_kind then NK_Dec else result_kind in
+          (match op with
+           | Add ->
+             let (rv, rs) = add_scaled a sa b sb in
+             format_numeric_result rv rs result_kind
+           | Sub ->
+             let (ra, rb) = if sa >= sb then (a, op_Multiply b (pow10 (sa - sb)))
+                            else (op_Multiply a (pow10 (sb - sa)), b) in
+             let rs : nat = (if sa >= sb then sa else sb) in
+             format_numeric_result (ra - rb) rs result_kind
+           | Mul ->
+             let rv = op_Multiply a b in
+             let rs : nat = sa + sb in
+             format_numeric_result rv rs result_kind
+           | Div ->
+             if b = 0 then ER_Error
+             else
+               let extra : nat = 10 in
+               let extended = op_Multiply a (pow10 (sb + extra)) in
+               let divisor = op_Multiply b (pow10 sa) in
+               if divisor = 0 then ER_Error
+               else format_numeric_result (extended / divisor) extra result_kind)
+        | _, _ -> ER_Error))
   | E_UnaryMinus e1 ->
     (match eval_expr e1 mu with
      | ER_Num n -> ER_Num (0 - n)
@@ -2203,8 +2273,8 @@ let er_rank (v : eval_result) : int =
   | ER_Term (T_IRI _) -> 2
   | ER_Bool _ -> 3
   | ER_Num _ -> 4
-  | ER_Dec _ -> 5
-  | ER_Dbl _ -> 6
+  | ER_Dec _ -> 4
+  | ER_Dbl _ -> 4
   | ER_Term (T_Literal _) -> 7
 
 (* SPARQL ordering (§15.1) — CONCRETE implementation.
@@ -2222,9 +2292,10 @@ let sparql_order (a b : eval_result) : int =
       String.compare (iri_to_string x) (iri_to_string y)
     | ER_Bool x, ER_Bool y ->
       int_compare (if x then 1 else 0) (if y then 1 else 0)
-    | ER_Num x, ER_Num y -> int_compare x y
-    | ER_Dec x, ER_Dec y -> String.compare x y
-    | ER_Dbl x, ER_Dbl y -> String.compare x y
+    | ER_Num _, _ | ER_Dec _, _ | ER_Dbl _, _ ->
+      (match numeric_compare a b with
+       | Some cmp -> cmp
+       | None -> 0)
     | ER_Term (T_Literal l1), ER_Term (T_Literal l2) ->
       let dc = String.compare (lit_datatype l1) (lit_datatype l2) in
       if dc <> 0 then dc
@@ -2362,19 +2433,48 @@ let eval_aggregate (fn : aggregate_fn) (distinct : bool) (e : expr) (g : group) 
   | Agg_Count ->
     (* COUNT-star counts all solutions; COUNT-expr counts non-error evaluations *)
     (match e with
-     | E_Var "*" -> ER_Num (List.Tot.length g.g_solutions)
+     | E_Var "*" ->
+       if distinct then
+         // COUNT(DISTINCT *): deduplicate by converting each solution to
+         // a list of eval_results and using dedup_er-style comparison
+         // We represent each solution as a single ER_Term with a canonical string
+         let sols = g.g_solutions in
+         let to_key (mu : solution_mapping) : string =
+           String.concat "|" (List.Tot.map (fun (p : var_name & rdf_term) ->
+             fst p ^ "=" ^ (match snd p with
+               | T_IRI i -> i
+               | T_BNode b -> b
+               | T_Literal l -> lit_lexical l ^ "^^" ^ lit_datatype l)) mu) in
+         let rec dedup_strings (keys : list string) (seen : list string)
+           : Tot (list string) (decreases keys) =
+           match keys with
+           | [] -> seen
+           | k :: rest ->
+             if List.Tot.existsb (fun s -> s = k) seen
+             then dedup_strings rest seen
+             else dedup_strings rest (seen @ [k]) in
+         ER_Num (List.Tot.length (dedup_strings (List.Tot.map to_key sols) []))
+       else ER_Num (List.Tot.length g.g_solutions)
      | _ ->
        let vals = filter_non_error (eval_over_group e g) in
        let vals = if distinct then dedup_er vals else vals in
        ER_Num (List.Tot.length vals))
   | Agg_Sum ->
-    let vals = filter_non_error (eval_over_group e g) in
+    let raw_vals = eval_over_group e g in
+    let vals = filter_non_error raw_vals in
     let vals = if distinct then dedup_er vals else vals in
-    sum_numeric vals
+    // Per SPARQL 1.1 §18.5.1: if any value is non-numeric, result is error
+    if List.Tot.existsb (fun v -> None? (er_to_numeric v)) vals
+    then ER_Error
+    else sum_numeric vals
   | Agg_Avg ->
-    let vals = filter_non_error (eval_over_group e g) in
+    let raw_vals = eval_over_group e g in
+    let vals = filter_non_error raw_vals in
     let vals = if distinct then dedup_er vals else vals in
-    avg_numeric vals
+    // Per SPARQL 1.1 §18.5.1: if any value is non-numeric, result is error
+    if List.Tot.existsb (fun v -> None? (er_to_numeric v)) vals
+    then ER_Error
+    else avg_numeric vals
   | Agg_Min ->
     let vals = filter_non_error (eval_over_group e g) in
     let vals = if distinct then dedup_er vals else vals in
@@ -2413,7 +2513,7 @@ let rec rewrite_aggregates (e : expr) (g : group) : Tot expr (decreases e) =
                      | T_IRI i -> E_IRI i
                      | T_Literal l -> E_Literal l
                      | _ -> E_BoolLit false)
-     | ER_Error -> E_BoolLit false)
+     | ER_Error -> E_Var "_:error:")  // unbound variable evaluates to ER_Error
   | E_Compare op e1 e2 -> E_Compare op (rewrite_aggregates e1 g) (rewrite_aggregates e2 g)
   | E_And e1 e2 -> E_And (rewrite_aggregates e1 g) (rewrite_aggregates e2 g)
   | E_Or e1 e2 -> E_Or (rewrite_aggregates e1 g) (rewrite_aggregates e2 g)
@@ -2473,12 +2573,25 @@ let aggregate_group (items : list select_item) (g : group) : solution_mapping =
 let aggregate_groups (items : list select_item) (groups : list group) : solution_sequence =
   List.Tot.map (aggregate_group items) groups
 
+(* Check if an expression contains any aggregate sub-expression *)
+let rec expr_has_aggregate (e : expr) : Tot bool (decreases e) =
+  match e with
+  | E_Aggregate _ _ _ -> true
+  | E_Arith _ e1 e2 -> expr_has_aggregate e1 || expr_has_aggregate e2
+  | E_Compare _ e1 e2 -> expr_has_aggregate e1 || expr_has_aggregate e2
+  | E_And e1 e2 -> expr_has_aggregate e1 || expr_has_aggregate e2
+  | E_Or e1 e2 -> expr_has_aggregate e1 || expr_has_aggregate e2
+  | E_Not e1 -> expr_has_aggregate e1
+  | E_UnaryMinus e1 -> expr_has_aggregate e1
+  | E_UnaryPlus e1 -> expr_has_aggregate e1
+  | E_If c t f -> expr_has_aggregate c || expr_has_aggregate t || expr_has_aggregate f
+  | _ -> false
+
 (* Check if a SELECT item contains an aggregate expression *)
 let select_item_has_aggregate (item : select_item) : bool =
   match item with
   | SI_Var _ -> false
-  | SI_Expr (E_Aggregate _ _ _) _ -> true
-  | SI_Expr _ _ -> false
+  | SI_Expr e _ -> expr_has_aggregate e
 
 (* Check if any SELECT item uses aggregation *)
 let select_has_aggregates (sel : select_clause) : bool =
