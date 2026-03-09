@@ -70,6 +70,13 @@ Previous Claude sessions made these errors. Read and internalize:
 5. **Creating symlinks or hacks for version mismatches.** Do not create
    symlinks for z3 or other tool version issues. Fix the actual environment.
 
+6. **Using `(*` in F\* comments when writing SPARQL-related code.** F\* comments
+   `(* ... *)` nest. If a comment mentions SPARQL's `(*, /)` (multiplicative
+   operators) or `COUNT(*)`, the `(*` opens a nested comment that silently
+   swallows the rest of the file. F\* extraction will succeed but silently drop
+   all definitions after the broken comment. **Use `//` line comments instead**
+   when comment text contains `(*` or `*)`.
+
 ## Current State (Honest Assessment)
 
 ### F\* Specifications
@@ -274,6 +281,15 @@ opam install fstar z3 js_of_ocaml js_of_ocaml-compiler zarith_stubs_js
 
 # Activate (run in every new shell)
 eval $(opam env --switch=fstar)
+```
+
+### Verify z3 is available
+
+```bash
+# z3 must be on PATH for F* verification to work
+z3 --version
+# Should show z3 4.x.y. If missing, `opam install z3` should provide it.
+# Do NOT create symlinks or version hacks — fix the actual environment.
 ```
 
 ### Quick verification
