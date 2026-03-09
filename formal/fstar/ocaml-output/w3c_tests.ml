@@ -9,6 +9,10 @@
 open RDF_Graph_Executable
 open SPARQL11_Algebra
 
+(* Wrappers to add default empty dataset for tests that don't use named graphs *)
+let eval_pattern_g p g = eval_pattern p g empty_dataset
+let eval_select_query_g q g = eval_select_query q g empty_dataset
+
 (* --- Test infrastructure --- *)
 
 let tests_run = ref 0
@@ -102,12 +106,12 @@ let test_basic () =
     triple (ex^"y") (ex^"q") (str_lit "4");
   ] in
   (* Single triple pattern *)
-  let r = eval_pattern (GP_BGP [tp_spo (var_s "s") (iri_p (ex^"p")) (var_o "o")]) g in
+  let r = eval_pattern_g (GP_BGP [tp_spo (var_s "s") (iri_p (ex^"p")) (var_o "o")]) g in
   check_result_count "single-tp" 2 r;
   check_has_binding "single-tp-val1" "o" (str_lit "1") r;
   check_has_binding "single-tp-val2" "o" (str_lit "3") r;
   (* Two triple patterns (join) *)
-  let r = eval_pattern (GP_BGP [
+  let r = eval_pattern_g (GP_BGP [
     tp_spo (var_s "s") (iri_p (ex^"p")) (var_o "po");
     tp_spo (var_s "s") (iri_p (ex^"q")) (var_o "qo");
   ]) g in
@@ -115,10 +119,10 @@ let test_basic () =
   check_has_binding "two-tp-x" "po" (str_lit "1") r;
   check_has_binding "two-tp-y" "po" (str_lit "3") r;
   (* No match *)
-  let r = eval_pattern (GP_BGP [tp_spo (iri_s (ex^"z")) (iri_p (ex^"p")) (var_o "o")]) g in
+  let r = eval_pattern_g (GP_BGP [tp_spo (iri_s (ex^"z")) (iri_p (ex^"p")) (var_o "o")]) g in
   check_result_count "no-match" 0 r;
   (* All triples *)
-  let r = eval_pattern (GP_BGP [tp_spo (var_s "s") (var_o "p") (var_o "o")]) g in
+  let r = eval_pattern_g (GP_BGP [tp_spo (var_s "s") (var_o "p") (var_o "o")]) g in
   check_result_count "all-triples" 4 r;
   end_suite s
 
@@ -140,7 +144,7 @@ let test_bound () =
       E_BoolLit true
     )
   ) in
-  let r = eval_pattern pattern g in
+  let r = eval_pattern_g pattern g in
   check_result_count "bound-filter" 1 r;
   check_has_binding "bound-filter-val" "po" (str_lit "1") r;
   (* NOT BOUND *)
@@ -152,7 +156,7 @@ let test_bound () =
       E_BoolLit true
     )
   ) in
-  let r = eval_pattern pattern2 g in
+  let r = eval_pattern_g pattern2 g in
   check_result_count "not-bound-filter" 1 r;
   check_has_binding "not-bound-val" "po" (str_lit "3") r;
   end_suite s
@@ -170,10 +174,10 @@ let test_distinct () =
     q_base = None; q_prefixes = []; q_dataset = [];
     q_form = QF_Select (Select_Vars [SI_Var "o"]);
     q_pattern = GP_BGP [tp_spo (var_s "s") (iri_p (ex^"p")) (var_o "o")];
-    q_group_by = None; q_having = None;
+    q_group_by = None; q_having = None; q_values = None;
     q_modifier = { no_modifier with sm_distinct = true };
   } in
-  let r = eval_select_query q g in
+  let r = eval_select_query_g q g in
   check_result_count "distinct-values" 2 r;
   end_suite s
 
@@ -191,20 +195,20 @@ let test_sort () =
     q_base = None; q_prefixes = []; q_dataset = [];
     q_form = QF_Select (Select_Vars [SI_Var "s"; SI_Var "o"]);
     q_pattern = GP_BGP [tp_spo (var_s "s") (iri_p (ex^"p")) (var_o "o")];
-    q_group_by = None; q_having = None;
+    q_group_by = None; q_having = None; q_values = None;
     q_modifier = { no_modifier with sm_order_by = Some [OC_Asc (E_Var "o")] };
   } in
-  let r = eval_select_query q g in
+  let r = eval_select_query_g q g in
   check_result_count "order-by-asc" 3 r;
   (* LIMIT *)
   let q2 = { q with q_modifier = { no_modifier with sm_limit = Some (Z.of_int 2) } } in
-  let r = eval_select_query q2 g in
+  let r = eval_select_query_g q2 g in
   check_result_count "limit-2" 2 r;
   (* OFFSET *)
   let q3 = { q with q_modifier = { no_modifier with
     sm_order_by = Some [OC_Asc (E_Var "o")];
     sm_offset = Some (Z.of_int 1); sm_limit = Some (Z.of_int 1) } } in
-  let r = eval_select_query q3 g in
+  let r = eval_select_query_g q3 g in
   check_result_count "offset-1-limit-1" 1 r;
   end_suite s
 
@@ -216,7 +220,7 @@ let test_union () =
     triple (ex^"a") (ex^"p") (str_lit "1");
     triple (ex^"b") (ex^"q") (str_lit "2");
   ] in
-  let r = eval_pattern (GP_Union (
+  let r = eval_pattern_g (GP_Union (
     GP_BGP [tp_spo (var_s "s") (iri_p (ex^"p")) (var_o "o")],
     GP_BGP [tp_spo (var_s "s") (iri_p (ex^"q")) (var_o "o")]
   )) g in
@@ -234,7 +238,7 @@ let test_optional () =
     triple (ex^"a") (ex^"q") (str_lit "opt-a");
     triple (ex^"b") (ex^"p") (str_lit "2");
   ] in
-  let r = eval_pattern (GP_LeftJoin (
+  let r = eval_pattern_g (GP_LeftJoin (
     GP_BGP [tp_spo (var_s "s") (iri_p (ex^"p")) (var_o "o")],
     GP_BGP [tp_spo (var_s "s") (iri_p (ex^"q")) (var_o "opt")],
     E_BoolLit true
@@ -261,14 +265,14 @@ let test_regex () =
     triple (ex^"d") (ex^"name") (str_lit "alice");
   ] in
   (* REGEX case-sensitive *)
-  let r = eval_pattern (GP_Filter (
+  let r = eval_pattern_g (GP_Filter (
     E_Regex (E_Var "n", E_Literal { lexical_form = "^A"; datatype = xsd_string; lang_tag = None }, None),
     GP_BGP [tp_spo (var_s "s") (iri_p (ex^"name")) (var_o "n")]
   )) g in
   check_result_count "regex-starts-A" 1 r;
   check_has_binding "regex-Alice" "n" (str_lit "Alice") r;
   (* REGEX case-insensitive *)
-  let r = eval_pattern (GP_Filter (
+  let r = eval_pattern_g (GP_Filter (
     E_Regex (E_Var "n", E_Literal { lexical_form = "^a"; datatype = xsd_string; lang_tag = None }, Some (E_Literal { lexical_form = "i"; datatype = xsd_string; lang_tag = None })),
     GP_BGP [tp_spo (var_s "s") (iri_p (ex^"name")) (var_o "n")]
   )) g in
@@ -286,19 +290,19 @@ let test_expr_builtin () =
     bnode_triple "bn1" (ex^"p") (str_lit "bnode-val");
   ] in
   (* isIRI *)
-  let r = eval_pattern (GP_Filter (
+  let r = eval_pattern_g (GP_Filter (
     E_IsIRI (E_Var "o"),
     GP_BGP [tp_spo (var_s "s") (iri_p (ex^"p")) (var_o "o")]
   )) g in
   check_result_count "isIRI" 1 r;
   (* isLiteral *)
-  let r = eval_pattern (GP_Filter (
+  let r = eval_pattern_g (GP_Filter (
     E_IsLiteral (E_Var "o"),
     GP_BGP [tp_spo (var_s "s") (iri_p (ex^"p")) (var_o "o")]
   )) g in
   check_result_count "isLiteral" 3 r;
   (* LANG *)
-  let r = eval_pattern (GP_Filter (
+  let r = eval_pattern_g (GP_Filter (
     E_Compare (CmpEq, E_Lang (E_Var "o"), E_Literal { lexical_form = "fr"; datatype = xsd_string; lang_tag = None }),
     GP_BGP [tp_spo (var_s "s") (iri_p (ex^"p")) (var_o "o")]
   )) g in
@@ -315,7 +319,7 @@ let test_bnode_coreference () =
     bnode_triple "b2" (ex^"p") (str_lit "val3");
   ] in
   (* Same bnode in two patterns *)
-  let r = eval_pattern (GP_BGP [
+  let r = eval_pattern_g (GP_BGP [
     tp_spo (var_s "s") (iri_p (ex^"p")) (var_o "po");
     tp_spo (var_s "s") (iri_p (ex^"q")) (var_o "qo");
   ]) g in
@@ -337,10 +341,10 @@ let test_reduced () =
     q_base = None; q_prefixes = []; q_dataset = [];
     q_form = QF_Select (Select_Vars [SI_Var "o"]);
     q_pattern = GP_BGP [tp_spo (var_s "s") (iri_p (ex^"p")) (var_o "o")];
-    q_group_by = None; q_having = None;
+    q_group_by = None; q_having = None; q_values = None;
     q_modifier = { no_modifier with sm_reduced = true };
   } in
-  let r = eval_select_query q g in
+  let r = eval_select_query_g q g in
   (* REDUCED allows but doesn't require dedup; check result count is between 2 and 3 *)
   let count = List.length r in
   incr tests_run;
@@ -361,13 +365,13 @@ let test_expr_equals () =
     triple (ex^"c") (ex^"p") (str_lit "hello");
   ] in
   (* Equality filter *)
-  let r = eval_pattern (GP_Filter (
+  let r = eval_pattern_g (GP_Filter (
     E_Compare (CmpEq, E_Var "o", E_NumericLit (Z.of_int 1)),
     GP_BGP [tp_spo (var_s "s") (iri_p (ex^"p")) (var_o "o")]
   )) g in
   check_result_count "eq-int-1" 1 r;
   (* Not equal *)
-  let r = eval_pattern (GP_Filter (
+  let r = eval_pattern_g (GP_Filter (
     E_Compare (CmpNe, E_Var "o", E_NumericLit (Z.of_int 1)),
     GP_BGP [tp_spo (var_s "s") (iri_p (ex^"p")) (var_o "o")]
   )) g in
@@ -384,13 +388,13 @@ let test_expr_ops () =
     triple (ex^"c") (ex^"val") (int_lit 5);
   ] in
   (* Filter: ?v > 7 *)
-  let r = eval_pattern (GP_Filter (
+  let r = eval_pattern_g (GP_Filter (
     E_Compare (CmpGt, E_Var "v", E_NumericLit (Z.of_int 7)),
     GP_BGP [tp_spo (var_s "s") (iri_p (ex^"val")) (var_o "v")]
   )) g in
   check_result_count "gt-7" 2 r;
   (* Filter: ?v <= 10 *)
-  let r = eval_pattern (GP_Filter (
+  let r = eval_pattern_g (GP_Filter (
     E_Compare (CmpLe, E_Var "v", E_NumericLit (Z.of_int 10)),
     GP_BGP [tp_spo (var_s "s") (iri_p (ex^"val")) (var_o "v")]
   )) g in
@@ -407,19 +411,19 @@ let test_string_functions () =
     triple (ex^"c") (ex^"name") (str_lit "Charlie");
   ] in
   (* CONTAINS *)
-  let r = eval_pattern (GP_Filter (
+  let r = eval_pattern_g (GP_Filter (
     E_Contains (E_Var "n", E_Literal { lexical_form = "li"; datatype = xsd_string; lang_tag = None }),
     GP_BGP [tp_spo (var_s "s") (iri_p (ex^"name")) (var_o "n")]
   )) g in
   check_result_count "contains-li" 2 r; (* Alice, Charlie *)
   (* STRSTARTS *)
-  let r = eval_pattern (GP_Filter (
+  let r = eval_pattern_g (GP_Filter (
     E_StrStarts (E_Var "n", E_Literal { lexical_form = "Ch"; datatype = xsd_string; lang_tag = None }),
     GP_BGP [tp_spo (var_s "s") (iri_p (ex^"name")) (var_o "n")]
   )) g in
   check_result_count "strstarts-Ch" 1 r;
   (* STRENDS *)
-  let r = eval_pattern (GP_Filter (
+  let r = eval_pattern_g (GP_Filter (
     E_StrEnds (E_Var "n", E_Literal { lexical_form = "ob"; datatype = xsd_string; lang_tag = None }),
     GP_BGP [tp_spo (var_s "s") (iri_p (ex^"name")) (var_o "n")]
   )) g in
@@ -434,7 +438,7 @@ let test_bind () =
     triple (ex^"a") (ex^"p") (int_lit 10);
     triple (ex^"b") (ex^"p") (int_lit 20);
   ] in
-  let r = eval_pattern (GP_Bind (
+  let r = eval_pattern_g (GP_Bind (
     E_Var "v",
     "bound_val",
     GP_BGP [tp_spo (var_s "s") (iri_p (ex^"p")) (var_o "v")]
@@ -459,14 +463,14 @@ let test_exists () =
     triple (ex^"b") (ex^"p") (str_lit "2");
   ] in
   (* EXISTS *)
-  let r = eval_pattern (GP_Filter (
+  let r = eval_pattern_g (GP_Filter (
     E_Exists (GP_BGP [tp_spo (var_s "s") (iri_p (ex^"q")) (var_o "dummy")]),
     GP_BGP [tp_spo (var_s "s") (iri_p (ex^"p")) (var_o "o")]
   )) g in
   check_result_count "exists" 1 r;
   check_has_binding "exists-val" "o" (str_lit "1") r;
   (* NOT EXISTS *)
-  let r = eval_pattern (GP_Filter (
+  let r = eval_pattern_g (GP_Filter (
     E_NotExists (GP_BGP [tp_spo (var_s "s") (iri_p (ex^"q")) (var_o "dummy")]),
     GP_BGP [tp_spo (var_s "s") (iri_p (ex^"p")) (var_o "o")]
   )) g in
@@ -486,10 +490,10 @@ let test_project_expression () =
     q_base = None; q_prefixes = []; q_dataset = [];
     q_form = QF_Select (Select_Vars [SI_Var "v"; SI_Expr (E_Var "v", "copy")]);
     q_pattern = GP_BGP [tp_spo (var_s "s") (iri_p (ex^"p")) (var_o "v")];
-    q_group_by = None; q_having = None;
+    q_group_by = None; q_having = None; q_values = None;
     q_modifier = no_modifier;
   } in
-  let r = eval_select_query q g in
+  let r = eval_select_query_g q g in
   check_result_count "project-expr" 2 r;
   end_suite s
 
@@ -502,7 +506,7 @@ let test_i18n () =
     triple (ex^"b") (ex^"label") (lang_lit "cat" "en");
     triple (ex^"c") (ex^"label") (str_lit "plain");
   ] in
-  let r = eval_pattern (GP_Filter (
+  let r = eval_pattern_g (GP_Filter (
     E_Compare (CmpEq, E_Lang (E_Var "l"), E_Literal { lexical_form = "fr"; datatype = xsd_string; lang_tag = None }),
     GP_BGP [tp_spo (var_s "s") (iri_p (ex^"label")) (var_o "l")]
   )) g in
@@ -518,7 +522,7 @@ let test_minus () =
     triple (ex^"a") (ex^"q") (str_lit "x");
     triple (ex^"b") (ex^"p") (str_lit "2");
   ] in
-  let r = eval_pattern (GP_Minus (
+  let r = eval_pattern_g (GP_Minus (
     GP_BGP [tp_spo (var_s "s") (iri_p (ex^"p")) (var_o "o")],
     GP_BGP [tp_spo (var_s "s") (iri_p (ex^"q")) (var_o "dummy")]
   )) g in
@@ -534,12 +538,12 @@ let test_numeric_functions () =
     triple (ex^"a") (ex^"p") (int_lit 5);
   ] in
   (* Simple numeric comparison with expression *)
-  let r = eval_pattern (GP_Filter (
+  let r = eval_pattern_g (GP_Filter (
     E_Compare (CmpGt, E_Var "v", E_NumericLit (Z.of_int 3)),
     GP_BGP [tp_spo (var_s "s") (iri_p (ex^"p")) (var_o "v")]
   )) g in
   check_result_count "numeric-gt" 1 r;
-  let r = eval_pattern (GP_Filter (
+  let r = eval_pattern_g (GP_Filter (
     E_Compare (CmpLt, E_Var "v", E_NumericLit (Z.of_int 3)),
     GP_BGP [tp_spo (var_s "s") (iri_p (ex^"p")) (var_o "v")]
   )) g in

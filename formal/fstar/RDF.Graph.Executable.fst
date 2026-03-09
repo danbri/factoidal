@@ -153,12 +153,12 @@ let empty_graph : rdf_graph = []
 (** 5b. RDF Dataset (§13.2 SPARQL) **)
 (* An RDF dataset comprises one default graph and zero or more named graphs.
    Each named graph is identified by an IRI. *)
-type named_graph = {
+noeq type named_graph = {
   ng_name : iri;
   ng_graph : rdf_graph;
 }
 
-type rdf_dataset = {
+noeq type rdf_dataset = {
   ds_default : rdf_graph;
   ds_named : list named_graph;
 }
@@ -802,7 +802,7 @@ let add_triple_if_new (g : rdf_graph) (t : triple) : rdf_graph =
   graph_add t g
 
 (* Add multiple triples, deduplicating *)
-let rec add_triples_if_new (g : rdf_graph) (ts : list triple) : rdf_graph =
+let rec add_triples_if_new (g : rdf_graph) (ts : list triple) : Tot rdf_graph (decreases ts) =
   match ts with
   | [] -> g
   | hd :: tl -> add_triples_if_new (add_triple_if_new g hd) tl
@@ -923,14 +923,14 @@ let rdfs_closure_step (g : rdf_graph) : rdf_graph =
 
 (* Iterate closure until fixed point or max iterations.
    Uses nat fuel parameter for termination. *)
-let rec rdfs_closure (g : rdf_graph) (fuel : nat) : rdf_graph =
+let rec rdfs_closure (g : rdf_graph) (fuel : nat) : Tot rdf_graph (decreases fuel) =
   match fuel with
   | 0 -> g
-  | _ ->
+  | n ->
     let g' = rdfs_closure_step g in
     if graph_len g' = graph_len g
     then g  (* fixed point reached — no new triples added *)
-    else rdfs_closure g' (fuel - 1)
+    else rdfs_closure g' (n - 1)
 
 (** ======================================================================== *)
 (** 20. Datatype Value Equivalence                                           *)

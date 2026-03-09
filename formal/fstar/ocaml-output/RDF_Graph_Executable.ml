@@ -612,11 +612,11 @@ let rdfs_closure_step (g : rdf_graph) : rdf_graph=
 let rec rdfs_closure (g : rdf_graph) (fuel : Prims.nat) : rdf_graph=
   match fuel with
   | uu___ when uu___ = Prims.int_zero -> g
-  | uu___ ->
+  | n ->
       let g' = rdfs_closure_step g in
       if (graph_len g') = (graph_len g)
       then g
-      else rdfs_closure g' (fuel - Prims.int_one)
+      else rdfs_closure g' (n - Prims.int_one)
 let is_digit (c : FStar_Char.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in
   (code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))

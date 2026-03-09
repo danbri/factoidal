@@ -276,6 +276,32 @@ opam install fstar z3 js_of_ocaml js_of_ocaml-compiler zarith_stubs_js
 eval $(opam env --switch=fstar)
 ```
 
+### Install z3 (CRITICAL — verification cannot work without it)
+
+**This project is about verified code. z3 is not optional.** Every session must
+ensure z3 is available before doing any F\* work. Without z3, `--lax` extraction
+still works but verification is skipped — which defeats the entire purpose.
+
+```bash
+# Check if z3 is available:
+z3 --version  # must show 4.13.3
+
+# If z3 is missing, install the pre-built binary (opam build often fails):
+cd /tmp
+curl -sL "https://github.com/Z3Prover/z3/releases/download/z3-4.13.3/z3-4.13.3-x64-glibc-2.35.zip" -o z3.zip
+unzip -q z3.zip
+cp z3-4.13.3-x64-glibc-2.35/bin/z3 /usr/local/bin/z3-4.13.3
+chmod +x /usr/local/bin/z3-4.13.3
+ln -sf /usr/local/bin/z3-4.13.3 /usr/local/bin/z3
+
+# Verify it works:
+z3-4.13.3 --version  # must show "Z3 version 4.13.3"
+```
+
+**Do NOT skip verification with `--lax` as a workaround for missing z3.**
+Install z3 first, then verify. The `--lax` flag is only for faster extraction
+during development — it must not be the only mode used.
+
 ### Quick verification
 
 ```bash

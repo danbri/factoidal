@@ -106,7 +106,8 @@ let () =
       tp_o = PT_IRI (foaf ^ "Person") }
   ] in
   let pattern1 = GP_BGP bgp1 in
-  let results1 = eval_pattern pattern1 g in
+  let ds = empty_dataset in
+  let results1 = eval_pattern pattern1 g ds in
   print_solutions ["person"] results1;
 
   (* Query 2: Find names of people Alice knows *)
@@ -122,7 +123,7 @@ let () =
       tp_o = PT_Var "name" }
   ] in
   let pattern2 = GP_Join (GP_BGP bgp2a, GP_BGP bgp2b) in
-  let results2 = eval_pattern pattern2 g in
+  let results2 = eval_pattern pattern2 g ds in
   print_solutions ["friend"; "name"] results2;
 
   (* Query 3: Full SELECT query with DISTINCT *)
@@ -140,6 +141,7 @@ let () =
     q_pattern = GP_BGP bgp3;
     q_group_by = None;
     q_having = None;
+    q_values = None;
     q_modifier = {
       sm_order_by = None;
       sm_distinct = true;
@@ -148,7 +150,7 @@ let () =
       sm_limit = None;
     };
   } in
-  let results3 = eval_select_query q3 g in
+  let results3 = eval_select_query q3 g ds in
   print_solutions ["person"; "name"] results3;
 
   (* Query 4: Find people by subject lookup *)

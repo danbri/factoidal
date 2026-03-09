@@ -2167,12 +2167,15 @@ let rec eval_pattern (p : group_graph_pattern)
              (fun ng ->
                 let ng_results =
                   eval_pattern p' ng.RDF_Graph_Executable.ng_graph ds in
-                FStar_List_Tot_Base.map
-                  (fun mu ->
-                     sm_bind v
-                       (RDF_Graph_Executable.T_IRI
-                          (ng.RDF_Graph_Executable.ng_name)) mu) ng_results)
-             ds.RDF_Graph_Executable.ds_named
+                if
+                  RDF_Graph_Executable.is_iri ng.RDF_Graph_Executable.ng_name
+                then
+                  FStar_List_Tot_Base.map
+                    (fun mu ->
+                       sm_bind v
+                         (RDF_Graph_Executable.T_IRI
+                            (ng.RDF_Graph_Executable.ng_name)) mu) ng_results
+                else ng_results) ds.RDF_Graph_Executable.ds_named
        | uu___ -> eval_pattern p' g ds)
   | GP_Service (uu___, uu___1, uu___2) -> []
   | GP_SubSelect q -> eval_subselect_fwd q g ds
@@ -2249,19 +2252,29 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
       (match eval_expr e1 mu with
        | ER_Num n -> ER_Num (Prims.int_zero - n)
        | ER_Dec s ->
-           if string_starts_with s "-"
+           if
+             (string_starts_with s "-") &&
+               ((FStar_String.strlen s) > Prims.int_one)
            then
              ER_Dec
                (FStar_String.sub s Prims.int_one
                   ((FStar_String.strlen s) - Prims.int_one))
-           else ER_Dec (FStar_String.concat "" ["-"; s])
+           else
+             if string_starts_with s "-"
+             then ER_Dec "0"
+             else ER_Dec (FStar_String.concat "" ["-"; s])
        | ER_Dbl s ->
-           if string_starts_with s "-"
+           if
+             (string_starts_with s "-") &&
+               ((FStar_String.strlen s) > Prims.int_one)
            then
              ER_Dbl
                (FStar_String.sub s Prims.int_one
                   ((FStar_String.strlen s) - Prims.int_one))
-           else ER_Dbl (FStar_String.concat "" ["-"; s])
+           else
+             if string_starts_with s "-"
+             then ER_Dbl "0"
+             else ER_Dbl (FStar_String.concat "" ["-"; s])
        | uu___ -> ER_Error)
   | E_UnaryPlus e1 -> eval_expr e1 mu
   | E_Compare (op, e1, e2) ->
@@ -2556,9 +2569,10 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
         else
           if iri_s = "http://www.w3.org/2005/xpath-functions#uuid"
           then
-            ER_Term
-              (RDF_Graph_Executable.T_IRI
-                 "urn:uuid:00000000-0000-0000-0000-000000000000")
+            (let uuid_iri = "urn:uuid:00000000-0000-0000-0000-000000000000" in
+             if RDF_Graph_Executable.is_iri uuid_iri
+             then ER_Term (RDF_Graph_Executable.T_IRI uuid_iri)
+             else ER_Error)
           else
             if iri_s = "http://www.w3.org/2005/xpath-functions#struuid"
             then er_string "00000000-0000-0000-0000-000000000000"

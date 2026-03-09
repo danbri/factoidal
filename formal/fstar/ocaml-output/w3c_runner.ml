@@ -242,6 +242,21 @@ let read_manifest manifest_path =
 (* Local exception for features not yet supported *)
 exception Unsupported of string
 
+(* Verbose mode: show detailed mismatch info *)
+let verbose_mode = ref false
+
+let term_to_verbose_string t =
+  match t with
+  | T_IRI i -> Printf.sprintf "<%s>" i
+  | T_BNode b -> Printf.sprintf "_:%s" b
+  | T_Literal l ->
+    let dt = if l.datatype <> "" then "^^<" ^ l.datatype ^ ">" else "" in
+    let lg = match l.lang_tag with Some t -> "@" ^ t | None -> "" in
+    Printf.sprintf "\"%s\"%s%s" l.lexical_form dt lg
+
+let row_to_verbose_string row =
+  String.concat ", " (List.map (fun (v, t) -> "?" ^ v ^ "=" ^ term_to_verbose_string t) row)
+
 (* ============================================================================
    Result comparison
    ============================================================================ *)
@@ -355,9 +370,24 @@ let run_query_eval_test tc =
         Pass
       | `SRX_Bindings (_vars, expected_rows) ->
         if results_match expected_rows actual_results then Pass
-        else
+        else begin
+          if !verbose_mode then begin
+            Printf.eprintf "    EXPECTED (%d rows):\n" (List.length expected_rows);
+            List.iter (fun r -> Printf.eprintf "      %s\n" (row_to_verbose_string r)) expected_rows;
+            Printf.eprintf "    ACTUAL (%d rows):\n" (List.length actual_results);
+            List.iter (fun r -> Printf.eprintf "      %s\n" (row_to_verbose_string r)) actual_results;
+            (* Show first unmatched expected row *)
+            let actual_remaining = ref actual_results in
+            List.iter (fun exp_row ->
+              match List.partition (binding_row_matches exp_row) !actual_remaining with
+              | (_ :: rest, non) -> actual_remaining := rest @ non
+              | ([], _) ->
+                Printf.eprintf "    UNMATCHED expected: %s\n" (row_to_verbose_string exp_row)
+            ) expected_rows;
+          end;
           Fail (Printf.sprintf "Results mismatch: expected %d rows, got %d"
                   (List.length expected_rows) (List.length actual_results))
+        end
     end else if Filename.check_suffix rf ".ttl" then begin
       (* Result set in Turtle format — not yet supported *)
       raise (Unsupported "Turtle result format not yet supported")
@@ -864,10 +894,12 @@ let () =
     exit 0
   end;
 
+  if List.mem "--verbose" args || List.mem "-v" args then
+    verbose_mode := true;
   let run_rdf_mode = List.mem "--rdf" args in
   let run_all_mode = List.mem "--all" args in
   let suite_args = List.filter (fun s ->
-    s <> "--rdf" && s <> "--all") args in
+    s <> "--rdf" && s <> "--all" && s <> "--verbose" && s <> "-v") args in
 
   let any_fail = ref false in
 
