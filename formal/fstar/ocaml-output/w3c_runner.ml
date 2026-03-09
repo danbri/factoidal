@@ -19,7 +19,15 @@
 
 open RDF_Graph_Executable
 open SPARQL11_Algebra
-(* Sparql_query_bridge used qualified — don't open to avoid shadowing RDF types *)
+
+(* SPARQL parser wrapper — calls F*-extracted SPARQL11_Parser directly *)
+exception Sparql_parse_error of string
+exception Sparql_unsupported of string
+
+let parse_sparql_query content =
+  match SPARQL11_Parser.parse_sparql content with
+  | SPARQL11_Parser.ParseOk (q, _remaining) -> q
+  | SPARQL11_Parser.ParseErr msg -> raise (Sparql_parse_error msg)
 
 (* ============================================================================
    Parser wrappers — thin adapters over F*-extracted parsers
@@ -346,7 +354,7 @@ let run_query_eval_test tc =
   let query =
     match read_file tc.query_file with
     | None -> raise (Unsupported (Printf.sprintf "Query file not found: %s" tc.query_file))
-    | Some content -> Sparql_query_bridge.parse_query content
+    | Some content -> parse_sparql_query content
   in
 
   (* Execute query against extracted evaluator *)
@@ -403,25 +411,25 @@ let run_test tc =
     (try run_query_eval_test tc
      with
      | Unsupported msg -> Unsupported_feature msg
-     | Sparql_query_bridge.Unsupported msg -> Unsupported_feature msg
-     | Sparql_query_bridge.Parse_error msg -> Fail (Printf.sprintf "SPARQL parse: %s" msg)
+     | Sparql_unsupported msg -> Unsupported_feature msg
+     | Sparql_parse_error msg -> Fail (Printf.sprintf "SPARQL parse: %s" msg)
      | Failure msg -> Fail (Printf.sprintf "Runtime: %s" msg))
   | "PositiveSyntaxTest11" | "PositiveSyntaxTest" ->
     (match read_file tc.query_file with
      | None -> Skip "Query file missing"
      | Some content ->
-       (try ignore (Sparql_query_bridge.parse_query content); Pass
+       (try ignore (parse_sparql_query content); Pass
         with
-        | Sparql_query_bridge.Parse_error _ -> Fail "Should parse but didn't"
-        | Sparql_query_bridge.Unsupported msg -> Unsupported_feature msg))
+        | Sparql_parse_error _ -> Fail "Should parse but didn't"
+        | Sparql_unsupported msg -> Unsupported_feature msg))
   | "NegativeSyntaxTest11" | "NegativeSyntaxTest" ->
     (match read_file tc.query_file with
      | None -> Skip "Query file missing"
      | Some content ->
-       (try ignore (Sparql_query_bridge.parse_query content); Fail "Should reject but parsed OK"
+       (try ignore (parse_sparql_query content); Fail "Should reject but parsed OK"
         with
-        | Sparql_query_bridge.Parse_error _ -> Pass
-        | Sparql_query_bridge.Unsupported _ -> Unsupported_feature "Can't test rejection"))
+        | Sparql_parse_error _ -> Pass
+        | Sparql_unsupported _ -> Unsupported_feature "Can't test rejection"))
   | "UpdateEvaluationTest" | "PositiveUpdateSyntaxTest11" | "NegativeUpdateSyntaxTest11" ->
     Skip "UPDATE tests not in scope"
   | "CSVResultFormatTest" ->

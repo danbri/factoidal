@@ -64,10 +64,11 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
 
   # W3C test runner (reads real W3C manifests, calls F*-extracted code)
   ocamlfind ocamlopt -package fstar.lib,str,zarith -linkpkg -w -8-14-26 \
+    RDF_Graph_Executable.ml \
     Parser_Combinators.ml Parser_NTriples.ml Parser_Turtle.ml \
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml \
-    RDF_Graph_Executable.ml SPARQL11_Algebra.ml SPARQL11_Parser.ml \
+    SPARQL11_Algebra.ml SPARQL11_Parser.ml \
     w3c_runner.ml \
     -o w3c_runner 2>&1 | grep -i error || true
   echo "  Built: w3c_runner ($(wc -c < w3c_runner) bytes)"
@@ -91,10 +92,11 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
 
   # Build w3c_runner bytecode for js_of_ocaml
   ocamlfind ocamlc -package fstar.lib,str,zarith -linkpkg -w -8-14-26 \
+    RDF_Graph_Executable.ml \
     Parser_Combinators.ml Parser_NTriples.ml Parser_Turtle.ml \
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml \
-    RDF_Graph_Executable.ml SPARQL11_Algebra.ml SPARQL11_Parser.ml \
+    SPARQL11_Algebra.ml SPARQL11_Parser.ml \
     w3c_runner.ml \
     -o w3c_runner.byte 2>&1 | grep -i error || true
 
