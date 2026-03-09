@@ -1,0 +1,126 @@
+name: W3C Test Suite
+
+on:
+  push:
+    branches: [main, master]
+  schedule:
+    # Run every 10 minutes
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Cache opam
+        uses: actions/cache@v4
+        with:
+          path: ~/.opam
+          key: opam-fstar-${{ runner.os }}-v2
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y opam libgmp-dev pkg-config
+
+      - name: Setup opam + F*
+        run: |
+          if [ ! -d ~/.opam ]; then
+            opam init -y --disable-sandboxing
+            opam switch create fstar ocaml-base-compiler.4.14.1
+          fi
+          eval $(opam env --switch=fstar)
+          opam install -y fstar z3 zarith
+          echo "OPAMSWITCH=fstar" >> $GITHUB_ENV
+
+      - name: Extract F* to OCaml
+        run: |
+          eval $(opam env --switch=fstar)
+          cd formal/fstar
+          fstar.exe --lax --codegen OCaml --odir ocaml-output RDF.Graph.Executable.fst
+          fstar.exe --lax --codegen OCaml --odir ocaml-output SPARQL11.Algebra.fst
+          ./ocaml-patches.sh ocaml-output/SPARQL11_Algebra.ml
+
+      - name: Compile test runner
+        run: |
+          eval $(opam env --switch=fstar)
+          cd formal/fstar/ocaml-output
+          ocamlfind ocamlopt -package fstar.lib,str,zarith -linkpkg -w -8-14-26 \
+            RDF_Graph_Executable.ml SPARQL11_Algebra.ml \
+            ntriples_parser.ml turtle_parser.ml rdf_xml_parser.ml \
+            srx_parser.ml sparql_parser.ml w3c_runner.ml -o w3c_runner
+
+      - name: Run SPARQL tests
+        id: sparql
+        run: |
+          eval $(opam env --switch=fstar)
+          cd formal/fstar/ocaml-output
+          ./w3c_runner 2>&1 | tee /tmp/sparql-results.txt
+          # Extract totals
+          tail -3 /tmp/sparql-results.txt | head -1 | tee /tmp/sparql-totals.txt
+
+      - name: Run RDF tests
+        id: rdf
+        run: |
+          eval $(opam env --switch=fstar)
+          cd formal/fstar/ocaml-output
+          ./w3c_runner --all 2>&1 | tee /tmp/rdf-results.txt
+          tail -3 /tmp/rdf-results.txt | head -1 | tee /tmp/rdf-totals.txt
+
+      - name: Generate results page
+        run: |
+          mkdir -p docs/test-results
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          cat > docs/test-results/index.html << 'HTMLEOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Factoidal W3C Test Results</title>
+            <meta charset="utf-8">
+            <style>
+              body { font-family: monospace; max-width: 900px; margin: 2em auto; padding: 0 1em; }
+              h1 { border-bottom: 2px solid #333; }
+              .pass { color: green; font-weight: bold; }
+              .fail { color: red; font-weight: bold; }
+              .skip { color: gray; }
+              pre { background: #f5f5f5; padding: 1em; overflow-x: auto; border: 1px solid #ddd; }
+              table { border-collapse: collapse; width: 100%; }
+              th, td { border: 1px solid #ddd; padding: 4px 8px; text-align: left; }
+              th { background: #f0f0f0; }
+              .timestamp { color: #666; font-size: 0.9em; }
+            </style>
+          </head>
+          <body>
+          HTMLEOF
+
+          echo "<h1>Factoidal W3C Test Results</h1>" >> docs/test-results/index.html
+          echo "<p class='timestamp'>Last updated: ${TIMESTAMP}</p>" >> docs/test-results/index.html
+
+          echo "<h2>SPARQL 1.1</h2>" >> docs/test-results/index.html
+          echo "<pre>" >> docs/test-results/index.html
+          grep "^  " /tmp/sparql-results.txt | grep -E "pass:|fail:" >> docs/test-results/index.html
+          echo "</pre>" >> docs/test-results/index.html
+          echo "<p><strong>$(cat /tmp/sparql-totals.txt)</strong></p>" >> docs/test-results/index.html
+
+          echo "<h2>RDF 1.1</h2>" >> docs/test-results/index.html
+          echo "<pre>" >> docs/test-results/index.html
+          grep "^  " /tmp/rdf-results.txt | grep -E "pass:|fail:" >> docs/test-results/index.html
+          echo "</pre>" >> docs/test-results/index.html
+          echo "<p><strong>$(cat /tmp/rdf-totals.txt)</strong></p>" >> docs/test-results/index.html
+
+          echo "</body></html>" >> docs/test-results/index.html
+
+      - name: Commit results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/test-results/
+          git diff --cached --quiet || git commit -m "Update W3C test results [$(date -u +%Y-%m-%d)]"
+          git push || true

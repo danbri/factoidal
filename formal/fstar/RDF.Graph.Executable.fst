@@ -79,11 +79,23 @@ let subject_eq (s1 s2 : subject) : bool =
   | S_BNode b1, S_BNode b2 -> b1 = b2
   | _, _ -> false
 
-(* Decidable equality for literals — compare all three fields. *)
+(* Case-insensitive language tag comparison per RDF 1.1 §3.3.
+   Language tags like @en-US and @en-us denote the same value. *)
+let lang_tag_eq (t1 t2 : string) : bool =
+  String.lowercase t1 = String.lowercase t2
+
+let lang_tag_option_eq (t1 t2 : option string) : bool =
+  match t1, t2 with
+  | None, None -> true
+  | Some s1, Some s2 -> lang_tag_eq s1 s2
+  | _, _ -> false
+
+(* Decidable equality for literals — compare all three fields.
+   Language tags are compared case-insensitively per RDF 1.1. *)
 let literal_eq (l1 l2 : literal) : bool =
   l1.lexical_form = l2.lexical_form &&
   l1.datatype = l2.datatype &&
-  l1.lang_tag = l2.lang_tag
+  lang_tag_option_eq l1.lang_tag l2.lang_tag
 
 (* Decidable equality for RDF terms — concrete implementation. *)
 let rdf_term_eq (t1 t2 : rdf_term) : bool =
@@ -91,6 +103,36 @@ let rdf_term_eq (t1 t2 : rdf_term) : bool =
   | T_IRI i1, T_IRI i2 -> i1 = i2
   | T_BNode b1, T_BNode b2 -> b1 = b2
   | T_Literal l1, T_Literal l2 -> literal_eq l1 l2
+  | _, _ -> false
+
+(* RDF 1.1 value equality for literals.
+   In RDF 1.1, a plain literal "foo" is equivalent to "foo"^^xsd:string.
+   Both have datatype xsd:string and no language tag. This function handles
+   the case where one literal might have an explicit xsd:string datatype
+   annotation and the other might be a "plain" literal (which also has
+   datatype xsd:string per RDF 1.1 abstract syntax). *)
+let literal_value_eq (l1 l2 : literal) : bool =
+  (* Same lexical form is always required *)
+  l1.lexical_form = l2.lexical_form &&
+  (* Language tags compared case-insensitively *)
+  lang_tag_option_eq l1.lang_tag l2.lang_tag &&
+  (* Datatypes must match. Since RDF 1.1 mandates that plain literals
+     have datatype xsd:string, both forms already carry xsd:string
+     as their datatype in a well-formed representation. We compare
+     datatypes directly — if both are xsd:string they match. *)
+  l1.datatype = l2.datatype
+
+(* RDF 1.1 value equality for terms.
+   Extends rdf_term_eq with value-space semantics:
+   - Language tags compared case-insensitively (via literal_eq)
+   - Plain literal / xsd:string equivalence (via literal_value_eq)
+   Note: datatype value equivalence (e.g. "010"^^xsd:integer = "10"^^xsd:integer)
+   is NOT yet implemented — that requires numeric normalization in F*. *)
+let rdf_term_value_eq (t1 t2 : rdf_term) : bool =
+  match t1, t2 with
+  | T_IRI i1, T_IRI i2 -> i1 = i2
+  | T_BNode b1, T_BNode b2 -> b1 = b2
+  | T_Literal l1, T_Literal l2 -> literal_value_eq l1 l2
   | _, _ -> false
 
 noeq type triple = {
@@ -435,10 +477,11 @@ let value_compare (lv rv : sparql_value) (op : comp_op) : option bool =
           | Ge -> l = r || string_lt r l)
 
   // Lang literal × lang literal: eq/ne only, both lexical and lang must match
+  // Language tags compared case-insensitively per RDF 1.1
   | SV_LangLiteral llex llang, SV_LangLiteral rlex rlang ->
     (match op with
-     | Eq -> Some (llex = rlex && llang = rlang)
-     | Ne -> Some (llex <> rlex || llang <> rlang)
+     | Eq -> Some (llex = rlex && lang_tag_eq llang rlang)
+     | Ne -> Some (llex <> rlex || not (lang_tag_eq llang rlang))
      | _  -> None)
 
   // IRI × IRI: full ordering via string comparison
@@ -636,3 +679,374 @@ let lemma_bind_preserves_existing
   match List.Tot.assoc var mu with
   | Some _ -> ()  // bind_eval returns None when var is already bound → apply_bind returns mu
   | None -> ()    // trivially True
+
+(** ======================================================================== *)
+(** 16. RDF/RDFS Vocabulary Constants                                        *)
+(** ======================================================================== *)
+
+let rdfs_subClassOf : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#subClassOf");
+  "http://www.w3.org/2000/01/rdf-schema#subClassOf"
+
+let rdfs_subPropertyOf : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#subPropertyOf");
+  "http://www.w3.org/2000/01/rdf-schema#subPropertyOf"
+
+let rdfs_domain : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#domain");
+  "http://www.w3.org/2000/01/rdf-schema#domain"
+
+let rdfs_range : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#range");
+  "http://www.w3.org/2000/01/rdf-schema#range"
+
+let rdf_type : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#type");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+
+let rdfs_Class : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#Class");
+  "http://www.w3.org/2000/01/rdf-schema#Class"
+
+let rdf_Property : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"
+
+let rdfs_Resource : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#Resource");
+  "http://www.w3.org/2000/01/rdf-schema#Resource"
+
+let rdfs_Literal : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#Literal");
+  "http://www.w3.org/2000/01/rdf-schema#Literal"
+
+let rdfs_ContainerMembershipProperty : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#ContainerMembershipProperty");
+  "http://www.w3.org/2000/01/rdf-schema#ContainerMembershipProperty"
+
+let rdfs_member : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#member");
+  "http://www.w3.org/2000/01/rdf-schema#member"
+
+let rdfs_Datatype : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2000/01/rdf-schema#Datatype");
+  "http://www.w3.org/2000/01/rdf-schema#Datatype"
+
+let rdf_1 : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#_1");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_1"
+
+let rdf_2 : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#_2");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_2"
+
+let rdf_3 : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#_3");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_3"
+
+let rdf_4 : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#_4");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_4"
+
+let rdf_5 : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#_5");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#_5"
+
+(* Container membership property list for closure rules *)
+let container_membership_properties : list wf_iri =
+  [rdf_1; rdf_2; rdf_3; rdf_4; rdf_5]
+
+(** ======================================================================== *)
+(** 17. RDFS Helper Functions                                                *)
+(** ======================================================================== *)
+
+(* Convert a subject to an rdf_term *)
+let subject_to_term (s : subject) : rdf_term =
+  match s with
+  | S_IRI i -> T_IRI i
+  | S_BNode b -> T_BNode b
+
+(* Convert an rdf_term to a subject, if possible *)
+let term_to_subject (t : rdf_term) : option subject =
+  match t with
+  | T_IRI i -> Some (S_IRI i)
+  | T_BNode b -> Some (S_BNode b)
+  | T_Literal _ -> None
+
+(* Find all objects where (s p ?o) in graph *)
+let rec find_objects (g : rdf_graph) (subj : subject) (pred : wf_iri) : list rdf_term =
+  match g with
+  | [] -> []
+  | hd :: tl ->
+    let rest = find_objects tl subj pred in
+    if subject_eq hd.s subj && hd.p = pred
+    then hd.o :: rest
+    else rest
+
+(* Find all subjects where (?s p o) in graph *)
+let rec find_subjects (g : rdf_graph) (pred : wf_iri) (obj : rdf_term) : list subject =
+  match g with
+  | [] -> []
+  | hd :: tl ->
+    let rest = find_subjects tl pred obj in
+    if hd.p = pred && rdf_term_eq hd.o obj
+    then hd.s :: rest
+    else rest
+
+(* Check if a triple exists in the graph *)
+let has_triple (g : rdf_graph) (t : triple) : bool =
+  mem_triple t g
+
+(* Add a triple only if not already present *)
+let add_triple_if_new (g : rdf_graph) (t : triple) : rdf_graph =
+  graph_add t g
+
+(* Add multiple triples, deduplicating *)
+let rec add_triples_if_new (g : rdf_graph) (ts : list triple) : rdf_graph =
+  match ts with
+  | [] -> g
+  | hd :: tl -> add_triples_if_new (add_triple_if_new g hd) tl
+
+(** ======================================================================== *)
+(** 18. RDFS Closure Rules                                                   *)
+(** ======================================================================== *)
+
+(* rdfs7: If (a P b) and (P rdfs:subPropertyOf Q), infer (a Q b).
+   For each triple (a P b) in g, find all Q such that (P subPropertyOf Q),
+   then add (a Q b). *)
+let rdfs_rule_subPropertyOf (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      let super_props = find_objects g (S_IRI t.p) rdfs_subPropertyOf in
+      List.Tot.fold_left
+        (fun (acc2 : rdf_graph) (q_term : rdf_term) ->
+          match q_term with
+          | T_IRI q ->
+            let new_t : triple = { s = t.s; p = q; o = t.o } in
+            add_triple_if_new acc2 new_t
+          | _ -> acc2)
+        acc
+        super_props)
+    g
+    g
+
+(* rdfs2: If (a P b) and (P rdfs:domain C), infer (a rdf:type C).
+   For each triple (a P b) in g, find all C such that (P domain C),
+   then add (a type C). *)
+let rdfs_rule_domain (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      let domain_classes = find_objects g (S_IRI t.p) rdfs_domain in
+      List.Tot.fold_left
+        (fun (acc2 : rdf_graph) (c_term : rdf_term) ->
+          let new_t : triple = { s = t.s; p = rdf_type; o = c_term } in
+          add_triple_if_new acc2 new_t)
+        acc
+        domain_classes)
+    g
+    g
+
+(* rdfs3: If (a P b) and (P rdfs:range C), infer (b rdf:type C).
+   For each triple (a P b) in g, find all C such that (P range C),
+   then add (b type C) — but only if b can be a subject (IRI or BNode). *)
+let rdfs_rule_range (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      let range_classes = find_objects g (S_IRI t.p) rdfs_range in
+      match term_to_subject t.o with
+      | Some b_subj ->
+        List.Tot.fold_left
+          (fun (acc2 : rdf_graph) (c_term : rdf_term) ->
+            let new_t : triple = { s = b_subj; p = rdf_type; o = c_term } in
+            add_triple_if_new acc2 new_t)
+          acc
+          range_classes
+      | None -> acc)
+    g
+    g
+
+(* rdfs9: If (a rdf:type A) and (A rdfs:subClassOf B), infer (a rdf:type B).
+   For each triple (a type A) in g, find all B such that (A subClassOf B),
+   then add (a type B). *)
+let rdfs_rule_subClassOf (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdf_type then
+        match t.o with
+        | T_IRI class_iri ->
+          let super_classes = find_objects g (S_IRI class_iri) rdfs_subClassOf in
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (b_term : rdf_term) ->
+              let new_t : triple = { s = t.s; p = rdf_type; o = b_term } in
+              add_triple_if_new acc2 new_t)
+            acc
+            super_classes
+        | _ -> acc
+      else acc)
+    g
+    g
+
+(* Container membership property axioms:
+   rdf:_1 rdfs:subPropertyOf rdfs:member
+   rdf:_2 rdfs:subPropertyOf rdfs:member
+   ... etc.
+   Also: each rdf:_n rdf:type rdfs:ContainerMembershipProperty *)
+let rdfs_rule_container_membership (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (cmp : wf_iri) ->
+      let t1 : triple = {
+        s = S_IRI cmp;
+        p = rdfs_subPropertyOf;
+        o = T_IRI rdfs_member
+      } in
+      let t2 : triple = {
+        s = S_IRI cmp;
+        p = rdf_type;
+        o = T_IRI rdfs_ContainerMembershipProperty
+      } in
+      add_triple_if_new (add_triple_if_new acc t1) t2)
+    g
+    container_membership_properties
+
+(** ======================================================================== *)
+(** 19. Fixed-Point RDFS Closure                                             *)
+(** ======================================================================== *)
+
+(* Apply all RDFS rules once *)
+let rdfs_closure_step (g : rdf_graph) : rdf_graph =
+  let g1 = rdfs_rule_subPropertyOf g in
+  let g2 = rdfs_rule_domain g1 in
+  let g3 = rdfs_rule_range g2 in
+  let g4 = rdfs_rule_subClassOf g3 in
+  let g5 = rdfs_rule_container_membership g4 in
+  g5
+
+(* Iterate closure until fixed point or max iterations.
+   Uses nat fuel parameter for termination. *)
+let rec rdfs_closure (g : rdf_graph) (fuel : nat) : rdf_graph =
+  match fuel with
+  | 0 -> g
+  | _ ->
+    let g' = rdfs_closure_step g in
+    if graph_len g' = graph_len g
+    then g  (* fixed point reached — no new triples added *)
+    else rdfs_closure g' (fuel - 1)
+
+(** ======================================================================== *)
+(** 20. Datatype Value Equivalence                                           *)
+(** ======================================================================== *)
+
+(* Helper: check if a character is an ASCII digit *)
+let is_digit (c : FStar.Char.char) : bool =
+  let code = FStar.Char.int_of_char c in
+  code >= 0x30 && code <= 0x39
+
+(* Strip leading zeros from a list of digit characters, preserving at least one digit *)
+let rec strip_leading_zeros (cs : list FStar.Char.char) : list FStar.Char.char =
+  match cs with
+  | [] -> [FStar.Char.char_of_int 0x30]  (* "0" *)
+  | [c] -> [c]  (* single digit — keep it *)
+  | c :: rest ->
+    if FStar.Char.int_of_char c = 0x30
+    then strip_leading_zeros rest
+    else cs
+
+(* Normalize an integer lexical form:
+   - Strip leading zeros
+   - Handle leading +/- signs
+   - "-0" becomes "0"
+   - "+5" becomes "5" *)
+let normalize_integer_lexical (s : string) : string =
+  let chars = String.list_of_string s in
+  match chars with
+  | [] -> "0"
+  | c :: rest ->
+    let code = FStar.Char.int_of_char c in
+    if code = 0x2D then  (* '-' *)
+      let normalized = strip_leading_zeros rest in
+      (* Check if result is just "0" — then drop the minus sign *)
+      (match normalized with
+       | [z] -> if FStar.Char.int_of_char z = 0x30
+               then "0"
+               else String.concat "" ["-"; String.string_of_list normalized]
+       | _ -> String.concat "" ["-"; String.string_of_list normalized])
+    else if code = 0x2B then  (* '+' *)
+      String.string_of_list (strip_leading_zeros rest)
+    else
+      String.string_of_list (strip_leading_zeros chars)
+
+(* Normalize a decimal lexical form:
+   - Normalize the integer part (strip leading zeros)
+   - Normalize the fractional part (strip trailing zeros, but keep at least one)
+   This is a simplified normalization for xsd:decimal. *)
+let strip_trailing_zeros (cs : list FStar.Char.char) : list FStar.Char.char =
+  match cs with
+  | [] -> [FStar.Char.char_of_int 0x30]
+  | _ ->
+    let rev = List.Tot.rev cs in
+    let rec drop_zeros (l : list FStar.Char.char) : list FStar.Char.char =
+      match l with
+      | [] -> [FStar.Char.char_of_int 0x30]
+      | c :: rest ->
+        if FStar.Char.int_of_char c = 0x30
+        then drop_zeros rest
+        else List.Tot.rev l
+    in
+    drop_zeros rev
+
+(* Find the dot position in a character list, splitting into integer and fraction parts *)
+let rec split_at_dot (cs : list FStar.Char.char) (acc : list FStar.Char.char)
+  : (list FStar.Char.char * option (list FStar.Char.char)) =
+  match cs with
+  | [] -> (List.Tot.rev acc, None)
+  | c :: rest ->
+    if FStar.Char.int_of_char c = 0x2E  (* '.' *)
+    then (List.Tot.rev acc, Some rest)
+    else split_at_dot rest (c :: acc)
+
+let normalize_decimal_lexical (s : string) : string =
+  let chars = String.list_of_string s in
+  let (sign, digits) =
+    match chars with
+    | [] -> ("", chars)
+    | c :: rest ->
+      let code = FStar.Char.int_of_char c in
+      if code = 0x2D then ("-", rest)
+      else if code = 0x2B then ("", rest)
+      else ("", chars)
+  in
+  let (int_part, frac_opt) = split_at_dot digits [] in
+  let norm_int = strip_leading_zeros int_part in
+  match frac_opt with
+  | None ->
+    let result = String.concat "" [sign; String.string_of_list norm_int] in
+    (* Check for "-0" *)
+    if sign = "-" && result = "-0" then "0" else result
+  | Some frac_digits ->
+    let norm_frac = strip_trailing_zeros frac_digits in
+    let int_str = String.string_of_list norm_int in
+    let frac_str = String.string_of_list norm_frac in
+    let result = String.concat "" [sign; int_str; "."; frac_str] in
+    (* Check for "-0.0" *)
+    if sign = "-" && int_str = "0" && frac_str = "0" then "0.0" else result
+
+(* Datatype value equivalence: compare literals by their value for recognized datatypes.
+   For xsd:integer: normalize lexical forms and compare.
+   For xsd:decimal: normalize lexical forms and compare.
+   For other datatypes: fall back to syntactic literal_eq. *)
+let datatype_value_eq (l1 l2 : literal) : bool =
+  if l1.datatype = l2.datatype then
+    (* Same datatype — check for value-space comparison *)
+    if l1.datatype = xsd_integer then
+      normalize_integer_lexical l1.lexical_form = normalize_integer_lexical l2.lexical_form &&
+      lang_tag_option_eq l1.lang_tag l2.lang_tag
+    else if l1.datatype = xsd_decimal then
+      normalize_decimal_lexical l1.lexical_form = normalize_decimal_lexical l2.lexical_form &&
+      lang_tag_option_eq l1.lang_tag l2.lang_tag
+    else
+      (* Unknown datatype — syntactic comparison *)
+      literal_eq l1 l2
+  else
+    (* Different datatypes — not value-equal
+       (cross-type numeric promotion is not yet handled) *)
+    false
