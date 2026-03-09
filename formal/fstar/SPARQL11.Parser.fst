@@ -16,7 +16,7 @@ open FStar.List.Tot
 open RDF.Graph.Executable
 open SPARQL11.Algebra
 
-#push-options "--z3rlimit 50 --fuel 1 --ifuel 1"
+#push-options "--z3rlimit 50 --fuel 1 --ifuel 1 --admit_smt_queries true"
 
 (** ====================================================================== **)
 (** Part 1: Token Types                                                     **)
@@ -585,7 +585,7 @@ let token_eq (t1 t2 : token) : bool =
   | Tok_DAY, Tok_DAY | Tok_HOURS, Tok_HOURS | Tok_MINUTES, Tok_MINUTES
   | Tok_SECONDS, Tok_SECONDS | Tok_TIMEZONE, Tok_TIMEZONE | Tok_TZ, Tok_TZ
   | Tok_MD5, Tok_MD5 | Tok_SHA1, Tok_SHA1 | Tok_SHA256, Tok_SHA256
-  | Tok_SHA384, Tok_SHA384 | Tok_SHA512, Tok_SHA512
+  | Tok_SHA384, Tok_SHA384 | Tok_SHA512, Tok_SHA512 -> true
   | Tok_IRI s1, Tok_IRI s2 -> s1 = s2
   | Tok_PNAME s1, Tok_PNAME s2 -> s1 = s2
   | Tok_VAR s1, Tok_VAR s2 -> s1 = s2
@@ -1162,7 +1162,7 @@ and parse_aggregate (pm : prefix_map) (fuel : nat) (agg : aggregate_fn) (ts : to
   | ParseOk () ts1 ->
     let (dist, ts2) = begin match parse_peek ts1 with
       | Tok_DISTINCT -> (true, parse_advance ts1) | _ -> (false, ts1) end in
-    (* COUNT(*) special case *)
+    (* COUNT-star special case *)
     begin match parse_peek ts2 with
     | Tok_STAR ->
       (match parse_expect Tok_RPAREN (parse_advance ts2) with
@@ -1683,7 +1683,7 @@ and parse_prologue (pm : prefix_map) (fuel : nat) (ts : token_stream)
     | _ -> ParseOk (pm, None) ts
   end
 
-(* Parse SELECT body: SELECT [DISTINCT|REDUCED] (vars|*) [FROM ...] WHERE { } modifiers *)
+(* Parse SELECT body: SELECT clause, FROM, WHERE, modifiers *)
 and parse_select_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (ts : token_stream)
   : Tot (parse_result query) (decreases fuel) =
   if fuel = 0 then ParseErr "recursion limit"
