@@ -1030,9 +1030,45 @@ let normalize_decimal_lexical (s : string) : string =
     (* Check for "-0.0" *)
     if sign = "-" && int_str = "0" && frac_str = "0" then "0.0" else result
 
+(* Convert an integer lexical form to a canonical decimal form.
+   E.g., "10" -> "10", "010" -> "10", "-5" -> "-5".
+   The canonical decimal form of an integer is just the normalized integer. *)
+let integer_to_decimal_canonical (s : string) : string =
+  normalize_integer_lexical s
+
+(* Normalize a numeric literal to a canonical decimal string for cross-type comparison.
+   For xsd:integer: normalize and return as-is (integers are a subset of decimals).
+   For xsd:decimal: normalize the decimal form and strip trailing ".0" for whole numbers,
+   or normalize both to a common representation.
+   We compare by normalizing both to decimal canonical form. *)
+let numeric_to_canonical_decimal (lexical : string) (datatype : wf_iri) : string =
+  if datatype = xsd_integer then
+    (* Integer "10" in decimal value space is just "10" *)
+    normalize_integer_lexical lexical
+  else if datatype = xsd_decimal then
+    (* Decimal "10.0" normalized: strip trailing zeros after dot *)
+    let norm = normalize_decimal_lexical lexical in
+    (* If the fractional part is just "0", strip it for comparison with integers.
+       E.g., "10.0" -> "10" so it matches integer "10". *)
+    let chars = String.list_of_string norm in
+    let (int_part, frac_opt) = split_at_dot chars [] in
+    match frac_opt with
+    | None -> norm  (* no dot — already in integer form *)
+    | Some frac_digits ->
+      let stripped = strip_trailing_zeros frac_digits in
+      (* If all fractional digits are zero, return just the integer part *)
+      (match stripped with
+       | [c] -> if FStar.Char.int_of_char c = 0x30
+               then String.string_of_list int_part
+               else norm
+       | _ -> norm)
+  else
+    lexical  (* unknown type — return as-is *)
+
 (* Datatype value equivalence: compare literals by their value for recognized datatypes.
    For xsd:integer: normalize lexical forms and compare.
    For xsd:decimal: normalize lexical forms and compare.
+   For xsd:integer vs xsd:decimal: cross-type numeric comparison.
    For other datatypes: fall back to syntactic literal_eq. *)
 let datatype_value_eq (l1 l2 : literal) : bool =
   if l1.datatype = l2.datatype then
@@ -1046,7 +1082,12 @@ let datatype_value_eq (l1 l2 : literal) : bool =
     else
       (* Unknown datatype — syntactic comparison *)
       literal_eq l1 l2
+  else if (l1.datatype = xsd_integer && l2.datatype = xsd_decimal) ||
+          (l1.datatype = xsd_decimal && l2.datatype = xsd_integer) then
+    (* Cross-type numeric comparison: integer and decimal are in the same value space *)
+    numeric_to_canonical_decimal l1.lexical_form l1.datatype =
+      numeric_to_canonical_decimal l2.lexical_form l2.datatype &&
+    lang_tag_option_eq l1.lang_tag l2.lang_tag
   else
-    (* Different datatypes — not value-equal
-       (cross-type numeric promotion is not yet handled) *)
+    (* Different non-numeric datatypes — not value-equal *)
     false

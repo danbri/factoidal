@@ -46,46 +46,290 @@ let resolve_prefixed_name (st: turtle_state) (prefix: string) (local: string) : 
   | Some base -> Some (String.concat "" [base; local])
   | None -> None
 
-(* Find the last occurrence of '/' in a string, return index + 1
-   (the position after the last slash). Returns 0 if no slash found. *)
+(* ================================================================ *)
+(* RFC 3986 Section 5 — Relative IRI Resolution                     *)
+(* ================================================================ *)
+
+(* Helper: find the position of the first occurrence of char code in s
+   starting at pos. Returns None if not found. *)
+let rec find_char_from (s: string) (pos: nat) (code: nat) (fuel: nat)
+  : Tot (option nat) (decreases fuel) =
+  if fuel = 0 then None
+  else if pos >= String.length s then None
+  else if FStar.Char.int_of_char (String.index s pos) = code then Some pos
+  else find_char_from s (pos + 1) code (fuel - 1)
+
+(* Helper: find the last occurrence of '/' up to position `limit` (exclusive).
+   Returns index + 1 (position after last slash), or 0 if not found. *)
 let rec find_last_slash (s: string) (pos: nat) : nat =
   if pos = 0 then 0
   else
     let idx = pos - 1 in
-    if idx < String.length s && FStar.Char.int_of_char (String.index s idx) = 0x2F (* '/' *)
-    then pos  (* return position after the slash *)
+    if idx < String.length s && FStar.Char.int_of_char (String.index s idx) = 0x2F
+    then pos
     else find_last_slash s idx
 
-(* Remove the last path segment from a URI (everything after the last '/') *)
-let remove_last_segment (base: string) : string =
-  let len = String.length base in
-  if len = 0 then ""
+(* Helper: check if string starts with given prefix at position *)
+let rec string_starts_with_at (s: string) (pos: nat) (pfx: string) (pi: nat) (fuel: nat)
+  : Tot bool (decreases fuel) =
+  if fuel = 0 then false
+  else if pi >= String.length pfx then true
+  else if pos >= String.length s then false
+  else if String.index s pos = String.index pfx pi
+  then string_starts_with_at s (pos + 1) pfx (pi + 1) (fuel - 1)
+  else false
+
+let string_starts_with (s: string) (pfx: string) : bool =
+  string_starts_with_at s 0 pfx 0 (String.length pfx + 1)
+
+(* Extract scheme from a URI.  Returns (scheme, rest) where scheme includes
+   the trailing colon.  E.g. "http://a/b" -> Some ("http:", "//a/b").
+   Returns None if no scheme found (i.e. it's a relative reference). *)
+let parse_uri_scheme (uri: string) : option (string & string) =
+  let len = String.length uri in
+  if len = 0 then None
   else
-    let cut_pos = find_last_slash base len in
-    if cut_pos = 0 then base  (* no slash found, return as-is *)
-    else String.sub base 0 cut_pos
+    (* scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ) ":" *)
+    let c0 = FStar.Char.int_of_char (String.index uri 0) in
+    if not ((c0 >= 0x41 && c0 <= 0x5A) || (c0 >= 0x61 && c0 <= 0x7A)) then None
+    else
+      match find_char_from uri 1 0x3A len with (* ':' *)
+      | None -> None
+      | Some colon_pos ->
+        (* Verify everything before colon is valid scheme char *)
+        Some (String.sub uri 0 (colon_pos + 1),
+              String.sub uri (colon_pos + 1) (len - colon_pos - 1))
+
+(* Parse authority from the remainder after scheme.
+   If it starts with "//", returns Some (authority, rest-path).
+   authority is everything up to the next '/', '?', '#', or end.
+   E.g. "//a/b/c" -> Some ("a", "/b/c")
+        "//g"     -> Some ("g", "")       *)
+let parse_uri_authority (s: string) : option (string & string) =
+  let len = String.length s in
+  if len >= 2 &&
+     FStar.Char.int_of_char (String.index s 0) = 0x2F &&
+     FStar.Char.int_of_char (String.index s 1) = 0x2F
+  then
+    (* Find end of authority: next '/', '?', or '#' *)
+    let rec find_auth_end (pos: nat) (fuel: nat) : Tot nat (decreases fuel) =
+      if fuel = 0 then pos
+      else if pos >= len then pos
+      else
+        let code = FStar.Char.int_of_char (String.index s pos) in
+        if code = 0x2F || code = 0x3F || code = 0x23 then pos
+        else find_auth_end (pos + 1) (fuel - 1)
+    in
+    let auth_end = find_auth_end 2 (len - 2 + 1) in
+    Some (String.sub s 2 (auth_end - 2),
+          String.sub s auth_end (len - auth_end))
+  else None
+
+(* Split a string at the first occurrence of char code.
+   Returns (before, after) where after does NOT include the delimiter.
+   If not found, returns (s, ""). *)
+let split_at_char (s: string) (code: nat) : (string & string) =
+  let len = String.length s in
+  match find_char_from s 0 code len with
+  | Some pos -> (String.sub s 0 pos, String.sub s (pos + 1) (len - pos - 1))
+  | None -> (s, "")
+
+(* Parse path, query, fragment from a string.
+   Input is the part after scheme and authority.
+   Returns (path, query_option, fragment_option). *)
+let parse_path_query_fragment (s: string) : (string & option string & option string) =
+  let len = String.length s in
+  (* Split off fragment first *)
+  match find_char_from s 0 0x23 len with  (* '#' *)
+  | Some frag_pos ->
+    let before_frag = String.sub s 0 frag_pos in
+    let frag = String.sub s (frag_pos + 1) (len - frag_pos - 1) in
+    let bf_len = String.length before_frag in
+    begin match find_char_from before_frag 0 0x3F bf_len with  (* '?' *)
+    | Some q_pos ->
+      (String.sub before_frag 0 q_pos,
+       Some (String.sub before_frag (q_pos + 1) (bf_len - q_pos - 1)),
+       Some frag)
+    | None -> (before_frag, None, Some frag)
+    end
+  | None ->
+    begin match find_char_from s 0 0x3F len with  (* '?' *)
+    | Some q_pos ->
+      (String.sub s 0 q_pos,
+       Some (String.sub s (q_pos + 1) (len - q_pos - 1)),
+       None)
+    | None -> (s, None, None)
+    end
+
+(* URI components record *)
+noeq type uri_components = {
+  uc_scheme: option string;     (* e.g. "http:" — includes colon *)
+  uc_authority: option string;  (* e.g. "a" — without // prefix *)
+  uc_path: string;
+  uc_query: option string;      (* without '?' *)
+  uc_fragment: option string;   (* without '#' *)
+}
+
+(* Parse a URI into its components *)
+let parse_uri_components (uri: string) : uri_components =
+  let (scheme, after_scheme) =
+    match parse_uri_scheme uri with
+    | Some (s, rest) -> (Some s, rest)
+    | None -> (None, uri)
+  in
+  let (authority, after_auth) =
+    match parse_uri_authority after_scheme with
+    | Some (a, rest) -> (Some a, rest)
+    | None -> (None, after_scheme)
+  in
+  let (path, query, fragment) = parse_path_query_fragment after_auth in
+  { uc_scheme = scheme;
+    uc_authority = authority;
+    uc_path = path;
+    uc_query = query;
+    uc_fragment = fragment }
+
+(* Recompose a URI from its components per RFC 3986 Section 5.3 *)
+let recompose_uri (c: uri_components) : string =
+  let parts : list string = [] in
+  let parts = match c.uc_scheme with
+    | Some s -> [s] | None -> [] in
+  let parts = match c.uc_authority with
+    | Some a -> parts @ ["//"; a] | None -> parts in
+  let parts = parts @ [c.uc_path] in
+  let parts = match c.uc_query with
+    | Some q -> parts @ ["?"; q] | None -> parts in
+  let parts = match c.uc_fragment with
+    | Some f -> parts @ ["#"; f] | None -> parts in
+  String.concat "" parts
+
+(* Remove dot segments from a path per RFC 3986 Section 5.2.4.
+   Uses input buffer + output buffer approach.
+   fuel parameter ensures termination. *)
+let rec remove_dot_segments_loop (input: string) (output: string) (fuel: nat)
+  : Tot string (decreases fuel) =
+  if fuel = 0 then String.concat "" [output; input]
+  else
+    let ilen = String.length input in
+    if ilen = 0 then output
+    else
+      (* A: If input starts with "../" or "./" — remove that prefix *)
+      if string_starts_with input "../" then
+        remove_dot_segments_loop
+          (String.sub input 3 (ilen - 3)) output (fuel - 1)
+      else if string_starts_with input "./" then
+        remove_dot_segments_loop
+          (String.sub input 2 (ilen - 2)) output (fuel - 1)
+      (* B: If input starts with "/./" or is "/." exactly *)
+      else if string_starts_with input "/./" then
+        remove_dot_segments_loop
+          (String.concat "" ["/"; String.sub input 3 (ilen - 3)])
+          output (fuel - 1)
+      else if input = "/." then
+        remove_dot_segments_loop "/" output (fuel - 1)
+      (* C: If input starts with "/../" or is "/.." exactly *)
+      else if string_starts_with input "/../" then
+        let new_input = String.concat "" ["/"; String.sub input 4 (ilen - 4)] in
+        let olen = String.length output in
+        let cut = find_last_slash output olen in
+        let new_output = if cut <= 1 then
+          (if olen > 0 && FStar.Char.int_of_char (String.index output 0) = 0x2F
+           then "" else "")
+          else String.sub output 0 (cut - 1) in
+        remove_dot_segments_loop new_input new_output (fuel - 1)
+      else if input = "/.." then
+        let olen = String.length output in
+        let cut = find_last_slash output olen in
+        let new_output = if cut <= 1 then
+          (if olen > 0 && FStar.Char.int_of_char (String.index output 0) = 0x2F
+           then "" else "")
+          else String.sub output 0 (cut - 1) in
+        remove_dot_segments_loop "/" new_output (fuel - 1)
+      (* D: If input is "." or ".." exactly *)
+      else if input = "." || input = ".." then
+        remove_dot_segments_loop "" output (fuel - 1)
+      (* E: Move first path segment (including initial "/" if any) to output *)
+      else
+        (* Find the next "/" after position 0 (or 1 if starts with "/") *)
+        let start = if FStar.Char.int_of_char (String.index input 0) = 0x2F
+                    then 1 else 0 in
+        let seg_end =
+          match find_char_from input start 0x2F ilen with
+          | Some pos -> pos
+          | None -> ilen
+        in
+        let seg = String.sub input 0 seg_end in
+        let rest = String.sub input seg_end (ilen - seg_end) in
+        remove_dot_segments_loop rest (String.concat "" [output; seg]) (fuel - 1)
+
+let remove_dot_segments (path: string) : string =
+  let fuel = (String.length path + 1) `op_Multiply` 2 in
+  remove_dot_segments_loop path "" fuel
+
+(* Merge base path with relative path per RFC 3986 Section 5.2.3 *)
+let merge_paths (base: uri_components) (rel_path: string) : string =
+  match base.uc_authority with
+  | Some _ ->
+    if String.length base.uc_path = 0
+    then String.concat "" ["/"; rel_path]
+    else
+      let blen = String.length base.uc_path in
+      let cut = find_last_slash base.uc_path blen in
+      if cut = 0 then String.concat "" ["/"; rel_path]
+      else String.concat "" [String.sub base.uc_path 0 cut; rel_path]
+  | None ->
+    let blen = String.length base.uc_path in
+    let cut = find_last_slash base.uc_path blen in
+    if cut = 0 then rel_path
+    else String.concat "" [String.sub base.uc_path 0 cut; rel_path]
+
+(* RFC 3986 Section 5.2.2 — main resolution algorithm *)
+let resolve_iri_rfc3986 (base: uri_components) (ref_uri: uri_components) : uri_components =
+  match ref_uri.uc_scheme with
+  | Some _ ->
+    (* R has scheme — use it as-is with dot segment removal *)
+    { ref_uri with uc_path = remove_dot_segments ref_uri.uc_path }
+  | None ->
+    match ref_uri.uc_authority with
+    | Some _ ->
+      (* R has authority — use R's authority/path/query with base scheme *)
+      { uc_scheme = base.uc_scheme;
+        uc_authority = ref_uri.uc_authority;
+        uc_path = remove_dot_segments ref_uri.uc_path;
+        uc_query = ref_uri.uc_query;
+        uc_fragment = ref_uri.uc_fragment }
+    | None ->
+      if String.length ref_uri.uc_path = 0 then
+        (* Empty path — use base path, maybe override query *)
+        { uc_scheme = base.uc_scheme;
+          uc_authority = base.uc_authority;
+          uc_path = base.uc_path;
+          uc_query = (match ref_uri.uc_query with
+                      | Some _ -> ref_uri.uc_query
+                      | None -> base.uc_query);
+          uc_fragment = ref_uri.uc_fragment }
+      else
+        let merged_path =
+          if String.length ref_uri.uc_path > 0 &&
+             FStar.Char.int_of_char (String.index ref_uri.uc_path 0) = 0x2F
+          then remove_dot_segments ref_uri.uc_path
+          else remove_dot_segments (merge_paths base ref_uri.uc_path)
+        in
+        { uc_scheme = base.uc_scheme;
+          uc_authority = base.uc_authority;
+          uc_path = merged_path;
+          uc_query = ref_uri.uc_query;
+          uc_fragment = ref_uri.uc_fragment }
 
 (* Resolve a relative IRI against the base IRI per RFC 3986 Section 5.
-   Handles: absolute IRIs (returned as-is), same-document refs,
-   relative paths (resolved by removing last segment of base). *)
+   This is the main entry point used by the Turtle parser. *)
 let resolve_iri (st: turtle_state) (rel: string) : string =
-  if String.length rel = 0 then st.base_iri
+  if String.length rel = 0 && String.length st.base_iri = 0 then ""
   else
-    let len = String.length rel in
-    (* Check if already absolute: contains ":" in the first part *)
-    if string_contains_colon rel then rel
-    (* Check if starts with '/' — absolute path reference *)
-    else if FStar.Char.int_of_char (String.index rel 0) = 0x2F then
-      (* Find scheme+authority in base (everything up to 3rd '/') *)
-      (* For simplicity, prepend scheme+authority from base *)
-      String.concat "" [st.base_iri; rel]
-    (* Check if starts with '#' — fragment-only reference *)
-    else if FStar.Char.int_of_char (String.index rel 0) = 0x23 then
-      String.concat "" [st.base_iri; rel]
-    else
-      (* Relative path — remove last segment of base, append relative *)
-      let base_dir = remove_last_segment st.base_iri in
-      String.concat "" [base_dir; rel]
+    let base_components = parse_uri_components st.base_iri in
+    let ref_components = parse_uri_components rel in
+    let resolved = resolve_iri_rfc3986 base_components ref_components in
+    recompose_uri resolved
 
 (* ================================================================ *)
 (* Turtle whitespace: spaces, tabs, newlines, and comments           *)
@@ -150,7 +394,8 @@ let is_pn_chars_base (c: char) : bool =
   (code >= 0x2C00 && code <= 0x2FEF) ||
   (code >= 0x3001 && code <= 0xD7FF) ||
   (code >= 0xF900 && code <= 0xFDCF) ||
-  (code >= 0xFDF0 && code <= 0xFFFD)
+  (code >= 0xFDF0 && code <= 0xFFFD) ||
+  (code >= 0x10000 && code <= 0xEFFFF)
 
 let is_pn_chars_u (c: char) : bool =
   is_pn_chars_base c || int_of_char c = 0x5F  (* '_' *)
@@ -219,13 +464,71 @@ let is_pn_local_start (c: char) : bool =
    code = 0x25 ||
    code = 0x5C)
 
+(* Strip PN_LOCAL_ESC backslashes: \X -> X for recognized escape chars.
+   Per Turtle grammar, PN_LOCAL_ESC ::= '\' ('_' | '~' | '.' | '-' | '!' | '$' |
+   '&' | "'" | '(' | ')' | '*' | '+' | ',' | ';' | '=' | '/' | '?' | '#' | '@' | '%') *)
+let is_pn_local_esc_char (c:char) : bool =
+  let code = int_of_char c in
+  code = 0x5F || code = 0x7E || code = 0x2E || code = 0x2D ||
+  code = 0x21 || code = 0x24 || code = 0x26 || code = 0x27 ||
+  code = 0x28 || code = 0x29 || code = 0x2A || code = 0x2B ||
+  code = 0x2C || code = 0x3B || code = 0x3D || code = 0x2F ||
+  code = 0x3F || code = 0x23 || code = 0x40 || code = 0x25
+
+let rec strip_pn_local_esc_acc (s:string) (i:nat) (acc:list char) (fuel:nat)
+  : Tot string (decreases fuel) =
+  if fuel = 0 then String.string_of_list (List.Tot.rev acc)
+  else
+    let len = String.length s in
+    if i >= len then String.string_of_list (List.Tot.rev acc)
+    else
+      let c = String.index s i in
+      if int_of_char c = 0x5C && i + 1 < len then
+        let next = String.index s (i + 1) in
+        if is_pn_local_esc_char next then
+          strip_pn_local_esc_acc s (i + 2) (next :: acc) (fuel - 1)
+        else
+          strip_pn_local_esc_acc s (i + 1) (c :: acc) (fuel - 1)
+      else
+        strip_pn_local_esc_acc s (i + 1) (c :: acc) (fuel - 1)
+
+let strip_pn_local_esc (s:string) : string =
+  strip_pn_local_esc_acc s 0 [] (String.length s)
+
+(* Parse PN_LOCAL character by character, handling backslash escapes and percent encoding
+   as multi-character units. Returns the decoded local name. *)
+let rec parse_pn_local_acc (input:string) (pos:nat) (acc:list char) (fuel:nat)
+  : Tot (parse_result string) (decreases fuel) =
+  if fuel = 0 then ParseOk (String.string_of_list (List.Tot.rev acc)) pos
+  else
+    let len = String.length input in
+    if pos >= len then ParseOk (String.string_of_list (List.Tot.rev acc)) pos
+    else
+      let c = String.index input pos in
+      let code = int_of_char c in
+      if code = 0x5C && pos + 1 < len then  (* backslash escape *)
+        let next = String.index input (pos + 1) in
+        if is_pn_local_esc_char next then
+          parse_pn_local_acc input (pos + 2) (next :: acc) (fuel - 1)
+        else
+          ParseOk (String.string_of_list (List.Tot.rev acc)) pos
+      else if code = 0x25 && pos + 2 < len then  (* percent encoding — keep as-is *)
+        let h1 = String.index input (pos + 1) in
+        let h2 = String.index input (pos + 2) in
+        parse_pn_local_acc input (pos + 3) (h2 :: h1 :: c :: acc) (fuel - 1)
+      else if is_pn_chars c || code = 0x3A || code = 0x2E then
+        parse_pn_local_acc input (pos + 1) (c :: acc) (fuel - 1)
+      else
+        ParseOk (String.string_of_list (List.Tot.rev acc)) pos
+
 let parse_pn_local (input: string) (pos: nat) : parse_result string =
   let len = String.length input in
   if pos >= len then ParseOk "" pos  (* empty local name is valid *)
   else
     let c = String.index input pos in
     if is_pn_local_start c then
-      match ptake_while is_pn_local_char input pos with
+      let fuel = len - pos in
+      match parse_pn_local_acc input pos [] fuel with
       | ParseOk s pos' ->
         (* Strip trailing dots — not part of local name *)
         let slen = String.length s in
@@ -1129,13 +1432,15 @@ let parse_turtle_statement (st: turtle_state) (input: string) (pos: nat) (fuel: 
         (* Try prefix directive *)
         begin match parse_prefix_directive input pos1 with
         | ParseOk (prefix, iri_val) pos2 ->
-          let new_prefixes = (prefix, iri_val) :: st.prefixes in
+          let resolved_iri = resolve_iri st iri_val in
+          let new_prefixes = (prefix, resolved_iri) :: st.prefixes in
           ParseOk ([], { st with prefixes = new_prefixes }) pos2
         | ParseFail _ _ ->
           (* Try base directive *)
           begin match parse_base_directive input pos1 with
           | ParseOk base_val pos2 ->
-            ParseOk ([], { st with base_iri = base_val }) pos2
+            let resolved_base = resolve_iri st base_val in
+            ParseOk ([], { st with base_iri = resolved_base }) pos2
           | ParseFail _ _ ->
             (* Must be a triples statement *)
             begin match parse_turtle_subject st input pos1 fuel with

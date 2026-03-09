@@ -203,13 +203,15 @@ let parse_trig_statement (st: turtle_state) (input: string) (pos: nat) (fuel: na
         (* Case 1: Prefix directive *)
         begin match parse_prefix_directive input pos1 with
         | ParseOk (prefix, iri_val) pos2 ->
-          let new_prefixes = (prefix, iri_val) :: st.prefixes in
+          let resolved_iri = resolve_iri st iri_val in
+          let new_prefixes = (prefix, resolved_iri) :: st.prefixes in
           ParseOk ([], { st with prefixes = new_prefixes }) pos2
         | ParseFail _ _ ->
           (* Case 2: Base directive *)
           begin match parse_base_directive input pos1 with
           | ParseOk base_val pos2 ->
-            ParseOk ([], { st with base_iri = base_val }) pos2
+            let resolved_base = resolve_iri st base_val in
+            ParseOk ([], { st with base_iri = resolved_base }) pos2
           | ParseFail _ _ ->
             (* Case 3: Bare graph block { ... } — triples go to default graph *)
             if code = 0x7B then

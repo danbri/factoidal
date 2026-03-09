@@ -41,6 +41,18 @@ let resolve_prefixed_name (st : turtle_state) (prefix : Prims.string)
   | FStar_Pervasives_Native.Some base ->
       FStar_Pervasives_Native.Some (FStar_String.concat "" [base; local])
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+let rec find_char_from (s : Prims.string) (pos : Prims.nat)
+  (code : Prims.nat) (fuel : Prims.nat) :
+  Prims.nat FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    if pos >= (FStar_String.strlen s)
+    then FStar_Pervasives_Native.None
+    else
+      if (FStar_Char.int_of_char (FStar_String.index s pos)) = code
+      then FStar_Pervasives_Native.Some pos
+      else find_char_from s (pos + Prims.int_one) code (fuel - Prims.int_one)
 let rec find_last_slash (s : Prims.string) (pos : Prims.nat) : Prims.nat=
   if pos = Prims.int_zero
   then Prims.int_zero
@@ -52,35 +64,386 @@ let rec find_last_slash (s : Prims.string) (pos : Prims.nat) : Prims.nat=
             (Prims.of_int (0x2F)))
      then pos
      else find_last_slash s idx)
-let remove_last_segment (base : Prims.string) : Prims.string=
-  let len = FStar_String.strlen base in
+let rec string_starts_with_at (s : Prims.string) (pos : Prims.nat)
+  (pfx : Prims.string) (pi : Prims.nat) (fuel : Prims.nat) : Prims.bool=
+  if fuel = Prims.int_zero
+  then false
+  else
+    if pi >= (FStar_String.strlen pfx)
+    then true
+    else
+      if pos >= (FStar_String.strlen s)
+      then false
+      else
+        if (FStar_String.index s pos) = (FStar_String.index pfx pi)
+        then
+          string_starts_with_at s (pos + Prims.int_one) pfx
+            (pi + Prims.int_one) (fuel - Prims.int_one)
+        else false
+let string_starts_with (s : Prims.string) (pfx : Prims.string) : Prims.bool=
+  string_starts_with_at s Prims.int_zero pfx Prims.int_zero
+    ((FStar_String.strlen pfx) + Prims.int_one)
+let parse_uri_scheme (uri : Prims.string) :
+  (Prims.string * Prims.string) FStar_Pervasives_Native.option=
+  let len = FStar_String.strlen uri in
   if len = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (let c0 = FStar_Char.int_of_char (FStar_String.index uri Prims.int_zero) in
+     if
+       Prims.op_Negation
+         (((c0 >= (Prims.of_int (0x41))) && (c0 <= (Prims.of_int (0x5A)))) ||
+            ((c0 >= (Prims.of_int (0x61))) && (c0 <= (Prims.of_int (0x7A)))))
+     then FStar_Pervasives_Native.None
+     else
+       (match find_char_from uri Prims.int_one (Prims.of_int (0x3A)) len with
+        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+        | FStar_Pervasives_Native.Some colon_pos ->
+            FStar_Pervasives_Native.Some
+              ((FStar_String.sub uri Prims.int_zero
+                  (colon_pos + Prims.int_one)),
+                (FStar_String.sub uri (colon_pos + Prims.int_one)
+                   ((len - colon_pos) - Prims.int_one)))))
+let parse_uri_authority (s : Prims.string) :
+  (Prims.string * Prims.string) FStar_Pervasives_Native.option=
+  let len = FStar_String.strlen s in
+  if
+    ((len >= (Prims.of_int (2))) &&
+       ((FStar_Char.int_of_char (FStar_String.index s Prims.int_zero)) =
+          (Prims.of_int (0x2F))))
+      &&
+      ((FStar_Char.int_of_char (FStar_String.index s Prims.int_one)) =
+         (Prims.of_int (0x2F)))
+  then
+    let rec find_auth_end pos fuel =
+      if fuel = Prims.int_zero
+      then pos
+      else
+        if pos >= len
+        then pos
+        else
+          (let code = FStar_Char.int_of_char (FStar_String.index s pos) in
+           if
+             ((code = (Prims.of_int (0x2F))) ||
+                (code = (Prims.of_int (0x3F))))
+               || (code = (Prims.of_int (0x23)))
+           then pos
+           else find_auth_end (pos + Prims.int_one) (fuel - Prims.int_one)) in
+    let auth_end =
+      find_auth_end (Prims.of_int (2))
+        ((len - (Prims.of_int (2))) + Prims.int_one) in
+    FStar_Pervasives_Native.Some
+      ((FStar_String.sub s (Prims.of_int (2)) (auth_end - (Prims.of_int (2)))),
+        (FStar_String.sub s auth_end (len - auth_end)))
+  else FStar_Pervasives_Native.None
+let split_at_char (s : Prims.string) (code : Prims.nat) :
+  (Prims.string * Prims.string)=
+  let len = FStar_String.strlen s in
+  match find_char_from s Prims.int_zero code len with
+  | FStar_Pervasives_Native.Some pos ->
+      ((FStar_String.sub s Prims.int_zero pos),
+        (FStar_String.sub s (pos + Prims.int_one)
+           ((len - pos) - Prims.int_one)))
+  | FStar_Pervasives_Native.None -> (s, "")
+let parse_path_query_fragment (s : Prims.string) :
+  (Prims.string * Prims.string FStar_Pervasives_Native.option * Prims.string
+    FStar_Pervasives_Native.option)=
+  let len = FStar_String.strlen s in
+  match find_char_from s Prims.int_zero (Prims.of_int (0x23)) len with
+  | FStar_Pervasives_Native.Some frag_pos ->
+      let before_frag = FStar_String.sub s Prims.int_zero frag_pos in
+      let frag =
+        FStar_String.sub s (frag_pos + Prims.int_one)
+          ((len - frag_pos) - Prims.int_one) in
+      let bf_len = FStar_String.strlen before_frag in
+      (match find_char_from before_frag Prims.int_zero (Prims.of_int (0x3F))
+               bf_len
+       with
+       | FStar_Pervasives_Native.Some q_pos ->
+           ((FStar_String.sub before_frag Prims.int_zero q_pos),
+             (FStar_Pervasives_Native.Some
+                (FStar_String.sub before_frag (q_pos + Prims.int_one)
+                   ((bf_len - q_pos) - Prims.int_one))),
+             (FStar_Pervasives_Native.Some frag))
+       | FStar_Pervasives_Native.None ->
+           (before_frag, FStar_Pervasives_Native.None,
+             (FStar_Pervasives_Native.Some frag)))
+  | FStar_Pervasives_Native.None ->
+      (match find_char_from s Prims.int_zero (Prims.of_int (0x3F)) len with
+       | FStar_Pervasives_Native.Some q_pos ->
+           ((FStar_String.sub s Prims.int_zero q_pos),
+             (FStar_Pervasives_Native.Some
+                (FStar_String.sub s (q_pos + Prims.int_one)
+                   ((len - q_pos) - Prims.int_one))),
+             FStar_Pervasives_Native.None)
+       | FStar_Pervasives_Native.None ->
+           (s, FStar_Pervasives_Native.None, FStar_Pervasives_Native.None))
+type uri_components =
+  {
+  uc_scheme: Prims.string FStar_Pervasives_Native.option ;
+  uc_authority: Prims.string FStar_Pervasives_Native.option ;
+  uc_path: Prims.string ;
+  uc_query: Prims.string FStar_Pervasives_Native.option ;
+  uc_fragment: Prims.string FStar_Pervasives_Native.option }
+let __proj__Mkuri_components__item__uc_scheme (projectee : uri_components) :
+  Prims.string FStar_Pervasives_Native.option=
+  match projectee with
+  | { uc_scheme; uc_authority; uc_path; uc_query; uc_fragment;_} -> uc_scheme
+let __proj__Mkuri_components__item__uc_authority (projectee : uri_components)
+  : Prims.string FStar_Pervasives_Native.option=
+  match projectee with
+  | { uc_scheme; uc_authority; uc_path; uc_query; uc_fragment;_} ->
+      uc_authority
+let __proj__Mkuri_components__item__uc_path (projectee : uri_components) :
+  Prims.string=
+  match projectee with
+  | { uc_scheme; uc_authority; uc_path; uc_query; uc_fragment;_} -> uc_path
+let __proj__Mkuri_components__item__uc_query (projectee : uri_components) :
+  Prims.string FStar_Pervasives_Native.option=
+  match projectee with
+  | { uc_scheme; uc_authority; uc_path; uc_query; uc_fragment;_} -> uc_query
+let __proj__Mkuri_components__item__uc_fragment (projectee : uri_components)
+  : Prims.string FStar_Pervasives_Native.option=
+  match projectee with
+  | { uc_scheme; uc_authority; uc_path; uc_query; uc_fragment;_} ->
+      uc_fragment
+let parse_uri_components (uri : Prims.string) : uri_components=
+  let uu___ =
+    match parse_uri_scheme uri with
+    | FStar_Pervasives_Native.Some (s, rest) ->
+        ((FStar_Pervasives_Native.Some s), rest)
+    | FStar_Pervasives_Native.None -> (FStar_Pervasives_Native.None, uri) in
+  match uu___ with
+  | (scheme, after_scheme) ->
+      let uu___1 =
+        match parse_uri_authority after_scheme with
+        | FStar_Pervasives_Native.Some (a, rest) ->
+            ((FStar_Pervasives_Native.Some a), rest)
+        | FStar_Pervasives_Native.None ->
+            (FStar_Pervasives_Native.None, after_scheme) in
+      (match uu___1 with
+       | (authority, after_auth) ->
+           let uu___2 = parse_path_query_fragment after_auth in
+           (match uu___2 with
+            | (path, query, fragment) ->
+                {
+                  uc_scheme = scheme;
+                  uc_authority = authority;
+                  uc_path = path;
+                  uc_query = query;
+                  uc_fragment = fragment
+                }))
+let recompose_uri (c : uri_components) : Prims.string=
+  let parts = [] in
+  let parts1 =
+    match c.uc_scheme with
+    | FStar_Pervasives_Native.Some s -> [s]
+    | FStar_Pervasives_Native.None -> [] in
+  let parts2 =
+    match c.uc_authority with
+    | FStar_Pervasives_Native.Some a ->
+        FStar_List_Tot_Base.op_At parts1 ["//"; a]
+    | FStar_Pervasives_Native.None -> parts1 in
+  let parts3 = FStar_List_Tot_Base.op_At parts2 [c.uc_path] in
+  let parts4 =
+    match c.uc_query with
+    | FStar_Pervasives_Native.Some q ->
+        FStar_List_Tot_Base.op_At parts3 ["?"; q]
+    | FStar_Pervasives_Native.None -> parts3 in
+  let parts5 =
+    match c.uc_fragment with
+    | FStar_Pervasives_Native.Some f ->
+        FStar_List_Tot_Base.op_At parts4 ["#"; f]
+    | FStar_Pervasives_Native.None -> parts4 in
+  FStar_String.concat "" parts5
+let rec remove_dot_segments_loop (input : Prims.string)
+  (output : Prims.string) (fuel : Prims.nat) : Prims.string=
+  if fuel = Prims.int_zero
+  then FStar_String.concat "" [output; input]
+  else
+    (let ilen = FStar_String.strlen input in
+     if ilen = Prims.int_zero
+     then output
+     else
+       if string_starts_with input "../"
+       then
+         remove_dot_segments_loop
+           (FStar_String.sub input (Prims.of_int (3))
+              (ilen - (Prims.of_int (3)))) output (fuel - Prims.int_one)
+       else
+         if string_starts_with input "./"
+         then
+           remove_dot_segments_loop
+             (FStar_String.sub input (Prims.of_int (2))
+                (ilen - (Prims.of_int (2)))) output (fuel - Prims.int_one)
+         else
+           if string_starts_with input "/./"
+           then
+             remove_dot_segments_loop
+               (FStar_String.concat ""
+                  ["/";
+                  FStar_String.sub input (Prims.of_int (3))
+                    (ilen - (Prims.of_int (3)))]) output
+               (fuel - Prims.int_one)
+           else
+             if input = "/."
+             then remove_dot_segments_loop "/" output (fuel - Prims.int_one)
+             else
+               if string_starts_with input "/../"
+               then
+                 (let new_input =
+                    FStar_String.concat ""
+                      ["/";
+                      FStar_String.sub input (Prims.of_int (4))
+                        (ilen - (Prims.of_int (4)))] in
+                  let olen = FStar_String.strlen output in
+                  let cut = find_last_slash output olen in
+                  let new_output =
+                    if cut <= Prims.int_one
+                    then
+                      (if
+                         (olen > Prims.int_zero) &&
+                           ((FStar_Char.int_of_char
+                               (FStar_String.index output Prims.int_zero))
+                              = (Prims.of_int (0x2F)))
+                       then ""
+                       else "")
+                    else
+                      FStar_String.sub output Prims.int_zero
+                        (cut - Prims.int_one) in
+                  remove_dot_segments_loop new_input new_output
+                    (fuel - Prims.int_one))
+               else
+                 if input = "/.."
+                 then
+                   (let olen = FStar_String.strlen output in
+                    let cut = find_last_slash output olen in
+                    let new_output =
+                      if cut <= Prims.int_one
+                      then
+                        (if
+                           (olen > Prims.int_zero) &&
+                             ((FStar_Char.int_of_char
+                                 (FStar_String.index output Prims.int_zero))
+                                = (Prims.of_int (0x2F)))
+                         then ""
+                         else "")
+                      else
+                        FStar_String.sub output Prims.int_zero
+                          (cut - Prims.int_one) in
+                    remove_dot_segments_loop "/" new_output
+                      (fuel - Prims.int_one))
+                 else
+                   if (input = ".") || (input = "..")
+                   then
+                     remove_dot_segments_loop "" output
+                       (fuel - Prims.int_one)
+                   else
+                     (let start =
+                        if
+                          (FStar_Char.int_of_char
+                             (FStar_String.index input Prims.int_zero))
+                            = (Prims.of_int (0x2F))
+                        then Prims.int_one
+                        else Prims.int_zero in
+                      let seg_end =
+                        match find_char_from input start
+                                (Prims.of_int (0x2F)) ilen
+                        with
+                        | FStar_Pervasives_Native.Some pos -> pos
+                        | FStar_Pervasives_Native.None -> ilen in
+                      let seg = FStar_String.sub input Prims.int_zero seg_end in
+                      let rest =
+                        FStar_String.sub input seg_end (ilen - seg_end) in
+                      remove_dot_segments_loop rest
+                        (FStar_String.concat "" [output; seg])
+                        (fuel - Prims.int_one)))
+let remove_dot_segments (path : Prims.string) : Prims.string=
+  let fuel =
+    ((FStar_String.strlen path) + Prims.int_one) * (Prims.of_int (2)) in
+  remove_dot_segments_loop path "" fuel
+let merge_paths (base : uri_components) (rel_path : Prims.string) :
+  Prims.string=
+  match base.uc_authority with
+  | FStar_Pervasives_Native.Some uu___ ->
+      if (FStar_String.strlen base.uc_path) = Prims.int_zero
+      then FStar_String.concat "" ["/"; rel_path]
+      else
+        (let blen = FStar_String.strlen base.uc_path in
+         let cut = find_last_slash base.uc_path blen in
+         if cut = Prims.int_zero
+         then FStar_String.concat "" ["/"; rel_path]
+         else
+           FStar_String.concat ""
+             [FStar_String.sub base.uc_path Prims.int_zero cut; rel_path])
+  | FStar_Pervasives_Native.None ->
+      let blen = FStar_String.strlen base.uc_path in
+      let cut = find_last_slash base.uc_path blen in
+      if cut = Prims.int_zero
+      then rel_path
+      else
+        FStar_String.concat ""
+          [FStar_String.sub base.uc_path Prims.int_zero cut; rel_path]
+let resolve_iri_rfc3986 (base : uri_components) (ref_uri : uri_components) :
+  uri_components=
+  match ref_uri.uc_scheme with
+  | FStar_Pervasives_Native.Some uu___ ->
+      {
+        uc_scheme = (ref_uri.uc_scheme);
+        uc_authority = (ref_uri.uc_authority);
+        uc_path = (remove_dot_segments ref_uri.uc_path);
+        uc_query = (ref_uri.uc_query);
+        uc_fragment = (ref_uri.uc_fragment)
+      }
+  | FStar_Pervasives_Native.None ->
+      (match ref_uri.uc_authority with
+       | FStar_Pervasives_Native.Some uu___ ->
+           {
+             uc_scheme = (base.uc_scheme);
+             uc_authority = (ref_uri.uc_authority);
+             uc_path = (remove_dot_segments ref_uri.uc_path);
+             uc_query = (ref_uri.uc_query);
+             uc_fragment = (ref_uri.uc_fragment)
+           }
+       | FStar_Pervasives_Native.None ->
+           if (FStar_String.strlen ref_uri.uc_path) = Prims.int_zero
+           then
+             {
+               uc_scheme = (base.uc_scheme);
+               uc_authority = (base.uc_authority);
+               uc_path = (base.uc_path);
+               uc_query =
+                 ((match ref_uri.uc_query with
+                   | FStar_Pervasives_Native.Some uu___ -> ref_uri.uc_query
+                   | FStar_Pervasives_Native.None -> base.uc_query));
+               uc_fragment = (ref_uri.uc_fragment)
+             }
+           else
+             (let merged_path =
+                if
+                  ((FStar_String.strlen ref_uri.uc_path) > Prims.int_zero) &&
+                    ((FStar_Char.int_of_char
+                        (FStar_String.index ref_uri.uc_path Prims.int_zero))
+                       = (Prims.of_int (0x2F)))
+                then remove_dot_segments ref_uri.uc_path
+                else remove_dot_segments (merge_paths base ref_uri.uc_path) in
+              {
+                uc_scheme = (base.uc_scheme);
+                uc_authority = (base.uc_authority);
+                uc_path = merged_path;
+                uc_query = (ref_uri.uc_query);
+                uc_fragment = (ref_uri.uc_fragment)
+              }))
+let resolve_iri (st : turtle_state) (rel : Prims.string) : Prims.string=
+  if
+    ((FStar_String.strlen rel) = Prims.int_zero) &&
+      ((FStar_String.strlen st.base_iri) = Prims.int_zero)
   then ""
   else
-    (let cut_pos = find_last_slash base len in
-     if cut_pos = Prims.int_zero
-     then base
-     else FStar_String.sub base Prims.int_zero cut_pos)
-let resolve_iri (st : turtle_state) (rel : Prims.string) : Prims.string=
-  if (FStar_String.strlen rel) = Prims.int_zero
-  then st.base_iri
-  else
-    (let len = FStar_String.strlen rel in
-     if RDF_Graph_Executable.string_contains_colon rel
-     then rel
-     else
-       if
-         (FStar_Char.int_of_char (FStar_String.index rel Prims.int_zero)) =
-           (Prims.of_int (0x2F))
-       then FStar_String.concat "" [st.base_iri; rel]
-       else
-         if
-           (FStar_Char.int_of_char (FStar_String.index rel Prims.int_zero)) =
-             (Prims.of_int (0x23))
-         then FStar_String.concat "" [st.base_iri; rel]
-         else
-           (let base_dir = remove_last_segment st.base_iri in
-            FStar_String.concat "" [base_dir; rel]))
+    (let base_components = parse_uri_components st.base_iri in
+     let ref_components = parse_uri_components rel in
+     let resolved = resolve_iri_rfc3986 base_components ref_components in
+     recompose_uri resolved)
 let is_turtle_ws (c : FStar_Char.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in
   (((code = (Prims.of_int (0x20))) || (code = (Prims.of_int (0x09)))) ||
@@ -130,41 +493,45 @@ let turtle_ws (input : Prims.string) (pos : Prims.nat) :
   else Parser_Combinators.ParseOk ((), pos)
 let is_pn_chars_base (c : FStar_Char.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in
-  (((((((((((((code >= (Prims.of_int (0x41))) &&
-                (code <= (Prims.of_int (0x5A))))
+  ((((((((((((((code >= (Prims.of_int (0x41))) &&
+                 (code <= (Prims.of_int (0x5A))))
+                ||
+                ((code >= (Prims.of_int (0x61))) &&
+                   (code <= (Prims.of_int (0x7A)))))
                ||
-               ((code >= (Prims.of_int (0x61))) &&
-                  (code <= (Prims.of_int (0x7A)))))
+               ((code >= (Prims.of_int (0x00C0))) &&
+                  (code <= (Prims.of_int (0x00D6)))))
               ||
-              ((code >= (Prims.of_int (0x00C0))) &&
-                 (code <= (Prims.of_int (0x00D6)))))
+              ((code >= (Prims.of_int (0x00D8))) &&
+                 (code <= (Prims.of_int (0x00F6)))))
              ||
-             ((code >= (Prims.of_int (0x00D8))) &&
-                (code <= (Prims.of_int (0x00F6)))))
+             ((code >= (Prims.of_int (0x00F8))) &&
+                (code <= (Prims.of_int (0x02FF)))))
             ||
-            ((code >= (Prims.of_int (0x00F8))) &&
-               (code <= (Prims.of_int (0x02FF)))))
+            ((code >= (Prims.of_int (0x0370))) &&
+               (code <= (Prims.of_int (0x037D)))))
            ||
-           ((code >= (Prims.of_int (0x0370))) &&
-              (code <= (Prims.of_int (0x037D)))))
+           ((code >= (Prims.of_int (0x037F))) &&
+              (code <= (Prims.of_int (0x1FFF)))))
           ||
-          ((code >= (Prims.of_int (0x037F))) &&
-             (code <= (Prims.of_int (0x1FFF)))))
+          ((code >= (Prims.of_int (0x200C))) &&
+             (code <= (Prims.of_int (0x200D)))))
          ||
-         ((code >= (Prims.of_int (0x200C))) &&
-            (code <= (Prims.of_int (0x200D)))))
+         ((code >= (Prims.of_int (0x2070))) &&
+            (code <= (Prims.of_int (0x218F)))))
         ||
-        ((code >= (Prims.of_int (0x2070))) &&
-           (code <= (Prims.of_int (0x218F)))))
+        ((code >= (Prims.of_int (0x2C00))) &&
+           (code <= (Prims.of_int (0x2FEF)))))
        ||
-       ((code >= (Prims.of_int (0x2C00))) &&
-          (code <= (Prims.of_int (0x2FEF)))))
+       ((code >= (Prims.of_int (0x3001))) &&
+          (code <= (Prims.of_int (0xD7FF)))))
       ||
-      ((code >= (Prims.of_int (0x3001))) && (code <= (Prims.of_int (0xD7FF)))))
+      ((code >= (Prims.of_int (0xF900))) && (code <= (Prims.of_int (0xFDCF)))))
      ||
-     ((code >= (Prims.of_int (0xF900))) && (code <= (Prims.of_int (0xFDCF)))))
+     ((code >= (Prims.of_int (0xFDF0))) && (code <= (Prims.of_int (0xFFFD)))))
     ||
-    ((code >= (Prims.of_int (0xFDF0))) && (code <= (Prims.of_int (0xFFFD))))
+    ((code >= (Prims.parse_int "0x10000")) &&
+       (code <= (Prims.parse_int "0xEFFFF")))
 let is_pn_chars_u (c : FStar_Char.char) : Prims.bool=
   (is_pn_chars_base c) ||
     ((FStar_Char.int_of_char c) = (Prims.of_int (0x5F)))
@@ -234,6 +601,102 @@ let is_pn_local_start (c : FStar_Char.char) : Prims.bool=
          ((code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))))
         || (code = (Prims.of_int (0x25))))
        || (code = (Prims.of_int (0x5C))))
+let is_pn_local_esc_char (c : FStar_Char.char) : Prims.bool=
+  let code = FStar_Char.int_of_char c in
+  (((((((((((((((((((code = (Prims.of_int (0x5F))) ||
+                      (code = (Prims.of_int (0x7E))))
+                     || (code = (Prims.of_int (0x2E))))
+                    || (code = (Prims.of_int (0x2D))))
+                   || (code = (Prims.of_int (0x21))))
+                  || (code = (Prims.of_int (0x24))))
+                 || (code = (Prims.of_int (0x26))))
+                || (code = (Prims.of_int (0x27))))
+               || (code = (Prims.of_int (0x28))))
+              || (code = (Prims.of_int (0x29))))
+             || (code = (Prims.of_int (0x2A))))
+            || (code = (Prims.of_int (0x2B))))
+           || (code = (Prims.of_int (0x2C))))
+          || (code = (Prims.of_int (0x3B))))
+         || (code = (Prims.of_int (0x3D))))
+        || (code = (Prims.of_int (0x2F))))
+       || (code = (Prims.of_int (0x3F))))
+      || (code = (Prims.of_int (0x23))))
+     || (code = (Prims.of_int (0x40))))
+    || (code = (Prims.of_int (0x25)))
+let rec strip_pn_local_esc_acc (s : Prims.string) (i : Prims.nat)
+  (acc : FStar_Char.char Prims.list) (fuel : Prims.nat) : Prims.string=
+  if fuel = Prims.int_zero
+  then FStar_String.string_of_list (FStar_List_Tot_Base.rev acc)
+  else
+    (let len = FStar_String.strlen s in
+     if i >= len
+     then FStar_String.string_of_list (FStar_List_Tot_Base.rev acc)
+     else
+       (let c = FStar_String.index s i in
+        if
+          ((FStar_Char.int_of_char c) = (Prims.of_int (0x5C))) &&
+            ((i + Prims.int_one) < len)
+        then
+          let next = FStar_String.index s (i + Prims.int_one) in
+          (if is_pn_local_esc_char next
+           then
+             strip_pn_local_esc_acc s (i + (Prims.of_int (2))) (next :: acc)
+               (fuel - Prims.int_one)
+           else
+             strip_pn_local_esc_acc s (i + Prims.int_one) (c :: acc)
+               (fuel - Prims.int_one))
+        else
+          strip_pn_local_esc_acc s (i + Prims.int_one) (c :: acc)
+            (fuel - Prims.int_one)))
+let strip_pn_local_esc (s : Prims.string) : Prims.string=
+  strip_pn_local_esc_acc s Prims.int_zero [] (FStar_String.strlen s)
+let rec parse_pn_local_acc (input : Prims.string) (pos : Prims.nat)
+  (acc : FStar_Char.char Prims.list) (fuel : Prims.nat) :
+  Prims.string Parser_Combinators.parse_result=
+  if fuel = Prims.int_zero
+  then
+    Parser_Combinators.ParseOk
+      ((FStar_String.string_of_list (FStar_List_Tot_Base.rev acc)), pos)
+  else
+    (let len = FStar_String.strlen input in
+     if pos >= len
+     then
+       Parser_Combinators.ParseOk
+         ((FStar_String.string_of_list (FStar_List_Tot_Base.rev acc)), pos)
+     else
+       (let c = FStar_String.index input pos in
+        let code = FStar_Char.int_of_char c in
+        if (code = (Prims.of_int (0x5C))) && ((pos + Prims.int_one) < len)
+        then
+          let next = FStar_String.index input (pos + Prims.int_one) in
+          (if is_pn_local_esc_char next
+           then
+             parse_pn_local_acc input (pos + (Prims.of_int (2))) (next ::
+               acc) (fuel - Prims.int_one)
+           else
+             Parser_Combinators.ParseOk
+               ((FStar_String.string_of_list (FStar_List_Tot_Base.rev acc)),
+                 pos))
+        else
+          if
+            (code = (Prims.of_int (0x25))) &&
+              ((pos + (Prims.of_int (2))) < len)
+          then
+            (let h1 = FStar_String.index input (pos + Prims.int_one) in
+             let h2 = FStar_String.index input (pos + (Prims.of_int (2))) in
+             parse_pn_local_acc input (pos + (Prims.of_int (3))) (h2 :: h1 ::
+               c :: acc) (fuel - Prims.int_one))
+          else
+            if
+              ((is_pn_chars c) || (code = (Prims.of_int (0x3A)))) ||
+                (code = (Prims.of_int (0x2E)))
+            then
+              parse_pn_local_acc input (pos + Prims.int_one) (c :: acc)
+                (fuel - Prims.int_one)
+            else
+              Parser_Combinators.ParseOk
+                ((FStar_String.string_of_list (FStar_List_Tot_Base.rev acc)),
+                  pos)))
 let parse_pn_local (input : Prims.string) (pos : Prims.nat) :
   Prims.string Parser_Combinators.parse_result=
   let len = FStar_String.strlen input in
@@ -243,7 +706,8 @@ let parse_pn_local (input : Prims.string) (pos : Prims.nat) :
     (let c = FStar_String.index input pos in
      if is_pn_local_start c
      then
-       match Parser_Combinators.ptake_while is_pn_local_char input pos with
+       let fuel = len - pos in
+       match parse_pn_local_acc input pos [] fuel with
        | Parser_Combinators.ParseOk (s, pos') ->
            let slen = FStar_String.strlen s in
            (if slen > Prims.int_zero
@@ -1738,7 +2202,8 @@ let parse_turtle_statement (st : turtle_state) (input : Prims.string)
          else
            (match parse_prefix_directive input pos1 with
             | Parser_Combinators.ParseOk ((prefix, iri_val), pos2) ->
-                let new_prefixes = (prefix, iri_val) :: (st.prefixes) in
+                let resolved_iri = resolve_iri st iri_val in
+                let new_prefixes = (prefix, resolved_iri) :: (st.prefixes) in
                 Parser_Combinators.ParseOk
                   (([],
                      {
@@ -1749,11 +2214,12 @@ let parse_turtle_statement (st : turtle_state) (input : Prims.string)
             | Parser_Combinators.ParseFail (uu___2, uu___3) ->
                 (match parse_base_directive input pos1 with
                  | Parser_Combinators.ParseOk (base_val, pos2) ->
+                     let resolved_base = resolve_iri st base_val in
                      Parser_Combinators.ParseOk
                        (([],
                           {
                             prefixes = (st.prefixes);
-                            base_iri = base_val;
+                            base_iri = resolved_base;
                             bnode_counter = (st.bnode_counter)
                           }), pos2)
                  | Parser_Combinators.ParseFail (uu___4, uu___5) ->

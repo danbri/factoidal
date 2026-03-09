@@ -708,6 +708,31 @@ let normalize_decimal_lexical (s : Prims.string) : Prims.string=
                 if ((sign = "-") && (int_str = "0")) && (frac_str = "0")
                 then "0.0"
                 else result))
+let integer_to_decimal_canonical (s : Prims.string) : Prims.string=
+  normalize_integer_lexical s
+let numeric_to_canonical_decimal (lexical : Prims.string) (datatype : wf_iri)
+  : Prims.string=
+  if datatype = xsd_integer
+  then normalize_integer_lexical lexical
+  else
+    if datatype = xsd_decimal
+    then
+      (let norm = normalize_decimal_lexical lexical in
+       let chars = FStar_String.list_of_string norm in
+       let uu___1 = split_at_dot chars [] in
+       match uu___1 with
+       | (int_part, frac_opt) ->
+           (match frac_opt with
+            | FStar_Pervasives_Native.None -> norm
+            | FStar_Pervasives_Native.Some frac_digits ->
+                let stripped = strip_trailing_zeros frac_digits in
+                (match stripped with
+                 | c::[] ->
+                     if (FStar_Char.int_of_char c) = (Prims.of_int (0x30))
+                     then FStar_String.string_of_list int_part
+                     else norm
+                 | uu___2 -> norm)))
+    else lexical
 let datatype_value_eq (l1 : literal) (l2 : literal) : Prims.bool=
   if l1.datatype = l2.datatype
   then
@@ -723,4 +748,12 @@ let datatype_value_eq (l1 : literal) (l2 : literal) : Prims.bool=
             (normalize_decimal_lexical l2.lexical_form))
            && (lang_tag_option_eq l1.lang_tag l2.lang_tag)
        else literal_eq l1 l2)
-  else false
+  else
+    if
+      ((l1.datatype = xsd_integer) && (l2.datatype = xsd_decimal)) ||
+        ((l1.datatype = xsd_decimal) && (l2.datatype = xsd_integer))
+    then
+      ((numeric_to_canonical_decimal l1.lexical_form l1.datatype) =
+         (numeric_to_canonical_decimal l2.lexical_form l2.datatype))
+        && (lang_tag_option_eq l1.lang_tag l2.lang_tag)
+    else false

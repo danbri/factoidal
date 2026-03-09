@@ -481,44 +481,90 @@ let load_triples_from_content filepath content =
   else
     parse_turtle_fstar content (Some base)
 
-(* Simple entailment: does graph A entail graph B?
-   Graph A entails B if there's a mapping from B's blank nodes to terms in A
-   such that every triple in B (after mapping) exists in A.
-   For non-blank-node triples, this is just subset checking. *)
-let simple_entails graph_a graph_b =
-  (* For each triple in B, check if it can be matched in A.
-     Blank nodes in B act as existential variables. *)
-  List.for_all (fun tb ->
+(* Value-based literal comparison for RDF/RDFS entailment regimes.
+   Uses F*-extracted datatype_value_eq and lang_tag_eq for proper semantics. *)
+let literal_value_match ~regime l1 l2 =
+  match regime with
+  | "RDF" | "RDFS" ->
+    (* Use F*-extracted value-based comparison *)
+    RDF_Graph_Executable.datatype_value_eq l1 l2
+  | _ ->
+    (* Simple entailment: syntactic comparison only *)
+    l1.lexical_form = l2.lexical_form &&
+    l1.datatype = l2.datatype &&
+    l1.lang_tag = l2.lang_tag
+
+(* Entailment with consistent blank node mapping and backtracking.
+   Blank nodes in graph_b are existential variables that must map consistently:
+   if _:x maps to term T in one triple, it must map to T everywhere.
+
+   This is a backtracking search over possible bnode bindings.
+   For each triple in graph_b, we find candidate matches in graph_a,
+   and for each candidate we extend the bnode mapping and recurse. *)
+
+(* Check if subject sb from graph_b matches subject sa from graph_a,
+   given the current bnode mapping. Returns updated mapping or None. *)
+let subject_match_with_mapping ~regime mapping sb sa =
+  match sb, sa with
+  | S_IRI i1, S_IRI i2 -> if i1 = i2 then Some mapping else None
+  | S_BNode b, _ ->
+    let sa_term = match sa with S_IRI i -> T_IRI i | S_BNode b2 -> T_BNode b2 in
+    (match List.assoc_opt b mapping with
+     | Some bound -> if bound = sa_term then Some mapping else None
+     | None -> Some ((b, sa_term) :: mapping))
+  | _, _ -> None
+
+(* Check if object tb_o from graph_b matches object ta_o from graph_a,
+   given the current bnode mapping. Returns updated mapping or None. *)
+let object_match_with_mapping ~regime mapping tb_o ta_o =
+  match tb_o, ta_o with
+  | T_IRI i1, T_IRI i2 -> if i1 = i2 then Some mapping else None
+  | T_BNode b, _ ->
+    (match List.assoc_opt b mapping with
+     | Some bound -> if bound = ta_o then Some mapping else None
+     | None -> Some ((b, ta_o) :: mapping))
+  | T_Literal l1, T_Literal l2 ->
+    if literal_value_match ~regime l1 l2 then Some mapping else None
+  | _, _ -> None
+
+(* Try to match all triples in remaining_b against graph_a with consistent bnode mapping.
+   Returns true if a consistent mapping exists. *)
+let rec entails_with_mapping ~regime graph_a remaining_b mapping =
+  match remaining_b with
+  | [] -> true  (* all triples matched successfully *)
+  | tb :: rest ->
+    (* Try each triple in graph_a as a candidate match for tb *)
     List.exists (fun ta ->
-      (* Subject match *)
-      let s_match = match tb.s, ta.s with
-        | S_IRI i1, S_IRI i2 -> i1 = i2
-        | S_BNode _, _ -> true  (* bnode matches anything *)
-        | _, _ -> false in
-      (* Predicate match (always IRI) *)
-      let p_match = tb.p = ta.p in
-      (* Object match *)
-      let o_match = match tb.o, ta.o with
-        | T_IRI i1, T_IRI i2 -> i1 = i2
-        | T_BNode _, _ -> true
-        | T_Literal l1, T_Literal l2 ->
-          l1.lexical_form = l2.lexical_form &&
-          l1.datatype = l2.datatype &&
-          l1.lang_tag = l2.lang_tag
-        | _, _ -> false in
-      s_match && p_match && o_match
+      (* Predicate must match exactly *)
+      if tb.p <> ta.p then false
+      else
+        (* Try to match subject *)
+        match subject_match_with_mapping ~regime mapping tb.s ta.s with
+        | None -> false
+        | Some mapping2 ->
+          (* Try to match object *)
+          match object_match_with_mapping ~regime mapping2 tb.o ta.o with
+          | None -> false
+          | Some mapping3 ->
+            (* Recurse with updated mapping *)
+            entails_with_mapping ~regime graph_a rest mapping3
     ) graph_a
-  ) graph_b
+
+(* Entailment check: does graph A entail graph B under the given regime?
+   Uses consistent bnode mapping with backtracking. *)
+let simple_entails ?(regime="simple") graph_a graph_b =
+  entails_with_mapping ~regime graph_a graph_b []
 
 (* Apply entailment regime to a graph — compute closure *)
 let apply_entailment_regime regime triples =
   match regime with
   | "simple" -> triples
   | "RDF" ->
-    (* RDF entailment: add RDF axiomatic triples + value-based equality *)
-    (* Use the F*-extracted rdfs_closure with fuel for RDF closure rules *)
-    (try RDF_Graph_Executable.rdfs_closure triples (Z.of_int 100)
-     with _ -> triples)
+    (* RDF entailment: only RDF axiomatic triples, NOT RDFS closure rules.
+       For RDF entailment, value-based comparison is handled in the entailment
+       check itself, not via closure. No RDFS rules (subClassOf, subPropertyOf,
+       domain, range, container membership) should be added. *)
+    triples
   | "RDFS" ->
     (* RDFS entailment: full RDFS closure *)
     (try RDF_Graph_Executable.rdfs_closure triples (Z.of_int 100)
@@ -725,7 +771,7 @@ let run_rdf_test assumed_base tc =
           let regime = tc.test_type_detail in
           let closed_action = apply_entailment_regime regime action_triples in
           (* Check: does the closure of action entail expected? *)
-          if simple_entails closed_action expected_triples then Pass
+          if simple_entails ~regime closed_action expected_triples then Pass
           else
             Fail (Printf.sprintf "Entailment failed: action has %d triples (after closure), expected %d"
                     (List.length closed_action) (List.length expected_triples))
@@ -755,7 +801,7 @@ let run_rdf_test assumed_base tc =
                 let expected_triples = load_triples_from_content rf result_content in
                 let regime = tc.test_type_detail in
                 let closed_action = apply_entailment_regime regime action_triples in
-                if simple_entails closed_action expected_triples then
+                if simple_entails ~regime closed_action expected_triples then
                   Fail "Should NOT entail but does"
                 else Pass
               with e ->

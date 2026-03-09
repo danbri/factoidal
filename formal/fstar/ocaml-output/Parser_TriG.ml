@@ -205,7 +205,8 @@ let parse_trig_statement (st : Parser_Turtle.turtle_state)
             let code = FStar_Char.int_of_char c in
             match Parser_Turtle.parse_prefix_directive input pos1 with
             | Parser_Combinators.ParseOk ((prefix, iri_val), pos2) ->
-                let new_prefixes = (prefix, iri_val) ::
+                let resolved_iri = Parser_Turtle.resolve_iri st iri_val in
+                let new_prefixes = (prefix, resolved_iri) ::
                   (st.Parser_Turtle.prefixes) in
                 Parser_Combinators.ParseOk
                   (([],
@@ -218,12 +219,14 @@ let parse_trig_statement (st : Parser_Turtle.turtle_state)
             | Parser_Combinators.ParseFail (uu___2, uu___3) ->
                 (match Parser_Turtle.parse_base_directive input pos1 with
                  | Parser_Combinators.ParseOk (base_val, pos2) ->
+                     let resolved_base =
+                       Parser_Turtle.resolve_iri st base_val in
                      Parser_Combinators.ParseOk
                        (([],
                           {
                             Parser_Turtle.prefixes =
                               (st.Parser_Turtle.prefixes);
-                            Parser_Turtle.base_iri = base_val;
+                            Parser_Turtle.base_iri = resolved_base;
                             Parser_Turtle.bnode_counter =
                               (st.Parser_Turtle.bnode_counter)
                           }), pos2)
