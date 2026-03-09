@@ -2,9 +2,9 @@
    Not extracted from F*. Reads real W3C manifest files, parses .rq/.ttl/.srx/.nt,
    calls the F*-extracted evaluator, and compares results.
 
-   Uses F*-extracted parsers (Parser_NTriples, Parser_Turtle, etc.) for all
-   RDF serialization parsing. Hand-written parsers are only used for SPARQL
-   queries (sparql_parser.ml) until SPARQL11.Parser.fst is complete.
+   Uses F*-extracted parsers for all parsing: Parser_NTriples, Parser_Turtle,
+   Parser_NQuads, Parser_TriG, Parser_RDFXML, Parser_SRX for RDF serializations,
+   and SPARQL11_Parser for SPARQL queries.
 
    Usage:
      ./w3c_runner                           Run all SPARQL 1.1 suites
@@ -18,7 +18,16 @@
 
 open RDF_Graph_Executable
 open SPARQL11_Algebra
-(* Sparql_parser used qualified — don't open to avoid shadowing RDF types *)
+
+(* SPARQL query parsing via F*-extracted parser *)
+exception Sparql_parse_error of string
+exception Sparql_unsupported of string
+
+let parse_sparql_query_string content =
+  let tokens = SPARQL11_Parser.tokenize content in
+  match SPARQL11_Parser.parse_sparql_query [] (Z.of_int 1000) tokens with
+  | SPARQL11_Parser.ParseOk (q, _rest) -> q
+  | SPARQL11_Parser.ParseErr msg -> raise (Sparql_parse_error msg)
 
 (* ============================================================================
    Parser wrappers — thin adapters over F*-extracted parsers
@@ -328,7 +337,7 @@ let run_query_eval_test tc =
   let query =
     match read_file tc.query_file with
     | None -> raise (Unsupported (Printf.sprintf "Query file not found: %s" tc.query_file))
-    | Some content -> Sparql_parser.parse_query content
+    | Some content -> parse_sparql_query_string content
   in
 
   (* Execute query against extracted evaluator *)
@@ -370,25 +379,25 @@ let run_test tc =
     (try run_query_eval_test tc
      with
      | Unsupported msg -> Unsupported_feature msg
-     | Sparql_parser.Unsupported msg -> Unsupported_feature msg
-     | Sparql_parser.Parse_error msg -> Fail (Printf.sprintf "SPARQL parse: %s" msg)
+     | Sparql_unsupported msg -> Unsupported_feature msg
+     | Sparql_parse_error msg -> Fail (Printf.sprintf "SPARQL parse: %s" msg)
      | Failure msg -> Fail (Printf.sprintf "Runtime: %s" msg))
   | "PositiveSyntaxTest11" | "PositiveSyntaxTest" ->
     (match read_file tc.query_file with
      | None -> Skip "Query file missing"
      | Some content ->
-       (try ignore (Sparql_parser.parse_query content); Pass
+       (try ignore (parse_sparql_query_string content); Pass
         with
-        | Sparql_parser.Parse_error _ -> Fail "Should parse but didn't"
-        | Sparql_parser.Unsupported msg -> Unsupported_feature msg))
+        | Sparql_parse_error _ -> Fail "Should parse but didn't"
+        | Sparql_unsupported msg -> Unsupported_feature msg))
   | "NegativeSyntaxTest11" | "NegativeSyntaxTest" ->
     (match read_file tc.query_file with
      | None -> Skip "Query file missing"
      | Some content ->
-       (try ignore (Sparql_parser.parse_query content); Fail "Should reject but parsed OK"
+       (try ignore (parse_sparql_query_string content); Fail "Should reject but parsed OK"
         with
-        | Sparql_parser.Parse_error _ -> Pass
-        | Sparql_parser.Unsupported _ -> Unsupported_feature "Can't test rejection"))
+        | Sparql_parse_error _ -> Pass
+        | Sparql_unsupported _ -> Unsupported_feature "Can't test rejection"))
   | "UpdateEvaluationTest" | "PositiveUpdateSyntaxTest11" | "NegativeUpdateSyntaxTest11" ->
     Skip "UPDATE tests not in scope"
   | "CSVResultFormatTest" ->
