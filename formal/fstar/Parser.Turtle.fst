@@ -424,7 +424,15 @@ let rec parse_pname_ns_acc (input: string) (pos: nat) (acc: list char) (fuel: na
       let c = String.index input pos in
       let code = int_of_char c in
       if code = 0x3A then  (* ':' found — end of prefix namespace *)
-        ParseOk (String.string_of_list (List.Tot.rev acc)) (pos + 1)
+        (* PN_PREFIX cannot end with '.', check last accumulated char *)
+        begin match acc with
+        | last :: _ ->
+          if int_of_char last = 0x2E then
+            ParseFail "prefix name cannot end with '.'" (pos - 1)
+          else
+            ParseOk (String.string_of_list (List.Tot.rev acc)) (pos + 1)
+        | [] -> ParseOk "" (pos + 1)
+        end
       else if is_pn_chars c || code = 0x2E then  (* Allow dots in prefix name body *)
         parse_pname_ns_acc input (pos + 1) (c :: acc) (fuel - 1)
       else
@@ -512,10 +520,13 @@ let rec parse_pn_local_acc (input:string) (pos:nat) (acc:list char) (fuel:nat)
           parse_pn_local_acc input (pos + 2) (next :: acc) (fuel - 1)
         else
           ParseOk (String.string_of_list (List.Tot.rev acc)) pos
-      else if code = 0x25 && pos + 2 < len then  (* percent encoding — keep as-is *)
+      else if code = 0x25 && pos + 2 < len then  (* percent encoding — validate hex digits *)
         let h1 = String.index input (pos + 1) in
         let h2 = String.index input (pos + 2) in
-        parse_pn_local_acc input (pos + 3) (h2 :: h1 :: c :: acc) (fuel - 1)
+        if is_hex_digit h1 && is_hex_digit h2 then
+          parse_pn_local_acc input (pos + 3) (h2 :: h1 :: c :: acc) (fuel - 1)
+        else
+          ParseFail "invalid percent encoding in local name" pos
       else if is_pn_chars c || code = 0x3A || code = 0x2E then
         parse_pn_local_acc input (pos + 1) (c :: acc) (fuel - 1)
       else
@@ -1484,6 +1495,71 @@ let parse_turtle_statement (st: turtle_state) (input: string) (pos: nat) (fuel: 
           end
         end
 
+(* Strict version of parse_turtle_statement: requires '.' after triples *)
+let parse_turtle_statement_strict (st: turtle_state) (input: string) (pos: nat) (fuel: nat)
+  : Tot (parse_result (list triple & turtle_state)) (decreases fuel) =
+  if fuel = 0 then ParseFail "recursion limit" pos
+  else
+    let len = String.length input in
+    match turtle_ws input pos with
+    | ParseOk () pos1 ->
+      if pos1 >= len then ParseOk ([], st) pos1
+      else
+        (* Try prefix directive *)
+        begin match parse_prefix_directive input pos1 with
+        | ParseOk (prefix, iri_val) pos2 ->
+          let resolved_iri = resolve_iri st iri_val in
+          let new_prefixes = (prefix, resolved_iri) :: st.prefixes in
+          ParseOk ([], { st with prefixes = new_prefixes }) pos2
+        | ParseFail _ _ ->
+          (* Try base directive *)
+          begin match parse_base_directive input pos1 with
+          | ParseOk base_val pos2 ->
+            let resolved_base = resolve_iri st base_val in
+            ParseOk ([], { st with base_iri = resolved_base }) pos2
+          | ParseFail _ _ ->
+            (* Must be a triples statement *)
+            let is_bnode_property_list =
+              pos1 < len && int_of_char (String.index input pos1) = 0x5B in
+            begin match parse_turtle_subject st input pos1 fuel with
+            | ParseOk subj_res pos2 ->
+              begin match turtle_ws input pos2 with
+              | ParseOk () pos3 ->
+                if pos3 >= len then
+                  (* Subject at end of input — require dot *)
+                  if List.Tot.length subj_res.sr_triples > 0 && is_bnode_property_list then
+                    ParseFail "expected '.' after triples" pos3
+                  else
+                    ParseFail "expected predicate after subject" pos3
+                else
+                  let nc = String.index input pos3 in
+                  if int_of_char nc = 0x2E then
+                    (* Only blankNodePropertyList can stand alone with '.';
+                       collections and plain subjects require a predicate-object list *)
+                    if List.Tot.length subj_res.sr_triples > 0 && is_bnode_property_list then
+                      ParseOk (subj_res.sr_triples, subj_res.sr_state) (pos3 + 1)
+                    else
+                      ParseFail "expected predicate after subject" pos3
+                  else
+                    begin match parse_predicate_object_list subj_res.sr_state subj_res.sr_subject input pos3 (fuel - 1) with
+                    | ParseOk (po_triples, st2) pos4 ->
+                      let all_triples = subj_res.sr_triples @ po_triples in
+                      (* Strict: require '.' *)
+                      begin match turtle_ws input pos4 with
+                      | ParseOk () pos5 ->
+                        if pos5 < len && int_of_char (String.index input pos5) = 0x2E then
+                          ParseOk (all_triples, st2) (pos5 + 1)
+                        else
+                          ParseFail "expected '.' after triples" pos5
+                      end
+                    | ParseFail msg fpos -> ParseFail msg fpos
+                    end
+              end
+            | ParseFail msg fpos -> ParseFail msg fpos
+            end
+          end
+        end
+
 (* Parse the full Turtle document: sequence of statements *)
 let rec parse_turtle_doc (st: turtle_state) (input: string) (pos: nat) (acc: list triple) (fuel: nat)
   : Tot (list triple & turtle_state) (decreases fuel) =
@@ -1531,11 +1607,11 @@ let rec parse_turtle_doc_strict (st: turtle_state) (input: string) (pos: nat) (a
     | ParseOk () pos1 ->
       if pos1 >= len then Some (List.Tot.rev acc, st)
       else
-        begin match parse_turtle_statement st input pos1 fuel with
+        begin match parse_turtle_statement_strict st input pos1 fuel with
         | ParseOk (triples, st') pos2 ->
           if pos2 = pos1 then
-            (* No progress — stop *)
-            Some (List.Tot.rev ((List.Tot.rev triples) @ acc), st')
+            (* No progress — strict mode rejects unparsed trailing content *)
+            None
           else
             parse_turtle_doc_strict st' input pos2 ((List.Tot.rev triples) @ acc) (fuel - 1)
         | ParseFail _ _ ->

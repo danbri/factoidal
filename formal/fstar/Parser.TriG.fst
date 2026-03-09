@@ -175,6 +175,44 @@ let rec parse_graph_body (st: turtle_state) (input: string) (pos: nat)
               parse_graph_body st input pos2 acc (fuel - 1)
           end
 
+(** Strict version of parse_graph_body: propagates errors instead of skipping.
+    Uses parse_turtle_statement_strict to require '.' after triples
+    and rejects directives inside graph blocks. *)
+let rec parse_graph_body_strict (st: turtle_state) (input: string) (pos: nat)
+    (acc: list triple) (fuel: nat)
+  : Tot (option (list triple & turtle_state & nat)) (decreases fuel) =
+  if fuel = 0 then Some (List.Tot.rev acc, st, pos)
+  else
+    let len = String.length input in
+    match turtle_ws input pos with
+    | ParseOk () pos1 ->
+      if pos1 >= len then None  (* unterminated graph block *)
+      else
+        let c = String.index input pos1 in
+        let code = int_of_char c in
+        if code = 0x7D then (* '}' — end of graph block *)
+          Some (List.Tot.rev acc, st, pos1 + 1)
+        else
+          (* Reject directives inside graph blocks *)
+          begin match parse_prefix_directive input pos1 with
+          | ParseOk _ _ -> None  (* @prefix/PREFIX not allowed inside { } *)
+          | ParseFail _ _ ->
+            begin match parse_base_directive input pos1 with
+            | ParseOk _ _ -> None  (* @base/BASE not allowed inside { } *)
+            | ParseFail _ _ ->
+              (* Try to parse a strict Turtle statement *)
+              begin match parse_turtle_statement_strict st input pos1 fuel with
+              | ParseOk (triples, st') pos2 ->
+                if pos2 = pos1 then
+                  None  (* No progress — error *)
+                else
+                  parse_graph_body_strict st' input pos2
+                    (List.Tot.append (List.Tot.rev triples) acc) (fuel - 1)
+              | ParseFail _ _ -> None
+              end
+            end
+          end
+
 (* ================================================================ *)
 (* Top-level TriG statement parser                                   *)
 (* ================================================================ *)
@@ -314,6 +352,120 @@ let parse_trig_statement (st: turtle_state) (input: string) (pos: nat) (fuel: na
           end
         end
 
+(** Strict version of parse_trig_statement: uses strict graph body parser,
+    requires '.' after bare triples, rejects GRAPH { } without name. *)
+let parse_trig_statement_strict (st: turtle_state) (input: string) (pos: nat) (fuel: nat)
+  : Tot (option (list (option iri & list triple) & turtle_state & nat)) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let len = String.length input in
+    match turtle_ws input pos with
+    | ParseOk () pos1 ->
+      if pos1 >= len then Some ([], st, pos1)
+      else
+        let c = String.index input pos1 in
+        let code = int_of_char c in
+        (* Case 1: Prefix directive *)
+        begin match parse_prefix_directive input pos1 with
+        | ParseOk (prefix, iri_val) pos2 ->
+          let resolved_iri = resolve_iri st iri_val in
+          let new_prefixes = (prefix, resolved_iri) :: st.prefixes in
+          Some ([], { st with prefixes = new_prefixes }, pos2)
+        | ParseFail _ _ ->
+          (* Case 2: Base directive *)
+          begin match parse_base_directive input pos1 with
+          | ParseOk base_val pos2 ->
+            let resolved_base = resolve_iri st base_val in
+            Some ([], { st with base_iri = resolved_base }, pos2)
+          | ParseFail _ _ ->
+            (* Case 3: Bare graph block { ... } — triples go to default graph *)
+            if code = 0x7B then
+              begin match parse_graph_body_strict st input (pos1 + 1) [] fuel with
+              | Some (triples, st', pos2) ->
+                Some ([(None, triples)], st', pos2)
+              | None -> None
+              end
+            (* Case 4: GRAPH keyword *)
+            else if is_graph_keyword input pos1 then
+              begin match turtle_ws input (pos1 + 5) with
+              | ParseOk () pos2 ->
+                if pos2 >= len then None
+                else
+                  let c2 = String.index input pos2 in
+                  let code2 = int_of_char c2 in
+                  if code2 = 0x7B then
+                    (* GRAPH { ... } — per TriG spec, GRAPH requires a name *)
+                    None
+                  else
+                    (* GRAPH graphName { ... } *)
+                    begin match parse_trig_graph_name st input pos2 with
+                    | ParseOk (gname, st2) pos3 ->
+                      begin match turtle_ws input pos3 with
+                      | ParseOk () pos4 ->
+                        if pos4 >= len then None
+                        else if int_of_char (String.index input pos4) = 0x7B then
+                          begin match parse_graph_body_strict st2 input (pos4 + 1) [] fuel with
+                          | Some (triples, st3, pos5) ->
+                            Some ([(Some gname, triples)], st3, pos5)
+                          | None -> None
+                          end
+                        else None
+                      end
+                    | ParseFail _ _ -> None
+                    end
+              end
+            else
+              (* Case 5: Could be graphName { ... } or regular Turtle triples *)
+              begin match parse_trig_graph_name st input pos1 with
+              | ParseOk (candidate_name, st2) pos2 ->
+                begin match turtle_ws input pos2 with
+                | ParseOk () pos3 ->
+                  if pos3 < len && int_of_char (String.index input pos3) = 0x7B then
+                    (* Named graph block *)
+                    begin match parse_graph_body_strict st2 input (pos3 + 1) [] fuel with
+                    | Some (triples, st3, pos4) ->
+                      Some ([(Some candidate_name, triples)], st3, pos4)
+                    | None -> None
+                    end
+                  else
+                    (* Regular triples — require '.' *)
+                    let subj : subject =
+                      if String.length candidate_name >= 2 then
+                        let c0 = String.index candidate_name 0 in
+                        let c1 = String.index candidate_name 1 in
+                        if int_of_char c0 = 0x5F && int_of_char c1 = 0x3A then
+                          let bname = if String.length candidate_name > 2
+                                      then String.sub candidate_name 2 (String.length candidate_name - 2)
+                                      else "" in
+                          S_BNode bname
+                        else
+                          S_IRI candidate_name
+                      else
+                        S_IRI candidate_name
+                    in
+                    begin match parse_predicate_object_list st2 subj input pos3 (fuel - 1) with
+                    | ParseOk (po_triples, st3) pos4 ->
+                      begin match turtle_ws input pos4 with
+                      | ParseOk () pos5 ->
+                        if pos5 < len && int_of_char (String.index input pos5) = 0x2E then
+                          Some ([(None, po_triples)], st3, pos5 + 1)
+                        else
+                          None  (* Strict: require '.' *)
+                      end
+                    | ParseFail _ _ -> None
+                    end
+                end
+              | ParseFail _ _ ->
+                (* Case 6: Other Turtle constructs *)
+                begin match parse_turtle_statement_strict st input pos1 fuel with
+                | ParseOk (triples, st') pos2 ->
+                  Some ([(None, triples)], st', pos2)
+                | ParseFail _ _ -> None
+                end
+              end
+          end
+        end
+
 (* ================================================================ *)
 (* Full TriG document parser                                         *)
 (* ================================================================ *)
@@ -368,7 +520,8 @@ let rec parse_trig_doc (st: turtle_state) (input: string) (pos: nat)
 (* Strict document parser (returns None on any parse error)          *)
 (* ================================================================ *)
 
-(** Like parse_trig_doc but propagates errors instead of skipping *)
+(** Like parse_trig_doc but propagates errors instead of skipping.
+    Uses parse_trig_statement_strict for full validation. *)
 let rec parse_trig_doc_strict (st: turtle_state) (input: string) (pos: nat)
     (ds: rdf_dataset) (fuel: nat)
   : Tot (option (rdf_dataset & turtle_state)) (decreases fuel) =
@@ -379,17 +532,11 @@ let rec parse_trig_doc_strict (st: turtle_state) (input: string) (pos: nat)
     | ParseOk () pos1 ->
       if pos1 >= len then Some (ds, st)
       else
-        begin match parse_trig_statement st input pos1 fuel with
-        | ParseOk (deltas, st') pos2 ->
+        begin match parse_trig_statement_strict st input pos1 fuel with
+        | Some (deltas, st', pos2) ->
           if pos2 = pos1 then
-            (* No progress — stop *)
-            let ds' = List.Tot.fold_left
-              (fun (acc : rdf_dataset) (delta : option iri & list triple) ->
-                let (gname, triples) = delta in
-                trig_dataset_add_triples acc triples gname)
-              ds deltas
-            in
-            Some (ds', st')
+            (* No progress — strict mode rejects unparsed trailing content *)
+            None
           else
             let ds' = List.Tot.fold_left
               (fun (acc : rdf_dataset) (delta : option iri & list triple) ->
@@ -398,7 +545,7 @@ let rec parse_trig_doc_strict (st: turtle_state) (input: string) (pos: nat)
               ds deltas
             in
             parse_trig_doc_strict st' input pos2 ds' (fuel - 1)
-        | ParseFail _ _ ->
+        | None ->
           (* Strict mode: any parse failure means the document is invalid *)
           None
         end

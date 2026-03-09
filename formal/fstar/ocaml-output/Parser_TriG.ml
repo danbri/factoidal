@@ -187,6 +187,49 @@ let rec parse_graph_body (st : Parser_Turtle.turtle_state)
                    else
                      parse_graph_body st input pos2 acc
                        (fuel - Prims.int_one))))
+let rec parse_graph_body_strict (st : Parser_Turtle.turtle_state)
+  (input : Prims.string) (pos : Prims.nat)
+  (acc : RDF_Graph_Executable.triple Prims.list) (fuel : Prims.nat) :
+  (RDF_Graph_Executable.triple Prims.list * Parser_Turtle.turtle_state *
+    Prims.nat) FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.Some ((FStar_List_Tot_Base.rev acc), st, pos)
+  else
+    (let len = FStar_String.strlen input in
+     match Parser_Turtle.turtle_ws input pos with
+     | Parser_Combinators.ParseOk ((), pos1) ->
+         if pos1 >= len
+         then FStar_Pervasives_Native.None
+         else
+           (let c = FStar_String.index input pos1 in
+            let code = FStar_Char.int_of_char c in
+            if code = (Prims.of_int (0x7D))
+            then
+              FStar_Pervasives_Native.Some
+                ((FStar_List_Tot_Base.rev acc), st, (pos1 + Prims.int_one))
+            else
+              (match Parser_Turtle.parse_prefix_directive input pos1 with
+               | Parser_Combinators.ParseOk (uu___3, uu___4) ->
+                   FStar_Pervasives_Native.None
+               | Parser_Combinators.ParseFail (uu___3, uu___4) ->
+                   (match Parser_Turtle.parse_base_directive input pos1 with
+                    | Parser_Combinators.ParseOk (uu___5, uu___6) ->
+                        FStar_Pervasives_Native.None
+                    | Parser_Combinators.ParseFail (uu___5, uu___6) ->
+                        (match Parser_Turtle.parse_turtle_statement_strict st
+                                 input pos1 fuel
+                         with
+                         | Parser_Combinators.ParseOk ((triples, st'), pos2)
+                             ->
+                             if pos2 = pos1
+                             then FStar_Pervasives_Native.None
+                             else
+                               parse_graph_body_strict st' input pos2
+                                 (FStar_List_Tot_Base.append
+                                    (FStar_List_Tot_Base.rev triples) acc)
+                                 (fuel - Prims.int_one)
+                         | Parser_Combinators.ParseFail (uu___7, uu___8) ->
+                             FStar_Pervasives_Native.None)))))
 let parse_trig_statement (st : Parser_Turtle.turtle_state)
   (input : Prims.string) (pos : Prims.nat) (fuel : Prims.nat) :
   ((RDF_Graph_Executable.iri FStar_Pervasives_Native.option *
@@ -424,6 +467,219 @@ let parse_trig_statement (st : Parser_Turtle.turtle_state)
                                           triples)], st'), pos2)
                                | Parser_Combinators.ParseFail (msg, fpos) ->
                                    Parser_Combinators.ParseFail (msg, fpos))))))
+let parse_trig_statement_strict (st : Parser_Turtle.turtle_state)
+  (input : Prims.string) (pos : Prims.nat) (fuel : Prims.nat) :
+  ((RDF_Graph_Executable.iri FStar_Pervasives_Native.option *
+    RDF_Graph_Executable.triple Prims.list) Prims.list *
+    Parser_Turtle.turtle_state * Prims.nat) FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (let len = FStar_String.strlen input in
+     match Parser_Turtle.turtle_ws input pos with
+     | Parser_Combinators.ParseOk ((), pos1) ->
+         if pos1 >= len
+         then FStar_Pervasives_Native.Some ([], st, pos1)
+         else
+           (let c = FStar_String.index input pos1 in
+            let code = FStar_Char.int_of_char c in
+            match Parser_Turtle.parse_prefix_directive input pos1 with
+            | Parser_Combinators.ParseOk ((prefix, iri_val), pos2) ->
+                let resolved_iri = Parser_Turtle.resolve_iri st iri_val in
+                let new_prefixes = (prefix, resolved_iri) ::
+                  (st.Parser_Turtle.prefixes) in
+                FStar_Pervasives_Native.Some
+                  ([],
+                    {
+                      Parser_Turtle.prefixes = new_prefixes;
+                      Parser_Turtle.base_iri = (st.Parser_Turtle.base_iri);
+                      Parser_Turtle.bnode_counter =
+                        (st.Parser_Turtle.bnode_counter)
+                    }, pos2)
+            | Parser_Combinators.ParseFail (uu___2, uu___3) ->
+                (match Parser_Turtle.parse_base_directive input pos1 with
+                 | Parser_Combinators.ParseOk (base_val, pos2) ->
+                     let resolved_base =
+                       Parser_Turtle.resolve_iri st base_val in
+                     FStar_Pervasives_Native.Some
+                       ([],
+                         {
+                           Parser_Turtle.prefixes =
+                             (st.Parser_Turtle.prefixes);
+                           Parser_Turtle.base_iri = resolved_base;
+                           Parser_Turtle.bnode_counter =
+                             (st.Parser_Turtle.bnode_counter)
+                         }, pos2)
+                 | Parser_Combinators.ParseFail (uu___4, uu___5) ->
+                     if code = (Prims.of_int (0x7B))
+                     then
+                       (match parse_graph_body_strict st input
+                                (pos1 + Prims.int_one) [] fuel
+                        with
+                        | FStar_Pervasives_Native.Some (triples, st', pos2)
+                            ->
+                            FStar_Pervasives_Native.Some
+                              ([(FStar_Pervasives_Native.None, triples)],
+                                st', pos2)
+                        | FStar_Pervasives_Native.None ->
+                            FStar_Pervasives_Native.None)
+                     else
+                       if is_graph_keyword input pos1
+                       then
+                         (match Parser_Turtle.turtle_ws input
+                                  (pos1 + (Prims.of_int (5)))
+                          with
+                          | Parser_Combinators.ParseOk ((), pos2) ->
+                              if pos2 >= len
+                              then FStar_Pervasives_Native.None
+                              else
+                                (let c2 = FStar_String.index input pos2 in
+                                 let code2 = FStar_Char.int_of_char c2 in
+                                 if code2 = (Prims.of_int (0x7B))
+                                 then FStar_Pervasives_Native.None
+                                 else
+                                   (match parse_trig_graph_name st input pos2
+                                    with
+                                    | Parser_Combinators.ParseOk
+                                        ((gname, st2), pos3) ->
+                                        (match Parser_Turtle.turtle_ws input
+                                                 pos3
+                                         with
+                                         | Parser_Combinators.ParseOk
+                                             ((), pos4) ->
+                                             if pos4 >= len
+                                             then
+                                               FStar_Pervasives_Native.None
+                                             else
+                                               if
+                                                 (FStar_Char.int_of_char
+                                                    (FStar_String.index input
+                                                       pos4))
+                                                   = (Prims.of_int (0x7B))
+                                               then
+                                                 (match parse_graph_body_strict
+                                                          st2 input
+                                                          (pos4 +
+                                                             Prims.int_one)
+                                                          [] fuel
+                                                  with
+                                                  | FStar_Pervasives_Native.Some
+                                                      (triples, st3, pos5) ->
+                                                      FStar_Pervasives_Native.Some
+                                                        ([((FStar_Pervasives_Native.Some
+                                                              gname),
+                                                            triples)], st3,
+                                                          pos5)
+                                                  | FStar_Pervasives_Native.None
+                                                      ->
+                                                      FStar_Pervasives_Native.None)
+                                               else
+                                                 FStar_Pervasives_Native.None)
+                                    | Parser_Combinators.ParseFail
+                                        (uu___9, uu___10) ->
+                                        FStar_Pervasives_Native.None)))
+                       else
+                         (match parse_trig_graph_name st input pos1 with
+                          | Parser_Combinators.ParseOk
+                              ((candidate_name, st2), pos2) ->
+                              (match Parser_Turtle.turtle_ws input pos2 with
+                               | Parser_Combinators.ParseOk ((), pos3) ->
+                                   if
+                                     (pos3 < len) &&
+                                       ((FStar_Char.int_of_char
+                                           (FStar_String.index input pos3))
+                                          = (Prims.of_int (0x7B)))
+                                   then
+                                     (match parse_graph_body_strict st2 input
+                                              (pos3 + Prims.int_one) [] fuel
+                                      with
+                                      | FStar_Pervasives_Native.Some
+                                          (triples, st3, pos4) ->
+                                          FStar_Pervasives_Native.Some
+                                            ([((FStar_Pervasives_Native.Some
+                                                  candidate_name), triples)],
+                                              st3, pos4)
+                                      | FStar_Pervasives_Native.None ->
+                                          FStar_Pervasives_Native.None)
+                                   else
+                                     (let subj =
+                                        if
+                                          (FStar_String.strlen candidate_name)
+                                            >= (Prims.of_int (2))
+                                        then
+                                          let c0 =
+                                            FStar_String.index candidate_name
+                                              Prims.int_zero in
+                                          let c1 =
+                                            FStar_String.index candidate_name
+                                              Prims.int_one in
+                                          (if
+                                             ((FStar_Char.int_of_char c0) =
+                                                (Prims.of_int (0x5F)))
+                                               &&
+                                               ((FStar_Char.int_of_char c1) =
+                                                  (Prims.of_int (0x3A)))
+                                           then
+                                             let bname =
+                                               if
+                                                 (FStar_String.strlen
+                                                    candidate_name)
+                                                   > (Prims.of_int (2))
+                                               then
+                                                 FStar_String.sub
+                                                   candidate_name
+                                                   (Prims.of_int (2))
+                                                   ((FStar_String.strlen
+                                                       candidate_name)
+                                                      - (Prims.of_int (2)))
+                                               else "" in
+                                             RDF_Graph_Executable.S_BNode
+                                               bname
+                                           else
+                                             RDF_Graph_Executable.S_IRI
+                                               candidate_name)
+                                        else
+                                          RDF_Graph_Executable.S_IRI
+                                            candidate_name in
+                                      match Parser_Turtle.parse_predicate_object_list
+                                              st2 subj input pos3
+                                              (fuel - Prims.int_one)
+                                      with
+                                      | Parser_Combinators.ParseOk
+                                          ((po_triples, st3), pos4) ->
+                                          (match Parser_Turtle.turtle_ws
+                                                   input pos4
+                                           with
+                                           | Parser_Combinators.ParseOk
+                                               ((), pos5) ->
+                                               if
+                                                 (pos5 < len) &&
+                                                   ((FStar_Char.int_of_char
+                                                       (FStar_String.index
+                                                          input pos5))
+                                                      = (Prims.of_int (0x2E)))
+                                               then
+                                                 FStar_Pervasives_Native.Some
+                                                   ([(FStar_Pervasives_Native.None,
+                                                       po_triples)], st3,
+                                                     (pos5 + Prims.int_one))
+                                               else
+                                                 FStar_Pervasives_Native.None)
+                                      | Parser_Combinators.ParseFail
+                                          (uu___9, uu___10) ->
+                                          FStar_Pervasives_Native.None))
+                          | Parser_Combinators.ParseFail (uu___8, uu___9) ->
+                              (match Parser_Turtle.parse_turtle_statement_strict
+                                       st input pos1 fuel
+                               with
+                               | Parser_Combinators.ParseOk
+                                   ((triples, st'), pos2) ->
+                                   FStar_Pervasives_Native.Some
+                                     ([(FStar_Pervasives_Native.None,
+                                         triples)], st', pos2)
+                               | Parser_Combinators.ParseFail
+                                   (uu___10, uu___11) ->
+                                   FStar_Pervasives_Native.None)))))
 let rec parse_trig_doc (st : Parser_Turtle.turtle_state)
   (input : Prims.string) (pos : Prims.nat)
   (ds : RDF_Graph_Executable.rdf_dataset) (fuel : Prims.nat) :
@@ -493,19 +749,10 @@ let rec parse_trig_doc_strict (st : Parser_Turtle.turtle_state)
          if pos1 >= len
          then FStar_Pervasives_Native.Some (ds, st)
          else
-           (match parse_trig_statement st input pos1 fuel with
-            | Parser_Combinators.ParseOk ((deltas, st'), pos2) ->
+           (match parse_trig_statement_strict st input pos1 fuel with
+            | FStar_Pervasives_Native.Some (deltas, st', pos2) ->
                 if pos2 = pos1
-                then
-                  let ds' =
-                    FStar_List_Tot_Base.fold_left
-                      (fun acc delta ->
-                         let uu___2 = delta in
-                         match uu___2 with
-                         | (gname, triples) ->
-                             trig_dataset_add_triples acc triples gname) ds
-                      deltas in
-                  FStar_Pervasives_Native.Some (ds', st')
+                then FStar_Pervasives_Native.None
                 else
                   (let ds' =
                      FStar_List_Tot_Base.fold_left
@@ -517,8 +764,7 @@ let rec parse_trig_doc_strict (st : Parser_Turtle.turtle_state)
                        deltas in
                    parse_trig_doc_strict st' input pos2 ds'
                      (fuel - Prims.int_one))
-            | Parser_Combinators.ParseFail (uu___2, uu___3) ->
-                FStar_Pervasives_Native.None))
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None))
 let parse_trig (input : Prims.string) : RDF_Graph_Executable.rdf_dataset=
   let len = FStar_String.strlen input in
   let fuel = (len + Prims.int_one) * (Prims.of_int (3)) in

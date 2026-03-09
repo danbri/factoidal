@@ -571,6 +571,36 @@ let apply_entailment_regime regime triples =
      with _ -> triples)
   | _ -> triples  (* unknown regime — just use the raw triples *)
 
+(* IRI validation: check that IRIs don't contain prohibited characters per RFC 3987.
+   Used for NegativeEval tests where the document parses syntactically but
+   contains semantically invalid IRIs (e.g., decoded \u0020 = space). *)
+let iri_has_invalid_char iri =
+  let len = String.length iri in
+  let rec check i =
+    if i >= len then false
+    else
+      let c = Char.code iri.[i] in
+      (* Prohibited in IRIs: space, <, >, {, }, |, ^, `, \, and control chars *)
+      if c <= 0x20 || c = 0x3C (* < *) || c = 0x3E (* > *) ||
+         c = 0x7B (* { *) || c = 0x7D (* } *) || c = 0x7C (* | *) ||
+         c = 0x5E (* ^ *) || c = 0x60 (* ` *) || c = 0x5C (* \ *) ||
+         c = 0x7F then true
+      else check (i + 1)
+  in
+  check 0
+
+(* Check all IRIs in a list of triples for validity *)
+let validate_triple_iris triples =
+  List.iter (fun t ->
+    let check_iri iri =
+      if iri_has_invalid_char iri then
+        failwith (Printf.sprintf "Invalid IRI: contains prohibited character: %s" iri)
+    in
+    (match t.s with S_IRI i -> check_iri i | _ -> ());
+    check_iri t.p;
+    (match t.o with T_IRI i -> check_iri i | _ -> ())
+  ) triples
+
 let make_turtle_base assumed_base filepath =
   (* Use assumed test base from manifest if available, else file:// *)
   match assumed_base with
@@ -640,14 +670,17 @@ let run_rdf_test assumed_base tc =
           with e ->
             Fail (Printf.sprintf "Parse error: %s" (Printexc.to_string e)))))
 
-  (* Turtle negative eval: parse succeeds but semantic error *)
+  (* Turtle negative eval: parse succeeds syntactically but semantic error
+     (e.g., IRIs with invalid characters after escape decoding) *)
   | "TestTurtleNegativeEval" ->
     (match read_file tc.query_file with
      | None -> Skip "File missing"
      | Some content ->
        (try
           let base = make_turtle_base assumed_base tc.query_file in
-          ignore (parse_turtle_fstar_strict content (Some base));
+          let triples = parse_turtle_fstar_strict content (Some base) in
+          (* Validate that all IRIs are valid after escape decoding *)
+          validate_triple_iris triples;
           Fail "Should produce eval error but succeeded"
         with _ -> Pass))
 
@@ -713,14 +746,18 @@ let run_rdf_test assumed_base tc =
           with e ->
             Fail (Printf.sprintf "Parse error: %s" (Printexc.to_string e)))))
 
-  (* TriG negative eval *)
+  (* TriG negative eval: parse succeeds syntactically but semantic error
+     (e.g., IRIs with invalid characters after escape decoding) *)
   | "TestTrigNegativeEval" ->
     (match read_file tc.query_file with
      | None -> Skip "File missing"
      | Some content ->
        (try
           let base = make_turtle_base assumed_base tc.query_file in
-          ignore (parse_trig_fstar_strict content (Some base));
+          let ds = parse_trig_fstar_strict content (Some base) in
+          (* Validate IRIs in all graphs *)
+          validate_triple_iris ds.ds_default;
+          List.iter (fun ng -> validate_triple_iris ng.ng_graph) ds.ds_named;
           Fail "Should produce eval error but succeeded"
         with _ -> Pass))
 
