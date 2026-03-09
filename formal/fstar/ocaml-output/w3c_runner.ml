@@ -454,6 +454,125 @@ let run_rdf_test assumed_base tc =
           Fail "Should produce eval error but succeeded"
         with Ntriples_parser.Parse_error _ -> Pass))
 
+  (* N-Quads positive syntax: should parse without error *)
+  | "TestNQuadsPositiveSyntax" ->
+    (match read_file tc.query_file with
+     | None -> Skip "File missing"
+     | Some content ->
+       (try ignore (Nquads_parser.parse_nquads content); Pass
+        with Nquads_parser.Parse_error _ -> Fail "Should parse but didn't"))
+
+  (* N-Quads negative syntax: should fail to parse *)
+  | "TestNQuadsNegativeSyntax" ->
+    (match read_file tc.query_file with
+     | None -> Skip "File missing"
+     | Some content ->
+       (try ignore (Nquads_parser.parse_nquads content); Fail "Should reject but parsed OK"
+        with Nquads_parser.Parse_error _ -> Pass))
+
+  (* TriG positive syntax: should parse without error *)
+  | "TestTrigPositiveSyntax" ->
+    (match read_file tc.query_file with
+     | None -> Skip "File missing"
+     | Some content ->
+       (try
+          Turtle_parser.reset_bnodes ();
+          let base = make_turtle_base assumed_base tc.query_file in
+          ignore (Trig_parser.parse_trig content (Some base)); Pass
+        with
+        | Trig_parser.Parse_error _ -> Fail "Should parse but didn't"
+        | Ntriples_parser.Parse_error _ -> Fail "Should parse but didn't"))
+
+  (* TriG negative syntax: should fail to parse *)
+  | "TestTrigNegativeSyntax" ->
+    (match read_file tc.query_file with
+     | None -> Skip "File missing"
+     | Some content ->
+       (try
+          Turtle_parser.reset_bnodes ();
+          let base = make_turtle_base assumed_base tc.query_file in
+          ignore (Trig_parser.parse_trig content (Some base));
+          Fail "Should reject but parsed OK"
+        with
+        | Trig_parser.Parse_error _ -> Pass
+        | Ntriples_parser.Parse_error _ -> Pass))
+
+  (* TriG eval: parse .trig, compare triples to expected .nq output *)
+  | "TestTrigEval" ->
+    (match read_file tc.query_file, tc.result_file with
+     | None, _ -> Skip "Input file missing"
+     | _, None -> Skip "No expected result file"
+     | Some input, Some rf ->
+       (match read_file rf with
+        | None -> Skip (Printf.sprintf "Result file missing: %s" rf)
+        | Some expected_content ->
+          (try
+            Turtle_parser.reset_bnodes ();
+            let base = make_turtle_base assumed_base tc.query_file in
+            let actual = Trig_parser.parse_trig input (Some base) in
+            (* Expected is N-Quads — parse ignoring graph labels *)
+            let expected = Nquads_parser.parse_nquads expected_content in
+            if triple_sets_match expected actual then Pass
+            else
+              Fail (Printf.sprintf "Triples mismatch: expected %d, got %d"
+                      (List.length expected) (List.length actual))
+          with
+          | Trig_parser.Parse_error msg -> Fail (Printf.sprintf "Parse error: %s" msg)
+          | Nquads_parser.Parse_error msg -> Fail (Printf.sprintf "Parse error: %s" msg)
+          | Ntriples_parser.Parse_error msg -> Fail (Printf.sprintf "Parse error: %s" msg))))
+
+  (* TriG negative eval: parse succeeds but semantic error *)
+  | "TestTrigNegativeEval" ->
+    (match read_file tc.query_file with
+     | None -> Skip "File missing"
+     | Some content ->
+       (try
+          Turtle_parser.reset_bnodes ();
+          let base = make_turtle_base assumed_base tc.query_file in
+          ignore (Trig_parser.parse_trig content (Some base));
+          Fail "Should produce eval error but succeeded"
+        with
+        | Trig_parser.Parse_error _ -> Pass
+        | Ntriples_parser.Parse_error _ -> Pass))
+
+  (* RDF/XML eval: parse .rdf, compare triples to expected .nt output *)
+  | "TestXMLEval" ->
+    (match read_file tc.query_file, tc.result_file with
+     | None, _ -> Skip "Input file missing"
+     | _, None -> Skip "No expected result file"
+     | Some input, Some rf ->
+       (match read_file rf with
+        | None -> Skip (Printf.sprintf "Result file missing: %s" rf)
+        | Some expected_content ->
+          (try
+            let base = make_turtle_base assumed_base tc.query_file in
+            let actual = Rdf_xml_parser.parse_rdf_xml input (Some base) in
+            let expected = parse_ntriples expected_content in
+            if triple_sets_match expected actual then Pass
+            else
+              Fail (Printf.sprintf "Triples mismatch: expected %d, got %d"
+                      (List.length expected) (List.length actual))
+          with
+          | Ntriples_parser.Parse_error msg -> Fail (Printf.sprintf "Parse error: %s" msg)
+          | Failure msg -> Fail (Printf.sprintf "Runtime: %s" msg))))
+
+  (* RDF/XML negative syntax: should fail to parse *)
+  | "TestXMLNegativeSyntax" ->
+    (match read_file tc.query_file with
+     | None -> Skip "File missing"
+     | Some content ->
+       (try
+          let base = make_turtle_base assumed_base tc.query_file in
+          ignore (Rdf_xml_parser.parse_rdf_xml content (Some base));
+          Fail "Should reject but parsed OK"
+        with
+        | Failure _ -> Pass
+        | Ntriples_parser.Parse_error _ -> Pass))
+
+  (* RDF Model Theory entailment tests *)
+  | "PositiveEntailmentTest" | "NegativeEntailmentTest" ->
+    Unsupported_feature "RDF/RDFS entailment tests require inference engine"
+
   | other -> Skip (Printf.sprintf "Unknown RDF test type: %s" other)
 
 (* ============================================================================
@@ -494,7 +613,8 @@ let discover_rdf_suites () =
     let dirs = Array.to_list entries |> List.filter (fun e ->
       let path = Filename.concat rdf_tests_base e in
       Sys.is_directory path &&
-      (e = "rdf-n-triples" || e = "rdf-turtle")) in
+      (e = "rdf-n-triples" || e = "rdf-turtle" || e = "rdf-n-quads" ||
+       e = "rdf-trig" || e = "rdf-xml" || e = "rdf-mt")) in
     List.sort String.compare dirs
   with Sys_error _ ->
     Printf.eprintf "Warning: RDF test directory not found: %s\n" rdf_tests_base;
