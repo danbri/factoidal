@@ -415,12 +415,24 @@ let next_token (input : string) (p : pos) : lex_result =
     let c = peek_char input p in
     let code = char_code c in
     if code = 0x3C (* < *) then begin
-      (* Could be <= or <IRI> or < (less-than) *)
+      // Could be <= or <IRI> or < (less-than)
       if not (at_end input (p + 1)) && char_code (peek_char input (p + 1)) = 0x3D
       then (Tok_LE, p + 2)
+      else if at_end input (p + 1) then (Tok_LT, p + 1)
       else
-        let (iri, p') = scan_iri input (p + 1) in
-        (Tok_IRI iri, p')
+        // Distinguish <IRI> from < (less-than):
+        // IRI starts with a letter, underscore, or colon (e.g., <http:, <urn:, <_:)
+        // Less-than is followed by space, digit, newline, etc.
+        let next_code = char_code (peek_char input (p + 1)) in
+        if (next_code >= 0x41 && next_code <= 0x5A) ||  // A-Z
+           (next_code >= 0x61 && next_code <= 0x7A) ||  // a-z
+           next_code = 0x5F ||  // _
+           next_code = 0x2F ||  // / (for </path>)
+           next_code = 0x23     // # (for <#fragment>)
+        then
+          let (iri, p') = scan_iri input (p + 1) in
+          (Tok_IRI iri, p')
+        else (Tok_LT, p + 1)
     end
     else if code = 0x3E (* > *) then
       if not (at_end input (p + 1)) && char_code (peek_char input (p + 1)) = 0x3D

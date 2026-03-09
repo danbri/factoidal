@@ -1218,8 +1218,23 @@ let next_token (input : Prims.string) (p : pos) : lex_result=
                (Prims.of_int (0x3D)))
         then (Tok_LE, (p1 + (Prims.of_int (2))))
         else
-          (let uu___2 = scan_iri input (p1 + Prims.int_one) in
-           match uu___2 with | (iri, p') -> ((Tok_IRI iri), p')))
+          if at_end input (p1 + Prims.int_one)
+          then (Tok_LT, (p1 + Prims.int_one))
+          else
+            (let next_code = char_code (peek_char input (p1 + Prims.int_one)) in
+             if
+               (((((next_code >= (Prims.of_int (0x41))) &&
+                     (next_code <= (Prims.of_int (0x5A))))
+                    ||
+                    ((next_code >= (Prims.of_int (0x61))) &&
+                       (next_code <= (Prims.of_int (0x7A)))))
+                   || (next_code = (Prims.of_int (0x5F))))
+                  || (next_code = (Prims.of_int (0x2F))))
+                 || (next_code = (Prims.of_int (0x23)))
+             then
+               let uu___3 = scan_iri input (p1 + Prims.int_one) in
+               match uu___3 with | (iri, p') -> ((Tok_IRI iri), p')
+             else (Tok_LT, (p1 + Prims.int_one))))
      else
        if code = (Prims.of_int (0x3E))
        then
