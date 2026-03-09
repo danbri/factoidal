@@ -347,3 +347,143 @@ let rec parse_nquads_flat_acc (input : Prims.string) (pos : Prims.nat)
 let parse_nquads_flat (input : Prims.string) : nquad Prims.list=
   let len = FStar_String.strlen input in
   parse_nquads_flat_acc input Prims.int_zero [] (len + Prims.int_one)
+let is_absolute_iri (s : Prims.string) : Prims.bool=
+  let len = FStar_String.strlen s in
+  let rec has_colon i fuel =
+    if fuel = Prims.int_zero
+    then false
+    else
+      if i >= len
+      then false
+      else
+        (let c = FStar_Char.int_of_char (FStar_String.index s i) in
+         if c = (Prims.of_int (0x3A))
+         then true
+         else
+           if
+             (((c >= (Prims.of_int (0x41))) && (c <= (Prims.of_int (0x5A))))
+                ||
+                ((c >= (Prims.of_int (0x61))) && (c <= (Prims.of_int (0x7A)))))
+               ||
+               ((i > Prims.int_zero) &&
+                  (((((c >= (Prims.of_int (0x30))) &&
+                        (c <= (Prims.of_int (0x39))))
+                       || (c = (Prims.of_int (0x2B))))
+                      || (c = (Prims.of_int (0x2D))))
+                     || (c = (Prims.of_int (0x2E)))))
+           then has_colon (i + Prims.int_one) (fuel - Prims.int_one)
+           else false) in
+  has_colon Prims.int_zero len
+let triple_iris_absolute (t : RDF_Graph_Executable.triple) : Prims.bool=
+  let s_ok =
+    match t.RDF_Graph_Executable.s with
+    | RDF_Graph_Executable.S_IRI i -> is_absolute_iri i
+    | RDF_Graph_Executable.S_BNode uu___ -> true in
+  let p_ok = is_absolute_iri t.RDF_Graph_Executable.p in
+  let o_ok =
+    match t.RDF_Graph_Executable.o with
+    | RDF_Graph_Executable.T_IRI i -> is_absolute_iri i
+    | RDF_Graph_Executable.T_BNode uu___ -> true
+    | RDF_Graph_Executable.T_Literal l ->
+        (l.RDF_Graph_Executable.datatype = "") ||
+          (is_absolute_iri l.RDF_Graph_Executable.datatype) in
+  (s_ok && p_ok) && o_ok
+let graph_label_absolute
+  (g : RDF_Graph_Executable.iri FStar_Pervasives_Native.option) : Prims.bool=
+  match g with
+  | FStar_Pervasives_Native.None -> true
+  | FStar_Pervasives_Native.Some i ->
+      if (FStar_String.strlen i) >= (Prims.of_int (2))
+      then
+        let c0 = FStar_Char.int_of_char (FStar_String.index i Prims.int_zero) in
+        let c1 = FStar_Char.int_of_char (FStar_String.index i Prims.int_one) in
+        (if (c0 = (Prims.of_int (0x5F))) && (c1 = (Prims.of_int (0x3A)))
+         then true
+         else is_absolute_iri i)
+      else is_absolute_iri i
+let rec parse_nquads_strict_acc (input : Prims.string) (pos : Prims.nat)
+  (ds : RDF_Graph_Executable.rdf_dataset) (fuel : Prims.nat) :
+  RDF_Graph_Executable.rdf_dataset FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.Some ds
+  else
+    (let len = FStar_String.strlen input in
+     if pos >= len
+     then FStar_Pervasives_Native.Some ds
+     else
+       (let pos1 =
+          match Parser_NTriples.pws input pos with
+          | Parser_Combinators.ParseOk ((), p) -> p
+          | uu___2 -> pos in
+        if pos1 >= len
+        then FStar_Pervasives_Native.Some ds
+        else
+          (let ch = FStar_String.index input pos1 in
+           let code = FStar_Char.int_of_char ch in
+           if code = (Prims.of_int (0x23))
+           then
+             let pos2 = Parser_NTriples.skip_comment input pos1 in
+             let pos3 = Parser_NTriples.skip_eol input pos2 in
+             (if pos3 = pos1
+              then FStar_Pervasives_Native.Some ds
+              else
+                parse_nquads_strict_acc input pos3 ds (fuel - Prims.int_one))
+           else
+             if
+               (code = (Prims.of_int (0x0A))) ||
+                 (code = (Prims.of_int (0x0D)))
+             then
+               (let pos2 = Parser_NTriples.skip_eol input pos1 in
+                if pos2 = pos1
+                then FStar_Pervasives_Native.Some ds
+                else
+                  parse_nquads_strict_acc input pos2 ds
+                    (fuel - Prims.int_one))
+             else
+               (match parse_nquad input pos1 with
+                | Parser_Combinators.ParseOk ((t, graph_opt), pos2) ->
+                    if Prims.op_Negation (triple_iris_absolute t)
+                    then FStar_Pervasives_Native.None
+                    else
+                      if Prims.op_Negation (graph_label_absolute graph_opt)
+                      then FStar_Pervasives_Native.None
+                      else
+                        (let ds' = dataset_add_quad ds t graph_opt in
+                         let pos3 =
+                           match Parser_NTriples.pws input pos2 with
+                           | Parser_Combinators.ParseOk ((), p) -> p
+                           | uu___7 -> pos2 in
+                         if pos3 < len
+                         then
+                           let c3 =
+                             FStar_Char.int_of_char
+                               (FStar_String.index input pos3) in
+                           (if c3 = (Prims.of_int (0x23))
+                            then
+                              let pos4 =
+                                Parser_NTriples.skip_comment input pos3 in
+                              let pos5 = Parser_NTriples.skip_eol input pos4 in
+                              let pos_next =
+                                if pos5 > pos1
+                                then pos5
+                                else if pos4 > pos1 then pos4 else pos2 in
+                              parse_nquads_strict_acc input pos_next ds'
+                                (fuel - Prims.int_one)
+                            else
+                              if
+                                (c3 = (Prims.of_int (0x0A))) ||
+                                  (c3 = (Prims.of_int (0x0D)))
+                              then
+                                (let pos4 =
+                                   Parser_NTriples.skip_eol input pos3 in
+                                 parse_nquads_strict_acc input pos4 ds'
+                                   (fuel - Prims.int_one))
+                              else FStar_Pervasives_Native.None)
+                         else FStar_Pervasives_Native.Some ds')
+                | Parser_Combinators.ParseFail (uu___5, uu___6) ->
+                    FStar_Pervasives_Native.None))))
+let parse_nquads_strict (input : Prims.string) :
+  RDF_Graph_Executable.rdf_dataset FStar_Pervasives_Native.option=
+  let len = FStar_String.strlen input in
+  parse_nquads_strict_acc input Prims.int_zero
+    RDF_Graph_Executable.empty_dataset (len + Prims.int_one)

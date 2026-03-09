@@ -10,6 +10,11 @@ let hex_val (c : FStar_Char.char) : Prims.int=
       if (code >= (Prims.of_int (0x61))) && (code <= (Prims.of_int (0x66)))
       then (code - (Prims.of_int (0x61))) + (Prims.of_int (10))
       else Prims.int_zero
+let is_hex_digit (c : FStar_Char.char) : Prims.bool=
+  let code = FStar_Char.int_of_char c in
+  (((code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))) ||
+     ((code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x46)))))
+    || ((code >= (Prims.of_int (0x61))) && (code <= (Prims.of_int (0x66))))
 let codepoint_to_string (cp : Prims.int) : Prims.string=
   if (cp >= Prims.int_zero) && (cp <= (Prims.parse_int "0x10FFFF"))
   then FStar_String.string_of_char (FStar_Char.char_of_int cp)
@@ -59,37 +64,26 @@ let rec parse_iri_body_acc (input : Prims.string) (pos : Prims.nat)
                      Parser_Combinators.ParseFail
                        ("incomplete \\u escape in IRI", pos)
                    else
-                     (let h0 =
-                        hex_val
-                          (FStar_String.index input
-                             (pos + (Prims.of_int (2)))) in
-                      let h1 =
-                        hex_val
-                          (FStar_String.index input
-                             (pos + (Prims.of_int (3)))) in
-                      let h2 =
-                        hex_val
-                          (FStar_String.index input
-                             (pos + (Prims.of_int (4)))) in
-                      let h3 =
-                        hex_val
-                          (FStar_String.index input
-                             (pos + (Prims.of_int (5)))) in
-                      let cp =
-                        (((h0 * (Prims.of_int (4096))) +
-                            (h1 * (Prims.of_int (256))))
-                           + (h2 * (Prims.of_int (16))))
-                          + h3 in
-                      let c = FStar_Char.char_of_int cp in
-                      parse_iri_body_acc input (pos + (Prims.of_int (6))) (c
-                        :: acc) (fuel - Prims.int_one)))
-                else
-                  if ncode = (Prims.of_int (0x55))
-                  then
-                    (if (pos + (Prims.of_int (10))) > len
+                     if
+                       Prims.op_Negation
+                         ((((is_hex_digit
+                               (FStar_String.index input
+                                  (pos + (Prims.of_int (2)))))
+                              &&
+                              (is_hex_digit
+                                 (FStar_String.index input
+                                    (pos + (Prims.of_int (3))))))
+                             &&
+                             (is_hex_digit
+                                (FStar_String.index input
+                                   (pos + (Prims.of_int (4))))))
+                            &&
+                            (is_hex_digit
+                               (FStar_String.index input
+                                  (pos + (Prims.of_int (5))))))
                      then
                        Parser_Combinators.ParseFail
-                         ("incomplete \\U escape in IRI", pos)
+                         ("invalid hex digit in \\u escape", pos)
                      else
                        (let h0 =
                           hex_val
@@ -107,34 +101,104 @@ let rec parse_iri_body_acc (input : Prims.string) (pos : Prims.nat)
                           hex_val
                             (FStar_String.index input
                                (pos + (Prims.of_int (5)))) in
-                        let h4 =
-                          hex_val
-                            (FStar_String.index input
-                               (pos + (Prims.of_int (6)))) in
-                        let h5 =
-                          hex_val
-                            (FStar_String.index input
-                               (pos + (Prims.of_int (7)))) in
-                        let h6 =
-                          hex_val
-                            (FStar_String.index input
-                               (pos + (Prims.of_int (8)))) in
-                        let h7 =
-                          hex_val
-                            (FStar_String.index input
-                               (pos + (Prims.of_int (9)))) in
                         let cp =
-                          (((((((h0 * (Prims.parse_int "268435456")) +
-                                  (h1 * (Prims.parse_int "16777216")))
-                                 + (h2 * (Prims.parse_int "1048576")))
-                                + (h3 * (Prims.parse_int "65536")))
-                               + (h4 * (Prims.of_int (4096))))
-                              + (h5 * (Prims.of_int (256))))
-                             + (h6 * (Prims.of_int (16))))
-                            + h7 in
+                          (((h0 * (Prims.of_int (4096))) +
+                              (h1 * (Prims.of_int (256))))
+                             + (h2 * (Prims.of_int (16))))
+                            + h3 in
                         let c = FStar_Char.char_of_int cp in
-                        parse_iri_body_acc input (pos + (Prims.of_int (10)))
+                        parse_iri_body_acc input (pos + (Prims.of_int (6)))
                           (c :: acc) (fuel - Prims.int_one)))
+                else
+                  if ncode = (Prims.of_int (0x55))
+                  then
+                    (if (pos + (Prims.of_int (10))) > len
+                     then
+                       Parser_Combinators.ParseFail
+                         ("incomplete \\U escape in IRI", pos)
+                     else
+                       if
+                         Prims.op_Negation
+                           ((((((((is_hex_digit
+                                     (FStar_String.index input
+                                        (pos + (Prims.of_int (2)))))
+                                    &&
+                                    (is_hex_digit
+                                       (FStar_String.index input
+                                          (pos + (Prims.of_int (3))))))
+                                   &&
+                                   (is_hex_digit
+                                      (FStar_String.index input
+                                         (pos + (Prims.of_int (4))))))
+                                  &&
+                                  (is_hex_digit
+                                     (FStar_String.index input
+                                        (pos + (Prims.of_int (5))))))
+                                 &&
+                                 (is_hex_digit
+                                    (FStar_String.index input
+                                       (pos + (Prims.of_int (6))))))
+                                &&
+                                (is_hex_digit
+                                   (FStar_String.index input
+                                      (pos + (Prims.of_int (7))))))
+                               &&
+                               (is_hex_digit
+                                  (FStar_String.index input
+                                     (pos + (Prims.of_int (8))))))
+                              &&
+                              (is_hex_digit
+                                 (FStar_String.index input
+                                    (pos + (Prims.of_int (9))))))
+                       then
+                         Parser_Combinators.ParseFail
+                           ("invalid hex digit in \\U escape", pos)
+                       else
+                         (let h0 =
+                            hex_val
+                              (FStar_String.index input
+                                 (pos + (Prims.of_int (2)))) in
+                          let h1 =
+                            hex_val
+                              (FStar_String.index input
+                                 (pos + (Prims.of_int (3)))) in
+                          let h2 =
+                            hex_val
+                              (FStar_String.index input
+                                 (pos + (Prims.of_int (4)))) in
+                          let h3 =
+                            hex_val
+                              (FStar_String.index input
+                                 (pos + (Prims.of_int (5)))) in
+                          let h4 =
+                            hex_val
+                              (FStar_String.index input
+                                 (pos + (Prims.of_int (6)))) in
+                          let h5 =
+                            hex_val
+                              (FStar_String.index input
+                                 (pos + (Prims.of_int (7)))) in
+                          let h6 =
+                            hex_val
+                              (FStar_String.index input
+                                 (pos + (Prims.of_int (8)))) in
+                          let h7 =
+                            hex_val
+                              (FStar_String.index input
+                                 (pos + (Prims.of_int (9)))) in
+                          let cp =
+                            (((((((h0 * (Prims.parse_int "268435456")) +
+                                    (h1 * (Prims.parse_int "16777216")))
+                                   + (h2 * (Prims.parse_int "1048576")))
+                                  + (h3 * (Prims.parse_int "65536")))
+                                 + (h4 * (Prims.of_int (4096))))
+                                + (h5 * (Prims.of_int (256))))
+                               + (h6 * (Prims.of_int (16))))
+                              + h7 in
+                          let c = FStar_Char.char_of_int cp in
+                          parse_iri_body_acc input
+                            (pos + (Prims.of_int (10))) (c :: acc)
+                            (fuel - Prims.int_one)))
                   else
                     Parser_Combinators.ParseFail
                       ("invalid escape in IRI", pos)))
@@ -369,38 +433,27 @@ let rec parse_string_body (input : Prims.string) (pos : Prims.nat)
                                    Parser_Combinators.ParseFail
                                      ("incomplete \\u escape", pos)
                                  else
-                                   (let h0 =
-                                      hex_val
-                                        (FStar_String.index input
-                                           (pos + (Prims.of_int (2)))) in
-                                    let h1 =
-                                      hex_val
-                                        (FStar_String.index input
-                                           (pos + (Prims.of_int (3)))) in
-                                    let h2 =
-                                      hex_val
-                                        (FStar_String.index input
-                                           (pos + (Prims.of_int (4)))) in
-                                    let h3 =
-                                      hex_val
-                                        (FStar_String.index input
-                                           (pos + (Prims.of_int (5)))) in
-                                    let cp =
-                                      (((h0 * (Prims.of_int (4096))) +
-                                          (h1 * (Prims.of_int (256))))
-                                         + (h2 * (Prims.of_int (16))))
-                                        + h3 in
-                                    let c = FStar_Char.char_of_int cp in
-                                    parse_string_body input
-                                      (pos + (Prims.of_int (6))) (c :: acc)
-                                      (fuel - Prims.int_one)))
-                              else
-                                if esc_code = (Prims.of_int (0x55))
-                                then
-                                  (if (pos + (Prims.of_int (10))) > len
+                                   if
+                                     Prims.op_Negation
+                                       ((((is_hex_digit
+                                             (FStar_String.index input
+                                                (pos + (Prims.of_int (2)))))
+                                            &&
+                                            (is_hex_digit
+                                               (FStar_String.index input
+                                                  (pos + (Prims.of_int (3))))))
+                                           &&
+                                           (is_hex_digit
+                                              (FStar_String.index input
+                                                 (pos + (Prims.of_int (4))))))
+                                          &&
+                                          (is_hex_digit
+                                             (FStar_String.index input
+                                                (pos + (Prims.of_int (5))))))
                                    then
                                      Parser_Combinators.ParseFail
-                                       ("incomplete \\U escape", pos)
+                                       ("invalid hex digit in \\u escape",
+                                         pos)
                                    else
                                      (let h0 =
                                         hex_val
@@ -418,41 +471,119 @@ let rec parse_string_body (input : Prims.string) (pos : Prims.nat)
                                         hex_val
                                           (FStar_String.index input
                                              (pos + (Prims.of_int (5)))) in
-                                      let h4 =
-                                        hex_val
-                                          (FStar_String.index input
-                                             (pos + (Prims.of_int (6)))) in
-                                      let h5 =
-                                        hex_val
-                                          (FStar_String.index input
-                                             (pos + (Prims.of_int (7)))) in
-                                      let h6 =
-                                        hex_val
-                                          (FStar_String.index input
-                                             (pos + (Prims.of_int (8)))) in
-                                      let h7 =
-                                        hex_val
-                                          (FStar_String.index input
-                                             (pos + (Prims.of_int (9)))) in
                                       let cp =
-                                        (((((((h0 *
-                                                 (Prims.parse_int "268435456"))
-                                                +
-                                                (h1 *
-                                                   (Prims.parse_int "16777216")))
-                                               +
-                                               (h2 *
-                                                  (Prims.parse_int "1048576")))
-                                              +
-                                              (h3 * (Prims.parse_int "65536")))
-                                             + (h4 * (Prims.of_int (4096))))
-                                            + (h5 * (Prims.of_int (256))))
-                                           + (h6 * (Prims.of_int (16))))
-                                          + h7 in
+                                        (((h0 * (Prims.of_int (4096))) +
+                                            (h1 * (Prims.of_int (256))))
+                                           + (h2 * (Prims.of_int (16))))
+                                          + h3 in
                                       let c = FStar_Char.char_of_int cp in
                                       parse_string_body input
-                                        (pos + (Prims.of_int (10))) (c ::
-                                        acc) (fuel - Prims.int_one)))
+                                        (pos + (Prims.of_int (6))) (c :: acc)
+                                        (fuel - Prims.int_one)))
+                              else
+                                if esc_code = (Prims.of_int (0x55))
+                                then
+                                  (if (pos + (Prims.of_int (10))) > len
+                                   then
+                                     Parser_Combinators.ParseFail
+                                       ("incomplete \\U escape", pos)
+                                   else
+                                     if
+                                       Prims.op_Negation
+                                         ((((((((is_hex_digit
+                                                   (FStar_String.index input
+                                                      (pos +
+                                                         (Prims.of_int (2)))))
+                                                  &&
+                                                  (is_hex_digit
+                                                     (FStar_String.index
+                                                        input
+                                                        (pos +
+                                                           (Prims.of_int (3))))))
+                                                 &&
+                                                 (is_hex_digit
+                                                    (FStar_String.index input
+                                                       (pos +
+                                                          (Prims.of_int (4))))))
+                                                &&
+                                                (is_hex_digit
+                                                   (FStar_String.index input
+                                                      (pos +
+                                                         (Prims.of_int (5))))))
+                                               &&
+                                               (is_hex_digit
+                                                  (FStar_String.index input
+                                                     (pos +
+                                                        (Prims.of_int (6))))))
+                                              &&
+                                              (is_hex_digit
+                                                 (FStar_String.index input
+                                                    (pos + (Prims.of_int (7))))))
+                                             &&
+                                             (is_hex_digit
+                                                (FStar_String.index input
+                                                   (pos + (Prims.of_int (8))))))
+                                            &&
+                                            (is_hex_digit
+                                               (FStar_String.index input
+                                                  (pos + (Prims.of_int (9))))))
+                                     then
+                                       Parser_Combinators.ParseFail
+                                         ("invalid hex digit in \\U escape",
+                                           pos)
+                                     else
+                                       (let h0 =
+                                          hex_val
+                                            (FStar_String.index input
+                                               (pos + (Prims.of_int (2)))) in
+                                        let h1 =
+                                          hex_val
+                                            (FStar_String.index input
+                                               (pos + (Prims.of_int (3)))) in
+                                        let h2 =
+                                          hex_val
+                                            (FStar_String.index input
+                                               (pos + (Prims.of_int (4)))) in
+                                        let h3 =
+                                          hex_val
+                                            (FStar_String.index input
+                                               (pos + (Prims.of_int (5)))) in
+                                        let h4 =
+                                          hex_val
+                                            (FStar_String.index input
+                                               (pos + (Prims.of_int (6)))) in
+                                        let h5 =
+                                          hex_val
+                                            (FStar_String.index input
+                                               (pos + (Prims.of_int (7)))) in
+                                        let h6 =
+                                          hex_val
+                                            (FStar_String.index input
+                                               (pos + (Prims.of_int (8)))) in
+                                        let h7 =
+                                          hex_val
+                                            (FStar_String.index input
+                                               (pos + (Prims.of_int (9)))) in
+                                        let cp =
+                                          (((((((h0 *
+                                                   (Prims.parse_int "268435456"))
+                                                  +
+                                                  (h1 *
+                                                     (Prims.parse_int "16777216")))
+                                                 +
+                                                 (h2 *
+                                                    (Prims.parse_int "1048576")))
+                                                +
+                                                (h3 *
+                                                   (Prims.parse_int "65536")))
+                                               + (h4 * (Prims.of_int (4096))))
+                                              + (h5 * (Prims.of_int (256))))
+                                             + (h6 * (Prims.of_int (16))))
+                                            + h7 in
+                                        let c = FStar_Char.char_of_int cp in
+                                        parse_string_body input
+                                          (pos + (Prims.of_int (10))) (c ::
+                                          acc) (fuel - Prims.int_one)))
                                 else
                                   Parser_Combinators.ParseFail
                                     ((FStar_String.concat ""
@@ -496,14 +627,33 @@ let parse_lang_tag : Prims.string Parser_Combinators.parser=
       (let ch = FStar_String.index input pos in
        if (FStar_Char.int_of_char ch) = (Prims.of_int (0x40))
        then
-         match Parser_Combinators.ptake_while1 is_lang_char input
-                 (pos + Prims.int_one)
-         with
-         | Parser_Combinators.ParseOk (lang, pos') ->
-             Parser_Combinators.ParseOk (lang, pos')
-         | Parser_Combinators.ParseFail (uu___1, fpos) ->
-             Parser_Combinators.ParseFail
-               ("expected language tag after '@'", fpos)
+         (if (pos + Prims.int_one) >= len
+          then
+            Parser_Combinators.ParseFail
+              ("expected language tag after '@'", (pos + Prims.int_one))
+          else
+            (let first = FStar_String.index input (pos + Prims.int_one) in
+             let fc = FStar_Char.int_of_char first in
+             if
+               Prims.op_Negation
+                 (((fc >= (Prims.of_int (0x41))) &&
+                     (fc <= (Prims.of_int (0x5A))))
+                    ||
+                    ((fc >= (Prims.of_int (0x61))) &&
+                       (fc <= (Prims.of_int (0x7A)))))
+             then
+               Parser_Combinators.ParseFail
+                 ("language tag must start with a letter",
+                   (pos + Prims.int_one))
+             else
+               (match Parser_Combinators.ptake_while1 is_lang_char input
+                        (pos + Prims.int_one)
+                with
+                | Parser_Combinators.ParseOk (lang, pos') ->
+                    Parser_Combinators.ParseOk (lang, pos')
+                | Parser_Combinators.ParseFail (uu___3, fpos) ->
+                    Parser_Combinators.ParseFail
+                      ("expected language tag after '@'", fpos))))
        else Parser_Combinators.ParseFail ("expected '@'", pos))
 let parse_datatype : RDF_Graph_Executable.iri Parser_Combinators.parser=
   fun input pos ->
@@ -574,6 +724,33 @@ let parse_literal : RDF_Graph_Executable.literal Parser_Combinators.parser=
                   }, pos'))
     | Parser_Combinators.ParseFail (msg, fpos) ->
         Parser_Combinators.ParseFail (msg, fpos)
+let is_absolute_iri (s : Prims.string) : Prims.bool=
+  let len = FStar_String.strlen s in
+  let rec has_colon i fuel =
+    if fuel = Prims.int_zero
+    then false
+    else
+      if i >= len
+      then false
+      else
+        (let c = FStar_Char.int_of_char (FStar_String.index s i) in
+         if c = (Prims.of_int (0x3A))
+         then true
+         else
+           if
+             (((c >= (Prims.of_int (0x41))) && (c <= (Prims.of_int (0x5A))))
+                ||
+                ((c >= (Prims.of_int (0x61))) && (c <= (Prims.of_int (0x7A)))))
+               ||
+               ((i > Prims.int_zero) &&
+                  (((((c >= (Prims.of_int (0x30))) &&
+                        (c <= (Prims.of_int (0x39))))
+                       || (c = (Prims.of_int (0x2B))))
+                      || (c = (Prims.of_int (0x2D))))
+                     || (c = (Prims.of_int (0x2E)))))
+           then has_colon (i + Prims.int_one) (fuel - Prims.int_one)
+           else false) in
+  has_colon Prims.int_zero len
 let parse_subject : RDF_Graph_Executable.subject Parser_Combinators.parser=
   fun input pos ->
     let len = FStar_String.strlen input in
@@ -808,3 +985,78 @@ let parse_ntriples (input : Prims.string) :
   RDF_Graph_Executable.triple Prims.list=
   let len = FStar_String.strlen input in
   parse_ntriples_acc input Prims.int_zero [] (len + Prims.int_one)
+let rec parse_ntriples_strict_acc (input : Prims.string) (pos : Prims.nat)
+  (acc : RDF_Graph_Executable.triple Prims.list) (fuel : Prims.nat) :
+  RDF_Graph_Executable.triple Prims.list FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.Some (FStar_List_Tot_Base.rev acc)
+  else
+    (let len = FStar_String.strlen input in
+     if pos >= len
+     then FStar_Pervasives_Native.Some (FStar_List_Tot_Base.rev acc)
+     else
+       (let pos1 =
+          match pws input pos with
+          | Parser_Combinators.ParseOk ((), p) -> p
+          | uu___2 -> pos in
+        if pos1 >= len
+        then FStar_Pervasives_Native.Some (FStar_List_Tot_Base.rev acc)
+        else
+          (let ch = FStar_String.index input pos1 in
+           let code = FStar_Char.int_of_char ch in
+           if code = (Prims.of_int (0x23))
+           then
+             let pos2 = skip_comment input pos1 in
+             let pos3 = skip_eol input pos2 in
+             (if pos3 = pos1
+              then FStar_Pervasives_Native.Some (FStar_List_Tot_Base.rev acc)
+              else
+                parse_ntriples_strict_acc input pos3 acc
+                  (fuel - Prims.int_one))
+           else
+             if
+               (code = (Prims.of_int (0x0A))) ||
+                 (code = (Prims.of_int (0x0D)))
+             then
+               (let pos2 = skip_eol input pos1 in
+                if pos2 = pos1
+                then
+                  FStar_Pervasives_Native.Some (FStar_List_Tot_Base.rev acc)
+                else
+                  parse_ntriples_strict_acc input pos2 acc
+                    (fuel - Prims.int_one))
+             else
+               (match parse_triple input pos1 with
+                | Parser_Combinators.ParseOk (t, pos2) ->
+                    let subj_ok =
+                      match t.RDF_Graph_Executable.s with
+                      | RDF_Graph_Executable.S_IRI i -> is_absolute_iri i
+                      | RDF_Graph_Executable.S_BNode uu___5 -> true in
+                    let pred_ok = is_absolute_iri t.RDF_Graph_Executable.p in
+                    let obj_ok =
+                      match t.RDF_Graph_Executable.o with
+                      | RDF_Graph_Executable.T_IRI i -> is_absolute_iri i
+                      | RDF_Graph_Executable.T_BNode uu___5 -> true
+                      | RDF_Graph_Executable.T_Literal lit ->
+                          is_absolute_iri lit.RDF_Graph_Executable.datatype in
+                    if Prims.op_Negation ((subj_ok && pred_ok) && obj_ok)
+                    then FStar_Pervasives_Native.None
+                    else
+                      (let pos3 =
+                         match pws input pos2 with
+                         | Parser_Combinators.ParseOk ((), p) -> p
+                         | uu___6 -> pos2 in
+                       let pos4 = skip_comment input pos3 in
+                       let pos5 = skip_eol input pos4 in
+                       let pos_next =
+                         if pos5 > pos1
+                         then pos5
+                         else if pos4 > pos1 then pos4 else pos2 in
+                       parse_ntriples_strict_acc input pos_next (t :: acc)
+                         (fuel - Prims.int_one))
+                | Parser_Combinators.ParseFail (uu___5, uu___6) ->
+                    FStar_Pervasives_Native.None))))
+let parse_ntriples_strict (input : Prims.string) :
+  RDF_Graph_Executable.triple Prims.list FStar_Pervasives_Native.option=
+  let len = FStar_String.strlen input in
+  parse_ntriples_strict_acc input Prims.int_zero [] (len + Prims.int_one)

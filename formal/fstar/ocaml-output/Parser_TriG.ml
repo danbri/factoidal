@@ -476,6 +476,46 @@ let rec parse_trig_doc (st : Parser_Turtle.turtle_state)
                 if pos2 = pos1
                 then (ds, st)
                 else parse_trig_doc st input pos2 ds (fuel - Prims.int_one)))
+let rec parse_trig_doc_strict (st : Parser_Turtle.turtle_state)
+  (input : Prims.string) (pos : Prims.nat)
+  (ds : RDF_Graph_Executable.rdf_dataset) (fuel : Prims.nat) :
+  (RDF_Graph_Executable.rdf_dataset * Parser_Turtle.turtle_state)
+    FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.Some (ds, st)
+  else
+    (let len = FStar_String.strlen input in
+     match Parser_Turtle.turtle_ws input pos with
+     | Parser_Combinators.ParseOk ((), pos1) ->
+         if pos1 >= len
+         then FStar_Pervasives_Native.Some (ds, st)
+         else
+           (match parse_trig_statement st input pos1 fuel with
+            | Parser_Combinators.ParseOk ((deltas, st'), pos2) ->
+                if pos2 = pos1
+                then
+                  let ds' =
+                    FStar_List_Tot_Base.fold_left
+                      (fun acc delta ->
+                         let uu___2 = delta in
+                         match uu___2 with
+                         | (gname, triples) ->
+                             trig_dataset_add_triples acc triples gname) ds
+                      deltas in
+                  FStar_Pervasives_Native.Some (ds', st')
+                else
+                  (let ds' =
+                     FStar_List_Tot_Base.fold_left
+                       (fun acc delta ->
+                          let uu___3 = delta in
+                          match uu___3 with
+                          | (gname, triples) ->
+                              trig_dataset_add_triples acc triples gname) ds
+                       deltas in
+                   parse_trig_doc_strict st' input pos2 ds'
+                     (fuel - Prims.int_one))
+            | Parser_Combinators.ParseFail (uu___2, uu___3) ->
+                FStar_Pervasives_Native.None))
 let parse_trig (input : Prims.string) : RDF_Graph_Executable.rdf_dataset=
   let len = FStar_String.strlen input in
   let fuel = (len + Prims.int_one) * (Prims.of_int (3)) in
@@ -499,3 +539,31 @@ let parse_trig_with_base (input : Prims.string) (base : Prims.string) :
     parse_trig_doc st input Prims.int_zero RDF_Graph_Executable.empty_dataset
       fuel in
   match uu___ with | (ds, uu___1) -> ds
+let parse_trig_strict (input : Prims.string) :
+  RDF_Graph_Executable.rdf_dataset FStar_Pervasives_Native.option=
+  let len = FStar_String.strlen input in
+  let fuel = (len + Prims.int_one) * (Prims.of_int (3)) in
+  match parse_trig_doc_strict Parser_Turtle.empty_turtle_state input
+          Prims.int_zero RDF_Graph_Executable.empty_dataset fuel
+  with
+  | FStar_Pervasives_Native.Some (ds, uu___) ->
+      FStar_Pervasives_Native.Some ds
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+let parse_trig_with_base_strict (input : Prims.string) (base : Prims.string)
+  : RDF_Graph_Executable.rdf_dataset FStar_Pervasives_Native.option=
+  let len = FStar_String.strlen input in
+  let fuel = (len + Prims.int_one) * (Prims.of_int (3)) in
+  let st =
+    {
+      Parser_Turtle.prefixes =
+        (Parser_Turtle.empty_turtle_state.Parser_Turtle.prefixes);
+      Parser_Turtle.base_iri = base;
+      Parser_Turtle.bnode_counter =
+        (Parser_Turtle.empty_turtle_state.Parser_Turtle.bnode_counter)
+    } in
+  match parse_trig_doc_strict st input Prims.int_zero
+          RDF_Graph_Executable.empty_dataset fuel
+  with
+  | FStar_Pervasives_Native.Some (ds, uu___) ->
+      FStar_Pervasives_Native.Some ds
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None

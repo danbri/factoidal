@@ -17,6 +17,13 @@ let hex_val (c:FStar.Char.char) : int =
   else if code >= 0x61 && code <= 0x66 then code - 0x61 + 10  (* a-f *)
   else 0
 
+(* Check if a character is a valid hex digit *)
+let is_hex_digit (c:FStar.Char.char) : bool =
+  let code = FStar.Char.int_of_char c in
+  (code >= 0x30 && code <= 0x39) ||  (* 0-9 *)
+  (code >= 0x41 && code <= 0x46) ||  (* A-F *)
+  (code >= 0x61 && code <= 0x66)     (* a-f *)
+
 (* Convert a code point integer to a single-character string.
    F* Char supports full Unicode via FStar.Char.char_of_int. *)
 let codepoint_to_string (cp:int) : string =
@@ -67,28 +74,44 @@ let rec parse_iri_body_acc (input:string) (pos:nat) (acc:list char) (fuel:nat)
           if ncode = 0x75 then (* 'u' - \uXXXX *)
             if pos + 6 > len then ParseFail "incomplete \\u escape in IRI" pos
             else
-              let h0 = hex_val (String.index input (pos + 2)) in
-              let h1 = hex_val (String.index input (pos + 3)) in
-              let h2 = hex_val (String.index input (pos + 4)) in
-              let h3 = hex_val (String.index input (pos + 5)) in
-              let cp = ((h0 `op_Multiply` 4096) + (h1 `op_Multiply` 256) + (h2 `op_Multiply` 16) + h3) in
-              let c = FStar.Char.char_of_int cp in
-              parse_iri_body_acc input (pos + 6) (c :: acc) (fuel - 1)
+              if not (is_hex_digit (String.index input (pos + 2)) &&
+                      is_hex_digit (String.index input (pos + 3)) &&
+                      is_hex_digit (String.index input (pos + 4)) &&
+                      is_hex_digit (String.index input (pos + 5))) then
+                ParseFail "invalid hex digit in \\u escape" pos
+              else
+                let h0 = hex_val (String.index input (pos + 2)) in
+                let h1 = hex_val (String.index input (pos + 3)) in
+                let h2 = hex_val (String.index input (pos + 4)) in
+                let h3 = hex_val (String.index input (pos + 5)) in
+                let cp = ((h0 `op_Multiply` 4096) + (h1 `op_Multiply` 256) + (h2 `op_Multiply` 16) + h3) in
+                let c = FStar.Char.char_of_int cp in
+                parse_iri_body_acc input (pos + 6) (c :: acc) (fuel - 1)
           else if ncode = 0x55 then (* 'U' - \UXXXXXXXX *)
             if pos + 10 > len then ParseFail "incomplete \\U escape in IRI" pos
             else
-              let h0 = hex_val (String.index input (pos + 2)) in
-              let h1 = hex_val (String.index input (pos + 3)) in
-              let h2 = hex_val (String.index input (pos + 4)) in
-              let h3 = hex_val (String.index input (pos + 5)) in
-              let h4 = hex_val (String.index input (pos + 6)) in
-              let h5 = hex_val (String.index input (pos + 7)) in
-              let h6 = hex_val (String.index input (pos + 8)) in
-              let h7 = hex_val (String.index input (pos + 9)) in
-              let cp = ((h0 `op_Multiply` 268435456) + (h1 `op_Multiply` 16777216) + (h2 `op_Multiply` 1048576) + (h3 `op_Multiply` 65536)
-                     + (h4 `op_Multiply` 4096) + (h5 `op_Multiply` 256) + (h6 `op_Multiply` 16) + h7) in
-              let c = FStar.Char.char_of_int cp in
-              parse_iri_body_acc input (pos + 10) (c :: acc) (fuel - 1)
+              if not (is_hex_digit (String.index input (pos + 2)) &&
+                      is_hex_digit (String.index input (pos + 3)) &&
+                      is_hex_digit (String.index input (pos + 4)) &&
+                      is_hex_digit (String.index input (pos + 5)) &&
+                      is_hex_digit (String.index input (pos + 6)) &&
+                      is_hex_digit (String.index input (pos + 7)) &&
+                      is_hex_digit (String.index input (pos + 8)) &&
+                      is_hex_digit (String.index input (pos + 9))) then
+                ParseFail "invalid hex digit in \\U escape" pos
+              else
+                let h0 = hex_val (String.index input (pos + 2)) in
+                let h1 = hex_val (String.index input (pos + 3)) in
+                let h2 = hex_val (String.index input (pos + 4)) in
+                let h3 = hex_val (String.index input (pos + 5)) in
+                let h4 = hex_val (String.index input (pos + 6)) in
+                let h5 = hex_val (String.index input (pos + 7)) in
+                let h6 = hex_val (String.index input (pos + 8)) in
+                let h7 = hex_val (String.index input (pos + 9)) in
+                let cp = ((h0 `op_Multiply` 268435456) + (h1 `op_Multiply` 16777216) + (h2 `op_Multiply` 1048576) + (h3 `op_Multiply` 65536)
+                       + (h4 `op_Multiply` 4096) + (h5 `op_Multiply` 256) + (h6 `op_Multiply` 16) + h7) in
+                let c = FStar.Char.char_of_int cp in
+                parse_iri_body_acc input (pos + 10) (c :: acc) (fuel - 1)
           else
             ParseFail "invalid escape in IRI" pos
       else if code <= 0x20 then (* control chars and space not allowed in IRIs *)
@@ -227,28 +250,44 @@ let rec parse_string_body (input:string) (pos:nat) (acc:list char) (fuel:nat)
           else if esc_code = 0x75 then (* \uXXXX *)
             if pos + 6 > len then ParseFail "incomplete \\u escape" pos
             else
-              let h0 = hex_val (String.index input (pos + 2)) in
-              let h1 = hex_val (String.index input (pos + 3)) in
-              let h2 = hex_val (String.index input (pos + 4)) in
-              let h3 = hex_val (String.index input (pos + 5)) in
-              let cp = ((h0 `op_Multiply` 4096) + (h1 `op_Multiply` 256) + (h2 `op_Multiply` 16) + h3) in
-              let c = FStar.Char.char_of_int cp in
-              parse_string_body input (pos + 6) (c :: acc) (fuel - 1)
+              if not (is_hex_digit (String.index input (pos + 2)) &&
+                      is_hex_digit (String.index input (pos + 3)) &&
+                      is_hex_digit (String.index input (pos + 4)) &&
+                      is_hex_digit (String.index input (pos + 5))) then
+                ParseFail "invalid hex digit in \\u escape" pos
+              else
+                let h0 = hex_val (String.index input (pos + 2)) in
+                let h1 = hex_val (String.index input (pos + 3)) in
+                let h2 = hex_val (String.index input (pos + 4)) in
+                let h3 = hex_val (String.index input (pos + 5)) in
+                let cp = ((h0 `op_Multiply` 4096) + (h1 `op_Multiply` 256) + (h2 `op_Multiply` 16) + h3) in
+                let c = FStar.Char.char_of_int cp in
+                parse_string_body input (pos + 6) (c :: acc) (fuel - 1)
           else if esc_code = 0x55 then (* \UXXXXXXXX *)
             if pos + 10 > len then ParseFail "incomplete \\U escape" pos
             else
-              let h0 = hex_val (String.index input (pos + 2)) in
-              let h1 = hex_val (String.index input (pos + 3)) in
-              let h2 = hex_val (String.index input (pos + 4)) in
-              let h3 = hex_val (String.index input (pos + 5)) in
-              let h4 = hex_val (String.index input (pos + 6)) in
-              let h5 = hex_val (String.index input (pos + 7)) in
-              let h6 = hex_val (String.index input (pos + 8)) in
-              let h7 = hex_val (String.index input (pos + 9)) in
-              let cp = ((h0 `op_Multiply` 268435456) + (h1 `op_Multiply` 16777216) + (h2 `op_Multiply` 1048576) + (h3 `op_Multiply` 65536)
-                     + (h4 `op_Multiply` 4096) + (h5 `op_Multiply` 256) + (h6 `op_Multiply` 16) + h7) in
-              let c = FStar.Char.char_of_int cp in
-              parse_string_body input (pos + 10) (c :: acc) (fuel - 1)
+              if not (is_hex_digit (String.index input (pos + 2)) &&
+                      is_hex_digit (String.index input (pos + 3)) &&
+                      is_hex_digit (String.index input (pos + 4)) &&
+                      is_hex_digit (String.index input (pos + 5)) &&
+                      is_hex_digit (String.index input (pos + 6)) &&
+                      is_hex_digit (String.index input (pos + 7)) &&
+                      is_hex_digit (String.index input (pos + 8)) &&
+                      is_hex_digit (String.index input (pos + 9))) then
+                ParseFail "invalid hex digit in \\U escape" pos
+              else
+                let h0 = hex_val (String.index input (pos + 2)) in
+                let h1 = hex_val (String.index input (pos + 3)) in
+                let h2 = hex_val (String.index input (pos + 4)) in
+                let h3 = hex_val (String.index input (pos + 5)) in
+                let h4 = hex_val (String.index input (pos + 6)) in
+                let h5 = hex_val (String.index input (pos + 7)) in
+                let h6 = hex_val (String.index input (pos + 8)) in
+                let h7 = hex_val (String.index input (pos + 9)) in
+                let cp = ((h0 `op_Multiply` 268435456) + (h1 `op_Multiply` 16777216) + (h2 `op_Multiply` 1048576) + (h3 `op_Multiply` 65536)
+                       + (h4 `op_Multiply` 4096) + (h5 `op_Multiply` 256) + (h6 `op_Multiply` 16) + h7) in
+                let c = FStar.Char.char_of_int cp in
+                parse_string_body input (pos + 10) (c :: acc) (fuel - 1)
           else
             ParseFail (String.concat "" ["invalid escape: \\"; String.string_of_char esc]) pos
       else if code = 0x0A || code = 0x0D then
@@ -288,9 +327,17 @@ let parse_lang_tag : parser string =
     else
       let ch = String.index input pos in
       if FStar.Char.int_of_char ch = 0x40 then (* '@' *)
-        match ptake_while1 is_lang_char input (pos + 1) with
-        | ParseOk lang pos' -> ParseOk lang pos'
-        | ParseFail _ fpos -> ParseFail "expected language tag after '@'" fpos
+        (* First character of language tag must be a letter [a-zA-Z] *)
+        if pos + 1 >= len then ParseFail "expected language tag after '@'" (pos + 1)
+        else
+          let first = String.index input (pos + 1) in
+          let fc = FStar.Char.int_of_char first in
+          if not ((fc >= 0x41 && fc <= 0x5A) || (fc >= 0x61 && fc <= 0x7A)) then
+            ParseFail "language tag must start with a letter" (pos + 1)
+          else
+            match ptake_while1 is_lang_char input (pos + 1) with
+            | ParseOk lang pos' -> ParseOk lang pos'
+            | ParseFail _ fpos -> ParseFail "expected language tag after '@'" fpos
       else
         ParseFail "expected '@'" pos
 
@@ -341,6 +388,28 @@ let parse_literal : parser literal =
           (* Plain literal *)
           ParseOk ({ lexical_form = lexical; datatype = xsd_string; lang_tag = None }) pos'
     | ParseFail msg fpos -> ParseFail msg fpos
+
+(* ================================================================ *)
+(* IRI validation: N-Triples requires absolute IRIs                 *)
+(* ================================================================ *)
+
+(* Validate that an IRI is absolute (required by N-Triples).
+   An absolute IRI must have a scheme: one or more letters followed by ':'.
+   Scheme characters after the first: letters, digits, '+', '-', '.'. *)
+let is_absolute_iri (s:string) : bool =
+  let len = String.length s in
+  let rec has_colon (i:nat) (fuel:nat) : Tot bool (decreases fuel) =
+    if fuel = 0 then false
+    else if i >= len then false
+    else
+      let c = FStar.Char.int_of_char (String.index s i) in
+      if c = 0x3A then true (* ':' found — scheme ends here *)
+      else if (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A) ||
+              (i > 0 && ((c >= 0x30 && c <= 0x39) || c = 0x2B || c = 0x2D || c = 0x2E)) then
+        has_colon (i + 1) (fuel - 1)
+      else false (* non-scheme character before ':' means not absolute *)
+  in
+  has_colon 0 len
 
 (* ================================================================ *)
 (* Subject parser: IRI or blank node                                *)
@@ -542,3 +611,65 @@ let rec parse_ntriples_acc (input:string) (pos:nat) (acc:list triple) (fuel:nat)
 let parse_ntriples (input:string) : list triple =
   let len = String.length input in
   parse_ntriples_acc input 0 [] (len + 1)
+
+(* ================================================================ *)
+(* Strict N-Triples parser: returns None on any invalid line        *)
+(* Used for negative syntax test validation.                        *)
+(* ================================================================ *)
+
+let rec parse_ntriples_strict_acc (input:string) (pos:nat) (acc:list triple) (fuel:nat)
+  : Tot (option (list triple)) (decreases fuel) =
+  if fuel = 0 then Some (List.Tot.rev acc)
+  else
+    let len = String.length input in
+    if pos >= len then Some (List.Tot.rev acc)
+    else
+      (* Skip whitespace (space/tab) *)
+      let pos1 = match pws input pos with
+                 | ParseOk () p -> p
+                 | _ -> pos in
+      if pos1 >= len then Some (List.Tot.rev acc)
+      else
+        let ch = String.index input pos1 in
+        let code = FStar.Char.int_of_char ch in
+        if code = 0x23 then (* '#' — comment line *)
+          let pos2 = skip_comment input pos1 in
+          let pos3 = skip_eol input pos2 in
+          if pos3 = pos1 then Some (List.Tot.rev acc)
+          else parse_ntriples_strict_acc input pos3 acc (fuel - 1)
+        else if code = 0x0A || code = 0x0D then (* empty line *)
+          let pos2 = skip_eol input pos1 in
+          if pos2 = pos1 then Some (List.Tot.rev acc)
+          else parse_ntriples_strict_acc input pos2 acc (fuel - 1)
+        else
+          (* Try to parse a triple *)
+          match parse_triple input pos1 with
+          | ParseOk t pos2 ->
+            (* Validate: all IRIs must be absolute *)
+            let subj_ok = match t.s with
+              | S_IRI i -> is_absolute_iri i
+              | S_BNode _ -> true in
+            let pred_ok = is_absolute_iri t.p in
+            let obj_ok = match t.o with
+              | T_IRI i -> is_absolute_iri i
+              | T_BNode _ -> true
+              | T_Literal lit ->
+                (* Check datatype IRI is absolute if present *)
+                is_absolute_iri lit.datatype in
+            if not (subj_ok && pred_ok && obj_ok) then None
+            else
+              (* After the '.', skip optional whitespace, optional comment, then EOL *)
+              let pos3 = match pws input pos2 with
+                         | ParseOk () p -> p
+                         | _ -> pos2 in
+              let pos4 = skip_comment input pos3 in
+              let pos5 = skip_eol input pos4 in
+              let pos_next = if pos5 > pos1 then pos5
+                            else if pos4 > pos1 then pos4
+                            else pos2 in
+              parse_ntriples_strict_acc input pos_next (t :: acc) (fuel - 1)
+          | ParseFail _ _ -> None  (* Strict: any parse failure = document invalid *)
+
+let parse_ntriples_strict (input:string) : option (list triple) =
+  let len = String.length input in
+  parse_ntriples_strict_acc input 0 [] (len + 1)

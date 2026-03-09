@@ -363,6 +363,45 @@ let rec parse_trig_doc (st: turtle_state) (input: string) (pos: nat)
         end
 
 (* ================================================================ *)
+(* Strict document parser (returns None on any parse error)          *)
+(* ================================================================ *)
+
+(** Like parse_trig_doc but propagates errors instead of skipping *)
+let rec parse_trig_doc_strict (st: turtle_state) (input: string) (pos: nat)
+    (ds: rdf_dataset) (fuel: nat)
+  : Tot (option (rdf_dataset & turtle_state)) (decreases fuel) =
+  if fuel = 0 then Some (ds, st)
+  else
+    let len = String.length input in
+    match turtle_ws input pos with
+    | ParseOk () pos1 ->
+      if pos1 >= len then Some (ds, st)
+      else
+        begin match parse_trig_statement st input pos1 fuel with
+        | ParseOk (deltas, st') pos2 ->
+          if pos2 = pos1 then
+            (* No progress — stop *)
+            let ds' = List.Tot.fold_left
+              (fun (acc : rdf_dataset) (delta : option iri & list triple) ->
+                let (gname, triples) = delta in
+                trig_dataset_add_triples acc triples gname)
+              ds deltas
+            in
+            Some (ds', st')
+          else
+            let ds' = List.Tot.fold_left
+              (fun (acc : rdf_dataset) (delta : option iri & list triple) ->
+                let (gname, triples) = delta in
+                trig_dataset_add_triples acc triples gname)
+              ds deltas
+            in
+            parse_trig_doc_strict st' input pos2 ds' (fuel - 1)
+        | ParseFail _ _ ->
+          (* Strict mode: any parse failure means the document is invalid *)
+          None
+        end
+
+(* ================================================================ *)
 (* Entry points                                                      *)
 (* ================================================================ *)
 
@@ -380,3 +419,20 @@ let parse_trig_with_base (input: string) (base: string) : rdf_dataset =
   let st = { empty_turtle_state with base_iri = base } in
   let (ds, _) = parse_trig_doc st input 0 empty_dataset fuel in
   ds
+
+(** Strict parse: returns None on any parse error *)
+let parse_trig_strict (input: string) : option rdf_dataset =
+  let len = String.length input in
+  let fuel = (len + 1) `op_Multiply` 3 in
+  match parse_trig_doc_strict empty_turtle_state input 0 empty_dataset fuel with
+  | Some (ds, _) -> Some ds
+  | None -> None
+
+(** Strict parse with base IRI: returns None on any parse error *)
+let parse_trig_with_base_strict (input: string) (base: string) : option rdf_dataset =
+  let len = String.length input in
+  let fuel = (len + 1) `op_Multiply` 3 in
+  let st = { empty_turtle_state with base_iri = base } in
+  match parse_trig_doc_strict st input 0 empty_dataset fuel with
+  | Some (ds, _) -> Some ds
+  | None -> None

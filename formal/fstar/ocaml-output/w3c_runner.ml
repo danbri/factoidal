@@ -37,11 +37,27 @@ let parse_sparql_query_string content =
 let parse_ntriples_fstar input =
   Parser_NTriples.parse_ntriples input
 
+(* N-Triples strict: F*-extracted, returns None on any invalid line *)
+let parse_ntriples_fstar_strict input =
+  match Parser_NTriples.parse_ntriples_strict input with
+  | Some triples -> triples
+  | None -> failwith "N-Triples strict parse error"
+
 (* Turtle: F*-extracted, with optional base IRI *)
 let parse_turtle_fstar input base_opt =
   match base_opt with
   | Some base -> Parser_Turtle.parse_turtle_with_base input base
   | None -> Parser_Turtle.parse_turtle input
+
+(* Turtle strict: F*-extracted, raises exception on any parse error *)
+let parse_turtle_fstar_strict input base_opt =
+  let result = match base_opt with
+    | Some base -> Parser_Turtle.parse_turtle_with_base_strict input base
+    | None -> Parser_Turtle.parse_turtle_strict input
+  in
+  match result with
+  | Some triples -> triples
+  | None -> failwith "Turtle strict parse error"
 
 (* RDF/XML: F*-extracted *)
 let parse_rdfxml_fstar input base_opt =
@@ -63,11 +79,27 @@ let parse_srx_fstar content =
 let parse_nquads_fstar input =
   Parser_NQuads.parse_nquads input
 
+(* N-Quads strict: F*-extracted, raises on any parse error *)
+let parse_nquads_fstar_strict input =
+  match Parser_NQuads.parse_nquads_strict input with
+  | Some ds -> ds
+  | None -> failwith "N-Quads parse error"
+
 (* TriG: F*-extracted, returns dataset *)
 let parse_trig_fstar input base_opt =
   match base_opt with
   | Some base -> Parser_TriG.parse_trig_with_base input base
   | None -> Parser_TriG.parse_trig input
+
+(* TriG strict: F*-extracted, raises exception on any parse error *)
+let parse_trig_fstar_strict input base_opt =
+  let result = match base_opt with
+    | Some base -> Parser_TriG.parse_trig_with_base_strict input base
+    | None -> Parser_TriG.parse_trig_strict input
+  in
+  match result with
+  | Some ds -> ds
+  | None -> failwith "TriG strict parse error"
 
 (* RDF vocabulary constants for manifest list traversal *)
 let rdf_first = "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
@@ -518,7 +550,7 @@ let run_rdf_test assumed_base tc =
     (match read_file tc.query_file with
      | None -> Skip "File missing"
      | Some content ->
-       (try ignore (parse_ntriples_fstar content); Fail "Should reject but parsed OK"
+       (try ignore (parse_ntriples_fstar_strict content); Fail "Should reject but parsed OK"
         with _ -> Pass))
 
   (* Turtle positive syntax: should parse without error *)
@@ -538,7 +570,7 @@ let run_rdf_test assumed_base tc =
      | Some content ->
        (try
           let base = make_turtle_base assumed_base tc.query_file in
-          ignore (parse_turtle_fstar content (Some base));
+          ignore (parse_turtle_fstar_strict content (Some base));
           Fail "Should reject but parsed OK"
         with _ -> Pass))
 
@@ -569,7 +601,7 @@ let run_rdf_test assumed_base tc =
      | Some content ->
        (try
           let base = make_turtle_base assumed_base tc.query_file in
-          ignore (parse_turtle_fstar content (Some base));
+          ignore (parse_turtle_fstar_strict content (Some base));
           Fail "Should produce eval error but succeeded"
         with _ -> Pass))
 
@@ -581,12 +613,12 @@ let run_rdf_test assumed_base tc =
        (try ignore (parse_nquads_fstar content); Pass
         with _ -> Fail "Should parse but didn't"))
 
-  (* N-Quads negative syntax *)
+  (* N-Quads negative syntax — use strict parser that rejects invalid input *)
   | "TestNQuadsNegativeSyntax" ->
     (match read_file tc.query_file with
      | None -> Skip "File missing"
      | Some content ->
-       (try ignore (parse_nquads_fstar content); Fail "Should reject but parsed OK"
+       (try ignore (parse_nquads_fstar_strict content); Fail "Should reject but parsed OK"
         with _ -> Pass))
 
   (* TriG positive syntax *)
@@ -606,7 +638,7 @@ let run_rdf_test assumed_base tc =
      | Some content ->
        (try
           let base = make_turtle_base assumed_base tc.query_file in
-          ignore (parse_trig_fstar content (Some base));
+          ignore (parse_trig_fstar_strict content (Some base));
           Fail "Should reject but parsed OK"
         with _ -> Pass))
 
@@ -642,7 +674,7 @@ let run_rdf_test assumed_base tc =
      | Some content ->
        (try
           let base = make_turtle_base assumed_base tc.query_file in
-          ignore (parse_trig_fstar content (Some base));
+          ignore (parse_trig_fstar_strict content (Some base));
           Fail "Should produce eval error but succeeded"
         with _ -> Pass))
 

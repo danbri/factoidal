@@ -296,3 +296,117 @@ let rec parse_nquads_flat_acc (input:string) (pos:nat) (acc:list nquad) (fuel:na
 let parse_nquads_flat (input:string) : list nquad =
   let len = String.length input in
   parse_nquads_flat_acc input 0 [] (len + 1)
+
+(* ================================================================ *)
+(* Strict parsing: returns None on any parse error                  *)
+(* ================================================================ *)
+
+(** Check whether a string looks like an absolute IRI (has a scheme).
+    An absolute IRI starts with ALPHA *(ALPHA / DIGIT / "+" / "-" / ".") ":"
+    per RFC 3986 section 3.1. *)
+let is_absolute_iri (s:string) : bool =
+  let len = String.length s in
+  let rec has_colon (i:nat) (fuel:nat) : Tot bool (decreases fuel) =
+    if fuel = 0 then false
+    else if i >= len then false
+    else
+      let c = FStar.Char.int_of_char (String.index s i) in
+      if c = 0x3A then true  (* ':' found — this is an absolute IRI *)
+      else if (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A) ||
+              (i > 0 && ((c >= 0x30 && c <= 0x39) || c = 0x2B || c = 0x2D || c = 0x2E)) then
+        has_colon (i + 1) (fuel - 1)
+      else false
+  in
+  has_colon 0 len
+
+(** Check that all IRIs in a triple are absolute *)
+let triple_iris_absolute (t:triple) : bool =
+  let s_ok = match t.s with
+    | S_IRI i -> is_absolute_iri i
+    | S_BNode _ -> true in
+  let p_ok = is_absolute_iri t.p in
+  let o_ok = match t.o with
+    | T_IRI i -> is_absolute_iri i
+    | T_BNode _ -> true
+    | T_Literal l -> l.datatype = "" || is_absolute_iri l.datatype in
+  s_ok && p_ok && o_ok
+
+(** Check that an optional graph label IRI is absolute *)
+let graph_label_absolute (g:option iri) : bool =
+  match g with
+  | None -> true
+  | Some i ->
+    (* Blank node graph labels start with "_:" — those are fine *)
+    if String.length i >= 2 then
+      let c0 = FStar.Char.int_of_char (String.index i 0) in
+      let c1 = FStar.Char.int_of_char (String.index i 1) in
+      if c0 = 0x5F && c1 = 0x3A then true  (* _: prefix *)
+      else is_absolute_iri i
+    else is_absolute_iri i
+
+(** Strict N-Quads parser: returns None on any parse error.
+    Unlike parse_nquads which silently skips bad lines, this function
+    requires every non-blank, non-comment line to be a valid quad.
+    Also validates that all IRIs are absolute (as required by N-Quads spec). *)
+let rec parse_nquads_strict_acc (input:string) (pos:nat) (ds:rdf_dataset) (fuel:nat)
+  : Tot (option rdf_dataset) (decreases fuel) =
+  if fuel = 0 then Some ds
+  else
+    let len = String.length input in
+    if pos >= len then Some ds
+    else
+      (* Skip whitespace (space/tab) *)
+      let pos1 = match pws input pos with
+                 | ParseOk () p -> p
+                 | _ -> pos in
+      if pos1 >= len then Some ds
+      else
+        let ch = String.index input pos1 in
+        let code = FStar.Char.int_of_char ch in
+        if code = 0x23 then (* '#' — comment line *)
+          let pos2 = skip_comment input pos1 in
+          let pos3 = skip_eol input pos2 in
+          if pos3 = pos1 then Some ds  (* no progress — stop *)
+          else parse_nquads_strict_acc input pos3 ds (fuel - 1)
+        else if code = 0x0A || code = 0x0D then (* empty line *)
+          let pos2 = skip_eol input pos1 in
+          if pos2 = pos1 then Some ds  (* no progress *)
+          else parse_nquads_strict_acc input pos2 ds (fuel - 1)
+        else
+          (* Must parse a valid quad — failure means the document is invalid *)
+          match parse_nquad input pos1 with
+          | ParseOk (t, graph_opt) pos2 ->
+            (* Validate all IRIs are absolute *)
+            if not (triple_iris_absolute t) then None
+            else if not (graph_label_absolute graph_opt) then None
+            else
+              let ds' = dataset_add_quad ds t graph_opt in
+              (* After the '.', skip optional whitespace, optional comment, then EOL *)
+              let pos3 = match pws input pos2 with
+                         | ParseOk () p -> p
+                         | _ -> pos2 in
+              (* Check for trailing junk (not comment, not EOL, not EOF) *)
+              if pos3 < len then
+                let c3 = FStar.Char.int_of_char (String.index input pos3) in
+                if c3 = 0x23 then (* comment — OK *)
+                  let pos4 = skip_comment input pos3 in
+                  let pos5 = skip_eol input pos4 in
+                  let pos_next = if pos5 > pos1 then pos5
+                                else if pos4 > pos1 then pos4
+                                else pos2 in
+                  parse_nquads_strict_acc input pos_next ds' (fuel - 1)
+                else if c3 = 0x0A || c3 = 0x0D then
+                  let pos4 = skip_eol input pos3 in
+                  parse_nquads_strict_acc input pos4 ds' (fuel - 1)
+                else
+                  None  (* trailing junk after the dot *)
+              else
+                Some ds'  (* end of input after last quad *)
+          | ParseFail _ _ ->
+            None  (* parse error — strict mode rejects *)
+
+(** Parse a complete N-Quads document strictly.
+    Returns None if any line fails to parse or contains non-absolute IRIs. *)
+let parse_nquads_strict (input:string) : option rdf_dataset =
+  let len = String.length input in
+  parse_nquads_strict_acc input 0 empty_dataset (len + 1)

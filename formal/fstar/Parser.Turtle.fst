@@ -1213,6 +1213,32 @@ let rec parse_turtle_doc (st: turtle_state) (input: string) (pos: nat) (acc: lis
         end
 
 (* ================================================================ *)
+(* Strict document parser (returns None on any parse error)          *)
+(* ================================================================ *)
+
+(* Like parse_turtle_doc but propagates errors instead of skipping *)
+let rec parse_turtle_doc_strict (st: turtle_state) (input: string) (pos: nat) (acc: list triple) (fuel: nat)
+  : Tot (option (list triple & turtle_state)) (decreases fuel) =
+  if fuel = 0 then Some (List.Tot.rev acc, st)
+  else
+    let len = String.length input in
+    match turtle_ws input pos with
+    | ParseOk () pos1 ->
+      if pos1 >= len then Some (List.Tot.rev acc, st)
+      else
+        begin match parse_turtle_statement st input pos1 fuel with
+        | ParseOk (triples, st') pos2 ->
+          if pos2 = pos1 then
+            (* No progress — stop *)
+            Some (List.Tot.rev ((List.Tot.rev triples) @ acc), st')
+          else
+            parse_turtle_doc_strict st' input pos2 ((List.Tot.rev triples) @ acc) (fuel - 1)
+        | ParseFail _ _ ->
+          (* Strict mode: any parse failure means the document is invalid *)
+          None
+        end
+
+(* ================================================================ *)
 (* Entry point                                                       *)
 (* ================================================================ *)
 
@@ -1230,3 +1256,20 @@ let parse_turtle_with_base (input: string) (base: string) : list triple =
   let st = { empty_turtle_state with base_iri = base } in
   let (triples, _) = parse_turtle_doc st input 0 [] fuel in
   triples
+
+(* Strict parse: returns None on any parse error *)
+let parse_turtle_strict (input: string) : option (list triple) =
+  let len = String.length input in
+  let fuel = (len + 1) `op_Multiply` 2 in
+  match parse_turtle_doc_strict empty_turtle_state input 0 [] fuel with
+  | Some (triples, _) -> Some triples
+  | None -> None
+
+(* Strict parse with base IRI: returns None on any parse error *)
+let parse_turtle_with_base_strict (input: string) (base: string) : option (list triple) =
+  let len = String.length input in
+  let fuel = (len + 1) `op_Multiply` 2 in
+  let st = { empty_turtle_state with base_iri = base } in
+  match parse_turtle_doc_strict st input 0 [] fuel with
+  | Some (triples, _) -> Some triples
+  | None -> None
