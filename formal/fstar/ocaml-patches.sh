@@ -330,8 +330,7 @@ echo "  Patches applied successfully."
 # SPARQL11_Parser.ml patches — wire assume-val scanner FFI stubs
 # Simple stubs for char_at, substring, string_upper.
 # The parser functions (parse_expr etc.) remain unimplemented (assume val)
-# until they are written in F*. sparql_query_bridge.ml handles this by
-# raising Unsupported before those are reached.
+# until they are written in F*.
 # ======================================================================
 
 PARSER_FILE="$(dirname "$FILE")/SPARQL11_Parser.ml"

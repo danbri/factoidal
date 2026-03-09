@@ -15,10 +15,9 @@ Rust/JS/OCaml/anything that "mirrors" a spec.
 3. **assume val = acknowledged gap.** Every `assume val` must have a stub in
    `ocaml-patches.sh` or the OCaml test harness. No silent holes.
 4. **Parsers belong in F\*.** RDF serialization parsers (N-Triples, Turtle,
-   N-Quads, TriG, RDF/XML, CSV/TSV results) should be implemented in F\* and
-   extracted. The existing hand-written OCaml parsers (ntriples_parser.ml,
-   turtle_parser.ml, etc.) are **temporary scaffolding** that must be replaced
-   with F\*-extracted code. New parsers MUST be written in F\* first.
+   N-Quads, TriG, RDF/XML, CSV/TSV results) are implemented in F\* and
+   extracted. All hand-written OCaml parsers have been removed. New parsers
+   MUST be written in F\* first.
 5. **SPARQL 1.1 is the target.** Never default to 1.0 manifests when 1.1 exists.
 6. **Run the real W3C test files.** Read manifests, `.rq`, `.srx`, `.ttl` from
    disk. Do not construct synthetic queries that are "inspired by" W3C tests.
@@ -46,8 +45,8 @@ When working on this project with Claude Code:
 Previous Claude sessions made these errors. Read and internalize:
 
 1. **Writing OCaml parsers instead of F\* parsers.** Do not write new `.ml`
-   parser files. The existing ones (ntriples_parser.ml, turtle_parser.ml, etc.)
-   are legacy debt, not a pattern to follow. New parsers go in `.fst` files.
+   parser files. All hand-written OCaml parsers have been deleted. There are
+   NO OCaml parser files to use as a pattern. New parsers go in `.fst` files.
 
 2. **Dismissing rdf-mt tests as "needing an inference engine."** The rdf-mt
    test suite tests fundamental RDF semantics that RDF.Graph.Executable.fst
@@ -115,13 +114,11 @@ formal/fstar/ocaml-output/
   Parser_RDFXML.ml           F*-extracted RDF/XML parser
   Parser_SRX.ml              F*-extracted SRX (SPARQL Results XML) parser
   Parser_CSVResults.ml       F*-extracted CSV/TSV results parser
-  example.ml                 hand-written demo (TEMPORARY)
-  w3c_tests.ml               hand-written test harness (TEMPORARY)
   w3c_runner.ml              W3C manifest reader + test runner CLI (I/O glue)
   fstar_int_stubs.js         js_of_ocaml int stubs
 ```
 
-Hand-coded parsers have been moved to `junk/do_not_use/hand_coded_parsers/`.
+Hand-coded parsers have been deleted. Legacy copies remain in `junk/do_not_use/hand_coded_parsers/` as a warning.
 
 ### assume val inventory (SPARQL11.Algebra.fst)
 
@@ -318,12 +315,8 @@ make verify
 # Extract + compile + test
 ./build-ocaml.sh
 
-# Run W3C SPARQL 1.1 tests (requires w3c_runner compiled separately)
+# Run W3C tests (w3c_runner is built by build-ocaml.sh)
 cd ocaml-output
-ocamlfind ocamlopt -package fstar.lib,str,zarith -linkpkg -w -8-14-26 \
-  RDF_Graph_Executable.ml SPARQL11_Algebra.ml \
-  ntriples_parser.ml turtle_parser.ml rdf_xml_parser.ml \
-  srx_parser.ml sparql_parser.ml w3c_runner.ml -o w3c_runner
 ./w3c_runner                    # all SPARQL suites
 ./w3c_runner --rdf              # RDF parser suites
 ./w3c_runner --all              # both
