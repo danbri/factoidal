@@ -46,14 +46,25 @@ jobs:
           cd formal/fstar
           fstar.exe --lax --codegen OCaml --odir ocaml-output RDF.Graph.Executable.fst
           fstar.exe --lax --codegen OCaml --odir ocaml-output SPARQL11.Algebra.fst
+          fstar.exe --lax --codegen OCaml --odir ocaml-output Parser.Combinators.fst
+          fstar.exe --lax --codegen OCaml --odir ocaml-output Parser.NTriples.fst
+          fstar.exe --lax --codegen OCaml --odir ocaml-output Parser.Turtle.fst
+          fstar.exe --lax --codegen OCaml --odir ocaml-output Parser.NQuads.fst
+          fstar.exe --lax --codegen OCaml --odir ocaml-output Parser.XML.fst
+          fstar.exe --lax --codegen OCaml --odir ocaml-output Parser.RDFXML.fst
+          fstar.exe --lax --codegen OCaml --odir ocaml-output Parser.SRX.fst
+          fstar.exe --lax --codegen OCaml --odir ocaml-output Parser.TriG.fst
+          fstar.exe --lax --codegen OCaml --odir ocaml-output Parser.CSVResults.fst
           ./ocaml-patches.sh ocaml-output/SPARQL11_Algebra.ml
 
       - name: Compile test runner
         run: |
           eval $(opam env --switch=fstar)
           cd formal/fstar/ocaml-output
-          ocamlfind ocamlopt -package fstar.lib,str,zarith -linkpkg -w -8-14-26 \
+          ocamlfind ocamlopt -package fstar.lib,str,zarith,unix -linkpkg -w -8-14-26 \
             RDF_Graph_Executable.ml SPARQL11_Algebra.ml \
+            Parser_Combinators.ml Parser_NTriples.ml Parser_Turtle.ml Parser_NQuads.ml \
+            Parser_XML.ml Parser_RDFXML.ml Parser_SRX.ml Parser_TriG.ml Parser_CSVResults.ml \
             ntriples_parser.ml turtle_parser.ml rdf_xml_parser.ml \
             srx_parser.ml sparql_parser.ml w3c_runner.ml -o w3c_runner
 

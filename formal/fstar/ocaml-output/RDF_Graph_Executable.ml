@@ -70,14 +70,33 @@ let subject_eq (s1 : subject) (s2 : subject) : Prims.bool=
   | (S_IRI i1, S_IRI i2) -> i1 = i2
   | (S_BNode b1, S_BNode b2) -> b1 = b2
   | (uu___, uu___1) -> false
+let lang_tag_eq (t1 : Prims.string) (t2 : Prims.string) : Prims.bool=
+  (FStar_String.lowercase t1) = (FStar_String.lowercase t2)
+let lang_tag_option_eq (t1 : Prims.string FStar_Pervasives_Native.option)
+  (t2 : Prims.string FStar_Pervasives_Native.option) : Prims.bool=
+  match (t1, t2) with
+  | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.None) -> true
+  | (FStar_Pervasives_Native.Some s1, FStar_Pervasives_Native.Some s2) ->
+      lang_tag_eq s1 s2
+  | (uu___, uu___1) -> false
 let literal_eq (l1 : literal) (l2 : literal) : Prims.bool=
   ((l1.lexical_form = l2.lexical_form) && (l1.datatype = l2.datatype)) &&
-    (l1.lang_tag = l2.lang_tag)
+    (lang_tag_option_eq l1.lang_tag l2.lang_tag)
 let rdf_term_eq (t1 : rdf_term) (t2 : rdf_term) : Prims.bool=
   match (t1, t2) with
   | (T_IRI i1, T_IRI i2) -> i1 = i2
   | (T_BNode b1, T_BNode b2) -> b1 = b2
   | (T_Literal l1, T_Literal l2) -> literal_eq l1 l2
+  | (uu___, uu___1) -> false
+let literal_value_eq (l1 : literal) (l2 : literal) : Prims.bool=
+  ((l1.lexical_form = l2.lexical_form) &&
+     (lang_tag_option_eq l1.lang_tag l2.lang_tag))
+    && (l1.datatype = l2.datatype)
+let rdf_term_value_eq (t1 : rdf_term) (t2 : rdf_term) : Prims.bool=
+  match (t1, t2) with
+  | (T_IRI i1, T_IRI i2) -> i1 = i2
+  | (T_BNode b1, T_BNode b2) -> b1 = b2
+  | (T_Literal l1, T_Literal l2) -> literal_value_eq l1 l2
   | (uu___, uu___1) -> false
 type triple = {
   s: subject ;
@@ -376,9 +395,11 @@ let value_compare (lv : sparql_value) (rv : sparql_value) (op : comp_op) :
   | (SV_LangLiteral (llex, llang), SV_LangLiteral (rlex, rlang)) ->
       (match op with
        | Eq ->
-           FStar_Pervasives_Native.Some ((llex = rlex) && (llang = rlang))
+           FStar_Pervasives_Native.Some
+             ((llex = rlex) && (lang_tag_eq llang rlang))
        | Ne ->
-           FStar_Pervasives_Native.Some ((llex <> rlex) || (llang <> rlang))
+           FStar_Pervasives_Native.Some
+             ((llex <> rlex) || (Prims.op_Negation (lang_tag_eq llang rlang)))
        | uu___ -> FStar_Pervasives_Native.None)
   | (SV_Iri l, SV_Iri r) ->
       FStar_Pervasives_Native.Some
@@ -469,3 +490,237 @@ let rec sparql_concat (args : Prims.string Prims.list) : Prims.string=
   match args with
   | [] -> ""
   | hd::tl -> FStar_String.concat "" [hd; sparql_concat tl]
+let rdfs_subClassOf : wf_iri=
+  "http://www.w3.org/2000/01/rdf-schema#subClassOf"
+let rdfs_subPropertyOf : wf_iri=
+  "http://www.w3.org/2000/01/rdf-schema#subPropertyOf"
+let rdfs_domain : wf_iri= "http://www.w3.org/2000/01/rdf-schema#domain"
+let rdfs_range : wf_iri= "http://www.w3.org/2000/01/rdf-schema#range"
+let rdf_type : wf_iri= "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+let rdfs_Class : wf_iri= "http://www.w3.org/2000/01/rdf-schema#Class"
+let rdf_Property : wf_iri=
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"
+let rdfs_Resource : wf_iri= "http://www.w3.org/2000/01/rdf-schema#Resource"
+let rdfs_Literal : wf_iri= "http://www.w3.org/2000/01/rdf-schema#Literal"
+let rdfs_ContainerMembershipProperty : wf_iri=
+  "http://www.w3.org/2000/01/rdf-schema#ContainerMembershipProperty"
+let rdfs_member : wf_iri= "http://www.w3.org/2000/01/rdf-schema#member"
+let rdfs_Datatype : wf_iri= "http://www.w3.org/2000/01/rdf-schema#Datatype"
+let rdf_1 : wf_iri= "http://www.w3.org/1999/02/22-rdf-syntax-ns#_1"
+let rdf_2 : wf_iri= "http://www.w3.org/1999/02/22-rdf-syntax-ns#_2"
+let rdf_3 : wf_iri= "http://www.w3.org/1999/02/22-rdf-syntax-ns#_3"
+let rdf_4 : wf_iri= "http://www.w3.org/1999/02/22-rdf-syntax-ns#_4"
+let rdf_5 : wf_iri= "http://www.w3.org/1999/02/22-rdf-syntax-ns#_5"
+let container_membership_properties : wf_iri Prims.list=
+  [rdf_1; rdf_2; rdf_3; rdf_4; rdf_5]
+let subject_to_term (s : subject) : rdf_term=
+  match s with | S_IRI i -> T_IRI i | S_BNode b -> T_BNode b
+let term_to_subject (t : rdf_term) : subject FStar_Pervasives_Native.option=
+  match t with
+  | T_IRI i -> FStar_Pervasives_Native.Some (S_IRI i)
+  | T_BNode b -> FStar_Pervasives_Native.Some (S_BNode b)
+  | T_Literal uu___ -> FStar_Pervasives_Native.None
+let rec find_objects (g : rdf_graph) (subj : subject) (pred : wf_iri) :
+  rdf_term Prims.list=
+  match g with
+  | [] -> []
+  | hd::tl ->
+      let rest = find_objects tl subj pred in
+      if (subject_eq hd.s subj) && (hd.p = pred)
+      then (hd.o) :: rest
+      else rest
+let rec find_subjects (g : rdf_graph) (pred : wf_iri) (obj : rdf_term) :
+  subject Prims.list=
+  match g with
+  | [] -> []
+  | hd::tl ->
+      let rest = find_subjects tl pred obj in
+      if (hd.p = pred) && (rdf_term_eq hd.o obj)
+      then (hd.s) :: rest
+      else rest
+let has_triple (g : rdf_graph) (t : triple) : Prims.bool= mem_triple t g
+let add_triple_if_new (g : rdf_graph) (t : triple) : rdf_graph= graph_add t g
+let rec add_triples_if_new (g : rdf_graph) (ts : triple Prims.list) :
+  rdf_graph=
+  match ts with
+  | [] -> g
+  | hd::tl -> add_triples_if_new (add_triple_if_new g hd) tl
+let rdfs_rule_subPropertyOf (g : rdf_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       let super_props = find_objects g (S_IRI (t.p)) rdfs_subPropertyOf in
+       FStar_List_Tot_Base.fold_left
+         (fun acc2 q_term ->
+            match q_term with
+            | T_IRI q ->
+                let new_t = { s = (t.s); p = q; o = (t.o) } in
+                add_triple_if_new acc2 new_t
+            | uu___ -> acc2) acc super_props) g g
+let rdfs_rule_domain (g : rdf_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       let domain_classes = find_objects g (S_IRI (t.p)) rdfs_domain in
+       FStar_List_Tot_Base.fold_left
+         (fun acc2 c_term ->
+            let new_t = { s = (t.s); p = rdf_type; o = c_term } in
+            add_triple_if_new acc2 new_t) acc domain_classes) g g
+let rdfs_rule_range (g : rdf_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       let range_classes = find_objects g (S_IRI (t.p)) rdfs_range in
+       match term_to_subject t.o with
+       | FStar_Pervasives_Native.Some b_subj ->
+           FStar_List_Tot_Base.fold_left
+             (fun acc2 c_term ->
+                let new_t = { s = b_subj; p = rdf_type; o = c_term } in
+                add_triple_if_new acc2 new_t) acc range_classes
+       | FStar_Pervasives_Native.None -> acc) g g
+let rdfs_rule_subClassOf (g : rdf_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if t.p = rdf_type
+       then
+         match t.o with
+         | T_IRI class_iri ->
+             let super_classes =
+               find_objects g (S_IRI class_iri) rdfs_subClassOf in
+             FStar_List_Tot_Base.fold_left
+               (fun acc2 b_term ->
+                  let new_t = { s = (t.s); p = rdf_type; o = b_term } in
+                  add_triple_if_new acc2 new_t) acc super_classes
+         | uu___ -> acc
+       else acc) g g
+let rdfs_rule_container_membership (g : rdf_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc cmp ->
+       let t1 =
+         { s = (S_IRI cmp); p = rdfs_subPropertyOf; o = (T_IRI rdfs_member) } in
+       let t2 =
+         {
+           s = (S_IRI cmp);
+           p = rdf_type;
+           o = (T_IRI rdfs_ContainerMembershipProperty)
+         } in
+       add_triple_if_new (add_triple_if_new acc t1) t2) g
+    container_membership_properties
+let rdfs_closure_step (g : rdf_graph) : rdf_graph=
+  let g1 = rdfs_rule_subPropertyOf g in
+  let g2 = rdfs_rule_domain g1 in
+  let g3 = rdfs_rule_range g2 in
+  let g4 = rdfs_rule_subClassOf g3 in
+  let g5 = rdfs_rule_container_membership g4 in g5
+let rec rdfs_closure (g : rdf_graph) (fuel : Prims.nat) : rdf_graph=
+  match fuel with
+  | uu___ when uu___ = Prims.int_zero -> g
+  | uu___ ->
+      let g' = rdfs_closure_step g in
+      if (graph_len g') = (graph_len g)
+      then g
+      else rdfs_closure g' (fuel - Prims.int_one)
+let is_digit (c : FStar_Char.char) : Prims.bool=
+  let code = FStar_Char.int_of_char c in
+  (code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))
+let rec strip_leading_zeros (cs : FStar_Char.char Prims.list) :
+  FStar_Char.char Prims.list=
+  match cs with
+  | [] -> [FStar_Char.char_of_int (Prims.of_int (0x30))]
+  | c::[] -> [c]
+  | c::rest ->
+      if (FStar_Char.int_of_char c) = (Prims.of_int (0x30))
+      then strip_leading_zeros rest
+      else cs
+let normalize_integer_lexical (s : Prims.string) : Prims.string=
+  let chars = FStar_String.list_of_string s in
+  match chars with
+  | [] -> "0"
+  | c::rest ->
+      let code = FStar_Char.int_of_char c in
+      if code = (Prims.of_int (0x2D))
+      then
+        let normalized = strip_leading_zeros rest in
+        (match normalized with
+         | z::[] ->
+             if (FStar_Char.int_of_char z) = (Prims.of_int (0x30))
+             then "0"
+             else
+               FStar_String.concat ""
+                 ["-"; FStar_String.string_of_list normalized]
+         | uu___ ->
+             FStar_String.concat ""
+               ["-"; FStar_String.string_of_list normalized])
+      else
+        if code = (Prims.of_int (0x2B))
+        then FStar_String.string_of_list (strip_leading_zeros rest)
+        else FStar_String.string_of_list (strip_leading_zeros chars)
+let strip_trailing_zeros (cs : FStar_Char.char Prims.list) :
+  FStar_Char.char Prims.list=
+  match cs with
+  | [] -> [FStar_Char.char_of_int (Prims.of_int (0x30))]
+  | uu___ ->
+      let rev = FStar_List_Tot_Base.rev cs in
+      let rec drop_zeros l =
+        match l with
+        | [] -> [FStar_Char.char_of_int (Prims.of_int (0x30))]
+        | c::rest ->
+            if (FStar_Char.int_of_char c) = (Prims.of_int (0x30))
+            then drop_zeros rest
+            else FStar_List_Tot_Base.rev l in
+      drop_zeros rev
+let rec split_at_dot (cs : FStar_Char.char Prims.list)
+  (acc : FStar_Char.char Prims.list) :
+  (FStar_Char.char Prims.list * FStar_Char.char Prims.list
+    FStar_Pervasives_Native.option)=
+  match cs with
+  | [] -> ((FStar_List_Tot_Base.rev acc), FStar_Pervasives_Native.None)
+  | c::rest ->
+      if (FStar_Char.int_of_char c) = (Prims.of_int (0x2E))
+      then
+        ((FStar_List_Tot_Base.rev acc), (FStar_Pervasives_Native.Some rest))
+      else split_at_dot rest (c :: acc)
+let normalize_decimal_lexical (s : Prims.string) : Prims.string=
+  let chars = FStar_String.list_of_string s in
+  let uu___ =
+    match chars with
+    | [] -> ("", chars)
+    | c::rest ->
+        let code = FStar_Char.int_of_char c in
+        if code = (Prims.of_int (0x2D))
+        then ("-", rest)
+        else if code = (Prims.of_int (0x2B)) then ("", rest) else ("", chars) in
+  match uu___ with
+  | (sign, digits) ->
+      let uu___1 = split_at_dot digits [] in
+      (match uu___1 with
+       | (int_part, frac_opt) ->
+           let norm_int = strip_leading_zeros int_part in
+           (match frac_opt with
+            | FStar_Pervasives_Native.None ->
+                let result =
+                  FStar_String.concat ""
+                    [sign; FStar_String.string_of_list norm_int] in
+                if (sign = "-") && (result = "-0") then "0" else result
+            | FStar_Pervasives_Native.Some frac_digits ->
+                let norm_frac = strip_trailing_zeros frac_digits in
+                let int_str = FStar_String.string_of_list norm_int in
+                let frac_str = FStar_String.string_of_list norm_frac in
+                let result =
+                  FStar_String.concat "" [sign; int_str; "."; frac_str] in
+                if ((sign = "-") && (int_str = "0")) && (frac_str = "0")
+                then "0.0"
+                else result))
+let datatype_value_eq (l1 : literal) (l2 : literal) : Prims.bool=
+  if l1.datatype = l2.datatype
+  then
+    (if l1.datatype = xsd_integer
+     then
+       ((normalize_integer_lexical l1.lexical_form) =
+          (normalize_integer_lexical l2.lexical_form))
+         && (lang_tag_option_eq l1.lang_tag l2.lang_tag)
+     else
+       if l1.datatype = xsd_decimal
+       then
+         ((normalize_decimal_lexical l1.lexical_form) =
+            (normalize_decimal_lexical l2.lexical_form))
+           && (lang_tag_option_eq l1.lang_tag l2.lang_tag)
+       else literal_eq l1 l2)
+  else false
