@@ -198,27 +198,34 @@ W3C SPARQL 1.1 + RDF 1.1 conformance results
 
 W3C test runner works. 344/631 SPARQL tests pass.
 
-### Phase 2 — Fix RDF semantics in F\* (CURRENT PRIORITY)
+### Phase 2 — Fix RDF semantics in F\* (MOSTLY DONE)
 
-The F\* RDF graph spec needs fundamental fixes:
+1. **Language tag case-insensitive comparison** — DONE (`lang_tag_eq` in F\*)
+2. **Plain literal ↔ xsd:string equivalence** — DONE (`literal_value_eq`)
+3. **Datatype value space equivalence** — DONE (`datatype_value_eq`, `normalize_integer_lexical`)
+4. **RDFS closure rules** — DONE (`rdfs_closure` with subPropertyOf, domain, range, subClassOf, container membership)
+5. **Simple entailment** (blank node as existential variable) — TODO
 
-1. **Language tag case-insensitive comparison** in `literal_eq`
-2. **Plain literal ↔ xsd:string equivalence** in `rdf_term_eq`
-3. **Datatype value space equivalence** (numeric normalization)
-4. **RDFS closure rules** (subClassOf, subPropertyOf, domain, range inference)
-5. **Simple entailment** (blank node as existential variable)
+Remaining: re-extract, wire into test runner, run rdf-mt tests.
 
-Each fix: F\* first → verify → re-extract → re-test against rdf-mt.
+### Phase 3 — F\* parsers (IN PROGRESS)
 
-### Phase 3 — F\* parsers
+Replace hand-written OCaml parsers with F\*-extracted implementations.
 
-Replace hand-written OCaml parsers with F\*-extracted implementations:
+**Parser architecture**: `Parser.Combinators.fst` provides the combinator
+foundation (pchar, pstring, psat, pbind, pmap, palt, pmany, etc.). All parsers
+are built on this. `Parser.XML.fst` is a **non-validating XML parser** — it
+reads well-formed XML into a tree but does NO DTD processing, NO external entity
+resolution, NO schema validation. Only predefined entities (&amp; &lt; &gt;
+&quot; &apos;) and character references (&#123; &#x1A;). Namespace prefixes are
+preserved as part of element/attribute names (namespace URI resolution is the
+RDF/XML layer's job, not the XML parser's).
 
 1. N-Triples parser in F\*
 2. Turtle parser in F\*
 3. N-Quads parser in F\*
 4. TriG parser in F\*
-5. RDF/XML parser in F\* (discuss approach — may need assume val for XML parsing)
+5. RDF/XML parser in F\* (uses Parser.XML.fst — non-validating XML parser)
 6. CSV/TSV results format parser in F\*
 7. SRX (SPARQL Results XML) parser in F\*
 8. SPARQL query parser in F\* (SPARQL11.Parser.fst started)
