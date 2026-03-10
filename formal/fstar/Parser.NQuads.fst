@@ -68,6 +68,8 @@ let parse_opt_graph_label : parser (option iri) =
           | ParseOk g pos2 -> ParseOk (Some g) pos2
           | ParseFail msg fpos -> ParseFail msg fpos
           end
+        else if code = 0x22 then // '"' — literal not allowed as graph name
+          ParseFail "literal not allowed as graph name" pos1
         else
           ParseOk None pos1
     | ParseFail msg fpos -> ParseFail msg fpos
