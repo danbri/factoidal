@@ -4044,8 +4044,12 @@ and parse_select_query (pm : prefix_map) (fuel : Prims.nat)
 and parse_prologue (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
   (prefix_map * RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
     parse_result=
+  parse_prologue_base pm FStar_Pervasives_Native.None fuel ts
+and parse_prologue_base (pm : prefix_map) (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option) (fuel : Prims.nat) (ts : token_stream) :
+  (prefix_map * RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+    parse_result=
   if fuel = Prims.int_zero
-  then ParseOk ((pm, FStar_Pervasives_Native.None), ts)
+  then ParseOk ((pm, base), ts)
   else
     (match parse_peek ts with
      | Tok_PREFIX ->
@@ -4060,7 +4064,7 @@ and parse_prologue (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
                     | Tok_IRI iri ->
                         if RDF_Graph_Executable.is_iri iri
                         then
-                          parse_prologue ((prefix, iri) :: pm)
+                          parse_prologue_base ((prefix, iri) :: pm) base
                             (fuel - Prims.int_one) (parse_advance ts'')
                         else ParseErr "invalid prefix IRI"
                     | uu___3 -> ParseErr "expected IRI after PREFIX name"))
@@ -4071,10 +4075,11 @@ and parse_prologue (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
           | Tok_IRI iri ->
               if RDF_Graph_Executable.is_iri iri
               then
-                parse_prologue pm (fuel - Prims.int_one) (parse_advance ts')
+                parse_prologue_base pm (FStar_Pervasives_Native.Some iri)
+                  (fuel - Prims.int_one) (parse_advance ts')
               else ParseErr "invalid BASE IRI"
           | uu___1 -> ParseErr "expected IRI after BASE")
-     | uu___1 -> ParseOk ((pm, FStar_Pervasives_Native.None), ts))
+     | uu___1 -> ParseOk ((pm, base), ts))
 and parse_select_body (pm : prefix_map) (fuel : Prims.nat)
   (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
   (ts : token_stream) : SPARQL11_Algebra.query parse_result=

@@ -1063,6 +1063,10 @@ let er_to_string (v : eval_result) :
       FStar_Pervasives_Native.Some (lit_lexical l)
   | ER_Term (RDF_Graph_Executable.T_IRI i) ->
       FStar_Pervasives_Native.Some (iri_to_string i)
+  | ER_Num n -> FStar_Pervasives_Native.Some (Prims.string_of_int n)
+  | ER_Dec s -> FStar_Pervasives_Native.Some s
+  | ER_Dbl s -> FStar_Pervasives_Native.Some s
+  | ER_Bool b -> FStar_Pervasives_Native.Some (if b then "true" else "false")
   | uu___ -> FStar_Pervasives_Native.None
 let er_string (s : Prims.string) : eval_result=
   ER_Term (RDF_Graph_Executable.T_Literal (mk_plain_literal s))
@@ -2461,24 +2465,6 @@ let eval_property_path_fwd_ref : (property_path -> RDF_Graph_Executable.rdf_grap
   ref (fun _ _ -> [])
 let eval_subselect_fwd_ref : (query -> RDF_Graph_Executable.rdf_graph -> RDF_Graph_Executable.rdf_dataset -> solution_sequence) ref =
   ref (fun _ _ _ -> [])
-let eval_exists_fwd_ref : (group_graph_pattern -> RDF_Graph_Executable.solution_mapping -> RDF_Graph_Executable.rdf_graph -> RDF_Graph_Executable.rdf_dataset -> Prims.bool) ref =
-  ref (fun _ _ _ _ -> false)
-let eval_property_path_fwd_ref : (property_path -> RDF_Graph_Executable.rdf_graph -> (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list) ref =
-  ref (fun _ _ -> [])
-let eval_subselect_fwd_ref : (query -> RDF_Graph_Executable.rdf_graph -> RDF_Graph_Executable.rdf_dataset -> solution_sequence) ref =
-  ref (fun _ _ _ -> [])
-let eval_exists_fwd_ref : (group_graph_pattern -> RDF_Graph_Executable.solution_mapping -> RDF_Graph_Executable.rdf_graph -> RDF_Graph_Executable.rdf_dataset -> Prims.bool) ref =
-  ref (fun _ _ _ _ -> false)
-let eval_property_path_fwd_ref : (property_path -> RDF_Graph_Executable.rdf_graph -> (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list) ref =
-  ref (fun _ _ -> [])
-let eval_subselect_fwd_ref : (query -> RDF_Graph_Executable.rdf_graph -> RDF_Graph_Executable.rdf_dataset -> solution_sequence) ref =
-  ref (fun _ _ _ -> [])
-let eval_exists_fwd_ref : (group_graph_pattern -> RDF_Graph_Executable.solution_mapping -> RDF_Graph_Executable.rdf_graph -> RDF_Graph_Executable.rdf_dataset -> Prims.bool) ref =
-  ref (fun _ _ _ _ -> false)
-let eval_property_path_fwd_ref : (property_path -> RDF_Graph_Executable.rdf_graph -> (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list) ref =
-  ref (fun _ _ -> [])
-let eval_subselect_fwd_ref : (query -> RDF_Graph_Executable.rdf_graph -> RDF_Graph_Executable.rdf_dataset -> solution_sequence) ref =
-  ref (fun _ _ _ -> [])
 let eval_expr_ebv (e : expr)
   (mu : RDF_Graph_Executable.solution_mapping) : Prims.bool=
   !eval_expr_ebv_ref e mu
@@ -2818,6 +2804,9 @@ let eval_xsd_cast (v : eval_result) (target_type : Prims.string)
                            FStar_Pervasives_Native.None
                        })
                 else ER_Error
+let current_base_iri_ref : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option ref =
+  ref FStar_Pervasives_Native.None
+
 let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
   eval_result=
   match e with
@@ -2947,10 +2936,15 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
        | ER_Term (RDF_Graph_Executable.T_IRI i) ->
            ER_Term (RDF_Graph_Executable.T_IRI i)
        | ER_Term (RDF_Graph_Executable.T_Literal l) ->
-           (match string_to_iri (lit_lexical l) with
-            | FStar_Pervasives_Native.Some i ->
-                ER_Term (RDF_Graph_Executable.T_IRI i)
-            | FStar_Pervasives_Native.None -> ER_Error)
+           let s = lit_lexical l in
+           (match !current_base_iri_ref with
+            | FStar_Pervasives_Native.Some base ->
+                ER_Term (RDF_Graph_Executable.T_IRI (resolve_iri base s))
+            | FStar_Pervasives_Native.None ->
+                (match string_to_iri s with
+                 | FStar_Pervasives_Native.Some i ->
+                     ER_Term (RDF_Graph_Executable.T_IRI i)
+                 | FStar_Pervasives_Native.None -> ER_Error))
        | uu___ -> ER_Error)
   | E_StrDt (e1, e2) ->
       (match ((er_to_string (eval_expr e1 mu)), (eval_expr e2 mu)) with
@@ -3287,7 +3281,11 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
   | E_SameTerm (e1, e2) ->
       (match ((eval_expr e1 mu), (eval_expr e2 mu)) with
        | (ER_Term t1, ER_Term t2) -> ER_Bool (same_term t1 t2)
-       | (uu___, uu___1) -> ER_Error)
+       | (ER_Num a, ER_Num b) -> ER_Bool (a = b)
+       | (ER_Dec a, ER_Dec b) -> ER_Bool (a = b)
+       | (ER_Dbl a, ER_Dbl b) -> ER_Bool (a = b)
+       | (ER_Bool a, ER_Bool b) -> ER_Bool (a = b)
+       | (uu___, uu___1) -> ER_Bool false)
   | E_Exists uu___ -> ER_Error
   | E_NotExists uu___ -> ER_Error
   | E_Aggregate (uu___, uu___1, uu___2) -> ER_Error
@@ -3426,288 +3424,48 @@ let () = regex_replace_ref := (fun text pattern replacement flags ->
     let re = if case_insensitive
       then Str.regexp_case_fold converted
       else Str.regexp converted in
-    (* Convert XPath backrefs to OCaml Str backrefs: dollar-n -> backslash-n *)
+    (* Manual global replace that handles unmatched groups gracefully.
+       OCaml Str.matched_group raises Not_found for unmatched groups;
+       we replace them with empty string per XPath/SPARQL semantics. *)
     let open Stdlib in
-    let len = String.length replacement in
-    let buf = Buffer.create len in
-    let i = ref 0 in
-    while !i < len do
-      if replacement.[!i] = '$' && !i + 1 < len &&
-         replacement.[!i + 1] >= '0' && replacement.[!i + 1] <= '9' then begin
-        Buffer.add_char buf (Char.chr 92);
-        Buffer.add_char buf replacement.[!i + 1];
-        i := !i + 2
-      end else begin
-        Buffer.add_char buf replacement.[!i];
-        i := !i + 1
-      end
-    done;
-    let repl = Buffer.contents buf in
-    Str.global_replace re repl text
-  with _ -> text)
-let () = regex_replace_ref := (fun text pattern replacement flags ->
-  try
-    let case_insensitive = match flags with
-      | FStar_Pervasives_Native.Some f -> String.contains f 'i'
-      | FStar_Pervasives_Native.None -> false in
-    let converted = xpath_to_str_regex pattern in
-    let re = if case_insensitive
-      then Str.regexp_case_fold converted
-      else Str.regexp converted in
-    (* Convert XPath backrefs to OCaml Str backrefs: dollar-n -> backslash-n *)
-    let open Stdlib in
-    let len = String.length replacement in
-    let buf = Buffer.create len in
-    let i = ref 0 in
-    while !i < len do
-      if replacement.[!i] = '$' && !i + 1 < len &&
-         replacement.[!i + 1] >= '0' && replacement.[!i + 1] <= '9' then begin
-        Buffer.add_char buf (Char.chr 92);
-        Buffer.add_char buf replacement.[!i + 1];
-        i := !i + 2
-      end else begin
-        Buffer.add_char buf replacement.[!i];
-        i := !i + 1
-      end
-    done;
-    let repl = Buffer.contents buf in
-    Str.global_replace re repl text
-  with _ -> text)
-let () = regex_replace_ref := (fun text pattern replacement flags ->
-  try
-    let case_insensitive = match flags with
-      | FStar_Pervasives_Native.Some f -> String.contains f 'i'
-      | FStar_Pervasives_Native.None -> false in
-    let converted = xpath_to_str_regex pattern in
-    let re = if case_insensitive
-      then Str.regexp_case_fold converted
-      else Str.regexp converted in
-    (* Convert XPath backrefs to OCaml Str backrefs: dollar-n -> backslash-n *)
-    let open Stdlib in
-    let len = String.length replacement in
-    let buf = Buffer.create len in
-    let i = ref 0 in
-    while !i < len do
-      if replacement.[!i] = '$' && !i + 1 < len &&
-         replacement.[!i + 1] >= '0' && replacement.[!i + 1] <= '9' then begin
-        Buffer.add_char buf (Char.chr 92);
-        Buffer.add_char buf replacement.[!i + 1];
-        i := !i + 2
-      end else begin
-        Buffer.add_char buf replacement.[!i];
-        i := !i + 1
-      end
-    done;
-    let repl = Buffer.contents buf in
-    Str.global_replace re repl text
-  with _ -> text)
-let () = regex_replace_ref := (fun text pattern replacement flags ->
-  try
-    let case_insensitive = match flags with
-      | FStar_Pervasives_Native.Some f -> String.contains f 'i'
-      | FStar_Pervasives_Native.None -> false in
-    let converted = xpath_to_str_regex pattern in
-    let re = if case_insensitive
-      then Str.regexp_case_fold converted
-      else Str.regexp converted in
-    (* Convert XPath backrefs to OCaml Str backrefs: dollar-n -> backslash-n *)
-    let open Stdlib in
-    let len = String.length replacement in
-    let buf = Buffer.create len in
-    let i = ref 0 in
-    while !i < len do
-      if replacement.[!i] = '$' && !i + 1 < len &&
-         replacement.[!i + 1] >= '0' && replacement.[!i + 1] <= '9' then begin
-        Buffer.add_char buf (Char.chr 92);
-        Buffer.add_char buf replacement.[!i + 1];
-        i := !i + 2
-      end else begin
-        Buffer.add_char buf replacement.[!i];
-        i := !i + 1
-      end
-    done;
-    let repl = Buffer.contents buf in
-    Str.global_replace re repl text
-  with _ -> text)
-
-(* Wire up the forward-declared eval_expr_ebv/fwd to the real implementations *)
-let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
-let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)
-let () = regex_replace_ref := (fun text pattern replacement flags ->
-  try
-    let case_insensitive = match flags with
-      | FStar_Pervasives_Native.Some f -> String.contains f 'i'
-      | FStar_Pervasives_Native.None -> false in
-    let converted = xpath_to_str_regex pattern in
-    let re = if case_insensitive
-      then Str.regexp_case_fold converted
-      else Str.regexp converted in
-    (* Convert XPath backrefs to OCaml Str backrefs: dollar-n -> backslash-n *)
-    let open Stdlib in
-    let len = String.length replacement in
-    let buf = Buffer.create len in
-    let i = ref 0 in
-    while !i < len do
-      if replacement.[!i] = '$' && !i + 1 < len &&
-         replacement.[!i + 1] >= '0' && replacement.[!i + 1] <= '9' then begin
-        Buffer.add_char buf (Char.chr 92);
-        Buffer.add_char buf replacement.[!i + 1];
-        i := !i + 2
-      end else begin
-        Buffer.add_char buf replacement.[!i];
-        i := !i + 1
-      end
-    done;
-    let repl = Buffer.contents buf in
-    Str.global_replace re repl text
-  with _ -> text)
-let () = regex_replace_ref := (fun text pattern replacement flags ->
-  try
-    let case_insensitive = match flags with
-      | FStar_Pervasives_Native.Some f -> String.contains f 'i'
-      | FStar_Pervasives_Native.None -> false in
-    let converted = xpath_to_str_regex pattern in
-    let re = if case_insensitive
-      then Str.regexp_case_fold converted
-      else Str.regexp converted in
-    (* Convert XPath backrefs to OCaml Str backrefs: dollar-n -> backslash-n *)
-    let open Stdlib in
-    let len = String.length replacement in
-    let buf = Buffer.create len in
-    let i = ref 0 in
-    while !i < len do
-      if replacement.[!i] = '$' && !i + 1 < len &&
-         replacement.[!i + 1] >= '0' && replacement.[!i + 1] <= '9' then begin
-        Buffer.add_char buf (Char.chr 92);
-        Buffer.add_char buf replacement.[!i + 1];
-        i := !i + 2
-      end else begin
-        Buffer.add_char buf replacement.[!i];
-        i := !i + 1
-      end
-    done;
-    let repl = Buffer.contents buf in
-    Str.global_replace re repl text
-  with _ -> text)
-let () = regex_replace_ref := (fun text pattern replacement flags ->
-  try
-    let case_insensitive = match flags with
-      | FStar_Pervasives_Native.Some f -> String.contains f 'i'
-      | FStar_Pervasives_Native.None -> false in
-    let converted = xpath_to_str_regex pattern in
-    let re = if case_insensitive
-      then Str.regexp_case_fold converted
-      else Str.regexp converted in
-    (* Convert XPath backrefs to OCaml Str backrefs: dollar-n -> backslash-n *)
-    let open Stdlib in
-    let len = String.length replacement in
-    let buf = Buffer.create len in
-    let i = ref 0 in
-    while !i < len do
-      if replacement.[!i] = '$' && !i + 1 < len &&
-         replacement.[!i + 1] >= '0' && replacement.[!i + 1] <= '9' then begin
-        Buffer.add_char buf (Char.chr 92);
-        Buffer.add_char buf replacement.[!i + 1];
-        i := !i + 2
-      end else begin
-        Buffer.add_char buf replacement.[!i];
-        i := !i + 1
-      end
-    done;
-    let repl = Buffer.contents buf in
-    Str.global_replace re repl text
-  with _ -> text)
-
-(* Wire up the forward-declared eval_expr_ebv/fwd to the real implementations *)
-let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
-let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)
-let () = regex_replace_ref := (fun text pattern replacement flags ->
-  try
-    let case_insensitive = match flags with
-      | FStar_Pervasives_Native.Some f -> String.contains f 'i'
-      | FStar_Pervasives_Native.None -> false in
-    let converted = xpath_to_str_regex pattern in
-    let re = if case_insensitive
-      then Str.regexp_case_fold converted
-      else Str.regexp converted in
-    (* Convert XPath backrefs to OCaml Str backrefs: dollar-n -> backslash-n *)
-    let open Stdlib in
-    let len = String.length replacement in
-    let buf = Buffer.create len in
-    let i = ref 0 in
-    while !i < len do
-      if replacement.[!i] = '$' && !i + 1 < len &&
-         replacement.[!i + 1] >= '0' && replacement.[!i + 1] <= '9' then begin
-        Buffer.add_char buf (Char.chr 92);
-        Buffer.add_char buf replacement.[!i + 1];
-        i := !i + 2
-      end else begin
-        Buffer.add_char buf replacement.[!i];
-        i := !i + 1
-      end
-    done;
-    let repl = Buffer.contents buf in
-    Str.global_replace re repl text
-  with _ -> text)
-let () = regex_replace_ref := (fun text pattern replacement flags ->
-  try
-    let case_insensitive = match flags with
-      | FStar_Pervasives_Native.Some f -> String.contains f 'i'
-      | FStar_Pervasives_Native.None -> false in
-    let converted = xpath_to_str_regex pattern in
-    let re = if case_insensitive
-      then Str.regexp_case_fold converted
-      else Str.regexp converted in
-    (* Convert XPath backrefs to OCaml Str backrefs: dollar-n -> backslash-n *)
-    let open Stdlib in
-    let len = String.length replacement in
-    let buf = Buffer.create len in
-    let i = ref 0 in
-    while !i < len do
-      if replacement.[!i] = '$' && !i + 1 < len &&
-         replacement.[!i + 1] >= '0' && replacement.[!i + 1] <= '9' then begin
-        Buffer.add_char buf (Char.chr 92);
-        Buffer.add_char buf replacement.[!i + 1];
-        i := !i + 2
-      end else begin
-        Buffer.add_char buf replacement.[!i];
-        i := !i + 1
-      end
-    done;
-    let repl = Buffer.contents buf in
-    Str.global_replace re repl text
-  with _ -> text)
-
-(* Wire up the forward-declared eval_expr_ebv/fwd to the real implementations *)
-let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
-let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)
-let () = regex_replace_ref := (fun text pattern replacement flags ->
-  try
-    let case_insensitive = match flags with
-      | FStar_Pervasives_Native.Some f -> String.contains f 'i'
-      | FStar_Pervasives_Native.None -> false in
-    let converted = xpath_to_str_regex pattern in
-    let re = if case_insensitive
-      then Str.regexp_case_fold converted
-      else Str.regexp converted in
-    (* Convert XPath backrefs to OCaml Str backrefs: dollar-n -> backslash-n *)
-    let open Stdlib in
-    let len = String.length replacement in
-    let buf = Buffer.create len in
-    let i = ref 0 in
-    while !i < len do
-      if replacement.[!i] = '$' && !i + 1 < len &&
-         replacement.[!i + 1] >= '0' && replacement.[!i + 1] <= '9' then begin
-        Buffer.add_char buf (Char.chr 92);
-        Buffer.add_char buf replacement.[!i + 1];
-        i := !i + 2
-      end else begin
-        Buffer.add_char buf replacement.[!i];
-        i := !i + 1
-      end
-    done;
-    let repl = Buffer.contents buf in
-    Str.global_replace re repl text
+    let build_replacement matched_text =
+      let len = String.length replacement in
+      let buf = Buffer.create len in
+      let i = ref 0 in
+      while !i < len do
+        if replacement.[!i] = '$' && !i + 1 < len &&
+           replacement.[!i + 1] >= '0' && replacement.[!i + 1] <= '9' then begin
+          let group_n = Char.code replacement.[!i + 1] - Char.code '0' in
+          (try Buffer.add_string buf (Str.matched_group group_n matched_text)
+           with Not_found -> ());
+          i := !i + 2
+        end else begin
+          Buffer.add_char buf replacement.[!i];
+          i := !i + 1
+        end
+      done;
+      Buffer.contents buf
+    in
+    let result = Buffer.create (String.length text) in
+    let pos = ref 0 in
+    (try
+      while true do
+        ignore (Str.search_forward re text !pos);
+        let m_start = Str.match_beginning () in
+        let m_end = Str.match_end () in
+        Buffer.add_string result (String.sub text !pos (m_start - !pos));
+        Buffer.add_string result (build_replacement text);
+        pos := m_end;
+        if m_start = m_end then begin
+          if !pos < String.length text then begin
+            Buffer.add_char result text.[!pos];
+            pos := !pos + 1
+          end else raise Not_found
+        end
+      done
+    with Not_found -> ());
+    Buffer.add_string result (String.sub text !pos (String.length text - !pos));
+    Buffer.contents result
   with _ -> text)
 
 type group = {
@@ -4165,7 +3923,9 @@ let select_item_vars (items : select_item Prims.list) : var_name Prims.list=
     items
 let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
   (ds : RDF_Graph_Executable.rdf_dataset) : solution_sequence=
-  match q.q_form with
+  let saved_base = !current_base_iri_ref in
+  current_base_iri_ref := q.q_base;
+  let result = match q.q_form with
   | QF_Select sel ->
       let omega0 = eval_pattern q.q_pattern g ds in
       let omega =
@@ -4235,17 +3995,11 @@ let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
   | QF_Construct uu___ -> []
   | QF_Ask -> []
   | QF_Describe uu___ -> []
+  in
+  current_base_iri_ref := saved_base;
+  result
 type path_result =
   (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list
-(* Wire up eval_subselect_fwd to the real eval_select_query *)
-let () = eval_subselect_fwd_ref := eval_select_query
-
-(* Wire up eval_subselect_fwd to the real eval_select_query *)
-let () = eval_subselect_fwd_ref := eval_select_query
-
-(* Wire up eval_subselect_fwd to the real eval_select_query *)
-let () = eval_subselect_fwd_ref := eval_select_query
-
 (* Wire up eval_subselect_fwd to the real eval_select_query *)
 let () = eval_subselect_fwd_ref := eval_select_query
 
@@ -4441,15 +4195,6 @@ let rec eval_property_path (p : property_path)
                  [((t.RDF_Graph_Executable.o),
                     (subject_to_term t.RDF_Graph_Executable.s))]) g in
       FStar_List_Tot_Base.op_At direct_pairs inverse_pairs
-(* Wire up eval_property_path_fwd to the real eval_property_path *)
-let () = eval_property_path_fwd_ref := eval_property_path
-
-(* Wire up eval_property_path_fwd to the real eval_property_path *)
-let () = eval_property_path_fwd_ref := eval_property_path
-
-(* Wire up eval_property_path_fwd to the real eval_property_path *)
-let () = eval_property_path_fwd_ref := eval_property_path
-
 (* Wire up eval_property_path_fwd to the real eval_property_path *)
 let () = eval_property_path_fwd_ref := eval_property_path
 
@@ -4870,15 +4615,6 @@ let eval_not_exists (pattern : group_graph_pattern)
   (graph : RDF_Graph_Executable.rdf_graph)
   (ds : RDF_Graph_Executable.rdf_dataset) : Prims.bool=
   Prims.op_Negation (eval_exists pattern mu graph ds)
-(* Wire up eval_exists_fwd to the real eval_exists *)
-let () = eval_exists_fwd_ref := eval_exists
-
-(* Wire up eval_exists_fwd to the real eval_exists *)
-let () = eval_exists_fwd_ref := eval_exists
-
-(* Wire up eval_exists_fwd to the real eval_exists *)
-let () = eval_exists_fwd_ref := eval_exists
-
 (* Wire up eval_exists_fwd to the real eval_exists *)
 let () = eval_exists_fwd_ref := eval_exists
 

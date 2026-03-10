@@ -19,12 +19,14 @@ let hex_val (c:FStar.Char.char) : int =
 
 (* Convert a code point integer to a single-character string.
    F* Char supports full Unicode via FStar.Char.char_of_int. *)
+// Valid Unicode scalar value: excludes surrogates U+D800..U+DFFF
 let valid_codepoint (cp:int) : bool =
-  cp >= 0 && (cp < 0xD7FF || (cp >= 0xE000 && cp <= 0x10FFFF))
+  cp >= 0 && (cp < 0xD800 || (cp >= 0xE000 && cp <= 0x10FFFF))
 
-(* Safe char_of_int: validates codepoint, returns U+FFFD replacement for invalid *)
+// Safe char_of_int: validates codepoint, returns U+FFFD replacement for invalid
+// Note: F* char_of_int uses cp < 0xD7FF (slightly more restrictive than Unicode)
 let safe_char_of_int (cp:int) : FStar.Char.char =
-  if valid_codepoint cp then
+  if cp >= 0 && (cp < 0xD7FF || (cp >= 0xE000 && cp <= 0x10FFFF)) then
     let n : nat = cp in
     FStar.Char.char_of_int n
   else
@@ -79,8 +81,10 @@ let rec parse_iri_body_acc (input:string) (pos:nat) (acc:list char) (fuel:nat)
               let h2 = hex_val (String.index input (pos + 4)) in
               let h3 = hex_val (String.index input (pos + 5)) in
               let cp = ((h0 `op_Multiply` 4096) + (h1 `op_Multiply` 256) + (h2 `op_Multiply` 16) + h3) in
-              let c = safe_char_of_int cp in
-              parse_iri_body_acc input (pos + 6) (c :: acc) (fuel - 1)
+              if not (valid_codepoint cp) then ParseFail "surrogate codepoint in \\u escape" pos
+              else
+                let c = safe_char_of_int cp in
+                parse_iri_body_acc input (pos + 6) (c :: acc) (fuel - 1)
           else if ncode = 0x55 then (* 'U' - \UXXXXXXXX *)
             if pos + 10 > len then ParseFail "incomplete \\U escape in IRI" pos
             else
@@ -94,8 +98,10 @@ let rec parse_iri_body_acc (input:string) (pos:nat) (acc:list char) (fuel:nat)
               let h7 = hex_val (String.index input (pos + 9)) in
               let cp = ((h0 `op_Multiply` 268435456) + (h1 `op_Multiply` 16777216) + (h2 `op_Multiply` 1048576) + (h3 `op_Multiply` 65536)
                      + (h4 `op_Multiply` 4096) + (h5 `op_Multiply` 256) + (h6 `op_Multiply` 16) + h7) in
-              let c = safe_char_of_int cp in
-              parse_iri_body_acc input (pos + 10) (c :: acc) (fuel - 1)
+              if not (valid_codepoint cp) then ParseFail "surrogate codepoint in \\U escape" pos
+              else
+                let c = safe_char_of_int cp in
+                parse_iri_body_acc input (pos + 10) (c :: acc) (fuel - 1)
           else
             ParseFail "invalid escape in IRI" pos
       else if code <= 0x20 then (* control chars and space not allowed in IRIs *)
@@ -246,8 +252,10 @@ let rec parse_string_body (input:string) (pos:nat) (acc:list char) (fuel:nat)
               let h2 = hex_val (String.index input (pos + 4)) in
               let h3 = hex_val (String.index input (pos + 5)) in
               let cp = ((h0 `op_Multiply` 4096) + (h1 `op_Multiply` 256) + (h2 `op_Multiply` 16) + h3) in
-              let c = safe_char_of_int cp in
-              parse_string_body input (pos + 6) (c :: acc) (fuel - 1)
+              if not (valid_codepoint cp) then ParseFail "surrogate codepoint in \\u escape" pos
+              else
+                let c = safe_char_of_int cp in
+                parse_string_body input (pos + 6) (c :: acc) (fuel - 1)
           else if esc_code = 0x55 then (* \UXXXXXXXX *)
             if pos + 10 > len then ParseFail "incomplete \\U escape" pos
             else
@@ -261,8 +269,10 @@ let rec parse_string_body (input:string) (pos:nat) (acc:list char) (fuel:nat)
               let h7 = hex_val (String.index input (pos + 9)) in
               let cp = ((h0 `op_Multiply` 268435456) + (h1 `op_Multiply` 16777216) + (h2 `op_Multiply` 1048576) + (h3 `op_Multiply` 65536)
                      + (h4 `op_Multiply` 4096) + (h5 `op_Multiply` 256) + (h6 `op_Multiply` 16) + h7) in
-              let c = safe_char_of_int cp in
-              parse_string_body input (pos + 10) (c :: acc) (fuel - 1)
+              if not (valid_codepoint cp) then ParseFail "surrogate codepoint in \\U escape" pos
+              else
+                let c = safe_char_of_int cp in
+                parse_string_body input (pos + 10) (c :: acc) (fuel - 1)
           else
             ParseFail (String.concat "" ["invalid escape: \\"; String.string_of_char esc]) pos
       else if code = 0x0A || code = 0x0D then

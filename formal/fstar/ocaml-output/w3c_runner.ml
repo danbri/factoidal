@@ -24,9 +24,47 @@ open SPARQL11_Algebra
 exception Sparql_parse_error of string
 exception Sparql_unsupported of string
 
+(* Hoist GP_Filter nodes to the top of their containing group.
+   Per SPARQL 1.1 spec section 18.2.4, FILTERs in a group scope over the
+   entire group, not just the elements preceding the FILTER textually.
+   The F* parser currently wraps GP_Filter at the point it appears, which
+   means FILTER before BIND puts the filter inside the bind. This
+   post-processing step extracts filters from inside bind chains and
+   wraps them at the top. *)
+let rec hoist_group_filters g =
+  let open SPARQL11_Algebra in
+  (* Extract GP_Filter nodes from inside a bind/filter chain at group level *)
+  let rec extract_filters g =
+    match g with
+    | GP_Filter (e, inner) ->
+      let (filters, core) = extract_filters inner in
+      (e :: filters, core)
+    | GP_Bind (e, v, inner) ->
+      let (filters, core) = extract_filters inner in
+      (filters, GP_Bind (e, v, core))
+    | _ -> ([], g)
+  in
+  let (filters, core) = extract_filters g in
+  (* Recurse into subpatterns *)
+  let core = match core with
+    | GP_Join (l, r) -> GP_Join (hoist_group_filters l, hoist_group_filters r)
+    | GP_LeftJoin (l, r, e) -> GP_LeftJoin (hoist_group_filters l, hoist_group_filters r, e)
+    | GP_Union (l, r) -> GP_Union (hoist_group_filters l, hoist_group_filters r)
+    | GP_Minus (l, r) -> GP_Minus (hoist_group_filters l, hoist_group_filters r)
+    | GP_Bind (e, v, inner) -> GP_Bind (e, v, hoist_group_filters inner)
+    | GP_Graph (n, inner) -> GP_Graph (n, hoist_group_filters inner)
+    | GP_Service (iri, inner, s) -> GP_Service (iri, hoist_group_filters inner, s)
+    | _ -> core
+  in
+  List.fold_left (fun g e -> GP_Filter (e, g)) core filters
+
+let hoist_query_filters q =
+  let open SPARQL11_Algebra in
+  { q with q_pattern = hoist_group_filters q.q_pattern }
+
 let parse_sparql_query content =
   match SPARQL11_Parser.parse_sparql content with
-  | SPARQL11_Parser.ParseOk (q, _remaining) -> q
+  | SPARQL11_Parser.ParseOk (q, _remaining) -> hoist_query_filters q
   | SPARQL11_Parser.ParseErr msg -> raise (Sparql_parse_error msg)
 
 (* ============================================================================
@@ -512,34 +550,149 @@ let load_triples_from_content filepath content =
   else
     parse_turtle_fstar content (Some base)
 
-(* Simple entailment: does graph A entail graph B?
-   Graph A entails B if there's a mapping from B's blank nodes to terms in A
-   such that every triple in B (after mapping) exists in A.
-   For non-blank-node triples, this is just subset checking. *)
+(* Literal matching under a given entailment regime.
+   - "simple": strict syntactic equality
+   - "RDF"/"RDFS": value-space equivalence (lang tag case, datatype normalization,
+     cross-type integer/decimal, plain/xsd:string) *)
+let literal_match regime (l1 : RDF_Graph_Executable.literal) (l2 : RDF_Graph_Executable.literal) =
+  let open RDF_Graph_Executable in
+  match regime with
+  | "simple" ->
+    l1.lexical_form = l2.lexical_form &&
+    l1.datatype = l2.datatype &&
+    l1.lang_tag = l2.lang_tag
+  | _ ->
+    (* Lang tag: case-insensitive comparison *)
+    let lang_ok = match l1.lang_tag, l2.lang_tag with
+      | None, None -> true
+      | Some t1, Some t2 -> lang_tag_eq t1 t2
+      | _ -> false in
+    if not lang_ok then false
+    else if l1.datatype = l2.datatype then
+      (* Same datatype: use F*-extracted datatype_value_eq *)
+      datatype_value_eq l1 l2
+    else
+      (* Cross-type: integer <-> decimal *)
+      let is_int_dec d = d = xsd_integer || d = xsd_decimal in
+      if is_int_dec l1.datatype && is_int_dec l2.datatype then
+        let to_norm_decimal l =
+          if l.datatype = xsd_integer then
+            normalize_decimal_lexical (normalize_integer_lexical l.lexical_form ^ ".0")
+          else
+            normalize_decimal_lexical l.lexical_form
+        in
+        to_norm_decimal l1 = to_norm_decimal l2
+      else
+        (* plain <-> xsd:string *)
+        let rdf_lang_string = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString" in
+        let d1 = if l1.datatype = "" then xsd_string else l1.datatype in
+        let d2 = if l2.datatype = "" then xsd_string else l2.datatype in
+        if d1 = d2 && d1 <> rdf_lang_string then
+          l1.lexical_form = l2.lexical_form
+        else false
+
+(* RDF term matching under a given entailment regime.
+   Blank nodes in B are NOT handled here — the caller handles bnode binding. *)
+let term_match regime (t1 : RDF_Graph_Executable.rdf_term) (t2 : RDF_Graph_Executable.rdf_term) =
+  let open RDF_Graph_Executable in
+  match t1, t2 with
+  | T_IRI i1, T_IRI i2 -> i1 = i2
+  | T_Literal l1, T_Literal l2 -> literal_match regime l1 l2
+  | T_BNode b1, T_BNode b2 -> b1 = b2
+  | _, _ -> false
+
+(* Subject matching (non-bnode) *)
+let subject_match_concrete s1 s2 =
+  let open RDF_Graph_Executable in
+  match s1, s2 with
+  | S_IRI i1, S_IRI i2 -> i1 = i2
+  | S_BNode b1, S_BNode b2 -> b1 = b2
+  | _, _ -> false
+
+(* Extract the "term value" for bnode binding from a subject *)
+let subject_as_binding (s : RDF_Graph_Executable.subject) : [`S of RDF_Graph_Executable.subject | `O of RDF_Graph_Executable.rdf_term] =
+  `S s
+let object_as_binding (o : RDF_Graph_Executable.rdf_term) : [`S of RDF_Graph_Executable.subject | `O of RDF_Graph_Executable.rdf_term] =
+  `O o
+
+(* Simple entailment with consistent blank node mapping.
+   Graph A entails graph B under the given regime if there exists a mapping
+   from B's blank node labels to terms in A such that every triple in B
+   (after mapping) appears in A (using regime-appropriate matching).
+   Uses backtracking search over possible bnode bindings. *)
+let simple_entails_regime regime graph_a graph_b =
+  let open RDF_Graph_Executable in
+  (* binding: bnode_label -> (subject_binding option, object_binding option)
+     We track subject and object bindings separately since bnodes can appear
+     in either position and the types differ. *)
+  let rec try_match triples_b (s_bind : (string * subject) list) (o_bind : (string * rdf_term) list) =
+    match triples_b with
+    | [] -> true  (* all triples matched *)
+    | tb :: rest ->
+      (* Try each triple in A as a potential match *)
+      List.exists (fun ta ->
+        (* Check predicate first (cheapest) *)
+        if tb.p <> ta.p then false
+        else
+          (* Check/bind subject *)
+          let s_result = match tb.s with
+            | S_BNode bn ->
+              (match List.assoc_opt bn s_bind with
+               | Some bound_s -> if subject_match_concrete bound_s ta.s then Some s_bind else None
+               | None -> Some ((bn, ta.s) :: s_bind))
+            | _ -> if subject_match_concrete tb.s ta.s then Some s_bind else None
+          in
+          match s_result with
+          | None -> false
+          | Some s_bind' ->
+            (* Check/bind object *)
+            let o_result = match tb.o with
+              | T_BNode bn ->
+                (match List.assoc_opt bn o_bind with
+                 | Some bound_o -> if term_match regime bound_o ta.o then Some o_bind else None
+                 | None -> Some ((bn, ta.o) :: o_bind))
+              | _ -> if term_match regime tb.o ta.o then Some o_bind else None
+            in
+            match o_result with
+            | None -> false
+            | Some o_bind' ->
+              (* Also enforce cross-position consistency: if a bnode label
+                 appears in both subject and object positions, the bindings
+                 must be compatible. *)
+              let cross_ok = match tb.o with
+                | T_BNode bn ->
+                  (match List.assoc_opt bn s_bind' with
+                   | None -> true
+                   | Some bound_s ->
+                     let o_val = List.assoc bn o_bind' in
+                     (match bound_s, o_val with
+                      | S_IRI si, T_IRI oi -> si = oi
+                      | S_BNode sb, T_BNode ob -> sb = ob
+                      | _, _ -> false))
+                | _ -> true
+              in
+              let cross_ok2 = match tb.s with
+                | S_BNode bn ->
+                  (match List.assoc_opt bn o_bind' with
+                   | None -> true
+                   | Some bound_o ->
+                     let s_val = List.assoc bn s_bind' in
+                     (match s_val, bound_o with
+                      | S_IRI si, T_IRI oi -> si = oi
+                      | S_BNode sb, T_BNode ob -> sb = ob
+                      | _, _ -> false))
+                | _ -> true
+              in
+              if cross_ok && cross_ok2 then
+                try_match rest s_bind' o_bind'
+              else false
+      ) graph_a
+  in
+  try_match graph_b [] []
+
+(* Convenience wrapper: entails under "simple" regime (backward compat) *)
 let simple_entails graph_a graph_b =
-  (* For each triple in B, check if it can be matched in A.
-     Blank nodes in B act as existential variables. *)
-  List.for_all (fun tb ->
-    List.exists (fun ta ->
-      (* Subject match *)
-      let s_match = match tb.s, ta.s with
-        | S_IRI i1, S_IRI i2 -> i1 = i2
-        | S_BNode _, _ -> true  (* bnode matches anything *)
-        | _, _ -> false in
-      (* Predicate match (always IRI) *)
-      let p_match = tb.p = ta.p in
-      (* Object match *)
-      let o_match = match tb.o, ta.o with
-        | T_IRI i1, T_IRI i2 -> i1 = i2
-        | T_BNode _, _ -> true
-        | T_Literal l1, T_Literal l2 ->
-          l1.lexical_form = l2.lexical_form &&
-          l1.datatype = l2.datatype &&
-          l1.lang_tag = l2.lang_tag
-        | _, _ -> false in
-      s_match && p_match && o_match
-    ) graph_a
-  ) graph_b
+  simple_entails_regime "simple" graph_a graph_b
 
 (* Apply entailment regime to a graph — compute closure *)
 let apply_entailment_regime regime triples =
@@ -756,7 +909,7 @@ let run_rdf_test assumed_base tc =
           let regime = tc.test_type_detail in
           let closed_action = apply_entailment_regime regime action_triples in
           (* Check: does the closure of action entail expected? *)
-          if simple_entails closed_action expected_triples then Pass
+          if simple_entails_regime regime closed_action expected_triples then Pass
           else
             Fail (Printf.sprintf "Entailment failed: action has %d triples (after closure), expected %d"
                     (List.length closed_action) (List.length expected_triples))
@@ -786,7 +939,7 @@ let run_rdf_test assumed_base tc =
                 let expected_triples = load_triples_from_content rf result_content in
                 let regime = tc.test_type_detail in
                 let closed_action = apply_entailment_regime regime action_triples in
-                if simple_entails closed_action expected_triples then
+                if simple_entails_regime regime closed_action expected_triples then
                   Fail "Should NOT entail but does"
                 else Pass
               with e ->

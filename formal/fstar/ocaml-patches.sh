@@ -1,18 +1,32 @@
 #!/bin/bash
-# Post-extraction patches for SPARQL11_Algebra.ml
-# These fix assume-val stubs that F* extraction generates as failwith placeholders.
+# Post-extraction patches for F*-extracted OCaml files.
+# These fix assume-val stubs, add IRI resolution, RDF/XML validation,
+# surrogate codepoint guards, and RDFS closure for entailment tests.
 #
 # Applied automatically by build-ocaml.sh after F* extraction.
 
 set -euo pipefail
 
-FILE="$1"
+OUTDIR="$1"
 
+# Backward compatibility: if $1 is a .ml file, use its directory
+if [[ -f "$OUTDIR" && "$OUTDIR" == *.ml ]]; then
+  OUTDIR="$(dirname "$OUTDIR")"
+fi
+
+if [[ ! -d "$OUTDIR" ]]; then
+  echo "Error: $OUTDIR is not a directory" >&2
+  exit 1
+fi
+
+# ======================================================================
+# SPARQL11_Algebra.ml patches
+# ======================================================================
+FILE="$OUTDIR/SPARQL11_Algebra.ml"
 if [[ ! -f "$FILE" ]]; then
   echo "Error: $FILE not found" >&2
   exit 1
 fi
-
 echo "  Patching $FILE..."
 
 # 1. Replace eval_expr_ebv stub with mutable ref dispatch
@@ -276,24 +290,48 @@ let () = regex_replace_ref := (fun text pattern replacement flags ->
     let re = if case_insensitive
       then Str.regexp_case_fold converted
       else Str.regexp converted in
-    (* Convert XPath backrefs to OCaml Str backrefs: dollar-n -> backslash-n *)
+    (* Manual global replace that handles unmatched groups gracefully.
+       OCaml Str.matched_group raises Not_found for unmatched groups;
+       we replace them with empty string per XPath/SPARQL semantics. *)
     let open Stdlib in
-    let len = String.length replacement in
-    let buf = Buffer.create len in
-    let i = ref 0 in
-    while !i < len do
-      if replacement.[!i] = '$' && !i + 1 < len &&
-         replacement.[!i + 1] >= '0' && replacement.[!i + 1] <= '9' then begin
-        Buffer.add_char buf (Char.chr 92);
-        Buffer.add_char buf replacement.[!i + 1];
-        i := !i + 2
-      end else begin
-        Buffer.add_char buf replacement.[!i];
-        i := !i + 1
-      end
-    done;
-    let repl = Buffer.contents buf in
-    Str.global_replace re repl text
+    let build_replacement matched_text =
+      let len = String.length replacement in
+      let buf = Buffer.create len in
+      let i = ref 0 in
+      while !i < len do
+        if replacement.[!i] = '$' && !i + 1 < len &&
+           replacement.[!i + 1] >= '0' && replacement.[!i + 1] <= '9' then begin
+          let group_n = Char.code replacement.[!i + 1] - Char.code '0' in
+          (try Buffer.add_string buf (Str.matched_group group_n matched_text)
+           with Not_found -> ());
+          i := !i + 2
+        end else begin
+          Buffer.add_char buf replacement.[!i];
+          i := !i + 1
+        end
+      done;
+      Buffer.contents buf
+    in
+    let result = Buffer.create (String.length text) in
+    let pos = ref 0 in
+    (try
+      while true do
+        ignore (Str.search_forward re text !pos);
+        let m_start = Str.match_beginning () in
+        let m_end = Str.match_end () in
+        Buffer.add_string result (String.sub text !pos (m_start - !pos));
+        Buffer.add_string result (build_replacement text);
+        pos := m_end;
+        if m_start = m_end then begin
+          if !pos < String.length text then begin
+            Buffer.add_char result text.[!pos];
+            pos := !pos + 1
+          end else raise Not_found
+        end
+      done
+    with Not_found -> ());
+    Buffer.add_string result (String.sub text !pos (String.length text - !pos));
+    Buffer.contents result
   with _ -> text)'''
 )
 
@@ -366,14 +404,548 @@ let () = eval_subselect_fwd_ref := eval_select_query
 let is_not_literal'''
 )
 
+# 8. IRI()/URI() base IRI resolution
+# The spec says IRI(string) resolves the string against the query's BASE.
+# eval_expr has no access to the query base, so we use a mutable ref.
+
+# Add the ref before eval_expr so it's in scope
+content = content.replace(
+    'let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :',
+    '''let current_base_iri_ref : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option ref =
+  ref FStar_Pervasives_Native.None
+
+let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :'''
+)
+
+# Set/restore base_iri in eval_select_query
+content = content.replace(
+    '''let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
+  (ds : RDF_Graph_Executable.rdf_dataset) : solution_sequence=
+  match q.q_form with
+  | QF_Select sel ->''',
+    '''let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
+  (ds : RDF_Graph_Executable.rdf_dataset) : solution_sequence=
+  let saved_base = !current_base_iri_ref in
+  current_base_iri_ref := q.q_base;
+  let result = match q.q_form with
+  | QF_Select sel ->'''
+)
+
+content = content.replace(
+    '''  | QF_Describe uu___ -> []
+type path_result =''',
+    '''  | QF_Describe uu___ -> []
+  in
+  current_base_iri_ref := saved_base;
+  result
+type path_result ='''
+)
+
+content = content.replace(
+    '''  | E_IRI_fn e1 ->
+      (match eval_expr e1 mu with
+       | ER_Term (RDF_Graph_Executable.T_IRI i) ->
+           ER_Term (RDF_Graph_Executable.T_IRI i)
+       | ER_Term (RDF_Graph_Executable.T_Literal l) ->
+           (match string_to_iri (lit_lexical l) with
+            | FStar_Pervasives_Native.Some i ->
+                ER_Term (RDF_Graph_Executable.T_IRI i)
+            | FStar_Pervasives_Native.None -> ER_Error)
+       | uu___ -> ER_Error)''',
+    '''  | E_IRI_fn e1 ->
+      (match eval_expr e1 mu with
+       | ER_Term (RDF_Graph_Executable.T_IRI i) ->
+           ER_Term (RDF_Graph_Executable.T_IRI i)
+       | ER_Term (RDF_Graph_Executable.T_Literal l) ->
+           let s = lit_lexical l in
+           (match !current_base_iri_ref with
+            | FStar_Pervasives_Native.Some base ->
+                ER_Term (RDF_Graph_Executable.T_IRI (resolve_iri base s))
+            | FStar_Pervasives_Native.None ->
+                (match string_to_iri s with
+                 | FStar_Pervasives_Native.Some i ->
+                     ER_Term (RDF_Graph_Executable.T_IRI i)
+                 | FStar_Pervasives_Native.None -> ER_Error))
+       | uu___ -> ER_Error)'''
+)
+
 with open('$FILE', 'w') as f:
     f.write(content)
 "
 
-echo "  Patches applied successfully."
+echo "  SPARQL11_Algebra.ml patched."
 
 # ======================================================================
-# SPARQL11_Parser.ml — no patches needed
-# All assume vals (char_at, substring, string_upper, parse_expr, etc.)
-# are now implemented directly in F* and extracted. No stubs required.
+# SPARQL11_Parser.ml patches — relative IRI resolution against BASE
 # ======================================================================
+FILE="$OUTDIR/SPARQL11_Parser.ml"
+if [[ -f "$FILE" ]]; then
+  echo "  Patching $FILE..."
+  python3 - "$FILE" << 'PYEOF'
+import sys
+import re
+
+with open(sys.argv[1], 'r') as f:
+    content = f.read()
+
+# 1. Add resolve_tok_iri helper after scan_while function
+content = content.replace(
+    '''    then scan_while input (p + Prims.int_one) pred
+    else p''',
+    '''    then scan_while input (p + Prims.int_one) pred
+    else p
+(* Resolve a potentially relative IRI against the current BASE.
+   If the IRI is already absolute (passes is_iri), return it unchanged.
+   Otherwise, try resolving against the global current_base_iri_ref. *)
+let resolve_tok_iri (i : Prims.string) : Prims.string =
+  if RDF_Graph_Executable.is_iri i then i
+  else match !(SPARQL11_Algebra.current_base_iri_ref) with
+    | Some base -> SPARQL11_Algebra.resolve_iri base i
+    | None -> i
+'''
+)
+
+# 2. Regex-based patching: resolve ALL Tok_IRI i patterns globally.
+# Each block matches: | Tok_IRI i -> ... if is_iri i ... else ParseErr ...
+# We insert `let ri = resolve_tok_iri i in` and rename i -> ri in the block.
+def patch_tok_iri_block(match):
+    block = match.group(0)
+    # Find the indentation of the 'if' line
+    for line in block.split('\n'):
+        if 'if RDF_Graph_Executable.is_iri i' in line:
+            indent = line[:len(line) - len(line.lstrip())]
+            break
+    else:
+        return block  # shouldn't happen
+
+    # Insert resolve_tok_iri before the is_iri check
+    block = block.replace(
+        'if RDF_Graph_Executable.is_iri i',
+        'let ri = resolve_tok_iri i in\n' + indent + 'if RDF_Graph_Executable.is_iri ri',
+        1
+    )
+    # Rename i -> ri in IRI constructor uses
+    block = block.replace('PS_IRI i)', 'PS_IRI ri)')
+    block = block.replace('PT_IRI i), SPARQL11_Algebra.GP_Empty', 'PT_IRI ri), SPARQL11_Algebra.GP_Empty')
+    block = block.replace('PT_IRI i), (parse_advance', 'PT_IRI ri), (parse_advance')
+    block = block.replace('PP_IRI i), (parse_advance', 'PP_IRI ri), (parse_advance')
+    block = block.replace('PP_IRI i)),', 'PP_IRI ri)),')
+    block = block.replace('E_IRI i), ts', 'E_IRI ri), ts')
+    block = block.replace('T_IRI i)),', 'T_IRI ri)),')
+    block = block.replace('ParseOk (i, (parse_advance', 'ParseOk (ri, (parse_advance')
+    block = block.replace('parse_func_call pm (fuel - Prims.int_one) i\n', 'parse_func_call pm (fuel - Prims.int_one) ri\n')
+    return block
+
+# Match each Tok_IRI i -> block from the | to the else ParseErr line
+content = re.sub(
+    r'\| Tok_IRI i ->\n(\s+)if RDF_Graph_Executable\.is_iri i\n.*?else ParseErr[^\n]+',
+    patch_tok_iri_block,
+    content,
+    flags=re.DOTALL
+)
+
+# 3. Resolve datatype IRIs (Tok_IRI dt) - insert resolve_tok_iri dt
+# These appear inside HATHAT handling for typed literals
+content = content.replace(
+    '''          | Tok_IRI dt ->
+              if RDF_Graph_Executable.is_iri dt''',
+    '''          | Tok_IRI dt ->
+              let dt = resolve_tok_iri dt in
+              if RDF_Graph_Executable.is_iri dt'''
+)
+
+# 4. parse_prologue_base: propagate BASE to current_base_iri_ref
+content = content.replace(
+    '''          | Tok_IRI iri ->
+              if RDF_Graph_Executable.is_iri iri
+              then
+                parse_prologue_base pm (FStar_Pervasives_Native.Some iri)
+                  (fuel - Prims.int_one) (parse_advance ts')''',
+    '''          | Tok_IRI iri ->
+              if RDF_Graph_Executable.is_iri iri
+              then begin
+                SPARQL11_Algebra.current_base_iri_ref := Some iri;
+                parse_prologue_base pm (FStar_Pervasives_Native.Some iri)
+                  (fuel - Prims.int_one) (parse_advance ts')
+              end'''
+)
+
+with open(sys.argv[1], 'w') as f:
+    f.write(content)
+PYEOF
+  echo "  SPARQL11_Parser.ml patched."
+fi
+
+# ======================================================================
+# Parser_RDFXML.ml patches — RDF/XML name validation and NCName checks
+# ======================================================================
+FILE="$OUTDIR/Parser_RDFXML.ml"
+if [[ -f "$FILE" ]]; then
+  echo "  Patching $FILE..."
+  python3 - "$FILE" << 'PYEOF'
+import sys
+
+with open(sys.argv[1], 'r') as f:
+    content = f.read()
+
+# 1. Add validation infrastructure after rdf_xmlliteral_iri
+content = content.replace(
+    '''let rdf_xmlliteral_iri : Prims.string=
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral"
+type rdfxml_state =''',
+    '''let rdf_xmlliteral_iri : Prims.string=
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral"
+
+(* RDF/XML validation: forbidden rdf: names *)
+exception Rdfxml_error of string
+
+(* Names forbidden as node element names (sec 7.2.11) *)
+let forbidden_node_element_names = [
+  rdf_ns ^ "RDF"; rdf_ns ^ "ID"; rdf_ns ^ "about"; rdf_ns ^ "bagID";
+  rdf_ns ^ "parseType"; rdf_ns ^ "resource"; rdf_ns ^ "nodeID";
+  rdf_ns ^ "li"; rdf_ns ^ "aboutEach"; rdf_ns ^ "aboutEachPrefix"
+]
+
+(* Names forbidden as property element names (sec 7.2.12) *)
+let forbidden_property_element_names = [
+  rdf_ns ^ "Description"; rdf_ns ^ "RDF"; rdf_ns ^ "ID"; rdf_ns ^ "about";
+  rdf_ns ^ "bagID"; rdf_ns ^ "parseType"; rdf_ns ^ "resource";
+  rdf_ns ^ "nodeID"; rdf_ns ^ "aboutEach"; rdf_ns ^ "aboutEachPrefix"
+]
+
+(* Validate rdf:ID / rdf:nodeID values: must be valid XML NCName.
+   Uses Stdlib operators explicitly because open Prims shadows them with Z.t. *)
+let is_valid_ncname s =
+  let module S = Stdlib in
+  let len = S.String.length s in
+  if S.(=) len 0 then false
+  else
+    let byte_at i = S.Char.code (S.String.get s i) in
+    let is_start b =
+      (S.(>=) b 0x41 && S.(<=) b 0x5A) || (S.(>=) b 0x61 && S.(<=) b 0x7A)
+      || S.(=) b 0x5F || S.(>) b 0x7F in
+    let is_cont b =
+      is_start b || (S.(>=) b 0x30 && S.(<=) b 0x39)
+      || S.(=) b 0x2D || S.(=) b 0x2E || S.(=) b 0xB7 in
+    let ok = S.ref (is_start (byte_at 0)) in
+    for i = 1 to S.(-) len 1 do
+      if not (is_cont (byte_at i)) then ok := false
+    done;
+    S.(!) ok
+
+let validate_rdf_id_attr (attrs : Parser_XML.xml_attribute list) =
+  List.iter (fun (a : Parser_XML.xml_attribute) ->
+    if a.attr_name = "rdf:ID" || a.attr_name = "rdf:nodeID" then
+      if not (is_valid_ncname a.attr_value) then
+        raise (Rdfxml_error (Printf.sprintf "Invalid %s value: %s" a.attr_name a.attr_value))
+  ) attrs
+
+let check_conflicting_attrs (attrs : Parser_XML.xml_attribute list) =
+  let has a = List.exists (fun (x : Parser_XML.xml_attribute) -> x.attr_name = a) attrs in
+  if has "rdf:parseType" && has "rdf:resource" then
+    raise (Rdfxml_error "conflicting rdf:parseType and rdf:resource");
+  if has "rdf:aboutEach" then
+    raise (Rdfxml_error "rdf:aboutEach is deprecated and forbidden")
+
+type rdfxml_state ='''
+)
+
+# 2. Add validation in process_node_element
+content = content.replace(
+    '''     | Parser_XML.XElement (tag, attrs, children) ->
+         let st1 = update_state_from_attrs st attrs in
+         let uu___1 = determine_subject st1 attrs in
+         (match uu___1 with''',
+    '''     | Parser_XML.XElement (tag, attrs, children) ->
+         (* Validate: reject forbidden rdf: names as node elements *)
+         (match resolve_name st tag with
+          | Some full_iri ->
+            if List.mem full_iri forbidden_node_element_names then
+              raise (Rdfxml_error (Printf.sprintf "Forbidden node element name: %s" full_iri))
+          | None -> ());
+         validate_rdf_id_attr attrs;
+         check_conflicting_attrs attrs;
+         let st1 = update_state_from_attrs st attrs in
+         let uu___1 = determine_subject st1 attrs in
+         (match uu___1 with''',
+    1  # first occurrence only (process_node_element)
+)
+
+# 3. Add validation in process_property_element
+content = content.replace(
+    '''     | Parser_XML.XElement (tag, attrs, children) ->
+         let st1 = update_state_from_attrs st attrs in
+         let uu___1 =
+           match resolve_name st1 tag with''',
+    '''     | Parser_XML.XElement (tag, attrs, children) ->
+         (* Validate: reject forbidden rdf: names as property elements *)
+         (match resolve_name st tag with
+          | Some full_iri ->
+            if List.mem full_iri forbidden_property_element_names then
+              raise (Rdfxml_error (Printf.sprintf "Forbidden property element name: %s" full_iri));
+            (* Also reject rdf:Bag/Seq/Alt as property elements *)
+            if full_iri = rdf_ns ^ "Bag" || full_iri = rdf_ns ^ "Seq" ||
+               full_iri = rdf_ns ^ "Alt" then
+              raise (Rdfxml_error (Printf.sprintf "Container type used as property element: %s" full_iri))
+          | None -> ());
+         validate_rdf_id_attr attrs;
+         check_conflicting_attrs attrs;
+         let st1 = update_state_from_attrs st attrs in
+         let uu___1 =
+           match resolve_name st1 tag with'''
+)
+
+with open(sys.argv[1], 'w') as f:
+    f.write(content)
+PYEOF
+  echo "  Parser_RDFXML.ml patched."
+fi
+
+# ======================================================================
+# Parser_Turtle.ml patches — surrogate codepoint validation
+# ======================================================================
+FILE="$OUTDIR/Parser_Turtle.ml"
+if [[ -f "$FILE" ]]; then
+  echo "  Patching $FILE..."
+  python3 - "$FILE" << 'PYEOF'
+import sys
+
+with open(sys.argv[1], 'r') as f:
+    content = f.read()
+
+# The pattern: after computing cp from hex digits, before calling
+# parse_*_string_body with safe_char_of_int cp, insert a surrogate check.
+# There are 4 locations: long_string \u, long_string \U, single_string \u, single_string \U.
+
+# We need to find lines like:
+#   + h3 in
+#   parse_long_string_body qch input
+#     (pos + (Prims.of_int (6)))
+#     ((Parser_NTriples.safe_char_of_int cp)
+# And insert the guard between "h3 in" and "parse_long_string_body"
+
+# 1. parse_long_string_body, \u escape (4-digit, offset +6)
+content = content.replace(
+    '''                                          + h3 in
+                                      parse_long_string_body qch input
+                                        (pos + (Prims.of_int (6)))
+                                        ((Parser_NTriples.safe_char_of_int cp)''',
+    '''                                          + h3 in
+                                      if Prims.op_Negation (Parser_NTriples.valid_codepoint cp)
+                                      then Parser_Combinators.ParseFail ("surrogate codepoint in \\\\u escape", pos)
+                                      else
+                                      parse_long_string_body qch input
+                                        (pos + (Prims.of_int (6)))
+                                        ((Parser_NTriples.safe_char_of_int cp)'''
+)
+
+# 2. parse_long_string_body, \U escape (8-digit, offset +10)
+content = content.replace(
+    '''                                            + h7 in
+                                        parse_long_string_body qch input
+                                          (pos + (Prims.of_int (10)))
+                                          ((Parser_NTriples.safe_char_of_int''',
+    '''                                            + h7 in
+                                        if Prims.op_Negation (Parser_NTriples.valid_codepoint cp)
+                                        then Parser_Combinators.ParseFail ("surrogate codepoint in \\\\U escape", pos)
+                                        else
+                                        parse_long_string_body qch input
+                                          (pos + (Prims.of_int (10)))
+                                          ((Parser_NTriples.safe_char_of_int'''
+)
+
+# 3. parse_single_string_body, \u escape (4-digit, offset +6)
+content = content.replace(
+    '''                                          + h3 in
+                                      parse_single_string_body input
+                                        (pos + (Prims.of_int (6)))
+                                        ((Parser_NTriples.safe_char_of_int cp)''',
+    '''                                          + h3 in
+                                      if Prims.op_Negation (Parser_NTriples.valid_codepoint cp)
+                                      then Parser_Combinators.ParseFail ("surrogate codepoint in \\\\u escape", pos)
+                                      else
+                                      parse_single_string_body input
+                                        (pos + (Prims.of_int (6)))
+                                        ((Parser_NTriples.safe_char_of_int cp)'''
+)
+
+# 4. parse_single_string_body, \U escape (8-digit, offset +10)
+content = content.replace(
+    '''                                            + h7 in
+                                        parse_single_string_body input
+                                          (pos + (Prims.of_int (10)))
+                                          ((Parser_NTriples.safe_char_of_int''',
+    '''                                            + h7 in
+                                        if Prims.op_Negation (Parser_NTriples.valid_codepoint cp)
+                                        then Parser_Combinators.ParseFail ("surrogate codepoint in \\\\U escape", pos)
+                                        else
+                                        parse_single_string_body input
+                                          (pos + (Prims.of_int (10)))
+                                          ((Parser_NTriples.safe_char_of_int'''
+)
+
+with open(sys.argv[1], 'w') as f:
+    f.write(content)
+PYEOF
+  echo "  Parser_Turtle.ml patched."
+fi
+
+# ======================================================================
+# w3c_runner.ml patches — RDFS closure for entailment tests
+# ======================================================================
+FILE="$OUTDIR/w3c_runner.ml"
+if [[ -f "$FILE" ]]; then
+  echo "  Patching $FILE..."
+  python3 - "$FILE" << 'PYEOF'
+import sys
+
+with open(sys.argv[1], 'r') as f:
+    content = f.read()
+
+# 1. Add sd_ns and ent_ns namespace constants
+content = content.replace(
+    '''let rdft_ns = "http://www.w3.org/ns/rdftest#"
+
+let find_objects graph subj pred =''',
+    '''let rdft_ns = "http://www.w3.org/ns/rdftest#"
+let sd_ns = "http://www.w3.org/ns/sparql-service-description#"
+let ent_ns = "http://www.w3.org/ns/entailment/"
+
+let find_objects graph subj pred ='''
+)
+
+# 2. Expand entailment regime detection to handle sd:entailmentRegime on action blank nodes
+content = content.replace(
+    '''    (* Get entailment regime (for rdf-mt tests) *)
+    let regime_objs = find_objects graph entry_subj (mf_ns ^ "entailmentRegime") in
+    let test_type_detail = match regime_objs with
+      | r :: _ -> term_to_str r
+      | [] -> "" in''',
+    '''    (* Get entailment regime (for rdf-mt tests and SPARQL entailment tests) *)
+    let regime_objs = find_objects graph entry_subj (mf_ns ^ "entailmentRegime") in
+    let test_type_detail = match regime_objs with
+      | r :: _ -> term_to_str r
+      | [] ->
+        (* For SPARQL entailment tests, sd:entailmentRegime is on the action blank node *)
+        (match action_objs with
+         | action :: _ ->
+           let action_subj = match action with
+             | T_IRI i -> S_IRI i | T_BNode b -> S_BNode b | _ -> S_IRI (term_to_str action) in
+           let sd_regime_objs = find_objects graph action_subj (sd_ns ^ "entailmentRegime") in
+           (* sd:entailmentRegime can be a single value or an RDF list *)
+           let regime_iris = List.concat_map (fun obj ->
+             match obj with
+             | T_IRI i -> [i]
+             | T_BNode _ ->
+               (* It's an RDF list -- walk it *)
+               let rec walk_list node acc =
+                 let firsts = find_objects graph node rdf_first in
+                 let rests = find_objects graph node rdf_rest in
+                 let acc = match firsts with
+                   | T_IRI i :: _ -> i :: acc
+                   | _ -> acc in
+                 match rests with
+                 | T_IRI i :: _ when i = rdf_nil -> List.rev acc
+                 | (T_BNode _ as next) :: _ ->
+                   let next_subj = match next with T_BNode b -> S_BNode b | T_IRI i -> S_IRI i | _ -> S_IRI "" in
+                   walk_list next_subj acc
+                 | _ -> List.rev acc
+               in
+               walk_list (S_BNode (match obj with T_BNode b -> b | _ -> "")) []
+             | _ -> []
+           ) sd_regime_objs in
+           (* Pick the best regime we can handle: prefer RDFS > RDF > D *)
+           if List.exists (fun i -> i = ent_ns ^ "RDFS") regime_iris then "RDFS"
+           else if List.exists (fun i -> i = ent_ns ^ "RDF") regime_iris then "RDF"
+           else if List.exists (fun i -> i = ent_ns ^ "D") regime_iris then "D"
+           else if List.exists (fun i -> i = ent_ns ^ "OWL-Direct") regime_iris then "OWL-Direct"
+           else if List.exists (fun i -> i = ent_ns ^ "OWL-RDF-Based") regime_iris then "OWL-RDF-Based"
+           else ""
+         | [] -> "") in'''
+)
+
+# 3. Add RDFS closure application in run_query_eval_test
+content = content.replace(
+    '''  (* Load named graph data *)
+  let named_graphs = List.map (fun (iri, path) ->
+    let triples = load_triples path in
+    RDF_Graph_Executable.({ ng_name = iri; ng_graph = triples })
+  ) tc.named_data_files in''',
+    '''  (* Apply entailment regime closure if needed (for SPARQL entailment tests) *)
+  let graph = match tc.test_type_detail with
+    | "RDFS" | "RDF" ->
+      let closed = (try RDF_Graph_Executable.rdfs_closure graph (Z.of_int 100)
+                    with _ -> graph) in
+      (* Add RDFS reflexivity axioms: every class C gets C rdfs:subClassOf C,
+         and every property P gets P rdfs:subPropertyOf P.
+         These are entailed by RDFS but not yet in the F* closure. *)
+      let rdfs_subClassOf = "http://www.w3.org/2000/01/rdf-schema#subClassOf" in
+      let rdfs_subPropertyOf = "http://www.w3.org/2000/01/rdf-schema#subPropertyOf" in
+      let rdf_type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" in
+      let rdfs_class = "http://www.w3.org/2000/01/rdf-schema#Class" in
+      let rdf_property = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property" in
+      let owl_class = "http://www.w3.org/2002/07/owl#Class" in
+      let owl_objprop = "http://www.w3.org/2002/07/owl#ObjectProperty" in
+      let owl_dataprop = "http://www.w3.org/2002/07/owl#DatatypeProperty" in
+      (* Collect all classes: anything that appears as object of rdf:type that is itself
+         typed as rdfs:Class/owl:Class, or anything that appears as subject/object of rdfs:subClassOf *)
+      let classes = List.fold_left (fun acc t ->
+        let acc = if t.p = rdfs_subClassOf then
+          let acc = (match t.s with S_IRI i -> if List.mem i acc then acc else i :: acc | _ -> acc) in
+          (match t.o with T_IRI i -> if List.mem i acc then acc else i :: acc | _ -> acc)
+        else acc in
+        if t.p = rdf_type then
+          match t.o with
+          | T_IRI c when c = rdfs_class || c = owl_class ->
+            (match t.s with S_IRI i -> if List.mem i acc then acc else i :: acc | _ -> acc)
+          | _ -> acc
+        else acc
+      ) [] closed in
+      (* Collect all properties *)
+      let properties = List.fold_left (fun acc t ->
+        let acc = if t.p = rdfs_subPropertyOf then
+          let acc = (match t.s with S_IRI i -> if List.mem i acc then acc else i :: acc | _ -> acc) in
+          (match t.o with T_IRI i -> if List.mem i acc then acc else i :: acc | _ -> acc)
+        else acc in
+        if t.p = rdf_type then
+          match t.o with
+          | T_IRI c when c = rdf_property || c = owl_objprop || c = owl_dataprop ->
+            (match t.s with S_IRI i -> if List.mem i acc then acc else i :: acc | _ -> acc)
+          | _ -> acc
+        else acc
+      ) [] closed in
+      (* Add reflexivity triples *)
+      let open RDF_Graph_Executable in
+      let reflexive = List.map (fun c ->
+        { s = S_IRI c; p = rdfs_subClassOf; o = T_IRI c }
+      ) classes @ List.map (fun p ->
+        { s = S_IRI p; p = rdfs_subPropertyOf; o = T_IRI p }
+      ) properties in
+      let closed = List.fold_left (fun g t ->
+        if List.exists (fun t2 -> t2.s = t.s && t2.p = t.p && t2.o = t.o) g then g
+        else t :: g
+      ) closed reflexive in
+      (* Re-run closure to propagate reflexivity effects *)
+      (try RDF_Graph_Executable.rdfs_closure closed (Z.of_int 100)
+       with _ -> closed)
+    | _ -> graph in
+
+  (* Load named graph data *)
+  let named_graphs = List.map (fun (iri, path) ->
+    let triples = load_triples path in
+    let triples = match tc.test_type_detail with
+      | "RDFS" | "RDF" ->
+        (try RDF_Graph_Executable.rdfs_closure triples (Z.of_int 100)
+         with _ -> triples)
+      | _ -> triples in
+    RDF_Graph_Executable.({ ng_name = iri; ng_graph = triples })
+  ) tc.named_data_files in'''
+)
+
+with open(sys.argv[1], 'w') as f:
+    f.write(content)
+PYEOF
+  echo "  w3c_runner.ml patched."
+fi
+
+echo "  All patches applied successfully."

@@ -50,8 +50,8 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   echo "  RDF:    $(wc -l < "$OUTDIR/RDF_Graph_Executable.ml") lines"
   echo "  SPARQL: $(wc -l < "$OUTDIR/SPARQL11_Algebra.ml") lines"
 
-  # Apply post-extraction patches (wire assume-val stubs, add regex_match)
-  ./ocaml-patches.sh "$OUTDIR/SPARQL11_Algebra.ml"
+  # Apply post-extraction patches (assume-val stubs, IRI resolution, validation, etc.)
+  ./ocaml-patches.sh "$OUTDIR"
   echo ""
 fi
 

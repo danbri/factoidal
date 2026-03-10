@@ -1,0 +1,16 @@
+# Mark F*-extracted OCaml files as generated.
+# GitHub will collapse these in PR diffs by default.
+# Do NOT edit these files directly — use ocaml-patches.sh instead.
+
+RDF_Graph_Executable.ml  linguist-generated=true
+SPARQL11_Algebra.ml      linguist-generated=true
+SPARQL11_Parser.ml       linguist-generated=true
+Parser_Combinators.ml    linguist-generated=true
+Parser_NTriples.ml       linguist-generated=true
+Parser_Turtle.ml         linguist-generated=true
+Parser_NQuads.ml         linguist-generated=true
+Parser_TriG.ml           linguist-generated=true
+Parser_XML.ml            linguist-generated=true
+Parser_RDFXML.ml         linguist-generated=true
+Parser_SRX.ml            linguist-generated=true
+Parser_CSVResults.ml     linguist-generated=true
