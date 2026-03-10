@@ -406,22 +406,29 @@ let run_query_eval_test tc =
       | `SRX_Bindings (_vars, expected_rows) ->
         if results_match expected_rows actual_results then Pass
         else begin
+          (* Compute unmatched rows *)
+          let actual_remaining = ref actual_results in
+          let unmatched = ref [] in
+          List.iter (fun exp_row ->
+            match List.partition (binding_row_matches exp_row) !actual_remaining with
+            | (_ :: rest, non) -> actual_remaining := rest @ non
+            | ([], _) -> unmatched := exp_row :: !unmatched
+          ) expected_rows;
+          let unmatched_strs = List.map row_to_verbose_string (List.rev !unmatched) in
+          (* -v: dump full expected/actual to stderr *)
           if !verbose_mode then begin
             Printf.eprintf "    EXPECTED (%d rows):\n" (List.length expected_rows);
             List.iter (fun r -> Printf.eprintf "      %s\n" (row_to_verbose_string r)) expected_rows;
             Printf.eprintf "    ACTUAL (%d rows):\n" (List.length actual_results);
             List.iter (fun r -> Printf.eprintf "      %s\n" (row_to_verbose_string r)) actual_results;
-            (* Show first unmatched expected row *)
-            let actual_remaining = ref actual_results in
-            List.iter (fun exp_row ->
-              match List.partition (binding_row_matches exp_row) !actual_remaining with
-              | (_ :: rest, non) -> actual_remaining := rest @ non
-              | ([], _) ->
-                Printf.eprintf "    UNMATCHED expected: %s\n" (row_to_verbose_string exp_row)
-            ) expected_rows;
           end;
-          Fail (Printf.sprintf "Results mismatch: expected %d rows, got %d"
-                  (List.length expected_rows) (List.length actual_results))
+          (* Always: include unmatched in Fail message (appears on stdout) *)
+          let msg = Printf.sprintf "Results mismatch: expected %d rows, got %d"
+                      (List.length expected_rows) (List.length actual_results) in
+          let msg = if unmatched_strs = [] then msg
+                    else msg ^ "\n" ^ String.concat "\n"
+                           (List.map (fun s -> "      UNMATCHED: " ^ s) unmatched_strs) in
+          Fail msg
         end
     end else if Filename.check_suffix rf ".ttl" then begin
       (* Result set in Turtle format — not yet supported *)

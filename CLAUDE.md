@@ -392,7 +392,11 @@ cd ocaml-output
 ./w3c_runner --all              # both
 ./w3c_runner --list             # list suites
 ./w3c_runner bind functions     # specific suites
+./w3c_runner -v aggregates      # verbose: full expected/actual dump on stderr
 ```
+
+**Failure output**: FAIL lines always show UNMATCHED expected rows inline.
+Use `-v` for the full expected/actual row dump (goes to stderr).
 
 ### Extraction notes
 
