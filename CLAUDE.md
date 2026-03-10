@@ -204,29 +204,66 @@ Hand-coded parsers have been deleted. Legacy copies remain in `junk/do_not_use/h
 | `eval_subselect_fwd` | forward decl (subqueries) | wired in ocaml-patches.sh |
 | `eval_property_path_fwd` | forward decl (property paths) | wired in ocaml-patches.sh |
 
+### Plain-English Status Summary (as of 2026-03-10)
+
+Factoidal is a formally verified RDF/SPARQL implementation written in F\* and
+tested against the official W3C conformance suites. The core SPARQL query
+evaluator is solid: it passes 303 of 408 applicable query/syntax tests (74%),
+with strong results in aggregates (38/44), built-in functions (71/75), BIND
+(9/10), negation (11/12), property paths (31/33), and subqueries (9/12). The
+main SPARQL gaps are: no UPDATE support (205 tests skipped entirely — not in
+scope for read-only query evaluation), no SPARQL Protocol, no federated query
+(SERVICE returns empty), incomplete negative syntax rejection (parser accepts
+23 queries it should reject), incomplete xsd:float/double casting, and no
+JSON/CSV/TSV result format support (18 tests). CONSTRUCT is partially
+implemented (1/4 pass). The SPARQL entailment suite (26/70) reveals that the
+evaluator lacks RDF/RDFS-aware entailment regimes during query evaluation.
+
+On the RDF parsing side, F\*-extracted parsers handle all five serialization
+formats but have significant gaps in edge cases: N-Triples 41/70, Turtle
+203/313, N-Quads 53/87, TriG 223/356, RDF/XML 91/166. Most parser failures
+involve IRI validation (percent-encoding, Unicode escapes), negative syntax
+tests where the parser accepts malformed input, and some Turtle/TriG eval
+tests with base URI resolution or collection handling. The model theory tests
+(rdf-mt) score 33/39 — the remaining 6 failures need deeper RDF graph
+semantics in the F\* spec (simple entailment with blank node matching).
+
+In short: the query evaluator works well for read-only SELECT queries and the
+parsers handle the common cases, but the system is held back by (a) parser
+edge cases around IRI validation and negative syntax rejection, (b) missing
+SPARQL UPDATE/Protocol, (c) incomplete entailment regimes, and (d) no
+JSON/CSV/TSV result formats. The rdf-mt semantics (language tag normalization,
+datatype equivalence, RDFS closure) are mostly implemented in F\* but not yet
+fully wired through the test pipeline.
+
 ### W3C Test Results (as of 2026-03-10)
 
-**SPARQL 1.1 (303 pass, 105 fail, 205 skip, 18 unsupported)**
+**SPARQL 1.1 — 303 pass, 105 fail, 205 skip, 18 unsupported (631 total)**
 
-F\*-extracted SPARQL parser + evaluator now run. Key suite results:
-aggregates 38/44, functions 71/75, bind 9/10, bindings 10/11,
-exists 5/6, grouping 4/6, negation 19/20, project-expression 7/10,
-property-path 21/25, service 5/5, subquery 10/12.
-Skips: 205 UPDATE operations (not in F\* spec).
-Unsupported: 18 (JSON/CSV/TSV/Turtle result formats not yet implemented).
+Failure breakdown: 64 result mismatches (evaluation bugs), 23 negative
+syntax (parser too permissive), 10 positive syntax (parser rejects valid
+queries), 8 parse errors (IRI/prefixed-name handling).
 
-**RDF 1.1 (644 pass, 387 fail)**
+Per-suite: aggregates 38/47, bind 9/10, bindings 10/11, cast 1/6,
+construct 1/7, entailment 26/70, exists 5/6, functions 71/75, grouping 4/6,
+negation 11/12, project-expression 7/7, property-path 31/33, service 0/7,
+subquery 9/14, syntax-query 72/94, delete-insert 8/17.
+Skipped: 205 UPDATE operations (add, basic-update, clear, copy, delete,
+delete-data, delete-where, drop, move, http-rdf-update, syntax-update-*,
+update-silent). Protocol: 34 skipped.
+Unsupported: json-res (4), csv-tsv-res (6), aggregates (3 Turtle results),
+construct (3 Turtle results), subquery (2 Turtle results).
 
-Tests F\*-extracted parsers against all RDF 1.1 suites: N-Triples (41/70),
-Turtle (203/313), N-Quads (53/87), TriG (223/356), RDF/XML (91/166),
-rdf-mt (33/39).
+**RDF 1.1 — 644 pass, 387 fail (1031 total)**
 
-**RDF 1.1 Model Theory (33 pass, 6 fail)**
+Per-suite: N-Triples 41/70, Turtle 203/313, N-Quads 53/87, TriG 223/356,
+RDF/XML 91/166, rdf-mt 33/39.
 
-The rdf-mt suite tests actual RDF graph semantics: literal
-equivalence, datatype handling, RDFS closure rules. Remaining failures require
-RDF.Graph.Executable.fst before they can pass. This is the real measure of
-whether the F\* RDF implementation is correct.
+**RDF 1.1 Model Theory — 33 pass, 6 fail (39 total)**
+
+The rdf-mt suite tests actual RDF graph semantics: literal equivalence,
+datatype handling, RDFS closure rules. Remaining 6 failures need simple
+entailment (blank-node-as-existential-variable) in RDF.Graph.Executable.fst.
 
 ### What rdf-mt Actually Tests (48 tests)
 
