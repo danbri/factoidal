@@ -1,0 +1,50 @@
+name: Check F* Extraction
+
+on:
+  pull_request:
+    paths:
+      - 'formal/fstar/*.fst'
+      - 'formal/fstar/build-ocaml.sh'
+      - 'formal/fstar/ocaml-patches.sh'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Cache opam
+        uses: actions/cache@v4
+        with:
+          path: ~/.opam
+          key: opam-fstar-${{ runner.os }}-v3
+          restore-keys: |
+            opam-fstar-${{ runner.os }}-
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y opam libgmp-dev pkg-config
+
+      - name: Setup opam + F*
+        run: |
+          if [ ! -d ~/.opam ]; then
+            opam init -y --disable-sandboxing
+            opam switch create fstar ocaml-base-compiler.4.14.1
+          fi
+          eval $(opam env --switch=fstar)
+          opam install -y fstar z3 zarith sha digestif
+          echo "OPAMSWITCH=fstar" >> $GITHUB_ENV
+
+      - name: Verify + Extract + Compile
+        run: |
+          eval $(opam env --switch=fstar)
+          cd formal/fstar
+          # build-ocaml.sh now fails if any module doesn't extract
+          ./build-ocaml.sh extract
+          ./build-ocaml.sh compile
