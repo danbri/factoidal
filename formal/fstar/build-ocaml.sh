@@ -35,7 +35,9 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   mkdir -p "$OUTDIR"
 
   # All modules extracted with full verification (no --lax)
+  # Extraction MUST succeed for every module — no silent failures
   echo "  Extracting all F* modules (verified)..."
+  EXTRACT_FAILED=0
   for fst in RDF.Graph.Executable.fst SPARQL11.Algebra.fst \
              Parser.Combinators.fst SPARQL11.Parser.fst \
              Parser.NTriples.fst Parser.Turtle.fst \
@@ -44,9 +46,17 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              Parser.SRX.fst Parser.CSVResults.fst; do
     if [ -f "$fst" ]; then
       echo "    $fst"
-      fstar.exe --codegen OCaml --odir "$OUTDIR" "$fst" 2>&1 | grep -E "Extracted|Error|error" || true
+      if ! fstar.exe --codegen OCaml --odir "$OUTDIR" "$fst" 2>&1 | tee /dev/stderr | grep -q "^Extracted module"; then
+        echo "  ERROR: $fst failed to extract!"
+        EXTRACT_FAILED=1
+      fi
     fi
   done
+  if [ "$EXTRACT_FAILED" -ne 0 ]; then
+    echo ""
+    echo "FATAL: One or more F* modules failed extraction. Fix errors before proceeding."
+    exit 1
+  fi
   echo "  RDF:    $(wc -l < "$OUTDIR/RDF_Graph_Executable.ml") lines"
   echo "  SPARQL: $(wc -l < "$OUTDIR/SPARQL11_Algebra.ml") lines"
 
@@ -73,14 +83,14 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
     $COMMON_MODULES \
     w3c_runner.ml \
-    -o w3c_runner 2>&1 | grep -i error || true
+    -o w3c_runner
   echo "  Built: w3c_runner ($(wc -c < w3c_runner) bytes)"
 
   # factoidal CLI (SPARQL query + RDF parsing tool)
   ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
     $COMMON_MODULES \
     factoidal_cli.ml \
-    -o factoidal 2>&1 | grep -i error || true
+    -o factoidal
   echo "  Built: factoidal ($(wc -c < factoidal) bytes)"
 
   cd ..
