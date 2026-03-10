@@ -53,6 +53,11 @@ Rust/JS/OCaml/anything that "mirrors" a spec.
    fundamental RDF graph semantics — literal equivalence, datatype handling,
    language tag normalization, RDFS closure rules. These are core requirements,
    not "just inference." Dismissing them is wrong.
+9. **Commit compiled binaries.** The compiled `w3c_runner` and `factoidal`
+   binaries in `ocaml-output/` MUST be committed to git. This lets the repo
+   owner check out any commit and immediately run tests without needing an
+   F\*/opam toolchain. Do not add them to `.gitignore`. Do not skip them
+   when staging. When you run `build-ocaml.sh`, commit the updated binaries.
 
 ## Agent Work Strategy
 
