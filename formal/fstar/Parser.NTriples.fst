@@ -9,22 +9,21 @@ open RDF.Graph.Executable
 (* Helper: Unicode code point to UTF-8 string                       *)
 (* ================================================================ *)
 
-(* Convert a hex digit character to its integer value *)
-let hex_val (c:FStar.Char.char) : int =
+// Hex digit to int, returning None for non-hex characters.
+// Previously returned 0 for non-hex, silently accepting \u00ZZ as \u0000.
+let hex_val_opt (c:FStar.Char.char) : option int =
   let code = FStar.Char.int_of_char c in
-  if code >= 0x30 && code <= 0x39 then code - 0x30        (* 0-9 *)
-  else if code >= 0x41 && code <= 0x46 then code - 0x41 + 10  (* A-F *)
-  else if code >= 0x61 && code <= 0x66 then code - 0x61 + 10  (* a-f *)
-  else 0
+  if code >= 0x30 && code <= 0x39 then Some (code - 0x30)
+  else if code >= 0x41 && code <= 0x46 then Some (code - 0x41 + 10)
+  else if code >= 0x61 && code <= 0x66 then Some (code - 0x61 + 10)
+  else None
 
-(* Convert a code point integer to a single-character string.
-   F* Char supports full Unicode via FStar.Char.char_of_int. *)
-// Valid Unicode scalar value: excludes surrogates U+D800..U+DFFF
+// Valid codepoint for F*'s char_of_int precondition: i < 0xD7FF.
+// F* is stricter than Unicode (which allows up to U+D7FF inclusive).
 let valid_codepoint (cp:int) : bool =
-  cp >= 0 && (cp < 0xD800 || (cp >= 0xE000 && cp <= 0x10FFFF))
+  cp >= 0 && (cp < 0xD7FF || (cp >= 0xE000 && cp <= 0x10FFFF))
 
-// Safe char_of_int: validates codepoint, returns U+FFFD replacement for invalid
-// Note: F* char_of_int uses cp < 0xD7FF (slightly more restrictive than Unicode)
+// Safe char_of_int: validates codepoint, returns U+FFFD for invalid
 let safe_char_of_int (cp:int) : FStar.Char.char =
   if cp >= 0 && (cp < 0xD7FF || (cp >= 0xE000 && cp <= 0x10FFFF)) then
     let n : nat = cp in
@@ -73,35 +72,39 @@ let rec parse_iri_body_acc (input:string) (pos:nat) (acc:list char) (fuel:nat)
         else
           let next = String.index input (pos + 1) in
           let ncode = FStar.Char.int_of_char next in
-          if ncode = 0x75 then (* 'u' - \uXXXX *)
+          if ncode = 0x75 then // \uXXXX
             if pos + 6 > len then ParseFail "incomplete \\u escape in IRI" pos
             else
-              let h0 = hex_val (String.index input (pos + 2)) in
-              let h1 = hex_val (String.index input (pos + 3)) in
-              let h2 = hex_val (String.index input (pos + 4)) in
-              let h3 = hex_val (String.index input (pos + 5)) in
-              let cp = ((h0 `op_Multiply` 4096) + (h1 `op_Multiply` 256) + (h2 `op_Multiply` 16) + h3) in
-              if not (valid_codepoint cp) then ParseFail "surrogate codepoint in \\u escape" pos
-              else
-                let c = safe_char_of_int cp in
-                parse_iri_body_acc input (pos + 6) (c :: acc) (fuel - 1)
-          else if ncode = 0x55 then (* 'U' - \UXXXXXXXX *)
+              match hex_val_opt (String.index input (pos + 2)),
+                    hex_val_opt (String.index input (pos + 3)),
+                    hex_val_opt (String.index input (pos + 4)),
+                    hex_val_opt (String.index input (pos + 5)) with
+              | Some h0, Some h1, Some h2, Some h3 ->
+                let cp = ((h0 `op_Multiply` 4096) + (h1 `op_Multiply` 256) + (h2 `op_Multiply` 16) + h3) in
+                if not (valid_codepoint cp) then ParseFail "surrogate codepoint in \\u escape" pos
+                else
+                  let c = safe_char_of_int cp in
+                  parse_iri_body_acc input (pos + 6) (c :: acc) (fuel - 1)
+              | _ -> ParseFail "invalid hex digit in \\u escape" pos
+          else if ncode = 0x55 then // \UXXXXXXXX
             if pos + 10 > len then ParseFail "incomplete \\U escape in IRI" pos
             else
-              let h0 = hex_val (String.index input (pos + 2)) in
-              let h1 = hex_val (String.index input (pos + 3)) in
-              let h2 = hex_val (String.index input (pos + 4)) in
-              let h3 = hex_val (String.index input (pos + 5)) in
-              let h4 = hex_val (String.index input (pos + 6)) in
-              let h5 = hex_val (String.index input (pos + 7)) in
-              let h6 = hex_val (String.index input (pos + 8)) in
-              let h7 = hex_val (String.index input (pos + 9)) in
-              let cp = ((h0 `op_Multiply` 268435456) + (h1 `op_Multiply` 16777216) + (h2 `op_Multiply` 1048576) + (h3 `op_Multiply` 65536)
-                     + (h4 `op_Multiply` 4096) + (h5 `op_Multiply` 256) + (h6 `op_Multiply` 16) + h7) in
-              if not (valid_codepoint cp) then ParseFail "surrogate codepoint in \\U escape" pos
-              else
-                let c = safe_char_of_int cp in
-                parse_iri_body_acc input (pos + 10) (c :: acc) (fuel - 1)
+              match hex_val_opt (String.index input (pos + 2)),
+                    hex_val_opt (String.index input (pos + 3)),
+                    hex_val_opt (String.index input (pos + 4)),
+                    hex_val_opt (String.index input (pos + 5)),
+                    hex_val_opt (String.index input (pos + 6)),
+                    hex_val_opt (String.index input (pos + 7)),
+                    hex_val_opt (String.index input (pos + 8)),
+                    hex_val_opt (String.index input (pos + 9)) with
+              | Some h0, Some h1, Some h2, Some h3, Some h4, Some h5, Some h6, Some h7 ->
+                let cp = ((h0 `op_Multiply` 268435456) + (h1 `op_Multiply` 16777216) + (h2 `op_Multiply` 1048576) + (h3 `op_Multiply` 65536)
+                       + (h4 `op_Multiply` 4096) + (h5 `op_Multiply` 256) + (h6 `op_Multiply` 16) + h7) in
+                if not (valid_codepoint cp) then ParseFail "surrogate codepoint in \\U escape" pos
+                else
+                  let c = safe_char_of_int cp in
+                  parse_iri_body_acc input (pos + 10) (c :: acc) (fuel - 1)
+              | _ -> ParseFail "invalid hex digit in \\U escape" pos
           else
             ParseFail "invalid escape in IRI" pos
       else if code <= 0x20 then (* control chars and space not allowed in IRIs *)
@@ -244,35 +247,39 @@ let rec parse_string_body (input:string) (pos:nat) (acc:list char) (fuel:nat)
             parse_string_body input (pos + 2) (FStar.Char.char_of_int 0x08 :: acc) (fuel - 1)
           else if esc_code = 0x66 then (* \f - form feed *)
             parse_string_body input (pos + 2) (FStar.Char.char_of_int 0x0C :: acc) (fuel - 1)
-          else if esc_code = 0x75 then (* \uXXXX *)
+          else if esc_code = 0x75 then // \uXXXX
             if pos + 6 > len then ParseFail "incomplete \\u escape" pos
             else
-              let h0 = hex_val (String.index input (pos + 2)) in
-              let h1 = hex_val (String.index input (pos + 3)) in
-              let h2 = hex_val (String.index input (pos + 4)) in
-              let h3 = hex_val (String.index input (pos + 5)) in
-              let cp = ((h0 `op_Multiply` 4096) + (h1 `op_Multiply` 256) + (h2 `op_Multiply` 16) + h3) in
-              if not (valid_codepoint cp) then ParseFail "surrogate codepoint in \\u escape" pos
-              else
-                let c = safe_char_of_int cp in
-                parse_string_body input (pos + 6) (c :: acc) (fuel - 1)
-          else if esc_code = 0x55 then (* \UXXXXXXXX *)
+              match hex_val_opt (String.index input (pos + 2)),
+                    hex_val_opt (String.index input (pos + 3)),
+                    hex_val_opt (String.index input (pos + 4)),
+                    hex_val_opt (String.index input (pos + 5)) with
+              | Some h0, Some h1, Some h2, Some h3 ->
+                let cp = ((h0 `op_Multiply` 4096) + (h1 `op_Multiply` 256) + (h2 `op_Multiply` 16) + h3) in
+                if not (valid_codepoint cp) then ParseFail "surrogate codepoint in \\u escape" pos
+                else
+                  let c = safe_char_of_int cp in
+                  parse_string_body input (pos + 6) (c :: acc) (fuel - 1)
+              | _ -> ParseFail "invalid hex digit in \\u escape" pos
+          else if esc_code = 0x55 then // \UXXXXXXXX
             if pos + 10 > len then ParseFail "incomplete \\U escape" pos
             else
-              let h0 = hex_val (String.index input (pos + 2)) in
-              let h1 = hex_val (String.index input (pos + 3)) in
-              let h2 = hex_val (String.index input (pos + 4)) in
-              let h3 = hex_val (String.index input (pos + 5)) in
-              let h4 = hex_val (String.index input (pos + 6)) in
-              let h5 = hex_val (String.index input (pos + 7)) in
-              let h6 = hex_val (String.index input (pos + 8)) in
-              let h7 = hex_val (String.index input (pos + 9)) in
-              let cp = ((h0 `op_Multiply` 268435456) + (h1 `op_Multiply` 16777216) + (h2 `op_Multiply` 1048576) + (h3 `op_Multiply` 65536)
-                     + (h4 `op_Multiply` 4096) + (h5 `op_Multiply` 256) + (h6 `op_Multiply` 16) + h7) in
-              if not (valid_codepoint cp) then ParseFail "surrogate codepoint in \\U escape" pos
-              else
-                let c = safe_char_of_int cp in
-                parse_string_body input (pos + 10) (c :: acc) (fuel - 1)
+              match hex_val_opt (String.index input (pos + 2)),
+                    hex_val_opt (String.index input (pos + 3)),
+                    hex_val_opt (String.index input (pos + 4)),
+                    hex_val_opt (String.index input (pos + 5)),
+                    hex_val_opt (String.index input (pos + 6)),
+                    hex_val_opt (String.index input (pos + 7)),
+                    hex_val_opt (String.index input (pos + 8)),
+                    hex_val_opt (String.index input (pos + 9)) with
+              | Some h0, Some h1, Some h2, Some h3, Some h4, Some h5, Some h6, Some h7 ->
+                let cp = ((h0 `op_Multiply` 268435456) + (h1 `op_Multiply` 16777216) + (h2 `op_Multiply` 1048576) + (h3 `op_Multiply` 65536)
+                       + (h4 `op_Multiply` 4096) + (h5 `op_Multiply` 256) + (h6 `op_Multiply` 16) + h7) in
+                if not (valid_codepoint cp) then ParseFail "surrogate codepoint in \\U escape" pos
+                else
+                  let c = safe_char_of_int cp in
+                  parse_string_body input (pos + 10) (c :: acc) (fuel - 1)
+              | _ -> ParseFail "invalid hex digit in \\U escape" pos
           else
             ParseFail (String.concat "" ["invalid escape: \\"; String.string_of_char esc]) pos
       else if code = 0x0A || code = 0x0D then
@@ -305,16 +312,25 @@ let is_lang_char (c:FStar.Char.char) : bool =
   (code >= 0x30 && code <= 0x39) ||  (* 0-9 *)
   code = 0x2D                         (* - *)
 
+// BCP 47: language tag must start with a letter (a-zA-Z)
+let is_alpha (c:FStar.Char.char) : bool =
+  let code = FStar.Char.int_of_char c in
+  (code >= 0x41 && code <= 0x5A) || (code >= 0x61 && code <= 0x7A)
+
 let parse_lang_tag : parser string =
   fun input pos ->
     let len = String.length input in
     if pos >= len then ParseFail "expected '@'" pos
     else
       let ch = String.index input pos in
-      if FStar.Char.int_of_char ch = 0x40 then (* '@' *)
-        match ptake_while1 is_lang_char input (pos + 1) with
-        | ParseOk lang pos' -> ParseOk lang pos'
-        | ParseFail _ fpos -> ParseFail "expected language tag after '@'" fpos
+      if FStar.Char.int_of_char ch = 0x40 then // '@'
+        if pos + 1 >= len then ParseFail "expected language tag after '@'" (pos + 1)
+        else if not (is_alpha (String.index input (pos + 1))) then
+          ParseFail "language tag must start with a letter" (pos + 1)
+        else
+          match ptake_while1 is_lang_char input (pos + 1) with
+          | ParseOk lang pos' -> ParseOk lang pos'
+          | ParseFail _ fpos -> ParseFail "expected language tag after '@'" fpos
       else
         ParseFail "expected '@'" pos
 
