@@ -556,7 +556,9 @@ let rec parse_long_string_body (qch: char) (input: string) (pos: nat) (acc: list
               let h2 = hex_val (String.index input (pos + 4)) in
               let h3 = hex_val (String.index input (pos + 5)) in
               let cp = ((h0 `op_Multiply` 4096) + (h1 `op_Multiply` 256) + (h2 `op_Multiply` 16) + h3) in
-              parse_long_string_body qch input (pos + 6) (safe_char_of_int cp :: acc) (fuel - 1)
+              if not (valid_codepoint cp) then ParseFail "surrogate codepoint in \\u escape" pos
+              else
+                parse_long_string_body qch input (pos + 6) (safe_char_of_int cp :: acc) (fuel - 1)
           else if esc_code = 0x55 then  (* \UXXXXXXXX *)
             if pos + 10 > len then ParseFail "incomplete \\U escape" pos
             else
@@ -572,7 +574,9 @@ let rec parse_long_string_body (qch: char) (input: string) (pos: nat) (acc: list
                         (h2 `op_Multiply` 1048576) + (h3 `op_Multiply` 65536) +
                         (h4 `op_Multiply` 4096) + (h5 `op_Multiply` 256) +
                         (h6 `op_Multiply` 16) + h7) in
-              parse_long_string_body qch input (pos + 10) (safe_char_of_int cp :: acc) (fuel - 1)
+              if not (valid_codepoint cp) then ParseFail "surrogate codepoint in \\U escape" pos
+              else
+                parse_long_string_body qch input (pos + 10) (safe_char_of_int cp :: acc) (fuel - 1)
           else
             ParseFail (String.concat "" ["invalid escape in long string: \\"; string_of_char esc]) pos
       else
@@ -619,7 +623,9 @@ let rec parse_single_string_body (input: string) (pos: nat) (acc: list char) (fu
               let h2 = hex_val (String.index input (pos + 4)) in
               let h3 = hex_val (String.index input (pos + 5)) in
               let cp = ((h0 `op_Multiply` 4096) + (h1 `op_Multiply` 256) + (h2 `op_Multiply` 16) + h3) in
-              parse_single_string_body input (pos + 6) (safe_char_of_int cp :: acc) (fuel - 1)
+              if not (valid_codepoint cp) then ParseFail "surrogate codepoint in \\u escape" pos
+              else
+                parse_single_string_body input (pos + 6) (safe_char_of_int cp :: acc) (fuel - 1)
           else if esc_code = 0x55 then
             if pos + 10 > len then ParseFail "incomplete \\U escape" pos
             else
@@ -635,7 +641,9 @@ let rec parse_single_string_body (input: string) (pos: nat) (acc: list char) (fu
                         (h2 `op_Multiply` 1048576) + (h3 `op_Multiply` 65536) +
                         (h4 `op_Multiply` 4096) + (h5 `op_Multiply` 256) +
                         (h6 `op_Multiply` 16) + h7) in
-              parse_single_string_body input (pos + 10) (safe_char_of_int cp :: acc) (fuel - 1)
+              if not (valid_codepoint cp) then ParseFail "surrogate codepoint in \\U escape" pos
+              else
+                parse_single_string_body input (pos + 10) (safe_char_of_int cp :: acc) (fuel - 1)
           else
             ParseFail (String.concat "" ["invalid escape: \\"; string_of_char esc]) pos
       else if code = 0x0A || code = 0x0D then
