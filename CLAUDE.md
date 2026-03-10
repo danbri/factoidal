@@ -479,6 +479,23 @@ tests/w3c/                          git submodule: github.com/w3c/rdf-tests
 - `zarith_stubs_js` — bigint stubs for js_of_ocaml (optional)
 - `libgmp-dev` — system package required by zarith (apt-get)
 
+## GitHub CLI (`gh`) in Claude Code
+
+The git remote uses a local proxy (`127.0.0.1`), so `gh` commands that infer
+the repo from the remote will fail with "none of the git remotes configured
+for this repository point to a known GitHub host." **Fix: always pass
+`--repo danbri/factoidal` explicitly.**
+
+```bash
+# These work:
+gh pr create --repo danbri/factoidal --base claude/main --head my-branch ...
+gh pr list --repo danbri/factoidal
+gh pr view 42 --repo danbri/factoidal
+
+# This does NOT work (no --repo):
+gh pr create --base claude/main ...  # ERROR: unknown host
+```
+
 ## Repository Structure
 
 ```
