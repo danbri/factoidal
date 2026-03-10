@@ -5,7 +5,7 @@ verified code extracted to OCaml for execution. The F\* specifications
 are the product — executable code is obtained by extraction, not by
 hand-writing implementations.
 
-**[Live W3C test results](https://danbri.github.io/factoidal/fstar-extracted/)**
+**[Live W3C test results](https://danbri.github.io/factoidal/test-results/)**
 
 ## Quick Start
 
