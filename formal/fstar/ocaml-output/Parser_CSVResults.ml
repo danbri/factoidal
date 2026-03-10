@@ -1,4 +1,19 @@
 open Prims
+let mk_literal (lexical : Prims.string) (dt : Prims.string)
+  (lang : Prims.string FStar_Pervasives_Native.option) :
+  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  if RDF_Graph_Executable.is_iri dt
+  then
+    let lit =
+      {
+        RDF_Graph_Executable.lexical_form = lexical;
+        RDF_Graph_Executable.datatype = dt;
+        RDF_Graph_Executable.lang_tag = lang
+      } in
+    (if RDF_Graph_Executable.literal_wf lit
+     then FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_Literal lit)
+     else FStar_Pervasives_Native.None)
+  else FStar_Pervasives_Native.None
 let rec split_lines_acc (cs : FStar_Char.char Prims.list)
   (acc : FStar_Char.char Prims.list) : FStar_Char.char Prims.list Prims.list=
   match cs with
@@ -150,13 +165,8 @@ let parse_csv_value (field : Prims.string) :
       if looks_like_iri field
       then FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI field)
       else
-        (let lit =
-           {
-             RDF_Graph_Executable.lexical_form = field;
-             RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_string;
-             RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
-           } in
-         FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_Literal lit))
+        mk_literal field RDF_Graph_Executable.xsd_string
+          FStar_Pervasives_Native.None
 let parse_csv_row (line : Prims.string) :
   RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option Prims.list=
   let fields =
@@ -275,7 +285,7 @@ let parse_tsv_quoted_literal (s : Prims.string) :
     (let caret_pos = find_double_caret cs Prims.int_zero in
      match caret_pos with
      | FStar_Pervasives_Native.Some cp ->
-         if cp >= (Prims.of_int (2))
+         if (cp >= (Prims.of_int (2))) && (cp <= len)
          then
            let quoted_part = FStar_String.sub s Prims.int_zero cp in
            let lexical = strip_quotes quoted_part in
@@ -288,16 +298,7 @@ let parse_tsv_quoted_literal (s : Prims.string) :
            (match extract_angle_iri rest_str with
             | FStar_Pervasives_Native.Some dt_str ->
                 if RDF_Graph_Executable.is_iri dt_str
-                then
-                  let lit =
-                    {
-                      RDF_Graph_Executable.lexical_form = lexical;
-                      RDF_Graph_Executable.datatype = dt_str;
-                      RDF_Graph_Executable.lang_tag =
-                        FStar_Pervasives_Native.None
-                    } in
-                  FStar_Pervasives_Native.Some
-                    (RDF_Graph_Executable.T_Literal lit)
+                then mk_literal lexical dt_str FStar_Pervasives_Native.None
                 else FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
          else FStar_Pervasives_Native.None
@@ -305,7 +306,7 @@ let parse_tsv_quoted_literal (s : Prims.string) :
          let at_pos = find_last_at cs Prims.int_zero in
          (match at_pos with
           | FStar_Pervasives_Native.Some ap ->
-              if ap >= (Prims.of_int (2))
+              if (ap >= (Prims.of_int (2))) && (ap < len)
               then
                 let prev_char = FStar_String.index s (ap - Prims.int_one) in
                 (if
@@ -319,52 +320,20 @@ let parse_tsv_quoted_literal (s : Prims.string) :
                        FStar_String.sub s (ap + Prims.int_one)
                          ((len - ap) - Prims.int_one)
                      else "" in
-                   let lit =
-                     {
-                       RDF_Graph_Executable.lexical_form = lexical;
-                       RDF_Graph_Executable.datatype =
-                         RDF_Graph_Executable.rdf_lang_string;
-                       RDF_Graph_Executable.lang_tag =
-                         (FStar_Pervasives_Native.Some lang)
-                     } in
-                   FStar_Pervasives_Native.Some
-                     (RDF_Graph_Executable.T_Literal lit)
+                   mk_literal lexical RDF_Graph_Executable.rdf_lang_string
+                     (FStar_Pervasives_Native.Some lang)
                  else
                    (let lexical = strip_quotes s in
-                    let lit =
-                      {
-                        RDF_Graph_Executable.lexical_form = lexical;
-                        RDF_Graph_Executable.datatype =
-                          RDF_Graph_Executable.xsd_string;
-                        RDF_Graph_Executable.lang_tag =
-                          FStar_Pervasives_Native.None
-                      } in
-                    FStar_Pervasives_Native.Some
-                      (RDF_Graph_Executable.T_Literal lit)))
+                    mk_literal lexical RDF_Graph_Executable.xsd_string
+                      FStar_Pervasives_Native.None))
               else
                 (let lexical = strip_quotes s in
-                 let lit =
-                   {
-                     RDF_Graph_Executable.lexical_form = lexical;
-                     RDF_Graph_Executable.datatype =
-                       RDF_Graph_Executable.xsd_string;
-                     RDF_Graph_Executable.lang_tag =
-                       FStar_Pervasives_Native.None
-                   } in
-                 FStar_Pervasives_Native.Some
-                   (RDF_Graph_Executable.T_Literal lit))
+                 mk_literal lexical RDF_Graph_Executable.xsd_string
+                   FStar_Pervasives_Native.None)
           | FStar_Pervasives_Native.None ->
               let lexical = strip_quotes s in
-              let lit =
-                {
-                  RDF_Graph_Executable.lexical_form = lexical;
-                  RDF_Graph_Executable.datatype =
-                    RDF_Graph_Executable.xsd_string;
-                  RDF_Graph_Executable.lang_tag =
-                    FStar_Pervasives_Native.None
-                } in
-              FStar_Pervasives_Native.Some
-                (RDF_Graph_Executable.T_Literal lit)))
+              mk_literal lexical RDF_Graph_Executable.xsd_string
+                FStar_Pervasives_Native.None))
 let rec is_all_digits (cs : FStar_Char.char Prims.list) : Prims.bool=
   match cs with
   | [] -> true
@@ -440,66 +409,26 @@ let parse_tsv_value (field : Prims.string) :
                   FStar_Pervasives_Native.Some
                     (RDF_Graph_Executable.T_BNode (bnode_label field))
                 else
-                  (let lit =
-                     {
-                       RDF_Graph_Executable.lexical_form = field;
-                       RDF_Graph_Executable.datatype =
-                         RDF_Graph_Executable.xsd_string;
-                       RDF_Graph_Executable.lang_tag =
-                         FStar_Pervasives_Native.None
-                     } in
-                   FStar_Pervasives_Native.Some
-                     (RDF_Graph_Executable.T_Literal lit)))
+                  mk_literal field RDF_Graph_Executable.xsd_string
+                    FStar_Pervasives_Native.None)
              else
                if is_integer_str field
                then
-                 (let lit =
-                    {
-                      RDF_Graph_Executable.lexical_form = field;
-                      RDF_Graph_Executable.datatype =
-                        RDF_Graph_Executable.xsd_integer;
-                      RDF_Graph_Executable.lang_tag =
-                        FStar_Pervasives_Native.None
-                    } in
-                  FStar_Pervasives_Native.Some
-                    (RDF_Graph_Executable.T_Literal lit))
+                 mk_literal field RDF_Graph_Executable.xsd_integer
+                   FStar_Pervasives_Native.None
                else
                  if is_double_str field
                  then
-                   (let lit =
-                      {
-                        RDF_Graph_Executable.lexical_form = field;
-                        RDF_Graph_Executable.datatype =
-                          RDF_Graph_Executable.xsd_double;
-                        RDF_Graph_Executable.lang_tag =
-                          FStar_Pervasives_Native.None
-                      } in
-                    FStar_Pervasives_Native.Some
-                      (RDF_Graph_Executable.T_Literal lit))
+                   mk_literal field RDF_Graph_Executable.xsd_double
+                     FStar_Pervasives_Native.None
                  else
                    if is_decimal_str field
                    then
-                     (let lit =
-                        {
-                          RDF_Graph_Executable.lexical_form = field;
-                          RDF_Graph_Executable.datatype =
-                            RDF_Graph_Executable.xsd_decimal;
-                          RDF_Graph_Executable.lang_tag =
-                            FStar_Pervasives_Native.None
-                        } in
-                      FStar_Pervasives_Native.Some
-                        (RDF_Graph_Executable.T_Literal lit))
+                     mk_literal field RDF_Graph_Executable.xsd_decimal
+                       FStar_Pervasives_Native.None
                    else
-                     (let lit =
-                        {
-                          RDF_Graph_Executable.lexical_form = field;
-                          RDF_Graph_Executable.datatype =
-                            RDF_Graph_Executable.xsd_string;
-                          RDF_Graph_Executable.lang_tag =
-                            FStar_Pervasives_Native.None
-                        } in
-                      FStar_Pervasives_Native.Some
-                        (RDF_Graph_Executable.T_Literal lit))
+                     mk_literal field RDF_Graph_Executable.xsd_string
+                       FStar_Pervasives_Native.None
      | [] -> FStar_Pervasives_Native.None)
 let parse_tsv_row (line : Prims.string) :
   RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option Prims.list=

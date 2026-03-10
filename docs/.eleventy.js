@@ -1,6 +1,4 @@
 module.exports = function(eleventyConfig) {
-  eleventyConfig.addPassthroughCopy("**/*.html");
-
   return {
     dir: {
       input: ".",
@@ -9,7 +7,7 @@ module.exports = function(eleventyConfig) {
       data: "_data"
     },
     markdownTemplateEngine: "njk",
-    htmlTemplateEngine: "njk",
+    htmlTemplateEngine: false,
     pathPrefix: "/factoidal/"
   };
 };

@@ -8,7 +8,7 @@ let parse_graph_label : RDF_Graph_Executable.iri Parser_Combinators.parser=
       (let ch = FStar_String.index input pos in
        let code = FStar_Char.int_of_char ch in
        if code = (Prims.of_int (0x3C))
-       then Parser_NTriples.parse_iri input pos
+       then Parser_NTriples.parse_iri_raw input pos
        else
          if code = (Prims.of_int (0x5F))
          then
@@ -89,18 +89,26 @@ let parse_nquad :
                                                 (FStar_Char.int_of_char dot)
                                                   = (Prims.of_int (0x2E))
                                               then
-                                                let t =
-                                                  {
-                                                    RDF_Graph_Executable.s =
-                                                      subj;
-                                                    RDF_Graph_Executable.p =
-                                                      pred;
-                                                    RDF_Graph_Executable.o =
-                                                      obj
-                                                  } in
-                                                Parser_Combinators.ParseOk
-                                                  ((t, graph_opt),
-                                                    (pos8 + Prims.int_one))
+                                                (if
+                                                   RDF_Graph_Executable.is_iri
+                                                     pred
+                                                 then
+                                                   let t =
+                                                     {
+                                                       RDF_Graph_Executable.s
+                                                         = subj;
+                                                       RDF_Graph_Executable.p
+                                                         = pred;
+                                                       RDF_Graph_Executable.o
+                                                         = obj
+                                                     } in
+                                                   Parser_Combinators.ParseOk
+                                                     ((t, graph_opt),
+                                                       (pos8 + Prims.int_one))
+                                                 else
+                                                   Parser_Combinators.ParseFail
+                                                     ("invalid predicate IRI",
+                                                       pos4))
                                               else
                                                 Parser_Combinators.ParseFail
                                                   ("expected '.'", pos8))

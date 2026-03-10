@@ -121,6 +121,23 @@ let is_graph_keyword (input : Prims.string) (pos : Prims.nat) : Prims.bool=
           (let next = FStar_String.index input (pos + (Prims.of_int (5))) in
            Prims.op_Negation (Parser_Turtle.is_pn_chars next)))
      else false)
+let rec graph_body_skip_line (input : Prims.string) (p : Prims.nat)
+  (f : Prims.nat) : Prims.nat=
+  if f = Prims.int_zero
+  then p
+  else
+    if p >= (FStar_String.strlen input)
+    then p
+    else
+      (let ch = FStar_String.index input p in
+       let cd = FStar_Char.int_of_char ch in
+       if (cd = (Prims.of_int (0x0A))) || (cd = (Prims.of_int (0x0D)))
+       then p + Prims.int_one
+       else
+         if cd = (Prims.of_int (0x7D))
+         then p
+         else
+           graph_body_skip_line input (p + Prims.int_one) (f - Prims.int_one))
 let rec parse_graph_body (st : Parser_Turtle.turtle_state)
   (input : Prims.string) (pos : Prims.nat)
   (acc : RDF_Graph_Executable.triple Prims.list) (fuel : Prims.nat) :
@@ -129,7 +146,8 @@ let rec parse_graph_body (st : Parser_Turtle.turtle_state)
   if fuel = Prims.int_zero
   then Parser_Combinators.ParseOk (((FStar_List_Tot_Base.rev acc), st), pos)
   else
-    (let len = FStar_String.strlen input in
+    (let fuel' = fuel - Prims.int_one in
+     let len = FStar_String.strlen input in
      match Parser_Turtle.turtle_ws input pos with
      | Parser_Combinators.ParseOk ((), pos1) ->
          if pos1 >= len
@@ -157,36 +175,14 @@ let rec parse_graph_body (st : Parser_Turtle.turtle_state)
                    else
                      parse_graph_body st' input pos2
                        (FStar_List_Tot_Base.append
-                          (FStar_List_Tot_Base.rev triples) acc)
-                       (fuel - Prims.int_one)
+                          (FStar_List_Tot_Base.rev triples) acc) fuel'
                | Parser_Combinators.ParseFail (uu___3, uu___4) ->
-                   let rec skip_line p f =
-                     if f = Prims.int_zero
-                     then p
-                     else
-                       if p >= len
-                       then p
-                       else
-                         (let ch = FStar_String.index input p in
-                          let cd = FStar_Char.int_of_char ch in
-                          if
-                            (cd = (Prims.of_int (0x0A))) ||
-                              (cd = (Prims.of_int (0x0D)))
-                          then p + Prims.int_one
-                          else
-                            if cd = (Prims.of_int (0x7D))
-                            then p
-                            else
-                              skip_line (p + Prims.int_one)
-                                (f - Prims.int_one)) in
-                   let pos2 = skip_line pos1 (len - pos1) in
+                   let pos2 = graph_body_skip_line input pos1 (len - pos1) in
                    if pos2 = pos1
                    then
                      Parser_Combinators.ParseOk
                        (((FStar_List_Tot_Base.rev acc), st), pos1)
-                   else
-                     parse_graph_body st input pos2 acc
-                       (fuel - Prims.int_one))))
+                   else parse_graph_body st input pos2 acc fuel')))
 let parse_trig_statement (st : Parser_Turtle.turtle_state)
   (input : Prims.string) (pos : Prims.nat) (fuel : Prims.nat) :
   ((RDF_Graph_Executable.iri FStar_Pervasives_Native.option *
@@ -195,7 +191,8 @@ let parse_trig_statement (st : Parser_Turtle.turtle_state)
   if fuel = Prims.int_zero
   then Parser_Combinators.ParseFail ("recursion limit", pos)
   else
-    (let len = FStar_String.strlen input in
+    (let fuel' = fuel - Prims.int_one in
+     let len = FStar_String.strlen input in
      match Parser_Turtle.turtle_ws input pos with
      | Parser_Combinators.ParseOk ((), pos1) ->
          if pos1 >= len
@@ -342,74 +339,105 @@ let parse_trig_statement (st : Parser_Turtle.turtle_state)
                                           Parser_Combinators.ParseFail
                                             (msg, fpos))
                                    else
-                                     (let subj =
-                                        if
-                                          (FStar_String.strlen candidate_name)
-                                            >= (Prims.of_int (2))
-                                        then
-                                          let c0 =
-                                            FStar_String.index candidate_name
-                                              Prims.int_zero in
-                                          let c1 =
-                                            FStar_String.index candidate_name
-                                              Prims.int_one in
-                                          (if
-                                             ((FStar_Char.int_of_char c0) =
-                                                (Prims.of_int (0x5F)))
-                                               &&
-                                               ((FStar_Char.int_of_char c1) =
-                                                  (Prims.of_int (0x3A)))
-                                           then
-                                             let bname =
-                                               if
-                                                 (FStar_String.strlen
-                                                    candidate_name)
-                                                   > (Prims.of_int (2))
-                                               then
-                                                 FStar_String.sub
-                                                   candidate_name
-                                                   (Prims.of_int (2))
-                                                   ((FStar_String.strlen
-                                                       candidate_name)
-                                                      - (Prims.of_int (2)))
-                                               else "" in
-                                             RDF_Graph_Executable.S_BNode
-                                               bname
-                                           else
-                                             RDF_Graph_Executable.S_IRI
+                                     (let is_bnode =
+                                        ((FStar_String.strlen candidate_name)
+                                           >= (Prims.of_int (2)))
+                                          &&
+                                          (let c0 =
+                                             FStar_String.index
+                                               candidate_name Prims.int_zero in
+                                           let c1 =
+                                             FStar_String.index
+                                               candidate_name Prims.int_one in
+                                           ((FStar_Char.int_of_char c0) =
+                                              (Prims.of_int (0x5F)))
+                                             &&
+                                             ((FStar_Char.int_of_char c1) =
+                                                (Prims.of_int (0x3A)))) in
+                                      if is_bnode
+                                      then
+                                        let bname =
+                                          if
+                                            (FStar_String.strlen
                                                candidate_name)
-                                        else
-                                          RDF_Graph_Executable.S_IRI
-                                            candidate_name in
-                                      match Parser_Turtle.parse_predicate_object_list
-                                              st2 subj input pos3
-                                              (fuel - Prims.int_one)
-                                      with
-                                      | Parser_Combinators.ParseOk
-                                          ((po_triples, st3), pos4) ->
-                                          (match Parser_Turtle.turtle_ws
-                                                   input pos4
+                                              > (Prims.of_int (2))
+                                          then
+                                            FStar_String.sub candidate_name
+                                              (Prims.of_int (2))
+                                              ((FStar_String.strlen
+                                                  candidate_name)
+                                                 - (Prims.of_int (2)))
+                                          else "" in
+                                        let subj =
+                                          RDF_Graph_Executable.S_BNode bname in
+                                        match Parser_Turtle.parse_predicate_object_list
+                                                st2 subj input pos3 fuel'
+                                        with
+                                        | Parser_Combinators.ParseOk
+                                            ((po_triples, st3), pos4) ->
+                                            (match Parser_Turtle.turtle_ws
+                                                     input pos4
+                                             with
+                                             | Parser_Combinators.ParseOk
+                                                 ((), pos5) ->
+                                                 let pos6 =
+                                                   if
+                                                     (pos5 < len) &&
+                                                       ((FStar_Char.int_of_char
+                                                           (FStar_String.index
+                                                              input pos5))
+                                                          =
+                                                          (Prims.of_int (0x2E)))
+                                                   then pos5 + Prims.int_one
+                                                   else pos5 in
+                                                 Parser_Combinators.ParseOk
+                                                   (([(FStar_Pervasives_Native.None,
+                                                        po_triples)], st3),
+                                                     pos6))
+                                        | Parser_Combinators.ParseFail
+                                            (msg, fpos) ->
+                                            Parser_Combinators.ParseFail
+                                              (msg, fpos)
+                                      else
+                                        if
+                                          RDF_Graph_Executable.is_iri
+                                            candidate_name
+                                        then
+                                          (let subj =
+                                             RDF_Graph_Executable.S_IRI
+                                               candidate_name in
+                                           match Parser_Turtle.parse_predicate_object_list
+                                                   st2 subj input pos3 fuel'
                                            with
                                            | Parser_Combinators.ParseOk
-                                               ((), pos5) ->
-                                               let pos6 =
-                                                 if
-                                                   (pos5 < len) &&
-                                                     ((FStar_Char.int_of_char
-                                                         (FStar_String.index
-                                                            input pos5))
-                                                        =
-                                                        (Prims.of_int (0x2E)))
-                                                 then pos5 + Prims.int_one
-                                                 else pos5 in
-                                               Parser_Combinators.ParseOk
-                                                 (([(FStar_Pervasives_Native.None,
-                                                      po_triples)], st3),
-                                                   pos6))
-                                      | Parser_Combinators.ParseFail
-                                          (msg, fpos) ->
+                                               ((po_triples, st3), pos4) ->
+                                               (match Parser_Turtle.turtle_ws
+                                                        input pos4
+                                                with
+                                                | Parser_Combinators.ParseOk
+                                                    ((), pos5) ->
+                                                    let pos6 =
+                                                      if
+                                                        (pos5 < len) &&
+                                                          ((FStar_Char.int_of_char
+                                                              (FStar_String.index
+                                                                 input pos5))
+                                                             =
+                                                             (Prims.of_int (0x2E)))
+                                                      then
+                                                        pos5 + Prims.int_one
+                                                      else pos5 in
+                                                    Parser_Combinators.ParseOk
+                                                      (([(FStar_Pervasives_Native.None,
+                                                           po_triples)], st3),
+                                                        pos6))
+                                           | Parser_Combinators.ParseFail
+                                               (msg, fpos) ->
+                                               Parser_Combinators.ParseFail
+                                                 (msg, fpos))
+                                        else
                                           Parser_Combinators.ParseFail
-                                            (msg, fpos)))
+                                            ("invalid IRI for subject", pos3)))
                           | Parser_Combinators.ParseFail (uu___8, uu___9) ->
                               (match Parser_Turtle.parse_turtle_statement st
                                        input pos1 fuel
@@ -428,7 +456,8 @@ let rec parse_trig_doc (st : Parser_Turtle.turtle_state)
   if fuel = Prims.int_zero
   then (ds, st)
   else
-    (let len = FStar_String.strlen input in
+    (let fuel' = fuel - Prims.int_one in
+     let len = FStar_String.strlen input in
      match Parser_Turtle.turtle_ws input pos with
      | Parser_Combinators.ParseOk ((), pos1) ->
          if pos1 >= len
@@ -456,26 +485,12 @@ let rec parse_trig_doc (st : Parser_Turtle.turtle_state)
                           | (gname, triples) ->
                               trig_dataset_add_triples acc triples gname) ds
                        deltas in
-                   parse_trig_doc st' input pos2 ds' (fuel - Prims.int_one))
+                   parse_trig_doc st' input pos2 ds' fuel')
             | Parser_Combinators.ParseFail (uu___2, uu___3) ->
-                let rec skip_line p f =
-                  if f = Prims.int_zero
-                  then p
-                  else
-                    if p >= len
-                    then p
-                    else
-                      (let ch = FStar_String.index input p in
-                       let cd = FStar_Char.int_of_char ch in
-                       if
-                         (cd = (Prims.of_int (0x0A))) ||
-                           (cd = (Prims.of_int (0x0D)))
-                       then p + Prims.int_one
-                       else skip_line (p + Prims.int_one) (f - Prims.int_one)) in
-                let pos2 = skip_line pos1 (len - pos1) in
+                let pos2 = graph_body_skip_line input pos1 (len - pos1) in
                 if pos2 = pos1
                 then (ds, st)
-                else parse_trig_doc st input pos2 ds (fuel - Prims.int_one)))
+                else parse_trig_doc st input pos2 ds fuel'))
 let parse_trig (input : Prims.string) : RDF_Graph_Executable.rdf_dataset=
   let len = FStar_String.strlen input in
   let fuel = (len + Prims.int_one) * (Prims.of_int (3)) in

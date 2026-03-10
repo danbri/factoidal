@@ -246,16 +246,27 @@ let parse_pn_local (input : Prims.string) (pos : Prims.nat) :
        match Parser_Combinators.ptake_while is_pn_local_char input pos with
        | Parser_Combinators.ParseOk (s, pos') ->
            let slen = FStar_String.strlen s in
-           (if slen > Prims.int_zero
+           (if slen > Prims.int_one
             then
               let last = FStar_String.index s (slen - Prims.int_one) in
-              (if (FStar_Char.int_of_char last) = (Prims.of_int (0x2E))
+              (if
+                 ((FStar_Char.int_of_char last) = (Prims.of_int (0x2E))) &&
+                   (pos' > Prims.int_zero)
                then
                  Parser_Combinators.ParseOk
                    ((FStar_String.sub s Prims.int_zero (slen - Prims.int_one)),
                      (pos' - Prims.int_one))
                else Parser_Combinators.ParseOk (s, pos'))
-            else Parser_Combinators.ParseOk ("", pos))
+            else
+              if slen = Prims.int_one
+              then
+                (let last = FStar_String.index s Prims.int_zero in
+                 if
+                   ((FStar_Char.int_of_char last) = (Prims.of_int (0x2E))) &&
+                     (pos' > Prims.int_zero)
+                 then Parser_Combinators.ParseOk ("", (pos' - Prims.int_one))
+                 else Parser_Combinators.ParseOk (s, pos'))
+              else Parser_Combinators.ParseOk ("", pos))
        | Parser_Combinators.ParseFail (msg, fpos) ->
            Parser_Combinators.ParseFail (msg, fpos)
      else Parser_Combinators.ParseOk ("", pos))
@@ -281,10 +292,12 @@ let parse_turtle_iri (st : turtle_state) (input : Prims.string)
      let code = FStar_Char.int_of_char c in
      if code = (Prims.of_int (0x3C))
      then
-       match Parser_NTriples.parse_iri input pos with
+       match Parser_NTriples.parse_iri_raw input pos with
        | Parser_Combinators.ParseOk (i, pos') ->
            let resolved = resolve_iri st i in
-           Parser_Combinators.ParseOk (resolved, pos')
+           (if RDF_Graph_Executable.is_iri resolved
+            then Parser_Combinators.ParseOk (resolved, pos')
+            else Parser_Combinators.ParseFail ("resolved IRI invalid", pos))
        | Parser_Combinators.ParseFail (msg, fpos) ->
            Parser_Combinators.ParseFail (msg, fpos)
      else
@@ -415,137 +428,127 @@ let is_digit_char (c : FStar_Char.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in
   (code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))
 let parse_numeric_literal (input : Prims.string) (pos : Prims.nat) :
-  (Prims.string * RDF_Graph_Executable.iri) Parser_Combinators.parse_result=
+  (Prims.string * RDF_Graph_Executable.wf_iri)
+    Parser_Combinators.parse_result=
   let len = FStar_String.strlen input in
   if pos >= len
   then Parser_Combinators.ParseFail ("expected numeric literal", pos)
   else
     (let c0 = FStar_String.index input pos in
      let code0 = FStar_Char.int_of_char c0 in
-     let uu___1 =
+     let sign_str =
        if code0 = (Prims.of_int (0x2B))
-       then ("+", (pos + Prims.int_one))
+       then "+"
+       else if code0 = (Prims.of_int (0x2D)) then "-" else "" in
+     let dpos =
+       if code0 = (Prims.of_int (0x2B))
+       then pos + Prims.int_one
        else
-         if code0 = (Prims.of_int (0x2D))
-         then ("-", (pos + Prims.int_one))
-         else ("", pos) in
-     match uu___1 with
-     | (sign_str, dpos) ->
-         let rec collect_num p acc has_dot has_e fuel =
-           if fuel = Prims.int_zero
-           then Parser_Combinators.ParseOk ((acc, has_dot, has_e), p)
-           else
-             if p >= len
-             then Parser_Combinators.ParseOk ((acc, has_dot, has_e), p)
-             else
-               (let ch = FStar_String.index input p in
-                let cd = FStar_Char.int_of_char ch in
-                if is_digit_char ch
+         if code0 = (Prims.of_int (0x2D)) then pos + Prims.int_one else pos in
+     let rec collect_num p acc has_dot has_e fuel =
+       if fuel = Prims.int_zero
+       then Parser_Combinators.ParseOk ((acc, has_dot, has_e), p)
+       else
+         if p >= len
+         then Parser_Combinators.ParseOk ((acc, has_dot, has_e), p)
+         else
+           (let ch = FStar_String.index input p in
+            let cd = FStar_Char.int_of_char ch in
+            if is_digit_char ch
+            then
+              collect_num (p + Prims.int_one) (ch :: acc) has_dot has_e
+                (fuel - Prims.int_one)
+            else
+              if
+                ((cd = (Prims.of_int (0x2E))) && (Prims.op_Negation has_dot))
+                  && (Prims.op_Negation has_e)
+              then
+                (if (p + Prims.int_one) < len
+                 then
+                   let next = FStar_String.index input (p + Prims.int_one) in
+                   (if is_digit_char next
+                    then
+                      collect_num (p + Prims.int_one) (ch :: acc) true has_e
+                        (fuel - Prims.int_one)
+                    else
+                      Parser_Combinators.ParseOk ((acc, has_dot, has_e), p))
+                 else Parser_Combinators.ParseOk ((acc, has_dot, has_e), p))
+              else
+                if
+                  ((cd = (Prims.of_int (0x65))) ||
+                     (cd = (Prims.of_int (0x45))))
+                    && (Prims.op_Negation has_e)
                 then
-                  collect_num (p + Prims.int_one) (ch :: acc) has_dot has_e
-                    (fuel - Prims.int_one)
-                else
-                  if
-                    ((cd = (Prims.of_int (0x2E))) &&
-                       (Prims.op_Negation has_dot))
-                      && (Prims.op_Negation has_e)
-                  then
-                    (if (p + Prims.int_one) < len
-                     then
-                       let next =
-                         FStar_String.index input (p + Prims.int_one) in
-                       (if is_digit_char next
+                  (if (p + Prims.int_one) < len
+                   then
+                     let enext = FStar_String.index input (p + Prims.int_one) in
+                     let ecode = FStar_Char.int_of_char enext in
+                     (if
+                        (ecode = (Prims.of_int (0x2B))) ||
+                          (ecode = (Prims.of_int (0x2D)))
+                      then
+                        collect_num (p + (Prims.of_int (2))) (enext :: ch ::
+                          acc) has_dot true (fuel - Prims.int_one)
+                      else
+                        if is_digit_char enext
                         then
-                          collect_num (p + Prims.int_one) (ch :: acc) true
-                            has_e (fuel - Prims.int_one)
+                          collect_num (p + Prims.int_one) (ch :: acc) has_dot
+                            true (fuel - Prims.int_one)
                         else
                           Parser_Combinators.ParseOk
                             ((acc, has_dot, has_e), p))
-                     else
-                       Parser_Combinators.ParseOk ((acc, has_dot, has_e), p))
-                  else
-                    if
-                      ((cd = (Prims.of_int (0x65))) ||
-                         (cd = (Prims.of_int (0x45))))
-                        && (Prims.op_Negation has_e)
-                    then
-                      (if (p + Prims.int_one) < len
-                       then
-                         let enext =
-                           FStar_String.index input (p + Prims.int_one) in
-                         let ecode = FStar_Char.int_of_char enext in
-                         (if
-                            (ecode = (Prims.of_int (0x2B))) ||
-                              (ecode = (Prims.of_int (0x2D)))
-                          then
-                            collect_num (p + (Prims.of_int (2))) (enext :: ch
-                              :: acc) has_dot true (fuel - Prims.int_one)
-                          else
-                            if is_digit_char enext
-                            then
-                              collect_num (p + Prims.int_one) (ch :: acc)
-                                has_dot true (fuel - Prims.int_one)
-                            else
-                              Parser_Combinators.ParseOk
-                                ((acc, has_dot, has_e), p))
-                       else
-                         Parser_Combinators.ParseOk
-                           ((acc, has_dot, has_e), p))
-                    else
-                      Parser_Combinators.ParseOk ((acc, has_dot, has_e), p)) in
-         let starts_with_dot =
-           if dpos < len
-           then
-             (FStar_Char.int_of_char (FStar_String.index input dpos)) =
-               (Prims.of_int (0x2E))
-           else false in
-         if starts_with_dot
-         then
-           (if
-              ((dpos + Prims.int_one) < len) &&
-                (is_digit_char
-                   (FStar_String.index input (dpos + Prims.int_one)))
-            then
-              let fuel = len - dpos in
-              match collect_num (dpos + Prims.int_one)
-                      [FStar_String.index input dpos] false true fuel
-              with
-              | Parser_Combinators.ParseOk ((acc, uu___2, has_e), pos') ->
-                  let num_str =
-                    FStar_String.string_of_list (FStar_List_Tot_Base.rev acc) in
-                  let lexical = FStar_String.concat "" [sign_str; num_str] in
-                  let dt =
-                    if has_e
-                    then RDF_Graph_Executable.xsd_double
-                    else RDF_Graph_Executable.xsd_decimal in
-                  Parser_Combinators.ParseOk ((lexical, dt), pos')
-              | Parser_Combinators.ParseFail (msg, fpos) ->
-                  Parser_Combinators.ParseFail (msg, fpos)
-            else
-              Parser_Combinators.ParseFail ("expected digit after '.'", dpos))
-         else
-           (let fuel = len - dpos in
-            match collect_num dpos [] false false fuel with
-            | Parser_Combinators.ParseOk ((acc, has_dot, has_e), pos') ->
-                if (FStar_List_Tot_Base.length acc) = Prims.int_zero
-                then
-                  Parser_Combinators.ParseFail
-                    ("expected numeric literal", pos)
-                else
-                  (let num_str =
-                     FStar_String.string_of_list
-                       (FStar_List_Tot_Base.rev acc) in
-                   let lexical = FStar_String.concat "" [sign_str; num_str] in
-                   let dt =
-                     if has_e
-                     then RDF_Graph_Executable.xsd_double
-                     else
-                       if has_dot
-                       then RDF_Graph_Executable.xsd_decimal
-                       else RDF_Graph_Executable.xsd_integer in
-                   Parser_Combinators.ParseOk ((lexical, dt), pos'))
-            | Parser_Combinators.ParseFail (msg, fpos) ->
-                Parser_Combinators.ParseFail (msg, fpos)))
+                   else Parser_Combinators.ParseOk ((acc, has_dot, has_e), p))
+                else Parser_Combinators.ParseOk ((acc, has_dot, has_e), p)) in
+     if
+       (dpos < len) &&
+         ((FStar_Char.int_of_char (FStar_String.index input dpos)) =
+            (Prims.of_int (0x2E)))
+     then
+       (if
+          ((dpos + Prims.int_one) < len) &&
+            (is_digit_char (FStar_String.index input (dpos + Prims.int_one)))
+        then
+          let fuel = len - dpos in
+          match collect_num (dpos + Prims.int_one)
+                  [FStar_String.index input dpos] false true fuel
+          with
+          | Parser_Combinators.ParseOk ((acc, uu___1, has_e), pos') ->
+              let num_str =
+                FStar_String.string_of_list (FStar_List_Tot_Base.rev acc) in
+              let lexical = FStar_String.concat "" [sign_str; num_str] in
+              let dt =
+                if has_e
+                then RDF_Graph_Executable.xsd_double
+                else RDF_Graph_Executable.xsd_decimal in
+              Parser_Combinators.ParseOk ((lexical, dt), pos')
+          | Parser_Combinators.ParseFail (msg, fpos) ->
+              Parser_Combinators.ParseFail (msg, fpos)
+        else Parser_Combinators.ParseFail ("expected digit after '.'", dpos))
+     else
+       if dpos <= len
+       then
+         (let fuel = len - dpos in
+          match collect_num dpos [] false false fuel with
+          | Parser_Combinators.ParseOk ((acc, has_dot, has_e), pos') ->
+              if (FStar_List_Tot_Base.length acc) = Prims.int_zero
+              then
+                Parser_Combinators.ParseFail
+                  ("expected numeric literal", pos)
+              else
+                (let num_str =
+                   FStar_String.string_of_list (FStar_List_Tot_Base.rev acc) in
+                 let lexical = FStar_String.concat "" [sign_str; num_str] in
+                 let dt =
+                   if has_e
+                   then RDF_Graph_Executable.xsd_double
+                   else
+                     if has_dot
+                     then RDF_Graph_Executable.xsd_decimal
+                     else RDF_Graph_Executable.xsd_integer in
+                 Parser_Combinators.ParseOk ((lexical, dt), pos'))
+          | Parser_Combinators.ParseFail (msg, fpos) ->
+              Parser_Combinators.ParseFail (msg, fpos))
+       else Parser_Combinators.ParseFail ("expected numeric literal", pos))
 let rec parse_long_string_body (qch : FStar_Char.char) (input : Prims.string)
   (pos : Prims.nat) (acc : FStar_Char.char Prims.list) (fuel : Prims.nat) :
   Prims.string Parser_Combinators.parse_result=
@@ -672,8 +675,8 @@ let rec parse_long_string_body (qch : FStar_Char.char) (input : Prims.string)
                                           + h3 in
                                       parse_long_string_body qch input
                                         (pos + (Prims.of_int (6)))
-                                        ((FStar_Char.char_of_int cp) :: acc)
-                                        (fuel - Prims.int_one)))
+                                        ((Parser_NTriples.safe_char_of_int cp)
+                                        :: acc) (fuel - Prims.int_one)))
                                 else
                                   if esc_code = (Prims.of_int (0x55))
                                   then
@@ -732,8 +735,9 @@ let rec parse_long_string_body (qch : FStar_Char.char) (input : Prims.string)
                                             + h7 in
                                         parse_long_string_body qch input
                                           (pos + (Prims.of_int (10)))
-                                          ((FStar_Char.char_of_int cp) ::
-                                          acc) (fuel - Prims.int_one)))
+                                          ((Parser_NTriples.safe_char_of_int
+                                              cp) :: acc)
+                                          (fuel - Prims.int_one)))
                                   else
                                     Parser_Combinators.ParseFail
                                       ((FStar_String.concat ""
@@ -856,8 +860,8 @@ let rec parse_single_string_body (input : Prims.string) (pos : Prims.nat)
                                           + h3 in
                                       parse_single_string_body input
                                         (pos + (Prims.of_int (6)))
-                                        ((FStar_Char.char_of_int cp) :: acc)
-                                        (fuel - Prims.int_one)))
+                                        ((Parser_NTriples.safe_char_of_int cp)
+                                        :: acc) (fuel - Prims.int_one)))
                                 else
                                   if esc_code = (Prims.of_int (0x55))
                                   then
@@ -916,8 +920,9 @@ let rec parse_single_string_body (input : Prims.string) (pos : Prims.nat)
                                             + h7 in
                                         parse_single_string_body input
                                           (pos + (Prims.of_int (10)))
-                                          ((FStar_Char.char_of_int cp) ::
-                                          acc) (fuel - Prims.int_one)))
+                                          ((Parser_NTriples.safe_char_of_int
+                                              cp) :: acc)
+                                          (fuel - Prims.int_one)))
                                   else
                                     Parser_Combinators.ParseFail
                                       ((FStar_String.concat ""
@@ -1023,13 +1028,18 @@ let parse_turtle_literal (st : turtle_state) (input : Prims.string)
                            (pos' + (Prims.of_int (2)))
                    with
                    | Parser_Combinators.ParseOk (dt, pos'') ->
-                       Parser_Combinators.ParseOk
-                         ({
-                            RDF_Graph_Executable.lexical_form = lexical;
-                            RDF_Graph_Executable.datatype = dt;
-                            RDF_Graph_Executable.lang_tag =
-                              FStar_Pervasives_Native.None
-                          }, pos'')
+                       (if RDF_Graph_Executable.is_iri dt
+                        then
+                          Parser_Combinators.ParseOk
+                            ({
+                               RDF_Graph_Executable.lexical_form = lexical;
+                               RDF_Graph_Executable.datatype = dt;
+                               RDF_Graph_Executable.lang_tag =
+                                 FStar_Pervasives_Native.None
+                             }, pos'')
+                        else
+                          Parser_Combinators.ParseFail
+                            ("invalid datatype IRI", pos'))
                    | Parser_Combinators.ParseFail (msg, fpos) ->
                        Parser_Combinators.ParseFail (msg, fpos)
                  else
@@ -1093,10 +1103,10 @@ let parse_boolean_literal (input : Prims.string) (pos : Prims.nat) :
                 }, pos')
        | Parser_Combinators.ParseFail (uu___2, uu___3) ->
            Parser_Combinators.ParseFail ("expected boolean literal", pos))
-let rdf_type_iri : RDF_Graph_Executable.iri=
+let rdf_type_iri : RDF_Graph_Executable.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 let parse_a_keyword (input : Prims.string) (pos : Prims.nat) :
-  RDF_Graph_Executable.iri Parser_Combinators.parse_result=
+  RDF_Graph_Executable.wf_iri Parser_Combinators.parse_result=
   let len = FStar_String.strlen input in
   if pos >= len
   then Parser_Combinators.ParseFail ("expected 'a'", pos)
@@ -1115,11 +1125,11 @@ let parse_a_keyword (input : Prims.string) (pos : Prims.nat) :
            then Parser_Combinators.ParseOk (rdf_type_iri, next_pos)
            else Parser_Combinators.ParseFail ("expected 'a' keyword", pos)))
      else Parser_Combinators.ParseFail ("expected 'a'", pos))
-let rdf_first_iri : RDF_Graph_Executable.iri=
+let rdf_first_iri : RDF_Graph_Executable.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
-let rdf_rest_iri : RDF_Graph_Executable.iri=
+let rdf_rest_iri : RDF_Graph_Executable.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-let rdf_nil_iri : RDF_Graph_Executable.iri=
+let rdf_nil_iri : RDF_Graph_Executable.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"
 type object_result =
   {
@@ -1165,12 +1175,15 @@ let rec parse_turtle_object (st : turtle_state) (input : Prims.string)
         then
           match parse_turtle_iri st input pos with
           | Parser_Combinators.ParseOk (i, pos') ->
-              Parser_Combinators.ParseOk
-                ({
-                   or_term = (RDF_Graph_Executable.T_IRI i);
-                   or_triples = [];
-                   or_state = st
-                 }, pos')
+              (if RDF_Graph_Executable.is_iri i
+               then
+                 Parser_Combinators.ParseOk
+                   ({
+                      or_term = (RDF_Graph_Executable.T_IRI i);
+                      or_triples = [];
+                      or_state = st
+                    }, pos')
+               else Parser_Combinators.ParseFail ("invalid IRI", pos))
           | Parser_Combinators.ParseFail (msg, fpos) ->
               Parser_Combinators.ParseFail (msg, fpos)
         else
@@ -1193,12 +1206,15 @@ let rec parse_turtle_object (st : turtle_state) (input : Prims.string)
             then
               (match parse_turtle_literal st input pos with
                | Parser_Combinators.ParseOk (lit, pos') ->
-                   Parser_Combinators.ParseOk
-                     ({
-                        or_term = (RDF_Graph_Executable.T_Literal lit);
-                        or_triples = [];
-                        or_state = st
-                      }, pos')
+                   if RDF_Graph_Executable.literal_wf lit
+                   then
+                     Parser_Combinators.ParseOk
+                       ({
+                          or_term = (RDF_Graph_Executable.T_Literal lit);
+                          or_triples = [];
+                          or_state = st
+                        }, pos')
+                   else Parser_Combinators.ParseFail ("invalid literal", pos)
                | Parser_Combinators.ParseFail (msg, fpos) ->
                    Parser_Combinators.ParseFail (msg, fpos))
             else
@@ -1274,13 +1290,18 @@ let rec parse_turtle_object (st : turtle_state) (input : Prims.string)
                                 RDF_Graph_Executable.lang_tag =
                                   FStar_Pervasives_Native.None
                               } in
-                            Parser_Combinators.ParseOk
-                              ({
-                                 or_term =
-                                   (RDF_Graph_Executable.T_Literal lit);
-                                 or_triples = [];
-                                 or_state = st
-                               }, pos')
+                            if RDF_Graph_Executable.literal_wf lit
+                            then
+                              Parser_Combinators.ParseOk
+                                ({
+                                   or_term =
+                                     (RDF_Graph_Executable.T_Literal lit);
+                                   or_triples = [];
+                                   or_state = st
+                                 }, pos')
+                            else
+                              Parser_Combinators.ParseFail
+                                ("invalid numeric literal", pos)
                         | Parser_Combinators.ParseFail (uu___9, uu___10) ->
                             (match parse_prefixed_name input pos with
                              | Parser_Combinators.ParseOk
@@ -1288,14 +1309,19 @@ let rec parse_turtle_object (st : turtle_state) (input : Prims.string)
                                  (match resolve_prefixed_name st prefix local
                                   with
                                   | FStar_Pervasives_Native.Some resolved ->
-                                      Parser_Combinators.ParseOk
-                                        ({
-                                           or_term =
-                                             (RDF_Graph_Executable.T_IRI
-                                                resolved);
-                                           or_triples = [];
-                                           or_state = st
-                                         }, pos')
+                                      if RDF_Graph_Executable.is_iri resolved
+                                      then
+                                        Parser_Combinators.ParseOk
+                                          ({
+                                             or_term =
+                                               (RDF_Graph_Executable.T_IRI
+                                                  resolved);
+                                             or_triples = [];
+                                             or_state = st
+                                           }, pos')
+                                      else
+                                        Parser_Combinators.ParseFail
+                                          ("invalid resolved IRI", pos)
                                   | FStar_Pervasives_Native.None ->
                                       Parser_Combinators.ParseFail
                                         ((FStar_String.concat ""
@@ -1427,14 +1453,14 @@ and parse_collection_rest (st : turtle_state)
               | Parser_Combinators.ParseFail (msg, fpos) ->
                   Parser_Combinators.ParseFail (msg, fpos)))
 and parse_object_list (st : turtle_state)
-  (subj : RDF_Graph_Executable.subject) (pred : RDF_Graph_Executable.iri)
+  (subj : RDF_Graph_Executable.subject) (pred : RDF_Graph_Executable.wf_iri)
   (input : Prims.string) (pos : Prims.nat) (fuel : Prims.nat) :
   (RDF_Graph_Executable.triple Prims.list * turtle_state)
     Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
   then Parser_Combinators.ParseFail ("recursion limit in object list", pos)
   else
-    (match parse_turtle_object st input pos fuel with
+    (match parse_turtle_object st input pos (fuel - Prims.int_one) with
      | Parser_Combinators.ParseOk (obj_res, pos1) ->
          let t =
            {
@@ -1470,7 +1496,7 @@ and parse_object_list (st : turtle_state)
          Parser_Combinators.ParseFail (msg, fpos))
 and parse_turtle_predicate (st : turtle_state) (input : Prims.string)
   (pos : Prims.nat) (fuel : Prims.nat) :
-  RDF_Graph_Executable.iri Parser_Combinators.parse_result=
+  RDF_Graph_Executable.wf_iri Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
   then Parser_Combinators.ParseFail ("recursion limit", pos)
   else
@@ -1478,7 +1504,14 @@ and parse_turtle_predicate (st : turtle_state) (input : Prims.string)
      | Parser_Combinators.ParseOk (iri_val, pos') ->
          Parser_Combinators.ParseOk (iri_val, pos')
      | Parser_Combinators.ParseFail (uu___1, uu___2) ->
-         parse_turtle_iri st input pos)
+         (match parse_turtle_iri st input pos with
+          | Parser_Combinators.ParseOk (i, pos') ->
+              if RDF_Graph_Executable.is_iri i
+              then Parser_Combinators.ParseOk (i, pos')
+              else
+                Parser_Combinators.ParseFail ("invalid predicate IRI", pos)
+          | Parser_Combinators.ParseFail (msg, fpos) ->
+              Parser_Combinators.ParseFail (msg, fpos)))
 and parse_predicate_object_list (st : turtle_state)
   (subj : RDF_Graph_Executable.subject) (input : Prims.string)
   (pos : Prims.nat) (fuel : Prims.nat) :
@@ -1489,7 +1522,7 @@ and parse_predicate_object_list (st : turtle_state)
     Parser_Combinators.ParseFail
       ("recursion limit in predicate-object list", pos)
   else
-    (match parse_turtle_predicate st input pos fuel with
+    (match parse_turtle_predicate st input pos (fuel - Prims.int_one) with
      | Parser_Combinators.ParseOk (pred, pos1) ->
          (match turtle_ws input pos1 with
           | Parser_Combinators.ParseOk ((), pos2) ->
@@ -1607,12 +1640,15 @@ let parse_turtle_subject (st : turtle_state) (input : Prims.string)
         then
           match parse_turtle_iri st input pos with
           | Parser_Combinators.ParseOk (i, pos') ->
-              Parser_Combinators.ParseOk
-                ({
-                   sr_subject = (RDF_Graph_Executable.S_IRI i);
-                   sr_triples = [];
-                   sr_state = st
-                 }, pos')
+              (if RDF_Graph_Executable.is_iri i
+               then
+                 Parser_Combinators.ParseOk
+                   ({
+                      sr_subject = (RDF_Graph_Executable.S_IRI i);
+                      sr_triples = [];
+                      sr_state = st
+                    }, pos')
+               else Parser_Combinators.ParseFail ("invalid subject IRI", pos))
           | Parser_Combinators.ParseFail (msg, fpos) ->
               Parser_Combinators.ParseFail (msg, fpos)
         else
@@ -1710,13 +1746,18 @@ let parse_turtle_subject (st : turtle_state) (input : Prims.string)
                  | Parser_Combinators.ParseOk ((prefix, local), pos') ->
                      (match resolve_prefixed_name st prefix local with
                       | FStar_Pervasives_Native.Some resolved ->
-                          Parser_Combinators.ParseOk
-                            ({
-                               sr_subject =
-                                 (RDF_Graph_Executable.S_IRI resolved);
-                               sr_triples = [];
-                               sr_state = st
-                             }, pos')
+                          if RDF_Graph_Executable.is_iri resolved
+                          then
+                            Parser_Combinators.ParseOk
+                              ({
+                                 sr_subject =
+                                   (RDF_Graph_Executable.S_IRI resolved);
+                                 sr_triples = [];
+                                 sr_state = st
+                               }, pos')
+                          else
+                            Parser_Combinators.ParseFail
+                              ("invalid resolved IRI", pos)
                       | FStar_Pervasives_Native.None ->
                           Parser_Combinators.ParseFail
                             ((FStar_String.concat ""

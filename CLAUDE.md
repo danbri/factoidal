@@ -1,5 +1,31 @@
 # Factoidal — Verified RDF/SPARQL from F*
 
+## :warning: F* Comment Syntax — DANGER :warning:
+
+**F\* comments `(* ... *)` support NESTING.** Any `*)` inside a comment
+prematurely closes it, and any `(*` opens a new nesting level. This means
+constructs containing `*)` will **silently corrupt the rest of your file**
+when placed inside comments.
+
+**This WILL break:**
+```fstar
+(* ARQ algebra example
+   construct(*)
+*)
+```
+The `*)` inside `construct(*)` closes the comment. Everything after it becomes
+code. F\* then reports a syntax error **hundreds of lines later**, making
+debugging extremely difficult.
+
+**Safe alternatives:**
+- Reword to avoid parens-star: `(* COUNT-star special case *)`
+- Use `//` line comments (F\* supports them): `// COUNT(*) special case`
+- Escape or rephrase: `(* SELECT vars-or-star ... *)`
+
+**Rule: Never put `*)` or `(*` inside an F\* block comment.** Grep your `.fst`
+files for these sequences if you get mysterious syntax errors far from the
+actual cause.
+
 ## What This Project Is
 
 A formally verified RDF/SPARQL implementation. The **F\* specifications are the
@@ -15,10 +41,9 @@ Rust/JS/OCaml/anything that "mirrors" a spec.
 3. **assume val = acknowledged gap.** Every `assume val` must have a stub in
    `ocaml-patches.sh` or the OCaml test harness. No silent holes.
 4. **Parsers belong in F\*.** RDF serialization parsers (N-Triples, Turtle,
-   N-Quads, TriG, RDF/XML, CSV/TSV results) should be implemented in F\* and
-   extracted. The existing hand-written OCaml parsers (ntriples_parser.ml,
-   turtle_parser.ml, etc.) are **temporary scaffolding** that must be replaced
-   with F\*-extracted code. New parsers MUST be written in F\* first.
+   N-Quads, TriG, RDF/XML, CSV/TSV results) are implemented in F\* and
+   extracted. All hand-written OCaml parsers have been removed. New parsers
+   MUST be written in F\* first.
 5. **SPARQL 1.1 is the target.** Never default to 1.0 manifests when 1.1 exists.
 6. **Run the real W3C test files.** Read manifests, `.rq`, `.srx`, `.ttl` from
    disk. Do not construct synthetic queries that are "inspired by" W3C tests.
@@ -46,8 +71,8 @@ When working on this project with Claude Code:
 Previous Claude sessions made these errors. Read and internalize:
 
 1. **Writing OCaml parsers instead of F\* parsers.** Do not write new `.ml`
-   parser files. The existing ones (ntriples_parser.ml, turtle_parser.ml, etc.)
-   are legacy debt, not a pattern to follow. New parsers go in `.fst` files.
+   parser files. All hand-written OCaml parsers have been deleted. There are
+   NO OCaml parser files to use as a pattern. New parsers go in `.fst` files.
 
 2. **Dismissing rdf-mt tests as "needing an inference engine."** The rdf-mt
    test suite tests fundamental RDF semantics that RDF.Graph.Executable.fst
@@ -70,12 +95,53 @@ Previous Claude sessions made these errors. Read and internalize:
 5. **Creating symlinks or hacks for version mismatches.** Do not create
    symlinks for z3 or other tool version issues. Fix the actual environment.
 
-6. **Using `(*` in F\* comments when writing SPARQL-related code.** F\* comments
-   `(* ... *)` nest. If a comment mentions SPARQL's `(*, /)` (multiplicative
-   operators) or `COUNT(*)`, the `(*` opens a nested comment that silently
-   swallows the rest of the file. F\* extraction will succeed but silently drop
-   all definitions after the broken comment. **Use `//` line comments instead**
-   when comment text contains `(*` or `*)`.
+6. **Promoted type blindness.** When `eval_expr` evaluates a variable bound
+   to a numeric literal, it returns `ER_Num`/`ER_Dec`/`ER_Dbl`/`ER_Bool` —
+   NOT `ER_Term(T_Literal l)`. Any function that only pattern-matches on
+   `ER_Term(T_Literal l)` will silently fail on promoted values. This
+   has caused bugs in: `fn_datatype`, `fn_isLiteral`, `fn_lang`,
+   `er_string_info`, `eval_concat`. **Rule: every function that handles
+   `ER_Term(T_Literal l)` must also handle `ER_Num`, `ER_Dec`, `ER_Dbl`,
+   and `ER_Bool` where semantically appropriate.**
+
+7. **Parser/evaluator AST mismatch.** The SPARQL parser may emit different
+   AST nodes than the evaluator expects. Example: `COUNT(*)` is parsed as
+   `E_Aggregate(Agg_Count, _, E_BoolLit true)` but the evaluator checked
+   for `E_Var "*"`. **Rule: when adding evaluator logic for a new construct,
+   check what the parser actually emits** (grep SPARQL11_Parser.ml).
+
+8. **parse_to_scaled before parse_double_to_scaled.** `parse_to_scaled`
+   treats E-notation characters as fractional digits: `"1.0E2"` parses as
+   `(1000, 3)` = 1.0 instead of 100. **Rule: always try
+   `parse_double_to_scaled` first** when the input might contain
+   E-notation (doubles). `parse_double_to_scaled` falls through to
+   `parse_to_scaled` for non-E strings, so it's safe as the default.
+
+9. **Recursive base case kills metadata.** `eval_concat` used
+   `er_string ""` (plain xsd:string, no lang tag) as its base case. When
+   folding right-to-left, this stripped lang tags from the last element,
+   which cascaded up. **Rule: for recursive string functions, handle the
+   single-element case explicitly** to preserve language tags and datatypes.
+
+10. **OCaml Str regex: bytes not codepoints.** OCaml's `Str` module
+    operates on bytes, not Unicode codepoints. `[^a-z0-9]` matches
+    individual bytes of UTF-8 multi-byte characters. Also: referencing
+    an unmatched group (`\2` when group 2 didn't participate) raises
+    `Not_found`. Both limit REPLACE() conformance. A Unicode-aware regex
+    library (Pcre, Re) would fix this but adds a dependency.
+
+11. **`build-ocaml.sh compile` does NOT apply `ocaml-patches.sh`.**
+    Only `build-ocaml.sh extract` runs the patches. After a fresh
+    extraction, you must either use `extract` or manually run
+    `./ocaml-patches.sh ocaml-output/SPARQL11_Algebra.ml`. Forgetting
+    this silently regresses all `assume val` stubs to `failwith`.
+
+12. **Using `(*` in F\* comments when writing SPARQL-related code.** F\* comments
+    `(* ... *)` nest. If a comment mentions SPARQL's `(*, /)` (multiplicative
+    operators) or `COUNT(*)`, the `(*` opens a nested comment that silently
+    swallows the rest of the file. F\* extraction will succeed but silently drop
+    all definitions after the broken comment. **Use `//` line comments instead**
+    when comment text contains `(*` or `*)`.
 
 ## Current State (Honest Assessment)
 
@@ -84,7 +150,7 @@ Previous Claude sessions made these errors. Read and internalize:
 ```
 formal/fstar/
   RDF.Graph.Executable.fst     638 lines, 0 admit, 0 assume val
-  SPARQL11.Algebra.fst        3065 lines, 2 admit, 11 assume val
+  SPARQL11.Algebra.fst        3658 lines, 5 admit, 14 assume val
   SPARQL11.Parser.fst          F* SPARQL parser (in development)
   Makefile                     verify + extract-c targets
   build-ocaml.sh               F* -> OCaml -> js_of_ocaml pipeline
@@ -106,30 +172,34 @@ The F\* RDF graph spec uses **syntactic equality only**. It lacks:
 
 These are not exotic features — they are what the W3C rdf-mt test suite tests.
 
-### Temporary OCaml Test Infrastructure (to be replaced)
+### OCaml Output (extracted + test glue)
 
 ```
 formal/fstar/ocaml-output/
-  RDF_Graph_Executable.ml    genuinely F*-extracted OCaml
-  SPARQL11_Algebra.ml        genuinely F*-extracted OCaml (patched for assume vals)
-  SPARQL11_Parser.ml         genuinely F*-extracted OCaml
-  example.ml                 hand-written demo (TEMPORARY)
-  w3c_tests.ml               hand-written test harness (TEMPORARY)
-  ntriples_parser.ml         hand-written N-Triples parser (TEMPORARY — replace with F*)
-  turtle_parser.ml           hand-written Turtle parser (TEMPORARY — replace with F*)
-  srx_parser.ml              hand-written SRX parser (TEMPORARY — replace with F*)
-  sparql_parser.ml           hand-written SPARQL parser (TEMPORARY — replace with F*)
-  sparql_parser_bridge.ml    bridge for F*-extracted SPARQL parser
-  rdf_xml_parser.ml          hand-written RDF/XML parser (TEMPORARY — replace with F*)
+  RDF_Graph_Executable.ml    F*-extracted OCaml
+  SPARQL11_Algebra.ml        F*-extracted OCaml (patched for assume vals)
+  SPARQL11_Parser.ml         F*-extracted SPARQL parser
+  Parser_Combinators.ml      F*-extracted parser combinators
+  Parser_NTriples.ml         F*-extracted N-Triples parser
+  Parser_Turtle.ml           F*-extracted Turtle parser
+  Parser_NQuads.ml           F*-extracted N-Quads parser
+  Parser_TriG.ml             F*-extracted TriG parser
+  Parser_XML.ml              F*-extracted XML parser
+  Parser_RDFXML.ml           F*-extracted RDF/XML parser
+  Parser_SRX.ml              F*-extracted SRX (SPARQL Results XML) parser
+  Parser_CSVResults.ml       F*-extracted CSV/TSV results parser
   w3c_runner.ml              W3C manifest reader + test runner CLI (I/O glue)
   fstar_int_stubs.js         js_of_ocaml int stubs
 ```
+
+Hand-coded parsers have been deleted. Legacy copies remain in `junk/do_not_use/hand_coded_parsers/` as a warning.
 
 ### assume val inventory (SPARQL11.Algebra.fst)
 
 | assume val | Purpose | Stub |
 |-----------|---------|------|
 | `regex_match` | SPARQL REGEX | OCaml `Str` in ocaml-patches.sh |
+| `regex_replace` | SPARQL REPLACE | OCaml `Str` in ocaml-patches.sh (forward ref) |
 | `hash_md5` | MD5 hash | OCaml `Digest` in ocaml-patches.sh |
 | `hash_sha1` | SHA-1 hash | OCaml `Digest` in ocaml-patches.sh |
 | `hash_sha256` | SHA-256 hash | OCaml `Digest` in ocaml-patches.sh |
@@ -141,29 +211,66 @@ formal/fstar/ocaml-output/
 | `eval_subselect_fwd` | forward decl (subqueries) | wired in ocaml-patches.sh |
 | `eval_property_path_fwd` | forward decl (property paths) | wired in ocaml-patches.sh |
 
-### W3C Test Results (as of 2026-03-09)
+### Plain-English Status Summary (as of 2026-03-10)
 
-**SPARQL 1.1 (344 pass, 61 fail, 205 skip, 21 unsupported)**
+Factoidal is a formally verified RDF/SPARQL implementation written in F\* and
+tested against the official W3C conformance suites. The core SPARQL query
+evaluator is solid: it passes 303 of 408 applicable query/syntax tests (74%),
+with strong results in aggregates (38/44), built-in functions (71/75), BIND
+(9/10), negation (11/12), property paths (31/33), and subqueries (9/12). The
+main SPARQL gaps are: no UPDATE support (205 tests skipped entirely — not in
+scope for read-only query evaluation), no SPARQL Protocol, no federated query
+(SERVICE returns empty), incomplete negative syntax rejection (parser accepts
+23 queries it should reject), incomplete xsd:float/double casting, and no
+JSON/CSV/TSV result format support (18 tests). CONSTRUCT is partially
+implemented (1/4 pass). The SPARQL entailment suite (26/70) reveals that the
+evaluator lacks RDF/RDFS-aware entailment regimes during query evaluation.
 
-Tests the F\*-extracted SPARQL evaluator against W3C SPARQL 1.1 test suites.
-Perfect suites: syntax-query (94/94), functions (75/75), bind (10/10),
-cast (6/6), grouping (6/6).
-Main failure areas: entailment (43 fail — needs RDFS inference in F\*),
-service (7 fail — needs federation), aggregates (3 fail).
-Skips: 205 UPDATE operations (not in F\* spec).
+On the RDF parsing side, F\*-extracted parsers handle all five serialization
+formats but have significant gaps in edge cases: N-Triples 41/70, Turtle
+203/313, N-Quads 53/87, TriG 223/356, RDF/XML 91/166. Most parser failures
+involve IRI validation (percent-encoding, Unicode escapes), negative syntax
+tests where the parser accepts malformed input, and some Turtle/TriG eval
+tests with base URI resolution or collection handling. The model theory tests
+(rdf-mt) score 33/39 — the remaining 6 failures need deeper RDF graph
+semantics in the F\* spec (simple entailment with blank node matching).
 
-**RDF 1.1 Parser Tests (383 pass, 0 fail)**
+In short: the query evaluator works well for read-only SELECT queries and the
+parsers handle the common cases, but the system is held back by (a) parser
+edge cases around IRI validation and negative syntax rejection, (b) missing
+SPARQL UPDATE/Protocol, (c) incomplete entailment regimes, and (d) no
+JSON/CSV/TSV result formats. The rdf-mt semantics (language tag normalization,
+datatype equivalence, RDFS closure) are mostly implemented in F\* but not yet
+fully wired through the test pipeline.
 
-Tests **hand-written OCaml parsers** (NOT the F\* spec) against N-Triples (70)
-and Turtle (313) syntax+eval suites. This score reflects parser quality only.
-Missing suites: N-Quads, TriG, RDF/XML (parsers not yet written in F\*).
+### W3C Test Results (as of 2026-03-10)
 
-**RDF 1.1 Model Theory (0 pass, 0 fail — NOT YET RUN)**
+**SPARQL 1.1 — 303 pass, 105 fail, 205 skip, 18 unsupported (631 total)**
 
-The rdf-mt suite (48 tests) tests actual RDF graph semantics: literal
-equivalence, datatype handling, RDFS closure rules. These require fixes to
-RDF.Graph.Executable.fst before they can pass. This is the real measure of
-whether the F\* RDF implementation is correct.
+Failure breakdown: 64 result mismatches (evaluation bugs), 23 negative
+syntax (parser too permissive), 10 positive syntax (parser rejects valid
+queries), 8 parse errors (IRI/prefixed-name handling).
+
+Per-suite: aggregates 38/47, bind 9/10, bindings 10/11, cast 1/6,
+construct 1/7, entailment 26/70, exists 5/6, functions 71/75, grouping 4/6,
+negation 11/12, project-expression 7/7, property-path 31/33, service 0/7,
+subquery 9/14, syntax-query 72/94, delete-insert 8/17.
+Skipped: 205 UPDATE operations (add, basic-update, clear, copy, delete,
+delete-data, delete-where, drop, move, http-rdf-update, syntax-update-*,
+update-silent). Protocol: 34 skipped.
+Unsupported: json-res (4), csv-tsv-res (6), aggregates (3 Turtle results),
+construct (3 Turtle results), subquery (2 Turtle results).
+
+**RDF 1.1 — 644 pass, 387 fail (1031 total)**
+
+Per-suite: N-Triples 41/70, Turtle 203/313, N-Quads 53/87, TriG 223/356,
+RDF/XML 91/166, rdf-mt 33/39.
+
+**RDF 1.1 Model Theory — 33 pass, 6 fail (39 total)**
+
+The rdf-mt suite tests actual RDF graph semantics: literal equivalence,
+datatype handling, RDFS closure rules. Remaining 6 failures need simple
+entailment (blank-node-as-existential-variable) in RDF.Graph.Executable.fst.
 
 ### What rdf-mt Actually Tests (48 tests)
 
@@ -203,7 +310,8 @@ W3C SPARQL 1.1 + RDF 1.1 conformance results
 
 ### Phase 1 — SPARQL test infrastructure (DONE)
 
-W3C test runner works. 344/631 SPARQL tests pass.
+W3C test runner works. 303/408 SPARQL eval/syntax tests pass (105 fail,
+205 skip/update, 18 unsupported format).
 
 ### Phase 2 — Fix RDF semantics in F\* (MOSTLY DONE)
 
@@ -283,14 +391,32 @@ opam install fstar z3 js_of_ocaml js_of_ocaml-compiler zarith_stubs_js
 eval $(opam env --switch=fstar)
 ```
 
-### Verify z3 is available
+### Install z3 (CRITICAL — verification cannot work without it)
+
+**This project is about verified code. z3 is not optional.** Every session must
+ensure z3 is available before doing any F\* work. Without z3, extraction and
+verification will fail.
 
 ```bash
-# z3 must be on PATH for F* verification to work
-z3 --version
-# Should show z3 4.x.y. If missing, `opam install z3` should provide it.
-# Do NOT create symlinks or version hacks — fix the actual environment.
+# Check if z3 is available:
+z3 --version  # must show 4.13.3
+
+# If z3 is missing, install the pre-built binary (opam build often fails):
+cd /tmp
+curl -sL "https://github.com/Z3Prover/z3/releases/download/z3-4.13.3/z3-4.13.3-x64-glibc-2.35.zip" -o z3.zip
+unzip -q z3.zip
+cp z3-4.13.3-x64-glibc-2.35/bin/z3 /usr/local/bin/z3-4.13.3
+chmod +x /usr/local/bin/z3-4.13.3
+ln -sf /usr/local/bin/z3-4.13.3 /usr/local/bin/z3
+
+# Verify it works:
+z3-4.13.3 --version  # must show "Z3 version 4.13.3"
 ```
+
+**Do NOT use `--lax` at all.** All F\* modules must verify and extract without
+`--lax`. The `--lax` flag is banned — it defeats the purpose of formal
+verification. Install z3 first, then verify and extract.
+
 
 ### Quick verification
 
@@ -304,22 +430,22 @@ make verify
 # Extract + compile + test
 ./build-ocaml.sh
 
-# Run W3C SPARQL 1.1 tests (requires w3c_runner compiled separately)
+# Run W3C tests (w3c_runner is built by build-ocaml.sh)
 cd ocaml-output
-ocamlfind ocamlopt -package fstar.lib,str,zarith -linkpkg -w -8-14-26 \
-  RDF_Graph_Executable.ml SPARQL11_Algebra.ml \
-  ntriples_parser.ml turtle_parser.ml rdf_xml_parser.ml \
-  srx_parser.ml sparql_parser.ml w3c_runner.ml -o w3c_runner
 ./w3c_runner                    # all SPARQL suites
 ./w3c_runner --rdf              # RDF parser suites
 ./w3c_runner --all              # both
 ./w3c_runner --list             # list suites
 ./w3c_runner bind functions     # specific suites
+./w3c_runner -v aggregates      # verbose: full expected/actual dump on stderr
 ```
+
+**Failure output**: FAIL lines always show UNMATCHED expected rows inline.
+Use `-v` for the full expected/actual row dump (goes to stderr).
 
 ### Extraction notes
 
-- `--lax` skips proof checking during extraction (faster; use `make verify` separately)
+- **Never use `--lax`** — all modules must verify before extraction
 - `--codegen OCaml` erases proofs, ghost code, spec-only material
 - Extracted `.ml` files use `FStar_*` runtime from `fstar.lib` opam package
 - `assume val` declarations extract as `failwith "Not yet implemented"` — must be patched

@@ -8,8 +8,7 @@
 # Outputs:
 #   ocaml-output/RDF_Graph_Executable.ml   — Extracted OCaml (RDF core)
 #   ocaml-output/SPARQL11_Algebra.ml       — Extracted OCaml (SPARQL engine)
-#   ocaml-output/example                   — Native OCaml binary
-#   ocaml-output/w3c_tests                 — Native OCaml W3C test runner
+#   ocaml-output/w3c_runner                — Native OCaml W3C test runner
 #   ../../docs/fstar-extracted/factoidal-fstar.js  — Browser-ready JS bundle
 #
 # Usage:
@@ -34,8 +33,20 @@ echo ""
 if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   echo "--- Step 1: F* → OCaml extraction ---"
   mkdir -p "$OUTDIR"
-  fstar.exe --lax --codegen OCaml --odir "$OUTDIR" RDF.Graph.Executable.fst 2>&1 | grep -E "Extracted|Error|error" || true
-  fstar.exe --lax --codegen OCaml --odir "$OUTDIR" SPARQL11.Algebra.fst 2>&1 | grep -E "Extracted|Error|error" || true
+
+  # All modules extracted with full verification (no --lax)
+  echo "  Extracting all F* modules (verified)..."
+  for fst in RDF.Graph.Executable.fst SPARQL11.Algebra.fst \
+             Parser.Combinators.fst SPARQL11.Parser.fst \
+             Parser.NTriples.fst Parser.Turtle.fst \
+             Parser.NQuads.fst Parser.TriG.fst \
+             Parser.XML.fst Parser.RDFXML.fst \
+             Parser.SRX.fst Parser.CSVResults.fst; do
+    if [ -f "$fst" ]; then
+      echo "    $fst"
+      fstar.exe --codegen OCaml --odir "$OUTDIR" "$fst" 2>&1 | grep -E "Extracted|Error|error" || true
+    fi
+  done
   echo "  RDF:    $(wc -l < "$OUTDIR/RDF_Graph_Executable.ml") lines"
   echo "  SPARQL: $(wc -l < "$OUTDIR/SPARQL11_Algebra.ml") lines"
 
@@ -47,19 +58,30 @@ fi
 # Step 2: Compile native OCaml binaries
 if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   echo "--- Step 2: Compile native OCaml ---"
+  # Clean stale compilation artifacts to avoid signature mismatches
+  rm -f "$OUTDIR"/*.cmi "$OUTDIR"/*.cmx "$OUTDIR"/*.cmo "$OUTDIR"/*.o
   cd "$OUTDIR"
 
-  # Example binary
-  ocamlfind ocamlopt -package fstar.lib,str -linkpkg -w -8 \
-    RDF_Graph_Executable.ml SPARQL11_Algebra.ml example.ml \
-    -o example 2>&1 | grep -i error || true
-  echo "  Built: example ($(wc -c < example) bytes)"
+  # Common modules for all binaries
+  COMMON_MODULES="RDF_Graph_Executable.ml \
+    Parser_Combinators.ml Parser_NTriples.ml Parser_Turtle.ml \
+    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
+    Parser_SRX.ml Parser_CSVResults.ml \
+    SPARQL11_Algebra.ml SPARQL11_Parser.ml"
 
-  # W3C test binary
-  ocamlfind ocamlopt -package fstar.lib,str -linkpkg -w -8 \
-    RDF_Graph_Executable.ml SPARQL11_Algebra.ml w3c_tests.ml \
-    -o w3c_tests 2>&1 | grep -i error || true
-  echo "  Built: w3c_tests ($(wc -c < w3c_tests) bytes)"
+  # W3C test runner (reads real W3C manifests, calls F*-extracted code)
+  ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
+    $COMMON_MODULES \
+    w3c_runner.ml \
+    -o w3c_runner 2>&1 | grep -i error || true
+  echo "  Built: w3c_runner ($(wc -c < w3c_runner) bytes)"
+
+  # factoidal CLI (SPARQL query + RDF parsing tool)
+  ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
+    $COMMON_MODULES \
+    factoidal_cli.ml \
+    -o factoidal 2>&1 | grep -i error || true
+  echo "  Built: factoidal ($(wc -c < factoidal) bytes)"
 
   cd ..
   echo ""
@@ -68,7 +90,7 @@ fi
 # Step 3: Run native tests
 if [[ "$STEP" == "all" || "$STEP" == "test" ]]; then
   echo "--- Step 3: Run native OCaml tests ---"
-  "$OUTDIR/w3c_tests" 2>&1 | tail -12 || true
+  "$OUTDIR/w3c_runner" --all 2>&1 | tail -20 || true
   echo ""
 fi
 
@@ -78,34 +100,25 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
   mkdir -p "$JSDIR"
   cd "$OUTDIR"
 
-  # Compile to bytecode (js_of_ocaml needs bytecode, not native)
-  ocamlfind ocamlc -package fstar.lib -linkpkg -w -8 \
-    RDF_Graph_Executable.ml SPARQL11_Algebra.ml example.ml \
-    -o example.byte 2>&1 | grep -i error || true
+  # Build w3c_runner bytecode for js_of_ocaml
+  ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
+    RDF_Graph_Executable.ml \
+    Parser_Combinators.ml Parser_NTriples.ml Parser_Turtle.ml \
+    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
+    Parser_SRX.ml Parser_CSVResults.ml \
+    SPARQL11_Algebra.ml SPARQL11_Parser.ml \
+    w3c_runner.ml \
+    -o w3c_runner.byte 2>&1 | grep -i error || true
 
   # Convert to JS with zarith stubs
   js_of_ocaml \
     +zarith_stubs_js/biginteger.js \
     +zarith_stubs_js/runtime.js \
     fstar_int_stubs.js \
-    example.byte \
-    -o ../../../docs/fstar-extracted/factoidal-fstar.js 2>&1 | grep -v "Warning \[deprecated" | grep -v "^$" || true
+    w3c_runner.byte \
+    -o ../../../docs/fstar-extracted/w3c-runner.js 2>&1 | grep -v "Warning \[deprecated" | grep -v "^$" || true
 
-  echo "  Built: docs/fstar-extracted/factoidal-fstar.js ($(wc -c < ../../../docs/fstar-extracted/factoidal-fstar.js) bytes)"
-
-  # Also build test runner for browser
-  ocamlfind ocamlc -package fstar.lib -linkpkg -w -8 \
-    RDF_Graph_Executable.ml SPARQL11_Algebra.ml w3c_tests.ml \
-    -o w3c_tests.byte 2>&1 | grep -i error || true
-
-  js_of_ocaml \
-    +zarith_stubs_js/biginteger.js \
-    +zarith_stubs_js/runtime.js \
-    fstar_int_stubs.js \
-    w3c_tests.byte \
-    -o ../../../docs/fstar-extracted/w3c-tests.js 2>&1 | grep -v "Warning \[deprecated" | grep -v "^$" || true
-
-  echo "  Built: docs/fstar-extracted/w3c-tests.js ($(wc -c < ../../../docs/fstar-extracted/w3c-tests.js) bytes)"
+  echo "  Built: docs/fstar-extracted/w3c-runner.js ($(wc -c < ../../../docs/fstar-extracted/w3c-runner.js) bytes)"
 
   cd ..
   echo ""

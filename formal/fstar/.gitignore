@@ -9,6 +9,7 @@
 ocaml-output/example
 ocaml-output/w3c_tests
 ocaml-output/w3c_runner
+ocaml-output/factoidal
 ocaml-output/test_parser
 ocaml-output/test_fstar_parser
 z3-4.13.3

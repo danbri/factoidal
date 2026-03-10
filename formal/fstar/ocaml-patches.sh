@@ -125,6 +125,21 @@ let regex_match (text : Prims.string) (pattern : Prims.string)
   with _ -> false'''
 )
 
+# 2a2. Replace regex_replace stub with OCaml Str implementation
+# SPARQL REPLACE() uses XPath fn:replace: full regex with backreferences + flags
+content = content.replace(
+    '''let regex_replace (uu___ : Prims.string) (uu___1 : Prims.string)
+  (uu___2 : Prims.string)
+  (uu___3 : Prims.string FStar_Pervasives_Native.option) : Prims.string=
+  failwith \"Not yet implemented: SPARQL11.Algebra.regex_replace\"''',
+    '''let regex_replace_ref : (Prims.string -> Prims.string -> Prims.string -> Prims.string FStar_Pervasives_Native.option -> Prims.string) ref =
+  ref (fun t _ _ _ -> t)
+let regex_replace (text : Prims.string) (pattern : Prims.string)
+  (replacement : Prims.string)
+  (flags : Prims.string FStar_Pervasives_Native.option) : Prims.string=
+  !regex_replace_ref text pattern replacement flags'''
+)
+
 # 2b. Replace hash function stubs with OCaml Digest implementations
 content = content.replace(
     '''let hash_md5 (uu___ : Prims.string) : Prims.string=
@@ -136,31 +151,25 @@ content = content.replace(
     '''let hash_sha1 (uu___ : Prims.string) : Prims.string=
   failwith \"Not yet implemented: SPARQL11.Algebra.hash_sha1\"''',
     '''let hash_sha1 (s : Prims.string) : Prims.string=
-  (* SHA-1 not in stdlib Digest — return placeholder until a crypto lib is added *)
-  let hex_of_char c = Printf.sprintf \"%02x\" (Char.code c) in
-  let d = Digest.string s in
-  String.concat \"\" (List.init (String.length d) (fun i -> hex_of_char d.[i]))'''
+  Sha1.to_hex (Sha1.string s)'''
 )
 content = content.replace(
     '''let hash_sha256 (uu___ : Prims.string) : Prims.string=
   failwith \"Not yet implemented: SPARQL11.Algebra.hash_sha256\"''',
     '''let hash_sha256 (s : Prims.string) : Prims.string=
-  (* SHA-256 not in stdlib Digest — return placeholder *)
-  Digest.to_hex (Digest.string (\"sha256:\" ^ s))'''
+  Sha256.to_hex (Sha256.string s)'''
 )
 content = content.replace(
     '''let hash_sha384 (uu___ : Prims.string) : Prims.string=
   failwith \"Not yet implemented: SPARQL11.Algebra.hash_sha384\"''',
     '''let hash_sha384 (s : Prims.string) : Prims.string=
-  (* SHA-384 not in stdlib Digest — return placeholder *)
-  Digest.to_hex (Digest.string (\"sha384:\" ^ s))'''
+  Digestif.SHA384.(to_hex (digest_string s))'''
 )
 content = content.replace(
     '''let hash_sha512 (uu___ : Prims.string) : Prims.string=
   failwith \"Not yet implemented: SPARQL11.Algebra.hash_sha512\"''',
     '''let hash_sha512 (s : Prims.string) : Prims.string=
-  (* SHA-512 not in stdlib Digest — return placeholder *)
-  Digest.to_hex (Digest.string (\"sha512:\" ^ s))'''
+  Sha512.to_hex (Sha512.string s)'''
 )
 
 # 2b2. Replace UUID/STRUUID hardcoded stubs with random UUID v4 generation.
@@ -251,6 +260,43 @@ let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)
 type group = {'''
 )
 
+# 3b. Wire regex_replace_ref after xpath_to_str_regex is defined
+# (xpath_to_str_regex is defined inside the regex_match patch)
+content = content.replace(
+    '''let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
+let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)''',
+    '''let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
+let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)
+let () = regex_replace_ref := (fun text pattern replacement flags ->
+  try
+    let case_insensitive = match flags with
+      | FStar_Pervasives_Native.Some f -> String.contains f 'i'
+      | FStar_Pervasives_Native.None -> false in
+    let converted = xpath_to_str_regex pattern in
+    let re = if case_insensitive
+      then Str.regexp_case_fold converted
+      else Str.regexp converted in
+    (* Convert XPath backrefs to OCaml Str backrefs: dollar-n -> backslash-n *)
+    let open Stdlib in
+    let len = String.length replacement in
+    let buf = Buffer.create len in
+    let i = ref 0 in
+    while !i < len do
+      if replacement.[!i] = '$' && !i + 1 < len &&
+         replacement.[!i + 1] >= '0' && replacement.[!i + 1] <= '9' then begin
+        Buffer.add_char buf (Char.chr 92);
+        Buffer.add_char buf replacement.[!i + 1];
+        i := !i + 2
+      end else begin
+        Buffer.add_char buf replacement.[!i];
+        i := !i + 1
+      end
+    done;
+    let repl = Buffer.contents buf in
+    Str.global_replace re repl text
+  with _ -> text)'''
+)
+
 # 4. Wire eval_exists_fwd_ref after eval_exists is defined
 content = content.replace(
     'let filter_solutions (e : expr) (omega : solution_sequence) :',
@@ -325,3 +371,9 @@ with open('$FILE', 'w') as f:
 "
 
 echo "  Patches applied successfully."
+
+# ======================================================================
+# SPARQL11_Parser.ml — no patches needed
+# All assume vals (char_at, substring, string_upper, parse_expr, etc.)
+# are now implemented directly in F* and extracted. No stubs required.
+# ======================================================================

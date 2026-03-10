@@ -1,0 +1,16 @@
+# OCaml compilation artifacts (platform-specific, rebuilt by ../build-ocaml.sh)
+*.cmi
+*.cmx
+*.cmo
+*.o
+*.a
+*.cmxa
+*.cma
+*.byte
+*.js.map
+
+# Native executables are committed (ELF x86-64 linux)
+# Rebuild with: ../build-ocaml.sh compile
+
+# js_of_ocaml output
+*.bc.js

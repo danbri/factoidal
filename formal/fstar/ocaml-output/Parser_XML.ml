@@ -518,7 +518,8 @@ let rec parse_children (input : Prims.string) (pos : Prims.nat)
                         | Parser_Combinators.ParseFail (msg, fpos) ->
                             Parser_Combinators.ParseFail (msg, fpos)))
                 else
-                  (match parse_xml_element input pos fuel with
+                  (match parse_xml_element input pos (fuel - Prims.int_one)
+                   with
                    | Parser_Combinators.ParseOk (elem, pos') ->
                        (match parse_children input pos'
                                 (fuel - Prims.int_one)
@@ -557,7 +558,10 @@ and parse_xml_element (input : Prims.string) (pos : Prims.nat)
          (match parse_xml_name input pos1 with
           | Parser_Combinators.ParseOk (tag, pos2) ->
               let len = FStar_String.strlen input in
-              let attr_fuel = (len - pos2) + Prims.int_one in
+              let attr_fuel =
+                if pos2 <= len
+                then (len - pos2) + Prims.int_one
+                else Prims.int_one in
               (match parse_attributes input pos2 attr_fuel with
                | Parser_Combinators.ParseOk (attrs, pos3) ->
                    (match skip_xml_space input pos3 with
@@ -701,7 +705,12 @@ let rec text_content (node : xml_node) : Prims.string=
   | XCDATA t -> t
   | XComment uu___ -> ""
   | XElement (uu___, uu___1, children) ->
-      FStar_String.concat "" (FStar_List_Tot_Base.map text_content children)
+      FStar_String.concat "" (text_content_list children)
+and text_content_list (nodes : xml_node Prims.list) :
+  Prims.string Prims.list=
+  match nodes with
+  | [] -> []
+  | hd::tl -> (text_content hd) :: (text_content_list tl)
 let child_elements (tag : Prims.string) (node : xml_node) :
   xml_node Prims.list=
   match node with

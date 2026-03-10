@@ -58,7 +58,7 @@ let trig_dataset_add (ds : rdf_dataset) (t : triple) (graph_name : option iri) :
 
 (** Add a list of triples to the appropriate graph *)
 let rec trig_dataset_add_triples (ds : rdf_dataset) (triples : list triple) (graph_name : option iri)
-  : rdf_dataset =
+  : Tot rdf_dataset (decreases triples) =
   match triples with
   | [] -> ds
   | t :: rest -> trig_dataset_add_triples (trig_dataset_add ds t graph_name) rest graph_name
@@ -132,11 +132,22 @@ let is_graph_keyword (input: string) (pos: nat) : bool =
 
 (** Parse the body of a graph block: Turtle statements until '}'.
     Returns (triples, updated_state). *)
+let rec graph_body_skip_line (input: string) (p: nat) (f: nat) : Tot nat (decreases f) =
+  if f = 0 then p
+  else if p >= String.length input then p
+  else
+    let ch = String.index input p in
+    let cd = int_of_char ch in
+    if cd = 0x0A || cd = 0x0D then p + 1
+    else if cd = 0x7D then p
+    else graph_body_skip_line input (p + 1) (f - 1)
+
 let rec parse_graph_body (st: turtle_state) (input: string) (pos: nat)
     (acc: list triple) (fuel: nat)
   : Tot (parse_result (list triple & turtle_state)) (decreases fuel) =
   if fuel = 0 then ParseOk (List.Tot.rev acc, st) pos
   else
+    let fuel' : nat = fuel - 1 in
     let len = String.length input in
     match turtle_ws input pos with
     | ParseOk () pos1 ->
@@ -144,35 +155,22 @@ let rec parse_graph_body (st: turtle_state) (input: string) (pos: nat)
       else
         let c = String.index input pos1 in
         let code = int_of_char c in
-        if code = 0x7D then (* '}' — end of graph block *)
+        if code = 0x7D then
           ParseOk (List.Tot.rev acc, st) (pos1 + 1)
         else
-          (* Try to parse a Turtle statement *)
           begin match parse_turtle_statement st input pos1 fuel with
           | ParseOk (triples, st') pos2 ->
             if pos2 = pos1 then
-              (* No progress — stop *)
               ParseOk (List.Tot.rev (List.Tot.append (List.Tot.rev triples) acc), st') pos2
             else
               parse_graph_body st' input pos2
-                (List.Tot.append (List.Tot.rev triples) acc) (fuel - 1)
+                (List.Tot.append (List.Tot.rev triples) acc) fuel'
           | ParseFail _ _ ->
-            (* On failure, skip to next line and try again *)
-            let rec skip_line (p: nat) (f: nat) : Tot nat (decreases f) =
-              if f = 0 then p
-              else if p >= len then p
-              else
-                let ch = String.index input p in
-                let cd = int_of_char ch in
-                if cd = 0x0A || cd = 0x0D then p + 1
-                else if cd = 0x7D then p  (* Don't skip past '}' *)
-                else skip_line (p + 1) (f - 1)
-            in
-            let pos2 = skip_line pos1 (len - pos1) in
+            let pos2 = graph_body_skip_line input pos1 (len - pos1) in
             if pos2 = pos1 then
               ParseOk (List.Tot.rev acc, st) pos1
             else
-              parse_graph_body st input pos2 acc (fuel - 1)
+              parse_graph_body st input pos2 acc fuel'
           end
 
 (* ================================================================ *)
@@ -193,6 +191,7 @@ let parse_trig_statement (st: turtle_state) (input: string) (pos: nat) (fuel: na
   : Tot (parse_result (list (option iri & list triple) & turtle_state)) (decreases fuel) =
   if fuel = 0 then ParseFail "recursion limit" pos
   else
+    let fuel' : nat = fuel - 1 in
     let len = String.length input in
     match turtle_ws input pos with
     | ParseOk () pos1 ->
@@ -270,36 +269,48 @@ let parse_trig_statement (st: turtle_state) (input: string) (pos: nat) (fuel: na
                     (* Not followed by '{' — this is a regular Turtle triples statement.
                        We already consumed the subject (the IRI/bnode), so we need to parse
                        the predicate-object list. The candidate_name is actually the subject IRI. *)
-                    let subj : subject =
-                      (* Check if candidate_name starts with "_:" for blank node *)
-                      if String.length candidate_name >= 2 then
-                        let c0 = String.index candidate_name 0 in
-                        let c1 = String.index candidate_name 1 in
-                        if int_of_char c0 = 0x5F && int_of_char c1 = 0x3A then
-                          (* It's a blank node — strip the "_:" prefix *)
-                          let bname = if String.length candidate_name > 2
-                                      then String.sub candidate_name 2 (String.length candidate_name - 2)
-                                      else "" in
-                          S_BNode bname
-                        else
-                          S_IRI candidate_name
-                      else
-                        S_IRI candidate_name
+                    (* Check if candidate_name starts with "_:" for blank node *)
+                    let is_bnode =
+                      String.length candidate_name >= 2 &&
+                      (let c0 = String.index candidate_name 0 in
+                       let c1 = String.index candidate_name 1 in
+                       int_of_char c0 = 0x5F && int_of_char c1 = 0x3A)
                     in
-                    begin match parse_predicate_object_list st2 subj input pos3 (fuel - 1) with
-                    | ParseOk (po_triples, st3) pos4 ->
-                      (* Expect optional '.' *)
-                      begin match turtle_ws input pos4 with
-                      | ParseOk () pos5 ->
-                        let pos6 =
-                          if pos5 < len && int_of_char (String.index input pos5) = 0x2E
-                          then pos5 + 1
-                          else pos5
-                        in
-                        ParseOk ([(None, po_triples)], st3) pos6
+                    if is_bnode then
+                      let bname = if String.length candidate_name > 2
+                                  then String.sub candidate_name 2 (String.length candidate_name - 2)
+                                  else "" in
+                      let subj = S_BNode bname in
+                      begin match parse_predicate_object_list st2 subj input pos3 fuel' with
+                      | ParseOk (po_triples, st3) pos4 ->
+                        begin match turtle_ws input pos4 with
+                        | ParseOk () pos5 ->
+                          let pos6 =
+                            if pos5 < len && int_of_char (String.index input pos5) = 0x2E
+                            then pos5 + 1
+                            else pos5
+                          in
+                          ParseOk ([(None, po_triples)], st3) pos6
+                        end
+                      | ParseFail msg fpos -> ParseFail msg fpos
                       end
-                    | ParseFail msg fpos -> ParseFail msg fpos
-                    end
+                    else if is_iri candidate_name then
+                      let subj = S_IRI candidate_name in
+                      begin match parse_predicate_object_list st2 subj input pos3 fuel' with
+                      | ParseOk (po_triples, st3) pos4 ->
+                        begin match turtle_ws input pos4 with
+                        | ParseOk () pos5 ->
+                          let pos6 =
+                            if pos5 < len && int_of_char (String.index input pos5) = 0x2E
+                            then pos5 + 1
+                            else pos5
+                          in
+                          ParseOk ([(None, po_triples)], st3) pos6
+                        end
+                      | ParseFail msg fpos -> ParseFail msg fpos
+                      end
+                    else
+                      ParseFail "invalid IRI for subject" pos3
                 end
               | ParseFail _ _ ->
                 (* Case 6: Other Turtle constructs (blank node subjects like [], (), etc.) *)
@@ -322,6 +333,7 @@ let rec parse_trig_doc (st: turtle_state) (input: string) (pos: nat)
   : Tot (rdf_dataset & turtle_state) (decreases fuel) =
   if fuel = 0 then (ds, st)
   else
+    let fuel' : nat = fuel - 1 in
     let len = String.length input in
     match turtle_ws input pos with
     | ParseOk () pos1 ->
@@ -330,7 +342,6 @@ let rec parse_trig_doc (st: turtle_state) (input: string) (pos: nat)
         begin match parse_trig_statement st input pos1 fuel with
         | ParseOk (deltas, st') pos2 ->
           if pos2 = pos1 then
-            (* No progress — stop *)
             let ds' = List.Tot.fold_left
               (fun (acc : rdf_dataset) (delta : option iri & list triple) ->
                 let (gname, triples) = delta in
@@ -345,21 +356,12 @@ let rec parse_trig_doc (st: turtle_state) (input: string) (pos: nat)
                 trig_dataset_add_triples acc triples gname)
               ds deltas
             in
-            parse_trig_doc st' input pos2 ds' (fuel - 1)
+            parse_trig_doc st' input pos2 ds' fuel'
         | ParseFail _ _ ->
           (* Skip to next line on failure *)
-          let rec skip_line (p: nat) (f: nat) : Tot nat (decreases f) =
-            if f = 0 then p
-            else if p >= len then p
-            else
-              let ch = String.index input p in
-              let cd = int_of_char ch in
-              if cd = 0x0A || cd = 0x0D then p + 1
-              else skip_line (p + 1) (f - 1)
-          in
-          let pos2 = skip_line pos1 (len - pos1) in
+          let pos2 = graph_body_skip_line input pos1 (len - pos1) in
           if pos2 = pos1 then (ds, st)
-          else parse_trig_doc st input pos2 ds (fuel - 1)
+          else parse_trig_doc st input pos2 ds fuel'
         end
 
 (* ================================================================ *)

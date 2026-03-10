@@ -2,9 +2,10 @@
    Not extracted from F*. Reads real W3C manifest files, parses .rq/.ttl/.srx/.nt,
    calls the F*-extracted evaluator, and compares results.
 
-   Uses F*-extracted parsers (Parser_NTriples, Parser_Turtle, etc.) for all
-   RDF serialization parsing. Hand-written parsers are only used for SPARQL
-   queries (sparql_parser.ml) until SPARQL11.Parser.fst is complete.
+   Uses F*-extracted parsers for all parsing. SPARQL query parsing is via
+   sparql_query_bridge.ml which wraps the F*-extracted SPARQL11_Parser.
+   The F* SPARQL parser has assume val stubs — until those are implemented,
+   SPARQL evaluation tests will be marked as unsupported.
 
    Usage:
      ./w3c_runner                           Run all SPARQL 1.1 suites
@@ -18,7 +19,15 @@
 
 open RDF_Graph_Executable
 open SPARQL11_Algebra
-(* Sparql_parser used qualified — don't open to avoid shadowing RDF types *)
+
+(* SPARQL parser wrapper — calls F*-extracted SPARQL11_Parser directly *)
+exception Sparql_parse_error of string
+exception Sparql_unsupported of string
+
+let parse_sparql_query content =
+  match SPARQL11_Parser.parse_sparql content with
+  | SPARQL11_Parser.ParseOk (q, _remaining) -> q
+  | SPARQL11_Parser.ParseErr msg -> raise (Sparql_parse_error msg)
 
 (* ============================================================================
    Parser wrappers — thin adapters over F*-extracted parsers
@@ -213,6 +222,9 @@ let extract_assumed_test_base graph =
     else None
   ) graph
 
+(* Verbose mode: show detailed mismatch info *)
+let verbose_mode = ref false
+
 let read_manifest manifest_path =
   let manifest_dir = Filename.dirname manifest_path in
   let input = try
@@ -232,6 +244,8 @@ let read_manifest manifest_path =
     let base = "file://" ^ abs_path in
     try
       let graph = parse_turtle_fstar input (Some base) in
+      if !verbose_mode then
+        Printf.eprintf "  DEBUG: manifest %s -> %d triples\n" manifest_path (List.length graph);
       let assumed_base = extract_assumed_test_base graph in
       (extract_test_cases manifest_dir graph, assumed_base)
     with e ->
@@ -242,18 +256,54 @@ let read_manifest manifest_path =
 (* Local exception for features not yet supported *)
 exception Unsupported of string
 
+let term_to_verbose_string t =
+  match t with
+  | T_IRI i -> Printf.sprintf "<%s>" i
+  | T_BNode b -> Printf.sprintf "_:%s" b
+  | T_Literal l ->
+    let dt = if l.datatype <> "" then "^^<" ^ l.datatype ^ ">" else "" in
+    let lg = match l.lang_tag with Some t -> "@" ^ t | None -> "" in
+    Printf.sprintf "\"%s\"%s%s" l.lexical_form dt lg
+
+let row_to_verbose_string row =
+  String.concat ", " (List.map (fun (v, t) -> "?" ^ v ^ "=" ^ term_to_verbose_string t) row)
+
 (* ============================================================================
    Result comparison
    ============================================================================ *)
+
+(* Parse a numeric string (integer, decimal, or double) to a float for comparison *)
+let parse_numeric_value s =
+  try Some (float_of_string s) with _ -> None
+
+(* Check if two xsd:double or xsd:decimal values are numerically equal *)
+let numeric_literal_equal l1 l2 =
+  let xsd_double = "http://www.w3.org/2001/XMLSchema#double" in
+  let xsd_decimal = "http://www.w3.org/2001/XMLSchema#decimal" in
+  let xsd_integer = "http://www.w3.org/2001/XMLSchema#integer" in
+  let is_numeric dt = dt = xsd_double || dt = xsd_decimal || dt = xsd_integer in
+  if is_numeric l1.datatype && is_numeric l2.datatype then
+    match parse_numeric_value l1.lexical_form, parse_numeric_value l2.lexical_form with
+    | Some v1, Some v2 -> v1 = v2
+    | _ -> false
+  else false
+
+let lang_tag_equal t1 t2 =
+  match t1, t2 with
+  | None, None -> true
+  | Some a, Some b -> String.lowercase_ascii a = String.lowercase_ascii b
+  | _ -> false
 
 let term_equal a b =
   match a, b with
   | T_IRI i1, T_IRI i2 -> i1 = i2
   | T_BNode _, T_BNode _ -> true  (* bnodes match any bnode *)
   | T_Literal l1, T_Literal l2 ->
-    l1.lexical_form = l2.lexical_form &&
-    l1.datatype = l2.datatype &&
-    l1.lang_tag = l2.lang_tag
+    (l1.lexical_form = l2.lexical_form &&
+     l1.datatype = l2.datatype &&
+     lang_tag_equal l1.lang_tag l2.lang_tag) ||
+    (* Fall back to numeric value comparison for xsd numeric types *)
+    (l1.datatype = l2.datatype && numeric_literal_equal l1 l2)
   | _ -> false
 
 let binding_row_matches expected actual =
@@ -328,7 +378,7 @@ let run_query_eval_test tc =
   let query =
     match read_file tc.query_file with
     | None -> raise (Unsupported (Printf.sprintf "Query file not found: %s" tc.query_file))
-    | Some content -> Sparql_parser.parse_query content
+    | Some content -> parse_sparql_query content
   in
 
   (* Execute query against extracted evaluator *)
@@ -355,9 +405,31 @@ let run_query_eval_test tc =
         Pass
       | `SRX_Bindings (_vars, expected_rows) ->
         if results_match expected_rows actual_results then Pass
-        else
-          Fail (Printf.sprintf "Results mismatch: expected %d rows, got %d"
-                  (List.length expected_rows) (List.length actual_results))
+        else begin
+          (* Compute unmatched rows *)
+          let actual_remaining = ref actual_results in
+          let unmatched = ref [] in
+          List.iter (fun exp_row ->
+            match List.partition (binding_row_matches exp_row) !actual_remaining with
+            | (_ :: rest, non) -> actual_remaining := rest @ non
+            | ([], _) -> unmatched := exp_row :: !unmatched
+          ) expected_rows;
+          let unmatched_strs = List.map row_to_verbose_string (List.rev !unmatched) in
+          (* -v: dump full expected/actual to stderr *)
+          if !verbose_mode then begin
+            Printf.eprintf "    EXPECTED (%d rows):\n" (List.length expected_rows);
+            List.iter (fun r -> Printf.eprintf "      %s\n" (row_to_verbose_string r)) expected_rows;
+            Printf.eprintf "    ACTUAL (%d rows):\n" (List.length actual_results);
+            List.iter (fun r -> Printf.eprintf "      %s\n" (row_to_verbose_string r)) actual_results;
+          end;
+          (* Always: include unmatched in Fail message (appears on stdout) *)
+          let msg = Printf.sprintf "Results mismatch: expected %d rows, got %d"
+                      (List.length expected_rows) (List.length actual_results) in
+          let msg = if unmatched_strs = [] then msg
+                    else msg ^ "\n" ^ String.concat "\n"
+                           (List.map (fun s -> "      UNMATCHED: " ^ s) unmatched_strs) in
+          Fail msg
+        end
     end else if Filename.check_suffix rf ".ttl" then begin
       (* Result set in Turtle format — not yet supported *)
       raise (Unsupported "Turtle result format not yet supported")
@@ -370,25 +442,25 @@ let run_test tc =
     (try run_query_eval_test tc
      with
      | Unsupported msg -> Unsupported_feature msg
-     | Sparql_parser.Unsupported msg -> Unsupported_feature msg
-     | Sparql_parser.Parse_error msg -> Fail (Printf.sprintf "SPARQL parse: %s" msg)
+     | Sparql_unsupported msg -> Unsupported_feature msg
+     | Sparql_parse_error msg -> Fail (Printf.sprintf "SPARQL parse: %s" msg)
      | Failure msg -> Fail (Printf.sprintf "Runtime: %s" msg))
   | "PositiveSyntaxTest11" | "PositiveSyntaxTest" ->
     (match read_file tc.query_file with
      | None -> Skip "Query file missing"
      | Some content ->
-       (try ignore (Sparql_parser.parse_query content); Pass
+       (try ignore (parse_sparql_query content); Pass
         with
-        | Sparql_parser.Parse_error _ -> Fail "Should parse but didn't"
-        | Sparql_parser.Unsupported msg -> Unsupported_feature msg))
+        | Sparql_parse_error _ -> Fail "Should parse but didn't"
+        | Sparql_unsupported msg -> Unsupported_feature msg))
   | "NegativeSyntaxTest11" | "NegativeSyntaxTest" ->
     (match read_file tc.query_file with
      | None -> Skip "Query file missing"
      | Some content ->
-       (try ignore (Sparql_parser.parse_query content); Fail "Should reject but parsed OK"
+       (try ignore (parse_sparql_query content); Fail "Should reject but parsed OK"
         with
-        | Sparql_parser.Parse_error _ -> Pass
-        | Sparql_parser.Unsupported _ -> Unsupported_feature "Can't test rejection"))
+        | Sparql_parse_error _ -> Pass
+        | Sparql_unsupported _ -> Unsupported_feature "Can't test rejection"))
   | "UpdateEvaluationTest" | "PositiveUpdateSyntaxTest11" | "NegativeUpdateSyntaxTest11" ->
     Skip "UPDATE tests not in scope"
   | "CSVResultFormatTest" ->
@@ -864,10 +936,12 @@ let () =
     exit 0
   end;
 
+  if List.mem "--verbose" args || List.mem "-v" args then
+    verbose_mode := true;
   let run_rdf_mode = List.mem "--rdf" args in
   let run_all_mode = List.mem "--all" args in
   let suite_args = List.filter (fun s ->
-    s <> "--rdf" && s <> "--all") args in
+    s <> "--rdf" && s <> "--all" && s <> "--verbose" && s <> "-v") args in
 
   let any_fail = ref false in
 

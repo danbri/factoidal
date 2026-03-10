@@ -16,11 +16,14 @@ let tag_matches (expected : Prims.string) (actual : Prims.string) :
 let find_child (tag : Prims.string)
   (children : Parser_XML.xml_node Prims.list) :
   Parser_XML.xml_node FStar_Pervasives_Native.option=
-  FStar_List_Tot_Base.find
-    (fun node ->
-       match node with
-       | Parser_XML.XElement (t, uu___, uu___1) -> tag_matches tag t
-       | uu___ -> false) children
+  match FStar_List_Tot_Base.find
+          (fun node ->
+             match node with
+             | Parser_XML.XElement (t, uu___, uu___1) -> tag_matches tag t
+             | uu___ -> false) children
+  with
+  | FStar_Pervasives_Native.Some n -> FStar_Pervasives_Native.Some n
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
 let find_children (tag : Prims.string)
   (children : Parser_XML.xml_node Prims.list) :
   Parser_XML.xml_node Prims.list=
@@ -38,13 +41,8 @@ let get_attr (name : Prims.string)
   | FStar_Pervasives_Native.Some a ->
       FStar_Pervasives_Native.Some (a.Parser_XML.attr_value)
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-let rec collect_text (node : Parser_XML.xml_node) : Prims.string=
-  match node with
-  | Parser_XML.XText t -> t
-  | Parser_XML.XCDATA t -> t
-  | Parser_XML.XComment uu___ -> ""
-  | Parser_XML.XElement (uu___, uu___1, children) ->
-      FStar_String.concat "" (FStar_List_Tot_Base.map collect_text children)
+let collect_text (node : Parser_XML.xml_node) : Prims.string=
+  Parser_XML.text_content node
 let parse_uri_value (node : Parser_XML.xml_node) :
   RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
   let uri_str = collect_text node in

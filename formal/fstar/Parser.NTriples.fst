@@ -19,12 +19,19 @@ let hex_val (c:FStar.Char.char) : int =
 
 (* Convert a code point integer to a single-character string.
    F* Char supports full Unicode via FStar.Char.char_of_int. *)
-let codepoint_to_string (cp:int) : string =
-  if cp >= 0 && cp <= 0x10FFFF then
-    String.string_of_char (FStar.Char.char_of_int cp)
+let valid_codepoint (cp:int) : bool =
+  cp >= 0 && (cp < 0xD7FF || (cp >= 0xE000 && cp <= 0x10FFFF))
+
+(* Safe char_of_int: validates codepoint, returns U+FFFD replacement for invalid *)
+let safe_char_of_int (cp:int) : FStar.Char.char =
+  if valid_codepoint cp then
+    let n : nat = cp in
+    FStar.Char.char_of_int n
   else
-    (* replacement character for invalid code points *)
-    String.string_of_char (FStar.Char.char_of_int 0xFFFD)
+    FStar.Char.char_of_int 0xFFFD
+
+let codepoint_to_string (cp:int) : string =
+  String.string_of_char (safe_char_of_int cp)
 
 (* ================================================================ *)
 (* N-Triples whitespace (space and tab only, not newline)           *)
@@ -72,7 +79,7 @@ let rec parse_iri_body_acc (input:string) (pos:nat) (acc:list char) (fuel:nat)
               let h2 = hex_val (String.index input (pos + 4)) in
               let h3 = hex_val (String.index input (pos + 5)) in
               let cp = ((h0 `op_Multiply` 4096) + (h1 `op_Multiply` 256) + (h2 `op_Multiply` 16) + h3) in
-              let c = FStar.Char.char_of_int cp in
+              let c = safe_char_of_int cp in
               parse_iri_body_acc input (pos + 6) (c :: acc) (fuel - 1)
           else if ncode = 0x55 then (* 'U' - \UXXXXXXXX *)
             if pos + 10 > len then ParseFail "incomplete \\U escape in IRI" pos
@@ -87,7 +94,7 @@ let rec parse_iri_body_acc (input:string) (pos:nat) (acc:list char) (fuel:nat)
               let h7 = hex_val (String.index input (pos + 9)) in
               let cp = ((h0 `op_Multiply` 268435456) + (h1 `op_Multiply` 16777216) + (h2 `op_Multiply` 1048576) + (h3 `op_Multiply` 65536)
                      + (h4 `op_Multiply` 4096) + (h5 `op_Multiply` 256) + (h6 `op_Multiply` 16) + h7) in
-              let c = FStar.Char.char_of_int cp in
+              let c = safe_char_of_int cp in
               parse_iri_body_acc input (pos + 10) (c :: acc) (fuel - 1)
           else
             ParseFail "invalid escape in IRI" pos
@@ -96,7 +103,7 @@ let rec parse_iri_body_acc (input:string) (pos:nat) (acc:list char) (fuel:nat)
       else
         parse_iri_body_acc input (pos + 1) (ch :: acc) (fuel - 1)
 
-let parse_iri : parser iri =
+let parse_iri_raw : parser iri =
   fun input pos ->
     let len = String.length input in
     if pos >= len then ParseFail "expected '<'" pos
@@ -107,6 +114,14 @@ let parse_iri : parser iri =
         parse_iri_body_acc input (pos + 1) [] fuel
       else
         ParseFail "expected '<'" pos
+
+let parse_iri : parser wf_iri =
+  fun input pos ->
+    match parse_iri_raw input pos with
+    | ParseOk i pos' ->
+      if is_iri i then ParseOk i pos'
+      else ParseFail "invalid IRI" pos
+    | ParseFail msg fpos -> ParseFail msg fpos
 
 (* ================================================================ *)
 (* Blank node parser: _:label                                       *)
@@ -173,10 +188,9 @@ let parse_bnode : parser bnode_id =
             | ParseOk label pos' ->
               (* Blank node labels must not end with '.' *)
               let label_len = String.length label in
-              if label_len > 0 then
+              if label_len > 0 && pos' > 0 then
                 let last_ch = String.index label (label_len - 1) in
                 if FStar.Char.int_of_char last_ch = 0x2E then
-                  (* Strip trailing dot — it's not part of the label *)
                   ParseOk (String.sub label 0 (label_len - 1)) (pos' - 1)
                 else
                   ParseOk label pos'
@@ -232,7 +246,7 @@ let rec parse_string_body (input:string) (pos:nat) (acc:list char) (fuel:nat)
               let h2 = hex_val (String.index input (pos + 4)) in
               let h3 = hex_val (String.index input (pos + 5)) in
               let cp = ((h0 `op_Multiply` 4096) + (h1 `op_Multiply` 256) + (h2 `op_Multiply` 16) + h3) in
-              let c = FStar.Char.char_of_int cp in
+              let c = safe_char_of_int cp in
               parse_string_body input (pos + 6) (c :: acc) (fuel - 1)
           else if esc_code = 0x55 then (* \UXXXXXXXX *)
             if pos + 10 > len then ParseFail "incomplete \\U escape" pos
@@ -247,7 +261,7 @@ let rec parse_string_body (input:string) (pos:nat) (acc:list char) (fuel:nat)
               let h7 = hex_val (String.index input (pos + 9)) in
               let cp = ((h0 `op_Multiply` 268435456) + (h1 `op_Multiply` 16777216) + (h2 `op_Multiply` 1048576) + (h3 `op_Multiply` 65536)
                      + (h4 `op_Multiply` 4096) + (h5 `op_Multiply` 256) + (h6 `op_Multiply` 16) + h7) in
-              let c = FStar.Char.char_of_int cp in
+              let c = safe_char_of_int cp in
               parse_string_body input (pos + 10) (c :: acc) (fuel - 1)
           else
             ParseFail (String.concat "" ["invalid escape: \\"; String.string_of_char esc]) pos
@@ -298,7 +312,7 @@ let parse_lang_tag : parser string =
 (* Datatype parser: ^^<iri>                                         *)
 (* ================================================================ *)
 
-let parse_datatype : parser iri =
+let parse_datatype : parser wf_iri =
   fun input pos ->
     let len = String.length input in
     if pos + 2 > len then ParseFail "expected '^^'" pos
@@ -314,32 +328,40 @@ let parse_datatype : parser iri =
 (* Literal parser: "string" optionally followed by @lang or ^^<dt>  *)
 (* ================================================================ *)
 
-let parse_literal : parser literal =
+let parse_literal : parser wf_literal =
   fun input pos ->
     match parse_string_literal input pos with
     | ParseOk lexical pos' ->
       let len = String.length input in
       if pos' >= len then
         (* Plain literal — per RDF 1.1, has datatype xsd:string *)
-        ParseOk ({ lexical_form = lexical; datatype = xsd_string; lang_tag = None }) pos'
+        let lit = { lexical_form = lexical; datatype = xsd_string; lang_tag = None } in
+        if literal_wf lit then ParseOk lit pos'
+        else ParseFail "invalid literal" pos
       else
         let next = String.index input pos' in
         let next_code = FStar.Char.int_of_char next in
         if next_code = 0x40 then (* '@' — language tag *)
           begin match parse_lang_tag input pos' with
           | ParseOk lang pos'' ->
-            ParseOk ({ lexical_form = lexical; datatype = rdf_lang_string; lang_tag = Some lang }) pos''
+            let lit = { lexical_form = lexical; datatype = rdf_lang_string; lang_tag = Some lang } in
+            if literal_wf lit then ParseOk lit pos''
+            else ParseFail "invalid literal" pos
           | ParseFail msg fpos -> ParseFail msg fpos
           end
         else if next_code = 0x5E then (* '^' — might be '^^' datatype *)
           begin match parse_datatype input pos' with
           | ParseOk dt pos'' ->
-            ParseOk ({ lexical_form = lexical; datatype = dt; lang_tag = None }) pos''
+            let lit = { lexical_form = lexical; datatype = dt; lang_tag = None } in
+            if literal_wf lit then ParseOk lit pos''
+            else ParseFail "invalid literal" pos
           | ParseFail msg fpos -> ParseFail msg fpos
           end
         else
           (* Plain literal *)
-          ParseOk ({ lexical_form = lexical; datatype = xsd_string; lang_tag = None }) pos'
+          let lit = { lexical_form = lexical; datatype = xsd_string; lang_tag = None } in
+          if literal_wf lit then ParseOk lit pos'
+          else ParseFail "invalid literal" pos
     | ParseFail msg fpos -> ParseFail msg fpos
 
 (* ================================================================ *)
@@ -494,9 +516,9 @@ let rec parse_ntriples_acc (input:string) (pos:nat) (acc:list triple) (fuel:nat)
     if pos >= len then List.Tot.rev acc
     else
       (* Skip whitespace (space/tab) *)
-      let pos1 = match pws input pos with
-                 | ParseOk () p -> p
-                 | _ -> pos in
+      let pos1 : nat = match pws input pos with
+                       | ParseOk () p -> p
+                       | _ -> pos in
       if pos1 >= len then List.Tot.rev acc
       else
         let ch = String.index input pos1 in

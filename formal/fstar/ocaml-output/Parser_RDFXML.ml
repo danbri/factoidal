@@ -104,12 +104,15 @@ let split_qname (name : Prims.string) : (Prims.string * Prims.string)=
       if pos = Prims.int_zero
       then ("", name)
       else
-        if (pos + Prims.int_one) >= len
-        then ((FStar_String.sub name Prims.int_zero pos), "")
+        if pos >= len
+        then (name, "")
         else
-          ((FStar_String.sub name Prims.int_zero pos),
-            (FStar_String.sub name (pos + Prims.int_one)
-               ((len - pos) - Prims.int_one)))
+          if (pos + Prims.int_one) >= len
+          then ((FStar_String.sub name Prims.int_zero pos), "")
+          else
+            ((FStar_String.sub name Prims.int_zero pos),
+              (FStar_String.sub name (pos + Prims.int_one)
+                 ((len - pos) - Prims.int_one)))
   | FStar_Pervasives_Native.None -> ("", name)
 let rec lookup_ns (prefix : Prims.string)
   (nss : (Prims.string * Prims.string) Prims.list) :
@@ -664,8 +667,13 @@ and process_property_element (st : rdfxml_state)
                  let uu___2 = next_li st1 in
                  (match uu___2 with
                   | (li_iri, st') ->
-                      ((FStar_Pervasives_Native.Some li_iri), st'))
-               else ((FStar_Pervasives_Native.Some full_iri), st1)
+                      if RDF_Graph_Executable.is_iri li_iri
+                      then ((FStar_Pervasives_Native.Some li_iri), st')
+                      else (FStar_Pervasives_Native.None, st'))
+               else
+                 if RDF_Graph_Executable.is_iri full_iri
+                 then ((FStar_Pervasives_Native.Some full_iri), st1)
+                 else (FStar_Pervasives_Native.None, st1)
            | FStar_Pervasives_Native.None ->
                (FStar_Pervasives_Native.None, st1) in
          (match uu___1 with
@@ -833,8 +841,8 @@ and process_property_element (st : rdfxml_state)
                                         } in
                                       { pr_triples = [t]; pr_state = st2 }
                                   | FStar_Pervasives_Native.None ->
-                                      empty_result st2
-                                  | uu___5 -> empty_result st))))))
+                                      empty_result st2)))))
+     | uu___1 -> empty_result st)
 and process_collection (st : rdfxml_state)
   (subj : RDF_Graph_Executable.subject) (pred_iri : Prims.string)
   (items : Parser_XML.xml_node Prims.list) (fuel : Prims.nat) :
@@ -889,60 +897,71 @@ and build_collection_list (st : rdfxml_state)
            { pr_triples = [t]; pr_state = st }
          else empty_result st
      | item::rest ->
-         let uu___1 = fresh_bnode st in
-         (match uu___1 with
-          | (list_bid, st2) ->
-              let list_node = RDF_Graph_Executable.S_BNode list_bid in
-              let link_triple =
-                {
-                  RDF_Graph_Executable.s = subj;
-                  RDF_Graph_Executable.p = pred_iri;
-                  RDF_Graph_Executable.o =
-                    (RDF_Graph_Executable.T_BNode list_bid)
-                } in
-              let item_result =
-                process_node_element st2 item (fuel - Prims.int_one) in
-              let item_st =
-                update_state_from_attrs item_result.pr_state
-                  (Parser_XML.element_attrs item) in
-              let uu___2 =
-                determine_subject item_st (Parser_XML.element_attrs item) in
-              (match uu___2 with
-               | (item_subj, st3) ->
-                   let item_term =
-                     match item_subj with
-                     | RDF_Graph_Executable.S_IRI i ->
-                         RDF_Graph_Executable.T_IRI i
-                     | RDF_Graph_Executable.S_BNode b ->
-                         RDF_Graph_Executable.T_BNode b in
-                   let first_triple =
-                     {
-                       RDF_Graph_Executable.s = list_node;
-                       RDF_Graph_Executable.p = rdf_first_iri;
-                       RDF_Graph_Executable.o = item_term
-                     } in
-                   let first_triple_opt =
+         if Prims.op_Negation (RDF_Graph_Executable.is_iri pred_iri)
+         then empty_result st
+         else
+           (let uu___2 = fresh_bnode st in
+            match uu___2 with
+            | (list_bid, st2) ->
+                let list_node = RDF_Graph_Executable.S_BNode list_bid in
+                let link_triple =
+                  {
+                    RDF_Graph_Executable.s = subj;
+                    RDF_Graph_Executable.p = pred_iri;
+                    RDF_Graph_Executable.o =
+                      (RDF_Graph_Executable.T_BNode list_bid)
+                  } in
+                let item_result =
+                  process_node_element st2 item (fuel - Prims.int_one) in
+                let item_st =
+                  update_state_from_attrs item_result.pr_state
+                    (Parser_XML.element_attrs item) in
+                let uu___3 =
+                  determine_subject item_st (Parser_XML.element_attrs item) in
+                (match uu___3 with
+                 | (item_subj, st3) ->
+                     let item_term =
+                       match item_subj with
+                       | RDF_Graph_Executable.S_IRI i ->
+                           RDF_Graph_Executable.T_IRI i
+                       | RDF_Graph_Executable.S_BNode b ->
+                           RDF_Graph_Executable.T_BNode b in
                      if RDF_Graph_Executable.is_iri rdf_first_iri
-                     then FStar_Pervasives_Native.Some first_triple
-                     else FStar_Pervasives_Native.None in
-                   let rest_result =
-                     if RDF_Graph_Executable.is_iri rdf_rest_iri
                      then
-                       build_collection_list st3 list_node rdf_rest_iri rest
-                         (fuel - Prims.int_one)
-                     else empty_result st3 in
-                   let all_triples =
-                     match first_triple_opt with
-                     | FStar_Pervasives_Native.Some ft ->
-                         FStar_List_Tot_Base.op_At (link_triple :: ft ::
-                           (item_result.pr_triples)) rest_result.pr_triples
-                     | FStar_Pervasives_Native.None ->
+                       let first_triple =
+                         {
+                           RDF_Graph_Executable.s = list_node;
+                           RDF_Graph_Executable.p = rdf_first_iri;
+                           RDF_Graph_Executable.o = item_term
+                         } in
+                       let rest_result =
+                         if RDF_Graph_Executable.is_iri rdf_rest_iri
+                         then
+                           build_collection_list st3 list_node rdf_rest_iri
+                             rest (fuel - Prims.int_one)
+                         else empty_result st3 in
+                       let all_triples =
                          FStar_List_Tot_Base.op_At (link_triple ::
-                           (item_result.pr_triples)) rest_result.pr_triples in
-                   {
-                     pr_triples = all_triples;
-                     pr_state = (rest_result.pr_state)
-                   })))
+                           first_triple :: (item_result.pr_triples))
+                           rest_result.pr_triples in
+                       {
+                         pr_triples = all_triples;
+                         pr_state = (rest_result.pr_state)
+                       }
+                     else
+                       (let rest_result =
+                          if RDF_Graph_Executable.is_iri rdf_rest_iri
+                          then
+                            build_collection_list st3 list_node rdf_rest_iri
+                              rest (fuel - Prims.int_one)
+                          else empty_result st3 in
+                        let all_triples =
+                          FStar_List_Tot_Base.op_At (link_triple ::
+                            (item_result.pr_triples)) rest_result.pr_triples in
+                        {
+                          pr_triples = all_triples;
+                          pr_state = (rest_result.pr_state)
+                        }))))
 let rec process_node_elements (st : rdfxml_state)
   (nodes : Parser_XML.xml_node Prims.list) (fuel : Prims.nat) :
   process_result=

@@ -48,7 +48,8 @@ let resolve_prefixed_name (st: turtle_state) (prefix: string) (local: string) : 
 
 (* Find the last occurrence of '/' in a string, return index + 1
    (the position after the last slash). Returns 0 if no slash found. *)
-let rec find_last_slash (s: string) (pos: nat) : nat =
+let rec find_last_slash (s: string) (pos: nat)
+  : Tot (r:nat{r <= pos}) (decreases pos) =
   if pos = 0 then 0
   else
     let idx = pos - 1 in
@@ -229,10 +230,16 @@ let parse_pn_local (input: string) (pos: nat) : parse_result string =
       | ParseOk s pos' ->
         (* Strip trailing dots — not part of local name *)
         let slen = String.length s in
-        if slen > 0 then
+        if slen > 1 then
           let last = String.index s (slen - 1) in
-          if int_of_char last = 0x2E then
+          if int_of_char last = 0x2E && pos' > 0 then
             ParseOk (String.sub s 0 (slen - 1)) (pos' - 1)
+          else
+            ParseOk s pos'
+        else if slen = 1 then
+          let last = String.index s 0 in
+          if int_of_char last = 0x2E && pos' > 0 then
+            ParseOk "" (pos' - 1)
           else
             ParseOk s pos'
         else
@@ -262,12 +269,13 @@ let parse_turtle_iri (st: turtle_state) (input: string) (pos: nat) : parse_resul
   else
     let c = String.index input pos in
     let code = int_of_char c in
-    if code = 0x3C then  (* '<' — full IRI *)
-      begin match parse_iri input pos with
+    if code = 0x3C then  (* '<' — full IRI, may be relative like <> *)
+      begin match parse_iri_raw input pos with
       | ParseOk i pos' ->
-        (* Resolve relative IRI if needed *)
+        (* Resolve relative IRI against base — empty string is valid in Turtle *)
         let resolved = resolve_iri st i in
-        ParseOk resolved pos'
+        if is_iri resolved then ParseOk resolved pos'
+        else ParseFail "resolved IRI invalid" pos
       | ParseFail msg fpos -> ParseFail msg fpos
       end
     else  (* Try prefixed name *)
@@ -399,17 +407,22 @@ let is_digit_char (c: char) : bool =
 (* Parse an integer literal: [+-]?[0-9]+ *)
 (* Parse a numeric literal: integer, decimal, or double.
    Returns (lexical_form, datatype_iri). *)
-let parse_numeric_literal (input: string) (pos: nat) : parse_result (string & iri) =
+let parse_numeric_literal (input: string) (pos: nat) : parse_result (string & wf_iri) =
   let len = String.length input in
   if pos >= len then ParseFail "expected numeric literal" pos
   else
     (* Consume optional sign *)
     let c0 = String.index input pos in
     let code0 = int_of_char c0 in
-    let (sign_str, dpos) =
-      if code0 = 0x2B then ("+", pos + 1)     (* '+' *)
-      else if code0 = 0x2D then ("-", pos + 1) (* '-' *)
-      else ("", pos)
+    let sign_str =
+      if code0 = 0x2B then "+"
+      else if code0 = 0x2D then "-"
+      else ""
+    in
+    let dpos : nat =
+      if code0 = 0x2B then pos + 1
+      else if code0 = 0x2D then pos + 1
+      else pos
     in
     (* Accumulate the numeric part: digits, dots, e/E *)
     let rec collect_num (p: nat) (acc: list char) (has_dot: bool) (has_e: bool) (fuel: nat)
@@ -453,10 +466,7 @@ let parse_numeric_literal (input: string) (pos: nat) : parse_result (string & ir
           ParseOk (acc, has_dot, has_e) p
     in
     (* Handle case where number starts with '.' (like .5) *)
-    let starts_with_dot =
-      if dpos < len then int_of_char (String.index input dpos) = 0x2E else false
-    in
-    if starts_with_dot then
+    if dpos < len && int_of_char (String.index input dpos) = 0x2E then
       (* .DIGITS case => decimal *)
       if dpos + 1 < len && is_digit_char (String.index input (dpos + 1)) then
         let fuel = len - dpos in
@@ -470,7 +480,7 @@ let parse_numeric_literal (input: string) (pos: nat) : parse_result (string & ir
         end
       else
         ParseFail "expected digit after '.'" dpos
-    else
+    else if dpos <= len then
       let fuel = len - dpos in
       begin match collect_num dpos [] false false fuel with
       | ParseOk (acc, has_dot, has_e) pos' ->
@@ -487,6 +497,8 @@ let parse_numeric_literal (input: string) (pos: nat) : parse_result (string & ir
           ParseOk (lexical, dt) pos'
       | ParseFail msg fpos -> ParseFail msg fpos
       end
+    else
+      ParseFail "expected numeric literal" pos
 
 (* ================================================================ *)
 (* String literal parsers (single/double, short/long)                *)
@@ -544,7 +556,7 @@ let rec parse_long_string_body (qch: char) (input: string) (pos: nat) (acc: list
               let h2 = hex_val (String.index input (pos + 4)) in
               let h3 = hex_val (String.index input (pos + 5)) in
               let cp = ((h0 `op_Multiply` 4096) + (h1 `op_Multiply` 256) + (h2 `op_Multiply` 16) + h3) in
-              parse_long_string_body qch input (pos + 6) (char_of_int cp :: acc) (fuel - 1)
+              parse_long_string_body qch input (pos + 6) (safe_char_of_int cp :: acc) (fuel - 1)
           else if esc_code = 0x55 then  (* \UXXXXXXXX *)
             if pos + 10 > len then ParseFail "incomplete \\U escape" pos
             else
@@ -560,7 +572,7 @@ let rec parse_long_string_body (qch: char) (input: string) (pos: nat) (acc: list
                         (h2 `op_Multiply` 1048576) + (h3 `op_Multiply` 65536) +
                         (h4 `op_Multiply` 4096) + (h5 `op_Multiply` 256) +
                         (h6 `op_Multiply` 16) + h7) in
-              parse_long_string_body qch input (pos + 10) (char_of_int cp :: acc) (fuel - 1)
+              parse_long_string_body qch input (pos + 10) (safe_char_of_int cp :: acc) (fuel - 1)
           else
             ParseFail (String.concat "" ["invalid escape in long string: \\"; string_of_char esc]) pos
       else
@@ -607,7 +619,7 @@ let rec parse_single_string_body (input: string) (pos: nat) (acc: list char) (fu
               let h2 = hex_val (String.index input (pos + 4)) in
               let h3 = hex_val (String.index input (pos + 5)) in
               let cp = ((h0 `op_Multiply` 4096) + (h1 `op_Multiply` 256) + (h2 `op_Multiply` 16) + h3) in
-              parse_single_string_body input (pos + 6) (char_of_int cp :: acc) (fuel - 1)
+              parse_single_string_body input (pos + 6) (safe_char_of_int cp :: acc) (fuel - 1)
           else if esc_code = 0x55 then
             if pos + 10 > len then ParseFail "incomplete \\U escape" pos
             else
@@ -623,7 +635,7 @@ let rec parse_single_string_body (input: string) (pos: nat) (acc: list char) (fu
                         (h2 `op_Multiply` 1048576) + (h3 `op_Multiply` 65536) +
                         (h4 `op_Multiply` 4096) + (h5 `op_Multiply` 256) +
                         (h6 `op_Multiply` 16) + h7) in
-              parse_single_string_body input (pos + 10) (char_of_int cp :: acc) (fuel - 1)
+              parse_single_string_body input (pos + 10) (safe_char_of_int cp :: acc) (fuel - 1)
           else
             ParseFail (String.concat "" ["invalid escape: \\"; string_of_char esc]) pos
       else if code = 0x0A || code = 0x0D then
@@ -697,7 +709,10 @@ let parse_turtle_literal (st: turtle_state) (input: string) (pos: nat) : parse_r
             (* '^^' followed by IRI or prefixed name *)
             begin match parse_turtle_iri st input (pos' + 2) with
             | ParseOk dt pos'' ->
-              ParseOk ({ lexical_form = lexical; datatype = dt; lang_tag = None }) pos''
+              if is_iri dt then
+                ParseOk ({ lexical_form = lexical; datatype = dt; lang_tag = None }) pos''
+              else
+                ParseFail "invalid datatype IRI" pos'
             | ParseFail msg fpos -> ParseFail msg fpos
             end
           else
@@ -736,11 +751,11 @@ let parse_boolean_literal (input: string) (pos: nat) : parse_result literal =
 (* The 'a' keyword (shorthand for rdf:type)                          *)
 (* ================================================================ *)
 
-let rdf_type_iri : iri =
+let rdf_type_iri : wf_iri =
   assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#type");
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 
-let parse_a_keyword (input: string) (pos: nat) : parse_result iri =
+let parse_a_keyword (input: string) (pos: nat) : parse_result wf_iri =
   let len = String.length input in
   if pos >= len then ParseFail "expected 'a'" pos
   else
@@ -763,15 +778,15 @@ let parse_a_keyword (input: string) (pos: nat) : parse_result iri =
 (* RDF collection constants                                          *)
 (* ================================================================ *)
 
-let rdf_first_iri : iri =
+let rdf_first_iri : wf_iri =
   assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#first");
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
 
-let rdf_rest_iri : iri =
+let rdf_rest_iri : wf_iri =
   assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest");
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
 
-let rdf_nil_iri : iri =
+let rdf_nil_iri : wf_iri =
   assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil");
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"
 
@@ -781,14 +796,14 @@ let rdf_nil_iri : iri =
 (* ================================================================ *)
 
 (* Result type for object parsing: object term + generated triples + updated state *)
-type object_result = {
+noeq type object_result = {
   or_term: rdf_term;
   or_triples: list triple;
   or_state: turtle_state;
 }
 
 (* Result type for subject parsing *)
-type subject_result = {
+noeq type subject_result = {
   sr_subject: subject;
   sr_triples: list triple;
   sr_state: turtle_state;
@@ -813,7 +828,10 @@ let rec parse_turtle_object (st: turtle_state) (input: string) (pos: nat) (fuel:
       let code = int_of_char c in
       if code = 0x3C then  (* '<' — full IRI *)
         begin match parse_turtle_iri st input pos with
-        | ParseOk i pos' -> ParseOk ({ or_term = T_IRI i; or_triples = []; or_state = st }) pos'
+        | ParseOk i pos' ->
+          if is_iri i then
+            ParseOk ({ or_term = T_IRI i; or_triples = []; or_state = st }) pos'
+          else ParseFail "invalid IRI" pos
         | ParseFail msg fpos -> ParseFail msg fpos
         end
       else if code = 0x5F then  (* '_' — blank node *)
@@ -823,7 +841,10 @@ let rec parse_turtle_object (st: turtle_state) (input: string) (pos: nat) (fuel:
         end
       else if code = 0x22 || code = 0x27 then  (* '"' or '\'' — string literal *)
         begin match parse_turtle_literal st input pos with
-        | ParseOk lit pos' -> ParseOk ({ or_term = T_Literal lit; or_triples = []; or_state = st }) pos'
+        | ParseOk lit pos' ->
+          if literal_wf lit then
+            ParseOk ({ or_term = T_Literal lit; or_triples = []; or_state = st }) pos'
+          else ParseFail "invalid literal" pos
         | ParseFail msg fpos -> ParseFail msg fpos
         end
       else if code = 0x5B then  (* '[' — anonymous blank node or blank node property list *)
@@ -859,13 +880,19 @@ let rec parse_turtle_object (st: turtle_state) (input: string) (pos: nat) (fuel:
           begin match parse_numeric_literal input pos with
           | ParseOk (lexical, dt) pos' ->
             let lit : literal = { lexical_form = lexical; datatype = dt; lang_tag = None } in
-            ParseOk ({ or_term = T_Literal lit; or_triples = []; or_state = st }) pos'
+            if literal_wf lit then
+              ParseOk ({ or_term = T_Literal lit; or_triples = []; or_state = st }) pos'
+            else
+              ParseFail "invalid numeric literal" pos
           | ParseFail _ _ ->
             (* Try prefixed name *)
             begin match parse_prefixed_name input pos with
             | ParseOk (prefix, local) pos' ->
               begin match resolve_prefixed_name st prefix local with
-              | Some resolved -> ParseOk ({ or_term = T_IRI resolved; or_triples = []; or_state = st }) pos'
+              | Some resolved ->
+                if is_iri resolved then
+                  ParseOk ({ or_term = T_IRI resolved; or_triples = []; or_state = st }) pos'
+                else ParseFail "invalid resolved IRI" pos
               | None -> ParseFail (String.concat "" ["undefined prefix: "; prefix]) pos
               end
             | ParseFail _ _ -> ParseFail "expected object" pos
@@ -931,11 +958,11 @@ and parse_collection_rest (st: turtle_state) (prev_subj: subject) (input: string
         end
 
 (* Parse object list: object (',' object)* *)
-and parse_object_list (st: turtle_state) (subj: subject) (pred: iri) (input: string) (pos: nat) (fuel: nat)
+and parse_object_list (st: turtle_state) (subj: subject) (pred: wf_iri) (input: string) (pos: nat) (fuel: nat)
   : Tot (parse_result (list triple & turtle_state)) (decreases fuel) =
   if fuel = 0 then ParseFail "recursion limit in object list" pos
   else
-    begin match parse_turtle_object st input pos fuel with
+    begin match parse_turtle_object st input pos (fuel - 1) with
     | ParseOk obj_res pos1 ->
       let t : triple = { s = subj; p = pred; o = obj_res.or_term } in
       let triples1 = obj_res.or_triples @ [t] in
@@ -961,20 +988,26 @@ and parse_object_list (st: turtle_state) (subj: subject) (pred: iri) (input: str
 
 (* Parse a predicate: IRI, prefixed name, or 'a' keyword *)
 and parse_turtle_predicate (st: turtle_state) (input: string) (pos: nat) (fuel: nat)
-  : Tot (parse_result iri) (decreases fuel) =
+  : Tot (parse_result wf_iri) (decreases fuel) =
   if fuel = 0 then ParseFail "recursion limit" pos
   else
     (* Try 'a' keyword first *)
     match parse_a_keyword input pos with
     | ParseOk iri_val pos' -> ParseOk iri_val pos'
-    | ParseFail _ _ -> parse_turtle_iri st input pos
+    | ParseFail _ _ ->
+      begin match parse_turtle_iri st input pos with
+      | ParseOk i pos' ->
+        if is_iri i then ParseOk i pos'
+        else ParseFail "invalid predicate IRI" pos
+      | ParseFail msg fpos -> ParseFail msg fpos
+      end
 
 (* Parse predicate-object list: predicate objectList (';' predicate objectList)* ';'? *)
 and parse_predicate_object_list (st: turtle_state) (subj: subject) (input: string) (pos: nat) (fuel: nat)
   : Tot (parse_result (list triple & turtle_state)) (decreases fuel) =
   if fuel = 0 then ParseFail "recursion limit in predicate-object list" pos
   else
-    begin match parse_turtle_predicate st input pos fuel with
+    begin match parse_turtle_predicate st input pos (fuel - 1) with
     | ParseOk pred pos1 ->
       begin match turtle_ws input pos1 with
       | ParseOk () pos2 ->
@@ -1060,7 +1093,10 @@ let parse_turtle_subject (st: turtle_state) (input: string) (pos: nat) (fuel: na
       let code = int_of_char c in
       if code = 0x3C then  (* '<' — full IRI *)
         begin match parse_turtle_iri st input pos with
-        | ParseOk i pos' -> ParseOk ({ sr_subject = S_IRI i; sr_triples = []; sr_state = st }) pos'
+        | ParseOk i pos' ->
+          if is_iri i then
+            ParseOk ({ sr_subject = S_IRI i; sr_triples = []; sr_state = st }) pos'
+          else ParseFail "invalid subject IRI" pos
         | ParseFail msg fpos -> ParseFail msg fpos
         end
       else if code = 0x5F then  (* '_' — labeled blank node *)
@@ -1106,7 +1142,10 @@ let parse_turtle_subject (st: turtle_state) (input: string) (pos: nat) (fuel: na
         begin match parse_prefixed_name input pos with
         | ParseOk (prefix, local) pos' ->
           begin match resolve_prefixed_name st prefix local with
-          | Some resolved -> ParseOk ({ sr_subject = S_IRI resolved; sr_triples = []; sr_state = st }) pos'
+          | Some resolved ->
+            if is_iri resolved then
+              ParseOk ({ sr_subject = S_IRI resolved; sr_triples = []; sr_state = st }) pos'
+            else ParseFail "invalid resolved IRI" pos
           | None -> ParseFail (String.concat "" ["undefined prefix: "; prefix]) pos
           end
         | ParseFail _ _ -> ParseFail "expected subject" pos
