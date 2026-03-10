@@ -53,6 +53,11 @@ Rust/JS/OCaml/anything that "mirrors" a spec.
    fundamental RDF graph semantics — literal equivalence, datatype handling,
    language tag normalization, RDFS closure rules. These are core requirements,
    not "just inference." Dismissing them is wrong.
+9. **Commit compiled binaries.** The compiled `w3c_runner` and `factoidal`
+   binaries in `ocaml-output/` MUST be committed to git. This lets the repo
+   owner check out any commit and immediately run tests without needing an
+   F\*/opam toolchain. Do not add them to `.gitignore`. Do not skip them
+   when staging. When you run `build-ocaml.sh`, commit the updated binaries.
 
 ## Agent Work Strategy
 
@@ -154,6 +159,13 @@ Previous Claude sessions made these errors. Read and internalize:
     - If F\* verification blocks the fix, add a patch to `ocaml-patches.sh`
     - `ocaml-patches.sh` accepts a directory and patches all files in sequence
     A GitHub Action checks PRs for direct edits to extracted files.
+
+14. **Never use `|| true` to swallow command failures in shell scripts.**
+    `|| true` silently hides real errors. When a command might fail and you
+    need the script to continue (e.g., under `set -e`), capture the exit code
+    instead: `CMD_RC=0; OUTPUT=$(cmd ...) || CMD_RC=$?`. This lets the script
+    continue while preserving the exit code for error reporting. The grep-based
+    success checks still gate overall pass/fail.
 
 ## Current State (Honest Assessment)
 

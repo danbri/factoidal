@@ -1226,7 +1226,7 @@ let parse_turtle_statement (st: turtle_state) (input: string) (pos: nat) (fuel: 
           end
         end
 
-(* Parse the full Turtle document: sequence of statements *)
+// Parse the full Turtle document: sequence of statements
 let rec parse_turtle_doc (st: turtle_state) (input: string) (pos: nat) (acc: list triple) (fuel: nat)
   : Tot (list triple & turtle_state) (decreases fuel) =
   if fuel = 0 then (List.Tot.rev acc, st)
@@ -1239,22 +1239,13 @@ let rec parse_turtle_doc (st: turtle_state) (input: string) (pos: nat) (acc: lis
         begin match parse_turtle_statement st input pos1 fuel with
         | ParseOk (triples, st') pos2 ->
           if pos2 = pos1 then
-            (* No progress — stop *)
+            // No progress — stop
             (List.Tot.rev ((List.Tot.rev triples) @ acc), st')
           else
             parse_turtle_doc st' input pos2 ((List.Tot.rev triples) @ acc) (fuel - 1)
         | ParseFail _ _ ->
-          (* Skip to next line on failure *)
-          let rec skip_line (p: nat) (f: nat) : Tot nat (decreases f) =
-            if f = 0 then p
-            else if p >= len then p
-            else
-              let c = String.index input p in
-              let cd = int_of_char c in
-              if cd = 0x0A || cd = 0x0D then p + 1
-              else skip_line (p + 1) (f - 1)
-          in
-          let pos2 = skip_line pos1 (len - pos1) in
+          // Skip to next line on failure
+          let pos2 = skip_to_eol input pos1 (len - pos1) in
           if pos2 = pos1 then (List.Tot.rev acc, st)
           else parse_turtle_doc st input pos2 acc (fuel - 1)
         end

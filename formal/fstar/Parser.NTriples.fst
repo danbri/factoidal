@@ -18,6 +18,13 @@ let hex_val_opt (c:FStar.Char.char) : option int =
   else if code >= 0x61 && code <= 0x66 then Some (code - 0x61 + 10)
   else None
 
+// Backward-compatible wrapper: returns 0 for non-hex (used by Turtle/TriG).
+// Prefer hex_val_opt for new code.
+let hex_val (c:FStar.Char.char) : int =
+  match hex_val_opt c with
+  | Some v -> v
+  | None -> 0
+
 // Valid codepoint for F*'s char_of_int precondition: i < 0xD7FF.
 // F* is stricter than Unicode (which allows up to U+D7FF inclusive).
 let valid_codepoint (cp:int) : bool =

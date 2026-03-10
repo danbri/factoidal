@@ -488,12 +488,119 @@ import re
 with open(sys.argv[1], 'r') as f:
     content = f.read()
 
-# 1. Add resolve_tok_iri helper after scan_while function
+# 0. Patch assume val stubs: utf8_of_codepoint, process_iri_escapes, process_string_escapes
 content = content.replace(
-    '''    then scan_while input (p + Prims.int_one) pred
-    else p''',
-    '''    then scan_while input (p + Prims.int_one) pred
-    else p
+    'let utf8_of_codepoint (uu___ : Prims.nat) : Prims.string=\n  failwith "Not yet implemented: SPARQL11.Parser.utf8_of_codepoint"',
+    '''let utf8_of_codepoint (cp_z : Prims.nat) : Prims.string =
+  let cp = Z.to_int cp_z in
+  let open Stdlib in
+  if cp < 0x80 then String.make 1 (Char.chr cp)
+  else if cp < 0x800 then
+    let b0 = 0xC0 lor (cp lsr 6) in
+    let b1 = 0x80 lor (cp land 0x3F) in
+    let s = Bytes.create 2 in
+    Bytes.set s 0 (Char.chr b0); Bytes.set s 1 (Char.chr b1);
+    Bytes.to_string s
+  else if cp < 0x10000 then
+    let b0 = 0xE0 lor (cp lsr 12) in
+    let b1 = 0x80 lor ((cp lsr 6) land 0x3F) in
+    let b2 = 0x80 lor (cp land 0x3F) in
+    let s = Bytes.create 3 in
+    Bytes.set s 0 (Char.chr b0); Bytes.set s 1 (Char.chr b1); Bytes.set s 2 (Char.chr b2);
+    Bytes.to_string s
+  else
+    let b0 = 0xF0 lor (cp lsr 18) in
+    let b1 = 0x80 lor ((cp lsr 12) land 0x3F) in
+    let b2 = 0x80 lor ((cp lsr 6) land 0x3F) in
+    let b3 = 0x80 lor (cp land 0x3F) in
+    let s = Bytes.create 4 in
+    Bytes.set s 0 (Char.chr b0); Bytes.set s 1 (Char.chr b1);
+    Bytes.set s 2 (Char.chr b2); Bytes.set s 3 (Char.chr b3);
+    Bytes.to_string s'''
+)
+
+content = content.replace(
+    'let process_iri_escapes (uu___ : Prims.string) : Prims.string=\n  failwith "Not yet implemented: SPARQL11.Parser.process_iri_escapes"',
+    '''let process_iri_escapes (s : Prims.string) : Prims.string =
+  let open Stdlib in
+  (* Process backslash-u and backslash-U escapes in IRI strings *)
+  let len = String.length s in
+  let buf = Buffer.create len in
+  let i = ref 0 in
+  while !i < len do
+    if !i + 1 < len && s.[!i] = '\\\\' then begin
+      let next = s.[!i + 1] in
+      if next = 'u' && !i + 5 < len then begin
+        let hex = String.sub s (!i + 2) 4 in
+        (try let cp = int_of_string ("0x" ^ hex) in
+             Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
+         with _ -> Buffer.add_string buf (String.sub s !i 6));
+        i := !i + 6
+      end else if next = 'U' && !i + 9 < len then begin
+        let hex = String.sub s (!i + 2) 8 in
+        (try let cp = int_of_string ("0x" ^ hex) in
+             Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
+         with _ -> Buffer.add_string buf (String.sub s !i 10));
+        i := !i + 10
+      end else begin
+        Buffer.add_char buf s.[!i];
+        i := !i + 1
+      end
+    end else begin
+      Buffer.add_char buf s.[!i];
+      i := !i + 1
+    end
+  done;
+  Buffer.contents buf'''
+)
+
+content = content.replace(
+    'let process_string_escapes (uu___ : Prims.string) : Prims.string=\n  failwith "Not yet implemented: SPARQL11.Parser.process_string_escapes"',
+    '''let process_string_escapes (s : Prims.string) : Prims.string =
+  let open Stdlib in
+  (* Process string escape sequences: backslash-t, -n, -r, etc. *)
+  let len = String.length s in
+  let buf = Buffer.create len in
+  let i = ref 0 in
+  while !i < len do
+    if !i + 1 < len && s.[!i] = '\\\\' then begin
+      let next = s.[!i + 1] in
+      if next = 't' then (Buffer.add_char buf '\\t'; i := !i + 2)
+      else if next = 'n' then (Buffer.add_char buf '\\n'; i := !i + 2)
+      else if next = 'r' then (Buffer.add_char buf '\\r'; i := !i + 2)
+      else if next = '\\\\' then (Buffer.add_char buf '\\\\'; i := !i + 2)
+      else if next = '"' then (Buffer.add_char buf '"'; i := !i + 2)
+      else if next = '\\'' then (Buffer.add_char buf '\\''; i := !i + 2)
+      else if next = 'b' then (Buffer.add_char buf '\\008'; i := !i + 2)
+      else if next = 'f' then (Buffer.add_char buf '\\012'; i := !i + 2)
+      else if next = 'u' && !i + 5 < len then begin
+        let hex = String.sub s (!i + 2) 4 in
+        (try let cp = int_of_string ("0x" ^ hex) in
+             Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
+         with _ -> Buffer.add_string buf (String.sub s !i 6));
+        i := !i + 6
+      end else if next = 'U' && !i + 9 < len then begin
+        let hex = String.sub s (!i + 2) 8 in
+        (try let cp = int_of_string ("0x" ^ hex) in
+             Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
+         with _ -> Buffer.add_string buf (String.sub s !i 10));
+        i := !i + 10
+      end else begin
+        Buffer.add_char buf s.[!i];
+        i := !i + 1
+      end
+    end else begin
+      Buffer.add_char buf s.[!i];
+      i := !i + 1
+    end
+  done;
+  Buffer.contents buf'''
+)
+
+# 1. Add resolve_tok_iri helper after safe_sub function
+content = content.replace(
+    '''  if a >= b then a - b else Prims.int_zero''',
+    '''  if a >= b then a - b else Prims.int_zero
 (* Resolve a potentially relative IRI against the current BASE.
    If the IRI is already absolute (passes is_iri), return it unchanged.
    Otherwise, try resolving against the global current_base_iri_ref. *)

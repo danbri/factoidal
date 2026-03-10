@@ -480,6 +480,138 @@ let string_upper (s : Prims.string) : Prims.string=
   FStar_String.string_of_list
     (FStar_List_Tot_Base.map char_upper (FStar_String.list_of_string s))
 let streq (a : Prims.string) (b : Prims.string) : Prims.bool= a = b
+let char_to_string (c : FStar_Char.char) : Prims.string=
+  FStar_String.string_of_list [c]
+let is_hex_digit (c : FStar_Char.char) : Prims.bool=
+  let code = char_code c in
+  (((code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))) ||
+     ((code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x46)))))
+    || ((code >= (Prims.of_int (0x61))) && (code <= (Prims.of_int (0x66))))
+let hex_value (c : FStar_Char.char) : Prims.nat=
+  let code = char_code c in
+  if (code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))
+  then code - (Prims.of_int (0x30))
+  else
+    if (code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x46)))
+    then (code - (Prims.of_int (0x41))) + (Prims.of_int (10))
+    else
+      if (code >= (Prims.of_int (0x61))) && (code <= (Prims.of_int (0x66)))
+      then (code - (Prims.of_int (0x61))) + (Prims.of_int (10))
+      else Prims.int_zero
+let utf8_of_codepoint (cp_z : Prims.nat) : Prims.string =
+  let cp = Z.to_int cp_z in
+  let open Stdlib in
+  if cp < 0x80 then String.make 1 (Char.chr cp)
+  else if cp < 0x800 then
+    let b0 = 0xC0 lor (cp lsr 6) in
+    let b1 = 0x80 lor (cp land 0x3F) in
+    let s = Bytes.create 2 in
+    Bytes.set s 0 (Char.chr b0); Bytes.set s 1 (Char.chr b1);
+    Bytes.to_string s
+  else if cp < 0x10000 then
+    let b0 = 0xE0 lor (cp lsr 12) in
+    let b1 = 0x80 lor ((cp lsr 6) land 0x3F) in
+    let b2 = 0x80 lor (cp land 0x3F) in
+    let s = Bytes.create 3 in
+    Bytes.set s 0 (Char.chr b0); Bytes.set s 1 (Char.chr b1); Bytes.set s 2 (Char.chr b2);
+    Bytes.to_string s
+  else
+    let b0 = 0xF0 lor (cp lsr 18) in
+    let b1 = 0x80 lor ((cp lsr 12) land 0x3F) in
+    let b2 = 0x80 lor ((cp lsr 6) land 0x3F) in
+    let b3 = 0x80 lor (cp land 0x3F) in
+    let s = Bytes.create 4 in
+    Bytes.set s 0 (Char.chr b0); Bytes.set s 1 (Char.chr b1);
+    Bytes.set s 2 (Char.chr b2); Bytes.set s 3 (Char.chr b3);
+    Bytes.to_string s
+let process_iri_escapes (s : Prims.string) : Prims.string =
+  let open Stdlib in
+  (* Process backslash-u and backslash-U escapes in IRI strings *)
+  let len = String.length s in
+  let buf = Buffer.create len in
+  let i = ref 0 in
+  while !i < len do
+    if !i + 1 < len && s.[!i] = '\\' then begin
+      let next = s.[!i + 1] in
+      if next = 'u' && !i + 5 < len then begin
+        let hex = String.sub s (!i + 2) 4 in
+        (try let cp = int_of_string ("0x" ^ hex) in
+             Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
+         with _ -> Buffer.add_string buf (String.sub s !i 6));
+        i := !i + 6
+      end else if next = 'U' && !i + 9 < len then begin
+        let hex = String.sub s (!i + 2) 8 in
+        (try let cp = int_of_string ("0x" ^ hex) in
+             Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
+         with _ -> Buffer.add_string buf (String.sub s !i 10));
+        i := !i + 10
+      end else begin
+        Buffer.add_char buf s.[!i];
+        i := !i + 1
+      end
+    end else begin
+      Buffer.add_char buf s.[!i];
+      i := !i + 1
+    end
+  done;
+  Buffer.contents buf
+let process_string_escapes (s : Prims.string) : Prims.string =
+  let open Stdlib in
+  (* Process string escape sequences: backslash-t, -n, -r, etc. *)
+  let len = String.length s in
+  let buf = Buffer.create len in
+  let i = ref 0 in
+  while !i < len do
+    if !i + 1 < len && s.[!i] = '\\' then begin
+      let next = s.[!i + 1] in
+      if next = 't' then (Buffer.add_char buf '\t'; i := !i + 2)
+      else if next = 'n' then (Buffer.add_char buf '\n'; i := !i + 2)
+      else if next = 'r' then (Buffer.add_char buf '\r'; i := !i + 2)
+      else if next = '\\' then (Buffer.add_char buf '\\'; i := !i + 2)
+      else if next = '"' then (Buffer.add_char buf '"'; i := !i + 2)
+      else if next = '\'' then (Buffer.add_char buf '\''; i := !i + 2)
+      else if next = 'b' then (Buffer.add_char buf '\008'; i := !i + 2)
+      else if next = 'f' then (Buffer.add_char buf '\012'; i := !i + 2)
+      else if next = 'u' && !i + 5 < len then begin
+        let hex = String.sub s (!i + 2) 4 in
+        (try let cp = int_of_string ("0x" ^ hex) in
+             Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
+         with _ -> Buffer.add_string buf (String.sub s !i 6));
+        i := !i + 6
+      end else if next = 'U' && !i + 9 < len then begin
+        let hex = String.sub s (!i + 2) 8 in
+        (try let cp = int_of_string ("0x" ^ hex) in
+             Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
+         with _ -> Buffer.add_string buf (String.sub s !i 10));
+        i := !i + 10
+      end else begin
+        Buffer.add_char buf s.[!i];
+        i := !i + 1
+      end
+    end else begin
+      Buffer.add_char buf s.[!i];
+      i := !i + 1
+    end
+  done;
+  Buffer.contents buf
+let rec find_char_pos (input : Prims.string) (p : pos) (target : Prims.nat) :
+  pos FStar_Pervasives_Native.option=
+  if at_end input p
+  then FStar_Pervasives_Native.None
+  else
+    if (char_code (peek_char input p)) = target
+    then FStar_Pervasives_Native.Some p
+    else find_char_pos input (p + Prims.int_one) target
+let rec trim_trailing_dots (input : Prims.string) (start : pos)
+  (end_pos : pos) : pos=
+  if (end_pos = Prims.int_zero) || (end_pos <= start)
+  then start
+  else
+    if
+      (char_code (char_at input (end_pos - Prims.int_one))) =
+        (Prims.of_int (0x2E))
+    then trim_trailing_dots input start (end_pos - Prims.int_one)
+    else end_pos
 let rec skip_ws (input : Prims.string) (p : pos) : pos=
   if at_end input p
   then p
@@ -498,711 +630,750 @@ and skip_comment (input : Prims.string) (p : pos) : pos=
     if (char_code (peek_char input p)) = (Prims.of_int (0x0A))
     then skip_ws input (p + Prims.int_one)
     else skip_comment input (p + Prims.int_one)
-let rec scan_while (input : Prims.string) (p : pos)
-  (pred : FStar_Char.char -> Prims.bool) : pos=
+let rec scan_iri_end (input : Prims.string) (p : pos) : pos=
   if at_end input p
   then p
   else
-    if pred (peek_char input p)
-    then scan_while input (p + Prims.int_one) pred
-    else p
-let rec scan_iri_body (input : Prims.string) (p : pos) (start : pos) :
-  (Prims.string * pos)=
-  if at_end input p
-  then ((substring input start (p - start)), p)
-  else
-    if (char_code (peek_char input p)) = (Prims.of_int (0x3E))
-    then ((substring input start (p - start)), (p + Prims.int_one))
-    else scan_iri_body input (p + Prims.int_one) start
+    (let c = peek_char input p in
+     if (char_code c) = (Prims.of_int (0x3E))
+     then p
+     else
+       if (char_code c) = (Prims.of_int (0x5C))
+       then
+         (if at_end input (p + Prims.int_one)
+          then p + Prims.int_one
+          else scan_iri_end input (p + (Prims.of_int (2))))
+       else scan_iri_end input (p + Prims.int_one))
+let safe_sub (a : Prims.int) (b : Prims.int) : Prims.nat=
+  if a >= b then a - b else Prims.int_zero
+(* Resolve a potentially relative IRI against the current BASE.
+   If the IRI is already absolute (passes is_iri), return it unchanged.
+   Otherwise, try resolving against the global current_base_iri_ref. *)
+let resolve_tok_iri (i : Prims.string) : Prims.string =
+  if RDF_Graph_Executable.is_iri i then i
+  else match !(SPARQL11_Algebra.current_base_iri_ref) with
+    | Some base -> SPARQL11_Algebra.resolve_iri base i
+    | None -> i
+
 let scan_iri (input : Prims.string) (p : pos) : (Prims.string * pos)=
-  scan_iri_body input p p
-let rec scan_short_str (input : Prims.string) (p : pos) (start : pos)
-  (q : Prims.nat) : (Prims.string * pos)=
+  let end_p = scan_iri_end input p in
+  let len = if end_p >= p then end_p - p else Prims.int_zero in
+  let raw = substring input p len in
+  let processed = process_iri_escapes raw in
+  if at_end input end_p
+  then (processed, end_p)
+  else (processed, (end_p + Prims.int_one))
+let rec scan_short_string_end (input : Prims.string) (p : pos)
+  (q_code : Prims.nat) : pos=
   if at_end input p
-  then ((substring input start (p - start)), p)
+  then p
   else
     (let c = peek_char input p in
-     if (char_code c) = (Prims.of_int (0x5C))
-     then
-       (if at_end input (p + Prims.int_one)
-        then
-          ((substring input start ((p + Prims.int_one) - start)),
-            (p + Prims.int_one))
-        else scan_short_str input (p + (Prims.of_int (2))) start q)
+     if (char_code c) = q_code
+     then p
      else
-       if (char_code c) = q
-       then ((substring input start (p - start)), (p + Prims.int_one))
-       else scan_short_str input (p + Prims.int_one) start q)
-let rec scan_long_str (input : Prims.string) (p : pos) (start : pos)
-  (q : Prims.nat) : (Prims.string * pos)=
+       if (char_code c) = (Prims.of_int (0x5C))
+       then
+         (if at_end input (p + Prims.int_one)
+          then p + Prims.int_one
+          else scan_short_string_end input (p + (Prims.of_int (2))) q_code)
+       else scan_short_string_end input (p + Prims.int_one) q_code)
+let rec scan_long_string_end (input : Prims.string) (p : pos)
+  (q_code : Prims.nat) : pos=
   if at_end input p
-  then ((substring input start (p - start)), p)
+  then p
   else
     (let c = peek_char input p in
-     if (char_code c) = (Prims.of_int (0x5C))
-     then
-       (if at_end input (p + Prims.int_one)
-        then
-          ((substring input start ((p + Prims.int_one) - start)),
-            (p + Prims.int_one))
-        else scan_long_str input (p + (Prims.of_int (2))) start q)
+     if
+       (((((char_code c) = q_code) &&
+            (Prims.op_Negation (at_end input (p + Prims.int_one))))
+           && ((char_code (peek_char input (p + Prims.int_one))) = q_code))
+          && (Prims.op_Negation (at_end input (p + (Prims.of_int (2))))))
+         && ((char_code (peek_char input (p + (Prims.of_int (2))))) = q_code)
+     then p
      else
-       if
-         (((((char_code c) = q) &&
-              (Prims.op_Negation (at_end input (p + Prims.int_one))))
-             && ((char_code (peek_char input (p + Prims.int_one))) = q))
-            && (Prims.op_Negation (at_end input (p + (Prims.of_int (2))))))
-           && ((char_code (peek_char input (p + (Prims.of_int (2))))) = q)
-       then ((substring input start (p - start)), (p + (Prims.of_int (3))))
-       else scan_long_str input (p + Prims.int_one) start q)
+       if (char_code c) = (Prims.of_int (0x5C))
+       then
+         (if at_end input (p + Prims.int_one)
+          then p + Prims.int_one
+          else scan_long_string_end input (p + (Prims.of_int (2))) q_code)
+       else scan_long_string_end input (p + Prims.int_one) q_code)
 let scan_string (input : Prims.string) (p : pos) : (Prims.string * pos)=
-  let q = char_code (peek_char input p) in
-  if
+  let q = peek_char input p in
+  let q_code = char_code q in
+  let is_long =
     (((Prims.op_Negation (at_end input (p + Prims.int_one))) &&
-        ((char_code (peek_char input (p + Prims.int_one))) = q))
+        ((char_code (peek_char input (p + Prims.int_one))) = q_code))
        && (Prims.op_Negation (at_end input (p + (Prims.of_int (2))))))
-      && ((char_code (peek_char input (p + (Prims.of_int (2))))) = q)
+      && ((char_code (peek_char input (p + (Prims.of_int (2))))) = q_code) in
+  if is_long
   then
-    scan_long_str input (p + (Prims.of_int (3))) (p + (Prims.of_int (3))) q
-  else scan_short_str input (p + Prims.int_one) (p + Prims.int_one) q
-let keyword_of_upper (u : Prims.string) :
-  token FStar_Pervasives_Native.option=
-  if u = "SELECT"
-  then FStar_Pervasives_Native.Some Tok_SELECT
+    let p_start = p + (Prims.of_int (3)) in
+    let end_p = scan_long_string_end input p_start q_code in
+    let raw = substring input p_start (safe_sub end_p p_start) in
+    ((process_string_escapes raw), (end_p + (Prims.of_int (3))))
   else
-    if u = "ASK"
-    then FStar_Pervasives_Native.Some Tok_ASK
-    else
-      if u = "CONSTRUCT"
-      then FStar_Pervasives_Native.Some Tok_CONSTRUCT
-      else
-        if u = "DESCRIBE"
-        then FStar_Pervasives_Native.Some Tok_DESCRIBE
-        else
-          if u = "WHERE"
-          then FStar_Pervasives_Native.Some Tok_WHERE
+    (let p_start = p + Prims.int_one in
+     let end_p = scan_short_string_end input p_start q_code in
+     let raw = substring input p_start (safe_sub end_p p_start) in
+     ((process_string_escapes raw), (end_p + Prims.int_one)))
+let rec scan_pn_chars_end (input : Prims.string) (p : pos) : pos=
+  if at_end input p
+  then p
+  else
+    if is_pn_char (peek_char input p)
+    then scan_pn_chars_end input (p + Prims.int_one)
+    else p
+let rec scan_pn_local_end (input : Prims.string) (p : pos) : pos=
+  if at_end input p
+  then p
+  else
+    (let c = peek_char input p in
+     if
+       ((is_pn_char c) || ((char_code c) = (Prims.of_int (0x3A)))) ||
+         ((char_code c) = (Prims.of_int (0x25)))
+     then scan_pn_local_end input (p + Prims.int_one)
+     else
+       if (char_code c) = (Prims.of_int (0x5C))
+       then
+         (if at_end input (p + Prims.int_one)
+          then p
           else
-            if u = "PREFIX"
-            then FStar_Pervasives_Native.Some Tok_PREFIX
+            if is_pn_local_esc (peek_char input (p + Prims.int_one))
+            then scan_pn_local_end input (p + (Prims.of_int (2)))
+            else p)
+       else p)
+let keyword_of_upper (upper : Prims.string) (original : Prims.string) :
+  token=
+  if streq upper "SELECT"
+  then Tok_SELECT
+  else
+    if streq upper "ASK"
+    then Tok_ASK
+    else
+      if streq upper "CONSTRUCT"
+      then Tok_CONSTRUCT
+      else
+        if streq upper "DESCRIBE"
+        then Tok_DESCRIBE
+        else
+          if streq upper "WHERE"
+          then Tok_WHERE
+          else
+            if streq upper "PREFIX"
+            then Tok_PREFIX
             else
-              if u = "BASE"
-              then FStar_Pervasives_Native.Some Tok_BASE
+              if streq upper "BASE"
+              then Tok_BASE
               else
-                if u = "OPTIONAL"
-                then FStar_Pervasives_Native.Some Tok_OPTIONAL
+                if streq upper "OPTIONAL"
+                then Tok_OPTIONAL
                 else
-                  if u = "UNION"
-                  then FStar_Pervasives_Native.Some Tok_UNION
+                  if streq upper "UNION"
+                  then Tok_UNION
                   else
-                    if u = "MINUS"
-                    then FStar_Pervasives_Native.Some Tok_MINUS_KW
+                    if streq upper "MINUS"
+                    then Tok_MINUS_KW
                     else
-                      if u = "FILTER"
-                      then FStar_Pervasives_Native.Some Tok_FILTER
+                      if streq upper "FILTER"
+                      then Tok_FILTER
                       else
-                        if u = "BIND"
-                        then FStar_Pervasives_Native.Some Tok_BIND
+                        if streq upper "BIND"
+                        then Tok_BIND
                         else
-                          if u = "VALUES"
-                          then FStar_Pervasives_Native.Some Tok_VALUES
+                          if streq upper "VALUES"
+                          then Tok_VALUES
                           else
-                            if u = "GRAPH"
-                            then FStar_Pervasives_Native.Some Tok_GRAPH
+                            if streq upper "GRAPH"
+                            then Tok_GRAPH
                             else
-                              if u = "SERVICE"
-                              then FStar_Pervasives_Native.Some Tok_SERVICE
+                              if streq upper "SERVICE"
+                              then Tok_SERVICE
                               else
-                                if u = "SILENT"
-                                then FStar_Pervasives_Native.Some Tok_SILENT
+                                if streq upper "SILENT"
+                                then Tok_SILENT
                                 else
-                                  if u = "EXISTS"
-                                  then
-                                    FStar_Pervasives_Native.Some Tok_EXISTS
+                                  if streq upper "EXISTS"
+                                  then Tok_EXISTS
                                   else
-                                    if u = "NOT"
-                                    then FStar_Pervasives_Native.Some Tok_NOT
+                                    if streq upper "NOT"
+                                    then Tok_NOT
                                     else
-                                      if u = "AS"
-                                      then
-                                        FStar_Pervasives_Native.Some Tok_AS
+                                      if streq upper "AS"
+                                      then Tok_AS
                                       else
-                                        if u = "DISTINCT"
-                                        then
-                                          FStar_Pervasives_Native.Some
-                                            Tok_DISTINCT
+                                        if streq upper "DISTINCT"
+                                        then Tok_DISTINCT
                                         else
-                                          if u = "REDUCED"
-                                          then
-                                            FStar_Pervasives_Native.Some
-                                              Tok_REDUCED
+                                          if streq upper "REDUCED"
+                                          then Tok_REDUCED
                                           else
-                                            if u = "ORDER"
-                                            then
-                                              FStar_Pervasives_Native.Some
-                                                Tok_ORDER
+                                            if streq upper "ORDER"
+                                            then Tok_ORDER
                                             else
-                                              if u = "BY"
-                                              then
-                                                FStar_Pervasives_Native.Some
-                                                  Tok_BY
+                                              if streq upper "BY"
+                                              then Tok_BY
                                               else
-                                                if u = "ASC"
-                                                then
-                                                  FStar_Pervasives_Native.Some
-                                                    Tok_ASC
+                                                if streq upper "ASC"
+                                                then Tok_ASC
                                                 else
-                                                  if u = "DESC"
-                                                  then
-                                                    FStar_Pervasives_Native.Some
-                                                      Tok_DESC
+                                                  if streq upper "DESC"
+                                                  then Tok_DESC
                                                   else
-                                                    if u = "GROUP"
-                                                    then
-                                                      FStar_Pervasives_Native.Some
-                                                        Tok_GROUP
+                                                    if streq upper "GROUP"
+                                                    then Tok_GROUP
                                                     else
-                                                      if u = "HAVING"
-                                                      then
-                                                        FStar_Pervasives_Native.Some
-                                                          Tok_HAVING
+                                                      if streq upper "HAVING"
+                                                      then Tok_HAVING
                                                       else
-                                                        if u = "LIMIT"
-                                                        then
-                                                          FStar_Pervasives_Native.Some
-                                                            Tok_LIMIT
+                                                        if
+                                                          streq upper "LIMIT"
+                                                        then Tok_LIMIT
                                                         else
-                                                          if u = "OFFSET"
-                                                          then
-                                                            FStar_Pervasives_Native.Some
-                                                              Tok_OFFSET
+                                                          if
+                                                            streq upper
+                                                              "OFFSET"
+                                                          then Tok_OFFSET
                                                           else
-                                                            if u = "IN"
-                                                            then
-                                                              FStar_Pervasives_Native.Some
-                                                                Tok_IN
+                                                            if
+                                                              streq upper
+                                                                "IN"
+                                                            then Tok_IN
                                                             else
-                                                              if u = "TRUE"
-                                                              then
-                                                                FStar_Pervasives_Native.Some
-                                                                  Tok_TRUE
+                                                              if
+                                                                streq upper
+                                                                  "TRUE"
+                                                              then Tok_TRUE
                                                               else
                                                                 if
-                                                                  u = "FALSE"
+                                                                  streq upper
+                                                                    "FALSE"
                                                                 then
-                                                                  FStar_Pervasives_Native.Some
-                                                                    Tok_FALSE
+                                                                  Tok_FALSE
                                                                 else
                                                                   if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "UNDEF"
                                                                   then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_UNDEF
                                                                   else
                                                                     if
-                                                                    u = "A"
+                                                                    streq
+                                                                    upper "A"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_A
                                                                     else
                                                                     if
-                                                                    u = "STR"
+                                                                    streq
+                                                                    upper
+                                                                    "STR"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_STR
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "LANG"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_LANG
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "LANGMATCHES"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_LANGMATCHES
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "DATATYPE"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_DATATYPE
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "BOUND"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_BOUND
                                                                     else
                                                                     if
-                                                                    u = "IF"
+                                                                    streq
+                                                                    upper
+                                                                    "IF"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_IF
                                                                     else
                                                                     if
-                                                                    u = "IRI"
+                                                                    streq
+                                                                    upper
+                                                                    "IRI"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_IRI_KW
                                                                     else
                                                                     if
-                                                                    u = "URI"
+                                                                    streq
+                                                                    upper
+                                                                    "URI"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_URI
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "BNODE"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_BNODE_KW
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "RAND"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_RAND
                                                                     else
                                                                     if
-                                                                    u = "ABS"
+                                                                    streq
+                                                                    upper
+                                                                    "ABS"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_ABS
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "CEIL"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_CEIL
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "FLOOR"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_FLOOR
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "ROUND"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_ROUND
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "CONCAT"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_CONCAT
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "STRLEN"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_STRLEN
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "UCASE"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_UCASE
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "LCASE"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_LCASE
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "ENCODE_FOR_URI"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_ENCODE_FOR_URI
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "CONTAINS"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_CONTAINS
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "STRSTARTS"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_STRSTARTS
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "STRENDS"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_STRENDS
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "STRBEFORE"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_STRBEFORE
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "STRAFTER"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_STRAFTER
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "REPLACE"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_REPLACE
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "REGEX"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_REGEX
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "SUBSTR"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_SUBSTR
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
+                                                                    "SUBSTRING"
+                                                                    then
+                                                                    Tok_SUBSTR
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
                                                                     "ISIRI"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_ISIRI
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "ISURI"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_ISIRI
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "ISBLANK"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_ISBLANK
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "ISLITERAL"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_ISLITERAL
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "ISNUMERIC"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_ISNUMERIC
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "SAMETERM"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_SAMETERM
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "STRDT"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_STRDT
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "STRLANG"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_STRLANG
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "COUNT"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_COUNT
                                                                     else
                                                                     if
-                                                                    u = "SUM"
+                                                                    streq
+                                                                    upper
+                                                                    "SUM"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_SUM
                                                                     else
                                                                     if
-                                                                    u = "MIN"
+                                                                    streq
+                                                                    upper
+                                                                    "MIN"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_MIN_KW
                                                                     else
                                                                     if
-                                                                    u = "MAX"
+                                                                    streq
+                                                                    upper
+                                                                    "MAX"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_MAX_KW
                                                                     else
                                                                     if
-                                                                    u = "AVG"
+                                                                    streq
+                                                                    upper
+                                                                    "AVG"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_AVG
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "GROUP_CONCAT"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_GROUP_CONCAT
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "SAMPLE"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_SAMPLE
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "SEPARATOR"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_SEPARATOR
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "COALESCE"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_COALESCE
                                                                     else
                                                                     if
-                                                                    u = "NOW"
+                                                                    streq
+                                                                    upper
+                                                                    "NOW"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_NOW
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "UUID"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_UUID
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "STRUUID"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_STRUUID
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "YEAR"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_YEAR
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "MONTH"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_MONTH
                                                                     else
                                                                     if
-                                                                    u = "DAY"
+                                                                    streq
+                                                                    upper
+                                                                    "DAY"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_DAY
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "HOURS"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_HOURS
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "MINUTES"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_MINUTES
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "SECONDS"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_SECONDS
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "TIMEZONE"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_TIMEZONE
                                                                     else
                                                                     if
-                                                                    u = "TZ"
+                                                                    streq
+                                                                    upper
+                                                                    "TZ"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_TZ
                                                                     else
                                                                     if
-                                                                    u = "MD5"
+                                                                    streq
+                                                                    upper
+                                                                    "MD5"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_MD5
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "SHA1"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_SHA1
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "SHA256"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_SHA256
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "SHA384"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_SHA384
                                                                     else
                                                                     if
-                                                                    u =
+                                                                    streq
+                                                                    upper
                                                                     "SHA512"
                                                                     then
-                                                                    FStar_Pervasives_Native.Some
                                                                     Tok_SHA512
                                                                     else
-                                                                    FStar_Pervasives_Native.None
+                                                                    Tok_PNAME
+                                                                    original
 let scan_pname_or_keyword (input : Prims.string) (p : pos) : lex_result=
-  let p' =
-    scan_while input p
-      (fun c -> (is_pn_char c) || ((char_code c) = (Prims.of_int (0x3A)))) in
-  let word = substring input p (p' - p) in
-  let has_colon = RDF_Graph_Executable.string_contains_colon word in
-  if has_colon
-  then ((Tok_PNAME word), p')
-  else
-    (match keyword_of_upper (string_upper word) with
-     | FStar_Pervasives_Native.Some tok -> (tok, p')
-     | FStar_Pervasives_Native.None -> ((Tok_PNAME word), p'))
-let scan_number (input : Prims.string) (p : pos) : lex_result=
-  let p' = scan_while input p is_digit in
+  let p1 = scan_pn_chars_end input p in
   if
-    (Prims.op_Negation (at_end input p')) &&
-      ((char_code (peek_char input p')) = (Prims.of_int (0x2E)))
+    (Prims.op_Negation (at_end input p1)) &&
+      ((char_code (peek_char input p1)) = (Prims.of_int (0x3A)))
   then
-    let p'' = scan_while input (p' + Prims.int_one) is_digit in
-    (if
-       (Prims.op_Negation (at_end input p'')) &&
-         (((char_code (peek_char input p'')) = (Prims.of_int (0x45))) ||
-            ((char_code (peek_char input p'')) = (Prims.of_int (0x65))))
-     then
-       let p3 = p'' + Prims.int_one in
-       let p31 =
-         if
-           (Prims.op_Negation (at_end input p3)) &&
-             (((char_code (peek_char input p3)) = (Prims.of_int (0x2B))) ||
-                ((char_code (peek_char input p3)) = (Prims.of_int (0x2D))))
-         then p3 + Prims.int_one
-         else p3 in
-       let p4 = scan_while input p31 is_digit in
-       ((Tok_DOUBLE (substring input p (p4 - p))), p4)
-     else ((Tok_DECIMAL (substring input p (p'' - p))), p''))
+    let p2 = scan_pn_local_end input (p1 + Prims.int_one) in
+    let p21 = trim_trailing_dots input p p2 in
+    ((Tok_PNAME (substring input p (safe_sub p21 p))), p21)
   else
-    if
-      (Prims.op_Negation (at_end input p')) &&
-        (((char_code (peek_char input p')) = (Prims.of_int (0x45))) ||
-           ((char_code (peek_char input p')) = (Prims.of_int (0x65))))
-    then
-      (let p'' = p' + Prims.int_one in
-       let p''1 =
-         if
-           (Prims.op_Negation (at_end input p'')) &&
-             (((char_code (peek_char input p'')) = (Prims.of_int (0x2B))) ||
-                ((char_code (peek_char input p'')) = (Prims.of_int (0x2D))))
-         then p'' + Prims.int_one
-         else p'' in
-       let p3 = scan_while input p''1 is_digit in
-       ((Tok_DOUBLE (substring input p (p3 - p))), p3))
-    else ((Tok_INTEGER (substring input p (p' - p))), p')
-let scan_bnode_label (input : Prims.string) (p : pos) : (Prims.string * pos)=
-  let p' = scan_while input p is_pn_char in
-  let rec trim_dots q =
-    if q <= p
-    then p
-    else
-      if
-        (char_code (char_at input (q - Prims.int_one))) =
-          (Prims.of_int (0x2E))
-      then trim_dots (q - Prims.int_one)
-      else q in
-  let p'' = trim_dots p' in ((substring input p (p'' - p)), p'')
-let scan_var_name (input : Prims.string) (p : pos) : (Prims.string * pos)=
-  let p' =
-    scan_while input p
-      (fun c -> (is_alnum c) || ((char_code c) = (Prims.of_int (0x5F)))) in
-  ((substring input p (p' - p)), p')
-let rec scan_lang_subtags (input : Prims.string) (p : pos) (fuel : Prims.nat)
-  : pos=
-  if fuel = Prims.int_zero
+    (let word = substring input p (safe_sub p1 p) in
+     ((keyword_of_upper (string_upper word) word), p1))
+let rec scan_digits_end (input : Prims.string) (p : pos) : pos=
+  if at_end input p
   then p
   else
-    if
-      (Prims.op_Negation (at_end input p)) &&
-        ((char_code (peek_char input p)) = (Prims.of_int (0x2D)))
-    then
-      (let p' = scan_while input (p + Prims.int_one) is_alnum in
-       if p' > (p + Prims.int_one)
-       then scan_lang_subtags input p' (fuel - Prims.int_one)
-       else p)
+    if is_digit (peek_char input p)
+    then scan_digits_end input (p + Prims.int_one)
     else p
-let scan_langtag (input : Prims.string) (p : pos) : (Prims.string * pos)=
-  let p' = scan_while input p is_alpha in
-  if p' = p
-  then ("", p)
+let scan_number (input : Prims.string) (p : pos) : lex_result=
+  let p1 = scan_digits_end input p in
+  let has_dot =
+    (((Prims.op_Negation (at_end input p1)) &&
+        ((char_code (peek_char input p1)) = (Prims.of_int (0x2E))))
+       && (Prims.op_Negation (at_end input (p1 + Prims.int_one))))
+      && (is_digit (peek_char input (p1 + Prims.int_one))) in
+  let p2 = if has_dot then scan_digits_end input (p1 + Prims.int_one) else p1 in
+  let has_exp =
+    (Prims.op_Negation (at_end input p2)) &&
+      (((char_code (peek_char input p2)) = (Prims.of_int (0x65))) ||
+         ((char_code (peek_char input p2)) = (Prims.of_int (0x45)))) in
+  let p3 =
+    if has_exp
+    then
+      let pe = p2 + Prims.int_one in
+      let pe1 =
+        if
+          (Prims.op_Negation (at_end input pe)) &&
+            (((char_code (peek_char input pe)) = (Prims.of_int (0x2B))) ||
+               ((char_code (peek_char input pe)) = (Prims.of_int (0x2D))))
+        then pe + Prims.int_one
+        else pe in
+      scan_digits_end input pe1
+    else p2 in
+  let text = substring input p (safe_sub p3 p) in
+  if has_exp
+  then ((Tok_DOUBLE text), p3)
+  else if has_dot then ((Tok_DECIMAL text), p3) else ((Tok_INTEGER text), p3)
+let rec scan_bnode_chars_end (input : Prims.string) (p : pos) : pos=
+  if at_end input p
+  then p
   else
-    (let p'' = scan_lang_subtags input p' (Prims.of_int (20)) in
-     ((substring input p (p'' - p)), p''))
+    if is_pn_char (peek_char input p)
+    then scan_bnode_chars_end input (p + Prims.int_one)
+    else p
+let scan_bnode_label (input : Prims.string) (p : pos) : (Prims.string * pos)=
+  let p' = scan_bnode_chars_end input p in
+  let p'1 = trim_trailing_dots input p p' in
+  ((substring input p (safe_sub p'1 p)), p'1)
+let rec scan_var_chars_end (input : Prims.string) (p : pos) : pos=
+  if at_end input p
+  then p
+  else
+    (let c = peek_char input p in
+     if (is_alnum c) || ((char_code c) = (Prims.of_int (0x5F)))
+     then scan_var_chars_end input (p + Prims.int_one)
+     else p)
+let scan_var_name (input : Prims.string) (p : pos) : (Prims.string * pos)=
+  let p' = scan_var_chars_end input p in
+  ((substring input p (safe_sub p' p)), p')
+let rec scan_langtag_chars_end (input : Prims.string) (p : pos) : pos=
+  if at_end input p
+  then p
+  else
+    (let c = peek_char input p in
+     if (is_alnum c) || ((char_code c) = (Prims.of_int (0x2D)))
+     then scan_langtag_chars_end input (p + Prims.int_one)
+     else p)
+let scan_langtag (input : Prims.string) (p : pos) : (Prims.string * pos)=
+  let p' = scan_langtag_chars_end input p in
+  ((substring input p (safe_sub p' p)), p')
 let next_token (input : Prims.string) (p : pos) : lex_result=
   let p1 = skip_ws input p in
   if at_end input p1
@@ -1470,22 +1641,27 @@ type modifier_result =
     Prims.list FStar_Pervasives_Native.option *
     SPARQL11_Algebra.having_condition Prims.list
     FStar_Pervasives_Native.option)
-let is_eof (t : token) : Prims.bool=
-  match t with | Tok_EOF -> true | uu___ -> false
-let rec tokenize_acc (input : Prims.string) (p : pos)
+let rec tokenize_loop (input : Prims.string) (p : pos)
   (acc : token Prims.list) (fuel : Prims.nat) : token Prims.list=
   if fuel = Prims.int_zero
   then FStar_List_Tot_Base.rev (Tok_EOF :: acc)
   else
-    (let uu___1 = next_token input p in
-     match uu___1 with
-     | (tok, p') ->
-         if is_eof tok
-         then FStar_List_Tot_Base.rev (Tok_EOF :: acc)
-         else tokenize_acc input p' (tok :: acc) (fuel - Prims.int_one))
+    if p > (FStar_String.strlen input)
+    then FStar_List_Tot_Base.rev (Tok_EOF :: acc)
+    else
+      (let uu___2 = next_token input p in
+       match uu___2 with
+       | (tok, p') ->
+           (match tok with
+            | Tok_EOF -> FStar_List_Tot_Base.rev (Tok_EOF :: acc)
+            | uu___3 ->
+                if p' <= p
+                then FStar_List_Tot_Base.rev (Tok_EOF :: acc)
+                else
+                  tokenize_loop input p' (tok :: acc) (fuel - Prims.int_one)))
 let tokenize (input : Prims.string) : token Prims.list=
-  tokenize_acc input Prims.int_zero []
-    ((FStar_String.strlen input) + (Prims.of_int (100)))
+  tokenize_loop input Prims.int_zero []
+    ((FStar_String.strlen input) + Prims.int_one)
 let parse_ok (v : 'a) (ts : token_stream) : 'a parse_result= ParseOk (v, ts)
 let parse_err (msg : Prims.string) : 'a parse_result= ParseErr msg
 let parse_bind (p : 'a parse_result)
@@ -1495,139 +1671,7 @@ let parse_peek (ts : token_stream) : token=
   match ts with | [] -> Tok_EOF | t::uu___ -> t
 let parse_advance (ts : token_stream) : token_stream=
   match ts with | [] -> [] | uu___::rest -> rest
-let token_eq (t1 : token) (t2 : token) : Prims.bool=
-  match (t1, t2) with
-  | (Tok_SELECT, Tok_SELECT) -> true
-  | (Tok_ASK, Tok_ASK) -> true
-  | (Tok_CONSTRUCT, Tok_CONSTRUCT) -> true
-  | (Tok_DESCRIBE, Tok_DESCRIBE) -> true
-  | (Tok_WHERE, Tok_WHERE) -> true
-  | (Tok_PREFIX, Tok_PREFIX) -> true
-  | (Tok_BASE, Tok_BASE) -> true
-  | (Tok_OPTIONAL, Tok_OPTIONAL) -> true
-  | (Tok_UNION, Tok_UNION) -> true
-  | (Tok_MINUS_KW, Tok_MINUS_KW) -> true
-  | (Tok_FILTER, Tok_FILTER) -> true
-  | (Tok_BIND, Tok_BIND) -> true
-  | (Tok_VALUES, Tok_VALUES) -> true
-  | (Tok_GRAPH, Tok_GRAPH) -> true
-  | (Tok_SERVICE, Tok_SERVICE) -> true
-  | (Tok_SILENT, Tok_SILENT) -> true
-  | (Tok_EXISTS, Tok_EXISTS) -> true
-  | (Tok_NOT, Tok_NOT) -> true
-  | (Tok_AS, Tok_AS) -> true
-  | (Tok_DISTINCT, Tok_DISTINCT) -> true
-  | (Tok_REDUCED, Tok_REDUCED) -> true
-  | (Tok_ORDER, Tok_ORDER) -> true
-  | (Tok_BY, Tok_BY) -> true
-  | (Tok_ASC, Tok_ASC) -> true
-  | (Tok_DESC, Tok_DESC) -> true
-  | (Tok_GROUP, Tok_GROUP) -> true
-  | (Tok_HAVING, Tok_HAVING) -> true
-  | (Tok_LIMIT, Tok_LIMIT) -> true
-  | (Tok_OFFSET, Tok_OFFSET) -> true
-  | (Tok_IN, Tok_IN) -> true
-  | (Tok_TRUE, Tok_TRUE) -> true
-  | (Tok_FALSE, Tok_FALSE) -> true
-  | (Tok_UNDEF, Tok_UNDEF) -> true
-  | (Tok_A, Tok_A) -> true
-  | (Tok_LBRACE, Tok_LBRACE) -> true
-  | (Tok_RBRACE, Tok_RBRACE) -> true
-  | (Tok_LPAREN, Tok_LPAREN) -> true
-  | (Tok_RPAREN, Tok_RPAREN) -> true
-  | (Tok_LBRACKET, Tok_LBRACKET) -> true
-  | (Tok_RBRACKET, Tok_RBRACKET) -> true
-  | (Tok_DOT, Tok_DOT) -> true
-  | (Tok_SEMI, Tok_SEMI) -> true
-  | (Tok_COMMA, Tok_COMMA) -> true
-  | (Tok_STAR, Tok_STAR) -> true
-  | (Tok_SLASH, Tok_SLASH) -> true
-  | (Tok_PIPE, Tok_PIPE) -> true
-  | (Tok_CARET, Tok_CARET) -> true
-  | (Tok_BANG, Tok_BANG) -> true
-  | (Tok_QMARK, Tok_QMARK) -> true
-  | (Tok_PLUS, Tok_PLUS) -> true
-  | (Tok_MINUS_OP, Tok_MINUS_OP) -> true
-  | (Tok_EQ, Tok_EQ) -> true
-  | (Tok_NE, Tok_NE) -> true
-  | (Tok_LT, Tok_LT) -> true
-  | (Tok_GT, Tok_GT) -> true
-  | (Tok_LE, Tok_LE) -> true
-  | (Tok_GE, Tok_GE) -> true
-  | (Tok_AND, Tok_AND) -> true
-  | (Tok_OR, Tok_OR) -> true
-  | (Tok_HATHAT, Tok_HATHAT) -> true
-  | (Tok_ANON, Tok_ANON) -> true
-  | (Tok_EOF, Tok_EOF) -> true
-  | (Tok_STR, Tok_STR) -> true
-  | (Tok_LANG, Tok_LANG) -> true
-  | (Tok_LANGMATCHES, Tok_LANGMATCHES) -> true
-  | (Tok_DATATYPE, Tok_DATATYPE) -> true
-  | (Tok_BOUND, Tok_BOUND) -> true
-  | (Tok_IF, Tok_IF) -> true
-  | (Tok_IRI_KW, Tok_IRI_KW) -> true
-  | (Tok_URI, Tok_URI) -> true
-  | (Tok_BNODE_KW, Tok_BNODE_KW) -> true
-  | (Tok_RAND, Tok_RAND) -> true
-  | (Tok_ABS, Tok_ABS) -> true
-  | (Tok_CEIL, Tok_CEIL) -> true
-  | (Tok_FLOOR, Tok_FLOOR) -> true
-  | (Tok_ROUND, Tok_ROUND) -> true
-  | (Tok_CONCAT, Tok_CONCAT) -> true
-  | (Tok_STRLEN, Tok_STRLEN) -> true
-  | (Tok_UCASE, Tok_UCASE) -> true
-  | (Tok_LCASE, Tok_LCASE) -> true
-  | (Tok_ENCODE_FOR_URI, Tok_ENCODE_FOR_URI) -> true
-  | (Tok_CONTAINS, Tok_CONTAINS) -> true
-  | (Tok_STRSTARTS, Tok_STRSTARTS) -> true
-  | (Tok_STRENDS, Tok_STRENDS) -> true
-  | (Tok_STRBEFORE, Tok_STRBEFORE) -> true
-  | (Tok_STRAFTER, Tok_STRAFTER) -> true
-  | (Tok_REPLACE, Tok_REPLACE) -> true
-  | (Tok_REGEX, Tok_REGEX) -> true
-  | (Tok_SUBSTR, Tok_SUBSTR) -> true
-  | (Tok_ISIRI, Tok_ISIRI) -> true
-  | (Tok_ISBLANK, Tok_ISBLANK) -> true
-  | (Tok_ISLITERAL, Tok_ISLITERAL) -> true
-  | (Tok_ISNUMERIC, Tok_ISNUMERIC) -> true
-  | (Tok_SAMETERM, Tok_SAMETERM) -> true
-  | (Tok_STRDT, Tok_STRDT) -> true
-  | (Tok_STRLANG, Tok_STRLANG) -> true
-  | (Tok_COUNT, Tok_COUNT) -> true
-  | (Tok_SUM, Tok_SUM) -> true
-  | (Tok_MIN_KW, Tok_MIN_KW) -> true
-  | (Tok_MAX_KW, Tok_MAX_KW) -> true
-  | (Tok_AVG, Tok_AVG) -> true
-  | (Tok_GROUP_CONCAT, Tok_GROUP_CONCAT) -> true
-  | (Tok_SAMPLE, Tok_SAMPLE) -> true
-  | (Tok_SEPARATOR, Tok_SEPARATOR) -> true
-  | (Tok_COALESCE, Tok_COALESCE) -> true
-  | (Tok_NOW, Tok_NOW) -> true
-  | (Tok_UUID, Tok_UUID) -> true
-  | (Tok_STRUUID, Tok_STRUUID) -> true
-  | (Tok_YEAR, Tok_YEAR) -> true
-  | (Tok_MONTH, Tok_MONTH) -> true
-  | (Tok_DAY, Tok_DAY) -> true
-  | (Tok_HOURS, Tok_HOURS) -> true
-  | (Tok_MINUTES, Tok_MINUTES) -> true
-  | (Tok_SECONDS, Tok_SECONDS) -> true
-  | (Tok_TIMEZONE, Tok_TIMEZONE) -> true
-  | (Tok_TZ, Tok_TZ) -> true
-  | (Tok_MD5, Tok_MD5) -> true
-  | (Tok_SHA1, Tok_SHA1) -> true
-  | (Tok_SHA256, Tok_SHA256) -> true
-  | (Tok_SHA384, Tok_SHA384) -> true
-  | (Tok_SHA512, Tok_SHA512) -> true
-  | (Tok_IRI s1, Tok_IRI s2) -> s1 = s2
-  | (Tok_PNAME s1, Tok_PNAME s2) -> s1 = s2
-  | (Tok_VAR s1, Tok_VAR s2) -> s1 = s2
-  | (Tok_STRING s1, Tok_STRING s2) -> s1 = s2
-  | (Tok_LANGTAG s1, Tok_LANGTAG s2) -> s1 = s2
-  | (Tok_INTEGER s1, Tok_INTEGER s2) -> s1 = s2
-  | (Tok_DECIMAL s1, Tok_DECIMAL s2) -> s1 = s2
-  | (Tok_DOUBLE s1, Tok_DOUBLE s2) -> s1 = s2
-  | (Tok_BNODE s1, Tok_BNODE s2) -> s1 = s2
-  | (uu___, uu___1) -> false
+let token_eq (t1 : token) (t2 : token) : Prims.bool= t1 = t2
 let parse_expect (tok : token) (ts : token_stream) : unit parse_result=
   match ts with
   | t::rest ->
@@ -1653,14 +1697,12 @@ let rec find_colon (cs : FStar_Char.char Prims.list) (i : Prims.nat) :
       then i
       else find_colon rest (i + Prims.int_one)
 let split_pname (pn : Prims.string) : (Prims.string * Prims.string)=
-  let chars = FStar_String.list_of_string pn in
-  let cp = find_colon chars Prims.int_zero in
-  if cp >= (FStar_String.strlen pn)
-  then (pn, "")
-  else
-    ((substring pn Prims.int_zero cp),
-      (substring pn (cp + Prims.int_one)
-         (((FStar_String.strlen pn) - cp) - Prims.int_one)))
+  match find_char_pos pn Prims.int_zero (Prims.of_int (0x3A)) with
+  | FStar_Pervasives_Native.Some i ->
+      ((substring pn Prims.int_zero i),
+        (substring pn (i + Prims.int_one)
+           (safe_sub (FStar_String.strlen pn) (i + Prims.int_one))))
+  | FStar_Pervasives_Native.None -> (pn, "")
 let resolve_pname (pn : Prims.string) (pm : prefix_map) :
   Prims.string FStar_Pervasives_Native.option=
   let uu___ = split_pname pn in
@@ -2028,14 +2070,15 @@ and parse_primary_expr (pm : prefix_map) (fuel : Prims.nat)
          parse_rdf_literal_expr pm (fuel - Prims.int_one) s
            (parse_advance ts)
      | Tok_IRI i ->
-         if RDF_Graph_Executable.is_iri i
+         let ri = resolve_tok_iri i in
+         if RDF_Graph_Executable.is_iri ri
          then
            let ts' = parse_advance ts in
            (match parse_peek ts' with
             | Tok_LPAREN ->
-                parse_func_call pm (fuel - Prims.int_one) i
+                parse_func_call pm (fuel - Prims.int_one) ri
                   (parse_advance ts')
-            | uu___1 -> ParseOk ((SPARQL11_Algebra.E_IRI i), ts'))
+            | uu___1 -> ParseOk ((SPARQL11_Algebra.E_IRI ri), ts'))
          else ParseErr (Prims.strcat "invalid IRI: " i)
      | Tok_PNAME pn ->
          parse_pname_expr pm (fuel - Prims.int_one) pn (parse_advance ts)
@@ -2691,6 +2734,7 @@ and parse_rdf_literal_expr (pm : prefix_map) (fuel : Prims.nat)
          let ts' = parse_advance ts in
          (match parse_peek ts' with
           | Tok_IRI dt ->
+              let dt = resolve_tok_iri dt in
               if RDF_Graph_Executable.is_iri dt
               then
                 (match make_typed_literal s dt with
@@ -2744,7 +2788,7 @@ and parse_group_graph_pattern (pm : prefix_map) (fuel : Prims.nat)
               ParseOk (SPARQL11_Algebra.GP_Empty, (parse_advance ts'))
           | uu___1 ->
               (match parse_ggp_body pm (fuel - Prims.int_one)
-                       SPARQL11_Algebra.GP_Empty ts'
+                       SPARQL11_Algebra.GP_Empty [] ts'
                with
                | ParseErr m -> ParseErr m
                | ParseOk (g, ts'') ->
@@ -2752,10 +2796,15 @@ and parse_group_graph_pattern (pm : prefix_map) (fuel : Prims.nat)
                     | ParseErr m -> ParseErr m
                     | ParseOk ((), ts''') -> ParseOk (g, ts''')))))
 and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
-  (acc : SPARQL11_Algebra.group_graph_pattern) (ts : token_stream) :
+  (acc : SPARQL11_Algebra.group_graph_pattern)
+  (filters : SPARQL11_Algebra.expr Prims.list) (ts : token_stream) :
   SPARQL11_Algebra.group_graph_pattern parse_result=
   if fuel = Prims.int_zero
-  then ParseOk (acc, ts)
+  then
+    let g =
+      FStar_List_Tot_Base.fold_left
+        (fun g1 e -> SPARQL11_Algebra.GP_Filter (e, g1)) acc filters in
+    ParseOk (g, ts)
   else
     (match parse_peek ts with
      | Tok_VAR uu___1 ->
@@ -2769,7 +2818,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___2 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
+              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
      | Tok_IRI uu___1 ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
@@ -2781,7 +2830,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___2 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
+              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
      | Tok_PNAME uu___1 ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
@@ -2793,7 +2842,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___2 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
+              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
      | Tok_BNODE uu___1 ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
@@ -2805,7 +2854,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___2 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
+              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
      | Tok_LBRACKET ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
@@ -2817,7 +2866,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___1 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
+              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
      | Tok_LPAREN ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
@@ -2829,7 +2878,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___1 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
+              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
      | Tok_A ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
@@ -2841,7 +2890,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___1 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
+              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
      | Tok_INTEGER uu___1 ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
@@ -2853,7 +2902,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___2 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
+              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
      | Tok_DECIMAL uu___1 ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
@@ -2865,7 +2914,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___2 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
+              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
      | Tok_DOUBLE uu___1 ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
@@ -2877,7 +2926,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___2 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
+              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
      | Tok_STRING uu___1 ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
@@ -2889,7 +2938,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___2 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
+              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
      | Tok_TRUE ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
@@ -2901,7 +2950,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___1 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
+              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
      | Tok_FALSE ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
@@ -2913,7 +2962,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___1 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
+              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
      | Tok_OPTIONAL ->
          (match parse_group_graph_pattern pm (fuel - Prims.int_one)
                   (parse_advance ts)
@@ -2933,7 +2982,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___1 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
+              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
      | Tok_MINUS_KW ->
          (match parse_group_graph_pattern pm (fuel - Prims.int_one)
                   (parse_advance ts)
@@ -2945,7 +2994,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___1 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
+              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
      | Tok_GRAPH ->
          let ts' = parse_advance ts in
          (match parse_graph_name pm (fuel - Prims.int_one) ts' with
@@ -2966,7 +3015,8 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                      match parse_peek ts''' with
                      | Tok_DOT -> parse_advance ts'''
                      | uu___1 -> ts''' in
-                   parse_ggp_body pm (fuel - Prims.int_one) acc' ts'''1))
+                   parse_ggp_body pm (fuel - Prims.int_one) acc' filters
+                     ts'''1))
      | Tok_SERVICE ->
          let ts' = parse_advance ts in
          let uu___1 =
@@ -2996,18 +3046,19 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                           match parse_peek ts''' with
                           | Tok_DOT -> parse_advance ts'''
                           | uu___2 -> ts''' in
-                        parse_ggp_body pm (fuel - Prims.int_one) acc' ts'''1)))
+                        parse_ggp_body pm (fuel - Prims.int_one) acc' filters
+                          ts'''1)))
      | Tok_FILTER ->
          let ts' = parse_advance ts in
          (match parse_filter_expr pm (fuel - Prims.int_one) ts' with
           | ParseErr m -> ParseErr m
           | ParseOk (e, ts'') ->
-              let acc' = SPARQL11_Algebra.GP_Filter (e, acc) in
               let ts''1 =
                 match parse_peek ts'' with
                 | Tok_DOT -> parse_advance ts''
                 | uu___1 -> ts'' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' ts''1)
+              parse_ggp_body pm (fuel - Prims.int_one) acc (e :: filters)
+                ts''1)
      | Tok_BIND ->
          let ts' = parse_advance ts in
          (match parse_expect Tok_LPAREN ts' with
@@ -3033,7 +3084,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                                     | Tok_DOT -> parse_advance ts5
                                     | uu___1 -> ts5 in
                                   parse_ggp_body pm (fuel - Prims.int_one)
-                                    acc' ts51)
+                                    acc' filters ts51)
                          | uu___1 -> ParseErr "expected variable after AS"))))
      | Tok_VALUES ->
          (match parse_values_clause pm (fuel - Prims.int_one)
@@ -3046,7 +3097,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___1 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
+              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
      | Tok_LBRACE ->
          (match parse_group_or_union pm (fuel - Prims.int_one) ts with
           | ParseErr m -> ParseErr m
@@ -3059,8 +3110,12 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___1 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' ts'1)
-     | uu___1 -> ParseOk (acc, ts))
+              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
+     | uu___1 ->
+         let g =
+           FStar_List_Tot_Base.fold_left
+             (fun g1 e -> SPARQL11_Algebra.GP_Filter (e, g1)) acc filters in
+         ParseOk (g, ts))
 and parse_group_or_union (pm : prefix_map) (fuel : Prims.nat)
   (ts : token_stream) : SPARQL11_Algebra.group_graph_pattern parse_result=
   if fuel = Prims.int_zero
@@ -3114,8 +3169,9 @@ and parse_graph_name (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
     (match parse_peek ts with
      | Tok_VAR v -> ParseOk ((SPARQL11_Algebra.PT_Var v), (parse_advance ts))
      | Tok_IRI i ->
-         if RDF_Graph_Executable.is_iri i
-         then ParseOk ((SPARQL11_Algebra.PT_IRI i), (parse_advance ts))
+         let ri = resolve_tok_iri i in
+         if RDF_Graph_Executable.is_iri ri
+         then ParseOk ((SPARQL11_Algebra.PT_IRI ri), (parse_advance ts))
          else ParseErr "invalid IRI"
      | Tok_PNAME pn ->
          (match resolve_pname pn pm with
@@ -3133,8 +3189,9 @@ and parse_service_iri (pm : prefix_map) (fuel : Prims.nat)
   else
     (match parse_peek ts with
      | Tok_IRI i ->
-         if RDF_Graph_Executable.is_iri i
-         then ParseOk (i, (parse_advance ts))
+         let ri = resolve_tok_iri i in
+         if RDF_Graph_Executable.is_iri ri
+         then ParseOk (ri, (parse_advance ts))
          else ParseErr "invalid IRI"
      | Tok_PNAME pn ->
          (match resolve_pname pn pm with
@@ -3155,10 +3212,11 @@ and parse_data_value (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
      | Tok_UNDEF ->
          ParseOk (FStar_Pervasives_Native.None, (parse_advance ts))
      | Tok_IRI i ->
-         if RDF_Graph_Executable.is_iri i
+         let ri = resolve_tok_iri i in
+         if RDF_Graph_Executable.is_iri ri
          then
            ParseOk
-             ((FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI i)),
+             ((FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI ri)),
                (parse_advance ts))
          else ParseErr "invalid IRI"
      | Tok_PNAME pn ->
@@ -3400,8 +3458,9 @@ and parse_subject (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
     (match parse_peek ts with
      | Tok_VAR v -> ParseOk ((SPARQL11_Algebra.PS_Var v), (parse_advance ts))
      | Tok_IRI i ->
-         if RDF_Graph_Executable.is_iri i
-         then ParseOk ((SPARQL11_Algebra.PS_IRI i), (parse_advance ts))
+         let ri = resolve_tok_iri i in
+         if RDF_Graph_Executable.is_iri ri
+         then ParseOk ((SPARQL11_Algebra.PS_IRI ri), (parse_advance ts))
          else ParseErr "invalid IRI"
      | Tok_PNAME pn ->
          (match resolve_pname pn pm with
@@ -3513,8 +3572,9 @@ and parse_path_primary (pm : prefix_map) (fuel : Prims.nat)
   else
     (match parse_peek ts with
      | Tok_IRI i ->
-         if RDF_Graph_Executable.is_iri i
-         then ParseOk ((SPARQL11_Algebra.PP_IRI i), (parse_advance ts))
+         let ri = resolve_tok_iri i in
+         if RDF_Graph_Executable.is_iri ri
+         then ParseOk ((SPARQL11_Algebra.PP_IRI ri), (parse_advance ts))
          else ParseErr "invalid IRI"
      | Tok_PNAME pn ->
          (match resolve_pname pn pm with
@@ -3568,8 +3628,9 @@ and parse_path_one_in_set (pm : prefix_map) (fuel : Prims.nat)
   else
     (match parse_peek ts with
      | Tok_IRI i ->
-         if RDF_Graph_Executable.is_iri i
-         then ParseOk ((SPARQL11_Algebra.PP_IRI i), (parse_advance ts))
+         let ri = resolve_tok_iri i in
+         if RDF_Graph_Executable.is_iri ri
+         then ParseOk ((SPARQL11_Algebra.PP_IRI ri), (parse_advance ts))
          else ParseErr "invalid IRI"
      | Tok_PNAME pn ->
          (match resolve_pname pn pm with
@@ -3586,10 +3647,11 @@ and parse_path_one_in_set (pm : prefix_map) (fuel : Prims.nat)
          let ts' = parse_advance ts in
          (match parse_peek ts' with
           | Tok_IRI i ->
-              if RDF_Graph_Executable.is_iri i
+              let ri = resolve_tok_iri i in
+              if RDF_Graph_Executable.is_iri ri
               then
                 ParseOk
-                  ((SPARQL11_Algebra.PP_Inverse (SPARQL11_Algebra.PP_IRI i)),
+                  ((SPARQL11_Algebra.PP_Inverse (SPARQL11_Algebra.PP_IRI ri)),
                     (parse_advance ts'))
               else ParseErr "invalid IRI"
           | Tok_PNAME pn ->
@@ -3659,10 +3721,11 @@ and parse_object_with_extras (pm : prefix_map) (fuel : Prims.nat)
            (((SPARQL11_Algebra.PT_Var v), SPARQL11_Algebra.GP_Empty),
              (parse_advance ts))
      | Tok_IRI i ->
-         if RDF_Graph_Executable.is_iri i
+         let ri = resolve_tok_iri i in
+         if RDF_Graph_Executable.is_iri ri
          then
            ParseOk
-             (((SPARQL11_Algebra.PT_IRI i), SPARQL11_Algebra.GP_Empty),
+             (((SPARQL11_Algebra.PT_IRI ri), SPARQL11_Algebra.GP_Empty),
                (parse_advance ts))
          else ParseErr "invalid IRI"
      | Tok_PNAME pn ->
@@ -3829,6 +3892,7 @@ and parse_rdf_literal_pt (pm : prefix_map) (fuel : Prims.nat)
          let ts' = parse_advance ts in
          (match parse_peek ts' with
           | Tok_IRI dt ->
+              let dt = resolve_tok_iri dt in
               if RDF_Graph_Executable.is_iri dt
               then
                 (match make_typed_literal s dt with
@@ -4044,12 +4108,8 @@ and parse_select_query (pm : prefix_map) (fuel : Prims.nat)
 and parse_prologue (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
   (prefix_map * RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
     parse_result=
-  parse_prologue_base pm FStar_Pervasives_Native.None fuel ts
-and parse_prologue_base (pm : prefix_map) (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option) (fuel : Prims.nat) (ts : token_stream) :
-  (prefix_map * RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
-    parse_result=
   if fuel = Prims.int_zero
-  then ParseOk ((pm, base), ts)
+  then ParseOk ((pm, FStar_Pervasives_Native.None), ts)
   else
     (match parse_peek ts with
      | Tok_PREFIX ->
@@ -4064,7 +4124,7 @@ and parse_prologue_base (pm : prefix_map) (base : RDF_Graph_Executable.wf_iri FS
                     | Tok_IRI iri ->
                         if RDF_Graph_Executable.is_iri iri
                         then
-                          parse_prologue_base ((prefix, iri) :: pm) base
+                          parse_prologue ((prefix, iri) :: pm)
                             (fuel - Prims.int_one) (parse_advance ts'')
                         else ParseErr "invalid prefix IRI"
                     | uu___3 -> ParseErr "expected IRI after PREFIX name"))
@@ -4075,11 +4135,10 @@ and parse_prologue_base (pm : prefix_map) (base : RDF_Graph_Executable.wf_iri FS
           | Tok_IRI iri ->
               if RDF_Graph_Executable.is_iri iri
               then
-                parse_prologue_base pm (FStar_Pervasives_Native.Some iri)
-                  (fuel - Prims.int_one) (parse_advance ts')
+                parse_prologue pm (fuel - Prims.int_one) (parse_advance ts')
               else ParseErr "invalid BASE IRI"
           | uu___1 -> ParseErr "expected IRI after BASE")
-     | uu___1 -> ParseOk ((pm, base), ts))
+     | uu___1 -> ParseOk ((pm, FStar_Pervasives_Native.None), ts))
 and parse_select_body (pm : prefix_map) (fuel : Prims.nat)
   (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
   (ts : token_stream) : SPARQL11_Algebra.query parse_result=

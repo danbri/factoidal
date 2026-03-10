@@ -130,6 +130,8 @@ let mf_ns = "http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#"
 let qt_ns = "http://www.w3.org/2001/sw/DataAccess/tests/test-query#"
 let rdf_ns = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 let rdft_ns = "http://www.w3.org/ns/rdftest#"
+let sd_ns = "http://www.w3.org/ns/sparql-service-description#"
+let ent_ns = "http://www.w3.org/ns/entailment/"
 
 let find_objects graph subj pred =
   List.filter_map (fun t ->
@@ -232,11 +234,47 @@ let extract_test_cases manifest_dir graph =
         (qf, df, ndf)
       | [] -> ("", [], []) in
 
-    (* Get entailment regime (for rdf-mt tests) *)
+    (* Get entailment regime (for rdf-mt tests and SPARQL entailment tests) *)
     let regime_objs = find_objects graph entry_subj (mf_ns ^ "entailmentRegime") in
     let test_type_detail = match regime_objs with
       | r :: _ -> term_to_str r
-      | [] -> "" in
+      | [] ->
+        (* For SPARQL entailment tests, sd:entailmentRegime is on the action blank node *)
+        (match action_objs with
+         | action :: _ ->
+           let action_subj = match action with
+             | T_IRI i -> S_IRI i | T_BNode b -> S_BNode b | _ -> S_IRI (term_to_str action) in
+           let sd_regime_objs = find_objects graph action_subj (sd_ns ^ "entailmentRegime") in
+           (* sd:entailmentRegime can be a single value or an RDF list *)
+           let regime_iris = List.concat_map (fun obj ->
+             match obj with
+             | T_IRI i -> [i]
+             | T_BNode _ ->
+               (* It's an RDF list -- walk it *)
+               let rec walk_list node acc =
+                 let firsts = find_objects graph node rdf_first in
+                 let rests = find_objects graph node rdf_rest in
+                 let acc = match firsts with
+                   | T_IRI i :: _ -> i :: acc
+                   | _ -> acc in
+                 match rests with
+                 | T_IRI i :: _ when i = rdf_nil -> List.rev acc
+                 | (T_BNode _ as next) :: _ ->
+                   let next_subj = match next with T_BNode b -> S_BNode b | T_IRI i -> S_IRI i | _ -> S_IRI "" in
+                   walk_list next_subj acc
+                 | _ -> List.rev acc
+               in
+               walk_list (S_BNode (match obj with T_BNode b -> b | _ -> "")) []
+             | _ -> []
+           ) sd_regime_objs in
+           (* Pick the best regime we can handle: prefer RDFS > RDF > D *)
+           if List.exists (fun i -> i = ent_ns ^ "RDFS") regime_iris then "RDFS"
+           else if List.exists (fun i -> i = ent_ns ^ "RDF") regime_iris then "RDF"
+           else if List.exists (fun i -> i = ent_ns ^ "D") regime_iris then "D"
+           else if List.exists (fun i -> i = ent_ns ^ "OWL-Direct") regime_iris then "OWL-Direct"
+           else if List.exists (fun i -> i = ent_ns ^ "OWL-RDF-Based") regime_iris then "OWL-RDF-Based"
+           else ""
+         | [] -> "") in
 
     (* Get expected result *)
     let result_objs = find_objects graph entry_subj (mf_ns ^ "result") in
@@ -403,9 +441,73 @@ let run_query_eval_test tc =
     acc @ load_triples df
   ) [] tc.data_files in
 
+  (* Apply entailment regime closure if needed (for SPARQL entailment tests) *)
+  let graph = match tc.test_type_detail with
+    | "RDFS" | "RDF" ->
+      let closed = (try RDF_Graph_Executable.rdfs_closure graph (Z.of_int 100)
+                    with _ -> graph) in
+      (* Add RDFS reflexivity axioms: every class C gets C rdfs:subClassOf C,
+         and every property P gets P rdfs:subPropertyOf P.
+         These are entailed by RDFS but not yet in the F* closure. *)
+      let rdfs_subClassOf = "http://www.w3.org/2000/01/rdf-schema#subClassOf" in
+      let rdfs_subPropertyOf = "http://www.w3.org/2000/01/rdf-schema#subPropertyOf" in
+      let rdf_type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" in
+      let rdfs_class = "http://www.w3.org/2000/01/rdf-schema#Class" in
+      let rdf_property = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property" in
+      let owl_class = "http://www.w3.org/2002/07/owl#Class" in
+      let owl_objprop = "http://www.w3.org/2002/07/owl#ObjectProperty" in
+      let owl_dataprop = "http://www.w3.org/2002/07/owl#DatatypeProperty" in
+      (* Collect all classes: anything that appears as object of rdf:type that is itself
+         typed as rdfs:Class/owl:Class, or anything that appears as subject/object of rdfs:subClassOf *)
+      let classes = List.fold_left (fun acc t ->
+        let acc = if t.p = rdfs_subClassOf then
+          let acc = (match t.s with S_IRI i -> if List.mem i acc then acc else i :: acc | _ -> acc) in
+          (match t.o with T_IRI i -> if List.mem i acc then acc else i :: acc | _ -> acc)
+        else acc in
+        if t.p = rdf_type then
+          match t.o with
+          | T_IRI c when c = rdfs_class || c = owl_class ->
+            (match t.s with S_IRI i -> if List.mem i acc then acc else i :: acc | _ -> acc)
+          | _ -> acc
+        else acc
+      ) [] closed in
+      (* Collect all properties *)
+      let properties = List.fold_left (fun acc t ->
+        let acc = if t.p = rdfs_subPropertyOf then
+          let acc = (match t.s with S_IRI i -> if List.mem i acc then acc else i :: acc | _ -> acc) in
+          (match t.o with T_IRI i -> if List.mem i acc then acc else i :: acc | _ -> acc)
+        else acc in
+        if t.p = rdf_type then
+          match t.o with
+          | T_IRI c when c = rdf_property || c = owl_objprop || c = owl_dataprop ->
+            (match t.s with S_IRI i -> if List.mem i acc then acc else i :: acc | _ -> acc)
+          | _ -> acc
+        else acc
+      ) [] closed in
+      (* Add reflexivity triples *)
+      let open RDF_Graph_Executable in
+      let reflexive = List.map (fun c ->
+        { s = S_IRI c; p = rdfs_subClassOf; o = T_IRI c }
+      ) classes @ List.map (fun p ->
+        { s = S_IRI p; p = rdfs_subPropertyOf; o = T_IRI p }
+      ) properties in
+      let closed = List.fold_left (fun g t ->
+        if List.exists (fun t2 -> t2.s = t.s && t2.p = t.p && t2.o = t.o) g then g
+        else t :: g
+      ) closed reflexive in
+      (* Re-run closure to propagate reflexivity effects *)
+      (try RDF_Graph_Executable.rdfs_closure closed (Z.of_int 100)
+       with _ -> closed)
+    | _ -> graph in
+
   (* Load named graph data *)
   let named_graphs = List.map (fun (iri, path) ->
     let triples = load_triples path in
+    let triples = match tc.test_type_detail with
+      | "RDFS" | "RDF" ->
+        (try RDF_Graph_Executable.rdfs_closure triples (Z.of_int 100)
+         with _ -> triples)
+      | _ -> triples in
     RDF_Graph_Executable.({ ng_name = iri; ng_graph = triples })
   ) tc.named_data_files in
 

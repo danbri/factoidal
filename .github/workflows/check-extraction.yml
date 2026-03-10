@@ -22,7 +22,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.opam
-          key: opam-fstar-${{ runner.os }}-v3
+          key: opam-fstar-${{ runner.os }}-v4
           restore-keys: |
             opam-fstar-${{ runner.os }}-
 
@@ -35,16 +35,21 @@ jobs:
         run: |
           if [ ! -d ~/.opam ]; then
             opam init -y --disable-sandboxing
+          fi
+          # Ensure fstar switch exists
+          if ! opam switch list 2>/dev/null | grep -q fstar; then
             opam switch create fstar ocaml-base-compiler.4.14.1
           fi
           eval $(opam env --switch=fstar)
-          opam install -y fstar z3 zarith sha digestif
+          # Install/upgrade all needed packages
+          opam install -y fstar z3 zarith sha digestif ocamlfind
           echo "OPAMSWITCH=fstar" >> $GITHUB_ENV
+          # Verify fstar is available
+          fstar.exe --version
 
       - name: Verify + Extract + Compile
         run: |
           eval $(opam env --switch=fstar)
           cd formal/fstar
-          # build-ocaml.sh now fails if any module doesn't extract
           ./build-ocaml.sh extract
           ./build-ocaml.sh compile

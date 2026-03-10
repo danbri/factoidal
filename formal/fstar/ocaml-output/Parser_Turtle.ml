@@ -673,10 +673,19 @@ let rec parse_long_string_body (qch : FStar_Char.char) (input : Prims.string)
                                             (h1 * (Prims.of_int (256))))
                                            + (h2 * (Prims.of_int (16))))
                                           + h3 in
-                                      parse_long_string_body qch input
-                                        (pos + (Prims.of_int (6)))
-                                        ((Parser_NTriples.safe_char_of_int cp)
-                                        :: acc) (fuel - Prims.int_one)))
+                                      if
+                                        Prims.op_Negation
+                                          (Parser_NTriples.valid_codepoint cp)
+                                      then
+                                        Parser_Combinators.ParseFail
+                                          ("surrogate codepoint in \\u escape",
+                                            pos)
+                                      else
+                                        parse_long_string_body qch input
+                                          (pos + (Prims.of_int (6)))
+                                          ((Parser_NTriples.safe_char_of_int
+                                              cp) :: acc)
+                                          (fuel - Prims.int_one)))
                                 else
                                   if esc_code = (Prims.of_int (0x55))
                                   then
@@ -733,11 +742,20 @@ let rec parse_long_string_body (qch : FStar_Char.char) (input : Prims.string)
                                               + (h5 * (Prims.of_int (256))))
                                              + (h6 * (Prims.of_int (16))))
                                             + h7 in
-                                        parse_long_string_body qch input
-                                          (pos + (Prims.of_int (10)))
-                                          ((Parser_NTriples.safe_char_of_int
-                                              cp) :: acc)
-                                          (fuel - Prims.int_one)))
+                                        if
+                                          Prims.op_Negation
+                                            (Parser_NTriples.valid_codepoint
+                                               cp)
+                                        then
+                                          Parser_Combinators.ParseFail
+                                            ("surrogate codepoint in \\U escape",
+                                              pos)
+                                        else
+                                          parse_long_string_body qch input
+                                            (pos + (Prims.of_int (10)))
+                                            ((Parser_NTriples.safe_char_of_int
+                                                cp) :: acc)
+                                            (fuel - Prims.int_one)))
                                   else
                                     Parser_Combinators.ParseFail
                                       ((FStar_String.concat ""
@@ -858,10 +876,19 @@ let rec parse_single_string_body (input : Prims.string) (pos : Prims.nat)
                                             (h1 * (Prims.of_int (256))))
                                            + (h2 * (Prims.of_int (16))))
                                           + h3 in
-                                      parse_single_string_body input
-                                        (pos + (Prims.of_int (6)))
-                                        ((Parser_NTriples.safe_char_of_int cp)
-                                        :: acc) (fuel - Prims.int_one)))
+                                      if
+                                        Prims.op_Negation
+                                          (Parser_NTriples.valid_codepoint cp)
+                                      then
+                                        Parser_Combinators.ParseFail
+                                          ("surrogate codepoint in \\u escape",
+                                            pos)
+                                      else
+                                        parse_single_string_body input
+                                          (pos + (Prims.of_int (6)))
+                                          ((Parser_NTriples.safe_char_of_int
+                                              cp) :: acc)
+                                          (fuel - Prims.int_one)))
                                 else
                                   if esc_code = (Prims.of_int (0x55))
                                   then
@@ -918,11 +945,20 @@ let rec parse_single_string_body (input : Prims.string) (pos : Prims.nat)
                                               + (h5 * (Prims.of_int (256))))
                                              + (h6 * (Prims.of_int (16))))
                                             + h7 in
-                                        parse_single_string_body input
-                                          (pos + (Prims.of_int (10)))
-                                          ((Parser_NTriples.safe_char_of_int
-                                              cp) :: acc)
-                                          (fuel - Prims.int_one)))
+                                        if
+                                          Prims.op_Negation
+                                            (Parser_NTriples.valid_codepoint
+                                               cp)
+                                        then
+                                          Parser_Combinators.ParseFail
+                                            ("surrogate codepoint in \\U escape",
+                                              pos)
+                                        else
+                                          parse_single_string_body input
+                                            (pos + (Prims.of_int (10)))
+                                            ((Parser_NTriples.safe_char_of_int
+                                                cp) :: acc)
+                                            (fuel - Prims.int_one)))
                                   else
                                     Parser_Combinators.ParseFail
                                       ((FStar_String.concat ""
@@ -1894,21 +1930,7 @@ let rec parse_turtle_doc (st : turtle_state) (input : Prims.string)
                        (FStar_List_Tot_Base.rev triples) acc)
                     (fuel - Prims.int_one)
             | Parser_Combinators.ParseFail (uu___2, uu___3) ->
-                let rec skip_line p f =
-                  if f = Prims.int_zero
-                  then p
-                  else
-                    if p >= len
-                    then p
-                    else
-                      (let c = FStar_String.index input p in
-                       let cd = FStar_Char.int_of_char c in
-                       if
-                         (cd = (Prims.of_int (0x0A))) ||
-                           (cd = (Prims.of_int (0x0D)))
-                       then p + Prims.int_one
-                       else skip_line (p + Prims.int_one) (f - Prims.int_one)) in
-                let pos2 = skip_line pos1 (len - pos1) in
+                let pos2 = skip_to_eol input pos1 (len - pos1) in
                 if pos2 = pos1
                 then ((FStar_List_Tot_Base.rev acc), st)
                 else
