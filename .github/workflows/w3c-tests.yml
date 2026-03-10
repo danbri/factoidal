@@ -2,7 +2,7 @@ name: W3C Test Suite
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, claude/main]
   schedule:
     # Run daily at 06:00 UTC
     - cron: '0 6 * * *'
