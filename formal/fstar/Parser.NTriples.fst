@@ -321,6 +321,11 @@ let is_lang_char (c:FStar.Char.char) : bool =
   (code >= 0x30 && code <= 0x39) ||  (* 0-9 *)
   code = 0x2D                         (* - *)
 
+// Language tag must start with a letter per BCP 47
+let is_lang_start (c:FStar.Char.char) : bool =
+  let code = FStar.Char.int_of_char c in
+  (code >= 0x41 && code <= 0x5A) || (code >= 0x61 && code <= 0x7A)
+
 let parse_lang_tag : parser string =
   fun input pos ->
     let len = String.length input in
@@ -328,9 +333,16 @@ let parse_lang_tag : parser string =
     else
       let ch = String.index input pos in
       if FStar.Char.int_of_char ch = 0x40 then (* '@' *)
-        match ptake_while1 is_lang_char input (pos + 1) with
-        | ParseOk lang pos' -> ParseOk lang pos'
-        | ParseFail _ fpos -> ParseFail "expected language tag after '@'" fpos
+        let after_at = pos + 1 in
+        if after_at >= len then ParseFail "expected language tag after '@'" after_at
+        else
+          let first = String.index input after_at in
+          if not (is_lang_start first) then
+            ParseFail "language tag must start with a letter" after_at
+          else
+            match ptake_while1 is_lang_char input after_at with
+            | ParseOk lang pos' -> ParseOk lang pos'
+            | ParseFail _ fpos -> ParseFail "expected language tag after '@'" fpos
       else
         ParseFail "expected '@'" pos
 
