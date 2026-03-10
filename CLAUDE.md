@@ -95,6 +95,47 @@ Previous Claude sessions made these errors. Read and internalize:
 5. **Creating symlinks or hacks for version mismatches.** Do not create
    symlinks for z3 or other tool version issues. Fix the actual environment.
 
+6. **Promoted type blindness.** When `eval_expr` evaluates a variable bound
+   to a numeric literal, it returns `ER_Num`/`ER_Dec`/`ER_Dbl`/`ER_Bool` —
+   NOT `ER_Term(T_Literal l)`. Any function that only pattern-matches on
+   `ER_Term(T_Literal l)` will silently fail on promoted values. This
+   has caused bugs in: `fn_datatype`, `fn_isLiteral`, `fn_lang`,
+   `er_string_info`, `eval_concat`. **Rule: every function that handles
+   `ER_Term(T_Literal l)` must also handle `ER_Num`, `ER_Dec`, `ER_Dbl`,
+   and `ER_Bool` where semantically appropriate.**
+
+7. **Parser/evaluator AST mismatch.** The SPARQL parser may emit different
+   AST nodes than the evaluator expects. Example: `COUNT(*)` is parsed as
+   `E_Aggregate(Agg_Count, _, E_BoolLit true)` but the evaluator checked
+   for `E_Var "*"`. **Rule: when adding evaluator logic for a new construct,
+   check what the parser actually emits** (grep SPARQL11_Parser.ml).
+
+8. **parse_to_scaled before parse_double_to_scaled.** `parse_to_scaled`
+   treats E-notation characters as fractional digits: `"1.0E2"` parses as
+   `(1000, 3)` = 1.0 instead of 100. **Rule: always try
+   `parse_double_to_scaled` first** when the input might contain
+   E-notation (doubles). `parse_double_to_scaled` falls through to
+   `parse_to_scaled` for non-E strings, so it's safe as the default.
+
+9. **Recursive base case kills metadata.** `eval_concat` used
+   `er_string ""` (plain xsd:string, no lang tag) as its base case. When
+   folding right-to-left, this stripped lang tags from the last element,
+   which cascaded up. **Rule: for recursive string functions, handle the
+   single-element case explicitly** to preserve language tags and datatypes.
+
+10. **OCaml Str regex: bytes not codepoints.** OCaml's `Str` module
+    operates on bytes, not Unicode codepoints. `[^a-z0-9]` matches
+    individual bytes of UTF-8 multi-byte characters. Also: referencing
+    an unmatched group (`\2` when group 2 didn't participate) raises
+    `Not_found`. Both limit REPLACE() conformance. A Unicode-aware regex
+    library (Pcre, Re) would fix this but adds a dependency.
+
+11. **`build-ocaml.sh compile` does NOT apply `ocaml-patches.sh`.**
+    Only `build-ocaml.sh extract` runs the patches. After a fresh
+    extraction, you must either use `extract` or manually run
+    `./ocaml-patches.sh ocaml-output/SPARQL11_Algebra.ml`. Forgetting
+    this silently regresses all `assume val` stubs to `failwith`.
+
 ## Current State (Honest Assessment)
 
 ### F\* Specifications
@@ -102,7 +143,7 @@ Previous Claude sessions made these errors. Read and internalize:
 ```
 formal/fstar/
   RDF.Graph.Executable.fst     638 lines, 0 admit, 0 assume val
-  SPARQL11.Algebra.fst        3065 lines, 2 admit, 11 assume val
+  SPARQL11.Algebra.fst        3658 lines, 5 admit, 14 assume val
   SPARQL11.Parser.fst          F* SPARQL parser (in development)
   Makefile                     verify + extract-c targets
   build-ocaml.sh               F* -> OCaml -> js_of_ocaml pipeline
@@ -151,6 +192,7 @@ Hand-coded parsers have been deleted. Legacy copies remain in `junk/do_not_use/h
 | assume val | Purpose | Stub |
 |-----------|---------|------|
 | `regex_match` | SPARQL REGEX | OCaml `Str` in ocaml-patches.sh |
+| `regex_replace` | SPARQL REPLACE | OCaml `Str` in ocaml-patches.sh (forward ref) |
 | `hash_md5` | MD5 hash | OCaml `Digest` in ocaml-patches.sh |
 | `hash_sha1` | SHA-1 hash | OCaml `Digest` in ocaml-patches.sh |
 | `hash_sha256` | SHA-256 hash | OCaml `Digest` in ocaml-patches.sh |
@@ -162,15 +204,16 @@ Hand-coded parsers have been deleted. Legacy copies remain in `junk/do_not_use/h
 | `eval_subselect_fwd` | forward decl (subqueries) | wired in ocaml-patches.sh |
 | `eval_property_path_fwd` | forward decl (property paths) | wired in ocaml-patches.sh |
 
-### W3C Test Results (as of 2026-03-09)
+### W3C Test Results (as of 2026-03-10)
 
-**SPARQL 1.1 (0 pass, 0 fail, 205 skip, 426 unsupported)**
+**SPARQL 1.1 (303 pass, 105 fail, 205 skip, 18 unsupported)**
 
-All SPARQL eval/syntax tests are unsupported because the F\* SPARQL parser
-(SPARQL11.Parser.fst) has `assume val` stubs for `parse_expr`,
-`parse_group_graph_pattern`, and `parse_select_query`. The hand-coded OCaml
-SPARQL parser has been removed. SPARQL tests will resume once the F\* parser
-stubs are implemented. Skips: 205 UPDATE operations (not in F\* spec).
+F\*-extracted SPARQL parser + evaluator now run. Key suite results:
+aggregates 38/44, functions 71/75, bind 9/10, bindings 10/11,
+exists 5/6, grouping 4/6, negation 19/20, project-expression 7/10,
+property-path 21/25, service 5/5, subquery 10/12.
+Skips: 205 UPDATE operations (not in F\* spec).
+Unsupported: 18 (JSON/CSV/TSV/Turtle result formats not yet implemented).
 
 **RDF 1.1 (644 pass, 387 fail)**
 
@@ -223,7 +266,8 @@ W3C SPARQL 1.1 + RDF 1.1 conformance results
 
 ### Phase 1 — SPARQL test infrastructure (DONE)
 
-W3C test runner works. 344/631 SPARQL tests pass.
+W3C test runner works. 303/408 SPARQL eval/syntax tests pass (105 fail,
+205 skip/update, 18 unsupported format).
 
 ### Phase 2 — Fix RDF semantics in F\* (MOSTLY DONE)
 
