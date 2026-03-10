@@ -48,8 +48,14 @@ let parse_opt_graph_label :
                 | Parser_Combinators.ParseFail (msg, fpos) ->
                     Parser_Combinators.ParseFail (msg, fpos))
              else
-               Parser_Combinators.ParseOk
-                 (FStar_Pervasives_Native.None, pos1))
+               if code = (Prims.of_int (0x22))
+               then
+                 Parser_Combinators.ParseFail
+                   ("literals are not allowed as graph names in N-Quads",
+                     pos1)
+               else
+                 Parser_Combinators.ParseOk
+                   (FStar_Pervasives_Native.None, pos1))
     | Parser_Combinators.ParseFail (msg, fpos) ->
         Parser_Combinators.ParseFail (msg, fpos)
 let parse_nquad :
