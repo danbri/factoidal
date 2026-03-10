@@ -1788,7 +1788,14 @@ and parse_values_clause (pm : prefix_map) (fuel : nat) (ts : token_stream)
            | ParseOk rows ts5 ->
              begin match parse_expect Tok_RBRACE ts5 with
              | ParseErr m -> ParseErr m
-             | ParseOk () ts6 -> ParseOk (GP_Values vars rows) ts6
+             | ParseOk () ts6 ->
+               let vars_len = List.Tot.length vars in
+               let check_row (row : list (option rdf_term)) : bool =
+                 List.Tot.length row = vars_len in
+               if List.Tot.for_all check_row rows then
+                 ParseOk (GP_Values vars rows) ts6
+               else
+                 ParseErr "VALUES row has wrong number of terms"
              end end end end)
   | _ -> ParseErr "expected variable or '(' after VALUES"
 
@@ -2277,6 +2284,10 @@ and parse_select_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (ts 
           begin match parse_solution_modifier pm (fuel-1) ts5 with
           | ParseErr m -> ParseErr m
           | ParseOk (modifier, gb, hv) ts6 ->
+            // SELECT * with GROUP BY is not allowed per SPARQL 1.1
+            if Select_All? sel && Some? gb then
+              ParseErr "SELECT * not allowed with GROUP BY"
+            else
             // Check for post-query VALUES clause
             let (vals, ts7) = begin match parse_peek ts6 with
               | Tok_VALUES ->
@@ -2589,9 +2600,19 @@ and parse_solution_modifier (pm : prefix_map) (fuel : nat) (ts : token_stream)
 
 (* ---- Top-level parse function ---- *)
 
+let rec tokens_only_eof (ts : token_stream) : Tot bool (decreases ts) =
+  match ts with
+  | [] -> true
+  | Tok_EOF :: rest -> tokens_only_eof rest
+  | _ -> false
+
 let parse_sparql (input : string) : parse_result query =
   let tokens = tokenize input in
-  parse_select_query [] 10000 tokens
+  match parse_select_query [] 10000 tokens with
+  | ParseOk q rest ->
+    if tokens_only_eof rest then ParseOk q rest
+    else ParseErr "unexpected tokens after query"
+  | ParseErr msg -> ParseErr msg
 
 
 (** ====================================================================== **)
