@@ -46,10 +46,11 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              Parser.SRX.fst Parser.CSVResults.fst; do
     if [ -f "$fst" ]; then
       echo "    $fst"
-      FSTAR_OUT=$(fstar.exe --codegen OCaml --odir "$OUTDIR" "$fst" 2>&1) || true
+      FSTAR_RC=0
+      FSTAR_OUT=$(fstar.exe --codegen OCaml --odir "$OUTDIR" "$fst" 2>&1) || FSTAR_RC=$?
       echo "$FSTAR_OUT" | grep -E "Extracted|Error|error" || true
       if ! echo "$FSTAR_OUT" | grep -q "^Extracted module"; then
-        echo "  ERROR: $fst failed to extract!"
+        echo "  ERROR: $fst failed to extract! (exit code $FSTAR_RC)"
         EXTRACT_FAILED=1
       fi
     fi
