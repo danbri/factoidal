@@ -2461,6 +2461,12 @@ let eval_property_path_fwd_ref : (property_path -> RDF_Graph_Executable.rdf_grap
   ref (fun _ _ -> [])
 let eval_subselect_fwd_ref : (query -> RDF_Graph_Executable.rdf_graph -> RDF_Graph_Executable.rdf_dataset -> solution_sequence) ref =
   ref (fun _ _ _ -> [])
+let eval_exists_fwd_ref : (group_graph_pattern -> RDF_Graph_Executable.solution_mapping -> RDF_Graph_Executable.rdf_graph -> RDF_Graph_Executable.rdf_dataset -> Prims.bool) ref =
+  ref (fun _ _ _ _ -> false)
+let eval_property_path_fwd_ref : (property_path -> RDF_Graph_Executable.rdf_graph -> (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list) ref =
+  ref (fun _ _ -> [])
+let eval_subselect_fwd_ref : (query -> RDF_Graph_Executable.rdf_graph -> RDF_Graph_Executable.rdf_dataset -> solution_sequence) ref =
+  ref (fun _ _ _ -> [])
 let eval_expr_ebv (e : expr)
   (mu : RDF_Graph_Executable.solution_mapping) : Prims.bool=
   !eval_expr_ebv_ref e mu
@@ -3427,6 +3433,66 @@ let () = regex_replace_ref := (fun text pattern replacement flags ->
     let repl = Buffer.contents buf in
     Str.global_replace re repl text
   with _ -> text)
+let () = regex_replace_ref := (fun text pattern replacement flags ->
+  try
+    let case_insensitive = match flags with
+      | FStar_Pervasives_Native.Some f -> String.contains f 'i'
+      | FStar_Pervasives_Native.None -> false in
+    let converted = xpath_to_str_regex pattern in
+    let re = if case_insensitive
+      then Str.regexp_case_fold converted
+      else Str.regexp converted in
+    (* Convert XPath backrefs to OCaml Str backrefs: dollar-n -> backslash-n *)
+    let open Stdlib in
+    let len = String.length replacement in
+    let buf = Buffer.create len in
+    let i = ref 0 in
+    while !i < len do
+      if replacement.[!i] = '$' && !i + 1 < len &&
+         replacement.[!i + 1] >= '0' && replacement.[!i + 1] <= '9' then begin
+        Buffer.add_char buf (Char.chr 92);
+        Buffer.add_char buf replacement.[!i + 1];
+        i := !i + 2
+      end else begin
+        Buffer.add_char buf replacement.[!i];
+        i := !i + 1
+      end
+    done;
+    let repl = Buffer.contents buf in
+    Str.global_replace re repl text
+  with _ -> text)
+
+(* Wire up the forward-declared eval_expr_ebv/fwd to the real implementations *)
+let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
+let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)
+let () = regex_replace_ref := (fun text pattern replacement flags ->
+  try
+    let case_insensitive = match flags with
+      | FStar_Pervasives_Native.Some f -> String.contains f 'i'
+      | FStar_Pervasives_Native.None -> false in
+    let converted = xpath_to_str_regex pattern in
+    let re = if case_insensitive
+      then Str.regexp_case_fold converted
+      else Str.regexp converted in
+    (* Convert XPath backrefs to OCaml Str backrefs: dollar-n -> backslash-n *)
+    let open Stdlib in
+    let len = String.length replacement in
+    let buf = Buffer.create len in
+    let i = ref 0 in
+    while !i < len do
+      if replacement.[!i] = '$' && !i + 1 < len &&
+         replacement.[!i + 1] >= '0' && replacement.[!i + 1] <= '9' then begin
+        Buffer.add_char buf (Char.chr 92);
+        Buffer.add_char buf replacement.[!i + 1];
+        i := !i + 2
+      end else begin
+        Buffer.add_char buf replacement.[!i];
+        i := !i + 1
+      end
+    done;
+    let repl = Buffer.contents buf in
+    Str.global_replace re repl text
+  with _ -> text)
 
 type group = {
   g_key: eval_result Prims.list ;
@@ -3958,6 +4024,9 @@ type path_result =
 (* Wire up eval_subselect_fwd to the real eval_select_query *)
 let () = eval_subselect_fwd_ref := eval_select_query
 
+(* Wire up eval_subselect_fwd to the real eval_select_query *)
+let () = eval_subselect_fwd_ref := eval_select_query
+
 let is_not_literal (t : RDF_Graph_Executable.rdf_term) : Prims.bool=
   match t with
   | RDF_Graph_Executable.T_Literal uu___ -> false
@@ -4150,6 +4219,9 @@ let rec eval_property_path (p : property_path)
                  [((t.RDF_Graph_Executable.o),
                     (subject_to_term t.RDF_Graph_Executable.s))]) g in
       FStar_List_Tot_Base.op_At direct_pairs inverse_pairs
+(* Wire up eval_property_path_fwd to the real eval_property_path *)
+let () = eval_property_path_fwd_ref := eval_property_path
+
 (* Wire up eval_property_path_fwd to the real eval_property_path *)
 let () = eval_property_path_fwd_ref := eval_property_path
 
@@ -4570,6 +4642,9 @@ let eval_not_exists (pattern : group_graph_pattern)
   (graph : RDF_Graph_Executable.rdf_graph)
   (ds : RDF_Graph_Executable.rdf_dataset) : Prims.bool=
   Prims.op_Negation (eval_exists pattern mu graph ds)
+(* Wire up eval_exists_fwd to the real eval_exists *)
+let () = eval_exists_fwd_ref := eval_exists
+
 (* Wire up eval_exists_fwd to the real eval_exists *)
 let () = eval_exists_fwd_ref := eval_exists
 

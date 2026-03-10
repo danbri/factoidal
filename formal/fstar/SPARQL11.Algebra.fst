@@ -495,6 +495,10 @@ let er_to_string (v : eval_result) : option string =
   match v with
   | ER_Term (T_Literal l) -> Some (lit_lexical l)
   | ER_Term (T_IRI i) -> Some (iri_to_string i)
+  | ER_Num n -> Some (string_of_int n)
+  | ER_Dec s -> Some s
+  | ER_Dbl s -> Some s
+  | ER_Bool b -> Some (if b then "true" else "false")
   | _ -> None
 
 (* Helper: wrap string result as plain literal *)
@@ -2196,7 +2200,11 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
   | E_SameTerm e1 e2 ->
     (match eval_expr e1 mu, eval_expr e2 mu with
      | ER_Term t1, ER_Term t2 -> ER_Bool (same_term t1 t2)
-     | _, _ -> ER_Error)
+     | ER_Num a, ER_Num b -> ER_Bool (a = b)
+     | ER_Dec a, ER_Dec b -> ER_Bool (a = b)
+     | ER_Dbl a, ER_Dbl b -> ER_Bool (a = b)
+     | ER_Bool a, ER_Bool b -> ER_Bool (a = b)
+     | _, _ -> ER_Bool false)
 
   (* EXISTS / NOT EXISTS — require graph context, delegated *)
   | E_Exists _ -> ER_Error
