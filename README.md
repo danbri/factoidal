@@ -1,119 +1,272 @@
 # Factoidal
 
-A (eventually and partially) formally verified RDF graph library with F\* specifications, KaRaMeL-extracted C,
-wASM possibilities,
-SPARQL query engine.
+A formally verified RDF/SPARQL implementation written in F\*, with
+verified code extracted to OCaml for execution. The F\* specifications
+are the product — executable code is obtained by extraction, not by
+hand-writing implementations.
 
-## Overview
+**[Live W3C test results](https://danbri.github.io/factoidal/fstar-extracted/)**
 
-Factoidal provides a formally-specified RDF graph library targeting high-trust environments. The F\* specifications are **not documentation** — they are the source for verified C extraction via KaRaMeL.
+## Quick Start
 
-**[Live F\*-extracted engine and W3C test results](https://danbri.github.io/factoidal/fstar-extracted/)**
+```bash
+# Install prerequisites (Debian/Ubuntu)
+sudo apt-get install -y opam libgmp-dev pkg-config
+
+# Set up OCaml + F* toolchain (first time only)
+opam init -y
+opam switch create fstar ocaml-base-compiler.4.14.1
+eval $(opam env --switch=fstar)
+opam install fstar z3 zarith sha digestif
+
+# Clone with W3C test data
+git clone --recurse-submodules https://github.com/danbri/factoidal.git
+cd factoidal
+
+# Build everything (verify F* → extract OCaml → compile)
+cd formal/fstar
+eval $(opam env --switch=fstar)
+./build-ocaml.sh
+
+# The factoidal CLI is now at:
+./ocaml-output/factoidal --help
+```
+
+## The `factoidal` Command-Line Tool
+
+A SPARQL query and RDF parsing tool — similar to Apache Jena's `arq` or
+Rasqal's `roqet`, but backed by formally verified F\* code.
+
+### SPARQL queries
+
+```bash
+# Query a Turtle file
+factoidal --data data.ttl -e 'SELECT * WHERE { ?s ?p ?o }'
+
+# Query with prefixes
+factoidal -d data.ttl -e '
+  PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+  SELECT ?person ?name
+  WHERE { ?person foaf:name ?name }
+'
+
+# Query from a file
+factoidal --data data.ttl --query query.rq
+
+# Multiple data files
+factoidal -d file1.ttl -d file2.nt --query query.rq
+
+# Pipe data via stdin
+cat data.ttl | factoidal -d - -e 'SELECT ...'
+
+# Named graphs
+factoidal -d default.ttl -n http://example.org/g1=g1.ttl --query query.rq
+
+# CSV output
+factoidal -d data.ttl -e 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }' -o csv
+```
+
+### RDF parsing and conversion
+
+```bash
+# Parse Turtle and dump as N-Triples (format conversion)
+factoidal --dump data.ttl
+
+# Count triples in a file
+factoidal --count data.ttl
+
+# Parse RDF/XML
+factoidal --dump --format rdfxml data.rdf
+
+# Parse with explicit base IRI
+factoidal --dump --base http://example.org/ data.ttl
+```
+
+### Example session
 
 ```
-F* spec → verify proofs → KaRaMeL → C (1,710 lines extracted)
-F* spec → OCaml extraction → JS → browser-runnable W3C tests
-F* spec → Rust impl → WASM + JS bindings → Web demo
+$ cat people.ttl
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix ex:   <http://example.org/> .
+
+ex:alice foaf:name "Alice" ;
+         foaf:knows ex:bob .
+ex:bob   foaf:name "Bob" ;
+         foaf:age 30 .
+
+$ factoidal -d people.ttl -e 'PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+  SELECT ?person ?name WHERE { ?person foaf:name ?name }'
++----------------------------+---------+
+| ?person                    | ?name   |
++----------------------------+---------+
+| <http://example.org/alice> | "Alice" |
+| <http://example.org/bob>   | "Bob"   |
++----------------------------+---------+
+2 result(s)
+
+$ factoidal -d people.ttl -e 'SELECT (COUNT(*) AS ?c) WHERE { ?s ?p ?o }'
++-------------------------------------------------+
+| ?c                                              |
++-------------------------------------------------+
+| "4"^^<http://www.w3.org/2001/XMLSchema#integer> |
++-------------------------------------------------+
+1 result(s)
 ```
 
-- **Formally verified** — 3,317 lines of F\* with zero `admit()`, 16+ proved lemmas, zero assume val in the RDF module
-- **C extraction working** — KaRaMeL extracts verified C from the RDF module (`make extract-c`)
-- **W3C compliant** — N-Triples 100%, Turtle 100%, SPARQL 36.5% (159/436) and growing
-- **F\*-extracted SPARQL engine** — runs W3C test suites directly in the browser from F\* OCaml extraction
+### Full CLI reference
+
+```
+factoidal — formally verified SPARQL query tool
+
+SPARQL query:
+  factoidal --data FILE --query FILE.rq
+  factoidal --data FILE -e 'SELECT * WHERE { ?s ?p ?o }'
+  factoidal -d file1.ttl -d file2.nt --query q.rq
+  cat data.ttl | factoidal -d - -e 'SELECT ...'
+
+RDF parsing/dump:
+  factoidal --dump FILE.ttl           Parse and dump as N-Triples
+  factoidal --count FILE.ttl          Count triples
+  factoidal --dump --format rdfxml FILE.rdf
+
+Options:
+  -d, --data FILE        Load RDF data (repeatable, "-" for stdin)
+  -n, --named IRI=FILE   Load named graph
+  -q, --query FILE       SPARQL query file
+  -e SPARQL              Inline SPARQL query string
+  -b, --base IRI         Base IRI for parsing
+  -f, --format FMT       Input format: turtle, ntriples, nquads, trig, rdfxml
+  -o, --output FMT       Output format: table (default), csv, ntriples
+  --dump                 Parse RDF and dump as N-Triples
+  --count                Parse RDF and count triples
+  --version              Show version
+  --help                 This help
+
+Supported RDF formats:  Turtle, N-Triples, N-Quads, TriG, RDF/XML
+Supported query forms:  SELECT, ASK, CONSTRUCT
+```
+
+## Supported SPARQL Features
+
+SELECT, ASK, CONSTRUCT, PREFIX, BASE, FILTER, OPTIONAL, UNION, MINUS,
+BIND, VALUES, EXISTS/NOT EXISTS, DISTINCT, REDUCED, ORDER BY, LIMIT,
+OFFSET, GROUP BY, HAVING, aggregates (COUNT, SUM, AVG, MIN, MAX,
+GROUP_CONCAT, SAMPLE), subqueries, property paths, and 30+ built-in
+functions.
+
+## Building from Source
+
+### Prerequisites
+
+| Dependency | Purpose | Install |
+|-----------|---------|---------|
+| opam | OCaml package manager | `apt-get install opam` |
+| libgmp-dev | Arbitrary-precision integers | `apt-get install libgmp-dev` |
+| F\* (fstar) | Verified compiler | `opam install fstar` |
+| z3 | SMT solver (F\* uses it) | `opam install z3` or [binary release](https://github.com/Z3Prover/z3/releases) |
+| zarith | OCaml bigint library | `opam install zarith` |
+| sha, digestif | Hash functions (MD5/SHA) | `opam install sha digestif` |
+
+### Build steps
+
+```bash
+# Activate the F* opam switch
+eval $(opam env --switch=fstar)
+cd formal/fstar
+
+# Full pipeline: verify F* → extract OCaml → compile → test
+./build-ocaml.sh
+
+# Or run individual steps:
+./build-ocaml.sh extract   # F* extraction only
+./build-ocaml.sh compile   # compile OCaml only (skip extraction)
+./build-ocaml.sh test      # run W3C tests only
+```
+
+The build produces two binaries in `formal/fstar/ocaml-output/`:
+- `factoidal` — the CLI query/parsing tool
+- `w3c_runner` — the W3C conformance test runner
+
+### Verify F\* specifications
+
+```bash
+cd formal/fstar
+make verify    # requires z3
+```
+
+This type-checks all F\* modules against the SMT solver. No `admit()` or
+`--lax` is used — all proofs are machine-checked.
+
+### Run W3C conformance tests
+
+```bash
+cd formal/fstar/ocaml-output
+./w3c_runner                    # all SPARQL 1.1 suites
+./w3c_runner --rdf              # all RDF 1.1 suites
+./w3c_runner --all              # both
+./w3c_runner --list             # list available suites
+./w3c_runner bind functions     # specific suites
+./w3c_runner -v aggregates      # verbose mode
+```
 
 ## Project Structure
 
 ```
 factoidal/
-├── formal/fstar/
-│   ├── RDF.Graph.Executable.fst     # Verified RDF types + graph ops (586 lines, 0 assume val)
-│   ├── SPARQL11.Algebra.fst         # Verified SPARQL algebra (2731 lines, 7 assume val)
-│   ├── c-output/                    # KaRaMeL-extracted C (1710 lines)
-│   └── Makefile                     # verify + extract-c targets
-├── rdf-wasm/
-│   ├── src/
-│   │   ├── rdf.rs             # Core RDF types (mirrors F* spec)
-│   │   ├── ntriples.rs        # N-Triples parser (W3C RDF 1.1)
-│   │   ├── turtle.rs          # Turtle parser (W3C RDF 1.1)
-│   │   ├── sparql.rs          # SPARQL SELECT engine
-│   │   ├── wasm_api.rs        # wasm-bindgen JS bindings
-│   │   └── lib.rs             # Module declarations
-│   ├── tests/                 # W3C test suites + unit tests (172 passing)
-│   └── build.sh               # WASM build script
-├── tests/w3c/                 # Git submodule: github.com/w3c/rdf-tests
-└── docs/
-    ├── pkg/                   # WASM build artifacts (committed)
-    ├── index.html             # Interactive RDF graph explorer + SPARQL
-    └── designissues/          # Architecture and design documents
+├── formal/fstar/                  THE PRODUCT
+│   ├── RDF.Graph.Executable.fst   RDF graph types + operations (638 lines)
+│   ├── SPARQL11.Algebra.fst       SPARQL 1.1 algebra + evaluator (3658 lines)
+│   ├── SPARQL11.Parser.fst        SPARQL parser
+│   ├── Parser.Combinators.fst     Parser combinator foundation
+│   ├── Parser.NTriples.fst        N-Triples parser
+│   ├── Parser.Turtle.fst          Turtle parser
+│   ├── Parser.NQuads.fst          N-Quads parser
+│   ├── Parser.TriG.fst            TriG parser
+│   ├── Parser.XML.fst             Non-validating XML parser
+│   ├── Parser.RDFXML.fst          RDF/XML parser
+│   ├── Parser.SRX.fst             SPARQL Results XML parser
+│   ├── Parser.CSVResults.fst      CSV/TSV results parser
+│   ├── Makefile                   verify + extract targets
+│   ├── build-ocaml.sh            F* → OCaml → binary pipeline
+│   ├── ocaml-patches.sh          wires assume-val stubs
+│   └── ocaml-output/             extracted OCaml + CLI tools
+│       ├── factoidal_cli.ml       CLI tool source (I/O glue)
+│       ├── w3c_runner.ml          W3C test runner (I/O glue)
+│       └── *.ml                   F*-extracted OCaml modules
+├── tests/w3c/                    git submodule (W3C test files)
+└── CLAUDE.md                     development instructions
 ```
 
-## Building
+## W3C Conformance Status
 
-```bash
-# Run all Rust tests (172 passing)
-cd rdf-wasm && cargo test
+**SPARQL 1.1**: 303 pass / 105 fail / 205 skip (UPDATE) / 18 unsupported — 74% of applicable tests
 
-# Verify F* specifications
-eval $(opam env --switch=fstar) && cd formal/fstar && make verify
+Strong areas: aggregates (38/44), functions (71/75), bind (9/10), negation
+(11/12), property paths (31/33), subqueries (9/12), project-expression (7/7).
 
-# Extract verified C from RDF module
-eval $(opam env --switch=fstar) && cd formal/fstar && make extract-c
+**RDF 1.1 Parsing**: 644 pass / 387 fail across N-Triples, Turtle, N-Quads,
+TriG, RDF/XML, and model theory suites.
 
-# Build WASM (requires wasm-pack)
-cd rdf-wasm && ./build.sh
+See [CLAUDE.md](CLAUDE.md) for a detailed breakdown and known gaps.
 
-# Serve demo locally
-cd docs && python3 -m http.server 8080
+## Architecture
+
+```
+F* formal spec (the product)
+    │
+    ▼
+fstar.exe --codegen OCaml (extraction, proof-erased)
+    │
+    ▼
+OCaml binaries (factoidal CLI + W3C test runner)
+    │
+    ├── factoidal: SPARQL queries + RDF parsing from the command line
+    └── w3c_runner: W3C conformance test suite runner
 ```
 
-## Usage
-
-```javascript
-import init, { JsRdfGraph } from './pkg/rdf_wasm.js';
-
-await init();
-const graph = new JsRdfGraph();
-
-graph.addTriple("http://example.org/alice", "http://xmlns.com/foaf/0.1/name", "Alice");
-graph.addTripleLang("http://example.org/alice", "http://xmlns.com/foaf/0.1/name", "Alicia", "es");
-graph.addTriple("http://example.org/alice", "http://xmlns.com/foaf/0.1/knows", "http://example.org/bob");
-
-console.log(graph.toNTriples());
-console.log(graph.findBySubject("http://example.org/alice"));
-```
-
-### SPARQL
-
-```javascript
-const result = JSON.parse(graph.sparqlQuery(`
-  PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-  SELECT ?person ?name
-  WHERE {
-    ?person foaf:name ?name .
-    FILTER (LANG(?name) = "es")
-  }
-`));
-// { variables: ["person", "name"], rows: [["<http://example.org/alice>", "\"Alicia\"@es"]] }
-```
-
-Supported SPARQL features: `SELECT`, `PREFIX`, `BASE`, `FILTER`, `OPTIONAL`, `UNION`, `MINUS`, `BIND`, `VALUES`, `EXISTS`/`NOT EXISTS`, `DISTINCT`, `REDUCED`, `ORDER BY`, `LIMIT`, `OFFSET`, and 30+ built-in functions.
-
-## Verification Status
-
-| Component | F\* Lines | assume val | Proved Lemmas | C Extraction |
-|-----------|----------|------------|---------------|--------------|
-| RDF Core  | 586      | 0          | 9             | ✅ 1,710 lines |
-| SPARQL    | 2,731    | 7 (regex + crypto) | 16+    | ❌ blocked (noeq) |
-
-The F\* specs use zero `admit()` calls — all proofs are machine-checked. See [CLAUDE.md](CLAUDE.md) for the full verification roadmap.
-
-## Key Design Decisions
-
-- **F\* specs are primary** — they are the source for verified C extraction, not documentation
-- **Spec + Impl pattern** — high-level specs for readability/proofs, Low\* implementations for C extraction
-- **IRI well-formedness** — IRIs must be non-empty and contain `:`, enforced at construction time
-- **Literal constraints** — The language-tag ↔ `rdf:langString` biconditional is enforced by `Literal::new()`
-- **No JS reimplementation** — The web demo imports the WASM binary directly; the same Rust code runs everywhere
+All RDF parsing, SPARQL parsing, and query evaluation is performed by
+F\*-extracted code. The CLI tools are thin I/O wrappers — they read files,
+call the extracted functions, and format the output.
 
 ## License
 

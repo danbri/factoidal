@@ -62,16 +62,26 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   rm -f "$OUTDIR"/*.cmi "$OUTDIR"/*.cmx "$OUTDIR"/*.cmo "$OUTDIR"/*.o
   cd "$OUTDIR"
 
-  # W3C test runner (reads real W3C manifests, calls F*-extracted code)
-  ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
-    RDF_Graph_Executable.ml \
+  # Common modules for all binaries
+  COMMON_MODULES="RDF_Graph_Executable.ml \
     Parser_Combinators.ml Parser_NTriples.ml Parser_Turtle.ml \
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml \
-    SPARQL11_Algebra.ml SPARQL11_Parser.ml \
+    SPARQL11_Algebra.ml SPARQL11_Parser.ml"
+
+  # W3C test runner (reads real W3C manifests, calls F*-extracted code)
+  ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
+    $COMMON_MODULES \
     w3c_runner.ml \
     -o w3c_runner 2>&1 | grep -i error || true
   echo "  Built: w3c_runner ($(wc -c < w3c_runner) bytes)"
+
+  # factoidal CLI (SPARQL query + RDF parsing tool)
+  ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
+    $COMMON_MODULES \
+    factoidal_cli.ml \
+    -o factoidal 2>&1 | grep -i error || true
+  echo "  Built: factoidal ($(wc -c < factoidal) bytes)"
 
   cd ..
   echo ""

@@ -9,4 +9,5 @@
 ocaml-output/example
 ocaml-output/w3c_tests
 ocaml-output/w3c_runner
+ocaml-output/factoidal
 z3-4.13.3
