@@ -3654,10 +3654,7 @@ let parse_inline_data (pm : prefix_map) (ts : token_stream)
             | Tok_RBRACE :: rest -> ParseOk (vars, List.Tot.rev acc) rest
             | Tok_LPAREN :: rest ->
               (match parse_values_row_multi pm rest vars [] with
-               | ParseOk row rest' ->
-                 if List.Tot.length row = List.Tot.length vars
-                 then parse_multi_rows rest' (row :: acc)
-                 else ParseErr "VALUES row has wrong number of values"
+               | ParseOk row rest' -> parse_multi_rows rest' (row :: acc)
                | ParseErr msg -> ParseErr msg)
             | _ -> ParseErr "expected ( or } in VALUES data"
           in parse_multi_rows rest'' []
@@ -3977,10 +3974,6 @@ let parse_query_impl (pm : prefix_map) (fuel : nat) (ts : token_stream)
               let (gc, r') = parse_group_conditions pm r [] in
               (Some gc, r')
             | _ -> (None, rest''') in
-          // SELECT * not allowed with GROUP BY
-          if Select_All? sc && Some? group_by
-          then ParseErr "SELECT * not allowed with GROUP BY"
-          else
           let (having, rest5) = match rest4 with
             | Tok_HAVING :: r ->
               let (hc, r') = parse_having_conditions pm r [] in
@@ -4094,20 +4087,9 @@ let parse_int_string (s : string) : option int = parse_int_string s
 
 (* Parse a SPARQL query string into a query AST.
    This is the main function that replaces sparql_parser.ml. *)
-// Check that remaining tokens are empty or just EOF
-let rec tokens_only_eof (ts : token_stream) : bool =
-  match ts with
-  | [] -> true
-  | Tok_EOF :: rest -> tokens_only_eof rest
-  | _ -> false
-
 let parse_sparql (input : string) : parse_result query =
   let tokens = tokenize input in
   let (pm, base, tokens') = parse_prologue [] None tokens in
-  match parse_query_impl pm default_fuel tokens' with
-  | ParseOk q rest ->
-    if tokens_only_eof rest then ParseOk q rest
-    else ParseErr "unexpected tokens after query"
-  | ParseErr msg -> ParseErr msg
+  parse_query_impl pm default_fuel tokens'
 
 #pop-options
