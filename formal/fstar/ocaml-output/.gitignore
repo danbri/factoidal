@@ -9,11 +9,8 @@
 *.byte
 *.js.map
 
-# Native executables (ELF binaries, rebuilt from .ml sources)
-factoidal
-w3c_runner
-w3c_tests
-example
+# Native executables are committed (ELF x86-64 linux)
+# Rebuild with: ../build-ocaml.sh compile
 
 # js_of_ocaml output
 *.bc.js
