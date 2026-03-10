@@ -69,49 +69,62 @@ jobs:
         run: |
           mkdir -p docs/test-results
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          cat > docs/test-results/index.html << 'HTMLEOF'
+          cat > docs/test-results/index.html << HTMLEOF
           <!DOCTYPE html>
           <html>
           <head>
             <title>Factoidal W3C Test Results</title>
             <meta charset="utf-8">
             <style>
-              body { font-family: monospace; max-width: 900px; margin: 2em auto; padding: 0 1em; }
-              h1 { border-bottom: 2px solid #333; }
+              body { font-family: system-ui, -apple-system, sans-serif; max-width: 760px; margin: 2em auto; padding: 0 1em; line-height: 1.6; color: #333; }
+              h1 { border-bottom: 2px solid #2d6a4f; padding-bottom: 0.3em; }
+              h2 { margin-top: 1.8em; }
+              a { color: #2d6a4f; }
+              nav { margin-bottom: 2em; font-size: 0.9em; }
+              nav a { margin-right: 1.2em; }
               .pass { color: green; font-weight: bold; }
-              .fail { color: red; font-weight: bold; }
-              .skip { color: gray; }
-              pre { background: #f5f5f5; padding: 1em; overflow-x: auto; border: 1px solid #ddd; }
-              table { border-collapse: collapse; width: 100%; }
-              th, td { border: 1px solid #ddd; padding: 4px 8px; text-align: left; }
-              th { background: #f0f0f0; }
+              .fail { color: red; }
+              pre { background: #f8f8f8; padding: 1em; overflow-x: auto; border-radius: 4px; border: 1px solid #ddd; }
               .timestamp { color: #666; font-size: 0.9em; }
+              footer { margin-top: 3em; border-top: 1px solid #ddd; padding-top: 1em; font-size: 0.9em; color: #666; }
             </style>
           </head>
           <body>
+          <nav>
+            <a href="/factoidal/">Home</a>
+            <a href="/factoidal/test-results/">Test Results</a>
+            <a href="https://github.com/danbri/factoidal">GitHub</a>
+          </nav>
+          <h1>W3C Test Results</h1>
+          <p class="timestamp">Generated: ${TIMESTAMP}</p>
+          <p>These results are generated automatically by CI from actual test runs.
+          Source: <a href="https://github.com/danbri/factoidal/actions/workflows/w3c-tests.yml">W3C Test Suite workflow</a></p>
+          <h2>SPARQL 1.1</h2>
+          <pre>
           HTMLEOF
 
-          echo "<h1>Factoidal W3C Test Results</h1>" >> docs/test-results/index.html
-          echo "<p class='timestamp'>Last updated: ${TIMESTAMP}</p>" >> docs/test-results/index.html
-
-          echo "<h2>SPARQL 1.1</h2>" >> docs/test-results/index.html
-          echo "<pre>" >> docs/test-results/index.html
           grep "^  " /tmp/sparql-results.txt | grep -E "pass:|fail:" >> docs/test-results/index.html
-          echo "</pre>" >> docs/test-results/index.html
-          echo "<p><strong>$(cat /tmp/sparql-totals.txt)</strong></p>" >> docs/test-results/index.html
 
-          echo "<h2>RDF 1.1</h2>" >> docs/test-results/index.html
-          echo "<pre>" >> docs/test-results/index.html
+          cat >> docs/test-results/index.html << HTMLEOF
+          </pre>
+          <p><strong>$(cat /tmp/sparql-totals.txt)</strong></p>
+          <h2>RDF 1.1</h2>
+          <pre>
+          HTMLEOF
+
           grep "^  " /tmp/rdf-results.txt | grep -E "pass:|fail:" >> docs/test-results/index.html
-          echo "</pre>" >> docs/test-results/index.html
-          echo "<p><strong>$(cat /tmp/rdf-totals.txt)</strong></p>" >> docs/test-results/index.html
 
-          echo "</body></html>" >> docs/test-results/index.html
+          cat >> docs/test-results/index.html << HTMLEOF
+          </pre>
+          <p><strong>$(cat /tmp/rdf-totals.txt)</strong></p>
+          <footer>Factoidal — verified RDF/SPARQL from F*.</footer>
+          </body></html>
+          HTMLEOF
 
       - name: Commit results
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add docs/test-results/
-          git diff --cached --quiet || git commit -m "Update W3C test results [skip ci]"
+          git diff --cached --quiet || git commit -m "Update W3C test results"
           git push || true
