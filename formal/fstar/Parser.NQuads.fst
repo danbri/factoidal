@@ -63,11 +63,13 @@ let parse_opt_graph_label : parser (option iri) =
         let code = FStar.Char.int_of_char ch in
         if code = 0x2E then (* '.' — no graph label *)
           ParseOk None pos1
-        else if code = 0x3C || code = 0x5F then (* IRI or bnode *)
+        else if code = 0x3C || code = 0x5F then // IRI or bnode
           begin match parse_graph_label input pos1 with
           | ParseOk g pos2 -> ParseOk (Some g) pos2
           | ParseFail msg fpos -> ParseFail msg fpos
           end
+        else if code = 0x22 then // '"' — literal in graph position is invalid
+          ParseFail "literals are not allowed as graph names in N-Quads" pos1
         else
           ParseOk None pos1
     | ParseFail msg fpos -> ParseFail msg fpos
