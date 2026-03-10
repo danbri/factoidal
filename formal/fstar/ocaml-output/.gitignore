@@ -1,0 +1,19 @@
+# OCaml compilation artifacts (platform-specific, rebuilt by ../build-ocaml.sh)
+*.cmi
+*.cmx
+*.cmo
+*.o
+*.a
+*.cmxa
+*.cma
+*.byte
+*.js.map
+
+# Native executables (ELF binaries, rebuilt from .ml sources)
+factoidal
+w3c_runner
+w3c_tests
+example
+
+# js_of_ocaml output
+*.bc.js
