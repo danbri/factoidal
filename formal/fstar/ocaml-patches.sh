@@ -390,6 +390,71 @@ let () = eval_subselect_fwd_ref := eval_select_query
 let is_not_literal'''
 )
 
+# 8. IRI()/URI() base IRI resolution
+# The spec says IRI(string) resolves the string against the query's BASE.
+# eval_expr has no access to the query base, so we use a mutable ref.
+
+# Add the ref before eval_expr so it's in scope
+content = content.replace(
+    'let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :',
+    '''let current_base_iri_ref : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option ref =
+  ref FStar_Pervasives_Native.None
+
+let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :'''
+)
+
+# Set/restore base_iri in eval_select_query
+content = content.replace(
+    '''let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
+  (ds : RDF_Graph_Executable.rdf_dataset) : solution_sequence=
+  match q.q_form with
+  | QF_Select sel ->''',
+    '''let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
+  (ds : RDF_Graph_Executable.rdf_dataset) : solution_sequence=
+  let saved_base = !current_base_iri_ref in
+  current_base_iri_ref := q.q_base;
+  let result = match q.q_form with
+  | QF_Select sel ->'''
+)
+
+content = content.replace(
+    '''  | QF_Describe uu___ -> []
+type path_result =''',
+    '''  | QF_Describe uu___ -> []
+  in
+  current_base_iri_ref := saved_base;
+  result
+type path_result ='''
+)
+
+content = content.replace(
+    '''  | E_IRI_fn e1 ->
+      (match eval_expr e1 mu with
+       | ER_Term (RDF_Graph_Executable.T_IRI i) ->
+           ER_Term (RDF_Graph_Executable.T_IRI i)
+       | ER_Term (RDF_Graph_Executable.T_Literal l) ->
+           (match string_to_iri (lit_lexical l) with
+            | FStar_Pervasives_Native.Some i ->
+                ER_Term (RDF_Graph_Executable.T_IRI i)
+            | FStar_Pervasives_Native.None -> ER_Error)
+       | uu___ -> ER_Error)''',
+    '''  | E_IRI_fn e1 ->
+      (match eval_expr e1 mu with
+       | ER_Term (RDF_Graph_Executable.T_IRI i) ->
+           ER_Term (RDF_Graph_Executable.T_IRI i)
+       | ER_Term (RDF_Graph_Executable.T_Literal l) ->
+           let s = lit_lexical l in
+           (match !current_base_iri_ref with
+            | FStar_Pervasives_Native.Some base ->
+                ER_Term (RDF_Graph_Executable.T_IRI (resolve_iri base s))
+            | FStar_Pervasives_Native.None ->
+                (match string_to_iri s with
+                 | FStar_Pervasives_Native.Some i ->
+                     ER_Term (RDF_Graph_Executable.T_IRI i)
+                 | FStar_Pervasives_Native.None -> ER_Error))
+       | uu___ -> ER_Error)'''
+)
+
 with open('$FILE', 'w') as f:
     f.write(content)
 "

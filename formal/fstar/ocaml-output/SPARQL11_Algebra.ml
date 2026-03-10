@@ -2804,6 +2804,9 @@ let eval_xsd_cast (v : eval_result) (target_type : Prims.string)
                            FStar_Pervasives_Native.None
                        })
                 else ER_Error
+let current_base_iri_ref : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option ref =
+  ref FStar_Pervasives_Native.None
+
 let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
   eval_result=
   match e with
@@ -2933,10 +2936,15 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
        | ER_Term (RDF_Graph_Executable.T_IRI i) ->
            ER_Term (RDF_Graph_Executable.T_IRI i)
        | ER_Term (RDF_Graph_Executable.T_Literal l) ->
-           (match string_to_iri (lit_lexical l) with
-            | FStar_Pervasives_Native.Some i ->
-                ER_Term (RDF_Graph_Executable.T_IRI i)
-            | FStar_Pervasives_Native.None -> ER_Error)
+           let s = lit_lexical l in
+           (match !current_base_iri_ref with
+            | FStar_Pervasives_Native.Some base ->
+                ER_Term (RDF_Graph_Executable.T_IRI (resolve_iri base s))
+            | FStar_Pervasives_Native.None ->
+                (match string_to_iri s with
+                 | FStar_Pervasives_Native.Some i ->
+                     ER_Term (RDF_Graph_Executable.T_IRI i)
+                 | FStar_Pervasives_Native.None -> ER_Error))
        | uu___ -> ER_Error)
   | E_StrDt (e1, e2) ->
       (match ((er_to_string (eval_expr e1 mu)), (eval_expr e2 mu)) with
@@ -3915,7 +3923,9 @@ let select_item_vars (items : select_item Prims.list) : var_name Prims.list=
     items
 let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
   (ds : RDF_Graph_Executable.rdf_dataset) : solution_sequence=
-  match q.q_form with
+  let saved_base = !current_base_iri_ref in
+  current_base_iri_ref := q.q_base;
+  let result = match q.q_form with
   | QF_Select sel ->
       let omega0 = eval_pattern q.q_pattern g ds in
       let omega =
@@ -3985,6 +3995,9 @@ let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
   | QF_Construct uu___ -> []
   | QF_Ask -> []
   | QF_Describe uu___ -> []
+  in
+  current_base_iri_ref := saved_base;
+  result
 type path_result =
   (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list
 (* Wire up eval_subselect_fwd to the real eval_select_query *)
