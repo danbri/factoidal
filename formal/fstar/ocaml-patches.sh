@@ -276,24 +276,48 @@ let () = regex_replace_ref := (fun text pattern replacement flags ->
     let re = if case_insensitive
       then Str.regexp_case_fold converted
       else Str.regexp converted in
-    (* Convert XPath backrefs to OCaml Str backrefs: dollar-n -> backslash-n *)
+    (* Manual global replace that handles unmatched groups gracefully.
+       OCaml Str.matched_group raises Not_found for unmatched groups;
+       we replace them with empty string per XPath/SPARQL semantics. *)
     let open Stdlib in
-    let len = String.length replacement in
-    let buf = Buffer.create len in
-    let i = ref 0 in
-    while !i < len do
-      if replacement.[!i] = '$' && !i + 1 < len &&
-         replacement.[!i + 1] >= '0' && replacement.[!i + 1] <= '9' then begin
-        Buffer.add_char buf (Char.chr 92);
-        Buffer.add_char buf replacement.[!i + 1];
-        i := !i + 2
-      end else begin
-        Buffer.add_char buf replacement.[!i];
-        i := !i + 1
-      end
-    done;
-    let repl = Buffer.contents buf in
-    Str.global_replace re repl text
+    let build_replacement matched_text =
+      let len = String.length replacement in
+      let buf = Buffer.create len in
+      let i = ref 0 in
+      while !i < len do
+        if replacement.[!i] = '$' && !i + 1 < len &&
+           replacement.[!i + 1] >= '0' && replacement.[!i + 1] <= '9' then begin
+          let group_n = Char.code replacement.[!i + 1] - Char.code '0' in
+          (try Buffer.add_string buf (Str.matched_group group_n matched_text)
+           with Not_found -> ());
+          i := !i + 2
+        end else begin
+          Buffer.add_char buf replacement.[!i];
+          i := !i + 1
+        end
+      done;
+      Buffer.contents buf
+    in
+    let result = Buffer.create (String.length text) in
+    let pos = ref 0 in
+    (try
+      while true do
+        ignore (Str.search_forward re text !pos);
+        let m_start = Str.match_beginning () in
+        let m_end = Str.match_end () in
+        Buffer.add_string result (String.sub text !pos (m_start - !pos));
+        Buffer.add_string result (build_replacement text);
+        pos := m_end;
+        if m_start = m_end then begin
+          if !pos < String.length text then begin
+            Buffer.add_char result text.[!pos];
+            pos := !pos + 1
+          end else raise Not_found
+        end
+      done
+    with Not_found -> ());
+    Buffer.add_string result (String.sub text !pos (String.length text - !pos));
+    Buffer.contents result
   with _ -> text)'''
 )
 

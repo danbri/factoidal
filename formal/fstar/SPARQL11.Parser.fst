@@ -1459,7 +1459,7 @@ and parse_group_graph_pattern (pm : prefix_map) (fuel : nat) (ts : token_stream)
          end)
     | Tok_RBRACE -> ParseOk GP_Empty (parse_advance ts')
     | _ ->
-      begin match parse_ggp_body pm (fuel-1) GP_Empty ts' with
+      begin match parse_ggp_body pm (fuel-1) GP_Empty [] ts' with
       | ParseErr m -> ParseErr m
       | ParseOk g ts'' ->
         begin match parse_expect Tok_RBRACE ts'' with
@@ -1468,10 +1468,14 @@ and parse_group_graph_pattern (pm : prefix_map) (fuel : nat) (ts : token_stream)
         end end
     end
 
-(* Parse the body of a GGP: triples blocks interleaved with graph pattern elements *)
-and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern) (ts : token_stream)
+// Parse the body of a GGP: triples blocks interleaved with graph pattern elements.
+// FILTERs are collected in `filters` and wrapped around the result at the end,
+// per SPARQL 1.1 spec section 18.2.4: filters scope over the entire group.
+and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern) (filters : list expr) (ts : token_stream)
   : Tot (parse_result group_graph_pattern) (decreases fuel) =
-  if fuel = 0 then ParseOk acc ts
+  if fuel = 0 then
+    let g = List.Tot.fold_left (fun g e -> GP_Filter e g) acc filters in
+    ParseOk g ts
   else match parse_peek ts with
   // Try parsing triples if we see a term
   | Tok_VAR _ | Tok_IRI _ | Tok_PNAME _ | Tok_BNODE _ | Tok_LBRACKET
@@ -1482,7 +1486,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern) (t
      | ParseOk triples_ggp ts' ->
        let acc' = ggp_join acc triples_ggp in
        let ts' = match parse_peek ts' with Tok_DOT -> parse_advance ts' | _ -> ts' in
-       parse_ggp_body pm (fuel-1) acc' ts')
+       parse_ggp_body pm (fuel-1) acc' filters ts')
   | Tok_OPTIONAL ->
     (match parse_group_graph_pattern pm (fuel-1) (parse_advance ts) with
      | ParseErr m -> ParseErr m
@@ -1491,14 +1495,14 @@ and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern) (t
          | GP_Empty -> GP_LeftJoin GP_Empty g (E_BoolLit true)
          | _ -> GP_LeftJoin acc g (E_BoolLit true) in
        let ts' = match parse_peek ts' with Tok_DOT -> parse_advance ts' | _ -> ts' in
-       parse_ggp_body pm (fuel-1) acc' ts')
+       parse_ggp_body pm (fuel-1) acc' filters ts')
   | Tok_MINUS_KW ->
     (match parse_group_graph_pattern pm (fuel-1) (parse_advance ts) with
      | ParseErr m -> ParseErr m
      | ParseOk g ts' ->
        let acc' = GP_Minus acc g in
        let ts' = match parse_peek ts' with Tok_DOT -> parse_advance ts' | _ -> ts' in
-       parse_ggp_body pm (fuel-1) acc' ts')
+       parse_ggp_body pm (fuel-1) acc' filters ts')
   | Tok_GRAPH ->
     let ts' = parse_advance ts in
     (match parse_graph_name pm (fuel-1) ts' with
@@ -1510,7 +1514,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern) (t
          let acc' = match acc with
            | GP_Empty -> GP_Graph gn g | _ -> GP_Join acc (GP_Graph gn g) in
          let ts''' = match parse_peek ts''' with Tok_DOT -> parse_advance ts''' | _ -> ts''' in
-         parse_ggp_body pm (fuel-1) acc' ts'''
+         parse_ggp_body pm (fuel-1) acc' filters ts'''
        end)
   | Tok_SERVICE ->
     let ts' = parse_advance ts in
@@ -1526,17 +1530,16 @@ and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern) (t
            | GP_Empty -> GP_Service siri g silent
            | _ -> GP_Join acc (GP_Service siri g silent) in
          let ts''' = match parse_peek ts''' with Tok_DOT -> parse_advance ts''' | _ -> ts''' in
-         parse_ggp_body pm (fuel-1) acc' ts'''
+         parse_ggp_body pm (fuel-1) acc' filters ts'''
        end)
   | Tok_FILTER ->
     let ts' = parse_advance ts in
-    (* FILTER can be followed by ( expr ) or a built-in *)
+    // Collect filter expression; will be wrapped at group end per spec 18.2.4
     (match parse_filter_expr pm (fuel-1) ts' with
      | ParseErr m -> ParseErr m
      | ParseOk e ts'' ->
-       let acc' = GP_Filter e acc in
        let ts'' = match parse_peek ts'' with Tok_DOT -> parse_advance ts'' | _ -> ts'' in
-       parse_ggp_body pm (fuel-1) acc' ts'')
+       parse_ggp_body pm (fuel-1) acc (e :: filters) ts'')
   | Tok_BIND ->
     let ts' = parse_advance ts in
     (match parse_expect Tok_LPAREN ts' with
@@ -1555,7 +1558,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern) (t
               | ParseOk () ts5 ->
                 let acc' = GP_Bind e v acc in
                 let ts5 = match parse_peek ts5 with Tok_DOT -> parse_advance ts5 | _ -> ts5 in
-                parse_ggp_body pm (fuel-1) acc' ts5)
+                parse_ggp_body pm (fuel-1) acc' filters ts5)
            | _ -> ParseErr "expected variable after AS"
            end end end)
   | Tok_VALUES ->
@@ -1564,16 +1567,19 @@ and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern) (t
      | ParseOk g ts' ->
        let acc' = ggp_join acc g in
        let ts' = match parse_peek ts' with Tok_DOT -> parse_advance ts' | _ -> ts' in
-       parse_ggp_body pm (fuel-1) acc' ts')
+       parse_ggp_body pm (fuel-1) acc' filters ts')
   | Tok_LBRACE ->
-    (* Nested GGP — could be UNION *)
+    // Nested GGP or UNION
     (match parse_group_or_union pm (fuel-1) ts with
      | ParseErr m -> ParseErr m
      | ParseOk g ts' ->
        let acc' = match acc with GP_Empty -> g | _ -> GP_Join acc g in
        let ts' = match parse_peek ts' with Tok_DOT -> parse_advance ts' | _ -> ts' in
-       parse_ggp_body pm (fuel-1) acc' ts')
-  | _ -> ParseOk acc ts
+       parse_ggp_body pm (fuel-1) acc' filters ts')
+  | _ ->
+    // Wrap collected filters around the final pattern (spec 18.2.4)
+    let g = List.Tot.fold_left (fun g e -> GP_Filter e g) acc filters in
+    ParseOk g ts
 
 (* Parse { } UNION { } ... *)
 and parse_group_or_union (pm : prefix_map) (fuel : nat) (ts : token_stream)

@@ -24,9 +24,47 @@ open SPARQL11_Algebra
 exception Sparql_parse_error of string
 exception Sparql_unsupported of string
 
+(* Hoist GP_Filter nodes to the top of their containing group.
+   Per SPARQL 1.1 spec section 18.2.4, FILTERs in a group scope over the
+   entire group, not just the elements preceding the FILTER textually.
+   The F* parser currently wraps GP_Filter at the point it appears, which
+   means FILTER before BIND puts the filter inside the bind. This
+   post-processing step extracts filters from inside bind chains and
+   wraps them at the top. *)
+let rec hoist_group_filters g =
+  let open SPARQL11_Algebra in
+  (* Extract GP_Filter nodes from inside a bind/filter chain at group level *)
+  let rec extract_filters g =
+    match g with
+    | GP_Filter (e, inner) ->
+      let (filters, core) = extract_filters inner in
+      (e :: filters, core)
+    | GP_Bind (e, v, inner) ->
+      let (filters, core) = extract_filters inner in
+      (filters, GP_Bind (e, v, core))
+    | _ -> ([], g)
+  in
+  let (filters, core) = extract_filters g in
+  (* Recurse into subpatterns *)
+  let core = match core with
+    | GP_Join (l, r) -> GP_Join (hoist_group_filters l, hoist_group_filters r)
+    | GP_LeftJoin (l, r, e) -> GP_LeftJoin (hoist_group_filters l, hoist_group_filters r, e)
+    | GP_Union (l, r) -> GP_Union (hoist_group_filters l, hoist_group_filters r)
+    | GP_Minus (l, r) -> GP_Minus (hoist_group_filters l, hoist_group_filters r)
+    | GP_Bind (e, v, inner) -> GP_Bind (e, v, hoist_group_filters inner)
+    | GP_Graph (n, inner) -> GP_Graph (n, hoist_group_filters inner)
+    | GP_Service (iri, inner, s) -> GP_Service (iri, hoist_group_filters inner, s)
+    | _ -> core
+  in
+  List.fold_left (fun g e -> GP_Filter (e, g)) core filters
+
+let hoist_query_filters q =
+  let open SPARQL11_Algebra in
+  { q with q_pattern = hoist_group_filters q.q_pattern }
+
 let parse_sparql_query content =
   match SPARQL11_Parser.parse_sparql content with
-  | SPARQL11_Parser.ParseOk (q, _remaining) -> q
+  | SPARQL11_Parser.ParseOk (q, _remaining) -> hoist_query_filters q
   | SPARQL11_Parser.ParseErr msg -> raise (Sparql_parse_error msg)
 
 (* ============================================================================
