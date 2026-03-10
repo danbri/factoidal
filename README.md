@@ -82,6 +82,68 @@ factoidal --dump --format rdfxml data.rdf
 factoidal --dump --base http://example.org/ data.ttl
 ```
 
+### Piping data from the web
+
+Factoidal reads stdin when you pass `-d -`, so you can pipe RDF from any
+HTTP client. Use `--format` to specify the format (stdin has no file
+extension; the default is Turtle).
+
+#### Unix (curl)
+
+```bash
+# Fetch Turtle from DBpedia and query it
+curl -sL "http://dbpedia.org/data/Berlin.ttl" \
+  | factoidal -d - -e 'PREFIX dbo: <http://dbpedia.org/ontology/>
+    SELECT ?pop WHERE { ?s dbo:populationTotal ?pop }'
+
+# Content negotiation — ask for N-Triples via Accept header
+curl -sL -H "Accept: application/n-triples" \
+  "http://dbpedia.org/resource/Berlin" \
+  | factoidal -d - --format ntriples -e 'SELECT * WHERE { ?s ?p ?o } LIMIT 10'
+
+# Fetch RDF/XML and count triples
+curl -sL -H "Accept: application/rdf+xml" \
+  "http://dbpedia.org/resource/Berlin" \
+  | factoidal -d - --format rdfxml --count
+```
+
+#### Unix (wget)
+
+```bash
+wget -qO- "http://dbpedia.org/data/Berlin.ttl" \
+  | factoidal -d - -e 'SELECT * WHERE { ?s ?p ?o } LIMIT 5'
+```
+
+#### Windows (PowerShell — Invoke-WebRequest)
+
+```powershell
+# PowerShell's Invoke-WebRequest (aliased as iwr/curl on Windows — not the
+# same as Unix curl). Pipe RDF into factoidal via stdin.
+(Invoke-WebRequest -Uri "http://dbpedia.org/data/Berlin.ttl").Content `
+  | factoidal -d - -e "SELECT * WHERE { ?s ?p ?o } LIMIT 5"
+
+# Content negotiation with Accept header
+(Invoke-WebRequest -Uri "http://dbpedia.org/resource/Berlin" `
+  -Headers @{"Accept"="application/n-triples"}).Content `
+  | factoidal -d - --format ntriples -e "SELECT * WHERE { ?s ?p ?o } LIMIT 10"
+```
+
+> **Note for Windows users:** PowerShell aliases `curl` to `Invoke-WebRequest`,
+> which is unrelated to Unix curl. If you have the real curl installed (Windows
+> 10+ ships `curl.exe` in System32), use `curl.exe` explicitly to avoid the
+> alias:
+>
+> ```powershell
+> curl.exe -sL "http://dbpedia.org/data/Berlin.ttl" `
+>   | factoidal -d - -e "SELECT * WHERE { ?s ?p ?o } LIMIT 5"
+> ```
+
+#### Windows (cmd.exe — curl.exe)
+
+```cmd
+curl.exe -sL "http://dbpedia.org/data/Berlin.ttl" | factoidal -d - -e "SELECT * WHERE { ?s ?p ?o } LIMIT 5"
+```
+
 ### Example session
 
 ```
