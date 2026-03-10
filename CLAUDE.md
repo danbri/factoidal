@@ -136,6 +136,13 @@ Previous Claude sessions made these errors. Read and internalize:
     `./ocaml-patches.sh ocaml-output/SPARQL11_Algebra.ml`. Forgetting
     this silently regresses all `assume val` stubs to `failwith`.
 
+12. **Using `(*` in F\* comments when writing SPARQL-related code.** F\* comments
+    `(* ... *)` nest. If a comment mentions SPARQL's `(*, /)` (multiplicative
+    operators) or `COUNT(*)`, the `(*` opens a nested comment that silently
+    swallows the rest of the file. F\* extraction will succeed but silently drop
+    all definitions after the broken comment. **Use `//` line comments instead**
+    when comment text contains `(*` or `*)`.
+
 ## Current State (Honest Assessment)
 
 ### F\* Specifications
@@ -409,6 +416,7 @@ z3-4.13.3 --version  # must show "Z3 version 4.13.3"
 **Do NOT use `--lax` at all.** All F\* modules must verify and extract without
 `--lax`. The `--lax` flag is banned — it defeats the purpose of formal
 verification. Install z3 first, then verify and extract.
+
 
 ### Quick verification
 
