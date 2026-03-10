@@ -160,6 +160,13 @@ Previous Claude sessions made these errors. Read and internalize:
     - `ocaml-patches.sh` accepts a directory and patches all files in sequence
     A GitHub Action checks PRs for direct edits to extracted files.
 
+14. **Never use `|| true` to swallow command failures in shell scripts.**
+    `|| true` silently hides real errors. When a command might fail and you
+    need the script to continue (e.g., under `set -e`), capture the exit code
+    instead: `CMD_RC=0; OUTPUT=$(cmd ...) || CMD_RC=$?`. This lets the script
+    continue while preserving the exit code for error reporting. The grep-based
+    success checks still gate overall pass/fail.
+
 ## Current State (Honest Assessment)
 
 ### F\* Specifications
