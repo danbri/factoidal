@@ -288,6 +288,12 @@ let numeric_literal_equal l1 l2 =
     | _ -> false
   else false
 
+let lang_tag_equal t1 t2 =
+  match t1, t2 with
+  | None, None -> true
+  | Some a, Some b -> String.lowercase_ascii a = String.lowercase_ascii b
+  | _ -> false
+
 let term_equal a b =
   match a, b with
   | T_IRI i1, T_IRI i2 -> i1 = i2
@@ -295,7 +301,7 @@ let term_equal a b =
   | T_Literal l1, T_Literal l2 ->
     (l1.lexical_form = l2.lexical_form &&
      l1.datatype = l2.datatype &&
-     l1.lang_tag = l2.lang_tag) ||
+     lang_tag_equal l1.lang_tag l2.lang_tag) ||
     (* Fall back to numeric value comparison for xsd numeric types *)
     (l1.datatype = l2.datatype && numeric_literal_equal l1 l2)
   | _ -> false

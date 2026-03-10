@@ -505,6 +505,10 @@ let er_string (s : string) : eval_result =
 let er_string_info (v : eval_result) : option (string & option string & string) =
   match v with
   | ER_Term (T_Literal l) -> Some (lit_lexical l, l.lang_tag, l.datatype)
+  | ER_Num n -> Some (string_of_int n, None, xsd_integer)
+  | ER_Dec s -> Some (s, None, xsd_decimal)
+  | ER_Dbl s -> Some (s, None, xsd_double)
+  | ER_Bool b -> Some ((if b then "true" else "false"), None, xsd_boolean)
   | _ -> None
 
 // Helper: wrap string result preserving language tag and datatype
@@ -618,6 +622,7 @@ let fn_isBlank (v : eval_result) : eval_result =
 let fn_isLiteral (v : eval_result) : eval_result =
   match v with
   | ER_Term (T_Literal _) -> ER_Bool true
+  | ER_Num _ | ER_Dec _ | ER_Dbl _ | ER_Bool _ -> ER_Bool true
   | ER_Error -> ER_Error
   | _ -> ER_Bool false
 
@@ -649,11 +654,17 @@ let fn_lang (v : eval_result) : eval_result =
     (match lit_lang l with
      | Some tag -> ER_Term (T_Literal (mk_plain_literal tag))
      | None     -> ER_Term (T_Literal (mk_plain_literal "")))
+  | ER_Num _ | ER_Dec _ | ER_Dbl _ | ER_Bool _ ->
+    ER_Term (T_Literal (mk_plain_literal ""))
   | _ -> ER_Error
 
 let fn_datatype (v : eval_result) : eval_result =
   match v with
   | ER_Term (T_Literal l) -> ER_Term (T_IRI (lit_datatype l))
+  | ER_Num _ -> ER_Term (T_IRI xsd_integer)
+  | ER_Dec _ -> ER_Term (T_IRI xsd_decimal)
+  | ER_Dbl _ -> ER_Term (T_IRI xsd_double)
+  | ER_Bool _ -> ER_Term (T_IRI xsd_boolean)
   | _ -> ER_Error
 
 (* String helper functions *)
@@ -704,13 +715,35 @@ let is_uri_unreserved (c : FStar.Char.char) : bool =
   (code >= 48 && code <= 57)   ||
   code = 45 || code = 95 || code = 46 || code = 126
 
+// Percent-encode a single byte value (0-255) as %XX
+let percent_encode_byte (b : nat { b < 256 }) : list FStar.Char.char =
+  let hi = b / 16 in
+  let lo = b % 16 in
+  [ FStar.Char.char_of_int 37; nibble_to_hex hi; nibble_to_hex lo ]
+
+// Encode a Unicode codepoint as percent-encoded UTF-8 bytes
 let percent_encode_char (c : FStar.Char.char) : list FStar.Char.char =
   let code = FStar.Char.int_of_char c in
-  if code >= 0 && code < 128 then
-    let hi = code / 16 in
-    let lo = code % 16 in
-    [ FStar.Char.char_of_int 37; nibble_to_hex hi; nibble_to_hex lo ]
-  else [c]
+  if code < 0x80 then
+    percent_encode_byte code
+  else if code < 0x800 then
+    // 2-byte UTF-8: 110xxxxx 10xxxxxx
+    let b1 = 0xC0 + (code / 64) in
+    let b2 = 0x80 + (code % 64) in
+    percent_encode_byte b1 @ percent_encode_byte b2
+  else if code < 0x10000 then
+    // 3-byte UTF-8: 1110xxxx 10xxxxxx 10xxxxxx
+    let b1 = 0xE0 + (code / 4096) in
+    let b2 = 0x80 + ((code / 64) % 64) in
+    let b3 = 0x80 + (code % 64) in
+    percent_encode_byte b1 @ percent_encode_byte b2 @ percent_encode_byte b3
+  else
+    // 4-byte UTF-8: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+    let b1 = 0xF0 + (code / 262144) in
+    let b2 = 0x80 + ((code / 4096) % 64) in
+    let b3 = 0x80 + ((code / 64) % 64) in
+    let b4 = 0x80 + (code % 64) in
+    percent_encode_byte b1 @ percent_encode_byte b2 @ percent_encode_byte b3 @ percent_encode_byte b4
 
 let rec encode_uri_chars (cs : list FStar.Char.char)
   : Tot (list FStar.Char.char) (decreases cs) =
@@ -749,7 +782,14 @@ let replace_all_chars (haystack pattern replacement : list FStar.Char.char)
   if Nil? pattern then haystack
   else replace_all_chars_fuel haystack pattern replacement (List.Tot.length haystack)
 
-let string_replace (s : string) (pattern : string) (replacement : string) (_flags : option string) : string =
+// SPARQL REPLACE uses XPath fn:replace (full regex with backreferences + flags)
+// This requires a regex engine, so we use assume val + OCaml Str patch.
+assume val regex_replace : string -> string -> string -> option string -> string
+
+let string_replace (s : string) (pattern : string) (replacement : string) (flags : option string) : string =
+  regex_replace s pattern replacement flags
+
+let string_replace_literal (s : string) (pattern : string) (replacement : string) (_flags : option string) : string =
   if String.length pattern = 0 then s
   else
     String.string_of_list (replace_all_chars (String.list_of_string s) (String.list_of_string pattern) (String.list_of_string replacement))
@@ -1732,19 +1772,16 @@ let eval_xsd_cast (v : eval_result) (target_type : string) (full_iri : string) :
          match parse_int_string lex with
          | Some n -> ER_Num n
          | None ->
-           // Try parsing as decimal/double and truncating
-           (match parse_to_scaled lex with
+           // Try parsing as double first (handles E-notation correctly),
+           // then decimal. parse_double_to_scaled falls through to parse_to_scaled
+           // for non-E strings, so this handles both cases.
+           (match parse_double_to_scaled lex with
             | Some (sv, sc) ->
               let divisor = pow10 sc in
               ER_Num (if divisor = 0 then 0 else sv / divisor)
             | None ->
-              match parse_double_to_scaled lex with
-              | Some (sv, sc) ->
-                let divisor = pow10 sc in
-                ER_Num (if divisor = 0 then 0 else sv / divisor)
-              | None ->
-                let (ip, _, _) = split_decimal lex in
-                (match ip with | Some n -> ER_Num n | None -> ER_Error)))
+              let (ip, _, _) = split_decimal lex in
+              (match ip with | Some n -> ER_Num n | None -> ER_Error)))
     else if target_type = "decimal" then
       // Boolean -> decimal: true="1.0", false="0.0"
       (match v with
@@ -2000,23 +2037,41 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
      | _, _ -> ER_Error)
   | E_StrBefore e1 e2 ->
     let v1 = eval_expr e1 mu in
-    (match er_string_info v1, er_to_string (eval_expr e2 mu) with
-     | Some (s, lang, dt), Some arg ->
-       let result = string_before s arg in
-       // Per SPARQL spec: if arg not found, return ""^^xsd:string (no lang tag)
-       if String.length arg = 0 then er_string ""  // STRBEFORE(x, "") = ""
-       else if String.length result = 0 && not (string_contains s arg) then er_string ""
-       else er_string_preserve result lang dt
+    let v2 = eval_expr e2 mu in
+    (match er_string_info v1, er_string_info v2 with
+     | Some (s, lang1, dt1), Some (arg, lang2, dt2) ->
+       // Argument compatibility per SPARQL 17.4.3.22
+       let compatible =
+         (None? lang1 && None? lang2) ||
+         (None? lang1 && (dt1 = xsd_string) && None? lang2 && (dt2 = xsd_string)) ||
+         (Some? lang1 && None? lang2 && (dt2 = xsd_string || dt2 = rdf_langString)) ||
+         (None? lang1 && (dt1 = xsd_string) && Some? lang2) ||
+         (Some? lang1 && Some? lang2 && lang1 = lang2) in
+       if not compatible then ER_Error
+       else if String.length arg = 0 then er_string_preserve "" lang1 dt1
+       else
+         let result = string_before s arg in
+         if String.length result = 0 && not (string_contains s arg) then er_string ""
+         else er_string_preserve result lang1 dt1
      | _, _ -> ER_Error)
   | E_StrAfter e1 e2 ->
     let v1 = eval_expr e1 mu in
-    (match er_string_info v1, er_to_string (eval_expr e2 mu) with
-     | Some (s, lang, dt), Some arg ->
-       let result = string_after s arg in
-       // Per SPARQL spec: if arg not found, return ""^^xsd:string (no lang tag)
-       if String.length arg = 0 then er_string ""  // STRAFTER(x, "") = ""
-       else if String.length result = 0 && not (string_contains s arg) then er_string ""
-       else er_string_preserve result lang dt
+    let v2 = eval_expr e2 mu in
+    (match er_string_info v1, er_string_info v2 with
+     | Some (s, lang1, dt1), Some (arg, lang2, dt2) ->
+       // Argument compatibility per SPARQL 17.4.3.23
+       let compatible =
+         (None? lang1 && None? lang2) ||
+         (None? lang1 && (dt1 = xsd_string) && None? lang2 && (dt2 = xsd_string)) ||
+         (Some? lang1 && None? lang2 && (dt2 = xsd_string || dt2 = rdf_langString)) ||
+         (None? lang1 && (dt1 = xsd_string) && Some? lang2) ||
+         (Some? lang1 && Some? lang2 && lang1 = lang2) in
+       if not compatible then ER_Error
+       else if String.length arg = 0 then er_string_preserve s lang1 dt1
+       else
+         let result = string_after s arg in
+         if String.length result = 0 && not (string_contains s arg) then er_string ""
+         else er_string_preserve result lang1 dt1
      | _, _ -> ER_Error)
   | E_Concat es -> eval_concat es mu
   | E_EncodeForUri e1 ->
@@ -2214,6 +2269,12 @@ and eval_concat (es : list expr) (mu : solution_mapping)
   // CONCAT preserves lang tag if all args share the same tag; otherwise xsd:string
   match es with
   | [] -> er_string ""
+  | [e] ->
+    // Single element: preserve its string info (lang tag, datatype)
+    let v = eval_expr e mu in
+    (match er_string_info v with
+     | Some (s, lang, dt) -> er_string_preserve s lang dt
+     | None -> ER_Error)
   | e :: rest ->
     let v = eval_expr e mu in
     (match er_string_info v with
@@ -2227,7 +2288,11 @@ and eval_concat (es : list expr) (mu : solution_mapping)
              if string_lower l1 = string_lower l2 then
                ER_Term (T_Literal { lexical_form = combined; datatype = rdf_lang_string; lang_tag = Some l1 })
              else er_string combined
-           | None, None -> er_string combined
+           | None, None ->
+             // Both plain: preserve xsd:string datatype
+             if dt = l.datatype then
+               ER_Term (T_Literal { lexical_form = combined; datatype = dt; lang_tag = None })
+             else er_string combined
            | _, _ -> er_string combined)
         | ER_Error -> ER_Error
         | _ -> ER_Error)
@@ -2433,7 +2498,7 @@ let eval_aggregate (fn : aggregate_fn) (distinct : bool) (e : expr) (g : group) 
   | Agg_Count ->
     (* COUNT-star counts all solutions; COUNT-expr counts non-error evaluations *)
     (match e with
-     | E_Var "*" ->
+     | E_Var "*" | E_BoolLit true ->
        if distinct then
          // COUNT(DISTINCT *): deduplicate by converting each solution to
          // a list of eval_results and using dedup_er-style comparison

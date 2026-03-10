@@ -125,6 +125,21 @@ let regex_match (text : Prims.string) (pattern : Prims.string)
   with _ -> false'''
 )
 
+# 2a2. Replace regex_replace stub with OCaml Str implementation
+# SPARQL REPLACE() uses XPath fn:replace: full regex with backreferences + flags
+content = content.replace(
+    '''let regex_replace (uu___ : Prims.string) (uu___1 : Prims.string)
+  (uu___2 : Prims.string)
+  (uu___3 : Prims.string FStar_Pervasives_Native.option) : Prims.string=
+  failwith \"Not yet implemented: SPARQL11.Algebra.regex_replace\"''',
+    '''let regex_replace_ref : (Prims.string -> Prims.string -> Prims.string -> Prims.string FStar_Pervasives_Native.option -> Prims.string) ref =
+  ref (fun t _ _ _ -> t)
+let regex_replace (text : Prims.string) (pattern : Prims.string)
+  (replacement : Prims.string)
+  (flags : Prims.string FStar_Pervasives_Native.option) : Prims.string=
+  !regex_replace_ref text pattern replacement flags'''
+)
+
 # 2b. Replace hash function stubs with OCaml Digest implementations
 content = content.replace(
     '''let hash_md5 (uu___ : Prims.string) : Prims.string=
@@ -243,6 +258,43 @@ let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
 let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)
 
 type group = {'''
+)
+
+# 3b. Wire regex_replace_ref after xpath_to_str_regex is defined
+# (xpath_to_str_regex is defined inside the regex_match patch)
+content = content.replace(
+    '''let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
+let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)''',
+    '''let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
+let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)
+let () = regex_replace_ref := (fun text pattern replacement flags ->
+  try
+    let case_insensitive = match flags with
+      | FStar_Pervasives_Native.Some f -> String.contains f 'i'
+      | FStar_Pervasives_Native.None -> false in
+    let converted = xpath_to_str_regex pattern in
+    let re = if case_insensitive
+      then Str.regexp_case_fold converted
+      else Str.regexp converted in
+    (* Convert XPath backrefs to OCaml Str backrefs: dollar-n -> backslash-n *)
+    let open Stdlib in
+    let len = String.length replacement in
+    let buf = Buffer.create len in
+    let i = ref 0 in
+    while !i < len do
+      if replacement.[!i] = '$' && !i + 1 < len &&
+         replacement.[!i + 1] >= '0' && replacement.[!i + 1] <= '9' then begin
+        Buffer.add_char buf (Char.chr 92);
+        Buffer.add_char buf replacement.[!i + 1];
+        i := !i + 2
+      end else begin
+        Buffer.add_char buf replacement.[!i];
+        i := !i + 1
+      end
+    done;
+    let repl = Buffer.contents buf in
+    Str.global_replace re repl text
+  with _ -> text)'''
 )
 
 # 4. Wire eval_exists_fwd_ref after eval_exists is defined
