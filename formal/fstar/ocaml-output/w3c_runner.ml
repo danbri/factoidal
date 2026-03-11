@@ -62,10 +62,19 @@ let hoist_query_filters q =
   let open SPARQL11_Algebra in
   { q with q_pattern = hoist_group_filters q.q_pattern }
 
-let parse_sparql_query content =
-  match SPARQL11_Parser.parse_sparql content with
-  | SPARQL11_Parser.ParseOk (q, _remaining) -> hoist_query_filters q
-  | SPARQL11_Parser.ParseErr msg -> raise (Sparql_parse_error msg)
+let file_to_base_uri path =
+  let abs = if Filename.is_relative path then Filename.concat (Sys.getcwd ()) path else path in
+  "file://" ^ abs
+
+let parse_sparql_query ?(base_file=None) content =
+  (match base_file with
+   | Some path -> SPARQL11_Algebra.current_base_iri_ref := Some (file_to_base_uri path)
+   | None -> ());
+  let result =
+    match SPARQL11_Parser.parse_sparql content with
+    | SPARQL11_Parser.ParseOk (q, _remaining) -> hoist_query_filters q
+    | SPARQL11_Parser.ParseErr msg -> raise (Sparql_parse_error msg) in
+  result
 
 (* ============================================================================
    Parser wrappers — thin adapters over F*-extracted parsers
@@ -518,7 +527,7 @@ let run_query_eval_test tc =
   let query =
     match read_file tc.query_file with
     | None -> raise (Unsupported (Printf.sprintf "Query file not found: %s" tc.query_file))
-    | Some content -> parse_sparql_query content
+    | Some content -> parse_sparql_query ~base_file:(Some tc.query_file) content
   in
 
   (* Execute query against extracted evaluator *)
@@ -589,7 +598,7 @@ let run_test tc =
     (match read_file tc.query_file with
      | None -> Skip "Query file missing"
      | Some content ->
-       (try ignore (parse_sparql_query content); Pass
+       (try ignore (parse_sparql_query ~base_file:(Some tc.query_file) content); Pass
         with
         | Sparql_parse_error _ -> Fail "Should parse but didn't"
         | Sparql_unsupported msg -> Unsupported_feature msg))
@@ -597,7 +606,7 @@ let run_test tc =
     (match read_file tc.query_file with
      | None -> Skip "Query file missing"
      | Some content ->
-       (try ignore (parse_sparql_query content); Fail "Should reject but parsed OK"
+       (try ignore (parse_sparql_query ~base_file:(Some tc.query_file) content); Fail "Should reject but parsed OK"
         with
         | Sparql_parse_error _ -> Pass
         | Sparql_unsupported _ -> Unsupported_feature "Can't test rejection"))

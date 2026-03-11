@@ -33,6 +33,7 @@ type token =
   | Tok_ORDER | Tok_BY | Tok_ASC | Tok_DESC
   | Tok_GROUP | Tok_HAVING
   | Tok_LIMIT | Tok_OFFSET
+  | Tok_FROM | Tok_NAMED
   | Tok_IN | Tok_TRUE | Tok_FALSE | Tok_UNDEF
   | Tok_A  (* 'a' = rdf:type *)
   (* Delimiters *)
@@ -362,6 +363,8 @@ let keyword_of_upper (upper : string) (original : string) : token =
   else if streq upper "HAVING" then Tok_HAVING
   else if streq upper "LIMIT" then Tok_LIMIT
   else if streq upper "OFFSET" then Tok_OFFSET
+  else if streq upper "FROM" then Tok_FROM
+  else if streq upper "NAMED" then Tok_NAMED
   else if streq upper "IN" then Tok_IN
   else if streq upper "TRUE" then Tok_TRUE
   else if streq upper "FALSE" then Tok_FALSE
@@ -1788,7 +1791,14 @@ and parse_values_clause (pm : prefix_map) (fuel : nat) (ts : token_stream)
            | ParseOk rows ts5 ->
              begin match parse_expect Tok_RBRACE ts5 with
              | ParseErr m -> ParseErr m
-             | ParseOk () ts6 -> ParseOk (GP_Values vars rows) ts6
+             | ParseOk () ts6 ->
+               let vars_len = List.Tot.length vars in
+               let check_row (row : list (option rdf_term)) : bool =
+                 List.Tot.length row = vars_len in
+               if List.Tot.for_all check_row rows then
+                 ParseOk (GP_Values vars rows) ts6
+               else
+                 ParseErr "VALUES row has wrong number of terms"
              end end end end)
   | _ -> ParseErr "expected variable or '(' after VALUES"
 
@@ -2233,7 +2243,9 @@ and parse_prologue (pm : prefix_map) (fuel : nat) (ts : token_stream)
       let ts' = parse_advance ts in
       (match parse_peek ts' with
        | Tok_PNAME pn ->
-         let (prefix, _) = split_pname pn in
+         let (prefix, local) = split_pname pn in
+         if String.length local > 0 then ParseErr "invalid PREFIX name (must be prefix: with no local part)"
+         else
          let ts'' = parse_advance ts' in
          (match parse_peek ts'' with
           | Tok_IRI iri ->
@@ -2277,6 +2289,43 @@ and parse_select_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (ts 
           begin match parse_solution_modifier pm (fuel-1) ts5 with
           | ParseErr m -> ParseErr m
           | ParseOk (modifier, gb, hv) ts6 ->
+            // SELECT * with GROUP BY is not allowed per SPARQL 1.1
+            if Select_All? sel && Some? gb then
+              ParseErr "SELECT * not allowed with GROUP BY"
+            // Check ungrouped variables in SELECT projection
+            else if Some? gb && (
+              let gcs = Some?.v gb in
+              let is_grouped (v : var_name) : bool =
+                not (List.Tot.for_all (fun (gc : group_condition) ->
+                  match gc with
+                  | GC_Var gv -> not (streq gv v)
+                  | GC_Expr _ (Some gv) -> not (streq gv v)
+                  | _ -> true) gcs) in
+              match sel with
+              | Select_Vars items ->
+                not (List.Tot.for_all (fun (item : select_item) ->
+                  match item with
+                  | SI_Var v -> is_grouped v
+                  | _ -> true) items)
+              | _ -> false) then
+              ParseErr "SELECT projects ungrouped variable"
+            // Implicit GROUP BY: if any select item uses an aggregate
+            // but no GROUP BY is present, bare SI_Var projections are ungrouped
+            else if None? gb && (
+              match sel with
+              | Select_Vars items ->
+                let has_agg = not (List.Tot.for_all (fun (item : select_item) ->
+                  match item with
+                  | SI_Expr (E_Aggregate _ _ _) _ -> false
+                  | _ -> true) items) in
+                let has_bare_var = not (List.Tot.for_all (fun (item : select_item) ->
+                  match item with
+                  | SI_Var _ -> false
+                  | _ -> true) items) in
+                has_agg && has_bare_var
+              | _ -> false) then
+              ParseErr "SELECT projects ungrouped variable"
+            else
             // Check for post-query VALUES clause
             let (vals, ts7) = begin match parse_peek ts6 with
               | Tok_VALUES ->
@@ -2328,23 +2377,48 @@ and parse_construct_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (
   else begin
     let ts' = parse_advance ts in  // consume CONSTRUCT
     begin match parse_peek ts' with
-    | Tok_WHERE | Tok_LBRACE ->
-      // CONSTRUCT WHERE { pattern } or CONSTRUCT { template } WHERE { pattern }
-      let ts' = match parse_peek ts' with Tok_WHERE -> parse_advance ts' | _ -> ts' in
+    | Tok_WHERE | Tok_FROM ->
+      // CONSTRUCT [FROM ...] WHERE { pattern } — shorthand form (template = pattern)
+      begin match parse_skip_from (fuel-1) ts' with
+      | ParseErr m -> ParseErr m
+      | ParseOk ds ts'' ->
+        let ts'' = match parse_peek ts'' with Tok_WHERE -> parse_advance ts'' | _ -> ts'' in
+        begin match parse_group_graph_pattern pm (fuel-1) ts'' with
+        | ParseErr m -> ParseErr m
+        | ParseOk pattern ts''' ->
+          begin match parse_solution_modifier pm (fuel-1) ts''' with
+          | ParseErr m -> ParseErr m
+          | ParseOk (modifier, gb, hv) ts4 ->
+            ParseOk ({
+              q_base = base; q_prefixes = pm;
+              q_form = QF_Construct [];
+              q_dataset = ds; q_pattern = pattern;
+              q_group_by = gb; q_having = hv;
+              q_modifier = modifier; q_values = None
+            }) ts4
+          end end end
+    | Tok_LBRACE ->
+      // CONSTRUCT { template } WHERE { pattern } — full form
+      // Parse the template as a group graph pattern, then expect WHERE + body
       begin match parse_group_graph_pattern pm (fuel-1) ts' with
       | ParseErr m -> ParseErr m
-      | ParseOk pattern ts'' ->
-        begin match parse_solution_modifier pm (fuel-1) ts'' with
+      | ParseOk _template ts'' ->
+        // Expect WHERE or directly a { for the body
+        let ts'' = match parse_peek ts'' with Tok_WHERE -> parse_advance ts'' | _ -> ts'' in
+        begin match parse_group_graph_pattern pm (fuel-1) ts'' with
         | ParseErr m -> ParseErr m
-        | ParseOk (modifier, gb, hv) ts''' ->
-          ParseOk ({
-            q_base = base; q_prefixes = pm;
-            q_form = QF_Construct [];
-            q_dataset = []; q_pattern = pattern;
-            q_group_by = gb; q_having = hv;
-            q_modifier = modifier; q_values = None
-          }) ts'''
-        end end
+        | ParseOk pattern ts''' ->
+          begin match parse_solution_modifier pm (fuel-1) ts''' with
+          | ParseErr m -> ParseErr m
+          | ParseOk (modifier, gb, hv) ts4 ->
+            ParseOk ({
+              q_base = base; q_prefixes = pm;
+              q_form = QF_Construct [];
+              q_dataset = []; q_pattern = pattern;
+              q_group_by = gb; q_having = hv;
+              q_modifier = modifier; q_values = None
+            }) ts4
+          end end end
     | _ -> ParseErr "expected WHERE or '{' after CONSTRUCT"
     end end
 
@@ -2362,11 +2436,23 @@ and parse_select_vars (pm : prefix_map) (fuel : nat) (ts : token_stream)
       else ParseOk (Select_Vars items) ts'
     end
 
+and select_item_var (item : select_item) : var_name =
+  match item with
+  | SI_Var v -> v
+  | SI_Expr _ v -> v
+
+and select_items_has_var (v : var_name) (items : list select_item) : Tot bool (decreases items) =
+  match items with
+  | [] -> false
+  | item :: rest -> streq (select_item_var item) v || select_items_has_var v rest
+
 and parse_select_items (pm : prefix_map) (fuel : nat) (acc : list select_item) (ts : token_stream)
   : Tot (parse_result (list select_item)) (decreases fuel) =
   if fuel = 0 then ParseOk (List.Tot.rev acc) ts
   else match parse_peek ts with
-  | Tok_VAR v -> parse_select_items pm (fuel-1) (SI_Var v :: acc) (parse_advance ts)
+  | Tok_VAR v ->
+    if select_items_has_var v acc then ParseErr "duplicate variable in SELECT"
+    else parse_select_items pm (fuel-1) (SI_Var v :: acc) (parse_advance ts)
   | Tok_LPAREN ->
     (match parse_expr pm (fuel-1) (parse_advance ts) with
      | ParseErr m -> ParseErr m
@@ -2376,6 +2462,8 @@ and parse_select_items (pm : prefix_map) (fuel : nat) (acc : list select_item) (
        | ParseOk () ts'' ->
          begin match parse_peek ts'' with
          | Tok_VAR v ->
+           if select_items_has_var v acc then ParseErr "duplicate variable in SELECT"
+           else
            (match parse_expect Tok_RPAREN (parse_advance ts'') with
             | ParseErr m -> ParseErr m
             | ParseOk () ts''' -> parse_select_items pm (fuel-1) (SI_Expr e v :: acc) ts''')
@@ -2383,11 +2471,27 @@ and parse_select_items (pm : prefix_map) (fuel : nat) (acc : list select_item) (
          end end)
   | _ -> ParseOk (List.Tot.rev acc) ts
 
-(* Skip FROM / FROM NAMED clauses *)
+(* Parse FROM / FROM NAMED clauses *)
 and parse_skip_from (fuel : nat) (ts : token_stream)
   : Tot (parse_result (list dataset_clause)) (decreases fuel) =
   if fuel = 0 then ParseOk [] ts
-  else ParseOk [] ts  (* TODO: parse FROM clauses *)
+  else match parse_peek ts with
+  | Tok_FROM ->
+    let ts' = parse_advance ts in
+    begin match parse_peek ts' with
+    | Tok_NAMED ->
+      // FROM NAMED <iri> — skip the IRI
+      let ts'' = parse_advance ts' in
+      begin match parse_peek ts'' with
+      | Tok_IRI _ | Tok_PNAME _ -> parse_skip_from (fuel-1) (parse_advance ts'')
+      | _ -> ParseErr "expected IRI after FROM NAMED"
+      end
+    | Tok_IRI _ | Tok_PNAME _ ->
+      // FROM <iri> — skip the IRI
+      parse_skip_from (fuel-1) (parse_advance ts')
+    | _ -> ParseErr "expected IRI or NAMED after FROM"
+    end
+  | _ -> ParseOk [] ts
 
 // Parse GROUP BY condition: Var | BuiltInCall | FunctionCall | '(' Expression (AS Var)? ')'
 and parse_group_condition (pm : prefix_map) (fuel : nat) (ts : token_stream)
@@ -2589,9 +2693,19 @@ and parse_solution_modifier (pm : prefix_map) (fuel : nat) (ts : token_stream)
 
 (* ---- Top-level parse function ---- *)
 
+let rec tokens_only_eof (ts : token_stream) : Tot bool (decreases ts) =
+  match ts with
+  | [] -> true
+  | Tok_EOF :: rest -> tokens_only_eof rest
+  | _ -> false
+
 let parse_sparql (input : string) : parse_result query =
   let tokens = tokenize input in
-  parse_select_query [] 10000 tokens
+  match parse_select_query [] 10000 tokens with
+  | ParseOk q rest ->
+    if tokens_only_eof rest then ParseOk q rest
+    else ParseErr "unexpected tokens after query"
+  | ParseErr msg -> ParseErr msg
 
 
 (** ====================================================================== **)

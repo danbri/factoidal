@@ -82,19 +82,24 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     Parser_SRX.ml Parser_CSVResults.ml \
     SPARQL11_Algebra.ml SPARQL11_Parser.ml"
 
+  # Static linking so binaries run on any x86-64 Linux (no glibc version dependency)
+  STATIC_FLAGS="-ccopt -static"
+
   # W3C test runner (reads real W3C manifests, calls F*-extracted code)
   ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
+    $STATIC_FLAGS \
     $COMMON_MODULES \
     w3c_runner.ml \
     -o w3c_runner
-  echo "  Built: w3c_runner ($(wc -c < w3c_runner) bytes)"
+  echo "  Built: w3c_runner ($(wc -c < w3c_runner) bytes, static)"
 
   # factoidal CLI (SPARQL query + RDF parsing tool)
   ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
+    $STATIC_FLAGS \
     $COMMON_MODULES \
     factoidal_cli.ml \
     -o factoidal
-  echo "  Built: factoidal ($(wc -c < factoidal) bytes)"
+  echo "  Built: factoidal ($(wc -c < factoidal) bytes, static)"
 
   cd ..
   echo ""
