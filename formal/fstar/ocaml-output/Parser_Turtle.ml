@@ -1913,53 +1913,102 @@ let parse_turtle_statement (st : turtle_state) (input : Prims.string)
                                                     ((all_triples, st2),
                                                       (pos5 + Prims.int_one))
                                                 else
-                                                  Parser_Combinators.ParseOk
-                                                    ((all_triples, st2),
-                                                      pos5))
+                                                  if
+                                                    (pos5 < len) &&
+                                                      ((FStar_Char.int_of_char
+                                                          (FStar_String.index
+                                                             input pos5))
+                                                         =
+                                                         (Prims.of_int (0x7D)))
+                                                  then
+                                                    Parser_Combinators.ParseOk
+                                                      ((all_triples, st2),
+                                                        pos5)
+                                                  else
+                                                    Parser_Combinators.ParseFail
+                                                      ("expected '.' after triple",
+                                                        pos5))
                                        | Parser_Combinators.ParseFail
                                            (msg, fpos) ->
                                            Parser_Combinators.ParseFail
                                              (msg, fpos))))
                       | Parser_Combinators.ParseFail (msg, fpos) ->
                           Parser_Combinators.ParseFail (msg, fpos)))))
+type turtle_doc_result =
+  {
+  tdr_triples: RDF_Graph_Executable.triple Prims.list ;
+  tdr_state: turtle_state ;
+  tdr_has_error: Prims.bool }
+let __proj__Mkturtle_doc_result__item__tdr_triples
+  (projectee : turtle_doc_result) : RDF_Graph_Executable.triple Prims.list=
+  match projectee with
+  | { tdr_triples; tdr_state; tdr_has_error;_} -> tdr_triples
+let __proj__Mkturtle_doc_result__item__tdr_state
+  (projectee : turtle_doc_result) : turtle_state=
+  match projectee with
+  | { tdr_triples; tdr_state; tdr_has_error;_} -> tdr_state
+let __proj__Mkturtle_doc_result__item__tdr_has_error
+  (projectee : turtle_doc_result) : Prims.bool=
+  match projectee with
+  | { tdr_triples; tdr_state; tdr_has_error;_} -> tdr_has_error
 let rec parse_turtle_doc (st : turtle_state) (input : Prims.string)
   (pos : Prims.nat) (acc : RDF_Graph_Executable.triple Prims.list)
-  (fuel : Prims.nat) :
-  (RDF_Graph_Executable.triple Prims.list * turtle_state)=
+  (has_error : Prims.bool) (fuel : Prims.nat) : turtle_doc_result=
   if fuel = Prims.int_zero
-  then ((FStar_List_Tot_Base.rev acc), st)
+  then
+    {
+      tdr_triples = (FStar_List_Tot_Base.rev acc);
+      tdr_state = st;
+      tdr_has_error = has_error
+    }
   else
     (let len = FStar_String.strlen input in
      match turtle_ws input pos with
      | Parser_Combinators.ParseOk ((), pos1) ->
          if pos1 >= len
-         then ((FStar_List_Tot_Base.rev acc), st)
+         then
+           {
+             tdr_triples = (FStar_List_Tot_Base.rev acc);
+             tdr_state = st;
+             tdr_has_error = has_error
+           }
          else
            (match parse_turtle_statement st input pos1 fuel with
             | Parser_Combinators.ParseOk ((triples, st'), pos2) ->
                 if pos2 = pos1
                 then
-                  ((FStar_List_Tot_Base.rev
-                      (FStar_List_Tot_Base.op_At
-                         (FStar_List_Tot_Base.rev triples) acc)), st')
+                  {
+                    tdr_triples =
+                      (FStar_List_Tot_Base.rev
+                         (FStar_List_Tot_Base.op_At
+                            (FStar_List_Tot_Base.rev triples) acc));
+                    tdr_state = st';
+                    tdr_has_error = has_error
+                  }
                 else
                   parse_turtle_doc st' input pos2
                     (FStar_List_Tot_Base.op_At
-                       (FStar_List_Tot_Base.rev triples) acc)
+                       (FStar_List_Tot_Base.rev triples) acc) has_error
                     (fuel - Prims.int_one)
             | Parser_Combinators.ParseFail (uu___2, uu___3) ->
                 let pos2 = skip_to_eol input pos1 (len - pos1) in
                 if pos2 = pos1
-                then ((FStar_List_Tot_Base.rev acc), st)
+                then
+                  {
+                    tdr_triples = (FStar_List_Tot_Base.rev acc);
+                    tdr_state = st;
+                    tdr_has_error = true
+                  }
                 else
-                  parse_turtle_doc st input pos2 acc (fuel - Prims.int_one)))
+                  parse_turtle_doc st input pos2 acc true
+                    (fuel - Prims.int_one)))
 let parse_turtle (input : Prims.string) :
   RDF_Graph_Executable.triple Prims.list=
   let len = FStar_String.strlen input in
   let fuel = (len + Prims.int_one) * (Prims.of_int (2)) in
-  let uu___ =
-    parse_turtle_doc empty_turtle_state input Prims.int_zero [] fuel in
-  match uu___ with | (triples, uu___1) -> triples
+  let r =
+    parse_turtle_doc empty_turtle_state input Prims.int_zero [] false fuel in
+  r.tdr_triples
 let parse_turtle_with_base (input : Prims.string) (base : Prims.string) :
   RDF_Graph_Executable.triple Prims.list=
   let len = FStar_String.strlen input in
@@ -1970,5 +2019,29 @@ let parse_turtle_with_base (input : Prims.string) (base : Prims.string) :
       base_iri = base;
       bnode_counter = (empty_turtle_state.bnode_counter)
     } in
-  let uu___ = parse_turtle_doc st input Prims.int_zero [] fuel in
-  match uu___ with | (triples, uu___1) -> triples
+  let r = parse_turtle_doc st input Prims.int_zero [] false fuel in
+  r.tdr_triples
+let parse_turtle_strict (input : Prims.string) :
+  RDF_Graph_Executable.triple Prims.list FStar_Pervasives_Native.option=
+  let len = FStar_String.strlen input in
+  let fuel = (len + Prims.int_one) * (Prims.of_int (2)) in
+  let r =
+    parse_turtle_doc empty_turtle_state input Prims.int_zero [] false fuel in
+  if r.tdr_has_error
+  then FStar_Pervasives_Native.None
+  else FStar_Pervasives_Native.Some (r.tdr_triples)
+let parse_turtle_with_base_strict (input : Prims.string)
+  (base : Prims.string) :
+  RDF_Graph_Executable.triple Prims.list FStar_Pervasives_Native.option=
+  let len = FStar_String.strlen input in
+  let fuel = (len + Prims.int_one) * (Prims.of_int (2)) in
+  let st =
+    {
+      prefixes = (empty_turtle_state.prefixes);
+      base_iri = base;
+      bnode_counter = (empty_turtle_state.bnode_counter)
+    } in
+  let r = parse_turtle_doc st input Prims.int_zero [] false fuel in
+  if r.tdr_has_error
+  then FStar_Pervasives_Native.None
+  else FStar_Pervasives_Native.Some (r.tdr_triples)

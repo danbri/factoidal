@@ -130,8 +130,8 @@ let load_triples ?(format=None) ?(base=None) path =
     ds.ds_default @ List.concat_map (fun ng -> ng.ng_graph) ds.ds_named
   | TriG ->
     let ds = match base_iri with
-      | Some b -> Parser_TriG.parse_trig_with_base content b
-      | None -> Parser_TriG.parse_trig content in
+      | Some b -> Parser_TriG.parse_trig_with_base_lenient content b
+      | None -> Parser_TriG.parse_trig_lenient content in
     ds.ds_default @ List.concat_map (fun ng -> ng.ng_graph) ds.ds_named
   | RDFXML ->
     (match base_iri with

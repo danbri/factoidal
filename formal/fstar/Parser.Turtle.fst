@@ -1219,14 +1219,17 @@ let parse_turtle_statement (st: turtle_state) (input: string) (pos: nat) (fuel: 
                     begin match parse_predicate_object_list subj_res.sr_state subj_res.sr_subject input pos3 (fuel - 1) with
                     | ParseOk (po_triples, st2) pos4 ->
                       let all_triples = subj_res.sr_triples @ po_triples in
-                      (* Expect '.' *)
+                      // Expect '.'
                       begin match turtle_ws input pos4 with
                       | ParseOk () pos5 ->
                         if pos5 < len && int_of_char (String.index input pos5) = 0x2E then
                           ParseOk (all_triples, st2) (pos5 + 1)
-                        else
-                          (* Some Turtle allows missing final dot — be lenient *)
+                        else if pos5 < len && int_of_char (String.index input pos5) = 0x7D then
+                          // '}' ends a TriG block — accept without dot
                           ParseOk (all_triples, st2) pos5
+                        else
+                          // Missing dot — fail (strict per Turtle spec)
+                          ParseFail "expected '.' after triple" pos5
                       end
                     | ParseFail msg fpos -> ParseFail msg fpos
                     end
@@ -1236,45 +1239,69 @@ let parse_turtle_statement (st: turtle_state) (input: string) (pos: nat) (fuel: 
           end
         end
 
+// Parse result with error tracking
+noeq type turtle_doc_result = {
+  tdr_triples: list triple;
+  tdr_state: turtle_state;
+  tdr_has_error: bool;
+}
+
 // Parse the full Turtle document: sequence of statements
-let rec parse_turtle_doc (st: turtle_state) (input: string) (pos: nat) (acc: list triple) (fuel: nat)
-  : Tot (list triple & turtle_state) (decreases fuel) =
-  if fuel = 0 then (List.Tot.rev acc, st)
+let rec parse_turtle_doc (st: turtle_state) (input: string) (pos: nat)
+    (acc: list triple) (has_error: bool) (fuel: nat)
+  : Tot turtle_doc_result (decreases fuel) =
+  if fuel = 0 then { tdr_triples = List.Tot.rev acc; tdr_state = st; tdr_has_error = has_error }
   else
     let len = String.length input in
     match turtle_ws input pos with
     | ParseOk () pos1 ->
-      if pos1 >= len then (List.Tot.rev acc, st)
+      if pos1 >= len then { tdr_triples = List.Tot.rev acc; tdr_state = st; tdr_has_error = has_error }
       else
         begin match parse_turtle_statement st input pos1 fuel with
         | ParseOk (triples, st') pos2 ->
           if pos2 = pos1 then
-            // No progress — stop
-            (List.Tot.rev ((List.Tot.rev triples) @ acc), st')
+            // No progress -- stop
+            { tdr_triples = List.Tot.rev ((List.Tot.rev triples) @ acc);
+              tdr_state = st'; tdr_has_error = has_error }
           else
-            parse_turtle_doc st' input pos2 ((List.Tot.rev triples) @ acc) (fuel - 1)
+            parse_turtle_doc st' input pos2 ((List.Tot.rev triples) @ acc) has_error (fuel - 1)
         | ParseFail _ _ ->
-          // Skip to next line on failure
+          // Skip to next line on failure, mark error
           let pos2 = skip_to_eol input pos1 (len - pos1) in
-          if pos2 = pos1 then (List.Tot.rev acc, st)
-          else parse_turtle_doc st input pos2 acc (fuel - 1)
+          if pos2 = pos1 then
+            { tdr_triples = List.Tot.rev acc; tdr_state = st; tdr_has_error = true }
+          else
+            parse_turtle_doc st input pos2 acc true (fuel - 1)
         end
 
 (* ================================================================ *)
 (* Entry point                                                       *)
 (* ================================================================ *)
 
-(* Parse a Turtle document string into a list of triples *)
+// Lenient: always returns triples (for positive tests, compatibility)
 let parse_turtle (input: string) : list triple =
   let len = String.length input in
   let fuel = (len + 1) `op_Multiply` 2 in
-  let (triples, _) = parse_turtle_doc empty_turtle_state input 0 [] fuel in
-  triples
+  let r = parse_turtle_doc empty_turtle_state input 0 [] false fuel in
+  r.tdr_triples
 
-(* Parse with initial state (e.g., with a base IRI) *)
 let parse_turtle_with_base (input: string) (base: string) : list triple =
   let len = String.length input in
   let fuel = (len + 1) `op_Multiply` 2 in
   let st = { empty_turtle_state with base_iri = base } in
-  let (triples, _) = parse_turtle_doc st input 0 [] fuel in
-  triples
+  let r = parse_turtle_doc st input 0 [] false fuel in
+  r.tdr_triples
+
+// Strict: returns None if any parse errors were encountered
+let parse_turtle_strict (input: string) : option (list triple) =
+  let len = String.length input in
+  let fuel = (len + 1) `op_Multiply` 2 in
+  let r = parse_turtle_doc empty_turtle_state input 0 [] false fuel in
+  if r.tdr_has_error then None else Some r.tdr_triples
+
+let parse_turtle_with_base_strict (input: string) (base: string) : option (list triple) =
+  let len = String.length input in
+  let fuel = (len + 1) `op_Multiply` 2 in
+  let st = { empty_turtle_state with base_iri = base } in
+  let r = parse_turtle_doc st input 0 [] false fuel in
+  if r.tdr_has_error then None else Some r.tdr_triples
