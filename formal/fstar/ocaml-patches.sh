@@ -1049,6 +1049,67 @@ content = content.replace(
   ) tc.named_data_files in'''
 )
 
+# 5. Add file_to_base_uri helper and modify parse_sparql_query to accept optional base
+content = content.replace(
+    '''let parse_sparql_query content =
+  match SPARQL11_Parser.parse_sparql content with
+  | SPARQL11_Parser.ParseOk (q, _remaining) -> hoist_query_filters q
+  | SPARQL11_Parser.ParseErr msg -> raise (Sparql_parse_error msg)''',
+    '''let file_to_base_uri path =
+  let abs = if Filename.is_relative path then Filename.concat (Sys.getcwd ()) path else path in
+  "file://" ^ abs
+
+let parse_sparql_query ?(base_file=None) content =
+  (match base_file with
+   | Some path -> SPARQL11_Algebra.current_base_iri_ref := Some (file_to_base_uri path)
+   | None -> ());
+  let result =
+    match SPARQL11_Parser.parse_sparql content with
+    | SPARQL11_Parser.ParseOk (q, _remaining) -> hoist_query_filters q
+    | SPARQL11_Parser.ParseErr msg -> raise (Sparql_parse_error msg) in
+  result'''
+)
+
+# 6. Pass query_file as base to parse_sparql_query in eval test
+content = content.replace(
+    '''    | Some content -> parse_sparql_query content
+  in
+
+  (* Execute query against extracted evaluator *)''',
+    '''    | Some content -> parse_sparql_query ~base_file:(Some tc.query_file) content
+  in
+
+  (* Execute query against extracted evaluator *)'''
+)
+
+# 7. Pass query_file as base in positive syntax tests
+content = content.replace(
+    '''     | Some content ->
+       (try ignore (parse_sparql_query content); Pass
+        with
+        | Sparql_parse_error _ -> Fail "Should parse but didn't"
+        | Sparql_unsupported msg -> Unsupported_feature msg))''',
+    '''     | Some content ->
+       (try ignore (parse_sparql_query ~base_file:(Some tc.query_file) content); Pass
+        with
+        | Sparql_parse_error _ -> Fail "Should parse but didn't"
+        | Sparql_unsupported msg -> Unsupported_feature msg))'''
+)
+
+# 8. Pass query_file as base in negative syntax tests
+content = content.replace(
+    '''     | Some content ->
+       (try ignore (parse_sparql_query content); Fail "Should reject but parsed OK"
+        with
+        | Sparql_parse_error _ -> Pass
+        | Sparql_unsupported _ -> Unsupported_feature "Can't test rejection"))''',
+    '''     | Some content ->
+       (try ignore (parse_sparql_query ~base_file:(Some tc.query_file) content); Fail "Should reject but parsed OK"
+        with
+        | Sparql_parse_error _ -> Pass
+        | Sparql_unsupported _ -> Unsupported_feature "Can't test rejection"))'''
+)
+
 with open(sys.argv[1], 'w') as f:
     f.write(content)
 PYEOF
