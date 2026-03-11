@@ -39,7 +39,8 @@ Rust/JS/OCaml/anything that "mirrors" a spec.
    KaRaMeL for C/WASM). Never vibe-code an implementation and claim it "mirrors"
    the spec.
 3. **assume val = acknowledged gap.** Every `assume val` must have a stub in
-   `ocaml-patches.sh` or the OCaml test harness. No silent holes.
+   `minimal_regrettable_glue_code_each_with_an_open_issue/` (individual patch
+   files, each with a GitHub issue number in the filename). No silent holes.
 4. **Parsers belong in F\*.** RDF serialization parsers (N-Triples, Turtle,
    N-Quads, TriG, RDF/XML, CSV/TSV results) are implemented in F\* and
    extracted. All hand-written OCaml parsers have been removed. New parsers
@@ -58,6 +59,18 @@ Rust/JS/OCaml/anything that "mirrors" a spec.
    owner check out any commit and immediately run tests without needing an
    F\*/opam toolchain. Do not add them to `.gitignore`. Do not skip them
    when staging. When you run `build-ocaml.sh`, commit the updated binaries.
+10. **Patches are for stubs and workarounds, NOT logic.** Post-extraction
+    patches live in `minimal_regrettable_glue_code_each_with_an_open_issue/`
+    as individual files named `<issue>_<description>.sh`. Each patch MUST
+    have a corresponding open GitHub issue. Patches may wire `assume val`
+    stubs, fix F\* type system limitations, and do forward-reference wiring.
+    They must **never** contain RDF/SPARQL semantic logic. If you find yourself
+    writing "if the entailment regime is RDFS then do X" in a patch, STOP —
+    that logic belongs in F\*. Every line of logic in a patch is unverified,
+    won't extract to C/WASM, and must be re-implemented for every target.
+    **Known violations:** RDFS reflexivity axioms (#60), blank-node-as-existential
+    rewriting (#53). When an issue is resolved (F\* replaces the patch), delete
+    the patch file.
 
 ## Agent Work Strategy
 
@@ -167,6 +180,19 @@ Previous Claude sessions made these errors. Read and internalize:
     continue while preserving the exit code for error reporting. The grep-based
     success checks still gate overall pass/fail.
 
+15. **Sneaking logic into ocaml-patches.sh or w3c_runner.ml.** When a test
+    fails, the temptation is to "quickly fix it" by adding OCaml code to the
+    patches or test runner. This is cobbling by another name. Examples that
+    happened and must be elevated to F\*:
+    - RDFS reflexivity axioms computed in `w3c_runner.ml` (issue #60)
+    - Blank-node-to-variable rewriting for entailment (issue #61)
+    - Entailment regime detection and closure application
+    **The test:** if the code makes a semantic decision about RDF or SPARQL,
+    it belongs in `.fst` files. If it reads a file or compares strings, it's
+    I/O glue and can stay. `ocaml-patches.sh` may only contain: `assume val`
+    stubs, forward-reference wiring, F\* type system workarounds (with a
+    comment explaining the F\* limitation), and I/O-layer fixes.
+
 ## Current State (Honest Assessment)
 
 ### F\* Specifications
@@ -178,9 +204,11 @@ formal/fstar/
   SPARQL11.Parser.fst          F* SPARQL parser (in development)
   Makefile                     verify + extract-c targets
   build-ocaml.sh               F* -> OCaml -> js_of_ocaml pipeline
-  ocaml-patches.sh             post-extraction patches (assume-val stubs,
-                               IRI resolution, RDF/XML validation,
-                               surrogate guards, RDFS closure)
+  ocaml-patches.sh             master script: applies all patches from
+                               minimal_regrettable_glue_code_each_with_an_open_issue/
+  minimal_regrettable_glue_code_each_with_an_open_issue/
+                               individual patch files, each named
+                               <issue>_<description>.sh with GitHub issue
 ```
 
 ### Known Gaps in RDF.Graph.Executable.fst
@@ -237,49 +265,48 @@ Hand-coded parsers have been deleted. Legacy copies remain in `junk/do_not_use/h
 | `eval_subselect_fwd` | forward decl (subqueries) | wired in ocaml-patches.sh |
 | `eval_property_path_fwd` | forward decl (property paths) | wired in ocaml-patches.sh |
 
-### Plain-English Status Summary (as of 2026-03-10)
+### Plain-English Status Summary (as of 2026-03-11)
 
 Factoidal is a formally verified RDF/SPARQL implementation written in F\* and
 tested against the official W3C conformance suites. The core SPARQL query
-evaluator passes 324 of 408 applicable query/syntax tests (79%), with strong
-results in aggregates (38/44), built-in functions (74/75), BIND (10/10),
-negation (11/12), property paths (31/33), entailment (39/70), and subqueries
-(9/12). The main SPARQL gaps are: no UPDATE support (205 tests skipped — not
-in scope for read-only query evaluation), no SPARQL Protocol, no federated
-query (SERVICE returns empty), incomplete negative syntax rejection (parser
-accepts 21 queries it should reject), incomplete xsd:float/double casting, and
-no JSON/CSV/TSV result format support (18 tests). CONSTRUCT is partially
-implemented (1/4 pass).
+evaluator passes 363 of 406 applicable query/syntax tests (89%), with strong
+results in aggregates (43/44), built-in functions (74/75), BIND (10/10),
+negation (11/12), property paths (33/33), entailment (44/70), exists (6/6),
+grouping (6/6), project-expression (7/7), and subqueries (9/11). The main
+SPARQL gaps are: no UPDATE support (205 tests skipped — not in scope for
+read-only query evaluation), no SPARQL Protocol, no federated query (SERVICE
+returns empty), incomplete negative syntax rejection (parser accepts 1 query
+it should reject), incomplete xsd:float/double casting, and no JSON/CSV/TSV
+result format support (20 tests). CONSTRUCT is partially implemented (2/3 pass).
 
 On the RDF parsing side, F\*-extracted parsers handle all six serialization
-formats: N-Triples 41/70, Turtle 203/313, N-Quads 53/87, TriG 223/356,
-RDF/XML 120/166, rdf-mt 39/39. Most parser failures involve IRI validation
-(percent-encoding, Unicode escapes), negative syntax tests where the parser
-accepts malformed input, and some Turtle/TriG eval tests with base URI
-resolution or collection handling.
+formats: N-Triples 41/70, Turtle 296/313, N-Quads 53/87, TriG 334/356,
+RDF/XML 120/166, rdf-mt 39/39. Most remaining parser failures involve
+prefixed name validation (pname/local name escapes) and a few TriG-specific
+negative syntax edge cases.
 
 In short: the query evaluator works well for read-only SELECT queries and the
-parsers handle the common cases, but the system is held back by (a) parser
-edge cases around IRI validation and negative syntax rejection, (b) missing
-SPARQL UPDATE/Protocol, and (c) no JSON/CSV/TSV result formats.
+parsers handle the vast majority of cases. The system is held back by (a)
+prefixed name validation edge cases, (b) missing SPARQL UPDATE/Protocol,
+and (c) no JSON/CSV/TSV result formats.
 
-### W3C Test Results (as of 2026-03-10)
+### W3C Test Results (as of 2026-03-11)
 
-**SPARQL 1.1 — 324 pass, 84 fail, 205 skip, 18 unsupported (631 total)**
+**SPARQL 1.1 — 363 pass, 43 fail, 205 skip, 20 unsupported (631 total)**
 
-Per-suite: aggregates 38/47, bind 10/10, bindings 10/11, cast 1/6,
-construct 1/7, entailment 39/70, exists 5/6, functions 74/75, grouping 4/6,
-negation 11/12, project-expression 7/7, property-path 31/33, service 0/7,
-subquery 9/14, syntax-query 73/94, delete-insert 8/17.
+Per-suite: aggregates 43/47, bind 10/10, bindings 10/11, cast 4/6,
+construct 2/7, entailment 44/70, exists 6/6, functions 74/75, grouping 6/6,
+negation 11/12, project-expression 7/7, property-path 33/33, service 0/7,
+subquery 9/14, syntax-query 93/94, syntax-fed 3/3, delete-insert 8/17.
 Skipped: 205 UPDATE operations (add, basic-update, clear, copy, delete,
 delete-data, delete-where, drop, move, http-rdf-update, syntax-update-*,
-update-silent). Protocol: 34 skipped.
+update-silent). Protocol: 34 skipped. Service-description: 3 skipped.
 Unsupported: json-res (4), csv-tsv-res (6), aggregates (3 Turtle results),
-construct (3 Turtle results), subquery (2 Turtle results).
+construct (4 Turtle results), subquery (2 Turtle results), bindings (1).
 
-**RDF 1.1 — 679 pass, 352 fail (1031 total)**
+**RDF 1.1 — 883 pass, 148 fail (1031 total)**
 
-Per-suite: N-Triples 41/70, Turtle 203/313, N-Quads 53/87, TriG 223/356,
+Per-suite: N-Triples 41/70, Turtle 296/313, N-Quads 53/87, TriG 334/356,
 RDF/XML 120/166, rdf-mt 39/39.
 
 **RDF 1.1 Model Theory — 39 pass, 0 fail (39 total)**
@@ -518,7 +545,18 @@ factoidal/
 │   ├── SPARQL11.Parser.fst        SPARQL parser (in development)
 │   ├── Makefile
 │   ├── build-ocaml.sh
-│   ├── ocaml-patches.sh
+│   ├── ocaml-patches.sh               applies patches from glue directory
+│   ├── minimal_regrettable_glue_code_each_with_an_open_issue/
+│   │   ├── 53_blank_node_variable_rewriting.sh
+│   │   ├── 60_rdfs_closure_reflexivity.sh
+│   │   ├── 62_forward_ref_wiring.sh
+│   │   ├── 63_regex_hash_uuid_stubs.sh
+│   │   ├── 64_sparql_parser_escape_stubs.sh
+│   │   ├── 65_base_iri_resolution.sh
+│   │   ├── 66_zero_length_property_path.sh
+│   │   ├── 67_rdfxml_validation.sh
+│   │   ├── 68_unicode_boundary_workarounds.sh
+│   │   └── 69_runner_io_glue.sh
 │   └── ocaml-output/          extracted + TEMPORARY test harness
 ├── tests/w3c/                 git submodule (W3C test files)
 ├── kgx/                       SPARQL CONSTRUCT queries (future)

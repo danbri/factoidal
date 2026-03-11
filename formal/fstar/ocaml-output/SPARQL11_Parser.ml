@@ -4313,62 +4313,86 @@ and parse_select_body (pm : prefix_map) (fuel : Prims.nat)
                                    ParseErr
                                      "SELECT projects ungrouped variable"
                                  else
-                                   (let uu___5 =
-                                      match parse_peek ts6 with
-                                      | Tok_VALUES ->
-                                          (match parse_values_clause pm
-                                                   (fuel - Prims.int_one)
-                                                   (parse_advance ts6)
-                                           with
-                                           | ParseOk
-                                               (SPARQL11_Algebra.GP_Values
-                                                (vars, rows), ts'1)
-                                               ->
-                                               ((FStar_Pervasives_Native.Some
-                                                   (vars, rows)), ts'1)
-                                           | uu___6 ->
-                                               (FStar_Pervasives_Native.None,
-                                                 ts6))
-                                      | uu___6 ->
-                                          (FStar_Pervasives_Native.None, ts6) in
-                                    match uu___5 with
-                                    | (vals, ts7) ->
-                                        ParseOk
-                                          ({
-                                             SPARQL11_Algebra.q_base = base;
-                                             SPARQL11_Algebra.q_prefixes = pm;
-                                             SPARQL11_Algebra.q_form =
-                                               (SPARQL11_Algebra.QF_Select
-                                                  sel);
-                                             SPARQL11_Algebra.q_dataset = ds;
-                                             SPARQL11_Algebra.q_pattern =
-                                               ((match vals with
-                                                 | FStar_Pervasives_Native.Some
-                                                     (vars, rows) ->
-                                                     ggp_join pattern
-                                                       (SPARQL11_Algebra.GP_Values
-                                                          (vars, rows))
-                                                 | FStar_Pervasives_Native.None
-                                                     -> pattern));
-                                             SPARQL11_Algebra.q_group_by = gb;
-                                             SPARQL11_Algebra.q_having = hv;
-                                             SPARQL11_Algebra.q_modifier =
-                                               {
-                                                 SPARQL11_Algebra.sm_order_by
-                                                   =
-                                                   (modifier.SPARQL11_Algebra.sm_order_by);
-                                                 SPARQL11_Algebra.sm_distinct
-                                                   = dist;
-                                                 SPARQL11_Algebra.sm_reduced
-                                                   = red;
-                                                 SPARQL11_Algebra.sm_offset =
-                                                   (modifier.SPARQL11_Algebra.sm_offset);
-                                                 SPARQL11_Algebra.sm_limit =
-                                                   (modifier.SPARQL11_Algebra.sm_limit)
-                                               };
-                                             SPARQL11_Algebra.q_values =
-                                               FStar_Pervasives_Native.None
-                                           }, ts7)))))))
+                                   if
+                                     (match sel with
+                                      | SPARQL11_Algebra.Select_Vars items ->
+                                          Prims.op_Negation
+                                            (FStar_List_Tot_Base.for_all
+                                               (fun item ->
+                                                  match item with
+                                                  | SPARQL11_Algebra.SI_Expr
+                                                      (uu___5, v) ->
+                                                      Prims.op_Negation
+                                                        (SPARQL11_Algebra.ggp_has_var
+                                                           v pattern)
+                                                  | uu___5 -> true) items)
+                                      | uu___5 -> false)
+                                   then
+                                     ParseErr
+                                       "SELECT expression aliases variable already in scope"
+                                   else
+                                     (let uu___6 =
+                                        match parse_peek ts6 with
+                                        | Tok_VALUES ->
+                                            (match parse_values_clause pm
+                                                     (fuel - Prims.int_one)
+                                                     (parse_advance ts6)
+                                             with
+                                             | ParseOk
+                                                 (SPARQL11_Algebra.GP_Values
+                                                  (vars, rows), ts'1)
+                                                 ->
+                                                 ((FStar_Pervasives_Native.Some
+                                                     (vars, rows)), ts'1)
+                                             | uu___7 ->
+                                                 (FStar_Pervasives_Native.None,
+                                                   ts6))
+                                        | uu___7 ->
+                                            (FStar_Pervasives_Native.None,
+                                              ts6) in
+                                      match uu___6 with
+                                      | (vals, ts7) ->
+                                          ParseOk
+                                            ({
+                                               SPARQL11_Algebra.q_base = base;
+                                               SPARQL11_Algebra.q_prefixes =
+                                                 pm;
+                                               SPARQL11_Algebra.q_form =
+                                                 (SPARQL11_Algebra.QF_Select
+                                                    sel);
+                                               SPARQL11_Algebra.q_dataset =
+                                                 ds;
+                                               SPARQL11_Algebra.q_pattern =
+                                                 ((match vals with
+                                                   | FStar_Pervasives_Native.Some
+                                                       (vars, rows) ->
+                                                       ggp_join pattern
+                                                         (SPARQL11_Algebra.GP_Values
+                                                            (vars, rows))
+                                                   | FStar_Pervasives_Native.None
+                                                       -> pattern));
+                                               SPARQL11_Algebra.q_group_by =
+                                                 gb;
+                                               SPARQL11_Algebra.q_having = hv;
+                                               SPARQL11_Algebra.q_modifier =
+                                                 {
+                                                   SPARQL11_Algebra.sm_order_by
+                                                     =
+                                                     (modifier.SPARQL11_Algebra.sm_order_by);
+                                                   SPARQL11_Algebra.sm_distinct
+                                                     = dist;
+                                                   SPARQL11_Algebra.sm_reduced
+                                                     = red;
+                                                   SPARQL11_Algebra.sm_offset
+                                                     =
+                                                     (modifier.SPARQL11_Algebra.sm_offset);
+                                                   SPARQL11_Algebra.sm_limit
+                                                     =
+                                                     (modifier.SPARQL11_Algebra.sm_limit)
+                                                 };
+                                               SPARQL11_Algebra.q_values =
+                                                 FStar_Pervasives_Native.None
+                                             }, ts7)))))))
 and parse_ask_body (pm : prefix_map) (fuel : Prims.nat)
   (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
   (ts : token_stream) : SPARQL11_Algebra.query parse_result=

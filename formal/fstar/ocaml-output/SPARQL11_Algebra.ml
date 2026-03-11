@@ -4720,7 +4720,16 @@ let rec ggp_has_var (v : var_name) (p : group_graph_pattern) : Prims.bool=
   | GP_Values (vars, uu___) ->
       FStar_List_Tot_Base.existsb (fun vn -> vn = v) vars
   | GP_Service (uu___, p1, uu___1) -> ggp_has_var v p1
-  | GP_SubSelect uu___ -> false
+  | GP_SubSelect q ->
+      (match q.q_form with
+       | QF_Select (Select_Vars items) ->
+           FStar_List_Tot_Base.existsb
+             (fun item ->
+                match item with
+                | SI_Var sv -> sv = v
+                | SI_Expr (uu___, sv) -> sv = v) items
+       | QF_Select (Select_All) -> false
+       | uu___ -> false)
   | GP_PropertyPath (ps, uu___, pt) ->
       (match ps with | PS_Var sv -> sv = v | uu___1 -> false) ||
         ((match pt with | PT_Var tv -> tv = v | uu___1 -> false))

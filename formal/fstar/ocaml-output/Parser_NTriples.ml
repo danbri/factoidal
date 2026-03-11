@@ -21,13 +21,13 @@ let hex_val (c : FStar_Char.char) : Prims.int=
   | FStar_Pervasives_Native.None -> Prims.int_zero
 let valid_codepoint (cp : Prims.int) : Prims.bool=
   (cp >= Prims.int_zero) &&
-    ((cp < (Prims.of_int (0xD7FF))) ||
+    ((cp < (Prims.of_int (0xD800))) ||
        ((cp >= (Prims.of_int (0xE000))) &&
           (cp <= (Prims.parse_int "0x10FFFF"))))
 let safe_char_of_int (cp : Prims.int) : FStar_Char.char=
   if
     (cp >= Prims.int_zero) &&
-      ((cp < (Prims.of_int (0xD7FF))) ||
+      ((cp < (Prims.of_int (0xD800))) ||
          ((cp >= (Prims.of_int (0xE000))) &&
             (cp <= (Prims.parse_int "0x10FFFF"))))
   then let n = cp in FStar_Char.char_of_int n
@@ -44,6 +44,16 @@ let pws (input : Prims.string) (pos : Prims.nat) :
       Parser_Combinators.ParseOk ((), pos')
   | Parser_Combinators.ParseFail (msg, fpos) ->
       Parser_Combinators.ParseFail (msg, fpos)
+let is_iri_forbidden_codepoint (code : Prims.int) : Prims.bool=
+  (((((((((code = (Prims.of_int (0x20))) || (code = (Prims.of_int (0x3C))))
+           || (code = (Prims.of_int (0x3E))))
+          || (code = (Prims.of_int (0x22))))
+         || (code = (Prims.of_int (0x7B))))
+        || (code = (Prims.of_int (0x7D))))
+       || (code = (Prims.of_int (0x7C))))
+      || (code = (Prims.of_int (0x5C))))
+     || (code = (Prims.of_int (0x5E))))
+    || (code = (Prims.of_int (0x60)))
 let rec parse_iri_body_acc (input : Prims.string) (pos : Prims.nat)
   (acc : FStar_String.char Prims.list) (fuel : Prims.nat) :
   Prims.string Parser_Combinators.parse_result=
@@ -104,10 +114,16 @@ let rec parse_iri_body_acc (input : Prims.string) (pos : Prims.nat)
                             Parser_Combinators.ParseFail
                               ("surrogate codepoint in \\u escape", pos)
                           else
-                            (let c = safe_char_of_int cp in
-                             parse_iri_body_acc input
-                               (pos + (Prims.of_int (6))) (c :: acc)
-                               (fuel - Prims.int_one))
+                            if is_iri_forbidden_codepoint cp
+                            then
+                              Parser_Combinators.ParseFail
+                                ("IRI-forbidden codepoint in \\u escape",
+                                  pos)
+                            else
+                              (let c = safe_char_of_int cp in
+                               parse_iri_body_acc input
+                                 (pos + (Prims.of_int (6))) (c :: acc)
+                                 (fuel - Prims.int_one))
                       | uu___5 ->
                           Parser_Combinators.ParseFail
                             ("invalid hex digit in \\u escape", pos)))
@@ -166,10 +182,16 @@ let rec parse_iri_body_acc (input : Prims.string) (pos : Prims.nat)
                               Parser_Combinators.ParseFail
                                 ("surrogate codepoint in \\U escape", pos)
                             else
-                              (let c = safe_char_of_int cp in
-                               parse_iri_body_acc input
-                                 (pos + (Prims.of_int (10))) (c :: acc)
-                                 (fuel - Prims.int_one))
+                              if is_iri_forbidden_codepoint cp
+                              then
+                                Parser_Combinators.ParseFail
+                                  ("IRI-forbidden codepoint in \\U escape",
+                                    pos)
+                              else
+                                (let c = safe_char_of_int cp in
+                                 parse_iri_body_acc input
+                                   (pos + (Prims.of_int (10))) (c :: acc)
+                                   (fuel - Prims.int_one))
                         | uu___6 ->
                             Parser_Combinators.ParseFail
                               ("invalid hex digit in \\U escape", pos)))
@@ -177,7 +199,9 @@ let rec parse_iri_body_acc (input : Prims.string) (pos : Prims.nat)
                     Parser_Combinators.ParseFail
                       ("invalid escape in IRI", pos)))
           else
-            if code <= (Prims.of_int (0x20))
+            if
+              (code <= (Prims.of_int (0x20))) ||
+                (is_iri_forbidden_codepoint code)
             then
               Parser_Combinators.ParseFail ("invalid character in IRI", pos)
             else

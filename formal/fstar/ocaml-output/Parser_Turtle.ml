@@ -312,7 +312,8 @@ let parse_turtle_iri (st : turtle_state) (input : Prims.string)
                      pos))
         | Parser_Combinators.ParseFail (msg, fpos) ->
             Parser_Combinators.ParseFail (msg, fpos)))
-let parse_at_prefix (input : Prims.string) (pos : Prims.nat) :
+let parse_at_prefix (st : turtle_state) (input : Prims.string)
+  (pos : Prims.nat) :
   (Prims.string * Prims.string) Parser_Combinators.parse_result=
   match Parser_Combinators.pstring "@prefix" input pos with
   | Parser_Combinators.ParseOk (uu___, pos1) ->
@@ -322,8 +323,9 @@ let parse_at_prefix (input : Prims.string) (pos : Prims.nat) :
             | Parser_Combinators.ParseOk (ns, pos3) ->
                 (match turtle_ws input pos3 with
                  | Parser_Combinators.ParseOk ((), pos4) ->
-                     (match Parser_NTriples.parse_iri input pos4 with
-                      | Parser_Combinators.ParseOk (iri_val, pos5) ->
+                     (match Parser_NTriples.parse_iri_raw input pos4 with
+                      | Parser_Combinators.ParseOk (raw_iri, pos5) ->
+                          let iri_val = resolve_iri st raw_iri in
                           (match turtle_ws input pos5 with
                            | Parser_Combinators.ParseOk ((), pos6) ->
                                let len = FStar_String.strlen input in
@@ -350,7 +352,8 @@ let parse_at_prefix (input : Prims.string) (pos : Prims.nat) :
                 Parser_Combinators.ParseFail (msg, fpos)))
   | Parser_Combinators.ParseFail (msg, fpos) ->
       Parser_Combinators.ParseFail (msg, fpos)
-let parse_sparql_prefix (input : Prims.string) (pos : Prims.nat) :
+let parse_sparql_prefix (st : turtle_state) (input : Prims.string)
+  (pos : Prims.nat) :
   (Prims.string * Prims.string) Parser_Combinators.parse_result=
   match Parser_Combinators.pstring "PREFIX" input pos with
   | Parser_Combinators.ParseOk (uu___, pos1) ->
@@ -360,8 +363,9 @@ let parse_sparql_prefix (input : Prims.string) (pos : Prims.nat) :
             | Parser_Combinators.ParseOk (ns, pos3) ->
                 (match turtle_ws input pos3 with
                  | Parser_Combinators.ParseOk ((), pos4) ->
-                     (match Parser_NTriples.parse_iri input pos4 with
-                      | Parser_Combinators.ParseOk (iri_val, pos5) ->
+                     (match Parser_NTriples.parse_iri_raw input pos4 with
+                      | Parser_Combinators.ParseOk (raw_iri, pos5) ->
+                          let iri_val = resolve_iri st raw_iri in
                           Parser_Combinators.ParseOk ((ns, iri_val), pos5)
                       | Parser_Combinators.ParseFail (msg, fpos) ->
                           Parser_Combinators.ParseFail (msg, fpos)))
@@ -369,14 +373,15 @@ let parse_sparql_prefix (input : Prims.string) (pos : Prims.nat) :
                 Parser_Combinators.ParseFail (msg, fpos)))
   | Parser_Combinators.ParseFail (msg, fpos) ->
       Parser_Combinators.ParseFail (msg, fpos)
-let parse_at_base (input : Prims.string) (pos : Prims.nat) :
-  Prims.string Parser_Combinators.parse_result=
+let parse_at_base (st : turtle_state) (input : Prims.string)
+  (pos : Prims.nat) : Prims.string Parser_Combinators.parse_result=
   match Parser_Combinators.pstring "@base" input pos with
   | Parser_Combinators.ParseOk (uu___, pos1) ->
       (match turtle_ws input pos1 with
        | Parser_Combinators.ParseOk ((), pos2) ->
-           (match Parser_NTriples.parse_iri input pos2 with
-            | Parser_Combinators.ParseOk (iri_val, pos3) ->
+           (match Parser_NTriples.parse_iri_raw input pos2 with
+            | Parser_Combinators.ParseOk (raw_iri, pos3) ->
+                let iri_val = resolve_iri st raw_iri in
                 (match turtle_ws input pos3 with
                  | Parser_Combinators.ParseOk ((), pos4) ->
                      let len = FStar_String.strlen input in
@@ -399,31 +404,33 @@ let parse_at_base (input : Prims.string) (pos : Prims.nat) :
                 Parser_Combinators.ParseFail (msg, fpos)))
   | Parser_Combinators.ParseFail (msg, fpos) ->
       Parser_Combinators.ParseFail (msg, fpos)
-let parse_sparql_base (input : Prims.string) (pos : Prims.nat) :
-  Prims.string Parser_Combinators.parse_result=
+let parse_sparql_base (st : turtle_state) (input : Prims.string)
+  (pos : Prims.nat) : Prims.string Parser_Combinators.parse_result=
   match Parser_Combinators.pstring "BASE" input pos with
   | Parser_Combinators.ParseOk (uu___, pos1) ->
       (match turtle_ws input pos1 with
        | Parser_Combinators.ParseOk ((), pos2) ->
-           (match Parser_NTriples.parse_iri input pos2 with
-            | Parser_Combinators.ParseOk (iri_val, pos3) ->
+           (match Parser_NTriples.parse_iri_raw input pos2 with
+            | Parser_Combinators.ParseOk (raw_iri, pos3) ->
+                let iri_val = resolve_iri st raw_iri in
                 Parser_Combinators.ParseOk (iri_val, pos3)
             | Parser_Combinators.ParseFail (msg, fpos) ->
                 Parser_Combinators.ParseFail (msg, fpos)))
   | Parser_Combinators.ParseFail (msg, fpos) ->
       Parser_Combinators.ParseFail (msg, fpos)
-let parse_prefix_directive (input : Prims.string) (pos : Prims.nat) :
+let parse_prefix_directive (st : turtle_state) (input : Prims.string)
+  (pos : Prims.nat) :
   (Prims.string * Prims.string) Parser_Combinators.parse_result=
-  match parse_at_prefix input pos with
+  match parse_at_prefix st input pos with
   | Parser_Combinators.ParseOk (v, p) -> Parser_Combinators.ParseOk (v, p)
   | Parser_Combinators.ParseFail (uu___, uu___1) ->
-      parse_sparql_prefix input pos
-let parse_base_directive (input : Prims.string) (pos : Prims.nat) :
-  Prims.string Parser_Combinators.parse_result=
-  match parse_at_base input pos with
+      parse_sparql_prefix st input pos
+let parse_base_directive (st : turtle_state) (input : Prims.string)
+  (pos : Prims.nat) : Prims.string Parser_Combinators.parse_result=
+  match parse_at_base st input pos with
   | Parser_Combinators.ParseOk (v, p) -> Parser_Combinators.ParseOk (v, p)
   | Parser_Combinators.ParseFail (uu___, uu___1) ->
-      parse_sparql_base input pos
+      parse_sparql_base st input pos
 let is_digit_char (c : FStar_Char.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in
   (code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))
@@ -1813,7 +1820,7 @@ let parse_turtle_statement (st : turtle_state) (input : Prims.string)
          if pos1 >= len
          then Parser_Combinators.ParseOk (([], st), pos1)
          else
-           (match parse_prefix_directive input pos1 with
+           (match parse_prefix_directive st input pos1 with
             | Parser_Combinators.ParseOk ((prefix, iri_val), pos2) ->
                 let new_prefixes = (prefix, iri_val) :: (st.prefixes) in
                 Parser_Combinators.ParseOk
@@ -1824,7 +1831,7 @@ let parse_turtle_statement (st : turtle_state) (input : Prims.string)
                        bnode_counter = (st.bnode_counter)
                      }), pos2)
             | Parser_Combinators.ParseFail (uu___2, uu___3) ->
-                (match parse_base_directive input pos1 with
+                (match parse_base_directive st input pos1 with
                  | Parser_Combinators.ParseOk (base_val, pos2) ->
                      Parser_Combinators.ParseOk
                        (([],
@@ -1854,9 +1861,8 @@ let parse_turtle_statement (st : turtle_state) (input : Prims.string)
                                         pos3))
                                else
                                  (let nc = FStar_String.index input pos3 in
-                                  if
-                                    (FStar_Char.int_of_char nc) =
-                                      (Prims.of_int (0x2E))
+                                  let ncode = FStar_Char.int_of_char nc in
+                                  if ncode = (Prims.of_int (0x2E))
                                   then
                                     (if
                                        (FStar_List_Tot_Base.length
@@ -1872,76 +1878,137 @@ let parse_turtle_statement (st : turtle_state) (input : Prims.string)
                                          ("expected predicate after subject",
                                            pos3))
                                   else
-                                    (match parse_predicate_object_list
-                                             subj_res.sr_state
-                                             subj_res.sr_subject input pos3
-                                             (fuel - Prims.int_one)
-                                     with
-                                     | Parser_Combinators.ParseOk
-                                         ((po_triples, st2), pos4) ->
-                                         let all_triples =
-                                           FStar_List_Tot_Base.op_At
-                                             subj_res.sr_triples po_triples in
-                                         (match turtle_ws input pos4 with
-                                          | Parser_Combinators.ParseOk
-                                              ((), pos5) ->
-                                              if
-                                                (pos5 < len) &&
-                                                  ((FStar_Char.int_of_char
-                                                      (FStar_String.index
-                                                         input pos5))
-                                                     = (Prims.of_int (0x2E)))
-                                              then
-                                                Parser_Combinators.ParseOk
-                                                  ((all_triples, st2),
-                                                    (pos5 + Prims.int_one))
-                                              else
-                                                Parser_Combinators.ParseOk
-                                                  ((all_triples, st2), pos5))
-                                     | Parser_Combinators.ParseFail
-                                         (msg, fpos) ->
-                                         Parser_Combinators.ParseFail
-                                           (msg, fpos))))
+                                    if
+                                      (ncode = (Prims.of_int (0x7D))) &&
+                                        ((FStar_List_Tot_Base.length
+                                            subj_res.sr_triples)
+                                           > Prims.int_zero)
+                                    then
+                                      Parser_Combinators.ParseOk
+                                        (((subj_res.sr_triples),
+                                           (subj_res.sr_state)), pos3)
+                                    else
+                                      (match parse_predicate_object_list
+                                               subj_res.sr_state
+                                               subj_res.sr_subject input pos3
+                                               (fuel - Prims.int_one)
+                                       with
+                                       | Parser_Combinators.ParseOk
+                                           ((po_triples, st2), pos4) ->
+                                           let all_triples =
+                                             FStar_List_Tot_Base.op_At
+                                               subj_res.sr_triples po_triples in
+                                           (match turtle_ws input pos4 with
+                                            | Parser_Combinators.ParseOk
+                                                ((), pos5) ->
+                                                if
+                                                  (pos5 < len) &&
+                                                    ((FStar_Char.int_of_char
+                                                        (FStar_String.index
+                                                           input pos5))
+                                                       =
+                                                       (Prims.of_int (0x2E)))
+                                                then
+                                                  Parser_Combinators.ParseOk
+                                                    ((all_triples, st2),
+                                                      (pos5 + Prims.int_one))
+                                                else
+                                                  if
+                                                    (pos5 < len) &&
+                                                      ((FStar_Char.int_of_char
+                                                          (FStar_String.index
+                                                             input pos5))
+                                                         =
+                                                         (Prims.of_int (0x7D)))
+                                                  then
+                                                    Parser_Combinators.ParseOk
+                                                      ((all_triples, st2),
+                                                        pos5)
+                                                  else
+                                                    Parser_Combinators.ParseFail
+                                                      ("expected '.' after triple",
+                                                        pos5))
+                                       | Parser_Combinators.ParseFail
+                                           (msg, fpos) ->
+                                           Parser_Combinators.ParseFail
+                                             (msg, fpos))))
                       | Parser_Combinators.ParseFail (msg, fpos) ->
                           Parser_Combinators.ParseFail (msg, fpos)))))
+type turtle_doc_result =
+  {
+  tdr_triples: RDF_Graph_Executable.triple Prims.list ;
+  tdr_state: turtle_state ;
+  tdr_has_error: Prims.bool }
+let __proj__Mkturtle_doc_result__item__tdr_triples
+  (projectee : turtle_doc_result) : RDF_Graph_Executable.triple Prims.list=
+  match projectee with
+  | { tdr_triples; tdr_state; tdr_has_error;_} -> tdr_triples
+let __proj__Mkturtle_doc_result__item__tdr_state
+  (projectee : turtle_doc_result) : turtle_state=
+  match projectee with
+  | { tdr_triples; tdr_state; tdr_has_error;_} -> tdr_state
+let __proj__Mkturtle_doc_result__item__tdr_has_error
+  (projectee : turtle_doc_result) : Prims.bool=
+  match projectee with
+  | { tdr_triples; tdr_state; tdr_has_error;_} -> tdr_has_error
 let rec parse_turtle_doc (st : turtle_state) (input : Prims.string)
   (pos : Prims.nat) (acc : RDF_Graph_Executable.triple Prims.list)
-  (fuel : Prims.nat) :
-  (RDF_Graph_Executable.triple Prims.list * turtle_state)=
+  (has_error : Prims.bool) (fuel : Prims.nat) : turtle_doc_result=
   if fuel = Prims.int_zero
-  then ((FStar_List_Tot_Base.rev acc), st)
+  then
+    {
+      tdr_triples = (FStar_List_Tot_Base.rev acc);
+      tdr_state = st;
+      tdr_has_error = has_error
+    }
   else
     (let len = FStar_String.strlen input in
      match turtle_ws input pos with
      | Parser_Combinators.ParseOk ((), pos1) ->
          if pos1 >= len
-         then ((FStar_List_Tot_Base.rev acc), st)
+         then
+           {
+             tdr_triples = (FStar_List_Tot_Base.rev acc);
+             tdr_state = st;
+             tdr_has_error = has_error
+           }
          else
            (match parse_turtle_statement st input pos1 fuel with
             | Parser_Combinators.ParseOk ((triples, st'), pos2) ->
                 if pos2 = pos1
                 then
-                  ((FStar_List_Tot_Base.rev
-                      (FStar_List_Tot_Base.op_At
-                         (FStar_List_Tot_Base.rev triples) acc)), st')
+                  {
+                    tdr_triples =
+                      (FStar_List_Tot_Base.rev
+                         (FStar_List_Tot_Base.op_At
+                            (FStar_List_Tot_Base.rev triples) acc));
+                    tdr_state = st';
+                    tdr_has_error = has_error
+                  }
                 else
                   parse_turtle_doc st' input pos2
                     (FStar_List_Tot_Base.op_At
-                       (FStar_List_Tot_Base.rev triples) acc)
+                       (FStar_List_Tot_Base.rev triples) acc) has_error
                     (fuel - Prims.int_one)
             | Parser_Combinators.ParseFail (uu___2, uu___3) ->
                 let pos2 = skip_to_eol input pos1 (len - pos1) in
                 if pos2 = pos1
-                then ((FStar_List_Tot_Base.rev acc), st)
+                then
+                  {
+                    tdr_triples = (FStar_List_Tot_Base.rev acc);
+                    tdr_state = st;
+                    tdr_has_error = true
+                  }
                 else
-                  parse_turtle_doc st input pos2 acc (fuel - Prims.int_one)))
+                  parse_turtle_doc st input pos2 acc true
+                    (fuel - Prims.int_one)))
 let parse_turtle (input : Prims.string) :
   RDF_Graph_Executable.triple Prims.list=
   let len = FStar_String.strlen input in
   let fuel = (len + Prims.int_one) * (Prims.of_int (2)) in
-  let uu___ =
-    parse_turtle_doc empty_turtle_state input Prims.int_zero [] fuel in
-  match uu___ with | (triples, uu___1) -> triples
+  let r =
+    parse_turtle_doc empty_turtle_state input Prims.int_zero [] false fuel in
+  r.tdr_triples
 let parse_turtle_with_base (input : Prims.string) (base : Prims.string) :
   RDF_Graph_Executable.triple Prims.list=
   let len = FStar_String.strlen input in
@@ -1952,5 +2019,29 @@ let parse_turtle_with_base (input : Prims.string) (base : Prims.string) :
       base_iri = base;
       bnode_counter = (empty_turtle_state.bnode_counter)
     } in
-  let uu___ = parse_turtle_doc st input Prims.int_zero [] fuel in
-  match uu___ with | (triples, uu___1) -> triples
+  let r = parse_turtle_doc st input Prims.int_zero [] false fuel in
+  r.tdr_triples
+let parse_turtle_strict (input : Prims.string) :
+  RDF_Graph_Executable.triple Prims.list FStar_Pervasives_Native.option=
+  let len = FStar_String.strlen input in
+  let fuel = (len + Prims.int_one) * (Prims.of_int (2)) in
+  let r =
+    parse_turtle_doc empty_turtle_state input Prims.int_zero [] false fuel in
+  if r.tdr_has_error
+  then FStar_Pervasives_Native.None
+  else FStar_Pervasives_Native.Some (r.tdr_triples)
+let parse_turtle_with_base_strict (input : Prims.string)
+  (base : Prims.string) :
+  RDF_Graph_Executable.triple Prims.list FStar_Pervasives_Native.option=
+  let len = FStar_String.strlen input in
+  let fuel = (len + Prims.int_one) * (Prims.of_int (2)) in
+  let st =
+    {
+      prefixes = (empty_turtle_state.prefixes);
+      base_iri = base;
+      bnode_counter = (empty_turtle_state.bnode_counter)
+    } in
+  let r = parse_turtle_doc st input Prims.int_zero [] false fuel in
+  if r.tdr_has_error
+  then FStar_Pervasives_Native.None
+  else FStar_Pervasives_Native.Some (r.tdr_triples)

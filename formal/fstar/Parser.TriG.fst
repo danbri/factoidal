@@ -67,7 +67,7 @@ let rec trig_dataset_add_triples (ds : rdf_dataset) (triples : list triple) (gra
 (* TriG graph name parser                                            *)
 (* ================================================================ *)
 
-(** Parse a graph name: IRI, prefixed name, or blank node.
+(** Parse a graph name: IRI, prefixed name, blank node label, or [].
     Returns (graph_iri, updated_state). *)
 let parse_trig_graph_name (st: turtle_state) (input: string) (pos: nat)
   : parse_result (iri & turtle_state) =
@@ -76,12 +76,23 @@ let parse_trig_graph_name (st: turtle_state) (input: string) (pos: nat)
   else
     let c = String.index input pos in
     let code = int_of_char c in
-    if code = 0x5F then (* '_' — blank node graph name *)
+    if code = 0x5F then (* '_' -- blank node graph name _:label *)
       begin match parse_bnode input pos with
       | ParseOk b pos' ->
         let bnode_iri = String.concat "" ["_:"; b] in
         ParseOk (bnode_iri, st) pos'
       | ParseFail msg fpos -> ParseFail msg fpos
+      end
+    else if code = 0x5B then (* '[' -- anonymous blank node [] as graph name *)
+      begin match turtle_ws input (pos + 1) with
+      | ParseOk () pos2 ->
+        if pos2 < len && int_of_char (String.index input pos2) = 0x5D then
+          // [] -- generate fresh blank node ID for graph name
+          let (bname, st') = fresh_bnode st in
+          let bnode_iri = String.concat "" ["_:"; bname] in
+          ParseOk (bnode_iri, st') (pos2 + 1)
+        else
+          ParseFail "expected ']' for anonymous blank node graph name" pos2
       end
     else
       (* Try IRI (full or prefixed) *)
@@ -130,8 +141,7 @@ let is_graph_keyword (input: string) (pos: nat) : bool =
 (* directives, etc.) terminated by '}'.                              *)
 (* ================================================================ *)
 
-(** Parse the body of a graph block: Turtle statements until '}'.
-    Returns (triples, updated_state). *)
+(** Skip to end of line or '}' for error recovery *)
 let rec graph_body_skip_line (input: string) (p: nat) (f: nat) : Tot nat (decreases f) =
   if f = 0 then p
   else if p >= String.length input then p
@@ -142,10 +152,19 @@ let rec graph_body_skip_line (input: string) (p: nat) (f: nat) : Tot nat (decrea
     else if cd = 0x7D then p
     else graph_body_skip_line input (p + 1) (f - 1)
 
-let rec parse_graph_body (st: turtle_state) (input: string) (pos: nat)
+// Parse result type that tracks whether errors were encountered.
+// has_error = true means at least one parse error was skipped.
+noeq type trig_parse_state = {
+  ts: turtle_state;
+  has_error: bool;
+}
+
+(** Parse the body of a graph block: Turtle statements until '}'.
+    Returns (triples, updated_state, error_flag). *)
+let rec parse_graph_body (tps: trig_parse_state) (input: string) (pos: nat)
     (acc: list triple) (fuel: nat)
-  : Tot (parse_result (list triple & turtle_state)) (decreases fuel) =
-  if fuel = 0 then ParseOk (List.Tot.rev acc, st) pos
+  : Tot (parse_result (list triple & trig_parse_state)) (decreases fuel) =
+  if fuel = 0 then ParseOk (List.Tot.rev acc, tps) pos
   else
     let fuel' : nat = fuel - 1 in
     let len = String.length input in
@@ -156,21 +175,24 @@ let rec parse_graph_body (st: turtle_state) (input: string) (pos: nat)
         let c = String.index input pos1 in
         let code = int_of_char c in
         if code = 0x7D then
-          ParseOk (List.Tot.rev acc, st) (pos1 + 1)
+          ParseOk (List.Tot.rev acc, tps) (pos1 + 1)
         else
-          begin match parse_turtle_statement st input pos1 fuel with
+          begin match parse_turtle_statement tps.ts input pos1 fuel with
           | ParseOk (triples, st') pos2 ->
+            let tps' = { tps with ts = st' } in
             if pos2 = pos1 then
-              ParseOk (List.Tot.rev (List.Tot.append (List.Tot.rev triples) acc), st') pos2
+              ParseOk (List.Tot.rev (List.Tot.append (List.Tot.rev triples) acc), tps') pos2
             else
-              parse_graph_body st' input pos2
+              parse_graph_body tps' input pos2
                 (List.Tot.append (List.Tot.rev triples) acc) fuel'
           | ParseFail _ _ ->
+            // Error recovery: skip line, but mark that we saw an error
+            let tps' = { tps with has_error = true } in
             let pos2 = graph_body_skip_line input pos1 (len - pos1) in
             if pos2 = pos1 then
-              ParseOk (List.Tot.rev acc, st) pos1
+              ParseOk (List.Tot.rev acc, tps') pos1
             else
-              parse_graph_body st input pos2 acc fuel'
+              parse_graph_body tps' input pos2 acc fuel'
           end
 
 (* ================================================================ *)
@@ -187,89 +209,82 @@ let rec parse_graph_body (st: turtle_state) (input: string) (pos: nat)
 
     Returns (dataset_delta, updated_state) where dataset_delta is a list of
     (graph_name_option, triples) pairs. *)
-let parse_trig_statement (st: turtle_state) (input: string) (pos: nat) (fuel: nat)
-  : Tot (parse_result (list (option iri & list triple) & turtle_state)) (decreases fuel) =
+let parse_trig_statement (tps: trig_parse_state) (input: string) (pos: nat) (fuel: nat)
+  : Tot (parse_result (list (option iri & list triple) & trig_parse_state)) (decreases fuel) =
   if fuel = 0 then ParseFail "recursion limit" pos
   else
     let fuel' : nat = fuel - 1 in
     let len = String.length input in
+    let st = tps.ts in
     match turtle_ws input pos with
     | ParseOk () pos1 ->
-      if pos1 >= len then ParseOk ([], st) pos1
+      if pos1 >= len then ParseOk ([], tps) pos1
       else
         let c = String.index input pos1 in
         let code = int_of_char c in
-        (* Case 1: Prefix directive *)
-        begin match parse_prefix_directive input pos1 with
+        // Case 1: Prefix directive
+        begin match parse_prefix_directive st input pos1 with
         | ParseOk (prefix, iri_val) pos2 ->
           let new_prefixes = (prefix, iri_val) :: st.prefixes in
-          ParseOk ([], { st with prefixes = new_prefixes }) pos2
+          ParseOk ([], { tps with ts = { st with prefixes = new_prefixes } }) pos2
         | ParseFail _ _ ->
-          (* Case 2: Base directive *)
-          begin match parse_base_directive input pos1 with
+          // Case 2: Base directive
+          begin match parse_base_directive st input pos1 with
           | ParseOk base_val pos2 ->
-            ParseOk ([], { st with base_iri = base_val }) pos2
+            ParseOk ([], { tps with ts = { st with base_iri = base_val } }) pos2
           | ParseFail _ _ ->
-            (* Case 3: Bare graph block { ... } — triples go to default graph *)
+            // Case 3: Bare graph block { ... }
             if code = 0x7B then
-              begin match parse_graph_body st input (pos1 + 1) [] fuel with
-              | ParseOk (triples, st') pos2 ->
-                ParseOk ([(None, triples)], st') pos2
+              begin match parse_graph_body tps input (pos1 + 1) [] fuel with
+              | ParseOk (triples, tps') pos2 ->
+                ParseOk ([(None, triples)], tps') pos2
               | ParseFail msg fpos -> ParseFail msg fpos
               end
-            (* Case 4: GRAPH keyword *)
+            // Case 4: GRAPH keyword
             else if is_graph_keyword input pos1 then
               begin match turtle_ws input (pos1 + 5) with
               | ParseOk () pos2 ->
-                if pos2 >= len then ParseFail "expected graph name or '{' after GRAPH" pos2
+                if pos2 >= len then ParseFail "expected graph name after GRAPH" pos2
                 else
-                  let c2 = String.index input pos2 in
-                  let code2 = int_of_char c2 in
-                  if code2 = 0x7B then
-                    (* GRAPH { ... } — default graph *)
-                    begin match parse_graph_body st input (pos2 + 1) [] fuel with
-                    | ParseOk (triples, st') pos3 ->
-                      ParseOk ([(None, triples)], st') pos3
-                    | ParseFail msg fpos -> ParseFail msg fpos
+                  // RC2: GRAPH must be followed by a graph name, not bare '{'
+                  // GRAPH { ... } without a name is invalid per TriG spec
+                  begin match parse_trig_graph_name st input pos2 with
+                  | ParseOk (gname, st2) pos3 ->
+                    begin match turtle_ws input pos3 with
+                    | ParseOk () pos4 ->
+                      if pos4 >= len then ParseFail "expected '{'" pos4
+                      else if int_of_char (String.index input pos4) = 0x7B then
+                        let tps2 = { tps with ts = st2 } in
+                        begin match parse_graph_body tps2 input (pos4 + 1) [] fuel with
+                        | ParseOk (triples, tps3) pos5 ->
+                          ParseOk ([(Some gname, triples)], tps3) pos5
+                        | ParseFail msg fpos -> ParseFail msg fpos
+                        end
+                      else
+                        ParseFail "expected '{' after graph name" pos4
                     end
-                  else
-                    (* GRAPH graphName { ... } *)
-                    begin match parse_trig_graph_name st input pos2 with
-                    | ParseOk (gname, st2) pos3 ->
-                      begin match turtle_ws input pos3 with
-                      | ParseOk () pos4 ->
-                        if pos4 >= len then ParseFail "expected '{'" pos4
-                        else if int_of_char (String.index input pos4) = 0x7B then
-                          begin match parse_graph_body st2 input (pos4 + 1) [] fuel with
-                          | ParseOk (triples, st3) pos5 ->
-                            ParseOk ([(Some gname, triples)], st3) pos5
-                          | ParseFail msg fpos -> ParseFail msg fpos
-                          end
-                        else
-                          ParseFail "expected '{' after graph name" pos4
-                      end
-                    | ParseFail msg fpos -> ParseFail msg fpos
-                    end
+                  | ParseFail msg fpos -> ParseFail msg fpos
+                  end
               end
+            // RC3: Reject '(' (collection) as graph name — not valid in TriG
+            else if code = 0x28 then
+              ParseFail "collection cannot be used as graph name or subject in TriG" pos1
             else
-              (* Case 5: Could be graphName { ... } or regular Turtle triples.
-                 We try to parse an IRI/bnode and then check if '{' follows. *)
+              // Case 5: Could be graphName { ... } or regular Turtle triples.
               begin match parse_trig_graph_name st input pos1 with
               | ParseOk (candidate_name, st2) pos2 ->
                 begin match turtle_ws input pos2 with
                 | ParseOk () pos3 ->
                   if pos3 < len && int_of_char (String.index input pos3) = 0x7B then
-                    (* It's a named graph block: name { ... } *)
-                    begin match parse_graph_body st2 input (pos3 + 1) [] fuel with
-                    | ParseOk (triples, st3) pos4 ->
-                      ParseOk ([(Some candidate_name, triples)], st3) pos4
+                    // It's a named graph block: name { ... }
+                    let tps2 = { tps with ts = st2 } in
+                    begin match parse_graph_body tps2 input (pos3 + 1) [] fuel with
+                    | ParseOk (triples, tps3) pos4 ->
+                      ParseOk ([(Some candidate_name, triples)], tps3) pos4
                     | ParseFail msg fpos -> ParseFail msg fpos
                     end
                   else
-                    (* Not followed by '{' — this is a regular Turtle triples statement.
-                       We already consumed the subject (the IRI/bnode), so we need to parse
-                       the predicate-object list. The candidate_name is actually the subject IRI. *)
-                    (* Check if candidate_name starts with "_:" for blank node *)
+                    // Not followed by '{' -- regular Turtle triples statement
                     let is_bnode =
                       String.length candidate_name >= 2 &&
                       (let c0 = String.index candidate_name 0 in
@@ -285,12 +300,14 @@ let parse_trig_statement (st: turtle_state) (input: string) (pos: nat) (fuel: na
                       | ParseOk (po_triples, st3) pos4 ->
                         begin match turtle_ws input pos4 with
                         | ParseOk () pos5 ->
-                          let pos6 =
-                            if pos5 < len && int_of_char (String.index input pos5) = 0x2E
-                            then pos5 + 1
-                            else pos5
-                          in
-                          ParseOk ([(None, po_triples)], st3) pos6
+                          // RC4: Require trailing dot for bare triples in TriG
+                          if pos5 < len && int_of_char (String.index input pos5) = 0x2E
+                          then ParseOk ([(None, po_triples)], { tps with ts = st3 }) (pos5 + 1)
+                          else
+                            // No dot -- check if next is '}' or EOF (allowed at end of graph body)
+                            if pos5 >= len || int_of_char (String.index input pos5) = 0x7D
+                            then ParseOk ([(None, po_triples)], { tps with ts = st3 }) pos5
+                            else ParseFail "expected '.' after triple" pos5
                         end
                       | ParseFail msg fpos -> ParseFail msg fpos
                       end
@@ -300,12 +317,13 @@ let parse_trig_statement (st: turtle_state) (input: string) (pos: nat) (fuel: na
                       | ParseOk (po_triples, st3) pos4 ->
                         begin match turtle_ws input pos4 with
                         | ParseOk () pos5 ->
-                          let pos6 =
-                            if pos5 < len && int_of_char (String.index input pos5) = 0x2E
-                            then pos5 + 1
-                            else pos5
-                          in
-                          ParseOk ([(None, po_triples)], st3) pos6
+                          // RC4: Require trailing dot for bare triples in TriG
+                          if pos5 < len && int_of_char (String.index input pos5) = 0x2E
+                          then ParseOk ([(None, po_triples)], { tps with ts = st3 }) (pos5 + 1)
+                          else
+                            if pos5 >= len || int_of_char (String.index input pos5) = 0x7D
+                            then ParseOk ([(None, po_triples)], { tps with ts = st3 }) pos5
+                            else ParseFail "expected '.' after triple" pos5
                         end
                       | ParseFail msg fpos -> ParseFail msg fpos
                       end
@@ -313,10 +331,11 @@ let parse_trig_statement (st: turtle_state) (input: string) (pos: nat) (fuel: na
                       ParseFail "invalid IRI for subject" pos3
                 end
               | ParseFail _ _ ->
-                (* Case 6: Other Turtle constructs (blank node subjects like [], (), etc.) *)
+                // Case 6: Other Turtle constructs (blank node subjects like [], etc.)
+                // But NOT collections -- those were rejected above
                 begin match parse_turtle_statement st input pos1 fuel with
                 | ParseOk (triples, st') pos2 ->
-                  ParseOk ([(None, triples)], st') pos2
+                  ParseOk ([(None, triples)], { tps with ts = st' }) pos2
                 | ParseFail msg fpos -> ParseFail msg fpos
                 end
               end
@@ -327,20 +346,21 @@ let parse_trig_statement (st: turtle_state) (input: string) (pos: nat) (fuel: na
 (* Full TriG document parser                                         *)
 (* ================================================================ *)
 
-(** Parse the full TriG document, accumulating into an rdf_dataset *)
-let rec parse_trig_doc (st: turtle_state) (input: string) (pos: nat)
+(** Parse the full TriG document, accumulating into an rdf_dataset.
+    Tracks errors via trig_parse_state.has_error. *)
+let rec parse_trig_doc (tps: trig_parse_state) (input: string) (pos: nat)
     (ds: rdf_dataset) (fuel: nat)
-  : Tot (rdf_dataset & turtle_state) (decreases fuel) =
-  if fuel = 0 then (ds, st)
+  : Tot (rdf_dataset & trig_parse_state) (decreases fuel) =
+  if fuel = 0 then (ds, tps)
   else
     let fuel' : nat = fuel - 1 in
     let len = String.length input in
     match turtle_ws input pos with
     | ParseOk () pos1 ->
-      if pos1 >= len then (ds, st)
+      if pos1 >= len then (ds, tps)
       else
-        begin match parse_trig_statement st input pos1 fuel with
-        | ParseOk (deltas, st') pos2 ->
+        begin match parse_trig_statement tps input pos1 fuel with
+        | ParseOk (deltas, tps') pos2 ->
           if pos2 = pos1 then
             let ds' = List.Tot.fold_left
               (fun (acc : rdf_dataset) (delta : option iri & list triple) ->
@@ -348,7 +368,7 @@ let rec parse_trig_doc (st: turtle_state) (input: string) (pos: nat)
                 trig_dataset_add_triples acc triples gname)
               ds deltas
             in
-            (ds', st')
+            (ds', tps')
           else
             let ds' = List.Tot.fold_left
               (fun (acc : rdf_dataset) (delta : option iri & list triple) ->
@@ -356,29 +376,53 @@ let rec parse_trig_doc (st: turtle_state) (input: string) (pos: nat)
                 trig_dataset_add_triples acc triples gname)
               ds deltas
             in
-            parse_trig_doc st' input pos2 ds' fuel'
+            parse_trig_doc tps' input pos2 ds' fuel'
         | ParseFail _ _ ->
-          (* Skip to next line on failure *)
+          // Skip to next line on failure, mark error
+          let tps' = { tps with has_error = true } in
           let pos2 = graph_body_skip_line input pos1 (len - pos1) in
-          if pos2 = pos1 then (ds, st)
-          else parse_trig_doc st input pos2 ds fuel'
+          if pos2 = pos1 then (ds, tps')
+          else parse_trig_doc tps' input pos2 ds fuel'
         end
 
 (* ================================================================ *)
 (* Entry points                                                      *)
 (* ================================================================ *)
 
-(** Parse a TriG document string into an rdf_dataset *)
-let parse_trig (input: string) : rdf_dataset =
+let make_trig_parse_state (st: turtle_state) : trig_parse_state =
+  { ts = st; has_error = false }
+
+(** Parse a TriG document string into an rdf_dataset.
+    Returns None if any parse errors were encountered. *)
+let parse_trig (input: string) : option rdf_dataset =
   let len = String.length input in
   let fuel = (len + 1) `op_Multiply` 3 in
-  let (ds, _) = parse_trig_doc empty_turtle_state input 0 empty_dataset fuel in
-  ds
+  let tps = make_trig_parse_state empty_turtle_state in
+  let (ds, tps') = parse_trig_doc tps input 0 empty_dataset fuel in
+  if tps'.has_error then None else Some ds
 
-(** Parse a TriG document with a base IRI *)
-let parse_trig_with_base (input: string) (base: string) : rdf_dataset =
+(** Parse a TriG document with a base IRI.
+    Returns None if any parse errors were encountered. *)
+let parse_trig_with_base (input: string) (base: string) : option rdf_dataset =
   let len = String.length input in
   let fuel = (len + 1) `op_Multiply` 3 in
   let st = { empty_turtle_state with base_iri = base } in
-  let (ds, _) = parse_trig_doc st input 0 empty_dataset fuel in
+  let tps = make_trig_parse_state st in
+  let (ds, tps') = parse_trig_doc tps input 0 empty_dataset fuel in
+  if tps'.has_error then None else Some ds
+
+// Lenient versions that always return a dataset (for positive tests / compatibility)
+let parse_trig_lenient (input: string) : rdf_dataset =
+  let len = String.length input in
+  let fuel = (len + 1) `op_Multiply` 3 in
+  let tps = make_trig_parse_state empty_turtle_state in
+  let (ds, _) = parse_trig_doc tps input 0 empty_dataset fuel in
+  ds
+
+let parse_trig_with_base_lenient (input: string) (base: string) : rdf_dataset =
+  let len = String.length input in
+  let fuel = (len + 1) `op_Multiply` 3 in
+  let st = { empty_turtle_state with base_iri = base } in
+  let tps = make_trig_parse_state st in
+  let (ds, _) = parse_trig_doc tps input 0 empty_dataset fuel in
   ds

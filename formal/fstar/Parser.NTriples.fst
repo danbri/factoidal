@@ -26,7 +26,9 @@ let hex_val (c:FStar.Char.char) : int =
   | None -> 0
 
 // Valid codepoint for F*'s char_of_int precondition: i < 0xD7FF.
-// F* is stricter than Unicode (which allows up to U+D7FF inclusive).
+// NOTE: F*'s char type uses strict < 0xD7FF, excluding U+D7FF itself.
+// Unicode allows U+D7FF (surrogates are U+D800..U+DFFF). We patch the
+// extracted OCaml to use < 0xD800 via ocaml-patches.sh.
 let valid_codepoint (cp:int) : bool =
   cp >= 0 && (cp < 0xD7FF || (cp >= 0xE000 && cp <= 0x10FFFF))
 
@@ -59,9 +61,17 @@ let pws (input:string) (pos:nat) : parse_result unit =
 (* IRI parser: <iri-content>                                         *)
 (* ================================================================ *)
 
-(* IRI content: everything that's not '>' or whitespace control chars.
-   N-Triples IRIs do not contain escape sequences except \uXXXX and \UXXXXXXXX.
-   For simplicity we handle the common case of no escapes in IRIs, plus \u/\U escapes. *)
+// IRI-forbidden codepoints per RFC 3987 section 2.2:
+// space (0x20), < (0x3C), > (0x3E), " (0x22), { (0x7B), } (0x7D),
+// | (0x7C), \ (0x5C), ^ (0x5E), ` (0x60)
+// These are checked for both literal characters and decoded \u/\U escapes.
+let is_iri_forbidden_codepoint (code:int) : bool =
+  code = 0x20 || code = 0x3C || code = 0x3E || code = 0x22 ||
+  code = 0x7B || code = 0x7D || code = 0x7C || code = 0x5C ||
+  code = 0x5E || code = 0x60
+
+// IRI content: everything that's not '>' or whitespace control chars.
+// N-Triples IRIs do not contain escape sequences except \uXXXX and \UXXXXXXXX.
 
 let rec parse_iri_body_acc (input:string) (pos:nat) (acc:list char) (fuel:nat)
   : Tot (parse_result string) (decreases fuel) =
@@ -89,6 +99,7 @@ let rec parse_iri_body_acc (input:string) (pos:nat) (acc:list char) (fuel:nat)
               | Some h0, Some h1, Some h2, Some h3 ->
                 let cp = ((h0 `op_Multiply` 4096) + (h1 `op_Multiply` 256) + (h2 `op_Multiply` 16) + h3) in
                 if not (valid_codepoint cp) then ParseFail "surrogate codepoint in \\u escape" pos
+                else if is_iri_forbidden_codepoint cp then ParseFail "IRI-forbidden codepoint in \\u escape" pos
                 else
                   let c = safe_char_of_int cp in
                   parse_iri_body_acc input (pos + 6) (c :: acc) (fuel - 1)
@@ -108,13 +119,14 @@ let rec parse_iri_body_acc (input:string) (pos:nat) (acc:list char) (fuel:nat)
                 let cp = ((h0 `op_Multiply` 268435456) + (h1 `op_Multiply` 16777216) + (h2 `op_Multiply` 1048576) + (h3 `op_Multiply` 65536)
                        + (h4 `op_Multiply` 4096) + (h5 `op_Multiply` 256) + (h6 `op_Multiply` 16) + h7) in
                 if not (valid_codepoint cp) then ParseFail "surrogate codepoint in \\U escape" pos
+                else if is_iri_forbidden_codepoint cp then ParseFail "IRI-forbidden codepoint in \\U escape" pos
                 else
                   let c = safe_char_of_int cp in
                   parse_iri_body_acc input (pos + 10) (c :: acc) (fuel - 1)
               | _ -> ParseFail "invalid hex digit in \\U escape" pos
           else
             ParseFail "invalid escape in IRI" pos
-      else if code <= 0x20 then (* control chars and space not allowed in IRIs *)
+      else if code <= 0x20 || is_iri_forbidden_codepoint code then
         ParseFail "invalid character in IRI" pos
       else
         parse_iri_body_acc input (pos + 1) (ch :: acc) (fuel - 1)

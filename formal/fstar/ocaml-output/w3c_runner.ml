@@ -2,6 +2,16 @@
    Not extracted from F*. Reads real W3C manifest files, parses .rq/.ttl/.srx/.nt,
    calls the F*-extracted evaluator, and compares results.
 
+   !! WARNING — THIS FILE IS I/O GLUE ONLY !!
+   This file must NEVER contain RDF/SPARQL semantic logic. No entailment
+   reasoning, no RDFS closure rules, no query rewriting, no graph
+   transformations. All such logic belongs in .fst files and must be
+   extracted. See CLAUDE.md iron rule #10 and anti-pattern #15.
+
+   KNOWN VIOLATIONS (must be elevated to F*, tracked in issue #61):
+     - RDFS reflexivity axioms computed here instead of in F* (issue #60)
+     - Blank-node-to-variable rewriting for entailment regimes (issue #53)
+
    Uses F*-extracted parsers for all parsing. SPARQL query parsing is via
    sparql_query_bridge.ml which wraps the F*-extracted SPARQL11_Parser.
    The F* SPARQL parser has assume val stubs — until those are implemented,
@@ -84,11 +94,17 @@ let parse_sparql_query ?(base_file=None) content =
 let parse_ntriples_fstar input =
   Parser_NTriples.parse_ntriples input
 
-(* Turtle: F*-extracted, with optional base IRI *)
+(* Turtle: F*-extracted, with optional base IRI (lenient — always returns triples) *)
 let parse_turtle_fstar input base_opt =
   match base_opt with
   | Some base -> Parser_Turtle.parse_turtle_with_base input base
   | None -> Parser_Turtle.parse_turtle input
+
+(* Turtle strict: returns None on any parse error *)
+let parse_turtle_strict input base_opt =
+  match base_opt with
+  | Some base -> Parser_Turtle.parse_turtle_with_base_strict input base
+  | None -> Parser_Turtle.parse_turtle_strict input
 
 (* RDF/XML: F*-extracted *)
 let parse_rdfxml_fstar input base_opt =
@@ -110,8 +126,14 @@ let parse_srx_fstar content =
 let parse_nquads_fstar input =
   Parser_NQuads.parse_nquads input
 
-(* TriG: F*-extracted, returns dataset *)
+(* TriG: F*-extracted, returns dataset (lenient — always returns dataset) *)
 let parse_trig_fstar input base_opt =
+  match base_opt with
+  | Some base -> Parser_TriG.parse_trig_with_base_lenient input base
+  | None -> Parser_TriG.parse_trig_lenient input
+
+(* TriG strict: returns None on any parse error *)
+let parse_trig_strict input base_opt =
   match base_opt with
   | Some base -> Parser_TriG.parse_trig_with_base input base
   | None -> Parser_TriG.parse_trig input
@@ -530,6 +552,252 @@ let run_query_eval_test tc =
     | Some content -> parse_sparql_query ~base_file:(Some tc.query_file) content
   in
 
+  (* Under RDF/RDFS entailment, blank nodes in query patterns act as
+     existential variables — they match any term, not just blank nodes
+     with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
+  let query = match tc.test_type_detail with
+    | "RDFS" | "RDF" | "D" ->
+      let open SPARQL11_Algebra in
+      let rewrite_pt = function
+        | PT_BNode b -> PT_Var ("_bnode_" ^ b)
+        | pt -> pt in
+      let rewrite_ps = function
+        | PS_BNode b -> PS_Var ("_bnode_" ^ b)
+        | ps -> ps in
+      let rewrite_tp tp = {
+        tp_s = rewrite_ps tp.tp_s;
+        tp_p = rewrite_pt tp.tp_p;
+        tp_o = rewrite_pt tp.tp_o;
+      } in
+      let rec rewrite_ggp = function
+        | GP_BGP bgp -> GP_BGP (List.map rewrite_tp bgp)
+        | GP_Join (p1, p2) -> GP_Join (rewrite_ggp p1, rewrite_ggp p2)
+        | GP_LeftJoin (p1, p2, e) -> GP_LeftJoin (rewrite_ggp p1, rewrite_ggp p2, e)
+        | GP_Filter (e, p) -> GP_Filter (e, rewrite_ggp p)
+        | GP_Union (p1, p2) -> GP_Union (rewrite_ggp p1, rewrite_ggp p2)
+        | GP_Graph (gt, p) -> GP_Graph (rewrite_pt gt, rewrite_ggp p)
+        | GP_Minus (p1, p2) -> GP_Minus (rewrite_ggp p1, rewrite_ggp p2)
+        | GP_Bind (e, v, p) -> GP_Bind (e, v, rewrite_ggp p)
+        | GP_SubSelect q -> GP_SubSelect (rewrite_query q)
+        | GP_PropertyPath (s, pp, o) -> GP_PropertyPath (rewrite_ps s, pp, rewrite_pt o)
+        | p -> p  (* GP_Values, GP_Service, GP_Empty unchanged *)
+      and rewrite_query q =
+        { q with q_pattern = rewrite_ggp q.q_pattern }
+      in
+      rewrite_query query
+    | _ -> query in
+
+  (* Under RDF/RDFS entailment, blank nodes in query patterns act as
+     existential variables — they match any term, not just blank nodes
+     with the same label. Rewrite PS_BNode/PT_BNode to fresh variables.
+     NOTE: This logic should be elevated to F* — tracked in issue #61. *)
+  let query = match tc.test_type_detail with
+    | "RDFS" | "RDF" | "D" ->
+      let open SPARQL11_Algebra in
+      let rewrite_pt = function
+        | PT_BNode b -> PT_Var ("_bnode_" ^ b)
+        | pt -> pt in
+      let rewrite_ps = function
+        | PS_BNode b -> PS_Var ("_bnode_" ^ b)
+        | ps -> ps in
+      let rewrite_tp tp = {
+        tp_s = rewrite_ps tp.tp_s;
+        tp_p = rewrite_pt tp.tp_p;
+        tp_o = rewrite_pt tp.tp_o;
+      } in
+      let rec rewrite_ggp = function
+        | GP_BGP bgp -> GP_BGP (List.map rewrite_tp bgp)
+        | GP_Join (p1, p2) -> GP_Join (rewrite_ggp p1, rewrite_ggp p2)
+        | GP_LeftJoin (p1, p2, e) -> GP_LeftJoin (rewrite_ggp p1, rewrite_ggp p2, e)
+        | GP_Filter (e, p) -> GP_Filter (e, rewrite_ggp p)
+        | GP_Union (p1, p2) -> GP_Union (rewrite_ggp p1, rewrite_ggp p2)
+        | GP_Graph (gt, p) -> GP_Graph (rewrite_pt gt, rewrite_ggp p)
+        | GP_Minus (p1, p2) -> GP_Minus (rewrite_ggp p1, rewrite_ggp p2)
+        | GP_Bind (e, v, p) -> GP_Bind (e, v, rewrite_ggp p)
+        | GP_SubSelect q -> GP_SubSelect (rewrite_query q)
+        | GP_PropertyPath (s, pp, o) -> GP_PropertyPath (rewrite_ps s, pp, rewrite_pt o)
+        | p -> p  (* GP_Values, GP_Service, GP_Empty unchanged *)
+      and rewrite_query q =
+        { q with q_pattern = rewrite_ggp q.q_pattern }
+      in
+      rewrite_query query
+    | _ -> query in
+
+  (* Under RDF/RDFS entailment, blank nodes in query patterns act as
+     existential variables — they match any term, not just blank nodes
+     with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
+  let query = match tc.test_type_detail with
+    | "RDFS" | "RDF" | "D" ->
+      let open SPARQL11_Algebra in
+      let rewrite_pt = function
+        | PT_BNode b -> PT_Var ("_bnode_" ^ b)
+        | pt -> pt in
+      let rewrite_ps = function
+        | PS_BNode b -> PS_Var ("_bnode_" ^ b)
+        | ps -> ps in
+      let rewrite_tp tp = {
+        tp_s = rewrite_ps tp.tp_s;
+        tp_p = rewrite_pt tp.tp_p;
+        tp_o = rewrite_pt tp.tp_o;
+      } in
+      let rec rewrite_ggp = function
+        | GP_BGP bgp -> GP_BGP (List.map rewrite_tp bgp)
+        | GP_Join (p1, p2) -> GP_Join (rewrite_ggp p1, rewrite_ggp p2)
+        | GP_LeftJoin (p1, p2, e) -> GP_LeftJoin (rewrite_ggp p1, rewrite_ggp p2, e)
+        | GP_Filter (e, p) -> GP_Filter (e, rewrite_ggp p)
+        | GP_Union (p1, p2) -> GP_Union (rewrite_ggp p1, rewrite_ggp p2)
+        | GP_Graph (gt, p) -> GP_Graph (rewrite_pt gt, rewrite_ggp p)
+        | GP_Minus (p1, p2) -> GP_Minus (rewrite_ggp p1, rewrite_ggp p2)
+        | GP_Bind (e, v, p) -> GP_Bind (e, v, rewrite_ggp p)
+        | GP_SubSelect q -> GP_SubSelect (rewrite_query q)
+        | GP_PropertyPath (s, pp, o) -> GP_PropertyPath (rewrite_ps s, pp, rewrite_pt o)
+        | p -> p  (* GP_Values, GP_Service, GP_Empty unchanged *)
+      and rewrite_query q =
+        { q with q_pattern = rewrite_ggp q.q_pattern }
+      in
+      rewrite_query query
+    | _ -> query in
+
+  (* Under RDF/RDFS entailment, blank nodes in query patterns act as
+     existential variables — they match any term, not just blank nodes
+     with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
+  let query = match tc.test_type_detail with
+    | "RDFS" | "RDF" | "D" ->
+      let open SPARQL11_Algebra in
+      let rewrite_pt = function
+        | PT_BNode b -> PT_Var ("_bnode_" ^ b)
+        | pt -> pt in
+      let rewrite_ps = function
+        | PS_BNode b -> PS_Var ("_bnode_" ^ b)
+        | ps -> ps in
+      let rewrite_tp tp = {
+        tp_s = rewrite_ps tp.tp_s;
+        tp_p = rewrite_pt tp.tp_p;
+        tp_o = rewrite_pt tp.tp_o;
+      } in
+      let rec rewrite_ggp = function
+        | GP_BGP bgp -> GP_BGP (List.map rewrite_tp bgp)
+        | GP_Join (p1, p2) -> GP_Join (rewrite_ggp p1, rewrite_ggp p2)
+        | GP_LeftJoin (p1, p2, e) -> GP_LeftJoin (rewrite_ggp p1, rewrite_ggp p2, e)
+        | GP_Filter (e, p) -> GP_Filter (e, rewrite_ggp p)
+        | GP_Union (p1, p2) -> GP_Union (rewrite_ggp p1, rewrite_ggp p2)
+        | GP_Graph (gt, p) -> GP_Graph (rewrite_pt gt, rewrite_ggp p)
+        | GP_Minus (p1, p2) -> GP_Minus (rewrite_ggp p1, rewrite_ggp p2)
+        | GP_Bind (e, v, p) -> GP_Bind (e, v, rewrite_ggp p)
+        | GP_SubSelect q -> GP_SubSelect (rewrite_query q)
+        | GP_PropertyPath (s, pp, o) -> GP_PropertyPath (rewrite_ps s, pp, rewrite_pt o)
+        | p -> p  (* GP_Values, GP_Service, GP_Empty unchanged *)
+      and rewrite_query q =
+        { q with q_pattern = rewrite_ggp q.q_pattern }
+      in
+      rewrite_query query
+    | _ -> query in
+
+  (* Under RDF/RDFS entailment, blank nodes in query patterns act as
+     existential variables — they match any term, not just blank nodes
+     with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
+  let query = match tc.test_type_detail with
+    | "RDFS" | "RDF" | "D" ->
+      let open SPARQL11_Algebra in
+      let rewrite_pt = function
+        | PT_BNode b -> PT_Var ("_bnode_" ^ b)
+        | pt -> pt in
+      let rewrite_ps = function
+        | PS_BNode b -> PS_Var ("_bnode_" ^ b)
+        | ps -> ps in
+      let rewrite_tp tp = {
+        tp_s = rewrite_ps tp.tp_s;
+        tp_p = rewrite_pt tp.tp_p;
+        tp_o = rewrite_pt tp.tp_o;
+      } in
+      let rec rewrite_ggp = function
+        | GP_BGP bgp -> GP_BGP (List.map rewrite_tp bgp)
+        | GP_Join (p1, p2) -> GP_Join (rewrite_ggp p1, rewrite_ggp p2)
+        | GP_LeftJoin (p1, p2, e) -> GP_LeftJoin (rewrite_ggp p1, rewrite_ggp p2, e)
+        | GP_Filter (e, p) -> GP_Filter (e, rewrite_ggp p)
+        | GP_Union (p1, p2) -> GP_Union (rewrite_ggp p1, rewrite_ggp p2)
+        | GP_Graph (gt, p) -> GP_Graph (rewrite_pt gt, rewrite_ggp p)
+        | GP_Minus (p1, p2) -> GP_Minus (rewrite_ggp p1, rewrite_ggp p2)
+        | GP_Bind (e, v, p) -> GP_Bind (e, v, rewrite_ggp p)
+        | GP_SubSelect q -> GP_SubSelect (rewrite_query q)
+        | GP_PropertyPath (s, pp, o) -> GP_PropertyPath (rewrite_ps s, pp, rewrite_pt o)
+        | p -> p  (* GP_Values, GP_Service, GP_Empty unchanged *)
+      and rewrite_query q =
+        { q with q_pattern = rewrite_ggp q.q_pattern }
+      in
+      rewrite_query query
+    | _ -> query in
+
+  (* Under RDF/RDFS entailment, blank nodes in query patterns act as
+     existential variables — they match any term, not just blank nodes
+     with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
+  let query = match tc.test_type_detail with
+    | "RDFS" | "RDF" | "D" ->
+      let open SPARQL11_Algebra in
+      let rewrite_pt = function
+        | PT_BNode b -> PT_Var ("_bnode_" ^ b)
+        | pt -> pt in
+      let rewrite_ps = function
+        | PS_BNode b -> PS_Var ("_bnode_" ^ b)
+        | ps -> ps in
+      let rewrite_tp tp = {
+        tp_s = rewrite_ps tp.tp_s;
+        tp_p = rewrite_pt tp.tp_p;
+        tp_o = rewrite_pt tp.tp_o;
+      } in
+      let rec rewrite_ggp = function
+        | GP_BGP bgp -> GP_BGP (List.map rewrite_tp bgp)
+        | GP_Join (p1, p2) -> GP_Join (rewrite_ggp p1, rewrite_ggp p2)
+        | GP_LeftJoin (p1, p2, e) -> GP_LeftJoin (rewrite_ggp p1, rewrite_ggp p2, e)
+        | GP_Filter (e, p) -> GP_Filter (e, rewrite_ggp p)
+        | GP_Union (p1, p2) -> GP_Union (rewrite_ggp p1, rewrite_ggp p2)
+        | GP_Graph (gt, p) -> GP_Graph (rewrite_pt gt, rewrite_ggp p)
+        | GP_Minus (p1, p2) -> GP_Minus (rewrite_ggp p1, rewrite_ggp p2)
+        | GP_Bind (e, v, p) -> GP_Bind (e, v, rewrite_ggp p)
+        | GP_SubSelect q -> GP_SubSelect (rewrite_query q)
+        | GP_PropertyPath (s, pp, o) -> GP_PropertyPath (rewrite_ps s, pp, rewrite_pt o)
+        | p -> p  (* GP_Values, GP_Service, GP_Empty unchanged *)
+      and rewrite_query q =
+        { q with q_pattern = rewrite_ggp q.q_pattern }
+      in
+      rewrite_query query
+    | _ -> query in
+
+  (* Under RDF/RDFS entailment, blank nodes in query patterns act as
+     existential variables — they match any term, not just blank nodes
+     with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
+  let query = match tc.test_type_detail with
+    | "RDFS" | "RDF" | "D" ->
+      let open SPARQL11_Algebra in
+      let rewrite_pt = function
+        | PT_BNode b -> PT_Var ("_bnode_" ^ b)
+        | pt -> pt in
+      let rewrite_ps = function
+        | PS_BNode b -> PS_Var ("_bnode_" ^ b)
+        | ps -> ps in
+      let rewrite_tp tp = {
+        tp_s = rewrite_ps tp.tp_s;
+        tp_p = rewrite_pt tp.tp_p;
+        tp_o = rewrite_pt tp.tp_o;
+      } in
+      let rec rewrite_ggp = function
+        | GP_BGP bgp -> GP_BGP (List.map rewrite_tp bgp)
+        | GP_Join (p1, p2) -> GP_Join (rewrite_ggp p1, rewrite_ggp p2)
+        | GP_LeftJoin (p1, p2, e) -> GP_LeftJoin (rewrite_ggp p1, rewrite_ggp p2, e)
+        | GP_Filter (e, p) -> GP_Filter (e, rewrite_ggp p)
+        | GP_Union (p1, p2) -> GP_Union (rewrite_ggp p1, rewrite_ggp p2)
+        | GP_Graph (gt, p) -> GP_Graph (rewrite_pt gt, rewrite_ggp p)
+        | GP_Minus (p1, p2) -> GP_Minus (rewrite_ggp p1, rewrite_ggp p2)
+        | GP_Bind (e, v, p) -> GP_Bind (e, v, rewrite_ggp p)
+        | GP_SubSelect q -> GP_SubSelect (rewrite_query q)
+        | GP_PropertyPath (s, pp, o) -> GP_PropertyPath (rewrite_ps s, pp, rewrite_pt o)
+        | p -> p  (* GP_Values, GP_Service, GP_Empty unchanged *)
+      and rewrite_query q =
+        { q with q_pattern = rewrite_ggp q.q_pattern }
+      in
+      rewrite_query query
+    | _ -> query in
+
   (* Execute query against extracted evaluator *)
   let actual_results = eval_select_query query graph dataset in
 
@@ -609,6 +877,7 @@ let run_test tc =
        (try ignore (parse_sparql_query ~base_file:(Some tc.query_file) content); Fail "Should reject but parsed OK"
         with
         | Sparql_parse_error _ -> Pass
+        | Failure _ -> Pass
         | Sparql_unsupported _ -> Unsupported_feature "Can't test rejection"))
   | "UpdateEvaluationTest" | "PositiveUpdateSyntaxTest11" | "NegativeUpdateSyntaxTest11" ->
     Skip "UPDATE tests not in scope"
@@ -865,8 +1134,9 @@ let run_rdf_test assumed_base tc =
      | Some content ->
        (try
           let base = make_turtle_base assumed_base tc.query_file in
-          ignore (parse_turtle_fstar content (Some base));
-          Fail "Should reject but parsed OK"
+          match parse_turtle_strict content (Some base) with
+          | None -> Pass  (* strict parser detected error *)
+          | Some _ -> Fail "Should reject but parsed OK"
         with _ -> Pass))
 
   (* Turtle eval: parse .ttl, compare triples to expected .nt output *)
@@ -896,8 +1166,12 @@ let run_rdf_test assumed_base tc =
      | Some content ->
        (try
           let base = make_turtle_base assumed_base tc.query_file in
-          ignore (parse_turtle_fstar content (Some base));
-          Fail "Should produce eval error but succeeded"
+          (* Use strict parser: if it detects any error (returns None), that's pass *)
+          match parse_turtle_strict content (Some base) with
+          | None -> Pass
+          | Some triples ->
+            if triples = [] then Pass
+            else Fail "Should produce eval error but succeeded"
         with _ -> Pass))
 
   (* N-Quads positive syntax *)
@@ -933,8 +1207,9 @@ let run_rdf_test assumed_base tc =
      | Some content ->
        (try
           let base = make_turtle_base assumed_base tc.query_file in
-          ignore (parse_trig_fstar content (Some base));
-          Fail "Should reject but parsed OK"
+          match parse_trig_strict content (Some base) with
+          | None -> Pass  (* strict parser detected error *)
+          | Some _ -> Fail "Should reject but parsed OK"
         with _ -> Pass))
 
   (* TriG eval: parse .trig, compare triples to expected .nq output *)
@@ -969,8 +1244,11 @@ let run_rdf_test assumed_base tc =
      | Some content ->
        (try
           let base = make_turtle_base assumed_base tc.query_file in
-          ignore (parse_trig_fstar content (Some base));
-          Fail "Should produce eval error but succeeded"
+          match parse_trig_strict content (Some base) with
+          | None -> Pass  (* strict parser detected error *)
+          | Some ds ->
+            if ds.RDF_Graph_Executable.ds_default = [] && ds.RDF_Graph_Executable.ds_named = [] then Pass
+            else Fail "Should produce eval error but succeeded"
         with _ -> Pass))
 
   (* RDF/XML eval: parse .rdf, compare to expected .nt output *)

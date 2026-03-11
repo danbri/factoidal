@@ -2333,6 +2333,15 @@ and parse_select_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (ts 
                 has_agg && has_ungrouped
               | _ -> false) then
               ParseErr "SELECT projects ungrouped variable"
+            // Check: (expr AS ?v) must not alias a variable already in scope from WHERE
+            else if (match sel with
+              | Select_Vars items ->
+                not (List.Tot.for_all (fun (item : select_item) ->
+                  match item with
+                  | SI_Expr _ v -> not (ggp_has_var v pattern)
+                  | _ -> true) items)
+              | _ -> false) then
+              ParseErr "SELECT expression aliases variable already in scope"
             else
             // Check for post-query VALUES clause
             let (vals, ts7) = begin match parse_peek ts6 with

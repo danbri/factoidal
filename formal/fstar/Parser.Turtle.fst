@@ -292,8 +292,9 @@ let parse_turtle_iri (st: turtle_state) (input: string) (pos: nat) : parse_resul
 (* Directive parsers: @prefix, @base, PREFIX, BASE                   *)
 (* ================================================================ *)
 
-(* Parse @prefix directive: @prefix prefix: <iri> . *)
-let parse_at_prefix (input: string) (pos: nat) : parse_result (string & string) =
+// Parse @prefix directive: @prefix prefix: <iri> .
+// Uses parse_iri_raw + resolve_iri to handle relative IRIs like <#> and <foo/>
+let parse_at_prefix (st: turtle_state) (input: string) (pos: nat) : parse_result (string & string) =
   match pstring "@prefix" input pos with
   | ParseOk _ pos1 ->
     begin match turtle_ws input pos1 with
@@ -302,8 +303,9 @@ let parse_at_prefix (input: string) (pos: nat) : parse_result (string & string) 
       | ParseOk ns pos3 ->
         begin match turtle_ws input pos3 with
         | ParseOk () pos4 ->
-          begin match parse_iri input pos4 with
-          | ParseOk iri_val pos5 ->
+          begin match parse_iri_raw input pos4 with
+          | ParseOk raw_iri pos5 ->
+            let iri_val = resolve_iri st raw_iri in
             begin match turtle_ws input pos5 with
             | ParseOk () pos6 ->
               let len = String.length input in
@@ -324,8 +326,8 @@ let parse_at_prefix (input: string) (pos: nat) : parse_result (string & string) 
     end
   | ParseFail msg fpos -> ParseFail msg fpos
 
-(* Parse SPARQL-style PREFIX directive: PREFIX prefix: <iri> (no dot) *)
-let parse_sparql_prefix (input: string) (pos: nat) : parse_result (string & string) =
+// Parse SPARQL-style PREFIX directive: PREFIX prefix: <iri> (no dot)
+let parse_sparql_prefix (st: turtle_state) (input: string) (pos: nat) : parse_result (string & string) =
   match pstring "PREFIX" input pos with
   | ParseOk _ pos1 ->
     begin match turtle_ws input pos1 with
@@ -334,8 +336,9 @@ let parse_sparql_prefix (input: string) (pos: nat) : parse_result (string & stri
       | ParseOk ns pos3 ->
         begin match turtle_ws input pos3 with
         | ParseOk () pos4 ->
-          begin match parse_iri input pos4 with
-          | ParseOk iri_val pos5 ->
+          begin match parse_iri_raw input pos4 with
+          | ParseOk raw_iri pos5 ->
+            let iri_val = resolve_iri st raw_iri in
             ParseOk (ns, iri_val) pos5
           | ParseFail msg fpos -> ParseFail msg fpos
           end
@@ -345,14 +348,15 @@ let parse_sparql_prefix (input: string) (pos: nat) : parse_result (string & stri
     end
   | ParseFail msg fpos -> ParseFail msg fpos
 
-(* Parse @base directive: @base <iri> . *)
-let parse_at_base (input: string) (pos: nat) : parse_result string =
+// Parse @base directive: @base <iri> .
+let parse_at_base (st: turtle_state) (input: string) (pos: nat) : parse_result string =
   match pstring "@base" input pos with
   | ParseOk _ pos1 ->
     begin match turtle_ws input pos1 with
     | ParseOk () pos2 ->
-      begin match parse_iri input pos2 with
-      | ParseOk iri_val pos3 ->
+      begin match parse_iri_raw input pos2 with
+      | ParseOk raw_iri pos3 ->
+        let iri_val = resolve_iri st raw_iri in
         begin match turtle_ws input pos3 with
         | ParseOk () pos4 ->
           let len = String.length input in
@@ -370,31 +374,32 @@ let parse_at_base (input: string) (pos: nat) : parse_result string =
     end
   | ParseFail msg fpos -> ParseFail msg fpos
 
-(* Parse SPARQL-style BASE directive: BASE <iri> (no dot) *)
-let parse_sparql_base (input: string) (pos: nat) : parse_result string =
+// Parse SPARQL-style BASE directive: BASE <iri> (no dot)
+let parse_sparql_base (st: turtle_state) (input: string) (pos: nat) : parse_result string =
   match pstring "BASE" input pos with
   | ParseOk _ pos1 ->
     begin match turtle_ws input pos1 with
     | ParseOk () pos2 ->
-      begin match parse_iri input pos2 with
-      | ParseOk iri_val pos3 ->
+      begin match parse_iri_raw input pos2 with
+      | ParseOk raw_iri pos3 ->
+        let iri_val = resolve_iri st raw_iri in
         ParseOk iri_val pos3
       | ParseFail msg fpos -> ParseFail msg fpos
       end
     end
   | ParseFail msg fpos -> ParseFail msg fpos
 
-(* Parse any prefix directive (@prefix or PREFIX) *)
-let parse_prefix_directive (input: string) (pos: nat) : parse_result (string & string) =
-  match parse_at_prefix input pos with
+// Parse any prefix directive (@prefix or PREFIX)
+let parse_prefix_directive (st: turtle_state) (input: string) (pos: nat) : parse_result (string & string) =
+  match parse_at_prefix st input pos with
   | ParseOk v p -> ParseOk v p
-  | ParseFail _ _ -> parse_sparql_prefix input pos
+  | ParseFail _ _ -> parse_sparql_prefix st input pos
 
-(* Parse any base directive (@base or BASE) *)
-let parse_base_directive (input: string) (pos: nat) : parse_result string =
-  match parse_at_base input pos with
+// Parse any base directive (@base or BASE)
+let parse_base_directive (st: turtle_state) (input: string) (pos: nat) : parse_result string =
+  match parse_at_base st input pos with
   | ParseOk v p -> ParseOk v p
-  | ParseFail _ _ -> parse_sparql_base input pos
+  | ParseFail _ _ -> parse_sparql_base st input pos
 
 (* ================================================================ *)
 (* Numeric literal parsers                                           *)
@@ -1174,13 +1179,13 @@ let parse_turtle_statement (st: turtle_state) (input: string) (pos: nat) (fuel: 
       if pos1 >= len then ParseOk ([], st) pos1
       else
         (* Try prefix directive *)
-        begin match parse_prefix_directive input pos1 with
+        begin match parse_prefix_directive st input pos1 with
         | ParseOk (prefix, iri_val) pos2 ->
           let new_prefixes = (prefix, iri_val) :: st.prefixes in
           ParseOk ([], { st with prefixes = new_prefixes }) pos2
         | ParseFail _ _ ->
-          (* Try base directive *)
-          begin match parse_base_directive input pos1 with
+          // Try base directive
+          begin match parse_base_directive st input pos1 with
           | ParseOk base_val pos2 ->
             ParseOk ([], { st with base_iri = base_val }) pos2
           | ParseFail _ _ ->
@@ -1199,24 +1204,32 @@ let parse_turtle_statement (st: turtle_state) (input: string) (pos: nat) (fuel: 
                     ParseFail "expected predicate after subject" pos3
                 else
                   let nc = String.index input pos3 in
-                  if int_of_char nc = 0x2E then
-                    (* Subject followed directly by dot — valid only if subject generated triples *)
+                  let ncode = int_of_char nc in
+                  if ncode = 0x2E then
+                    // Subject followed directly by dot -- valid only if subject generated triples
                     if List.Tot.length subj_res.sr_triples > 0 then
                       ParseOk (subj_res.sr_triples, subj_res.sr_state) (pos3 + 1)
                     else
                       ParseFail "expected predicate after subject" pos3
+                  else if ncode = 0x7D && List.Tot.length subj_res.sr_triples > 0 then
+                    // Inside a TriG graph block: '}' ends the block.
+                    // Blank node property list as sole statement is valid without dot.
+                    ParseOk (subj_res.sr_triples, subj_res.sr_state) pos3
                   else
                     begin match parse_predicate_object_list subj_res.sr_state subj_res.sr_subject input pos3 (fuel - 1) with
                     | ParseOk (po_triples, st2) pos4 ->
                       let all_triples = subj_res.sr_triples @ po_triples in
-                      (* Expect '.' *)
+                      // Expect '.'
                       begin match turtle_ws input pos4 with
                       | ParseOk () pos5 ->
                         if pos5 < len && int_of_char (String.index input pos5) = 0x2E then
                           ParseOk (all_triples, st2) (pos5 + 1)
-                        else
-                          (* Some Turtle allows missing final dot — be lenient *)
+                        else if pos5 < len && int_of_char (String.index input pos5) = 0x7D then
+                          // '}' ends a TriG block — accept without dot
                           ParseOk (all_triples, st2) pos5
+                        else
+                          // Missing dot — fail (strict per Turtle spec)
+                          ParseFail "expected '.' after triple" pos5
                       end
                     | ParseFail msg fpos -> ParseFail msg fpos
                     end
@@ -1226,45 +1239,69 @@ let parse_turtle_statement (st: turtle_state) (input: string) (pos: nat) (fuel: 
           end
         end
 
+// Parse result with error tracking
+noeq type turtle_doc_result = {
+  tdr_triples: list triple;
+  tdr_state: turtle_state;
+  tdr_has_error: bool;
+}
+
 // Parse the full Turtle document: sequence of statements
-let rec parse_turtle_doc (st: turtle_state) (input: string) (pos: nat) (acc: list triple) (fuel: nat)
-  : Tot (list triple & turtle_state) (decreases fuel) =
-  if fuel = 0 then (List.Tot.rev acc, st)
+let rec parse_turtle_doc (st: turtle_state) (input: string) (pos: nat)
+    (acc: list triple) (has_error: bool) (fuel: nat)
+  : Tot turtle_doc_result (decreases fuel) =
+  if fuel = 0 then { tdr_triples = List.Tot.rev acc; tdr_state = st; tdr_has_error = has_error }
   else
     let len = String.length input in
     match turtle_ws input pos with
     | ParseOk () pos1 ->
-      if pos1 >= len then (List.Tot.rev acc, st)
+      if pos1 >= len then { tdr_triples = List.Tot.rev acc; tdr_state = st; tdr_has_error = has_error }
       else
         begin match parse_turtle_statement st input pos1 fuel with
         | ParseOk (triples, st') pos2 ->
           if pos2 = pos1 then
-            // No progress — stop
-            (List.Tot.rev ((List.Tot.rev triples) @ acc), st')
+            // No progress -- stop
+            { tdr_triples = List.Tot.rev ((List.Tot.rev triples) @ acc);
+              tdr_state = st'; tdr_has_error = has_error }
           else
-            parse_turtle_doc st' input pos2 ((List.Tot.rev triples) @ acc) (fuel - 1)
+            parse_turtle_doc st' input pos2 ((List.Tot.rev triples) @ acc) has_error (fuel - 1)
         | ParseFail _ _ ->
-          // Skip to next line on failure
+          // Skip to next line on failure, mark error
           let pos2 = skip_to_eol input pos1 (len - pos1) in
-          if pos2 = pos1 then (List.Tot.rev acc, st)
-          else parse_turtle_doc st input pos2 acc (fuel - 1)
+          if pos2 = pos1 then
+            { tdr_triples = List.Tot.rev acc; tdr_state = st; tdr_has_error = true }
+          else
+            parse_turtle_doc st input pos2 acc true (fuel - 1)
         end
 
 (* ================================================================ *)
 (* Entry point                                                       *)
 (* ================================================================ *)
 
-(* Parse a Turtle document string into a list of triples *)
+// Lenient: always returns triples (for positive tests, compatibility)
 let parse_turtle (input: string) : list triple =
   let len = String.length input in
   let fuel = (len + 1) `op_Multiply` 2 in
-  let (triples, _) = parse_turtle_doc empty_turtle_state input 0 [] fuel in
-  triples
+  let r = parse_turtle_doc empty_turtle_state input 0 [] false fuel in
+  r.tdr_triples
 
-(* Parse with initial state (e.g., with a base IRI) *)
 let parse_turtle_with_base (input: string) (base: string) : list triple =
   let len = String.length input in
   let fuel = (len + 1) `op_Multiply` 2 in
   let st = { empty_turtle_state with base_iri = base } in
-  let (triples, _) = parse_turtle_doc st input 0 [] fuel in
-  triples
+  let r = parse_turtle_doc st input 0 [] false fuel in
+  r.tdr_triples
+
+// Strict: returns None if any parse errors were encountered
+let parse_turtle_strict (input: string) : option (list triple) =
+  let len = String.length input in
+  let fuel = (len + 1) `op_Multiply` 2 in
+  let r = parse_turtle_doc empty_turtle_state input 0 [] false fuel in
+  if r.tdr_has_error then None else Some r.tdr_triples
+
+let parse_turtle_with_base_strict (input: string) (base: string) : option (list triple) =
+  let len = String.length input in
+  let fuel = (len + 1) `op_Multiply` 2 in
+  let st = { empty_turtle_state with base_iri = base } in
+  let r = parse_turtle_doc st input 0 [] false fuel in
+  if r.tdr_has_error then None else Some r.tdr_triples

@@ -3556,7 +3556,16 @@ let rec ggp_has_var (v : var_name) (p : group_graph_pattern) : Tot bool (decreas
   | GP_Bind _ bv p1 -> bv = v || ggp_has_var v p1
   | GP_Values vars _ -> List.Tot.existsb (fun vn -> vn = v) vars
   | GP_Service _ p1 _ -> ggp_has_var v p1
-  | GP_SubSelect _ -> false  // subquery variables are scoped
+  | GP_SubSelect q ->
+    // Subquery projected variables are in scope for the outer query
+    (match q.q_form with
+     | QF_Select (Select_Vars items) ->
+       List.Tot.existsb (fun (item : select_item) ->
+         match item with
+         | SI_Var sv -> sv = v
+         | SI_Expr _ sv -> sv = v) items
+     | QF_Select Select_All -> false  // SELECT * — can't statically check
+     | _ -> false)
   | GP_PropertyPath ps _ pt ->
     (match ps with PS_Var sv -> sv = v | _ -> false) ||
     (match pt with PT_Var tv -> tv = v | _ -> false)
