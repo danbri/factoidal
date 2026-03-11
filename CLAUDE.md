@@ -58,6 +58,18 @@ Rust/JS/OCaml/anything that "mirrors" a spec.
    owner check out any commit and immediately run tests without needing an
    F\*/opam toolchain. Do not add them to `.gitignore`. Do not skip them
    when staging. When you run `build-ocaml.sh`, commit the updated binaries.
+10. **ocaml-patches.sh is for stubs and workarounds, NOT logic.** The patch
+    file exists to wire `assume val` stubs, fix F\* type system limitations
+    (e.g., char range constraints), and do forward-reference wiring for mutual
+    recursion. It must **never** contain RDF/SPARQL semantic logic — no
+    entailment reasoning, no RDFS closure rules, no query rewriting, no graph
+    transformations. If you find yourself writing "if the entailment regime
+    is RDFS then do X" in a patch, STOP — that logic belongs in F\*. Every
+    line of logic in `ocaml-patches.sh` or `w3c_runner.ml` is a line that
+    won't be verified, won't extract to C/WASM, and must be re-implemented
+    for every target language. **Known violations (tracked in issue #61):**
+    RDFS reflexivity axioms (issue #60), blank-node-as-existential rewriting
+    (issue #53). These must be elevated to F\*.
 
 ## Agent Work Strategy
 
@@ -166,6 +178,19 @@ Previous Claude sessions made these errors. Read and internalize:
     instead: `CMD_RC=0; OUTPUT=$(cmd ...) || CMD_RC=$?`. This lets the script
     continue while preserving the exit code for error reporting. The grep-based
     success checks still gate overall pass/fail.
+
+15. **Sneaking logic into ocaml-patches.sh or w3c_runner.ml.** When a test
+    fails, the temptation is to "quickly fix it" by adding OCaml code to the
+    patches or test runner. This is cobbling by another name. Examples that
+    happened and must be elevated to F\*:
+    - RDFS reflexivity axioms computed in `w3c_runner.ml` (issue #60)
+    - Blank-node-to-variable rewriting for entailment (issue #61)
+    - Entailment regime detection and closure application
+    **The test:** if the code makes a semantic decision about RDF or SPARQL,
+    it belongs in `.fst` files. If it reads a file or compares strings, it's
+    I/O glue and can stay. `ocaml-patches.sh` may only contain: `assume val`
+    stubs, forward-reference wiring, F\* type system workarounds (with a
+    comment explaining the F\* limitation), and I/O-layer fixes.
 
 ## Current State (Honest Assessment)
 

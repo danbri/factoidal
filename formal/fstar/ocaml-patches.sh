@@ -1,9 +1,29 @@
 #!/bin/bash
 # Post-extraction patches for F*-extracted OCaml files.
-# These fix assume-val stubs, add IRI resolution, RDF/XML validation,
-# surrogate codepoint guards, and RDFS closure for entailment tests.
-#
 # Applied automatically by build-ocaml.sh after F* extraction.
+#
+# !! WARNING — READ BEFORE ADDING PATCHES !!
+#
+# This file may ONLY contain:
+#   1. assume val stubs (regex, hashing, etc.)
+#   2. Forward-reference wiring (mutual recursion: eval_expr_fwd, etc.)
+#   3. F* type system workarounds (e.g., char range 0xD7FF vs 0xD800)
+#   4. I/O layer fixes (file paths, error handling in test runner)
+#
+# This file must NEVER contain RDF/SPARQL semantic logic:
+#   - NO entailment reasoning or closure rules
+#   - NO query rewriting or graph transformations
+#   - NO RDFS/OWL inference
+#   - NO datatype coercion or value comparison
+#
+# If you're writing "if entailment regime is X then do Y" — STOP.
+# That logic belongs in .fst files and must be extracted, not hand-coded.
+# Every line of logic here is unverified and won't extract to C/WASM.
+# See CLAUDE.md iron rule #10 and anti-pattern #15.
+#
+# KNOWN VIOLATIONS (tracked in issue #61, must be elevated to F*):
+#   - Patch #3: RDFS reflexivity axioms in w3c_runner.ml (issue #60)
+#   - Patch #9: Blank-node-to-variable rewriting for entailment (issue #53)
 
 set -euo pipefail
 
@@ -821,6 +841,19 @@ with open(sys.argv[1], 'w') as f:
     f.write(content)
 PYEOF
   echo "  Parser_RDFXML.ml patched."
+fi
+
+# ======================================================================
+# Parser_NTriples.ml patches — fix U+D7FF boundary (F* char type limitation)
+# ======================================================================
+# F*'s char type uses precondition i < 0xD7FF, but Unicode allows U+D7FF
+# (surrogates are U+D800..U+DFFF). Patch valid_codepoint and safe_char_of_int
+# to use 0xD800 so U+D7FF is accepted at runtime.
+FILE="$OUTDIR/Parser_NTriples.ml"
+if [[ -f "$FILE" ]]; then
+  echo "  Patching $FILE..."
+  sed -i 's/(cp < (Prims.of_int (0xD7FF)))/(cp < (Prims.of_int (0xD800)))/g' "$FILE"
+  echo "  Parser_NTriples.ml patched."
 fi
 
 # ======================================================================

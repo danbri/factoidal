@@ -26,7 +26,9 @@ let hex_val (c:FStar.Char.char) : int =
   | None -> 0
 
 // Valid codepoint for F*'s char_of_int precondition: i < 0xD7FF.
-// F* is stricter than Unicode (which allows up to U+D7FF inclusive).
+// NOTE: F*'s char type uses strict < 0xD7FF, excluding U+D7FF itself.
+// Unicode allows U+D7FF (surrogates are U+D800..U+DFFF). We patch the
+// extracted OCaml to use < 0xD800 via ocaml-patches.sh.
 let valid_codepoint (cp:int) : bool =
   cp >= 0 && (cp < 0xD7FF || (cp >= 0xE000 && cp <= 0x10FFFF))
 
