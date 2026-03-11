@@ -7,5 +7,5 @@ cat > /tmp/test.nq <<'EOF'
 <http://example.org/s4> <http://example.org/p4> "other" <http://example.org/g2> . 
 EOF
 
-./factoidal -d /tmp/test.nq -e 'SELECT * WHERE { GRAPH ?g { ?s ?p ?o } }'
+factoidal -d /tmp/test.nq -e 'SELECT * WHERE { GRAPH ?g { ?s ?p ?o } }'
 
