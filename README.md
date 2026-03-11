@@ -30,6 +30,10 @@ eval $(opam env --switch=fstar)
 
 # The factoidal CLI is now at:
 ./ocaml-output/factoidal --help
+
+# e.g. usage
+alias factoidal=`pwd`/formal/fstar/ocaml-output/factoidal
+
 ```
 
 ## The `factoidal` Command-Line Tool
