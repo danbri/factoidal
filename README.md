@@ -72,6 +72,34 @@ factoidal -d default.ttl -n http://example.org/g1=g1.ttl --query query.rq
 factoidal -d data.ttl -e 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }' -o csv
 ```
 
+### N-Quads and named graphs
+
+N-Quads (`.nq`) and TriG (`.trig`) files contain named graphs. Use `GRAPH`
+patterns to query them:
+
+```bash
+# Query named graphs in an N-Quads file
+factoidal --data data.nq -e 'SELECT * WHERE { GRAPH ?g { ?s ?p ?o } }'
+
+# Query a specific named graph
+factoidal -d data.nq -e '
+  SELECT ?s ?p ?o
+  WHERE { GRAPH <http://example.org/graph1> { ?s ?p ?o } }
+'
+
+# Without GRAPH, only the default graph is queried
+factoidal -d data.nq -e 'SELECT * WHERE { ?s ?p ?o }'
+
+# Count triples across all graphs
+factoidal --count data.nq
+
+# Dump all quads as N-Triples (flattened)
+factoidal --dump data.nq
+
+# TriG files work the same way
+factoidal -d data.trig -e 'SELECT ?g ?s WHERE { GRAPH ?g { ?s ?p ?o } } LIMIT 10'
+```
+
 ### RDF parsing and conversion
 
 ```bash
@@ -192,6 +220,11 @@ SPARQL query:
   factoidal -d file1.ttl -d file2.nt --query q.rq
   cat data.ttl | factoidal -d - -e 'SELECT ...'
 
+Named graphs (N-Quads / TriG):
+  factoidal -d data.nq -e 'SELECT * WHERE { GRAPH ?g { ?s ?p ?o } }'
+  factoidal -d data.trig -e 'SELECT ?g ?s WHERE { GRAPH ?g { ?s ?p ?o } }'
+  factoidal -d data.nq -e 'SELECT * WHERE { ?s ?p ?o }'  (default graph only)
+
 RDF parsing/dump:
   factoidal --dump FILE.ttl           Parse and dump as N-Triples
   factoidal --count FILE.ttl          Count triples
@@ -199,6 +232,7 @@ RDF parsing/dump:
 
 Options:
   -d, --data FILE        Load RDF data (repeatable, "-" for stdin)
+                         Format auto-detected: .ttl .nt .nq .trig .rdf .xml .owl
   -n, --named IRI=FILE   Load named graph
   -q, --query FILE       SPARQL query file
   -e SPARQL              Inline SPARQL query string
@@ -210,8 +244,12 @@ Options:
   --version              Show version
   --help                 This help
 
-Supported RDF formats:  Turtle, N-Triples, N-Quads, TriG, RDF/XML
+Supported RDF formats:  Turtle (.ttl), N-Triples (.nt), N-Quads (.nq),
+                        TriG (.trig), RDF/XML (.rdf, .xml, .owl)
 Supported query forms:  SELECT, ASK, CONSTRUCT
+
+N-Quads and TriG files preserve named graph structure. Use GRAPH patterns
+in SPARQL to query specific graphs.
 ```
 
 ## Supported SPARQL Features
