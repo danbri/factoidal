@@ -5,6 +5,8 @@ verified code extracted to OCaml for execution. The F\* specifications
 are the product — executable code is obtained by extraction, not by
 hand-writing implementations.
 
+Status: I'm surprised it works at all. I have seen rdf/xml FOAF files parse in milliseconds, but Turtle DBpedia entries will take longer than heat death of the universe. Formal does not necessarily mean fast. Work in progress.
+
 **[Live W3C test results](https://danbri.github.io/factoidal/test-results/)**
 
 ## Quick Start
