@@ -2292,6 +2292,23 @@ and parse_select_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (ts 
             // SELECT * with GROUP BY is not allowed per SPARQL 1.1
             if Select_All? sel && Some? gb then
               ParseErr "SELECT * not allowed with GROUP BY"
+            // Check ungrouped variables in SELECT projection
+            else if Some? gb && (
+              let gcs = Some?.v gb in
+              let is_grouped (v : var_name) : bool =
+                not (List.Tot.for_all (fun (gc : group_condition) ->
+                  match gc with
+                  | GC_Var gv -> not (streq gv v)
+                  | GC_Expr _ (Some gv) -> not (streq gv v)
+                  | _ -> true) gcs) in
+              match sel with
+              | Select_Vars items ->
+                not (List.Tot.for_all (fun (item : select_item) ->
+                  match item with
+                  | SI_Var v -> is_grouped v
+                  | _ -> true) items)
+              | _ -> false) then
+              ParseErr "SELECT projects ungrouped variable"
             else
             // Check for post-query VALUES clause
             let (vals, ts7) = begin match parse_peek ts6 with
@@ -2403,11 +2420,23 @@ and parse_select_vars (pm : prefix_map) (fuel : nat) (ts : token_stream)
       else ParseOk (Select_Vars items) ts'
     end
 
+and select_item_var (item : select_item) : var_name =
+  match item with
+  | SI_Var v -> v
+  | SI_Expr _ v -> v
+
+and select_items_has_var (v : var_name) (items : list select_item) : Tot bool (decreases items) =
+  match items with
+  | [] -> false
+  | item :: rest -> streq (select_item_var item) v || select_items_has_var v rest
+
 and parse_select_items (pm : prefix_map) (fuel : nat) (acc : list select_item) (ts : token_stream)
   : Tot (parse_result (list select_item)) (decreases fuel) =
   if fuel = 0 then ParseOk (List.Tot.rev acc) ts
   else match parse_peek ts with
-  | Tok_VAR v -> parse_select_items pm (fuel-1) (SI_Var v :: acc) (parse_advance ts)
+  | Tok_VAR v ->
+    if select_items_has_var v acc then ParseErr "duplicate variable in SELECT"
+    else parse_select_items pm (fuel-1) (SI_Var v :: acc) (parse_advance ts)
   | Tok_LPAREN ->
     (match parse_expr pm (fuel-1) (parse_advance ts) with
      | ParseErr m -> ParseErr m
@@ -2417,6 +2446,8 @@ and parse_select_items (pm : prefix_map) (fuel : nat) (acc : list select_item) (
        | ParseOk () ts'' ->
          begin match parse_peek ts'' with
          | Tok_VAR v ->
+           if select_items_has_var v acc then ParseErr "duplicate variable in SELECT"
+           else
            (match parse_expect Tok_RPAREN (parse_advance ts'') with
             | ParseErr m -> ParseErr m
             | ParseOk () ts''' -> parse_select_items pm (fuel-1) (SI_Expr e v :: acc) ts''')
