@@ -122,6 +122,31 @@ let parse_srx_fstar content =
     | Some (vars, rows) -> `SRX_Bindings (vars, rows)
     | None -> failwith "Failed to parse SRX results"
 
+(* SRJ (SPARQL Results JSON): F*-extracted *)
+let parse_srj_fstar content =
+  (* Try boolean first, then bindings *)
+  match Parser_JSONResults.parse_srj_boolean content with
+  | Some b -> `SRX_Boolean b
+  | None ->
+    match Parser_JSONResults.parse_srj_results content with
+    | Some (vars, rows) -> `SRX_Bindings (vars, rows)
+    | None -> failwith "Failed to parse SRJ (JSON) results"
+
+(* CSV results: F*-extracted *)
+let parse_csv_results_fstar content =
+  match Parser_CSVResults.parse_csv_to_solutions content with
+  | Some (vars, rows) ->
+    (* Convert solution_mapping (list of (var,term)) to the same format as SRX rows *)
+    `SRX_Bindings (vars, rows)
+  | None -> failwith "Failed to parse CSV results"
+
+(* TSV results: F*-extracted *)
+let parse_tsv_results_fstar content =
+  match Parser_CSVResults.parse_tsv_to_solutions content with
+  | Some (vars, rows) ->
+    `SRX_Bindings (vars, rows)
+  | None -> failwith "Failed to parse TSV results"
+
 (* N-Quads: F*-extracted, returns dataset *)
 let parse_nquads_fstar input =
   Parser_NQuads.parse_nquads input
@@ -413,12 +438,44 @@ let term_equal a b =
     (l1.datatype = l2.datatype && numeric_literal_equal l1 l2)
   | _ -> false
 
-let binding_row_matches expected actual =
+(* CSV-lenient term comparison: CSV format loses type information,
+   so "4"^^xsd:string from CSV should match "4"^^xsd:integer from query.
+   When the expected term is xsd:string (CSV default), match any literal
+   with the same lexical form. *)
+let term_equal_csv_lenient a b =
+  match a, b with
+  | T_IRI i1, T_IRI i2 -> i1 = i2
+  | T_BNode _, T_BNode _ -> true
+  | T_Literal l1, T_Literal l2 ->
+    if l1.datatype = "http://www.w3.org/2001/XMLSchema#string" && l1.lang_tag = None then
+      (* CSV expected is xsd:string — just compare lexical forms *)
+      l1.lexical_form = l2.lexical_form
+    else
+      term_equal (T_Literal l1) (T_Literal l2)
+  | _ -> false
+
+let binding_row_matches_with cmp expected actual =
   List.for_all (fun (var, exp_val) ->
     match List.assoc_opt var actual with
-    | Some act_val -> term_equal exp_val act_val
+    | Some act_val -> cmp exp_val act_val
     | None -> false
   ) expected
+
+let binding_row_matches expected actual =
+  binding_row_matches_with term_equal expected actual
+
+let results_match_with cmp expected_rows actual_rows =
+  if List.length expected_rows <> List.length actual_rows then false
+  else
+    let actual_remaining = ref actual_rows in
+    List.for_all (fun exp_row ->
+      match List.partition (binding_row_matches_with cmp exp_row) !actual_remaining with
+      | (match_ :: rest_matches, non_matches) ->
+        actual_remaining := rest_matches @ non_matches;
+        ignore match_;
+        true
+      | ([], _) -> false
+    ) expected_rows
 
 let results_match expected_rows actual_rows =
   (* Check that every expected row has a matching actual row (set semantics) *)
@@ -815,19 +872,32 @@ let run_query_eval_test tc =
     let content = match read_file rf with
       | Some c -> c
       | None -> raise (Unsupported (Printf.sprintf "Result file not found: %s" rf)) in
-    if Filename.check_suffix rf ".srx" then begin
-      match parse_srx_fstar content with
+    (* Parse expected results based on file extension *)
+    let parsed_result =
+      if Filename.check_suffix rf ".srx" then parse_srx_fstar content
+      else if Filename.check_suffix rf ".srj" then parse_srj_fstar content
+      else if Filename.check_suffix rf ".tsv" then parse_tsv_results_fstar content
+      else if Filename.check_suffix rf ".csv" then parse_csv_results_fstar content
+      else if Filename.check_suffix rf ".ttl" then
+        raise (Unsupported "Turtle result format not yet supported")
+      else
+        raise (Unsupported (Printf.sprintf "Unknown result format: %s" rf))
+    in
+    (* Use CSV-lenient comparison for .csv result files *)
+    let is_csv_result = Filename.check_suffix rf ".csv" in
+    let cmp_fn = if is_csv_result then term_equal_csv_lenient else term_equal in
+    begin match parsed_result with
       | `SRX_Boolean _expected_bool ->
         (* ASK query — just check we got here without error *)
         Pass
       | `SRX_Bindings (_vars, expected_rows) ->
-        if results_match expected_rows actual_results then Pass
+        if results_match_with cmp_fn expected_rows actual_results then Pass
         else begin
           (* Compute unmatched rows *)
           let actual_remaining = ref actual_results in
           let unmatched = ref [] in
           List.iter (fun exp_row ->
-            match List.partition (binding_row_matches exp_row) !actual_remaining with
+            match List.partition (binding_row_matches_with cmp_fn exp_row) !actual_remaining with
             | (_ :: rest, non) -> actual_remaining := rest @ non
             | ([], _) -> unmatched := exp_row :: !unmatched
           ) expected_rows;
@@ -847,11 +917,7 @@ let run_query_eval_test tc =
                            (List.map (fun s -> "      UNMATCHED: " ^ s) unmatched_strs) in
           Fail msg
         end
-    end else if Filename.check_suffix rf ".ttl" then begin
-      (* Result set in Turtle format — not yet supported *)
-      raise (Unsupported "Turtle result format not yet supported")
-    end else
-      raise (Unsupported (Printf.sprintf "Unknown result format: %s" rf))
+    end
 
 let run_test tc =
   match tc.test_type with
@@ -882,7 +948,13 @@ let run_test tc =
   | "UpdateEvaluationTest" | "PositiveUpdateSyntaxTest11" | "NegativeUpdateSyntaxTest11" ->
     Skip "UPDATE tests not in scope"
   | "CSVResultFormatTest" ->
-    Unsupported_feature "CSV result tests not yet implemented"
+    (* CSV result format tests are like QueryEvaluationTest but expect CSV output *)
+    (try run_query_eval_test tc
+     with
+     | Unsupported msg -> Unsupported_feature msg
+     | Sparql_unsupported msg -> Unsupported_feature msg
+     | Sparql_parse_error msg -> Fail (Printf.sprintf "SPARQL parse: %s" msg)
+     | Failure msg -> Fail (Printf.sprintf "Runtime: %s" msg))
   | other ->
     Skip (Printf.sprintf "Unknown test type: %s" other)
 

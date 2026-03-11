@@ -43,7 +43,8 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              Parser.NTriples.fst Parser.Turtle.fst \
              Parser.NQuads.fst Parser.TriG.fst \
              Parser.XML.fst Parser.RDFXML.fst \
-             Parser.SRX.fst Parser.CSVResults.fst; do
+             Parser.SRX.fst Parser.CSVResults.fst \
+             Parser.JSONResults.fst; do
     if [ -f "$fst" ]; then
       echo "    $fst"
       FSTAR_RC=0
@@ -79,7 +80,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   COMMON_MODULES="RDF_Graph_Executable.ml \
     Parser_Combinators.ml Parser_NTriples.ml Parser_Turtle.ml \
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
-    Parser_SRX.ml Parser_CSVResults.ml \
+    Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
     SPARQL11_Algebra.ml SPARQL11_Parser.ml"
 
   # Static linking so binaries run on any x86-64 Linux (no glibc version dependency)
@@ -124,7 +125,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_Graph_Executable.ml \
     Parser_Combinators.ml Parser_NTriples.ml Parser_Turtle.ml \
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
-    Parser_SRX.ml Parser_CSVResults.ml \
+    Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
     SPARQL11_Algebra.ml SPARQL11_Parser.ml \
     w3c_runner.ml \
     -o w3c_runner.byte 2>&1 | grep -i error || true
