@@ -39,7 +39,8 @@ Rust/JS/OCaml/anything that "mirrors" a spec.
    KaRaMeL for C/WASM). Never vibe-code an implementation and claim it "mirrors"
    the spec.
 3. **assume val = acknowledged gap.** Every `assume val` must have a stub in
-   `ocaml-patches.sh` or the OCaml test harness. No silent holes.
+   `minimal_regrettable_glue_code_each_with_an_open_issue/` (individual patch
+   files, each with a GitHub issue number in the filename). No silent holes.
 4. **Parsers belong in F\*.** RDF serialization parsers (N-Triples, Turtle,
    N-Quads, TriG, RDF/XML, CSV/TSV results) are implemented in F\* and
    extracted. All hand-written OCaml parsers have been removed. New parsers
@@ -58,18 +59,18 @@ Rust/JS/OCaml/anything that "mirrors" a spec.
    owner check out any commit and immediately run tests without needing an
    F\*/opam toolchain. Do not add them to `.gitignore`. Do not skip them
    when staging. When you run `build-ocaml.sh`, commit the updated binaries.
-10. **ocaml-patches.sh is for stubs and workarounds, NOT logic.** The patch
-    file exists to wire `assume val` stubs, fix F\* type system limitations
-    (e.g., char range constraints), and do forward-reference wiring for mutual
-    recursion. It must **never** contain RDF/SPARQL semantic logic — no
-    entailment reasoning, no RDFS closure rules, no query rewriting, no graph
-    transformations. If you find yourself writing "if the entailment regime
-    is RDFS then do X" in a patch, STOP — that logic belongs in F\*. Every
-    line of logic in `ocaml-patches.sh` or `w3c_runner.ml` is a line that
-    won't be verified, won't extract to C/WASM, and must be re-implemented
-    for every target language. **Known violations (tracked in issue #61):**
-    RDFS reflexivity axioms (issue #60), blank-node-as-existential rewriting
-    (issue #53). These must be elevated to F\*.
+10. **Patches are for stubs and workarounds, NOT logic.** Post-extraction
+    patches live in `minimal_regrettable_glue_code_each_with_an_open_issue/`
+    as individual files named `<issue>_<description>.sh`. Each patch MUST
+    have a corresponding open GitHub issue. Patches may wire `assume val`
+    stubs, fix F\* type system limitations, and do forward-reference wiring.
+    They must **never** contain RDF/SPARQL semantic logic. If you find yourself
+    writing "if the entailment regime is RDFS then do X" in a patch, STOP —
+    that logic belongs in F\*. Every line of logic in a patch is unverified,
+    won't extract to C/WASM, and must be re-implemented for every target.
+    **Known violations:** RDFS reflexivity axioms (#60), blank-node-as-existential
+    rewriting (#53). When an issue is resolved (F\* replaces the patch), delete
+    the patch file.
 
 ## Agent Work Strategy
 
@@ -203,9 +204,11 @@ formal/fstar/
   SPARQL11.Parser.fst          F* SPARQL parser (in development)
   Makefile                     verify + extract-c targets
   build-ocaml.sh               F* -> OCaml -> js_of_ocaml pipeline
-  ocaml-patches.sh             post-extraction patches (assume-val stubs,
-                               IRI resolution, RDF/XML validation,
-                               surrogate guards, RDFS closure)
+  ocaml-patches.sh             master script: applies all patches from
+                               minimal_regrettable_glue_code_each_with_an_open_issue/
+  minimal_regrettable_glue_code_each_with_an_open_issue/
+                               individual patch files, each named
+                               <issue>_<description>.sh with GitHub issue
 ```
 
 ### Known Gaps in RDF.Graph.Executable.fst
@@ -277,16 +280,15 @@ it should reject), incomplete xsd:float/double casting, and no JSON/CSV/TSV
 result format support (20 tests). CONSTRUCT is partially implemented (2/3 pass).
 
 On the RDF parsing side, F\*-extracted parsers handle all six serialization
-formats: N-Triples 41/70, Turtle 213/313, N-Quads 53/87, TriG 235/356,
-RDF/XML 120/166, rdf-mt 39/39. Most parser failures involve IRI validation
-(percent-encoding, Unicode escapes), negative syntax tests where the parser
-accepts malformed input, and some Turtle/TriG eval tests with collection
-handling.
+formats: N-Triples 41/70, Turtle 296/313, N-Quads 53/87, TriG 334/356,
+RDF/XML 120/166, rdf-mt 39/39. Most remaining parser failures involve
+prefixed name validation (pname/local name escapes) and a few TriG-specific
+negative syntax edge cases.
 
 In short: the query evaluator works well for read-only SELECT queries and the
-parsers handle the common cases, but the system is held back by (a) parser
-edge cases around IRI validation and negative syntax rejection, (b) missing
-SPARQL UPDATE/Protocol, and (c) no JSON/CSV/TSV result formats.
+parsers handle the vast majority of cases. The system is held back by (a)
+prefixed name validation edge cases, (b) missing SPARQL UPDATE/Protocol,
+and (c) no JSON/CSV/TSV result formats.
 
 ### W3C Test Results (as of 2026-03-11)
 
@@ -302,9 +304,9 @@ update-silent). Protocol: 34 skipped. Service-description: 3 skipped.
 Unsupported: json-res (4), csv-tsv-res (6), aggregates (3 Turtle results),
 construct (4 Turtle results), subquery (2 Turtle results), bindings (1).
 
-**RDF 1.1 — 701 pass, 330 fail (1031 total)**
+**RDF 1.1 — 883 pass, 148 fail (1031 total)**
 
-Per-suite: N-Triples 41/70, Turtle 213/313, N-Quads 53/87, TriG 235/356,
+Per-suite: N-Triples 41/70, Turtle 296/313, N-Quads 53/87, TriG 334/356,
 RDF/XML 120/166, rdf-mt 39/39.
 
 **RDF 1.1 Model Theory — 39 pass, 0 fail (39 total)**
@@ -543,7 +545,18 @@ factoidal/
 │   ├── SPARQL11.Parser.fst        SPARQL parser (in development)
 │   ├── Makefile
 │   ├── build-ocaml.sh
-│   ├── ocaml-patches.sh
+│   ├── ocaml-patches.sh               applies patches from glue directory
+│   ├── minimal_regrettable_glue_code_each_with_an_open_issue/
+│   │   ├── 53_blank_node_variable_rewriting.sh
+│   │   ├── 60_rdfs_closure_reflexivity.sh
+│   │   ├── 62_forward_ref_wiring.sh
+│   │   ├── 63_regex_hash_uuid_stubs.sh
+│   │   ├── 64_sparql_parser_escape_stubs.sh
+│   │   ├── 65_base_iri_resolution.sh
+│   │   ├── 66_zero_length_property_path.sh
+│   │   ├── 67_rdfxml_validation.sh
+│   │   ├── 68_unicode_boundary_workarounds.sh
+│   │   └── 69_runner_io_glue.sh
 │   └── ocaml-output/          extracted + TEMPORARY test harness
 ├── tests/w3c/                 git submodule (W3C test files)
 ├── kgx/                       SPARQL CONSTRUCT queries (future)
