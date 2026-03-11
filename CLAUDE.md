@@ -195,6 +195,20 @@ Previous Claude sessions made these errors. Read and internalize:
     stubs, forward-reference wiring, F\* type system workarounds (with a
     comment explaining the F\* limitation), and I/O-layer fixes.
 
+16. **Truncating command output with `tail -N` or `head -N`.** Piping test
+    runners, build logs, or diagnostic output through `tail -20` (or similar)
+    silently discards the vast majority of the output. When a 1000-line test
+    run is piped through `tail -20`, 98% of the results vanish — including
+    the specific FAIL lines needed for debugging. This happened in
+    `build-ocaml.sh` where `w3c_runner --all 2>&1 | tail -20` hid all
+    individual test results. **Rule: never truncate command output in
+    scripts or CI.** Use `tee` to save full output to a file while still
+    streaming to the terminal: `cmd 2>&1 | tee results.log`. If you only
+    want a summary on screen, print the summary *after* the full run, don't
+    pipe through `tail`. The same applies to `head -N` — it kills the
+    process via SIGPIPE once N lines are emitted, so later output (including
+    summary lines) is lost entirely.
+
 ## Current State (Honest Assessment)
 
 ### F\* Specifications
