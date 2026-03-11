@@ -73,6 +73,13 @@ let is_iri_forbidden_codepoint (code:int) : bool =
 // IRI content: everything that's not '>' or whitespace control chars.
 // N-Triples IRIs do not contain escape sequences except \uXXXX and \UXXXXXXXX.
 
+// IRI body char: valid in IRI content without escaping (code > 0x20, not forbidden, not > or backslash)
+let is_iri_body_char (c:FStar.Char.char) : bool =
+  let code = FStar.Char.int_of_char c in
+  code > 0x20 && code <> 0x3E && code <> 0x5C &&
+  not (is_iri_forbidden_codepoint code)
+
+// Slow path for IRIs containing escapes: accumulates chars
 let rec parse_iri_body_acc (input:string) (pos:nat) (acc:list char) (fuel:nat)
   : Tot (parse_result string) (decreases fuel) =
   if fuel = 0 then ParseFail "IRI too long" pos
@@ -82,14 +89,14 @@ let rec parse_iri_body_acc (input:string) (pos:nat) (acc:list char) (fuel:nat)
     else
       let ch = String.index input pos in
       let code = FStar.Char.int_of_char ch in
-      if code = 0x3E then (* '>' - end of IRI *)
+      if code = 0x3E then
         ParseOk (String.string_of_list (List.Tot.rev acc)) (pos + 1)
-      else if code = 0x5C then (* backslash - escape *)
+      else if code = 0x5C then
         if pos + 1 >= len then ParseFail "backslash at end of IRI" pos
         else
           let next = String.index input (pos + 1) in
           let ncode = FStar.Char.int_of_char next in
-          if ncode = 0x75 then // \uXXXX
+          if ncode = 0x75 then
             if pos + 6 > len then ParseFail "incomplete \\u escape in IRI" pos
             else
               match hex_val_opt (String.index input (pos + 2)),
@@ -104,7 +111,7 @@ let rec parse_iri_body_acc (input:string) (pos:nat) (acc:list char) (fuel:nat)
                   let c = safe_char_of_int cp in
                   parse_iri_body_acc input (pos + 6) (c :: acc) (fuel - 1)
               | _ -> ParseFail "invalid hex digit in \\u escape" pos
-          else if ncode = 0x55 then // \UXXXXXXXX
+          else if ncode = 0x55 then
             if pos + 10 > len then ParseFail "incomplete \\U escape in IRI" pos
             else
               match hex_val_opt (String.index input (pos + 2)),
@@ -131,15 +138,45 @@ let rec parse_iri_body_acc (input:string) (pos:nat) (acc:list char) (fuel:nat)
       else
         parse_iri_body_acc input (pos + 1) (ch :: acc) (fuel - 1)
 
+// Fast-path IRI scanner: find position of '>' without building a char list.
+// Returns the position of '>' (not past it). Falls back on escape or error.
+let rec scan_iri_end (input:string) (pos:nat) (fuel:nat)
+  : Tot (parse_result nat) (decreases fuel) =
+  if fuel = 0 then ParseFail "IRI too long" pos
+  else
+    let len = String.length input in
+    if pos >= len then ParseFail "unterminated IRI" pos
+    else
+      let ch = String.index input pos in
+      let code = FStar.Char.int_of_char ch in
+      if code = 0x3E then ParseOk pos pos  // return position OF the '>'
+      else if code = 0x5C then ParseFail "has escapes" pos
+      else if code <= 0x20 || is_iri_forbidden_codepoint code then
+        ParseFail "invalid character in IRI" pos
+      else
+        scan_iri_end input (pos + 1) (fuel - 1)
+
 let parse_iri_raw : parser iri =
   fun input pos ->
     let len = String.length input in
     if pos >= len then ParseFail "expected '<'" pos
     else
       let ch = String.index input pos in
-      if FStar.Char.int_of_char ch = 0x3C then (* '<' *)
+      if FStar.Char.int_of_char ch = 0x3C then
+        let start = pos + 1 in
         let fuel = len - pos in
-        parse_iri_body_acc input (pos + 1) [] fuel
+        // Try fast-path first: scan for '>' with no escapes
+        match scan_iri_end input start fuel with
+        | ParseOk gt_pos _ ->
+          // gt_pos is position of '>'; IRI content is [start, gt_pos)
+          let iri_len = gt_pos - start in
+          if iri_len > 0 && start + iri_len <= len then
+            ParseOk (String.sub input start iri_len) (gt_pos + 1)
+          else
+            ParseOk "" (gt_pos + 1)
+        | ParseFail "has escapes" _ ->
+          parse_iri_body_acc input start [] fuel
+        | ParseFail msg fpos -> ParseFail msg fpos
       else
         ParseFail "expected '<'" pos
 
@@ -157,45 +194,48 @@ let parse_iri : parser wf_iri =
 
 (* Blank node label characters: alphanumeric, underscore, hyphen, dot
    (simplified from the full PN_CHARS production) *)
+// ASCII fast-path: most bnode labels are pure ASCII
 let is_bnode_char (c:FStar.Char.char) : bool =
   let code = FStar.Char.int_of_char c in
-  (code >= 0x30 && code <= 0x39) ||  (* 0-9 *)
-  (code >= 0x41 && code <= 0x5A) ||  (* A-Z *)
-  (code >= 0x61 && code <= 0x7A) ||  (* a-z *)
-  code = 0x5F ||                      (* _ *)
-  code = 0x2D ||                      (* - *)
-  code = 0x2E ||                      (* . *)
-  code = 0xB7 ||                      (* middle dot *)
-  (code >= 0x00C0 && code <= 0x00D6) ||
-  (code >= 0x00D8 && code <= 0x00F6) ||
-  (code >= 0x00F8 && code <= 0x02FF) ||
-  (code >= 0x0370 && code <= 0x037D) ||
-  (code >= 0x037F && code <= 0x1FFF) ||
-  (code >= 0x200C && code <= 0x200D) ||
-  (code >= 0x2070 && code <= 0x218F) ||
-  (code >= 0x2C00 && code <= 0x2FEF) ||
-  (code >= 0x3001 && code <= 0xD7FF) ||
-  (code >= 0xF900 && code <= 0xFDCF) ||
-  (code >= 0xFDF0 && code <= 0xFFFD)
+  if code < 0x80 then
+    (code >= 0x30 && code <= 0x39) ||
+    (code >= 0x41 && code <= 0x5A) ||
+    (code >= 0x61 && code <= 0x7A) ||
+    code = 0x5F || code = 0x2D || code = 0x2E
+  else
+    code = 0xB7 ||
+    (code >= 0x00C0 && code <= 0x00D6) ||
+    (code >= 0x00D8 && code <= 0x00F6) ||
+    (code >= 0x00F8 && code <= 0x02FF) ||
+    (code >= 0x0370 && code <= 0x037D) ||
+    (code >= 0x037F && code <= 0x1FFF) ||
+    (code >= 0x200C && code <= 0x200D) ||
+    (code >= 0x2070 && code <= 0x218F) ||
+    (code >= 0x2C00 && code <= 0x2FEF) ||
+    (code >= 0x3001 && code <= 0xD7FF) ||
+    (code >= 0xF900 && code <= 0xFDCF) ||
+    (code >= 0xFDF0 && code <= 0xFFFD)
 
-(* First character of bnode label: letter or underscore *)
+// ASCII fast-path for bnode start char
 let is_bnode_start (c:FStar.Char.char) : bool =
   let code = FStar.Char.int_of_char c in
-  (code >= 0x41 && code <= 0x5A) ||  (* A-Z *)
-  (code >= 0x61 && code <= 0x7A) ||  (* a-z *)
-  code = 0x5F ||                      (* _ *)
-  (code >= 0x30 && code <= 0x39) ||  (* 0-9 — N-Triples allows digits *)
-  (code >= 0x00C0 && code <= 0x00D6) ||
-  (code >= 0x00D8 && code <= 0x00F6) ||
-  (code >= 0x00F8 && code <= 0x02FF) ||
-  (code >= 0x0370 && code <= 0x037D) ||
-  (code >= 0x037F && code <= 0x1FFF) ||
-  (code >= 0x200C && code <= 0x200D) ||
-  (code >= 0x2070 && code <= 0x218F) ||
-  (code >= 0x2C00 && code <= 0x2FEF) ||
-  (code >= 0x3001 && code <= 0xD7FF) ||
-  (code >= 0xF900 && code <= 0xFDCF) ||
-  (code >= 0xFDF0 && code <= 0xFFFD)
+  if code < 0x80 then
+    (code >= 0x41 && code <= 0x5A) ||
+    (code >= 0x61 && code <= 0x7A) ||
+    code = 0x5F ||
+    (code >= 0x30 && code <= 0x39)
+  else
+    (code >= 0x00C0 && code <= 0x00D6) ||
+    (code >= 0x00D8 && code <= 0x00F6) ||
+    (code >= 0x00F8 && code <= 0x02FF) ||
+    (code >= 0x0370 && code <= 0x037D) ||
+    (code >= 0x037F && code <= 0x1FFF) ||
+    (code >= 0x200C && code <= 0x200D) ||
+    (code >= 0x2070 && code <= 0x218F) ||
+    (code >= 0x2C00 && code <= 0x2FEF) ||
+    (code >= 0x3001 && code <= 0xD7FF) ||
+    (code >= 0xF900 && code <= 0xFDCF) ||
+    (code >= 0xFDF0 && code <= 0xFFFD)
 
 let parse_bnode : parser bnode_id =
   fun input pos ->
@@ -212,7 +252,7 @@ let parse_bnode : parser bnode_id =
         else
           let first = String.index input start_pos in
           if is_bnode_start first then
-            match ptake_while is_bnode_char input start_pos with
+            match ptake_while_pos is_bnode_char input start_pos with
             | ParseOk label pos' ->
               (* Blank node labels must not end with '.' *)
               let label_len = String.length label in
@@ -307,15 +347,43 @@ let rec parse_string_body (input:string) (pos:nat) (acc:list char) (fuel:nat)
       else
         parse_string_body input (pos + 1) (ch :: acc) (fuel - 1)
 
+// Fast-path string scan: find closing quote with no escapes or raw newlines.
+// Returns position after the closing quote, or fails to signal fallback needed.
+let rec scan_string_fast (input:string) (pos:nat) (fuel:nat)
+  : Tot (parse_result unit) (decreases fuel) =
+  if fuel = 0 then ParseFail "string too long" pos
+  else
+    let len = String.length input in
+    if pos >= len then ParseFail "unterminated string literal" pos
+    else
+      let ch = String.index input pos in
+      let code = FStar.Char.int_of_char ch in
+      if code = 0x22 then ParseOk () (pos + 1)       // closing quote
+      else if code = 0x5C then ParseFail "has escapes" pos  // backslash, fall back
+      else if code = 0x0A || code = 0x0D then ParseFail "unescaped newline in string literal" pos
+      else scan_string_fast input (pos + 1) (fuel - 1)
+
 let parse_string_literal : parser string =
   fun input pos ->
     let len = String.length input in
     if pos >= len then ParseFail "expected '\"'" pos
     else
       let ch = String.index input pos in
-      if FStar.Char.int_of_char ch = 0x22 then (* '"' *)
+      if FStar.Char.int_of_char ch = 0x22 then
+        let start = pos + 1 in
         let fuel = len - pos in
-        parse_string_body input (pos + 1) [] fuel
+        // Fast path: scan for closing quote without escapes
+        match scan_string_fast input start fuel with
+        | ParseOk () end_pos ->
+          // end_pos is one past the closing quote; string content is [start, end_pos-1)
+          let str_len = end_pos - 1 - start in
+          if str_len > 0 && start + str_len <= len then
+            ParseOk (String.sub input start str_len) end_pos
+          else
+            ParseOk "" end_pos
+        | ParseFail "has escapes" _ ->
+          parse_string_body input start [] fuel
+        | ParseFail msg fpos -> ParseFail msg fpos
       else
         ParseFail "expected '\"'" pos
 
@@ -347,7 +415,7 @@ let parse_lang_tag : parser string =
         else if not (is_alpha (String.index input (pos + 1))) then
           ParseFail "language tag must start with a letter" (pos + 1)
         else
-          match ptake_while1 is_lang_char input (pos + 1) with
+          match ptake_while1_pos is_lang_char input (pos + 1) with
           | ParseOk lang pos' -> ParseOk lang pos'
           | ParseFail _ fpos -> ParseFail "expected language tag after '@'" fpos
       else

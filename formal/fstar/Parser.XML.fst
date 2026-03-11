@@ -24,19 +24,24 @@ type xml_node =
 
 let is_name_start_char (c:char) : bool =
   let code = Char.int_of_char c in
-  (code >= 0x41 && code <= 0x5A) ||
-  (code >= 0x61 && code <= 0x7A) ||
-  code = 0x5F ||
-  code = 0x3A ||
-  code >= 0xC0
+  if code < 0x80 then
+    (code >= 0x41 && code <= 0x5A) ||
+    (code >= 0x61 && code <= 0x7A) ||
+    code = 0x5F || code = 0x3A
+  else
+    code >= 0xC0
 
+// Flattened: single function, ASCII fast-path
 let is_name_char (c:char) : bool =
-  is_name_start_char c ||
-  (let code = Char.int_of_char c in
-   (code >= 0x30 && code <= 0x39) ||
-   code = 0x2D ||
-   code = 0x2E ||
-   code = 0xB7)
+  let code = Char.int_of_char c in
+  if code < 0x80 then
+    (code >= 0x41 && code <= 0x5A) ||
+    (code >= 0x61 && code <= 0x7A) ||
+    (code >= 0x30 && code <= 0x39) ||
+    code = 0x5F || code = 0x3A ||
+    code = 0x2D || code = 0x2E
+  else
+    code >= 0xC0 || code = 0xB7
 
 let is_xml_space (c:char) : bool =
   let code = Char.int_of_char c in
@@ -54,7 +59,7 @@ let parse_xml_name : parser string =
     else
       let ch = String.index input pos in
       if is_name_start_char ch then
-        match ptake_while is_name_char input (pos + 1) with
+        match ptake_while_pos is_name_char input (pos + 1) with
         | ParseOk rest pos' ->
           ParseOk (String.concat "" [String.string_of_char ch; rest]) pos'
         | ParseFail msg fpos -> ParseFail msg fpos
@@ -170,7 +175,7 @@ let rec parse_attr_value_body (qch:char) (input:string) (pos:nat) (acc:list stri
           parse_attr_value_body qch input pos' (decoded :: acc) (fuel - 1)
         | ParseFail msg fpos -> ParseFail msg fpos
       else
-        match ptake_while (fun c -> c <> qch && c <> '&') input pos with
+        match ptake_while_pos (fun c -> c <> qch && c <> '&') input pos with
         | ParseOk s pos' ->
           if String.length s > 0 then
             parse_attr_value_body qch input pos' (s :: acc) (fuel - 1)
@@ -195,7 +200,7 @@ let parse_attr_value (input:string) (pos:nat) : parse_result string =
 (* ================================================================ *)
 
 let skip_xml_space (input:string) (pos:nat) : parse_result unit =
-  match ptake_while is_xml_space input pos with
+  match ptake_while_pos is_xml_space input pos with
   | ParseOk _ pos' -> ParseOk () pos'
   | ParseFail msg fpos -> ParseFail msg fpos
 
@@ -228,7 +233,7 @@ let rec parse_attributes (input:string) (pos:nat) (fuel:nat)
     let len = String.length input in
     if pos >= len then ParseOk [] pos
     else
-      match ptake_while1 is_xml_space input pos with
+      match ptake_while1_pos is_xml_space input pos with
       | ParseOk _ pos1 ->
         if pos1 < len then
           let ch = String.index input pos1 in
@@ -267,7 +272,7 @@ let rec parse_text_content (input:string) (pos:nat) (acc:list string) (fuel:nat)
           parse_text_content input pos' (decoded :: acc) (fuel - 1)
         | ParseFail msg fpos -> ParseFail msg fpos
       else
-        match ptake_while (fun c -> c <> '<' && c <> '&') input pos with
+        match ptake_while_pos (fun c -> c <> '<' && c <> '&') input pos with
         | ParseOk s pos' ->
           if String.length s > 0 then
             parse_text_content input pos' (s :: acc) (fuel - 1)

@@ -130,81 +130,82 @@ let turtle_ws (input : Prims.string) (pos : Prims.nat) :
   else Parser_Combinators.ParseOk ((), pos)
 let is_pn_chars_base (c : FStar_Char.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in
-  (((((((((((((code >= (Prims.of_int (0x41))) &&
-                (code <= (Prims.of_int (0x5A))))
+  if code < (Prims.of_int (0x80))
+  then
+    ((code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x5A)))) ||
+      ((code >= (Prims.of_int (0x61))) && (code <= (Prims.of_int (0x7A))))
+  else
+    (((((((((((code >= (Prims.of_int (0x00C0))) &&
+                (code <= (Prims.of_int (0x00D6))))
                ||
-               ((code >= (Prims.of_int (0x61))) &&
-                  (code <= (Prims.of_int (0x7A)))))
+               ((code >= (Prims.of_int (0x00D8))) &&
+                  (code <= (Prims.of_int (0x00F6)))))
               ||
-              ((code >= (Prims.of_int (0x00C0))) &&
-                 (code <= (Prims.of_int (0x00D6)))))
+              ((code >= (Prims.of_int (0x00F8))) &&
+                 (code <= (Prims.of_int (0x02FF)))))
              ||
-             ((code >= (Prims.of_int (0x00D8))) &&
-                (code <= (Prims.of_int (0x00F6)))))
+             ((code >= (Prims.of_int (0x0370))) &&
+                (code <= (Prims.of_int (0x037D)))))
             ||
-            ((code >= (Prims.of_int (0x00F8))) &&
-               (code <= (Prims.of_int (0x02FF)))))
+            ((code >= (Prims.of_int (0x037F))) &&
+               (code <= (Prims.of_int (0x1FFF)))))
            ||
-           ((code >= (Prims.of_int (0x0370))) &&
-              (code <= (Prims.of_int (0x037D)))))
+           ((code >= (Prims.of_int (0x200C))) &&
+              (code <= (Prims.of_int (0x200D)))))
           ||
-          ((code >= (Prims.of_int (0x037F))) &&
-             (code <= (Prims.of_int (0x1FFF)))))
+          ((code >= (Prims.of_int (0x2070))) &&
+             (code <= (Prims.of_int (0x218F)))))
          ||
-         ((code >= (Prims.of_int (0x200C))) &&
-            (code <= (Prims.of_int (0x200D)))))
+         ((code >= (Prims.of_int (0x2C00))) &&
+            (code <= (Prims.of_int (0x2FEF)))))
         ||
-        ((code >= (Prims.of_int (0x2070))) &&
-           (code <= (Prims.of_int (0x218F)))))
+        ((code >= (Prims.of_int (0x3001))) &&
+           (code <= (Prims.of_int (0xD7FF)))))
        ||
-       ((code >= (Prims.of_int (0x2C00))) &&
-          (code <= (Prims.of_int (0x2FEF)))))
+       ((code >= (Prims.of_int (0xF900))) &&
+          (code <= (Prims.of_int (0xFDCF)))))
       ||
-      ((code >= (Prims.of_int (0x3001))) && (code <= (Prims.of_int (0xD7FF)))))
-     ||
-     ((code >= (Prims.of_int (0xF900))) && (code <= (Prims.of_int (0xFDCF)))))
-    ||
-    ((code >= (Prims.of_int (0xFDF0))) && (code <= (Prims.of_int (0xFFFD))))
+      ((code >= (Prims.of_int (0xFDF0))) && (code <= (Prims.of_int (0xFFFD))))
 let is_pn_chars_u (c : FStar_Char.char) : Prims.bool=
-  (is_pn_chars_base c) ||
-    ((FStar_Char.int_of_char c) = (Prims.of_int (0x5F)))
+  let code = FStar_Char.int_of_char c in
+  if code < (Prims.of_int (0x80))
+  then
+    (((code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x5A)))) ||
+       ((code >= (Prims.of_int (0x61))) && (code <= (Prims.of_int (0x7A)))))
+      || (code = (Prims.of_int (0x5F)))
+  else is_pn_chars_base c
 let is_pn_chars (c : FStar_Char.char) : Prims.bool=
-  (is_pn_chars_u c) ||
-    (let code = FStar_Char.int_of_char c in
-     ((((code = (Prims.of_int (0x2D))) ||
-          ((code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))))
-         || (code = (Prims.of_int (0xB7))))
+  let code = FStar_Char.int_of_char c in
+  if code < (Prims.of_int (0x80))
+  then
+    (((((code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x5A))))
+         ||
+         ((code >= (Prims.of_int (0x61))) && (code <= (Prims.of_int (0x7A)))))
         ||
+        ((code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))))
+       || (code = (Prims.of_int (0x5F))))
+      || (code = (Prims.of_int (0x2D)))
+  else
+    (((code = (Prims.of_int (0xB7))) ||
         ((code >= (Prims.of_int (0x0300))) &&
            (code <= (Prims.of_int (0x036F)))))
        ||
        ((code >= (Prims.of_int (0x203F))) &&
           (code <= (Prims.of_int (0x2040)))))
-let rec parse_pname_ns_acc (input : Prims.string) (pos : Prims.nat)
-  (acc : FStar_Char.char Prims.list) (fuel : Prims.nat) :
-  Prims.string Parser_Combinators.parse_result=
-  if fuel = Prims.int_zero
-  then Parser_Combinators.ParseFail ("prefix name too long", pos)
-  else
-    (let len = FStar_String.strlen input in
-     if pos >= len
-     then Parser_Combinators.ParseFail ("expected ':' in prefixed name", pos)
-     else
-       (let c = FStar_String.index input pos in
-        let code = FStar_Char.int_of_char c in
-        if code = (Prims.of_int (0x3A))
-        then
-          Parser_Combinators.ParseOk
-            ((FStar_String.string_of_list (FStar_List_Tot_Base.rev acc)),
-              (pos + Prims.int_one))
-        else
-          if (is_pn_chars c) || (code = (Prims.of_int (0x2E)))
-          then
-            parse_pname_ns_acc input (pos + Prims.int_one) (c :: acc)
-              (fuel - Prims.int_one)
-          else
-            Parser_Combinators.ParseFail
-              ("invalid character in prefix name", pos)))
+      || (is_pn_chars_base c)
+let is_pname_ns_body_char (c : FStar_Char.char) : Prims.bool=
+  let code = FStar_Char.int_of_char c in
+  if code < (Prims.of_int (0x80))
+  then
+    ((((((code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x5A))))
+          ||
+          ((code >= (Prims.of_int (0x61))) && (code <= (Prims.of_int (0x7A)))))
+         ||
+         ((code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))))
+        || (code = (Prims.of_int (0x5F))))
+       || (code = (Prims.of_int (0x2D))))
+      || (code = (Prims.of_int (0x2E)))
+  else is_pn_chars c
 let parse_pname_ns (input : Prims.string) (pos : Prims.nat) :
   Prims.string Parser_Combinators.parse_result=
   let len = FStar_String.strlen input in
@@ -218,22 +219,58 @@ let parse_pname_ns (input : Prims.string) (pos : Prims.nat) :
      else
        if is_pn_chars_base c
        then
-         (let fuel = len - pos in
-          parse_pname_ns_acc input (pos + Prims.int_one) [c] fuel)
+         (let end_pos =
+            Parser_Combinators.ptake_while_scan is_pname_ns_body_char input
+              (pos + Prims.int_one) (len - pos) in
+          if end_pos < len
+          then
+            let nc = FStar_String.index input end_pos in
+            (if (FStar_Char.int_of_char nc) = (Prims.of_int (0x3A))
+             then
+               Parser_Combinators.ParseOk
+                 ((FStar_String.sub input pos (end_pos - pos)),
+                   (end_pos + Prims.int_one))
+             else
+               Parser_Combinators.ParseFail
+                 ("expected ':' in prefixed name", end_pos))
+          else
+            Parser_Combinators.ParseFail
+              ("expected ':' in prefixed name", end_pos))
        else Parser_Combinators.ParseFail ("expected prefix name", pos))
 let is_pn_local_char (c : FStar_Char.char) : Prims.bool=
-  (is_pn_chars c) ||
-    (let code = FStar_Char.int_of_char c in
-     (((code = (Prims.of_int (0x3A))) || (code = (Prims.of_int (0x2E)))) ||
-        (code = (Prims.of_int (0x25))))
-       || (code = (Prims.of_int (0x5C))))
+  let code = FStar_Char.int_of_char c in
+  if code < (Prims.of_int (0x80))
+  then
+    (((((((((code >= (Prims.of_int (0x41))) &&
+              (code <= (Prims.of_int (0x5A))))
+             ||
+             ((code >= (Prims.of_int (0x61))) &&
+                (code <= (Prims.of_int (0x7A)))))
+            ||
+            ((code >= (Prims.of_int (0x30))) &&
+               (code <= (Prims.of_int (0x39)))))
+           || (code = (Prims.of_int (0x5F))))
+          || (code = (Prims.of_int (0x2D))))
+         || (code = (Prims.of_int (0x3A))))
+        || (code = (Prims.of_int (0x2E))))
+       || (code = (Prims.of_int (0x25))))
+      || (code = (Prims.of_int (0x5C)))
+  else is_pn_chars c
 let is_pn_local_start (c : FStar_Char.char) : Prims.bool=
-  (is_pn_chars_u c) ||
-    (let code = FStar_Char.int_of_char c in
-     (((code = (Prims.of_int (0x3A))) ||
-         ((code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))))
-        || (code = (Prims.of_int (0x25))))
-       || (code = (Prims.of_int (0x5C))))
+  let code = FStar_Char.int_of_char c in
+  if code < (Prims.of_int (0x80))
+  then
+    (((((((code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x5A))))
+           ||
+           ((code >= (Prims.of_int (0x61))) &&
+              (code <= (Prims.of_int (0x7A)))))
+          ||
+          ((code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))))
+         || (code = (Prims.of_int (0x5F))))
+        || (code = (Prims.of_int (0x3A))))
+       || (code = (Prims.of_int (0x25))))
+      || (code = (Prims.of_int (0x5C)))
+  else is_pn_chars_u c
 let parse_pn_local (input : Prims.string) (pos : Prims.nat) :
   Prims.string Parser_Combinators.parse_result=
   let len = FStar_String.strlen input in
@@ -243,7 +280,8 @@ let parse_pn_local (input : Prims.string) (pos : Prims.nat) :
     (let c = FStar_String.index input pos in
      if is_pn_local_start c
      then
-       match Parser_Combinators.ptake_while is_pn_local_char input pos with
+       match Parser_Combinators.ptake_while_pos is_pn_local_char input pos
+       with
        | Parser_Combinators.ParseOk (s, pos') ->
            let slen = FStar_String.strlen s in
            (if slen > Prims.int_one
