@@ -576,14 +576,22 @@ content = content.replace(
       else if next = 'u' && !i + 5 < len then begin
         let hex = String.sub s (!i + 2) 4 in
         (try let cp = int_of_string ("0x" ^ hex) in
-             Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
-         with _ -> Buffer.add_string buf (String.sub s !i 6));
+             if cp >= 0xD800 && cp <= 0xDFFF then
+               failwith "invalid Unicode codepoint: surrogate"
+             else
+               Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
+         with Failure msg -> raise (Failure msg)
+            | _ -> Buffer.add_string buf (String.sub s !i 6));
         i := !i + 6
       end else if next = 'U' && !i + 9 < len then begin
         let hex = String.sub s (!i + 2) 8 in
         (try let cp = int_of_string ("0x" ^ hex) in
-             Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
-         with _ -> Buffer.add_string buf (String.sub s !i 10));
+             if cp >= 0xD800 && cp <= 0xDFFF then
+               failwith "invalid Unicode codepoint: surrogate"
+             else
+               Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
+         with Failure msg -> raise (Failure msg)
+            | _ -> Buffer.add_string buf (String.sub s !i 10));
         i := !i + 10
       end else begin
         Buffer.add_char buf s.[!i];
@@ -661,20 +669,27 @@ content = content.replace(
               if RDF_Graph_Executable.is_iri dt'''
 )
 
-# 4. parse_prologue_base: propagate BASE to current_base_iri_ref
+# 4. parse_prologue: propagate BASE to current_base_iri_ref during parsing
+# The F* code correctly returns Some iri but we also need to set the mutable
+# ref so that resolve_tok_iri can access it during the rest of parsing.
 content = content.replace(
-    '''          | Tok_IRI iri ->
-              if RDF_Graph_Executable.is_iri iri
+    '''              if RDF_Graph_Executable.is_iri iri
               then
-                parse_prologue_base pm (FStar_Pervasives_Native.Some iri)
-                  (fuel - Prims.int_one) (parse_advance ts')''',
-    '''          | Tok_IRI iri ->
-              if RDF_Graph_Executable.is_iri iri
+                (match parse_prologue pm (fuel - Prims.int_one)
+                         (parse_advance ts')''',
+    '''              if RDF_Graph_Executable.is_iri iri
               then begin
                 SPARQL11_Algebra.current_base_iri_ref := Some iri;
-                parse_prologue_base pm (FStar_Pervasives_Native.Some iri)
-                  (fuel - Prims.int_one) (parse_advance ts')
-              end'''
+                (match parse_prologue pm (fuel - Prims.int_one)
+                         (parse_advance ts')'''
+)
+# Close the begin/end block
+content = content.replace(
+    '''                 | err -> err)
+              else ParseErr "invalid BASE IRI"''',
+    '''                 | err -> err)
+              end
+              else ParseErr "invalid BASE IRI"'''
 )
 
 with open(sys.argv[1], 'w') as f:
@@ -1093,20 +1108,16 @@ content = content.replace(
        (try ignore (parse_sparql_query ~base_file:(Some tc.query_file) content); Pass
         with
         | Sparql_parse_error _ -> Fail "Should parse but didn't"
+        | Failure _ -> Fail "Should parse but didn't"
         | Sparql_unsupported msg -> Unsupported_feature msg))'''
 )
 
-# 8. Pass query_file as base in negative syntax tests
+# 8. Catch Failure in negative syntax tests (e.g., surrogate codepoints)
 content = content.replace(
-    '''     | Some content ->
-       (try ignore (parse_sparql_query content); Fail "Should reject but parsed OK"
-        with
-        | Sparql_parse_error _ -> Pass
+    '''        | Sparql_parse_error _ -> Pass
         | Sparql_unsupported _ -> Unsupported_feature "Can't test rejection"))''',
-    '''     | Some content ->
-       (try ignore (parse_sparql_query ~base_file:(Some tc.query_file) content); Fail "Should reject but parsed OK"
-        with
-        | Sparql_parse_error _ -> Pass
+    '''        | Sparql_parse_error _ -> Pass
+        | Failure _ -> Pass
         | Sparql_unsupported _ -> Unsupported_feature "Can't test rejection"))'''
 )
 

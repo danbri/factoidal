@@ -1561,6 +1561,8 @@ and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern) (f
          | ParseOk () ts4 ->
            begin match parse_peek ts4 with
            | Tok_VAR v ->
+             if ggp_has_var v acc then ParseErr "BIND variable already in scope"
+             else
              (match parse_expect Tok_RPAREN (parse_advance ts4) with
               | ParseErr m -> ParseErr m
               | ParseOk () ts5 ->
@@ -2258,7 +2260,11 @@ and parse_prologue (pm : prefix_map) (fuel : nat) (ts : token_stream)
       let ts' = parse_advance ts in
       (match parse_peek ts' with
        | Tok_IRI iri ->
-         if is_iri iri then parse_prologue pm (fuel-1) (parse_advance ts')
+         if is_iri iri then
+           // Parse remaining prologue, then override the base
+           (match parse_prologue pm (fuel-1) (parse_advance ts') with
+            | ParseOk (pm', _) ts'' -> ParseOk (pm', Some iri) ts''
+            | err -> err)
          else ParseErr "invalid BASE IRI"
        | _ -> ParseErr "expected IRI after BASE")
     | _ -> ParseOk (pm, None) ts
@@ -2306,11 +2312,12 @@ and parse_select_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (ts 
                 not (List.Tot.for_all (fun (item : select_item) ->
                   match item with
                   | SI_Var v -> is_grouped v
-                  | _ -> true) items)
+                  | SI_Expr e _ -> not (expr_has_ungrouped_var is_grouped e)
+                  ) items)
               | _ -> false) then
               ParseErr "SELECT projects ungrouped variable"
             // Implicit GROUP BY: if any select item uses an aggregate
-            // but no GROUP BY is present, bare SI_Var projections are ungrouped
+            // but no GROUP BY is present, non-aggregate expressions with vars are ungrouped
             else if None? gb && (
               match sel with
               | Select_Vars items ->
@@ -2318,11 +2325,12 @@ and parse_select_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (ts 
                   match item with
                   | SI_Expr (E_Aggregate _ _ _) _ -> false
                   | _ -> true) items) in
-                let has_bare_var = not (List.Tot.for_all (fun (item : select_item) ->
+                let has_ungrouped = not (List.Tot.for_all (fun (item : select_item) ->
                   match item with
                   | SI_Var _ -> false
-                  | _ -> true) items) in
-                has_agg && has_bare_var
+                  | SI_Expr e _ -> not (expr_has_ungrouped_var (fun _ -> false) e)
+                  ) items) in
+                has_agg && has_ungrouped
               | _ -> false) then
               ParseErr "SELECT projects ungrouped variable"
             else
@@ -2371,6 +2379,16 @@ and parse_ask_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (ts : t
       end end end
 
 // Parse CONSTRUCT body
+// Check if a pattern is a basic graph pattern (only BGP, Join, PropertyPath, Empty)
+// CONSTRUCT WHERE short form only allows these — no FILTER, GRAPH, OPTIONAL, etc.
+and is_basic_pattern (p : group_graph_pattern) : Tot bool (decreases p) =
+  match p with
+  | GP_BGP _ -> true
+  | GP_Empty -> true
+  | GP_PropertyPath _ _ _ -> true
+  | GP_Join p1 p2 -> is_basic_pattern p1 && is_basic_pattern p2
+  | _ -> false
+
 and parse_construct_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (ts : token_stream)
   : Tot (parse_result query) (decreases fuel) =
   if fuel = 0 then ParseErr "recursion limit"
@@ -2386,6 +2404,9 @@ and parse_construct_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (
         begin match parse_group_graph_pattern pm (fuel-1) ts'' with
         | ParseErr m -> ParseErr m
         | ParseOk pattern ts''' ->
+          if not (is_basic_pattern pattern) then
+            ParseErr "CONSTRUCT WHERE short form only allows basic graph patterns"
+          else
           begin match parse_solution_modifier pm (fuel-1) ts''' with
           | ParseErr m -> ParseErr m
           | ParseOk (modifier, gb, hv) ts4 ->
