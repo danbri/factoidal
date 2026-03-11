@@ -2309,6 +2309,22 @@ and parse_select_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (ts 
                   | _ -> true) items)
               | _ -> false) then
               ParseErr "SELECT projects ungrouped variable"
+            // Implicit GROUP BY: if any select item uses an aggregate
+            // but no GROUP BY is present, bare SI_Var projections are ungrouped
+            else if None? gb && (
+              match sel with
+              | Select_Vars items ->
+                let has_agg = not (List.Tot.for_all (fun (item : select_item) ->
+                  match item with
+                  | SI_Expr (E_Aggregate _ _ _) _ -> false
+                  | _ -> true) items) in
+                let has_bare_var = not (List.Tot.for_all (fun (item : select_item) ->
+                  match item with
+                  | SI_Var _ -> false
+                  | _ -> true) items) in
+                has_agg && has_bare_var
+              | _ -> false) then
+              ParseErr "SELECT projects ungrouped variable"
             else
             // Check for post-query VALUES clause
             let (vals, ts7) = begin match parse_peek ts6 with
