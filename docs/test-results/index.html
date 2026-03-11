@@ -4,17 +4,20 @@
   <title>Factoidal W3C Test Results</title>
   <meta charset="utf-8">
   <style>
-    body { font-family: system-ui, -apple-system, sans-serif; max-width: 760px; margin: 2em auto; padding: 0 1em; line-height: 1.6; color: #333; }
+    body { font-family: system-ui, -apple-system, sans-serif; max-width: 800px; margin: 2em auto; padding: 0 1em; line-height: 1.6; color: #333; }
     h1 { border-bottom: 2px solid #2d6a4f; padding-bottom: 0.3em; }
     h2 { margin-top: 1.8em; }
     a { color: #2d6a4f; }
     nav { margin-bottom: 2em; font-size: 0.9em; }
     nav a { margin-right: 1.2em; }
-    .pass { color: green; font-weight: bold; }
-    .fail { color: red; }
-    pre { background: #f8f8f8; padding: 1em; overflow-x: auto; border-radius: 4px; border: 1px solid #ddd; }
-    .timestamp { color: #666; font-size: 0.9em; }
-    footer { margin-top: 3em; border-top: 1px solid #ddd; padding-top: 1em; font-size: 0.9em; color: #666; }
+    .summary { background: #f0f7f4; border: 1px solid #2d6a4f; border-radius: 6px; padding: 1em 1.5em; margin: 1em 0; }
+    .summary .numbers { font-size: 1.3em; font-weight: bold; }
+    .pass { color: #2d6a4f; }
+    .fail { color: #c0392b; }
+    .skip { color: #7f8c8d; }
+    pre { background: #f8f8f8; padding: 1em; overflow-x: auto; border-radius: 4px; border: 1px solid #ddd; font-size: 0.85em; }
+    .meta { color: #666; font-size: 0.85em; margin-bottom: 2em; }
+    footer { margin-top: 3em; border-top: 1px solid #ddd; padding-top: 1em; font-size: 0.85em; color: #666; }
   </style>
 </head>
 <body>
@@ -24,13 +27,21 @@
   <a href="https://github.com/danbri/factoidal">GitHub</a>
 </nav>
 <h1>W3C Test Results</h1>
-<p class="timestamp">Generated: 2026-03-11T09:07:07Z</p>
-<p>These results are generated automatically by CI from actual test runs.
-Source: <a href="https://github.com/danbri/factoidal/actions/workflows/w3c-tests.yml">W3C Test Suite workflow</a></p>
-<h2>SPARQL 1.1</h2>
+<p class="meta">Generated: 2026-03-11T11:17:26Z &middot; Commit: <code>3329896</code> &middot; Branch: <code>claude/rdf-sparql-test-status-Uecig</code></p>
+
+<div class="summary">
+  <div class="numbers">
+    SPARQL 1.1: <span class="pass">375 pass</span>, <span class="fail">43 fail</span>, <span class="skip">205 skip</span>
+  </div>
+  <div class="numbers">
+    RDF 1.1: <span class="pass">888 pass</span>, <span class="fail">143 fail</span>
+  </div>
+</div>
+
+<h2>SPARQL 1.1 Per-Suite</h2>
 <pre>
   add                                 pass:0 fail:0 skip:8 unsupported:0
-  aggregates                          pass:43 fail:1 skip:0 unsupported:3
+  aggregates                          pass:45 fail:1 skip:0 unsupported:1
   basic-update                        pass:0 fail:0 skip:13 unsupported:0
   bind                                pass:10 fail:0 skip:0 unsupported:0
   bindings                            pass:10 fail:0 skip:0 unsupported:1
@@ -38,7 +49,7 @@ Source: <a href="https://github.com/danbri/factoidal/actions/workflows/w3c-tests
   clear                               pass:0 fail:0 skip:4 unsupported:0
   construct                           pass:2 fail:1 skip:0 unsupported:4
   copy                                pass:0 fail:0 skip:6 unsupported:0
-  csv-tsv-res                         pass:0 fail:0 skip:0 unsupported:6
+  csv-tsv-res                         pass:6 fail:0 skip:0 unsupported:0
   delete                              pass:0 fail:0 skip:19 unsupported:0
   delete-data                         pass:0 fail:0 skip:6 unsupported:0
   delete-insert                       pass:8 fail:0 skip:9 unsupported:0
@@ -49,7 +60,7 @@ Source: <a href="https://github.com/danbri/factoidal/actions/workflows/w3c-tests
   functions                           pass:74 fail:1 skip:0 unsupported:0
   grouping                            pass:6 fail:0 skip:0 unsupported:0
   http-rdf-update                     pass:0 fail:0 skip:19 unsupported:0
-  json-res                            pass:0 fail:0 skip:0 unsupported:4
+  json-res                            pass:4 fail:0 skip:0 unsupported:0
   move                                pass:0 fail:0 skip:6 unsupported:0
   negation                            pass:11 fail:1 skip:0 unsupported:0
   project-expression                  pass:7 fail:0 skip:0 unsupported:0
@@ -64,16 +75,19 @@ Source: <a href="https://github.com/danbri/factoidal/actions/workflows/w3c-tests
   syntax-update-2                     pass:0 fail:0 skip:1 unsupported:0
   update-silent                       pass:0 fail:0 skip:13 unsupported:0
 </pre>
-<p><strong>========================================</strong></p>
-<h2>RDF 1.1</h2>
+
+<h2>RDF 1.1 Per-Suite</h2>
 <pre>
   rdf-mt                              pass:39 fail:0 skip:0 unsupported:0
   rdf-n-quads                         pass:53 fail:34 skip:0 unsupported:0
   rdf-n-triples                       pass:41 fail:29 skip:0 unsupported:0
-  rdf-trig                            pass:334 fail:22 skip:0 unsupported:0
+  rdf-trig                            pass:338 fail:18 skip:0 unsupported:0
   rdf-turtle                          pass:296 fail:17 skip:0 unsupported:0
-  rdf-xml                             pass:120 fail:46 skip:0 unsupported:0
+  rdf-xml                             pass:121 fail:45 skip:0 unsupported:0
 </pre>
-<p><strong>========================================</strong></p>
-<footer>Factoidal — verified RDF/SPARQL from F*.</footer>
+
+<footer>
+  Factoidal &mdash; verified RDF/SPARQL from F*.
+  Report generated by <code>generate-report.sh</code>.
+</footer>
 </body></html>
