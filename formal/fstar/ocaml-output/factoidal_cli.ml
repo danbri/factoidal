@@ -115,28 +115,35 @@ let file_base_iri path =
               else path in
     Some ("file://" ^ abs)
 
-let load_triples ?(format=None) ?(base=None) path =
+(* Load as dataset, preserving named graph structure for NQuads/TriG *)
+let load_dataset ?(format=None) ?(base=None) path =
   let content = read_file path in
   let fmt = match format with Some f -> f | None -> detect_format path in
   let base_iri = match base with Some b -> Some b | None -> file_base_iri path in
   match fmt with
-  | NT -> Parser_NTriples.parse_ntriples content
-  | Turtle ->
-    (match base_iri with
-     | Some b -> Parser_Turtle.parse_turtle_with_base content b
-     | None -> Parser_Turtle.parse_turtle content)
   | NQuads ->
-    let ds = Parser_NQuads.parse_nquads content in
-    ds.ds_default @ List.concat_map (fun ng -> ng.ng_graph) ds.ds_named
+    Parser_NQuads.parse_nquads content
   | TriG ->
-    let ds = match base_iri with
-      | Some b -> Parser_TriG.parse_trig_with_base_lenient content b
-      | None -> Parser_TriG.parse_trig_lenient content in
-    ds.ds_default @ List.concat_map (fun ng -> ng.ng_graph) ds.ds_named
-  | RDFXML ->
     (match base_iri with
-     | Some b -> Parser_RDFXML.parse_rdfxml_with_base b content
-     | None -> Parser_RDFXML.parse_rdfxml content)
+     | Some b -> Parser_TriG.parse_trig_with_base_lenient content b
+     | None -> Parser_TriG.parse_trig_lenient content)
+  | _ ->
+    let triples = match fmt with
+      | NT -> Parser_NTriples.parse_ntriples content
+      | Turtle ->
+        (match base_iri with
+         | Some b -> Parser_Turtle.parse_turtle_with_base content b
+         | None -> Parser_Turtle.parse_turtle content)
+      | RDFXML ->
+        (match base_iri with
+         | Some b -> Parser_RDFXML.parse_rdfxml_with_base b content
+         | None -> Parser_RDFXML.parse_rdfxml content)
+      | _ -> [] in
+    RDF_Graph_Executable.({ ds_default = triples; ds_named = [] })
+
+let load_triples ?(format=None) ?(base=None) path =
+  let ds = load_dataset ~format ~base path in
+  ds.ds_default @ List.concat_map (fun ng -> ng.ng_graph) ds.ds_named
 
 (* ============================================================================
    Result table formatting (like arq / isql)
@@ -232,6 +239,11 @@ let usage () =
   Printf.printf "  factoidal -d file1.ttl -d file2.nt --query q.rq\n";
   Printf.printf "  cat data.ttl | factoidal -d - -e 'SELECT ...'\n";
   Printf.printf "\n";
+  Printf.printf "Named graphs (N-Quads / TriG):\n";
+  Printf.printf "  factoidal -d data.nq -e 'SELECT * WHERE { GRAPH ?g { ?s ?p ?o } }'\n";
+  Printf.printf "  factoidal -d data.trig -e 'SELECT ?g ?s WHERE { GRAPH ?g { ?s ?p ?o } }'\n";
+  Printf.printf "  factoidal -d data.nq -e 'SELECT * WHERE { ?s ?p ?o }'  (queries default graph)\n";
+  Printf.printf "\n";
   Printf.printf "RDF parsing/dump:\n";
   Printf.printf "  factoidal --dump FILE.ttl           Parse and dump as N-Triples\n";
   Printf.printf "  factoidal --count FILE.ttl          Count triples\n";
@@ -239,6 +251,8 @@ let usage () =
   Printf.printf "\n";
   Printf.printf "Options:\n";
   Printf.printf "  -d, --data FILE        Load RDF data (repeatable, \"-\" for stdin)\n";
+  Printf.printf "                         Format auto-detected from extension:\n";
+  Printf.printf "                         .ttl .nt .nq .nquads .trig .rdf .xml .owl\n";
   Printf.printf "  -n, --named IRI=FILE   Load named graph\n";
   Printf.printf "  -q, --query FILE       SPARQL query file\n";
   Printf.printf "  -e SPARQL              Inline SPARQL query string\n";
@@ -250,8 +264,13 @@ let usage () =
   Printf.printf "  --version              Show version\n";
   Printf.printf "  --help                 This help\n";
   Printf.printf "\n";
-  Printf.printf "Supported RDF formats:  Turtle, N-Triples, N-Quads, TriG, RDF/XML\n";
+  Printf.printf "Supported RDF formats:  Turtle (.ttl), N-Triples (.nt), N-Quads (.nq),\n";
+  Printf.printf "                        TriG (.trig), RDF/XML (.rdf, .xml, .owl)\n";
   Printf.printf "Supported query forms:  SELECT, ASK, CONSTRUCT\n";
+  Printf.printf "\n";
+  Printf.printf "N-Quads and TriG files preserve named graph structure. Use GRAPH\n";
+  Printf.printf "patterns in SPARQL to query specific graphs. Without GRAPH, only\n";
+  Printf.printf "the default graph is queried.\n";
   Printf.printf "\n";
   Printf.printf "All parsing and query evaluation is performed by formally verified\n";
   Printf.printf "F* code, extracted to OCaml. See https://github.com/danbri/factoidal\n"
@@ -372,16 +391,20 @@ let () =
     Printf.eprintf "SPARQL parse error: %s\n" (Printexc.to_string e); exit 1
   in
 
-  (* Load default graph *)
-  let graph = List.concat_map (fun f ->
-    try load_triples ~format:cfg.input_format ~base:cfg.base_iri f
+  (* Load data files as datasets, preserving named graph structure *)
+  let datasets = List.map (fun f ->
+    try load_dataset ~format:cfg.input_format ~base:cfg.base_iri f
     with e ->
       Printf.eprintf "Error loading %s: %s\n" f (Printexc.to_string e);
       exit 1
   ) cfg.data_files in
 
-  (* Load named graphs *)
-  let named_graphs = List.map (fun (iri, path) ->
+  (* Merge all default graphs and named graphs *)
+  let graph = List.concat_map (fun ds -> ds.ds_default) datasets in
+  let file_named_graphs = List.concat_map (fun ds -> ds.ds_named) datasets in
+
+  (* Load explicitly named graphs from --named flag *)
+  let cli_named_graphs = List.map (fun (iri, path) ->
     let triples = try load_triples ~format:cfg.input_format ~base:cfg.base_iri path
     with e ->
       Printf.eprintf "Error loading named graph %s from %s: %s\n"
@@ -391,7 +414,10 @@ let () =
     RDF_Graph_Executable.({ ng_name = iri; ng_graph = triples })
   ) cfg.named_graphs in
 
-  let dataset = RDF_Graph_Executable.({ ds_default = graph; ds_named = named_graphs }) in
+  let dataset = RDF_Graph_Executable.({
+    ds_default = graph;
+    ds_named = file_named_graphs @ cli_named_graphs
+  }) in
 
   (* Evaluate *)
   (try
