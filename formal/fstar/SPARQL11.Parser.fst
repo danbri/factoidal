@@ -2243,7 +2243,9 @@ and parse_prologue (pm : prefix_map) (fuel : nat) (ts : token_stream)
       let ts' = parse_advance ts in
       (match parse_peek ts' with
        | Tok_PNAME pn ->
-         let (prefix, _) = split_pname pn in
+         let (prefix, local) = split_pname pn in
+         if String.length local > 0 then ParseErr "invalid PREFIX name (must be prefix: with no local part)"
+         else
          let ts'' = parse_advance ts' in
          (match parse_peek ts'' with
           | Tok_IRI iri ->

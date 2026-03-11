@@ -4149,16 +4149,21 @@ and parse_prologue (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
           | Tok_PNAME pn ->
               let uu___1 = split_pname pn in
               (match uu___1 with
-               | (prefix, uu___2) ->
-                   let ts'' = parse_advance ts' in
-                   (match parse_peek ts'' with
-                    | Tok_IRI iri ->
-                        if RDF_Graph_Executable.is_iri iri
-                        then
-                          parse_prologue ((prefix, iri) :: pm)
-                            (fuel - Prims.int_one) (parse_advance ts'')
-                        else ParseErr "invalid prefix IRI"
-                    | uu___3 -> ParseErr "expected IRI after PREFIX name"))
+               | (prefix, local) ->
+                   if (FStar_String.strlen local) > Prims.int_zero
+                   then
+                     ParseErr
+                       "invalid PREFIX name (must be prefix: with no local part)"
+                   else
+                     (let ts'' = parse_advance ts' in
+                      match parse_peek ts'' with
+                      | Tok_IRI iri ->
+                          if RDF_Graph_Executable.is_iri iri
+                          then
+                            parse_prologue ((prefix, iri) :: pm)
+                              (fuel - Prims.int_one) (parse_advance ts'')
+                          else ParseErr "invalid prefix IRI"
+                      | uu___3 -> ParseErr "expected IRI after PREFIX name"))
           | uu___1 -> ParseErr "expected prefix name after PREFIX")
      | Tok_BASE ->
          let ts' = parse_advance ts in
