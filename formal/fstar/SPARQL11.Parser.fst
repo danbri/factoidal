@@ -1561,6 +1561,8 @@ and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern) (f
          | ParseOk () ts4 ->
            begin match parse_peek ts4 with
            | Tok_VAR v ->
+             if ggp_has_var v acc then ParseErr "BIND variable already in scope"
+             else
              (match parse_expect Tok_RPAREN (parse_advance ts4) with
               | ParseErr m -> ParseErr m
               | ParseOk () ts5 ->
@@ -2377,6 +2379,16 @@ and parse_ask_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (ts : t
       end end end
 
 // Parse CONSTRUCT body
+// Check if a pattern is a basic graph pattern (only BGP, Join, PropertyPath, Empty)
+// CONSTRUCT WHERE short form only allows these — no FILTER, GRAPH, OPTIONAL, etc.
+and is_basic_pattern (p : group_graph_pattern) : Tot bool (decreases p) =
+  match p with
+  | GP_BGP _ -> true
+  | GP_Empty -> true
+  | GP_PropertyPath _ _ _ -> true
+  | GP_Join p1 p2 -> is_basic_pattern p1 && is_basic_pattern p2
+  | _ -> false
+
 and parse_construct_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (ts : token_stream)
   : Tot (parse_result query) (decreases fuel) =
   if fuel = 0 then ParseErr "recursion limit"
@@ -2392,6 +2404,9 @@ and parse_construct_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (
         begin match parse_group_graph_pattern pm (fuel-1) ts'' with
         | ParseErr m -> ParseErr m
         | ParseOk pattern ts''' ->
+          if not (is_basic_pattern pattern) then
+            ParseErr "CONSTRUCT WHERE short form only allows basic graph patterns"
+          else
           begin match parse_solution_modifier pm (fuel-1) ts''' with
           | ParseErr m -> ParseErr m
           | ParseOk (modifier, gb, hv) ts4 ->

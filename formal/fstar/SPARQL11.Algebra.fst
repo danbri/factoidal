@@ -3482,6 +3482,37 @@ let rec substitute_pattern (mu : solution_mapping) (p : group_graph_pattern)
   | GP_PropertyPath ps pp pt -> GP_PropertyPath (substitute_pattern_subject mu ps) pp (substitute_pattern_term mu pt)
   | GP_Empty -> GP_Empty
 
+// Check if a variable name appears in a triple pattern
+let tp_has_var (v : var_name) (tp : triple_pattern) : bool =
+  (match tp.tp_s with PS_Var sv -> sv = v | _ -> false) ||
+  (match tp.tp_p with PT_Var pv -> pv = v | _ -> false) ||
+  (match tp.tp_o with PT_Var ov -> ov = v | _ -> false)
+
+// Check if a variable name appears in a BGP
+let rec bgp_has_var (v : var_name) (b : bgp) : Tot bool (decreases b) =
+  match b with
+  | [] -> false
+  | tp :: rest -> tp_has_var v tp || bgp_has_var v rest
+
+// Check if a variable appears anywhere in a group graph pattern
+let rec ggp_has_var (v : var_name) (p : group_graph_pattern) : Tot bool (decreases p) =
+  match p with
+  | GP_BGP b -> bgp_has_var v b
+  | GP_Join p1 p2 -> ggp_has_var v p1 || ggp_has_var v p2
+  | GP_LeftJoin p1 p2 _ -> ggp_has_var v p1 || ggp_has_var v p2
+  | GP_Filter _ p1 -> ggp_has_var v p1
+  | GP_Union p1 p2 -> ggp_has_var v p1 || ggp_has_var v p2
+  | GP_Graph _ p1 -> ggp_has_var v p1
+  | GP_Minus p1 p2 -> ggp_has_var v p1 || ggp_has_var v p2
+  | GP_Bind _ bv p1 -> bv = v || ggp_has_var v p1
+  | GP_Values vars _ -> List.Tot.existsb (fun vn -> vn = v) vars
+  | GP_Service _ p1 _ -> ggp_has_var v p1
+  | GP_SubSelect _ -> false  // subquery variables are scoped
+  | GP_PropertyPath ps _ pt ->
+    (match ps with PS_Var sv -> sv = v | _ -> false) ||
+    (match pt with PT_Var tv -> tv = v | _ -> false)
+  | GP_Empty -> false
+
 let eval_exists (pattern : group_graph_pattern) (mu : solution_mapping)
   (graph : rdf_graph) (ds : rdf_dataset) : bool =
   let substituted = substitute_pattern mu pattern in

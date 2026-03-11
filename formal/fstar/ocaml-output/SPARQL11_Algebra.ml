@@ -4641,6 +4641,32 @@ let rec substitute_pattern (mu : RDF_Graph_Executable.solution_mapping)
         ((substitute_pattern_subject mu ps), pp,
           (substitute_pattern_term mu pt))
   | GP_Empty -> GP_Empty
+let tp_has_var (v : var_name) (tp : triple_pattern) : Prims.bool=
+  ((match tp.tp_s with | PS_Var sv -> sv = v | uu___ -> false) ||
+     (match tp.tp_p with | PT_Var pv -> pv = v | uu___ -> false))
+    || (match tp.tp_o with | PT_Var ov -> ov = v | uu___ -> false)
+let rec bgp_has_var (v : var_name) (b : bgp) : Prims.bool=
+  match b with
+  | [] -> false
+  | tp::rest -> (tp_has_var v tp) || (bgp_has_var v rest)
+let rec ggp_has_var (v : var_name) (p : group_graph_pattern) : Prims.bool=
+  match p with
+  | GP_BGP b -> bgp_has_var v b
+  | GP_Join (p1, p2) -> (ggp_has_var v p1) || (ggp_has_var v p2)
+  | GP_LeftJoin (p1, p2, uu___) -> (ggp_has_var v p1) || (ggp_has_var v p2)
+  | GP_Filter (uu___, p1) -> ggp_has_var v p1
+  | GP_Union (p1, p2) -> (ggp_has_var v p1) || (ggp_has_var v p2)
+  | GP_Graph (uu___, p1) -> ggp_has_var v p1
+  | GP_Minus (p1, p2) -> (ggp_has_var v p1) || (ggp_has_var v p2)
+  | GP_Bind (uu___, bv, p1) -> (bv = v) || (ggp_has_var v p1)
+  | GP_Values (vars, uu___) ->
+      FStar_List_Tot_Base.existsb (fun vn -> vn = v) vars
+  | GP_Service (uu___, p1, uu___1) -> ggp_has_var v p1
+  | GP_SubSelect uu___ -> false
+  | GP_PropertyPath (ps, uu___, pt) ->
+      (match ps with | PS_Var sv -> sv = v | uu___1 -> false) ||
+        ((match pt with | PT_Var tv -> tv = v | uu___1 -> false))
+  | GP_Empty -> false
 let eval_exists (pattern : group_graph_pattern)
   (mu : RDF_Graph_Executable.solution_mapping)
   (graph : RDF_Graph_Executable.rdf_graph)
