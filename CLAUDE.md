@@ -262,49 +262,49 @@ Hand-coded parsers have been deleted. Legacy copies remain in `junk/do_not_use/h
 | `eval_subselect_fwd` | forward decl (subqueries) | wired in ocaml-patches.sh |
 | `eval_property_path_fwd` | forward decl (property paths) | wired in ocaml-patches.sh |
 
-### Plain-English Status Summary (as of 2026-03-10)
+### Plain-English Status Summary (as of 2026-03-11)
 
 Factoidal is a formally verified RDF/SPARQL implementation written in F\* and
 tested against the official W3C conformance suites. The core SPARQL query
-evaluator passes 324 of 408 applicable query/syntax tests (79%), with strong
-results in aggregates (38/44), built-in functions (74/75), BIND (10/10),
-negation (11/12), property paths (31/33), entailment (39/70), and subqueries
-(9/12). The main SPARQL gaps are: no UPDATE support (205 tests skipped — not
-in scope for read-only query evaluation), no SPARQL Protocol, no federated
-query (SERVICE returns empty), incomplete negative syntax rejection (parser
-accepts 21 queries it should reject), incomplete xsd:float/double casting, and
-no JSON/CSV/TSV result format support (18 tests). CONSTRUCT is partially
-implemented (1/4 pass).
+evaluator passes 363 of 406 applicable query/syntax tests (89%), with strong
+results in aggregates (43/44), built-in functions (74/75), BIND (10/10),
+negation (11/12), property paths (33/33), entailment (44/70), exists (6/6),
+grouping (6/6), project-expression (7/7), and subqueries (9/11). The main
+SPARQL gaps are: no UPDATE support (205 tests skipped — not in scope for
+read-only query evaluation), no SPARQL Protocol, no federated query (SERVICE
+returns empty), incomplete negative syntax rejection (parser accepts 1 query
+it should reject), incomplete xsd:float/double casting, and no JSON/CSV/TSV
+result format support (20 tests). CONSTRUCT is partially implemented (2/3 pass).
 
 On the RDF parsing side, F\*-extracted parsers handle all six serialization
-formats: N-Triples 41/70, Turtle 203/313, N-Quads 53/87, TriG 223/356,
+formats: N-Triples 41/70, Turtle 213/313, N-Quads 53/87, TriG 235/356,
 RDF/XML 120/166, rdf-mt 39/39. Most parser failures involve IRI validation
 (percent-encoding, Unicode escapes), negative syntax tests where the parser
-accepts malformed input, and some Turtle/TriG eval tests with base URI
-resolution or collection handling.
+accepts malformed input, and some Turtle/TriG eval tests with collection
+handling.
 
 In short: the query evaluator works well for read-only SELECT queries and the
 parsers handle the common cases, but the system is held back by (a) parser
 edge cases around IRI validation and negative syntax rejection, (b) missing
 SPARQL UPDATE/Protocol, and (c) no JSON/CSV/TSV result formats.
 
-### W3C Test Results (as of 2026-03-10)
+### W3C Test Results (as of 2026-03-11)
 
-**SPARQL 1.1 — 324 pass, 84 fail, 205 skip, 18 unsupported (631 total)**
+**SPARQL 1.1 — 363 pass, 43 fail, 205 skip, 20 unsupported (631 total)**
 
-Per-suite: aggregates 38/47, bind 10/10, bindings 10/11, cast 1/6,
-construct 1/7, entailment 39/70, exists 5/6, functions 74/75, grouping 4/6,
-negation 11/12, project-expression 7/7, property-path 31/33, service 0/7,
-subquery 9/14, syntax-query 73/94, delete-insert 8/17.
+Per-suite: aggregates 43/47, bind 10/10, bindings 10/11, cast 4/6,
+construct 2/7, entailment 44/70, exists 6/6, functions 74/75, grouping 6/6,
+negation 11/12, project-expression 7/7, property-path 33/33, service 0/7,
+subquery 9/14, syntax-query 93/94, syntax-fed 3/3, delete-insert 8/17.
 Skipped: 205 UPDATE operations (add, basic-update, clear, copy, delete,
 delete-data, delete-where, drop, move, http-rdf-update, syntax-update-*,
-update-silent). Protocol: 34 skipped.
+update-silent). Protocol: 34 skipped. Service-description: 3 skipped.
 Unsupported: json-res (4), csv-tsv-res (6), aggregates (3 Turtle results),
-construct (3 Turtle results), subquery (2 Turtle results).
+construct (4 Turtle results), subquery (2 Turtle results), bindings (1).
 
-**RDF 1.1 — 679 pass, 352 fail (1031 total)**
+**RDF 1.1 — 701 pass, 330 fail (1031 total)**
 
-Per-suite: N-Triples 41/70, Turtle 203/313, N-Quads 53/87, TriG 223/356,
+Per-suite: N-Triples 41/70, Turtle 213/313, N-Quads 53/87, TriG 235/356,
 RDF/XML 120/166, rdf-mt 39/39.
 
 **RDF 1.1 Model Theory — 39 pass, 0 fail (39 total)**
