@@ -40,18 +40,28 @@ let __proj__XCDATA__item__text (projectee : xml_node) : Prims.string=
   match projectee with | XCDATA text -> text
 let is_name_start_char (c : FStar_Char.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in
-  (((((code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x5A)))) ||
-       ((code >= (Prims.of_int (0x61))) && (code <= (Prims.of_int (0x7A)))))
-      || (code = (Prims.of_int (0x5F))))
-     || (code = (Prims.of_int (0x3A))))
-    || (code >= (Prims.of_int (0xC0)))
+  if code < (Prims.of_int (0x80))
+  then
+    ((((code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x5A)))) ||
+        ((code >= (Prims.of_int (0x61))) && (code <= (Prims.of_int (0x7A)))))
+       || (code = (Prims.of_int (0x5F))))
+      || (code = (Prims.of_int (0x3A)))
+  else code >= (Prims.of_int (0xC0))
 let is_name_char (c : FStar_Char.char) : Prims.bool=
-  (is_name_start_char c) ||
-    (let code = FStar_Char.int_of_char c in
-     ((((code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39))))
-         || (code = (Prims.of_int (0x2D))))
-        || (code = (Prims.of_int (0x2E))))
-       || (code = (Prims.of_int (0xB7))))
+  let code = FStar_Char.int_of_char c in
+  if code < (Prims.of_int (0x80))
+  then
+    (((((((code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x5A))))
+           ||
+           ((code >= (Prims.of_int (0x61))) &&
+              (code <= (Prims.of_int (0x7A)))))
+          ||
+          ((code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))))
+         || (code = (Prims.of_int (0x5F))))
+        || (code = (Prims.of_int (0x3A))))
+       || (code = (Prims.of_int (0x2D))))
+      || (code = (Prims.of_int (0x2E)))
+  else (code >= (Prims.of_int (0xC0))) || (code = (Prims.of_int (0xB7)))
 let is_xml_space (c : FStar_Char.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in
   (((code = (Prims.of_int (0x20))) || (code = (Prims.of_int (0x09)))) ||
@@ -66,7 +76,7 @@ let parse_xml_name : Prims.string Parser_Combinators.parser=
       (let ch = FStar_String.index input pos in
        if is_name_start_char ch
        then
-         match Parser_Combinators.ptake_while is_name_char input
+         match Parser_Combinators.ptake_while_pos is_name_char input
                  (pos + Prims.int_one)
          with
          | Parser_Combinators.ParseOk (rest, pos') ->
@@ -225,7 +235,7 @@ let rec parse_attr_value_body (qch : FStar_Char.char) (input : Prims.string)
              | Parser_Combinators.ParseFail (msg, fpos) ->
                  Parser_Combinators.ParseFail (msg, fpos))
           else
-            (match Parser_Combinators.ptake_while
+            (match Parser_Combinators.ptake_while_pos
                      (fun c -> (c <> qch) && (c <> 38)) input pos
              with
              | Parser_Combinators.ParseOk (s, pos') ->
@@ -255,7 +265,7 @@ let parse_attr_value (input : Prims.string) (pos : Prims.nat) :
          ("expected quote to start attribute value", pos))
 let skip_xml_space (input : Prims.string) (pos : Prims.nat) :
   unit Parser_Combinators.parse_result=
-  match Parser_Combinators.ptake_while is_xml_space input pos with
+  match Parser_Combinators.ptake_while_pos is_xml_space input pos with
   | Parser_Combinators.ParseOk (uu___, pos') ->
       Parser_Combinators.ParseOk ((), pos')
   | Parser_Combinators.ParseFail (msg, fpos) ->
@@ -294,7 +304,7 @@ let rec parse_attributes (input : Prims.string) (pos : Prims.nat)
      if pos >= len
      then Parser_Combinators.ParseOk ([], pos)
      else
-       (match Parser_Combinators.ptake_while1 is_xml_space input pos with
+       (match Parser_Combinators.ptake_while1_pos is_xml_space input pos with
         | Parser_Combinators.ParseOk (uu___2, pos1) ->
             if pos1 < len
             then
@@ -345,7 +355,7 @@ let rec parse_text_content (input : Prims.string) (pos : Prims.nat)
              | Parser_Combinators.ParseFail (msg, fpos) ->
                  Parser_Combinators.ParseFail (msg, fpos))
           else
-            (match Parser_Combinators.ptake_while
+            (match Parser_Combinators.ptake_while_pos
                      (fun c -> (c <> 60) && (c <> 38)) input pos
              with
              | Parser_Combinators.ParseOk (s, pos') ->

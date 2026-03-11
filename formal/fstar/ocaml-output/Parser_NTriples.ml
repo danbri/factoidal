@@ -230,89 +230,89 @@ let parse_iri : RDF_Graph_Executable.wf_iri Parser_Combinators.parser=
         Parser_Combinators.ParseFail (msg, fpos)
 let is_bnode_char (c : FStar_Char.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in
-  ((((((((((((((((((code >= (Prims.of_int (0x30))) &&
-                     (code <= (Prims.of_int (0x39))))
-                    ||
-                    ((code >= (Prims.of_int (0x41))) &&
-                       (code <= (Prims.of_int (0x5A)))))
-                   ||
-                   ((code >= (Prims.of_int (0x61))) &&
-                      (code <= (Prims.of_int (0x7A)))))
-                  || (code = (Prims.of_int (0x5F))))
-                 || (code = (Prims.of_int (0x2D))))
-                || (code = (Prims.of_int (0x2E))))
-               || (code = (Prims.of_int (0xB7))))
-              ||
-              ((code >= (Prims.of_int (0x00C0))) &&
-                 (code <= (Prims.of_int (0x00D6)))))
-             ||
-             ((code >= (Prims.of_int (0x00D8))) &&
-                (code <= (Prims.of_int (0x00F6)))))
-            ||
-            ((code >= (Prims.of_int (0x00F8))) &&
-               (code <= (Prims.of_int (0x02FF)))))
-           ||
-           ((code >= (Prims.of_int (0x0370))) &&
-              (code <= (Prims.of_int (0x037D)))))
+  if code < (Prims.of_int (0x80))
+  then
+    ((((((code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39))))
           ||
-          ((code >= (Prims.of_int (0x037F))) &&
-             (code <= (Prims.of_int (0x1FFF)))))
+          ((code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x5A)))))
          ||
-         ((code >= (Prims.of_int (0x200C))) &&
-            (code <= (Prims.of_int (0x200D)))))
+         ((code >= (Prims.of_int (0x61))) && (code <= (Prims.of_int (0x7A)))))
+        || (code = (Prims.of_int (0x5F))))
+       || (code = (Prims.of_int (0x2D))))
+      || (code = (Prims.of_int (0x2E)))
+  else
+    (((((((((((code = (Prims.of_int (0xB7))) ||
+                ((code >= (Prims.of_int (0x00C0))) &&
+                   (code <= (Prims.of_int (0x00D6)))))
+               ||
+               ((code >= (Prims.of_int (0x00D8))) &&
+                  (code <= (Prims.of_int (0x00F6)))))
+              ||
+              ((code >= (Prims.of_int (0x00F8))) &&
+                 (code <= (Prims.of_int (0x02FF)))))
+             ||
+             ((code >= (Prims.of_int (0x0370))) &&
+                (code <= (Prims.of_int (0x037D)))))
+            ||
+            ((code >= (Prims.of_int (0x037F))) &&
+               (code <= (Prims.of_int (0x1FFF)))))
+           ||
+           ((code >= (Prims.of_int (0x200C))) &&
+              (code <= (Prims.of_int (0x200D)))))
+          ||
+          ((code >= (Prims.of_int (0x2070))) &&
+             (code <= (Prims.of_int (0x218F)))))
+         ||
+         ((code >= (Prims.of_int (0x2C00))) &&
+            (code <= (Prims.of_int (0x2FEF)))))
         ||
-        ((code >= (Prims.of_int (0x2070))) &&
-           (code <= (Prims.of_int (0x218F)))))
+        ((code >= (Prims.of_int (0x3001))) &&
+           (code <= (Prims.of_int (0xD7FF)))))
        ||
-       ((code >= (Prims.of_int (0x2C00))) &&
-          (code <= (Prims.of_int (0x2FEF)))))
+       ((code >= (Prims.of_int (0xF900))) &&
+          (code <= (Prims.of_int (0xFDCF)))))
       ||
-      ((code >= (Prims.of_int (0x3001))) && (code <= (Prims.of_int (0xD7FF)))))
-     ||
-     ((code >= (Prims.of_int (0xF900))) && (code <= (Prims.of_int (0xFDCF)))))
-    ||
-    ((code >= (Prims.of_int (0xFDF0))) && (code <= (Prims.of_int (0xFFFD))))
+      ((code >= (Prims.of_int (0xFDF0))) && (code <= (Prims.of_int (0xFFFD))))
 let is_bnode_start (c : FStar_Char.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in
-  (((((((((((((((code >= (Prims.of_int (0x41))) &&
-                  (code <= (Prims.of_int (0x5A))))
-                 ||
-                 ((code >= (Prims.of_int (0x61))) &&
-                    (code <= (Prims.of_int (0x7A)))))
-                || (code = (Prims.of_int (0x5F))))
+  if code < (Prims.of_int (0x80))
+  then
+    ((((code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x5A)))) ||
+        ((code >= (Prims.of_int (0x61))) && (code <= (Prims.of_int (0x7A)))))
+       || (code = (Prims.of_int (0x5F))))
+      || ((code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39))))
+  else
+    (((((((((((code >= (Prims.of_int (0x00C0))) &&
+                (code <= (Prims.of_int (0x00D6))))
                ||
-               ((code >= (Prims.of_int (0x30))) &&
-                  (code <= (Prims.of_int (0x39)))))
+               ((code >= (Prims.of_int (0x00D8))) &&
+                  (code <= (Prims.of_int (0x00F6)))))
               ||
-              ((code >= (Prims.of_int (0x00C0))) &&
-                 (code <= (Prims.of_int (0x00D6)))))
+              ((code >= (Prims.of_int (0x00F8))) &&
+                 (code <= (Prims.of_int (0x02FF)))))
              ||
-             ((code >= (Prims.of_int (0x00D8))) &&
-                (code <= (Prims.of_int (0x00F6)))))
+             ((code >= (Prims.of_int (0x0370))) &&
+                (code <= (Prims.of_int (0x037D)))))
             ||
-            ((code >= (Prims.of_int (0x00F8))) &&
-               (code <= (Prims.of_int (0x02FF)))))
+            ((code >= (Prims.of_int (0x037F))) &&
+               (code <= (Prims.of_int (0x1FFF)))))
            ||
-           ((code >= (Prims.of_int (0x0370))) &&
-              (code <= (Prims.of_int (0x037D)))))
+           ((code >= (Prims.of_int (0x200C))) &&
+              (code <= (Prims.of_int (0x200D)))))
           ||
-          ((code >= (Prims.of_int (0x037F))) &&
-             (code <= (Prims.of_int (0x1FFF)))))
+          ((code >= (Prims.of_int (0x2070))) &&
+             (code <= (Prims.of_int (0x218F)))))
          ||
-         ((code >= (Prims.of_int (0x200C))) &&
-            (code <= (Prims.of_int (0x200D)))))
+         ((code >= (Prims.of_int (0x2C00))) &&
+            (code <= (Prims.of_int (0x2FEF)))))
         ||
-        ((code >= (Prims.of_int (0x2070))) &&
-           (code <= (Prims.of_int (0x218F)))))
+        ((code >= (Prims.of_int (0x3001))) &&
+           (code <= (Prims.of_int (0xD7FF)))))
        ||
-       ((code >= (Prims.of_int (0x2C00))) &&
-          (code <= (Prims.of_int (0x2FEF)))))
+       ((code >= (Prims.of_int (0xF900))) &&
+          (code <= (Prims.of_int (0xFDCF)))))
       ||
-      ((code >= (Prims.of_int (0x3001))) && (code <= (Prims.of_int (0xD7FF)))))
-     ||
-     ((code >= (Prims.of_int (0xF900))) && (code <= (Prims.of_int (0xFDCF)))))
-    ||
-    ((code >= (Prims.of_int (0xFDF0))) && (code <= (Prims.of_int (0xFFFD))))
+      ((code >= (Prims.of_int (0xFDF0))) && (code <= (Prims.of_int (0xFFFD))))
 let parse_bnode : RDF_Graph_Executable.bnode_id Parser_Combinators.parser=
   fun input pos ->
     let len = FStar_String.strlen input in
@@ -334,7 +334,7 @@ let parse_bnode : RDF_Graph_Executable.bnode_id Parser_Combinators.parser=
             (let first = FStar_String.index input start_pos in
              if is_bnode_start first
              then
-               match Parser_Combinators.ptake_while is_bnode_char input
+               match Parser_Combinators.ptake_while_pos is_bnode_char input
                        start_pos
                with
                | Parser_Combinators.ParseOk (label, pos') ->
@@ -613,7 +613,7 @@ let parse_lang_tag : Prims.string Parser_Combinators.parser=
                 ("language tag must start with a letter",
                   (pos + Prims.int_one))
             else
-              (match Parser_Combinators.ptake_while1 is_lang_char input
+              (match Parser_Combinators.ptake_while1_pos is_lang_char input
                        (pos + Prims.int_one)
                with
                | Parser_Combinators.ParseOk (lang, pos') ->

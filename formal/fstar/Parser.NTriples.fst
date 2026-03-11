@@ -157,45 +157,48 @@ let parse_iri : parser wf_iri =
 
 (* Blank node label characters: alphanumeric, underscore, hyphen, dot
    (simplified from the full PN_CHARS production) *)
+// ASCII fast-path: most bnode labels are pure ASCII
 let is_bnode_char (c:FStar.Char.char) : bool =
   let code = FStar.Char.int_of_char c in
-  (code >= 0x30 && code <= 0x39) ||  (* 0-9 *)
-  (code >= 0x41 && code <= 0x5A) ||  (* A-Z *)
-  (code >= 0x61 && code <= 0x7A) ||  (* a-z *)
-  code = 0x5F ||                      (* _ *)
-  code = 0x2D ||                      (* - *)
-  code = 0x2E ||                      (* . *)
-  code = 0xB7 ||                      (* middle dot *)
-  (code >= 0x00C0 && code <= 0x00D6) ||
-  (code >= 0x00D8 && code <= 0x00F6) ||
-  (code >= 0x00F8 && code <= 0x02FF) ||
-  (code >= 0x0370 && code <= 0x037D) ||
-  (code >= 0x037F && code <= 0x1FFF) ||
-  (code >= 0x200C && code <= 0x200D) ||
-  (code >= 0x2070 && code <= 0x218F) ||
-  (code >= 0x2C00 && code <= 0x2FEF) ||
-  (code >= 0x3001 && code <= 0xD7FF) ||
-  (code >= 0xF900 && code <= 0xFDCF) ||
-  (code >= 0xFDF0 && code <= 0xFFFD)
+  if code < 0x80 then
+    (code >= 0x30 && code <= 0x39) ||
+    (code >= 0x41 && code <= 0x5A) ||
+    (code >= 0x61 && code <= 0x7A) ||
+    code = 0x5F || code = 0x2D || code = 0x2E
+  else
+    code = 0xB7 ||
+    (code >= 0x00C0 && code <= 0x00D6) ||
+    (code >= 0x00D8 && code <= 0x00F6) ||
+    (code >= 0x00F8 && code <= 0x02FF) ||
+    (code >= 0x0370 && code <= 0x037D) ||
+    (code >= 0x037F && code <= 0x1FFF) ||
+    (code >= 0x200C && code <= 0x200D) ||
+    (code >= 0x2070 && code <= 0x218F) ||
+    (code >= 0x2C00 && code <= 0x2FEF) ||
+    (code >= 0x3001 && code <= 0xD7FF) ||
+    (code >= 0xF900 && code <= 0xFDCF) ||
+    (code >= 0xFDF0 && code <= 0xFFFD)
 
-(* First character of bnode label: letter or underscore *)
+// ASCII fast-path for bnode start char
 let is_bnode_start (c:FStar.Char.char) : bool =
   let code = FStar.Char.int_of_char c in
-  (code >= 0x41 && code <= 0x5A) ||  (* A-Z *)
-  (code >= 0x61 && code <= 0x7A) ||  (* a-z *)
-  code = 0x5F ||                      (* _ *)
-  (code >= 0x30 && code <= 0x39) ||  (* 0-9 — N-Triples allows digits *)
-  (code >= 0x00C0 && code <= 0x00D6) ||
-  (code >= 0x00D8 && code <= 0x00F6) ||
-  (code >= 0x00F8 && code <= 0x02FF) ||
-  (code >= 0x0370 && code <= 0x037D) ||
-  (code >= 0x037F && code <= 0x1FFF) ||
-  (code >= 0x200C && code <= 0x200D) ||
-  (code >= 0x2070 && code <= 0x218F) ||
-  (code >= 0x2C00 && code <= 0x2FEF) ||
-  (code >= 0x3001 && code <= 0xD7FF) ||
-  (code >= 0xF900 && code <= 0xFDCF) ||
-  (code >= 0xFDF0 && code <= 0xFFFD)
+  if code < 0x80 then
+    (code >= 0x41 && code <= 0x5A) ||
+    (code >= 0x61 && code <= 0x7A) ||
+    code = 0x5F ||
+    (code >= 0x30 && code <= 0x39)
+  else
+    (code >= 0x00C0 && code <= 0x00D6) ||
+    (code >= 0x00D8 && code <= 0x00F6) ||
+    (code >= 0x00F8 && code <= 0x02FF) ||
+    (code >= 0x0370 && code <= 0x037D) ||
+    (code >= 0x037F && code <= 0x1FFF) ||
+    (code >= 0x200C && code <= 0x200D) ||
+    (code >= 0x2070 && code <= 0x218F) ||
+    (code >= 0x2C00 && code <= 0x2FEF) ||
+    (code >= 0x3001 && code <= 0xD7FF) ||
+    (code >= 0xF900 && code <= 0xFDCF) ||
+    (code >= 0xFDF0 && code <= 0xFFFD)
 
 let parse_bnode : parser bnode_id =
   fun input pos ->
@@ -212,7 +215,7 @@ let parse_bnode : parser bnode_id =
         else
           let first = String.index input start_pos in
           if is_bnode_start first then
-            match ptake_while is_bnode_char input start_pos with
+            match ptake_while_pos is_bnode_char input start_pos with
             | ParseOk label pos' ->
               (* Blank node labels must not end with '.' *)
               let label_len = String.length label in
@@ -347,7 +350,7 @@ let parse_lang_tag : parser string =
         else if not (is_alpha (String.index input (pos + 1))) then
           ParseFail "language tag must start with a letter" (pos + 1)
         else
-          match ptake_while1 is_lang_char input (pos + 1) with
+          match ptake_while1_pos is_lang_char input (pos + 1) with
           | ParseOk lang pos' -> ParseOk lang pos'
           | ParseFail _ fpos -> ParseFail "expected language tag after '@'" fpos
       else

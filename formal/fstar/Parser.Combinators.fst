@@ -256,6 +256,41 @@ let ptake_while (pred: char -> bool) (input:string) (pos:nat)
   if fuel >= 0 then ptake_while_acc pred input pos [] fuel
   else ParseOk "" pos
 
+// Position-scan version: find the end position, then extract substring in one shot.
+// Avoids building a char list and reversing it. O(n) predicate calls, O(1) substring.
+let rec ptake_while_scan (pred: char -> bool) (input:string) (pos:nat) (fuel:nat)
+  : Tot (r:nat{r >= pos}) (decreases fuel) =
+  if fuel = 0 then pos
+  else if pos < String.length input then
+    let ch = String.index input pos in
+    if pred ch then ptake_while_scan pred input (pos + 1) (fuel - 1)
+    else pos
+  else pos
+
+let ptake_while_pos (pred: char -> bool) (input:string) (pos:nat)
+  : parse_result string =
+  let len = String.length input in
+  if pos > len then ParseOk "" pos
+  else
+    let fuel : nat = len - pos + 1 in
+    let end_pos = ptake_while_scan pred input pos fuel in
+    if end_pos > pos && end_pos <= len then
+      ParseOk (String.sub input pos (end_pos - pos)) end_pos
+    else
+      ParseOk "" pos
+
+let ptake_while1_pos (pred: char -> bool) (input:string) (pos:nat)
+  : parse_result string =
+  let len = String.length input in
+  if pos > len then ParseFail "expected at least one matching character" pos
+  else
+    let fuel : nat = len - pos + 1 in
+    let end_pos = ptake_while_scan pred input pos fuel in
+    if end_pos > pos && end_pos <= len then
+      ParseOk (String.sub input pos (end_pos - pos)) end_pos
+    else
+      ParseFail "expected at least one matching character" pos
+
 (** Take 1+ characters while predicate holds *)
 let ptake_while1 (pred: char -> bool) (input:string) (pos:nat)
   : parse_result string =

@@ -242,6 +242,42 @@ let ptake_while (pred : FStar_Char.char -> Prims.bool) (input : Prims.string)
   if fuel >= Prims.int_zero
   then ptake_while_acc pred input pos [] fuel
   else ParseOk ("", pos)
+let rec ptake_while_scan (pred : FStar_Char.char -> Prims.bool)
+  (input : Prims.string) (pos : Prims.nat) (fuel : Prims.nat) : Prims.nat=
+  if fuel = Prims.int_zero
+  then pos
+  else
+    if pos < (FStar_String.strlen input)
+    then
+      (let ch = FStar_String.index input pos in
+       if pred ch
+       then
+         ptake_while_scan pred input (pos + Prims.int_one)
+           (fuel - Prims.int_one)
+       else pos)
+    else pos
+let ptake_while_pos (pred : FStar_Char.char -> Prims.bool)
+  (input : Prims.string) (pos : Prims.nat) : Prims.string parse_result=
+  let len = FStar_String.strlen input in
+  if pos > len
+  then ParseOk ("", pos)
+  else
+    (let fuel = (len - pos) + Prims.int_one in
+     let end_pos = ptake_while_scan pred input pos fuel in
+     if (end_pos > pos) && (end_pos <= len)
+     then ParseOk ((FStar_String.sub input pos (end_pos - pos)), end_pos)
+     else ParseOk ("", pos))
+let ptake_while1_pos (pred : FStar_Char.char -> Prims.bool)
+  (input : Prims.string) (pos : Prims.nat) : Prims.string parse_result=
+  let len = FStar_String.strlen input in
+  if pos > len
+  then ParseFail ("expected at least one matching character", pos)
+  else
+    (let fuel = (len - pos) + Prims.int_one in
+     let end_pos = ptake_while_scan pred input pos fuel in
+     if (end_pos > pos) && (end_pos <= len)
+     then ParseOk ((FStar_String.sub input pos (end_pos - pos)), end_pos)
+     else ParseFail ("expected at least one matching character", pos))
 let ptake_while1 (pred : FStar_Char.char -> Prims.bool)
   (input : Prims.string) (pos : Prims.nat) : Prims.string parse_result=
   match ptake_while pred input pos with

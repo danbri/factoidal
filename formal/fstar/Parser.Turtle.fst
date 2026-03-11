@@ -137,98 +137,130 @@ let turtle_ws (input: string) (pos: nat) : parse_result unit =
 (* PN_CHARS_BASE, PN_CHARS_U, PN_CHARS — per Turtle grammar         *)
 (* ================================================================ *)
 
+// Flattened, ASCII-fast-path character predicates.
+// For ASCII (code < 0x80) we resolve immediately without checking Unicode ranges.
+// This is critical for performance: DBpedia and most RDF data is predominantly ASCII.
+
 let is_pn_chars_base (c: char) : bool =
   let code = int_of_char c in
-  (code >= 0x41 && code <= 0x5A) ||       (* A-Z *)
-  (code >= 0x61 && code <= 0x7A) ||       (* a-z *)
-  (code >= 0x00C0 && code <= 0x00D6) ||
-  (code >= 0x00D8 && code <= 0x00F6) ||
-  (code >= 0x00F8 && code <= 0x02FF) ||
-  (code >= 0x0370 && code <= 0x037D) ||
-  (code >= 0x037F && code <= 0x1FFF) ||
-  (code >= 0x200C && code <= 0x200D) ||
-  (code >= 0x2070 && code <= 0x218F) ||
-  (code >= 0x2C00 && code <= 0x2FEF) ||
-  (code >= 0x3001 && code <= 0xD7FF) ||
-  (code >= 0xF900 && code <= 0xFDCF) ||
-  (code >= 0xFDF0 && code <= 0xFFFD)
+  if code < 0x80 then
+    // ASCII fast path: only A-Z and a-z
+    (code >= 0x41 && code <= 0x5A) || (code >= 0x61 && code <= 0x7A)
+  else
+    // Unicode ranges (only reached for non-ASCII chars)
+    (code >= 0x00C0 && code <= 0x00D6) ||
+    (code >= 0x00D8 && code <= 0x00F6) ||
+    (code >= 0x00F8 && code <= 0x02FF) ||
+    (code >= 0x0370 && code <= 0x037D) ||
+    (code >= 0x037F && code <= 0x1FFF) ||
+    (code >= 0x200C && code <= 0x200D) ||
+    (code >= 0x2070 && code <= 0x218F) ||
+    (code >= 0x2C00 && code <= 0x2FEF) ||
+    (code >= 0x3001 && code <= 0xD7FF) ||
+    (code >= 0xF900 && code <= 0xFDCF) ||
+    (code >= 0xFDF0 && code <= 0xFFFD)
 
 let is_pn_chars_u (c: char) : bool =
-  is_pn_chars_base c || int_of_char c = 0x5F  (* '_' *)
+  let code = int_of_char c in
+  if code < 0x80 then
+    // ASCII fast path: A-Z, a-z, _
+    (code >= 0x41 && code <= 0x5A) || (code >= 0x61 && code <= 0x7A) || code = 0x5F
+  else
+    is_pn_chars_base c
 
+// Flattened is_pn_chars: single function, no call chain.
+// For ASCII, resolves in one branch: A-Z, a-z, 0-9, _, -
 let is_pn_chars (c: char) : bool =
-  is_pn_chars_u c ||
-  (let code = int_of_char c in
-   code = 0x2D ||                             (* '-' *)
-   (code >= 0x30 && code <= 0x39) ||          (* 0-9 *)
-   code = 0xB7 ||
-   (code >= 0x0300 && code <= 0x036F) ||
-   (code >= 0x203F && code <= 0x2040))
+  let code = int_of_char c in
+  if code < 0x80 then
+    // ASCII fast path: A-Z, a-z, 0-9, _, -
+    (code >= 0x41 && code <= 0x5A) ||
+    (code >= 0x61 && code <= 0x7A) ||
+    (code >= 0x30 && code <= 0x39) ||
+    code = 0x5F || code = 0x2D
+  else
+    // Unicode: PN_CHARS_BASE ranges + middle dot + combining chars + extenders
+    code = 0xB7 ||
+    (code >= 0x0300 && code <= 0x036F) ||
+    (code >= 0x203F && code <= 0x2040) ||
+    is_pn_chars_base c
 
 (* ================================================================ *)
 (* Prefixed name parser: prefix:local                                *)
 (* ================================================================ *)
 
-(* Parse the prefix part (before the colon). Can be empty for default prefix. *)
-let rec parse_pname_ns_acc (input: string) (pos: nat) (acc: list char) (fuel: nat)
-  : Tot (parse_result string) (decreases fuel) =
-  if fuel = 0 then ParseFail "prefix name too long" pos
+// Prefix namespace body char: is_pn_chars or dot
+let is_pname_ns_body_char (c: char) : bool =
+  let code = int_of_char c in
+  if code < 0x80 then
+    (code >= 0x41 && code <= 0x5A) ||
+    (code >= 0x61 && code <= 0x7A) ||
+    (code >= 0x30 && code <= 0x39) ||
+    code = 0x5F || code = 0x2D || code = 0x2E
   else
-    let len = String.length input in
-    if pos >= len then ParseFail "expected ':' in prefixed name" pos
-    else
-      let c = String.index input pos in
-      let code = int_of_char c in
-      if code = 0x3A then  (* ':' found — end of prefix namespace *)
-        ParseOk (String.string_of_list (List.Tot.rev acc)) (pos + 1)
-      else if is_pn_chars c || code = 0x2E then  (* Allow dots in prefix name body *)
-        parse_pname_ns_acc input (pos + 1) (c :: acc) (fuel - 1)
-      else
-        ParseFail "invalid character in prefix name" pos
+    is_pn_chars c
 
-(* Parse prefix namespace: letters followed by colon *)
+// Parse prefix namespace using position-scan: find colon, extract substring.
 let parse_pname_ns (input: string) (pos: nat) : parse_result string =
   let len = String.length input in
   if pos >= len then ParseFail "expected prefix name" pos
   else
     let c = String.index input pos in
     let code = int_of_char c in
-    if code = 0x3A then  (* empty prefix — just ':' *)
+    if code = 0x3A then
       ParseOk "" (pos + 1)
     else if is_pn_chars_base c then
-      let fuel = len - pos in
-      parse_pname_ns_acc input (pos + 1) [c] fuel
+      // Scan body chars, then expect colon
+      let end_pos = ptake_while_scan is_pname_ns_body_char input (pos + 1) (len - pos) in
+      if end_pos < len then
+        let nc = String.index input end_pos in
+        if int_of_char nc = 0x3A then
+          ParseOk (String.sub input pos (end_pos - pos)) (end_pos + 1)
+        else
+          ParseFail "expected ':' in prefixed name" end_pos
+      else
+        ParseFail "expected ':' in prefixed name" end_pos
     else
       ParseFail "expected prefix name" pos
 
 (* Parse local name part (after the colon).
    Local names can contain PN_CHARS, '.', ':', and percent-encoded chars.
    For now we handle the common ASCII subset. *)
+// Flattened is_pn_local_char: single function, ASCII fast path
 let is_pn_local_char (c: char) : bool =
-  is_pn_chars c ||
-  (let code = int_of_char c in
-   code = 0x3A ||    (* ':' *)
-   code = 0x2E ||    (* '.' *)
-   code = 0x25 ||    (* '%' for percent-encoded *)
-   code = 0x5C)      (* '\' for local escapes *)
+  let code = int_of_char c in
+  if code < 0x80 then
+    // ASCII fast path: A-Z, a-z, 0-9, _, -, :, ., %, backslash
+    (code >= 0x41 && code <= 0x5A) ||
+    (code >= 0x61 && code <= 0x7A) ||
+    (code >= 0x30 && code <= 0x39) ||
+    code = 0x5F || code = 0x2D || code = 0x3A ||
+    code = 0x2E || code = 0x25 || code = 0x5C
+  else
+    is_pn_chars c
 
+// Flattened is_pn_local_start: single function, ASCII fast path
 let is_pn_local_start (c: char) : bool =
-  is_pn_chars_u c ||
-  (let code = int_of_char c in
-   code = 0x3A ||
-   (code >= 0x30 && code <= 0x39) ||
-   code = 0x25 ||
-   code = 0x5C)
+  let code = int_of_char c in
+  if code < 0x80 then
+    // ASCII fast path: A-Z, a-z, 0-9, _, :, %, backslash
+    (code >= 0x41 && code <= 0x5A) ||
+    (code >= 0x61 && code <= 0x7A) ||
+    (code >= 0x30 && code <= 0x39) ||
+    code = 0x5F || code = 0x3A || code = 0x25 || code = 0x5C
+  else
+    is_pn_chars_u c
 
+// Uses ptake_while_pos: scans to find end position, then extracts substring in one shot.
+// No char list allocation, no List.rev, no string_of_list.
 let parse_pn_local (input: string) (pos: nat) : parse_result string =
   let len = String.length input in
-  if pos >= len then ParseOk "" pos  (* empty local name is valid *)
+  if pos >= len then ParseOk "" pos
   else
     let c = String.index input pos in
     if is_pn_local_start c then
-      match ptake_while is_pn_local_char input pos with
+      match ptake_while_pos is_pn_local_char input pos with
       | ParseOk s pos' ->
-        (* Strip trailing dots — not part of local name *)
         let slen = String.length s in
         if slen > 1 then
           let last = String.index s (slen - 1) in
@@ -246,7 +278,7 @@ let parse_pn_local (input: string) (pos: nat) : parse_result string =
           ParseOk "" pos
       | ParseFail msg fpos -> ParseFail msg fpos
     else
-      ParseOk "" pos  (* empty local name *)
+      ParseOk "" pos
 
 (* Full prefixed name: pname_ns + pn_local *)
 let parse_prefixed_name (input: string) (pos: nat) : parse_result (string & string) =
