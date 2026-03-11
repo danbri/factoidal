@@ -576,14 +576,22 @@ content = content.replace(
       else if next = 'u' && !i + 5 < len then begin
         let hex = String.sub s (!i + 2) 4 in
         (try let cp = int_of_string ("0x" ^ hex) in
-             Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
-         with _ -> Buffer.add_string buf (String.sub s !i 6));
+             if cp >= 0xD800 && cp <= 0xDFFF then
+               failwith "invalid Unicode codepoint: surrogate"
+             else
+               Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
+         with Failure msg -> raise (Failure msg)
+            | _ -> Buffer.add_string buf (String.sub s !i 6));
         i := !i + 6
       end else if next = 'U' && !i + 9 < len then begin
         let hex = String.sub s (!i + 2) 8 in
         (try let cp = int_of_string ("0x" ^ hex) in
-             Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
-         with _ -> Buffer.add_string buf (String.sub s !i 10));
+             if cp >= 0xD800 && cp <= 0xDFFF then
+               failwith "invalid Unicode codepoint: surrogate"
+             else
+               Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
+         with Failure msg -> raise (Failure msg)
+            | _ -> Buffer.add_string buf (String.sub s !i 10));
         i := !i + 10
       end else begin
         Buffer.add_char buf s.[!i];
@@ -1093,20 +1101,16 @@ content = content.replace(
        (try ignore (parse_sparql_query ~base_file:(Some tc.query_file) content); Pass
         with
         | Sparql_parse_error _ -> Fail "Should parse but didn't"
+        | Failure _ -> Fail "Should parse but didn't"
         | Sparql_unsupported msg -> Unsupported_feature msg))'''
 )
 
-# 8. Pass query_file as base in negative syntax tests
+# 8. Catch Failure in negative syntax tests (e.g., surrogate codepoints)
 content = content.replace(
-    '''     | Some content ->
-       (try ignore (parse_sparql_query content); Fail "Should reject but parsed OK"
-        with
-        | Sparql_parse_error _ -> Pass
+    '''        | Sparql_parse_error _ -> Pass
         | Sparql_unsupported _ -> Unsupported_feature "Can't test rejection"))''',
-    '''     | Some content ->
-       (try ignore (parse_sparql_query ~base_file:(Some tc.query_file) content); Fail "Should reject but parsed OK"
-        with
-        | Sparql_parse_error _ -> Pass
+    '''        | Sparql_parse_error _ -> Pass
+        | Failure _ -> Pass
         | Sparql_unsupported _ -> Unsupported_feature "Can't test rejection"))'''
 )
 
