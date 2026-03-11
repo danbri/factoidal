@@ -669,20 +669,27 @@ content = content.replace(
               if RDF_Graph_Executable.is_iri dt'''
 )
 
-# 4. parse_prologue_base: propagate BASE to current_base_iri_ref
+# 4. parse_prologue: propagate BASE to current_base_iri_ref during parsing
+# The F* code correctly returns Some iri but we also need to set the mutable
+# ref so that resolve_tok_iri can access it during the rest of parsing.
 content = content.replace(
-    '''          | Tok_IRI iri ->
-              if RDF_Graph_Executable.is_iri iri
+    '''              if RDF_Graph_Executable.is_iri iri
               then
-                parse_prologue_base pm (FStar_Pervasives_Native.Some iri)
-                  (fuel - Prims.int_one) (parse_advance ts')''',
-    '''          | Tok_IRI iri ->
-              if RDF_Graph_Executable.is_iri iri
+                (match parse_prologue pm (fuel - Prims.int_one)
+                         (parse_advance ts')''',
+    '''              if RDF_Graph_Executable.is_iri iri
               then begin
                 SPARQL11_Algebra.current_base_iri_ref := Some iri;
-                parse_prologue_base pm (FStar_Pervasives_Native.Some iri)
-                  (fuel - Prims.int_one) (parse_advance ts')
-              end'''
+                (match parse_prologue pm (fuel - Prims.int_one)
+                         (parse_advance ts')'''
+)
+# Close the begin/end block
+content = content.replace(
+    '''                 | err -> err)
+              else ParseErr "invalid BASE IRI"''',
+    '''                 | err -> err)
+              end
+              else ParseErr "invalid BASE IRI"'''
 )
 
 with open(sys.argv[1], 'w') as f:

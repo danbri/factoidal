@@ -581,14 +581,22 @@ let process_string_escapes (s : Prims.string) : Prims.string =
       else if next = 'u' && !i + 5 < len then begin
         let hex = String.sub s (!i + 2) 4 in
         (try let cp = int_of_string ("0x" ^ hex) in
-             Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
-         with _ -> Buffer.add_string buf (String.sub s !i 6));
+             if cp >= 0xD800 && cp <= 0xDFFF then
+               failwith "invalid Unicode codepoint: surrogate"
+             else
+               Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
+         with Failure msg -> raise (Failure msg)
+            | _ -> Buffer.add_string buf (String.sub s !i 6));
         i := !i + 6
       end else if next = 'U' && !i + 9 < len then begin
         let hex = String.sub s (!i + 2) 8 in
         (try let cp = int_of_string ("0x" ^ hex) in
-             Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
-         with _ -> Buffer.add_string buf (String.sub s !i 10));
+             if cp >= 0xD800 && cp <= 0xDFFF then
+               failwith "invalid Unicode codepoint: surrogate"
+             else
+               Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
+         with Failure msg -> raise (Failure msg)
+            | _ -> Buffer.add_string buf (String.sub s !i 10));
         i := !i + 10
       end else begin
         Buffer.add_char buf s.[!i];
@@ -4170,8 +4178,16 @@ and parse_prologue (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
          (match parse_peek ts' with
           | Tok_IRI iri ->
               if RDF_Graph_Executable.is_iri iri
-              then
-                parse_prologue pm (fuel - Prims.int_one) (parse_advance ts')
+              then begin
+                SPARQL11_Algebra.current_base_iri_ref := Some iri;
+                (match parse_prologue pm (fuel - Prims.int_one)
+                         (parse_advance ts')
+                 with
+                 | ParseOk ((pm', uu___1), ts'') ->
+                     ParseOk
+                       ((pm', (FStar_Pervasives_Native.Some iri)), ts'')
+                 | err -> err)
+              end
               else ParseErr "invalid BASE IRI"
           | uu___1 -> ParseErr "expected IRI after BASE")
      | uu___1 -> ParseOk ((pm, FStar_Pervasives_Native.None), ts))
@@ -4245,7 +4261,12 @@ and parse_select_body (pm : prefix_map) (fuel : Prims.nat)
                                                  match item with
                                                  | SPARQL11_Algebra.SI_Var v
                                                      -> is_grouped v
-                                                 | uu___3 -> true) items)
+                                                 | SPARQL11_Algebra.SI_Expr
+                                                     (e, uu___3) ->
+                                                     Prims.op_Negation
+                                                       (SPARQL11_Algebra.expr_has_ungrouped_var
+                                                          is_grouped e))
+                                              items)
                                      | uu___3 -> false))
                                then
                                  ParseErr
@@ -4269,15 +4290,21 @@ and parse_select_body (pm : prefix_map) (fuel : Prims.nat)
                                                           uu___7)
                                                          -> false
                                                      | uu___4 -> true) items) in
-                                           let has_bare_var =
+                                           let has_ungrouped =
                                              Prims.op_Negation
                                                (FStar_List_Tot_Base.for_all
                                                   (fun item ->
                                                      match item with
                                                      | SPARQL11_Algebra.SI_Var
                                                          uu___4 -> false
-                                                     | uu___4 -> true) items) in
-                                           has_agg && has_bare_var
+                                                     | SPARQL11_Algebra.SI_Expr
+                                                         (e, uu___4) ->
+                                                         Prims.op_Negation
+                                                           (SPARQL11_Algebra.expr_has_ungrouped_var
+                                                              (fun uu___5 ->
+                                                                 false) e))
+                                                  items) in
+                                           has_agg && has_ungrouped
                                        | uu___4 -> false))
                                  then
                                    ParseErr

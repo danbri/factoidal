@@ -2258,7 +2258,11 @@ and parse_prologue (pm : prefix_map) (fuel : nat) (ts : token_stream)
       let ts' = parse_advance ts in
       (match parse_peek ts' with
        | Tok_IRI iri ->
-         if is_iri iri then parse_prologue pm (fuel-1) (parse_advance ts')
+         if is_iri iri then
+           // Parse remaining prologue, then override the base
+           (match parse_prologue pm (fuel-1) (parse_advance ts') with
+            | ParseOk (pm', _) ts'' -> ParseOk (pm', Some iri) ts''
+            | err -> err)
          else ParseErr "invalid BASE IRI"
        | _ -> ParseErr "expected IRI after BASE")
     | _ -> ParseOk (pm, None) ts
@@ -2306,11 +2310,12 @@ and parse_select_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (ts 
                 not (List.Tot.for_all (fun (item : select_item) ->
                   match item with
                   | SI_Var v -> is_grouped v
-                  | _ -> true) items)
+                  | SI_Expr e _ -> not (expr_has_ungrouped_var is_grouped e)
+                  ) items)
               | _ -> false) then
               ParseErr "SELECT projects ungrouped variable"
             // Implicit GROUP BY: if any select item uses an aggregate
-            // but no GROUP BY is present, bare SI_Var projections are ungrouped
+            // but no GROUP BY is present, non-aggregate expressions with vars are ungrouped
             else if None? gb && (
               match sel with
               | Select_Vars items ->
@@ -2318,11 +2323,12 @@ and parse_select_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (ts 
                   match item with
                   | SI_Expr (E_Aggregate _ _ _) _ -> false
                   | _ -> true) items) in
-                let has_bare_var = not (List.Tot.for_all (fun (item : select_item) ->
+                let has_ungrouped = not (List.Tot.for_all (fun (item : select_item) ->
                   match item with
                   | SI_Var _ -> false
-                  | _ -> true) items) in
-                has_agg && has_bare_var
+                  | SI_Expr e _ -> not (expr_has_ungrouped_var (fun _ -> false) e)
+                  ) items) in
+                has_agg && has_ungrouped
               | _ -> false) then
               ParseErr "SELECT projects ungrouped variable"
             else

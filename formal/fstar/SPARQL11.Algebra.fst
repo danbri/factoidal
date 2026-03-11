@@ -2660,6 +2660,34 @@ let rec expr_has_aggregate (e : expr) : Tot bool (decreases e) =
   | E_If c t f -> expr_has_aggregate c || expr_has_aggregate t || expr_has_aggregate f
   | _ -> false
 
+// Check if a non-aggregate expression references any ungrouped variable.
+// Variables inside E_Aggregate are fine (aggregates operate on groups).
+// The is_grp predicate returns true if a variable name is in the GROUP BY list.
+let rec expr_has_ungrouped_var (is_grp : var_name -> bool) (e : expr)
+  : Tot bool (decreases e) =
+  match e with
+  | E_Var v -> not (is_grp v)
+  | E_Aggregate _ _ _ -> false  // aggregates are always OK
+  | E_Arith _ e1 e2 -> expr_has_ungrouped_var is_grp e1 || expr_has_ungrouped_var is_grp e2
+  | E_Compare _ e1 e2 -> expr_has_ungrouped_var is_grp e1 || expr_has_ungrouped_var is_grp e2
+  | E_And e1 e2 -> expr_has_ungrouped_var is_grp e1 || expr_has_ungrouped_var is_grp e2
+  | E_Or e1 e2 -> expr_has_ungrouped_var is_grp e1 || expr_has_ungrouped_var is_grp e2
+  | E_Not e1 -> expr_has_ungrouped_var is_grp e1
+  | E_UnaryMinus e1 -> expr_has_ungrouped_var is_grp e1
+  | E_UnaryPlus e1 -> expr_has_ungrouped_var is_grp e1
+  | E_If c t f -> expr_has_ungrouped_var is_grp c || expr_has_ungrouped_var is_grp t || expr_has_ungrouped_var is_grp f
+  | E_Str e1 -> expr_has_ungrouped_var is_grp e1
+  | E_Lang e1 -> expr_has_ungrouped_var is_grp e1
+  | E_Datatype e1 -> expr_has_ungrouped_var is_grp e1
+  | E_IRI_fn e1 -> expr_has_ungrouped_var is_grp e1
+  | E_IsIRI e1 -> expr_has_ungrouped_var is_grp e1
+  | E_IsBlank e1 -> expr_has_ungrouped_var is_grp e1
+  | E_IsLiteral e1 -> expr_has_ungrouped_var is_grp e1
+  | E_IsNumeric e1 -> expr_has_ungrouped_var is_grp e1
+  | E_StrDt e1 e2 -> expr_has_ungrouped_var is_grp e1 || expr_has_ungrouped_var is_grp e2
+  | E_StrLang e1 e2 -> expr_has_ungrouped_var is_grp e1 || expr_has_ungrouped_var is_grp e2
+  | _ -> false
+
 (* Check if a SELECT item contains an aggregate expression *)
 let select_item_has_aggregate (item : select_item) : bool =
   match item with

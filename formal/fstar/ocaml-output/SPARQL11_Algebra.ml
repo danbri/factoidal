@@ -3828,6 +3828,44 @@ let rec expr_has_aggregate (e : expr) : Prims.bool=
       ((expr_has_aggregate c) || (expr_has_aggregate t)) ||
         (expr_has_aggregate f)
   | uu___ -> false
+let rec expr_has_ungrouped_var (is_grp : var_name -> Prims.bool) (e : expr) :
+  Prims.bool=
+  match e with
+  | E_Var v -> Prims.op_Negation (is_grp v)
+  | E_Aggregate (uu___, uu___1, uu___2) -> false
+  | E_Arith (uu___, e1, e2) ->
+      (expr_has_ungrouped_var is_grp e1) ||
+        (expr_has_ungrouped_var is_grp e2)
+  | E_Compare (uu___, e1, e2) ->
+      (expr_has_ungrouped_var is_grp e1) ||
+        (expr_has_ungrouped_var is_grp e2)
+  | E_And (e1, e2) ->
+      (expr_has_ungrouped_var is_grp e1) ||
+        (expr_has_ungrouped_var is_grp e2)
+  | E_Or (e1, e2) ->
+      (expr_has_ungrouped_var is_grp e1) ||
+        (expr_has_ungrouped_var is_grp e2)
+  | E_Not e1 -> expr_has_ungrouped_var is_grp e1
+  | E_UnaryMinus e1 -> expr_has_ungrouped_var is_grp e1
+  | E_UnaryPlus e1 -> expr_has_ungrouped_var is_grp e1
+  | E_If (c, t, f) ->
+      ((expr_has_ungrouped_var is_grp c) || (expr_has_ungrouped_var is_grp t))
+        || (expr_has_ungrouped_var is_grp f)
+  | E_Str e1 -> expr_has_ungrouped_var is_grp e1
+  | E_Lang e1 -> expr_has_ungrouped_var is_grp e1
+  | E_Datatype e1 -> expr_has_ungrouped_var is_grp e1
+  | E_IRI_fn e1 -> expr_has_ungrouped_var is_grp e1
+  | E_IsIRI e1 -> expr_has_ungrouped_var is_grp e1
+  | E_IsBlank e1 -> expr_has_ungrouped_var is_grp e1
+  | E_IsLiteral e1 -> expr_has_ungrouped_var is_grp e1
+  | E_IsNumeric e1 -> expr_has_ungrouped_var is_grp e1
+  | E_StrDt (e1, e2) ->
+      (expr_has_ungrouped_var is_grp e1) ||
+        (expr_has_ungrouped_var is_grp e2)
+  | E_StrLang (e1, e2) ->
+      (expr_has_ungrouped_var is_grp e1) ||
+        (expr_has_ungrouped_var is_grp e2)
+  | uu___ -> false
 let select_item_has_aggregate (item : select_item) : Prims.bool=
   match item with
   | SI_Var uu___ -> false
