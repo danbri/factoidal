@@ -1,0 +1,1751 @@
+=== W3C SPARQL 1.1 Test Runner ===
+Test base: ../../tests/w3c/sparql/sparql11
+
+
+--- add ---
+  [suite time: 0.1s]
+
+--- aggregates ---
+  PASS: COUNT 1
+  PASS: COUNT 2
+  PASS: COUNT 3
+  PASS: COUNT 4
+  PASS: COUNT 5
+  PASS: COUNT 6
+  PASS: COUNT 7
+  PASS: COUNT 8
+  PASS: COUNT 8b (19ms)
+  PASS: COUNT 9
+  PASS: COUNT 10
+  PASS: COUNT 11
+  PASS: COUNT 12
+  PASS: GROUP_CONCAT 1
+  FAIL: GROUP_CONCAT 2 — Results mismatch: expected 1 rows, got 1
+      UNMATCHED: ?c="2"^^<http://www.w3.org/2001/XMLSchema#integer>
+  PASS: GROUP_CONCAT with SEPARATOR
+  PASS: GROUP_CONCAT with same language tag
+  PASS: GROUP_CONCAT with different language tags
+  PASS: GROUP_CONCAT with one element
+  PASS: SUM
+  PASS: SUM with GROUP BY (17ms)
+  PASS: AVG
+  PASS: AVG with GROUP BY
+  PASS: AVG with empty group (value defined to be 0)
+  PASS: MIN
+  PASS: MIN with GROUP BY (17ms)
+  PASS: MAX
+  PASS: MAX with GROUP BY (16ms)
+  PASS: SAMPLE
+  PASS: Error in AVG
+  PASS: Protect from error in AVG
+  PASS: agg on empty set, explicit grouping
+  PASS: agg on empty set, no grouping
+  unsup: COUNT: no match, with group — Unknown result format: /home/user/factoidal/formal/fstar/../../tests/w3c/sparql/sparql11/aggregates/agg-empty-group-count-1.srj
+  unsup: COUNT: no match, no group — Unknown result format: /home/user/factoidal/formal/fstar/../../tests/w3c/sparql/sparql11/aggregates/agg-empty-group-count-2.srj
+  unsup: COUNT: no GROUP BY inside of GRAPH — Turtle result format not yet supported
+  PASS: HAVING: multiple conditions
+  PASS: GROUP BY with a function (13ms)
+  PASS: GROUP BY with a built-in function (11ms)
+  PASS: AVG DISTINCT with GROUP BY (12ms)
+  PASS: COUNT DISTINCT with GROUP BY (12ms)
+  PASS: COUNT(DISTINCT *) with GROUP BY (12ms)
+  PASS: GROUP_CONCAT DISTINCT
+  PASS: MAX DISTINCT with GROUP BY (12ms)
+  PASS: MIN DISTINCT with GROUP BY (13ms)
+  PASS: SAMPLE DISTINCT
+  PASS: SUM DISTINCT with GROUP BY (12ms)
+  [suite time: 1.3s]
+
+--- basic-update ---
+  [suite time: 0.3s]
+
+--- bind ---
+  PASS: bind01 - BIND
+  PASS: bind02 - BIND (25ms)
+  PASS: bind03 - BIND
+  PASS: bind04 - BIND (19ms)
+  PASS: bind05 - BIND
+  PASS: bind06 - BIND (31ms)
+  PASS: bind07 - BIND (61ms)
+  PASS: bind08 - BIND
+  PASS: bind10 - BIND scoping - Variable in filter not in scope
+  PASS: bind11 - BIND scoping - Variable in filter in scope
+  [suite time: 0.2s]
+
+--- bindings ---
+  PASS: Post-query VALUES with subj-var, 1 row
+  PASS: Post-query VALUES with obj-var, 1 row
+  PASS: Post-query VALUES with 2 obj-vars, 1 row
+  PASS: Post-query VALUES with 2 obj-vars, 1 row with UNDEF
+  PASS: Post-query VALUES with 2 obj-vars, 2 rows with UNDEF (20ms)
+  PASS: Post-query VALUES with pred-var, 1 row
+  PASS: Post-query VALUES with (OPTIONAL) obj-var, 1 row (21ms)
+  PASS: Post-query VALUES with subj/obj-vars, 2 rows with UNDEF
+  PASS: Inline VALUES graph pattern
+  PASS: Post-subquery VALUES
+  unsup: VALUES inside GRAPH binding the same variable as the graph name — Turtle result format not yet supported
+  [suite time: 0.2s]
+
+--- cast ---
+  PASS: xsd:boolean cast (520ms)
+  PASS: xsd:integer cast (498ms)
+  FAIL: xsd:float cast — Results mismatch: expected 31 rows, got 31
+      UNMATCHED: ?a=<http://example.org/s03>, ?v="-10.2E3"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="-1.02E4"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/s04>, ?v="+33.3300"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="3.333E1"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/s05>, ?v="0.0"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="0E0"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/s06>, ?v="0"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="0"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/s07>, ?v="0E1"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="0E0"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/s08>, ?v="1.5"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="1.5E0"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/s09>, ?v="1"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="1"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/s10>, ?v="1E0"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="1E0"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/s11>, ?v="13"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="13"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/b01>, ?v="true"^^<http://www.w3.org/2001/XMLSchema#boolean>, ?float="1.0E0"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/b02>, ?v="false"^^<http://www.w3.org/2001/XMLSchema#boolean>, ?float="0E0"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/b03>, ?v="0"^^<http://www.w3.org/2001/XMLSchema#boolean>, ?float="0E0"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/n01>, ?v="0"^^<http://www.w3.org/2001/XMLSchema#integer>, ?float="0"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/n02>, ?v="1"^^<http://www.w3.org/2001/XMLSchema#integer>, ?float="1.0"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/n03>, ?v="-1"^^<http://www.w3.org/2001/XMLSchema#integer>, ?float="-1.0"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/n04>, ?v="0.0"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="0.0"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/n05>, ?v="1.0"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="1.0"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/n06>, ?v="-1.0"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="-1.0"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/n07>, ?v="0E1"^^<http://www.w3.org/2001/XMLSchema#double>, ?float="0.0"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/n08>, ?v="1E0"^^<http://www.w3.org/2001/XMLSchema#double>, ?float="1.0"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/n09>, ?v="0E1"^^<http://www.w3.org/2001/XMLSchema#float>, ?float="0.0"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/n10>, ?v="1E0"^^<http://www.w3.org/2001/XMLSchema#float>, ?float="1.0"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/n11>, ?v="1.25"^^<http://www.w3.org/2001/XMLSchema#float>, ?float="1.25"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/n12>, ?v="-7.875"^^<http://www.w3.org/2001/XMLSchema#float>, ?float="-7.875"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/n13>, ?v="2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="2.5"^^<http://www.w3.org/2001/XMLSchema#float>
+      UNMATCHED: ?a=<http://example.org/n14>, ?v="-2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="-2.5"^^<http://www.w3.org/2001/XMLSchema#float> (579ms)
+  PASS: xsd:double cast (564ms)
+  FAIL: xsd:decimal cast — Results mismatch: expected 31 rows, got 31
+      UNMATCHED: ?a=<http://example.org/n09>, ?v="0.0"^^<http://www.w3.org/2001/XMLSchema#float>, ?decimal="0.0"^^<http://www.w3.org/2001/XMLSchema#decimal>
+      UNMATCHED: ?a=<http://example.org/n10>, ?v="1.0"^^<http://www.w3.org/2001/XMLSchema#float>, ?decimal="1.0"^^<http://www.w3.org/2001/XMLSchema#decimal> (521ms)
+  PASS: xsd:string cast (492ms)
+  [suite time: 3.2s]
+
+--- clear ---
+  [suite time: 0.1s]
+
+--- construct ---
+  unsup: constructwhere01 - CONSTRUCT WHERE — Turtle result format not yet supported
+  unsup: constructwhere02 - CONSTRUCT WHERE — Turtle result format not yet supported
+  unsup: constructwhere03 - CONSTRUCT WHERE — Turtle result format not yet supported
+  unsup: constructwhere04 - CONSTRUCT WHERE — Turtle result format not yet supported
+  PASS: constructwhere05 - CONSTRUCT WHERE
+  PASS: constructwhere06 - CONSTRUCT WHERE
+  FAIL: CONSTRUCT list — SPARQL parse: unexpected token
+  [suite time: 0.0s]
+
+--- copy ---
+  [suite time: 0.1s]
+
+--- csv-tsv-res ---
+  unsup: csv01 - CSV Result Format — CSV result tests not yet implemented
+  unsup: tsv01 - TSV Result Format — Unknown result format: /home/user/factoidal/formal/fstar/../../tests/w3c/sparql/sparql11/csv-tsv-res/csvtsv01.tsv
+  unsup: cvs02 - CSV Result Format — CSV result tests not yet implemented
+  unsup: tsv02 - TSV Result Format — Unknown result format: /home/user/factoidal/formal/fstar/../../tests/w3c/sparql/sparql11/csv-tsv-res/csvtsv02.tsv
+  unsup: csv03 - CSV Result Format — CSV result tests not yet implemented
+  unsup: tsv03 - TSV Result Format — Unknown result format: /home/user/factoidal/formal/fstar/../../tests/w3c/sparql/sparql11/csv-tsv-res/csvtsv03.tsv
+  [suite time: 0.0s]
+
+--- delete ---
+  [suite time: 0.9s]
+
+--- delete-data ---
+  [suite time: 0.1s]
+
+--- delete-insert ---
+  PASS: DELETE INSERT 3
+  PASS: DELETE INSERT 3b
+  PASS: DELETE INSERT 5
+  PASS: DELETE INSERT 6
+  PASS: DELETE INSERT 7
+  PASS: DELETE INSERT 7b
+  PASS: DELETE INSERT 8
+  PASS: DELETE INSERT 9
+  [suite time: 0.3s]
+
+--- delete-where ---
+  [suite time: 0.1s]
+
+--- drop ---
+  [suite time: 0.0s]
+
+--- entailment ---
+  PASS: bind01 - BIND fixed data for OWL DL
+  PASS: bind02 - BIND fixed data for OWL DL (27ms)
+  PASS: bind03 - BIND fixed data for OWL DL
+  PASS: bind04 - BIND fixed data for OWL DL (20ms)
+  PASS: bind05 - BIND fixed data for OWL DL
+  PASS: bind06 - BIND fixed data for OWL DL (34ms)
+  PASS: bind07 - BIND fixed data for OWL DL (62ms)
+  PASS: bind08 - BIND fixed data for OWL DL
+  PASS: D-Entailment test to show that  neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers
+  PASS: Literal with language tag test
+  PASS: bnodes are not existentials
+  PASS: bnodes are not existentials with answer
+  FAIL: paper-sparqldl-Q1 — Results mismatch: expected 3 rows, got 1
+      UNMATCHED: ?c=<http://www.w3.org/2002/07/owl#Nothing>
+      UNMATCHED: ?c=<http://example.org/Student> (12ms)
+  PASS: paper-sparqldl-Q1-rdfs (11ms)
+  FAIL: paper-sparqldl-Q2 — Results mismatch: expected 1 rows, got 0
+      UNMATCHED: ?x=<http://example.org/John>, ?y="Johnnie"^^<http://www.w3.org/2001/XMLSchema#string> (11ms)
+  FAIL: paper-sparqldl-Q3 — Results mismatch: expected 2 rows, got 0
+      UNMATCHED: ?x=<http://example.org/John>
+      UNMATCHED: ?x=<http://example.org/person1> (12ms)
+  FAIL: paper-sparqldl-Q4 — Results mismatch: expected 2 rows, got 0
+      UNMATCHED: ?x=<http://example.org/John>, ?c=<http://example.org/Employee>
+      UNMATCHED: ?x=<http://example.org/John>, ?c=<http://example.org/GraduateAssistant> (14ms)
+  PASS: paper-sparqldl-Q5 (13ms)
+  FAIL: filtered subclass query with (hasChild some Thing) restriction — Results mismatch: expected 3 rows, got 0
+      UNMATCHED: ?C=<http://example.org/test#Parent>
+      UNMATCHED: ?C=<http://example.org/test#Father>
+      UNMATCHED: ?C=<http://example.org/test#Mother> (13ms)
+  PASS: parent query with distinguished variable (12ms)
+  FAIL: parent query with (hasChild some Thing) restriction — Results mismatch: expected 3 rows, got 0
+      UNMATCHED: ?parent=<http://example.org/test#Alice>
+      UNMATCHED: ?parent=<http://example.org/test#Bob>
+      UNMATCHED: ?parent=<http://example.org/test#Dudley> (12ms)
+  FAIL: parent query with (hasChild min 1) restriction — Results mismatch: expected 3 rows, got 0
+      UNMATCHED: ?parent=<http://example.org/test#Alice>
+      UNMATCHED: ?parent=<http://example.org/test#Bob>
+      UNMATCHED: ?parent=<http://example.org/test#Dudley> (14ms)
+  FAIL: parent query with (hasChild some Female) restriction — Results mismatch: expected 1 rows, got 0
+      UNMATCHED: ?parent=<http://example.org/test#Dudley> (10ms)
+  FAIL: parent query with (hasChild min 1 Female) restriction — Results mismatch: expected 1 rows, got 0
+      UNMATCHED: ?parent=<http://example.org/test#Dudley> (11ms)
+  FAIL: parent query with (hasChild max 1 Female) restriction — Results mismatch: expected 1 rows, got 0
+      UNMATCHED: ?parent=<http://example.org/test#Dudley> (11ms)
+  FAIL: parent query with (hasChild exactly 1 Female) restriction — Results mismatch: expected 1 rows, got 0
+      UNMATCHED: ?parent=<http://example.org/test#Dudley> (11ms)
+  FAIL: subclass query with (hasChild some Thing) restriction — Results mismatch: expected 4 rows, got 0
+      UNMATCHED: ?C=<http://example.org/test#Parent>
+      UNMATCHED: ?C=<http://example.org/test#Father>
+      UNMATCHED: ?C=<http://example.org/test#Mother>
+      UNMATCHED: ?C=<http://www.w3.org/2002/07/owl#Nothing> (15ms)
+  PASS: Plain literals with language tag are not the same as the same literal without
+  PASS: RDF inference test
+  PASS: RDF inference test
+  PASS: RDF test for blank node cardinalities
+  PASS: simple triple pattern match
+  PASS: RDFS inference test rdfs:subPropertyOf
+  PASS: RDFS inference test rdfs:subPropertyOf
+  PASS: RDFS inference test combining subPropertyOf and domain
+  PASS: RDFS inference test subClassOf
+  PASS: RDFS inference test subClassOf
+  PASS: RDFS inference test domain
+  PASS: RDFS inference test range
+  PASS: RDFS inference test rdf:XMLLiteral subclass of rdfs:Literal
+  PASS: RDFS inference test transitivity of subClassOf
+  PASS: RDFS inference test transitivity of subPropertyOf
+  PASS: RDFS inference test subProperty and instances
+  PASS: RDFS inference test containers
+  PASS: RDFS inference test to show that neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers
+  FAIL: RIF Logical Entailment (referencing RIF XML) — Results mismatch: expected 1 rows, got 0
+      UNMATCHED: ?nephew=<http://example.org/ns#Emeka>, ?uncle=<http://example.org/ns#Chijoke>
+  FAIL: RIF Core WG tests: Frames — Results mismatch: expected 1 rows, got 0
+      UNMATCHED: ?discount="10"^^<http://www.w3.org/2001/XMLSchema#integer>
+  PASS: RIF Core WG tests: Modeling Brain Anatomy
+  PASS: RIF Core WG tests: RDF Combination Blank Node
+  FAIL: simple 1 — Results mismatch: expected 2 rows, got 0
+      UNMATCHED: ?x=<http://example.org/test#a>
+      UNMATCHED: ?x=<http://example.org/test#d>
+  FAIL: simple 2 — Results mismatch: expected 1 rows, got 0
+      UNMATCHED: ?x=<http://example.org/test#a>
+  FAIL: simple 3 — Results mismatch: expected 1 rows, got 0
+      UNMATCHED: ?x=<http://example.org/test#c>
+  FAIL: simple 4 — Results mismatch: expected 4 rows, got 0
+      UNMATCHED: ?x=<http://example.org/test#a>
+      UNMATCHED: ?x=<http://example.org/test#b>
+      UNMATCHED: ?x=<http://example.org/test#c>
+      UNMATCHED: ?x=<http://example.org/test#d>
+  FAIL: simple 5 — Results mismatch: expected 2 rows, got 0
+      UNMATCHED: ?x=<http://example.org/test#a>
+      UNMATCHED: ?x=<http://example.org/test#c>
+  FAIL: simple 6 — Results mismatch: expected 3 rows, got 0
+      UNMATCHED: ?x=<http://example.org/test#a>
+      UNMATCHED: ?x=<http://example.org/test#b>
+      UNMATCHED: ?x=<http://example.org/test#c>
+  FAIL: simple 7 — Results mismatch: expected 2 rows, got 0
+      UNMATCHED: ?x=<http://example.org/test#a>
+      UNMATCHED: ?x=<http://example.org/test#d>
+  FAIL: simple 8 — Results mismatch: expected 1 rows, got 0
+      UNMATCHED: ?x=<http://example.org/test#b>
+  PASS: sparqldl-01.rq: triple pattern
+  PASS: sparqldl-02.rq: simple combined query
+  PASS: sparqldl-03.rq: combined query with complex class description
+  PASS: sparqldl-04.rq: bug fixing test
+  PASS: sparqldl-05.rq: simple undistinguished variable test.
+  PASS: sparqldl-06.rq: cycle of undistinguished variables
+  PASS: sparqldl-07.rq: two distinguished variables + undist.
+  PASS: sparqldl-08.rq: two distinguished variables + undist.
+  PASS: sparqldl-09.rq: undist vars test (12ms)
+  FAIL: sparqldl-10.rq: undist vars test — Results mismatch: expected 3 rows, got 0
+      UNMATCHED: ?X=<http://example.org/test#a>, ?Y=<http://example.org/test#b>
+      UNMATCHED: ?X=<http://example.org/test#a>, ?Y=<http://example.org/test#b>
+      UNMATCHED: ?X=<http://example.org/test#a>, ?Y=<http://example.org/test#b> (11ms)
+  FAIL: sparqldl-11.rq: domain test — Results mismatch: expected 2 rows, got 0
+      UNMATCHED: ?C=<http://www.w3.org/2002/07/owl#Thing>
+      UNMATCHED: ?C=<foo://bla/names#Parent>
+  FAIL: sparqldl-12.rq: range test — Results mismatch: expected 2 rows, got 1
+      UNMATCHED: ?C=<http://www.w3.org/2002/07/owl#Thing>
+  FAIL: sparqldl-13.rq: sameAs — Results mismatch: expected 4 rows, got 1
+      UNMATCHED: ?a=<http://example.org/test#a>, ?b=<http://example.org/test#b>, ?x=<http://example.org/test#b>
+      UNMATCHED: ?a=<http://example.org/test#a>, ?b=<http://example.org/test#x>, ?x=<http://example.org/test#x>
+      UNMATCHED: ?a=<http://example.org/test#a>, ?b=<http://example.org/test#x>, ?x=<http://example.org/test#b> (20ms)
+  [suite time: 4.7s]
+
+--- exists ---
+  PASS: Exists with one constant
+  PASS: Exists with ground triple
+  PASS: Exists within graph pattern
+  PASS: Nested positive exists
+  PASS: Nested negative exists in positive exists
+  PASS: GRAPH variable inside of EXISTS is bound to external variable
+  [suite time: 0.1s]
+
+--- functions ---
+  PASS: STRDT()
+  PASS: STRDT(STR())
+  PASS: STRDT() TypeErrors (updated for RDF 1.1) (33ms)
+  PASS: STRLANG()
+  PASS: STRLANG(STR())
+  PASS: STRLANG() TypeErrors (updated for RDF 1.1) (35ms)
+  PASS: isNumeric() (14ms)
+  PASS: ABS()
+  PASS: CEIL() (26ms)
+  PASS: FLOOR() (27ms)
+  PASS: ROUND() (27ms)
+  PASS: CONCAT()
+  PASS: CONCAT() 2 (104ms)
+  PASS: CONCAT() without parameter
+  PASS: CONCAT() with a single parameter
+  PASS: SUBSTR() (3-argument) (27ms)
+  PASS: SUBSTR() (3-argument) on non-BMP unicode strings
+  PASS: SUBSTR() (2-argument) (26ms)
+  PASS: SUBSTR() (2-argument) on non-BMP unicode strings
+  PASS: STRLEN() (21ms)
+  PASS: STRLEN() on non-BMP unicode strings
+  PASS: UCASE() (15ms)
+  PASS: UCASE() on non-BMP unicode strings
+  PASS: LCASE() (16ms)
+  PASS: LCASE() on non-BMP unicode strings
+  PASS: ENCODE_FOR_URI() (27ms)
+  PASS: ENCODE_FOR_URI() on non-BMP unicode strings
+  PASS: CONTAINS()
+  PASS: STRSTARTS()
+  PASS: STRENDS()
+  PASS: plus-1-corrected (36ms)
+  PASS: plus-2-corrected (29ms)
+  PASS: MD5()
+  PASS: MD5() over Unicode data
+  PASS: SHA1()
+  PASS: SHA1() on Unicode data
+  PASS: SHA256()
+  PASS: SHA256() on Unicode data
+  PASS: SHA384()
+  PASS: SHA384() on Unicode data
+  PASS: SHA512()
+  PASS: SHA512() on Unicode data
+  PASS: MINUTES()
+  PASS: SECONDS() (10ms)
+  PASS: HOURS() (11ms)
+  PASS: MONTH() (10ms)
+  PASS: YEAR() (10ms)
+  PASS: DAY() (11ms)
+  PASS: TIMEZONE()
+  PASS: TZ()
+  PASS: BNODE(str) (15ms)
+  PASS: BNODE()
+  PASS: IN 1
+  PASS: IN 2
+  PASS: NOT IN 1
+  PASS: NOT IN 2
+  PASS: NOW()
+  PASS: RAND()
+  PASS: IRI()/URI()
+  PASS: IRI()/URI() when the input is an IRI
+  PASS: IF() (31ms)
+  PASS: IF() error propogation
+  PASS: COALESCE() (21ms)
+  PASS: COALESCE() without arguments
+  PASS: STRBEFORE() (14ms)
+  PASS: STRBEFORE() datatyping (27ms)
+  PASS: STRAFTER() (13ms)
+  PASS: STRAFTER() datatyping (29ms)
+  FAIL: REPLACE() — Results mismatch: expected 9 rows, got 9
+      UNMATCHED: ?s=<http://example.org/s2>, ?new="---"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#langString>@ja
+      UNMATCHED: ?s=<http://example.org/s4>, ?new="-ran-ais"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#langString>@fr (21ms)
+  PASS: REPLACE() with overlapping pattern
+  PASS: REPLACE() with captured substring
+  PASS: REPLACE() with the 'i' option
+  PASS: UUID() pattern match
+  PASS: UUID() per binding
+  PASS: STRUUID() pattern match
+  [suite time: 3.5s]
+
+--- grouping ---
+  PASS: Group-1
+  PASS: Group-3
+  PASS: Group-4
+  PASS: Group-5
+  PASS: Group-6
+  PASS: Group-7
+  [suite time: 0.0s]
+
+--- http-rdf-update ---
+  [suite time: 0.5s]
+
+--- json-res ---
+  unsup: jsonres01 - JSON Result Format — Unknown result format: /home/user/factoidal/formal/fstar/../../tests/w3c/sparql/sparql11/json-res/jsonres01.srj
+  unsup: jsonres02 - JSON Result Format — Unknown result format: /home/user/factoidal/formal/fstar/../../tests/w3c/sparql/sparql11/json-res/jsonres02.srj
+  unsup: jsonres03 - JSON Result Format — Unknown result format: /home/user/factoidal/formal/fstar/../../tests/w3c/sparql/sparql11/json-res/jsonres03.srj
+  unsup: jsonres04 - JSON Result Format — Unknown result format: /home/user/factoidal/formal/fstar/../../tests/w3c/sparql/sparql11/json-res/jsonres04.srj
+  [suite time: 0.0s]
+
+--- move ---
+  [suite time: 0.1s]
+
+--- negation ---
+  PASS: Subsets by exclusion (NOT EXISTS)
+  PASS: Subsets by exclusion (MINUS)
+  PASS: Medical, temporal proximity by exclusion (NOT EXISTS)
+  PASS: Calculate which sets are subsets of others (include A subsetOf A) (52ms)
+  FAIL: Calculate which sets are subsets of others (exclude A subsetOf A) — Results mismatch: expected 11 rows, got 30 (58ms)
+  PASS: Calculate which sets have the same elements
+  PASS: Calculate proper subset (28ms)
+  PASS: Positive EXISTS 1
+  PASS: Positive EXISTS 2
+  PASS: Subtraction with MINUS from a fully bound minuend
+  PASS: Subtraction with MINUS from a partially bound minuend
+  PASS: outer GRAPH operator does not affect MINUS disjointness
+  [suite time: 0.3s]
+
+--- project-expression ---
+  PASS: Expression is equality (10ms)
+  PASS: Expression raise an error
+  PASS: Reuse a project expression variable in select
+  PASS: Reuse a project expression variable in order by
+  PASS: Expression may return no value
+  PASS: Expression has undefined variable
+  PASS: Expression has variable that may be unbound
+  [suite time: 0.1s]
+
+--- property-path ---
+  PASS: (pp01) Simple path
+  PASS: (pp02) Star path
+  PASS: (pp03) Simple path with loop
+  PASS: (pp06) Path with two graphs
+  PASS: (pp07) Path with one graph
+  PASS: (pp08) Reverse path
+  PASS: (pp09) Reverse sequence path
+  PASS: (pp10) Path with negation
+  PASS: (pp11) Simple path and two paths to same target node
+  PASS: (pp12) Variable length path and two paths to same target node
+  PASS: (pp14) Star path over foaf:knows (16ms)
+  PASS: (pp16) Duplicate paths and cycles through foaf:knows* (71ms)
+  PASS: (pp21) Diamond -- :p+
+  PASS: (pp23) Diamond, with tail -- :p+
+  PASS: (pp25) Diamond, with loop -- :p+
+  PASS: (pp28a) Diamond, with loop -- (:p/:p)?
+  PASS: (pp30) Operator precedence 1
+  PASS: (pp31) Operator precedence 2
+  PASS: (pp32) Operator precedence 3
+  PASS: (pp33) Operator precedence 4
+  PASS: (pp34) Named Graph 1
+  PASS: (pp35) Named Graph 2
+  PASS: (pp36) Arbitrary path with bound endpoints
+  PASS: (pp37) Nested (*)*
+  PASS: ZeroOrX property paths should only return terms in the graph and not also terms defined in the query
+  PASS: Negated Property Set with inverse properties
+  PASS: Negated Property Set with both direct and inverse properties
+  PASS: Negated Property Set with the rdf:type property written using 'a'
+  PASS: Negated Property Set with the inverse rdf:type property written using '^a'
+  PASS: * with start being a constant on the empty dataset
+  PASS: * with end being a constant on the empty dataset
+  PASS: ? with start being a constant on the empty dataset
+  PASS: ? with end being a constant on the empty dataset
+  [suite time: 0.6s]
+
+--- protocol ---
+  [suite time: 2.1s]
+
+--- service ---
+  FAIL: SERVICE test 1 — Results mismatch: expected 2 rows, got 0
+      UNMATCHED: ?s=<http://example.org/a>, ?o1="Alan"^^<http://www.w3.org/2001/XMLSchema#string>, ?o2="SPARQL 1.1 Basic Federated Query"^^<http://www.w3.org/2001/XMLSchema#string>
+      UNMATCHED: ?s=<http://example.org/b>, ?o1="Bob"^^<http://www.w3.org/2001/XMLSchema#string>, ?o2="SPARQL 1.1 Query"^^<http://www.w3.org/2001/XMLSchema#string>
+  FAIL: SERVICE test 2 — Results mismatch: expected 2 rows, got 0
+      UNMATCHED: ?s=<http://example.org/b>, ?o1="Bob"^^<http://www.w3.org/2001/XMLSchema#string>
+      UNMATCHED: ?s=<http://example.org/a>, ?o1="Alan"^^<http://www.w3.org/2001/XMLSchema#string>, ?o2="SPARQL 1.1 Basic Federated Query"^^<http://www.w3.org/2001/XMLSchema#string>
+  FAIL: SERVICE test 3 — Results mismatch: expected 2 rows, got 0
+      UNMATCHED: ?s=<http://example.org/b>, ?o1="Bob"^^<http://www.w3.org/2001/XMLSchema#string>
+      UNMATCHED: ?s=<http://example.org/a>, ?o1="Alan"^^<http://www.w3.org/2001/XMLSchema#string>, ?o2="SPARQL 1.1 Basic Federated Query"^^<http://www.w3.org/2001/XMLSchema#string>
+  FAIL: SERVICE test 4a with VALUES clause — Results mismatch: expected 4 rows, got 6 (12ms)
+  FAIL: SERVICE test 5 — SPARQL parse: unsupported: variable SERVICE endpoint
+  FAIL: SERVICE test 6 — Results mismatch: expected 2 rows, got 0
+      UNMATCHED: ?s=<http://example.org/b>, ?o1="Bob"^^<http://www.w3.org/2001/XMLSchema#string>
+      UNMATCHED: ?s=<http://example.org/a>, ?o1="Alan"^^<http://www.w3.org/2001/XMLSchema#string>
+  FAIL: SERVICE test 7 — Results mismatch: expected 2 rows, got 0
+      UNMATCHED: ?s=<http://example.org/a>, ?o1="Alan"^^<http://www.w3.org/2001/XMLSchema#string>
+      UNMATCHED: ?s=<http://example.org/b>, ?o1="Bob"^^<http://www.w3.org/2001/XMLSchema#string>
+  [suite time: 0.1s]
+
+--- service-description ---
+  [suite time: 0.0s]
+
+--- subquery ---
+  PASS: sq01 - Subquery within graph pattern
+  FAIL: sq02 - Subquery within graph pattern, graph variable is bound — Results mismatch: expected 1 rows, got 2
+  PASS: sq03 - Subquery within graph pattern, graph variable is not bound
+  PASS: sq04 - Subquery within graph pattern, default graph does not apply
+  PASS: sq05 - Subquery within graph pattern, from named applies
+  PASS: sq06 - Subquery with graph pattern, from named applies
+  PASS: sq07 - Subquery with from 
+  PASS: sq08 - Subquery with aggregate
+  PASS: sq09 - Nested Subqueries
+  PASS: sq10 - Subquery with exists
+  FAIL: sq11 - Subquery limit per resource — Results mismatch: expected 6 rows, got 0
+      UNMATCHED: ?L="Ice Cream"^^<http://www.w3.org/2001/XMLSchema#string>
+      UNMATCHED: ?L="Ice Cream"^^<http://www.w3.org/2001/XMLSchema#string>
+      UNMATCHED: ?L="Pasta"^^<http://www.w3.org/2001/XMLSchema#string>
+      UNMATCHED: ?L="Pizza"^^<http://www.w3.org/2001/XMLSchema#string>
+      UNMATCHED: ?L="Soft Drink"^^<http://www.w3.org/2001/XMLSchema#string>
+      UNMATCHED: ?L="Wine"^^<http://www.w3.org/2001/XMLSchema#string> (10ms)
+  unsup: sq12 - Subquery in CONSTRUCT with built-ins — Turtle result format not yet supported
+  FAIL: sq13 - Subqueries don't inject bindings — Results mismatch: expected 16 rows, got 0
+      UNMATCHED: ?O1=<http://www.example.orgorder1>, ?O2=<http://www.example.orgorder1>
+      UNMATCHED: ?O1=<http://www.example.orgorder1>, ?O2=<http://www.example.orgorder2>
+      UNMATCHED: ?O1=<http://www.example.orgorder1>, ?O2=<http://www.example.orgorder3>
+      UNMATCHED: ?O1=<http://www.example.orgorder1>, ?O2=<http://www.example.orgorder4>
+      UNMATCHED: ?O1=<http://www.example.orgorder2>, ?O2=<http://www.example.orgorder1>
+      UNMATCHED: ?O1=<http://www.example.orgorder2>, ?O2=<http://www.example.orgorder2>
+      UNMATCHED: ?O1=<http://www.example.orgorder2>, ?O2=<http://www.example.orgorder3>
+      UNMATCHED: ?O1=<http://www.example.orgorder2>, ?O2=<http://www.example.orgorder4>
+      UNMATCHED: ?O1=<http://www.example.orgorder3>, ?O2=<http://www.example.orgorder1>
+      UNMATCHED: ?O1=<http://www.example.orgorder3>, ?O2=<http://www.example.orgorder2>
+      UNMATCHED: ?O1=<http://www.example.orgorder3>, ?O2=<http://www.example.orgorder3>
+      UNMATCHED: ?O1=<http://www.example.orgorder3>, ?O2=<http://www.example.orgorder4>
+      UNMATCHED: ?O1=<http://www.example.orgorder4>, ?O2=<http://www.example.orgorder1>
+      UNMATCHED: ?O1=<http://www.example.orgorder4>, ?O2=<http://www.example.orgorder2>
+      UNMATCHED: ?O1=<http://www.example.orgorder4>, ?O2=<http://www.example.orgorder3>
+      UNMATCHED: ?O1=<http://www.example.orgorder4>, ?O2=<http://www.example.orgorder4> (104ms)
+  unsup: sq14 - limit by resource — Turtle result format not yet supported
+  [suite time: 0.3s]
+
+--- syntax-fed ---
+  PASS: syntax-service-01.rq
+  PASS: syntax-service-02.rq
+  PASS: syntax-service-03.rq
+  [suite time: 0.0s]
+
+--- syntax-query ---
+  PASS: syntax-select-expr-01.rq
+  PASS: syntax-select-expr-02.rq
+  PASS: syntax-select-expr-03.rq
+  PASS: syntax-select-expr-04.rq
+  PASS: syntax-select-expr-05.rq
+  PASS: syntax-aggregate-01.rq
+  PASS: syntax-aggregate-02.rq
+  PASS: syntax-aggregate-03.rq
+  PASS: syntax-aggregate-04.rq
+  PASS: syntax-aggregate-05.rq
+  PASS: syntax-aggregate-06.rq
+  PASS: syntax-aggregate-07.rq
+  PASS: syntax-aggregate-08.rq
+  PASS: syntax-aggregate-09.rq
+  PASS: syntax-aggregate-10.rq
+  PASS: syntax-aggregate-11.rq
+  PASS: syntax-aggregate-12.rq
+  PASS: syntax-aggregate-13.rq
+  PASS: syntax-aggregate-14.rq
+  PASS: syntax-aggregate-15.rq
+  PASS: syntax-subquery-01.rq
+  PASS: syntax-subquery-02.rq
+  PASS: syntax-subquery-03.rq
+  PASS: syntax-not-exists-01.rq
+  PASS: syntax-not-exists-02.rq
+  PASS: syntax-not-exists-03.rq
+  PASS: syntax-exists-01.rq
+  PASS: syntax-exists-02.rq
+  PASS: syntax-exists-03.rq
+  PASS: syntax-minus-01.rq
+  PASS: syntax-oneof-01.rq
+  PASS: syntax-oneof-02.rq
+  PASS: syntax-oneof-03.rq
+  PASS: syntax-bindingBINDscopes-01.rq
+  PASS: syntax-bindings-02a.rq with VALUES clause
+  PASS: syntax-bindings-03a.rq with VALUES clause
+  PASS: syntax-bindings-05a.rq with VALUES clause
+  PASS: syntax-bind-02.rq
+  PASS: syntax-construct-where-01.rq
+  PASS: syntax-construct-where-02.rq
+  PASS: syn-bad-01.rq
+  PASS: syn-bad-02.rq
+  PASS: syn-bad-03.rq
+  PASS: syn-bad-04.rq
+  PASS: syn-bad-05.rq
+  PASS: syn-bad-06.rq
+  PASS: syn-bad-07.rq
+  PASS: syn-bad-08.rq
+  PASS: syntax-bindings-09.rq
+  PASS: PrefixName with hex-encoded colons
+  PASS: PrefixName with unescaped colons
+  PASS: syntax-BINDscope1.rq
+  PASS: syntax-BINDscope2.rq
+  PASS: syntax-BINDscope3.rq
+  PASS: syntax-BINDscope4.rq
+  PASS: syntax-BINDscope5.rq
+  PASS: syntax-BINDscope6.rq
+  PASS: syntax-BINDscope7.rq
+  PASS: syntax-BINDscope8.rq
+  FAIL: syntax-propertyPaths-01.rq — Should parse but didn't
+  PASS: syntax-SELECTscope1.rq
+  PASS: syntax-SELECTscope2
+  PASS: syntax-SELECTscope3.rq
+  PASS: syn-pname-01
+  PASS: syn-pname-02
+  PASS: syn-pname-03
+  PASS: syn-pname-04
+  PASS: syn-pname-05
+  PASS: syn-pname-06
+  PASS: syn-pname-07
+  PASS: syn-pname-08
+  PASS: syn-pname-09
+  PASS: syn-bad-pname-01
+  PASS: syn-bad-pname-02
+  PASS: syn-bad-pname-03
+  PASS: syn-bad-pname-04
+  PASS: syn-bad-pname-05
+  PASS: syn-bad-pname-06
+  PASS: syn-bad-pname-07
+  PASS: syn-bad-pname-08
+  PASS: syn-bad-pname-09
+  PASS: syn-bad-pname-10
+  PASS: syn-bad-pname-11
+  PASS: syn-bad-pname-12
+  PASS: syn-bad-pname-13
+  PASS: syn-pp-in-collection
+  PASS: \U unicode codepoint escaping in literal
+  PASS: Invalid multi-pass codepoint escaping (\u then \U)
+  PASS: Invalid multi-pass codepoint escaping (\U then \u)
+  PASS: utf8 literal using codepoints at notable unicode boundaries
+  PASS: \U and \u unicode codepoint escaping in literal using codepoints at notable unicode boundaries
+  PASS: \u unicode codepoint escaping in literal using partial surrogate pair
+  PASS: Too few values in a VALUE clause compared to the number of variables
+  PASS: Too many values in a VALUE clause compared to the number of variables
+  [suite time: 2.1s]
+
+--- syntax-update-1 ---
+  [suite time: 0.7s]
+
+--- syntax-update-2 ---
+  [suite time: 0.0s]
+
+--- update-silent ---
+  [suite time: 0.2s]
+
+========================================
+Suite Results:
+  add                                 pass:0 fail:0 skip:8 unsupported:0
+  aggregates                          pass:43 fail:1 skip:0 unsupported:3
+  basic-update                        pass:0 fail:0 skip:13 unsupported:0
+  bind                                pass:10 fail:0 skip:0 unsupported:0
+  bindings                            pass:10 fail:0 skip:0 unsupported:1
+  cast                                pass:4 fail:2 skip:0 unsupported:0
+  clear                               pass:0 fail:0 skip:4 unsupported:0
+  construct                           pass:2 fail:1 skip:0 unsupported:4
+  copy                                pass:0 fail:0 skip:6 unsupported:0
+  csv-tsv-res                         pass:0 fail:0 skip:0 unsupported:6
+  delete                              pass:0 fail:0 skip:19 unsupported:0
+  delete-data                         pass:0 fail:0 skip:6 unsupported:0
+  delete-insert                       pass:8 fail:0 skip:9 unsupported:0
+  delete-where                        pass:0 fail:0 skip:6 unsupported:0
+  drop                                pass:0 fail:0 skip:4 unsupported:0
+  entailment                          pass:44 fail:26 skip:0 unsupported:0
+  exists                              pass:6 fail:0 skip:0 unsupported:0
+  functions                           pass:74 fail:1 skip:0 unsupported:0
+  grouping                            pass:6 fail:0 skip:0 unsupported:0
+  http-rdf-update                     pass:0 fail:0 skip:19 unsupported:0
+  json-res                            pass:0 fail:0 skip:0 unsupported:4
+  move                                pass:0 fail:0 skip:6 unsupported:0
+  negation                            pass:11 fail:1 skip:0 unsupported:0
+  project-expression                  pass:7 fail:0 skip:0 unsupported:0
+  property-path                       pass:33 fail:0 skip:0 unsupported:0
+  protocol                            pass:0 fail:0 skip:34 unsupported:0
+  service                             pass:0 fail:7 skip:0 unsupported:0
+  service-description                 pass:0 fail:0 skip:3 unsupported:0
+  subquery                            pass:9 fail:3 skip:0 unsupported:2
+  syntax-fed                          pass:3 fail:0 skip:0 unsupported:0
+  syntax-query                        pass:93 fail:1 skip:0 unsupported:0
+  syntax-update-1                     pass:0 fail:0 skip:54 unsupported:0
+  syntax-update-2                     pass:0 fail:0 skip:1 unsupported:0
+  update-silent                       pass:0 fail:0 skip:13 unsupported:0
+========================================
+TOTAL: 363 pass, 43 fail, 205 skip, 20 unsupported
+========================================
+
+
+=== W3C RDF 1.1 Test Runner ===
+Test base: ../../tests/w3c/rdf/rdf11
+
+
+--- rdf-mt ---
+  PASS: datatypes-intensional-xsd-integer-decimal-compatible
+  PASS: datatypes-non-well-formed-literal-1
+  PASS: datatypes-non-well-formed-literal-2
+  PASS: datatypes-semantic-equivalence-within-type-1
+  PASS: datatypes-semantic-equivalence-within-type-2
+  PASS: datatypes-semantic-equivalence-between-datatypes
+  PASS: datatypes-range-clash
+  PASS: datatypes-test008
+  PASS: datatypes-test009
+  PASS: datatypes-test010
+  PASS: datatypes-plain-literal-and-xsd-string
+  PASS: horst-01-subClassOf-intensional
+  PASS: horst-01-subPropertyOf-intensional
+  PASS: rdf-charmod-uris-test003
+  PASS: rdf-charmod-uris-test004
+  PASS: rdfms-seq-representation-test002
+  PASS: rdfms-seq-representation-test003
+  PASS: rdfms-seq-representation-test004
+  PASS: rdfms-xmllang-test007a
+  PASS: rdfms-xmllang-test007b
+  PASS: rdfms-xmllang-test007c
+  PASS: rdfs-container-membership-superProperty-test001
+  PASS: rdfs-domain-and-range-intensionality-range
+  PASS: rdfs-domain-and-range-intensionality-domain
+  PASS: rdfs-entailment-test001
+  PASS: rdfs-entailment-test002
+  PASS: rdfs-no-cycles-in-subClassOf-test001
+  PASS: rdfs-no-cycles-in-subPropertyOf-test001
+  PASS: rdfs-subClassOf-a-Property-test001
+  PASS: rdfs-subPropertyOf-semantics-test001
+  PASS: statement-entailment-test001
+  PASS: statement-entailment-test002
+  PASS: statement-entailment-test003
+  PASS: statement-entailment-test004
+  PASS: tex-01-language-tag-case-1
+  PASS: tex-01-language-tag-case-2
+  PASS: xmlsch-02-whitespace-facet-1
+  PASS: xmlsch-02-whitespace-facet-2
+  PASS: xmlsch-02-whitespace-facet-4
+  [suite time: 1.7s]
+
+--- rdf-n-quads ---
+  PASS: nq-syntax-uri-01
+  PASS: nq-syntax-uri-02
+  PASS: nq-syntax-uri-03
+  PASS: nq-syntax-uri-04
+  PASS: nq-syntax-uri-05
+  PASS: nq-syntax-uri-06
+  PASS: nq-syntax-bnode-01
+  PASS: nq-syntax-bnode-02
+  PASS: nq-syntax-bnode-03
+  PASS: nq-syntax-bnode-04
+  PASS: nq-syntax-bnode-05
+  PASS: nq-syntax-bnode-06
+  FAIL: nq-syntax-bad-literal-01 — Should reject but parsed OK
+  FAIL: nq-syntax-bad-literal-02 — Should reject but parsed OK
+  FAIL: nq-syntax-bad-literal-03 — Should reject but parsed OK
+  FAIL: nq-syntax-bad-uri-01 — Should reject but parsed OK
+  FAIL: nq-syntax-bad-quint-01 — Should reject but parsed OK
+  PASS: nt-syntax-file-01
+  PASS: nt-syntax-file-02
+  PASS: nt-syntax-file-03
+  PASS: nt-syntax-uri-01
+  PASS: nt-syntax-uri-02
+  PASS: nt-syntax-uri-03
+  PASS: nt-syntax-uri-04
+  PASS: nt-syntax-string-01
+  PASS: nt-syntax-string-02
+  PASS: nt-syntax-string-03
+  PASS: nt-syntax-str-esc-01
+  PASS: nt-syntax-str-esc-02
+  PASS: nt-syntax-str-esc-03
+  PASS: nt-syntax-bnode-01
+  PASS: nt-syntax-bnode-02
+  PASS: nt-syntax-bnode-03
+  PASS: nt-syntax-datatypes-01
+  PASS: nt-syntax-datatypes-02
+  FAIL: nt-syntax-bad-uri-01 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-uri-02 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-uri-03 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-uri-04 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-uri-05 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-uri-06 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-uri-07 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-uri-08 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-uri-09 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-prefix-01 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-base-01 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-bnode-01 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-bnode-02 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-struct-01 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-struct-02 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-lang-01 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-esc-01 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-esc-02 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-esc-03 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-string-01 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-string-02 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-string-03 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-string-04 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-string-05 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-string-06 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-string-07 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-num-01 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-num-02 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-num-03 — Should reject but parsed OK
+  PASS: nt-syntax-subm-01 (48ms)
+  PASS: comment_following_triple
+  PASS: literal
+  PASS: literal_all_controls
+  PASS: literal_all_punctuation
+  PASS: literal_ascii_boundaries
+  PASS: literal_with_2_dquotes
+  PASS: literal_with_2_squotes
+  PASS: literal_with_BACKSPACE
+  PASS: literal_with_CARRIAGE_RETURN
+  PASS: literal_with_CHARACTER_TABULATION
+  PASS: literal_with_dquote
+  PASS: literal_with_FORM_FEED
+  PASS: literal_with_LINE_FEED
+  PASS: literal_with_numeric_escape4
+  PASS: literal_with_numeric_escape8
+  PASS: literal_with_REVERSE_SOLIDUS
+  PASS: literal_with_REVERSE_SOLIDUS2
+  PASS: literal_with_squote
+  PASS: literal_with_UTF8_boundaries
+  PASS: langtagged_string
+  PASS: lantag_with_subtag
+  PASS: minimal_whitespace
+  [suite time: 1.9s]
+
+--- rdf-n-triples ---
+  PASS: nt-syntax-file-01
+  PASS: nt-syntax-file-02
+  PASS: nt-syntax-file-03
+  PASS: nt-syntax-uri-01
+  PASS: nt-syntax-uri-02
+  PASS: nt-syntax-uri-03
+  PASS: nt-syntax-uri-04
+  PASS: nt-syntax-string-01
+  PASS: nt-syntax-string-02
+  PASS: nt-syntax-string-03
+  PASS: nt-syntax-str-esc-01
+  PASS: nt-syntax-str-esc-02
+  PASS: nt-syntax-str-esc-03
+  PASS: nt-syntax-bnode-01
+  PASS: nt-syntax-bnode-02
+  PASS: nt-syntax-bnode-03
+  PASS: nt-syntax-datatypes-01
+  PASS: nt-syntax-datatypes-02
+  FAIL: nt-syntax-bad-uri-01 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-uri-02 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-uri-03 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-uri-04 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-uri-05 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-uri-06 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-uri-07 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-uri-08 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-uri-09 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-prefix-01 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-base-01 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-bnode-01 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-bnode-02 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-struct-01 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-struct-02 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-lang-01 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-esc-01 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-esc-02 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-esc-03 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-string-01 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-string-02 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-string-03 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-string-04 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-string-05 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-string-06 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-string-07 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-num-01 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-num-02 — Should reject but parsed OK
+  FAIL: nt-syntax-bad-num-03 — Should reject but parsed OK
+  PASS: nt-syntax-subm-01 (38ms)
+  PASS: comment_following_triple
+  PASS: literal
+  PASS: literal_all_controls
+  PASS: literal_all_punctuation
+  PASS: literal_ascii_boundaries
+  PASS: literal_with_2_dquotes
+  PASS: literal_with_2_squotes
+  PASS: literal_with_BACKSPACE
+  PASS: literal_with_CARRIAGE_RETURN
+  PASS: literal_with_CHARACTER_TABULATION
+  PASS: literal_with_dquote
+  PASS: literal_with_FORM_FEED
+  PASS: literal_with_LINE_FEED
+  PASS: literal_with_numeric_escape4
+  PASS: literal_with_numeric_escape8
+  PASS: literal_with_REVERSE_SOLIDUS
+  PASS: literal_with_REVERSE_SOLIDUS2
+  PASS: literal_with_squote
+  PASS: literal_with_UTF8_boundaries
+  PASS: langtagged_string
+  PASS: lantag_with_subtag
+  PASS: minimal_whitespace
+  [suite time: 1.1s]
+
+--- rdf-trig ---
+  PASS: anonymous_blank_node_graph
+  PASS: labeled_blank_node_graph
+  PASS: alternating_iri_graphs
+  PASS: alternating_bnode_graphs
+  PASS: trig-syntax-bad-base-04
+  PASS: trig-syntax-bad-base-05
+  PASS: trig-syntax-bad-prefix-06
+  PASS: trig-syntax-bad-prefix-07
+  PASS: trig-syntax-struct-06
+  PASS: trig-syntax-struct-07
+  PASS: trig-syntax-minimal-whitespace-01
+  PASS: IRI_subject
+  PASS: IRI_with_four_digit_numeric_escape
+  PASS: IRI_with_eight_digit_numeric_escape
+  PASS: IRI_with_all_punctuation
+  PASS: bareword_a_predicate
+  PASS: old_style_prefix
+  PASS: SPARQL_style_prefix
+  PASS: prefixed_IRI_predicate
+  PASS: prefixed_IRI_object
+  PASS: prefix_only_IRI
+  FAIL: prefix_with_PN_CHARS_BASE_character_boundaries — Triples mismatch: expected 2, got 0
+  PASS: prefix_with_non_leading_extras
+  PASS: default_namespace_IRI
+  PASS: prefix_reassigned_and_used
+  FAIL: reserved_escaped_localName — Triples mismatch: expected 2, got 0
+  PASS: percent_escaped_localName
+  PASS: HYPHEN_MINUS_in_localName
+  PASS: underscore_in_localName
+  PASS: localname_with_COLON
+  PASS: localName_with_assigned_nfc_bmp_PN_CHARS_BASE_character_boundaries
+  FAIL: localName_with_assigned_nfc_PN_CHARS_BASE_character_boundaries — Triples mismatch: expected 2, got 0
+  FAIL: localName_with_nfc_PN_CHARS_BASE_character_boundaries — Triples mismatch: expected 2, got 0
+  PASS: localName_with_leading_underscore
+  PASS: localName_with_leading_digit
+  PASS: localName_with_non_leading_extras
+  PASS: old_style_base
+  PASS: SPARQL_style_base
+  PASS: labeled_blank_node_subject
+  PASS: labeled_blank_node_object
+  FAIL: labeled_blank_node_with_PN_CHARS_BASE_character_boundaries — Triples mismatch: expected 2, got 0
+  PASS: labeled_blank_node_with_leading_underscore
+  PASS: labeled_blank_node_with_leading_digit
+  FAIL: labeled_blank_node_with_non_leading_extras — Triples mismatch: expected 2, got 0
+  PASS: anonymous_blank_node_subject
+  PASS: anonymous_blank_node_object
+  PASS: sole_blankNodePropertyList
+  PASS: blankNodePropertyList_as_subject
+  PASS: blankNodePropertyList_as_object
+  PASS: blankNodePropertyList_as_object_containing_objectList
+  PASS: blankNodePropertyList_as_object_containing_objectList_of_two_objects
+  PASS: blankNodePropertyList_with_multiple_triples
+  PASS: nested_blankNodePropertyLists
+  PASS: blankNodePropertyList_containing_collection
+  PASS: collection_subject
+  PASS: collection_object
+  PASS: empty_collection
+  PASS: nested_collection
+  PASS: first (11ms)
+  PASS: last
+  PASS: LITERAL1
+  PASS: LITERAL1_ascii_boundaries
+  PASS: LITERAL1_with_UTF8_boundaries
+  PASS: LITERAL1_all_controls
+  PASS: LITERAL1_all_punctuation
+  PASS: LITERAL_LONG1
+  PASS: LITERAL_LONG1_ascii_boundaries
+  PASS: LITERAL_LONG1_with_UTF8_boundaries
+  PASS: LITERAL_LONG1_with_1_squote
+  PASS: LITERAL_LONG1_with_2_squotes
+  PASS: LITERAL2
+  PASS: LITERAL2_ascii_boundaries
+  PASS: LITERAL2_with_UTF8_boundaries
+  PASS: LITERAL_LONG2
+  PASS: LITERAL_LONG2_ascii_boundaries
+  PASS: LITERAL_LONG2_with_UTF8_boundaries
+  PASS: LITERAL_LONG2_with_1_squote
+  PASS: LITERAL_LONG2_with_2_squotes
+  PASS: literal_with_CHARACTER_TABULATION
+  PASS: literal_with_BACKSPACE
+  PASS: literal_with_LINE_FEED
+  PASS: literal_with_CARRIAGE_RETURN
+  PASS: literal_with_FORM_FEED
+  PASS: literal_with_REVERSE_SOLIDUS
+  PASS: literal_with_escaped_CHARACTER_TABULATION
+  PASS: literal_with_escaped_BACKSPACE
+  PASS: literal_with_escaped_LINE_FEED
+  PASS: literal_with_escaped_CARRIAGE_RETURN
+  PASS: literal_with_escaped_FORM_FEED
+  PASS: literal_with_numeric_escape4
+  PASS: literal_with_numeric_escape8
+  PASS: IRIREF_datatype
+  PASS: prefixed_name_datatype
+  PASS: bareword_integer
+  PASS: bareword_decimal
+  PASS: bareword_double
+  PASS: double_lower_case_e
+  PASS: negative_numeric
+  PASS: positive_numeric
+  PASS: numeric_with_leading_0
+  PASS: literal_true
+  PASS: literal_false
+  PASS: langtagged_non_LONG
+  PASS: langtagged_LONG
+  PASS: lantag_with_subtag
+  PASS: objectList_with_two_objects
+  PASS: predicateObjectList_with_two_objectLists
+  PASS: predicateObjectList_with_blankNodePropertyList_as_object
+  PASS: repeated_semis_at_end
+  PASS: repeated_semis_not_at_end
+  PASS: comment_following_localName
+  FAIL: number_sign_following_localName — Triples mismatch: expected 1, got 1
+  PASS: comment_following_PNAME_NS
+  FAIL: number_sign_following_PNAME_NS — Triples mismatch: expected 1, got 1
+  PASS: LITERAL_LONG2_with_REVERSE_SOLIDUS
+  PASS: trig-syntax-bad-num-05
+  PASS: two_LITERAL_LONG2s
+  PASS: langtagged_LONG_with_subtag
+  PASS: trig-syntax-file-01
+  PASS: trig-syntax-file-02
+  PASS: trig-syntax-file-03
+  PASS: trig-syntax-uri-01
+  PASS: trig-syntax-uri-02
+  PASS: trig-syntax-uri-03
+  PASS: trig-syntax-uri-04
+  PASS: trig-syntax-base-01
+  PASS: trig-syntax-base-02
+  PASS: trig-syntax-base-03
+  PASS: trig-syntax-base-04
+  PASS: trig-syntax-prefix-01
+  PASS: trig-syntax-prefix-02
+  PASS: trig-syntax-prefix-03
+  PASS: trig-syntax-prefix-04
+  PASS: trig-syntax-prefix-05
+  PASS: trig-syntax-prefix-06
+  PASS: trig-syntax-prefix-07
+  PASS: trig-syntax-prefix-08
+  PASS: trig-syntax-prefix-09
+  PASS: trig-syntax-string-01
+  PASS: trig-syntax-string-02
+  PASS: trig-syntax-string-03
+  PASS: trig-syntax-string-04
+  PASS: trig-syntax-string-05
+  PASS: trig-syntax-string-06
+  PASS: trig-syntax-string-07
+  PASS: trig-syntax-string-08
+  PASS: trig-syntax-string-09
+  PASS: trig-syntax-string-10
+  PASS: trig-syntax-string-11
+  PASS: trig-syntax-str-esc-01
+  PASS: trig-syntax-str-esc-02
+  PASS: trig-syntax-str-esc-03
+  PASS: trig-syntax-pname-esc-01
+  PASS: trig-syntax-pname-esc-02
+  PASS: trig-syntax-pname-esc-03
+  PASS: trig-syntax-bnode-01
+  PASS: trig-syntax-bnode-02
+  PASS: trig-syntax-bnode-03
+  PASS: trig-syntax-bnode-04
+  PASS: trig-syntax-bnode-05
+  PASS: trig-syntax-bnode-06
+  PASS: trig-syntax-bnode-07
+  PASS: trig-syntax-bnode-08
+  PASS: trig-syntax-bnode-09
+  PASS: trig-syntax-bnode-10
+  PASS: trig-syntax-number-01
+  PASS: trig-syntax-number-02
+  PASS: trig-syntax-number-03
+  PASS: trig-syntax-number-04
+  PASS: trig-syntax-number-05
+  PASS: trig-syntax-number-06
+  PASS: trig-syntax-number-07
+  PASS: trig-syntax-number-08
+  PASS: trig-syntax-number-09
+  PASS: trig-syntax-number-10
+  PASS: trig-syntax-number-11
+  PASS: trig-syntax-number-12
+  PASS: trig-syntax-number-13
+  PASS: trig-syntax-datatypes-01
+  PASS: trig-syntax-datatypes-02
+  PASS: trig-syntax-kw-01
+  PASS: trig-syntax-kw-02
+  PASS: trig-syntax-kw-03
+  PASS: trig-syntax-struct-01
+  PASS: trig-syntax-struct-02
+  PASS: trig-syntax-struct-03
+  PASS: trig-syntax-struct-04
+  PASS: trig-syntax-struct-05
+  PASS: trig-syntax-lists-01
+  PASS: trig-syntax-lists-02
+  PASS: trig-syntax-lists-03
+  PASS: trig-syntax-lists-04
+  PASS: trig-syntax-lists-05
+  PASS: trig-syntax-bad-uri-01
+  PASS: trig-syntax-bad-uri-02
+  PASS: trig-syntax-bad-uri-03
+  PASS: trig-syntax-bad-uri-04
+  PASS: trig-syntax-bad-uri-05
+  PASS: trig-syntax-bad-prefix-01
+  PASS: trig-syntax-bad-prefix-02
+  PASS: trig-syntax-bad-prefix-03
+  PASS: trig-syntax-bad-prefix-04
+  PASS: trig-syntax-bad-prefix-05
+  PASS: trig-syntax-bad-base-01
+  PASS: trig-syntax-bad-base-02
+  PASS: trig-syntax-bad-base-03
+  PASS: trig-syntax-bad-bnode-01
+  PASS: trig-syntax-bad-bnode-02
+  PASS: trig-syntax-bad-struct-02
+  PASS: trig-syntax-bad-struct-03
+  PASS: trig-syntax-bad-struct-04
+  PASS: trig-syntax-bad-struct-05
+  PASS: trig-syntax-bad-struct-06
+  PASS: trig-syntax-bad-struct-07
+  PASS: trig-syntax-bad-kw-01
+  PASS: trig-syntax-bad-kw-02
+  PASS: trig-syntax-bad-kw-03
+  PASS: trig-syntax-bad-kw-04
+  PASS: trig-syntax-bad-kw-05
+  PASS: trig-syntax-bad-n3-extras-01
+  PASS: trig-syntax-bad-n3-extras-02
+  PASS: trig-syntax-bad-n3-extras-03
+  PASS: trig-syntax-bad-n3-extras-04
+  PASS: trig-syntax-bad-n3-extras-05
+  PASS: trig-syntax-bad-n3-extras-06
+  PASS: trig-syntax-bad-n3-extras-07
+  PASS: trig-syntax-bad-n3-extras-08
+  PASS: trig-syntax-bad-n3-extras-09
+  PASS: trig-syntax-bad-n3-extras-10
+  PASS: trig-syntax-bad-n3-extras-11
+  PASS: trig-syntax-bad-n3-extras-12
+  PASS: trig-syntax-bad-n3-extras-13
+  PASS: trig-syntax-bad-numeric-escape-01
+  PASS: trig-syntax-bad-numeric-escape-02
+  PASS: trig-syntax-bad-numeric-escape-03
+  PASS: trig-syntax-bad-numeric-escape-04
+  PASS: trig-syntax-bad-numeric-escape-05
+  PASS: trig-syntax-bad-numeric-escape-06
+  PASS: trig-syntax-bad-numeric-escape-07
+  PASS: trig-syntax-bad-numeric-escape-08
+  PASS: trig-syntax-bad-numeric-escape-09
+  PASS: trig-syntax-bad-numeric-escape-10
+  PASS: trig-syntax-bad-struct-09
+  PASS: trig-syntax-bad-struct-10
+  PASS: trig-syntax-bad-struct-12
+  PASS: trig-syntax-bad-struct-13
+  PASS: trig-syntax-bad-struct-14
+  PASS: trig-syntax-bad-struct-15
+  PASS: trig-syntax-bad-struct-16
+  PASS: trig-syntax-bad-struct-17
+  PASS: trig-syntax-bad-lang-01
+  PASS: trig-syntax-bad-esc-01
+  PASS: trig-syntax-bad-esc-02
+  PASS: trig-syntax-bad-esc-03
+  PASS: trig-syntax-bad-esc-04
+  PASS: trig-syntax-bad-pname-01
+  FAIL: trig-syntax-bad-pname-02 — Should reject but parsed OK
+  FAIL: trig-syntax-bad-pname-03 — Should reject but parsed OK
+  PASS: trig-syntax-bad-string-01
+  PASS: trig-syntax-bad-string-02
+  PASS: trig-syntax-bad-string-03
+  PASS: trig-syntax-bad-string-04
+  PASS: trig-syntax-bad-string-05
+  PASS: trig-syntax-bad-string-06
+  PASS: trig-syntax-bad-string-07
+  PASS: trig-syntax-bad-num-01
+  PASS: trig-syntax-bad-num-02
+  PASS: trig-syntax-bad-num-03
+  PASS: trig-syntax-bad-num-04
+  PASS: trig-syntax-bad-num-05
+  PASS: trig-eval-struct-01
+  PASS: trig-eval-struct-02
+  PASS: trig-subm-01
+  PASS: trig-subm-02
+  PASS: trig-subm-03
+  PASS: trig-subm-04
+  PASS: trig-subm-05
+  PASS: trig-subm-06
+  PASS: trig-subm-07
+  PASS: trig-subm-08
+  PASS: trig-subm-09
+  PASS: trig-subm-10
+  PASS: trig-subm-11
+  PASS: trig-subm-12
+  PASS: trig-subm-13
+  PASS: trig-subm-14
+  PASS: trig-subm-15
+  PASS: trig-subm-16
+  PASS: trig-subm-17
+  PASS: trig-subm-18
+  PASS: trig-subm-19
+  PASS: trig-subm-20
+  PASS: trig-subm-21
+  PASS: trig-subm-22
+  PASS: trig-subm-23
+  PASS: trig-subm-24
+  PASS: trig-subm-25
+  PASS: trig-subm-26 (38ms)
+  PASS: trig-subm-27
+  PASS: trig-eval-bad-01
+  PASS: trig-eval-bad-02
+  PASS: trig-eval-bad-03
+  PASS: trig-eval-bad-04
+  PASS: trig-syntax-bad-blank-label-dot-end
+  PASS: trig-syntax-bad-ln-dash-start
+  FAIL: trig-syntax-bad-ln-escape-start — Should reject but parsed OK
+  FAIL: trig-syntax-bad-ln-escape — Should reject but parsed OK
+  FAIL: trig-syntax-bad-missing-ns-dot-end — Should reject but parsed OK
+  PASS: trig-syntax-bad-missing-ns-dot-start
+  PASS: trig-syntax-bad-ns-dot-end
+  PASS: trig-syntax-bad-ns-dot-start
+  PASS: trig-syntax-bad-number-dot-in-anon
+  PASS: trig-syntax-bad-list-01
+  PASS: trig-syntax-bad-list-02
+  FAIL: trig-syntax-bad-list-03 — Should reject but parsed OK
+  PASS: trig-syntax-bad-list-04
+  PASS: trig-syntax-blank-label
+  PASS: trig-syntax-ln-colons
+  PASS: trig-syntax-ln-dots
+  PASS: trig-syntax-ns-dots
+  PASS: trig-kw-graph-01
+  PASS: trig-kw-graph-02
+  PASS: trig-kw-graph-03
+  PASS: trig-kw-graph-04
+  PASS: trig-kw-graph-05
+  PASS: trig-kw-graph-06
+  PASS: trig-kw-graph-07
+  PASS: trig-kw-graph-08
+  PASS: trig-kw-graph-09
+  PASS: trig-kw-graph-10
+  PASS: trig-graph-bad-01
+  PASS: trig-graph-bad-02
+  PASS: trig-graph-bad-03
+  PASS: trig-graph-bad-04
+  PASS: trig-graph-bad-05
+  PASS: trig-graph-bad-06
+  PASS: trig-graph-bad-07
+  PASS: trig-graph-bad-08
+  PASS: trig-graph-bad-09
+  PASS: trig-graph-bad-10
+  PASS: trig-graph-bad-11
+  PASS: trig-bnodeplist-graph-bad-01
+  PASS: trig-collection-graph-bad-01
+  PASS: trig-collection-graph-bad-02
+  PASS: trig-turtle-01
+  PASS: trig-turtle-02
+  PASS: trig-turtle-03
+  PASS: trig-turtle-04
+  PASS: trig-turtle-05
+  PASS: trig-turtle-06
+  PASS: trig-turtle-bad-01
+  PASS: trig-turtle-bad-02
+  FAIL: IRI-resolution-01 — Triples mismatch: expected 41, got 41 (23ms)
+  FAIL: IRI-resolution-02 — Triples mismatch: expected 41, got 41 (23ms)
+  FAIL: IRI-resolution-07 — Triples mismatch: expected 42, got 42 (22ms)
+  FAIL: IRI-resolution-08 — Triples mismatch: expected 12, got 12
+  [suite time: 36.6s]
+
+--- rdf-turtle ---
+  PASS: IRI_subject
+  PASS: IRI_with_four_digit_numeric_escape
+  PASS: IRI_with_eight_digit_numeric_escape
+  PASS: IRI_with_all_punctuation
+  PASS: bareword_a_predicate
+  PASS: old_style_prefix
+  PASS: SPARQL_style_prefix
+  PASS: prefixed_IRI_predicate
+  PASS: prefixed_IRI_object
+  PASS: prefix_only_IRI
+  FAIL: prefix_with_PN_CHARS_BASE_character_boundaries — Triples mismatch: expected 1, got 0
+  PASS: prefix_with_non_leading_extras
+  PASS: default_namespace_IRI
+  PASS: prefix_reassigned_and_used
+  FAIL: reserved_escaped_localName — Triples mismatch: expected 1, got 0
+  PASS: percent_escaped_localName
+  PASS: HYPHEN_MINUS_in_localName
+  PASS: underscore_in_localName
+  PASS: localname_with_COLON
+  PASS: localName_with_assigned_nfc_bmp_PN_CHARS_BASE_character_boundaries
+  FAIL: localName_with_assigned_nfc_PN_CHARS_BASE_character_boundaries — Triples mismatch: expected 1, got 0
+  FAIL: localName_with_nfc_PN_CHARS_BASE_character_boundaries — Triples mismatch: expected 1, got 0
+  PASS: localName_with_leading_underscore
+  PASS: localName_with_leading_digit
+  PASS: localName_with_non_leading_extras
+  PASS: old_style_base
+  PASS: SPARQL_style_base
+  PASS: labeled_blank_node_subject
+  PASS: labeled_blank_node_object
+  FAIL: labeled_blank_node_with_PN_CHARS_BASE_character_boundaries — Triples mismatch: expected 1, got 0
+  PASS: labeled_blank_node_with_leading_underscore
+  PASS: labeled_blank_node_with_leading_digit
+  FAIL: labeled_blank_node_with_non_leading_extras — Triples mismatch: expected 1, got 0
+  PASS: anonymous_blank_node_subject
+  PASS: anonymous_blank_node_object
+  PASS: sole_blankNodePropertyList
+  PASS: blankNodePropertyList_as_subject
+  PASS: blankNodePropertyList_as_object
+  PASS: blankNodePropertyList_as_object_containing_objectList
+  PASS: blankNodePropertyList_as_object_containing_objectList_of_two_objects
+  PASS: blankNodePropertyList_with_multiple_triples
+  PASS: nested_blankNodePropertyLists
+  PASS: blankNodePropertyList_containing_collection
+  PASS: collection_subject
+  PASS: collection_object
+  PASS: empty_collection
+  PASS: nested_collection
+  PASS: first
+  PASS: last
+  PASS: LITERAL1
+  PASS: LITERAL1_ascii_boundaries
+  PASS: LITERAL1_with_UTF8_boundaries
+  PASS: LITERAL1_all_controls
+  PASS: LITERAL1_all_punctuation
+  PASS: LITERAL_LONG1
+  PASS: LITERAL_LONG1_ascii_boundaries
+  PASS: LITERAL_LONG1_with_UTF8_boundaries
+  PASS: LITERAL_LONG1_with_1_squote
+  PASS: LITERAL_LONG1_with_2_squotes
+  PASS: LITERAL2
+  PASS: LITERAL2_ascii_boundaries
+  PASS: LITERAL2_with_UTF8_boundaries
+  PASS: LITERAL_LONG2
+  PASS: LITERAL_LONG2_ascii_boundaries
+  PASS: LITERAL_LONG2_with_UTF8_boundaries
+  PASS: LITERAL_LONG2_with_1_squote
+  PASS: LITERAL_LONG2_with_2_squotes
+  PASS: literal_with_CHARACTER_TABULATION
+  PASS: literal_with_BACKSPACE
+  PASS: literal_with_LINE_FEED
+  PASS: literal_with_CARRIAGE_RETURN
+  PASS: literal_with_FORM_FEED
+  PASS: literal_with_REVERSE_SOLIDUS
+  PASS: literal_with_escaped_CHARACTER_TABULATION
+  PASS: literal_with_escaped_BACKSPACE
+  PASS: literal_with_escaped_LINE_FEED
+  PASS: literal_with_escaped_CARRIAGE_RETURN
+  PASS: literal_with_escaped_FORM_FEED
+  PASS: literal_with_numeric_escape4
+  PASS: literal_with_numeric_escape8
+  PASS: IRIREF_datatype
+  PASS: prefixed_name_datatype
+  PASS: bareword_integer
+  PASS: bareword_decimal
+  PASS: bareword_double
+  PASS: double_lower_case_e
+  PASS: negative_numeric
+  PASS: positive_numeric
+  PASS: numeric_with_leading_0
+  PASS: literal_true
+  PASS: literal_false
+  PASS: langtagged_non_LONG
+  PASS: langtagged_LONG
+  PASS: lantag_with_subtag
+  PASS: objectList_with_two_objects
+  PASS: predicateObjectList_with_two_objectLists
+  PASS: predicateObjectList_with_blankNodePropertyList_as_object
+  PASS: repeated_semis_at_end
+  PASS: repeated_semis_not_at_end
+  PASS: comment_following_localName
+  FAIL: number_sign_following_localName — Triples mismatch: expected 1, got 1
+  PASS: comment_following_PNAME_NS
+  FAIL: number_sign_following_PNAME_NS — Triples mismatch: expected 1, got 1
+  PASS: LITERAL_LONG2_with_REVERSE_SOLIDUS
+  PASS: turtle-syntax-bad-num-05
+  PASS: two_LITERAL_LONG2s
+  PASS: langtagged_LONG_with_subtag
+  PASS: turtle-syntax-file-01
+  PASS: turtle-syntax-file-02
+  PASS: turtle-syntax-file-03
+  PASS: turtle-syntax-uri-01
+  PASS: turtle-syntax-uri-02
+  PASS: turtle-syntax-uri-03
+  PASS: turtle-syntax-uri-04
+  PASS: turtle-syntax-base-01
+  PASS: turtle-syntax-base-02
+  PASS: turtle-syntax-base-03
+  PASS: turtle-syntax-base-04
+  PASS: turtle-syntax-prefix-01
+  PASS: turtle-syntax-prefix-02
+  PASS: turtle-syntax-prefix-03
+  PASS: turtle-syntax-prefix-04
+  PASS: turtle-syntax-prefix-05
+  PASS: turtle-syntax-prefix-06
+  PASS: turtle-syntax-prefix-07
+  PASS: turtle-syntax-prefix-08
+  PASS: turtle-syntax-prefix-09
+  PASS: turtle-syntax-string-01
+  PASS: turtle-syntax-string-02
+  PASS: turtle-syntax-string-03
+  PASS: turtle-syntax-string-04
+  PASS: turtle-syntax-string-05
+  PASS: turtle-syntax-string-06
+  PASS: turtle-syntax-string-07
+  PASS: turtle-syntax-string-08
+  PASS: turtle-syntax-string-09
+  PASS: turtle-syntax-string-10
+  PASS: turtle-syntax-string-11
+  PASS: turtle-syntax-str-esc-01
+  PASS: turtle-syntax-str-esc-02
+  PASS: turtle-syntax-str-esc-03
+  PASS: turtle-syntax-pname-esc-01
+  PASS: turtle-syntax-pname-esc-02
+  PASS: turtle-syntax-pname-esc-03
+  PASS: turtle-syntax-bnode-01
+  PASS: turtle-syntax-bnode-02
+  PASS: turtle-syntax-bnode-03
+  PASS: turtle-syntax-bnode-04
+  PASS: turtle-syntax-bnode-05
+  PASS: turtle-syntax-bnode-06
+  PASS: turtle-syntax-bnode-07
+  PASS: turtle-syntax-bnode-08
+  PASS: turtle-syntax-bnode-09
+  PASS: turtle-syntax-bnode-10
+  PASS: turtle-syntax-number-01
+  PASS: turtle-syntax-number-02
+  PASS: turtle-syntax-number-03
+  PASS: turtle-syntax-number-04
+  PASS: turtle-syntax-number-05
+  PASS: turtle-syntax-number-06
+  PASS: turtle-syntax-number-07
+  PASS: turtle-syntax-number-08
+  PASS: turtle-syntax-number-09
+  PASS: turtle-syntax-number-10
+  PASS: turtle-syntax-number-11
+  PASS: turtle-syntax-number-12
+  PASS: turtle-syntax-number-13
+  PASS: turtle-syntax-datatypes-01
+  PASS: turtle-syntax-datatypes-02
+  PASS: turtle-syntax-kw-01
+  PASS: turtle-syntax-kw-02
+  PASS: turtle-syntax-kw-03
+  PASS: turtle-syntax-struct-01
+  PASS: turtle-syntax-struct-02
+  PASS: turtle-syntax-struct-03
+  PASS: turtle-syntax-struct-04
+  PASS: turtle-syntax-struct-05
+  PASS: turtle-eval-lists-01
+  PASS: turtle-eval-lists-02
+  PASS: turtle-eval-lists-03
+  PASS: turtle-eval-lists-04
+  PASS: turtle-eval-lists-05
+  PASS: turtle-eval-lists-06
+  PASS: turtle-syntax-bad-uri-01
+  PASS: turtle-syntax-bad-uri-02
+  PASS: turtle-syntax-bad-uri-03
+  PASS: turtle-syntax-bad-uri-04
+  PASS: turtle-syntax-bad-uri-05
+  PASS: turtle-syntax-bad-prefix-01
+  PASS: turtle-syntax-bad-prefix-02
+  PASS: turtle-syntax-bad-prefix-03
+  PASS: turtle-syntax-bad-prefix-04
+  PASS: turtle-syntax-bad-prefix-05
+  PASS: turtle-syntax-bad-base-01
+  PASS: turtle-syntax-bad-base-02
+  PASS: turtle-syntax-bad-base-03
+  PASS: turtle-syntax-bad-bnode-01
+  PASS: turtle-syntax-bad-bnode-02
+  PASS: turtle-syntax-bad-struct-01
+  PASS: turtle-syntax-bad-struct-02
+  PASS: turtle-syntax-bad-struct-03
+  PASS: turtle-syntax-bad-struct-04
+  PASS: turtle-syntax-bad-struct-05
+  PASS: turtle-syntax-bad-struct-06
+  PASS: turtle-syntax-bad-struct-07
+  PASS: turtle-syntax-bad-kw-01
+  PASS: turtle-syntax-bad-kw-02
+  PASS: turtle-syntax-bad-kw-03
+  PASS: turtle-syntax-bad-kw-04
+  PASS: turtle-syntax-bad-kw-05
+  PASS: turtle-syntax-bad-n3-extras-01
+  PASS: turtle-syntax-bad-n3-extras-02
+  PASS: turtle-syntax-bad-n3-extras-03
+  PASS: turtle-syntax-bad-n3-extras-04
+  PASS: turtle-syntax-bad-n3-extras-05
+  PASS: turtle-syntax-bad-n3-extras-06
+  PASS: turtle-syntax-bad-n3-extras-07
+  PASS: turtle-syntax-bad-n3-extras-08
+  PASS: turtle-syntax-bad-n3-extras-09
+  PASS: turtle-syntax-bad-n3-extras-10
+  PASS: turtle-syntax-bad-n3-extras-11
+  PASS: turtle-syntax-bad-n3-extras-12
+  PASS: turtle-syntax-bad-n3-extras-13
+  PASS: turtle-syntax-bad-numeric-escape-01
+  PASS: turtle-syntax-bad-numeric-escape-02
+  PASS: turtle-syntax-bad-numeric-escape-03
+  PASS: turtle-syntax-bad-numeric-escape-04
+  PASS: turtle-syntax-bad-numeric-escape-05
+  PASS: turtle-syntax-bad-numeric-escape-06
+  PASS: turtle-syntax-bad-numeric-escape-07
+  PASS: turtle-syntax-bad-numeric-escape-08
+  PASS: turtle-syntax-bad-numeric-escape-09
+  PASS: turtle-syntax-bad-numeric-escape-10
+  PASS: turtle-syntax-bad-struct-08
+  PASS: turtle-syntax-bad-struct-09
+  PASS: turtle-syntax-bad-struct-10
+  PASS: turtle-syntax-bad-struct-11
+  PASS: turtle-syntax-bad-struct-12
+  PASS: turtle-syntax-bad-struct-13
+  PASS: turtle-syntax-bad-struct-14
+  PASS: turtle-syntax-bad-struct-15
+  PASS: turtle-syntax-bad-struct-16
+  PASS: turtle-syntax-bad-struct-17
+  PASS: turtle-syntax-bad-lang-01
+  PASS: turtle-syntax-bad-esc-01
+  PASS: turtle-syntax-bad-esc-02
+  PASS: turtle-syntax-bad-esc-03
+  PASS: turtle-syntax-bad-esc-04
+  PASS: turtle-syntax-bad-pname-01
+  FAIL: turtle-syntax-bad-pname-02 — Should reject but parsed OK
+  FAIL: turtle-syntax-bad-pname-03 — Should reject but parsed OK
+  PASS: turtle-syntax-bad-string-01
+  PASS: turtle-syntax-bad-string-02
+  PASS: turtle-syntax-bad-string-03
+  PASS: turtle-syntax-bad-string-04
+  PASS: turtle-syntax-bad-string-05
+  PASS: turtle-syntax-bad-string-06
+  PASS: turtle-syntax-bad-string-07
+  PASS: turtle-syntax-bad-num-01
+  PASS: turtle-syntax-bad-num-02
+  PASS: turtle-syntax-bad-num-03
+  PASS: turtle-syntax-bad-num-04
+  PASS: turtle-syntax-bad-num-05
+  PASS: turtle-eval-struct-01
+  PASS: turtle-eval-struct-02
+  PASS: turtle-subm-01
+  PASS: turtle-subm-02
+  PASS: turtle-subm-03
+  PASS: turtle-subm-04
+  PASS: turtle-subm-05
+  PASS: turtle-subm-06
+  PASS: turtle-subm-07
+  PASS: turtle-subm-08
+  PASS: turtle-subm-09
+  PASS: turtle-subm-10
+  PASS: turtle-subm-11
+  PASS: turtle-subm-12
+  PASS: turtle-subm-13
+  PASS: turtle-subm-14
+  PASS: turtle-subm-15
+  PASS: turtle-subm-16
+  PASS: turtle-subm-17
+  PASS: turtle-subm-18
+  PASS: turtle-subm-19
+  PASS: turtle-subm-20
+  PASS: turtle-subm-21
+  PASS: turtle-subm-22
+  PASS: turtle-subm-23
+  PASS: turtle-subm-24
+  PASS: turtle-subm-25
+  PASS: turtle-subm-26 (38ms)
+  PASS: turtle-subm-27
+  PASS: turtle-eval-bad-01
+  PASS: turtle-eval-bad-02
+  PASS: turtle-eval-bad-03
+  PASS: turtle-eval-bad-04
+  PASS: turtle-syntax-bad-blank-label-dot-end
+  PASS: turtle-syntax-bad-ln-dash-start
+  FAIL: turtle-syntax-bad-ln-escape-start — Should reject but parsed OK
+  FAIL: turtle-syntax-bad-ln-escape — Should reject but parsed OK
+  FAIL: turtle-syntax-bad-missing-ns-dot-end — Should reject but parsed OK
+  PASS: turtle-syntax-bad-missing-ns-dot-start
+  PASS: turtle-syntax-bad-ns-dot-end
+  PASS: turtle-syntax-bad-ns-dot-start
+  PASS: turtle-syntax-bad-number-dot-in-anon
+  PASS: turtle-syntax-blank-label
+  PASS: turtle-syntax-ln-colons
+  PASS: turtle-syntax-ln-dots
+  PASS: turtle-syntax-ns-dots
+  FAIL: IRI-resolution-01 — Triples mismatch: expected 41, got 41 (23ms)
+  FAIL: IRI-resolution-02 — Triples mismatch: expected 41, got 41 (25ms)
+  FAIL: IRI-resolution-07 — Triples mismatch: expected 42, got 42 (22ms)
+  FAIL: IRI-resolution-08 — Triples mismatch: expected 12, got 12
+  [suite time: 29.9s]
+
+--- rdf-xml ---
+  PASS: amp-in-url-test001 (10ms)
+  PASS: datatypes-test001
+  PASS: datatypes-test002
+  FAIL: rdf-charmod-literals-test001 — Triples mismatch: expected 2, got 1
+  PASS: rdf-charmod-uris-test001
+  PASS: rdf-charmod-uris-test002
+  FAIL: rdf-containers-syntax-vs-schema-error001 — Should reject but parsed OK
+  PASS: rdf-containers-syntax-vs-schema-error002
+  PASS: rdf-containers-syntax-vs-schema-test001
+  PASS: rdf-containers-syntax-vs-schema-test002
+  PASS: rdf-containers-syntax-vs-schema-test003
+  FAIL: rdf-containers-syntax-vs-schema-test004 — Triples mismatch: expected 15, got 6 (20ms)
+  FAIL: rdf-containers-syntax-vs-schema-test006 — Triples mismatch: expected 8, got 8 (11ms)
+  FAIL: rdf-containers-syntax-vs-schema-test007 — Triples mismatch: expected 4, got 4
+  PASS: rdf-containers-syntax-vs-schema-test008
+  PASS: rdf-element-not-mandatory-test001
+  PASS: rdf-node-element-test001
+  PASS: rdf-ns-prefix-confusion-test0001
+  PASS: rdf-ns-prefix-confusion-test0003
+  FAIL: rdf-ns-prefix-confusion-test0004 — Triples mismatch: expected 1, got 1
+  PASS: rdf-ns-prefix-confusion-test0005
+  PASS: rdf-ns-prefix-confusion-test0006
+  PASS: rdf-ns-prefix-confusion-test0009
+  PASS: rdf-ns-prefix-confusion-test0010
+  FAIL: rdf-ns-prefix-confusion-test0011 — Triples mismatch: expected 2, got 2
+  FAIL: rdf-ns-prefix-confusion-test0012 — Triples mismatch: expected 2, got 2
+  FAIL: rdf-ns-prefix-confusion-test0013 — Triples mismatch: expected 2, got 2
+  FAIL: rdf-ns-prefix-confusion-test0014 — Triples mismatch: expected 2, got 2
+  PASS: rdfms-abouteach-error001
+  PASS: rdfms-abouteach-error002
+  FAIL: rdfms-difference-between-ID-and-about-error1 — Should reject but parsed OK
+  FAIL: rdfms-difference-between-ID-and-about-test1 — Triples mismatch: expected 1, got 1
+  FAIL: rdfms-difference-between-ID-and-about-test2 — Triples mismatch: expected 1, got 1
+  FAIL: rdfms-difference-between-ID-and-about-test3 — Triples mismatch: expected 1, got 1
+  PASS: rdfms-duplicate-member-props-test001
+  PASS: rdfms-empty-property-elements-error001
+  PASS: rdfms-empty-property-elements-error002
+  PASS: rdfms-empty-property-elements-test001
+  PASS: rdfms-empty-property-elements-test002
+  PASS: rdfms-empty-property-elements-test004
+  FAIL: rdfms-empty-property-elements-test005 — Triples mismatch: expected 5, got 1
+  FAIL: rdfms-empty-property-elements-test006 — Triples mismatch: expected 5, got 1
+  PASS: rdfms-empty-property-elements-test007
+  PASS: rdfms-empty-property-elements-test008
+  PASS: rdfms-empty-property-elements-test010
+  FAIL: rdfms-empty-property-elements-test011 — Triples mismatch: expected 5, got 1
+  FAIL: rdfms-empty-property-elements-test012 — Triples mismatch: expected 5, got 1
+  PASS: rdfms-empty-property-elements-test013
+  FAIL: rdfms-empty-property-elements-test014 — Triples mismatch: expected 2, got 1
+  FAIL: rdfms-empty-property-elements-test015 — Triples mismatch: expected 2, got 1
+  FAIL: rdfms-empty-property-elements-test016 — Triples mismatch: expected 1, got 0
+  PASS: rdfms-empty-property-elements-test017
+  PASS: rdfms-identity-anon-resources-test001
+  PASS: rdfms-identity-anon-resources-test002
+  PASS: rdfms-identity-anon-resources-test003
+  PASS: rdfms-identity-anon-resources-test004
+  PASS: rdfms-identity-anon-resources-test005
+  FAIL: rdfms-not-id-and-resource-attr-test001 — Triples mismatch: expected 6, got 1
+  PASS: rdfms-not-id-and-resource-attr-test002
+  FAIL: rdfms-not-id-and-resource-attr-test004 — Triples mismatch: expected 5, got 1
+  FAIL: rdfms-not-id-and-resource-attr-test005 — Triples mismatch: expected 6, got 2
+  PASS: rdfms-para196-test001
+  PASS: rdfms-rdf-id-error001
+  PASS: rdfms-rdf-id-error002
+  PASS: rdfms-rdf-id-error003
+  PASS: rdfms-rdf-id-error004
+  PASS: rdfms-rdf-id-error005
+  FAIL: rdfms-rdf-id-error006 — Should reject but parsed OK
+  FAIL: rdfms-rdf-id-error007 — Should reject but parsed OK
+  PASS: rdfms-rdf-names-use-error-001
+  PASS: rdfms-rdf-names-use-error-002
+  PASS: rdfms-rdf-names-use-error-003
+  PASS: rdfms-rdf-names-use-error-004
+  PASS: rdfms-rdf-names-use-error-005
+  PASS: rdfms-rdf-names-use-error-006
+  PASS: rdfms-rdf-names-use-error-007
+  PASS: rdfms-rdf-names-use-error-008
+  PASS: rdfms-rdf-names-use-error-009
+  PASS: rdfms-rdf-names-use-error-010
+  PASS: rdfms-rdf-names-use-error-011
+  PASS: rdfms-rdf-names-use-error-012
+  PASS: rdfms-rdf-names-use-error-013
+  PASS: rdfms-rdf-names-use-error-014
+  PASS: rdfms-rdf-names-use-error-015
+  PASS: rdfms-rdf-names-use-error-016
+  PASS: rdfms-rdf-names-use-error-017
+  PASS: rdfms-rdf-names-use-error-018
+  PASS: rdfms-rdf-names-use-error-019
+  PASS: rdfms-rdf-names-use-error-020
+  PASS: rdfms-rdf-names-use-test-001
+  PASS: rdfms-rdf-names-use-test-002
+  PASS: rdfms-rdf-names-use-test-003
+  PASS: rdfms-rdf-names-use-test-004
+  PASS: rdfms-rdf-names-use-test-005
+  PASS: rdfms-rdf-names-use-test-006
+  PASS: rdfms-rdf-names-use-test-007
+  PASS: rdfms-rdf-names-use-test-008
+  PASS: rdfms-rdf-names-use-test-009
+  PASS: rdfms-rdf-names-use-test-010
+  PASS: rdfms-rdf-names-use-test-011
+  PASS: rdfms-rdf-names-use-test-012
+  PASS: rdfms-rdf-names-use-test-013
+  PASS: rdfms-rdf-names-use-test-014
+  PASS: rdfms-rdf-names-use-test-015
+  PASS: rdfms-rdf-names-use-test-016
+  FAIL: rdfms-rdf-names-use-test-017 — Parse error: Parser_RDFXML.Rdfxml_error("Container type used as property element: http://www.w3.org/1999/02/22-rdf-syntax-ns#Seq")
+  FAIL: rdfms-rdf-names-use-test-018 — Parse error: Parser_RDFXML.Rdfxml_error("Container type used as property element: http://www.w3.org/1999/02/22-rdf-syntax-ns#Bag")
+  FAIL: rdfms-rdf-names-use-test-019 — Parse error: Parser_RDFXML.Rdfxml_error("Container type used as property element: http://www.w3.org/1999/02/22-rdf-syntax-ns#Alt")
+  PASS: rdfms-rdf-names-use-test-020
+  PASS: rdfms-rdf-names-use-test-021
+  PASS: rdfms-rdf-names-use-test-022
+  PASS: rdfms-rdf-names-use-test-023
+  PASS: rdfms-rdf-names-use-test-024
+  PASS: rdfms-rdf-names-use-test-025
+  PASS: rdfms-rdf-names-use-test-026
+  PASS: rdfms-rdf-names-use-test-027
+  PASS: rdfms-rdf-names-use-test-028
+  PASS: rdfms-rdf-names-use-test-029
+  PASS: rdfms-rdf-names-use-test-030
+  PASS: rdfms-rdf-names-use-test-031
+  PASS: rdfms-rdf-names-use-test-032
+  PASS: rdfms-rdf-names-use-test-033
+  PASS: rdfms-rdf-names-use-test-034
+  PASS: rdfms-rdf-names-use-test-035
+  PASS: rdfms-rdf-names-use-test-036
+  PASS: rdfms-rdf-names-use-test-037
+  PASS: rdfms-rdf-names-use-warn-001
+  PASS: rdfms-rdf-names-use-warn-002
+  PASS: rdfms-rdf-names-use-warn-003
+  PASS: rdfms-reification-required-test001
+  FAIL: rdfms-reification-required-test002 — Triples mismatch: expected 10, got 2
+  PASS: rdfms-seq-representation-test001 (10ms)
+  FAIL: rdfms-seq-representation-test002 — Triples mismatch: expected 10, got 6
+  PASS: rdfms-syntax-incomplete-test001
+  PASS: rdfms-syntax-incomplete-test002
+  PASS: rdfms-syntax-incomplete-test003
+  FAIL: rdfms-syntax-incomplete-test004 — Triples mismatch: expected 6, got 2
+  PASS: rdfms-syntax-incomplete-error001
+  PASS: rdfms-syntax-incomplete-error002
+  PASS: rdfms-syntax-incomplete-error003
+  FAIL: rdfms-syntax-incomplete-error004 — Should reject but parsed OK
+  FAIL: rdfms-syntax-incomplete-error005 — Should reject but parsed OK
+  FAIL: rdfms-syntax-incomplete-error006 — Should reject but parsed OK
+  PASS: rdfms-uri-substructure-test001
+  PASS: rdfms-xmllang-test003
+  PASS: rdfms-xmllang-test004
+  PASS: rdfms-xmllang-test005
+  PASS: rdfms-xmllang-test006
+  PASS: rdfs-domain-and-range-test001
+  PASS: rdfs-domain-and-range-test002
+  PASS: unrecognised-xml-attributes-test001
+  PASS: unrecognised-xml-attributes-test002
+  FAIL: xml-canon-test001 — Triples mismatch: expected 1, got 1
+  FAIL: xml-canon-test002 — Triples mismatch: expected 5, got 1
+  PASS: xmlbase-test001
+  PASS: xmlbase-test002
+  PASS: xmlbase-test003
+  FAIL: xmlbase-test004 — Triples mismatch: expected 5, got 1
+  FAIL: xmlbase-test006 — Triples mismatch: expected 2, got 2
+  FAIL: xmlbase-test007 — Triples mismatch: expected 1, got 1
+  PASS: xmlbase-test008
+  FAIL: xmlbase-test009 — Triples mismatch: expected 1, got 1
+  FAIL: xmlbase-test010 — Triples mismatch: expected 1, got 1
+  FAIL: xmlbase-test011 — Triples mismatch: expected 1, got 1
+  FAIL: xmlbase-test013 — Triples mismatch: expected 2, got 2
+  FAIL: xmlbase-test014 — Triples mismatch: expected 2, got 2
+  [suite time: 12.9s]
+
+========================================
+Suite Results:
+  rdf-mt                              pass:39 fail:0 skip:0 unsupported:0
+  rdf-n-quads                         pass:53 fail:34 skip:0 unsupported:0
+  rdf-n-triples                       pass:41 fail:29 skip:0 unsupported:0
+  rdf-trig                            pass:338 fail:18 skip:0 unsupported:0
+  rdf-turtle                          pass:296 fail:17 skip:0 unsupported:0
+  rdf-xml                             pass:121 fail:45 skip:0 unsupported:0
+========================================
+TOTAL: 888 pass, 143 fail, 0 skip, 0 unsupported
+========================================

@@ -110,6 +110,77 @@ let char_to_lower (c: char) : char =
   if code >= 0x41 && code <= 0x5A then char_of_int (code + 32)
   else c
 
+// Check if input at pos starts with "@prefix" or "@base" (Turtle-style directives)
+let is_at_directive (input: string) (pos: nat) : bool =
+  let len = String.length input in
+  if pos >= len then false
+  else if int_of_char (String.index input pos) <> 0x40 then false  // '@'
+  else
+    // Check for @prefix (7 chars) or @base (5 chars)
+    if pos + 7 <= len then
+      let s = String.sub input pos 7 in
+      if s = "@prefix" then true
+      else if pos + 5 <= len then
+        let s2 = String.sub input pos 5 in
+        s2 = "@base"
+      else false
+    else if pos + 5 <= len then
+      let s2 = String.sub input pos 5 in
+      s2 = "@base"
+    else false
+
+// Check if input at pos starts with "PREFIX" or "BASE" (SPARQL-style directives)
+// Case-insensitive check
+let is_sparql_directive (input: string) (pos: nat) : bool =
+  let len = String.length input in
+  // Check for PREFIX (6 chars)
+  if pos + 6 <= len then
+    let c0 = char_to_lower (String.index input pos) in
+    let c1 = char_to_lower (String.index input (pos + 1)) in
+    let c2 = char_to_lower (String.index input (pos + 2)) in
+    let c3 = char_to_lower (String.index input (pos + 3)) in
+    let c4 = char_to_lower (String.index input (pos + 4)) in
+    let c5 = char_to_lower (String.index input (pos + 5)) in
+    if int_of_char c0 = 0x70 &&  // p
+       int_of_char c1 = 0x72 &&  // r
+       int_of_char c2 = 0x65 &&  // e
+       int_of_char c3 = 0x66 &&  // f
+       int_of_char c4 = 0x69 &&  // i
+       int_of_char c5 = 0x78     // x
+    then
+      // Must be followed by non-pn_chars character
+      if pos + 6 >= len then true
+      else not (is_pn_chars (String.index input (pos + 6)))
+    else if pos + 4 <= len then
+      // Check for BASE (4 chars)
+      if int_of_char c0 = 0x62 &&  // b
+         int_of_char c1 = 0x61 &&  // a
+         int_of_char c2 = 0x73 &&  // s
+         int_of_char c3 = 0x65     // e
+      then
+        if pos + 4 >= len then true
+        else not (is_pn_chars (String.index input (pos + 4)))
+      else false
+    else false
+  else if pos + 4 <= len then
+    let c0 = char_to_lower (String.index input pos) in
+    let c1 = char_to_lower (String.index input (pos + 1)) in
+    let c2 = char_to_lower (String.index input (pos + 2)) in
+    let c3 = char_to_lower (String.index input (pos + 3)) in
+    if int_of_char c0 = 0x62 &&  // b
+       int_of_char c1 = 0x61 &&  // a
+       int_of_char c2 = 0x73 &&  // s
+       int_of_char c3 = 0x65     // e
+    then
+      if pos + 4 >= len then true
+      else not (is_pn_chars (String.index input (pos + 4)))
+    else false
+  else false
+
+// Check if position starts with any directive (Turtle or SPARQL style)
+let is_directive_at (input: string) (pos: nat) : bool =
+  is_at_directive input pos || is_sparql_directive input pos
+
 (** Check if input starting at pos matches "graph" case-insensitively,
     followed by a non-PN_CHARS character (whitespace, '{', etc.) *)
 let is_graph_keyword (input: string) (pos: nat) : bool =
@@ -176,6 +247,12 @@ let rec parse_graph_body (tps: trig_parse_state) (input: string) (pos: nat)
         let code = int_of_char c in
         if code = 0x7D then
           ParseOk (List.Tot.rev acc, tps) (pos1 + 1)
+        // Reject directives inside graph blocks per TriG spec
+        else if is_directive_at input pos1 then
+          ParseFail "directives not allowed inside graph block" pos1
+        // Reject nested GRAPH keyword inside graph blocks
+        else if is_graph_keyword input pos1 then
+          ParseFail "nested GRAPH not allowed inside graph block" pos1
         else
           begin match parse_turtle_statement tps.ts input pos1 fuel with
           | ParseOk (triples, st') pos2 ->
