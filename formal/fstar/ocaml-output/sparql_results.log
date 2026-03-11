@@ -258,7 +258,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
       UNMATCHED: ?x=<http://example.org/test#a>
       UNMATCHED: ?x=<http://example.org/test#b>
       UNMATCHED: ?x=<http://example.org/test#c>
-      UNMATCHED: ?x=<http://example.org/test#d>
+      UNMATCHED: ?x=<http://example.org/test#d> (11ms)
   FAIL: simple 5 — Results mismatch: expected 2 rows, got 0
       UNMATCHED: ?x=<http://example.org/test#a>
       UNMATCHED: ?x=<http://example.org/test#c>
