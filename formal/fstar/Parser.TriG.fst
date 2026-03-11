@@ -67,7 +67,7 @@ let rec trig_dataset_add_triples (ds : rdf_dataset) (triples : list triple) (gra
 (* TriG graph name parser                                            *)
 (* ================================================================ *)
 
-(** Parse a graph name: IRI, prefixed name, or blank node.
+(** Parse a graph name: IRI, prefixed name, blank node label, or [].
     Returns (graph_iri, updated_state). *)
 let parse_trig_graph_name (st: turtle_state) (input: string) (pos: nat)
   : parse_result (iri & turtle_state) =
@@ -76,12 +76,23 @@ let parse_trig_graph_name (st: turtle_state) (input: string) (pos: nat)
   else
     let c = String.index input pos in
     let code = int_of_char c in
-    if code = 0x5F then (* '_' — blank node graph name *)
+    if code = 0x5F then (* '_' -- blank node graph name _:label *)
       begin match parse_bnode input pos with
       | ParseOk b pos' ->
         let bnode_iri = String.concat "" ["_:"; b] in
         ParseOk (bnode_iri, st) pos'
       | ParseFail msg fpos -> ParseFail msg fpos
+      end
+    else if code = 0x5B then (* '[' -- anonymous blank node [] as graph name *)
+      begin match turtle_ws input (pos + 1) with
+      | ParseOk () pos2 ->
+        if pos2 < len && int_of_char (String.index input pos2) = 0x5D then
+          // [] -- generate fresh blank node ID for graph name
+          let (bname, st') = fresh_bnode st in
+          let bnode_iri = String.concat "" ["_:"; bname] in
+          ParseOk (bnode_iri, st') (pos2 + 1)
+        else
+          ParseFail "expected ']' for anonymous blank node graph name" pos2
       end
     else
       (* Try IRI (full or prefixed) *)
@@ -200,13 +211,13 @@ let parse_trig_statement (st: turtle_state) (input: string) (pos: nat) (fuel: na
         let c = String.index input pos1 in
         let code = int_of_char c in
         (* Case 1: Prefix directive *)
-        begin match parse_prefix_directive input pos1 with
+        begin match parse_prefix_directive st input pos1 with
         | ParseOk (prefix, iri_val) pos2 ->
           let new_prefixes = (prefix, iri_val) :: st.prefixes in
           ParseOk ([], { st with prefixes = new_prefixes }) pos2
         | ParseFail _ _ ->
           (* Case 2: Base directive *)
-          begin match parse_base_directive input pos1 with
+          begin match parse_base_directive st input pos1 with
           | ParseOk base_val pos2 ->
             ParseOk ([], { st with base_iri = base_val }) pos2
           | ParseFail _ _ ->

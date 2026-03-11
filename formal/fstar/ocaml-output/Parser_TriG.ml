@@ -85,11 +85,30 @@ let parse_trig_graph_name (st : Parser_Turtle.turtle_state)
        | Parser_Combinators.ParseFail (msg, fpos) ->
            Parser_Combinators.ParseFail (msg, fpos)
      else
-       (match Parser_Turtle.parse_turtle_iri st input pos with
-        | Parser_Combinators.ParseOk (i, pos') ->
-            Parser_Combinators.ParseOk ((i, st), pos')
-        | Parser_Combinators.ParseFail (msg, fpos) ->
-            Parser_Combinators.ParseFail (msg, fpos)))
+       if code = (Prims.of_int (0x5B))
+       then
+         (match Parser_Turtle.turtle_ws input (pos + Prims.int_one) with
+          | Parser_Combinators.ParseOk ((), pos2) ->
+              if
+                (pos2 < len) &&
+                  ((FStar_Char.int_of_char (FStar_String.index input pos2)) =
+                     (Prims.of_int (0x5D)))
+              then
+                let uu___2 = Parser_Turtle.fresh_bnode st in
+                (match uu___2 with
+                 | (bname, st') ->
+                     let bnode_iri = FStar_String.concat "" ["_:"; bname] in
+                     Parser_Combinators.ParseOk
+                       ((bnode_iri, st'), (pos2 + Prims.int_one)))
+              else
+                Parser_Combinators.ParseFail
+                  ("expected ']' for anonymous blank node graph name", pos2))
+       else
+         (match Parser_Turtle.parse_turtle_iri st input pos with
+          | Parser_Combinators.ParseOk (i, pos') ->
+              Parser_Combinators.ParseOk ((i, st), pos')
+          | Parser_Combinators.ParseFail (msg, fpos) ->
+              Parser_Combinators.ParseFail (msg, fpos)))
 let char_to_lower (c : FStar_Char.char) : FStar_Char.char=
   let code = FStar_Char.int_of_char c in
   if (code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x5A)))
@@ -200,7 +219,7 @@ let parse_trig_statement (st : Parser_Turtle.turtle_state)
          else
            (let c = FStar_String.index input pos1 in
             let code = FStar_Char.int_of_char c in
-            match Parser_Turtle.parse_prefix_directive input pos1 with
+            match Parser_Turtle.parse_prefix_directive st input pos1 with
             | Parser_Combinators.ParseOk ((prefix, iri_val), pos2) ->
                 let new_prefixes = (prefix, iri_val) ::
                   (st.Parser_Turtle.prefixes) in
@@ -213,7 +232,7 @@ let parse_trig_statement (st : Parser_Turtle.turtle_state)
                          (st.Parser_Turtle.bnode_counter)
                      }), pos2)
             | Parser_Combinators.ParseFail (uu___2, uu___3) ->
-                (match Parser_Turtle.parse_base_directive input pos1 with
+                (match Parser_Turtle.parse_base_directive st input pos1 with
                  | Parser_Combinators.ParseOk (base_val, pos2) ->
                      Parser_Combinators.ParseOk
                        (([],
