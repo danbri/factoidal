@@ -669,6 +669,15 @@ let resolve_tok_iri (i : Prims.string) : Prims.string =
     | Some base -> SPARQL11_Algebra.resolve_iri base i
     | None -> i
 
+(* Resolve a potentially relative IRI against the current BASE.
+   If the IRI is already absolute (passes is_iri), return it unchanged.
+   Otherwise, try resolving against the global current_base_iri_ref. *)
+let resolve_tok_iri (i : Prims.string) : Prims.string =
+  if RDF_Graph_Executable.is_iri i then i
+  else match !(SPARQL11_Algebra.current_base_iri_ref) with
+    | Some base -> SPARQL11_Algebra.resolve_iri base i
+    | None -> i
+
 let scan_iri (input : Prims.string) (p : pos) : (Prims.string * pos)=
   let end_p = scan_iri_end input p in
   let len = if end_p >= p then end_p - p else Prims.int_zero in
