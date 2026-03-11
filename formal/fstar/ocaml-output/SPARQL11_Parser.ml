@@ -29,6 +29,8 @@ type token =
   | Tok_HAVING 
   | Tok_LIMIT 
   | Tok_OFFSET 
+  | Tok_FROM 
+  | Tok_NAMED 
   | Tok_IN 
   | Tok_TRUE 
   | Tok_FALSE 
@@ -188,6 +190,10 @@ let uu___is_Tok_LIMIT (projectee : token) : Prims.bool=
   match projectee with | Tok_LIMIT -> true | uu___ -> false
 let uu___is_Tok_OFFSET (projectee : token) : Prims.bool=
   match projectee with | Tok_OFFSET -> true | uu___ -> false
+let uu___is_Tok_FROM (projectee : token) : Prims.bool=
+  match projectee with | Tok_FROM -> true | uu___ -> false
+let uu___is_Tok_NAMED (projectee : token) : Prims.bool=
+  match projectee with | Tok_NAMED -> true | uu___ -> false
 let uu___is_Tok_IN (projectee : token) : Prims.bool=
   match projectee with | Tok_IN -> true | uu___ -> false
 let uu___is_Tok_TRUE (projectee : token) : Prims.bool=
@@ -837,27 +843,40 @@ let keyword_of_upper (upper : Prims.string) (original : Prims.string) :
                                                           else
                                                             if
                                                               streq upper
-                                                                "IN"
-                                                            then Tok_IN
+                                                                "FROM"
+                                                            then Tok_FROM
                                                             else
                                                               if
                                                                 streq upper
-                                                                  "TRUE"
-                                                              then Tok_TRUE
+                                                                  "NAMED"
+                                                              then Tok_NAMED
                                                               else
                                                                 if
                                                                   streq upper
-                                                                    "FALSE"
-                                                                then
-                                                                  Tok_FALSE
+                                                                    "IN"
+                                                                then Tok_IN
                                                                 else
                                                                   if
                                                                     streq
                                                                     upper
-                                                                    "UNDEF"
+                                                                    "TRUE"
                                                                   then
-                                                                    Tok_UNDEF
+                                                                    Tok_TRUE
                                                                   else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "FALSE"
+                                                                    then
+                                                                    Tok_FALSE
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "UNDEF"
+                                                                    then
+                                                                    Tok_UNDEF
+                                                                    else
                                                                     if
                                                                     streq
                                                                     upper "A"
@@ -4284,57 +4303,101 @@ and parse_construct_body (pm : prefix_map) (fuel : Prims.nat)
     (let ts' = parse_advance ts in
      match parse_peek ts' with
      | Tok_WHERE ->
-         let ts'1 =
-           match parse_peek ts' with
-           | Tok_WHERE -> parse_advance ts'
-           | uu___1 -> ts' in
-         (match parse_group_graph_pattern pm (fuel - Prims.int_one) ts'1 with
+         (match parse_skip_from (fuel - Prims.int_one) ts' with
           | ParseErr m -> ParseErr m
-          | ParseOk (pattern, ts'') ->
-              (match parse_solution_modifier pm (fuel - Prims.int_one) ts''
+          | ParseOk (ds, ts'') ->
+              let ts''1 =
+                match parse_peek ts'' with
+                | Tok_WHERE -> parse_advance ts''
+                | uu___1 -> ts'' in
+              (match parse_group_graph_pattern pm (fuel - Prims.int_one)
+                       ts''1
                with
                | ParseErr m -> ParseErr m
-               | ParseOk ((modifier, gb, hv), ts''') ->
-                   ParseOk
-                     ({
-                        SPARQL11_Algebra.q_base = base;
-                        SPARQL11_Algebra.q_prefixes = pm;
-                        SPARQL11_Algebra.q_form =
-                          (SPARQL11_Algebra.QF_Construct []);
-                        SPARQL11_Algebra.q_dataset = [];
-                        SPARQL11_Algebra.q_pattern = pattern;
-                        SPARQL11_Algebra.q_group_by = gb;
-                        SPARQL11_Algebra.q_having = hv;
-                        SPARQL11_Algebra.q_modifier = modifier;
-                        SPARQL11_Algebra.q_values =
-                          FStar_Pervasives_Native.None
-                      }, ts''')))
+               | ParseOk (pattern, ts''') ->
+                   (match parse_solution_modifier pm (fuel - Prims.int_one)
+                            ts'''
+                    with
+                    | ParseErr m -> ParseErr m
+                    | ParseOk ((modifier, gb, hv), ts4) ->
+                        ParseOk
+                          ({
+                             SPARQL11_Algebra.q_base = base;
+                             SPARQL11_Algebra.q_prefixes = pm;
+                             SPARQL11_Algebra.q_form =
+                               (SPARQL11_Algebra.QF_Construct []);
+                             SPARQL11_Algebra.q_dataset = ds;
+                             SPARQL11_Algebra.q_pattern = pattern;
+                             SPARQL11_Algebra.q_group_by = gb;
+                             SPARQL11_Algebra.q_having = hv;
+                             SPARQL11_Algebra.q_modifier = modifier;
+                             SPARQL11_Algebra.q_values =
+                               FStar_Pervasives_Native.None
+                           }, ts4))))
+     | Tok_FROM ->
+         (match parse_skip_from (fuel - Prims.int_one) ts' with
+          | ParseErr m -> ParseErr m
+          | ParseOk (ds, ts'') ->
+              let ts''1 =
+                match parse_peek ts'' with
+                | Tok_WHERE -> parse_advance ts''
+                | uu___1 -> ts'' in
+              (match parse_group_graph_pattern pm (fuel - Prims.int_one)
+                       ts''1
+               with
+               | ParseErr m -> ParseErr m
+               | ParseOk (pattern, ts''') ->
+                   (match parse_solution_modifier pm (fuel - Prims.int_one)
+                            ts'''
+                    with
+                    | ParseErr m -> ParseErr m
+                    | ParseOk ((modifier, gb, hv), ts4) ->
+                        ParseOk
+                          ({
+                             SPARQL11_Algebra.q_base = base;
+                             SPARQL11_Algebra.q_prefixes = pm;
+                             SPARQL11_Algebra.q_form =
+                               (SPARQL11_Algebra.QF_Construct []);
+                             SPARQL11_Algebra.q_dataset = ds;
+                             SPARQL11_Algebra.q_pattern = pattern;
+                             SPARQL11_Algebra.q_group_by = gb;
+                             SPARQL11_Algebra.q_having = hv;
+                             SPARQL11_Algebra.q_modifier = modifier;
+                             SPARQL11_Algebra.q_values =
+                               FStar_Pervasives_Native.None
+                           }, ts4))))
      | Tok_LBRACE ->
-         let ts'1 =
-           match parse_peek ts' with
-           | Tok_WHERE -> parse_advance ts'
-           | uu___1 -> ts' in
-         (match parse_group_graph_pattern pm (fuel - Prims.int_one) ts'1 with
+         (match parse_group_graph_pattern pm (fuel - Prims.int_one) ts' with
           | ParseErr m -> ParseErr m
-          | ParseOk (pattern, ts'') ->
-              (match parse_solution_modifier pm (fuel - Prims.int_one) ts''
+          | ParseOk (_template, ts'') ->
+              let ts''1 =
+                match parse_peek ts'' with
+                | Tok_WHERE -> parse_advance ts''
+                | uu___1 -> ts'' in
+              (match parse_group_graph_pattern pm (fuel - Prims.int_one)
+                       ts''1
                with
                | ParseErr m -> ParseErr m
-               | ParseOk ((modifier, gb, hv), ts''') ->
-                   ParseOk
-                     ({
-                        SPARQL11_Algebra.q_base = base;
-                        SPARQL11_Algebra.q_prefixes = pm;
-                        SPARQL11_Algebra.q_form =
-                          (SPARQL11_Algebra.QF_Construct []);
-                        SPARQL11_Algebra.q_dataset = [];
-                        SPARQL11_Algebra.q_pattern = pattern;
-                        SPARQL11_Algebra.q_group_by = gb;
-                        SPARQL11_Algebra.q_having = hv;
-                        SPARQL11_Algebra.q_modifier = modifier;
-                        SPARQL11_Algebra.q_values =
-                          FStar_Pervasives_Native.None
-                      }, ts''')))
+               | ParseOk (pattern, ts''') ->
+                   (match parse_solution_modifier pm (fuel - Prims.int_one)
+                            ts'''
+                    with
+                    | ParseErr m -> ParseErr m
+                    | ParseOk ((modifier, gb, hv), ts4) ->
+                        ParseOk
+                          ({
+                             SPARQL11_Algebra.q_base = base;
+                             SPARQL11_Algebra.q_prefixes = pm;
+                             SPARQL11_Algebra.q_form =
+                               (SPARQL11_Algebra.QF_Construct []);
+                             SPARQL11_Algebra.q_dataset = [];
+                             SPARQL11_Algebra.q_pattern = pattern;
+                             SPARQL11_Algebra.q_group_by = gb;
+                             SPARQL11_Algebra.q_having = hv;
+                             SPARQL11_Algebra.q_modifier = modifier;
+                             SPARQL11_Algebra.q_values =
+                               FStar_Pervasives_Native.None
+                           }, ts4))))
      | uu___1 -> ParseErr "expected WHERE or '{' after CONSTRUCT")
 and parse_select_vars (pm : prefix_map) (fuel : Prims.nat)
   (ts : token_stream) : SPARQL11_Algebra.select_clause parse_result=
@@ -4380,7 +4443,29 @@ and parse_select_items (pm : prefix_map) (fuel : Prims.nat)
      | uu___1 -> ParseOk ((FStar_List_Tot_Base.rev acc), ts))
 and parse_skip_from (fuel : Prims.nat) (ts : token_stream) :
   SPARQL11_Algebra.dataset_clause Prims.list parse_result=
-  if fuel = Prims.int_zero then ParseOk ([], ts) else ParseOk ([], ts)
+  if fuel = Prims.int_zero
+  then ParseOk ([], ts)
+  else
+    (match parse_peek ts with
+     | Tok_FROM ->
+         let ts' = parse_advance ts in
+         (match parse_peek ts' with
+          | Tok_NAMED ->
+              let ts'' = parse_advance ts' in
+              (match parse_peek ts'' with
+               | Tok_IRI uu___1 ->
+                   parse_skip_from (fuel - Prims.int_one)
+                     (parse_advance ts'')
+               | Tok_PNAME uu___1 ->
+                   parse_skip_from (fuel - Prims.int_one)
+                     (parse_advance ts'')
+               | uu___1 -> ParseErr "expected IRI after FROM NAMED")
+          | Tok_IRI uu___1 ->
+              parse_skip_from (fuel - Prims.int_one) (parse_advance ts')
+          | Tok_PNAME uu___1 ->
+              parse_skip_from (fuel - Prims.int_one) (parse_advance ts')
+          | uu___1 -> ParseErr "expected IRI or NAMED after FROM")
+     | uu___1 -> ParseOk ([], ts))
 and parse_group_condition (pm : prefix_map) (fuel : Prims.nat)
   (ts : token_stream) : SPARQL11_Algebra.group_condition parse_result=
   if fuel = Prims.int_zero
