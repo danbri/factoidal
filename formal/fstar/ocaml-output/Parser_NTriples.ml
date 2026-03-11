@@ -54,6 +54,11 @@ let is_iri_forbidden_codepoint (code : Prims.int) : Prims.bool=
       || (code = (Prims.of_int (0x5C))))
      || (code = (Prims.of_int (0x5E))))
     || (code = (Prims.of_int (0x60)))
+let is_iri_body_char (c : FStar_Char.char) : Prims.bool=
+  let code = FStar_Char.int_of_char c in
+  (((code > (Prims.of_int (0x20))) && (code <> (Prims.of_int (0x3E)))) &&
+     (code <> (Prims.of_int (0x5C))))
+    && (Prims.op_Negation (is_iri_forbidden_codepoint code))
 let rec parse_iri_body_acc (input : Prims.string) (pos : Prims.nat)
   (acc : FStar_String.char Prims.list) (fuel : Prims.nat) :
   Prims.string Parser_Combinators.parse_result=
@@ -207,6 +212,30 @@ let rec parse_iri_body_acc (input : Prims.string) (pos : Prims.nat)
             else
               parse_iri_body_acc input (pos + Prims.int_one) (ch :: acc)
                 (fuel - Prims.int_one)))
+let rec scan_iri_end (input : Prims.string) (pos : Prims.nat)
+  (fuel : Prims.nat) : Prims.nat Parser_Combinators.parse_result=
+  if fuel = Prims.int_zero
+  then Parser_Combinators.ParseFail ("IRI too long", pos)
+  else
+    (let len = FStar_String.strlen input in
+     if pos >= len
+     then Parser_Combinators.ParseFail ("unterminated IRI", pos)
+     else
+       (let ch = FStar_String.index input pos in
+        let code = FStar_Char.int_of_char ch in
+        if code = (Prims.of_int (0x3E))
+        then Parser_Combinators.ParseOk (pos, pos)
+        else
+          if code = (Prims.of_int (0x5C))
+          then Parser_Combinators.ParseFail ("has escapes", pos)
+          else
+            if
+              (code <= (Prims.of_int (0x20))) ||
+                (is_iri_forbidden_codepoint code)
+            then
+              Parser_Combinators.ParseFail ("invalid character in IRI", pos)
+            else
+              scan_iri_end input (pos + Prims.int_one) (fuel - Prims.int_one)))
 let parse_iri_raw : RDF_Graph_Executable.iri Parser_Combinators.parser=
   fun input pos ->
     let len = FStar_String.strlen input in
@@ -216,8 +245,21 @@ let parse_iri_raw : RDF_Graph_Executable.iri Parser_Combinators.parser=
       (let ch = FStar_String.index input pos in
        if (FStar_Char.int_of_char ch) = (Prims.of_int (0x3C))
        then
+         let start = pos + Prims.int_one in
          let fuel = len - pos in
-         parse_iri_body_acc input (pos + Prims.int_one) [] fuel
+         match scan_iri_end input start fuel with
+         | Parser_Combinators.ParseOk (gt_pos, uu___1) ->
+             let iri_len = gt_pos - start in
+             (if (iri_len > Prims.int_zero) && ((start + iri_len) <= len)
+              then
+                Parser_Combinators.ParseOk
+                  ((FStar_String.sub input start iri_len),
+                    (gt_pos + Prims.int_one))
+              else Parser_Combinators.ParseOk ("", (gt_pos + Prims.int_one)))
+         | Parser_Combinators.ParseFail ("has escapes", uu___1) ->
+             parse_iri_body_acc input start [] fuel
+         | Parser_Combinators.ParseFail (msg, fpos) ->
+             Parser_Combinators.ParseFail (msg, fpos)
        else Parser_Combinators.ParseFail ("expected '<'", pos))
 let parse_iri : RDF_Graph_Executable.wf_iri Parser_Combinators.parser=
   fun input pos ->
@@ -569,6 +611,32 @@ let rec parse_string_body (input : Prims.string) (pos : Prims.nat)
             else
               parse_string_body input (pos + Prims.int_one) (ch :: acc)
                 (fuel - Prims.int_one)))
+let rec scan_string_fast (input : Prims.string) (pos : Prims.nat)
+  (fuel : Prims.nat) : unit Parser_Combinators.parse_result=
+  if fuel = Prims.int_zero
+  then Parser_Combinators.ParseFail ("string too long", pos)
+  else
+    (let len = FStar_String.strlen input in
+     if pos >= len
+     then Parser_Combinators.ParseFail ("unterminated string literal", pos)
+     else
+       (let ch = FStar_String.index input pos in
+        let code = FStar_Char.int_of_char ch in
+        if code = (Prims.of_int (0x22))
+        then Parser_Combinators.ParseOk ((), (pos + Prims.int_one))
+        else
+          if code = (Prims.of_int (0x5C))
+          then Parser_Combinators.ParseFail ("has escapes", pos)
+          else
+            if
+              (code = (Prims.of_int (0x0A))) ||
+                (code = (Prims.of_int (0x0D)))
+            then
+              Parser_Combinators.ParseFail
+                ("unescaped newline in string literal", pos)
+            else
+              scan_string_fast input (pos + Prims.int_one)
+                (fuel - Prims.int_one)))
 let parse_string_literal : Prims.string Parser_Combinators.parser=
   fun input pos ->
     let len = FStar_String.strlen input in
@@ -578,8 +646,20 @@ let parse_string_literal : Prims.string Parser_Combinators.parser=
       (let ch = FStar_String.index input pos in
        if (FStar_Char.int_of_char ch) = (Prims.of_int (0x22))
        then
+         let start = pos + Prims.int_one in
          let fuel = len - pos in
-         parse_string_body input (pos + Prims.int_one) [] fuel
+         match scan_string_fast input start fuel with
+         | Parser_Combinators.ParseOk ((), end_pos) ->
+             let str_len = (end_pos - Prims.int_one) - start in
+             (if (str_len > Prims.int_zero) && ((start + str_len) <= len)
+              then
+                Parser_Combinators.ParseOk
+                  ((FStar_String.sub input start str_len), end_pos)
+              else Parser_Combinators.ParseOk ("", end_pos))
+         | Parser_Combinators.ParseFail ("has escapes", uu___1) ->
+             parse_string_body input start [] fuel
+         | Parser_Combinators.ParseFail (msg, fpos) ->
+             Parser_Combinators.ParseFail (msg, fpos)
        else Parser_Combinators.ParseFail ("expected '\"'", pos))
 let is_lang_char (c : FStar_Char.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in
