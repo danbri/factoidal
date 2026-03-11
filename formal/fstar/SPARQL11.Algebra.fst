@@ -1755,6 +1755,15 @@ let rec eval_pattern (p : group_graph_pattern) (g : rdf_graph) (ds : rdf_dataset
 (** ====================================================================== **)
 
 // XSD type casting: xsd:integer(), xsd:decimal(), xsd:boolean(), etc.
+// Strip leading '+' sign from a numeric string (XSD allows +33.3 = 33.3)
+let strip_leading_plus (s : string) : string =
+  if String.length s > 0 then
+    let chars = String.list_of_string s in
+    match chars with
+    | c :: rest -> if c = FStar.Char.char_of_int 43 then String.string_of_list rest else s
+    | [] -> s
+  else s
+
 let eval_xsd_cast (v : eval_result) (target_type : string) (full_iri : string) : eval_result =
   let get_lex = match v with
     | ER_Num n -> Some (string_of_int n)
@@ -1767,7 +1776,10 @@ let eval_xsd_cast (v : eval_result) (target_type : string) (full_iri : string) :
   in
   match get_lex with
   | None -> ER_Error
-  | Some lex ->
+  | Some lex0 ->
+    // Strip leading '+' for numeric target types only
+    let lex = if target_type = "string" || target_type = "boolean" then lex0
+              else strip_leading_plus lex0 in
     if target_type = "integer" then
       // Boolean -> integer: true=1, false=0
       (match v with
@@ -1782,7 +1794,14 @@ let eval_xsd_cast (v : eval_result) (target_type : string) (full_iri : string) :
            (match parse_double_to_scaled lex with
             | Some (sv, sc) ->
               let divisor = pow10 sc in
-              ER_Num (if divisor = 0 then 0 else sv / divisor)
+              // Truncate toward zero, not floor division
+              // F* integer division rounds toward -inf, but XSD wants truncation toward 0
+              if divisor = 0 then ER_Num 0
+              else
+                let raw : int = sv / divisor in
+                let remainder : int = sv - (op_Multiply raw divisor) in
+                // If negative and there's a remainder, floor division went too far
+                if sv < 0 && remainder <> 0 then ER_Num (raw + 1) else ER_Num raw
             | None ->
               let (ip, _, _) = split_decimal lex in
               (match ip with | Some n -> ER_Num n | None -> ER_Error)))
@@ -1793,13 +1812,25 @@ let eval_xsd_cast (v : eval_result) (target_type : string) (full_iri : string) :
        | ER_Num n -> ER_Dec (string_of_int n ^ ".0")
        | ER_Dec _ -> ER_Dec lex
        | _ ->
-         // Validate the lexical form is a valid decimal or integer
+         // Try decimal form first, then E-notation, then integer
          (match parse_to_scaled lex with
           | Some _ -> ER_Dec lex
           | None ->
-            match parse_int_string lex with
-            | Some n -> ER_Dec (string_of_int n ^ ".0")
-            | None -> ER_Error))
+            match parse_double_to_scaled lex with
+            | Some (sv, sc) ->
+              // Convert E-notation to decimal form
+              let divisor = pow10 sc in
+              if divisor = 0 then ER_Dec "0.0"
+              else if sv % divisor = 0 then
+                // Exact integer: 1E0 -> 1.0, 0E1 -> 0.0
+                ER_Dec (string_of_int (sv / divisor) ^ ".0")
+              else
+                // Has fractional part: use the scaled representation
+                ER_Dec lex
+            | None ->
+              match parse_int_string lex with
+              | Some n -> ER_Dec (string_of_int n ^ ".0")
+              | None -> ER_Error))
     else if target_type = "float" || target_type = "double" then
       // Boolean -> double/float: true="1.0E0", false="0.0E0"
       (match v with
@@ -1847,7 +1878,25 @@ let eval_xsd_cast (v : eval_result) (target_type : string) (full_iri : string) :
             | Some (sv, _) -> ER_Bool (sv <> 0)
             | None -> ER_Error
     else if target_type = "string" then
-      er_string lex
+      // For numeric types, simplify the lexical form
+      // Decimal 1.0 -> "1", double 1E0 -> "1"
+      (match v with
+       | ER_Num _ -> er_string lex
+       | ER_Dec _ ->
+         (match parse_to_scaled lex with
+          | Some (sv, sc) ->
+            let divisor = pow10 sc in
+            if divisor > 0 && sv % divisor = 0 then er_string (string_of_int (sv / divisor))
+            else er_string lex
+          | None -> er_string lex)
+       | ER_Dbl _ ->
+         (match parse_double_to_scaled lex with
+          | Some (sv, sc) ->
+            let divisor = pow10 sc in
+            if divisor > 0 && sv % divisor = 0 then er_string (string_of_int (sv / divisor))
+            else er_string lex
+          | None -> er_string lex)
+       | _ -> er_string lex)
     else
       // Other XSD types: create a typed literal
       if is_iri full_iri && full_iri <> rdf_lang_string then

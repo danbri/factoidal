@@ -2669,6 +2669,17 @@ let rec eval_pattern (p : group_graph_pattern)
             FStar_List_Tot_Base.op_At pairs reflexive
         | _ -> pairs in
       path_result_to_solutions ps pt pairs
+let strip_leading_plus (s : Prims.string) : Prims.string=
+  if (FStar_String.strlen s) > Prims.int_zero
+  then
+    let chars = FStar_String.list_of_string s in
+    match chars with
+    | c::rest ->
+        (if c = (FStar_Char.char_of_int (Prims.of_int (43)))
+         then FStar_String.string_of_list rest
+         else s)
+    | [] -> s
+  else s
 let eval_xsd_cast (v : eval_result) (target_type : Prims.string)
   (full_iri : Prims.string) : eval_result=
   let get_lex =
@@ -2685,7 +2696,11 @@ let eval_xsd_cast (v : eval_result) (target_type : Prims.string)
     | uu___ -> FStar_Pervasives_Native.None in
   match get_lex with
   | FStar_Pervasives_Native.None -> ER_Error
-  | FStar_Pervasives_Native.Some lex ->
+  | FStar_Pervasives_Native.Some lex0 ->
+      let lex =
+        if (target_type = "string") || (target_type = "boolean")
+        then lex0
+        else strip_leading_plus lex0 in
       if target_type = "integer"
       then
         (match v with
@@ -2697,10 +2712,16 @@ let eval_xsd_cast (v : eval_result) (target_type : Prims.string)
                   (match parse_double_to_scaled lex with
                    | FStar_Pervasives_Native.Some (sv, sc) ->
                        let divisor = pow10 sc in
-                       ER_Num
-                         (if divisor = Prims.int_zero
-                          then Prims.int_zero
-                          else sv / divisor)
+                       if divisor = Prims.int_zero
+                       then ER_Num Prims.int_zero
+                       else
+                         (let raw = sv / divisor in
+                          let remainder = sv - (raw * divisor) in
+                          if
+                            (sv < Prims.int_zero) &&
+                              (remainder <> Prims.int_zero)
+                          then ER_Num (raw + Prims.int_one)
+                          else ER_Num raw)
                    | FStar_Pervasives_Native.None ->
                        let uu___1 = split_decimal lex in
                        (match uu___1 with
@@ -2719,10 +2740,24 @@ let eval_xsd_cast (v : eval_result) (target_type : Prims.string)
                (match parse_to_scaled lex with
                 | FStar_Pervasives_Native.Some uu___2 -> ER_Dec lex
                 | FStar_Pervasives_Native.None ->
-                    (match parse_int_string lex with
-                     | FStar_Pervasives_Native.Some n ->
-                         ER_Dec (Prims.strcat (Prims.string_of_int n) ".0")
-                     | FStar_Pervasives_Native.None -> ER_Error)))
+                    (match parse_double_to_scaled lex with
+                     | FStar_Pervasives_Native.Some (sv, sc) ->
+                         let divisor = pow10 sc in
+                         if divisor = Prims.int_zero
+                         then ER_Dec "0.0"
+                         else
+                           if ((mod) sv divisor) = Prims.int_zero
+                           then
+                             ER_Dec
+                               (Prims.strcat
+                                  (Prims.string_of_int (sv / divisor)) ".0")
+                           else ER_Dec lex
+                     | FStar_Pervasives_Native.None ->
+                         (match parse_int_string lex with
+                          | FStar_Pervasives_Native.Some n ->
+                              ER_Dec
+                                (Prims.strcat (Prims.string_of_int n) ".0")
+                          | FStar_Pervasives_Native.None -> ER_Error))))
         else
           if (target_type = "float") || (target_type = "double")
           then
@@ -2789,7 +2824,30 @@ let eval_xsd_cast (v : eval_result) (target_type : Prims.string)
                              | FStar_Pervasives_Native.None -> ER_Error)))
             else
               if target_type = "string"
-              then er_string lex
+              then
+                (match v with
+                 | ER_Num uu___4 -> er_string lex
+                 | ER_Dec uu___4 ->
+                     (match parse_to_scaled lex with
+                      | FStar_Pervasives_Native.Some (sv, sc) ->
+                          let divisor = pow10 sc in
+                          if
+                            (divisor > Prims.int_zero) &&
+                              (((mod) sv divisor) = Prims.int_zero)
+                          then er_string (Prims.string_of_int (sv / divisor))
+                          else er_string lex
+                      | FStar_Pervasives_Native.None -> er_string lex)
+                 | ER_Dbl uu___4 ->
+                     (match parse_double_to_scaled lex with
+                      | FStar_Pervasives_Native.Some (sv, sc) ->
+                          let divisor = pow10 sc in
+                          if
+                            (divisor > Prims.int_zero) &&
+                              (((mod) sv divisor) = Prims.int_zero)
+                          then er_string (Prims.string_of_int (sv / divisor))
+                          else er_string lex
+                      | FStar_Pervasives_Native.None -> er_string lex)
+                 | uu___4 -> er_string lex)
               else
                 if
                   (RDF_Graph_Executable.is_iri full_iri) &&
