@@ -108,7 +108,8 @@ fi
 # Step 3: Run native tests
 if [[ "$STEP" == "all" || "$STEP" == "test" ]]; then
   echo "--- Step 3: Run native OCaml tests ---"
-  "$OUTDIR/w3c_runner" --all 2>&1 | tail -20 || true
+  W3C_RC=0; "$OUTDIR/w3c_runner" --all 2>&1 | tee "$OUTDIR/w3c_results.log" || W3C_RC=$?
+  echo "  Full results: $OUTDIR/w3c_results.log ($(wc -l < "$OUTDIR/w3c_results.log") lines)"
   echo ""
 fi
 

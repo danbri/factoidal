@@ -114,6 +114,105 @@ let char_to_lower (c : FStar_Char.char) : FStar_Char.char=
   if (code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x5A)))
   then FStar_Char.char_of_int (code + (Prims.of_int (32)))
   else c
+let is_at_directive (input : Prims.string) (pos : Prims.nat) : Prims.bool=
+  let len = FStar_String.strlen input in
+  if pos >= len
+  then false
+  else
+    if
+      (FStar_Char.int_of_char (FStar_String.index input pos)) <>
+        (Prims.of_int (0x40))
+    then false
+    else
+      if (pos + (Prims.of_int (7))) <= len
+      then
+        (let s = FStar_String.sub input pos (Prims.of_int (7)) in
+         if s = "@prefix"
+         then true
+         else
+           if (pos + (Prims.of_int (5))) <= len
+           then
+             (let s2 = FStar_String.sub input pos (Prims.of_int (5)) in
+              s2 = "@base")
+           else false)
+      else
+        if (pos + (Prims.of_int (5))) <= len
+        then
+          (let s2 = FStar_String.sub input pos (Prims.of_int (5)) in
+           s2 = "@base")
+        else false
+let is_sparql_directive (input : Prims.string) (pos : Prims.nat) :
+  Prims.bool=
+  let len = FStar_String.strlen input in
+  if (pos + (Prims.of_int (6))) <= len
+  then
+    let c0 = char_to_lower (FStar_String.index input pos) in
+    let c1 = char_to_lower (FStar_String.index input (pos + Prims.int_one)) in
+    let c2 =
+      char_to_lower (FStar_String.index input (pos + (Prims.of_int (2)))) in
+    let c3 =
+      char_to_lower (FStar_String.index input (pos + (Prims.of_int (3)))) in
+    let c4 =
+      char_to_lower (FStar_String.index input (pos + (Prims.of_int (4)))) in
+    let c5 =
+      char_to_lower (FStar_String.index input (pos + (Prims.of_int (5)))) in
+    (if
+       ((((((FStar_Char.int_of_char c0) = (Prims.of_int (0x70))) &&
+             ((FStar_Char.int_of_char c1) = (Prims.of_int (0x72))))
+            && ((FStar_Char.int_of_char c2) = (Prims.of_int (0x65))))
+           && ((FStar_Char.int_of_char c3) = (Prims.of_int (0x66))))
+          && ((FStar_Char.int_of_char c4) = (Prims.of_int (0x69))))
+         && ((FStar_Char.int_of_char c5) = (Prims.of_int (0x78)))
+     then
+       (if (pos + (Prims.of_int (6))) >= len
+        then true
+        else
+          Prims.op_Negation
+            (Parser_Turtle.is_pn_chars
+               (FStar_String.index input (pos + (Prims.of_int (6))))))
+     else
+       if (pos + (Prims.of_int (4))) <= len
+       then
+         (if
+            ((((FStar_Char.int_of_char c0) = (Prims.of_int (0x62))) &&
+                ((FStar_Char.int_of_char c1) = (Prims.of_int (0x61))))
+               && ((FStar_Char.int_of_char c2) = (Prims.of_int (0x73))))
+              && ((FStar_Char.int_of_char c3) = (Prims.of_int (0x65)))
+          then
+            (if (pos + (Prims.of_int (4))) >= len
+             then true
+             else
+               Prims.op_Negation
+                 (Parser_Turtle.is_pn_chars
+                    (FStar_String.index input (pos + (Prims.of_int (4))))))
+          else false)
+       else false)
+  else
+    if (pos + (Prims.of_int (4))) <= len
+    then
+      (let c0 = char_to_lower (FStar_String.index input pos) in
+       let c1 =
+         char_to_lower (FStar_String.index input (pos + Prims.int_one)) in
+       let c2 =
+         char_to_lower (FStar_String.index input (pos + (Prims.of_int (2)))) in
+       let c3 =
+         char_to_lower (FStar_String.index input (pos + (Prims.of_int (3)))) in
+       if
+         ((((FStar_Char.int_of_char c0) = (Prims.of_int (0x62))) &&
+             ((FStar_Char.int_of_char c1) = (Prims.of_int (0x61))))
+            && ((FStar_Char.int_of_char c2) = (Prims.of_int (0x73))))
+           && ((FStar_Char.int_of_char c3) = (Prims.of_int (0x65)))
+       then
+         (if (pos + (Prims.of_int (4))) >= len
+          then true
+          else
+            Prims.op_Negation
+              (Parser_Turtle.is_pn_chars
+                 (FStar_String.index input (pos + (Prims.of_int (4))))))
+       else false)
+    else false
+let is_directive_at (input : Prims.string) (pos : Prims.nat) : Prims.bool=
+  (is_at_directive input pos) || (is_sparql_directive input pos)
 let is_graph_keyword (input : Prims.string) (pos : Prims.nat) : Prims.bool=
   let len = FStar_String.strlen input in
   if (pos + (Prims.of_int (5))) > len
@@ -191,30 +290,41 @@ let rec parse_graph_body (tps : trig_parse_state) (input : Prims.string)
                 (((FStar_List_Tot_Base.rev acc), tps),
                   (pos1 + Prims.int_one))
             else
-              (match Parser_Turtle.parse_turtle_statement tps.ts input pos1
-                       fuel
-               with
-               | Parser_Combinators.ParseOk ((triples, st'), pos2) ->
-                   let tps' = { ts = st'; has_error = (tps.has_error) } in
-                   if pos2 = pos1
-                   then
-                     Parser_Combinators.ParseOk
-                       (((FStar_List_Tot_Base.rev
-                            (FStar_List_Tot_Base.append
-                               (FStar_List_Tot_Base.rev triples) acc)), tps'),
-                         pos2)
-                   else
-                     parse_graph_body tps' input pos2
-                       (FStar_List_Tot_Base.append
-                          (FStar_List_Tot_Base.rev triples) acc) fuel'
-               | Parser_Combinators.ParseFail (uu___3, uu___4) ->
-                   let tps' = { ts = (tps.ts); has_error = true } in
-                   let pos2 = graph_body_skip_line input pos1 (len - pos1) in
-                   if pos2 = pos1
-                   then
-                     Parser_Combinators.ParseOk
-                       (((FStar_List_Tot_Base.rev acc), tps'), pos1)
-                   else parse_graph_body tps' input pos2 acc fuel')))
+              if is_directive_at input pos1
+              then
+                Parser_Combinators.ParseFail
+                  ("directives not allowed inside graph block", pos1)
+              else
+                if is_graph_keyword input pos1
+                then
+                  Parser_Combinators.ParseFail
+                    ("nested GRAPH not allowed inside graph block", pos1)
+                else
+                  (match Parser_Turtle.parse_turtle_statement tps.ts input
+                           pos1 fuel
+                   with
+                   | Parser_Combinators.ParseOk ((triples, st'), pos2) ->
+                       let tps' = { ts = st'; has_error = (tps.has_error) } in
+                       if pos2 = pos1
+                       then
+                         Parser_Combinators.ParseOk
+                           (((FStar_List_Tot_Base.rev
+                                (FStar_List_Tot_Base.append
+                                   (FStar_List_Tot_Base.rev triples) acc)),
+                              tps'), pos2)
+                       else
+                         parse_graph_body tps' input pos2
+                           (FStar_List_Tot_Base.append
+                              (FStar_List_Tot_Base.rev triples) acc) fuel'
+                   | Parser_Combinators.ParseFail (uu___5, uu___6) ->
+                       let tps' = { ts = (tps.ts); has_error = true } in
+                       let pos2 =
+                         graph_body_skip_line input pos1 (len - pos1) in
+                       if pos2 = pos1
+                       then
+                         Parser_Combinators.ParseOk
+                           (((FStar_List_Tot_Base.rev acc), tps'), pos1)
+                       else parse_graph_body tps' input pos2 acc fuel')))
 let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
   (pos : Prims.nat) (fuel : Prims.nat) :
   ((RDF_Graph_Executable.iri FStar_Pervasives_Native.option *

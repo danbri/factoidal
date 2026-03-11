@@ -64,7 +64,9 @@ let check_conflicting_attrs (attrs : Parser_XML.xml_attribute list) =
   if has "rdf:parseType" && has "rdf:resource" then
     raise (Rdfxml_error "conflicting rdf:parseType and rdf:resource");
   if has "rdf:aboutEach" then
-    raise (Rdfxml_error "rdf:aboutEach is deprecated and forbidden")
+    raise (Rdfxml_error "rdf:aboutEach is deprecated and forbidden");
+  if has "rdf:aboutEachPrefix" then
+    raise (Rdfxml_error "rdf:aboutEachPrefix is deprecated and forbidden")
 
 type rdfxml_state =
   {

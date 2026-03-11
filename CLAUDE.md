@@ -45,7 +45,9 @@ Rust/JS/OCaml/anything that "mirrors" a spec.
    N-Quads, TriG, RDF/XML, CSV/TSV results) are implemented in F\* and
    extracted. All hand-written OCaml parsers have been removed. New parsers
    MUST be written in F\* first.
-5. **SPARQL 1.1 is the target.** Never default to 1.0 manifests when 1.1 exists.
+5. **Full SPARQL 1.1 is the target.** This includes Query, Update, Protocol,
+   SERVICE (federated query), and all result formats (XML/SRX, JSON, CSV, TSV).
+   Never default to 1.0 manifests when 1.1 exists.
 6. **Run the real W3C test files.** Read manifests, `.rq`, `.srx`, `.ttl` from
    disk. Do not construct synthetic queries that are "inspired by" W3C tests.
 7. **No cobbling.** No hand-written JS/Rust/OCaml reimplementations of what F\*
@@ -193,6 +195,20 @@ Previous Claude sessions made these errors. Read and internalize:
     stubs, forward-reference wiring, F\* type system workarounds (with a
     comment explaining the F\* limitation), and I/O-layer fixes.
 
+16. **Truncating command output with `tail -N` or `head -N`.** Piping test
+    runners, build logs, or diagnostic output through `tail -20` (or similar)
+    silently discards the vast majority of the output. When a 1000-line test
+    run is piped through `tail -20`, 98% of the results vanish — including
+    the specific FAIL lines needed for debugging. This happened in
+    `build-ocaml.sh` where `w3c_runner --all 2>&1 | tail -20` hid all
+    individual test results. **Rule: never truncate command output in
+    scripts or CI.** Use `tee` to save full output to a file while still
+    streaming to the terminal: `cmd 2>&1 | tee results.log`. If you only
+    want a summary on screen, print the summary *after* the full run, don't
+    pipe through `tail`. The same applies to `head -N` — it kills the
+    process via SIGPIPE once N lines are emitted, so later output (including
+    summary lines) is lost entirely.
+
 ## Current State (Honest Assessment)
 
 ### F\* Specifications
@@ -273,11 +289,12 @@ evaluator passes 363 of 406 applicable query/syntax tests (89%), with strong
 results in aggregates (43/44), built-in functions (74/75), BIND (10/10),
 negation (11/12), property paths (33/33), entailment (44/70), exists (6/6),
 grouping (6/6), project-expression (7/7), and subqueries (9/11). The main
-SPARQL gaps are: no UPDATE support (205 tests skipped — not in scope for
-read-only query evaluation), no SPARQL Protocol, no federated query (SERVICE
-returns empty), incomplete negative syntax rejection (parser accepts 1 query
-it should reject), incomplete xsd:float/double casting, and no JSON/CSV/TSV
-result format support (20 tests). CONSTRUCT is partially implemented (2/3 pass).
+SPARQL gaps are: UPDATE not yet implemented (205 tests skipped — in scope,
+tracked by #59), Protocol not yet implemented (34 tests skipped), SERVICE
+returns empty (needs HTTP client, tracked by #57), incomplete negative syntax
+rejection (parser accepts 1 query it should reject), incomplete xsd:float/double
+casting, and JSON/CSV/TSV result format support not yet implemented (20 tests).
+CONSTRUCT is partially implemented (2/3 pass).
 
 On the RDF parsing side, F\*-extracted parsers handle all six serialization
 formats: N-Triples 41/70, Turtle 296/313, N-Quads 53/87, TriG 334/356,
@@ -285,10 +302,11 @@ RDF/XML 120/166, rdf-mt 39/39. Most remaining parser failures involve
 prefixed name validation (pname/local name escapes) and a few TriG-specific
 negative syntax edge cases.
 
-In short: the query evaluator works well for read-only SELECT queries and the
-parsers handle the vast majority of cases. The system is held back by (a)
-prefixed name validation edge cases, (b) missing SPARQL UPDATE/Protocol,
-and (c) no JSON/CSV/TSV result formats.
+In short: the query evaluator works well for SELECT queries and the parsers
+handle the vast majority of cases. The system is held back by (a) prefixed
+name validation edge cases, (b) SPARQL UPDATE/Protocol not yet implemented,
+(c) SERVICE (federated query) needs HTTP client, and (d) JSON/CSV/TSV result
+formats not yet implemented. All of these are in scope and tracked by #71.
 
 ### W3C Test Results (as of 2026-03-11)
 
@@ -298,11 +316,12 @@ Per-suite: aggregates 43/47, bind 10/10, bindings 10/11, cast 4/6,
 construct 2/7, entailment 44/70, exists 6/6, functions 74/75, grouping 6/6,
 negation 11/12, project-expression 7/7, property-path 33/33, service 0/7,
 subquery 9/14, syntax-query 93/94, syntax-fed 3/3, delete-insert 8/17.
-Skipped: 205 UPDATE operations (add, basic-update, clear, copy, delete,
-delete-data, delete-where, drop, move, http-rdf-update, syntax-update-*,
-update-silent). Protocol: 34 skipped. Service-description: 3 skipped.
-Unsupported: json-res (4), csv-tsv-res (6), aggregates (3 Turtle results),
-construct (4 Turtle results), subquery (2 Turtle results), bindings (1).
+Not yet implemented: 205 UPDATE operations (add, basic-update, clear, copy,
+delete, delete-data, delete-where, drop, move, http-rdf-update,
+syntax-update-*, update-silent). Protocol: 34 not yet implemented.
+Service-description: 3 not yet implemented. Result format gaps: json-res (4),
+csv-tsv-res (6), aggregates (3 Turtle results), construct (4 Turtle results),
+subquery (2 Turtle results), bindings (1).
 
 **RDF 1.1 — 883 pass, 148 fail (1031 total)**
 
@@ -390,9 +409,48 @@ RDF/XML layer's job, not the XML parser's).
 
 ### Phase 4 — Close SPARQL gaps
 
-Working from test failures, extend the F\* SPARQL spec.
+Working from test failures, extend the F\* SPARQL spec:
 
-### Phase 5 — Verified extraction pipeline
+1. **Result formats** — JSON Results (`application/sparql-results+json`),
+   CSV (`text/csv`), TSV (`text/tab-separated-values`) serializers in F\*.
+   SRX parser already exists; JSON/CSV/TSV result parsers needed for test
+   comparison. ~20 tests blocked.
+2. **SPARQL UPDATE** — INSERT DATA, DELETE DATA, INSERT/DELETE (with WHERE),
+   LOAD, CLEAR, DROP, ADD, MOVE, COPY, CREATE. Requires mutable graph store
+   model in F\*. 205 tests. Tracked by #59.
+3. **SPARQL Protocol** — HTTP interface for query and update operations.
+   34 tests. Requires HTTP server, which can use `assume val` with OCaml
+   stub (see I/O and networking below).
+4. **SERVICE (federated query)** — Requires HTTP client to contact remote
+   SPARQL endpoints. 7 tests. Tracked by #57.
+5. **Service Description** — 3 tests.
+
+### Phase 5 — I/O, Networking, and Async
+
+F\* extracted code is pure/total by default. Networking (SERVICE, Protocol,
+LOAD) requires I/O effects. Strategy:
+
+- **`assume val` for I/O primitives.** Declare HTTP client/server operations
+  as `assume val` in F\* with OCaml stubs. This keeps the verified boundary
+  around query semantics while allowing real network operations.
+- **Simple synchronous blocking API.** For `web_fetch : url -> result`, a
+  blocking OCaml stub using `Unix.open_connection` or `Cohttp_lwt_unix` is
+  the simplest approach. Good enough for test runner and CLI usage.
+- **Async considerations for extracted applications.** When F\*-extracted code
+  runs in a larger async context (e.g., a web server), the blocking stubs
+  become a problem. Options:
+  1. **Thread pool** — run blocking F\* calls in a thread pool, integrate
+     with Lwt/Async via `Lwt_preemptive.detach` or similar.
+  2. **Effect-polymorphic F\*** — F\* has `Effect` and `PURE`/`DIV`/`ST`
+     effect system. In principle, I/O effects can be modeled, but extraction
+     of effectful code to async OCaml is not well-supported by F\* today.
+  3. **js_of_ocaml + promises** — for browser/Node targets, blocking I/O
+     is impossible. The js_of_ocaml path would need promise-based stubs
+     with continuation-passing, which is architecturally different.
+  The current plan: start with blocking stubs (#57), document the limitation,
+  and track async extraction as a separate research issue.
+
+### Phase 6 — Verified extraction pipeline
 
 - Low\* rewrite for standalone C extraction via KaRaMeL
 - CI: verify F\* → extract → test → sign
@@ -500,10 +558,10 @@ Use `-v` for the full expected/actual row dump (goes to stderr).
 tests/w3c/                          git submodule: github.com/w3c/rdf-tests
   rdf/rdf11/rdf-n-triples/         N-Triples syntax tests (70)
   rdf/rdf11/rdf-turtle/            Turtle syntax+eval tests (313)
-  rdf/rdf11/rdf-n-quads/           N-Quads syntax tests (NOT YET SUPPORTED)
-  rdf/rdf11/rdf-trig/              TriG syntax+eval tests (NOT YET SUPPORTED)
-  rdf/rdf11/rdf-xml/               RDF/XML eval tests (NOT YET SUPPORTED)
-  rdf/rdf11/rdf-mt/                Model theory / semantics (NOT YET SUPPORTED)
+  rdf/rdf11/rdf-n-quads/           N-Quads syntax tests (87)
+  rdf/rdf11/rdf-trig/              TriG syntax+eval tests (356)
+  rdf/rdf11/rdf-xml/               RDF/XML eval tests (166)
+  rdf/rdf11/rdf-mt/                Model theory / semantics (39)
   sparql/sparql11/                 SPARQL 1.1 test suites (34 suites, 631 tests)
 ```
 
