@@ -32,7 +32,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   PASS: rdfs-no-cycles-in-subClassOf-test001
   PASS: rdfs-no-cycles-in-subPropertyOf-test001 (10ms)
   PASS: rdfs-subClassOf-a-Property-test001
-  PASS: rdfs-subPropertyOf-semantics-test001
+  PASS: rdfs-subPropertyOf-semantics-test001 (10ms)
   PASS: statement-entailment-test001
   PASS: statement-entailment-test002
   PASS: statement-entailment-test003
@@ -562,9 +562,9 @@ Test base: ../../../tests/w3c/rdf/rdf11
   PASS: trig-turtle-bad-02
   FAIL: IRI-resolution-01 — Triples mismatch: expected 41, got 41 (32ms)
   FAIL: IRI-resolution-02 — Triples mismatch: expected 41, got 41 (33ms)
-  FAIL: IRI-resolution-07 — Triples mismatch: expected 42, got 42 (32ms)
+  FAIL: IRI-resolution-07 — Triples mismatch: expected 42, got 42 (33ms)
   FAIL: IRI-resolution-08 — Triples mismatch: expected 12, got 12
-  [suite time: 58.3s]
+  [suite time: 58.2s]
 
 --- rdf-turtle ---
   PASS: IRI_subject
@@ -880,7 +880,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   FAIL: IRI-resolution-02 — Triples mismatch: expected 41, got 41 (32ms)
   FAIL: IRI-resolution-07 — Triples mismatch: expected 42, got 42 (31ms)
   FAIL: IRI-resolution-08 — Triples mismatch: expected 12, got 12
-  [suite time: 47.9s]
+  [suite time: 47.8s]
 
 --- rdf-xml ---
   PASS: amp-in-url-test001 (12ms)
@@ -940,7 +940,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   PASS: rdfms-identity-anon-resources-test003
   PASS: rdfms-identity-anon-resources-test004
   PASS: rdfms-identity-anon-resources-test005
-  FAIL: rdfms-not-id-and-resource-attr-test001 — Triples mismatch: expected 6, got 1 (10ms)
+  FAIL: rdfms-not-id-and-resource-attr-test001 — Triples mismatch: expected 6, got 1 (11ms)
   PASS: rdfms-not-id-and-resource-attr-test002
   FAIL: rdfms-not-id-and-resource-attr-test004 — Triples mismatch: expected 5, got 1 (10ms)
   FAIL: rdfms-not-id-and-resource-attr-test005 — Triples mismatch: expected 6, got 2 (11ms)
@@ -1049,7 +1049,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   FAIL: xmlbase-test011 — Triples mismatch: expected 1, got 1
   FAIL: xmlbase-test013 — Triples mismatch: expected 2, got 2
   FAIL: xmlbase-test014 — Triples mismatch: expected 2, got 2
-  [suite time: 19.2s]
+  [suite time: 19.1s]
 
 ========================================
 Suite Results:
