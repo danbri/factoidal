@@ -54,7 +54,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: MIN DISTINCT with GROUP BY (16ms)
   PASS: SAMPLE DISTINCT
   PASS: SUM DISTINCT with GROUP BY (16ms)
-  [suite time: 1.8s]
+  [suite time: 1.9s]
 
 --- basic-update ---
   [suite time: 0.5s]
@@ -63,7 +63,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: bind01 - BIND
   PASS: bind02 - BIND (36ms)
   PASS: bind03 - BIND
-  PASS: bind04 - BIND (25ms)
+  PASS: bind04 - BIND (26ms)
   PASS: bind05 - BIND
   PASS: bind06 - BIND (44ms)
   PASS: bind07 - BIND (86ms)
@@ -115,12 +115,12 @@ Test base: ../../../tests/w3c/sparql/sparql11
       UNMATCHED: ?a=<http://example.org/n11>, ?v="1.25"^^<http://www.w3.org/2001/XMLSchema#float>, ?float="1.25"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/n12>, ?v="-7.875"^^<http://www.w3.org/2001/XMLSchema#float>, ?float="-7.875"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/n13>, ?v="2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="2.5"^^<http://www.w3.org/2001/XMLSchema#float>
-      UNMATCHED: ?a=<http://example.org/n14>, ?v="-2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="-2.5"^^<http://www.w3.org/2001/XMLSchema#float> (856ms)
-  PASS: xsd:double cast (865ms)
+      UNMATCHED: ?a=<http://example.org/n14>, ?v="-2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="-2.5"^^<http://www.w3.org/2001/XMLSchema#float> (860ms)
+  PASS: xsd:double cast (867ms)
   FAIL: xsd:decimal cast — Results mismatch: expected 31 rows, got 31
       UNMATCHED: ?a=<http://example.org/n09>, ?v="0.0"^^<http://www.w3.org/2001/XMLSchema#float>, ?decimal="0.0"^^<http://www.w3.org/2001/XMLSchema#decimal>
       UNMATCHED: ?a=<http://example.org/n10>, ?v="1.0"^^<http://www.w3.org/2001/XMLSchema#float>, ?decimal="1.0"^^<http://www.w3.org/2001/XMLSchema#decimal> (810ms)
-  PASS: xsd:string cast (706ms)
+  PASS: xsd:string cast (707ms)
   [suite time: 4.8s]
 
 --- clear ---
@@ -175,10 +175,10 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: bind01 - BIND fixed data for OWL DL
   PASS: bind02 - BIND fixed data for OWL DL (37ms)
   PASS: bind03 - BIND fixed data for OWL DL (10ms)
-  PASS: bind04 - BIND fixed data for OWL DL (26ms)
+  PASS: bind04 - BIND fixed data for OWL DL (27ms)
   PASS: bind05 - BIND fixed data for OWL DL
   PASS: bind06 - BIND fixed data for OWL DL (45ms)
-  PASS: bind07 - BIND fixed data for OWL DL (87ms)
+  PASS: bind07 - BIND fixed data for OWL DL (86ms)
   PASS: bind08 - BIND fixed data for OWL DL
   PASS: D-Entailment test to show that  neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers
   PASS: Literal with language tag test
@@ -307,22 +307,22 @@ Test base: ../../../tests/w3c/sparql/sparql11
 --- functions ---
   PASS: STRDT()
   PASS: STRDT(STR())
-  PASS: STRDT() TypeErrors (updated for RDF 1.1) (43ms)
+  PASS: STRDT() TypeErrors (updated for RDF 1.1) (46ms)
   PASS: STRLANG()
   PASS: STRLANG(STR())
   PASS: STRLANG() TypeErrors (updated for RDF 1.1) (50ms)
   PASS: isNumeric() (19ms)
   PASS: ABS()
   PASS: CEIL() (38ms)
-  PASS: FLOOR() (38ms)
-  PASS: ROUND() (38ms)
+  PASS: FLOOR() (36ms)
+  PASS: ROUND() (36ms)
   PASS: CONCAT()
-  PASS: CONCAT() 2 (152ms)
+  PASS: CONCAT() 2 (151ms)
   PASS: CONCAT() without parameter
   PASS: CONCAT() with a single parameter
   PASS: SUBSTR() (3-argument) (37ms)
   PASS: SUBSTR() (3-argument) on non-BMP unicode strings
-  PASS: SUBSTR() (2-argument) (37ms)
+  PASS: SUBSTR() (2-argument) (35ms)
   PASS: SUBSTR() (2-argument) on non-BMP unicode strings
   PASS: STRLEN() (30ms)
   PASS: STRLEN() on non-BMP unicode strings
@@ -370,7 +370,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: COALESCE() (32ms)
   PASS: COALESCE() without arguments
   PASS: STRBEFORE() (18ms)
-  PASS: STRBEFORE() datatyping (39ms)
+  PASS: STRBEFORE() datatyping (40ms)
   PASS: STRAFTER() (18ms)
   PASS: STRAFTER() datatyping (40ms)
   FAIL: REPLACE() — Results mismatch: expected 9 rows, got 9
@@ -394,11 +394,11 @@ Test base: ../../../tests/w3c/sparql/sparql11
   [suite time: 0.1s]
 
 --- http-rdf-update ---
-  [suite time: 0.7s]
+  [suite time: 0.6s]
 
 --- json-res ---
-  PASS: jsonres01 - JSON Result Format (18ms)
-  PASS: jsonres02 - JSON Result Format (21ms)
+  PASS: jsonres01 - JSON Result Format (17ms)
+  PASS: jsonres02 - JSON Result Format (20ms)
   PASS: jsonres03 - JSON Result Format
   PASS: jsonres04 - JSON Result Format
   [suite time: 0.1s]
@@ -410,10 +410,10 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: Subsets by exclusion (NOT EXISTS)
   PASS: Subsets by exclusion (MINUS)
   PASS: Medical, temporal proximity by exclusion (NOT EXISTS)
-  PASS: Calculate which sets are subsets of others (include A subsetOf A) (72ms)
-  FAIL: Calculate which sets are subsets of others (exclude A subsetOf A) — Results mismatch: expected 11 rows, got 30 (77ms)
-  PASS: Calculate which sets have the same elements (10ms)
-  PASS: Calculate proper subset (41ms)
+  PASS: Calculate which sets are subsets of others (include A subsetOf A) (69ms)
+  FAIL: Calculate which sets are subsets of others (exclude A subsetOf A) — Results mismatch: expected 11 rows, got 30 (72ms)
+  PASS: Calculate which sets have the same elements
+  PASS: Calculate proper subset (39ms)
   PASS: Positive EXISTS 1
   PASS: Positive EXISTS 2
   PASS: Subtraction with MINUS from a fully bound minuend
