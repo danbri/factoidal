@@ -109,7 +109,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   FAIL: nt-syntax-bad-num-01 — Should reject but parsed OK
   FAIL: nt-syntax-bad-num-02 — Should reject but parsed OK
   FAIL: nt-syntax-bad-num-03 — Should reject but parsed OK
-  PASS: nt-syntax-subm-01 (62ms)
+  PASS: nt-syntax-subm-01 (60ms)
   PASS: comment_following_triple
   PASS: literal
   PASS: literal_all_controls
@@ -132,7 +132,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   PASS: langtagged_string
   PASS: lantag_with_subtag
   PASS: minimal_whitespace
-  [suite time: 3.0s]
+  [suite time: 2.8s]
 
 --- rdf-n-triples ---
   PASS: nt-syntax-file-01
@@ -182,7 +182,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   FAIL: nt-syntax-bad-num-01 — Should reject but parsed OK
   FAIL: nt-syntax-bad-num-02 — Should reject but parsed OK
   FAIL: nt-syntax-bad-num-03 — Should reject but parsed OK
-  PASS: nt-syntax-subm-01 (61ms)
+  PASS: nt-syntax-subm-01 (59ms)
   PASS: comment_following_triple
   PASS: literal
   PASS: literal_all_controls
@@ -564,7 +564,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   FAIL: IRI-resolution-02 — Triples mismatch: expected 41, got 41 (33ms)
   FAIL: IRI-resolution-07 — Triples mismatch: expected 42, got 42 (32ms)
   FAIL: IRI-resolution-08 — Triples mismatch: expected 12, got 12
-  [suite time: 58.5s]
+  [suite time: 57.5s]
 
 --- rdf-turtle ---
   PASS: IRI_subject
@@ -748,7 +748,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   PASS: turtle-eval-lists-02
   PASS: turtle-eval-lists-03
   PASS: turtle-eval-lists-04
-  PASS: turtle-eval-lists-05 (11ms)
+  PASS: turtle-eval-lists-05 (10ms)
   PASS: turtle-eval-lists-06
   PASS: turtle-syntax-bad-uri-01
   PASS: turtle-syntax-bad-uri-02
@@ -857,7 +857,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   PASS: turtle-subm-23
   PASS: turtle-subm-24
   PASS: turtle-subm-25
-  PASS: turtle-subm-26 (57ms)
+  PASS: turtle-subm-26 (55ms)
   PASS: turtle-subm-27
   PASS: turtle-eval-bad-01
   PASS: turtle-eval-bad-02
@@ -876,11 +876,11 @@ Test base: ../../../tests/w3c/rdf/rdf11
   PASS: turtle-syntax-ln-colons
   PASS: turtle-syntax-ln-dots
   PASS: turtle-syntax-ns-dots
-  FAIL: IRI-resolution-01 — Triples mismatch: expected 41, got 41 (31ms)
-  FAIL: IRI-resolution-02 — Triples mismatch: expected 41, got 41 (32ms)
-  FAIL: IRI-resolution-07 — Triples mismatch: expected 42, got 42 (31ms)
+  FAIL: IRI-resolution-01 — Triples mismatch: expected 41, got 41 (29ms)
+  FAIL: IRI-resolution-02 — Triples mismatch: expected 41, got 41 (30ms)
+  FAIL: IRI-resolution-07 — Triples mismatch: expected 42, got 42 (29ms)
   FAIL: IRI-resolution-08 — Triples mismatch: expected 12, got 12
-  [suite time: 47.8s]
+  [suite time: 46.3s]
 
 --- rdf-xml ---
   PASS: amp-in-url-test001 (12ms)
@@ -894,7 +894,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   PASS: rdf-containers-syntax-vs-schema-test001
   PASS: rdf-containers-syntax-vs-schema-test002 (10ms)
   PASS: rdf-containers-syntax-vs-schema-test003
-  FAIL: rdf-containers-syntax-vs-schema-test004 — Triples mismatch: expected 15, got 6 (28ms)
+  FAIL: rdf-containers-syntax-vs-schema-test004 — Triples mismatch: expected 15, got 6 (27ms)
   FAIL: rdf-containers-syntax-vs-schema-test006 — Triples mismatch: expected 8, got 8 (16ms)
   FAIL: rdf-containers-syntax-vs-schema-test007 — Triples mismatch: expected 4, got 4
   PASS: rdf-containers-syntax-vs-schema-test008
@@ -940,9 +940,9 @@ Test base: ../../../tests/w3c/rdf/rdf11
   PASS: rdfms-identity-anon-resources-test003
   PASS: rdfms-identity-anon-resources-test004
   PASS: rdfms-identity-anon-resources-test005
-  FAIL: rdfms-not-id-and-resource-attr-test001 — Triples mismatch: expected 6, got 1 (10ms)
+  FAIL: rdfms-not-id-and-resource-attr-test001 — Triples mismatch: expected 6, got 1
   PASS: rdfms-not-id-and-resource-attr-test002
-  FAIL: rdfms-not-id-and-resource-attr-test004 — Triples mismatch: expected 5, got 1 (10ms)
+  FAIL: rdfms-not-id-and-resource-attr-test004 — Triples mismatch: expected 5, got 1
   FAIL: rdfms-not-id-and-resource-attr-test005 — Triples mismatch: expected 6, got 2 (11ms)
   PASS: rdfms-para196-test001
   PASS: rdfms-rdf-id-error001
@@ -1013,7 +1013,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   PASS: rdfms-rdf-names-use-warn-002
   PASS: rdfms-rdf-names-use-warn-003
   PASS: rdfms-reification-required-test001
-  FAIL: rdfms-reification-required-test002 — Triples mismatch: expected 10, got 2 (12ms)
+  FAIL: rdfms-reification-required-test002 — Triples mismatch: expected 10, got 2 (11ms)
   PASS: rdfms-seq-representation-test001
   FAIL: rdfms-seq-representation-test002 — Triples mismatch: expected 10, got 6 (11ms)
   PASS: rdfms-syntax-incomplete-test001
@@ -1049,7 +1049,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   FAIL: xmlbase-test011 — Triples mismatch: expected 1, got 1
   FAIL: xmlbase-test013 — Triples mismatch: expected 2, got 2
   FAIL: xmlbase-test014 — Triples mismatch: expected 2, got 2
-  [suite time: 19.1s]
+  [suite time: 18.4s]
 
 ========================================
 Suite Results:
