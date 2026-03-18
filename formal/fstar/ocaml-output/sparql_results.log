@@ -27,14 +27,14 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: GROUP_CONCAT with different language tags
   PASS: GROUP_CONCAT with one element
   PASS: SUM
-  PASS: SUM with GROUP BY (25ms)
+  PASS: SUM with GROUP BY (23ms)
   PASS: AVG
   PASS: AVG with GROUP BY (10ms)
   PASS: AVG with empty group (value defined to be 0)
   PASS: MIN
   PASS: MIN with GROUP BY (23ms)
   PASS: MAX
-  PASS: MAX with GROUP BY (34ms)
+  PASS: MAX with GROUP BY (23ms)
   PASS: SAMPLE
   PASS: Error in AVG
   PASS: Protect from error in AVG (10ms)
@@ -61,7 +61,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
 
 --- bind ---
   PASS: bind01 - BIND
-  PASS: bind02 - BIND (38ms)
+  PASS: bind02 - BIND (36ms)
   PASS: bind03 - BIND
   PASS: bind04 - BIND (25ms)
   PASS: bind05 - BIND
@@ -88,7 +88,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
 
 --- cast ---
   PASS: xsd:boolean cast (771ms)
-  PASS: xsd:integer cast (741ms)
+  PASS: xsd:integer cast (740ms)
   FAIL: xsd:float cast — Results mismatch: expected 31 rows, got 31
       UNMATCHED: ?a=<http://example.org/s03>, ?v="-10.2E3"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="-1.02E4"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/s04>, ?v="+33.3300"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="3.333E1"^^<http://www.w3.org/2001/XMLSchema#float>
@@ -115,12 +115,12 @@ Test base: ../../../tests/w3c/sparql/sparql11
       UNMATCHED: ?a=<http://example.org/n11>, ?v="1.25"^^<http://www.w3.org/2001/XMLSchema#float>, ?float="1.25"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/n12>, ?v="-7.875"^^<http://www.w3.org/2001/XMLSchema#float>, ?float="-7.875"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/n13>, ?v="2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="2.5"^^<http://www.w3.org/2001/XMLSchema#float>
-      UNMATCHED: ?a=<http://example.org/n14>, ?v="-2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="-2.5"^^<http://www.w3.org/2001/XMLSchema#float> (859ms)
-  PASS: xsd:double cast (866ms)
+      UNMATCHED: ?a=<http://example.org/n14>, ?v="-2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="-2.5"^^<http://www.w3.org/2001/XMLSchema#float> (856ms)
+  PASS: xsd:double cast (865ms)
   FAIL: xsd:decimal cast — Results mismatch: expected 31 rows, got 31
       UNMATCHED: ?a=<http://example.org/n09>, ?v="0.0"^^<http://www.w3.org/2001/XMLSchema#float>, ?decimal="0.0"^^<http://www.w3.org/2001/XMLSchema#decimal>
-      UNMATCHED: ?a=<http://example.org/n10>, ?v="1.0"^^<http://www.w3.org/2001/XMLSchema#float>, ?decimal="1.0"^^<http://www.w3.org/2001/XMLSchema#decimal> (811ms)
-  PASS: xsd:string cast (709ms)
+      UNMATCHED: ?a=<http://example.org/n10>, ?v="1.0"^^<http://www.w3.org/2001/XMLSchema#float>, ?decimal="1.0"^^<http://www.w3.org/2001/XMLSchema#decimal> (810ms)
+  PASS: xsd:string cast (705ms)
   [suite time: 4.8s]
 
 --- clear ---
@@ -175,10 +175,10 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: bind01 - BIND fixed data for OWL DL
   PASS: bind02 - BIND fixed data for OWL DL (37ms)
   PASS: bind03 - BIND fixed data for OWL DL (10ms)
-  PASS: bind04 - BIND fixed data for OWL DL (26ms)
+  PASS: bind04 - BIND fixed data for OWL DL (27ms)
   PASS: bind05 - BIND fixed data for OWL DL
   PASS: bind06 - BIND fixed data for OWL DL (46ms)
-  PASS: bind07 - BIND fixed data for OWL DL (87ms)
+  PASS: bind07 - BIND fixed data for OWL DL (86ms)
   PASS: bind08 - BIND fixed data for OWL DL
   PASS: D-Entailment test to show that  neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers
   PASS: Literal with language tag test
@@ -370,7 +370,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: COALESCE() (30ms)
   PASS: COALESCE() without arguments
   PASS: STRBEFORE() (17ms)
-  PASS: STRBEFORE() datatyping (38ms)
+  PASS: STRBEFORE() datatyping (37ms)
   PASS: STRAFTER() (17ms)
   PASS: STRAFTER() datatyping (38ms)
   FAIL: REPLACE() — Results mismatch: expected 9 rows, got 9
@@ -398,7 +398,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
 
 --- json-res ---
   PASS: jsonres01 - JSON Result Format (17ms)
-  PASS: jsonres02 - JSON Result Format (22ms)
+  PASS: jsonres02 - JSON Result Format (20ms)
   PASS: jsonres03 - JSON Result Format
   PASS: jsonres04 - JSON Result Format
   [suite time: 0.1s]
