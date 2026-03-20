@@ -564,7 +564,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   FAIL: IRI-resolution-02 — Triples mismatch: expected 41, got 41 (33ms)
   FAIL: IRI-resolution-07 — Triples mismatch: expected 42, got 42 (32ms)
   FAIL: IRI-resolution-08 — Triples mismatch: expected 12, got 12
-  [suite time: 58.3s]
+  [suite time: 58.2s]
 
 --- rdf-turtle ---
   PASS: IRI_subject
@@ -910,7 +910,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   FAIL: rdf-ns-prefix-confusion-test0011 — Triples mismatch: expected 2, got 2
   FAIL: rdf-ns-prefix-confusion-test0012 — Triples mismatch: expected 2, got 2
   FAIL: rdf-ns-prefix-confusion-test0013 — Triples mismatch: expected 2, got 2
-  FAIL: rdf-ns-prefix-confusion-test0014 — Triples mismatch: expected 2, got 2 (11ms)
+  FAIL: rdf-ns-prefix-confusion-test0014 — Triples mismatch: expected 2, got 2 (10ms)
   PASS: rdfms-abouteach-error001
   PASS: rdfms-abouteach-error002
   FAIL: rdfms-difference-between-ID-and-about-error1 — Should reject but parsed OK
@@ -1014,12 +1014,12 @@ Test base: ../../../tests/w3c/rdf/rdf11
   PASS: rdfms-rdf-names-use-warn-003
   PASS: rdfms-reification-required-test001
   FAIL: rdfms-reification-required-test002 — Triples mismatch: expected 10, got 2 (12ms)
-  PASS: rdfms-seq-representation-test001 (11ms)
-  FAIL: rdfms-seq-representation-test002 — Triples mismatch: expected 10, got 6 (11ms)
+  PASS: rdfms-seq-representation-test001
+  FAIL: rdfms-seq-representation-test002 — Triples mismatch: expected 10, got 6 (12ms)
   PASS: rdfms-syntax-incomplete-test001
   PASS: rdfms-syntax-incomplete-test002
   PASS: rdfms-syntax-incomplete-test003
-  FAIL: rdfms-syntax-incomplete-test004 — Triples mismatch: expected 6, got 2
+  FAIL: rdfms-syntax-incomplete-test004 — Triples mismatch: expected 6, got 2 (10ms)
   PASS: rdfms-syntax-incomplete-error001
   PASS: rdfms-syntax-incomplete-error002
   PASS: rdfms-syntax-incomplete-error003
