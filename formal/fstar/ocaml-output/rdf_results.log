@@ -564,7 +564,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   FAIL: IRI-resolution-02 — Triples mismatch: expected 41, got 41 (33ms)
   FAIL: IRI-resolution-07 — Triples mismatch: expected 42, got 42 (32ms)
   FAIL: IRI-resolution-08 — Triples mismatch: expected 12, got 12
-  [suite time: 58.5s]
+  [suite time: 58.2s]
 
 --- rdf-turtle ---
   PASS: IRI_subject
