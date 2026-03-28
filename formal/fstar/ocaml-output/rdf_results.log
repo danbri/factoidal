@@ -182,7 +182,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   FAIL: nt-syntax-bad-num-01 — Should reject but parsed OK
   FAIL: nt-syntax-bad-num-02 — Should reject but parsed OK
   FAIL: nt-syntax-bad-num-03 — Should reject but parsed OK
-  PASS: nt-syntax-subm-01 (61ms)
+  PASS: nt-syntax-subm-01 (62ms)
   PASS: comment_following_triple
   PASS: literal
   PASS: literal_all_controls
@@ -267,7 +267,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   PASS: empty_collection
   PASS: nested_collection
   PASS: first
-  PASS: last
+  PASS: last (10ms)
   PASS: LITERAL1
   PASS: LITERAL1_ascii_boundaries
   PASS: LITERAL1_with_UTF8_boundaries
@@ -877,7 +877,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   PASS: turtle-syntax-ln-dots
   PASS: turtle-syntax-ns-dots
   FAIL: IRI-resolution-01 — Triples mismatch: expected 41, got 41 (31ms)
-  FAIL: IRI-resolution-02 — Triples mismatch: expected 41, got 41 (32ms)
+  FAIL: IRI-resolution-02 — Triples mismatch: expected 41, got 41 (37ms)
   FAIL: IRI-resolution-07 — Triples mismatch: expected 42, got 42 (31ms)
   FAIL: IRI-resolution-08 — Triples mismatch: expected 12, got 12
   [suite time: 47.9s]
@@ -895,7 +895,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   PASS: rdf-containers-syntax-vs-schema-test002 (11ms)
   PASS: rdf-containers-syntax-vs-schema-test003
   FAIL: rdf-containers-syntax-vs-schema-test004 — Triples mismatch: expected 15, got 6 (30ms)
-  FAIL: rdf-containers-syntax-vs-schema-test006 — Triples mismatch: expected 8, got 8 (18ms)
+  FAIL: rdf-containers-syntax-vs-schema-test006 — Triples mismatch: expected 8, got 8 (17ms)
   FAIL: rdf-containers-syntax-vs-schema-test007 — Triples mismatch: expected 4, got 4
   PASS: rdf-containers-syntax-vs-schema-test008
   PASS: rdf-element-not-mandatory-test001
@@ -908,7 +908,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   PASS: rdf-ns-prefix-confusion-test0009
   PASS: rdf-ns-prefix-confusion-test0010
   FAIL: rdf-ns-prefix-confusion-test0011 — Triples mismatch: expected 2, got 2 (11ms)
-  FAIL: rdf-ns-prefix-confusion-test0012 — Triples mismatch: expected 2, got 2 (10ms)
+  FAIL: rdf-ns-prefix-confusion-test0012 — Triples mismatch: expected 2, got 2 (11ms)
   FAIL: rdf-ns-prefix-confusion-test0013 — Triples mismatch: expected 2, got 2 (11ms)
   FAIL: rdf-ns-prefix-confusion-test0014 — Triples mismatch: expected 2, got 2 (11ms)
   PASS: rdfms-abouteach-error001
