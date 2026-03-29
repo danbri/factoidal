@@ -44,7 +44,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: COUNT: no match, no group
   unsup: COUNT: no GROUP BY inside of GRAPH — Turtle result format not yet supported
   PASS: HAVING: multiple conditions
-  PASS: GROUP BY with a function (18ms)
+  PASS: GROUP BY with a function (17ms)
   PASS: GROUP BY with a built-in function (11ms)
   PASS: AVG DISTINCT with GROUP BY (16ms)
   PASS: COUNT DISTINCT with GROUP BY (16ms)
@@ -63,7 +63,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: bind01 - BIND
   PASS: bind02 - BIND (36ms)
   PASS: bind03 - BIND
-  PASS: bind04 - BIND (25ms)
+  PASS: bind04 - BIND (26ms)
   PASS: bind05 - BIND
   PASS: bind06 - BIND (44ms)
   PASS: bind07 - BIND (86ms)
@@ -77,7 +77,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: Post-query VALUES with obj-var, 1 row
   PASS: Post-query VALUES with 2 obj-vars, 1 row
   PASS: Post-query VALUES with 2 obj-vars, 1 row with UNDEF
-  PASS: Post-query VALUES with 2 obj-vars, 2 rows with UNDEF (28ms)
+  PASS: Post-query VALUES with 2 obj-vars, 2 rows with UNDEF (29ms)
   PASS: Post-query VALUES with pred-var, 1 row
   PASS: Post-query VALUES with (OPTIONAL) obj-var, 1 row (30ms)
   PASS: Post-query VALUES with subj/obj-vars, 2 rows with UNDEF
@@ -87,7 +87,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   [suite time: 0.2s]
 
 --- cast ---
-  PASS: xsd:boolean cast (772ms)
+  PASS: xsd:boolean cast (775ms)
   PASS: xsd:integer cast (744ms)
   FAIL: xsd:float cast — Results mismatch: expected 31 rows, got 31
       UNMATCHED: ?a=<http://example.org/s03>, ?v="-10.2E3"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="-1.02E4"^^<http://www.w3.org/2001/XMLSchema#float>
@@ -115,7 +115,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
       UNMATCHED: ?a=<http://example.org/n11>, ?v="1.25"^^<http://www.w3.org/2001/XMLSchema#float>, ?float="1.25"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/n12>, ?v="-7.875"^^<http://www.w3.org/2001/XMLSchema#float>, ?float="-7.875"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/n13>, ?v="2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="2.5"^^<http://www.w3.org/2001/XMLSchema#float>
-      UNMATCHED: ?a=<http://example.org/n14>, ?v="-2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="-2.5"^^<http://www.w3.org/2001/XMLSchema#float> (859ms)
+      UNMATCHED: ?a=<http://example.org/n14>, ?v="-2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="-2.5"^^<http://www.w3.org/2001/XMLSchema#float> (860ms)
   PASS: xsd:double cast (867ms)
   FAIL: xsd:decimal cast — Results mismatch: expected 31 rows, got 31
       UNMATCHED: ?a=<http://example.org/n09>, ?v="0.0"^^<http://www.w3.org/2001/XMLSchema#float>, ?decimal="0.0"^^<http://www.w3.org/2001/XMLSchema#decimal>
@@ -175,7 +175,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: bind01 - BIND fixed data for OWL DL
   PASS: bind02 - BIND fixed data for OWL DL (37ms)
   PASS: bind03 - BIND fixed data for OWL DL (10ms)
-  PASS: bind04 - BIND fixed data for OWL DL (26ms)
+  PASS: bind04 - BIND fixed data for OWL DL (27ms)
   PASS: bind05 - BIND fixed data for OWL DL
   PASS: bind06 - BIND fixed data for OWL DL (45ms)
   PASS: bind07 - BIND fixed data for OWL DL (87ms)
@@ -195,8 +195,8 @@ Test base: ../../../tests/w3c/sparql/sparql11
       UNMATCHED: ?x=<http://example.org/person1> (15ms)
   FAIL: paper-sparqldl-Q4 — Results mismatch: expected 2 rows, got 0
       UNMATCHED: ?x=<http://example.org/John>, ?c=<http://example.org/Employee>
-      UNMATCHED: ?x=<http://example.org/John>, ?c=<http://example.org/GraduateAssistant> (16ms)
-  PASS: paper-sparqldl-Q5 (14ms)
+      UNMATCHED: ?x=<http://example.org/John>, ?c=<http://example.org/GraduateAssistant> (17ms)
+  PASS: paper-sparqldl-Q5 (16ms)
   FAIL: filtered subclass query with (hasChild some Thing) restriction — Results mismatch: expected 3 rows, got 0
       UNMATCHED: ?C=<http://example.org/test#Parent>
       UNMATCHED: ?C=<http://example.org/test#Father>
@@ -310,10 +310,10 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: STRDT() TypeErrors (updated for RDF 1.1) (43ms)
   PASS: STRLANG()
   PASS: STRLANG(STR())
-  PASS: STRLANG() TypeErrors (updated for RDF 1.1) (47ms)
+  PASS: STRLANG() TypeErrors (updated for RDF 1.1) (48ms)
   PASS: isNumeric() (18ms)
   PASS: ABS()
-  PASS: CEIL() (36ms)
+  PASS: CEIL() (35ms)
   PASS: FLOOR() (36ms)
   PASS: ROUND() (36ms)
   PASS: CONCAT()
@@ -336,7 +336,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: STRSTARTS()
   PASS: STRENDS()
   PASS: plus-1-corrected (53ms)
-  PASS: plus-2-corrected (44ms)
+  PASS: plus-2-corrected (42ms)
   PASS: MD5()
   PASS: MD5() over Unicode data
   PASS: SHA1()
@@ -442,8 +442,8 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: (pp10) Path with negation
   PASS: (pp11) Simple path and two paths to same target node
   PASS: (pp12) Variable length path and two paths to same target node
-  PASS: (pp14) Star path over foaf:knows (22ms)
-  PASS: (pp16) Duplicate paths and cycles through foaf:knows* (114ms)
+  PASS: (pp14) Star path over foaf:knows (21ms)
+  PASS: (pp16) Duplicate paths and cycles through foaf:knows* (107ms)
   PASS: (pp21) Diamond -- :p+
   PASS: (pp23) Diamond, with tail -- :p+
   PASS: (pp25) Diamond, with loop -- :p+
@@ -528,7 +528,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
       UNMATCHED: ?O1=<http://www.example.orgorder4>, ?O2=<http://www.example.orgorder1>
       UNMATCHED: ?O1=<http://www.example.orgorder4>, ?O2=<http://www.example.orgorder2>
       UNMATCHED: ?O1=<http://www.example.orgorder4>, ?O2=<http://www.example.orgorder3>
-      UNMATCHED: ?O1=<http://www.example.orgorder4>, ?O2=<http://www.example.orgorder4> (146ms)
+      UNMATCHED: ?O1=<http://www.example.orgorder4>, ?O2=<http://www.example.orgorder4> (145ms)
   unsup: sq14 - limit by resource — Turtle result format not yet supported
   [suite time: 0.4s]
 
