@@ -63,7 +63,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: bind01 - BIND
   PASS: bind02 - BIND (36ms)
   PASS: bind03 - BIND
-  PASS: bind04 - BIND (25ms)
+  PASS: bind04 - BIND (26ms)
   PASS: bind05 - BIND
   PASS: bind06 - BIND (44ms)
   PASS: bind07 - BIND (86ms)
@@ -87,7 +87,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   [suite time: 0.2s]
 
 --- cast ---
-  PASS: xsd:boolean cast (784ms)
+  PASS: xsd:boolean cast (772ms)
   PASS: xsd:integer cast (742ms)
   FAIL: xsd:float cast — Results mismatch: expected 31 rows, got 31
       UNMATCHED: ?a=<http://example.org/s03>, ?v="-10.2E3"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="-1.02E4"^^<http://www.w3.org/2001/XMLSchema#float>
@@ -115,12 +115,12 @@ Test base: ../../../tests/w3c/sparql/sparql11
       UNMATCHED: ?a=<http://example.org/n11>, ?v="1.25"^^<http://www.w3.org/2001/XMLSchema#float>, ?float="1.25"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/n12>, ?v="-7.875"^^<http://www.w3.org/2001/XMLSchema#float>, ?float="-7.875"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/n13>, ?v="2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="2.5"^^<http://www.w3.org/2001/XMLSchema#float>
-      UNMATCHED: ?a=<http://example.org/n14>, ?v="-2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="-2.5"^^<http://www.w3.org/2001/XMLSchema#float> (857ms)
-  PASS: xsd:double cast (866ms)
+      UNMATCHED: ?a=<http://example.org/n14>, ?v="-2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="-2.5"^^<http://www.w3.org/2001/XMLSchema#float> (863ms)
+  PASS: xsd:double cast (903ms)
   FAIL: xsd:decimal cast — Results mismatch: expected 31 rows, got 31
       UNMATCHED: ?a=<http://example.org/n09>, ?v="0.0"^^<http://www.w3.org/2001/XMLSchema#float>, ?decimal="0.0"^^<http://www.w3.org/2001/XMLSchema#decimal>
-      UNMATCHED: ?a=<http://example.org/n10>, ?v="1.0"^^<http://www.w3.org/2001/XMLSchema#float>, ?decimal="1.0"^^<http://www.w3.org/2001/XMLSchema#decimal> (813ms)
-  PASS: xsd:string cast (706ms)
+      UNMATCHED: ?a=<http://example.org/n10>, ?v="1.0"^^<http://www.w3.org/2001/XMLSchema#float>, ?decimal="1.0"^^<http://www.w3.org/2001/XMLSchema#decimal> (810ms)
+  PASS: xsd:string cast (707ms)
   [suite time: 4.8s]
 
 --- clear ---
@@ -175,10 +175,10 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: bind01 - BIND fixed data for OWL DL
   PASS: bind02 - BIND fixed data for OWL DL (37ms)
   PASS: bind03 - BIND fixed data for OWL DL (10ms)
-  PASS: bind04 - BIND fixed data for OWL DL (26ms)
+  PASS: bind04 - BIND fixed data for OWL DL (28ms)
   PASS: bind05 - BIND fixed data for OWL DL
-  PASS: bind06 - BIND fixed data for OWL DL (45ms)
-  PASS: bind07 - BIND fixed data for OWL DL (87ms)
+  PASS: bind06 - BIND fixed data for OWL DL (48ms)
+  PASS: bind07 - BIND fixed data for OWL DL (92ms)
   PASS: bind08 - BIND fixed data for OWL DL
   PASS: D-Entailment test to show that  neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers
   PASS: Literal with language tag test
@@ -186,22 +186,22 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: bnodes are not existentials with answer
   FAIL: paper-sparqldl-Q1 — Results mismatch: expected 3 rows, got 1
       UNMATCHED: ?c=<http://www.w3.org/2002/07/owl#Nothing>
-      UNMATCHED: ?c=<http://example.org/Student> (15ms)
+      UNMATCHED: ?c=<http://example.org/Student> (16ms)
   PASS: paper-sparqldl-Q1-rdfs (14ms)
   FAIL: paper-sparqldl-Q2 — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?x=<http://example.org/John>, ?y="Johnnie"^^<http://www.w3.org/2001/XMLSchema#string> (14ms)
+      UNMATCHED: ?x=<http://example.org/John>, ?y="Johnnie"^^<http://www.w3.org/2001/XMLSchema#string> (15ms)
   FAIL: paper-sparqldl-Q3 — Results mismatch: expected 2 rows, got 0
       UNMATCHED: ?x=<http://example.org/John>
-      UNMATCHED: ?x=<http://example.org/person1> (15ms)
+      UNMATCHED: ?x=<http://example.org/person1> (16ms)
   FAIL: paper-sparqldl-Q4 — Results mismatch: expected 2 rows, got 0
       UNMATCHED: ?x=<http://example.org/John>, ?c=<http://example.org/Employee>
-      UNMATCHED: ?x=<http://example.org/John>, ?c=<http://example.org/GraduateAssistant> (16ms)
-  PASS: paper-sparqldl-Q5 (14ms)
+      UNMATCHED: ?x=<http://example.org/John>, ?c=<http://example.org/GraduateAssistant> (18ms)
+  PASS: paper-sparqldl-Q5 (15ms)
   FAIL: filtered subclass query with (hasChild some Thing) restriction — Results mismatch: expected 3 rows, got 0
       UNMATCHED: ?C=<http://example.org/test#Parent>
       UNMATCHED: ?C=<http://example.org/test#Father>
-      UNMATCHED: ?C=<http://example.org/test#Mother> (16ms)
-  PASS: parent query with distinguished variable (14ms)
+      UNMATCHED: ?C=<http://example.org/test#Mother> (17ms)
+  PASS: parent query with distinguished variable (15ms)
   FAIL: parent query with (hasChild some Thing) restriction — Results mismatch: expected 3 rows, got 0
       UNMATCHED: ?parent=<http://example.org/test#Alice>
       UNMATCHED: ?parent=<http://example.org/test#Bob>
@@ -293,7 +293,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
       UNMATCHED: ?a=<http://example.org/test#a>, ?b=<http://example.org/test#b>, ?x=<http://example.org/test#b>
       UNMATCHED: ?a=<http://example.org/test#a>, ?b=<http://example.org/test#x>, ?x=<http://example.org/test#x>
       UNMATCHED: ?a=<http://example.org/test#a>, ?b=<http://example.org/test#x>, ?x=<http://example.org/test#b> (27ms)
-  [suite time: 7.1s]
+  [suite time: 7.2s]
 
 --- exists ---
   PASS: Exists with one constant
@@ -307,36 +307,36 @@ Test base: ../../../tests/w3c/sparql/sparql11
 --- functions ---
   PASS: STRDT()
   PASS: STRDT(STR())
-  PASS: STRDT() TypeErrors (updated for RDF 1.1) (43ms)
+  PASS: STRDT() TypeErrors (updated for RDF 1.1) (44ms)
   PASS: STRLANG()
   PASS: STRLANG(STR())
   PASS: STRLANG() TypeErrors (updated for RDF 1.1) (47ms)
   PASS: isNumeric() (18ms)
   PASS: ABS()
-  PASS: CEIL() (38ms)
-  PASS: FLOOR() (38ms)
-  PASS: ROUND() (38ms)
+  PASS: CEIL() (35ms)
+  PASS: FLOOR() (36ms)
+  PASS: ROUND() (36ms)
   PASS: CONCAT()
-  PASS: CONCAT() 2 (151ms)
+  PASS: CONCAT() 2 (143ms)
   PASS: CONCAT() without parameter
   PASS: CONCAT() with a single parameter
-  PASS: SUBSTR() (3-argument) (37ms)
+  PASS: SUBSTR() (3-argument) (35ms)
   PASS: SUBSTR() (3-argument) on non-BMP unicode strings
-  PASS: SUBSTR() (2-argument) (37ms)
+  PASS: SUBSTR() (2-argument) (35ms)
   PASS: SUBSTR() (2-argument) on non-BMP unicode strings
-  PASS: STRLEN() (30ms)
+  PASS: STRLEN() (28ms)
   PASS: STRLEN() on non-BMP unicode strings
-  PASS: UCASE() (21ms)
+  PASS: UCASE() (20ms)
   PASS: UCASE() on non-BMP unicode strings
-  PASS: LCASE() (21ms)
+  PASS: LCASE() (20ms)
   PASS: LCASE() on non-BMP unicode strings
-  PASS: ENCODE_FOR_URI() (38ms)
+  PASS: ENCODE_FOR_URI() (36ms)
   PASS: ENCODE_FOR_URI() on non-BMP unicode strings
   PASS: CONTAINS()
   PASS: STRSTARTS()
   PASS: STRENDS()
-  PASS: plus-1-corrected (56ms)
-  PASS: plus-2-corrected (44ms)
+  PASS: plus-1-corrected (53ms)
+  PASS: plus-2-corrected (42ms)
   PASS: MD5()
   PASS: MD5() over Unicode data
   PASS: SHA1()
@@ -347,15 +347,15 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: SHA384() on Unicode data
   PASS: SHA512()
   PASS: SHA512() on Unicode data
-  PASS: MINUTES() (14ms)
-  PASS: SECONDS() (14ms)
-  PASS: HOURS() (14ms)
-  PASS: MONTH() (14ms)
-  PASS: YEAR() (14ms)
-  PASS: DAY() (14ms)
-  PASS: TIMEZONE() (12ms)
+  PASS: MINUTES() (13ms)
+  PASS: SECONDS() (13ms)
+  PASS: HOURS() (13ms)
+  PASS: MONTH() (13ms)
+  PASS: YEAR() (13ms)
+  PASS: DAY() (13ms)
+  PASS: TIMEZONE() (11ms)
   PASS: TZ()
-  PASS: BNODE(str) (21ms)
+  PASS: BNODE(str) (20ms)
   PASS: BNODE()
   PASS: IN 1
   PASS: IN 2
@@ -365,24 +365,24 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: RAND()
   PASS: IRI()/URI()
   PASS: IRI()/URI() when the input is an IRI
-  PASS: IF() (45ms)
+  PASS: IF() (42ms)
   PASS: IF() error propogation
-  PASS: COALESCE() (32ms)
+  PASS: COALESCE() (30ms)
   PASS: COALESCE() without arguments
-  PASS: STRBEFORE() (18ms)
-  PASS: STRBEFORE() datatyping (40ms)
-  PASS: STRAFTER() (18ms)
-  PASS: STRAFTER() datatyping (40ms)
+  PASS: STRBEFORE() (17ms)
+  PASS: STRBEFORE() datatyping (37ms)
+  PASS: STRAFTER() (17ms)
+  PASS: STRAFTER() datatyping (38ms)
   FAIL: REPLACE() — Results mismatch: expected 9 rows, got 9
       UNMATCHED: ?s=<http://example.org/s2>, ?new="---"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#langString>@ja
-      UNMATCHED: ?s=<http://example.org/s4>, ?new="-ran-ais"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#langString>@fr (29ms)
+      UNMATCHED: ?s=<http://example.org/s4>, ?new="-ran-ais"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#langString>@fr (27ms)
   PASS: REPLACE() with overlapping pattern
   PASS: REPLACE() with captured substring
   PASS: REPLACE() with the 'i' option
   PASS: UUID() pattern match
   PASS: UUID() per binding
   PASS: STRUUID() pattern match
-  [suite time: 5.2s]
+  [suite time: 5.1s]
 
 --- grouping ---
   PASS: Group-1
@@ -468,7 +468,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   [suite time: 0.9s]
 
 --- protocol ---
-  [suite time: 3.1s]
+  [suite time: 3.0s]
 
 --- service ---
   FAIL: SERVICE test 1 — Results mismatch: expected 2 rows, got 0
