@@ -182,7 +182,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   FAIL: nt-syntax-bad-num-01 — Should reject but parsed OK
   FAIL: nt-syntax-bad-num-02 — Should reject but parsed OK
   FAIL: nt-syntax-bad-num-03 — Should reject but parsed OK
-  PASS: nt-syntax-subm-01 (65ms)
+  PASS: nt-syntax-subm-01 (61ms)
   PASS: comment_following_triple
   PASS: literal
   PASS: literal_all_controls
@@ -564,7 +564,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   FAIL: IRI-resolution-02 — Triples mismatch: expected 41, got 41 (33ms)
   FAIL: IRI-resolution-07 — Triples mismatch: expected 42, got 42 (32ms)
   FAIL: IRI-resolution-08 — Triples mismatch: expected 12, got 12
-  [suite time: 58.3s]
+  [suite time: 58.5s]
 
 --- rdf-turtle ---
   PASS: IRI_subject
@@ -880,7 +880,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   FAIL: IRI-resolution-02 — Triples mismatch: expected 41, got 41 (32ms)
   FAIL: IRI-resolution-07 — Triples mismatch: expected 42, got 42 (31ms)
   FAIL: IRI-resolution-08 — Triples mismatch: expected 12, got 12
-  [suite time: 48.3s]
+  [suite time: 47.9s]
 
 --- rdf-xml ---
   PASS: amp-in-url-test001 (12ms)
@@ -888,7 +888,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   PASS: datatypes-test002
   FAIL: rdf-charmod-literals-test001 — Triples mismatch: expected 2, got 1
   PASS: rdf-charmod-uris-test001
-  PASS: rdf-charmod-uris-test002
+  PASS: rdf-charmod-uris-test002 (11ms)
   FAIL: rdf-containers-syntax-vs-schema-error001 — Should reject but parsed OK
   PASS: rdf-containers-syntax-vs-schema-error002
   PASS: rdf-containers-syntax-vs-schema-test001
@@ -910,7 +910,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   FAIL: rdf-ns-prefix-confusion-test0011 — Triples mismatch: expected 2, got 2
   FAIL: rdf-ns-prefix-confusion-test0012 — Triples mismatch: expected 2, got 2
   FAIL: rdf-ns-prefix-confusion-test0013 — Triples mismatch: expected 2, got 2
-  FAIL: rdf-ns-prefix-confusion-test0014 — Triples mismatch: expected 2, got 2 (10ms)
+  FAIL: rdf-ns-prefix-confusion-test0014 — Triples mismatch: expected 2, got 2 (11ms)
   PASS: rdfms-abouteach-error001
   PASS: rdfms-abouteach-error002
   FAIL: rdfms-difference-between-ID-and-about-error1 — Should reject but parsed OK
@@ -928,7 +928,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   PASS: rdfms-empty-property-elements-test007
   PASS: rdfms-empty-property-elements-test008
   PASS: rdfms-empty-property-elements-test010
-  FAIL: rdfms-empty-property-elements-test011 — Triples mismatch: expected 5, got 1
+  FAIL: rdfms-empty-property-elements-test011 — Triples mismatch: expected 5, got 1 (10ms)
   FAIL: rdfms-empty-property-elements-test012 — Triples mismatch: expected 5, got 1
   PASS: rdfms-empty-property-elements-test013
   FAIL: rdfms-empty-property-elements-test014 — Triples mismatch: expected 2, got 1
@@ -1049,7 +1049,7 @@ Test base: ../../../tests/w3c/rdf/rdf11
   FAIL: xmlbase-test011 — Triples mismatch: expected 1, got 1
   FAIL: xmlbase-test013 — Triples mismatch: expected 2, got 2
   FAIL: xmlbase-test014 — Triples mismatch: expected 2, got 2
-  [suite time: 19.2s]
+  [suite time: 19.1s]
 
 ========================================
 Suite Results:
