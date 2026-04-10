@@ -54,7 +54,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: MIN DISTINCT with GROUP BY (16ms)
   PASS: SAMPLE DISTINCT
   PASS: SUM DISTINCT with GROUP BY (16ms)
-  [suite time: 1.8s]
+  [suite time: 1.9s]
 
 --- basic-update ---
   [suite time: 0.5s]
@@ -115,8 +115,8 @@ Test base: ../../../tests/w3c/sparql/sparql11
       UNMATCHED: ?a=<http://example.org/n11>, ?v="1.25"^^<http://www.w3.org/2001/XMLSchema#float>, ?float="1.25"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/n12>, ?v="-7.875"^^<http://www.w3.org/2001/XMLSchema#float>, ?float="-7.875"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/n13>, ?v="2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="2.5"^^<http://www.w3.org/2001/XMLSchema#float>
-      UNMATCHED: ?a=<http://example.org/n14>, ?v="-2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="-2.5"^^<http://www.w3.org/2001/XMLSchema#float> (859ms)
-  PASS: xsd:double cast (865ms)
+      UNMATCHED: ?a=<http://example.org/n14>, ?v="-2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="-2.5"^^<http://www.w3.org/2001/XMLSchema#float> (857ms)
+  PASS: xsd:double cast (866ms)
   FAIL: xsd:decimal cast — Results mismatch: expected 31 rows, got 31
       UNMATCHED: ?a=<http://example.org/n09>, ?v="0.0"^^<http://www.w3.org/2001/XMLSchema#float>, ?decimal="0.0"^^<http://www.w3.org/2001/XMLSchema#decimal>
       UNMATCHED: ?a=<http://example.org/n10>, ?v="1.0"^^<http://www.w3.org/2001/XMLSchema#float>, ?decimal="1.0"^^<http://www.w3.org/2001/XMLSchema#decimal> (810ms)
@@ -173,8 +173,8 @@ Test base: ../../../tests/w3c/sparql/sparql11
 
 --- entailment ---
   PASS: bind01 - BIND fixed data for OWL DL
-  PASS: bind02 - BIND fixed data for OWL DL (37ms)
-  PASS: bind03 - BIND fixed data for OWL DL (10ms)
+  PASS: bind02 - BIND fixed data for OWL DL (39ms)
+  PASS: bind03 - BIND fixed data for OWL DL (11ms)
   PASS: bind04 - BIND fixed data for OWL DL (28ms)
   PASS: bind05 - BIND fixed data for OWL DL
   PASS: bind06 - BIND fixed data for OWL DL (48ms)
@@ -310,7 +310,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: STRDT() TypeErrors (updated for RDF 1.1) (43ms)
   PASS: STRLANG()
   PASS: STRLANG(STR())
-  PASS: STRLANG() TypeErrors (updated for RDF 1.1) (47ms)
+  PASS: STRLANG() TypeErrors (updated for RDF 1.1) (48ms)
   PASS: isNumeric() (18ms)
   PASS: ABS()
   PASS: CEIL() (35ms)
@@ -335,8 +335,8 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: CONTAINS()
   PASS: STRSTARTS()
   PASS: STRENDS()
-  PASS: plus-1-corrected (53ms)
-  PASS: plus-2-corrected (41ms)
+  PASS: plus-1-corrected (52ms)
+  PASS: plus-2-corrected (42ms)
   PASS: MD5()
   PASS: MD5() over Unicode data
   PASS: SHA1()
@@ -382,7 +382,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: UUID() pattern match
   PASS: UUID() per binding
   PASS: STRUUID() pattern match
-  [suite time: 5.2s]
+  [suite time: 5.1s]
 
 --- grouping ---
   PASS: Group-1
@@ -412,8 +412,8 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: Medical, temporal proximity by exclusion (NOT EXISTS)
   PASS: Calculate which sets are subsets of others (include A subsetOf A) (68ms)
   FAIL: Calculate which sets are subsets of others (exclude A subsetOf A) — Results mismatch: expected 11 rows, got 30 (72ms)
-  PASS: Calculate which sets have the same elements (10ms)
-  PASS: Calculate proper subset (38ms)
+  PASS: Calculate which sets have the same elements
+  PASS: Calculate proper subset (39ms)
   PASS: Positive EXISTS 1
   PASS: Positive EXISTS 2
   PASS: Subtraction with MINUS from a fully bound minuend
@@ -443,7 +443,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: (pp11) Simple path and two paths to same target node
   PASS: (pp12) Variable length path and two paths to same target node
   PASS: (pp14) Star path over foaf:knows (21ms)
-  PASS: (pp16) Duplicate paths and cycles through foaf:knows* (108ms)
+  PASS: (pp16) Duplicate paths and cycles through foaf:knows* (107ms)
   PASS: (pp21) Diamond -- :p+
   PASS: (pp23) Diamond, with tail -- :p+
   PASS: (pp25) Diamond, with loop -- :p+
