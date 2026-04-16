@@ -39,7 +39,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   echo "  Extracting all F* modules (verified)..."
   EXTRACT_FAILED=0
   for fst in RDF.Graph.Executable.fst SPARQL11.Algebra.fst \
-             Parser.Combinators.fst SPARQL11.Parser.fst \
+             Parser.Combinators.fst Parser.TurtleScanner.fst SPARQL11.Parser.fst \
              Parser.NTriples.fst Parser.Turtle.fst \
              Parser.NQuads.fst Parser.TriG.fst \
              Parser.XML.fst Parser.RDFXML.fst \
@@ -78,7 +78,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
 
   # Common modules for all binaries
   COMMON_MODULES="RDF_Graph_Executable.ml \
-    Parser_Combinators.ml Parser_NTriples.ml Parser_Turtle.ml \
+    Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
     SPARQL11_Algebra.ml SPARQL11_Parser.ml"

@@ -64,15 +64,18 @@ content = content.replace(
   | QF_Select sel ->'''
 )
 
-content = content.replace(
-    '''  | QF_Describe uu___ -> []
-type path_result =''',
-    '''  | QF_Describe uu___ -> []
+# Close the let result = match ... wrapper after QF_Describe
+# The next definition after eval_select_query may be rewrite_query_bnode_term
+# (from ballyhoo port) or type path_result (original). Handle both.
+import re as _re
+close_pattern = _re.compile(r'(\s*\| QF_Describe uu___ -> \[\])\n(let |type )')
+m = close_pattern.search(content)
+if m:
+    insert_pos = m.end(1)
+    content = content[:insert_pos] + '''
   in
   current_base_iri_ref := saved_base;
-  result
-type path_result ='''
-)
+  result''' + content[insert_pos:]
 
 # 3. Enhance IRI() function to resolve against base IRI
 content = content.replace(

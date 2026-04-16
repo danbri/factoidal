@@ -17,7 +17,7 @@ FILE="$OUTDIR/Parser_NTriples.ml"
 if [[ -f "$FILE" ]]; then
   echo "  Applying 68_unicode_boundary_workarounds.sh to $FILE..."
   if grep -q '(cp < (Prims.of_int (0xD7FF)))' "$FILE"; then
-    sed -i 's/(cp < (Prims.of_int (0xD7FF)))/(cp < (Prims.of_int (0xD800)))/g' "$FILE"
+    sed -i '' 's/(cp < (Prims.of_int (0xD7FF)))/(cp < (Prims.of_int (0xD800)))/g' "$FILE"
   fi
   echo "  Parser_NTriples.ml patched."
 fi

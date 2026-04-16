@@ -2628,26 +2628,36 @@ let join (omega1 : solution_sequence) (omega2 : solution_sequence) :
             if sm_compatible mu1 mu2
             then FStar_Pervasives_Native.Some (sm_merge mu1 mu2)
             else FStar_Pervasives_Native.None) omega2) omega1
-let eval_expr_ebv (uu___ : expr)
-  (uu___1 : RDF_Graph_Executable.solution_mapping) : Prims.bool=
-  failwith "Not yet implemented: SPARQL11.Algebra.eval_expr_ebv"
-let eval_expr_fwd (uu___ : expr)
-  (uu___1 : RDF_Graph_Executable.solution_mapping) : eval_result=
-  failwith "Not yet implemented: SPARQL11.Algebra.eval_expr_fwd"
+let eval_expr_ebv_ref : (expr -> RDF_Graph_Executable.solution_mapping -> Prims.bool) ref =
+  ref (fun _ _ -> failwith "eval_expr_ebv not yet wired")
+let eval_expr_fwd_ref : (expr -> RDF_Graph_Executable.solution_mapping -> eval_result) ref =
+  ref (fun _ _ -> failwith "eval_expr_fwd not yet wired")
+let eval_exists_fwd_ref : (group_graph_pattern -> RDF_Graph_Executable.solution_mapping -> RDF_Graph_Executable.rdf_graph -> RDF_Graph_Executable.rdf_dataset -> Prims.bool) ref =
+  ref (fun _ _ _ _ -> false)
+let eval_property_path_fwd_ref : (property_path -> RDF_Graph_Executable.rdf_graph -> (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list) ref =
+  ref (fun _ _ -> [])
+let eval_subselect_fwd_ref : (query -> RDF_Graph_Executable.rdf_graph -> RDF_Graph_Executable.rdf_dataset -> solution_sequence) ref =
+  ref (fun _ _ _ -> [])
+let eval_expr_ebv (e : expr)
+  (mu : RDF_Graph_Executable.solution_mapping) : Prims.bool=
+  !eval_expr_ebv_ref e mu
+let eval_expr_fwd (e : expr)
+  (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
+  !eval_expr_fwd_ref e mu
 let eval_exists_fwd (uu___ : group_graph_pattern)
   (uu___1 : RDF_Graph_Executable.solution_mapping)
   (uu___2 : RDF_Graph_Executable.rdf_graph)
   (uu___3 : RDF_Graph_Executable.rdf_dataset) : Prims.bool=
-  failwith "Not yet implemented: SPARQL11.Algebra.eval_exists_fwd"
+  !eval_exists_fwd_ref uu___ uu___1 uu___2 uu___3
 let eval_subselect_fwd (uu___ : query)
   (uu___1 : RDF_Graph_Executable.rdf_graph)
   (uu___2 : RDF_Graph_Executable.rdf_dataset) : solution_sequence=
-  failwith "Not yet implemented: SPARQL11.Algebra.eval_subselect_fwd"
+  !eval_subselect_fwd_ref uu___ uu___1 uu___2
 type path_result_fwd =
   (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list
 let eval_property_path_fwd (uu___ : property_path)
   (uu___1 : RDF_Graph_Executable.rdf_graph) : path_result_fwd=
-  failwith "Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd"
+  !eval_property_path_fwd_ref uu___ uu___1
 let path_result_to_solutions (ps : pattern_subject) (pt : pattern_term)
   (pairs : path_result_fwd) : solution_sequence=
   list_filter_map
@@ -3633,6 +3643,62 @@ and eval_concat (es : expr Prims.list)
             | ER_Error -> ER_Error
             | uu___ -> ER_Error)
        | FStar_Pervasives_Native.None -> ER_Error)
+(* Wire up the forward-declared eval_expr_ebv/fwd to the real implementations *)
+let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
+let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)
+let () = regex_replace_ref := (fun text pattern replacement flags ->
+  try
+    let case_insensitive = match flags with
+      | FStar_Pervasives_Native.Some f -> String.contains f 'i'
+      | FStar_Pervasives_Native.None -> false in
+    let converted = xpath_to_str_regex pattern in
+    let re = if case_insensitive
+      then Str.regexp_case_fold converted
+      else Str.regexp converted in
+    (* Manual global replace that handles unmatched groups gracefully.
+       OCaml Str.matched_group raises Not_found for unmatched groups;
+       we replace them with empty string per XPath/SPARQL semantics. *)
+    let open Stdlib in
+    let build_replacement matched_text =
+      let len = String.length replacement in
+      let buf = Buffer.create len in
+      let i = ref 0 in
+      while !i < len do
+        if replacement.[!i] = '$' && !i + 1 < len &&
+           replacement.[!i + 1] >= '0' && replacement.[!i + 1] <= '9' then begin
+          let group_n = Char.code replacement.[!i + 1] - Char.code '0' in
+          (try Buffer.add_string buf (Str.matched_group group_n matched_text)
+           with Not_found -> ());
+          i := !i + 2
+        end else begin
+          Buffer.add_char buf replacement.[!i];
+          i := !i + 1
+        end
+      done;
+      Buffer.contents buf
+    in
+    let result = Buffer.create (String.length text) in
+    let pos = ref 0 in
+    (try
+      while true do
+        ignore (Str.search_forward re text !pos);
+        let m_start = Str.match_beginning () in
+        let m_end = Str.match_end () in
+        Buffer.add_string result (String.sub text !pos (m_start - !pos));
+        Buffer.add_string result (build_replacement text);
+        pos := m_end;
+        if m_start = m_end then begin
+          if !pos < String.length text then begin
+            Buffer.add_char result text.[!pos];
+            pos := !pos + 1
+          end else raise Not_found
+        end
+      done
+    with Not_found -> ());
+    Buffer.add_string result (String.sub text !pos (String.length text - !pos));
+    Buffer.contents result
+  with _ -> text)
+
 type group = {
   g_key: eval_result Prims.list ;
   g_solutions: solution_sequence }
@@ -4198,6 +4264,9 @@ let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
   | QF_Construct uu___ -> []
   | QF_Ask -> []
   | QF_Describe uu___ -> []
+  in
+  current_base_iri_ref := saved_base;
+  result
 let rewrite_query_bnode_term (pt : pattern_term) : pattern_term=
   match pt with
   | PT_BNode b -> PT_Var (Prims.strcat "_bnode_" b)
@@ -4268,6 +4337,9 @@ let eval_ask_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
   | uu___ -> false
 type path_result =
   (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list
+(* Wire up eval_subselect_fwd to the real eval_select_query *)
+let () = eval_subselect_fwd_ref := eval_select_query
+
 let is_not_literal (t : RDF_Graph_Executable.rdf_term) : Prims.bool=
   match t with
   | RDF_Graph_Executable.T_Literal uu___ -> false
@@ -4460,6 +4532,9 @@ let rec eval_property_path (p : property_path)
                  [((t.RDF_Graph_Executable.o),
                     (subject_to_term t.RDF_Graph_Executable.s))]) g in
       FStar_List_Tot_Base.op_At direct_pairs inverse_pairs
+(* Wire up eval_property_path_fwd to the real eval_property_path *)
+let () = eval_property_path_fwd_ref := eval_property_path
+
 type numeric_precision =
   | NP_Integer 
   | NP_Decimal 
@@ -4912,5 +4987,8 @@ let eval_not_exists (pattern : group_graph_pattern)
   (graph : RDF_Graph_Executable.rdf_graph)
   (ds : RDF_Graph_Executable.rdf_dataset) : Prims.bool=
   Prims.op_Negation (eval_exists pattern mu graph ds)
+(* Wire up eval_exists_fwd to the real eval_exists *)
+let () = eval_exists_fwd_ref := eval_exists
+
 let filter_solutions (e : expr) (omega : solution_sequence) :
   solution_sequence= FStar_List_Tot_Base.filter (eval_expr_ebv e) omega
