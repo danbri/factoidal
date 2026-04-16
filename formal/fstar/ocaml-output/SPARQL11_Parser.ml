@@ -624,7 +624,15 @@ let rec trim_trailing_dots (input : Prims.string) (start : pos)
     if
       (char_code (char_at input (end_pos - Prims.int_one))) =
         (Prims.of_int (0x2E))
-    then trim_trailing_dots input start (end_pos - Prims.int_one)
+    then
+      (if
+         ((end_pos >= (Prims.of_int (2))) &&
+            ((end_pos - (Prims.of_int (2))) >= start))
+           &&
+           ((char_code (char_at input (end_pos - (Prims.of_int (2))))) =
+              (Prims.of_int (0x5C)))
+       then end_pos
+       else trim_trailing_dots input start (end_pos - Prims.int_one))
     else end_pos
 let rec skip_ws (input : Prims.string) (p : pos) : pos=
   if at_end input p
@@ -1401,6 +1409,21 @@ let rec scan_langtag_chars_end (input : Prims.string) (p : pos) : pos=
 let scan_langtag (input : Prims.string) (p : pos) : (Prims.string * pos)=
   let p' = scan_langtag_chars_end input p in
   ((substring input p (safe_sub p' p)), p')
+let rec has_gt_before_terminator (input : Prims.string) (p : pos) :
+  Prims.bool=
+  if at_end input p
+  then false
+  else
+    (let code = char_code (peek_char input p) in
+     if code = (Prims.of_int (0x3E))
+     then true
+     else
+       if
+         (((is_ws (peek_char input p)) || (code = (Prims.of_int (0x29)))) ||
+            (code = (Prims.of_int (0x7D))))
+           || (code = (Prims.of_int (0x5D)))
+       then false
+       else has_gt_before_terminator input (p + Prims.int_one))
 let next_token (input : Prims.string) (p : pos) : lex_result=
   let p1 = skip_ws input p in
   if at_end input p1
@@ -1421,14 +1444,19 @@ let next_token (input : Prims.string) (p : pos) : lex_result=
           else
             (let next_code = char_code (peek_char input (p1 + Prims.int_one)) in
              if
-               (((((next_code >= (Prims.of_int (0x41))) &&
-                     (next_code <= (Prims.of_int (0x5A))))
-                    ||
-                    ((next_code >= (Prims.of_int (0x61))) &&
-                       (next_code <= (Prims.of_int (0x7A)))))
-                   || (next_code = (Prims.of_int (0x5F))))
-                  || (next_code = (Prims.of_int (0x2F))))
-                 || (next_code = (Prims.of_int (0x23)))
+               (((((((next_code >= (Prims.of_int (0x41))) &&
+                       (next_code <= (Prims.of_int (0x5A))))
+                      ||
+                      ((next_code >= (Prims.of_int (0x61))) &&
+                         (next_code <= (Prims.of_int (0x7A)))))
+                     || (next_code = (Prims.of_int (0x3E))))
+                    || (next_code = (Prims.of_int (0x5F))))
+                   || (next_code = (Prims.of_int (0x2F))))
+                  || (next_code = (Prims.of_int (0x23))))
+                 ||
+                 (((next_code = (Prims.of_int (0x3F))) ||
+                     (next_code = (Prims.of_int (0x24))))
+                    && (has_gt_before_terminator input (p1 + Prims.int_one)))
              then
                let uu___3 = scan_iri input (p1 + Prims.int_one) in
                match uu___3 with | (iri, p') -> ((Tok_IRI iri), p')
@@ -1652,6 +1680,25 @@ let uu___is_ParseErr (projectee : 'a parse_result) : Prims.bool=
 let __proj__ParseErr__item__msg (projectee : 'a parse_result) : Prims.string=
   match projectee with | ParseErr msg -> msg
 type token_stream = token Prims.list
+let resolve_relative_iri_token
+  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (tok : token) : token=
+  match tok with
+  | Tok_IRI iri ->
+      (match if RDF_Graph_Executable.is_iri iri
+             then FStar_Pervasives_Native.Some iri
+             else SPARQL11_Algebra.resolve_query_iri base iri
+       with
+       | FStar_Pervasives_Native.Some abs -> Tok_IRI abs
+       | FStar_Pervasives_Native.None -> tok)
+  | uu___ -> tok
+let rec resolve_relative_iri_tokens
+  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (ts : token_stream) : token_stream=
+  match ts with
+  | [] -> []
+  | t::rest -> (resolve_relative_iri_token base t) ::
+      (resolve_relative_iri_tokens base rest)
 type verb_or_path =
   | VSimple of SPARQL11_Algebra.pattern_term 
   | VPath of SPARQL11_Algebra.property_path 
@@ -2815,17 +2862,90 @@ and parse_group_graph_pattern (pm : prefix_map) (fuel : Prims.nat)
               ParseOk (SPARQL11_Algebra.GP_Empty, (parse_advance ts'))
           | uu___1 ->
               (match parse_ggp_body pm (fuel - Prims.int_one)
-                       SPARQL11_Algebra.GP_Empty [] ts'
+                       SPARQL11_Algebra.GP_Empty [] false ts'
                with
                | ParseErr m -> ParseErr m
                | ParseOk (g, ts'') ->
                    (match parse_expect Tok_RBRACE ts'' with
                     | ParseErr m -> ParseErr m
                     | ParseOk ((), ts''') -> ParseOk (g, ts''')))))
+and is_local_labeled_bnode_id (b : Prims.string) : Prims.bool=
+  let prefix = "_:bnode_" in
+  let plen = FStar_String.strlen prefix in
+  let blen = FStar_String.strlen b in
+  if blen < plen
+  then true
+  else Prims.op_Negation (streq (substring b Prims.int_zero plen) prefix)
+and local_string_mem (x : Prims.string) (xs : Prims.string Prims.list) :
+  Prims.bool=
+  match xs with
+  | [] -> false
+  | y::ys -> (streq x y) || (local_string_mem x ys)
+and local_string_add_unique (x : Prims.string) (xs : Prims.string Prims.list)
+  : Prims.string Prims.list= if local_string_mem x xs then xs else x :: xs
+and local_string_union (xs : Prims.string Prims.list)
+  (ys : Prims.string Prims.list) : Prims.string Prims.list=
+  match xs with
+  | [] -> ys
+  | x::rest -> local_string_union rest (local_string_add_unique x ys)
+and local_string_overlaps (xs : Prims.string Prims.list)
+  (ys : Prims.string Prims.list) : Prims.bool=
+  match xs with
+  | [] -> false
+  | x::rest -> (local_string_mem x ys) || (local_string_overlaps rest ys)
+and local_bnodes_in_pattern_subject (ps : SPARQL11_Algebra.pattern_subject) :
+  Prims.string Prims.list=
+  match ps with
+  | SPARQL11_Algebra.PS_BNode b ->
+      if is_local_labeled_bnode_id b then [b] else []
+  | uu___ -> []
+and local_bnodes_in_pattern_term (pt : SPARQL11_Algebra.pattern_term) :
+  Prims.string Prims.list=
+  match pt with
+  | SPARQL11_Algebra.PT_BNode b ->
+      if is_local_labeled_bnode_id b then [b] else []
+  | uu___ -> []
+and local_bnodes_in_triple_pattern (tp : SPARQL11_Algebra.triple_pattern) :
+  Prims.string Prims.list=
+  local_string_union
+    (local_bnodes_in_pattern_subject tp.SPARQL11_Algebra.tp_s)
+    (local_string_union
+       (local_bnodes_in_pattern_term tp.SPARQL11_Algebra.tp_p)
+       (local_bnodes_in_pattern_term tp.SPARQL11_Algebra.tp_o))
+and local_bnodes_in_bgp (bgp : SPARQL11_Algebra.bgp) :
+  Prims.string Prims.list=
+  match bgp with
+  | [] -> []
+  | tp::rest ->
+      local_string_union (local_bnodes_in_triple_pattern tp)
+        (local_bnodes_in_bgp rest)
+and ggp_labeled_bnodes (g : SPARQL11_Algebra.group_graph_pattern) :
+  Prims.string Prims.list=
+  match g with
+  | SPARQL11_Algebra.GP_BGP bgp -> local_bnodes_in_bgp bgp
+  | SPARQL11_Algebra.GP_PropertyPath (ps, uu___, pt) ->
+      local_string_union (local_bnodes_in_pattern_subject ps)
+        (local_bnodes_in_pattern_term pt)
+  | SPARQL11_Algebra.GP_Join (g1, g2) ->
+      local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
+  | SPARQL11_Algebra.GP_Union (g1, g2) ->
+      local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
+  | SPARQL11_Algebra.GP_Minus (g1, g2) ->
+      local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
+  | SPARQL11_Algebra.GP_LeftJoin (g1, g2, uu___) ->
+      local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
+  | SPARQL11_Algebra.GP_Filter (uu___, g1) -> ggp_labeled_bnodes g1
+  | SPARQL11_Algebra.GP_Graph (uu___, g1) -> ggp_labeled_bnodes g1
+  | SPARQL11_Algebra.GP_Bind (uu___, uu___1, g1) -> ggp_labeled_bnodes g1
+  | SPARQL11_Algebra.GP_Service (uu___, g1, uu___1) -> ggp_labeled_bnodes g1
+  | SPARQL11_Algebra.GP_SubSelect q ->
+      ggp_labeled_bnodes q.SPARQL11_Algebra.q_pattern
+  | SPARQL11_Algebra.GP_Values (uu___, uu___1) -> []
+  | SPARQL11_Algebra.GP_Empty -> []
 and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
   (acc : SPARQL11_Algebra.group_graph_pattern)
-  (filters : SPARQL11_Algebra.expr Prims.list) (ts : token_stream) :
-  SPARQL11_Algebra.group_graph_pattern parse_result=
+  (filters : SPARQL11_Algebra.expr Prims.list) (cross_scope : Prims.bool)
+  (ts : token_stream) : SPARQL11_Algebra.group_graph_pattern parse_result=
   if fuel = Prims.int_zero
   then
     let g =
@@ -2840,156 +2960,208 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
           with
           | ParseErr m -> ParseErr m
           | ParseOk (triples_ggp, ts') ->
-              let acc' = ggp_join acc triples_ggp in
-              let ts'1 =
-                match parse_peek ts' with
-                | Tok_DOT -> parse_advance ts'
-                | uu___2 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
+              if
+                cross_scope &&
+                  (local_string_overlaps (ggp_labeled_bnodes acc)
+                     (ggp_labeled_bnodes triples_ggp))
+              then
+                ParseErr "blank node label reused across nested group scope"
+              else
+                (let acc' = ggp_join acc triples_ggp in
+                 parse_ggp_body pm (fuel - Prims.int_one) acc' filters false
+                   ts'))
      | Tok_IRI uu___1 ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
           with
           | ParseErr m -> ParseErr m
           | ParseOk (triples_ggp, ts') ->
-              let acc' = ggp_join acc triples_ggp in
-              let ts'1 =
-                match parse_peek ts' with
-                | Tok_DOT -> parse_advance ts'
-                | uu___2 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
+              if
+                cross_scope &&
+                  (local_string_overlaps (ggp_labeled_bnodes acc)
+                     (ggp_labeled_bnodes triples_ggp))
+              then
+                ParseErr "blank node label reused across nested group scope"
+              else
+                (let acc' = ggp_join acc triples_ggp in
+                 parse_ggp_body pm (fuel - Prims.int_one) acc' filters false
+                   ts'))
      | Tok_PNAME uu___1 ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
           with
           | ParseErr m -> ParseErr m
           | ParseOk (triples_ggp, ts') ->
-              let acc' = ggp_join acc triples_ggp in
-              let ts'1 =
-                match parse_peek ts' with
-                | Tok_DOT -> parse_advance ts'
-                | uu___2 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
+              if
+                cross_scope &&
+                  (local_string_overlaps (ggp_labeled_bnodes acc)
+                     (ggp_labeled_bnodes triples_ggp))
+              then
+                ParseErr "blank node label reused across nested group scope"
+              else
+                (let acc' = ggp_join acc triples_ggp in
+                 parse_ggp_body pm (fuel - Prims.int_one) acc' filters false
+                   ts'))
      | Tok_BNODE uu___1 ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
           with
           | ParseErr m -> ParseErr m
           | ParseOk (triples_ggp, ts') ->
-              let acc' = ggp_join acc triples_ggp in
-              let ts'1 =
-                match parse_peek ts' with
-                | Tok_DOT -> parse_advance ts'
-                | uu___2 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
+              if
+                cross_scope &&
+                  (local_string_overlaps (ggp_labeled_bnodes acc)
+                     (ggp_labeled_bnodes triples_ggp))
+              then
+                ParseErr "blank node label reused across nested group scope"
+              else
+                (let acc' = ggp_join acc triples_ggp in
+                 parse_ggp_body pm (fuel - Prims.int_one) acc' filters false
+                   ts'))
      | Tok_LBRACKET ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
           with
           | ParseErr m -> ParseErr m
           | ParseOk (triples_ggp, ts') ->
-              let acc' = ggp_join acc triples_ggp in
-              let ts'1 =
-                match parse_peek ts' with
-                | Tok_DOT -> parse_advance ts'
-                | uu___1 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
+              if
+                cross_scope &&
+                  (local_string_overlaps (ggp_labeled_bnodes acc)
+                     (ggp_labeled_bnodes triples_ggp))
+              then
+                ParseErr "blank node label reused across nested group scope"
+              else
+                (let acc' = ggp_join acc triples_ggp in
+                 parse_ggp_body pm (fuel - Prims.int_one) acc' filters false
+                   ts'))
      | Tok_LPAREN ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
           with
           | ParseErr m -> ParseErr m
           | ParseOk (triples_ggp, ts') ->
-              let acc' = ggp_join acc triples_ggp in
-              let ts'1 =
-                match parse_peek ts' with
-                | Tok_DOT -> parse_advance ts'
-                | uu___1 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
+              if
+                cross_scope &&
+                  (local_string_overlaps (ggp_labeled_bnodes acc)
+                     (ggp_labeled_bnodes triples_ggp))
+              then
+                ParseErr "blank node label reused across nested group scope"
+              else
+                (let acc' = ggp_join acc triples_ggp in
+                 parse_ggp_body pm (fuel - Prims.int_one) acc' filters false
+                   ts'))
      | Tok_A ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
           with
           | ParseErr m -> ParseErr m
           | ParseOk (triples_ggp, ts') ->
-              let acc' = ggp_join acc triples_ggp in
-              let ts'1 =
-                match parse_peek ts' with
-                | Tok_DOT -> parse_advance ts'
-                | uu___1 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
+              if
+                cross_scope &&
+                  (local_string_overlaps (ggp_labeled_bnodes acc)
+                     (ggp_labeled_bnodes triples_ggp))
+              then
+                ParseErr "blank node label reused across nested group scope"
+              else
+                (let acc' = ggp_join acc triples_ggp in
+                 parse_ggp_body pm (fuel - Prims.int_one) acc' filters false
+                   ts'))
      | Tok_INTEGER uu___1 ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
           with
           | ParseErr m -> ParseErr m
           | ParseOk (triples_ggp, ts') ->
-              let acc' = ggp_join acc triples_ggp in
-              let ts'1 =
-                match parse_peek ts' with
-                | Tok_DOT -> parse_advance ts'
-                | uu___2 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
+              if
+                cross_scope &&
+                  (local_string_overlaps (ggp_labeled_bnodes acc)
+                     (ggp_labeled_bnodes triples_ggp))
+              then
+                ParseErr "blank node label reused across nested group scope"
+              else
+                (let acc' = ggp_join acc triples_ggp in
+                 parse_ggp_body pm (fuel - Prims.int_one) acc' filters false
+                   ts'))
      | Tok_DECIMAL uu___1 ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
           with
           | ParseErr m -> ParseErr m
           | ParseOk (triples_ggp, ts') ->
-              let acc' = ggp_join acc triples_ggp in
-              let ts'1 =
-                match parse_peek ts' with
-                | Tok_DOT -> parse_advance ts'
-                | uu___2 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
+              if
+                cross_scope &&
+                  (local_string_overlaps (ggp_labeled_bnodes acc)
+                     (ggp_labeled_bnodes triples_ggp))
+              then
+                ParseErr "blank node label reused across nested group scope"
+              else
+                (let acc' = ggp_join acc triples_ggp in
+                 parse_ggp_body pm (fuel - Prims.int_one) acc' filters false
+                   ts'))
      | Tok_DOUBLE uu___1 ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
           with
           | ParseErr m -> ParseErr m
           | ParseOk (triples_ggp, ts') ->
-              let acc' = ggp_join acc triples_ggp in
-              let ts'1 =
-                match parse_peek ts' with
-                | Tok_DOT -> parse_advance ts'
-                | uu___2 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
+              if
+                cross_scope &&
+                  (local_string_overlaps (ggp_labeled_bnodes acc)
+                     (ggp_labeled_bnodes triples_ggp))
+              then
+                ParseErr "blank node label reused across nested group scope"
+              else
+                (let acc' = ggp_join acc triples_ggp in
+                 parse_ggp_body pm (fuel - Prims.int_one) acc' filters false
+                   ts'))
      | Tok_STRING uu___1 ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
           with
           | ParseErr m -> ParseErr m
           | ParseOk (triples_ggp, ts') ->
-              let acc' = ggp_join acc triples_ggp in
-              let ts'1 =
-                match parse_peek ts' with
-                | Tok_DOT -> parse_advance ts'
-                | uu___2 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
+              if
+                cross_scope &&
+                  (local_string_overlaps (ggp_labeled_bnodes acc)
+                     (ggp_labeled_bnodes triples_ggp))
+              then
+                ParseErr "blank node label reused across nested group scope"
+              else
+                (let acc' = ggp_join acc triples_ggp in
+                 parse_ggp_body pm (fuel - Prims.int_one) acc' filters false
+                   ts'))
      | Tok_TRUE ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
           with
           | ParseErr m -> ParseErr m
           | ParseOk (triples_ggp, ts') ->
-              let acc' = ggp_join acc triples_ggp in
-              let ts'1 =
-                match parse_peek ts' with
-                | Tok_DOT -> parse_advance ts'
-                | uu___1 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
+              if
+                cross_scope &&
+                  (local_string_overlaps (ggp_labeled_bnodes acc)
+                     (ggp_labeled_bnodes triples_ggp))
+              then
+                ParseErr "blank node label reused across nested group scope"
+              else
+                (let acc' = ggp_join acc triples_ggp in
+                 parse_ggp_body pm (fuel - Prims.int_one) acc' filters false
+                   ts'))
      | Tok_FALSE ->
          (match parse_triples_block pm (fuel - Prims.int_one)
                   SPARQL11_Algebra.GP_Empty ts
           with
           | ParseErr m -> ParseErr m
           | ParseOk (triples_ggp, ts') ->
-              let acc' = ggp_join acc triples_ggp in
-              let ts'1 =
-                match parse_peek ts' with
-                | Tok_DOT -> parse_advance ts'
-                | uu___1 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
+              if
+                cross_scope &&
+                  (local_string_overlaps (ggp_labeled_bnodes acc)
+                     (ggp_labeled_bnodes triples_ggp))
+              then
+                ParseErr "blank node label reused across nested group scope"
+              else
+                (let acc' = ggp_join acc triples_ggp in
+                 parse_ggp_body pm (fuel - Prims.int_one) acc' filters false
+                   ts'))
      | Tok_OPTIONAL ->
          (match parse_group_graph_pattern pm (fuel - Prims.int_one)
                   (parse_advance ts)
@@ -3009,7 +3181,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___1 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
+              parse_ggp_body pm (fuel - Prims.int_one) acc' filters true ts'1)
      | Tok_MINUS_KW ->
          (match parse_group_graph_pattern pm (fuel - Prims.int_one)
                   (parse_advance ts)
@@ -3021,7 +3193,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___1 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
+              parse_ggp_body pm (fuel - Prims.int_one) acc' filters true ts'1)
      | Tok_GRAPH ->
          let ts' = parse_advance ts in
          (match parse_graph_name pm (fuel - Prims.int_one) ts' with
@@ -3042,7 +3214,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                      match parse_peek ts''' with
                      | Tok_DOT -> parse_advance ts'''
                      | uu___1 -> ts''' in
-                   parse_ggp_body pm (fuel - Prims.int_one) acc' filters
+                   parse_ggp_body pm (fuel - Prims.int_one) acc' filters true
                      ts'''1))
      | Tok_SERVICE ->
          let ts' = parse_advance ts in
@@ -3074,7 +3246,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                           | Tok_DOT -> parse_advance ts'''
                           | uu___2 -> ts''' in
                         parse_ggp_body pm (fuel - Prims.int_one) acc' filters
-                          ts'''1)))
+                          true ts'''1)))
      | Tok_FILTER ->
          let ts' = parse_advance ts in
          (match parse_filter_expr pm (fuel - Prims.int_one) ts' with
@@ -3085,7 +3257,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                 | Tok_DOT -> parse_advance ts''
                 | uu___1 -> ts'' in
               parse_ggp_body pm (fuel - Prims.int_one) acc (e :: filters)
-                ts''1)
+                cross_scope ts''1)
      | Tok_BIND ->
          let ts' = parse_advance ts in
          (match parse_expect Tok_LPAREN ts' with
@@ -3114,7 +3286,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                                       | Tok_DOT -> parse_advance ts5
                                       | uu___2 -> ts5 in
                                     parse_ggp_body pm (fuel - Prims.int_one)
-                                      acc' filters ts51)
+                                      acc' filters cross_scope ts51)
                          | uu___1 -> ParseErr "expected variable after AS"))))
      | Tok_VALUES ->
          (match parse_values_clause pm (fuel - Prims.int_one)
@@ -3127,20 +3299,28 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                 match parse_peek ts' with
                 | Tok_DOT -> parse_advance ts'
                 | uu___1 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
+              parse_ggp_body pm (fuel - Prims.int_one) acc' filters
+                cross_scope ts'1)
      | Tok_LBRACE ->
          (match parse_group_or_union pm (fuel - Prims.int_one) ts with
           | ParseErr m -> ParseErr m
           | ParseOk (g, ts') ->
-              let acc' =
-                match acc with
-                | SPARQL11_Algebra.GP_Empty -> g
-                | uu___1 -> SPARQL11_Algebra.GP_Join (acc, g) in
-              let ts'1 =
-                match parse_peek ts' with
-                | Tok_DOT -> parse_advance ts'
-                | uu___1 -> ts' in
-              parse_ggp_body pm (fuel - Prims.int_one) acc' filters ts'1)
+              if
+                local_string_overlaps (ggp_labeled_bnodes acc)
+                  (ggp_labeled_bnodes g)
+              then
+                ParseErr "blank node label reused across nested group scope"
+              else
+                (let acc' =
+                   match acc with
+                   | SPARQL11_Algebra.GP_Empty -> g
+                   | uu___2 -> SPARQL11_Algebra.GP_Join (acc, g) in
+                 let ts'1 =
+                   match parse_peek ts' with
+                   | Tok_DOT -> parse_advance ts'
+                   | uu___2 -> ts' in
+                 parse_ggp_body pm (fuel - Prims.int_one) acc' filters true
+                   ts'1))
      | uu___1 ->
          let g =
            FStar_List_Tot_Base.fold_left
@@ -3190,7 +3370,46 @@ and parse_filter_expr (pm : prefix_map) (fuel : Prims.nat)
      | Tok_ISNUMERIC -> parse_primary_expr pm (fuel - Prims.int_one) ts
      | Tok_REGEX -> parse_primary_expr pm (fuel - Prims.int_one) ts
      | Tok_IF -> parse_primary_expr pm (fuel - Prims.int_one) ts
-     | uu___1 -> parse_expr pm (fuel - Prims.int_one) ts)
+     | Tok_IRI_KW -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_URI -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_BNODE_KW -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_RAND -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_ABS -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_CEIL -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_FLOOR -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_ROUND -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_CONCAT -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_STRLEN -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_UCASE -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_LCASE -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_ENCODE_FOR_URI -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_CONTAINS -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_STRSTARTS -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_STRENDS -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_STRBEFORE -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_STRAFTER -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_REPLACE -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_SUBSTR -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_STRDT -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_STRLANG -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_COALESCE -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_NOW -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_UUID -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_STRUUID -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_YEAR -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_MONTH -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_DAY -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_HOURS -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_MINUTES -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_SECONDS -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_TIMEZONE -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_TZ -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_MD5 -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_SHA1 -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_SHA256 -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_SHA384 -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | Tok_SHA512 -> parse_primary_expr pm (fuel - Prims.int_one) ts
+     | uu___1 -> ParseErr "expected '(' or built-in call after FILTER")
 and parse_graph_name (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
   : SPARQL11_Algebra.pattern_term parse_result=
   if fuel = Prims.int_zero
@@ -3492,39 +3711,92 @@ and parse_single_var_values (pm : prefix_map) (fuel : Prims.nat)
           | ParseOk (v, ts') ->
               parse_single_var_values pm (fuel - Prims.int_one) (v :: acc)
                 ts'))
-and parse_subject (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
-  SPARQL11_Algebra.pattern_subject parse_result=
+and pattern_term_to_subject (pt : SPARQL11_Algebra.pattern_term) :
+  SPARQL11_Algebra.pattern_subject FStar_Pervasives_Native.option=
+  match pt with
+  | SPARQL11_Algebra.PT_Var v ->
+      FStar_Pervasives_Native.Some (SPARQL11_Algebra.PS_Var v)
+  | SPARQL11_Algebra.PT_IRI i ->
+      FStar_Pervasives_Native.Some (SPARQL11_Algebra.PS_IRI i)
+  | SPARQL11_Algebra.PT_BNode b ->
+      FStar_Pervasives_Native.Some (SPARQL11_Algebra.PS_BNode b)
+  | SPARQL11_Algebra.PT_Literal uu___ -> FStar_Pervasives_Native.None
+and parse_subject_with_extras (pm : prefix_map) (fuel : Prims.nat)
+  (ts : token_stream) :
+  (SPARQL11_Algebra.pattern_subject * SPARQL11_Algebra.group_graph_pattern *
+    Prims.bool) parse_result=
   if fuel = Prims.int_zero
   then ParseErr "recursion limit"
   else
     (match parse_peek ts with
-     | Tok_VAR v -> ParseOk ((SPARQL11_Algebra.PS_Var v), (parse_advance ts))
+     | Tok_VAR v ->
+         ParseOk
+           (((SPARQL11_Algebra.PS_Var v), SPARQL11_Algebra.GP_Empty, false),
+             (parse_advance ts))
      | Tok_IRI i ->
          let ri = resolve_tok_iri i in
          if RDF_Graph_Executable.is_iri ri
-         then ParseOk ((SPARQL11_Algebra.PS_IRI ri), (parse_advance ts))
+         then
+           ParseOk
+             (((SPARQL11_Algebra.PS_IRI ri), SPARQL11_Algebra.GP_Empty, false),
+               (parse_advance ts))
          else ParseErr "invalid IRI"
      | Tok_PNAME pn ->
          (match resolve_pname pn pm with
           | FStar_Pervasives_Native.Some iri ->
               if RDF_Graph_Executable.is_iri iri
               then
-                ParseOk ((SPARQL11_Algebra.PS_IRI iri), (parse_advance ts))
+                ParseOk
+                  (((SPARQL11_Algebra.PS_IRI iri), SPARQL11_Algebra.GP_Empty,
+                     false), (parse_advance ts))
               else ParseErr "invalid IRI"
           | FStar_Pervasives_Native.None -> ParseErr "unresolved prefix")
      | Tok_BNODE b ->
-         ParseOk ((SPARQL11_Algebra.PS_BNode b), (parse_advance ts))
+         ParseOk
+           (((SPARQL11_Algebra.PS_BNode b), SPARQL11_Algebra.GP_Empty, false),
+             (parse_advance ts))
      | Tok_LBRACKET ->
          let bnode_id = fresh_bnode_id ts in
          let ts' = parse_advance ts in
          (match parse_peek ts' with
           | Tok_RBRACKET ->
               ParseOk
-                ((SPARQL11_Algebra.PS_BNode bnode_id), (parse_advance ts'))
+                (((SPARQL11_Algebra.PS_BNode bnode_id),
+                   SPARQL11_Algebra.GP_Empty, false), (parse_advance ts'))
           | uu___1 ->
-              ParseErr
-                "blank node property list as subject not yet supported")
+              let bnode_subj = SPARQL11_Algebra.PS_BNode bnode_id in
+              (match parse_pred_obj_list pm (fuel - Prims.int_one) bnode_subj
+                       SPARQL11_Algebra.GP_Empty ts'
+               with
+               | ParseErr m -> ParseErr m
+               | ParseOk (extra_triples, ts'') ->
+                   (match parse_expect Tok_RBRACKET ts'' with
+                    | ParseErr uu___2 ->
+                        ParseErr
+                          "expected ']' after blank node property list"
+                    | ParseOk ((), ts''') ->
+                        ParseOk
+                          (((SPARQL11_Algebra.PS_BNode bnode_id),
+                             extra_triples, false), ts'''))))
+     | Tok_LPAREN ->
+         (match parse_collection pm (fuel - Prims.int_one) (parse_advance ts)
+          with
+          | ParseErr m -> ParseErr m
+          | ParseOk ((pt, extras), ts') ->
+              (match pattern_term_to_subject pt with
+               | FStar_Pervasives_Native.Some subj ->
+                   ParseOk ((subj, extras, false), ts')
+               | FStar_Pervasives_Native.None ->
+                   ParseErr "collection cannot be used as subject"))
      | uu___1 -> ParseErr "expected subject")
+and parse_subject (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
+  SPARQL11_Algebra.pattern_subject parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_subject_with_extras pm (fuel - Prims.int_one) ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk ((subj, uu___1, uu___2), ts') -> ParseOk (subj, ts'))
 and parse_path_alternative (pm : prefix_map) (fuel : Prims.nat)
   (ts : token_stream) : SPARQL11_Algebra.property_path parse_result=
   if fuel = Prims.int_zero
@@ -3750,6 +4022,31 @@ and parse_verb (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
 and fresh_bnode_id (ts : token_stream) : Prims.string=
   Prims.strcat "_:bnode_"
     (Prims.string_of_int (FStar_List_Tot_Base.length ts))
+and parse_signed_numeric_literal_pt (sign : Prims.string) (ts : token_stream)
+  : SPARQL11_Algebra.pattern_term parse_result=
+  match parse_peek ts with
+  | Tok_INTEGER n ->
+      (match make_typed_literal (Prims.strcat sign n)
+               "http://www.w3.org/2001/XMLSchema#integer"
+       with
+       | FStar_Pervasives_Native.Some lit ->
+           ParseOk ((SPARQL11_Algebra.PT_Literal lit), (parse_advance ts))
+       | FStar_Pervasives_Native.None -> ParseErr "invalid integer literal")
+  | Tok_DECIMAL d ->
+      (match make_typed_literal (Prims.strcat sign d)
+               "http://www.w3.org/2001/XMLSchema#decimal"
+       with
+       | FStar_Pervasives_Native.Some lit ->
+           ParseOk ((SPARQL11_Algebra.PT_Literal lit), (parse_advance ts))
+       | FStar_Pervasives_Native.None -> ParseErr "invalid decimal literal")
+  | Tok_DOUBLE d ->
+      (match make_typed_literal (Prims.strcat sign d)
+               "http://www.w3.org/2001/XMLSchema#double"
+       with
+       | FStar_Pervasives_Native.Some lit ->
+           ParseOk ((SPARQL11_Algebra.PT_Literal lit), (parse_advance ts))
+       | FStar_Pervasives_Native.None -> ParseErr "invalid double literal")
+  | uu___ -> ParseErr "expected signed numeric literal"
 and parse_object_with_extras (pm : prefix_map) (fuel : Prims.nat)
   (ts : token_stream) :
   (SPARQL11_Algebra.pattern_term * SPARQL11_Algebra.group_graph_pattern)
@@ -3840,6 +4137,16 @@ and parse_object_with_extras (pm : prefix_map) (fuel : Prims.nat)
                    SPARQL11_Algebra.GP_Empty), (parse_advance ts))
           | FStar_Pervasives_Native.None ->
               ParseErr "invalid boolean literal")
+     | Tok_PLUS ->
+         (match parse_signed_numeric_literal_pt "+" (parse_advance ts) with
+          | ParseOk (pt, ts') ->
+              ParseOk ((pt, SPARQL11_Algebra.GP_Empty), ts')
+          | ParseErr m -> ParseErr m)
+     | Tok_MINUS_OP ->
+         (match parse_signed_numeric_literal_pt "-" (parse_advance ts) with
+          | ParseOk (pt, ts') ->
+              ParseOk ((pt, SPARQL11_Algebra.GP_Empty), ts')
+          | ParseErr m -> ParseErr m)
      | Tok_A ->
          ParseOk
            (((SPARQL11_Algebra.PT_IRI rdf_type_iri_str),
@@ -4078,11 +4385,22 @@ and parse_triples_block (pm : prefix_map) (fuel : Prims.nat)
   if fuel = Prims.int_zero
   then ParseOk (acc, ts)
   else
-    (match parse_subject pm (fuel - Prims.int_one) ts with
-     | ParseErr m -> ParseOk (acc, ts)
-     | ParseOk (subj, ts') ->
-         (match parse_pred_obj_list pm (fuel - Prims.int_one) subj acc ts'
-          with
+    (match parse_subject_with_extras pm (fuel - Prims.int_one) ts with
+     | ParseErr m ->
+         (match acc with
+          | SPARQL11_Algebra.GP_Empty -> ParseErr m
+          | uu___1 -> ParseOk (acc, ts))
+     | ParseOk ((subj, subj_extras, pred_obj_optional), ts') ->
+         let acc0 = ggp_join acc subj_extras in
+         let r =
+           match parse_pred_obj_list pm (fuel - Prims.int_one) subj acc0 ts'
+           with
+           | ParseOk (acc', ts'') -> ParseOk (acc', ts'')
+           | ParseErr uu___1 ->
+               if pred_obj_optional
+               then ParseOk (acc0, ts')
+               else ParseErr "expected predicate-object list" in
+         (match r with
           | ParseErr m -> ParseErr m
           | ParseOk (acc', ts'') ->
               (match parse_peek ts'' with
@@ -4129,29 +4447,49 @@ and parse_triples_block (pm : prefix_map) (fuel : Prims.nat)
                         parse_triples_block pm (fuel - Prims.int_one) acc'
                           ts'''
                     | uu___1 -> ParseOk (acc', ts'''))
+               | Tok_VAR uu___1 -> ParseErr "expected dot between triples"
+               | Tok_IRI uu___1 -> ParseErr "expected dot between triples"
+               | Tok_PNAME uu___1 -> ParseErr "expected dot between triples"
+               | Tok_BNODE uu___1 -> ParseErr "expected dot between triples"
+               | Tok_LBRACKET -> ParseErr "expected dot between triples"
+               | Tok_LPAREN -> ParseErr "expected dot between triples"
+               | Tok_A -> ParseErr "expected dot between triples"
+               | Tok_INTEGER uu___1 ->
+                   ParseErr "expected dot between triples"
+               | Tok_DECIMAL uu___1 ->
+                   ParseErr "expected dot between triples"
+               | Tok_DOUBLE uu___1 -> ParseErr "expected dot between triples"
+               | Tok_STRING uu___1 -> ParseErr "expected dot between triples"
+               | Tok_TRUE -> ParseErr "expected dot between triples"
+               | Tok_FALSE -> ParseErr "expected dot between triples"
                | uu___1 -> ParseOk (acc', ts''))))
 and parse_select_query (pm : prefix_map) (fuel : Prims.nat)
   (ts : token_stream) : SPARQL11_Algebra.query parse_result=
   if fuel = Prims.int_zero
   then ParseErr "recursion limit"
   else
-    (let r = parse_prologue pm (fuel - Prims.int_one) ts in
+    (let r =
+       parse_prologue pm FStar_Pervasives_Native.None (fuel - Prims.int_one)
+         ts in
      match r with
      | ParseErr m -> ParseErr m
      | ParseOk ((pm', base), ts') ->
-         (match parse_peek ts' with
+         let ts'' = resolve_relative_iri_tokens base ts' in
+         (match parse_peek ts'' with
           | Tok_SELECT ->
-              parse_select_body pm' (fuel - Prims.int_one) base ts'
-          | Tok_ASK -> parse_ask_body pm' (fuel - Prims.int_one) base ts'
+              parse_select_body pm' (fuel - Prims.int_one) base ts''
+          | Tok_ASK -> parse_ask_body pm' (fuel - Prims.int_one) base ts''
           | Tok_CONSTRUCT ->
-              parse_construct_body pm' (fuel - Prims.int_one) base ts'
+              parse_construct_body pm' (fuel - Prims.int_one) base ts''
           | Tok_DESCRIBE -> ParseErr "unsupported: DESCRIBE queries"
           | uu___1 -> ParseErr "expected SELECT, ASK, CONSTRUCT, or DESCRIBE"))
-and parse_prologue (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
+and parse_prologue (pm : prefix_map)
+  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (fuel : Prims.nat) (ts : token_stream) :
   (prefix_map * RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
     parse_result=
   if fuel = Prims.int_zero
-  then ParseOk ((pm, FStar_Pervasives_Native.None), ts)
+  then ParseOk ((pm, base), ts)
   else
     (match parse_peek ts with
      | Tok_PREFIX ->
@@ -4169,11 +4507,17 @@ and parse_prologue (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
                      (let ts'' = parse_advance ts' in
                       match parse_peek ts'' with
                       | Tok_IRI iri ->
-                          if RDF_Graph_Executable.is_iri iri
-                          then
-                            parse_prologue ((prefix, iri) :: pm)
-                              (fuel - Prims.int_one) (parse_advance ts'')
-                          else ParseErr "invalid prefix IRI"
+                          (match if RDF_Graph_Executable.is_iri iri
+                                 then FStar_Pervasives_Native.Some iri
+                                 else
+                                   SPARQL11_Algebra.resolve_query_iri base
+                                     iri
+                           with
+                           | FStar_Pervasives_Native.Some abs ->
+                               parse_prologue ((prefix, abs) :: pm) base
+                                 (fuel - Prims.int_one) (parse_advance ts'')
+                           | FStar_Pervasives_Native.None ->
+                               ParseErr "invalid prefix IRI")
                       | uu___3 -> ParseErr "expected IRI after PREFIX name"))
           | uu___1 -> ParseErr "expected prefix name after PREFIX")
      | Tok_BASE ->
@@ -4181,19 +4525,12 @@ and parse_prologue (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream) :
          (match parse_peek ts' with
           | Tok_IRI iri ->
               if RDF_Graph_Executable.is_iri iri
-              then begin
-                SPARQL11_Algebra.current_base_iri_ref := Some iri;
-                (match parse_prologue pm (fuel - Prims.int_one)
-                         (parse_advance ts')
-                 with
-                 | ParseOk ((pm', uu___1), ts'') ->
-                     ParseOk
-                       ((pm', (FStar_Pervasives_Native.Some iri)), ts'')
-                 | err -> err)
-              end
+              then
+                parse_prologue pm (FStar_Pervasives_Native.Some iri)
+                  (fuel - Prims.int_one) (parse_advance ts')
               else ParseErr "invalid BASE IRI"
           | uu___1 -> ParseErr "expected IRI after BASE")
-     | uu___1 -> ParseOk ((pm, FStar_Pervasives_Native.None), ts))
+     | uu___1 -> ParseOk ((pm, base), ts))
 and parse_select_body (pm : prefix_map) (fuel : Prims.nat)
   (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
   (ts : token_stream) : SPARQL11_Algebra.query parse_result=
@@ -5223,14 +5560,339 @@ let rec tokens_only_eof (ts : token_stream) : Prims.bool=
   | [] -> true
   | (Tok_EOF)::rest -> tokens_only_eof rest
   | uu___ -> false
+let starts_with_string (s : Prims.string) (prefix : Prims.string) :
+  Prims.bool=
+  let ls = FStar_String.strlen s in
+  let lp = FStar_String.strlen prefix in
+  (lp <= ls) && ((substring s Prims.int_zero lp) = prefix)
+let is_labeled_bnode_id (b : Prims.string) : Prims.bool=
+  Prims.op_Negation (starts_with_string b "_:bnode_")
+let rec string_mem (x : Prims.string) (xs : Prims.string Prims.list) :
+  Prims.bool=
+  match xs with | [] -> false | y::ys -> (streq x y) || (string_mem x ys)
+let rec string_add_unique (x : Prims.string) (xs : Prims.string Prims.list) :
+  Prims.string Prims.list= if string_mem x xs then xs else x :: xs
+let rec string_union (xs : Prims.string Prims.list)
+  (ys : Prims.string Prims.list) : Prims.string Prims.list=
+  match xs with
+  | [] -> ys
+  | x::rest -> string_union rest (string_add_unique x ys)
+let rec string_overlaps (xs : Prims.string Prims.list)
+  (ys : Prims.string Prims.list) : Prims.bool=
+  match xs with
+  | [] -> false
+  | x::rest -> (string_mem x ys) || (string_overlaps rest ys)
+let bnodes_in_pattern_subject (ps : SPARQL11_Algebra.pattern_subject) :
+  Prims.string Prims.list=
+  match ps with
+  | SPARQL11_Algebra.PS_BNode b -> if is_labeled_bnode_id b then [b] else []
+  | uu___ -> []
+let bnodes_in_pattern_term (pt : SPARQL11_Algebra.pattern_term) :
+  Prims.string Prims.list=
+  match pt with
+  | SPARQL11_Algebra.PT_BNode b -> if is_labeled_bnode_id b then [b] else []
+  | uu___ -> []
+let bnodes_in_triple_pattern (tp : SPARQL11_Algebra.triple_pattern) :
+  Prims.string Prims.list=
+  string_union (bnodes_in_pattern_subject tp.SPARQL11_Algebra.tp_s)
+    (string_union (bnodes_in_pattern_term tp.SPARQL11_Algebra.tp_p)
+       (bnodes_in_pattern_term tp.SPARQL11_Algebra.tp_o))
+let bnodes_in_property_path_pattern (ps : SPARQL11_Algebra.pattern_subject)
+  (pt : SPARQL11_Algebra.pattern_term) : Prims.string Prims.list=
+  string_union (bnodes_in_pattern_subject ps) (bnodes_in_pattern_term pt)
+let rec bnodes_in_bgp (bgp : SPARQL11_Algebra.bgp) : Prims.string Prims.list=
+  match bgp with
+  | [] -> []
+  | tp::rest ->
+      string_union (bnodes_in_triple_pattern tp) (bnodes_in_bgp rest)
+let rec preserves_bgp_scope (p : SPARQL11_Algebra.group_graph_pattern) :
+  Prims.bool=
+  match p with
+  | SPARQL11_Algebra.GP_BGP uu___ -> true
+  | SPARQL11_Algebra.GP_PropertyPath (uu___, uu___1, uu___2) -> true
+  | SPARQL11_Algebra.GP_Filter (uu___, p1) -> preserves_bgp_scope p1
+  | SPARQL11_Algebra.GP_Bind (uu___, uu___1, p1) -> preserves_bgp_scope p1
+  | SPARQL11_Algebra.GP_Values (uu___, uu___1) -> true
+  | SPARQL11_Algebra.GP_Empty -> true
+  | SPARQL11_Algebra.GP_Join (p1, p2) ->
+      (preserves_bgp_scope p1) && (preserves_bgp_scope p2)
+  | uu___ -> false
+let rec validate_bnode_scope_pattern
+  (p : SPARQL11_Algebra.group_graph_pattern) :
+  (Prims.bool * Prims.string Prims.list)=
+  match p with
+  | SPARQL11_Algebra.GP_BGP bgp -> (true, (bnodes_in_bgp bgp))
+  | SPARQL11_Algebra.GP_PropertyPath (ps, uu___, pt) ->
+      (true, (bnodes_in_property_path_pattern ps pt))
+  | SPARQL11_Algebra.GP_Filter (e, p1) ->
+      let uu___ = validate_bnode_scope_pattern p1 in
+      (match uu___ with
+       | (ok1, b1) ->
+           let uu___1 = validate_bnode_scope_expr e in
+           (match uu___1 with | (ok2, uu___2) -> ((ok1 && ok2), b1)))
+  | SPARQL11_Algebra.GP_Bind (e, uu___, p1) ->
+      let uu___1 = validate_bnode_scope_pattern p1 in
+      (match uu___1 with
+       | (ok1, b1) ->
+           let uu___2 = validate_bnode_scope_expr e in
+           (match uu___2 with | (ok2, uu___3) -> ((ok1 && ok2), b1)))
+  | SPARQL11_Algebra.GP_Values (uu___, uu___1) -> (true, [])
+  | SPARQL11_Algebra.GP_Empty -> (true, [])
+  | SPARQL11_Algebra.GP_Join (p1, p2) ->
+      let uu___ = validate_bnode_scope_pattern p1 in
+      (match uu___ with
+       | (ok1, b1) ->
+           let uu___1 = validate_bnode_scope_pattern p2 in
+           (match uu___1 with
+            | (ok2, b2) ->
+                let allow_overlap =
+                  (preserves_bgp_scope p1) && (preserves_bgp_scope p2) in
+                (((ok1 && ok2) &&
+                    (allow_overlap ||
+                       (Prims.op_Negation (string_overlaps b1 b2)))),
+                  (string_union b1 b2))))
+  | SPARQL11_Algebra.GP_Union (p1, p2) ->
+      let uu___ = validate_bnode_scope_pattern p1 in
+      (match uu___ with
+       | (ok1, b1) ->
+           let uu___1 = validate_bnode_scope_pattern p2 in
+           (match uu___1 with
+            | (ok2, b2) ->
+                (((ok1 && ok2) && (Prims.op_Negation (string_overlaps b1 b2))),
+                  (string_union b1 b2))))
+  | SPARQL11_Algebra.GP_Minus (p1, p2) ->
+      let uu___ = validate_bnode_scope_pattern p1 in
+      (match uu___ with
+       | (ok1, b1) ->
+           let uu___1 = validate_bnode_scope_pattern p2 in
+           (match uu___1 with
+            | (ok2, b2) ->
+                (((ok1 && ok2) && (Prims.op_Negation (string_overlaps b1 b2))),
+                  (string_union b1 b2))))
+  | SPARQL11_Algebra.GP_LeftJoin (p1, p2, e) ->
+      let uu___ = validate_bnode_scope_pattern p1 in
+      (match uu___ with
+       | (ok1, b1) ->
+           let uu___1 = validate_bnode_scope_pattern p2 in
+           (match uu___1 with
+            | (ok2, b2) ->
+                let uu___2 = validate_bnode_scope_expr e in
+                (match uu___2 with
+                 | (ok3, uu___3) ->
+                     ((((ok1 && ok2) && ok3) &&
+                         (Prims.op_Negation (string_overlaps b1 b2))),
+                       (string_union b1 b2)))))
+  | SPARQL11_Algebra.GP_Graph (uu___, p1) -> validate_bnode_scope_pattern p1
+  | SPARQL11_Algebra.GP_Service (uu___, p1, uu___1) ->
+      validate_bnode_scope_pattern p1
+  | SPARQL11_Algebra.GP_SubSelect q -> validate_bnode_scope_query q
+and validate_bnode_scope_expr (e : SPARQL11_Algebra.expr) :
+  (Prims.bool * Prims.string Prims.list)=
+  match e with
+  | SPARQL11_Algebra.E_Exists p -> validate_bnode_scope_pattern p
+  | SPARQL11_Algebra.E_NotExists p -> validate_bnode_scope_pattern p
+  | SPARQL11_Algebra.E_Arith (uu___, e1, e2) ->
+      let uu___1 = validate_bnode_scope_expr e1 in
+      (match uu___1 with
+       | (ok1, uu___2) ->
+           let uu___3 = validate_bnode_scope_expr e2 in
+           (match uu___3 with | (ok2, uu___4) -> ((ok1 && ok2), [])))
+  | SPARQL11_Algebra.E_Compare (uu___, e1, e2) ->
+      let uu___1 = validate_bnode_scope_expr e1 in
+      (match uu___1 with
+       | (ok1, uu___2) ->
+           let uu___3 = validate_bnode_scope_expr e2 in
+           (match uu___3 with | (ok2, uu___4) -> ((ok1 && ok2), [])))
+  | SPARQL11_Algebra.E_And (e1, e2) ->
+      let uu___ = validate_bnode_scope_expr e1 in
+      (match uu___ with
+       | (ok1, uu___1) ->
+           let uu___2 = validate_bnode_scope_expr e2 in
+           (match uu___2 with | (ok2, uu___3) -> ((ok1 && ok2), [])))
+  | SPARQL11_Algebra.E_Or (e1, e2) ->
+      let uu___ = validate_bnode_scope_expr e1 in
+      (match uu___ with
+       | (ok1, uu___1) ->
+           let uu___2 = validate_bnode_scope_expr e2 in
+           (match uu___2 with | (ok2, uu___3) -> ((ok1 && ok2), [])))
+  | SPARQL11_Algebra.E_StrDt (e1, e2) ->
+      let uu___ = validate_bnode_scope_expr e1 in
+      (match uu___ with
+       | (ok1, uu___1) ->
+           let uu___2 = validate_bnode_scope_expr e2 in
+           (match uu___2 with | (ok2, uu___3) -> ((ok1 && ok2), [])))
+  | SPARQL11_Algebra.E_StrLang (e1, e2) ->
+      let uu___ = validate_bnode_scope_expr e1 in
+      (match uu___ with
+       | (ok1, uu___1) ->
+           let uu___2 = validate_bnode_scope_expr e2 in
+           (match uu___2 with | (ok2, uu___3) -> ((ok1 && ok2), [])))
+  | SPARQL11_Algebra.E_StrStarts (e1, e2) ->
+      let uu___ = validate_bnode_scope_expr e1 in
+      (match uu___ with
+       | (ok1, uu___1) ->
+           let uu___2 = validate_bnode_scope_expr e2 in
+           (match uu___2 with | (ok2, uu___3) -> ((ok1 && ok2), [])))
+  | SPARQL11_Algebra.E_StrEnds (e1, e2) ->
+      let uu___ = validate_bnode_scope_expr e1 in
+      (match uu___ with
+       | (ok1, uu___1) ->
+           let uu___2 = validate_bnode_scope_expr e2 in
+           (match uu___2 with | (ok2, uu___3) -> ((ok1 && ok2), [])))
+  | SPARQL11_Algebra.E_Contains (e1, e2) ->
+      let uu___ = validate_bnode_scope_expr e1 in
+      (match uu___ with
+       | (ok1, uu___1) ->
+           let uu___2 = validate_bnode_scope_expr e2 in
+           (match uu___2 with | (ok2, uu___3) -> ((ok1 && ok2), [])))
+  | SPARQL11_Algebra.E_StrBefore (e1, e2) ->
+      let uu___ = validate_bnode_scope_expr e1 in
+      (match uu___ with
+       | (ok1, uu___1) ->
+           let uu___2 = validate_bnode_scope_expr e2 in
+           (match uu___2 with | (ok2, uu___3) -> ((ok1 && ok2), [])))
+  | SPARQL11_Algebra.E_StrAfter (e1, e2) ->
+      let uu___ = validate_bnode_scope_expr e1 in
+      (match uu___ with
+       | (ok1, uu___1) ->
+           let uu___2 = validate_bnode_scope_expr e2 in
+           (match uu___2 with | (ok2, uu___3) -> ((ok1 && ok2), [])))
+  | SPARQL11_Algebra.E_SameTerm (e1, e2) ->
+      let uu___ = validate_bnode_scope_expr e1 in
+      (match uu___ with
+       | (ok1, uu___1) ->
+           let uu___2 = validate_bnode_scope_expr e2 in
+           (match uu___2 with | (ok2, uu___3) -> ((ok1 && ok2), [])))
+  | SPARQL11_Algebra.E_Not e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_UnaryPlus e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_UnaryMinus e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_IsIRI e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_IsBlank e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_IsLiteral e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_IsNumeric e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_Str e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_Lang e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_Datatype e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_IRI_fn e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_StrLen e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_UCase e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_LCase e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_EncodeForUri e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_Abs e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_Round e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_Ceil e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_Floor e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_MD5 e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_SHA1 e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_SHA256 e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_SHA384 e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_SHA512 e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_Year e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_Month e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_Day e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_Hours e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_Minutes e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_Seconds e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_Timezone e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_Tz e1 -> validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_Aggregate (uu___, uu___1, e1) ->
+      validate_bnode_scope_expr e1
+  | SPARQL11_Algebra.E_Substr (e1, e2, e3) ->
+      let uu___ = validate_bnode_scope_expr e1 in
+      (match uu___ with
+       | (ok1, uu___1) ->
+           let uu___2 = validate_bnode_scope_expr e2 in
+           (match uu___2 with
+            | (ok2, uu___3) ->
+                let uu___4 =
+                  match e3 with
+                  | FStar_Pervasives_Native.None -> (true, [])
+                  | FStar_Pervasives_Native.Some ef ->
+                      validate_bnode_scope_expr ef in
+                (match uu___4 with
+                 | (ok3, uu___5) -> (((ok1 && ok2) && ok3), []))))
+  | SPARQL11_Algebra.E_If (e1, e2, e3) ->
+      let uu___ = validate_bnode_scope_expr e1 in
+      (match uu___ with
+       | (ok1, uu___1) ->
+           let uu___2 = validate_bnode_scope_expr e2 in
+           (match uu___2 with
+            | (ok2, uu___3) ->
+                let uu___4 = validate_bnode_scope_expr e3 in
+                (match uu___4 with
+                 | (ok3, uu___5) -> (((ok1 && ok2) && ok3), []))))
+  | SPARQL11_Algebra.E_Coalesce es -> ((validate_bnode_scope_exprs es), [])
+  | SPARQL11_Algebra.E_Concat es -> ((validate_bnode_scope_exprs es), [])
+  | SPARQL11_Algebra.E_FunctionCall (uu___, es) ->
+      ((validate_bnode_scope_exprs es), [])
+  | SPARQL11_Algebra.E_In (e1, es) ->
+      let uu___ = validate_bnode_scope_expr e1 in
+      (match uu___ with
+       | (ok1, uu___1) ->
+           let ok_rest = validate_bnode_scope_exprs es in
+           ((ok1 && ok_rest), []))
+  | SPARQL11_Algebra.E_NotIn (e1, es) ->
+      let uu___ = validate_bnode_scope_expr e1 in
+      (match uu___ with
+       | (ok1, uu___1) ->
+           let ok_rest = validate_bnode_scope_exprs es in
+           ((ok1 && ok_rest), []))
+  | SPARQL11_Algebra.E_Replace (e1, e2, e3, flags) ->
+      let uu___ = validate_bnode_scope_expr e1 in
+      (match uu___ with
+       | (ok1, uu___1) ->
+           let uu___2 = validate_bnode_scope_expr e2 in
+           (match uu___2 with
+            | (ok2, uu___3) ->
+                let uu___4 = validate_bnode_scope_expr e3 in
+                (match uu___4 with
+                 | (ok3, uu___5) ->
+                     let uu___6 =
+                       match flags with
+                       | FStar_Pervasives_Native.None -> (true, [])
+                       | FStar_Pervasives_Native.Some ef ->
+                           validate_bnode_scope_expr ef in
+                     (match uu___6 with
+                      | (ok4, uu___7) -> ((((ok1 && ok2) && ok3) && ok4), [])))))
+  | SPARQL11_Algebra.E_Regex (e1, e2, flags) ->
+      let uu___ = validate_bnode_scope_expr e1 in
+      (match uu___ with
+       | (ok1, uu___1) ->
+           let uu___2 = validate_bnode_scope_expr e2 in
+           (match uu___2 with
+            | (ok2, uu___3) ->
+                let uu___4 =
+                  match flags with
+                  | FStar_Pervasives_Native.None -> (true, [])
+                  | FStar_Pervasives_Native.Some ef ->
+                      validate_bnode_scope_expr ef in
+                (match uu___4 with
+                 | (ok3, uu___5) -> (((ok1 && ok2) && ok3), []))))
+  | uu___ -> (true, [])
+and validate_bnode_scope_exprs (es : SPARQL11_Algebra.expr Prims.list) :
+  Prims.bool=
+  match es with
+  | [] -> true
+  | ex::rest ->
+      let uu___ = validate_bnode_scope_expr ex in
+      (match uu___ with
+       | (ok, uu___1) -> ok && (validate_bnode_scope_exprs rest))
+and validate_bnode_scope_query (q : SPARQL11_Algebra.query) :
+  (Prims.bool * Prims.string Prims.list)=
+  validate_bnode_scope_pattern q.SPARQL11_Algebra.q_pattern
+let validate_bnode_scope_top (q : SPARQL11_Algebra.query) : Prims.bool=
+  FStar_Pervasives_Native.fst (validate_bnode_scope_query q)
 let parse_sparql (input : Prims.string) :
   SPARQL11_Algebra.query parse_result=
   let tokens = tokenize input in
   match parse_select_query [] (Prims.of_int (10000)) tokens with
   | ParseOk (q, rest) ->
-      if tokens_only_eof rest
-      then ParseOk (q, rest)
-      else ParseErr "unexpected tokens after query"
+      if Prims.op_Negation (tokens_only_eof rest)
+      then ParseErr "unexpected tokens after query"
+      else
+        if Prims.op_Negation (validate_bnode_scope_top q)
+        then ParseErr "blank node label reused across graph-pattern scope"
+        else ParseOk (q, rest)
   | ParseErr msg -> ParseErr msg
 let sse_wrap (tag : Prims.string) (body : Prims.string) : Prims.string=
   Prims.strcat "("

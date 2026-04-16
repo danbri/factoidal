@@ -201,12 +201,17 @@ let rec find_char_pos (input : string) (p : pos) (target : nat)
   else find_char_pos input (p + 1) target
 
 (* Trim trailing dots from a scanned name.
-   Used by blank node labels and prefixed names per SPARQL grammar. *)
+   Used by blank node labels and prefixed names per SPARQL grammar.
+   For PN_LOCAL, a dot preceded by a backslash is part of an escape sequence
+   (\.) and must not be trimmed. *)
 let rec trim_trailing_dots (input : string) (start : pos) (end_pos : pos)
   : Tot pos (decreases end_pos) =
   if end_pos = 0 || end_pos <= start then start
-  else if char_code (char_at input (end_pos - 1)) = 0x2E (* . *)
-  then trim_trailing_dots input start (end_pos - 1)
+  else if char_code (char_at input (end_pos - 1)) = 0x2E (* . *) then
+    if end_pos >= 2 && end_pos - 2 >= start
+       && char_code (char_at input (end_pos - 2)) = 0x5C (* \ *)
+    then end_pos  (* preserve \. escape sequence *)
+    else trim_trailing_dots input start (end_pos - 1)
   else end_pos
 
 (** ====================================================================== **)
@@ -533,6 +538,16 @@ let scan_langtag (input : string) (p : pos) : (string & pos) =
   let p' = scan_langtag_chars_end input p in
   (substring input p (safe_sub p' p), p')
 
+let rec has_gt_before_terminator (input : string) (p : pos)
+  : Tot bool (decreases (String.length input - p)) =
+  if at_end input p then false
+  else
+    let code = char_code (peek_char input p) in
+    if code = 0x3E (* > *) then true
+    else if is_ws (peek_char input p) || code = 0x29 || code = 0x7D || code = 0x5D
+    then false
+    else has_gt_before_terminator input (p + 1)
+
 (* Main tokenizer: produce one token from current position *)
 let next_token (input : string) (p : pos) : lex_result =
   let p = skip_ws input p in
@@ -552,9 +567,12 @@ let next_token (input : string) (p : pos) : lex_result =
         let next_code = char_code (peek_char input (p + 1)) in
         if (next_code >= 0x41 && next_code <= 0x5A) ||  // A-Z
            (next_code >= 0x61 && next_code <= 0x7A) ||  // a-z
+           next_code = 0x3E ||  // >  (for <>)
            next_code = 0x5F ||  // _
            next_code = 0x2F ||  // / (for </path>)
-           next_code = 0x23     // # (for <#fragment>)
+           next_code = 0x23 ||  // # (for <#fragment>)
+           ((next_code = 0x3F || next_code = 0x24) &&
+             has_gt_before_terminator input (p + 1))
         then
           let (iri, p') = scan_iri input (p + 1) in
           (Tok_IRI iri, p')
@@ -635,6 +653,20 @@ noeq type parse_result (a : Type) =
 
 (* Token stream = list of tokens (produced by lexer) *)
 type token_stream = list token
+
+let resolve_relative_iri_token (base : option wf_iri) (tok : token) : token =
+  match tok with
+  | Tok_IRI iri ->
+    (match if is_iri iri then Some iri else resolve_query_iri base iri with
+     | Some abs -> Tok_IRI abs
+     | None -> tok)
+  | _ -> tok
+
+let rec resolve_relative_iri_tokens (base : option wf_iri) (ts : token_stream)
+  : Tot token_stream (decreases ts) =
+  match ts with
+  | [] -> []
+  | t :: rest -> resolve_relative_iri_token base t :: resolve_relative_iri_tokens base rest
 
 // Predicate can be a simple term or a property path
 noeq type verb_or_path =
@@ -1467,7 +1499,7 @@ and parse_group_graph_pattern (pm : prefix_map) (fuel : nat) (ts : token_stream)
          end)
     | Tok_RBRACE -> ParseOk GP_Empty (parse_advance ts')
     | _ ->
-      begin match parse_ggp_body pm (fuel-1) GP_Empty [] ts' with
+      begin match parse_ggp_body pm (fuel-1) GP_Empty [] false ts' with
       | ParseErr m -> ParseErr m
       | ParseOk g ts'' ->
         begin match parse_expect Tok_RBRACE ts'' with
@@ -1476,10 +1508,76 @@ and parse_group_graph_pattern (pm : prefix_map) (fuel : nat) (ts : token_stream)
         end end
     end
 
+and is_local_labeled_bnode_id (b : string) : bool =
+  let prefix = "_:bnode_" in
+  let plen = String.length prefix in
+  let blen = String.length b in
+  if blen < plen then true
+  else not (streq (substring b 0 plen) prefix)
+
+and local_string_mem (x : string) (xs : list string) : Tot bool (decreases xs) =
+  match xs with
+  | [] -> false
+  | y :: ys -> streq x y || local_string_mem x ys
+
+and local_string_add_unique (x : string) (xs : list string) : list string =
+  if local_string_mem x xs then xs else x :: xs
+
+and local_string_union (xs ys : list string) : Tot (list string) (decreases xs) =
+  match xs with
+  | [] -> ys
+  | x :: rest -> local_string_union rest (local_string_add_unique x ys)
+
+and local_string_overlaps (xs ys : list string) : Tot bool (decreases xs) =
+  match xs with
+  | [] -> false
+  | x :: rest -> local_string_mem x ys || local_string_overlaps rest ys
+
+and local_bnodes_in_pattern_subject (ps : pattern_subject) : list string =
+  match ps with
+  | PS_BNode b -> if is_local_labeled_bnode_id b then [b] else []
+  | _ -> []
+
+and local_bnodes_in_pattern_term (pt : pattern_term) : list string =
+  match pt with
+  | PT_BNode b -> if is_local_labeled_bnode_id b then [b] else []
+  | _ -> []
+
+and local_bnodes_in_triple_pattern (tp : triple_pattern) : list string =
+  local_string_union (local_bnodes_in_pattern_subject tp.tp_s)
+    (local_string_union (local_bnodes_in_pattern_term tp.tp_p) (local_bnodes_in_pattern_term tp.tp_o))
+
+and local_bnodes_in_bgp (bgp : bgp) : Tot (list string) (decreases bgp) =
+  match bgp with
+  | [] -> []
+  | tp :: rest -> local_string_union (local_bnodes_in_triple_pattern tp) (local_bnodes_in_bgp rest)
+
+and ggp_labeled_bnodes (g : group_graph_pattern) : Tot (list string) (decreases g) =
+  match g with
+  | GP_BGP bgp -> local_bnodes_in_bgp bgp
+  | GP_PropertyPath ps _ pt ->
+    local_string_union (local_bnodes_in_pattern_subject ps) (local_bnodes_in_pattern_term pt)
+  | GP_Join g1 g2
+  | GP_Union g1 g2
+  | GP_Minus g1 g2 ->
+    local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
+  | GP_LeftJoin g1 g2 _ ->
+    local_string_union (ggp_labeled_bnodes g1) (ggp_labeled_bnodes g2)
+  | GP_Filter _ g1
+  | GP_Graph _ g1
+  | GP_Bind _ _ g1
+  | GP_Service _ g1 _ ->
+    ggp_labeled_bnodes g1
+  | GP_SubSelect q ->
+    ggp_labeled_bnodes q.q_pattern
+  | GP_Values _ _ -> []
+  | GP_Empty -> []
+
 // Parse the body of a GGP: triples blocks interleaved with graph pattern elements.
 // FILTERs are collected in `filters` and wrapped around the result at the end,
 // per SPARQL 1.1 spec section 18.2.4: filters scope over the entire group.
-and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern) (filters : list expr) (ts : token_stream)
+and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern)
+  (filters : list expr) (cross_scope : bool) (ts : token_stream)
   : Tot (parse_result group_graph_pattern) (decreases fuel) =
   if fuel = 0 then
     let g = List.Tot.fold_left (fun g e -> GP_Filter e g) acc filters in
@@ -1492,9 +1590,11 @@ and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern) (f
     (match parse_triples_block pm (fuel-1) GP_Empty ts with
      | ParseErr m -> ParseErr m
      | ParseOk triples_ggp ts' ->
-       let acc' = ggp_join acc triples_ggp in
-       let ts' = match parse_peek ts' with Tok_DOT -> parse_advance ts' | _ -> ts' in
-       parse_ggp_body pm (fuel-1) acc' filters ts')
+       if cross_scope && local_string_overlaps (ggp_labeled_bnodes acc) (ggp_labeled_bnodes triples_ggp) then
+         ParseErr "blank node label reused across nested group scope"
+       else
+         let acc' = ggp_join acc triples_ggp in
+         parse_ggp_body pm (fuel-1) acc' filters false ts')
   | Tok_OPTIONAL ->
     (match parse_group_graph_pattern pm (fuel-1) (parse_advance ts) with
      | ParseErr m -> ParseErr m
@@ -1503,14 +1603,14 @@ and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern) (f
          | GP_Empty -> GP_LeftJoin GP_Empty g (E_BoolLit true)
          | _ -> GP_LeftJoin acc g (E_BoolLit true) in
        let ts' = match parse_peek ts' with Tok_DOT -> parse_advance ts' | _ -> ts' in
-       parse_ggp_body pm (fuel-1) acc' filters ts')
+       parse_ggp_body pm (fuel-1) acc' filters true ts')
   | Tok_MINUS_KW ->
     (match parse_group_graph_pattern pm (fuel-1) (parse_advance ts) with
      | ParseErr m -> ParseErr m
      | ParseOk g ts' ->
        let acc' = GP_Minus acc g in
        let ts' = match parse_peek ts' with Tok_DOT -> parse_advance ts' | _ -> ts' in
-       parse_ggp_body pm (fuel-1) acc' filters ts')
+       parse_ggp_body pm (fuel-1) acc' filters true ts')
   | Tok_GRAPH ->
     let ts' = parse_advance ts in
     (match parse_graph_name pm (fuel-1) ts' with
@@ -1522,7 +1622,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern) (f
          let acc' = match acc with
            | GP_Empty -> GP_Graph gn g | _ -> GP_Join acc (GP_Graph gn g) in
          let ts''' = match parse_peek ts''' with Tok_DOT -> parse_advance ts''' | _ -> ts''' in
-         parse_ggp_body pm (fuel-1) acc' filters ts'''
+         parse_ggp_body pm (fuel-1) acc' filters true ts'''
        end)
   | Tok_SERVICE ->
     let ts' = parse_advance ts in
@@ -1538,7 +1638,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern) (f
            | GP_Empty -> GP_Service siri g silent
            | _ -> GP_Join acc (GP_Service siri g silent) in
          let ts''' = match parse_peek ts''' with Tok_DOT -> parse_advance ts''' | _ -> ts''' in
-         parse_ggp_body pm (fuel-1) acc' filters ts'''
+         parse_ggp_body pm (fuel-1) acc' filters true ts'''
        end)
   | Tok_FILTER ->
     let ts' = parse_advance ts in
@@ -1547,7 +1647,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern) (f
      | ParseErr m -> ParseErr m
      | ParseOk e ts'' ->
        let ts'' = match parse_peek ts'' with Tok_DOT -> parse_advance ts'' | _ -> ts'' in
-       parse_ggp_body pm (fuel-1) acc (e :: filters) ts'')
+       parse_ggp_body pm (fuel-1) acc (e :: filters) cross_scope ts'')
   | Tok_BIND ->
     let ts' = parse_advance ts in
     (match parse_expect Tok_LPAREN ts' with
@@ -1568,7 +1668,7 @@ and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern) (f
               | ParseOk () ts5 ->
                 let acc' = GP_Bind e v acc in
                 let ts5 = match parse_peek ts5 with Tok_DOT -> parse_advance ts5 | _ -> ts5 in
-                parse_ggp_body pm (fuel-1) acc' filters ts5)
+                parse_ggp_body pm (fuel-1) acc' filters cross_scope ts5)
            | _ -> ParseErr "expected variable after AS"
            end end end)
   | Tok_VALUES ->
@@ -1577,15 +1677,18 @@ and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern) (f
      | ParseOk g ts' ->
        let acc' = ggp_join acc g in
        let ts' = match parse_peek ts' with Tok_DOT -> parse_advance ts' | _ -> ts' in
-       parse_ggp_body pm (fuel-1) acc' filters ts')
+       parse_ggp_body pm (fuel-1) acc' filters cross_scope ts')
   | Tok_LBRACE ->
     // Nested GGP or UNION
     (match parse_group_or_union pm (fuel-1) ts with
      | ParseErr m -> ParseErr m
      | ParseOk g ts' ->
-       let acc' = match acc with GP_Empty -> g | _ -> GP_Join acc g in
-       let ts' = match parse_peek ts' with Tok_DOT -> parse_advance ts' | _ -> ts' in
-       parse_ggp_body pm (fuel-1) acc' filters ts')
+       if local_string_overlaps (ggp_labeled_bnodes acc) (ggp_labeled_bnodes g) then
+         ParseErr "blank node label reused across nested group scope"
+       else
+         let acc' = match acc with GP_Empty -> g | _ -> GP_Join acc g in
+         let ts' = match parse_peek ts' with Tok_DOT -> parse_advance ts' | _ -> ts' in
+         parse_ggp_body pm (fuel-1) acc' filters true ts')
   | _ ->
     // Wrap collected filters around the final pattern (spec 18.2.4)
     let g = List.Tot.fold_left (fun g e -> GP_Filter e g) acc filters in
@@ -1622,9 +1725,19 @@ and parse_filter_expr (pm : prefix_map) (fuel : nat) (ts : token_stream)
   (* Built-in call without parens (FILTER EXISTS { } etc.) *)
   | Tok_EXISTS | Tok_NOT | Tok_STR | Tok_LANG | Tok_LANGMATCHES | Tok_DATATYPE
   | Tok_BOUND | Tok_SAMETERM | Tok_ISIRI | Tok_ISBLANK | Tok_ISLITERAL | Tok_ISNUMERIC
-  | Tok_REGEX | Tok_IF ->
+  | Tok_REGEX | Tok_IF
+  | Tok_IRI_KW | Tok_URI | Tok_BNODE_KW | Tok_RAND
+  | Tok_ABS | Tok_CEIL | Tok_FLOOR | Tok_ROUND
+  | Tok_CONCAT | Tok_STRLEN | Tok_UCASE | Tok_LCASE
+  | Tok_ENCODE_FOR_URI | Tok_CONTAINS | Tok_STRSTARTS | Tok_STRENDS
+  | Tok_STRBEFORE | Tok_STRAFTER | Tok_REPLACE | Tok_SUBSTR
+  | Tok_STRDT | Tok_STRLANG
+  | Tok_COALESCE | Tok_NOW | Tok_UUID | Tok_STRUUID
+  | Tok_YEAR | Tok_MONTH | Tok_DAY | Tok_HOURS | Tok_MINUTES | Tok_SECONDS
+  | Tok_TIMEZONE | Tok_TZ
+  | Tok_MD5 | Tok_SHA1 | Tok_SHA256 | Tok_SHA384 | Tok_SHA512 ->
     parse_primary_expr pm (fuel-1) ts
-  | _ -> parse_expr pm (fuel-1) ts
+  | _ -> ParseErr "expected '(' or built-in call after FILTER"
 
 (* Parse a graph name (IRI or variable) for GRAPH clause *)
 and parse_graph_name (pm : prefix_map) (fuel : nat) (ts : token_stream)
@@ -1818,26 +1931,56 @@ and parse_single_var_values (pm : prefix_map) (fuel : nat)
 
 (* ---- Triples block parsing ---- *)
 
-(* Parse a single term as pattern_subject *)
-and parse_subject (pm : prefix_map) (fuel : nat) (ts : token_stream)
-  : Tot (parse_result pattern_subject) (decreases fuel) =
+and pattern_term_to_subject (pt : pattern_term) : Tot (option pattern_subject) =
+  match pt with
+  | PT_Var v -> Some (PS_Var v)
+  | PT_IRI i -> Some (PS_IRI i)
+  | PT_BNode b -> Some (PS_BNode b)
+  | PT_Literal _ -> None
+
+(* Parse a subject as (pattern_subject, extra_triples, outer_predicate_list_optional) *)
+and parse_subject_with_extras (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result (pattern_subject & group_graph_pattern & bool)) (decreases fuel) =
   if fuel = 0 then ParseErr "recursion limit"
   else match parse_peek ts with
-  | Tok_VAR v -> ParseOk (PS_Var v) (parse_advance ts)
-  | Tok_IRI i -> if is_iri i then ParseOk (PS_IRI i) (parse_advance ts) else ParseErr "invalid IRI"
+  | Tok_VAR v -> ParseOk (PS_Var v, GP_Empty, false) (parse_advance ts)
+  | Tok_IRI i -> if is_iri i then ParseOk (PS_IRI i, GP_Empty, false) (parse_advance ts) else ParseErr "invalid IRI"
   | Tok_PNAME pn ->
     (match resolve_pname pn pm with
-     | Some iri -> if is_iri iri then ParseOk (PS_IRI iri) (parse_advance ts) else ParseErr "invalid IRI"
+     | Some iri -> if is_iri iri then ParseOk (PS_IRI iri, GP_Empty, false) (parse_advance ts) else ParseErr "invalid IRI"
      | None -> ParseErr "unresolved prefix")
-  | Tok_BNODE b -> ParseOk (PS_BNode b) (parse_advance ts)
+  | Tok_BNODE b -> ParseOk (PS_BNode b, GP_Empty, false) (parse_advance ts)
   | Tok_LBRACKET ->
     // [] = anonymous blank node, or [ predObjList ] = blank node with properties
     let bnode_id = fresh_bnode_id ts in
     let ts' = parse_advance ts in
     (match parse_peek ts' with
-     | Tok_RBRACKET -> ParseOk (PS_BNode bnode_id) (parse_advance ts')
-     | _ -> ParseErr "blank node property list as subject not yet supported")
+     | Tok_RBRACKET -> ParseOk (PS_BNode bnode_id, GP_Empty, false) (parse_advance ts')
+     | _ ->
+       let bnode_subj = PS_BNode bnode_id in
+       (match parse_pred_obj_list pm (fuel-1) bnode_subj GP_Empty ts' with
+        | ParseErr m -> ParseErr m
+        | ParseOk extra_triples ts'' ->
+          (match parse_expect Tok_RBRACKET ts'' with
+           | ParseErr _ -> ParseErr "expected ']' after blank node property list"
+           | ParseOk () ts''' ->
+             ParseOk (PS_BNode bnode_id, extra_triples, false) ts''')))
+  | Tok_LPAREN ->
+    (match parse_collection pm (fuel-1) (parse_advance ts) with
+     | ParseErr m -> ParseErr m
+     | ParseOk (pt, extras) ts' ->
+       (match pattern_term_to_subject pt with
+        | Some subj -> ParseOk (subj, extras, false) ts'
+        | None -> ParseErr "collection cannot be used as subject"))
   | _ -> ParseErr "expected subject"
+
+(* Legacy wrapper for parse_subject (returns just pattern_subject, no extras) *)
+  and parse_subject (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result pattern_subject) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else match parse_subject_with_extras pm (fuel-1) ts with
+  | ParseErr m -> ParseErr m
+  | ParseOk (subj, _, _) ts' -> ParseOk subj ts'
 
 // Property path parsing: PathAlternative ::= PathSequence ( '|' PathSequence )*
 and parse_path_alternative (pm : prefix_map) (fuel : nat) (ts : token_stream)
@@ -2001,6 +2144,23 @@ and parse_verb (pm : prefix_map) (fuel : nat) (ts : token_stream)
 and fresh_bnode_id (ts : token_stream) : string =
   "_:bnode_" ^ string_of_int (List.Tot.length ts)
 
+and parse_signed_numeric_literal_pt (sign:string) (ts:token_stream)
+  : parse_result pattern_term =
+  match parse_peek ts with
+  | Tok_INTEGER n ->
+    (match make_typed_literal (sign ^ n) "http://www.w3.org/2001/XMLSchema#integer" with
+     | Some lit -> ParseOk (PT_Literal lit) (parse_advance ts)
+     | None -> ParseErr "invalid integer literal")
+  | Tok_DECIMAL d ->
+    (match make_typed_literal (sign ^ d) "http://www.w3.org/2001/XMLSchema#decimal" with
+     | Some lit -> ParseOk (PT_Literal lit) (parse_advance ts)
+     | None -> ParseErr "invalid decimal literal")
+  | Tok_DOUBLE d ->
+    (match make_typed_literal (sign ^ d) "http://www.w3.org/2001/XMLSchema#double" with
+     | Some lit -> ParseOk (PT_Literal lit) (parse_advance ts)
+     | None -> ParseErr "invalid double literal")
+  | _ -> ParseErr "expected signed numeric literal"
+
 // Parse an object as (pattern_term, extra_triples)
 // The extra_triples GGP contains triples generated by blank node property lists or collections
 and parse_object_with_extras (pm : prefix_map) (fuel : nat) (ts : token_stream)
@@ -2038,6 +2198,14 @@ and parse_object_with_extras (pm : prefix_map) (fuel : nat) (ts : token_stream)
     (match make_typed_literal "false" "http://www.w3.org/2001/XMLSchema#boolean" with
      | Some lit -> ParseOk (PT_Literal lit, GP_Empty) (parse_advance ts)
      | None -> ParseErr "invalid boolean literal")
+  | Tok_PLUS ->
+    (match parse_signed_numeric_literal_pt "+" (parse_advance ts) with
+     | ParseOk pt ts' -> ParseOk (pt, GP_Empty) ts'
+     | ParseErr m -> ParseErr m)
+  | Tok_MINUS_OP ->
+    (match parse_signed_numeric_literal_pt "-" (parse_advance ts) with
+     | ParseOk pt ts' -> ParseOk (pt, GP_Empty) ts'
+     | ParseErr m -> ParseErr m)
   | Tok_A -> ParseOk (PT_IRI rdf_type_iri_str, GP_Empty) (parse_advance ts)
   | Tok_LBRACKET ->
     // Blank node property list: [ pred obj ; ... ]
@@ -2201,10 +2369,21 @@ and parse_pred_obj_list (pm : prefix_map) (fuel : nat) (subj : pattern_subject)
 and parse_triples_block (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern) (ts : token_stream)
   : Tot (parse_result group_graph_pattern) (decreases fuel) =
   if fuel = 0 then ParseOk acc ts
-  else match parse_subject pm (fuel-1) ts with
-  | ParseErr m -> ParseOk acc ts
-  | ParseOk subj ts' ->
-    begin match parse_pred_obj_list pm (fuel-1) subj acc ts' with
+  else match parse_subject_with_extras pm (fuel-1) ts with
+  | ParseErr m ->
+    (match acc with
+     | GP_Empty -> ParseErr m
+     | _ -> ParseOk acc ts)
+  | ParseOk (subj, subj_extras, pred_obj_optional) ts' ->
+    let acc0 = ggp_join acc subj_extras in
+    let r =
+      match parse_pred_obj_list pm (fuel-1) subj acc0 ts' with
+      | ParseOk acc' ts'' -> ParseOk acc' ts''
+      | ParseErr _ ->
+        if pred_obj_optional then ParseOk acc0 ts'
+        else ParseErr "expected predicate-object list"
+    in
+    begin match r with
     | ParseErr m -> ParseErr m
     | ParseOk acc' ts'' ->
       begin match parse_peek ts'' with
@@ -2216,30 +2395,34 @@ and parse_triples_block (pm : prefix_map) (fuel : nat) (acc : group_graph_patter
          | Tok_STRING _ | Tok_TRUE | Tok_FALSE ->
            parse_triples_block pm (fuel-1) acc' ts'''
          | _ -> ParseOk acc' ts''')
+      | Tok_VAR _ | Tok_IRI _ | Tok_PNAME _ | Tok_BNODE _ | Tok_LBRACKET
+      | Tok_LPAREN | Tok_A | Tok_INTEGER _ | Tok_DECIMAL _ | Tok_DOUBLE _
+      | Tok_STRING _ | Tok_TRUE | Tok_FALSE ->
+        ParseErr "expected dot between triples"
       | _ -> ParseOk acc' ts''
       end end
 
 (* ---- SELECT query parsing ---- *)
-
 and parse_select_query (pm : prefix_map) (fuel : nat) (ts : token_stream)
   : Tot (parse_result query) (decreases fuel) =
   if fuel = 0 then ParseErr "recursion limit"
   else
-    let r = parse_prologue pm (fuel-1) ts in
+    let r = parse_prologue pm None (fuel-1) ts in
     (match r with
      | ParseErr m -> ParseErr m
      | ParseOk (pm', base) ts' ->
-       (match parse_peek ts' with
-        | Tok_SELECT -> parse_select_body pm' (fuel-1) base ts'
-        | Tok_ASK -> parse_ask_body pm' (fuel-1) base ts'
-        | Tok_CONSTRUCT -> parse_construct_body pm' (fuel-1) base ts'
+       let ts'' = resolve_relative_iri_tokens base ts' in
+       (match parse_peek ts'' with
+        | Tok_SELECT -> parse_select_body pm' (fuel-1) base ts''
+        | Tok_ASK -> parse_ask_body pm' (fuel-1) base ts''
+        | Tok_CONSTRUCT -> parse_construct_body pm' (fuel-1) base ts''
         | Tok_DESCRIBE -> ParseErr "unsupported: DESCRIBE queries"
         | _ -> ParseErr "expected SELECT, ASK, CONSTRUCT, or DESCRIBE"))
 
 (* Parse prologue: (PREFIX prefix: <iri> | BASE <iri>)* *)
-and parse_prologue (pm : prefix_map) (fuel : nat) (ts : token_stream)
+and parse_prologue (pm : prefix_map) (base : option wf_iri) (fuel : nat) (ts : token_stream)
   : Tot (parse_result (prefix_map & option wf_iri)) (decreases fuel) =
-  if fuel = 0 then ParseOk (pm, None) ts
+  if fuel = 0 then ParseOk (pm, base) ts
   else begin match parse_peek ts with
     | Tok_PREFIX ->
       let ts' = parse_advance ts in
@@ -2251,9 +2434,11 @@ and parse_prologue (pm : prefix_map) (fuel : nat) (ts : token_stream)
          let ts'' = parse_advance ts' in
          (match parse_peek ts'' with
           | Tok_IRI iri ->
-            if is_iri iri then
-              parse_prologue ((prefix, iri) :: pm) (fuel-1) (parse_advance ts'')
-            else ParseErr "invalid prefix IRI"
+            (match if is_iri iri then Some iri else resolve_query_iri base iri with
+             | Some abs ->
+               parse_prologue ((prefix, abs) :: pm) base (fuel-1) (parse_advance ts'')
+             | None ->
+               ParseErr "invalid prefix IRI")
           | _ -> ParseErr "expected IRI after PREFIX name")
        | _ -> ParseErr "expected prefix name after PREFIX")
     | Tok_BASE ->
@@ -2261,13 +2446,10 @@ and parse_prologue (pm : prefix_map) (fuel : nat) (ts : token_stream)
       (match parse_peek ts' with
        | Tok_IRI iri ->
          if is_iri iri then
-           // Parse remaining prologue, then override the base
-           (match parse_prologue pm (fuel-1) (parse_advance ts') with
-            | ParseOk (pm', _) ts'' -> ParseOk (pm', Some iri) ts''
-            | err -> err)
+           parse_prologue pm (Some iri) (fuel-1) (parse_advance ts')
          else ParseErr "invalid BASE IRI"
        | _ -> ParseErr "expected IRI after BASE")
-    | _ -> ParseOk (pm, None) ts
+    | _ -> ParseOk (pm, base) ts
   end
 
 (* Parse SELECT body: SELECT clause, FROM, WHERE, modifiers *)
@@ -2729,12 +2911,214 @@ let rec tokens_only_eof (ts : token_stream) : Tot bool (decreases ts) =
   | Tok_EOF :: rest -> tokens_only_eof rest
   | _ -> false
 
+let starts_with_string (s : string) (prefix : string) : bool =
+  let ls = String.length s in
+  let lp = String.length prefix in
+  lp <= ls && substring s 0 lp = prefix
+
+let is_labeled_bnode_id (b : string) : bool =
+  not (starts_with_string b "_:bnode_")
+
+let rec string_mem (x : string) (xs : list string) : Tot bool (decreases xs) =
+  match xs with
+  | [] -> false
+  | y :: ys -> streq x y || string_mem x ys
+
+let rec string_add_unique (x : string) (xs : list string) : Tot (list string) (decreases xs) =
+  if string_mem x xs then xs else x :: xs
+
+let rec string_union (xs ys : list string) : Tot (list string) (decreases xs) =
+  match xs with
+  | [] -> ys
+  | x :: rest -> string_union rest (string_add_unique x ys)
+
+let rec string_overlaps (xs ys : list string) : Tot bool (decreases xs) =
+  match xs with
+  | [] -> false
+  | x :: rest -> string_mem x ys || string_overlaps rest ys
+
+let bnodes_in_pattern_subject (ps : pattern_subject) : list string =
+  match ps with
+  | PS_BNode b -> if is_labeled_bnode_id b then [b] else []
+  | _ -> []
+
+let bnodes_in_pattern_term (pt : pattern_term) : list string =
+  match pt with
+  | PT_BNode b -> if is_labeled_bnode_id b then [b] else []
+  | _ -> []
+
+let bnodes_in_triple_pattern (tp : triple_pattern) : list string =
+  string_union (bnodes_in_pattern_subject tp.tp_s)
+    (string_union (bnodes_in_pattern_term tp.tp_p) (bnodes_in_pattern_term tp.tp_o))
+
+let bnodes_in_property_path_pattern (ps : pattern_subject) (pt : pattern_term) : list string =
+  string_union (bnodes_in_pattern_subject ps) (bnodes_in_pattern_term pt)
+
+let rec bnodes_in_bgp (bgp : bgp) : Tot (list string) (decreases bgp) =
+  match bgp with
+  | [] -> []
+  | tp :: rest -> string_union (bnodes_in_triple_pattern tp) (bnodes_in_bgp rest)
+
+let rec preserves_bgp_scope (p : group_graph_pattern) : Tot bool (decreases p) =
+  match p with
+  | GP_BGP _ -> true
+  | GP_PropertyPath _ _ _ -> true
+  | GP_Filter _ p1 -> preserves_bgp_scope p1
+  | GP_Bind _ _ p1 -> preserves_bgp_scope p1
+  | GP_Values _ _ -> true
+  | GP_Empty -> true
+  | GP_Join p1 p2 -> preserves_bgp_scope p1 && preserves_bgp_scope p2
+  | _ -> false
+
+let rec validate_bnode_scope_pattern (p : group_graph_pattern)
+  : Tot (bool & list string) (decreases p) =
+  match p with
+  | GP_BGP bgp -> (true, bnodes_in_bgp bgp)
+  | GP_PropertyPath ps _ pt -> (true, bnodes_in_property_path_pattern ps pt)
+  | GP_Filter e p1 ->
+    let (ok1, b1) = validate_bnode_scope_pattern p1 in
+    let (ok2, _) = validate_bnode_scope_expr e in
+    (ok1 && ok2, b1)
+  | GP_Bind e _ p1 ->
+    let (ok1, b1) = validate_bnode_scope_pattern p1 in
+    let (ok2, _) = validate_bnode_scope_expr e in
+    (ok1 && ok2, b1)
+  | GP_Values _ _ -> (true, [])
+  | GP_Empty -> (true, [])
+  | GP_Join p1 p2 ->
+    let (ok1, b1) = validate_bnode_scope_pattern p1 in
+    let (ok2, b2) = validate_bnode_scope_pattern p2 in
+    let allow_overlap = preserves_bgp_scope p1 && preserves_bgp_scope p2 in
+    (ok1 && ok2 && (allow_overlap || not (string_overlaps b1 b2)), string_union b1 b2)
+  | GP_Union p1 p2
+  | GP_Minus p1 p2 ->
+    let (ok1, b1) = validate_bnode_scope_pattern p1 in
+    let (ok2, b2) = validate_bnode_scope_pattern p2 in
+    (ok1 && ok2 && not (string_overlaps b1 b2), string_union b1 b2)
+  | GP_LeftJoin p1 p2 e ->
+    let (ok1, b1) = validate_bnode_scope_pattern p1 in
+    let (ok2, b2) = validate_bnode_scope_pattern p2 in
+    let (ok3, _) = validate_bnode_scope_expr e in
+    (ok1 && ok2 && ok3 && not (string_overlaps b1 b2), string_union b1 b2)
+  | GP_Graph _ p1
+  | GP_Service _ p1 _ ->
+    validate_bnode_scope_pattern p1
+  | GP_SubSelect q ->
+    validate_bnode_scope_query q
+
+and validate_bnode_scope_expr (e : expr) : Tot (bool & list string) (decreases e) =
+  match e with
+  | E_Exists p
+  | E_NotExists p ->
+    validate_bnode_scope_pattern p
+  | E_Arith _ e1 e2
+  | E_Compare _ e1 e2
+  | E_And e1 e2
+  | E_Or e1 e2
+  | E_StrDt e1 e2
+  | E_StrLang e1 e2
+  | E_StrStarts e1 e2
+  | E_StrEnds e1 e2
+  | E_Contains e1 e2
+  | E_StrBefore e1 e2
+  | E_StrAfter e1 e2
+  | E_SameTerm e1 e2 ->
+    let (ok1, _) = validate_bnode_scope_expr e1 in
+    let (ok2, _) = validate_bnode_scope_expr e2 in
+    (ok1 && ok2, [])
+  | E_Not e1
+  | E_UnaryPlus e1
+  | E_UnaryMinus e1
+  | E_IsIRI e1
+  | E_IsBlank e1
+  | E_IsLiteral e1
+  | E_IsNumeric e1
+  | E_Str e1
+  | E_Lang e1
+  | E_Datatype e1
+  | E_IRI_fn e1
+  | E_StrLen e1
+  | E_UCase e1
+  | E_LCase e1
+  | E_EncodeForUri e1
+  | E_Abs e1
+  | E_Round e1
+  | E_Ceil e1
+  | E_Floor e1
+  | E_MD5 e1
+  | E_SHA1 e1
+  | E_SHA256 e1
+  | E_SHA384 e1
+  | E_SHA512 e1
+  | E_Year e1
+  | E_Month e1
+  | E_Day e1
+  | E_Hours e1
+  | E_Minutes e1
+  | E_Seconds e1
+  | E_Timezone e1
+  | E_Tz e1
+  | E_Aggregate _ _ e1 ->
+    validate_bnode_scope_expr e1
+  | E_Substr e1 e2 e3 ->
+    let (ok1, _) = validate_bnode_scope_expr e1 in
+    let (ok2, _) = validate_bnode_scope_expr e2 in
+    let (ok3, _) = match e3 with
+      | None -> (true, [])
+      | Some ef -> validate_bnode_scope_expr ef in
+    (ok1 && ok2 && ok3, [])
+  | E_If e1 e2 e3 ->
+    let (ok1, _) = validate_bnode_scope_expr e1 in
+    let (ok2, _) = validate_bnode_scope_expr e2 in
+    let (ok3, _) = validate_bnode_scope_expr e3 in
+    (ok1 && ok2 && ok3, [])
+  | E_Coalesce es
+  | E_Concat es
+  | E_FunctionCall _ es ->
+    (validate_bnode_scope_exprs es, [])
+  | E_In e1 es
+  | E_NotIn e1 es ->
+    let (ok1, _) = validate_bnode_scope_expr e1 in
+    let ok_rest = validate_bnode_scope_exprs es in
+    (ok1 && ok_rest, [])
+  | E_Replace e1 e2 e3 flags ->
+    let (ok1, _) = validate_bnode_scope_expr e1 in
+    let (ok2, _) = validate_bnode_scope_expr e2 in
+    let (ok3, _) = validate_bnode_scope_expr e3 in
+    let (ok4, _) = match flags with
+      | None -> (true, [])
+      | Some ef -> validate_bnode_scope_expr ef in
+    (ok1 && ok2 && ok3 && ok4, [])
+  | E_Regex e1 e2 flags ->
+    let (ok1, _) = validate_bnode_scope_expr e1 in
+    let (ok2, _) = validate_bnode_scope_expr e2 in
+    let (ok3, _) = match flags with
+      | None -> (true, [])
+      | Some ef -> validate_bnode_scope_expr ef in
+    (ok1 && ok2 && ok3, [])
+  | _ -> (true, [])
+
+and validate_bnode_scope_exprs (es : list expr) : Tot bool (decreases es) =
+  match es with
+  | [] -> true
+  | ex :: rest ->
+    let (ok, _) = validate_bnode_scope_expr ex in
+    ok && validate_bnode_scope_exprs rest
+
+and validate_bnode_scope_query (q : query) : Tot (bool & list string) =
+  validate_bnode_scope_pattern q.q_pattern
+
+let validate_bnode_scope_top (q : query) : bool =
+  fst (validate_bnode_scope_query q)
+
 let parse_sparql (input : string) : parse_result query =
   let tokens = tokenize input in
   match parse_select_query [] 10000 tokens with
   | ParseOk q rest ->
-    if tokens_only_eof rest then ParseOk q rest
-    else ParseErr "unexpected tokens after query"
+    if not (tokens_only_eof rest) then ParseErr "unexpected tokens after query"
+    else if not (validate_bnode_scope_top q) then
+      ParseErr "blank node label reused across graph-pattern scope"
+    else ParseOk q rest
   | ParseErr msg -> ParseErr msg
 
 
@@ -2939,4 +3323,3 @@ and sse_query (q : query) : Tot string (decreases q) =
      | None -> ""
      | Some n -> "\n  (slice _ " ^ string_of_int n ^ ")") in
   form ^ "\n  " ^ body ^ modifiers ^ ")"
-

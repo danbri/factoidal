@@ -30,17 +30,17 @@ fi
 
 echo "  Patching $FILE (escape processing stubs)..."
 
-if ! grep -q 'let utf8_of_codepoint (cp_z : Prims.nat)' "$FILE"; then
-  python3 - "$FILE" << 'PYEOF'
+python3 - "$FILE" << 'PYEOF'
+import re
 import sys
 
-with open(sys.argv[1], 'r') as f:
+path = sys.argv[1]
+with open(path, 'r', encoding='utf-8') as f:
     content = f.read()
 
-# 1. Replace utf8_of_codepoint stub
-content = content.replace(
-    'let utf8_of_codepoint (uu___ : Prims.nat) : Prims.string=\n  failwith "Not yet implemented: SPARQL11.Parser.utf8_of_codepoint"',
-    '''let utf8_of_codepoint (cp_z : Prims.nat) : Prims.string =
+content = re.sub(
+    r'let utf8_of_codepoint \([^)]*\) : Prims\.string=\n  failwith "Not yet implemented: SPARQL11\.Parser\.utf8_of_codepoint"',
+    lambda _m: '''let utf8_of_codepoint (cp_z : Prims.nat) : Prims.string =
   let cp = Z.to_int cp_z in
   let open Stdlib in
   if cp < 0x80 then String.make 1 (Char.chr cp)
@@ -65,20 +65,21 @@ content = content.replace(
     let s = Bytes.create 4 in
     Bytes.set s 0 (Char.chr b0); Bytes.set s 1 (Char.chr b1);
     Bytes.set s 2 (Char.chr b2); Bytes.set s 3 (Char.chr b3);
-    Bytes.to_string s'''
+    Bytes.to_string s''',
+    content,
+    count=1
 )
 
-# 2. Replace process_iri_escapes stub
-content = content.replace(
-    'let process_iri_escapes (uu___ : Prims.string) : Prims.string=\n  failwith "Not yet implemented: SPARQL11.Parser.process_iri_escapes"',
-    '''let process_iri_escapes (s : Prims.string) : Prims.string =
+content = re.sub(
+    r'let process_iri_escapes \([^)]*\) : Prims\.string=\n  failwith "Not yet implemented: SPARQL11\.Parser\.process_iri_escapes"',
+    lambda _m: r'''let process_iri_escapes (s : Prims.string) : Prims.string =
   let open Stdlib in
   (* Process backslash-u and backslash-U escapes in IRI strings *)
   let len = String.length s in
   let buf = Buffer.create len in
   let i = ref 0 in
   while !i < len do
-    if !i + 1 < len && s.[!i] = '\\\\' then begin
+    if !i + 1 < len && s.[!i] = '\\' then begin
       let next = s.[!i + 1] in
       if next = 'u' && !i + 5 < len then begin
         let hex = String.sub s (!i + 2) 4 in
@@ -101,29 +102,30 @@ content = content.replace(
       i := !i + 1
     end
   done;
-  Buffer.contents buf'''
+  Buffer.contents buf''',
+    content,
+    count=1
 )
 
-# 3. Replace process_string_escapes stub
-content = content.replace(
-    'let process_string_escapes (uu___ : Prims.string) : Prims.string=\n  failwith "Not yet implemented: SPARQL11.Parser.process_string_escapes"',
-    '''let process_string_escapes (s : Prims.string) : Prims.string =
+content = re.sub(
+    r'let process_string_escapes \([^)]*\) : Prims\.string=\n  failwith "Not yet implemented: SPARQL11\.Parser\.process_string_escapes"',
+    lambda _m: r'''let process_string_escapes (s : Prims.string) : Prims.string =
   let open Stdlib in
   (* Process string escape sequences: backslash-t, -n, -r, etc. *)
   let len = String.length s in
   let buf = Buffer.create len in
   let i = ref 0 in
   while !i < len do
-    if !i + 1 < len && s.[!i] = '\\\\' then begin
+    if !i + 1 < len && s.[!i] = '\\' then begin
       let next = s.[!i + 1] in
-      if next = 't' then (Buffer.add_char buf '\\t'; i := !i + 2)
-      else if next = 'n' then (Buffer.add_char buf '\\n'; i := !i + 2)
-      else if next = 'r' then (Buffer.add_char buf '\\r'; i := !i + 2)
-      else if next = '\\\\' then (Buffer.add_char buf '\\\\'; i := !i + 2)
+      if next = 't' then (Buffer.add_char buf '\t'; i := !i + 2)
+      else if next = 'n' then (Buffer.add_char buf '\n'; i := !i + 2)
+      else if next = 'r' then (Buffer.add_char buf '\r'; i := !i + 2)
+      else if next = '\\' then (Buffer.add_char buf '\\'; i := !i + 2)
       else if next = '"' then (Buffer.add_char buf '"'; i := !i + 2)
-      else if next = '\\'' then (Buffer.add_char buf '\\''; i := !i + 2)
-      else if next = 'b' then (Buffer.add_char buf '\\008'; i := !i + 2)
-      else if next = 'f' then (Buffer.add_char buf '\\012'; i := !i + 2)
+      else if next = '\'' then (Buffer.add_char buf '\''; i := !i + 2)
+      else if next = 'b' then (Buffer.add_char buf '\008'; i := !i + 2)
+      else if next = 'f' then (Buffer.add_char buf '\012'; i := !i + 2)
       else if next = 'u' && !i + 5 < len then begin
         let hex = String.sub s (!i + 2) 4 in
         (try let cp = int_of_string ("0x" ^ hex) in
@@ -153,12 +155,13 @@ content = content.replace(
       i := !i + 1
     end
   done;
-  Buffer.contents buf'''
+  Buffer.contents buf''',
+    content,
+    count=1
 )
 
-with open(sys.argv[1], 'w') as f:
+with open(path, 'w', encoding='utf-8') as f:
     f.write(content)
 PYEOF
-fi
 
 echo "  SPARQL parser escape stubs patched."
