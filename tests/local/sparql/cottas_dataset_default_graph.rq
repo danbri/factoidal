@@ -1,0 +1,3 @@
+ASK {
+  <https://example.org/default-subject> <https://example.org/status> "default"
+}

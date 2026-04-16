@@ -1,0 +1,9 @@
+PREFIX dbr: <http://dbpedia.org/resource/>
+PREFIX dbo: <http://dbpedia.org/ontology/>
+
+SELECT ?g (COUNT(?o) AS ?n) WHERE {
+  GRAPH ?g {
+    dbr:Berlin dbo:country ?o .
+  }
+}
+GROUP BY ?g

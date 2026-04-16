@@ -1,0 +1,5 @@
+<https://example.org/alice> <https://example.org/name> "Alice" <https://example.org/graph/people> .
+<https://example.org/alice> <https://example.org/knows> <https://example.org/bob> <https://example.org/graph/people> .
+<https://example.org/bob> <https://example.org/name> "Bob" <https://example.org/graph/people> .
+<https://example.org/doc> <https://example.org/title> "Specimen" <https://example.org/graph/docs> .
+<https://example.org/default-subject> <https://example.org/status> "default" .

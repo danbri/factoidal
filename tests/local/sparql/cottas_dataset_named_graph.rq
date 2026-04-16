@@ -1,0 +1,4 @@
+SELECT ?g ?s ?o WHERE {
+  GRAPH ?g { ?s <https://example.org/name> ?o }
+}
+ORDER BY ?g ?s

@@ -1,0 +1,5 @@
+SELECT ?s ?o WHERE {
+  ?s <https://example.org/status> ?o
+}
+ORDER BY ?s ?o
+

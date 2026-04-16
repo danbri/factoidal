@@ -1,0 +1,8 @@
+PREFIX dbr: <http://dbpedia.org/resource/>
+PREFIX dbo: <http://dbpedia.org/ontology/>
+
+ASK {
+  GRAPH <https://factoidaldb.com/id/graph/berlin> {
+    dbr:Berlin dbo:country dbr:Germany .
+  }
+}
