@@ -57,10 +57,13 @@ Rust/JS/OCaml/anything that "mirrors" a spec.
    language tag normalization, RDFS closure rules. These are core requirements,
    not "just inference." Dismissing them is wrong.
 9. **Commit compiled binaries.** The compiled `w3c_runner` and `factoidal`
-   binaries in `ocaml-output/` MUST be committed to git. This lets the repo
-   owner check out any commit and immediately run tests without needing an
-   F\*/opam toolchain. Do not add them to `.gitignore`. Do not skip them
-   when staging. When you run `build-ocaml.sh`, commit the updated binaries.
+   binaries live in `bin/<platform>/` (e.g., `bin/darwin-arm64/`,
+   `bin/linux-x86_64/`) and MUST be committed to git. This lets anyone
+   check out the repo and immediately run tests without needing an F\*/opam
+   toolchain. `ocaml-output/` contains symlinks to the current platform's
+   binaries. `build-ocaml.sh compile` auto-detects the platform and outputs
+   to the correct directory. Do not add binaries to `.gitignore`. Do not
+   skip them when staging.
 10. **Patches are for stubs and workarounds, NOT logic.** Post-extraction
     patches live in `minimal_regrettable_glue_code_each_with_an_open_issue/`
     as individual files named `<issue>_<description>.sh`. Each patch MUST
@@ -215,9 +218,20 @@ Previous Claude sessions made these errors. Read and internalize:
 
 ```
 formal/fstar/
-  RDF.Graph.Executable.fst     638 lines, 0 admit, 0 assume val
-  SPARQL11.Algebra.fst        3658 lines, 5 admit, 14 assume val
-  SPARQL11.Parser.fst          F* SPARQL parser (in development)
+  RDF.Graph.Executable.fst     1052 lines, 0 admit, 0 assume val
+  SPARQL11.Algebra.fst        3783 lines, 4 admit (proof lemmas), 12 assume val
+  SPARQL11.Parser.fst         2942 lines, 3 assume val
+                               ⚠ ~65% uses --admit_smt_queries true (see below)
+  Parser.Combinators.fst       387 lines — parser combinator foundation
+  Parser.NTriples.fst          679 lines
+  Parser.Turtle.fst           1339 lines
+  Parser.NQuads.fst            302 lines
+  Parser.TriG.fst              505 lines
+  Parser.XML.fst               602 lines
+  Parser.RDFXML.fst            812 lines
+  Parser.SRX.fst               273 lines
+  Parser.CSVResults.fst        610 lines
+  Parser.JSONResults.fst       408 lines
   Makefile                     verify + extract-c targets
   build-ocaml.sh               F* -> OCaml -> js_of_ocaml pipeline
   ocaml-patches.sh             master script: applies all patches from
@@ -226,6 +240,23 @@ formal/fstar/
                                individual patch files, each named
                                <issue>_<description>.sh with GitHub issue
 ```
+
+### ⚠ Verification Gaps — Be Honest About These
+
+**SPARQL11.Parser.fst** uses `--admit_smt_queries true` from approximately
+line 802 to line 2722 (~1920 lines, ~65% of the file). This means Z3 does
+NOT verify the proof obligations for the parser's mutually recursive
+functions. The parser type-checks but the SMT proofs are not discharged.
+This is a significant gap in the formal verification story and must be
+disclosed when claiming "verified."
+
+**ASK query comparison in w3c_runner.ml** does not check the expected
+boolean value — ASK tests always pass regardless of the query result. This
+inflates the pass count slightly.
+
+**Blank node comparison** in the test runner uses a simplified matching
+(any bnode matches any other bnode) rather than proper graph isomorphism.
+Some tests may pass that shouldn't under strict comparison.
 
 ### Known Gaps in RDF.Graph.Executable.fst
 
@@ -281,52 +312,49 @@ Hand-coded parsers have been deleted. Legacy copies remain in `junk/do_not_use/h
 | `eval_subselect_fwd` | forward decl (subqueries) | wired in ocaml-patches.sh |
 | `eval_property_path_fwd` | forward decl (property paths) | wired in ocaml-patches.sh |
 
-### Plain-English Status Summary (as of 2026-03-11)
+### Plain-English Status Summary (as of 2026-04-16)
 
 Factoidal is a formally verified RDF/SPARQL implementation written in F\* and
 tested against the official W3C conformance suites. The core SPARQL query
-evaluator passes 363 of 406 applicable query/syntax tests (89%), with strong
-results in aggregates (43/44), built-in functions (74/75), BIND (10/10),
-negation (11/12), property paths (33/33), entailment (44/70), exists (6/6),
-grouping (6/6), project-expression (7/7), and subqueries (9/11). The main
-SPARQL gaps are: UPDATE not yet implemented (205 tests skipped — in scope,
-tracked by #59), Protocol not yet implemented (34 tests skipped), SERVICE
-returns empty (needs HTTP client, tracked by #57), incomplete negative syntax
-rejection (parser accepts 1 query it should reject), incomplete xsd:float/double
-casting, and JSON/CSV/TSV result format support not yet implemented (20 tests).
-CONSTRUCT is partially implemented (2/3 pass).
+evaluator passes 375 of 418 applicable query/syntax tests (90%), with perfect
+scores in BIND (10/10), EXISTS (6/6), grouping (6/6), project-expression (7/7),
+property paths (33/33), CSV/TSV results (6/6), JSON results (4/4), and
+near-perfect in functions (74/75), aggregates (45/46), negation (11/12),
+syntax-query (93/94). The main SPARQL gaps are: UPDATE not yet implemented
+(205 tests skipped — in scope, tracked by #59), Protocol not yet implemented
+(34 tests skipped), SERVICE returns empty (needs HTTP client, tracked by #57),
+OWL entailment (26 entailment failures are mostly OWL-specific, beyond RDFS),
+and CONSTRUCT partially implemented (2/7, 4 need Turtle result serializer).
 
 On the RDF parsing side, F\*-extracted parsers handle all six serialization
-formats: N-Triples 41/70, Turtle 296/313, N-Quads 53/87, TriG 334/356,
-RDF/XML 120/166, rdf-mt 39/39. Most remaining parser failures involve
-prefixed name validation (pname/local name escapes) and a few TriG-specific
-negative syntax edge cases.
+formats: N-Triples 41/70, Turtle 296/313, N-Quads 53/87, TriG 338/356,
+RDF/XML 121/166, rdf-mt 39/39. Most remaining parser failures are
+negative-syntax validation (the parser is too lenient — accepts input it
+should reject) and prefixed name edge cases.
 
-In short: the query evaluator works well for SELECT queries and the parsers
-handle the vast majority of cases. The system is held back by (a) prefixed
-name validation edge cases, (b) SPARQL UPDATE/Protocol not yet implemented,
-(c) SERVICE (federated query) needs HTTP client, and (d) JSON/CSV/TSV result
-formats not yet implemented. All of these are in scope and tracked by #71.
+**Caveats on test numbers (be honest):** ASK query comparison in w3c_runner.ml
+does not check the expected boolean value — ASK tests always pass. Blank node
+matching is simplified (any bnode matches any other) rather than proper graph
+isomorphism. These may inflate the pass count slightly.
 
-### W3C Test Results (as of 2026-03-11)
+### W3C Test Results (as of 2026-04-16)
 
-**SPARQL 1.1 — 363 pass, 43 fail, 205 skip, 20 unsupported (631 total)**
+**SPARQL 1.1 — 375 pass, 43 fail, 205 skip, 8 unsupported (631 total)**
 
-Per-suite: aggregates 43/47, bind 10/10, bindings 10/11, cast 4/6,
-construct 2/7, entailment 44/70, exists 6/6, functions 74/75, grouping 6/6,
-negation 11/12, project-expression 7/7, property-path 33/33, service 0/7,
-subquery 9/14, syntax-query 93/94, syntax-fed 3/3, delete-insert 8/17.
+Per-suite: aggregates 45/46, bind 10/10, bindings 10/10, cast 4/6,
+construct 2/7, csv-tsv-res 6/6, delete-insert 8/8, entailment 44/70,
+exists 6/6, functions 74/75, grouping 6/6, json-res 4/4, negation 11/12,
+project-expression 7/7, property-path 33/33, service 0/7,
+subquery 9/14, syntax-query 93/94, syntax-fed 3/3.
 Not yet implemented: 205 UPDATE operations (add, basic-update, clear, copy,
 delete, delete-data, delete-where, drop, move, http-rdf-update,
-syntax-update-*, update-silent). Protocol: 34 not yet implemented.
-Service-description: 3 not yet implemented. Result format gaps: json-res (4),
-csv-tsv-res (6), aggregates (3 Turtle results), construct (4 Turtle results),
-subquery (2 Turtle results), bindings (1).
+syntax-update-\*, update-silent). Protocol: 34 not yet implemented.
+Service-description: 3 not yet implemented.
 
-**RDF 1.1 — 883 pass, 148 fail (1031 total)**
+**RDF 1.1 — 888 pass, 143 fail (1031 total)**
 
-Per-suite: N-Triples 41/70, Turtle 296/313, N-Quads 53/87, TriG 334/356,
-RDF/XML 120/166, rdf-mt 39/39.
+Per-suite: N-Triples 41/70, Turtle 296/313, N-Quads 53/87, TriG 338/356,
+RDF/XML 121/166, rdf-mt 39/39.
 
 **RDF 1.1 Model Theory — 39 pass, 0 fail (39 total)**
 
@@ -476,6 +504,9 @@ runner will have no test data.
 ```bash
 # Debian/Ubuntu
 sudo apt-get install -y opam libgmp-dev pkg-config
+
+# macOS (Homebrew)
+brew install opam gmp pkg-config
 ```
 
 ### F\* toolchain (opam)
@@ -503,12 +534,25 @@ verification will fail.
 z3 --version  # must show 4.13.3
 
 # If z3 is missing, install the pre-built binary (opam build often fails):
+
+# Linux x86-64:
 cd /tmp
 curl -sL "https://github.com/Z3Prover/z3/releases/download/z3-4.13.3/z3-4.13.3-x64-glibc-2.35.zip" -o z3.zip
 unzip -q z3.zip
 cp z3-4.13.3-x64-glibc-2.35/bin/z3 /usr/local/bin/z3-4.13.3
 chmod +x /usr/local/bin/z3-4.13.3
 ln -sf /usr/local/bin/z3-4.13.3 /usr/local/bin/z3
+
+# macOS arm64 (Apple Silicon):
+cd /tmp
+curl -sL "https://github.com/Z3Prover/z3/releases/download/z3-4.13.3/z3-4.13.3-arm64-osx-13.7.zip" -o z3.zip
+unzip -q z3.zip
+cp z3-4.13.3-arm64-osx-13.7/bin/z3 /usr/local/bin/z3-4.13.3
+chmod +x /usr/local/bin/z3-4.13.3
+ln -sf /usr/local/bin/z3-4.13.3 /usr/local/bin/z3
+
+# macOS alternative (may not get exact version):
+brew install z3
 
 # Verify it works:
 z3-4.13.3 --version  # must show "Z3 version 4.13.3"
@@ -601,6 +645,7 @@ factoidal/
 │   ├── RDF.Graph.Executable.fst   RDF graph types + operations
 │   ├── SPARQL11.Algebra.fst       SPARQL 1.1 algebra + evaluator
 │   ├── SPARQL11.Parser.fst        SPARQL parser (in development)
+│   ├── Parser.*.fst               RDF format parsers (combinators, Turtle, etc.)
 │   ├── Makefile
 │   ├── build-ocaml.sh
 │   ├── ocaml-patches.sh               applies patches from glue directory
@@ -615,7 +660,14 @@ factoidal/
 │   │   ├── 67_rdfxml_validation.sh
 │   │   ├── 68_unicode_boundary_workarounds.sh
 │   │   └── 69_runner_io_glue.sh
-│   └── ocaml-output/          extracted + TEMPORARY test harness
+│   └── ocaml-output/          extracted .ml + symlinks to bin/<platform>/
+├── bin/                       pre-built binaries per platform
+│   ├── darwin-arm64/          macOS Apple Silicon
+│   │   ├── factoidal
+│   │   └── w3c_runner
+│   └── linux-x86_64/         Linux x86-64 (statically linked)
+│       ├── factoidal
+│       └── w3c_runner
 ├── tests/w3c/                 git submodule (W3C test files)
 ├── kgx/                       SPARQL CONSTRUCT queries (future)
 ├── docs/

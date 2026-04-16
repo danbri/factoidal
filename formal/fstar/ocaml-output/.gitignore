@@ -9,8 +9,10 @@
 *.byte
 *.js.map
 
-# Native executables are committed (ELF x86-64 linux)
-# Rebuild with: ../build-ocaml.sh compile
+# Native executables are now in bin/<platform>/ at repo root.
+# Symlinks here point to the current platform's binaries.
+w3c_runner
+factoidal
 
 # js_of_ocaml output
 *.bc.js

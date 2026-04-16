@@ -12,8 +12,11 @@ Status: I'm surprised it works at all. I have seen rdf/xml FOAF files parse in m
 ## Quick Start
 
 ```bash
-# Install prerequisites (Debian/Ubuntu)
+# Install prerequisites
+# Debian/Ubuntu:
 sudo apt-get install -y opam libgmp-dev pkg-config
+# macOS (Homebrew):
+brew install opam gmp pkg-config
 
 # Set up OCaml + F* toolchain (first time only)
 opam init -y
@@ -264,14 +267,15 @@ functions.
 
 ### Prerequisites
 
-| Dependency | Purpose | Install |
-|-----------|---------|---------|
-| opam | OCaml package manager | `apt-get install opam` |
-| libgmp-dev | Arbitrary-precision integers | `apt-get install libgmp-dev` |
-| F\* (fstar) | Verified compiler | `opam install fstar` |
-| z3 | SMT solver (F\* uses it) | `opam install z3` or [binary release](https://github.com/Z3Prover/z3/releases) |
-| zarith | OCaml bigint library | `opam install zarith` |
-| sha, digestif | Hash functions (MD5/SHA) | `opam install sha digestif` |
+| Dependency | Purpose | Install (Linux) | Install (macOS) |
+|-----------|---------|-----------------|-----------------|
+| opam | OCaml package manager | `apt-get install opam` | `brew install opam` |
+| gmp | Arbitrary-precision integers | `apt-get install libgmp-dev` | `brew install gmp` |
+| pkg-config | Build tool | `apt-get install pkg-config` | `brew install pkg-config` |
+| F\* (fstar) | Verified compiler | `opam install fstar` | `opam install fstar` |
+| z3 | SMT solver (F\* uses it) | `opam install z3` or [binary release](https://github.com/Z3Prover/z3/releases) | `brew install z3` or [binary release](https://github.com/Z3Prover/z3/releases) |
+| zarith | OCaml bigint library | `opam install zarith` | `opam install zarith` |
+| sha, digestif | Hash functions (MD5/SHA) | `opam install sha digestif` | `opam install sha digestif` |
 
 ### Build steps
 
@@ -289,7 +293,8 @@ cd formal/fstar
 ./build-ocaml.sh test      # run W3C tests only
 ```
 
-The build produces two binaries in `formal/fstar/ocaml-output/`:
+The build produces two binaries in `bin/<platform>/` (e.g., `bin/darwin-arm64/`
+or `bin/linux-x86_64/`), with symlinks in `formal/fstar/ocaml-output/`:
 - `factoidal` — the CLI query/parsing tool
 - `w3c_runner` — the W3C conformance test runner
 
@@ -300,8 +305,11 @@ cd formal/fstar
 make verify    # requires z3
 ```
 
-This type-checks all F\* modules against the SMT solver. No `admit()` or
-`--lax` is used — all proofs are machine-checked.
+This type-checks all F\* modules against the SMT solver. The RDF graph and
+SPARQL algebra modules are fully verified (0 admit in RDF, 4 admit in proof
+lemmas for SPARQL). The SPARQL parser uses `--admit_smt_queries true` for
+~65% of its mutually recursive functions — it type-checks but SMT proofs
+are not fully discharged. See [CLAUDE.md](CLAUDE.md) for details.
 
 ### Run W3C conformance tests
 
@@ -320,38 +328,34 @@ cd formal/fstar/ocaml-output
 ```
 factoidal/
 ├── formal/fstar/                  THE PRODUCT
-│   ├── RDF.Graph.Executable.fst   RDF graph types + operations (638 lines)
-│   ├── SPARQL11.Algebra.fst       SPARQL 1.1 algebra + evaluator (3658 lines)
-│   ├── SPARQL11.Parser.fst        SPARQL parser
-│   ├── Parser.Combinators.fst     Parser combinator foundation
-│   ├── Parser.NTriples.fst        N-Triples parser
-│   ├── Parser.Turtle.fst          Turtle parser
-│   ├── Parser.NQuads.fst          N-Quads parser
-│   ├── Parser.TriG.fst            TriG parser
-│   ├── Parser.XML.fst             Non-validating XML parser
-│   ├── Parser.RDFXML.fst          RDF/XML parser
-│   ├── Parser.SRX.fst             SPARQL Results XML parser
-│   ├── Parser.CSVResults.fst      CSV/TSV results parser
+│   ├── RDF.Graph.Executable.fst   RDF graph types + operations (1052 lines)
+│   ├── SPARQL11.Algebra.fst       SPARQL 1.1 algebra + evaluator (3783 lines)
+│   ├── SPARQL11.Parser.fst        SPARQL parser (2942 lines)
+│   ├── Parser.*.fst               RDF format parsers (13 modules, ~6k lines)
 │   ├── Makefile                   verify + extract targets
 │   ├── build-ocaml.sh            F* → OCaml → binary pipeline
 │   ├── ocaml-patches.sh          wires assume-val stubs
-│   └── ocaml-output/             extracted OCaml + CLI tools
+│   └── ocaml-output/             extracted OCaml + symlinks to bin/
 │       ├── factoidal_cli.ml       CLI tool source (I/O glue)
 │       ├── w3c_runner.ml          W3C test runner (I/O glue)
 │       └── *.ml                   F*-extracted OCaml modules
+├── bin/                           pre-built binaries per platform
+│   ├── darwin-arm64/              macOS Apple Silicon
+│   └── linux-x86_64/             Linux x86-64 (statically linked)
 ├── tests/w3c/                    git submodule (W3C test files)
 └── CLAUDE.md                     development instructions
 ```
 
 ## W3C Conformance Status
 
-**SPARQL 1.1**: 303 pass / 105 fail / 205 skip (UPDATE) / 18 unsupported — 74% of applicable tests
+**SPARQL 1.1**: 375 pass / 43 fail / 205 skip (UPDATE) / 8 unsupported — 90% of applicable tests
 
-Strong areas: aggregates (38/44), functions (71/75), bind (9/10), negation
-(11/12), property paths (31/33), subqueries (9/12), project-expression (7/7).
+Strong areas: aggregates (45/46), functions (74/75), bind (10/10), negation
+(11/12), property paths (33/33), subqueries (9/12), project-expression (7/7),
+exists (6/6), grouping (6/6), CSV/TSV/JSON results (10/10).
 
-**RDF 1.1 Parsing**: 644 pass / 387 fail across N-Triples, Turtle, N-Quads,
-TriG, RDF/XML, and model theory suites.
+**RDF 1.1 Parsing**: 888 pass / 143 fail across N-Triples, Turtle, N-Quads,
+TriG, RDF/XML, and model theory suites (39/39 rdf-mt).
 
 See [CLAUDE.md](CLAUDE.md) for a detailed breakdown and known gaps.
 

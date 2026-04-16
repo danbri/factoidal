@@ -83,24 +83,49 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
     SPARQL11_Algebra.ml SPARQL11_Parser.ml"
 
-  # Static linking so binaries run on any x86-64 Linux (no glibc version dependency)
-  STATIC_FLAGS="-ccopt -static"
+  # Determine platform for binary output directory
+  UNAME_S="$(uname -s)"
+  UNAME_M="$(uname -m)"
+  if [[ "$UNAME_S" == "Darwin" && "$UNAME_M" == "arm64" ]]; then
+    PLATFORM="darwin-arm64"
+    STATIC_FLAGS=""
+  elif [[ "$UNAME_S" == "Darwin" && "$UNAME_M" == "x86_64" ]]; then
+    PLATFORM="darwin-x86_64"
+    STATIC_FLAGS=""
+  elif [[ "$UNAME_S" == "Linux" && "$UNAME_M" == "x86_64" ]]; then
+    PLATFORM="linux-x86_64"
+    STATIC_FLAGS="-ccopt -static"
+  elif [[ "$UNAME_S" == "Linux" && "$UNAME_M" == "aarch64" ]]; then
+    PLATFORM="linux-arm64"
+    STATIC_FLAGS="-ccopt -static"
+  else
+    PLATFORM="${UNAME_S,,}-${UNAME_M}"
+    STATIC_FLAGS=""
+  fi
+  # BINDIR relative to ocaml-output/ (cd "$OUTDIR" already happened above)
+  BINDIR="../../../bin/${PLATFORM}"
+  mkdir -p "$BINDIR"
+  echo "  Platform: ${PLATFORM}"
 
   # W3C test runner (reads real W3C manifests, calls F*-extracted code)
   ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
     $STATIC_FLAGS \
     $COMMON_MODULES \
     w3c_runner.ml \
-    -o w3c_runner
-  echo "  Built: w3c_runner ($(wc -c < w3c_runner) bytes, static)"
+    -o "$BINDIR/w3c_runner"
+  echo "  Built: bin/${PLATFORM}/w3c_runner ($(wc -c < "$BINDIR/w3c_runner") bytes)"
 
   # factoidal CLI (SPARQL query + RDF parsing tool)
   ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
     $STATIC_FLAGS \
     $COMMON_MODULES \
     factoidal_cli.ml \
-    -o factoidal
-  echo "  Built: factoidal ($(wc -c < factoidal) bytes, static)"
+    -o "$BINDIR/factoidal"
+  echo "  Built: bin/${PLATFORM}/factoidal ($(wc -c < "$BINDIR/factoidal") bytes)"
+
+  # Symlink current platform binaries for convenience (relative from ocaml-output/)
+  ln -sf "../../../bin/${PLATFORM}/w3c_runner" w3c_runner
+  ln -sf "../../../bin/${PLATFORM}/factoidal" factoidal
 
   cd ..
   echo ""
