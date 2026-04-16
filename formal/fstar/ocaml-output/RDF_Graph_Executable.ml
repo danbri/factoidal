@@ -1,14 +1,24 @@
 open Prims
 type bnode_id = Prims.string
 type iri = Prims.string
-let rec list_has_colon (cs : FStar_Char.char Prims.list) : Prims.bool=
-  match cs with
-  | [] -> false
-  | c::rest ->
-      ((FStar_Char.int_of_char c) = (Prims.of_int (0x3A))) ||
-        (list_has_colon rest)
+let rec string_has_colon_from (s : Prims.string) (pos : Prims.nat)
+  (fuel : Prims.nat) : Prims.bool=
+  if fuel = Prims.int_zero
+  then false
+  else
+    (let len = FStar_String.strlen s in
+     if pos >= len
+     then false
+     else
+       if
+         (FStar_Char.int_of_char (FStar_String.index s pos)) =
+           (Prims.of_int (0x3A))
+       then true
+       else
+         string_has_colon_from s (pos + Prims.int_one) (fuel - Prims.int_one))
 let string_contains_colon (s : Prims.string) : Prims.bool=
-  list_has_colon (FStar_String.list_of_string s)
+  string_has_colon_from s Prims.int_zero
+    ((FStar_String.strlen s) + Prims.int_one)
 let is_iri (s : Prims.string) : Prims.bool=
   ((FStar_String.strlen s) > Prims.int_zero) && (string_contains_colon s)
 type wf_iri = iri
@@ -140,6 +150,38 @@ let rec lookup_named_graph (name : iri) (named : named_graph Prims.list) :
       else lookup_named_graph name rest
 let named_graph_iris (ds : rdf_dataset) : iri Prims.list=
   FStar_List_Tot_Base.map (fun ng -> ng.ng_name) ds.ds_named
+let rename_bnode_id (prefix : Prims.string) (id : bnode_id) : bnode_id=
+  FStar_String.concat "" [prefix; ":"; id]
+let rename_subject_bnodes (prefix : Prims.string) (s : subject) : subject=
+  match s with
+  | S_IRI i -> S_IRI i
+  | S_BNode b -> S_BNode (rename_bnode_id prefix b)
+let rename_term_bnodes (prefix : Prims.string) (o : rdf_term) : rdf_term=
+  match o with
+  | T_IRI i -> T_IRI i
+  | T_Literal l -> T_Literal l
+  | T_BNode b -> T_BNode (rename_bnode_id prefix b)
+let rename_triple_bnodes (prefix : Prims.string) (t : triple) : triple=
+  {
+    s = (rename_subject_bnodes prefix t.s);
+    p = (t.p);
+    o = (rename_term_bnodes prefix t.o)
+  }
+let rename_graph_bnodes (prefix : Prims.string) (g : rdf_graph) : rdf_graph=
+  FStar_List_Tot_Base.map (rename_triple_bnodes prefix) g
+let rename_named_graph_bnodes (prefix : Prims.string) (ng : named_graph) :
+  named_graph=
+  {
+    ng_name = (ng.ng_name);
+    ng_graph = (rename_graph_bnodes prefix ng.ng_graph)
+  }
+let rename_dataset_bnodes (prefix : Prims.string) (ds : rdf_dataset) :
+  rdf_dataset=
+  {
+    ds_default = (rename_graph_bnodes prefix ds.ds_default);
+    ds_named =
+      (FStar_List_Tot_Base.map (rename_named_graph_bnodes prefix) ds.ds_named)
+  }
 let rec graph_bnodes (g : rdf_graph) : bnode_id Prims.list=
   match g with
   | [] -> []

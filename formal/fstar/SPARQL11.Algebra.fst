@@ -85,6 +85,13 @@ let sm_lookup (v : string) (mu : solution_mapping) : option rdf_term =
 let sm_bind (v : string) (t : rdf_term) (mu : solution_mapping) : solution_mapping =
   (v, t) :: mu
 
+let sm_bind_if_compatible (v:string) (t:rdf_term) (mu:solution_mapping)
+  : option solution_mapping =
+  match sm_lookup v mu with
+  | Some existing ->
+    if rdf_term_eq existing t then Some mu else None
+  | None -> Some (sm_bind v t mu)
+
 let sm_domain (mu : solution_mapping) : list string =
   List.Tot.map fst mu
 
@@ -117,6 +124,80 @@ let triple_predicate (t : triple) : wf_iri = t.p
 let triple_object (t : triple) : rdf_term = t.o
 
 (** ====================================================================== **)
+(** Part 1b: Storage Boundary (experimental, list-backed for now)          **)
+(** ====================================================================== **)
+
+// This is the first seam for storage-backed evaluation. The current
+// implementation remains list-backed so semantics stay unchanged, but the
+// algebra no longer needs to scan raw graph lists directly.
+
+noeq type triple_pattern_bound = {
+  bs : option subject;
+  bp : option wf_iri;
+  bo : option rdf_term;
+}
+
+noeq type graph_store = {
+  gs_graph : rdf_graph;
+}
+
+noeq type named_graph_store = {
+  ngs_name : iri;
+  ngs_store : graph_store;
+}
+
+noeq type rdf_dataset_store = {
+  dss_default : graph_store;
+  dss_named : list named_graph_store;
+}
+
+let graph_to_store (g : rdf_graph) : graph_store =
+  { gs_graph = g }
+
+let dataset_to_store (ds : rdf_dataset) : rdf_dataset_store =
+  {
+    dss_default = graph_to_store ds.ds_default;
+    dss_named =
+      List.Tot.map
+        (fun (ng : named_graph) ->
+          { ngs_name = ng.ng_name; ngs_store = graph_to_store ng.ng_graph })
+        ds.ds_named
+  }
+
+let store_to_dataset (dss : rdf_dataset_store) : rdf_dataset =
+  {
+    ds_default = dss.dss_default.gs_graph;
+    ds_named =
+      List.Tot.map
+        (fun (ngs : named_graph_store) ->
+          { ng_name = ngs.ngs_name; ng_graph = ngs.ngs_store.gs_graph })
+        dss.dss_named
+  }
+
+let rec triple_matches_bound (b : triple_pattern_bound) (ts : list triple)
+  : Tot (list triple) (decreases ts) =
+  match ts with
+  | [] -> []
+  | t :: rest ->
+    let subj_ok = match b.bs with | None -> true | Some s -> subject_eq s t.s in
+    let pred_ok = match b.bp with | None -> true | Some p -> p = t.p in
+    let obj_ok = match b.bo with | None -> true | Some o -> rdf_term_eq o t.o in
+    let rest' = triple_matches_bound b rest in
+    if subj_ok && pred_ok && obj_ok then t :: rest' else rest'
+
+let store_search (g : graph_store) (b : triple_pattern_bound) : list triple =
+  triple_matches_bound b g.gs_graph
+
+let store_estimate (g : graph_store) (b : triple_pattern_bound) : nat =
+  List.Tot.length (store_search g b)
+
+let rec lookup_named_store (name : iri) (named : list named_graph_store) : option graph_store =
+  match named with
+  | [] -> None
+  | ng :: rest ->
+    if ng.ngs_name = name then Some ng.ngs_store else lookup_named_store name rest
+
+(** ====================================================================== **)
 (** Part 2: SPARQL 1.1 Variable and Pattern Types                          **)
 (** ====================================================================== **)
 
@@ -143,6 +224,57 @@ noeq type triple_pattern = {
 
 (** Basic Graph Pattern **)
 type bgp = list triple_pattern
+
+// Helper functions for extracting bound values from solution mappings
+let bound_subject_of_pattern (ps : pattern_subject) (mu : solution_mapping) : option subject =
+  match ps with
+  | PS_IRI i -> Some (S_IRI i)
+  | PS_BNode b -> Some (S_BNode b)
+  | PS_Var v ->
+    match sm_lookup v mu with
+    | Some (T_IRI i) -> Some (S_IRI i)
+    | Some (T_BNode b) -> Some (S_BNode b)
+    | Some (T_Literal _) -> None
+    | None -> None
+
+let bound_predicate_of_pattern (pt : pattern_term) (mu : solution_mapping) : option wf_iri =
+  match pt with
+  | PT_IRI i -> Some i
+  | PT_BNode _ -> None
+  | PT_Literal _ -> None
+  | PT_Var v ->
+    match sm_lookup v mu with
+    | Some (T_IRI i) -> Some i
+    | Some (T_BNode _) -> None
+    | Some (T_Literal _) -> None
+    | None -> None
+
+let bound_object_of_pattern (pt : pattern_term) (mu : solution_mapping) : option rdf_term =
+  match pt with
+  | PT_IRI i -> Some (T_IRI i)
+  | PT_BNode b -> Some (T_BNode b)
+  | PT_Literal l -> Some (T_Literal l)
+  | PT_Var v -> sm_lookup v mu
+
+let pattern_subject_eq (a : pattern_subject) (b : pattern_subject) : bool =
+  match a, b with
+  | PS_Var v1, PS_Var v2 -> v1 = v2
+  | PS_IRI i1, PS_IRI i2 -> i1 = i2
+  | PS_BNode b1, PS_BNode b2 -> b1 = b2
+  | _, _ -> false
+
+let pattern_term_eq (a : pattern_term) (b : pattern_term) : bool =
+  match a, b with
+  | PT_Var v1, PT_Var v2 -> v1 = v2
+  | PT_IRI i1, PT_IRI i2 -> i1 = i2
+  | PT_BNode b1, PT_BNode b2 -> b1 = b2
+  | PT_Literal l1, PT_Literal l2 -> literal_eq l1 l2
+  | _, _ -> false
+
+let triple_pattern_eq (a : triple_pattern) (b : triple_pattern) : bool =
+  pattern_subject_eq a.tp_s b.tp_s &&
+  pattern_term_eq a.tp_p b.tp_p &&
+  pattern_term_eq a.tp_o b.tp_o
 
 (** ====================================================================== **)
 (** Part 3: SPARQL 1.1 Expression Language                                 **)
@@ -2958,6 +3090,53 @@ let eval_select_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : solution_
   | QF_Construct _ -> []
   | QF_Ask -> []
   | QF_Describe _ -> []
+
+// Rewrite blank node labels in query patterns to variables (for SPARQL semantics)
+let rewrite_query_bnode_term (pt : pattern_term) : pattern_term =
+  match pt with
+  | PT_BNode b -> PT_Var ("_bnode_" ^ b)
+  | _ -> pt
+
+let rewrite_query_bnode_subject (ps : pattern_subject) : pattern_subject =
+  match ps with
+  | PS_BNode b -> PS_Var ("_bnode_" ^ b)
+  | _ -> ps
+
+let rewrite_query_bnode_tp (tp : triple_pattern) : triple_pattern = {
+  tp_s = rewrite_query_bnode_subject tp.tp_s;
+  tp_p = rewrite_query_bnode_term tp.tp_p;
+  tp_o = rewrite_query_bnode_term tp.tp_o;
+}
+
+let rec rewrite_query_bnodes_pattern (p : group_graph_pattern)
+  : Tot group_graph_pattern (decreases p) =
+  match p with
+  | GP_BGP bgp -> GP_BGP (List.Tot.map rewrite_query_bnode_tp bgp)
+  | GP_Join p1 p2 -> GP_Join (rewrite_query_bnodes_pattern p1) (rewrite_query_bnodes_pattern p2)
+  | GP_LeftJoin p1 p2 e ->
+    GP_LeftJoin (rewrite_query_bnodes_pattern p1) (rewrite_query_bnodes_pattern p2) e
+  | GP_Filter e p1 -> GP_Filter e (rewrite_query_bnodes_pattern p1)
+  | GP_Union p1 p2 -> GP_Union (rewrite_query_bnodes_pattern p1) (rewrite_query_bnodes_pattern p2)
+  | GP_Graph gt p1 -> GP_Graph (rewrite_query_bnode_term gt) (rewrite_query_bnodes_pattern p1)
+  | GP_Minus p1 p2 -> GP_Minus (rewrite_query_bnodes_pattern p1) (rewrite_query_bnodes_pattern p2)
+  | GP_Bind e v p1 -> GP_Bind e v (rewrite_query_bnodes_pattern p1)
+  | GP_SubSelect q -> GP_SubSelect { q with q_pattern = rewrite_query_bnodes_pattern q.q_pattern }
+  | GP_PropertyPath s pp o ->
+    GP_PropertyPath (rewrite_query_bnode_subject s) pp (rewrite_query_bnode_term o)
+  | _ -> p
+
+// Evaluate an ASK query — returns true if the WHERE pattern matches at least once
+let eval_ask_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : bool =
+  match q.q_form with
+  | QF_Ask ->
+    let omega0 = eval_pattern q.q_pattern g ds in
+    let omega = match q.q_values with
+      | None -> omega0
+      | Some vals -> join omega0 vals in
+    (match omega with
+     | [] -> false
+     | _ -> true)
+  | _ -> false
 
 (* Specification of eval_select_query (full version with aggregation):
 

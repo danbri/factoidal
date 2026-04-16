@@ -33,7 +33,12 @@ let parse_graph_label : parser iri =
       let ch = String.index input pos in
       let code = FStar.Char.int_of_char ch in
       if code = 0x3C then (* '<' — IRI *)
-        parse_iri_raw input pos
+        begin match parse_iri_raw input pos with
+        | ParseOk iri pos' ->
+          if is_iri iri then ParseOk iri pos'
+          else ParseFail "graph label IRI must be absolute" pos
+        | ParseFail msg fpos -> ParseFail msg fpos
+        end
       else if code = 0x5F then (* '_' — blank node *)
         (* Blank nodes as graph names: parse and prefix with "_:" *)
         begin match parse_bnode input pos with
@@ -234,6 +239,50 @@ let rec parse_nquads_acc (input:string) (pos:nat) (ds:rdf_dataset) (fuel:nat)
 let parse_nquads (input:string) : rdf_dataset =
   let len = String.length input in
   parse_nquads_acc input 0 empty_dataset (len + 1)
+
+let rec parse_nquads_strict_acc (input:string) (pos:nat) (ds:rdf_dataset) (fuel:nat)
+  : Tot (option rdf_dataset) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let len = String.length input in
+    if pos >= len then Some ds
+    else
+      let pos1 : nat = match pws input pos with
+                       | ParseOk () p -> p
+                       | _ -> pos in
+      if pos1 >= len then Some ds
+      else
+        let ch = String.index input pos1 in
+        let code = FStar.Char.int_of_char ch in
+        if code = 0x23 then
+          let pos2 = skip_comment input pos1 in
+          let pos3 = skip_eol input pos2 in
+          if pos3 = pos1 then None
+          else parse_nquads_strict_acc input pos3 ds (fuel - 1)
+        else if code = 0x0A || code = 0x0D then
+          let pos2 = skip_eol input pos1 in
+          if pos2 = pos1 then None
+          else parse_nquads_strict_acc input pos2 ds (fuel - 1)
+        else
+          match parse_nquad input pos1 with
+          | ParseOk (t, graph_opt) pos2 ->
+            let ds' = dataset_add_quad ds t graph_opt in
+            let pos3 = match pws input pos2 with
+                       | ParseOk () p -> p
+                       | _ -> pos2 in
+            let pos4 = skip_comment input pos3 in
+            let pos5 = skip_eol input pos4 in
+            if pos5 > pos1 then
+              parse_nquads_strict_acc input pos5 ds' (fuel - 1)
+            else if pos2 >= len then
+              parse_nquads_strict_acc input pos2 ds' (fuel - 1)
+            else
+              None
+          | ParseFail _ _ -> None
+
+let parse_nquads_strict (input:string) : option rdf_dataset =
+  let len = String.length input in
+  parse_nquads_strict_acc input 0 empty_dataset (len + 1)
 
 (* ================================================================ *)
 (* Convenience: parse N-Quads returning just a flat list of quads    *)

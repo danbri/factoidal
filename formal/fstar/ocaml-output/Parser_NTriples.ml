@@ -21,13 +21,13 @@ let hex_val (c : FStar_Char.char) : Prims.int=
   | FStar_Pervasives_Native.None -> Prims.int_zero
 let valid_codepoint (cp : Prims.int) : Prims.bool=
   (cp >= Prims.int_zero) &&
-    ((cp < (Prims.of_int (0xD800))) ||
+    ((cp < (Prims.of_int (0xD7FF))) ||
        ((cp >= (Prims.of_int (0xE000))) &&
           (cp <= (Prims.parse_int "0x10FFFF"))))
 let safe_char_of_int (cp : Prims.int) : FStar_Char.char=
   if
     (cp >= Prims.int_zero) &&
-      ((cp < (Prims.of_int (0xD800))) ||
+      ((cp < (Prims.of_int (0xD7FF))) ||
          ((cp >= (Prims.of_int (0xE000))) &&
             (cp <= (Prims.parse_int "0x10FFFF"))))
   then let n = cp in FStar_Char.char_of_int n
@@ -1018,3 +1018,67 @@ let parse_ntriples (input : Prims.string) :
   RDF_Graph_Executable.triple Prims.list=
   let len = FStar_String.strlen input in
   parse_ntriples_acc input Prims.int_zero [] (len + Prims.int_one)
+let rec parse_ntriples_strict_acc (input : Prims.string) (pos : Prims.nat)
+  (acc : RDF_Graph_Executable.triple Prims.list) (fuel : Prims.nat) :
+  RDF_Graph_Executable.triple Prims.list FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (let len = FStar_String.strlen input in
+     if pos >= len
+     then FStar_Pervasives_Native.Some (FStar_List_Tot_Base.rev acc)
+     else
+       (let pos1 =
+          match pws input pos with
+          | Parser_Combinators.ParseOk ((), p) -> p
+          | uu___2 -> pos in
+        if pos1 >= len
+        then FStar_Pervasives_Native.Some (FStar_List_Tot_Base.rev acc)
+        else
+          (let ch = FStar_String.index input pos1 in
+           let code = FStar_Char.int_of_char ch in
+           if code = (Prims.of_int (0x23))
+           then
+             let pos2 = skip_comment input pos1 in
+             let pos3 = skip_eol input pos2 in
+             (if pos3 = pos1
+              then FStar_Pervasives_Native.None
+              else
+                parse_ntriples_strict_acc input pos3 acc
+                  (fuel - Prims.int_one))
+           else
+             if
+               (code = (Prims.of_int (0x0A))) ||
+                 (code = (Prims.of_int (0x0D)))
+             then
+               (let pos2 = skip_eol input pos1 in
+                if pos2 = pos1
+                then FStar_Pervasives_Native.None
+                else
+                  parse_ntriples_strict_acc input pos2 acc
+                    (fuel - Prims.int_one))
+             else
+               (match parse_triple input pos1 with
+                | Parser_Combinators.ParseOk (t, pos2) ->
+                    let pos3 =
+                      match pws input pos2 with
+                      | Parser_Combinators.ParseOk ((), p) -> p
+                      | uu___5 -> pos2 in
+                    let pos4 = skip_comment input pos3 in
+                    let pos5 = skip_eol input pos4 in
+                    if pos5 > pos1
+                    then
+                      parse_ntriples_strict_acc input pos5 (t :: acc)
+                        (fuel - Prims.int_one)
+                    else
+                      if pos2 >= len
+                      then
+                        parse_ntriples_strict_acc input pos2 (t :: acc)
+                          (fuel - Prims.int_one)
+                      else FStar_Pervasives_Native.None
+                | Parser_Combinators.ParseFail (uu___5, uu___6) ->
+                    FStar_Pervasives_Native.None))))
+let parse_ntriples_strict (input : Prims.string) :
+  RDF_Graph_Executable.triple Prims.list FStar_Pervasives_Native.option=
+  let len = FStar_String.strlen input in
+  parse_ntriples_strict_acc input Prims.int_zero [] (len + Prims.int_one)

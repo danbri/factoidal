@@ -677,3 +677,46 @@ let rec parse_ntriples_acc (input:string) (pos:nat) (acc:list triple) (fuel:nat)
 let parse_ntriples (input:string) : list triple =
   let len = String.length input in
   parse_ntriples_acc input 0 [] (len + 1)
+
+let rec parse_ntriples_strict_acc (input:string) (pos:nat) (acc:list triple) (fuel:nat)
+  : Tot (option (list triple)) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let len = String.length input in
+    if pos >= len then Some (List.Tot.rev acc)
+    else
+      let pos1 : nat = match pws input pos with
+                       | ParseOk () p -> p
+                       | _ -> pos in
+      if pos1 >= len then Some (List.Tot.rev acc)
+      else
+        let ch = String.index input pos1 in
+        let code = FStar.Char.int_of_char ch in
+        if code = 0x23 then
+          let pos2 = skip_comment input pos1 in
+          let pos3 = skip_eol input pos2 in
+          if pos3 = pos1 then None
+          else parse_ntriples_strict_acc input pos3 acc (fuel - 1)
+        else if code = 0x0A || code = 0x0D then
+          let pos2 = skip_eol input pos1 in
+          if pos2 = pos1 then None
+          else parse_ntriples_strict_acc input pos2 acc (fuel - 1)
+        else
+          match parse_triple input pos1 with
+          | ParseOk t pos2 ->
+            let pos3 = match pws input pos2 with
+                       | ParseOk () p -> p
+                       | _ -> pos2 in
+            let pos4 = skip_comment input pos3 in
+            let pos5 = skip_eol input pos4 in
+            if pos5 > pos1 then
+              parse_ntriples_strict_acc input pos5 (t :: acc) (fuel - 1)
+            else if pos2 >= len then
+              parse_ntriples_strict_acc input pos2 (t :: acc) (fuel - 1)
+            else
+              None
+          | ParseFail _ _ -> None
+
+let parse_ntriples_strict (input:string) : option (list triple) =
+  let len = String.length input in
+  parse_ntriples_strict_acc input 0 [] (len + 1)

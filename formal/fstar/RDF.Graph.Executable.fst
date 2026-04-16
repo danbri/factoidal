@@ -10,15 +10,18 @@ type iri = string
 
 (** 2. Refined IRIs **)
 (* An IRI must be non-empty and contain a colon.
-   We implement the colon check via list_of_string to avoid
-   termination issues with string index traversal. *)
-let rec list_has_colon (cs : list FStar.Char.char) : bool =
-  match cs with
-  | [] -> false
-  | c :: rest -> FStar.Char.int_of_char c = 0x3A || list_has_colon rest
+   Use direct indexed traversal to avoid allocating an intermediate char list. *)
+let rec string_has_colon_from (s: string) (pos: nat) (fuel: nat)
+  : Tot bool (decreases fuel) =
+  if fuel = 0 then false
+  else
+    let len = String.length s in
+    if pos >= len then false
+    else if FStar.Char.int_of_char (String.index s pos) = 0x3A then true
+    else string_has_colon_from s (pos + 1) (fuel - 1)
 
 let string_contains_colon (s : string) : bool =
-  list_has_colon (String.list_of_string s)
+  string_has_colon_from s 0 (String.length s + 1)
 
 let is_iri (s : string) : bool =
   String.length s > 0 && string_contains_colon s
@@ -177,6 +180,46 @@ let rec lookup_named_graph (name : iri) (named : list named_graph) : option rdf_
 (* Collect all named graph IRIs *)
 let named_graph_iris (ds : rdf_dataset) : list iri =
   List.Tot.map (fun ng -> ng.ng_name) ds.ds_named
+
+// Blank node labels are scoped to the source document / dataset they came from.
+// When multiple files are loaded independently and then merged for querying,
+// equal raw labels like "_:x" must not collide accidentally across inputs.
+// These helpers namespace blank nodes by a caller-supplied prefix.
+let rename_bnode_id (prefix:string) (id:bnode_id) : bnode_id =
+  String.concat "" [prefix; ":"; id]
+
+let rename_subject_bnodes (prefix:string) (s:subject) : subject =
+  match s with
+  | S_IRI i -> S_IRI i
+  | S_BNode b -> S_BNode (rename_bnode_id prefix b)
+
+let rename_term_bnodes (prefix:string) (o:rdf_term) : rdf_term =
+  match o with
+  | T_IRI i -> T_IRI i
+  | T_Literal l -> T_Literal l
+  | T_BNode b -> T_BNode (rename_bnode_id prefix b)
+
+let rename_triple_bnodes (prefix:string) (t:triple) : triple =
+  {
+    s = rename_subject_bnodes prefix t.s;
+    p = t.p;
+    o = rename_term_bnodes prefix t.o;
+  }
+
+let rename_graph_bnodes (prefix:string) (g:rdf_graph) : rdf_graph =
+  List.Tot.map (rename_triple_bnodes prefix) g
+
+let rename_named_graph_bnodes (prefix:string) (ng:named_graph) : named_graph =
+  {
+    ng_name = ng.ng_name;
+    ng_graph = rename_graph_bnodes prefix ng.ng_graph;
+  }
+
+let rename_dataset_bnodes (prefix:string) (ds:rdf_dataset) : rdf_dataset =
+  {
+    ds_default = rename_graph_bnodes prefix ds.ds_default;
+    ds_named = List.Tot.map (rename_named_graph_bnodes prefix) ds.ds_named;
+  }
 
 // Computes the set of all blank nodes in the graph
 let rec graph_bnodes (g:rdf_graph) : list bnode_id =
