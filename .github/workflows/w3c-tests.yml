@@ -30,7 +30,18 @@ jobs:
       - name: Install system deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y opam libgmp-dev pkg-config binaryen
+          sudo apt-get install -y opam libgmp-dev pkg-config
+
+      - name: Install binaryen (wasm-merge) from GitHub release
+        run: |
+          # Ubuntu's binaryen package is too old to include wasm-merge, which
+          # wasm_of_ocaml 6.3+ requires to build.
+          # See https://github.com/ocsigen/js_of_ocaml/issues/2190.
+          BINARYEN_VERSION=version_129
+          curl -sL "https://github.com/WebAssembly/binaryen/releases/download/${BINARYEN_VERSION}/binaryen-${BINARYEN_VERSION}-x86_64-linux.tar.gz" \
+            | sudo tar -xz -C /usr/local --strip-components=1
+          wasm-merge --version
+          wasm-opt --version
 
       - name: Setup opam + F*
         run: |
@@ -42,8 +53,9 @@ jobs:
           # Pin z3 to 4.13.3 — F* 2025.12.15 requires exact match
           opam pin add z3 4.13.3 -y --no-action 2>/dev/null || true
           opam install -y fstar z3.4.13.3 zarith sha digestif
-          # wasm_of_ocaml: deps conf-binaryen satisfied by apt above; --assume-depexts
-          # so opam does not try to re-invoke the system package manager.
+          # wasm_of_ocaml: binaryen is available via /usr/local from the
+          # previous step; opam's conf-binaryen just probes for wasm-opt in
+          # PATH. --assume-depexts skips system-package re-check.
           opam install -y --assume-depexts js_of_ocaml js_of_ocaml-compiler zarith_stubs_js wasm_of_ocaml-compiler
           echo "OPAMSWITCH=fstar" >> $GITHUB_ENV
 
