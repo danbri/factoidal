@@ -167,25 +167,47 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
   mkdir -p "$JSDIR"
   cd "$OUTDIR"
 
+  # Shared F*-extracted modules used by both the W3C runner and the
+  # factoidal query CLI.
+  FSTAR_MODULES=(
+    RDF_Graph_Executable.ml
+    Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml
+    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml
+    Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
+    SPARQL11_Algebra.ml SPARQL11_Parser.ml
+  )
+
   # Build w3c_runner bytecode for js_of_ocaml
   ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
-    RDF_Graph_Executable.ml \
-    Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
-    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
-    Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
-    SPARQL11_Algebra.ml SPARQL11_Parser.ml \
+    "${FSTAR_MODULES[@]}" \
     w3c_runner.ml \
     -o w3c_runner.byte 2>&1 | grep -i error || true
 
-  # Convert to JS with zarith stubs
+  # Build factoidal (query + parse CLI) bytecode for js_of_ocaml
+  ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
+    "${FSTAR_MODULES[@]}" \
+    factoidal_cli.ml \
+    -o factoidal.byte 2>&1 | grep -i error || true
+
+  # Convert both to JS with zarith stubs
   js_of_ocaml \
     +zarith_stubs_js/biginteger.js \
     +zarith_stubs_js/runtime.js \
     fstar_int_stubs.js \
+    fstar_hash_stubs.js \
     w3c_runner.byte \
     -o ../../../docs/fstar-extracted/w3c-runner.js 2>&1 | grep -v "Warning \[deprecated" | grep -v "^$" || true
 
+  js_of_ocaml \
+    +zarith_stubs_js/biginteger.js \
+    +zarith_stubs_js/runtime.js \
+    fstar_int_stubs.js \
+    fstar_hash_stubs.js \
+    factoidal.byte \
+    -o ../../../docs/fstar-extracted/factoidal.js 2>&1 | grep -v "Warning \[deprecated" | grep -v "^$" || true
+
   echo "  Built: docs/fstar-extracted/w3c-runner.js ($(wc -c < ../../../docs/fstar-extracted/w3c-runner.js) bytes)"
+  echo "  Built: docs/fstar-extracted/factoidal.js   ($(wc -c < ../../../docs/fstar-extracted/factoidal.js) bytes)"
 
   cd ..
   echo ""
