@@ -20,15 +20,22 @@
 #   ./build-ocaml.sh wasm     # wasm_of_ocaml only (experimental; needs stubs)
 #   ./build-ocaml.sh test     # run native tests only
 #
-# The wasm target produces a working .wasm + loader .js under
-# docs/fstar-extracted/w3c-runner.wasm.{js,assets}/. The artifact compiles
-# but does not yet run: fstar.lib transitively depends on stdint, sha,
-# digestif, and zarith, whose C primitives (int40_of_int, ml_z_*,
-# caml_digestif_*, stub_sha*, ~60 in total) have no JS shim in the
-# wasm_of_ocaml runtime. wasm_of_ocaml emits throwing stubs for them, and
-# initialization calls int40_of_int almost immediately. To get a running
-# wasm binary we need to write JS shims for those primitives (or narrow the
-# OCaml linkage so they aren't pulled in).
+# The wasm target produces a .wasm + loader .js under
+# docs/fstar-extracted/w3c-runner.wasm.{js,assets}/. The build also runs
+# ocaml-output/wasm_stub_shims.py on the loader to replace the throwing
+# stubs wasm_of_ocaml emits for missing C primitives with JS no-ops so
+# initialization survives.
+#
+# Status: the wasm loads and `node w3c-runner.wasm.js --list` prints all
+# test suites. It does NOT currently run actual tests: fstar.lib
+# transitively depends on stdint, sha, digestif, and zarith, whose C
+# primitives (int40_of_int, ml_z_*, caml_digestif_*, stub_sha*, ~156 in
+# total) have no wasm_of_ocaml runtime implementation. The shim script
+# uses identity/pass-through for all of them, which keeps Wasm-GC's
+# (ref eq) conversion happy but returns wrong values — so the Turtle
+# manifest parser produces 0 triples and every suite reports 0/0/0/0.
+# Real implementations require reverse-engineering wasm_of_ocaml's Z.t
+# representation (see wasm_stub_shims.py for notes).
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -204,6 +211,9 @@ if [[ "$STEP" == "wasm" ]]; then
     -o ../../../docs/fstar-extracted/w3c-runner.wasm.js 2>&1 \
     | grep -v "Warning \[deprecated" | grep -v "^$" || WASM_RC=$?
   if [[ -f ../../../docs/fstar-extracted/w3c-runner.wasm.js ]]; then
+    # Patch the throwing stubs so init survives.
+    python3 wasm_stub_shims.py ../../../docs/fstar-extracted/w3c-runner.wasm.js
+
     LOADER_BYTES=$(wc -c < ../../../docs/fstar-extracted/w3c-runner.wasm.js)
     WASM_FILE=$(ls -1 ../../../docs/fstar-extracted/w3c-runner.wasm.assets/*.wasm 2>/dev/null | head -n 1 || true)
     if [[ -n "$WASM_FILE" ]]; then
@@ -212,7 +222,7 @@ if [[ "$STEP" == "wasm" ]]; then
     else
       echo "  Built: docs/fstar-extracted/w3c-runner.wasm.js ($LOADER_BYTES bytes) — no .wasm asset"
     fi
-    echo "  NOTE: binary will throw at startup — see build-ocaml.sh header for missing primitives."
+    echo "  Smoke test: node w3c-runner.wasm.js --list (works); test suites return 0/0/0/0 (see wasm_stub_shims.py)."
   fi
   cd ..
   echo ""
