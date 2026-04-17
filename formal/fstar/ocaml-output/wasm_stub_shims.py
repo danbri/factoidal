@@ -1,35 +1,32 @@
 #!/usr/bin/env python3
 """
 Post-process the wasm_of_ocaml-generated .wasm.js loader to replace the
-throwing-stub implementations for missing C primitives with
-best-effort JavaScript shims.
+remaining throwing-stub implementations for missing C primitives with
+identity/pass-through shims.
 
-Why: fstar.lib transitively depends on stdint, sha, digestif, zarith.
-Their C primitives have no wasm_of_ocaml runtime implementation, so
-wasm_of_ocaml emits dummy `() => { throw Error("X not implemented") }`
-stubs into the loader. Calling any of them crashes the program at init.
+Why: fstar.lib transitively depends on stdint, zarith, sha, and
+digestif. wasm_of_ocaml emits dummy `() => { throw Error("X not
+implemented") }` stubs for any external primitive without a
+wasm-side binding.
 
-This script patches the generated loader.
+Zarith is handled separately by linking
+ocaml-output/wasm_runtime/{zarith_runtime.wat,zarith_runtime_wasm.js}
+during `wasm_of_ocaml compile` (see build-ocaml.sh). That covers
+~14 ml_z_* primitives and makes the Turtle parser actually work.
 
-Current state of the shims (honest):
-- Identity/pass-through for everything. This is enough to survive
-  *initialization* (int40_of_int etc. are called during stdint module
-  init with small numbers, and returning those numbers back through
-  keeps Wasm-GC's (ref eq) conversion happy).
-- It is NOT enough to make code that actually USES these primitives
-  work: ml_z_add(a,b) returns `a`, so zarith arithmetic is wrong;
-  SHA/MD5 hash functions return the wrong thing; etc.
-- Consequence: `./w3c_runner.wasm.js --list` prints all suites
-  (works — no arithmetic needed). Running test suites does NOT work
-  — the Turtle manifest parser needs real integer math, so it
-  returns 0 triples and reports 0/0/0/0 per suite.
-- Real implementations for zarith/stdint were attempted but hit
-  Wasm-GC type-representation issues: returning plain JS numbers for
-  a `(result (ref eq))` import sometimes works (for values that
-  round-trip as i31) and sometimes doesn't (type incompatibility
-  from-JS conversion failure). Proper shims likely require
-  reverse-engineering wasm_of_ocaml's value representation for Z.t,
-  or cross-compiling the whole OCaml link to drop these dependencies.
+This script handles what remains:
+- stdint fixed-width ops (int40_of_int, uint64_of_int, int40_min_int,
+  …). Identity pass-through: stdint is linked for its module init
+  but the F*-extracted hot path doesn't use fixed-width ints, so
+  returning the argument unchanged is enough to keep Wasm-GC's
+  (ref eq) conversion happy without semantic correctness.
+- SHA/digestif (stub_sha*, caml_digestif_*). Also identity. These
+  ARE used when a SPARQL test calls MD5()/SHA1()/SHA256() — those
+  tests crash with "illegal cast" until real bindings are written.
+
+With those two tweaks, most SPARQL suites run identically to native
+(bind 10/10, bindings 10/10, aggregates 46/46, syntax-query 93/94,
+…). The `functions` suite crashes because it tests hash builtins.
 
 Usage:
   python3 wasm_stub_shims.py path/to/w3c-runner.wasm.js

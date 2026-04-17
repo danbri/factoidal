@@ -21,21 +21,25 @@
 #   ./build-ocaml.sh test     # run native tests only
 #
 # The wasm target produces a .wasm + loader .js under
-# docs/fstar-extracted/w3c-runner.wasm.{js,assets}/. The build also runs
-# ocaml-output/wasm_stub_shims.py on the loader to replace the throwing
-# stubs wasm_of_ocaml emits for missing C primitives with JS no-ops so
-# initialization survives.
+# docs/fstar-extracted/w3c-runner.wasm.{js,assets}/.
 #
-# Status: the wasm loads and `node w3c-runner.wasm.js --list` prints all
-# test suites. It does NOT currently run actual tests: fstar.lib
-# transitively depends on stdint, sha, digestif, and zarith, whose C
-# primitives (int40_of_int, ml_z_*, caml_digestif_*, stub_sha*, ~156 in
-# total) have no wasm_of_ocaml runtime implementation. The shim script
-# uses identity/pass-through for all of them, which keeps Wasm-GC's
-# (ref eq) conversion happy but returns wrong values — so the Turtle
-# manifest parser produces 0 triples and every suite reports 0/0/0/0.
-# Real implementations require reverse-engineering wasm_of_ocaml's Z.t
-# representation (see wasm_stub_shims.py for notes).
+# For the wasm build to actually *run*, wasm_of_ocaml needs JS+WAT
+# bindings for the external C primitives that fstar.lib transitively
+# pulls in (stdint, zarith, sha, digestif). js_of_ocaml's JS stubs are
+# not enough: wasm_of_ocaml-specific primitives live in .wat +
+# runtime_wasm.js files (see janestreet/zarith_stubs_js's dune stanza
+# `(wasm_of_ocaml (wasm_files runtime_wasm.js runtime.wat))`). Our
+# installed opam zarith_stubs_js v0.16.1 doesn't ship those yet — they
+# arrived in v0.17 — so we vendor them under
+# ocaml-output/wasm_runtime/ and link them explicitly here.
+#
+# Status after the wasm_runtime link + wasm_stub_shims.py post-processor:
+# most SPARQL suites run identically to the native binary (bind 10/10,
+# bindings 10/10, aggregates 46/46, exists 6/6, property-path ~29/33,
+# syntax-query 93/94, subquery 12/14, etc.). Suites that invoke
+# SHA/MD5 (the `functions` suite's hash tests) still crash with
+# "illegal cast" because stub_sha*/caml_digestif_* have no real
+# binding — fix is to vendor or write wasm-side shims for those too.
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -206,6 +210,8 @@ if [[ "$STEP" == "wasm" ]]; then
   wasm_of_ocaml compile \
     +zarith_stubs_js/biginteger.js \
     +zarith_stubs_js/runtime.js \
+    wasm_runtime/zarith_runtime_wasm.js \
+    wasm_runtime/zarith_runtime.wat \
     fstar_int_stubs.js \
     w3c_runner.byte \
     -o ../../../docs/fstar-extracted/w3c-runner.wasm.js 2>&1 \
@@ -222,7 +228,7 @@ if [[ "$STEP" == "wasm" ]]; then
     else
       echo "  Built: docs/fstar-extracted/w3c-runner.wasm.js ($LOADER_BYTES bytes) — no .wasm asset"
     fi
-    echo "  Smoke test: node w3c-runner.wasm.js --list (works); test suites return 0/0/0/0 (see wasm_stub_shims.py)."
+    echo "  Smoke test: cd into docs/fstar-extracted and run 'node w3c-runner.wasm.js bind' — expect 10/10 pass."
   fi
   cd ..
   echo ""
