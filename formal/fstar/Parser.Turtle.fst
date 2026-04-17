@@ -4,6 +4,7 @@ open FStar.String
 open FStar.List.Tot
 open FStar.Char
 open Parser.Combinators
+open Parser.TurtleScanner
 open Parser.NTriples
 open RDF.Graph.Executable
 
@@ -29,6 +30,20 @@ let empty_turtle_state : turtle_state = {
 let fresh_bnode (st: turtle_state) : (bnode_id & turtle_state) =
   let id = String.concat "" ["_anon"; string_of_int st.bnode_counter] in
   (id, { st with bnode_counter = st.bnode_counter + 1 })
+
+(* List helpers for parser accumulators.
+   rev_prepend xs acc = rev xs @ acc, without building an intermediate list. *)
+let rec rev_prepend (#a:Type) (xs:list a) (acc:list a)
+  : Tot (list a) (decreases xs) =
+  match xs with
+  | [] -> acc
+  | x :: rest -> rev_prepend rest (x :: acc)
+
+let rec append_list (#a:Type) (xs:list a) (ys:list a)
+  : Tot (list a) (decreases xs) =
+  match xs with
+  | [] -> ys
+  | x :: rest -> x :: append_list rest ys
 
 (* ================================================================ *)
 (* Prefix resolution                                                 *)
@@ -126,12 +141,7 @@ let rec skip_ws_and_comments (input: string) (pos: nat) (fuel: nat) : Tot nat (d
         pos
 
 let turtle_ws (input: string) (pos: nat) : parse_result unit =
-  let len = String.length input in
-  let fuel = len - pos + 1 in
-  if fuel >= 0 then
-    ParseOk () (skip_ws_and_comments input pos fuel)
-  else
-    ParseOk () pos
+  ParseOk () (skip_ws_comments input pos)
 
 (* ================================================================ *)
 (* PN_CHARS_BASE, PN_CHARS_U, PN_CHARS — per Turtle grammar         *)
@@ -200,28 +210,163 @@ let is_pname_ns_body_char (c: char) : bool =
   else
     is_pn_chars c
 
-// Parse prefix namespace using position-scan: find colon, extract substring.
-let parse_pname_ns (input: string) (pos: nat) : parse_result string =
+let span_to_string (input: string) (sp: span) : string =
+  if sp.sp_end >= sp.sp_start && sp.sp_end <= String.length input then
+    String.sub input sp.sp_start (sp.sp_end - sp.sp_start)
+  else
+    ""
+
+// Decode \uXXXX and \UXXXXXXXX escapes in IRI body.
+// Scanner has already validated well-formedness; we just decode.
+let rec decode_iri_escapes_acc (input: string) (pos: nat) (end_pos: nat)
+    (acc: list char) (fuel: nat)
+  : Tot string (decreases fuel) =
   let len = String.length input in
-  if pos >= len then ParseFail "expected prefix name" pos
+  if fuel = 0 || pos >= end_pos || pos >= len then String.string_of_list (List.Tot.rev acc)
   else
     let c = String.index input pos in
     let code = int_of_char c in
-    if code = 0x3A then
-      ParseOk "" (pos + 1)
-    else if is_pn_chars_base c then
-      // Scan body chars, then expect colon
-      let end_pos = ptake_while_scan is_pname_ns_body_char input (pos + 1) (len - pos) in
-      if end_pos < len then
-        let nc = String.index input end_pos in
-        if int_of_char nc = 0x3A then
-          ParseOk (String.sub input pos (end_pos - pos)) (end_pos + 1)
-        else
-          ParseFail "expected ':' in prefixed name" end_pos
+    if code = 0x5C && pos + 1 < end_pos && pos + 1 < len then
+      let next = String.index input (pos + 1) in
+      let ncode = int_of_char next in
+      if ncode = 0x75 && pos + 6 <= end_pos && pos + 6 <= len then
+        let h0 = hex_val (String.index input (pos + 2)) in
+        let h1 = hex_val (String.index input (pos + 3)) in
+        let h2 = hex_val (String.index input (pos + 4)) in
+        let h3 = hex_val (String.index input (pos + 5)) in
+        let cp = (h0 `op_Multiply` 4096) + (h1 `op_Multiply` 256) + (h2 `op_Multiply` 16) + h3 in
+        decode_iri_escapes_acc input (pos + 6) end_pos (safe_char_of_int cp :: acc) (fuel - 1)
+      else if ncode = 0x55 && pos + 10 <= end_pos && pos + 10 <= len then
+        let h0 = hex_val (String.index input (pos + 2)) in
+        let h1 = hex_val (String.index input (pos + 3)) in
+        let h2 = hex_val (String.index input (pos + 4)) in
+        let h3 = hex_val (String.index input (pos + 5)) in
+        let h4 = hex_val (String.index input (pos + 6)) in
+        let h5 = hex_val (String.index input (pos + 7)) in
+        let h6 = hex_val (String.index input (pos + 8)) in
+        let h7 = hex_val (String.index input (pos + 9)) in
+        let cp = (h0 `op_Multiply` 268435456) + (h1 `op_Multiply` 16777216) +
+                 (h2 `op_Multiply` 1048576) + (h3 `op_Multiply` 65536) +
+                 (h4 `op_Multiply` 4096) + (h5 `op_Multiply` 256) +
+                 (h6 `op_Multiply` 16) + h7 in
+        decode_iri_escapes_acc input (pos + 10) end_pos (safe_char_of_int cp :: acc) (fuel - 1)
       else
-        ParseFail "expected ':' in prefixed name" end_pos
+        decode_iri_escapes_acc input (pos + 1) end_pos (c :: acc) (fuel - 1)
     else
-      ParseFail "expected prefix name" pos
+      decode_iri_escapes_acc input (pos + 1) end_pos (c :: acc) (fuel - 1)
+
+let iri_ref_span_to_raw (input: string) (sp: iri_ref_span) : string =
+  if sp.irs_span.sp_end >= sp.irs_span.sp_start + 2 && sp.irs_span.sp_end <= String.length input then
+    let body_start : nat = sp.irs_span.sp_start + 1 in
+    let body_end : nat = sp.irs_span.sp_end - 1 in
+    decode_iri_escapes_acc input body_start body_end [] (body_end - body_start + 1)
+  else
+    ""
+
+let resolve_iri_hint (st: turtle_state) (rel: string) (has_colon: bool) : string =
+  if String.length rel = 0 then st.base_iri
+  else if has_colon then rel
+  else if FStar.Char.int_of_char (String.index rel 0) = 0x2F then
+    if String.length st.base_iri = 0 then rel
+    else
+      let cut = find_last_slash st.base_iri (String.length st.base_iri) in
+      if cut > 0 then String.concat "" [String.sub st.base_iri 0 cut; rel]
+      else String.concat "" [st.base_iri; rel]
+  else
+    String.concat "" [remove_last_segment st.base_iri; rel]
+
+let is_ascii_hex_digit (c: char) : bool =
+  let code = int_of_char c in
+  (code >= 0x30 && code <= 0x39) ||
+  (code >= 0x41 && code <= 0x46) ||
+  (code >= 0x61 && code <= 0x66)
+
+let is_pn_local_esc_char (c: char) : bool =
+  let code = int_of_char c in
+  code = 0x5F || code = 0x7E || code = 0x2E || code = 0x2D ||
+  code = 0x21 || code = 0x24 || code = 0x26 || code = 0x27 ||
+  code = 0x28 || code = 0x29 || code = 0x2A || code = 0x2B ||
+  code = 0x2C || code = 0x3B || code = 0x3D || code = 0x2F ||
+  code = 0x3F || code = 0x23 || code = 0x40 || code = 0x25
+
+let rec validate_pname_ns_from (ns: string) (pos: nat) (fuel: nat) : Tot bool (decreases fuel) =
+  if fuel = 0 then true
+  else
+    let len = String.length ns in
+    if pos >= len then true
+    else
+      let c = String.index ns pos in
+      let code = int_of_char c in
+      let ok =
+        if code < 0x80 then
+          (code >= 0x41 && code <= 0x5A) ||
+          (code >= 0x61 && code <= 0x7A) ||
+          (code >= 0x30 && code <= 0x39) ||
+          code = 0x5F || code = 0x2D || code = 0x2E
+        else
+          is_pn_chars c
+      in
+      ok && validate_pname_ns_from ns (pos + 1) (fuel - 1)
+
+let validate_pname_ns (ns: string) : bool =
+  let len = String.length ns in
+  if len = 0 then true
+  else
+    let last = String.index ns (len - 1) in
+    int_of_char last <> 0x2E && validate_pname_ns_from ns 0 (len + 1)
+
+let rec validate_pn_local_from (local: string) (pos: nat) (is_first: bool) (fuel: nat)
+  : Tot bool (decreases fuel) =
+  if fuel = 0 then true
+  else
+    let len = String.length local in
+    if pos >= len then true
+    else
+      let c = String.index local pos in
+      let code = int_of_char c in
+      if code = 0x25 then
+        pos + 2 < len &&
+        is_ascii_hex_digit (String.index local (pos + 1)) &&
+        is_ascii_hex_digit (String.index local (pos + 2)) &&
+        validate_pn_local_from local (pos + 3) false (fuel - 1)
+      else if code = 0x5C then
+        pos + 1 < len &&
+        is_pn_local_esc_char (String.index local (pos + 1)) &&
+        validate_pn_local_from local (pos + 2) false (fuel - 1)
+      else
+        let ok =
+          if code < 0x80 then
+            if is_first then
+              (code >= 0x41 && code <= 0x5A) ||
+              (code >= 0x61 && code <= 0x7A) ||
+              (code >= 0x30 && code <= 0x39) ||
+              code = 0x5F || code = 0x3A
+            else
+              (code >= 0x41 && code <= 0x5A) ||
+              (code >= 0x61 && code <= 0x7A) ||
+              (code >= 0x30 && code <= 0x39) ||
+              code = 0x5F || code = 0x2D || code = 0x3A ||
+              (code = 0x2E && pos + 1 < len)
+          else if is_first then is_pn_chars_u c
+          else is_pn_chars c
+        in
+        ok && validate_pn_local_from local (pos + 1) false (fuel - 1)
+
+let validate_pn_local (local: string) : bool =
+  let len = String.length local in
+  if len = 0 then true
+  else validate_pn_local_from local 0 true (len + 1)
+
+// Parse prefix namespace using position-scan: find colon, extract substring.
+let parse_pname_ns (input: string) (pos: nat) : parse_result string =
+  match scan_prefixed_name_span input pos with
+  | ParseOk pns _ ->
+    let ns = span_to_string input pns.pns_prefix in
+    if validate_pname_ns ns then
+      ParseOk ns pns.pns_local.sp_start
+    else
+      ParseFail "invalid prefix namespace" pos
+  | ParseFail msg fpos -> ParseFail msg fpos
 
 (* Parse local name part (after the colon).
    Local names can contain PN_CHARS, '.', ':', and percent-encoded chars.
@@ -251,34 +396,40 @@ let is_pn_local_start (c: char) : bool =
   else
     is_pn_chars_u c
 
+// Trim trailing unescaped dots from a span end. A dot preceded by '\\' is
+// part of an escape sequence and must be preserved.
+let rec trim_trailing_dots_pos (input: string) (start: nat) (end_pos: nat)
+  : Tot nat (decreases end_pos) =
+  if end_pos <= start then start
+  else if end_pos > String.length input then end_pos
+  else
+    let c = String.index input (end_pos - 1) in
+    if int_of_char c = 0x2E then
+      if end_pos >= 2 && end_pos - 2 >= start &&
+         int_of_char (String.index input (end_pos - 2)) = 0x5C
+      then end_pos
+      else trim_trailing_dots_pos input start (end_pos - 1)
+    else end_pos
+
 // Uses ptake_while_pos: scans to find end position, then extracts substring in one shot.
 // No char list allocation, no List.rev, no string_of_list.
+// Trailing unescaped dots are trimmed so they remain available as triple
+// terminators (matching Turtle grammar's PN_LOCAL production).
 let parse_pn_local (input: string) (pos: nat) : parse_result string =
-  let len = String.length input in
-  if pos >= len then ParseOk "" pos
-  else
-    let c = String.index input pos in
-    if is_pn_local_start c then
-      match ptake_while_pos is_pn_local_char input pos with
-      | ParseOk s pos' ->
-        let slen = String.length s in
-        if slen > 1 then
-          let last = String.index s (slen - 1) in
-          if int_of_char last = 0x2E && pos' > 0 then
-            ParseOk (String.sub s 0 (slen - 1)) (pos' - 1)
-          else
-            ParseOk s pos'
-        else if slen = 1 then
-          let last = String.index s 0 in
-          if int_of_char last = 0x2E && pos' > 0 then
-            ParseOk "" (pos' - 1)
-          else
-            ParseOk s pos'
-        else
-          ParseOk "" pos
-      | ParseFail msg fpos -> ParseFail msg fpos
+  let scan_pos = if pos > 0 then pos - 1 else pos in
+  match scan_prefixed_name_span input scan_pos with
+  | ParseOk pns _ ->
+    if pns.pns_local.sp_start = pos then
+      let trimmed_end = trim_trailing_dots_pos input pns.pns_local.sp_start pns.pns_local.sp_end in
+      let trimmed_span = { sp_start = pns.pns_local.sp_start; sp_end = trimmed_end } in
+      let local = span_to_string input trimmed_span in
+      if validate_pn_local local then
+        ParseOk local trimmed_end
+      else
+        ParseFail "invalid prefixed name local part" pos
     else
       ParseOk "" pos
+  | ParseFail _ _ -> ParseOk "" pos
 
 (* Full prefixed name: pname_ns + pn_local *)
 let parse_prefixed_name (input: string) (pos: nat) : parse_result (string & string) =
@@ -302,12 +453,16 @@ let parse_turtle_iri (st: turtle_state) (input: string) (pos: nat) : parse_resul
     let c = String.index input pos in
     let code = int_of_char c in
     if code = 0x3C then  (* '<' — full IRI, may be relative like <> *)
-      begin match parse_iri_raw input pos with
-      | ParseOk i pos' ->
-        (* Resolve relative IRI against base — empty string is valid in Turtle *)
-        let resolved = resolve_iri st i in
-        if is_iri resolved then ParseOk resolved pos'
-        else ParseFail "resolved IRI invalid" pos
+      begin match scan_iri_ref_span input pos with
+      | ParseOk sp pos' ->
+        let i = iri_ref_span_to_raw input sp in
+        if sp.irs_has_colon then
+          ParseOk i pos'
+        else
+          (* Resolve relative IRI against base — empty string is valid in Turtle *)
+          let resolved = resolve_iri_hint st i false in
+          if is_iri resolved then ParseOk resolved pos'
+          else ParseFail "resolved IRI invalid" pos
       | ParseFail msg fpos -> ParseFail msg fpos
       end
     else  (* Try prefixed name *)
@@ -325,7 +480,7 @@ let parse_turtle_iri (st: turtle_state) (input: string) (pos: nat) : parse_resul
 (* ================================================================ *)
 
 // Parse @prefix directive: @prefix prefix: <iri> .
-// Uses parse_iri_raw + resolve_iri to handle relative IRIs like <#> and <foo/>
+// Uses scanner span + resolve_iri to handle relative IRIs like <#> and <foo/>
 let parse_at_prefix (st: turtle_state) (input: string) (pos: nat) : parse_result (string & string) =
   match pstring "@prefix" input pos with
   | ParseOk _ pos1 ->
@@ -335,9 +490,10 @@ let parse_at_prefix (st: turtle_state) (input: string) (pos: nat) : parse_result
       | ParseOk ns pos3 ->
         begin match turtle_ws input pos3 with
         | ParseOk () pos4 ->
-          begin match parse_iri_raw input pos4 with
-          | ParseOk raw_iri pos5 ->
-            let iri_val = resolve_iri st raw_iri in
+          begin match scan_iri_ref_span input pos4 with
+          | ParseOk sp pos5 ->
+            let raw_iri = iri_ref_span_to_raw input sp in
+            let iri_val = resolve_iri_hint st raw_iri sp.irs_has_colon in
             begin match turtle_ws input pos5 with
             | ParseOk () pos6 ->
               let len = String.length input in
@@ -368,9 +524,10 @@ let parse_sparql_prefix (st: turtle_state) (input: string) (pos: nat) : parse_re
       | ParseOk ns pos3 ->
         begin match turtle_ws input pos3 with
         | ParseOk () pos4 ->
-          begin match parse_iri_raw input pos4 with
-          | ParseOk raw_iri pos5 ->
-            let iri_val = resolve_iri st raw_iri in
+          begin match scan_iri_ref_span input pos4 with
+          | ParseOk sp pos5 ->
+            let raw_iri = iri_ref_span_to_raw input sp in
+            let iri_val = resolve_iri_hint st raw_iri sp.irs_has_colon in
             ParseOk (ns, iri_val) pos5
           | ParseFail msg fpos -> ParseFail msg fpos
           end
@@ -386,9 +543,10 @@ let parse_at_base (st: turtle_state) (input: string) (pos: nat) : parse_result s
   | ParseOk _ pos1 ->
     begin match turtle_ws input pos1 with
     | ParseOk () pos2 ->
-      begin match parse_iri_raw input pos2 with
-      | ParseOk raw_iri pos3 ->
-        let iri_val = resolve_iri st raw_iri in
+      begin match scan_iri_ref_span input pos2 with
+      | ParseOk sp pos3 ->
+        let raw_iri = iri_ref_span_to_raw input sp in
+        let iri_val = resolve_iri_hint st raw_iri sp.irs_has_colon in
         begin match turtle_ws input pos3 with
         | ParseOk () pos4 ->
           let len = String.length input in
@@ -412,9 +570,10 @@ let parse_sparql_base (st: turtle_state) (input: string) (pos: nat) : parse_resu
   | ParseOk _ pos1 ->
     begin match turtle_ws input pos1 with
     | ParseOk () pos2 ->
-      begin match parse_iri_raw input pos2 with
-      | ParseOk raw_iri pos3 ->
-        let iri_val = resolve_iri st raw_iri in
+      begin match scan_iri_ref_span input pos2 with
+      | ParseOk sp pos3 ->
+        let raw_iri = iri_ref_span_to_raw input sp in
+        let iri_val = resolve_iri_hint st raw_iri sp.irs_has_colon in
         ParseOk iri_val pos3
       | ParseFail msg fpos -> ParseFail msg fpos
       end
@@ -705,11 +864,27 @@ let parse_turtle_string (input: string) (pos: nat) : parse_result string =
           let fuel = len - pos in
           parse_long_string_body (char_of_int 0x22) input (pos + 3) [] fuel
         else
-          (* Short double-quoted string — reuse N-Triples string parser *)
-          parse_string_literal input pos
+          begin match scan_short_string_span input pos with
+          | ParseOk sspan pos' ->
+            if int_of_char sspan.sss_quote = 0x22 then
+              ParseOk (span_to_string input sspan.sss_content) pos'
+            else
+              parse_string_literal input pos
+          | ParseFail _ _ ->
+            (* Short double-quoted string — fallback to full parser for escapes *)
+            parse_string_literal input pos
+          end
       else
         (* Too short for long — try short *)
-        parse_string_literal input pos
+        begin match scan_short_string_span input pos with
+        | ParseOk sspan pos' ->
+          if int_of_char sspan.sss_quote = 0x22 then
+            ParseOk (span_to_string input sspan.sss_content) pos'
+          else
+            parse_string_literal input pos
+        | ParseFail _ _ ->
+          parse_string_literal input pos
+        end
     else if code0 = 0x27 then  (* single quote *)
       if pos + 2 < len then
         let c1 = String.index input (pos + 1) in
@@ -719,12 +894,28 @@ let parse_turtle_string (input: string) (pos: nat) : parse_result string =
           let fuel = len - pos in
           parse_long_string_body (char_of_int 0x27) input (pos + 3) [] fuel
         else
-          (* Short single-quoted string *)
           let fuel = len - pos in
-          parse_single_string_body input (pos + 1) [] fuel
+          begin match scan_short_string_span input pos with
+          | ParseOk sspan pos' ->
+            if int_of_char sspan.sss_quote = 0x27 then
+              ParseOk (span_to_string input sspan.sss_content) pos'
+            else
+              parse_single_string_body input (pos + 1) [] fuel
+          | ParseFail _ _ ->
+            (* Short single-quoted string *)
+            parse_single_string_body input (pos + 1) [] fuel
+          end
       else
         let fuel = len - pos in
-        parse_single_string_body input (pos + 1) [] fuel
+        begin match scan_short_string_span input pos with
+        | ParseOk sspan pos' ->
+          if int_of_char sspan.sss_quote = 0x27 then
+            ParseOk (span_to_string input sspan.sss_content) pos'
+          else
+            parse_single_string_body input (pos + 1) [] fuel
+        | ParseFail _ _ ->
+          parse_single_string_body input (pos + 1) [] fuel
+        end
     else
       ParseFail "expected string literal" pos
 
@@ -967,7 +1158,7 @@ and parse_collection (st: turtle_state) (input: string) (pos: nat) (fuel: nat)
           begin match parse_collection_rest st2 node_subj input pos2 (fuel - 1) with
           | ParseOk (rest_triples, rest_term, st3) pos3 ->
             let rest_triple : triple = { s = node_subj; p = rdf_rest_iri; o = rest_term } in
-            let all_triples = first_obj.or_triples @ [first_triple; rest_triple] @ rest_triples in
+            let all_triples = append_list first_obj.or_triples (first_triple :: rest_triple :: rest_triples) in
             ParseOk ({ or_term = T_BNode node_id; or_triples = all_triples; or_state = st3 }) pos3
           | ParseFail msg fpos -> ParseFail msg fpos
           end
@@ -995,7 +1186,7 @@ and parse_collection_rest (st: turtle_state) (prev_subj: subject) (input: string
           begin match parse_collection_rest st2 node_subj input pos2 (fuel - 1) with
           | ParseOk (rest_triples, rest_term, st3) pos3 ->
             let rest_triple : triple = { s = node_subj; p = rdf_rest_iri; o = rest_term } in
-            let all_triples = next_obj.or_triples @ [first_triple; rest_triple] @ rest_triples in
+            let all_triples = append_list next_obj.or_triples (first_triple :: rest_triple :: rest_triples) in
             ParseOk (all_triples, T_BNode node_id, st3) pos3
           | ParseFail msg fpos -> ParseFail msg fpos
           end
@@ -1003,14 +1194,15 @@ and parse_collection_rest (st: turtle_state) (prev_subj: subject) (input: string
         end
 
 (* Parse object list: object (',' object)* *)
-and parse_object_list (st: turtle_state) (subj: subject) (pred: wf_iri) (input: string) (pos: nat) (fuel: nat)
+and parse_object_list_rev (st: turtle_state) (subj: subject) (pred: wf_iri) (input: string) (pos: nat)
+    (acc_rev: list triple) (fuel: nat)
   : Tot (parse_result (list triple & turtle_state)) (decreases fuel) =
   if fuel = 0 then ParseFail "recursion limit in object list" pos
   else
     begin match parse_turtle_object st input pos (fuel - 1) with
     | ParseOk obj_res pos1 ->
       let t : triple = { s = subj; p = pred; o = obj_res.or_term } in
-      let triples1 = obj_res.or_triples @ [t] in
+      let acc_rev1 = t :: rev_prepend obj_res.or_triples acc_rev in
       (* Check for comma *)
       begin match turtle_ws input pos1 with
       | ParseOk () pos2 ->
@@ -1019,15 +1211,20 @@ and parse_object_list (st: turtle_state) (subj: subject) (pred: wf_iri) (input: 
           (* More objects *)
           begin match turtle_ws input (pos2 + 1) with
           | ParseOk () pos3 ->
-            begin match parse_object_list obj_res.or_state subj pred input pos3 (fuel - 1) with
-            | ParseOk (more_triples, st2) pos4 ->
-              ParseOk (triples1 @ more_triples, st2) pos4
-            | ParseFail msg fpos -> ParseFail msg fpos
-            end
+            parse_object_list_rev obj_res.or_state subj pred input pos3 acc_rev1 (fuel - 1)
           end
         else
-          ParseOk (triples1, obj_res.or_state) pos2
+          ParseOk (acc_rev1, obj_res.or_state) pos2
       end
+    | ParseFail msg fpos -> ParseFail msg fpos
+    end
+
+and parse_object_list (st: turtle_state) (subj: subject) (pred: wf_iri) (input: string) (pos: nat) (fuel: nat)
+  : Tot (parse_result (list triple & turtle_state)) (decreases fuel) =
+  if fuel = 0 then ParseFail "recursion limit in object list" pos
+  else
+    begin match parse_object_list_rev st subj pred input pos [] (fuel - 1) with
+    | ParseOk (triples_rev, st') pos' -> ParseOk (List.Tot.rev triples_rev, st') pos'
     | ParseFail msg fpos -> ParseFail msg fpos
     end
 
@@ -1048,7 +1245,8 @@ and parse_turtle_predicate (st: turtle_state) (input: string) (pos: nat) (fuel: 
       end
 
 (* Parse predicate-object list: predicate objectList (';' predicate objectList)* ';'? *)
-and parse_predicate_object_list (st: turtle_state) (subj: subject) (input: string) (pos: nat) (fuel: nat)
+and parse_predicate_object_list_rev (st: turtle_state) (subj: subject) (input: string) (pos: nat)
+    (acc_rev: list triple) (fuel: nat)
   : Tot (parse_result (list triple & turtle_state)) (decreases fuel) =
   if fuel = 0 then ParseFail "recursion limit in predicate-object list" pos
   else
@@ -1056,8 +1254,9 @@ and parse_predicate_object_list (st: turtle_state) (subj: subject) (input: strin
     | ParseOk pred pos1 ->
       begin match turtle_ws input pos1 with
       | ParseOk () pos2 ->
-        begin match parse_object_list st subj pred input pos2 (fuel - 1) with
-        | ParseOk (triples1, st1) pos3 ->
+        begin match parse_object_list_rev st subj pred input pos2 [] (fuel - 1) with
+        | ParseOk (triples1_rev, st1) pos3 ->
+          let acc_rev1 = append_list triples1_rev acc_rev in
           (* Check for semicolon *)
           begin match turtle_ws input pos3 with
           | ParseOk () pos4 ->
@@ -1068,7 +1267,7 @@ and parse_predicate_object_list (st: turtle_state) (subj: subject) (input: strin
               | ParseOk () pos5 ->
                 (* Check if there's another predicate or just trailing semicolons *)
                 if pos5 >= len then
-                  ParseOk (triples1, st1) pos5
+                  ParseOk (acc_rev1, st1) pos5
                 else
                   let nc = String.index input pos5 in
                   let ncode = int_of_char nc in
@@ -1076,19 +1275,15 @@ and parse_predicate_object_list (st: turtle_state) (subj: subject) (input: strin
                     (* End of predicate-object list (dot, close bracket, or another semicolon) *)
                     if ncode = 0x3B then
                       (* Skip additional trailing semicolons *)
-                      parse_trailing_semicolons st1 triples1 subj input pos5 (fuel - 1)
+                      parse_trailing_semicolons_rev st1 acc_rev1 subj input pos5 (fuel - 1)
                     else
-                      ParseOk (triples1, st1) pos5
+                      ParseOk (acc_rev1, st1) pos5
                   else
                     (* Another predicate-object pair *)
-                    begin match parse_predicate_object_list st1 subj input pos5 (fuel - 1) with
-                    | ParseOk (more_triples, st2) pos6 ->
-                      ParseOk (triples1 @ more_triples, st2) pos6
-                    | ParseFail msg fpos -> ParseFail msg fpos
-                    end
+                    parse_predicate_object_list_rev st1 subj input pos5 acc_rev1 (fuel - 1)
               end
             else
-              ParseOk (triples1, st1) pos4
+              ParseOk (acc_rev1, st1) pos4
           end
         | ParseFail msg fpos -> ParseFail msg fpos
         end
@@ -1096,35 +1291,44 @@ and parse_predicate_object_list (st: turtle_state) (subj: subject) (input: strin
     | ParseFail msg fpos -> ParseFail msg fpos
     end
 
+and parse_predicate_object_list (st: turtle_state) (subj: subject) (input: string) (pos: nat) (fuel: nat)
+  : Tot (parse_result (list triple & turtle_state)) (decreases fuel) =
+  if fuel = 0 then ParseFail "recursion limit in predicate-object list" pos
+  else
+    begin match parse_predicate_object_list_rev st subj input pos [] (fuel - 1) with
+    | ParseOk (triples_rev, st') pos' -> ParseOk (List.Tot.rev triples_rev, st') pos'
+    | ParseFail msg fpos -> ParseFail msg fpos
+    end
+
 (* Skip trailing semicolons: ; ; ; before . or ] *)
-and parse_trailing_semicolons (st: turtle_state) (triples: list triple) (subj: subject)
+and parse_trailing_semicolons_rev (st: turtle_state) (triples_rev: list triple) (subj: subject)
     (input: string) (pos: nat) (fuel: nat)
   : Tot (parse_result (list triple & turtle_state)) (decreases fuel) =
-  if fuel = 0 then ParseOk (triples, st) pos
+  if fuel = 0 then ParseOk (triples_rev, st) pos
   else
     let len = String.length input in
-    if pos >= len then ParseOk (triples, st) pos
+    if pos >= len then ParseOk (triples_rev, st) pos
     else
       let c = String.index input pos in
       if int_of_char c = 0x3B then
         begin match turtle_ws input (pos + 1) with
         | ParseOk () pos2 ->
-          if pos2 >= len then ParseOk (triples, st) pos2
+          if pos2 >= len then ParseOk (triples_rev, st) pos2
           else
             let nc = String.index input pos2 in
             let ncode = int_of_char nc in
             if ncode = 0x2E || ncode = 0x5D || ncode = 0x3B then
-              parse_trailing_semicolons st triples subj input pos2 (fuel - 1)
+              parse_trailing_semicolons_rev st triples_rev subj input pos2 (fuel - 1)
             else
               (* Another predicate-object pair after semicolons *)
-              begin match parse_predicate_object_list st subj input pos2 (fuel - 1) with
-              | ParseOk (more_triples, st2) pos3 ->
-                ParseOk (triples @ more_triples, st2) pos3
+              begin match parse_predicate_object_list_rev st subj input pos2 [] (fuel - 1) with
+              | ParseOk (more_triples_rev, st2) pos3 ->
+                ParseOk (append_list more_triples_rev triples_rev, st2) pos3
               | ParseFail msg fpos -> ParseFail msg fpos
               end
         end
       else
-        ParseOk (triples, st) pos
+        ParseOk (triples_rev, st) pos
 
 (* Parse a Turtle subject: IRI, blank node, prefixed name, anonymous [], or collection () *)
 let parse_turtle_subject (st: turtle_state) (input: string) (pos: nat) (fuel: nat)
@@ -1248,9 +1452,10 @@ let parse_turtle_statement (st: turtle_state) (input: string) (pos: nat) (fuel: 
                     // Blank node property list as sole statement is valid without dot.
                     ParseOk (subj_res.sr_triples, subj_res.sr_state) pos3
                   else
-                    begin match parse_predicate_object_list subj_res.sr_state subj_res.sr_subject input pos3 (fuel - 1) with
+                    let next_fuel : nat = if fuel >= 1 then fuel - 1 else 0 in
+                    begin match parse_predicate_object_list subj_res.sr_state subj_res.sr_subject input pos3 next_fuel with
                     | ParseOk (po_triples, st2) pos4 ->
-                      let all_triples = subj_res.sr_triples @ po_triples in
+                      let all_triples = append_list subj_res.sr_triples po_triples in
                       // Expect '.'
                       begin match turtle_ws input pos4 with
                       | ParseOk () pos5 ->
@@ -1278,32 +1483,69 @@ noeq type turtle_doc_result = {
   tdr_has_error: bool;
 }
 
+let finish_turtle_doc (st: turtle_state) (acc: list triple) (has_error: bool) : turtle_doc_result = {
+  tdr_triples = List.Tot.rev acc;
+  tdr_state = st;
+  tdr_has_error = has_error;
+}
+
+let rec count_triples (ts: list triple) : Tot nat (decreases ts) =
+  match ts with
+  | [] -> 0
+  | _ :: rest -> 1 + count_triples rest
+
 // Parse the full Turtle document: sequence of statements
 let rec parse_turtle_doc (st: turtle_state) (input: string) (pos: nat)
     (acc: list triple) (has_error: bool) (fuel: nat)
   : Tot turtle_doc_result (decreases fuel) =
-  if fuel = 0 then { tdr_triples = List.Tot.rev acc; tdr_state = st; tdr_has_error = has_error }
+  if fuel = 0 then finish_turtle_doc st acc has_error
   else
+    let next_fuel : nat = if fuel >= 1 then fuel - 1 else 0 in
     let len = String.length input in
     match turtle_ws input pos with
     | ParseOk () pos1 ->
-      if pos1 >= len then { tdr_triples = List.Tot.rev acc; tdr_state = st; tdr_has_error = has_error }
+      if pos1 >= len then finish_turtle_doc st acc has_error
       else
         begin match parse_turtle_statement st input pos1 fuel with
         | ParseOk (triples, st') pos2 ->
           if pos2 = pos1 then
             // No progress -- stop
-            { tdr_triples = List.Tot.rev ((List.Tot.rev triples) @ acc);
-              tdr_state = st'; tdr_has_error = has_error }
+            finish_turtle_doc st' (rev_prepend triples acc) has_error
           else
-            parse_turtle_doc st' input pos2 ((List.Tot.rev triples) @ acc) has_error (fuel - 1)
+            parse_turtle_doc st' input pos2 (rev_prepend triples acc) has_error next_fuel
         | ParseFail _ _ ->
           // Skip to next line on failure, mark error
           let pos2 = skip_to_eol input pos1 (len - pos1) in
           if pos2 = pos1 then
-            { tdr_triples = List.Tot.rev acc; tdr_state = st; tdr_has_error = true }
+            finish_turtle_doc st acc true
           else
-            parse_turtle_doc st input pos2 acc true (fuel - 1)
+            parse_turtle_doc st input pos2 acc true next_fuel
+        end
+
+let rec parse_turtle_count_doc (st: turtle_state) (input: string) (pos: nat)
+    (acc: nat) (has_error: bool) (fuel: nat)
+  : Tot (nat & bool) (decreases fuel) =
+  if fuel = 0 then (acc, has_error)
+  else
+    let fuel' : nat = if fuel >= 1 then fuel - 1 else 0 in
+    let len = String.length input in
+    match turtle_ws input pos with
+    | ParseOk () pos1 ->
+      if pos1 >= len then (acc, has_error)
+      else
+        begin match parse_turtle_statement st input pos1 fuel with
+        | ParseOk (triples, st') pos2 ->
+          let acc1 = acc + count_triples triples in
+          if pos2 = pos1 then
+            (acc1, has_error)
+          else
+            parse_turtle_count_doc st' input pos2 acc1 has_error fuel'
+        | ParseFail _ _ ->
+          let pos2 = skip_to_eol input pos1 (len - pos1) in
+          if pos2 = pos1 then
+            (acc, true)
+          else
+            parse_turtle_count_doc st input pos2 acc true fuel'
         end
 
 (* ================================================================ *)
@@ -1323,6 +1565,19 @@ let parse_turtle_with_base (input: string) (base: string) : list triple =
   let st = { empty_turtle_state with base_iri = base } in
   let r = parse_turtle_doc st input 0 [] false fuel in
   r.tdr_triples
+
+let count_turtle_triples (input: string) : nat =
+  let len = String.length input in
+  let fuel = (len + 1) `op_Multiply` 2 in
+  let (count, _) = parse_turtle_count_doc empty_turtle_state input 0 0 false fuel in
+  count
+
+let count_turtle_triples_with_base (input: string) (base: string) : nat =
+  let len = String.length input in
+  let fuel = (len + 1) `op_Multiply` 2 in
+  let st = { empty_turtle_state with base_iri = base } in
+  let (count, _) = parse_turtle_count_doc st input 0 0 false fuel in
+  count
 
 // Strict: returns None if any parse errors were encountered
 let parse_turtle_strict (input: string) : option (list triple) =

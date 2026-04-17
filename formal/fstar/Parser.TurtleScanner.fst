@@ -99,14 +99,14 @@ let hex_digit_value (c: char) : nat =
   else 0
 
 // F* 2026.03.24 requires bounds preconditions and explicit op_Multiply for nat
-let decode_hex4 (input: string) (pos: nat{pos + 4 <= String.length input}) : int =
+let decode_hex4 (input: string) (pos: nat{pos + 4 <= String.length input}) : nat =
   let d0 = hex_digit_value (String.index input pos) in
   let d1 = hex_digit_value (String.index input (pos + 1)) in
   let d2 = hex_digit_value (String.index input (pos + 2)) in
   let d3 = hex_digit_value (String.index input (pos + 3)) in
   op_Multiply d0 4096 + op_Multiply d1 256 + op_Multiply d2 16 + d3
 
-let decode_hex8 (input: string) (pos: nat{pos + 8 <= String.length input}) : int =
+let decode_hex8 (input: string) (pos: nat{pos + 8 <= String.length input}) : nat =
   let d0 = hex_digit_value (String.index input pos) in
   let d1 = hex_digit_value (String.index input (pos + 1)) in
   let d2 = hex_digit_value (String.index input (pos + 2)) in

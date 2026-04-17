@@ -148,7 +148,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
   # Build w3c_runner bytecode for js_of_ocaml
   ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
     RDF_Graph_Executable.ml \
-    Parser_Combinators.ml Parser_NTriples.ml Parser_Turtle.ml \
+    Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
     SPARQL11_Algebra.ml SPARQL11_Parser.ml \
