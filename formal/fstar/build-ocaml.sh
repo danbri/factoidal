@@ -17,7 +17,18 @@
 #   ./build-ocaml.sh extract  # F* extraction only
 #   ./build-ocaml.sh compile  # compile OCaml only (skip extraction)
 #   ./build-ocaml.sh js       # js_of_ocaml only (skip extraction+compile)
+#   ./build-ocaml.sh wasm     # wasm_of_ocaml only (experimental; needs stubs)
 #   ./build-ocaml.sh test     # run native tests only
+#
+# The wasm target produces a working .wasm + loader .js under
+# docs/fstar-extracted/w3c-runner.wasm.{js,assets}/. The artifact compiles
+# but does not yet run: fstar.lib transitively depends on stdint, sha,
+# digestif, and zarith, whose C primitives (int40_of_int, ml_z_*,
+# caml_digestif_*, stub_sha*, ~60 in total) have no JS shim in the
+# wasm_of_ocaml runtime. wasm_of_ocaml emits throwing stubs for them, and
+# initialization calls int40_of_int almost immediately. To get a running
+# wasm binary we need to write JS shims for those primitives (or narrow the
+# OCaml linkage so they aren't pulled in).
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -165,6 +176,44 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
 
   echo "  Built: docs/fstar-extracted/w3c-runner.js ($(wc -c < ../../../docs/fstar-extracted/w3c-runner.js) bytes)"
 
+  cd ..
+  echo ""
+fi
+
+# Step 5: Build WebAssembly via wasm_of_ocaml (experimental)
+# Produces an artifact even though it won't run without extra JS stubs —
+# see the header comment for the list of missing primitives.
+if [[ "$STEP" == "wasm" ]]; then
+  echo "--- Step 5: OCaml → WebAssembly (wasm_of_ocaml, experimental) ---"
+  if ! command -v wasm_of_ocaml >/dev/null 2>&1; then
+    echo "  wasm_of_ocaml not on PATH; install with 'opam install wasm_of_ocaml-compiler'"
+    exit 1
+  fi
+  mkdir -p "$JSDIR"
+  cd "$OUTDIR"
+  if [[ ! -f w3c_runner.byte ]]; then
+    echo "  w3c_runner.byte missing — run './build-ocaml.sh js' first to build bytecode."
+    exit 1
+  fi
+  WASM_RC=0
+  wasm_of_ocaml compile \
+    +zarith_stubs_js/biginteger.js \
+    +zarith_stubs_js/runtime.js \
+    fstar_int_stubs.js \
+    w3c_runner.byte \
+    -o ../../../docs/fstar-extracted/w3c-runner.wasm.js 2>&1 \
+    | grep -v "Warning \[deprecated" | grep -v "^$" || WASM_RC=$?
+  if [[ -f ../../../docs/fstar-extracted/w3c-runner.wasm.js ]]; then
+    LOADER_BYTES=$(wc -c < ../../../docs/fstar-extracted/w3c-runner.wasm.js)
+    WASM_FILE=$(ls -1 ../../../docs/fstar-extracted/w3c-runner.wasm.assets/*.wasm 2>/dev/null | head -n 1 || true)
+    if [[ -n "$WASM_FILE" ]]; then
+      WASM_BYTES=$(wc -c < "$WASM_FILE")
+      echo "  Built: docs/fstar-extracted/w3c-runner.wasm.js ($LOADER_BYTES bytes) + $(basename "$WASM_FILE") ($WASM_BYTES bytes)"
+    else
+      echo "  Built: docs/fstar-extracted/w3c-runner.wasm.js ($LOADER_BYTES bytes) — no .wasm asset"
+    fi
+    echo "  NOTE: binary will throw at startup — see build-ocaml.sh header for missing primitives."
+  fi
   cd ..
   echo ""
 fi
