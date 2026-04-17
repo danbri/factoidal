@@ -212,6 +212,19 @@ Previous Claude sessions made these errors. Read and internalize:
     process via SIGPIPE once N lines are emitted, so later output (including
     summary lines) is lost entirely.
 
+17. **Letting ad-hoc tests hang indefinitely.** The Turtle parser is known to
+    be slow on large inputs (a 35MB file ran past 6 minutes and never
+    terminated in a previous session). When running an ad-hoc `factoidal
+    --count`, `factoidal --dump`, or SPARQL eval on a file that isn't part
+    of the W3C test suite, **always set a wall-clock cap of 10 minutes
+    (600000ms) or less** via the Bash tool's `timeout` parameter or
+    `timeout 600 <cmd>`. If the cap trips, **kill the process and shrink
+    the input** — don't just rerun and hope. The W3C test files are
+    individually tiny, so the suite itself doesn't hit this; the trap is
+    benchmarks and real-world user data. If you genuinely need a longer
+    run (e.g. deliberate scaling test), say so explicitly and use
+    `run_in_background: true` so the main loop isn't blocked.
+
 ## Current State (Honest Assessment)
 
 ### F\* Specifications
