@@ -276,6 +276,8 @@ functions.
 | z3 | SMT solver (F\* uses it) | `opam install z3` or [binary release](https://github.com/Z3Prover/z3/releases) | `brew install z3` or [binary release](https://github.com/Z3Prover/z3/releases) |
 | zarith | OCaml bigint library | `opam install zarith` | `opam install zarith` |
 | sha, digestif | Hash functions (MD5/SHA) | `opam install sha digestif` | `opam install sha digestif` |
+| js_of_ocaml, zarith_stubs_js | JavaScript extraction (optional) | `opam install js_of_ocaml zarith_stubs_js` | same |
+| wasm_of_ocaml-compiler, binaryen | WebAssembly extraction (optional) | `apt-get install binaryen && opam install wasm_of_ocaml-compiler` | `brew install binaryen && opam install wasm_of_ocaml-compiler` |
 
 ### Build steps
 
@@ -348,16 +350,49 @@ factoidal/
 
 ## W3C Conformance Status
 
-**SPARQL 1.1**: 375 pass / 43 fail / 205 skip (UPDATE) / 8 unsupported — 90% of applicable tests
+**SPARQL 1.1**: 379 pass / 38 fail / 205 skip (UPDATE) / 9 unsupported — 91% of applicable tests
 
-Strong areas: aggregates (45/46), functions (74/75), bind (10/10), negation
-(11/12), property paths (33/33), subqueries (9/12), project-expression (7/7),
+Strong areas: aggregates (46/46), functions (74/75), bind (10/10), negation
+(11/12), property paths (33/33), subqueries (12/14), project-expression (7/7),
 exists (6/6), grouping (6/6), CSV/TSV/JSON results (10/10).
 
-**RDF 1.1 Parsing**: 888 pass / 143 fail across N-Triples, Turtle, N-Quads,
+**RDF 1.1 Parsing**: 890 pass / 141 fail across N-Triples, Turtle, N-Quads,
 TriG, RDF/XML, and model theory suites (39/39 rdf-mt).
 
 See [CLAUDE.md](CLAUDE.md) for a detailed breakdown and known gaps.
+
+## Browser / Node builds
+
+The same F\* source is extracted once and compiled for three runtimes:
+
+| Target | Where | Toolchain | Status |
+|---|---|---|---|
+| Native | `bin/<platform>/` | `ocamlfind ocamlc` | full W3C pass counts |
+| JavaScript | `docs/fstar-extracted/w3c-runner.js` | js_of_ocaml | runs in any browser or Node |
+| WebAssembly | `docs/fstar-extracted/w3c-runner.wasm.js` + `.wasm.assets/` | wasm_of_ocaml | needs Wasm-GC (Chrome ≥ 119, Node ≥ 22); 17/18 SPARQL suites reproduce native |
+
+```bash
+cd formal/fstar
+./build-ocaml.sh           # native + JS
+./build-ocaml.sh wasm      # WebAssembly (needs wasm_of_ocaml-compiler + binaryen)
+```
+
+Try the wasm build from Node:
+
+```bash
+cd docs/fstar-extracted
+node w3c-runner.wasm.js bind    # 10/10 pass, identical to native
+```
+
+Both browser artifacts are rebuilt by CI on every push and served from the
+[GitHub Pages site](https://danbri.github.io/factoidal/fstar-extracted/).
+
+The Wasm build links a vendored copy of
+[zarith\_stubs\_js](https://github.com/janestreet/zarith_stubs_js)'s
+`runtime.wat` + `runtime_wasm.js` (bridges `ml_z_*` via JavaScript BigInt).
+The `functions` SPARQL suite currently crashes under Wasm because the
+MD5/SHA builtins go through `stub_sha*`/`caml_digestif_*` C stubs that don't
+yet have equivalent Wasm bindings.
 
 ## Architecture
 
@@ -367,11 +402,9 @@ F* formal spec (the product)
     ▼
 fstar.exe --codegen OCaml (extraction, proof-erased)
     │
-    ▼
-OCaml binaries (factoidal CLI + W3C test runner)
-    │
-    ├── factoidal: SPARQL queries + RDF parsing from the command line
-    └── w3c_runner: W3C conformance test suite runner
+    ├── ocamlfind ocamlc  → bin/<platform>/{factoidal, w3c_runner}  (native)
+    ├── js_of_ocaml       → docs/fstar-extracted/w3c-runner.js
+    └── wasm_of_ocaml     → docs/fstar-extracted/w3c-runner.wasm.{js,assets/}
 ```
 
 All RDF parsing, SPARQL parsing, and query evaluation is performed by

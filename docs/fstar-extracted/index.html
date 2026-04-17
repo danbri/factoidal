@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Factoidal browser build — F* extracted to JS / Wasm</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; max-width: 780px; margin: 2em auto; padding: 0 1em; line-height: 1.55; color: #222; }
+  h1 { border-bottom: 2px solid #2d6a4f; padding-bottom: 0.3em; }
+  code, pre { background: #f4f4f4; border-radius: 3px; }
+  code { padding: 0 0.3em; font-size: 0.92em; }
+  pre { padding: 0.9em 1em; overflow-x: auto; }
+  .artifact { padding: 0.5em 0.8em; background: #f8f8f8; border-left: 3px solid #2d6a4f; margin: 0.6em 0; }
+  a { color: #2d6a4f; }
+  table { border-collapse: collapse; margin: 1em 0; }
+  th, td { padding: 0.3em 0.7em; border: 1px solid #ddd; }
+  th { background: #f2f2f2; }
+</style>
+</head>
+<body>
+<p><a href="../">&larr; Factoidal docs</a></p>
+
+<h1>Browser build: F* extracted to JS and Wasm</h1>
+
+<p>
+  The F* specifications in <code>formal/fstar/*.fst</code> are extracted to OCaml,
+  then compiled to JavaScript (via <a href="https://ocsigen.org/js_of_ocaml/">js_of_ocaml</a>)
+  and to WebAssembly (via <a href="https://ocaml.org/p/wasm_of_ocaml-compiler/latest">wasm_of_ocaml</a>).
+  Both artifacts ship from this directory.
+</p>
+
+<div class="artifact">
+  <strong>JavaScript:</strong> <a href="w3c-runner.js">w3c-runner.js</a> — self-contained, ~400 KB.
+  Runs in any modern browser or Node.
+</div>
+
+<div class="artifact">
+  <strong>WebAssembly:</strong> <a href="w3c-runner.wasm.js">w3c-runner.wasm.js</a>
+  (loader, ~45 KB) + <a href="w3c-runner.wasm.assets/">w3c-runner.wasm.assets/</a>
+  (the .wasm binary, ~400 KB). Needs a Wasm-GC-capable engine — Chrome ≥ 119
+  or Node ≥ 22. Does <em>not</em> run in Firefox yet (Wasm-GC still flagged).
+</div>
+
+<h2>Running from the command line</h2>
+
+<p>
+  The quickest way to exercise the artifacts is with Node from a checkout
+  where the W3C test submodule is initialised:
+</p>
+
+<pre><code>git clone --recurse-submodules https://github.com/danbri/factoidal.git
+cd factoidal/docs/fstar-extracted
+node w3c-runner.wasm.js bind
+# or the JS variant:
+node w3c-runner.js bind</code></pre>
+
+<h2>What runs under Wasm today</h2>
+
+<p>
+  17 of the 18 SPARQL query/syntax suites and all RDF parser suites
+  reproduce the native-binary results when run via <code>node w3c-runner.wasm.js</code>.
+  The one suite that currently crashes under Wasm is <code>functions</code>,
+  because the SHA/MD5 hash builtins go through C primitives
+  (<code>stub_sha*</code>, <code>caml_digestif_*</code>) that don't yet have
+  Wasm-side bindings. Zarith's <code>ml_z_*</code> primitives <em>do</em> work,
+  via the <code>runtime.wat</code> / <code>runtime_wasm.js</code> pair shipped
+  by <a href="https://github.com/janestreet/zarith_stubs_js">zarith_stubs_js</a>
+  v0.17+ (vendored under
+  <a href="https://github.com/danbri/factoidal/tree/claude/main/formal/fstar/ocaml-output/wasm_runtime"><code>formal/fstar/ocaml-output/wasm_runtime/</code></a>).
+</p>
+
+<h2>Build pipeline</h2>
+
+<pre><code>F* .fst  ──fstar.exe --codegen OCaml──►  ocaml-output/*.ml
+                                         │
+                                         ├──ocamlfind ocamlc──►  bin/&lt;platform&gt;/w3c_runner   (native)
+                                         │
+                                         ├──js_of_ocaml──────►   docs/fstar-extracted/w3c-runner.js
+                                         │
+                                         └──wasm_of_ocaml────►   docs/fstar-extracted/w3c-runner.wasm.{js,assets/}
+</code></pre>
+
+<p>
+  See <a href="https://github.com/danbri/factoidal/blob/claude/main/formal/fstar/build-ocaml.sh"><code>formal/fstar/build-ocaml.sh</code></a>
+  for the exact invocation.
+</p>
+
+<h2>Browser demo</h2>
+
+<p>
+  A minimal interactive demo (load a .ttl file, run a SPARQL query, show
+  results) is a natural next step but isn't wired up yet. The artifact
+  is ready for any page that wants to embed it — import the loader,
+  pass it command-line-style arguments, and read stdout/stderr.
+</p>
+
+</body>
+</html>
