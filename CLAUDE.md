@@ -212,6 +212,55 @@ Previous Claude sessions made these errors. Read and internalize:
     process via SIGPIPE once N lines are emitted, so later output (including
     summary lines) is lost entirely.
 
+17. **Letting ad-hoc tests hang indefinitely.** The Turtle parser is known to
+    be slow on large inputs (a 35MB file ran past 6 minutes and never
+    terminated in a previous session). When running an ad-hoc `factoidal
+    --count`, `factoidal --dump`, or SPARQL eval on a file that isn't part
+    of the W3C test suite, **always set a wall-clock cap of 10 minutes
+    (600000ms) or less** via the Bash tool's `timeout` parameter or
+    `timeout 600 <cmd>`. If the cap trips, **kill the process and shrink
+    the input** — don't just rerun and hope. The W3C test files are
+    individually tiny, so the suite itself doesn't hit this; the trap is
+    benchmarks and real-world user data. If you genuinely need a longer
+    run (e.g. deliberate scaling test), say so explicitly and use
+    `run_in_background: true` so the main loop isn't blocked.
+
+## Known Performance Issues
+
+### Turtle parser is too slow for real-world input
+
+Measured on 2026-04-17 after the ballyhoo Parser.TurtleScanner integration:
+
+| N triples | File size | Time |
+|-----------|-----------|------|
+| 1,000     | 56 KB     | 25 seconds |
+| 10,000    | 576 KB    | > 8 minutes (killed) |
+| ~700,000  | 35.8 MB   | > 6 minutes (never observed to finish) |
+
+The scanner integration (span-based tokens, ASCII fast path, tail-recursive
+list accumulation via `rev_prepend`) helped vs. the pre-ballyhoo parser, but
+the per-triple constant is still on the order of 25 ms for short triples —
+roughly 40 triples/s. Scaling to 10k triples appears super-linear, suggesting
+an `O(n*k)` or worse path somewhere beneath F*'s extraction (likely in the
+`FStar_String.sub` / `Z.t` arithmetic that gets threaded through every char
+operation).
+
+**Working around this:**
+- For real data (tens of MB+), use the HDT or COTTAS binary backends
+  (`Parser.BallyhooHDT`, `Parser.BallyhooCOTTAS`, already on main). These
+  bypass Turtle parsing entirely.
+- The architectural path in `docs/designissues/turtle-text-scanner.md`
+  still has steps 4 (chunk-resumable scanning) and 5 (revisit doc-level
+  parsing) as future work. Chunk-resumable won't fix the per-char
+  constant, but may unlock streaming/incremental use.
+- Solving this may ultimately require either (a) replacing hot extracted
+  string primitives with direct OCaml Bytes operations (via a narrow
+  `assume val` boundary), or (b) a hand-written non-F* tokenizer that
+  feeds the verified grammar layer. Both would require per-project-rule
+  discussion since they weaken the verified surface.
+
+Ad-hoc parse tests MUST be capped at 10 minutes per rule #17 above.
+
 ## Current State (Honest Assessment)
 
 ### F\* Specifications

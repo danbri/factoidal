@@ -17,7 +17,29 @@
 #   ./build-ocaml.sh extract  # F* extraction only
 #   ./build-ocaml.sh compile  # compile OCaml only (skip extraction)
 #   ./build-ocaml.sh js       # js_of_ocaml only (skip extraction+compile)
+#   ./build-ocaml.sh wasm     # wasm_of_ocaml only (experimental; needs stubs)
 #   ./build-ocaml.sh test     # run native tests only
+#
+# The wasm target produces a .wasm + loader .js under
+# docs/fstar-extracted/w3c-runner.wasm.{js,assets}/.
+#
+# For the wasm build to actually *run*, wasm_of_ocaml needs JS+WAT
+# bindings for the external C primitives that fstar.lib transitively
+# pulls in (stdint, zarith, sha, digestif). js_of_ocaml's JS stubs are
+# not enough: wasm_of_ocaml-specific primitives live in .wat +
+# runtime_wasm.js files (see janestreet/zarith_stubs_js's dune stanza
+# `(wasm_of_ocaml (wasm_files runtime_wasm.js runtime.wat))`). Our
+# installed opam zarith_stubs_js v0.16.1 doesn't ship those yet — they
+# arrived in v0.17 — so we vendor them under
+# ocaml-output/wasm_runtime/ and link them explicitly here.
+#
+# Status after the wasm_runtime link + wasm_stub_shims.py post-processor:
+# most SPARQL suites run identically to the native binary (bind 10/10,
+# bindings 10/10, aggregates 46/46, exists 6/6, property-path ~29/33,
+# syntax-query 93/94, subquery 12/14, etc.). Suites that invoke
+# SHA/MD5 (the `functions` suite's hash tests) still crash with
+# "illegal cast" because stub_sha*/caml_digestif_* have no real
+# binding — fix is to vendor or write wasm-side shims for those too.
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -148,7 +170,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
   # Build w3c_runner bytecode for js_of_ocaml
   ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
     RDF_Graph_Executable.ml \
-    Parser_Combinators.ml Parser_NTriples.ml Parser_Turtle.ml \
+    Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
     SPARQL11_Algebra.ml SPARQL11_Parser.ml \
@@ -165,6 +187,49 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
 
   echo "  Built: docs/fstar-extracted/w3c-runner.js ($(wc -c < ../../../docs/fstar-extracted/w3c-runner.js) bytes)"
 
+  cd ..
+  echo ""
+fi
+
+# Step 5: Build WebAssembly via wasm_of_ocaml (experimental)
+# Produces an artifact even though it won't run without extra JS stubs —
+# see the header comment for the list of missing primitives.
+if [[ "$STEP" == "wasm" ]]; then
+  echo "--- Step 5: OCaml → WebAssembly (wasm_of_ocaml, experimental) ---"
+  if ! command -v wasm_of_ocaml >/dev/null 2>&1; then
+    echo "  wasm_of_ocaml not on PATH; install with 'opam install wasm_of_ocaml-compiler'"
+    exit 1
+  fi
+  mkdir -p "$JSDIR"
+  cd "$OUTDIR"
+  if [[ ! -f w3c_runner.byte ]]; then
+    echo "  w3c_runner.byte missing — run './build-ocaml.sh js' first to build bytecode."
+    exit 1
+  fi
+  WASM_RC=0
+  wasm_of_ocaml compile \
+    +zarith_stubs_js/biginteger.js \
+    +zarith_stubs_js/runtime.js \
+    wasm_runtime/zarith_runtime_wasm.js \
+    wasm_runtime/zarith_runtime.wat \
+    fstar_int_stubs.js \
+    w3c_runner.byte \
+    -o ../../../docs/fstar-extracted/w3c-runner.wasm.js 2>&1 \
+    | grep -v "Warning \[deprecated" | grep -v "^$" || WASM_RC=$?
+  if [[ -f ../../../docs/fstar-extracted/w3c-runner.wasm.js ]]; then
+    # Patch the throwing stubs so init survives.
+    python3 wasm_stub_shims.py ../../../docs/fstar-extracted/w3c-runner.wasm.js
+
+    LOADER_BYTES=$(wc -c < ../../../docs/fstar-extracted/w3c-runner.wasm.js)
+    WASM_FILE=$(ls -1 ../../../docs/fstar-extracted/w3c-runner.wasm.assets/*.wasm 2>/dev/null | head -n 1 || true)
+    if [[ -n "$WASM_FILE" ]]; then
+      WASM_BYTES=$(wc -c < "$WASM_FILE")
+      echo "  Built: docs/fstar-extracted/w3c-runner.wasm.js ($LOADER_BYTES bytes) + $(basename "$WASM_FILE") ($WASM_BYTES bytes)"
+    else
+      echo "  Built: docs/fstar-extracted/w3c-runner.wasm.js ($LOADER_BYTES bytes) — no .wasm asset"
+    fi
+    echo "  Smoke test: cd into docs/fstar-extracted and run 'node w3c-runner.wasm.js bind' — expect 10/10 pass."
+  fi
   cd ..
   echo ""
 fi

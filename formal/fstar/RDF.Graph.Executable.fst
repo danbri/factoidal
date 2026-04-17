@@ -181,10 +181,10 @@ let rec lookup_named_graph (name : iri) (named : list named_graph) : option rdf_
 let named_graph_iris (ds : rdf_dataset) : list iri =
   List.Tot.map (fun ng -> ng.ng_name) ds.ds_named
 
-// Blank node labels are scoped to the source document / dataset they came from.
-// When multiple files are loaded independently and then merged for querying,
-// equal raw labels like "_:x" must not collide accidentally across inputs.
-// These helpers namespace blank nodes by a caller-supplied prefix.
+(* Blank node labels are scoped to the source document / dataset they came from.
+   When multiple files are loaded independently and then merged for querying,
+   equal raw labels like "_:x" must not collide accidentally across inputs.
+   These helpers namespace blank nodes by a caller-supplied prefix. *)
 let rename_bnode_id (prefix:string) (id:bnode_id) : bnode_id =
   String.concat "" [prefix; ":"; id]
 

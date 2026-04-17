@@ -37,7 +37,7 @@ echo "  Patching $FILE (base IRI resolution)..."
 
 if ! grep -q 'current_base_iri_ref' "$FILE"; then
   python3 -c "
-import re
+import re, sys
 with open('$FILE', 'r') as f:
     content = f.read()
 
@@ -50,32 +50,40 @@ content = content.replace(
 let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :'''
 )
 
-# 2. Set/restore base_iri in eval_select_query
-content = content.replace(
-    '''let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
-  (ds : RDF_Graph_Executable.rdf_dataset) : solution_sequence=
-  match q.q_form with
-  | QF_Select sel ->''',
-    '''let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
-  (ds : RDF_Graph_Executable.rdf_dataset) : solution_sequence=
-  let saved_base = !current_base_iri_ref in
-  current_base_iri_ref := q.q_base;
-  let result = match q.q_form with
-  | QF_Select sel ->'''
+# 2. Set/restore base_iri in eval_select_query. The extracted signature is
+# stable, but the body now includes a let-bound rewrite (q1 = { q with ... }).
+# Match both the 'match q.q_form' and 'match q1.q_form' forms.
+m = re.search(
+    r'''(let eval_select_query \(q : query\) \(g : RDF_Graph_Executable\.rdf_graph\)\n  \(ds : RDF_Graph_Executable\.rdf_dataset\) : solution_sequence=\n)(?P<body>.*?)(?P<match>  match (?P<qvar>q1?)\.q_form with\n  \| QF_Select sel ->)''',
+    content,
+    flags=re.DOTALL,
 )
+if m is None:
+    sys.stderr.write('WARNING: 65_base_iri_resolution could not find eval_select_query header\n')
+else:
+    qvar = m.group('qvar')
+    new_header = (
+        m.group(1)
+        + m.group('body')
+        + '  let saved_base = !current_base_iri_ref in\n'
+        + '  current_base_iri_ref := ' + qvar + '.q_base;\n'
+        + '  let result = match ' + qvar + '.q_form with\n'
+        + '  | QF_Select sel ->'
+    )
+    content = content[:m.start()] + new_header + content[m.end():]
 
-# Close the let result = match ... wrapper after QF_Describe
-# The next definition after eval_select_query may be rewrite_query_bnode_term
-# (from ballyhoo port) or type path_result (original). Handle both.
-import re as _re
-close_pattern = _re.compile(r'(\s*\| QF_Describe uu___ -> \[\])\n(let |type )')
-m = close_pattern.search(content)
-if m:
-    insert_pos = m.end(1)
-    content = content[:insert_pos] + '''
+content, n_close = re.subn(
+    r'''  \| QF_Describe uu___ -> \[\]\n(?:let \(\) = eval_subselect_fwd_ref := eval_select_query\n)?(?P<nextdef>type path_result =|let eval_ask_query )''',
+    r'''  | QF_Describe uu___ -> []
   in
   current_base_iri_ref := saved_base;
-  result''' + content[insert_pos:]
+  result
+\g<nextdef>''',
+    content,
+    count=1,
+)
+if n_close == 0:
+    sys.stderr.write('WARNING: 65_base_iri_resolution could not close eval_select_query result scope\n')
 
 # 3. Enhance IRI() function to resolve against base IRI
 content = content.replace(

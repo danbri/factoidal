@@ -29,108 +29,103 @@ fi
 
 echo "  Patching $FILE (forward ref wiring)..."
 
-# --- Patch 1: Replace eval_expr_ebv stub with mutable ref declarations ---
-if ! grep -q 'eval_expr_ebv_ref' "$FILE"; then
-  sed -i '' 's/^let eval_expr_ebv (uu___ : expr)/let eval_expr_ebv_ref : (expr -> RDF_Graph_Executable.solution_mapping -> Prims.bool) ref =\n  ref (fun _ _ -> failwith "eval_expr_ebv not yet wired")\nlet eval_expr_fwd_ref : (expr -> RDF_Graph_Executable.solution_mapping -> eval_result) ref =\n  ref (fun _ _ -> failwith "eval_expr_fwd not yet wired")\nlet eval_expr_ebv (e : expr)/' "$FILE"
-
-  sed -i '' 's/  (uu___1 : RDF_Graph_Executable.solution_mapping) : Prims.bool=$/  (mu : RDF_Graph_Executable.solution_mapping) : Prims.bool=/' "$FILE"
-
-  sed -i '' 's/  failwith "Not yet implemented: SPARQL11.Algebra.eval_expr_ebv"/  !eval_expr_ebv_ref e mu/' "$FILE"
-
-  sed -i '' 's/^let eval_expr_fwd (uu___ : expr)/let eval_expr_fwd (e : expr)/' "$FILE"
-fi
-
-# --- Patch 2: Fix eval_expr_fwd parameter + body, add forward ref declarations,
-#     replace eval_exists_fwd/eval_subselect_fwd/eval_property_path_fwd stubs,
-#     wire refs after definitions ---
-if ! grep -q 'eval_exists_fwd_ref' "$FILE"; then
-  python3 -c "
+python3 - "$FILE" << 'PYEOF'
 import re
-with open('$FILE', 'r') as f:
+import sys
+
+path = sys.argv[1]
+with open(path, 'r', encoding='utf-8') as f:
     content = f.read()
 
-# Fix eval_expr_fwd stub
-content = content.replace(
-    '  (uu___1 : RDF_Graph_Executable.solution_mapping) : eval_result=\n  failwith \"Not yet implemented: SPARQL11.Algebra.eval_expr_fwd\"',
-    '  (mu : RDF_Graph_Executable.solution_mapping) : eval_result=\n  !eval_expr_fwd_ref e mu'
+stub_block_re = re.compile(
+    r'''let eval_expr_ebv \([^)]*\)\n  \([^)]*\) : Prims\.bool=\n  failwith "Not yet implemented: SPARQL11\.Algebra\.eval_expr_ebv"\n'''
+    r'''let eval_expr_fwd \([^)]*\)\n  \([^)]*\) : eval_result=\n  failwith "Not yet implemented: SPARQL11\.Algebra\.eval_expr_fwd"\n'''
+    r'''let eval_exists_fwd \([^)]*\)\n  \([^)]*\)\n  \([^)]*\)\n  \([^)]*\) : Prims\.bool=\n  failwith "Not yet implemented: SPARQL11\.Algebra\.eval_exists_fwd"\n'''
+    r'''let eval_subselect_fwd \([^)]*\)\n  \([^)]*\)\n  \([^)]*\) : solution_sequence=\n  failwith "Not yet implemented: SPARQL11\.Algebra\.eval_subselect_fwd"\n'''
+    r'''type path_result_fwd =\n  \(RDF_Graph_Executable\.rdf_term \* RDF_Graph_Executable\.rdf_term\) Prims\.list\n'''
+    r'''let eval_property_path_fwd \([^)]*\)\n  \([^)]*\) : path_result_fwd=\n  failwith "Not yet implemented: SPARQL11\.Algebra\.eval_property_path_fwd"''',
+    re.MULTILINE
 )
 
-# Add forward ref declarations for eval_exists_fwd, eval_property_path_fwd, eval_subselect_fwd
-content = content.replace(
-    '''let eval_expr_ebv_ref : (expr -> RDF_Graph_Executable.solution_mapping -> Prims.bool) ref =
-  ref (fun _ _ -> failwith \"eval_expr_ebv not yet wired\")
-let eval_expr_fwd_ref : (expr -> RDF_Graph_Executable.solution_mapping -> eval_result) ref =
-  ref (fun _ _ -> failwith \"eval_expr_fwd not yet wired\")''',
-    '''let eval_expr_ebv_ref : (expr -> RDF_Graph_Executable.solution_mapping -> Prims.bool) ref =
-  ref (fun _ _ -> failwith \"eval_expr_ebv not yet wired\")
-let eval_expr_fwd_ref : (expr -> RDF_Graph_Executable.solution_mapping -> eval_result) ref =
-  ref (fun _ _ -> failwith \"eval_expr_fwd not yet wired\")
-let eval_exists_fwd_ref : (group_graph_pattern -> RDF_Graph_Executable.solution_mapping -> RDF_Graph_Executable.rdf_graph -> RDF_Graph_Executable.rdf_dataset -> Prims.bool) ref =
-  ref (fun _ _ _ _ -> false)
-let eval_property_path_fwd_ref : (property_path -> RDF_Graph_Executable.rdf_graph -> (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list) ref =
-  ref (fun _ _ -> [])
-let eval_subselect_fwd_ref : (query -> RDF_Graph_Executable.rdf_graph -> RDF_Graph_Executable.rdf_dataset -> solution_sequence) ref =
-  ref (fun _ _ _ -> [])'''
-)
+replacement_block = '''let eval_expr_ebv_ref :
+  (expr -> RDF_Graph_Executable.solution_mapping -> Prims.bool) Stdlib.ref=
+  Stdlib.ref (fun _ _ -> failwith "eval_expr_ebv not yet wired")
+let eval_expr_fwd_ref :
+  (expr -> RDF_Graph_Executable.solution_mapping -> eval_result) Stdlib.ref=
+  Stdlib.ref (fun _ _ -> failwith "eval_expr_fwd not yet wired")
+let eval_exists_fwd_ref :
+  (group_graph_pattern ->
+    RDF_Graph_Executable.solution_mapping ->
+    RDF_Graph_Executable.rdf_graph ->
+    RDF_Graph_Executable.rdf_dataset -> Prims.bool) Stdlib.ref=
+  Stdlib.ref (fun _ _ _ _ -> false)
+let eval_subselect_fwd_ref :
+  (query ->
+    RDF_Graph_Executable.rdf_graph ->
+    RDF_Graph_Executable.rdf_dataset -> solution_sequence) Stdlib.ref=
+  Stdlib.ref (fun _ _ _ -> [])
+let eval_expr_ebv (e : expr)
+  (mu : RDF_Graph_Executable.solution_mapping) : Prims.bool=
+  !eval_expr_ebv_ref e mu
+let eval_expr_fwd (e : expr)
+  (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
+  !eval_expr_fwd_ref e mu
+let eval_exists_fwd (p : group_graph_pattern)
+  (mu : RDF_Graph_Executable.solution_mapping)
+  (g : RDF_Graph_Executable.rdf_graph)
+  (ds : RDF_Graph_Executable.rdf_dataset) : Prims.bool=
+  !eval_exists_fwd_ref p mu g ds
+let eval_subselect_fwd (q : query)
+  (g : RDF_Graph_Executable.rdf_graph)
+  (ds : RDF_Graph_Executable.rdf_dataset) : solution_sequence=
+  !eval_subselect_fwd_ref q g ds
+type path_result_fwd =
+  (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list
+let eval_property_path_fwd_ref :
+  (property_path ->
+    RDF_Graph_Executable.rdf_graph -> path_result_fwd) Stdlib.ref=
+  Stdlib.ref (fun _ _ -> [])
+let eval_property_path_fwd (p : property_path)
+  (g : RDF_Graph_Executable.rdf_graph) : path_result_fwd=
+  !eval_property_path_fwd_ref p g'''
 
-# Replace eval_exists_fwd failwith body with forward ref dispatch
-content = content.replace(
-    '''  failwith \"Not yet implemented: SPARQL11.Algebra.eval_exists_fwd\"''',
-    '''  !eval_exists_fwd_ref uu___ uu___1 uu___2 uu___3'''
-)
+content = stub_block_re.sub(replacement_block, content, count=1)
 
-# Replace eval_subselect_fwd failwith body with forward ref dispatch
-content = content.replace(
-    '''  failwith \"Not yet implemented: SPARQL11.Algebra.eval_subselect_fwd\"''',
-    '''  !eval_subselect_fwd_ref uu___ uu___1 uu___2'''
-)
+if 'let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))' not in content:
+    content = content.replace(
+        'type group = {',
+        'let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))\n'
+        'let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)\n'
+        'type group = {',
+        1
+    )
 
-# Replace eval_property_path_fwd failwith body with forward ref dispatch
-content = content.replace(
-    '''  failwith \"Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd\"''',
-    '''  !eval_property_path_fwd_ref uu___ uu___1'''
-)
+if 'let () = eval_subselect_fwd_ref := eval_select_query' not in content:
+    content = content.replace(
+        'let filter_solutions (e : expr) (omega : solution_sequence) :',
+        'let filter_solutions (e : expr) (omega : solution_sequence) :',
+        1
+    )
+    content += '\nlet () = eval_subselect_fwd_ref := eval_select_query\n'
 
-# Wire eval_expr_ebv and eval_expr_fwd after eval_expr definition (before 'type group')
-content = content.replace(
-    'type group = {',
-    '''(* Wire up the forward-declared eval_expr_ebv/fwd to the real implementations *)
-let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
-let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)
+if 'let () = eval_property_path_fwd_ref := eval_property_path' not in content:
+    content = content.replace(
+        'type numeric_precision =',
+        'let () = eval_property_path_fwd_ref := eval_property_path\n'
+        'type numeric_precision =',
+        1
+    )
 
-type group = {'''
-)
+if 'let () = eval_exists_fwd_ref := eval_exists' not in content:
+    content = content.replace(
+        'let filter_solutions (e : expr) (omega : solution_sequence) :',
+        'let () = eval_exists_fwd_ref := eval_exists\n'
+        'let filter_solutions (e : expr) (omega : solution_sequence) :',
+        1
+    )
 
-# Wire eval_exists_fwd_ref after eval_exists is defined
-content = content.replace(
-    'let filter_solutions (e : expr) (omega : solution_sequence) :',
-    '''(* Wire up eval_exists_fwd to the real eval_exists *)
-let () = eval_exists_fwd_ref := eval_exists
-
-let filter_solutions (e : expr) (omega : solution_sequence) :'''
-)
-
-# Wire eval_property_path_fwd_ref after eval_property_path is defined
-content = content.replace(
-    'type numeric_precision =',
-    '''(* Wire up eval_property_path_fwd to the real eval_property_path *)
-let () = eval_property_path_fwd_ref := eval_property_path
-
-type numeric_precision ='''
-)
-
-# Wire eval_subselect_fwd_ref after eval_select_query is defined
-content = content.replace(
-    'let is_not_literal',
-    '''(* Wire up eval_subselect_fwd to the real eval_select_query *)
-let () = eval_subselect_fwd_ref := eval_select_query
-
-let is_not_literal'''
-)
-
-with open('$FILE', 'w') as f:
+with open(path, 'w', encoding='utf-8') as f:
     f.write(content)
-"
-fi
+PYEOF
 
 echo "  Forward ref wiring patches applied."

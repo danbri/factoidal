@@ -144,7 +144,7 @@ let hex_digit_value (c : FStar_Char.char) : Prims.nat=
       if (code >= (Prims.of_int (0x61))) && (code <= (Prims.of_int (0x66)))
       then (code - (Prims.of_int (0x61))) + (Prims.of_int (10))
       else Prims.int_zero
-let decode_hex4 (input : Prims.string) (pos : Prims.nat) : Prims.int=
+let decode_hex4 (input : Prims.string) (pos : Prims.nat) : Prims.nat=
   let d0 = hex_digit_value (FStar_String.index input pos) in
   let d1 = hex_digit_value (FStar_String.index input (pos + Prims.int_one)) in
   let d2 =
@@ -154,7 +154,7 @@ let decode_hex4 (input : Prims.string) (pos : Prims.nat) : Prims.int=
   (((d0 * (Prims.of_int (4096))) + (d1 * (Prims.of_int (256)))) +
      (d2 * (Prims.of_int (16))))
     + d3
-let decode_hex8 (input : Prims.string) (pos : Prims.nat) : Prims.int=
+let decode_hex8 (input : Prims.string) (pos : Prims.nat) : Prims.nat=
   let d0 = hex_digit_value (FStar_String.index input pos) in
   let d1 = hex_digit_value (FStar_String.index input (pos + Prims.int_one)) in
   let d2 =
