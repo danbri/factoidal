@@ -127,9 +127,9 @@ let triple_object (t : triple) : rdf_term = t.o
 (** Part 1b: Storage Boundary (experimental, list-backed for now)          **)
 (** ====================================================================== **)
 
-// This is the first seam for storage-backed evaluation. The current
-// implementation remains list-backed so semantics stay unchanged, but the
-// algebra no longer needs to scan raw graph lists directly.
+(* This is the first seam for storage-backed evaluation. The current
+   implementation remains list-backed so semantics stay unchanged, but the
+   algebra no longer needs to scan raw graph lists directly. *)
 
 noeq type triple_pattern_bound = {
   bs : option subject;
@@ -222,10 +222,6 @@ noeq type triple_pattern = {
   tp_o : pattern_term;
 }
 
-(** Basic Graph Pattern **)
-type bgp = list triple_pattern
-
-// Helper functions for extracting bound values from solution mappings
 let bound_subject_of_pattern (ps : pattern_subject) (mu : solution_mapping) : option subject =
   match ps with
   | PS_IRI i -> Some (S_IRI i)
@@ -275,6 +271,9 @@ let triple_pattern_eq (a : triple_pattern) (b : triple_pattern) : bool =
   pattern_subject_eq a.tp_s b.tp_s &&
   pattern_term_eq a.tp_p b.tp_p &&
   pattern_term_eq a.tp_o b.tp_o
+
+(** Basic Graph Pattern **)
+type bgp = list triple_pattern
 
 (** ====================================================================== **)
 (** Part 3: SPARQL 1.1 Expression Language                                 **)
@@ -1689,19 +1688,61 @@ let tp_match (tp : triple_pattern) (t : triple) (mu : solution_mapping)
 (** 7.2 BGP evaluation — CONCRETE **)
 
 (* Evaluate a single triple pattern against the graph, extending a given mapping *)
+let eval_single_tp_store (tp : triple_pattern) (gs : graph_store) (mu : solution_mapping)
+  : solution_sequence =
+  let bound = {
+    bs = bound_subject_of_pattern tp.tp_s mu;
+    bp = bound_predicate_of_pattern tp.tp_p mu;
+    bo = bound_object_of_pattern tp.tp_o mu;
+  } in
+  let candidates = store_search gs bound in
+  list_filter_map (fun t -> tp_match tp t mu) candidates
+
 let eval_single_tp (tp : triple_pattern) (g : rdf_graph) (mu : solution_mapping)
   : solution_sequence =
-  list_filter_map (fun t -> tp_match tp t mu) g
+  eval_single_tp_store tp (graph_to_store g) mu
+
+let estimate_tp_store_mu (tp : triple_pattern) (gs : graph_store) (mu : solution_mapping) : nat =
+  store_estimate gs {
+    bs = bound_subject_of_pattern tp.tp_s mu;
+    bp = bound_predicate_of_pattern tp.tp_p mu;
+    bo = bound_object_of_pattern tp.tp_o mu;
+  }
+
+let rec choose_best_tp (patterns : bgp) (gs : graph_store) (mu : solution_mapping)
+  : Tot (option (triple_pattern * bgp)) (decreases patterns) =
+  match patterns with
+  | [] -> None
+  | tp :: rest ->
+    match choose_best_tp rest gs mu with
+    | None -> Some (tp, [])
+    | Some (best, remaining) ->
+      if estimate_tp_store_mu tp gs mu <= estimate_tp_store_mu best gs mu
+      then Some (tp, rest)
+      else Some (best, tp :: remaining)
+
+let rec eval_bgp_store_from_mu_fuel
+  (patterns : bgp) (gs : graph_store) (mu : solution_mapping) (fuel : nat)
+  : Tot solution_sequence (decreases fuel) =
+  if fuel = 0 then [mu]
+  else
+    match patterns with
+    | [] -> [mu]
+    | _ ->
+      match choose_best_tp patterns gs mu with
+      | None -> [mu]
+      | Some (tp, rest) ->
+        let next = eval_single_tp_store tp gs mu in
+        List.Tot.concatMap (fun mu' -> eval_bgp_store_from_mu_fuel rest gs mu' (fuel - 1)) next
+
+let eval_bgp_store (patterns : bgp) (gs : graph_store) : solution_sequence =
+  eval_bgp_store_from_mu_fuel patterns gs sm_empty (List.Tot.length patterns + 1)
 
 (* Evaluate a BGP: for each triple pattern, extend existing mappings.
    Empty BGP matches everything with the empty mapping.
    Per SPARQL semantics: eval(BGP) = Join of individual pattern evaluations. *)
-let rec eval_bgp (patterns : bgp) (g : rdf_graph) : solution_sequence =
-  match patterns with
-  | [] -> [sm_empty]
-  | tp :: rest ->
-    let sub_results = eval_bgp rest g in
-    List.Tot.concatMap (fun mu -> eval_single_tp tp g mu) sub_results
+let eval_bgp (patterns : bgp) (g : rdf_graph) : solution_sequence =
+  eval_bgp_store patterns (graph_to_store g)
 
 (** 7.3 Core algebra operations (§18.5) **)
 
@@ -1800,42 +1841,39 @@ let minus (omega1 omega2 : solution_sequence) : solution_sequence =
 
 (** 7.4 Graph pattern evaluation (§18.6) — CONCRETE **)
 
-(* Evaluate a group graph pattern against an RDF graph and dataset — CONCRETE.
-   The dataset carries named graphs for GP_Graph evaluation.
-   [S1] Property paths deferred.
-   Sub-SELECT deferred (requires eval_select_query). *)
-let rec eval_pattern (p : group_graph_pattern) (g : rdf_graph) (ds : rdf_dataset)
+(* Evaluate a group graph pattern against a graph store and dataset store. *)
+let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store) (dss : rdf_dataset_store)
   : Tot solution_sequence (decreases p) =
   match p with
-  | GP_BGP bgp -> eval_bgp bgp g
+  | GP_BGP bgp -> eval_bgp_store bgp gs
 
   | GP_Join p1 p2 ->
-    join (eval_pattern p1 g ds) (eval_pattern p2 g ds)
+    join (eval_pattern_store p1 gs dss) (eval_pattern_store p2 gs dss)
 
   | GP_LeftJoin p1 p2 filter_e ->
-    left_join (eval_pattern p1 g ds) (eval_pattern p2 g ds) filter_e
+    left_join (eval_pattern_store p1 gs dss) (eval_pattern_store p2 gs dss) filter_e
 
   | GP_Filter e p' ->
-    let omega = eval_pattern p' g ds in
+    let omega = eval_pattern_store p' gs dss in
     (* EXISTS/NOT EXISTS require graph context — dispatch here rather than
        through eval_expr which has no graph parameter. *)
     (match e with
      | E_Exists sub_p ->
-       List.Tot.filter (fun mu -> eval_exists_fwd sub_p mu g ds) omega
+       List.Tot.filter (fun mu -> eval_exists_fwd sub_p mu gs.gs_graph (store_to_dataset dss)) omega
      | E_NotExists sub_p ->
-       List.Tot.filter (fun mu -> not (eval_exists_fwd sub_p mu g ds)) omega
+       List.Tot.filter (fun mu -> not (eval_exists_fwd sub_p mu gs.gs_graph (store_to_dataset dss))) omega
      | _ -> filter_solutions_fwd e omega)
 
   | GP_Union p1 p2 ->
-    union (eval_pattern p1 g ds) (eval_pattern p2 g ds)
+    union (eval_pattern_store p1 gs dss) (eval_pattern_store p2 gs dss)
 
   | GP_Minus p1 p2 ->
-    minus (eval_pattern p1 g ds) (eval_pattern p2 g ds)
+    minus (eval_pattern_store p1 gs dss) (eval_pattern_store p2 gs dss)
 
   | GP_Empty -> [sm_empty]
 
   | GP_Bind e v p' ->
-    let omega = eval_pattern p' g ds in
+    let omega = eval_pattern_store p' gs dss in
     List.Tot.map
       (fun mu ->
         match er_to_term (eval_expr_fwd e mu) with
@@ -1854,19 +1892,24 @@ let rec eval_pattern (p : group_graph_pattern) (g : rdf_graph) (ds : rdf_dataset
     (match gt with
      | PT_IRI name ->
        (* GRAPH <iri> { p } — evaluate p against the named graph identified by iri *)
-       (match lookup_named_graph name ds.ds_named with
-        | Some ng -> eval_pattern p' ng ds
+       (match lookup_named_store name dss.dss_named with
+        | Some ngs -> eval_pattern_store p' ngs dss
         | None -> [])  (* Named graph not in dataset → empty *)
      | PT_Var v ->
        (* GRAPH ?var { p } — iterate over all named graphs, binding ?var *)
        List.Tot.concatMap
-         (fun (ng : named_graph) ->
-           let ng_results = eval_pattern p' ng.ng_graph ds in
-           if is_iri ng.ng_name then
-             List.Tot.map (fun mu -> sm_bind v (T_IRI ng.ng_name) mu) ng_results
+         (fun (ngs : named_graph_store) ->
+           let ng_results = eval_pattern_store p' ngs.ngs_store dss in
+           if is_iri ngs.ngs_name then
+             List.Tot.concatMap
+               (fun mu ->
+                 match sm_bind_if_compatible v (T_IRI ngs.ngs_name) mu with
+                 | Some mu' -> [mu']
+                 | None -> [])
+               ng_results
            else ng_results)
-         ds.ds_named
-     | _ -> eval_pattern p' g ds)  (* Other pattern terms: fallback to current graph *)
+         dss.dss_named
+     | _ -> eval_pattern_store p' gs dss)  (* Other pattern terms: fallback to current graph *)
 
   | GP_Service _ _ _ ->
     (* SERVICE: remote execution, not supported *)
@@ -1874,12 +1917,20 @@ let rec eval_pattern (p : group_graph_pattern) (g : rdf_graph) (ds : rdf_dataset
 
   | GP_SubSelect q ->
     (* Sub-SELECT: recursively evaluate the inner SELECT query *)
-    eval_subselect_fwd q g ds
+    eval_subselect_fwd q gs.gs_graph (store_to_dataset dss)
 
   | GP_PropertyPath ps pp pt ->
     (* Evaluate property path and convert results to solution mappings *)
-    let pairs = eval_property_path_fwd pp g in
+    let pairs = eval_property_path_fwd pp gs.gs_graph in
     path_result_to_solutions ps pt pairs
+
+(* Evaluate a group graph pattern against an RDF graph and dataset — CONCRETE.
+   The dataset carries named graphs for GP_Graph evaluation.
+   [S1] Property paths deferred.
+   Sub-SELECT deferred (requires eval_select_query). *)
+let eval_pattern (p : group_graph_pattern) (g : rdf_graph) (ds : rdf_dataset)
+  : solution_sequence =
+  eval_pattern_store p (graph_to_store g) (dataset_to_store ds)
 
 (** ====================================================================== **)
 (** Part 8: SPARQL 1.1 Expression Evaluation (§17)                         **)
@@ -3003,11 +3054,45 @@ let select_item_vars (items : list select_item) : list var_name =
     | SI_Var v -> v
     | SI_Expr _ v -> v) items
 
+let rewrite_query_bnode_term (pt : pattern_term) : pattern_term =
+  match pt with
+  | PT_BNode b -> PT_Var ("_bnode_" ^ b)
+  | _ -> pt
+
+let rewrite_query_bnode_subject (ps : pattern_subject) : pattern_subject =
+  match ps with
+  | PS_BNode b -> PS_Var ("_bnode_" ^ b)
+  | _ -> ps
+
+let rewrite_query_bnode_tp (tp : triple_pattern) : triple_pattern = {
+  tp_s = rewrite_query_bnode_subject tp.tp_s;
+  tp_p = rewrite_query_bnode_term tp.tp_p;
+  tp_o = rewrite_query_bnode_term tp.tp_o;
+}
+
+let rec rewrite_query_bnodes_pattern (p : group_graph_pattern)
+  : Tot group_graph_pattern (decreases p) =
+  match p with
+  | GP_BGP bgp -> GP_BGP (List.Tot.map rewrite_query_bnode_tp bgp)
+  | GP_Join p1 p2 -> GP_Join (rewrite_query_bnodes_pattern p1) (rewrite_query_bnodes_pattern p2)
+  | GP_LeftJoin p1 p2 e ->
+    GP_LeftJoin (rewrite_query_bnodes_pattern p1) (rewrite_query_bnodes_pattern p2) e
+  | GP_Filter e p1 -> GP_Filter e (rewrite_query_bnodes_pattern p1)
+  | GP_Union p1 p2 -> GP_Union (rewrite_query_bnodes_pattern p1) (rewrite_query_bnodes_pattern p2)
+  | GP_Graph gt p1 -> GP_Graph (rewrite_query_bnode_term gt) (rewrite_query_bnodes_pattern p1)
+  | GP_Minus p1 p2 -> GP_Minus (rewrite_query_bnodes_pattern p1) (rewrite_query_bnodes_pattern p2)
+  | GP_Bind e v p1 -> GP_Bind e v (rewrite_query_bnodes_pattern p1)
+  | GP_SubSelect q -> GP_SubSelect { q with q_pattern = rewrite_query_bnodes_pattern q.q_pattern }
+  | GP_PropertyPath s pp o ->
+    GP_PropertyPath (rewrite_query_bnode_subject s) pp (rewrite_query_bnode_term o)
+  | _ -> p
+
 (* Top-level query evaluation for SELECT queries — CONCRETE.
    Applies: pattern evaluation → SELECT expressions → ORDER BY →
-            projection → DISTINCT/REDUCED → OFFSET/LIMIT.
+           projection → DISTINCT/REDUCED → OFFSET/LIMIT.
    GROUP BY, aggregation, and HAVING are skipped for now (assume val dependencies). *)
 let eval_select_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : solution_sequence =
+  let q = { q with q_pattern = rewrite_query_bnodes_pattern q.q_pattern } in
   match q.q_form with
   | QF_Select sel ->
     (* 1. Evaluate WHERE clause *)
@@ -3091,41 +3176,6 @@ let eval_select_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : solution_
   | QF_Ask -> []
   | QF_Describe _ -> []
 
-// Rewrite blank node labels in query patterns to variables (for SPARQL semantics)
-let rewrite_query_bnode_term (pt : pattern_term) : pattern_term =
-  match pt with
-  | PT_BNode b -> PT_Var ("_bnode_" ^ b)
-  | _ -> pt
-
-let rewrite_query_bnode_subject (ps : pattern_subject) : pattern_subject =
-  match ps with
-  | PS_BNode b -> PS_Var ("_bnode_" ^ b)
-  | _ -> ps
-
-let rewrite_query_bnode_tp (tp : triple_pattern) : triple_pattern = {
-  tp_s = rewrite_query_bnode_subject tp.tp_s;
-  tp_p = rewrite_query_bnode_term tp.tp_p;
-  tp_o = rewrite_query_bnode_term tp.tp_o;
-}
-
-let rec rewrite_query_bnodes_pattern (p : group_graph_pattern)
-  : Tot group_graph_pattern (decreases p) =
-  match p with
-  | GP_BGP bgp -> GP_BGP (List.Tot.map rewrite_query_bnode_tp bgp)
-  | GP_Join p1 p2 -> GP_Join (rewrite_query_bnodes_pattern p1) (rewrite_query_bnodes_pattern p2)
-  | GP_LeftJoin p1 p2 e ->
-    GP_LeftJoin (rewrite_query_bnodes_pattern p1) (rewrite_query_bnodes_pattern p2) e
-  | GP_Filter e p1 -> GP_Filter e (rewrite_query_bnodes_pattern p1)
-  | GP_Union p1 p2 -> GP_Union (rewrite_query_bnodes_pattern p1) (rewrite_query_bnodes_pattern p2)
-  | GP_Graph gt p1 -> GP_Graph (rewrite_query_bnode_term gt) (rewrite_query_bnodes_pattern p1)
-  | GP_Minus p1 p2 -> GP_Minus (rewrite_query_bnodes_pattern p1) (rewrite_query_bnodes_pattern p2)
-  | GP_Bind e v p1 -> GP_Bind e v (rewrite_query_bnodes_pattern p1)
-  | GP_SubSelect q -> GP_SubSelect { q with q_pattern = rewrite_query_bnodes_pattern q.q_pattern }
-  | GP_PropertyPath s pp o ->
-    GP_PropertyPath (rewrite_query_bnode_subject s) pp (rewrite_query_bnode_term o)
-  | _ -> p
-
-// Evaluate an ASK query — returns true if the WHERE pattern matches at least once
 let eval_ask_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : bool =
   match q.q_form with
   | QF_Ask ->

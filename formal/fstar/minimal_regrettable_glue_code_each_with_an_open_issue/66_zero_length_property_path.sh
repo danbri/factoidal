@@ -43,12 +43,22 @@ import sys
 with open(sys.argv[1], 'r') as f:
     content = f.read()
 
-content = content.replace(
-    '''  | GP_PropertyPath (ps, pp, pt) ->
-      let pairs = eval_property_path_fwd pp g in
-      path_result_to_solutions ps pt pairs''',
-    '''  | GP_PropertyPath (ps, pp, pt) ->
-      let pairs = eval_property_path_fwd pp g in
+import re
+
+# Match the GP_PropertyPath branch with either old `g` or new `gs.gs_graph`
+# source, in the store-aware eval_pattern_store introduced by ballyhoo port.
+pattern = re.compile(
+    r'''  \| GP_PropertyPath \(ps, pp, pt\) ->\n'''
+    r'''      let pairs = eval_property_path_fwd pp (?P<graph_expr>[^\n]+?) in\n'''
+    r'''      path_result_to_solutions ps pt pairs''',
+    re.MULTILINE,
+)
+
+def replace(m):
+    graph_expr = m.group('graph_expr')
+    return (
+        '''  | GP_PropertyPath (ps, pp, pt) ->
+      let pairs = eval_property_path_fwd pp ''' + graph_expr + ''' in
       (* SPARQL semantics: ZeroOrMore/ZeroOrOne paths must include zero-length
          matches for any constant IRI/BNode in the pattern, even on empty graphs.
          eval_property_path only generates reflexive pairs for nodes in the graph,
@@ -78,7 +88,11 @@ content = content.replace(
             FStar_List_Tot_Base.op_At pairs reflexive
         | _ -> pairs in
       path_result_to_solutions ps pt pairs'''
-)
+    )
+
+(content, n_subs) = pattern.subn(replace, content)
+if n_subs == 0:
+    sys.stderr.write("WARNING: 66_zero_length_property_path did not match any GP_PropertyPath branch\n")
 
 with open(sys.argv[1], 'w') as f:
     f.write(content)
