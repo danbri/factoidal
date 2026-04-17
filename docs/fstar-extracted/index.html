@@ -5,16 +5,20 @@
 <title>Factoidal browser build — F* extracted to JS / Wasm</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-  body { font-family: system-ui, -apple-system, sans-serif; max-width: 780px; margin: 2em auto; padding: 0 1em; line-height: 1.55; color: #222; }
+  body { font-family: system-ui, -apple-system, sans-serif; max-width: 820px; margin: 2em auto; padding: 0 1em; line-height: 1.55; color: #222; }
   h1 { border-bottom: 2px solid #2d6a4f; padding-bottom: 0.3em; }
+  h2 { margin-top: 1.8em; }
   code, pre { background: #f4f4f4; border-radius: 3px; }
   code { padding: 0 0.3em; font-size: 0.92em; }
-  pre { padding: 0.9em 1em; overflow-x: auto; }
-  .artifact { padding: 0.5em 0.8em; background: #f8f8f8; border-left: 3px solid #2d6a4f; margin: 0.6em 0; }
+  pre { padding: 0.9em 1em; overflow-x: auto; font-size: 0.9em; }
+  .artifact { padding: 0.6em 0.9em; background: #f8f8f8; border-left: 3px solid #2d6a4f; margin: 0.6em 0; }
+  .warn { padding: 0.6em 0.9em; background: #fff4e6; border-left: 3px solid #e67e22; margin: 0.6em 0; }
   a { color: #2d6a4f; }
-  table { border-collapse: collapse; margin: 1em 0; }
-  th, td { padding: 0.3em 0.7em; border: 1px solid #ddd; }
+  table { border-collapse: collapse; margin: 1em 0; width: 100%; }
+  th, td { padding: 0.35em 0.75em; border: 1px solid #ddd; font-size: 0.92em; }
   th { background: #f2f2f2; }
+  .ok { color: #2d6a4f; }
+  .bad { color: #c0392b; }
 </style>
 </head>
 <body>
@@ -23,51 +27,126 @@
 <h1>Browser build: F* extracted to JS and Wasm</h1>
 
 <p>
-  The F* specifications in <code>formal/fstar/*.fst</code> are extracted to OCaml,
-  then compiled to JavaScript (via <a href="https://ocsigen.org/js_of_ocaml/">js_of_ocaml</a>)
-  and to WebAssembly (via <a href="https://ocaml.org/p/wasm_of_ocaml-compiler/latest">wasm_of_ocaml</a>).
-  Both artifacts ship from this directory.
+  The F* specifications in <code>formal/fstar/*.fst</code> are extracted to
+  OCaml and then compiled to JavaScript (via
+  <a href="https://ocsigen.org/js_of_ocaml/">js_of_ocaml</a>) and WebAssembly
+  (via
+  <a href="https://ocaml.org/p/wasm_of_ocaml-compiler/latest">wasm_of_ocaml</a>).
+  Both outputs live in this directory and are rebuilt by CI on every push.
 </p>
 
 <div class="artifact">
-  <strong>JavaScript:</strong> <a href="w3c-runner.js">w3c-runner.js</a> — self-contained, ~400 KB.
-  Runs in any modern browser or Node.
+  <strong>JavaScript:</strong>
+  <a href="w3c-runner.js">w3c-runner.js</a> — self-contained, ~400 KB.
+  Works in any browser or Node.
 </div>
 
 <div class="artifact">
-  <strong>WebAssembly:</strong> <a href="w3c-runner.wasm.js">w3c-runner.wasm.js</a>
-  (loader, ~45 KB) + <a href="w3c-runner.wasm.assets/">w3c-runner.wasm.assets/</a>
-  (the .wasm binary, ~400 KB). Needs a Wasm-GC-capable engine — Chrome ≥ 119
-  or Node ≥ 22. Does <em>not</em> run in Firefox yet (Wasm-GC still flagged).
+  <strong>WebAssembly:</strong>
+  <a href="w3c-runner.wasm.js">w3c-runner.wasm.js</a> (45 KB loader) +
+  <a href="w3c-runner.wasm.assets/">w3c-runner.wasm.assets/</a>
+  (400 KB wasm binary). Needs a Wasm-GC engine — Chrome ≥ 119, Node ≥ 22.
+  Firefox doesn't enable Wasm-GC by default yet.
 </div>
 
-<h2>Running from the command line</h2>
+<h2>Running today</h2>
 
 <p>
-  The quickest way to exercise the artifacts is with Node from a checkout
-  where the W3C test submodule is initialised:
+  Both artifacts are built as <strong>CLI programs</strong>: they expect to
+  be invoked with a <code>process.argv</code> (e.g. <code>w3c_runner bind</code>)
+  and they read W3C test files from the local filesystem. They run fine
+  under Node; an in-browser interactive demo is not wired up yet (see
+  &ldquo;What&rsquo;s missing&rdquo; below).
 </p>
+
+<p>The quickest smoke test, once you have Node 22+ and a checkout of the
+repo with submodules:</p>
 
 <pre><code>git clone --recurse-submodules https://github.com/danbri/factoidal.git
 cd factoidal/docs/fstar-extracted
 node w3c-runner.wasm.js bind
-# or the JS variant:
-node w3c-runner.js bind</code></pre>
-
-<h2>What runs under Wasm today</h2>
+# expected: bind pass:10 fail:0 skip:0 unsupported:0</code></pre>
 
 <p>
-  17 of the 18 SPARQL query/syntax suites and all RDF parser suites
-  reproduce the native-binary results when run via <code>node w3c-runner.wasm.js</code>.
-  The one suite that currently crashes under Wasm is <code>functions</code>,
-  because the SHA/MD5 hash builtins go through C primitives
-  (<code>stub_sha*</code>, <code>caml_digestif_*</code>) that don't yet have
-  Wasm-side bindings. Zarith's <code>ml_z_*</code> primitives <em>do</em> work,
-  via the <code>runtime.wat</code> / <code>runtime_wasm.js</code> pair shipped
-  by <a href="https://github.com/janestreet/zarith_stubs_js">zarith_stubs_js</a>
-  v0.17+ (vendored under
-  <a href="https://github.com/danbri/factoidal/tree/claude/main/formal/fstar/ocaml-output/wasm_runtime"><code>formal/fstar/ocaml-output/wasm_runtime/</code></a>).
+  <code>w3c-runner.wasm.js</code> and
+  <a href="w3c-runner.js"><code>w3c-runner.js</code></a> accept the same CLI
+  as the native binary — <code>--list</code>, <code>--all</code>,
+  <code>--rdf</code>, or one or more suite names.
 </p>
+
+<h2>Wasm coverage vs native</h2>
+
+<p>
+  Per-suite totals match the native runner almost everywhere. The one
+  crashing suite is <code>functions</code>, because the MD5/SHA built-ins
+  go through <code>stub_sha*</code> and <code>caml_digestif_*</code> C
+  primitives that don't yet have Wasm bindings. <code>property-path</code>
+  has an unexplained 4-test gap still being investigated.
+</p>
+
+<table>
+<thead><tr><th>Suite</th><th>native</th><th>wasm</th></tr></thead>
+<tbody>
+<tr><td>bind</td>             <td>10/10</td><td class="ok">10/10</td></tr>
+<tr><td>bindings</td>         <td>10/10</td><td class="ok">10/10</td></tr>
+<tr><td>aggregates</td>       <td>46/46</td><td class="ok">46/46</td></tr>
+<tr><td>exists</td>           <td>6/6</td><td class="ok">6/6</td></tr>
+<tr><td>grouping</td>         <td>6/6</td><td class="ok">6/6</td></tr>
+<tr><td>csv-tsv-res</td>      <td>6/6</td><td class="ok">6/6</td></tr>
+<tr><td>json-res</td>         <td>4/4</td><td class="ok">4/4</td></tr>
+<tr><td>subquery</td>         <td>12/14</td><td class="ok">12/14</td></tr>
+<tr><td>negation</td>         <td>11/12</td><td class="ok">11/12</td></tr>
+<tr><td>syntax-query</td>     <td>93/94</td><td class="ok">93/94</td></tr>
+<tr><td>property-path</td>    <td>33/33</td><td class="bad">29/33</td></tr>
+<tr><td>functions</td>        <td>74/75</td><td class="bad">crash (SHA path)</td></tr>
+</tbody>
+</table>
+
+<h2>What&rsquo;s in the vendored wasm runtime</h2>
+
+<p>
+  wasm_of_ocaml emits throwing stubs for any external C primitive it
+  can&rsquo;t link. <code>fstar.lib</code> transitively pulls in
+  <code>zarith</code> (for <code>Prims.int</code>), <code>stdint</code>,
+  <code>sha</code>, and <code>digestif</code> — roughly 150 such
+  primitives in total. js_of_ocaml&rsquo;s JS stubs don&rsquo;t link
+  automatically under wasm_of_ocaml; instead you need a companion
+  <code>.wat</code> file that imports the JS functions and re-exports
+  them under the OCaml-facing names. <code>zarith_stubs_js</code>
+  v0.17+ ships exactly that, so we vendor its
+  <a href="https://github.com/danbri/factoidal/tree/claude/main/formal/fstar/ocaml-output/wasm_runtime"><code>runtime.wat</code>+<code>runtime_wasm.js</code></a>
+  under <code>formal/fstar/ocaml-output/wasm_runtime/</code>. (Our opam
+  switch still has v0.16.1 which predates those files.)
+</p>
+
+<p>The remaining stdint / sha / digestif primitives get identity
+pass-through shims applied by
+<a href="https://github.com/danbri/factoidal/blob/claude/main/formal/fstar/ocaml-output/wasm_stub_shims.py"><code>wasm_stub_shims.py</code></a>
+— that&rsquo;s enough for stdint (it&rsquo;s linked for module init but
+not used on the hot path) and also for the non-hash SPARQL suites
+(which never call <code>caml_digestif_*</code>). The moment a query
+invokes MD5/SHA, though, the identity shim returns the wrong shape
+and V8 raises <code>RuntimeError: illegal cast</code>. Fix is the
+same recipe: vendor or write <code>.wat</code> + <code>runtime_wasm.js</code>
+for <code>sha</code> and <code>digestif.c</code>.</p>
+
+<h2>What&rsquo;s missing for an interactive browser demo</h2>
+
+<div class="warn">
+  There is no &ldquo;paste a query, click Run&rdquo; demo here yet. The
+  wasm binary is a CLI — to use it from a browser page we need one of:
+  <ul>
+    <li>A second entry point compiled alongside <code>w3c_runner</code>
+      that exposes SPARQL evaluation as a JS-callable function
+      (<code>factoidal_eval(data: string, query: string): string</code>),
+      so we don&rsquo;t need to fake argv and filesystem reads.</li>
+    <li>Or a browser-side shim that populates wasm_of_ocaml&rsquo;s
+      in-memory <code>MlFakeDevice</code> with the W3C test manifests
+      and drives <code>w3c_runner</code> with a synthetic
+      <code>process.argv</code>.</li>
+  </ul>
+  Either is straightforward follow-up work; neither is done today.
+</div>
 
 <h2>Build pipeline</h2>
 
@@ -82,16 +161,13 @@ node w3c-runner.js bind</code></pre>
 
 <p>
   See <a href="https://github.com/danbri/factoidal/blob/claude/main/formal/fstar/build-ocaml.sh"><code>formal/fstar/build-ocaml.sh</code></a>
-  for the exact invocation.
-</p>
-
-<h2>Browser demo</h2>
-
-<p>
-  A minimal interactive demo (load a .ttl file, run a SPARQL query, show
-  results) is a natural next step but isn't wired up yet. The artifact
-  is ready for any page that wants to embed it — import the loader,
-  pass it command-line-style arguments, and read stdout/stderr.
+  for the exact invocation. <code>./build-ocaml.sh</code> runs the
+  native + JS pipeline; <code>./build-ocaml.sh wasm</code> adds the
+  WebAssembly step (it needs <code>wasm_of_ocaml-compiler</code> and
+  a current-enough <code>binaryen</code> — see
+  <a href="https://github.com/ocsigen/js_of_ocaml/issues/2190">js_of_ocaml#2190</a>
+  if your distro&rsquo;s <code>binaryen</code> package is missing
+  <code>wasm-merge</code>).
 </p>
 
 </body>
