@@ -30,7 +30,7 @@ jobs:
       - name: Install system deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y opam libgmp-dev pkg-config
+          sudo apt-get install -y opam libgmp-dev pkg-config binaryen
 
       - name: Setup opam + F*
         run: |
@@ -42,14 +42,36 @@ jobs:
           # Pin z3 to 4.13.3 — F* 2025.12.15 requires exact match
           opam pin add z3 4.13.3 -y --no-action 2>/dev/null || true
           opam install -y fstar z3.4.13.3 zarith sha digestif
+          # wasm_of_ocaml: deps conf-binaryen satisfied by apt above; --assume-depexts
+          # so opam does not try to re-invoke the system package manager.
+          opam install -y --assume-depexts js_of_ocaml js_of_ocaml-compiler zarith_stubs_js wasm_of_ocaml-compiler
           echo "OPAMSWITCH=fstar" >> $GITHUB_ENV
 
-      - name: Build (extract + compile)
+      - name: Build (extract + compile + JS)
         run: |
           eval $(opam env --switch=fstar)
           cd formal/fstar
-          # Use the canonical build script — no --lax, full verification
+          # Canonical pipeline: extract, patch, compile native, compile JS.
+          # No --lax, full verification.
           ./build-ocaml.sh
+
+      - name: Build Wasm
+        run: |
+          eval $(opam env --switch=fstar)
+          cd formal/fstar
+          ./build-ocaml.sh wasm
+
+      - name: Smoke test Wasm
+        run: |
+          cd docs/fstar-extracted
+          # bind is a zarith-heavy suite; if it passes, the wasm init +
+          # zarith runtime + manifest parser all round-tripped cleanly.
+          RESULT=$(node w3c-runner.wasm.js bind)
+          echo "$RESULT"
+          echo "$RESULT" | grep -q '^  bind[[:space:]]*pass:10 fail:0' || {
+            echo "::error::Wasm smoke test failed — bind suite did not pass 10/10"
+            exit 1
+          }
 
       - name: Run tests and generate report
         run: |
@@ -57,10 +79,13 @@ jobs:
           cd formal/fstar
           ./generate-report.sh --run
 
-      - name: Commit results
+      - name: Commit results + artifacts
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/test-results/ formal/fstar/ocaml-output/sparql_results.log formal/fstar/ocaml-output/rdf_results.log
-          git diff --cached --quiet || git commit -m "Update W3C test results [skip ci]"
+          git add docs/test-results/ \
+                  docs/fstar-extracted/ \
+                  formal/fstar/ocaml-output/sparql_results.log \
+                  formal/fstar/ocaml-output/rdf_results.log
+          git diff --cached --quiet || git commit -m "Update W3C test results + JS/Wasm artifacts [skip ci]"
           git push || true
