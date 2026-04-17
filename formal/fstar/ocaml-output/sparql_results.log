@@ -3,7 +3,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
 
 
 --- add ---
-  [suite time: 0.2s]
+  [suite time: 0.1s]
 
 --- aggregates ---
   PASS: COUNT 1
@@ -14,7 +14,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: COUNT 6
   PASS: COUNT 7
   PASS: COUNT 8
-  PASS: COUNT 8b (25ms)
+  PASS: COUNT 8b (20ms)
   PASS: COUNT 9
   PASS: COUNT 10
   PASS: COUNT 11
@@ -26,14 +26,14 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: GROUP_CONCAT with different language tags
   PASS: GROUP_CONCAT with one element
   PASS: SUM
-  PASS: SUM with GROUP BY (21ms)
+  PASS: SUM with GROUP BY (17ms)
   PASS: AVG
   PASS: AVG with GROUP BY
   PASS: AVG with empty group (value defined to be 0)
   PASS: MIN
-  PASS: MIN with GROUP BY (21ms)
+  PASS: MIN with GROUP BY (17ms)
   PASS: MAX
-  PASS: MAX with GROUP BY (21ms)
+  PASS: MAX with GROUP BY (17ms)
   PASS: SAMPLE
   PASS: Error in AVG
   PASS: Protect from error in AVG
@@ -43,20 +43,20 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: COUNT: no match, no group
   FAIL: COUNT: no GROUP BY inside of GRAPH — Runtime: Not yet implemented: SPARQL11.Algebra.eval_subselect_fwd
   PASS: HAVING: multiple conditions
-  PASS: GROUP BY with a function (16ms)
+  PASS: GROUP BY with a function (13ms)
   PASS: GROUP BY with a built-in function
-  PASS: AVG DISTINCT with GROUP BY (15ms)
-  PASS: COUNT DISTINCT with GROUP BY (15ms)
-  PASS: COUNT(DISTINCT *) with GROUP BY (15ms)
+  PASS: AVG DISTINCT with GROUP BY (11ms)
+  PASS: COUNT DISTINCT with GROUP BY (12ms)
+  PASS: COUNT(DISTINCT *) with GROUP BY (12ms)
   PASS: GROUP_CONCAT DISTINCT
-  PASS: MAX DISTINCT with GROUP BY (15ms)
-  PASS: MIN DISTINCT with GROUP BY (15ms)
+  PASS: MAX DISTINCT with GROUP BY (12ms)
+  PASS: MIN DISTINCT with GROUP BY (11ms)
   PASS: SAMPLE DISTINCT
-  PASS: SUM DISTINCT with GROUP BY (15ms)
-  [suite time: 1.7s]
+  PASS: SUM DISTINCT with GROUP BY (11ms)
+  [suite time: 1.3s]
 
 --- basic-update ---
-  [suite time: 0.5s]
+  [suite time: 0.4s]
 
 --- bind ---
   FAIL: bind01 - BIND — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_fwd
@@ -76,18 +76,18 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: Post-query VALUES with obj-var, 1 row
   PASS: Post-query VALUES with 2 obj-vars, 1 row
   PASS: Post-query VALUES with 2 obj-vars, 1 row with UNDEF
-  PASS: Post-query VALUES with 2 obj-vars, 2 rows with UNDEF (27ms)
+  PASS: Post-query VALUES with 2 obj-vars, 2 rows with UNDEF (21ms)
   PASS: Post-query VALUES with pred-var, 1 row
   FAIL: Post-query VALUES with (OPTIONAL) obj-var, 1 row — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
   PASS: Post-query VALUES with subj/obj-vars, 2 rows with UNDEF
   PASS: Inline VALUES graph pattern
   FAIL: Post-subquery VALUES — Runtime: Not yet implemented: SPARQL11.Algebra.eval_subselect_fwd
   unsup: VALUES inside GRAPH binding the same variable as the graph name — Turtle result format not yet supported
-  [suite time: 0.2s]
+  [suite time: 0.1s]
 
 --- cast ---
-  PASS: xsd:boolean cast (722ms)
-  PASS: xsd:integer cast (694ms)
+  PASS: xsd:boolean cast (555ms)
+  PASS: xsd:integer cast (534ms)
   FAIL: xsd:float cast — Results mismatch: expected 31 rows, got 31
       UNMATCHED: ?a=<http://example.org/s03>, ?v="-10.2E3"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="-1.02E4"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/s04>, ?v="+33.3300"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="3.333E1"^^<http://www.w3.org/2001/XMLSchema#float>
@@ -114,13 +114,13 @@ Test base: ../../../tests/w3c/sparql/sparql11
       UNMATCHED: ?a=<http://example.org/n11>, ?v="1.25"^^<http://www.w3.org/2001/XMLSchema#float>, ?float="1.25"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/n12>, ?v="-7.875"^^<http://www.w3.org/2001/XMLSchema#float>, ?float="-7.875"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/n13>, ?v="2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="2.5"^^<http://www.w3.org/2001/XMLSchema#float>
-      UNMATCHED: ?a=<http://example.org/n14>, ?v="-2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="-2.5"^^<http://www.w3.org/2001/XMLSchema#float> (804ms)
-  PASS: xsd:double cast (812ms)
+      UNMATCHED: ?a=<http://example.org/n14>, ?v="-2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="-2.5"^^<http://www.w3.org/2001/XMLSchema#float> (617ms)
+  PASS: xsd:double cast (624ms)
   FAIL: xsd:decimal cast — Results mismatch: expected 31 rows, got 31
       UNMATCHED: ?a=<http://example.org/n09>, ?v="0.0"^^<http://www.w3.org/2001/XMLSchema#float>, ?decimal="0.0"^^<http://www.w3.org/2001/XMLSchema#decimal>
-      UNMATCHED: ?a=<http://example.org/n10>, ?v="1.0"^^<http://www.w3.org/2001/XMLSchema#float>, ?decimal="1.0"^^<http://www.w3.org/2001/XMLSchema#decimal> (758ms)
-  PASS: xsd:string cast (662ms)
-  [suite time: 4.5s]
+      UNMATCHED: ?a=<http://example.org/n10>, ?v="1.0"^^<http://www.w3.org/2001/XMLSchema#float>, ?decimal="1.0"^^<http://www.w3.org/2001/XMLSchema#decimal> (585ms)
+  PASS: xsd:string cast (509ms)
+  [suite time: 3.4s]
 
 --- clear ---
   [suite time: 0.1s]
@@ -133,7 +133,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: constructwhere05 - CONSTRUCT WHERE
   PASS: constructwhere06 - CONSTRUCT WHERE
   FAIL: CONSTRUCT list — SPARQL parse: unexpected token
-  [suite time: 0.1s]
+  [suite time: 0.0s]
 
 --- copy ---
   [suite time: 0.1s]
@@ -148,7 +148,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   [suite time: 0.0s]
 
 --- delete ---
-  [suite time: 1.3s]
+  [suite time: 1.0s]
 
 --- delete-data ---
   [suite time: 0.1s]
@@ -162,13 +162,13 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: DELETE INSERT 7b
   PASS: DELETE INSERT 8
   PASS: DELETE INSERT 9
-  [suite time: 0.4s]
+  [suite time: 0.3s]
 
 --- delete-where ---
   [suite time: 0.1s]
 
 --- drop ---
-  [suite time: 0.1s]
+  [suite time: 0.0s]
 
 --- entailment ---
   FAIL: bind01 - BIND fixed data for OWL DL — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_fwd
@@ -185,43 +185,43 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: bnodes are not existentials with answer
   FAIL: paper-sparqldl-Q1 — Results mismatch: expected 3 rows, got 1
       UNMATCHED: ?c=<http://www.w3.org/2002/07/owl#Nothing>
-      UNMATCHED: ?c=<http://example.org/Student> (14ms)
-  PASS: paper-sparqldl-Q1-rdfs (13ms)
+      UNMATCHED: ?c=<http://example.org/Student> (11ms)
+  PASS: paper-sparqldl-Q1-rdfs (10ms)
   FAIL: paper-sparqldl-Q2 — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?x=<http://example.org/John>, ?y="Johnnie"^^<http://www.w3.org/2001/XMLSchema#string> (13ms)
+      UNMATCHED: ?x=<http://example.org/John>, ?y="Johnnie"^^<http://www.w3.org/2001/XMLSchema#string> (10ms)
   FAIL: paper-sparqldl-Q3 — Results mismatch: expected 2 rows, got 0
       UNMATCHED: ?x=<http://example.org/John>
-      UNMATCHED: ?x=<http://example.org/person1> (14ms)
+      UNMATCHED: ?x=<http://example.org/person1> (11ms)
   FAIL: paper-sparqldl-Q4 — Results mismatch: expected 2 rows, got 0
       UNMATCHED: ?x=<http://example.org/John>, ?c=<http://example.org/Employee>
-      UNMATCHED: ?x=<http://example.org/John>, ?c=<http://example.org/GraduateAssistant> (15ms)
-  PASS: paper-sparqldl-Q5 (13ms)
+      UNMATCHED: ?x=<http://example.org/John>, ?c=<http://example.org/GraduateAssistant> (12ms)
+  PASS: paper-sparqldl-Q5 (10ms)
   FAIL: filtered subclass query with (hasChild some Thing) restriction — Results mismatch: expected 3 rows, got 0
       UNMATCHED: ?C=<http://example.org/test#Parent>
       UNMATCHED: ?C=<http://example.org/test#Father>
-      UNMATCHED: ?C=<http://example.org/test#Mother> (15ms)
-  PASS: parent query with distinguished variable (13ms)
+      UNMATCHED: ?C=<http://example.org/test#Mother> (12ms)
+  PASS: parent query with distinguished variable (10ms)
   FAIL: parent query with (hasChild some Thing) restriction — Results mismatch: expected 3 rows, got 0
       UNMATCHED: ?parent=<http://example.org/test#Alice>
       UNMATCHED: ?parent=<http://example.org/test#Bob>
-      UNMATCHED: ?parent=<http://example.org/test#Dudley> (14ms)
+      UNMATCHED: ?parent=<http://example.org/test#Dudley> (11ms)
   FAIL: parent query with (hasChild min 1) restriction — Results mismatch: expected 3 rows, got 0
       UNMATCHED: ?parent=<http://example.org/test#Alice>
       UNMATCHED: ?parent=<http://example.org/test#Bob>
-      UNMATCHED: ?parent=<http://example.org/test#Dudley> (15ms)
+      UNMATCHED: ?parent=<http://example.org/test#Dudley> (12ms)
   FAIL: parent query with (hasChild some Female) restriction — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?parent=<http://example.org/test#Dudley> (12ms)
+      UNMATCHED: ?parent=<http://example.org/test#Dudley>
   FAIL: parent query with (hasChild min 1 Female) restriction — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?parent=<http://example.org/test#Dudley> (12ms)
+      UNMATCHED: ?parent=<http://example.org/test#Dudley>
   FAIL: parent query with (hasChild max 1 Female) restriction — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?parent=<http://example.org/test#Dudley> (12ms)
+      UNMATCHED: ?parent=<http://example.org/test#Dudley>
   FAIL: parent query with (hasChild exactly 1 Female) restriction — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?parent=<http://example.org/test#Dudley> (12ms)
+      UNMATCHED: ?parent=<http://example.org/test#Dudley>
   FAIL: subclass query with (hasChild some Thing) restriction — Results mismatch: expected 4 rows, got 0
       UNMATCHED: ?C=<http://example.org/test#Parent>
       UNMATCHED: ?C=<http://example.org/test#Father>
       UNMATCHED: ?C=<http://example.org/test#Mother>
-      UNMATCHED: ?C=<http://www.w3.org/2002/07/owl#Nothing> (17ms)
+      UNMATCHED: ?C=<http://www.w3.org/2002/07/owl#Nothing> (13ms)
   PASS: Plain literals with language tag are not the same as the same literal without
   PASS: RDF inference test
   PASS: RDF inference test
@@ -273,16 +273,16 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: sparqldl-01.rq: triple pattern
   PASS: sparqldl-02.rq: simple combined query
   PASS: sparqldl-03.rq: combined query with complex class description
-  PASS: sparqldl-04.rq: bug fixing test (10ms)
+  PASS: sparqldl-04.rq: bug fixing test
   PASS: sparqldl-05.rq: simple undistinguished variable test.
   PASS: sparqldl-06.rq: cycle of undistinguished variables
   PASS: sparqldl-07.rq: two distinguished variables + undist.
   PASS: sparqldl-08.rq: two distinguished variables + undist.
-  PASS: sparqldl-09.rq: undist vars test (13ms)
+  PASS: sparqldl-09.rq: undist vars test (11ms)
   FAIL: sparqldl-10.rq: undist vars test — Results mismatch: expected 3 rows, got 0
       UNMATCHED: ?X=<http://example.org/test#a>, ?Y=<http://example.org/test#b>
       UNMATCHED: ?X=<http://example.org/test#a>, ?Y=<http://example.org/test#b>
-      UNMATCHED: ?X=<http://example.org/test#a>, ?Y=<http://example.org/test#b> (13ms)
+      UNMATCHED: ?X=<http://example.org/test#a>, ?Y=<http://example.org/test#b> (10ms)
   FAIL: sparqldl-11.rq: domain test — Results mismatch: expected 2 rows, got 0
       UNMATCHED: ?C=<http://www.w3.org/2002/07/owl#Thing>
       UNMATCHED: ?C=<foo://bla/names#Parent>
@@ -291,8 +291,8 @@ Test base: ../../../tests/w3c/sparql/sparql11
   FAIL: sparqldl-13.rq: sameAs — Results mismatch: expected 4 rows, got 1
       UNMATCHED: ?a=<http://example.org/test#a>, ?b=<http://example.org/test#b>, ?x=<http://example.org/test#b>
       UNMATCHED: ?a=<http://example.org/test#a>, ?b=<http://example.org/test#x>, ?x=<http://example.org/test#x>
-      UNMATCHED: ?a=<http://example.org/test#a>, ?b=<http://example.org/test#x>, ?x=<http://example.org/test#b> (25ms)
-  [suite time: 6.5s]
+      UNMATCHED: ?a=<http://example.org/test#a>, ?b=<http://example.org/test#x>, ?x=<http://example.org/test#b> (20ms)
+  [suite time: 5.0s]
 
 --- exists ---
   FAIL: Exists with one constant — Runtime: Not yet implemented: SPARQL11.Algebra.eval_exists_fwd
@@ -306,36 +306,36 @@ Test base: ../../../tests/w3c/sparql/sparql11
 --- functions ---
   FAIL: STRDT() — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
   FAIL: STRDT(STR()) — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
-  PASS: STRDT() TypeErrors (updated for RDF 1.1) (41ms)
+  PASS: STRDT() TypeErrors (updated for RDF 1.1) (32ms)
   FAIL: STRLANG() — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
   FAIL: STRLANG(STR()) — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
-  PASS: STRLANG() TypeErrors (updated for RDF 1.1) (44ms)
+  PASS: STRLANG() TypeErrors (updated for RDF 1.1) (35ms)
   FAIL: isNumeric() — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
   FAIL: ABS() — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
-  PASS: CEIL() (33ms)
-  PASS: FLOOR() (33ms)
-  PASS: ROUND() (33ms)
+  PASS: CEIL() (26ms)
+  PASS: FLOOR() (26ms)
+  PASS: ROUND() (26ms)
   PASS: CONCAT()
-  PASS: CONCAT() 2 (134ms)
+  PASS: CONCAT() 2 (108ms)
   PASS: CONCAT() without parameter
   PASS: CONCAT() with a single parameter
-  PASS: SUBSTR() (3-argument) (33ms)
+  PASS: SUBSTR() (3-argument) (26ms)
   PASS: SUBSTR() (3-argument) on non-BMP unicode strings
-  PASS: SUBSTR() (2-argument) (33ms)
+  PASS: SUBSTR() (2-argument) (26ms)
   PASS: SUBSTR() (2-argument) on non-BMP unicode strings
-  PASS: STRLEN() (26ms)
+  PASS: STRLEN() (21ms)
   PASS: STRLEN() on non-BMP unicode strings
-  PASS: UCASE() (19ms)
+  PASS: UCASE() (15ms)
   PASS: UCASE() on non-BMP unicode strings
-  PASS: LCASE() (19ms)
+  PASS: LCASE() (15ms)
   PASS: LCASE() on non-BMP unicode strings
-  PASS: ENCODE_FOR_URI() (34ms)
+  PASS: ENCODE_FOR_URI() (27ms)
   PASS: ENCODE_FOR_URI() on non-BMP unicode strings
   FAIL: CONTAINS() — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
   FAIL: STRSTARTS() — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
   FAIL: STRENDS() — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
-  PASS: plus-1-corrected (49ms)
-  PASS: plus-2-corrected (39ms)
+  PASS: plus-1-corrected (38ms)
+  PASS: plus-2-corrected (30ms)
   PASS: MD5()
   PASS: MD5() over Unicode data
   PASS: SHA1()
@@ -346,13 +346,13 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: SHA384() on Unicode data
   PASS: SHA512()
   PASS: SHA512() on Unicode data
-  PASS: MINUTES() (12ms)
-  PASS: SECONDS() (12ms)
-  PASS: HOURS() (12ms)
-  PASS: MONTH() (12ms)
-  PASS: YEAR() (12ms)
-  PASS: DAY() (12ms)
-  PASS: TIMEZONE() (11ms)
+  PASS: MINUTES()
+  PASS: SECONDS()
+  PASS: HOURS()
+  PASS: MONTH()
+  PASS: YEAR()
+  PASS: DAY()
+  PASS: TIMEZONE()
   PASS: TZ()
   FAIL: BNODE(str) — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
   PASS: BNODE()
@@ -364,18 +364,18 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: RAND()
   PASS: IRI()/URI()
   PASS: IRI()/URI() when the input is an IRI
-  PASS: IF() (39ms)
+  PASS: IF() (31ms)
   PASS: IF() error propogation
   FAIL: COALESCE() — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
   PASS: COALESCE() without arguments
-  PASS: STRBEFORE() (16ms)
-  PASS: STRBEFORE() datatyping (35ms)
-  PASS: STRAFTER() (16ms)
-  PASS: STRAFTER() datatyping (36ms)
+  PASS: STRBEFORE() (13ms)
+  PASS: STRBEFORE() datatyping (27ms)
+  PASS: STRAFTER() (12ms)
+  PASS: STRAFTER() datatyping (28ms)
   FAIL: REPLACE() — Results mismatch: expected 9 rows, got 9
       UNMATCHED: ?s=<http://example.org/s2>, ?new="---"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#langString>@ja
       UNMATCHED: ?s=<http://example.org/s3>, ?new="-nglish"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#langString>@en
-      UNMATCHED: ?s=<http://example.org/s4>, ?new="-ran-ais"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#langString>@fr (25ms)
+      UNMATCHED: ?s=<http://example.org/s4>, ?new="-ran-ais"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#langString>@fr (20ms)
   FAIL: REPLACE() with overlapping pattern — Results mismatch: expected 1 rows, got 1
       UNMATCHED: ?new="b*na"^^<http://www.w3.org/2001/XMLSchema#string>
   FAIL: REPLACE() with captured substring — Results mismatch: expected 1 rows, got 1
@@ -385,7 +385,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   FAIL: UUID() pattern match — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_fwd
   PASS: UUID() per binding
   FAIL: STRUUID() pattern match — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_fwd
-  [suite time: 4.7s]
+  [suite time: 3.6s]
 
 --- grouping ---
   PASS: Group-1
@@ -397,10 +397,10 @@ Test base: ../../../tests/w3c/sparql/sparql11
   [suite time: 0.0s]
 
 --- http-rdf-update ---
-  [suite time: 0.6s]
+  [suite time: 0.5s]
 
 --- json-res ---
-  PASS: jsonres01 - JSON Result Format (16ms)
+  PASS: jsonres01 - JSON Result Format (12ms)
   FAIL: jsonres02 - JSON Result Format — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
   PASS: jsonres03 - JSON Result Format
   PASS: jsonres04 - JSON Result Format
@@ -422,10 +422,10 @@ Test base: ../../../tests/w3c/sparql/sparql11
   FAIL: Subtraction with MINUS from a fully bound minuend — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
   FAIL: Subtraction with MINUS from a partially bound minuend — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
   PASS: outer GRAPH operator does not affect MINUS disjointness
-  [suite time: 0.2s]
+  [suite time: 0.1s]
 
 --- project-expression ---
-  PASS: Expression is equality (12ms)
+  PASS: Expression is equality
   PASS: Expression raise an error
   PASS: Reuse a project expression variable in select
   PASS: Reuse a project expression variable in order by
@@ -468,10 +468,10 @@ Test base: ../../../tests/w3c/sparql/sparql11
   FAIL: * with end being a constant on the empty dataset — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
   FAIL: ? with start being a constant on the empty dataset — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
   FAIL: ? with end being a constant on the empty dataset — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  [suite time: 0.7s]
+  [suite time: 0.5s]
 
 --- protocol ---
-  [suite time: 2.9s]
+  [suite time: 2.2s]
 
 --- service ---
   FAIL: SERVICE test 1 — Results mismatch: expected 2 rows, got 0
@@ -483,7 +483,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   FAIL: SERVICE test 3 — Results mismatch: expected 2 rows, got 0
       UNMATCHED: ?s=<http://example.org/b>, ?o1="Bob"^^<http://www.w3.org/2001/XMLSchema#string>
       UNMATCHED: ?s=<http://example.org/a>, ?o1="Alan"^^<http://www.w3.org/2001/XMLSchema#string>, ?o2="SPARQL 1.1 Basic Federated Query"^^<http://www.w3.org/2001/XMLSchema#string>
-  FAIL: SERVICE test 4a with VALUES clause — Results mismatch: expected 4 rows, got 6 (15ms)
+  FAIL: SERVICE test 4a with VALUES clause — Results mismatch: expected 4 rows, got 6 (11ms)
   FAIL: SERVICE test 5 — SPARQL parse: unsupported: variable SERVICE endpoint
   FAIL: SERVICE test 6 — Results mismatch: expected 2 rows, got 0
       UNMATCHED: ?s=<http://example.org/b>, ?o1="Bob"^^<http://www.w3.org/2001/XMLSchema#string>
@@ -614,10 +614,10 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: \u unicode codepoint escaping in literal using partial surrogate pair
   PASS: Too few values in a VALUE clause compared to the number of variables
   PASS: Too many values in a VALUE clause compared to the number of variables
-  [suite time: 3.0s]
+  [suite time: 2.4s]
 
 --- syntax-update-1 ---
-  [suite time: 1.0s]
+  [suite time: 0.8s]
 
 --- syntax-update-2 ---
   [suite time: 0.0s]
