@@ -1,0 +1,14 @@
+# Claude Code session state (rule #18). Tracked template is
+# .claude-worklog.template.md; the live worklog is session-specific
+# and must not be committed.
+.claude-worklog.md
+.claude-runs/
+
+# Claude Code runtime state — local settings and harness scratch.
+# settings.json (the shared project hooks) IS tracked; settings.local.json
+# and the scheduled_tasks lockfile are per-machine and are not.
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
+# Local editor / OS cruft
+.DS_Store

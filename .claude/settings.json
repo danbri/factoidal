@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Reminder (CLAUDE.md rule #18): if this was a material change, update .claude-worklog.md with current state and next step.' 1>&2"
+          }
+        ]
+      }
+    ]
+  }
+}

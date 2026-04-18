@@ -225,6 +225,49 @@ Previous Claude sessions made these errors. Read and internalize:
     run (e.g. deliberate scaling test), say so explicitly and use
     `run_in_background: true` so the main loop isn't blocked.
 
+18. **Dump in-flight plan to disk at checkpoints.** The Claude Code harness
+    persists the conversation transcript but NOT the agent's in-memory
+    "what I plan to do next" state. If the session is interrupted (Esc,
+    timeout, crash), that state evaporates. **Rule:** after every material
+    change and before every long-running tool call, write the current plan
+    + "next step I was about to take" to `.claude-worklog.md` at the repo
+    root, as a timestamped bulleted entry. Overwrite the "CURRENT STATE"
+    section at the top; append to the "HISTORY" section below. A new
+    session should be able to read that file and resume without losing
+    context.
+
+    Minimum fields per checkpoint:
+    - timestamp (UTC)
+    - current goal (one line)
+    - last completed step
+    - next step planned
+    - any in-flight processes (with PID + log path)
+    - uncommitted local changes (git status summary)
+    - known regressions or blockers
+
+    Also use `TaskCreate` / `TaskUpdate` for the same information — the
+    worklog is the durable on-disk mirror.
+
+    `.claude-worklog.md` itself is gitignored (session-specific state, not
+    source); a `.claude-worklog.template.md` is tracked so the format
+    stays discoverable.
+
+19. **Every long-running process goes to a timestamped log + wall-clock
+    cap.** Turtle parsing, W3C test runs, F\* extraction, and anything
+    that has ever been observed taking >2 minutes MUST be launched with:
+    - `run_in_background: true` so the main loop isn't blocked
+    - stdout+stderr redirected to a file under `.claude-runs/` named
+      `<op>-<YYYYMMDD-HHMMSS>.log`
+    - a hard wall-clock cap (`timeout 600` or equivalent) — if the cap
+      trips, capture the log, record the stuck state in
+      `.claude-worklog.md`, and do **not** just rerun and hope
+    - a status line appended to `.claude-worklog.md` at launch and at
+      completion: `started X at T, log=<path>, cap=<N>s`
+
+    The 10-minute cap in rule #17 applies. This rule adds the logging +
+    reporting requirements. Anything that hits the cap is a reportable
+    event, not a silent rerun.
+
 ## Known Performance Issues
 
 ### Turtle parser is too slow for real-world input
