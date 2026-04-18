@@ -90,9 +90,14 @@ let parse_sparql_query ?(base_file=None) content =
    Parser wrappers — thin adapters over F*-extracted parsers
    ============================================================================ *)
 
-(* N-Triples: F*-extracted *)
+(* N-Triples: F*-extracted (lenient — skips bad lines) *)
 let parse_ntriples_fstar input =
   Parser_NTriples.parse_ntriples input
+
+(* N-Triples strict: returns None on any parse error.
+   Used for W3C negative syntax tests (TestNTriplesNegativeSyntax). *)
+let parse_ntriples_strict input =
+  Parser_NTriples.parse_ntriples_strict input
 
 (* Turtle: F*-extracted, with optional base IRI (lenient — always returns triples) *)
 let parse_turtle_fstar input base_opt =
@@ -151,6 +156,11 @@ let parse_tsv_results_fstar content =
 let parse_nquads_fstar input =
   Parser_NQuads.parse_nquads input
 
+(* N-Quads strict: returns None on any parse error.
+   Used for W3C negative syntax tests (TestNQuadsNegativeSyntax). *)
+let parse_nquads_strict input =
+  Parser_NQuads.parse_nquads_strict input
+
 (* TriG: F*-extracted, returns dataset (lenient — always returns dataset) *)
 let parse_trig_fstar input base_opt =
   match base_opt with
@@ -180,6 +190,7 @@ type test_case = {
   data_files : string list;
   named_data_files : (string * string) list;  (* (graph_iri, file_path) *)
   result_file : string option;
+  manifest_dir : string;  (* directory of the manifest that declared this test *)
 }
 
 let mf_ns = "http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#"
@@ -343,7 +354,7 @@ let extract_test_cases manifest_dir graph =
         Some (iri_to_local_path manifest_dir (term_to_str r))
       | [] -> None in
 
-    Some { name; test_type; test_type_detail; query_file; data_files; named_data_files; result_file }
+    Some { name; test_type; test_type_detail; query_file; data_files; named_data_files; result_file; manifest_dir }
   ) entry_nodes
 
 (* Extract mf:assumedTestBase from manifest graph, if present *)
@@ -1161,15 +1172,45 @@ let apply_entailment_regime regime triples =
      with _ -> triples)
   | _ -> triples  (* unknown regime — just use the raw triples *)
 
-let make_turtle_base assumed_base filepath =
-  (* Use assumed test base from manifest if available, else file:// *)
+(* Compute the path of `filepath` relative to `manifest_dir`, preserving
+   any subdirectories (e.g. "rdf-ns-prefix-confusion/test0004.rdf").
+   Falls back to basename if filepath isn't under manifest_dir. *)
+let relpath_under manifest_dir filepath =
+  let md = if Filename.is_relative manifest_dir
+           then Filename.concat (Sys.getcwd ()) manifest_dir
+           else manifest_dir in
+  let fp = if Filename.is_relative filepath
+           then Filename.concat (Sys.getcwd ()) filepath
+           else filepath in
+  let md_slash = if String.length md > 0 && md.[String.length md - 1] = '/'
+                 then md else md ^ "/" in
+  if String.length fp > String.length md_slash
+     && String.sub fp 0 (String.length md_slash) = md_slash then
+    String.sub fp (String.length md_slash) (String.length fp - String.length md_slash)
+  else
+    Filename.basename filepath
+
+let make_turtle_base_tc assumed_base manifest_dir filepath =
+  (* Use assumed test base from manifest when available. Some RDF test
+     suites (rdf-xml, rdf-trig) organise tests into subdirectories and
+     expect the base to include that sub-path, e.g.:
+       base        = https://w3c.github.io/rdf-tests/rdf/rdf11/rdf-xml/
+       query_file  = .../rdf-xml/rdf-ns-prefix-confusion/test0004.rdf
+       baseURI     = https://w3c.github.io/.../rdf-xml/rdf-ns-prefix-confusion/test0004.rdf
+     so use the manifest-relative path, not just the basename. *)
   match assumed_base with
-  | Some base ->
-    let filename = Filename.basename filepath in
-    base ^ filename
+  | Some base -> base ^ relpath_under manifest_dir filepath
   | None ->
     let abs_fp = if Filename.is_relative filepath then Filename.concat (Sys.getcwd ()) filepath else filepath in
     "file://" ^ abs_fp
+
+(* Back-compat wrapper for call sites that don't have manifest_dir
+   (currently none — every call is via run_rdf_test which has tc). *)
+let make_turtle_base assumed_base filepath =
+  let abs_fp = if Filename.is_relative filepath then Filename.concat (Sys.getcwd ()) filepath else filepath in
+  match assumed_base with
+  | Some base -> base ^ Filename.basename filepath
+  | None -> "file://" ^ abs_fp
 
 let run_rdf_test assumed_base tc =
   match tc.test_type with
@@ -1181,12 +1222,17 @@ let run_rdf_test assumed_base tc =
        (try ignore (parse_ntriples_fstar content); Pass
         with _ -> Fail "Should parse but didn't"))
 
-  (* N-Triples negative syntax: should fail to parse *)
+  (* N-Triples negative syntax: should fail to parse.
+     The lenient parser skips bad lines so it never raises; use the
+     strict variant which returns None on any parse error. *)
   | "TestNTriplesNegativeSyntax" ->
     (match read_file tc.query_file with
      | None -> Skip "File missing"
      | Some content ->
-       (try ignore (parse_ntriples_fstar content); Fail "Should reject but parsed OK"
+       (try
+          match parse_ntriples_strict content with
+          | None -> Pass
+          | Some _ -> Fail "Should reject but parsed OK"
         with _ -> Pass))
 
   (* Turtle positive syntax: should parse without error *)
@@ -1195,7 +1241,7 @@ let run_rdf_test assumed_base tc =
      | None -> Skip "File missing"
      | Some content ->
        (try
-          let base = make_turtle_base assumed_base tc.query_file in
+          let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
           ignore (parse_turtle_fstar content (Some base)); Pass
         with _ -> Fail "Should parse but didn't"))
 
@@ -1205,7 +1251,7 @@ let run_rdf_test assumed_base tc =
      | None -> Skip "File missing"
      | Some content ->
        (try
-          let base = make_turtle_base assumed_base tc.query_file in
+          let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
           match parse_turtle_strict content (Some base) with
           | None -> Pass  (* strict parser detected error *)
           | Some _ -> Fail "Should reject but parsed OK"
@@ -1221,7 +1267,7 @@ let run_rdf_test assumed_base tc =
         | None -> Skip (Printf.sprintf "Result file missing: %s" rf)
         | Some expected_content ->
           (try
-            let base = make_turtle_base assumed_base tc.query_file in
+            let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
             let actual = parse_turtle_fstar input (Some base) in
             let expected = parse_ntriples_fstar expected_content in
             if triple_sets_match expected actual then Pass
@@ -1237,7 +1283,7 @@ let run_rdf_test assumed_base tc =
      | None -> Skip "File missing"
      | Some content ->
        (try
-          let base = make_turtle_base assumed_base tc.query_file in
+          let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
           (* Use strict parser: if it detects any error (returns None), that's pass *)
           match parse_turtle_strict content (Some base) with
           | None -> Pass
@@ -1254,12 +1300,17 @@ let run_rdf_test assumed_base tc =
        (try ignore (parse_nquads_fstar content); Pass
         with _ -> Fail "Should parse but didn't"))
 
-  (* N-Quads negative syntax *)
+  (* N-Quads negative syntax. Same story as N-Triples: the lenient parser
+     silently skips bad lines, so we must use the strict variant that
+     returns None on any parse error. *)
   | "TestNQuadsNegativeSyntax" ->
     (match read_file tc.query_file with
      | None -> Skip "File missing"
      | Some content ->
-       (try ignore (parse_nquads_fstar content); Fail "Should reject but parsed OK"
+       (try
+          match parse_nquads_strict content with
+          | None -> Pass
+          | Some _ -> Fail "Should reject but parsed OK"
         with _ -> Pass))
 
   (* TriG positive syntax *)
@@ -1268,7 +1319,7 @@ let run_rdf_test assumed_base tc =
      | None -> Skip "File missing"
      | Some content ->
        (try
-          let base = make_turtle_base assumed_base tc.query_file in
+          let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
           ignore (parse_trig_fstar content (Some base)); Pass
         with _ -> Fail "Should parse but didn't"))
 
@@ -1278,7 +1329,7 @@ let run_rdf_test assumed_base tc =
      | None -> Skip "File missing"
      | Some content ->
        (try
-          let base = make_turtle_base assumed_base tc.query_file in
+          let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
           match parse_trig_strict content (Some base) with
           | None -> Pass  (* strict parser detected error *)
           | Some _ -> Fail "Should reject but parsed OK"
@@ -1294,7 +1345,7 @@ let run_rdf_test assumed_base tc =
         | None -> Skip (Printf.sprintf "Result file missing: %s" rf)
         | Some expected_content ->
           (try
-            let base = make_turtle_base assumed_base tc.query_file in
+            let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
             let actual_ds = parse_trig_fstar input (Some base) in
             let expected_ds = parse_nquads_fstar expected_content in
             (* Compare default graphs and named graphs *)
@@ -1315,7 +1366,7 @@ let run_rdf_test assumed_base tc =
      | None -> Skip "File missing"
      | Some content ->
        (try
-          let base = make_turtle_base assumed_base tc.query_file in
+          let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
           match parse_trig_strict content (Some base) with
           | None -> Pass  (* strict parser detected error *)
           | Some ds ->
@@ -1333,7 +1384,7 @@ let run_rdf_test assumed_base tc =
         | None -> Skip (Printf.sprintf "Result file missing: %s" rf)
         | Some expected_content ->
           (try
-            let base = make_turtle_base assumed_base tc.query_file in
+            let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
             let actual = parse_rdfxml_fstar input (Some base) in
             let expected = parse_ntriples_fstar expected_content in
             if triple_sets_match expected actual then Pass

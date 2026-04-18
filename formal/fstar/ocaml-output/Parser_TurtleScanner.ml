@@ -253,19 +253,24 @@ let rec scan_name_body_end (input : Prims.string) (pos : Prims.nat)
      else
        (let c = FStar_String.index input pos in
         let code = FStar_Char.int_of_char c in
-        if code < (Prims.of_int (0x80))
+        if (code = (Prims.of_int (0x5C))) && ((pos + Prims.int_one) < len)
         then
-          (if is_ascii_name_body c
-           then
-             scan_name_body_end input (pos + Prims.int_one)
-               (fuel - Prims.int_one)
-           else pos)
+          scan_name_body_end input (pos + (Prims.of_int (2)))
+            (fuel - Prims.int_one)
         else
-          if is_turtle_token_delim c
-          then pos
+          if code < (Prims.of_int (0x80))
+          then
+            (if is_ascii_name_body c
+             then
+               scan_name_body_end input (pos + Prims.int_one)
+                 (fuel - Prims.int_one)
+             else pos)
           else
-            scan_name_body_end input (pos + Prims.int_one)
-              (fuel - Prims.int_one)))
+            if is_turtle_token_delim c
+            then pos
+            else
+              scan_name_body_end input (pos + Prims.int_one)
+                (fuel - Prims.int_one)))
 let scan_prefixed_name_span (input : Prims.string) (pos : Prims.nat) :
   prefixed_name_span Parser_Combinators.parse_result=
   let len = FStar_String.strlen input in

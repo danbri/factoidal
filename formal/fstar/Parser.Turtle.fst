@@ -55,10 +55,55 @@ let rec lookup_prefix (pfx: string) (ps: list (string & string)) : option string
   | [] -> None
   | (k, v) :: rest -> if k = pfx then Some v else lookup_prefix pfx rest
 
-(* Resolve a prefixed name: prefix:localname -> full IRI *)
+(* Unescape PN_LOCAL_ESC sequences in a local name. Per the Turtle
+   grammar §6.5, a literal backslash followed by one of
+   _~.-!$&'()*+,;=/?#@% stands for that reserved char, unescaped,
+   in the resolved IRI.
+
+   Use fuel-bounded recursion (rather than decreases (len - pos))
+   because SMT termination proofs at this file position are fragile —
+   adding more recursive functions near the doc-level recursion
+   sometimes breaks earlier-verified decreases clauses. Fuel bounded by
+   string length makes the proof trivial. *)
+let rec unescape_pn_local_fuel (local: string) (pos: nat) (acc: list char) (fuel: nat)
+  : Tot (list char) (decreases fuel) =
+  if fuel = 0 then List.Tot.rev acc
+  else
+    let len = String.length local in
+    if pos >= len then List.Tot.rev acc
+    else
+      let c = String.index local pos in
+      if FStar.Char.int_of_char c = 0x5C && pos + 1 < len then
+        let c2 = String.index local (pos + 1) in
+        unescape_pn_local_fuel local (pos + 2) (c2 :: acc) (fuel - 1)
+      else
+        unescape_pn_local_fuel local (pos + 1) (c :: acc) (fuel - 1)
+
+(* Fast check: does the string contain any backslash? If not we can
+   return the input unchanged and skip the list allocation. Called on
+   every prefixed-name resolution, which is very hot. *)
+let rec has_backslash_fuel (s: string) (pos: nat) (fuel: nat)
+  : Tot bool (decreases fuel) =
+  if fuel = 0 then false
+  else
+    let len = String.length s in
+    if pos >= len then false
+    else if FStar.Char.int_of_char (String.index s pos) = 0x5C then true
+    else has_backslash_fuel s (pos + 1) (fuel - 1)
+
+let unescape_pn_local (local: string) : string =
+  let len = String.length local in
+  if has_backslash_fuel local 0 (len + 1) then
+    String.string_of_list (unescape_pn_local_fuel local 0 [] (len + 1))
+  else
+    local
+
+(* Resolve a prefixed name: prefix:localname -> full IRI.
+   PN_LOCAL_ESC sequences in the local part are unescaped before
+   concatenation (per Turtle §6.5). *)
 let resolve_prefixed_name (st: turtle_state) (prefix: string) (local: string) : option string =
   match lookup_prefix prefix st.prefixes with
-  | Some base -> Some (String.concat "" [base; local])
+  | Some base -> Some (String.concat "" [base; unescape_pn_local local])
   | None -> None
 
 (* Find the last occurrence of '/' in a string, return index + 1
@@ -81,27 +126,152 @@ let remove_last_segment (base: string) : string =
     if cut_pos = 0 then base  (* no slash found, return as-is *)
     else String.sub base 0 cut_pos
 
-(* Resolve a relative IRI against the base IRI per RFC 3986 Section 5.
-   Handles: absolute IRIs (returned as-is), same-document refs,
-   relative paths (resolved by removing last segment of base). *)
-let resolve_iri (st: turtle_state) (rel: string) : string =
-  if String.length rel = 0 then st.base_iri
+(* Find the position of the next '/' in `s` at or after `pos` (where
+   pos is already known to be <= String.length s). Returns
+   String.length s if no slash remains. *)
+let rec find_next_slash (s: string) (pos: nat{pos <= String.length s}) (fuel: nat)
+  : Tot (r:nat{pos <= r /\ r <= String.length s}) (decreases fuel) =
+  let len = String.length s in
+  if fuel = 0 then pos
+  else if pos >= len then len
+  else if FStar.Char.int_of_char (String.index s pos) = 0x2F then pos
+  else find_next_slash s (pos + 1) (fuel - 1)
+
+(* RFC 3986 §5.2.4: remove_dot_segments — collapse "./" and "../" in a
+   path. Input is a "merged" path (already resolved via §5.2.3). Output
+   preserves trailing slash iff input ends in ".", "..", or "/".
+
+   We model the RFC's two-buffer algorithm by repeatedly consuming a
+   segment from the input, and pushing it onto an output list unless
+   it's "." (drop) or ".." (drop and pop one segment from output). *)
+let rec remove_dot_segments_step (input: string) (pos: nat) (out: list string) (fuel: nat)
+  : Tot (list string) (decreases fuel) =
+  if fuel = 0 then List.Tot.rev out
   else
-    let len = String.length rel in
-    (* Check if already absolute: contains ":" in the first part *)
-    if string_contains_colon rel then rel
-    (* Check if starts with '/' — absolute path reference *)
-    else if FStar.Char.int_of_char (String.index rel 0) = 0x2F then
-      (* Find scheme+authority in base (everything up to 3rd '/') *)
-      (* For simplicity, prepend scheme+authority from base *)
-      String.concat "" [st.base_iri; rel]
-    (* Check if starts with '#' — fragment-only reference *)
-    else if FStar.Char.int_of_char (String.index rel 0) = 0x23 then
-      String.concat "" [st.base_iri; rel]
+    let len = String.length input in
+    if pos > len then List.Tot.rev out
+    else if pos = len then List.Tot.rev out
     else
-      (* Relative path — remove last segment of base, append relative *)
-      let base_dir = remove_last_segment st.base_iri in
-      String.concat "" [base_dir; rel]
+      let slash_pos : nat = find_next_slash input pos (len - pos + 1) in
+      let has_slash = slash_pos < len in
+      let seg_end : nat = slash_pos in
+      let seg_len : nat = seg_end - pos in
+      let seg = String.sub input pos seg_len in
+      let seg_with_slash = if has_slash
+                           then String.concat "" [seg; "/"]
+                           else seg in
+      let next_pos : nat = if has_slash then slash_pos + 1 else len in
+      let out' =
+        if seg = "." then
+          (* "./" or trailing "." — drop input segment; if it's the
+             final "." without a slash, treat as empty trailing "/". *)
+          if has_slash then out
+          else (match out with
+                | [] -> ["/"]  (* promote bare "." -> "/" *)
+                | _ -> "/" :: (match out with _ :: rest -> rest | [] -> []))
+        else if seg = ".." then
+          (* Pop one element from out (if any), and if input had a slash
+             add a trailing "/"; if ".." is final, keep a "/". *)
+          let popped = match out with _ :: rest -> rest | [] -> [] in
+          if has_slash then popped else "/" :: popped
+        else
+          seg_with_slash :: out
+      in
+      remove_dot_segments_step input next_pos out' (fuel - 1)
+
+let remove_dot_segments (path: string) : string =
+  let len = String.length path in
+  let segs = remove_dot_segments_step path 0 [] (len + 2) in
+  String.concat "" segs
+
+(* Find the authority boundary in an absolute URI, i.e. the position of
+   the first '/' after "scheme://". Returns the length of the URI if
+   there's no hierarchical path. *)
+let rec find_authority_end (s: string) (pos: nat{pos <= String.length s}) (fuel: nat)
+  : Tot (r:nat{pos <= r /\ r <= String.length s}) (decreases fuel) =
+  let len = String.length s in
+  if fuel = 0 then pos
+  else if pos >= len then len
+  else if FStar.Char.int_of_char (String.index s pos) = 0x2F then pos
+  else find_authority_end s (pos + 1) (fuel - 1)
+
+let rec find_scheme_end (base: string) (p: nat{p <= String.length base}) (fuel: nat)
+  : Tot (r:nat{r <= String.length base}) (decreases fuel) =
+  let len = String.length base in
+  if fuel = 0 then 0
+  else if p >= len then 0
+  else if FStar.Char.int_of_char (String.index base p) = 0x3A then p + 1
+  else find_scheme_end base (p + 1) (fuel - 1)
+
+let find_path_start (base: string) : (r:nat{r <= String.length base}) =
+  let len = String.length base in
+  let scheme_end = find_scheme_end base 0 (len + 1) in
+  if scheme_end + 1 < len
+     && FStar.Char.int_of_char (String.index base scheme_end) = 0x2F
+     && FStar.Char.int_of_char (String.index base (scheme_end + 1)) = 0x2F
+  then
+    find_authority_end base (scheme_end + 2) (len - scheme_end)
+  else scheme_end
+
+(* Drop any query ("?...") or fragment ("#...") from the base before
+   resolving a relative reference. Per RFC 3986 §5.2.3. *)
+let rec find_query_or_fragment (s: string) (pos: nat{pos <= String.length s}) (fuel: nat)
+  : Tot (r:nat{pos <= r /\ r <= String.length s}) (decreases fuel) =
+  let len = String.length s in
+  if fuel = 0 then pos
+  else if pos >= len then len
+  else
+    let c = FStar.Char.int_of_char (String.index s pos) in
+    if c = 0x3F || c = 0x23 then pos
+    else find_query_or_fragment s (pos + 1) (fuel - 1)
+
+(* Resolve a relative IRI against the base IRI per RFC 3986 §5.
+   Handles absolute IRIs (returned as-is), fragment-only references,
+   absolute-path references, and relative-path references (with dot-
+   segment normalisation via remove_dot_segments). *)
+let resolve_iri (st: turtle_state) (rel: string) : string =
+  let rlen = String.length rel in
+  if rlen = 0 then st.base_iri
+  else
+    let first = FStar.Char.int_of_char (String.index rel 0) in
+    if string_contains_colon rel then rel
+    else if first = 0x23 then
+      (* Fragment-only: strip any existing fragment from base, then append. *)
+      let blen = String.length st.base_iri in
+      let stop = find_query_or_fragment st.base_iri 0 (blen + 1) in
+      let base_no_frag = String.sub st.base_iri 0 stop in
+      String.concat "" [base_no_frag; rel]
+    else if first = 0x2F then
+      (* Authority-relative or absolute-path. Preserve scheme+authority
+         from base, replace path with rel. *)
+      let path_start = find_path_start st.base_iri in
+      let authority = String.sub st.base_iri 0 path_start in
+      String.concat "" [authority; remove_dot_segments rel]
+    else
+      (* Relative reference: strip query+fragment from base, keep up to
+         last '/', append rel, then normalise dot segments. *)
+      let blen = String.length st.base_iri in
+      let stop = find_query_or_fragment st.base_iri 0 (blen + 1) in
+      let base_no_qf = String.sub st.base_iri 0 stop in
+      let base_dir = remove_last_segment base_no_qf in
+      let path_start = find_path_start base_no_qf in
+      let authority = String.sub base_no_qf 0 path_start in
+      let dir_path_start =
+        if String.length base_dir >= path_start
+        then path_start
+        else String.length base_dir
+      in
+      let dir_path_len =
+        if String.length base_dir >= dir_path_start
+        then String.length base_dir - dir_path_start
+        else 0
+      in
+      let dir_path =
+        if dir_path_len > 0
+        then String.sub base_dir dir_path_start dir_path_len
+        else "" in
+      let merged = String.concat "" [dir_path; rel] in
+      String.concat "" [authority; remove_dot_segments merged]
 
 (* ================================================================ *)
 (* Turtle whitespace: spaces, tabs, newlines, and comments           *)
@@ -157,7 +327,7 @@ let is_pn_chars_base (c: char) : bool =
     // ASCII fast path: only A-Z and a-z
     (code >= 0x41 && code <= 0x5A) || (code >= 0x61 && code <= 0x7A)
   else
-    // Unicode ranges (only reached for non-ASCII chars)
+    // Unicode ranges (only reached for non-ASCII chars) — per Turtle §6.5.
     (code >= 0x00C0 && code <= 0x00D6) ||
     (code >= 0x00D8 && code <= 0x00F6) ||
     (code >= 0x00F8 && code <= 0x02FF) ||
@@ -168,7 +338,8 @@ let is_pn_chars_base (c: char) : bool =
     (code >= 0x2C00 && code <= 0x2FEF) ||
     (code >= 0x3001 && code <= 0xD7FF) ||
     (code >= 0xF900 && code <= 0xFDCF) ||
-    (code >= 0xFDF0 && code <= 0xFFFD)
+    (code >= 0xFDF0 && code <= 0xFFFD) ||
+    (code >= 0x10000 && code <= 0xEFFFF)
 
 let is_pn_chars_u (c: char) : bool =
   let code = int_of_char c in
@@ -263,9 +434,43 @@ let iri_ref_span_to_raw (input: string) (sp: iri_ref_span) : string =
   else
     ""
 
+(* Fast-path IRI resolver for the hot path of Turtle parsing. Routes
+   through the full RFC 3986 resolve_iri (which normalises ../ and ./)
+   only when the relative reference actually contains a "." segment
+   that might need normalisation — common case is a plain localname
+   that just appends. has_colon=true means the scanner already knows
+   there's a ':' in the raw IRI so it's treated as absolute. *)
+let rec has_dot_segment_fuel (s: string) (pos: nat) (at_seg_start: bool) (fuel: nat)
+  : Tot bool (decreases fuel) =
+  if fuel = 0 then false
+  else
+    let len = String.length s in
+    if pos >= len then false
+    else
+      let c = FStar.Char.int_of_char (String.index s pos) in
+      if c = 0x2F then has_dot_segment_fuel s (pos + 1) true (fuel - 1)
+      else if at_seg_start && c = 0x2E then
+        // At segment start; next char(s)
+        if pos + 1 >= len then true  // trailing "."
+        else
+          let c2 = FStar.Char.int_of_char (String.index s (pos + 1)) in
+          if c2 = 0x2F then true  // "./"
+          else if c2 = 0x2E then
+            if pos + 2 >= len then true  // trailing ".."
+            else
+              let c3 = FStar.Char.int_of_char (String.index s (pos + 2)) in
+              if c3 = 0x2F then true  // "../"
+              else has_dot_segment_fuel s (pos + 1) false (fuel - 1)
+          else has_dot_segment_fuel s (pos + 1) false (fuel - 1)
+      else has_dot_segment_fuel s (pos + 1) false (fuel - 1)
+
+let has_dot_segment (s: string) : bool =
+  has_dot_segment_fuel s 0 true (String.length s + 1)
+
 let resolve_iri_hint (st: turtle_state) (rel: string) (has_colon: bool) : string =
   if String.length rel = 0 then st.base_iri
   else if has_colon then rel
+  else if has_dot_segment rel then resolve_iri st rel
   else if FStar.Char.int_of_char (String.index rel 0) = 0x2F then
     if String.length st.base_iri = 0 then rel
     else

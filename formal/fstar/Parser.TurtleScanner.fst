@@ -182,7 +182,13 @@ let rec scan_name_body_end (input: string) (pos: nat) (fuel: nat)
     else
       let c = String.index input pos in
       let code = int_of_char c in
-      if code < 0x80 then
+      // PN_LOCAL_ESC: a backslash starts a two-char escape where the
+      // second char may be a reserved char (#, !, ~, ., ...) that's not
+      // normally in the name body. Consume both so e.g. "foo\#bar" scans
+      // as one name token.
+      if code = 0x5C && pos + 1 < len then
+        scan_name_body_end input (pos + 2) (fuel - 1)
+      else if code < 0x80 then
         if is_ascii_name_body c then
           scan_name_body_end input (pos + 1) (fuel - 1)
         else
