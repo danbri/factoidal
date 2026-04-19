@@ -659,6 +659,67 @@ let rec rdfs_closure (g : rdf_graph) (fuel : Prims.nat) : rdf_graph=
       if (graph_len g') = (graph_len g)
       then g
       else rdfs_closure g' (n - Prims.int_one)
+let owl_Class : wf_iri= "http://www.w3.org/2002/07/owl#Class"
+let owl_ObjectProperty : wf_iri=
+  "http://www.w3.org/2002/07/owl#ObjectProperty"
+let owl_DatatypeProperty : wf_iri=
+  "http://www.w3.org/2002/07/owl#DatatypeProperty"
+let cons_if_new_iri (i : wf_iri) (acc : wf_iri Prims.list) :
+  wf_iri Prims.list= if FStar_List_Tot_Base.mem i acc then acc else i :: acc
+let cons_subject_iri_if_new (s : subject) (acc : wf_iri Prims.list) :
+  wf_iri Prims.list=
+  match s with | S_IRI i -> cons_if_new_iri i acc | S_BNode uu___ -> acc
+let cons_term_iri_if_new (t : rdf_term) (acc : wf_iri Prims.list) :
+  wf_iri Prims.list=
+  match t with | T_IRI i -> cons_if_new_iri i acc | uu___ -> acc
+let is_class_type_object (o : rdf_term) : Prims.bool=
+  match o with
+  | T_IRI c -> (c = rdfs_Class) || (c = owl_Class)
+  | uu___ -> false
+let is_property_type_object (o : rdf_term) : Prims.bool=
+  match o with
+  | T_IRI c ->
+      ((c = rdf_Property) || (c = owl_ObjectProperty)) ||
+        (c = owl_DatatypeProperty)
+  | uu___ -> false
+let collect_classes (g : rdf_graph) : wf_iri Prims.list=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       let acc1 =
+         if t.p = rdfs_subClassOf
+         then cons_term_iri_if_new t.o (cons_subject_iri_if_new t.s acc)
+         else acc in
+       if (t.p = rdf_type) && (is_class_type_object t.o)
+       then cons_subject_iri_if_new t.s acc1
+       else acc1) [] g
+let collect_properties (g : rdf_graph) : wf_iri Prims.list=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       let acc1 =
+         if t.p = rdfs_subPropertyOf
+         then cons_term_iri_if_new t.o (cons_subject_iri_if_new t.s acc)
+         else acc in
+       if (t.p = rdf_type) && (is_property_type_object t.o)
+       then cons_subject_iri_if_new t.s acc1
+       else acc1) [] g
+let rdfs_reflexivity_axioms (g : rdf_graph) : rdf_graph=
+  let classes = collect_classes g in
+  let properties = collect_properties g in
+  let class_triples =
+    FStar_List_Tot_Base.map
+      (fun c -> { s = (S_IRI c); p = rdfs_subClassOf; o = (T_IRI c) })
+      classes in
+  let property_triples =
+    FStar_List_Tot_Base.map
+      (fun p -> { s = (S_IRI p); p = rdfs_subPropertyOf; o = (T_IRI p) })
+      properties in
+  FStar_List_Tot_Base.op_At class_triples property_triples
+let rdfs_closure_with_reflexivity (g : rdf_graph) (fuel : Prims.nat) :
+  rdf_graph=
+  let closed = rdfs_closure g fuel in
+  let refl_axioms = rdfs_reflexivity_axioms closed in
+  let with_refl = add_triples_if_new closed refl_axioms in
+  rdfs_closure with_refl fuel
 let is_digit (c : FStar_Char.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in
   (code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))

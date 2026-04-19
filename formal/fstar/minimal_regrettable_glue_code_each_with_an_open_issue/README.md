@@ -16,7 +16,6 @@ tracking when it can be eliminated.**
 | `66_zero_length_property_path.sh` | [#66](https://github.com/danbri/factoidal/issues/66) | SPARQL semantics fix | SPARQL11_Algebra.ml |
 | `67_rdfxml_validation.sh` | [#67](https://github.com/danbri/factoidal/issues/67) | F\* semantic gap | Parser_RDFXML.ml |
 | `68_unicode_boundary_workarounds.sh` | [#68](https://github.com/danbri/factoidal/issues/68) | F\* type workaround | Parser_NTriples.ml, Parser_Turtle.ml |
-| `60_rdfs_closure_reflexivity.sh` | [#60](https://github.com/danbri/factoidal/issues/60) | **KNOWN VIOLATION** | w3c_runner.ml |
 | `53_blank_node_variable_rewriting.sh` | [#53](https://github.com/danbri/factoidal/issues/53) | **KNOWN VIOLATION** | w3c_runner.ml |
 | `69_runner_io_glue.sh` | [#69](https://github.com/danbri/factoidal/issues/69) | I/O glue | w3c_runner.ml |
 

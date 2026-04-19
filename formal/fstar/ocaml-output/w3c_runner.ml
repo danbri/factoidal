@@ -86,6 +86,17 @@ let parse_sparql_query ?(base_file=None) content =
     | SPARQL11_Parser.ParseErr msg -> raise (Sparql_parse_error msg) in
   result
 
+(* SPARQL 1.1 Update parser wrapper — grammar + AST only (stage a).
+   Evaluation of update ops is not yet implemented; only the parse result
+   matters here. *)
+let parse_sparql_update ?(base_file=None) content =
+  (match base_file with
+   | Some path -> SPARQL11_Algebra.current_base_iri_ref := Some (file_to_base_uri path)
+   | None -> ());
+  match SPARQL11_Parser.parse_sparql_update content with
+  | SPARQL11_Parser.ParseOk (u, _remaining) -> u
+  | SPARQL11_Parser.ParseErr msg -> raise (Sparql_parse_error msg)
+
 (* ============================================================================
    Parser wrappers — thin adapters over F*-extracted parsers
    ============================================================================ *)
@@ -540,63 +551,13 @@ let run_query_eval_test tc =
     acc @ load_triples df
   ) [] tc.data_files in
 
-  (* Apply entailment regime closure if needed (for SPARQL entailment tests) *)
+  (* Apply entailment regime closure if needed (for SPARQL entailment tests).
+     RDFS closure + reflexivity axioms live in F* (RDF.Graph.Executable.fst,
+     rdfs_closure_with_reflexivity). Formerly OCaml patch #60. *)
   let graph = match tc.test_type_detail with
     | "RDFS" | "RDF" ->
-      let closed = (try RDF_Graph_Executable.rdfs_closure graph (Z.of_int 100)
-                    with _ -> graph) in
-      (* Add RDFS reflexivity axioms: every class C gets C rdfs:subClassOf C,
-         and every property P gets P rdfs:subPropertyOf P.
-         These are entailed by RDFS but not yet in the F* closure. *)
-      let rdfs_subClassOf = "http://www.w3.org/2000/01/rdf-schema#subClassOf" in
-      let rdfs_subPropertyOf = "http://www.w3.org/2000/01/rdf-schema#subPropertyOf" in
-      let rdf_type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" in
-      let rdfs_class = "http://www.w3.org/2000/01/rdf-schema#Class" in
-      let rdf_property = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property" in
-      let owl_class = "http://www.w3.org/2002/07/owl#Class" in
-      let owl_objprop = "http://www.w3.org/2002/07/owl#ObjectProperty" in
-      let owl_dataprop = "http://www.w3.org/2002/07/owl#DatatypeProperty" in
-      (* Collect all classes: anything that appears as object of rdf:type that is itself
-         typed as rdfs:Class/owl:Class, or anything that appears as subject/object of rdfs:subClassOf *)
-      let classes = List.fold_left (fun acc t ->
-        let acc = if t.p = rdfs_subClassOf then
-          let acc = (match t.s with S_IRI i -> if List.mem i acc then acc else i :: acc | _ -> acc) in
-          (match t.o with T_IRI i -> if List.mem i acc then acc else i :: acc | _ -> acc)
-        else acc in
-        if t.p = rdf_type then
-          match t.o with
-          | T_IRI c when c = rdfs_class || c = owl_class ->
-            (match t.s with S_IRI i -> if List.mem i acc then acc else i :: acc | _ -> acc)
-          | _ -> acc
-        else acc
-      ) [] closed in
-      (* Collect all properties *)
-      let properties = List.fold_left (fun acc t ->
-        let acc = if t.p = rdfs_subPropertyOf then
-          let acc = (match t.s with S_IRI i -> if List.mem i acc then acc else i :: acc | _ -> acc) in
-          (match t.o with T_IRI i -> if List.mem i acc then acc else i :: acc | _ -> acc)
-        else acc in
-        if t.p = rdf_type then
-          match t.o with
-          | T_IRI c when c = rdf_property || c = owl_objprop || c = owl_dataprop ->
-            (match t.s with S_IRI i -> if List.mem i acc then acc else i :: acc | _ -> acc)
-          | _ -> acc
-        else acc
-      ) [] closed in
-      (* Add reflexivity triples *)
-      let open RDF_Graph_Executable in
-      let reflexive = List.map (fun c ->
-        { s = S_IRI c; p = rdfs_subClassOf; o = T_IRI c }
-      ) classes @ List.map (fun p ->
-        { s = S_IRI p; p = rdfs_subPropertyOf; o = T_IRI p }
-      ) properties in
-      let closed = List.fold_left (fun g t ->
-        if List.exists (fun t2 -> t2.s = t.s && t2.p = t.p && t2.o = t.o) g then g
-        else t :: g
-      ) closed reflexive in
-      (* Re-run closure to propagate reflexivity effects *)
-      (try RDF_Graph_Executable.rdfs_closure closed (Z.of_int 100)
-       with _ -> closed)
+      (try RDF_Graph_Executable.rdfs_closure_with_reflexivity graph (Z.of_int 100)
+       with _ -> graph)
     | _ -> graph in
 
   (* Load named graph data *)
@@ -956,8 +917,27 @@ let run_test tc =
         | Sparql_parse_error _ -> Pass
         | Failure _ -> Pass
         | Sparql_unsupported _ -> Unsupported_feature "Can't test rejection"))
-  | "UpdateEvaluationTest" | "PositiveUpdateSyntaxTest11" | "NegativeUpdateSyntaxTest11" ->
-    Skip "UPDATE tests not in scope"
+  | "PositiveUpdateSyntaxTest11" ->
+    (* Stage (a): Update grammar + AST only. No semantics. *)
+    (match read_file tc.query_file with
+     | None -> Skip "Update file missing"
+     | Some content ->
+       (try ignore (parse_sparql_update ~base_file:(Some tc.query_file) content); Pass
+        with
+        | Sparql_parse_error _ -> Fail "Should parse but didn't"
+        | Sparql_unsupported msg -> Unsupported_feature msg))
+  | "NegativeUpdateSyntaxTest11" ->
+    (match read_file tc.query_file with
+     | None -> Skip "Update file missing"
+     | Some content ->
+       (try ignore (parse_sparql_update ~base_file:(Some tc.query_file) content);
+            Fail "Should reject but parsed OK"
+        with
+        | Sparql_parse_error _ -> Pass
+        | Failure _ -> Pass
+        | Sparql_unsupported _ -> Unsupported_feature "Can't test rejection"))
+  | "UpdateEvaluationTest" ->
+    Skip "UPDATE evaluation not in scope (stage a: parser only)"
   | "CSVResultFormatTest" ->
     (* CSV result format tests are like QueryEvaluationTest but expect CSV output *)
     (try run_query_eval_test tc

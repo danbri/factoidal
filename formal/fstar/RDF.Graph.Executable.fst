@@ -976,6 +976,125 @@ let rec rdfs_closure (g : rdf_graph) (fuel : nat) : Tot rdf_graph (decreases fue
     else rdfs_closure g' (n - 1)
 
 (** ======================================================================== *)
+(** 19b. RDFS/OWL Reflexivity Axioms                                         *)
+(** ======================================================================== *)
+
+// RDFS entails that every class C is a subclass of itself, and every
+// property P is a subproperty of itself (reflexivity of rdfs:subClassOf
+// and rdfs:subPropertyOf). The set of "classes" in a graph is
+// approximated by: any IRI that appears as subject or object of
+// rdfs:subClassOf, or as subject of (rdf:type rdfs:Class) / (rdf:type
+// owl:Class). Properties are collected analogously for rdfs:subPropertyOf,
+// rdf:Property, owl:ObjectProperty, owl:DatatypeProperty.
+//
+// This block was formerly implemented in OCaml as post-extraction patch
+// #60. Elevated to F* per iron rule #10.
+
+let owl_Class : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#Class");
+  "http://www.w3.org/2002/07/owl#Class"
+
+let owl_ObjectProperty : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#ObjectProperty");
+  "http://www.w3.org/2002/07/owl#ObjectProperty"
+
+let owl_DatatypeProperty : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#DatatypeProperty");
+  "http://www.w3.org/2002/07/owl#DatatypeProperty"
+
+// Prepend i to acc if not already present.
+let cons_if_new_iri (i : wf_iri) (acc : list wf_iri) : list wf_iri =
+  if List.Tot.mem i acc then acc else i :: acc
+
+// If subject is an IRI, cons it into the accumulator; otherwise leave
+// the accumulator unchanged (bnodes cannot participate in the OCaml
+// version either — they are never classes or properties by IRI identity).
+let cons_subject_iri_if_new (s : subject) (acc : list wf_iri) : list wf_iri =
+  match s with
+  | S_IRI i -> cons_if_new_iri i acc
+  | S_BNode _ -> acc
+
+let cons_term_iri_if_new (t : rdf_term) (acc : list wf_iri) : list wf_iri =
+  match t with
+  | T_IRI i -> cons_if_new_iri i acc
+  | _ -> acc
+
+// Is the triple's object one of the class-typing IRIs (rdfs:Class or
+// owl:Class)?
+let is_class_type_object (o : rdf_term) : bool =
+  match o with
+  | T_IRI c -> c = rdfs_Class || c = owl_Class
+  | _ -> false
+
+// Is the triple's object one of the property-typing IRIs (rdf:Property,
+// owl:ObjectProperty, owl:DatatypeProperty)?
+let is_property_type_object (o : rdf_term) : bool =
+  match o with
+  | T_IRI c -> c = rdf_Property || c = owl_ObjectProperty || c = owl_DatatypeProperty
+  | _ -> false
+
+// Walk a graph and gather every IRI that should be treated as a class
+// for the reflexivity of rdfs:subClassOf. Matches patch #60 behaviour
+// exactly: collect subjects and IRI-objects of rdfs:subClassOf triples,
+// plus subjects of (rdf:type rdfs:Class) and (rdf:type owl:Class).
+let collect_classes (g : rdf_graph) : list wf_iri =
+  List.Tot.fold_left
+    (fun (acc : list wf_iri) (t : triple) ->
+      let acc1 =
+        if t.p = rdfs_subClassOf
+        then cons_term_iri_if_new t.o (cons_subject_iri_if_new t.s acc)
+        else acc
+      in
+      if t.p = rdf_type && is_class_type_object t.o
+      then cons_subject_iri_if_new t.s acc1
+      else acc1)
+    []
+    g
+
+// Same for properties.
+let collect_properties (g : rdf_graph) : list wf_iri =
+  List.Tot.fold_left
+    (fun (acc : list wf_iri) (t : triple) ->
+      let acc1 =
+        if t.p = rdfs_subPropertyOf
+        then cons_term_iri_if_new t.o (cons_subject_iri_if_new t.s acc)
+        else acc
+      in
+      if t.p = rdf_type && is_property_type_object t.o
+      then cons_subject_iri_if_new t.s acc1
+      else acc1)
+    []
+    g
+
+// Build the reflexivity triples (C rdfs:subClassOf C) and
+// (P rdfs:subPropertyOf P) for every class C and property P in g.
+let rdfs_reflexivity_axioms (g : rdf_graph) : rdf_graph =
+  let classes = collect_classes g in
+  let properties = collect_properties g in
+  let class_triples : rdf_graph =
+    List.Tot.map
+      (fun (c : wf_iri) -> ({ s = S_IRI c; p = rdfs_subClassOf; o = T_IRI c } <: triple))
+      classes
+  in
+  let property_triples : rdf_graph =
+    List.Tot.map
+      (fun (p : wf_iri) -> ({ s = S_IRI p; p = rdfs_subPropertyOf; o = T_IRI p } <: triple))
+      properties
+  in
+  class_triples @ property_triples
+
+// Full RDFS closure with reflexivity axioms: run rdfs_closure, harvest
+// classes/properties, add reflexivity triples, then run rdfs_closure
+// again. This matches the two-pass behaviour of patch #60.
+// The fuel parameter bounds the nested closure iterations; both passes
+// share the same fuel budget (the same constant was used in the patch).
+let rdfs_closure_with_reflexivity (g : rdf_graph) (fuel : nat) : Tot rdf_graph =
+  let closed = rdfs_closure g fuel in
+  let refl_axioms = rdfs_reflexivity_axioms closed in
+  let with_refl = add_triples_if_new closed refl_axioms in
+  rdfs_closure with_refl fuel
+
+(** ======================================================================== *)
 (** 20. Datatype Value Equivalence                                           *)
 (** ======================================================================== *)
 

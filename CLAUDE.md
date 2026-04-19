@@ -73,9 +73,10 @@ Rust/JS/OCaml/anything that "mirrors" a spec.
     writing "if the entailment regime is RDFS then do X" in a patch, STOP —
     that logic belongs in F\*. Every line of logic in a patch is unverified,
     won't extract to C/WASM, and must be re-implemented for every target.
-    **Known violations:** RDFS reflexivity axioms (#60), blank-node-as-existential
-    rewriting (#53). When an issue is resolved (F\* replaces the patch), delete
-    the patch file.
+    **Known violations:** blank-node-as-existential rewriting (#53).
+    When an issue is resolved (F\* replaces the patch), delete the patch
+    file. Resolved: RDFS closure + reflexivity axioms (#60) — now lives in
+    `RDF.Graph.Executable.fst` as `rdfs_closure_with_reflexivity`.
 
 ## Agent Work Strategy
 
@@ -189,7 +190,9 @@ Previous Claude sessions made these errors. Read and internalize:
     fails, the temptation is to "quickly fix it" by adding OCaml code to the
     patches or test runner. This is cobbling by another name. Examples that
     happened and must be elevated to F\*:
-    - RDFS reflexivity axioms computed in `w3c_runner.ml` (issue #60)
+    - RDFS reflexivity axioms computed in `w3c_runner.ml` (issue #60 —
+      now resolved; lives in RDF.Graph.Executable.fst as
+      `rdfs_closure_with_reflexivity`)
     - Blank-node-to-variable rewriting for entailment (issue #61)
     - Entailment regime detection and closure application
     **The test:** if the code makes a semantic decision about RDF or SPARQL,
@@ -792,7 +795,6 @@ factoidal/
 │   ├── ocaml-patches.sh               applies patches from glue directory
 │   ├── minimal_regrettable_glue_code_each_with_an_open_issue/
 │   │   ├── 53_blank_node_variable_rewriting.sh
-│   │   ├── 60_rdfs_closure_reflexivity.sh
 │   │   ├── 62_forward_ref_wiring.sh
 │   │   ├── 63_regex_hash_uuid_stubs.sh
 │   │   ├── 64_sparql_parser_escape_stubs.sh
