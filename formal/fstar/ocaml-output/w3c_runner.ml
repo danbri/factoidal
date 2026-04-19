@@ -202,10 +202,18 @@ type test_case = {
   named_data_files : (string * string) list;  (* (graph_iri, file_path) *)
   result_file : string option;
   manifest_dir : string;  (* directory of the manifest that declared this test *)
+  (* For UpdateEvaluationTest only: the mf:result blank node carries the
+     expected post-update state, which may include a default-graph file
+     (ut:data) and any number of named-graph files (ut:graphData / rdfs:label).
+     Empty for all non-UPDATE tests. *)
+  update_result_default_files : string list;
+  update_result_named_files : (string * string) list;  (* (graph_iri, file_path) *)
 }
 
 let mf_ns = "http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#"
 let qt_ns = "http://www.w3.org/2001/sw/DataAccess/tests/test-query#"
+let ut_ns = "http://www.w3.org/2009/sparql/tests/test-update#"
+let rdfs_ns = "http://www.w3.org/2000/01/rdf-schema#"
 let rdf_ns = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 let rdft_ns = "http://www.w3.org/ns/rdftest#"
 let sd_ns = "http://www.w3.org/ns/sparql-service-description#"
@@ -289,26 +297,58 @@ let extract_test_cases manifest_dir graph =
     let names = find_objects graph entry_subj (mf_ns ^ "name") in
     let name = match names with n :: _ -> term_to_str n | [] -> entry_id in
 
-    (* Get action (blank node with qt:query, qt:data) *)
+    (* Helper: extract (default_files, named_files) from a blank node using
+       either qt: or ut: predicates. For UPDATE tests `ut:graphData` points
+       to a blank node carrying `ut:graph` (file IRI) and `rdfs:label`
+       (graph IRI). For query tests `qt:graphData` uses the object IRI
+       directly as both graph IRI and file path. *)
+    let extract_data_and_graphdata subj =
+      let d_objs =
+        find_objects graph subj (qt_ns ^ "data") @
+        find_objects graph subj (ut_ns ^ "data") in
+      let df = List.map (fun d ->
+        iri_to_local_path manifest_dir (term_to_str d)
+      ) d_objs in
+      let qt_gd_objs = find_objects graph subj (qt_ns ^ "graphData") in
+      let ut_gd_objs = find_objects graph subj (ut_ns ^ "graphData") in
+      let qt_named = List.map (fun d ->
+        let iri = term_to_str d in
+        (iri, iri_to_local_path manifest_dir iri)
+      ) qt_gd_objs in
+      let ut_named = List.filter_map (fun d ->
+        (* Each object is either an IRI (file path = graph name, same as qt:)
+           or a blank node with ut:graph (file) + rdfs:label (graph IRI). *)
+        match d with
+        | T_IRI iri ->
+          Some (iri, iri_to_local_path manifest_dir iri)
+        | T_BNode _ ->
+          let d_subj = match d with T_IRI i -> S_IRI i | T_BNode b -> S_BNode b | _ -> S_IRI "" in
+          let graph_objs = find_objects graph d_subj (ut_ns ^ "graph") in
+          let label_objs = find_objects graph d_subj (rdfs_ns ^ "label") in
+          (match graph_objs, label_objs with
+           | g :: _, l :: _ ->
+             let file = iri_to_local_path manifest_dir (term_to_str g) in
+             let graph_iri = term_to_str l in
+             Some (graph_iri, file)
+           | _ -> None)
+        | _ -> None
+      ) ut_gd_objs in
+      (df, qt_named @ ut_named)
+    in
+    (* Get action (blank node with qt:query or ut:request, qt:data, ut:data, ...) *)
     let action_objs = find_objects graph entry_subj (mf_ns ^ "action") in
     let query_file, data_files, named_data_files = match action_objs with
       | action :: _ ->
         let action_subj = match action with
           | T_IRI i -> S_IRI i | T_BNode b -> S_BNode b | _ -> S_IRI (term_to_str action) in
-        let q_objs = find_objects graph action_subj (qt_ns ^ "query") in
-        let d_objs = find_objects graph action_subj (qt_ns ^ "data") in
-        let gd_objs = find_objects graph action_subj (qt_ns ^ "graphData") in
+        let q_objs =
+          find_objects graph action_subj (qt_ns ^ "query") @
+          find_objects graph action_subj (ut_ns ^ "request") in
         let qf = match q_objs with
           | q :: _ -> iri_to_local_path manifest_dir (term_to_str q)
           | [] -> iri_to_local_path manifest_dir (term_to_str action)
         in
-        let df = List.map (fun d ->
-          iri_to_local_path manifest_dir (term_to_str d)
-        ) d_objs in
-        let ndf = List.map (fun d ->
-          let iri = term_to_str d in
-          (iri, iri_to_local_path manifest_dir iri)
-        ) gd_objs in
+        let (df, ndf) = extract_data_and_graphdata action_subj in
         (qf, df, ndf)
       | [] -> ("", [], []) in
 
@@ -364,16 +404,32 @@ let extract_test_cases manifest_dir graph =
 
     (* Get expected result *)
     let result_objs = find_objects graph entry_subj (mf_ns ^ "result") in
-    let result_file = match result_objs with
+    let result_file, update_result_default_files, update_result_named_files =
+      match result_objs with
       | T_Literal l :: _ ->
         (* rdf-mt tests use mf:result false (literal) for some tests *)
-        if l.lexical_form = "false" then None
-        else Some (iri_to_local_path manifest_dir l.lexical_form)
+        if l.lexical_form = "false" then (None, [], [])
+        else (Some (iri_to_local_path manifest_dir l.lexical_form), [], [])
       | r :: _ ->
-        Some (iri_to_local_path manifest_dir (term_to_str r))
-      | [] -> None in
+        (* UPDATE tests: r is a blank node with ut:data / ut:graphData.
+           QUERY tests: r is an IRI pointing to a .srx/.ttl/etc result file.
+           Distinguish by peeking at the object: if it has ut:data or
+           ut:graphData children, treat as UPDATE-result bnode. Otherwise
+           treat as a QUERY result file. *)
+        let r_subj = match r with
+          | T_IRI i -> S_IRI i | T_BNode b -> S_BNode b | _ -> S_IRI (term_to_str r) in
+        let ut_data = find_objects graph r_subj (ut_ns ^ "data") in
+        let ut_gd = find_objects graph r_subj (ut_ns ^ "graphData") in
+        if ut_data <> [] || ut_gd <> [] then
+          let (df, ndf) = extract_data_and_graphdata r_subj in
+          (None, df, ndf)
+        else
+          (Some (iri_to_local_path manifest_dir (term_to_str r)), [], [])
+      | [] -> (None, [], []) in
 
-    Some { name; test_type; test_type_detail; query_file; data_files; named_data_files; result_file; manifest_dir }
+    Some { name; test_type; test_type_detail; query_file;
+           data_files; named_data_files; result_file; manifest_dir;
+           update_result_default_files; update_result_named_files }
   ) entry_nodes
 
 (* Extract mf:assumedTestBase from manifest graph, if present *)
@@ -953,7 +1009,111 @@ let run_test tc =
         | Failure _ -> Pass
         | Sparql_unsupported _ -> Unsupported_feature "Can't test rejection"))
   | "UpdateEvaluationTest" ->
-    Skip "UPDATE evaluation not in scope (stage a: parser only)"
+    (* Stage b-ins: only INSERT DATA is implemented in the F* evaluator.
+       All other update ops (U_DeleteData, U_DeleteWhere, U_Modify, the
+       graph-management ops) are stage b-cont / c / d and remain a no-op
+       in `apply_update`. If the parsed update contains anything other
+       than U_InsertData, we skip the test. *)
+    (match read_file tc.query_file with
+     | None -> Skip "Update file missing"
+     | Some content ->
+       try
+         let update = parse_sparql_update ~base_file:(Some tc.query_file) content in
+         let open SPARQL11_Algebra in
+         if not (update_is_insert_data_only update) then
+           Skip "UPDATE stage b/c/d not yet implemented (requires U_DeleteData / U_Modify / graph management)"
+         else begin
+           (* Build input dataset *)
+           let input_default = List.fold_left (fun acc df ->
+             acc @ load_triples df
+           ) [] tc.data_files in
+           let input_named = List.map (fun (iri, path) ->
+             RDF_Graph_Executable.({ ng_name = iri; ng_graph = load_triples path })
+           ) tc.named_data_files in
+           let input_ds = RDF_Graph_Executable.({
+             ds_default = input_default;
+             ds_named = input_named;
+           }) in
+           (* Apply the update via F* evaluator *)
+           let result_ds = apply_update input_ds update in
+
+           (* Build expected dataset from the mf:result blank node *)
+           let expected_default = List.fold_left (fun acc df ->
+             acc @ load_triples df
+           ) [] tc.update_result_default_files in
+           let expected_named = List.map (fun (iri, path) ->
+             RDF_Graph_Executable.({ ng_name = iri; ng_graph = load_triples path })
+           ) tc.update_result_named_files in
+
+           (* Compare: default graph via triple_sets_match (lex-key-based,
+              bnode-label-agnostic but NOT a full isomorphism); each named
+              graph compared under the same weak key. Expected-but-missing
+              and extra-named-graphs both trigger a fail.
+              CAVEAT: triple_sets_match compares canonical keys that fold
+              all bnodes to "_:b". Two graphs with the same number of
+              triples and the same non-bnode structure will match even if
+              the bnode *wiring* is different. For the four INSERT DATA
+              tests in basic-update this is adequate — they have 0 or 1
+              bnode positions. A later stage should use the existing
+              simple_entails_regime "simple" for proper bnode-aware
+              isomorphism. *)
+           let sort_named ngs =
+             List.sort (fun a b ->
+               compare a.RDF_Graph_Executable.ng_name b.RDF_Graph_Executable.ng_name) ngs in
+           let result_named = sort_named result_ds.RDF_Graph_Executable.ds_named in
+           let expected_named_sorted = sort_named expected_named in
+           let names_match =
+             List.length result_named = List.length expected_named_sorted &&
+             List.for_all2 (fun a b ->
+               a.RDF_Graph_Executable.ng_name = b.RDF_Graph_Executable.ng_name
+             ) result_named expected_named_sorted in
+           (* Local triple-set comparison. Mirrors the later `triple_sets_match`
+              helper (defined lower in the file) but inlined here because
+              run_test is defined earlier. Same lex-key-based comparison,
+              same bnode-label-agnostic caveat. *)
+           let triple_to_key t =
+             let open RDF_Graph_Executable in
+             let s_str = match t.s with
+               | S_IRI i -> "<" ^ i ^ ">"
+               | S_BNode _ -> "_:b" in
+             let o_str = match t.o with
+               | T_IRI i -> "<" ^ i ^ ">"
+               | T_BNode _ -> "_:b"
+               | T_Literal l ->
+                 let dt = if l.datatype <> "" then "^^<" ^ l.datatype ^ ">" else "" in
+                 let lg = match l.lang_tag with Some t -> "@" ^ t | None -> "" in
+                 "\"" ^ l.lexical_form ^ "\"" ^ dt ^ lg in
+             (s_str, t.p, o_str) in
+           let triples_equal expected actual =
+             if List.length expected <> List.length actual then false
+             else
+               let canon xs = List.map triple_to_key xs |> List.sort compare in
+               canon expected = canon actual in
+           let default_match =
+             triples_equal expected_default
+               result_ds.RDF_Graph_Executable.ds_default in
+           let named_match =
+             names_match &&
+             List.for_all2 (fun a b ->
+               triples_equal
+                 a.RDF_Graph_Executable.ng_graph
+                 b.RDF_Graph_Executable.ng_graph
+             ) result_named expected_named_sorted in
+           if default_match && named_match then Pass
+           else begin
+             let msg = Printf.sprintf
+               "UPDATE result mismatch: default=%d/%d triples, named=%d/%d graphs"
+               (List.length result_ds.RDF_Graph_Executable.ds_default)
+               (List.length expected_default)
+               (List.length result_named)
+               (List.length expected_named_sorted) in
+             Fail msg
+           end
+         end
+       with
+       | Sparql_parse_error msg -> Fail (Printf.sprintf "Update parse: %s" msg)
+       | Sparql_unsupported msg -> Unsupported_feature msg
+       | Failure msg -> Fail (Printf.sprintf "Runtime: %s" msg))
   | "CSVResultFormatTest" ->
     (* CSV result format tests are like QueryEvaluationTest but expect CSV output *)
     (try run_query_eval_test tc

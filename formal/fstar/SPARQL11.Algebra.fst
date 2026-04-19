@@ -4019,6 +4019,199 @@ let rec lemma_bgp_empty_graph (tp : triple_pattern) (rest : bgp) :
     ()
 
 (** ====================================================================== **)
+(** Part 19b: SPARQL 1.1 Update evaluation — INSERT DATA only (stage b-ins) **)
+(**                                                                         **)
+(** Scope: only `U_InsertData` is executed. All other update ops are no-ops **)
+(** for now; the runner decides whether to run or skip the test based on    **)
+(** the mix of ops. See CLAUDE.md Phase 4 item 2, issue #59.                **)
+(**                                                                         **)
+(** INSERT DATA semantics (SPARQL 1.1 Update §3.1.1, §4.1.1):                **)
+(**   - The QuadData block is walked; concrete triples are inserted into    **)
+(**     the default graph or the named graph declared by the enclosing      **)
+(**     GRAPH block.                                                        **)
+(**   - Variables are grammatically forbidden — the parser already rejects  **)
+(**     INSERT DATA with variables. As a belt-and-braces safety net we      **)
+(**     silently drop any triple containing a variable here.                **)
+(**   - Blank nodes are FRESH PER INSERT-DATA OP: all bnode labels in a     **)
+(**     single INSERT DATA op are renamed with a dataset-snapshot-derived   **)
+(**     prefix so they do not collide with any prior bnode in the dataset   **)
+(**     nor with a subsequent INSERT DATA op. Within the same op, the same  **)
+(**     bnode label resolves to the same fresh node (required by W3C test   **)
+(**     insert-data-same-bnode).                                            **)
+(**   - Property paths inside INSERT DATA are grammatically forbidden; if   **)
+(**     the parser nevertheless emits `GP_PropertyPath` we ignore it.       **)
+(** ======================================================================= **)
+
+// Count triples across the whole dataset. Used as a deterministic salt for
+// fresh-bnode renaming in INSERT DATA — a new op observes a bigger snapshot
+// and so gets a different prefix.
+let rec count_named_triples (ngs : list named_graph) : Tot nat (decreases ngs) =
+  match ngs with
+  | [] -> 0
+  | ng :: rest -> List.Tot.length ng.ng_graph + count_named_triples rest
+
+let dataset_triple_count (ds : rdf_dataset) : nat =
+  List.Tot.length ds.ds_default + count_named_triples ds.ds_named
+
+// Try to convert a SPARQL pattern_subject to a concrete RDF subject.
+// Variables return None; we use this to silently drop any stray variables
+// inside an INSERT DATA op (should never happen — parser rejects them).
+let ps_to_subject_concrete (ps : pattern_subject) : option subject =
+  match ps with
+  | PS_IRI i -> Some (S_IRI i)
+  | PS_BNode b -> Some (S_BNode b)
+  | PS_Var _ -> None
+
+let pt_to_iri_concrete (pt : pattern_term) : option wf_iri =
+  match pt with
+  | PT_IRI i -> Some i
+  | _ -> None  // variables, bnodes, literals are not valid predicates
+
+let pt_to_term_concrete (pt : pattern_term) : option rdf_term =
+  match pt with
+  | PT_IRI i -> Some (T_IRI i)
+  | PT_BNode b -> Some (T_BNode b)
+  | PT_Literal l -> Some (T_Literal l)
+  | PT_Var _ -> None
+
+// Convert a triple_pattern to a concrete triple, dropping the pattern if
+// any position is a variable or malformed.
+let tp_to_triple_concrete (tp : triple_pattern) : option triple =
+  match ps_to_subject_concrete tp.tp_s with
+  | None -> None
+  | Some s ->
+    match pt_to_iri_concrete tp.tp_p with
+    | None -> None
+    | Some p ->
+      match pt_to_term_concrete tp.tp_o with
+      | None -> None
+      | Some o -> Some ({ s = s; p = p; o = o })
+
+// Extract all concrete triples from a bgp, dropping any with variables.
+let rec bgp_to_triples_concrete (b : bgp) : Tot (list triple) (decreases b) =
+  match b with
+  | [] -> []
+  | tp :: rest ->
+    let rest_ts = bgp_to_triples_concrete rest in
+    (match tp_to_triple_concrete tp with
+     | None -> rest_ts
+     | Some t -> t :: rest_ts)
+
+// Walk a group_graph_pattern and collect (graph_name, triple) pairs.
+// graph_name = None means default graph; Some iri means that named graph.
+// Nested GP_Graph wins over outer context.
+let rec collect_quads (outer : option wf_iri) (g : group_graph_pattern)
+  : Tot (list (option wf_iri * triple)) (decreases g) =
+  match g with
+  | GP_Empty -> []
+  | GP_BGP b ->
+    let ts = bgp_to_triples_concrete b in
+    List.Tot.map (fun t -> (outer, t)) ts
+  | GP_Join a b -> collect_quads outer a @ collect_quads outer b
+  | GP_Graph gt inner ->
+    (match gt with
+     | PT_IRI g_iri -> collect_quads (Some g_iri) inner
+     | _ -> collect_quads outer inner)  // variable/bnode graph — ignore
+  // All other patterns are not valid inside INSERT DATA; drop.
+  | _ -> []
+
+// Rename a bnode prefix across one collected quad.
+let rename_quad_bnodes (prefix : string) (q : option wf_iri * triple)
+  : option wf_iri * triple =
+  let (g_opt, t) = q in
+  (g_opt, rename_triple_bnodes prefix t)
+
+// Insert one quad into the dataset. If the named graph does not yet exist,
+// create it.
+let rec upsert_named_graph (name : iri) (t : triple) (named : list named_graph)
+  : Tot (list named_graph) (decreases named) =
+  match named with
+  | [] -> [{ ng_name = name; ng_graph = [t] }]
+  | ng :: rest ->
+    if ng.ng_name = name then
+      { ng_name = ng.ng_name; ng_graph = graph_add t ng.ng_graph } :: rest
+    else
+      ng :: upsert_named_graph name t rest
+
+let insert_quad (ds : rdf_dataset) (q : option wf_iri * triple) : rdf_dataset =
+  let (g_opt, t) = q in
+  match g_opt with
+  | None ->
+    { ds_default = graph_add t ds.ds_default; ds_named = ds.ds_named }
+  | Some g_iri ->
+    { ds_default = ds.ds_default;
+      ds_named = upsert_named_graph g_iri t ds.ds_named }
+
+let rec insert_quads (ds : rdf_dataset) (qs : list (option wf_iri * triple))
+  : Tot rdf_dataset (decreases qs) =
+  match qs with
+  | [] -> ds
+  | q :: rest -> insert_quads (insert_quad ds q) rest
+
+// Build the fresh-bnode prefix for one INSERT DATA op. We use a small
+// stable tag `_insdata_<count>_` where count = dataset snapshot size BEFORE
+// the op. Different ops see different counts (each op grows the snapshot);
+// bnodes labelled the same within a single op share the same prefix and
+// therefore collapse to the same fresh node.
+let insert_data_bnode_prefix (ds : rdf_dataset) : string =
+  let n : nat = dataset_triple_count ds in
+  String.concat "" ["_insdata_"; string_of_int n]
+
+let apply_insert_data (ds : rdf_dataset) (ggp : group_graph_pattern) : rdf_dataset =
+  let quads = collect_quads None ggp in
+  let prefix = insert_data_bnode_prefix ds in
+  let renamed = List.Tot.map (rename_quad_bnodes prefix) quads in
+  insert_quads ds renamed
+
+// Apply a single update op. For stage b-ins we implement U_InsertData; all
+// other ops (U_DeleteData, U_DeleteWhere, U_Modify, and the graph-management
+// ops U_Load / U_Clear / U_Drop / U_Create / U_Add / U_Move / U_Copy) are
+// left unimplemented and return the dataset unchanged. The runner is
+// responsible for detecting a non-InsertData op list and marking the test
+// Skipped, so reaching one of those arms here during a test run would
+// indicate a runner bug, not a semantics bug.
+let apply_update_op (ds : rdf_dataset) (op : update_op) : rdf_dataset =
+  match op with
+  | U_InsertData g -> apply_insert_data ds g
+  // Stages b-cont (U_DeleteData), c (U_Modify / U_DeleteWhere), and d
+  // (graph management) are not yet implemented.
+  | U_DeleteData _ -> ds
+  | U_DeleteWhere _ -> ds
+  | U_Modify _ _ _ _ _ -> ds
+  | U_Load _ _ _ -> ds
+  | U_Clear _ _ -> ds
+  | U_Drop _ _ -> ds
+  | U_Create _ _ -> ds
+  | U_Add _ _ _ -> ds
+  | U_Move _ _ _ -> ds
+  | U_Copy _ _ _ -> ds
+
+let rec apply_update_ops (ds : rdf_dataset) (ops : list update_op)
+  : Tot rdf_dataset (decreases ops) =
+  match ops with
+  | [] -> ds
+  | op :: rest -> apply_update_ops (apply_update_op ds op) rest
+
+let apply_update (ds : rdf_dataset) (u : sparql_update) : rdf_dataset =
+  apply_update_ops ds u.u_ops
+
+// Classify an op list: returns true iff every op is U_InsertData. The runner
+// uses this to decide whether to actually run the test or skip it.
+let is_insert_data_only_op (op : update_op) : bool =
+  match op with
+  | U_InsertData _ -> true
+  | _ -> false
+
+let rec update_is_insert_data_only_ops (ops : list update_op)
+  : Tot bool (decreases ops) =
+  match ops with
+  | [] -> true
+  | op :: rest -> is_insert_data_only_op op && update_is_insert_data_only_ops rest
+
+let update_is_insert_data_only (u : sparql_update) : bool =
+  update_is_insert_data_only_ops u.u_ops
+
+(** ====================================================================== **)
 (** Part 20: Correspondence to Rust Implementation                         **)
 (** ====================================================================== **)
 
