@@ -66,7 +66,8 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              Parser.NQuads.fst Parser.TriG.fst \
              Parser.XML.fst Parser.RDFXML.fst \
              Parser.SRX.fst Parser.CSVResults.fst \
-             Parser.JSONResults.fst; do
+             Parser.JSONResults.fst \
+             SPARQL.Protocol.fst; do
     if [ -f "$fst" ]; then
       echo "    $fst"
       FSTAR_RC=0
@@ -106,7 +107,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
     fstar_pure_hashes.ml \
-    SPARQL11_Algebra.ml SPARQL11_Parser.ml"
+    SPARQL11_Algebra.ml SPARQL11_Parser.ml SPARQL_Protocol.ml"
 
   # Determine platform for binary output directory
   UNAME_S="$(uname -s)"
@@ -148,9 +149,18 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     -o "$BINDIR/factoidal"
   echo "  Built: bin/${PLATFORM}/factoidal ($(wc -c < "$BINDIR/factoidal") bytes)"
 
+  # factoidal-http — SPARQL 1.1 Protocol server (native only; needs Unix)
+  ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+    $STATIC_FLAGS \
+    $COMMON_MODULES \
+    factoidal_http.ml \
+    -o "$BINDIR/factoidal-http"
+  echo "  Built: bin/${PLATFORM}/factoidal-http ($(wc -c < "$BINDIR/factoidal-http") bytes)"
+
   # Symlink current platform binaries for convenience (relative from ocaml-output/)
   ln -sf "../../../bin/${PLATFORM}/w3c_runner" w3c_runner
   ln -sf "../../../bin/${PLATFORM}/factoidal" factoidal
+  ln -sf "../../../bin/${PLATFORM}/factoidal-http" factoidal-http
 
   cd ..
   echo ""
@@ -178,7 +188,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
     fstar_pure_hashes.ml
-    SPARQL11_Algebra.ml SPARQL11_Parser.ml
+    SPARQL11_Algebra.ml SPARQL11_Parser.ml SPARQL_Protocol.ml
   )
 
   # Build w3c_runner bytecode for js_of_ocaml
