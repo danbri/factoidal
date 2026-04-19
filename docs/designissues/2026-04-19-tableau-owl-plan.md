@@ -329,16 +329,42 @@ we do not advertise RIF support.
   restriction to be subclassed by Parent, Father, Mother. Good check
   that our Group B fix is correct for both polarities.
 
-### Don't attempt a full OWL-DL tableau
+### OWL-DL tableau — NOW A COMMITTED PRIORITY (2026-04-19 evening update)
 
-A full tableau reasoner is a 5–10k-LOC effort (compare: HermiT,
-Pellet). It would be in Low*/F* for verification credit, and its
-termination proofs alone are non-trivial (blocking, SROIQ DL
-expressivity boundaries). Factoidal's thesis is "verified simple
-rules over typed graphs"; bolting on a tableau changes the product.
-If we need tableau, it should be a **separate module under
-`formal/fstar/Tableau.fst`**, gated by entailment regime, with its
-own verification story.
+*Earlier drafts of this document treated a tableau reasoner as "out
+of scope" or "multi-session project". **User direction 2026-04-19
+reverses that.** A tableau implementation is now a committed goal for
+factoidal. It belongs in a new `formal/fstar/Tableau.fst` module,
+gated by the entailment regime (e.g. `OWL-Direct`, distinct from
+`OWL-RL`), and is expected to take many sessions to land.*
+
+Rough shape of the work, in order of session-sized chunks:
+
+1. **Scoping commit**: add a new `OwlTableau.fst` skeleton with only
+   the data types (tableau node, branch, status enum, blocking rule)
+   and an `owl_tableau_entails` signature returning `option bool`.
+   Wire it into `entailment_closure` for the `OWL-Direct` regime so
+   the runner at least doesn't crash; return `None` = unknown.
+2. **ABox + simple TBox**: handle explicit triples + `rdfs:subClassOf`
+   already folded in. Extend to handle class-expression axioms (`∀`,
+   `∃`, `⊓`, `⊔`, `¬`) as **syntactic tests only** — ask "does this
+   specific individual satisfy this specific class expression?"
+   without materialising. This unlocks Groups A/B/C from §5.
+3. **Cardinality (`min/max/exact`)**: tableau branching on counts.
+   Needs UNA/NUNA handling. Unlocks parent7, parent8.
+4. **`owl:complementOf`** + consistent-model search: classical
+   negation via dual-branch search. Unlocks paper-sparqldl-Q3.
+5. **Fresh-individual skolemisation (`∃`-in-head)**: bnode generation
+   with depth-bound blocking. Unlocks paper-sparqldl-Q3's ABox half.
+6. **Optimisations**: blocking, absorption, pruning, ordering
+   heuristics. Only once correctness is in place.
+
+Rough sizing: 2–5k LOC F* once done. Termination proofs are the hard
+part; we accept that some of this will use `--admit_smt_queries true`
+initially and pay down the proof debt incrementally, clearly flagged.
+
+**This item is now priority item #2 in the worklog priority queue**
+(after the remaining in-flight subagent work lands).
 
 ## 6. Summary
 
