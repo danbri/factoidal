@@ -67,13 +67,28 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   # Extraction MUST succeed for every module — no silent failures
   echo "  Extracting all F* modules (verified)..."
   EXTRACT_FAILED=0
-  for fst in RDF.Graph.Executable.fst Tableau.fst SPARQL11.Algebra.fst \
+  # Dependency order:
+  #   RDF.Graph.Executable  -> (no deps other than Prims/Stdlib)
+  #   Parquet.Footer        -> RDF.Graph.Executable
+  #   Tableau               -> RDF.Graph.Executable
+  #   SPARQL11.Algebra      -> RDF.Graph.Executable, Tableau
+  #   Parser.*              -> RDF.Graph.Executable (combinators, individual formats)
+  #   Parser.Ballyhoo*      -> RDF.Graph.Executable (+ Parquet.Footer for COTTAS)
+  #   SPARQL11.Parser       -> SPARQL11.Algebra
+  #   SPARQL11.Store        -> SPARQL11.Algebra, Parser.BallyhooHDT, Parser.BallyhooCOTTAS
+  #   SPARQL.Protocol       -> SPARQL11.Algebra, Parser.CSVResults, Parser.JSONResults
+  for fst in RDF.Graph.Executable.fst Parquet.Footer.fst \
+             Tableau.fst SPARQL11.Algebra.fst \
              Parser.Combinators.fst Parser.TurtleScanner.fst SPARQL11.Parser.fst \
              Parser.NTriples.fst Parser.Turtle.fst \
              Parser.NQuads.fst Parser.TriG.fst \
              Parser.XML.fst Parser.RDFXML.fst \
              Parser.SRX.fst Parser.CSVResults.fst \
              Parser.JSONResults.fst \
+             Parser.Ballyhoo.fst Parser.BallyhooBloom.fst \
+             Parser.BallyhooHDT.fst Parser.BallyhooHDTQ.fst \
+             Parser.BallyhooCOTTAS.fst \
+             SPARQL11.Store.fst \
              SPARQL.Protocol.fst; do
     if [ -f "$fst" ]; then
       echo "    $fst"
@@ -109,12 +124,51 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # Common modules for all binaries. fstar_pure_hashes.ml must precede
   # SPARQL11_Algebra.ml because the post-extraction patch wires the
   # hash_* assume-vals to Fstar_pure_hashes.{md5,sha1,sha256,sha384,sha512}.
-  COMMON_MODULES="RDF_Graph_Executable.ml Tableau.ml \
+  #
+  # Ballyhoo/Parquet ordering: Parquet_Footer before Parser_BallyhooCOTTAS
+  # (COTTAS runtime glue calls Parquet_Footer.probe_*). SPARQL11_Store
+  # depends on Parser_BallyhooHDT and Parser_BallyhooCOTTAS. See
+  # docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md §Phase 1.
+  COMMON_MODULES="RDF_Graph_Executable.ml Parquet_Footer.ml Tableau.ml \
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
+    Parser_Ballyhoo.ml Parser_BallyhooBloom.ml \
+    Parser_BallyhooHDT.ml Parser_BallyhooHDTQ.ml Parser_BallyhooCOTTAS.ml \
     fstar_pure_hashes.ml \
-    SPARQL11_Algebra.ml SPARQL11_Parser.ml SPARQL_Protocol.ml"
+    SPARQL11_Algebra.ml SPARQL11_Parser.ml SPARQL11_Store.ml SPARQL_Protocol.ml"
+
+  # Parquet/Zstd C stub — compiled and linked into native binaries when the
+  # system libzstd is available. If libzstd is missing, FACTOIDAL_NO_ZSTD=1
+  # can be set to skip (but then parquet_zstd_decompress_hex will fall back
+  # to failwith at runtime, so COTTAS won't work on Parquet with Zstd-
+  # compressed data pages). Header check: we look for the header in common
+  # locations; if found, link the stub + libzstd. See
+  # experimental_ocaml_glue/parquet_zstd_stubs.c.
+  PARQUET_NATIVE_STUBS=""
+  if [[ "${FACTOIDAL_NO_ZSTD:-0}" == "1" ]]; then
+    echo "  FACTOIDAL_NO_ZSTD=1 — skipping Parquet/Zstd C stub (COTTAS read limited)"
+  else
+    ZSTD_INC=""
+    ZSTD_LIB=""
+    for dir in /opt/homebrew/include /opt/homebrew/opt/zstd/include \
+               /usr/local/include /usr/include; do
+      if [[ -f "$dir/zstd.h" ]]; then ZSTD_INC="-ccopt -I$dir"; break; fi
+    done
+    for dir in /opt/homebrew/lib /opt/homebrew/opt/zstd/lib \
+               /usr/local/lib /usr/lib /usr/lib/x86_64-linux-gnu \
+               /usr/lib/aarch64-linux-gnu; do
+      if [[ -f "$dir/libzstd.a" || -f "$dir/libzstd.so" || -f "$dir/libzstd.dylib" ]]; then
+        ZSTD_LIB="-cclib -L$dir"; break;
+      fi
+    done
+    if [[ -n "$ZSTD_INC" ]]; then
+      PARQUET_NATIVE_STUBS="$ZSTD_INC ../experimental_ocaml_glue/parquet_zstd_stubs.c $ZSTD_LIB -cclib -lzstd"
+      echo "  Parquet/Zstd stub: enabled ($ZSTD_INC $ZSTD_LIB -lzstd)"
+    else
+      echo "  Parquet/Zstd stub: DISABLED (libzstd headers not found; set FACTOIDAL_NO_ZSTD=0 after installing zstd to enable)"
+    fi
+  fi
 
   # Determine platform for binary output directory
   UNAME_S="$(uname -s)"
@@ -140,18 +194,22 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   mkdir -p "$BINDIR"
   echo "  Platform: ${PLATFORM}"
 
-  # W3C test runner (reads real W3C manifests, calls F*-extracted code)
-  ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
+  # W3C test runner (reads real W3C manifests, calls F*-extracted code).
+  # The Ballyhoo HDT/COTTAS runtime glue pulls in Unix (Unix.open_process_full,
+  # etc.), so we now always link -package unix.
+  ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
     $STATIC_FLAGS \
     $COMMON_MODULES \
+    $PARQUET_NATIVE_STUBS \
     w3c_runner.ml \
     -o "$BINDIR/w3c_runner"
   echo "  Built: bin/${PLATFORM}/w3c_runner ($(wc -c < "$BINDIR/w3c_runner") bytes)"
 
   # factoidal CLI (SPARQL query + RDF parsing tool)
-  ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
+  ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
     $STATIC_FLAGS \
     $COMMON_MODULES \
+    $PARQUET_NATIVE_STUBS \
     factoidal_cli.ml \
     -o "$BINDIR/factoidal"
   echo "  Built: bin/${PLATFORM}/factoidal ($(wc -c < "$BINDIR/factoidal") bytes)"
@@ -160,6 +218,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
     $STATIC_FLAGS \
     $COMMON_MODULES \
+    $PARQUET_NATIVE_STUBS \
     factoidal_http.ml \
     -o "$BINDIR/factoidal-http"
   echo "  Built: bin/${PLATFORM}/factoidal-http ($(wc -c < "$BINDIR/factoidal-http") bytes)"
@@ -189,6 +248,14 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
 
   # Shared F*-extracted modules used by both the W3C runner and the
   # factoidal query CLI.
+  #
+  # NOTE: Ballyhoo HDT/COTTAS and Parquet_Footer are intentionally omitted
+  # from the js_of_ocaml build in Phase 1 — they require native Unix
+  # (HDT shells out to hdtSearch) and a C libzstd stub (COTTAS Zstd
+  # decompression). The full browser story is Phase 2 (js_of_ocaml) and
+  # Phase 3 (wasm_of_ocaml) per docs/designissues/2026-04-19-cottas-
+  # parquet-wiring-plan.md. SPARQL11_Store depends on those modules, so
+  # it is also kept out of the JS bytecode build for now.
   FSTAR_MODULES=(
     RDF_Graph_Executable.ml Tableau.ml
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml

@@ -5714,6 +5714,13 @@ let read_graph_ref (gr : graph_ref) (ds : RDF_Graph_Executable.rdf_dataset) :
       find_named_graph_triples iri ds.RDF_Graph_Executable.ds_named
   | GR_Named -> []
   | GR_All -> []
+let graph_ref_exists (gr : graph_ref) (ds : RDF_Graph_Executable.rdf_dataset)
+  : Prims.bool=
+  match gr with
+  | GR_Default -> true
+  | GR_Graph iri -> has_named_graph iri ds.RDF_Graph_Executable.ds_named
+  | GR_Named -> false
+  | GR_All -> false
 let write_graph_ref (gr : graph_ref)
   (ts : RDF_Graph_Executable.triple Prims.list)
   (ds : RDF_Graph_Executable.rdf_dataset) : RDF_Graph_Executable.rdf_dataset=

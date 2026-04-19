@@ -145,6 +145,63 @@ let load_triples ?(format=None) ?(base=None) path =
   let ds = load_dataset ~format ~base path in
   ds.ds_default @ List.concat_map (fun ng -> ng.ng_graph) ds.ds_named
 
+(* Load a COTTAS/Parquet artifact as an rdf_dataset.
+
+   COTTAS files are Parquet files with four string columns
+   (subject, predicate, object, graph). The F*-verified Parquet.Footer
+   module decodes the DeltaLengthByteArray column values; the Ballyhoo
+   COTTAS runtime glue (experimental_ocaml_glue/cottas_runtime.sh) maps
+   those string tokens to RDF terms and caches them in a module-local
+   Hashtbl. We call cottas_open_dataset_store to populate the cache,
+   then iterate the cache's quads to re-emit them as an rdf_dataset
+   with a default graph + one named graph per distinct graph IRI.
+
+   This is hand-written CLI glue, not F*-extracted. It's fine: the RDF
+   semantic work (term parsing, Parquet decoding) all lives in F*; we
+   only reshape the result. *)
+let load_cottas_dataset path =
+  match Parser_BallyhooCOTTAS.cottas_open_dataset_store path FStar_Pervasives_Native.None with
+  | FStar_Pervasives_Native.None ->
+    Printf.eprintf "Error: could not open COTTAS artifact: %s\n" path;
+    exit 1
+  | FStar_Pervasives_Native.Some ds ->
+    let cache = Parser_BallyhooCOTTAS.Ballyhoo_cottas_runtime.cache_for_store ds in
+    (* Walk each quad_row in the cache; decode via id_to_* hashtables;
+       bucket into default-graph and one triple-list per named graph IRI. *)
+    let default_rev = ref [] in
+    let named_tbl : (string, RDF_Graph_Executable.triple list ref) Hashtbl.t =
+      Hashtbl.create 17 in
+    let open Parser_BallyhooCOTTAS.Ballyhoo_cottas_runtime in
+    List.iter (fun row ->
+      let s = match Hashtbl.find_opt cache.id_to_subject row.qr_s with
+        | Some s -> s
+        | None -> failwith "cottas: missing subject id" in
+      let p = match Hashtbl.find_opt cache.id_to_predicate row.qr_p with
+        | Some p -> p
+        | None -> failwith "cottas: missing predicate id" in
+      let o = match Hashtbl.find_opt cache.id_to_object row.qr_o with
+        | Some o -> o
+        | None -> failwith "cottas: missing object id" in
+      let triple = RDF_Graph_Executable.({ s; p; o }) in
+      match row.qr_g with
+      | None ->
+        default_rev := triple :: !default_rev
+      | Some gid ->
+        let g_iri = match Hashtbl.find_opt cache.id_to_graph gid with
+          | Some g -> g
+          | None -> failwith "cottas: missing graph id" in
+        let bucket = match Hashtbl.find_opt named_tbl g_iri with
+          | Some b -> b
+          | None ->
+            let b = ref [] in Hashtbl.add named_tbl g_iri b; b in
+        bucket := triple :: !bucket
+    ) cache.quads;
+    let default_g = List.rev !default_rev in
+    let named_gs = Hashtbl.fold (fun iri triples acc ->
+      RDF_Graph_Executable.({ ng_name = iri; ng_graph = List.rev !triples }) :: acc
+    ) named_tbl [] in
+    RDF_Graph_Executable.({ ds_default = default_g; ds_named = named_gs })
+
 (* ============================================================================
    Result table formatting (like arq / isql)
    ============================================================================ *)
@@ -281,6 +338,7 @@ type output_format = Table | CSV | NTOut | JSON
 
 type config = {
   mutable data_files : string list;
+  mutable data_cottas_files : string list;  (* COTTAS/Parquet artifacts *)
   mutable named_graphs : (string * string) list;  (* (iri, file) *)
   mutable query_file : string option;
   mutable query_string : string option;
@@ -327,6 +385,10 @@ let usage () =
   Printf.printf "  -d, --data FILE        Load RDF data (repeatable, \"-\" for stdin)\n";
   Printf.printf "                         Format auto-detected from extension:\n";
   Printf.printf "                         .ttl .nt .nq .nquads .trig .rdf .xml .owl\n";
+  Printf.printf "      --data-cottas FILE Load a COTTAS/Parquet dataset (repeatable).\n";
+  Printf.printf "                         Parsed via the F*-verified Parquet footer\n";
+  Printf.printf "                         + DeltaLengthByteArray decoder; Zstd\n";
+  Printf.printf "                         decompression via the C stub.\n";
   Printf.printf "  -n, --named IRI=FILE   Load named graph\n";
   Printf.printf "  -q, --query FILE       SPARQL query file\n";
   Printf.printf "  -e SPARQL              Inline SPARQL query string\n";
@@ -360,7 +422,7 @@ let version () =
 
 let parse_args () =
   let cfg = {
-    data_files = []; named_graphs = []; query_file = None;
+    data_files = []; data_cottas_files = []; named_graphs = []; query_file = None;
     query_string = None; base_iri = None; input_format = None;
     output_format = Table; dump_mode = false; count_mode = false;
     help_mode = false; version_mode = false;
@@ -372,6 +434,8 @@ let parse_args () =
     | ("--help" | "-h") :: _ -> cfg.help_mode <- true
     | "--version" :: _ -> cfg.version_mode <- true
     | ("--data" | "-d") :: f :: rest -> cfg.data_files <- cfg.data_files @ [f]; loop rest
+    | "--data-cottas" :: f :: rest ->
+      cfg.data_cottas_files <- cfg.data_cottas_files @ [f]; loop rest
     | ("--named" | "-n") :: spec :: rest ->
       (* spec is IRI=FILE *)
       (match String.index_opt spec '=' with
@@ -425,25 +489,37 @@ let () =
   if cfg.help_mode then (usage (); exit 0);
   if cfg.version_mode then (version (); exit 0);
 
+  (* Helper: flatten a COTTAS dataset down to a triple list (default + named) *)
+  let cottas_all_triples path =
+    let ds = load_cottas_dataset path in
+    ds.ds_default @ List.concat_map (fun ng -> ng.ng_graph) ds.ds_named
+  in
+
   (* Dump mode: parse and emit N-Triples *)
   if cfg.dump_mode then begin
-    if cfg.data_files = [] then begin
+    if cfg.data_files = [] && cfg.data_cottas_files = [] then begin
       Printf.eprintf "Error: no data files specified (use --data FILE or just FILE)\n";
       exit 1
     end;
-    let all_triples = List.concat_map (fun f ->
+    let file_triples = List.concat_map (fun f ->
       try load_triples ~format:cfg.input_format ~base:cfg.base_iri f
       with e ->
         Printf.eprintf "Error parsing %s: %s\n" f (Printexc.to_string e);
         exit 1
     ) cfg.data_files in
-    print_results_ntriples all_triples;
+    let cottas_triples = List.concat_map (fun f ->
+      try cottas_all_triples f
+      with e ->
+        Printf.eprintf "Error loading COTTAS %s: %s\n" f (Printexc.to_string e);
+        exit 1
+    ) cfg.data_cottas_files in
+    print_results_ntriples (file_triples @ cottas_triples);
     exit 0
   end;
 
   (* Count mode *)
   if cfg.count_mode then begin
-    if cfg.data_files = [] then begin
+    if cfg.data_files = [] && cfg.data_cottas_files = [] then begin
       Printf.eprintf "Error: no data files specified\n"; exit 1
     end;
     List.iter (fun f ->
@@ -455,6 +531,14 @@ let () =
         Printf.eprintf "Error parsing %s: %s\n" f (Printexc.to_string e);
         exit 1
     ) cfg.data_files;
+    List.iter (fun f ->
+      try
+        let triples = cottas_all_triples f in
+        Printf.printf "%s: %d triples (COTTAS)\n" f (List.length triples)
+      with e ->
+        Printf.eprintf "Error loading COTTAS %s: %s\n" f (Printexc.to_string e);
+        exit 1
+    ) cfg.data_cottas_files;
     exit 0
   end;
 
@@ -486,6 +570,15 @@ let () =
       Printf.eprintf "Error loading %s: %s\n" f (Printexc.to_string e);
       exit 1
   ) cfg.data_files in
+
+  (* Load COTTAS/Parquet data files as datasets *)
+  let cottas_datasets = List.map (fun f ->
+    try load_cottas_dataset f
+    with e ->
+      Printf.eprintf "Error loading COTTAS %s: %s\n" f (Printexc.to_string e);
+      exit 1
+  ) cfg.data_cottas_files in
+  let datasets = datasets @ cottas_datasets in
 
   (* Merge all default graphs and named graphs *)
   let graph = List.concat_map (fun ds -> ds.ds_default) datasets in
