@@ -268,6 +268,34 @@ Previous Claude sessions made these errors. Read and internalize:
     reporting requirements. Anything that hits the cap is a reportable
     event, not a silent rerun.
 
+20. **Never burn clock time on the known-slow Turtle path.** The Turtle
+    parser is O(n²) on file size (see "Known Performance Issues" below),
+    so naive runs like `./build-ocaml.sh` (which triggers `w3c_runner
+    --all`, ~3–10+ minutes) or `factoidal --count bigfile.ttl` can tie
+    up the main loop for ages while eating tokens. **Before running any
+    W3C-scale test, build-with-tests, or parse on non-trivial Turtle
+    input:**
+    - Launch it via an `Agent` subagent OR with `run_in_background: true`,
+      never in the foreground of the main loop. Only the subagent /
+      background stream pays the wait; the main loop keeps moving.
+    - Always pass a hard `timeout` (≤ 10 minutes, often much less —
+      default 300s for a single suite, 600s for `--all`). Hitting the
+      cap is reportable per rule #19.
+    - Prefer targeted commands over the shotgun: `./build-ocaml.sh
+      extract` / `compile` / `js` / `wasm` separately; `w3c_runner
+      bind functions` instead of `--all`; `factoidal --count` only on
+      files that fit in rule #17's cap.
+    - Don't iterate on small changes by re-running 1000s of W3C tests.
+      Run one suite or one file; spot-check the diff; save the full
+      suite for commit-time validation.
+    - If a test is only slow because the parser is slow (not because
+      the test itself is large), prefer N-Triples/N-Quads or an HDT
+      ingest when possible — the pure tokenizer paths are fast.
+
+    Rule of thumb: if the command *has ever* been observed over 60
+    seconds, it goes to a subagent or background with a timeout. No
+    "I'll just run it and see."
+
 ## Known Performance Issues
 
 ### Turtle parser is too slow for real-world input

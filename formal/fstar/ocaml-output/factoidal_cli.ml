@@ -201,6 +201,68 @@ let print_results_csv vars rows =
     Printf.printf "%s\n" (String.concat "," cells)
   ) rows
 
+let json_escape s =
+  let buf = Buffer.create (String.length s + 8) in
+  String.iter (fun c ->
+    match c with
+    | '"'  -> Buffer.add_string buf "\\\""
+    | '\\' -> Buffer.add_string buf "\\\\"
+    | '\n' -> Buffer.add_string buf "\\n"
+    | '\r' -> Buffer.add_string buf "\\r"
+    | '\t' -> Buffer.add_string buf "\\t"
+    | '\b' -> Buffer.add_string buf "\\b"
+    | '\012' -> Buffer.add_string buf "\\f"
+    | c when Char.code c < 0x20 ->
+      Buffer.add_string buf (Printf.sprintf "\\u%04x" (Char.code c))
+    | c -> Buffer.add_char buf c
+  ) s;
+  Buffer.contents buf
+
+let json_term t =
+  match t with
+  | T_IRI i ->
+    Printf.sprintf "{\"type\":\"uri\",\"value\":\"%s\"}" (json_escape i)
+  | T_BNode b ->
+    Printf.sprintf "{\"type\":\"bnode\",\"value\":\"%s\"}" (json_escape b)
+  | T_Literal l ->
+    let xsd_string = "http://www.w3.org/2001/XMLSchema#string" in
+    (match l.lang_tag with
+     | Some tag ->
+       Printf.sprintf "{\"type\":\"literal\",\"value\":\"%s\",\"xml:lang\":\"%s\"}"
+         (json_escape l.lexical_form) (json_escape tag)
+     | None ->
+       if l.datatype = "" || l.datatype = xsd_string then
+         Printf.sprintf "{\"type\":\"literal\",\"value\":\"%s\"}"
+           (json_escape l.lexical_form)
+       else
+         Printf.sprintf "{\"type\":\"literal\",\"value\":\"%s\",\"datatype\":\"%s\"}"
+           (json_escape l.lexical_form) (json_escape l.datatype))
+
+let print_results_json vars rows =
+  let vars_json = String.concat "," (List.map (fun v ->
+    Printf.sprintf "\"%s\"" (json_escape v)) vars) in
+  Printf.printf "{\n";
+  Printf.printf "  \"head\": { \"vars\": [%s] },\n" vars_json;
+  Printf.printf "  \"results\": {\n";
+  Printf.printf "    \"bindings\": [";
+  let first = ref true in
+  List.iter (fun row ->
+    if !first then first := false else Printf.printf ",";
+    Printf.printf "\n      {";
+    let bfirst = ref true in
+    List.iter (fun v ->
+      match List.assoc_opt v row with
+      | None -> ()
+      | Some t ->
+        if !bfirst then bfirst := false else Printf.printf ",";
+        Printf.printf " \"%s\": %s" (json_escape v) (json_term t)
+    ) vars;
+    Printf.printf " }"
+  ) rows;
+  Printf.printf "\n    ]\n";
+  Printf.printf "  }\n";
+  Printf.printf "}\n"
+
 let print_results_ntriples triples =
   List.iter (fun t ->
     let s = match t.s with
@@ -215,7 +277,7 @@ let print_results_ntriples triples =
    CLI parsing
    ============================================================================ *)
 
-type output_format = Table | CSV | NTOut
+type output_format = Table | CSV | NTOut | JSON
 
 type config = {
   mutable data_files : string list;
@@ -258,7 +320,7 @@ let usage () =
   Printf.printf "  -e SPARQL              Inline SPARQL query string\n";
   Printf.printf "  -b, --base IRI         Base IRI for parsing\n";
   Printf.printf "  -f, --format FMT       Input format: turtle, ntriples, nquads, trig, rdfxml\n";
-  Printf.printf "  -o, --output FMT       Output format: table (default), csv, ntriples\n";
+  Printf.printf "  -o, --output FMT       Output format: table (default), csv, ntriples, json\n";
   Printf.printf "  --dump                 Parse RDF and dump as N-Triples\n";
   Printf.printf "  --count                Parse RDF and count triples\n";
   Printf.printf "  --version              Show version\n";
@@ -313,6 +375,7 @@ let parse_args () =
        | "table" -> cfg.output_format <- Table; loop rest
        | "csv" -> cfg.output_format <- CSV; loop rest
        | "ntriples" | "nt" -> cfg.output_format <- NTOut; loop rest
+       | "json" | "srj" -> cfg.output_format <- JSON; loop rest
        | _ -> Printf.eprintf "Error: unknown output format '%s'\n" fmt; exit 1)
     | "--dump" :: rest -> cfg.dump_mode <- true; loop rest
     | "--count" :: rest -> cfg.count_mode <- true; loop rest
@@ -441,9 +504,18 @@ let () =
         ) results
     in
 
+    let is_ask = match query.q_form with QF_Ask -> true | _ -> false in
     match cfg.output_format with
-    | Table -> print_results_table vars results
+    | Table ->
+      if is_ask then
+        Printf.printf "%s\n" (if results <> [] then "Yes" else "No")
+      else print_results_table vars results
     | CSV -> print_results_csv vars results
+    | JSON ->
+      if is_ask then
+        Printf.printf "{\n  \"head\": {},\n  \"boolean\": %s\n}\n"
+          (if results <> [] then "true" else "false")
+      else print_results_json vars results
     | NTOut ->
       (* For CONSTRUCT-like output, print triples *)
       List.iter (fun row ->
