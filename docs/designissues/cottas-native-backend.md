@@ -1,5 +1,13 @@
 # COTTAS Native Backend Notes
 
+> **Status note (2026-04-19):** `Parquet.Footer.fst` in F\* is the real
+> metadata + DeltaLengthByteArray value decoder behind the COTTAS runtime
+> glue — audit in
+> [`2026-04-19-hdt-fstar-status.md`](2026-04-19-hdt-fstar-status.md). The
+> stack is currently not wired into `build-ocaml.sh` on `claude/main`;
+> restore/extend plan is
+> [`2026-04-19-cottas-parquet-wiring-plan.md`](2026-04-19-cottas-parquet-wiring-plan.md).
+
 This note records the current native-F* direction for a COTTAS-style backend.
 
 ## Focus

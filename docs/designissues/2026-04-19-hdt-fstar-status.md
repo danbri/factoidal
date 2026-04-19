@@ -1,16 +1,55 @@
-# HDT in F\* — status as of 2026-04-19
+# Ballyhoo binary formats in F\* — status as of 2026-04-19
 
-Audit of the ballyhoo track to answer one question: **how much of HDT binary
+*Originally titled "HDT in F\* — status"; scope widened 2026-04-19 to cover
+the full ballyhoo binary-format stack (HDT, HDTQ, COTTAS, and Parquet) after
+a fuller audit found that `Parquet.Footer.fst` is substantial real F\* code
+that the first pass missed.*
+
+Audit of the ballyhoo track to answer: **how much of ballyhoo binary-format
 parsing is actually done in F\* today?**
 
-Short answer: **none.** The F\* layer fixes the HDT API shape; the binary
-reading is still delegated to the external `hdtSearch` CLI via
-`Unix.open_process_full`. Surrounding scaffolding (streaming N-Quads parser,
-pure-F\* Bloom filter, dataset / columnar backend types) does exist.
+Short answer, by format:
 
-This is the same on `claude/main` and on `origin/codex/ballyhoo-baseline` —
-the five `Parser.Ballyhoo*.fst` files and the runtime glue were cherry-picked
-(commit `8d4fa67`) and are byte-identical to the ballyhoo branch.
+- **HDT:** none. F\* fixes the API shape; the binary reader is the external
+  `hdtSearch` CLI shelled out via `Unix.open_process_full`.
+- **HDTQ:** none. Interface only.
+- **COTTAS (as a columnar dataset concept):** interface only — but the
+  current COTTAS artifacts are Parquet files, and the Parquet parsing path
+  *is* in F\* (next bullet), so in practice COTTAS reads are F\*-verified
+  at the metadata + value-decoder layer.
+- **Parquet (`Parquet.Footer.fst`, 1453 lines):** **substantial real F\*
+  code.** Thrift Compact Protocol, metadata navigation, and the
+  DeltaLengthByteArray value decoder are all implemented and verified.
+  Only file I/O and Zstd decompression are `assume val`.
+- **Surrounding scaffolding:** the N-Quads streaming `Parser.Ballyhoo.fst`
+  (201 lines) and the value-level `Parser.BallyhooBloom.fst` (114 lines)
+  are fully F\*, but neither is a binary format reader.
+
+### Build-wiring caveat (important — new in this revision)
+
+The six source files (`Parquet.Footer.fst` + five `Parser.Ballyhoo*.fst`)
+were cherry-picked onto `claude/main` in commit `8d4fa67`. However, the
+cherry-pick did **not** bring across the `build-ocaml.sh` changes that
+include them in the extraction list. On `claude/main` today:
+
+- `formal/fstar/build-ocaml.sh`'s `for fst in …` list (~line 71) does not
+  mention `Parquet.Footer.fst` or any `Parser.Ballyhoo*.fst`.
+- The `COMMON_MODULES` compile list (~line 101) also omits them.
+- The pre-extracted `.ml` files in `ocaml-output/` are older than the
+  `.fst` sources (verified via `stat -f "%m"`), so even the stale
+  extraction is out of sync.
+- `SPARQL11.Store.fst` / `SPARQL11_Store.ml` (which wires HDT + COTTAS
+  into the SPARQL evaluator) is likewise not in the build list; the
+  stale extracted `.ml` references `Parser_BallyhooHDT.*` and
+  `Parser_BallyhooCOTTAS.*` but nothing compiles it.
+
+On `origin/codex/ballyhoo-baseline`, all of these *are* in the extraction
+and compile lists and do build.
+
+**Implication:** anyone building from `claude/main` today with
+`./build-ocaml.sh` gets no ballyhoo / Parquet code — it's dormant source.
+To actually use the F\* Parquet parser, the build wiring from the ballyhoo
+branch needs to be re-applied. That's a one-commit fix, but currently open.
 
 ## The five Ballyhoo F\* modules
 
@@ -22,9 +61,79 @@ the five `Parser.Ballyhoo*.fst` files and the runtime glue were cherry-picked
 | `Parser.BallyhooHDTQ.fst` | 174 | Quad/dataset sibling of HDT: `hdtq_dataset_store`, `hdtq_named_graph_store`, `hdtq_bound_qp`, annotation-mode enum (`HQ_AnnotatedGraphs` / `HQ_AnnotatedTriples`). | 14 `assume val` + `assume type hdtq_handle` |
 | `Parser.BallyhooCOTTAS.fst` | 165 | Columnar-quad backend model (`CE_Plain/Dictionary/RLE/Delta`, row groups, per-column summaries). | all ops `assume val` + `assume type cottas_handle` |
 
-All five are listed in `build-ocaml.sh`'s extraction set.
+All five are listed in `build-ocaml.sh`'s extraction set **on
+`origin/codex/ballyhoo-baseline` only**. On `claude/main` they are
+orphaned source — see the build-wiring caveat above.
 `ocaml-patches.sh` applies `experimental_ocaml_glue/ballyhoo_hdt_runtime.sh`
-(and sibling `cottas_runtime.sh`, `parquet_footer_runtime.sh`) after extraction.
+(and sibling `cottas_runtime.sh`, `parquet_footer_runtime.sh`) after
+extraction, but those scripts only do anything if the corresponding
+`.ml` files were extracted in the first place.
+
+## The outlier: `Parquet.Footer.fst` (1453 lines)
+
+This is the **most substantial F\* binary-format work in the repo** and
+was missed by the first pass of this audit. Three `assume val` at the
+top, everything else verified F\*:
+
+| `assume val` | Purpose | Stub |
+|---|---|---|
+| `parquet_read_tail_hex` (`:27`) | Read last N bytes of file, return as hex string | OCaml `open_in_bin` + `really_input_string` in `parquet_footer_runtime.sh` |
+| `parquet_read_range_hex` (`:30`) | Read byte range, return as hex | same |
+| `parquet_zstd_decompress_hex` (`:33`) | Zstd-decompress a hex blob | `parquet_zstd_stubs.c` (79 lines) — hex→bytes, `ZSTD_decompress`, bytes→hex |
+
+What the F\* code actually does:
+
+- Hex byte access, LE u32/u24 decoding (`:36-62`, `:158-164`)
+- **Thrift Compact Protocol** decoder: varints, zigzag, delta-encoded
+  field IDs, struct/list/map skipping (`:120-411`)
+- Parquet metadata navigation: `num_rows`, `row_group_count`, column
+  chunks, compression codec, data-page offsets, page-header encodings
+  (`:413-1061`)
+- Zstd frame-header inspection (not decompression itself — that's the
+  C stub) — frame descriptor, window descriptor, block type, block
+  size (`:885-1165`)
+- **DeltaLengthByteArray value decoder**: bit-packed miniblocks, zigzag
+  deltas, bit-widths, length-at-index, plus a `probe_parquet_column_
+  delta_length_byte_array_value_string_at` that returns the Nth string
+  value of a column (`:1194-1449`)
+
+### The "hex string" design choice
+
+The whole parser operates on hex-encoded strings, not raw bytes.
+`byte_at_hex` (`:43`) reads two hex nibbles per byte; `parquet_read_*_hex`
+returns bytes already hex-encoded; `parquet_zstd_decompress_hex` takes
+and returns hex. This sidesteps F\*'s weak `bytes` support — strings are
+well-supported in F\*, bytes aren't. Cost is ~2× memory and per-byte ops.
+Benefit is that the parser stays inside the verified surface end-to-end.
+For a 50-100 KB Parquet footer this is acceptable; for decompressing a
+multi-MB data page, the C stub's hex round-trip becomes a real cost
+worth revisiting.
+
+### Load-bearing in the COTTAS path
+
+`experimental_ocaml_glue/cottas_runtime.sh:253` calls
+`Parquet_Footer.probe_parquet_column_delta_length_byte_array_value_count`
+and `:272` calls `probe_parquet_column_delta_length_byte_array_value_string_at`
+to extract the four quad columns (subject, predicate, object, graph) from
+a Parquet-encoded COTTAS artifact. So for COTTAS datasets **the F\* code
+is doing the real structural decode**, not decoration — the OCaml glue
+just iterates indices and interns the returned strings into RDF terms.
+
+### Gap to "full Parquet"
+
+What's NOT in F\*:
+- Zstd decompression (C stub via libzstd). Unavoidable without a
+  verified Zstd in F\*, which is a multi-year project on its own.
+- Encodings other than DeltaLengthByteArray: PLAIN, DICTIONARY,
+  DELTA_BINARY_PACKED, RLE-bit-packed-hybrid, BYTE_STREAM_SPLIT. A
+  Parquet file emitted by any writer other than the specific COTTAS
+  producer will likely use at least one of these.
+- Parallel row groups. The probes named `_first_row_group_*` or
+  hard-code `Z.zero` as the column index for row-count lookups.
+- Schema / logical-type handling. The parser reads bytes but doesn't
+  know whether a column is `UTF8 STRING`, `ENUM`, `DECIMAL`, etc.
+- Predicate pushdown, column statistics, page indexes, bloom filters
+  (the Parquet-native bloom, separate from `BallyhooBloom.fst`).
 
 ## How the HDT stubs are actually implemented
 
@@ -82,7 +191,7 @@ since the ballyhoo cherry-pick:
 - Parquet-like and SQL backends are anticipated under the same
   `assume val` seam.
 
-## What's actually done in F\*, end-to-end, for HDT
+## What's actually done in F\*, end-to-end
 
 1. Define the *interface* a verified SPARQL evaluator can rely on (bound
    triple-pattern search, predicate-presence check, named-graph candidate
@@ -99,8 +208,13 @@ since the ballyhoo cherry-pick:
 5. Parse the HDT dictionary section (plain-front-coding, bitmap, etc.). ❌
 6. Parse the HDT triples section (bitmap triples, compact indexes). ❌
 7. Parse the HDTQ quad annotations. ❌
-8. Parse COTTAS / Parquet row groups. ❌ (Parquet has a footer runtime
-   glue script too, same story as HDT)
+8. Parse Parquet metadata (Thrift Compact Protocol, footer, row group
+   descriptors, column chunk descriptors). ✅ via `Parquet.Footer.fst`.
+9. Parse Parquet DeltaLengthByteArray string columns. ✅ via
+   `Parquet.Footer.fst`.
+10. Parse Parquet PLAIN / DICTIONARY / DELTA_BINARY_PACKED / RLE etc.
+    encodings. ❌
+11. Zstd decompression. ❌ (C stub via libzstd; no verified Zstd exists.)
 
 ## Not to be confused with
 
@@ -123,3 +237,8 @@ since the ballyhoo cherry-pick:
   F\* bloom filter (not wired to the HDT runtime glue; see above)
 - [`sparql-store-backend.md`](sparql-store-backend.md) — the storage/query
   boundary the HDT interface is meant to plug into
+- `formal/fstar/Parquet.Footer.fst` — the real F\* Parquet metadata +
+  DeltaLengthByteArray value decoder (no standalone design doc yet)
+- [`2026-04-19-cottas-parquet-wiring-plan.md`](2026-04-19-cottas-parquet-wiring-plan.md)
+  — plan to restore the build wiring on `claude/main` and extend to
+  js_of_ocaml + wasm_of_ocaml

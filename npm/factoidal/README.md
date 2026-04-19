@@ -126,12 +126,29 @@ Tested against the W3C SPARQL 1.1 conformance suite:
   `SAMPLE`), subqueries, property paths, 30+ built-in functions,
   named graphs, RDFS and an OWL 2 RL Datalog subset for
   `--entail RDFS` / `--entail OWL-RL`.
+- **SPARQL Update — pattern-matching now works** (via the `factoidal`
+  CLI only; the packaged `query()` wrapper here is query-only). The
+  engine handles `INSERT DATA`, `DELETE DATA`, `DELETE WHERE`, and
+  `DELETE / INSERT ... WHERE` (`U_Modify`). Graph-management ops
+  (`CLEAR`, `DROP`, `CREATE`, `ADD`, `MOVE`, `COPY`, `LOAD`) are
+  still in the queue.
 - **Partially works:** `CONSTRUCT` (parses and evaluates, but the
   Turtle serializer for the result graph is still being wired up —
   some `CONSTRUCT` queries currently return empty).
-- **Not yet:** `SERVICE` (federated query), `DESCRIBE`, SPARQL
-  `UPDATE` beyond `INSERT DATA` / `DELETE DATA`, the SPARQL Protocol
-  HTTP endpoint, OWL-Direct reasoning beyond the RL Datalog subset.
+- **Not yet:** `SERVICE` (federated query), `DESCRIBE`, Update
+  graph-management ops, SPARQL Protocol HTTP endpoint wired into
+  this npm API, **OWL-DL tableau reasoning** (now a committed roadmap
+  item — see `docs/designissues/2026-04-19-tableau-owl-plan.md` in
+  the main repo; currently we cover OWL 2 RL Datalog only).
+
+### Recently fixed (worth knowing if you used earlier alphas)
+
+- **`ASK` now returns the right answer.** Earlier alphas always
+  returned `false` because the engine routed `ASK` through the
+  `SELECT` path which discarded the pattern-evaluation result.
+  Fixed in the underlying CLI on 2026-04-19 (main-repo commit
+  `00c1a7b`). `query(..., ..., { output: undefined })` on an `ASK`
+  query now returns `{ head: {}, boolean: true | false }`.
 
 Current conformance numbers live in the main repo's `README.md` and
 `.claude-worklog.md`.
