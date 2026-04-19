@@ -320,6 +320,38 @@ Previous Claude sessions made these errors. Read and internalize:
       arrives hours later; the user doesn't want a progress-waiting
       loop in between.
 
+22. **Subagent stall is a checkpoint, not a loss.** When a subagent
+    reports "failed: stream watchdog" or similar, DO NOT discard its
+    work. Check the tree:
+    - `git status --short` — uncommitted changes may be the subagent's
+      finished work, interrupted before it ran `git commit`.
+    - `git log --oneline` — the subagent may have committed but not
+      pushed, in which case you just push.
+    - `stat -f "%m"` on the files it was supposed to touch — fresh
+      mtime (minutes ago, not hours) means real work happened.
+
+    Three of tonight's (2026-04-18/19) subagent stalls were actually
+    completed work with stream disconnect; committing the tree + running
+    one quick build was all that was needed. One stalled before useful
+    output; `git status` being clean told us to discard and move on.
+
+    Rule of thumb: **never re-launch a stalled subagent on the same
+    task without first checking for salvageable tree state.** Mis-taken
+    re-launches cost 10 minutes AND double the risk of tree contention.
+
+23. **Scope every subagent to a single commit-sized goal.** Tonight's
+    UPDATE stage (b) subagent was asked to do three operations
+    (`U_InsertData` + `U_DeleteData` + `U_DeleteWhere`) plus the F\*
+    mutable store model plus runner wiring plus test comparison.
+    It stalled. Earlier subagents with tight single-goal scope
+    (SHA pure hashes; SPARQL.Protocol.fst core; RDFS elevation; OWL
+    Datalog subset; UPDATE parser stage a; Protocol HTTP server glue)
+    all landed cleanly.
+
+    Rule: one subagent = one commit = one conceptual deliverable.
+    Split "store model + 3 ops + runner wiring" into 3+ separate
+    subagent tasks, even if it means sequential.
+
 ## Known Performance Issues
 
 ### Turtle parser is too slow for real-world input
