@@ -98,11 +98,14 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   rm -f "$OUTDIR"/*.cmi "$OUTDIR"/*.cmx "$OUTDIR"/*.cmo "$OUTDIR"/*.o
   cd "$OUTDIR"
 
-  # Common modules for all binaries
+  # Common modules for all binaries. fstar_pure_hashes.ml must precede
+  # SPARQL11_Algebra.ml because the post-extraction patch wires the
+  # hash_* assume-vals to Fstar_pure_hashes.{md5,sha1,sha256,sha384,sha512}.
   COMMON_MODULES="RDF_Graph_Executable.ml \
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
+    fstar_pure_hashes.ml \
     SPARQL11_Algebra.ml SPARQL11_Parser.ml"
 
   # Determine platform for binary output directory
@@ -174,6 +177,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
+    fstar_pure_hashes.ml
     SPARQL11_Algebra.ml SPARQL11_Parser.ml
   )
 

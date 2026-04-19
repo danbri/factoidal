@@ -142,36 +142,38 @@ let regex_replace (text : Prims.string) (pattern : Prims.string)
   !regex_replace_ref text pattern replacement flags'''
 )
 
-# 3. Replace hash function stubs with OCaml Digest implementations
+# 3. Replace hash function stubs with pure-OCaml implementations.
+# Pure OCaml (no C primitives) so the same bytecode runs under native +
+# js_of_ocaml + wasm_of_ocaml. See ocaml-output/fstar_pure_hashes.ml.
 content = content.replace(
     '''let hash_md5 (uu___ : Prims.string) : Prims.string=
   failwith \"Not yet implemented: SPARQL11.Algebra.hash_md5\"''',
     '''let hash_md5 (s : Prims.string) : Prims.string=
-  Digest.to_hex (Digest.string s)'''
+  Fstar_pure_hashes.md5 s'''
 )
 content = content.replace(
     '''let hash_sha1 (uu___ : Prims.string) : Prims.string=
   failwith \"Not yet implemented: SPARQL11.Algebra.hash_sha1\"''',
     '''let hash_sha1 (s : Prims.string) : Prims.string=
-  Sha1.to_hex (Sha1.string s)'''
+  Fstar_pure_hashes.sha1 s'''
 )
 content = content.replace(
     '''let hash_sha256 (uu___ : Prims.string) : Prims.string=
   failwith \"Not yet implemented: SPARQL11.Algebra.hash_sha256\"''',
     '''let hash_sha256 (s : Prims.string) : Prims.string=
-  Sha256.to_hex (Sha256.string s)'''
+  Fstar_pure_hashes.sha256 s'''
 )
 content = content.replace(
     '''let hash_sha384 (uu___ : Prims.string) : Prims.string=
   failwith \"Not yet implemented: SPARQL11.Algebra.hash_sha384\"''',
     '''let hash_sha384 (s : Prims.string) : Prims.string=
-  Digestif.SHA384.(to_hex (digest_string s))'''
+  Fstar_pure_hashes.sha384 s'''
 )
 content = content.replace(
     '''let hash_sha512 (uu___ : Prims.string) : Prims.string=
   failwith \"Not yet implemented: SPARQL11.Algebra.hash_sha512\"''',
     '''let hash_sha512 (s : Prims.string) : Prims.string=
-  Sha512.to_hex (Sha512.string s)'''
+  Fstar_pure_hashes.sha512 s'''
 )
 
 # 4. Replace UUID/STRUUID hardcoded stubs with random UUID v4 generation

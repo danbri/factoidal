@@ -1780,15 +1780,15 @@ let fn_langMatches_spec (tag : Prims.string) (range : Prims.string) :
      let lrange = string_lower range in
      (ltag = lrange) || (string_starts_with ltag (Prims.strcat lrange "-")))
 let hash_md5 (s : Prims.string) : Prims.string=
-  Digest.to_hex (Digest.string s)
+  Fstar_pure_hashes.md5 s
 let hash_sha1 (s : Prims.string) : Prims.string=
-  Sha1.to_hex (Sha1.string s)
+  Fstar_pure_hashes.sha1 s
 let hash_sha256 (s : Prims.string) : Prims.string=
-  Sha256.to_hex (Sha256.string s)
+  Fstar_pure_hashes.sha256 s
 let hash_sha384 (s : Prims.string) : Prims.string=
-  Digestif.SHA384.(to_hex (digest_string s))
+  Fstar_pure_hashes.sha384 s
 let hash_sha512 (s : Prims.string) : Prims.string=
-  Sha512.to_hex (Sha512.string s)
+  Fstar_pure_hashes.sha512 s
 let int_abs (n : Prims.int) : Prims.int=
   if n >= Prims.int_zero then n else Prims.int_zero - n
 let fn_abs_spec (n : Prims.int) : Prims.int= int_abs n
