@@ -85,6 +85,24 @@ jobs:
             exit 1
           }
 
+      - name: Full Wasm suite (SPARQL + RDF)
+        run: |
+          cd docs/fstar-extracted
+          # Run everything under Node's wasm_of_ocaml path. This is slower
+          # than native (~5-10 min) but gives us parity visibility vs the
+          # native runner. We record the results but do not gate CI on them
+          # — known wasm-side gaps (property-path: 29/33, 4 tests below
+          # native; some hashes if digestif regresses) don't block merges.
+          WASM_RC=0
+          node w3c-runner.wasm.js --all 2>&1 | tee wasm_results.log || WASM_RC=$?
+          echo "Wasm runner exit: $WASM_RC"
+          # Extract the two TOTAL lines for quick CI-log visibility.
+          grep -E '^TOTAL' wasm_results.log || true
+          echo "=== Wasm vs native diff ==="
+          diff <(grep -E '^  [a-z].*pass:' ../../formal/fstar/ocaml-output/sparql_results.log) \
+               <(grep -E '^  [a-z].*pass:' wasm_results.log) \
+               || echo "(differences above — check which suites diverge)"
+
       - name: Run tests and generate report
         run: |
           eval $(opam env --switch=fstar)
@@ -97,6 +115,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add docs/test-results/ \
                   docs/fstar-extracted/ \
+                  docs/fstar-extracted/wasm_results.log \
                   formal/fstar/ocaml-output/sparql_results.log \
                   formal/fstar/ocaml-output/rdf_results.log
           git diff --cached --quiet || git commit -m "Update W3C test results + JS/Wasm artifacts [skip ci]"
