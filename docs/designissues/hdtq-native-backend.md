@@ -1,5 +1,10 @@
 # HDTQ Native Backend Notes
 
+> **Status note (2026-04-19):** as of this audit, no F\* binary reader exists
+> for HDT or HDTQ — the modules fix the interface only. See
+> [`2026-04-19-hdt-fstar-status.md`](2026-04-19-hdt-fstar-status.md) for what
+> is and isn't in F\* today.
+
 This note records the current native-F* direction for HDTQ-style quad storage.
 
 ## Why

@@ -1,5 +1,12 @@
 ## Turtle Parser Metrics
 
+> **Related plan (2026-04-19):**
+> [`2026-04-19-turtle-parser-speed.md`](2026-04-19-turtle-parser-speed.md) —
+> audit of the three structural bottlenecks (`nat`→`Z.t` positions,
+> eager `span_to_string` extraction, O(n) list appends in the grammar)
+> and a phased plan to close the ~250× gap to usable rates. These
+> metrics are the baseline that plan benchmarks against.
+
 This note records the current repeatable benchmark path for Turtle parser work that is being driven from F* changes rather than OCaml-only experiments.
 
 ### Fixture Set

@@ -1,5 +1,10 @@
 # HDT-Backed SPARQL Subset
 
+> **Status note (2026-04-19):** the HDT backend is not a verified F\* reader —
+> the F\* side is `assume val` and the runtime shells out to `hdtSearch`.
+> See [`2026-04-19-hdt-fstar-status.md`](2026-04-19-hdt-fstar-status.md) for
+> the full audit.
+
 Experimental `--data-hdt` / `--named-hdt` support currently covers a useful but
 partial subset of SPARQL.
 

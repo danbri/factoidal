@@ -1,5 +1,11 @@
 # Turtle Text Scanner Architecture
 
+> **Status note (2026-04-19):** steps 1–3 are partially done; steps 4 and 5
+> are not started. The measured rate is still ~50–240 triples/s — scanner
+> integration alone bought ~2–4×, not an order of magnitude. See the
+> structural plan in
+> [`2026-04-19-turtle-parser-speed.md`](2026-04-19-turtle-parser-speed.md).
+
 ## Priorities
 
 The Turtle parsing architecture should optimize for:
