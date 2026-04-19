@@ -1052,14 +1052,18 @@ let regime_simple : Prims.string= "simple"
 let regime_rdf : Prims.string= "RDF"
 let regime_rdfs : Prims.string= "RDFS"
 let regime_owl_rl : Prims.string= "OWL-RL"
+let regime_owl_direct : Prims.string= "OWL-Direct"
 let entailment_closure (regime : Prims.string) (g : rdf_graph)
   (fuel : Prims.nat) : rdf_graph=
   if regime = regime_owl_rl
   then owl_rl_closure_with_reflexivity g fuel
   else
-    if regime = regime_rdfs
-    then rdfs_closure_with_reflexivity g fuel
-    else if regime = regime_rdf then rdfs_closure g fuel else g
+    if regime = regime_owl_direct
+    then owl_rl_closure_with_reflexivity g fuel
+    else
+      if regime = regime_rdfs
+      then rdfs_closure_with_reflexivity g fuel
+      else if regime = regime_rdf then rdfs_closure g fuel else g
 let is_digit (c : FStar_Char.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in
   (code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))

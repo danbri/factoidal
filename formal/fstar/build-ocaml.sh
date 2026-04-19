@@ -67,7 +67,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   # Extraction MUST succeed for every module — no silent failures
   echo "  Extracting all F* modules (verified)..."
   EXTRACT_FAILED=0
-  for fst in RDF.Graph.Executable.fst SPARQL11.Algebra.fst \
+  for fst in RDF.Graph.Executable.fst Tableau.fst SPARQL11.Algebra.fst \
              Parser.Combinators.fst Parser.TurtleScanner.fst SPARQL11.Parser.fst \
              Parser.NTriples.fst Parser.Turtle.fst \
              Parser.NQuads.fst Parser.TriG.fst \
@@ -109,7 +109,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # Common modules for all binaries. fstar_pure_hashes.ml must precede
   # SPARQL11_Algebra.ml because the post-extraction patch wires the
   # hash_* assume-vals to Fstar_pure_hashes.{md5,sha1,sha256,sha384,sha512}.
-  COMMON_MODULES="RDF_Graph_Executable.ml \
+  COMMON_MODULES="RDF_Graph_Executable.ml Tableau.ml \
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
@@ -190,7 +190,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
   # Shared F*-extracted modules used by both the W3C runner and the
   # factoidal query CLI.
   FSTAR_MODULES=(
-    RDF_Graph_Executable.ml
+    RDF_Graph_Executable.ml Tableau.ml
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml

@@ -1612,11 +1612,25 @@ let regime_simple : string = "simple"
 let regime_rdf : string = "RDF"
 let regime_rdfs : string = "RDFS"
 let regime_owl_rl : string = "OWL-RL"
+// OWL-Direct is the DL-semantics regime. Stage (a) of the tableau
+// (Tableau.fst) is a skeleton: we run the existing OWL-RL Datalog
+// closure as the baseline (sound wrt OWL-Direct), and for any goals
+// it doesn't entail the caller MAY consult owl_tableau_entails. The
+// tableau currently returns None for everything non-trivial, so the
+// observable behaviour of OWL-Direct and OWL-RL is identical until
+// later tableau stages land. See docs/designissues/2026-04-19-
+// tableau-owl-plan.md §5.
+let regime_owl_direct : string = "OWL-Direct"
 
 // entailment_closure : dispatch on regime name, apply the appropriate
 // closure. Unknown / unsupported regimes return the graph unchanged.
 let entailment_closure (regime : string) (g : rdf_graph) (fuel : nat) : Tot rdf_graph =
   if regime = regime_owl_rl then owl_rl_closure_with_reflexivity g fuel
+  else if regime = regime_owl_direct then
+    // OWL-Direct stage (a): start from the OWL-RL Datalog closure. The
+    // tableau in Tableau.fst is a wiring point only — it doesn't
+    // materialise new triples in this commit.
+    owl_rl_closure_with_reflexivity g fuel
   else if regime = regime_rdfs then rdfs_closure_with_reflexivity g fuel
   else if regime = regime_rdf then rdfs_closure g fuel
   else g
