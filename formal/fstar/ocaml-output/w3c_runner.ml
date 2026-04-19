@@ -629,10 +629,21 @@ let run_query_eval_test tc =
      OWL rules (sameAs, Symmetric/Transitive/InverseFunctionalProperty,
      inverseOf, equivalentClass/Property). Formerly OCaml patch #60. *)
   let graph = match tc.test_type_detail with
-    | "OWL-RL" | "OWL-Direct" ->
-      (* OWL-Direct stage (a): identical closure to OWL-RL. Tableau
-         consultation for non-entailed goals is future work. *)
+    | "OWL-RL" ->
       (try RDF_Graph_Executable.owl_rl_closure_with_reflexivity graph (Z.of_int 100)
+       with _ -> graph)
+    | "OWL-Direct" ->
+      (* OWL-Direct stage (b): run OWL-RL closure, then the F* tableau
+         materialisation pass (Tableau.tableau_materialise) which adds
+         `i rdf:type <CE-bnode>` triples for class-expression bnodes
+         whose `is_member` check succeeds (someValuesFrom, allValuesFrom,
+         hasValue, intersectionOf, unionOf). Finally re-close under
+         OWL-RL so the new rdf:type triples propagate through
+         subClassOf / equivalentClass. *)
+      (try
+         let g1 = RDF_Graph_Executable.owl_rl_closure_with_reflexivity graph (Z.of_int 100) in
+         let g2 = Tableau.tableau_materialise g1 in
+         RDF_Graph_Executable.owl_rl_closure_with_reflexivity g2 (Z.of_int 100)
        with _ -> graph)
     | "RDFS" | "RDF" ->
       (try RDF_Graph_Executable.rdfs_closure_with_reflexivity graph (Z.of_int 100)
@@ -643,8 +654,14 @@ let run_query_eval_test tc =
   let named_graphs = List.map (fun (iri, path) ->
     let triples = load_triples path in
     let triples = match tc.test_type_detail with
-      | "OWL-RL" | "OWL-Direct" ->
+      | "OWL-RL" ->
         (try RDF_Graph_Executable.owl_rl_closure_with_reflexivity triples (Z.of_int 100)
+         with _ -> triples)
+      | "OWL-Direct" ->
+        (try
+           let g1 = RDF_Graph_Executable.owl_rl_closure_with_reflexivity triples (Z.of_int 100) in
+           let g2 = Tableau.tableau_materialise g1 in
+           RDF_Graph_Executable.owl_rl_closure_with_reflexivity g2 (Z.of_int 100)
          with _ -> triples)
       | "RDFS" | "RDF" ->
         (try RDF_Graph_Executable.rdfs_closure triples (Z.of_int 100)

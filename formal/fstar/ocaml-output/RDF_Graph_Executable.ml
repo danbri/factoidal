@@ -632,6 +632,35 @@ let rdfs_rule_subClassOf (g : rdf_graph) : rdf_graph=
                   add_triple_if_new acc2 new_t) acc super_classes
          | uu___ -> acc
        else acc) g g
+let rdfs_rule_subClassOf_trans (g : rdf_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if t.p = rdfs_subClassOf
+       then
+         match term_to_subject t.o with
+         | FStar_Pervasives_Native.Some b_subj ->
+             let supers = find_objects g b_subj rdfs_subClassOf in
+             FStar_List_Tot_Base.fold_left
+               (fun acc2 c_term ->
+                  let new_t = { s = (t.s); p = rdfs_subClassOf; o = c_term } in
+                  add_triple_if_new acc2 new_t) acc supers
+         | FStar_Pervasives_Native.None -> acc
+       else acc) g g
+let rdfs_rule_subPropertyOf_trans (g : rdf_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if t.p = rdfs_subPropertyOf
+       then
+         match term_to_subject t.o with
+         | FStar_Pervasives_Native.Some q_subj ->
+             let supers = find_objects g q_subj rdfs_subPropertyOf in
+             FStar_List_Tot_Base.fold_left
+               (fun acc2 r_term ->
+                  let new_t =
+                    { s = (t.s); p = rdfs_subPropertyOf; o = r_term } in
+                  add_triple_if_new acc2 new_t) acc supers
+         | FStar_Pervasives_Native.None -> acc
+       else acc) g g
 let rdfs_rule_container_membership (g : rdf_graph) : rdf_graph=
   FStar_List_Tot_Base.fold_left
     (fun acc cmp ->
@@ -650,7 +679,9 @@ let rdfs_closure_step (g : rdf_graph) : rdf_graph=
   let g2 = rdfs_rule_domain g1 in
   let g3 = rdfs_rule_range g2 in
   let g4 = rdfs_rule_subClassOf g3 in
-  let g5 = rdfs_rule_container_membership g4 in g5
+  let g5 = rdfs_rule_container_membership g4 in
+  let g6 = rdfs_rule_subClassOf_trans g5 in
+  let g7 = rdfs_rule_subPropertyOf_trans g6 in g7
 let rec rdfs_closure (g : rdf_graph) (fuel : Prims.nat) : rdf_graph=
   match fuel with
   | uu___ when uu___ = Prims.int_zero -> g
@@ -744,14 +775,15 @@ let owl_rule_equivalent_class (g : rdf_graph) : rdf_graph=
     (fun acc t ->
        if t.p = owl_equivalentClass
        then
-         match ((t.s), (t.o)) with
-         | (S_IRI c_iri, T_IRI d_iri) ->
+         match term_to_subject t.o with
+         | FStar_Pervasives_Native.Some d_subj ->
              let t1 =
-               { s = (S_IRI c_iri); p = rdfs_subClassOf; o = (T_IRI d_iri) } in
+               { s = (t.s); p = rdfs_subClassOf; o = (subject_to_term d_subj)
+               } in
              let t2 =
-               { s = (S_IRI d_iri); p = rdfs_subClassOf; o = (T_IRI c_iri) } in
+               { s = d_subj; p = rdfs_subClassOf; o = (subject_to_term t.s) } in
              add_triple_if_new (add_triple_if_new acc t1) t2
-         | (uu___, uu___1) -> acc
+         | FStar_Pervasives_Native.None -> acc
        else acc) g g
 let owl_rule_equivalent_property (g : rdf_graph) : rdf_graph=
   FStar_List_Tot_Base.fold_left

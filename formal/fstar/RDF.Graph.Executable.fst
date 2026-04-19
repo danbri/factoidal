@@ -929,6 +929,49 @@ let rdfs_rule_subClassOf (g : rdf_graph) : rdf_graph =
     g
     g
 
+(* rdfs11: If (A rdfs:subClassOf B) and (B rdfs:subClassOf C) then
+   (A rdfs:subClassOf C).
+   Works uniformly for IRIs and bnodes in either position. *)
+let rdfs_rule_subClassOf_trans (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdfs_subClassOf then
+        (* t is (A subClassOf B). Find all C such that (B subClassOf C).
+           B must be convertible to a subject (IRI or bnode). *)
+        match term_to_subject t.o with
+        | Some b_subj ->
+          let supers = find_objects g b_subj rdfs_subClassOf in
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (c_term : rdf_term) ->
+              let new_t : triple = { s = t.s; p = rdfs_subClassOf; o = c_term } in
+              add_triple_if_new acc2 new_t)
+            acc
+            supers
+        | None -> acc
+      else acc)
+    g
+    g
+
+(* rdfs5: If (P rdfs:subPropertyOf Q) and (Q rdfs:subPropertyOf R) then
+   (P rdfs:subPropertyOf R).  Dual of rdfs11. *)
+let rdfs_rule_subPropertyOf_trans (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdfs_subPropertyOf then
+        match term_to_subject t.o with
+        | Some q_subj ->
+          let supers = find_objects g q_subj rdfs_subPropertyOf in
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (r_term : rdf_term) ->
+              let new_t : triple = { s = t.s; p = rdfs_subPropertyOf; o = r_term } in
+              add_triple_if_new acc2 new_t)
+            acc
+            supers
+        | None -> acc
+      else acc)
+    g
+    g
+
 (* Container membership property axioms:
    rdf:_1 rdfs:subPropertyOf rdfs:member
    rdf:_2 rdfs:subPropertyOf rdfs:member
@@ -962,7 +1005,9 @@ let rdfs_closure_step (g : rdf_graph) : rdf_graph =
   let g3 = rdfs_rule_range g2 in
   let g4 = rdfs_rule_subClassOf g3 in
   let g5 = rdfs_rule_container_membership g4 in
-  g5
+  let g6 = rdfs_rule_subClassOf_trans g5 in     (* rdfs11: C<C transitivity *)
+  let g7 = rdfs_rule_subPropertyOf_trans g6 in  (* rdfs5:  P<P transitivity *)
+  g7
 
 (* Iterate closure until fixed point or max iterations.
    Uses nat fuel parameter for termination. *)
@@ -1170,16 +1215,19 @@ let is_owl_metapredicate (p : wf_iri) : bool =
 
 // cls-eqc1 + cls-eqc2: if (C owl:equivalentClass D) then
 //   (C rdfs:subClassOf D) and (D rdfs:subClassOf C).
+// Handles both IRI-IRI and IRI-bnode (and bnode-bnode) operands —
+// the latter is needed for tableau-style class expressions where the
+// RHS is an anonymous owl:Restriction / owl:intersectionOf bnode.
 let owl_rule_equivalent_class (g : rdf_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
       if t.p = owl_equivalentClass then
-        match t.s, t.o with
-        | S_IRI c_iri, T_IRI d_iri ->
-          let t1 : triple = { s = S_IRI c_iri; p = rdfs_subClassOf; o = T_IRI d_iri } in
-          let t2 : triple = { s = S_IRI d_iri; p = rdfs_subClassOf; o = T_IRI c_iri } in
+        match term_to_subject t.o with
+        | Some d_subj ->
+          let t1 : triple = { s = t.s;    p = rdfs_subClassOf; o = subject_to_term d_subj } in
+          let t2 : triple = { s = d_subj; p = rdfs_subClassOf; o = subject_to_term t.s } in
           add_triple_if_new (add_triple_if_new acc t1) t2
-        | _, _ -> acc
+        | None -> acc
       else acc)
     g
     g
