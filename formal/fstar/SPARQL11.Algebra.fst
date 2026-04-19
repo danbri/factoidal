@@ -4545,24 +4545,274 @@ let apply_modify (ds : rdf_dataset) (with_iri : option wf_iri)
     let prefix = modify_bnode_prefix ds_after_delete in
     insert_quads_per_mapping ds_after_delete redirected_per_mu prefix 0
 
-// Apply a single update op. For stage b-data + DELETE WHERE + U_Modify we
-// implement the pattern-matching operations. Graph-management ops (U_Load
-// / U_Clear / U_Drop / U_Create / U_Add / U_Move / U_Copy) are stage d and
-// left unimplemented; the runner skips tests that require them.
+(** ======================================================================= **)
+(** Part 19e: Graph-management UPDATE ops (§3.1.3 / §3.2)                    **)
+(**                                                                         **)
+(** CREATE / CLEAR / DROP / COPY / MOVE / ADD are all pure dataset-to-      **)
+(** dataset transformations — no I/O, no pattern matching, no WHERE view.  **)
+(** Spec (SPARQL 1.1 Update §3.2):                                          **)
+(**                                                                         **)
+(**   CREATE ( SILENT )? GRAPH <iri>                                        **)
+(**     - Add an empty named graph with the given IRI. If the graph         **)
+(**       already exists, SILENT swallows the error; we no-op either way.   **)
+(**                                                                         **)
+(**   CLEAR ( SILENT )? ( DEFAULT | NAMED | ALL | GRAPH <iri> )             **)
+(**     - Remove all triples from the target. Named-graph entries remain    **)
+(**       present but empty (callers can still reference the graph name).   **)
+(**                                                                         **)
+(**   DROP ( SILENT )? ( DEFAULT | NAMED | ALL | GRAPH <iri> )              **)
+(**     - Remove the target entirely. The default graph cannot be removed,  **)
+(**       so DROP DEFAULT just empties it (per §3.2.3).                     **)
+(**     - DROP NAMED removes every named graph entry. DROP ALL also empties **)
+(**       the default graph.                                                **)
+(**                                                                         **)
+(**   COPY / MOVE / ADD ( SILENT )? ( DEFAULT | GRAPH <iri> )               **)
+(**                      TO ( DEFAULT | GRAPH <iri> )                       **)
+(**     - COPY: replace dst's triples with a copy of src's triples.         **)
+(**     - MOVE: COPY src TO dst, then DROP src (per §3.2.6).                **)
+(**     - ADD: append src's triples to dst (with dedup via graph_add).      **)
+(**     - All three are no-ops when src == dst.                             **)
+(**                                                                         **)
+(** SILENT is advisory in our pure model — errors do not exist; we no-op    **)
+(** on missing source graphs either way. Real implementations would raise  **)
+(** an error when SILENT is absent and the target is missing, but the W3C  **)
+(** UpdateEvaluation tests don't exercise that error path.                 **)
+(** ======================================================================= **)
+
+// --- Named-graph list helpers ---------------------------------------------
+
+// Return the triples of the named graph `iri` (empty list if missing).
+let rec find_named_graph_triples (iri : wf_iri) (named : list named_graph)
+  : Tot (list triple) (decreases named) =
+  match named with
+  | [] -> []
+  | ng :: rest ->
+    if ng.ng_name = iri then ng.ng_graph
+    else find_named_graph_triples iri rest
+
+// True iff `iri` already has an entry in `named` (regardless of whether
+// its graph is empty).
+let rec has_named_graph (iri : wf_iri) (named : list named_graph)
+  : Tot bool (decreases named) =
+  match named with
+  | [] -> false
+  | ng :: rest -> ng.ng_name = iri || has_named_graph iri rest
+
+// Set the triples of the named graph `iri` to `ts`. If `iri` has no entry,
+// append a new entry with these triples. Used by COPY / ADD / MOVE and by
+// the with-iri WHERE plumbing.
+let rec replace_named_graph_triples (iri : wf_iri) (ts : list triple)
+  (named : list named_graph)
+  : Tot (list named_graph) (decreases named) =
+  match named with
+  | [] -> [ { ng_name = iri; ng_graph = ts } ]
+  | ng :: rest ->
+    if ng.ng_name = iri then
+      { ng_name = ng.ng_name; ng_graph = ts } :: rest
+    else
+      ng :: replace_named_graph_triples iri ts rest
+
+// Empty the named graph `iri` (keep the entry with an empty graph). If the
+// graph is absent, do nothing — CLEAR GRAPH on a missing graph is either an
+// error (spec) or a no-op (SILENT); we take the no-op path regardless so
+// we never materialise a graph that the user didn't ask for.
+let rec empty_graph_named (iri : wf_iri) (named : list named_graph)
+  : Tot (list named_graph) (decreases named) =
+  match named with
+  | [] -> []
+  | ng :: rest ->
+    if ng.ng_name = iri then
+      { ng_name = ng.ng_name; ng_graph = [] } :: rest
+    else
+      ng :: empty_graph_named iri rest
+
+// Remove the named graph `iri` entry entirely (DROP GRAPH).
+let rec drop_named_by_iri (iri : wf_iri) (named : list named_graph)
+  : Tot (list named_graph) (decreases named) =
+  match named with
+  | [] -> []
+  | ng :: rest ->
+    if ng.ng_name = iri then rest
+    else ng :: drop_named_by_iri iri rest
+
+// Empty every named graph (CLEAR NAMED / CLEAR ALL): keep each entry, zero
+// out its triples.
+let rec empty_all_named (named : list named_graph)
+  : Tot (list named_graph) (decreases named) =
+  match named with
+  | [] -> []
+  | ng :: rest ->
+    { ng_name = ng.ng_name; ng_graph = [] } :: empty_all_named rest
+
+// Ensure the named graph `iri` exists (creating an empty entry if absent).
+let ensure_named_graph (iri : wf_iri) (named : list named_graph)
+  : list named_graph =
+  if has_named_graph iri named then named
+  else named @ [ { ng_name = iri; ng_graph = [] } ]
+
+// --- Source / destination read + write helpers ----------------------------
+
+// Read the triples at a graph_ref location. For GR_Named / GR_All (multi-
+// graph refs) we return a union — only meaningful for CLEAR/DROP, not for
+// COPY/MOVE/ADD which the SPARQL grammar restricts to DEFAULT or GRAPH <iri>.
+let read_graph_ref (gr : graph_ref) (ds : rdf_dataset) : list triple =
+  match gr with
+  | GR_Default    -> ds.ds_default
+  | GR_Graph iri  -> find_named_graph_triples iri ds.ds_named
+  | GR_Named      -> []   // not used by COPY/MOVE/ADD
+  | GR_All        -> []   // not used by COPY/MOVE/ADD
+
+// True iff the graph_ref points at a location that actually exists in the
+// dataset. Used by COPY / MOVE / ADD to decide whether to treat a missing
+// source as an error (which we swallow silently per the SILENT convention)
+// vs a legitimate empty graph. The default graph always exists (even when
+// it contains zero triples).
+let graph_ref_exists (gr : graph_ref) (ds : rdf_dataset) : bool =
+  match gr with
+  | GR_Default    -> true
+  | GR_Graph iri  -> has_named_graph iri ds.ds_named
+  | GR_Named      -> false
+  | GR_All        -> false
+
+// Write `ts` into the location `gr`. Named destinations that don't exist
+// yet are materialised with these triples.
+let write_graph_ref (gr : graph_ref) (ts : list triple) (ds : rdf_dataset)
+  : rdf_dataset =
+  match gr with
+  | GR_Default   ->
+    { ds_default = ts; ds_named = ds.ds_named }
+  | GR_Graph iri ->
+    { ds_default = ds.ds_default;
+      ds_named   = replace_named_graph_triples iri ts ds.ds_named }
+  | GR_Named     -> ds
+  | GR_All       -> ds
+
+// Equality on graph_ref (used for COPY/MOVE/ADD self-check).
+let graph_ref_eq (a b : graph_ref) : bool =
+  match a, b with
+  | GR_Default,   GR_Default   -> true
+  | GR_Named,     GR_Named     -> true
+  | GR_All,       GR_All       -> true
+  | GR_Graph i1,  GR_Graph i2  -> i1 = i2
+  | _,            _            -> false
+
+// --- apply_create ---------------------------------------------------------
+// CREATE (SILENT)? GRAPH <iri>.  Materialise an empty entry if absent.
+// If the graph already exists: SILENT → no-op (spec), non-SILENT → spec says
+// raise an error, but our pure model has no error path so we no-op. Real
+// W3C tests don't exercise the non-SILENT already-exists case.
+let apply_create (ds : rdf_dataset) (silent : bool) (iri : wf_iri)
+  : rdf_dataset =
+  let _ = silent in
+  { ds_default = ds.ds_default;
+    ds_named   = ensure_named_graph iri ds.ds_named }
+
+// --- apply_clear ----------------------------------------------------------
+// CLEAR (SILENT)? ( DEFAULT | NAMED | ALL | GRAPH <iri> ).
+// Empty the target: named-graph entries remain, triples become [].
+let apply_clear (ds : rdf_dataset) (silent : bool) (gr : graph_ref)
+  : rdf_dataset =
+  let _ = silent in
+  match gr with
+  | GR_Default ->
+    { ds_default = []; ds_named = ds.ds_named }
+  | GR_Named ->
+    { ds_default = ds.ds_default; ds_named = empty_all_named ds.ds_named }
+  | GR_All ->
+    { ds_default = []; ds_named = empty_all_named ds.ds_named }
+  | GR_Graph iri ->
+    { ds_default = ds.ds_default;
+      ds_named   = empty_graph_named iri ds.ds_named }
+
+// --- apply_drop -----------------------------------------------------------
+// DROP (SILENT)? ( DEFAULT | NAMED | ALL | GRAPH <iri> ).
+// Per §3.2.3 the default graph can't be truly removed, so DROP DEFAULT just
+// empties it. DROP GRAPH / DROP NAMED / DROP ALL remove named-graph entries
+// entirely.
+let apply_drop (ds : rdf_dataset) (silent : bool) (gr : graph_ref)
+  : rdf_dataset =
+  let _ = silent in
+  match gr with
+  | GR_Default ->
+    { ds_default = []; ds_named = ds.ds_named }
+  | GR_Named ->
+    { ds_default = ds.ds_default; ds_named = [] }
+  | GR_All ->
+    { ds_default = []; ds_named = [] }
+  | GR_Graph iri ->
+    { ds_default = ds.ds_default;
+      ds_named   = drop_named_by_iri iri ds.ds_named }
+
+// --- apply_copy -----------------------------------------------------------
+// COPY (SILENT)? src TO dst. Replace dst's triples with src's. If src == dst,
+// no-op. Only DEFAULT and GRAPH <iri> are valid src/dst per the grammar.
+let apply_copy (ds : rdf_dataset) (silent : bool) (src : graph_ref)
+  (dst : graph_ref) : rdf_dataset =
+  let _ = silent in
+  if graph_ref_eq src dst then ds
+  else
+    let src_triples = read_graph_ref src ds in
+    write_graph_ref dst src_triples ds
+
+// --- apply_move -----------------------------------------------------------
+// MOVE (SILENT)? src TO dst. Semantically `COPY src TO dst ; DROP src`
+// (per §3.2.6). If src == dst, no-op.
+let apply_move (ds : rdf_dataset) (silent : bool) (src : graph_ref)
+  (dst : graph_ref) : rdf_dataset =
+  let _ = silent in
+  if graph_ref_eq src dst then ds
+  else
+    let src_triples = read_graph_ref src ds in
+    let ds_copied   = write_graph_ref dst src_triples ds in
+    // DROP src: default graph empties; named graph entry removed.
+    (match src with
+     | GR_Default   ->
+       { ds_default = []; ds_named = ds_copied.ds_named }
+     | GR_Graph iri ->
+       { ds_default = ds_copied.ds_default;
+         ds_named   = drop_named_by_iri iri ds_copied.ds_named }
+     | GR_Named     -> ds_copied
+     | GR_All       -> ds_copied)
+
+// --- apply_add ------------------------------------------------------------
+// ADD (SILENT)? src TO dst. Append src's triples onto dst's (deduplicated
+// via graph_add since that's how graph_union is defined). No-op when
+// src == dst.
+let rec graph_append (src : list triple) (dst : rdf_graph)
+  : Tot rdf_graph (decreases src) =
+  match src with
+  | [] -> dst
+  | t :: rest -> graph_append rest (graph_add t dst)
+
+let apply_add (ds : rdf_dataset) (silent : bool) (src : graph_ref)
+  (dst : graph_ref) : rdf_dataset =
+  let _ = silent in
+  if graph_ref_eq src dst then ds
+  else
+    let src_triples = read_graph_ref src ds in
+    let cur_dst     = read_graph_ref dst ds in
+    let merged      = graph_append src_triples cur_dst in
+    write_graph_ref dst merged ds
+
+// Apply a single update op. Stage b-data + DELETE WHERE + U_Modify handle
+// the pattern-matching operations; stage d (this section) handles the pure
+// graph-management ops. U_Load is the only remaining op — it requires I/O
+// (fetching an external RDF document) and is still a no-op.
 let apply_update_op (ds : rdf_dataset) (op : update_op) : rdf_dataset =
   match op with
   | U_InsertData g -> apply_insert_data ds g
   | U_DeleteData g -> apply_delete_data ds g
   | U_DeleteWhere g -> apply_delete_where ds g
   | U_Modify w d i u p -> apply_modify ds w d i u p
-  // Graph management is stage d and not yet implemented.
+  // Graph management — stage d.
+  | U_Create silent iri    -> apply_create ds silent iri
+  | U_Clear  silent gr     -> apply_clear  ds silent gr
+  | U_Drop   silent gr     -> apply_drop   ds silent gr
+  | U_Copy   silent src dst -> apply_copy  ds silent src dst
+  | U_Move   silent src dst -> apply_move  ds silent src dst
+  | U_Add    silent src dst -> apply_add   ds silent src dst
+  // LOAD still needs I/O.
   | U_Load _ _ _ -> ds
-  | U_Clear _ _ -> ds
-  | U_Drop _ _ -> ds
-  | U_Create _ _ -> ds
-  | U_Add _ _ _ -> ds
-  | U_Move _ _ _ -> ds
-  | U_Copy _ _ _ -> ds
 
 let rec apply_update_ops (ds : rdf_dataset) (ops : list update_op)
   : Tot rdf_dataset (decreases ops) =
@@ -4573,16 +4823,23 @@ let rec apply_update_ops (ds : rdf_dataset) (ops : list update_op)
 let apply_update (ds : rdf_dataset) (u : sparql_update) : rdf_dataset =
   apply_update_ops ds u.u_ops
 
-// Classify an op list: returns true iff every op is U_InsertData,
-// U_DeleteData, U_DeleteWhere, or U_Modify. The runner uses this to decide
-// whether to actually run the test or skip it.
+// Classify an op list: returns true iff every op is implemented. Stage d
+// (graph management: CREATE / CLEAR / DROP / COPY / MOVE / ADD) is now
+// implemented, so only LOAD (which requires I/O) remains as a reason to
+// skip the test.
 let is_implemented_op (op : update_op) : bool =
   match op with
   | U_InsertData _ -> true
   | U_DeleteData _ -> true
   | U_DeleteWhere _ -> true
   | U_Modify _ _ _ _ _ -> true
-  | _ -> false
+  | U_Create _ _ -> true
+  | U_Clear  _ _ -> true
+  | U_Drop   _ _ -> true
+  | U_Copy   _ _ _ -> true
+  | U_Move   _ _ _ -> true
+  | U_Add    _ _ _ -> true
+  | U_Load   _ _ _ -> false
 
 let rec update_is_implemented_only_ops (ops : list update_op)
   : Tot bool (decreases ops) =

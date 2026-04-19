@@ -5631,6 +5631,227 @@ let apply_modify (ds : RDF_Graph_Executable.rdf_dataset)
       let prefix = modify_bnode_prefix ds_after_delete in
       insert_quads_per_mapping ds_after_delete redirected_per_mu prefix
         Prims.int_zero
+let rec find_named_graph_triples (iri : RDF_Graph_Executable.wf_iri)
+  (named : RDF_Graph_Executable.named_graph Prims.list) :
+  RDF_Graph_Executable.triple Prims.list=
+  match named with
+  | [] -> []
+  | ng::rest ->
+      if ng.RDF_Graph_Executable.ng_name = iri
+      then ng.RDF_Graph_Executable.ng_graph
+      else find_named_graph_triples iri rest
+let rec has_named_graph (iri : RDF_Graph_Executable.wf_iri)
+  (named : RDF_Graph_Executable.named_graph Prims.list) : Prims.bool=
+  match named with
+  | [] -> false
+  | ng::rest ->
+      (ng.RDF_Graph_Executable.ng_name = iri) || (has_named_graph iri rest)
+let rec replace_named_graph_triples (iri : RDF_Graph_Executable.wf_iri)
+  (ts : RDF_Graph_Executable.triple Prims.list)
+  (named : RDF_Graph_Executable.named_graph Prims.list) :
+  RDF_Graph_Executable.named_graph Prims.list=
+  match named with
+  | [] ->
+      [{
+         RDF_Graph_Executable.ng_name = iri;
+         RDF_Graph_Executable.ng_graph = ts
+       }]
+  | ng::rest ->
+      if ng.RDF_Graph_Executable.ng_name = iri
+      then
+        {
+          RDF_Graph_Executable.ng_name = (ng.RDF_Graph_Executable.ng_name);
+          RDF_Graph_Executable.ng_graph = ts
+        } :: rest
+      else ng :: (replace_named_graph_triples iri ts rest)
+let rec empty_graph_named (iri : RDF_Graph_Executable.wf_iri)
+  (named : RDF_Graph_Executable.named_graph Prims.list) :
+  RDF_Graph_Executable.named_graph Prims.list=
+  match named with
+  | [] -> []
+  | ng::rest ->
+      if ng.RDF_Graph_Executable.ng_name = iri
+      then
+        {
+          RDF_Graph_Executable.ng_name = (ng.RDF_Graph_Executable.ng_name);
+          RDF_Graph_Executable.ng_graph = []
+        } :: rest
+      else ng :: (empty_graph_named iri rest)
+let rec drop_named_by_iri (iri : RDF_Graph_Executable.wf_iri)
+  (named : RDF_Graph_Executable.named_graph Prims.list) :
+  RDF_Graph_Executable.named_graph Prims.list=
+  match named with
+  | [] -> []
+  | ng::rest ->
+      if ng.RDF_Graph_Executable.ng_name = iri
+      then rest
+      else ng :: (drop_named_by_iri iri rest)
+let rec empty_all_named (named : RDF_Graph_Executable.named_graph Prims.list)
+  : RDF_Graph_Executable.named_graph Prims.list=
+  match named with
+  | [] -> []
+  | ng::rest ->
+      {
+        RDF_Graph_Executable.ng_name = (ng.RDF_Graph_Executable.ng_name);
+        RDF_Graph_Executable.ng_graph = []
+      } :: (empty_all_named rest)
+let ensure_named_graph (iri : RDF_Graph_Executable.wf_iri)
+  (named : RDF_Graph_Executable.named_graph Prims.list) :
+  RDF_Graph_Executable.named_graph Prims.list=
+  if has_named_graph iri named
+  then named
+  else
+    FStar_List_Tot_Base.op_At named
+      [{
+         RDF_Graph_Executable.ng_name = iri;
+         RDF_Graph_Executable.ng_graph = []
+       }]
+let read_graph_ref (gr : graph_ref) (ds : RDF_Graph_Executable.rdf_dataset) :
+  RDF_Graph_Executable.triple Prims.list=
+  match gr with
+  | GR_Default -> ds.RDF_Graph_Executable.ds_default
+  | GR_Graph iri ->
+      find_named_graph_triples iri ds.RDF_Graph_Executable.ds_named
+  | GR_Named -> []
+  | GR_All -> []
+let write_graph_ref (gr : graph_ref)
+  (ts : RDF_Graph_Executable.triple Prims.list)
+  (ds : RDF_Graph_Executable.rdf_dataset) : RDF_Graph_Executable.rdf_dataset=
+  match gr with
+  | GR_Default ->
+      {
+        RDF_Graph_Executable.ds_default = ts;
+        RDF_Graph_Executable.ds_named = (ds.RDF_Graph_Executable.ds_named)
+      }
+  | GR_Graph iri ->
+      {
+        RDF_Graph_Executable.ds_default =
+          (ds.RDF_Graph_Executable.ds_default);
+        RDF_Graph_Executable.ds_named =
+          (replace_named_graph_triples iri ts
+             ds.RDF_Graph_Executable.ds_named)
+      }
+  | GR_Named -> ds
+  | GR_All -> ds
+let graph_ref_eq (a : graph_ref) (b : graph_ref) : Prims.bool=
+  match (a, b) with
+  | (GR_Default, GR_Default) -> true
+  | (GR_Named, GR_Named) -> true
+  | (GR_All, GR_All) -> true
+  | (GR_Graph i1, GR_Graph i2) -> i1 = i2
+  | (uu___, uu___1) -> false
+let apply_create (ds : RDF_Graph_Executable.rdf_dataset)
+  (silent : Prims.bool) (iri : RDF_Graph_Executable.wf_iri) :
+  RDF_Graph_Executable.rdf_dataset=
+  let uu___ = silent in
+  {
+    RDF_Graph_Executable.ds_default = (ds.RDF_Graph_Executable.ds_default);
+    RDF_Graph_Executable.ds_named =
+      (ensure_named_graph iri ds.RDF_Graph_Executable.ds_named)
+  }
+let apply_clear (ds : RDF_Graph_Executable.rdf_dataset) (silent : Prims.bool)
+  (gr : graph_ref) : RDF_Graph_Executable.rdf_dataset=
+  let uu___ = silent in
+  match gr with
+  | GR_Default ->
+      {
+        RDF_Graph_Executable.ds_default = [];
+        RDF_Graph_Executable.ds_named = (ds.RDF_Graph_Executable.ds_named)
+      }
+  | GR_Named ->
+      {
+        RDF_Graph_Executable.ds_default =
+          (ds.RDF_Graph_Executable.ds_default);
+        RDF_Graph_Executable.ds_named =
+          (empty_all_named ds.RDF_Graph_Executable.ds_named)
+      }
+  | GR_All ->
+      {
+        RDF_Graph_Executable.ds_default = [];
+        RDF_Graph_Executable.ds_named =
+          (empty_all_named ds.RDF_Graph_Executable.ds_named)
+      }
+  | GR_Graph iri ->
+      {
+        RDF_Graph_Executable.ds_default =
+          (ds.RDF_Graph_Executable.ds_default);
+        RDF_Graph_Executable.ds_named =
+          (empty_graph_named iri ds.RDF_Graph_Executable.ds_named)
+      }
+let apply_drop (ds : RDF_Graph_Executable.rdf_dataset) (silent : Prims.bool)
+  (gr : graph_ref) : RDF_Graph_Executable.rdf_dataset=
+  let uu___ = silent in
+  match gr with
+  | GR_Default ->
+      {
+        RDF_Graph_Executable.ds_default = [];
+        RDF_Graph_Executable.ds_named = (ds.RDF_Graph_Executable.ds_named)
+      }
+  | GR_Named ->
+      {
+        RDF_Graph_Executable.ds_default =
+          (ds.RDF_Graph_Executable.ds_default);
+        RDF_Graph_Executable.ds_named = []
+      }
+  | GR_All ->
+      {
+        RDF_Graph_Executable.ds_default = [];
+        RDF_Graph_Executable.ds_named = []
+      }
+  | GR_Graph iri ->
+      {
+        RDF_Graph_Executable.ds_default =
+          (ds.RDF_Graph_Executable.ds_default);
+        RDF_Graph_Executable.ds_named =
+          (drop_named_by_iri iri ds.RDF_Graph_Executable.ds_named)
+      }
+let apply_copy (ds : RDF_Graph_Executable.rdf_dataset) (silent : Prims.bool)
+  (src : graph_ref) (dst : graph_ref) : RDF_Graph_Executable.rdf_dataset=
+  let uu___ = silent in
+  if graph_ref_eq src dst
+  then ds
+  else
+    (let src_triples = read_graph_ref src ds in
+     write_graph_ref dst src_triples ds)
+let apply_move (ds : RDF_Graph_Executable.rdf_dataset) (silent : Prims.bool)
+  (src : graph_ref) (dst : graph_ref) : RDF_Graph_Executable.rdf_dataset=
+  let uu___ = silent in
+  if graph_ref_eq src dst
+  then ds
+  else
+    (let src_triples = read_graph_ref src ds in
+     let ds_copied = write_graph_ref dst src_triples ds in
+     match src with
+     | GR_Default ->
+         {
+           RDF_Graph_Executable.ds_default = [];
+           RDF_Graph_Executable.ds_named =
+             (ds_copied.RDF_Graph_Executable.ds_named)
+         }
+     | GR_Graph iri ->
+         {
+           RDF_Graph_Executable.ds_default =
+             (ds_copied.RDF_Graph_Executable.ds_default);
+           RDF_Graph_Executable.ds_named =
+             (drop_named_by_iri iri ds_copied.RDF_Graph_Executable.ds_named)
+         }
+     | GR_Named -> ds_copied
+     | GR_All -> ds_copied)
+let rec graph_append (src : RDF_Graph_Executable.triple Prims.list)
+  (dst : RDF_Graph_Executable.rdf_graph) : RDF_Graph_Executable.rdf_graph=
+  match src with
+  | [] -> dst
+  | t::rest -> graph_append rest (RDF_Graph_Executable.graph_add t dst)
+let apply_add (ds : RDF_Graph_Executable.rdf_dataset) (silent : Prims.bool)
+  (src : graph_ref) (dst : graph_ref) : RDF_Graph_Executable.rdf_dataset=
+  let uu___ = silent in
+  if graph_ref_eq src dst
+  then ds
+  else
+    (let src_triples = read_graph_ref src ds in
+     let cur_dst = read_graph_ref dst ds in
+     let merged = graph_append src_triples cur_dst in
+     write_graph_ref dst merged ds)
 let apply_update_op (ds : RDF_Graph_Executable.rdf_dataset) (op : update_op)
   : RDF_Graph_Executable.rdf_dataset=
   match op with
@@ -5638,13 +5859,13 @@ let apply_update_op (ds : RDF_Graph_Executable.rdf_dataset) (op : update_op)
   | U_DeleteData g -> apply_delete_data ds g
   | U_DeleteWhere g -> apply_delete_where ds g
   | U_Modify (w, d, i, u, p) -> apply_modify ds w d i u p
+  | U_Create (silent, iri) -> apply_create ds silent iri
+  | U_Clear (silent, gr) -> apply_clear ds silent gr
+  | U_Drop (silent, gr) -> apply_drop ds silent gr
+  | U_Copy (silent, src, dst) -> apply_copy ds silent src dst
+  | U_Move (silent, src, dst) -> apply_move ds silent src dst
+  | U_Add (silent, src, dst) -> apply_add ds silent src dst
   | U_Load (uu___, uu___1, uu___2) -> ds
-  | U_Clear (uu___, uu___1) -> ds
-  | U_Drop (uu___, uu___1) -> ds
-  | U_Create (uu___, uu___1) -> ds
-  | U_Add (uu___, uu___1, uu___2) -> ds
-  | U_Move (uu___, uu___1, uu___2) -> ds
-  | U_Copy (uu___, uu___1, uu___2) -> ds
 let rec apply_update_ops (ds : RDF_Graph_Executable.rdf_dataset)
   (ops : update_op Prims.list) : RDF_Graph_Executable.rdf_dataset=
   match ops with
@@ -5658,7 +5879,13 @@ let is_implemented_op (op : update_op) : Prims.bool=
   | U_DeleteData uu___ -> true
   | U_DeleteWhere uu___ -> true
   | U_Modify (uu___, uu___1, uu___2, uu___3, uu___4) -> true
-  | uu___ -> false
+  | U_Create (uu___, uu___1) -> true
+  | U_Clear (uu___, uu___1) -> true
+  | U_Drop (uu___, uu___1) -> true
+  | U_Copy (uu___, uu___1, uu___2) -> true
+  | U_Move (uu___, uu___1, uu___2) -> true
+  | U_Add (uu___, uu___1, uu___2) -> true
+  | U_Load (uu___, uu___1, uu___2) -> false
 let rec update_is_implemented_only_ops (ops : update_op Prims.list) :
   Prims.bool=
   match ops with
