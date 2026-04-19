@@ -296,6 +296,27 @@ Previous Claude sessions made these errors. Read and internalize:
     seconds, it goes to a subagent or background with a timeout. No
     "I'll just run it and see."
 
+21. **Never stall on parallel work.** If a push, CI run, browser
+    check, or background build is in flight, do NOT wait for it —
+    pick the next independent item off the priority queue and start
+    it. The notification system surfaces results when they land.
+    "Let me wait and verify before moving on" is a failure mode, not
+    caution — waiting idly costs the user clock time and tokens.
+    Exceptions: when the next item genuinely depends on the in-flight
+    result (e.g., debugging a just-failed test), or when the user
+    has explicitly asked you to pause.
+
+    Corollaries:
+    - Don't batch work behind a single background task when the
+      tasks are independent — run them in parallel (separate Agent
+      subagents, separate `run_in_background` bashes).
+    - "I should verify X first" is only true if a later step would
+      be wasted if X is broken. Otherwise, start the later step;
+      the verification result catches up.
+    - Git push + CI redeploy is never a reason to pause. The result
+      arrives hours later; the user doesn't want a progress-waiting
+      loop in between.
+
 ## Known Performance Issues
 
 ### Turtle parser is too slow for real-world input
