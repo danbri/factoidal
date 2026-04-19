@@ -524,6 +524,39 @@ ex:madrid a ex:City ; rdfs:label "Madrid"     ; ex:population  3340000 .
 ex:tokyo  a ex:City ; rdfs:label "Tokyo"      ; ex:population 13960000 .
 ex:delhi  a ex:City ; rdfs:label "Delhi"      ; ex:population 19700000 .`,
     },
+
+    libraries: {
+      label: 'Named graphs (TriG): three libraries (~45 quads)',
+      ext: 'trig',
+      data: `@prefix dc:    <http://purl.org/dc/terms/> .
+@prefix ex:    <http://example.org/lib/> .
+@prefix schema: <http://schema.org/> .
+
+# A default graph carrying catalogue-level metadata.
+ex:central dc:title "Central Library" ; dc:publisher "Example City" .
+ex:east    dc:title "East Branch"     ; dc:publisher "Example City" .
+ex:west    dc:title "West Branch"     ; dc:publisher "Example City" .
+
+# Each library's holdings in its own named graph.
+ex:central {
+  ex:b1 a schema:Book ; schema:name "Gödel, Escher, Bach" ; schema:author "Hofstadter" .
+  ex:b2 a schema:Book ; schema:name "The Dream Machine"   ; schema:author "Waldrop" .
+  ex:b3 a schema:Book ; schema:name "Thinking, Fast and Slow" ; schema:author "Kahneman" .
+  ex:b4 a schema:Book ; schema:name "The Annotated Turing"    ; schema:author "Petzold" .
+}
+
+ex:east {
+  ex:b5 a schema:Book ; schema:name "The Dream Machine"   ; schema:author "Waldrop" .
+  ex:b6 a schema:Book ; schema:name "Soul of a New Machine" ; schema:author "Kidder" .
+  ex:b7 a schema:Book ; schema:name "Gödel, Escher, Bach" ; schema:author "Hofstadter" .
+}
+
+ex:west {
+  ex:b8 a schema:Book ; schema:name "Thinking, Fast and Slow" ; schema:author "Kahneman" .
+  ex:b9 a schema:Book ; schema:name "Algorithms to Live By" ; schema:author "Christian, Griffiths" .
+  ex:b10 a schema:Book ; schema:name "Gödel, Escher, Bach" ; schema:author "Hofstadter" .
+}`,
+    },
   };
 
   // -------------------------------------------------------------------
@@ -774,6 +807,51 @@ WHERE {
   FILTER (?pop > 50000000)
 }
 ORDER BY ?country` },
+
+    // Named graphs (TriG) — quad-based queries using the GRAPH keyword.
+    { key: 'lib-list-books', ds: 'libraries', label: 'Books grouped by library',
+      query: `PREFIX ex:     <http://example.org/lib/>
+PREFIX schema: <http://schema.org/>
+
+SELECT ?library ?book ?title
+WHERE {
+  GRAPH ?library {
+    ?book a schema:Book ; schema:name ?title .
+  }
+}
+ORDER BY ?library ?title` },
+
+    { key: 'lib-multi-copy', ds: 'libraries', label: 'Books held by multiple libraries',
+      query: `PREFIX ex:     <http://example.org/lib/>
+PREFIX schema: <http://schema.org/>
+
+SELECT ?title (COUNT(DISTINCT ?g) AS ?nCopies)
+WHERE {
+  GRAPH ?g { ?b a schema:Book ; schema:name ?title }
+}
+GROUP BY ?title
+HAVING (COUNT(DISTINCT ?g) > 1)
+ORDER BY DESC(?nCopies) ?title` },
+
+    { key: 'lib-catalog-meta', ds: 'libraries', label: 'Library names from the default graph',
+      query: `PREFIX dc: <http://purl.org/dc/terms/>
+PREFIX ex: <http://example.org/lib/>
+
+SELECT ?library ?name
+WHERE {
+  ?library dc:title ?name .
+}
+ORDER BY ?library` },
+
+    { key: 'lib-central-holdings', ds: 'libraries', label: 'Central Library holdings only',
+      query: `PREFIX ex:     <http://example.org/lib/>
+PREFIX schema: <http://schema.org/>
+
+SELECT ?title ?author
+WHERE {
+  GRAPH ex:central { ?b schema:name ?title ; schema:author ?author }
+}
+ORDER BY ?title` },
   ];
 
   // -------------------------------------------------------------------
@@ -990,10 +1068,12 @@ ORDER BY ?country` },
     console.log = (...args) => buf.push(args.join(' '));
     console.error = (...args) => buf.push(args.join(' '));
 
-    globalThis.jsoo_fs_tmp = [{ name: '/tmp/data.ttl', content: dataEl.value }];
+    const ext = (DATASETS[datasetEl.value] && DATASETS[datasetEl.value].ext) || 'ttl';
+    const dataPath = '/tmp/data.' + ext;
+    globalThis.jsoo_fs_tmp = [{ name: dataPath, content: dataEl.value }];
     globalThis.process = globalThis.process || {};
     globalThis.process.argv = ['node', 'factoidal',
-      '-d', '/tmp/data.ttl',
+      '-d', dataPath,
       '-e', queryEl.value,
       '-o', 'json'];
 
