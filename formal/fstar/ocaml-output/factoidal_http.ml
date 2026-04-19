@@ -152,7 +152,7 @@ let usage () =
   print_endline "  GET  /query?query=...        SPARQL query via URL";
   print_endline "  POST /query  application/sparql-query                  raw body";
   print_endline "  POST /query  application/x-www-form-urlencoded         query=...";
-  print_endline "  POST /update                                           (501 in stage 1)";
+  print_endline "  POST /update                                           (parses + executes; LOAD → 501)";
   print_endline "";
   print_endline "Supported response media types via Accept:";
   print_endline "  application/sparql-results+json  (default)";
@@ -162,7 +162,11 @@ let usage () =
   print_endline "";
   print_endline "Stage 1 limitations:";
   print_endline "  * Per-request default-graph-uri / named-graph-uri are ignored";
-  print_endline "  * UPDATE returns 501 (parser is wired, executor is future work)";
+  print_endline "  * UPDATE supports INSERT/DELETE DATA, DELETE WHERE, Modify";
+  print_endline "    (INSERT/DELETE WHERE), CLEAR, DROP, CREATE, ADD, MOVE, COPY.";
+  print_endline "    LOAD still returns 501 (needs an HTTP client).";
+  print_endline "  * UPDATEs mutate a single shared dataset ref for the server's";
+  print_endline "    lifetime; not thread-safe, not persisted.";
   print_endline "  * CONSTRUCT/DESCRIBE return empty results (evaluator stub)";
   print_endline "  * No TLS, no keep-alive, no pipelining"
 
@@ -307,6 +311,7 @@ let split_uri uri =
 
 let status_text = function
   | 200 -> "OK"
+  | 204 -> "No Content"
   | 400 -> "Bad Request"
   | 404 -> "Not Found"
   | 405 -> "Method Not Allowed"
@@ -438,7 +443,17 @@ let parse_and_run ~dataset ~accept query_text =
    Socket errors are logged but never crash the accept loop.
    ============================================================================ *)
 
-let handle_connection cfg dataset ic oc =
+(* Detect whether an update contains any U_Load op (LOAD is still
+   unimplemented — needs HTTP client).  We return 501 for requests
+   that contain LOAD rather than silently skipping it. *)
+let update_has_load (u : SPARQL11_Algebra.sparql_update) : bool =
+  List.exists (fun op ->
+    match op with
+    | SPARQL11_Algebra.U_Load (_, _, _) -> true
+    | _ -> false
+  ) u.u_ops
+
+let handle_connection cfg dataset_ref ic oc =
   try
     let req_line = read_line_crlf ic in
     let (meth, uri, _version) = parse_request_line req_line in
@@ -462,22 +477,47 @@ let handle_connection cfg dataset ic oc =
            t.tm_hour t.tm_min t.tm_sec)
         meth uri (String.length body) accept ct;
 
+    let dataset = !dataset_ref in
     let resp =
       match P.decode_request meth path qs ct body with
       | P.PR_Bad msg ->
         { rb_status = 400;
           rb_content_type = "text/plain; charset=utf-8";
           rb_body = msg ^ "\n" }
-      | P.PR_Update (_u, _dflt, _named) ->
-        { rb_status = 501;
-          rb_content_type = "text/plain; charset=utf-8";
-          rb_body =
-            "SPARQL UPDATE execution is not yet implemented.\n\
-             Stage 1 of factoidal-http only supports query (SELECT/ASK).\n" }
+      | P.PR_Update (update_text, _dflt, _named) ->
+        (* Parse the update string and dispatch through apply_update.
+           LOAD is still unimplemented (needs an HTTP client). *)
+        (match SPARQL11_Parser.parse_sparql_update update_text with
+         | SPARQL11_Parser.ParseErr msg ->
+           { rb_status = 400;
+             rb_content_type = "text/plain; charset=utf-8";
+             rb_body = "SPARQL Update parse error: " ^ msg ^ "\n" }
+         | SPARQL11_Parser.ParseOk (u, _rest) ->
+           if update_has_load u then
+             { rb_status = 501;
+               rb_content_type = "text/plain; charset=utf-8";
+               rb_body =
+                 "SPARQL UPDATE with LOAD is not yet implemented.\n\
+                  LOAD requires an HTTP client, which factoidal-http\n\
+                  does not yet embed.\n" }
+           else begin
+             let new_ds =
+               try SPARQL11_Algebra.apply_update dataset u
+               with e ->
+                 Printf.eprintf "  update execution error: %s\n%!"
+                   (Printexc.to_string e);
+                 dataset
+             in
+             dataset_ref := new_ds;
+             { rb_status = 204;
+               rb_content_type = "text/plain; charset=utf-8";
+               rb_body = "" }
+           end)
       | P.PR_Query (q, _dflt, _named) ->
         (* Stage 1: ignore default-graph-uri / named-graph-uri (would
            require HTTP fetch to honour). The dataset preloaded via
-           --dataset is served as the default graph. *)
+           --dataset is served as the default graph; UPDATE ops
+           accumulated via POST /update mutate the shared ref. *)
         parse_and_run ~dataset ~accept q
     in
     write_response oc
@@ -511,7 +551,7 @@ let resolve_host h =
     exit 1
 
 let run_server cfg =
-  let dataset = load_dataset cfg in
+  let dataset_ref = ref (load_dataset cfg) in
   let addr = Unix.ADDR_INET (resolve_host cfg.host, cfg.port) in
   let sock = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
   (try Unix.setsockopt sock Unix.SO_REUSEADDR true with _ -> ());
@@ -521,7 +561,7 @@ let run_server cfg =
        cfg.host cfg.port (Unix.error_message err);
      exit 1);
   Unix.listen sock 16;
-  let triple_count = List.length dataset.ds_default in
+  let triple_count = List.length (!dataset_ref).ds_default in
   Printf.printf "factoidal-http listening on http://%s:%d/query\n"
     cfg.host cfg.port;
   (match cfg.dataset_file with
@@ -542,7 +582,7 @@ let run_server cfg =
     | Some (client, _caddr) ->
       let ic = Unix.in_channel_of_descr client in
       let oc = Unix.out_channel_of_descr client in
-      (try handle_connection cfg dataset ic oc
+      (try handle_connection cfg dataset_ref ic oc
        with e ->
          Printf.eprintf "  unhandled: %s\n%!" (Printexc.to_string e));
       (try close_out oc with _ -> ());
