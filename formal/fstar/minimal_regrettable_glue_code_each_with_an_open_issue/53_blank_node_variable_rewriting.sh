@@ -35,7 +35,7 @@ content = content.replace(
      existential variables — they match any term, not just blank nodes
      with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
   let query = match tc.test_type_detail with
-    | "RDFS" | "RDF" | "D" ->
+    | "RDFS" | "RDF" | "D" | "OWL-RL" ->
       let open SPARQL11_Algebra in
       let rewrite_pt = function
         | PT_BNode b -> PT_Var ("_bnode_" ^ b)

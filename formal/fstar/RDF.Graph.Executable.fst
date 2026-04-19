@@ -1095,6 +1095,412 @@ let rdfs_closure_with_reflexivity (g : rdf_graph) (fuel : nat) : Tot rdf_graph =
   rdfs_closure with_refl fuel
 
 (** ======================================================================== *)
+(** 19c. OWL 2 RL Datalog-shaped closure rules                              *)
+(** ======================================================================== *)
+
+// This block implements the subset of OWL 2 RL entailment that is safely
+// expressible as forward-chained Datalog rules over RDF triples. It is
+// applied on top of the RDFS closure (with reflexivity axioms) and iterates
+// to a fixpoint under a fuel bound.
+//
+// Rules implemented (OWL 2 RL/RDF rule names in parens):
+//   eq-ref      : reflexivity of owl:sameAs
+//   eq-sym      : symmetry of owl:sameAs
+//   eq-trans    : transitivity of owl:sameAs
+//   eq-rep-s    : sameAs substitution in subject position
+//   eq-rep-p    : sameAs substitution in predicate position (IRI-to-IRI only)
+//   eq-rep-o    : sameAs substitution in object position
+//   prp-symp    : owl:SymmetricProperty
+//   prp-trp     : owl:TransitiveProperty
+//   prp-ifp     : owl:InverseFunctionalProperty (produces owl:sameAs)
+//   prp-inv1/2  : owl:inverseOf (both directions)
+//   cls-eqc1/2  : owl:equivalentClass expanded to rdfs:subClassOf both ways
+//   prp-eqp1/2  : owl:equivalentProperty expanded to rdfs:subPropertyOf both ways
+//
+// NOT implemented (tableau-style, out of scope for this pass):
+//   owl:hasValue, owl:someValuesFrom, owl:allValuesFrom restrictions;
+//   class disjointness propagation; owl:FunctionalProperty; consistency checks.
+
+let owl_sameAs : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#sameAs");
+  "http://www.w3.org/2002/07/owl#sameAs"
+
+let owl_SymmetricProperty : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#SymmetricProperty");
+  "http://www.w3.org/2002/07/owl#SymmetricProperty"
+
+let owl_TransitiveProperty : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#TransitiveProperty");
+  "http://www.w3.org/2002/07/owl#TransitiveProperty"
+
+let owl_InverseFunctionalProperty : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#InverseFunctionalProperty");
+  "http://www.w3.org/2002/07/owl#InverseFunctionalProperty"
+
+let owl_inverseOf : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#inverseOf");
+  "http://www.w3.org/2002/07/owl#inverseOf"
+
+let owl_equivalentClass : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#equivalentClass");
+  "http://www.w3.org/2002/07/owl#equivalentClass"
+
+let owl_equivalentProperty : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#equivalentProperty");
+  "http://www.w3.org/2002/07/owl#equivalentProperty"
+
+// Check whether a predicate is one of the OWL predicates that we treat
+// specially (used to block no-op rule applications where we would re-emit
+// a triple that is already present).
+let is_owl_metapredicate (p : wf_iri) : bool =
+  p = owl_sameAs || p = owl_inverseOf ||
+  p = owl_equivalentClass || p = owl_equivalentProperty
+
+// cls-eqc1 + cls-eqc2: if (C owl:equivalentClass D) then
+//   (C rdfs:subClassOf D) and (D rdfs:subClassOf C).
+let owl_rule_equivalent_class (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_equivalentClass then
+        match t.s, t.o with
+        | S_IRI c_iri, T_IRI d_iri ->
+          let t1 : triple = { s = S_IRI c_iri; p = rdfs_subClassOf; o = T_IRI d_iri } in
+          let t2 : triple = { s = S_IRI d_iri; p = rdfs_subClassOf; o = T_IRI c_iri } in
+          add_triple_if_new (add_triple_if_new acc t1) t2
+        | _, _ -> acc
+      else acc)
+    g
+    g
+
+// prp-eqp1 + prp-eqp2: if (P owl:equivalentProperty Q) then
+//   (P rdfs:subPropertyOf Q) and (Q rdfs:subPropertyOf P).
+let owl_rule_equivalent_property (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_equivalentProperty then
+        match t.s, t.o with
+        | S_IRI p_iri, T_IRI q_iri ->
+          let t1 : triple = { s = S_IRI p_iri; p = rdfs_subPropertyOf; o = T_IRI q_iri } in
+          let t2 : triple = { s = S_IRI q_iri; p = rdfs_subPropertyOf; o = T_IRI p_iri } in
+          add_triple_if_new (add_triple_if_new acc t1) t2
+        | _, _ -> acc
+      else acc)
+    g
+    g
+
+// prp-symp: if (P rdf:type owl:SymmetricProperty) and (x P y) then (y P x).
+// y must be convertible to a subject (IRI or BNode — not a literal).
+let owl_rule_symmetric_property (g : rdf_graph) : rdf_graph =
+  // Collect symmetric predicates first
+  let sym_props : list wf_iri =
+    List.Tot.fold_left
+      (fun (acc : list wf_iri) (t : triple) ->
+        if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_SymmetricProperty) then
+          match t.s with
+          | S_IRI p_iri -> cons_if_new_iri p_iri acc
+          | _ -> acc
+        else acc)
+      []
+      g
+  in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if List.Tot.mem t.p sym_props then
+        match term_to_subject t.o with
+        | Some new_subj ->
+          let new_t : triple = { s = new_subj; p = t.p; o = subject_to_term t.s } in
+          add_triple_if_new acc new_t
+        | None -> acc
+      else acc)
+    g
+    g
+
+// prp-trp: if (P rdf:type owl:TransitiveProperty), (x P y), (y P z) then (x P z).
+let owl_rule_transitive_property (g : rdf_graph) : rdf_graph =
+  let trans_props : list wf_iri =
+    List.Tot.fold_left
+      (fun (acc : list wf_iri) (t : triple) ->
+        if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_TransitiveProperty) then
+          match t.s with
+          | S_IRI p_iri -> cons_if_new_iri p_iri acc
+          | _ -> acc
+        else acc)
+      []
+      g
+  in
+  // For every (x P y) where P is transitive, look up (y P z) for each z and add (x P z).
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if List.Tot.mem t.p trans_props then
+        match term_to_subject t.o with
+        | Some y_subj ->
+          let zs = find_objects g y_subj t.p in
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (z_term : rdf_term) ->
+              let new_t : triple = { s = t.s; p = t.p; o = z_term } in
+              add_triple_if_new acc2 new_t)
+            acc
+            zs
+        | None -> acc
+      else acc)
+    g
+    g
+
+// prp-inv1: if (P1 owl:inverseOf P2) and (x P1 y) then (y P2 x).
+// prp-inv2: if (P1 owl:inverseOf P2) and (x P2 y) then (y P1 x).
+// We handle both by iterating every owl:inverseOf declaration and producing
+// the flipped triples for both directions.
+let owl_rule_inverse_of (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (inv_t : triple) ->
+      if inv_t.p = owl_inverseOf then
+        match inv_t.s, inv_t.o with
+        | S_IRI p1_iri, T_IRI p2_iri ->
+          // For every triple matching P1 or P2, emit the inverse.
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (t : triple) ->
+              let add_inverse (target_p : wf_iri) (acc3 : rdf_graph) : rdf_graph =
+                match term_to_subject t.o with
+                | Some new_subj ->
+                  let new_t : triple =
+                    { s = new_subj; p = target_p; o = subject_to_term t.s } in
+                  add_triple_if_new acc3 new_t
+                | None -> acc3
+              in
+              if t.p = p1_iri then add_inverse p2_iri acc2
+              else if t.p = p2_iri then add_inverse p1_iri acc2
+              else acc2)
+            acc
+            g
+        | _, _ -> acc
+      else acc)
+    g
+    g
+
+// eq-ref: every IRI or blank-node mentioned in g satisfies (x owl:sameAs x).
+// Per OWL 2 RL/RDF rule eq-ref, every named individual is sameAs itself.
+// We approximate "named individual" by: every IRI or bnode that appears
+// anywhere in g. Literals never participate in sameAs.
+let collect_iri_or_bnode_terms (g : rdf_graph) : list subject =
+  List.Tot.fold_left
+    (fun (acc : list subject) (t : triple) ->
+      let acc1 =
+        if List.Tot.existsb (fun x -> subject_eq x t.s) acc
+        then acc else t.s :: acc
+      in
+      match t.o with
+      | T_IRI i ->
+        let ox = S_IRI i in
+        if List.Tot.existsb (fun x -> subject_eq x ox) acc1 then acc1 else ox :: acc1
+      | T_BNode b ->
+        let ox = S_BNode b in
+        if List.Tot.existsb (fun x -> subject_eq x ox) acc1 then acc1 else ox :: acc1
+      | T_Literal _ -> acc1)
+    []
+    g
+
+let owl_rule_sameAs_reflexivity (g : rdf_graph) : rdf_graph =
+  let nodes = collect_iri_or_bnode_terms g in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (n : subject) ->
+      let new_t : triple = { s = n; p = owl_sameAs; o = subject_to_term n } in
+      add_triple_if_new acc new_t)
+    g
+    nodes
+
+// eq-sym: if (x owl:sameAs y) then (y owl:sameAs x).
+let owl_rule_sameAs_symmetry (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_sameAs then
+        match term_to_subject t.o with
+        | Some new_subj ->
+          let new_t : triple =
+            { s = new_subj; p = owl_sameAs; o = subject_to_term t.s } in
+          add_triple_if_new acc new_t
+        | None -> acc
+      else acc)
+    g
+    g
+
+// eq-trans: if (x owl:sameAs y) and (y owl:sameAs z) then (x owl:sameAs z).
+let owl_rule_sameAs_transitivity (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_sameAs then
+        match term_to_subject t.o with
+        | Some y_subj ->
+          let zs = find_objects g y_subj owl_sameAs in
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (z_term : rdf_term) ->
+              let new_t : triple = { s = t.s; p = owl_sameAs; o = z_term } in
+              add_triple_if_new acc2 new_t)
+            acc
+            zs
+        | None -> acc
+      else acc)
+    g
+    g
+
+// eq-rep-s: if (s owl:sameAs s') and (s p o) then (s' p o).
+let owl_rule_sameAs_replace_subject (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      // For each (s owl:sameAs s') where s = t.s, copy all triples
+      // with subject s to s'.
+      if t.p = owl_sameAs then
+        match term_to_subject t.o with
+        | Some s_prime ->
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (src : triple) ->
+              if subject_eq src.s t.s && src.p <> owl_sameAs then
+                let new_t : triple = { s = s_prime; p = src.p; o = src.o } in
+                add_triple_if_new acc2 new_t
+              else acc2)
+            acc
+            g
+        | None -> acc
+      else acc)
+    g
+    g
+
+// eq-rep-o: if (o owl:sameAs o') and (s p o) then (s p o').
+let owl_rule_sameAs_replace_object (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (sameAs_t : triple) ->
+      if sameAs_t.p = owl_sameAs then
+        // For each triple (s p o) where o matches sameAs_t.s (i.e., subject
+        // of a sameAs statement), emit (s p sameAs_t.o).
+        let o_as_term = subject_to_term sameAs_t.s in
+        List.Tot.fold_left
+          (fun (acc2 : rdf_graph) (src : triple) ->
+            if src.p <> owl_sameAs && rdf_term_eq src.o o_as_term then
+              let new_t : triple = { s = src.s; p = src.p; o = sameAs_t.o } in
+              add_triple_if_new acc2 new_t
+            else acc2)
+          acc
+          g
+      else acc)
+    g
+    g
+
+// eq-rep-p: if (p owl:sameAs p') and p, p' are IRIs, then copy every
+// (s p o) as (s p' o). Only well-formed IRI predicates participate —
+// predicates cannot be blank nodes or literals.
+let owl_rule_sameAs_replace_predicate (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (sameAs_t : triple) ->
+      if sameAs_t.p = owl_sameAs then
+        match sameAs_t.s, sameAs_t.o with
+        | S_IRI p_iri, T_IRI p_prime_iri ->
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (src : triple) ->
+              if src.p = p_iri && not (is_owl_metapredicate src.p) then
+                let new_t : triple =
+                  { s = src.s; p = p_prime_iri; o = src.o } in
+                add_triple_if_new acc2 new_t
+              else acc2)
+            acc
+            g
+        | _, _ -> acc
+      else acc)
+    g
+    g
+
+// prp-ifp: if (P rdf:type owl:InverseFunctionalProperty), (x P y), (z P y)
+// then (x owl:sameAs z). Produces additional owl:sameAs triples that will
+// feed into eq-* rules on the next fixpoint iteration.
+let owl_rule_inverse_functional (g : rdf_graph) : rdf_graph =
+  let ifp_props : list wf_iri =
+    List.Tot.fold_left
+      (fun (acc : list wf_iri) (t : triple) ->
+        if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_InverseFunctionalProperty) then
+          match t.s with
+          | S_IRI p_iri -> cons_if_new_iri p_iri acc
+          | _ -> acc
+        else acc)
+      []
+      g
+  in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t1 : triple) ->
+      if List.Tot.mem t1.p ifp_props then
+        // Find all z with (z t1.p t1.o)
+        let zs = find_subjects g t1.p t1.o in
+        List.Tot.fold_left
+          (fun (acc2 : rdf_graph) (z : subject) ->
+            // Avoid emitting (x sameAs x) twice and don't emit if z equals t1.s
+            // (reflexivity will add that anyway)
+            if subject_eq z t1.s then acc2
+            else
+              let new_t : triple =
+                { s = t1.s; p = owl_sameAs; o = subject_to_term z } in
+              add_triple_if_new acc2 new_t)
+          acc
+          zs
+      else acc)
+    g
+    g
+
+// Apply all OWL-RL rules once. Ordering: first do "axiom-introducing" rules
+// (equivalentClass/Property expansion, owl:inverseOf flip, symmetric/
+// transitive), then sameAs rules. The fixpoint loop re-applies them until
+// no change.
+let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
+  let g1 = owl_rule_equivalent_class g in
+  let g2 = owl_rule_equivalent_property g1 in
+  let g3 = owl_rule_inverse_of g2 in
+  let g4 = owl_rule_symmetric_property g3 in
+  let g5 = owl_rule_transitive_property g4 in
+  let g6 = owl_rule_sameAs_reflexivity g5 in
+  let g7 = owl_rule_sameAs_symmetry g6 in
+  let g8 = owl_rule_sameAs_transitivity g7 in
+  let g9 = owl_rule_sameAs_replace_subject g8 in
+  let g10 = owl_rule_sameAs_replace_object g9 in
+  let g11 = owl_rule_sameAs_replace_predicate g10 in
+  let g12 = owl_rule_inverse_functional g11 in
+  g12
+
+// Interleaved OWL-RL + RDFS fixpoint. RDFS rules run every iteration so
+// that triples introduced by cls-eqc1/2 and prp-eqp1/2 get propagated
+// through rdfs:subClassOf and rdfs:subPropertyOf chains. Terminates when
+// no new triples are added or fuel is exhausted.
+let rec owl_rl_closure (g : rdf_graph) (fuel : nat) : Tot rdf_graph (decreases fuel) =
+  match fuel with
+  | 0 -> g
+  | n ->
+    let g_owl = owl_rl_closure_step g in
+    let g_rdfs = rdfs_closure_step g_owl in
+    if graph_len g_rdfs = graph_len g
+    then g
+    else owl_rl_closure g_rdfs (n - 1)
+
+// Full OWL-RL closure with reflexivity axioms: first compute the RDFS
+// closure with reflexivity, then iterate OWL-RL + RDFS together to a
+// fixpoint.
+let owl_rl_closure_with_reflexivity (g : rdf_graph) (fuel : nat) : Tot rdf_graph =
+  let rdfs_closed = rdfs_closure_with_reflexivity g fuel in
+  owl_rl_closure rdfs_closed fuel
+
+// ---- Top-level entailment dispatch ----------------------------------------
+
+// An opaque-looking regime tag. Kept as a string so we don't have to extend
+// the extracted OCaml type environment — the w3c_runner selects a value
+// based on the manifest-declared regime list.
+let regime_simple : string = "simple"
+let regime_rdf : string = "RDF"
+let regime_rdfs : string = "RDFS"
+let regime_owl_rl : string = "OWL-RL"
+
+// entailment_closure : dispatch on regime name, apply the appropriate
+// closure. Unknown / unsupported regimes return the graph unchanged.
+let entailment_closure (regime : string) (g : rdf_graph) (fuel : nat) : Tot rdf_graph =
+  if regime = regime_owl_rl then owl_rl_closure_with_reflexivity g fuel
+  else if regime = regime_rdfs then rdfs_closure_with_reflexivity g fuel
+  else if regime = regime_rdf then rdfs_closure g fuel
+  else g
+
+(** ======================================================================== *)
 (** 20. Datatype Value Equivalence                                           *)
 (** ======================================================================== *)
 

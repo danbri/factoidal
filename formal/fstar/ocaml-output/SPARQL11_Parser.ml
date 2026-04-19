@@ -6054,22 +6054,6 @@ let parse_sparql (input : Prims.string) :
         then ParseErr "blank node label reused across graph-pattern scope"
         else ParseOk (q, rest)
   | ParseErr msg -> ParseErr msg
-let resolve_iri_or_pname (pm : prefix_map) (tok : token) :
-  RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option=
-  match tok with
-  | Tok_IRI i ->
-      let ri = resolve_tok_iri i in
-      if RDF_Graph_Executable.is_iri ri
-      then FStar_Pervasives_Native.Some i
-      else FStar_Pervasives_Native.None
-  | Tok_PNAME pn ->
-      (match resolve_pname pn pm with
-       | FStar_Pervasives_Native.Some iri ->
-           if RDF_Graph_Executable.is_iri iri
-           then FStar_Pervasives_Native.Some iri
-           else FStar_Pervasives_Native.None
-       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
-  | uu___ -> FStar_Pervasives_Native.None
 let parse_iri_ref (pm : prefix_map) (ts : token_stream) :
   RDF_Graph_Executable.wf_iri parse_result=
   match parse_peek ts with

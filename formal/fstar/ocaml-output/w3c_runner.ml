@@ -345,12 +345,20 @@ let extract_test_cases manifest_dir graph =
                walk_list (S_BNode (match obj with T_BNode b -> b | _ -> "")) []
              | _ -> []
            ) sd_regime_objs in
-           (* Pick the best regime we can handle: prefer RDFS > RDF > D *)
-           if List.exists (fun i -> i = ent_ns ^ "RDFS") regime_iris then "RDFS"
+           (* Pick the best regime we can handle. OWL-RDF-Based (-> "OWL-RL")
+              is tried first because it subsumes the RDFS rules. When a
+              manifest lists both OWL-RDF-Based and RDFS we get strictly
+              more inferences and therefore strictly more test passes. For
+              manifests listing only OWL-Direct we also route to our
+              Datalog OWL-RL closure as best-effort — tableau-style tests
+              (someValuesFrom, allValuesFrom, intersectionOf, ...) won't
+              pass either way, but the Datalog rules we DO implement are
+              sound wrt OWL-Direct entailment. *)
+           if List.exists (fun i -> i = ent_ns ^ "OWL-RDF-Based") regime_iris then "OWL-RL"
+           else if List.exists (fun i -> i = ent_ns ^ "OWL-Direct") regime_iris then "OWL-RL"
+           else if List.exists (fun i -> i = ent_ns ^ "RDFS") regime_iris then "RDFS"
            else if List.exists (fun i -> i = ent_ns ^ "RDF") regime_iris then "RDF"
            else if List.exists (fun i -> i = ent_ns ^ "D") regime_iris then "D"
-           else if List.exists (fun i -> i = ent_ns ^ "OWL-Direct") regime_iris then "OWL-Direct"
-           else if List.exists (fun i -> i = ent_ns ^ "OWL-RDF-Based") regime_iris then "OWL-RDF-Based"
            else ""
          | [] -> "") in
 
@@ -553,8 +561,13 @@ let run_query_eval_test tc =
 
   (* Apply entailment regime closure if needed (for SPARQL entailment tests).
      RDFS closure + reflexivity axioms live in F* (RDF.Graph.Executable.fst,
-     rdfs_closure_with_reflexivity). Formerly OCaml patch #60. *)
+     rdfs_closure_with_reflexivity). OWL-RL extends that with Datalog-shaped
+     OWL rules (sameAs, Symmetric/Transitive/InverseFunctionalProperty,
+     inverseOf, equivalentClass/Property). Formerly OCaml patch #60. *)
   let graph = match tc.test_type_detail with
+    | "OWL-RL" ->
+      (try RDF_Graph_Executable.owl_rl_closure_with_reflexivity graph (Z.of_int 100)
+       with _ -> graph)
     | "RDFS" | "RDF" ->
       (try RDF_Graph_Executable.rdfs_closure_with_reflexivity graph (Z.of_int 100)
        with _ -> graph)
@@ -564,6 +577,9 @@ let run_query_eval_test tc =
   let named_graphs = List.map (fun (iri, path) ->
     let triples = load_triples path in
     let triples = match tc.test_type_detail with
+      | "OWL-RL" ->
+        (try RDF_Graph_Executable.owl_rl_closure_with_reflexivity triples (Z.of_int 100)
+         with _ -> triples)
       | "RDFS" | "RDF" ->
         (try RDF_Graph_Executable.rdfs_closure triples (Z.of_int 100)
          with _ -> triples)
@@ -585,7 +601,7 @@ let run_query_eval_test tc =
      existential variables — they match any term, not just blank nodes
      with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
   let query = match tc.test_type_detail with
-    | "RDFS" | "RDF" | "D" ->
+    | "RDFS" | "RDF" | "D" | "OWL-RL" ->
       let open SPARQL11_Algebra in
       let rewrite_pt = function
         | PT_BNode b -> PT_Var ("_bnode_" ^ b)
@@ -621,7 +637,7 @@ let run_query_eval_test tc =
      with the same label. Rewrite PS_BNode/PT_BNode to fresh variables.
      NOTE: This logic should be elevated to F* — tracked in issue #61. *)
   let query = match tc.test_type_detail with
-    | "RDFS" | "RDF" | "D" ->
+    | "RDFS" | "RDF" | "D" | "OWL-RL" ->
       let open SPARQL11_Algebra in
       let rewrite_pt = function
         | PT_BNode b -> PT_Var ("_bnode_" ^ b)
@@ -656,7 +672,7 @@ let run_query_eval_test tc =
      existential variables — they match any term, not just blank nodes
      with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
   let query = match tc.test_type_detail with
-    | "RDFS" | "RDF" | "D" ->
+    | "RDFS" | "RDF" | "D" | "OWL-RL" ->
       let open SPARQL11_Algebra in
       let rewrite_pt = function
         | PT_BNode b -> PT_Var ("_bnode_" ^ b)
@@ -691,7 +707,7 @@ let run_query_eval_test tc =
      existential variables — they match any term, not just blank nodes
      with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
   let query = match tc.test_type_detail with
-    | "RDFS" | "RDF" | "D" ->
+    | "RDFS" | "RDF" | "D" | "OWL-RL" ->
       let open SPARQL11_Algebra in
       let rewrite_pt = function
         | PT_BNode b -> PT_Var ("_bnode_" ^ b)
@@ -726,7 +742,7 @@ let run_query_eval_test tc =
      existential variables — they match any term, not just blank nodes
      with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
   let query = match tc.test_type_detail with
-    | "RDFS" | "RDF" | "D" ->
+    | "RDFS" | "RDF" | "D" | "OWL-RL" ->
       let open SPARQL11_Algebra in
       let rewrite_pt = function
         | PT_BNode b -> PT_Var ("_bnode_" ^ b)
@@ -761,7 +777,7 @@ let run_query_eval_test tc =
      existential variables — they match any term, not just blank nodes
      with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
   let query = match tc.test_type_detail with
-    | "RDFS" | "RDF" | "D" ->
+    | "RDFS" | "RDF" | "D" | "OWL-RL" ->
       let open SPARQL11_Algebra in
       let rewrite_pt = function
         | PT_BNode b -> PT_Var ("_bnode_" ^ b)
@@ -796,7 +812,7 @@ let run_query_eval_test tc =
      existential variables — they match any term, not just blank nodes
      with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
   let query = match tc.test_type_detail with
-    | "RDFS" | "RDF" | "D" ->
+    | "RDFS" | "RDF" | "D" | "OWL-RL" ->
       let open SPARQL11_Algebra in
       let rewrite_pt = function
         | PT_BNode b -> PT_Var ("_bnode_" ^ b)
@@ -1141,6 +1157,10 @@ let simple_entails graph_a graph_b =
 let apply_entailment_regime regime triples =
   match regime with
   | "simple" -> triples
+  | "OWL-RL" ->
+    (* OWL 2 RL Datalog subset on top of RDFS closure + reflexivity *)
+    (try RDF_Graph_Executable.owl_rl_closure_with_reflexivity triples (Z.of_int 100)
+     with _ -> triples)
   | "RDF" ->
     (* RDF entailment: add RDF axiomatic triples + value-based equality *)
     (* Use the F*-extracted rdfs_closure with fuel for RDF closure rules *)

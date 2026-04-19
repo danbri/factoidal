@@ -720,6 +720,288 @@ let rdfs_closure_with_reflexivity (g : rdf_graph) (fuel : Prims.nat) :
   let refl_axioms = rdfs_reflexivity_axioms closed in
   let with_refl = add_triples_if_new closed refl_axioms in
   rdfs_closure with_refl fuel
+let owl_sameAs : wf_iri= "http://www.w3.org/2002/07/owl#sameAs"
+let owl_SymmetricProperty : wf_iri=
+  "http://www.w3.org/2002/07/owl#SymmetricProperty"
+let owl_TransitiveProperty : wf_iri=
+  "http://www.w3.org/2002/07/owl#TransitiveProperty"
+let owl_InverseFunctionalProperty : wf_iri=
+  "http://www.w3.org/2002/07/owl#InverseFunctionalProperty"
+let owl_inverseOf : wf_iri= "http://www.w3.org/2002/07/owl#inverseOf"
+let owl_equivalentClass : wf_iri=
+  "http://www.w3.org/2002/07/owl#equivalentClass"
+let owl_equivalentProperty : wf_iri=
+  "http://www.w3.org/2002/07/owl#equivalentProperty"
+let is_owl_metapredicate (p : wf_iri) : Prims.bool=
+  (((p = owl_sameAs) || (p = owl_inverseOf)) || (p = owl_equivalentClass)) ||
+    (p = owl_equivalentProperty)
+let owl_rule_equivalent_class (g : rdf_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if t.p = owl_equivalentClass
+       then
+         match ((t.s), (t.o)) with
+         | (S_IRI c_iri, T_IRI d_iri) ->
+             let t1 =
+               { s = (S_IRI c_iri); p = rdfs_subClassOf; o = (T_IRI d_iri) } in
+             let t2 =
+               { s = (S_IRI d_iri); p = rdfs_subClassOf; o = (T_IRI c_iri) } in
+             add_triple_if_new (add_triple_if_new acc t1) t2
+         | (uu___, uu___1) -> acc
+       else acc) g g
+let owl_rule_equivalent_property (g : rdf_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if t.p = owl_equivalentProperty
+       then
+         match ((t.s), (t.o)) with
+         | (S_IRI p_iri, T_IRI q_iri) ->
+             let t1 =
+               { s = (S_IRI p_iri); p = rdfs_subPropertyOf; o = (T_IRI q_iri)
+               } in
+             let t2 =
+               { s = (S_IRI q_iri); p = rdfs_subPropertyOf; o = (T_IRI p_iri)
+               } in
+             add_triple_if_new (add_triple_if_new acc t1) t2
+         | (uu___, uu___1) -> acc
+       else acc) g g
+let owl_rule_symmetric_property (g : rdf_graph) : rdf_graph=
+  let sym_props =
+    FStar_List_Tot_Base.fold_left
+      (fun acc t ->
+         if
+           (t.p = rdf_type) &&
+             (rdf_term_eq t.o (T_IRI owl_SymmetricProperty))
+         then
+           match t.s with
+           | S_IRI p_iri -> cons_if_new_iri p_iri acc
+           | uu___ -> acc
+         else acc) [] g in
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if FStar_List_Tot_Base.mem t.p sym_props
+       then
+         match term_to_subject t.o with
+         | FStar_Pervasives_Native.Some new_subj ->
+             let new_t =
+               { s = new_subj; p = (t.p); o = (subject_to_term t.s) } in
+             add_triple_if_new acc new_t
+         | FStar_Pervasives_Native.None -> acc
+       else acc) g g
+let owl_rule_transitive_property (g : rdf_graph) : rdf_graph=
+  let trans_props =
+    FStar_List_Tot_Base.fold_left
+      (fun acc t ->
+         if
+           (t.p = rdf_type) &&
+             (rdf_term_eq t.o (T_IRI owl_TransitiveProperty))
+         then
+           match t.s with
+           | S_IRI p_iri -> cons_if_new_iri p_iri acc
+           | uu___ -> acc
+         else acc) [] g in
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if FStar_List_Tot_Base.mem t.p trans_props
+       then
+         match term_to_subject t.o with
+         | FStar_Pervasives_Native.Some y_subj ->
+             let zs = find_objects g y_subj t.p in
+             FStar_List_Tot_Base.fold_left
+               (fun acc2 z_term ->
+                  let new_t = { s = (t.s); p = (t.p); o = z_term } in
+                  add_triple_if_new acc2 new_t) acc zs
+         | FStar_Pervasives_Native.None -> acc
+       else acc) g g
+let owl_rule_inverse_of (g : rdf_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc inv_t ->
+       if inv_t.p = owl_inverseOf
+       then
+         match ((inv_t.s), (inv_t.o)) with
+         | (S_IRI p1_iri, T_IRI p2_iri) ->
+             FStar_List_Tot_Base.fold_left
+               (fun acc2 t ->
+                  let add_inverse target_p acc3 =
+                    match term_to_subject t.o with
+                    | FStar_Pervasives_Native.Some new_subj ->
+                        let new_t =
+                          {
+                            s = new_subj;
+                            p = target_p;
+                            o = (subject_to_term t.s)
+                          } in
+                        add_triple_if_new acc3 new_t
+                    | FStar_Pervasives_Native.None -> acc3 in
+                  if t.p = p1_iri
+                  then add_inverse p2_iri acc2
+                  else if t.p = p2_iri then add_inverse p1_iri acc2 else acc2)
+               acc g
+         | (uu___, uu___1) -> acc
+       else acc) g g
+let collect_iri_or_bnode_terms (g : rdf_graph) : subject Prims.list=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       let acc1 =
+         if FStar_List_Tot_Base.existsb (fun x -> subject_eq x t.s) acc
+         then acc
+         else (t.s) :: acc in
+       match t.o with
+       | T_IRI i ->
+           let ox = S_IRI i in
+           if FStar_List_Tot_Base.existsb (fun x -> subject_eq x ox) acc1
+           then acc1
+           else ox :: acc1
+       | T_BNode b ->
+           let ox = S_BNode b in
+           if FStar_List_Tot_Base.existsb (fun x -> subject_eq x ox) acc1
+           then acc1
+           else ox :: acc1
+       | T_Literal uu___ -> acc1) [] g
+let owl_rule_sameAs_reflexivity (g : rdf_graph) : rdf_graph=
+  let nodes = collect_iri_or_bnode_terms g in
+  FStar_List_Tot_Base.fold_left
+    (fun acc n ->
+       let new_t = { s = n; p = owl_sameAs; o = (subject_to_term n) } in
+       add_triple_if_new acc new_t) g nodes
+let owl_rule_sameAs_symmetry (g : rdf_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if t.p = owl_sameAs
+       then
+         match term_to_subject t.o with
+         | FStar_Pervasives_Native.Some new_subj ->
+             let new_t =
+               { s = new_subj; p = owl_sameAs; o = (subject_to_term t.s) } in
+             add_triple_if_new acc new_t
+         | FStar_Pervasives_Native.None -> acc
+       else acc) g g
+let owl_rule_sameAs_transitivity (g : rdf_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if t.p = owl_sameAs
+       then
+         match term_to_subject t.o with
+         | FStar_Pervasives_Native.Some y_subj ->
+             let zs = find_objects g y_subj owl_sameAs in
+             FStar_List_Tot_Base.fold_left
+               (fun acc2 z_term ->
+                  let new_t = { s = (t.s); p = owl_sameAs; o = z_term } in
+                  add_triple_if_new acc2 new_t) acc zs
+         | FStar_Pervasives_Native.None -> acc
+       else acc) g g
+let owl_rule_sameAs_replace_subject (g : rdf_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if t.p = owl_sameAs
+       then
+         match term_to_subject t.o with
+         | FStar_Pervasives_Native.Some s_prime ->
+             FStar_List_Tot_Base.fold_left
+               (fun acc2 src ->
+                  if (subject_eq src.s t.s) && (src.p <> owl_sameAs)
+                  then
+                    let new_t = { s = s_prime; p = (src.p); o = (src.o) } in
+                    add_triple_if_new acc2 new_t
+                  else acc2) acc g
+         | FStar_Pervasives_Native.None -> acc
+       else acc) g g
+let owl_rule_sameAs_replace_object (g : rdf_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc sameAs_t ->
+       if sameAs_t.p = owl_sameAs
+       then
+         let o_as_term = subject_to_term sameAs_t.s in
+         FStar_List_Tot_Base.fold_left
+           (fun acc2 src ->
+              if (src.p <> owl_sameAs) && (rdf_term_eq src.o o_as_term)
+              then
+                let new_t = { s = (src.s); p = (src.p); o = (sameAs_t.o) } in
+                add_triple_if_new acc2 new_t
+              else acc2) acc g
+       else acc) g g
+let owl_rule_sameAs_replace_predicate (g : rdf_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc sameAs_t ->
+       if sameAs_t.p = owl_sameAs
+       then
+         match ((sameAs_t.s), (sameAs_t.o)) with
+         | (S_IRI p_iri, T_IRI p_prime_iri) ->
+             FStar_List_Tot_Base.fold_left
+               (fun acc2 src ->
+                  if
+                    (src.p = p_iri) &&
+                      (Prims.op_Negation (is_owl_metapredicate src.p))
+                  then
+                    let new_t = { s = (src.s); p = p_prime_iri; o = (src.o) } in
+                    add_triple_if_new acc2 new_t
+                  else acc2) acc g
+         | (uu___, uu___1) -> acc
+       else acc) g g
+let owl_rule_inverse_functional (g : rdf_graph) : rdf_graph=
+  let ifp_props =
+    FStar_List_Tot_Base.fold_left
+      (fun acc t ->
+         if
+           (t.p = rdf_type) &&
+             (rdf_term_eq t.o (T_IRI owl_InverseFunctionalProperty))
+         then
+           match t.s with
+           | S_IRI p_iri -> cons_if_new_iri p_iri acc
+           | uu___ -> acc
+         else acc) [] g in
+  FStar_List_Tot_Base.fold_left
+    (fun acc t1 ->
+       if FStar_List_Tot_Base.mem t1.p ifp_props
+       then
+         let zs = find_subjects g t1.p t1.o in
+         FStar_List_Tot_Base.fold_left
+           (fun acc2 z ->
+              if subject_eq z t1.s
+              then acc2
+              else
+                (let new_t =
+                   { s = (t1.s); p = owl_sameAs; o = (subject_to_term z) } in
+                 add_triple_if_new acc2 new_t)) acc zs
+       else acc) g g
+let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
+  let g1 = owl_rule_equivalent_class g in
+  let g2 = owl_rule_equivalent_property g1 in
+  let g3 = owl_rule_inverse_of g2 in
+  let g4 = owl_rule_symmetric_property g3 in
+  let g5 = owl_rule_transitive_property g4 in
+  let g6 = owl_rule_sameAs_reflexivity g5 in
+  let g7 = owl_rule_sameAs_symmetry g6 in
+  let g8 = owl_rule_sameAs_transitivity g7 in
+  let g9 = owl_rule_sameAs_replace_subject g8 in
+  let g10 = owl_rule_sameAs_replace_object g9 in
+  let g11 = owl_rule_sameAs_replace_predicate g10 in
+  let g12 = owl_rule_inverse_functional g11 in g12
+let rec owl_rl_closure (g : rdf_graph) (fuel : Prims.nat) : rdf_graph=
+  match fuel with
+  | uu___ when uu___ = Prims.int_zero -> g
+  | n ->
+      let g_owl = owl_rl_closure_step g in
+      let g_rdfs = rdfs_closure_step g_owl in
+      if (graph_len g_rdfs) = (graph_len g)
+      then g
+      else owl_rl_closure g_rdfs (n - Prims.int_one)
+let owl_rl_closure_with_reflexivity (g : rdf_graph) (fuel : Prims.nat) :
+  rdf_graph=
+  let rdfs_closed = rdfs_closure_with_reflexivity g fuel in
+  owl_rl_closure rdfs_closed fuel
+let regime_simple : Prims.string= "simple"
+let regime_rdf : Prims.string= "RDF"
+let regime_rdfs : Prims.string= "RDFS"
+let regime_owl_rl : Prims.string= "OWL-RL"
+let entailment_closure (regime : Prims.string) (g : rdf_graph)
+  (fuel : Prims.nat) : rdf_graph=
+  if regime = regime_owl_rl
+  then owl_rl_closure_with_reflexivity g fuel
+  else
+    if regime = regime_rdfs
+    then rdfs_closure_with_reflexivity g fuel
+    else if regime = regime_rdf then rdfs_closure g fuel else g
 let is_digit (c : FStar_Char.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in
   (code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))
