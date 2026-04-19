@@ -4233,20 +4233,126 @@ let apply_delete_data (ds : rdf_dataset) (ggp : group_graph_pattern) : rdf_datas
   let clean = filter_no_bnode_quads quads in
   delete_quads ds clean
 
-// Apply a single update op. For stage b-data we implement U_InsertData +
-// U_DeleteData; all other ops (U_DeleteWhere, U_Modify, and the graph-
-// management ops U_Load / U_Clear / U_Drop / U_Create / U_Add / U_Move /
+(** ======================================================================= **)
+(** Part 19c: DELETE WHERE (SPARQL 1.1 Update §3.1.3)                        **)
+(**                                                                         **)
+(** `DELETE WHERE { tmpl }` is semantically shorthand for                   **)
+(** `DELETE { tmpl } WHERE { tmpl }`: match the template against the        **)
+(** dataset to produce solution mappings, substitute each mapping back into **)
+(** the template to get concrete quads, remove them by syntactic equality   **)
+(** (same comparator as DELETE DATA).                                       **)
+(**                                                                         **)
+(** Implementation: we reuse `eval_pattern` (the SELECT-side BGP/GGP        **)
+(** matcher — same code path used by every non-aggregate SELECT query) to   **)
+(** produce the solution mappings, then reuse `bound_subject_of_pattern` /  **)
+(** `bound_predicate_of_pattern` / `bound_object_of_pattern` (used by       **)
+(** single-triple evaluation and forming the substitution back into the    **)
+(** template). No new matcher or substituter was written; both are already **)
+(** battle-tested by the query path.                                       **)
+(**                                                                         **)
+(** Blank nodes in the template (§18.2.2.9, §3.1.3): per                    **)
+(** `rewrite_query_bnodes_pattern` bnodes in a query pattern are treated    **)
+(** as distinct fresh variables. We apply the same rewrite uniformly to    **)
+(** the DELETE-WHERE template — the rewritten pattern both binds and then  **)
+(** substitutes back, so a bnode in the template ends up deleting the exact **)
+(** existing-graph bnodes it matched (a specific existing label per        **)
+(** solution mapping). This is the standard "blank nodes as existentials"  **)
+(** interpretation (same as patch #53 but for the WHERE side of a DELETE).  **)
+(**   Honest caveat: if two bnodes in the template share a label AND the    **)
+(**   underlying pattern matcher does NOT unify them (it doesn't — each    **)
+(**   rewritten var gets a unique "_bnode_<label>" name), we may fail to   **)
+(**   delete the expected set. In the six delete-where W3C tests the      **)
+(**   templates contain no blank nodes — all six use only IRIs + variables **)
+(**   — so this caveat doesn't bite. Documented for future readers.        **)
+(** ======================================================================= **)
+
+// Substitute a solution mapping into one triple_pattern, producing a
+// concrete triple if every pattern position is bindable under the mapping.
+// Variables without a binding yield None (the triple cannot be instantiated).
+// Concrete positions pass through; literal-in-subject and
+// literal-in-predicate positions (ill-formed per RDF) also yield None.
+let instantiate_tp (tp : triple_pattern) (mu : solution_mapping)
+  : option triple =
+  match bound_subject_of_pattern tp.tp_s mu with
+  | None -> None
+  | Some s ->
+    match bound_predicate_of_pattern tp.tp_p mu with
+    | None -> None
+    | Some p ->
+      match bound_object_of_pattern tp.tp_o mu with
+      | None -> None
+      | Some o -> Some ({ s = s; p = p; o = o })
+
+// Instantiate each tp in a bgp under mu; drop any tp that fails to bind.
+let rec instantiate_bgp (b : bgp) (mu : solution_mapping)
+  : Tot (list triple) (decreases b) =
+  match b with
+  | [] -> []
+  | tp :: rest ->
+    let rest_ts = instantiate_bgp rest mu in
+    (match instantiate_tp tp mu with
+     | None -> rest_ts
+     | Some t -> t :: rest_ts)
+
+// Walk the template GGP under a single solution mapping and produce
+// (graph, triple) quads. Mirrors `collect_quads` but substitutes via mu.
+// Nested GRAPH <iri> { ... } sets the graph scope for the inner quads.
+// Non-BGP / non-Graph / non-Join patterns yield no quads (the template
+// of DELETE WHERE is grammatically restricted to quad data: a sequence of
+// triples / GRAPH blocks, so other forms shouldn't appear — belt-and-
+// braces, mirrors collect_quads).
+let rec instantiate_ggp_quads (outer : option wf_iri) (g : group_graph_pattern)
+  (mu : solution_mapping)
+  : Tot (list (option wf_iri * triple)) (decreases g) =
+  match g with
+  | GP_Empty -> []
+  | GP_BGP b ->
+    let ts = instantiate_bgp b mu in
+    List.Tot.map (fun t -> (outer, t)) ts
+  | GP_Join a b ->
+    instantiate_ggp_quads outer a mu @ instantiate_ggp_quads outer b mu
+  | GP_Graph gt inner ->
+    (match gt with
+     | PT_IRI g_iri -> instantiate_ggp_quads (Some g_iri) inner mu
+     | _ -> instantiate_ggp_quads outer inner mu)
+  | _ -> []
+
+let rec instantiate_ggp_all (outer : option wf_iri) (g : group_graph_pattern)
+  (mus : solution_sequence)
+  : Tot (list (option wf_iri * triple)) (decreases mus) =
+  match mus with
+  | [] -> []
+  | mu :: rest ->
+    instantiate_ggp_quads outer g mu @ instantiate_ggp_all outer g rest
+
+let apply_delete_where (ds : rdf_dataset) (ggp : group_graph_pattern)
+  : rdf_dataset =
+  // §3.1.3: bnodes in the WHERE side of a template behave as existential
+  // variables. Apply the same rewrite used by `eval_select_query` so a
+  // bnode-labelled position participates in the matching as a variable
+  // and then is substituted back into the template with the matched term.
+  let rewritten = rewrite_query_bnodes_pattern ggp in
+  // Evaluate against the default graph + dataset. GP_Graph inside the
+  // template is still honoured by eval_pattern itself.
+  let mus = eval_pattern rewritten ds.ds_default ds in
+  // For each mapping, substitute into the (rewritten) template to get
+  // concrete quads.
+  let quads = instantiate_ggp_all None rewritten mus in
+  delete_quads ds quads
+
+// Apply a single update op. For stage b-data + this commit we implement
+// U_InsertData + U_DeleteData + U_DeleteWhere; `U_Modify` and the graph-
+// management ops (U_Load / U_Clear / U_Drop / U_Create / U_Add / U_Move /
 // U_Copy) are left unimplemented and return the dataset unchanged. The
-// runner is responsible for detecting a non-data op list and marking the
-// test Skipped, so reaching one of those arms here during a test run would
-// indicate a runner bug, not a semantics bug.
+// runner is responsible for detecting an unimplemented op and marking the
+// test Skipped, so reaching one of those arms here during a test run
+// would indicate a runner bug, not a semantics bug.
 let apply_update_op (ds : rdf_dataset) (op : update_op) : rdf_dataset =
   match op with
   | U_InsertData g -> apply_insert_data ds g
   | U_DeleteData g -> apply_delete_data ds g
-  // Stages c (U_Modify / U_DeleteWhere) and d (graph management) are not
-  // yet implemented.
-  | U_DeleteWhere _ -> ds
+  | U_DeleteWhere g -> apply_delete_where ds g
+  // U_Modify + graph management are stage c / d and not yet implemented.
   | U_Modify _ _ _ _ _ -> ds
   | U_Load _ _ _ -> ds
   | U_Clear _ _ -> ds
@@ -4265,23 +4371,24 @@ let rec apply_update_ops (ds : rdf_dataset) (ops : list update_op)
 let apply_update (ds : rdf_dataset) (u : sparql_update) : rdf_dataset =
   apply_update_ops ds u.u_ops
 
-// Classify an op list: returns true iff every op is U_InsertData or
-// U_DeleteData. The runner uses this to decide whether to actually run
-// the test or skip it.
-let is_data_only_op (op : update_op) : bool =
+// Classify an op list: returns true iff every op is U_InsertData,
+// U_DeleteData, or U_DeleteWhere. The runner uses this to decide whether
+// to actually run the test or skip it.
+let is_implemented_op (op : update_op) : bool =
   match op with
   | U_InsertData _ -> true
   | U_DeleteData _ -> true
+  | U_DeleteWhere _ -> true
   | _ -> false
 
-let rec update_is_data_only_ops (ops : list update_op)
+let rec update_is_implemented_only_ops (ops : list update_op)
   : Tot bool (decreases ops) =
   match ops with
   | [] -> true
-  | op :: rest -> is_data_only_op op && update_is_data_only_ops rest
+  | op :: rest -> is_implemented_op op && update_is_implemented_only_ops rest
 
-let update_is_data_only (u : sparql_update) : bool =
-  update_is_data_only_ops u.u_ops
+let update_is_implemented_only (u : sparql_update) : bool =
+  update_is_implemented_only_ops u.u_ops
 
 (** ====================================================================== **)
 (** Part 20: Correspondence to Rust Implementation                         **)

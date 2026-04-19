@@ -5413,12 +5413,76 @@ let apply_delete_data (ds : RDF_Graph_Executable.rdf_dataset)
   (ggp : group_graph_pattern) : RDF_Graph_Executable.rdf_dataset=
   let quads = collect_quads FStar_Pervasives_Native.None ggp in
   let clean = filter_no_bnode_quads quads in delete_quads ds clean
+let instantiate_tp (tp : triple_pattern)
+  (mu : RDF_Graph_Executable.solution_mapping) :
+  RDF_Graph_Executable.triple FStar_Pervasives_Native.option=
+  match bound_subject_of_pattern tp.tp_s mu with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some s ->
+      (match bound_predicate_of_pattern tp.tp_p mu with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some p ->
+           (match bound_object_of_pattern tp.tp_o mu with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some o ->
+                FStar_Pervasives_Native.Some
+                  {
+                    RDF_Graph_Executable.s = s;
+                    RDF_Graph_Executable.p = p;
+                    RDF_Graph_Executable.o = o
+                  }))
+let rec instantiate_bgp (b : bgp)
+  (mu : RDF_Graph_Executable.solution_mapping) :
+  RDF_Graph_Executable.triple Prims.list=
+  match b with
+  | [] -> []
+  | tp::rest ->
+      let rest_ts = instantiate_bgp rest mu in
+      (match instantiate_tp tp mu with
+       | FStar_Pervasives_Native.None -> rest_ts
+       | FStar_Pervasives_Native.Some t -> t :: rest_ts)
+let rec instantiate_ggp_quads
+  (outer : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (g : group_graph_pattern) (mu : RDF_Graph_Executable.solution_mapping) :
+  (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
+    RDF_Graph_Executable.triple) Prims.list=
+  match g with
+  | GP_Empty -> []
+  | GP_BGP b ->
+      let ts = instantiate_bgp b mu in
+      FStar_List_Tot_Base.map (fun t -> (outer, t)) ts
+  | GP_Join (a, b) ->
+      FStar_List_Tot_Base.op_At (instantiate_ggp_quads outer a mu)
+        (instantiate_ggp_quads outer b mu)
+  | GP_Graph (gt, inner) ->
+      (match gt with
+       | PT_IRI g_iri ->
+           instantiate_ggp_quads (FStar_Pervasives_Native.Some g_iri) inner
+             mu
+       | uu___ -> instantiate_ggp_quads outer inner mu)
+  | uu___ -> []
+let rec instantiate_ggp_all
+  (outer : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (g : group_graph_pattern) (mus : solution_sequence) :
+  (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
+    RDF_Graph_Executable.triple) Prims.list=
+  match mus with
+  | [] -> []
+  | mu::rest ->
+      FStar_List_Tot_Base.op_At (instantiate_ggp_quads outer g mu)
+        (instantiate_ggp_all outer g rest)
+let apply_delete_where (ds : RDF_Graph_Executable.rdf_dataset)
+  (ggp : group_graph_pattern) : RDF_Graph_Executable.rdf_dataset=
+  let rewritten = rewrite_query_bnodes_pattern ggp in
+  let mus = eval_pattern rewritten ds.RDF_Graph_Executable.ds_default ds in
+  let quads = instantiate_ggp_all FStar_Pervasives_Native.None rewritten mus in
+  delete_quads ds quads
 let apply_update_op (ds : RDF_Graph_Executable.rdf_dataset) (op : update_op)
   : RDF_Graph_Executable.rdf_dataset=
   match op with
   | U_InsertData g -> apply_insert_data ds g
   | U_DeleteData g -> apply_delete_data ds g
-  | U_DeleteWhere uu___ -> ds
+  | U_DeleteWhere g -> apply_delete_where ds g
   | U_Modify (uu___, uu___1, uu___2, uu___3, uu___4) -> ds
   | U_Load (uu___, uu___1, uu___2) -> ds
   | U_Clear (uu___, uu___1) -> ds
@@ -5434,16 +5498,19 @@ let rec apply_update_ops (ds : RDF_Graph_Executable.rdf_dataset)
   | op::rest -> apply_update_ops (apply_update_op ds op) rest
 let apply_update (ds : RDF_Graph_Executable.rdf_dataset) (u : sparql_update)
   : RDF_Graph_Executable.rdf_dataset= apply_update_ops ds u.u_ops
-let is_data_only_op (op : update_op) : Prims.bool=
+let is_implemented_op (op : update_op) : Prims.bool=
   match op with
   | U_InsertData uu___ -> true
   | U_DeleteData uu___ -> true
+  | U_DeleteWhere uu___ -> true
   | uu___ -> false
-let rec update_is_data_only_ops (ops : update_op Prims.list) : Prims.bool=
+let rec update_is_implemented_only_ops (ops : update_op Prims.list) :
+  Prims.bool=
   match ops with
   | [] -> true
-  | op::rest -> (is_data_only_op op) && (update_is_data_only_ops rest)
-let update_is_data_only (u : sparql_update) : Prims.bool=
-  update_is_data_only_ops u.u_ops
+  | op::rest ->
+      (is_implemented_op op) && (update_is_implemented_only_ops rest)
+let update_is_implemented_only (u : sparql_update) : Prims.bool=
+  update_is_implemented_only_ops u.u_ops
 
 let () = eval_subselect_fwd_ref := eval_select_query
