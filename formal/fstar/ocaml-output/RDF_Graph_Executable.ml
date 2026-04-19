@@ -664,6 +664,10 @@ let owl_ObjectProperty : wf_iri=
   "http://www.w3.org/2002/07/owl#ObjectProperty"
 let owl_DatatypeProperty : wf_iri=
   "http://www.w3.org/2002/07/owl#DatatypeProperty"
+let owl_Thing : wf_iri= "http://www.w3.org/2002/07/owl#Thing"
+let owl_Nothing : wf_iri= "http://www.w3.org/2002/07/owl#Nothing"
+let owl_NamedIndividual : wf_iri=
+  "http://www.w3.org/2002/07/owl#NamedIndividual"
 let cons_if_new_iri (i : wf_iri) (acc : wf_iri Prims.list) :
   wf_iri Prims.list= if FStar_List_Tot_Base.mem i acc then acc else i :: acc
 let cons_subject_iri_if_new (s : subject) (acc : wf_iri Prims.list) :
@@ -986,10 +990,64 @@ let rec owl_rl_closure (g : rdf_graph) (fuel : Prims.nat) : rdf_graph=
       if (graph_len g_rdfs) = (graph_len g)
       then g
       else owl_rl_closure g_rdfs (n - Prims.int_one)
+let owl_thing_subject_iris (g : rdf_graph) : wf_iri Prims.list=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       let acc1 = cons_subject_iri_if_new t.s acc in
+       cons_term_iri_if_new t.o acc1) [] g
+let owl_thing_predicates (g : rdf_graph) : wf_iri Prims.list=
+  FStar_List_Tot_Base.fold_left (fun acc t -> cons_if_new_iri t.p acc) [] g
+let owl_thing_axioms (g : rdf_graph) : rdf_graph=
+  let classes = collect_classes g in
+  let properties = collect_properties g in
+  let indivs = owl_thing_subject_iris g in
+  let predicates = owl_thing_predicates g in
+  let top_class_triples =
+    FStar_List_Tot_Base.map
+      (fun c -> { s = (S_IRI c); p = rdfs_subClassOf; o = (T_IRI owl_Thing) })
+      classes in
+  let bottom_class_triples =
+    FStar_List_Tot_Base.map
+      (fun c ->
+         { s = (S_IRI owl_Nothing); p = rdfs_subClassOf; o = (T_IRI c) })
+      classes in
+  let property_domain_triples =
+    FStar_List_Tot_Base.map
+      (fun p -> { s = (S_IRI p); p = rdfs_domain; o = (T_IRI owl_Thing) })
+      properties in
+  let property_range_triples =
+    FStar_List_Tot_Base.map
+      (fun p -> { s = (S_IRI p); p = rdfs_range; o = (T_IRI owl_Thing) })
+      properties in
+  let predicate_domain_triples =
+    FStar_List_Tot_Base.map
+      (fun p -> { s = (S_IRI p); p = rdfs_domain; o = (T_IRI owl_Thing) })
+      predicates in
+  let predicate_range_triples =
+    FStar_List_Tot_Base.map
+      (fun p -> { s = (S_IRI p); p = rdfs_range; o = (T_IRI owl_Thing) })
+      predicates in
+  let individual_triples =
+    FStar_List_Tot_Base.map
+      (fun i -> { s = (S_IRI i); p = rdf_type; o = (T_IRI owl_Thing) })
+      indivs in
+  let self_axioms =
+    [{ s = (S_IRI owl_Thing); p = rdf_type; o = (T_IRI owl_Class) };
+    { s = (S_IRI owl_Nothing); p = rdf_type; o = (T_IRI owl_Class) };
+    { s = (S_IRI owl_Nothing); p = rdfs_subClassOf; o = (T_IRI owl_Thing) }] in
+  FStar_List_Tot_Base.op_At top_class_triples
+    (FStar_List_Tot_Base.op_At bottom_class_triples
+       (FStar_List_Tot_Base.op_At property_domain_triples
+          (FStar_List_Tot_Base.op_At property_range_triples
+             (FStar_List_Tot_Base.op_At predicate_domain_triples
+                (FStar_List_Tot_Base.op_At predicate_range_triples
+                   (FStar_List_Tot_Base.op_At individual_triples self_axioms))))))
 let owl_rl_closure_with_reflexivity (g : rdf_graph) (fuel : Prims.nat) :
   rdf_graph=
   let rdfs_closed = rdfs_closure_with_reflexivity g fuel in
-  owl_rl_closure rdfs_closed fuel
+  let thing_axioms = owl_thing_axioms rdfs_closed in
+  let with_thing = add_triples_if_new rdfs_closed thing_axioms in
+  owl_rl_closure with_thing fuel
 let regime_simple : Prims.string= "simple"
 let regime_rdf : Prims.string= "RDF"
 let regime_rdfs : Prims.string= "RDFS"

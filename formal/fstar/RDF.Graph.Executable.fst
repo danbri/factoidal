@@ -1002,6 +1002,18 @@ let owl_DatatypeProperty : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#DatatypeProperty");
   "http://www.w3.org/2002/07/owl#DatatypeProperty"
 
+let owl_Thing : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#Thing");
+  "http://www.w3.org/2002/07/owl#Thing"
+
+let owl_Nothing : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#Nothing");
+  "http://www.w3.org/2002/07/owl#Nothing"
+
+let owl_NamedIndividual : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#NamedIndividual");
+  "http://www.w3.org/2002/07/owl#NamedIndividual"
+
 // Prepend i to acc if not already present.
 let cons_if_new_iri (i : wf_iri) (acc : list wf_iri) : list wf_iri =
   if List.Tot.mem i acc then acc else i :: acc
@@ -1475,12 +1487,121 @@ let rec owl_rl_closure (g : rdf_graph) (fuel : nat) : Tot rdf_graph (decreases f
     then g
     else owl_rl_closure g_rdfs (n - 1)
 
-// Full OWL-RL closure with reflexivity axioms: first compute the RDFS
-// closure with reflexivity, then iterate OWL-RL + RDFS together to a
-// fixpoint.
+// ---- Group E: owl:Thing / owl:Nothing universal axioms --------------------
+//
+// OWL 2 RL/RDF table of axiomatic triples (see OWL 2 RL/RDF rules
+// "Table 5: Axiomatic Triples for OWL 2 RL/RDF" + semantic conditions
+// on owl:Thing / owl:Nothing):
+//   - owl:Nothing rdfs:subClassOf C        for every class C
+//   - C           rdfs:subClassOf owl:Thing for every class C
+//   - P           rdfs:domain    owl:Thing for every property P
+//   - P           rdfs:range     owl:Thing for every property P
+//   - x           rdf:type       owl:Thing for every "named individual"
+//       (we approximate: every IRI that appears as subject, or as an
+//       IRI object, of a triple in the data — unless it is a schema
+//       term already playing a meta role. The harmless over-approximation
+//       is to include all such IRIs; the additional closure is sound
+//       under OWL-RL since owl:Thing is the top class.)
+//
+// We deliberately do NOT materialise `owl:Thing rdfs:subClassOf rdfs:Resource`
+// (or its converse). OWL 2 RL declares them equivalent in the RDF-Based
+// semantics, but the converse inflates the closure (every
+// rdfs:Resource-typed thing becomes owl:Thing) without being exercised
+// by any test we need. owl:Nothing is left empty (we never emit
+// "x rdf:type owl:Nothing") because asserting membership there would
+// be a consistency violation, not a sound entailment.
+
+let owl_thing_subject_iris (g : rdf_graph) : list wf_iri =
+  List.Tot.fold_left
+    (fun (acc : list wf_iri) (t : triple) ->
+      let acc1 = cons_subject_iri_if_new t.s acc in
+      cons_term_iri_if_new t.o acc1)
+    []
+    g
+
+let owl_thing_predicates (g : rdf_graph) : list wf_iri =
+  List.Tot.fold_left
+    (fun (acc : list wf_iri) (t : triple) -> cons_if_new_iri t.p acc)
+    []
+    g
+
+// Build the Group E axiom triples. Does NOT emit anything involving
+// owl:Nothing on its RHS (owl:Nothing is empty).
+let owl_thing_axioms (g : rdf_graph) : rdf_graph =
+  let classes = collect_classes g in
+  let properties = collect_properties g in
+  let indivs = owl_thing_subject_iris g in
+  let predicates = owl_thing_predicates g in
+  // C rdfs:subClassOf owl:Thing  for every class C
+  let top_class_triples : rdf_graph =
+    List.Tot.map
+      (fun (c : wf_iri) ->
+        ({ s = S_IRI c; p = rdfs_subClassOf; o = T_IRI owl_Thing } <: triple))
+      classes
+  in
+  // owl:Nothing rdfs:subClassOf C  for every class C
+  let bottom_class_triples : rdf_graph =
+    List.Tot.map
+      (fun (c : wf_iri) ->
+        ({ s = S_IRI owl_Nothing; p = rdfs_subClassOf; o = T_IRI c } <: triple))
+      classes
+  in
+  // P rdfs:domain owl:Thing + P rdfs:range owl:Thing  for every property P
+  let property_domain_triples : rdf_graph =
+    List.Tot.map
+      (fun (p : wf_iri) ->
+        ({ s = S_IRI p; p = rdfs_domain; o = T_IRI owl_Thing } <: triple))
+      properties
+  in
+  let property_range_triples : rdf_graph =
+    List.Tot.map
+      (fun (p : wf_iri) ->
+        ({ s = S_IRI p; p = rdfs_range; o = T_IRI owl_Thing } <: triple))
+      properties
+  in
+  // Predicates that actually appear — also receive rdfs:domain/range
+  // owl:Thing. Catches the common case of a predicate used in the data
+  // that was never declared via rdf:type owl:ObjectProperty etc.
+  let predicate_domain_triples : rdf_graph =
+    List.Tot.map
+      (fun (p : wf_iri) ->
+        ({ s = S_IRI p; p = rdfs_domain; o = T_IRI owl_Thing } <: triple))
+      predicates
+  in
+  let predicate_range_triples : rdf_graph =
+    List.Tot.map
+      (fun (p : wf_iri) ->
+        ({ s = S_IRI p; p = rdfs_range; o = T_IRI owl_Thing } <: triple))
+      predicates
+  in
+  // i rdf:type owl:Thing  for every IRI that appears as subject or IRI-object.
+  let individual_triples : rdf_graph =
+    List.Tot.map
+      (fun (i : wf_iri) ->
+        ({ s = S_IRI i; p = rdf_type; o = T_IRI owl_Thing } <: triple))
+      indivs
+  in
+  // Self-membership axioms (these keep the downstream closure tidy
+  // rather than contributing new information).
+  let self_axioms : rdf_graph = [
+    { s = S_IRI owl_Thing;   p = rdf_type;        o = T_IRI owl_Class };
+    { s = S_IRI owl_Nothing; p = rdf_type;        o = T_IRI owl_Class };
+    { s = S_IRI owl_Nothing; p = rdfs_subClassOf; o = T_IRI owl_Thing };
+  ] in
+  top_class_triples @ bottom_class_triples @
+  property_domain_triples @ property_range_triples @
+  predicate_domain_triples @ predicate_range_triples @
+  individual_triples @ self_axioms
+
+// Full OWL-RL closure with reflexivity axioms AND Group E universal
+// axioms: first compute the RDFS closure with reflexivity, harvest the
+// Thing/Nothing axioms against the resulting graph, then iterate
+// OWL-RL + RDFS together to a fixpoint.
 let owl_rl_closure_with_reflexivity (g : rdf_graph) (fuel : nat) : Tot rdf_graph =
   let rdfs_closed = rdfs_closure_with_reflexivity g fuel in
-  owl_rl_closure rdfs_closed fuel
+  let thing_axioms = owl_thing_axioms rdfs_closed in
+  let with_thing = add_triples_if_new rdfs_closed thing_axioms in
+  owl_rl_closure with_thing fuel
 
 // ---- Top-level entailment dispatch ----------------------------------------
 
