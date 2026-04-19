@@ -528,7 +528,15 @@ let () =
 
   (* Evaluate *)
   (try
-    let results = eval_select_query query graph dataset in
+    let is_ask = match query.q_form with QF_Ask -> true | _ -> false in
+    (* ASK has its own evaluator that returns bool; eval_select_query
+       hardcodes QF_Ask -> [] and loses the result. *)
+    let ask_answer =
+      if is_ask then Some (eval_ask_query query graph dataset)
+      else None in
+    let results =
+      if is_ask then []  (* suppress the select path for ASK *)
+      else eval_select_query query graph dataset in
 
     (* Extract variable names from query or results *)
     let vars = match query.q_form with
@@ -548,18 +556,18 @@ let () =
         ) results
     in
 
-    let is_ask = match query.q_form with QF_Ask -> true | _ -> false in
     match cfg.output_format with
     | Table ->
-      if is_ask then
-        Printf.printf "%s\n" (if results <> [] then "Yes" else "No")
-      else print_results_table vars results
+      (match ask_answer with
+       | Some b -> Printf.printf "%s\n" (if b then "Yes" else "No")
+       | None -> print_results_table vars results)
     | CSV -> print_results_csv vars results
     | JSON ->
-      if is_ask then
-        Printf.printf "{\n  \"head\": {},\n  \"boolean\": %s\n}\n"
-          (if results <> [] then "true" else "false")
-      else print_results_json vars results
+      (match ask_answer with
+       | Some b ->
+         Printf.printf "{\n  \"head\": {},\n  \"boolean\": %s\n}\n"
+           (if b then "true" else "false")
+       | None -> print_results_json vars results)
     | NTOut ->
       (* For CONSTRUCT-like output, print triples *)
       List.iter (fun row ->
