@@ -131,6 +131,22 @@ type token =
   | Tok_SHA256 
   | Tok_SHA384 
   | Tok_SHA512 
+  | Tok_LOAD 
+  | Tok_CLEAR 
+  | Tok_DROP 
+  | Tok_CREATE 
+  | Tok_ADD 
+  | Tok_MOVE 
+  | Tok_COPY 
+  | Tok_INSERT 
+  | Tok_DELETE 
+  | Tok_DATA 
+  | Tok_INTO 
+  | Tok_TO 
+  | Tok_WITH 
+  | Tok_USING 
+  | Tok_DEFAULT 
+  | Tok_ALL 
   | Tok_EOF 
 let uu___is_Tok_SELECT (projectee : token) : Prims.bool=
   match projectee with | Tok_SELECT -> true | uu___ -> false
@@ -412,6 +428,38 @@ let uu___is_Tok_SHA384 (projectee : token) : Prims.bool=
   match projectee with | Tok_SHA384 -> true | uu___ -> false
 let uu___is_Tok_SHA512 (projectee : token) : Prims.bool=
   match projectee with | Tok_SHA512 -> true | uu___ -> false
+let uu___is_Tok_LOAD (projectee : token) : Prims.bool=
+  match projectee with | Tok_LOAD -> true | uu___ -> false
+let uu___is_Tok_CLEAR (projectee : token) : Prims.bool=
+  match projectee with | Tok_CLEAR -> true | uu___ -> false
+let uu___is_Tok_DROP (projectee : token) : Prims.bool=
+  match projectee with | Tok_DROP -> true | uu___ -> false
+let uu___is_Tok_CREATE (projectee : token) : Prims.bool=
+  match projectee with | Tok_CREATE -> true | uu___ -> false
+let uu___is_Tok_ADD (projectee : token) : Prims.bool=
+  match projectee with | Tok_ADD -> true | uu___ -> false
+let uu___is_Tok_MOVE (projectee : token) : Prims.bool=
+  match projectee with | Tok_MOVE -> true | uu___ -> false
+let uu___is_Tok_COPY (projectee : token) : Prims.bool=
+  match projectee with | Tok_COPY -> true | uu___ -> false
+let uu___is_Tok_INSERT (projectee : token) : Prims.bool=
+  match projectee with | Tok_INSERT -> true | uu___ -> false
+let uu___is_Tok_DELETE (projectee : token) : Prims.bool=
+  match projectee with | Tok_DELETE -> true | uu___ -> false
+let uu___is_Tok_DATA (projectee : token) : Prims.bool=
+  match projectee with | Tok_DATA -> true | uu___ -> false
+let uu___is_Tok_INTO (projectee : token) : Prims.bool=
+  match projectee with | Tok_INTO -> true | uu___ -> false
+let uu___is_Tok_TO (projectee : token) : Prims.bool=
+  match projectee with | Tok_TO -> true | uu___ -> false
+let uu___is_Tok_WITH (projectee : token) : Prims.bool=
+  match projectee with | Tok_WITH -> true | uu___ -> false
+let uu___is_Tok_USING (projectee : token) : Prims.bool=
+  match projectee with | Tok_USING -> true | uu___ -> false
+let uu___is_Tok_DEFAULT (projectee : token) : Prims.bool=
+  match projectee with | Tok_DEFAULT -> true | uu___ -> false
+let uu___is_Tok_ALL (projectee : token) : Prims.bool=
+  match projectee with | Tok_ALL -> true | uu___ -> false
 let uu___is_Tok_EOF (projectee : token) : Prims.bool=
   match projectee with | Tok_EOF -> true | uu___ -> false
 type pos = Prims.nat
@@ -1325,6 +1373,118 @@ let keyword_of_upper (upper : Prims.string) (original : Prims.string) :
                                                                     "SHA512"
                                                                     then
                                                                     Tok_SHA512
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "LOAD"
+                                                                    then
+                                                                    Tok_LOAD
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "CLEAR"
+                                                                    then
+                                                                    Tok_CLEAR
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "DROP"
+                                                                    then
+                                                                    Tok_DROP
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "CREATE"
+                                                                    then
+                                                                    Tok_CREATE
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "ADD"
+                                                                    then
+                                                                    Tok_ADD
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "MOVE"
+                                                                    then
+                                                                    Tok_MOVE
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "COPY"
+                                                                    then
+                                                                    Tok_COPY
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "INSERT"
+                                                                    then
+                                                                    Tok_INSERT
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "DELETE"
+                                                                    then
+                                                                    Tok_DELETE
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "DATA"
+                                                                    then
+                                                                    Tok_DATA
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "INTO"
+                                                                    then
+                                                                    Tok_INTO
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "TO"
+                                                                    then
+                                                                    Tok_TO
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "WITH"
+                                                                    then
+                                                                    Tok_WITH
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "USING"
+                                                                    then
+                                                                    Tok_USING
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "DEFAULT"
+                                                                    then
+                                                                    Tok_DEFAULT
+                                                                    else
+                                                                    if
+                                                                    streq
+                                                                    upper
+                                                                    "ALL"
+                                                                    then
+                                                                    Tok_ALL
                                                                     else
                                                                     Tok_PNAME
                                                                     original
@@ -5894,6 +6054,652 @@ let parse_sparql (input : Prims.string) :
         then ParseErr "blank node label reused across graph-pattern scope"
         else ParseOk (q, rest)
   | ParseErr msg -> ParseErr msg
+let resolve_iri_or_pname (pm : prefix_map) (tok : token) :
+  RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option=
+  match tok with
+  | Tok_IRI i ->
+      let ri = resolve_tok_iri i in
+      if RDF_Graph_Executable.is_iri ri
+      then FStar_Pervasives_Native.Some i
+      else FStar_Pervasives_Native.None
+  | Tok_PNAME pn ->
+      (match resolve_pname pn pm with
+       | FStar_Pervasives_Native.Some iri ->
+           if RDF_Graph_Executable.is_iri iri
+           then FStar_Pervasives_Native.Some iri
+           else FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+  | uu___ -> FStar_Pervasives_Native.None
+let parse_iri_ref (pm : prefix_map) (ts : token_stream) :
+  RDF_Graph_Executable.wf_iri parse_result=
+  match parse_peek ts with
+  | Tok_IRI i ->
+      let ri = resolve_tok_iri i in
+      if RDF_Graph_Executable.is_iri ri
+      then ParseOk (ri, (parse_advance ts))
+      else ParseErr "invalid IRI"
+  | Tok_PNAME pn ->
+      (match resolve_pname pn pm with
+       | FStar_Pervasives_Native.Some iri ->
+           if RDF_Graph_Executable.is_iri iri
+           then ParseOk (iri, (parse_advance ts))
+           else ParseErr "invalid IRI resolved from PNAME"
+       | FStar_Pervasives_Native.None -> ParseErr "unresolved PNAME prefix")
+  | uu___ -> ParseErr "expected IRI or prefixed name"
+let parse_graph_ref_graph_only (pm : prefix_map) (ts : token_stream) :
+  SPARQL11_Algebra.graph_ref parse_result=
+  match parse_peek ts with
+  | Tok_GRAPH ->
+      let ts' = parse_advance ts in
+      (match parse_iri_ref pm ts' with
+       | ParseErr m -> ParseErr m
+       | ParseOk (i, ts'') -> ParseOk ((SPARQL11_Algebra.GR_Graph i), ts''))
+  | uu___ -> ParseErr "expected GRAPH <iri>"
+let parse_graph_ref_all (pm : prefix_map) (ts : token_stream) :
+  SPARQL11_Algebra.graph_ref parse_result=
+  match parse_peek ts with
+  | Tok_DEFAULT -> ParseOk (SPARQL11_Algebra.GR_Default, (parse_advance ts))
+  | Tok_NAMED -> ParseOk (SPARQL11_Algebra.GR_Named, (parse_advance ts))
+  | Tok_ALL -> ParseOk (SPARQL11_Algebra.GR_All, (parse_advance ts))
+  | Tok_GRAPH -> parse_graph_ref_graph_only pm ts
+  | uu___ -> ParseErr "expected DEFAULT, NAMED, ALL, or GRAPH <iri>"
+let parse_graph_or_default (pm : prefix_map) (ts : token_stream) :
+  SPARQL11_Algebra.graph_ref parse_result=
+  match parse_peek ts with
+  | Tok_DEFAULT -> ParseOk (SPARQL11_Algebra.GR_Default, (parse_advance ts))
+  | Tok_GRAPH ->
+      let ts' = parse_advance ts in
+      (match parse_iri_ref pm ts' with
+       | ParseErr m -> ParseErr m
+       | ParseOk (i, ts'') -> ParseOk ((SPARQL11_Algebra.GR_Graph i), ts''))
+  | Tok_IRI uu___ ->
+      (match parse_iri_ref pm ts with
+       | ParseErr m -> ParseErr m
+       | ParseOk (i, ts'') -> ParseOk ((SPARQL11_Algebra.GR_Graph i), ts''))
+  | Tok_PNAME uu___ ->
+      (match parse_iri_ref pm ts with
+       | ParseErr m -> ParseErr m
+       | ParseOk (i, ts'') -> ParseOk ((SPARQL11_Algebra.GR_Graph i), ts''))
+  | uu___ -> ParseErr "expected DEFAULT or [GRAPH] <iri>"
+let parse_silent (ts : token_stream) : (Prims.bool * token_stream)=
+  match parse_peek ts with
+  | Tok_SILENT -> (true, (parse_advance ts))
+  | uu___ -> (false, ts)
+let rec gp_has_var (g : SPARQL11_Algebra.group_graph_pattern) : Prims.bool=
+  match g with
+  | SPARQL11_Algebra.GP_BGP bgp -> bgp_has_any_var bgp
+  | SPARQL11_Algebra.GP_Empty -> false
+  | SPARQL11_Algebra.GP_Join (a, b) -> (gp_has_var a) || (gp_has_var b)
+  | SPARQL11_Algebra.GP_Graph (gt, inner) ->
+      (match gt with | SPARQL11_Algebra.PT_Var uu___ -> true | uu___ -> false)
+        || (gp_has_var inner)
+  | SPARQL11_Algebra.GP_PropertyPath (uu___, uu___1, uu___2) -> true
+  | SPARQL11_Algebra.GP_LeftJoin (a, b, uu___) ->
+      (gp_has_var a) || (gp_has_var b)
+  | SPARQL11_Algebra.GP_Union (a, b) -> (gp_has_var a) || (gp_has_var b)
+  | SPARQL11_Algebra.GP_Minus (a, b) -> (gp_has_var a) || (gp_has_var b)
+  | SPARQL11_Algebra.GP_Filter (uu___, inner) -> gp_has_var inner
+  | SPARQL11_Algebra.GP_Bind (uu___, uu___1, inner) -> gp_has_var inner
+  | SPARQL11_Algebra.GP_Values (uu___, uu___1) -> true
+  | SPARQL11_Algebra.GP_Service (uu___, uu___1, uu___2) -> true
+  | SPARQL11_Algebra.GP_SubSelect uu___ -> true
+and bgp_has_any_var (b : SPARQL11_Algebra.bgp) : Prims.bool=
+  match b with
+  | [] -> false
+  | tp::rest ->
+      (((match tp.SPARQL11_Algebra.tp_s with
+         | SPARQL11_Algebra.PS_Var uu___ -> true
+         | uu___ -> false) ||
+          (match tp.SPARQL11_Algebra.tp_p with
+           | SPARQL11_Algebra.PT_Var uu___ -> true
+           | uu___ -> false))
+         ||
+         (match tp.SPARQL11_Algebra.tp_o with
+          | SPARQL11_Algebra.PT_Var uu___ -> true
+          | uu___ -> false))
+        || (bgp_has_any_var rest)
+let rec gp_has_bnode (g : SPARQL11_Algebra.group_graph_pattern) : Prims.bool=
+  match g with
+  | SPARQL11_Algebra.GP_BGP bgp -> bgp_has_any_bnode bgp
+  | SPARQL11_Algebra.GP_Empty -> false
+  | SPARQL11_Algebra.GP_Join (a, b) -> (gp_has_bnode a) || (gp_has_bnode b)
+  | SPARQL11_Algebra.GP_Graph (uu___, inner) -> gp_has_bnode inner
+  | SPARQL11_Algebra.GP_PropertyPath (ps, uu___, po) ->
+      (match ps with
+       | SPARQL11_Algebra.PS_BNode uu___1 -> true
+       | uu___1 -> false) ||
+        ((match po with
+          | SPARQL11_Algebra.PT_BNode uu___1 -> true
+          | uu___1 -> false))
+  | SPARQL11_Algebra.GP_LeftJoin (a, b, uu___) ->
+      (gp_has_bnode a) || (gp_has_bnode b)
+  | SPARQL11_Algebra.GP_Union (a, b) -> (gp_has_bnode a) || (gp_has_bnode b)
+  | SPARQL11_Algebra.GP_Minus (a, b) -> (gp_has_bnode a) || (gp_has_bnode b)
+  | SPARQL11_Algebra.GP_Filter (uu___, inner) -> gp_has_bnode inner
+  | SPARQL11_Algebra.GP_Bind (uu___, uu___1, inner) -> gp_has_bnode inner
+  | SPARQL11_Algebra.GP_Values (uu___, uu___1) -> false
+  | SPARQL11_Algebra.GP_Service (uu___, inner, uu___1) -> gp_has_bnode inner
+  | SPARQL11_Algebra.GP_SubSelect uu___ -> false
+and bgp_has_any_bnode (b : SPARQL11_Algebra.bgp) : Prims.bool=
+  match b with
+  | [] -> false
+  | tp::rest ->
+      (((match tp.SPARQL11_Algebra.tp_s with
+         | SPARQL11_Algebra.PS_BNode uu___ -> true
+         | uu___ -> false) ||
+          (match tp.SPARQL11_Algebra.tp_p with
+           | SPARQL11_Algebra.PT_BNode uu___ -> true
+           | uu___ -> false))
+         ||
+         (match tp.SPARQL11_Algebra.tp_o with
+          | SPARQL11_Algebra.PT_BNode uu___ -> true
+          | uu___ -> false))
+        || (bgp_has_any_bnode rest)
+let rec gp_has_nested_graph_under_graph
+  (g : SPARQL11_Algebra.group_graph_pattern) : Prims.bool=
+  match g with
+  | SPARQL11_Algebra.GP_Graph (uu___, inner) -> gp_has_graph_anywhere inner
+  | SPARQL11_Algebra.GP_Join (a, b) ->
+      (gp_has_nested_graph_under_graph a) ||
+        (gp_has_nested_graph_under_graph b)
+  | uu___ -> false
+and gp_has_graph_anywhere (g : SPARQL11_Algebra.group_graph_pattern) :
+  Prims.bool=
+  match g with
+  | SPARQL11_Algebra.GP_Graph (uu___, uu___1) -> true
+  | SPARQL11_Algebra.GP_Join (a, b) ->
+      (gp_has_graph_anywhere a) || (gp_has_graph_anywhere b)
+  | SPARQL11_Algebra.GP_Filter (uu___, inner) -> gp_has_graph_anywhere inner
+  | SPARQL11_Algebra.GP_Bind (uu___, uu___1, inner) ->
+      gp_has_graph_anywhere inner
+  | uu___ -> false
+let rec parse_quad_block (pm : prefix_map) (fuel : Prims.nat)
+  (acc : SPARQL11_Algebra.group_graph_pattern) (ts : token_stream) :
+  SPARQL11_Algebra.group_graph_pattern parse_result=
+  if fuel = Prims.int_zero
+  then ParseOk (acc, ts)
+  else
+    (match parse_peek ts with
+     | Tok_RBRACE -> ParseOk (acc, ts)
+     | Tok_GRAPH ->
+         let ts1 = parse_advance ts in
+         (match parse_iri_ref pm ts1 with
+          | ParseErr m -> ParseErr m
+          | ParseOk (g_iri, ts2) ->
+              (match parse_expect Tok_LBRACE ts2 with
+               | ParseErr m -> ParseErr m
+               | ParseOk ((), ts3) ->
+                   (match parse_peek ts3 with
+                    | Tok_RBRACE ->
+                        let acc' =
+                          ggp_join acc
+                            (SPARQL11_Algebra.GP_Graph
+                               ((SPARQL11_Algebra.PT_IRI g_iri),
+                                 SPARQL11_Algebra.GP_Empty)) in
+                        let ts4 = parse_advance ts3 in
+                        let ts41 =
+                          match parse_peek ts4 with
+                          | Tok_DOT -> parse_advance ts4
+                          | uu___1 -> ts4 in
+                        parse_quad_block pm (fuel - Prims.int_one) acc' ts41
+                    | uu___1 ->
+                        (match parse_triples_block pm (fuel - Prims.int_one)
+                                 SPARQL11_Algebra.GP_Empty ts3
+                         with
+                         | ParseErr m -> ParseErr m
+                         | ParseOk (inner, ts4) ->
+                             (match parse_expect Tok_RBRACE ts4 with
+                              | ParseErr m -> ParseErr m
+                              | ParseOk ((), ts5) ->
+                                  let acc' =
+                                    ggp_join acc
+                                      (SPARQL11_Algebra.GP_Graph
+                                         ((SPARQL11_Algebra.PT_IRI g_iri),
+                                           inner)) in
+                                  let ts51 =
+                                    match parse_peek ts5 with
+                                    | Tok_DOT -> parse_advance ts5
+                                    | uu___2 -> ts5 in
+                                  parse_quad_block pm (fuel - Prims.int_one)
+                                    acc' ts51)))))
+     | uu___1 ->
+         (match parse_triples_block pm (fuel - Prims.int_one)
+                  SPARQL11_Algebra.GP_Empty ts
+          with
+          | ParseErr uu___2 -> ParseOk (acc, ts)
+          | ParseOk (triples, ts') ->
+              let acc' = ggp_join acc triples in
+              parse_quad_block pm (fuel - Prims.int_one) acc' ts'))
+let parse_quad_data (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
+  : SPARQL11_Algebra.group_graph_pattern parse_result=
+  match parse_expect Tok_LBRACE ts with
+  | ParseErr m -> ParseErr m
+  | ParseOk ((), ts') ->
+      (match parse_quad_block pm fuel SPARQL11_Algebra.GP_Empty ts' with
+       | ParseErr m -> ParseErr m
+       | ParseOk (g, ts'') ->
+           (match parse_expect Tok_RBRACE ts'' with
+            | ParseErr m -> ParseErr m
+            | ParseOk ((), ts''') -> ParseOk (g, ts''')))
+let parse_update_prologue (pm : prefix_map)
+  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (ts : token_stream) :
+  (prefix_map * RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+    parse_result=
+  parse_prologue pm base (Prims.of_int (1000)) ts
+let rec parse_single_update_op (pm : prefix_map) (fuel : Prims.nat)
+  (ts : token_stream) : SPARQL11_Algebra.update_op parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "update op recursion limit"
+  else
+    (match parse_peek ts with
+     | Tok_LOAD ->
+         let ts1 = parse_advance ts in
+         let uu___1 = parse_silent ts1 in
+         (match uu___1 with
+          | (silent, ts2) ->
+              (match parse_iri_ref pm ts2 with
+               | ParseErr m -> ParseErr m
+               | ParseOk (src, ts3) ->
+                   (match parse_peek ts3 with
+                    | Tok_INTO ->
+                        let ts4 = parse_advance ts3 in
+                        (match parse_expect Tok_GRAPH ts4 with
+                         | ParseErr m -> ParseErr m
+                         | ParseOk ((), ts5) ->
+                             (match parse_iri_ref pm ts5 with
+                              | ParseErr m -> ParseErr m
+                              | ParseOk (dst, ts6) ->
+                                  ParseOk
+                                    ((SPARQL11_Algebra.U_Load
+                                        (silent, src,
+                                          (FStar_Pervasives_Native.Some dst))),
+                                      ts6)))
+                    | uu___2 ->
+                        ParseOk
+                          ((SPARQL11_Algebra.U_Load
+                              (silent, src, FStar_Pervasives_Native.None)),
+                            ts3))))
+     | Tok_CLEAR ->
+         let ts1 = parse_advance ts in
+         let uu___1 = parse_silent ts1 in
+         (match uu___1 with
+          | (silent, ts2) ->
+              (match parse_graph_ref_all pm ts2 with
+               | ParseErr m -> ParseErr m
+               | ParseOk (gr, ts3) ->
+                   ParseOk ((SPARQL11_Algebra.U_Clear (silent, gr)), ts3)))
+     | Tok_DROP ->
+         let ts1 = parse_advance ts in
+         let uu___1 = parse_silent ts1 in
+         (match uu___1 with
+          | (silent, ts2) ->
+              (match parse_graph_ref_all pm ts2 with
+               | ParseErr m -> ParseErr m
+               | ParseOk (gr, ts3) ->
+                   ParseOk ((SPARQL11_Algebra.U_Drop (silent, gr)), ts3)))
+     | Tok_CREATE ->
+         let ts1 = parse_advance ts in
+         let uu___1 = parse_silent ts1 in
+         (match uu___1 with
+          | (silent, ts2) ->
+              (match parse_graph_ref_graph_only pm ts2 with
+               | ParseErr m -> ParseErr m
+               | ParseOk (gr, ts3) ->
+                   (match gr with
+                    | SPARQL11_Algebra.GR_Graph iri ->
+                        ParseOk
+                          ((SPARQL11_Algebra.U_Create (silent, iri)), ts3)
+                    | uu___2 -> ParseErr "CREATE expects GRAPH <iri>")))
+     | Tok_ADD ->
+         let ts1 = parse_advance ts in
+         let uu___1 = parse_silent ts1 in
+         (match uu___1 with
+          | (silent, ts2) ->
+              (match parse_graph_or_default pm ts2 with
+               | ParseErr m -> ParseErr m
+               | ParseOk (src, ts3) ->
+                   (match parse_expect Tok_TO ts3 with
+                    | ParseErr m -> ParseErr m
+                    | ParseOk ((), ts4) ->
+                        (match parse_graph_or_default pm ts4 with
+                         | ParseErr m -> ParseErr m
+                         | ParseOk (dst, ts5) ->
+                             ParseOk
+                               ((SPARQL11_Algebra.U_Add (silent, src, dst)),
+                                 ts5)))))
+     | Tok_MOVE ->
+         let ts1 = parse_advance ts in
+         let uu___1 = parse_silent ts1 in
+         (match uu___1 with
+          | (silent, ts2) ->
+              (match parse_graph_or_default pm ts2 with
+               | ParseErr m -> ParseErr m
+               | ParseOk (src, ts3) ->
+                   (match parse_expect Tok_TO ts3 with
+                    | ParseErr m -> ParseErr m
+                    | ParseOk ((), ts4) ->
+                        (match parse_graph_or_default pm ts4 with
+                         | ParseErr m -> ParseErr m
+                         | ParseOk (dst, ts5) ->
+                             ParseOk
+                               ((SPARQL11_Algebra.U_Move (silent, src, dst)),
+                                 ts5)))))
+     | Tok_COPY ->
+         let ts1 = parse_advance ts in
+         let uu___1 = parse_silent ts1 in
+         (match uu___1 with
+          | (silent, ts2) ->
+              (match parse_graph_or_default pm ts2 with
+               | ParseErr m -> ParseErr m
+               | ParseOk (src, ts3) ->
+                   (match parse_expect Tok_TO ts3 with
+                    | ParseErr m -> ParseErr m
+                    | ParseOk ((), ts4) ->
+                        (match parse_graph_or_default pm ts4 with
+                         | ParseErr m -> ParseErr m
+                         | ParseOk (dst, ts5) ->
+                             ParseOk
+                               ((SPARQL11_Algebra.U_Copy (silent, src, dst)),
+                                 ts5)))))
+     | Tok_INSERT ->
+         let ts1 = parse_advance ts in
+         (match parse_peek ts1 with
+          | Tok_DATA ->
+              let ts2 = parse_advance ts1 in
+              (match parse_quad_data pm (fuel - Prims.int_one) ts2 with
+               | ParseErr m -> ParseErr m
+               | ParseOk (data, ts3) ->
+                   if gp_has_var data
+                   then ParseErr "INSERT DATA must not contain variables"
+                   else
+                     if gp_has_nested_graph_under_graph data
+                     then
+                       ParseErr
+                         "INSERT DATA: nested GRAPH blocks not allowed"
+                     else ParseOk ((SPARQL11_Algebra.U_InsertData data), ts3))
+          | Tok_LBRACE ->
+              (match parse_quad_data pm (fuel - Prims.int_one) ts1 with
+               | ParseErr m -> ParseErr m
+               | ParseOk (insert_tmpl, ts2) ->
+                   (match parse_using_list pm (fuel - Prims.int_one) [] ts2
+                    with
+                    | ParseErr m -> ParseErr m
+                    | ParseOk (using, ts3) ->
+                        (match parse_expect Tok_WHERE ts3 with
+                         | ParseErr m -> ParseErr m
+                         | ParseOk ((), ts4) ->
+                             (match parse_group_graph_pattern pm
+                                      (fuel - Prims.int_one) ts4
+                              with
+                              | ParseErr m -> ParseErr m
+                              | ParseOk (where, ts5) ->
+                                  ParseOk
+                                    ((SPARQL11_Algebra.U_Modify
+                                        (FStar_Pervasives_Native.None,
+                                          FStar_Pervasives_Native.None,
+                                          (FStar_Pervasives_Native.Some
+                                             insert_tmpl), using, where)),
+                                      ts5)))))
+          | uu___1 -> ParseErr "expected DATA or { after INSERT")
+     | Tok_DELETE ->
+         let ts1 = parse_advance ts in
+         (match parse_peek ts1 with
+          | Tok_DATA ->
+              let ts2 = parse_advance ts1 in
+              (match parse_quad_data pm (fuel - Prims.int_one) ts2 with
+               | ParseErr m -> ParseErr m
+               | ParseOk (data, ts3) ->
+                   if gp_has_var data
+                   then ParseErr "DELETE DATA must not contain variables"
+                   else
+                     if gp_has_bnode data
+                     then ParseErr "DELETE DATA must not contain blank nodes"
+                     else
+                       if gp_has_nested_graph_under_graph data
+                       then
+                         ParseErr
+                           "DELETE DATA: nested GRAPH blocks not allowed"
+                       else
+                         ParseOk ((SPARQL11_Algebra.U_DeleteData data), ts3))
+          | Tok_WHERE ->
+              let ts2 = parse_advance ts1 in
+              (match parse_group_graph_pattern pm (fuel - Prims.int_one) ts2
+               with
+               | ParseErr m -> ParseErr m
+               | ParseOk (pat, ts3) ->
+                   if gp_has_bnode pat
+                   then ParseErr "DELETE WHERE must not contain blank nodes"
+                   else ParseOk ((SPARQL11_Algebra.U_DeleteWhere pat), ts3))
+          | Tok_LBRACE ->
+              (match parse_quad_data pm (fuel - Prims.int_one) ts1 with
+               | ParseErr m -> ParseErr m
+               | ParseOk (del_tmpl, ts2) ->
+                   if gp_has_bnode del_tmpl
+                   then
+                     ParseErr "DELETE template must not contain blank nodes"
+                   else
+                     (let uu___2 =
+                        match parse_peek ts2 with
+                        | Tok_INSERT ->
+                            let ts2a = parse_advance ts2 in
+                            (match parse_quad_data pm (fuel - Prims.int_one)
+                                     ts2a
+                             with
+                             | ParseOk (tmpl, ts2b) ->
+                                 ((FStar_Pervasives_Native.Some tmpl), ts2b)
+                             | uu___3 -> (FStar_Pervasives_Native.None, ts2))
+                        | uu___3 -> (FStar_Pervasives_Native.None, ts2) in
+                      match uu___2 with
+                      | (ins_tmpl, ts3) ->
+                          (match parse_using_list pm (fuel - Prims.int_one)
+                                   [] ts3
+                           with
+                           | ParseErr m -> ParseErr m
+                           | ParseOk (using, ts4) ->
+                               (match parse_expect Tok_WHERE ts4 with
+                                | ParseErr m -> ParseErr m
+                                | ParseOk ((), ts5) ->
+                                    (match parse_group_graph_pattern pm
+                                             (fuel - Prims.int_one) ts5
+                                     with
+                                     | ParseErr m -> ParseErr m
+                                     | ParseOk (where, ts6) ->
+                                         ParseOk
+                                           ((SPARQL11_Algebra.U_Modify
+                                               (FStar_Pervasives_Native.None,
+                                                 (FStar_Pervasives_Native.Some
+                                                    del_tmpl), ins_tmpl, [],
+                                                 where)), ts6))))))
+          | uu___1 -> ParseErr "expected DATA, WHERE, or { after DELETE")
+     | Tok_WITH ->
+         let ts1 = parse_advance ts in
+         (match parse_iri_ref pm ts1 with
+          | ParseErr m -> ParseErr m
+          | ParseOk (with_iri, ts2) ->
+              parse_modify_after_with pm (fuel - Prims.int_one)
+                (FStar_Pervasives_Native.Some with_iri) ts2)
+     | uu___1 -> ParseErr "expected update operation")
+and parse_using_list (pm : prefix_map) (fuel : Prims.nat)
+  (acc : SPARQL11_Algebra.dataset_clause Prims.list) (ts : token_stream) :
+  SPARQL11_Algebra.dataset_clause Prims.list parse_result=
+  if fuel = Prims.int_zero
+  then ParseOk ((FStar_List_Tot_Base.rev acc), ts)
+  else
+    (match parse_peek ts with
+     | Tok_USING ->
+         let ts1 = parse_advance ts in
+         (match parse_peek ts1 with
+          | Tok_NAMED ->
+              let ts2 = parse_advance ts1 in
+              (match parse_iri_ref pm ts2 with
+               | ParseErr m -> ParseErr m
+               | ParseOk (iri, ts3) ->
+                   parse_using_list pm (fuel - Prims.int_one)
+                     ((SPARQL11_Algebra.DC_Named iri) :: acc) ts3)
+          | uu___1 ->
+              (match parse_iri_ref pm ts1 with
+               | ParseErr m -> ParseErr m
+               | ParseOk (iri, ts2) ->
+                   parse_using_list pm (fuel - Prims.int_one)
+                     ((SPARQL11_Algebra.DC_Default iri) :: acc) ts2))
+     | uu___1 -> ParseOk ((FStar_List_Tot_Base.rev acc), ts))
+and parse_modify_after_with (pm : prefix_map) (fuel : Prims.nat)
+  (with_iri : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (ts : token_stream) : SPARQL11_Algebra.update_op parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "update recursion limit"
+  else
+    (match parse_peek ts with
+     | Tok_DELETE ->
+         let ts1 = parse_advance ts in
+         (match parse_peek ts1 with
+          | Tok_WHERE ->
+              let ts2 = parse_advance ts1 in
+              (match parse_group_graph_pattern pm (fuel - Prims.int_one) ts2
+               with
+               | ParseErr m -> ParseErr m
+               | ParseOk (pat, ts3) ->
+                   if gp_has_bnode pat
+                   then ParseErr "DELETE WHERE must not contain blank nodes"
+                   else
+                     ParseOk
+                       ((SPARQL11_Algebra.U_Modify
+                           (with_iri, (FStar_Pervasives_Native.Some pat),
+                             FStar_Pervasives_Native.None, [], pat)), ts3))
+          | Tok_LBRACE ->
+              (match parse_quad_data pm (fuel - Prims.int_one) ts1 with
+               | ParseErr m -> ParseErr m
+               | ParseOk (del_tmpl, ts2) ->
+                   if gp_has_bnode del_tmpl
+                   then
+                     ParseErr "DELETE template must not contain blank nodes"
+                   else
+                     (let uu___2 =
+                        match parse_peek ts2 with
+                        | Tok_INSERT ->
+                            let ts2a = parse_advance ts2 in
+                            (match parse_quad_data pm (fuel - Prims.int_one)
+                                     ts2a
+                             with
+                             | ParseOk (tmpl, ts2b) ->
+                                 ((FStar_Pervasives_Native.Some tmpl), ts2b)
+                             | uu___3 -> (FStar_Pervasives_Native.None, ts2))
+                        | uu___3 -> (FStar_Pervasives_Native.None, ts2) in
+                      match uu___2 with
+                      | (ins_tmpl, ts3) ->
+                          (match parse_using_list pm (fuel - Prims.int_one)
+                                   [] ts3
+                           with
+                           | ParseErr m -> ParseErr m
+                           | ParseOk (using, ts4) ->
+                               (match parse_expect Tok_WHERE ts4 with
+                                | ParseErr m -> ParseErr m
+                                | ParseOk ((), ts5) ->
+                                    (match parse_group_graph_pattern pm
+                                             (fuel - Prims.int_one) ts5
+                                     with
+                                     | ParseErr m -> ParseErr m
+                                     | ParseOk (where, ts6) ->
+                                         ParseOk
+                                           ((SPARQL11_Algebra.U_Modify
+                                               (with_iri,
+                                                 (FStar_Pervasives_Native.Some
+                                                    del_tmpl), ins_tmpl,
+                                                 using, where)), ts6))))))
+          | uu___1 -> ParseErr "expected { or WHERE after DELETE")
+     | Tok_INSERT ->
+         let ts1 = parse_advance ts in
+         (match parse_peek ts1 with
+          | Tok_LBRACE ->
+              (match parse_quad_data pm (fuel - Prims.int_one) ts1 with
+               | ParseErr m -> ParseErr m
+               | ParseOk (ins_tmpl, ts2) ->
+                   (match parse_using_list pm (fuel - Prims.int_one) [] ts2
+                    with
+                    | ParseErr m -> ParseErr m
+                    | ParseOk (using, ts3) ->
+                        (match parse_expect Tok_WHERE ts3 with
+                         | ParseErr m -> ParseErr m
+                         | ParseOk ((), ts4) ->
+                             (match parse_group_graph_pattern pm
+                                      (fuel - Prims.int_one) ts4
+                              with
+                              | ParseErr m -> ParseErr m
+                              | ParseOk (where, ts5) ->
+                                  ParseOk
+                                    ((SPARQL11_Algebra.U_Modify
+                                        (with_iri,
+                                          FStar_Pervasives_Native.None,
+                                          (FStar_Pervasives_Native.Some
+                                             ins_tmpl), using, where)), ts5)))))
+          | uu___1 -> ParseErr "expected { after INSERT")
+     | uu___1 -> ParseErr "expected DELETE or INSERT after WITH <iri>")
+let rec parse_update_seq (pm : prefix_map)
+  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (acc : SPARQL11_Algebra.update_op Prims.list) (need_sep : Prims.bool)
+  (fuel : Prims.nat) (ts : token_stream) :
+  (prefix_map * RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
+    SPARQL11_Algebra.update_op Prims.list) parse_result=
+  if fuel = Prims.int_zero
+  then ParseOk ((pm, base, (FStar_List_Tot_Base.rev acc)), ts)
+  else
+    (match parse_peek ts with
+     | Tok_EOF -> ParseOk ((pm, base, (FStar_List_Tot_Base.rev acc)), ts)
+     | Tok_PREFIX ->
+         (match parse_update_prologue pm base ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk ((pm', base'), ts') ->
+              let ts'' = resolve_relative_iri_tokens base' ts' in
+              parse_update_seq pm' base' acc false (fuel - Prims.int_one)
+                ts'')
+     | Tok_BASE ->
+         (match parse_update_prologue pm base ts with
+          | ParseErr m -> ParseErr m
+          | ParseOk ((pm', base'), ts') ->
+              let ts'' = resolve_relative_iri_tokens base' ts' in
+              parse_update_seq pm' base' acc false (fuel - Prims.int_one)
+                ts'')
+     | Tok_SEMI ->
+         if need_sep
+         then
+           parse_update_seq pm base acc false (fuel - Prims.int_one)
+             (parse_advance ts)
+         else ParseErr "unexpected ';' (no preceding update operation)"
+     | uu___1 ->
+         if need_sep
+         then ParseErr "missing ';' between update operations"
+         else
+           (match parse_single_update_op pm (Prims.of_int (2000)) ts with
+            | ParseErr m -> ParseErr m
+            | ParseOk (op, ts') ->
+                parse_update_seq pm base (op :: acc) true
+                  (fuel - Prims.int_one) ts'))
+let rec prefix_map_to_wf (pm : prefix_map) :
+  (Prims.string * RDF_Graph_Executable.wf_iri) Prims.list=
+  match pm with
+  | [] -> []
+  | (p, i)::rest ->
+      if RDF_Graph_Executable.is_iri i
+      then (p, i) :: (prefix_map_to_wf rest)
+      else prefix_map_to_wf rest
+let parse_sparql_update (input : Prims.string) :
+  SPARQL11_Algebra.sparql_update parse_result=
+  let tokens = tokenize input in
+  match parse_update_seq [] FStar_Pervasives_Native.None [] false
+          (Prims.of_int (10000)) tokens
+  with
+  | ParseErr m -> ParseErr m
+  | ParseOk ((pm, base, ops), rest) ->
+      if Prims.op_Negation (tokens_only_eof rest)
+      then ParseErr "unexpected tokens after update request"
+      else
+        ParseOk
+          ({
+             SPARQL11_Algebra.u_base = base;
+             SPARQL11_Algebra.u_prefixes = (prefix_map_to_wf pm);
+             SPARQL11_Algebra.u_ops = ops
+           }, rest)
 let sse_wrap (tag : Prims.string) (body : Prims.string) : Prims.string=
   Prims.strcat "("
     (Prims.strcat tag (Prims.strcat " " (Prims.strcat body ")")))

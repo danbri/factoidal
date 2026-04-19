@@ -73,6 +73,12 @@ type token =
   | Tok_YEAR | Tok_MONTH | Tok_DAY | Tok_HOURS | Tok_MINUTES | Tok_SECONDS
   | Tok_TIMEZONE | Tok_TZ
   | Tok_MD5 | Tok_SHA1 | Tok_SHA256 | Tok_SHA384 | Tok_SHA512
+  // SPARQL 1.1 Update keywords (§3, 4)
+  | Tok_LOAD | Tok_CLEAR | Tok_DROP | Tok_CREATE
+  | Tok_ADD | Tok_MOVE | Tok_COPY
+  | Tok_INSERT | Tok_DELETE | Tok_DATA
+  | Tok_INTO | Tok_TO | Tok_WITH | Tok_USING
+  | Tok_DEFAULT | Tok_ALL
   (* End *)
   | Tok_EOF
 
@@ -437,6 +443,23 @@ let keyword_of_upper (upper : string) (original : string) : token =
   else if streq upper "SHA256" then Tok_SHA256
   else if streq upper "SHA384" then Tok_SHA384
   else if streq upper "SHA512" then Tok_SHA512
+  // SPARQL 1.1 Update keywords
+  else if streq upper "LOAD" then Tok_LOAD
+  else if streq upper "CLEAR" then Tok_CLEAR
+  else if streq upper "DROP" then Tok_DROP
+  else if streq upper "CREATE" then Tok_CREATE
+  else if streq upper "ADD" then Tok_ADD
+  else if streq upper "MOVE" then Tok_MOVE
+  else if streq upper "COPY" then Tok_COPY
+  else if streq upper "INSERT" then Tok_INSERT
+  else if streq upper "DELETE" then Tok_DELETE
+  else if streq upper "DATA" then Tok_DATA
+  else if streq upper "INTO" then Tok_INTO
+  else if streq upper "TO" then Tok_TO
+  else if streq upper "WITH" then Tok_WITH
+  else if streq upper "USING" then Tok_USING
+  else if streq upper "DEFAULT" then Tok_DEFAULT
+  else if streq upper "ALL" then Tok_ALL
   else Tok_PNAME original
 
 (* Scan a prefixed name (prefix:local) or a keyword.
@@ -3120,6 +3143,577 @@ let parse_sparql (input : string) : parse_result query =
       ParseErr "blank node label reused across graph-pattern scope"
     else ParseOk q rest
   | ParseErr msg -> ParseErr msg
+
+
+(** ====================================================================== **)
+(** Part 7b: SPARQL 1.1 Update Parser — Grammar + AST only                 **)
+(**                                                                         **)
+(** Implements the Update syntax from SPARQL 1.1 Update §4. No semantics.   **)
+(** Templates and WHERE patterns reuse the existing query-side              **)
+(** parse_group_graph_pattern / parse_triples_block machinery.              **)
+(** Designed to pass syntax-update-1 and syntax-update-2 W3C tests.         **)
+(** ====================================================================== **)
+
+#push-options "--z3rlimit 200 --fuel 2 --ifuel 2 --admit_smt_queries true"
+
+// Parse a single IRI / prefixed name, returning the absolute IRI string.
+// Note: BASE resolution for bare Tok_IRI is injected by ocaml-patches.sh
+// (issue #65). Do not add a second `Tok_IRI i -> ... else ParseErr`
+// function in this file without confirming the patch's regex still
+// applies — the patch uses a non-greedy regex that spans from one
+// Tok_IRI clause to the next `else ParseErr`, which would merge two
+// adjacent clauses and leave the second unpatched (bound variable `ri`
+// out of scope).
+let parse_iri_ref (pm : prefix_map) (ts : token_stream) : parse_result wf_iri =
+  match parse_peek ts with
+  | Tok_IRI i ->
+    if is_iri i then ParseOk i (parse_advance ts)
+    else ParseErr "invalid IRI"
+  | Tok_PNAME pn ->
+    (match resolve_pname pn pm with
+     | Some iri ->
+       if is_iri iri then ParseOk iri (parse_advance ts)
+       else ParseErr "invalid IRI resolved from PNAME"
+     | None -> ParseErr "unresolved PNAME prefix")
+  | _ -> ParseErr "expected IRI or prefixed name"
+
+// Parse a GraphRef: GRAPH <iri> (only; no DEFAULT / NAMED / ALL).
+// Used by CREATE and INSERT/DELETE target specs.
+let parse_graph_ref_graph_only (pm : prefix_map) (ts : token_stream)
+  : parse_result graph_ref =
+  match parse_peek ts with
+  | Tok_GRAPH ->
+    let ts' = parse_advance ts in
+    (match parse_iri_ref pm ts' with
+     | ParseErr m -> ParseErr m
+     | ParseOk i ts'' -> ParseOk (GR_Graph i) ts'')
+  | _ -> ParseErr "expected GRAPH <iri>"
+
+// Parse a GraphRefAll: DEFAULT | NAMED | ALL | GRAPH <iri>.
+// Used by CLEAR and DROP.
+let parse_graph_ref_all (pm : prefix_map) (ts : token_stream)
+  : parse_result graph_ref =
+  match parse_peek ts with
+  | Tok_DEFAULT -> ParseOk GR_Default (parse_advance ts)
+  | Tok_NAMED   -> ParseOk GR_Named   (parse_advance ts)
+  | Tok_ALL     -> ParseOk GR_All     (parse_advance ts)
+  | Tok_GRAPH   -> parse_graph_ref_graph_only pm ts
+  | _ -> ParseErr "expected DEFAULT, NAMED, ALL, or GRAPH <iri>"
+
+// Parse a GraphOrDefault: DEFAULT | [GRAPH] <iri>.
+// Used by ADD / MOVE / COPY operand slots.
+let parse_graph_or_default (pm : prefix_map) (ts : token_stream)
+  : parse_result graph_ref =
+  match parse_peek ts with
+  | Tok_DEFAULT -> ParseOk GR_Default (parse_advance ts)
+  | Tok_GRAPH ->
+    let ts' = parse_advance ts in
+    (match parse_iri_ref pm ts' with
+     | ParseErr m -> ParseErr m
+     | ParseOk i ts'' -> ParseOk (GR_Graph i) ts'')
+  | Tok_IRI _ | Tok_PNAME _ ->
+    (match parse_iri_ref pm ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk i ts'' -> ParseOk (GR_Graph i) ts'')
+  | _ -> ParseErr "expected DEFAULT or [GRAPH] <iri>"
+
+// Consume an optional SILENT keyword.
+let parse_silent (ts : token_stream) : (bool & token_stream) =
+  match parse_peek ts with
+  | Tok_SILENT -> (true, parse_advance ts)
+  | _ -> (false, ts)
+
+// --- Validators for data / modify template restrictions ---
+//
+// SPARQL 1.1 Update §4.1.1: INSERT DATA / DELETE DATA disallow variables
+// and property paths. §4.1.3: DELETE DATA / DELETE WHERE / DELETE template
+// additionally disallow blank nodes.
+
+let rec gp_has_var (g : group_graph_pattern) : Tot bool (decreases g) =
+  match g with
+  | GP_BGP bgp -> bgp_has_any_var bgp
+  | GP_Empty -> false
+  | GP_Join a b -> gp_has_var a || gp_has_var b
+  | GP_Graph gt inner ->
+    (match gt with | PT_Var _ -> true | _ -> false) || gp_has_var inner
+  | GP_PropertyPath _ _ _ -> true   // property paths not allowed in data
+  | GP_LeftJoin a b _ -> gp_has_var a || gp_has_var b
+  | GP_Union a b -> gp_has_var a || gp_has_var b
+  | GP_Minus a b -> gp_has_var a || gp_has_var b
+  | GP_Filter _ inner -> gp_has_var inner
+  | GP_Bind _ _ inner -> gp_has_var inner
+  | GP_Values _ _ -> true
+  | GP_Service _ _ _ -> true
+  | GP_SubSelect _ -> true
+
+and bgp_has_any_var (b : bgp) : Tot bool (decreases b) =
+  match b with
+  | [] -> false
+  | tp :: rest ->
+    (match tp.tp_s with | PS_Var _ -> true | _ -> false) ||
+    (match tp.tp_p with | PT_Var _ -> true | _ -> false) ||
+    (match tp.tp_o with | PT_Var _ -> true | _ -> false) ||
+    bgp_has_any_var rest
+
+let rec gp_has_bnode (g : group_graph_pattern) : Tot bool (decreases g) =
+  match g with
+  | GP_BGP bgp -> bgp_has_any_bnode bgp
+  | GP_Empty -> false
+  | GP_Join a b -> gp_has_bnode a || gp_has_bnode b
+  | GP_Graph _ inner -> gp_has_bnode inner
+  | GP_PropertyPath ps _ po ->
+    (match ps with | PS_BNode _ -> true | _ -> false) ||
+    (match po with | PT_BNode _ -> true | _ -> false)
+  | GP_LeftJoin a b _ -> gp_has_bnode a || gp_has_bnode b
+  | GP_Union a b -> gp_has_bnode a || gp_has_bnode b
+  | GP_Minus a b -> gp_has_bnode a || gp_has_bnode b
+  | GP_Filter _ inner -> gp_has_bnode inner
+  | GP_Bind _ _ inner -> gp_has_bnode inner
+  | GP_Values _ _ -> false
+  | GP_Service _ inner _ -> gp_has_bnode inner
+  | GP_SubSelect _ -> false
+
+and bgp_has_any_bnode (b : bgp) : Tot bool (decreases b) =
+  match b with
+  | [] -> false
+  | tp :: rest ->
+    (match tp.tp_s with | PS_BNode _ -> true | _ -> false) ||
+    (match tp.tp_p with | PT_BNode _ -> true | _ -> false) ||
+    (match tp.tp_o with | PT_BNode _ -> true | _ -> false) ||
+    bgp_has_any_bnode rest
+
+// Nested-GRAPH detection. A GRAPH { ... GRAPH { ... } } block is
+// syntactically invalid inside a QuadData block per §4.1. In our AST,
+// GP_Graph is used both for GRAPH-wrapped triples and as a default-graph
+// anchor; the quad-pattern parser below creates GP_Graph at the top level
+// only, so any nested GP_Graph reachable from a GP_Graph's inner pattern
+// indicates a nested GRAPH block in the source.
+let rec gp_has_nested_graph_under_graph (g : group_graph_pattern)
+  : Tot bool (decreases g) =
+  match g with
+  | GP_Graph _ inner -> gp_has_graph_anywhere inner
+  | GP_Join a b -> gp_has_nested_graph_under_graph a || gp_has_nested_graph_under_graph b
+  | _ -> false
+
+and gp_has_graph_anywhere (g : group_graph_pattern) : Tot bool (decreases g) =
+  match g with
+  | GP_Graph _ _ -> true
+  | GP_Join a b -> gp_has_graph_anywhere a || gp_has_graph_anywhere b
+  | GP_Filter _ inner -> gp_has_graph_anywhere inner
+  | GP_Bind _ _ inner -> gp_has_graph_anywhere inner
+  | _ -> false
+
+// --- QuadData / QuadPattern block parser ---
+//
+// QuadData ::= '{' Quads '}'
+// Quads ::= TriplesTemplate? ( QuadsNotTriples '.'? TriplesTemplate? )*
+// QuadsNotTriples ::= 'GRAPH' VarOrIri '{' TriplesTemplate? '}'
+//
+// We accept a { ... } block containing alternating `parse_triples_block`
+// (default-graph triples) and `GRAPH <g> { ... }` sub-blocks, joined via
+// ggp_join. Returns a group_graph_pattern. This is shared between
+// INSERT DATA, DELETE DATA, INSERT template, and DELETE template.
+
+let rec parse_quad_block (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern)
+  (ts : token_stream)
+  : Tot (parse_result group_graph_pattern) (decreases fuel) =
+  if fuel = 0 then ParseOk acc ts
+  else match parse_peek ts with
+  | Tok_RBRACE -> ParseOk acc ts
+  | Tok_GRAPH ->
+    let ts1 = parse_advance ts in
+    (match parse_iri_ref pm ts1 with
+     | ParseErr m -> ParseErr m
+     | ParseOk g_iri ts2 ->
+       match parse_expect Tok_LBRACE ts2 with
+       | ParseErr m -> ParseErr m
+       | ParseOk () ts3 ->
+         // Empty graph block?
+         match parse_peek ts3 with
+         | Tok_RBRACE ->
+           let acc' = ggp_join acc (GP_Graph (PT_IRI g_iri) GP_Empty) in
+           let ts4 = parse_advance ts3 in
+           // Optional '.' separator
+           let ts4 = match parse_peek ts4 with Tok_DOT -> parse_advance ts4 | _ -> ts4 in
+           parse_quad_block pm (fuel-1) acc' ts4
+         | _ ->
+           match parse_triples_block pm (fuel-1) GP_Empty ts3 with
+           | ParseErr m -> ParseErr m
+           | ParseOk inner ts4 ->
+             match parse_expect Tok_RBRACE ts4 with
+             | ParseErr m -> ParseErr m
+             | ParseOk () ts5 ->
+               let acc' = ggp_join acc (GP_Graph (PT_IRI g_iri) inner) in
+               // Optional '.' separator
+               let ts5 = match parse_peek ts5 with Tok_DOT -> parse_advance ts5 | _ -> ts5 in
+               parse_quad_block pm (fuel-1) acc' ts5)
+  | _ ->
+    // Try to parse a triples block
+    (match parse_triples_block pm (fuel-1) GP_Empty ts with
+     | ParseErr _ -> ParseOk acc ts
+     | ParseOk triples ts' ->
+       let acc' = ggp_join acc triples in
+       parse_quad_block pm (fuel-1) acc' ts')
+
+let parse_quad_data (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : parse_result group_graph_pattern =
+  match parse_expect Tok_LBRACE ts with
+  | ParseErr m -> ParseErr m
+  | ParseOk () ts' ->
+    match parse_quad_block pm fuel GP_Empty ts' with
+    | ParseErr m -> ParseErr m
+    | ParseOk g ts'' ->
+      match parse_expect Tok_RBRACE ts'' with
+      | ParseErr m -> ParseErr m
+      | ParseOk () ts''' -> ParseOk g ts'''
+
+// --- Prologue parser for Update (reuses parse_prologue shape) ---
+// SPARQL 1.1 §4.1: an Update request has a single prologue followed by
+// ;-separated operations. PREFIX/BASE may also recur between operations,
+// per §2.1. We thread (prefix_map, base) through the sequence.
+let parse_update_prologue (pm : prefix_map) (base : option wf_iri) (ts : token_stream)
+  : parse_result (prefix_map & option wf_iri) =
+  parse_prologue pm base 1000 ts
+
+// --- Single Update operation parser ---
+// Pre: pm/base already extracted via prologue.
+let rec parse_single_update_op (pm : prefix_map) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result update_op) (decreases fuel) =
+  if fuel = 0 then ParseErr "update op recursion limit"
+  else match parse_peek ts with
+
+  // --- LOAD [SILENT] <iri> [INTO GRAPH <iri>] ---
+  | Tok_LOAD ->
+    let ts1 = parse_advance ts in
+    let (silent, ts2) = parse_silent ts1 in
+    (match parse_iri_ref pm ts2 with
+     | ParseErr m -> ParseErr m
+     | ParseOk src ts3 ->
+       match parse_peek ts3 with
+       | Tok_INTO ->
+         let ts4 = parse_advance ts3 in
+         (match parse_expect Tok_GRAPH ts4 with
+          | ParseErr m -> ParseErr m
+          | ParseOk () ts5 ->
+            match parse_iri_ref pm ts5 with
+            | ParseErr m -> ParseErr m
+            | ParseOk dst ts6 -> ParseOk (U_Load silent src (Some dst)) ts6)
+       | _ -> ParseOk (U_Load silent src None) ts3)
+
+  // --- CLEAR [SILENT] GraphRefAll ---
+  | Tok_CLEAR ->
+    let ts1 = parse_advance ts in
+    let (silent, ts2) = parse_silent ts1 in
+    (match parse_graph_ref_all pm ts2 with
+     | ParseErr m -> ParseErr m
+     | ParseOk gr ts3 -> ParseOk (U_Clear silent gr) ts3)
+
+  // --- DROP [SILENT] GraphRefAll ---
+  | Tok_DROP ->
+    let ts1 = parse_advance ts in
+    let (silent, ts2) = parse_silent ts1 in
+    (match parse_graph_ref_all pm ts2 with
+     | ParseErr m -> ParseErr m
+     | ParseOk gr ts3 -> ParseOk (U_Drop silent gr) ts3)
+
+  // --- CREATE [SILENT] GRAPH <iri> ---
+  | Tok_CREATE ->
+    let ts1 = parse_advance ts in
+    let (silent, ts2) = parse_silent ts1 in
+    (match parse_graph_ref_graph_only pm ts2 with
+     | ParseErr m -> ParseErr m
+     | ParseOk gr ts3 ->
+       match gr with
+       | GR_Graph iri -> ParseOk (U_Create silent iri) ts3
+       | _ -> ParseErr "CREATE expects GRAPH <iri>")
+
+  // --- ADD / MOVE / COPY [SILENT] GraphOrDefault TO GraphOrDefault ---
+  | Tok_ADD ->
+    let ts1 = parse_advance ts in
+    let (silent, ts2) = parse_silent ts1 in
+    (match parse_graph_or_default pm ts2 with
+     | ParseErr m -> ParseErr m
+     | ParseOk src ts3 ->
+       match parse_expect Tok_TO ts3 with
+       | ParseErr m -> ParseErr m
+       | ParseOk () ts4 ->
+         match parse_graph_or_default pm ts4 with
+         | ParseErr m -> ParseErr m
+         | ParseOk dst ts5 -> ParseOk (U_Add silent src dst) ts5)
+  | Tok_MOVE ->
+    let ts1 = parse_advance ts in
+    let (silent, ts2) = parse_silent ts1 in
+    (match parse_graph_or_default pm ts2 with
+     | ParseErr m -> ParseErr m
+     | ParseOk src ts3 ->
+       match parse_expect Tok_TO ts3 with
+       | ParseErr m -> ParseErr m
+       | ParseOk () ts4 ->
+         match parse_graph_or_default pm ts4 with
+         | ParseErr m -> ParseErr m
+         | ParseOk dst ts5 -> ParseOk (U_Move silent src dst) ts5)
+  | Tok_COPY ->
+    let ts1 = parse_advance ts in
+    let (silent, ts2) = parse_silent ts1 in
+    (match parse_graph_or_default pm ts2 with
+     | ParseErr m -> ParseErr m
+     | ParseOk src ts3 ->
+       match parse_expect Tok_TO ts3 with
+       | ParseErr m -> ParseErr m
+       | ParseOk () ts4 ->
+         match parse_graph_or_default pm ts4 with
+         | ParseErr m -> ParseErr m
+         | ParseOk dst ts5 -> ParseOk (U_Copy silent src dst) ts5)
+
+  // --- INSERT DATA / INSERT { tmpl } [USING ...] WHERE { ... } ---
+  | Tok_INSERT ->
+    let ts1 = parse_advance ts in
+    (match parse_peek ts1 with
+     | Tok_DATA ->
+       let ts2 = parse_advance ts1 in
+       (match parse_quad_data pm (fuel-1) ts2 with
+        | ParseErr m -> ParseErr m
+        | ParseOk data ts3 ->
+          if gp_has_var data then
+            ParseErr "INSERT DATA must not contain variables"
+          else if gp_has_nested_graph_under_graph data then
+            ParseErr "INSERT DATA: nested GRAPH blocks not allowed"
+          else
+            ParseOk (U_InsertData data) ts3)
+     | Tok_LBRACE ->
+       // INSERT { template } [USING ...] WHERE { pattern }
+       (match parse_quad_data pm (fuel-1) ts1 with
+        | ParseErr m -> ParseErr m
+        | ParseOk insert_tmpl ts2 ->
+          match parse_using_list pm (fuel-1) [] ts2 with
+          | ParseErr m -> ParseErr m
+          | ParseOk using ts3 ->
+            match parse_expect Tok_WHERE ts3 with
+            | ParseErr m -> ParseErr m
+            | ParseOk () ts4 ->
+              match parse_group_graph_pattern pm (fuel-1) ts4 with
+              | ParseErr m -> ParseErr m
+              | ParseOk where ts5 ->
+                ParseOk (U_Modify None None (Some insert_tmpl) using where) ts5)
+     | _ -> ParseErr "expected DATA or { after INSERT")
+
+  // --- DELETE DATA / DELETE WHERE / DELETE { tmpl } [INSERT {tmpl}] [USING ...] WHERE {pattern} ---
+  | Tok_DELETE ->
+    let ts1 = parse_advance ts in
+    (match parse_peek ts1 with
+     | Tok_DATA ->
+       let ts2 = parse_advance ts1 in
+       (match parse_quad_data pm (fuel-1) ts2 with
+        | ParseErr m -> ParseErr m
+        | ParseOk data ts3 ->
+          if gp_has_var data then
+            ParseErr "DELETE DATA must not contain variables"
+          else if gp_has_bnode data then
+            ParseErr "DELETE DATA must not contain blank nodes"
+          else if gp_has_nested_graph_under_graph data then
+            ParseErr "DELETE DATA: nested GRAPH blocks not allowed"
+          else
+            ParseOk (U_DeleteData data) ts3)
+     | Tok_WHERE ->
+       let ts2 = parse_advance ts1 in
+       (match parse_group_graph_pattern pm (fuel-1) ts2 with
+        | ParseErr m -> ParseErr m
+        | ParseOk pat ts3 ->
+          if gp_has_bnode pat then
+            ParseErr "DELETE WHERE must not contain blank nodes"
+          else
+            ParseOk (U_DeleteWhere pat) ts3)
+     | Tok_LBRACE ->
+       // DELETE { template } [INSERT {tmpl}] [USING ...] WHERE { pattern }
+       (match parse_quad_data pm (fuel-1) ts1 with
+        | ParseErr m -> ParseErr m
+        | ParseOk del_tmpl ts2 ->
+          if gp_has_bnode del_tmpl then
+            ParseErr "DELETE template must not contain blank nodes"
+          else
+            let (ins_tmpl, ts3) = match parse_peek ts2 with
+              | Tok_INSERT ->
+                let ts2a = parse_advance ts2 in
+                (match parse_quad_data pm (fuel-1) ts2a with
+                 | ParseOk tmpl ts2b -> (Some tmpl, ts2b)
+                 | _ -> (None, ts2))
+              | _ -> (None, ts2) in
+            match parse_using_list pm (fuel-1) [] ts3 with
+            | ParseErr m -> ParseErr m
+            | ParseOk using ts4 ->
+              match parse_expect Tok_WHERE ts4 with
+              | ParseErr m -> ParseErr m
+              | ParseOk () ts5 ->
+                match parse_group_graph_pattern pm (fuel-1) ts5 with
+                | ParseErr m -> ParseErr m
+                | ParseOk where ts6 ->
+                  ParseOk (U_Modify None (Some del_tmpl) ins_tmpl [] where) ts6)
+     | _ -> ParseErr "expected DATA, WHERE, or { after DELETE")
+
+  // --- WITH <g> DELETE/INSERT ... WHERE { pattern } ---
+  | Tok_WITH ->
+    let ts1 = parse_advance ts in
+    (match parse_iri_ref pm ts1 with
+     | ParseErr m -> ParseErr m
+     | ParseOk with_iri ts2 ->
+       // DELETE template, INSERT template, or both, followed by WHERE
+       parse_modify_after_with pm (fuel-1) (Some with_iri) ts2)
+
+  | _ -> ParseErr "expected update operation"
+
+// Parse USING [NAMED] <iri> list (zero or more).
+and parse_using_list (pm : prefix_map) (fuel : nat) (acc : list dataset_clause)
+  (ts : token_stream)
+  : Tot (parse_result (list dataset_clause)) (decreases fuel) =
+  if fuel = 0 then ParseOk (List.Tot.rev acc) ts
+  else match parse_peek ts with
+  | Tok_USING ->
+    let ts1 = parse_advance ts in
+    (match parse_peek ts1 with
+     | Tok_NAMED ->
+       let ts2 = parse_advance ts1 in
+       (match parse_iri_ref pm ts2 with
+        | ParseErr m -> ParseErr m
+        | ParseOk iri ts3 ->
+          parse_using_list pm (fuel-1) (DC_Named iri :: acc) ts3)
+     | _ ->
+       match parse_iri_ref pm ts1 with
+       | ParseErr m -> ParseErr m
+       | ParseOk iri ts2 ->
+         parse_using_list pm (fuel-1) (DC_Default iri :: acc) ts2)
+  | _ -> ParseOk (List.Tot.rev acc) ts
+
+// After "WITH <g>" we expect one of:
+//   DELETE { dt } [INSERT { it }] [USING ...] WHERE { w }
+//   INSERT { it } [USING ...] WHERE { w }
+//   DELETE WHERE { w }  (rare; technically allowed)
+and parse_modify_after_with (pm : prefix_map) (fuel : nat) (with_iri : option wf_iri)
+  (ts : token_stream)
+  : Tot (parse_result update_op) (decreases fuel) =
+  if fuel = 0 then ParseErr "update recursion limit"
+  else match parse_peek ts with
+  | Tok_DELETE ->
+    let ts1 = parse_advance ts in
+    (match parse_peek ts1 with
+     | Tok_WHERE ->
+       let ts2 = parse_advance ts1 in
+       (match parse_group_graph_pattern pm (fuel-1) ts2 with
+        | ParseErr m -> ParseErr m
+        | ParseOk pat ts3 ->
+          // DELETE WHERE — no INSERT, template = where
+          if gp_has_bnode pat then
+            ParseErr "DELETE WHERE must not contain blank nodes"
+          else
+            ParseOk (U_Modify with_iri (Some pat) None [] pat) ts3)
+     | Tok_LBRACE ->
+       (match parse_quad_data pm (fuel-1) ts1 with
+        | ParseErr m -> ParseErr m
+        | ParseOk del_tmpl ts2 ->
+          if gp_has_bnode del_tmpl then
+            ParseErr "DELETE template must not contain blank nodes"
+          else
+            let (ins_tmpl, ts3) = match parse_peek ts2 with
+              | Tok_INSERT ->
+                let ts2a = parse_advance ts2 in
+                (match parse_quad_data pm (fuel-1) ts2a with
+                 | ParseOk tmpl ts2b -> (Some tmpl, ts2b)
+                 | _ -> (None, ts2))
+              | _ -> (None, ts2) in
+            match parse_using_list pm (fuel-1) [] ts3 with
+            | ParseErr m -> ParseErr m
+            | ParseOk using ts4 ->
+              match parse_expect Tok_WHERE ts4 with
+              | ParseErr m -> ParseErr m
+              | ParseOk () ts5 ->
+                match parse_group_graph_pattern pm (fuel-1) ts5 with
+                | ParseErr m -> ParseErr m
+                | ParseOk where ts6 ->
+                  ParseOk (U_Modify with_iri (Some del_tmpl) ins_tmpl using where) ts6)
+     | _ -> ParseErr "expected { or WHERE after DELETE")
+  | Tok_INSERT ->
+    let ts1 = parse_advance ts in
+    (match parse_peek ts1 with
+     | Tok_LBRACE ->
+       (match parse_quad_data pm (fuel-1) ts1 with
+        | ParseErr m -> ParseErr m
+        | ParseOk ins_tmpl ts2 ->
+          match parse_using_list pm (fuel-1) [] ts2 with
+          | ParseErr m -> ParseErr m
+          | ParseOk using ts3 ->
+            match parse_expect Tok_WHERE ts3 with
+            | ParseErr m -> ParseErr m
+            | ParseOk () ts4 ->
+              match parse_group_graph_pattern pm (fuel-1) ts4 with
+              | ParseErr m -> ParseErr m
+              | ParseOk where ts5 ->
+                ParseOk (U_Modify with_iri None (Some ins_tmpl) using where) ts5)
+     | _ -> ParseErr "expected { after INSERT")
+  | _ -> ParseErr "expected DELETE or INSERT after WITH <iri>"
+
+#pop-options
+
+// --- Top-level sequence parser ---
+// Accept: prologue (LOAD/CLEAR/DROP/... / ; / PREFIX / BASE)*
+// Empty request is valid per SPARQL 1.1 §4.1 (the grammar allows zero ops).
+
+let rec parse_update_seq (pm : prefix_map) (base : option wf_iri) (acc : list update_op)
+  (need_sep : bool) (fuel : nat) (ts : token_stream)
+  : Tot (parse_result (prefix_map & option wf_iri & list update_op)) (decreases fuel) =
+  if fuel = 0 then ParseOk (pm, base, List.Tot.rev acc) ts
+  else match parse_peek ts with
+  | Tok_EOF -> ParseOk (pm, base, List.Tot.rev acc) ts
+  | Tok_PREFIX | Tok_BASE ->
+    // Update grammar allows prologue between operations (SPARQL 1.1 §2.1
+    // prologue is global, but BASE/PREFIX may appear between Updates). A
+    // prologue run counts as a separator for the next op.
+    (match parse_update_prologue pm base ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk (pm', base') ts' ->
+       // Re-resolve relative IRIs in the remaining tokens against the
+       // updated base (mirrors parse_select_query).
+       let ts'' = resolve_relative_iri_tokens base' ts' in
+       parse_update_seq pm' base' acc false (fuel-1) ts'')
+  | Tok_SEMI ->
+    // A ';' is only valid immediately after an op (need_sep=true). Stray
+    // ;; sequences are a syntax error per §4.1 (see bad-08 / bad-09).
+    if need_sep then
+      parse_update_seq pm base acc false (fuel-1) (parse_advance ts)
+    else
+      ParseErr "unexpected ';' (no preceding update operation)"
+  | _ ->
+    // Another op must not start without a preceding separator when we
+    // already have one op on the stack.
+    if need_sep then
+      ParseErr "missing ';' between update operations"
+    else
+      (match parse_single_update_op pm 2000 ts with
+       | ParseErr m -> ParseErr m
+       | ParseOk op ts' ->
+         parse_update_seq pm base (op :: acc) true (fuel-1) ts')
+
+// Narrow (string, string) prefix entries to (string, wf_iri) for the AST
+// field type. Entries whose IRI is not well-formed are dropped. In practice
+// this is a no-op: the parser only inserts entries via parse_prologue, which
+// checks is_iri and resolve_query_iri.
+let rec prefix_map_to_wf (pm : prefix_map)
+  : Tot (list (string * wf_iri)) (decreases pm) =
+  match pm with
+  | [] -> []
+  | (p, i) :: rest ->
+    if is_iri i then (p, i) :: prefix_map_to_wf rest
+    else prefix_map_to_wf rest
+
+// Top-level entry point for a SPARQL 1.1 Update request. Returns either
+// a populated sparql_update AST or a parse error. Stage (a): parser only.
+let parse_sparql_update (input : string) : parse_result sparql_update =
+  let tokens = tokenize input in
+  match parse_update_seq [] None [] false 10000 tokens with
+  | ParseErr m -> ParseErr m
+  | ParseOk (pm, base, ops) rest ->
+    if not (tokens_only_eof rest) then
+      ParseErr "unexpected tokens after update request"
+    else
+      ParseOk ({ u_base = base; u_prefixes = prefix_map_to_wf pm; u_ops = ops }) rest
 
 
 (** ====================================================================== **)

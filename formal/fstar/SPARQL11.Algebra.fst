@@ -501,6 +501,61 @@ and query = {
 }
 
 (** ====================================================================== **)
+(** Part 6b: SPARQL 1.1 Update (§3, 4) — Grammar AST only                  **)
+(**                                                                         **)
+(** Stage (a): parser + AST, no evaluation. See CLAUDE.md Phase 4 item 2,  **)
+(** GitHub issue #59. Semantics (store mutation, INSERT/DELETE WHERE       **)
+(** template application, LOAD, etc.) are stage (b) and later.             **)
+(** ======================================================================= **)
+
+// Graph reference for graph-management operations (CLEAR/DROP/ADD/MOVE/COPY).
+// Corresponds to SPARQL 1.1 Update GraphRef / GraphRefAll / GraphOrDefault.
+type graph_ref =
+  | GR_Default : graph_ref              // DEFAULT
+  | GR_Named   : graph_ref              // NAMED  (all named graphs)
+  | GR_All     : graph_ref              // ALL
+  | GR_Graph   : wf_iri -> graph_ref    // GRAPH <iri>
+
+// A single Update operation. `silent` booleans reflect the SILENT modifier
+// (applies to LOAD/CLEAR/DROP/CREATE/ADD/MOVE/COPY per grammar).
+noeq type update_op =
+  // Graph management (§3.1.x)
+  | U_Load       : bool (* silent *) -> wf_iri (* source *) -> option wf_iri (* INTO GRAPH *) -> update_op
+  | U_Clear      : bool (* silent *) -> graph_ref -> update_op
+  | U_Drop       : bool (* silent *) -> graph_ref -> update_op
+  | U_Create     : bool (* silent *) -> wf_iri (* GRAPH iri *) -> update_op
+  | U_Add        : bool (* silent *) -> graph_ref (* from *) -> graph_ref (* to *) -> update_op
+  | U_Move       : bool (* silent *) -> graph_ref (* from *) -> graph_ref (* to *) -> update_op
+  | U_Copy       : bool (* silent *) -> graph_ref (* from *) -> graph_ref (* to *) -> update_op
+  // Data modification (§3.1.1 – §3.1.3)
+  // INSERT DATA / DELETE DATA: concrete quad pattern (no variables / no bnodes for DELETE DATA).
+  // We keep the template as a group_graph_pattern for uniformity; validation elsewhere
+  // rejects variables in data blocks and bnodes in DELETE DATA / DELETE WHERE.
+  | U_InsertData : group_graph_pattern -> update_op
+  | U_DeleteData : group_graph_pattern -> update_op
+  | U_DeleteWhere: group_graph_pattern -> update_op
+  // INSERT / DELETE (Modify) with optional WITH <g>, optional DELETE/INSERT templates,
+  // a list of USING/USING NAMED dataset clauses, and a WHERE pattern.
+  | U_Modify     :
+      option wf_iri (* WITH <iri> *) ->
+      option group_graph_pattern (* DELETE template, None for INSERT-only *) ->
+      option group_graph_pattern (* INSERT template, None for DELETE-only *) ->
+      list dataset_clause (* USING / USING NAMED *) ->
+      group_graph_pattern (* WHERE *) ->
+      update_op
+
+// Complete SPARQL 1.1 Update request: optional prologue + ;-separated operations.
+// SPARQL 1.1 §2.2 allows multiple Update ops in a single request, each
+// sharing the prologue but with `BASE`/`PREFIX` potentially re-declared.
+// In stage (a) we flatten the prologue: parser tracks prefix_map + base as
+// it sweeps `;`-separated ops and annotates each op uniformly.
+noeq type sparql_update = {
+  u_base     : option wf_iri;
+  u_prefixes : list (string * wf_iri);
+  u_ops      : list update_op;
+}
+
+(** ====================================================================== **)
 (** Utility functions (moved before Part 6.1 to resolve forward references **)
 (** that prevented F* extraction — see comment nesting fix)                **)
 (** ====================================================================== **)

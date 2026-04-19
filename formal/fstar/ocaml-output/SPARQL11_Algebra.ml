@@ -1053,6 +1053,133 @@ let __proj__Mkquery__item__q_values (projectee : query) :
   | { q_base; q_prefixes; q_form; q_dataset; q_pattern; q_group_by; q_having;
       q_modifier; q_values;_} -> q_values
 type having_condition = expr
+type graph_ref =
+  | GR_Default 
+  | GR_Named 
+  | GR_All 
+  | GR_Graph of RDF_Graph_Executable.wf_iri 
+let uu___is_GR_Default (projectee : graph_ref) : Prims.bool=
+  match projectee with | GR_Default -> true | uu___ -> false
+let uu___is_GR_Named (projectee : graph_ref) : Prims.bool=
+  match projectee with | GR_Named -> true | uu___ -> false
+let uu___is_GR_All (projectee : graph_ref) : Prims.bool=
+  match projectee with | GR_All -> true | uu___ -> false
+let uu___is_GR_Graph (projectee : graph_ref) : Prims.bool=
+  match projectee with | GR_Graph _0 -> true | uu___ -> false
+let __proj__GR_Graph__item___0 (projectee : graph_ref) :
+  RDF_Graph_Executable.wf_iri= match projectee with | GR_Graph _0 -> _0
+type update_op =
+  | U_Load of Prims.bool * RDF_Graph_Executable.wf_iri *
+  RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option 
+  | U_Clear of Prims.bool * graph_ref 
+  | U_Drop of Prims.bool * graph_ref 
+  | U_Create of Prims.bool * RDF_Graph_Executable.wf_iri 
+  | U_Add of Prims.bool * graph_ref * graph_ref 
+  | U_Move of Prims.bool * graph_ref * graph_ref 
+  | U_Copy of Prims.bool * graph_ref * graph_ref 
+  | U_InsertData of group_graph_pattern 
+  | U_DeleteData of group_graph_pattern 
+  | U_DeleteWhere of group_graph_pattern 
+  | U_Modify of RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
+  group_graph_pattern FStar_Pervasives_Native.option * group_graph_pattern
+  FStar_Pervasives_Native.option * dataset_clause Prims.list *
+  group_graph_pattern 
+let uu___is_U_Load (projectee : update_op) : Prims.bool=
+  match projectee with | U_Load (_0, _1, _2) -> true | uu___ -> false
+let __proj__U_Load__item___0 (projectee : update_op) : Prims.bool=
+  match projectee with | U_Load (_0, _1, _2) -> _0
+let __proj__U_Load__item___1 (projectee : update_op) :
+  RDF_Graph_Executable.wf_iri=
+  match projectee with | U_Load (_0, _1, _2) -> _1
+let __proj__U_Load__item___2 (projectee : update_op) :
+  RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option=
+  match projectee with | U_Load (_0, _1, _2) -> _2
+let uu___is_U_Clear (projectee : update_op) : Prims.bool=
+  match projectee with | U_Clear (_0, _1) -> true | uu___ -> false
+let __proj__U_Clear__item___0 (projectee : update_op) : Prims.bool=
+  match projectee with | U_Clear (_0, _1) -> _0
+let __proj__U_Clear__item___1 (projectee : update_op) : graph_ref=
+  match projectee with | U_Clear (_0, _1) -> _1
+let uu___is_U_Drop (projectee : update_op) : Prims.bool=
+  match projectee with | U_Drop (_0, _1) -> true | uu___ -> false
+let __proj__U_Drop__item___0 (projectee : update_op) : Prims.bool=
+  match projectee with | U_Drop (_0, _1) -> _0
+let __proj__U_Drop__item___1 (projectee : update_op) : graph_ref=
+  match projectee with | U_Drop (_0, _1) -> _1
+let uu___is_U_Create (projectee : update_op) : Prims.bool=
+  match projectee with | U_Create (_0, _1) -> true | uu___ -> false
+let __proj__U_Create__item___0 (projectee : update_op) : Prims.bool=
+  match projectee with | U_Create (_0, _1) -> _0
+let __proj__U_Create__item___1 (projectee : update_op) :
+  RDF_Graph_Executable.wf_iri= match projectee with | U_Create (_0, _1) -> _1
+let uu___is_U_Add (projectee : update_op) : Prims.bool=
+  match projectee with | U_Add (_0, _1, _2) -> true | uu___ -> false
+let __proj__U_Add__item___0 (projectee : update_op) : Prims.bool=
+  match projectee with | U_Add (_0, _1, _2) -> _0
+let __proj__U_Add__item___1 (projectee : update_op) : graph_ref=
+  match projectee with | U_Add (_0, _1, _2) -> _1
+let __proj__U_Add__item___2 (projectee : update_op) : graph_ref=
+  match projectee with | U_Add (_0, _1, _2) -> _2
+let uu___is_U_Move (projectee : update_op) : Prims.bool=
+  match projectee with | U_Move (_0, _1, _2) -> true | uu___ -> false
+let __proj__U_Move__item___0 (projectee : update_op) : Prims.bool=
+  match projectee with | U_Move (_0, _1, _2) -> _0
+let __proj__U_Move__item___1 (projectee : update_op) : graph_ref=
+  match projectee with | U_Move (_0, _1, _2) -> _1
+let __proj__U_Move__item___2 (projectee : update_op) : graph_ref=
+  match projectee with | U_Move (_0, _1, _2) -> _2
+let uu___is_U_Copy (projectee : update_op) : Prims.bool=
+  match projectee with | U_Copy (_0, _1, _2) -> true | uu___ -> false
+let __proj__U_Copy__item___0 (projectee : update_op) : Prims.bool=
+  match projectee with | U_Copy (_0, _1, _2) -> _0
+let __proj__U_Copy__item___1 (projectee : update_op) : graph_ref=
+  match projectee with | U_Copy (_0, _1, _2) -> _1
+let __proj__U_Copy__item___2 (projectee : update_op) : graph_ref=
+  match projectee with | U_Copy (_0, _1, _2) -> _2
+let uu___is_U_InsertData (projectee : update_op) : Prims.bool=
+  match projectee with | U_InsertData _0 -> true | uu___ -> false
+let __proj__U_InsertData__item___0 (projectee : update_op) :
+  group_graph_pattern= match projectee with | U_InsertData _0 -> _0
+let uu___is_U_DeleteData (projectee : update_op) : Prims.bool=
+  match projectee with | U_DeleteData _0 -> true | uu___ -> false
+let __proj__U_DeleteData__item___0 (projectee : update_op) :
+  group_graph_pattern= match projectee with | U_DeleteData _0 -> _0
+let uu___is_U_DeleteWhere (projectee : update_op) : Prims.bool=
+  match projectee with | U_DeleteWhere _0 -> true | uu___ -> false
+let __proj__U_DeleteWhere__item___0 (projectee : update_op) :
+  group_graph_pattern= match projectee with | U_DeleteWhere _0 -> _0
+let uu___is_U_Modify (projectee : update_op) : Prims.bool=
+  match projectee with
+  | U_Modify (_0, _1, _2, _3, _4) -> true
+  | uu___ -> false
+let __proj__U_Modify__item___0 (projectee : update_op) :
+  RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option=
+  match projectee with | U_Modify (_0, _1, _2, _3, _4) -> _0
+let __proj__U_Modify__item___1 (projectee : update_op) :
+  group_graph_pattern FStar_Pervasives_Native.option=
+  match projectee with | U_Modify (_0, _1, _2, _3, _4) -> _1
+let __proj__U_Modify__item___2 (projectee : update_op) :
+  group_graph_pattern FStar_Pervasives_Native.option=
+  match projectee with | U_Modify (_0, _1, _2, _3, _4) -> _2
+let __proj__U_Modify__item___3 (projectee : update_op) :
+  dataset_clause Prims.list=
+  match projectee with | U_Modify (_0, _1, _2, _3, _4) -> _3
+let __proj__U_Modify__item___4 (projectee : update_op) : group_graph_pattern=
+  match projectee with | U_Modify (_0, _1, _2, _3, _4) -> _4
+type sparql_update =
+  {
+  u_base: RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option ;
+  u_prefixes: (Prims.string * RDF_Graph_Executable.wf_iri) Prims.list ;
+  u_ops: update_op Prims.list }
+let __proj__Mksparql_update__item__u_base (projectee : sparql_update) :
+  RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option=
+  match projectee with | { u_base; u_prefixes; u_ops;_} -> u_base
+let __proj__Mksparql_update__item__u_prefixes (projectee : sparql_update) :
+  (Prims.string * RDF_Graph_Executable.wf_iri) Prims.list=
+  match projectee with | { u_base; u_prefixes; u_ops;_} -> u_prefixes
+let __proj__Mksparql_update__item__u_ops (projectee : sparql_update) :
+  update_op Prims.list=
+  match projectee with | { u_base; u_prefixes; u_ops;_} -> u_ops
 let rec list_filter_map :
   'a 'b .
     ('a -> 'b FStar_Pervasives_Native.option) ->
