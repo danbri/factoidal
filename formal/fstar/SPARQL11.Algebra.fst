@@ -4019,11 +4019,13 @@ let rec lemma_bgp_empty_graph (tp : triple_pattern) (rest : bgp) :
     ()
 
 (** ====================================================================== **)
-(** Part 19b: SPARQL 1.1 Update evaluation — INSERT DATA only (stage b-ins) **)
+(** Part 19b: SPARQL 1.1 Update evaluation — INSERT DATA + DELETE DATA     **)
+(**           (stage b-data)                                                **)
 (**                                                                         **)
-(** Scope: only `U_InsertData` is executed. All other update ops are no-ops **)
-(** for now; the runner decides whether to run or skip the test based on    **)
-(** the mix of ops. See CLAUDE.md Phase 4 item 2, issue #59.                **)
+(** Scope: only `U_InsertData` and `U_DeleteData` are executed. All other   **)
+(** update ops are no-ops for now; the runner decides whether to run or    **)
+(** skip the test based on the mix of ops. See CLAUDE.md Phase 4 item 2,   **)
+(** issue #59.                                                              **)
 (**                                                                         **)
 (** INSERT DATA semantics (SPARQL 1.1 Update §3.1.1, §4.1.1):                **)
 (**   - The QuadData block is walked; concrete triples are inserted into    **)
@@ -4040,6 +4042,19 @@ let rec lemma_bgp_empty_graph (tp : triple_pattern) (rest : bgp) :
 (**     insert-data-same-bnode).                                            **)
 (**   - Property paths inside INSERT DATA are grammatically forbidden; if   **)
 (**     the parser nevertheless emits `GP_PropertyPath` we ignore it.       **)
+(**                                                                         **)
+(** DELETE DATA semantics (SPARQL 1.1 Update §3.1.2, §4.1.2):                **)
+(**   - Walk the QuadData the same way. For each concrete ground triple,    **)
+(**     remove matching occurrences from the default graph or the named     **)
+(**     graph declared by the enclosing GRAPH block (syntactic equality).   **)
+(**   - Variables are forbidden per §4.1.2 — we skip any triple containing  **)
+(**     a variable (the parser should already have rejected).               **)
+(**   - Blank nodes are forbidden in DELETE DATA per §4.1.2 (they cannot    **)
+(**     refer to existing graph bnodes). We silently drop any triple        **)
+(**     containing a blank node.                                            **)
+(**   - Deleting a triple that is not in the graph is a no-op (not an       **)
+(**     error). Removing from a named graph that does not exist is also a  **)
+(**     no-op; it does NOT materialise an empty named graph.                **)
 (** ======================================================================= **)
 
 // Count triples across the whole dataset. Used as a deterministic salt for
@@ -4163,19 +4178,74 @@ let apply_insert_data (ds : rdf_dataset) (ggp : group_graph_pattern) : rdf_datas
   let renamed = List.Tot.map (rename_quad_bnodes prefix) quads in
   insert_quads ds renamed
 
-// Apply a single update op. For stage b-ins we implement U_InsertData; all
-// other ops (U_DeleteData, U_DeleteWhere, U_Modify, and the graph-management
-// ops U_Load / U_Clear / U_Drop / U_Create / U_Add / U_Move / U_Copy) are
-// left unimplemented and return the dataset unchanged. The runner is
-// responsible for detecting a non-InsertData op list and marking the test
-// Skipped, so reaching one of those arms here during a test run would
+// DELETE DATA helpers. Blank nodes are illegal inside DELETE DATA per
+// SPARQL 1.1 Update §4.1.2 (they cannot denote existing graph bnodes).
+// Test a collected quad for bnode content and drop if present. Variables
+// are already dropped at collect_quads time via tp_to_triple_concrete.
+let triple_has_bnode (t : triple) : bool =
+  (match t.s with | S_BNode _ -> true | _ -> false)
+  || (match t.o with | T_BNode _ -> true | _ -> false)
+
+let quad_has_bnode (q : option wf_iri * triple) : bool =
+  triple_has_bnode (snd q)
+
+let rec filter_no_bnode_quads (qs : list (option wf_iri * triple))
+  : Tot (list (option wf_iri * triple)) (decreases qs) =
+  match qs with
+  | [] -> []
+  | q :: rest ->
+    if quad_has_bnode q then filter_no_bnode_quads rest
+    else q :: filter_no_bnode_quads rest
+
+// Remove one triple from the matching named graph. If the graph is not
+// present we return the list unchanged — DELETE DATA must not materialise
+// an empty named graph.
+let rec remove_from_named_graph (name : iri) (t : triple)
+  (named : list named_graph)
+  : Tot (list named_graph) (decreases named) =
+  match named with
+  | [] -> []
+  | ng :: rest ->
+    if ng.ng_name = name then
+      { ng_name = ng.ng_name; ng_graph = graph_remove t ng.ng_graph } :: rest
+    else
+      ng :: remove_from_named_graph name t rest
+
+let delete_quad (ds : rdf_dataset) (q : option wf_iri * triple) : rdf_dataset =
+  let (g_opt, t) = q in
+  match g_opt with
+  | None ->
+    { ds_default = graph_remove t ds.ds_default; ds_named = ds.ds_named }
+  | Some g_iri ->
+    { ds_default = ds.ds_default;
+      ds_named = remove_from_named_graph g_iri t ds.ds_named }
+
+let rec delete_quads (ds : rdf_dataset) (qs : list (option wf_iri * triple))
+  : Tot rdf_dataset (decreases qs) =
+  match qs with
+  | [] -> ds
+  | q :: rest -> delete_quads (delete_quad ds q) rest
+
+let apply_delete_data (ds : rdf_dataset) (ggp : group_graph_pattern) : rdf_dataset =
+  let quads = collect_quads None ggp in
+  // Drop any quad carrying a blank node (§4.1.2). Variables were already
+  // dropped in collect_quads -> tp_to_triple_concrete.
+  let clean = filter_no_bnode_quads quads in
+  delete_quads ds clean
+
+// Apply a single update op. For stage b-data we implement U_InsertData +
+// U_DeleteData; all other ops (U_DeleteWhere, U_Modify, and the graph-
+// management ops U_Load / U_Clear / U_Drop / U_Create / U_Add / U_Move /
+// U_Copy) are left unimplemented and return the dataset unchanged. The
+// runner is responsible for detecting a non-data op list and marking the
+// test Skipped, so reaching one of those arms here during a test run would
 // indicate a runner bug, not a semantics bug.
 let apply_update_op (ds : rdf_dataset) (op : update_op) : rdf_dataset =
   match op with
   | U_InsertData g -> apply_insert_data ds g
-  // Stages b-cont (U_DeleteData), c (U_Modify / U_DeleteWhere), and d
-  // (graph management) are not yet implemented.
-  | U_DeleteData _ -> ds
+  | U_DeleteData g -> apply_delete_data ds g
+  // Stages c (U_Modify / U_DeleteWhere) and d (graph management) are not
+  // yet implemented.
   | U_DeleteWhere _ -> ds
   | U_Modify _ _ _ _ _ -> ds
   | U_Load _ _ _ -> ds
@@ -4195,21 +4265,23 @@ let rec apply_update_ops (ds : rdf_dataset) (ops : list update_op)
 let apply_update (ds : rdf_dataset) (u : sparql_update) : rdf_dataset =
   apply_update_ops ds u.u_ops
 
-// Classify an op list: returns true iff every op is U_InsertData. The runner
-// uses this to decide whether to actually run the test or skip it.
-let is_insert_data_only_op (op : update_op) : bool =
+// Classify an op list: returns true iff every op is U_InsertData or
+// U_DeleteData. The runner uses this to decide whether to actually run
+// the test or skip it.
+let is_data_only_op (op : update_op) : bool =
   match op with
   | U_InsertData _ -> true
+  | U_DeleteData _ -> true
   | _ -> false
 
-let rec update_is_insert_data_only_ops (ops : list update_op)
+let rec update_is_data_only_ops (ops : list update_op)
   : Tot bool (decreases ops) =
   match ops with
   | [] -> true
-  | op :: rest -> is_insert_data_only_op op && update_is_insert_data_only_ops rest
+  | op :: rest -> is_data_only_op op && update_is_data_only_ops rest
 
-let update_is_insert_data_only (u : sparql_update) : bool =
-  update_is_insert_data_only_ops u.u_ops
+let update_is_data_only (u : sparql_update) : bool =
+  update_is_data_only_ops u.u_ops
 
 (** ====================================================================== **)
 (** Part 20: Correspondence to Rust Implementation                         **)

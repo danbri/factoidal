@@ -5337,11 +5337,87 @@ let apply_insert_data (ds : RDF_Graph_Executable.rdf_dataset)
   let prefix = insert_data_bnode_prefix ds in
   let renamed = FStar_List_Tot_Base.map (rename_quad_bnodes prefix) quads in
   insert_quads ds renamed
+let triple_has_bnode (t : RDF_Graph_Executable.triple) : Prims.bool=
+  (match t.RDF_Graph_Executable.s with
+   | RDF_Graph_Executable.S_BNode uu___ -> true
+   | uu___ -> false) ||
+    (match t.RDF_Graph_Executable.o with
+     | RDF_Graph_Executable.T_BNode uu___ -> true
+     | uu___ -> false)
+let quad_has_bnode
+  (q :
+    (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
+      RDF_Graph_Executable.triple))
+  : Prims.bool= triple_has_bnode (FStar_Pervasives_Native.snd q)
+let rec filter_no_bnode_quads
+  (qs :
+    (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
+      RDF_Graph_Executable.triple) Prims.list)
+  :
+  (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
+    RDF_Graph_Executable.triple) Prims.list=
+  match qs with
+  | [] -> []
+  | q::rest ->
+      if quad_has_bnode q
+      then filter_no_bnode_quads rest
+      else q :: (filter_no_bnode_quads rest)
+let rec remove_from_named_graph (name : RDF_Graph_Executable.iri)
+  (t : RDF_Graph_Executable.triple)
+  (named : RDF_Graph_Executable.named_graph Prims.list) :
+  RDF_Graph_Executable.named_graph Prims.list=
+  match named with
+  | [] -> []
+  | ng::rest ->
+      if ng.RDF_Graph_Executable.ng_name = name
+      then
+        {
+          RDF_Graph_Executable.ng_name = (ng.RDF_Graph_Executable.ng_name);
+          RDF_Graph_Executable.ng_graph =
+            (RDF_Graph_Executable.graph_remove t
+               ng.RDF_Graph_Executable.ng_graph)
+        } :: rest
+      else ng :: (remove_from_named_graph name t rest)
+let delete_quad (ds : RDF_Graph_Executable.rdf_dataset)
+  (q :
+    (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
+      RDF_Graph_Executable.triple))
+  : RDF_Graph_Executable.rdf_dataset=
+  let uu___ = q in
+  match uu___ with
+  | (g_opt, t) ->
+      (match g_opt with
+       | FStar_Pervasives_Native.None ->
+           {
+             RDF_Graph_Executable.ds_default =
+               (RDF_Graph_Executable.graph_remove t
+                  ds.RDF_Graph_Executable.ds_default);
+             RDF_Graph_Executable.ds_named =
+               (ds.RDF_Graph_Executable.ds_named)
+           }
+       | FStar_Pervasives_Native.Some g_iri ->
+           {
+             RDF_Graph_Executable.ds_default =
+               (ds.RDF_Graph_Executable.ds_default);
+             RDF_Graph_Executable.ds_named =
+               (remove_from_named_graph g_iri t
+                  ds.RDF_Graph_Executable.ds_named)
+           })
+let rec delete_quads (ds : RDF_Graph_Executable.rdf_dataset)
+  (qs :
+    (RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option *
+      RDF_Graph_Executable.triple) Prims.list)
+  : RDF_Graph_Executable.rdf_dataset=
+  match qs with | [] -> ds | q::rest -> delete_quads (delete_quad ds q) rest
+let apply_delete_data (ds : RDF_Graph_Executable.rdf_dataset)
+  (ggp : group_graph_pattern) : RDF_Graph_Executable.rdf_dataset=
+  let quads = collect_quads FStar_Pervasives_Native.None ggp in
+  let clean = filter_no_bnode_quads quads in delete_quads ds clean
 let apply_update_op (ds : RDF_Graph_Executable.rdf_dataset) (op : update_op)
   : RDF_Graph_Executable.rdf_dataset=
   match op with
   | U_InsertData g -> apply_insert_data ds g
-  | U_DeleteData uu___ -> ds
+  | U_DeleteData g -> apply_delete_data ds g
   | U_DeleteWhere uu___ -> ds
   | U_Modify (uu___, uu___1, uu___2, uu___3, uu___4) -> ds
   | U_Load (uu___, uu___1, uu___2) -> ds
@@ -5358,15 +5434,16 @@ let rec apply_update_ops (ds : RDF_Graph_Executable.rdf_dataset)
   | op::rest -> apply_update_ops (apply_update_op ds op) rest
 let apply_update (ds : RDF_Graph_Executable.rdf_dataset) (u : sparql_update)
   : RDF_Graph_Executable.rdf_dataset= apply_update_ops ds u.u_ops
-let is_insert_data_only_op (op : update_op) : Prims.bool=
-  match op with | U_InsertData uu___ -> true | uu___ -> false
-let rec update_is_insert_data_only_ops (ops : update_op Prims.list) :
-  Prims.bool=
+let is_data_only_op (op : update_op) : Prims.bool=
+  match op with
+  | U_InsertData uu___ -> true
+  | U_DeleteData uu___ -> true
+  | uu___ -> false
+let rec update_is_data_only_ops (ops : update_op Prims.list) : Prims.bool=
   match ops with
   | [] -> true
-  | op::rest ->
-      (is_insert_data_only_op op) && (update_is_insert_data_only_ops rest)
-let update_is_insert_data_only (u : sparql_update) : Prims.bool=
-  update_is_insert_data_only_ops u.u_ops
+  | op::rest -> (is_data_only_op op) && (update_is_data_only_ops rest)
+let update_is_data_only (u : sparql_update) : Prims.bool=
+  update_is_data_only_ops u.u_ops
 
 let () = eval_subselect_fwd_ref := eval_select_query
