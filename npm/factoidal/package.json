@@ -1,0 +1,67 @@
+{
+  "name": "factoidal",
+  "version": "0.1.0-alpha.0",
+  "description": "Formally-verified SPARQL 1.1 + RDF 1.1 for Node and the browser",
+  "keywords": [
+    "sparql",
+    "rdf",
+    "turtle",
+    "ntriples",
+    "nquads",
+    "trig",
+    "rdf-xml",
+    "fstar",
+    "formal-verification",
+    "semantic-web"
+  ],
+  "homepage": "https://github.com/danbri/factoidal",
+  "bugs": {
+    "url": "https://github.com/danbri/factoidal/issues"
+  },
+  "license": "Apache-2.0",
+  "author": "Dan Brickley <danbri@danbri.org>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/danbri/factoidal.git",
+    "directory": "npm/factoidal"
+  },
+  "main": "./index.js",
+  "module": "./index.mjs",
+  "browser": "./browser.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "browser": "./browser.js",
+      "import": "./index.mjs",
+      "require": "./index.js",
+      "default": "./index.js"
+    },
+    "./browser": "./browser.js",
+    "./factoidal.js": "./factoidal.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "index.mjs",
+    "index.d.ts",
+    "browser.js",
+    "factoidal.js",
+    "version.json",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
+  "scripts": {
+    "build": "cd ../../formal/fstar && ./build-ocaml.sh npm",
+    "test": "node test/smoke.js",
+    "prepublishOnly": "echo 'Do not publish yet — 0.1.0-alpha.0 is scaffolding only.' && exit 1"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

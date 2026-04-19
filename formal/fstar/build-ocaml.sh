@@ -18,6 +18,13 @@
 #   ./build-ocaml.sh compile  # compile OCaml only (skip extraction)
 #   ./build-ocaml.sh js       # js_of_ocaml only (skip extraction+compile)
 #   ./build-ocaml.sh wasm     # wasm_of_ocaml only (experimental; needs stubs)
+#   ./build-ocaml.sh wasm-factoidal
+#                             # wasm_of_ocaml build of the factoidal CLI
+#                             # (experimental; same stub caveats as wasm)
+#   ./build-ocaml.sh npm      # populate npm/factoidal/ from existing
+#                             # extraction output (copies factoidal.js
+#                             # + wasm assets, writes version.json).
+#                             # Does NOT re-extract or recompile.
 #   ./build-ocaml.sh test     # run native tests only
 #
 # The wasm target produces a .wasm + loader .js under
@@ -267,6 +274,97 @@ if [[ "$STEP" == "wasm" ]]; then
     echo "  Smoke test: cd into docs/fstar-extracted and run 'node w3c-runner.wasm.js bind' — expect 10/10 pass."
   fi
   cd ..
+  echo ""
+fi
+
+# Step 5b: Build WebAssembly for the factoidal CLI (experimental).
+# Same caveats as Step 5. Produces docs/fstar-extracted/factoidal.wasm.js
+# plus factoidal.wasm.assets/ so the browser can load a wasm build of
+# factoidal the same way it already loads w3c-runner.wasm.js.
+if [[ "$STEP" == "wasm-factoidal" ]]; then
+  echo "--- Step 5b: factoidal CLI → WebAssembly (wasm_of_ocaml, experimental) ---"
+  if ! command -v wasm_of_ocaml >/dev/null 2>&1; then
+    echo "  wasm_of_ocaml not on PATH; install with 'opam install wasm_of_ocaml-compiler'"
+    exit 1
+  fi
+  mkdir -p "$JSDIR"
+  cd "$OUTDIR"
+  if [[ ! -f factoidal.byte ]]; then
+    echo "  factoidal.byte missing — run './build-ocaml.sh js' first to build bytecode."
+    exit 1
+  fi
+  WASM_RC=0
+  wasm_of_ocaml compile \
+    +zarith_stubs_js/biginteger.js \
+    +zarith_stubs_js/runtime.js \
+    wasm_runtime/zarith_runtime_wasm.js \
+    wasm_runtime/zarith_runtime.wat \
+    fstar_int_stubs.js \
+    factoidal.byte \
+    -o ../../../docs/fstar-extracted/factoidal.wasm.js 2>&1 \
+    | grep -v "Warning \[deprecated" | grep -v "^$" || WASM_RC=$?
+  if [[ -f ../../../docs/fstar-extracted/factoidal.wasm.js ]]; then
+    # Patch the throwing stubs so init survives.
+    python3 wasm_stub_shims.py ../../../docs/fstar-extracted/factoidal.wasm.js
+
+    LOADER_BYTES=$(wc -c < ../../../docs/fstar-extracted/factoidal.wasm.js)
+    WASM_FILE=$(ls -1 ../../../docs/fstar-extracted/factoidal.wasm.assets/*.wasm 2>/dev/null | head -n 1 || true)
+    if [[ -n "$WASM_FILE" ]]; then
+      WASM_BYTES=$(wc -c < "$WASM_FILE")
+      echo "  Built: docs/fstar-extracted/factoidal.wasm.js ($LOADER_BYTES bytes) + $(basename "$WASM_FILE") ($WASM_BYTES bytes)"
+    else
+      echo "  Built: docs/fstar-extracted/factoidal.wasm.js ($LOADER_BYTES bytes) — no .wasm asset"
+    fi
+  fi
+  cd ..
+  echo ""
+fi
+
+# Step 6: Populate the npm/factoidal/ package from the existing
+# extraction output. Does NOT re-extract or recompile. Copies the JS
+# bundle (and wasm assets if they exist) in-place so that `npm pack`
+# from npm/factoidal/ produces a usable tarball. Also writes a
+# version.json with the current git SHA for traceability.
+if [[ "$STEP" == "npm" ]]; then
+  echo "--- Step 6: populate npm/factoidal/ ---"
+  NPMDIR="../../npm/factoidal"
+  if [[ ! -d "$NPMDIR" ]]; then
+    echo "  npm/factoidal/ missing — expected at $NPMDIR"
+    exit 1
+  fi
+  if [[ ! -f "$JSDIR/factoidal.js" ]]; then
+    echo "  $JSDIR/factoidal.js missing — run './build-ocaml.sh js' first."
+    exit 1
+  fi
+
+  # If a symlink is in place (scaffolding state), drop it first so we
+  # copy a real file into the package.
+  if [[ -L "$NPMDIR/factoidal.js" ]]; then rm "$NPMDIR/factoidal.js"; fi
+  cp "$JSDIR/factoidal.js" "$NPMDIR/factoidal.js"
+  echo "  Copied: $JSDIR/factoidal.js → $NPMDIR/factoidal.js ($(wc -c < "$NPMDIR/factoidal.js") bytes)"
+
+  # Wasm artifacts are optional — skip silently if they don't exist yet.
+  if [[ -f "$JSDIR/factoidal.wasm.js" ]]; then
+    cp "$JSDIR/factoidal.wasm.js" "$NPMDIR/factoidal.wasm.js"
+    echo "  Copied: $JSDIR/factoidal.wasm.js → $NPMDIR/factoidal.wasm.js"
+  fi
+  if [[ -d "$JSDIR/factoidal.wasm.assets" ]]; then
+    rm -rf "$NPMDIR/factoidal.wasm.assets"
+    cp -R "$JSDIR/factoidal.wasm.assets" "$NPMDIR/factoidal.wasm.assets"
+    echo "  Copied: $JSDIR/factoidal.wasm.assets/ → $NPMDIR/factoidal.wasm.assets/"
+  fi
+
+  # Provenance stamp.
+  GITSHA=$(git -C ../.. rev-parse HEAD 2>/dev/null || echo "unknown")
+  BUILDTIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  cat > "$NPMDIR/version.json" <<EOF
+{
+  "version": "0.1.0-alpha.0",
+  "gitSha": "$GITSHA",
+  "builtAt": "$BUILDTIME"
+}
+EOF
+  echo "  Wrote:  $NPMDIR/version.json (git=$GITSHA)"
   echo ""
 fi
 
