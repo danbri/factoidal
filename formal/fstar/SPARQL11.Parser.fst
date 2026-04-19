@@ -3547,7 +3547,7 @@ let rec parse_single_update_op (pm : prefix_map) (fuel : nat) (ts : token_stream
                 match parse_group_graph_pattern pm (fuel-1) ts5 with
                 | ParseErr m -> ParseErr m
                 | ParseOk where ts6 ->
-                  ParseOk (U_Modify None (Some del_tmpl) ins_tmpl [] where) ts6)
+                  ParseOk (U_Modify None (Some del_tmpl) ins_tmpl using where) ts6)
      | _ -> ParseErr "expected DATA, WHERE, or { after DELETE")
 
   // --- WITH <g> DELETE/INSERT ... WHERE { pattern } ---

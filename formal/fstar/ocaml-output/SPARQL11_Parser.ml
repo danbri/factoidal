@@ -6493,8 +6493,8 @@ let rec parse_single_update_op (pm : prefix_map) (fuel : Prims.nat)
                                            ((SPARQL11_Algebra.U_Modify
                                                (FStar_Pervasives_Native.None,
                                                  (FStar_Pervasives_Native.Some
-                                                    del_tmpl), ins_tmpl, [],
-                                                 where)), ts6))))))
+                                                    del_tmpl), ins_tmpl,
+                                                 using, where)), ts6))))))
           | uu___1 -> ParseErr "expected DATA, WHERE, or { after DELETE")
      | Tok_WITH ->
          let ts1 = parse_advance ts in

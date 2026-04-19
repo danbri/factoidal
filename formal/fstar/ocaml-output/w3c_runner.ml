@@ -1009,11 +1009,11 @@ let run_test tc =
         | Failure _ -> Pass
         | Sparql_unsupported _ -> Unsupported_feature "Can't test rejection"))
   | "UpdateEvaluationTest" ->
-    (* Stage b-data + DELETE WHERE: INSERT DATA, DELETE DATA, and
-       DELETE WHERE are implemented in the F* evaluator. Other update ops
-       (U_Modify, the graph-management ops) remain no-ops in
-       `apply_update`. If the parsed update contains any unimplemented op,
-       we skip the test. *)
+    (* Stages b + c: INSERT DATA, DELETE DATA, DELETE WHERE, and U_Modify
+       (INSERT/DELETE with WHERE) are implemented in the F* evaluator.
+       Graph-management ops (U_Load / U_Clear / U_Drop / U_Create / U_Add
+       / U_Move / U_Copy) remain no-ops in `apply_update`. If the parsed
+       update contains any unimplemented op, we skip the test. *)
     (match read_file tc.query_file with
      | None -> Skip "Update file missing"
      | Some content ->
@@ -1021,7 +1021,7 @@ let run_test tc =
          let update = parse_sparql_update ~base_file:(Some tc.query_file) content in
          let open SPARQL11_Algebra in
          if not (update_is_implemented_only update) then
-           Skip "UPDATE stage c/d not yet implemented (requires U_Modify / graph management)"
+           Skip "UPDATE LOAD / CLEAR / DROP / CREATE / ADD / MOVE / COPY not yet implemented (stage d)"
          else begin
            (* Build input dataset *)
            let input_default = List.fold_left (fun acc df ->

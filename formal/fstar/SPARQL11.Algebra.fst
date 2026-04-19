@@ -4340,20 +4340,222 @@ let apply_delete_where (ds : rdf_dataset) (ggp : group_graph_pattern)
   let quads = instantiate_ggp_all None rewritten mus in
   delete_quads ds quads
 
-// Apply a single update op. For stage b-data + this commit we implement
-// U_InsertData + U_DeleteData + U_DeleteWhere; `U_Modify` and the graph-
-// management ops (U_Load / U_Clear / U_Drop / U_Create / U_Add / U_Move /
-// U_Copy) are left unimplemented and return the dataset unchanged. The
-// runner is responsible for detecting an unimplemented op and marking the
-// test Skipped, so reaching one of those arms here during a test run
-// would indicate a runner bug, not a semantics bug.
+(** ======================================================================= **)
+(** Part 19d: U_Modify — pattern-matching INSERT/DELETE (§3.1.3)            **)
+(**                                                                         **)
+(** Grammar (simplified):                                                    **)
+(**   [ WITH <iri> ]                                                         **)
+(**   ( DELETE { del_tmpl } [ INSERT { ins_tmpl } ]                          **)
+(**   | INSERT { ins_tmpl } )                                                **)
+(**   [ USING <iri> | USING NAMED <iri> ]*                                   **)
+(**   WHERE { pattern }                                                      **)
+(**                                                                         **)
+(** Semantics (§3.1.3):                                                      **)
+(** 1. Build the "WHERE dataset" (view used only for pattern matching):     **)
+(**      - If USING / USING NAMED is non-empty:                              **)
+(**          default = union of all graphs named by `DC_Default u`           **)
+(**          named   = [ { u, lookup u ds } | DC_Named u ]                   **)
+(**        (USING completely REPLACES the WHERE default/named set.)          **)
+(**      - Else if WITH <g>:                                                 **)
+(**          default = lookup g ds.ds_named (empty if g not present)         **)
+(**          named   = ds.ds_named (unchanged)                               **)
+(**      - Else:                                                             **)
+(**          default = ds.ds_default, named = ds.ds_named (whole ds).        **)
+(**   Eval WHERE against that view → solution sequence.                     **)
+(**                                                                         **)
+(** 2. For each solution mapping mu, substitute into delete_tmpl to get     **)
+(**    concrete quads. Quads with an unscoped default-graph position are    **)
+(**    redirected to WITH's graph if WITH is set (mutation target ≠ WHERE   **)
+(**    default when WITH + USING interact: per spec, WITH gives the         **)
+(**    mutation default, USING only affects WHERE).                         **)
+(**                                                                         **)
+(** 3. Same substitution for insert_tmpl.                                    **)
+(**                                                                         **)
+(** 4. Perform deletes first, then inserts, on the ORIGINAL dataset (not    **)
+(**    the WHERE view). Per §3.1.3 the mutation target is the original      **)
+(**    Graph Store. A delete-then-insert ordering is the spec's well-       **)
+(**    formedness choice to handle "halloween" style deletion-shadowing.    **)
+(**                                                                         **)
+(** Blank nodes:                                                             **)
+(**   - DELETE template must NOT contain blank nodes (parser enforces).     **)
+(**   - INSERT template bnodes are freshened once per solution mapping      **)
+(**     (§4.1.3: "blank nodes in an INSERT template are fresh for each      **)
+(**     solution binding"). We use a per-call + per-index prefix to keep    **)
+(**     them distinct across mappings and across Modify ops within the     **)
+(**     same request.                                                        **)
+(**   - WHERE pattern bnodes are rewritten to query variables per           **)
+(**     §18.2.2.9 (existing `rewrite_query_bnodes_pattern`).                **)
+(** ======================================================================= **)
+
+// --- WHERE dataset construction -----------------------------------------
+
+// Collect DC_Default iris from a list of USING clauses.
+let rec using_default_iris (dcs : list dataset_clause)
+  : Tot (list wf_iri) (decreases dcs) =
+  match dcs with
+  | [] -> []
+  | DC_Default i :: rest -> i :: using_default_iris rest
+  | DC_Named _   :: rest -> using_default_iris rest
+
+let rec using_named_iris (dcs : list dataset_clause)
+  : Tot (list wf_iri) (decreases dcs) =
+  match dcs with
+  | [] -> []
+  | DC_Named i   :: rest -> i :: using_named_iris rest
+  | DC_Default _ :: rest -> using_named_iris rest
+
+// Union all named graphs whose name IRI appears in `iris` into one rdf_graph.
+// If an IRI is not present in ds.ds_named, it contributes the empty graph.
+let rec union_named_graphs_by_iri (iris : list wf_iri) (named : list named_graph)
+  : Tot rdf_graph (decreases iris) =
+  match iris with
+  | [] -> empty_graph
+  | i :: rest ->
+    let g = (match lookup_named_graph i named with
+             | Some g -> g
+             | None -> empty_graph) in
+    graph_union g (union_named_graphs_by_iri rest named)
+
+// Build the list of named_graph records corresponding to DC_Named iris.
+let rec named_graphs_by_iri (iris : list wf_iri) (named : list named_graph)
+  : Tot (list named_graph) (decreases iris) =
+  match iris with
+  | [] -> []
+  | i :: rest ->
+    let g = (match lookup_named_graph i named with
+             | Some g -> g
+             | None -> empty_graph) in
+    { ng_name = i; ng_graph = g } :: named_graphs_by_iri rest named
+
+// Build the "WHERE dataset" per the rules above.
+//   with_iri : option wf_iri  — WITH <iri> if present
+//   using    : list dataset_clause — USING / USING NAMED
+let build_where_dataset (ds : rdf_dataset) (with_iri : option wf_iri)
+  (using : list dataset_clause) : rdf_dataset =
+  match using with
+  | [] ->
+    // No USING: WITH replaces only the default graph for WHERE.
+    (match with_iri with
+     | None -> ds
+     | Some g ->
+       let def_g = (match lookup_named_graph g ds.ds_named with
+                    | Some x -> x | None -> empty_graph) in
+       { ds_default = def_g; ds_named = ds.ds_named })
+  | _ ->
+    // USING replaces WHERE's default (union of DC_Default) AND named set
+    // (only DC_Named). WITH is ignored for WHERE eval when USING is set
+    // (USING clauses explicitly override WITH per §3.1.3).
+    let def_iris = using_default_iris using in
+    let nam_iris = using_named_iris using in
+    let def_g = union_named_graphs_by_iri def_iris ds.ds_named in
+    let nam = named_graphs_by_iri nam_iris ds.ds_named in
+    { ds_default = def_g; ds_named = nam }
+
+// --- Mutation-target redirection ----------------------------------------
+// If WITH <g> was specified, quads whose graph position is None (the
+// unscoped/default side of the template) should be redirected to `<g>`.
+// Quads explicitly scoped by `GRAPH <x>` in the template are left alone.
+let redirect_default_quad (with_iri : option wf_iri)
+  (q : option wf_iri * triple) : option wf_iri * triple =
+  let (g_opt, t) = q in
+  match g_opt, with_iri with
+  | None, Some g -> (Some g, t)
+  | _, _ -> (g_opt, t)
+
+let rec redirect_default_quads (with_iri : option wf_iri)
+  (qs : list (option wf_iri * triple))
+  : Tot (list (option wf_iri * triple)) (decreases qs) =
+  match qs with
+  | [] -> []
+  | q :: rest -> redirect_default_quad with_iri q :: redirect_default_quads with_iri rest
+
+// --- Fresh bnode prefix per Modify op -----------------------------------
+// Deterministic label so repeated runs produce the same output and the
+// comparison against expected Turtle works byte-by-byte for simple cases.
+let modify_bnode_prefix (ds : rdf_dataset) : string =
+  let n : nat = dataset_triple_count ds in
+  String.concat "" ["_modify_"; string_of_int n]
+
+// Fresh-bnode rename happens PER MAPPING (§4.1.3 "blank nodes in an INSERT
+// template are fresh per solution binding"). We combine the dataset-derived
+// prefix with a running index to keep each mapping's bnodes separate.
+let rec insert_quads_per_mapping (ds : rdf_dataset)
+  (per_mu_quads : list (list (option wf_iri * triple)))
+  (base_prefix : string) (idx : nat)
+  : Tot rdf_dataset (decreases per_mu_quads) =
+  match per_mu_quads with
+  | [] -> ds
+  | qs :: rest ->
+    let prefix = String.concat "" [base_prefix; "_m"; string_of_int idx; "_"] in
+    let renamed = List.Tot.map (rename_quad_bnodes prefix) qs in
+    let ds' = insert_quads ds renamed in
+    insert_quads_per_mapping ds' rest base_prefix (idx + 1)
+
+// Per-mapping quad instantiation. Returns a list-of-lists: one inner list
+// per solution mapping. This preserves grouping so each mapping gets its
+// own freshened bnodes when we insert.
+let rec per_mapping_quads (outer : option wf_iri) (ggp : group_graph_pattern)
+  (mus : solution_sequence)
+  : Tot (list (list (option wf_iri * triple))) (decreases mus) =
+  match mus with
+  | [] -> []
+  | mu :: rest ->
+    instantiate_ggp_quads outer ggp mu :: per_mapping_quads outer ggp rest
+
+// --- apply_modify --------------------------------------------------------
+let apply_modify (ds : rdf_dataset) (with_iri : option wf_iri)
+  (delete_tmpl : option group_graph_pattern)
+  (insert_tmpl : option group_graph_pattern)
+  (using : list dataset_clause)
+  (where_ggp : group_graph_pattern) : rdf_dataset =
+  // §18.2.2.9: bnodes in WHERE are fresh existential variables.
+  let where_rewritten = rewrite_query_bnodes_pattern where_ggp in
+
+  // Build the WHERE view dataset.
+  let where_ds = build_where_dataset ds with_iri using in
+
+  // Evaluate WHERE against the view. GP_Graph inside the pattern is still
+  // honoured by eval_pattern against the view's named set.
+  let mus = eval_pattern where_rewritten where_ds.ds_default where_ds in
+
+  // Step 1: substitute each mapping into delete_tmpl; redirect unscoped
+  // quads to WITH's graph if set; delete from the original dataset.
+  let del_quads_per_mu = match delete_tmpl with
+    | None -> []
+    | Some dt ->
+      // DELETE template bnodes: parser rejected bnodes in the DELETE
+      // template at parse time, but if any slipped through, substitution
+      // would simply not produce a matching mapping. No rewrite needed.
+      per_mapping_quads None dt mus in
+  let del_quads_flat = List.Tot.fold_left (fun acc qs -> acc @ qs)
+                       [] del_quads_per_mu in
+  let del_quads_redirected = redirect_default_quads with_iri del_quads_flat in
+  let ds_after_delete = delete_quads ds del_quads_redirected in
+
+  // Step 2: substitute each mapping into insert_tmpl; redirect unscoped
+  // quads to WITH's graph; freshen bnodes per mapping; insert.
+  match insert_tmpl with
+  | None -> ds_after_delete
+  | Some it ->
+    let ins_quads_per_mu = per_mapping_quads None it mus in
+    // Redirect each per-mu list; keep the grouping so bnode freshening
+    // happens per-mapping.
+    let redirected_per_mu = List.Tot.map
+      (fun qs -> redirect_default_quads with_iri qs) ins_quads_per_mu in
+    let prefix = modify_bnode_prefix ds_after_delete in
+    insert_quads_per_mapping ds_after_delete redirected_per_mu prefix 0
+
+// Apply a single update op. For stage b-data + DELETE WHERE + U_Modify we
+// implement the pattern-matching operations. Graph-management ops (U_Load
+// / U_Clear / U_Drop / U_Create / U_Add / U_Move / U_Copy) are stage d and
+// left unimplemented; the runner skips tests that require them.
 let apply_update_op (ds : rdf_dataset) (op : update_op) : rdf_dataset =
   match op with
   | U_InsertData g -> apply_insert_data ds g
   | U_DeleteData g -> apply_delete_data ds g
   | U_DeleteWhere g -> apply_delete_where ds g
-  // U_Modify + graph management are stage c / d and not yet implemented.
-  | U_Modify _ _ _ _ _ -> ds
+  | U_Modify w d i u p -> apply_modify ds w d i u p
+  // Graph management is stage d and not yet implemented.
   | U_Load _ _ _ -> ds
   | U_Clear _ _ -> ds
   | U_Drop _ _ -> ds
@@ -4372,13 +4574,14 @@ let apply_update (ds : rdf_dataset) (u : sparql_update) : rdf_dataset =
   apply_update_ops ds u.u_ops
 
 // Classify an op list: returns true iff every op is U_InsertData,
-// U_DeleteData, or U_DeleteWhere. The runner uses this to decide whether
-// to actually run the test or skip it.
+// U_DeleteData, U_DeleteWhere, or U_Modify. The runner uses this to decide
+// whether to actually run the test or skip it.
 let is_implemented_op (op : update_op) : bool =
   match op with
   | U_InsertData _ -> true
   | U_DeleteData _ -> true
   | U_DeleteWhere _ -> true
+  | U_Modify _ _ _ _ _ -> true
   | _ -> false
 
 let rec update_is_implemented_only_ops (ops : list update_op)
