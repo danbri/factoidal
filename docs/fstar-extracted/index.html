@@ -251,6 +251,12 @@
     <select id="dataset" class="dataset"></select>
     <label class="ctl" for="sample">Query:</label>
     <select id="sample" class="sample"></select>
+    <label class="ctl" for="entail">Entail:</label>
+    <select id="entail" class="dataset">
+      <option value="none">none</option>
+      <option value="RDFS">RDFS</option>
+      <option value="OWL-RL">OWL-RL</option>
+    </select>
     <button class="run" id="run">Run query</button>
     <span class="status" id="status">Loading engine…</span>
   </div>
@@ -557,6 +563,44 @@ ex:west {
   ex:b10 a schema:Book ; schema:name "Gödel, Escher, Bach" ; schema:author "Hofstadter" .
 }`,
     },
+
+    schemaOrg: {
+      label: 'schema.org class hierarchy (entailment demo)',
+      data: `@prefix rdf:    <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:    <http://www.w3.org/2002/07/owl#> .
+@prefix schema: <http://schema.org/> .
+@prefix ex:     <http://example.org/> .
+
+# --- A fragment of the schema.org class hierarchy (not the whole tree).
+schema:Thing              a rdfs:Class .
+schema:Place              rdfs:subClassOf schema:Thing .
+schema:LodgingBusiness    rdfs:subClassOf schema:Place .
+schema:Hotel              rdfs:subClassOf schema:LodgingBusiness .
+schema:Campground         rdfs:subClassOf schema:LodgingBusiness .
+schema:Restaurant         rdfs:subClassOf schema:Place .
+schema:FastFoodRestaurant rdfs:subClassOf schema:Restaurant .
+
+# --- A sub-property of schema:name for contact-style labels.
+schema:legalName rdfs:subPropertyOf schema:name .
+
+# --- OWL-RL goodies: sameAs + inverseOf for the OWL-RL demo queries.
+schema:containedInPlace  owl:inverseOf schema:containsPlace .
+
+# --- Instances.
+ex:motel6     a schema:Hotel              ; schema:name "Motel 6 Downtown" .
+ex:hotelZ     a schema:Hotel              ; schema:legalName "Hotel Zinc, LLC" .
+ex:kampground a schema:Campground         ; schema:name "Redwood KOA" .
+ex:luigi      a schema:Restaurant         ; schema:name "Luigi's Trattoria" .
+ex:mcfood     a schema:FastFoodRestaurant ; schema:name "McFood" .
+
+# --- An inverseOf chain for OWL-RL to propagate.
+ex:downtown   schema:containsPlace ex:motel6, ex:luigi .
+
+# --- An owl:sameAs pair to demonstrate OWL-RL sameAs substitution.
+ex:hotelZincLLC  owl:sameAs ex:hotelZ .
+ex:hotelZincLLC  schema:name "Hotel Zinc" .`,
+    },
   };
 
   // -------------------------------------------------------------------
@@ -852,6 +896,71 @@ WHERE {
   GRAPH ex:central { ?b schema:name ?title ; schema:author ?author }
 }
 ORDER BY ?title` },
+
+    // ---- schema.org entailment demo queries ---------------------------
+    // Each query makes a difference once Entail = RDFS (or OWL-RL) is on.
+    { key: 'so-all-places', ds: 'schemaOrg', label: 'All Places (needs RDFS)',
+      query: `PREFIX schema: <http://schema.org/>
+
+SELECT ?s ?name
+WHERE {
+  ?s a schema:Place ;
+     schema:name ?name .
+}
+ORDER BY ?name` },
+
+    { key: 'so-all-lodging', ds: 'schemaOrg', label: 'All LodgingBusinesses (needs RDFS)',
+      query: `PREFIX schema: <http://schema.org/>
+
+SELECT ?s ?name
+WHERE {
+  ?s a schema:LodgingBusiness ;
+     schema:name ?name .
+}
+ORDER BY ?name` },
+
+    { key: 'so-all-restaurants', ds: 'schemaOrg', label: 'All Restaurants (needs RDFS)',
+      query: `PREFIX schema: <http://schema.org/>
+
+SELECT ?s ?name
+WHERE {
+  ?s a schema:Restaurant ;
+     schema:name ?name .
+}
+ORDER BY ?name` },
+
+    { key: 'so-subproperty', ds: 'schemaOrg', label: 'legalName as schema:name (needs RDFS)',
+      query: `PREFIX schema: <http://schema.org/>
+
+# schema:legalName rdfs:subPropertyOf schema:name, so with RDFS on
+# ex:hotelZ (which only has a legalName) shows up here too.
+SELECT ?s ?name
+WHERE {
+  ?s schema:name ?name .
+}
+ORDER BY ?s` },
+
+    { key: 'so-inverse', ds: 'schemaOrg', label: 'containedInPlace via inverseOf (needs OWL-RL)',
+      query: `PREFIX schema: <http://schema.org/>
+
+# The data only has ex:downtown schema:containsPlace ?x, so without
+# OWL-RL this returns nothing. With OWL-RL, prp-inv1 flips the arrow.
+SELECT ?sub ?container
+WHERE {
+  ?sub schema:containedInPlace ?container .
+}
+ORDER BY ?sub` },
+
+    { key: 'so-sameas', ds: 'schemaOrg', label: 'sameAs substitution (needs OWL-RL)',
+      query: `PREFIX schema: <http://schema.org/>
+
+# ex:hotelZincLLC owl:sameAs ex:hotelZ, and both carry name triples.
+# With OWL-RL, eq-rep-s collapses them so ex:hotelZ has both names.
+SELECT ?s ?name
+WHERE {
+  ?s a schema:Hotel ; schema:name ?name .
+}
+ORDER BY ?s ?name` },
   ];
 
   // -------------------------------------------------------------------
@@ -865,6 +974,7 @@ ORDER BY ?title` },
   const statusEl = $('status');
   const sampleEl = $('sample');
   const datasetEl = $('dataset');
+  const entailEl = $('entail');
 
   dataEl.setAttribute('readonly', 'readonly');
 
@@ -1072,10 +1182,13 @@ ORDER BY ?title` },
     const dataPath = '/tmp/data.' + ext;
     globalThis.jsoo_fs_tmp = [{ name: dataPath, content: dataEl.value }];
     globalThis.process = globalThis.process || {};
-    globalThis.process.argv = ['node', 'factoidal',
+    const entailVal = entailEl && entailEl.value ? entailEl.value : 'none';
+    const argv = ['node', 'factoidal',
       '-d', dataPath,
       '-e', queryEl.value,
       '-o', 'json'];
+    if (entailVal !== 'none') argv.push('--entail', entailVal);
+    globalThis.process.argv = argv;
 
     let exitCode = 0;
     const origExit = globalThis.process.exit;

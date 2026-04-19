@@ -291,7 +291,19 @@ type config = {
   mutable count_mode : bool;
   mutable help_mode : bool;
   mutable version_mode : bool;
+  mutable entail_regime : string;  (* "" (none), "RDFS", or "OWL-RL" *)
 }
+
+(* Normalise --entail argument: accept case-insensitive and with/without
+   hyphen variants. Maps to the regime tags expected by F*'s
+   entailment_closure: "RDFS", "OWL-RL", or "" for none. *)
+let normalise_entail_regime s =
+  let lc = String.lowercase_ascii s in
+  match lc with
+  | "" | "none" | "no" | "off" -> Some ""
+  | "rdfs" -> Some "RDFS"
+  | "owl-rl" | "owlrl" | "owl_rl" | "owl" -> Some "OWL-RL"
+  | _ -> None
 
 let usage () =
   Printf.printf "factoidal — formally verified SPARQL query tool\n\n";
@@ -321,6 +333,12 @@ let usage () =
   Printf.printf "  -b, --base IRI         Base IRI for parsing\n";
   Printf.printf "  -f, --format FMT       Input format: turtle, ntriples, nquads, trig, rdfxml\n";
   Printf.printf "  -o, --output FMT       Output format: table (default), csv, ntriples, json\n";
+  Printf.printf "  --entail REGIME        Apply entailment closure to loaded data before\n";
+  Printf.printf "                         query evaluation. REGIME is one of:\n";
+  Printf.printf "                           none    no closure (default)\n";
+  Printf.printf "                           RDFS    RDFS closure + reflexivity axioms\n";
+  Printf.printf "                           OWL-RL  OWL 2 RL Datalog subset (includes RDFS)\n";
+  Printf.printf "                         Case-insensitive. All closures are F*-extracted.\n";
   Printf.printf "  --dump                 Parse RDF and dump as N-Triples\n";
   Printf.printf "  --count                Parse RDF and count triples\n";
   Printf.printf "  --version              Show version\n";
@@ -346,6 +364,7 @@ let parse_args () =
     query_string = None; base_iri = None; input_format = None;
     output_format = Table; dump_mode = false; count_mode = false;
     help_mode = false; version_mode = false;
+    entail_regime = "";
   } in
   let args = Array.to_list Sys.argv |> List.tl in
   let rec loop = function
@@ -377,6 +396,12 @@ let parse_args () =
        | "ntriples" | "nt" -> cfg.output_format <- NTOut; loop rest
        | "json" | "srj" -> cfg.output_format <- JSON; loop rest
        | _ -> Printf.eprintf "Error: unknown output format '%s'\n" fmt; exit 1)
+    | "--entail" :: regime :: rest ->
+      (match normalise_entail_regime regime with
+       | Some r -> cfg.entail_regime <- r; loop rest
+       | None ->
+         Printf.eprintf "Error: unknown entailment regime '%s' (expected none, RDFS, or OWL-RL)\n" regime;
+         exit 1)
     | "--dump" :: rest -> cfg.dump_mode <- true; loop rest
     | "--count" :: rest -> cfg.count_mode <- true; loop rest
     | arg :: rest ->
@@ -477,9 +502,28 @@ let () =
     RDF_Graph_Executable.({ ng_name = iri; ng_graph = triples })
   ) cfg.named_graphs in
 
+  (* Apply entailment regime closure if requested. The F*-extracted closure
+     operates on rdf_graph (list of triples); apply it to the default graph
+     and to each named graph in turn. "" is the no-op / "none" case. *)
+  let apply_entail tr = match cfg.entail_regime with
+    | "OWL-RL" ->
+      (try RDF_Graph_Executable.owl_rl_closure_with_reflexivity tr (Z.of_int 100)
+       with _ -> tr)
+    | "RDFS" ->
+      (try RDF_Graph_Executable.rdfs_closure_with_reflexivity tr (Z.of_int 100)
+       with _ -> tr)
+    | _ -> tr
+  in
+  let graph = apply_entail graph in
+  let all_named = file_named_graphs @ cli_named_graphs in
+  let all_named = List.map (fun ng ->
+    RDF_Graph_Executable.({ ng_name = ng.ng_name;
+                             ng_graph = apply_entail ng.ng_graph })
+  ) all_named in
+
   let dataset = RDF_Graph_Executable.({
     ds_default = graph;
-    ds_named = file_named_graphs @ cli_named_graphs
+    ds_named = all_named
   }) in
 
   (* Evaluate *)
