@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Factoidal — WebAssembly demo (dev)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --fg: #222; --muted: #666; --bg: #fff; --surface: #f7f7f7;
+    --border: #e0e0e0; --brand: #2d6a4f; --brand-dark: #1b4332;
+    --error: #c0392b; --ok: #2d6a4f;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--fg); background: var(--bg); line-height: 1.5;
+  }
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 1.2em 1.5em 0.8em;
+  }
+  header h1 { margin: 0 0 0.1em; font-size: 1.5em; color: var(--brand-dark); }
+  header .tag { color: var(--muted); font-size: 0.92em; }
+  header .warn {
+    margin-top: 0.6em; padding: 0.5em 0.8em;
+    background: #fff4e6; border-left: 3px solid #e67e22;
+    font-size: 0.88em;
+  }
+  main { max-width: 1100px; margin: 0 auto; padding: 1.5em; }
+  .controls {
+    display: flex; gap: 0.6em; align-items: center; margin-bottom: 1em;
+    flex-wrap: wrap;
+  }
+  select, button {
+    font-family: inherit; padding: 0.45em 0.7em;
+    border: 1px solid var(--border); border-radius: 4px; background: white;
+  }
+  button.run {
+    background: var(--brand); color: white; border: none;
+    padding: 0.55em 1.4em; font-weight: 600; cursor: pointer;
+  }
+  button.run:hover { background: var(--brand-dark); }
+  button.run:disabled { background: #aaa; cursor: wait; }
+  .status { color: var(--muted); font-size: 0.85em; margin-left: auto; }
+  .editors {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1em;
+    margin-bottom: 1em;
+  }
+  @media (max-width: 800px) { .editors { grid-template-columns: 1fr; } }
+  .editor label {
+    display: block; font-size: 0.82em; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.3em;
+  }
+  .editor textarea {
+    width: 100%; min-height: 220px;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.85em; padding: 0.6em 0.7em;
+    border: 1px solid var(--border); border-radius: 4px;
+    resize: vertical; background: var(--surface);
+  }
+  .editor textarea:focus { outline: 2px solid var(--brand); outline-offset: -1px; background: #fff; }
+  #output-wrap {
+    border: 1px solid var(--border); border-radius: 4px;
+    background: var(--surface); min-height: 4em; max-height: 60vh; overflow: auto;
+  }
+  #output-wrap.error { border-color: var(--error); background: #fff4f0; }
+  #output-wrap.empty { padding: 0.8em 1em; color: var(--muted); font-style: italic; }
+  table.results { width: 100%; border-collapse: collapse; font-size: 0.9em;
+    font-family: ui-monospace, Menlo, Consolas, monospace; }
+  table.results thead th {
+    position: sticky; top: 0; background: #eef;
+    border-bottom: 2px solid var(--brand); padding: 0.5em 0.8em; text-align: left;
+    color: var(--brand-dark); font-weight: 600; z-index: 1;
+  }
+  table.results tbody td {
+    padding: 0.35em 0.8em; border-bottom: 1px solid var(--border);
+    vertical-align: top; max-width: 28em; word-break: break-word;
+  }
+  table.results td.iri { color: #1a4a8a; }
+  table.results td.bnode { color: #7b4397; }
+  table.results td.literal { color: #2d6a4f; }
+  .ask-result { padding: 1.2em 1em; text-align: center; font-size: 1.3em; font-weight: 600; }
+  .ask-result.yes { color: var(--ok); }
+  .ask-result.no  { color: var(--error); }
+  .result-meta {
+    padding: 0.4em 0.8em; font-size: 0.82em; color: var(--muted);
+    border-top: 1px solid var(--border); background: white;
+  }
+  pre.raw-error {
+    padding: 0.8em 1em; margin: 0; color: var(--error);
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.88em; white-space: pre-wrap; word-break: break-word;
+  }
+  footer { text-align: center; color: var(--muted); font-size: 0.85em; padding: 2em 1em; }
+  code { background: var(--surface); padding: 0.1em 0.3em; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Factoidal — WebAssembly demo (dev)</h1>
+  <div class="tag">
+    This page drives <code>factoidal.wasm.js</code> via
+    <code>browser-wasm.js</code> — the same adapter that ships in
+    <a href="https://github.com/danbri/factoidal/tree/claude/main/npm/factoidal">the npm package</a>.
+    See <a href="./index.html">the main demo</a> for the
+    js_of_ocaml (pure JS) build.
+  </div>
+  <div class="warn">
+    Dev page — unvalidated in a real browser. Needs Wasm-GC:
+    <strong>Chrome / Edge 119+</strong> or Node 22+.
+    Firefox ships Wasm-GC incrementally — YMMV.
+    Page may simply fail to load the wasm if your browser lacks the
+    feature; open the devtools console to see errors.
+  </div>
+</header>
+
+<main>
+<section>
+  <div class="controls">
+    <label for="sample">Sample:</label>
+    <select id="sample">
+      <option value="basic">People: SELECT everyone</option>
+      <option value="ask">People: ASK(Alice knows someone)</option>
+      <option value="rdfs">schema.org hierarchy (needs --entail RDFS)</option>
+      <option value="owl-sameas">owl:sameAs substitution (needs --entail OWL-RL)</option>
+    </select>
+    <label for="entail">Entail:</label>
+    <select id="entail">
+      <option value="none">none</option>
+      <option value="RDFS">RDFS</option>
+      <option value="OWL-RL">OWL-RL</option>
+    </select>
+    <button class="run" id="run" disabled>Run query</button>
+    <span class="status" id="status">Loading wasm engine…</span>
+  </div>
+
+  <div class="editors">
+    <div class="editor">
+      <label for="data">Turtle data</label>
+      <textarea id="data" spellcheck="false"></textarea>
+    </div>
+    <div class="editor">
+      <label for="query">SPARQL query</label>
+      <textarea id="query" spellcheck="false"></textarea>
+    </div>
+  </div>
+
+  <div id="output-wrap" class="empty">Results will appear here.</div>
+</section>
+</main>
+
+<footer>
+  Built from <a href="https://github.com/danbri/factoidal">github.com/danbri/factoidal</a>.
+  Sibling adapter: <a href="./browser-wasm.js"><code>browser-wasm.js</code></a>.
+</footer>
+
+<script type="module">
+  import { query, setFactoidalWasmUrl, version } from './browser-wasm.js';
+
+  // Tell the adapter the wasm loader is co-located with this page.
+  setFactoidalWasmUrl(new URL('./factoidal.wasm.js', import.meta.url));
+
+  const SAMPLES = {
+    basic: {
+      data: `@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix ex:   <http://example.org/> .
+ex:alice foaf:name "Alice" ; foaf:age 30 ; foaf:knows ex:bob .
+ex:bob   foaf:name "Bob"@en ; foaf:age 42 ; foaf:knows ex:carol .
+ex:carol foaf:name "Carol" ; foaf:age 27 .`,
+      query: `PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+SELECT ?name ?age WHERE { ?p foaf:name ?name ; foaf:age ?age } ORDER BY ?age`,
+      entail: 'none',
+    },
+    ask: {
+      data: `@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix ex:   <http://example.org/> .
+ex:alice foaf:knows ex:bob .
+ex:bob   foaf:knows ex:carol .`,
+      query: `PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+PREFIX ex:   <http://example.org/>
+ASK { ex:alice foaf:knows ?mid . ?mid foaf:knows ?other }`,
+      entail: 'none',
+    },
+    rdfs: {
+      data: `@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix schema: <http://schema.org/> .
+@prefix ex:     <http://example.org/> .
+schema:Place          a rdfs:Class .
+schema:LodgingBusiness rdfs:subClassOf schema:Place .
+schema:Hotel          rdfs:subClassOf schema:LodgingBusiness .
+schema:Campground     rdfs:subClassOf schema:LodgingBusiness .
+ex:motel6 a schema:Hotel        ; schema:name "Motel 6" .
+ex:hotelZ a schema:Hotel        ; schema:name "Hotel Zinc" .
+ex:koa    a schema:Campground   ; schema:name "Redwood KOA" .`,
+      query: `PREFIX schema: <http://schema.org/>
+SELECT ?x ?name WHERE { ?x a schema:Place ; schema:name ?name } ORDER BY ?name`,
+      entail: 'RDFS',
+    },
+    'owl-sameas': {
+      data: `@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix ex:  <http://example.org/> .
+ex:bob  ex:knows ex:alice .
+ex:bob  owl:sameAs ex:robert .
+ex:carol ex:knows ex:robert .`,
+      query: `PREFIX ex: <http://example.org/>
+SELECT ?knower ?known WHERE { ?knower ex:knows ?known } ORDER BY ?knower ?known`,
+      entail: 'OWL-RL',
+    },
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const dataEl = $('data'), queryEl = $('query');
+  const sampleEl = $('sample'), entailEl = $('entail');
+  const runBtn = $('run'), statusEl = $('status');
+  const outputWrap = $('output-wrap');
+
+  function loadSample(key) {
+    const s = SAMPLES[key] || SAMPLES.basic;
+    dataEl.value = s.data;
+    queryEl.value = s.query;
+    entailEl.value = s.entail;
+  }
+  loadSample('basic');
+  sampleEl.addEventListener('change', () => loadSample(sampleEl.value));
+
+  function abbrev(iri) {
+    const PX = [
+      ['http://www.w3.org/1999/02/22-rdf-syntax-ns#', 'rdf:'],
+      ['http://www.w3.org/2000/01/rdf-schema#',       'rdfs:'],
+      ['http://www.w3.org/2002/07/owl#',              'owl:'],
+      ['http://xmlns.com/foaf/0.1/',                  'foaf:'],
+      ['http://schema.org/',                          'schema:'],
+      ['http://example.org/',                         'ex:'],
+    ];
+    for (const [ns, px] of PX) if (iri.startsWith(ns)) return px + iri.slice(ns.length);
+    return '<' + iri + '>';
+  }
+
+  function renderBinding(b) {
+    const td = document.createElement('td');
+    if (!b) { td.textContent = ''; return td; }
+    if (b.type === 'uri') {
+      td.className = 'iri';
+      td.textContent = abbrev(b.value);
+      td.title = b.value;
+    } else if (b.type === 'bnode') {
+      td.className = 'bnode';
+      td.textContent = '_:' + b.value;
+    } else {
+      td.className = 'literal';
+      let s = '"' + b.value + '"';
+      if (b['xml:lang']) s += '@' + b['xml:lang'];
+      else if (b.datatype && b.datatype !== 'http://www.w3.org/2001/XMLSchema#string')
+        s += '^^' + abbrev(b.datatype);
+      td.textContent = s;
+    }
+    return td;
+  }
+
+  function renderResults(json) {
+    outputWrap.className = '';
+    outputWrap.innerHTML = '';
+    if (typeof json.boolean === 'boolean') {
+      const div = document.createElement('div');
+      div.className = 'ask-result ' + (json.boolean ? 'yes' : 'no');
+      div.textContent = json.boolean ? 'Yes' : 'No';
+      outputWrap.appendChild(div);
+      return;
+    }
+    const vars = (json.head && json.head.vars) || [];
+    const rows = (json.results && json.results.bindings) || [];
+    const table = document.createElement('table');
+    table.className = 'results';
+    const thead = document.createElement('thead');
+    const hrow = document.createElement('tr');
+    vars.forEach(v => { const th = document.createElement('th'); th.textContent = '?' + v; hrow.appendChild(th); });
+    thead.appendChild(hrow);
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    rows.forEach(r => {
+      const tr = document.createElement('tr');
+      vars.forEach(v => tr.appendChild(renderBinding(r[v])));
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    outputWrap.appendChild(table);
+    const meta = document.createElement('div');
+    meta.className = 'result-meta';
+    meta.textContent = rows.length + ' result' + (rows.length === 1 ? '' : 's') + ' (wasm, browser-wasm.js v' + version + ')';
+    outputWrap.appendChild(meta);
+  }
+
+  function renderError(text) {
+    outputWrap.className = 'error';
+    outputWrap.innerHTML = '';
+    const pre = document.createElement('pre');
+    pre.className = 'raw-error';
+    pre.textContent = text;
+    outputWrap.appendChild(pre);
+  }
+
+  runBtn.addEventListener('click', async () => {
+    runBtn.disabled = true;
+    statusEl.textContent = 'Running…';
+    outputWrap.className = 'empty';
+    outputWrap.textContent = '';
+    try {
+      const opts = {};
+      if (entailEl.value !== 'none') opts.entail = entailEl.value;
+      const result = await query(dataEl.value, queryEl.value, opts);
+      // With default output=json, `query` returns parsed JSON.
+      renderResults(result);
+      statusEl.textContent = 'Done (wasm)';
+    } catch (e) {
+      renderError((e && e.message) + '\n' + (e && e.stderr || ''));
+      statusEl.textContent = 'Error (wasm)';
+    } finally {
+      runBtn.disabled = false;
+    }
+  });
+
+  // Engine reach-check: attempt a tiny no-op query on load so we can
+  // surface a clear failure state before the user clicks Run.
+  (async () => {
+    try {
+      await query('@prefix ex: <http://x/> . ex:a ex:b ex:c .',
+                  'SELECT (1 AS ?one) WHERE {}');
+      statusEl.textContent = 'Ready (wasm, browser-wasm.js v' + version + ')';
+      runBtn.disabled = false;
+    } catch (e) {
+      statusEl.textContent = 'Wasm engine failed to load — check devtools';
+      renderError('Could not load the wasm engine.\n\n' +
+                  (e && e.message) + '\n\n' +
+                  'This page requires Wasm-GC (Chrome/Edge 119+, Node 22+). ' +
+                  'Firefox is still shipping Wasm-GC incrementally.');
+    }
+  })();
+</script>
+
+</body>
+</html>
