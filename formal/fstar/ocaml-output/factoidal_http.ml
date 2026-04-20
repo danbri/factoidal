@@ -120,6 +120,7 @@ type config = {
   mutable host : string;
   mutable verbose : bool;
   mutable help_mode : bool;
+  mutable read_only : bool;
 }
 
 let default_config () = {
@@ -130,6 +131,7 @@ let default_config () = {
   host = "127.0.0.1";
   verbose = false;
   help_mode = false;
+  read_only = false;
 }
 
 let usage () =
@@ -145,6 +147,8 @@ let usage () =
   print_endline "                         (auto-detected: .ttl .nt .nq .trig .rdf)";
   print_endline "  -f, --format FMT       Force input format (turtle|ntriples|nquads|trig|rdfxml)";
   print_endline "  -b, --base IRI         Base IRI for parsing";
+  print_endline "      --read-only        Reject POST /update with 403 Forbidden";
+  print_endline "                         (safe for public tunnels)";
   print_endline "  -v, --verbose          Log every request";
   print_endline "  -h, --help             This help";
   print_endline "";
@@ -168,7 +172,9 @@ let usage () =
   print_endline "  * UPDATEs mutate a single shared dataset ref for the server's";
   print_endline "    lifetime; not thread-safe, not persisted.";
   print_endline "  * CONSTRUCT/DESCRIBE return empty results (evaluator stub)";
-  print_endline "  * No TLS, no keep-alive, no pipelining"
+  print_endline "  * No TLS, no keep-alive, no pipelining";
+  print_endline "  * --read-only gates POST /update with 403; useful when";
+  print_endline "    exposing the server behind a public tunnel."
 
 let parse_args () =
   let cfg = default_config () in
@@ -189,6 +195,7 @@ let parse_args () =
        | None -> Printf.eprintf "Error: unknown format '%s'\n" fmt; exit 1);
       loop rest
     | ("-b" | "--base") :: b :: rest -> cfg.base_iri <- Some b; loop rest
+    | "--read-only" :: rest -> cfg.read_only <- true; loop rest
     | ("-v" | "--verbose") :: rest -> cfg.verbose <- true; loop rest
     | arg :: _ ->
       Printf.eprintf "Error: unrecognised argument '%s' (try --help)\n" arg;
@@ -313,6 +320,7 @@ let status_text = function
   | 200 -> "OK"
   | 204 -> "No Content"
   | 400 -> "Bad Request"
+  | 403 -> "Forbidden"
   | 404 -> "Not Found"
   | 405 -> "Method Not Allowed"
   | 500 -> "Internal Server Error"
@@ -485,6 +493,13 @@ let handle_connection cfg dataset_ref ic oc =
           rb_content_type = "text/plain; charset=utf-8";
           rb_body = msg ^ "\n" }
       | P.PR_Update (update_text, _dflt, _named) ->
+        if cfg.read_only then
+          { rb_status = 403;
+            rb_content_type = "text/plain; charset=utf-8";
+            rb_body =
+              "SPARQL UPDATE is disabled on this endpoint (--read-only).\n\
+               This server is configured to accept queries only.\n" }
+        else
         (* Parse the update string and dispatch through apply_update.
            LOAD is still unimplemented (needs an HTTP client). *)
         (match SPARQL11_Parser.parse_sparql_update update_text with
@@ -564,6 +579,10 @@ let run_server cfg =
   let triple_count = List.length (!dataset_ref).ds_default in
   Printf.printf "factoidal-http listening on http://%s:%d/query\n"
     cfg.host cfg.port;
+  Printf.printf "  mode: %s\n"
+    (if cfg.read_only
+     then "read-only (POST /update -> 403)"
+     else "read-write (POST /update mutates in-memory dataset)");
   (match cfg.dataset_file with
    | Some f -> Printf.printf "  default graph: %s (%d triples)\n" f triple_count
    | None -> Printf.printf "  default graph: <empty>\n");
