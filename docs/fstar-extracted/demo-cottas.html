@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Factoidal — COTTAS / Parquet demo (js_of_ocaml, Phase 2)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --fg: #222; --muted: #666; --bg: #fff; --surface: #f7f7f7;
+    --border: #e0e0e0; --brand: #2d6a4f; --brand-dark: #1b4332;
+    --error: #c0392b; --ok: #2d6a4f;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--fg); background: var(--bg); line-height: 1.5;
+  }
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 1.2em 1.5em 0.8em;
+  }
+  header h1 { margin: 0 0 0.1em; font-size: 1.5em; color: var(--brand-dark); }
+  header .tag { color: var(--muted); font-size: 0.92em; }
+  header .warn {
+    margin-top: 0.6em; padding: 0.5em 0.8em;
+    background: #fff4e6; border-left: 3px solid #e67e22;
+    font-size: 0.88em;
+  }
+  main { max-width: 1100px; margin: 0 auto; padding: 1.5em; }
+  .controls {
+    display: flex; gap: 0.6em; align-items: center; margin-bottom: 1em;
+    flex-wrap: wrap;
+  }
+  input[type=text], input[type=url], select, button {
+    font-family: inherit; padding: 0.45em 0.7em;
+    border: 1px solid var(--border); border-radius: 4px; background: white;
+  }
+  input[type=url] { min-width: 26em; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; }
+  button.run {
+    background: var(--brand); color: white; border: none;
+    padding: 0.55em 1.4em; font-weight: 600; cursor: pointer;
+  }
+  button.run:hover:not(:disabled) { background: var(--brand-dark); }
+  button.run:disabled { background: #aaa; cursor: wait; }
+  .status { color: var(--muted); font-size: 0.85em; margin-left: auto; }
+  .editor label {
+    display: block; font-size: 0.82em; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.3em;
+  }
+  .editor textarea {
+    width: 100%; min-height: 140px;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.85em; padding: 0.6em 0.7em;
+    border: 1px solid var(--border); border-radius: 4px;
+    resize: vertical; background: var(--surface);
+  }
+  .editor textarea:focus { outline: 2px solid var(--brand); outline-offset: -1px; background: #fff; }
+  .editor { margin-bottom: 1em; }
+  #output-wrap {
+    border: 1px solid var(--border); border-radius: 4px;
+    background: var(--surface); min-height: 4em; max-height: 60vh; overflow: auto;
+  }
+  #output-wrap.error { border-color: var(--error); background: #fff4f0; }
+  #output-wrap.empty { padding: 0.8em 1em; color: var(--muted); font-style: italic; }
+  table.results { width: 100%; border-collapse: collapse; font-size: 0.9em;
+    font-family: ui-monospace, Menlo, Consolas, monospace; }
+  table.results thead th {
+    position: sticky; top: 0; background: #eef;
+    border-bottom: 2px solid var(--brand); padding: 0.5em 0.8em; text-align: left;
+    color: var(--brand-dark); font-weight: 600; z-index: 1;
+  }
+  table.results tbody td {
+    padding: 0.35em 0.8em; border-bottom: 1px solid var(--border);
+    vertical-align: top; max-width: 28em; word-break: break-word;
+  }
+  table.results td.iri { color: #1a4a8a; }
+  table.results td.bnode { color: #7b4397; }
+  table.results td.literal { color: #2d6a4f; }
+  .ask-result { padding: 1.2em 1em; text-align: center; font-size: 1.3em; font-weight: 600; }
+  .ask-result.yes { color: var(--ok); }
+  .ask-result.no  { color: var(--error); }
+  .result-meta {
+    padding: 0.4em 0.8em; font-size: 0.82em; color: var(--muted);
+    border-top: 1px solid var(--border); background: white;
+  }
+  pre.raw-error {
+    padding: 0.8em 1em; margin: 0; color: var(--error);
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.88em; white-space: pre-wrap; word-break: break-word;
+  }
+  footer { text-align: center; color: var(--muted); font-size: 0.85em; padding: 2em 1em; }
+  code { background: var(--surface); padding: 0.1em 0.3em; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Factoidal — COTTAS / Parquet demo (js_of_ocaml, Phase 2)</h1>
+  <div class="tag">
+    This page loads a <strong>COTTAS Parquet</strong> file (four string columns:
+    subject, predicate, object, graph) and runs a SPARQL query against it entirely in
+    the browser. Parquet decoding is done by the F*-verified
+    <code>Parquet.Footer</code> module; Zstandard decompression uses the
+    vendored <a href="https://github.com/101arrowz/fzstd">fzstd</a> MIT
+    library (~8 KB). Everything else is the same <code>factoidal.js</code>
+    as <a href="./index.html">the main demo</a>.
+  </div>
+  <div class="warn">
+    Phase 2 milestone — see
+    <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md">the
+    wiring plan</a>. Remote URL loading works via <code>fetch</code>;
+    the cached bytes are fed to the virtual FS. Turtle-size inputs can
+    be slow (see the performance caveats in
+    <code>CLAUDE.md</code>) but the bundled 1 KB sample runs instantly.
+  </div>
+</header>
+
+<main>
+<section>
+  <div class="editor">
+    <label for="parquet-url">COTTAS Parquet URL (or relative path)</label>
+    <input type="url" id="parquet-url"
+           value="./cottas-examples/sample.parquet"
+           spellcheck="false">
+  </div>
+
+  <div class="editor">
+    <label for="query">SPARQL query</label>
+    <textarea id="query" spellcheck="false">PREFIX ex: &lt;https://example.org/&gt;
+SELECT ?s ?p ?o WHERE {
+  GRAPH ?g { ?s ?p ?o }
+} ORDER BY ?g ?s</textarea>
+  </div>
+
+  <div class="controls">
+    <button class="run" id="run" disabled>Load &amp; run query</button>
+    <span class="status" id="status">Loading factoidal.js&hellip;</span>
+  </div>
+
+  <div id="output-wrap" class="empty">Results will appear here.</div>
+</section>
+
+<section style="margin-top: 2em;">
+  <h2 style="font-size: 1.1em; color: var(--brand-dark);">Try your own COTTAS file</h2>
+  <p style="color: var(--muted); font-size: 0.92em;">
+    Point the URL field above at any COTTAS-encoded Parquet file reachable by
+    <code>fetch</code>. Same-origin or CORS-enabled only. Generate new
+    COTTAS artifacts with <code>tools/corpus_pipeline.py
+    materialize-nq-cottas-corpus</code> in the repo.
+  </p>
+  <p style="color: var(--muted); font-size: 0.92em;">
+    Local paths like <code>./cottas-examples/sample.parquet</code> resolve
+    relative to this HTML page — drop your own
+    <code>*.parquet</code> next to it on the same host to test.
+  </p>
+</section>
+</main>
+
+<footer>
+  Built from <a href="https://github.com/danbri/factoidal">github.com/danbri/factoidal</a>.
+  Uses <a href="https://github.com/101arrowz/fzstd">fzstd</a> (MIT) for
+  Zstandard decompression.
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var urlEl = $('parquet-url');
+  var queryEl = $('query');
+  var runBtn = $('run');
+  var statusEl = $('status');
+  var outputWrap = $('output-wrap');
+
+  // -------------------------------------------------------------------
+  // factoidal.js loader — same pattern as docs/fstar-extracted/index.html.
+  // -------------------------------------------------------------------
+  var factoidalSource = null;
+  var fetchPromise = null;
+  function getFactoidal() {
+    if (factoidalSource) return Promise.resolve(factoidalSource);
+    if (fetchPromise) return fetchPromise;
+    fetchPromise = fetch('./factoidal.js')
+      .then(function (r) {
+        if (!r.ok) throw new Error('factoidal.js HTTP ' + r.status);
+        return r.text();
+      })
+      .then(function (text) { factoidalSource = text; return text; });
+    return fetchPromise;
+  }
+
+  getFactoidal()
+    .then(function () { statusEl.textContent = 'Ready.'; runBtn.disabled = false; })
+    .catch(function (e) { statusEl.textContent = 'factoidal.js failed to load: ' + e.message; });
+
+  // -------------------------------------------------------------------
+  // Result rendering (JSON results format). Trimmed copy of the helpers
+  // in index.html / demo-dev.html.
+  // -------------------------------------------------------------------
+  function abbrev(iri) {
+    var PX = [
+      ['http://www.w3.org/1999/02/22-rdf-syntax-ns#', 'rdf:'],
+      ['http://www.w3.org/2000/01/rdf-schema#',       'rdfs:'],
+      ['http://www.w3.org/2001/XMLSchema#',           'xsd:'],
+      ['https://example.org/',                        'ex:'],
+      ['http://example.org/',                         'ex:'],
+    ];
+    for (var i = 0; i < PX.length; i++) {
+      if (iri.indexOf(PX[i][0]) === 0) return PX[i][1] + iri.slice(PX[i][0].length);
+    }
+    return '<' + iri + '>';
+  }
+
+  function renderBinding(b) {
+    var td = document.createElement('td');
+    if (!b) { td.textContent = ''; return td; }
+    if (b.type === 'uri') {
+      td.className = 'iri';
+      td.textContent = abbrev(b.value);
+      td.title = b.value;
+    } else if (b.type === 'bnode') {
+      td.className = 'bnode';
+      td.textContent = '_:' + b.value;
+    } else {
+      td.className = 'literal';
+      var s = '"' + b.value + '"';
+      if (b['xml:lang']) s += '@' + b['xml:lang'];
+      else if (b.datatype && b.datatype !== 'http://www.w3.org/2001/XMLSchema#string')
+        s += '^^' + abbrev(b.datatype);
+      td.textContent = s;
+    }
+    return td;
+  }
+
+  function renderResults(json) {
+    outputWrap.className = '';
+    outputWrap.innerHTML = '';
+    if (typeof json.boolean === 'boolean') {
+      var div = document.createElement('div');
+      div.className = 'ask-result ' + (json.boolean ? 'yes' : 'no');
+      div.textContent = json.boolean ? 'Yes' : 'No';
+      outputWrap.appendChild(div);
+      return;
+    }
+    var vars = (json.head && json.head.vars) || [];
+    var rows = (json.results && json.results.bindings) || [];
+    if (vars.length === 0 && rows.length === 0) {
+      outputWrap.className = 'empty';
+      outputWrap.textContent = '(no rows)';
+      return;
+    }
+    var table = document.createElement('table');
+    table.className = 'results';
+    var thead = document.createElement('thead');
+    var hrow = document.createElement('tr');
+    vars.forEach(function (v) {
+      var th = document.createElement('th'); th.textContent = '?' + v; hrow.appendChild(th);
+    });
+    thead.appendChild(hrow);
+    table.appendChild(thead);
+    var tbody = document.createElement('tbody');
+    rows.forEach(function (r) {
+      var tr = document.createElement('tr');
+      vars.forEach(function (v) { tr.appendChild(renderBinding(r[v])); });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    outputWrap.appendChild(table);
+    var meta = document.createElement('div');
+    meta.className = 'result-meta';
+    meta.textContent = rows.length + ' row' + (rows.length === 1 ? '' : 's') + ' (COTTAS via Parquet + fzstd)';
+    outputWrap.appendChild(meta);
+  }
+
+  function renderError(text) {
+    outputWrap.className = 'error';
+    outputWrap.innerHTML = '';
+    var pre = document.createElement('pre');
+    pre.className = 'raw-error';
+    pre.textContent = text;
+    outputWrap.appendChild(pre);
+  }
+
+  // -------------------------------------------------------------------
+  // Run
+  // -------------------------------------------------------------------
+  runBtn.addEventListener('click', function () {
+    runBtn.disabled = true;
+    statusEl.textContent = 'Fetching Parquet bytes…';
+    outputWrap.className = 'empty';
+    outputWrap.textContent = '';
+
+    var url = urlEl.value.trim();
+    if (url === '') {
+      renderError('Please enter a URL or path to a .parquet file.');
+      runBtn.disabled = false;
+      statusEl.textContent = 'Ready.';
+      return;
+    }
+
+    fetch(url)
+      .then(function (r) {
+        if (!r.ok) throw new Error('fetch ' + url + ' -> HTTP ' + r.status);
+        return r.arrayBuffer();
+      })
+      .then(function (buf) {
+        statusEl.textContent = 'Decoding ' + buf.byteLength + ' bytes…';
+        var bytes = new Uint8Array(buf);
+        // The factoidal CLI opens COTTAS via --data-cottas <path>, which
+        // calls open_in_bin on the OCaml side. js_of_ocaml's pseudo-FS
+        // translates that to a virtual-FS lookup; we register the bytes
+        // under a deterministic path and point factoidal at it.
+        var virtPath = '/tmp/factoidal-cottas.parquet';
+
+        // Convert Uint8Array to a latin1 string — that's the
+        // representation js_of_ocaml expects for binary content
+        // registered via jsoo_fs_tmp (each codepoint = one byte).
+        var chars = new Array(bytes.length);
+        for (var i = 0; i < bytes.length; i++) chars[i] = String.fromCharCode(bytes[i]);
+        var content = chars.join('');
+
+        globalThis.jsoo_fs_tmp = [{ name: virtPath, content: content }];
+        globalThis.process = globalThis.process || {};
+        globalThis.process.argv = ['node', 'factoidal',
+          '--data-cottas', virtPath,
+          '-e', queryEl.value,
+          '-o', 'json'];
+
+        // Capture stdout/stderr into a buffer (factoidal writes JSON to
+        // stdout). console.log is js_of_ocaml's stdout in the browser.
+        var buf_out = [];
+        var origLog = console.log;
+        var origErr = console.error;
+        console.log = function () { buf_out.push(Array.prototype.slice.call(arguments).join(' ')); };
+        console.error = function () { buf_out.push(Array.prototype.slice.call(arguments).join(' ')); };
+
+        var exitCode = 0;
+        var origExit = globalThis.process.exit;
+        globalThis.process.exit = function (n) {
+          exitCode = n | 0;
+          throw new Error('__factoidal_exit__');
+        };
+
+        statusEl.textContent = 'Running SPARQL…';
+        return getFactoidal().then(function (src) {
+          try {
+            // eslint-disable-next-line no-new-func
+            (new Function(src))();
+          } catch (e) {
+            if (!e || e.message !== '__factoidal_exit__') {
+              buf_out.push('[demo] ' + (e && e.message ? e.message : String(e)));
+              exitCode = 1;
+            }
+          } finally {
+            console.log = origLog;
+            console.error = origErr;
+            globalThis.process.exit = origExit;
+          }
+          return { out: buf_out.join('\n'), exitCode: exitCode };
+        });
+      })
+      .then(function (result) {
+        if (result.exitCode !== 0) {
+          renderError(result.out || '(exit ' + result.exitCode + ')');
+          statusEl.textContent = 'Finished with errors.';
+          return;
+        }
+        // factoidal may emit diagnostic lines before the JSON. Grab from
+        // the first '{' through the last '}'.
+        var s = result.out;
+        var first = s.indexOf('{');
+        var last = s.lastIndexOf('}');
+        if (first < 0 || last < first) {
+          renderError(s || '(no output)');
+          statusEl.textContent = 'Finished — no JSON found.';
+          return;
+        }
+        var json;
+        try { json = JSON.parse(s.slice(first, last + 1)); }
+        catch (e) {
+          renderError('JSON parse error: ' + e.message + '\n\nRaw output:\n' + s);
+          statusEl.textContent = 'Finished — JSON parse error.';
+          return;
+        }
+        renderResults(json);
+        statusEl.textContent = 'Done.';
+      })
+      .catch(function (e) {
+        renderError((e && e.message) || String(e));
+        statusEl.textContent = 'Error.';
+      })
+      .finally(function () { runBtn.disabled = false; });
+  });
+})();
+</script>
+
+</body>
+</html>

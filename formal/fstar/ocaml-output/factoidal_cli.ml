@@ -652,7 +652,13 @@ let () =
     match cfg.output_format with
     | Table ->
       (match ask_answer with
-       | Some b -> Printf.printf "%s\n" (if b then "Yes" else "No")
+       | Some b ->
+         let lexical =
+           match SPARQL11_Algebra.er_to_string (SPARQL11_Algebra.ER_Bool b) with
+           | FStar_Pervasives_Native.Some s -> s
+           | FStar_Pervasives_Native.None -> if b then "true" else "false"
+         in
+         Printf.printf "%s\n" lexical
        | None -> print_results_table vars results)
     | CSV -> print_results_csv vars results
     | JSON ->

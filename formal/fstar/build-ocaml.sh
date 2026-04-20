@@ -249,40 +249,60 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
   # Shared F*-extracted modules used by both the W3C runner and the
   # factoidal query CLI.
   #
-  # NOTE: Ballyhoo HDT/COTTAS and Parquet_Footer are intentionally omitted
-  # from the js_of_ocaml build in Phase 1 — they require native Unix
-  # (HDT shells out to hdtSearch) and a C libzstd stub (COTTAS Zstd
-  # decompression). The full browser story is Phase 2 (js_of_ocaml) and
-  # Phase 3 (wasm_of_ocaml) per docs/designissues/2026-04-19-cottas-
-  # parquet-wiring-plan.md. SPARQL11_Store depends on those modules, so
-  # it is also kept out of the JS bytecode build for now.
+  # Phase 2 (2026-04-20): Parquet_Footer + Parser_Ballyhoo{,Bloom,COTTAS}
+  # are now included. The js_of_ocaml build can open COTTAS/Parquet
+  # artifacts in the browser via:
+  #   * the Zstd JS shim (vendor/fzstd.umd.js + parquet_zstd_stubs.js)
+  #   * the js_of_ocaml pseudo-FS for /-rooted local paths
+  # Parser_BallyhooHDT{,Q} and SPARQL11_Store stay out of the JS build:
+  # HDT shells out via Unix.open_process_full which has no JS equivalent.
+  # factoidal_cli.ml only uses Parser_BallyhooCOTTAS directly for the
+  # --data-cottas path, so omitting HDT doesn't regress the CLI's JS
+  # build. Phase 3 (wasm_of_ocaml) with Zstd is a follow-on commit.
+  # See docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md.
   FSTAR_MODULES=(
-    RDF_Graph_Executable.ml Tableau.ml
+    RDF_Graph_Executable.ml Parquet_Footer.ml Tableau.ml
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
+    Parser_Ballyhoo.ml Parser_BallyhooBloom.ml Parser_BallyhooCOTTAS.ml
     fstar_pure_hashes.ml
     SPARQL11_Algebra.ml SPARQL11_Parser.ml SPARQL_Protocol.ml
   )
 
-  # Build w3c_runner bytecode for js_of_ocaml
+  # Build w3c_runner bytecode for js_of_ocaml. We pass -custom + a tiny
+  # C stub (parquet_zstd_stubs_jsoo.c) to satisfy the bytecode linker:
+  # Parquet_Footer's `external caml_parquet_zstd_decompress_hex` must
+  # resolve to *some* symbol, even though js_of_ocaml replaces it with
+  # the JS shim at bundle time. The stub returns None and is never
+  # actually executed in the JS build path.
   ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
+    -custom parquet_zstd_stubs_jsoo.c \
     "${FSTAR_MODULES[@]}" \
     w3c_runner.ml \
     -o w3c_runner.byte 2>&1 | grep -i error || true
 
   # Build factoidal (query + parse CLI) bytecode for js_of_ocaml
   ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
+    -custom parquet_zstd_stubs_jsoo.c \
     "${FSTAR_MODULES[@]}" \
     factoidal_cli.ml \
     -o factoidal.byte 2>&1 | grep -i error || true
 
-  # Convert both to JS with zarith stubs
+  # Convert both to JS with zarith stubs. vendor/fzstd.umd.js is a
+  # vendored MIT-licensed Zstandard decompressor (~8 KB) that registers
+  # itself as globalThis.fzstd; parquet_zstd_stubs.js is our thin shim
+  # that implements caml_parquet_zstd_decompress_hex on top of it. Both
+  # are concatenated into the output by js_of_ocaml. Order matters:
+  # fzstd.umd.js must come before parquet_zstd_stubs.js so the global
+  # is defined when our shim's Requires: checks run at bundle load.
   js_of_ocaml \
     +zarith_stubs_js/biginteger.js \
     +zarith_stubs_js/runtime.js \
     fstar_int_stubs.js \
     fstar_hash_stubs.js \
+    vendor/fzstd.umd.js \
+    parquet_zstd_stubs.js \
     w3c_runner.byte \
     -o ../../../docs/fstar-extracted/w3c-runner.js 2>&1 | grep -v "Warning \[deprecated" | grep -v "^$" || true
 
@@ -291,6 +311,8 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     +zarith_stubs_js/runtime.js \
     fstar_int_stubs.js \
     fstar_hash_stubs.js \
+    vendor/fzstd.umd.js \
+    parquet_zstd_stubs.js \
     factoidal.byte \
     -o ../../../docs/fstar-extracted/factoidal.js 2>&1 | grep -v "Warning \[deprecated" | grep -v "^$" || true
 
@@ -409,6 +431,22 @@ if [[ "$STEP" == "npm" ]]; then
   if [[ -L "$NPMDIR/factoidal.js" ]]; then rm "$NPMDIR/factoidal.js"; fi
   cp "$JSDIR/factoidal.js" "$NPMDIR/factoidal.js"
   echo "  Copied: $JSDIR/factoidal.js → $NPMDIR/factoidal.js ($(wc -c < "$NPMDIR/factoidal.js") bytes)"
+
+  # Phase 2 COTTAS/Parquet support: the Zstd JS library + our shim are
+  # already inlined into factoidal.js by the js step above, so the npm
+  # package doesn't need separate files at runtime. We still copy the
+  # raw shim + vendored fzstd as reference material so downstream
+  # consumers can audit what landed in the bundle without grepping the
+  # minified output.
+  if [[ -f "$OUTDIR/parquet_zstd_stubs.js" ]]; then
+    cp "$OUTDIR/parquet_zstd_stubs.js" "$NPMDIR/parquet_zstd_stubs.js"
+    echo "  Copied: $OUTDIR/parquet_zstd_stubs.js → $NPMDIR/parquet_zstd_stubs.js (reference only)"
+  fi
+  if [[ -f "$OUTDIR/vendor/fzstd.umd.js" ]]; then
+    mkdir -p "$NPMDIR/vendor"
+    cp "$OUTDIR/vendor/fzstd.umd.js" "$NPMDIR/vendor/fzstd.umd.js"
+    echo "  Copied: $OUTDIR/vendor/fzstd.umd.js → $NPMDIR/vendor/fzstd.umd.js (reference only)"
+  fi
 
   # Wasm artifacts are optional — skip silently if they don't exist yet.
   # Needed by npm/factoidal/browser-wasm.js (the wasm_of_ocaml browser
