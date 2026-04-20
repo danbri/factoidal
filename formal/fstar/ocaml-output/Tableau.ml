@@ -15,6 +15,20 @@ let owl_allValuesFrom : RDF_Graph_Executable.wf_iri=
   "http://www.w3.org/2002/07/owl#allValuesFrom"
 let owl_hasValue : RDF_Graph_Executable.wf_iri=
   "http://www.w3.org/2002/07/owl#hasValue"
+let owl_cardinality : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/2002/07/owl#cardinality"
+let owl_minCardinality : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/2002/07/owl#minCardinality"
+let owl_maxCardinality : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/2002/07/owl#maxCardinality"
+let owl_qualifiedCardinality : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/2002/07/owl#qualifiedCardinality"
+let owl_minQualifiedCardinality : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/2002/07/owl#minQualifiedCardinality"
+let owl_maxQualifiedCardinality : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/2002/07/owl#maxQualifiedCardinality"
+let owl_onClass : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/2002/07/owl#onClass"
 let rdf_first : RDF_Graph_Executable.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
 let rdf_rest : RDF_Graph_Executable.wf_iri=
@@ -30,6 +44,13 @@ type class_expr =
   | CE_IntersectionOf of class_expr Prims.list 
   | CE_UnionOf of class_expr Prims.list 
   | CE_ComplementOf of class_expr 
+  | CE_MinCard of Prims.nat * RDF_Graph_Executable.wf_iri 
+  | CE_MaxCard of Prims.nat * RDF_Graph_Executable.wf_iri 
+  | CE_ExactCard of Prims.nat * RDF_Graph_Executable.wf_iri 
+  | CE_MinQualCard of Prims.nat * RDF_Graph_Executable.wf_iri * class_expr 
+  | CE_MaxQualCard of Prims.nat * RDF_Graph_Executable.wf_iri * class_expr 
+  | CE_ExactQualCard of Prims.nat * RDF_Graph_Executable.wf_iri * class_expr
+  
   | CE_Unknown 
 let uu___is_CE_Named (projectee : class_expr) : Prims.bool=
   match projectee with | CE_Named _0 -> true | uu___ -> false
@@ -69,6 +90,56 @@ let uu___is_CE_ComplementOf (projectee : class_expr) : Prims.bool=
   match projectee with | CE_ComplementOf _0 -> true | uu___ -> false
 let __proj__CE_ComplementOf__item___0 (projectee : class_expr) : class_expr=
   match projectee with | CE_ComplementOf _0 -> _0
+let uu___is_CE_MinCard (projectee : class_expr) : Prims.bool=
+  match projectee with | CE_MinCard (_0, _1) -> true | uu___ -> false
+let __proj__CE_MinCard__item___0 (projectee : class_expr) : Prims.nat=
+  match projectee with | CE_MinCard (_0, _1) -> _0
+let __proj__CE_MinCard__item___1 (projectee : class_expr) :
+  RDF_Graph_Executable.wf_iri=
+  match projectee with | CE_MinCard (_0, _1) -> _1
+let uu___is_CE_MaxCard (projectee : class_expr) : Prims.bool=
+  match projectee with | CE_MaxCard (_0, _1) -> true | uu___ -> false
+let __proj__CE_MaxCard__item___0 (projectee : class_expr) : Prims.nat=
+  match projectee with | CE_MaxCard (_0, _1) -> _0
+let __proj__CE_MaxCard__item___1 (projectee : class_expr) :
+  RDF_Graph_Executable.wf_iri=
+  match projectee with | CE_MaxCard (_0, _1) -> _1
+let uu___is_CE_ExactCard (projectee : class_expr) : Prims.bool=
+  match projectee with | CE_ExactCard (_0, _1) -> true | uu___ -> false
+let __proj__CE_ExactCard__item___0 (projectee : class_expr) : Prims.nat=
+  match projectee with | CE_ExactCard (_0, _1) -> _0
+let __proj__CE_ExactCard__item___1 (projectee : class_expr) :
+  RDF_Graph_Executable.wf_iri=
+  match projectee with | CE_ExactCard (_0, _1) -> _1
+let uu___is_CE_MinQualCard (projectee : class_expr) : Prims.bool=
+  match projectee with | CE_MinQualCard (_0, _1, _2) -> true | uu___ -> false
+let __proj__CE_MinQualCard__item___0 (projectee : class_expr) : Prims.nat=
+  match projectee with | CE_MinQualCard (_0, _1, _2) -> _0
+let __proj__CE_MinQualCard__item___1 (projectee : class_expr) :
+  RDF_Graph_Executable.wf_iri=
+  match projectee with | CE_MinQualCard (_0, _1, _2) -> _1
+let __proj__CE_MinQualCard__item___2 (projectee : class_expr) : class_expr=
+  match projectee with | CE_MinQualCard (_0, _1, _2) -> _2
+let uu___is_CE_MaxQualCard (projectee : class_expr) : Prims.bool=
+  match projectee with | CE_MaxQualCard (_0, _1, _2) -> true | uu___ -> false
+let __proj__CE_MaxQualCard__item___0 (projectee : class_expr) : Prims.nat=
+  match projectee with | CE_MaxQualCard (_0, _1, _2) -> _0
+let __proj__CE_MaxQualCard__item___1 (projectee : class_expr) :
+  RDF_Graph_Executable.wf_iri=
+  match projectee with | CE_MaxQualCard (_0, _1, _2) -> _1
+let __proj__CE_MaxQualCard__item___2 (projectee : class_expr) : class_expr=
+  match projectee with | CE_MaxQualCard (_0, _1, _2) -> _2
+let uu___is_CE_ExactQualCard (projectee : class_expr) : Prims.bool=
+  match projectee with
+  | CE_ExactQualCard (_0, _1, _2) -> true
+  | uu___ -> false
+let __proj__CE_ExactQualCard__item___0 (projectee : class_expr) : Prims.nat=
+  match projectee with | CE_ExactQualCard (_0, _1, _2) -> _0
+let __proj__CE_ExactQualCard__item___1 (projectee : class_expr) :
+  RDF_Graph_Executable.wf_iri=
+  match projectee with | CE_ExactQualCard (_0, _1, _2) -> _1
+let __proj__CE_ExactQualCard__item___2 (projectee : class_expr) : class_expr=
+  match projectee with | CE_ExactQualCard (_0, _1, _2) -> _2
 let uu___is_CE_Unknown (projectee : class_expr) : Prims.bool=
   match projectee with | CE_Unknown -> true | uu___ -> false
 let find_first_object (g : RDF_Graph_Executable.rdf_graph)
@@ -105,6 +176,45 @@ let rec walk_rdf_list (g : RDF_Graph_Executable.rdf_graph)
                      (walk_rdf_list g t (n - Prims.int_one))
                  | (uu___1, uu___2) -> []))
        | uu___ -> [])
+let cardinality_literal_to_nat (s : Prims.string) :
+  Prims.nat FStar_Pervasives_Native.option=
+  if s = "0"
+  then FStar_Pervasives_Native.Some Prims.int_zero
+  else
+    if s = "1"
+    then FStar_Pervasives_Native.Some Prims.int_one
+    else
+      if s = "2"
+      then FStar_Pervasives_Native.Some (Prims.of_int (2))
+      else
+        if s = "3"
+        then FStar_Pervasives_Native.Some (Prims.of_int (3))
+        else
+          if s = "4"
+          then FStar_Pervasives_Native.Some (Prims.of_int (4))
+          else
+            if s = "5"
+            then FStar_Pervasives_Native.Some (Prims.of_int (5))
+            else
+              if s = "6"
+              then FStar_Pervasives_Native.Some (Prims.of_int (6))
+              else
+                if s = "7"
+                then FStar_Pervasives_Native.Some (Prims.of_int (7))
+                else
+                  if s = "8"
+                  then FStar_Pervasives_Native.Some (Prims.of_int (8))
+                  else
+                    if s = "9"
+                    then FStar_Pervasives_Native.Some (Prims.of_int (9))
+                    else FStar_Pervasives_Native.None
+let cardinality_value (g : RDF_Graph_Executable.rdf_graph)
+  (s : RDF_Graph_Executable.subject) (pred : RDF_Graph_Executable.wf_iri) :
+  Prims.nat FStar_Pervasives_Native.option=
+  match find_first_object g s pred with
+  | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_Literal l) ->
+      cardinality_literal_to_nat l.RDF_Graph_Executable.lexical_form
+  | uu___ -> FStar_Pervasives_Native.None
 let rec parse_class_expr (g : RDF_Graph_Executable.rdf_graph)
   (t : RDF_Graph_Executable.rdf_term) (fuel : Prims.nat) : class_expr=
   match fuel with
@@ -162,7 +272,123 @@ let rec parse_class_expr (g : RDF_Graph_Executable.rdf_graph)
                                                | FStar_Pervasives_Native.Some
                                                    v -> CE_HasValue (p, v)
                                                | FStar_Pervasives_Native.None
-                                                   -> CE_Unknown)))
+                                                   ->
+                                                   (match cardinality_value g
+                                                            s
+                                                            owl_minQualifiedCardinality
+                                                    with
+                                                    | FStar_Pervasives_Native.Some
+                                                        k ->
+                                                        (match find_first_object
+                                                                 g s
+                                                                 owl_onClass
+                                                         with
+                                                         | FStar_Pervasives_Native.Some
+                                                             c ->
+                                                             CE_MinQualCard
+                                                               (k, p,
+                                                                 (parse_class_expr
+                                                                    g c
+                                                                    (
+                                                                    n -
+                                                                    Prims.int_one)))
+                                                         | FStar_Pervasives_Native.None
+                                                             ->
+                                                             CE_MinCard
+                                                               (k, p))
+                                                    | FStar_Pervasives_Native.None
+                                                        ->
+                                                        (match cardinality_value
+                                                                 g s
+                                                                 owl_maxQualifiedCardinality
+                                                         with
+                                                         | FStar_Pervasives_Native.Some
+                                                             k ->
+                                                             (match find_first_object
+                                                                    g s
+                                                                    owl_onClass
+                                                              with
+                                                              | FStar_Pervasives_Native.Some
+                                                                  c ->
+                                                                  CE_MaxQualCard
+                                                                    (k, p,
+                                                                    (parse_class_expr
+                                                                    g c
+                                                                    (n -
+                                                                    Prims.int_one)))
+                                                              | FStar_Pervasives_Native.None
+                                                                  ->
+                                                                  CE_MaxCard
+                                                                    (k, p))
+                                                         | FStar_Pervasives_Native.None
+                                                             ->
+                                                             (match cardinality_value
+                                                                    g s
+                                                                    owl_qualifiedCardinality
+                                                              with
+                                                              | FStar_Pervasives_Native.Some
+                                                                  k ->
+                                                                  (match 
+                                                                    find_first_object
+                                                                    g s
+                                                                    owl_onClass
+                                                                   with
+                                                                   | 
+                                                                   FStar_Pervasives_Native.Some
+                                                                    c ->
+                                                                    CE_ExactQualCard
+                                                                    (k, p,
+                                                                    (parse_class_expr
+                                                                    g c
+                                                                    (n -
+                                                                    Prims.int_one)))
+                                                                   | 
+                                                                   FStar_Pervasives_Native.None
+                                                                    ->
+                                                                    CE_ExactCard
+                                                                    (k, p))
+                                                              | FStar_Pervasives_Native.None
+                                                                  ->
+                                                                  (match 
+                                                                    cardinality_value
+                                                                    g s
+                                                                    owl_minCardinality
+                                                                   with
+                                                                   | 
+                                                                   FStar_Pervasives_Native.Some
+                                                                    k ->
+                                                                    CE_MinCard
+                                                                    (k, p)
+                                                                   | 
+                                                                   FStar_Pervasives_Native.None
+                                                                    ->
+                                                                    (match 
+                                                                    cardinality_value
+                                                                    g s
+                                                                    owl_maxCardinality
+                                                                    with
+                                                                    | 
+                                                                    FStar_Pervasives_Native.Some
+                                                                    k ->
+                                                                    CE_MaxCard
+                                                                    (k, p)
+                                                                    | 
+                                                                    FStar_Pervasives_Native.None
+                                                                    ->
+                                                                    (match 
+                                                                    cardinality_value
+                                                                    g s
+                                                                    owl_cardinality
+                                                                    with
+                                                                    | 
+                                                                    FStar_Pervasives_Native.Some
+                                                                    k ->
+                                                                    CE_ExactCard
+                                                                    (k, p)
+                                                                    | 
+                                                                    FStar_Pervasives_Native.None
+                                                                    ->
+                                                                    CE_Unknown)))))))))
                                 | uu___1 -> CE_Unknown)))))
        | uu___ -> CE_Unknown)
 and parse_class_expr_list (g : RDF_Graph_Executable.rdf_graph)
@@ -223,7 +449,44 @@ let rec is_member (g : RDF_Graph_Executable.rdf_graph)
            (match is_member g i c (n - Prims.int_one) with
             | FStar_Pervasives_Native.Some b ->
                 FStar_Pervasives_Native.Some (Prims.op_Negation b)
-            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None))
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+       | CE_MinCard (k, p) ->
+           let succs = find_P_successors g i p in
+           if (FStar_List_Tot_Base.length succs) >= k
+           then FStar_Pervasives_Native.Some true
+           else FStar_Pervasives_Native.None
+       | CE_MaxCard (k, p) ->
+           let succs = find_P_successors g i p in
+           if
+             (k = Prims.int_zero) &&
+               ((FStar_List_Tot_Base.length succs) = Prims.int_zero)
+           then FStar_Pervasives_Native.Some true
+           else FStar_Pervasives_Native.None
+       | CE_ExactCard (k, p) ->
+           let succs = find_P_successors g i p in
+           if
+             (k = Prims.int_zero) &&
+               ((FStar_List_Tot_Base.length succs) = Prims.int_zero)
+           then FStar_Pervasives_Native.Some true
+           else FStar_Pervasives_Native.None
+       | CE_MinQualCard (k, p, c) ->
+           let succs = find_P_successors g i p in
+           let matched = count_qual_successors g succs c (n - Prims.int_one) in
+           if matched >= k
+           then FStar_Pervasives_Native.Some true
+           else FStar_Pervasives_Native.None
+       | CE_MaxQualCard (k, p, c) ->
+           let succs = find_P_successors g i p in
+           let matched = count_qual_successors g succs c (n - Prims.int_one) in
+           if (k = Prims.int_zero) && (matched = Prims.int_zero)
+           then FStar_Pervasives_Native.Some true
+           else FStar_Pervasives_Native.None
+       | CE_ExactQualCard (k, p, c) ->
+           let succs = find_P_successors g i p in
+           let matched = count_qual_successors g succs c (n - Prims.int_one) in
+           if (k = Prims.int_zero) && (matched = Prims.int_zero)
+           then FStar_Pervasives_Native.Some true
+           else FStar_Pervasives_Native.None)
 and any_is_member (g : RDF_Graph_Executable.rdf_graph)
   (ys : RDF_Graph_Executable.rdf_term Prims.list) (c : class_expr)
   (fuel : Prims.nat) : Prims.bool FStar_Pervasives_Native.option=
@@ -282,6 +545,19 @@ and is_union_member (g : RDF_Graph_Executable.rdf_graph)
             | FStar_Pervasives_Native.Some true ->
                 FStar_Pervasives_Native.Some true
             | uu___ -> FStar_Pervasives_Native.None))
+and count_qual_successors (g : RDF_Graph_Executable.rdf_graph)
+  (ys : RDF_Graph_Executable.rdf_term Prims.list) (c : class_expr)
+  (fuel : Prims.nat) : Prims.nat=
+  match ys with
+  | [] -> Prims.int_zero
+  | y::tl ->
+      let rest = count_qual_successors g tl c fuel in
+      (match term_as_subject y with
+       | FStar_Pervasives_Native.None -> rest
+       | FStar_Pervasives_Native.Some ys_subj ->
+           (match is_member g ys_subj c fuel with
+            | FStar_Pervasives_Native.Some true -> rest + Prims.int_one
+            | uu___ -> rest))
 type tab_link =
   {
   tl_pred: RDF_Graph_Executable.wf_iri ;

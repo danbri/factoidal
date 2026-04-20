@@ -69,6 +69,29 @@ let owl_hasValue : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#hasValue");
   "http://www.w3.org/2002/07/owl#hasValue"
 
+(* Stage (c): cardinality restrictions. *)
+let owl_cardinality : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#cardinality");
+  "http://www.w3.org/2002/07/owl#cardinality"
+let owl_minCardinality : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#minCardinality");
+  "http://www.w3.org/2002/07/owl#minCardinality"
+let owl_maxCardinality : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#maxCardinality");
+  "http://www.w3.org/2002/07/owl#maxCardinality"
+let owl_qualifiedCardinality : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#qualifiedCardinality");
+  "http://www.w3.org/2002/07/owl#qualifiedCardinality"
+let owl_minQualifiedCardinality : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#minQualifiedCardinality");
+  "http://www.w3.org/2002/07/owl#minQualifiedCardinality"
+let owl_maxQualifiedCardinality : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#maxQualifiedCardinality");
+  "http://www.w3.org/2002/07/owl#maxQualifiedCardinality"
+let owl_onClass : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#onClass");
+  "http://www.w3.org/2002/07/owl#onClass"
+
 let rdf_first : wf_iri =
   assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#first");
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
@@ -109,6 +132,13 @@ noeq type class_expr =
      within one branch is a clash" check; full dual-branch search is
      stage (d). *)
   | CE_ComplementOf   : class_expr -> class_expr
+  (* Stage (c): cardinality restrictions. *)
+  | CE_MinCard        : nat -> wf_iri -> class_expr
+  | CE_MaxCard        : nat -> wf_iri -> class_expr
+  | CE_ExactCard      : nat -> wf_iri -> class_expr
+  | CE_MinQualCard    : nat -> wf_iri -> class_expr -> class_expr
+  | CE_MaxQualCard    : nat -> wf_iri -> class_expr -> class_expr
+  | CE_ExactQualCard  : nat -> wf_iri -> class_expr -> class_expr
   (* Parse gave up — unknown class expression. `is_member` returns
      None for these, falling back to the Datalog closure. *)
   | CE_Unknown        : class_expr
@@ -168,6 +198,29 @@ let rec walk_rdf_list (g : rdf_graph) (head : rdf_term) (fuel : nat)
    consumes `ts` at fixed `fuel`; parse_class_expr strictly
    decreases `fuel`. Inside parse_class_expr we pass `n - 1` to the
    list walker so the fuel is strictly smaller than our own. *)
+(* Cardinality values in W3C entailment tests are tiny (0-9 covers
+   essentially all cases). We match literal lexical forms directly so
+   F\* doesn't need to verify a string-to-nat helper. Anything outside
+   the 0-9 range is surfaced as None, which makes the outer parse
+   emit CE_Unknown — sound under open-world. *)
+let cardinality_literal_to_nat (s : string) : option nat =
+  if s = "0" then Some 0
+  else if s = "1" then Some 1
+  else if s = "2" then Some 2
+  else if s = "3" then Some 3
+  else if s = "4" then Some 4
+  else if s = "5" then Some 5
+  else if s = "6" then Some 6
+  else if s = "7" then Some 7
+  else if s = "8" then Some 8
+  else if s = "9" then Some 9
+  else None
+
+let cardinality_value (g : rdf_graph) (s : subject) (pred : wf_iri) : option nat =
+  match find_first_object g s pred with
+  | Some (T_Literal l) -> cardinality_literal_to_nat l.lexical_form
+  | _ -> None
+
 let rec parse_class_expr (g : rdf_graph) (t : rdf_term) (fuel : nat)
   : Tot class_expr (decreases %[fuel; 0]) =
   match fuel with
@@ -213,7 +266,35 @@ let rec parse_class_expr (g : rdf_graph) (t : rdf_term) (fuel : nat)
                     | None ->
                       match find_first_object g s owl_hasValue with
                       | Some v -> CE_HasValue p v
-                      | None -> CE_Unknown)
+                      | None ->
+                        (* Stage (c): cardinality restrictions. *)
+                        (match cardinality_value g s owl_minQualifiedCardinality with
+                         | Some k ->
+                           (match find_first_object g s owl_onClass with
+                            | Some c -> CE_MinQualCard k p (parse_class_expr g c (n - 1))
+                            | None -> CE_MinCard k p)
+                         | None ->
+                           match cardinality_value g s owl_maxQualifiedCardinality with
+                           | Some k ->
+                             (match find_first_object g s owl_onClass with
+                              | Some c -> CE_MaxQualCard k p (parse_class_expr g c (n - 1))
+                              | None -> CE_MaxCard k p)
+                           | None ->
+                             match cardinality_value g s owl_qualifiedCardinality with
+                             | Some k ->
+                               (match find_first_object g s owl_onClass with
+                                | Some c -> CE_ExactQualCard k p (parse_class_expr g c (n - 1))
+                                | None -> CE_ExactCard k p)
+                             | None ->
+                               match cardinality_value g s owl_minCardinality with
+                               | Some k -> CE_MinCard k p
+                               | None ->
+                                 match cardinality_value g s owl_maxCardinality with
+                                 | Some k -> CE_MaxCard k p
+                                 | None ->
+                                   match cardinality_value g s owl_cardinality with
+                                   | Some k -> CE_ExactCard k p
+                                   | None -> CE_Unknown))
                | _ -> CE_Unknown)
     | _ -> CE_Unknown
 and parse_class_expr_list (g : rdf_graph) (ts : list rdf_term) (fuel : nat)
@@ -342,6 +423,42 @@ let rec is_member (g : rdf_graph) (i : subject) (ce : class_expr) (fuel : nat)
        | Some b -> Some (not b)
        | None   -> None)
 
+    | CE_MinCard k p ->
+      (* at-least-k P: count distinct known P-successors. Under UNA-off
+         we treat two different IRIs as different; bnodes might alias,
+         so this is a conservative lower bound. Sound floor: if
+         count >= k, answer Some true; otherwise None. *)
+      let succs = find_P_successors g i p in
+      if List.Tot.length succs >= k then Some true else None
+
+    | CE_MaxCard k p ->
+      (* at-most-k P: provable only for the trivially-empty case
+         without same-As tracking or finite-model closure. For k=0 +
+         no known successors, Some true; else None. *)
+      let succs = find_P_successors g i p in
+      if k = 0 && List.Tot.length succs = 0 then Some true else None
+
+    | CE_ExactCard k p ->
+      (* = k: answerable from current infra only when k=0 + no
+         known successors (both MinCard and MaxCard are Some true). *)
+      let succs = find_P_successors g i p in
+      if k = 0 && List.Tot.length succs = 0 then Some true else None
+
+    | CE_MinQualCard k p c ->
+      let succs = find_P_successors g i p in
+      let matched = count_qual_successors g succs c (n - 1) in
+      if matched >= k then Some true else None
+
+    | CE_MaxQualCard k p c ->
+      let succs = find_P_successors g i p in
+      let matched = count_qual_successors g succs c (n - 1) in
+      if k = 0 && matched = 0 then Some true else None
+
+    | CE_ExactQualCard k p c ->
+      let succs = find_P_successors g i p in
+      let matched = count_qual_successors g succs c (n - 1) in
+      if k = 0 && matched = 0 then Some true else None
+
 (* ∃: fold over successors; short-circuit on Some true. *)
 and any_is_member (g : rdf_graph) (ys : list rdf_term) (c : class_expr)
                   (fuel : nat)
@@ -409,6 +526,24 @@ and is_union_member (g : rdf_graph) (i : subject) (ces : list class_expr)
        match is_union_member g i tl fuel with
        | Some true -> Some true
        | _         -> None)
+
+(* Stage (c): count how many of `ys` provably satisfy class `c`.
+   Successors whose membership is unknown or which are literals
+   don't count — conservative (underestimates true count under
+   open-world). *)
+and count_qual_successors (g : rdf_graph) (ys : list rdf_term)
+                          (c : class_expr) (fuel : nat)
+  : Tot nat (decreases %[fuel; List.Tot.length ys]) =
+  match ys with
+  | []      -> 0
+  | y :: tl ->
+    let rest = count_qual_successors g tl c fuel in
+    (match term_as_subject y with
+     | None         -> rest
+     | Some ys_subj ->
+       (match is_member g ys_subj c fuel with
+        | Some true -> rest + 1
+        | _         -> rest))
 
 (* -------------------------------------------------------------------
    6. Tableau state (legacy stage (a) types, kept for source compat).
