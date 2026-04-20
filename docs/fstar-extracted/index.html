@@ -257,6 +257,11 @@
       <option value="RDFS">RDFS</option>
       <option value="OWL-RL">OWL-RL</option>
     </select>
+    <label class="ctl" for="engine">Engine:</label>
+    <select id="engine" class="dataset" title="js is the js_of_ocaml build; wasm is the wasm_of_ocaml build (queued for browser bridge work — auto-invokes on load)">
+      <option value="js">js (js_of_ocaml)</option>
+      <option value="wasm" disabled>wasm (Node-only for now)</option>
+    </select>
     <button class="run" id="run">Run query</button>
     <span class="status" id="status">Loading engine…</span>
   </div>
@@ -976,6 +981,7 @@ ORDER BY ?s ?name` },
   const sampleEl = $('sample');
   const datasetEl = $('dataset');
   const entailEl = $('entail');
+  const engineEl = $('engine');
 
   dataEl.setAttribute('readonly', 'readonly');
 
@@ -1190,6 +1196,7 @@ ORDER BY ?s ?name` },
       '-o', 'json'];
     if (entailVal !== 'none') argv.push('--entail', entailVal);
     globalThis.process.argv = argv;
+    const engine = engineEl && engineEl.value ? engineEl.value : 'js';
 
     let exitCode = 0;
     const origExit = globalThis.process.exit;
@@ -1213,7 +1220,8 @@ ORDER BY ?s ?name` },
     }
 
     const out = buf.join('\n').replace(/\n+$/, '');
-    statusEl.textContent = exitCode === 0 ? 'Done.' : 'Finished with errors.';
+    statusEl.textContent = (exitCode === 0 ? 'Done' : 'Finished with errors')
+      + ' (' + engine + ')';
 
     if (exitCode !== 0) {
       renderRawError(out || '(no output, exit ' + exitCode + ')');
