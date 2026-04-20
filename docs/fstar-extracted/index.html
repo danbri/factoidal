@@ -260,7 +260,7 @@
     <label class="ctl" for="engine">Engine:</label>
     <select id="engine" class="dataset" title="js is the js_of_ocaml build; wasm is the wasm_of_ocaml build (queued for browser bridge work — auto-invokes on load)">
       <option value="js">js (js_of_ocaml)</option>
-      <option value="wasm" disabled>wasm (Node-only for now)</option>
+      <option value="wasm">wasm (wasm_of_ocaml — needs Chrome/Edge 119+)</option>
     </select>
     <button class="run" id="run">Run query</button>
     <span class="status" id="status">Loading engine…</span>
@@ -1187,16 +1187,54 @@ ORDER BY ?s ?name` },
 
     const ext = (DATASETS[datasetEl.value] && DATASETS[datasetEl.value].ext) || 'ttl';
     const dataPath = '/tmp/data.' + ext;
+    const entailVal = entailEl && entailEl.value ? entailEl.value : 'none';
+    const engine = engineEl && engineEl.value ? engineEl.value : 'js';
+
+    // --- wasm path: drive factoidal.wasm.js via the browser-wasm adapter.
+    // We do not use the js_of_ocaml globals dance here; the adapter owns
+    // the run-loop. Errors surface as thrown promise rejections.
+    if (engine === 'wasm') {
+      console.log = origLog;
+      console.error = origErr;
+      try {
+        // Dynamic import of a sibling ES module. `document.baseURI` is
+        // valid in classic scripts (unlike `import.meta.url` which only
+        // resolves inside modules).
+        const mod = await import(new URL('./browser-wasm.js', document.baseURI).href);
+        // The wasm bundle + its .wasm.assets sit alongside this page.
+        if (typeof mod.setFactoidalWasmUrl === 'function') {
+          mod.setFactoidalWasmUrl(new URL('./factoidal.wasm.js', document.baseURI));
+        }
+        const opts = {};
+        if (entailVal !== 'none') opts.entail = entailVal;
+        const formatExt = ext;
+        if (formatExt === 'nt')       opts.dataFormat = 'ntriples';
+        else if (formatExt === 'nq')  opts.dataFormat = 'nquads';
+        else if (formatExt === 'trig') opts.dataFormat = 'trig';
+        else if (formatExt === 'rdf' || formatExt === 'xml') opts.dataFormat = 'rdfxml';
+        else opts.dataFormat = 'turtle';
+        const parsed = await mod.query(dataEl.value, queryEl.value, opts);
+        statusEl.textContent = 'Done (wasm)';
+        renderResultsJSON(parsed);
+      } catch (e) {
+        statusEl.textContent = 'Error (wasm)';
+        renderRawError((e && e.message ? e.message : String(e))
+          + (e && e.stderr ? '\n' + e.stderr : ''));
+      } finally {
+        runBtn.disabled = false;
+      }
+      return;
+    }
+
+    // --- js path: the original js_of_ocaml IIFE runner.
     globalThis.jsoo_fs_tmp = [{ name: dataPath, content: dataEl.value }];
     globalThis.process = globalThis.process || {};
-    const entailVal = entailEl && entailEl.value ? entailEl.value : 'none';
     const argv = ['node', 'factoidal',
       '-d', dataPath,
       '-e', queryEl.value,
       '-o', 'json'];
     if (entailVal !== 'none') argv.push('--entail', entailVal);
     globalThis.process.argv = argv;
-    const engine = engineEl && engineEl.value ? engineEl.value : 'js';
 
     let exitCode = 0;
     const origExit = globalThis.process.exit;
