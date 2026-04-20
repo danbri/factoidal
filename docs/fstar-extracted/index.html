@@ -709,39 +709,6 @@ WHERE {
 }
 ORDER BY ?name` },
 
-    { key: 'path-reach', ds: 'people', label: 'Property paths: who can reach Grace?',
-      query: `PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-PREFIX ex:   <http://example.org/>
-
-# 'foaf:knows+' is a property path: one or more foaf:knows hops.
-# This finds every person connected to Grace via any chain of
-# knows-edges — transitive friendship closure, no recursion in
-# the query.
-SELECT ?reacher ?reacherName
-WHERE {
-  ?reacher foaf:knows+ ex:grace ;
-           foaf:name   ?reacherName .
-}
-ORDER BY ?reacherName` },
-
-    { key: 'path-shared', ds: 'people', label: 'Property paths: shared acquaintances',
-      query: `PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-
-# 'foaf:knows/^foaf:knows' reads "knows, then inverse-knows" —
-# the path from me to anyone who shares at least one acquaintance
-# with me. FILTER strips the self-result. Purely symmetric — no
-# direction bias from the way the data was written.
-SELECT ?a ?b (COUNT(?mid) AS ?shared)
-WHERE {
-  ?a foaf:knows/^foaf:knows ?b .
-  ?a foaf:knows ?mid .
-  ?mid ^foaf:knows ?b .
-  FILTER (STR(?a) < STR(?b))
-}
-GROUP BY ?a ?b
-HAVING (COUNT(?mid) >= 1)
-ORDER BY DESC(?shared) ?a ?b` },
-
     // Catalogue --------------------------------------------------------
     { key: 'cat-list', ds: 'catalog', label: 'All products, by price',
       query: `PREFIX sch: <http://schema.org/>
@@ -846,6 +813,39 @@ WHERE {
 }
 ORDER BY ?year` },
 
+    { key: 'mu-path-performers', ds: 'music', label: 'Property path: musicians per album',
+      query: `PREFIX ex: <http://example.org/music/>
+PREFIX dc: <http://purl.org/dc/terms/>
+
+# Compound property path: album -> band (ex:by) -> musician (ex:member).
+# "?a ex:by/ex:member ?m" reads as one property path that walks two
+# edges without an intermediate variable for the band. The engine
+# does the join for you.
+SELECT ?album ?musician
+WHERE {
+  ?a a <http://purl.org/ontology/mo/Album> ;
+     dc:title ?album ;
+     ex:by/ex:member ?m .
+  ?m dc:title ?musician .
+}
+ORDER BY ?album ?musician` },
+
+    { key: 'mu-path-colleagues', ds: 'music', label: 'Property path: bandmates of Thom Yorke',
+      query: `PREFIX ex: <http://example.org/music/>
+PREFIX dc: <http://purl.org/dc/terms/>
+
+# "^ex:member" is the inverse path (band-of-this-musician), then
+# "/ex:member" forward again gets all members of that band. The
+# result is everyone who shares a band with Thom, Thom included —
+# FILTER strips him out.
+SELECT ?colleague
+WHERE {
+  ex:thom ^ex:member/ex:member ?m .
+  ?m dc:title ?colleague .
+  FILTER (?m != ex:thom)
+}
+ORDER BY ?colleague` },
+
     // Geo -------------------------------------------------------------
     { key: 'geo-countries', ds: 'geo', label: 'Countries with capital + population',
       query: `PREFIX ex:   <http://example.org/geo/>
@@ -945,6 +945,23 @@ SELECT ?s ?name
 WHERE {
   ?s a schema:Place ;
      schema:name ?name .
+}
+ORDER BY ?name` },
+
+    { key: 'so-path-typechain', ds: 'schemaOrg', label: 'Property path: a/rdfs:subClassOf* (no entailment needed)',
+      query: `PREFIX rdfs:   <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX schema: <http://schema.org/>
+
+# Classic SPARQL 1.1 pattern: "a/rdfs:subClassOf*" reads as
+# "rdf:type, then zero or more subClassOf hops". This finds every
+# instance that transitively is-a schema:Place without turning on
+# RDFS entailment at all — the engine walks the class chain on
+# the fly per the property path. Contrast with "?s a schema:Place"
+# (needs RDFS entailment to find hotels).
+SELECT ?instance ?name
+WHERE {
+  ?instance a/rdfs:subClassOf* schema:Place ;
+            schema:name ?name .
 }
 ORDER BY ?name` },
 
