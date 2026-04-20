@@ -5,6 +5,8 @@ Linked Web Storage Protocol (FPWD, 31 March 2026), informed by but not
 bound to the non-client-side portions of the Solid Protocol 0.11.0 CG
 Report.
 
+Tracking: [#88 LWSP1 — Extend Factoidal with a Linked Web Storage (LWS) service](https://github.com/danbri/factoidal/issues/88).
+
 Status: implementation brief, not a standards document. Where it
 restates normative requirements from published specs, the cited
 specification is authoritative. Where it diverges, the divergence is
