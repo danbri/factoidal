@@ -382,95 +382,141 @@ let load_dataset cfg =
        exit 1)
 
 (* ============================================================================
-   HTTP/1.1 request parsing (line-oriented, blocking reads).
+   HTTP/1.1 request framing.
 
-   Shape we accept:
-     METHOD SP URI SP HTTP/1.1 CRLF
-     Name: value CRLF
-     ...
-     CRLF
-     [body (Content-Length bytes)]
+   The framing parser (request line + headers + body split, Content-Length
+   bookkeeping) lives in F* (module SPARQL.HTTP, extracted as
+   SPARQL_HTTP.ml). All that stays here is the socket-read glue that
+   buffers bytes from [in_channel] up to a caller-supplied cap and hands
+   the whole blob to [SPARQL_HTTP.parse_http_request].
 
-   We read the request-line + headers using buffered line reads, then read
-   exactly Content-Length bytes for the body. No chunked transfer.
+   Size limits (see also the F* module):
+     max_header_bytes = 64 KiB  — a request whose headers exceed this is
+                                  rejected with 413 before we try to parse.
+     max_body_bytes   = 10 MiB  — anti-DOS cap on request bodies.
    ============================================================================ *)
 
-exception Bad_request of string
+exception Bad_request of string  (* retained for legacy raise sites *)
 
-(* Read one CRLF-terminated line from [ic]. Trailing CRLF is stripped.
-   Raises End_of_file if the connection closes mid-line. *)
-let read_line_crlf ic =
-  let buf = Buffer.create 128 in
-  let rec loop prev =
-    let c = input_char ic in
-    if prev = '\r' && c = '\n' then Buffer.sub buf 0 (Buffer.length buf - 1)
-    else begin
-      Buffer.add_char buf c;
-      loop c
-    end
+let max_header_bytes = 65536
+let max_body_bytes   = 10 * 1024 * 1024
+
+(* Scan a buffer for the HTTP header terminator "\r\n\r\n", return the
+   absolute index of its first byte, or -1 if absent. *)
+let find_header_terminator (b : Buffer.t) : int =
+  let s = Buffer.contents b in
+  let n = String.length s in
+  let rec loop i =
+    if i + 3 >= n then -1
+    else if s.[i] = '\r' && s.[i+1] = '\n' && s.[i+2] = '\r' && s.[i+3] = '\n'
+    then i
+    else loop (i + 1)
   in
-  try loop ' ' with End_of_file ->
-    if Buffer.length buf = 0 then raise End_of_file
-    else Buffer.contents buf
+  loop 0
 
-(* Split an HTTP request line: "GET /path?qs HTTP/1.1". *)
-let parse_request_line line =
-  let parts = String.split_on_char ' ' line in
-  match parts with
-  | [meth; uri; version] -> (meth, uri, version)
-  | _ -> raise (Bad_request (Printf.sprintf "malformed request line: %s" line))
-
-(* Split a header line "Name: value". Returns (lowercased_name, trimmed_value). *)
-let parse_header line =
-  match String.index_opt line ':' with
-  | None -> None
-  | Some i ->
-    let name = String.lowercase_ascii (String.trim (String.sub line 0 i)) in
-    let value = String.trim (String.sub line (i + 1) (String.length line - i - 1)) in
-    Some (name, value)
-
-(* Read headers until the empty line. Returns an assoc list. *)
-let read_headers ic =
-  let hs = ref [] in
-  let rec loop () =
-    let line = read_line_crlf ic in
-    if line = "" then ()
-    else begin
-      (match parse_header line with
-       | Some kv -> hs := kv :: !hs
-       | None -> ());
-      loop ()
-    end
-  in
-  loop ();
-  List.rev !hs
-
-let header_value headers name =
-  let lname = String.lowercase_ascii name in
-  try Some (List.assoc lname headers) with Not_found -> None
-
-(* Read exactly [n] bytes from [ic]; short reads are a Bad_request. *)
-let read_body ic n =
-  if n <= 0 then ""
-  else begin
-    let b = Bytes.create n in
-    let rec loop pos remaining =
-      if remaining = 0 then ()
-      else
-        let got = input ic b pos remaining in
-        if got = 0 then raise (Bad_request "body shorter than Content-Length")
-        else loop (pos + got) (remaining - got)
+(* Case-insensitive substring search (s contains t). *)
+let ci_find (s : string) (t : string) : int =
+  let sn = String.length s and tn = String.length t in
+  if tn = 0 || tn > sn then -1
+  else
+    let lc c = if c >= 'A' && c <= 'Z' then Char.chr (Char.code c + 32) else c in
+    let rec matches_at i j =
+      if j >= tn then true
+      else if lc s.[i + j] <> lc t.[j] then false
+      else matches_at i (j + 1)
     in
-    loop 0 n;
-    Bytes.unsafe_to_string b
-  end
+    let rec loop i =
+      if i + tn > sn then -1
+      else if matches_at i 0 then i
+      else loop (i + 1)
+    in
+    loop 0
 
-(* Split a URI "/path?query" into (path, qs). *)
-let split_uri uri =
-  match String.index_opt uri '?' with
-  | None -> (uri, "")
-  | Some i ->
-    (String.sub uri 0 i, String.sub uri (i + 1) (String.length uri - i - 1))
+(* Parse Content-Length from the header region [buf] (before the CRLFCRLF
+   that ends at [term]). Returns Some n on success, None if absent, or
+   raises if the value is malformed. *)
+let extract_content_length (s : string) (term : int) : int option =
+  let head = String.sub s 0 term in
+  let key = "content-length:" in
+  let i = ci_find head key in
+  if i < 0 then None
+  else
+    let line_end =
+      match String.index_from_opt head (i + String.length key) '\r' with
+      | Some p -> p
+      | None -> String.length head
+    in
+    let start = i + String.length key in
+    let v = String.trim (String.sub head start (line_end - start)) in
+    (try Some (int_of_string v) with _ -> None)
+
+(* Read bytes from [ic] until the HTTP header terminator is found or the
+   header cap is exceeded. Then, if Content-Length is present and valid,
+   read exactly that many more bytes (capped at max_body_bytes). Returns
+   the full buffered request as a string.
+
+   [input] returns the number of bytes actually read, which may be less
+   than requested; that's fine — we just keep looping until either the
+   structural terminator appears or the kernel tells us EOF. *)
+let read_full_request ic ~max_header_bytes ~max_body_bytes =
+  let chunk = 4096 in
+  let buf = Buffer.create chunk in
+  let b = Bytes.create chunk in
+  let header_cap = max_header_bytes in
+  let body_cap   = max_body_bytes in
+  (* Phase 1: pull bytes until we find CRLFCRLF or exceed header_cap. *)
+  let rec phase1 () =
+    if Buffer.length buf >= header_cap then ()
+    else
+      let want = min chunk (header_cap + 4 - Buffer.length buf) in
+      let want = if want < 1 then 1 else want in
+      let got =
+        try input ic b 0 want
+        with End_of_file -> 0
+      in
+      if got = 0 then ()
+      else begin
+        Buffer.add_subbytes buf b 0 got;
+        if find_header_terminator buf < 0 then phase1 ()
+      end
+  in
+  phase1 ();
+  (* Phase 2: if headers are present and Content-Length says more bytes,
+     pull the rest. *)
+  let term = find_header_terminator buf in
+  if term < 0 then Buffer.contents buf
+  else
+    let s = Buffer.contents buf in
+    let total_len = String.length s in
+    let body_start = term + 4 in
+    let already = if total_len > body_start then total_len - body_start else 0 in
+    (match extract_content_length s term with
+     | None -> ()  (* No Content-Length: nothing more to read. *)
+     | Some n ->
+       let need = n - already in
+       let need = if need < 0 then 0 else need in
+       let need = if need > body_cap then body_cap else need in
+       let rec phase2 remaining =
+         if remaining <= 0 then ()
+         else
+           let want = if remaining < chunk then remaining else chunk in
+           let got =
+             try input ic b 0 want
+             with End_of_file -> 0
+           in
+           if got = 0 then ()
+           else begin
+             Buffer.add_subbytes buf b 0 got;
+             phase2 (remaining - got)
+           end
+       in
+       phase2 need);
+    Buffer.contents buf
+
+(* Case-insensitive header lookup — delegates to the F* implementation so
+   the semantics match the parser that produced the list. *)
+let header_value headers name =
+  SPARQL_HTTP.header_lookup_ci headers name
 
 (* ============================================================================
    HTTP response helpers.
@@ -486,6 +532,7 @@ let status_text = function
   | 403 -> "Forbidden"
   | 404 -> "Not Found"
   | 405 -> "Method Not Allowed"
+  | 413 -> "Payload Too Large"
   | 500 -> "Internal Server Error"
   | 501 -> "Not Implemented"
   | _ -> "Unknown"
@@ -987,16 +1034,32 @@ let dump_rw_graphs ~dir ~snapshot_iris (ds : rdf_dataset) =
 
 let handle_connection cfg dataset_ref ic oc =
   try
-    let req_line = read_line_crlf ic in
-    let (meth, uri, _version) = parse_request_line req_line in
-    let headers = read_headers ic in
-    let content_length =
-      match header_value headers "content-length" with
-      | Some s -> (try int_of_string (String.trim s) with _ -> 0)
-      | None -> 0
-    in
-    let body = read_body ic content_length in
-    let (path, qs) = split_uri uri in
+    (* Read the whole request (headers + body) into a single buffer,
+       then hand off to the F*-extracted framing parser. *)
+    let raw = read_full_request ic ~max_header_bytes ~max_body_bytes in
+    if String.length raw = 0 then raise End_of_file;
+    match SPARQL_HTTP.parse_http_request raw
+            (Z.of_int max_header_bytes) (Z.of_int max_body_bytes) with
+    | FStar_Pervasives.Inr SPARQL_HTTP.HE_HeadersTooLarge ->
+      write_plain_error oc ~status:413 "Request headers too large"
+    | FStar_Pervasives.Inr SPARQL_HTTP.HE_BodyTooLarge ->
+      write_plain_error oc ~status:413 "Request body too large"
+    | FStar_Pervasives.Inr SPARQL_HTTP.HE_MalformedRequestLine ->
+      write_plain_error oc ~status:400 "Bad request: malformed request line"
+    | FStar_Pervasives.Inr SPARQL_HTTP.HE_MalformedHeader ->
+      write_plain_error oc ~status:400 "Bad request: malformed header"
+    | FStar_Pervasives.Inr SPARQL_HTTP.HE_MissingCRLF ->
+      write_plain_error oc ~status:400 "Bad request: missing CRLF terminator"
+    | FStar_Pervasives.Inr (SPARQL_HTTP.HE_BadRequest msg) ->
+      write_plain_error oc ~status:400 ("Bad request: " ^ msg)
+    | FStar_Pervasives.Inl req ->
+    let meth = req.SPARQL_HTTP.hr_method in
+    let path = req.SPARQL_HTTP.hr_path in
+    let qs   = req.SPARQL_HTTP.hr_query_str in
+    let body = req.SPARQL_HTTP.hr_body in
+    let headers = req.SPARQL_HTTP.hr_headers in
+    (* Reconstruct a uri string for verbose logging only. *)
+    let uri = if String.length qs = 0 then path else path ^ "?" ^ qs in
     let ct = match header_value headers "content-type" with
              | Some v -> v | None -> "" in
     let accept = match header_value headers "accept" with

@@ -89,7 +89,8 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              Parser.BallyhooHDT.fst Parser.BallyhooHDTQ.fst \
              Parser.BallyhooCOTTAS.fst \
              SPARQL11.Store.fst \
-             SPARQL.Protocol.fst; do
+             SPARQL.Protocol.fst \
+             SPARQL.HTTP.fst; do
     if [ -f "$fst" ]; then
       echo "    $fst"
       FSTAR_RC=0
@@ -136,7 +137,8 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     Parser_Ballyhoo.ml Parser_BallyhooBloom.ml \
     Parser_BallyhooHDT.ml Parser_BallyhooHDTQ.ml Parser_BallyhooCOTTAS.ml \
     fstar_pure_hashes.ml \
-    SPARQL11_Algebra.ml SPARQL11_Parser.ml SPARQL11_Store.ml SPARQL_Protocol.ml"
+    SPARQL11_Algebra.ml SPARQL11_Parser.ml SPARQL11_Store.ml SPARQL_Protocol.ml \
+    SPARQL_HTTP.ml"
 
   # Parquet/Zstd C stub — compiled and linked into native binaries when the
   # system libzstd is available. If libzstd is missing, FACTOIDAL_NO_ZSTD=1
@@ -268,6 +270,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     Parser_Ballyhoo.ml Parser_BallyhooBloom.ml Parser_BallyhooCOTTAS.ml
     fstar_pure_hashes.ml
     SPARQL11_Algebra.ml SPARQL11_Parser.ml SPARQL_Protocol.ml
+    SPARQL_HTTP.ml
   )
 
   # Build w3c_runner bytecode for js_of_ocaml. We pass -custom + a tiny
