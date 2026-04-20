@@ -38,7 +38,13 @@
       "default": "./index.js"
     },
     "./browser": "./browser.js",
+    "./browser-wasm": {
+      "browser": "./browser-wasm.js",
+      "default": "./browser-wasm.js"
+    },
     "./factoidal.js": "./factoidal.js",
+    "./factoidal.wasm.js": "./factoidal.wasm.js",
+    "./factoidal.wasm.assets/*": "./factoidal.wasm.assets/*",
     "./package.json": "./package.json"
   },
   "files": [
@@ -46,7 +52,10 @@
     "index.mjs",
     "index.d.ts",
     "browser.js",
+    "browser-wasm.js",
     "factoidal.js",
+    "factoidal.wasm.js",
+    "factoidal.wasm.assets/",
     "version.json",
     "README.md",
     "CHANGELOG.md",

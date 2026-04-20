@@ -70,6 +70,45 @@ The browser entry assumes `factoidal.js` sits alongside `browser.js`
 on the same origin. If your bundler or CDN layout differs, call
 `setFactoidalUrl('https://.../factoidal.js')` once before `query()`.
 
+## Usage (Browser with WebAssembly)
+
+For the wasm_of_ocaml build — smaller shipped bytes, faster cold
+start — use the `browser-wasm` subpath:
+
+```js
+import { query } from 'factoidal/browser-wasm'
+const results = await query(
+  turtleString,
+  'SELECT * WHERE { ?s ?p ?o }',
+  { entail: 'RDFS' }
+)
+```
+
+Or via `<script type="module">`:
+
+```html
+<script type="module">
+  import { query } from 'https://unpkg.com/factoidal/browser-wasm.js';
+  const r = await query(ttl, 'ASK { ?s ?p ?o }');
+  console.log(r.boolean);
+</script>
+```
+
+The wasm build requires Wasm-GC and typed-function-references support.
+As of this writing that means:
+
+- **Chrome / Edge 119+** (landed stable Nov 2023)
+- **Node 22+**
+- **Firefox — not yet** (Wasm-GC is implemented but shipping
+  incrementally; check caniuse.com/wasm-gc before relying on it)
+
+The non-wasm `factoidal/browser` path runs everywhere ES modules do;
+use it as a fallback. `factoidal.wasm.js` must be served alongside
+the `factoidal.wasm.assets/` directory on the same origin. If you
+bundle differently, call
+`setFactoidalWasmUrl('https://.../factoidal.wasm.js')` before the
+first `query()`.
+
 ## API
 
 ```ts

@@ -411,14 +411,16 @@ if [[ "$STEP" == "npm" ]]; then
   echo "  Copied: $JSDIR/factoidal.js → $NPMDIR/factoidal.js ($(wc -c < "$NPMDIR/factoidal.js") bytes)"
 
   # Wasm artifacts are optional — skip silently if they don't exist yet.
+  # Needed by npm/factoidal/browser-wasm.js (the wasm_of_ocaml browser
+  # entry) and by its Node smoke test (test/smoke-wasm.js).
   if [[ -f "$JSDIR/factoidal.wasm.js" ]]; then
     cp "$JSDIR/factoidal.wasm.js" "$NPMDIR/factoidal.wasm.js"
-    echo "  Copied: $JSDIR/factoidal.wasm.js → $NPMDIR/factoidal.wasm.js"
+    echo "  Copied: $JSDIR/factoidal.wasm.js → $NPMDIR/factoidal.wasm.js ($(wc -c < "$NPMDIR/factoidal.wasm.js") bytes)"
   fi
   if [[ -d "$JSDIR/factoidal.wasm.assets" ]]; then
     rm -rf "$NPMDIR/factoidal.wasm.assets"
     cp -R "$JSDIR/factoidal.wasm.assets" "$NPMDIR/factoidal.wasm.assets"
-    echo "  Copied: $JSDIR/factoidal.wasm.assets/ → $NPMDIR/factoidal.wasm.assets/"
+    echo "  Copied: $JSDIR/factoidal.wasm.assets/ → $NPMDIR/factoidal.wasm.assets/ ($(ls -1 "$NPMDIR/factoidal.wasm.assets" | wc -l | tr -d ' ') file(s))"
   fi
 
   # Provenance stamp.
