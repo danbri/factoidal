@@ -112,6 +112,19 @@ let load_rdf_dataset ?(format=None) ?(base=None) path =
    Command-line configuration
    ============================================================================ *)
 
+(* CORS policy — how the server should respond to cross-origin browser
+   requests. [CORS_Off] is the default and emits no CORS headers at all, so
+   browsers block cross-origin calls (matches historical behaviour).
+   [CORS_Any] echoes "Access-Control-Allow-Origin: *" on every response and
+   is convenient but defeats the browser's same-origin CSRF protection, so
+   we warn at startup if combined with write access.
+   [CORS_List origins] echoes the requesting Origin back only if it appears
+   in the allowlist, and adds "Vary: Origin". *)
+type cors_policy =
+  | CORS_Off
+  | CORS_Any
+  | CORS_List of string list
+
 type config = {
   mutable port : int;
   mutable dataset_file : string option;
@@ -121,6 +134,7 @@ type config = {
   mutable verbose : bool;
   mutable help_mode : bool;
   mutable read_only : bool;
+  mutable cors : cors_policy;
   (* Trusted-header auth: name of the HTTP header whose value is treated
      as the authenticated identity. Safe only when the server is bound to
      loopback and reached solely via a proxy/tunnel that sets this header
@@ -151,6 +165,7 @@ let default_config () = {
   verbose = false;
   help_mode = false;
   read_only = false;
+  cors = CORS_Off;
   auth_header = "Cf-Access-Authenticated-User-Email";
   proxied_auth_rw_graphnames = None;
   dump_rw_graphs_on_exit = None;
@@ -172,6 +187,13 @@ let usage () =
   print_endline "  -b, --base IRI         Base IRI for parsing";
   print_endline "      --read-only        Reject POST /update with 403 Forbidden";
   print_endline "                         (safe for public tunnels)";
+  print_endline "      --cors=ORIGINS     Enable CORS. ORIGINS is either \"*\" (allow any";
+  print_endline "                         origin) or a comma-separated allowlist of exact";
+  print_endline "                         origin strings (e.g. https://foo.example,https://bar.example).";
+  print_endline "                         Absent = no CORS headers (cross-origin browser calls";
+  print_endline "                         blocked by default). WARNING: --cors=* combined with";
+  print_endline "                         write access lets any browser page POST /update —";
+  print_endline "                         pair with --read-only or use an allowlist.";
   print_endline "      --auth-header=NAME";
   print_endline "                         HTTP header whose value is the authenticated";
   print_endline "                         identity (default: Cf-Access-Authenticated-User-Email).";
@@ -223,6 +245,31 @@ let usage () =
   print_endline "  * --read-only gates POST /update with 403; useful when";
   print_endline "    exposing the server behind a public tunnel."
 
+(* Parse the value of --cors=VAL into a cors_policy.
+   "*" -> CORS_Any; otherwise split on commas and trim whitespace. An empty
+   list (e.g. --cors= with nothing after) falls back to CORS_Off so the flag
+   is effectively a no-op rather than rejecting every origin silently. *)
+let parse_cors_value (v : string) : cors_policy =
+  let v = String.trim v in
+  if v = "*" then CORS_Any
+  else begin
+    let parts =
+      String.split_on_char ',' v
+      |> List.map String.trim
+      |> List.filter (fun s -> s <> "")
+    in
+    match parts with
+    | [] -> CORS_Off
+    | _  -> CORS_List parts
+  end
+
+(* Human-readable description of the CORS mode, for the startup log. *)
+let cors_mode_to_string = function
+  | CORS_Off -> "off (no Access-Control-* headers)"
+  | CORS_Any -> "any origin (Access-Control-Allow-Origin: *)"
+  | CORS_List origins ->
+    Printf.sprintf "allowlist (%s)" (String.concat ", " origins)
+
 (* Split "--key=value" into ("--key", Some "value"); otherwise (arg, None). *)
 let split_eq arg =
   match String.index_opt arg '=' with
@@ -255,6 +302,10 @@ let parse_args () =
     | arg :: rest ->
       let (key, eq_val) = split_eq arg in
       (match (key, eq_val, rest) with
+       | ("--cors", Some v, _) ->
+         cfg.cors <- parse_cors_value v; loop rest
+       | ("--cors", None, v :: rest') ->
+         cfg.cors <- parse_cors_value v; loop rest'
        | ("--auth-header", Some v, _) -> cfg.auth_header <- v; loop rest
        | ("--auth-header", None, v :: rest') -> cfg.auth_header <- v; loop rest'
        | ("--proxied-auth-rw-graphnames", Some v, _) ->
@@ -439,20 +490,53 @@ let status_text = function
   | 501 -> "Not Implemented"
   | _ -> "Unknown"
 
-let write_response oc ~status ~content_type ~body =
+(* [extra_headers] is a list of already-formatted "Name: value" lines (no CRLF)
+   that are emitted between the standard headers and the body. CORS headers
+   go here. Empty list = historical behaviour. *)
+let write_response ?(extra_headers=[]) oc ~status ~content_type ~body =
   let text = status_text status in
+  let extras =
+    List.fold_left (fun acc h -> acc ^ h ^ "\r\n") "" extra_headers
+  in
   let headers =
     Printf.sprintf
-      "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n"
-      status text content_type (String.length body)
+      "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\n%s\r\n"
+      status text content_type (String.length body) extras
   in
   output_string oc headers;
   output_string oc body;
   flush oc
 
-let write_plain_error oc ~status msg =
-  write_response oc ~status ~content_type:"text/plain; charset=utf-8"
+let write_plain_error ?(extra_headers=[]) oc ~status msg =
+  write_response ~extra_headers oc ~status ~content_type:"text/plain; charset=utf-8"
     ~body:(msg ^ "\n")
+
+(* Build the CORS headers for a response given the current CORS policy and the
+   requesting Origin (if any). Returns a (possibly empty) list of pre-formatted
+   "Name: value" header lines suitable for [extra_headers].
+
+   For [CORS_Off], returns []. For [CORS_Any], always emits the wildcard and
+   is origin-independent. For [CORS_List origins], echoes the requesting
+   Origin only if it's in the allowlist, and adds "Vary: Origin"; if the
+   requesting origin is absent or not allowlisted, returns [] (letting the
+   browser's default cross-origin rejection apply — the canonical pattern). *)
+let cors_headers ~(policy : cors_policy) ~(origin : string option) : string list =
+  let common_headers =
+    [ "Access-Control-Allow-Methods: GET, POST, OPTIONS";
+      "Access-Control-Allow-Headers: Content-Type, Authorization, Cf-Access-Jwt-Assertion, Cf-Access-Authenticated-User-Email, X-Authid";
+      "Access-Control-Max-Age: 86400" ]
+  in
+  match policy with
+  | CORS_Off -> []
+  | CORS_Any ->
+    "Access-Control-Allow-Origin: *" :: common_headers
+  | CORS_List allowed ->
+    (match origin with
+     | Some o when List.mem o allowed ->
+       ("Access-Control-Allow-Origin: " ^ o)
+       :: "Vary: Origin"
+       :: common_headers
+     | _ -> [])
 
 (* ============================================================================
    SELECT / ASK / CONSTRUCT dispatch.
@@ -917,6 +1001,8 @@ let handle_connection cfg dataset_ref ic oc =
              | Some v -> v | None -> "" in
     let accept = match header_value headers "accept" with
                  | Some v -> v | None -> "" in
+    let origin = header_value headers "origin" in
+    let cors_hdrs = cors_headers ~policy:cfg.cors ~origin in
     if cfg.verbose then
       Printf.eprintf "[%s] %s %s (body=%d, accept=%s, ct=%s)\n%!"
         (let t = Unix.localtime (Unix.time ()) in
@@ -924,6 +1010,16 @@ let handle_connection cfg dataset_ref ic oc =
            (t.tm_year + 1900) (t.tm_mon + 1) t.tm_mday
            t.tm_hour t.tm_min t.tm_sec)
         meth uri (String.length body) accept ct;
+
+    (* CORS preflight: answer OPTIONS with 204 and the CORS headers, never
+       try to parse it as a SPARQL request. When CORS is off, fall through
+       and the F* decoder will reply 405 (method not allowed) as before. *)
+    if meth = "OPTIONS" && cfg.cors <> CORS_Off then begin
+      write_response ~extra_headers:cors_hdrs oc
+        ~status:204
+        ~content_type:"text/plain; charset=utf-8"
+        ~body:""
+    end else
 
     let dataset = !dataset_ref in
     let resp =
@@ -1012,12 +1108,15 @@ let handle_connection cfg dataset_ref ic oc =
            accumulated via POST /update mutate the shared ref. *)
         parse_and_run ~dataset ~accept q
     in
-    write_response oc
+    write_response ~extra_headers:cors_hdrs oc
       ~status:resp.rb_status
       ~content_type:resp.rb_content_type
       ~body:resp.rb_body
   with
   | Bad_request msg ->
+    (* If the request line was malformed enough that we never read an
+       Origin header, we just omit CORS headers on the 400 response —
+       the client wasn't going to honour them anyway. *)
     (try write_plain_error oc ~status:400 ("Bad request: " ^ msg)
      with _ -> ())
   | End_of_file ->
@@ -1071,6 +1170,16 @@ let run_server cfg =
             (match cfg.proxied_auth_rw_graphnames with
              | Some t -> t | None -> "<none>")
      else "read-write (POST /update mutates in-memory dataset)");
+  Printf.printf "  cors: %s\n" (cors_mode_to_string cfg.cors);
+  (* Loud warning: --cors=* combined with writes lets any browser page hit
+     POST /update cross-origin, bypassing same-origin CSRF protection. Flush
+     stderr immediately so the warning lands before any request log lines. *)
+  (match cfg.cors with
+   | CORS_Any when not cfg.read_only ->
+     Printf.eprintf "warning: --cors=* combined with write access is dangerous\n";
+     Printf.eprintf "warning: any browser page can issue POST /update against this server\n";
+     Printf.eprintf "warning: either add --read-only or an allowlist\n%!"
+   | _ -> ());
   (match cfg.dataset_file with
    | Some f -> Printf.printf "  default graph: %s (%d triples)\n" f triple_count
    | None -> Printf.printf "  default graph: <empty>\n");
