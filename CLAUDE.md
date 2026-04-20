@@ -352,6 +352,16 @@ Previous Claude sessions made these errors. Read and internalize:
     Split "store model + 3 ops + runner wiring" into 3+ separate
     subagent tasks, even if it means sequential.
 
+24. **Subagent prompts ship code sketches, not "figure it out".**
+    The 600s stream watchdog fires during long research phases
+    (read many files → plan → write). Empirical rate tonight: ~40%
+    of subagents stalled in research before writing any code.
+    Mitigations: (a) put the concrete diff/pseudocode in the prompt,
+    (b) cite the exact file + line number to edit, (c) name helper
+    functions to reuse by signature, (d) cap scope at one function
+    or one rule — not "implement X". And (e) pair subagent work with
+    top-level inline work so progress continues when they stall.
+
 ## Known Performance Issues
 
 ### Turtle parser is too slow for real-world input
