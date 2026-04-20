@@ -709,6 +709,39 @@ WHERE {
 }
 ORDER BY ?name` },
 
+    { key: 'path-reach', ds: 'people', label: 'Property paths: who can reach Grace?',
+      query: `PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+PREFIX ex:   <http://example.org/>
+
+# 'foaf:knows+' is a property path: one or more foaf:knows hops.
+# This finds every person connected to Grace via any chain of
+# knows-edges — transitive friendship closure, no recursion in
+# the query.
+SELECT ?reacher ?reacherName
+WHERE {
+  ?reacher foaf:knows+ ex:grace ;
+           foaf:name   ?reacherName .
+}
+ORDER BY ?reacherName` },
+
+    { key: 'path-shared', ds: 'people', label: 'Property paths: shared acquaintances',
+      query: `PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+
+# 'foaf:knows/^foaf:knows' reads "knows, then inverse-knows" —
+# the path from me to anyone who shares at least one acquaintance
+# with me. FILTER strips the self-result. Purely symmetric — no
+# direction bias from the way the data was written.
+SELECT ?a ?b (COUNT(?mid) AS ?shared)
+WHERE {
+  ?a foaf:knows/^foaf:knows ?b .
+  ?a foaf:knows ?mid .
+  ?mid ^foaf:knows ?b .
+  FILTER (STR(?a) < STR(?b))
+}
+GROUP BY ?a ?b
+HAVING (COUNT(?mid) >= 1)
+ORDER BY DESC(?shared) ?a ?b` },
+
     // Catalogue --------------------------------------------------------
     { key: 'cat-list', ds: 'catalog', label: 'All products, by price',
       query: `PREFIX sch: <http://schema.org/>

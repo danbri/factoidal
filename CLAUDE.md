@@ -362,6 +362,14 @@ Previous Claude sessions made these errors. Read and internalize:
     or one rule — not "implement X". And (e) pair subagent work with
     top-level inline work so progress continues when they stall.
 
+25. **Never write cryptic score strings.** "SPARQL 527/37/58/9, RDF
+    972/59, entailment 51/19, rdf-mt 39/0" is unreadable. Always
+    write the full form: "SPARQL 1.1 query suite: 527 pass, 37 fail,
+    58 skip, 9 unsupported (out of 631)". "RDF 1.1 parser suites:
+    972 pass, 59 fail (out of 1031)". Etc. Every number earns its
+    label; fraction-like strings are banned from commits, commit
+    messages, chat output, and docs. Readability over brevity.
+
 ## Known Performance Issues
 
 ### Turtle parser is too slow for real-world input
