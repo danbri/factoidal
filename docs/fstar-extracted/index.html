@@ -307,6 +307,7 @@
   <div class="artifact"><strong>factoidal.js</strong> — SPARQL + RDF parsing CLI, js_of_ocaml. What the demo above loads. Works in any modern browser or Node. The demo runs it with <code>-o json</code> and renders the SPARQL Results JSON as an HTML table.</div>
   <div class="artifact"><strong>w3c-runner.js</strong> — the W3C conformance runner, js_of_ocaml. Same engine as factoidal; run it from Node with <code>node w3c-runner.js bind</code>.</div>
   <div class="artifact"><strong>w3c-runner.wasm.js</strong> (loader) + <strong>w3c-runner.wasm.assets/</strong> — WebAssembly build via wasm_of_ocaml. 400 KB <code>.wasm</code> + 45 KB loader. Needs Wasm-GC (Chrome ≥ 119, Node ≥ 22; Firefox not yet). Node CLI only — no browser UI wired up to it yet.</div>
+  <div class="artifact"><strong>factoidal.wasm.js</strong> (loader) + <strong>factoidal.wasm.assets/</strong> — WebAssembly build of the query CLI. 372 KB <code>.wasm</code> + 38 KB loader. Smoke-tested under Node (<code>node factoidal.wasm.js -d data.ttl -e 'SELECT * WHERE { ?s ?p ?o }' -o json</code>). The demo above still uses <code>factoidal.js</code> (js_of_ocaml, synchronous) — a JS/wasm toggle is queued; the wasm loader is async and needs a small handler refactor.</div>
 
   <h2>Wasm coverage vs native</h2>
   <p>Per-suite totals match the native runner almost everywhere. One crash (<code>functions</code>, SHA/digestif C primitives with no proper wasm binding yet) and an unexplained 4-test gap in <code>property-path</code>.</p>
