@@ -3937,7 +3937,7 @@ and parse_subject_with_extras (pm : prefix_map) (fuel : Prims.nat)
                     | ParseOk ((), ts''') ->
                         ParseOk
                           (((SPARQL11_Algebra.PS_BNode bnode_id),
-                             extra_triples, false), ts'''))))
+                             extra_triples, true), ts'''))))
      | Tok_LPAREN ->
          (match parse_collection pm (fuel - Prims.int_one) (parse_advance ts)
           with

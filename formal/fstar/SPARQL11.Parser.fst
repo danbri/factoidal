@@ -1974,7 +1974,10 @@ and parse_subject_with_extras (pm : prefix_map) (fuel : nat) (ts : token_stream)
      | None -> ParseErr "unresolved prefix")
   | Tok_BNODE b -> ParseOk (PS_BNode b, GP_Empty, false) (parse_advance ts)
   | Tok_LBRACKET ->
-    // [] = anonymous blank node, or [ predObjList ] = blank node with properties
+    // [] = anonymous blank node (acts as fresh subject; outer must
+    // supply a pred-obj list).
+    // [ predObjList ] = blank node with its own pred-objs — already
+    // a complete triple collection; outer pred-obj is OPTIONAL.
     let bnode_id = fresh_bnode_id ts in
     let ts' = parse_advance ts in
     (match parse_peek ts' with
@@ -1987,7 +1990,7 @@ and parse_subject_with_extras (pm : prefix_map) (fuel : nat) (ts : token_stream)
           (match parse_expect Tok_RBRACKET ts'' with
            | ParseErr _ -> ParseErr "expected ']' after blank node property list"
            | ParseOk () ts''' ->
-             ParseOk (PS_BNode bnode_id, extra_triples, false) ts''')))
+             ParseOk (PS_BNode bnode_id, extra_triples, true) ts''')))
   | Tok_LPAREN ->
     (match parse_collection pm (fuel-1) (parse_advance ts) with
      | ParseErr m -> ParseErr m
