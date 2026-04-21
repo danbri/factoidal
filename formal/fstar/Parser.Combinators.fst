@@ -3,6 +3,15 @@ module Parser.Combinators
 open FStar.String
 open FStar.List.Tot
 open FStar.Char
+open Parser.FastString
+
+// Issue #70: on the hot path, FStar.String.length / index / sub route
+// through BatUTF8 and cost O(n) per call. We swap to the byte-indexed
+// fs_byte_length / fs_byte_index / fs_byte_sub primitives here, which
+// are O(1) / O(1) / O(len). See Parser.FastString.fst for the safety
+// argument (byte semantics are correct for N-Triples, Turtle, N-Quads,
+// TriG; any parser that needs codepoint semantics should not use these
+// combinators on that code path).
 
 (** Parse result: either success with value and new position, or failure *)
 type parse_result (a:Type) =
@@ -28,9 +37,9 @@ let pfail (#a:Type) (msg:string) : parser a =
 (** Match a single specific character *)
 let pchar (c:char) : parser char =
   fun input pos ->
-    let len = String.length input in
+    let len = fs_byte_length input in
     if pos < len then
-      let ch = String.index input pos in
+      let ch = fs_byte_index input pos in
       if ch = c then ParseOk ch (pos + 1)
       else ParseFail (String.concat "" ["expected '"; String.string_of_char c; "'"]) pos
     else ParseFail "unexpected end of input" pos
@@ -38,9 +47,9 @@ let pchar (c:char) : parser char =
 (** Match a character satisfying a predicate *)
 let psat (pred: char -> bool) : parser char =
   fun input pos ->
-    let len = String.length input in
+    let len = fs_byte_length input in
     if pos < len then
-      let ch = String.index input pos in
+      let ch = fs_byte_index input pos in
       if pred ch then ParseOk ch (pos + 1)
       else ParseFail "character did not satisfy predicate" pos
     else ParseFail "unexpected end of input" pos
@@ -48,26 +57,26 @@ let psat (pred: char -> bool) : parser char =
 (** Match any single character *)
 let pany : parser char =
   fun input pos ->
-    let len = String.length input in
+    let len = fs_byte_length input in
     if pos < len then
-      let ch = String.index input pos in
+      let ch = fs_byte_index input pos in
       ParseOk ch (pos + 1)
     else ParseFail "unexpected end of input" pos
 
 (** Match end of input *)
 let peof : parser unit =
   fun input pos ->
-    let len = String.length input in
+    let len = fs_byte_length input in
     if pos >= len then ParseOk () pos
     else ParseFail "expected end of input" pos
 
 (** Match an exact string *)
 let pstring (s:string) : parser string =
   fun input pos ->
-    let slen = String.length s in
-    let ilen = String.length input in
+    let slen = fs_byte_length s in
+    let ilen = fs_byte_length input in
     if pos + slen <= ilen then
-      let sub_str = String.sub input pos slen in
+      let sub_str = fs_byte_sub input pos slen in
       if sub_str = s then ParseOk s (pos + slen)
       else ParseFail (String.concat "" ["expected \""; s; "\""]) pos
     else ParseFail (String.concat "" ["expected \""; s; "\""]) pos
@@ -130,7 +139,7 @@ let rec pmany_fuel (#a:Type) (p: parser a) (input:string) (pos:nat) (fuel:nat)
 (** Zero or more: parse repeatedly until failure *)
 let pmany (#a:Type) (p: parser a) (input:string) (pos:nat)
   : parse_result (list a) =
-  let fuel = String.length input - pos + 1 in
+  let fuel = fs_byte_length input - pos + 1 in
   if fuel >= 0 then pmany_fuel p input pos fuel
   else ParseOk [] pos
 
@@ -149,7 +158,7 @@ let pmany1_from (#a:Type) (p: parser a) (input:string) (pos:nat) (fuel:nat)
 
 let pmany1 (#a:Type) (p: parser a) (input:string) (pos:nat)
   : parse_result (list a) =
-  let fuel = String.length input - pos + 1 in
+  let fuel = fs_byte_length input - pos + 1 in
   if fuel >= 0 then pmany1_from p input pos fuel
   else ParseFail "unexpected end of input" pos
 
@@ -166,7 +175,7 @@ let rec pskip_many_from (#a:Type) (p: parser a) (input:string) (pos:nat) (fuel:n
 
 let pskip_many (#a:Type) (p: parser a) (input:string) (pos:nat)
   : parse_result unit =
-  let fuel = String.length input - pos + 1 in
+  let fuel = fs_byte_length input - pos + 1 in
   if fuel >= 0 then pskip_many_from p input pos fuel
   else ParseOk () pos
 
@@ -191,7 +200,7 @@ let rec psep_by_rest (#a #b:Type) (p: parser a) (sep: parser b) (input:string) (
 
 let psep_by (#a #b:Type) (p: parser a) (sep: parser b) (input:string) (pos:nat)
   : parse_result (list a) =
-  let fuel = String.length input - pos + 1 in
+  let fuel = fs_byte_length input - pos + 1 in
   match p input pos with
   | ParseOk v pos' ->
     if fuel >= 0 then
@@ -243,16 +252,16 @@ let rec ptake_while_acc (pred: char -> bool) (input:string) (pos:nat) (acc: list
   : Tot (parse_result string) (decreases fuel) =
   if fuel = 0 then ParseOk (String.string_of_list (List.Tot.rev acc)) pos
   else
-    let len = String.length input in
+    let len = fs_byte_length input in
     if pos < len then
-      let ch = String.index input pos in
+      let ch = fs_byte_index input pos in
       if pred ch then ptake_while_acc pred input (pos + 1) (ch :: acc) (fuel - 1)
       else ParseOk (String.string_of_list (List.Tot.rev acc)) pos
     else ParseOk (String.string_of_list (List.Tot.rev acc)) pos
 
 let ptake_while (pred: char -> bool) (input:string) (pos:nat)
   : parse_result string =
-  let fuel = String.length input - pos + 1 in
+  let fuel = fs_byte_length input - pos + 1 in
   if fuel >= 0 then ptake_while_acc pred input pos [] fuel
   else ParseOk "" pos
 
@@ -261,33 +270,33 @@ let ptake_while (pred: char -> bool) (input:string) (pos:nat)
 let rec ptake_while_scan (pred: char -> bool) (input:string) (pos:nat) (fuel:nat)
   : Tot (r:nat{r >= pos}) (decreases fuel) =
   if fuel = 0 then pos
-  else if pos < String.length input then
-    let ch = String.index input pos in
+  else if pos < fs_byte_length input then
+    let ch = fs_byte_index input pos in
     if pred ch then ptake_while_scan pred input (pos + 1) (fuel - 1)
     else pos
   else pos
 
 let ptake_while_pos (pred: char -> bool) (input:string) (pos:nat)
   : parse_result string =
-  let len = String.length input in
+  let len = fs_byte_length input in
   if pos > len then ParseOk "" pos
   else
     let fuel : nat = len - pos + 1 in
     let end_pos = ptake_while_scan pred input pos fuel in
     if end_pos > pos && end_pos <= len then
-      ParseOk (String.sub input pos (end_pos - pos)) end_pos
+      ParseOk (fs_byte_sub input pos (end_pos - pos)) end_pos
     else
       ParseOk "" pos
 
 let ptake_while1_pos (pred: char -> bool) (input:string) (pos:nat)
   : parse_result string =
-  let len = String.length input in
+  let len = fs_byte_length input in
   if pos > len then ParseFail "expected at least one matching character" pos
   else
     let fuel : nat = len - pos + 1 in
     let end_pos = ptake_while_scan pred input pos fuel in
     if end_pos > pos && end_pos <= len then
-      ParseOk (String.sub input pos (end_pos - pos)) end_pos
+      ParseOk (fs_byte_sub input pos (end_pos - pos)) end_pos
     else
       ParseFail "expected at least one matching character" pos
 
@@ -315,15 +324,15 @@ let rec pquoted_body (qch: char) (input:string) (pos:nat) (acc: list char) (fuel
   : Tot (parse_result string) (decreases fuel) =
   if fuel = 0 then ParseFail "unterminated quoted string" pos
   else
-    let len = String.length input in
+    let len = fs_byte_length input in
     if pos >= len then ParseFail "unterminated quoted string" pos
     else
-      let ch = String.index input pos in
+      let ch = fs_byte_index input pos in
       if ch = qch then
         ParseOk (String.string_of_list (List.Tot.rev acc)) (pos + 1)
       else if ch = backslash_char then
         if pos + 1 < len then
-          let escaped = String.index input (pos + 1) in
+          let escaped = fs_byte_index input (pos + 1) in
           pquoted_body qch input (pos + 2) (escaped :: ch :: acc) (fuel - 1)
         else ParseFail "backslash at end of input" pos
       else
@@ -331,9 +340,9 @@ let rec pquoted_body (qch: char) (input:string) (pos:nat) (acc: list char) (fuel
 
 let pquoted_string (qch: char) (input:string) (pos:nat)
   : parse_result string =
-  let len = String.length input in
+  let len = fs_byte_length input in
   if pos < len then
-    let ch = String.index input pos in
+    let ch = fs_byte_index input pos in
     if ch = qch then
       let fuel = len - pos in
       pquoted_body qch input (pos + 1) [] fuel

@@ -3,10 +3,14 @@ module Parser.TriG
 open FStar.String
 open FStar.List.Tot
 open FStar.Char
+open Parser.FastString
 open Parser.Combinators
 open Parser.NTriples
 open Parser.Turtle
 open RDF.Graph.Executable
+
+// Issue #70: byte-indexed string primitives on the hot path.
+// See Parser.FastString.fst.
 
 (* ================================================================ *)
 (* TriG Parser                                                       *)
@@ -71,10 +75,10 @@ let rec trig_dataset_add_triples (ds : rdf_dataset) (triples : list triple) (gra
     Returns (graph_iri, updated_state). *)
 let parse_trig_graph_name (st: turtle_state) (input: string) (pos: nat)
   : parse_result (iri & turtle_state) =
-  let len = String.length input in
+  let len = fs_byte_length input in
   if pos >= len then ParseFail "expected graph name" pos
   else
-    let c = String.index input pos in
+    let c = fs_byte_index input pos in
     let code = int_of_char c in
     if code = 0x5F then (* '_' -- blank node graph name _:label *)
       begin match parse_bnode input pos with
@@ -86,7 +90,7 @@ let parse_trig_graph_name (st: turtle_state) (input: string) (pos: nat)
     else if code = 0x5B then (* '[' -- anonymous blank node [] as graph name *)
       begin match turtle_ws input (pos + 1) with
       | ParseOk () pos2 ->
-        if pos2 < len && int_of_char (String.index input pos2) = 0x5D then
+        if pos2 < len && int_of_char (fs_byte_index input pos2) = 0x5D then
           // [] -- generate fresh blank node ID for graph name
           let (bname, st') = fresh_bnode st in
           let bnode_iri = String.concat "" ["_:"; bname] in
@@ -112,35 +116,35 @@ let char_to_lower (c: char) : char =
 
 // Check if input at pos starts with "@prefix" or "@base" (Turtle-style directives)
 let is_at_directive (input: string) (pos: nat) : bool =
-  let len = String.length input in
+  let len = fs_byte_length input in
   if pos >= len then false
-  else if int_of_char (String.index input pos) <> 0x40 then false  // '@'
+  else if int_of_char (fs_byte_index input pos) <> 0x40 then false  // '@'
   else
     // Check for @prefix (7 chars) or @base (5 chars)
     if pos + 7 <= len then
-      let s = String.sub input pos 7 in
+      let s = fs_byte_sub input pos 7 in
       if s = "@prefix" then true
       else if pos + 5 <= len then
-        let s2 = String.sub input pos 5 in
+        let s2 = fs_byte_sub input pos 5 in
         s2 = "@base"
       else false
     else if pos + 5 <= len then
-      let s2 = String.sub input pos 5 in
+      let s2 = fs_byte_sub input pos 5 in
       s2 = "@base"
     else false
 
 // Check if input at pos starts with "PREFIX" or "BASE" (SPARQL-style directives)
 // Case-insensitive check
 let is_sparql_directive (input: string) (pos: nat) : bool =
-  let len = String.length input in
+  let len = fs_byte_length input in
   // Check for PREFIX (6 chars)
   if pos + 6 <= len then
-    let c0 = char_to_lower (String.index input pos) in
-    let c1 = char_to_lower (String.index input (pos + 1)) in
-    let c2 = char_to_lower (String.index input (pos + 2)) in
-    let c3 = char_to_lower (String.index input (pos + 3)) in
-    let c4 = char_to_lower (String.index input (pos + 4)) in
-    let c5 = char_to_lower (String.index input (pos + 5)) in
+    let c0 = char_to_lower (fs_byte_index input pos) in
+    let c1 = char_to_lower (fs_byte_index input (pos + 1)) in
+    let c2 = char_to_lower (fs_byte_index input (pos + 2)) in
+    let c3 = char_to_lower (fs_byte_index input (pos + 3)) in
+    let c4 = char_to_lower (fs_byte_index input (pos + 4)) in
+    let c5 = char_to_lower (fs_byte_index input (pos + 5)) in
     if int_of_char c0 = 0x70 &&  // p
        int_of_char c1 = 0x72 &&  // r
        int_of_char c2 = 0x65 &&  // e
@@ -150,7 +154,7 @@ let is_sparql_directive (input: string) (pos: nat) : bool =
     then
       // Must be followed by non-pn_chars character
       if pos + 6 >= len then true
-      else not (is_pn_chars (String.index input (pos + 6)))
+      else not (is_pn_chars (fs_byte_index input (pos + 6)))
     else if pos + 4 <= len then
       // Check for BASE (4 chars)
       if int_of_char c0 = 0x62 &&  // b
@@ -159,21 +163,21 @@ let is_sparql_directive (input: string) (pos: nat) : bool =
          int_of_char c3 = 0x65     // e
       then
         if pos + 4 >= len then true
-        else not (is_pn_chars (String.index input (pos + 4)))
+        else not (is_pn_chars (fs_byte_index input (pos + 4)))
       else false
     else false
   else if pos + 4 <= len then
-    let c0 = char_to_lower (String.index input pos) in
-    let c1 = char_to_lower (String.index input (pos + 1)) in
-    let c2 = char_to_lower (String.index input (pos + 2)) in
-    let c3 = char_to_lower (String.index input (pos + 3)) in
+    let c0 = char_to_lower (fs_byte_index input pos) in
+    let c1 = char_to_lower (fs_byte_index input (pos + 1)) in
+    let c2 = char_to_lower (fs_byte_index input (pos + 2)) in
+    let c3 = char_to_lower (fs_byte_index input (pos + 3)) in
     if int_of_char c0 = 0x62 &&  // b
        int_of_char c1 = 0x61 &&  // a
        int_of_char c2 = 0x73 &&  // s
        int_of_char c3 = 0x65     // e
     then
       if pos + 4 >= len then true
-      else not (is_pn_chars (String.index input (pos + 4)))
+      else not (is_pn_chars (fs_byte_index input (pos + 4)))
     else false
   else false
 
@@ -184,14 +188,14 @@ let is_directive_at (input: string) (pos: nat) : bool =
 (** Check if input starting at pos matches "graph" case-insensitively,
     followed by a non-PN_CHARS character (whitespace, '{', etc.) *)
 let is_graph_keyword (input: string) (pos: nat) : bool =
-  let len = String.length input in
+  let len = fs_byte_length input in
   if pos + 5 > len then false
   else
-    let c0 = char_to_lower (String.index input pos) in
-    let c1 = char_to_lower (String.index input (pos + 1)) in
-    let c2 = char_to_lower (String.index input (pos + 2)) in
-    let c3 = char_to_lower (String.index input (pos + 3)) in
-    let c4 = char_to_lower (String.index input (pos + 4)) in
+    let c0 = char_to_lower (fs_byte_index input pos) in
+    let c1 = char_to_lower (fs_byte_index input (pos + 1)) in
+    let c2 = char_to_lower (fs_byte_index input (pos + 2)) in
+    let c3 = char_to_lower (fs_byte_index input (pos + 3)) in
+    let c4 = char_to_lower (fs_byte_index input (pos + 4)) in
     if int_of_char c0 = 0x67 &&    (* g *)
        int_of_char c1 = 0x72 &&    (* r *)
        int_of_char c2 = 0x61 &&    (* a *)
@@ -201,7 +205,7 @@ let is_graph_keyword (input: string) (pos: nat) : bool =
       (* Must be followed by non-pn_chars character or end of input *)
       if pos + 5 >= len then true
       else
-        let next = String.index input (pos + 5) in
+        let next = fs_byte_index input (pos + 5) in
         not (is_pn_chars next)
     else false
 
@@ -215,9 +219,9 @@ let is_graph_keyword (input: string) (pos: nat) : bool =
 (** Skip to end of line or '}' for error recovery *)
 let rec graph_body_skip_line (input: string) (p: nat) (f: nat) : Tot nat (decreases f) =
   if f = 0 then p
-  else if p >= String.length input then p
+  else if p >= fs_byte_length input then p
   else
-    let ch = String.index input p in
+    let ch = fs_byte_index input p in
     let cd = int_of_char ch in
     if cd = 0x0A || cd = 0x0D then p + 1
     else if cd = 0x7D then p
@@ -238,12 +242,12 @@ let rec parse_graph_body (tps: trig_parse_state) (input: string) (pos: nat)
   if fuel = 0 then ParseOk (List.Tot.rev acc, tps) pos
   else
     let fuel' : nat = fuel - 1 in
-    let len = String.length input in
+    let len = fs_byte_length input in
     match turtle_ws input pos with
     | ParseOk () pos1 ->
       if pos1 >= len then ParseFail "unterminated graph block, expected '}'" pos1
       else
-        let c = String.index input pos1 in
+        let c = fs_byte_index input pos1 in
         let code = int_of_char c in
         if code = 0x7D then
           ParseOk (List.Tot.rev acc, tps) (pos1 + 1)
@@ -291,13 +295,13 @@ let parse_trig_statement (tps: trig_parse_state) (input: string) (pos: nat) (fue
   if fuel = 0 then ParseFail "recursion limit" pos
   else
     let fuel' : nat = fuel - 1 in
-    let len = String.length input in
+    let len = fs_byte_length input in
     let st = tps.ts in
     match turtle_ws input pos with
     | ParseOk () pos1 ->
       if pos1 >= len then ParseOk ([], tps) pos1
       else
-        let c = String.index input pos1 in
+        let c = fs_byte_index input pos1 in
         let code = int_of_char c in
         // Case 1: Prefix directive
         begin match parse_prefix_directive st input pos1 with
@@ -330,7 +334,7 @@ let parse_trig_statement (tps: trig_parse_state) (input: string) (pos: nat) (fue
                     begin match turtle_ws input pos3 with
                     | ParseOk () pos4 ->
                       if pos4 >= len then ParseFail "expected '{'" pos4
-                      else if int_of_char (String.index input pos4) = 0x7B then
+                      else if int_of_char (fs_byte_index input pos4) = 0x7B then
                         let tps2 = { tps with ts = st2 } in
                         begin match parse_graph_body tps2 input (pos4 + 1) [] fuel with
                         | ParseOk (triples, tps3) pos5 ->
@@ -352,7 +356,7 @@ let parse_trig_statement (tps: trig_parse_state) (input: string) (pos: nat) (fue
               | ParseOk (candidate_name, st2) pos2 ->
                 begin match turtle_ws input pos2 with
                 | ParseOk () pos3 ->
-                  if pos3 < len && int_of_char (String.index input pos3) = 0x7B then
+                  if pos3 < len && int_of_char (fs_byte_index input pos3) = 0x7B then
                     // It's a named graph block: name { ... }
                     let tps2 = { tps with ts = st2 } in
                     begin match parse_graph_body tps2 input (pos3 + 1) [] fuel with
@@ -363,14 +367,14 @@ let parse_trig_statement (tps: trig_parse_state) (input: string) (pos: nat) (fue
                   else
                     // Not followed by '{' -- regular Turtle triples statement
                     let is_bnode =
-                      String.length candidate_name >= 2 &&
-                      (let c0 = String.index candidate_name 0 in
-                       let c1 = String.index candidate_name 1 in
+                      fs_byte_length candidate_name >= 2 &&
+                      (let c0 = fs_byte_index candidate_name 0 in
+                       let c1 = fs_byte_index candidate_name 1 in
                        int_of_char c0 = 0x5F && int_of_char c1 = 0x3A)
                     in
                     if is_bnode then
-                      let bname = if String.length candidate_name > 2
-                                  then String.sub candidate_name 2 (String.length candidate_name - 2)
+                      let bname = if fs_byte_length candidate_name > 2
+                                  then fs_byte_sub candidate_name 2 (fs_byte_length candidate_name - 2)
                                   else "" in
                       let subj = S_BNode bname in
                       begin match parse_predicate_object_list st2 subj input pos3 fuel' with
@@ -378,11 +382,11 @@ let parse_trig_statement (tps: trig_parse_state) (input: string) (pos: nat) (fue
                         begin match turtle_ws input pos4 with
                         | ParseOk () pos5 ->
                           // RC4: Require trailing dot for bare triples in TriG
-                          if pos5 < len && int_of_char (String.index input pos5) = 0x2E
+                          if pos5 < len && int_of_char (fs_byte_index input pos5) = 0x2E
                           then ParseOk ([(None, po_triples)], { tps with ts = st3 }) (pos5 + 1)
                           else
                             // No dot -- check if next is '}' or EOF (allowed at end of graph body)
-                            if pos5 >= len || int_of_char (String.index input pos5) = 0x7D
+                            if pos5 >= len || int_of_char (fs_byte_index input pos5) = 0x7D
                             then ParseOk ([(None, po_triples)], { tps with ts = st3 }) pos5
                             else ParseFail "expected '.' after triple" pos5
                         end
@@ -395,10 +399,10 @@ let parse_trig_statement (tps: trig_parse_state) (input: string) (pos: nat) (fue
                         begin match turtle_ws input pos4 with
                         | ParseOk () pos5 ->
                           // RC4: Require trailing dot for bare triples in TriG
-                          if pos5 < len && int_of_char (String.index input pos5) = 0x2E
+                          if pos5 < len && int_of_char (fs_byte_index input pos5) = 0x2E
                           then ParseOk ([(None, po_triples)], { tps with ts = st3 }) (pos5 + 1)
                           else
-                            if pos5 >= len || int_of_char (String.index input pos5) = 0x7D
+                            if pos5 >= len || int_of_char (fs_byte_index input pos5) = 0x7D
                             then ParseOk ([(None, po_triples)], { tps with ts = st3 }) pos5
                             else ParseFail "expected '.' after triple" pos5
                         end
@@ -431,7 +435,7 @@ let rec parse_trig_doc (tps: trig_parse_state) (input: string) (pos: nat)
   if fuel = 0 then (ds, tps)
   else
     let fuel' : nat = fuel - 1 in
-    let len = String.length input in
+    let len = fs_byte_length input in
     match turtle_ws input pos with
     | ParseOk () pos1 ->
       if pos1 >= len then (ds, tps)
@@ -472,7 +476,7 @@ let make_trig_parse_state (st: turtle_state) : trig_parse_state =
 (** Parse a TriG document string into an rdf_dataset.
     Returns None if any parse errors were encountered. *)
 let parse_trig (input: string) : option rdf_dataset =
-  let len = String.length input in
+  let len = fs_byte_length input in
   let fuel = (len + 1) `op_Multiply` 3 in
   let tps = make_trig_parse_state empty_turtle_state in
   let (ds, tps') = parse_trig_doc tps input 0 empty_dataset fuel in
@@ -481,7 +485,7 @@ let parse_trig (input: string) : option rdf_dataset =
 (** Parse a TriG document with a base IRI.
     Returns None if any parse errors were encountered. *)
 let parse_trig_with_base (input: string) (base: string) : option rdf_dataset =
-  let len = String.length input in
+  let len = fs_byte_length input in
   let fuel = (len + 1) `op_Multiply` 3 in
   let st = { empty_turtle_state with base_iri = base } in
   let tps = make_trig_parse_state st in
@@ -490,14 +494,14 @@ let parse_trig_with_base (input: string) (base: string) : option rdf_dataset =
 
 // Lenient versions that always return a dataset (for positive tests / compatibility)
 let parse_trig_lenient (input: string) : rdf_dataset =
-  let len = String.length input in
+  let len = fs_byte_length input in
   let fuel = (len + 1) `op_Multiply` 3 in
   let tps = make_trig_parse_state empty_turtle_state in
   let (ds, _) = parse_trig_doc tps input 0 empty_dataset fuel in
   ds
 
 let parse_trig_with_base_lenient (input: string) (base: string) : rdf_dataset =
-  let len = String.length input in
+  let len = fs_byte_length input in
   let fuel = (len + 1) `op_Multiply` 3 in
   let st = { empty_turtle_state with base_iri = base } in
   let tps = make_trig_parse_state st in

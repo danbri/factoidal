@@ -3,6 +3,12 @@ module Parser.TurtleScanner
 open FStar.String
 open FStar.Char
 open Parser.Combinators
+open Parser.FastString
+
+// Issue #70: hot-loop String.length / String.index calls go through
+// BatUTF8 in the F* OCaml runtime and cost O(n) each. This scanner uses
+// the byte-indexed fs_byte_length / fs_byte_index primitives (O(1) /
+// O(1)) instead. See Parser.FastString.fst for the safety argument.
 
 (* Scanner-first foundation for a future Turtle parser refactor.
    This module keeps the API offset-oriented and streaming-friendly. *)
@@ -99,22 +105,22 @@ let hex_digit_value (c: char) : nat =
   else 0
 
 // F* 2026.03.24 requires bounds preconditions and explicit op_Multiply for nat
-let decode_hex4 (input: string) (pos: nat{pos + 4 <= String.length input}) : nat =
-  let d0 = hex_digit_value (String.index input pos) in
-  let d1 = hex_digit_value (String.index input (pos + 1)) in
-  let d2 = hex_digit_value (String.index input (pos + 2)) in
-  let d3 = hex_digit_value (String.index input (pos + 3)) in
+let decode_hex4 (input: string) (pos: nat{pos + 4 <= fs_byte_length input}) : nat =
+  let d0 = hex_digit_value (fs_byte_index input pos) in
+  let d1 = hex_digit_value (fs_byte_index input (pos + 1)) in
+  let d2 = hex_digit_value (fs_byte_index input (pos + 2)) in
+  let d3 = hex_digit_value (fs_byte_index input (pos + 3)) in
   op_Multiply d0 4096 + op_Multiply d1 256 + op_Multiply d2 16 + d3
 
-let decode_hex8 (input: string) (pos: nat{pos + 8 <= String.length input}) : nat =
-  let d0 = hex_digit_value (String.index input pos) in
-  let d1 = hex_digit_value (String.index input (pos + 1)) in
-  let d2 = hex_digit_value (String.index input (pos + 2)) in
-  let d3 = hex_digit_value (String.index input (pos + 3)) in
-  let d4 = hex_digit_value (String.index input (pos + 4)) in
-  let d5 = hex_digit_value (String.index input (pos + 5)) in
-  let d6 = hex_digit_value (String.index input (pos + 6)) in
-  let d7 = hex_digit_value (String.index input (pos + 7)) in
+let decode_hex8 (input: string) (pos: nat{pos + 8 <= fs_byte_length input}) : nat =
+  let d0 = hex_digit_value (fs_byte_index input pos) in
+  let d1 = hex_digit_value (fs_byte_index input (pos + 1)) in
+  let d2 = hex_digit_value (fs_byte_index input (pos + 2)) in
+  let d3 = hex_digit_value (fs_byte_index input (pos + 3)) in
+  let d4 = hex_digit_value (fs_byte_index input (pos + 4)) in
+  let d5 = hex_digit_value (fs_byte_index input (pos + 5)) in
+  let d6 = hex_digit_value (fs_byte_index input (pos + 6)) in
+  let d7 = hex_digit_value (fs_byte_index input (pos + 7)) in
   op_Multiply d0 268435456 + op_Multiply d1 16777216 + op_Multiply d2 1048576 + op_Multiply d3 65536 +
   op_Multiply d4 4096 + op_Multiply d5 256 + op_Multiply d6 16 + d7
 
@@ -143,10 +149,10 @@ let rec skip_comment_to_eol (input: string) (pos: nat) (fuel: nat)
   : Tot nat (decreases fuel) =
   if fuel = 0 then pos
   else
-    let len = String.length input in
+    let len = fs_byte_length input in
     if pos >= len then pos
     else
-      let c = String.index input pos in
+      let c = fs_byte_index input pos in
       let code = int_of_char c in
       if code = 0x0A || code = 0x0D then pos
       else skip_comment_to_eol input (pos + 1) (fuel - 1)
@@ -155,10 +161,10 @@ let rec scan_ws_comments (input: string) (pos: nat) (fuel: nat)
   : Tot nat (decreases fuel) =
   if fuel = 0 then pos
   else
-    let len = String.length input in
+    let len = fs_byte_length input in
     if pos >= len then pos
     else
-      let c = String.index input pos in
+      let c = fs_byte_index input pos in
       let code = int_of_char c in
       if is_ascii_ws c then
         scan_ws_comments input (pos + 1) (fuel - 1)
@@ -169,7 +175,7 @@ let rec scan_ws_comments (input: string) (pos: nat) (fuel: nat)
         pos
 
 let skip_ws_comments (input: string) (pos: nat) : nat =
-  let len = String.length input in
+  let len = fs_byte_length input in
   let fuel = len - pos + 1 in
   if fuel >= 0 then scan_ws_comments input pos fuel else pos
 
@@ -177,10 +183,10 @@ let rec scan_name_body_end (input: string) (pos: nat) (fuel: nat)
   : Tot nat (decreases fuel) =
   if fuel = 0 then pos
   else
-    let len = String.length input in
+    let len = fs_byte_length input in
     if pos >= len then pos
     else
-      let c = String.index input pos in
+      let c = fs_byte_index input pos in
       let code = int_of_char c in
       // PN_LOCAL_ESC: a backslash starts a two-char escape where the
       // second char may be a reserved char (#, !, ~, ., ...) that's not
@@ -200,10 +206,10 @@ let rec scan_name_body_end (input: string) (pos: nat) (fuel: nat)
 
 let scan_prefixed_name_span (input: string) (pos: nat)
   : parse_result prefixed_name_span =
-  let len = String.length input in
+  let len = fs_byte_length input in
   if pos >= len then ParseFail "expected prefixed name" pos
   else
-    let c0 = String.index input pos in
+    let c0 = fs_byte_index input pos in
     if int_of_char c0 = 0x3A then
       let body_end = scan_name_body_end input (pos + 1) (len - pos + 1) in
       let prefix = { sp_start = pos; sp_end = pos } in
@@ -217,7 +223,7 @@ let scan_prefixed_name_span (input: string) (pos: nat)
         if fuel = 0 then None
         else if p >= body_end then None
         else if p >= len then None
-        else if int_of_char (String.index input p) = 0x3A then Some p
+        else if int_of_char (fs_byte_index input p) = 0x3A then Some p
         else find_colon (p + 1) (fuel - 1)
       in
       let fuel : nat =
@@ -234,23 +240,23 @@ let rec scan_iri_ref_end (input: string) (pos: nat) (has_colon: bool) (fuel: nat
   : Tot (parse_result (nat & bool)) (decreases fuel) =
   if fuel = 0 then ParseFail "unterminated IRI reference" pos
   else
-    let len = String.length input in
+    let len = fs_byte_length input in
     if pos >= len then ParseFail "unterminated IRI reference" pos
     else
-      let c = String.index input pos in
+      let c = fs_byte_index input pos in
       let code = int_of_char c in
       if code = 0x3E then ParseOk (pos, has_colon) (pos + 1)
       else if code = 0x5C then
         if pos + 1 >= len then ParseFail "backslash at end of IRI reference" pos
         else
-          let next = String.index input (pos + 1) in
+          let next = fs_byte_index input (pos + 1) in
           let ncode = int_of_char next in
           if ncode = 0x75 then
             if pos + 6 > len then ParseFail "incomplete \\u escape in IRI reference" pos
-            else if is_hex_digit (String.index input (pos + 2)) &&
-                    is_hex_digit (String.index input (pos + 3)) &&
-                    is_hex_digit (String.index input (pos + 4)) &&
-                    is_hex_digit (String.index input (pos + 5))
+            else if is_hex_digit (fs_byte_index input (pos + 2)) &&
+                    is_hex_digit (fs_byte_index input (pos + 3)) &&
+                    is_hex_digit (fs_byte_index input (pos + 4)) &&
+                    is_hex_digit (fs_byte_index input (pos + 5))
             then
               let cp = decode_hex4 input (pos + 2) in
               if cp >= 0xD800 && cp <= 0xDFFF then
@@ -260,14 +266,14 @@ let rec scan_iri_ref_end (input: string) (pos: nat) (has_colon: bool) (fuel: nat
             else ParseFail "invalid hex digit in \\u escape" pos
           else if ncode = 0x55 then
             if pos + 10 > len then ParseFail "incomplete \\U escape in IRI reference" pos
-            else if is_hex_digit (String.index input (pos + 2)) &&
-                    is_hex_digit (String.index input (pos + 3)) &&
-                    is_hex_digit (String.index input (pos + 4)) &&
-                    is_hex_digit (String.index input (pos + 5)) &&
-                    is_hex_digit (String.index input (pos + 6)) &&
-                    is_hex_digit (String.index input (pos + 7)) &&
-                    is_hex_digit (String.index input (pos + 8)) &&
-                    is_hex_digit (String.index input (pos + 9))
+            else if is_hex_digit (fs_byte_index input (pos + 2)) &&
+                    is_hex_digit (fs_byte_index input (pos + 3)) &&
+                    is_hex_digit (fs_byte_index input (pos + 4)) &&
+                    is_hex_digit (fs_byte_index input (pos + 5)) &&
+                    is_hex_digit (fs_byte_index input (pos + 6)) &&
+                    is_hex_digit (fs_byte_index input (pos + 7)) &&
+                    is_hex_digit (fs_byte_index input (pos + 8)) &&
+                    is_hex_digit (fs_byte_index input (pos + 9))
             then
               let cp = decode_hex8 input (pos + 2) in
               if (cp >= 0xD800 && cp <= 0xDFFF) || cp > 0x10FFFF then
@@ -282,9 +288,9 @@ let rec scan_iri_ref_end (input: string) (pos: nat) (has_colon: bool) (fuel: nat
       else scan_iri_ref_end input (pos + 1) (has_colon || code = 0x3A) (fuel - 1)
 
 let scan_iri_ref_span (input: string) (pos: nat) : parse_result iri_ref_span =
-  let len = String.length input in
+  let len = fs_byte_length input in
   if pos >= len then ParseFail "expected IRI reference" pos
-  else if int_of_char (String.index input pos) <> 0x3C then
+  else if int_of_char (fs_byte_index input pos) <> 0x3C then
     ParseFail "expected '<'" pos
   else
     match scan_iri_ref_end input (pos + 1) false (len - pos + 1) with
@@ -299,26 +305,26 @@ let rec scan_short_string_end (input: string) (pos: nat) (quote_code: nat) (fuel
   : Tot nat (decreases fuel) =
   if fuel = 0 then pos
   else
-    let len = String.length input in
+    let len = fs_byte_length input in
     if pos >= len then pos
     else
-      let ch = String.index input pos in
+      let ch = fs_byte_index input pos in
       let code = int_of_char ch in
       if code = quote_code || code = 0x5C || code = 0x0A || code = 0x0D
       then pos
       else scan_short_string_end input (pos + 1) quote_code (fuel - 1)
 
 let scan_short_string_span (input: string) (pos: nat) : parse_result short_string_span =
-  let len = String.length input in
+  let len = fs_byte_length input in
   if pos >= len then ParseFail "expected short string literal" pos
   else
-    let q = String.index input pos in
+    let q = fs_byte_index input pos in
     let qcode = int_of_char q in
     if qcode <> 0x22 && qcode <> 0x27 then
       ParseFail "expected short string literal" pos
     else
       let end_pos = scan_short_string_end input (pos + 1) qcode (len - pos + 1) in
-      if end_pos < len && int_of_char (String.index input end_pos) = qcode then
+      if end_pos < len && int_of_char (fs_byte_index input end_pos) = qcode then
         ParseOk ({
           sss_quote = q;
           sss_content = { sp_start = pos + 1; sp_end = end_pos };
@@ -327,10 +333,10 @@ let scan_short_string_span (input: string) (pos: nat) : parse_result short_strin
         ParseFail "short string needs slow path" end_pos
 
 let scan_punct (input: string) (pos: nat) : parse_result scanned_token =
-  let len = String.length input in
+  let len = fs_byte_length input in
   if pos >= len then ParseFail "expected punctuation" pos
   else
-    let code = int_of_char (String.index input pos) in
+    let code = int_of_char (fs_byte_index input pos) in
     let sp = { sp_start = pos; sp_end = pos + 1 } in
     if code = 0x2E then ParseOk ({ st_kind = TK_Dot; st_span = sp }) (pos + 1)
     else if code = 0x3B then ParseOk ({ st_kind = TK_Semicolon; st_span = sp }) (pos + 1)

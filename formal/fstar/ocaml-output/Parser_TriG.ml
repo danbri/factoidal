@@ -70,11 +70,11 @@ let parse_trig_graph_name (st : Parser_Turtle.turtle_state)
   (input : Prims.string) (pos : Prims.nat) :
   (RDF_Graph_Executable.iri * Parser_Turtle.turtle_state)
     Parser_Combinators.parse_result=
-  let len = FStar_String.strlen input in
+  let len = Parser_FastString.fs_byte_length input in
   if pos >= len
   then Parser_Combinators.ParseFail ("expected graph name", pos)
   else
-    (let c = FStar_String.index input pos in
+    (let c = Parser_FastString.fs_byte_index input pos in
      let code = FStar_Char.int_of_char c in
      if code = (Prims.of_int (0x5F))
      then
@@ -91,8 +91,9 @@ let parse_trig_graph_name (st : Parser_Turtle.turtle_state)
           | Parser_Combinators.ParseOk ((), pos2) ->
               if
                 (pos2 < len) &&
-                  ((FStar_Char.int_of_char (FStar_String.index input pos2)) =
-                     (Prims.of_int (0x5D)))
+                  ((FStar_Char.int_of_char
+                      (Parser_FastString.fs_byte_index input pos2))
+                     = (Prims.of_int (0x5D)))
               then
                 let uu___2 = Parser_Turtle.fresh_bnode st in
                 (match uu___2 with
@@ -115,47 +116,55 @@ let char_to_lower (c : FStar_Char.char) : FStar_Char.char=
   then FStar_Char.char_of_int (code + (Prims.of_int (32)))
   else c
 let is_at_directive (input : Prims.string) (pos : Prims.nat) : Prims.bool=
-  let len = FStar_String.strlen input in
+  let len = Parser_FastString.fs_byte_length input in
   if pos >= len
   then false
   else
     if
-      (FStar_Char.int_of_char (FStar_String.index input pos)) <>
+      (FStar_Char.int_of_char (Parser_FastString.fs_byte_index input pos)) <>
         (Prims.of_int (0x40))
     then false
     else
       if (pos + (Prims.of_int (7))) <= len
       then
-        (let s = FStar_String.sub input pos (Prims.of_int (7)) in
+        (let s = Parser_FastString.fs_byte_sub input pos (Prims.of_int (7)) in
          if s = "@prefix"
          then true
          else
            if (pos + (Prims.of_int (5))) <= len
            then
-             (let s2 = FStar_String.sub input pos (Prims.of_int (5)) in
+             (let s2 =
+                Parser_FastString.fs_byte_sub input pos (Prims.of_int (5)) in
               s2 = "@base")
            else false)
       else
         if (pos + (Prims.of_int (5))) <= len
         then
-          (let s2 = FStar_String.sub input pos (Prims.of_int (5)) in
+          (let s2 =
+             Parser_FastString.fs_byte_sub input pos (Prims.of_int (5)) in
            s2 = "@base")
         else false
 let is_sparql_directive (input : Prims.string) (pos : Prims.nat) :
   Prims.bool=
-  let len = FStar_String.strlen input in
+  let len = Parser_FastString.fs_byte_length input in
   if (pos + (Prims.of_int (6))) <= len
   then
-    let c0 = char_to_lower (FStar_String.index input pos) in
-    let c1 = char_to_lower (FStar_String.index input (pos + Prims.int_one)) in
+    let c0 = char_to_lower (Parser_FastString.fs_byte_index input pos) in
+    let c1 =
+      char_to_lower
+        (Parser_FastString.fs_byte_index input (pos + Prims.int_one)) in
     let c2 =
-      char_to_lower (FStar_String.index input (pos + (Prims.of_int (2)))) in
+      char_to_lower
+        (Parser_FastString.fs_byte_index input (pos + (Prims.of_int (2)))) in
     let c3 =
-      char_to_lower (FStar_String.index input (pos + (Prims.of_int (3)))) in
+      char_to_lower
+        (Parser_FastString.fs_byte_index input (pos + (Prims.of_int (3)))) in
     let c4 =
-      char_to_lower (FStar_String.index input (pos + (Prims.of_int (4)))) in
+      char_to_lower
+        (Parser_FastString.fs_byte_index input (pos + (Prims.of_int (4)))) in
     let c5 =
-      char_to_lower (FStar_String.index input (pos + (Prims.of_int (5)))) in
+      char_to_lower
+        (Parser_FastString.fs_byte_index input (pos + (Prims.of_int (5)))) in
     (if
        ((((((FStar_Char.int_of_char c0) = (Prims.of_int (0x70))) &&
              ((FStar_Char.int_of_char c1) = (Prims.of_int (0x72))))
@@ -169,7 +178,8 @@ let is_sparql_directive (input : Prims.string) (pos : Prims.nat) :
         else
           Prims.op_Negation
             (Parser_Turtle.is_pn_chars
-               (FStar_String.index input (pos + (Prims.of_int (6))))))
+               (Parser_FastString.fs_byte_index input
+                  (pos + (Prims.of_int (6))))))
      else
        if (pos + (Prims.of_int (4))) <= len
        then
@@ -184,19 +194,23 @@ let is_sparql_directive (input : Prims.string) (pos : Prims.nat) :
              else
                Prims.op_Negation
                  (Parser_Turtle.is_pn_chars
-                    (FStar_String.index input (pos + (Prims.of_int (4))))))
+                    (Parser_FastString.fs_byte_index input
+                       (pos + (Prims.of_int (4))))))
           else false)
        else false)
   else
     if (pos + (Prims.of_int (4))) <= len
     then
-      (let c0 = char_to_lower (FStar_String.index input pos) in
+      (let c0 = char_to_lower (Parser_FastString.fs_byte_index input pos) in
        let c1 =
-         char_to_lower (FStar_String.index input (pos + Prims.int_one)) in
+         char_to_lower
+           (Parser_FastString.fs_byte_index input (pos + Prims.int_one)) in
        let c2 =
-         char_to_lower (FStar_String.index input (pos + (Prims.of_int (2)))) in
+         char_to_lower
+           (Parser_FastString.fs_byte_index input (pos + (Prims.of_int (2)))) in
        let c3 =
-         char_to_lower (FStar_String.index input (pos + (Prims.of_int (3)))) in
+         char_to_lower
+           (Parser_FastString.fs_byte_index input (pos + (Prims.of_int (3)))) in
        if
          ((((FStar_Char.int_of_char c0) = (Prims.of_int (0x62))) &&
              ((FStar_Char.int_of_char c1) = (Prims.of_int (0x61))))
@@ -208,24 +222,30 @@ let is_sparql_directive (input : Prims.string) (pos : Prims.nat) :
           else
             Prims.op_Negation
               (Parser_Turtle.is_pn_chars
-                 (FStar_String.index input (pos + (Prims.of_int (4))))))
+                 (Parser_FastString.fs_byte_index input
+                    (pos + (Prims.of_int (4))))))
        else false)
     else false
 let is_directive_at (input : Prims.string) (pos : Prims.nat) : Prims.bool=
   (is_at_directive input pos) || (is_sparql_directive input pos)
 let is_graph_keyword (input : Prims.string) (pos : Prims.nat) : Prims.bool=
-  let len = FStar_String.strlen input in
+  let len = Parser_FastString.fs_byte_length input in
   if (pos + (Prims.of_int (5))) > len
   then false
   else
-    (let c0 = char_to_lower (FStar_String.index input pos) in
-     let c1 = char_to_lower (FStar_String.index input (pos + Prims.int_one)) in
+    (let c0 = char_to_lower (Parser_FastString.fs_byte_index input pos) in
+     let c1 =
+       char_to_lower
+         (Parser_FastString.fs_byte_index input (pos + Prims.int_one)) in
      let c2 =
-       char_to_lower (FStar_String.index input (pos + (Prims.of_int (2)))) in
+       char_to_lower
+         (Parser_FastString.fs_byte_index input (pos + (Prims.of_int (2)))) in
      let c3 =
-       char_to_lower (FStar_String.index input (pos + (Prims.of_int (3)))) in
+       char_to_lower
+         (Parser_FastString.fs_byte_index input (pos + (Prims.of_int (3)))) in
      let c4 =
-       char_to_lower (FStar_String.index input (pos + (Prims.of_int (4)))) in
+       char_to_lower
+         (Parser_FastString.fs_byte_index input (pos + (Prims.of_int (4)))) in
      if
        (((((FStar_Char.int_of_char c0) = (Prims.of_int (0x67))) &&
             ((FStar_Char.int_of_char c1) = (Prims.of_int (0x72))))
@@ -236,7 +256,8 @@ let is_graph_keyword (input : Prims.string) (pos : Prims.nat) : Prims.bool=
        (if (pos + (Prims.of_int (5))) >= len
         then true
         else
-          (let next = FStar_String.index input (pos + (Prims.of_int (5))) in
+          (let next =
+             Parser_FastString.fs_byte_index input (pos + (Prims.of_int (5))) in
            Prims.op_Negation (Parser_Turtle.is_pn_chars next)))
      else false)
 let rec graph_body_skip_line (input : Prims.string) (p : Prims.nat)
@@ -244,10 +265,10 @@ let rec graph_body_skip_line (input : Prims.string) (p : Prims.nat)
   if f = Prims.int_zero
   then p
   else
-    if p >= (FStar_String.strlen input)
+    if p >= (Parser_FastString.fs_byte_length input)
     then p
     else
-      (let ch = FStar_String.index input p in
+      (let ch = Parser_FastString.fs_byte_index input p in
        let cd = FStar_Char.int_of_char ch in
        if (cd = (Prims.of_int (0x0A))) || (cd = (Prims.of_int (0x0D)))
        then p + Prims.int_one
@@ -274,7 +295,7 @@ let rec parse_graph_body (tps : trig_parse_state) (input : Prims.string)
   then Parser_Combinators.ParseOk (((FStar_List_Tot_Base.rev acc), tps), pos)
   else
     (let fuel' = fuel - Prims.int_one in
-     let len = FStar_String.strlen input in
+     let len = Parser_FastString.fs_byte_length input in
      match Parser_Turtle.turtle_ws input pos with
      | Parser_Combinators.ParseOk ((), pos1) ->
          if pos1 >= len
@@ -282,7 +303,7 @@ let rec parse_graph_body (tps : trig_parse_state) (input : Prims.string)
            Parser_Combinators.ParseFail
              ("unterminated graph block, expected '}'", pos1)
          else
-           (let c = FStar_String.index input pos1 in
+           (let c = Parser_FastString.fs_byte_index input pos1 in
             let code = FStar_Char.int_of_char c in
             if code = (Prims.of_int (0x7D))
             then
@@ -334,14 +355,14 @@ let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
   then Parser_Combinators.ParseFail ("recursion limit", pos)
   else
     (let fuel' = fuel - Prims.int_one in
-     let len = FStar_String.strlen input in
+     let len = Parser_FastString.fs_byte_length input in
      let st = tps.ts in
      match Parser_Turtle.turtle_ws input pos with
      | Parser_Combinators.ParseOk ((), pos1) ->
          if pos1 >= len
          then Parser_Combinators.ParseOk (([], tps), pos1)
          else
-           (let c = FStar_String.index input pos1 in
+           (let c = Parser_FastString.fs_byte_index input pos1 in
             let code = FStar_Char.int_of_char c in
             match Parser_Turtle.parse_prefix_directive st input pos1 with
             | Parser_Combinators.ParseOk ((prefix, iri_val), pos2) ->
@@ -417,8 +438,8 @@ let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
                                           else
                                             if
                                               (FStar_Char.int_of_char
-                                                 (FStar_String.index input
-                                                    pos4))
+                                                 (Parser_FastString.fs_byte_index
+                                                    input pos4))
                                                 = (Prims.of_int (0x7B))
                                             then
                                               (let tps2 =
@@ -465,7 +486,8 @@ let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
                                      if
                                        (pos3 < len) &&
                                          ((FStar_Char.int_of_char
-                                             (FStar_String.index input pos3))
+                                             (Parser_FastString.fs_byte_index
+                                                input pos3))
                                             = (Prims.of_int (0x7B)))
                                      then
                                        let tps2 =
@@ -489,16 +511,16 @@ let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
                                               (msg, fpos))
                                      else
                                        (let is_bnode =
-                                          ((FStar_String.strlen
+                                          ((Parser_FastString.fs_byte_length
                                               candidate_name)
                                              >= (Prims.of_int (2)))
                                             &&
                                             (let c0 =
-                                               FStar_String.index
+                                               Parser_FastString.fs_byte_index
                                                  candidate_name
                                                  Prims.int_zero in
                                              let c1 =
-                                               FStar_String.index
+                                               Parser_FastString.fs_byte_index
                                                  candidate_name Prims.int_one in
                                              ((FStar_Char.int_of_char c0) =
                                                 (Prims.of_int (0x5F)))
@@ -509,13 +531,14 @@ let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
                                         then
                                           let bname =
                                             if
-                                              (FStar_String.strlen
+                                              (Parser_FastString.fs_byte_length
                                                  candidate_name)
                                                 > (Prims.of_int (2))
                                             then
-                                              FStar_String.sub candidate_name
+                                              Parser_FastString.fs_byte_sub
+                                                candidate_name
                                                 (Prims.of_int (2))
-                                                ((FStar_String.strlen
+                                                ((Parser_FastString.fs_byte_length
                                                     candidate_name)
                                                    - (Prims.of_int (2)))
                                             else "" in
@@ -535,7 +558,7 @@ let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
                                                    if
                                                      (pos5 < len) &&
                                                        ((FStar_Char.int_of_char
-                                                           (FStar_String.index
+                                                           (Parser_FastString.fs_byte_index
                                                               input pos5))
                                                           =
                                                           (Prims.of_int (0x2E)))
@@ -554,7 +577,7 @@ let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
                                                      if
                                                        (pos5 >= len) ||
                                                          ((FStar_Char.int_of_char
-                                                             (FStar_String.index
+                                                             (Parser_FastString.fs_byte_index
                                                                 input pos5))
                                                             =
                                                             (Prims.of_int (0x7D)))
@@ -597,7 +620,7 @@ let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
                                                       if
                                                         (pos5 < len) &&
                                                           ((FStar_Char.int_of_char
-                                                              (FStar_String.index
+                                                              (Parser_FastString.fs_byte_index
                                                                  input pos5))
                                                              =
                                                              (Prims.of_int (0x2E)))
@@ -616,7 +639,7 @@ let parse_trig_statement (tps : trig_parse_state) (input : Prims.string)
                                                         if
                                                           (pos5 >= len) ||
                                                             ((FStar_Char.int_of_char
-                                                                (FStar_String.index
+                                                                (Parser_FastString.fs_byte_index
                                                                    input pos5))
                                                                =
                                                                (Prims.of_int (0x7D)))
@@ -665,7 +688,7 @@ let rec parse_trig_doc (tps : trig_parse_state) (input : Prims.string)
   then (ds, tps)
   else
     (let fuel' = fuel - Prims.int_one in
-     let len = FStar_String.strlen input in
+     let len = Parser_FastString.fs_byte_length input in
      match Parser_Turtle.turtle_ws input pos with
      | Parser_Combinators.ParseOk ((), pos1) ->
          if pos1 >= len
@@ -704,7 +727,7 @@ let make_trig_parse_state (st : Parser_Turtle.turtle_state) :
   trig_parse_state= { ts = st; has_error = false }
 let parse_trig (input : Prims.string) :
   RDF_Graph_Executable.rdf_dataset FStar_Pervasives_Native.option=
-  let len = FStar_String.strlen input in
+  let len = Parser_FastString.fs_byte_length input in
   let fuel = (len + Prims.int_one) * (Prims.of_int (3)) in
   let tps = make_trig_parse_state Parser_Turtle.empty_turtle_state in
   let uu___ =
@@ -717,7 +740,7 @@ let parse_trig (input : Prims.string) :
       else FStar_Pervasives_Native.Some ds
 let parse_trig_with_base (input : Prims.string) (base : Prims.string) :
   RDF_Graph_Executable.rdf_dataset FStar_Pervasives_Native.option=
-  let len = FStar_String.strlen input in
+  let len = Parser_FastString.fs_byte_length input in
   let fuel = (len + Prims.int_one) * (Prims.of_int (3)) in
   let st =
     {
@@ -738,7 +761,7 @@ let parse_trig_with_base (input : Prims.string) (base : Prims.string) :
       else FStar_Pervasives_Native.Some ds
 let parse_trig_lenient (input : Prims.string) :
   RDF_Graph_Executable.rdf_dataset=
-  let len = FStar_String.strlen input in
+  let len = Parser_FastString.fs_byte_length input in
   let fuel = (len + Prims.int_one) * (Prims.of_int (3)) in
   let tps = make_trig_parse_state Parser_Turtle.empty_turtle_state in
   let uu___ =
@@ -747,7 +770,7 @@ let parse_trig_lenient (input : Prims.string) :
   match uu___ with | (ds, uu___1) -> ds
 let parse_trig_with_base_lenient (input : Prims.string) (base : Prims.string)
   : RDF_Graph_Executable.rdf_dataset=
-  let len = FStar_String.strlen input in
+  let len = Parser_FastString.fs_byte_length input in
   let fuel = (len + Prims.int_one) * (Prims.of_int (3)) in
   let st =
     {

@@ -2,9 +2,13 @@ module Parser.NQuads
 
 open FStar.String
 open FStar.List.Tot
+open Parser.FastString
 open Parser.Combinators
 open RDF.Graph.Executable
 open Parser.NTriples
+
+// Issue #70: byte-indexed string primitives on the hot path.
+// See Parser.FastString.fst.
 
 (* ================================================================ *)
 (* N-Quads Parser                                                    *)
@@ -27,10 +31,10 @@ open Parser.NTriples
     Returns the graph name as an iri (string). *)
 let parse_graph_label : parser iri =
   fun input pos ->
-    let len = String.length input in
+    let len = fs_byte_length input in
     if pos >= len then ParseFail "expected graph label" pos
     else
-      let ch = String.index input pos in
+      let ch = fs_byte_index input pos in
       let code = FStar.Char.int_of_char ch in
       if code = 0x3C then (* '<' — IRI *)
         begin match parse_iri_raw input pos with
@@ -58,13 +62,13 @@ let parse_graph_label : parser iri =
     character is '.', there is no graph label. *)
 let parse_opt_graph_label : parser (option iri) =
   fun input pos ->
-    let len = String.length input in
+    let len = fs_byte_length input in
     (* Skip whitespace first *)
     match pws input pos with
     | ParseOk () pos1 ->
       if pos1 >= len then ParseOk None pos1
       else
-        let ch = String.index input pos1 in
+        let ch = fs_byte_index input pos1 in
         let code = FStar.Char.int_of_char ch in
         if code = 0x2E then (* '.' — no graph label *)
           ParseOk None pos1
@@ -107,10 +111,10 @@ let parse_nquad : parser (triple * option iri) =
                   begin match pws input pos7 with
                   | ParseOk () pos8 ->
                     (* Expect '.' *)
-                    let len = String.length input in
+                    let len = fs_byte_length input in
                     if pos8 >= len then ParseFail "expected '.'" pos8
                     else
-                      let dot = String.index input pos8 in
+                      let dot = fs_byte_index input pos8 in
                       if FStar.Char.int_of_char dot = 0x2E then
                         if is_iri pred then
                           let t : triple = { s = subj; p = pred; o = obj } in
@@ -183,7 +187,7 @@ let rec parse_nquads_acc (input:string) (pos:nat) (ds:rdf_dataset) (fuel:nat)
   : Tot rdf_dataset (decreases fuel) =
   if fuel = 0 then ds
   else
-    let len = String.length input in
+    let len = fs_byte_length input in
     if pos >= len then ds
     else
       (* Skip whitespace (space/tab) *)
@@ -192,7 +196,7 @@ let rec parse_nquads_acc (input:string) (pos:nat) (ds:rdf_dataset) (fuel:nat)
                        | _ -> pos in
       if pos1 >= len then ds
       else
-        let ch = String.index input pos1 in
+        let ch = fs_byte_index input pos1 in
         let code = FStar.Char.int_of_char ch in
         if code = 0x23 then (* '#' — comment line *)
           let pos2 = skip_comment input pos1 in
@@ -224,7 +228,7 @@ let rec parse_nquads_acc (input:string) (pos:nat) (ds:rdf_dataset) (fuel:nat)
               if f = 0 then p
               else if p >= len then p
               else
-                let c = String.index input p in
+                let c = fs_byte_index input p in
                 let cc = FStar.Char.int_of_char c in
                 if cc = 0x0A || cc = 0x0D then skip_eol input p
                 else skip_line (p + 1) (f - 1)
@@ -237,14 +241,14 @@ let rec parse_nquads_acc (input:string) (pos:nat) (ds:rdf_dataset) (fuel:nat)
     Triples without a graph label go into the default graph.
     Triples with a graph label go into the corresponding named graph. *)
 let parse_nquads (input:string) : rdf_dataset =
-  let len = String.length input in
+  let len = fs_byte_length input in
   parse_nquads_acc input 0 empty_dataset (len + 1)
 
 let rec parse_nquads_strict_acc (input:string) (pos:nat) (ds:rdf_dataset) (fuel:nat)
   : Tot (option rdf_dataset) (decreases fuel) =
   if fuel = 0 then None
   else
-    let len = String.length input in
+    let len = fs_byte_length input in
     if pos >= len then Some ds
     else
       let pos1 : nat = match pws input pos with
@@ -252,7 +256,7 @@ let rec parse_nquads_strict_acc (input:string) (pos:nat) (ds:rdf_dataset) (fuel:
                        | _ -> pos in
       if pos1 >= len then Some ds
       else
-        let ch = String.index input pos1 in
+        let ch = fs_byte_index input pos1 in
         let code = FStar.Char.int_of_char ch in
         if code = 0x23 then
           let pos2 = skip_comment input pos1 in
@@ -281,7 +285,7 @@ let rec parse_nquads_strict_acc (input:string) (pos:nat) (ds:rdf_dataset) (fuel:
           | ParseFail _ _ -> None
 
 let parse_nquads_strict (input:string) : option rdf_dataset =
-  let len = String.length input in
+  let len = fs_byte_length input in
   parse_nquads_strict_acc input 0 empty_dataset (len + 1)
 
 (* ================================================================ *)
@@ -299,7 +303,7 @@ let rec parse_nquads_flat_acc (input:string) (pos:nat) (acc:list nquad) (fuel:na
   : Tot (list nquad) (decreases fuel) =
   if fuel = 0 then List.Tot.rev acc
   else
-    let len = String.length input in
+    let len = fs_byte_length input in
     if pos >= len then List.Tot.rev acc
     else
       (* Skip whitespace (space/tab) *)
@@ -308,7 +312,7 @@ let rec parse_nquads_flat_acc (input:string) (pos:nat) (acc:list nquad) (fuel:na
                        | _ -> pos in
       if pos1 >= len then List.Tot.rev acc
       else
-        let ch = String.index input pos1 in
+        let ch = fs_byte_index input pos1 in
         let code = FStar.Char.int_of_char ch in
         if code = 0x23 then (* '#' — comment line *)
           let pos2 = skip_comment input pos1 in
@@ -337,7 +341,7 @@ let rec parse_nquads_flat_acc (input:string) (pos:nat) (acc:list nquad) (fuel:na
               if f = 0 then p
               else if p >= len then p
               else
-                let c = String.index input p in
+                let c = fs_byte_index input p in
                 let cc = FStar.Char.int_of_char c in
                 if cc = 0x0A || cc = 0x0D then skip_eol input p
                 else skip_line (p + 1) (f - 1)
@@ -347,5 +351,5 @@ let rec parse_nquads_flat_acc (input:string) (pos:nat) (acc:list nquad) (fuel:na
             else parse_nquads_flat_acc input pos2 acc (fuel - 1)
 
 let parse_nquads_flat (input:string) : list nquad =
-  let len = String.length input in
+  let len = fs_byte_length input in
   parse_nquads_flat_acc input 0 [] (len + 1)

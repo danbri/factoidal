@@ -20,10 +20,10 @@ let pfail (msg : Prims.string) : 'a parser=
   fun _input pos -> ParseFail (msg, pos)
 let pchar (c : FStar_Char.char) : FStar_Char.char parser=
   fun input pos ->
-    let len = FStar_String.strlen input in
+    let len = Parser_FastString.fs_byte_length input in
     if pos < len
     then
-      let ch = FStar_String.index input pos in
+      let ch = Parser_FastString.fs_byte_index input pos in
       (if ch = c
        then ParseOk (ch, (pos + Prims.int_one))
        else
@@ -33,35 +33,35 @@ let pchar (c : FStar_Char.char) : FStar_Char.char parser=
     else ParseFail ("unexpected end of input", pos)
 let psat (pred : FStar_Char.char -> Prims.bool) : FStar_Char.char parser=
   fun input pos ->
-    let len = FStar_String.strlen input in
+    let len = Parser_FastString.fs_byte_length input in
     if pos < len
     then
-      let ch = FStar_String.index input pos in
+      let ch = Parser_FastString.fs_byte_index input pos in
       (if pred ch
        then ParseOk (ch, (pos + Prims.int_one))
        else ParseFail ("character did not satisfy predicate", pos))
     else ParseFail ("unexpected end of input", pos)
 let pany : FStar_Char.char parser=
   fun input pos ->
-    let len = FStar_String.strlen input in
+    let len = Parser_FastString.fs_byte_length input in
     if pos < len
     then
-      let ch = FStar_String.index input pos in
+      let ch = Parser_FastString.fs_byte_index input pos in
       ParseOk (ch, (pos + Prims.int_one))
     else ParseFail ("unexpected end of input", pos)
 let peof : unit parser=
   fun input pos ->
-    let len = FStar_String.strlen input in
+    let len = Parser_FastString.fs_byte_length input in
     if pos >= len
     then ParseOk ((), pos)
     else ParseFail ("expected end of input", pos)
 let pstring (s : Prims.string) : Prims.string parser=
   fun input pos ->
-    let slen = FStar_String.strlen s in
-    let ilen = FStar_String.strlen input in
+    let slen = Parser_FastString.fs_byte_length s in
+    let ilen = Parser_FastString.fs_byte_length input in
     if (pos + slen) <= ilen
     then
-      let sub_str = FStar_String.sub input pos slen in
+      let sub_str = Parser_FastString.fs_byte_sub input pos slen in
       (if sub_str = s
        then ParseOk (s, (pos + slen))
        else
@@ -108,7 +108,7 @@ let rec pmany_fuel :
        | ParseFail (uu___1, uu___2) -> ParseOk ([], pos))
 let pmany (p : 'a parser) (input : Prims.string) (pos : Prims.nat) :
   'a Prims.list parse_result=
-  let fuel = ((FStar_String.strlen input) - pos) + Prims.int_one in
+  let fuel = ((Parser_FastString.fs_byte_length input) - pos) + Prims.int_one in
   if fuel >= Prims.int_zero
   then pmany_fuel p input pos fuel
   else ParseOk ([], pos)
@@ -125,7 +125,7 @@ let pmany1_from (p : 'a parser) (input : Prims.string) (pos : Prims.nat)
   | ParseFail (msg, fpos) -> ParseFail (msg, fpos)
 let pmany1 (p : 'a parser) (input : Prims.string) (pos : Prims.nat) :
   'a Prims.list parse_result=
-  let fuel = ((FStar_String.strlen input) - pos) + Prims.int_one in
+  let fuel = ((Parser_FastString.fs_byte_length input) - pos) + Prims.int_one in
   if fuel >= Prims.int_zero
   then pmany1_from p input pos fuel
   else ParseFail ("unexpected end of input", pos)
@@ -145,7 +145,7 @@ let rec pskip_many_from :
        | ParseFail (uu___1, uu___2) -> ParseOk ((), pos))
 let pskip_many (p : 'a parser) (input : Prims.string) (pos : Prims.nat) :
   unit parse_result=
-  let fuel = ((FStar_String.strlen input) - pos) + Prims.int_one in
+  let fuel = ((Parser_FastString.fs_byte_length input) - pos) + Prims.int_one in
   if fuel >= Prims.int_zero
   then pskip_many_from p input pos fuel
   else ParseOk ((), pos)
@@ -175,7 +175,7 @@ let rec psep_by_rest :
        | ParseFail (uu___1, uu___2) -> ParseOk ([], pos))
 let psep_by (p : 'a parser) (sep : 'b parser) (input : Prims.string)
   (pos : Prims.nat) : 'a Prims.list parse_result=
-  let fuel = ((FStar_String.strlen input) - pos) + Prims.int_one in
+  let fuel = ((Parser_FastString.fs_byte_length input) - pos) + Prims.int_one in
   match p input pos with
   | ParseOk (v, pos') ->
       if fuel >= Prims.int_zero
@@ -221,10 +221,10 @@ let rec ptake_while_acc (pred : FStar_Char.char -> Prims.bool)
     ParseOk
       ((FStar_String.string_of_list (FStar_List_Tot_Base.rev acc)), pos)
   else
-    (let len = FStar_String.strlen input in
+    (let len = Parser_FastString.fs_byte_length input in
      if pos < len
      then
-       let ch = FStar_String.index input pos in
+       let ch = Parser_FastString.fs_byte_index input pos in
        (if pred ch
         then
           ptake_while_acc pred input (pos + Prims.int_one) (ch :: acc)
@@ -238,7 +238,7 @@ let rec ptake_while_acc (pred : FStar_Char.char -> Prims.bool)
          ((FStar_String.string_of_list (FStar_List_Tot_Base.rev acc)), pos))
 let ptake_while (pred : FStar_Char.char -> Prims.bool) (input : Prims.string)
   (pos : Prims.nat) : Prims.string parse_result=
-  let fuel = ((FStar_String.strlen input) - pos) + Prims.int_one in
+  let fuel = ((Parser_FastString.fs_byte_length input) - pos) + Prims.int_one in
   if fuel >= Prims.int_zero
   then ptake_while_acc pred input pos [] fuel
   else ParseOk ("", pos)
@@ -247,9 +247,9 @@ let rec ptake_while_scan (pred : FStar_Char.char -> Prims.bool)
   if fuel = Prims.int_zero
   then pos
   else
-    if pos < (FStar_String.strlen input)
+    if pos < (Parser_FastString.fs_byte_length input)
     then
-      (let ch = FStar_String.index input pos in
+      (let ch = Parser_FastString.fs_byte_index input pos in
        if pred ch
        then
          ptake_while_scan pred input (pos + Prims.int_one)
@@ -258,25 +258,29 @@ let rec ptake_while_scan (pred : FStar_Char.char -> Prims.bool)
     else pos
 let ptake_while_pos (pred : FStar_Char.char -> Prims.bool)
   (input : Prims.string) (pos : Prims.nat) : Prims.string parse_result=
-  let len = FStar_String.strlen input in
+  let len = Parser_FastString.fs_byte_length input in
   if pos > len
   then ParseOk ("", pos)
   else
     (let fuel = (len - pos) + Prims.int_one in
      let end_pos = ptake_while_scan pred input pos fuel in
      if (end_pos > pos) && (end_pos <= len)
-     then ParseOk ((FStar_String.sub input pos (end_pos - pos)), end_pos)
+     then
+       ParseOk
+         ((Parser_FastString.fs_byte_sub input pos (end_pos - pos)), end_pos)
      else ParseOk ("", pos))
 let ptake_while1_pos (pred : FStar_Char.char -> Prims.bool)
   (input : Prims.string) (pos : Prims.nat) : Prims.string parse_result=
-  let len = FStar_String.strlen input in
+  let len = Parser_FastString.fs_byte_length input in
   if pos > len
   then ParseFail ("expected at least one matching character", pos)
   else
     (let fuel = (len - pos) + Prims.int_one in
      let end_pos = ptake_while_scan pred input pos fuel in
      if (end_pos > pos) && (end_pos <= len)
-     then ParseOk ((FStar_String.sub input pos (end_pos - pos)), end_pos)
+     then
+       ParseOk
+         ((Parser_FastString.fs_byte_sub input pos (end_pos - pos)), end_pos)
      else ParseFail ("expected at least one matching character", pos))
 let ptake_while1 (pred : FStar_Char.char -> Prims.bool)
   (input : Prims.string) (pos : Prims.nat) : Prims.string parse_result=
@@ -301,11 +305,11 @@ let rec pquoted_body (qch : FStar_Char.char) (input : Prims.string)
   if fuel = Prims.int_zero
   then ParseFail ("unterminated quoted string", pos)
   else
-    (let len = FStar_String.strlen input in
+    (let len = Parser_FastString.fs_byte_length input in
      if pos >= len
      then ParseFail ("unterminated quoted string", pos)
      else
-       (let ch = FStar_String.index input pos in
+       (let ch = Parser_FastString.fs_byte_index input pos in
         if ch = qch
         then
           ParseOk
@@ -316,7 +320,8 @@ let rec pquoted_body (qch : FStar_Char.char) (input : Prims.string)
           then
             (if (pos + Prims.int_one) < len
              then
-               let escaped = FStar_String.index input (pos + Prims.int_one) in
+               let escaped =
+                 Parser_FastString.fs_byte_index input (pos + Prims.int_one) in
                pquoted_body qch input (pos + (Prims.of_int (2))) (escaped ::
                  ch :: acc) (fuel - Prims.int_one)
              else ParseFail ("backslash at end of input", pos))
@@ -325,10 +330,10 @@ let rec pquoted_body (qch : FStar_Char.char) (input : Prims.string)
               (fuel - Prims.int_one)))
 let pquoted_string (qch : FStar_Char.char) (input : Prims.string)
   (pos : Prims.nat) : Prims.string parse_result=
-  let len = FStar_String.strlen input in
+  let len = Parser_FastString.fs_byte_length input in
   if pos < len
   then
-    let ch = FStar_String.index input pos in
+    let ch = Parser_FastString.fs_byte_index input pos in
     (if ch = qch
      then
        let fuel = len - pos in

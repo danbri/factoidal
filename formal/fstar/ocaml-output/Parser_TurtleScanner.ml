@@ -145,30 +145,42 @@ let hex_digit_value (c : FStar_Char.char) : Prims.nat=
       then (code - (Prims.of_int (0x61))) + (Prims.of_int (10))
       else Prims.int_zero
 let decode_hex4 (input : Prims.string) (pos : Prims.nat) : Prims.nat=
-  let d0 = hex_digit_value (FStar_String.index input pos) in
-  let d1 = hex_digit_value (FStar_String.index input (pos + Prims.int_one)) in
+  let d0 = hex_digit_value (Parser_FastString.fs_byte_index input pos) in
+  let d1 =
+    hex_digit_value
+      (Parser_FastString.fs_byte_index input (pos + Prims.int_one)) in
   let d2 =
-    hex_digit_value (FStar_String.index input (pos + (Prims.of_int (2)))) in
+    hex_digit_value
+      (Parser_FastString.fs_byte_index input (pos + (Prims.of_int (2)))) in
   let d3 =
-    hex_digit_value (FStar_String.index input (pos + (Prims.of_int (3)))) in
+    hex_digit_value
+      (Parser_FastString.fs_byte_index input (pos + (Prims.of_int (3)))) in
   (((d0 * (Prims.of_int (4096))) + (d1 * (Prims.of_int (256)))) +
      (d2 * (Prims.of_int (16))))
     + d3
 let decode_hex8 (input : Prims.string) (pos : Prims.nat) : Prims.nat=
-  let d0 = hex_digit_value (FStar_String.index input pos) in
-  let d1 = hex_digit_value (FStar_String.index input (pos + Prims.int_one)) in
+  let d0 = hex_digit_value (Parser_FastString.fs_byte_index input pos) in
+  let d1 =
+    hex_digit_value
+      (Parser_FastString.fs_byte_index input (pos + Prims.int_one)) in
   let d2 =
-    hex_digit_value (FStar_String.index input (pos + (Prims.of_int (2)))) in
+    hex_digit_value
+      (Parser_FastString.fs_byte_index input (pos + (Prims.of_int (2)))) in
   let d3 =
-    hex_digit_value (FStar_String.index input (pos + (Prims.of_int (3)))) in
+    hex_digit_value
+      (Parser_FastString.fs_byte_index input (pos + (Prims.of_int (3)))) in
   let d4 =
-    hex_digit_value (FStar_String.index input (pos + (Prims.of_int (4)))) in
+    hex_digit_value
+      (Parser_FastString.fs_byte_index input (pos + (Prims.of_int (4)))) in
   let d5 =
-    hex_digit_value (FStar_String.index input (pos + (Prims.of_int (5)))) in
+    hex_digit_value
+      (Parser_FastString.fs_byte_index input (pos + (Prims.of_int (5)))) in
   let d6 =
-    hex_digit_value (FStar_String.index input (pos + (Prims.of_int (6)))) in
+    hex_digit_value
+      (Parser_FastString.fs_byte_index input (pos + (Prims.of_int (6)))) in
   let d7 =
-    hex_digit_value (FStar_String.index input (pos + (Prims.of_int (7)))) in
+    hex_digit_value
+      (Parser_FastString.fs_byte_index input (pos + (Prims.of_int (7)))) in
   (((((((d0 * (Prims.parse_int "268435456")) +
           (d1 * (Prims.parse_int "16777216")))
          + (d2 * (Prims.parse_int "1048576")))
@@ -206,11 +218,11 @@ let rec skip_comment_to_eol (input : Prims.string) (pos : Prims.nat)
   if fuel = Prims.int_zero
   then pos
   else
-    (let len = FStar_String.strlen input in
+    (let len = Parser_FastString.fs_byte_length input in
      if pos >= len
      then pos
      else
-       (let c = FStar_String.index input pos in
+       (let c = Parser_FastString.fs_byte_index input pos in
         let code = FStar_Char.int_of_char c in
         if (code = (Prims.of_int (0x0A))) || (code = (Prims.of_int (0x0D)))
         then pos
@@ -222,11 +234,11 @@ let rec scan_ws_comments (input : Prims.string) (pos : Prims.nat)
   if fuel = Prims.int_zero
   then pos
   else
-    (let len = FStar_String.strlen input in
+    (let len = Parser_FastString.fs_byte_length input in
      if pos >= len
      then pos
      else
-       (let c = FStar_String.index input pos in
+       (let c = Parser_FastString.fs_byte_index input pos in
         let code = FStar_Char.int_of_char c in
         if is_ascii_ws c
         then
@@ -239,7 +251,7 @@ let rec scan_ws_comments (input : Prims.string) (pos : Prims.nat)
              scan_ws_comments input pos' (fuel - Prims.int_one))
           else pos))
 let skip_ws_comments (input : Prims.string) (pos : Prims.nat) : Prims.nat=
-  let len = FStar_String.strlen input in
+  let len = Parser_FastString.fs_byte_length input in
   let fuel = (len - pos) + Prims.int_one in
   if fuel >= Prims.int_zero then scan_ws_comments input pos fuel else pos
 let rec scan_name_body_end (input : Prims.string) (pos : Prims.nat)
@@ -247,11 +259,11 @@ let rec scan_name_body_end (input : Prims.string) (pos : Prims.nat)
   if fuel = Prims.int_zero
   then pos
   else
-    (let len = FStar_String.strlen input in
+    (let len = Parser_FastString.fs_byte_length input in
      if pos >= len
      then pos
      else
-       (let c = FStar_String.index input pos in
+       (let c = Parser_FastString.fs_byte_index input pos in
         let code = FStar_Char.int_of_char c in
         if (code = (Prims.of_int (0x5C))) && ((pos + Prims.int_one) < len)
         then
@@ -273,11 +285,11 @@ let rec scan_name_body_end (input : Prims.string) (pos : Prims.nat)
                 (fuel - Prims.int_one)))
 let scan_prefixed_name_span (input : Prims.string) (pos : Prims.nat) :
   prefixed_name_span Parser_Combinators.parse_result=
-  let len = FStar_String.strlen input in
+  let len = Parser_FastString.fs_byte_length input in
   if pos >= len
   then Parser_Combinators.ParseFail ("expected prefixed name", pos)
   else
-    (let c0 = FStar_String.index input pos in
+    (let c0 = Parser_FastString.fs_byte_index input pos in
      if (FStar_Char.int_of_char c0) = (Prims.of_int (0x3A))
      then
        let body_end =
@@ -304,8 +316,9 @@ let scan_prefixed_name_span (input : Prims.string) (pos : Prims.nat) :
                 then FStar_Pervasives_Native.None
                 else
                   if
-                    (FStar_Char.int_of_char (FStar_String.index input p)) =
-                      (Prims.of_int (0x3A))
+                    (FStar_Char.int_of_char
+                       (Parser_FastString.fs_byte_index input p))
+                      = (Prims.of_int (0x3A))
                   then FStar_Pervasives_Native.Some p
                   else find_colon (p + Prims.int_one) (fuel - Prims.int_one) in
           let fuel =
@@ -328,11 +341,11 @@ let rec scan_iri_ref_end (input : Prims.string) (pos : Prims.nat)
   if fuel = Prims.int_zero
   then Parser_Combinators.ParseFail ("unterminated IRI reference", pos)
   else
-    (let len = FStar_String.strlen input in
+    (let len = Parser_FastString.fs_byte_length input in
      if pos >= len
      then Parser_Combinators.ParseFail ("unterminated IRI reference", pos)
      else
-       (let c = FStar_String.index input pos in
+       (let c = Parser_FastString.fs_byte_index input pos in
         let code = FStar_Char.int_of_char c in
         if code = (Prims.of_int (0x3E))
         then
@@ -346,7 +359,8 @@ let rec scan_iri_ref_end (input : Prims.string) (pos : Prims.nat)
                Parser_Combinators.ParseFail
                  ("backslash at end of IRI reference", pos)
              else
-               (let next = FStar_String.index input (pos + Prims.int_one) in
+               (let next =
+                  Parser_FastString.fs_byte_index input (pos + Prims.int_one) in
                 let ncode = FStar_Char.int_of_char next in
                 if ncode = (Prims.of_int (0x75))
                 then
@@ -357,19 +371,19 @@ let rec scan_iri_ref_end (input : Prims.string) (pos : Prims.nat)
                    else
                      if
                        (((is_hex_digit
-                            (FStar_String.index input
+                            (Parser_FastString.fs_byte_index input
                                (pos + (Prims.of_int (2)))))
                            &&
                            (is_hex_digit
-                              (FStar_String.index input
+                              (Parser_FastString.fs_byte_index input
                                  (pos + (Prims.of_int (3))))))
                           &&
                           (is_hex_digit
-                             (FStar_String.index input
+                             (Parser_FastString.fs_byte_index input
                                 (pos + (Prims.of_int (4))))))
                          &&
                          (is_hex_digit
-                            (FStar_String.index input
+                            (Parser_FastString.fs_byte_index input
                                (pos + (Prims.of_int (5)))))
                      then
                        (let cp = decode_hex4 input (pos + (Prims.of_int (2))) in
@@ -395,35 +409,35 @@ let rec scan_iri_ref_end (input : Prims.string) (pos : Prims.nat)
                      else
                        if
                          (((((((is_hex_digit
-                                  (FStar_String.index input
+                                  (Parser_FastString.fs_byte_index input
                                      (pos + (Prims.of_int (2)))))
                                  &&
                                  (is_hex_digit
-                                    (FStar_String.index input
+                                    (Parser_FastString.fs_byte_index input
                                        (pos + (Prims.of_int (3))))))
                                 &&
                                 (is_hex_digit
-                                   (FStar_String.index input
+                                   (Parser_FastString.fs_byte_index input
                                       (pos + (Prims.of_int (4))))))
                                &&
                                (is_hex_digit
-                                  (FStar_String.index input
+                                  (Parser_FastString.fs_byte_index input
                                      (pos + (Prims.of_int (5))))))
                               &&
                               (is_hex_digit
-                                 (FStar_String.index input
+                                 (Parser_FastString.fs_byte_index input
                                     (pos + (Prims.of_int (6))))))
                              &&
                              (is_hex_digit
-                                (FStar_String.index input
+                                (Parser_FastString.fs_byte_index input
                                    (pos + (Prims.of_int (7))))))
                             &&
                             (is_hex_digit
-                               (FStar_String.index input
+                               (Parser_FastString.fs_byte_index input
                                   (pos + (Prims.of_int (8))))))
                            &&
                            (is_hex_digit
-                              (FStar_String.index input
+                              (Parser_FastString.fs_byte_index input
                                  (pos + (Prims.of_int (9)))))
                        then
                          (let cp =
@@ -464,12 +478,12 @@ let rec scan_iri_ref_end (input : Prims.string) (pos : Prims.nat)
                   (fuel - Prims.int_one)))
 let scan_iri_ref_span (input : Prims.string) (pos : Prims.nat) :
   iri_ref_span Parser_Combinators.parse_result=
-  let len = FStar_String.strlen input in
+  let len = Parser_FastString.fs_byte_length input in
   if pos >= len
   then Parser_Combinators.ParseFail ("expected IRI reference", pos)
   else
     if
-      (FStar_Char.int_of_char (FStar_String.index input pos)) <>
+      (FStar_Char.int_of_char (Parser_FastString.fs_byte_index input pos)) <>
         (Prims.of_int (0x3C))
     then Parser_Combinators.ParseFail ("expected '<'", pos)
     else
@@ -489,11 +503,11 @@ let rec scan_short_string_end (input : Prims.string) (pos : Prims.nat)
   if fuel = Prims.int_zero
   then pos
   else
-    (let len = FStar_String.strlen input in
+    (let len = Parser_FastString.fs_byte_length input in
      if pos >= len
      then pos
      else
-       (let ch = FStar_String.index input pos in
+       (let ch = Parser_FastString.fs_byte_index input pos in
         let code = FStar_Char.int_of_char ch in
         if
           (((code = quote_code) || (code = (Prims.of_int (0x5C)))) ||
@@ -505,11 +519,11 @@ let rec scan_short_string_end (input : Prims.string) (pos : Prims.nat)
             (fuel - Prims.int_one)))
 let scan_short_string_span (input : Prims.string) (pos : Prims.nat) :
   short_string_span Parser_Combinators.parse_result=
-  let len = FStar_String.strlen input in
+  let len = Parser_FastString.fs_byte_length input in
   if pos >= len
   then Parser_Combinators.ParseFail ("expected short string literal", pos)
   else
-    (let q = FStar_String.index input pos in
+    (let q = Parser_FastString.fs_byte_index input pos in
      let qcode = FStar_Char.int_of_char q in
      if (qcode <> (Prims.of_int (0x22))) && (qcode <> (Prims.of_int (0x27)))
      then Parser_Combinators.ParseFail ("expected short string literal", pos)
@@ -519,8 +533,9 @@ let scan_short_string_span (input : Prims.string) (pos : Prims.nat) :
             ((len - pos) + Prims.int_one) in
         if
           (end_pos < len) &&
-            ((FStar_Char.int_of_char (FStar_String.index input end_pos)) =
-               qcode)
+            ((FStar_Char.int_of_char
+                (Parser_FastString.fs_byte_index input end_pos))
+               = qcode)
         then
           Parser_Combinators.ParseOk
             ({
@@ -533,11 +548,12 @@ let scan_short_string_span (input : Prims.string) (pos : Prims.nat) :
             ("short string needs slow path", end_pos)))
 let scan_punct (input : Prims.string) (pos : Prims.nat) :
   scanned_token Parser_Combinators.parse_result=
-  let len = FStar_String.strlen input in
+  let len = Parser_FastString.fs_byte_length input in
   if pos >= len
   then Parser_Combinators.ParseFail ("expected punctuation", pos)
   else
-    (let code = FStar_Char.int_of_char (FStar_String.index input pos) in
+    (let code =
+       FStar_Char.int_of_char (Parser_FastString.fs_byte_index input pos) in
      let sp = { sp_start = pos; sp_end = (pos + Prims.int_one) } in
      if code = (Prims.of_int (0x2E))
      then

@@ -12,6 +12,10 @@ Important distinction:
 - `factoidal --data-cottas` queries those artifacts natively through the
   extracted Factoidal runtime. It does not need `pycottas` or
   `tools/cottas_bridge.py` at query time.
+- For large Turtle files, use a mature external RDF parser before the Factoidal
+  query step. In the KGX trial, `pyoxigraph` parsed Turtle and DuckDB wrote the
+  COTTAS/Parquet file. Those tools are importer/test-harness dependencies, not
+  Factoidal query-runtime dependencies.
 
 ## Install The Producer Toolkit
 
@@ -30,9 +34,10 @@ tmp/pycottas-venv/bin/python -c 'import pycottas, rdflib, duckdb; print(pycottas
 
 ## Preferred Input
 
-Use N-Quads for large data. Do not feed large Turtle directly to Factoidal's
-Turtle parser for benchmarking. If source data is Turtle, TriG, or RDF/XML,
-convert it first with a mature parser such as `riot`, `rapper`, or `rdflib`.
+Use N-Quads or a direct Turtle-to-COTTAS importer for large data. Do not feed
+large Turtle directly to Factoidal's Turtle parser for benchmarking. If source
+data is Turtle, TriG, or RDF/XML, convert it first with a mature parser such as
+`riot`, `rapper`, `rdflib`, or `pyoxigraph`.
 
 The KGX local corpus is currently in:
 
@@ -65,6 +70,27 @@ verified=True
 
 The artifact is a Parquet file with four string columns: subject, predicate,
 object, graph.
+
+### Parquet Encoding Caveat
+
+Factoidal's current native COTTAS reader only handles `DELTA_LENGTH_BYTE_ARRAY`
+string pages. DuckDB/pycottas will use dictionary pages for repeated columns on
+normal RDF data, and those currently fail in Factoidal with errors such as:
+
+```text
+Failure("Missing Parquet value col=1 idx=0")
+```
+
+For scratch imports that must be readable by the current Factoidal binary, write
+Parquet with:
+
+```text
+STRING_DICTIONARY_PAGE_SIZE_LIMIT 1
+```
+
+This keeps the string columns in `DELTA_LENGTH_BYTE_ARRAY`. Longer term,
+Factoidal should support dictionary-encoded Parquet pages instead of requiring
+this producer-side constraint.
 
 ## Query Natively With Factoidal
 
@@ -136,19 +162,49 @@ bash tests/local/backend_parity_regressions.sh
 
 This compares plain N-Quads and COTTAS outputs for the same queries.
 
-The older `tests/local/cottas_corpus_regressions.sh` currently has a brittle
-ASK-output expectation in this checkout: the binary prints `Yes` where the test
-expects bare `true`. Treat backend parity as the stronger signal until that
-test expectation is updated.
+`tests/local/cottas_corpus_regressions.sh` also passes in this checkout after
+the ASK result output fix, with COTTAS query-time sanity checks forcing
+`FACTOIDAL_COTTAS_BRIDGE` and `PYCOTTAS_PYTHON` to missing paths.
 
 ## Current Performance Caveat
 
 The current COTTAS path is native but not yet fast. On the 5-row sample, local
-timing was around nine seconds for a `--data-cottas` query. This reflects the
-current direct-Parquet probing and value reconstruction path.
+timing was around 13 seconds for a `--data-cottas` named-graph query. On a
+5-row KGX slice, local timing was about 17 seconds; 8 rows took about 39
+seconds; 9 rows took about 47 seconds. This reflects the current direct-Parquet
+probing and value reconstruction path, not Turtle parsing.
 
 The next performance work is to make the COTTAS query path page-aware and
 index-aware rather than reconstructing the artifact into an in-memory scan.
+The current extracted OCaml runtime repeatedly probes
+`DELTA_LENGTH_BYTE_ARRAY` values while loading the COTTAS cache, which is
+structurally unsuitable for million-row artifacts.
+
+## KGX Trial Results
+
+Using `tmp/kgx_cottas_trial.py` as a scratch importer with `pyoxigraph` for
+Turtle parsing and DuckDB for COTTAS/Parquet writing:
+
+| Source | Turtle bytes | Triples | COTTAS bytes | Import time |
+| --- | ---: | ---: | ---: | ---: |
+| `therapeutic_use.ttl` | 5,388 | 92 | 2,011 | 0.038s |
+| `chemical_compound.ttl` | 6,620 | 130 | 2,020 | 0.011s |
+| `active_site.ttl` | 17,317 | 486 | 3,387 | 0.047s |
+| `gene.ttl` | 17,363,312 | 888,949 | 632,446 | 7.018s |
+| `Protein__protein1.ttl` | 34,468,325 | 1,043,923 | 1,203,782 | 5.124s |
+| `Protein__protein3.ttl` | 50,417,919 | 1,512,879 | 2,904,617 | 24.328s |
+| `taxon (timesout).ttl` | 140,525,751 | 4,121,433 | 5,025,564 | 20.807s |
+
+DuckDB can count or preview the resulting COTTAS files in milliseconds:
+
+```text
+gene/data.cottas: 888,949 rows, count 0.009s, limit 0.011s
+taxon-timesout/data.cottas: 4,121,433 rows, count 0.001s, limit 0.007s
+```
+
+So the external dataset-to-COTTAS indexing task is working for millions of
+triples. The remaining blocker is efficient native querying from Factoidal over
+those COTTAS artifacts.
 
 ## KGX Workflow Sketch
 

@@ -1,11 +1,11 @@
 open Prims
 let parse_graph_label : RDF_Graph_Executable.iri Parser_Combinators.parser=
   fun input pos ->
-    let len = FStar_String.strlen input in
+    let len = Parser_FastString.fs_byte_length input in
     if pos >= len
     then Parser_Combinators.ParseFail ("expected graph label", pos)
     else
-      (let ch = FStar_String.index input pos in
+      (let ch = Parser_FastString.fs_byte_index input pos in
        let code = FStar_Char.int_of_char ch in
        if code = (Prims.of_int (0x3C))
        then
@@ -34,13 +34,13 @@ let parse_opt_graph_label :
   RDF_Graph_Executable.iri FStar_Pervasives_Native.option
     Parser_Combinators.parser=
   fun input pos ->
-    let len = FStar_String.strlen input in
+    let len = Parser_FastString.fs_byte_length input in
     match Parser_NTriples.pws input pos with
     | Parser_Combinators.ParseOk ((), pos1) ->
         if pos1 >= len
         then Parser_Combinators.ParseOk (FStar_Pervasives_Native.None, pos1)
         else
-          (let ch = FStar_String.index input pos1 in
+          (let ch = Parser_FastString.fs_byte_index input pos1 in
            let code = FStar_Char.int_of_char ch in
            if code = (Prims.of_int (0x2E))
            then
@@ -92,14 +92,16 @@ let parse_nquad :
                                        | Parser_Combinators.ParseOk
                                            ((), pos8) ->
                                            let len =
-                                             FStar_String.strlen input in
+                                             Parser_FastString.fs_byte_length
+                                               input in
                                            if pos8 >= len
                                            then
                                              Parser_Combinators.ParseFail
                                                ("expected '.'", pos8)
                                            else
                                              (let dot =
-                                                FStar_String.index input pos8 in
+                                                Parser_FastString.fs_byte_index
+                                                  input pos8 in
                                               if
                                                 (FStar_Char.int_of_char dot)
                                                   = (Prims.of_int (0x2E))
@@ -211,7 +213,7 @@ let rec parse_nquads_acc (input : Prims.string) (pos : Prims.nat)
   if fuel = Prims.int_zero
   then ds
   else
-    (let len = FStar_String.strlen input in
+    (let len = Parser_FastString.fs_byte_length input in
      if pos >= len
      then ds
      else
@@ -222,7 +224,7 @@ let rec parse_nquads_acc (input : Prims.string) (pos : Prims.nat)
         if pos1 >= len
         then ds
         else
-          (let ch = FStar_String.index input pos1 in
+          (let ch = Parser_FastString.fs_byte_index input pos1 in
            let code = FStar_Char.int_of_char ch in
            if code = (Prims.of_int (0x23))
            then
@@ -264,7 +266,7 @@ let rec parse_nquads_acc (input : Prims.string) (pos : Prims.nat)
                         if p >= len
                         then p
                         else
-                          (let c = FStar_String.index input p in
+                          (let c = Parser_FastString.fs_byte_index input p in
                            let cc = FStar_Char.int_of_char c in
                            if
                              (cc = (Prims.of_int (0x0A))) ||
@@ -279,7 +281,7 @@ let rec parse_nquads_acc (input : Prims.string) (pos : Prims.nat)
                     else
                       parse_nquads_acc input pos2 ds (fuel - Prims.int_one)))))
 let parse_nquads (input : Prims.string) : RDF_Graph_Executable.rdf_dataset=
-  let len = FStar_String.strlen input in
+  let len = Parser_FastString.fs_byte_length input in
   parse_nquads_acc input Prims.int_zero RDF_Graph_Executable.empty_dataset
     (len + Prims.int_one)
 let rec parse_nquads_strict_acc (input : Prims.string) (pos : Prims.nat)
@@ -288,7 +290,7 @@ let rec parse_nquads_strict_acc (input : Prims.string) (pos : Prims.nat)
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
-    (let len = FStar_String.strlen input in
+    (let len = Parser_FastString.fs_byte_length input in
      if pos >= len
      then FStar_Pervasives_Native.Some ds
      else
@@ -299,7 +301,7 @@ let rec parse_nquads_strict_acc (input : Prims.string) (pos : Prims.nat)
         if pos1 >= len
         then FStar_Pervasives_Native.Some ds
         else
-          (let ch = FStar_String.index input pos1 in
+          (let ch = Parser_FastString.fs_byte_index input pos1 in
            let code = FStar_Char.int_of_char ch in
            if code = (Prims.of_int (0x23))
            then
@@ -344,7 +346,7 @@ let rec parse_nquads_strict_acc (input : Prims.string) (pos : Prims.nat)
                     FStar_Pervasives_Native.None))))
 let parse_nquads_strict (input : Prims.string) :
   RDF_Graph_Executable.rdf_dataset FStar_Pervasives_Native.option=
-  let len = FStar_String.strlen input in
+  let len = Parser_FastString.fs_byte_length input in
   parse_nquads_strict_acc input Prims.int_zero
     RDF_Graph_Executable.empty_dataset (len + Prims.int_one)
 type nquad =
@@ -362,7 +364,7 @@ let rec parse_nquads_flat_acc (input : Prims.string) (pos : Prims.nat)
   if fuel = Prims.int_zero
   then FStar_List_Tot_Base.rev acc
   else
-    (let len = FStar_String.strlen input in
+    (let len = Parser_FastString.fs_byte_length input in
      if pos >= len
      then FStar_List_Tot_Base.rev acc
      else
@@ -373,7 +375,7 @@ let rec parse_nquads_flat_acc (input : Prims.string) (pos : Prims.nat)
         if pos1 >= len
         then FStar_List_Tot_Base.rev acc
         else
-          (let ch = FStar_String.index input pos1 in
+          (let ch = Parser_FastString.fs_byte_index input pos1 in
            let code = FStar_Char.int_of_char ch in
            if code = (Prims.of_int (0x23))
            then
@@ -417,7 +419,7 @@ let rec parse_nquads_flat_acc (input : Prims.string) (pos : Prims.nat)
                         if p >= len
                         then p
                         else
-                          (let c = FStar_String.index input p in
+                          (let c = Parser_FastString.fs_byte_index input p in
                            let cc = FStar_Char.int_of_char c in
                            if
                              (cc = (Prims.of_int (0x0A))) ||
@@ -433,5 +435,5 @@ let rec parse_nquads_flat_acc (input : Prims.string) (pos : Prims.nat)
                       parse_nquads_flat_acc input pos2 acc
                         (fuel - Prims.int_one)))))
 let parse_nquads_flat (input : Prims.string) : nquad Prims.list=
-  let len = FStar_String.strlen input in
+  let len = Parser_FastString.fs_byte_length input in
   parse_nquads_flat_acc input Prims.int_zero [] (len + Prims.int_one)

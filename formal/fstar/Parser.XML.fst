@@ -3,7 +3,12 @@ module Parser.XML
 open FStar.String
 open FStar.List.Tot
 open FStar.Char
+open Parser.FastString
 open Parser.Combinators
+
+// Issue #89: byte-indexed primitives on the parser hot path.
+// XML is ASCII-delimited (tags, attributes, declarations) so byte
+// semantics are safe. See Parser.FastString.fst.
 
 (* ================================================================ *)
 (* XML AST                                                           *)
@@ -54,10 +59,10 @@ let is_xml_space (c:char) : bool =
 
 let parse_xml_name : parser string =
   fun input pos ->
-    let len = String.length input in
+    let len = fs_byte_length input in
     if pos >= len then ParseFail "expected XML name" pos
     else
-      let ch = String.index input pos in
+      let ch = fs_byte_index input pos in
       if is_name_start_char ch then
         match ptake_while_pos is_name_char input (pos + 1) with
         | ParseOk rest pos' ->
@@ -81,10 +86,10 @@ let rec parse_ref_digits (input:string) (pos:nat) (acc:list char) (fuel:nat)
   : Tot (parse_result (list char)) (decreases fuel) =
   if fuel = 0 then ParseFail "character reference too long" pos
   else
-    let len = String.length input in
+    let len = fs_byte_length input in
     if pos >= len then ParseFail "unterminated character reference" pos
     else
-      let ch = String.index input pos in
+      let ch = fs_byte_index input pos in
       if ch = ';' then
         ParseOk (List.Tot.rev acc) (pos + 1)
       else
@@ -118,14 +123,14 @@ let codepoint_to_string (cp:int) : string =
     "?"
 
 let parse_reference (input:string) (pos:nat) : parse_result string =
-  let len = String.length input in
+  let len = fs_byte_length input in
   if pos >= len then ParseFail "unterminated reference" pos
   else
-    let ch = String.index input pos in
+    let ch = fs_byte_index input pos in
     if ch = '#' then
       if pos + 1 >= len then ParseFail "unterminated character reference" pos
       else
-        let ch2 = String.index input (pos + 1) in
+        let ch2 = fs_byte_index input (pos + 1) in
         if ch2 = 'x' || ch2 = 'X' then
           match parse_ref_digits input (pos + 2) [] 10 with
           | ParseOk digits pos' ->
@@ -163,10 +168,10 @@ let rec parse_attr_value_body (qch:char) (input:string) (pos:nat) (acc:list stri
   : Tot (parse_result string) (decreases fuel) =
   if fuel = 0 then ParseFail "attribute value too long" pos
   else
-    let len = String.length input in
+    let len = fs_byte_length input in
     if pos >= len then ParseFail "unterminated attribute value" pos
     else
-      let ch = String.index input pos in
+      let ch = fs_byte_index input pos in
       if ch = qch then
         ParseOk (String.concat "" (List.Tot.rev acc)) (pos + 1)
       else if ch = '&' then
@@ -177,7 +182,7 @@ let rec parse_attr_value_body (qch:char) (input:string) (pos:nat) (acc:list stri
       else
         match ptake_while_pos (fun c -> c <> qch && c <> '&') input pos with
         | ParseOk s pos' ->
-          if String.length s > 0 then
+          if fs_byte_length s > 0 then
             parse_attr_value_body qch input pos' (s :: acc) (fuel - 1)
           else
             parse_attr_value_body qch input (pos + 1)
@@ -185,10 +190,10 @@ let rec parse_attr_value_body (qch:char) (input:string) (pos:nat) (acc:list stri
         | ParseFail msg fpos -> ParseFail msg fpos
 
 let parse_attr_value (input:string) (pos:nat) : parse_result string =
-  let len = String.length input in
+  let len = fs_byte_length input in
   if pos >= len then ParseFail "expected attribute value" pos
   else
-    let qch = String.index input pos in
+    let qch = fs_byte_index input pos in
     if qch = '"' || qch = '\'' then
       let fuel = len - pos in
       parse_attr_value_body qch input (pos + 1) [] fuel
@@ -230,13 +235,13 @@ let rec parse_attributes (input:string) (pos:nat) (fuel:nat)
   : Tot (parse_result (list xml_attribute)) (decreases fuel) =
   if fuel = 0 then ParseOk [] pos
   else
-    let len = String.length input in
+    let len = fs_byte_length input in
     if pos >= len then ParseOk [] pos
     else
       match ptake_while1_pos is_xml_space input pos with
       | ParseOk _ pos1 ->
         if pos1 < len then
-          let ch = String.index input pos1 in
+          let ch = fs_byte_index input pos1 in
           if is_name_start_char ch then
             match parse_xml_attribute input pos1 with
             | ParseOk attr pos2 ->
@@ -260,10 +265,10 @@ let rec parse_text_content (input:string) (pos:nat) (acc:list string) (fuel:nat)
   : Tot (parse_result string) (decreases fuel) =
   if fuel = 0 then ParseOk (String.concat "" (List.Tot.rev acc)) pos
   else
-    let len = String.length input in
+    let len = fs_byte_length input in
     if pos >= len then ParseOk (String.concat "" (List.Tot.rev acc)) pos
     else
-      let ch = String.index input pos in
+      let ch = fs_byte_index input pos in
       if ch = '<' then
         ParseOk (String.concat "" (List.Tot.rev acc)) pos
       else if ch = '&' then
@@ -274,7 +279,7 @@ let rec parse_text_content (input:string) (pos:nat) (acc:list string) (fuel:nat)
       else
         match ptake_while_pos (fun c -> c <> '<' && c <> '&') input pos with
         | ParseOk s pos' ->
-          if String.length s > 0 then
+          if fs_byte_length s > 0 then
             parse_text_content input pos' (s :: acc) (fuel - 1)
           else
             parse_text_content input (pos + 1)
@@ -282,12 +287,12 @@ let rec parse_text_content (input:string) (pos:nat) (acc:list string) (fuel:nat)
         | ParseFail msg fpos -> ParseFail msg fpos
 
 let parse_xml_text (input:string) (pos:nat) : parse_result xml_node =
-  let len = String.length input in
+  let len = fs_byte_length input in
   let fuel = len - pos + 1 in
   if fuel >= 0 then
     match parse_text_content input pos [] fuel with
     | ParseOk text pos' ->
-      if String.length text > 0 then ParseOk (XText text) pos'
+      if fs_byte_length text > 0 then ParseOk (XText text) pos'
       else ParseFail "empty text node" pos
     | ParseFail msg fpos -> ParseFail msg fpos
   else ParseFail "unexpected position" pos
@@ -301,24 +306,24 @@ let rec parse_comment_body (input:string) (pos:nat) (acc:list char) (fuel:nat)
   : Tot (parse_result string) (decreases fuel) =
   if fuel = 0 then ParseFail "unterminated comment" pos
   else
-    let len = String.length input in
+    let len = fs_byte_length input in
     if pos + 2 < len then
-      let c0 = String.index input pos in
-      let c1 = String.index input (pos + 1) in
-      let c2 = String.index input (pos + 2) in
+      let c0 = fs_byte_index input pos in
+      let c1 = fs_byte_index input (pos + 1) in
+      let c2 = fs_byte_index input (pos + 2) in
       if c0 = '-' && c1 = '-' && c2 = '>' then
         ParseOk (String.string_of_list (List.Tot.rev acc)) (pos + 3)
       else
         parse_comment_body input (pos + 1) (c0 :: acc) (fuel - 1)
     else if pos < len then
-      let c0 = String.index input pos in
+      let c0 = fs_byte_index input pos in
       parse_comment_body input (pos + 1) (c0 :: acc) (fuel - 1)
     else ParseFail "unterminated comment" pos
 
 let parse_xml_comment (input:string) (pos:nat) : parse_result xml_node =
   match pstring "<!--" input pos with
   | ParseOk _ pos1 ->
-    let len = String.length input in
+    let len = fs_byte_length input in
     let fuel = len - pos1 + 1 in
     begin match parse_comment_body input pos1 [] fuel with
     | ParseOk text pos2 -> ParseOk (XComment text) pos2
@@ -335,24 +340,24 @@ let rec parse_cdata_body (input:string) (pos:nat) (acc:list char) (fuel:nat)
   : Tot (parse_result string) (decreases fuel) =
   if fuel = 0 then ParseFail "unterminated CDATA section" pos
   else
-    let len = String.length input in
+    let len = fs_byte_length input in
     if pos + 2 < len then
-      let c0 = String.index input pos in
-      let c1 = String.index input (pos + 1) in
-      let c2 = String.index input (pos + 2) in
+      let c0 = fs_byte_index input pos in
+      let c1 = fs_byte_index input (pos + 1) in
+      let c2 = fs_byte_index input (pos + 2) in
       if c0 = ']' && c1 = ']' && c2 = '>' then
         ParseOk (String.string_of_list (List.Tot.rev acc)) (pos + 3)
       else
         parse_cdata_body input (pos + 1) (c0 :: acc) (fuel - 1)
     else if pos < len then
-      let c0 = String.index input pos in
+      let c0 = fs_byte_index input pos in
       parse_cdata_body input (pos + 1) (c0 :: acc) (fuel - 1)
     else ParseFail "unterminated CDATA section" pos
 
 let parse_xml_cdata (input:string) (pos:nat) : parse_result xml_node =
   match pstring "<![CDATA[" input pos with
   | ParseOk _ pos1 ->
-    let len = String.length input in
+    let len = fs_byte_length input in
     let fuel = len - pos1 + 1 in
     begin match parse_cdata_body input pos1 [] fuel with
     | ParseOk text pos2 -> ParseOk (XCDATA text) pos2
@@ -368,7 +373,7 @@ let parse_xml_cdata (input:string) (pos:nat) : parse_result xml_node =
 let parse_xml_declaration (input:string) (pos:nat) : parse_result (list xml_attribute) =
   match pstring "<?xml" input pos with
   | ParseOk _ pos1 ->
-    let len = String.length input in
+    let len = fs_byte_length input in
     let fuel = len - pos1 + 1 in
     begin match parse_attributes input pos1 fuel with
     | ParseOk attrs pos2 ->
@@ -393,13 +398,13 @@ let rec parse_children (input:string) (pos:nat) (fuel:nat)
   : Tot (parse_result (list xml_node)) (decreases fuel) =
   if fuel = 0 then ParseOk [] pos
   else
-    let len = String.length input in
+    let len = fs_byte_length input in
     if pos >= len then ParseOk [] pos
     else
-      let ch = String.index input pos in
+      let ch = fs_byte_index input pos in
       if ch = '<' then
         if pos + 1 < len then
-          let ch2 = String.index input (pos + 1) in
+          let ch2 = fs_byte_index input (pos + 1) in
           if ch2 = '/' then
             ParseOk [] pos
           else if ch2 = '!' then
@@ -448,7 +453,7 @@ and parse_xml_element (input:string) (pos:nat) (fuel:nat)
     | ParseOk _ pos1 ->
       begin match parse_xml_name input pos1 with
       | ParseOk tag pos2 ->
-        let len = String.length input in
+        let len = fs_byte_length input in
         let attr_fuel = if pos2 <= len then len - pos2 + 1 else 1 in
         begin match parse_attributes input pos2 attr_fuel with
         | ParseOk attrs pos3 ->
@@ -521,7 +526,7 @@ let rec skip_misc (input:string) (pos:nat) (fuel:nat)
 (* ================================================================ *)
 
 let parse_xml_document (input:string) : option xml_node =
-  let len = String.length input in
+  let len = fs_byte_length input in
   let fuel = len + 1 in
   match skip_xml_space input 0 with
   | ParseOk () pos0 ->
