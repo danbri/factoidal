@@ -972,6 +972,11 @@ let parse_numeric_literal (input: string) (pos: nat) : parse_result (string & wf
 (* ================================================================ *)
 
 (* Parse long string body (triple-quoted): """...""" or '''...''' *)
+// Pass-3 issue #89: non-escape byte runs are walked one Unicode codepoint
+// at a time via fs_cp_at, so multi-byte UTF-8 sequences enter acc as one
+// codepoint entry and String.string_of_list (= BatUTF8.init) round-trips
+// them correctly. Pushing raw bytes would get them re-encoded a second
+// time and double the byte count.
 let rec parse_long_string_body (qch: char) (input: string) (pos: nat) (acc: list char) (fuel: nat)
   : Tot (parse_result string) (decreases fuel) =
   if fuel = 0 then ParseFail "unterminated long string" pos
@@ -989,10 +994,10 @@ let rec parse_long_string_body (qch: char) (input: string) (pos: nat) (acc: list
           if c1 = qch && c2 = qch then
             ParseOk (String.string_of_list (List.Tot.rev acc)) (pos + 3)
           else
-            (* Single quote char — part of content *)
+            (* Single quote char — part of content (ASCII byte). *)
             parse_long_string_body qch input (pos + 1) (ch :: acc) (fuel - 1)
         else
-          (* Not enough chars for triple quote — part of content *)
+          (* Not enough chars for triple quote — part of content (ASCII byte). *)
           parse_long_string_body qch input (pos + 1) (ch :: acc) (fuel - 1)
       else if code = 0x5C then  (* backslash — escape *)
         if pos + 1 >= len then ParseFail "backslash at end of long string" pos
@@ -1046,8 +1051,20 @@ let rec parse_long_string_body (qch: char) (input: string) (pos: nat) (acc: list
                 parse_long_string_body qch input (pos + 10) (safe_char_of_int cp :: acc) (fuel - 1)
           else
             ParseFail (String.concat "" ["invalid escape in long string: \\"; string_of_char esc]) pos
-      else
+      else if code < 0x80 then
+        (* ASCII byte fast path: byte value = codepoint, push as-is. *)
         parse_long_string_body qch input (pos + 1) (ch :: acc) (fuel - 1)
+      else
+        (* Non-ASCII: decode the UTF-8 codepoint starting at pos, push it
+           as a single codepoint char into acc, and advance by the code-
+           point's byte length. See Pass-3 comment on parse_long_string_body.
+           fuel is bounded by the byte length of input, so the per-step
+           `fuel - 1` decrement is still adequate (the scan can only fire
+           `byte_length` times total). *)
+        let (cp, adv) = fs_cp_at input pos in
+        let advance : nat = if adv = 0 then 1 else adv in
+        parse_long_string_body qch input (pos + advance)
+          (safe_char_of_int cp :: acc) (fuel - 1)
 
 (* Parse single-quoted string body (for 'short' strings) *)
 let rec parse_single_string_body (input: string) (pos: nat) (acc: list char) (fuel: nat)
@@ -1115,8 +1132,16 @@ let rec parse_single_string_body (input: string) (pos: nat) (acc: list char) (fu
             ParseFail (String.concat "" ["invalid escape: \\"; string_of_char esc]) pos
       else if code = 0x0A || code = 0x0D then
         ParseFail "unescaped newline in short string literal" pos
-      else
+      else if code < 0x80 then
+        (* ASCII byte fast path. *)
         parse_single_string_body input (pos + 1) (ch :: acc) (fuel - 1)
+      else
+        (* Pass-3 issue #89: decode the UTF-8 codepoint and push as one
+           codepoint char. Same rationale as parse_long_string_body. *)
+        let (cp, adv) = fs_cp_at input pos in
+        let advance : nat = if adv = 0 then 1 else adv in
+        parse_single_string_body input (pos + advance)
+          (safe_char_of_int cp :: acc) (fuel - 1)
 
 (* Parse a Turtle string literal: handles "", '', """""", '''''' variants *)
 let parse_turtle_string (input: string) (pos: nat) : parse_result string =

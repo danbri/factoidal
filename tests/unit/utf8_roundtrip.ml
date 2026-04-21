@@ -112,6 +112,25 @@ let run_case ~name ~expected_pass lit lang =
        check ~name:(name ^ " [bytes-in-json-output]") ~expected_pass
          (contains j lit))
 
+(* Blank-node label round-trip: parse an N-Triples line whose subject is a
+   labeled blank node with multi-byte UTF-8 identifier characters, and
+   assert that the parsed bnode_id preserves the same UTF-8 bytes. This
+   locks in the Pass-3 fix for issue #89 (parse_bnode walking codepoints
+   via fs_cp_at instead of individual bytes). *)
+let run_bnode_case ~name ~expected_pass label =
+  let nt = Printf.sprintf "_:%s <http://ex/p> <http://ex/o> .\n" label in
+  let triples = Parser_NTriples.parse_ntriples nt in
+  match triples with
+  | [] ->
+      check ~name:(name ^ " [parse]") ~expected_pass false
+  | t :: _ ->
+      (match t.s with
+       | S_BNode bid ->
+           check ~name:(name ^ " [bnode-label-bytes]") ~expected_pass
+             (bid = label)
+       | _ ->
+           check ~name:(name ^ " [subject-is-bnode]") ~expected_pass false)
+
 let () =
   Printf.printf "== utf8_roundtrip ==\n";
   let cases = [
@@ -125,6 +144,19 @@ let () =
   List.iter (fun (name, lit, lang) ->
     run_case ~name ~expected_pass:true lit lang
   ) cases;
+  (* Pass-3 bnode-label cases: identifier must survive parse verbatim.
+     Start char must be PN_CHARS_U | [0-9] — Unicode letters like 日 and
+     ä qualify; the dot-separator char inside PN_CHARS is tested via a
+     trailing extra character. *)
+  let bnode_cases = [
+    "bnode-ascii",      "abc";
+    "bnode-cjk",        "b\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e";     (* _:b日本語 *)
+    "bnode-umlaut",     "M\xc3\xbcller";                              (* _:Müller *)
+    "bnode-cjk-only",   "\xe6\x97\xa5\xe6\x9c\xac";                   (* _:日本 *)
+  ] in
+  List.iter (fun (name, lbl) ->
+    run_bnode_case ~name ~expected_pass:true lbl
+  ) bnode_cases;
   Printf.printf "summary: %d pass, %d expected-fail, %d unexpected fail\n"
     !passed !expected_failures !failed;
   if !failed > 0 then exit 1

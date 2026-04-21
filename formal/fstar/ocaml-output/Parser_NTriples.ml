@@ -271,102 +271,130 @@ let parse_iri : RDF_Graph_Executable.wf_iri Parser_Combinators.parser=
         else Parser_Combinators.ParseFail ("invalid IRI", pos)
     | Parser_Combinators.ParseFail (msg, fpos) ->
         Parser_Combinators.ParseFail (msg, fpos)
-let is_bnode_char (c : FStar_Char.char) : Prims.bool=
-  let code = FStar_Char.int_of_char c in
-  if code < (Prims.of_int (0x80))
+let is_bnode_char_cp (cp : Prims.nat) : Prims.bool=
+  if cp < (Prims.of_int (0x80))
   then
-    ((((((code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39))))
-          ||
-          ((code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x5A)))))
-         ||
-         ((code >= (Prims.of_int (0x61))) && (code <= (Prims.of_int (0x7A)))))
-        || (code = (Prims.of_int (0x5F))))
-       || (code = (Prims.of_int (0x2D))))
-      || (code = (Prims.of_int (0x2E)))
+    ((((((cp >= (Prims.of_int (0x30))) && (cp <= (Prims.of_int (0x39)))) ||
+          ((cp >= (Prims.of_int (0x41))) && (cp <= (Prims.of_int (0x5A)))))
+         || ((cp >= (Prims.of_int (0x61))) && (cp <= (Prims.of_int (0x7A)))))
+        || (cp = (Prims.of_int (0x5F))))
+       || (cp = (Prims.of_int (0x2D))))
+      || (cp = (Prims.of_int (0x2E)))
   else
-    (((((((((((code = (Prims.of_int (0xB7))) ||
-                ((code >= (Prims.of_int (0x00C0))) &&
-                   (code <= (Prims.of_int (0x00D6)))))
+    ((((((((((((((cp = (Prims.of_int (0xB7))) ||
+                   ((cp >= (Prims.of_int (0x00C0))) &&
+                      (cp <= (Prims.of_int (0x00D6)))))
+                  ||
+                  ((cp >= (Prims.of_int (0x00D8))) &&
+                     (cp <= (Prims.of_int (0x00F6)))))
+                 ||
+                 ((cp >= (Prims.of_int (0x00F8))) &&
+                    (cp <= (Prims.of_int (0x02FF)))))
+                ||
+                ((cp >= (Prims.of_int (0x0300))) &&
+                   (cp <= (Prims.of_int (0x036F)))))
                ||
-               ((code >= (Prims.of_int (0x00D8))) &&
-                  (code <= (Prims.of_int (0x00F6)))))
+               ((cp >= (Prims.of_int (0x0370))) &&
+                  (cp <= (Prims.of_int (0x037D)))))
               ||
-              ((code >= (Prims.of_int (0x00F8))) &&
-                 (code <= (Prims.of_int (0x02FF)))))
+              ((cp >= (Prims.of_int (0x037F))) &&
+                 (cp <= (Prims.of_int (0x1FFF)))))
              ||
-             ((code >= (Prims.of_int (0x0370))) &&
-                (code <= (Prims.of_int (0x037D)))))
+             ((cp >= (Prims.of_int (0x200C))) &&
+                (cp <= (Prims.of_int (0x200D)))))
             ||
-            ((code >= (Prims.of_int (0x037F))) &&
-               (code <= (Prims.of_int (0x1FFF)))))
+            ((cp >= (Prims.of_int (0x203F))) &&
+               (cp <= (Prims.of_int (0x2040)))))
            ||
-           ((code >= (Prims.of_int (0x200C))) &&
-              (code <= (Prims.of_int (0x200D)))))
+           ((cp >= (Prims.of_int (0x2070))) &&
+              (cp <= (Prims.of_int (0x218F)))))
           ||
-          ((code >= (Prims.of_int (0x2070))) &&
-             (code <= (Prims.of_int (0x218F)))))
+          ((cp >= (Prims.of_int (0x2C00))) && (cp <= (Prims.of_int (0x2FEF)))))
          ||
-         ((code >= (Prims.of_int (0x2C00))) &&
-            (code <= (Prims.of_int (0x2FEF)))))
+         ((cp >= (Prims.of_int (0x3001))) && (cp <= (Prims.of_int (0xD7FF)))))
         ||
-        ((code >= (Prims.of_int (0x3001))) &&
-           (code <= (Prims.of_int (0xD7FF)))))
+        ((cp >= (Prims.of_int (0xF900))) && (cp <= (Prims.of_int (0xFDCF)))))
        ||
-       ((code >= (Prims.of_int (0xF900))) &&
-          (code <= (Prims.of_int (0xFDCF)))))
+       ((cp >= (Prims.of_int (0xFDF0))) && (cp <= (Prims.of_int (0xFFFD)))))
       ||
-      ((code >= (Prims.of_int (0xFDF0))) && (code <= (Prims.of_int (0xFFFD))))
-let is_bnode_start (c : FStar_Char.char) : Prims.bool=
-  let code = FStar_Char.int_of_char c in
-  if code < (Prims.of_int (0x80))
+      ((cp >= (Prims.parse_int "0x10000")) &&
+         (cp <= (Prims.parse_int "0xEFFFF")))
+let is_bnode_start_cp (cp : Prims.nat) : Prims.bool=
+  if cp < (Prims.of_int (0x80))
   then
-    ((((code >= (Prims.of_int (0x41))) && (code <= (Prims.of_int (0x5A)))) ||
-        ((code >= (Prims.of_int (0x61))) && (code <= (Prims.of_int (0x7A)))))
-       || (code = (Prims.of_int (0x5F))))
-      || ((code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39))))
+    ((((cp >= (Prims.of_int (0x41))) && (cp <= (Prims.of_int (0x5A)))) ||
+        ((cp >= (Prims.of_int (0x61))) && (cp <= (Prims.of_int (0x7A)))))
+       || (cp = (Prims.of_int (0x5F))))
+      || ((cp >= (Prims.of_int (0x30))) && (cp <= (Prims.of_int (0x39))))
   else
-    (((((((((((code >= (Prims.of_int (0x00C0))) &&
-                (code <= (Prims.of_int (0x00D6))))
+    ((((((((((((cp >= (Prims.of_int (0x00C0))) &&
+                 (cp <= (Prims.of_int (0x00D6))))
+                ||
+                ((cp >= (Prims.of_int (0x00D8))) &&
+                   (cp <= (Prims.of_int (0x00F6)))))
                ||
-               ((code >= (Prims.of_int (0x00D8))) &&
-                  (code <= (Prims.of_int (0x00F6)))))
+               ((cp >= (Prims.of_int (0x00F8))) &&
+                  (cp <= (Prims.of_int (0x02FF)))))
               ||
-              ((code >= (Prims.of_int (0x00F8))) &&
-                 (code <= (Prims.of_int (0x02FF)))))
+              ((cp >= (Prims.of_int (0x0370))) &&
+                 (cp <= (Prims.of_int (0x037D)))))
              ||
-             ((code >= (Prims.of_int (0x0370))) &&
-                (code <= (Prims.of_int (0x037D)))))
+             ((cp >= (Prims.of_int (0x037F))) &&
+                (cp <= (Prims.of_int (0x1FFF)))))
             ||
-            ((code >= (Prims.of_int (0x037F))) &&
-               (code <= (Prims.of_int (0x1FFF)))))
+            ((cp >= (Prims.of_int (0x200C))) &&
+               (cp <= (Prims.of_int (0x200D)))))
            ||
-           ((code >= (Prims.of_int (0x200C))) &&
-              (code <= (Prims.of_int (0x200D)))))
+           ((cp >= (Prims.of_int (0x2070))) &&
+              (cp <= (Prims.of_int (0x218F)))))
           ||
-          ((code >= (Prims.of_int (0x2070))) &&
-             (code <= (Prims.of_int (0x218F)))))
+          ((cp >= (Prims.of_int (0x2C00))) && (cp <= (Prims.of_int (0x2FEF)))))
          ||
-         ((code >= (Prims.of_int (0x2C00))) &&
-            (code <= (Prims.of_int (0x2FEF)))))
+         ((cp >= (Prims.of_int (0x3001))) && (cp <= (Prims.of_int (0xD7FF)))))
         ||
-        ((code >= (Prims.of_int (0x3001))) &&
-           (code <= (Prims.of_int (0xD7FF)))))
+        ((cp >= (Prims.of_int (0xF900))) && (cp <= (Prims.of_int (0xFDCF)))))
        ||
-       ((code >= (Prims.of_int (0xF900))) &&
-          (code <= (Prims.of_int (0xFDCF)))))
+       ((cp >= (Prims.of_int (0xFDF0))) && (cp <= (Prims.of_int (0xFFFD)))))
       ||
-      ((code >= (Prims.of_int (0xFDF0))) && (code <= (Prims.of_int (0xFFFD))))
+      ((cp >= (Prims.parse_int "0x10000")) &&
+         (cp <= (Prims.parse_int "0xEFFFF")))
+let rec scan_bnode_body_cp (input : Prims.string) (pos : Prims.nat)
+  (fuel : Prims.nat) : Prims.nat=
+  if fuel = Prims.int_zero
+  then pos
+  else
+    (let len = Parser_FastString.fs_byte_length input in
+     if pos >= len
+     then pos
+     else
+       (let b = Parser_FastString.fs_byte_at input pos in
+        if b < (Prims.of_int (0x80))
+        then
+          (if is_bnode_char_cp b
+           then
+             scan_bnode_body_cp input (pos + Prims.int_one)
+               (fuel - Prims.int_one)
+           else pos)
+        else
+          (let uu___3 = Parser_FastString.fs_cp_at input pos in
+           match uu___3 with
+           | (cp, adv) ->
+               let advance =
+                 if adv = Prims.int_zero then Prims.int_one else adv in
+               if is_bnode_char_cp cp
+               then
+                 scan_bnode_body_cp input (pos + advance)
+                   (fuel - Prims.int_one)
+               else pos)))
 let parse_bnode : RDF_Graph_Executable.bnode_id Parser_Combinators.parser=
   fun input pos ->
     let len = Parser_FastString.fs_byte_length input in
     if (pos + (Prims.of_int (2))) > len
     then Parser_Combinators.ParseFail ("expected '_:'", pos)
     else
-      (let c0 = Parser_FastString.fs_byte_index input pos in
-       let c1 = Parser_FastString.fs_byte_index input (pos + Prims.int_one) in
-       if
-         ((FStar_Char.int_of_char c0) = (Prims.of_int (0x5F))) &&
-           ((FStar_Char.int_of_char c1) = (Prims.of_int (0x3A)))
+      (let c0 = Parser_FastString.fs_byte_at input pos in
+       let c1 = Parser_FastString.fs_byte_at input (pos + Prims.int_one) in
+       if (c0 = (Prims.of_int (0x5F))) && (c1 = (Prims.of_int (0x3A)))
        then
          let start_pos = pos + (Prims.of_int (2)) in
          (if start_pos >= len
@@ -374,37 +402,46 @@ let parse_bnode : RDF_Graph_Executable.bnode_id Parser_Combinators.parser=
             Parser_Combinators.ParseFail
               ("empty blank node label", start_pos)
           else
-            (let first = Parser_FastString.fs_byte_index input start_pos in
-             if is_bnode_start first
-             then
-               match Parser_Combinators.ptake_while_pos is_bnode_char input
-                       start_pos
-               with
-               | Parser_Combinators.ParseOk (label, pos') ->
-                   let label_len = Parser_FastString.fs_byte_length label in
-                   (if
-                      (label_len > Prims.int_zero) && (pos' > Prims.int_zero)
+            (let b0 = Parser_FastString.fs_byte_at input start_pos in
+             let uu___2 =
+               if b0 < (Prims.of_int (0x80))
+               then (b0, Prims.int_one)
+               else
+                 (let uu___4 = Parser_FastString.fs_cp_at input start_pos in
+                  match uu___4 with
+                  | (cp, adv) ->
+                      let advance =
+                        if adv = Prims.int_zero then Prims.int_one else adv in
+                      (cp, advance)) in
+             match uu___2 with
+             | (start_cp, start_adv) ->
+                 if is_bnode_start_cp start_cp
+                 then
+                   let after_first = start_pos + start_adv in
+                   let fuel =
+                     if len > after_first
+                     then (len - after_first) + Prims.int_one
+                     else Prims.int_one in
+                   let end_pos = scan_bnode_body_cp input after_first fuel in
+                   let final_end =
+                     if
+                       (end_pos > start_pos) &&
+                         ((Parser_FastString.fs_byte_at input
+                             (end_pos - Prims.int_one))
+                            = (Prims.of_int (0x2E)))
+                     then end_pos - Prims.int_one
+                     else end_pos in
+                   (if (final_end > start_pos) && (final_end <= len)
                     then
-                      let last_ch =
-                        Parser_FastString.fs_byte_index label
-                          (label_len - Prims.int_one) in
-                      (if
-                         (FStar_Char.int_of_char last_ch) =
-                           (Prims.of_int (0x2E))
-                       then
-                         Parser_Combinators.ParseOk
-                           ((Parser_FastString.fs_byte_sub label
-                               Prims.int_zero (label_len - Prims.int_one)),
-                             (pos' - Prims.int_one))
-                       else Parser_Combinators.ParseOk (label, pos'))
+                      Parser_Combinators.ParseOk
+                        ((Parser_FastString.fs_byte_sub input start_pos
+                            (final_end - start_pos)), final_end)
                     else
                       Parser_Combinators.ParseFail
                         ("empty blank node label", start_pos))
-               | Parser_Combinators.ParseFail (msg, fpos) ->
-                   Parser_Combinators.ParseFail (msg, fpos)
-             else
-               Parser_Combinators.ParseFail
-                 ("invalid blank node label start character", start_pos)))
+                 else
+                   Parser_Combinators.ParseFail
+                     ("invalid blank node label start character", start_pos)))
        else Parser_Combinators.ParseFail ("expected '_:'", pos))
 let rec parse_string_body (input : Prims.string) (pos : Prims.nat)
   (acc : FStar_String.char Prims.list) (fuel : Prims.nat) :
@@ -624,8 +661,18 @@ let rec parse_string_body (input : Prims.string) (pos : Prims.nat)
               Parser_Combinators.ParseFail
                 ("unescaped newline in string literal", pos)
             else
-              parse_string_body input (pos + Prims.int_one) (ch :: acc)
-                (fuel - Prims.int_one)))
+              if code < (Prims.of_int (0x80))
+              then
+                parse_string_body input (pos + Prims.int_one) (ch :: acc)
+                  (fuel - Prims.int_one)
+              else
+                (let uu___6 = Parser_FastString.fs_cp_at input pos in
+                 match uu___6 with
+                 | (cp, adv) ->
+                     let advance =
+                       if adv = Prims.int_zero then Prims.int_one else adv in
+                     parse_string_body input (pos + advance)
+                       ((safe_char_of_int cp) :: acc) (fuel - Prims.int_one))))
 let rec scan_string_fast (input : Prims.string) (pos : Prims.nat)
   (fuel : Prims.nat) : unit Parser_Combinators.parse_result=
   if fuel = Prims.int_zero

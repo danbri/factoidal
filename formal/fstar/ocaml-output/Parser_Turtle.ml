@@ -1472,8 +1472,19 @@ let rec parse_long_string_body (qch : FStar_Char.char) (input : Prims.string)
                                           FStar_String.string_of_char esc]),
                                         pos)))
           else
-            parse_long_string_body qch input (pos + Prims.int_one) (ch ::
-              acc) (fuel - Prims.int_one)))
+            if code < (Prims.of_int (0x80))
+            then
+              parse_long_string_body qch input (pos + Prims.int_one) (ch ::
+                acc) (fuel - Prims.int_one)
+            else
+              (let uu___5 = Parser_FastString.fs_cp_at input pos in
+               match uu___5 with
+               | (cp, adv) ->
+                   let advance =
+                     if adv = Prims.int_zero then Prims.int_one else adv in
+                   parse_long_string_body qch input (pos + advance)
+                     ((Parser_NTriples.safe_char_of_int cp) :: acc)
+                     (fuel - Prims.int_one))))
 let rec parse_single_string_body (input : Prims.string) (pos : Prims.nat)
   (acc : FStar_Char.char Prims.list) (fuel : Prims.nat) :
   Prims.string Parser_Combinators.parse_result=
@@ -1691,8 +1702,19 @@ let rec parse_single_string_body (input : Prims.string) (pos : Prims.nat)
               Parser_Combinators.ParseFail
                 ("unescaped newline in short string literal", pos)
             else
-              parse_single_string_body input (pos + Prims.int_one) (ch ::
-                acc) (fuel - Prims.int_one)))
+              if code < (Prims.of_int (0x80))
+              then
+                parse_single_string_body input (pos + Prims.int_one) (ch ::
+                  acc) (fuel - Prims.int_one)
+              else
+                (let uu___6 = Parser_FastString.fs_cp_at input pos in
+                 match uu___6 with
+                 | (cp, adv) ->
+                     let advance =
+                       if adv = Prims.int_zero then Prims.int_one else adv in
+                     parse_single_string_body input (pos + advance)
+                       ((Parser_NTriples.safe_char_of_int cp) :: acc)
+                       (fuel - Prims.int_one))))
 let parse_turtle_string (input : Prims.string) (pos : Prims.nat) :
   Prims.string Parser_Combinators.parse_result=
   let len = Parser_FastString.fs_byte_length input in

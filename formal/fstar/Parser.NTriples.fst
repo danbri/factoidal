@@ -196,50 +196,76 @@ let parse_iri : parser wf_iri =
 (* Blank node parser: _:label                                       *)
 (* ================================================================ *)
 
-(* Blank node label characters: alphanumeric, underscore, hyphen, dot
-   (simplified from the full PN_CHARS production) *)
-// ASCII fast-path: most bnode labels are pure ASCII
-let is_bnode_char (c:FStar.Char.char) : bool =
-  let code = FStar.Char.int_of_char c in
-  if code < 0x80 then
-    (code >= 0x30 && code <= 0x39) ||
-    (code >= 0x41 && code <= 0x5A) ||
-    (code >= 0x61 && code <= 0x7A) ||
-    code = 0x5F || code = 0x2D || code = 0x2E
+// Blank-node label body char (codepoint-aware, Pass-3 issue #89).
+// Walks one Unicode codepoint at a time via fs_cp_at so multi-byte
+// UTF-8 identifiers (Greek, Han, dieresis-vowels, astral-plane code
+// points, etc.) succeed. ASCII byte-fast-path preserved for speed.
+let is_bnode_char_cp (cp: nat) : bool =
+  if cp < 0x80 then
+    (cp >= 0x30 && cp <= 0x39) ||
+    (cp >= 0x41 && cp <= 0x5A) ||
+    (cp >= 0x61 && cp <= 0x7A) ||
+    cp = 0x5F || cp = 0x2D || cp = 0x2E
   else
-    code = 0xB7 ||
-    (code >= 0x00C0 && code <= 0x00D6) ||
-    (code >= 0x00D8 && code <= 0x00F6) ||
-    (code >= 0x00F8 && code <= 0x02FF) ||
-    (code >= 0x0370 && code <= 0x037D) ||
-    (code >= 0x037F && code <= 0x1FFF) ||
-    (code >= 0x200C && code <= 0x200D) ||
-    (code >= 0x2070 && code <= 0x218F) ||
-    (code >= 0x2C00 && code <= 0x2FEF) ||
-    (code >= 0x3001 && code <= 0xD7FF) ||
-    (code >= 0xF900 && code <= 0xFDCF) ||
-    (code >= 0xFDF0 && code <= 0xFFFD)
+    cp = 0xB7 ||
+    (cp >= 0x00C0 && cp <= 0x00D6) ||
+    (cp >= 0x00D8 && cp <= 0x00F6) ||
+    (cp >= 0x00F8 && cp <= 0x02FF) ||
+    (cp >= 0x0300 && cp <= 0x036F) ||
+    (cp >= 0x0370 && cp <= 0x037D) ||
+    (cp >= 0x037F && cp <= 0x1FFF) ||
+    (cp >= 0x200C && cp <= 0x200D) ||
+    (cp >= 0x203F && cp <= 0x2040) ||
+    (cp >= 0x2070 && cp <= 0x218F) ||
+    (cp >= 0x2C00 && cp <= 0x2FEF) ||
+    (cp >= 0x3001 && cp <= 0xD7FF) ||
+    (cp >= 0xF900 && cp <= 0xFDCF) ||
+    (cp >= 0xFDF0 && cp <= 0xFFFD) ||
+    (cp >= 0x10000 && cp <= 0xEFFFF)
 
-// ASCII fast-path for bnode start char
-let is_bnode_start (c:FStar.Char.char) : bool =
-  let code = FStar.Char.int_of_char c in
-  if code < 0x80 then
-    (code >= 0x41 && code <= 0x5A) ||
-    (code >= 0x61 && code <= 0x7A) ||
-    code = 0x5F ||
-    (code >= 0x30 && code <= 0x39)
+// Blank-node label start char (PN_CHARS_U | [0-9]).
+let is_bnode_start_cp (cp: nat) : bool =
+  if cp < 0x80 then
+    (cp >= 0x41 && cp <= 0x5A) ||
+    (cp >= 0x61 && cp <= 0x7A) ||
+    cp = 0x5F ||
+    (cp >= 0x30 && cp <= 0x39)
   else
-    (code >= 0x00C0 && code <= 0x00D6) ||
-    (code >= 0x00D8 && code <= 0x00F6) ||
-    (code >= 0x00F8 && code <= 0x02FF) ||
-    (code >= 0x0370 && code <= 0x037D) ||
-    (code >= 0x037F && code <= 0x1FFF) ||
-    (code >= 0x200C && code <= 0x200D) ||
-    (code >= 0x2070 && code <= 0x218F) ||
-    (code >= 0x2C00 && code <= 0x2FEF) ||
-    (code >= 0x3001 && code <= 0xD7FF) ||
-    (code >= 0xF900 && code <= 0xFDCF) ||
-    (code >= 0xFDF0 && code <= 0xFFFD)
+    (cp >= 0x00C0 && cp <= 0x00D6) ||
+    (cp >= 0x00D8 && cp <= 0x00F6) ||
+    (cp >= 0x00F8 && cp <= 0x02FF) ||
+    (cp >= 0x0370 && cp <= 0x037D) ||
+    (cp >= 0x037F && cp <= 0x1FFF) ||
+    (cp >= 0x200C && cp <= 0x200D) ||
+    (cp >= 0x2070 && cp <= 0x218F) ||
+    (cp >= 0x2C00 && cp <= 0x2FEF) ||
+    (cp >= 0x3001 && cp <= 0xD7FF) ||
+    (cp >= 0xF900 && cp <= 0xFDCF) ||
+    (cp >= 0xFDF0 && cp <= 0xFFFD) ||
+    (cp >= 0x10000 && cp <= 0xEFFFF)
+
+// Scan a run of bnode body codepoints starting at pos. Returns the end
+// byte position. Walks one codepoint at a time via fs_cp_at; each step
+// advances by the codepoint's UTF-8 byte length (1..4). `fuel` is
+// byte-bounded, so the per-step `fuel - 1` decrement is still adequate
+// (the scan can only fire byte_length times total).
+let rec scan_bnode_body_cp (input: string) (pos: nat) (fuel: nat)
+  : Tot (r:nat{r >= pos}) (decreases fuel) =
+  if fuel = 0 then pos
+  else
+    let len = fs_byte_length input in
+    if pos >= len then pos
+    else
+      let b = fs_byte_at input pos in
+      if b < 0x80 then
+        if is_bnode_char_cp b then scan_bnode_body_cp input (pos + 1) (fuel - 1)
+        else pos
+      else
+        let (cp, adv) = fs_cp_at input pos in
+        let advance : nat = if adv = 0 then 1 else adv in
+        if is_bnode_char_cp cp then
+          scan_bnode_body_cp input (pos + advance) (fuel - 1)
+        else pos
 
 let parse_bnode : parser bnode_id =
   fun input pos ->
@@ -247,28 +273,38 @@ let parse_bnode : parser bnode_id =
     (* Match "_:" prefix *)
     if pos + 2 > len then ParseFail "expected '_:'" pos
     else
-      let c0 = fs_byte_index input pos in
-      let c1 = fs_byte_index input (pos + 1) in
-      if FStar.Char.int_of_char c0 = 0x5F && FStar.Char.int_of_char c1 = 0x3A then
+      let c0 = fs_byte_at input pos in
+      let c1 = fs_byte_at input (pos + 1) in
+      if c0 = 0x5F && c1 = 0x3A then
         (* Read label: first char must be bnode_start, rest bnode_char *)
         let start_pos = pos + 2 in
         if start_pos >= len then ParseFail "empty blank node label" start_pos
         else
-          let first = fs_byte_index input start_pos in
-          if is_bnode_start first then
-            match ptake_while_pos is_bnode_char input start_pos with
-            | ParseOk label pos' ->
-              (* Blank node labels must not end with '.' *)
-              let label_len = fs_byte_length label in
-              if label_len > 0 && pos' > 0 then
-                let last_ch = fs_byte_index label (label_len - 1) in
-                if FStar.Char.int_of_char last_ch = 0x2E then
-                  ParseOk (fs_byte_sub label 0 (label_len - 1)) (pos' - 1)
-                else
-                  ParseOk label pos'
-              else
-                ParseFail "empty blank node label" start_pos
-            | ParseFail msg fpos -> ParseFail msg fpos
+          let b0 = fs_byte_at input start_pos in
+          let (start_cp, start_adv) =
+            if b0 < 0x80 then (b0, 1)
+            else
+              let (cp, adv) = fs_cp_at input start_pos in
+              let advance : nat = if adv = 0 then 1 else adv in
+              (cp, advance)
+          in
+          if is_bnode_start_cp start_cp then
+            (* Scan the remainder of the label as PN_CHARS (+ '.'). *)
+            let after_first : nat = start_pos + start_adv in
+            let fuel : nat = if len > after_first then len - after_first + 1 else 1 in
+            let end_pos = scan_bnode_body_cp input after_first fuel in
+            (* Trailing '.' is allowed inside the label but not as the last
+               character; trim it if present (matches the historical byte
+               implementation). *)
+            let final_end =
+              if end_pos > start_pos && fs_byte_at input (end_pos - 1) = 0x2E
+              then end_pos - 1
+              else end_pos
+            in
+            if final_end > start_pos && final_end <= len then
+              ParseOk (fs_byte_sub input start_pos (final_end - start_pos)) final_end
+            else
+              ParseFail "empty blank node label" start_pos
           else
             ParseFail "invalid blank node label start character" start_pos
       else
@@ -348,8 +384,16 @@ let rec parse_string_body (input:string) (pos:nat) (acc:list char) (fuel:nat)
       else if code = 0x0A || code = 0x0D then
         (* Raw newlines/carriage returns not allowed in N-Triples strings *)
         ParseFail "unescaped newline in string literal" pos
-      else
+      else if code < 0x80 then
+        (* ASCII byte fast path. *)
         parse_string_body input (pos + 1) (ch :: acc) (fuel - 1)
+      else
+        (* Pass-3 issue #89: decode UTF-8 codepoint so that acc holds one
+           char per codepoint, matching String.string_of_list semantics. *)
+        let (cp, adv) = fs_cp_at input pos in
+        let advance : nat = if adv = 0 then 1 else adv in
+        parse_string_body input (pos + advance)
+          (safe_char_of_int cp :: acc) (fuel - 1)
 
 // Fast-path string scan: find closing quote with no escapes or raw newlines.
 // Returns position after the closing quote, or fails to signal fallback needed.
