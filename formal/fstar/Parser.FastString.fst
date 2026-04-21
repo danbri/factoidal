@@ -64,6 +64,52 @@ assume val fs_byte_sub : s:string -> start:nat -> len:nat -> string
 assume val fs_find_byte : s:string -> b:nat -> start:nat -> nat
 
 // ---------------------------------------------------------------------------
+// Codepoint-aware primitives (Pass 2 — issue #89).
+//
+// Some grammars (notably Turtle PN_CHARS validation) must interpret a run of
+// bytes as Unicode codepoints: a multi-byte UTF-8 letter like U+00E4 ("ä" =
+// 0xC3 0xA4) is a single valid PN_CHARS_BASE codepoint, but tested byte-by-
+// byte it fails (0xC3 falls into the PN_CHARS_BASE Unicode range table by
+// accident, 0xA4 does not — any byte-only test is wrong).
+//
+// These two primitives decode UTF-8 one codepoint at a time. They sit
+// alongside the byte primitives; callers choose which layer they want.
+// The byte path remains the fast path for ASCII delimiter scans; the
+// codepoint path is for identifier-class validation.
+//
+// COST MODEL
+// ----------
+// fs_cp_at  : O(1) amortised -- at most 4 byte fetches plus a couple of
+//             arithmetic ops. A few × slower than fs_byte_at, but still
+//             constant time per codepoint.
+// fs_cp_len : O(1) -- same decode path, returns only the advance.
+//
+// SAFETY / ERROR HANDLING
+// -----------------------
+// Invalid UTF-8 at `pos` is mapped to (0xFFFD, 1) -- emit the Unicode
+// replacement character and advance exactly one byte, so callers can still
+// make forward progress without undefined behaviour. This matches WHATWG's
+// recommended decoder policy for broken input and guarantees that a loop
+// of `let (cp, adv) = fs_cp_at s p in ... p + adv` terminates.
+//
+// Callers must ensure `pos < fs_byte_length s` before calling. Passing an
+// out-of-range `pos` returns (0xFFFD, 1) defensively, but the scanner
+// should still do its own bounds check so a `+ adv` walk doesn't run
+// off the end.
+// ---------------------------------------------------------------------------
+
+// Decode the UTF-8 codepoint that begins at byte position `pos`.
+// Returns (codepoint, byte_length_consumed). On invalid UTF-8 returns
+// (0xFFFD, 1) -- emit replacement char and advance one byte.
+// Caller is responsible for staying within fs_byte_length.
+assume val fs_cp_at : s:string -> pos:nat -> nat & nat
+
+// Number of bytes the UTF-8 codepoint at `pos` occupies. Equivalent to
+// the second tuple element of fs_cp_at; broken out so callers that only
+// need the advance don't pay for the codepoint value.
+assume val fs_cp_len : s:string -> pos:nat -> nat
+
+// ---------------------------------------------------------------------------
 // Convenience: return the byte at position i as an FStar.Char.char, so
 // existing call sites that do "let c = String.index input pos in
 // let code = int_of_char c in ..." can keep their downstream code by

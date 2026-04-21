@@ -373,6 +373,54 @@ let is_pn_chars (c: char) : bool =
     (code >= 0x203F && code <= 0x2040) ||
     is_pn_chars_base c
 
+// ================================================================
+// Codepoint-aware PN_CHARS predicates (Pass-2 FastString migration,
+// issue #89). These take a raw Unicode codepoint (nat) rather than
+// an F*.Char.char, so the caller can walk UTF-8 byte sequences via
+// fs_cp_at without having to fold every byte through char_of_int.
+//
+// Semantics per Turtle §6.5 -- full PN_CHARS_BASE Unicode ranges,
+// including the astral plane U+10000..U+EFFFF that char_of_int can't
+// hold (F*'s char is capped at the BMP, codepoints up to U+D7FF for
+// safety). Byte versions above remain correct for ASCII and are kept
+// for call sites that only look at a single byte-sized delimiter.
+// ================================================================
+
+let is_pn_chars_base_cp (cp: nat) : bool =
+  if cp < 0x80 then
+    (cp >= 0x41 && cp <= 0x5A) || (cp >= 0x61 && cp <= 0x7A)
+  else
+    (cp >= 0x00C0 && cp <= 0x00D6) ||
+    (cp >= 0x00D8 && cp <= 0x00F6) ||
+    (cp >= 0x00F8 && cp <= 0x02FF) ||
+    (cp >= 0x0370 && cp <= 0x037D) ||
+    (cp >= 0x037F && cp <= 0x1FFF) ||
+    (cp >= 0x200C && cp <= 0x200D) ||
+    (cp >= 0x2070 && cp <= 0x218F) ||
+    (cp >= 0x2C00 && cp <= 0x2FEF) ||
+    (cp >= 0x3001 && cp <= 0xD7FF) ||
+    (cp >= 0xF900 && cp <= 0xFDCF) ||
+    (cp >= 0xFDF0 && cp <= 0xFFFD) ||
+    (cp >= 0x10000 && cp <= 0xEFFFF)
+
+let is_pn_chars_u_cp (cp: nat) : bool =
+  if cp < 0x80 then
+    (cp >= 0x41 && cp <= 0x5A) || (cp >= 0x61 && cp <= 0x7A) || cp = 0x5F
+  else
+    is_pn_chars_base_cp cp
+
+let is_pn_chars_cp (cp: nat) : bool =
+  if cp < 0x80 then
+    (cp >= 0x41 && cp <= 0x5A) ||
+    (cp >= 0x61 && cp <= 0x7A) ||
+    (cp >= 0x30 && cp <= 0x39) ||
+    cp = 0x5F || cp = 0x2D
+  else
+    cp = 0xB7 ||
+    (cp >= 0x0300 && cp <= 0x036F) ||
+    (cp >= 0x203F && cp <= 0x2040) ||
+    is_pn_chars_base_cp cp
+
 (* ================================================================ *)
 (* Prefixed name parser: prefix:local                                *)
 (* ================================================================ *)
@@ -507,18 +555,22 @@ let rec validate_pname_ns_from (ns: string) (pos: nat) (fuel: nat) : Tot bool (d
     let len = fs_byte_length ns in
     if pos >= len then true
     else
-      let c = fs_byte_index ns pos in
-      let code = int_of_char c in
-      let ok =
-        if code < 0x80 then
-          (code >= 0x41 && code <= 0x5A) ||
-          (code >= 0x61 && code <= 0x7A) ||
-          (code >= 0x30 && code <= 0x39) ||
-          code = 0x5F || code = 0x2D || code = 0x2E
-        else
-          is_pn_chars c
-      in
-      ok && validate_pname_ns_from ns (pos + 1) (fuel - 1)
+      // Pass-2 codepoint walk (issue #89): ASCII byte fast path for common
+      // case (A-Z a-z 0-9 _ - .), UTF-8 decode only for bytes >= 0x80.
+      // Advance by the codepoint's byte length, not a hardcoded 1.
+      let b = fs_byte_at ns pos in
+      if b < 0x80 then
+        let ok =
+          (b >= 0x41 && b <= 0x5A) ||
+          (b >= 0x61 && b <= 0x7A) ||
+          (b >= 0x30 && b <= 0x39) ||
+          b = 0x5F || b = 0x2D || b = 0x2E
+        in
+        ok && validate_pname_ns_from ns (pos + 1) (fuel - 1)
+      else
+        let (cp, adv) = fs_cp_at ns pos in
+        let advance : nat = if adv = 0 then 1 else adv in
+        is_pn_chars_cp cp && validate_pname_ns_from ns (pos + advance) (fuel - 1)
 
 let validate_pname_ns (ns: string) : bool =
   let len = fs_byte_length ns in
@@ -534,35 +586,42 @@ let rec validate_pn_local_from (local: string) (pos: nat) (is_first: bool) (fuel
     let len = fs_byte_length local in
     if pos >= len then true
     else
-      let c = fs_byte_index local pos in
-      let code = int_of_char c in
-      if code = 0x25 then
+      let b = fs_byte_at local pos in
+      if b = 0x25 then
         pos + 2 < len &&
         is_ascii_hex_digit (fs_byte_index local (pos + 1)) &&
         is_ascii_hex_digit (fs_byte_index local (pos + 2)) &&
         validate_pn_local_from local (pos + 3) false (fuel - 1)
-      else if code = 0x5C then
+      else if b = 0x5C then
         pos + 1 < len &&
         is_pn_local_esc_char (fs_byte_index local (pos + 1)) &&
         validate_pn_local_from local (pos + 2) false (fuel - 1)
-      else
+      else if b < 0x80 then
+        // Pass-2 codepoint walk (issue #89): stay on the byte fast path
+        // for ASCII and advance 1 byte; only fall through to fs_cp_at
+        // for the multibyte case below.
         let ok =
-          if code < 0x80 then
-            if is_first then
-              (code >= 0x41 && code <= 0x5A) ||
-              (code >= 0x61 && code <= 0x7A) ||
-              (code >= 0x30 && code <= 0x39) ||
-              code = 0x5F || code = 0x3A
-            else
-              (code >= 0x41 && code <= 0x5A) ||
-              (code >= 0x61 && code <= 0x7A) ||
-              (code >= 0x30 && code <= 0x39) ||
-              code = 0x5F || code = 0x2D || code = 0x3A ||
-              (code = 0x2E && pos + 1 < len)
-          else if is_first then is_pn_chars_u c
-          else is_pn_chars c
+          if is_first then
+            (b >= 0x41 && b <= 0x5A) ||
+            (b >= 0x61 && b <= 0x7A) ||
+            (b >= 0x30 && b <= 0x39) ||
+            b = 0x5F || b = 0x3A
+          else
+            (b >= 0x41 && b <= 0x5A) ||
+            (b >= 0x61 && b <= 0x7A) ||
+            (b >= 0x30 && b <= 0x39) ||
+            b = 0x5F || b = 0x2D || b = 0x3A ||
+            (b = 0x2E && pos + 1 < len)
         in
         ok && validate_pn_local_from local (pos + 1) false (fuel - 1)
+      else
+        // Multibyte UTF-8: decode the codepoint, test it against the
+        // PN_CHARS_U / PN_CHARS tables, and advance by the codepoint's
+        // byte length so we don't test continuation bytes separately.
+        let (cp, adv) = fs_cp_at local pos in
+        let advance : nat = if adv = 0 then 1 else adv in
+        let ok = if is_first then is_pn_chars_u_cp cp else is_pn_chars_cp cp in
+        ok && validate_pn_local_from local (pos + advance) false (fuel - 1)
 
 let validate_pn_local (local: string) : bool =
   let len = fs_byte_length local in
@@ -1175,20 +1234,37 @@ let parse_turtle_literal (st: turtle_state) (input: string) (pos: nat) : parse_r
 (* Boolean literal parser                                            *)
 (* ================================================================ *)
 
+// Codepoint-aware boundary check for keyword lookahead (Pass 2, issue #89).
+// pstring matched an ASCII keyword; if what follows is a PN_CHARS char
+// we must reject because the keyword is actually part of a longer name.
+// For ASCII we stay on the byte fast path; only multibyte UTF-8 triggers
+// the codepoint decode.
+let pn_chars_follows (input: string) (pos: nat) : bool =
+  let len = fs_byte_length input in
+  if pos >= len then false
+  else
+    let b = fs_byte_at input pos in
+    if b < 0x80 then
+      (b >= 0x41 && b <= 0x5A) ||
+      (b >= 0x61 && b <= 0x7A) ||
+      (b >= 0x30 && b <= 0x39) ||
+      b = 0x5F || b = 0x2D
+    else
+      let (cp, _) = fs_cp_at input pos in
+      is_pn_chars_cp cp
+
 let parse_boolean_literal (input: string) (pos: nat) : parse_result literal =
   match pstring "true" input pos with
   | ParseOk _ pos' ->
     (* Make sure next char is not alphanumeric (not part of a longer token) *)
-    let len = fs_byte_length input in
-    if pos' < len && is_pn_chars (fs_byte_index input pos') then
+    if pn_chars_follows input pos' then
       ParseFail "expected boolean literal" pos
     else
       ParseOk ({ lexical_form = "true"; datatype = xsd_boolean; lang_tag = None }) pos'
   | ParseFail _ _ ->
     begin match pstring "false" input pos with
     | ParseOk _ pos' ->
-      let len = fs_byte_length input in
-      if pos' < len && is_pn_chars (fs_byte_index input pos') then
+      if pn_chars_follows input pos' then
         ParseFail "expected boolean literal" pos
       else
         ParseOk ({ lexical_form = "false"; datatype = xsd_boolean; lang_tag = None }) pos'

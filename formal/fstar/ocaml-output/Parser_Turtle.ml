@@ -401,6 +401,64 @@ let is_pn_chars (c : FStar_Char.char) : Prims.bool=
        ((code >= (Prims.of_int (0x203F))) &&
           (code <= (Prims.of_int (0x2040)))))
       || (is_pn_chars_base c)
+let is_pn_chars_base_cp (cp : Prims.nat) : Prims.bool=
+  if cp < (Prims.of_int (0x80))
+  then
+    ((cp >= (Prims.of_int (0x41))) && (cp <= (Prims.of_int (0x5A)))) ||
+      ((cp >= (Prims.of_int (0x61))) && (cp <= (Prims.of_int (0x7A))))
+  else
+    ((((((((((((cp >= (Prims.of_int (0x00C0))) &&
+                 (cp <= (Prims.of_int (0x00D6))))
+                ||
+                ((cp >= (Prims.of_int (0x00D8))) &&
+                   (cp <= (Prims.of_int (0x00F6)))))
+               ||
+               ((cp >= (Prims.of_int (0x00F8))) &&
+                  (cp <= (Prims.of_int (0x02FF)))))
+              ||
+              ((cp >= (Prims.of_int (0x0370))) &&
+                 (cp <= (Prims.of_int (0x037D)))))
+             ||
+             ((cp >= (Prims.of_int (0x037F))) &&
+                (cp <= (Prims.of_int (0x1FFF)))))
+            ||
+            ((cp >= (Prims.of_int (0x200C))) &&
+               (cp <= (Prims.of_int (0x200D)))))
+           ||
+           ((cp >= (Prims.of_int (0x2070))) &&
+              (cp <= (Prims.of_int (0x218F)))))
+          ||
+          ((cp >= (Prims.of_int (0x2C00))) && (cp <= (Prims.of_int (0x2FEF)))))
+         ||
+         ((cp >= (Prims.of_int (0x3001))) && (cp <= (Prims.of_int (0xD7FF)))))
+        ||
+        ((cp >= (Prims.of_int (0xF900))) && (cp <= (Prims.of_int (0xFDCF)))))
+       ||
+       ((cp >= (Prims.of_int (0xFDF0))) && (cp <= (Prims.of_int (0xFFFD)))))
+      ||
+      ((cp >= (Prims.parse_int "0x10000")) &&
+         (cp <= (Prims.parse_int "0xEFFFF")))
+let is_pn_chars_u_cp (cp : Prims.nat) : Prims.bool=
+  if cp < (Prims.of_int (0x80))
+  then
+    (((cp >= (Prims.of_int (0x41))) && (cp <= (Prims.of_int (0x5A)))) ||
+       ((cp >= (Prims.of_int (0x61))) && (cp <= (Prims.of_int (0x7A)))))
+      || (cp = (Prims.of_int (0x5F)))
+  else is_pn_chars_base_cp cp
+let is_pn_chars_cp (cp : Prims.nat) : Prims.bool=
+  if cp < (Prims.of_int (0x80))
+  then
+    (((((cp >= (Prims.of_int (0x41))) && (cp <= (Prims.of_int (0x5A)))) ||
+         ((cp >= (Prims.of_int (0x61))) && (cp <= (Prims.of_int (0x7A)))))
+        || ((cp >= (Prims.of_int (0x30))) && (cp <= (Prims.of_int (0x39)))))
+       || (cp = (Prims.of_int (0x5F))))
+      || (cp = (Prims.of_int (0x2D)))
+  else
+    (((cp = (Prims.of_int (0xB7))) ||
+        ((cp >= (Prims.of_int (0x0300))) && (cp <= (Prims.of_int (0x036F)))))
+       ||
+       ((cp >= (Prims.of_int (0x203F))) && (cp <= (Prims.of_int (0x2040)))))
+      || (is_pn_chars_base_cp cp)
 let is_pname_ns_body_char (c : FStar_Char.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in
   if code < (Prims.of_int (0x80))
@@ -658,26 +716,32 @@ let rec validate_pname_ns_from (ns : Prims.string) (pos : Prims.nat)
      if pos >= len
      then true
      else
-       (let c = Parser_FastString.fs_byte_index ns pos in
-        let code = FStar_Char.int_of_char c in
-        let ok =
-          if code < (Prims.of_int (0x80))
-          then
-            ((((((code >= (Prims.of_int (0x41))) &&
-                   (code <= (Prims.of_int (0x5A))))
+       (let b = Parser_FastString.fs_byte_at ns pos in
+        if b < (Prims.of_int (0x80))
+        then
+          let ok =
+            ((((((b >= (Prims.of_int (0x41))) && (b <= (Prims.of_int (0x5A))))
                   ||
-                  ((code >= (Prims.of_int (0x61))) &&
-                     (code <= (Prims.of_int (0x7A)))))
+                  ((b >= (Prims.of_int (0x61))) &&
+                     (b <= (Prims.of_int (0x7A)))))
                  ||
-                 ((code >= (Prims.of_int (0x30))) &&
-                    (code <= (Prims.of_int (0x39)))))
-                || (code = (Prims.of_int (0x5F))))
-               || (code = (Prims.of_int (0x2D))))
-              || (code = (Prims.of_int (0x2E)))
-          else is_pn_chars c in
-        ok &&
-          (validate_pname_ns_from ns (pos + Prims.int_one)
-             (fuel - Prims.int_one))))
+                 ((b >= (Prims.of_int (0x30))) &&
+                    (b <= (Prims.of_int (0x39)))))
+                || (b = (Prims.of_int (0x5F))))
+               || (b = (Prims.of_int (0x2D))))
+              || (b = (Prims.of_int (0x2E))) in
+          ok &&
+            (validate_pname_ns_from ns (pos + Prims.int_one)
+               (fuel - Prims.int_one))
+        else
+          (let uu___3 = Parser_FastString.fs_cp_at ns pos in
+           match uu___3 with
+           | (cp, adv) ->
+               let advance =
+                 if adv = Prims.int_zero then Prims.int_one else adv in
+               (is_pn_chars_cp cp) &&
+                 (validate_pname_ns_from ns (pos + advance)
+                    (fuel - Prims.int_one)))))
 let validate_pname_ns (ns : Prims.string) : Prims.bool=
   let len = Parser_FastString.fs_byte_length ns in
   if len = Prims.int_zero
@@ -695,9 +759,8 @@ let rec validate_pn_local_from (local : Prims.string) (pos : Prims.nat)
      if pos >= len
      then true
      else
-       (let c = Parser_FastString.fs_byte_index local pos in
-        let code = FStar_Char.int_of_char c in
-        if code = (Prims.of_int (0x25))
+       (let b = Parser_FastString.fs_byte_at local pos in
+        if b = (Prims.of_int (0x25))
         then
           ((((pos + (Prims.of_int (2))) < len) &&
               (is_ascii_hex_digit
@@ -710,7 +773,7 @@ let rec validate_pn_local_from (local : Prims.string) (pos : Prims.nat)
             (validate_pn_local_from local (pos + (Prims.of_int (3))) false
                (fuel - Prims.int_one))
         else
-          if code = (Prims.of_int (0x5C))
+          if b = (Prims.of_int (0x5C))
           then
             (((pos + Prims.int_one) < len) &&
                (is_pn_local_esc_char
@@ -720,40 +783,52 @@ let rec validate_pn_local_from (local : Prims.string) (pos : Prims.nat)
               (validate_pn_local_from local (pos + (Prims.of_int (2))) false
                  (fuel - Prims.int_one))
           else
-            (let ok =
-               if code < (Prims.of_int (0x80))
-               then
-                 (if is_first
-                  then
-                    (((((code >= (Prims.of_int (0x41))) &&
-                          (code <= (Prims.of_int (0x5A))))
-                         ||
-                         ((code >= (Prims.of_int (0x61))) &&
-                            (code <= (Prims.of_int (0x7A)))))
+            if b < (Prims.of_int (0x80))
+            then
+              (let ok =
+                 if is_first
+                 then
+                   (((((b >= (Prims.of_int (0x41))) &&
+                         (b <= (Prims.of_int (0x5A))))
                         ||
-                        ((code >= (Prims.of_int (0x30))) &&
-                           (code <= (Prims.of_int (0x39)))))
-                       || (code = (Prims.of_int (0x5F))))
-                      || (code = (Prims.of_int (0x3A)))
-                  else
-                    (((((((code >= (Prims.of_int (0x41))) &&
-                            (code <= (Prims.of_int (0x5A))))
-                           ||
-                           ((code >= (Prims.of_int (0x61))) &&
-                              (code <= (Prims.of_int (0x7A)))))
+                        ((b >= (Prims.of_int (0x61))) &&
+                           (b <= (Prims.of_int (0x7A)))))
+                       ||
+                       ((b >= (Prims.of_int (0x30))) &&
+                          (b <= (Prims.of_int (0x39)))))
+                      || (b = (Prims.of_int (0x5F))))
+                     || (b = (Prims.of_int (0x3A)))
+                 else
+                   (((((((b >= (Prims.of_int (0x41))) &&
+                           (b <= (Prims.of_int (0x5A))))
                           ||
-                          ((code >= (Prims.of_int (0x30))) &&
-                             (code <= (Prims.of_int (0x39)))))
-                         || (code = (Prims.of_int (0x5F))))
-                        || (code = (Prims.of_int (0x2D))))
-                       || (code = (Prims.of_int (0x3A))))
-                      ||
-                      ((code = (Prims.of_int (0x2E))) &&
-                         ((pos + Prims.int_one) < len)))
-               else if is_first then is_pn_chars_u c else is_pn_chars c in
-             ok &&
-               (validate_pn_local_from local (pos + Prims.int_one) false
-                  (fuel - Prims.int_one)))))
+                          ((b >= (Prims.of_int (0x61))) &&
+                             (b <= (Prims.of_int (0x7A)))))
+                         ||
+                         ((b >= (Prims.of_int (0x30))) &&
+                            (b <= (Prims.of_int (0x39)))))
+                        || (b = (Prims.of_int (0x5F))))
+                       || (b = (Prims.of_int (0x2D))))
+                      || (b = (Prims.of_int (0x3A))))
+                     ||
+                     ((b = (Prims.of_int (0x2E))) &&
+                        ((pos + Prims.int_one) < len)) in
+               ok &&
+                 (validate_pn_local_from local (pos + Prims.int_one) false
+                    (fuel - Prims.int_one)))
+            else
+              (let uu___5 = Parser_FastString.fs_cp_at local pos in
+               match uu___5 with
+               | (cp, adv) ->
+                   let advance =
+                     if adv = Prims.int_zero then Prims.int_one else adv in
+                   let ok =
+                     if is_first
+                     then is_pn_chars_u_cp cp
+                     else is_pn_chars_cp cp in
+                   ok &&
+                     (validate_pn_local_from local (pos + advance) false
+                        (fuel - Prims.int_one)))))
 let validate_pn_local (local : Prims.string) : Prims.bool=
   let len = Parser_FastString.fs_byte_length local in
   if len = Prims.int_zero
@@ -1813,14 +1888,27 @@ let parse_turtle_literal (st : turtle_state) (input : Prims.string)
                 }, pos'))
   | Parser_Combinators.ParseFail (msg, fpos) ->
       Parser_Combinators.ParseFail (msg, fpos)
+let pn_chars_follows (input : Prims.string) (pos : Prims.nat) : Prims.bool=
+  let len = Parser_FastString.fs_byte_length input in
+  if pos >= len
+  then false
+  else
+    (let b = Parser_FastString.fs_byte_at input pos in
+     if b < (Prims.of_int (0x80))
+     then
+       (((((b >= (Prims.of_int (0x41))) && (b <= (Prims.of_int (0x5A)))) ||
+            ((b >= (Prims.of_int (0x61))) && (b <= (Prims.of_int (0x7A)))))
+           || ((b >= (Prims.of_int (0x30))) && (b <= (Prims.of_int (0x39)))))
+          || (b = (Prims.of_int (0x5F))))
+         || (b = (Prims.of_int (0x2D)))
+     else
+       (let uu___2 = Parser_FastString.fs_cp_at input pos in
+        match uu___2 with | (cp, uu___3) -> is_pn_chars_cp cp))
 let parse_boolean_literal (input : Prims.string) (pos : Prims.nat) :
   RDF_Graph_Executable.literal Parser_Combinators.parse_result=
   match Parser_Combinators.pstring "true" input pos with
   | Parser_Combinators.ParseOk (uu___, pos') ->
-      let len = Parser_FastString.fs_byte_length input in
-      if
-        (pos' < len) &&
-          (is_pn_chars (Parser_FastString.fs_byte_index input pos'))
+      if pn_chars_follows input pos'
       then Parser_Combinators.ParseFail ("expected boolean literal", pos)
       else
         Parser_Combinators.ParseOk
@@ -1832,10 +1920,7 @@ let parse_boolean_literal (input : Prims.string) (pos : Prims.nat) :
   | Parser_Combinators.ParseFail (uu___, uu___1) ->
       (match Parser_Combinators.pstring "false" input pos with
        | Parser_Combinators.ParseOk (uu___2, pos') ->
-           let len = Parser_FastString.fs_byte_length input in
-           if
-             (pos' < len) &&
-               (is_pn_chars (Parser_FastString.fs_byte_index input pos'))
+           if pn_chars_follows input pos'
            then
              Parser_Combinators.ParseFail ("expected boolean literal", pos)
            else
