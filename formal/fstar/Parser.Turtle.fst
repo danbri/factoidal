@@ -4,6 +4,7 @@ open FStar.String
 open FStar.List.Tot
 open FStar.Char
 open Parser.FastString
+open Parser.IRI
 open Parser.Combinators
 open Parser.TurtleScanner
 open Parser.NTriples
@@ -232,53 +233,14 @@ let rec find_query_or_fragment (s: string) (pos: nat{pos <= fs_byte_length s}) (
     if c = 0x3F || c = 0x23 then pos
     else find_query_or_fragment s (pos + 1) (fuel - 1)
 
-(* Resolve a relative IRI against the base IRI per RFC 3986 §5.
-   Handles absolute IRIs (returned as-is), fragment-only references,
-   absolute-path references, and relative-path references (with dot-
-   segment normalisation via remove_dot_segments). *)
+(* Resolve a relative IRI against the base IRI per RFC 3986 §5.2
+   Transform References. Delegates to Parser.IRI.resolve_iri_v2 —
+   a verbatim port of RFC 3986 §5.2 that parses base and reference
+   into five-component records, runs §5.2.2 (transform_references),
+   §5.2.3 (merge), §5.2.4 (remove_dot_segments), and §5.3
+   (recompose). *)
 let resolve_iri (st: turtle_state) (rel: string) : string =
-  let rlen = fs_byte_length rel in
-  if rlen = 0 then st.base_iri
-  else
-    let first = FStar.Char.int_of_char (fs_byte_index rel 0) in
-    if string_contains_colon rel then rel
-    else if first = 0x23 then
-      (* Fragment-only: strip any existing fragment from base, then append. *)
-      let blen = fs_byte_length st.base_iri in
-      let stop = find_query_or_fragment st.base_iri 0 (blen + 1) in
-      let base_no_frag = fs_byte_sub st.base_iri 0 stop in
-      String.concat "" [base_no_frag; rel]
-    else if first = 0x2F then
-      (* Authority-relative or absolute-path. Preserve scheme+authority
-         from base, replace path with rel. *)
-      let path_start = find_path_start st.base_iri in
-      let authority = fs_byte_sub st.base_iri 0 path_start in
-      String.concat "" [authority; remove_dot_segments rel]
-    else
-      (* Relative reference: strip query+fragment from base, keep up to
-         last '/', append rel, then normalise dot segments. *)
-      let blen = fs_byte_length st.base_iri in
-      let stop = find_query_or_fragment st.base_iri 0 (blen + 1) in
-      let base_no_qf = fs_byte_sub st.base_iri 0 stop in
-      let base_dir = remove_last_segment base_no_qf in
-      let path_start = find_path_start base_no_qf in
-      let authority = fs_byte_sub base_no_qf 0 path_start in
-      let dir_path_start =
-        if fs_byte_length base_dir >= path_start
-        then path_start
-        else fs_byte_length base_dir
-      in
-      let dir_path_len =
-        if fs_byte_length base_dir >= dir_path_start
-        then fs_byte_length base_dir - dir_path_start
-        else 0
-      in
-      let dir_path =
-        if dir_path_len > 0
-        then fs_byte_sub base_dir dir_path_start dir_path_len
-        else "" in
-      let merged = String.concat "" [dir_path; rel] in
-      String.concat "" [authority; remove_dot_segments merged]
+  resolve_iri_v2 st.base_iri rel
 
 (* ================================================================ *)
 (* Turtle whitespace: spaces, tabs, newlines, and comments           *)

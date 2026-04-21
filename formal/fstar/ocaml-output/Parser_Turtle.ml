@@ -231,63 +231,7 @@ let rec find_query_or_fragment (s : Prims.string) (pos : Prims.nat)
          find_query_or_fragment s (pos + Prims.int_one)
            (fuel - Prims.int_one))
 let resolve_iri (st : turtle_state) (rel : Prims.string) : Prims.string=
-  let rlen = Parser_FastString.fs_byte_length rel in
-  if rlen = Prims.int_zero
-  then st.base_iri
-  else
-    (let first =
-       FStar_Char.int_of_char
-         (Parser_FastString.fs_byte_index rel Prims.int_zero) in
-     if RDF_Graph_Executable.string_contains_colon rel
-     then rel
-     else
-       if first = (Prims.of_int (0x23))
-       then
-         (let blen = Parser_FastString.fs_byte_length st.base_iri in
-          let stop =
-            find_query_or_fragment st.base_iri Prims.int_zero
-              (blen + Prims.int_one) in
-          let base_no_frag =
-            Parser_FastString.fs_byte_sub st.base_iri Prims.int_zero stop in
-          FStar_String.concat "" [base_no_frag; rel])
-       else
-         if first = (Prims.of_int (0x2F))
-         then
-           (let path_start = find_path_start st.base_iri in
-            let authority =
-              Parser_FastString.fs_byte_sub st.base_iri Prims.int_zero
-                path_start in
-            FStar_String.concat "" [authority; remove_dot_segments rel])
-         else
-           (let blen = Parser_FastString.fs_byte_length st.base_iri in
-            let stop =
-              find_query_or_fragment st.base_iri Prims.int_zero
-                (blen + Prims.int_one) in
-            let base_no_qf =
-              Parser_FastString.fs_byte_sub st.base_iri Prims.int_zero stop in
-            let base_dir = remove_last_segment base_no_qf in
-            let path_start = find_path_start base_no_qf in
-            let authority =
-              Parser_FastString.fs_byte_sub base_no_qf Prims.int_zero
-                path_start in
-            let dir_path_start =
-              if (Parser_FastString.fs_byte_length base_dir) >= path_start
-              then path_start
-              else Parser_FastString.fs_byte_length base_dir in
-            let dir_path_len =
-              if
-                (Parser_FastString.fs_byte_length base_dir) >= dir_path_start
-              then
-                (Parser_FastString.fs_byte_length base_dir) - dir_path_start
-              else Prims.int_zero in
-            let dir_path =
-              if dir_path_len > Prims.int_zero
-              then
-                Parser_FastString.fs_byte_sub base_dir dir_path_start
-                  dir_path_len
-              else "" in
-            let merged = FStar_String.concat "" [dir_path; rel] in
-            FStar_String.concat "" [authority; remove_dot_segments merged]))
+  Parser_IRI.resolve_iri_v2 st.base_iri rel
 let is_turtle_ws (c : FStar_Char.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in
   (((code = (Prims.of_int (0x20))) || (code = (Prims.of_int (0x09)))) ||
