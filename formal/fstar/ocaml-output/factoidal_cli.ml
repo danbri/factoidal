@@ -115,6 +115,35 @@ let file_base_iri path =
               else path in
     Some ("file://" ^ abs)
 
+(* Stack-safe list helpers for large triple/quad lists.
+
+   OCaml's stdlib (@) and List.concat_map are not tail-recursive on
+   their primary argument, so `huge_list @ []` blows the native stack
+   on the ~889k-triple scale we see in wikidata-lifesci-kgx/*.ttl.
+   The helpers below preserve the same element order as (@) /
+   List.concat_map but run in constant stack, using List.rev_append
+   (which IS tail-recursive) as their primitive.
+
+   Concrete pattern:
+     concat_preserve_order [xs; ys; zs] = xs @ ys @ zs
+     concat_map_preserve_order f xs     = List.concat_map f xs
+   but both are tail-recursive on the outer spine AND on the inner lists.
+
+   Design sketch: docs/2026-04-21-large-turtle-stack-overflow-fix-sketch.md
+*)
+let append_preserve_order xs ys =
+  List.rev_append (List.rev xs) ys
+
+let concat_preserve_order lists =
+  List.rev
+    (List.fold_left
+       (fun acc xs -> List.rev_append xs acc)
+       []
+       lists)
+
+let concat_map_preserve_order f xs =
+  concat_preserve_order (List.rev_map f xs |> List.rev)
+
 (* Load as dataset, preserving named graph structure for NQuads/TriG *)
 let load_dataset ?(format=None) ?(base=None) path =
   let content = read_file path in
@@ -143,7 +172,11 @@ let load_dataset ?(format=None) ?(base=None) path =
 
 let load_triples ?(format=None) ?(base=None) path =
   let ds = load_dataset ~format ~base path in
-  ds.ds_default @ List.concat_map (fun ng -> ng.ng_graph) ds.ds_named
+  match ds.ds_named with
+  | [] -> ds.ds_default
+  | named ->
+    concat_preserve_order
+      (ds.ds_default :: List.map (fun ng -> ng.ng_graph) named)
 
 (* Load a COTTAS/Parquet artifact as an rdf_dataset.
 
@@ -492,7 +525,11 @@ let () =
   (* Helper: flatten a COTTAS dataset down to a triple list (default + named) *)
   let cottas_all_triples path =
     let ds = load_cottas_dataset path in
-    ds.ds_default @ List.concat_map (fun ng -> ng.ng_graph) ds.ds_named
+    match ds.ds_named with
+    | [] -> ds.ds_default
+    | named ->
+      concat_preserve_order
+        (ds.ds_default :: List.map (fun ng -> ng.ng_graph) named)
   in
 
   (* Dump mode: parse and emit N-Triples *)
@@ -501,32 +538,50 @@ let () =
       Printf.eprintf "Error: no data files specified (use --data FILE or just FILE)\n";
       exit 1
     end;
-    let file_triples = List.concat_map (fun f ->
+    let file_triples = concat_map_preserve_order (fun f ->
       try load_triples ~format:cfg.input_format ~base:cfg.base_iri f
       with e ->
         Printf.eprintf "Error parsing %s: %s\n" f (Printexc.to_string e);
         exit 1
     ) cfg.data_files in
-    let cottas_triples = List.concat_map (fun f ->
+    let cottas_triples = concat_map_preserve_order (fun f ->
       try cottas_all_triples f
       with e ->
         Printf.eprintf "Error loading COTTAS %s: %s\n" f (Printexc.to_string e);
         exit 1
     ) cfg.data_cottas_files in
-    print_results_ntriples (file_triples @ cottas_triples);
+    print_results_ntriples (append_preserve_order file_triples cottas_triples);
     exit 0
   end;
 
-  (* Count mode *)
+  (* Count mode.
+     Turtle fast path: Parser_Turtle.count_turtle_triples(_with_base)
+     scans once without materialising a triple list — safe on
+     million-triple files where the full list would overflow the
+     native stack on downstream List ops. *)
   if cfg.count_mode then begin
     if cfg.data_files = [] && cfg.data_cottas_files = [] then begin
       Printf.eprintf "Error: no data files specified\n"; exit 1
     end;
     List.iter (fun f ->
       try
-        let triples = load_triples ~format:cfg.input_format ~base:cfg.base_iri f in
+        let fmt = match cfg.input_format with
+          | Some x -> x
+          | None -> detect_format f in
         let label = if f = "-" then "<stdin>" else f in
-        Printf.printf "%s: %d triples\n" label (List.length triples)
+        match fmt with
+        | Turtle ->
+          let content = read_file f in
+          let base_iri = match cfg.base_iri with
+            | Some b -> Some b
+            | None -> file_base_iri f in
+          let n = match base_iri with
+            | Some b -> Parser_Turtle.count_turtle_triples_with_base content b
+            | None -> Parser_Turtle.count_turtle_triples content in
+          Printf.printf "%s: %s triples\n" label (Z.to_string n)
+        | _ ->
+          let triples = load_triples ~format:cfg.input_format ~base:cfg.base_iri f in
+          Printf.printf "%s: %d triples\n" label (List.length triples)
       with e ->
         Printf.eprintf "Error parsing %s: %s\n" f (Printexc.to_string e);
         exit 1
@@ -581,8 +636,8 @@ let () =
   let datasets = datasets @ cottas_datasets in
 
   (* Merge all default graphs and named graphs *)
-  let graph = List.concat_map (fun ds -> ds.ds_default) datasets in
-  let file_named_graphs = List.concat_map (fun ds -> ds.ds_named) datasets in
+  let graph = concat_map_preserve_order (fun ds -> ds.ds_default) datasets in
+  let file_named_graphs = concat_map_preserve_order (fun ds -> ds.ds_named) datasets in
 
   (* Load explicitly named graphs from --named flag *)
   let cli_named_graphs = List.map (fun (iri, path) ->
