@@ -18,7 +18,19 @@
    Two of the six cases (the emoji and the CJK string) live at the
    boundary of OCaml's byte-oriented string API and the F* extraction;
    historically these are where issue #91 surfaced. They are asserted as
-   PASS on the native path — a regression would flip them to FAIL. *)
+   PASS on the native path — a regression would flip them to FAIL.
+
+   Browser-runtime coverage note (2026-04-21):
+     The browser-only jsoo stdout UTF-8 corruption identified in #91 and
+     umbrella'd under #92 is NOT exercised by this test — a native OCaml
+     harness cannot reach jsoo's caml_ml_output_bytes path. That path is
+     now overridden by formal/fstar/ocaml-output/fstar_utf8_output_stubs.js
+     (linked into the js build in build-ocaml.sh). Browser validation for
+     that stub is deferred to a Playwright smoke under tests/browser/,
+     tracked as follow-up per the fix plan in
+     docs/designissues/2026-04-21-jsoo-utf8-stdout-fix-plan.md. The
+     assertions below continue to gate the native path against
+     regressions in the F*/OCaml side of the pipeline. *)
 
 open RDF_Graph_Executable
 

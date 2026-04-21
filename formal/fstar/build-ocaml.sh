@@ -79,7 +79,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   #   SPARQL.Protocol       -> SPARQL11.Algebra, Parser.CSVResults, Parser.JSONResults
   for fst in RDF.Graph.Executable.fst Parquet.Footer.fst \
              Tableau.fst SPARQL11.Algebra.fst \
-             Parser.FastString.fst \
+             Parser.FastString.fst Parser.IRI.fst \
              Parser.Combinators.fst Parser.TurtleScanner.fst SPARQL11.Parser.fst \
              Parser.NTriples.fst Parser.Turtle.fst \
              Parser.NQuads.fst Parser.TriG.fst \
@@ -132,7 +132,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # depends on Parser_BallyhooHDT and Parser_BallyhooCOTTAS. See
   # docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md §Phase 1.
   COMMON_MODULES="RDF_Graph_Executable.ml Parquet_Footer.ml Tableau.ml \
-    Parser_FastString.ml \
+    Parser_FastString.ml Parser_IRI.ml \
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
@@ -266,7 +266,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
   # See docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md.
   FSTAR_MODULES=(
     RDF_Graph_Executable.ml Parquet_Footer.ml Tableau.ml
-    Parser_FastString.ml
+    Parser_FastString.ml Parser_IRI.ml
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
@@ -307,6 +307,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     +zarith_stubs_js/runtime.js \
     fstar_int_stubs.js \
     fstar_hash_stubs.js \
+    fstar_utf8_output_stubs.js \
     vendor/fzstd.umd.js \
     parquet_zstd_stubs.js \
     w3c_runner.byte \
@@ -317,6 +318,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     +zarith_stubs_js/runtime.js \
     fstar_int_stubs.js \
     fstar_hash_stubs.js \
+    fstar_utf8_output_stubs.js \
     vendor/fzstd.umd.js \
     parquet_zstd_stubs.js \
     factoidal.byte \
