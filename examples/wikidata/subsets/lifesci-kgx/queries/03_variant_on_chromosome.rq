@@ -1,0 +1,17 @@
+# Sequence variants and the chromosomes they sit on — a small cross-
+# graph join that actually completes under the naive O(outer * inner)
+# BGP evaluator.
+#
+# variant:   <sequence_variant.ttl>   1,351 variants have wdt:P1057 (chromosome)
+# chrom:     <chromosome.ttl>         9,227 chromosome instances (wdt:P31 wd:Q37748)
+#
+# join cardinality ≈ 1.3k × 9k ≈ 10^7 ops — completes in seconds.
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX wd:  <http://www.wikidata.org/entity/>
+
+SELECT ?variant ?chrom
+WHERE {
+  GRAPH <urn:kgx:chromosome>       { ?chrom wdt:P31 wd:Q37748 }
+  GRAPH <urn:kgx:sequence_variant> { ?variant wdt:P1057 ?chrom }
+}
+LIMIT 20

@@ -1,0 +1,22 @@
+# Count of triples per named graph.
+#
+# No join, just a group-by over (?g ?s ?p ?o). Cost scales with
+# total triples plus the GROUP BY bookkeeping, which is O(n^2) on
+# the current list-backed evaluator.
+#
+# Measured (macOS arm64, post-issue-#95):
+#   * 3 small graphs (disease + chromosome + sequence_variant,
+#     ~43k triples):                       ~7 s
+#   * same 3 + gene.ttl (~889k triples):   ~6 min
+#
+# Load gene.ttl into this query only when you want the stress-test
+# behaviour; for a fast per-file count, use `factoidal --count`
+# instead, which routes to the F*-verified Turtle codepoint counter.
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+SELECT ?g (COUNT(*) AS ?triples)
+WHERE {
+  GRAPH ?g { ?s ?p ?o }
+}
+GROUP BY ?g
+ORDER BY DESC(?triples)

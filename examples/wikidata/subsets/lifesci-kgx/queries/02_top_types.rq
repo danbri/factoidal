@@ -1,0 +1,23 @@
+# Top-ten type'd classes across all graphs, by instance count.
+# Most files use wdt:P31 (instance of) rather than rdf:type, so this
+# query looks at the wikidata "instance of" predicate and at bare
+# rdf:type. Reports (type, count) from whichever property bound it.
+#
+# Measured with gene + chromosome + disease + sequence_variant
+# loaded: ~2m 30s. The gene.ttl scan of 889k triples dominates.
+# Pre-issue-#95 this query would stack-overflow; it now completes
+# correctly, just slowly. An indexed store would bring this back
+# into sub-second territory.
+PREFIX wdt:  <http://www.wikidata.org/prop/direct/>
+PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX bio:  <https://bioschemas.org/>
+
+SELECT ?type (COUNT(?s) AS ?instances)
+WHERE {
+  { GRAPH ?g { ?s wdt:P31 ?type } }
+  UNION
+  { GRAPH ?g { ?s rdf:type  ?type } }
+}
+GROUP BY ?type
+ORDER BY DESC(?instances)
+LIMIT 10

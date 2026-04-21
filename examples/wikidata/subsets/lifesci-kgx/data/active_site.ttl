@@ -1,0 +1,743 @@
+@prefix schema: <https://schema.org/> .
+@prefix bio: <https://bioschemas.org/> .
+@prefix wikibase: <http://wikiba.se/ontology#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix sesame: <http://www.openrdf.org/schema/sesame#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix fn: <http://www.w3.org/2005/xpath-functions#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix dc: <http://purl.org/dc/elements/1.1/> .
+@prefix hint: <http://www.bigdata.com/queryHints#> .
+@prefix bd: <http://www.bigdata.com/rdf#> .
+@prefix bds: <http://www.bigdata.com/rdf/search#> .
+@prefix psn: <http://www.wikidata.org/prop/statement/value-normalized/> .
+@prefix pqn: <http://www.wikidata.org/prop/qualifier/value-normalized/> .
+@prefix prn: <http://www.wikidata.org/prop/reference/value-normalized/> .
+@prefix mwapi: <https://www.mediawiki.org/ontology#API/> .
+@prefix gas: <http://www.bigdata.com/rdf/gas#> .
+@prefix wdsubgraph: <https://query.wikidata.org/subgraph/> .
+@prefix wdt: <http://www.wikidata.org/prop/direct/> .
+@prefix wdtn: <http://www.wikidata.org/prop/direct-normalized/> .
+@prefix psv: <http://www.wikidata.org/prop/statement/value/> .
+@prefix ps: <http://www.wikidata.org/prop/statement/> .
+@prefix pqv: <http://www.wikidata.org/prop/qualifier/value/> .
+@prefix pq: <http://www.wikidata.org/prop/qualifier/> .
+@prefix prv: <http://www.wikidata.org/prop/reference/value/> .
+@prefix pr: <http://www.wikidata.org/prop/reference/> .
+@prefix wdno: <http://www.wikidata.org/prop/novalue/> .
+@prefix p: <http://www.wikidata.org/prop/> .
+@prefix wd: <http://www.wikidata.org/entity/> .
+@prefix wdata: <http://www.wikidata.org/wiki/Special:EntityData/> .
+@prefix wds: <http://www.wikidata.org/entity/statement/> .
+@prefix wdv: <http://www.wikidata.org/value/> .
+@prefix wdref: <http://www.wikidata.org/reference/> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix geo: <http://www.opengis.net/ont/geosparql#> .
+@prefix geof: <http://www.opengis.net/def/geosparql/function/> .
+@prefix mediawiki: <https://www.mediawiki.org/ontology#> .
+@prefix ontolex: <http://www.w3.org/ns/lemon/ontolex#> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix wikibaseqs: <http://wikiba.se/queryService#> .
+
+wd:Q24781141 wdt:P31 wd:Q423026 .
+
+wd:Q24781169 wdt:P31 wd:Q423026 .
+
+wd:Q24781399 wdt:P31 wd:Q423026 .
+
+wd:Q24781404 wdt:P31 wd:Q423026 .
+
+wd:Q24781765 wdt:P31 wd:Q423026 .
+
+wd:Q24782307 wdt:P31 wd:Q423026 .
+
+wd:Q24782900 wdt:P31 wd:Q423026 .
+
+wd:Q24783179 wdt:P31 wd:Q423026 .
+
+wd:Q24783188 wdt:P31 wd:Q423026 .
+
+wd:Q24783235 wdt:P31 wd:Q423026 .
+
+wd:Q24783277 wdt:P31 wd:Q423026 .
+
+wd:Q24783757 wdt:P31 wd:Q423026 .
+
+wd:Q24784845 wdt:P31 wd:Q423026 .
+
+wd:Q24785044 wdt:P31 wd:Q423026 .
+
+wd:Q24785294 wdt:P31 wd:Q423026 .
+
+wd:Q24785830 wdt:P31 wd:Q423026 .
+
+wd:Q24785902 wdt:P31 wd:Q423026 .
+
+wd:Q24785993 wdt:P31 wd:Q423026 .
+
+wd:Q24786220 wdt:P31 wd:Q423026 .
+
+wd:Q24786354 wdt:P31 wd:Q423026 .
+
+wd:Q24786499 wdt:P31 wd:Q423026 .
+
+wd:Q24786748 wdt:P31 wd:Q423026 .
+
+wd:Q24786776 wdt:P31 wd:Q423026 .
+
+wd:Q24787419 wdt:P31 wd:Q423026 .
+
+wd:Q24787869 wdt:P31 wd:Q423026 .
+
+wd:Q24788183 wdt:P31 wd:Q423026 .
+
+wd:Q24788217 wdt:P31 wd:Q423026 .
+
+wd:Q24788339 wdt:P31 wd:Q423026 .
+
+wd:Q24788363 wdt:P31 wd:Q423026 .
+
+wd:Q24788465 wdt:P31 wd:Q423026 .
+
+wd:Q24788522 wdt:P31 wd:Q423026 .
+
+wd:Q24788557 wdt:P31 wd:Q423026 .
+
+wd:Q24719593 wdt:P31 wd:Q423026 .
+
+wd:Q24719708 wdt:P31 wd:Q423026 .
+
+wd:Q24720066 wdt:P31 wd:Q423026 .
+
+wd:Q24720904 wdt:P31 wd:Q423026 .
+
+wd:Q24720976 wdt:P31 wd:Q423026 .
+
+wd:Q24721060 wdt:P31 wd:Q423026 .
+
+wd:Q24721301 wdt:P31 wd:Q423026 .
+
+wd:Q24721586 wdt:P31 wd:Q423026 .
+
+wd:Q24721982 wdt:P31 wd:Q423026 .
+
+wd:Q24721995 wdt:P31 wd:Q423026 .
+
+wd:Q24722145 wdt:P31 wd:Q423026 .
+
+wd:Q24722357 wdt:P31 wd:Q423026 .
+
+wd:Q24722416 wdt:P31 wd:Q423026 .
+
+wd:Q24722439 wdt:P31 wd:Q423026 .
+
+wd:Q24722746 wdt:P31 wd:Q423026 .
+
+wd:Q24722778 wdt:P31 wd:Q423026 .
+
+wd:Q24723478 wdt:P31 wd:Q423026 .
+
+wd:Q24723561 wdt:P31 wd:Q423026 .
+
+wd:Q24723774 wdt:P31 wd:Q423026 .
+
+wd:Q24724004 wdt:P31 wd:Q423026 .
+
+wd:Q24724042 wdt:P31 wd:Q423026 .
+
+wd:Q24724140 wdt:P31 wd:Q423026 .
+
+wd:Q24724251 wdt:P31 wd:Q423026 .
+
+wd:Q24724296 wdt:P31 wd:Q423026 .
+
+wd:Q24724375 wdt:P31 wd:Q423026 .
+
+wd:Q24724688 wdt:P31 wd:Q423026 .
+
+wd:Q24724853 wdt:P31 wd:Q423026 .
+
+wd:Q24725098 wdt:P31 wd:Q423026 .
+
+wd:Q24725415 wdt:P31 wd:Q423026 .
+
+wd:Q24725433 wdt:P31 wd:Q423026 .
+
+wd:Q24725727 wdt:P31 wd:Q423026 .
+
+wd:Q24726204 wdt:P31 wd:Q423026 .
+
+wd:Q24726900 wdt:P31 wd:Q423026 .
+
+wd:Q24727174 wdt:P31 wd:Q423026 .
+
+wd:Q24727254 wdt:P31 wd:Q423026 .
+
+wd:Q24738462 wdt:P31 wd:Q423026 .
+
+wd:Q24738472 wdt:P31 wd:Q423026 .
+
+wd:Q24738578 wdt:P31 wd:Q423026 .
+
+wd:Q24738867 wdt:P31 wd:Q423026 .
+
+wd:Q24739299 wdt:P31 wd:Q423026 .
+
+wd:Q24739778 wdt:P31 wd:Q423026 .
+
+wd:Q24740232 wdt:P31 wd:Q423026 .
+
+wd:Q24740369 wdt:P31 wd:Q423026 .
+
+wd:Q24740501 wdt:P31 wd:Q423026 .
+
+wd:Q24741096 wdt:P31 wd:Q423026 .
+
+wd:Q24745139 wdt:P31 wd:Q423026 .
+
+wd:Q24745195 wdt:P31 wd:Q423026 .
+
+wd:Q24766650 wdt:P31 wd:Q423026 .
+
+wd:Q24766722 wdt:P31 wd:Q423026 .
+
+wd:Q24766970 wdt:P31 wd:Q423026 .
+
+wd:Q24766994 wdt:P31 wd:Q423026 .
+
+wd:Q24767889 wdt:P31 wd:Q423026 .
+
+wd:Q24768014 wdt:P31 wd:Q423026 .
+
+wd:Q24768892 wdt:P31 wd:Q423026 .
+
+wd:Q24769061 wdt:P31 wd:Q423026 .
+
+wd:Q24769127 wdt:P31 wd:Q423026 .
+
+wd:Q24769524 wdt:P31 wd:Q423026 .
+
+wd:Q24769619 wdt:P31 wd:Q423026 .
+
+wd:Q24769626 wdt:P31 wd:Q423026 .
+
+wd:Q24769872 wdt:P31 wd:Q423026 .
+
+wd:Q24770221 wdt:P31 wd:Q423026 .
+
+wd:Q24770253 wdt:P31 wd:Q423026 .
+
+wd:Q24770631 wdt:P31 wd:Q423026 .
+
+wd:Q24771254 wdt:P31 wd:Q423026 .
+
+wd:Q24771374 wdt:P31 wd:Q423026 .
+
+wd:Q24771399 wdt:P31 wd:Q423026 .
+
+wd:Q24771582 wdt:P31 wd:Q423026 .
+
+wd:Q24771745 wdt:P31 wd:Q423026 .
+
+wd:Q24772252 wdt:P31 wd:Q423026 .
+
+wd:Q24772307 wdt:P31 wd:Q423026 .
+
+wd:Q24772332 wdt:P31 wd:Q423026 .
+
+wd:Q24772528 wdt:P31 wd:Q423026 .
+
+wd:Q24772947 wdt:P31 wd:Q423026 .
+
+wd:Q24773000 wdt:P31 wd:Q423026 .
+
+wd:Q24773449 wdt:P31 wd:Q423026 .
+
+wd:Q24773462 wdt:P31 wd:Q423026 .
+
+wd:Q24774920 wdt:P31 wd:Q423026 .
+
+wd:Q24775037 wdt:P31 wd:Q423026 .
+
+wd:Q24775324 wdt:P31 wd:Q423026 .
+
+wd:Q24775716 wdt:P31 wd:Q423026 .
+
+wd:Q24776745 wdt:P31 wd:Q423026 .
+
+wd:Q24776807 wdt:P31 wd:Q423026 .
+
+wd:Q24777295 wdt:P31 wd:Q423026 .
+
+wd:Q24777669 wdt:P31 wd:Q423026 .
+
+wd:Q24777789 wdt:P31 wd:Q423026 .
+
+wd:Q24778181 wdt:P31 wd:Q423026 .
+
+wd:Q24778363 wdt:P31 wd:Q423026 .
+
+wd:Q24778521 wdt:P31 wd:Q423026 .
+
+wd:Q24778641 wdt:P31 wd:Q423026 .
+
+wd:Q24778942 wdt:P31 wd:Q423026 .
+
+wd:Q24778968 wdt:P31 wd:Q423026 .
+
+wd:Q24779124 wdt:P31 wd:Q423026 .
+
+wd:Q24779192 wdt:P31 wd:Q423026 .
+
+wd:Q24779591 wdt:P31 wd:Q423026 .
+
+wd:Q24779647 wdt:P31 wd:Q423026 .
+
+wd:Q24779732 wdt:P31 wd:Q423026 .
+
+wd:Q24779872 wdt:P31 wd:Q423026 .
+
+wd:Q24780015 wdt:P31 wd:Q423026 .
+
+wd:Q24780702 wdt:P31 wd:Q423026 .
+
+wd:Q24780869 wdt:P31 wd:Q423026 .
+
+wd:Q24786776 wdt:P361 wd:Q419189 .
+
+wd:Q24781141 wdt:P361 wd:Q24721754 .
+
+wd:Q24781169 wdt:P361 wd:Q24725629 .
+
+wd:Q24781399 wdt:P361 wd:Q24726771 .
+
+wd:Q24781169 wdt:P361 wd:Q24767135 , wd:Q24774929 .
+
+wd:Q24781399 wdt:P361 wd:Q24769148 .
+
+wd:Q24781169 wdt:P361 wd:Q24776425 .
+
+wd:Q24781141 wdt:P361 wd:Q24779951 .
+
+wd:Q24781399 wdt:P361 wd:Q24772750 .
+
+wd:Q24781141 wdt:P361 wd:Q24780987 .
+
+wd:Q24782307 wdt:P361 wd:Q24745428 .
+
+wd:Q24781399 wdt:P361 wd:Q24774142 , wd:Q24775312 .
+
+wd:Q24783235 wdt:P361 wd:Q24721236 .
+
+wd:Q24781399 wdt:P361 wd:Q24778315 , wd:Q24779077 .
+
+wd:Q24783188 wdt:P361 wd:Q24724060 .
+
+wd:Q24783179 wdt:P361 wd:Q24726771 .
+
+wd:Q24783188 wdt:P361 wd:Q24727224 .
+
+wd:Q24783277 wdt:P361 wd:Q24725133 .
+
+wd:Q24781399 wdt:P361 wd:Q24785643 .
+
+wd:Q24783188 wdt:P361 wd:Q24741554 .
+
+wd:Q24782307 wdt:P361 wd:Q24769952 .
+
+wd:Q24783188 wdt:P361 wd:Q24743736 .
+
+wd:Q24782307 wdt:P361 wd:Q24782903 .
+
+wd:Q24783757 wdt:P361 wd:Q24743665 .
+
+wd:Q24783188 wdt:P361 wd:Q24766856 .
+
+wd:Q24782900 wdt:P361 wd:Q24775811 .
+
+wd:Q24783188 wdt:P361 wd:Q24767911 , wd:Q24770286 .
+
+wd:Q24783277 wdt:P361 wd:Q24768633 .
+
+wd:Q24783188 wdt:P361 wd:Q24772803 , wd:Q24773948 , wd:Q24774780 , wd:Q24775551 .
+
+wd:Q24783277 wdt:P361 wd:Q24772807 , wd:Q24773519 .
+
+wd:Q24785044 wdt:P361 wd:Q24722053 , wd:Q24722733 .
+
+wd:Q24783179 wdt:P361 wd:Q24781273 .
+
+wd:Q24783188 wdt:P361 wd:Q24783709 , wd:Q24784628 , wd:Q24787031 .
+
+wd:Q24783757 wdt:P361 wd:Q24769753 .
+
+wd:Q24785830 wdt:P361 wd:Q24724025 .
+
+wd:Q24785902 wdt:P361 wd:Q24724903 .
+
+wd:Q24785993 wdt:P361 wd:Q24722629 , wd:Q24724181 .
+
+wd:Q24786354 wdt:P361 wd:Q24721464 , wd:Q24721752 .
+
+wd:Q24785993 wdt:P361 wd:Q24741191 .
+
+wd:Q24785044 wdt:P361 wd:Q24773297 .
+
+wd:Q24786776 wdt:P361 wd:Q24719750 .
+
+wd:Q24785044 wdt:P361 wd:Q24779606 .
+
+wd:Q24786354 wdt:P361 wd:Q24739722 .
+
+wd:Q24785044 wdt:P361 wd:Q24787459 .
+
+wd:Q24786776 wdt:P361 wd:Q24739684 .
+
+wd:Q24787419 wdt:P361 wd:Q24720377 , wd:Q24720956 , wd:Q24720987 , wd:Q24721458 .
+
+wd:Q24785294 wdt:P361 wd:Q24787382 .
+
+wd:Q24787419 wdt:P361 wd:Q24721620 , wd:Q24721770 , wd:Q24722147 , wd:Q24722404 , wd:Q24724269 .
+
+wd:Q24786748 wdt:P361 wd:Q24745956 .
+
+wd:Q24787419 wdt:P361 wd:Q24726488 .
+
+wd:Q24785830 wdt:P361 wd:Q24782514 .
+
+wd:Q24786220 wdt:P361 wd:Q24775085 .
+
+wd:Q24787419 wdt:P361 wd:Q24739205 .
+
+wd:Q24786220 wdt:P361 wd:Q24776515 .
+
+wd:Q24787419 wdt:P361 wd:Q24739929 , wd:Q24740996 , wd:Q24743638 .
+
+wd:Q24786354 wdt:P361 wd:Q24777106 .
+
+wd:Q24787419 wdt:P361 wd:Q24768234 , wd:Q24768438 , wd:Q24769349 , wd:Q24770157 , wd:Q24774703 , wd:Q24775135 , wd:Q24775744 , wd:Q24777228 , wd:Q24777620 , wd:Q24777677 , wd:Q24777727 , wd:Q24778284 , wd:Q24778733 , wd:Q24778828 , wd:Q24778984 , wd:Q24779434 , wd:Q24780498 , wd:Q24781327 , wd:Q24781613 , wd:Q24781636 , wd:Q24781980 , wd:Q24784467 .
+
+wd:Q24788339 wdt:P361 wd:Q24720667 , wd:Q24722318 , wd:Q24740848 .
+
+wd:Q24788465 wdt:P361 wd:Q24741630 .
+
+wd:Q24787419 wdt:P361 wd:Q24785136 , wd:Q24786594 , wd:Q24786632 , wd:Q24787460 , wd:Q24787828 , wd:Q24788053 .
+
+wd:Q24787869 wdt:P361 wd:Q24781278 , wd:Q24783048 .
+
+wd:Q24788339 wdt:P361 wd:Q24770255 , wd:Q24770369 .
+
+wd:Q24788522 wdt:P361 wd:Q24777683 .
+
+wd:Q24788339 wdt:P361 wd:Q24787637 .
+
+wd:Q24788465 wdt:P361 wd:Q24787483 .
+
+wd:Q24721995 wdt:P361 wd:Q7103879 .
+
+wd:Q24720066 wdt:P361 wd:Q24719831 .
+
+wd:Q24719593 wdt:P361 wd:Q24739131 .
+
+wd:Q24720976 wdt:P361 wd:Q24724025 .
+
+wd:Q24721060 wdt:P361 wd:Q24722506 .
+
+wd:Q24719593 wdt:P361 wd:Q24768201 .
+
+wd:Q24721060 wdt:P361 wd:Q24723599 .
+
+wd:Q24719708 wdt:P361 wd:Q24769045 .
+
+wd:Q24719593 wdt:P361 wd:Q24774476 .
+
+wd:Q24719708 wdt:P361 wd:Q24780753 .
+
+wd:Q24721060 wdt:P361 wd:Q24741232 .
+
+wd:Q24719593 wdt:P361 wd:Q24786847 .
+
+wd:Q24722145 wdt:P361 wd:Q24727082 .
+
+wd:Q24721586 wdt:P361 wd:Q24744727 .
+
+wd:Q24720904 wdt:P361 wd:Q24768229 , wd:Q24769006 .
+
+wd:Q24722416 wdt:P361 wd:Q24722574 .
+
+wd:Q24720976 wdt:P361 wd:Q24774694 .
+
+wd:Q24722145 wdt:P361 wd:Q24738544 .
+
+wd:Q24722778 wdt:P361 wd:Q24723511 .
+
+wd:Q24722746 wdt:P361 wd:Q24724729 .
+
+wd:Q24720976 wdt:P361 wd:Q24782514 .
+
+wd:Q24721301 wdt:P361 wd:Q24777454 .
+
+wd:Q24722746 wdt:P361 wd:Q24741142 .
+
+wd:Q24721301 wdt:P361 wd:Q24787549 .
+
+wd:Q24723478 wdt:P361 wd:Q24721138 .
+
+wd:Q24721995 wdt:P361 wd:Q24771214 .
+
+wd:Q24721982 wdt:P361 wd:Q24775660 .
+
+wd:Q24721586 wdt:P361 wd:Q24788402 .
+
+wd:Q24722145 wdt:P361 wd:Q24775767 .
+
+wd:Q24722357 wdt:P361 wd:Q24769688 .
+
+wd:Q24721982 wdt:P361 wd:Q24783918 .
+
+wd:Q24723478 wdt:P361 wd:Q24738597 .
+
+wd:Q24721995 wdt:P361 wd:Q24788058 .
+
+wd:Q24722439 wdt:P361 wd:Q24776460 .
+
+wd:Q24724296 wdt:P361 wd:Q24719928 .
+
+wd:Q24722439 wdt:P361 wd:Q24779330 , wd:Q24781173 .
+
+wd:Q24722746 wdt:P361 wd:Q24775932 , wd:Q24778151 .
+
+wd:Q24724688 wdt:P361 wd:Q24720185 , wd:Q24722403 , wd:Q24723607 .
+
+wd:Q24724296 wdt:P361 wd:Q24743797 .
+
+wd:Q24724688 wdt:P361 wd:Q24741017 .
+
+wd:Q24725433 wdt:P361 wd:Q24720655 , wd:Q24722267 , wd:Q24725014 , wd:Q24727380 .
+
+wd:Q24724004 wdt:P361 wd:Q24774962 .
+
+wd:Q24724042 wdt:P361 wd:Q24773909 .
+
+wd:Q24724004 wdt:P361 wd:Q24781042 .
+
+wd:Q24724042 wdt:P361 wd:Q24781571 .
+
+wd:Q24725433 wdt:P361 wd:Q24740027 .
+
+wd:Q24724004 wdt:P361 wd:Q24786644 .
+
+wd:Q24724296 wdt:P361 wd:Q24779552 .
+
+wd:Q24724004 wdt:P361 wd:Q24788665 .
+
+wd:Q24724688 wdt:P361 wd:Q24767893 .
+
+wd:Q24725433 wdt:P361 wd:Q24745246 .
+
+wd:Q24724688 wdt:P361 wd:Q24768751 .
+
+wd:Q24726204 wdt:P361 wd:Q24722544 , wd:Q24722817 , wd:Q24725977 .
+
+wd:Q24724688 wdt:P361 wd:Q24773136 , wd:Q24773415 , wd:Q24778178 , wd:Q24779711 , wd:Q24780321 , wd:Q24780364 , wd:Q24782372 , wd:Q24782685 , wd:Q24786985 .
+
+wd:Q24726204 wdt:P361 wd:Q24740157 , wd:Q24740162 .
+
+wd:Q24724688 wdt:P361 wd:Q24787500 , wd:Q24787598 .
+
+wd:Q24725433 wdt:P361 wd:Q24767072 , wd:Q24769703 .
+
+wd:Q24725098 wdt:P361 wd:Q24781600 .
+
+wd:Q24725433 wdt:P361 wd:Q24773149 .
+
+wd:Q24725727 wdt:P361 wd:Q24769396 .
+
+wd:Q24725433 wdt:P361 wd:Q24780063 , wd:Q24781247 , wd:Q24781285 , wd:Q24784422 , wd:Q24788069 .
+
+wd:Q24726204 wdt:P361 wd:Q24769075 , wd:Q24769938 , wd:Q24771511 , wd:Q24772482 , wd:Q24772777 , wd:Q24774284 , wd:Q24777164 , wd:Q24777183 , wd:Q24783916 , wd:Q24784842 , wd:Q24787180 .
+
+wd:Q24724688 wdt:P361 wd:Q32850094 , wd:Q41796598 .
+
+wd:Q24726204 wdt:P361 wd:Q41796540 .
+
+wd:Q24738472 wdt:P361 wd:Q423628 .
+
+wd:Q24772332 wdt:P361 wd:Q423237 .
+
+wd:Q24738472 wdt:P361 wd:Q2463389 , wd:Q21097216 , wd:Q21097222 , wd:Q21109354 , wd:Q21113798 .
+
+wd:Q24726900 wdt:P361 wd:Q24719968 , wd:Q24721192 , wd:Q24725314 , wd:Q24787207 .
+
+wd:Q24738472 wdt:P361 wd:Q24719584 , wd:Q24719835 , wd:Q24719927 , wd:Q24725828 , wd:Q24725945 , wd:Q24726312 , wd:Q24726467 , wd:Q24726989 , wd:Q24727315 , wd:Q24727564 .
+
+wd:Q24738867 wdt:P361 wd:Q24719993 .
+
+wd:Q24738472 wdt:P361 wd:Q24740842 , wd:Q24740857 , wd:Q24745841 , wd:Q24766693 , wd:Q24768166 , wd:Q24768234 , wd:Q24771258 , wd:Q24773020 , wd:Q24773561 , wd:Q24776087 , wd:Q24779794 , wd:Q24780051 , wd:Q24782638 , wd:Q24788317 .
+
+wd:Q24738867 wdt:P361 wd:Q24784864 .
+
+wd:Q24739299 wdt:P361 wd:Q24771771 .
+
+wd:Q24740501 wdt:P361 wd:Q24741549 .
+
+wd:Q24739299 wdt:P361 wd:Q24784074 .
+
+wd:Q24740232 wdt:P361 wd:Q24769206 , wd:Q24778836 .
+
+wd:Q24766722 wdt:P361 wd:Q24725752 .
+
+wd:Q24766970 wdt:P361 wd:Q24720649 , wd:Q24721828 .
+
+wd:Q24768014 wdt:P361 wd:Q24723195 , wd:Q24724339 .
+
+wd:Q24766970 wdt:P361 wd:Q24769952 .
+
+wd:Q24766994 wdt:P361 wd:Q24769978 .
+
+wd:Q24766970 wdt:P361 wd:Q24771260 .
+
+wd:Q24768014 wdt:P361 wd:Q24744997 .
+
+wd:Q24766970 wdt:P361 wd:Q24778117 .
+
+wd:Q24766994 wdt:P361 wd:Q24778409 , wd:Q24779221 .
+
+wd:Q24768892 wdt:P361 wd:Q24721075 , wd:Q24723082 .
+
+wd:Q24769524 wdt:P361 wd:Q24720930 .
+
+wd:Q24768014 wdt:P361 wd:Q24771299 , wd:Q24772591 , wd:Q24778723 , wd:Q24779995 .
+
+wd:Q24770221 wdt:P361 wd:Q24719562 , wd:Q24725641 .
+
+wd:Q24768892 wdt:P361 wd:Q24770224 .
+
+wd:Q24770631 wdt:P361 wd:Q24722042 , wd:Q24722385 .
+
+wd:Q24769872 wdt:P361 wd:Q24745956 .
+
+wd:Q24768892 wdt:P361 wd:Q24778780 .
+
+wd:Q24769061 wdt:P361 wd:Q24776189 .
+
+wd:Q24768892 wdt:P361 wd:Q24787339 .
+
+wd:Q24769524 wdt:P361 wd:Q24775900 , wd:Q24778090 .
+
+wd:Q24771399 wdt:P361 wd:Q24722162 .
+
+wd:Q24769524 wdt:P361 wd:Q24781946 .
+
+wd:Q24771374 wdt:P361 wd:Q24724931 .
+
+wd:Q24769524 wdt:P361 wd:Q24782380 .
+
+wd:Q24771374 wdt:P361 wd:Q24726126 .
+
+wd:Q24771745 wdt:P361 wd:Q24723823 .
+
+wd:Q24771254 wdt:P361 wd:Q24740659 .
+
+wd:Q24770253 wdt:P361 wd:Q24773860 .
+
+wd:Q24770221 wdt:P361 wd:Q24777975 , wd:Q24783258 .
+
+wd:Q24772332 wdt:P361 wd:Q24724492 .
+
+wd:Q24771374 wdt:P361 wd:Q24768505 .
+
+wd:Q24772307 wdt:P361 wd:Q24741225 .
+
+wd:Q24772252 wdt:P361 wd:Q24744759 .
+
+wd:Q24772307 wdt:P361 wd:Q24743649 .
+
+wd:Q24773000 wdt:P361 wd:Q24722171 .
+
+wd:Q24773462 wdt:P361 wd:Q24720447 .
+
+wd:Q24772332 wdt:P361 wd:Q24768777 .
+
+wd:Q24772307 wdt:P361 wd:Q24773895 .
+
+wd:Q24772332 wdt:P361 wd:Q24777809 .
+
+wd:Q24772528 wdt:P361 wd:Q24772449 .
+
+wd:Q24772307 wdt:P361 wd:Q24782919 .
+
+wd:Q24772528 wdt:P361 wd:Q24777764 .
+
+wd:Q24772307 wdt:P361 wd:Q24788179 .
+
+wd:Q24773449 wdt:P361 wd:Q24768095 .
+
+wd:Q24773462 wdt:P361 wd:Q24770310 .
+
+wd:Q24775716 wdt:P361 wd:Q24720013 , wd:Q24786423 .
+
+wd:Q24778968 wdt:P361 wd:Q409464 .
+
+wd:Q24777669 wdt:P361 wd:Q24722697 .
+
+wd:Q24777789 wdt:P361 wd:Q24723192 .
+
+wd:Q24778363 wdt:P361 wd:Q24720930 .
+
+wd:Q24777789 wdt:P361 wd:Q24739767 .
+
+wd:Q24776745 wdt:P361 wd:Q24775485 .
+
+wd:Q24776807 wdt:P361 wd:Q24782180 , wd:Q24782975 , wd:Q24787315 .
+
+wd:Q24778942 wdt:P361 wd:Q24721608 .
+
+wd:Q24778363 wdt:P361 wd:Q24741388 .
+
+wd:Q24778968 wdt:P361 wd:Q24727072 .
+
+wd:Q24777295 wdt:P361 wd:Q24779180 .
+
+wd:Q24779124 wdt:P361 wd:Q24722817 .
+
+wd:Q24777669 wdt:P361 wd:Q24782097 .
+
+wd:Q24778942 wdt:P361 wd:Q24746036 .
+
+wd:Q24777789 wdt:P361 wd:Q24787305 .
+
+wd:Q24779872 wdt:P361 wd:Q24726386 .
+
+wd:Q24778363 wdt:P361 wd:Q24775900 .
+
+wd:Q24778641 wdt:P361 wd:Q24769110 .
+
+wd:Q24778363 wdt:P361 wd:Q24781946 , wd:Q24782380 .
+
+wd:Q24778942 wdt:P361 wd:Q24770862 .
+
+wd:Q24778641 wdt:P361 wd:Q24781728 .
+
+wd:Q24779124 wdt:P361 wd:Q24771438 .
+
+wd:Q24778942 wdt:P361 wd:Q24777641 .
+
+wd:Q24779124 wdt:P361 wd:Q24777164 .
+
+wd:Q24778968 wdt:P361 wd:Q24782919 .
+
+wd:Q24778942 wdt:P361 wd:Q24786233 .
+
+wd:Q24779647 wdt:P361 wd:Q24768407 .
+
+wd:Q24780702 wdt:P361 wd:Q24739412 .
+
+wd:Q24780015 wdt:P361 wd:Q24780021 , wd:Q24782863 .
+
+wd:Q24780869 wdt:P361 wd:Q24770752 .
+
+wd:Q24780702 wdt:P361 wd:Q24784109 , wd:Q59247386 , wd:Q59247839 .

@@ -1,0 +1,25 @@
+# The headline cross-graph join: diseases with a wdt:P2293 "genetic
+# association" whose associated gene is also declared a bio:Gene in
+# the gene catalog (gene.ttl).
+#
+# disease side: 4,188 P2293 associations.
+# gene side:    91,871 `a bio:Gene` declarations in an 889k-triple graph.
+#
+# Inner iteration scans the full gene graph per outer row, so the
+# naive cost is roughly 4,188 × 889,000 ≈ 3.7 × 10^9 ops. That's
+# slow on the list-backed evaluator — expect multi-minute runtime
+# without an indexed store (see docs/designissues/
+# sparql-store-backend.md). Included here as a stress test of the
+# stack-safe fix: the query completes without overflow, which
+# pre-#95 was not true.
+#
+# For something that finishes in seconds, see 03_variant_on_chromosome.rq.
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX bio: <https://bioschemas.org/>
+
+SELECT DISTINCT ?disease ?gene
+WHERE {
+  GRAPH <urn:kgx:disease> { ?disease wdt:P2293 ?gene }
+  GRAPH <urn:kgx:gene>    { ?gene a bio:Gene }
+}
+LIMIT 25

@@ -1,0 +1,341 @@
+@prefix schema: <https://schema.org/> .
+@prefix bio: <https://bioschemas.org/> .
+@prefix wikibase: <http://wikiba.se/ontology#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix sesame: <http://www.openrdf.org/schema/sesame#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix fn: <http://www.w3.org/2005/xpath-functions#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix dc: <http://purl.org/dc/elements/1.1/> .
+@prefix hint: <http://www.bigdata.com/queryHints#> .
+@prefix bd: <http://www.bigdata.com/rdf#> .
+@prefix bds: <http://www.bigdata.com/rdf/search#> .
+@prefix psn: <http://www.wikidata.org/prop/statement/value-normalized/> .
+@prefix pqn: <http://www.wikidata.org/prop/qualifier/value-normalized/> .
+@prefix prn: <http://www.wikidata.org/prop/reference/value-normalized/> .
+@prefix mwapi: <https://www.mediawiki.org/ontology#API/> .
+@prefix gas: <http://www.bigdata.com/rdf/gas#> .
+@prefix wdsubgraph: <https://query.wikidata.org/subgraph/> .
+@prefix wdt: <http://www.wikidata.org/prop/direct/> .
+@prefix wdtn: <http://www.wikidata.org/prop/direct-normalized/> .
+@prefix psv: <http://www.wikidata.org/prop/statement/value/> .
+@prefix ps: <http://www.wikidata.org/prop/statement/> .
+@prefix pqv: <http://www.wikidata.org/prop/qualifier/value/> .
+@prefix pq: <http://www.wikidata.org/prop/qualifier/> .
+@prefix prv: <http://www.wikidata.org/prop/reference/value/> .
+@prefix pr: <http://www.wikidata.org/prop/reference/> .
+@prefix wdno: <http://www.wikidata.org/prop/novalue/> .
+@prefix p: <http://www.wikidata.org/prop/> .
+@prefix wd: <http://www.wikidata.org/entity/> .
+@prefix wdata: <http://www.wikidata.org/wiki/Special:EntityData/> .
+@prefix wds: <http://www.wikidata.org/entity/statement/> .
+@prefix wdv: <http://www.wikidata.org/value/> .
+@prefix wdref: <http://www.wikidata.org/reference/> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix geo: <http://www.opengis.net/ont/geosparql#> .
+@prefix geof: <http://www.opengis.net/def/geosparql/function/> .
+@prefix mediawiki: <https://www.mediawiki.org/ontology#> .
+@prefix ontolex: <http://www.w3.org/ns/lemon/ontolex#> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix wikibaseqs: <http://wikiba.se/queryService#> .
+
+wd:Q821821 wdt:P31 wd:Q50377224 .
+
+wd:Q898516 wdt:P31 wd:Q50377224 .
+
+wd:Q938276 wdt:P31 wd:Q50377224 .
+
+wd:Q2641370 wdt:P31 wd:Q50377224 .
+
+wd:Q4682946 wdt:P31 wd:Q50377224 .
+
+wd:Q5528332 wdt:P31 wd:Q50377224 .
+
+wd:Q6151855 wdt:P31 wd:Q50377224 .
+
+wd:Q7852695 wdt:P31 wd:Q50377224 .
+
+wd:Q10477791 wdt:P31 wd:Q50377224 .
+
+wd:Q10537470 wdt:P31 wd:Q50377224 .
+
+wd:Q17153027 wdt:P31 wd:Q50377224 .
+
+wd:Q21505394 wdt:P31 wd:Q50377224 .
+
+wd:Q85057778 wdt:P31 wd:Q50377224 .
+
+wd:Q109311766 wdt:P31 wd:Q50377224 .
+
+wd:Q111354121 wdt:P31 wd:Q50377224 .
+
+wd:Q116814555 wdt:P31 wd:Q50377224 .
+
+wd:Q124343105 wdt:P31 wd:Q50377224 .
+
+wd:Q133785161 wdt:P31 wd:Q50377224 .
+
+wd:Q135004977 wdt:P31 wd:Q50377224 .
+
+wd:Q297156 wdt:P31 wd:Q50377224 .
+
+wd:Q331451 wdt:P31 wd:Q50377224 .
+
+wd:Q607051 wdt:P31 wd:Q50377224 .
+
+wd:Q867226 wdt:P31 wd:Q50377224 .
+
+wd:Q906726 wdt:P31 wd:Q50377224 .
+
+wd:Q1546149 wdt:P31 wd:Q50377224 .
+
+wd:Q3303294 wdt:P31 wd:Q50377224 .
+
+wd:Q3740451 wdt:P31 wd:Q50377224 .
+
+wd:Q4073315 wdt:P31 wd:Q50377224 .
+
+wd:Q4363358 wdt:P31 wd:Q50377224 .
+
+wd:Q4774941 wdt:P31 wd:Q50377224 .
+
+wd:Q4779350 wdt:P31 wd:Q50377224 .
+
+wd:Q4859655 wdt:P31 wd:Q50377224 .
+
+wd:Q5443593 wdt:P31 wd:Q50377224 .
+
+wd:Q6190251 wdt:P31 wd:Q50377224 .
+
+wd:Q7070750 wdt:P31 wd:Q50377224 .
+
+wd:Q7205689 wdt:P31 wd:Q50377224 .
+
+wd:Q7454518 wdt:P31 wd:Q50377224 .
+
+wd:Q7842230 wdt:P31 wd:Q50377224 .
+
+wd:Q11339972 wdt:P31 wd:Q50377224 .
+
+wd:Q15978469 wdt:P31 wd:Q50377224 .
+
+wd:Q18353606 wdt:P31 wd:Q50377224 .
+
+wd:Q18448501 wdt:P31 wd:Q50377224 .
+
+wd:Q20678969 wdt:P31 wd:Q50377224 .
+
+wd:Q27253060 wdt:P31 wd:Q50377224 .
+
+wd:Q27261271 wdt:P31 wd:Q50377224 .
+
+wd:Q27266178 wdt:P31 wd:Q50377224 .
+
+wd:Q27275212 wdt:P31 wd:Q50377224 .
+
+wd:Q27277423 wdt:P31 wd:Q50377224 .
+
+wd:Q27278211 wdt:P31 wd:Q50377224 .
+
+wd:Q27283562 wdt:P31 wd:Q50377224 .
+
+wd:Q27294103 wdt:P31 wd:Q50377224 .
+
+wd:Q27891246 wdt:P31 wd:Q50377224 .
+
+wd:Q27896079 wdt:P31 wd:Q50377224 .
+
+wd:Q30314304 wdt:P31 wd:Q50377224 .
+
+wd:Q47495780 wdt:P31 wd:Q50377224 .
+
+wd:Q47521479 wdt:P31 wd:Q50377224 .
+
+wd:Q56303252 wdt:P31 wd:Q50377224 .
+
+wd:Q87345976 wdt:P31 wd:Q50377224 .
+
+wd:Q100989606 wdt:P31 wd:Q50377224 .
+
+wd:Q101133657 wdt:P31 wd:Q50377224 .
+
+wd:Q104917743 wdt:P31 wd:Q50377224 .
+
+wd:Q105754741 wdt:P31 wd:Q50377224 .
+
+wd:Q109608046 wdt:P31 wd:Q50377224 .
+
+wd:Q117622877 wdt:P31 wd:Q50377224 .
+
+wd:Q118727164 wdt:P31 wd:Q50377224 .
+
+wd:Q120234056 wdt:P31 wd:Q50377224 .
+
+wd:Q120468350 wdt:P31 wd:Q50377224 .
+
+wd:Q123598885 wdt:P31 wd:Q50377224 .
+
+wd:Q124767680 wdt:P31 wd:Q50377224 .
+
+wd:Q126485641 wdt:P31 wd:Q50377224 .
+
+wd:Q130632792 wdt:P31 wd:Q50377224 .
+
+wd:Q136673371 wdt:P31 wd:Q50377224 .
+
+wd:Q136890476 wdt:P31 wd:Q50377224 .
+
+wd:Q11587 wdt:P31 wd:Q50377224 .
+
+wd:Q3221044 wdt:P31 wd:Q50377224 .
+
+wd:Q11330658 wdt:P31 wd:Q50377224 .
+
+wd:Q48829055 wdt:P31 wd:Q50377224 .
+
+wd:Q48829118 wdt:P31 wd:Q50377224 .
+
+wd:Q97376753 wdt:P31 wd:Q50377224 .
+
+wd:Q109597951 wdt:P31 wd:Q50377224 .
+
+wd:Q110269860 wdt:P31 wd:Q50377224 .
+
+wd:Q513122 wdt:P31 wd:Q50377224 .
+
+wd:Q4212418 wdt:P31 wd:Q50377224 .
+
+wd:Q4290980 wdt:P31 wd:Q50377224 .
+
+wd:Q4918178 wdt:P31 wd:Q50377224 .
+
+wd:Q5638246 wdt:P31 wd:Q50377224 .
+
+wd:Q7226104 wdt:P31 wd:Q50377224 .
+
+wd:Q22712711 wdt:P31 wd:Q50377224 .
+
+wd:Q67201115 wdt:P31 wd:Q50377224 .
+
+wd:Q78038029 wdt:P31 wd:Q50377224 .
+
+wd:Q97635112 wdt:P31 wd:Q50377224 .
+
+wd:Q136084440 wdt:P31 wd:Q50377224 .
+
+wd:Q411198 wdt:P31 wd:Q50377224 .
+
+wd:Q1851701 wdt:P31 wd:Q50377224 .
+
+wd:Q7842116 wdt:P31 wd:Q50377224 .
+
+wd:Q20817252 wdt:P31 wd:Q50377224 .
+
+wd:Q29000363 wdt:P31 wd:Q50377224 .
+
+wd:Q136222810 wdt:P31 wd:Q50377224 .
+
+wd:Q83165 wdt:P31 wd:Q50377224 .
+
+wd:Q312125 wdt:P31 wd:Q50377224 .
+
+wd:Q1327377 wdt:P31 wd:Q50377224 .
+
+wd:Q2537288 wdt:P31 wd:Q50377224 .
+
+wd:Q3064190 wdt:P31 wd:Q50377224 .
+
+wd:Q3542091 wdt:P31 wd:Q50377224 .
+
+wd:Q3772854 wdt:P31 wd:Q50377224 .
+
+wd:Q3927848 wdt:P31 wd:Q50377224 .
+
+wd:Q4207143 wdt:P31 wd:Q50377224 .
+
+wd:Q4227936 wdt:P31 wd:Q50377224 .
+
+wd:Q4946230 wdt:P31 wd:Q50377224 .
+
+wd:Q6026320 wdt:P31 wd:Q50377224 .
+
+wd:Q7115907 wdt:P31 wd:Q50377224 .
+
+wd:Q7428376 wdt:P31 wd:Q50377224 .
+
+wd:Q7516587 wdt:P31 wd:Q50377224 .
+
+wd:Q7573986 wdt:P31 wd:Q50377224 .
+
+wd:Q11863655 wdt:P31 wd:Q50377224 .
+
+wd:Q12322408 wdt:P31 wd:Q50377224 .
+
+wd:Q16645358 wdt:P31 wd:Q50377224 .
+
+wd:Q17126485 wdt:P31 wd:Q50377224 .
+
+wd:Q21087389 wdt:P31 wd:Q50377224 .
+
+wd:Q28209187 wdt:P31 wd:Q50377224 .
+
+wd:Q28209191 wdt:P31 wd:Q50377224 .
+
+wd:Q30315102 wdt:P31 wd:Q50377224 .
+
+wd:Q56278314 wdt:P31 wd:Q50377224 .
+
+wd:Q97275232 wdt:P31 wd:Q50377224 .
+
+wd:Q110442458 wdt:P31 wd:Q50377224 .
+
+wd:Q112845564 wdt:P31 wd:Q50377224 .
+
+wd:Q122877522 wdt:P31 wd:Q50377224 .
+
+wd:Q131959740 wdt:P31 wd:Q50377224 .
+
+wd:Q132200780 wdt:P31 wd:Q50377224 .
+
+wd:Q6460439 wdt:P31 wd:Q50377224 .
+
+wd:Q98523702 wdt:P31 wd:Q50377224 .
+
+wd:Q105714904 wdt:P31 wd:Q50377224 .
+
+wd:Q106640952 wdt:P31 wd:Q50377224 .
+
+wd:Q106654680 wdt:P31 wd:Q50377224 .
+
+wd:Q106654717 wdt:P31 wd:Q50377224 .
+
+wd:Q123676549 wdt:P31 wd:Q50377224 .
+
+wd:Q124134669 wdt:P31 wd:Q50377224 .
+
+wd:Q6093850 wdt:P31 wd:Q50377224 .
+
+wd:Q16628711 wdt:P31 wd:Q50377224 .
+
+wd:Q6823888 wdt:P31 wd:Q50377224 .
+
+wd:Q47495780 wdt:P3780 wd:Q29006019 .
+
+wd:Q27275212 wdt:P2175 wd:Q3025883 .
+
+wd:Q47495780 wdt:P2175 wd:Q124407 .
+
+wd:Q124767680 wdt:P2175 wd:Q12174 .
+
+wd:Q3221044 wdt:P2175 wd:Q12152 , wd:Q41861 , wd:Q180762 , wd:Q190805 , wd:Q552348 , wd:Q1128595 , wd:Q1444550 , wd:Q19000661 , wd:Q56603543 .
+
+wd:Q110442458 wdt:P2175 wd:Q84263196 .
+
+wd:Q1851701 wdt:P2175 wd:Q12152 , wd:Q220570 , wd:Q377978 , wd:Q2032041 , wd:Q18478450 .
+
+wd:Q20817252 wdt:P2175 wd:Q220570 .
+
+wd:Q16628711 wdt:P2175 wd:Q79928 , wd:Q122224 , wd:Q1620594 , wd:Q15638293 .

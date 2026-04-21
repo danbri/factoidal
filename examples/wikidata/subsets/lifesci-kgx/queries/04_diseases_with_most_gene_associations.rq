@@ -1,0 +1,12 @@
+# Top 10 diseases by number of genetically-associated genes (wdt:P2293).
+# Entirely within the <disease> named graph — no cross-graph join —
+# 4,188 association rows. Demonstrates GROUP BY + ORDER BY.
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+
+SELECT ?disease (COUNT(?gene) AS ?associated_genes)
+WHERE {
+  GRAPH <urn:kgx:disease> { ?disease wdt:P2293 ?gene }
+}
+GROUP BY ?disease
+ORDER BY DESC(?associated_genes)
+LIMIT 10
