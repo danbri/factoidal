@@ -17,30 +17,51 @@ The wasm and js engines were compared on the same queries.
 
 ## Headline findings
 
-### 1. UTF-8 corruption in the js engine output (HIGH)
+### 1. UTF-8 corruption in the js engine output (HIGH — drops rows, not just cosmetic)
 
 Non-ASCII literals are mangled in the rendered results table when the **js
 engine** is selected — but not when the **wasm engine** is selected. The input
 Turtle textarea always holds the correct bytes; the damage is on the output
 path.
 
+Latin-script accents (known at first pass):
+
 | Source literal | js-engine output | wasm-engine output |
 |---|---|---|
 | `"Eve Müller"@de` | `"Eve M����r"@de` | `"Eve Müller"@de` ✓ |
-| `"Cafetière"` | `"Cafeti鳥"` | (not re-tested; presumed correct) |
-| `"Ralf Hütter"` | `"Ralf H����r"` | (not re-tested) |
-| `"Gödel, Escher, Bach"` | `"G����, Escher, Bach"` | (not re-tested) |
+| `"Cafetière"` | `"Cafeti鳥"` | (correct) |
+| `"Ralf Hütter"` | `"Ralf H����r"` | (correct) |
+| `"Gödel, Escher, Bach"` | `"G����, Escher, Bach"` | (correct) |
 
-Because the wasm build produces correct output from the same F\* sources, the
-bug lives in the js extraction / JS-side string handling, not in `.fst` logic.
-Most likely: a byte-length-indexed slice or `String.sub` path is producing
-invalid UTF-8 fragments that the DOM then renders as U+FFFD replacement
-characters. The fact that `UCASE` also corrupts in the js engine
-(`"EVE M����R"`) confirms the bad bytes flow all the way through string
-operations.
+RTL + mixed-script + emoji stress (added 2026-04-21):
 
-This is the single biggest demo-facing bug. For an end-user it looks like
-Factoidal cannot handle accented names or non-English RDF.
+| Source literal | js-engine output | wasm |
+|---|---|---|
+| `"שלום עולם"@he` (Hebrew) | `"ёӓՕ"@he` | ✓ |
+| `"مرحبا بالعالم"@ar` (Arabic) | `"E1-(' ('D9'DE"@ar` | ✓ |
+| `"Hello שלום world"@en` (LTR+RTL mix) | `"Hello 靕ݠworld"@en` | ✓ |
+| `"混合 español عربي"@mul` (CJK+Latin+Arabic) | `"����spa񯬠91(J"@mul` | ✓ |
+| `"كافيه Café ☕"@mul` (Arabic+accent+emoji) | `"C'AJG Caf頕"@mul` | ✓ |
+| `"אבגדהו"@he` (Hebrew) | **missing — not in result set** | ✓ |
+
+On the mixed-script dataset **the js engine returned 5 rows when 6 were
+expected**. So the corruption is not merely display-layer; a row was silently
+dropped from the result set. Most likely cause: the ORDER BY comparator or a
+DISTINCT-like collapse hits invalid UTF-8 during comparison and either errors
+out of a row quietly or treats two rows as equal. Either way this is a
+correctness bug, not just a rendering glitch.
+
+Because the wasm build produces correct output and correct cardinality from
+the same F\* sources, the bug lives in the js extraction / JS-side string
+handling, not in `.fst` logic. Most likely: a byte-length-indexed slice or
+`String.sub` path is producing invalid UTF-8 fragments that the DOM then
+renders as U+FFFD replacement characters, and a comparator on those bytes
+sometimes produces equality where the source strings differed. The fact that
+`UCASE` also corrupts in the js engine (`"EVE M����R"`) confirms the bad
+bytes flow all the way through string operations.
+
+This is the single biggest demo-facing bug — and now the biggest correctness
+bug in the js build too.
 
 ### 2. UCASE (and by extension LCASE) is not Unicode-aware (MEDIUM)
 
