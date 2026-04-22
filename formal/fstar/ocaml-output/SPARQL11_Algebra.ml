@@ -197,8 +197,67 @@ let triple_matches_bound (b : triple_pattern_bound)
                 RDF_Graph_Executable.rdf_term_eq o t.RDF_Graph_Executable.o in
           if (subj_ok && pred_ok) && obj_ok then t :: acc else acc)
        [] ts)
+(* Predicate-indexed graph store — post-extraction patch (issue #97).
+
+   Key insight: most SPARQL triple patterns have a bound predicate.
+   Keeping a `(predicate -> triple list)` Hashtbl per graph turns an
+   O(|graph|) scan into an O(|triples with that predicate|) scan.
+   On gene.ttl the predicate `a` has ~92k matches out of 889k triples;
+   `wdt:P1057` has ~11k; `wdt:P688` has ~1.6k. The speedup scales
+   directly with predicate selectivity.
+
+   Cache is keyed by physical equality on the rdf_graph (which is just
+   a triple list). OCaml list cells have stable identity, so the same
+   loaded graph reuses its index across repeated store_search calls
+   within a BGP. A different graph (new parse, different object) gets
+   its own cache entry.
+
+   The cache leaks memory weakly (Hashtbl.Make is not weak), but
+   Factoidal is a single-shot CLI / single-page browser demo — process
+   lifetime is short enough that this is fine. A long-running server
+   would want Ephemeron.K1 or explicit invalidation. *)
+
+module SseGraphHashtbl = Hashtbl.Make(struct
+  type t = RDF_Graph_Executable.rdf_graph
+  let equal = (==)
+  (* hash_param limits traversal depth + visited count; for a list of
+     millions this is essentially pointer-tag-level, constant time. *)
+  let hash g = Hashtbl.seeded_hash_param 10 100 5 g
+end)
+
+(* The global cache. One entry per rdf_graph seen by store_search. *)
+let _sse_pred_index_cache :
+  (string, RDF_Graph_Executable.triple) Hashtbl.t SseGraphHashtbl.t =
+  SseGraphHashtbl.create 16
+
+let _sse_build_pred_index (g : RDF_Graph_Executable.rdf_graph) :
+  (string, RDF_Graph_Executable.triple) Hashtbl.t =
+  (* Start at 256 and let Hashtbl grow; counting the list would force
+     an O(n) walk before we start populating, wasting time. *)
+  let t = Hashtbl.create 256 in
+  Stdlib.List.iter (fun tr ->
+    Hashtbl.add t tr.RDF_Graph_Executable.p tr
+  ) g;
+  t
+
+let _sse_get_pred_index (g : RDF_Graph_Executable.rdf_graph) :
+  (string, RDF_Graph_Executable.triple) Hashtbl.t =
+  match SseGraphHashtbl.find_opt _sse_pred_index_cache g with
+  | Some t -> t
+  | None ->
+    let t = _sse_build_pred_index g in
+    SseGraphHashtbl.add _sse_pred_index_cache g t;
+    t
+
 let store_search (g : graph_store) (b : triple_pattern_bound) :
-  RDF_Graph_Executable.triple Prims.list= triple_matches_bound b g.gs_graph
+  RDF_Graph_Executable.triple Prims.list=
+  match b.bp with
+  | FStar_Pervasives_Native.Some p ->
+    let idx = _sse_get_pred_index g.gs_graph in
+    let candidates = Hashtbl.find_all idx p in
+    triple_matches_bound b candidates
+  | FStar_Pervasives_Native.None ->
+    triple_matches_bound b g.gs_graph
 let store_estimate (g : graph_store) (b : triple_pattern_bound) : Prims.nat=
   FStar_List_Tot_Base.length (store_search g b)
 let rec lookup_named_store (name : RDF_Graph_Executable.iri)
