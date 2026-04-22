@@ -204,21 +204,120 @@ if old_lfm not in s:
 s = s.replace(old_lfm, new_lfm)
 
 # ------------------------------------------------------------------
-# Step 4: swap FStar_List_Tot_Base.concatMap call sites to sse_concat_map.
-# We don't touch the import — FStar_List_Tot_Base.concatMap just stops
-# being referenced. Sixteen call sites in SPARQL11_Algebra.ml as of
-# 2026-04-21.
+# Step 4: rewrite list_deduplicate_sm (DISTINCT helper) and
+# dedup_er (COUNT(DISTINCT) helper) from cons-after-recurse shapes
+# to tail-rec fold. These drive SELECT DISTINCT and COUNT(DISTINCT *),
+# which overflow in JS stacks (~few hundred frames) on the lifesci
+# demo's browser-side aggregation queries.
 # ------------------------------------------------------------------
 
+old_distinct = '''let rec list_deduplicate_sm
+  (l : RDF_Graph_Executable.solution_mapping Prims.list) :
+  RDF_Graph_Executable.solution_mapping Prims.list=
+  match l with
+  | [] -> []
+  | x::xs ->
+      if sm_mem x xs
+      then list_deduplicate_sm xs
+      else x :: (list_deduplicate_sm xs)'''
+new_distinct = '''(* Stack-safe rewrite — issue #95. Tail-rec via fold_left + rev.
+   Kept a "seen" accumulator so membership is checked against the
+   growing prefix rather than the shrinking suffix; semantically
+   identical for SELECT DISTINCT since every mu is unique in the
+   output. *)
+let list_deduplicate_sm
+  (l : RDF_Graph_Executable.solution_mapping Prims.list) :
+  RDF_Graph_Executable.solution_mapping Prims.list=
+  Stdlib.List.rev
+    (Stdlib.List.fold_left
+       (fun acc mu ->
+          if sm_mem mu acc then acc else mu :: acc)
+       [] l)'''
+if old_distinct in s:
+    s = s.replace(old_distinct, new_distinct)
+
+old_dedup_er = '''let rec dedup_er (vals : eval_result Prims.list) : eval_result Prims.list=
+  match vals with
+  | [] -> []
+  | v::rest ->
+      if FStar_List_Tot_Base.existsb (fun x -> er_equal v x) rest
+      then dedup_er rest
+      else v :: (dedup_er rest)'''
+new_dedup_er = '''(* Stack-safe rewrite — issue #95. *)
+let dedup_er (vals : eval_result Prims.list) : eval_result Prims.list=
+  Stdlib.List.rev
+    (Stdlib.List.fold_left
+       (fun acc v ->
+          if FStar_List_Tot_Base.existsb (fun x -> er_equal v x) acc
+          then acc else v :: acc)
+       [] vals)'''
+if old_dedup_er in s:
+    s = s.replace(old_dedup_er, new_dedup_er)
+
+# ------------------------------------------------------------------
+# Step 6: rewrite add_to_groups to be tail-rec-safe. Original does
+# three non-tail-rec `op_At` calls per row; on query-04 (top diseases
+# by associated-gene count, 4,188 rows across ~600 disease groups)
+# that overflows browser stacks. The replacement keeps find_group's
+# semantics but rebuilds the group list via an explicit append-last
+# loop that fold_left drives.
+# ------------------------------------------------------------------
+old_atg = '''let add_to_groups (key : eval_result Prims.list)
+  (mu : RDF_Graph_Executable.solution_mapping) (groups : group Prims.list) :
+  group Prims.list=
+  match find_group key groups with
+  | FStar_Pervasives_Native.Some (before, g, after) ->
+      FStar_List_Tot_Base.op_At before
+        (FStar_List_Tot_Base.op_At
+           [{
+              g_key = (g.g_key);
+              g_solutions = (FStar_List_Tot_Base.op_At g.g_solutions [mu])
+            }] after)
+  | FStar_Pervasives_Native.None ->
+      FStar_List_Tot_Base.op_At groups [{ g_key = key; g_solutions = [mu] }]'''
+new_atg = '''(* Stack-safe rewrite — issue #95. Tail-rec: walks the group list
+   once with fold_left, prepending either the original group or a
+   merged one; appends a fresh group if `found` stays false; then
+   reverses. Preserves the original iteration order of groups. *)
+let add_to_groups (key : eval_result Prims.list)
+  (mu : RDF_Graph_Executable.solution_mapping) (groups : group Prims.list) :
+  group Prims.list=
+  let (rev_groups, found) =
+    Stdlib.List.fold_left
+      (fun (acc, f) g ->
+         if Prims.op_Negation f && keys_equal key g.g_key
+         then
+           let g' = {
+             g_key = g.g_key;
+             g_solutions = sse_append g.g_solutions [mu]
+           } in
+           (g' :: acc, true)
+         else (g :: acc, f))
+      ([], false) groups
+  in
+  let ordered = Stdlib.List.rev rev_groups in
+  if found then ordered
+  else sse_append ordered [{ g_key = key; g_solutions = [mu] }]'''
+if old_atg in s:
+    s = s.replace(old_atg, new_atg)
+
+# ------------------------------------------------------------------
+# Step 7 (final global swap): FStar_List_Tot_Base.concatMap -> sse_concat_map
+# and FStar_List_Tot_Base.op_At -> sse_append. Run LAST so previous
+# steps' `old_*` match strings see the pristine concatMap/op_At spellings.
+# ------------------------------------------------------------------
 n = s.count('FStar_List_Tot_Base.concatMap')
 if n == 0:
     raise SystemExit("SPARQL11_Algebra.ml: no FStar_List_Tot_Base.concatMap call sites found")
 s = s.replace('FStar_List_Tot_Base.concatMap', 'sse_concat_map')
 
+n_at = s.count('FStar_List_Tot_Base.op_At')
+s = s.replace('FStar_List_Tot_Base.op_At', 'sse_append')
+
 with open(path, 'w') as f:
     f.write(s)
 
-print(f'  rewrote {n} concatMap call sites + triple_matches_bound + list_filter_map')
+print(f'  rewrote {n} concatMap + {n_at} op_At + triple_matches_bound + list_filter_map + list_deduplicate_sm + dedup_er + add_to_groups')
 PYEOF
 
 echo "  SPARQL11_Algebra.ml patched."
