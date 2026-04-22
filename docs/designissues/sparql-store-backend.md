@@ -25,6 +25,32 @@ scale to larger corpora.
 Keep the SPARQL algebra and value semantics in F*, but put a storage/query
 boundary underneath them.
 
+## Decision: Default In-Memory Graph Representation
+
+The default in-memory representation should not remain an unindexed
+`list triple` for normal query execution.
+
+Factoidal should keep `rdf_graph = list triple` as the logical, portable RDF
+graph representation used for parser output, semantic tests, small examples,
+and proof-friendly graph operations. That representation is simple and remains
+the easiest place to express RDF graph set semantics.
+
+The default runtime backend for SPARQL evaluation, however, should be an indexed
+in-memory graph store built from that logical graph:
+
+- intern RDF terms into dictionary IDs
+- store triples as `(subject_id, predicate_id, object_id)` rows
+- deduplicate triples while building the store
+- maintain indexes for common bound triple-pattern shapes
+- expose results through the existing `store_search` boundary as RDF terms
+
+This means callers should not have to choose between "correct list semantics"
+and "usable query execution." The list graph remains the semantic baseline; the
+indexed memory store becomes the ordinary ephemeral backend for parsed data.
+
+`GB_List` should remain available as a compatibility and testing backend, but it
+should not be the long-term default for data loaded for querying.
+
 The first implementation target is:
 
 - keep the current list-backed representation working

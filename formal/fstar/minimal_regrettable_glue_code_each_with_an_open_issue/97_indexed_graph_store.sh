@@ -46,7 +46,7 @@ if [[ ! -f "$FILE" ]]; then
 fi
 
 # Idempotency: marker string left by a successful apply.
-if grep -q 'sse_pred_index_cache' "$FILE"; then
+if grep -q '_sse_indexes_cache' "$FILE"; then
   echo "  97_indexed_graph_store.sh already applied to $FILE"
   exit 0
 fi
@@ -80,57 +80,119 @@ idx = s.find(store_search_marker)
 if idx < 0:
     raise SystemExit("SPARQL11_Algebra.ml: store_search anchor not found")
 
-index_block = '''(* Predicate-indexed graph store — post-extraction patch (issue #97).
+index_block = '''(* Indexed graph store — post-extraction patch (issue #97).
 
-   Key insight: most SPARQL triple patterns have a bound predicate.
-   Keeping a `(predicate -> triple list)` Hashtbl per graph turns an
-   O(|graph|) scan into an O(|triples with that predicate|) scan.
-   On gene.ttl the predicate `a` has ~92k matches out of 889k triples;
-   `wdt:P1057` has ~11k; `wdt:P688` has ~1.6k. The speedup scales
-   directly with predicate selectivity.
+   Three Hashtbls per graph (predicate / subject / object), each
+   built lazily on first use, cached by physical equality on the
+   rdf_graph. OCaml list cells have stable identity, so the same
+   loaded graph reuses its indexes across every store_search call
+   in a BGP.
 
-   Cache is keyed by physical equality on the rdf_graph (which is just
-   a triple list). OCaml list cells have stable identity, so the same
-   loaded graph reuses its index across repeated store_search calls
-   within a BGP. A different graph (new parse, different object) gets
-   its own cache entry.
+   Key insight: real SPARQL triple patterns bind somewhere between
+   one and three components. With all three indexes in place,
+   store_search picks whichever bucket is smallest (among those
+   whose component is bound) as the candidate list and lets the
+   normal triple_matches_bound filter nail down the rest.
 
-   The cache leaks memory weakly (Hashtbl.Make is not weak), but
-   Factoidal is a single-shot CLI / single-page browser demo — process
-   lifetime is short enough that this is fine. A long-running server
-   would want Ephemeron.K1 or explicit invalidation. *)
+   Selectivity on gene.ttl: predicate `a` → 92k, `wdt:P684` → 99k,
+   `wdt:P1057` → 11k, `wdt:P688` → 1.6k. Object `bio:Gene` → 92k.
+   Any unique subject → usually 1..10 matches. So for a two-TP BGP
+   where one TP has a highly-selective bound component, the nested
+   search through the other graph shrinks proportionally.
+
+   The cache is not weak; it lives for process lifetime. Factoidal
+   is a single-shot CLI / single-page browser demo so this is fine.
+   A long-running server would want Ephemeron.K1. *)
 
 module SseGraphHashtbl = Hashtbl.Make(struct
   type t = RDF_Graph_Executable.rdf_graph
   let equal = (==)
-  (* hash_param limits traversal depth + visited count; for a list of
-     millions this is essentially pointer-tag-level, constant time. *)
   let hash g = Hashtbl.seeded_hash_param 10 100 5 g
 end)
 
-(* The global cache. One entry per rdf_graph seen by store_search. *)
-let _sse_pred_index_cache :
-  (string, RDF_Graph_Executable.triple) Hashtbl.t SseGraphHashtbl.t =
+(* Three indexes per graph, bundled into one record for caching. *)
+type _sse_graph_indexes = {
+  pred_idx : (string, RDF_Graph_Executable.triple) Hashtbl.t;
+  subj_idx : (string, RDF_Graph_Executable.triple) Hashtbl.t;
+  obj_idx  : (string, RDF_Graph_Executable.triple) Hashtbl.t;
+}
+
+let _sse_indexes_cache : _sse_graph_indexes SseGraphHashtbl.t =
   SseGraphHashtbl.create 16
 
-let _sse_build_pred_index (g : RDF_Graph_Executable.rdf_graph) :
-  (string, RDF_Graph_Executable.triple) Hashtbl.t =
-  (* Start at 256 and let Hashtbl grow; counting the list would force
-     an O(n) walk before we start populating, wasting time. *)
-  let t = Hashtbl.create 256 in
-  Stdlib.List.iter (fun tr ->
-    Hashtbl.add t tr.RDF_Graph_Executable.p tr
-  ) g;
-  t
+(* Canonical string keys for subject / object indexing. We do NOT
+   try to index on literal values — they would require normalising
+   datatype and lang tag, and they rarely appear as the join axis.
+   Literal objects fall through to the predicate index. *)
+let _sse_subject_key (s : RDF_Graph_Executable.subject) : string option =
+  match s with
+  | RDF_Graph_Executable.S_IRI i   -> Some (Stdlib.String.concat "" ["i:"; i])
+  | RDF_Graph_Executable.S_BNode b -> Some (Stdlib.String.concat "" ["b:"; b])
 
-let _sse_get_pred_index (g : RDF_Graph_Executable.rdf_graph) :
-  (string, RDF_Graph_Executable.triple) Hashtbl.t =
-  match SseGraphHashtbl.find_opt _sse_pred_index_cache g with
-  | Some t -> t
+let _sse_object_key (o : RDF_Graph_Executable.rdf_term) : string option =
+  match o with
+  | RDF_Graph_Executable.T_IRI i   -> Some (Stdlib.String.concat "" ["i:"; i])
+  | RDF_Graph_Executable.T_BNode b -> Some (Stdlib.String.concat "" ["b:"; b])
+  | RDF_Graph_Executable.T_Literal _ -> None  (* not indexed; see above *)
+
+let _sse_build_indexes (g : RDF_Graph_Executable.rdf_graph) :
+  _sse_graph_indexes =
+  let pred_t = Hashtbl.create 256 in
+  let subj_t = Hashtbl.create 256 in
+  let obj_t  = Hashtbl.create 256 in
+  Stdlib.List.iter (fun tr ->
+    Hashtbl.add pred_t tr.RDF_Graph_Executable.p tr;
+    (match _sse_subject_key tr.RDF_Graph_Executable.s with
+     | Some k -> Hashtbl.add subj_t k tr
+     | None -> ());
+    (match _sse_object_key tr.RDF_Graph_Executable.o with
+     | Some k -> Hashtbl.add obj_t k tr
+     | None -> ())
+  ) g;
+  { pred_idx = pred_t; subj_idx = subj_t; obj_idx = obj_t }
+
+let _sse_get_indexes (g : RDF_Graph_Executable.rdf_graph) : _sse_graph_indexes =
+  match SseGraphHashtbl.find_opt _sse_indexes_cache g with
+  | Some i -> i
   | None ->
-    let t = _sse_build_pred_index g in
-    SseGraphHashtbl.add _sse_pred_index_cache g t;
-    t
+    let i = _sse_build_indexes g in
+    SseGraphHashtbl.add _sse_indexes_cache g i;
+    i
+
+(* Pick whichever bound component has the smallest bucket. Returns
+   the candidate triple list plus a tag for debugging/stats (unused
+   now but handy for future explain hooks). Hashtbl.find_all returns
+   the whole bucket as a list; buckets have stable length under
+   physical-equality caching. *)
+let _sse_smallest_candidate_bucket
+    (b : triple_pattern_bound)
+    (ixs : _sse_graph_indexes)
+    (fallback : RDF_Graph_Executable.rdf_graph) :
+    RDF_Graph_Executable.triple Prims.list =
+  let len (l : RDF_Graph_Executable.triple list) : int = Stdlib.List.length l in
+  let pred_bucket = match b.bp with
+    | FStar_Pervasives_Native.Some p -> Some (Hashtbl.find_all ixs.pred_idx p)
+    | FStar_Pervasives_Native.None -> None in
+  let subj_bucket = match b.bs with
+    | FStar_Pervasives_Native.Some s ->
+      (match _sse_subject_key s with
+       | Some k -> Some (Hashtbl.find_all ixs.subj_idx k)
+       | None -> None)
+    | FStar_Pervasives_Native.None -> None in
+  let obj_bucket = match b.bo with
+    | FStar_Pervasives_Native.Some o ->
+      (match _sse_object_key o with
+       | Some k -> Some (Hashtbl.find_all ixs.obj_idx k)
+       | None -> None)
+    | FStar_Pervasives_Native.None -> None in
+  let pick a b = match a, b with
+    | None, None -> None
+    | Some _, None -> a
+    | None, Some _ -> b
+    | Some la, Some lb -> if len la <= len lb then Some la else Some lb in
+  match pick (pick pred_bucket subj_bucket) obj_bucket with
+  | Some bucket -> bucket
+  | None -> fallback
 
 '''
 
@@ -151,12 +213,16 @@ old_ss = ('let store_search (g : graph_store) (b : triple_pattern_bound) :\n'
 
 new_ss = ('let store_search (g : graph_store) (b : triple_pattern_bound) :\n'
           '  RDF_Graph_Executable.triple Prims.list=\n'
-          '  match b.bp with\n'
-          '  | FStar_Pervasives_Native.Some p ->\n'
-          '    let idx = _sse_get_pred_index g.gs_graph in\n'
-          '    let candidates = Hashtbl.find_all idx p in\n'
+          '  let has_any_bound =\n'
+          '    (match b.bp with FStar_Pervasives_Native.Some _ -> true | _ -> false)\n'
+          '    || (match b.bs with FStar_Pervasives_Native.Some _ -> true | _ -> false)\n'
+          '    || (match b.bo with FStar_Pervasives_Native.Some _ -> true | _ -> false)\n'
+          '  in\n'
+          '  if has_any_bound then\n'
+          '    let ixs = _sse_get_indexes g.gs_graph in\n'
+          '    let candidates = _sse_smallest_candidate_bucket b ixs g.gs_graph in\n'
           '    triple_matches_bound b candidates\n'
-          '  | FStar_Pervasives_Native.None ->\n'
+          '  else\n'
           '    triple_matches_bound b g.gs_graph')
 
 if old_ss not in s:
