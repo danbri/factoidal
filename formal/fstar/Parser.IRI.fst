@@ -250,15 +250,33 @@ let rec remove_dot_segments_step (input: string) (pos: nat) (out: list string) (
                            then String.concat "" [seg; "/"]
                            else seg in
       let next_pos : nat = if has_slash then slash_pos + 1 else len in
+      // Pop the last real segment, but never pop a lone leading "/".
+      // `out` is built by prepending, so the leading "/" (if the path
+      // was absolute) sits at the END of the list. When `out = ["/"]`
+      // we're at the root and a ".." must stay clamped there rather
+      // than dropping the absolute-path marker.
+      let pop_keep_root : list string =
+        match out with
+        | [] -> []
+        | ["/"] -> ["/"]
+        | _ :: rest -> rest
+      in
       let out' =
         if seg = "." then
-          if has_slash then out
-          else (match out with
-                | [] -> ["/"]
-                | _ -> "/" :: (match out with _ :: rest -> rest | [] -> []))
+          // Both "/./" (has_slash=true) and terminal "/." collapse to
+          // nothing: the preceding segment already carries its trailing
+          // "/". Leaving `out` unchanged is the RFC 3986 §5.2.4 2B/2D
+          // behaviour.
+          out
         else if seg = ".." then
-          let popped = match out with _ :: rest -> rest | [] -> [] in
-          if has_slash then popped else "/" :: popped
+          if has_slash then pop_keep_root
+          else
+            // Terminal "..": pop the last real segment; if nothing is
+            // left, synthesise the leading "/" so "/.." normalises to
+            // "/" instead of the empty string.
+            (match pop_keep_root with
+             | [] -> ["/"]
+             | _  -> pop_keep_root)
         else
           seg_with_slash :: out
       in

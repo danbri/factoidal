@@ -596,34 +596,7 @@ let has_dot_segment (s : Prims.string) : Prims.bool=
     ((Parser_FastString.fs_byte_length s) + Prims.int_one)
 let resolve_iri_hint (st : turtle_state) (rel : Prims.string)
   (has_colon : Prims.bool) : Prims.string=
-  if (Parser_FastString.fs_byte_length rel) = Prims.int_zero
-  then st.base_iri
-  else
-    if has_colon
-    then rel
-    else
-      if has_dot_segment rel
-      then resolve_iri st rel
-      else
-        if
-          (FStar_Char.int_of_char
-             (Parser_FastString.fs_byte_index rel Prims.int_zero))
-            = (Prims.of_int (0x2F))
-        then
-          (if (Parser_FastString.fs_byte_length st.base_iri) = Prims.int_zero
-           then rel
-           else
-             (let cut =
-                find_last_slash st.base_iri
-                  (Parser_FastString.fs_byte_length st.base_iri) in
-              if cut > Prims.int_zero
-              then
-                FStar_String.concat ""
-                  [Parser_FastString.fs_byte_sub st.base_iri Prims.int_zero
-                     cut;
-                  rel]
-              else FStar_String.concat "" [st.base_iri; rel]))
-        else FStar_String.concat "" [remove_last_segment st.base_iri; rel]
+  if has_colon then rel else resolve_iri st rel
 let is_ascii_hex_digit (c : FStar_Char.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in
   (((code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))) ||

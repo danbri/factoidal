@@ -484,18 +484,16 @@ let rec has_dot_segment_fuel (s: string) (pos: nat) (at_seg_start: bool) (fuel: 
 let has_dot_segment (s: string) : bool =
   has_dot_segment_fuel s 0 true (fs_byte_length s + 1)
 
+// The old hinted fast path mis-handled several reference shapes —
+// absolute-path "/g", query-only "?y", fragment-only "#s", network-
+// path "//g", and empty-string — by forwarding to an ad-hoc
+// `last-slash + rel` concat that ignores RFC 3986 §5.2 entirely.
+// With the Parser.IRI implementation now in place the only honest
+// fast path is "reference has a scheme, return as-is"; everything
+// else must go through the full §5.2 transform.
 let resolve_iri_hint (st: turtle_state) (rel: string) (has_colon: bool) : string =
-  if fs_byte_length rel = 0 then st.base_iri
-  else if has_colon then rel
-  else if has_dot_segment rel then resolve_iri st rel
-  else if FStar.Char.int_of_char (fs_byte_index rel 0) = 0x2F then
-    if fs_byte_length st.base_iri = 0 then rel
-    else
-      let cut = find_last_slash st.base_iri (fs_byte_length st.base_iri) in
-      if cut > 0 then String.concat "" [fs_byte_sub st.base_iri 0 cut; rel]
-      else String.concat "" [st.base_iri; rel]
-  else
-    String.concat "" [remove_last_segment st.base_iri; rel]
+  if has_colon then rel
+  else resolve_iri st rel
 
 let is_ascii_hex_digit (c: char) : bool =
   let code = int_of_char c in

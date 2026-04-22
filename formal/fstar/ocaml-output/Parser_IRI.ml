@@ -243,22 +243,23 @@ let rec remove_dot_segments_step (input : Prims.string) (pos : Prims.nat)
           let seg_with_slash =
             if has_slash then FStar_String.concat "" [seg; "/"] else seg in
           let next_pos = if has_slash then slash_pos + Prims.int_one else len in
+          let pop_keep_root =
+            match out with
+            | [] -> []
+            | "/"::[] -> ["/"]
+            | uu___3::rest -> rest in
           let out' =
             if seg = "."
-            then
-              (if has_slash
-               then out
-               else
-                 (match out with
-                  | [] -> ["/"]
-                  | uu___4 -> "/" ::
-                      ((match out with | uu___5::rest -> rest | [] -> []))))
+            then out
             else
               if seg = ".."
               then
-                (let popped =
-                   match out with | uu___4::rest -> rest | [] -> [] in
-                 if has_slash then popped else "/" :: popped)
+                (if has_slash
+                 then pop_keep_root
+                 else
+                   (match pop_keep_root with
+                    | [] -> ["/"]
+                    | uu___5 -> pop_keep_root))
               else seg_with_slash :: out in
           remove_dot_segments_step input next_pos out' (fuel - Prims.int_one)))
 let remove_dot_segments (path : Prims.string) : Prims.string=
