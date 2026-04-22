@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Factoidal — Wikidata life-sciences demo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --fg: #222; --muted: #666; --bg: #fff; --surface: #f7f7f7;
+    --border: #e0e0e0; --brand: #2d6a4f; --brand-dark: #1b4332;
+    --error: #c0392b; --ok: #2d6a4f;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--fg); background: var(--bg); line-height: 1.5;
+  }
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 1.2em 1.5em;
+  }
+  header h1 { margin: 0 0 0.2em; font-size: 1.5em; }
+  header p  { margin: 0; color: var(--muted); font-size: 0.95em; }
+  header a  { color: var(--brand-dark); }
+  main { max-width: 1100px; margin: 0 auto; padding: 1.5em; }
+  .row { display: flex; gap: 1em; margin: 0.8em 0; align-items: center; flex-wrap: wrap; }
+  label { font-weight: 600; color: var(--muted); font-size: 0.9em; }
+  select, button {
+    font: inherit; padding: 0.4em 0.7em; border: 1px solid var(--border);
+    background: var(--bg); border-radius: 4px;
+  }
+  button {
+    background: var(--brand); color: #fff; border-color: var(--brand-dark);
+    cursor: pointer; font-weight: 600;
+  }
+  button:disabled { opacity: 0.6; cursor: wait; }
+  textarea {
+    width: 100%; min-height: 10em; font: 0.92em/1.45 ui-monospace, Menlo,
+    Consolas, monospace; padding: 0.7em; border: 1px solid var(--border);
+    border-radius: 4px; resize: vertical;
+  }
+  .status {
+    font-size: 0.9em; color: var(--muted); padding: 0.3em 0.6em;
+    background: var(--surface); border-radius: 4px;
+  }
+  .status.ok { color: var(--ok); }
+  .status.err { color: var(--error); }
+  #out { margin-top: 1em; }
+  #out.empty { color: var(--muted); padding: 1em; text-align: center;
+               background: var(--surface); border-radius: 4px; }
+  #out.error { color: var(--error); }
+  table.results {
+    border-collapse: collapse; width: 100%; font-size: 0.92em;
+  }
+  table.results th, table.results td {
+    border: 1px solid var(--border); padding: 0.3em 0.6em;
+    vertical-align: top; text-align: left;
+  }
+  table.results th { background: var(--surface); font-weight: 600; }
+  table.results td { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .result-meta { margin-top: 0.5em; color: var(--muted); font-size: 0.85em; }
+  pre.raw-error {
+    background: #fff6f4; border: 1px solid #f0c0c0; padding: 0.8em;
+    border-radius: 4px; white-space: pre-wrap; word-break: break-word;
+  }
+  .chip {
+    display: inline-block; padding: 0.1em 0.5em; border-radius: 10px;
+    background: var(--surface); color: var(--muted); font-size: 0.8em;
+    margin-right: 0.3em;
+  }
+  details { margin-top: 1em; }
+  summary { cursor: pointer; color: var(--muted); font-size: 0.9em; }
+  .graphs { font-size: 0.9em; color: var(--muted); }
+</style>
+</head>
+
+<body>
+
+<header>
+  <h1>Factoidal — Wikidata life-sciences demo</h1>
+  <p>
+    Three Wikidata KGX Turtle files loaded as named graphs, run through the
+    F*-verified SPARQL evaluator compiled to JavaScript. All querying
+    happens in the browser — no server.
+    <a href="./">← back to the main demo</a>
+  </p>
+</header>
+
+<main>
+
+<div class="row">
+  <span class="chip">chromosome.ttl — 9,227 triples</span>
+  <span class="chip">sequence_variant.ttl — 6,455 triples</span>
+  <span class="chip">disease.ttl — 27,421 triples</span>
+</div>
+
+<div class="row">
+  <label for="query-select">Query</label>
+  <select id="query-select"></select>
+  <button id="run-btn">Run</button>
+  <span id="status" class="status">Loading engine…</span>
+</div>
+
+<textarea id="query"></textarea>
+
+<div id="out" class="empty">Pick a query and click Run.</div>
+
+<details>
+  <summary>What's running under the hood</summary>
+  <p class="graphs">
+    Three Turtle files are fetched from this page's <code>lifesci/</code>
+    subdirectory (~1.4 MB total), parsed by the F*-verified Turtle parser,
+    and loaded into three named graphs keyed as
+    <code>urn:kgx:chromosome</code>, <code>urn:kgx:sequence_variant</code>,
+    and <code>urn:kgx:disease</code>. SPARQL queries use
+    <code>GRAPH &lt;urn:kgx:…&gt; { … }</code> to select per graph.
+  </p>
+  <p class="graphs">
+    The larger <code>gene.ttl</code> (17 MB, 889k triples) that sits next to
+    these three in the repo is intentionally <em>not</em> loaded here —
+    parsing 889k triples in the browser is slow and the naive BGP
+    evaluator on a list-backed graph is not yet fast enough to make the
+    disease↔gene join interactive. That is what the indexed in-memory
+    store work is about. For now, see
+    <a href="https://github.com/danbri/factoidal/tree/claude/main/examples/wikidata/subsets/lifesci-kgx">examples/wikidata/subsets/lifesci-kgx/</a>
+    in the repo for how to run it natively.
+  </p>
+</details>
+
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  // Three fixed Turtle files, same-origin. Paths relative to this page.
+  const FILES = [
+    { url: './lifesci/chromosome.ttl',       graph: 'urn:kgx:chromosome',       vfs: '/tmp/chromosome.ttl' },
+    { url: './lifesci/sequence_variant.ttl', graph: 'urn:kgx:sequence_variant', vfs: '/tmp/sequence_variant.ttl' },
+    { url: './lifesci/disease.ttl',          graph: 'urn:kgx:disease',          vfs: '/tmp/disease.ttl' },
+  ];
+
+  // Pre-populated queries. Keep each self-contained (own PREFIX lines) so
+  // the user sees exactly what's running.
+  const QUERIES = [
+    {
+      key: 'variant-chrom',
+      label: '03 — Sequence variants on chromosomes (cross-graph join, ~0.4 s)',
+      body:
+`# Cross-graph join:
+#  <chromosome> provides the set of chromosome entities,
+#  <sequence_variant> provides variants via wdt:P1057 (chromosome).
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX wd:  <http://www.wikidata.org/entity/>
+
+SELECT ?variant ?chrom
+WHERE {
+  GRAPH <urn:kgx:chromosome>       { ?chrom wdt:P31 wd:Q37748 }
+  GRAPH <urn:kgx:sequence_variant> { ?variant wdt:P1057 ?chrom }
+}
+LIMIT 20
+`
+    },
+    {
+      key: 'top-diseases',
+      label: '04 — Top diseases by count of genetically-associated genes (~0.6 s)',
+      body:
+`# Entirely within the <disease> graph: group by disease, count the
+# number of wdt:P2293 "genetic association" links per disease.
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+
+SELECT ?disease (COUNT(?gene) AS ?associated_genes)
+WHERE {
+  GRAPH <urn:kgx:disease> { ?disease wdt:P2293 ?gene }
+}
+GROUP BY ?disease
+ORDER BY DESC(?associated_genes)
+LIMIT 10
+`
+    },
+    {
+      key: 'count-per-graph',
+      label: '01 — Count triples per named graph (~7 s)',
+      body:
+`# Basic structural query. GROUP BY on the list-backed evaluator is
+# roughly O(n^2), so this takes a few seconds even on ~43k triples.
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+SELECT ?g (COUNT(*) AS ?triples)
+WHERE {
+  GRAPH ?g { ?s ?p ?o }
+}
+GROUP BY ?g
+ORDER BY DESC(?triples)
+`
+    },
+    {
+      key: 'top-types',
+      label: '02 — Top instance-of types across all three graphs',
+      body:
+`# UNION over P31 (wikidata "instance of") and rdf:type. With
+# gene.ttl excluded, this takes roughly a second across these three
+# graphs.
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+SELECT ?type (COUNT(?s) AS ?instances)
+WHERE {
+  { GRAPH ?g { ?s wdt:P31 ?type } }
+  UNION
+  { GRAPH ?g { ?s rdf:type  ?type } }
+}
+GROUP BY ?type
+ORDER BY DESC(?instances)
+LIMIT 10
+`
+    },
+    {
+      key: 'disease-symptoms',
+      label: 'Cross-graph: diseases that cite wdt:P828 (cause)',
+      body:
+`# Diseases (?d) with a stated cause (?c), regardless of what ?c is.
+# Handy starting point for exploring disease-etiology triples.
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+
+SELECT DISTINCT ?disease ?cause
+WHERE {
+  GRAPH <urn:kgx:disease> { ?disease wdt:P828 ?cause }
+}
+LIMIT 25
+`
+    },
+  ];
+
+  const querySelect = document.getElementById('query-select');
+  const queryEl     = document.getElementById('query');
+  const runBtn      = document.getElementById('run-btn');
+  const statusEl    = document.getElementById('status');
+  const outputWrap  = document.getElementById('out');
+
+  QUERIES.forEach(q => {
+    const opt = document.createElement('option');
+    opt.value = q.key; opt.textContent = q.label;
+    querySelect.appendChild(opt);
+  });
+  function loadQuery() {
+    const k = querySelect.value;
+    const q = QUERIES.find(x => x.key === k) || QUERIES[0];
+    queryEl.value = q.body;
+  }
+  querySelect.addEventListener('change', loadQuery);
+  loadQuery();
+
+  // -------------------------------------------------------------------
+  // Fetch the three Turtle files in parallel and cache as strings.
+  // -------------------------------------------------------------------
+  let filePayloads = null;
+  async function getFilePayloads() {
+    if (filePayloads) return filePayloads;
+    statusEl.textContent = 'Fetching Turtle data…';
+    const results = await Promise.all(FILES.map(async f => {
+      const r = await fetch(f.url);
+      if (!r.ok) throw new Error(`fetch ${f.url}: ${r.status}`);
+      return { ...f, content: await r.text() };
+    }));
+    filePayloads = results;
+    return results;
+  }
+
+  // -------------------------------------------------------------------
+  // factoidal.js loader.
+  // -------------------------------------------------------------------
+  let factoidalSource = null;
+  let fetchPromise = null;
+  function getFactoidal() {
+    if (factoidalSource) return Promise.resolve(factoidalSource);
+    if (fetchPromise) return fetchPromise;
+    fetchPromise = fetch('./factoidal.js')
+      .then(r => { if (!r.ok) throw new Error('fetch factoidal.js: ' + r.status); return r.text(); })
+      .then(t => { factoidalSource = t; return t; });
+    return fetchPromise;
+  }
+
+  // Warm both loaders at page-load, in parallel.
+  Promise.all([getFactoidal(), getFilePayloads()])
+    .then(() => { statusEl.textContent = 'Ready.'; statusEl.className = 'status ok'; })
+    .catch(e => { statusEl.textContent = 'Load failed: ' + e.message;
+                  statusEl.className = 'status err'; });
+
+  // -------------------------------------------------------------------
+  // Result rendering (lifted from index.html, trimmed to what this
+  // demo uses).
+  // -------------------------------------------------------------------
+  function abbrev(iri) {
+    const P = [
+      ['http://www.w3.org/1999/02/22-rdf-syntax-ns#', 'rdf:'],
+      ['http://www.w3.org/2000/01/rdf-schema#',       'rdfs:'],
+      ['http://www.w3.org/2001/XMLSchema#',           'xsd:'],
+      ['http://www.wikidata.org/entity/',             'wd:'],
+      ['http://www.wikidata.org/prop/direct/',        'wdt:'],
+      ['https://bioschemas.org/',                     'bio:'],
+      ['https://schema.org/',                         'schema:'],
+    ];
+    for (const [ns, px] of P) if (iri.startsWith(ns)) return px + iri.slice(ns.length);
+    return '<' + iri + '>';
+  }
+
+  function renderBinding(v, b) {
+    const td = document.createElement('td');
+    if (!b) { td.textContent = ''; return td; }
+    if (b.type === 'uri') {
+      const a = document.createElement('a');
+      a.href = b.value; a.target = '_blank'; a.rel = 'noopener';
+      a.textContent = abbrev(b.value);
+      td.appendChild(a);
+    } else {
+      td.textContent = b.value;
+      if (b['xml:lang']) td.textContent += '@' + b['xml:lang'];
+      else if (b.datatype && b.datatype !== 'http://www.w3.org/2001/XMLSchema#string')
+        td.textContent += '  ^^' + abbrev(b.datatype);
+    }
+    return td;
+  }
+
+  function renderResultsJSON(json) {
+    outputWrap.className = ''; outputWrap.innerHTML = '';
+    if (typeof json.boolean === 'boolean') {
+      outputWrap.textContent = json.boolean ? 'Yes' : 'No';
+      return;
+    }
+    const vars = (json.head && json.head.vars) || [];
+    const bindings = (json.results && json.results.bindings) || [];
+    const table = document.createElement('table');
+    table.className = 'results';
+    const thead = document.createElement('thead');
+    const hrow = document.createElement('tr');
+    vars.forEach(v => {
+      const th = document.createElement('th'); th.textContent = '?' + v;
+      hrow.appendChild(th);
+    });
+    thead.appendChild(hrow); table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    bindings.forEach(row => {
+      const tr = document.createElement('tr');
+      vars.forEach(v => tr.appendChild(renderBinding(v, row[v])));
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    outputWrap.appendChild(table);
+    const meta = document.createElement('div');
+    meta.className = 'result-meta';
+    meta.textContent = bindings.length + ' result' + (bindings.length === 1 ? '' : 's');
+    outputWrap.appendChild(meta);
+  }
+
+  function renderRawError(text) {
+    outputWrap.className = 'error'; outputWrap.innerHTML = '';
+    const pre = document.createElement('pre');
+    pre.className = 'raw-error'; pre.textContent = text;
+    outputWrap.appendChild(pre);
+  }
+
+  // -------------------------------------------------------------------
+  // Run
+  // -------------------------------------------------------------------
+  runBtn.addEventListener('click', async () => {
+    runBtn.disabled = true;
+    statusEl.className = 'status';
+    statusEl.textContent = 'Running…';
+    outputWrap.className = 'empty'; outputWrap.textContent = '';
+    const buf = [];
+    const origLog = console.log, origErr = console.error;
+    console.log = (...a) => buf.push(a.join(' '));
+    console.error = (...a) => buf.push(a.join(' '));
+
+    try {
+      const [src, payloads] = await Promise.all([getFactoidal(), getFilePayloads()]);
+
+      // Stage the three files in jsoo's fake file system.
+      globalThis.jsoo_fs_tmp = payloads.map(p => ({ name: p.vfs, content: p.content }));
+      globalThis.process = globalThis.process || {};
+
+      // Build argv: one --named IRI=PATH per file, plus -e + -o json.
+      const argv = ['node', 'factoidal'];
+      payloads.forEach(p => { argv.push('--named', p.graph + '=' + p.vfs); });
+      argv.push('-e', queryEl.value, '-o', 'json');
+      globalThis.process.argv = argv;
+
+      let exitCode = 0;
+      const origExit = globalThis.process.exit;
+      globalThis.process.exit = (n) => { exitCode = n|0; throw new Error('__exit__'); };
+
+      const t0 = performance.now();
+      try {
+        (new Function(src))();
+      } catch (e) {
+        if (!e || e.message !== '__exit__') { buf.push('\n[demo] ' + e.message); exitCode = 1; }
+      } finally {
+        globalThis.process.exit = origExit;
+      }
+      const ms = (performance.now() - t0).toFixed(0);
+
+      console.log = origLog; console.error = origErr;
+      const out = buf.join('\n').replace(/\n+$/, '');
+
+      if (exitCode !== 0) {
+        statusEl.textContent = 'Error after ' + ms + ' ms';
+        statusEl.className = 'status err';
+        renderRawError(out || '(no output, exit ' + exitCode + ')');
+        return;
+      }
+
+      const first = out.indexOf('{'), last = out.lastIndexOf('}');
+      if (first < 0 || last < first) { renderRawError(out); return; }
+      let parsed;
+      try { parsed = JSON.parse(out.slice(first, last + 1)); }
+      catch { renderRawError(out); return; }
+      statusEl.textContent = 'Done in ' + ms + ' ms';
+      statusEl.className = 'status ok';
+      renderResultsJSON(parsed);
+    } catch (e) {
+      console.log = origLog; console.error = origErr;
+      statusEl.textContent = 'Error: ' + (e && e.message || e);
+      statusEl.className = 'status err';
+      renderRawError(e && e.stack || String(e));
+    } finally {
+      runBtn.disabled = false;
+    }
+  });
+
+})();
+</script>
+
+</body>
+</html>
