@@ -1949,16 +1949,25 @@ type subject_result =
   {
   sr_subject: RDF_Graph_Executable.subject ;
   sr_triples: RDF_Graph_Executable.triple Prims.list ;
-  sr_state: turtle_state }
+  sr_state: turtle_state ;
+  sr_is_bnode_proplist: Prims.bool }
 let __proj__Mksubject_result__item__sr_subject (projectee : subject_result) :
   RDF_Graph_Executable.subject=
-  match projectee with | { sr_subject; sr_triples; sr_state;_} -> sr_subject
+  match projectee with
+  | { sr_subject; sr_triples; sr_state; sr_is_bnode_proplist;_} -> sr_subject
 let __proj__Mksubject_result__item__sr_triples (projectee : subject_result) :
   RDF_Graph_Executable.triple Prims.list=
-  match projectee with | { sr_subject; sr_triples; sr_state;_} -> sr_triples
+  match projectee with
+  | { sr_subject; sr_triples; sr_state; sr_is_bnode_proplist;_} -> sr_triples
 let __proj__Mksubject_result__item__sr_state (projectee : subject_result) :
   turtle_state=
-  match projectee with | { sr_subject; sr_triples; sr_state;_} -> sr_state
+  match projectee with
+  | { sr_subject; sr_triples; sr_state; sr_is_bnode_proplist;_} -> sr_state
+let __proj__Mksubject_result__item__sr_is_bnode_proplist
+  (projectee : subject_result) : Prims.bool=
+  match projectee with
+  | { sr_subject; sr_triples; sr_state; sr_is_bnode_proplist;_} ->
+      sr_is_bnode_proplist
 let rec parse_turtle_object (st : turtle_state) (input : Prims.string)
   (pos : Prims.nat) (fuel : Prims.nat) :
   object_result Parser_Combinators.parse_result=
@@ -2468,7 +2477,8 @@ let parse_turtle_subject (st : turtle_state) (input : Prims.string)
                    ({
                       sr_subject = (RDF_Graph_Executable.S_IRI i);
                       sr_triples = [];
-                      sr_state = st
+                      sr_state = st;
+                      sr_is_bnode_proplist = false
                     }, pos')
                else Parser_Combinators.ParseFail ("invalid subject IRI", pos))
           | Parser_Combinators.ParseFail (msg, fpos) ->
@@ -2482,7 +2492,8 @@ let parse_turtle_subject (st : turtle_state) (input : Prims.string)
                    ({
                       sr_subject = (RDF_Graph_Executable.S_BNode b);
                       sr_triples = [];
-                      sr_state = st
+                      sr_state = st;
+                      sr_is_bnode_proplist = false
                     }, pos')
              | Parser_Combinators.ParseFail (msg, fpos) ->
                  Parser_Combinators.ParseFail (msg, fpos))
@@ -2505,7 +2516,8 @@ let parse_turtle_subject (st : turtle_state) (input : Prims.string)
                                sr_subject =
                                  (RDF_Graph_Executable.S_BNode bnode_id);
                                sr_triples = [];
-                               sr_state = st1
+                               sr_state = st1;
+                               sr_is_bnode_proplist = false
                              }, (pos2 + Prims.int_one))
                         else
                           (match parse_predicate_object_list st1
@@ -2529,7 +2541,8 @@ let parse_turtle_subject (st : turtle_state) (input : Prims.string)
                                              (RDF_Graph_Executable.S_BNode
                                                 bnode_id);
                                            sr_triples = triples;
-                                           sr_state = st2
+                                           sr_state = st2;
+                                           sr_is_bnode_proplist = true
                                          }, (pos4 + Prims.int_one))
                                     else
                                       Parser_Combinators.ParseFail
@@ -2549,14 +2562,16 @@ let parse_turtle_subject (st : turtle_state) (input : Prims.string)
                             ({
                                sr_subject = (RDF_Graph_Executable.S_IRI i);
                                sr_triples = (obj_res.or_triples);
-                               sr_state = (obj_res.or_state)
+                               sr_state = (obj_res.or_state);
+                               sr_is_bnode_proplist = false
                              }, pos')
                       | RDF_Graph_Executable.T_BNode b ->
                           Parser_Combinators.ParseOk
                             ({
                                sr_subject = (RDF_Graph_Executable.S_BNode b);
                                sr_triples = (obj_res.or_triples);
-                               sr_state = (obj_res.or_state)
+                               sr_state = (obj_res.or_state);
+                               sr_is_bnode_proplist = false
                              }, pos')
                       | uu___5 ->
                           Parser_Combinators.ParseFail
@@ -2576,7 +2591,8 @@ let parse_turtle_subject (st : turtle_state) (input : Prims.string)
                                  sr_subject =
                                    (RDF_Graph_Executable.S_IRI resolved);
                                  sr_triples = [];
-                                 sr_state = st
+                                 sr_state = st;
+                                 sr_is_bnode_proplist = false
                                }, pos')
                           else
                             Parser_Combinators.ParseFail
@@ -2627,10 +2643,7 @@ let parse_turtle_statement (st : turtle_state) (input : Prims.string)
                            | Parser_Combinators.ParseOk ((), pos3) ->
                                if pos3 >= len
                                then
-                                 (if
-                                    (FStar_List_Tot_Base.length
-                                       subj_res.sr_triples)
-                                      > Prims.int_zero
+                                 (if subj_res.sr_is_bnode_proplist
                                   then
                                     Parser_Combinators.ParseOk
                                       (((subj_res.sr_triples),
@@ -2646,10 +2659,7 @@ let parse_turtle_statement (st : turtle_state) (input : Prims.string)
                                   let ncode = FStar_Char.int_of_char nc in
                                   if ncode = (Prims.of_int (0x2E))
                                   then
-                                    (if
-                                       (FStar_List_Tot_Base.length
-                                          subj_res.sr_triples)
-                                         > Prims.int_zero
+                                    (if subj_res.sr_is_bnode_proplist
                                      then
                                        Parser_Combinators.ParseOk
                                          (((subj_res.sr_triples),
@@ -2662,9 +2672,7 @@ let parse_turtle_statement (st : turtle_state) (input : Prims.string)
                                   else
                                     if
                                       (ncode = (Prims.of_int (0x7D))) &&
-                                        ((FStar_List_Tot_Base.length
-                                            subj_res.sr_triples)
-                                           > Prims.int_zero)
+                                        subj_res.sr_is_bnode_proplist
                                     then
                                       Parser_Combinators.ParseOk
                                         (((subj_res.sr_triples),

@@ -1340,11 +1340,17 @@ noeq type object_result = {
   or_state: turtle_state;
 }
 
-(* Result type for subject parsing *)
+(* Result type for subject parsing.
+   `sr_is_bnode_proplist` distinguishes `[ ... ]` shorthand (which may
+   stand as a full statement without a predicateObjectList) from every
+   other subject form (IRI, bnode label, collection) which *requires*
+   a predicateObjectList. Collections in particular must fail if they
+   appear alone — see trig-syntax-bad-list-03. *)
 noeq type subject_result = {
   sr_subject: subject;
   sr_triples: list triple;
   sr_state: turtle_state;
+  sr_is_bnode_proplist: bool;
 }
 
 (* ================================================================ *)
@@ -1646,13 +1652,15 @@ let parse_turtle_subject (st: turtle_state) (input: string) (pos: nat) (fuel: na
         begin match parse_turtle_iri st input pos with
         | ParseOk i pos' ->
           if is_iri i then
-            ParseOk ({ sr_subject = S_IRI i; sr_triples = []; sr_state = st }) pos'
+            ParseOk ({ sr_subject = S_IRI i; sr_triples = []; sr_state = st;
+                       sr_is_bnode_proplist = false }) pos'
           else ParseFail "invalid subject IRI" pos
         | ParseFail msg fpos -> ParseFail msg fpos
         end
       else if code = 0x5F then  (* '_' — labeled blank node *)
         begin match parse_bnode input pos with
-        | ParseOk b pos' -> ParseOk ({ sr_subject = S_BNode b; sr_triples = []; sr_state = st }) pos'
+        | ParseOk b pos' -> ParseOk ({ sr_subject = S_BNode b; sr_triples = []; sr_state = st;
+                                        sr_is_bnode_proplist = false }) pos'
         | ParseFail msg fpos -> ParseFail msg fpos
         end
       else if code = 0x5B then  (* '[' — anonymous blank node or property list *)
@@ -1660,16 +1668,18 @@ let parse_turtle_subject (st: turtle_state) (input: string) (pos: nat) (fuel: na
         begin match turtle_ws input (pos + 1) with
         | ParseOk () pos2 ->
           if pos2 < len && int_of_char (fs_byte_index input pos2) = 0x5D then
-            (* [] — empty anonymous blank node *)
-            ParseOk ({ sr_subject = S_BNode bnode_id; sr_triples = []; sr_state = st1 }) (pos2 + 1)
+            (* [] — empty anonymous blank node; NOT a valid bare statement *)
+            ParseOk ({ sr_subject = S_BNode bnode_id; sr_triples = []; sr_state = st1;
+                       sr_is_bnode_proplist = false }) (pos2 + 1)
           else
-            (* [ predicate-object-list ] *)
+            (* [ predicate-object-list ] — valid as a bare statement *)
             begin match parse_predicate_object_list st1 (S_BNode bnode_id) input pos2 (fuel - 1) with
             | ParseOk (triples, st2) pos3 ->
               begin match turtle_ws input pos3 with
               | ParseOk () pos4 ->
                 if pos4 < len && int_of_char (fs_byte_index input pos4) = 0x5D then
-                  ParseOk ({ sr_subject = S_BNode bnode_id; sr_triples = triples; sr_state = st2 }) (pos4 + 1)
+                  ParseOk ({ sr_subject = S_BNode bnode_id; sr_triples = triples; sr_state = st2;
+                             sr_is_bnode_proplist = true }) (pos4 + 1)
                 else
                   ParseFail "expected ']'" pos4
               end
@@ -1681,9 +1691,11 @@ let parse_turtle_subject (st: turtle_state) (input: string) (pos: nat) (fuel: na
         | ParseOk obj_res pos' ->
           begin match obj_res.or_term with
           | T_IRI i ->
-            ParseOk ({ sr_subject = S_IRI i; sr_triples = obj_res.or_triples; sr_state = obj_res.or_state }) pos'
+            ParseOk ({ sr_subject = S_IRI i; sr_triples = obj_res.or_triples; sr_state = obj_res.or_state;
+                       sr_is_bnode_proplist = false }) pos'
           | T_BNode b ->
-            ParseOk ({ sr_subject = S_BNode b; sr_triples = obj_res.or_triples; sr_state = obj_res.or_state }) pos'
+            ParseOk ({ sr_subject = S_BNode b; sr_triples = obj_res.or_triples; sr_state = obj_res.or_state;
+                       sr_is_bnode_proplist = false }) pos'
           | _ -> ParseFail "collection did not produce a valid subject" pos
           end
         | ParseFail msg fpos -> ParseFail msg fpos
@@ -1695,7 +1707,8 @@ let parse_turtle_subject (st: turtle_state) (input: string) (pos: nat) (fuel: na
           begin match resolve_prefixed_name st prefix local with
           | Some resolved ->
             if is_iri resolved then
-              ParseOk ({ sr_subject = S_IRI resolved; sr_triples = []; sr_state = st }) pos'
+              ParseOk ({ sr_subject = S_IRI resolved; sr_triples = []; sr_state = st;
+                         sr_is_bnode_proplist = false }) pos'
             else ParseFail "invalid resolved IRI" pos
           | None -> ParseFail (String.concat "" ["undefined prefix: "; prefix]) pos
           end
@@ -1733,10 +1746,11 @@ let parse_turtle_statement (st: turtle_state) (input: string) (pos: nat) (fuel: 
               begin match turtle_ws input pos2 with
               | ParseOk () pos3 ->
                 (* Check if subject has property list (blank node property list as subject
-                   can be followed by just '.') *)
+                   can be followed by just '.'). Collections CANNOT stand alone —
+                   see trig-syntax-bad-list-03: `{ ( 1 2 3 ) }` must be rejected. *)
                 if pos3 >= len then
                   (* Only subject triples, no predicate-object list *)
-                  if List.Tot.length subj_res.sr_triples > 0 then
+                  if subj_res.sr_is_bnode_proplist then
                     ParseOk (subj_res.sr_triples, subj_res.sr_state) pos3
                   else
                     ParseFail "expected predicate after subject" pos3
@@ -1744,12 +1758,13 @@ let parse_turtle_statement (st: turtle_state) (input: string) (pos: nat) (fuel: 
                   let nc = fs_byte_index input pos3 in
                   let ncode = int_of_char nc in
                   if ncode = 0x2E then
-                    // Subject followed directly by dot -- valid only if subject generated triples
-                    if List.Tot.length subj_res.sr_triples > 0 then
+                    // Subject followed directly by '.' — valid only for `[ ... ]`
+                    // bnode property lists (grammar §2.4), never for collections.
+                    if subj_res.sr_is_bnode_proplist then
                       ParseOk (subj_res.sr_triples, subj_res.sr_state) (pos3 + 1)
                     else
                       ParseFail "expected predicate after subject" pos3
-                  else if ncode = 0x7D && List.Tot.length subj_res.sr_triples > 0 then
+                  else if ncode = 0x7D && subj_res.sr_is_bnode_proplist then
                     // Inside a TriG graph block: '}' ends the block.
                     // Blank node property list as sole statement is valid without dot.
                     ParseOk (subj_res.sr_triples, subj_res.sr_state) pos3
