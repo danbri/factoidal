@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-04-23 22:58 UTC",
+  "timestamp": "2026-04-23 22:09 UTC",
   "commit": "fb4f8474636ee86c323e0a076cb869a541bdeaa2",
   "branch": "claude/main",
   "totals": {
     "sparql":   {"pass":535,"fail":38,"skip":58,"unsupported":0,"total":631},
-    "rdf":      {"pass":1026,"fail":5,"skip":0,"unsupported":0,"total":1031},
-    "combined": {"pass":1561,"fail":43,"skip":58,"unsupported":0,"total":1662,"pass_pct_of_runnable":97.3}
+    "rdf":      {"pass":1008,"fail":23,"skip":0,"unsupported":0,"total":1031},
+    "combined": {"pass":1543,"fail":61,"skip":58,"unsupported":0,"total":1662,"pass_pct_of_runnable":96.2}
   },
   "suites": {
     "sparql": [
@@ -50,7 +50,7 @@
       {"name":"rdf-n-triples","pass":70,"fail":0,"skip":0,"unsupported":0},
       {"name":"rdf-trig","pass":356,"fail":0,"skip":0,"unsupported":0},
       {"name":"rdf-turtle","pass":313,"fail":0,"skip":0,"unsupported":0},
-      {"name":"rdf-xml","pass":161,"fail":5,"skip":0,"unsupported":0}
+      {"name":"rdf-xml","pass":143,"fail":23,"skip":0,"unsupported":0}
     ]
   }
 }

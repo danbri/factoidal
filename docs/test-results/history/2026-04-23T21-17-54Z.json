@@ -1,22 +1,22 @@
 {
-  "timestamp": "2026-04-23 22:58 UTC",
+  "timestamp": "2026-04-23 21:17 UTC",
   "commit": "fb4f8474636ee86c323e0a076cb869a541bdeaa2",
   "branch": "claude/main",
   "totals": {
-    "sparql":   {"pass":535,"fail":38,"skip":58,"unsupported":0,"total":631},
-    "rdf":      {"pass":1026,"fail":5,"skip":0,"unsupported":0,"total":1031},
-    "combined": {"pass":1561,"fail":43,"skip":58,"unsupported":0,"total":1662,"pass_pct_of_runnable":97.3}
+    "sparql":   {"pass":540,"fail":33,"skip":58,"unsupported":0,"total":631},
+    "rdf":      {"pass":1009,"fail":22,"skip":0,"unsupported":0,"total":1031},
+    "combined": {"pass":1549,"fail":55,"skip":58,"unsupported":0,"total":1662,"pass_pct_of_runnable":96.6}
   },
   "suites": {
     "sparql": [
       {"name":"add","pass":8,"fail":0,"skip":0,"unsupported":0},
       {"name":"aggregates","pass":46,"fail":1,"skip":0,"unsupported":0},
-      {"name":"basic-update","pass":11,"fail":2,"skip":0,"unsupported":0},
+      {"name":"basic-update","pass":9,"fail":4,"skip":0,"unsupported":0},
       {"name":"bind","pass":10,"fail":0,"skip":0,"unsupported":0},
       {"name":"bindings","pass":10,"fail":1,"skip":0,"unsupported":0},
-      {"name":"cast","pass":4,"fail":2,"skip":0,"unsupported":0},
+      {"name":"cast","pass":6,"fail":0,"skip":0,"unsupported":0},
       {"name":"clear","pass":4,"fail":0,"skip":0,"unsupported":0},
-      {"name":"construct","pass":4,"fail":3,"skip":0,"unsupported":0},
+      {"name":"construct","pass":6,"fail":1,"skip":0,"unsupported":0},
       {"name":"copy","pass":6,"fail":0,"skip":0,"unsupported":0},
       {"name":"csv-tsv-res","pass":6,"fail":0,"skip":0,"unsupported":0},
       {"name":"delete","pass":19,"fail":0,"skip":0,"unsupported":0},
@@ -31,16 +31,16 @@
       {"name":"http-rdf-update","pass":0,"fail":0,"skip":19,"unsupported":0},
       {"name":"json-res","pass":4,"fail":0,"skip":0,"unsupported":0},
       {"name":"move","pass":6,"fail":0,"skip":0,"unsupported":0},
-      {"name":"negation","pass":11,"fail":1,"skip":0,"unsupported":0},
+      {"name":"negation","pass":12,"fail":0,"skip":0,"unsupported":0},
       {"name":"project-expression","pass":7,"fail":0,"skip":0,"unsupported":0},
       {"name":"property-path","pass":33,"fail":0,"skip":0,"unsupported":0},
       {"name":"protocol","pass":0,"fail":0,"skip":34,"unsupported":0},
       {"name":"service","pass":0,"fail":7,"skip":0,"unsupported":0},
       {"name":"service-description","pass":0,"fail":0,"skip":3,"unsupported":0},
-      {"name":"subquery","pass":13,"fail":1,"skip":0,"unsupported":0},
+      {"name":"subquery","pass":14,"fail":0,"skip":0,"unsupported":0},
       {"name":"syntax-fed","pass":3,"fail":0,"skip":0,"unsupported":0},
       {"name":"syntax-query","pass":94,"fail":0,"skip":0,"unsupported":0},
-      {"name":"syntax-update-1","pass":53,"fail":1,"skip":0,"unsupported":0},
+      {"name":"syntax-update-1","pass":54,"fail":0,"skip":0,"unsupported":0},
       {"name":"syntax-update-2","pass":1,"fail":0,"skip":0,"unsupported":0},
       {"name":"update-silent","pass":11,"fail":0,"skip":2,"unsupported":0}
     ],
@@ -50,7 +50,7 @@
       {"name":"rdf-n-triples","pass":70,"fail":0,"skip":0,"unsupported":0},
       {"name":"rdf-trig","pass":356,"fail":0,"skip":0,"unsupported":0},
       {"name":"rdf-turtle","pass":313,"fail":0,"skip":0,"unsupported":0},
-      {"name":"rdf-xml","pass":161,"fail":5,"skip":0,"unsupported":0}
+      {"name":"rdf-xml","pass":144,"fail":22,"skip":0,"unsupported":0}
     ]
   }
 }

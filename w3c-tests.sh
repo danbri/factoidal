@@ -19,10 +19,15 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$REPO_ROOT/formal/fstar"
+# Stay at repo root — the w3c_runner resolves test-fixture base URIs
+# using Sys.getcwd() when no mf:assumedTestBase is present, so CWD
+# must be the repo root to match the historical baseline. Some rdf-xml
+# tests silently diverge (same triple counts, different IRI strings) if
+# CWD changes between runs. Keep this invariant.
+cd "$REPO_ROOT"
 
 if [ "${1:-}" = "--cached" ]; then
-  exec ./generate-report.sh
+  exec ./formal/fstar/generate-report.sh
 else
-  exec ./generate-report.sh --run
+  exec ./formal/fstar/generate-report.sh --run
 fi

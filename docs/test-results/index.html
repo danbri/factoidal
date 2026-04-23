@@ -130,11 +130,11 @@
 <div class="summary">
   <div class="tile ok">
     <div class="label">Pass</div>
-    <div class="value">1565</div>
+    <div class="value">1561</div>
   </div>
   <div class="tile err">
     <div class="label">Fail</div>
-    <div class="value">39</div>
+    <div class="value">43</div>
   </div>
   <div class="tile warn">
     <div class="label">Skipped</div>
@@ -142,7 +142,7 @@
   </div>
   <div class="tile">
     <div class="label">Pass / runnable</div>
-    <div class="value">97.6%<small> of 1604</small></div>
+    <div class="value">97.3%<small> of 1604</small></div>
   </div>
   <div class="tile">
     <div class="label">Total in suites</div>
@@ -159,7 +159,7 @@
   are linked below.
 </div>
 
-<h2>SPARQL 1.1 <span class="inline-numbers">539 pass · 34 fail · 58 skip</span></h2>
+<h2>SPARQL 1.1 <span class="inline-numbers">535 pass · 38 fail · 58 skip</span></h2>
 <div class="suites">
       <div class="suite-row perfect">
         <div class="suite-name">add</div>
@@ -219,9 +219,9 @@
       </div>
       <div class="suite-row mixed">
         <div class="suite-name">construct</div>
-        <div class="suite-bar"><div class="fill" style="width:86%"></div></div>
+        <div class="suite-bar"><div class="fill" style="width:57%"></div></div>
         <div class="suite-numbers">
-          <span class="p">6</span>/<span class="f">1</span>
+          <span class="p">4</span>/<span class="f">3</span>
           <small></small>
         </div>
       </div>
@@ -337,11 +337,11 @@
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row near-perfect">
         <div class="suite-name">negation</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-bar"><div class="fill" style="width:92%"></div></div>
         <div class="suite-numbers">
-          <span class="p">12</span>/<span class="f">0</span>
+          <span class="p">11</span>/<span class="f">1</span>
           <small></small>
         </div>
       </div>
@@ -385,11 +385,11 @@
           <small>skip 3</small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row near-perfect">
         <div class="suite-name">subquery</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-bar"><div class="fill" style="width:93%"></div></div>
         <div class="suite-numbers">
-          <span class="p">14</span>/<span class="f">0</span>
+          <span class="p">13</span>/<span class="f">1</span>
           <small></small>
         </div>
       </div>
@@ -504,7 +504,7 @@
 <details>
   <summary>Raw per-suite numbers</summary>
   <h3 style="font-size: 0.95em; margin: 0.8em 0 0.3em;">SPARQL 1.1</h3>
-  <pre>631 total: 539 pass, 34 fail, 58 skip, 0 unsupported
+  <pre>631 total: 535 pass, 38 fail, 58 skip, 0 unsupported
   add                                 pass:8 fail:0 skip:0 unsupported:0
   aggregates                          pass:46 fail:1 skip:0 unsupported:0
   basic-update                        pass:11 fail:2 skip:0 unsupported:0
@@ -512,7 +512,7 @@
   bindings                            pass:10 fail:1 skip:0 unsupported:0
   cast                                pass:4 fail:2 skip:0 unsupported:0
   clear                               pass:4 fail:0 skip:0 unsupported:0
-  construct                           pass:6 fail:1 skip:0 unsupported:0
+  construct                           pass:4 fail:3 skip:0 unsupported:0
   copy                                pass:6 fail:0 skip:0 unsupported:0
   csv-tsv-res                         pass:6 fail:0 skip:0 unsupported:0
   delete                              pass:19 fail:0 skip:0 unsupported:0
@@ -527,13 +527,13 @@
   http-rdf-update                     pass:0 fail:0 skip:19 unsupported:0
   json-res                            pass:4 fail:0 skip:0 unsupported:0
   move                                pass:6 fail:0 skip:0 unsupported:0
-  negation                            pass:12 fail:0 skip:0 unsupported:0
+  negation                            pass:11 fail:1 skip:0 unsupported:0
   project-expression                  pass:7 fail:0 skip:0 unsupported:0
   property-path                       pass:33 fail:0 skip:0 unsupported:0
   protocol                            pass:0 fail:0 skip:34 unsupported:0
   service                             pass:0 fail:7 skip:0 unsupported:0
   service-description                 pass:0 fail:0 skip:3 unsupported:0
-  subquery                            pass:14 fail:0 skip:0 unsupported:0
+  subquery                            pass:13 fail:1 skip:0 unsupported:0
   syntax-fed                          pass:3 fail:0 skip:0 unsupported:0
   syntax-query                        pass:94 fail:0 skip:0 unsupported:0
   syntax-update-1                     pass:53 fail:1 skip:0 unsupported:0
@@ -564,9 +564,9 @@
 </main>
 
 <footer>
-  Generated <strong>2026-04-23 18:36 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/a4813dcea65ed368f1ed6c070e292e58d1c2d880">a4813dc</a></code>
-  on branch <code>claude/main</code> — &ldquo;test-results: human-readable generator — hero %, plain-English, visual bars per suite&rdquo;.
+  Generated <strong>2026-04-23 22:58 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/fb4f8474636ee86c323e0a076cb869a541bdeaa2">fb4f847</a></code>
+  on branch <code>claude/main</code> — &ldquo;docs: entailment suite scoping + phased plan&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
