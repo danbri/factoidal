@@ -126,10 +126,11 @@ if 'Forbidden property element name' not in content:
           | Some full_iri ->
             if List.mem full_iri forbidden_property_element_names then
               raise (Rdfxml_error (Printf.sprintf "Forbidden property element name: %s" full_iri));
-            (* Also reject rdf:Bag/Seq/Alt as property elements *)
-            if full_iri = rdf_ns ^ "Bag" || full_iri = rdf_ns ^ "Seq" ||
-               full_iri = rdf_ns ^ "Alt" then
-              raise (Rdfxml_error (Printf.sprintf "Container type used as property element: %s" full_iri))
+            (* rdf:Bag/Seq/Alt ARE legal as property element names per
+               RDF/XML §7.2.2.1 — they are just IRIs in the rdf: namespace
+               when used as predicates. The guard that used to reject them
+               here failed tests rdfms-rdf-names-use-test-017/018/019. *)
+            ()
           | None -> ());
          validate_rdf_id_attr attrs;
          check_conflicting_attrs attrs;
