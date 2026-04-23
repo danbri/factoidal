@@ -753,6 +753,14 @@ and build_collection_list (st : rdfxml_state) (subj : subject) (pred_iri : strin
 (* Process top-level node elements (children of rdf:RDF or root)     *)
 (* ================================================================ *)
 
+(* xml:base, xml:lang and xmlns declarations are XML Information-Set
+   scoped: an xml:base on element A does not leak to element A's
+   siblings. But the RDF-level bnode_counter MUST flow across
+   siblings so two fresh-bnode requests never collide. Thread only
+   the counter across; restore the scoping fields from the parent. *)
+let restore_scope (parent : rdfxml_state) (child : rdfxml_state) : rdfxml_state =
+  { parent with bnode_counter = child.bnode_counter }
+
 let rec process_node_elements (st : rdfxml_state) (nodes : list xml_node) (fuel : nat)
   : Tot process_result (decreases fuel) =
   if fuel = 0 then empty_result st
@@ -763,7 +771,8 @@ let rec process_node_elements (st : rdfxml_state) (nodes : list xml_node) (fuel 
       match node with
       | XElement _ _ _ ->
         let result1 = process_node_element st node (fuel - 1) in
-        let result2 = process_node_elements result1.pr_state rest (fuel - 1) in
+        let st' = restore_scope st result1.pr_state in
+        let result2 = process_node_elements st' rest (fuel - 1) in
         { pr_triples = result1.pr_triples @ result2.pr_triples;
           pr_state = result2.pr_state; }
       | _ ->

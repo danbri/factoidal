@@ -1113,6 +1113,15 @@ and build_collection_list (st : rdfxml_state)
                           pr_triples = all_triples;
                           pr_state = (rest_result.pr_state)
                         }))))
+let restore_scope (parent : rdfxml_state) (child : rdfxml_state) :
+  rdfxml_state=
+  {
+    base_iri = (parent.base_iri);
+    namespaces = (parent.namespaces);
+    lang = (parent.lang);
+    bnode_counter = (child.bnode_counter);
+    li_counter = (parent.li_counter)
+  }
 let rec process_node_elements (st : rdfxml_state)
   (nodes : Parser_XML.xml_node Prims.list) (fuel : Prims.nat) :
   process_result=
@@ -1126,9 +1135,9 @@ let rec process_node_elements (st : rdfxml_state)
           | Parser_XML.XElement (uu___1, uu___2, uu___3) ->
               let result1 =
                 process_node_element st node (fuel - Prims.int_one) in
+              let st' = restore_scope st result1.pr_state in
               let result2 =
-                process_node_elements result1.pr_state rest
-                  (fuel - Prims.int_one) in
+                process_node_elements st' rest (fuel - Prims.int_one) in
               {
                 pr_triples =
                   (FStar_List_Tot_Base.op_At result1.pr_triples
