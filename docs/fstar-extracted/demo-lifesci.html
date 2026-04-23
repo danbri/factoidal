@@ -33,19 +33,30 @@
   button {
     background: var(--brand); color: #fff; border-color: var(--brand-dark);
     cursor: pointer; font-weight: 600;
+    transition: transform 0.05s, background 0.1s, box-shadow 0.1s;
   }
   button:disabled { opacity: 0.6; cursor: wait; }
-  /* Run-button pulse while a query is in flight — lets the user know
-     the click registered even if the engine takes a second to warm
-     up.  */
-  @keyframes runPulse {
-    0%   { box-shadow: 0 0 0 0   rgba(45, 106, 79, 0.6); }
-    70%  { box-shadow: 0 0 0 12px rgba(45, 106, 79, 0); }
-    100% { box-shadow: 0 0 0 0   rgba(45, 106, 79, 0); }
-  }
-  button.running {
-    animation: runPulse 1.1s ease-out infinite;
+  /* Immediate, tangible click feedback — fires synchronously the
+     instant the button is pressed, so the user can tell the click
+     registered even before the JS engine does any async work. */
+  button.run-btn:active:not(:disabled) {
+    transform: scale(0.96);
     background: var(--brand-dark);
+  }
+  /* Sustained in-flight state — darker background, outlined, and a
+     slow pulse so the button looks unmistakably "busy" for 5+ s queries.
+     Only applied while the query is actually running. Removed in
+     every exit path of the handler (see finaliseStatus / cleanup). */
+  @keyframes runPulse {
+    0%   { box-shadow: 0 0 0 0    rgba(45, 106, 79, 0.75); }
+    60%  { box-shadow: 0 0 0 14px rgba(45, 106, 79, 0); }
+    100% { box-shadow: 0 0 0 0    rgba(45, 106, 79, 0); }
+  }
+  button.run-btn.running {
+    animation: runPulse 1.2s ease-out infinite;
+    background: var(--brand-dark);
+    cursor: wait;
+    opacity: 1;          /* override :disabled dimming so the pulse stays vivid */
   }
   /* Spinner dot next to the status text. Uses the same cheerful
      green as the brand. */
@@ -214,7 +225,7 @@
 <div class="row">
   <label for="query-select">Query</label>
   <select id="query-select"></select>
-  <button id="run-btn">Run</button>
+  <button id="run-btn" class="run-btn" type="button">Run</button>
   <span class="radio-group" role="radiogroup" aria-label="Engine">
     <label title="js_of_ocaml — widest browser support">
       <input type="radio" name="engine" value="js" checked><span>JS</span>
@@ -678,17 +689,27 @@ LIMIT 25
 
   runBtn.addEventListener('click', async () => {
     const engine = currentEngine();
+
+    // === IMMEDIATE synchronous feedback ===
+    // Everything in this block paints before the event loop yields to
+    // any await / fetch, so the user sees the click register the
+    // instant they release the mouse. The `await` after this block
+    // is just to force one frame to render before heavy work starts.
+    const originalLabel = runBtn.textContent;
     runBtn.disabled = true;
     runBtn.classList.add('running');
+    runBtn.setAttribute('aria-busy', 'true');
+    runBtn.textContent = 'Running…';
     statusEl.className = 'status';
     statusEl.innerHTML = '<span class="spinner" aria-hidden="true"></span>Running on ' + engine.toUpperCase() + '…';
-    // Big in-progress block in the output area. Visible even for
-    // 5+ s queries; the button-only pulse was too subtle.
     outputWrap.className = 'running';
     outputWrap.innerHTML =
       '<div class="progress-label">Running on ' + engine.toUpperCase() + '…</div>' +
       '<div class="progress-sub">Fetching data, parsing, evaluating…</div>' +
       '<div class="progress-bar" role="progressbar" aria-label="query in progress"></div>';
+    // Yield one animation frame so the browser actually paints the
+    // "running" state before we hog the main thread with parse+eval.
+    await new Promise(r => requestAnimationFrame(() => r()));
 
     const runStart = performance.now();
     // Defensive: clear in-flight visuals on any exit path. If no other
@@ -704,6 +725,8 @@ LIMIT 25
     const cleanup = () => {
       runBtn.disabled = false;
       runBtn.classList.remove('running');
+      runBtn.removeAttribute('aria-busy');
+      runBtn.textContent = originalLabel;
       if (!statusFinalised) finaliseStatus('Ready.', 'status ok');
       if (outputWrap.classList.contains('running')) {
         // Running state leaked — replace with a neutral empty.

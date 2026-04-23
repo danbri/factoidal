@@ -1289,12 +1289,18 @@ ORDER BY ?s ?name` },
   // Run
   // -------------------------------------------------------------------
   runBtn.addEventListener('click', async () => {
+    const originalLabel = runBtn.textContent;
     runBtn.disabled = true;
     runBtn.classList.add('running');
+    runBtn.setAttribute('aria-busy', 'true');
+    runBtn.textContent = 'Running…';
     const engineLabel = (engineEl && engineEl.value ? engineEl.value : 'js').toUpperCase();
     statusEl.innerHTML = '<span class="spinner" aria-hidden="true"></span>Running on ' + engineLabel + '…';
     outputWrap.className = 'empty';
     outputWrap.textContent = '';
+    // Yield one animation frame so the browser paints the "running"
+    // state before we start the heavy work.
+    await new Promise(r => requestAnimationFrame(() => r()));
     const buf = [];
 
     const origLog = console.log;
@@ -1340,6 +1346,8 @@ ORDER BY ?s ?name` },
       } finally {
         runBtn.disabled = false;
         runBtn.classList.remove('running');
+        runBtn.removeAttribute('aria-busy');
+        runBtn.textContent = originalLabel;
       }
       return;
     }
@@ -1374,6 +1382,8 @@ ORDER BY ?s ?name` },
       globalThis.process.exit = origExit;
       runBtn.disabled = false;
       runBtn.classList.remove('running');
+      runBtn.removeAttribute('aria-busy');
+      runBtn.textContent = originalLabel;
     }
 
     const out = buf.join('\n').replace(/\n+$/, '');
