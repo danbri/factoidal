@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Factoidal — Wikidata life-sciences demo (v2, Web Component)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --fg: #222; --muted: #666; --bg: #fff; --surface: #f7f7f7;
+    --border: #e0e0e0; --brand: #2d6a4f; --brand-dark: #1b4332;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--fg); background: var(--bg); line-height: 1.5;
+  }
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 1.2em 1.5em;
+  }
+  header h1 { margin: 0 0 0.2em; font-size: 1.5em; }
+  header p  { margin: 0; color: var(--muted); font-size: 0.95em; }
+  header a  { color: var(--brand-dark); }
+  header .tag-v2 {
+    display: inline-block;
+    margin-left: 0.5em; padding: 0.1em 0.5em;
+    background: var(--brand); color: #fff; border-radius: 10px;
+    font-size: 0.75em; vertical-align: middle;
+  }
+  main { max-width: 1100px; margin: 0 auto; padding: 1.5em; }
+  .row { display: flex; gap: 1em; margin: 0.8em 0; align-items: center; flex-wrap: wrap; }
+  .chip {
+    display: inline-block; padding: 0.1em 0.5em; border-radius: 10px;
+    background: var(--surface); color: var(--muted); font-size: 0.8em;
+    margin-right: 0.3em;
+  }
+  .note {
+    margin-top: 1em; padding: 0.6em 0.8em;
+    background: #fcf8e3; border-left: 3px solid #f0ad4e;
+    color: #6b5919; font-size: 0.9em;
+    border-radius: 0 4px 4px 0;
+  }
+  .note code { background: #fff; padding: 0 0.3em; border-radius: 2px; }
+</style>
+</head>
+
+<body>
+
+<header>
+  <h1>
+    Factoidal — Wikidata life-sciences demo
+    <span class="tag-v2">v2 · Web Component</span>
+  </h1>
+  <p>
+    Same three Wikidata KGX Turtle files as the
+    <a href="./demo-lifesci.html">v1 demo</a>, but the whole page-local
+    glue has been replaced with
+    <code>&lt;factoidal-sparql-client&gt;</code>.
+    <a href="./">← main demo index</a>
+  </p>
+</header>
+
+<main>
+
+<div class="row">
+  <span class="chip">chromosome.ttl — 9,227 triples</span>
+  <span class="chip">sequence_variant.ttl — 6,455 triples</span>
+  <span class="chip">disease.ttl — 27,421 triples</span>
+</div>
+
+<!-- The whole SPARQL client is one element. Queries declared as
+     light-DOM children; data sources passed as JSON on src-data. -->
+<factoidal-sparql-client
+    id="client"
+    engines="js,wasm"
+    default-engine="js"
+    warm
+    src-data='[
+      {"url":"./lifesci/chromosome.ttl",       "graph":"urn:kgx:chromosome",       "vfs":"/tmp/chromosome.ttl"},
+      {"url":"./lifesci/sequence_variant.ttl", "graph":"urn:kgx:sequence_variant", "vfs":"/tmp/sequence_variant.ttl"},
+      {"url":"./lifesci/disease.ttl",          "graph":"urn:kgx:disease",          "vfs":"/tmp/disease.ttl"}
+    ]'>
+
+  <factoidal-query name="variant-chrom"
+                   label="03 — Sequence variants on chromosomes (cross-graph join)">
+# For each sequence variant, which chromosome is it located on?
+# &lt;chromosome&gt; holds the chromosome entities (wdt:P31 wd:Q37748);
+# &lt;sequence_variant&gt; links each variant to its chromosome via
+# wdt:P1057 (Wikidata property "chromosome"). The join matches
+# those links to the chromosome set, returning (variant, chromosome)
+# pairs. LIMIT 20 caps the result at the first twenty matches.
+PREFIX wdt: &lt;http://www.wikidata.org/prop/direct/&gt;
+PREFIX wd:  &lt;http://www.wikidata.org/entity/&gt;
+
+SELECT ?variant ?chrom
+WHERE {
+  GRAPH &lt;urn:kgx:chromosome&gt;       { ?chrom wdt:P31 wd:Q37748 }
+  GRAPH &lt;urn:kgx:sequence_variant&gt; { ?variant wdt:P1057 ?chrom }
+}
+LIMIT 20
+  </factoidal-query>
+
+  <factoidal-query name="count-per-graph"
+                   label="01 — Count triples per named graph">
+# How many triples does each named graph contain?
+# The triple pattern ?s ?p ?o is fully unbound, so it matches
+# every triple; GROUP BY ?g partitions those matches by the
+# containing graph and COUNT(*) reports the size of each partition.
+PREFIX xsd: &lt;http://www.w3.org/2001/XMLSchema#&gt;
+
+SELECT ?g (COUNT(*) AS ?triples)
+WHERE {
+  GRAPH ?g { ?s ?p ?o }
+}
+GROUP BY ?g
+ORDER BY DESC(?triples)
+  </factoidal-query>
+
+  <factoidal-query name="top-diseases"
+                   label="04 — Top diseases by count of genetically-associated genes">
+# Which diseases have the most known genetic associations?
+# For each disease, count how many distinct genes are linked to
+# it via wdt:P2293 ("genetic association") in the &lt;disease&gt; graph.
+# ORDER BY DESC + LIMIT 10 returns the top ten diseases by count.
+PREFIX wdt: &lt;http://www.wikidata.org/prop/direct/&gt;
+
+SELECT ?disease (COUNT(?gene) AS ?associated_genes)
+WHERE {
+  GRAPH &lt;urn:kgx:disease&gt; { ?disease wdt:P2293 ?gene }
+}
+GROUP BY ?disease
+ORDER BY DESC(?associated_genes)
+LIMIT 10
+  </factoidal-query>
+
+</factoidal-sparql-client>
+
+<div class="note">
+  <strong>v2 notes:</strong> this page is ~100 lines of HTML; the v1
+  page is ~830. The remaining orchestration logic lives inside
+  <code>factoidal-sparql-client.js</code>. You can theme the component
+  via CSS custom properties (<code>--fc-brand</code>, etc.) on
+  <code>factoidal-sparql-client { … }</code> in page CSS.
+</div>
+
+<pre id="event-log" style="
+  margin-top: 1em; padding: 0.6em 0.8em; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 4px;
+  font-size: 0.85em; max-height: 8em; overflow: auto;
+  font-family: ui-monospace, Menlo, Consolas, monospace;">Event log: (events will appear here after queries run)</pre>
+
+</main>
+
+<script type="module" src="./factoidal-sparql-client.js"></script>
+<script type="module">
+  // Demonstrate the event contract: listen for query lifecycle events.
+  const log = document.getElementById('event-log');
+  function append(line) {
+    if (log.textContent.startsWith('Event log:')) log.textContent = '';
+    log.textContent += line + '\n';
+    log.scrollTop = log.scrollHeight;
+  }
+  const client = document.getElementById('client');
+  client.addEventListener('factoidal:query-start', (e) => {
+    append('[start] engine=' + e.detail.engine);
+  });
+  client.addEventListener('factoidal:query-done', (e) => {
+    const n = (e.detail.results && e.detail.results.results &&
+               e.detail.results.results.bindings &&
+               e.detail.results.results.bindings.length);
+    append('[done ] engine=' + e.detail.engine
+            + ' runMs=' + Math.round(e.detail.runMs)
+            + ' totalMs=' + Math.round(e.detail.totalMs)
+            + ' rows=' + (n == null ? '-' : n));
+  });
+  client.addEventListener('factoidal:query-error', (e) => {
+    append('[error] engine=' + e.detail.engine
+            + ' ' + (e.detail.error && e.detail.error.message || ''));
+  });
+</script>
+
+</body>
+</html>
