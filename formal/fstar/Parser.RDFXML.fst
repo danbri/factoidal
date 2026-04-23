@@ -460,6 +460,52 @@ let rec collect_property_attributes (st : rdfxml_state) (subj : subject) (attrs 
 
 
 (* ================================================================ *)
+(* Reification helper (RDF/XML §7.3).                                *)
+(* When a property element carries `rdf:ID="name"`, the spec says to *)
+(* also emit the four reification quads that identify the statement *)
+(* by IRI `base_iri#name` — subject/predicate/object + type          *)
+(* rdf:Statement. RDF 1.2 is introducing triple terms as a cleaner   *)
+(* alternative, but RDF/XML's `rdf:ID` shorthand remains fixed to    *)
+(* this classic expansion; nothing to do here for 1.2.               *)
+(* ================================================================ *)
+
+let rdf_statement_iri : string = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Statement"
+let rdf_subject_iri : string = "http://www.w3.org/1999/02/22-rdf-syntax-ns#subject"
+let rdf_predicate_iri : string = "http://www.w3.org/1999/02/22-rdf-syntax-ns#predicate"
+let rdf_object_iri : string = "http://www.w3.org/1999/02/22-rdf-syntax-ns#object"
+
+let subject_to_term (s : subject) : rdf_term =
+  match s with
+  | S_IRI i -> T_IRI i
+  | S_BNode b -> T_BNode b
+
+let make_reification_triples (reif_iri : string) (subj : subject)
+                              (pred_iri : string) (obj : rdf_term)
+  : list triple =
+  if not (is_iri reif_iri) || not (is_iri pred_iri) then []
+  else if not (is_iri rdf_type_iri) || not (is_iri rdf_statement_iri)
+       || not (is_iri rdf_subject_iri) || not (is_iri rdf_predicate_iri)
+       || not (is_iri rdf_object_iri) then []
+  else
+    let reif_s : subject = S_IRI reif_iri in
+    [ { s = reif_s; p = rdf_type_iri;      o = T_IRI rdf_statement_iri };
+      { s = reif_s; p = rdf_subject_iri;   o = subject_to_term subj   };
+      { s = reif_s; p = rdf_predicate_iri; o = T_IRI pred_iri         };
+      { s = reif_s; p = rdf_object_iri;    o = obj                    } ]
+
+(* Resolve an rdf:ID value on a property element to the reification
+   IRI: base_iri + "#" + id_value. Returns None when no rdf:ID is
+   present or when resolution yields a non-IRI. *)
+let compute_reif_iri (st : rdfxml_state) (attrs : list xml_attribute) : option string =
+  match find_attr "rdf:ID" attrs with
+  | Some id_val ->
+    let frag = String.concat "" ["#"; id_val] in
+    let r = resolve_iri st.base_iri frag in
+    if is_iri r then Some r else None
+  | None -> None
+
+
+(* ================================================================ *)
 (* Mutual recursion: process_node_element and process_property_element*)
 (* ================================================================ *)
 
@@ -531,6 +577,15 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
     | XElement tag attrs children ->
       begin
       let st1 = update_state_from_attrs st attrs in
+      (* rdf:ID on a property element triggers reification (§7.3).
+         Compute the statement IRI up-front so every main-triple path
+         below can tack on the four reification quads. *)
+      let reif_iri_opt = compute_reif_iri st1 attrs in
+      let reif_of (pred_iri : string) (obj : rdf_term) : list triple =
+        match reif_iri_opt with
+        | Some r -> make_reification_triples r subj pred_iri obj
+        | None -> []
+      in
       (* Determine the predicate IRI *)
       let (pred_iri_opt, st2) =
         begin match resolve_name st1 tag with
@@ -560,7 +615,7 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
               begin match make_typed_literal xml_content rdf_xmlliteral_iri with
               | Some obj ->
                 let t : triple = { s = subj; p = pred_iri; o = obj } in
-                { pr_triples = [t]; pr_state = st2; }
+                { pr_triples = t :: reif_of pred_iri obj; pr_state = st2; }
               | None -> empty_result st2
               end
             else empty_result st2
@@ -568,13 +623,17 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
             (* parseType="Resource" — implicit blank node *)
             let (bid, st3) = fresh_bnode st2 in
             let bnode_subj = S_BNode bid in
-            let link_triple : triple = { s = subj; p = pred_iri; o = T_BNode bid } in
+            let obj_term = T_BNode bid in
+            let link_triple : triple = { s = subj; p = pred_iri; o = obj_term } in
             let st4 = reset_li_counter st3 in
             let child_result = process_property_children st4 bnode_subj children (fuel - 1) in
-            { pr_triples = link_triple :: child_result.pr_triples;
+            { pr_triples = link_triple :: (reif_of pred_iri obj_term) @ child_result.pr_triples;
               pr_state = child_result.pr_state; }
           | Some "Collection" ->
-            (* parseType="Collection" — RDF list *)
+            (* parseType="Collection" — RDF list. Reification of a
+               Collection property is not well-defined by the spec
+               (and no test exercises it), so we don't attach reif
+               quads here. *)
             let collection_result = process_collection st2 subj pred_iri children (fuel - 1) in
             collection_result
           | _ ->
@@ -598,7 +657,7 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
                 | None -> []
                 end
               in
-              { pr_triples = link_triple :: prop_attr_triples;
+              { pr_triples = link_triple :: (reif_of pred_iri obj) @ prop_attr_triples;
                 pr_state = st3; }
             | None ->
               (* Check for rdf:datatype *)
@@ -622,7 +681,7 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
                     end
                   in
                   let link_triple : triple = { s = subj; p = pred_iri; o = obj_term } in
-                  { pr_triples = link_triple :: node_result.pr_triples;
+                  { pr_triples = link_triple :: (reif_of pred_iri obj_term) @ node_result.pr_triples;
                     pr_state = node_result.pr_state; }
                 | [] -> empty_result st2
                 end
@@ -641,7 +700,7 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
                 begin match obj_opt with
                 | Some obj ->
                   let t : triple = { s = subj; p = pred_iri; o = obj } in
-                  { pr_triples = [t]; pr_state = st2; }
+                  { pr_triples = t :: reif_of pred_iri obj; pr_state = st2; }
                 | None -> empty_result st2
                 end
             end

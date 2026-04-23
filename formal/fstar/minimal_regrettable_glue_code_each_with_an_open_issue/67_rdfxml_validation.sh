@@ -193,13 +193,14 @@ if 'Forbidden node element name' not in content:
         1  # first occurrence only (process_node_element)
     )
 
-# 3. Add validation in process_property_element
+# 3. Add validation in process_property_element.
+# Anchors on the first let binding inside the XElement match arm, which
+# is stable across F* edits that introduce further local helpers
+# (reif_iri_opt, reif_of) between st1 and the pred_iri resolution.
 if 'Forbidden property element name' not in content:
     content = content.replace(
         '''     | Parser_XML.XElement (tag, attrs, children) ->
-         let st1 = update_state_from_attrs st attrs in
-         let uu___1 =
-           match resolve_name st1 tag with''',
+         let st1 = update_state_from_attrs st attrs in''',
         '''     | Parser_XML.XElement (tag, attrs, children) ->
          (* Validate: reject forbidden rdf: names as property elements *)
          (match resolve_name st tag with
@@ -214,9 +215,8 @@ if 'Forbidden property element name' not in content:
           | None -> ());
          validate_rdf_id_attr attrs;
          check_conflicting_attrs attrs;
-         let st1 = update_state_from_attrs st attrs in
-         let uu___1 =
-           match resolve_name st1 tag with'''
+         let st1 = update_state_from_attrs st attrs in''',
+        1  # first occurrence only (process_property_element)
     )
 
 with open(sys.argv[1], 'w') as f:

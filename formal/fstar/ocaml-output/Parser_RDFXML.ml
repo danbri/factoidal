@@ -631,6 +631,71 @@ let rec collect_property_attributes (st : rdfxml_state)
                     | FStar_Pervasives_Native.None -> rest_triples)
                  else rest_triples
          | FStar_Pervasives_Native.None -> rest_triples)
+let rdf_statement_iri : Prims.string=
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#Statement"
+let rdf_subject_iri : Prims.string=
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#subject"
+let rdf_predicate_iri : Prims.string=
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#predicate"
+let rdf_object_iri : Prims.string=
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#object"
+let subject_to_term (s : RDF_Graph_Executable.subject) :
+  RDF_Graph_Executable.rdf_term=
+  match s with
+  | RDF_Graph_Executable.S_IRI i -> RDF_Graph_Executable.T_IRI i
+  | RDF_Graph_Executable.S_BNode b -> RDF_Graph_Executable.T_BNode b
+let make_reification_triples (reif_iri : Prims.string)
+  (subj : RDF_Graph_Executable.subject) (pred_iri : Prims.string)
+  (obj : RDF_Graph_Executable.rdf_term) :
+  RDF_Graph_Executable.triple Prims.list=
+  if
+    (Prims.op_Negation (RDF_Graph_Executable.is_iri reif_iri)) ||
+      (Prims.op_Negation (RDF_Graph_Executable.is_iri pred_iri))
+  then []
+  else
+    if
+      ((((Prims.op_Negation (RDF_Graph_Executable.is_iri rdf_type_iri)) ||
+           (Prims.op_Negation (RDF_Graph_Executable.is_iri rdf_statement_iri)))
+          ||
+          (Prims.op_Negation (RDF_Graph_Executable.is_iri rdf_subject_iri)))
+         ||
+         (Prims.op_Negation (RDF_Graph_Executable.is_iri rdf_predicate_iri)))
+        || (Prims.op_Negation (RDF_Graph_Executable.is_iri rdf_object_iri))
+    then []
+    else
+      (let reif_s = RDF_Graph_Executable.S_IRI reif_iri in
+       [{
+          RDF_Graph_Executable.s = reif_s;
+          RDF_Graph_Executable.p = rdf_type_iri;
+          RDF_Graph_Executable.o =
+            (RDF_Graph_Executable.T_IRI rdf_statement_iri)
+        };
+       {
+         RDF_Graph_Executable.s = reif_s;
+         RDF_Graph_Executable.p = rdf_subject_iri;
+         RDF_Graph_Executable.o = (subject_to_term subj)
+       };
+       {
+         RDF_Graph_Executable.s = reif_s;
+         RDF_Graph_Executable.p = rdf_predicate_iri;
+         RDF_Graph_Executable.o = (RDF_Graph_Executable.T_IRI pred_iri)
+       };
+       {
+         RDF_Graph_Executable.s = reif_s;
+         RDF_Graph_Executable.p = rdf_object_iri;
+         RDF_Graph_Executable.o = obj
+       }])
+let compute_reif_iri (st : rdfxml_state)
+  (attrs : Parser_XML.xml_attribute Prims.list) :
+  Prims.string FStar_Pervasives_Native.option=
+  match Parser_XML.find_attr "rdf:ID" attrs with
+  | FStar_Pervasives_Native.Some id_val ->
+      let frag = FStar_String.concat "" ["#"; id_val] in
+      let r = resolve_iri st.base_iri frag in
+      if RDF_Graph_Executable.is_iri r
+      then FStar_Pervasives_Native.Some r
+      else FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
 let rec process_node_element (st : rdfxml_state) (node : Parser_XML.xml_node)
   (fuel : Prims.nat) : process_result=
   if fuel = Prims.int_zero
@@ -786,6 +851,12 @@ and process_property_element (st : rdfxml_state)
          validate_rdf_id_attr attrs;
          check_conflicting_attrs attrs;
          let st1 = update_state_from_attrs st attrs in
+         let reif_iri_opt = compute_reif_iri st1 attrs in
+         let reif_of pred_iri obj =
+           match reif_iri_opt with
+           | FStar_Pervasives_Native.Some r ->
+               make_reification_triples r subj pred_iri obj
+           | FStar_Pervasives_Native.None -> [] in
          let uu___1 =
            match resolve_name st1 tag with
            | FStar_Pervasives_Native.Some full_iri ->
@@ -829,7 +900,10 @@ and process_property_element (st : rdfxml_state)
                                      RDF_Graph_Executable.p = pred_iri;
                                      RDF_Graph_Executable.o = obj
                                    } in
-                                 { pr_triples = [t]; pr_state = st2 }
+                                 {
+                                   pr_triples = (t :: (reif_of pred_iri obj));
+                                   pr_state = st2
+                                 }
                              | FStar_Pervasives_Native.None ->
                                  empty_result st2)
                           else empty_result st2
@@ -839,20 +913,23 @@ and process_property_element (st : rdfxml_state)
                            | (bid, st3) ->
                                let bnode_subj =
                                  RDF_Graph_Executable.S_BNode bid in
+                               let obj_term =
+                                 RDF_Graph_Executable.T_BNode bid in
                                let link_triple =
                                  {
                                    RDF_Graph_Executable.s = subj;
                                    RDF_Graph_Executable.p = pred_iri;
-                                   RDF_Graph_Executable.o =
-                                     (RDF_Graph_Executable.T_BNode bid)
+                                   RDF_Graph_Executable.o = obj_term
                                  } in
                                let st4 = reset_li_counter st3 in
                                let child_result =
                                  process_property_children st4 bnode_subj
                                    children (fuel - Prims.int_one) in
                                {
-                                 pr_triples = (link_triple ::
-                                   (child_result.pr_triples));
+                                 pr_triples =
+                                   (FStar_List_Tot_Base.op_At (link_triple ::
+                                      (reif_of pred_iri obj_term))
+                                      child_result.pr_triples);
                                  pr_state = (child_result.pr_state)
                                })
                       | FStar_Pervasives_Native.Some "Collection" ->
@@ -890,8 +967,10 @@ and process_property_element (st : rdfxml_state)
                                        attrs
                                  | FStar_Pervasives_Native.None -> [] in
                                {
-                                 pr_triples = (link_triple ::
-                                   prop_attr_triples);
+                                 pr_triples =
+                                   (FStar_List_Tot_Base.op_At (link_triple ::
+                                      (reif_of pred_iri obj))
+                                      prop_attr_triples);
                                  pr_state = st3
                                }
                            | FStar_Pervasives_Native.None ->
@@ -942,8 +1021,11 @@ and process_property_element (st : rdfxml_state)
                                                  obj_term
                                              } in
                                            {
-                                             pr_triples = (link_triple ::
-                                               (node_result.pr_triples));
+                                             pr_triples =
+                                               (FStar_List_Tot_Base.op_At
+                                                  (link_triple ::
+                                                  (reif_of pred_iri obj_term))
+                                                  node_result.pr_triples);
                                              pr_state =
                                                (node_result.pr_state)
                                            })
@@ -966,7 +1048,11 @@ and process_property_element (st : rdfxml_state)
                                           RDF_Graph_Executable.p = pred_iri;
                                           RDF_Graph_Executable.o = obj
                                         } in
-                                      { pr_triples = [t]; pr_state = st2 }
+                                      {
+                                        pr_triples = (t ::
+                                          (reif_of pred_iri obj));
+                                        pr_state = st2
+                                      }
                                   | FStar_Pervasives_Native.None ->
                                       empty_result st2)))))
      | uu___1 -> empty_result st)
