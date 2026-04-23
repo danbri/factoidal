@@ -257,9 +257,12 @@
       key: 'variant-chrom',
       label: '03 — Sequence variants on chromosomes (cross-graph join)',
       body:
-`# Cross-graph join:
-#  <chromosome> provides the set of chromosome entities,
-#  <sequence_variant> provides variants via wdt:P1057 (chromosome).
+`# For each sequence variant, which chromosome is it located on?
+# <chromosome> holds the chromosome entities (wdt:P31 wd:Q37748);
+# <sequence_variant> links each variant to its chromosome via
+# wdt:P1057 (Wikidata property "chromosome"). The join matches
+# those links to the chromosome set, returning (variant, chromosome)
+# pairs. LIMIT 20 caps the result at the first twenty matches.
 PREFIX wdt: <http://www.wikidata.org/prop/direct/>
 PREFIX wd:  <http://www.wikidata.org/entity/>
 
@@ -275,8 +278,10 @@ LIMIT 20
       key: 'top-diseases',
       label: '04 — Top diseases by count of genetically-associated genes',
       body:
-`# Entirely within the <disease> graph: group by disease, count the
-# number of wdt:P2293 "genetic association" links per disease.
+`# Which diseases have the most known genetic associations?
+# For each disease, count how many distinct genes are linked to
+# it via wdt:P2293 ("genetic association") in the <disease> graph.
+# ORDER BY DESC + LIMIT 10 returns the top ten diseases by count.
 PREFIX wdt: <http://www.wikidata.org/prop/direct/>
 
 SELECT ?disease (COUNT(?gene) AS ?associated_genes)
@@ -292,10 +297,10 @@ LIMIT 10
       key: 'count-per-graph',
       label: '01 — Count triples per named graph',
       body:
-`# Count triples per named graph. The triple pattern is fully
-# unbound (?s ?p ?o), so the #97 predicate/subject/object indexes
-# don't narrow the scan — every triple is visited. GROUP BY is
-# tail-rec (issue #95), so this stays O(n) even on the ~43k triples.
+`# How many triples does each named graph contain?
+# The triple pattern ?s ?p ?o is fully unbound, so it matches
+# every triple; GROUP BY ?g partitions those matches by the
+# containing graph and COUNT(*) reports the size of each partition.
 PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
 SELECT ?g (COUNT(*) AS ?triples)
@@ -310,9 +315,10 @@ ORDER BY DESC(?triples)
       key: 'top-types',
       label: '02 — Top instance-of types across all three graphs',
       body:
-`# UNION over P31 (Wikidata "instance of") and rdf:type. Both
-# triple patterns have a bound predicate, so the #97 predicate
-# index narrows the scan on each side before UNION merges them.
+`# What are the most common entity types across the three graphs?
+# Types are stated in two parallel ways: wdt:P31 (Wikidata's
+# "instance of") and rdf:type. UNION pulls both in. For each type
+# we count how many distinct subjects claim it, then take the top 10.
 PREFIX wdt: <http://www.wikidata.org/prop/direct/>
 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 
@@ -331,8 +337,10 @@ LIMIT 10
       key: 'disease-symptoms',
       label: '05 — Diseases that cite wdt:P828 (cause)',
       body:
-`# Diseases (?d) with a stated cause (?c), regardless of what ?c is.
-# Handy starting point for exploring disease-etiology triples.
+`# Diseases with a stated cause. wdt:P828 is Wikidata's "has cause"
+# property; each binding pairs a disease with one of its recorded
+# causes (a pathogen, environmental factor, or other entity). The
+# result is a starting point for exploring disease-aetiology links.
 PREFIX wdt: <http://www.wikidata.org/prop/direct/>
 
 SELECT DISTINCT ?disease ?cause
