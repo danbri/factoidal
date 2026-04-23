@@ -292,8 +292,10 @@ LIMIT 10
       key: 'count-per-graph',
       label: '01 — Count triples per named graph',
       body:
-`# Basic structural query. GROUP BY on the list-backed evaluator is
-# roughly O(n^2), so this takes a few seconds even on ~43k triples.
+`# Count triples per named graph. The triple pattern is fully
+# unbound (?s ?p ?o), so the #97 predicate/subject/object indexes
+# don't narrow the scan — every triple is visited. GROUP BY is
+# tail-rec (issue #95), so this stays O(n) even on the ~43k triples.
 PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
 SELECT ?g (COUNT(*) AS ?triples)
@@ -308,9 +310,9 @@ ORDER BY DESC(?triples)
       key: 'top-types',
       label: '02 — Top instance-of types across all three graphs',
       body:
-`# UNION over P31 (wikidata "instance of") and rdf:type. With
-# gene.ttl excluded, this takes roughly a second across these three
-# graphs.
+`# UNION over P31 (Wikidata "instance of") and rdf:type. Both
+# triple patterns have a bound predicate, so the #97 predicate
+# index narrows the scan on each side before UNION merges them.
 PREFIX wdt: <http://www.wikidata.org/prop/direct/>
 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 
