@@ -137,6 +137,33 @@
   .timing .bar.cached {
     background: var(--border); height: 0.35em;
   }
+  /* In-flight progress indicator shown in the output area while a
+     query is running. Stripes scroll at a steady rate so even
+     long-running queries (5+ s) show continuous motion. */
+  @keyframes progressStripe {
+    0%   { background-position: 0 0; }
+    100% { background-position: 48px 0; }
+  }
+  #out.running {
+    color: var(--fg); background: var(--surface);
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: 2em 1em; text-align: center;
+    position: relative; overflow: hidden;
+  }
+  #out.running .progress-bar {
+    height: 8px; border-radius: 4px; margin: 0.6em auto 0;
+    max-width: 420px;
+    background-image: linear-gradient(
+      45deg,
+      var(--brand) 25%, var(--brand-dark) 25%,
+      var(--brand-dark) 50%, var(--brand) 50%,
+      var(--brand) 75%, var(--brand-dark) 75%
+    );
+    background-size: 24px 24px;
+    animation: progressStripe 0.6s linear infinite;
+  }
+  #out.running .progress-label { font-weight: 600; font-size: 1.05em; }
+  #out.running .progress-sub { font-size: 0.85em; color: var(--muted); margin-top: 0.2em; }
   pre.raw-error {
     background: #fff6f4; border: 1px solid #f0c0c0; padding: 0.8em;
     border-radius: 4px; white-space: pre-wrap; word-break: break-word;
@@ -582,30 +609,98 @@ LIMIT 25
   // -------------------------------------------------------------------
   // Run
   // -------------------------------------------------------------------
+  // -------------------------------------------------------------------
+  // Merge the three TTL payloads into a single TriG string for the
+  // wasm engine path. browser-wasm.js's query() takes one data file
+  // — no multi-file API there yet — so fold the three graphs into
+  // TriG: pull every @prefix/@base/PREFIX/BASE directive to the top,
+  // deduplicate, then wrap each file's remaining triples in
+  // `GRAPH <iri> { … }`.
+  // -------------------------------------------------------------------
+  function payloadsToTriG(payloads) {
+    const directives = new Set();
+    const blocks = [];
+    const dirRE = /^\s*(?:@prefix|@base|PREFIX|BASE)\b[^\n]*\.\s*$/i;
+    payloads.forEach(p => {
+      const bodyLines = [];
+      p.content.split(/\r?\n/).forEach(line => {
+        if (dirRE.test(line)) directives.add(line.trim());
+        else bodyLines.push(line);
+      });
+      blocks.push(
+        'GRAPH <' + p.graph + '> {\n' +
+        bodyLines.join('\n') +
+        '\n}\n'
+      );
+    });
+    return [...directives].join('\n') + '\n\n' + blocks.join('\n');
+  }
+
   runBtn.addEventListener('click', async () => {
     const engine = currentEngine();
     runBtn.disabled = true;
-    runBtn.classList.add('running');          // pulse animation while in-flight
+    runBtn.classList.add('running');
     statusEl.className = 'status';
     statusEl.innerHTML = '<span class="spinner" aria-hidden="true"></span>Running on ' + engine.toUpperCase() + '…';
-    outputWrap.className = 'empty'; outputWrap.textContent = '';
-    const buf = [];
-    const origLog = console.log, origErr = console.error;
-    console.log = (...a) => buf.push(a.join(' '));
-    console.error = (...a) => buf.push(a.join(' '));
+    // Big in-progress block in the output area. Visible even for
+    // 5+ s queries; the button-only pulse was too subtle.
+    outputWrap.className = 'running';
+    outputWrap.innerHTML =
+      '<div class="progress-label">Running on ' + engine.toUpperCase() + '…</div>' +
+      '<div class="progress-sub">Fetching data, parsing, evaluating…</div>' +
+      '<div class="progress-bar" role="progressbar" aria-label="query in progress"></div>';
 
     const runStart = performance.now();
-    try {
-      const [src, payloads] = await Promise.all([getEngineSource(engine), getFilePayloads()]);
+    const cleanup = () => {
+      runBtn.disabled = false;
+      runBtn.classList.remove('running');
+    };
 
-      // Stage the three files in jsoo's fake file system. Both the
-      // js_of_ocaml and wasm_of_ocaml runtimes read the same
-      // jsoo_fs_tmp global on startup.
+    try {
+      const payloads = await getFilePayloads();
+
+      // ============================================================
+      // WASM path: drive factoidal.wasm.js via browser-wasm.js's
+      // query() API. Single data string, so we merge the 3 TTLs
+      // into one TriG string with all prefixes hoisted.
+      // ============================================================
+      if (engine === 'wasm') {
+        try {
+          const mod = await import(new URL('./browser-wasm.js', document.baseURI).href);
+          if (typeof mod.setFactoidalWasmUrl === 'function') {
+            mod.setFactoidalWasmUrl(new URL('./factoidal.wasm.js', document.baseURI));
+          }
+          const trigData = payloadsToTriG(payloads);
+          const qT0 = performance.now();
+          const parsed = await mod.query(trigData, queryEl.value, { dataFormat: 'trig' });
+          const qMs = performance.now() - qT0;
+          statusEl.textContent = 'Done on WASM in ' + qMs.toFixed(0) + ' ms';
+          statusEl.className = 'status ok';
+          renderResultsJSON(parsed);
+          const totalMs = performance.now() - runStart;
+          renderTimingBoth(totalMs, 'wasm', qMs);
+        } catch (e) {
+          statusEl.textContent = 'WASM error: ' + (e && e.message || e);
+          statusEl.className = 'status err';
+          renderRawError((e && e.message ? e.message : String(e))
+                          + (e && e.stderr ? '\n\n' + e.stderr : ''));
+        }
+        cleanup();
+        return;
+      }
+
+      // ============================================================
+      // JS path: js_of_ocaml IIFE runner, multi-file via jsoo_fs_tmp.
+      // ============================================================
+      const src = await getEngineSource(engine);
+      const buf = [];
+      const origLog = console.log, origErr = console.error;
+      console.log = (...a) => buf.push(a.join(' '));
+      console.error = (...a) => buf.push(a.join(' '));
+
       globalThis.jsoo_fs_tmp = payloads.map(p => ({ name: p.vfs, content: p.content }));
       globalThis.process = globalThis.process || {};
-
-      // Build argv: one --named IRI=PATH per file, plus -e + -o json.
-      const argv = [(engine === 'wasm' ? 'node' : 'node'), 'factoidal'];
+      const argv = ['node', 'factoidal'];
       payloads.forEach(p => { argv.push('--named', p.graph + '=' + p.vfs); });
       argv.push('-e', queryEl.value, '-o', 'json');
       globalThis.process.argv = argv;
@@ -614,48 +709,43 @@ LIMIT 25
       const origExit = globalThis.process.exit;
       globalThis.process.exit = (n) => { exitCode = n|0; throw new Error('__exit__'); };
 
-      const t0 = performance.now();
+      const qT0 = performance.now();
       try {
-        // wasm_of_ocaml's loader is async (fetches the .wasm file);
-        // js_of_ocaml's is synchronous. Awaiting works for both —
-        // the sync one returns a non-thenable which await unwraps.
-        const runEngine = new Function('return (async () => { ' + src + ' })();');
-        await runEngine();
+        (new Function(src))();
       } catch (e) {
         if (!e || e.message !== '__exit__') { buf.push('\n[demo] ' + e.message); exitCode = 1; }
       } finally {
         globalThis.process.exit = origExit;
       }
-      const ms = (performance.now() - t0).toFixed(0);
+      const qMs = performance.now() - qT0;
 
       console.log = origLog; console.error = origErr;
       const out = buf.join('\n').replace(/\n+$/, '');
 
       if (exitCode !== 0) {
-        statusEl.textContent = engine.toUpperCase() + ' error after ' + ms + ' ms';
+        statusEl.textContent = 'JS error after ' + qMs.toFixed(0) + ' ms';
         statusEl.className = 'status err';
         renderRawError(out || '(no output, exit ' + exitCode + ')');
+        cleanup();
         return;
       }
 
       const first = out.indexOf('{'), last = out.lastIndexOf('}');
-      if (first < 0 || last < first) { renderRawError(out); return; }
+      if (first < 0 || last < first) { renderRawError(out); cleanup(); return; }
       let parsed;
       try { parsed = JSON.parse(out.slice(first, last + 1)); }
-      catch { renderRawError(out); return; }
-      statusEl.textContent = 'Done on ' + engine.toUpperCase() + ' in ' + ms + ' ms';
+      catch { renderRawError(out); cleanup(); return; }
+      statusEl.textContent = 'Done on JS in ' + qMs.toFixed(0) + ' ms';
       statusEl.className = 'status ok';
       renderResultsJSON(parsed);
       const totalMs = performance.now() - runStart;
-      renderTimingBoth(totalMs, engine, parseFloat(ms));
+      renderTimingBoth(totalMs, 'js', qMs);
     } catch (e) {
-      console.log = origLog; console.error = origErr;
       statusEl.textContent = 'Error: ' + (e && e.message || e);
       statusEl.className = 'status err';
       renderRawError(e && e.stack || String(e));
     } finally {
-      runBtn.disabled = false;
-      runBtn.classList.remove('running');
+      cleanup();
     }
   });
 
