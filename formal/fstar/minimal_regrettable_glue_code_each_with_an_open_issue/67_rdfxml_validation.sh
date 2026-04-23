@@ -139,7 +139,8 @@ let validate_rdf_id_attr (attrs : Parser_XML.xml_attribute list) =
         raise (Rdfxml_error (Printf.sprintf "Invalid %s value: %s" a.attr_name a.attr_value))
   ) attrs
 
-let check_conflicting_attrs (attrs : Parser_XML.xml_attribute list) =
+(* Checks that apply on both node and property elements. *)
+let check_conflicting_attrs_common (attrs : Parser_XML.xml_attribute list) =
   let has a = List.exists (fun (x : Parser_XML.xml_attribute) -> x.attr_name = a) attrs in
   if has "rdf:parseType" && has "rdf:resource" then
     raise (Rdfxml_error "conflicting rdf:parseType and rdf:resource");
@@ -151,22 +152,35 @@ let check_conflicting_attrs (attrs : Parser_XML.xml_attribute list) =
      Accept as an explicit error; error006/error007 exercise this. *)
   if has "rdf:bagID" then
     raise (Rdfxml_error "rdf:bagID is not supported in RDF 1.1");
-  (* Mutual exclusion rules per RDF/XML §7: a single element cannot
-     identify itself with more than one of rdf:ID / rdf:about / rdf:nodeID,
-     and a property element cannot pair rdf:nodeID with rdf:resource.
-     These cover syntax-incomplete error004/005/006. *)
-  if has "rdf:nodeID" && has "rdf:ID" then
-    raise (Rdfxml_error "conflicting rdf:nodeID and rdf:ID");
-  if has "rdf:nodeID" && has "rdf:about" then
-    raise (Rdfxml_error "conflicting rdf:nodeID and rdf:about");
-  if has "rdf:nodeID" && has "rdf:resource" then
-    raise (Rdfxml_error "conflicting rdf:nodeID and rdf:resource");
-  if has "rdf:ID" && has "rdf:about" then
-    raise (Rdfxml_error "conflicting rdf:ID and rdf:about");
   (* rdf:li is an element name, never an attribute. Covers
      rdf-containers-syntax-vs-schema-error001. *)
   if has "rdf:li" then
     raise (Rdfxml_error "rdf:li may not be used as an attribute")
+
+(* Retained name for the node-element path: adds the node-scoped
+   mutual-exclusion rules on top of the common checks.
+   On a node element, rdf:ID / rdf:about / rdf:nodeID all identify
+   the node itself, so any two together are contradictory. *)
+let check_conflicting_attrs (attrs : Parser_XML.xml_attribute list) =
+  check_conflicting_attrs_common attrs;
+  let has a = List.exists (fun (x : Parser_XML.xml_attribute) -> x.attr_name = a) attrs in
+  if has "rdf:nodeID" && has "rdf:ID" then
+    raise (Rdfxml_error "conflicting rdf:nodeID and rdf:ID on a node element");
+  if has "rdf:nodeID" && has "rdf:about" then
+    raise (Rdfxml_error "conflicting rdf:nodeID and rdf:about on a node element");
+  if has "rdf:ID" && has "rdf:about" then
+    raise (Rdfxml_error "conflicting rdf:ID and rdf:about on a node element")
+
+(* For property elements, rdf:ID identifies the *statement* (for
+   reification), not the object. It can legitimately co-occur with
+   rdf:nodeID (which picks the object) — see rdfms-syntax-incomplete-
+   test004. The only mutual-exclusion at the object-identifying
+   level is rdf:nodeID + rdf:resource (both pick the object). *)
+let check_conflicting_attrs_property (attrs : Parser_XML.xml_attribute list) =
+  check_conflicting_attrs_common attrs;
+  let has a = List.exists (fun (x : Parser_XML.xml_attribute) -> x.attr_name = a) attrs in
+  if has "rdf:nodeID" && has "rdf:resource" then
+    raise (Rdfxml_error "conflicting rdf:nodeID and rdf:resource on a property element")
 
 type rdfxml_state ='''
     )
@@ -214,7 +228,7 @@ if 'Forbidden property element name' not in content:
             ()
           | None -> ());
          validate_rdf_id_attr attrs;
-         check_conflicting_attrs attrs;
+         check_conflicting_attrs_property attrs;
          let st1 = update_state_from_attrs st attrs in''',
         1  # first occurrence only (process_property_element)
     )
