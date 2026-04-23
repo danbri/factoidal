@@ -126,7 +126,23 @@ let check_conflicting_attrs (attrs : Parser_XML.xml_attribute list) =
   if has "rdf:aboutEach" then
     raise (Rdfxml_error "rdf:aboutEach is deprecated and forbidden");
   if has "rdf:aboutEachPrefix" then
-    raise (Rdfxml_error "rdf:aboutEachPrefix is deprecated and forbidden")
+    raise (Rdfxml_error "rdf:aboutEachPrefix is deprecated and forbidden");
+  (* rdf:bagID was removed in RDF 1.1 (§18 of the Concepts spec).
+     Accept as an explicit error; error006/error007 exercise this. *)
+  if has "rdf:bagID" then
+    raise (Rdfxml_error "rdf:bagID is not supported in RDF 1.1");
+  (* Mutual exclusion rules per RDF/XML §7: a single element cannot
+     identify itself with more than one of rdf:ID / rdf:about / rdf:nodeID,
+     and a property element cannot pair rdf:nodeID with rdf:resource.
+     These cover syntax-incomplete error004/005/006. *)
+  if has "rdf:nodeID" && has "rdf:ID" then
+    raise (Rdfxml_error "conflicting rdf:nodeID and rdf:ID");
+  if has "rdf:nodeID" && has "rdf:about" then
+    raise (Rdfxml_error "conflicting rdf:nodeID and rdf:about");
+  if has "rdf:nodeID" && has "rdf:resource" then
+    raise (Rdfxml_error "conflicting rdf:nodeID and rdf:resource");
+  if has "rdf:ID" && has "rdf:about" then
+    raise (Rdfxml_error "conflicting rdf:ID and rdf:about")
 
 type rdfxml_state =
   {
