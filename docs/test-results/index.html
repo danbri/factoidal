@@ -1,93 +1,588 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Factoidal W3C Test Results</title>
-  <meta charset="utf-8">
-  <style>
-    body { font-family: system-ui, -apple-system, sans-serif; max-width: 800px; margin: 2em auto; padding: 0 1em; line-height: 1.6; color: #333; }
-    h1 { border-bottom: 2px solid #2d6a4f; padding-bottom: 0.3em; }
-    h2 { margin-top: 1.8em; }
-    a { color: #2d6a4f; }
-    nav { margin-bottom: 2em; font-size: 0.9em; }
-    nav a { margin-right: 1.2em; }
-    .summary { background: #f0f7f4; border: 1px solid #2d6a4f; border-radius: 6px; padding: 1em 1.5em; margin: 1em 0; }
-    .summary .numbers { font-size: 1.3em; font-weight: bold; }
-    .pass { color: #2d6a4f; }
-    .fail { color: #c0392b; }
-    .skip { color: #7f8c8d; }
-    pre { background: #f8f8f8; padding: 1em; overflow-x: auto; border-radius: 4px; border: 1px solid #ddd; font-size: 0.85em; }
-    .meta { color: #666; font-size: 0.85em; margin-bottom: 2em; }
-    footer { margin-top: 3em; border-top: 1px solid #ddd; padding-top: 1em; font-size: 0.85em; color: #666; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Factoidal — how well does our engine follow the SPARQL / RDF standards?</title>
+<style>
+  :root {
+    --fg: #222; --muted: #666; --bg: #fff; --surface: #f7f7f7;
+    --border: #e0e0e0; --brand: #2d6a4f; --brand-dark: #1b4332;
+    --ok: #2d6a4f; --warn: #d97706; --err: #c0392b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--fg); background: var(--bg); line-height: 1.55;
+  }
+  header {
+    background: linear-gradient(180deg, var(--surface), var(--bg));
+    border-bottom: 1px solid var(--border); padding: 1.5em 1em;
+  }
+  header .inner { max-width: 900px; margin: 0 auto; }
+  header h1 { margin: 0 0 0.2em; font-size: 1.5em; color: var(--brand-dark); }
+  header p  { margin: 0; color: var(--muted); font-size: 0.95em; }
+  header nav { margin-top: 0.8em; font-size: 0.9em; }
+  header nav a { margin-right: 1.2em; color: var(--brand-dark); }
+  main { max-width: 900px; margin: 0 auto; padding: 1.5em 1em; }
+
+  .hero {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1.8em; margin: 0 0 2em;
+    text-align: center;
+  }
+  .hero .pct {
+    font-size: 3.2em; font-weight: 700; color: var(--ok);
+    line-height: 1; margin: 0 0 0.15em;
+  }
+  .hero .headline { font-size: 1.15em; margin: 0 0 0.4em; font-weight: 500; }
+  .hero .sub { color: var(--muted); font-size: 0.95em; margin: 0; }
+
+  .explainer {
+    background: #fef9e7; border-left: 3px solid #f59e0b;
+    padding: 0.9em 1.2em; margin: 0 0 2em; border-radius: 4px;
+    font-size: 0.95em;
+  }
+  .explainer strong { color: var(--brand-dark); }
+
+  h2 { margin: 2em 0 0.6em; font-size: 1.2em; color: var(--brand-dark); }
+  h2 .inline-numbers {
+    font-weight: 500; color: var(--muted); font-size: 0.85em;
+    margin-left: 0.5em;
+  }
+
+  .summary-tiles {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.8em; margin: 0 0 2em;
+  }
+  .tile {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 0.9em 1em;
+  }
+  .tile .label { color: var(--muted); font-size: 0.85em; margin-bottom: 0.15em; }
+  .tile .value { font-size: 1.6em; font-weight: 600; line-height: 1; }
+  .tile .value small { font-size: 0.55em; font-weight: 400; color: var(--muted); }
+  .tile.ok   .value { color: var(--ok); }
+  .tile.warn .value { color: var(--warn); }
+  .tile.err  .value { color: var(--err); }
+
+  .suites { display: flex; flex-direction: column; gap: 0.25em; margin: 0 0 1em; }
+  .suite-row {
+    display: grid;
+    grid-template-columns: 13em 1fr 8em;
+    align-items: center; gap: 0.8em;
+    padding: 0.35em 0.8em;
+    border-radius: 4px;
+    font-size: 0.92em;
+  }
+  .suite-row .suite-name { font-family: ui-monospace, Menlo, Consolas, monospace;
+                           font-size: 0.88em; }
+  .suite-row .suite-bar {
+    height: 0.7em; background: var(--border); border-radius: 3px; overflow: hidden;
+  }
+  .suite-row .suite-bar .fill {
+    height: 100%; background: var(--ok); transition: width 0.3s;
+  }
+  .suite-row .suite-numbers {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.85em; text-align: right;
+  }
+  .suite-row .suite-numbers .p { color: var(--ok); font-weight: 600; }
+  .suite-row .suite-numbers .f { color: var(--err); font-weight: 600; }
+  .suite-row .suite-numbers small { color: var(--muted); font-weight: 400; }
+  .suite-row.perfect       .suite-bar .fill { background: var(--ok); }
+  .suite-row.near-perfect  .suite-bar .fill { background: #65a30d; }
+  .suite-row.mixed         .suite-bar .fill { background: var(--warn); }
+  .suite-row.skipped       .suite-bar .fill { background: #9ca3af; }
+
+  @media (max-width: 520px) {
+    .suite-row { grid-template-columns: 1fr auto; grid-template-rows: auto auto; }
+    .suite-row .suite-bar { grid-column: 1 / span 2; }
+    .suite-row .suite-numbers { grid-column: 2; grid-row: 1; }
+  }
+
+  details { margin: 1em 0; background: var(--surface); border-radius: 4px;
+            padding: 0.6em 0.9em; border: 1px solid var(--border); }
+  details summary { cursor: pointer; font-weight: 500; color: var(--muted); }
+  details pre { background: var(--bg); padding: 0.6em 0.8em;
+                border: 1px solid var(--border); border-radius: 4px;
+                font-size: 0.82em; overflow-x: auto; margin: 0.5em 0 0; }
+
+  footer {
+    max-width: 900px; margin: 2em auto 3em; padding: 1em;
+    color: var(--muted); font-size: 0.85em; border-top: 1px solid var(--border);
+  }
+  footer code { background: var(--surface); padding: 0.1em 0.4em; border-radius: 3px; }
+  footer a { color: var(--brand-dark); }
+</style>
 </head>
 <body>
-<nav>
-  <a href="/factoidal/">Home</a>
-  <a href="/factoidal/test-results/">Test Results</a>
-  <a href="https://github.com/danbri/factoidal">GitHub</a>
-</nav>
-<h1>W3C Test Results</h1>
-<p class="meta">Generated: 2026-04-17T06:54:00Z &middot; Commit: <code>2df27f2</code> &middot; Branch: <code>claude/main</code></p>
 
-<div class="summary">
-  <div class="numbers">
-    SPARQL 1.1: <span class="pass">275 pass</span>, <span class="fail">144 fail</span>, <span class="skip">205 skip</span>
+<header>
+  <div class="inner">
+    <h1>Factoidal — W3C conformance</h1>
+    <p>How well does our formally-verified SPARQL / RDF engine follow the official standards?</p>
+    <nav>
+      <a href="/factoidal/">Home</a>
+      <a href="/factoidal/test-results/">Test results</a>
+      <a href="/factoidal/fstar-extracted/">Demos</a>
+      <a href="https://github.com/danbri/factoidal">GitHub</a>
+    </nav>
   </div>
-  <div class="numbers">
-    RDF 1.1: <span class="pass">882 pass</span>, <span class="fail">149 fail</span>
+</header>
+
+<main>
+
+<div class="hero">
+  <p class="pct">97.6%</p>
+  <p class="headline">1565 of 1604 runnable tests pass</p>
+  <p class="sub">39 fail · 58 skipped (feature not yet implemented) · out of 1662 total</p>
+</div>
+
+<div class="explainer">
+<strong>What is this?</strong>
+The W3C — the standards body for the Web — publishes "conformance test suites"
+for RDF (how structured data is represented) and SPARQL (how you query it).
+Any implementation that claims to be compliant has to pass these tests. The
+numbers on this page show, out of every W3C test, how many our engine gets
+right.
+<br><br>
+<strong>Why it matters:</strong> RDF and SPARQL are how public knowledge graphs
+like Wikidata and Schema.org are queried. Tests in the "pass" column are
+features of those standards that work correctly in Factoidal. Tests in "fail"
+are ones where we don't match the reference behaviour yet. "Skipped" tests are
+features we haven't started on (mostly HTTP protocol / federated-query
+endpoints).
+<br><br>
+<strong>What's different about Factoidal:</strong> the engine is extracted from
+an <a href="https://www.fstar-lang.org/">F*</a> mathematical specification. The
+OCaml that runs these tests was generated from a spec a proof assistant checked
+— so passing a test is not just "it worked on the sample", it's "the proof
+extracted to this OCaml code and that code passes the test". See the
+<a href="https://github.com/danbri/factoidal">GitHub repo</a> for the source
+specs.
+</div>
+
+<h2>Headline</h2>
+
+<div class="summary-tiles">
+  <div class="tile ok">
+    <div class="label">Tests passing</div>
+    <div class="value">1565</div>
+  </div>
+  <div class="tile err">
+    <div class="label">Tests failing</div>
+    <div class="value">39</div>
+  </div>
+  <div class="tile warn">
+    <div class="label">Not yet implemented</div>
+    <div class="value">58<small> skipped</small></div>
+  </div>
+  <div class="tile">
+    <div class="label">Pass rate</div>
+    <div class="value">97.6%<small> of runnable</small></div>
   </div>
 </div>
 
-<h2>SPARQL 1.1 Per-Suite</h2>
-<pre>
-  add                                 pass:0 fail:0 skip:8 unsupported:0
-  aggregates                          pass:45 fail:2 skip:0 unsupported:0
-  basic-update                        pass:0 fail:0 skip:13 unsupported:0
-  bind                                pass:0 fail:10 skip:0 unsupported:0
-  bindings                            pass:8 fail:2 skip:0 unsupported:1
+<h2>SPARQL 1.1 — querying <span class="inline-numbers">539 pass · 34 fail · 58 skip</span></h2>
+<p style="color: var(--muted); font-size: 0.93em; margin-top: 0;">
+  Each row is one part of the SPARQL language specification. The bar shows how
+  many of that suite's tests pass; numbers on the right are
+  <span style="color:var(--ok)">pass</span>/<span style="color:var(--err)">fail</span>.
+</p>
+<div class="suites">
+      <div class="suite-row perfect">
+        <div class="suite-name">add</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">8</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row near-perfect">
+        <div class="suite-name">aggregates</div>
+        <div class="suite-bar"><div class="fill" style="width:98%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">46</span>/<span class="f">1</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row mixed">
+        <div class="suite-name">basic-update</div>
+        <div class="suite-bar"><div class="fill" style="width:85%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">11</span>/<span class="f">2</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">bind</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">10</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row near-perfect">
+        <div class="suite-name">bindings</div>
+        <div class="suite-bar"><div class="fill" style="width:91%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">10</span>/<span class="f">1</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row mixed">
+        <div class="suite-name">cast</div>
+        <div class="suite-bar"><div class="fill" style="width:67%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">4</span>/<span class="f">2</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">clear</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">4</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row mixed">
+        <div class="suite-name">construct</div>
+        <div class="suite-bar"><div class="fill" style="width:86%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">6</span>/<span class="f">1</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">copy</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">6</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">csv-tsv-res</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">6</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">delete</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">19</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">delete-data</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">6</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">delete-insert</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">17</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">delete-where</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">6</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">drop</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">4</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row mixed">
+        <div class="suite-name">entailment</div>
+        <div class="suite-bar"><div class="fill" style="width:73%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">51</span>/<span class="f">19</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">exists</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">6</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">functions</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">75</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">grouping</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">6</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row skipped">
+        <div class="suite-name">http-rdf-update</div>
+        <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">0</span>/<span class="f">0</span>
+          <small>skip 19</small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">json-res</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">4</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">move</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">6</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">negation</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">12</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">project-expression</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">7</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">property-path</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">33</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row skipped">
+        <div class="suite-name">protocol</div>
+        <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">0</span>/<span class="f">0</span>
+          <small>skip 34</small>
+        </div>
+      </div>
+      <div class="suite-row mixed">
+        <div class="suite-name">service</div>
+        <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">0</span>/<span class="f">7</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row skipped">
+        <div class="suite-name">service-description</div>
+        <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">0</span>/<span class="f">0</span>
+          <small>skip 3</small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">subquery</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">14</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">syntax-fed</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">3</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">syntax-query</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">94</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row near-perfect">
+        <div class="suite-name">syntax-update-1</div>
+        <div class="suite-bar"><div class="fill" style="width:98%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">53</span>/<span class="f">1</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">syntax-update-2</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">1</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">update-silent</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">11</span>/<span class="f">0</span>
+          <small>skip 2</small>
+        </div>
+      </div>
+</div>
+
+<h2>RDF 1.1 — data formats <span class="inline-numbers">1026 pass · 5 fail</span></h2>
+<p style="color: var(--muted); font-size: 0.93em; margin-top: 0;">
+  Tests for reading and writing RDF in five serialisations (Turtle, TriG,
+  N-Triples, N-Quads, RDF/XML) plus the model-theoretic semantics of RDF
+  graphs.
+</p>
+<div class="suites">
+      <div class="suite-row perfect">
+        <div class="suite-name">rdf-mt</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">39</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">rdf-n-quads</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">87</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">rdf-n-triples</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">70</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">rdf-trig</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">356</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">rdf-turtle</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">313</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row near-perfect">
+        <div class="suite-name">rdf-xml</div>
+        <div class="suite-bar"><div class="fill" style="width:97%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">161</span>/<span class="f">5</span>
+          <small></small>
+        </div>
+      </div>
+</div>
+
+<details>
+  <summary>Raw per-suite numbers (for the curious)</summary>
+  <h3 style="font-size: 1em; margin: 1em 0 0.3em;">SPARQL 1.1</h3>
+  <pre>631 total: 539 pass, 34 fail, 58 skip, 0 unsupported
+  add                                 pass:8 fail:0 skip:0 unsupported:0
+  aggregates                          pass:46 fail:1 skip:0 unsupported:0
+  basic-update                        pass:11 fail:2 skip:0 unsupported:0
+  bind                                pass:10 fail:0 skip:0 unsupported:0
+  bindings                            pass:10 fail:1 skip:0 unsupported:0
   cast                                pass:4 fail:2 skip:0 unsupported:0
-  clear                               pass:0 fail:0 skip:4 unsupported:0
-  construct                           pass:2 fail:1 skip:0 unsupported:4
-  copy                                pass:0 fail:0 skip:6 unsupported:0
-  csv-tsv-res                         pass:4 fail:2 skip:0 unsupported:0
-  delete                              pass:0 fail:0 skip:19 unsupported:0
-  delete-data                         pass:0 fail:0 skip:6 unsupported:0
-  delete-insert                       pass:8 fail:0 skip:9 unsupported:0
-  delete-where                        pass:0 fail:0 skip:6 unsupported:0
-  drop                                pass:0 fail:0 skip:4 unsupported:0
-  entailment                          pass:36 fail:34 skip:0 unsupported:0
-  exists                              pass:0 fail:6 skip:0 unsupported:0
-  functions                           pass:58 fail:17 skip:0 unsupported:0
-  grouping                            pass:3 fail:3 skip:0 unsupported:0
+  clear                               pass:4 fail:0 skip:0 unsupported:0
+  construct                           pass:6 fail:1 skip:0 unsupported:0
+  copy                                pass:6 fail:0 skip:0 unsupported:0
+  csv-tsv-res                         pass:6 fail:0 skip:0 unsupported:0
+  delete                              pass:19 fail:0 skip:0 unsupported:0
+  delete-data                         pass:6 fail:0 skip:0 unsupported:0
+  delete-insert                       pass:17 fail:0 skip:0 unsupported:0
+  delete-where                        pass:6 fail:0 skip:0 unsupported:0
+  drop                                pass:4 fail:0 skip:0 unsupported:0
+  entailment                          pass:51 fail:19 skip:0 unsupported:0
+  exists                              pass:6 fail:0 skip:0 unsupported:0
+  functions                           pass:75 fail:0 skip:0 unsupported:0
+  grouping                            pass:6 fail:0 skip:0 unsupported:0
   http-rdf-update                     pass:0 fail:0 skip:19 unsupported:0
-  json-res                            pass:3 fail:1 skip:0 unsupported:0
-  move                                pass:0 fail:0 skip:6 unsupported:0
-  negation                            pass:1 fail:11 skip:0 unsupported:0
-  project-expression                  pass:6 fail:1 skip:0 unsupported:0
-  property-path                       pass:1 fail:32 skip:0 unsupported:0
+  json-res                            pass:4 fail:0 skip:0 unsupported:0
+  move                                pass:6 fail:0 skip:0 unsupported:0
+  negation                            pass:12 fail:0 skip:0 unsupported:0
+  project-expression                  pass:7 fail:0 skip:0 unsupported:0
+  property-path                       pass:33 fail:0 skip:0 unsupported:0
   protocol                            pass:0 fail:0 skip:34 unsupported:0
   service                             pass:0 fail:7 skip:0 unsupported:0
   service-description                 pass:0 fail:0 skip:3 unsupported:0
-  subquery                            pass:0 fail:12 skip:0 unsupported:2
+  subquery                            pass:14 fail:0 skip:0 unsupported:0
   syntax-fed                          pass:3 fail:0 skip:0 unsupported:0
-  syntax-query                        pass:93 fail:1 skip:0 unsupported:0
-  syntax-update-1                     pass:0 fail:0 skip:54 unsupported:0
-  syntax-update-2                     pass:0 fail:0 skip:1 unsupported:0
-  update-silent                       pass:0 fail:0 skip:13 unsupported:0
-</pre>
-
-<h2>RDF 1.1 Per-Suite</h2>
-<pre>
+  syntax-query                        pass:94 fail:0 skip:0 unsupported:0
+  syntax-update-1                     pass:53 fail:1 skip:0 unsupported:0
+  syntax-update-2                     pass:1 fail:0 skip:0 unsupported:0
+  update-silent                       pass:11 fail:0 skip:2 unsupported:0</pre>
+  <h3 style="font-size: 1em; margin: 1em 0 0.3em;">RDF 1.1</h3>
+  <pre>1031 total: 1026 pass, 5 fail, 0 skip, 0 unsupported
   rdf-mt                              pass:39 fail:0 skip:0 unsupported:0
-  rdf-n-quads                         pass:53 fail:34 skip:0 unsupported:0
-  rdf-n-triples                       pass:41 fail:29 skip:0 unsupported:0
-  rdf-trig                            pass:335 fail:21 skip:0 unsupported:0
-  rdf-turtle                          pass:293 fail:20 skip:0 unsupported:0
-  rdf-xml                             pass:121 fail:45 skip:0 unsupported:0
-</pre>
+  rdf-n-quads                         pass:87 fail:0 skip:0 unsupported:0
+  rdf-n-triples                       pass:70 fail:0 skip:0 unsupported:0
+  rdf-trig                            pass:356 fail:0 skip:0 unsupported:0
+  rdf-turtle                          pass:313 fail:0 skip:0 unsupported:0
+  rdf-xml                             pass:161 fail:5 skip:0 unsupported:0</pre>
+</details>
+
+</main>
 
 <footer>
-  Factoidal &mdash; verified RDF/SPARQL from F*.
-  Report generated by <code>generate-report.sh</code>.
+  Generated <strong>2026-04-23 15:54 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/2367a1d55a46bbaf5c76639747a43384a7157abd">2367a1d</a></code>
+  on branch <code>claude/main</code> — &ldquo;web component: tentative factoidal-sparql-client, v2 demo alongside&rdquo;.
+  <br>
+  Auto-rebuilt by
+  <a href="https://github.com/danbri/factoidal/actions/workflows/w3c-tests.yml">GitHub Actions</a>
+  on every push to <code>claude/main</code> and nightly at 06:00 UTC.
+  Source: <code>formal/fstar/generate-report.sh</code>.
 </footer>
-</body></html>
+
+</body>
+</html>

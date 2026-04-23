@@ -1,9 +1,17 @@
 === W3C SPARQL 1.1 Test Runner ===
-Test base: ../../../tests/w3c/sparql/sparql11
+Test base: tests/w3c/sparql/sparql11
 
 
 --- add ---
-  [suite time: 0.1s]
+  PASS: ADD 1
+  PASS: ADD 2
+  PASS: ADD 3
+  PASS: ADD 4
+  PASS: ADD 5
+  PASS: ADD 6
+  PASS: ADD 7
+  PASS: ADD 8
+  [suite time: 0.0s]
 
 --- aggregates ---
   PASS: COUNT 1
@@ -14,26 +22,26 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: COUNT 6
   PASS: COUNT 7
   PASS: COUNT 8
-  PASS: COUNT 8b (20ms)
+  PASS: COUNT 8b
   PASS: COUNT 9
   PASS: COUNT 10
   PASS: COUNT 11
   PASS: COUNT 12
   PASS: GROUP_CONCAT 1
-  FAIL: GROUP_CONCAT 2 — Runtime: Not yet implemented: SPARQL11.Algebra.eval_subselect_fwd
+  PASS: GROUP_CONCAT 2
   PASS: GROUP_CONCAT with SEPARATOR
   PASS: GROUP_CONCAT with same language tag
   PASS: GROUP_CONCAT with different language tags
   PASS: GROUP_CONCAT with one element
   PASS: SUM
-  PASS: SUM with GROUP BY (17ms)
+  PASS: SUM with GROUP BY
   PASS: AVG
   PASS: AVG with GROUP BY
   PASS: AVG with empty group (value defined to be 0)
   PASS: MIN
-  PASS: MIN with GROUP BY (17ms)
+  PASS: MIN with GROUP BY
   PASS: MAX
-  PASS: MAX with GROUP BY (17ms)
+  PASS: MAX with GROUP BY
   PASS: SAMPLE
   PASS: Error in AVG
   PASS: Protect from error in AVG
@@ -41,53 +49,66 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: agg on empty set, no grouping
   PASS: COUNT: no match, with group
   PASS: COUNT: no match, no group
-  FAIL: COUNT: no GROUP BY inside of GRAPH — Runtime: Not yet implemented: SPARQL11.Algebra.eval_subselect_fwd
+  FAIL: COUNT: no GROUP BY inside of GRAPH — Triples mismatch: expected 17, got 0
   PASS: HAVING: multiple conditions
-  PASS: GROUP BY with a function (13ms)
+  PASS: GROUP BY with a function
   PASS: GROUP BY with a built-in function
-  PASS: AVG DISTINCT with GROUP BY (11ms)
-  PASS: COUNT DISTINCT with GROUP BY (12ms)
-  PASS: COUNT(DISTINCT *) with GROUP BY (12ms)
+  PASS: AVG DISTINCT with GROUP BY
+  PASS: COUNT DISTINCT with GROUP BY
+  PASS: COUNT(DISTINCT *) with GROUP BY
   PASS: GROUP_CONCAT DISTINCT
-  PASS: MAX DISTINCT with GROUP BY (12ms)
-  PASS: MIN DISTINCT with GROUP BY (11ms)
+  PASS: MAX DISTINCT with GROUP BY
+  PASS: MIN DISTINCT with GROUP BY
   PASS: SAMPLE DISTINCT
-  PASS: SUM DISTINCT with GROUP BY (11ms)
-  [suite time: 1.3s]
+  PASS: SUM DISTINCT with GROUP BY
+  [suite time: 0.0s]
 
 --- basic-update ---
-  [suite time: 0.4s]
+  PASS: Simple insert data 1
+  PASS: Simple insert data named 1
+  PASS: Simple insert data named 2
+  PASS: Simple insert data named 3
+  PASS: INSERT 01
+  PASS: INSERT 02
+  PASS: INSERT 03
+  PASS: INSERT 04
+  PASS: INSERT USING 01
+  FAIL: INSERT same bnode twice — UPDATE result mismatch: default=0/0 triples, named=1/1 graphs
+  FAIL: INSERTing the same bnode with INSERT DATA into two different Graphs is the same bnode — UPDATE result mismatch: default=0/0 triples, named=1/1 graphs
+  PASS: INSERTing the same bnode with two INSERT WHERE statement within one request is NOT the same bnode
+  PASS: INSERTing the same bnode with two INSERT WHERE statement within one request is NOT the same bnode even if both WHERE clauses have the empty solution mapping as the only solution.
+  [suite time: 0.0s]
 
 --- bind ---
-  FAIL: bind01 - BIND — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_fwd
-  FAIL: bind02 - BIND — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_fwd
-  FAIL: bind03 - BIND — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_fwd
-  FAIL: bind04 - BIND — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_fwd
-  FAIL: bind05 - BIND — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_fwd
-  FAIL: bind06 - BIND — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_fwd
-  FAIL: bind07 - BIND — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_fwd
-  FAIL: bind08 - BIND — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_fwd
-  FAIL: bind10 - BIND scoping - Variable in filter not in scope — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
-  FAIL: bind11 - BIND scoping - Variable in filter in scope — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_fwd
-  [suite time: 0.1s]
+  PASS: bind01 - BIND
+  PASS: bind02 - BIND
+  PASS: bind03 - BIND
+  PASS: bind04 - BIND
+  PASS: bind05 - BIND
+  PASS: bind06 - BIND
+  PASS: bind07 - BIND
+  PASS: bind08 - BIND
+  PASS: bind10 - BIND scoping - Variable in filter not in scope
+  PASS: bind11 - BIND scoping - Variable in filter in scope
+  [suite time: 0.0s]
 
 --- bindings ---
   PASS: Post-query VALUES with subj-var, 1 row
   PASS: Post-query VALUES with obj-var, 1 row
   PASS: Post-query VALUES with 2 obj-vars, 1 row
   PASS: Post-query VALUES with 2 obj-vars, 1 row with UNDEF
-  PASS: Post-query VALUES with 2 obj-vars, 2 rows with UNDEF (21ms)
+  PASS: Post-query VALUES with 2 obj-vars, 2 rows with UNDEF
   PASS: Post-query VALUES with pred-var, 1 row
-  FAIL: Post-query VALUES with (OPTIONAL) obj-var, 1 row — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
+  PASS: Post-query VALUES with (OPTIONAL) obj-var, 1 row
   PASS: Post-query VALUES with subj/obj-vars, 2 rows with UNDEF
   PASS: Inline VALUES graph pattern
-  FAIL: Post-subquery VALUES — Runtime: Not yet implemented: SPARQL11.Algebra.eval_subselect_fwd
-  unsup: VALUES inside GRAPH binding the same variable as the graph name — Turtle result format not yet supported
-  [suite time: 0.1s]
+  PASS: Post-subquery VALUES
+  FAIL: VALUES inside GRAPH binding the same variable as the graph name — Triples mismatch: expected 24, got 0
+  [suite time: 0.0s]
 
 --- cast ---
-  PASS: xsd:boolean cast (555ms)
-  PASS: xsd:integer cast (534ms)
+  PASS: xsd:boolean cast
+  PASS: xsd:integer cast
   FAIL: xsd:float cast — Results mismatch: expected 31 rows, got 31
       UNMATCHED: ?a=<http://example.org/s03>, ?v="-10.2E3"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="-1.02E4"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/s04>, ?v="+33.3300"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="3.333E1"^^<http://www.w3.org/2001/XMLSchema#float>
@@ -114,114 +135,154 @@ Test base: ../../../tests/w3c/sparql/sparql11
       UNMATCHED: ?a=<http://example.org/n11>, ?v="1.25"^^<http://www.w3.org/2001/XMLSchema#float>, ?float="1.25"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/n12>, ?v="-7.875"^^<http://www.w3.org/2001/XMLSchema#float>, ?float="-7.875"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/n13>, ?v="2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="2.5"^^<http://www.w3.org/2001/XMLSchema#float>
-      UNMATCHED: ?a=<http://example.org/n14>, ?v="-2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="-2.5"^^<http://www.w3.org/2001/XMLSchema#float> (617ms)
-  PASS: xsd:double cast (624ms)
+      UNMATCHED: ?a=<http://example.org/n14>, ?v="-2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="-2.5"^^<http://www.w3.org/2001/XMLSchema#float>
+  PASS: xsd:double cast
   FAIL: xsd:decimal cast — Results mismatch: expected 31 rows, got 31
       UNMATCHED: ?a=<http://example.org/n09>, ?v="0.0"^^<http://www.w3.org/2001/XMLSchema#float>, ?decimal="0.0"^^<http://www.w3.org/2001/XMLSchema#decimal>
-      UNMATCHED: ?a=<http://example.org/n10>, ?v="1.0"^^<http://www.w3.org/2001/XMLSchema#float>, ?decimal="1.0"^^<http://www.w3.org/2001/XMLSchema#decimal> (585ms)
-  PASS: xsd:string cast (509ms)
-  [suite time: 3.4s]
+      UNMATCHED: ?a=<http://example.org/n10>, ?v="1.0"^^<http://www.w3.org/2001/XMLSchema#float>, ?decimal="1.0"^^<http://www.w3.org/2001/XMLSchema#decimal>
+  PASS: xsd:string cast
+  [suite time: 0.0s]
 
 --- clear ---
-  [suite time: 0.1s]
+  PASS: CLEAR DEFAULT
+  PASS: CLEAR GRAPH
+  PASS: CLEAR NAMED
+  PASS: CLEAR ALL
+  [suite time: 0.0s]
 
 --- construct ---
-  unsup: constructwhere01 - CONSTRUCT WHERE — Turtle result format not yet supported
-  unsup: constructwhere02 - CONSTRUCT WHERE — Turtle result format not yet supported
-  unsup: constructwhere03 - CONSTRUCT WHERE — Turtle result format not yet supported
-  unsup: constructwhere04 - CONSTRUCT WHERE — Turtle result format not yet supported
+  PASS: constructwhere01 - CONSTRUCT WHERE
+  PASS: constructwhere02 - CONSTRUCT WHERE
+  PASS: constructwhere03 - CONSTRUCT WHERE
+  FAIL: constructwhere04 - CONSTRUCT WHERE — Triples mismatch: expected 4, got 0
   PASS: constructwhere05 - CONSTRUCT WHERE
   PASS: constructwhere06 - CONSTRUCT WHERE
-  FAIL: CONSTRUCT list — SPARQL parse: unexpected token
+  PASS: CONSTRUCT list
   [suite time: 0.0s]
 
 --- copy ---
-  [suite time: 0.1s]
+  PASS: COPY 1
+  PASS: COPY 2
+  PASS: COPY 3
+  PASS: COPY 4
+  PASS: COPY 6
+  PASS: COPY 7
+  [suite time: 0.0s]
 
 --- csv-tsv-res ---
   PASS: csv01 - CSV Result Format
   PASS: tsv01 - TSV Result Format
-  FAIL: cvs02 - CSV Result Format — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
-  FAIL: tsv02 - TSV Result Format — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
+  PASS: cvs02 - CSV Result Format
+  PASS: tsv02 - TSV Result Format
   PASS: csv03 - CSV Result Format
   PASS: tsv03 - TSV Result Format
   [suite time: 0.0s]
 
 --- delete ---
-  [suite time: 1.0s]
+  PASS: Simple DELETE 1
+  PASS: Simple DELETE 2
+  PASS: Simple DELETE 3
+  PASS: Simple DELETE 4
+  PASS: Graph-specific DELETE 1
+  PASS: Graph-specific DELETE 2
+  PASS: Simple DELETE 7
+  PASS: Simple DELETE 1 (WITH)
+  PASS: Simple DELETE 2 (WITH)
+  PASS: Simple DELETE 3 (WITH)
+  PASS: Simple DELETE 4 (WITH)
+  PASS: Graph-specific DELETE 1 (WITH)
+  PASS: Graph-specific DELETE 2 (WITH)
+  PASS: Simple DELETE 1 (USING)
+  PASS: Simple DELETE 2 (USING)
+  PASS: Simple DELETE 3 (USING)
+  PASS: Simple DELETE 4 (USING)
+  PASS: Graph-specific DELETE 1 (USING)
+  PASS: Graph-specific DELETE 2 (USING)
+  [suite time: 0.0s]
 
 --- delete-data ---
-  [suite time: 0.1s]
+  PASS: Simple DELETE DATA 1
+  PASS: Simple DELETE DATA 2
+  PASS: Simple DELETE DATA 3
+  PASS: Simple DELETE DATA 4
+  PASS: Graph-specific DELETE DATA 1
+  PASS: Graph-specific DELETE DATA 2
+  [suite time: 0.0s]
 
 --- delete-insert ---
+  PASS: DELETE INSERT 1
+  PASS: DELETE INSERT 1b
+  PASS: DELETE INSERT 1c
+  PASS: DELETE INSERT 2
   PASS: DELETE INSERT 3
   PASS: DELETE INSERT 3b
+  PASS: DELETE INSERT 4
+  PASS: DELETE INSERT 4b
   PASS: DELETE INSERT 5
+  PASS: DELETE INSERT 5b
   PASS: DELETE INSERT 6
+  PASS: DELETE INSERT 6b
   PASS: DELETE INSERT 7
   PASS: DELETE INSERT 7b
   PASS: DELETE INSERT 8
   PASS: DELETE INSERT 9
-  [suite time: 0.3s]
+  PASS: Halloween Problem: A delete/insert operation should not be able to read its own writes
+  [suite time: 0.0s]
 
 --- delete-where ---
-  [suite time: 0.1s]
+  PASS: Simple DELETE WHERE 1
+  PASS: Simple DELETE WHERE 2
+  PASS: Simple DELETE WHERE 3
+  PASS: Simple DELETE WHERE 4
+  PASS: Graph-specific DELETE WHERE 1
+  PASS: Graph-specific DELETE WHERE 2
+  [suite time: 0.0s]
 
 --- drop ---
+  PASS: DROP DEFAULT
+  PASS: DROP GRAPH
+  PASS: DROP NAMED
+  PASS: DROP ALL
   [suite time: 0.0s]
 
 --- entailment ---
-  FAIL: bind01 - BIND fixed data for OWL DL — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_fwd
-  FAIL: bind02 - BIND fixed data for OWL DL — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_fwd
-  FAIL: bind03 - BIND fixed data for OWL DL — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_fwd
-  FAIL: bind04 - BIND fixed data for OWL DL — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_fwd
-  FAIL: bind05 - BIND fixed data for OWL DL — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_fwd
-  FAIL: bind06 - BIND fixed data for OWL DL — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_fwd
-  FAIL: bind07 - BIND fixed data for OWL DL — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_fwd
-  FAIL: bind08 - BIND fixed data for OWL DL — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_fwd
+  PASS: bind01 - BIND fixed data for OWL DL
+  PASS: bind02 - BIND fixed data for OWL DL
+  PASS: bind03 - BIND fixed data for OWL DL
+  PASS: bind04 - BIND fixed data for OWL DL
+  PASS: bind05 - BIND fixed data for OWL DL
+  PASS: bind06 - BIND fixed data for OWL DL
+  PASS: bind07 - BIND fixed data for OWL DL
+  PASS: bind08 - BIND fixed data for OWL DL
   PASS: D-Entailment test to show that  neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers
   PASS: Literal with language tag test
   PASS: bnodes are not existentials
   PASS: bnodes are not existentials with answer
-  FAIL: paper-sparqldl-Q1 — Results mismatch: expected 3 rows, got 1
-      UNMATCHED: ?c=<http://www.w3.org/2002/07/owl#Nothing>
-      UNMATCHED: ?c=<http://example.org/Student> (11ms)
-  PASS: paper-sparqldl-Q1-rdfs (10ms)
+  PASS: paper-sparqldl-Q1
+  PASS: paper-sparqldl-Q1-rdfs
   FAIL: paper-sparqldl-Q2 — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?x=<http://example.org/John>, ?y="Johnnie"^^<http://www.w3.org/2001/XMLSchema#string> (10ms)
+      UNMATCHED: ?x=<http://example.org/John>, ?y="Johnnie"^^<http://www.w3.org/2001/XMLSchema#string> (13ms)
   FAIL: paper-sparqldl-Q3 — Results mismatch: expected 2 rows, got 0
       UNMATCHED: ?x=<http://example.org/John>
-      UNMATCHED: ?x=<http://example.org/person1> (11ms)
-  FAIL: paper-sparqldl-Q4 — Results mismatch: expected 2 rows, got 0
-      UNMATCHED: ?x=<http://example.org/John>, ?c=<http://example.org/Employee>
-      UNMATCHED: ?x=<http://example.org/John>, ?c=<http://example.org/GraduateAssistant> (12ms)
-  PASS: paper-sparqldl-Q5 (10ms)
-  FAIL: filtered subclass query with (hasChild some Thing) restriction — Results mismatch: expected 3 rows, got 0
-      UNMATCHED: ?C=<http://example.org/test#Parent>
-      UNMATCHED: ?C=<http://example.org/test#Father>
-      UNMATCHED: ?C=<http://example.org/test#Mother> (12ms)
-  PASS: parent query with distinguished variable (10ms)
-  FAIL: parent query with (hasChild some Thing) restriction — Results mismatch: expected 3 rows, got 0
-      UNMATCHED: ?parent=<http://example.org/test#Alice>
-      UNMATCHED: ?parent=<http://example.org/test#Bob>
-      UNMATCHED: ?parent=<http://example.org/test#Dudley> (11ms)
+      UNMATCHED: ?x=<http://example.org/person1> (13ms)
+  PASS: paper-sparqldl-Q4
+  PASS: paper-sparqldl-Q5
+  PASS: filtered subclass query with (hasChild some Thing) restriction (30ms)
+  PASS: parent query with distinguished variable
+  PASS: parent query with (hasChild some Thing) restriction (29ms)
   FAIL: parent query with (hasChild min 1) restriction — Results mismatch: expected 3 rows, got 0
       UNMATCHED: ?parent=<http://example.org/test#Alice>
       UNMATCHED: ?parent=<http://example.org/test#Bob>
-      UNMATCHED: ?parent=<http://example.org/test#Dudley> (12ms)
+      UNMATCHED: ?parent=<http://example.org/test#Dudley> (30ms)
   FAIL: parent query with (hasChild some Female) restriction — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?parent=<http://example.org/test#Dudley>
+      UNMATCHED: ?parent=<http://example.org/test#Dudley> (30ms)
   FAIL: parent query with (hasChild min 1 Female) restriction — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?parent=<http://example.org/test#Dudley>
+      UNMATCHED: ?parent=<http://example.org/test#Dudley> (30ms)
   FAIL: parent query with (hasChild max 1 Female) restriction — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?parent=<http://example.org/test#Dudley>
+      UNMATCHED: ?parent=<http://example.org/test#Dudley> (30ms)
   FAIL: parent query with (hasChild exactly 1 Female) restriction — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?parent=<http://example.org/test#Dudley>
-  FAIL: subclass query with (hasChild some Thing) restriction — Results mismatch: expected 4 rows, got 0
-      UNMATCHED: ?C=<http://example.org/test#Parent>
-      UNMATCHED: ?C=<http://example.org/test#Father>
-      UNMATCHED: ?C=<http://example.org/test#Mother>
-      UNMATCHED: ?C=<http://www.w3.org/2002/07/owl#Nothing> (13ms)
+      UNMATCHED: ?parent=<http://example.org/test#Dudley> (30ms)
+  FAIL: subclass query with (hasChild some Thing) restriction — Results mismatch: expected 4 rows, got 7 (30ms)
   PASS: Plain literals with language tag are not the same as the same literal without
   PASS: RDF inference test
   PASS: RDF inference test
@@ -278,64 +339,56 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: sparqldl-06.rq: cycle of undistinguished variables
   PASS: sparqldl-07.rq: two distinguished variables + undist.
   PASS: sparqldl-08.rq: two distinguished variables + undist.
-  PASS: sparqldl-09.rq: undist vars test (11ms)
-  FAIL: sparqldl-10.rq: undist vars test — Results mismatch: expected 3 rows, got 0
-      UNMATCHED: ?X=<http://example.org/test#a>, ?Y=<http://example.org/test#b>
-      UNMATCHED: ?X=<http://example.org/test#a>, ?Y=<http://example.org/test#b>
-      UNMATCHED: ?X=<http://example.org/test#a>, ?Y=<http://example.org/test#b> (10ms)
-  FAIL: sparqldl-11.rq: domain test — Results mismatch: expected 2 rows, got 0
-      UNMATCHED: ?C=<http://www.w3.org/2002/07/owl#Thing>
+  PASS: sparqldl-09.rq: undist vars test
+  PASS: sparqldl-10.rq: undist vars test
+  FAIL: sparqldl-11.rq: domain test — Results mismatch: expected 2 rows, got 1
       UNMATCHED: ?C=<foo://bla/names#Parent>
-  FAIL: sparqldl-12.rq: range test — Results mismatch: expected 2 rows, got 1
-      UNMATCHED: ?C=<http://www.w3.org/2002/07/owl#Thing>
-  FAIL: sparqldl-13.rq: sameAs — Results mismatch: expected 4 rows, got 1
-      UNMATCHED: ?a=<http://example.org/test#a>, ?b=<http://example.org/test#b>, ?x=<http://example.org/test#b>
-      UNMATCHED: ?a=<http://example.org/test#a>, ?b=<http://example.org/test#x>, ?x=<http://example.org/test#x>
-      UNMATCHED: ?a=<http://example.org/test#a>, ?b=<http://example.org/test#x>, ?x=<http://example.org/test#b> (20ms)
-  [suite time: 5.0s]
+  PASS: sparqldl-12.rq: range test
+  PASS: sparqldl-13.rq: sameAs
+  [suite time: 0.4s]
 
 --- exists ---
-  FAIL: Exists with one constant — Runtime: Not yet implemented: SPARQL11.Algebra.eval_exists_fwd
-  FAIL: Exists with ground triple — Runtime: Not yet implemented: SPARQL11.Algebra.eval_exists_fwd
-  FAIL: Exists within graph pattern — Runtime: Not yet implemented: SPARQL11.Algebra.eval_exists_fwd
-  FAIL: Nested positive exists — Runtime: Not yet implemented: SPARQL11.Algebra.eval_exists_fwd
-  FAIL: Nested negative exists in positive exists — Runtime: Not yet implemented: SPARQL11.Algebra.eval_exists_fwd
-  FAIL: GRAPH variable inside of EXISTS is bound to external variable — Runtime: Not yet implemented: SPARQL11.Algebra.eval_exists_fwd
+  PASS: Exists with one constant
+  PASS: Exists with ground triple
+  PASS: Exists within graph pattern
+  PASS: Nested positive exists
+  PASS: Nested negative exists in positive exists
+  PASS: GRAPH variable inside of EXISTS is bound to external variable
   [suite time: 0.0s]
 
 --- functions ---
-  FAIL: STRDT() — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
-  FAIL: STRDT(STR()) — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
-  PASS: STRDT() TypeErrors (updated for RDF 1.1) (32ms)
-  FAIL: STRLANG() — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
-  FAIL: STRLANG(STR()) — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
-  PASS: STRLANG() TypeErrors (updated for RDF 1.1) (35ms)
-  FAIL: isNumeric() — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
-  FAIL: ABS() — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
-  PASS: CEIL() (26ms)
-  PASS: FLOOR() (26ms)
-  PASS: ROUND() (26ms)
+  PASS: STRDT()
+  PASS: STRDT(STR())
+  PASS: STRDT() TypeErrors (updated for RDF 1.1)
+  PASS: STRLANG()
+  PASS: STRLANG(STR())
+  PASS: STRLANG() TypeErrors (updated for RDF 1.1)
+  PASS: isNumeric()
+  PASS: ABS()
+  PASS: CEIL()
+  PASS: FLOOR()
+  PASS: ROUND()
   PASS: CONCAT()
-  PASS: CONCAT() 2 (108ms)
+  PASS: CONCAT() 2
   PASS: CONCAT() without parameter
   PASS: CONCAT() with a single parameter
-  PASS: SUBSTR() (3-argument) (26ms)
+  PASS: SUBSTR() (3-argument)
   PASS: SUBSTR() (3-argument) on non-BMP unicode strings
-  PASS: SUBSTR() (2-argument) (26ms)
+  PASS: SUBSTR() (2-argument)
   PASS: SUBSTR() (2-argument) on non-BMP unicode strings
-  PASS: STRLEN() (21ms)
+  PASS: STRLEN()
   PASS: STRLEN() on non-BMP unicode strings
-  PASS: UCASE() (15ms)
+  PASS: UCASE()
   PASS: UCASE() on non-BMP unicode strings
-  PASS: LCASE() (15ms)
+  PASS: LCASE()
   PASS: LCASE() on non-BMP unicode strings
-  PASS: ENCODE_FOR_URI() (27ms)
+  PASS: ENCODE_FOR_URI()
   PASS: ENCODE_FOR_URI() on non-BMP unicode strings
-  FAIL: CONTAINS() — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
-  FAIL: STRSTARTS() — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
-  FAIL: STRENDS() — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
-  PASS: plus-1-corrected (38ms)
-  PASS: plus-2-corrected (30ms)
+  PASS: CONTAINS()
+  PASS: STRSTARTS()
+  PASS: STRENDS()
+  PASS: plus-1-corrected
+  PASS: plus-2-corrected
   PASS: MD5()
   PASS: MD5() over Unicode data
   PASS: SHA1()
@@ -354,7 +407,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: DAY()
   PASS: TIMEZONE()
   PASS: TZ()
-  FAIL: BNODE(str) — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
+  PASS: BNODE(str)
   PASS: BNODE()
   PASS: IN 1
   PASS: IN 2
@@ -364,65 +417,65 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: RAND()
   PASS: IRI()/URI()
   PASS: IRI()/URI() when the input is an IRI
-  PASS: IF() (31ms)
+  PASS: IF()
   PASS: IF() error propogation
-  FAIL: COALESCE() — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
+  PASS: COALESCE()
   PASS: COALESCE() without arguments
-  PASS: STRBEFORE() (13ms)
-  PASS: STRBEFORE() datatyping (27ms)
-  PASS: STRAFTER() (12ms)
-  PASS: STRAFTER() datatyping (28ms)
-  FAIL: REPLACE() — Results mismatch: expected 9 rows, got 9
-      UNMATCHED: ?s=<http://example.org/s2>, ?new="---"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#langString>@ja
-      UNMATCHED: ?s=<http://example.org/s3>, ?new="-nglish"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#langString>@en
-      UNMATCHED: ?s=<http://example.org/s4>, ?new="-ran-ais"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#langString>@fr (20ms)
-  FAIL: REPLACE() with overlapping pattern — Results mismatch: expected 1 rows, got 1
-      UNMATCHED: ?new="b*na"^^<http://www.w3.org/2001/XMLSchema#string>
-  FAIL: REPLACE() with captured substring — Results mismatch: expected 1 rows, got 1
-      UNMATCHED: ?new="[1=ab][2=]cd"^^<http://www.w3.org/2001/XMLSchema#string>
-  FAIL: REPLACE() with the 'i' option — Results mismatch: expected 1 rows, got 1
-      UNMATCHED: ?new="~/~/bB~/C"^^<http://www.w3.org/2001/XMLSchema#string>
-  FAIL: UUID() pattern match — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_fwd
+  PASS: STRBEFORE()
+  PASS: STRBEFORE() datatyping
+  PASS: STRAFTER()
+  PASS: STRAFTER() datatyping
+  PASS: REPLACE()
+  PASS: REPLACE() with overlapping pattern
+  PASS: REPLACE() with captured substring
+  PASS: REPLACE() with the 'i' option
+  PASS: UUID() pattern match
   PASS: UUID() per binding
-  FAIL: STRUUID() pattern match — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_fwd
-  [suite time: 3.6s]
+  PASS: STRUUID() pattern match
+  [suite time: 0.0s]
 
 --- grouping ---
   PASS: Group-1
-  FAIL: Group-3 — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
-  FAIL: Group-4 — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
-  FAIL: Group-5 — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
+  PASS: Group-3
+  PASS: Group-4
+  PASS: Group-5
   PASS: Group-6
   PASS: Group-7
   [suite time: 0.0s]
 
 --- http-rdf-update ---
-  [suite time: 0.5s]
+  [suite time: 0.0s]
 
 --- json-res ---
-  PASS: jsonres01 - JSON Result Format (12ms)
-  FAIL: jsonres02 - JSON Result Format — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
+  PASS: jsonres01 - JSON Result Format
+  PASS: jsonres02 - JSON Result Format
   PASS: jsonres03 - JSON Result Format
   PASS: jsonres04 - JSON Result Format
   [suite time: 0.0s]
 
 --- move ---
-  [suite time: 0.1s]
+  PASS: MOVE 1
+  PASS: MOVE 2
+  PASS: MOVE 3
+  PASS: MOVE 4
+  PASS: MOVE 6
+  PASS: MOVE 7
+  [suite time: 0.0s]
 
 --- negation ---
-  FAIL: Subsets by exclusion (NOT EXISTS) — Runtime: Not yet implemented: SPARQL11.Algebra.eval_exists_fwd
-  FAIL: Subsets by exclusion (MINUS) — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
-  FAIL: Medical, temporal proximity by exclusion (NOT EXISTS) — Runtime: Not yet implemented: SPARQL11.Algebra.eval_exists_fwd
-  FAIL: Calculate which sets are subsets of others (include A subsetOf A) — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
-  FAIL: Calculate which sets are subsets of others (exclude A subsetOf A) — Runtime: Not yet implemented: SPARQL11.Algebra.eval_exists_fwd
-  FAIL: Calculate which sets have the same elements — Runtime: Not yet implemented: SPARQL11.Algebra.eval_exists_fwd
-  FAIL: Calculate proper subset — Runtime: Not yet implemented: SPARQL11.Algebra.eval_exists_fwd
-  FAIL: Positive EXISTS 1 — Runtime: Not yet implemented: SPARQL11.Algebra.eval_exists_fwd
-  FAIL: Positive EXISTS 2 — Runtime: Not yet implemented: SPARQL11.Algebra.eval_exists_fwd
-  FAIL: Subtraction with MINUS from a fully bound minuend — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
-  FAIL: Subtraction with MINUS from a partially bound minuend — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
+  PASS: Subsets by exclusion (NOT EXISTS)
+  PASS: Subsets by exclusion (MINUS)
+  PASS: Medical, temporal proximity by exclusion (NOT EXISTS)
+  PASS: Calculate which sets are subsets of others (include A subsetOf A)
+  PASS: Calculate which sets are subsets of others (exclude A subsetOf A)
+  PASS: Calculate which sets have the same elements
+  PASS: Calculate proper subset
+  PASS: Positive EXISTS 1
+  PASS: Positive EXISTS 2
+  PASS: Subtraction with MINUS from a fully bound minuend
+  PASS: Subtraction with MINUS from a partially bound minuend
   PASS: outer GRAPH operator does not affect MINUS disjointness
-  [suite time: 0.1s]
+  [suite time: 0.0s]
 
 --- project-expression ---
   PASS: Expression is equality
@@ -431,47 +484,47 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: Reuse a project expression variable in order by
   PASS: Expression may return no value
   PASS: Expression has undefined variable
-  FAIL: Expression has variable that may be unbound — Runtime: Not yet implemented: SPARQL11.Algebra.eval_expr_ebv
-  [suite time: 0.1s]
+  PASS: Expression has variable that may be unbound
+  [suite time: 0.0s]
 
 --- property-path ---
-  FAIL: (pp01) Simple path — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: (pp02) Star path — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: (pp03) Simple path with loop — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: (pp06) Path with two graphs — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: (pp07) Path with one graph — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
+  PASS: (pp01) Simple path
+  PASS: (pp02) Star path
+  PASS: (pp03) Simple path with loop
+  PASS: (pp06) Path with two graphs
+  PASS: (pp07) Path with one graph
   PASS: (pp08) Reverse path
-  FAIL: (pp09) Reverse sequence path — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: (pp10) Path with negation — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: (pp11) Simple path and two paths to same target node — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: (pp12) Variable length path and two paths to same target node — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: (pp14) Star path over foaf:knows — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: (pp16) Duplicate paths and cycles through foaf:knows* — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: (pp21) Diamond -- :p+ — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: (pp23) Diamond, with tail -- :p+ — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: (pp25) Diamond, with loop -- :p+ — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: (pp28a) Diamond, with loop -- (:p/:p)? — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: (pp30) Operator precedence 1 — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: (pp31) Operator precedence 2 — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: (pp32) Operator precedence 3 — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: (pp33) Operator precedence 4 — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: (pp34) Named Graph 1 — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: (pp35) Named Graph 2 — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: (pp36) Arbitrary path with bound endpoints — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: (pp37) Nested (*)* — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: ZeroOrX property paths should only return terms in the graph and not also terms defined in the query — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: Negated Property Set with inverse properties — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: Negated Property Set with both direct and inverse properties — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: Negated Property Set with the rdf:type property written using 'a' — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: Negated Property Set with the inverse rdf:type property written using '^a' — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: * with start being a constant on the empty dataset — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: * with end being a constant on the empty dataset — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: ? with start being a constant on the empty dataset — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  FAIL: ? with end being a constant on the empty dataset — Runtime: Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd
-  [suite time: 0.5s]
+  PASS: (pp09) Reverse sequence path
+  PASS: (pp10) Path with negation
+  PASS: (pp11) Simple path and two paths to same target node
+  PASS: (pp12) Variable length path and two paths to same target node
+  PASS: (pp14) Star path over foaf:knows
+  PASS: (pp16) Duplicate paths and cycles through foaf:knows*
+  PASS: (pp21) Diamond -- :p+
+  PASS: (pp23) Diamond, with tail -- :p+
+  PASS: (pp25) Diamond, with loop -- :p+
+  PASS: (pp28a) Diamond, with loop -- (:p/:p)?
+  PASS: (pp30) Operator precedence 1
+  PASS: (pp31) Operator precedence 2
+  PASS: (pp32) Operator precedence 3
+  PASS: (pp33) Operator precedence 4
+  PASS: (pp34) Named Graph 1
+  PASS: (pp35) Named Graph 2
+  PASS: (pp36) Arbitrary path with bound endpoints
+  PASS: (pp37) Nested (*)*
+  PASS: ZeroOrX property paths should only return terms in the graph and not also terms defined in the query
+  PASS: Negated Property Set with inverse properties
+  PASS: Negated Property Set with both direct and inverse properties
+  PASS: Negated Property Set with the rdf:type property written using 'a'
+  PASS: Negated Property Set with the inverse rdf:type property written using '^a'
+  PASS: * with start being a constant on the empty dataset
+  PASS: * with end being a constant on the empty dataset
+  PASS: ? with start being a constant on the empty dataset
+  PASS: ? with end being a constant on the empty dataset
+  [suite time: 0.0s]
 
 --- protocol ---
-  [suite time: 2.2s]
+  [suite time: 0.0s]
 
 --- service ---
   FAIL: SERVICE test 1 — Results mismatch: expected 2 rows, got 0
@@ -483,7 +536,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   FAIL: SERVICE test 3 — Results mismatch: expected 2 rows, got 0
       UNMATCHED: ?s=<http://example.org/b>, ?o1="Bob"^^<http://www.w3.org/2001/XMLSchema#string>
       UNMATCHED: ?s=<http://example.org/a>, ?o1="Alan"^^<http://www.w3.org/2001/XMLSchema#string>, ?o2="SPARQL 1.1 Basic Federated Query"^^<http://www.w3.org/2001/XMLSchema#string>
-  FAIL: SERVICE test 4a with VALUES clause — Results mismatch: expected 4 rows, got 6 (11ms)
+  FAIL: SERVICE test 4a with VALUES clause — Results mismatch: expected 4 rows, got 6
   FAIL: SERVICE test 5 — SPARQL parse: unsupported: variable SERVICE endpoint
   FAIL: SERVICE test 6 — Results mismatch: expected 2 rows, got 0
       UNMATCHED: ?s=<http://example.org/b>, ?o1="Bob"^^<http://www.w3.org/2001/XMLSchema#string>
@@ -491,27 +544,27 @@ Test base: ../../../tests/w3c/sparql/sparql11
   FAIL: SERVICE test 7 — Results mismatch: expected 2 rows, got 0
       UNMATCHED: ?s=<http://example.org/a>, ?o1="Alan"^^<http://www.w3.org/2001/XMLSchema#string>
       UNMATCHED: ?s=<http://example.org/b>, ?o1="Bob"^^<http://www.w3.org/2001/XMLSchema#string>
-  [suite time: 0.1s]
+  [suite time: 0.0s]
 
 --- service-description ---
   [suite time: 0.0s]
 
 --- subquery ---
-  FAIL: sq01 - Subquery within graph pattern — Runtime: Not yet implemented: SPARQL11.Algebra.eval_subselect_fwd
-  FAIL: sq02 - Subquery within graph pattern, graph variable is bound — Runtime: Not yet implemented: SPARQL11.Algebra.eval_subselect_fwd
-  FAIL: sq03 - Subquery within graph pattern, graph variable is not bound — Runtime: Not yet implemented: SPARQL11.Algebra.eval_subselect_fwd
-  FAIL: sq04 - Subquery within graph pattern, default graph does not apply — Runtime: Not yet implemented: SPARQL11.Algebra.eval_subselect_fwd
-  FAIL: sq05 - Subquery within graph pattern, from named applies — Runtime: Not yet implemented: SPARQL11.Algebra.eval_subselect_fwd
-  FAIL: sq06 - Subquery with graph pattern, from named applies — Runtime: Not yet implemented: SPARQL11.Algebra.eval_subselect_fwd
-  FAIL: sq07 - Subquery with from  — Runtime: Not yet implemented: SPARQL11.Algebra.eval_subselect_fwd
-  FAIL: sq08 - Subquery with aggregate — Runtime: Not yet implemented: SPARQL11.Algebra.eval_subselect_fwd
-  FAIL: sq09 - Nested Subqueries — Runtime: Not yet implemented: SPARQL11.Algebra.eval_subselect_fwd
-  FAIL: sq10 - Subquery with exists — Runtime: Not yet implemented: SPARQL11.Algebra.eval_subselect_fwd
-  FAIL: sq11 - Subquery limit per resource — Runtime: Not yet implemented: SPARQL11.Algebra.eval_subselect_fwd
-  unsup: sq12 - Subquery in CONSTRUCT with built-ins — Turtle result format not yet supported
-  FAIL: sq13 - Subqueries don't inject bindings — Runtime: Not yet implemented: SPARQL11.Algebra.eval_subselect_fwd
-  unsup: sq14 - limit by resource — Turtle result format not yet supported
-  [suite time: 0.2s]
+  PASS: sq01 - Subquery within graph pattern
+  PASS: sq02 - Subquery within graph pattern, graph variable is bound
+  PASS: sq03 - Subquery within graph pattern, graph variable is not bound
+  PASS: sq04 - Subquery within graph pattern, default graph does not apply
+  PASS: sq05 - Subquery within graph pattern, from named applies
+  PASS: sq06 - Subquery with graph pattern, from named applies
+  PASS: sq07 - Subquery with from 
+  PASS: sq08 - Subquery with aggregate
+  PASS: sq09 - Nested Subqueries
+  PASS: sq10 - Subquery with exists
+  PASS: sq11 - Subquery limit per resource
+  PASS: sq12 - Subquery in CONSTRUCT with built-ins
+  PASS: sq13 - Subqueries don't inject bindings
+  PASS: sq14 - limit by resource
+  [suite time: 0.0s]
 
 --- syntax-fed ---
   PASS: syntax-service-01.rq
@@ -579,7 +632,7 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: syntax-BINDscope6.rq
   PASS: syntax-BINDscope7.rq
   PASS: syntax-BINDscope8.rq
-  FAIL: syntax-propertyPaths-01.rq — Should parse but didn't
+  PASS: syntax-propertyPaths-01.rq
   PASS: syntax-SELECTscope1.rq
   PASS: syntax-SELECTscope2
   PASS: syntax-SELECTscope3.rq
@@ -614,53 +667,121 @@ Test base: ../../../tests/w3c/sparql/sparql11
   PASS: \u unicode codepoint escaping in literal using partial surrogate pair
   PASS: Too few values in a VALUE clause compared to the number of variables
   PASS: Too many values in a VALUE clause compared to the number of variables
-  [suite time: 2.4s]
-
---- syntax-update-1 ---
-  [suite time: 0.8s]
-
---- syntax-update-2 ---
   [suite time: 0.0s]
 
+--- syntax-update-1 ---
+  PASS: syntax-update-01.ru
+  PASS: syntax-update-02.ru
+  PASS: syntax-update-03.ru
+  PASS: syntax-update-04.ru
+  PASS: syntax-update-05.ru
+  PASS: syntax-update-06.ru
+  PASS: syntax-update-07.ru
+  PASS: syntax-update-08.ru
+  PASS: syntax-update-09.ru
+  PASS: syntax-update-10.ru
+  PASS: syntax-update-11.ru
+  PASS: syntax-update-12.ru
+  PASS: syntax-update-13.ru
+  PASS: syntax-update-14.ru
+  PASS: syntax-update-15.ru
+  PASS: syntax-update-16.ru
+  PASS: syntax-update-17.ru
+  PASS: syntax-update-18.ru
+  PASS: syntax-update-19.ru
+  PASS: syntax-update-20.ru
+  PASS: syntax-update-21.ru
+  PASS: syntax-update-22.ru
+  PASS: syntax-update-23.ru
+  PASS: syntax-update-24.ru
+  PASS: syntax-update-25.ru
+  PASS: syntax-update-26.ru
+  PASS: syntax-update-27.ru
+  PASS: syntax-update-28.ru
+  PASS: syntax-update-29.ru
+  PASS: syntax-update-30.ru
+  PASS: syntax-update-31.ru
+  PASS: syntax-update-32.ru
+  PASS: syntax-update-33.ru
+  PASS: syntax-update-34.ru
+  PASS: syntax-update-35.ru
+  PASS: syntax-update-36.ru
+  PASS: syntax-update-37.ru
+  PASS: syntax-update-38.ru
+  PASS: syntax-update-39.ru
+  PASS: syntax-update-40.ru
+  PASS: syntax-update-bad-01.ru
+  PASS: syntax-update-bad-02.ru
+  PASS: syntax-update-bad-03.ru
+  PASS: syntax-update-bad-04.ru
+  PASS: syntax-update-bad-05.ru
+  PASS: syntax-update-bad-06.ru
+  PASS: syntax-update-bad-07.ru
+  PASS: syntax-update-bad-08.ru
+  PASS: syntax-update-bad-09.ru
+  PASS: syntax-update-bad-10.ru
+  PASS: syntax-update-bad-11.ru
+  PASS: syntax-update-bad-12.ru
+  PASS: syntax-update-53.ru
+  FAIL: syntax-update-54.ru — Should reject but parsed OK
+  [suite time: 0.0s]
+
+--- syntax-update-2 ---
+  PASS: syntax-update-other-01 (1.3s)
+  [suite time: 1.3s]
+
 --- update-silent ---
-  [suite time: 0.2s]
+  skip: LOAD SILENT — LOAD not yet implemented
+  skip: LOAD SILENT INTO — LOAD not yet implemented
+  PASS: CLEAR SILENT GRAPH iri
+  PASS: CLEAR SILENT DEFAULT
+  PASS: CREATE SILENT iri
+  PASS: DROP SILENT GRAPH iri
+  PASS: DROP SILENT DEFAULT
+  PASS: COPY SILENT
+  PASS: COPY SILENT TO DEFAULT
+  PASS: MOVE SILENT
+  PASS: MOVE SILENT TO DEFAULT
+  PASS: ADD SILENT
+  PASS: ADD SILENT TO DEFAULT
+  [suite time: 0.0s]
 
 ========================================
 Suite Results:
-  add                                 pass:0 fail:0 skip:8 unsupported:0
-  aggregates                          pass:45 fail:2 skip:0 unsupported:0
-  basic-update                        pass:0 fail:0 skip:13 unsupported:0
-  bind                                pass:0 fail:10 skip:0 unsupported:0
-  bindings                            pass:8 fail:2 skip:0 unsupported:1
+  add                                 pass:8 fail:0 skip:0 unsupported:0
+  aggregates                          pass:46 fail:1 skip:0 unsupported:0
+  basic-update                        pass:11 fail:2 skip:0 unsupported:0
+  bind                                pass:10 fail:0 skip:0 unsupported:0
+  bindings                            pass:10 fail:1 skip:0 unsupported:0
   cast                                pass:4 fail:2 skip:0 unsupported:0
-  clear                               pass:0 fail:0 skip:4 unsupported:0
-  construct                           pass:2 fail:1 skip:0 unsupported:4
-  copy                                pass:0 fail:0 skip:6 unsupported:0
-  csv-tsv-res                         pass:4 fail:2 skip:0 unsupported:0
-  delete                              pass:0 fail:0 skip:19 unsupported:0
-  delete-data                         pass:0 fail:0 skip:6 unsupported:0
-  delete-insert                       pass:8 fail:0 skip:9 unsupported:0
-  delete-where                        pass:0 fail:0 skip:6 unsupported:0
-  drop                                pass:0 fail:0 skip:4 unsupported:0
-  entailment                          pass:36 fail:34 skip:0 unsupported:0
-  exists                              pass:0 fail:6 skip:0 unsupported:0
-  functions                           pass:58 fail:17 skip:0 unsupported:0
-  grouping                            pass:3 fail:3 skip:0 unsupported:0
+  clear                               pass:4 fail:0 skip:0 unsupported:0
+  construct                           pass:6 fail:1 skip:0 unsupported:0
+  copy                                pass:6 fail:0 skip:0 unsupported:0
+  csv-tsv-res                         pass:6 fail:0 skip:0 unsupported:0
+  delete                              pass:19 fail:0 skip:0 unsupported:0
+  delete-data                         pass:6 fail:0 skip:0 unsupported:0
+  delete-insert                       pass:17 fail:0 skip:0 unsupported:0
+  delete-where                        pass:6 fail:0 skip:0 unsupported:0
+  drop                                pass:4 fail:0 skip:0 unsupported:0
+  entailment                          pass:51 fail:19 skip:0 unsupported:0
+  exists                              pass:6 fail:0 skip:0 unsupported:0
+  functions                           pass:75 fail:0 skip:0 unsupported:0
+  grouping                            pass:6 fail:0 skip:0 unsupported:0
   http-rdf-update                     pass:0 fail:0 skip:19 unsupported:0
-  json-res                            pass:3 fail:1 skip:0 unsupported:0
-  move                                pass:0 fail:0 skip:6 unsupported:0
-  negation                            pass:1 fail:11 skip:0 unsupported:0
-  project-expression                  pass:6 fail:1 skip:0 unsupported:0
-  property-path                       pass:1 fail:32 skip:0 unsupported:0
+  json-res                            pass:4 fail:0 skip:0 unsupported:0
+  move                                pass:6 fail:0 skip:0 unsupported:0
+  negation                            pass:12 fail:0 skip:0 unsupported:0
+  project-expression                  pass:7 fail:0 skip:0 unsupported:0
+  property-path                       pass:33 fail:0 skip:0 unsupported:0
   protocol                            pass:0 fail:0 skip:34 unsupported:0
   service                             pass:0 fail:7 skip:0 unsupported:0
   service-description                 pass:0 fail:0 skip:3 unsupported:0
-  subquery                            pass:0 fail:12 skip:0 unsupported:2
+  subquery                            pass:14 fail:0 skip:0 unsupported:0
   syntax-fed                          pass:3 fail:0 skip:0 unsupported:0
-  syntax-query                        pass:93 fail:1 skip:0 unsupported:0
-  syntax-update-1                     pass:0 fail:0 skip:54 unsupported:0
-  syntax-update-2                     pass:0 fail:0 skip:1 unsupported:0
-  update-silent                       pass:0 fail:0 skip:13 unsupported:0
+  syntax-query                        pass:94 fail:0 skip:0 unsupported:0
+  syntax-update-1                     pass:53 fail:1 skip:0 unsupported:0
+  syntax-update-2                     pass:1 fail:0 skip:0 unsupported:0
+  update-silent                       pass:11 fail:0 skip:2 unsupported:0
 ========================================
-TOTAL: 275 pass, 144 fail, 205 skip, 7 unsupported
+TOTAL: 539 pass, 34 fail, 58 skip, 0 unsupported
 ========================================
