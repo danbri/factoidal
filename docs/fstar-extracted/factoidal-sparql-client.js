@@ -152,9 +152,63 @@ table.results th, table.results td {
   border: 1px solid var(--fc-border); padding: 0.3em 0.6em;
   vertical-align: top; text-align: left;
 }
-table.results th { background: var(--fc-surface); font-weight: 600; }
+table.results th {
+  background: var(--fc-surface); font-weight: 600;
+  position: relative; user-select: none;
+}
+table.results th .col-menu-btn {
+  float: right; border: none; background: transparent; color: var(--fc-muted);
+  cursor: pointer; padding: 0 0.3em; margin-left: 0.4em;
+  font-weight: 700; font-size: 1em; border-radius: 2px;
+}
+table.results th .col-menu-btn:hover { background: var(--fc-border); color: var(--fc-fg); }
 table.results td {
   font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+table.results td.num  { text-align: right; font-variant-numeric: tabular-nums; }
+table.results td.date { white-space: nowrap; color: var(--fc-fg); }
+table.results th.num  { text-align: right; }
+.view-tabs {
+  display: inline-flex; border: 1px solid var(--fc-border); border-radius: 4px;
+  overflow: hidden; background: var(--fc-bg); margin-right: 0.5em;
+}
+.view-tabs button {
+  background: transparent; color: var(--fc-fg); font-weight: 500;
+  border: 0; border-radius: 0; padding: 0.3em 0.7em;
+  font-size: 0.88em; cursor: pointer;
+}
+.view-tabs button + button { border-left: 1px solid var(--fc-border); }
+.view-tabs button.active {
+  background: var(--fc-brand); color: #fff; font-weight: 600;
+}
+.download-links {
+  display: inline-flex; gap: 0.4em; font-size: 0.85em;
+  color: var(--fc-muted); align-items: center;
+}
+.download-links a {
+  color: var(--fc-brand-dark); text-decoration: none;
+  padding: 0.15em 0.5em; border: 1px solid var(--fc-border);
+  border-radius: 3px; background: var(--fc-bg);
+}
+.download-links a:hover { background: var(--fc-surface); }
+.hidden-cols-note {
+  display: inline-block; margin-left: 0.5em; font-size: 0.85em;
+  color: var(--fc-muted);
+}
+.hidden-cols-note a {
+  color: var(--fc-brand-dark); cursor: pointer; text-decoration: underline;
+}
+pre.raw-json {
+  background: var(--fc-surface); border: 1px solid var(--fc-border);
+  padding: 0.8em; border-radius: 4px; white-space: pre-wrap;
+  word-break: break-word; max-height: 32em; overflow: auto;
+  font: 0.85em/1.4 ui-monospace, Menlo, Consolas, monospace;
+}
+pre.raw-csv {
+  background: var(--fc-surface); border: 1px solid var(--fc-border);
+  padding: 0.8em; border-radius: 4px; white-space: pre;
+  overflow: auto; max-height: 32em;
+  font: 0.85em/1.4 ui-monospace, Menlo, Consolas, monospace;
 }
 .result-meta {
   margin-top: 0.5em; color: var(--fc-muted); font-size: 0.85em;
@@ -261,6 +315,157 @@ function formatBytes(n) {
 // Pull @prefix/@base/PREFIX/BASE to the top (dedup'd), wrap remainder
 // in GRAPH <iri> { ... }.
 // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Result serialization helpers. These operate on the JSON result
+// object already produced by the F* engine (via -o json or
+// browser-wasm.js). They do NOT interpret RDF semantics — they just
+// reformat whatever the engine serialized. Per CLAUDE.md rule #10,
+// anything semantic must live in F*.
+// ---------------------------------------------------------------------
+
+// Classify xsd datatype IRIs into UI hints (numeric / date / plain).
+// We do not coerce values or do arithmetic — this is a *rendering*
+// hint only (right-align numbers, show date in a readable format).
+const NUMERIC_XSD = new Set([
+  'http://www.w3.org/2001/XMLSchema#integer',
+  'http://www.w3.org/2001/XMLSchema#decimal',
+  'http://www.w3.org/2001/XMLSchema#double',
+  'http://www.w3.org/2001/XMLSchema#float',
+  'http://www.w3.org/2001/XMLSchema#long',
+  'http://www.w3.org/2001/XMLSchema#int',
+  'http://www.w3.org/2001/XMLSchema#short',
+  'http://www.w3.org/2001/XMLSchema#byte',
+  'http://www.w3.org/2001/XMLSchema#nonNegativeInteger',
+  'http://www.w3.org/2001/XMLSchema#positiveInteger',
+  'http://www.w3.org/2001/XMLSchema#nonPositiveInteger',
+  'http://www.w3.org/2001/XMLSchema#negativeInteger',
+  'http://www.w3.org/2001/XMLSchema#unsignedLong',
+  'http://www.w3.org/2001/XMLSchema#unsignedInt',
+  'http://www.w3.org/2001/XMLSchema#unsignedShort',
+  'http://www.w3.org/2001/XMLSchema#unsignedByte',
+]);
+const DATE_XSD = new Set([
+  'http://www.w3.org/2001/XMLSchema#date',
+  'http://www.w3.org/2001/XMLSchema#dateTime',
+  'http://www.w3.org/2001/XMLSchema#dateTimeStamp',
+  'http://www.w3.org/2001/XMLSchema#gYear',
+  'http://www.w3.org/2001/XMLSchema#gYearMonth',
+]);
+
+function bindingKind(b) {
+  if (!b) return 'empty';
+  if (b.type === 'uri')  return 'uri';
+  if (b.type === 'bnode') return 'bnode';
+  // literal
+  const dt = b.datatype;
+  if (dt && NUMERIC_XSD.has(dt)) return 'num';
+  if (dt && DATE_XSD.has(dt))    return 'date';
+  return 'literal';
+}
+
+// Majority kind across non-empty cells in a column — used to decide
+// th/td alignment classes. Majority, not "all", so mixed columns with
+// occasional nulls still line up.
+function inferColumnKind(bindings, varName) {
+  const counts = { num: 0, date: 0, uri: 0, literal: 0, bnode: 0 };
+  let total = 0;
+  for (const row of bindings) {
+    const b = row[varName];
+    if (!b) continue;
+    total++;
+    counts[bindingKind(b)] = (counts[bindingKind(b)] || 0) + 1;
+  }
+  if (!total) return 'empty';
+  let best = 'literal', bestN = -1;
+  for (const k of Object.keys(counts)) {
+    if (counts[k] > bestN) { best = k; bestN = counts[k]; }
+  }
+  return best;
+}
+
+// Render xsd:dateTime / xsd:date etc. in a slightly more human form.
+// Keep the raw ISO string on title= so copy-paste still works.
+function prettyDate(v) {
+  // xsd:gYear just "2024" — leave alone.
+  if (/^[+-]?\d{4}$/.test(v)) return v;
+  // xsd:gYearMonth "2024-03" — leave alone.
+  if (/^[+-]?\d{4}-\d{2}$/.test(v)) return v;
+  // Full date or dateTime. Use Date.parse; if browser can't, return as-is.
+  const t = Date.parse(v);
+  if (isNaN(t)) return v;
+  // Show YYYY-MM-DD for pure dates; YYYY-MM-DD HH:MM(:SS) for dateTimes.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    return v;
+  }
+  try {
+    const d = new Date(t);
+    const iso = d.toISOString();
+    return iso.slice(0, 19).replace('T', ' ') + 'Z';
+  } catch (_) { return v; }
+}
+
+// ----- Flat-string serializers for CSV/TSV (W3C "SPARQL 1.1 Query
+// Results CSV and TSV Formats"-shaped, minus the strict escaping rules
+// which must ultimately come from F*. These are *client-side only*,
+// used for the "Copy as CSV" / "Download CSV" UI affordance; they do
+// not replace the engine's -o csv output which is the canonical form
+// once implemented.) -----
+function csvEscape(s) {
+  if (s == null) return '';
+  const needsQ = /[,"\r\n]/.test(s);
+  const esc = s.replace(/"/g, '""');
+  return needsQ ? '"' + esc + '"' : esc;
+}
+// Flat-string rendering of a binding for delimited output. The W3C
+// "SPARQL 1.1 Query Results CSV Format" is lossy (datatype + lang
+// info dropped); the TSV format preserves them in N-Triples-ish
+// syntax. We follow those conventions here.
+function bindingToCSVString(b) {
+  if (!b) return '';
+  if (b.type === 'uri')   return b.value;
+  if (b.type === 'bnode') return '_:' + b.value;
+  // literal: lexical form only, per W3C CSV spec.
+  return b.value;
+}
+function bindingToTSVString(b) {
+  if (!b) return '';
+  if (b.type === 'uri')   return '<' + b.value + '>';
+  if (b.type === 'bnode') return '_:' + b.value;
+  // literal: N-Triples-ish (quoted lexical form + optional lang/dt).
+  const esc = '"' + b.value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+                          .replace(/\t/g, '\\t').replace(/\r/g, '\\r')
+                          .replace(/\n/g, '\\n') + '"';
+  if (b['xml:lang']) return esc + '@' + b['xml:lang'];
+  if (b.datatype && b.datatype !== 'http://www.w3.org/2001/XMLSchema#string') {
+    return esc + '^^<' + b.datatype + '>';
+  }
+  return esc;
+}
+function resultsToCSV(json) {
+  if (typeof json.boolean === 'boolean') return 'boolean\r\n' + json.boolean + '\r\n';
+  const vars = (json.head && json.head.vars) || [];
+  const bindings = (json.results && json.results.bindings) || [];
+  const out = [];
+  out.push(vars.map(csvEscape).join(','));
+  bindings.forEach(row => {
+    out.push(vars.map(v => csvEscape(bindingToCSVString(row[v]))).join(','));
+  });
+  return out.join('\r\n') + '\r\n';
+}
+function resultsToTSV(json) {
+  if (typeof json.boolean === 'boolean') return '?boolean\n' + json.boolean + '\n';
+  const vars = (json.head && json.head.vars) || [];
+  const bindings = (json.results && json.results.bindings) || [];
+  const out = [];
+  out.push(vars.map(v => '?' + v).join('\t'));
+  bindings.forEach(row => {
+    // bindingToTSVString already N-Triples-escapes literals; URIs are
+    // angle-wrapped and contain no tabs. No further escaping needed.
+    out.push(vars.map(v => bindingToTSVString(row[v])).join('\t'));
+  });
+  return out.join('\n') + '\n';
+}
+
 function payloadsToTriG(payloads) {
   const directives = new Set();
   const blocks = [];
@@ -305,9 +510,17 @@ class FactoidalSparqlClient extends HTMLElement {
     this._queriesFromProp = null;   // queries set via JS property
     this._rendered = false;
 
+    // Results state (view selector + hidden columns). Populated by
+    // _renderResultsJSON and consumed by _refreshResultsTable so users
+    // can switch views and hide/show columns without re-running.
+    this._lastJson = null;          // last results JSON payload
+    this._viewMode = 'table';       // one of: table | json | csv | tsv
+    this._hiddenCols = new Set();
+
     // Bind so we can attach/detach by identity
     this._onRunClick = this._onRunClick.bind(this);
     this._onQueryChange = this._onQueryChange.bind(this);
+    this._onQueryKeydown = this._onQueryKeydown.bind(this);
   }
 
   // -----------------------------------------------------------------
@@ -470,6 +683,12 @@ class FactoidalSparqlClient extends HTMLElement {
     this._queryEl = document.createElement('textarea');
     this._queryEl.setAttribute('part', 'query-editor');
     this._queryEl.id = 'fc-query';
+    this._queryEl.setAttribute('spellcheck', 'false');
+    this._queryEl.setAttribute('autocapitalize', 'off');
+    this._queryEl.setAttribute('autocorrect', 'off');
+    this._queryEl.addEventListener('keydown', this._onQueryKeydown);
+    this._queryEl.title =
+      'Ctrl+Enter (Cmd+Enter on macOS) to run. Shift+Enter for newline.';
     this._shadow.appendChild(this._queryEl);
 
     // Output region
@@ -558,6 +777,15 @@ class FactoidalSparqlClient extends HTMLElement {
 
   _onQueryChange() {
     this._loadQuery();
+  }
+
+  _onQueryKeydown(ev) {
+    // Ctrl+Enter / Cmd+Enter from inside the textarea → run.
+    // Plain Enter still inserts a newline (default behaviour).
+    if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
+      ev.preventDefault();
+      if (!this._runBtn.disabled) this._runBtn.click();
+    }
   }
 
   _loadQuery() {
@@ -651,36 +879,213 @@ class FactoidalSparqlClient extends HTMLElement {
   }
 
   _renderResultsJSON(json) {
+    // Cache json + reset column-visibility state; then render whichever
+    // view is currently selected.
+    this._lastJson = json;
+    this._hiddenCols = new Set();
+    this._refreshResultsView();
+  }
+
+  // Re-render the results area from cached JSON using _viewMode and
+  // _hiddenCols. No engine run; this is a cheap DOM rebuild so view
+  // switches feel instant.
+  _refreshResultsView() {
+    const json = this._lastJson;
     this._outEl.className = 'out';
     this._outEl.innerHTML = '';
-    if (typeof json.boolean === 'boolean') {
-      this._outEl.textContent = json.boolean ? 'Yes' : 'No';
+    if (!json) {
+      this._outEl.className = 'out empty';
+      this._outEl.textContent = 'Pick a query and click Run.';
       return;
     }
+
+    // View selector + download bar sit above the rendered body.
+    this._outEl.appendChild(this._renderViewTabs());
+    this._outEl.appendChild(this._renderDownloadBar(json));
+
+    if (typeof json.boolean === 'boolean') {
+      const body = document.createElement('div');
+      body.style.marginTop = '0.6em';
+      body.textContent = json.boolean ? 'Yes' : 'No';
+      this._outEl.appendChild(body);
+      return;
+    }
+
     const vars = (json.head && json.head.vars) || [];
     const bindings = (json.results && json.results.bindings) || [];
-    const table = document.createElement('table');
-    table.className = 'results';
-    const thead = document.createElement('thead');
-    const hrow = document.createElement('tr');
-    vars.forEach(v => {
-      const th = document.createElement('th');
-      th.textContent = '?' + v;
-      hrow.appendChild(th);
-    });
-    thead.appendChild(hrow); table.appendChild(thead);
-    const tbody = document.createElement('tbody');
-    bindings.forEach(row => {
-      const tr = document.createElement('tr');
-      vars.forEach(v => tr.appendChild(this._renderBinding(row[v])));
-      tbody.appendChild(tr);
-    });
-    table.appendChild(tbody);
-    this._outEl.appendChild(table);
+
+    switch (this._viewMode) {
+      case 'json':
+        this._outEl.appendChild(this._renderJSONView(json));
+        break;
+      case 'csv':
+        this._outEl.appendChild(this._renderDelimView(resultsToCSV(json)));
+        break;
+      case 'tsv':
+        this._outEl.appendChild(this._renderDelimView(resultsToTSV(json)));
+        break;
+      case 'table':
+      default:
+        this._outEl.appendChild(this._renderTableView(vars, bindings));
+        break;
+    }
+
     const meta = document.createElement('div');
     meta.className = 'result-meta';
     meta.textContent = bindings.length + ' result' + (bindings.length === 1 ? '' : 's');
+    if (this._lastTimingSummary && this._lastTimingSummary.html) {
+      // Re-attach the previously-rendered timing summary so view
+      // switches don't lose it.
+      const tpl = document.createElement('template');
+      tpl.innerHTML = this._lastTimingSummary.html;
+      if (tpl.content.firstChild) meta.appendChild(tpl.content.firstChild);
+    }
     this._outEl.appendChild(meta);
+  }
+
+  _renderTableView(vars, bindings) {
+    const frag = document.createDocumentFragment();
+    const visibleVars = vars.filter(v => !this._hiddenCols.has(v));
+    // Per-column kind inference, used for th/td alignment classes and
+    // for a lightweight "humanize" of xsd:date/dateTime.
+    const kinds = {};
+    visibleVars.forEach(v => { kinds[v] = inferColumnKind(bindings, v); });
+
+    const table = document.createElement('table');
+    table.className = 'results';
+    table.setAttribute('part', 'results-table');
+
+    const thead = document.createElement('thead');
+    const hrow = document.createElement('tr');
+    visibleVars.forEach(v => {
+      const th = document.createElement('th');
+      const k = kinds[v];
+      if (k === 'num') th.classList.add('num');
+      th.dataset.kind = k;
+      const label = document.createElement('span');
+      label.textContent = '?' + v;
+      th.appendChild(label);
+      // Wikidata-query-results-style per-column menu (hide for now;
+      // extensible later for sort/filter).
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'col-menu-btn';
+      btn.title = 'Hide column ?' + v;
+      btn.setAttribute('aria-label', 'Hide column ?' + v);
+      btn.textContent = 'x';
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        this._hiddenCols.add(v);
+        this._refreshResultsView();
+      });
+      th.appendChild(btn);
+      hrow.appendChild(th);
+    });
+    thead.appendChild(hrow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    bindings.forEach(row => {
+      const tr = document.createElement('tr');
+      visibleVars.forEach(v => {
+        const td = this._renderBinding(row[v]);
+        const k = bindingKind(row[v]);
+        if (k === 'num' && row[v]) {
+          // Strip the datatype suffix the default renderer adds;
+          // the column header already implies it and right-align
+          // + tabular-nums makes the type visually clear.
+          td.classList.add('num');
+          td.title = 'xsd:' + (row[v].datatype || '').split('#').pop();
+          td.textContent = row[v].value;
+        }
+        if (k === 'date' && row[v]) {
+          td.classList.add('date');
+          td.title = row[v].value;
+          td.textContent = prettyDate(row[v].value);
+        }
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    frag.appendChild(table);
+
+    if (this._hiddenCols.size) {
+      const note = document.createElement('div');
+      note.className = 'hidden-cols-note';
+      const hidden = [...this._hiddenCols].map(v => '?' + v).join(', ');
+      note.textContent = 'Hidden: ' + hidden + ' ';
+      const unhide = document.createElement('a');
+      unhide.textContent = '(show all)';
+      unhide.addEventListener('click', () => {
+        this._hiddenCols = new Set();
+        this._refreshResultsView();
+      });
+      note.appendChild(unhide);
+      frag.appendChild(note);
+    }
+    return frag;
+  }
+
+  _renderJSONView(json) {
+    const pre = document.createElement('pre');
+    pre.className = 'raw-json';
+    pre.textContent = JSON.stringify(json, null, 2);
+    return pre;
+  }
+
+  _renderDelimView(text) {
+    const pre = document.createElement('pre');
+    pre.className = 'raw-csv';
+    pre.textContent = text;
+    return pre;
+  }
+
+  _renderViewTabs() {
+    const box = document.createElement('span');
+    box.className = 'view-tabs';
+    box.setAttribute('part', 'view-tabs');
+    box.setAttribute('role', 'tablist');
+    const modes = [
+      ['table', 'Table'],
+      ['json',  'JSON'],
+      ['csv',   'CSV'],
+      ['tsv',   'TSV'],
+    ];
+    modes.forEach(([mode, label]) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      b.setAttribute('role', 'tab');
+      b.setAttribute('aria-selected', String(this._viewMode === mode));
+      if (this._viewMode === mode) b.classList.add('active');
+      b.addEventListener('click', () => {
+        this._viewMode = mode;
+        this._refreshResultsView();
+      });
+      box.appendChild(b);
+    });
+    return box;
+  }
+
+  _renderDownloadBar(json) {
+    const wrap = document.createElement('span');
+    wrap.className = 'download-links';
+    const base = 'factoidal-results';
+    const dl = (label, text, mime, ext) => {
+      const a = document.createElement('a');
+      a.textContent = label;
+      a.download = base + '.' + ext;
+      const blob = new Blob([text], { type: mime });
+      a.href = URL.createObjectURL(blob);
+      return a;
+    };
+    const jsonText = JSON.stringify(json, null, 2);
+    wrap.appendChild(document.createTextNode('Download:'));
+    wrap.appendChild(dl('JSON', jsonText, 'application/sparql-results+json', 'json'));
+    wrap.appendChild(dl('CSV',  resultsToCSV(json), 'text/csv', 'csv'));
+    wrap.appendChild(dl('TSV',  resultsToTSV(json), 'text/tab-separated-values', 'tsv'));
+    return wrap;
   }
 
   _renderRawError(text) {
@@ -755,6 +1160,11 @@ class FactoidalSparqlClient extends HTMLElement {
 
   _renderTimingBoth(totalMs, engineName, runMs) {
     const phases = this._buildPhases(engineName, runMs);
+    // Cache the inner HTML so view switches can re-attach the summary
+    // without re-running the query.
+    this._lastTimingSummary = {
+      html: this._renderTimingSummary(totalMs, engineName, runMs).outerHTML,
+    };
     const meta = this._outEl.querySelector('.result-meta');
     const summary = this._renderTimingSummary(totalMs, engineName, runMs);
     if (meta) meta.appendChild(summary);
@@ -771,6 +1181,10 @@ class FactoidalSparqlClient extends HTMLElement {
   async _onRunClick() {
     const engine = this._currentEngine();
     const queryText = this._queryEl.value;
+
+    // Reset stale timing summary from any prior run; it's re-populated
+    // on the success paths via _renderTimingBoth.
+    this._lastTimingSummary = null;
 
     this.dispatchEvent(new CustomEvent('factoidal:query-start', {
       bubbles: true, composed: true,

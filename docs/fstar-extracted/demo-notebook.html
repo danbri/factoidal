@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Factoidal — notebook-style SPARQL demo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --fg: #222; --muted: #666; --bg: #fff; --surface: #f7f7f7;
+    --border: #e0e0e0; --brand: #2d6a4f; --brand-dark: #1b4332;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--fg); background: var(--bg); line-height: 1.5;
+  }
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 1.2em 1.5em;
+  }
+  header h1 { margin: 0 0 0.2em; font-size: 1.5em; }
+  header p  { margin: 0; color: var(--muted); font-size: 0.95em; }
+  header a  { color: var(--brand-dark); }
+  header .tag {
+    display: inline-block;
+    margin-left: 0.5em; padding: 0.1em 0.5em;
+    background: var(--brand); color: #fff; border-radius: 10px;
+    font-size: 0.75em; vertical-align: middle;
+  }
+  main { max-width: 1100px; margin: 0 auto; padding: 1.5em; }
+  .row { display: flex; gap: 1em; margin: 0.8em 0; align-items: center; flex-wrap: wrap; }
+  .chip {
+    display: inline-block; padding: 0.1em 0.5em; border-radius: 10px;
+    background: var(--surface); color: var(--muted); font-size: 0.8em;
+    margin-right: 0.3em;
+  }
+  .note {
+    margin-top: 1em; padding: 0.6em 0.8em;
+    background: #fcf8e3; border-left: 3px solid #f0ad4e;
+    color: #6b5919; font-size: 0.9em;
+    border-radius: 0 4px 4px 0;
+  }
+  .note code { background: #fff; padding: 0 0.3em; border-radius: 2px; }
+  h2.cell-title {
+    margin: 1.2em 0 0.2em; font-size: 1.05em; color: var(--brand-dark);
+    font-weight: 600; letter-spacing: 0.02em;
+  }
+  .cell {
+    padding-top: 0.2em; margin-bottom: 2em;
+    border-top: 1px solid var(--border);
+  }
+  .cell:first-of-type { border-top: 0; }
+  kbd {
+    background: var(--surface); border: 1px solid var(--border);
+    border-bottom-width: 2px; border-radius: 3px;
+    padding: 0 0.35em; font-size: 0.85em;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+  }
+  /* Theme the component via CSS custom properties. Demonstrates that
+     the shadow DOM is styleable without touching the element's source. */
+  factoidal-sparql-client { display: block; margin: 0.5em 0; }
+</style>
+</head>
+
+<body>
+
+<header>
+  <h1>
+    Factoidal — notebook-style SPARQL
+    <span class="tag">v3 · Notebook</span>
+  </h1>
+  <p>
+    Multiple <code>&lt;factoidal-sparql-client&gt;</code> instances stacked
+    as cells. Each cell runs independently; new result views (Table /
+    JSON / CSV / TSV), downloadable result files, per-column hide,
+    numeric right-alignment, and <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to run.
+    <a href="./demo-lifesci-v2.html">v2 demo</a> ·
+    <a href="./demo-lifesci.html">v1 demo</a> ·
+    <a href="./">index</a>
+  </p>
+</header>
+
+<main>
+
+<div class="row">
+  <span class="chip">chromosome.ttl — 9,227 triples</span>
+  <span class="chip">sequence_variant.ttl — 6,455 triples</span>
+  <span class="chip">disease.ttl — 27,421 triples</span>
+</div>
+
+<!-- ================================================================= -->
+<!-- Cell 1: a query that returns URIs + a counted integer. Exercises   -->
+<!-- the column-kind inference (right-align integers, IRI→link).        -->
+<!-- ================================================================= -->
+<section class="cell">
+  <h2 class="cell-title">Cell 1 — Top diseases by gene count</h2>
+  <factoidal-sparql-client
+      engines="js,wasm"
+      default-engine="js"
+      warm
+      src-data='[
+        {"url":"./lifesci/chromosome.ttl",       "graph":"urn:kgx:chromosome",       "vfs":"/tmp/chromosome.ttl"},
+        {"url":"./lifesci/sequence_variant.ttl", "graph":"urn:kgx:sequence_variant", "vfs":"/tmp/sequence_variant.ttl"},
+        {"url":"./lifesci/disease.ttl",          "graph":"urn:kgx:disease",          "vfs":"/tmp/disease.ttl"}
+      ]'>
+    <factoidal-query name="top-diseases" label="Top diseases by associated-gene count">
+# Which diseases have the most known genetic associations?
+# Returns (?disease, ?associated_genes). ?associated_genes is an
+# xsd:integer — the column should be right-aligned with tabular-nums
+# in the Table view.
+PREFIX wdt: &lt;http://www.wikidata.org/prop/direct/&gt;
+
+SELECT ?disease (COUNT(?gene) AS ?associated_genes)
+WHERE {
+  GRAPH &lt;urn:kgx:disease&gt; { ?disease wdt:P2293 ?gene }
+}
+GROUP BY ?disease
+ORDER BY DESC(?associated_genes)
+LIMIT 10
+    </factoidal-query>
+  </factoidal-sparql-client>
+</section>
+
+<!-- ================================================================= -->
+<!-- Cell 2: cross-graph join. Two URI columns; useful for showing      -->
+<!-- per-column hide (try hiding ?variant to read the chromosome list). -->
+<!-- ================================================================= -->
+<section class="cell">
+  <h2 class="cell-title">Cell 2 — Variants × chromosomes</h2>
+  <factoidal-sparql-client
+      engines="js,wasm"
+      default-engine="js"
+      src-data='[
+        {"url":"./lifesci/chromosome.ttl",       "graph":"urn:kgx:chromosome",       "vfs":"/tmp/chromosome.ttl"},
+        {"url":"./lifesci/sequence_variant.ttl", "graph":"urn:kgx:sequence_variant", "vfs":"/tmp/sequence_variant.ttl"},
+        {"url":"./lifesci/disease.ttl",          "graph":"urn:kgx:disease",          "vfs":"/tmp/disease.ttl"}
+      ]'>
+    <factoidal-query name="variant-chrom" label="Sequence variants on chromosomes (cross-graph join)">
+# For each sequence variant, which chromosome is it located on?
+# Two IRI columns; both should show as clickable wd:Q... abbreviations.
+# Try the column-hide button (the "x" on a column header) to hide
+# ?variant and see just the chromosome list.
+PREFIX wdt: &lt;http://www.wikidata.org/prop/direct/&gt;
+PREFIX wd:  &lt;http://www.wikidata.org/entity/&gt;
+
+SELECT ?variant ?chrom
+WHERE {
+  GRAPH &lt;urn:kgx:chromosome&gt;       { ?chrom wdt:P31 wd:Q37748 }
+  GRAPH &lt;urn:kgx:sequence_variant&gt; { ?variant wdt:P1057 ?chrom }
+}
+LIMIT 20
+    </factoidal-query>
+  </factoidal-sparql-client>
+</section>
+
+<!-- ================================================================= -->
+<!-- Cell 3: named-graph sizes. Pure aggregate; numeric column again.   -->
+<!-- Good quick sanity-check target for the CSV/TSV download links.     -->
+<!-- ================================================================= -->
+<section class="cell">
+  <h2 class="cell-title">Cell 3 — Graph sizes</h2>
+  <factoidal-sparql-client
+      engines="js,wasm"
+      default-engine="js"
+      src-data='[
+        {"url":"./lifesci/chromosome.ttl",       "graph":"urn:kgx:chromosome",       "vfs":"/tmp/chromosome.ttl"},
+        {"url":"./lifesci/sequence_variant.ttl", "graph":"urn:kgx:sequence_variant", "vfs":"/tmp/sequence_variant.ttl"},
+        {"url":"./lifesci/disease.ttl",          "graph":"urn:kgx:disease",          "vfs":"/tmp/disease.ttl"}
+      ]'>
+    <factoidal-query name="count-per-graph" label="Count triples per named graph">
+# Triple count per named graph — a tidy two-column result with an
+# IRI (?g) and an integer (?triples). Try switching to the JSON / CSV
+# / TSV view; the Download buttons offer the same data as files.
+PREFIX xsd: &lt;http://www.w3.org/2001/XMLSchema#&gt;
+
+SELECT ?g (COUNT(*) AS ?triples)
+WHERE {
+  GRAPH ?g { ?s ?p ?o }
+}
+GROUP BY ?g
+ORDER BY DESC(?triples)
+    </factoidal-query>
+  </factoidal-sparql-client>
+</section>
+
+<div class="note">
+  <strong>What's new in this demo:</strong>
+  <ul style="margin: 0.3em 0 0 1em; padding: 0;">
+    <li>Multiple query cells on one page, each with its own engine
+      state, run button, and result view.</li>
+    <li>Result view tabs: <strong>Table</strong>, <strong>JSON</strong>,
+      <strong>CSV</strong>, <strong>TSV</strong>.</li>
+    <li>Download buttons for JSON / CSV / TSV of the last result.
+      CSV/TSV are client-side formatters; when the F* engine gains
+      a canonical <code>-o csv</code> path, we can switch to that.</li>
+    <li>Column-kind inference: integer columns right-align with
+      tabular numerals; date/dateTime literals render cleaner (raw ISO
+      kept on <code>title=</code>).</li>
+    <li>Per-column hide (<strong>x</strong> on the header); <em>show
+      all</em> link to reset.</li>
+    <li><kbd>Ctrl</kbd>+<kbd>Enter</kbd> (<kbd>Cmd</kbd>+<kbd>Enter</kbd>
+      on macOS) runs the query from inside the editor.</li>
+  </ul>
+</div>
+
+</main>
+
+<script type="module" src="./factoidal-sparql-client.js"></script>
+
+</body>
+</html>
