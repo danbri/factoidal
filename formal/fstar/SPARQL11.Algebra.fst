@@ -4750,6 +4750,11 @@ let apply_copy (ds : rdf_dataset) (silent : bool) (src : graph_ref)
   (dst : graph_ref) : rdf_dataset =
   let _ = silent in
   if graph_ref_eq src dst then ds
+  // Missing source: spec (§3.2.5) allows an error; SILENT says swallow
+  // it. Our pure model has no error path, so in either mode we treat a
+  // non-existent source as a full no-op rather than overwriting dst
+  // with an empty graph (which would spuriously materialise dst).
+  else if not (graph_ref_exists src ds) then ds
   else
     let src_triples = read_graph_ref src ds in
     write_graph_ref dst src_triples ds
@@ -4761,6 +4766,7 @@ let apply_move (ds : rdf_dataset) (silent : bool) (src : graph_ref)
   (dst : graph_ref) : rdf_dataset =
   let _ = silent in
   if graph_ref_eq src dst then ds
+  else if not (graph_ref_exists src ds) then ds  // see apply_copy note
   else
     let src_triples = read_graph_ref src ds in
     let ds_copied   = write_graph_ref dst src_triples ds in
@@ -4788,6 +4794,7 @@ let apply_add (ds : rdf_dataset) (silent : bool) (src : graph_ref)
   (dst : graph_ref) : rdf_dataset =
   let _ = silent in
   if graph_ref_eq src dst then ds
+  else if not (graph_ref_exists src ds) then ds  // see apply_copy note
   else
     let src_triples = read_graph_ref src ds in
     let cur_dst     = read_graph_ref dst ds in

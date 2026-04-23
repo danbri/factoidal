@@ -286,7 +286,7 @@ let _sse_smallest_candidate_bucket
     (ixs : _sse_graph_indexes)
     (fallback : RDF_Graph_Executable.rdf_graph) :
     RDF_Graph_Executable.triple Prims.list =
-  let len = Stdlib.List.length in
+  let len (l : RDF_Graph_Executable.triple list) = Stdlib.List.length l in
   let pred_bucket = match b.bp with
     | FStar_Pervasives_Native.Some p -> Some (Hashtbl.find_all ixs.pred_idx p)
     | FStar_Pervasives_Native.None -> None in
@@ -4017,8 +4017,8 @@ let () = regex_replace_ref := (fun text pattern replacement flags ->
       Buffer.contents buf
     in
     (* UTF-8 correction: OCaml Str treats the input as bytes. A character
-       class like `[^a-z0-9]` will match each byte of a multi-byte codepoint
-       separately — e.g. "日" (E6 97 A5) produces three matches instead of one.
+       class like  will match each byte of a multi-byte codepoint
+       separately — e.g. 日 (E6 97 A5) produces three matches instead of one.
        We post-process Str matches so that:
          * a match starting at a UTF-8 continuation byte is skipped
            (it's inside a codepoint the regex couldn't actually match),
@@ -6013,32 +6013,38 @@ let apply_copy (ds : RDF_Graph_Executable.rdf_dataset) (silent : Prims.bool)
   if graph_ref_eq src dst
   then ds
   else
-    (let src_triples = read_graph_ref src ds in
-     write_graph_ref dst src_triples ds)
+    if Prims.op_Negation (graph_ref_exists src ds)
+    then ds
+    else
+      (let src_triples = read_graph_ref src ds in
+       write_graph_ref dst src_triples ds)
 let apply_move (ds : RDF_Graph_Executable.rdf_dataset) (silent : Prims.bool)
   (src : graph_ref) (dst : graph_ref) : RDF_Graph_Executable.rdf_dataset=
   let uu___ = silent in
   if graph_ref_eq src dst
   then ds
   else
-    (let src_triples = read_graph_ref src ds in
-     let ds_copied = write_graph_ref dst src_triples ds in
-     match src with
-     | GR_Default ->
-         {
-           RDF_Graph_Executable.ds_default = [];
-           RDF_Graph_Executable.ds_named =
-             (ds_copied.RDF_Graph_Executable.ds_named)
-         }
-     | GR_Graph iri ->
-         {
-           RDF_Graph_Executable.ds_default =
-             (ds_copied.RDF_Graph_Executable.ds_default);
-           RDF_Graph_Executable.ds_named =
-             (drop_named_by_iri iri ds_copied.RDF_Graph_Executable.ds_named)
-         }
-     | GR_Named -> ds_copied
-     | GR_All -> ds_copied)
+    if Prims.op_Negation (graph_ref_exists src ds)
+    then ds
+    else
+      (let src_triples = read_graph_ref src ds in
+       let ds_copied = write_graph_ref dst src_triples ds in
+       match src with
+       | GR_Default ->
+           {
+             RDF_Graph_Executable.ds_default = [];
+             RDF_Graph_Executable.ds_named =
+               (ds_copied.RDF_Graph_Executable.ds_named)
+           }
+       | GR_Graph iri ->
+           {
+             RDF_Graph_Executable.ds_default =
+               (ds_copied.RDF_Graph_Executable.ds_default);
+             RDF_Graph_Executable.ds_named =
+               (drop_named_by_iri iri ds_copied.RDF_Graph_Executable.ds_named)
+           }
+       | GR_Named -> ds_copied
+       | GR_All -> ds_copied)
 let rec graph_append (src : RDF_Graph_Executable.triple Prims.list)
   (dst : RDF_Graph_Executable.rdf_graph) : RDF_Graph_Executable.rdf_graph=
   match src with
@@ -6050,10 +6056,13 @@ let apply_add (ds : RDF_Graph_Executable.rdf_dataset) (silent : Prims.bool)
   if graph_ref_eq src dst
   then ds
   else
-    (let src_triples = read_graph_ref src ds in
-     let cur_dst = read_graph_ref dst ds in
-     let merged = graph_append src_triples cur_dst in
-     write_graph_ref dst merged ds)
+    if Prims.op_Negation (graph_ref_exists src ds)
+    then ds
+    else
+      (let src_triples = read_graph_ref src ds in
+       let cur_dst = read_graph_ref dst ds in
+       let merged = graph_append src_triples cur_dst in
+       write_graph_ref dst merged ds)
 let apply_update_op (ds : RDF_Graph_Executable.rdf_dataset) (op : update_op)
   : RDF_Graph_Executable.rdf_dataset=
   match op with

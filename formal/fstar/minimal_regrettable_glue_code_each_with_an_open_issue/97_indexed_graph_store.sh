@@ -169,7 +169,7 @@ let _sse_smallest_candidate_bucket
     (ixs : _sse_graph_indexes)
     (fallback : RDF_Graph_Executable.rdf_graph) :
     RDF_Graph_Executable.triple Prims.list =
-  let len (l : RDF_Graph_Executable.triple list) : int = Stdlib.List.length l in
+  let len (l : RDF_Graph_Executable.triple list) = Stdlib.List.length l in
   let pred_bucket = match b.bp with
     | FStar_Pervasives_Native.Some p -> Some (Hashtbl.find_all ixs.pred_idx p)
     | FStar_Pervasives_Native.None -> None in
