@@ -205,8 +205,7 @@ let initial_state (base : Prims.string) : rdfxml_state=
   }
 let fresh_bnode (st : rdfxml_state) : (Prims.string * rdfxml_state)=
   let id =
-    FStar_String.concat ""
-      ["_:rdfxml_b"; Prims.string_of_int st.bnode_counter] in
+    FStar_String.concat "" ["rdfxml_b"; Prims.string_of_int st.bnode_counter] in
   (id,
     {
       base_iri = (st.base_iri);
@@ -588,8 +587,7 @@ let determine_subject (st : rdfxml_state)
        | FStar_Pervasives_Native.None ->
            (match Parser_XML.find_attr "rdf:nodeID" attrs with
             | FStar_Pervasives_Native.Some nid ->
-                let bid = FStar_String.concat "" ["_:"; nid] in
-                ((RDF_Graph_Executable.S_BNode bid), st)
+                ((RDF_Graph_Executable.S_BNode nid), st)
             | FStar_Pervasives_Native.None ->
                 let uu___ = fresh_bnode st in
                 (match uu___ with
@@ -608,9 +606,8 @@ let determine_property_object_from_attrs (st : rdfxml_state)
   | FStar_Pervasives_Native.None ->
       (match Parser_XML.find_attr "rdf:nodeID" attrs with
        | FStar_Pervasives_Native.Some nid ->
-           let bid = FStar_String.concat "" ["_:"; nid] in
            FStar_Pervasives_Native.Some
-             ((RDF_Graph_Executable.T_BNode bid), st)
+             ((RDF_Graph_Executable.T_BNode nid), st)
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
 let rec collect_property_attributes (st : rdfxml_state)
   (subj : RDF_Graph_Executable.subject)

@@ -65,8 +65,12 @@ let initial_state (base : string) : rdfxml_state = {
   li_counter = 1;
 }
 
+(* Bnode labels are stored WITHOUT the leading `_:` — the serialiser
+   (factoidal_cli.ml / SPARQL.Protocol.fst) prepends `_:` when emitting
+   N-Triples. Double-prepending was the root of the `_:_:rdfxml_b0`
+   bug reported by xmlbase-test004 etc. *)
 let fresh_bnode (st : rdfxml_state) : (string * rdfxml_state) =
-  let id = String.concat "" ["_:rdfxml_b"; string_of_int st.bnode_counter] in
+  let id = String.concat "" ["rdfxml_b"; string_of_int st.bnode_counter] in
   (id, { st with bnode_counter = st.bnode_counter + 1 })
 
 let reset_li_counter (st : rdfxml_state) : rdfxml_state =
@@ -422,8 +426,8 @@ let determine_subject (st : rdfxml_state) (attrs : list xml_attribute)
     | None ->
       match find_attr "rdf:nodeID" attrs with
       | Some nid ->
-        let bid = String.concat "" ["_:"; nid] in
-        (S_BNode bid, st)
+        (* Store bnode label without the `_:` prefix — serialiser adds it. *)
+        (S_BNode nid, st)
       | None ->
         let (bid, st') = fresh_bnode st in
         (S_BNode bid, st')
@@ -442,8 +446,8 @@ let determine_property_object_from_attrs (st : rdfxml_state) (attrs : list xml_a
   | None ->
     match find_attr "rdf:nodeID" attrs with
     | Some nid ->
-      let bid = String.concat "" ["_:"; nid] in
-      Some (T_BNode bid, st)
+      (* Store bnode label without the `_:` prefix — serialiser adds it. *)
+      Some (T_BNode nid, st)
     | None -> None
 
 
