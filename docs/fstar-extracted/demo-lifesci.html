@@ -35,6 +35,41 @@
     cursor: pointer; font-weight: 600;
   }
   button:disabled { opacity: 0.6; cursor: wait; }
+  /* Run-button pulse while a query is in flight — lets the user know
+     the click registered even if the engine takes a second to warm
+     up.  */
+  @keyframes runPulse {
+    0%   { box-shadow: 0 0 0 0   rgba(45, 106, 79, 0.6); }
+    70%  { box-shadow: 0 0 0 12px rgba(45, 106, 79, 0); }
+    100% { box-shadow: 0 0 0 0   rgba(45, 106, 79, 0); }
+  }
+  button.running {
+    animation: runPulse 1.1s ease-out infinite;
+    background: var(--brand-dark);
+  }
+  /* Spinner dot next to the status text. Uses the same cheerful
+     green as the brand. */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    display: inline-block; width: 0.9em; height: 0.9em;
+    border: 2px solid var(--border); border-top-color: var(--brand);
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+    vertical-align: -0.18em; margin-right: 0.35em;
+  }
+  /* Engine toggle — two-button segmented control. */
+  .engine-toggle {
+    display: inline-flex; border: 1px solid var(--border);
+    border-radius: 4px; overflow: hidden;
+  }
+  .engine-toggle button {
+    background: var(--bg); color: var(--fg); border: none; border-radius: 0;
+    padding: 0.35em 0.8em; font-weight: 500; font-size: 0.9em;
+  }
+  .engine-toggle button + button { border-left: 1px solid var(--border); }
+  .engine-toggle button.active {
+    background: var(--brand); color: #fff; font-weight: 600;
+  }
+  .engine-toggle button:disabled { animation: none; }
   textarea {
     width: 100%; min-height: 10em; font: 0.92em/1.45 ui-monospace, Menlo,
     Consolas, monospace; padding: 0.7em; border: 1px solid var(--border);
@@ -99,6 +134,12 @@
   <label for="query-select">Query</label>
   <select id="query-select"></select>
   <button id="run-btn">Run</button>
+  <span class="engine-toggle" role="group" aria-label="Engine">
+    <button id="engine-js"   class="active" type="button"
+            aria-pressed="true"  title="js_of_ocaml (pure JavaScript — widest browser support)">JS</button>
+    <button id="engine-wasm" type="button"
+            aria-pressed="false" title="wasm_of_ocaml (WebAssembly — needs Wasm-GC: Chrome/Edge 119+, Node 22+)">WASM</button>
+  </span>
   <span id="status" class="status">Loading engine…</span>
 </div>
 
@@ -238,6 +279,23 @@ LIMIT 25
   const runBtn      = document.getElementById('run-btn');
   const statusEl    = document.getElementById('status');
   const outputWrap  = document.getElementById('out');
+  const jsBtn       = document.getElementById('engine-js');
+  const wasmBtn     = document.getElementById('engine-wasm');
+
+  // -------------------------------------------------------------------
+  // Engine toggle: 'js' (factoidal.js, synchronous) or 'wasm'
+  // (factoidal.wasm.js, async loader + .wasm payload).
+  // -------------------------------------------------------------------
+  let engine = 'js';
+  function setEngine(e) {
+    engine = e;
+    jsBtn.classList.toggle('active',   e === 'js');
+    wasmBtn.classList.toggle('active', e === 'wasm');
+    jsBtn.setAttribute('aria-pressed',   e === 'js'   ? 'true' : 'false');
+    wasmBtn.setAttribute('aria-pressed', e === 'wasm' ? 'true' : 'false');
+  }
+  jsBtn.addEventListener('click',   () => setEngine('js'));
+  wasmBtn.addEventListener('click', () => setEngine('wasm'));
 
   QUERIES.forEach(q => {
     const opt = document.createElement('option');
@@ -269,21 +327,31 @@ LIMIT 25
   }
 
   // -------------------------------------------------------------------
-  // factoidal.js loader.
+  // Engine loaders.
+  //
+  //   js   — factoidal.js (js_of_ocaml). Synchronous: load the text,
+  //          stash argv, `new Function(src)()` invokes it top-to-bottom.
+  //   wasm — factoidal.wasm.js (wasm_of_ocaml loader) + .wasm payload
+  //          fetched relative to this page. Also text-evaluated; the
+  //          loader itself uses top-level `await` in modern v8.
+  //
+  // Both are cached after first fetch. Warming both in parallel on
+  // page load means the toggle feels instant after the first run.
   // -------------------------------------------------------------------
-  let factoidalSource = null;
-  let fetchPromise = null;
-  function getFactoidal() {
-    if (factoidalSource) return Promise.resolve(factoidalSource);
-    if (fetchPromise) return fetchPromise;
-    fetchPromise = fetch('./factoidal.js')
-      .then(r => { if (!r.ok) throw new Error('fetch factoidal.js: ' + r.status); return r.text(); })
-      .then(t => { factoidalSource = t; return t; });
-    return fetchPromise;
+  const engineSources = { js: null, wasm: null };
+  const enginePromises = { js: null, wasm: null };
+  function getEngineSource(which) {
+    if (engineSources[which]) return Promise.resolve(engineSources[which]);
+    if (enginePromises[which]) return enginePromises[which];
+    const url = which === 'wasm' ? './factoidal.wasm.js' : './factoidal.js';
+    enginePromises[which] = fetch(url)
+      .then(r => { if (!r.ok) throw new Error('fetch ' + url + ': ' + r.status); return r.text(); })
+      .then(t => { engineSources[which] = t; return t; });
+    return enginePromises[which];
   }
 
-  // Warm both loaders at page-load, in parallel.
-  Promise.all([getFactoidal(), getFilePayloads()])
+  // Warm both engines + the data in parallel at page-load.
+  Promise.all([getEngineSource('js'), getEngineSource('wasm'), getFilePayloads()])
     .then(() => { statusEl.textContent = 'Ready.'; statusEl.className = 'status ok'; })
     .catch(e => { statusEl.textContent = 'Load failed: ' + e.message;
                   statusEl.className = 'status err'; });
@@ -366,8 +434,9 @@ LIMIT 25
   // -------------------------------------------------------------------
   runBtn.addEventListener('click', async () => {
     runBtn.disabled = true;
+    runBtn.classList.add('running');          // pulse animation while in-flight
     statusEl.className = 'status';
-    statusEl.textContent = 'Running…';
+    statusEl.innerHTML = '<span class="spinner" aria-hidden="true"></span>Running on ' + engine.toUpperCase() + '…';
     outputWrap.className = 'empty'; outputWrap.textContent = '';
     const buf = [];
     const origLog = console.log, origErr = console.error;
@@ -375,14 +444,16 @@ LIMIT 25
     console.error = (...a) => buf.push(a.join(' '));
 
     try {
-      const [src, payloads] = await Promise.all([getFactoidal(), getFilePayloads()]);
+      const [src, payloads] = await Promise.all([getEngineSource(engine), getFilePayloads()]);
 
-      // Stage the three files in jsoo's fake file system.
+      // Stage the three files in jsoo's fake file system. Both the
+      // js_of_ocaml and wasm_of_ocaml runtimes read the same
+      // jsoo_fs_tmp global on startup.
       globalThis.jsoo_fs_tmp = payloads.map(p => ({ name: p.vfs, content: p.content }));
       globalThis.process = globalThis.process || {};
 
       // Build argv: one --named IRI=PATH per file, plus -e + -o json.
-      const argv = ['node', 'factoidal'];
+      const argv = [(engine === 'wasm' ? 'node' : 'node'), 'factoidal'];
       payloads.forEach(p => { argv.push('--named', p.graph + '=' + p.vfs); });
       argv.push('-e', queryEl.value, '-o', 'json');
       globalThis.process.argv = argv;
@@ -393,7 +464,11 @@ LIMIT 25
 
       const t0 = performance.now();
       try {
-        (new Function(src))();
+        // wasm_of_ocaml's loader is async (fetches the .wasm file);
+        // js_of_ocaml's is synchronous. Awaiting works for both —
+        // the sync one returns a non-thenable which await unwraps.
+        const runEngine = new Function('return (async () => { ' + src + ' })();');
+        await runEngine();
       } catch (e) {
         if (!e || e.message !== '__exit__') { buf.push('\n[demo] ' + e.message); exitCode = 1; }
       } finally {
@@ -405,7 +480,7 @@ LIMIT 25
       const out = buf.join('\n').replace(/\n+$/, '');
 
       if (exitCode !== 0) {
-        statusEl.textContent = 'Error after ' + ms + ' ms';
+        statusEl.textContent = engine.toUpperCase() + ' error after ' + ms + ' ms';
         statusEl.className = 'status err';
         renderRawError(out || '(no output, exit ' + exitCode + ')');
         return;
@@ -416,7 +491,7 @@ LIMIT 25
       let parsed;
       try { parsed = JSON.parse(out.slice(first, last + 1)); }
       catch { renderRawError(out); return; }
-      statusEl.textContent = 'Done in ' + ms + ' ms';
+      statusEl.textContent = 'Done on ' + engine.toUpperCase() + ' in ' + ms + ' ms';
       statusEl.className = 'status ok';
       renderResultsJSON(parsed);
     } catch (e) {
@@ -426,6 +501,7 @@ LIMIT 25
       renderRawError(e && e.stack || String(e));
     } finally {
       runBtn.disabled = false;
+      runBtn.classList.remove('running');
     }
   });
 
