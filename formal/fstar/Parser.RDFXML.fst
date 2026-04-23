@@ -648,11 +648,13 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
             { pr_triples = link_triple :: (reif_of pred_iri obj_term) @ child_result.pr_triples;
               pr_state = child_result.pr_state; }
           | Some "Collection" ->
-            (* parseType="Collection" — RDF list. Reification of a
-               Collection property is not well-defined by the spec
-               (and no test exercises it), so we don't attach reif
-               quads here. *)
-            let collection_result = process_collection st2 subj pred_iri children (fuel - 1) in
+            (* parseType="Collection" — RDF list. Reification is
+               well-defined: the reif object is the head of the list
+               (or rdf:nil for an empty Collection). See
+               rdfms-seq-representation-test002. *)
+            let collection_result = process_collection st2 subj pred_iri
+                                                        reif_iri_opt
+                                                        children (fuel - 1) in
             collection_result
           | _ ->
             (* No parseType — normal property element *)
@@ -754,7 +756,9 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
       end
     | _ -> empty_result st
 
-and process_collection (st : rdfxml_state) (subj : subject) (pred_iri : string) (items : list xml_node) (fuel : nat)
+and process_collection (st : rdfxml_state) (subj : subject) (pred_iri : string)
+                        (reif_iri_opt : option string)
+                        (items : list xml_node) (fuel : nat)
   : Tot process_result (decreases fuel) =
   if fuel = 0 then empty_result st
   else
@@ -763,25 +767,39 @@ and process_collection (st : rdfxml_state) (subj : subject) (pred_iri : string) 
       match c with
       | XElement _ _ _ -> true
       | _ -> false) items in
+    let reif_for (obj : rdf_term) : list triple =
+      match reif_iri_opt with
+      | Some r -> make_reification_triples r subj pred_iri obj
+      | None -> []
+    in
     if List.Tot.length elem_items = 0 then
       (* Empty collection — link to rdf:nil *)
       if is_iri rdf_nil_iri && is_iri pred_iri then
-        let t : triple = { s = subj; p = pred_iri; o = T_IRI rdf_nil_iri } in
-        { pr_triples = [t]; pr_state = st; }
+        let obj = T_IRI rdf_nil_iri in
+        let t : triple = { s = subj; p = pred_iri; o = obj } in
+        { pr_triples = t :: reif_for obj; pr_state = st; }
       else empty_result st
     else
-      build_collection_list st subj pred_iri elem_items (fuel - 1)
+      build_collection_list st subj pred_iri reif_iri_opt elem_items (fuel - 1)
 
-and build_collection_list (st : rdfxml_state) (subj : subject) (pred_iri : string) (items : list xml_node) (fuel : nat)
+and build_collection_list (st : rdfxml_state) (subj : subject) (pred_iri : string)
+                           (reif_iri_opt : option string)
+                           (items : list xml_node) (fuel : nat)
   : Tot process_result (decreases fuel) =
   if fuel = 0 then empty_result st
   else
+    let reif_for (obj : rdf_term) : list triple =
+      match reif_iri_opt with
+      | Some r -> make_reification_triples r subj pred_iri obj
+      | None -> []
+    in
     match items with
     | [] ->
       (* End of list — link to rdf:nil *)
       if is_iri rdf_nil_iri && is_iri pred_iri then
-        let t : triple = { s = subj; p = pred_iri; o = T_IRI rdf_nil_iri } in
-        { pr_triples = [t]; pr_state = st; }
+        let obj = T_IRI rdf_nil_iri in
+        let t : triple = { s = subj; p = pred_iri; o = obj } in
+        { pr_triples = t :: reif_for obj; pr_state = st; }
       else empty_result st
     | item :: rest ->
       if not (is_iri pred_iri) then empty_result st
@@ -789,8 +807,11 @@ and build_collection_list (st : rdfxml_state) (subj : subject) (pred_iri : strin
       (* Create a list node *)
       let (list_bid, st2) = fresh_bnode st in
       let list_node = S_BNode list_bid in
-      (* Link subject to this list node *)
-      let link_triple : triple = { s = subj; p = pred_iri; o = T_BNode list_bid } in
+      (* Link subject to this list node — this is the triple
+         reification targets when we're the outer call. *)
+      let link_obj = T_BNode list_bid in
+      let link_triple : triple = { s = subj; p = pred_iri; o = link_obj } in
+      let link_reif = reif_for link_obj in
       (* Process the item as a node element *)
       let item_result = process_node_element st2 item (fuel - 1) in
       (* Determine the item's subject to use as rdf:first value *)
@@ -804,21 +825,27 @@ and build_collection_list (st : rdfxml_state) (subj : subject) (pred_iri : strin
       (* rdf:first triple *)
       if is_iri rdf_first_iri then
         let first_triple : triple = { s = list_node; p = rdf_first_iri; o = item_term } in
-        (* Process rest of list: rdf:rest links to next node or rdf:nil *)
+        (* Recurse on rest with None — reification only binds to the
+           outer (subj, pred, head) edge, not intermediate rdf:rest
+           links. *)
         let rest_result =
           if is_iri rdf_rest_iri then
-            build_collection_list st3 list_node rdf_rest_iri rest (fuel - 1)
+            build_collection_list st3 list_node rdf_rest_iri None rest (fuel - 1)
           else empty_result st3
         in
-        let all_triples = link_triple :: first_triple :: item_result.pr_triples @ rest_result.pr_triples in
+        let all_triples =
+          link_triple :: link_reif @ first_triple :: item_result.pr_triples @ rest_result.pr_triples
+        in
         { pr_triples = all_triples; pr_state = rest_result.pr_state; }
       else
         let rest_result =
           if is_iri rdf_rest_iri then
-            build_collection_list st3 list_node rdf_rest_iri rest (fuel - 1)
+            build_collection_list st3 list_node rdf_rest_iri None rest (fuel - 1)
           else empty_result st3
         in
-        let all_triples = link_triple :: item_result.pr_triples @ rest_result.pr_triples in
+        let all_triples =
+          link_triple :: link_reif @ item_result.pr_triples @ rest_result.pr_triples
+        in
         { pr_triples = all_triples; pr_state = rest_result.pr_state; }
 
 
