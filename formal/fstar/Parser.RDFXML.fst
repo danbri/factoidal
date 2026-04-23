@@ -55,6 +55,11 @@ noeq type rdfxml_state = {
   lang : option string;                  (* inherited xml:lang *)
   bnode_counter : nat;                   (* counter for generating fresh blank nodes *)
   li_counter : nat;                      (* counter for rdf:li numbering *)
+  seen_ids : list string;                (* resolved rdf:ID IRIs seen so far
+                                            — duplicates are a syntax error
+                                            per RDF/XML §7.2.10 *)
+  has_error : bool;                      (* set when a syntax-level error is
+                                            detected (e.g. duplicate rdf:ID) *)
 }
 
 let initial_state (base : string) : rdfxml_state = {
@@ -63,7 +68,15 @@ let initial_state (base : string) : rdfxml_state = {
   lang = None;
   bnode_counter = 0;
   li_counter = 1;
+  seen_ids = [];
+  has_error = false;
 }
+
+(* String-list membership helper — used for duplicate rdf:ID detection. *)
+let rec string_list_contains (s : string) (xs : list string) : bool =
+  match xs with
+  | [] -> false
+  | x :: rest -> if x = s then true else string_list_contains s rest
 
 (* Bnode labels are stored WITHOUT the leading `_:` — the serialiser
    (factoidal_cli.ml / SPARQL.Protocol.fst) prepends `_:` when emitting
@@ -405,8 +418,12 @@ let add_triples (pr : process_result) (ts : list triple) : process_result =
    - rdf:about="uri" -> IRI subject
    - rdf:ID="name" -> IRI subject (base_iri + "#" + name)
    - rdf:nodeID="id" -> blank node subject
-   - none of the above -> fresh blank node *)
-let determine_subject (st : rdfxml_state) (attrs : list xml_attribute)
+   - none of the above -> fresh blank node
+
+   Read-only variant: does NOT update `seen_ids` / `has_error`.
+   Used at probe call-sites where the inner call has already
+   registered the ID authoritatively. *)
+let determine_subject_readonly (st : rdfxml_state) (attrs : list xml_attribute)
   : (subject * rdfxml_state) =
   match find_attr "rdf:about" attrs with
   | Some about_val ->
@@ -422,6 +439,46 @@ let determine_subject (st : rdfxml_state) (attrs : list xml_attribute)
       if is_iri iri then (S_IRI iri, st)
       else
         let (bid, st') = fresh_bnode st in
+        (S_BNode bid, st')
+    | None ->
+      match find_attr "rdf:nodeID" attrs with
+      | Some nid -> (S_BNode nid, st)
+      | None ->
+        let (bid, st') = fresh_bnode st in
+        (S_BNode bid, st')
+
+
+(* Authoritative variant: registers rdf:ID in `seen_ids` and sets
+   `has_error` on duplicates. Call this exactly once per node
+   element at the site that actually owns the node. *)
+let determine_subject (st : rdfxml_state) (attrs : list xml_attribute)
+  : (subject * rdfxml_state) =
+  match find_attr "rdf:about" attrs with
+  | Some about_val ->
+    let iri = resolve_iri st.base_iri about_val in
+    if is_iri iri then (S_IRI iri, st)
+    else
+      let (bid, st') = fresh_bnode st in
+      (S_BNode bid, st')
+  | None ->
+    match find_attr "rdf:ID" attrs with
+    | Some id_val ->
+      let iri = resolve_iri st.base_iri (String.concat "" ["#"; id_val]) in
+      (* RDF/XML §7.2.10: two elements in the same base-URI scope may not
+         use the same rdf:ID. Track duplicates using a composite key
+         (base + "#" + id) so the check works even when the document
+         has no xml:base and resolve_iri returns a non-absolute string.
+         Previously we only registered absolute-IRI results, which meant
+         rdfms-difference-between-ID-and-about-error1 silently slipped
+         past the check when the runner supplied an empty base. *)
+      let dup_key = String.concat "" [st.base_iri; "#"; id_val] in
+      let dup = string_list_contains dup_key st.seen_ids in
+      let st_tracked = { st with seen_ids = dup_key :: st.seen_ids;
+                                 has_error = st.has_error || dup } in
+      if is_iri iri then
+        (S_IRI iri, st_tracked)
+      else
+        let (bid, st') = fresh_bnode st_tracked in
         (S_BNode bid, st')
     | None ->
       match find_attr "rdf:nodeID" attrs with
@@ -695,8 +752,12 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
                 begin match child_elements_list with
                 | child_elem :: _ ->
                   let node_result = process_node_element st2 child_elem (fuel - 1) in
-                  (* The subject of the child node becomes the object *)
-                  let child_subj = determine_subject (update_state_from_attrs st2 (element_attrs child_elem)) (element_attrs child_elem) in
+                  (* The subject of the child node becomes the object.
+                     Use the read-only variant — the inner call above
+                     already registered any rdf:ID authoritatively;
+                     re-registering here would produce a false
+                     duplicate-ID error. *)
+                  let child_subj = determine_subject_readonly (update_state_from_attrs st2 (element_attrs child_elem)) (element_attrs child_elem) in
                   let (child_s, st3) = child_subj in
                   let obj_term =
                     begin match child_s with
@@ -818,9 +879,11 @@ and build_collection_list (st : rdfxml_state) (subj : subject) (pred_iri : strin
       let link_reif = reif_for link_obj in
       (* Process the item as a node element *)
       let item_result = process_node_element st2 item (fuel - 1) in
-      (* Determine the item's subject to use as rdf:first value *)
+      (* Determine the item's subject to use as rdf:first value.
+         Read-only variant — rdf:ID was already registered by the
+         inner call. *)
       let item_st = update_state_from_attrs item_result.pr_state (element_attrs item) in
-      let (item_subj, st3) = determine_subject item_st (element_attrs item) in
+      let (item_subj, st3) = determine_subject_readonly item_st (element_attrs item) in
       let item_term =
         match item_subj with
         | S_IRI i -> T_IRI i
@@ -863,7 +926,9 @@ and build_collection_list (st : rdfxml_state) (subj : subject) (pred_iri : strin
    siblings so two fresh-bnode requests never collide. Thread only
    the counter across; restore the scoping fields from the parent. *)
 let restore_scope (parent : rdfxml_state) (child : rdfxml_state) : rdfxml_state =
-  { parent with bnode_counter = child.bnode_counter }
+  { parent with bnode_counter = child.bnode_counter;
+                seen_ids = child.seen_ids;
+                has_error = child.has_error }
 
 let rec process_node_elements (st : rdfxml_state) (nodes : list xml_node) (fuel : nat)
   : Tot process_result (decreases fuel) =
@@ -888,7 +953,9 @@ let rec process_node_elements (st : rdfxml_state) (nodes : list xml_node) (fuel 
 (* Entry point: process an XML document tree into RDF triples        *)
 (* ================================================================ *)
 
-let process_xml_tree (st : rdfxml_state) (root : xml_node) : list triple =
+(* Full variant: returns both triples and final state (for strict-mode
+   error detection). *)
+let process_xml_tree_full (st : rdfxml_state) (root : xml_node) : process_result =
   let fuel = 10000 in
   match root with
   | XElement tag attrs children ->
@@ -901,13 +968,14 @@ let process_xml_tree (st : rdfxml_state) (root : xml_node) : list triple =
     in
     if is_rdf_root then
       (* Process children as node elements *)
-      let result = process_node_elements st1 children fuel in
-      result.pr_triples
+      process_node_elements st1 children fuel
     else
       (* Root is a node element itself (rdf:RDF wrapper is optional) *)
-      let result = process_node_element st1 root fuel in
-      result.pr_triples
-  | _ -> []
+      process_node_element st1 root fuel
+  | _ -> empty_result st
+
+let process_xml_tree (st : rdfxml_state) (root : xml_node) : list triple =
+  (process_xml_tree_full st root).pr_triples
 
 
 (* ================================================================ *)
@@ -923,3 +991,18 @@ let parse_rdfxml_with_base (base_iri : string) (input : string) : list triple =
 
 let parse_rdfxml (input : string) : list triple =
   parse_rdfxml_with_base "" input
+
+
+(* Strict variants: return None when a syntax-level error was
+   detected during parsing (e.g. duplicate rdf:ID per §7.2.10) or
+   when the underlying XML document is malformed. *)
+let parse_rdfxml_with_base_strict (base_iri : string) (input : string) : option (list triple) =
+  match parse_xml_document input with
+  | Some root ->
+    let st = initial_state base_iri in
+    let r = process_xml_tree_full st root in
+    if r.pr_state.has_error then None else Some r.pr_triples
+  | None -> None
+
+let parse_rdfxml_strict (input : string) : option (list triple) =
+  parse_rdfxml_with_base_strict "" input
