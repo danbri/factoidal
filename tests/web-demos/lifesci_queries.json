@@ -5,7 +5,7 @@
       "name": "03-variant-chrom",
       "file": "examples/wikidata/subsets/lifesci-kgx/queries/03_variant_on_chromosome.rq",
       "expected_rows": 20,
-      "note": "Cross-graph join with LIMIT 20. js_of_ocaml stack-overflows on this one (known; GitHub issue to open)."
+      "note": "Cross-graph join with LIMIT 20. Previously stack-overflowed on js/wasm due to Hashtbl.find_all recursion in the #97 indexed store; fixed by switching to (key, triple list) single-binding shape."
     },
     {
       "name": "04-top-diseases",
@@ -23,7 +23,7 @@
       "name": "02-top-types",
       "file": "examples/wikidata/subsets/lifesci-kgx/queries/02_top_types.rq",
       "expected_rows": 3,
-      "note": "UNION over P31 / rdf:type; LIMIT 10 but only 3 distinct types present in this subset. js_of_ocaml stack-overflows on this one (known)."
+      "note": "UNION over P31 / rdf:type; LIMIT 10 but only 3 distinct types present in this subset. Previously stack-overflowed; same Hashtbl.find_all fix."
     },
     {
       "name": "05-disease-gene-crossgraph",
@@ -37,14 +37,5 @@
     { "graph": "urn:kgx:sequence_variant", "file": "docs/fstar-extracted/lifesci/sequence_variant.ttl" },
     { "graph": "urn:kgx:disease",          "file": "docs/fstar-extracted/lifesci/disease.ttl" }
   ],
-  "known_failures": {
-    "js": {
-      "03-variant-chrom": "Stack overflow. Native passes. Suspected non-tail-rec path in cross-graph BGP eval that only surfaces under the v8 stack limit. Tracked: none yet — open an issue after this lands.",
-      "02-top-types": "Stack overflow on UNION + GROUP BY combo. Same suspected root cause."
-    },
-    "wasm": {
-      "03-variant-chrom": "Same stack overflow as js. wasm_of_ocaml shares the ocamlgen path.",
-      "02-top-types": "Same stack overflow as js."
-    }
-  }
+  "known_failures": {}
 }

@@ -227,11 +227,19 @@ module SseGraphHashtbl = Hashtbl.Make(struct
   let hash g = Hashtbl.seeded_hash_param 10 100 5 g
 end)
 
-(* Three indexes per graph, bundled into one record for caching. *)
+(* Three indexes per graph, bundled into one record for caching.
+   Storage shape: `(key, triple list) Hashtbl.t` with a single binding
+   per key whose value is the full bucket. The earlier shape used
+   `Hashtbl.add` multiple-bindings + `Hashtbl.find_all`, but OCaml's
+   stdlib `find_all` is cons-after-recurse — on a predicate like
+   `wdt:P31` that can appear in thousands of triples, the bucket
+   traversal blew the v8 stack (browser stack-overflow on the
+   lifesci cross-graph BGP demo). Single-binding + cons-to-front
+   eliminates the recursion entirely. *)
 type _sse_graph_indexes = {
-  pred_idx : (string, RDF_Graph_Executable.triple) Hashtbl.t;
-  subj_idx : (string, RDF_Graph_Executable.triple) Hashtbl.t;
-  obj_idx  : (string, RDF_Graph_Executable.triple) Hashtbl.t;
+  pred_idx : (string, RDF_Graph_Executable.triple list) Hashtbl.t;
+  subj_idx : (string, RDF_Graph_Executable.triple list) Hashtbl.t;
+  obj_idx  : (string, RDF_Graph_Executable.triple list) Hashtbl.t;
 }
 
 let _sse_indexes_cache : _sse_graph_indexes SseGraphHashtbl.t =
@@ -252,21 +260,33 @@ let _sse_object_key (o : RDF_Graph_Executable.rdf_term) : string option =
   | RDF_Graph_Executable.T_BNode b -> Some (Stdlib.String.concat "" ["b:"; b])
   | RDF_Graph_Executable.T_Literal _ -> None  (* not indexed; see above *)
 
+(* cons-to-front append into a (key, triple list) hashtable. *)
+let _sse_bucket_push (t : (string, RDF_Graph_Executable.triple list) Hashtbl.t)
+                      (k : string) (v : RDF_Graph_Executable.triple) =
+  let existing = try Hashtbl.find t k with Not_found -> [] in
+  Hashtbl.replace t k (v :: existing)
+
 let _sse_build_indexes (g : RDF_Graph_Executable.rdf_graph) :
   _sse_graph_indexes =
   let pred_t = Hashtbl.create 256 in
   let subj_t = Hashtbl.create 256 in
   let obj_t  = Hashtbl.create 256 in
   Stdlib.List.iter (fun tr ->
-    Hashtbl.add pred_t tr.RDF_Graph_Executable.p tr;
+    _sse_bucket_push pred_t tr.RDF_Graph_Executable.p tr;
     (match _sse_subject_key tr.RDF_Graph_Executable.s with
-     | Some k -> Hashtbl.add subj_t k tr
+     | Some k -> _sse_bucket_push subj_t k tr
      | None -> ());
     (match _sse_object_key tr.RDF_Graph_Executable.o with
-     | Some k -> Hashtbl.add obj_t k tr
+     | Some k -> _sse_bucket_push obj_t k tr
      | None -> ())
   ) g;
   { pred_idx = pred_t; subj_idx = subj_t; obj_idx = obj_t }
+
+(* Fetch the bucket (empty list if absent). O(1) — single hashtable
+   lookup, no stdlib find_all recursion. *)
+let _sse_bucket_get (t : (string, RDF_Graph_Executable.triple list) Hashtbl.t)
+                     (k : string) : RDF_Graph_Executable.triple list =
+  try Hashtbl.find t k with Not_found -> []
 
 let _sse_get_indexes (g : RDF_Graph_Executable.rdf_graph) : _sse_graph_indexes =
   match SseGraphHashtbl.find_opt _sse_indexes_cache g with
@@ -288,18 +308,18 @@ let _sse_smallest_candidate_bucket
     RDF_Graph_Executable.triple Prims.list =
   let len (l : RDF_Graph_Executable.triple list) = Stdlib.List.length l in
   let pred_bucket = match b.bp with
-    | FStar_Pervasives_Native.Some p -> Some (Hashtbl.find_all ixs.pred_idx p)
+    | FStar_Pervasives_Native.Some p -> Some (_sse_bucket_get ixs.pred_idx p)
     | FStar_Pervasives_Native.None -> None in
   let subj_bucket = match b.bs with
     | FStar_Pervasives_Native.Some s ->
       (match _sse_subject_key s with
-       | Some k -> Some (Hashtbl.find_all ixs.subj_idx k)
+       | Some k -> Some (_sse_bucket_get ixs.subj_idx k)
        | None -> None)
     | FStar_Pervasives_Native.None -> None in
   let obj_bucket = match b.bo with
     | FStar_Pervasives_Native.Some o ->
       (match _sse_object_key o with
-       | Some k -> Some (Hashtbl.find_all ixs.obj_idx k)
+       | Some k -> Some (_sse_bucket_get ixs.obj_idx k)
        | None -> None)
     | FStar_Pervasives_Native.None -> None in
   let pick a b = match a, b with
