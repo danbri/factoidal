@@ -113,28 +113,40 @@
   table.results th { background: var(--surface); font-weight: 600; }
   table.results td { font-family: ui-monospace, Menlo, Consolas, monospace; }
   .result-meta { margin-top: 0.5em; color: var(--muted); font-size: 0.85em; }
-  /* Timing breakdown panel shown above results after each run. */
-  .timing {
-    margin: 0.5em 0 1em; padding: 0.6em 0.8em;
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 4px; font-size: 0.85em; color: var(--muted);
+  /* Compact one-line summary shown in the main UI below the result
+     table — headline numbers only (engine, query ms, total ms). */
+  .timing-summary {
+    margin-top: 0.4em; color: var(--muted); font-size: 0.85em;
   }
-  .timing-total { font-weight: 600; color: var(--fg); }
-  .timing ul {
-    list-style: none; margin: 0.3em 0 0; padding: 0;
-    display: grid; grid-template-columns: auto 1fr auto; gap: 0.1em 0.8em;
+  .timing-summary .num {
+    font-variant-numeric: tabular-nums; font-weight: 600; color: var(--fg);
+  }
+  .timing-summary a.details-link {
+    margin-left: 0.5em; color: var(--brand-dark);
+    text-decoration: underline; text-decoration-style: dotted;
+    font-size: 0.9em; cursor: pointer;
+  }
+  /* Full breakdown panel — lives only inside <details id="timing-
+     details"> below the results. */
+  .timing-detail {
+    font-size: 0.88em; color: var(--muted);
+  }
+  .timing-detail .timing-head {
+    font-weight: 600; color: var(--fg); margin-bottom: 0.4em;
+  }
+  .timing-detail ul {
+    list-style: none; margin: 0.2em 0 0; padding: 0;
+    display: grid; grid-template-columns: auto 1fr auto; gap: 0.15em 0.8em;
     align-items: baseline;
   }
-  .timing ul li {
-    display: contents;
-  }
-  .timing .tl { color: var(--fg); }
-  .timing .tr { font-variant-numeric: tabular-nums; text-align: right; }
-  .timing .bar {
+  .timing-detail ul li { display: contents; }
+  .timing-detail .tl { color: var(--fg); }
+  .timing-detail .tr { font-variant-numeric: tabular-nums; text-align: right; }
+  .timing-detail .bar {
     background: var(--brand); height: 0.55em; border-radius: 2px;
     align-self: center; min-width: 2px;
   }
-  .timing .bar.cached {
+  .timing-detail .bar.cached {
     background: var(--border); height: 0.35em;
   }
   /* In-flight progress indicator shown in the output area while a
@@ -218,7 +230,7 @@
 
 <div id="out" class="empty">Pick a query and click Run.</div>
 
-<details>
+<details id="details-block">
   <summary>Details</summary>
   <div id="timing-details" class="graphs">
     No query has run yet.
@@ -540,36 +552,6 @@ LIMIT 25
     if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
     return (n / (1024 * 1024)).toFixed(2) + ' MB';
   }
-  function renderTiming(totalMs, engineName, runMs, phases) {
-    // phases = [{label, ms, bytes?, cached?}]
-    const fallback = Math.max(totalMs, 1);
-    const el = document.createElement('div');
-    el.className = 'timing';
-    const head = document.createElement('div');
-    head.innerHTML = '<span class="timing-total">' + formatMs(totalMs) + '</span>' +
-                     ' total on ' + engineName.toUpperCase() +
-                     ' — query run ' + formatMs(runMs);
-    el.appendChild(head);
-    if (!phases.length) return el;
-    const ul = document.createElement('ul');
-    phases.forEach(p => {
-      const li = document.createElement('li');
-      const tl = document.createElement('span');
-      tl.className = 'tl';
-      tl.textContent = p.label + (p.bytes != null ? ' (' + formatBytes(p.bytes) + ')' : '');
-      const bar = document.createElement('span');
-      bar.className = 'bar' + (p.cached ? ' cached' : '');
-      bar.style.width = Math.max(2, Math.round(220 * ((p.ms || 0) / fallback))) + 'px';
-      const tr = document.createElement('span');
-      tr.className = 'tr';
-      tr.textContent = p.cached ? 'cached' : formatMs(p.ms);
-      li.appendChild(tl); li.appendChild(bar); li.appendChild(tr);
-      ul.appendChild(li);
-    });
-    el.appendChild(ul);
-    return el;
-  }
-
   function buildPhases(engineName, runMs) {
     const out = [];
     const es = engineTimings[engineName];
@@ -593,16 +575,64 @@ LIMIT 25
     return out;
   }
 
+  // One-line summary for the main UI.
+  function renderTimingSummary(totalMs, engineName, runMs) {
+    const el = document.createElement('div');
+    el.className = 'timing-summary';
+    el.innerHTML =
+      'Done on ' + engineName.toUpperCase() +
+      ' — query <span class="num">' + formatMs(runMs) + '</span>' +
+      ', total <span class="num">' + formatMs(totalMs) + '</span>' +
+      '<a class="details-link" href="#details">see breakdown ↓</a>';
+    el.querySelector('a.details-link').addEventListener('click', (ev) => {
+      ev.preventDefault();
+      const det = document.getElementById('details-block');
+      if (det) { det.open = true; det.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+    });
+    return el;
+  }
+
+  // Full breakdown for the <details> block only.
+  function renderTimingDetail(totalMs, engineName, runMs, phases) {
+    const fallback = Math.max(totalMs, 1);
+    const el = document.createElement('div');
+    el.className = 'timing-detail';
+    const head = document.createElement('div');
+    head.className = 'timing-head';
+    head.textContent = formatMs(totalMs) + ' total on ' + engineName.toUpperCase() +
+                       ' — query run ' + formatMs(runMs);
+    el.appendChild(head);
+    const ul = document.createElement('ul');
+    phases.forEach(p => {
+      const li = document.createElement('li');
+      const tl = document.createElement('span');
+      tl.className = 'tl';
+      tl.textContent = p.label + (p.bytes != null ? ' (' + formatBytes(p.bytes) + ')' : '');
+      const bar = document.createElement('span');
+      bar.className = 'bar' + (p.cached ? ' cached' : '');
+      bar.style.width = Math.max(2, Math.round(220 * ((p.ms || 0) / fallback))) + 'px';
+      const tr = document.createElement('span');
+      tr.className = 'tr';
+      tr.textContent = p.cached ? 'cached' : formatMs(p.ms);
+      li.appendChild(tl); li.appendChild(bar); li.appendChild(tr);
+      ul.appendChild(li);
+    });
+    el.appendChild(ul);
+    return el;
+  }
+
   function renderTimingBoth(totalMs, engineName, runMs) {
     const phases = buildPhases(engineName, runMs);
-    // Main UI: insert above the results table.
-    const panel = renderTiming(totalMs, engineName, runMs, phases);
-    outputWrap.insertBefore(panel, outputWrap.firstChild);
-    // Details block: same panel, no bars, compact.
+    // Main UI: compact one-line summary below the result meta.
+    const meta = outputWrap.querySelector('.result-meta');
+    const summary = renderTimingSummary(totalMs, engineName, runMs);
+    if (meta) meta.appendChild(summary);
+    else outputWrap.appendChild(summary);
+    // Details block: full breakdown.
     const detEl = document.getElementById('timing-details');
     if (detEl) {
       detEl.innerHTML = '';
-      detEl.appendChild(renderTiming(totalMs, engineName, runMs, phases));
+      detEl.appendChild(renderTimingDetail(totalMs, engineName, runMs, phases));
     }
   }
 
@@ -651,9 +681,25 @@ LIMIT 25
       '<div class="progress-bar" role="progressbar" aria-label="query in progress"></div>';
 
     const runStart = performance.now();
+    // Defensive: clear in-flight visuals on any exit path. If no other
+    // status update has happened, leave a generic "Ready" message so
+    // the spinner-laden "Running on …" can't possibly persist past
+    // the handler returning.
+    let statusFinalised = false;
+    const finaliseStatus = (text, cls) => {
+      statusEl.textContent = text;           // textContent wipes any child <span class="spinner">
+      statusEl.className = cls;
+      statusFinalised = true;
+    };
     const cleanup = () => {
       runBtn.disabled = false;
       runBtn.classList.remove('running');
+      if (!statusFinalised) finaliseStatus('Ready.', 'status ok');
+      if (outputWrap.classList.contains('running')) {
+        // Running state leaked — replace with a neutral empty.
+        outputWrap.className = 'empty';
+        outputWrap.textContent = '';
+      }
     };
 
     try {
@@ -674,14 +720,12 @@ LIMIT 25
           const qT0 = performance.now();
           const parsed = await mod.query(trigData, queryEl.value, { dataFormat: 'trig' });
           const qMs = performance.now() - qT0;
-          statusEl.textContent = 'Done on WASM in ' + qMs.toFixed(0) + ' ms';
-          statusEl.className = 'status ok';
+          finaliseStatus('Done on WASM in ' + qMs.toFixed(0) + ' ms', 'status ok');
           renderResultsJSON(parsed);
           const totalMs = performance.now() - runStart;
           renderTimingBoth(totalMs, 'wasm', qMs);
         } catch (e) {
-          statusEl.textContent = 'WASM error: ' + (e && e.message || e);
-          statusEl.className = 'status err';
+          finaliseStatus('WASM error: ' + (e && e.message || e), 'status err');
           renderRawError((e && e.message ? e.message : String(e))
                           + (e && e.stderr ? '\n\n' + e.stderr : ''));
         }
@@ -723,8 +767,7 @@ LIMIT 25
       const out = buf.join('\n').replace(/\n+$/, '');
 
       if (exitCode !== 0) {
-        statusEl.textContent = 'JS error after ' + qMs.toFixed(0) + ' ms';
-        statusEl.className = 'status err';
+        finaliseStatus('JS error after ' + qMs.toFixed(0) + ' ms', 'status err');
         renderRawError(out || '(no output, exit ' + exitCode + ')');
         cleanup();
         return;
@@ -735,14 +778,12 @@ LIMIT 25
       let parsed;
       try { parsed = JSON.parse(out.slice(first, last + 1)); }
       catch { renderRawError(out); cleanup(); return; }
-      statusEl.textContent = 'Done on JS in ' + qMs.toFixed(0) + ' ms';
-      statusEl.className = 'status ok';
+      finaliseStatus('Done on JS in ' + qMs.toFixed(0) + ' ms', 'status ok');
       renderResultsJSON(parsed);
       const totalMs = performance.now() - runStart;
       renderTimingBoth(totalMs, 'js', qMs);
     } catch (e) {
-      statusEl.textContent = 'Error: ' + (e && e.message || e);
-      statusEl.className = 'status err';
+      finaliseStatus('Error: ' + (e && e.message || e), 'status err');
       renderRawError(e && e.stack || String(e));
     } finally {
       cleanup();
