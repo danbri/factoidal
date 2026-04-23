@@ -1,0 +1,50 @@
+{
+  "_comment": "Queries + expected row counts for the three-graph lifesci browser demo (docs/fstar-extracted/demo-lifesci.html). Used by lifesci_parity.sh to assert native/js/wasm parity. Expected counts come from a live native run on the committed docs/fstar-extracted/lifesci/ TTL files (2026-04-23).",
+  "queries": [
+    {
+      "name": "03-variant-chrom",
+      "file": "examples/wikidata/subsets/lifesci-kgx/queries/03_variant_on_chromosome.rq",
+      "expected_rows": 20,
+      "note": "Cross-graph join with LIMIT 20. js_of_ocaml stack-overflows on this one (known; GitHub issue to open)."
+    },
+    {
+      "name": "04-top-diseases",
+      "file": "examples/wikidata/subsets/lifesci-kgx/queries/04_diseases_with_most_gene_associations.rq",
+      "expected_rows": 10,
+      "note": "Entirely within disease graph; GROUP BY, LIMIT 10."
+    },
+    {
+      "name": "01-count-per-graph",
+      "file": "examples/wikidata/subsets/lifesci-kgx/queries/01_count_per_graph.rq",
+      "expected_rows": 3,
+      "note": "COUNT(*) GROUP BY ?g over three named graphs."
+    },
+    {
+      "name": "02-top-types",
+      "file": "examples/wikidata/subsets/lifesci-kgx/queries/02_top_types.rq",
+      "expected_rows": 3,
+      "note": "UNION over P31 / rdf:type; LIMIT 10 but only 3 distinct types present in this subset. js_of_ocaml stack-overflows on this one (known)."
+    },
+    {
+      "name": "05-disease-gene-crossgraph",
+      "file": "examples/wikidata/subsets/lifesci-kgx/queries/05_disease_gene_crossgraph.rq",
+      "expected_rows": 0,
+      "note": "Cross-graph BGP; returns 0 rows on this subset because the two predicates don't co-occur for any shared entity. Included to confirm zero-result handling is consistent across engines."
+    }
+  ],
+  "dataset": [
+    { "graph": "urn:kgx:chromosome",       "file": "docs/fstar-extracted/lifesci/chromosome.ttl" },
+    { "graph": "urn:kgx:sequence_variant", "file": "docs/fstar-extracted/lifesci/sequence_variant.ttl" },
+    { "graph": "urn:kgx:disease",          "file": "docs/fstar-extracted/lifesci/disease.ttl" }
+  ],
+  "known_failures": {
+    "js": {
+      "03-variant-chrom": "Stack overflow. Native passes. Suspected non-tail-rec path in cross-graph BGP eval that only surfaces under the v8 stack limit. Tracked: none yet — open an issue after this lands.",
+      "02-top-types": "Stack overflow on UNION + GROUP BY combo. Same suspected root cause."
+    },
+    "wasm": {
+      "03-variant-chrom": "Same stack overflow as js. wasm_of_ocaml shares the ocamlgen path.",
+      "02-top-types": "Same stack overflow as js."
+    }
+  }
+}
