@@ -358,11 +358,24 @@ let extract_lang (attrs : Parser_XML.xml_attribute Prims.list)
       then FStar_Pervasives_Native.None
       else FStar_Pervasives_Native.Some lang_val
   | FStar_Pervasives_Native.None -> current_lang
+let rec strip_fragment_from (s : Prims.string) (pos : Prims.nat)
+  (fuel : Prims.nat) : Prims.string=
+  let len = FStar_String.strlen s in
+  if (fuel = Prims.int_zero) || (pos >= len)
+  then s
+  else
+    (let c = FStar_Char.int_of_char (FStar_String.index s pos) in
+     if c = (Prims.of_int (0x23))
+     then FStar_String.sub s Prims.int_zero pos
+     else strip_fragment_from s (pos + Prims.int_one) (fuel - Prims.int_one))
+let strip_fragment (s : Prims.string) : Prims.string=
+  strip_fragment_from s Prims.int_zero
+    ((FStar_String.strlen s) + Prims.int_one)
 let extract_base (attrs : Parser_XML.xml_attribute Prims.list)
   (current_base : Prims.string) : Prims.string=
   match Parser_XML.find_attr "xml:base" attrs with
   | FStar_Pervasives_Native.Some base_val ->
-      resolve_iri current_base base_val
+      strip_fragment (resolve_iri current_base base_val)
   | FStar_Pervasives_Native.None -> current_base
 let update_state_from_attrs (st : rdfxml_state)
   (attrs : Parser_XML.xml_attribute Prims.list) : rdfxml_state=

@@ -190,10 +190,28 @@ let extract_lang (attrs : list xml_attribute) (current_lang : option string) : o
     else Some lang_val
   | None -> current_lang
 
+(* Strip any `#fragment` tail from an IRI. XML Base §3.3 and RFC 3986
+   §5.1 require that a base IRI carry no fragment identifier; if the
+   authored `xml:base` value includes one, the fragment is discarded.
+   xmlbase-test013 covers this. *)
+let rec strip_fragment_from (s : string) (pos : nat) (fuel : nat)
+  : Tot string (decreases fuel) =
+  let len = String.length s in
+  if fuel = 0 || pos >= len then s
+  else
+    let c = FStar.Char.int_of_char (String.index s pos) in
+    if c = 0x23 then  (* '#' *)
+      String.sub s 0 pos
+    else
+      strip_fragment_from s (pos + 1) (fuel - 1)
+
+let strip_fragment (s : string) : string =
+  strip_fragment_from s 0 (String.length s + 1)
+
 (* Extract xml:base from attributes *)
 let extract_base (attrs : list xml_attribute) (current_base : string) : string =
   match find_attr "xml:base" attrs with
-  | Some base_val -> resolve_iri current_base base_val
+  | Some base_val -> strip_fragment (resolve_iri current_base base_val)
   | None -> current_base
 
 (* Update state from element attributes: namespaces, lang, base *)
