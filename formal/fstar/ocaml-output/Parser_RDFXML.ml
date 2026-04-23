@@ -307,37 +307,9 @@ let resolve_iri (base : Prims.string) (rel : Prims.string) : Prims.string=
     if is_absolute_iri rel
     then rel
     else
-      (let chars = FStar_String.list_of_string rel in
-       match chars with
-       | c::uu___2 ->
-           if (FStar_Char.int_of_char c) = (Prims.of_int (0x23))
-           then FStar_String.concat "" [base; rel]
-           else
-             if (FStar_Char.int_of_char c) = (Prims.of_int (0x2F))
-             then FStar_String.concat "" [base; rel]
-             else
-               (let base_chars = FStar_String.list_of_string base in
-                let rec strip_last_segment cs acc =
-                  match cs with
-                  | [] -> FStar_List_Tot_Base.rev acc
-                  | uu___5::[] -> FStar_List_Tot_Base.rev acc
-                  | c2::rest ->
-                      if (FStar_Char.int_of_char c2) = (Prims.of_int (0x2F))
-                      then strip_last_segment rest (c2 :: acc)
-                      else strip_last_segment rest (c2 :: acc) in
-                let rec take_up_to_last_slash cs best current =
-                  match cs with
-                  | [] -> best
-                  | c2::rest ->
-                      let new_current =
-                        FStar_List_Tot_Base.op_At current [c2] in
-                      if (FStar_Char.int_of_char c2) = (Prims.of_int (0x2F))
-                      then take_up_to_last_slash rest new_current new_current
-                      else take_up_to_last_slash rest best new_current in
-                let base_prefix = take_up_to_last_slash base_chars [] [] in
-                FStar_String.concat ""
-                  [FStar_String.string_of_list base_prefix; rel])
-       | [] -> base)
+      if (FStar_String.strlen base) = Prims.int_zero
+      then rel
+      else Parser_IRI.resolve_iri_v2 base rel
 let rec extract_namespaces (attrs : Parser_XML.xml_attribute Prims.list)
   (nss : (Prims.string * Prims.string) Prims.list) :
   (Prims.string * Prims.string) Prims.list=

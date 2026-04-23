@@ -25,6 +25,7 @@ open FStar.List.Tot
 open Parser.Combinators
 open Parser.XML
 open RDF.Graph.Executable
+module PI = Parser.IRI
 
 
 (* ================================================================ *)
@@ -150,48 +151,16 @@ let is_absolute_iri (s : string) : bool =
   has_scheme_chars (String.list_of_string s) 0
 
 (* Resolve a relative IRI against a base IRI.
-   Simplified: handles fragment (#frag) and absolute IRIs.
-   For full RFC 3986 resolution, more logic would be needed. *)
+   Delegates to Parser.IRI.resolve_iri_v2 for the full RFC 3986 §5
+   algorithm (merge paths + remove_dot_segments), which is needed for
+   xmlbase-test007/009/010/011 etc. that use "../" and "./" in
+   relative references. Kept the short-circuit cases at the top since
+   they avoid parsing when we can. *)
 let resolve_iri (base : string) (rel : string) : string =
   if String.length rel = 0 then base
   else if is_absolute_iri rel then rel
-  else
-    let chars = String.list_of_string rel in
-    match chars with
-    | c :: _ ->
-      if FStar.Char.int_of_char c = 0x23 then  (* '#' *)
-        String.concat "" [base; rel]
-      else if FStar.Char.int_of_char c = 0x2F then  (* '/' *)
-        (* Absolute path — find scheme+authority of base *)
-        String.concat "" [base; rel]
-      else
-        (* Relative path — append to base after stripping last segment *)
-        let base_chars = String.list_of_string base in
-        let rec strip_last_segment (cs : list FStar.Char.char) (acc : list FStar.Char.char) : list FStar.Char.char =
-          match cs with
-          | [] -> List.Tot.rev acc
-          | [_] -> List.Tot.rev acc
-          | c2 :: rest ->
-            if FStar.Char.int_of_char c2 = 0x2F then  (* '/' *)
-              (* Check if rest has more slashes *)
-              strip_last_segment rest (c2 :: acc)
-            else
-              strip_last_segment rest (c2 :: acc)
-        in
-        (* Find last '/' and take everything up to and including it *)
-        let rec take_up_to_last_slash (cs : list FStar.Char.char) (best : list FStar.Char.char) (current : list FStar.Char.char) : list FStar.Char.char =
-          match cs with
-          | [] -> best
-          | c2 :: rest ->
-            let new_current = current @ [c2] in
-            if FStar.Char.int_of_char c2 = 0x2F then
-              take_up_to_last_slash rest new_current new_current
-            else
-              take_up_to_last_slash rest best new_current
-        in
-        let base_prefix = take_up_to_last_slash base_chars [] [] in
-        String.concat "" [String.string_of_list base_prefix; rel]
-    | [] -> base
+  else if String.length base = 0 then rel
+  else PI.resolve_iri_v2 base rel
 
 
 (* ================================================================ *)
