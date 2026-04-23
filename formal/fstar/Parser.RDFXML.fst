@@ -686,23 +686,50 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
                 | [] -> empty_result st2
                 end
               else
-                (* Text content only — literal object *)
+                (* No child elements. Two sub-cases (§7.2.11 / §7.2.17):
+                   (a) Empty element with non-rdf property attributes
+                       — create a fresh blank-node object and emit
+                       those attributes as its properties.
+                   (b) Any text (or truly empty, no prop attrs)
+                       — emit a literal object with the text value. *)
                 let text_val = collect_text children in
-                let obj_opt =
-                  begin match datatype_opt with
-                  | Some dt ->
-                    let full_dt = resolve_iri st2.base_iri dt in
-                    make_typed_literal text_val full_dt
-                  | None ->
-                    make_plain_literal text_val st2.lang
+                let has_text = String.length text_val > 0 in
+                let has_datatype =
+                  (match datatype_opt with Some _ -> true | None -> false) in
+                (* Probe for non-rdf property attributes on this
+                   property element by asking collect_property_attributes.
+                   Uses a placeholder subject; we only look at the
+                   length to decide the branch. *)
+                let probe_triples =
+                  let (probe_bid, _) = fresh_bnode st2 in
+                  collect_property_attributes st2 (S_BNode probe_bid) attrs in
+                if not has_text && not has_datatype
+                   && List.Tot.length probe_triples > 0 then
+                  (* Case (a) — bnode-object with property attributes. *)
+                  let (bid, st3) = fresh_bnode st2 in
+                  let bnode_subj : subject = S_BNode bid in
+                  let obj_term = T_BNode bid in
+                  let link_triple : triple = { s = subj; p = pred_iri; o = obj_term } in
+                  let prop_attr_triples = collect_property_attributes st3 bnode_subj attrs in
+                  { pr_triples = link_triple :: (reif_of pred_iri obj_term) @ prop_attr_triples;
+                    pr_state = st3; }
+                else
+                  (* Case (b) — literal object. *)
+                  let obj_opt =
+                    begin match datatype_opt with
+                    | Some dt ->
+                      let full_dt = resolve_iri st2.base_iri dt in
+                      make_typed_literal text_val full_dt
+                    | None ->
+                      make_plain_literal text_val st2.lang
+                    end
+                  in
+                  begin match obj_opt with
+                  | Some obj ->
+                    let t : triple = { s = subj; p = pred_iri; o = obj } in
+                    { pr_triples = t :: reif_of pred_iri obj; pr_state = st2; }
+                  | None -> empty_result st2
                   end
-                in
-                begin match obj_opt with
-                | Some obj ->
-                  let t : triple = { s = subj; p = pred_iri; o = obj } in
-                  { pr_triples = t :: reif_of pred_iri obj; pr_state = st2; }
-                | None -> empty_result st2
-                end
             end
           end
       end
