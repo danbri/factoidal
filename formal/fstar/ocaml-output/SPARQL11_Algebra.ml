@@ -306,7 +306,7 @@ let _sse_smallest_candidate_bucket
     | None, None -> None
     | Some _, None -> a
     | None, Some _ -> b
-    | Some la, Some lb -> if len la <= len lb then Some la else Some lb in
+    | Some la, Some lb -> if Stdlib.(<=) (len la) (len lb) then Some la else Some lb in
   match pick (pick pred_bucket subj_bucket) obj_bucket with
   | Some bucket -> bucket
   | None -> fallback
