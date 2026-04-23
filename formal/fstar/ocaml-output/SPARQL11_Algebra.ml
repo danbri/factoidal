@@ -4236,20 +4236,20 @@ let dedup_er (vals : eval_result Prims.list) : eval_result Prims.list=
           if FStar_List_Tot_Base.existsb (fun x -> er_equal v x) acc
           then acc else v :: acc)
        [] vals)
-let rec find_min (vals : eval_result Prims.list) : eval_result=
+let find_min (vals : eval_result Prims.list) : eval_result=
   match vals with
   | [] -> ER_Error
-  | v::[] -> v
   | v::rest ->
-      let m = find_min rest in
-      if (sparql_order v m) <= Prims.int_zero then v else m
-let rec find_max (vals : eval_result Prims.list) : eval_result=
+      FStar_List_Tot_Base.fold_left
+        (fun acc x ->
+           if (sparql_order x acc) <= Prims.int_zero then x else acc) v rest
+let find_max (vals : eval_result Prims.list) : eval_result=
   match vals with
   | [] -> ER_Error
-  | v::[] -> v
   | v::rest ->
-      let m = find_max rest in
-      if (sparql_order v m) >= Prims.int_zero then v else m
+      FStar_List_Tot_Base.fold_left
+        (fun acc x ->
+           if (sparql_order x acc) >= Prims.int_zero then x else acc) v rest
 let rec collect_strings (vals : eval_result Prims.list) :
   Prims.string Prims.list=
   match vals with
@@ -4283,17 +4283,15 @@ let eval_aggregate (fn : aggregate_fn) (distinct : Prims.bool) (e : expr)
                              | RDF_Graph_Executable.T_Literal l ->
                                  Prims.strcat (lit_lexical l)
                                    (Prims.strcat "^^" (lit_datatype l))))) mu) in
-             let rec dedup_strings keys seen =
-               match keys with
-               | [] -> seen
-               | k::rest ->
-                   if FStar_List_Tot_Base.existsb (fun s -> s = k) seen
-                   then dedup_strings rest seen
-                   else
-                     dedup_strings rest (sse_append seen [k]) in
+             let dedup_strings_tr keys =
+               FStar_List_Tot_Base.fold_left
+                 (fun seen k ->
+                    if FStar_List_Tot_Base.existsb (fun s -> s = k) seen
+                    then seen
+                    else k :: seen) [] keys in
              ER_Num
                (FStar_List_Tot_Base.length
-                  (dedup_strings (FStar_List_Tot_Base.map to_key sols) []))
+                  (dedup_strings_tr (FStar_List_Tot_Base.map to_key sols)))
            else ER_Num (FStar_List_Tot_Base.length g.g_solutions)
        | E_BoolLit true ->
            if distinct
@@ -4311,17 +4309,15 @@ let eval_aggregate (fn : aggregate_fn) (distinct : Prims.bool) (e : expr)
                              | RDF_Graph_Executable.T_Literal l ->
                                  Prims.strcat (lit_lexical l)
                                    (Prims.strcat "^^" (lit_datatype l))))) mu) in
-             let rec dedup_strings keys seen =
-               match keys with
-               | [] -> seen
-               | k::rest ->
-                   if FStar_List_Tot_Base.existsb (fun s -> s = k) seen
-                   then dedup_strings rest seen
-                   else
-                     dedup_strings rest (sse_append seen [k]) in
+             let dedup_strings_tr keys =
+               FStar_List_Tot_Base.fold_left
+                 (fun seen k ->
+                    if FStar_List_Tot_Base.existsb (fun s -> s = k) seen
+                    then seen
+                    else k :: seen) [] keys in
              ER_Num
                (FStar_List_Tot_Base.length
-                  (dedup_strings (FStar_List_Tot_Base.map to_key sols) []))
+                  (dedup_strings_tr (FStar_List_Tot_Base.map to_key sols)))
            else ER_Num (FStar_List_Tot_Base.length g.g_solutions)
        | uu___ ->
            let vals = filter_non_error (eval_over_group e g) in

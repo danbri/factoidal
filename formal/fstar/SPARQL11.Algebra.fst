@@ -2754,23 +2754,27 @@ let rec dedup_er (vals : list eval_result) : Tot (list eval_result) (decreases v
 
 // These are now replaced by sum_numeric, count_numeric, avg_numeric above
 
-(* Find minimum eval_result by sparql_order *)
-let rec find_min (vals : list eval_result) : Tot eval_result (decreases vals) =
+(* Find minimum / maximum eval_result by sparql_order.
+   Stack-safe: fold_left with a running accumulator so the extracted
+   OCaml is tail-recursive and each element is one loop iteration
+   rather than one stack frame. The earlier cons-after-recurse form
+   was one of the JS / WASM stack-overflow culprits on the lifesci
+   demo's 02-top-types query. Algorithm lives here in F* per rule #10. *)
+let find_min (vals : list eval_result) : eval_result =
   match vals with
   | [] -> ER_Error
-  | [v] -> v
   | v :: rest ->
-    let m = find_min rest in
-    if sparql_order v m <= 0 then v else m
+    List.Tot.fold_left
+      (fun acc x -> if sparql_order x acc <= 0 then x else acc)
+      v rest
 
-(* Find maximum eval_result by sparql_order *)
-let rec find_max (vals : list eval_result) : Tot eval_result (decreases vals) =
+let find_max (vals : list eval_result) : eval_result =
   match vals with
   | [] -> ER_Error
-  | [v] -> v
   | v :: rest ->
-    let m = find_max rest in
-    if sparql_order v m >= 0 then v else m
+    List.Tot.fold_left
+      (fun acc x -> if sparql_order x acc >= 0 then x else acc)
+      v rest
 
 (* Collect string representations from eval_results, skipping non-stringifiable *)
 let rec collect_strings (vals : list eval_result) : Tot (list string) (decreases vals) =
@@ -2805,15 +2809,19 @@ let eval_aggregate (fn : aggregate_fn) (distinct : bool) (e : expr) (g : group) 
                | T_IRI i -> i
                | T_BNode b -> b
                | T_Literal l -> lit_lexical l ^ "^^" ^ lit_datatype l)) mu) in
-         let rec dedup_strings (keys : list string) (seen : list string)
-           : Tot (list string) (decreases keys) =
-           match keys with
-           | [] -> seen
-           | k :: rest ->
-             if List.Tot.existsb (fun s -> s = k) seen
-             then dedup_strings rest seen
-             else dedup_strings rest (seen @ [k]) in
-         ER_Num (List.Tot.length (dedup_strings (List.Tot.map to_key sols) []))
+         // Stack-safe dedup: fold_left + cons-onto-accumulator.
+         // The earlier `seen @ [k]` form was non-tail-rec via `@`, so
+         // on the lifesci demo's COUNT(DISTINCT *) over thousands of
+         // rows the JS/WASM stack blew up. Uses cons-to-front for O(1)
+         // append and order doesn't matter for DISTINCT counting.
+         let dedup_strings_tr (keys : list string) : list string =
+           List.Tot.fold_left
+             (fun seen k ->
+                if List.Tot.existsb (fun s -> s = k) seen
+                then seen
+                else k :: seen)
+             [] keys in
+         ER_Num (List.Tot.length (dedup_strings_tr (List.Tot.map to_key sols)))
        else ER_Num (List.Tot.length g.g_solutions)
      | _ ->
        let vals = filter_non_error (eval_over_group e g) in
