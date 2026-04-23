@@ -4016,6 +4016,28 @@ let () = regex_replace_ref := (fun text pattern replacement flags ->
       done;
       Buffer.contents buf
     in
+    (* UTF-8 correction: OCaml Str treats the input as bytes. A character
+       class like `[^a-z0-9]` will match each byte of a multi-byte codepoint
+       separately — e.g. "日" (E6 97 A5) produces three matches instead of one.
+       We post-process Str matches so that:
+         * a match starting at a UTF-8 continuation byte is skipped
+           (it's inside a codepoint the regex couldn't actually match),
+         * a single-byte match whose byte is a UTF-8 lead byte is extended
+           to cover the whole codepoint.
+       SPARQL REPLACE is defined over codepoint strings (XPath regex). *)
+    let utf8_cp_len_at s pos =
+      if pos >= String.length s then 1
+      else
+        let c = Char.code s.[pos] in
+        if c < 0x80 then 1
+        else if c < 0xC0 then 1
+        else if c < 0xE0 then 2
+        else if c < 0xF0 then 3
+        else 4
+    in
+    let is_utf8_cont s pos =
+      pos < String.length s && (Char.code s.[pos] land 0xC0) = 0x80
+    in
     let result = Buffer.create (String.length text) in
     let pos = ref 0 in
     (try
@@ -4023,14 +4045,27 @@ let () = regex_replace_ref := (fun text pattern replacement flags ->
         ignore (Str.search_forward re text !pos);
         let m_start = Str.match_beginning () in
         let m_end = Str.match_end () in
-        Buffer.add_string result (String.sub text !pos (m_start - !pos));
-        Buffer.add_string result (build_replacement text);
-        pos := m_end;
-        if m_start = m_end then begin
-          if !pos < String.length text then begin
-            Buffer.add_char result text.[!pos];
-            pos := !pos + 1
-          end else raise Not_found
+        if is_utf8_cont text m_start then begin
+          Buffer.add_string result (String.sub text !pos (m_start - !pos));
+          Buffer.add_char result text.[m_start];
+          pos := m_start + 1
+        end else begin
+          let m_end' =
+            if m_end = m_start + 1 then
+              let cp_len = utf8_cp_len_at text m_start in
+              if cp_len > 1 then m_start + cp_len else m_end
+            else m_end
+          in
+          Buffer.add_string result (String.sub text !pos (m_start - !pos));
+          Buffer.add_string result (build_replacement text);
+          pos := m_end';
+          if m_start = m_end' then begin
+            if !pos < String.length text then begin
+              let step = utf8_cp_len_at text !pos in
+              Buffer.add_string result (String.sub text !pos step);
+              pos := !pos + step
+            end else raise Not_found
+          end
         end
       done
     with Not_found -> ());
