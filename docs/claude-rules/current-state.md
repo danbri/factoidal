@@ -130,7 +130,7 @@ does not check the expected boolean value — ASK tests always pass. Blank node
 matching is simplified (any bnode matches any other) rather than proper graph
 isomorphism. These may inflate the pass count slightly.
 
-## W3C Test Results (as of 2026-04-23)
+## W3C Test Results (as of 2026-04-23, late)
 
 **SPARQL 1.1 — 532 pass, 32 fail, 58 skip, 9 unsupported (631 total)**
 
@@ -144,12 +144,43 @@ syntax-update-1 53/54, syntax-update-2 1/1, update-silent 11/13.
 Skipped/unsupported: http-rdf-update 19, protocol 34, service-description 3
 (all need HTTP server/client); construct 5 (need Turtle result serializer).
 
-**RDF 1.1 — 996 pass, 35 fail (1031 total)**
+**RDF 1.1 — 1025 pass, 6 fail (1031 total)**
 
 Per-suite: N-Triples 70/70, Turtle 313/313, N-Quads 87/87, TriG 356/356,
-RDF/XML 131/166, rdf-mt 39/39. Only RDF/XML has remaining failures.
+RDF/XML **160/166**, rdf-mt 39/39. RDF/XML went from 131/166 to 160/166
+across the 2026-04-23 session (reification, UTF-8 char refs, RFC 3986
+resolver, NCName codepoint validator, mutual-exclusion rules, xml:base
+scoping, empty-property-element-as-bnode). Remaining 6: three are
+content mismatches at equal count (rdf-containers-syntax-vs-schema-
+test004/007, xml-canon-test001), one is RDF/XML parseType="Literal"
+canonicalisation (xml-canon-test002), one is duplicate-rdf:ID tracking
+(rdfms-difference-between-ID-and-about-error1), one is a processing-
+instruction-in-property-element edge case (rdfms-empty-property-
+elements-test016).
 
-**Combined: 1528 pass, 67 fail, 58 skip, 9 unsupported (1662 total).**
+**Combined: 1557 pass, 38 fail, 58 skip, 9 unsupported (1662 total).**
+
+Session delta (from morning baseline 1514/81):
+
+  +1   SPARQL REPLACE: codepoint-aware UTF-8
+  +3   SPARQL UPDATE ADD/COPY/MOVE no-op on missing source
+  +6   Turtle/TriG reject forbidden-char UCHAR escapes
+  +1   TriG reject bare collection as sole statement
+  +3   RDF/XML allow rdf:Seq/Bag/Alt as property element names
+  +1   Parser.XML encode numeric char refs as UTF-8
+  +1   codepoint-aware NCName validator
+  +5   rdf:bagID + RDF 1.1 attribute mutual-exclusion rules
+  +2   xml:base/lang/namespaces don't leak to siblings
+  +4   delegate RDF/XML IRI resolution to RFC 3986 v2
+  +1   reject rdf:li as attribute
+  +8   reification quads from rdf:ID on property elements
+  +1   split node vs property mutual-exclusion rules
+  +4   empty-property-element with property attrs → bnode object
+  +1   strip fragment from xml:base
+  +1   reify parseType="Collection" with rdf:ID
+  ≡    bnode labels without leading `_:` (cosmetic; runner's lenient
+       bnode compare hid it but downstream serialisers now round-trip)
+  = +43 net.
 
 **RDF 1.1 Model Theory — 39 pass, 0 fail (39 total)**
 
