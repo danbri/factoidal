@@ -451,6 +451,31 @@ let iri_ref_span_to_raw (input: string) (sp: iri_ref_span) : string =
   else
     ""
 
+// RFC 3987 §2.2 (and Turtle/TriG IRIREF production) forbids these
+// characters from appearing in an IRI reference — including via UCHAR
+// escape. The scanner rejects bare occurrences; this catches ones that
+// slipped in through \uXXXX / \UXXXXXXXX. Called post-decode. Rejects:
+//   0x00-0x20  (control chars + space)
+//   0x22 '"'   0x3C '<'   0x3E '>'
+//   0x5C '\\'  0x5E '^'   0x60 '`'
+//   0x7B '{'   0x7C '|'   0x7D '}'
+let is_forbidden_iri_cp (c: int) : bool =
+  c <= 0x20 || c = 0x22 || c = 0x3C || c = 0x3E ||
+  c = 0x5C || c = 0x5E || c = 0x60 ||
+  c = 0x7B || c = 0x7C || c = 0x7D
+
+let rec contains_forbidden_iri_char_from (s: string) (pos: nat) (fuel: nat)
+  : Tot bool (decreases fuel) =
+  let len = String.length s in
+  if fuel = 0 || pos >= len then false
+  else
+    let c = FStar.Char.int_of_char (String.index s pos) in
+    if is_forbidden_iri_cp c then true
+    else contains_forbidden_iri_char_from s (pos + 1) (fuel - 1)
+
+let contains_forbidden_iri_char (s: string) : bool =
+  contains_forbidden_iri_char_from s 0 (String.length s + 1)
+
 (* Fast-path IRI resolver for the hot path of Turtle parsing. Routes
    through the full RFC 3986 resolve_iri (which normalises ../ and ./)
    only when the relative reference actually contains a "." segment
@@ -687,7 +712,11 @@ let parse_turtle_iri (st: turtle_state) (input: string) (pos: nat) : parse_resul
       begin match scan_iri_ref_span input pos with
       | ParseOk sp pos' ->
         let i = iri_ref_span_to_raw input sp in
-        if sp.irs_has_colon then
+        // Turtle/TriG eval-bad-01/02/03: UCHAR escape must not decode
+        // to a character forbidden in an IRIREF (space, <, >, etc.)
+        if contains_forbidden_iri_char i then
+          ParseFail "forbidden character in IRI" pos
+        else if sp.irs_has_colon then
           ParseOk i pos'
         else
           (* Resolve relative IRI against base — empty string is valid in Turtle *)
@@ -1768,6 +1797,12 @@ let rec count_triples (ts: list triple) : Tot nat (decreases ts) =
   | _ :: rest -> 1 + count_triples rest
 
 // Parse the full Turtle document: sequence of statements
+// The decreases/fuel proof here is right at the edge of Z3's default
+// query size. Without --split_queries, small shifts in surrounding
+// module content (new helpers, renames) can tip the single-query
+// verification into an assertion failure. Pin the option locally so
+// the proof doesn't regress silently.
+#push-options "--z3rlimit 30"
 let rec parse_turtle_doc (st: turtle_state) (input: string) (pos: nat)
     (acc: list triple) (has_error: bool) (fuel: nat)
   : Tot turtle_doc_result (decreases fuel) =
@@ -1820,6 +1855,7 @@ let rec parse_turtle_count_doc (st: turtle_state) (input: string) (pos: nat)
           else
             parse_turtle_count_doc st input pos2 acc true fuel'
         end
+#pop-options
 
 (* ================================================================ *)
 (* Entry point                                                       *)

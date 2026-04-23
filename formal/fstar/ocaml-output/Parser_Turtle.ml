@@ -544,6 +544,31 @@ let iri_ref_span_to_raw (input : Prims.string)
     decode_iri_escapes_acc input body_start body_end []
       ((body_end - body_start) + Prims.int_one)
   else ""
+let is_forbidden_iri_cp (c : Prims.int) : Prims.bool=
+  (((((((((c <= (Prims.of_int (0x20))) || (c = (Prims.of_int (0x22)))) ||
+           (c = (Prims.of_int (0x3C))))
+          || (c = (Prims.of_int (0x3E))))
+         || (c = (Prims.of_int (0x5C))))
+        || (c = (Prims.of_int (0x5E))))
+       || (c = (Prims.of_int (0x60))))
+      || (c = (Prims.of_int (0x7B))))
+     || (c = (Prims.of_int (0x7C))))
+    || (c = (Prims.of_int (0x7D)))
+let rec contains_forbidden_iri_char_from (s : Prims.string) (pos : Prims.nat)
+  (fuel : Prims.nat) : Prims.bool=
+  let len = FStar_String.strlen s in
+  if (fuel = Prims.int_zero) || (pos >= len)
+  then false
+  else
+    (let c = FStar_Char.int_of_char (FStar_String.index s pos) in
+     if is_forbidden_iri_cp c
+     then true
+     else
+       contains_forbidden_iri_char_from s (pos + Prims.int_one)
+         (fuel - Prims.int_one))
+let contains_forbidden_iri_char (s : Prims.string) : Prims.bool=
+  contains_forbidden_iri_char_from s Prims.int_zero
+    ((FStar_String.strlen s) + Prims.int_one)
 let rec has_dot_segment_fuel (s : Prims.string) (pos : Prims.nat)
   (at_seg_start : Prims.bool) (fuel : Prims.nat) : Prims.bool=
   if fuel = Prims.int_zero
@@ -874,14 +899,19 @@ let parse_turtle_iri (st : turtle_state) (input : Prims.string)
        match Parser_TurtleScanner.scan_iri_ref_span input pos with
        | Parser_Combinators.ParseOk (sp, pos') ->
            let i = iri_ref_span_to_raw input sp in
-           (if sp.Parser_TurtleScanner.irs_has_colon
-            then Parser_Combinators.ParseOk (i, pos')
+           (if contains_forbidden_iri_char i
+            then
+              Parser_Combinators.ParseFail
+                ("forbidden character in IRI", pos)
             else
-              (let resolved = resolve_iri_hint st i false in
-               if RDF_Graph_Executable.is_iri resolved
-               then Parser_Combinators.ParseOk (resolved, pos')
-               else
-                 Parser_Combinators.ParseFail ("resolved IRI invalid", pos)))
+              if sp.Parser_TurtleScanner.irs_has_colon
+              then Parser_Combinators.ParseOk (i, pos')
+              else
+                (let resolved = resolve_iri_hint st i false in
+                 if RDF_Graph_Executable.is_iri resolved
+                 then Parser_Combinators.ParseOk (resolved, pos')
+                 else
+                   Parser_Combinators.ParseFail ("resolved IRI invalid", pos)))
        | Parser_Combinators.ParseFail (msg, fpos) ->
            Parser_Combinators.ParseFail (msg, fpos)
      else
