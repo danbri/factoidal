@@ -113,6 +113,30 @@
   table.results th { background: var(--surface); font-weight: 600; }
   table.results td { font-family: ui-monospace, Menlo, Consolas, monospace; }
   .result-meta { margin-top: 0.5em; color: var(--muted); font-size: 0.85em; }
+  /* Timing breakdown panel shown above results after each run. */
+  .timing {
+    margin: 0.5em 0 1em; padding: 0.6em 0.8em;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 4px; font-size: 0.85em; color: var(--muted);
+  }
+  .timing-total { font-weight: 600; color: var(--fg); }
+  .timing ul {
+    list-style: none; margin: 0.3em 0 0; padding: 0;
+    display: grid; grid-template-columns: auto 1fr auto; gap: 0.1em 0.8em;
+    align-items: baseline;
+  }
+  .timing ul li {
+    display: contents;
+  }
+  .timing .tl { color: var(--fg); }
+  .timing .tr { font-variant-numeric: tabular-nums; text-align: right; }
+  .timing .bar {
+    background: var(--brand); height: 0.55em; border-radius: 2px;
+    align-self: center; min-width: 2px;
+  }
+  .timing .bar.cached {
+    background: var(--border); height: 0.35em;
+  }
   pre.raw-error {
     background: #fff6f4; border: 1px solid #f0c0c0; padding: 0.8em;
     border-radius: 4px; white-space: pre-wrap; word-break: break-word;
@@ -168,25 +192,10 @@
 <div id="out" class="empty">Pick a query and click Run.</div>
 
 <details>
-  <summary>What's running under the hood</summary>
-  <p class="graphs">
-    Three Turtle files are fetched from this page's <code>lifesci/</code>
-    subdirectory (~1.4 MB total), parsed by the F*-verified Turtle parser,
-    and loaded into three named graphs keyed as
-    <code>urn:kgx:chromosome</code>, <code>urn:kgx:sequence_variant</code>,
-    and <code>urn:kgx:disease</code>. SPARQL queries use
-    <code>GRAPH &lt;urn:kgx:…&gt; { … }</code> to select per graph.
-  </p>
-  <p class="graphs">
-    The larger <code>gene.ttl</code> (17 MB, 889k triples) that sits next to
-    these three in the repo is intentionally <em>not</em> loaded here —
-    parsing 889k triples in the browser is slow and the naive BGP
-    evaluator on a list-backed graph is not yet fast enough to make the
-    disease↔gene join interactive. That is what the indexed in-memory
-    store work is about. For now, see
-    <a href="https://github.com/danbri/factoidal/tree/claude/main/examples/wikidata/subsets/lifesci-kgx">examples/wikidata/subsets/lifesci-kgx/</a>
-    in the repo for how to run it natively.
-  </p>
+  <summary>Details</summary>
+  <div id="timing-details" class="graphs">
+    No query has run yet.
+  </div>
 </details>
 
 </main>
@@ -207,7 +216,7 @@
   const QUERIES = [
     {
       key: 'variant-chrom',
-      label: '03 — Sequence variants on chromosomes (cross-graph join, ~0.4 s)',
+      label: '03 — Sequence variants on chromosomes (cross-graph join)',
       body:
 `# Cross-graph join:
 #  <chromosome> provides the set of chromosome entities,
@@ -225,7 +234,7 @@ LIMIT 20
     },
     {
       key: 'top-diseases',
-      label: '04 — Top diseases by count of genetically-associated genes (~0.6 s)',
+      label: '04 — Top diseases by count of genetically-associated genes',
       body:
 `# Entirely within the <disease> graph: group by disease, count the
 # number of wdt:P2293 "genetic association" links per disease.
@@ -242,7 +251,7 @@ LIMIT 10
     },
     {
       key: 'count-per-graph',
-      label: '01 — Count triples per named graph (~7 s)',
+      label: '01 — Count triples per named graph',
       body:
 `# Basic structural query. GROUP BY on the list-backed evaluator is
 # roughly O(n^2), so this takes a few seconds even on ~43k triples.
@@ -279,7 +288,7 @@ LIMIT 10
     },
     {
       key: 'disease-symptoms',
-      label: 'Cross-graph: diseases that cite wdt:P828 (cause)',
+      label: '05 — Diseases that cite wdt:P828 (cause)',
       body:
 `# Diseases (?d) with a stated cause (?c), regardless of what ?c is.
 # Handy starting point for exploring disease-etiology triples.
@@ -337,15 +346,28 @@ LIMIT 25
 
   // -------------------------------------------------------------------
   // Fetch the three Turtle files in parallel and cache as strings.
+  // Tracks per-file fetch time so the timing panel can attribute.
   // -------------------------------------------------------------------
   let filePayloads = null;
+  const fileTimings = {};  // { url: {ms, bytes, cached} }
   async function getFilePayloads() {
-    if (filePayloads) return filePayloads;
+    if (filePayloads) {
+      // Mark every file as cached on subsequent calls.
+      filePayloads.forEach(p => { fileTimings[p.url] = { ...fileTimings[p.url], cached: true }; });
+      return filePayloads;
+    }
     statusEl.textContent = 'Fetching Turtle data…';
     const results = await Promise.all(FILES.map(async f => {
+      const t0 = performance.now();
       const r = await fetch(f.url);
       if (!r.ok) throw new Error(`fetch ${f.url}: ${r.status}`);
-      return { ...f, content: await r.text() };
+      const content = await r.text();
+      fileTimings[f.url] = {
+        ms: performance.now() - t0,
+        bytes: content.length,
+        cached: false,
+      };
+      return { ...f, content };
     }));
     filePayloads = results;
     return results;
@@ -365,13 +387,26 @@ LIMIT 25
   // -------------------------------------------------------------------
   const engineSources = { js: null, wasm: null };
   const enginePromises = { js: null, wasm: null };
+  const engineTimings = { js: null, wasm: null };  // { ms, bytes, cached }
   function getEngineSource(which) {
-    if (engineSources[which]) return Promise.resolve(engineSources[which]);
+    if (engineSources[which]) {
+      if (engineTimings[which]) engineTimings[which].cached = true;
+      return Promise.resolve(engineSources[which]);
+    }
     if (enginePromises[which]) return enginePromises[which];
     const url = which === 'wasm' ? './factoidal.wasm.js' : './factoidal.js';
+    const t0 = performance.now();
     enginePromises[which] = fetch(url)
       .then(r => { if (!r.ok) throw new Error('fetch ' + url + ': ' + r.status); return r.text(); })
-      .then(t => { engineSources[which] = t; return t; });
+      .then(t => {
+        engineSources[which] = t;
+        engineTimings[which] = {
+          ms: performance.now() - t0,
+          bytes: t.length,
+          cached: false,
+        };
+        return t;
+      });
     return enginePromises[which];
   }
 
@@ -455,6 +490,96 @@ LIMIT 25
   }
 
   // -------------------------------------------------------------------
+  // Timing panel. Renders a row-per-phase breakdown above the results
+  // table in the main UI, and copies the same summary into the
+  // <details id="timing-details"> block.
+  //
+  // The browser side can see: (a) engine-source fetch, (b) three
+  // data-file fetches, (c) total "engine run" — the IIFE covers
+  // parse + query + JSON serialize; we can't sub-split that yet
+  // because the engine is a black-box CLI. All of engine-source
+  // fetch and data fetches can be cached on second+ runs; we mark
+  // those as such.
+  // -------------------------------------------------------------------
+  function formatMs(ms) {
+    if (ms == null) return '—';
+    if (ms < 1) return '<1 ms';
+    if (ms < 1000) return ms.toFixed(0) + ' ms';
+    return (ms / 1000).toFixed(2) + ' s';
+  }
+  function formatBytes(n) {
+    if (n == null) return '';
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / (1024 * 1024)).toFixed(2) + ' MB';
+  }
+  function renderTiming(totalMs, engineName, runMs, phases) {
+    // phases = [{label, ms, bytes?, cached?}]
+    const fallback = Math.max(totalMs, 1);
+    const el = document.createElement('div');
+    el.className = 'timing';
+    const head = document.createElement('div');
+    head.innerHTML = '<span class="timing-total">' + formatMs(totalMs) + '</span>' +
+                     ' total on ' + engineName.toUpperCase() +
+                     ' — query run ' + formatMs(runMs);
+    el.appendChild(head);
+    if (!phases.length) return el;
+    const ul = document.createElement('ul');
+    phases.forEach(p => {
+      const li = document.createElement('li');
+      const tl = document.createElement('span');
+      tl.className = 'tl';
+      tl.textContent = p.label + (p.bytes != null ? ' (' + formatBytes(p.bytes) + ')' : '');
+      const bar = document.createElement('span');
+      bar.className = 'bar' + (p.cached ? ' cached' : '');
+      bar.style.width = Math.max(2, Math.round(220 * ((p.ms || 0) / fallback))) + 'px';
+      const tr = document.createElement('span');
+      tr.className = 'tr';
+      tr.textContent = p.cached ? 'cached' : formatMs(p.ms);
+      li.appendChild(tl); li.appendChild(bar); li.appendChild(tr);
+      ul.appendChild(li);
+    });
+    el.appendChild(ul);
+    return el;
+  }
+
+  function buildPhases(engineName, runMs) {
+    const out = [];
+    const es = engineTimings[engineName];
+    out.push({
+      label: 'Engine bundle (' + engineName + ')',
+      ms: es ? es.ms : 0,
+      bytes: es ? es.bytes : null,
+      cached: es ? es.cached : true,
+    });
+    FILES.forEach(f => {
+      const t = fileTimings[f.url];
+      const name = f.url.replace(/^\.\/lifesci\//, '');
+      out.push({
+        label: 'Fetch ' + name,
+        ms: t ? t.ms : 0,
+        bytes: t ? t.bytes : null,
+        cached: t ? t.cached : true,
+      });
+    });
+    out.push({ label: 'Query run (parse + eval + serialize)', ms: runMs });
+    return out;
+  }
+
+  function renderTimingBoth(totalMs, engineName, runMs) {
+    const phases = buildPhases(engineName, runMs);
+    // Main UI: insert above the results table.
+    const panel = renderTiming(totalMs, engineName, runMs, phases);
+    outputWrap.insertBefore(panel, outputWrap.firstChild);
+    // Details block: same panel, no bars, compact.
+    const detEl = document.getElementById('timing-details');
+    if (detEl) {
+      detEl.innerHTML = '';
+      detEl.appendChild(renderTiming(totalMs, engineName, runMs, phases));
+    }
+  }
+
+  // -------------------------------------------------------------------
   // Run
   // -------------------------------------------------------------------
   runBtn.addEventListener('click', async () => {
@@ -469,6 +594,7 @@ LIMIT 25
     console.log = (...a) => buf.push(a.join(' '));
     console.error = (...a) => buf.push(a.join(' '));
 
+    const runStart = performance.now();
     try {
       const [src, payloads] = await Promise.all([getEngineSource(engine), getFilePayloads()]);
 
@@ -520,6 +646,8 @@ LIMIT 25
       statusEl.textContent = 'Done on ' + engine.toUpperCase() + ' in ' + ms + ' ms';
       statusEl.className = 'status ok';
       renderResultsJSON(parsed);
+      const totalMs = performance.now() - runStart;
+      renderTimingBoth(totalMs, engine, parseFloat(ms));
     } catch (e) {
       console.log = origLog; console.error = origErr;
       statusEl.textContent = 'Error: ' + (e && e.message || e);
