@@ -128,13 +128,21 @@
   button.run:disabled { background: #aaa; cursor: wait; }
   /* Radio-button segmented control. Visually identical on desktop
      and touch devices; hit targets are the full label, min 36px
-     tall. Hidden native inputs keep keyboard accessibility. */
+     tall. Hidden native inputs use the sr-only visually-hidden
+     pattern so they take up zero layout space (important — a plain
+     `position: absolute; opacity: 0` without a positioned parent
+     falls back to <body> and can overlap the textarea, eating
+     mouse-wheel and click events). Keyboard and screen-reader
+     behaviour stay intact. */
   .radio-group {
+    position: relative;
     display: inline-flex; border: 1px solid var(--border);
     border-radius: 4px; overflow: hidden; background: var(--bg);
   }
   .radio-group input[type="radio"] {
-    position: absolute; opacity: 0; pointer-events: none;
+    position: absolute; width: 1px; height: 1px; margin: -1px;
+    padding: 0; clip: rect(0 0 0 0); overflow: hidden;
+    white-space: nowrap; border: 0;
   }
   .radio-group label {
     cursor: pointer; padding: 0.45em 0.9em; font-weight: 500;
