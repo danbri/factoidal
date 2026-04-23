@@ -56,20 +56,31 @@
     border-radius: 50%; animation: spin 0.7s linear infinite;
     vertical-align: -0.18em; margin-right: 0.35em;
   }
-  /* Engine toggle — two-button segmented control. */
-  .engine-toggle {
+  /* Engine toggle — radio-group segmented control (mobile-friendly). */
+  .radio-group {
     display: inline-flex; border: 1px solid var(--border);
-    border-radius: 4px; overflow: hidden;
+    border-radius: 4px; overflow: hidden; background: var(--bg);
   }
-  .engine-toggle button {
-    background: var(--bg); color: var(--fg); border: none; border-radius: 0;
-    padding: 0.35em 0.8em; font-weight: 500; font-size: 0.9em;
+  .radio-group input[type="radio"] {
+    position: absolute; opacity: 0; pointer-events: none;
   }
-  .engine-toggle button + button { border-left: 1px solid var(--border); }
-  .engine-toggle button.active {
+  .radio-group label {
+    cursor: pointer; padding: 0.45em 0.9em; font-weight: 500;
+    font-size: 0.9em; color: var(--fg); user-select: none;
+    display: inline-flex; align-items: center; min-height: 32px;
+    transition: background 0.1s;
+  }
+  .radio-group label + label { border-left: 1px solid var(--border); }
+  .radio-group label:hover { background: var(--surface); }
+  .radio-group label:has(input:checked) {
     background: var(--brand); color: #fff; font-weight: 600;
   }
-  .engine-toggle button:disabled { animation: none; }
+  .radio-group label:focus-within {
+    outline: 2px solid var(--brand); outline-offset: -2px;
+  }
+  @media (max-width: 520px) {
+    .radio-group label { padding: 0.55em 0.8em; min-height: 40px; }
+  }
   textarea {
     width: 100%; min-height: 10em; font: 0.92em/1.45 ui-monospace, Menlo,
     Consolas, monospace; padding: 0.7em; border: 1px solid var(--border);
@@ -134,11 +145,13 @@
   <label for="query-select">Query</label>
   <select id="query-select"></select>
   <button id="run-btn">Run</button>
-  <span class="engine-toggle" role="group" aria-label="Engine">
-    <button id="engine-js"   class="active" type="button"
-            aria-pressed="true"  title="js_of_ocaml (pure JavaScript — widest browser support)">JS</button>
-    <button id="engine-wasm" type="button"
-            aria-pressed="false" title="wasm_of_ocaml (WebAssembly — needs Wasm-GC: Chrome/Edge 119+, Node 22+)">WASM</button>
+  <span class="radio-group" role="radiogroup" aria-label="Engine">
+    <label title="js_of_ocaml — widest browser support">
+      <input type="radio" name="engine" value="js" checked><span>JS</span>
+    </label>
+    <label title="wasm_of_ocaml — needs Wasm-GC (Chrome/Edge 119+, Node 22+)">
+      <input type="radio" name="engine" value="wasm"><span>WASM</span>
+    </label>
   </span>
   <span id="status" class="status">Loading engine…</span>
 </div>
@@ -279,23 +292,16 @@ LIMIT 25
   const runBtn      = document.getElementById('run-btn');
   const statusEl    = document.getElementById('status');
   const outputWrap  = document.getElementById('out');
-  const jsBtn       = document.getElementById('engine-js');
-  const wasmBtn     = document.getElementById('engine-wasm');
-
   // -------------------------------------------------------------------
-  // Engine toggle: 'js' (factoidal.js, synchronous) or 'wasm'
+  // Engine radio group: 'js' (factoidal.js, synchronous) or 'wasm'
   // (factoidal.wasm.js, async loader + .wasm payload).
+  // Reads the current engine live off the DOM — no cached var, no
+  // change listener needed because we only consult it at click time.
   // -------------------------------------------------------------------
-  let engine = 'js';
-  function setEngine(e) {
-    engine = e;
-    jsBtn.classList.toggle('active',   e === 'js');
-    wasmBtn.classList.toggle('active', e === 'wasm');
-    jsBtn.setAttribute('aria-pressed',   e === 'js'   ? 'true' : 'false');
-    wasmBtn.setAttribute('aria-pressed', e === 'wasm' ? 'true' : 'false');
+  function currentEngine() {
+    const r = document.querySelector('input[name="engine"]:checked');
+    return r ? r.value : 'js';
   }
-  jsBtn.addEventListener('click',   () => setEngine('js'));
-  wasmBtn.addEventListener('click', () => setEngine('wasm'));
 
   QUERIES.forEach(q => {
     const opt = document.createElement('option');
@@ -433,6 +439,7 @@ LIMIT 25
   // Run
   // -------------------------------------------------------------------
   runBtn.addEventListener('click', async () => {
+    const engine = currentEngine();
     runBtn.disabled = true;
     runBtn.classList.add('running');          // pulse animation while in-flight
     statusEl.className = 'status';

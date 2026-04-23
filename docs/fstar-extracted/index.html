@@ -126,6 +126,33 @@
   }
   button.run:hover { background: var(--brand-dark); }
   button.run:disabled { background: #aaa; cursor: wait; }
+  /* Radio-button segmented control. Visually identical on desktop
+     and touch devices; hit targets are the full label, min 36px
+     tall. Hidden native inputs keep keyboard accessibility. */
+  .radio-group {
+    display: inline-flex; border: 1px solid var(--border);
+    border-radius: 4px; overflow: hidden; background: var(--bg);
+  }
+  .radio-group input[type="radio"] {
+    position: absolute; opacity: 0; pointer-events: none;
+  }
+  .radio-group label {
+    cursor: pointer; padding: 0.45em 0.9em; font-weight: 500;
+    font-size: 0.9em; color: var(--fg, #222); user-select: none;
+    display: inline-flex; align-items: center; min-height: 32px;
+    transition: background 0.1s;
+  }
+  .radio-group label + label { border-left: 1px solid var(--border); }
+  .radio-group label:hover { background: var(--surface); }
+  .radio-group label:has(input:checked) {
+    background: var(--brand); color: #fff; font-weight: 600;
+  }
+  .radio-group label:focus-within {
+    outline: 2px solid var(--brand); outline-offset: -2px;
+  }
+  @media (max-width: 520px) {
+    .radio-group label { padding: 0.55em 0.8em; min-height: 40px; }
+  }
   /* Run-button pulse while a query is in flight — click-registered
      feedback for slow engines (wasm warm-up, large datasets). */
   @keyframes runPulse {
@@ -269,17 +296,21 @@
     <select id="dataset" class="dataset"></select>
     <label class="ctl" for="sample">Query:</label>
     <select id="sample" class="sample"></select>
-    <label class="ctl" for="entail">Entail:</label>
-    <select id="entail" class="dataset">
-      <option value="none">none</option>
-      <option value="RDFS">RDFS</option>
-      <option value="OWL-RL">OWL-RL</option>
-    </select>
-    <label class="ctl" for="engine">Engine:</label>
-    <select id="engine" class="dataset" title="js is the js_of_ocaml build; wasm is the wasm_of_ocaml build (queued for browser bridge work — auto-invokes on load)">
-      <option value="js">js (js_of_ocaml)</option>
-      <option value="wasm">wasm (wasm_of_ocaml — needs Chrome/Edge 119+)</option>
-    </select>
+    <span class="ctl">Logic:</span>
+    <span class="radio-group" role="radiogroup" aria-label="Entailment regime">
+      <label><input type="radio" name="entail" value="none" checked><span>none</span></label>
+      <label><input type="radio" name="entail" value="RDFS"><span>RDFS</span></label>
+      <label><input type="radio" name="entail" value="OWL-RL"><span>OWL-RL</span></label>
+    </span>
+    <span class="ctl">Engine:</span>
+    <span class="radio-group" role="radiogroup" aria-label="Engine">
+      <label title="js_of_ocaml build — widest browser support">
+        <input type="radio" name="engine" value="js" checked><span>JS</span>
+      </label>
+      <label title="wasm_of_ocaml build — needs Wasm-GC (Chrome/Edge 119+, Node 22+)">
+        <input type="radio" name="engine" value="wasm"><span>WASM</span>
+      </label>
+    </span>
     <button class="run" id="run">Run query</button>
     <span class="status" id="status">Loading engine…</span>
   </div>
@@ -1048,8 +1079,16 @@ ORDER BY ?s ?name` },
   const statusEl = $('status');
   const sampleEl = $('sample');
   const datasetEl = $('dataset');
-  const entailEl = $('entail');
-  const engineEl = $('engine');
+
+  // Radio-group readers: return the currently-checked value, or the
+  // supplied fallback if somehow no radio is checked (shouldn't
+  // happen — `checked` is on the default option in the HTML).
+  function radioValue(name, fallback) {
+    const el = document.querySelector('input[name="' + name + '"]:checked');
+    return el ? el.value : fallback;
+  }
+  const entailEl = { get value() { return radioValue('entail', 'none'); } };
+  const engineEl = { get value() { return radioValue('engine', 'js'); } };
 
   dataEl.setAttribute('readonly', 'readonly');
 
