@@ -162,7 +162,11 @@ let check_conflicting_attrs (attrs : Parser_XML.xml_attribute list) =
   if has "rdf:nodeID" && has "rdf:resource" then
     raise (Rdfxml_error "conflicting rdf:nodeID and rdf:resource");
   if has "rdf:ID" && has "rdf:about" then
-    raise (Rdfxml_error "conflicting rdf:ID and rdf:about")
+    raise (Rdfxml_error "conflicting rdf:ID and rdf:about");
+  (* rdf:li is an element name, never an attribute. Covers
+     rdf-containers-syntax-vs-schema-error001. *)
+  if has "rdf:li" then
+    raise (Rdfxml_error "rdf:li may not be used as an attribute")
 
 type rdfxml_state ='''
     )
