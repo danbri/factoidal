@@ -114,13 +114,44 @@ let rec chars_to_hex (cs:list char) : Tot int (decreases cs) =
   | c :: rest ->
     op_Multiply (hex_digit_value c) (pow16 (List.Tot.length rest)) + chars_to_hex rest
 
+(* UTF-8 encode a codepoint into a string of bytes.
+   Previously this returned a single byte (cp mod 256) for all non-ASCII,
+   corrupting every `&#xFC;`-style character reference. Tests under
+   rdfms-difference-between-ID-and-about and rdf-charmod-literals exercise
+   this; the expected N-Triples has the codepoint as UTF-8 (ü → C3 BC).
+
+   We emit each UTF-8 byte by producing a 1-char string whose char is the
+   byte value (0..255), then concatenating. Requires `Char.char_of_int`
+   to accept byte values, which it does per FStar.Char. *)
+let byte_of_int (b:int) : string =
+  let b' = if b < 0 then 0 else if b > 255 then 255 else b in
+  String.string_of_char (Char.char_of_int b')
+
 let codepoint_to_string (cp:int) : string =
-  if cp >= 0 && cp <= 127 then
-    String.string_of_char (Char.char_of_int cp)
-  else if cp > 127 && cp <= 0xFFFF then
-    String.string_of_char (Char.char_of_int (cp % 256))
-  else
-    "?"
+  if cp < 0 then "?"
+  else if cp < 0x80 then
+    byte_of_int cp
+  else if cp < 0x800 then
+    let b0 = 0xC0 + (cp / 64) in
+    let b1 = 0x80 + (cp - (cp / 64) `op_Multiply` 64) in
+    strcat (byte_of_int b0) (byte_of_int b1)
+  else if cp < 0x10000 then
+    let b0 = 0xE0 + (cp / 4096) in
+    let cp' = cp - (cp / 4096) `op_Multiply` 4096 in
+    let b1 = 0x80 + (cp' / 64) in
+    let b2 = 0x80 + (cp' - (cp' / 64) `op_Multiply` 64) in
+    strcat (byte_of_int b0) (strcat (byte_of_int b1) (byte_of_int b2))
+  else if cp < 0x110000 then
+    let b0 = 0xF0 + (cp / 262144) in
+    let r1 = cp - (cp / 262144) `op_Multiply` 262144 in
+    let b1 = 0x80 + (r1 / 4096) in
+    let r2 = r1 - (r1 / 4096) `op_Multiply` 4096 in
+    let b2 = 0x80 + (r2 / 64) in
+    let b3 = 0x80 + (r2 - (r2 / 64) `op_Multiply` 64) in
+    strcat (byte_of_int b0)
+     (strcat (byte_of_int b1)
+      (strcat (byte_of_int b2) (byte_of_int b3)))
+  else "?"
 
 let parse_reference (input:string) (pos:nat) : parse_result string =
   let len = fs_byte_length input in

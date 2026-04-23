@@ -139,15 +139,58 @@ let rec chars_to_hex (cs : FStar_Char.char Prims.list) : Prims.int=
   | c::rest ->
       ((hex_digit_value c) * (pow16 (FStar_List_Tot_Base.length rest))) +
         (chars_to_hex rest)
+let byte_of_int (b : Prims.int) : Prims.string=
+  let b' =
+    if b < Prims.int_zero
+    then Prims.int_zero
+    else if b > (Prims.of_int (255)) then (Prims.of_int (255)) else b in
+  FStar_String.string_of_char (FStar_Char.char_of_int b')
 let codepoint_to_string (cp : Prims.int) : Prims.string=
-  if (cp >= Prims.int_zero) && (cp <= (Prims.of_int (127)))
-  then FStar_String.string_of_char (FStar_Char.char_of_int cp)
+  if cp < Prims.int_zero
+  then "?"
   else
-    if (cp > (Prims.of_int (127))) && (cp <= (Prims.parse_int "0xFFFF"))
-    then
-      FStar_String.string_of_char
-        (FStar_Char.char_of_int ((mod) cp (Prims.of_int (256))))
-    else "?"
+    if cp < (Prims.of_int (0x80))
+    then byte_of_int cp
+    else
+      if cp < (Prims.of_int (0x800))
+      then
+        (let b0 = (Prims.of_int (0xC0)) + (cp / (Prims.of_int (64))) in
+         let b1 =
+           (Prims.of_int (0x80)) +
+             (cp - ((cp / (Prims.of_int (64))) * (Prims.of_int (64)))) in
+         Prims.strcat (byte_of_int b0) (byte_of_int b1))
+      else
+        if cp < (Prims.parse_int "0x10000")
+        then
+          (let b0 = (Prims.of_int (0xE0)) + (cp / (Prims.of_int (4096))) in
+           let cp' =
+             cp - ((cp / (Prims.of_int (4096))) * (Prims.of_int (4096))) in
+           let b1 = (Prims.of_int (0x80)) + (cp' / (Prims.of_int (64))) in
+           let b2 =
+             (Prims.of_int (0x80)) +
+               (cp' - ((cp' / (Prims.of_int (64))) * (Prims.of_int (64)))) in
+           Prims.strcat (byte_of_int b0)
+             (Prims.strcat (byte_of_int b1) (byte_of_int b2)))
+        else
+          if cp < (Prims.parse_int "0x110000")
+          then
+            (let b0 =
+               (Prims.of_int (0xF0)) + (cp / (Prims.parse_int "262144")) in
+             let r1 =
+               cp -
+                 ((cp / (Prims.parse_int "262144")) *
+                    (Prims.parse_int "262144")) in
+             let b1 = (Prims.of_int (0x80)) + (r1 / (Prims.of_int (4096))) in
+             let r2 =
+               r1 - ((r1 / (Prims.of_int (4096))) * (Prims.of_int (4096))) in
+             let b2 = (Prims.of_int (0x80)) + (r2 / (Prims.of_int (64))) in
+             let b3 =
+               (Prims.of_int (0x80)) +
+                 (r2 - ((r2 / (Prims.of_int (64))) * (Prims.of_int (64)))) in
+             Prims.strcat (byte_of_int b0)
+               (Prims.strcat (byte_of_int b1)
+                  (Prims.strcat (byte_of_int b2) (byte_of_int b3))))
+          else "?"
 let parse_reference (input : Prims.string) (pos : Prims.nat) :
   Prims.string Parser_Combinators.parse_result=
   let len = Parser_FastString.fs_byte_length input in
