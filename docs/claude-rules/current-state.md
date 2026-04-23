@@ -102,49 +102,54 @@ Hand-coded parsers have been deleted. Legacy copies remain in `junk/do_not_use/h
 | `eval_subselect_fwd` | forward decl (subqueries) | wired in ocaml-patches.sh |
 | `eval_property_path_fwd` | forward decl (property paths) | wired in ocaml-patches.sh |
 
-## Plain-English Status Summary (as of 2026-04-16)
+## Plain-English Status Summary (as of 2026-04-23)
 
 Factoidal is a formally verified RDF/SPARQL implementation written in F\* and
-tested against the official W3C conformance suites. The core SPARQL query
-evaluator passes 375 of 418 applicable query/syntax tests (90%), with perfect
-scores in BIND (10/10), EXISTS (6/6), grouping (6/6), project-expression (7/7),
-property paths (33/33), CSV/TSV results (6/6), JSON results (4/4), and
-near-perfect in functions (74/75), aggregates (45/46), negation (11/12),
-syntax-query (93/94). The main SPARQL gaps are: UPDATE not yet implemented
-(205 tests skipped — in scope, tracked by #59), Protocol not yet implemented
-(34 tests skipped), SERVICE returns empty (needs HTTP client, tracked by #57),
-OWL entailment (26 entailment failures are mostly OWL-specific, beyond RDFS),
-and CONSTRUCT partially implemented (2/7, 4 need Turtle result serializer).
+tested against the official W3C conformance suites. SPARQL UPDATE is now
+live. The core SPARQL evaluator + updater passes 532 of 564 applicable
+query/syntax/update tests (94%), with perfect scores in most suites:
+BIND, EXISTS, grouping, project-expression, property paths, CSV/TSV
+results, JSON results, functions (75/75), syntax-query (94/94),
+aggregates (46/46), and every UPDATE suite except a handful of edge
+cases in basic-update (2), update-silent (2 skipped LOAD),
+syntax-update-1 (1). The remaining SPARQL gaps are: cast float/decimal
+(2), negation "subsets" query (1), http-rdf-update + protocol (53
+skipped — need HTTP server), SERVICE (7, needs HTTP client — #57),
+service-description (3 skipped), entailment (19 OWL-specific, beyond
+RDFS).
 
-On the RDF parsing side, F\*-extracted parsers handle all six serialization
-formats: N-Triples 41/70, Turtle 296/313, N-Quads 53/87, TriG 338/356,
-RDF/XML 121/166, rdf-mt 39/39. Most remaining parser failures are
-negative-syntax validation (the parser is too lenient — accepts input it
-should reject) and prefixed name edge cases.
+On the RDF parsing side, **all Turtle/TriG/N-Triples/N-Quads/rdf-mt
+suites are at 100%**: rdf-turtle 313/313, rdf-trig 356/356,
+rdf-n-triples 70/70, rdf-n-quads 87/87, rdf-mt 39/39. Remaining RDF
+failures (35) are entirely in rdf-xml (131/166) — mostly reification
+quad generation, xml:base + percent-encoding of non-ASCII rdf:ID
+values, and parseType="Literal" XML canonicalisation.
 
 **Caveats on test numbers (be honest):** ASK query comparison in w3c_runner.ml
 does not check the expected boolean value — ASK tests always pass. Blank node
 matching is simplified (any bnode matches any other) rather than proper graph
 isomorphism. These may inflate the pass count slightly.
 
-## W3C Test Results (as of 2026-04-16)
+## W3C Test Results (as of 2026-04-23)
 
-**SPARQL 1.1 — 375 pass, 43 fail, 205 skip, 8 unsupported (631 total)**
+**SPARQL 1.1 — 532 pass, 32 fail, 58 skip, 9 unsupported (631 total)**
 
-Per-suite: aggregates 45/46, bind 10/10, bindings 10/10, cast 4/6,
-construct 2/7, csv-tsv-res 6/6, delete-insert 8/8, entailment 44/70,
-exists 6/6, functions 74/75, grouping 6/6, json-res 4/4, negation 11/12,
-project-expression 7/7, property-path 33/33, service 0/7,
-subquery 9/14, syntax-query 93/94, syntax-fed 3/3.
-Not yet implemented: 205 UPDATE operations (add, basic-update, clear, copy,
-delete, delete-data, delete-where, drop, move, http-rdf-update,
-syntax-update-\*, update-silent). Protocol: 34 not yet implemented.
-Service-description: 3 not yet implemented.
+Per-suite: add 8/8, aggregates 46/46, basic-update 11/13, bind 10/10,
+bindings 10/10, cast 4/6, clear 4/4, construct 2/7, copy 6/6, csv-tsv-res 6/6,
+delete 19/19, delete-data 6/6, delete-insert 17/17, delete-where 6/6,
+drop 4/4, entailment 51/70, exists 6/6, functions 75/75, grouping 6/6,
+json-res 4/4, move 6/6, negation 11/12, project-expression 7/7,
+property-path 33/33, subquery 12/14, syntax-fed 3/3, syntax-query 94/94,
+syntax-update-1 53/54, syntax-update-2 1/1, update-silent 11/13.
+Skipped/unsupported: http-rdf-update 19, protocol 34, service-description 3
+(all need HTTP server/client); construct 5 (need Turtle result serializer).
 
-**RDF 1.1 — 888 pass, 143 fail (1031 total)**
+**RDF 1.1 — 996 pass, 35 fail (1031 total)**
 
-Per-suite: N-Triples 41/70, Turtle 296/313, N-Quads 53/87, TriG 338/356,
-RDF/XML 121/166, rdf-mt 39/39.
+Per-suite: N-Triples 70/70, Turtle 313/313, N-Quads 87/87, TriG 356/356,
+RDF/XML 131/166, rdf-mt 39/39. Only RDF/XML has remaining failures.
+
+**Combined: 1528 pass, 67 fail, 58 skip, 9 unsupported (1662 total).**
 
 **RDF 1.1 Model Theory — 39 pass, 0 fail (39 total)**
 
