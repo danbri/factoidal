@@ -2606,6 +2606,18 @@ and is_basic_pattern (p : group_graph_pattern) : Tot bool (decreases p) =
   | GP_Join p1 p2 -> is_basic_pattern p1 && is_basic_pattern p2
   | _ -> false
 
+// Collect every triple_pattern reachable through a pattern — used
+// to build a CONSTRUCT template when the grammar only gave us the
+// parsed BGP. Property paths and non-BGP constructs are skipped:
+// CONSTRUCT templates in SPARQL 1.1 may only contain triple patterns.
+and collect_template_triples (p : group_graph_pattern) : Tot (list triple_pattern) (decreases p) =
+  match p with
+  | GP_BGP bgp -> bgp
+  | GP_Empty -> []
+  | GP_Join p1 p2 ->
+    List.Tot.append (collect_template_triples p1) (collect_template_triples p2)
+  | _ -> []
+
 and parse_construct_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (ts : token_stream)
   : Tot (parse_result query) (decreases fuel) =
   if fuel = 0 then ParseErr "recursion limit"
@@ -2627,9 +2639,11 @@ and parse_construct_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (
           begin match parse_solution_modifier pm (fuel-1) ts''' with
           | ParseErr m -> ParseErr m
           | ParseOk (modifier, gb, hv) ts4 ->
+            // CONSTRUCT WHERE shorthand: template *is* the WHERE BGP.
+            let template = collect_template_triples pattern in
             ParseOk ({
               q_base = base; q_prefixes = pm;
-              q_form = QF_Construct [];
+              q_form = QF_Construct template;
               q_dataset = ds; q_pattern = pattern;
               q_group_by = gb; q_having = hv;
               q_modifier = modifier; q_values = None
@@ -2640,7 +2654,7 @@ and parse_construct_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (
       // Parse the template as a group graph pattern, then expect WHERE + body
       begin match parse_group_graph_pattern pm (fuel-1) ts' with
       | ParseErr m -> ParseErr m
-      | ParseOk _template ts'' ->
+      | ParseOk template_pat ts'' ->
         // Expect WHERE or directly a { for the body
         let ts'' = match parse_peek ts'' with Tok_WHERE -> parse_advance ts'' | _ -> ts'' in
         begin match parse_group_graph_pattern pm (fuel-1) ts'' with
@@ -2649,9 +2663,10 @@ and parse_construct_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (
           begin match parse_solution_modifier pm (fuel-1) ts''' with
           | ParseErr m -> ParseErr m
           | ParseOk (modifier, gb, hv) ts4 ->
+            let template = collect_template_triples template_pat in
             ParseOk ({
               q_base = base; q_prefixes = pm;
-              q_form = QF_Construct [];
+              q_form = QF_Construct template;
               q_dataset = []; q_pattern = pattern;
               q_group_by = gb; q_having = hv;
               q_modifier = modifier; q_values = None

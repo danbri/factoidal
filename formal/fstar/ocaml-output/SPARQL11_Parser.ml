@@ -4928,6 +4928,15 @@ and is_basic_pattern (p : SPARQL11_Algebra.group_graph_pattern) : Prims.bool=
   | SPARQL11_Algebra.GP_Join (p1, p2) ->
       (is_basic_pattern p1) && (is_basic_pattern p2)
   | uu___ -> false
+and collect_template_triples (p : SPARQL11_Algebra.group_graph_pattern) :
+  SPARQL11_Algebra.triple_pattern Prims.list=
+  match p with
+  | SPARQL11_Algebra.GP_BGP bgp -> bgp
+  | SPARQL11_Algebra.GP_Empty -> []
+  | SPARQL11_Algebra.GP_Join (p1, p2) ->
+      FStar_List_Tot_Base.append (collect_template_triples p1)
+        (collect_template_triples p2)
+  | uu___ -> []
 and parse_construct_body (pm : prefix_map) (fuel : Prims.nat)
   (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
   (ts : token_stream) : SPARQL11_Algebra.query parse_result=
@@ -4959,12 +4968,13 @@ and parse_construct_body (pm : prefix_map) (fuel : Prims.nat)
                       with
                       | ParseErr m -> ParseErr m
                       | ParseOk ((modifier, gb, hv), ts4) ->
+                          let template = collect_template_triples pattern in
                           ParseOk
                             ({
                                SPARQL11_Algebra.q_base = base;
                                SPARQL11_Algebra.q_prefixes = pm;
                                SPARQL11_Algebra.q_form =
-                                 (SPARQL11_Algebra.QF_Construct []);
+                                 (SPARQL11_Algebra.QF_Construct template);
                                SPARQL11_Algebra.q_dataset = ds;
                                SPARQL11_Algebra.q_pattern = pattern;
                                SPARQL11_Algebra.q_group_by = gb;
@@ -4996,12 +5006,13 @@ and parse_construct_body (pm : prefix_map) (fuel : Prims.nat)
                       with
                       | ParseErr m -> ParseErr m
                       | ParseOk ((modifier, gb, hv), ts4) ->
+                          let template = collect_template_triples pattern in
                           ParseOk
                             ({
                                SPARQL11_Algebra.q_base = base;
                                SPARQL11_Algebra.q_prefixes = pm;
                                SPARQL11_Algebra.q_form =
-                                 (SPARQL11_Algebra.QF_Construct []);
+                                 (SPARQL11_Algebra.QF_Construct template);
                                SPARQL11_Algebra.q_dataset = ds;
                                SPARQL11_Algebra.q_pattern = pattern;
                                SPARQL11_Algebra.q_group_by = gb;
@@ -5013,7 +5024,7 @@ and parse_construct_body (pm : prefix_map) (fuel : Prims.nat)
      | Tok_LBRACE ->
          (match parse_group_graph_pattern pm (fuel - Prims.int_one) ts' with
           | ParseErr m -> ParseErr m
-          | ParseOk (_template, ts'') ->
+          | ParseOk (template_pat, ts'') ->
               let ts''1 =
                 match parse_peek ts'' with
                 | Tok_WHERE -> parse_advance ts''
@@ -5028,12 +5039,13 @@ and parse_construct_body (pm : prefix_map) (fuel : Prims.nat)
                     with
                     | ParseErr m -> ParseErr m
                     | ParseOk ((modifier, gb, hv), ts4) ->
+                        let template = collect_template_triples template_pat in
                         ParseOk
                           ({
                              SPARQL11_Algebra.q_base = base;
                              SPARQL11_Algebra.q_prefixes = pm;
                              SPARQL11_Algebra.q_form =
-                               (SPARQL11_Algebra.QF_Construct []);
+                               (SPARQL11_Algebra.QF_Construct template);
                              SPARQL11_Algebra.q_dataset = [];
                              SPARQL11_Algebra.q_pattern = pattern;
                              SPARQL11_Algebra.q_group_by = gb;

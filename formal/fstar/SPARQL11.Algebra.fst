@@ -3251,6 +3251,100 @@ let eval_ask_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : bool =
      | _ -> true)
   | _ -> false
 
+(* ================================================================ *)
+(* CONSTRUCT evaluation (§16.2).                                     *)
+(*                                                                   *)
+(* For each solution mapping μ in the WHERE result, the template     *)
+(* is instantiated:                                                  *)
+(*   * variables are substituted by μ's bindings;                    *)
+(*   * blank nodes get fresh labels scoped to the solution mapping,  *)
+(*     so the same template bnode label yields the same bnode within *)
+(*     one solution but distinct bnodes across solutions.            *)
+(* A template triple is emitted only when all three components       *)
+(* resolve to concrete RDF terms of valid kind (subject must be IRI  *)
+(* or bnode; predicate must be IRI; object can be any term).         *)
+(* ================================================================ *)
+
+(* Give each solution-index / template-bnode pair a unique id, e.g.
+   `tpl_7_b1`. Simple string concat; blank-node identity is only
+   required to be consistent within one solution. *)
+let fresh_bnode_for (sol_ix : nat) (template_label : string) : bnode_id =
+  strcat "tpl_" (strcat (string_of_int sol_ix) (strcat "_" template_label))
+
+let construct_subject (ps : pattern_subject) (mu : solution_mapping) (sol_ix : nat)
+  : option subject =
+  match ps with
+  | PS_IRI i -> Some (S_IRI i)
+  | PS_BNode b -> Some (S_BNode (fresh_bnode_for sol_ix b))
+  | PS_Var v ->
+    (match sm_lookup v mu with
+     | Some (T_IRI i) -> Some (S_IRI i)
+     | Some (T_BNode b) -> Some (S_BNode b)
+     | Some (T_Literal _) -> None
+     | None -> None)
+
+let construct_predicate (pt : pattern_term) (mu : solution_mapping) : option wf_iri =
+  match pt with
+  | PT_IRI i -> Some i
+  | PT_BNode _ -> None       (* predicate must be an IRI *)
+  | PT_Literal _ -> None
+  | PT_Var v ->
+    (match sm_lookup v mu with
+     | Some (T_IRI i) -> Some i
+     | _ -> None)
+
+let construct_object (pt : pattern_term) (mu : solution_mapping) (sol_ix : nat)
+  : option rdf_term =
+  match pt with
+  | PT_IRI i -> Some (T_IRI i)
+  | PT_BNode b -> Some (T_BNode (fresh_bnode_for sol_ix b))
+  | PT_Literal l -> Some (T_Literal l)
+  | PT_Var v -> sm_lookup v mu
+
+let instantiate_template (template : list triple_pattern)
+                          (mu : solution_mapping) (sol_ix : nat)
+  : list triple =
+  List.Tot.fold_left
+    (fun acc tp ->
+      match construct_subject tp.tp_s mu sol_ix with
+      | None -> acc
+      | Some s ->
+        match construct_predicate tp.tp_p mu with
+        | None -> acc
+        | Some p ->
+          match construct_object tp.tp_o mu sol_ix with
+          | None -> acc
+          | Some o -> { s; p; o } :: acc)
+    [] template
+
+let rec instantiate_solutions
+    (template : list triple_pattern)
+    (mus : solution_sequence) (ix : nat)
+  : Tot (list triple) (decreases mus) =
+  match mus with
+  | [] -> []
+  | mu :: rest ->
+    let here = instantiate_template template mu ix in
+    let later = instantiate_solutions template rest (ix + 1) in
+    List.Tot.append here later
+
+let eval_construct_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : list triple =
+  match q.q_form with
+  | QF_Construct template ->
+    let omega0 = eval_pattern q.q_pattern g ds in
+    let omega = match q.q_values with
+      | None -> omega0
+      | Some vals -> join omega0 vals in
+    (* SPARQL §16.2: CONSTRUCT ignores ORDER BY / OFFSET / LIMIT
+       modifiers at the solution level for set semantics, but a LIMIT
+       on the WHERE does limit which bindings drive the template.
+       Apply slice here to match Jena / rdf4j behaviour. *)
+    let limited =
+      slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit omega
+    in
+    instantiate_solutions template limited 0
+  | _ -> []
+
 (* Specification of eval_select_query (full version with aggregation):
 
    let eval_select_query q G =

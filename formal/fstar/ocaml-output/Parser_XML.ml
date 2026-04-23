@@ -509,6 +509,33 @@ let parse_xml_cdata (input : Prims.string) (pos : Prims.nat) :
            Parser_Combinators.ParseFail (msg, fpos))
   | Parser_Combinators.ParseFail (msg, fpos) ->
       Parser_Combinators.ParseFail (msg, fpos)
+let rec skip_pi_body (input : Prims.string) (pos : Prims.nat)
+  (fuel : Prims.nat) : Prims.nat Parser_Combinators.parse_result=
+  if fuel = Prims.int_zero
+  then
+    Parser_Combinators.ParseFail ("unterminated processing instruction", pos)
+  else
+    (let len = Parser_FastString.fs_byte_length input in
+     if (pos + Prims.int_one) < len
+     then
+       let c0 = Parser_FastString.fs_byte_index input pos in
+       let c1 = Parser_FastString.fs_byte_index input (pos + Prims.int_one) in
+       (if (c0 = 63) && (c1 = 62)
+        then
+          Parser_Combinators.ParseOk
+            ((pos + (Prims.of_int (2))), (pos + (Prims.of_int (2))))
+        else skip_pi_body input (pos + Prims.int_one) (fuel - Prims.int_one))
+     else
+       Parser_Combinators.ParseFail
+         ("unterminated processing instruction", pos))
+let parse_xml_pi (input : Prims.string) (pos : Prims.nat) :
+  Prims.nat Parser_Combinators.parse_result=
+  match Parser_Combinators.pstring "<?" input pos with
+  | Parser_Combinators.ParseOk (uu___, pos1) ->
+      let len = Parser_FastString.fs_byte_length input in
+      let fuel = (len - pos1) + Prims.int_one in skip_pi_body input pos1 fuel
+  | Parser_Combinators.ParseFail (msg, fpos) ->
+      Parser_Combinators.ParseFail (msg, fpos)
 let parse_xml_declaration (input : Prims.string) (pos : Prims.nat) :
   xml_attribute Prims.list Parser_Combinators.parse_result=
   match Parser_Combinators.pstring "<?xml" input pos with
@@ -575,19 +602,27 @@ let rec parse_children (input : Prims.string) (pos : Prims.nat)
                         | Parser_Combinators.ParseFail (msg, fpos) ->
                             Parser_Combinators.ParseFail (msg, fpos)))
                 else
-                  (match parse_xml_element input pos (fuel - Prims.int_one)
-                   with
-                   | Parser_Combinators.ParseOk (elem, pos') ->
-                       (match parse_children input pos'
-                                (fuel - Prims.int_one)
-                        with
-                        | Parser_Combinators.ParseOk (rest, pos'') ->
-                            Parser_Combinators.ParseOk
-                              ((elem :: rest), pos'')
-                        | Parser_Combinators.ParseFail (msg, fpos) ->
-                            Parser_Combinators.ParseFail (msg, fpos))
-                   | Parser_Combinators.ParseFail (msg, fpos) ->
-                       Parser_Combinators.ParseFail (msg, fpos)))
+                  if ch2 = 63
+                  then
+                    (match parse_xml_pi input pos with
+                     | Parser_Combinators.ParseOk (uu___4, pos') ->
+                         parse_children input pos' (fuel - Prims.int_one)
+                     | Parser_Combinators.ParseFail (msg, fpos) ->
+                         Parser_Combinators.ParseFail (msg, fpos))
+                  else
+                    (match parse_xml_element input pos (fuel - Prims.int_one)
+                     with
+                     | Parser_Combinators.ParseOk (elem, pos') ->
+                         (match parse_children input pos'
+                                  (fuel - Prims.int_one)
+                          with
+                          | Parser_Combinators.ParseOk (rest, pos'') ->
+                              Parser_Combinators.ParseOk
+                                ((elem :: rest), pos'')
+                          | Parser_Combinators.ParseFail (msg, fpos) ->
+                              Parser_Combinators.ParseFail (msg, fpos))
+                     | Parser_Combinators.ParseFail (msg, fpos) ->
+                         Parser_Combinators.ParseFail (msg, fpos)))
            else
              Parser_Combinators.ParseFail ("unexpected end after '<'", pos))
         else

@@ -926,8 +926,15 @@ let run_query_eval_test tc =
       rewrite_query query
     | _ -> query in
 
-  (* Execute query against extracted evaluator *)
-  let actual_results = eval_select_query query graph dataset in
+  (* Execute query against extracted evaluator.
+     CONSTRUCT queries return a list of RDF triples (graph output)
+     rather than bindings; handled separately below. *)
+  let is_construct =
+    match query.q_form with QF_Construct _ -> true | _ -> false in
+  let actual_triples =
+    if is_construct then eval_construct_query query graph dataset else [] in
+  let actual_results =
+    if is_construct then [] else eval_select_query query graph dataset in
 
   (* Load and compare expected results *)
   match tc.result_file with
@@ -939,6 +946,50 @@ let run_query_eval_test tc =
           produce boolean results via this path. Just check it didn't crash. *)
        Pass
      | _ -> Pass)
+  | Some rf when Filename.check_suffix rf ".ttl" ->
+    (* CONSTRUCT result: expected graph is a Turtle file. Parse it and
+       compare to the CONSTRUCT output as triple sets (bnode-lenient
+       via same normalisation as triple_sets_match below — inlined
+       here because that helper is defined later in the file). *)
+    let content = match read_file rf with
+      | Some c -> c
+      | None -> raise (Unsupported (Printf.sprintf "Result file not found: %s" rf)) in
+    let abs_rf = if Filename.is_relative rf then
+      Filename.concat (Sys.getcwd ()) rf else rf in
+    let base = "file://" ^ abs_rf in
+    let expected_triples = parse_turtle_fstar content (Some base) in
+    (* Canonical key: subject IRI-or-"BN", predicate, object IRI/BN/literal.
+       All bnodes collapse to the literal string "BN" so the resulting
+       multiset compares bnode-equivalently. *)
+    let term_key_sub = function
+      | RDF_Graph_Executable.S_IRI i -> i
+      | RDF_Graph_Executable.S_BNode _ -> "BN" in
+    let term_key_obj = function
+      | RDF_Graph_Executable.T_IRI i -> "I:" ^ i
+      | RDF_Graph_Executable.T_BNode _ -> "B:BN"
+      | RDF_Graph_Executable.T_Literal l ->
+        let dt = l.RDF_Graph_Executable.datatype in
+        let lg = (match l.RDF_Graph_Executable.lang_tag with
+                  | Some t -> "@" ^ t | None -> "") in
+        "L:\"" ^ l.RDF_Graph_Executable.lexical_form ^ "\"^^" ^ dt ^ lg in
+    let canon_key t = Printf.sprintf "%s | %s | %s"
+      (term_key_sub t.RDF_Graph_Executable.s)
+      t.RDF_Graph_Executable.p
+      (term_key_obj t.RDF_Graph_Executable.o) in
+    let canon xs = List.map canon_key xs |> List.sort compare in
+    let exp_keys = canon expected_triples in
+    let act_keys = canon actual_triples in
+    if exp_keys = act_keys then Pass
+    else begin
+      if !verbose_mode then begin
+        Printf.eprintf "    EXPECTED (%d triples):\n" (List.length expected_triples);
+        List.iter (fun k -> Printf.eprintf "      %s\n" k) exp_keys;
+        Printf.eprintf "    ACTUAL (%d triples):\n" (List.length actual_triples);
+        List.iter (fun k -> Printf.eprintf "      %s\n" k) act_keys;
+      end;
+      Fail (Printf.sprintf "Triples mismatch: expected %d, got %d"
+              (List.length expected_triples) (List.length actual_triples))
+    end
   | Some rf ->
     let content = match read_file rf with
       | Some c -> c
@@ -949,8 +1000,6 @@ let run_query_eval_test tc =
       else if Filename.check_suffix rf ".srj" then parse_srj_fstar content
       else if Filename.check_suffix rf ".tsv" then parse_tsv_results_fstar content
       else if Filename.check_suffix rf ".csv" then parse_csv_results_fstar content
-      else if Filename.check_suffix rf ".ttl" then
-        raise (Unsupported "Turtle result format not yet supported")
       else
         raise (Unsupported (Printf.sprintf "Unknown result format: %s" rf))
     in

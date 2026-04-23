@@ -4751,6 +4751,94 @@ let eval_ask_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
         | FStar_Pervasives_Native.Some vals -> join omega0 vals in
       (match omega with | [] -> false | uu___ -> true)
   | uu___ -> false
+let fresh_bnode_for (sol_ix : Prims.nat) (template_label : Prims.string) :
+  RDF_Graph_Executable.bnode_id=
+  Prims.strcat "tpl_"
+    (Prims.strcat (Prims.string_of_int sol_ix)
+       (Prims.strcat "_" template_label))
+let construct_subject (ps : pattern_subject)
+  (mu : RDF_Graph_Executable.solution_mapping) (sol_ix : Prims.nat) :
+  RDF_Graph_Executable.subject FStar_Pervasives_Native.option=
+  match ps with
+  | PS_IRI i -> FStar_Pervasives_Native.Some (RDF_Graph_Executable.S_IRI i)
+  | PS_BNode b ->
+      FStar_Pervasives_Native.Some
+        (RDF_Graph_Executable.S_BNode (fresh_bnode_for sol_ix b))
+  | PS_Var v ->
+      (match sm_lookup v mu with
+       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI i) ->
+           FStar_Pervasives_Native.Some (RDF_Graph_Executable.S_IRI i)
+       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_BNode b) ->
+           FStar_Pervasives_Native.Some (RDF_Graph_Executable.S_BNode b)
+       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_Literal uu___)
+           -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+let construct_predicate (pt : pattern_term)
+  (mu : RDF_Graph_Executable.solution_mapping) :
+  RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option=
+  match pt with
+  | PT_IRI i -> FStar_Pervasives_Native.Some i
+  | PT_BNode uu___ -> FStar_Pervasives_Native.None
+  | PT_Literal uu___ -> FStar_Pervasives_Native.None
+  | PT_Var v ->
+      (match sm_lookup v mu with
+       | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI i) ->
+           FStar_Pervasives_Native.Some i
+       | uu___ -> FStar_Pervasives_Native.None)
+let construct_object (pt : pattern_term)
+  (mu : RDF_Graph_Executable.solution_mapping) (sol_ix : Prims.nat) :
+  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  match pt with
+  | PT_IRI i -> FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI i)
+  | PT_BNode b ->
+      FStar_Pervasives_Native.Some
+        (RDF_Graph_Executable.T_BNode (fresh_bnode_for sol_ix b))
+  | PT_Literal l ->
+      FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_Literal l)
+  | PT_Var v -> sm_lookup v mu
+let instantiate_template (template : triple_pattern Prims.list)
+  (mu : RDF_Graph_Executable.solution_mapping) (sol_ix : Prims.nat) :
+  RDF_Graph_Executable.triple Prims.list=
+  FStar_List_Tot_Base.fold_left
+    (fun acc tp ->
+       match construct_subject tp.tp_s mu sol_ix with
+       | FStar_Pervasives_Native.None -> acc
+       | FStar_Pervasives_Native.Some s ->
+           (match construct_predicate tp.tp_p mu with
+            | FStar_Pervasives_Native.None -> acc
+            | FStar_Pervasives_Native.Some p ->
+                (match construct_object tp.tp_o mu sol_ix with
+                 | FStar_Pervasives_Native.None -> acc
+                 | FStar_Pervasives_Native.Some o ->
+                     {
+                       RDF_Graph_Executable.s = s;
+                       RDF_Graph_Executable.p = p;
+                       RDF_Graph_Executable.o = o
+                     } :: acc))) [] template
+let rec instantiate_solutions (template : triple_pattern Prims.list)
+  (mus : solution_sequence) (ix : Prims.nat) :
+  RDF_Graph_Executable.triple Prims.list=
+  match mus with
+  | [] -> []
+  | mu::rest ->
+      let here = instantiate_template template mu ix in
+      let later = instantiate_solutions template rest (ix + Prims.int_one) in
+      FStar_List_Tot_Base.append here later
+let eval_construct_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
+  (ds : RDF_Graph_Executable.rdf_dataset) :
+  RDF_Graph_Executable.triple Prims.list=
+  match q.q_form with
+  | QF_Construct template ->
+      let omega0 = eval_pattern q.q_pattern g ds in
+      let omega =
+        match q.q_values with
+        | FStar_Pervasives_Native.None -> omega0
+        | FStar_Pervasives_Native.Some vals -> join omega0 vals in
+      let limited =
+        slice_solutions (q.q_modifier).sm_offset (q.q_modifier).sm_limit
+          omega in
+      instantiate_solutions template limited Prims.int_zero
+  | uu___ -> []
 type path_result =
   (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list
 let is_not_literal (t : RDF_Graph_Executable.rdf_term) : Prims.bool=

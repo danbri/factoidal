@@ -398,6 +398,40 @@ let parse_xml_cdata (input:string) (pos:nat) : parse_result xml_node =
 
 
 (* ================================================================ *)
+(* Processing instruction skipper                                    *)
+(*                                                                   *)
+(* XML 1.0 §2.6 — `<?TARGET … ?>` appears in prolog, content, or     *)
+(* epilog. We don't interpret PIs (they're not part of RDF), but     *)
+(* we have to skip them cleanly so element parsing doesn't choke.    *)
+(* rdfms-empty-property-elements-test016 puts one inside an          *)
+(* otherwise-empty property element; test001.rdf puts one in the     *)
+(* prolog. Both have to parse. The `<?xml …?>` declaration is a      *)
+(* special case already handled by parse_xml_declaration; this       *)
+(* skipper is for every other target name.                          *)
+(* ================================================================ *)
+
+let rec skip_pi_body (input:string) (pos:nat) (fuel:nat)
+  : Tot (parse_result nat) (decreases fuel) =
+  if fuel = 0 then ParseFail "unterminated processing instruction" pos
+  else
+    let len = fs_byte_length input in
+    if pos + 1 < len then
+      let c0 = fs_byte_index input pos in
+      let c1 = fs_byte_index input (pos + 1) in
+      if c0 = '?' && c1 = '>' then ParseOk (pos + 2) (pos + 2)
+      else skip_pi_body input (pos + 1) (fuel - 1)
+    else ParseFail "unterminated processing instruction" pos
+
+let parse_xml_pi (input:string) (pos:nat) : parse_result nat =
+  match pstring "<?" input pos with
+  | ParseOk _ pos1 ->
+    let len = fs_byte_length input in
+    let fuel = len - pos1 + 1 in
+    skip_pi_body input pos1 fuel
+  | ParseFail msg fpos -> ParseFail msg fpos
+
+
+(* ================================================================ *)
 (* XML Declaration parser                                            *)
 (* ================================================================ *)
 
@@ -454,6 +488,14 @@ let rec parse_children (input:string) (pos:nat) (fuel:nat)
                 end
               | ParseFail msg fpos -> ParseFail msg fpos
               end
+            end
+          else if ch2 = '?' then
+            (* Processing instruction in content position: skip it
+               and continue with the following children. PIs aren't
+               part of the RDF model. *)
+            begin match parse_xml_pi input pos with
+            | ParseOk _ pos' -> parse_children input pos' (fuel - 1)
+            | ParseFail msg fpos -> ParseFail msg fpos
             end
           else
             begin match parse_xml_element input pos (fuel - 1) with
