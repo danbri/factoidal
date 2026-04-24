@@ -184,6 +184,12 @@ def patch_tok_iri_block(match):
     block = block.replace('T_IRI i)),', 'T_IRI ri)),')
     block = block.replace('ParseOk (i, (parse_advance', 'ParseOk (ri, (parse_advance')
     block = block.replace('parse_func_call pm (fuel - Prims.int_one) i\n', 'parse_func_call pm (fuel - Prims.int_one) ri\n')
+    # FROM <iri> / FROM NAMED <iri>: dataset-clause constructors stored
+    # the unresolved `i` instead of the resolved `ri`, so the runtime
+    # named-graph lookup (keyed by absolute file:// IRI) missed and the
+    # default graph stayed empty. constructwhere04 (FROM with no BASE).
+    block = block.replace('SPARQL11_Algebra.DC_Default i)', 'SPARQL11_Algebra.DC_Default ri)')
+    block = block.replace('SPARQL11_Algebra.DC_Named i)', 'SPARQL11_Algebra.DC_Named ri)')
     return block
 
 # Match each Tok_IRI i -> block from the | to the else ParseErr line

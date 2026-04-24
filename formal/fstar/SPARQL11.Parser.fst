@@ -2729,8 +2729,13 @@ and parse_select_items (pm : prefix_map) (fuel : nat) (acc : list select_item) (
   | _ -> ParseOk (List.Tot.rev acc) ts
 
 (* Parse FROM / FROM NAMED clauses into a list of dataset_clause.
-   Relative IRIs on FROM tokens are already pre-resolved against the
-   query base by `resolve_relative_iri_tokens` before parsing. *)
+   Relative IRIs on FROM tokens are pre-resolved against the query
+   `base` (BASE directive) by `resolve_relative_iri_tokens` in
+   `parse_select_query`. When the query has no BASE directive the
+   prologue returns `None` and the in-F* token stream still carries
+   relative IRIs (e.g. `data.ttl`); the OCaml extraction layer then
+   resolves them against the query-file URI via the runtime
+   `current_base_iri_ref` (patch #65, `resolve_tok_iri`). *)
 and parse_skip_from (pm : prefix_map) (fuel : nat) (ts : token_stream)
   : Tot (parse_result (list dataset_clause)) (decreases fuel) =
   if fuel = 0 then ParseOk [] ts
