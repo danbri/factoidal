@@ -13,6 +13,12 @@ let rdf_nil_iri : RDF_Graph_Executable.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"
 let rdf_type_iri : RDF_Graph_Executable.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+let owl_Restriction_iri : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/2002/07/owl#Restriction"
+let owl_onProperty_iri : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/2002/07/owl#onProperty"
+let owl_someValuesFrom_iri : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/2002/07/owl#someValuesFrom"
 let bnode_var_prefix : Prims.string= "_bnode_"
 let strip_bnode_prefix (v : Prims.string) :
   Prims.string FStar_Pervasives_Native.option=
@@ -227,11 +233,14 @@ let build_union_ggp (branch_bgps : SPARQL11_Algebra.bgp Prims.list) :
 type ce_combinator =
   | CE_Intersect 
   | CE_Union 
+  | CE_SomeValuesFrom 
 let uu___is_CE_Intersect (projectee : ce_combinator) : Prims.bool=
   match projectee with | CE_Intersect -> true | uu___ -> false
 let uu___is_CE_Union (projectee : ce_combinator) : Prims.bool=
   match projectee with | CE_Union -> true | uu___ -> false
-let combinator_of_pred (p : RDF_Graph_Executable.wf_iri) :
+let uu___is_CE_SomeValuesFrom (projectee : ce_combinator) : Prims.bool=
+  match projectee with | CE_SomeValuesFrom -> true | uu___ -> false
+let combinator_of_pred_flat (p : RDF_Graph_Executable.wf_iri) :
   ce_combinator FStar_Pervasives_Native.option=
   if p = owl_intersectionOf_iri
   then FStar_Pervasives_Native.Some CE_Intersect
@@ -239,7 +248,18 @@ let combinator_of_pred (p : RDF_Graph_Executable.wf_iri) :
     if p = owl_unionOf_iri
     then FStar_Pervasives_Native.Some CE_Union
     else FStar_Pervasives_Native.None
-let rec find_markers_acc (b : SPARQL11_Algebra.bgp)
+let combinator_of_pred (p : RDF_Graph_Executable.wf_iri) :
+  ce_combinator FStar_Pervasives_Native.option=
+  if p = owl_intersectionOf_iri
+  then FStar_Pervasives_Native.Some CE_Intersect
+  else
+    if p = owl_unionOf_iri
+    then FStar_Pervasives_Native.Some CE_Union
+    else
+      if p = owl_someValuesFrom_iri
+      then FStar_Pervasives_Native.Some CE_SomeValuesFrom
+      else FStar_Pervasives_Native.None
+let rec find_flat_markers_acc (b : SPARQL11_Algebra.bgp)
   (acc : (Prims.string * ce_combinator) Prims.list) :
   (Prims.string * ce_combinator) Prims.list=
   match b with
@@ -249,19 +269,105 @@ let rec find_markers_acc (b : SPARQL11_Algebra.bgp)
                (tp.SPARQL11_Algebra.tp_p))
        with
        | (FStar_Pervasives_Native.Some k, SPARQL11_Algebra.PT_IRI p) ->
-           (match combinator_of_pred p with
+           (match combinator_of_pred_flat p with
             | FStar_Pervasives_Native.Some c ->
                 let dup =
                   FStar_List_Tot_Base.existsb
                     (fun uu___ -> match uu___ with | (k', uu___1) -> k' = k)
                     acc in
                 if dup
-                then find_markers_acc rest acc
-                else find_markers_acc rest ((k, c) :: acc)
-            | FStar_Pervasives_Native.None -> find_markers_acc rest acc)
-       | (uu___, uu___1) -> find_markers_acc rest acc)
+                then find_flat_markers_acc rest acc
+                else find_flat_markers_acc rest ((k, c) :: acc)
+            | FStar_Pervasives_Native.None -> find_flat_markers_acc rest acc)
+       | (uu___, uu___1) -> find_flat_markers_acc rest acc)
+let is_svf_subject (b : SPARQL11_Algebra.bgp) (k : Prims.string) :
+  Prims.bool=
+  FStar_Pervasives_Native.uu___is_Some
+    (bgp_find_first_obj b k owl_someValuesFrom_iri)
+let restriction_has_nested_filler (b : SPARQL11_Algebra.bgp)
+  (k : Prims.string) : Prims.bool=
+  match bgp_find_first_obj b k owl_someValuesFrom_iri with
+  | FStar_Pervasives_Native.None -> false
+  | FStar_Pervasives_Native.Some filler ->
+      (match pt_marker_key filler with
+       | FStar_Pervasives_Native.None -> false
+       | FStar_Pervasives_Native.Some kf ->
+           let flat = find_flat_markers_acc b [] in
+           (FStar_List_Tot_Base.existsb
+              (fun uu___ -> match uu___ with | (k', uu___1) -> k' = kf) flat)
+             || (is_svf_subject b kf))
+let rec add_restriction_markers_acc (b : SPARQL11_Algebra.bgp)
+  (rem : SPARQL11_Algebra.bgp)
+  (acc : (Prims.string * ce_combinator) Prims.list) :
+  (Prims.string * ce_combinator) Prims.list=
+  match rem with
+  | [] -> acc
+  | tp::rest ->
+      (match ((ps_marker_key tp.SPARQL11_Algebra.tp_s),
+               (tp.SPARQL11_Algebra.tp_p))
+       with
+       | (FStar_Pervasives_Native.Some k, SPARQL11_Algebra.PT_IRI p) ->
+           if p = owl_someValuesFrom_iri
+           then
+             let dup =
+               FStar_List_Tot_Base.existsb
+                 (fun uu___ -> match uu___ with | (k', uu___1) -> k' = k) acc in
+             (if dup
+              then add_restriction_markers_acc b rest acc
+              else
+                if restriction_has_nested_filler b k
+                then
+                  add_restriction_markers_acc b rest
+                    (FStar_List_Tot_Base.append acc [(k, CE_SomeValuesFrom)])
+                else add_restriction_markers_acc b rest acc)
+           else add_restriction_markers_acc b rest acc
+       | (uu___, uu___1) -> add_restriction_markers_acc b rest acc)
+let rec add_inner_restrictions_acc (b : SPARQL11_Algebra.bgp)
+  (work : Prims.string Prims.list)
+  (acc : (Prims.string * ce_combinator) Prims.list) (fuel : Prims.nat) :
+  (Prims.string * ce_combinator) Prims.list=
+  match (fuel, work) with
+  | (uu___, uu___1) when uu___ = Prims.int_zero -> acc
+  | (uu___, []) -> acc
+  | (n, k::rest) ->
+      (match bgp_find_first_obj b k owl_someValuesFrom_iri with
+       | FStar_Pervasives_Native.None ->
+           add_inner_restrictions_acc b rest acc (n - Prims.int_one)
+       | FStar_Pervasives_Native.Some filler ->
+           (match pt_marker_key filler with
+            | FStar_Pervasives_Native.None ->
+                add_inner_restrictions_acc b rest acc (n - Prims.int_one)
+            | FStar_Pervasives_Native.Some kf ->
+                let already =
+                  FStar_List_Tot_Base.existsb
+                    (fun uu___ -> match uu___ with | (k', uu___1) -> k' = kf)
+                    acc in
+                if already
+                then
+                  add_inner_restrictions_acc b rest acc (n - Prims.int_one)
+                else
+                  if is_svf_subject b kf
+                  then
+                    add_inner_restrictions_acc b
+                      (FStar_List_Tot_Base.append rest [kf])
+                      (FStar_List_Tot_Base.append acc
+                         [(kf, CE_SomeValuesFrom)]) (n - Prims.int_one)
+                  else
+                    add_inner_restrictions_acc b rest acc (n - Prims.int_one)))
 let find_markers (b : SPARQL11_Algebra.bgp) :
-  (Prims.string * ce_combinator) Prims.list= find_markers_acc b []
+  (Prims.string * ce_combinator) Prims.list=
+  let flat = find_flat_markers_acc b [] in
+  let withr = add_restriction_markers_acc b b flat in
+  let restr_keys =
+    FStar_List_Tot_Base.fold_left
+      (fun acc uu___ ->
+         match uu___ with
+         | (k, c) ->
+             (match c with
+              | CE_SomeValuesFrom -> FStar_List_Tot_Base.append acc [k]
+              | uu___1 -> acc)) [] withr in
+  add_inner_restrictions_acc b restr_keys withr
+    ((FStar_List_Tot_Base.length b) + Prims.int_one)
 let rewrite_bgp_one_intersection (marker_key : Prims.string)
   (b : SPARQL11_Algebra.bgp) : SPARQL11_Algebra.bgp=
   match extract_flat_intersection b marker_key with
@@ -322,16 +428,19 @@ let ce_combinator_for_term (b : SPARQL11_Algebra.bgp)
   match pt_marker_key pt with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some k ->
-      let markers = find_markers b in
+      let flat = find_flat_markers_acc b [] in
       let rec lookup ms =
         match ms with
         | [] -> FStar_Pervasives_Native.None
         | (k', c)::rest ->
             if k' = k then FStar_Pervasives_Native.Some c else lookup rest in
-      (match lookup markers with
-       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+      (match lookup flat with
        | FStar_Pervasives_Native.Some c ->
-           FStar_Pervasives_Native.Some (k, c))
+           FStar_Pervasives_Native.Some (k, c)
+       | FStar_Pervasives_Native.None ->
+           if is_svf_subject b k
+           then FStar_Pervasives_Native.Some (k, CE_SomeValuesFrom)
+           else FStar_Pervasives_Native.None)
 let single_type_bgp (subj : SPARQL11_Algebra.pattern_subject)
   (leaf : SPARQL11_Algebra.pattern_term) : SPARQL11_Algebra.bgp=
   [{
@@ -397,7 +506,28 @@ let rec expand_ce_subject (b : SPARQL11_Algebra.bgp)
                  | g::tl ->
                      FStar_List_Tot_Base.fold_left
                        (fun acc br -> SPARQL11_Algebra.GP_Union (acc, br)) g
-                       tl)))
+                       tl))
+       | FStar_Pervasives_Native.Some (k, CE_SomeValuesFrom) ->
+           let on_prop_opt = bgp_find_first_obj b k owl_onProperty_iri in
+           let filler_opt = bgp_find_first_obj b k owl_someValuesFrom_iri in
+           (match (on_prop_opt, filler_opt) with
+            | (FStar_Pervasives_Native.Some (SPARQL11_Algebra.PT_IRI p_iri),
+               FStar_Pervasives_Native.Some filler) ->
+                let fresh_name = Prims.strcat "_sv_" k in
+                let fresh_subj = SPARQL11_Algebra.PS_Var fresh_name in
+                let fresh_term = SPARQL11_Algebra.PT_Var fresh_name in
+                let prop_triple =
+                  {
+                    SPARQL11_Algebra.tp_s = subj;
+                    SPARQL11_Algebra.tp_p = (SPARQL11_Algebra.PT_IRI p_iri);
+                    SPARQL11_Algebra.tp_o = fresh_term
+                  } in
+                let prop_ggp = SPARQL11_Algebra.GP_BGP [prop_triple] in
+                let filler_ggp =
+                  expand_ce_subject b fresh_subj filler (n - Prims.int_one) in
+                join_ggps [prop_ggp; filler_ggp]
+            | (uu___, uu___1) ->
+                SPARQL11_Algebra.GP_BGP (single_type_bgp subj op)))
 let rec collect_top_markers_acc (b : SPARQL11_Algebra.bgp)
   (markers : (Prims.string * ce_combinator) Prims.list)
   (acc : Prims.string Prims.list) : Prims.string Prims.list=
@@ -448,10 +578,14 @@ let is_nested_bookkeeping
       let is_on_chain = FStar_List_Tot_Base.mem sk all_chain_keys in
       let marker_meta =
         is_marker &&
-          (((p = owl_intersectionOf_iri) || (p = owl_unionOf_iri)) ||
+          (((((p = owl_intersectionOf_iri) || (p = owl_unionOf_iri)) ||
+               (p = owl_onProperty_iri))
+              || (p = owl_someValuesFrom_iri))
+             ||
              ((p = rdf_type_iri) &&
                 (match tp.SPARQL11_Algebra.tp_o with
-                 | SPARQL11_Algebra.PT_IRI oi -> oi = owl_Class_iri
+                 | SPARQL11_Algebra.PT_IRI oi ->
+                     (oi = owl_Class_iri) || (oi = owl_Restriction_iri)
                  | uu___ -> false))) in
       let chain_meta =
         is_on_chain && ((p = rdf_first_iri) || (p = rdf_rest_iri)) in

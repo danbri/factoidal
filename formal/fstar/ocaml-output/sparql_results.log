@@ -235,33 +235,33 @@ Test base: third_party/testing/w3c/sparql/sparql11
 
 --- entailment ---
   PASS: bind01 - BIND fixed data for OWL DL (10ms)
-  PASS: bind02 - BIND fixed data for OWL DL (10ms)
+  PASS: bind02 - BIND fixed data for OWL DL
   PASS: bind03 - BIND fixed data for OWL DL (10ms)
-  PASS: bind04 - BIND fixed data for OWL DL (10ms)
+  PASS: bind04 - BIND fixed data for OWL DL
   PASS: bind05 - BIND fixed data for OWL DL (10ms)
-  PASS: bind06 - BIND fixed data for OWL DL (10ms)
-  PASS: bind07 - BIND fixed data for OWL DL (11ms)
-  PASS: bind08 - BIND fixed data for OWL DL (10ms)
+  PASS: bind06 - BIND fixed data for OWL DL
+  PASS: bind07 - BIND fixed data for OWL DL (10ms)
+  PASS: bind08 - BIND fixed data for OWL DL
   PASS: D-Entailment test to show that  neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers
   PASS: Literal with language tag test
-  PASS: bnodes are not existentials (19ms)
-  PASS: bnodes are not existentials with answer (38ms)
-  PASS: paper-sparqldl-Q1 (82ms)
+  PASS: bnodes are not existentials (18ms)
+  PASS: bnodes are not existentials with answer (37ms)
+  PASS: paper-sparqldl-Q1 (72ms)
   PASS: paper-sparqldl-Q1-rdfs
-  PASS: paper-sparqldl-Q2 (166ms)
+  PASS: paper-sparqldl-Q2 (167ms)
   FAIL: paper-sparqldl-Q3 — Results mismatch: expected 2 rows, got 0
       UNMATCHED: ?x=<http://example.org/John>
       UNMATCHED: ?x=<http://example.org/person1> (168ms)
-  PASS: paper-sparqldl-Q4 (71ms)
-  PASS: paper-sparqldl-Q5 (71ms)
-  PASS: filtered subclass query with (hasChild some Thing) restriction (323ms)
-  PASS: parent query with distinguished variable (121ms)
-  PASS: parent query with (hasChild some Thing) restriction (317ms)
-  PASS: parent query with (hasChild min 1) restriction (317ms)
+  PASS: paper-sparqldl-Q4 (72ms)
+  PASS: paper-sparqldl-Q5 (73ms)
+  PASS: filtered subclass query with (hasChild some Thing) restriction (322ms)
+  PASS: parent query with distinguished variable (118ms)
+  PASS: parent query with (hasChild some Thing) restriction (319ms)
+  PASS: parent query with (hasChild min 1) restriction (320ms)
   PASS: parent query with (hasChild some Female) restriction (320ms)
-  PASS: parent query with (hasChild min 1 Female) restriction (327ms)
-  PASS: parent query with (hasChild max 1 Female) restriction (318ms)
-  PASS: parent query with (hasChild exactly 1 Female) restriction (319ms)
+  PASS: parent query with (hasChild min 1 Female) restriction (322ms)
+  PASS: parent query with (hasChild max 1 Female) restriction (320ms)
+  PASS: parent query with (hasChild exactly 1 Female) restriction (324ms)
   PASS: subclass query with (hasChild some Thing) restriction (321ms)
   PASS: Plain literals with language tag are not the same as the same literal without
   PASS: RDF inference test
@@ -273,7 +273,7 @@ Test base: third_party/testing/w3c/sparql/sparql11
   PASS: RDFS inference test combining subPropertyOf and domain
   PASS: RDFS inference test subClassOf
   PASS: RDFS inference test subClassOf (22ms)
-  PASS: RDFS inference test domain (23ms)
+  PASS: RDFS inference test domain (24ms)
   PASS: RDFS inference test range (31ms)
   PASS: RDFS inference test rdf:XMLLiteral subclass of rdfs:Literal
   PASS: RDFS inference test transitivity of subClassOf (12ms)
@@ -285,31 +285,30 @@ Test base: third_party/testing/w3c/sparql/sparql11
   skip: RIF Core WG tests: Frames — RIF not implemented
   skip: RIF Core WG tests: Modeling Brain Anatomy — RIF not implemented
   skip: RIF Core WG tests: RDF Combination Blank Node — RIF not implemented
-  PASS: simple 1 (140ms)
-  PASS: simple 2 (143ms)
-  FAIL: simple 3 — Results mismatch: expected 1 rows, got 5 (145ms)
-  FAIL: simple 4 — Results mismatch: expected 4 rows, got 5 (143ms)
-  FAIL: simple 5 — Results mismatch: expected 2 rows, got 10 (143ms)
+  PASS: simple 1 (143ms)
+  PASS: simple 2 (144ms)
+  PASS: simple 3 (142ms)
+  FAIL: simple 4 — Results mismatch: expected 4 rows, got 5 (142ms)
+  FAIL: simple 5 — Results mismatch: expected 2 rows, got 3 (142ms)
   FAIL: simple 6 — Results mismatch: expected 3 rows, got 0
       UNMATCHED: ?x=<http://example.org/test#a>
       UNMATCHED: ?x=<http://example.org/test#b>
-      UNMATCHED: ?x=<http://example.org/test#c> (141ms)
+      UNMATCHED: ?x=<http://example.org/test#c> (143ms)
   FAIL: simple 7 — Results mismatch: expected 2 rows, got 3 (142ms)
-  FAIL: simple 8 — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?x=<http://example.org/test#b> (143ms)
-  PASS: sparqldl-01.rq: triple pattern (13ms)
+  PASS: simple 8 (146ms)
+  PASS: sparqldl-01.rq: triple pattern (11ms)
   PASS: sparqldl-02.rq: simple combined query (11ms)
-  PASS: sparqldl-03.rq: combined query with complex class description (38ms)
-  PASS: sparqldl-04.rq: bug fixing test (15ms)
+  PASS: sparqldl-03.rq: combined query with complex class description (39ms)
+  PASS: sparqldl-04.rq: bug fixing test (16ms)
   PASS: sparqldl-05.rq: simple undistinguished variable test. (13ms)
-  PASS: sparqldl-06.rq: cycle of undistinguished variables (40ms)
+  PASS: sparqldl-06.rq: cycle of undistinguished variables (39ms)
   PASS: sparqldl-07.rq: two distinguished variables + undist. (42ms)
-  PASS: sparqldl-08.rq: two distinguished variables + undist. (40ms)
-  PASS: sparqldl-09.rq: undist vars test (29ms)
+  PASS: sparqldl-08.rq: two distinguished variables + undist. (43ms)
+  PASS: sparqldl-09.rq: undist vars test (27ms)
   PASS: sparqldl-10.rq: undist vars test (26ms)
   PASS: sparqldl-11.rq: domain test (97ms)
-  PASS: sparqldl-12.rq: range test (100ms)
-  PASS: sparqldl-13.rq: sameAs (32ms)
+  PASS: sparqldl-12.rq: range test (101ms)
+  PASS: sparqldl-13.rq: sameAs (31ms)
   [suite time: 5.3s]
 
 --- exists ---
@@ -380,8 +379,7 @@ Test base: third_party/testing/w3c/sparql/sparql11
   PASS: NOT IN 2
   PASS: NOW()
   PASS: RAND()
-  FAIL: IRI()/URI() — Results mismatch: expected 1 rows, got 1
-      UNMATCHED: ?uri=<http://example.org/uri>, ?iri=<http://example.org/iri>
+  PASS: IRI()/URI()
   PASS: IRI()/URI() when the input is an IRI
   PASS: IF()
   PASS: IF() error propogation
@@ -729,9 +727,9 @@ Suite Results:
   delete-insert                       pass:17 fail:0 skip:0 unsupported:0
   delete-where                        pass:6 fail:0 skip:0 unsupported:0
   drop                                pass:4 fail:0 skip:0 unsupported:0
-  entailment                          pass:59 fail:7 skip:4 unsupported:0
+  entailment                          pass:61 fail:5 skip:4 unsupported:0
   exists                              pass:6 fail:0 skip:0 unsupported:0
-  functions                           pass:74 fail:1 skip:0 unsupported:0
+  functions                           pass:75 fail:0 skip:0 unsupported:0
   grouping                            pass:6 fail:0 skip:0 unsupported:0
   http-rdf-update                     pass:0 fail:0 skip:19 unsupported:0
   json-res                            pass:4 fail:0 skip:0 unsupported:0
@@ -749,5 +747,5 @@ Suite Results:
   syntax-update-2                     pass:1 fail:0 skip:0 unsupported:0
   update-silent                       pass:11 fail:0 skip:2 unsupported:0
 ========================================
-TOTAL: 548 pass, 21 fail, 62 skip, 0 unsupported
+TOTAL: 551 pass, 18 fail, 62 skip, 0 unsupported
 ========================================

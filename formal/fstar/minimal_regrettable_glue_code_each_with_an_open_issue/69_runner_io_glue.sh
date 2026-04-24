@@ -111,6 +111,10 @@ let parse_sparql_query ?(base_file=None) content =
     match SPARQL11_Parser.parse_sparql content with
     | SPARQL11_Parser.ParseOk (q, _remaining) -> hoist_query_filters q
     | SPARQL11_Parser.ParseErr msg -> raise (Sparql_parse_error msg) in
+  (* If the query itself declared BASE <...>, prefer it over the file:// fallback. *)
+  (match result.SPARQL11_Algebra.q_base with
+   | Some iri -> SPARQL11_Algebra.current_base_iri_ref := Some iri
+   | None -> ());
   result'''
     )
 
@@ -176,6 +180,35 @@ if 'Parser_RDFXML.parse_rdfxml_strict content' not in content:
            | FStar_Pervasives_Native.Some _ -> Fail "Should reject but parsed OK"
            | FStar_Pervasives_Native.None -> Pass)
         with _ -> Pass))'''
+    )
+
+# 8. Idempotent: ensure parse_sparql_query prefers the parsed query's BASE
+# over the file:// fallback. Needed because the original "add base_file param"
+# block is guarded by `let file_to_base_uri not in content`, so a repatched
+# runner.ml skips it — but without this the query-level BASE is ignored.
+if 'result.SPARQL11_Algebra.q_base' not in content:
+    content = content.replace(
+        '''let parse_sparql_query ?(base_file=None) content =
+  (match base_file with
+   | Some path -> SPARQL11_Algebra.current_base_iri_ref := Some (file_to_base_uri path)
+   | None -> ());
+  let result =
+    match SPARQL11_Parser.parse_sparql content with
+    | SPARQL11_Parser.ParseOk (q, _remaining) -> hoist_query_filters q
+    | SPARQL11_Parser.ParseErr msg -> raise (Sparql_parse_error msg) in
+  result''',
+        '''let parse_sparql_query ?(base_file=None) content =
+  (match base_file with
+   | Some path -> SPARQL11_Algebra.current_base_iri_ref := Some (file_to_base_uri path)
+   | None -> ());
+  let result =
+    match SPARQL11_Parser.parse_sparql content with
+    | SPARQL11_Parser.ParseOk (q, _remaining) -> hoist_query_filters q
+    | SPARQL11_Parser.ParseErr msg -> raise (Sparql_parse_error msg) in
+  (match result.SPARQL11_Algebra.q_base with
+   | Some iri -> SPARQL11_Algebra.current_base_iri_ref := Some iri
+   | None -> ());
+  result'''
     )
 
 with open(sys.argv[1], 'w') as f:

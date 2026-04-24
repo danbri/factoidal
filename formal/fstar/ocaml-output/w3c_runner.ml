@@ -84,6 +84,9 @@ let parse_sparql_query ?(base_file=None) content =
     match SPARQL11_Parser.parse_sparql content with
     | SPARQL11_Parser.ParseOk (q, _remaining) -> hoist_query_filters q
     | SPARQL11_Parser.ParseErr msg -> raise (Sparql_parse_error msg) in
+  (match result.SPARQL11_Algebra.q_base with
+   | Some iri -> SPARQL11_Algebra.current_base_iri_ref := Some iri
+   | None -> ());
   result
 
 (* SPARQL 1.1 Update parser wrapper — grammar + AST only (stage a).

@@ -130,11 +130,11 @@
 <div class="summary">
   <div class="tile ok">
     <div class="label">Pass</div>
-    <div class="value">1579</div>
+    <div class="value">1582</div>
   </div>
   <div class="tile err">
     <div class="label">Fail</div>
-    <div class="value">21</div>
+    <div class="value">18</div>
   </div>
   <div class="tile warn">
     <div class="label">Skipped</div>
@@ -142,7 +142,7 @@
   </div>
   <div class="tile">
     <div class="label">Pass / runnable</div>
-    <div class="value">98.7%<small> of 1600</small></div>
+    <div class="value">98.9%<small> of 1600</small></div>
   </div>
   <div class="tile">
     <div class="label">Total in suites</div>
@@ -159,7 +159,7 @@
   are linked below.
 </div>
 
-<h2>SPARQL 1.1 <span class="inline-numbers">548 pass · 21 fail · 62 skip</span></h2>
+<h2>SPARQL 1.1 <span class="inline-numbers">551 pass · 18 fail · 62 skip</span></h2>
 <div class="suites">
       <div class="suite-row perfect">
         <div class="suite-name">add</div>
@@ -281,11 +281,11 @@
           <small></small>
         </div>
       </div>
-      <div class="suite-row mixed">
+      <div class="suite-row near-perfect">
         <div class="suite-name">entailment</div>
-        <div class="suite-bar"><div class="fill" style="width:89%"></div></div>
+        <div class="suite-bar"><div class="fill" style="width:92%"></div></div>
         <div class="suite-numbers">
-          <span class="p">59</span>/<span class="f">7</span>
+          <span class="p">61</span>/<span class="f">5</span>
           <small>skip 4</small>
         </div>
       </div>
@@ -297,11 +297,11 @@
           <small></small>
         </div>
       </div>
-      <div class="suite-row near-perfect">
+      <div class="suite-row perfect">
         <div class="suite-name">functions</div>
-        <div class="suite-bar"><div class="fill" style="width:99%"></div></div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
         <div class="suite-numbers">
-          <span class="p">74</span>/<span class="f">1</span>
+          <span class="p">75</span>/<span class="f">0</span>
           <small></small>
         </div>
       </div>
@@ -569,7 +569,7 @@
   <code>test:TestCase</code> entries after overlap). Only <em>profile-RL
   PositiveEntailmentTests</em> are wired right now: the runner applies
   <code>owl_rl_closure_with_reflexivity</code> (fuel 100) and checks the
-  conclusion's triples against the closure (relaxed bnode match). The
+  conclusion&rsquo;s triples against the closure (relaxed bnode match). The
   other OWL 2 categories are <em>skipped for now</em>&mdash;blocked on
   completing the RDF/S and SPARQL entailment baselines above. Counts
   are live from the vendored catalogs, not stale snapshots.
@@ -592,7 +592,7 @@
 <details>
   <summary>Raw per-suite numbers</summary>
   <h3 style="font-size: 0.95em; margin: 0.8em 0 0.3em;">SPARQL 1.1</h3>
-  <pre>631 total: 548 pass, 21 fail, 62 skip, 0 unsupported
+  <pre>631 total: 551 pass, 18 fail, 62 skip, 0 unsupported
   add                                 pass:8 fail:0 skip:0 unsupported:0
   aggregates                          pass:47 fail:0 skip:0 unsupported:0
   basic-update                        pass:11 fail:2 skip:0 unsupported:0
@@ -608,9 +608,9 @@
   delete-insert                       pass:17 fail:0 skip:0 unsupported:0
   delete-where                        pass:6 fail:0 skip:0 unsupported:0
   drop                                pass:4 fail:0 skip:0 unsupported:0
-  entailment                          pass:59 fail:7 skip:4 unsupported:0
+  entailment                          pass:61 fail:5 skip:4 unsupported:0
   exists                              pass:6 fail:0 skip:0 unsupported:0
-  functions                           pass:74 fail:1 skip:0 unsupported:0
+  functions                           pass:75 fail:0 skip:0 unsupported:0
   grouping                            pass:6 fail:0 skip:0 unsupported:0
   http-rdf-update                     pass:0 fail:0 skip:19 unsupported:0
   json-res                            pass:4 fail:0 skip:0 unsupported:0
@@ -652,9 +652,9 @@
 </main>
 
 <footer>
-  Generated <strong>2026-04-24 17:08 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/ff5edd161aa6dc642200a7ca1979281755f48010">ff5edd1</a></code>
-  on branch <code>claude/main</code> — &ldquo;pages: pass-through test-results dir + add link-integrity check script&rdquo;.
+  Generated <strong>2026-04-24 21:04 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/f45486093954580d491d578e940658dd4a6335e2">f454860</a></code>
+  on branch <code>claude/main</code> — &ldquo;owl-rewriter: simple8 nested-restriction chaining&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 

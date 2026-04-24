@@ -329,7 +329,7 @@ ${OWL_SKIP_ROWS}</div>
   <code>test:TestCase</code> entries after overlap). Only <em>profile-RL
   PositiveEntailmentTests</em> are wired right now: the runner applies
   <code>owl_rl_closure_with_reflexivity</code> (fuel 100) and checks the
-  conclusion's triples against the closure (relaxed bnode match). The
+  conclusion&rsquo;s triples against the closure (relaxed bnode match). The
   other OWL 2 categories are <em>skipped for now</em>&mdash;blocked on
   completing the RDF/S and SPARQL entailment baselines above. Counts
   are live from the vendored catalogs, not stale snapshots.
