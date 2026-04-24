@@ -1,17 +1,17 @@
 {
-  "timestamp": "2026-04-24 02:36 UTC",
+  "timestamp": "2026-04-24 01:54 UTC",
   "commit": "8c2f3d821cce81378380f36d57b7f433818b2f67",
   "branch": "claude/main",
   "totals": {
-    "sparql":   {"pass":539,"fail":34,"skip":58,"unsupported":0,"total":631},
+    "sparql":   {"pass":537,"fail":36,"skip":58,"unsupported":0,"total":631},
     "rdf":      {"pass":1027,"fail":4,"skip":0,"unsupported":0,"total":1031},
-    "combined": {"pass":1566,"fail":38,"skip":58,"unsupported":0,"total":1662,"pass_pct_of_runnable":97.6}
+    "combined": {"pass":1564,"fail":40,"skip":58,"unsupported":0,"total":1662,"pass_pct_of_runnable":97.5}
   },
   "suites": {
     "sparql": [
       {"name":"add","pass":8,"fail":0,"skip":0,"unsupported":0},
       {"name":"aggregates","pass":46,"fail":1,"skip":0,"unsupported":0},
-      {"name":"basic-update","pass":11,"fail":2,"skip":0,"unsupported":0},
+      {"name":"basic-update","pass":9,"fail":4,"skip":0,"unsupported":0},
       {"name":"bind","pass":10,"fail":0,"skip":0,"unsupported":0},
       {"name":"bindings","pass":10,"fail":1,"skip":0,"unsupported":0},
       {"name":"cast","pass":4,"fail":2,"skip":0,"unsupported":0},

@@ -277,7 +277,7 @@ Test base: tests/w3c/sparql/sparql11
   FAIL: parent query with (hasChild some Female) restriction — Results mismatch: expected 1 rows, got 0
       UNMATCHED: ?parent=<http://example.org/test#Dudley> (17ms)
   FAIL: parent query with (hasChild min 1 Female) restriction — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?parent=<http://example.org/test#Dudley> (17ms)
+      UNMATCHED: ?parent=<http://example.org/test#Dudley> (18ms)
   FAIL: parent query with (hasChild max 1 Female) restriction — Results mismatch: expected 1 rows, got 0
       UNMATCHED: ?parent=<http://example.org/test#Dudley> (18ms)
   FAIL: parent query with (hasChild exactly 1 Female) restriction — Results mismatch: expected 1 rows, got 0
@@ -723,7 +723,7 @@ Test base: tests/w3c/sparql/sparql11
   PASS: syntax-update-bad-11.ru
   PASS: syntax-update-bad-12.ru
   PASS: syntax-update-53.ru
-  FAIL: syntax-update-54.ru — Should reject but parsed OK
+  PASS: syntax-update-54.ru
   [suite time: 0.0s]
 
 --- syntax-update-2 ---
@@ -779,9 +779,9 @@ Suite Results:
   subquery                            pass:14 fail:0 skip:0 unsupported:0
   syntax-fed                          pass:3 fail:0 skip:0 unsupported:0
   syntax-query                        pass:94 fail:0 skip:0 unsupported:0
-  syntax-update-1                     pass:53 fail:1 skip:0 unsupported:0
+  syntax-update-1                     pass:54 fail:0 skip:0 unsupported:0
   syntax-update-2                     pass:1 fail:0 skip:0 unsupported:0
   update-silent                       pass:11 fail:0 skip:2 unsupported:0
 ========================================
-TOTAL: 538 pass, 35 fail, 58 skip, 0 unsupported
+TOTAL: 539 pass, 34 fail, 58 skip, 0 unsupported
 ========================================
