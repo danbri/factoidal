@@ -1233,6 +1233,20 @@ let is_owl_metapredicate (p : wf_iri) : bool =
 // Handles both IRI-IRI and IRI-bnode (and bnode-bnode) operands —
 // the latter is needed for tableau-style class expressions where the
 // RHS is an anonymous owl:Restriction / owl:intersectionOf bnode.
+//
+// BNODE-POLLUTION GUARD (parent9 regression, 2026-04-23): when one side
+// of owl:equivalentClass is an anonymous class-expression bnode, we emit
+// only the named -> bnode direction. Emitting the reverse (bnode sco
+// named-class) lets transitivity chain bnode -> named-class -> bnode
+// and produces spurious subClassOf triples whose LHS is an anonymous
+// CE bnode. In queries like parent9 (`?C rdfs:subClassOf [restriction]`)
+// those bnodes show up as extra ?C bindings (I_father, I_mother,
+// R_parent itself). Under OWL-Direct, anonymous CE bnodes are
+// existentials, not named classes; they should never appear as ?C
+// bindings. We keep both directions when both sides are IRIs (needed
+// for equivalent named-class reasoning, e.g. prp-eqp dual) and skip
+// entirely when both sides are bnodes (degenerate; no test relies on
+// bnode -> bnode subClassOf).
 let owl_rule_equivalent_class (g : rdf_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
@@ -1241,7 +1255,20 @@ let owl_rule_equivalent_class (g : rdf_graph) : rdf_graph =
         | Some d_subj ->
           let t1 : triple = { s = t.s;    p = rdfs_subClassOf; o = subject_to_term d_subj } in
           let t2 : triple = { s = d_subj; p = rdfs_subClassOf; o = subject_to_term t.s } in
-          add_triple_if_new (add_triple_if_new acc t1) t2
+          (match t.s, d_subj with
+           | S_IRI _, S_IRI _ ->
+             // both named: emit both directions (symmetric equivalence)
+             add_triple_if_new (add_triple_if_new acc t1) t2
+           | S_IRI _, S_BNode _ ->
+             // named -> anon CE: only emit the forward (named sco bnode).
+             add_triple_if_new acc t1
+           | S_BNode _, S_IRI _ ->
+             // anon CE -> named: only emit the forward (named sco bnode).
+             add_triple_if_new acc t2
+           | S_BNode _, S_BNode _ ->
+             // bnode-to-bnode equivalence: skip (no test needs it,
+             // and transitivity through such a pair would pollute).
+             acc)
         | None -> acc
       else acc)
     g
