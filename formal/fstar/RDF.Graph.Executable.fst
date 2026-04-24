@@ -1348,6 +1348,49 @@ let owl_rule_transitive_property (g : rdf_graph) : rdf_graph =
     g
     g
 
+// Schema-level inverseOf flip: if (p owl:inverseOf q) then
+//   (p rdfs:domain C) entails (q rdfs:range C) and vice versa
+//   (p rdfs:range  C) entails (q rdfs:domain C) and vice versa.
+//
+// Not in OWL 2 RL/RDF Table 9 explicitly; sound under both OWL 2 Direct
+// and RDF-Based Semantics because the extension of an inverse property
+// pair is the transposition of each other. Without this rule our
+// closure derives the instance-level consequences (via prp-inv + prp-dom
+// + prp-rng) but not the schema-level triple itself, so a query like
+//   SELECT ?C WHERE { :parent rdfs:range ?C }
+// sees only scm-op's owl:Thing and misses the transposed data-domain
+// class (tested by W3C SPARQL entailment sparqldl-11 "domain test").
+let owl_rule_inverseOf_domain_range_flip (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (inv_t : triple) ->
+      if inv_t.p = owl_inverseOf then
+        match inv_t.s, inv_t.o with
+        | S_IRI p1, T_IRI p2 ->
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (t : triple) ->
+              let add_flip (target_p : wf_iri) (target_pred : wf_iri) (acc3 : rdf_graph)
+                : rdf_graph =
+                match t.o with
+                | T_IRI c ->
+                  add_triple_if_new acc3
+                    ({ s = S_IRI target_p; p = target_pred; o = T_IRI c } <: triple)
+                | _ -> acc3
+              in
+              match t.s with
+              | S_IRI src_p ->
+                if      src_p = p1 && t.p = rdfs_domain then add_flip p2 rdfs_range  acc2
+                else if src_p = p1 && t.p = rdfs_range  then add_flip p2 rdfs_domain acc2
+                else if src_p = p2 && t.p = rdfs_domain then add_flip p1 rdfs_range  acc2
+                else if src_p = p2 && t.p = rdfs_range  then add_flip p1 rdfs_domain acc2
+                else acc2
+              | _ -> acc2)
+            acc
+            g
+        | _, _ -> acc
+      else acc)
+    g
+    g
+
 // prp-inv1: if (P1 owl:inverseOf P2) and (x P1 y) then (y P2 x).
 // prp-inv2: if (P1 owl:inverseOf P2) and (x P2 y) then (y P1 x).
 // We handle both by iterating every owl:inverseOf declaration and producing
@@ -2014,7 +2057,9 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   let g1 = owl_rule_equivalent_class g in
   let g2 = owl_rule_equivalent_property g1 in
   let g3 = owl_rule_inverse_of g2 in
-  let g4 = owl_rule_symmetric_property g3 in
+  // Schema-level inverseOf flip (sparqldl-11 "domain test").
+  let g3a = owl_rule_inverseOf_domain_range_flip g3 in
+  let g4 = owl_rule_symmetric_property g3a in
   let g5 = owl_rule_transitive_property g4 in
   let g6 = owl_rule_sameAs_reflexivity g5 in
   let g7 = owl_rule_sameAs_symmetry g6 in
