@@ -913,7 +913,7 @@ Test base: tests/w3c/rdf/rdf11
   PASS: rdf-ns-prefix-confusion-test0014
   PASS: rdfms-abouteach-error001
   PASS: rdfms-abouteach-error002
-  FAIL: rdfms-difference-between-ID-and-about-error1 — Should reject but parsed OK
+  PASS: rdfms-difference-between-ID-and-about-error1
   PASS: rdfms-difference-between-ID-and-about-test1
   PASS: rdfms-difference-between-ID-and-about-test2
   PASS: rdfms-difference-between-ID-and-about-test3
@@ -1058,7 +1058,7 @@ Suite Results:
   rdf-n-triples                       pass:70 fail:0 skip:0 unsupported:0
   rdf-trig                            pass:356 fail:0 skip:0 unsupported:0
   rdf-turtle                          pass:313 fail:0 skip:0 unsupported:0
-  rdf-xml                             pass:161 fail:5 skip:0 unsupported:0
+  rdf-xml                             pass:162 fail:4 skip:0 unsupported:0
 ========================================
-TOTAL: 1026 pass, 5 fail, 0 skip, 0 unsupported
+TOTAL: 1027 pass, 4 fail, 0 skip, 0 unsupported
 ========================================

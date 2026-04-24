@@ -1637,8 +1637,9 @@ let run_rdf_test assumed_base tc =
      | None -> Skip "File missing"
      | Some content ->
        (try
-          ignore (parse_rdfxml_fstar content None);
-          Fail "Should reject but parsed OK"
+          (match Parser_RDFXML.parse_rdfxml_strict content with
+           | FStar_Pervasives_Native.Some _ -> Fail "Should reject but parsed OK"
+           | FStar_Pervasives_Native.None -> Pass)
         with _ -> Pass))
 
   (* rdf-mt Positive Entailment: action graph entails result graph *)

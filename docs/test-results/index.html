@@ -130,11 +130,11 @@
 <div class="summary">
   <div class="tile ok">
     <div class="label">Pass</div>
-    <div class="value">1561</div>
+    <div class="value">1565</div>
   </div>
   <div class="tile err">
     <div class="label">Fail</div>
-    <div class="value">43</div>
+    <div class="value">39</div>
   </div>
   <div class="tile warn">
     <div class="label">Skipped</div>
@@ -142,7 +142,7 @@
   </div>
   <div class="tile">
     <div class="label">Pass / runnable</div>
-    <div class="value">97.3%<small> of 1604</small></div>
+    <div class="value">97.6%<small> of 1604</small></div>
   </div>
   <div class="tile">
     <div class="label">Total in suites</div>
@@ -159,7 +159,7 @@
   are linked below.
 </div>
 
-<h2>SPARQL 1.1 <span class="inline-numbers">535 pass · 38 fail · 58 skip</span></h2>
+<h2>SPARQL 1.1 <span class="inline-numbers">538 pass · 35 fail · 58 skip</span></h2>
 <div class="suites">
       <div class="suite-row perfect">
         <div class="suite-name">add</div>
@@ -219,9 +219,9 @@
       </div>
       <div class="suite-row mixed">
         <div class="suite-name">construct</div>
-        <div class="suite-bar"><div class="fill" style="width:57%"></div></div>
+        <div class="suite-bar"><div class="fill" style="width:86%"></div></div>
         <div class="suite-numbers">
-          <span class="p">4</span>/<span class="f">3</span>
+          <span class="p">6</span>/<span class="f">1</span>
           <small></small>
         </div>
       </div>
@@ -385,11 +385,11 @@
           <small>skip 3</small>
         </div>
       </div>
-      <div class="suite-row near-perfect">
+      <div class="suite-row perfect">
         <div class="suite-name">subquery</div>
-        <div class="suite-bar"><div class="fill" style="width:93%"></div></div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
         <div class="suite-numbers">
-          <span class="p">13</span>/<span class="f">1</span>
+          <span class="p">14</span>/<span class="f">0</span>
           <small></small>
         </div>
       </div>
@@ -435,7 +435,7 @@
       </div>
 </div>
 
-<h2>RDF 1.1 <span class="inline-numbers">1026 pass · 5 fail</span></h2>
+<h2>RDF 1.1 <span class="inline-numbers">1027 pass · 4 fail</span></h2>
 <div class="suites">
       <div class="suite-row perfect">
         <div class="suite-name">rdf-mt</div>
@@ -479,9 +479,9 @@
       </div>
       <div class="suite-row near-perfect">
         <div class="suite-name">rdf-xml</div>
-        <div class="suite-bar"><div class="fill" style="width:97%"></div></div>
+        <div class="suite-bar"><div class="fill" style="width:98%"></div></div>
         <div class="suite-numbers">
-          <span class="p">161</span>/<span class="f">5</span>
+          <span class="p">162</span>/<span class="f">4</span>
           <small></small>
         </div>
       </div>
@@ -504,7 +504,7 @@
 <details>
   <summary>Raw per-suite numbers</summary>
   <h3 style="font-size: 0.95em; margin: 0.8em 0 0.3em;">SPARQL 1.1</h3>
-  <pre>631 total: 535 pass, 38 fail, 58 skip, 0 unsupported
+  <pre>631 total: 538 pass, 35 fail, 58 skip, 0 unsupported
   add                                 pass:8 fail:0 skip:0 unsupported:0
   aggregates                          pass:46 fail:1 skip:0 unsupported:0
   basic-update                        pass:11 fail:2 skip:0 unsupported:0
@@ -512,7 +512,7 @@
   bindings                            pass:10 fail:1 skip:0 unsupported:0
   cast                                pass:4 fail:2 skip:0 unsupported:0
   clear                               pass:4 fail:0 skip:0 unsupported:0
-  construct                           pass:4 fail:3 skip:0 unsupported:0
+  construct                           pass:6 fail:1 skip:0 unsupported:0
   copy                                pass:6 fail:0 skip:0 unsupported:0
   csv-tsv-res                         pass:6 fail:0 skip:0 unsupported:0
   delete                              pass:19 fail:0 skip:0 unsupported:0
@@ -533,20 +533,20 @@
   protocol                            pass:0 fail:0 skip:34 unsupported:0
   service                             pass:0 fail:7 skip:0 unsupported:0
   service-description                 pass:0 fail:0 skip:3 unsupported:0
-  subquery                            pass:13 fail:1 skip:0 unsupported:0
+  subquery                            pass:14 fail:0 skip:0 unsupported:0
   syntax-fed                          pass:3 fail:0 skip:0 unsupported:0
   syntax-query                        pass:94 fail:0 skip:0 unsupported:0
   syntax-update-1                     pass:53 fail:1 skip:0 unsupported:0
   syntax-update-2                     pass:1 fail:0 skip:0 unsupported:0
   update-silent                       pass:11 fail:0 skip:2 unsupported:0</pre>
   <h3 style="font-size: 0.95em; margin: 0.8em 0 0.3em;">RDF 1.1</h3>
-  <pre>1031 total: 1026 pass, 5 fail, 0 skip, 0 unsupported
+  <pre>1031 total: 1027 pass, 4 fail, 0 skip, 0 unsupported
   rdf-mt                              pass:39 fail:0 skip:0 unsupported:0
   rdf-n-quads                         pass:87 fail:0 skip:0 unsupported:0
   rdf-n-triples                       pass:70 fail:0 skip:0 unsupported:0
   rdf-trig                            pass:356 fail:0 skip:0 unsupported:0
   rdf-turtle                          pass:313 fail:0 skip:0 unsupported:0
-  rdf-xml                             pass:161 fail:5 skip:0 unsupported:0</pre>
+  rdf-xml                             pass:162 fail:4 skip:0 unsupported:0</pre>
 </details>
 
 <details>
@@ -564,9 +564,9 @@
 </main>
 
 <footer>
-  Generated <strong>2026-04-23 22:58 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/fb4f8474636ee86c323e0a076cb869a541bdeaa2">fb4f847</a></code>
-  on branch <code>claude/main</code> — &ldquo;docs: entailment suite scoping + phased plan&rdquo;.
+  Generated <strong>2026-04-24 00:16 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/8884b949504558157bd9ad7eea459a12f788adfe">8884b94</a></code>
+  on branch <code>claude/main</code> — &ldquo;w3c-tests: stay at repo root so base-URI resolution is CWD-stable&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 

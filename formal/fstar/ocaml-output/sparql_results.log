@@ -261,28 +261,28 @@ Test base: tests/w3c/sparql/sparql11
   PASS: paper-sparqldl-Q1
   PASS: paper-sparqldl-Q1-rdfs
   FAIL: paper-sparqldl-Q2 — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?x=<http://example.org/John>, ?y="Johnnie"^^<http://www.w3.org/2001/XMLSchema#string> (13ms)
+      UNMATCHED: ?x=<http://example.org/John>, ?y="Johnnie"^^<http://www.w3.org/2001/XMLSchema#string>
   FAIL: paper-sparqldl-Q3 — Results mismatch: expected 2 rows, got 0
       UNMATCHED: ?x=<http://example.org/John>
-      UNMATCHED: ?x=<http://example.org/person1> (13ms)
+      UNMATCHED: ?x=<http://example.org/person1>
   PASS: paper-sparqldl-Q4
   PASS: paper-sparqldl-Q5
-  PASS: filtered subclass query with (hasChild some Thing) restriction (30ms)
+  PASS: filtered subclass query with (hasChild some Thing) restriction (18ms)
   PASS: parent query with distinguished variable
-  PASS: parent query with (hasChild some Thing) restriction (29ms)
+  PASS: parent query with (hasChild some Thing) restriction (17ms)
   FAIL: parent query with (hasChild min 1) restriction — Results mismatch: expected 3 rows, got 0
       UNMATCHED: ?parent=<http://example.org/test#Alice>
       UNMATCHED: ?parent=<http://example.org/test#Bob>
-      UNMATCHED: ?parent=<http://example.org/test#Dudley> (30ms)
+      UNMATCHED: ?parent=<http://example.org/test#Dudley> (18ms)
   FAIL: parent query with (hasChild some Female) restriction — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?parent=<http://example.org/test#Dudley> (30ms)
+      UNMATCHED: ?parent=<http://example.org/test#Dudley> (17ms)
   FAIL: parent query with (hasChild min 1 Female) restriction — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?parent=<http://example.org/test#Dudley> (30ms)
+      UNMATCHED: ?parent=<http://example.org/test#Dudley> (17ms)
   FAIL: parent query with (hasChild max 1 Female) restriction — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?parent=<http://example.org/test#Dudley> (30ms)
+      UNMATCHED: ?parent=<http://example.org/test#Dudley> (18ms)
   FAIL: parent query with (hasChild exactly 1 Female) restriction — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?parent=<http://example.org/test#Dudley> (30ms)
-  FAIL: subclass query with (hasChild some Thing) restriction — Results mismatch: expected 4 rows, got 7 (30ms)
+      UNMATCHED: ?parent=<http://example.org/test#Dudley> (17ms)
+  FAIL: subclass query with (hasChild some Thing) restriction — Results mismatch: expected 4 rows, got 7 (18ms)
   PASS: Plain literals with language tag are not the same as the same literal without
   PASS: RDF inference test
   PASS: RDF inference test
@@ -345,7 +345,7 @@ Test base: tests/w3c/sparql/sparql11
       UNMATCHED: ?C=<foo://bla/names#Parent>
   PASS: sparqldl-12.rq: range test
   PASS: sparqldl-13.rq: sameAs
-  [suite time: 0.4s]
+  [suite time: 0.3s]
 
 --- exists ---
   PASS: Exists with one constant
@@ -467,7 +467,7 @@ Test base: tests/w3c/sparql/sparql11
   PASS: Subsets by exclusion (MINUS)
   PASS: Medical, temporal proximity by exclusion (NOT EXISTS)
   PASS: Calculate which sets are subsets of others (include A subsetOf A)
-  PASS: Calculate which sets are subsets of others (exclude A subsetOf A)
+  FAIL: Calculate which sets are subsets of others (exclude A subsetOf A) — Results mismatch: expected 11 rows, got 30
   PASS: Calculate which sets have the same elements
   PASS: Calculate proper subset
   PASS: Positive EXISTS 1
@@ -770,7 +770,7 @@ Suite Results:
   http-rdf-update                     pass:0 fail:0 skip:19 unsupported:0
   json-res                            pass:4 fail:0 skip:0 unsupported:0
   move                                pass:6 fail:0 skip:0 unsupported:0
-  negation                            pass:12 fail:0 skip:0 unsupported:0
+  negation                            pass:11 fail:1 skip:0 unsupported:0
   project-expression                  pass:7 fail:0 skip:0 unsupported:0
   property-path                       pass:33 fail:0 skip:0 unsupported:0
   protocol                            pass:0 fail:0 skip:34 unsupported:0
@@ -783,5 +783,5 @@ Suite Results:
   syntax-update-2                     pass:1 fail:0 skip:0 unsupported:0
   update-silent                       pass:11 fail:0 skip:2 unsupported:0
 ========================================
-TOTAL: 539 pass, 34 fail, 58 skip, 0 unsupported
+TOTAL: 538 pass, 35 fail, 58 skip, 0 unsupported
 ========================================
