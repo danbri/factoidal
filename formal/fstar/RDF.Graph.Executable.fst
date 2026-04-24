@@ -1191,6 +1191,8 @@ let rdfs_closure_with_reflexivity (g : rdf_graph) (fuel : nat) : Tot rdf_graph =
 //   scm-eqc2    : mutual rdfs:subClassOf -> owl:equivalentClass (named only)
 //   scm-eqp2    : mutual rdfs:subPropertyOf -> owl:equivalentProperty (named only)
 //   eq-diff-sym : symmetry of owl:differentFrom
+//   prp-rfl     : owl:ReflexiveProperty (x P x for every named individual)
+//   scm-cls     : (C a owl:Restriction) -> (C a owl:Class) (partial)
 //
 // NOT implemented (tableau-style, out of scope for this pass):
 //   owl:hasValue, owl:someValuesFrom, owl:allValuesFrom restrictions;
@@ -2189,6 +2191,88 @@ let owl_rule_cls_avf1 (g : rdf_graph) : rdf_graph =
     g
     g
 
+// prp-rfl [OWL 2 RL/RDF]: reflexive-property propagation.
+//   (P rdf:type owl:ReflexiveProperty) AND x in named-individuals
+//   ==> (x P x).
+//
+// "Named individuals" is approximated as the set of IRIs that appear
+// as the subject or as an IRI-object of any triple in g. This is the
+// same approximation Group E uses (owl_thing_subject_iris) when emitting
+// (i rdf:type owl:Thing); reproduced inline here so the rule is in
+// scope before owl_thing_subject_iris is defined. Sound under OWL 2 RL:
+// every IRI that appears in the data is a named individual under the
+// RDF-Based Semantics, so emitting (x P x) for those IRIs when P is
+// owl:ReflexiveProperty matches the OWL 2 RL/RDF prp-rfl rule restricted
+// to materialised individuals. Bnodes are excluded — under OWL-RL bnodes
+// are existentials, not named individuals; emitting (_:b P _:b) here
+// would over-commit on existential identity.
+//
+// Stack-safe: outer fold over reflexive properties, inner fold over
+// individuals; fold_left + accumulator throughout.
+let owl_ReflexiveProperty : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#ReflexiveProperty");
+  "http://www.w3.org/2002/07/owl#ReflexiveProperty"
+
+let prp_rfl_individuals (g : rdf_graph) : list wf_iri =
+  List.Tot.fold_left
+    (fun (acc : list wf_iri) (t : triple) ->
+      let acc1 = cons_subject_iri_if_new t.s acc in
+      cons_term_iri_if_new t.o acc1)
+    []
+    g
+
+let owl_rule_reflexive_property (g : rdf_graph) : rdf_graph =
+  // Collect reflexive predicates first.
+  let refl_props : list wf_iri =
+    List.Tot.fold_left
+      (fun (acc : list wf_iri) (t : triple) ->
+        if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_ReflexiveProperty) then
+          match t.s with
+          | S_IRI p_iri -> cons_if_new_iri p_iri acc
+          | _ -> acc
+        else acc)
+      []
+      g
+  in
+  // For each reflexive property P and each individual x, emit (x P x).
+  let indivs : list wf_iri = prp_rfl_individuals g in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (p_iri : wf_iri) ->
+      List.Tot.fold_left
+        (fun (acc2 : rdf_graph) (x : wf_iri) ->
+          let new_t : triple = { s = S_IRI x; p = p_iri; o = T_IRI x } in
+          add_triple_if_new acc2 new_t)
+        acc
+        indivs)
+    g
+    refl_props
+
+// scm-cls [OWL 2 RL/RDF, partial]: every owl:Restriction is also an
+// owl:Class.
+//   (C rdf:type owl:Restriction) ==> (C rdf:type owl:Class).
+//
+// The full scm-cls rule in the OWL 2 RL/RDF table also emits
+// (C rdfs:subClassOf C), (C rdfs:subClassOf owl:Thing), and
+// (owl:Nothing rdfs:subClassOf C); those follow from rdfs reflexivity
+// (rdfs_reflexivity_axioms) and from Group E (owl_thing_axioms),
+// provided C is recognised as a class. Without this rule, a bnode
+// that carries only `rdf:type owl:Restriction` is not picked up by
+// `collect_classes` (which checks for `rdfs:Class`/`owl:Class`), so
+// the reflexivity / Group E axioms are never emitted for it.
+//
+// Trivially terminating: emits at most one new triple per existing
+// (s rdf:type owl:Restriction) triple.
+let owl_rule_scm_cls_restriction (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_Restriction_iri) then
+        let new_t : triple =
+          { s = t.s; p = rdf_type; o = T_IRI owl_Class } in
+        add_triple_if_new acc new_t
+      else acc)
+    g
+    g
+
 // Apply all OWL-RL rules once. Ordering: first do "axiom-introducing" rules
 // (equivalentClass/Property expansion, owl:inverseOf flip, symmetric/
 // transitive), then sameAs rules. The fixpoint loop re-applies them until
@@ -2226,7 +2310,11 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   // Universal-restriction rule (cls-avf1); target simple 6 when the
   // rewriter eventually lands the allValuesFrom-with-named-filler case.
   let g19 = owl_rule_cls_avf1 g18 in
-  g19
+  // prp-rfl: reflexive-property propagation.
+  let g20 = owl_rule_reflexive_property g19 in
+  // scm-cls (partial): owl:Restriction subjects are also owl:Class.
+  let g21 = owl_rule_scm_cls_restriction g20 in
+  g21
 
 // Interleaved OWL-RL + RDFS fixpoint. RDFS rules run every iteration so
 // that triples introduced by cls-eqc1/2 and prp-eqp1/2 get propagated
