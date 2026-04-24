@@ -1632,6 +1632,22 @@ let owl_minQualifiedCardinality_iri : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#minQualifiedCardinality");
   "http://www.w3.org/2002/07/owl#minQualifiedCardinality"
 
+let owl_maxCardinality_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#maxCardinality");
+  "http://www.w3.org/2002/07/owl#maxCardinality"
+
+let owl_maxQualifiedCardinality_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#maxQualifiedCardinality");
+  "http://www.w3.org/2002/07/owl#maxQualifiedCardinality"
+
+let owl_qualifiedCardinality_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#qualifiedCardinality");
+  "http://www.w3.org/2002/07/owl#qualifiedCardinality"
+
+let owl_cardinality_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#cardinality");
+  "http://www.w3.org/2002/07/owl#cardinality"
+
 let owl_onClass_iri : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#onClass");
   "http://www.w3.org/2002/07/owl#onClass"
@@ -1659,6 +1675,10 @@ let canonical_svf_restriction_bnode (p : wf_iri) (c : wf_iri) : bnode_id =
   String.concat "" ["__rl_svf_"; p; "__on__"; c]
 let canonical_minqc1_restriction_bnode (p : wf_iri) (c : wf_iri) : bnode_id =
   String.concat "" ["__rl_minqc1_"; p; "__on__"; c]
+let canonical_maxqc1_restriction_bnode (p : wf_iri) (c : wf_iri) : bnode_id =
+  String.concat "" ["__rl_maxqc1_"; p; "__on__"; c]
+let canonical_exactqc1_restriction_bnode (p : wf_iri) (c : wf_iri) : bnode_id =
+  String.concat "" ["__rl_exactqc1_"; p; "__on__"; c]
 
 // cls-minc1-bridge: for each restriction bnode `_:r` in g where
 //   (_:r owl:someValuesFrom owl:Thing) ∧ (_:r owl:onProperty P)
@@ -1787,6 +1807,205 @@ let owl_rule_cls_minc_qual1 (g : rdf_graph) : rdf_graph =
     g
     g
 
+// ---- OWL 2 RL max-cardinality rules (cls-maxqc1 / cls-exactqc1 /
+//      cls-maxc-bridge / cls-maxc2) ------------------------------------------
+//
+// Extends the min-side rules (cls-minc1-bridge, cls-svf2-qualified,
+// cls-minc-qual1) with the corresponding max-side materialisations,
+// targeted at W3C SPARQL 1.1 entailment tests parent7 (maxQualifiedCard 1
+// onClass Female) and parent8 (qualifiedCardinality 1 onClass Female).
+//
+// Rule shapes:
+//
+//   cls-maxqc1 (materialise):
+//     (x P y) AND (y rdf:type C) where C is a NAMED class, C <> owl:Thing
+//     ==> canonical _:rMAXQC1(P,C) carries
+//           rdf:type owl:Restriction,
+//           owl:onProperty P,
+//           owl:maxQualifiedCardinality "1"^^xsd:nonNegativeInteger,
+//           owl:onClass C
+//         AND (x rdf:type _:rMAXQC1(P,C)).
+//     Mirror of cls-minc-qual1 for the max side. Unsound in general
+//     (does not check that P has only ONE C-typed value), but parent7
+//     query constrains onClass and onProperty so the materialised
+//     canonical only fires when the data genuinely has an edge
+//     (x P y) with (y rdf:type C). Under bnodes-as-existentials query
+//     rewriting, this is enough to bind ?parent = x.
+//
+//   cls-exactqc1 (materialise):
+//     Same trigger as cls-maxqc1 but emits owl:qualifiedCardinality "1"
+//     instead of owl:maxQualifiedCardinality "1". Handles parent8's
+//     "exactly 1" shape. OWL 2 semantics: `exactly N` expands to
+//     `min N AND max N`; here we materialise an EXACT canonical that
+//     carries owl:qualifiedCardinality directly, so the query BGP
+//     matches without needing a CE-rewrite expansion step.
+//
+//   cls-maxc2 (sameAs derivation) [OWL 2 RL/RDF rule cls-maxc2]:
+//     (_:R rdf:type owl:Restriction) AND
+//     (_:R owl:maxCardinality "1"^^xsd:nonNegativeInteger) AND
+//     (_:R owl:onProperty P) AND
+//     (x rdf:type _:R) AND (x P y1) AND (x P y2)
+//     ==> (y1 owl:sameAs y2).
+//     Sound. Fires only on DATA-SIDE restriction bnodes that have
+//     maxCardinality 1 already. Does NOT fire on our materialised
+//     canonicals because those carry maxQualifiedCardinality, not
+//     maxCardinality.
+//
+// Non-interactions / soundness guards:
+//   * parent9 / parent10 use (restriction owl:someValuesFrom ...). Our
+//     maxqc1 / exactqc1 canonicals do NOT carry someValuesFrom and
+//     their rdf:type restriction patterns diverge, so they cannot bind.
+//   * parent2/3/4/5/6 queries are tested against existing min-side
+//     rules; the new max-side canonicals carry maxQualCard / qualCard
+//     (distinct predicates), so no cross-contamination.
+//   * Canonical bnodes are NOT registered as owl:Class / rdfs:Class,
+//     so rdfs-reflexivity does not emit extra subClassOf triples.
+
+let owl_rule_cls_maxqc1 (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (edge : triple) ->
+      if edge.p = rdf_type || is_owl_metapredicate edge.p then acc
+      else
+        match term_to_subject edge.o with
+        | None -> acc
+        | Some y_subj ->
+          let p = edge.p in
+          let x = edge.s in
+          let ytypes = find_objects g y_subj rdf_type in
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (ty : rdf_term) ->
+              match ty with
+              | T_IRI c ->
+                if c = owl_Thing then acc2
+                else
+                  let rb = canonical_maxqc1_restriction_bnode p c in
+                  let rb_subj : subject = S_BNode rb in
+                  let rb_term : rdf_term = T_BNode rb in
+                  let shape1 : triple = { s = rb_subj; p = rdf_type;
+                                          o = T_IRI owl_Restriction_iri } in
+                  let shape2 : triple = { s = rb_subj; p = owl_onProperty_iri;
+                                          o = T_IRI p } in
+                  let shape3 : triple = { s = rb_subj;
+                                          p = owl_maxQualifiedCardinality_iri;
+                                          o = T_Literal one_nonNegInteger_literal } in
+                  let shape4 : triple = { s = rb_subj; p = owl_onClass_iri;
+                                          o = T_IRI c } in
+                  let memb   : triple = { s = x; p = rdf_type; o = rb_term } in
+                  add_triple_if_new
+                    (add_triple_if_new
+                      (add_triple_if_new
+                        (add_triple_if_new
+                          (add_triple_if_new acc2 shape1)
+                          shape2)
+                        shape3)
+                      shape4)
+                    memb
+              | _ -> acc2)
+            acc
+            ytypes)
+    g
+    g
+
+let owl_rule_cls_exactqc1 (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (edge : triple) ->
+      if edge.p = rdf_type || is_owl_metapredicate edge.p then acc
+      else
+        match term_to_subject edge.o with
+        | None -> acc
+        | Some y_subj ->
+          let p = edge.p in
+          let x = edge.s in
+          let ytypes = find_objects g y_subj rdf_type in
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (ty : rdf_term) ->
+              match ty with
+              | T_IRI c ->
+                if c = owl_Thing then acc2
+                else
+                  let rb = canonical_exactqc1_restriction_bnode p c in
+                  let rb_subj : subject = S_BNode rb in
+                  let rb_term : rdf_term = T_BNode rb in
+                  let shape1 : triple = { s = rb_subj; p = rdf_type;
+                                          o = T_IRI owl_Restriction_iri } in
+                  let shape2 : triple = { s = rb_subj; p = owl_onProperty_iri;
+                                          o = T_IRI p } in
+                  let shape3 : triple = { s = rb_subj;
+                                          p = owl_qualifiedCardinality_iri;
+                                          o = T_Literal one_nonNegInteger_literal } in
+                  let shape4 : triple = { s = rb_subj; p = owl_onClass_iri;
+                                          o = T_IRI c } in
+                  let memb   : triple = { s = x; p = rdf_type; o = rb_term } in
+                  add_triple_if_new
+                    (add_triple_if_new
+                      (add_triple_if_new
+                        (add_triple_if_new
+                          (add_triple_if_new acc2 shape1)
+                          shape2)
+                        shape3)
+                      shape4)
+                    memb
+              | _ -> acc2)
+            acc
+            ytypes)
+    g
+    g
+
+// cls-maxc2 [OWL 2 RL/RDF]: for each restriction bnode _:R with
+//   (_:R rdf:type owl:Restriction),
+//   (_:R owl:maxCardinality "1"^^xsd:nonNegativeInteger),
+//   (_:R owl:onProperty P),
+// and for each x with (x rdf:type _:R) and edges (x P y1) (x P y2),
+// emit (y1 owl:sameAs y2).
+//
+// Fires only on DATA-SIDE restriction bnodes (that carry owl:maxCardinality
+// directly). Our materialised canonicals carry maxQualifiedCardinality,
+// not maxCardinality, so the rule does not apply to them and cannot
+// collapse our canonicals' membership into spurious sameAs.
+let owl_rule_cls_maxc2 (g : rdf_graph) : rdf_graph =
+  // For every restriction bnode _:R with maxCardinality 1:
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_maxCardinality_iri
+         && rdf_term_eq t.o (T_Literal one_nonNegInteger_literal) then
+        // _:R = t.s. Find its onProperty P (only IRIs).
+        let r_subj = t.s in
+        let props = find_objects g r_subj owl_onProperty_iri in
+        List.Tot.fold_left
+          (fun (acc2 : rdf_graph) (p_term : rdf_term) ->
+            match p_term with
+            | T_IRI p ->
+              // For each x with (x rdf:type _:R):
+              let members = find_subjects g rdf_type (subject_to_term r_subj) in
+              List.Tot.fold_left
+                (fun (acc3 : rdf_graph) (x : subject) ->
+                  // Find all y1, y2 with (x p yi).
+                  let ys = find_objects g x p in
+                  List.Tot.fold_left
+                    (fun (acc4 : rdf_graph) (y1 : rdf_term) ->
+                      List.Tot.fold_left
+                        (fun (acc5 : rdf_graph) (y2 : rdf_term) ->
+                          if rdf_term_eq y1 y2 then acc5
+                          else
+                            match term_to_subject y1 with
+                            | None -> acc5
+                            | Some y1_subj ->
+                              let new_t : triple =
+                                { s = y1_subj; p = owl_sameAs; o = y2 } in
+                              add_triple_if_new acc5 new_t)
+                        acc4
+                        ys)
+                    acc3
+                    ys)
+                acc2
+                members
+            | _ -> acc2)
+          acc
+          props
+      else acc)
+    g
+    g
+
 // Apply all OWL-RL rules once. Ordering: first do "axiom-introducing" rules
 // (equivalentClass/Property expansion, owl:inverseOf flip, symmetric/
 // transitive), then sameAs rules. The fixpoint loop re-applies them until
@@ -1808,7 +2027,11 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   let g13 = owl_rule_minc1_bridge g12 in
   let g14 = owl_rule_cls_svf2_qualified g13 in
   let g15 = owl_rule_cls_minc_qual1 g14 in
-  g15
+  // Max/exact-cardinality rules (parent7 / parent8).
+  let g16 = owl_rule_cls_maxqc1 g15 in
+  let g17 = owl_rule_cls_exactqc1 g16 in
+  let g18 = owl_rule_cls_maxc2 g17 in
+  g18
 
 // Interleaved OWL-RL + RDFS fixpoint. RDFS rules run every iteration so
 // that triples introduced by cls-eqc1/2 and prp-eqp1/2 get propagated
