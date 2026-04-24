@@ -2417,6 +2417,159 @@ let owl_rule_named_sameAs_to_equivClass (g : rdf_graph) : rdf_graph =
     g
     g
 
+// ---- Tier-3: XSD datatype hierarchy axioms ---------------------------------
+//
+// OWL 2 RL/RDF expects the standard XSD numeric tower to be available as
+// rdfs:subClassOf edges, and each datatype IRI to be typed rdfs:Datatype.
+// The closure rule below emits a fixed, finite axiom set whenever the input
+// graph mentions any IRI under the XML Schema namespace
+//   http://www.w3.org/2001/XMLSchema#
+// We gate on the namespace prefix to avoid polluting graphs that do not use
+// XSD. The emitted set is the standard OWL 2 RL numeric tower:
+//
+//   xsd:byte   <  xsd:short   <  xsd:int   <  xsd:long  <  xsd:integer
+//   xsd:positiveInteger    <  xsd:nonNegativeInteger
+//   xsd:unsignedByte       <  xsd:unsignedShort
+//   xsd:unsignedShort      <  xsd:unsignedInt
+//   xsd:unsignedInt        <  xsd:unsignedLong
+//   xsd:unsignedLong       <  xsd:nonNegativeInteger
+//   xsd:negativeInteger    <  xsd:nonPositiveInteger
+//   xsd:nonPositiveInteger <  xsd:integer
+//   xsd:integer            <  xsd:decimal
+//   xsd:decimal            <  xsd:double
+//
+// (xsd:double < xsd:Number is intentionally omitted; OWL 2 RL covers numerics
+// via the rdfs:Datatype meta-class, which we materialise instead.)
+//
+// Targets WebOnt-I5.8-006/008/009/011 in the OWL-RL posent suite.
+
+// XSD numeric/derived datatype IRI constants (those not already defined
+// near the top of this module). xsd_string, xsd_integer, xsd_decimal,
+// xsd_double, xsd_boolean and xsd_nonNegativeInteger are defined earlier.
+
+let xsd_long : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#long");
+  "http://www.w3.org/2001/XMLSchema#long"
+
+let xsd_int : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#int");
+  "http://www.w3.org/2001/XMLSchema#int"
+
+let xsd_short : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#short");
+  "http://www.w3.org/2001/XMLSchema#short"
+
+let xsd_byte : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#byte");
+  "http://www.w3.org/2001/XMLSchema#byte"
+
+let xsd_positiveInteger : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#positiveInteger");
+  "http://www.w3.org/2001/XMLSchema#positiveInteger"
+
+let xsd_unsignedLong : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#unsignedLong");
+  "http://www.w3.org/2001/XMLSchema#unsignedLong"
+
+let xsd_unsignedInt : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#unsignedInt");
+  "http://www.w3.org/2001/XMLSchema#unsignedInt"
+
+let xsd_unsignedShort : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#unsignedShort");
+  "http://www.w3.org/2001/XMLSchema#unsignedShort"
+
+let xsd_unsignedByte : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#unsignedByte");
+  "http://www.w3.org/2001/XMLSchema#unsignedByte"
+
+let xsd_nonPositiveInteger : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#nonPositiveInteger");
+  "http://www.w3.org/2001/XMLSchema#nonPositiveInteger"
+
+let xsd_negativeInteger : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#negativeInteger");
+  "http://www.w3.org/2001/XMLSchema#negativeInteger"
+
+// XSD namespace prefix and a starts_with helper. We use String.length+
+// String.sub rather than relying on String.starts_with so the check works
+// under the F* string API uniformly.
+let xsd_ns_prefix : string = "http://www.w3.org/2001/XMLSchema#"
+
+let iri_in_xsd_ns (i : wf_iri) : bool =
+  let plen = String.length xsd_ns_prefix in
+  let ilen = String.length i in
+  if ilen < plen then false
+  else String.sub i 0 plen = xsd_ns_prefix
+
+let term_in_xsd_ns (t : rdf_term) : bool =
+  match t with
+  | T_IRI i -> iri_in_xsd_ns i
+  | _ -> false
+
+let subject_in_xsd_ns (s : subject) : bool =
+  match s with
+  | S_IRI i -> iri_in_xsd_ns i
+  | _ -> false
+
+let triple_mentions_xsd (t : triple) : bool =
+  subject_in_xsd_ns t.s || iri_in_xsd_ns t.p || term_in_xsd_ns t.o
+
+let graph_mentions_xsd_iri (g : rdf_graph) : bool =
+  List.Tot.existsb triple_mentions_xsd g
+
+// Hierarchy edges: (subtype, supertype) pairs.
+let xsd_hierarchy_edges : list (wf_iri * wf_iri) =
+  [
+    (xsd_byte,               xsd_short);
+    (xsd_short,              xsd_int);
+    (xsd_int,                xsd_long);
+    (xsd_long,               xsd_integer);
+    (xsd_positiveInteger,    xsd_nonNegativeInteger);
+    (xsd_unsignedByte,       xsd_unsignedShort);
+    (xsd_unsignedShort,      xsd_unsignedInt);
+    (xsd_unsignedInt,        xsd_unsignedLong);
+    (xsd_unsignedLong,       xsd_nonNegativeInteger);
+    (xsd_nonNegativeInteger, xsd_integer);
+    (xsd_negativeInteger,    xsd_nonPositiveInteger);
+    (xsd_nonPositiveInteger, xsd_integer);
+    (xsd_integer,            xsd_decimal);
+    (xsd_decimal,            xsd_double);
+  ]
+
+// All XSD datatypes that should be typed rdfs:Datatype.
+let xsd_all_datatypes : list wf_iri =
+  [
+    xsd_string; xsd_boolean;
+    xsd_double; xsd_decimal; xsd_integer;
+    xsd_long; xsd_int; xsd_short; xsd_byte;
+    xsd_nonNegativeInteger; xsd_positiveInteger;
+    xsd_unsignedLong; xsd_unsignedInt;
+    xsd_unsignedShort; xsd_unsignedByte;
+    xsd_nonPositiveInteger; xsd_negativeInteger;
+  ]
+
+// Closure rule: if the graph mentions any XSD IRI, emit the fixed XSD
+// numeric subtype tower plus an `rdf:type rdfs:Datatype` declaration for
+// every XSD datatype IRI in the tower. Idempotent via add_triple_if_new.
+let owl_rule_xsd_datatype_axioms (g : rdf_graph) : rdf_graph =
+  if not (graph_mentions_xsd_iri g) then g
+  else
+    let sub_triples : list triple =
+      List.Tot.map
+        (fun (pair : (wf_iri * wf_iri)) ->
+           let (sub_i, sup_i) = pair in
+           ({ s = S_IRI sub_i; p = rdfs_subClassOf; o = T_IRI sup_i } <: triple))
+        xsd_hierarchy_edges
+    in
+    let dt_triples : list triple =
+      List.Tot.map
+        (fun (i : wf_iri) ->
+           ({ s = S_IRI i; p = rdf_type; o = T_IRI rdfs_Datatype } <: triple))
+        xsd_all_datatypes
+    in
+    add_triples_if_new (add_triples_if_new g sub_triples) dt_triples
+
 // Apply all OWL-RL rules once. Ordering: first do "axiom-introducing" rules
 // (equivalentClass/Property expansion, owl:inverseOf flip, symmetric/
 // transitive), then sameAs rules. The fixpoint loop re-applies them until
@@ -2463,7 +2616,10 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   let g22 = owl_rule_property_chain_2 g21 in
   let g23 = owl_rule_chain_to_transitive g22 in
   let g24 = owl_rule_named_sameAs_to_equivClass g23 in
-  g24
+  // Tier-3: XSD datatype hierarchy + rdfs:Datatype axioms (gated on the
+  // graph mentioning any XSD IRI). Targets WebOnt-I5.8-006/008/009/011.
+  let g25 = owl_rule_xsd_datatype_axioms g24 in
+  g25
 
 // Interleaved OWL-RL + RDFS fixpoint. RDFS rules run every iteration so
 // that triples introduced by cls-eqc1/2 and prp-eqp1/2 get propagated
@@ -2472,12 +2628,13 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
 let rec owl_rl_closure (g : rdf_graph) (fuel : nat) : Tot rdf_graph (decreases fuel) =
   match fuel with
   | 0 -> g
-  | n ->
+  | _ ->
+    let next_fuel : nat = fuel - 1 in
     let g_owl = owl_rl_closure_step g in
     let g_rdfs = rdfs_closure_step g_owl in
     if graph_len g_rdfs = graph_len g
     then g
-    else owl_rl_closure g_rdfs (n - 1)
+    else owl_rl_closure g_rdfs next_fuel
 
 // ---- Group E: owl:Thing / owl:Nothing universal axioms --------------------
 //
