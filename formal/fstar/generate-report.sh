@@ -240,9 +240,12 @@ ROW
 SPARQL_ROWS_HTML=$(emit_suite_rows "$SPARQL_SUITES")
 RDF_ROWS_HTML=$(emit_suite_rows "$RDF_SUITES")
 
-# --- OWL 2 RL panel ---------------------------------------------------------
+# --- OWL 2 panel ---------------------------------------------------------
 # Distinct corpus, distinct denominator; deliberately NOT folded into the
-# SPARQL/RDF totals tiles.
+# SPARQL/RDF totals tiles. profile-RL gets actual pass/fail from
+# owl_runner; other OWL 2 catalogs are listed as "skipped for now" with
+# rationale, so the user can see the full W3C OWL 2 Test Cases footprint
+# we've vendored and what we're NOT yet exercising.
 if [ "$OWL_PRESENT" -eq 1 ]; then
   if [ "$OWL_TOTAL" -gt 0 ]; then
     OWL_BAR_PCT=$(awk -v p="$OWL_PASS" -v t="$OWL_TOTAL" 'BEGIN{printf "%.0f", 100*p/t}')
@@ -256,33 +259,83 @@ if [ "$OWL_PRESENT" -eq 1 ]; then
   else
     OWL_BAR_CLASS="mixed"
   fi
-  OWL_HTML=$(cat <<OWLEOF
-<h2>OWL 2 RL <span class="inline-numbers">${OWL_PASS} pass · ${OWL_FAIL} fail &middot; PositiveEntailmentTests @ profile-RL</span></h2>
+else
+  OWL_BAR_PCT=0; OWL_BAR_CLASS="skipped"
+  OWL_PASS=0; OWL_FAIL=0; OWL_TOTAL=0
+fi
+
+# Deferred-category counts are the `<test:TestCase>` occurrences in each
+# vendored OWL 2 Test Cases catalog file (Agent D scoping on 2026-04-24).
+# Compute fresh so the numbers never go stale.
+OWL_DIR="$SCRIPT_DIR/../../third_party/testing/owl"
+count_testcases () {
+  local f="$1"
+  if [ -f "$f" ]; then
+    grep -c "test:TestCase" "$f" 2>/dev/null || echo 0
+  else
+    echo 0
+  fi
+}
+OWL_EL_N=$(count_testcases "$OWL_DIR/profile-EL.rdf")
+OWL_QL_N=$(count_testcases "$OWL_DIR/profile-QL.rdf")
+OWL_RL_CATALOG_N=$(count_testcases "$OWL_DIR/profile-RL.rdf")
+OWL_SEMDL_N=$(count_testcases "$OWL_DIR/semantics-direct.rdf")
+OWL_SYNDL_N=$(count_testcases "$OWL_DIR/syntax-dl.rdf")
+OWL_TPE_N=$(count_testcases "$OWL_DIR/type-positive-entailment.rdf")
+OWL_TNE_N=$(count_testcases "$OWL_DIR/type-negative-entailment.rdf")
+OWL_TCON_N=$(count_testcases "$OWL_DIR/type-consistency.rdf")
+OWL_TINC_N=$(count_testcases "$OWL_DIR/type-inconsistency.rdf")
+
+emit_owl_skip_row () {
+  local name="$1" count="$2" reason="$3"
+  cat <<ROW
+  <div class="suite-row skipped">
+    <div class="suite-name">${name}</div>
+    <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
+    <div class="suite-numbers">
+      <span style="color:var(--muted)">&mdash;</span>
+      <small>${count} tests &middot; ${reason}</small>
+    </div>
+  </div>
+ROW
+}
+
+OWL_SKIP_ROWS=""
+OWL_SKIP_ROWS+="$(emit_owl_skip_row "profile-EL" "$OWL_EL_N"   "blocked on EL-profile closure rules")"$'\n'
+OWL_SKIP_ROWS+="$(emit_owl_skip_row "profile-QL" "$OWL_QL_N"   "blocked on QL-profile query rewrite")"$'\n'
+OWL_SKIP_ROWS+="$(emit_owl_skip_row "semantics-direct" "$OWL_SEMDL_N" "blocked on DL tableau (stage d/e)")"$'\n'
+OWL_SKIP_ROWS+="$(emit_owl_skip_row "syntax-dl" "$OWL_SYNDL_N" "blocked on DL syntactic-profile checker")"$'\n'
+OWL_SKIP_ROWS+="$(emit_owl_skip_row "type-positive-entailment" "$OWL_TPE_N" "blocked on closure-side bnode isomorphism")"$'\n'
+OWL_SKIP_ROWS+="$(emit_owl_skip_row "type-negative-entailment" "$OWL_TNE_N" "blocked on OWL negation support")"$'\n'
+OWL_SKIP_ROWS+="$(emit_owl_skip_row "type-consistency" "$OWL_TCON_N" "blocked on contradiction detection")"$'\n'
+OWL_SKIP_ROWS+="$(emit_owl_skip_row "type-inconsistency" "$OWL_TINC_N" "blocked on contradiction detection")"$'\n'
+
+OWL_HTML=$(cat <<OWLEOF
+<h2>OWL 2 <span class="inline-numbers">${OWL_PASS} pass &middot; ${OWL_FAIL} fail &middot; profile-RL PositiveEntailmentTests only</span></h2>
 <div class="suites">
   <div class="suite-row ${OWL_BAR_CLASS}">
-    <div class="suite-name">profile-RL</div>
+    <div class="suite-name">profile-RL PosEnt</div>
     <div class="suite-bar"><div class="fill" style="width:${OWL_BAR_PCT}%"></div></div>
     <div class="suite-numbers">
       <span class="p">${OWL_PASS}</span>/<span class="f">${OWL_FAIL}</span>
       <small>of ${OWL_TOTAL}</small>
     </div>
   </div>
-</div>
+${OWL_SKIP_ROWS}</div>
 <p style="margin: 0.3em 0 1em; color: var(--muted); font-size: 0.85em;">
-  <strong>OWL 2 RL (W3C conformance):</strong>
-  ${OWL_PASS} / ${OWL_TOTAL} PositiveEntailmentTests pass, sourced from
-  <code>third_party/testing/owl/profile-RL.rdf</code>. Runs
-  <code>owl_rl_closure_with_reflexivity</code> (fuel 100) on each premise
-  and checks simple entailment of the conclusion into the closure. Bnode
-  matching is relaxed (structural positions only); full bnode isomorphism
-  deferred. Corpus is distinct from the SPARQL/RDF tables above —
-  denominators are not combined.
+  <strong>OWL 2 (W3C conformance):</strong>
+  We vendor the full W3C OWL 2 Test Cases at
+  <code>third_party/testing/owl/</code> (10 catalog files, ~2500
+  <code>test:TestCase</code> entries after overlap). Only <em>profile-RL
+  PositiveEntailmentTests</em> are wired right now: the runner applies
+  <code>owl_rl_closure_with_reflexivity</code> (fuel 100) and checks the
+  conclusion's triples against the closure (relaxed bnode match). The
+  other OWL 2 categories are <em>skipped for now</em>&mdash;blocked on
+  completing the RDF/S and SPARQL entailment baselines above. Counts
+  are live from the vendored catalogs, not stale snapshots.
 </p>
 OWLEOF
 )
-else
-  OWL_HTML="<!-- OWL 2 RL results not available: $OWL_LOG missing -->"
-fi
 
 [ -n "$GIT_SUBJECT" ] && GIT_SUBJECT_LINE=" — &ldquo;${GIT_SUBJECT}&rdquo;" || GIT_SUBJECT_LINE=""
 

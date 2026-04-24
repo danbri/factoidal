@@ -487,26 +487,92 @@
       </div>
 </div>
 
-<h2>OWL 2 RL <span class="inline-numbers">3 pass · 27 fail &middot; PositiveEntailmentTests @ profile-RL</span></h2>
+<h2>OWL 2 <span class="inline-numbers">3 pass &middot; 27 fail &middot; profile-RL PositiveEntailmentTests only</span></h2>
 <div class="suites">
   <div class="suite-row mixed">
-    <div class="suite-name">profile-RL</div>
+    <div class="suite-name">profile-RL PosEnt</div>
     <div class="suite-bar"><div class="fill" style="width:10%"></div></div>
     <div class="suite-numbers">
       <span class="p">3</span>/<span class="f">27</span>
       <small>of 30</small>
     </div>
   </div>
+  <div class="suite-row skipped">
+    <div class="suite-name">profile-EL</div>
+    <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
+    <div class="suite-numbers">
+      <span style="color:var(--muted)">&mdash;</span>
+      <small>174 tests &middot; blocked on EL-profile closure rules</small>
+    </div>
+  </div>
+  <div class="suite-row skipped">
+    <div class="suite-name">profile-QL</div>
+    <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
+    <div class="suite-numbers">
+      <span style="color:var(--muted)">&mdash;</span>
+      <small>130 tests &middot; blocked on QL-profile query rewrite</small>
+    </div>
+  </div>
+  <div class="suite-row skipped">
+    <div class="suite-name">semantics-direct</div>
+    <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
+    <div class="suite-numbers">
+      <span style="color:var(--muted)">&mdash;</span>
+      <small>976 tests &middot; blocked on DL tableau (stage d/e)</small>
+    </div>
+  </div>
+  <div class="suite-row skipped">
+    <div class="suite-name">syntax-dl</div>
+    <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
+    <div class="suite-numbers">
+      <span style="color:var(--muted)">&mdash;</span>
+      <small>646 tests &middot; blocked on DL syntactic-profile checker</small>
+    </div>
+  </div>
+  <div class="suite-row skipped">
+    <div class="suite-name">type-positive-entailment</div>
+    <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
+    <div class="suite-numbers">
+      <span style="color:var(--muted)">&mdash;</span>
+      <small>412 tests &middot; blocked on closure-side bnode isomorphism</small>
+    </div>
+  </div>
+  <div class="suite-row skipped">
+    <div class="suite-name">type-negative-entailment</div>
+    <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
+    <div class="suite-numbers">
+      <span style="color:var(--muted)">&mdash;</span>
+      <small>46 tests &middot; blocked on OWL negation support</small>
+    </div>
+  </div>
+  <div class="suite-row skipped">
+    <div class="suite-name">type-consistency</div>
+    <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
+    <div class="suite-numbers">
+      <span style="color:var(--muted)">&mdash;</span>
+      <small>708 tests &middot; blocked on contradiction detection</small>
+    </div>
+  </div>
+  <div class="suite-row skipped">
+    <div class="suite-name">type-inconsistency</div>
+    <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
+    <div class="suite-numbers">
+      <span style="color:var(--muted)">&mdash;</span>
+      <small>256 tests &middot; blocked on contradiction detection</small>
+    </div>
+  </div>
 </div>
 <p style="margin: 0.3em 0 1em; color: var(--muted); font-size: 0.85em;">
-  <strong>OWL 2 RL (W3C conformance):</strong>
-  3 / 30 PositiveEntailmentTests pass, sourced from
-  <code>third_party/testing/owl/profile-RL.rdf</code>. Runs
-  <code>owl_rl_closure_with_reflexivity</code> (fuel 100) on each premise
-  and checks simple entailment of the conclusion into the closure. Bnode
-  matching is relaxed (structural positions only); full bnode isomorphism
-  deferred. Corpus is distinct from the SPARQL/RDF tables above —
-  denominators are not combined.
+  <strong>OWL 2 (W3C conformance):</strong>
+  We vendor the full W3C OWL 2 Test Cases at
+  <code>third_party/testing/owl/</code> (10 catalog files, ~2500
+  <code>test:TestCase</code> entries after overlap). Only <em>profile-RL
+  PositiveEntailmentTests</em> are wired right now: the runner applies
+  <code>owl_rl_closure_with_reflexivity</code> (fuel 100) and checks the
+  conclusion's triples against the closure (relaxed bnode match). The
+  other OWL 2 categories are <em>skipped for now</em>&mdash;blocked on
+  completing the RDF/S and SPARQL entailment baselines above. Counts
+  are live from the vendored catalogs, not stale snapshots.
 </p>
 
 <details>
@@ -586,9 +652,9 @@
 </main>
 
 <footer>
-  Generated <strong>2026-04-24 16:26 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/59c3af3a3495ab53026aa8cd3a22fb24b53b8cd6">59c3af3</a></code>
-  on branch <code>claude/main</code> — &ldquo;sparql-service: add SPARQL.HTTP.Client + OCaml socket glue (Phase 0)&rdquo;.
+  Generated <strong>2026-04-24 17:08 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/ff5edd161aa6dc642200a7ca1979281755f48010">ff5edd1</a></code>
+  on branch <code>claude/main</code> — &ldquo;pages: pass-through test-results dir + add link-integrity check script&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
