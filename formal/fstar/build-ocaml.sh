@@ -277,10 +277,25 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   cat _ocamlopt_factoidal_http.log
   echo "  Built: bin/${PLATFORM}/factoidal-http ($(wc -c < "$BINDIR/factoidal-http") bytes)"
 
+  # owl_runner — OWL 2 Test Cases runner (Phase 0 skeleton: reads a
+  # W3C OWL test catalog via Parser_RDFXML, prints per-test identifier
+  # + types, emits final count. No reasoning wired yet.
+  # See docs/designissues/2026-04-24-owl-test-harness.md.
+  run_with_heartbeat "ocamlopt owl_runner" "_ocamlopt_owl_runner.log" -- \
+    ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+    $STATIC_FLAGS \
+    $COMMON_MODULES \
+    $PARQUET_NATIVE_STUBS \
+    owl_runner.ml \
+    -o "$BINDIR/owl_runner"
+  cat _ocamlopt_owl_runner.log
+  echo "  Built: bin/${PLATFORM}/owl_runner ($(wc -c < "$BINDIR/owl_runner") bytes)"
+
   # Symlink current platform binaries for convenience (relative from ocaml-output/)
   ln -sf "../../../bin/${PLATFORM}/w3c_runner" w3c_runner
   ln -sf "../../../bin/${PLATFORM}/factoidal" factoidal
   ln -sf "../../../bin/${PLATFORM}/factoidal-http" factoidal-http
+  ln -sf "../../../bin/${PLATFORM}/owl_runner" owl_runner
 
   cd ..
   echo ""
