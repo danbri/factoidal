@@ -108,6 +108,25 @@ let rdf_type_iri : wf_iri =
   assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#type");
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 
+// Phase-5 additions: restriction class expressions.
+//   _:r a owl:Restriction ;
+//       owl:onProperty :p ;
+//       owl:someValuesFrom <filler> .
+// is rewritten, when _:r appears as the object of rdf:type, to
+//   ?x :p ?fresh . (expand <filler> as CE rooted at ?fresh)
+// See simple5.rq (someValuesFrom with unionOf filler).
+let owl_Restriction_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#Restriction");
+  "http://www.w3.org/2002/07/owl#Restriction"
+
+let owl_onProperty_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#onProperty");
+  "http://www.w3.org/2002/07/owl#onProperty"
+
+let owl_someValuesFrom_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#someValuesFrom");
+  "http://www.w3.org/2002/07/owl#someValuesFrom"
+
 // Prefix the w3c_runner uses when rewriting pattern bnodes to synthetic
 // variables under RDFS / OWL regimes (see w3c_runner.ml ~line 687).
 // The rewriter recognises subjects/objects of either shape:
@@ -414,11 +433,19 @@ let build_union_ggp (branch_bgps : list bgp) : group_graph_pattern =
 // order encountered.
 // ------------------------------------------------------------------
 
-type ce_combinator = | CE_Intersect | CE_Union
+// CE_SomeValuesFrom marks a bnode that is the subject of an
+// owl:someValuesFrom triple — the standard shape of an existential
+// restriction (`_:r a owl:Restriction ; owl:onProperty :p ;
+// owl:someValuesFrom <filler>`). The combinator carries no payload
+// here; onProperty / someValuesFrom triples are looked up on demand
+// from the BGP at expansion time, which keeps this type first-order
+// (and avoids a recursive type over pattern_term).
+type ce_combinator = | CE_Intersect | CE_Union | CE_SomeValuesFrom
 
 let combinator_of_pred (p : wf_iri) : option ce_combinator =
   if p = owl_intersectionOf_iri then Some CE_Intersect
   else if p = owl_unionOf_iri then Some CE_Union
+  else if p = owl_someValuesFrom_iri then Some CE_SomeValuesFrom
   else None
 
 let rec find_markers_acc (b : bgp) (acc : list (string & ce_combinator))
@@ -652,6 +679,38 @@ let rec expand_ce_subject
          | [g] -> g
          | g :: tl ->
            List.Tot.fold_left (fun acc br -> GP_Union acc br) g tl)
+    | Some (k, CE_SomeValuesFrom) ->
+      // Existential restriction: _:r owl:onProperty :p ;
+      //                            owl:someValuesFrom <filler> .
+      // Rewrite (subj rdf:type _:r) to
+      //   subj :p ?_sv_<k> . <filler expanded as CE rooted at ?_sv_<k>>
+      // The fresh variable name is derived from the restriction
+      // marker key, so two distinct restrictions in the same BGP get
+      // two distinct fresh variables (bnode ids are unique within
+      // a BGP). Leafs (named-class filler) expand via the default
+      // branch of expand_ce_subject — giving ?_sv_<k> rdf:type C.
+      let on_prop_opt  = bgp_find_first_obj b k owl_onProperty_iri in
+      let filler_opt   = bgp_find_first_obj b k owl_someValuesFrom_iri in
+      (match on_prop_opt, filler_opt with
+       | Some (PT_IRI p_iri), Some filler ->
+         let fresh_name : string = "_sv_" ^ k in
+         let fresh_subj : pattern_subject = PS_Var fresh_name in
+         let fresh_term : pattern_term    = PT_Var fresh_name in
+         // (subj p_iri ?fresh)
+         let prop_triple : triple_pattern =
+           { tp_s = subj; tp_p = PT_IRI p_iri; tp_o = fresh_term } in
+         let prop_ggp : group_graph_pattern = GP_BGP [prop_triple] in
+         // Expand the filler rooted at ?fresh.
+         let filler_ggp = expand_ce_subject b fresh_subj filler (n - 1) in
+         // Join the property triple with the filler expansion.
+         // join_ggps coalesces BGP+BGP into a single BGP, otherwise
+         // builds a GP_Join; either is semantically correct.
+         join_ggps [prop_ggp; filler_ggp]
+       | _, _ ->
+         // Malformed restriction (no onProperty, or a variable
+         // predicate we can't pin down): fall back to leaf. This is
+         // sound but won't bind anything useful.
+         GP_BGP (single_type_bgp subj op))
 
 // Top-level marker-set: the set of keys that are "top-level CE
 // markers reachable from ?x rdf:type m" — i.e. the object of some
@@ -701,13 +760,19 @@ let is_nested_bookkeeping
     let is_marker = List.Tot.existsb (fun (k', _) -> k' = sk) markers in
     let is_on_chain = List.Tot.mem sk all_chain_keys in
     // Marker-meta triples get stripped if the subject is a marker.
+    // owl:onProperty / owl:someValuesFrom / (rdf:type owl:Restriction)
+    // are stripped alongside intersectionOf / unionOf / owl:Class so
+    // that restriction CEs don't leak their bookkeeping into the
+    // residue BGP.
     let marker_meta =
       is_marker &&
       (p = owl_intersectionOf_iri ||
        p = owl_unionOf_iri ||
+       p = owl_onProperty_iri ||
+       p = owl_someValuesFrom_iri ||
        (p = rdf_type_iri &&
         (match tp.tp_o with
-         | PT_IRI oi -> oi = owl_Class_iri
+         | PT_IRI oi -> oi = owl_Class_iri || oi = owl_Restriction_iri
          | _ -> false))) in
     // Chain triples get stripped whenever the subject is on some
     // marker's rdf:first/rdf:rest chain. A subject can be BOTH a
