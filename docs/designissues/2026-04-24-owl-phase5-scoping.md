@@ -108,3 +108,89 @@ No `admit()`, no `--lax`. No edits to `OWL.QueryRewrite.fst` or
 
 - `paper-sparqldl-Q3` — needs Tableau stage (c) cardinality.
 - Disjunction in query position — needs OWL-Direct tableau, not RL.
+
+## 2026-04-24 update — root cause found (the REAL reason simple 1..8 all fail)
+
+Ran the current `w3c_runner` binary and captured the post-rewrite BGPs
+via `FACTOIDAL_DEBUG_OWL_REWRITE=1`. The failure mode is NOT
+"rewriter handles flat but not nested". It's deeper:
+
+**The SPARQL parser emits `[ ... ]` bnode-with-properties as a TREE OF
+JOINS, not one BGP.** Observed on simple 1:
+
+```
+(join
+  [BGP: ?x type ?_bnode_c]
+  (join
+    [BGP: ?_bnode_c intersectionOf ?_bnode_list]
+    (join
+      [BGP: ?_bnode_list first :A ; rest ?_bnode_list2]
+      [BGP: ?_bnode_list2 first :B ; rest rdf:nil] )))
+```
+
+`OWL.QueryRewrite.rewrite_bgp_nested` operates on a SINGLE BGP. It
+never sees the intersectionOf marker alongside its consumer, so
+`find_markers` returns `[]` for each sub-BGP and the rewrite is a
+no-op. The debug log confirms: "rewrite changed pattern? **false**"
+for simple1/4/7 too — flat and nested alike. The Phase 3 "pass"
+attribution for simple1/4/Q2 in the session notes must have been
+observed in an earlier build before some other change split the
+BGPs, OR the parser has changed behaviour recently. **Current
+snapshot (commit 76a6ded binary): simple 1/2/3/4/5/6/7/8 all fail.**
+
+This means:
+- **My original Option B (`owl:equivalentClass` between data-side
+  restriction bnodes and canonicals) fixes nothing** — the query has
+  no data-side restriction bnode to bridge from; the entire CE lives
+  in the query and gets split into joined BGPs.
+- **The root fix must flatten joined BGPs before the rewriter runs**,
+  in `OWL.QueryRewrite.fst` (or in a pre-rewrite pass in
+  `OWL.QueryEval.fst`). That is out of scope for THIS commit — agent
+  `ad43763d` is in `OWL.QueryRewrite.fst` per the task description,
+  and `SPARQL11.Algebra.fst` is locked by another agent.
+
+### What I will still attempt in F\* closure-only work
+
+- **Add `cls-avf1` rule** for `allValuesFrom` (simple 6). Does not
+  depend on the rewriter. Harmless even if the rewriter fails to
+  produce matching query patterns (the rule only ADDS type-membership
+  triples the way `cls-svf2-qualified` does). If F\* verifies the
+  rule cleanly, commit it.
+
+### What I will NOT attempt
+
+- simple 2/3/5/8 — all blocked on the rewriter BGP-flattening fix.
+  Adding closure rules without the rewriter fix moves no tests.
+
+### Recommendation to the rewriter agent
+
+In `OWL.QueryRewrite.rewrite_ggp`, before delegating to
+`rewrite_bgp_nested`, walk the GGP tree and coalesce adjacent
+`GP_BGP` / `GP_Join` subtrees into a single BGP **when every leaf is
+a BGP**. That is sound under SPARQL semantics (join of BGPs is BGP
+concatenation) and exposes the cross-BGP `intersectionOf` /
+`unionOf` / `someValuesFrom` markers to the existing rewriter.
+
+```fstar
+// Sketch:
+let rec collect_bgp_leaves (g : group_graph_pattern)
+  : option bgp (* None if non-BGP/join leaf *) =
+  match g with
+  | GP_BGP b -> Some b
+  | GP_Join a b ->
+    (match collect_bgp_leaves a, collect_bgp_leaves b with
+     | Some ba, Some bb -> Some (List.Tot.append ba bb)
+     | _ -> None)
+  | _ -> None
+
+// in rewrite_ggp:
+match collect_bgp_leaves g with
+| Some merged -> rewrite_bgp_nested merged
+| None -> /* existing recursion */
+```
+
+This should unblock simple 1/4/7 immediately, then the existing
+machinery handles their body. simple 2 additionally needs the
+restriction-bnode case in `expand_ce_subject` (treat a bnode operand
+whose triples-in-BGP describe a Restriction as the canonical
+`__rl_svf_P__on__C` IRI).
