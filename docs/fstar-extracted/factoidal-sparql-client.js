@@ -476,11 +476,19 @@ function payloadsToTriG(payloads) {
       if (dirRE.test(line)) directives.add(line.trim());
       else bodyLines.push(line);
     });
-    blocks.push(
-      'GRAPH <' + p.graph + '> {\n' +
-      bodyLines.join('\n') +
-      '\n}\n'
-    );
+    // Payloads without a declared named-graph IRI drop into the
+    // default graph (bare braces in TriG — the triples section before
+    // any GRAPH block). This matches the `-d` fallback on the JS
+    // engine path.
+    if (p.graph) {
+      blocks.push(
+        'GRAPH <' + p.graph + '> {\n' +
+        bodyLines.join('\n') +
+        '\n}\n'
+      );
+    } else {
+      blocks.push(bodyLines.join('\n') + '\n');
+    }
   });
   return [...directives].join('\n') + '\n\n' + blocks.join('\n');
 }
@@ -1359,7 +1367,18 @@ class FactoidalSparqlClient extends HTMLElement {
       globalThis.jsoo_fs_tmp = payloads.map(p => ({ name: p.vfs, content: p.content }));
       globalThis.process = globalThis.process || {};
       const argv = ['node', 'factoidal'];
-      payloads.forEach(p => { argv.push('--named', p.graph + '=' + p.vfs); });
+      payloads.forEach(p => {
+        // If the src-data entry specifies a named-graph IRI, load it
+        // that way. Otherwise fall back to -d (default graph). The
+        // previous unconditional --named p.graph=... pushed the literal
+        // "undefined=..." for graph-less payloads, which caused the
+        // landing-page single-TTL demos to return 0 rows.
+        if (p.graph) {
+          argv.push('--named', p.graph + '=' + p.vfs);
+        } else {
+          argv.push('-d', p.vfs);
+        }
+      });
       argv.push('-e', queryText, '-o', 'json');
       // Forward the runtime Logic selection. factoidal CLI accepts
       // --entail {none|RDFS|OWL-RL} (case-insensitive). "none" is the
