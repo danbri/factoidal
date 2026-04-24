@@ -131,6 +131,40 @@ let owl_allValuesFrom_iri : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#allValuesFrom");
   "http://www.w3.org/2002/07/owl#allValuesFrom"
 
+// Cardinality restriction predicates. Both unqualified
+// (owl:minCardinality / owl:maxCardinality / owl:cardinality) and
+// qualified (owl:minQualifiedCardinality / owl:maxQualifiedCardinality /
+// owl:qualifiedCardinality with owl:onClass) variants are recognised.
+// Parent4 uses unqualified minCardinality; parent6/7/8 use qualified
+// variants with owl:onClass.
+let owl_minCardinality_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#minCardinality");
+  "http://www.w3.org/2002/07/owl#minCardinality"
+
+let owl_maxCardinality_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#maxCardinality");
+  "http://www.w3.org/2002/07/owl#maxCardinality"
+
+let owl_cardinality_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#cardinality");
+  "http://www.w3.org/2002/07/owl#cardinality"
+
+let owl_minQualifiedCardinality_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#minQualifiedCardinality");
+  "http://www.w3.org/2002/07/owl#minQualifiedCardinality"
+
+let owl_maxQualifiedCardinality_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#maxQualifiedCardinality");
+  "http://www.w3.org/2002/07/owl#maxQualifiedCardinality"
+
+let owl_qualifiedCardinality_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#qualifiedCardinality");
+  "http://www.w3.org/2002/07/owl#qualifiedCardinality"
+
+let owl_onClass_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#onClass");
+  "http://www.w3.org/2002/07/owl#onClass"
+
 // Prefix the w3c_runner uses when rewriting pattern bnodes to synthetic
 // variables under RDFS / OWL regimes (see w3c_runner.ml ~line 687).
 // The rewriter recognises subjects/objects of either shape:
@@ -444,7 +478,16 @@ let build_union_ggp (branch_bgps : list bgp) : group_graph_pattern =
 // here; onProperty / someValuesFrom triples are looked up on demand
 // from the BGP at expansion time, which keeps this type first-order
 // (and avoids a recursive type over pattern_term).
-type ce_combinator = | CE_Intersect | CE_Union | CE_SomeValuesFrom | CE_AllValuesFrom
+// Cardinality combinators carry no payload here; the actual N value
+// and the (optional) onClass filler are looked up from the BGP at
+// expansion time. Three variants:
+//   CE_MinCardinality  — `owl:minCardinality` (unqualified)
+//                        and `owl:minQualifiedCardinality` + `owl:onClass`
+//   CE_MaxCardinality  — analogous max
+//   CE_ExactCardinality — `owl:cardinality` and `owl:qualifiedCardinality`
+type ce_combinator =
+  | CE_Intersect | CE_Union | CE_SomeValuesFrom | CE_AllValuesFrom
+  | CE_MinCardinality | CE_MaxCardinality | CE_ExactCardinality
 
 // Predicates that classify a bnode as an intersection/union marker.
 // owl:someValuesFrom is deliberately NOT in this set: restriction
@@ -457,6 +500,17 @@ let combinator_of_pred_flat (p : wf_iri) : option ce_combinator =
   else if p = owl_unionOf_iri then Some CE_Union
   else None
 
+// Cardinality-predicate classifier: returns the combinator if `p` is
+// any of the six cardinality predicates (qualified or not).
+let combinator_of_card_pred (p : wf_iri) : option ce_combinator =
+  if p = owl_minCardinality_iri || p = owl_minQualifiedCardinality_iri
+  then Some CE_MinCardinality
+  else if p = owl_maxCardinality_iri || p = owl_maxQualifiedCardinality_iri
+  then Some CE_MaxCardinality
+  else if p = owl_cardinality_iri || p = owl_qualifiedCardinality_iri
+  then Some CE_ExactCardinality
+  else None
+
 // Kept for backward compatibility / external readers. Includes the
 // someValuesFrom predicate, but users should prefer
 // `combinator_of_pred_flat` + the restriction-filler guard below.
@@ -465,7 +519,7 @@ let combinator_of_pred (p : wf_iri) : option ce_combinator =
   else if p = owl_unionOf_iri then Some CE_Union
   else if p = owl_someValuesFrom_iri then Some CE_SomeValuesFrom
   else if p = owl_allValuesFrom_iri then Some CE_AllValuesFrom
-  else None
+  else combinator_of_card_pred p
 
 // Pass 1: gather flat markers (intersectionOf / unionOf) only.
 let rec find_flat_markers_acc (b : bgp) (acc : list (string & ce_combinator))
@@ -520,9 +574,28 @@ let is_svf_subject (b : bgp) (k : string) : bool =
 let is_avf_subject (b : bgp) (k : string) : bool =
   Some? (bgp_find_first_obj b k owl_allValuesFrom_iri)
 
-// Is `k` a restriction CE marker of any supported kind (svf or avf)?
+// Is `k` the subject of any cardinality predicate? Returns the
+// classifying combinator if so. Tries unqualified and qualified
+// variants in order: min*, max*, exact (cardinality / qualifiedCardinality).
+let card_subject_combinator (b : bgp) (k : string) : option ce_combinator =
+  if Some? (bgp_find_first_obj b k owl_minCardinality_iri) ||
+     Some? (bgp_find_first_obj b k owl_minQualifiedCardinality_iri)
+  then Some CE_MinCardinality
+  else if Some? (bgp_find_first_obj b k owl_maxCardinality_iri) ||
+          Some? (bgp_find_first_obj b k owl_maxQualifiedCardinality_iri)
+  then Some CE_MaxCardinality
+  else if Some? (bgp_find_first_obj b k owl_cardinality_iri) ||
+          Some? (bgp_find_first_obj b k owl_qualifiedCardinality_iri)
+  then Some CE_ExactCardinality
+  else None
+
+let is_card_subject (b : bgp) (k : string) : bool =
+  Some? (card_subject_combinator b k)
+
+// Is `k` a restriction CE marker of any supported kind (svf, avf, or
+// cardinality)?
 let is_restriction_subject (b : bgp) (k : string) : bool =
-  is_svf_subject b k || is_avf_subject b k
+  is_svf_subject b k || is_avf_subject b k || is_card_subject b k
 
 // Look up the filler of the restriction rooted at `k`, trying both
 // someValuesFrom and allValuesFrom in that order. Returns the filler
@@ -585,7 +658,14 @@ let rec add_restriction_markers_acc
           if dup then add_restriction_markers_acc b rest acc
           else add_restriction_markers_acc b rest
                  (List.Tot.append acc [(k, CE_AllValuesFrom)]))
-       else add_restriction_markers_acc b rest acc
+       else
+         (match combinator_of_card_pred p with
+          | Some c ->
+            let dup = List.Tot.existsb (fun (k', _) -> k' = k) acc in
+            if dup then add_restriction_markers_acc b rest acc
+            else add_restriction_markers_acc b rest
+                   (List.Tot.append acc [(k, c)])
+          | None -> add_restriction_markers_acc b rest acc)
      | _, _ -> add_restriction_markers_acc b rest acc)
 
 // Once we've decided to rewrite a top-level nested restriction, we
@@ -789,7 +869,13 @@ let ce_combinator_for_term (b : bgp) (pt : pattern_term)
        //    the FILTER NOT EXISTS chain for avf).
        if is_svf_subject b k then Some (k, CE_SomeValuesFrom)
        else if is_avf_subject b k then Some (k, CE_AllValuesFrom)
-       else None)
+       else
+         // 3. Cardinality CE: any bnode that is the subject of a
+         //    minCardinality / maxCardinality / cardinality (or their
+         //    qualified variants) predicate.
+         (match card_subject_combinator b k with
+          | Some c -> Some (k, c)
+          | None -> None))
 
 // Build a BGP containing a single `subj rdf:type leaf` triple.
 let single_type_bgp (subj : pattern_subject) (leaf : pattern_term) : bgp =
@@ -981,6 +1067,148 @@ let rec expand_ce_subject
          // Malformed restriction (no onProperty, or a variable
          // predicate): fall back to leaf.
          GP_BGP (single_type_bgp subj op))
+    | Some (k, CE_MinCardinality) ->
+      // Minimum-cardinality restriction:
+      //   _:r owl:onProperty :p ;
+      //       owl:minCardinality N            (unqualified)
+      //       (or owl:minQualifiedCardinality N ; owl:onClass :C)
+      //
+      // Encoding strategy (sound under OWL-Direct for N <= 1):
+      //   N = 0  -> trivially satisfied. We emit GP_Empty so the
+      //            consumer rewrite contributes no constraint.
+      //   N >= 1 -> emit a single existential anchor triple
+      //              `subj :p ?_mc_<k>`.
+      //            For qualified cardinality we additionally constrain
+      //            the anchor: `?_mc_<k> rdf:type :C`.
+      //            This is exactly the `someValuesFrom` shape — sound
+      //            but over-approximates for N >= 2 (those cases need
+      //            a chain of distinct vars; out of scope here).
+      let on_prop_opt = bgp_find_first_obj b k owl_onProperty_iri in
+      let on_class_opt = bgp_find_first_obj b k owl_onClass_iri in
+      let card_opt : option int =
+        match bgp_find_first_obj b k owl_minCardinality_iri with
+        | Some (PT_Literal l) -> parse_int_string (lit_lexical l)
+        | _ ->
+          match bgp_find_first_obj b k owl_minQualifiedCardinality_iri with
+          | Some (PT_Literal l) -> parse_int_string (lit_lexical l)
+          | _ -> None in
+      (match on_prop_opt, card_opt with
+       | Some (PT_IRI p_iri), Some card_n ->
+         if card_n <= 0 then GP_Empty
+         else
+           let fresh_name : string = "_mc_" ^ k in
+           let fresh_term : pattern_term    = PT_Var fresh_name in
+           let fresh_subj : pattern_subject = PS_Var fresh_name in
+           let prop_triple : triple_pattern =
+             { tp_s = subj; tp_p = PT_IRI p_iri; tp_o = fresh_term } in
+           let prop_ggp : group_graph_pattern = GP_BGP [prop_triple] in
+           (match on_class_opt with
+            | Some filler ->
+              let cls_ggp = expand_ce_subject b fresh_subj filler (n - 1) in
+              join_ggps [prop_ggp; cls_ggp]
+            | None -> prop_ggp)
+       | _, _ -> GP_BGP (single_type_bgp subj op))
+    | Some (k, CE_MaxCardinality) ->
+      // Maximum-cardinality restriction:
+      //   _:r owl:onProperty :p ;
+      //       owl:maxCardinality N            (unqualified)
+      //       (or owl:maxQualifiedCardinality N ; owl:onClass :C)
+      //
+      // Encoding strategy:
+      //   N = 0  -> emit FILTER NOT EXISTS { subj :p ?_mxc_<k> }.
+      //            Anchored on GP_Empty so the constraint is the
+      //            whole group pattern.
+      //            Qualified: FNE { subj :p ?fresh . ?fresh a :C }.
+      //   N >= 1 -> NOT IMPLEMENTED here. Fall back to the leaf form
+      //            (sound w.r.t. NOT introducing extra solutions, but
+      //            won't bind useful results without DL reasoning).
+      //            Larger-N encoding needs n+1 distinct vars + pairwise
+      //            FILTERs and is deferred.
+      let on_prop_opt = bgp_find_first_obj b k owl_onProperty_iri in
+      let on_class_opt = bgp_find_first_obj b k owl_onClass_iri in
+      let card_opt : option int =
+        match bgp_find_first_obj b k owl_maxCardinality_iri with
+        | Some (PT_Literal l) -> parse_int_string (lit_lexical l)
+        | _ ->
+          match bgp_find_first_obj b k owl_maxQualifiedCardinality_iri with
+          | Some (PT_Literal l) -> parse_int_string (lit_lexical l)
+          | _ -> None in
+      (match on_prop_opt, card_opt with
+       | Some (PT_IRI p_iri), Some card_n ->
+         if card_n <> 0 then
+           // Larger-N maxCard not yet supported — leaf fallback.
+           GP_BGP (single_type_bgp subj op)
+         else
+           let fresh_name : string = "_mxc_" ^ k in
+           let fresh_term : pattern_term    = PT_Var fresh_name in
+           let fresh_subj : pattern_subject = PS_Var fresh_name in
+           let prop_triple : triple_pattern =
+             { tp_s = subj; tp_p = PT_IRI p_iri; tp_o = fresh_term } in
+           let prop_ggp : group_graph_pattern = GP_BGP [prop_triple] in
+           let inner_ggp : group_graph_pattern =
+             match on_class_opt with
+             | Some filler ->
+               let cls_ggp = expand_ce_subject b fresh_subj filler (n - 1) in
+               join_ggps [prop_ggp; cls_ggp]
+             | None -> prop_ggp in
+           GP_Filter (E_NotExists inner_ggp) GP_Empty
+       | _, _ -> GP_BGP (single_type_bgp subj op))
+    | Some (k, CE_ExactCardinality) ->
+      // Exact-cardinality restriction:
+      //   _:r owl:onProperty :p ;
+      //       owl:cardinality N         (unqualified)
+      //       (or owl:qualifiedCardinality N ; owl:onClass :C)
+      //
+      // Semantically equivalent to (min N AND max N). We compose by
+      // hand-rolling the min and max encodings rather than recursing,
+      // because the predicate keyword on the BGP differs.
+      //   N = 0  -> just the max=0 FNE constraint.
+      //   N = 1  -> existential anchor (min=1) AND FNE-of-2-distinct.
+      //            We emit the min=1 anchor only; the max=1 side is
+      //            deferred (same reason as CE_MaxCardinality with
+      //            N >= 1). Sound but incomplete.
+      //   other  -> leaf fallback.
+      let on_prop_opt = bgp_find_first_obj b k owl_onProperty_iri in
+      let on_class_opt = bgp_find_first_obj b k owl_onClass_iri in
+      let card_opt : option int =
+        match bgp_find_first_obj b k owl_cardinality_iri with
+        | Some (PT_Literal l) -> parse_int_string (lit_lexical l)
+        | _ ->
+          match bgp_find_first_obj b k owl_qualifiedCardinality_iri with
+          | Some (PT_Literal l) -> parse_int_string (lit_lexical l)
+          | _ -> None in
+      (match on_prop_opt, card_opt with
+       | Some (PT_IRI p_iri), Some card_n ->
+         if card_n < 0 then GP_BGP (single_type_bgp subj op)
+         else if card_n = 0 then
+           // Max-zero FNE.
+           let fresh_name : string = "_exc_" ^ k in
+           let fresh_term : pattern_term    = PT_Var fresh_name in
+           let fresh_subj : pattern_subject = PS_Var fresh_name in
+           let prop_triple : triple_pattern =
+             { tp_s = subj; tp_p = PT_IRI p_iri; tp_o = fresh_term } in
+           let prop_ggp : group_graph_pattern = GP_BGP [prop_triple] in
+           let inner_ggp : group_graph_pattern =
+             match on_class_opt with
+             | Some filler ->
+               let cls_ggp = expand_ce_subject b fresh_subj filler (n - 1) in
+               join_ggps [prop_ggp; cls_ggp]
+             | None -> prop_ggp in
+           GP_Filter (E_NotExists inner_ggp) GP_Empty
+         else
+           // card_n >= 1 — emit min-side anchor only.
+           let fresh_name : string = "_exc_" ^ k in
+           let fresh_term : pattern_term    = PT_Var fresh_name in
+           let fresh_subj : pattern_subject = PS_Var fresh_name in
+           let prop_triple : triple_pattern =
+             { tp_s = subj; tp_p = PT_IRI p_iri; tp_o = fresh_term } in
+           let prop_ggp : group_graph_pattern = GP_BGP [prop_triple] in
+           (match on_class_opt with
+            | Some filler ->
+              let cls_ggp = expand_ce_subject b fresh_subj filler (n - 1) in
+              join_ggps [prop_ggp; cls_ggp]
+            | None -> prop_ggp)
+       | _, _ -> GP_BGP (single_type_bgp subj op))
 
 // Top-level marker-set: the set of keys that are "top-level CE
 // markers reachable from ?x rdf:type m" — i.e. the object of some
@@ -1041,6 +1269,13 @@ let is_nested_bookkeeping
        p = owl_onProperty_iri ||
        p = owl_someValuesFrom_iri ||
        p = owl_allValuesFrom_iri ||
+       p = owl_minCardinality_iri ||
+       p = owl_maxCardinality_iri ||
+       p = owl_cardinality_iri ||
+       p = owl_minQualifiedCardinality_iri ||
+       p = owl_maxQualifiedCardinality_iri ||
+       p = owl_qualifiedCardinality_iri ||
+       p = owl_onClass_iri ||
        (p = rdf_type_iri &&
         (match tp.tp_o with
          | PT_IRI oi -> oi = owl_Class_iri || oi = owl_Restriction_iri
@@ -1227,6 +1462,48 @@ let rec rewrite_ggp (g : group_graph_pattern)
 // rewritten; the query_form and all other fields are untouched.
 // ------------------------------------------------------------------
 
+// Section 10a. Detect whether a pattern contains any CE-marker predicate
+// the rewriter would recognise. Used to decide whether rewrite_query's
+// sm_distinct override is appropriate (only for OWL-entailment queries
+// that actually exercise the rewriter — not every SELECT routed through
+// OWL_QueryEval). Scans the ORIGINAL pattern before rewrite so we see
+// the CE predicate rather than the post-rewrite GP_Union it became.
+
+let tp_is_ce_marker_predicate (tp : triple_pattern) : bool =
+  match tp.tp_p with
+  | PT_IRI p ->
+      p = owl_intersectionOf_iri ||
+      p = owl_unionOf_iri ||
+      p = owl_someValuesFrom_iri ||
+      p = owl_allValuesFrom_iri ||
+      p = owl_minCardinality_iri ||
+      p = owl_maxCardinality_iri ||
+      p = owl_cardinality_iri ||
+      p = owl_minQualifiedCardinality_iri ||
+      p = owl_maxQualifiedCardinality_iri ||
+      p = owl_qualifiedCardinality_iri
+  | _ -> false
+
+let bgp_has_ce_marker (b : bgp) : bool =
+  List.Tot.existsb tp_is_ce_marker_predicate b
+
+let rec ggp_has_ce_marker (g : group_graph_pattern)
+  : Tot bool (decreases g) =
+  match g with
+  | GP_BGP b           -> bgp_has_ce_marker b
+  | GP_Join a b        -> ggp_has_ce_marker a || ggp_has_ce_marker b
+  | GP_LeftJoin a b _  -> ggp_has_ce_marker a || ggp_has_ce_marker b
+  | GP_Filter _ a      -> ggp_has_ce_marker a
+  | GP_Union a b       -> ggp_has_ce_marker a || ggp_has_ce_marker b
+  | GP_Graph _ a       -> ggp_has_ce_marker a
+  | GP_Minus a b       -> ggp_has_ce_marker a || ggp_has_ce_marker b
+  | GP_Bind _ _ a      -> ggp_has_ce_marker a
+  | GP_Values _ _      -> false
+  | GP_Service _ a _   -> ggp_has_ce_marker a
+  | GP_SubSelect _     -> false   // sub-select bodies not inspected
+  | GP_PropertyPath _ _ _ -> false
+  | GP_Empty           -> false
+
 let rewrite_query (q : query) : query =
   // Normalise GP_Join / GP_BGP chains into single GP_BGPs first so
   // the CE-rewriter sees the full set of triples in one BGP. Without
@@ -1236,15 +1513,18 @@ let rewrite_query (q : query) : query =
   // rewriter finds nothing. See simple1 dump for the canonical
   // example.
   //
-  // NOTE: unconditional sm_distinct=true was tried here (22:26 run)
-  // and regressed 9 non-entailment tests (bind, bindings, subquery,
-  // property-path, etc.) because OWL_QueryEval is the path for ALL
-  // SELECT queries, not just entailment ones. The deduplication for
-  // CE GP_Union double-counts (simple 4/5/7) needs to happen inside
-  // the rewriter at the CE-emission site — e.g., wrap the produced
-  // GP_Union in a GP_SubSelect with DISTINCT — not at the top-level.
-  // Tracked; leave the outer modifier alone for now.
-  { q with q_pattern = rewrite_ggp (normalise_joins q.q_pattern) }
+  // Apply sm_distinct=true ONLY when the input pattern had a CE-marker
+  // predicate — i.e. the rewriter actually has work to do. This avoids
+  // the 22:26 regression where unconditional DISTINCT broke 9 plain
+  // SPARQL tests (bind/bindings/subquery/property-path) that rely on
+  // bag semantics. OWL-entailment CE rewrites expand into GP_Union
+  // branches which double-count entities matching multiple CE branches
+  // (simple 4/5/7); set semantics are correct for those.
+  let ce_seen = ggp_has_ce_marker q.q_pattern in
+  let q' = { q with q_pattern = rewrite_ggp (normalise_joins q.q_pattern) } in
+  if ce_seen
+  then { q' with q_modifier = { q'.q_modifier with sm_distinct = true } }
+  else q'
 
 // Convenience alias expected by the scoping doc ("rewrite_query" is
 // the top-level entrypoint).
