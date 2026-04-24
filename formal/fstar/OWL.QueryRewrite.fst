@@ -127,6 +127,10 @@ let owl_someValuesFrom_iri : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#someValuesFrom");
   "http://www.w3.org/2002/07/owl#someValuesFrom"
 
+let owl_allValuesFrom_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#allValuesFrom");
+  "http://www.w3.org/2002/07/owl#allValuesFrom"
+
 // Prefix the w3c_runner uses when rewriting pattern bnodes to synthetic
 // variables under RDFS / OWL regimes (see w3c_runner.ml ~line 687).
 // The rewriter recognises subjects/objects of either shape:
@@ -440,7 +444,7 @@ let build_union_ggp (branch_bgps : list bgp) : group_graph_pattern =
 // here; onProperty / someValuesFrom triples are looked up on demand
 // from the BGP at expansion time, which keeps this type first-order
 // (and avoids a recursive type over pattern_term).
-type ce_combinator = | CE_Intersect | CE_Union | CE_SomeValuesFrom
+type ce_combinator = | CE_Intersect | CE_Union | CE_SomeValuesFrom | CE_AllValuesFrom
 
 // Predicates that classify a bnode as an intersection/union marker.
 // owl:someValuesFrom is deliberately NOT in this set: restriction
@@ -460,6 +464,7 @@ let combinator_of_pred (p : wf_iri) : option ce_combinator =
   if p = owl_intersectionOf_iri then Some CE_Intersect
   else if p = owl_unionOf_iri then Some CE_Union
   else if p = owl_someValuesFrom_iri then Some CE_SomeValuesFrom
+  else if p = owl_allValuesFrom_iri then Some CE_AllValuesFrom
   else None
 
 // Pass 1: gather flat markers (intersectionOf / unionOf) only.
@@ -511,26 +516,55 @@ let rec find_flat_markers_acc (b : bgp) (acc : list (string & ce_combinator))
 let is_svf_subject (b : bgp) (k : string) : bool =
   Some? (bgp_find_first_obj b k owl_someValuesFrom_iri)
 
+// Is `k` the subject of ANY owl:allValuesFrom triple in `b`?
+let is_avf_subject (b : bgp) (k : string) : bool =
+  Some? (bgp_find_first_obj b k owl_allValuesFrom_iri)
+
+// Is `k` a restriction CE marker of any supported kind (svf or avf)?
+let is_restriction_subject (b : bgp) (k : string) : bool =
+  is_svf_subject b k || is_avf_subject b k
+
+// Look up the filler of the restriction rooted at `k`, trying both
+// someValuesFrom and allValuesFrom in that order. Returns the filler
+// pattern_term paired with the combinator telling the caller which
+// predicate matched.
+let restriction_filler (b : bgp) (k : string)
+  : option (pattern_term & ce_combinator) =
+  match bgp_find_first_obj b k owl_someValuesFrom_iri with
+  | Some f -> Some (f, CE_SomeValuesFrom)
+  | None ->
+    match bgp_find_first_obj b k owl_allValuesFrom_iri with
+    | Some f -> Some (f, CE_AllValuesFrom)
+    | None -> None
+
 // Does the restriction rooted at `k` have a filler that is itself
 // a CE bnode? (Nested case.)
 let restriction_has_nested_filler (b : bgp) (k : string) : bool =
-  match bgp_find_first_obj b k owl_someValuesFrom_iri with
+  match restriction_filler b k with
   | None -> false
-  | Some filler ->
+  | Some (filler, _) ->
     match pt_marker_key filler with
     | None -> false  // named IRI / literal / non-bnode-var filler
     | Some kf ->
       // filler is a bnode. CE-qualified iff flat marker OR itself a
-      // someValuesFrom subject.
+      // restriction (svf / avf) subject.
       let flat = find_flat_markers_acc b [] in
       List.Tot.existsb (fun (k', _) -> k' = kf) flat ||
-      is_svf_subject b kf
+      is_restriction_subject b kf
 
-// Scan the BGP for restriction bnodes (subjects of someValuesFrom)
-// and, for each, include as a marker iff its filler is nested. This
-// identifies the TOP-LEVEL restriction markers we want to rewrite
-// (but only those whose filler is another CE bnode — flat
-// restrictions like simple2 stay on the closure path).
+// Scan the BGP for restriction bnodes (subjects of someValuesFrom or
+// allValuesFrom) and, for each, include as a marker according to the
+// following discipline:
+//   * someValuesFrom with flat (named-class) filler -> NOT a marker
+//     (the closure's canonical-bnode materialisation is the correct
+//     path, see simple2).
+//   * someValuesFrom with nested (CE-bnode) filler -> CE_SomeValuesFrom
+//     marker (simple5 / simple8 case).
+//   * allValuesFrom (any filler, named class or nested) ->
+//     CE_AllValuesFrom marker. The closure's `owl_rule_cls_avf1` only
+//     propagates types onto y's; it never marks x as a member of the
+//     restriction class. So the rewriter must always handle ?x queries
+//     against AVF restrictions.
 let rec add_restriction_markers_acc
           (b : bgp) (rem : bgp) (acc : list (string & ce_combinator))
   : Tot (list (string & ce_combinator)) (decreases rem) =
@@ -546,6 +580,11 @@ let rec add_restriction_markers_acc
           then add_restriction_markers_acc b rest
                  (List.Tot.append acc [(k, CE_SomeValuesFrom)])
           else add_restriction_markers_acc b rest acc)
+       else if p = owl_allValuesFrom_iri then
+         (let dup = List.Tot.existsb (fun (k', _) -> k' = k) acc in
+          if dup then add_restriction_markers_acc b rest acc
+          else add_restriction_markers_acc b rest
+                 (List.Tot.append acc [(k, CE_AllValuesFrom)]))
        else add_restriction_markers_acc b rest acc
      | _, _ -> add_restriction_markers_acc b rest acc)
 
@@ -562,10 +601,10 @@ let rec add_inner_restrictions_acc
   | 0, _ -> acc
   | _, [] -> acc
   | n, k :: rest ->
-    // Look at this marker's someValuesFrom filler.
-    (match bgp_find_first_obj b k owl_someValuesFrom_iri with
+    // Look at this marker's restriction filler (svf or avf).
+    (match restriction_filler b k with
      | None -> add_inner_restrictions_acc b rest acc (n - 1)
-     | Some filler ->
+     | Some (filler, _) ->
        match pt_marker_key filler with
        | None -> add_inner_restrictions_acc b rest acc (n - 1)
        | Some kf ->
@@ -573,10 +612,16 @@ let rec add_inner_restrictions_acc
            List.Tot.existsb (fun (k', _) -> k' = kf) acc in
          if already then add_inner_restrictions_acc b rest acc (n - 1)
          else if is_svf_subject b kf then
-           // kf is an inner restriction — mark it and keep walking.
+           // kf is an inner svf restriction — mark it and keep walking.
            add_inner_restrictions_acc b
              (List.Tot.append rest [kf])
              (List.Tot.append acc [(kf, CE_SomeValuesFrom)])
+             (n - 1)
+         else if is_avf_subject b kf then
+           // kf is an inner avf restriction — mark it and keep walking.
+           add_inner_restrictions_acc b
+             (List.Tot.append rest [kf])
+             (List.Tot.append acc [(kf, CE_AllValuesFrom)])
              (n - 1)
          else add_inner_restrictions_acc b rest acc (n - 1))
 
@@ -592,6 +637,7 @@ let find_markers (b : bgp) : list (string & ce_combinator) =
     List.Tot.fold_left
       (fun acc (k, c) -> match c with
                         | CE_SomeValuesFrom -> List.Tot.append acc [k]
+                        | CE_AllValuesFrom  -> List.Tot.append acc [k]
                         | _ -> acc)
       []
       withr in
@@ -736,11 +782,13 @@ let ce_combinator_for_term (b : bgp) (pt : pattern_term)
     (match lookup flat with
      | Some c -> Some (k, c)
      | None ->
-       // 2. Restriction CE: any bnode with a someValuesFrom triple.
-       //    Named-class fillers still reach here during nested
-       //    expansion, and we expand them too (resulting in a simple
-       //    `?_sv_k rdf:type C` leaf).
+       // 2. Restriction CE: any bnode with a someValuesFrom or
+       //    allValuesFrom triple. Named-class fillers still reach here
+       //    during nested expansion, and we expand them too (resulting
+       //    in a simple `?_sv_k rdf:type C` leaf in the svf case, or
+       //    the FILTER NOT EXISTS chain for avf).
        if is_svf_subject b k then Some (k, CE_SomeValuesFrom)
+       else if is_avf_subject b k then Some (k, CE_AllValuesFrom)
        else None)
 
 // Build a BGP containing a single `subj rdf:type leaf` triple.
@@ -858,6 +906,81 @@ let rec expand_ce_subject
          // predicate we can't pin down): fall back to leaf. This is
          // sound but won't bind anything useful.
          GP_BGP (single_type_bgp subj op))
+    | Some (k, CE_AllValuesFrom) ->
+      // Universal restriction: _:r owl:onProperty :p ;
+      //                          owl:allValuesFrom <filler> .
+      // Rewrite (subj rdf:type _:r) to a FILTER NOT EXISTS chain:
+      //   subj :p ?_av_anchor_<k> .
+      //   FILTER NOT EXISTS {
+      //     subj :p ?_av_bad_<k> .
+      //     <per filler-branch> FILTER NOT EXISTS { ?bad rdf:type Ci }
+      //   }
+      //
+      // Semantics: the anchor triple asserts "subj has at least one
+      // :p-link" (tests' convention: excludes vacuous-true subjects).
+      // The outer FNE asserts "no y exists that is :p-linked AND is
+      // not a member of any branch of the filler."
+      //
+      // Supported fillers for the FNE-chain inversion:
+      //   * named class C         -> one FNE branch {?bad a C}
+      //   * owl:unionOf (C1..Cn)  -> n FNE branches, one per operand
+      // For other shapes (intersectionOf, nested restrictions) we
+      // fall back to the leaf form (unchanged bnode object of type),
+      // which is sound but won't bind anything useful. Extending to
+      // more shapes is Phase 6.
+      let on_prop_opt  = bgp_find_first_obj b k owl_onProperty_iri in
+      let filler_opt   = bgp_find_first_obj b k owl_allValuesFrom_iri in
+      (match on_prop_opt, filler_opt with
+       | Some (PT_IRI p_iri), Some filler ->
+         let anchor_name : string = "_av_anchor_" ^ k in
+         let bad_name    : string = "_av_bad_"    ^ k in
+         let anchor_term : pattern_term    = PT_Var anchor_name in
+         let bad_subj    : pattern_subject = PS_Var bad_name in
+         let bad_term    : pattern_term    = PT_Var bad_name in
+         // (subj p anchor)
+         let anchor_triple : triple_pattern =
+           { tp_s = subj; tp_p = PT_IRI p_iri; tp_o = anchor_term } in
+         let anchor_ggp : group_graph_pattern = GP_BGP [anchor_triple] in
+         // Inner pattern: (subj p bad)
+         let bad_triple : triple_pattern =
+           { tp_s = subj; tp_p = PT_IRI p_iri; tp_o = bad_term } in
+         let bad_bgp_ggp : group_graph_pattern = GP_BGP [bad_triple] in
+         // Branches list (pattern_terms): for named-class filler, a
+         // one-element list containing the filler itself. For unionOf,
+         // the operand list. Other CE shapes -> leaf fallback.
+         let branches_opt : option (list pattern_term) =
+           match ce_combinator_for_term b filler with
+           | None ->
+             // Leaf filler (named class / var / literal / non-CE bnode).
+             Some [filler]
+           | Some (kf, CE_Union) ->
+             extract_flat_union b kf
+           | _ ->
+             // Intersection / restriction fillers: not yet supported.
+             None in
+         (match branches_opt with
+          | None ->
+            // Unsupported filler shape. Sound fallback: leaf.
+            GP_BGP (single_type_bgp subj op)
+          | Some branches ->
+            // Wrap bad_bgp_ggp with successive FILTER NOT EXISTS
+            // for each branch Ci: FILTER NOT EXISTS { bad a Ci }.
+            let wrap_one (cur : group_graph_pattern) (branch : pattern_term)
+                         : group_graph_pattern =
+              // Use expand_ce_subject recursively so that a named
+              // class gets `bad a Ci` and a bnode branch (if we ever
+              // widen support) gets the right shape.
+              let branch_ggp = expand_ce_subject b bad_subj branch (n - 1) in
+              GP_Filter (E_NotExists branch_ggp) cur in
+            let fne_body : group_graph_pattern =
+              List.Tot.fold_left wrap_one bad_bgp_ggp branches in
+            let outer_fne_ggp : group_graph_pattern =
+              GP_Filter (E_NotExists fne_body) anchor_ggp in
+            outer_fne_ggp)
+       | _, _ ->
+         // Malformed restriction (no onProperty, or a variable
+         // predicate): fall back to leaf.
+         GP_BGP (single_type_bgp subj op))
 
 // Top-level marker-set: the set of keys that are "top-level CE
 // markers reachable from ?x rdf:type m" — i.e. the object of some
@@ -917,6 +1040,7 @@ let is_nested_bookkeeping
        p = owl_unionOf_iri ||
        p = owl_onProperty_iri ||
        p = owl_someValuesFrom_iri ||
+       p = owl_allValuesFrom_iri ||
        (p = rdf_type_iri &&
         (match tp.tp_o with
          | PT_IRI oi -> oi = owl_Class_iri || oi = owl_Restriction_iri
@@ -1111,6 +1235,15 @@ let rewrite_query (q : query) : query =
   // rdf:first/rdf:rest chain in different BGP leaves and the
   // rewriter finds nothing. See simple1 dump for the canonical
   // example.
+  //
+  // NOTE: unconditional sm_distinct=true was tried here (22:26 run)
+  // and regressed 9 non-entailment tests (bind, bindings, subquery,
+  // property-path, etc.) because OWL_QueryEval is the path for ALL
+  // SELECT queries, not just entailment ones. The deduplication for
+  // CE GP_Union double-counts (simple 4/5/7) needs to happen inside
+  // the rewriter at the CE-emission site — e.g., wrap the produced
+  // GP_Union in a GP_SubSelect with DISTINCT — not at the top-level.
+  // Tracked; leave the outer modifier alone for now.
   { q with q_pattern = rewrite_ggp (normalise_joins q.q_pattern) }
 
 // Convenience alias expected by the scoping doc ("rewrite_query" is
