@@ -130,19 +130,19 @@
 <div class="summary">
   <div class="tile ok">
     <div class="label">Pass</div>
-    <div class="value">1570</div>
+    <div class="value">1571</div>
   </div>
   <div class="tile err">
     <div class="label">Fail</div>
-    <div class="value">34</div>
+    <div class="value">29</div>
   </div>
   <div class="tile warn">
     <div class="label">Skipped</div>
-    <div class="value">58</div>
+    <div class="value">62</div>
   </div>
   <div class="tile">
     <div class="label">Pass / runnable</div>
-    <div class="value">97.9%<small> of 1604</small></div>
+    <div class="value">98.2%<small> of 1600</small></div>
   </div>
   <div class="tile">
     <div class="label">Total in suites</div>
@@ -159,7 +159,7 @@
   are linked below.
 </div>
 
-<h2>SPARQL 1.1 <span class="inline-numbers">543 pass · 30 fail · 58 skip</span></h2>
+<h2>SPARQL 1.1 <span class="inline-numbers">544 pass · 25 fail · 62 skip</span></h2>
 <div class="suites">
       <div class="suite-row perfect">
         <div class="suite-name">add</div>
@@ -283,10 +283,10 @@
       </div>
       <div class="suite-row mixed">
         <div class="suite-name">entailment</div>
-        <div class="suite-bar"><div class="fill" style="width:79%"></div></div>
+        <div class="suite-bar"><div class="fill" style="width:85%"></div></div>
         <div class="suite-numbers">
-          <span class="p">55</span>/<span class="f">15</span>
-          <small></small>
+          <span class="p">56</span>/<span class="f">10</span>
+          <small>skip 4</small>
         </div>
       </div>
       <div class="suite-row perfect">
@@ -504,7 +504,7 @@
 <details>
   <summary>Raw per-suite numbers</summary>
   <h3 style="font-size: 0.95em; margin: 0.8em 0 0.3em;">SPARQL 1.1</h3>
-  <pre>631 total: 543 pass, 30 fail, 58 skip, 0 unsupported
+  <pre>631 total: 544 pass, 25 fail, 62 skip, 0 unsupported
   add                                 pass:8 fail:0 skip:0 unsupported:0
   aggregates                          pass:46 fail:1 skip:0 unsupported:0
   basic-update                        pass:11 fail:2 skip:0 unsupported:0
@@ -520,7 +520,7 @@
   delete-insert                       pass:17 fail:0 skip:0 unsupported:0
   delete-where                        pass:6 fail:0 skip:0 unsupported:0
   drop                                pass:4 fail:0 skip:0 unsupported:0
-  entailment                          pass:55 fail:15 skip:0 unsupported:0
+  entailment                          pass:56 fail:10 skip:4 unsupported:0
   exists                              pass:6 fail:0 skip:0 unsupported:0
   functions                           pass:75 fail:0 skip:0 unsupported:0
   grouping                            pass:6 fail:0 skip:0 unsupported:0
@@ -564,9 +564,9 @@
 </main>
 
 <footer>
-  Generated <strong>2026-04-24 06:52 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/d9debf26c7f1f47a7af0346827b9f86a6e360031">d9debf2</a></code>
-  on branch <code>claude/main</code> — &ldquo;owl-rl: add cls-minc1-bridge / cls-svf2-qualified / cls-minc-qual1 rules (F*)&rdquo;.
+  Generated <strong>2026-04-24 10:14 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/b71369610b2aaa12cc910acd660a8ae53c91de34">b713696</a></code>
+  on branch <code>claude/main</code> — &ldquo;owl-dl: OWL.QueryRewrite Phase 4 — nested intersection/union&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 

@@ -236,99 +236,94 @@ Test base: third_party/testing/w3c/sparql/sparql11
 --- entailment ---
   PASS: bind01 - BIND fixed data for OWL DL
   PASS: bind02 - BIND fixed data for OWL DL
-  PASS: bind03 - BIND fixed data for OWL DL
+  PASS: bind03 - BIND fixed data for OWL DL (10ms)
   PASS: bind04 - BIND fixed data for OWL DL
   PASS: bind05 - BIND fixed data for OWL DL
   PASS: bind06 - BIND fixed data for OWL DL
-  PASS: bind07 - BIND fixed data for OWL DL
+  PASS: bind07 - BIND fixed data for OWL DL (10ms)
   PASS: bind08 - BIND fixed data for OWL DL
   PASS: D-Entailment test to show that  neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers
   PASS: Literal with language tag test
-  PASS: bnodes are not existentials
-  PASS: bnodes are not existentials with answer (13ms)
-  PASS: paper-sparqldl-Q1 (26ms)
+  PASS: bnodes are not existentials (18ms)
+  PASS: bnodes are not existentials with answer (36ms)
+  PASS: paper-sparqldl-Q1 (71ms)
   PASS: paper-sparqldl-Q1-rdfs
   FAIL: paper-sparqldl-Q2 — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?x=<http://example.org/John>, ?y="Johnnie"^^<http://www.w3.org/2001/XMLSchema#string> (58ms)
+      UNMATCHED: ?x=<http://example.org/John>, ?y="Johnnie"^^<http://www.w3.org/2001/XMLSchema#string> (166ms)
   FAIL: paper-sparqldl-Q3 — Results mismatch: expected 2 rows, got 0
       UNMATCHED: ?x=<http://example.org/John>
-      UNMATCHED: ?x=<http://example.org/person1> (60ms)
-  PASS: paper-sparqldl-Q4 (26ms)
-  PASS: paper-sparqldl-Q5 (27ms)
-  PASS: filtered subclass query with (hasChild some Thing) restriction (108ms)
-  PASS: parent query with distinguished variable (39ms)
-  PASS: parent query with (hasChild some Thing) restriction (107ms)
-  PASS: parent query with (hasChild min 1) restriction (109ms)
-  PASS: parent query with (hasChild some Female) restriction (108ms)
-  PASS: parent query with (hasChild min 1 Female) restriction (107ms)
-  FAIL: parent query with (hasChild max 1 Female) restriction — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?parent=<http://example.org/test#Dudley> (108ms)
-  FAIL: parent query with (hasChild exactly 1 Female) restriction — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?parent=<http://example.org/test#Dudley> (108ms)
-  PASS: subclass query with (hasChild some Thing) restriction (108ms)
+      UNMATCHED: ?x=<http://example.org/person1> (166ms)
+  PASS: paper-sparqldl-Q4 (71ms)
+  PASS: paper-sparqldl-Q5 (71ms)
+  PASS: filtered subclass query with (hasChild some Thing) restriction (315ms)
+  PASS: parent query with distinguished variable (117ms)
+  PASS: parent query with (hasChild some Thing) restriction (315ms)
+  PASS: parent query with (hasChild min 1) restriction (326ms)
+  PASS: parent query with (hasChild some Female) restriction (324ms)
+  PASS: parent query with (hasChild min 1 Female) restriction (317ms)
+  PASS: parent query with (hasChild max 1 Female) restriction (320ms)
+  PASS: parent query with (hasChild exactly 1 Female) restriction (315ms)
+  PASS: subclass query with (hasChild some Thing) restriction (328ms)
   PASS: Plain literals with language tag are not the same as the same literal without
   PASS: RDF inference test
   PASS: RDF inference test
   PASS: RDF test for blank node cardinalities
-  PASS: simple triple pattern match
-  PASS: RDFS inference test rdfs:subPropertyOf
-  PASS: RDFS inference test rdfs:subPropertyOf
+  PASS: simple triple pattern match (20ms)
+  PASS: RDFS inference test rdfs:subPropertyOf (25ms)
+  PASS: RDFS inference test rdfs:subPropertyOf (23ms)
   PASS: RDFS inference test combining subPropertyOf and domain
   PASS: RDFS inference test subClassOf
-  PASS: RDFS inference test subClassOf
-  PASS: RDFS inference test domain
-  PASS: RDFS inference test range (10ms)
+  PASS: RDFS inference test subClassOf (23ms)
+  PASS: RDFS inference test domain (22ms)
+  PASS: RDFS inference test range (31ms)
   PASS: RDFS inference test rdf:XMLLiteral subclass of rdfs:Literal
-  PASS: RDFS inference test transitivity of subClassOf
-  PASS: RDFS inference test transitivity of subPropertyOf (13ms)
+  PASS: RDFS inference test transitivity of subClassOf (13ms)
+  PASS: RDFS inference test transitivity of subPropertyOf (39ms)
   PASS: RDFS inference test subProperty and instances
   PASS: RDFS inference test containers
   PASS: RDFS inference test to show that neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers
-  FAIL: RIF Logical Entailment (referencing RIF XML) — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?nephew=<http://example.org/ns#Emeka>, ?uncle=<http://example.org/ns#Chijoke>
-  FAIL: RIF Core WG tests: Frames — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?discount="10"^^<http://www.w3.org/2001/XMLSchema#integer>
-  PASS: RIF Core WG tests: Modeling Brain Anatomy
-  PASS: RIF Core WG tests: RDF Combination Blank Node
+  skip: RIF Logical Entailment (referencing RIF XML) — RIF not implemented
+  skip: RIF Core WG tests: Frames — RIF not implemented
+  skip: RIF Core WG tests: Modeling Brain Anatomy — RIF not implemented
+  skip: RIF Core WG tests: RDF Combination Blank Node — RIF not implemented
   FAIL: simple 1 — Results mismatch: expected 2 rows, got 0
       UNMATCHED: ?x=<http://example.org/test#a>
-      UNMATCHED: ?x=<http://example.org/test#d> (40ms)
+      UNMATCHED: ?x=<http://example.org/test#d> (142ms)
   FAIL: simple 2 — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?x=<http://example.org/test#a> (40ms)
+      UNMATCHED: ?x=<http://example.org/test#a> (147ms)
   FAIL: simple 3 — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?x=<http://example.org/test#c> (41ms)
+      UNMATCHED: ?x=<http://example.org/test#c> (140ms)
   FAIL: simple 4 — Results mismatch: expected 4 rows, got 0
       UNMATCHED: ?x=<http://example.org/test#a>
       UNMATCHED: ?x=<http://example.org/test#b>
       UNMATCHED: ?x=<http://example.org/test#c>
-      UNMATCHED: ?x=<http://example.org/test#d> (39ms)
+      UNMATCHED: ?x=<http://example.org/test#d> (140ms)
   FAIL: simple 5 — Results mismatch: expected 2 rows, got 0
       UNMATCHED: ?x=<http://example.org/test#a>
-      UNMATCHED: ?x=<http://example.org/test#c> (41ms)
+      UNMATCHED: ?x=<http://example.org/test#c> (141ms)
   FAIL: simple 6 — Results mismatch: expected 3 rows, got 0
       UNMATCHED: ?x=<http://example.org/test#a>
       UNMATCHED: ?x=<http://example.org/test#b>
-      UNMATCHED: ?x=<http://example.org/test#c> (40ms)
+      UNMATCHED: ?x=<http://example.org/test#c> (140ms)
   FAIL: simple 7 — Results mismatch: expected 2 rows, got 0
       UNMATCHED: ?x=<http://example.org/test#a>
-      UNMATCHED: ?x=<http://example.org/test#d> (40ms)
+      UNMATCHED: ?x=<http://example.org/test#d> (143ms)
   FAIL: simple 8 — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?x=<http://example.org/test#b> (42ms)
-  PASS: sparqldl-01.rq: triple pattern
-  PASS: sparqldl-02.rq: simple combined query
-  PASS: sparqldl-03.rq: combined query with complex class description (14ms)
-  PASS: sparqldl-04.rq: bug fixing test
-  PASS: sparqldl-05.rq: simple undistinguished variable test.
-  PASS: sparqldl-06.rq: cycle of undistinguished variables (14ms)
-  PASS: sparqldl-07.rq: two distinguished variables + undist. (13ms)
-  PASS: sparqldl-08.rq: two distinguished variables + undist. (14ms)
-  PASS: sparqldl-09.rq: undist vars test (10ms)
-  PASS: sparqldl-10.rq: undist vars test
-  FAIL: sparqldl-11.rq: domain test — Results mismatch: expected 2 rows, got 1
-      UNMATCHED: ?C=<foo://bla/names#Parent> (30ms)
-  PASS: sparqldl-12.rq: range test (28ms)
-  PASS: sparqldl-13.rq: sameAs (11ms)
-  [suite time: 1.8s]
+      UNMATCHED: ?x=<http://example.org/test#b> (142ms)
+  PASS: sparqldl-01.rq: triple pattern (11ms)
+  PASS: sparqldl-02.rq: simple combined query (11ms)
+  PASS: sparqldl-03.rq: combined query with complex class description (40ms)
+  PASS: sparqldl-04.rq: bug fixing test (13ms)
+  PASS: sparqldl-05.rq: simple undistinguished variable test. (13ms)
+  PASS: sparqldl-06.rq: cycle of undistinguished variables (41ms)
+  PASS: sparqldl-07.rq: two distinguished variables + undist. (40ms)
+  PASS: sparqldl-08.rq: two distinguished variables + undist. (42ms)
+  PASS: sparqldl-09.rq: undist vars test (26ms)
+  PASS: sparqldl-10.rq: undist vars test (28ms)
+  PASS: sparqldl-11.rq: domain test (95ms)
+  PASS: sparqldl-12.rq: range test (96ms)
+  PASS: sparqldl-13.rq: sameAs (29ms)
+  [suite time: 5.2s]
 
 --- exists ---
   PASS: Exists with one constant
@@ -746,7 +741,7 @@ Suite Results:
   delete-insert                       pass:17 fail:0 skip:0 unsupported:0
   delete-where                        pass:6 fail:0 skip:0 unsupported:0
   drop                                pass:4 fail:0 skip:0 unsupported:0
-  entailment                          pass:55 fail:15 skip:0 unsupported:0
+  entailment                          pass:56 fail:10 skip:4 unsupported:0
   exists                              pass:6 fail:0 skip:0 unsupported:0
   functions                           pass:75 fail:0 skip:0 unsupported:0
   grouping                            pass:6 fail:0 skip:0 unsupported:0
@@ -766,5 +761,5 @@ Suite Results:
   syntax-update-2                     pass:1 fail:0 skip:0 unsupported:0
   update-silent                       pass:11 fail:0 skip:2 unsupported:0
 ========================================
-TOTAL: 543 pass, 30 fail, 58 skip, 0 unsupported
+TOTAL: 544 pass, 25 fail, 62 skip, 0 unsupported
 ========================================
