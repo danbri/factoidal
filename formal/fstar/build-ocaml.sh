@@ -55,6 +55,43 @@ OUTDIR=ocaml-output
 JSDIR=../../docs/fstar-extracted
 STEP="${1:-all}"
 
+# ---------------------------------------------------------------------------
+# run_with_heartbeat <label> <log-path> -- <command> [args...]
+#
+# Runs <command> in the background, redirecting all output to <log-path>,
+# and emits one progress line every 30s while the command is running. This
+# keeps long-silent verification/compile steps from tripping the subagent
+# stream watchdog (10-min idle ceiling) and gives humans a visible pulse
+# instead of a dead terminal. Returns the command's exit code.
+# ---------------------------------------------------------------------------
+run_with_heartbeat() {
+  local label="$1"; shift
+  local log="$1";   shift
+  # Expect the literal '--' separator next, then the command.
+  if [[ "${1:-}" != "--" ]]; then
+    echo "run_with_heartbeat: expected '--' before command" >&2
+    return 2
+  fi
+  shift
+  : > "$log"
+  "$@" > "$log" 2>&1 &
+  local pid=$!
+  local t0=$(date +%s)
+  # Heartbeat loop — one tick every 30s, until the child exits.
+  while kill -0 "$pid" 2>/dev/null; do
+    sleep 30
+    # Check again: if child exited during sleep, stop before emitting.
+    kill -0 "$pid" 2>/dev/null || break
+    local now=$(date +%s)
+    local elapsed=$(( now - t0 ))
+    local lines=$(wc -l < "$log" 2>/dev/null | tr -d ' ')
+    echo "      …${label} still running  (${elapsed}s elapsed, ${lines} log lines)"
+  done
+  local rc=0
+  wait "$pid" || rc=$?
+  return "$rc"
+}
+
 echo "=== F* → OCaml → JavaScript Pipeline ==="
 echo ""
 
@@ -95,9 +132,16 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     if [ -f "$fst" ]; then
       echo "    $fst"
       FSTAR_RC=0
-      FSTAR_OUT=$(fstar.exe --codegen OCaml --odir "$OUTDIR" "$fst" 2>&1) || FSTAR_RC=$?
-      echo "$FSTAR_OUT" | grep -E "Extracted|Error|error" || true
-      if ! echo "$FSTAR_OUT" | grep -q "^Extracted module"; then
+      # Run fstar.exe with a 30s heartbeat so (a) subagents that watch
+      # this script don't hit their stream-idle watchdog during modules
+      # that take 1-2 min to verify, and (b) humans see that something
+      # is still happening. Per-module log stays under $OUTDIR so it
+      # can be grepped later for diagnostics.
+      FSTAR_LOG="$OUTDIR/_fstar_${fst%.fst}.log"
+      run_with_heartbeat "fstar.exe $fst" "$FSTAR_LOG" -- \
+        fstar.exe --codegen OCaml --odir "$OUTDIR" "$fst" || FSTAR_RC=$?
+      grep -E "Extracted|Error|error" "$FSTAR_LOG" || true
+      if ! grep -q "^Extracted module" "$FSTAR_LOG"; then
         echo "  ERROR: $fst failed to extract! (exit code $FSTAR_RC)"
         EXTRACT_FAILED=1
       fi
@@ -201,30 +245,36 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # W3C test runner (reads real W3C manifests, calls F*-extracted code).
   # The Ballyhoo HDT/COTTAS runtime glue pulls in Unix (Unix.open_process_full,
   # etc.), so we now always link -package unix.
-  ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+  run_with_heartbeat "ocamlopt w3c_runner" "_ocamlopt_w3c_runner.log" -- \
+    ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
     $STATIC_FLAGS \
     $COMMON_MODULES \
     $PARQUET_NATIVE_STUBS \
     w3c_runner.ml \
     -o "$BINDIR/w3c_runner"
+  cat _ocamlopt_w3c_runner.log
   echo "  Built: bin/${PLATFORM}/w3c_runner ($(wc -c < "$BINDIR/w3c_runner") bytes)"
 
   # factoidal CLI (SPARQL query + RDF parsing tool)
-  ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+  run_with_heartbeat "ocamlopt factoidal" "_ocamlopt_factoidal.log" -- \
+    ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
     $STATIC_FLAGS \
     $COMMON_MODULES \
     $PARQUET_NATIVE_STUBS \
     factoidal_cli.ml \
     -o "$BINDIR/factoidal"
+  cat _ocamlopt_factoidal.log
   echo "  Built: bin/${PLATFORM}/factoidal ($(wc -c < "$BINDIR/factoidal") bytes)"
 
   # factoidal-http — SPARQL 1.1 Protocol server (native only; needs Unix)
-  ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+  run_with_heartbeat "ocamlopt factoidal-http" "_ocamlopt_factoidal_http.log" -- \
+    ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
     $STATIC_FLAGS \
     $COMMON_MODULES \
     $PARQUET_NATIVE_STUBS \
     factoidal_http.ml \
     -o "$BINDIR/factoidal-http"
+  cat _ocamlopt_factoidal_http.log
   echo "  Built: bin/${PLATFORM}/factoidal-http ($(wc -c < "$BINDIR/factoidal-http") bytes)"
 
   # Symlink current platform binaries for convenience (relative from ocaml-output/)
@@ -282,18 +332,22 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
   # resolve to *some* symbol, even though js_of_ocaml replaces it with
   # the JS shim at bundle time. The stub returns None and is never
   # actually executed in the JS build path.
-  ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
+  run_with_heartbeat "ocamlc w3c_runner.byte" "_ocamlc_w3c_runner.log" -- \
+    ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
     -custom parquet_zstd_stubs_jsoo.c \
     "${FSTAR_MODULES[@]}" \
     w3c_runner.ml \
-    -o w3c_runner.byte 2>&1 | grep -i error || true
+    -o w3c_runner.byte
+  grep -i error _ocamlc_w3c_runner.log || true
 
   # Build factoidal (query + parse CLI) bytecode for js_of_ocaml
-  ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
+  run_with_heartbeat "ocamlc factoidal.byte" "_ocamlc_factoidal.log" -- \
+    ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
     -custom parquet_zstd_stubs_jsoo.c \
     "${FSTAR_MODULES[@]}" \
     factoidal_cli.ml \
-    -o factoidal.byte 2>&1 | grep -i error || true
+    -o factoidal.byte
+  grep -i error _ocamlc_factoidal.log || true
 
   # Convert both to JS with zarith stubs. vendor/fzstd.umd.js is a
   # vendored MIT-licensed Zstandard decompressor (~8 KB) that registers
@@ -302,7 +356,8 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
   # are concatenated into the output by js_of_ocaml. Order matters:
   # fzstd.umd.js must come before parquet_zstd_stubs.js so the global
   # is defined when our shim's Requires: checks run at bundle load.
-  js_of_ocaml \
+  run_with_heartbeat "js_of_ocaml w3c-runner" "_jsoo_w3c_runner.log" -- \
+    js_of_ocaml \
     +zarith_stubs_js/biginteger.js \
     +zarith_stubs_js/runtime.js \
     fstar_int_stubs.js \
@@ -311,9 +366,11 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     vendor/fzstd.umd.js \
     parquet_zstd_stubs.js \
     w3c_runner.byte \
-    -o ../../../docs/fstar-extracted/w3c-runner.js 2>&1 | grep -v "Warning \[deprecated" | grep -v "^$" || true
+    -o ../../../docs/fstar-extracted/w3c-runner.js
+  grep -v "Warning \[deprecated" _jsoo_w3c_runner.log | grep -v "^$" || true
 
-  js_of_ocaml \
+  run_with_heartbeat "js_of_ocaml factoidal" "_jsoo_factoidal.log" -- \
+    js_of_ocaml \
     +zarith_stubs_js/biginteger.js \
     +zarith_stubs_js/runtime.js \
     fstar_int_stubs.js \
@@ -322,7 +379,8 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     vendor/fzstd.umd.js \
     parquet_zstd_stubs.js \
     factoidal.byte \
-    -o ../../../docs/fstar-extracted/factoidal.js 2>&1 | grep -v "Warning \[deprecated" | grep -v "^$" || true
+    -o ../../../docs/fstar-extracted/factoidal.js
+  grep -v "Warning \[deprecated" _jsoo_factoidal.log | grep -v "^$" || true
 
   echo "  Built: docs/fstar-extracted/w3c-runner.js ($(wc -c < ../../../docs/fstar-extracted/w3c-runner.js) bytes)"
   echo "  Built: docs/fstar-extracted/factoidal.js   ($(wc -c < ../../../docs/fstar-extracted/factoidal.js) bytes)"
@@ -347,15 +405,17 @@ if [[ "$STEP" == "wasm" ]]; then
     exit 1
   fi
   WASM_RC=0
-  wasm_of_ocaml compile \
+  run_with_heartbeat "wasm_of_ocaml w3c-runner" "_waoc_w3c_runner.log" -- \
+    wasm_of_ocaml compile \
     +zarith_stubs_js/biginteger.js \
     +zarith_stubs_js/runtime.js \
     wasm_runtime/zarith_runtime_wasm.js \
     wasm_runtime/zarith_runtime.wat \
     fstar_int_stubs.js \
     w3c_runner.byte \
-    -o ../../../docs/fstar-extracted/w3c-runner.wasm.js 2>&1 \
-    | grep -v "Warning \[deprecated" | grep -v "^$" || WASM_RC=$?
+    -o ../../../docs/fstar-extracted/w3c-runner.wasm.js \
+    || WASM_RC=$?
+  grep -v "Warning \[deprecated" _waoc_w3c_runner.log | grep -v "^$" || true
   if [[ -f ../../../docs/fstar-extracted/w3c-runner.wasm.js ]]; then
     # Patch the throwing stubs so init survives.
     python3 wasm_stub_shims.py ../../../docs/fstar-extracted/w3c-runner.wasm.js
@@ -391,15 +451,17 @@ if [[ "$STEP" == "wasm-factoidal" ]]; then
     exit 1
   fi
   WASM_RC=0
-  wasm_of_ocaml compile \
+  run_with_heartbeat "wasm_of_ocaml factoidal" "_waoc_factoidal.log" -- \
+    wasm_of_ocaml compile \
     +zarith_stubs_js/biginteger.js \
     +zarith_stubs_js/runtime.js \
     wasm_runtime/zarith_runtime_wasm.js \
     wasm_runtime/zarith_runtime.wat \
     fstar_int_stubs.js \
     factoidal.byte \
-    -o ../../../docs/fstar-extracted/factoidal.wasm.js 2>&1 \
-    | grep -v "Warning \[deprecated" | grep -v "^$" || WASM_RC=$?
+    -o ../../../docs/fstar-extracted/factoidal.wasm.js \
+    || WASM_RC=$?
+  grep -v "Warning \[deprecated" _waoc_factoidal.log | grep -v "^$" || true
   if [[ -f ../../../docs/fstar-extracted/factoidal.wasm.js ]]; then
     # Patch the throwing stubs so init survives.
     python3 wasm_stub_shims.py ../../../docs/fstar-extracted/factoidal.wasm.js

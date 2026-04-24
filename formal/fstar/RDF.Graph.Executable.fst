@@ -221,14 +221,21 @@ let rename_dataset_bnodes (prefix:string) (ds:rdf_dataset) : rdf_dataset =
     ds_named = List.Tot.map (rename_named_graph_bnodes prefix) ds.ds_named;
   }
 
-// Computes the set of all blank nodes in the graph
-let rec graph_bnodes (g:rdf_graph) : list bnode_id =
+// Computes the set of all blank nodes in the graph (subject then object per
+// triple, triples in graph order). Tail-recursive accumulator form — avoids
+// the cons-after-recurse + double-append that blew v8's stack on graphs with
+// many bnodes. `List.Tot.rev` at the base restores the original order.
+let rec graph_bnodes_acc (acc : list bnode_id) (g : rdf_graph)
+  : Tot (list bnode_id) (decreases g) =
   match g with
-  | [] -> []
+  | [] -> List.Tot.rev acc
   | hd :: tl ->
-      let nodes = match hd.s with | S_BNode id -> [id] | _ -> [] in
-      let obj_nodes = match hd.o with | T_BNode id -> [id] | _ -> [] in
-      nodes @ obj_nodes @ (graph_bnodes tl)
+      let acc1 = match hd.s with | S_BNode id -> id :: acc  | _ -> acc  in
+      let acc2 = match hd.o with | T_BNode id -> id :: acc1 | _ -> acc1 in
+      graph_bnodes_acc acc2 tl
+
+let graph_bnodes (g : rdf_graph) : list bnode_id =
+  graph_bnodes_acc [] g
 
 (** 6. Graph Operations **)
 
