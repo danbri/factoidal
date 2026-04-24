@@ -27,6 +27,7 @@ HISTORY_DIR="$OUTPUT_DIR/history"
 SPARQL_LOG="$OCAML_DIR/sparql_results.log"
 RDF_LOG="$OCAML_DIR/rdf_results.log"
 OWL_LOG="$OCAML_DIR/owl_profile_rl_results.log"
+RDFC10_LOG="$OCAML_DIR/rdfc10_results.log"
 
 mkdir -p "$OUTPUT_DIR" "$HISTORY_DIR"
 
@@ -34,14 +35,17 @@ case "$(uname -s)-$(uname -m)" in
   Darwin-arm64)
     RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/w3c_runner"
     OWL_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/owl_runner"
+    RDFC10_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/rdfc10_runner"
     ;;
   Linux-x86_64)
     RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/w3c_runner"
     OWL_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/owl_runner"
+    RDFC10_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/rdfc10_runner"
     ;;
   *)
     RUNNER="$OCAML_DIR/w3c_runner"
     OWL_RUNNER="$OCAML_DIR/owl_runner"
+    RDFC10_RUNNER="$OCAML_DIR/rdfc10_runner"
     ;;
 esac
 
@@ -61,6 +65,13 @@ if [ "$1" = "--run" ]; then
     echo "  done."
   else
     echo "  owl_runner not found at $OWL_RUNNER — skipping OWL 2 RL suite." >&2
+  fi
+  if [ -x "$RDFC10_RUNNER" ]; then
+    echo "Running RDFC-1.0 (RDF Dataset Canonicalization) suite…"
+    "$RDFC10_RUNNER" > "$RDFC10_LOG" 2>&1 || true
+    echo "  done."
+  else
+    echo "  rdfc10_runner not found at $RDFC10_RUNNER — skipping RDFC-1.0 suite." >&2
   fi
 fi
 
@@ -102,6 +113,28 @@ if [ -f "$OWL_LOG" ]; then
     OWL_PASS=${OWL_PASS:-0}
     OWL_FAIL=${OWL_FAIL:-0}
     OWL_TOTAL=${OWL_TOTAL:-0}
+  fi
+fi
+
+# --- RDFC-1.0 scoreboard (folded into the RDF table as suite "rdf-canon") ---
+# Score line in rdfc10_runner stdout:
+#   RDFC-1.0 tests: 0 pass, 67 fail, 22 stub (out of 89)
+# STUB = Map / Negative entries that aren't wired in Phase 0; we report them
+# in the `skip` column so they don't inflate the failure count, parallel to
+# how the SPARQL runner uses skip for unsupported test types.
+RDFC10_PASS=0; RDFC10_FAIL=0; RDFC10_SKIP=0; RDFC10_TOTAL=0; RDFC10_PRESENT=0
+if [ -f "$RDFC10_LOG" ]; then
+  RDFC10_LINE=$(grep -E '^RDFC-1\.0 tests:' "$RDFC10_LOG" | tail -1 || true)
+  if [ -n "$RDFC10_LINE" ]; then
+    RDFC10_PRESENT=1
+    RDFC10_PASS=$(echo  "$RDFC10_LINE" | sed -nE 's/.* ([0-9]+) pass.*/\1/p')
+    RDFC10_FAIL=$(echo  "$RDFC10_LINE" | sed -nE 's/.* ([0-9]+) fail.*/\1/p')
+    RDFC10_SKIP=$(echo  "$RDFC10_LINE" | sed -nE 's/.* ([0-9]+) stub.*/\1/p')
+    RDFC10_TOTAL=$(echo "$RDFC10_LINE" | sed -nE 's/.*out of ([0-9]+).*/\1/p')
+    RDFC10_PASS=${RDFC10_PASS:-0}
+    RDFC10_FAIL=${RDFC10_FAIL:-0}
+    RDFC10_SKIP=${RDFC10_SKIP:-0}
+    RDFC10_TOTAL=${RDFC10_TOTAL:-0}
   fi
 fi
 
@@ -147,6 +180,9 @@ CSV="$OUTPUT_DIR/latest.csv"
   }
   emit_csv_rows "$SPARQL_SUITES" sparql
   emit_csv_rows "$RDF_SUITES"    rdf
+  if [ "$RDFC10_PRESENT" -eq 1 ]; then
+    echo "${TIMESTAMP_HUMAN},${GIT_SHA_FULL},${GIT_BRANCH},rdf,rdf-canon,${RDFC10_PASS},${RDFC10_FAIL},${RDFC10_SKIP},0"
+  fi
 } > "$CSV"
 cp "$CSV" "$HISTORY_DIR/${TIMESTAMP_ISO}.csv"
 
@@ -239,6 +275,17 @@ ROW
 
 SPARQL_ROWS_HTML=$(emit_suite_rows "$SPARQL_SUITES")
 RDF_ROWS_HTML=$(emit_suite_rows "$RDF_SUITES")
+
+# RDFC-1.0 row for the RDF 1.1 panel.
+# rdfc10_runner emits a single labelled-totals line; synthesize the same
+# shape that emit_suite_rows expects so we share styling with the rest of
+# the suites.
+if [ "$RDFC10_PRESENT" -eq 1 ]; then
+  RDFC10_BLOB="  rdf-canon  pass:${RDFC10_PASS} fail:${RDFC10_FAIL} skip:${RDFC10_SKIP} unsupported:0"
+  RDFC10_ROW_HTML=$(emit_suite_rows "$RDFC10_BLOB")
+  RDF_ROWS_HTML="${RDF_ROWS_HTML}
+${RDFC10_ROW_HTML}"
+fi
 
 # --- OWL 2 panel ---------------------------------------------------------
 # Distinct corpus, distinct denominator; deliberately NOT folded into the

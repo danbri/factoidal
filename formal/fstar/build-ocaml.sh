@@ -293,11 +293,28 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   cat _ocamlopt_owl_runner.log
   echo "  Built: bin/${PLATFORM}/owl_runner ($(wc -c < "$BINDIR/owl_runner") bytes)"
 
+  # rdfc10_runner — RDF Dataset Canonicalization 1.0 (RDFC-1.0) runner.
+  # Phase 0 skeleton: parses third_party/testing/rdf-canon/tests/manifest.ttl
+  # via the F*-extracted Parser_Turtle, dispatches per test type, and
+  # runs a placeholder no-op canonicaliser so the score harness has
+  # something to wire to. The actual canonicalisation algorithm lands
+  # in F* per docs/designissues/2026-04-24-rdfc10-plan.md.
+  run_with_heartbeat "ocamlopt rdfc10_runner" "_ocamlopt_rdfc10_runner.log" -- \
+    ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+    $STATIC_FLAGS \
+    $COMMON_MODULES \
+    $PARQUET_NATIVE_STUBS \
+    rdfc10_runner.ml \
+    -o "$BINDIR/rdfc10_runner"
+  cat _ocamlopt_rdfc10_runner.log
+  echo "  Built: bin/${PLATFORM}/rdfc10_runner ($(wc -c < "$BINDIR/rdfc10_runner") bytes)"
+
   # Symlink current platform binaries for convenience (relative from ocaml-output/)
   ln -sf "../../../bin/${PLATFORM}/w3c_runner" w3c_runner
   ln -sf "../../../bin/${PLATFORM}/factoidal" factoidal
   ln -sf "../../../bin/${PLATFORM}/factoidal-http" factoidal-http
   ln -sf "../../../bin/${PLATFORM}/owl_runner" owl_runner
+  ln -sf "../../../bin/${PLATFORM}/rdfc10_runner" rdfc10_runner
 
   cd ..
   echo ""
