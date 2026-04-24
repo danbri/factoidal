@@ -211,6 +211,12 @@ type test_case = {
      Empty for all non-UPDATE tests. *)
   update_result_default_files : string list;
   update_result_named_files : (string * string) list;  (* (graph_iri, file_path) *)
+  (* For SPARQL 1.1 SERVICE federated-query tests: each `qt:serviceData`
+     in the action block carries an endpoint IRI (qt:endpoint) and a TTL
+     file (qt:data) representing the snapshot for that endpoint. The
+     runner registers these into the F* `service_endpoint_lookup` hook
+     (issue #57) before query evaluation, and clears after. *)
+  service_data : (string * string) list;  (* (endpoint_iri, ttl_file_path) *)
 }
 
 let mf_ns = "http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#"
@@ -336,11 +342,29 @@ let extract_test_cases manifest_dir graph =
            | _ -> None)
         | _ -> None
       ) ut_gd_objs in
-      (df, qt_named @ ut_named)
+      (* SPARQL 1.1 SERVICE: each qt:serviceData object is a bnode with
+         qt:endpoint (IRI) + qt:data (TTL file IRI). Issue #57. Glue,
+         not semantics — we just collect (endpoint_iri, file_path) pairs
+         here; registration into the F* hook happens in run_query_eval_test. *)
+      let sd_objs = find_objects graph subj (qt_ns ^ "serviceData") in
+      let sd_pairs = List.filter_map (fun d ->
+        let d_subj = match d with
+          | T_IRI i -> S_IRI i | T_BNode b -> S_BNode b
+          | _ -> S_IRI (term_to_str d) in
+        let ep_objs = find_objects graph d_subj (qt_ns ^ "endpoint") in
+        let data_objs = find_objects graph d_subj (qt_ns ^ "data") in
+        match ep_objs, data_objs with
+        | ep :: _, dt :: _ ->
+          let endpoint_iri = term_to_str ep in
+          let file = iri_to_local_path manifest_dir (term_to_str dt) in
+          Some (endpoint_iri, file)
+        | _ -> None
+      ) sd_objs in
+      (df, qt_named @ ut_named, sd_pairs)
     in
     (* Get action (blank node with qt:query or ut:request, qt:data, ut:data, ...) *)
     let action_objs = find_objects graph entry_subj (mf_ns ^ "action") in
-    let query_file, data_files, named_data_files = match action_objs with
+    let query_file, data_files, named_data_files, service_data = match action_objs with
       | action :: _ ->
         let action_subj = match action with
           | T_IRI i -> S_IRI i | T_BNode b -> S_BNode b | _ -> S_IRI (term_to_str action) in
@@ -351,9 +375,9 @@ let extract_test_cases manifest_dir graph =
           | q :: _ -> iri_to_local_path manifest_dir (term_to_str q)
           | [] -> iri_to_local_path manifest_dir (term_to_str action)
         in
-        let (df, ndf) = extract_data_and_graphdata action_subj in
-        (qf, df, ndf)
-      | [] -> ("", [], []) in
+        let (df, ndf, sd) = extract_data_and_graphdata action_subj in
+        (qf, df, ndf, sd)
+      | [] -> ("", [], [], []) in
 
     (* Get entailment regime (for rdf-mt tests and SPARQL entailment tests) *)
     let regime_objs = find_objects graph entry_subj (mf_ns ^ "entailmentRegime") in
@@ -437,7 +461,7 @@ let extract_test_cases manifest_dir graph =
         let ut_data = find_objects graph r_subj (ut_ns ^ "data") in
         let ut_gd = find_objects graph r_subj (ut_ns ^ "graphData") in
         if ut_data <> [] || ut_gd <> [] then
-          let (df, ndf) = extract_data_and_graphdata r_subj in
+          let (df, ndf, _sd) = extract_data_and_graphdata r_subj in
           (None, df, ndf)
         else
           (Some (iri_to_local_path manifest_dir (term_to_str r)), [], [])
@@ -445,7 +469,8 @@ let extract_test_cases manifest_dir graph =
 
     Some { name; test_type; test_type_detail; query_file;
            data_files; named_data_files; result_file; manifest_dir;
-           update_result_default_files; update_result_named_files }
+           update_result_default_files; update_result_named_files;
+           service_data }
   ) entry_nodes
 
 (* Extract mf:assumedTestBase from manifest graph, if present *)
@@ -626,6 +651,19 @@ let load_triples df =
     else parse_turtle_fstar content (Some base)
 
 let run_query_eval_test tc =
+  (* SPARQL 1.1 SERVICE federated query (issue #57). Register every
+     (endpoint_iri, ttl_file) pair from `qt:serviceData` into the F*
+     `service_endpoint_lookup` hook. The runner is the I/O glue: it
+     loads each TTL snapshot and stuffs it under the endpoint IRI; the
+     F* evaluator dispatches GP_Service through the resolver hook
+     (Phase 1 / Omicron). Always clear at start to avoid pollution
+     from a prior test that raised mid-run. *)
+  SPARQL11_Algebra.service_endpoint_clear ();
+  List.iter (fun (endpoint_iri, ttl_path) ->
+    let triples = load_triples ttl_path in
+    SPARQL11_Algebra.service_endpoint_register endpoint_iri triples
+  ) tc.service_data;
+
   (* Load default graph data *)
   let graph = List.fold_left (fun acc df ->
     acc @ load_triples df
