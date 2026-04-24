@@ -956,10 +956,14 @@ let run_query_eval_test tc =
        Pass
      | _ -> Pass)
   | Some rf when Filename.check_suffix rf ".ttl" ->
-    (* CONSTRUCT result: expected graph is a Turtle file. Parse it and
-       compare to the CONSTRUCT output as triple sets (bnode-lenient
-       via same normalisation as triple_sets_match below — inlined
-       here because that helper is defined later in the file). *)
+    (* Expected file is a Turtle file. Two interpretations:
+       (a) CONSTRUCT result: Turtle directly encodes the CONSTRUCT output.
+       (b) SELECT result encoded as rs:ResultSet (SPARQL Results in
+           Turtle form, §10.3 of the result-set spec) — some W3C SPARQL
+           tests (aggregates/agg-empty-group-count-graph,
+           bindings/graph) ship their expected rows this way.
+       Peek at the parsed triples for `rs:ResultSet` typing and route
+       accordingly. I/O glue, not semantic reasoning. *)
     let content = match read_file rf with
       | Some c -> c
       | None -> raise (Unsupported (Printf.sprintf "Result file not found: %s" rf)) in
@@ -967,6 +971,102 @@ let run_query_eval_test tc =
       Filename.concat (Sys.getcwd ()) rf else rf in
     let base = "file://" ^ abs_rf in
     let expected_triples = parse_turtle_fstar content (Some base) in
+    let rs_ns = "http://www.w3.org/2001/sw/DataAccess/tests/result-set#" in
+    let rs_ResultSet   = rs_ns ^ "ResultSet" in
+    let rs_resultVariable = rs_ns ^ "resultVariable" in
+    let rs_solution    = rs_ns ^ "solution" in
+    let rs_binding     = rs_ns ^ "binding" in
+    let rs_variable    = rs_ns ^ "variable" in
+    let rs_value       = rs_ns ^ "value" in
+    let rdf_type_iri   = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" in
+    let is_rs_resultset =
+      List.exists (fun t ->
+        t.RDF_Graph_Executable.p = rdf_type_iri &&
+        (match t.RDF_Graph_Executable.o with
+         | RDF_Graph_Executable.T_IRI i -> i = rs_ResultSet
+         | _ -> false))
+      expected_triples in
+    if is_rs_resultset then begin
+      (* Decode rs:ResultSet → (vars, rows) using direct triple walks. *)
+      let find_objects_match pred subj =
+        List.filter_map (fun t ->
+          if t.RDF_Graph_Executable.p = pred &&
+             (match subj, t.RDF_Graph_Executable.s with
+              | `Same s, s' -> s = s'
+              | `Any, _ -> true)
+          then Some t.RDF_Graph_Executable.o else None)
+          expected_triples in
+      let lit_lex = function
+        | RDF_Graph_Executable.T_Literal l ->
+          Some l.RDF_Graph_Executable.lexical_form
+        | _ -> None in
+      (* Find the ResultSet subject (the triple asserting rdf:type rs:ResultSet) *)
+      let rs_subj_opt =
+        List.find_map (fun t ->
+          if t.RDF_Graph_Executable.p = rdf_type_iri &&
+             (match t.RDF_Graph_Executable.o with
+              | RDF_Graph_Executable.T_IRI i -> i = rs_ResultSet
+              | _ -> false)
+          then Some t.RDF_Graph_Executable.s
+          else None)
+          expected_triples in
+      (match rs_subj_opt with
+       | None ->
+         Fail "expected rs:ResultSet found by type-check but subject not located"
+       | Some rs_subj ->
+         (* Collect result variables (lexical form of rs:resultVariable literal objects) *)
+         let vars =
+           find_objects_match rs_resultVariable (`Same rs_subj)
+           |> List.filter_map lit_lex in
+         (* Collect solution bnodes *)
+         let solutions =
+           find_objects_match rs_solution (`Same rs_subj)
+           |> List.filter_map (fun o ->
+             match o with
+             | RDF_Graph_Executable.T_BNode b ->
+                Some (RDF_Graph_Executable.S_BNode b)
+             | RDF_Graph_Executable.T_IRI i ->
+                Some (RDF_Graph_Executable.S_IRI i)
+             | _ -> None) in
+         (* For each solution, collect its bindings into (var, term) pairs *)
+         let expected_rows : (string * RDF_Graph_Executable.rdf_term) list list =
+           List.map (fun sol_subj ->
+             let bindings =
+               find_objects_match rs_binding (`Same sol_subj)
+               |> List.filter_map (fun o ->
+                 match o with
+                 | RDF_Graph_Executable.T_BNode b ->
+                    Some (RDF_Graph_Executable.S_BNode b)
+                 | RDF_Graph_Executable.T_IRI i ->
+                    Some (RDF_Graph_Executable.S_IRI i)
+                 | _ -> None) in
+             List.filter_map (fun bnd_subj ->
+               let var_opt =
+                 find_objects_match rs_variable (`Same bnd_subj)
+                 |> List.filter_map lit_lex
+                 |> (function v :: _ -> Some v | _ -> None) in
+               let val_opt =
+                 find_objects_match rs_value (`Same bnd_subj)
+                 |> (function v :: _ -> Some v | _ -> None) in
+               match var_opt, val_opt with
+               | Some v, Some t -> Some (v, t)
+               | _ -> None)
+               bindings)
+             solutions in
+         if results_match_with term_equal expected_rows actual_results then Pass
+         else begin
+           if !verbose_mode then begin
+             Printf.eprintf "    EXPECTED (%d rs:ResultSet rows):\n" (List.length expected_rows);
+             List.iter (fun r -> Printf.eprintf "      %s\n" (row_to_verbose_string r))
+               expected_rows;
+             Printf.eprintf "    ACTUAL (%d rows):\n" (List.length actual_results);
+             List.iter (fun r -> Printf.eprintf "      %s\n" (row_to_verbose_string r))
+               actual_results
+           end;
+           Fail (Printf.sprintf "rs:ResultSet mismatch: expected %d rows, got %d"
+                   (List.length expected_rows) (List.length actual_results))
+         end)
+    end else
     (* Canonical key: subject IRI-or-"BN", predicate, object IRI/BN/literal.
        All bnodes collapse to the literal string "BN" so the resulting
        multiset compares bnode-equivalently. *)
