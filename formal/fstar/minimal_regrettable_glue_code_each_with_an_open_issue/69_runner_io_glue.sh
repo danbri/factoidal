@@ -153,6 +153,31 @@ if '| Failure _ -> Pass' not in content:
         | Sparql_unsupported _ -> Unsupported_feature "Can't test rejection"))'''
     )
 
+# 7. Dispatch RDF/XML negative-syntax tests through parse_rdfxml_strict so that
+#    Parser.RDFXML's has_error tracking (e.g. duplicate rdf:ID detection) actually
+#    causes the test to Pass. The lenient parse_rdfxml_fstar returns triples
+#    unconditionally and was masking all strict-mode rejections.
+if 'Parser_RDFXML.parse_rdfxml_strict content' not in content:
+    content = content.replace(
+        '''  | "TestXMLNegativeSyntax" ->
+    (match read_file tc.query_file with
+     | None -> Skip "File missing"
+     | Some content ->
+       (try
+          ignore (parse_rdfxml_fstar content None);
+          Fail "Should reject but parsed OK"
+        with _ -> Pass))''',
+        '''  | "TestXMLNegativeSyntax" ->
+    (match read_file tc.query_file with
+     | None -> Skip "File missing"
+     | Some content ->
+       (try
+          (match Parser_RDFXML.parse_rdfxml_strict content with
+           | FStar_Pervasives_Native.Some _ -> Fail "Should reject but parsed OK"
+           | FStar_Pervasives_Native.None -> Pass)
+        with _ -> Pass))'''
+    )
+
 with open(sys.argv[1], 'w') as f:
     f.write(content)
 PYEOF
