@@ -156,17 +156,23 @@ let rec find_named_graph (name : iri) (ngs : list named_graph) : option (list na
 
 (** Add a triple to the appropriate graph in the dataset.
     If graph_name is None, add to default graph.
-    If graph_name is Some name, add to (or create) the named graph. *)
+    If graph_name is Some name, add to (or create) the named graph.
+
+    PERF: uses [graph_add_unchecked] (O(1) prepend, no dedup).
+    Bulk N-Quads parsing produces one quad at a time from raw input —
+    this is the textbook bulk-loader case where set semantics can be
+    deferred to the SPARQL evaluator. See
+    docs/designissues/2026-04-24-graph-add-unchecked-perf.md. *)
 let dataset_add_quad (ds : rdf_dataset) (t : triple) (graph_name : option iri) : rdf_dataset =
   match graph_name with
   | None ->
     (* Add to default graph *)
-    { ds with ds_default = graph_add t ds.ds_default }
+    { ds with ds_default = graph_add_unchecked t ds.ds_default }
   | Some name ->
     (* Add to named graph, creating it if needed *)
     match find_named_graph name ds.ds_named with
     | Some (before, existing_g, after) ->
-      let updated_g = graph_add t existing_g in
+      let updated_g = graph_add_unchecked t existing_g in
       let updated_ng : named_graph = { ng_name = name; ng_graph = updated_g } in
       { ds with ds_named = before @ [updated_ng] @ after }
     | None ->

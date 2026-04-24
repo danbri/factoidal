@@ -248,6 +248,18 @@ let rec mem_triple (t:triple) (g:rdf_graph) : bool =
 let graph_add (t:triple) (g:rdf_graph) : rdf_graph =
   if mem_triple t g then g else g @ [t]
 
+// Bulk-parser add: O(1) prepend, no dedup.
+// USE WITH CARE — only correct when the caller is materialising a fresh
+// graph from raw input (e.g. an N-Quads / TriG bulk loader) where
+// (a) duplicate suppression is not required for downstream SPARQL
+// semantics (which is set-based) and (b) reversed insertion order is
+// acceptable. Do not use in user-facing INSERT DATA / graph_union /
+// merging paths — those must keep `graph_add`'s set semantics.
+// See docs/designissues/2026-04-24-graph-add-unchecked-perf.md for
+// the call-site discipline. This unblocks Theta(N^2) -> Theta(N) for
+// the 331 MB UK Parliament TriG load (Agent Delta perf diagnosis).
+let graph_add_unchecked (t:triple) (g:rdf_graph) : rdf_graph = t :: g
+
 // Remove all occurrences of a triple
 let graph_remove (t:triple) (g:rdf_graph) : rdf_graph =
   List.Tot.filter (fun hd -> not (triple_eq hd t)) g
