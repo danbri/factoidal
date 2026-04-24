@@ -487,6 +487,28 @@
       </div>
 </div>
 
+<h2>OWL 2 RL <span class="inline-numbers">3 pass · 27 fail &middot; PositiveEntailmentTests @ profile-RL</span></h2>
+<div class="suites">
+  <div class="suite-row mixed">
+    <div class="suite-name">profile-RL</div>
+    <div class="suite-bar"><div class="fill" style="width:10%"></div></div>
+    <div class="suite-numbers">
+      <span class="p">3</span>/<span class="f">27</span>
+      <small>of 30</small>
+    </div>
+  </div>
+</div>
+<p style="margin: 0.3em 0 1em; color: var(--muted); font-size: 0.85em;">
+  <strong>OWL 2 RL (W3C conformance):</strong>
+  3 / 30 PositiveEntailmentTests pass, sourced from
+  <code>third_party/testing/owl/profile-RL.rdf</code>. Runs
+  <code>owl_rl_closure_with_reflexivity</code> (fuel 100) on each premise
+  and checks simple entailment of the conclusion into the closure. Bnode
+  matching is relaxed (structural positions only); full bnode isomorphism
+  deferred. Corpus is distinct from the SPARQL/RDF tables above —
+  denominators are not combined.
+</p>
+
 <details>
   <summary>Machine-readable artifacts</summary>
   <ul>
@@ -564,9 +586,9 @@
 </main>
 
 <footer>
-  Generated <strong>2026-04-24 10:14 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/b71369610b2aaa12cc910acd660a8ae53c91de34">b713696</a></code>
-  on branch <code>claude/main</code> — &ldquo;owl-dl: OWL.QueryRewrite Phase 4 — nested intersection/union&rdquo;.
+  Generated <strong>2026-04-24 16:11 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/a9789596309bf4995fabd6891d46244666fee6d2">a978959</a></code>
+  on branch <code>claude/main</code> — &ldquo;owl-rl: cls-avf1 — universal-restriction propagation (F*)&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 

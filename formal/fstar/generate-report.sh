@@ -26,13 +26,23 @@ OUTPUT_DIR="$SCRIPT_DIR/../../docs/test-results"
 HISTORY_DIR="$OUTPUT_DIR/history"
 SPARQL_LOG="$OCAML_DIR/sparql_results.log"
 RDF_LOG="$OCAML_DIR/rdf_results.log"
+OWL_LOG="$OCAML_DIR/owl_profile_rl_results.log"
 
 mkdir -p "$OUTPUT_DIR" "$HISTORY_DIR"
 
 case "$(uname -s)-$(uname -m)" in
-  Darwin-arm64)  RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/w3c_runner" ;;
-  Linux-x86_64)  RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/w3c_runner" ;;
-  *)             RUNNER="$OCAML_DIR/w3c_runner" ;;
+  Darwin-arm64)
+    RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/w3c_runner"
+    OWL_RUNNER="$SCRIPT_DIR/../../bin/darwin-arm64/owl_runner"
+    ;;
+  Linux-x86_64)
+    RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/w3c_runner"
+    OWL_RUNNER="$SCRIPT_DIR/../../bin/linux-x86_64/owl_runner"
+    ;;
+  *)
+    RUNNER="$OCAML_DIR/w3c_runner"
+    OWL_RUNNER="$OCAML_DIR/owl_runner"
+    ;;
 esac
 
 if [ "$1" = "--run" ]; then
@@ -45,6 +55,13 @@ if [ "$1" = "--run" ]; then
   echo "Running RDF 1.1 suite…"
   "$RUNNER" --rdf > "$RDF_LOG" 2>&1 || true
   echo "  done."
+  if [ -x "$OWL_RUNNER" ]; then
+    echo "Running OWL 2 RL profile suite (PositiveEntailmentTests)…"
+    "$OWL_RUNNER" > "$OWL_LOG" 2>&1 || true
+    echo "  done."
+  else
+    echo "  owl_runner not found at $OWL_RUNNER — skipping OWL 2 RL suite." >&2
+  fi
 fi
 
 if [ ! -f "$SPARQL_LOG" ] || [ ! -f "$RDF_LOG" ]; then
@@ -70,6 +87,23 @@ RDF_PASS=$(extract_field     pass        "$RDF_SUITES")
 RDF_FAIL=$(extract_field     fail        "$RDF_SUITES")
 RDF_SKIP=$(extract_field     skip        "$RDF_SUITES")
 RDF_UNSUP=$(extract_field    unsupported "$RDF_SUITES")
+
+# --- OWL 2 RL scoreboard (orthogonal to the SPARQL/RDF tables) --------------
+# Score line in owl_runner stdout:
+#   Profile-RL PositiveEntailmentTests: 3 pass, 27 fail (out of 30) in 0.39s
+OWL_PASS=0; OWL_FAIL=0; OWL_TOTAL=0; OWL_PRESENT=0
+if [ -f "$OWL_LOG" ]; then
+  OWL_LINE=$(grep -E '^Profile-RL PositiveEntailmentTests:' "$OWL_LOG" | tail -1 || true)
+  if [ -n "$OWL_LINE" ]; then
+    OWL_PRESENT=1
+    OWL_PASS=$(echo "$OWL_LINE"  | sed -nE 's/.* ([0-9]+) pass.*/\1/p')
+    OWL_FAIL=$(echo "$OWL_LINE"  | sed -nE 's/.* ([0-9]+) fail.*/\1/p')
+    OWL_TOTAL=$(echo "$OWL_LINE" | sed -nE 's/.*out of ([0-9]+).*/\1/p')
+    OWL_PASS=${OWL_PASS:-0}
+    OWL_FAIL=${OWL_FAIL:-0}
+    OWL_TOTAL=${OWL_TOTAL:-0}
+  fi
+fi
 
 SPARQL_TOTAL=$((SPARQL_PASS + SPARQL_FAIL + SPARQL_SKIP + SPARQL_UNSUP))
 RDF_TOTAL=$((RDF_PASS + RDF_FAIL + RDF_SKIP + RDF_UNSUP))
@@ -146,8 +180,10 @@ emit_json_suites () {
     "$SPARQL_PASS" "$SPARQL_FAIL" "$SPARQL_SKIP" "$SPARQL_UNSUP" "$SPARQL_TOTAL"
   printf '    "rdf":      {"pass":%s,"fail":%s,"skip":%s,"unsupported":%s,"total":%s},\n' \
     "$RDF_PASS" "$RDF_FAIL" "$RDF_SKIP" "$RDF_UNSUP" "$RDF_TOTAL"
-  printf '    "combined": {"pass":%s,"fail":%s,"skip":%s,"unsupported":%s,"total":%s,"pass_pct_of_runnable":%s}\n' \
+  printf '    "combined": {"pass":%s,"fail":%s,"skip":%s,"unsupported":%s,"total":%s,"pass_pct_of_runnable":%s},\n' \
     "$COMBINED_PASS" "$COMBINED_FAIL" "$COMBINED_SKIP" "$COMBINED_UNSUP" "$COMBINED_TOTAL" "$COMBINED_PCT"
+  printf '    "owl_rl_positive_entailment": {"pass":%s,"fail":%s,"total":%s,"catalog":"third_party/testing/owl/profile-RL.rdf"}\n' \
+    "$OWL_PASS" "$OWL_FAIL" "$OWL_TOTAL"
   printf '  },\n'
   printf '  "suites": {\n'
   printf '    "sparql": [\n'
@@ -203,6 +239,50 @@ ROW
 
 SPARQL_ROWS_HTML=$(emit_suite_rows "$SPARQL_SUITES")
 RDF_ROWS_HTML=$(emit_suite_rows "$RDF_SUITES")
+
+# --- OWL 2 RL panel ---------------------------------------------------------
+# Distinct corpus, distinct denominator; deliberately NOT folded into the
+# SPARQL/RDF totals tiles.
+if [ "$OWL_PRESENT" -eq 1 ]; then
+  if [ "$OWL_TOTAL" -gt 0 ]; then
+    OWL_BAR_PCT=$(awk -v p="$OWL_PASS" -v t="$OWL_TOTAL" 'BEGIN{printf "%.0f", 100*p/t}')
+  else
+    OWL_BAR_PCT=0
+  fi
+  if [ "$OWL_PASS" -eq "$OWL_TOTAL" ] && [ "$OWL_TOTAL" -gt 0 ]; then
+    OWL_BAR_CLASS="perfect"
+  elif [ "$OWL_BAR_PCT" -ge 90 ]; then
+    OWL_BAR_CLASS="near-perfect"
+  else
+    OWL_BAR_CLASS="mixed"
+  fi
+  OWL_HTML=$(cat <<OWLEOF
+<h2>OWL 2 RL <span class="inline-numbers">${OWL_PASS} pass · ${OWL_FAIL} fail &middot; PositiveEntailmentTests @ profile-RL</span></h2>
+<div class="suites">
+  <div class="suite-row ${OWL_BAR_CLASS}">
+    <div class="suite-name">profile-RL</div>
+    <div class="suite-bar"><div class="fill" style="width:${OWL_BAR_PCT}%"></div></div>
+    <div class="suite-numbers">
+      <span class="p">${OWL_PASS}</span>/<span class="f">${OWL_FAIL}</span>
+      <small>of ${OWL_TOTAL}</small>
+    </div>
+  </div>
+</div>
+<p style="margin: 0.3em 0 1em; color: var(--muted); font-size: 0.85em;">
+  <strong>OWL 2 RL (W3C conformance):</strong>
+  ${OWL_PASS} / ${OWL_TOTAL} PositiveEntailmentTests pass, sourced from
+  <code>third_party/testing/owl/profile-RL.rdf</code>. Runs
+  <code>owl_rl_closure_with_reflexivity</code> (fuel 100) on each premise
+  and checks simple entailment of the conclusion into the closure. Bnode
+  matching is relaxed (structural positions only); full bnode isomorphism
+  deferred. Corpus is distinct from the SPARQL/RDF tables above —
+  denominators are not combined.
+</p>
+OWLEOF
+)
+else
+  OWL_HTML="<!-- OWL 2 RL results not available: $OWL_LOG missing -->"
+fi
 
 [ -n "$GIT_SUBJECT" ] && GIT_SUBJECT_LINE=" — &ldquo;${GIT_SUBJECT}&rdquo;" || GIT_SUBJECT_LINE=""
 
@@ -378,6 +458,8 @@ ${SPARQL_ROWS_HTML}
 ${RDF_ROWS_HTML}
 </div>
 
+${OWL_HTML}
+
 <details>
   <summary>Machine-readable artifacts</summary>
   <ul>
@@ -434,4 +516,9 @@ echo "  JSON: $JSON (+ history/${TIMESTAMP_ISO}.json)"
 echo "  SPARQL: ${SPARQL_PASS} pass, ${SPARQL_FAIL} fail, ${SPARQL_SKIP} skip, ${SPARQL_UNSUP} unsupported"
 echo "  RDF:    ${RDF_PASS} pass, ${RDF_FAIL} fail, ${RDF_SKIP} skip, ${RDF_UNSUP} unsupported"
 echo "  Overall: ${COMBINED_PASS}/${run_total} runnable = ${COMBINED_PCT}%"
+if [ "$OWL_PRESENT" -eq 1 ]; then
+  echo "  OWL 2 RL (profile-RL PositiveEntailmentTests): ${OWL_PASS} pass, ${OWL_FAIL} fail (out of ${OWL_TOTAL})"
+else
+  echo "  OWL 2 RL: no cached log ($OWL_LOG); re-run with --run to populate"
+fi
 echo "  Commit: ${GIT_SHA} (${GIT_BRANCH})"

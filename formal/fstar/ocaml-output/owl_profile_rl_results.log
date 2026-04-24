@@ -1,0 +1,43 @@
+OWL 2 test catalog: /Users/danbri/working/factoidal/third_party/testing/owl/profile-RL.rdf
+  parsed 1896 triples in 0.04s
+Totals: 91 test cases
+  PositiveEntailmentTest:    30
+  NegativeEntailmentTest:    6
+  ConsistencyTest:           76
+  InconsistencyTest:         14
+  ProfileIdentificationTest: 91
+
+Running 30 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
+  FAIL  DisjointClasses-001
+  FAIL  DisjointClasses-003
+  FAIL  New-Feature-DisjointDataProperties-002
+  FAIL  New-Feature-DisjointObjectProperties-001
+  FAIL  New-Feature-DisjointObjectProperties-002
+  FAIL  New-Feature-Keys-003
+  FAIL  New-Feature-ObjectPropertyChain-001
+  FAIL/no-premise  New-Feature-ObjectPropertyChain-BJP-002
+  FAIL  New-Feature-ObjectPropertyChain-BJP-003
+  FAIL  New-Feature-ObjectQCR-002
+  FAIL  New-Feature-ReflexiveProperty-001
+  FAIL  WebOnt-I4.6-003
+  FAIL  WebOnt-I4.6-005-Direct
+  FAIL  WebOnt-I5.26-010
+  FAIL  WebOnt-I5.5-005
+  FAIL  WebOnt-I5.8-006
+  FAIL  WebOnt-I5.8-008
+  FAIL  WebOnt-I5.8-009
+  FAIL  WebOnt-I5.8-011
+  FAIL  WebOnt-differentFrom-001
+  PASS  WebOnt-equivalentClass-002
+  FAIL  WebOnt-equivalentClass-003
+  FAIL  WebOnt-equivalentClass-008-Direct
+  PASS  WebOnt-equivalentProperty-002
+  FAIL  WebOnt-equivalentProperty-003
+  FAIL  WebOnt-imports-011
+  PASS  WebOnt-sameAs-001
+  FAIL  chain2trans1
+  FAIL  owl2-rl-rules-fp-differentFrom
+  FAIL  owl2-rl-rules-ifp-differentFrom
+
+Profile-RL PositiveEntailmentTests: 3 pass, 27 fail (out of 30) in 0.38s
+  (bnode match is structural only; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
