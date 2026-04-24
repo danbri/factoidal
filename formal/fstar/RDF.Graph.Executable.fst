@@ -1188,6 +1188,9 @@ let rdfs_closure_with_reflexivity (g : rdf_graph) (fuel : nat) : Tot rdf_graph =
 //   prp-inv1/2  : owl:inverseOf (both directions)
 //   cls-eqc1/2  : owl:equivalentClass expanded to rdfs:subClassOf both ways
 //   prp-eqp1/2  : owl:equivalentProperty expanded to rdfs:subPropertyOf both ways
+//   scm-eqc2    : mutual rdfs:subClassOf -> owl:equivalentClass (named only)
+//   scm-eqp2    : mutual rdfs:subPropertyOf -> owl:equivalentProperty (named only)
+//   eq-diff-sym : symmetry of owl:differentFrom
 //
 // NOT implemented (tableau-style, out of scope for this pass):
 //   owl:hasValue, owl:someValuesFrom, owl:allValuesFrom restrictions;
@@ -1220,6 +1223,10 @@ let owl_equivalentClass : wf_iri =
 let owl_equivalentProperty : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#equivalentProperty");
   "http://www.w3.org/2002/07/owl#equivalentProperty"
+
+let owl_differentFrom : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#differentFrom");
+  "http://www.w3.org/2002/07/owl#differentFrom"
 
 // Check whether a predicate is one of the OWL predicates that we treat
 // specially (used to block no-op rule applications where we would re-emit
@@ -1285,6 +1292,63 @@ let owl_rule_equivalent_property (g : rdf_graph) : rdf_graph =
           let t1 : triple = { s = S_IRI p_iri; p = rdfs_subPropertyOf; o = T_IRI q_iri } in
           let t2 : triple = { s = S_IRI q_iri; p = rdfs_subPropertyOf; o = T_IRI p_iri } in
           add_triple_if_new (add_triple_if_new acc t1) t2
+        | _, _ -> acc
+      else acc)
+    g
+    g
+
+// scm-eqc2: if (C rdfs:subClassOf D) and (D rdfs:subClassOf C) then
+//   (C owl:equivalentClass D).  Reverse of cls-eqc1/cls-eqc2.
+//
+// We restrict to IRI-IRI pairs: bnodes here are anonymous class
+// expressions, and emitting equivalentClass between two CE bnodes (or
+// between a named class and an anonymous CE) would feed the named<->anon
+// chain that owl_rule_equivalent_class deliberately blocks (see the
+// BNODE-POLLUTION GUARD comment above). We also skip the degenerate
+// C = D case since (C equivalentClass C) follows trivially from
+// reflexivity and clutters the output.
+let owl_rule_scm_eqc2 (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdfs_subClassOf then
+        match t.s, t.o with
+        | S_IRI c_iri, T_IRI d_iri ->
+          if c_iri = d_iri then acc
+          else
+            // Look up (D rdfs:subClassOf ?) and check whether C is among
+            // the supers of D. If so, C and D are mutual subclasses.
+            let supers_of_d = find_objects g (S_IRI d_iri) rdfs_subClassOf in
+            if List.Tot.existsb (fun (x : rdf_term) -> rdf_term_eq x (T_IRI c_iri)) supers_of_d
+            then
+              let new_t : triple =
+                { s = S_IRI c_iri; p = owl_equivalentClass; o = T_IRI d_iri } in
+              add_triple_if_new acc new_t
+            else acc
+        | _, _ -> acc
+      else acc)
+    g
+    g
+
+// scm-eqp2: if (P rdfs:subPropertyOf Q) and (Q rdfs:subPropertyOf P) then
+//   (P owl:equivalentProperty Q).  Reverse of prp-eqp1/prp-eqp2.
+//
+// As with scm-eqc2 we restrict to IRI-IRI pairs and skip the degenerate
+// P = Q case.
+let owl_rule_scm_eqp2 (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdfs_subPropertyOf then
+        match t.s, t.o with
+        | S_IRI p_iri, T_IRI q_iri ->
+          if p_iri = q_iri then acc
+          else
+            let supers_of_q = find_objects g (S_IRI q_iri) rdfs_subPropertyOf in
+            if List.Tot.existsb (fun (x : rdf_term) -> rdf_term_eq x (T_IRI p_iri)) supers_of_q
+            then
+              let new_t : triple =
+                { s = S_IRI p_iri; p = owl_equivalentProperty; o = T_IRI q_iri } in
+              add_triple_if_new acc new_t
+            else acc
         | _, _ -> acc
       else acc)
     g
@@ -1462,6 +1526,24 @@ let owl_rule_sameAs_symmetry (g : rdf_graph) : rdf_graph =
         | Some new_subj ->
           let new_t : triple =
             { s = new_subj; p = owl_sameAs; o = subject_to_term t.s } in
+          add_triple_if_new acc new_t
+        | None -> acc
+      else acc)
+    g
+    g
+
+// eq-diff-sym: if (x owl:differentFrom y) then (y owl:differentFrom x).
+// OWL semantics treats owl:differentFrom as symmetric; this is sound for
+// all OWL profiles. Mirror of owl_rule_sameAs_symmetry exactly, with
+// owl_sameAs replaced by owl_differentFrom.
+let owl_rule_differentFrom_symmetry (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_differentFrom then
+        match term_to_subject t.o with
+        | Some new_subj ->
+          let new_t : triple =
+            { s = new_subj; p = owl_differentFrom; o = subject_to_term t.s } in
           add_triple_if_new acc new_t
         | None -> acc
       else acc)
@@ -2114,14 +2196,21 @@ let owl_rule_cls_avf1 (g : rdf_graph) : rdf_graph =
 let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   let g1 = owl_rule_equivalent_class g in
   let g2 = owl_rule_equivalent_property g1 in
-  let g3 = owl_rule_inverse_of g2 in
+  // scm-eqc2 / scm-eqp2: mutual subClassOf / subPropertyOf -> equivalent.
+  // Run them after the forward expansion so the closure both produces
+  // and recognises the symmetric pattern in the same step.
+  let g2a = owl_rule_scm_eqc2 g2 in
+  let g2b = owl_rule_scm_eqp2 g2a in
+  let g3 = owl_rule_inverse_of g2b in
   // Schema-level inverseOf flip (sparqldl-11 "domain test").
   let g3a = owl_rule_inverseOf_domain_range_flip g3 in
   let g4 = owl_rule_symmetric_property g3a in
   let g5 = owl_rule_transitive_property g4 in
   let g6 = owl_rule_sameAs_reflexivity g5 in
   let g7 = owl_rule_sameAs_symmetry g6 in
-  let g8 = owl_rule_sameAs_transitivity g7 in
+  // eq-diff-sym: differentFrom is symmetric.
+  let g7a = owl_rule_differentFrom_symmetry g7 in
+  let g8 = owl_rule_sameAs_transitivity g7a in
   let g9 = owl_rule_sameAs_replace_subject g8 in
   let g10 = owl_rule_sameAs_replace_object g9 in
   let g11 = owl_rule_sameAs_replace_predicate g10 in
