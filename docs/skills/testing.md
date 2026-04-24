@@ -51,13 +51,13 @@ cargo test w3c_turtle -- --nocapture
 ### W3C Test Data Sources
 
 ```
-tests/w3c/rdf/rdf11/rdf-n-triples/    # N-Triples positive/negative tests
-tests/w3c/rdf/rdf11/rdf-turtle/        # Turtle positive/negative/eval tests
-tests/w3c/sparql/sparql10/             # SPARQL 1.0 suites (21 directories)
-tests/w3c/sparql/sparql11/             # SPARQL 1.1 suites (11 directories)
+third_party/testing/w3c/rdf/rdf11/rdf-n-triples/    # N-Triples positive/negative tests
+third_party/testing/w3c/rdf/rdf11/rdf-turtle/        # Turtle positive/negative/eval tests
+third_party/testing/w3c/sparql/sparql10/             # SPARQL 1.0 suites (21 directories)
+third_party/testing/w3c/sparql/sparql11/             # SPARQL 1.1 suites (11 directories)
 ```
 
-The `tests/w3c/` directory is a git submodule pointing to `github.com/w3c/rdf-tests`.
+The `third_party/testing/w3c/` directory is a git submodule pointing to `github.com/w3c/rdf-tests`.
 
 ## W3C SPARQL Test Harness Architecture
 

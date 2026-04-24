@@ -72,8 +72,8 @@ cargo test w3c_sparql_combined_scorecard -- --nocapture 2>&1 | grep "\[suite-nam
 ### Examine the actual test query
 
 ```bash
-cat tests/w3c/sparql/sparql10/{suite}/{test-name}.rq
-cat tests/w3c/sparql/sparql10/{suite}/{test-name}.srx  # expected results
+cat third_party/testing/w3c/sparql/sparql10/{suite}/{test-name}.rq
+cat third_party/testing/w3c/sparql/sparql10/{suite}/{test-name}.srx  # expected results
 ```
 
 ### Test a fix quickly

@@ -32,7 +32,7 @@ run_parser_pass "prefix-a-semicolon" "${QUERY_DIR}/prefix_a_semicolon.rq" \
   --data-hdt "${BERLIN_HDT}"
 
 run_parser_pass "signed-numeric-literals" \
-  "${ROOT}/tests/w3c/sparql/sparql10/expr-ops/query-add-literals.rq"
+  "${ROOT}/third_party/testing/w3c/sparql/sparql10/expr-ops/query-add-literals.rq"
 
 run_parser_pass "named-graph" "${QUERY_DIR}/berlin_named_graph.rq" \
   --named-hdt "${BERLIN_GRAPH_IRI}=${BERLIN_HDT}"

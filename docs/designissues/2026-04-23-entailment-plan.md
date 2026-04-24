@@ -225,7 +225,7 @@ Each is ≤5 lines, paste-ready for a coordinator to hand to a subagent.
 ### Brief — Phase 0 (parent10 triage)
 ```
 Investigate entailment/parent10 failure (expected 4 rows, got 7). Compare
-current inferred graph for tests/w3c/sparql/sparql11/entailment/parent.ttl
+current inferred graph for third_party/testing/w3c/sparql/sparql11/entailment/parent.ttl
 under OWL-Direct regime vs the manifest's expected 3-row result
 (parent10.srx). Grep owl_rl_closure_step in RDF.Graph.Executable.fst for
 recently-added cls-* rules; also check tableau_materialise in Tableau.fst.
@@ -235,7 +235,7 @@ One commit, ≤50 LOC fix. No query changes.
 ### Brief — Phase 1 (sparqldl-11 missing :Parent)
 ```
 entailment/sparqldl-11 expects {owl:Thing, :Parent}, we return 1 row.
-Data: tests/w3c/sparql/sparql11/entailment/parent.ttl (has :parent
+Data: third_party/testing/w3c/sparql/sparql11/entailment/parent.ttl (has :parent
 owl:inverseOf :child, :child rdfs:domain :Parent). Query:
 "select ?C where {:parent rdfs:range ?C}". We need inverseOf-to-domain/
 range propagation. Add the Datalog rule (:P owl:inverseOf :Q) ∧
@@ -298,5 +298,5 @@ current-state.md.
   (`owl_tableau_entails` 634, `tableau_materialise` 686-end)
 - Runner dispatch: `formal/fstar/ocaml-output/w3c_runner.ml` 355-410,
   630-680
-- Manifest: `tests/w3c/sparql/sparql11/entailment/manifest.ttl`
+- Manifest: `third_party/testing/w3c/sparql/sparql11/entailment/manifest.ttl`
 - Latest scores: `docs/test-results/latest.csv` row `sparql,entailment`

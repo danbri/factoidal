@@ -344,7 +344,7 @@ factoidal/
 ├── bin/                           pre-built binaries per platform
 │   ├── darwin-arm64/              macOS Apple Silicon
 │   └── linux-x86_64/             Linux x86-64 (statically linked)
-├── tests/w3c/                    git submodule (W3C test files)
+├── third_party/testing/w3c/                    git submodule (W3C test files)
 └── CLAUDE.md                     development instructions
 ```
 

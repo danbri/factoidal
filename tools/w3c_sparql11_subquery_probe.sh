@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN="${ROOT}/formal/fstar/ocaml-output/factoidal"
-SUITE_ROOT="${1:-${ROOT}/tests/w3c/sparql/sparql11/subquery}"
+SUITE_ROOT="${1:-${ROOT}/third_party/testing/w3c/sparql/sparql11/subquery}"
 TMPDIR="${TMPDIR:-/tmp}"
 LIMIT="${LIMIT:-0}"
 

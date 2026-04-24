@@ -1,7 +1,7 @@
 # tests/unit — Factoidal's own unit-test suite
 
 This directory holds unit tests authored specifically for Factoidal. It is
-distinct from `tests/w3c/`, which is a git submodule tracking the upstream
+distinct from `third_party/testing/w3c/`, which is a git submodule tracking the upstream
 W3C RDF / SPARQL conformance test suites.
 
 ## What goes here

@@ -1,7 +1,7 @@
 # W3C SPARQL 1.1 Subquery Probe
 
 Positive execution probe against the repo's bundled
-`tests/w3c/sparql/sparql11/subquery` suite.
+`third_party/testing/w3c/sparql/sparql11/subquery` suite.
 
 Script:
 

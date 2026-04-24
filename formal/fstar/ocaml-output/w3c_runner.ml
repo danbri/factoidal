@@ -1701,23 +1701,35 @@ let run_rdf_test assumed_base tc =
    Suite discovery and CLI
    ============================================================================ *)
 
+(* Test fixture submodule relocated 2026-04-24 from tests/w3c/ to
+   third_party/testing/w3c/ so future vendored test corpora
+   (third_party/apache/ for Jena, etc.) can live under a single
+   third_party/ root. Old tests/w3c/ paths kept as fallbacks for
+   backward compatibility with stale checkouts or external tooling
+   that still passes the old relative path. *)
 let tests_base =
   let candidates = [
+    "third_party/testing/w3c/sparql/sparql11";
+    "../../third_party/testing/w3c/sparql/sparql11";
+    "../../../third_party/testing/w3c/sparql/sparql11";
     "../../tests/w3c/sparql/sparql11";
     "../../../tests/w3c/sparql/sparql11";
     "tests/w3c/sparql/sparql11";
   ] in
   try List.find Sys.file_exists candidates
-  with Not_found -> "tests/w3c/sparql/sparql11"
+  with Not_found -> "third_party/testing/w3c/sparql/sparql11"
 
 let rdf_tests_base =
   let candidates = [
+    "third_party/testing/w3c/rdf/rdf11";
+    "../../third_party/testing/w3c/rdf/rdf11";
+    "../../../third_party/testing/w3c/rdf/rdf11";
     "../../tests/w3c/rdf/rdf11";
     "../../../tests/w3c/rdf/rdf11";
     "tests/w3c/rdf/rdf11";
   ] in
   try List.find Sys.file_exists candidates
-  with Not_found -> "tests/w3c/rdf/rdf11"
+  with Not_found -> "third_party/testing/w3c/rdf/rdf11"
 
 let discover_suites () =
   try

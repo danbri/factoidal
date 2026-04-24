@@ -1,10 +1,10 @@
 ## W3C Runner Baseline
 
-This note records the first restored conformance baseline after fixing the `w3c_runner` build path, reinitialising the `tests/w3c` submodule, and repairing stale post-extraction patches in the SPARQL OCaml output.
+This note records the first restored conformance baseline after fixing the `w3c_runner` build path, reinitialising the `third_party/testing/w3c` submodule, and repairing stale post-extraction patches in the SPARQL OCaml output.
 
 ### Preconditions
 
-- `tests/w3c` submodule initialised from `https://github.com/w3c/rdf-tests.git`
+- `third_party/testing/w3c` submodule initialised from `https://github.com/w3c/rdf-tests.git`
 - `formal/fstar/build-ocaml.sh compile` completes successfully
 - `formal/fstar/ocaml-output/w3c_runner --list` sees the SPARQL and RDF suites
 

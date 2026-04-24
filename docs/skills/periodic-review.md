@@ -31,7 +31,7 @@
 - [ ] **Review F* ↔ Rust divergence** — any Rust code added without corresponding F* spec?
 
 ### Monthly
-- [ ] Update W3C test submodule: `cd tests/w3c && git pull`
+- [ ] Update W3C test submodule: `cd third_party/testing/w3c && git pull`
 - [ ] Re-run full suite against updated tests
 - [ ] Review `docs/designissues/` for outdated claims
 - [ ] Check QLever endpoint availability for kgx pipeline

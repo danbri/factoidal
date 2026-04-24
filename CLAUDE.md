@@ -161,7 +161,7 @@ cd factoidal
 git submodule update --init --recursive
 ```
 
-The W3C test files live in `tests/w3c/` (submodule pointing to
+The W3C test files live in `third_party/testing/w3c/` (submodule pointing to
 `github.com/w3c/rdf-tests`). Without initialising the submodule, the test
 runner will have no test data.
 
@@ -265,7 +265,7 @@ Use `-v` for the full expected/actual row dump (goes to stderr).
 ### W3C Test Suites
 
 ```
-tests/w3c/                          git submodule: github.com/w3c/rdf-tests
+third_party/testing/w3c/                          git submodule: github.com/w3c/rdf-tests
   rdf/rdf11/rdf-n-triples/         N-Triples syntax tests (70)
   rdf/rdf11/rdf-turtle/            Turtle syntax+eval tests (313)
   rdf/rdf11/rdf-n-quads/           N-Quads syntax tests (87)
@@ -349,7 +349,7 @@ factoidal/
 │   └── linux-x86_64/         Linux x86-64 (statically linked)
 │       ├── factoidal
 │       └── w3c_runner
-├── tests/w3c/                 git submodule (W3C test files)
+├── third_party/testing/w3c/                 git submodule (W3C test files)
 ├── kgx/                       SPARQL CONSTRUCT queries (future)
 ├── docs/
 │   ├── claude-rules/          expanded Claude rules (anti-patterns, perf, state)
