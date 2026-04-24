@@ -1667,6 +1667,10 @@ let owl_someValuesFrom_iri : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#someValuesFrom");
   "http://www.w3.org/2002/07/owl#someValuesFrom"
 
+let owl_allValuesFrom_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#allValuesFrom");
+  "http://www.w3.org/2002/07/owl#allValuesFrom"
+
 let owl_minCardinality_iri : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#minCardinality");
   "http://www.w3.org/2002/07/owl#minCardinality"
@@ -2049,6 +2053,60 @@ let owl_rule_cls_maxc2 (g : rdf_graph) : rdf_graph =
     g
     g
 
+// cls-avf1 [OWL 2 RL/RDF]: universal-restriction propagation.
+//   (_:R rdf:type owl:Restriction) AND
+//   (_:R owl:allValuesFrom D) AND
+//   (_:R owl:onProperty P) AND
+//   (x rdf:type _:R) AND (x P y)
+//   ==> (y rdf:type D).
+//
+// Only emits when D is a named class IRI and P is an IRI predicate;
+// bnode-CE fillers (intersection/union inside allValuesFrom) would
+// require disjunctive entailment (union) or CE expansion (intersection)
+// and are handled by the rewriter, not the closure. Stack-safe
+// (fold_left + accumulator; four nested folds, outer over _:R, then
+// over onProperty/allValuesFrom tuples, then over members, then over
+// P-edges from each member).
+let owl_rule_cls_avf1 (g : rdf_graph) : rdf_graph =
+  // Outer fold: find (_:R owl:allValuesFrom D) with D a named IRI.
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t_avf : triple) ->
+      if t_avf.p = owl_allValuesFrom_iri then
+        match t_avf.o with
+        | T_IRI d ->
+          // _:R = t_avf.s. Find its onProperty (IRI only).
+          let r_subj = t_avf.s in
+          let props = find_objects g r_subj owl_onProperty_iri in
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (p_term : rdf_term) ->
+              match p_term with
+              | T_IRI p ->
+                // For each x with (x rdf:type _:R):
+                let members = find_subjects g rdf_type (subject_to_term r_subj) in
+                List.Tot.fold_left
+                  (fun (acc3 : rdf_graph) (x : subject) ->
+                    // For each y with (x P y), emit (y rdf:type D).
+                    let ys = find_objects g x p in
+                    List.Tot.fold_left
+                      (fun (acc4 : rdf_graph) (y : rdf_term) ->
+                        match term_to_subject y with
+                        | None -> acc4
+                        | Some y_subj ->
+                          let new_t : triple =
+                            { s = y_subj; p = rdf_type; o = T_IRI d } in
+                          add_triple_if_new acc4 new_t)
+                      acc3
+                      ys)
+                  acc2
+                  members
+              | _ -> acc2)
+            acc
+            props
+        | _ -> acc
+      else acc)
+    g
+    g
+
 // Apply all OWL-RL rules once. Ordering: first do "axiom-introducing" rules
 // (equivalentClass/Property expansion, owl:inverseOf flip, symmetric/
 // transitive), then sameAs rules. The fixpoint loop re-applies them until
@@ -2076,7 +2134,10 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   let g16 = owl_rule_cls_maxqc1 g15 in
   let g17 = owl_rule_cls_exactqc1 g16 in
   let g18 = owl_rule_cls_maxc2 g17 in
-  g18
+  // Universal-restriction rule (cls-avf1); target simple 6 when the
+  // rewriter eventually lands the allValuesFrom-with-named-filler case.
+  let g19 = owl_rule_cls_avf1 g18 in
+  g19
 
 // Interleaved OWL-RL + RDFS fixpoint. RDFS rules run every iteration so
 // that triples introduced by cls-eqc1/2 and prp-eqp1/2 get propagated
