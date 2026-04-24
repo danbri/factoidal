@@ -7,6 +7,13 @@ module.exports = function(eleventyConfig) {
   // Any wasm demo HTML that lives under fstar-extracted/ will come along for the
   // ride because of the directory pass-through above.
 
+  // Pass-through the test-results directory so the machine-readable CSV/JSON
+  // artifacts and the history/ subdirectory land on GitHub Pages alongside
+  // index.html. Without this, /factoidal/test-results/latest.csv 404s even
+  // though the file exists in the repo — Eleventy was processing index.html
+  // but dropping sibling CSV/JSON.
+  eleventyConfig.addPassthroughCopy("test-results");
+
   return {
     dir: {
       input: ".",
