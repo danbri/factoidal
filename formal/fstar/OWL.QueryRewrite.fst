@@ -453,6 +453,45 @@ let rec union_ladder (acc : group_graph_pattern)
   | [] -> acc
   | br :: rest -> union_ladder (GP_Union acc br) rest
 
+// Wrap a GGP in a SELECT * DISTINCT { g } sub-select. Used to dedupe
+// at CE-emission sites (`build_union_ggp`, `expand_ce_subject` union
+// arm) so that a single ?x matching multiple operands of an OWL
+// unionOf class expression contributes only ONE solution row, even
+// though SPARQL UNION is bag-semantic.
+//
+// Why localised here and not at rewrite_query level: the top-level
+// SELECT modifier governs the user's projection. Forcing DISTINCT
+// there breaks bag-semantic queries (subquery / property-path /
+// bind / bindings tests) that go through OWL_QueryEval. A
+// sub-select wrapper changes ONLY the CE-expanded portion's
+// multiset, leaving the outer query's bag semantics intact. The
+// outer pattern joins against the projected vars (every var free
+// in g, via Select_All) just as if the union had been emitted
+// directly.
+//
+// Caller responsibility: only wrap when there are 2+ union branches.
+// A 0-branch union collapses to GP_Empty / leaf and a 1-branch union
+// to GP_BGP — neither emits a duplicate, so wrapping would just add
+// dead AST.
+let wrap_distinct_over_ggp (g : group_graph_pattern) : group_graph_pattern =
+  GP_SubSelect ({
+    q_base     = None;
+    q_prefixes = [];
+    q_form     = QF_Select Select_All;
+    q_dataset  = [];
+    q_pattern  = g;
+    q_group_by = None;
+    q_having   = None;
+    q_modifier = {
+      sm_order_by = None;
+      sm_distinct = true;
+      sm_reduced  = false;
+      sm_offset   = None;
+      sm_limit    = None
+    };
+    q_values   = None
+  })
+
 let build_union_ggp (branch_bgps : list bgp) : group_graph_pattern =
   match branch_bgps with
   | [] -> GP_Empty
@@ -461,7 +500,10 @@ let build_union_ggp (branch_bgps : list bgp) : group_graph_pattern =
     let head = GP_BGP b1 in
     let rec_branches : list group_graph_pattern =
       List.Tot.fold_left (fun acc b -> List.Tot.append acc [GP_BGP b]) [] rest in
-    union_ladder head rec_branches
+    // 2+ branches => emit GP_Union ladder, then wrap in DISTINCT
+    // sub-select so set-theoretic OWL union semantics are recovered
+    // without forcing DISTINCT on the user's outer projection.
+    wrap_distinct_over_ggp (union_ladder head rec_branches)
 
 // ------------------------------------------------------------------
 // Section 7. Identify marker candidates inside a BGP. A key is a
@@ -954,12 +996,17 @@ let rec expand_ce_subject
            List.Tot.append acc [expand_ce_subject b subj o (n - 1)] in
          let branches = List.Tot.fold_left step [] operands in
          // Reuse the flat union ladder: peel the first branch as
-         // the left spine, fold the rest with GP_Union.
+         // the left spine, fold the rest with GP_Union. For the
+         // multi-branch case we wrap the resulting ladder in a
+         // DISTINCT sub-select so OWL set-theoretic union semantics
+         // are recovered without forcing DISTINCT on the outer query
+         // (see `wrap_distinct_over_ggp`). simple4 / simple5 / simple7.
          match branches with
          | []  -> GP_BGP (single_type_bgp subj op)
          | [g] -> g
          | g :: tl ->
-           List.Tot.fold_left (fun acc br -> GP_Union acc br) g tl)
+           let ladder = List.Tot.fold_left (fun acc br -> GP_Union acc br) g tl in
+           wrap_distinct_over_ggp ladder)
     | Some (k, CE_SomeValuesFrom) ->
       // Existential restriction: _:r owl:onProperty :p ;
       //                            owl:someValuesFrom <filler> .
@@ -1513,18 +1560,15 @@ let rewrite_query (q : query) : query =
   // rewriter finds nothing. See simple1 dump for the canonical
   // example.
   //
-  // Apply sm_distinct=true ONLY when the input pattern had a CE-marker
-  // predicate — i.e. the rewriter actually has work to do. This avoids
-  // the 22:26 regression where unconditional DISTINCT broke 9 plain
-  // SPARQL tests (bind/bindings/subquery/property-path) that rely on
-  // bag semantics. OWL-entailment CE rewrites expand into GP_Union
-  // branches which double-count entities matching multiple CE branches
-  // (simple 4/5/7); set semantics are correct for those.
-  let ce_seen = ggp_has_ce_marker q.q_pattern in
-  let q' = { q with q_pattern = rewrite_ggp (normalise_joins q.q_pattern) } in
-  if ce_seen
-  then { q' with q_modifier = { q'.q_modifier with sm_distinct = true } }
-  else q'
+  // DISTINCT for OWL set-theoretic unionOf semantics is now applied
+  // *locally* at each CE union-emission site via
+  // `wrap_distinct_over_ggp` (see Section 6 / Section 8b). The
+  // outer query modifier is therefore left untouched here, which
+  // preserves bag semantics for non-CE queries that go through
+  // OWL_QueryEval (bind / bindings / subquery / property-path
+  // tests). `ggp_has_ce_marker` is kept for diagnostics but no
+  // longer drives a top-level sm_distinct flip.
+  { q with q_pattern = rewrite_ggp (normalise_joins q.q_pattern) }
 
 // Convenience alias expected by the scoping doc ("rewrite_query" is
 // the top-level entrypoint).
