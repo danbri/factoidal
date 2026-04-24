@@ -26,3 +26,12 @@ tmp/
 
 # Stale git worktree metadata from earlier subagent isolation attempts.
 .claude/worktrees/
+
+# Per-invocation logs from build-ocaml.sh's heartbeat-wrapped stages
+# (fstar.exe / ocamlopt / ocamlc / js_of_ocaml / wasm_of_ocaml). These
+# are useful for one-off diagnosis but should not land in git.
+formal/fstar/ocaml-output/_fstar_*.log
+formal/fstar/ocaml-output/_ocamlopt_*.log
+formal/fstar/ocaml-output/_ocamlc_*.log
+formal/fstar/ocaml-output/_jsoo_*.log
+formal/fstar/ocaml-output/_waoc_*.log

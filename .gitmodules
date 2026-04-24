@@ -1,3 +1,22 @@
 [submodule "third_party/testing/w3c"]
 	path = third_party/testing/w3c
 	url = https://github.com/w3c/rdf-tests.git
+[submodule "third_party/testing/shex"]
+	path = third_party/testing/shex
+	url = https://github.com/shexSpec/shexTest.git
+[submodule "third_party/testing/csvw"]
+	path = third_party/testing/csvw
+	url = https://github.com/w3c/csvw.git
+	branch = gh-pages
+[submodule "third_party/testing/vc"]
+	path = third_party/testing/vc
+	url = https://github.com/w3c/vc-data-model-2.0-test-suite.git
+[submodule "third_party/testing/did"]
+	path = third_party/testing/did
+	url = https://github.com/w3c/did-test-suite.git
+[submodule "third_party/testing/rml"]
+	path = third_party/testing/rml
+	url = https://github.com/kg-construct/rml-test-cases.git
+[submodule "third_party/testing/rdf-canon"]
+	path = third_party/testing/rdf-canon
+	url = https://github.com/w3c/rdf-canon.git

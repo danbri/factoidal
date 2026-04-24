@@ -11,12 +11,42 @@ easy to review in one place.
 
 ```
 third_party/
-├── testing/        external test corpora (W3C, etc.)
-│   └── w3c/        submodule: https://github.com/w3c/rdf-tests
-│                   (RDF 1.1 + SPARQL 1.1 conformance tests)
+├── testing/        external test corpora
+│   ├── w3c/        submodule: https://github.com/w3c/rdf-tests
+│   │               (RDF 1.1 + SPARQL 1.1 + RDF 1.2 conformance tests;
+│   │               the 1.2 "sparql-mixed-rdf-version-tests" branch is
+│   │               part of this repo — no separate submodule needed)
+│   ├── owl/        vendored from https://www.w3.org/2009/11/owl-test/
+│   │               (OWL 2 Test Cases — static drop, not a git repo
+│   │               upstream; see owl/README.md for refresh instructions)
+│   ├── shex/       submodule: https://github.com/shexSpec/shexTest
+│   │               (ShEx schema-validation test suite — active upstream)
+│   ├── csvw/       submodule: https://github.com/w3c/csvw (gh-pages branch;
+│   │               CSV on the Web tests live under tests/)
+│   ├── rdf-canon/  submodule: https://github.com/w3c/rdf-canon
+│   │               (RDF Dataset Canonicalization — RDFC-1.0 tests;
+│   │               first suite we intend to wire up, per existing
+│   │               scoping in docs/designissues/attestation-model.md
+│   │               and kgx-pipeline.md)
+│   ├── vc/         submodule: https://github.com/w3c/vc-data-model-2.0-test-suite
+│   │               (Verifiable Credentials 2.0 test suite)
+│   ├── did/        submodule: https://github.com/w3c/did-test-suite
+│   │               (Decentralized Identifiers test suite)
+│   └── rml/        submodule: https://github.com/kg-construct/rml-test-cases
+│                   (RML mapping tests; upstream repo archived but the
+│                   test corpus is stable)
 └── apache/         reserved for Apache-family test assets
                     (e.g. Jena ARQ test corpus, when vendored)
 ```
+
+## Status: vendored vs wired up
+
+As of 2026-04-24, **only `w3c/` is currently driven by our test harness**
+(`w3c_runner`). The others are vendored for offline availability and so
+that we can scope each subsequent wiring task with real test data in
+hand. Scoping for `rdf-canon` already exists in
+`docs/designissues/attestation-model.md` + `kgx-pipeline.md` and is the
+next intended consumer.
 
 ## Why this lives here, not under `tests/`
 
