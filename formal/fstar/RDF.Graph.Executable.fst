@@ -817,24 +817,32 @@ let term_to_subject (t : rdf_term) : option subject =
   | T_Literal _ -> None
 
 (* Find all objects where (s p ?o) in graph *)
-let rec find_objects (g : rdf_graph) (subj : subject) (pred : wf_iri) : list rdf_term =
+// Tail-recursive accumulator form; List.Tot.rev at base preserves input order.
+// Addresses wdt:P31 stack-blow on 60k-triple graphs with 1000+ matches.
+let rec find_objects_acc (acc : list rdf_term) (g : rdf_graph) (subj : subject) (pred : wf_iri)
+  : Tot (list rdf_term) (decreases g) =
   match g with
-  | [] -> []
+  | [] -> List.Tot.rev acc
   | hd :: tl ->
-    let rest = find_objects tl subj pred in
     if subject_eq hd.s subj && hd.p = pred
-    then hd.o :: rest
-    else rest
+    then find_objects_acc (hd.o :: acc) tl subj pred
+    else find_objects_acc acc tl subj pred
+
+let find_objects (g : rdf_graph) (subj : subject) (pred : wf_iri) : list rdf_term =
+  find_objects_acc [] g subj pred
 
 (* Find all subjects where (?s p o) in graph *)
-let rec find_subjects (g : rdf_graph) (pred : wf_iri) (obj : rdf_term) : list subject =
+let rec find_subjects_acc (acc : list subject) (g : rdf_graph) (pred : wf_iri) (obj : rdf_term)
+  : Tot (list subject) (decreases g) =
   match g with
-  | [] -> []
+  | [] -> List.Tot.rev acc
   | hd :: tl ->
-    let rest = find_subjects tl pred obj in
     if hd.p = pred && rdf_term_eq hd.o obj
-    then hd.s :: rest
-    else rest
+    then find_subjects_acc (hd.s :: acc) tl pred obj
+    else find_subjects_acc acc tl pred obj
+
+let find_subjects (g : rdf_graph) (pred : wf_iri) (obj : rdf_term) : list subject =
+  find_subjects_acc [] g pred obj
 
 (* Check if a triple exists in the graph *)
 let has_triple (g : rdf_graph) (t : triple) : bool =

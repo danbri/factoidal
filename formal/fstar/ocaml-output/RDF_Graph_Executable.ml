@@ -562,24 +562,26 @@ let term_to_subject (t : rdf_term) : subject FStar_Pervasives_Native.option=
   | T_IRI i -> FStar_Pervasives_Native.Some (S_IRI i)
   | T_BNode b -> FStar_Pervasives_Native.Some (S_BNode b)
   | T_Literal uu___ -> FStar_Pervasives_Native.None
-let rec find_objects (g : rdf_graph) (subj : subject) (pred : wf_iri) :
-  rdf_term Prims.list=
+let rec find_objects_acc (acc : rdf_term Prims.list) (g : rdf_graph)
+  (subj : subject) (pred : wf_iri) : rdf_term Prims.list=
   match g with
-  | [] -> []
+  | [] -> FStar_List_Tot_Base.rev acc
   | hd::tl ->
-      let rest = find_objects tl subj pred in
       if (subject_eq hd.s subj) && (hd.p = pred)
-      then (hd.o) :: rest
-      else rest
-let rec find_subjects (g : rdf_graph) (pred : wf_iri) (obj : rdf_term) :
-  subject Prims.list=
+      then find_objects_acc ((hd.o) :: acc) tl subj pred
+      else find_objects_acc acc tl subj pred
+let find_objects (g : rdf_graph) (subj : subject) (pred : wf_iri) :
+  rdf_term Prims.list= find_objects_acc [] g subj pred
+let rec find_subjects_acc (acc : subject Prims.list) (g : rdf_graph)
+  (pred : wf_iri) (obj : rdf_term) : subject Prims.list=
   match g with
-  | [] -> []
+  | [] -> FStar_List_Tot_Base.rev acc
   | hd::tl ->
-      let rest = find_subjects tl pred obj in
       if (hd.p = pred) && (rdf_term_eq hd.o obj)
-      then (hd.s) :: rest
-      else rest
+      then find_subjects_acc ((hd.s) :: acc) tl pred obj
+      else find_subjects_acc acc tl pred obj
+let find_subjects (g : rdf_graph) (pred : wf_iri) (obj : rdf_term) :
+  subject Prims.list= find_subjects_acc [] g pred obj
 let has_triple (g : rdf_graph) (t : triple) : Prims.bool= mem_triple t g
 let add_triple_if_new (g : rdf_graph) (t : triple) : rdf_graph= graph_add t g
 let rec add_triples_if_new (g : rdf_graph) (ts : triple Prims.list) :
