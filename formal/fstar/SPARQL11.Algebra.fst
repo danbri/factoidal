@@ -1884,6 +1884,173 @@ let left_join (omega1 omega2 : solution_sequence) (filter_expr : expr) : solutio
 let filter_solutions_fwd (e : expr) (omega : solution_sequence) : solution_sequence =
   List.Tot.filter (eval_expr_ebv e) omega
 
+(* Pre-evaluate every E_Exists / E_NotExists sub-expression of [e] under
+   solution mapping [mu] against [g]/[ds], replacing each with E_BoolLit.
+   This lets the graph-free eval_expr_ebv handle filters where existentials
+   are nested inside E_And / E_Or / E_Not / E_If / etc.
+   Issue: w3c negation/subset-02. Fixes nested-NOT-EXISTS evaluation.
+   Structural recursion on [e]; sub-patterns inside E_Exists / E_NotExists
+   are evaluated by eval_exists_fwd (which uses substitute_pattern internally)
+   and are NOT recursed into here, so termination is by decreases on [e]. *)
+let rec substitute_existentials
+  (e : expr) (mu : solution_mapping)
+  (g : rdf_graph) (ds : rdf_dataset)
+  : Tot expr (decreases e) =
+  match e with
+  | E_Exists p ->
+    E_BoolLit (eval_exists_fwd p mu g ds)
+  | E_NotExists p ->
+    E_BoolLit (not (eval_exists_fwd p mu g ds))
+  // Recurse into sub-expressions
+  | E_Arith op e1 e2 ->
+    E_Arith op (substitute_existentials e1 mu g ds)
+               (substitute_existentials e2 mu g ds)
+  | E_UnaryMinus e1 -> E_UnaryMinus (substitute_existentials e1 mu g ds)
+  | E_UnaryPlus e1 -> E_UnaryPlus (substitute_existentials e1 mu g ds)
+  | E_Compare op e1 e2 ->
+    E_Compare op (substitute_existentials e1 mu g ds)
+                 (substitute_existentials e2 mu g ds)
+  | E_And e1 e2 ->
+    E_And (substitute_existentials e1 mu g ds)
+          (substitute_existentials e2 mu g ds)
+  | E_Or e1 e2 ->
+    E_Or (substitute_existentials e1 mu g ds)
+         (substitute_existentials e2 mu g ds)
+  | E_Not e1 -> E_Not (substitute_existentials e1 mu g ds)
+  | E_IsIRI e1 -> E_IsIRI (substitute_existentials e1 mu g ds)
+  | E_IsBlank e1 -> E_IsBlank (substitute_existentials e1 mu g ds)
+  | E_IsLiteral e1 -> E_IsLiteral (substitute_existentials e1 mu g ds)
+  | E_IsNumeric e1 -> E_IsNumeric (substitute_existentials e1 mu g ds)
+  | E_Str e1 -> E_Str (substitute_existentials e1 mu g ds)
+  | E_Lang e1 -> E_Lang (substitute_existentials e1 mu g ds)
+  | E_Datatype e1 -> E_Datatype (substitute_existentials e1 mu g ds)
+  | E_IRI_fn e1 -> E_IRI_fn (substitute_existentials e1 mu g ds)
+  | E_StrDt e1 e2 ->
+    E_StrDt (substitute_existentials e1 mu g ds)
+            (substitute_existentials e2 mu g ds)
+  | E_StrLang e1 e2 ->
+    E_StrLang (substitute_existentials e1 mu g ds)
+              (substitute_existentials e2 mu g ds)
+  | E_If c t f ->
+    E_If (substitute_existentials c mu g ds)
+         (substitute_existentials t mu g ds)
+         (substitute_existentials f mu g ds)
+  | E_Coalesce es ->
+    E_Coalesce (substitute_existentials_list es mu g ds)
+  | E_In ev es ->
+    E_In (substitute_existentials ev mu g ds)
+         (substitute_existentials_list es mu g ds)
+  | E_NotIn ev es ->
+    E_NotIn (substitute_existentials ev mu g ds)
+            (substitute_existentials_list es mu g ds)
+  | E_StrLen e1 -> E_StrLen (substitute_existentials e1 mu g ds)
+  | E_Substr e1 e2 e3_opt ->
+    E_Substr (substitute_existentials e1 mu g ds)
+             (substitute_existentials e2 mu g ds)
+             (substitute_existentials_opt e3_opt mu g ds)
+  | E_UCase e1 -> E_UCase (substitute_existentials e1 mu g ds)
+  | E_LCase e1 -> E_LCase (substitute_existentials e1 mu g ds)
+  | E_StrStarts e1 e2 ->
+    E_StrStarts (substitute_existentials e1 mu g ds)
+                (substitute_existentials e2 mu g ds)
+  | E_StrEnds e1 e2 ->
+    E_StrEnds (substitute_existentials e1 mu g ds)
+              (substitute_existentials e2 mu g ds)
+  | E_Contains e1 e2 ->
+    E_Contains (substitute_existentials e1 mu g ds)
+               (substitute_existentials e2 mu g ds)
+  | E_StrBefore e1 e2 ->
+    E_StrBefore (substitute_existentials e1 mu g ds)
+                (substitute_existentials e2 mu g ds)
+  | E_StrAfter e1 e2 ->
+    E_StrAfter (substitute_existentials e1 mu g ds)
+               (substitute_existentials e2 mu g ds)
+  | E_Concat es ->
+    E_Concat (substitute_existentials_list es mu g ds)
+  | E_EncodeForUri e1 -> E_EncodeForUri (substitute_existentials e1 mu g ds)
+  | E_Replace e1 e2 e3 e4_opt ->
+    E_Replace (substitute_existentials e1 mu g ds)
+              (substitute_existentials e2 mu g ds)
+              (substitute_existentials e3 mu g ds)
+              (substitute_existentials_opt e4_opt mu g ds)
+  | E_Regex e1 e2 e3_opt ->
+    E_Regex (substitute_existentials e1 mu g ds)
+            (substitute_existentials e2 mu g ds)
+            (substitute_existentials_opt e3_opt mu g ds)
+  | E_Abs e1 -> E_Abs (substitute_existentials e1 mu g ds)
+  | E_Round e1 -> E_Round (substitute_existentials e1 mu g ds)
+  | E_Ceil e1 -> E_Ceil (substitute_existentials e1 mu g ds)
+  | E_Floor e1 -> E_Floor (substitute_existentials e1 mu g ds)
+  | E_MD5 e1 -> E_MD5 (substitute_existentials e1 mu g ds)
+  | E_SHA1 e1 -> E_SHA1 (substitute_existentials e1 mu g ds)
+  | E_SHA256 e1 -> E_SHA256 (substitute_existentials e1 mu g ds)
+  | E_SHA384 e1 -> E_SHA384 (substitute_existentials e1 mu g ds)
+  | E_SHA512 e1 -> E_SHA512 (substitute_existentials e1 mu g ds)
+  | E_Year e1 -> E_Year (substitute_existentials e1 mu g ds)
+  | E_Month e1 -> E_Month (substitute_existentials e1 mu g ds)
+  | E_Day e1 -> E_Day (substitute_existentials e1 mu g ds)
+  | E_Hours e1 -> E_Hours (substitute_existentials e1 mu g ds)
+  | E_Minutes e1 -> E_Minutes (substitute_existentials e1 mu g ds)
+  | E_Seconds e1 -> E_Seconds (substitute_existentials e1 mu g ds)
+  | E_Timezone e1 -> E_Timezone (substitute_existentials e1 mu g ds)
+  | E_Tz e1 -> E_Tz (substitute_existentials e1 mu g ds)
+  | E_SameTerm e1 e2 ->
+    E_SameTerm (substitute_existentials e1 mu g ds)
+               (substitute_existentials e2 mu g ds)
+  | E_Aggregate fn dist e1 ->
+    E_Aggregate fn dist (substitute_existentials e1 mu g ds)
+  | E_FunctionCall iri args ->
+    E_FunctionCall iri (substitute_existentials_list args mu g ds)
+  // Leaf cases pass through unchanged
+  | _ -> e
+
+and substitute_existentials_list
+  (es : list expr) (mu : solution_mapping)
+  (g : rdf_graph) (ds : rdf_dataset)
+  : Tot (list expr) (decreases es) =
+  match es with
+  | [] -> []
+  | hd :: tl ->
+    substitute_existentials hd mu g ds
+      :: substitute_existentials_list tl mu g ds
+
+and substitute_existentials_opt
+  (eo : option expr) (mu : solution_mapping)
+  (g : rdf_graph) (ds : rdf_dataset)
+  : Tot (option expr) (decreases eo) =
+  match eo with
+  | None -> None
+  | Some e -> Some (substitute_existentials e mu g ds)
+
+(* Filter with graph context: pre-substitute existentials, then filter. *)
+let filter_solutions_with_graph
+  (e : expr) (omega : solution_sequence)
+  (g : rdf_graph) (ds : rdf_dataset)
+  : solution_sequence =
+  List.Tot.filter
+    (fun mu ->
+      let e' = substitute_existentials e mu g ds in
+      eval_expr_ebv e' mu)
+    omega
+
+(* LeftJoin with graph context: same substitution applied per-mapping. *)
+let left_join_with_graph
+  (omega1 omega2 : solution_sequence) (filter_expr : expr)
+  (g : rdf_graph) (ds : rdf_dataset)
+  : solution_sequence =
+  List.Tot.concatMap
+    (fun mu1 ->
+      let joins = list_filter_map
+        (fun mu2 ->
+          if sm_compatible mu1 mu2 then
+            let merged = sm_merge mu1 mu2 in
+            let e' = substitute_existentials filter_expr merged g ds in
+            if eval_expr_ebv e' merged then Some merged else None
+          else None)
+        omega2 in
+      if List.Tot.length joins > 0 then joins else [mu1])
+    omega1
+
 (* Union: multiset union of solution mappings *)
 let union (omega1 omega2 : solution_sequence) : solution_sequence =
   omega1 @ omega2
@@ -1918,18 +2085,19 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store) (dss : r
     join (eval_pattern_store p1 gs dss) (eval_pattern_store p2 gs dss)
 
   | GP_LeftJoin p1 p2 filter_e ->
-    left_join (eval_pattern_store p1 gs dss) (eval_pattern_store p2 gs dss) filter_e
+    left_join_with_graph
+      (eval_pattern_store p1 gs dss)
+      (eval_pattern_store p2 gs dss)
+      filter_e gs.gs_graph (store_to_dataset dss)
 
   | GP_Filter e p' ->
     let omega = eval_pattern_store p' gs dss in
-    (* EXISTS/NOT EXISTS require graph context — dispatch here rather than
-       through eval_expr which has no graph parameter. *)
-    (match e with
-     | E_Exists sub_p ->
-       List.Tot.filter (fun mu -> eval_exists_fwd sub_p mu gs.gs_graph (store_to_dataset dss)) omega
-     | E_NotExists sub_p ->
-       List.Tot.filter (fun mu -> not (eval_exists_fwd sub_p mu gs.gs_graph (store_to_dataset dss))) omega
-     | _ -> filter_solutions_fwd e omega)
+    (* EXISTS / NOT EXISTS may appear at the top level of [e] OR nested
+       inside E_And / E_Or / E_Not / E_If etc. The pre-substitution pass
+       below replaces every existential sub-expression with E_BoolLit
+       evaluated against the current graph + dataset, so the graph-free
+       eval_expr_ebv can finish the job. Issue: w3c negation/subset-02. *)
+    filter_solutions_with_graph e omega gs.gs_graph (store_to_dataset dss)
 
   | GP_Union p1 p2 ->
     union (eval_pattern_store p1 gs dss) (eval_pattern_store p2 gs dss)
@@ -2124,18 +2292,48 @@ let eval_xsd_cast (v : eval_result) (target_type : string) (full_iri : string) :
       // always renders as xsd:double. This loses downstream arithmetic
       // promotion, which is correct per SPARQL §17.4.2: casts return a
       // new typed literal, not an ER_Num/ER_Dbl.
+      //
+      // Canonical lexical form for xsd:float follows ARQ/Jena convention
+      // (matches W3C SPARQL cast suite expectations):
+      //   - bool true  -> "1.0E0", bool false -> "0E0"
+      //   - integer 0  -> "0",     integer n  -> "<n>.0"
+      //   - double/float E-notation source with integer value:
+      //                  0 -> "0.0", n -> "<n>.0"
+      //   - else preserve lexical form
       let mk_float (s : string) : eval_result =
         ER_Term (T_Literal { lexical_form = s; datatype = xsd_float; lang_tag = None })
       in
+      // Canonical form for an integer-valued numeric coming from a parsed
+      // double/decimal scaled pair. zero -> "0.0", nonzero -> "<n>.0".
+      let canon_int_float (n : int) : string =
+        if n = 0 then "0.0" else string_of_int n ^ ".0"
+      in
+      // If lex parses to (sv, sc) and sv is divisible by 10^sc, the value
+      // is integer-valued; emit canonical "<int>.0" form. Otherwise None.
+      let try_canon_dbl (s : string) : option string =
+        match parse_double_to_scaled s with
+        | Some (sv, sc) ->
+          let p = pow10 sc in
+          if p > 0 && sv % p = 0 then Some (canon_int_float (sv / p))
+          else None
+        | None -> None
+      in
       (match v with
-       | ER_Bool b -> mk_float (if b then "1.0E0" else "0.0E0")
-       | ER_Num n -> mk_float (string_of_int n ^ ".0E0")
-       | ER_Dbl _ -> mk_float lex
+       | ER_Bool b -> mk_float (if b then "1.0E0" else "0E0")
+       | ER_Num n -> mk_float (if n = 0 then "0" else string_of_int n ^ ".0")
+       | ER_Dbl _ ->
+         (match try_canon_dbl lex with
+          | Some canon -> mk_float canon
+          | None -> mk_float lex)
        | ER_Dec _ ->
          (match parse_to_scaled lex with
           | Some _ -> mk_float lex
           | None -> ER_Error)
        | _ ->
+         // String input: preserve lex form. ARQ-style scientific
+         // re-canonicalization for string inputs (e.g. "0.0" -> "0E0",
+         // "+33.3300" -> "3.333E1", "1.5" -> "1.5E0", "-10.2E3" -> "-1.02E4")
+         // is not implemented yet — see docs/designissues/2026-04-25-...
          (match parse_double_to_scaled lex with
           | Some _ -> mk_float lex
           | None ->
