@@ -43,6 +43,152 @@ def slugify(text: str) -> str:
     return slug or "graph"
 
 
+# ----------------------------------------------------------------------
+# Format detection + non-line-based RDF → N-Quads conversion
+#
+# The line-based pipeline below (parse_nt_or_nq_line, write_factbin,
+# materialize-nq-cottas-corpus, etc.) expects N-Triples or N-Quads on
+# disk. For block-structured formats (TriG, Turtle, RDF/XML) we
+# pre-convert to N-Quads via rdflib. The streaming fragment writes
+# quads one per line, so callers can feed the resulting file through
+# the same `.nq` pipeline without touching inner logic.
+#
+# Graph IRIs: quads from non-default contexts carry `<g>` as the 4th
+# term; default-graph triples omit the graph term (empty = default).
+# This matches the interning convention in write_factbin (graph id 0
+# = default).
+# ----------------------------------------------------------------------
+
+RDF_FORMAT_BY_EXT: dict[str, str] = {
+    ".nq": "nq",
+    ".nquads": "nq",
+    ".nt": "nt",
+    ".ntriples": "nt",
+    ".trig": "trig",
+    ".ttl": "turtle",
+    ".turtle": "turtle",
+    ".rdf": "rdfxml",
+    ".xml": "rdfxml",
+    ".owl": "rdfxml",
+}
+
+
+def infer_rdf_format(path: Path) -> str:
+    return RDF_FORMAT_BY_EXT.get(path.suffix.lower(), "")
+
+
+def _nt_escape_literal_lex(value: str) -> str:
+    # N-Triples/N-Quads literal lexical escape per the 2014 grammar:
+    # only \\, \", \n, \r, \t are allowed; all other control chars
+    # must be escaped as \uXXXX. rdflib's .n3() may use triple-quoted
+    # Turtle syntax (""") for literals with newlines, which is NOT
+    # valid N-Quads — so build our own.
+    out: list[str] = []
+    for ch in value:
+        if ch == "\\":
+            out.append("\\\\")
+        elif ch == '"':
+            out.append('\\"')
+        elif ch == "\n":
+            out.append("\\n")
+        elif ch == "\r":
+            out.append("\\r")
+        elif ch == "\t":
+            out.append("\\t")
+        elif ord(ch) < 0x20 or ord(ch) == 0x7F:
+            out.append(f"\\u{ord(ch):04X}")
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _nt_term(term) -> str:
+    # Emit URIRef / BNode / Literal in strict N-Triples/N-Quads syntax.
+    # Avoid rdflib .n3() for Literals because it may produce Turtle-only
+    # triple-quoted (""") strings that our internal parser rejects.
+    # Classes are resolved by duck-typing to avoid a hard rdflib import.
+    cls_name = type(term).__name__
+    if cls_name == "URIRef":
+        return f"<{str(term)}>"
+    if cls_name == "BNode":
+        return f"_:{str(term)}"
+    if cls_name == "Literal":
+        lex = _nt_escape_literal_lex(str(term))
+        lang = getattr(term, "language", None)
+        dt = getattr(term, "datatype", None)
+        if lang:
+            return f"\"{lex}\"@{lang}"
+        if dt is not None:
+            return f"\"{lex}\"^^<{str(dt)}>"
+        return f"\"{lex}\""
+    # Fallback: stringify in angle brackets (URI-like).
+    return f"<{str(term)}>"
+
+
+def _nquads_line_for(triple, graph) -> str:
+    s, p, o = triple
+    if graph is None:
+        return f"{_nt_term(s)} {_nt_term(p)} {_nt_term(o)} ."
+    ident = getattr(graph, "identifier", graph)
+    ident_str = str(ident)
+    if ident_str == "urn:x-rdflib:default" or ident_str == "":
+        return f"{_nt_term(s)} {_nt_term(p)} {_nt_term(o)} ."
+    # Graph identifier may be URIRef or BNode.
+    return f"{_nt_term(s)} {_nt_term(p)} {_nt_term(o)} {_nt_term(ident)} ."
+
+
+def convert_rdf_to_nquads(input_path: Path, input_format: str, output_nq_path: Path) -> int:
+    """Parse an RDF file and emit a line-per-quad .nq file at
+    `output_nq_path`. Returns the quad count.
+
+    For TriG/N-Quads multi-graph inputs, named-graph context is
+    preserved. For single-graph inputs (Turtle/N-Triples/RDF/XML),
+    triples go to the default graph (empty 4th column). Uses rdflib
+    (loads input into memory — beware large TriG files).
+    """
+    try:
+        from rdflib import Dataset, Graph
+    except ImportError as exc:
+        raise RuntimeError(
+            "rdflib is required to ingest non-line RDF formats (trig/turtle/rdfxml). "
+            "Install with: pip install rdflib"
+        ) from exc
+
+    if input_format == "trig":
+        ds = Dataset()
+        ds.parse(str(input_path), format="trig")
+        quad_count = 0
+        with output_nq_path.open("w", encoding="utf-8") as out:
+            for s, p, o, g in ds.quads((None, None, None, None)):
+                out.write(_nquads_line_for((s, p, o), g) + "\n")
+                quad_count += 1
+        return quad_count
+
+    if input_format in ("turtle", "rdfxml", "nt"):
+        rdflib_fmt = {"turtle": "turtle", "rdfxml": "xml", "nt": "nt"}[input_format]
+        g = Graph()
+        g.parse(str(input_path), format=rdflib_fmt)
+        quad_count = 0
+        with output_nq_path.open("w", encoding="utf-8") as out:
+            for s, p, o in g:
+                out.write(_nquads_line_for((s, p, o), None) + "\n")
+                quad_count += 1
+        return quad_count
+
+    if input_format == "nq":
+        # Passthrough; caller should skip conversion. Return line count.
+        with output_nq_path.open("w", encoding="utf-8") as out:
+            with input_path.open("r", encoding="utf-8") as src:
+                quad_count = 0
+                for line in src:
+                    if line.strip() and not line.lstrip().startswith("#"):
+                        out.write(line)
+                        quad_count += 1
+        return quad_count
+
+    raise ValueError(f"Unsupported input format: {input_format}")
+
+
 def ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
@@ -822,24 +968,64 @@ def materialize_nq_cottas_corpus(args: argparse.Namespace) -> int:
     factbin_path = chunk_dir / "data.factbin"
     summary_path = chunk_dir / "summary.json"
 
+    input_path = Path(args.input)
+    # Resolve input format: explicit flag wins, else infer from extension.
+    input_format = getattr(args, "input_format", "") or infer_rdf_format(input_path)
+    if not input_format:
+        raise RuntimeError(
+            f"Cannot infer RDF format for {args.input}; pass --input-format "
+            "(one of nq, nt, trig, turtle, rdfxml)"
+        )
+
+    # For block-structured formats (trig/turtle/rdfxml), convert to
+    # N-Quads on disk first (rdflib-backed). For nq/nt, stream through
+    # a normalisation pass so comments/blank lines get filtered.
+    if input_format in ("trig", "turtle", "rdfxml"):
+        print(f"Pre-converting {input_format} → N-Quads via rdflib …", file=sys.stderr)
+        converted_count = convert_rdf_to_nquads(input_path, input_format, data_nq_path)
+        print(f"  wrote {converted_count} quads to {data_nq_path}", file=sys.stderr)
+        nq_input_path = data_nq_path
+    elif input_format == "nt":
+        # N-Triples → N-Quads without grafting a graph. Passthrough works
+        # for the line-based parser below since nt lines validate under
+        # parse_nt_or_nq_line("nq") too (they just have no graph term).
+        print(f"Normalising N-Triples at {input_path} …", file=sys.stderr)
+        nq_input_path = data_nq_path
+        shutil.copy(str(input_path), str(data_nq_path))
+    else:
+        # Already nq: consume in place, but still write a normalised copy
+        # to chunk_dir/data.nq so the factbin+cottas stages share the
+        # same resolved file.
+        nq_input_path = input_path
+
     graph_values: set[str] = set()
     quad_count = 0
     parsed_rows: list[ParsedLine] = []
 
-    with open(args.input, "r", encoding="utf-8") as src, data_nq_path.open("w", encoding="utf-8") as data_out:
-        for line_no, line in enumerate(src, start=1):
-            try:
-                parsed = parse_nt_or_nq_line(line, "nq")
-            except Exception as exc:
-                raise RuntimeError(f"{args.input}:{line_no}: {exc}") from exc
-            if parsed is None:
-                continue
+    # When nq_input_path is the pre-converted data.nq file inside
+    # chunk_dir, we read from it and DON'T rewrite it (open the same
+    # path for writing would truncate).
+    writing_passthrough = nq_input_path != data_nq_path
+    data_out = data_nq_path.open("w", encoding="utf-8") if writing_passthrough else None
+    try:
+        with nq_input_path.open("r", encoding="utf-8") as src:
+            for line_no, line in enumerate(src, start=1):
+                try:
+                    parsed = parse_nt_or_nq_line(line, "nq")
+                except Exception as exc:
+                    raise RuntimeError(f"{nq_input_path}:{line_no}: {exc}") from exc
+                if parsed is None:
+                    continue
 
-            data_out.write(line.rstrip("\r\n") + "\n")
-            parsed_rows.append(parsed)
-            if parsed.graph_iri is not None:
-                graph_values.add(parsed.graph_iri)
-            quad_count += 1
+                if data_out is not None:
+                    data_out.write(line.rstrip("\r\n") + "\n")
+                parsed_rows.append(parsed)
+                if parsed.graph_iri is not None:
+                    graph_values.add(parsed.graph_iri)
+                quad_count += 1
+    finally:
+        if data_out is not None:
+            data_out.close()
 
     write_factbin(factbin_path, parsed_rows)
 
@@ -854,10 +1040,18 @@ def materialize_nq_cottas_corpus(args: argparse.Namespace) -> int:
     verified = pycottas.verify(str(cottas_path))
     info = pycottas.info(str(cottas_path))
 
+    mime_by_format = {
+        "nq": "application/n-quads",
+        "nt": "application/n-triples",
+        "trig": "application/trig",
+        "turtle": "text/turtle",
+        "rdfxml": "application/rdf+xml",
+    }
+    source_mime = mime_by_format.get(input_format, "application/n-quads")
     summary = {
         "artifact_type": "pycottas-cottas",
         "source_path": str(Path(args.input).resolve()),
-        "source_format": "application/n-quads",
+        "source_format": source_mime,
         "dataset_name": args.dataset_name,
         "version": args.version,
         "quad_count": quad_count,
@@ -879,7 +1073,7 @@ def materialize_nq_cottas_corpus(args: argparse.Namespace) -> int:
         chunk_dir / "source-info.ttl",
         dataset_iri,
         source_path,
-        "application/n-quads",
+        source_mime,
         quad_count,
         "application/vnd.cottas",
     )
@@ -892,7 +1086,7 @@ def materialize_nq_cottas_corpus(args: argparse.Namespace) -> int:
             triple_count=quad_count,
             artifact_relpath=os.path.relpath(cottas_path, corpus_root),
             source_path=source_path,
-            source_format="application/n-quads",
+            source_format=source_mime,
             artifact_format="application/vnd.cottas",
         )
     }
@@ -947,8 +1141,17 @@ def build_parser() -> argparse.ArgumentParser:
     materialize_parser.add_argument("--hdt-command", default="rdf2hdt", help="External HDT builder command; skipped if unavailable")
     materialize_parser.set_defaults(func=materialize_graph_hdt_corpus)
 
-    cottas_parser = sub.add_parser("materialize-nq-cottas-corpus", help="Materialize a single dataset-level COTTAS-style artifact directory from an N-Quads file.")
-    cottas_parser.add_argument("--input", required=True, help="Input .nq file")
+    cottas_parser = sub.add_parser(
+        "materialize-nq-cottas-corpus",
+        help="Materialize a dataset-level COTTAS artifact from any supported RDF input (nq/nt/trig/turtle/rdfxml).",
+    )
+    cottas_parser.add_argument("--input", required=True, help="Input RDF file (auto-detected by extension)")
+    cottas_parser.add_argument(
+        "--input-format",
+        choices=["nq", "nt", "trig", "turtle", "rdfxml"],
+        default="",
+        help="Override format inferred from file extension",
+    )
     cottas_parser.add_argument("--corpus-root", required=True)
     cottas_parser.add_argument("--dataset-name", required=True)
     cottas_parser.add_argument("--chunk-name", help="Optional stable directory name for the dataset artifact")
