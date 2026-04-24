@@ -1,11 +1,23 @@
 module OWL.QueryRewrite
 
-// Phase 3 of the entailment plan (docs/designissues/2026-04-23-entailment-plan.md):
-// query-class-expression rewrite for FLAT owl:intersectionOf and
+// Phase 3+4 of the entailment plan (docs/designissues/2026-04-23-entailment-plan.md):
+// query-class-expression rewrite for owl:intersectionOf and
 // owl:unionOf anonymous class expressions that appear as the object of
 // rdf:type in a SPARQL WHERE clause.
 //
-// Target tests (entailment suite): simple1, simple4, paper-sparqldl-Q2.
+// Target tests (entailment suite):
+//   Phase 3 (flat):   simple1, simple4, paper-sparqldl-Q2.
+//   Phase 4 (nested): simple7 — intersection whose operand is itself
+//                     a union-of-named-classes bnode. The tests simple2,
+//                     simple3, simple5, simple6, simple8 also involve
+//                     nested CE, but every one of them has a restriction
+//                     (owl:Restriction / someValuesFrom / allValuesFrom)
+//                     somewhere in the tree. Rewriting those requires
+//                     cooperating with canonical-bnode materialisation
+//                     from RDF.Graph.Executable.owl_rl_closure_step,
+//                     which doesn't yet cover the nested-CE cases
+//                     (intersection-of / union-of inside someValuesFrom).
+//                     Those cases are explicitly deferred to Phase 5.
 //
 // Shape handled in this module (flat only — Phase 4 handles nesting):
 //     ?x rdf:type _:c .
@@ -505,6 +517,289 @@ let rewrite_bgp_flat (b : bgp) : group_graph_pattern =
   | k :: _ -> rewrite_bgp_one_union k b_after_inter
 
 // ------------------------------------------------------------------
+// Section 8b. Phase 4: nested CE rewrite.
+//
+// The flat rewriter (Section 6-8) handles the shape
+//   ?x rdf:type _:m .  _:m owl:intersectionOf ( :C1 ... :Cn ) .
+// where every operand is already a named class IRI. Nested CE is
+// the case where one or more operands is itself another CE bnode,
+// e.g. (Phase 4 target test simple7):
+//   ?x rdf:type _:m .
+//   _:m owl:intersectionOf ( :A _:u ) .
+//   _:u a owl:Class ; owl:unionOf ( :B :C ) .
+//
+// Strategy: **expand each CE marker, from the top, into a
+// group_graph_pattern rooted at the consumer triple's subject**.
+// An intersection over operands [o1; ...; on] expands to the BGP
+// formed by concatenating (subj rdf:type o_i) — BUT any o_i that is
+// itself a CE bnode recurses. A union expands to GP_Union branches,
+// each built from (subj rdf:type o_i); again, o_i may be another CE.
+//
+// Fuel = the number of CE markers in the BGP + 1. Each recursion
+// step resolves one CE bnode, and we never re-enter a marker (F*
+// insists on a structurally decreasing measure, so we just pass the
+// fuel down). For simple7 the depth is 2; fuel 32 is far more than
+// needed but harmless.
+//
+// Operands that are NOT CE markers (named IRIs, vars, literals,
+// non-CE bnodes) are leaves and become a single triple pattern
+// `subj rdf:type leaf`. Notably, restriction bnodes ([a owl:Restriction;
+// owl:onProperty :p; owl:someValuesFrom :B]) fall into this "leaf"
+// branch — the flat rewriter emits the bnode unchanged as the
+// object of rdf:type. That's why simple2 / simple3 / simple5 /
+// simple6 / simple8 (all restriction-involved) remain deferred:
+// the emitted bnode won't bind to any data triple unless the
+// closure step materialises a matching canonical restriction.
+// ------------------------------------------------------------------
+
+// Is this pattern_term a CE marker in BGP b (subject of intersectionOf
+// or unionOf)? Returns its key and combinator if so.
+let ce_combinator_for_term (b : bgp) (pt : pattern_term)
+  : option (string & ce_combinator) =
+  match pt_marker_key pt with
+  | None -> None
+  | Some k ->
+    let markers = find_markers b in
+    let rec lookup (ms : list (string & ce_combinator))
+      : Tot (option ce_combinator) (decreases ms) =
+      match ms with
+      | [] -> None
+      | (k', c) :: rest -> if k' = k then Some c else lookup rest in
+    match lookup markers with
+    | None -> None
+    | Some c -> Some (k, c)
+
+// Build a BGP containing a single `subj rdf:type leaf` triple.
+let single_type_bgp (subj : pattern_subject) (leaf : pattern_term) : bgp =
+  [ { tp_s = subj; tp_p = PT_IRI rdf_type_iri; tp_o = leaf } ]
+
+// Join a list of BGPs into a single BGP by concatenation. Stack-safe
+// fold_left. The result is *conjunction* — every triple must match.
+let concat_bgps (bs : list bgp) : bgp =
+  List.Tot.fold_left
+    (fun acc b -> List.Tot.append acc b)
+    []
+    bs
+
+// Nest a list of group_graph_pattern conjuncts into a left-deep
+// GP_Join tree. Before taking the Join route, coalesce contiguous
+// GP_BGP conjuncts at the start of the list into a single GP_BGP
+// (conjunction of BGPs is just triple-pattern concatenation). This
+// preserves the Phase 3 behaviour for simple1/simple4 — all-named
+// operands still compile to a single BGP, not a Join tree.
+let rec join_ggps_acc (acc : group_graph_pattern) (rest : list group_graph_pattern)
+  : Tot group_graph_pattern (decreases rest) =
+  match rest with
+  | []       -> acc
+  | g :: tl  ->
+    (match acc, g with
+     | GP_BGP ba, GP_BGP bg -> join_ggps_acc (GP_BGP (List.Tot.append ba bg)) tl
+     | _, _ -> join_ggps_acc (GP_Join acc g) tl)
+
+let join_ggps (gs : list group_graph_pattern) : group_graph_pattern =
+  match gs with
+  | []       -> GP_Empty
+  | [g]      -> g
+  | g :: tl  -> join_ggps_acc g tl
+
+// Expand a CE operand `op` as a class expression applied to `subj`:
+//   if op is a CE-intersect marker -> BGP with one conjunct per
+//     recursively-expanded operand.
+//   if op is a CE-union marker -> GP_Union tree with one branch per
+//     recursively-expanded operand.
+//   else (leaf) -> GP_BGP [ subj rdf:type op ].
+// Fuel decreases on each CE-bnode dive.
+let rec expand_ce_subject
+  (b : bgp) (subj : pattern_subject) (op : pattern_term) (fuel : nat)
+  : Tot group_graph_pattern (decreases fuel) =
+  match fuel with
+  | 0 ->
+    // Out of fuel: emit the leaf form; at worst this is the
+    // pre-rewrite behaviour (a bnode as the object of rdf:type that
+    // won't bind in the data). Sound — never *adds* solutions.
+    GP_BGP (single_type_bgp subj op)
+  | n ->
+    match ce_combinator_for_term b op with
+    | None ->
+      // Not a CE marker: emit leaf triple unchanged.
+      GP_BGP (single_type_bgp subj op)
+    | Some (k, CE_Intersect) ->
+      (match extract_flat_intersection b k with
+       | None ->
+         // Marker is present but operand list is empty / broken.
+         GP_BGP (single_type_bgp subj op)
+       | Some operands ->
+         // Recurse on each operand with one unit of fuel spent on
+         // this expansion. Accumulate GGPs and join them.
+         let step (acc : list group_graph_pattern) (o : pattern_term)
+                  : list group_graph_pattern =
+           List.Tot.append acc [expand_ce_subject b subj o (n - 1)] in
+         let ggps = List.Tot.fold_left step [] operands in
+         join_ggps ggps)
+    | Some (k, CE_Union) ->
+      (match extract_flat_union b k with
+       | None ->
+         GP_BGP (single_type_bgp subj op)
+       | Some operands ->
+         let step (acc : list group_graph_pattern) (o : pattern_term)
+                  : list group_graph_pattern =
+           List.Tot.append acc [expand_ce_subject b subj o (n - 1)] in
+         let branches = List.Tot.fold_left step [] operands in
+         // Reuse the flat union ladder: peel the first branch as
+         // the left spine, fold the rest with GP_Union.
+         match branches with
+         | []  -> GP_BGP (single_type_bgp subj op)
+         | [g] -> g
+         | g :: tl ->
+           List.Tot.fold_left (fun acc br -> GP_Union acc br) g tl)
+
+// Top-level marker-set: the set of keys that are "top-level CE
+// markers reachable from ?x rdf:type m" — i.e. the object of some
+// rdf:type triple whose predicate is rdf:type. Every other marker
+// in the BGP is a nested one and will be consumed by expansion.
+let rec collect_top_markers_acc (b : bgp) (markers : list (string & ce_combinator))
+                                 (acc : list string)
+  : Tot (list string) (decreases b) =
+  match b with
+  | [] -> List.Tot.rev acc
+  | tp :: rest ->
+    (match tp.tp_p with
+     | PT_IRI p ->
+       if p = rdf_type_iri then
+         (match pt_marker_key tp.tp_o with
+          | Some k ->
+            let is_marker = List.Tot.existsb (fun (k', _) -> k' = k) markers in
+            if is_marker && not (List.Tot.mem k acc)
+            then collect_top_markers_acc rest markers (k :: acc)
+            else collect_top_markers_acc rest markers acc
+          | None -> collect_top_markers_acc rest markers acc)
+       else collect_top_markers_acc rest markers acc
+     | _ -> collect_top_markers_acc rest markers acc)
+
+let collect_top_markers (b : bgp) (markers : list (string & ce_combinator))
+  : list string =
+  collect_top_markers_acc b markers []
+
+// Does this triple consume any top-level marker (i.e., is it a
+// `?x rdf:type m` where m is one of the top markers)?
+let is_any_top_consumer (top_markers : list string) (tp : triple_pattern) : bool =
+  match tp.tp_p, pt_marker_key tp.tp_o with
+  | PT_IRI p, Some k -> p = rdf_type_iri && List.Tot.mem k top_markers
+  | _, _ -> false
+
+// Is this triple part of the bookkeeping for ANY marker (including
+// nested)? A triple (s,p,o) is bookkeeping when:
+//   s is a marker key in `markers` AND p is one of the CE meta-preds
+//   (owl:intersectionOf, owl:unionOf, rdf:type owl:Class), OR
+//   s is on the rdf:first/rdf:rest chain of any marker's list.
+let is_nested_bookkeeping
+      (markers : list (string & ce_combinator))
+      (all_chain_keys : list string)
+      (tp : triple_pattern) : bool =
+  match ps_marker_key tp.tp_s, tp.tp_p with
+  | Some sk, PT_IRI p ->
+    let is_marker = List.Tot.existsb (fun (k', _) -> k' = sk) markers in
+    if is_marker then
+      p = owl_intersectionOf_iri ||
+      p = owl_unionOf_iri ||
+      (p = rdf_type_iri &&
+       (match tp.tp_o with
+        | PT_IRI oi -> oi = owl_Class_iri
+        | _ -> false))
+    else if List.Tot.mem sk all_chain_keys then
+      p = rdf_first_iri || p = rdf_rest_iri
+    else false
+  | _, _ -> false
+
+// Compute the union of collection chain-keys for all markers in
+// `markers`. This is the list of bnode keys that belong to some
+// rdf:first/rdf:rest chain used by one of the markers.
+let all_chain_keys_for_markers (b : bgp) (markers : list (string & ce_combinator))
+  : list string =
+  let step (acc : list string) (km : string & ce_combinator)
+           : list string =
+    let (k, _) = km in
+    // Find the list-head for this marker under either predicate.
+    let head_int = bgp_find_first_obj b k owl_intersectionOf_iri in
+    let head_uni = bgp_find_first_obj b k owl_unionOf_iri in
+    let head_opt = match head_int with
+                   | Some h -> Some h
+                   | None -> head_uni in
+    (match head_opt with
+     | None -> acc
+     | Some hd ->
+       let chain = collection_chain_keys b hd in
+       List.Tot.fold_left
+         (fun a c -> if List.Tot.mem c a then a else List.Tot.append a [c])
+         acc
+         chain) in
+  List.Tot.fold_left step [] markers
+
+// Rewrite a BGP with (possibly nested) CE markers. Top-level
+// consumers each expand via `expand_ce_subject` to a GGP; the
+// residue (non-bookkeeping, non-consumer triples) is the shared
+// BGP that gets joined alongside.
+let rewrite_bgp_nested (b : bgp) : group_graph_pattern =
+  let markers     = find_markers b in
+  match markers with
+  | [] -> GP_BGP b
+  | _ ->
+    let top_markers = collect_top_markers b markers in
+    (match top_markers with
+     | [] ->
+       // Markers exist in the BGP but none are "top-level" — there
+       // is no ?x rdf:type m consumer we can safely rewrite. Fall
+       // through to the flat rewriter (which also bails on this
+       // shape, but keeps the BGP unchanged).
+       rewrite_bgp_flat b
+     | _ ->
+       let chain_keys  = all_chain_keys_for_markers b markers in
+       // Build the residue: keep every triple that is not a
+       // bookkeeping triple of any marker AND not a consumer of a
+       // top-level marker.
+       let residue =
+         List.Tot.fold_left
+           (fun acc tp ->
+             if is_nested_bookkeeping markers chain_keys tp then acc
+             else if is_any_top_consumer top_markers tp then acc
+             else List.Tot.append acc [tp])
+           []
+           b in
+       // For each consumer, expand its marker using the current BGP
+       // (so `ce_combinator_for_term` / `extract_flat_*` still see
+       // the nested CE bookkeeping). Start fuel at a safe upper
+       // bound on recursion depth: length of markers + 1.
+       let fuel : nat = List.Tot.length markers + 1 in
+       let consumer_ggps : list group_graph_pattern =
+         List.Tot.fold_left
+           (fun acc tp ->
+             if is_any_top_consumer top_markers tp
+             then List.Tot.append acc [expand_ce_subject b tp.tp_s tp.tp_o fuel]
+             else acc)
+           []
+           b in
+       // Stitch residue + consumer expansions.
+       match consumer_ggps with
+       | [] ->
+         // No top consumer triples (shouldn't happen given the
+         // top_markers check, but stay total).
+         if List.Tot.length residue = 0 then GP_Empty else GP_BGP residue
+       | _ ->
+         let base : group_graph_pattern =
+           if List.Tot.length residue = 0 then GP_Empty else GP_BGP residue in
+         // Fold consumer GGPs into `base`. Coalesce BGP+BGP to a
+         // single BGP when possible (preserves Phase 3 shape for
+         // paper-sparqldl-Q2, which becomes a single BGP join of
+         // [?x :name ?y; ?x a :Student; ?x a :Employee]).
+         List.Tot.fold_left
+           (fun acc g -> match acc, g with
+                         | GP_Empty, _ -> g
+                         | GP_BGP ba, GP_BGP bg -> GP_BGP (List.Tot.append ba bg)
+                         | _, _ -> GP_Join acc g)
+           base
+           consumer_ggps)
+
+// ------------------------------------------------------------------
 // Section 9. Recurse over the group_graph_pattern tree. All non-BGP
 // constructors are structurally preserved; only GP_BGP nodes are
 // rewritten. Fuel bounds the recursion (the GGP tree is always
@@ -520,7 +815,7 @@ let rewrite_bgp_flat (b : bgp) : group_graph_pattern =
 let rec rewrite_ggp (g : group_graph_pattern)
   : Tot group_graph_pattern (decreases g) =
   match g with
-  | GP_BGP b           -> rewrite_bgp_flat b
+  | GP_BGP b           -> rewrite_bgp_nested b
   | GP_Join a b        -> GP_Join (rewrite_ggp a) (rewrite_ggp b)
   | GP_LeftJoin a b e  -> GP_LeftJoin (rewrite_ggp a) (rewrite_ggp b) e
   | GP_Filter e a      -> GP_Filter e (rewrite_ggp a)
