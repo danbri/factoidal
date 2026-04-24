@@ -25,12 +25,15 @@ loop. Implementing it would require a complete second rule engine and
 verification effort that is unrelated to the project's
 verified-RDF/SPARQL goal.
 
-**Concretely:** the 2 RIF tests under
-`third_party/testing/w3c/sparql/sparql11/entailment/` are **permanent
-SKIPs**. They are:
+**Concretely:** the 4 RIF tests under
+`third_party/testing/w3c/sparql/sparql11/entailment/` (manifest IRIs
+`:rif01 :rif03 :rif04 :rif06`, all tagged `sd:entailmentRegime ent:RIF`)
+are **permanent SKIPs**. They are:
 
-- `BindingsClause-Core` — RIF Core BLD subset entailment.
-- `RIFCore-NoSubclassNorTyping-1` — RIF Core engine roundtrip.
+- `:rif01` — RIF Logical Entailment (referencing RIF XML).
+- `:rif03` — RIF Core WG tests: Frames.
+- `:rif04` — RIF Core WG tests: Modeling Brain Anatomy.
+- `:rif06` — RIF Core WG tests: RDF Combination Blank Node.
 
 These will never PASS in factoidal as long as the project scope remains
 "verified RDF/SPARQL with built-in RDFS + OWL-RL entailment." If that

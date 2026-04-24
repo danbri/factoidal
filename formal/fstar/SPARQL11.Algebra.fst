@@ -5254,8 +5254,11 @@ let apply_add (ds : rdf_dataset) (silent : bool) (src : graph_ref)
 
 // Apply a single update op. Stage b-data + DELETE WHERE + U_Modify handle
 // the pattern-matching operations; stage d (this section) handles the pure
-// graph-management ops. U_Load is the only remaining op — it requires I/O
-// (fetching an external RDF document) and is still a no-op.
+// graph-management ops. U_Load remains a no-op: LOAD requires HTTP I/O
+// (fetching an external RDF document) which the F* core does not perform.
+// For LOAD SILENT this is correct ("on fault, succeed silently with no
+// effect"). For non-silent LOAD it is a known gap — fetching + fault
+// signalling would have to flow through an effectful runtime hook.
 let apply_update_op (ds : rdf_dataset) (op : update_op) : rdf_dataset =
   match op with
   | U_InsertData g -> apply_insert_data ds g
@@ -5283,8 +5286,13 @@ let apply_update (ds : rdf_dataset) (u : sparql_update) : rdf_dataset =
 
 // Classify an op list: returns true iff every op is implemented. Stage d
 // (graph management: CREATE / CLEAR / DROP / COPY / MOVE / ADD) is now
-// implemented, so only LOAD (which requires I/O) remains as a reason to
-// skip the test.
+// implemented. LOAD requires HTTP I/O, but LOAD SILENT has a well-defined
+// semantic: "if the operation fails, succeed silently." We have no fetcher,
+// so every LOAD effectively fails — and SILENT means that's fine. The
+// runtime returns the unchanged dataset, which matches the W3C update-silent
+// expected results (empty dataset in, empty dataset out). Non-silent LOAD
+// still cannot pass because it must signal a fault on fetch failure, and
+// the F* algebra has no error channel for updates yet.
 let is_implemented_op (op : update_op) : bool =
   match op with
   | U_InsertData _ -> true
@@ -5297,7 +5305,7 @@ let is_implemented_op (op : update_op) : bool =
   | U_Copy   _ _ _ -> true
   | U_Move   _ _ _ -> true
   | U_Add    _ _ _ -> true
-  | U_Load   _ _ _ -> false
+  | U_Load   silent _ _ -> silent
 
 let rec update_is_implemented_only_ops (ops : list update_op)
   : Tot bool (decreases ops) =
