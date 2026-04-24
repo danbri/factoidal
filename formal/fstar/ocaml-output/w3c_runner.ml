@@ -936,10 +936,14 @@ let run_query_eval_test tc =
      rather than bindings; handled separately below. *)
   let is_construct =
     match query.q_form with QF_Construct _ -> true | _ -> false in
+  (* Dispatch through OWL_QueryEval wrappers so OWL.QueryRewrite.rewrite_query
+     runs first on any top-level query. Rewriter is a structural no-op when
+     the query contains no owl:intersectionOf / owl:unionOf CE markers, so
+     this is safe unconditionally (see comment in OWL.QueryEval.fst). *)
   let actual_triples =
-    if is_construct then eval_construct_query query graph dataset else [] in
+    if is_construct then OWL_QueryEval.eval_construct_query_owl query graph dataset else [] in
   let actual_results =
-    if is_construct then [] else eval_select_query query graph dataset in
+    if is_construct then [] else OWL_QueryEval.eval_select_query_owl query graph dataset in
 
   (* Load and compare expected results *)
   match tc.result_file with
