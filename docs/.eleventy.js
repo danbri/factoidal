@@ -14,6 +14,33 @@ module.exports = function(eleventyConfig) {
   // but dropping sibling CSV/JSON.
   eleventyConfig.addPassthroughCopy("test-results");
 
+  // Rewrite cross-refs to .md files inside the rendered HTML so they point
+  // at the .md-less URL Eleventy actually emits. Two shape fixes:
+  //
+  // (1) Strip `.md` extension, add trailing `/`.
+  // (2) Prepend `../` — Eleventy's default pretty-URL output places each
+  //     page at `dir/page.md` → `_site/dir/page/index.html`, so a sibling
+  //     reference `sibling.md` from the new location resolves as a CHILD
+  //     of `page/`, not a sibling of `page/` on disk. Prepending `../`
+  //     restores sibling semantics.
+  //
+  // Link sources use bare .md links because they're also readable on
+  // GitHub directly; Eleventy's default doesn't rewrite them. Caught
+  // 40+ broken links via tests/local/check_pages_links.sh.
+  eleventyConfig.addTransform("mdlink-to-slug", function(content, outputPath) {
+    if (!outputPath || !outputPath.endsWith(".html")) return content;
+    return content.replace(
+      /(\bhref=")([^"#?]*)\.md(#[^"]*)?"/g,
+      (_m, prefix, path, frag) => {
+        if (/^(https?:|mailto:|ftp:|data:|\/)/.test(path)) return _m;
+        // `./sibling.md` or `sibling.md` → `../sibling/`
+        // `../other-dir/page.md` → `../../other-dir/page/`
+        let clean = path.replace(/^\.\//, "");
+        return `${prefix}../${clean}/${frag || ""}"`;
+      }
+    );
+  });
+
   return {
     dir: {
       input: ".",
