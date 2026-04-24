@@ -3721,6 +3721,27 @@ let rec prefix_map_to_wf (pm : prefix_map)
     if is_iri i then (p, i) :: prefix_map_to_wf rest
     else prefix_map_to_wf rest
 
+// SPARQL 1.1 Update §19.6: blank node labels in an INSERT DATA section
+// MUST NOT be used in any other INSERT DATA or DELETE DATA section of
+// the same request (negative test: syntax-update-54.ru, two INSERT DATA
+// ops reusing _:b1). The restriction applies only to the DATA forms —
+// INSERT/DELETE WHERE templates are allowed to reuse labels across ops
+// because bnode identity is per-op fresh at runtime anyway (basic-update
+// tests cover exactly that case).
+let labeled_bnodes_in_data_op (op : update_op) : list string =
+  match op with
+  | U_InsertData g | U_DeleteData g -> ggp_labeled_bnodes g
+  | _ -> []
+
+let rec bnode_labels_unique_across_data_ops (seen : list string) (ops : list update_op)
+  : Tot bool (decreases ops) =
+  match ops with
+  | [] -> true
+  | op :: rest ->
+    let labels = labeled_bnodes_in_data_op op in
+    if local_string_overlaps labels seen then false
+    else bnode_labels_unique_across_data_ops (local_string_union labels seen) rest
+
 // Top-level entry point for a SPARQL 1.1 Update request. Returns either
 // a populated sparql_update AST or a parse error. Stage (a): parser only.
 let parse_sparql_update (input : string) : parse_result sparql_update =
@@ -3730,6 +3751,8 @@ let parse_sparql_update (input : string) : parse_result sparql_update =
   | ParseOk (pm, base, ops) rest ->
     if not (tokens_only_eof rest) then
       ParseErr "unexpected tokens after update request"
+    else if not (bnode_labels_unique_across_data_ops [] ops) then
+      ParseErr "blank node label reused across INSERT DATA / DELETE DATA ops (SPARQL 1.1 Update §19.6)"
     else
       ParseOk ({ u_base = base; u_prefixes = prefix_map_to_wf pm; u_ops = ops }) rest
 

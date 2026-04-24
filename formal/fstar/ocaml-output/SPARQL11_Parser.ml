@@ -6679,6 +6679,23 @@ let rec prefix_map_to_wf (pm : prefix_map) :
       if RDF_Graph_Executable.is_iri i
       then (p, i) :: (prefix_map_to_wf rest)
       else prefix_map_to_wf rest
+let labeled_bnodes_in_data_op (op : SPARQL11_Algebra.update_op) :
+  Prims.string Prims.list=
+  match op with
+  | SPARQL11_Algebra.U_InsertData g -> ggp_labeled_bnodes g
+  | SPARQL11_Algebra.U_DeleteData g -> ggp_labeled_bnodes g
+  | uu___ -> []
+let rec bnode_labels_unique_across_data_ops (seen : Prims.string Prims.list)
+  (ops : SPARQL11_Algebra.update_op Prims.list) : Prims.bool=
+  match ops with
+  | [] -> true
+  | op::rest ->
+      let labels = labeled_bnodes_in_data_op op in
+      if local_string_overlaps labels seen
+      then false
+      else
+        bnode_labels_unique_across_data_ops (local_string_union labels seen)
+          rest
 let parse_sparql_update (input : Prims.string) :
   SPARQL11_Algebra.sparql_update parse_result=
   let tokens = tokenize input in
@@ -6690,12 +6707,17 @@ let parse_sparql_update (input : Prims.string) :
       if Prims.op_Negation (tokens_only_eof rest)
       then ParseErr "unexpected tokens after update request"
       else
-        ParseOk
-          ({
-             SPARQL11_Algebra.u_base = base;
-             SPARQL11_Algebra.u_prefixes = (prefix_map_to_wf pm);
-             SPARQL11_Algebra.u_ops = ops
-           }, rest)
+        if Prims.op_Negation (bnode_labels_unique_across_data_ops [] ops)
+        then
+          ParseErr
+            "blank node label reused across INSERT DATA / DELETE DATA ops (SPARQL 1.1 Update \194\16719.6)"
+        else
+          ParseOk
+            ({
+               SPARQL11_Algebra.u_base = base;
+               SPARQL11_Algebra.u_prefixes = (prefix_map_to_wf pm);
+               SPARQL11_Algebra.u_ops = ops
+             }, rest)
 let sse_wrap (tag : Prims.string) (body : Prims.string) : Prims.string=
   Prims.strcat "("
     (Prims.strcat tag (Prims.strcat " " (Prims.strcat body ")")))
