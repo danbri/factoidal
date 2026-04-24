@@ -1,6 +1,7 @@
 module Tableau
 
-(* OWL-DL tableau reasoner — STAGE (b): CLASS-EXPRESSION SATISFIABILITY.
+(* OWL-DL tableau reasoner — STAGES (b) + (c): CLASS-EXPRESSION
+   SATISFIABILITY INCLUDING CARDINALITY RESTRICTIONS.
 
    This module implements the part of the tableau that can answer
    "is individual i a member of class-expression C?" where C is built from:
@@ -9,13 +10,30 @@ module Tableau
        * owl:someValuesFrom
        * owl:allValuesFrom
        * owl:hasValue
+       * owl:minCardinality / owl:maxCardinality / owl:cardinality
+       * owl:minQualifiedCardinality + owl:onClass
+       * owl:maxQualifiedCardinality + owl:onClass
+       * owl:qualifiedCardinality + owl:onClass
      - Boolean combinators: owl:intersectionOf, owl:unionOf
      - Partial owl:complementOf (only the trivial clash check within a branch)
 
-   WHAT STAGE (b) EXPLICITLY DOES NOT DO (deferred to later stages):
-     - No cardinality (min/max/exact) — stage (c).
+   STAGE (c) SOUNDNESS NOTES:
+     - min-N: Some true when count of known P-successors (in any class
+       for unqualified, or provably in class C for qualified) is >= N.
+       Under open-world + no-UNA, two distinct IRI successors might be
+       sameAs, so the count is a conservative LOWER bound. Some true
+       from it is still sound (we exhibit witnesses; OWL doesn't require
+       distinctness for min-N unless asserted). Never returns Some false
+       here — absence of known successors does not preclude unseen ones.
+     - max-N: Only returns Some true when k=0 AND there are no known
+       successors (or, for qualified, no successor is provably in C).
+       True max-N refutation requires sameAs aggregation / UNA — deferred.
+     - exactly-N: Same k=0 restriction as max-N.
+
+   WHAT REMAINS DEFERRED TO LATER STAGES:
      - No full classical-negation dual-branch search — stage (d).
      - No fresh-individual skolemisation for ∃ — stage (e).
+     - Stage (c) max/exact over k>=1 requires differentFrom tracking — stage (f).
 
    The contract of `owl_tableau_entails` is unchanged from stage (a):
      Some true  = provably entailed
@@ -891,6 +909,74 @@ let _tableau_sanity_matrix : unit =
       let st = init_tableau_state () in
       let (_, status) = tableau_step st 0 in
       assert (status = Unknown);
+
+      // Stage (c) sanity: min-cardinality counting.
+      //
+      // Dataset:
+      //   :Bob :hasChild :Charlie .
+      //   :Charlie rdf:type owl:NamedIndividual .
+      //
+      // Class expression: (min 1 :hasChild) — unqualified.
+      // Query: is :Bob a (min 1 :hasChild)?  Expected: Some true.
+      let i_bob : wf_iri =
+        assert_norm (is_iri "http://ex/Bob");
+        "http://ex/Bob" in
+      let i_charlie : wf_iri =
+        assert_norm (is_iri "http://ex/Charlie");
+        "http://ex/Charlie" in
+      let i_hasChild : wf_iri =
+        assert_norm (is_iri "http://ex/hasChild");
+        "http://ex/hasChild" in
+      let bob_has_charlie : triple = {
+        s = S_IRI i_bob;
+        p = i_hasChild;
+        o = T_IRI i_charlie;
+      } in
+      let g3 : rdf_graph = [bob_has_charlie] in
+      let ce_min1 = CE_MinCard 1 i_hasChild in
+      let res_min1 = is_member g3 (S_IRI i_bob) ce_min1 8 in
+      assert (res_min1 = Some true);
+
+      // min 2 on the same data: not provable (we have 1 known successor).
+      let ce_min2 = CE_MinCard 2 i_hasChild in
+      let res_min2 = is_member g3 (S_IRI i_bob) ce_min2 8 in
+      assert (res_min2 = None);
+
+      // max 0 on Bob: NOT provable (he has a known successor).
+      let ce_max0 = CE_MaxCard 0 i_hasChild in
+      let res_max0 = is_member g3 (S_IRI i_bob) ce_max0 8 in
+      assert (res_max0 = None);
+
+      // max 0 on an individual with no known successors: Some true.
+      // Here Alice has no hasChild edge, so max-0 holds vacuously.
+      let i_alice2 : wf_iri =
+        assert_norm (is_iri "http://ex/Alice2");
+        "http://ex/Alice2" in
+      let res_max0_alice = is_member g3 (S_IRI i_alice2) ce_max0 8 in
+      assert (res_max0_alice = Some true);
+
+      // Qualified min-1 with onClass: extend data so Charlie is typed.
+      // :Charlie rdf:type :Male
+      let i_male : wf_iri =
+        assert_norm (is_iri "http://ex/Male");
+        "http://ex/Male" in
+      let charlie_male : triple = {
+        s = S_IRI i_charlie;
+        p = rdf_type;
+        o = T_IRI i_male;
+      } in
+      let g4 : rdf_graph = [bob_has_charlie; charlie_male] in
+      let ce_min1_male = CE_MinQualCard 1 i_hasChild (CE_Named i_male) in
+      let res_min1_male = is_member g4 (S_IRI i_bob) ce_min1_male 8 in
+      assert (res_min1_male = Some true);
+
+      // Qualified min-1 with onClass :Female: Charlie isn't Female → None.
+      let i_female2 : wf_iri =
+        assert_norm (is_iri "http://ex/Female2");
+        "http://ex/Female2" in
+      let ce_min1_female = CE_MinQualCard 1 i_hasChild (CE_Named i_female2) in
+      let res_min1_female = is_member g4 (S_IRI i_bob) ce_min1_female 8 in
+      assert (res_min1_female = None);
 
       ()
     end
