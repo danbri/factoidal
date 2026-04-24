@@ -1,0 +1,22 @@
+@prefix ex:   <http://example.org/geo/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+ex:europe a ex:Continent ; rdfs:label "Europe" .
+ex:asia   a ex:Continent ; rdfs:label "Asia" .
+
+ex:uk       a ex:Country ; rdfs:label "United Kingdom" ; ex:inContinent ex:europe ; ex:population 67886011 ; ex:capital ex:london .
+ex:france   a ex:Country ; rdfs:label "France"         ; ex:inContinent ex:europe ; ex:population 67390000 ; ex:capital ex:paris  .
+ex:germany  a ex:Country ; rdfs:label "Germany"        ; ex:inContinent ex:europe ; ex:population 83240000 ; ex:capital ex:berlin .
+ex:italy    a ex:Country ; rdfs:label "Italy"          ; ex:inContinent ex:europe ; ex:population 59110000 ; ex:capital ex:rome   .
+ex:spain    a ex:Country ; rdfs:label "Spain"          ; ex:inContinent ex:europe ; ex:population 47450000 ; ex:capital ex:madrid .
+ex:japan    a ex:Country ; rdfs:label "Japan"          ; ex:inContinent ex:asia   ; ex:population 125700000 ; ex:capital ex:tokyo .
+ex:india    a ex:Country ; rdfs:label "India"          ; ex:inContinent ex:asia   ; ex:population 1380000000 ; ex:capital ex:delhi .
+
+ex:london a ex:City ; rdfs:label "London"     ; ex:population  8900000 .
+ex:paris  a ex:City ; rdfs:label "Paris"      ; ex:population  2140000 .
+ex:berlin a ex:City ; rdfs:label "Berlin"     ; ex:population  3670000 .
+ex:rome   a ex:City ; rdfs:label "Rome"       ; ex:population  2870000 .
+ex:madrid a ex:City ; rdfs:label "Madrid"     ; ex:population  3340000 .
+ex:tokyo  a ex:City ; rdfs:label "Tokyo"      ; ex:population 13960000 .
+ex:delhi  a ex:City ; rdfs:label "Delhi"      ; ex:population 19700000 .

@@ -1,0 +1,34 @@
+@prefix rdf:    <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:    <http://www.w3.org/2002/07/owl#> .
+@prefix schema: <http://schema.org/> .
+@prefix ex:     <http://example.org/> .
+
+# --- A fragment of the schema.org class hierarchy (not the whole tree).
+schema:Thing              a rdfs:Class .
+schema:Place              rdfs:subClassOf schema:Thing .
+schema:LodgingBusiness    rdfs:subClassOf schema:Place .
+schema:Hotel              rdfs:subClassOf schema:LodgingBusiness .
+schema:Campground         rdfs:subClassOf schema:LodgingBusiness .
+schema:Restaurant         rdfs:subClassOf schema:Place .
+schema:FastFoodRestaurant rdfs:subClassOf schema:Restaurant .
+
+# --- A sub-property of schema:name for contact-style labels.
+schema:legalName rdfs:subPropertyOf schema:name .
+
+# --- OWL-RL goodies: sameAs + inverseOf for the OWL-RL demo queries.
+schema:containedInPlace  owl:inverseOf schema:containsPlace .
+
+# --- Instances.
+ex:motel6     a schema:Hotel              ; schema:name "Motel 6 Downtown" .
+ex:hotelZ     a schema:Hotel              ; schema:legalName "Hotel Zinc, LLC" .
+ex:kampground a schema:Campground         ; schema:name "Redwood KOA" .
+ex:luigi      a schema:Restaurant         ; schema:name "Luigi's Trattoria" .
+ex:mcfood     a schema:FastFoodRestaurant ; schema:name "McFood" .
+
+# --- An inverseOf chain for OWL-RL to propagate.
+ex:downtown   schema:containsPlace ex:motel6, ex:luigi .
+
+# --- An owl:sameAs pair to demonstrate OWL-RL sameAs substitution.
+ex:hotelZincLLC  owl:sameAs ex:hotelZ .
+ex:hotelZincLLC  schema:name "Hotel Zinc" .

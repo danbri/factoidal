@@ -1,0 +1,28 @@
+@prefix dc:    <http://purl.org/dc/terms/> .
+@prefix ex:    <http://example.org/lib/> .
+@prefix schema: <http://schema.org/> .
+
+# A default graph carrying catalogue-level metadata.
+ex:central dc:title "Central Library" ; dc:publisher "Example City" .
+ex:east    dc:title "East Branch"     ; dc:publisher "Example City" .
+ex:west    dc:title "West Branch"     ; dc:publisher "Example City" .
+
+# Each library's holdings in its own named graph.
+ex:central {
+  ex:b1 a schema:Book ; schema:name "Gödel, Escher, Bach" ; schema:author "Hofstadter" .
+  ex:b2 a schema:Book ; schema:name "The Dream Machine"   ; schema:author "Waldrop" .
+  ex:b3 a schema:Book ; schema:name "Thinking, Fast and Slow" ; schema:author "Kahneman" .
+  ex:b4 a schema:Book ; schema:name "The Annotated Turing"    ; schema:author "Petzold" .
+}
+
+ex:east {
+  ex:b5 a schema:Book ; schema:name "The Dream Machine"   ; schema:author "Waldrop" .
+  ex:b6 a schema:Book ; schema:name "Soul of a New Machine" ; schema:author "Kidder" .
+  ex:b7 a schema:Book ; schema:name "Gödel, Escher, Bach" ; schema:author "Hofstadter" .
+}
+
+ex:west {
+  ex:b8 a schema:Book ; schema:name "Thinking, Fast and Slow" ; schema:author "Kahneman" .
+  ex:b9 a schema:Book ; schema:name "Algorithms to Live By" ; schema:author "Christian, Griffiths" .
+  ex:b10 a schema:Book ; schema:name "Gödel, Escher, Bach" ; schema:author "Hofstadter" .
+}

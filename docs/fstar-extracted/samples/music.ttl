@@ -1,0 +1,43 @@
+@prefix ex:   <http://example.org/music/> .
+@prefix dc:   <http://purl.org/dc/terms/> .
+@prefix mo:   <http://purl.org/ontology/mo/> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+ex:radiohead a mo:MusicGroup ;
+  dc:title "Radiohead" ;
+  ex:formed 1985 ;
+  ex:genre  "alternative rock" ;
+  ex:member ex:thom, ex:jonny, ex:colin, ex:ed, ex:phil .
+
+ex:beatles a mo:MusicGroup ;
+  dc:title "The Beatles" ;
+  ex:formed 1960 ;
+  ex:genre  "rock" ;
+  ex:member ex:john, ex:paul, ex:george, ex:ringo .
+
+ex:kraftwerk a mo:MusicGroup ;
+  dc:title "Kraftwerk" ;
+  ex:formed 1970 ;
+  ex:genre  "electronic" ;
+  ex:member ex:ralf, ex:florian .
+
+ex:thom   a mo:MusicArtist ; dc:title "Thom Yorke" .
+ex:jonny  a mo:MusicArtist ; dc:title "Jonny Greenwood" .
+ex:colin  a mo:MusicArtist ; dc:title "Colin Greenwood" .
+ex:ed     a mo:MusicArtist ; dc:title "Ed O'Brien" .
+ex:phil   a mo:MusicArtist ; dc:title "Phil Selway" .
+ex:john   a mo:MusicArtist ; dc:title "John Lennon" .
+ex:paul   a mo:MusicArtist ; dc:title "Paul McCartney" .
+ex:george a mo:MusicArtist ; dc:title "George Harrison" .
+ex:ringo  a mo:MusicArtist ; dc:title "Ringo Starr" .
+ex:ralf   a mo:MusicArtist ; dc:title "Ralf Hütter" .
+ex:florian a mo:MusicArtist ; dc:title "Florian Schneider" .
+
+ex:okc  a mo:Album ; dc:title "OK Computer"         ; ex:by ex:radiohead ; ex:year 1997 .
+ex:kida a mo:Album ; dc:title "Kid A"                ; ex:by ex:radiohead ; ex:year 2000 .
+ex:inra a mo:Album ; dc:title "In Rainbows"          ; ex:by ex:radiohead ; ex:year 2007 .
+ex:abr  a mo:Album ; dc:title "Abbey Road"           ; ex:by ex:beatles   ; ex:year 1969 .
+ex:sgt  a mo:Album ; dc:title "Sgt. Pepper's Lonely Hearts Club Band" ; ex:by ex:beatles ; ex:year 1967 .
+ex:auto a mo:Album ; dc:title "Autobahn"             ; ex:by ex:kraftwerk ; ex:year 1974 .
+ex:tem  a mo:Album ; dc:title "Trans-Europa Express" ; ex:by ex:kraftwerk ; ex:year 1977 .
+ex:com  a mo:Album ; dc:title "Computerwelt"         ; ex:by ex:kraftwerk ; ex:year 1981 .

@@ -1,0 +1,28 @@
+@prefix ex:   <http://example.org/> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix sch:  <http://schema.org/> .
+
+ex:p1 a sch:Product ; sch:name "Espresso Machine" ; sch:category "kitchen"  ; ex:price 249.99 ; ex:stock 17 .
+ex:p2 a sch:Product ; sch:name "Coffee Grinder"   ; sch:category "kitchen"  ; ex:price  89.00 ; ex:stock 42 .
+ex:p3 a sch:Product ; sch:name "Kettle"           ; sch:category "kitchen"  ; ex:price  39.50 ; ex:stock  0 .
+ex:p4 a sch:Product ; sch:name "Cafetière"        ; sch:category "kitchen"  ; ex:price  25.00 ; ex:stock 30 .
+
+ex:p5 a sch:Product ; sch:name "Running Shoes"    ; sch:category "sports"   ; ex:price 110.00 ; ex:stock  8 .
+ex:p6 a sch:Product ; sch:name "Yoga Mat"         ; sch:category "sports"   ; ex:price  35.00 ; ex:stock 21 .
+ex:p7 a sch:Product ; sch:name "Dumbbell Pair"    ; sch:category "sports"   ; ex:price  60.00 ; ex:stock  5 .
+ex:p8 a sch:Product ; sch:name "Tennis Racket"    ; sch:category "sports"   ; ex:price 180.00 ; ex:stock  3 .
+
+ex:p9  a sch:Product ; sch:name "Hardback Novel"  ; sch:category "books"    ; ex:price  22.00 ; ex:stock 60 .
+ex:p10 a sch:Product ; sch:name "Cookery Book"    ; sch:category "books"    ; ex:price  28.00 ; ex:stock 14 .
+ex:p11 a sch:Product ; sch:name "Atlas"           ; sch:category "books"    ; ex:price  45.00 ; ex:stock  0 .
+ex:p12 a sch:Product ; sch:name "Notebook (A5)"   ; sch:category "stationery"; ex:price   7.50 ; ex:stock 120 .
+
+ex:p13 a sch:Product ; sch:name "LED Desk Lamp"   ; sch:category "home"     ; ex:price  48.00 ; ex:stock 11 .
+ex:p14 a sch:Product ; sch:name "Wool Blanket"    ; sch:category "home"     ; ex:price  65.00 ; ex:stock  4 .
+ex:p15 a sch:Product ; sch:name "Picture Frame"   ; sch:category "home"     ; ex:price  12.99 ; ex:stock 33 .
+
+ex:p16 a sch:Product ; sch:name "Headphones"      ; sch:category "electronics"; ex:price 199.00 ; ex:stock  2 .
+ex:p17 a sch:Product ; sch:name "USB-C Cable"     ; sch:category "electronics"; ex:price   9.99 ; ex:stock 500 .
+ex:p18 a sch:Product ; sch:name "Bluetooth Speaker"; sch:category "electronics"; ex:price  79.00 ; ex:stock 23 .
+ex:p19 a sch:Product ; sch:name "Fitness Tracker" ; sch:category "electronics"; ex:price 149.00 ; ex:stock  9 .
+ex:p20 a sch:Product ; sch:name "Smart Plug"      ; sch:category "electronics"; ex:price  19.99 ; ex:stock 75 .

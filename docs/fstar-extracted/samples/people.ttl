@@ -1,0 +1,46 @@
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix ex:   <http://example.org/> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+ex:alice a foaf:Person ;
+  foaf:name "Alice Carter" ;
+  foaf:age 30 ;
+  foaf:mbox <mailto:alice@example.org> ;
+  foaf:knows ex:bob, ex:carol, ex:dave .
+
+ex:bob a foaf:Person ;
+  foaf:name "Bob Nguyen"@en ;
+  foaf:age 42 ;
+  foaf:knows ex:alice, ex:carol .
+
+ex:carol a foaf:Person ;
+  foaf:name "Carol Diaz" ;
+  foaf:age 27 ;
+  foaf:mbox <mailto:carol@example.org> ;
+  foaf:knows ex:alice, ex:bob, ex:eve .
+
+ex:dave a foaf:Person ;
+  foaf:name "Dave Patel"@en ;
+  foaf:age 38 ;
+  foaf:knows ex:alice .
+
+ex:eve a foaf:Person ;
+  foaf:name "Eve Müller"@de ;
+  foaf:age 24 ;
+  foaf:mbox <mailto:eve@example.org> ;
+  foaf:knows ex:carol, ex:frank .
+
+ex:frank a foaf:Person ;
+  foaf:name "Frank O'Connor"@en ;
+  foaf:age 55 ;
+  foaf:knows ex:eve, ex:grace .
+
+ex:grace a foaf:Person ;
+  foaf:name "Grace Hopper" ;
+  foaf:age 85 ;
+  foaf:knows ex:frank .
+
+ex:heidi a foaf:Person ;
+  foaf:name "Heidi Klum"@de ;
+  foaf:age 50 ;
+  foaf:mbox <mailto:heidi@example.org> .

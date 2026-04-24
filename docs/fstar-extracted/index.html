@@ -280,6 +280,45 @@
   .warn { padding: 0.6em 0.9em; background: #fff4e6; border-left: 3px solid #e67e22; margin: 0.8em 0; }
   .artifact { padding: 0.5em 0.8em; background: var(--surface); border-left: 3px solid var(--brand); margin: 0.5em 0; }
   footer { text-align: center; color: var(--muted); font-size: 0.85em; padding: 2em 1em; }
+
+  /* Dataset cards. Each <details class="dataset-card"> hosts one
+     <factoidal-sparql-client>. Collapsing keeps the page scannable —
+     there are six datasets below. */
+  details.dataset-card {
+    margin: 0.8em 0; border: 1px solid var(--border); border-radius: 4px;
+    background: #fff;
+  }
+  details.dataset-card[open] { background: #fff; }
+  details.dataset-card > summary {
+    list-style: none; cursor: pointer; padding: 0.6em 0.9em;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    color: var(--brand-dark); font-size: 0.95em;
+  }
+  details.dataset-card > summary::marker,
+  details.dataset-card > summary::-webkit-details-marker { display: none; }
+  details.dataset-card > summary::before {
+    content: "\25B8  "; color: var(--muted); display: inline-block;
+    transition: transform 0.15s; margin-right: 0.2em;
+  }
+  details.dataset-card[open] > summary::before { content: "\25BE  "; }
+  details.dataset-card > factoidal-sparql-client,
+  details.dataset-card > .card-note {
+    display: block; padding: 0.6em 0.9em;
+  }
+  details.dataset-card > factoidal-sparql-client { padding: 0.8em 0.9em; }
+  .card-note {
+    background: #fff8ec; color: #6b5919; font-size: 0.88em;
+    border-left: 3px solid #f0ad4e; padding: 0.5em 0.8em;
+    margin: 0.6em 0.9em 0;
+  }
+  /* Theme the web component to match the brand used elsewhere. */
+  factoidal-sparql-client {
+    --fc-brand: var(--brand);
+    --fc-brand-dark: var(--brand-dark);
+    --fc-border: var(--border);
+    --fc-surface: var(--surface);
+    --fc-muted: var(--muted);
+  }
 </style>
 </head>
 <body>
@@ -297,44 +336,461 @@
 <main>
 
 <section class="panel active" id="panel-demo" role="tabpanel">
-  <p>Pick a dataset and query, hit <strong>Run query</strong>. The whole evaluator below is F*-extracted OCaml compiled to JavaScript — no server, no network call. For a multi-file, multi-named-graph demo against real Wikidata data, see <a href="./demo-lifesci.html">the life-sciences demo</a>.</p>
+  <p>Pick a query, hit <strong>Run</strong>. The whole evaluator below is F*-extracted OCaml compiled to JavaScript or WebAssembly — no server, no network call. Each card below is a separate dataset with its own query dropdown. For a multi-file, multi-named-graph demo against real Wikidata data, see <a href="./demo-lifesci.html">the life-sciences demo</a>.</p>
 
-  <div class="controls">
-    <label class="ctl" for="dataset">Dataset:</label>
-    <select id="dataset" class="dataset"></select>
-    <label class="ctl" for="sample">Query:</label>
-    <select id="sample" class="sample"></select>
-    <span class="ctl">Logic:</span>
-    <span class="radio-group" role="radiogroup" aria-label="Entailment regime">
-      <label><input type="radio" name="entail" value="none" checked><span>none</span></label>
-      <label><input type="radio" name="entail" value="RDFS"><span>RDFS</span></label>
-      <label><input type="radio" name="entail" value="OWL-RL"><span>OWL-RL</span></label>
-    </span>
-    <span class="ctl">Engine:</span>
-    <span class="radio-group" role="radiogroup" aria-label="Engine">
-      <label title="js_of_ocaml build — widest browser support">
-        <input type="radio" name="engine" value="js" checked><span>JS</span>
-      </label>
-      <label title="wasm_of_ocaml build — needs Wasm-GC (Chrome/Edge 119+, Node 22+)">
-        <input type="radio" name="engine" value="wasm"><span>WASM</span>
-      </label>
-    </span>
-    <button class="run" id="run">Run query</button>
-    <span class="status" id="status">Loading engine…</span>
-  </div>
+  <details class="dataset-card" open>
+    <summary><strong>People &amp; friendships</strong> (~60 triples, Turtle)</summary>
+    <factoidal-sparql-client
+        engines="js,wasm" default-engine="js" warm
+        src-data='[{"url":"./samples/people.ttl","vfs":"/tmp/data.ttl"}]'>
+      <factoidal-query name="basic" label="List everyone by name">
+PREFIX foaf: &lt;http://xmlns.com/foaf/0.1/&gt;
 
-  <div class="editors">
-    <div class="editor">
-      <label for="data">Turtle data</label>
-      <textarea id="data" spellcheck="false"></textarea>
-    </div>
-    <div class="editor">
-      <label for="query">SPARQL query</label>
-      <textarea id="query" spellcheck="false"></textarea>
-    </div>
-  </div>
+SELECT ?person ?name ?age
+WHERE {
+  ?person a foaf:Person ;
+          foaf:name ?name ;
+          foaf:age  ?age .
+}
+ORDER BY ?name
+      </factoidal-query>
+      <factoidal-query name="filter" label="Filter: people over 30">
+PREFIX foaf: &lt;http://xmlns.com/foaf/0.1/&gt;
 
-  <div id="output-wrap" class="empty">Results will appear here.</div>
+SELECT ?name ?age
+WHERE {
+  ?p foaf:name ?name ;
+     foaf:age  ?age .
+  FILTER (?age &gt; 30)
+}
+ORDER BY DESC(?age)
+      </factoidal-query>
+      <factoidal-query name="optional" label="OPTIONAL: email if known">
+PREFIX foaf: &lt;http://xmlns.com/foaf/0.1/&gt;
+
+SELECT ?name ?mbox
+WHERE {
+  ?p foaf:name ?name .
+  OPTIONAL { ?p foaf:mbox ?mbox }
+}
+ORDER BY ?name
+      </factoidal-query>
+      <factoidal-query name="friendsof" label="Friends of Alice">
+PREFIX foaf: &lt;http://xmlns.com/foaf/0.1/&gt;
+PREFIX ex:   &lt;http://example.org/&gt;
+
+SELECT ?friend ?friendName
+WHERE {
+  ex:alice foaf:knows ?friend .
+  ?friend foaf:name ?friendName .
+}
+ORDER BY ?friendName
+      </factoidal-query>
+      <factoidal-query name="mutual" label="Mutual friendships">
+PREFIX foaf: &lt;http://xmlns.com/foaf/0.1/&gt;
+
+SELECT DISTINCT ?a ?b
+WHERE {
+  ?a foaf:knows ?b .
+  ?b foaf:knows ?a .
+  FILTER (STR(?a) &lt; STR(?b))
+}
+ORDER BY ?a ?b
+      </factoidal-query>
+      <factoidal-query name="count-friends" label="Count friends per person">
+PREFIX foaf: &lt;http://xmlns.com/foaf/0.1/&gt;
+
+SELECT ?name (COUNT(?friend) AS ?nFriends)
+WHERE {
+  ?p foaf:name ?name ;
+     foaf:knows ?friend .
+}
+GROUP BY ?p ?name
+ORDER BY DESC(?nFriends)
+      </factoidal-query>
+      <factoidal-query name="ask" label="ASK: does Alice know someone who knows Eve?">
+PREFIX foaf: &lt;http://xmlns.com/foaf/0.1/&gt;
+PREFIX ex:   &lt;http://example.org/&gt;
+
+ASK {
+  ex:alice foaf:knows ?mid .
+  ?mid foaf:knows ex:eve .
+}
+      </factoidal-query>
+      <factoidal-query name="lang" label="Only German-tagged names">
+PREFIX foaf: &lt;http://xmlns.com/foaf/0.1/&gt;
+
+SELECT ?name
+WHERE {
+  ?p foaf:name ?name .
+  FILTER (LANG(?name) = "de")
+}
+      </factoidal-query>
+      <factoidal-query name="bind-upper" label="BIND + string functions">
+PREFIX foaf: &lt;http://xmlns.com/foaf/0.1/&gt;
+
+SELECT ?name ?upper ?initial
+WHERE {
+  ?p foaf:name ?name .
+  BIND (UCASE(STR(?name))    AS ?upper)
+  BIND (SUBSTR(STR(?name),1,1) AS ?initial)
+}
+ORDER BY ?name
+      </factoidal-query>
+    </factoidal-sparql-client>
+  </details>
+
+  <details class="dataset-card">
+    <summary><strong>Product catalogue</strong> (~80 triples, Turtle)</summary>
+    <factoidal-sparql-client
+        engines="js,wasm" default-engine="js"
+        src-data='[{"url":"./samples/catalog.ttl","vfs":"/tmp/data.ttl"}]'>
+      <factoidal-query name="cat-list" label="All products, by price">
+PREFIX sch: &lt;http://schema.org/&gt;
+PREFIX ex:  &lt;http://example.org/&gt;
+
+SELECT ?name ?category ?price
+WHERE {
+  ?p sch:name     ?name ;
+     sch:category ?category ;
+     ex:price     ?price .
+}
+ORDER BY DESC(?price)
+      </factoidal-query>
+      <factoidal-query name="cat-byCat" label="Count + average price by category">
+PREFIX sch: &lt;http://schema.org/&gt;
+PREFIX ex:  &lt;http://example.org/&gt;
+
+SELECT ?category (COUNT(?p) AS ?n) (AVG(?price) AS ?avgPrice)
+WHERE {
+  ?p sch:category ?category ;
+     ex:price     ?price .
+}
+GROUP BY ?category
+ORDER BY DESC(?n)
+      </factoidal-query>
+      <factoidal-query name="cat-outOfStock" label="Out of stock">
+PREFIX sch: &lt;http://schema.org/&gt;
+PREFIX ex:  &lt;http://example.org/&gt;
+
+SELECT ?name ?category
+WHERE {
+  ?p sch:name     ?name ;
+     sch:category ?category ;
+     ex:stock     0 .
+}
+ORDER BY ?category ?name
+      </factoidal-query>
+      <factoidal-query name="cat-topByCat" label="Max price per category">
+PREFIX sch: &lt;http://schema.org/&gt;
+PREFIX ex:  &lt;http://example.org/&gt;
+
+SELECT ?category (MAX(?price) AS ?topPrice)
+WHERE {
+  ?p sch:category ?category ;
+     ex:price     ?price .
+}
+GROUP BY ?category
+HAVING (MAX(?price) &gt; 50)
+ORDER BY DESC(?topPrice)
+      </factoidal-query>
+    </factoidal-sparql-client>
+  </details>
+
+  <details class="dataset-card">
+    <summary><strong>Music — bands, members, albums</strong> (~70 triples, Turtle)</summary>
+    <factoidal-sparql-client
+        engines="js,wasm" default-engine="js"
+        src-data='[{"url":"./samples/music.ttl","vfs":"/tmp/data.ttl"}]'>
+      <factoidal-query name="mu-albums" label="Albums with year and artist">
+PREFIX ex: &lt;http://example.org/music/&gt;
+PREFIX dc: &lt;http://purl.org/dc/terms/&gt;
+
+SELECT ?album ?year ?band
+WHERE {
+  ?a a &lt;http://purl.org/ontology/mo/Album&gt; ;
+     dc:title ?album ;
+     ex:year  ?year ;
+     ex:by    ?b .
+  ?b dc:title ?band .
+}
+ORDER BY ?year
+      </factoidal-query>
+      <factoidal-query name="mu-bandSize" label="Band size (COUNT members)">
+PREFIX ex: &lt;http://example.org/music/&gt;
+PREFIX dc: &lt;http://purl.org/dc/terms/&gt;
+
+SELECT ?band (COUNT(?m) AS ?nMembers)
+WHERE {
+  ?g a &lt;http://purl.org/ontology/mo/MusicGroup&gt; ;
+     dc:title ?band ;
+     ex:member ?m .
+}
+GROUP BY ?g ?band
+ORDER BY DESC(?nMembers)
+      </factoidal-query>
+      <factoidal-query name="mu-albumPerBand" label="Albums per band (GROUP_CONCAT)">
+PREFIX ex: &lt;http://example.org/music/&gt;
+PREFIX dc: &lt;http://purl.org/dc/terms/&gt;
+
+SELECT ?band (GROUP_CONCAT(?album; SEPARATOR=", ") AS ?albums)
+WHERE {
+  ?a a &lt;http://purl.org/ontology/mo/Album&gt; ;
+     dc:title ?album ;
+     ex:by    ?b .
+  ?b dc:title ?band .
+}
+GROUP BY ?b ?band
+ORDER BY ?band
+      </factoidal-query>
+      <factoidal-query name="mu-70s" label="Albums in the 1970s">
+PREFIX ex: &lt;http://example.org/music/&gt;
+PREFIX dc: &lt;http://purl.org/dc/terms/&gt;
+
+SELECT ?album ?year
+WHERE {
+  ?a dc:title ?album ;
+     ex:year  ?year .
+  FILTER (?year &gt;= 1970 &amp;&amp; ?year &lt; 1980)
+}
+ORDER BY ?year
+      </factoidal-query>
+      <factoidal-query name="mu-path-performers" label="Property path: musicians per album">
+PREFIX ex: &lt;http://example.org/music/&gt;
+PREFIX dc: &lt;http://purl.org/dc/terms/&gt;
+
+# Compound property path: album -&gt; band (ex:by) -&gt; musician (ex:member).
+# "?a ex:by/ex:member ?m" reads as one property path that walks two
+# edges without an intermediate variable for the band. The engine
+# does the join for you.
+SELECT ?album ?musician
+WHERE {
+  ?a a &lt;http://purl.org/ontology/mo/Album&gt; ;
+     dc:title ?album ;
+     ex:by/ex:member ?m .
+  ?m dc:title ?musician .
+}
+ORDER BY ?album ?musician
+      </factoidal-query>
+      <factoidal-query name="mu-path-colleagues" label="Property path: bandmates of Thom Yorke">
+PREFIX ex: &lt;http://example.org/music/&gt;
+PREFIX dc: &lt;http://purl.org/dc/terms/&gt;
+
+# "^ex:member" is the inverse path (band-of-this-musician), then
+# "/ex:member" forward again gets all members of that band. The
+# result is everyone who shares a band with Thom, Thom included —
+# FILTER strips him out.
+SELECT ?colleague
+WHERE {
+  ex:thom ^ex:member/ex:member ?m .
+  ?m dc:title ?colleague .
+  FILTER (?m != ex:thom)
+}
+ORDER BY ?colleague
+      </factoidal-query>
+    </factoidal-sparql-client>
+  </details>
+
+  <details class="dataset-card">
+    <summary><strong>Places, countries, populations</strong> (~50 triples, Turtle)</summary>
+    <factoidal-sparql-client
+        engines="js,wasm" default-engine="js"
+        src-data='[{"url":"./samples/geo.ttl","vfs":"/tmp/data.ttl"}]'>
+      <factoidal-query name="geo-countries" label="Countries with capital + population">
+PREFIX ex:   &lt;http://example.org/geo/&gt;
+PREFIX rdfs: &lt;http://www.w3.org/2000/01/rdf-schema#&gt;
+
+SELECT ?country ?capital ?population
+WHERE {
+  ?c a ex:Country ;
+     rdfs:label    ?country ;
+     ex:capital    ?cap ;
+     ex:population ?population .
+  ?cap rdfs:label  ?capital .
+}
+ORDER BY DESC(?population)
+      </factoidal-query>
+      <factoidal-query name="geo-continent" label="Total population by continent">
+PREFIX ex:   &lt;http://example.org/geo/&gt;
+PREFIX rdfs: &lt;http://www.w3.org/2000/01/rdf-schema#&gt;
+
+SELECT ?continent (SUM(?pop) AS ?total)
+WHERE {
+  ?c a ex:Country ;
+     ex:inContinent ?k ;
+     ex:population  ?pop .
+  ?k rdfs:label ?continent .
+}
+GROUP BY ?k ?continent
+ORDER BY DESC(?total)
+      </factoidal-query>
+      <factoidal-query name="geo-big" label="Capitals of big-country Europe">
+PREFIX ex:   &lt;http://example.org/geo/&gt;
+PREFIX rdfs: &lt;http://www.w3.org/2000/01/rdf-schema#&gt;
+
+SELECT ?country ?capital
+WHERE {
+  ?c a ex:Country ;
+     rdfs:label    ?country ;
+     ex:inContinent ex:europe ;
+     ex:population  ?pop ;
+     ex:capital     ?cap .
+  ?cap rdfs:label ?capital .
+  FILTER (?pop &gt; 50000000)
+}
+ORDER BY ?country
+      </factoidal-query>
+    </factoidal-sparql-client>
+  </details>
+
+  <details class="dataset-card">
+    <summary><strong>Named graphs — three libraries</strong> (~45 quads, TriG)</summary>
+    <factoidal-sparql-client
+        engines="js,wasm" default-engine="js"
+        src-data='[{"url":"./samples/libraries.trig","vfs":"/tmp/data.trig","graph":"urn:x:default"}]'>
+      <factoidal-query name="lib-list-books" label="Books grouped by library">
+PREFIX ex:     &lt;http://example.org/lib/&gt;
+PREFIX schema: &lt;http://schema.org/&gt;
+
+SELECT ?library ?book ?title
+WHERE {
+  GRAPH ?library {
+    ?book a schema:Book ; schema:name ?title .
+  }
+}
+ORDER BY ?library ?title
+      </factoidal-query>
+      <factoidal-query name="lib-multi-copy" label="Books held by multiple libraries">
+PREFIX ex:     &lt;http://example.org/lib/&gt;
+PREFIX schema: &lt;http://schema.org/&gt;
+
+SELECT ?title (COUNT(DISTINCT ?g) AS ?nCopies)
+WHERE {
+  GRAPH ?g { ?b a schema:Book ; schema:name ?title }
+}
+GROUP BY ?title
+HAVING (COUNT(DISTINCT ?g) &gt; 1)
+ORDER BY DESC(?nCopies) ?title
+      </factoidal-query>
+      <factoidal-query name="lib-catalog-meta" label="Library names from the default graph">
+PREFIX dc: &lt;http://purl.org/dc/terms/&gt;
+PREFIX ex: &lt;http://example.org/lib/&gt;
+
+SELECT ?library ?name
+WHERE {
+  ?library dc:title ?name .
+}
+ORDER BY ?library
+      </factoidal-query>
+      <factoidal-query name="lib-central-holdings" label="Central Library holdings only">
+PREFIX ex:     &lt;http://example.org/lib/&gt;
+PREFIX schema: &lt;http://schema.org/&gt;
+
+SELECT ?title ?author
+WHERE {
+  GRAPH ex:central { ?b schema:name ?title ; schema:author ?author }
+}
+ORDER BY ?title
+      </factoidal-query>
+    </factoidal-sparql-client>
+  </details>
+
+  <details class="dataset-card">
+    <summary><strong>schema.org class hierarchy</strong> (entailment demo, Turtle)</summary>
+    <p class="card-note">
+      This card's entailment regime is a fixed attribute on the element
+      (<code>entail="none"</code> by default). To see how RDFS / OWL-RL
+      changes the results, edit the source and set
+      <code>entail="RDFS"</code> or <code>entail="OWL-RL"</code> on the
+      <code>&lt;factoidal-sparql-client&gt;</code> below. The per-run
+      Logic radio from the old page is gone — see commit message.
+    </p>
+    <factoidal-sparql-client
+        engines="js,wasm" default-engine="js"
+        entail="none"
+        src-data='[{"url":"./samples/schema-org.ttl","vfs":"/tmp/data.ttl"}]'>
+      <factoidal-query name="so-all-places" label="All Places (needs RDFS)">
+PREFIX schema: &lt;http://schema.org/&gt;
+
+SELECT ?s ?name
+WHERE {
+  ?s a schema:Place ;
+     schema:name ?name .
+}
+ORDER BY ?name
+      </factoidal-query>
+      <factoidal-query name="so-path-typechain" label="Property path: a/rdfs:subClassOf* (no entailment needed)">
+PREFIX rdfs:   &lt;http://www.w3.org/2000/01/rdf-schema#&gt;
+PREFIX schema: &lt;http://schema.org/&gt;
+
+# Classic SPARQL 1.1 pattern: "a/rdfs:subClassOf*" reads as
+# "rdf:type, then zero or more subClassOf hops". This finds every
+# instance that transitively is-a schema:Place without turning on
+# RDFS entailment at all — the engine walks the class chain on
+# the fly per the property path. Contrast with "?s a schema:Place"
+# (needs RDFS entailment to find hotels).
+SELECT ?instance ?name
+WHERE {
+  ?instance a/rdfs:subClassOf* schema:Place ;
+            schema:name ?name .
+}
+ORDER BY ?name
+      </factoidal-query>
+      <factoidal-query name="so-all-lodging" label="All LodgingBusinesses (needs RDFS)">
+PREFIX schema: &lt;http://schema.org/&gt;
+
+SELECT ?s ?name
+WHERE {
+  ?s a schema:LodgingBusiness ;
+     schema:name ?name .
+}
+ORDER BY ?name
+      </factoidal-query>
+      <factoidal-query name="so-all-restaurants" label="All Restaurants (needs RDFS)">
+PREFIX schema: &lt;http://schema.org/&gt;
+
+SELECT ?s ?name
+WHERE {
+  ?s a schema:Restaurant ;
+     schema:name ?name .
+}
+ORDER BY ?name
+      </factoidal-query>
+      <factoidal-query name="so-subproperty" label="legalName as schema:name (needs RDFS)">
+PREFIX schema: &lt;http://schema.org/&gt;
+
+# schema:legalName rdfs:subPropertyOf schema:name, so with RDFS on
+# ex:hotelZ (which only has a legalName) shows up here too.
+SELECT ?s ?name
+WHERE {
+  ?s schema:name ?name .
+}
+ORDER BY ?s
+      </factoidal-query>
+      <factoidal-query name="so-inverse" label="containedInPlace via inverseOf (needs OWL-RL)">
+PREFIX schema: &lt;http://schema.org/&gt;
+
+# The data only has ex:downtown schema:containsPlace ?x, so without
+# OWL-RL this returns nothing. With OWL-RL, prp-inv1 flips the arrow.
+SELECT ?sub ?container
+WHERE {
+  ?sub schema:containedInPlace ?container .
+}
+ORDER BY ?sub
+      </factoidal-query>
+      <factoidal-query name="so-sameas" label="sameAs substitution (needs OWL-RL)">
+PREFIX schema: &lt;http://schema.org/&gt;
+
+# ex:hotelZincLLC owl:sameAs ex:hotelZ, and both carry name triples.
+# With OWL-RL, eq-rep-s collapses them so ex:hotelZ has both names.
+SELECT ?s ?name
+WHERE {
+  ?s a schema:Hotel ; schema:name ?name .
+}
+ORDER BY ?s ?name
+      </factoidal-query>
+    </factoidal-sparql-client>
+  </details>
 </section>
 
 <section class="panel" id="panel-about" role="tabpanel">
@@ -414,737 +870,18 @@ node w3c-runner.wasm.js bind</code></pre>
 <footer>
   Built from <a href="https://github.com/danbri/factoidal">github.com/danbri/factoidal</a>
 </footer>
-
 <!--
-  Demo driver. Loads factoidal.js on demand, pre-populates its fake
-  filesystem with the user's Turtle data, and captures stdout/stderr.
-
-  Key insights about how js_of_ocaml's runtime is hookable here:
-   - globalThis.jsoo_fs_tmp is drained at startup — anything pushed there
-     gets created in MlFakeDevice before main() runs.
-   - globalThis.process?.argv is what the generated code reads for Sys.argv.
-   - console.log / console.error are the terminal sinks in the browser
-     runtime, so we override them before each run to collect output.
-
-  Output is SPARQL Results JSON (factoidal -o json). We parse the JSON
-  and render it as an HTML table with type-aware cells: IRIs, blank
-  nodes, and literals (with lang tag / datatype) each get their own
-  styling, rather than flattening everything to an ASCII string.
+  Demo driver is now inside the <factoidal-sparql-client> custom element
+  (see ./factoidal-sparql-client.js). Each <details class="dataset-card">
+  above hosts one client instance pre-populated via src-data + light-DOM
+  <factoidal-query> children. Page-level JS is minimal: just the tab
+  switcher. No query/engine orchestration lives here anymore.
 -->
+<script type="module" src="./factoidal-sparql-client.js"></script>
 <script>
 (() => {
-  // -------------------------------------------------------------------
-  // Datasets. Each is a Turtle string. Kept small enough that the
-  // demo stays snappy in a browser but large enough to exercise
-  // non-trivial queries.
-  // -------------------------------------------------------------------
-  const DATASETS = {
-    people: {
-      label: 'People & friendships (~60 triples)',
-      data: `@prefix foaf: <http://xmlns.com/foaf/0.1/> .
-@prefix ex:   <http://example.org/> .
-@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
-
-ex:alice a foaf:Person ;
-  foaf:name "Alice Carter" ;
-  foaf:age 30 ;
-  foaf:mbox <mailto:alice@example.org> ;
-  foaf:knows ex:bob, ex:carol, ex:dave .
-
-ex:bob a foaf:Person ;
-  foaf:name "Bob Nguyen"@en ;
-  foaf:age 42 ;
-  foaf:knows ex:alice, ex:carol .
-
-ex:carol a foaf:Person ;
-  foaf:name "Carol Diaz" ;
-  foaf:age 27 ;
-  foaf:mbox <mailto:carol@example.org> ;
-  foaf:knows ex:alice, ex:bob, ex:eve .
-
-ex:dave a foaf:Person ;
-  foaf:name "Dave Patel"@en ;
-  foaf:age 38 ;
-  foaf:knows ex:alice .
-
-ex:eve a foaf:Person ;
-  foaf:name "Eve Müller"@de ;
-  foaf:age 24 ;
-  foaf:mbox <mailto:eve@example.org> ;
-  foaf:knows ex:carol, ex:frank .
-
-ex:frank a foaf:Person ;
-  foaf:name "Frank O'Connor"@en ;
-  foaf:age 55 ;
-  foaf:knows ex:eve, ex:grace .
-
-ex:grace a foaf:Person ;
-  foaf:name "Grace Hopper" ;
-  foaf:age 85 ;
-  foaf:knows ex:frank .
-
-ex:heidi a foaf:Person ;
-  foaf:name "Heidi Klum"@de ;
-  foaf:age 50 ;
-  foaf:mbox <mailto:heidi@example.org> .`,
-    },
-
-    catalog: {
-      label: 'Product catalogue (~80 triples)',
-      data: `@prefix ex:   <http://example.org/> .
-@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
-@prefix sch:  <http://schema.org/> .
-
-ex:p1 a sch:Product ; sch:name "Espresso Machine" ; sch:category "kitchen"  ; ex:price 249.99 ; ex:stock 17 .
-ex:p2 a sch:Product ; sch:name "Coffee Grinder"   ; sch:category "kitchen"  ; ex:price  89.00 ; ex:stock 42 .
-ex:p3 a sch:Product ; sch:name "Kettle"           ; sch:category "kitchen"  ; ex:price  39.50 ; ex:stock  0 .
-ex:p4 a sch:Product ; sch:name "Cafetière"        ; sch:category "kitchen"  ; ex:price  25.00 ; ex:stock 30 .
-
-ex:p5 a sch:Product ; sch:name "Running Shoes"    ; sch:category "sports"   ; ex:price 110.00 ; ex:stock  8 .
-ex:p6 a sch:Product ; sch:name "Yoga Mat"         ; sch:category "sports"   ; ex:price  35.00 ; ex:stock 21 .
-ex:p7 a sch:Product ; sch:name "Dumbbell Pair"    ; sch:category "sports"   ; ex:price  60.00 ; ex:stock  5 .
-ex:p8 a sch:Product ; sch:name "Tennis Racket"    ; sch:category "sports"   ; ex:price 180.00 ; ex:stock  3 .
-
-ex:p9  a sch:Product ; sch:name "Hardback Novel"  ; sch:category "books"    ; ex:price  22.00 ; ex:stock 60 .
-ex:p10 a sch:Product ; sch:name "Cookery Book"    ; sch:category "books"    ; ex:price  28.00 ; ex:stock 14 .
-ex:p11 a sch:Product ; sch:name "Atlas"           ; sch:category "books"    ; ex:price  45.00 ; ex:stock  0 .
-ex:p12 a sch:Product ; sch:name "Notebook (A5)"   ; sch:category "stationery"; ex:price   7.50 ; ex:stock 120 .
-
-ex:p13 a sch:Product ; sch:name "LED Desk Lamp"   ; sch:category "home"     ; ex:price  48.00 ; ex:stock 11 .
-ex:p14 a sch:Product ; sch:name "Wool Blanket"    ; sch:category "home"     ; ex:price  65.00 ; ex:stock  4 .
-ex:p15 a sch:Product ; sch:name "Picture Frame"   ; sch:category "home"     ; ex:price  12.99 ; ex:stock 33 .
-
-ex:p16 a sch:Product ; sch:name "Headphones"      ; sch:category "electronics"; ex:price 199.00 ; ex:stock  2 .
-ex:p17 a sch:Product ; sch:name "USB-C Cable"     ; sch:category "electronics"; ex:price   9.99 ; ex:stock 500 .
-ex:p18 a sch:Product ; sch:name "Bluetooth Speaker"; sch:category "electronics"; ex:price  79.00 ; ex:stock 23 .
-ex:p19 a sch:Product ; sch:name "Fitness Tracker" ; sch:category "electronics"; ex:price 149.00 ; ex:stock  9 .
-ex:p20 a sch:Product ; sch:name "Smart Plug"      ; sch:category "electronics"; ex:price  19.99 ; ex:stock 75 .`,
-    },
-
-    music: {
-      label: 'Music — bands, members, albums (~70 triples)',
-      data: `@prefix ex:   <http://example.org/music/> .
-@prefix dc:   <http://purl.org/dc/terms/> .
-@prefix mo:   <http://purl.org/ontology/mo/> .
-@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
-
-ex:radiohead a mo:MusicGroup ;
-  dc:title "Radiohead" ;
-  ex:formed 1985 ;
-  ex:genre  "alternative rock" ;
-  ex:member ex:thom, ex:jonny, ex:colin, ex:ed, ex:phil .
-
-ex:beatles a mo:MusicGroup ;
-  dc:title "The Beatles" ;
-  ex:formed 1960 ;
-  ex:genre  "rock" ;
-  ex:member ex:john, ex:paul, ex:george, ex:ringo .
-
-ex:kraftwerk a mo:MusicGroup ;
-  dc:title "Kraftwerk" ;
-  ex:formed 1970 ;
-  ex:genre  "electronic" ;
-  ex:member ex:ralf, ex:florian .
-
-ex:thom   a mo:MusicArtist ; dc:title "Thom Yorke" .
-ex:jonny  a mo:MusicArtist ; dc:title "Jonny Greenwood" .
-ex:colin  a mo:MusicArtist ; dc:title "Colin Greenwood" .
-ex:ed     a mo:MusicArtist ; dc:title "Ed O'Brien" .
-ex:phil   a mo:MusicArtist ; dc:title "Phil Selway" .
-ex:john   a mo:MusicArtist ; dc:title "John Lennon" .
-ex:paul   a mo:MusicArtist ; dc:title "Paul McCartney" .
-ex:george a mo:MusicArtist ; dc:title "George Harrison" .
-ex:ringo  a mo:MusicArtist ; dc:title "Ringo Starr" .
-ex:ralf   a mo:MusicArtist ; dc:title "Ralf Hütter" .
-ex:florian a mo:MusicArtist ; dc:title "Florian Schneider" .
-
-ex:okc  a mo:Album ; dc:title "OK Computer"         ; ex:by ex:radiohead ; ex:year 1997 .
-ex:kida a mo:Album ; dc:title "Kid A"                ; ex:by ex:radiohead ; ex:year 2000 .
-ex:inra a mo:Album ; dc:title "In Rainbows"          ; ex:by ex:radiohead ; ex:year 2007 .
-ex:abr  a mo:Album ; dc:title "Abbey Road"           ; ex:by ex:beatles   ; ex:year 1969 .
-ex:sgt  a mo:Album ; dc:title "Sgt. Pepper's Lonely Hearts Club Band" ; ex:by ex:beatles ; ex:year 1967 .
-ex:auto a mo:Album ; dc:title "Autobahn"             ; ex:by ex:kraftwerk ; ex:year 1974 .
-ex:tem  a mo:Album ; dc:title "Trans-Europa Express" ; ex:by ex:kraftwerk ; ex:year 1977 .
-ex:com  a mo:Album ; dc:title "Computerwelt"         ; ex:by ex:kraftwerk ; ex:year 1981 .`,
-    },
-
-    geo: {
-      label: 'Places, countries, populations (~50 triples)',
-      data: `@prefix ex:   <http://example.org/geo/> .
-@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
-
-ex:europe a ex:Continent ; rdfs:label "Europe" .
-ex:asia   a ex:Continent ; rdfs:label "Asia" .
-
-ex:uk       a ex:Country ; rdfs:label "United Kingdom" ; ex:inContinent ex:europe ; ex:population 67886011 ; ex:capital ex:london .
-ex:france   a ex:Country ; rdfs:label "France"         ; ex:inContinent ex:europe ; ex:population 67390000 ; ex:capital ex:paris  .
-ex:germany  a ex:Country ; rdfs:label "Germany"        ; ex:inContinent ex:europe ; ex:population 83240000 ; ex:capital ex:berlin .
-ex:italy    a ex:Country ; rdfs:label "Italy"          ; ex:inContinent ex:europe ; ex:population 59110000 ; ex:capital ex:rome   .
-ex:spain    a ex:Country ; rdfs:label "Spain"          ; ex:inContinent ex:europe ; ex:population 47450000 ; ex:capital ex:madrid .
-ex:japan    a ex:Country ; rdfs:label "Japan"          ; ex:inContinent ex:asia   ; ex:population 125700000 ; ex:capital ex:tokyo .
-ex:india    a ex:Country ; rdfs:label "India"          ; ex:inContinent ex:asia   ; ex:population 1380000000 ; ex:capital ex:delhi .
-
-ex:london a ex:City ; rdfs:label "London"     ; ex:population  8900000 .
-ex:paris  a ex:City ; rdfs:label "Paris"      ; ex:population  2140000 .
-ex:berlin a ex:City ; rdfs:label "Berlin"     ; ex:population  3670000 .
-ex:rome   a ex:City ; rdfs:label "Rome"       ; ex:population  2870000 .
-ex:madrid a ex:City ; rdfs:label "Madrid"     ; ex:population  3340000 .
-ex:tokyo  a ex:City ; rdfs:label "Tokyo"      ; ex:population 13960000 .
-ex:delhi  a ex:City ; rdfs:label "Delhi"      ; ex:population 19700000 .`,
-    },
-
-    libraries: {
-      label: 'Named graphs (TriG): three libraries (~45 quads)',
-      ext: 'trig',
-      data: `@prefix dc:    <http://purl.org/dc/terms/> .
-@prefix ex:    <http://example.org/lib/> .
-@prefix schema: <http://schema.org/> .
-
-# A default graph carrying catalogue-level metadata.
-ex:central dc:title "Central Library" ; dc:publisher "Example City" .
-ex:east    dc:title "East Branch"     ; dc:publisher "Example City" .
-ex:west    dc:title "West Branch"     ; dc:publisher "Example City" .
-
-# Each library's holdings in its own named graph.
-ex:central {
-  ex:b1 a schema:Book ; schema:name "Gödel, Escher, Bach" ; schema:author "Hofstadter" .
-  ex:b2 a schema:Book ; schema:name "The Dream Machine"   ; schema:author "Waldrop" .
-  ex:b3 a schema:Book ; schema:name "Thinking, Fast and Slow" ; schema:author "Kahneman" .
-  ex:b4 a schema:Book ; schema:name "The Annotated Turing"    ; schema:author "Petzold" .
-}
-
-ex:east {
-  ex:b5 a schema:Book ; schema:name "The Dream Machine"   ; schema:author "Waldrop" .
-  ex:b6 a schema:Book ; schema:name "Soul of a New Machine" ; schema:author "Kidder" .
-  ex:b7 a schema:Book ; schema:name "Gödel, Escher, Bach" ; schema:author "Hofstadter" .
-}
-
-ex:west {
-  ex:b8 a schema:Book ; schema:name "Thinking, Fast and Slow" ; schema:author "Kahneman" .
-  ex:b9 a schema:Book ; schema:name "Algorithms to Live By" ; schema:author "Christian, Griffiths" .
-  ex:b10 a schema:Book ; schema:name "Gödel, Escher, Bach" ; schema:author "Hofstadter" .
-}`,
-    },
-
-    schemaOrg: {
-      label: 'schema.org class hierarchy (entailment demo)',
-      data: `@prefix rdf:    <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
-@prefix owl:    <http://www.w3.org/2002/07/owl#> .
-@prefix schema: <http://schema.org/> .
-@prefix ex:     <http://example.org/> .
-
-# --- A fragment of the schema.org class hierarchy (not the whole tree).
-schema:Thing              a rdfs:Class .
-schema:Place              rdfs:subClassOf schema:Thing .
-schema:LodgingBusiness    rdfs:subClassOf schema:Place .
-schema:Hotel              rdfs:subClassOf schema:LodgingBusiness .
-schema:Campground         rdfs:subClassOf schema:LodgingBusiness .
-schema:Restaurant         rdfs:subClassOf schema:Place .
-schema:FastFoodRestaurant rdfs:subClassOf schema:Restaurant .
-
-# --- A sub-property of schema:name for contact-style labels.
-schema:legalName rdfs:subPropertyOf schema:name .
-
-# --- OWL-RL goodies: sameAs + inverseOf for the OWL-RL demo queries.
-schema:containedInPlace  owl:inverseOf schema:containsPlace .
-
-# --- Instances.
-ex:motel6     a schema:Hotel              ; schema:name "Motel 6 Downtown" .
-ex:hotelZ     a schema:Hotel              ; schema:legalName "Hotel Zinc, LLC" .
-ex:kampground a schema:Campground         ; schema:name "Redwood KOA" .
-ex:luigi      a schema:Restaurant         ; schema:name "Luigi's Trattoria" .
-ex:mcfood     a schema:FastFoodRestaurant ; schema:name "McFood" .
-
-# --- An inverseOf chain for OWL-RL to propagate.
-ex:downtown   schema:containsPlace ex:motel6, ex:luigi .
-
-# --- An owl:sameAs pair to demonstrate OWL-RL sameAs substitution.
-ex:hotelZincLLC  owl:sameAs ex:hotelZ .
-ex:hotelZincLLC  schema:name "Hotel Zinc" .`,
-    },
-  };
-
-  // -------------------------------------------------------------------
-  // Query templates. Each query is associated with one dataset key.
-  // Queries below are authored to work with the current factoidal
-  // release (no UPDATE, no SERVICE).
-  // -------------------------------------------------------------------
-  const QUERIES = [
-    { key: 'basic', ds: 'people', label: 'List everyone by name',
-      query: `PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-
-SELECT ?person ?name ?age
-WHERE {
-  ?person a foaf:Person ;
-          foaf:name ?name ;
-          foaf:age  ?age .
-}
-ORDER BY ?name` },
-
-    { key: 'filter', ds: 'people', label: 'Filter: people over 30',
-      query: `PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-
-SELECT ?name ?age
-WHERE {
-  ?p foaf:name ?name ;
-     foaf:age  ?age .
-  FILTER (?age > 30)
-}
-ORDER BY DESC(?age)` },
-
-    { key: 'optional', ds: 'people', label: 'OPTIONAL: email if known',
-      query: `PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-
-SELECT ?name ?mbox
-WHERE {
-  ?p foaf:name ?name .
-  OPTIONAL { ?p foaf:mbox ?mbox }
-}
-ORDER BY ?name` },
-
-    { key: 'friendsof', ds: 'people', label: 'Friends of Alice',
-      query: `PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-PREFIX ex:   <http://example.org/>
-
-SELECT ?friend ?friendName
-WHERE {
-  ex:alice foaf:knows ?friend .
-  ?friend foaf:name ?friendName .
-}
-ORDER BY ?friendName` },
-
-    { key: 'mutual', ds: 'people', label: 'Mutual friendships',
-      query: `PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-
-SELECT DISTINCT ?a ?b
-WHERE {
-  ?a foaf:knows ?b .
-  ?b foaf:knows ?a .
-  FILTER (STR(?a) < STR(?b))
-}
-ORDER BY ?a ?b` },
-
-    { key: 'count-friends', ds: 'people', label: 'Count friends per person',
-      query: `PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-
-SELECT ?name (COUNT(?friend) AS ?nFriends)
-WHERE {
-  ?p foaf:name ?name ;
-     foaf:knows ?friend .
-}
-GROUP BY ?p ?name
-ORDER BY DESC(?nFriends)` },
-
-    { key: 'ask', ds: 'people', label: 'ASK: does Alice know someone who knows Eve?',
-      query: `PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-PREFIX ex:   <http://example.org/>
-
-ASK {
-  ex:alice foaf:knows ?mid .
-  ?mid foaf:knows ex:eve .
-}` },
-
-    { key: 'lang', ds: 'people', label: 'Only German-tagged names',
-      query: `PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-
-SELECT ?name
-WHERE {
-  ?p foaf:name ?name .
-  FILTER (LANG(?name) = "de")
-}` },
-
-    { key: 'bind-upper', ds: 'people', label: 'BIND + string functions',
-      query: `PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-
-SELECT ?name ?upper ?initial
-WHERE {
-  ?p foaf:name ?name .
-  BIND (UCASE(STR(?name))    AS ?upper)
-  BIND (SUBSTR(STR(?name),1,1) AS ?initial)
-}
-ORDER BY ?name` },
-
-    // Catalogue --------------------------------------------------------
-    { key: 'cat-list', ds: 'catalog', label: 'All products, by price',
-      query: `PREFIX sch: <http://schema.org/>
-PREFIX ex:  <http://example.org/>
-
-SELECT ?name ?category ?price
-WHERE {
-  ?p sch:name     ?name ;
-     sch:category ?category ;
-     ex:price     ?price .
-}
-ORDER BY DESC(?price)` },
-
-    { key: 'cat-byCat', ds: 'catalog', label: 'Count + average price by category',
-      query: `PREFIX sch: <http://schema.org/>
-PREFIX ex:  <http://example.org/>
-
-SELECT ?category (COUNT(?p) AS ?n) (AVG(?price) AS ?avgPrice)
-WHERE {
-  ?p sch:category ?category ;
-     ex:price     ?price .
-}
-GROUP BY ?category
-ORDER BY DESC(?n)` },
-
-    { key: 'cat-outOfStock', ds: 'catalog', label: 'Out of stock',
-      query: `PREFIX sch: <http://schema.org/>
-PREFIX ex:  <http://example.org/>
-
-SELECT ?name ?category
-WHERE {
-  ?p sch:name     ?name ;
-     sch:category ?category ;
-     ex:stock     0 .
-}
-ORDER BY ?category ?name` },
-
-    { key: 'cat-topByCat', ds: 'catalog', label: 'Max price per category',
-      query: `PREFIX sch: <http://schema.org/>
-PREFIX ex:  <http://example.org/>
-
-SELECT ?category (MAX(?price) AS ?topPrice)
-WHERE {
-  ?p sch:category ?category ;
-     ex:price     ?price .
-}
-GROUP BY ?category
-HAVING (MAX(?price) > 50)
-ORDER BY DESC(?topPrice)` },
-
-    // Music ------------------------------------------------------------
-    { key: 'mu-albums', ds: 'music', label: 'Albums with year and artist',
-      query: `PREFIX ex: <http://example.org/music/>
-PREFIX dc: <http://purl.org/dc/terms/>
-
-SELECT ?album ?year ?band
-WHERE {
-  ?a a <http://purl.org/ontology/mo/Album> ;
-     dc:title ?album ;
-     ex:year  ?year ;
-     ex:by    ?b .
-  ?b dc:title ?band .
-}
-ORDER BY ?year` },
-
-    { key: 'mu-bandSize', ds: 'music', label: 'Band size (COUNT members)',
-      query: `PREFIX ex: <http://example.org/music/>
-PREFIX dc: <http://purl.org/dc/terms/>
-
-SELECT ?band (COUNT(?m) AS ?nMembers)
-WHERE {
-  ?g a <http://purl.org/ontology/mo/MusicGroup> ;
-     dc:title ?band ;
-     ex:member ?m .
-}
-GROUP BY ?g ?band
-ORDER BY DESC(?nMembers)` },
-
-    { key: 'mu-albumPerBand', ds: 'music', label: 'Albums per band (GROUP_CONCAT)',
-      query: `PREFIX ex: <http://example.org/music/>
-PREFIX dc: <http://purl.org/dc/terms/>
-
-SELECT ?band (GROUP_CONCAT(?album; SEPARATOR=", ") AS ?albums)
-WHERE {
-  ?a a <http://purl.org/ontology/mo/Album> ;
-     dc:title ?album ;
-     ex:by    ?b .
-  ?b dc:title ?band .
-}
-GROUP BY ?b ?band
-ORDER BY ?band` },
-
-    { key: 'mu-70s', ds: 'music', label: 'Albums in the 1970s',
-      query: `PREFIX ex: <http://example.org/music/>
-PREFIX dc: <http://purl.org/dc/terms/>
-
-SELECT ?album ?year
-WHERE {
-  ?a dc:title ?album ;
-     ex:year  ?year .
-  FILTER (?year >= 1970 && ?year < 1980)
-}
-ORDER BY ?year` },
-
-    { key: 'mu-path-performers', ds: 'music', label: 'Property path: musicians per album',
-      query: `PREFIX ex: <http://example.org/music/>
-PREFIX dc: <http://purl.org/dc/terms/>
-
-# Compound property path: album -> band (ex:by) -> musician (ex:member).
-# "?a ex:by/ex:member ?m" reads as one property path that walks two
-# edges without an intermediate variable for the band. The engine
-# does the join for you.
-SELECT ?album ?musician
-WHERE {
-  ?a a <http://purl.org/ontology/mo/Album> ;
-     dc:title ?album ;
-     ex:by/ex:member ?m .
-  ?m dc:title ?musician .
-}
-ORDER BY ?album ?musician` },
-
-    { key: 'mu-path-colleagues', ds: 'music', label: 'Property path: bandmates of Thom Yorke',
-      query: `PREFIX ex: <http://example.org/music/>
-PREFIX dc: <http://purl.org/dc/terms/>
-
-# "^ex:member" is the inverse path (band-of-this-musician), then
-# "/ex:member" forward again gets all members of that band. The
-# result is everyone who shares a band with Thom, Thom included —
-# FILTER strips him out.
-SELECT ?colleague
-WHERE {
-  ex:thom ^ex:member/ex:member ?m .
-  ?m dc:title ?colleague .
-  FILTER (?m != ex:thom)
-}
-ORDER BY ?colleague` },
-
-    // Geo -------------------------------------------------------------
-    { key: 'geo-countries', ds: 'geo', label: 'Countries with capital + population',
-      query: `PREFIX ex:   <http://example.org/geo/>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-SELECT ?country ?capital ?population
-WHERE {
-  ?c a ex:Country ;
-     rdfs:label    ?country ;
-     ex:capital    ?cap ;
-     ex:population ?population .
-  ?cap rdfs:label  ?capital .
-}
-ORDER BY DESC(?population)` },
-
-    { key: 'geo-continent', ds: 'geo', label: 'Total population by continent',
-      query: `PREFIX ex:   <http://example.org/geo/>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-SELECT ?continent (SUM(?pop) AS ?total)
-WHERE {
-  ?c a ex:Country ;
-     ex:inContinent ?k ;
-     ex:population  ?pop .
-  ?k rdfs:label ?continent .
-}
-GROUP BY ?k ?continent
-ORDER BY DESC(?total)` },
-
-    { key: 'geo-big', ds: 'geo', label: 'Capitals of big-country Europe',
-      query: `PREFIX ex:   <http://example.org/geo/>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-SELECT ?country ?capital
-WHERE {
-  ?c a ex:Country ;
-     rdfs:label    ?country ;
-     ex:inContinent ex:europe ;
-     ex:population  ?pop ;
-     ex:capital     ?cap .
-  ?cap rdfs:label ?capital .
-  FILTER (?pop > 50000000)
-}
-ORDER BY ?country` },
-
-    // Named graphs (TriG) — quad-based queries using the GRAPH keyword.
-    { key: 'lib-list-books', ds: 'libraries', label: 'Books grouped by library',
-      query: `PREFIX ex:     <http://example.org/lib/>
-PREFIX schema: <http://schema.org/>
-
-SELECT ?library ?book ?title
-WHERE {
-  GRAPH ?library {
-    ?book a schema:Book ; schema:name ?title .
-  }
-}
-ORDER BY ?library ?title` },
-
-    { key: 'lib-multi-copy', ds: 'libraries', label: 'Books held by multiple libraries',
-      query: `PREFIX ex:     <http://example.org/lib/>
-PREFIX schema: <http://schema.org/>
-
-SELECT ?title (COUNT(DISTINCT ?g) AS ?nCopies)
-WHERE {
-  GRAPH ?g { ?b a schema:Book ; schema:name ?title }
-}
-GROUP BY ?title
-HAVING (COUNT(DISTINCT ?g) > 1)
-ORDER BY DESC(?nCopies) ?title` },
-
-    { key: 'lib-catalog-meta', ds: 'libraries', label: 'Library names from the default graph',
-      query: `PREFIX dc: <http://purl.org/dc/terms/>
-PREFIX ex: <http://example.org/lib/>
-
-SELECT ?library ?name
-WHERE {
-  ?library dc:title ?name .
-}
-ORDER BY ?library` },
-
-    { key: 'lib-central-holdings', ds: 'libraries', label: 'Central Library holdings only',
-      query: `PREFIX ex:     <http://example.org/lib/>
-PREFIX schema: <http://schema.org/>
-
-SELECT ?title ?author
-WHERE {
-  GRAPH ex:central { ?b schema:name ?title ; schema:author ?author }
-}
-ORDER BY ?title` },
-
-    // ---- schema.org entailment demo queries ---------------------------
-    // Each query makes a difference once Entail = RDFS (or OWL-RL) is on.
-    { key: 'so-all-places', ds: 'schemaOrg', label: 'All Places (needs RDFS)',
-      query: `PREFIX schema: <http://schema.org/>
-
-SELECT ?s ?name
-WHERE {
-  ?s a schema:Place ;
-     schema:name ?name .
-}
-ORDER BY ?name` },
-
-    { key: 'so-path-typechain', ds: 'schemaOrg', label: 'Property path: a/rdfs:subClassOf* (no entailment needed)',
-      query: `PREFIX rdfs:   <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX schema: <http://schema.org/>
-
-# Classic SPARQL 1.1 pattern: "a/rdfs:subClassOf*" reads as
-# "rdf:type, then zero or more subClassOf hops". This finds every
-# instance that transitively is-a schema:Place without turning on
-# RDFS entailment at all — the engine walks the class chain on
-# the fly per the property path. Contrast with "?s a schema:Place"
-# (needs RDFS entailment to find hotels).
-SELECT ?instance ?name
-WHERE {
-  ?instance a/rdfs:subClassOf* schema:Place ;
-            schema:name ?name .
-}
-ORDER BY ?name` },
-
-    { key: 'so-all-lodging', ds: 'schemaOrg', label: 'All LodgingBusinesses (needs RDFS)',
-      query: `PREFIX schema: <http://schema.org/>
-
-SELECT ?s ?name
-WHERE {
-  ?s a schema:LodgingBusiness ;
-     schema:name ?name .
-}
-ORDER BY ?name` },
-
-    { key: 'so-all-restaurants', ds: 'schemaOrg', label: 'All Restaurants (needs RDFS)',
-      query: `PREFIX schema: <http://schema.org/>
-
-SELECT ?s ?name
-WHERE {
-  ?s a schema:Restaurant ;
-     schema:name ?name .
-}
-ORDER BY ?name` },
-
-    { key: 'so-subproperty', ds: 'schemaOrg', label: 'legalName as schema:name (needs RDFS)',
-      query: `PREFIX schema: <http://schema.org/>
-
-# schema:legalName rdfs:subPropertyOf schema:name, so with RDFS on
-# ex:hotelZ (which only has a legalName) shows up here too.
-SELECT ?s ?name
-WHERE {
-  ?s schema:name ?name .
-}
-ORDER BY ?s` },
-
-    { key: 'so-inverse', ds: 'schemaOrg', label: 'containedInPlace via inverseOf (needs OWL-RL)',
-      query: `PREFIX schema: <http://schema.org/>
-
-# The data only has ex:downtown schema:containsPlace ?x, so without
-# OWL-RL this returns nothing. With OWL-RL, prp-inv1 flips the arrow.
-SELECT ?sub ?container
-WHERE {
-  ?sub schema:containedInPlace ?container .
-}
-ORDER BY ?sub` },
-
-    { key: 'so-sameas', ds: 'schemaOrg', label: 'sameAs substitution (needs OWL-RL)',
-      query: `PREFIX schema: <http://schema.org/>
-
-# ex:hotelZincLLC owl:sameAs ex:hotelZ, and both carry name triples.
-# With OWL-RL, eq-rep-s collapses them so ex:hotelZ has both names.
-SELECT ?s ?name
-WHERE {
-  ?s a schema:Hotel ; schema:name ?name .
-}
-ORDER BY ?s ?name` },
-  ];
-
-  // -------------------------------------------------------------------
-  // Helpers
-  // -------------------------------------------------------------------
-  const $ = (id) => document.getElementById(id);
-  const dataEl = $('data');
-  const queryEl = $('query');
-  const outputWrap = $('output-wrap');
-  const runBtn = $('run');
-  const statusEl = $('status');
-  const sampleEl = $('sample');
-  const datasetEl = $('dataset');
-
-  // Radio-group readers: return the currently-checked value, or the
-  // supplied fallback if somehow no radio is checked (shouldn't
-  // happen — `checked` is on the default option in the HTML).
-  function radioValue(name, fallback) {
-    const el = document.querySelector('input[name="' + name + '"]:checked');
-    return el ? el.value : fallback;
-  }
-  const entailEl = { get value() { return radioValue('entail', 'none'); } };
-  const engineEl = { get value() { return radioValue('engine', 'js'); } };
-
-  dataEl.setAttribute('readonly', 'readonly');
-
-  function populateDatasetDropdown() {
-    Object.entries(DATASETS).forEach(([k, v]) => {
-      const opt = document.createElement('option');
-      opt.value = k; opt.textContent = v.label;
-      datasetEl.appendChild(opt);
-    });
-  }
-
-  function populateQueryDropdown(forDataset) {
-    sampleEl.innerHTML = '';
-    const avail = QUERIES.filter(q => !forDataset || q.ds === forDataset);
-    avail.forEach(q => {
-      const opt = document.createElement('option');
-      opt.value = q.key; opt.textContent = q.label;
-      sampleEl.appendChild(opt);
-    });
-  }
-
-  function currentQuery() {
-    const k = sampleEl.value;
-    return QUERIES.find(q => q.key === k && q.ds === datasetEl.value)
-        || QUERIES.find(q => q.key === k);
-  }
-
-  function loadDatasetAndQuery() {
-    const dsKey = datasetEl.value;
-    dataEl.value = DATASETS[dsKey].data;
-    const q = currentQuery();
-    if (q) queryEl.value = q.query;
-  }
-
-  function onDatasetChange() {
-    populateQueryDropdown(datasetEl.value);
-    loadDatasetAndQuery();
-  }
-
-  populateDatasetDropdown();
-  datasetEl.value = 'people';
-  populateQueryDropdown('people');
-  sampleEl.value = 'basic';
-  loadDatasetAndQuery();
-  datasetEl.addEventListener('change', onDatasetChange);
-  sampleEl.addEventListener('change', loadDatasetAndQuery);
-
-  // Tabs
+  // Tab switcher (Demo / About / Technical). The old page mixed this
+  // in with the SPARQL runner; now it is the only page-level JS left.
   document.querySelectorAll('nav.tabs .tab').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('nav.tabs .tab').forEach(b => {
@@ -1154,266 +891,6 @@ ORDER BY ?s ?name` },
       document.querySelectorAll('.panel').forEach(p =>
         p.classList.toggle('active', p.id === 'panel-' + btn.dataset.tab));
     });
-  });
-
-  // -------------------------------------------------------------------
-  // factoidal.js loader + run harness
-  // -------------------------------------------------------------------
-  let factoidalSource = null;
-  let fetchPromise = null;
-  function getFactoidal() {
-    if (factoidalSource) return Promise.resolve(factoidalSource);
-    if (fetchPromise) return fetchPromise;
-    fetchPromise = fetch('./factoidal.js')
-      .then(r => {
-        if (!r.ok) throw new Error(`Fetch failed: ${r.status}`);
-        return r.text();
-      })
-      .then(text => { factoidalSource = text; return text; });
-    return fetchPromise;
-  }
-
-  getFactoidal()
-    .then(() => { statusEl.textContent = 'Ready.'; })
-    .catch((e) => { statusEl.textContent = 'Engine failed to load: ' + e.message; });
-
-  // -------------------------------------------------------------------
-  // Result rendering
-  // -------------------------------------------------------------------
-  function abbrev(iri) {
-    const PREFIXES = [
-      ['http://www.w3.org/1999/02/22-rdf-syntax-ns#', 'rdf:'],
-      ['http://www.w3.org/2000/01/rdf-schema#',       'rdfs:'],
-      ['http://www.w3.org/2001/XMLSchema#',           'xsd:'],
-      ['http://xmlns.com/foaf/0.1/',                  'foaf:'],
-      ['http://purl.org/dc/terms/',                   'dc:'],
-      ['http://purl.org/ontology/mo/',                'mo:'],
-      ['http://schema.org/',                          'sch:'],
-      ['http://example.org/geo/',                     'ex:'],
-      ['http://example.org/music/',                   'ex:'],
-      ['http://example.org/',                         'ex:'],
-    ];
-    for (const [ns, px] of PREFIXES) {
-      if (iri.startsWith(ns)) return px + iri.slice(ns.length);
-    }
-    return '<' + iri + '>';
-  }
-
-  function renderBinding(v, b) {
-    const td = document.createElement('td');
-    if (!b) { td.className = 'unbound'; td.textContent = ''; return td; }
-    if (b.type === 'uri') {
-      td.className = 'iri';
-      td.textContent = abbrev(b.value);
-      td.title = b.value;
-    } else if (b.type === 'bnode') {
-      td.className = 'bnode';
-      td.textContent = '_:' + b.value;
-    } else {
-      td.className = 'literal';
-      td.textContent = '"' + b.value + '"';
-      if (b['xml:lang']) {
-        const tag = document.createElement('span');
-        tag.className = 'lang';
-        tag.textContent = '@' + b['xml:lang'];
-        td.appendChild(tag);
-      } else if (b.datatype && b.datatype !== 'http://www.w3.org/2001/XMLSchema#string') {
-        const dt = document.createElement('span');
-        dt.className = 'dt';
-        dt.textContent = ' ^^' + abbrev(b.datatype);
-        dt.title = b.datatype;
-        td.appendChild(dt);
-      }
-    }
-    return td;
-  }
-
-  function renderResultsJSON(json) {
-    outputWrap.className = '';
-    outputWrap.innerHTML = '';
-
-    // ASK query -> { head: {}, boolean: true|false }
-    if (typeof json.boolean === 'boolean') {
-      const div = document.createElement('div');
-      div.className = 'ask-result ' + (json.boolean ? 'yes' : 'no');
-      div.textContent = json.boolean ? 'Yes' : 'No';
-      outputWrap.appendChild(div);
-      return;
-    }
-
-    const vars = (json.head && json.head.vars) || [];
-    const bindings = (json.results && json.results.bindings) || [];
-    if (vars.length === 0) {
-      outputWrap.classList.add('empty');
-      outputWrap.textContent = '(no variables in result head)';
-      return;
-    }
-
-    const table = document.createElement('table');
-    table.className = 'results';
-    const thead = document.createElement('thead');
-    const hrow = document.createElement('tr');
-    vars.forEach(v => {
-      const th = document.createElement('th');
-      th.textContent = '?' + v;
-      hrow.appendChild(th);
-    });
-    thead.appendChild(hrow);
-    table.appendChild(thead);
-
-    const tbody = document.createElement('tbody');
-    bindings.forEach(row => {
-      const tr = document.createElement('tr');
-      vars.forEach(v => tr.appendChild(renderBinding(v, row[v])));
-      tbody.appendChild(tr);
-    });
-    table.appendChild(tbody);
-    outputWrap.appendChild(table);
-
-    const meta = document.createElement('div');
-    meta.className = 'result-meta';
-    meta.textContent = bindings.length + ' result' + (bindings.length === 1 ? '' : 's');
-    outputWrap.appendChild(meta);
-  }
-
-  function renderRawError(text) {
-    outputWrap.className = 'error';
-    outputWrap.innerHTML = '';
-    const pre = document.createElement('pre');
-    pre.className = 'raw-error';
-    pre.textContent = text;
-    outputWrap.appendChild(pre);
-  }
-
-  // -------------------------------------------------------------------
-  // Run
-  // -------------------------------------------------------------------
-  runBtn.addEventListener('click', async () => {
-    const originalLabel = runBtn.textContent;
-    runBtn.disabled = true;
-    runBtn.classList.add('running');
-    runBtn.setAttribute('aria-busy', 'true');
-    runBtn.textContent = 'Running…';
-    const engineLabel = (engineEl && engineEl.value ? engineEl.value : 'js').toUpperCase();
-    statusEl.innerHTML = '<span class="spinner" aria-hidden="true"></span>Running on ' + engineLabel + '…';
-    outputWrap.className = 'empty';
-    outputWrap.textContent = '';
-    // Yield one animation frame so the browser paints the "running"
-    // state before we start the heavy work.
-    await new Promise(r => requestAnimationFrame(() => r()));
-    const buf = [];
-
-    const origLog = console.log;
-    const origErr = console.error;
-    console.log = (...args) => buf.push(args.join(' '));
-    console.error = (...args) => buf.push(args.join(' '));
-
-    const ext = (DATASETS[datasetEl.value] && DATASETS[datasetEl.value].ext) || 'ttl';
-    const dataPath = '/tmp/data.' + ext;
-    const entailVal = entailEl && entailEl.value ? entailEl.value : 'none';
-    const engine = engineEl && engineEl.value ? engineEl.value : 'js';
-
-    // --- wasm path: drive factoidal.wasm.js via the browser-wasm adapter.
-    // We do not use the js_of_ocaml globals dance here; the adapter owns
-    // the run-loop. Errors surface as thrown promise rejections.
-    if (engine === 'wasm') {
-      console.log = origLog;
-      console.error = origErr;
-      try {
-        // Dynamic import of a sibling ES module. `document.baseURI` is
-        // valid in classic scripts (unlike `import.meta.url` which only
-        // resolves inside modules).
-        const mod = await import(new URL('./browser-wasm.js', document.baseURI).href);
-        // The wasm bundle + its .wasm.assets sit alongside this page.
-        if (typeof mod.setFactoidalWasmUrl === 'function') {
-          mod.setFactoidalWasmUrl(new URL('./factoidal.wasm.js', document.baseURI));
-        }
-        const opts = {};
-        if (entailVal !== 'none') opts.entail = entailVal;
-        const formatExt = ext;
-        if (formatExt === 'nt')       opts.dataFormat = 'ntriples';
-        else if (formatExt === 'nq')  opts.dataFormat = 'nquads';
-        else if (formatExt === 'trig') opts.dataFormat = 'trig';
-        else if (formatExt === 'rdf' || formatExt === 'xml') opts.dataFormat = 'rdfxml';
-        else opts.dataFormat = 'turtle';
-        const parsed = await mod.query(dataEl.value, queryEl.value, opts);
-        statusEl.textContent = 'Done (wasm)';
-        renderResultsJSON(parsed);
-      } catch (e) {
-        statusEl.textContent = 'Error (wasm)';
-        renderRawError((e && e.message ? e.message : String(e))
-          + (e && e.stderr ? '\n' + e.stderr : ''));
-      } finally {
-        runBtn.disabled = false;
-        runBtn.classList.remove('running');
-        runBtn.removeAttribute('aria-busy');
-        runBtn.textContent = originalLabel;
-      }
-      return;
-    }
-
-    // --- js path: the original js_of_ocaml IIFE runner.
-    globalThis.jsoo_fs_tmp = [{ name: dataPath, content: dataEl.value }];
-    globalThis.process = globalThis.process || {};
-    const argv = ['node', 'factoidal',
-      '-d', dataPath,
-      '-e', queryEl.value,
-      '-o', 'json'];
-    if (entailVal !== 'none') argv.push('--entail', entailVal);
-    globalThis.process.argv = argv;
-
-    let exitCode = 0;
-    const origExit = globalThis.process.exit;
-    globalThis.process.exit = (n) => { exitCode = n|0; throw new Error('__factoidal_exit__'); };
-
-    try {
-      const src = await getFactoidal();
-      (new Function(src))();
-    } catch (e) {
-      if (e && e.message === '__factoidal_exit__') {
-        // expected
-      } else {
-        buf.push('\n[demo] ' + (e && e.message ? e.message : e));
-        exitCode = 1;
-      }
-    } finally {
-      console.log = origLog;
-      console.error = origErr;
-      globalThis.process.exit = origExit;
-      runBtn.disabled = false;
-      runBtn.classList.remove('running');
-      runBtn.removeAttribute('aria-busy');
-      runBtn.textContent = originalLabel;
-    }
-
-    const out = buf.join('\n').replace(/\n+$/, '');
-    statusEl.textContent = (exitCode === 0 ? 'Done' : 'Finished with errors')
-      + ' (' + engine + ')';
-
-    if (exitCode !== 0) {
-      renderRawError(out || '(no output, exit ' + exitCode + ')');
-      return;
-    }
-    if (!out) {
-      outputWrap.className = 'empty';
-      outputWrap.textContent = '(no output)';
-      return;
-    }
-
-    // Try to extract JSON even if the CLI also emitted some stderr text.
-    // factoidal's JSON starts at the first '{' on a line and ends with
-    // the matching '}'. Grab from first '{' to last '}'.
-    const firstBrace = out.indexOf('{');
-    const lastBrace  = out.lastIndexOf('}');
-    if (firstBrace < 0 || lastBrace < firstBrace) {
-      renderRawError(out);
-      return;
-    }
-    const jsonText = out.slice(firstBrace, lastBrace + 1);
-    let parsed;
-    try { parsed = JSON.parse(jsonText); }
-    catch (e) { renderRawError(out); return; }
-    renderResultsJSON(parsed);
   });
 })();
 </script>
