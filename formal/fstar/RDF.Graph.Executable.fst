@@ -2285,6 +2285,150 @@ let owl_rule_scm_cls_restriction (g : rdf_graph) : rdf_graph =
     g
     g
 
+// ---- Tier-2 OWL-RL rules: property chains + named-sameAs-to-eqClass ------
+//
+// Constants for RDF list / property chain decoding.
+let rdf_first : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#first");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
+
+let rdf_rest : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
+
+let rdf_nil_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"
+
+let owl_propertyChainAxiom : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#propertyChainAxiom");
+  "http://www.w3.org/2002/07/owl#propertyChainAxiom"
+
+// Decode a 2-element RDF collection rooted at `head_subj`. Returns
+// `Some (p1, p2)` only when the list shape is exactly:
+//     head    rdf:first p1
+//     head    rdf:rest  tail
+//     tail    rdf:first p2
+//     tail    rdf:rest  rdf:nil
+// and both p1 and p2 are IRIs. Returns `None` otherwise (n != 2,
+// non-IRI elements, or malformed list). Two-hop, no recursion.
+let decode_chain_pair (g : rdf_graph) (head_subj : subject)
+  : option (wf_iri & wf_iri) =
+  let firsts1 = find_objects g head_subj rdf_first in
+  let rests1  = find_objects g head_subj rdf_rest  in
+  match firsts1, rests1 with
+  | (T_IRI p1) :: _, tail_term :: _ ->
+    (match term_to_subject tail_term with
+     | Some tail_subj ->
+       let firsts2 = find_objects g tail_subj rdf_first in
+       let rests2  = find_objects g tail_subj rdf_rest  in
+       (match firsts2, rests2 with
+        | (T_IRI p2) :: _, (T_IRI nil_iri) :: _ ->
+          if nil_iri = rdf_nil_iri then Some (p1, p2) else None
+        | _, _ -> None)
+     | None -> None)
+  | _, _ -> None
+
+// prp-spo2 (n=2 specialisation): if (P owl:propertyChainAxiom (P1 P2))
+// and (x P1 y) and (y P2 z), then (x P z).
+//
+// Walks each propertyChainAxiom triple, decodes the list with
+// `decode_chain_pair`, then performs the 2-hop join via find_objects.
+// Stack-safe: outer fold over chain-axiom triples; inner folds over
+// matching x/y pairs and over the resulting z's. Each emission goes
+// through add_triple_if_new so the fixpoint terminates.
+//
+// Restricted to n=2 (the common case, covers chain2trans1,
+// New-Feature-ObjectPropertyChain-001, BJP-003). General-n requires a
+// fuel-bounded list walker — left for a follow-up commit.
+let owl_rule_property_chain_2 (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (chain_t : triple) ->
+      if chain_t.p = owl_propertyChainAxiom then
+        match chain_t.s, term_to_subject chain_t.o with
+        | S_IRI p_iri, Some list_subj ->
+          (match decode_chain_pair g list_subj with
+           | Some (p1, p2) ->
+             // For each (x p1 y) in g, find every (y p2 z) and emit (x p z).
+             List.Tot.fold_left
+               (fun (acc2 : rdf_graph) (t1 : triple) ->
+                 if t1.p = p1 then
+                   match term_to_subject t1.o with
+                   | Some y_subj ->
+                     let zs = find_objects g y_subj p2 in
+                     List.Tot.fold_left
+                       (fun (acc3 : rdf_graph) (z_term : rdf_term) ->
+                         let new_t : triple =
+                           { s = t1.s; p = p_iri; o = z_term } in
+                         add_triple_if_new acc3 new_t)
+                       acc2
+                       zs
+                   | None -> acc2
+                 else acc2)
+               acc
+               g
+           | None -> acc)
+        | _, _ -> acc
+      else acc)
+    g
+    g
+
+// scm-trans-from-chain (sound but not in OWL 2 RL/RDF Table 9): if
+// (P owl:propertyChainAxiom (P P)) — i.e. a chain of length 2 of P
+// composed with itself — then P is transitive. Drives the chain2trans1
+// PositiveEntailmentTest. Bnode-guarded via decode_chain_pair (which
+// only returns IRI pairs).
+let owl_rule_chain_to_transitive (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (chain_t : triple) ->
+      if chain_t.p = owl_propertyChainAxiom then
+        match chain_t.s, term_to_subject chain_t.o with
+        | S_IRI p_iri, Some list_subj ->
+          (match decode_chain_pair g list_subj with
+           | Some (q1, q2) ->
+             if q1 = p_iri && q2 = p_iri then
+               let new_t : triple =
+                 { s = S_IRI p_iri; p = rdf_type;
+                   o = T_IRI owl_TransitiveProperty } in
+               add_triple_if_new acc new_t
+             else acc
+           | None -> acc)
+        | _, _ -> acc
+      else acc)
+    g
+    g
+
+// Named-sameAs-to-equivalentClass: if (C owl:sameAs D) where C and D
+// are both IRIs and both already typed as owl:Class, emit
+//   (C owl:equivalentClass D) and (D owl:equivalentClass C).
+//
+// IRI-only / class-typed guard: avoids feeding the bnode chain that
+// `owl_rule_equivalent_class` deliberately blocks (parent9 regression).
+// Sound: under OWL-RL, sameAs on named individuals which happen to
+// also be classes implies extensional class equality, hence
+// equivalentClass. Drives WebOnt-I4.6-003 and WebOnt-I4.6-005-Direct.
+let owl_rule_named_sameAs_to_equivClass (g : rdf_graph) : rdf_graph =
+  let is_class (i : wf_iri) : bool =
+    let types = find_objects g (S_IRI i) rdf_type in
+    List.Tot.existsb (fun (x : rdf_term) -> rdf_term_eq x (T_IRI owl_Class)) types
+  in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_sameAs then
+        match t.s, t.o with
+        | S_IRI c_iri, T_IRI d_iri ->
+          if c_iri <> d_iri && is_class c_iri && is_class d_iri then
+            let t1 : triple =
+              { s = S_IRI c_iri; p = owl_equivalentClass; o = T_IRI d_iri } in
+            let t2 : triple =
+              { s = S_IRI d_iri; p = owl_equivalentClass; o = T_IRI c_iri } in
+            add_triple_if_new (add_triple_if_new acc t1) t2
+          else acc
+        | _, _ -> acc
+      else acc)
+    g
+    g
+
 // Apply all OWL-RL rules once. Ordering: first do "axiom-introducing" rules
 // (equivalentClass/Property expansion, owl:inverseOf flip, symmetric/
 // transitive), then sameAs rules. The fixpoint loop re-applies them until
@@ -2326,7 +2470,12 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   let g20 = owl_rule_reflexive_property g19 in
   // scm-cls (partial): owl:Restriction subjects are also owl:Class.
   let g21 = owl_rule_scm_cls_restriction g20 in
-  g21
+  // Tier-2: prp-spo2 (n=2 chain composition), then scm-trans-from-chain
+  // (chain (P P) recognises P as transitive), then named-sameAs-to-eqClass.
+  let g22 = owl_rule_property_chain_2 g21 in
+  let g23 = owl_rule_chain_to_transitive g22 in
+  let g24 = owl_rule_named_sameAs_to_equivClass g23 in
+  g24
 
 // Interleaved OWL-RL + RDFS fixpoint. RDFS rules run every iteration so
 // that triples introduced by cls-eqc1/2 and prp-eqp1/2 get propagated
