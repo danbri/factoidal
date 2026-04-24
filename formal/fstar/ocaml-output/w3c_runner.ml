@@ -1310,18 +1310,18 @@ let run_protocol_test tc =
                                                 (* :query_content_type_ask *)
       ] in
     let is_trivial_ask = List.mem tc.name trivial_ask_names in
-    if is_trivial_ask then begin
+    if is_trivial_ask then
       let query_str = match query_opt with
         | Some s -> s
         | None -> "ASK {}"  (* body-borne forms; trivial tests all reduce to ASK {} *) in
-      try
-        let q = parse_sparql_query query_str in
-        let _ = OWL_QueryEval.eval_select_query_owl q []
-                  RDF_Graph_Executable.({ ds_default = []; ds_named = [] }) in
-        Pass
-      with _ ->
-        Fail "Protocol bonus path: query did not parse/evaluate"
-    end else begin
+      (try
+         let q = parse_sparql_query query_str in
+         let _ = OWL_QueryEval.eval_select_query_owl q []
+                   RDF_Graph_Executable.({ ds_default = []; ds_named = [] }) in
+         Pass
+       with _ ->
+         Fail "Protocol bonus path: query did not parse/evaluate")
+    else begin
       (* Non-trivial test: explain specifically what's missing. The
          ignore on method_opt and query_opt avoids unused-variable warnings
          while keeping the parser plumbing in place for Phase 1+. *)
