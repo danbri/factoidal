@@ -442,30 +442,161 @@ let build_union_ggp (branch_bgps : list bgp) : group_graph_pattern =
 // (and avoids a recursive type over pattern_term).
 type ce_combinator = | CE_Intersect | CE_Union | CE_SomeValuesFrom
 
+// Predicates that classify a bnode as an intersection/union marker.
+// owl:someValuesFrom is deliberately NOT in this set: restriction
+// markers need an extra filler-check (see
+// find_markers_with_restrictions below) to avoid taking over simple2
+// / simple5 / simple6, where the closure's canonical-bnode
+// materialisation is the correct path.
+let combinator_of_pred_flat (p : wf_iri) : option ce_combinator =
+  if p = owl_intersectionOf_iri then Some CE_Intersect
+  else if p = owl_unionOf_iri then Some CE_Union
+  else None
+
+// Kept for backward compatibility / external readers. Includes the
+// someValuesFrom predicate, but users should prefer
+// `combinator_of_pred_flat` + the restriction-filler guard below.
 let combinator_of_pred (p : wf_iri) : option ce_combinator =
   if p = owl_intersectionOf_iri then Some CE_Intersect
   else if p = owl_unionOf_iri then Some CE_Union
   else if p = owl_someValuesFrom_iri then Some CE_SomeValuesFrom
   else None
 
-let rec find_markers_acc (b : bgp) (acc : list (string & ce_combinator))
+// Pass 1: gather flat markers (intersectionOf / unionOf) only.
+let rec find_flat_markers_acc (b : bgp) (acc : list (string & ce_combinator))
   : Tot (list (string & ce_combinator)) (decreases b) =
   match b with
   | [] -> List.Tot.rev acc
   | tp :: rest ->
     (match ps_marker_key tp.tp_s, tp.tp_p with
      | Some k, PT_IRI p ->
-       (match combinator_of_pred p with
+       (match combinator_of_pred_flat p with
         | Some c ->
-          // Avoid duplicates: if marker already in acc, skip
           let dup = List.Tot.existsb (fun (k', _) -> k' = k) acc in
-          if dup then find_markers_acc rest acc
-          else find_markers_acc rest ((k, c) :: acc)
-        | None -> find_markers_acc rest acc)
-     | _, _ -> find_markers_acc rest acc)
+          if dup then find_flat_markers_acc rest acc
+          else find_flat_markers_acc rest ((k, c) :: acc)
+        | None -> find_flat_markers_acc rest acc)
+     | _, _ -> find_flat_markers_acc rest acc)
+
+// Pass 2: augment with restriction markers whose someValuesFrom
+// filler is itself a CE bnode (i.e., NESTED). Rationale:
+//
+//   * Flat restrictions (filler = named class, e.g. simple2:
+//     `?x a [a owl:Restriction ; owl:onProperty :p ; owl:someValuesFrom :B]`)
+//     are handled by the CLOSURE's canonical-bnode materialisation
+//     (RDF.Graph.Executable.owl_rule_cls_svf2_qualified), which
+//     emits `:a rdf:type _:rSVF(:p,:B)` only for those :a that
+//     actually have a :p-successor typed :B — giving the expected
+//     simple2 answer {:a} and NOT the over-approximation {:a,:c}
+//     that a naive rewrite `?x :p ?g . ?g a :B` would produce.
+//     We must therefore leave flat restrictions alone so the closure
+//     path keeps working.
+//
+//   * Nested restrictions (filler = a CE bnode, e.g. simple8:
+//     outer someValuesFrom points at another Restriction bnode) have
+//     NO canonical data-side match: the closure only materialises
+//     canonicals keyed on named classes. So we MUST rewrite these,
+//     and the rewriter's `?x :p ?g . <expand filler at ?g>` gives
+//     the right answer for simple8.
+//
+// Guard: a restriction is marked as CE_SomeValuesFrom iff its
+// someValuesFrom filler is itself a CE bnode — either a flat
+// intersection/union marker OR another restriction bnode (subject
+// of a someValuesFrom triple). A named-IRI filler keeps the
+// restriction OUT of the marker list and therefore routes via the
+// closure's canonical materialisation, which preserves simple2 /
+// simple5 / simple6 behaviour.
+
+// Is `k` the subject of ANY owl:someValuesFrom triple in `b`?
+let is_svf_subject (b : bgp) (k : string) : bool =
+  Some? (bgp_find_first_obj b k owl_someValuesFrom_iri)
+
+// Does the restriction rooted at `k` have a filler that is itself
+// a CE bnode? (Nested case.)
+let restriction_has_nested_filler (b : bgp) (k : string) : bool =
+  match bgp_find_first_obj b k owl_someValuesFrom_iri with
+  | None -> false
+  | Some filler ->
+    match pt_marker_key filler with
+    | None -> false  // named IRI / literal / non-bnode-var filler
+    | Some kf ->
+      // filler is a bnode. CE-qualified iff flat marker OR itself a
+      // someValuesFrom subject.
+      let flat = find_flat_markers_acc b [] in
+      List.Tot.existsb (fun (k', _) -> k' = kf) flat ||
+      is_svf_subject b kf
+
+// Scan the BGP for restriction bnodes (subjects of someValuesFrom)
+// and, for each, include as a marker iff its filler is nested. This
+// identifies the TOP-LEVEL restriction markers we want to rewrite
+// (but only those whose filler is another CE bnode — flat
+// restrictions like simple2 stay on the closure path).
+let rec add_restriction_markers_acc
+          (b : bgp) (rem : bgp) (acc : list (string & ce_combinator))
+  : Tot (list (string & ce_combinator)) (decreases rem) =
+  match rem with
+  | [] -> acc
+  | tp :: rest ->
+    (match ps_marker_key tp.tp_s, tp.tp_p with
+     | Some k, PT_IRI p ->
+       if p = owl_someValuesFrom_iri then
+         (let dup = List.Tot.existsb (fun (k', _) -> k' = k) acc in
+          if dup then add_restriction_markers_acc b rest acc
+          else if restriction_has_nested_filler b k
+          then add_restriction_markers_acc b rest
+                 (List.Tot.append acc [(k, CE_SomeValuesFrom)])
+          else add_restriction_markers_acc b rest acc)
+       else add_restriction_markers_acc b rest acc
+     | _, _ -> add_restriction_markers_acc b rest acc)
+
+// Once we've decided to rewrite a top-level nested restriction, we
+// also need to strip bookkeeping triples for every inner restriction
+// that expansion will consume. Transitive closure: include any
+// someValuesFrom-subject bnode reachable from the current marker set
+// via the filler chain. Named-class fillers terminate the chain.
+let rec add_inner_restrictions_acc
+          (b : bgp) (work : list string) (acc : list (string & ce_combinator))
+          (fuel : nat)
+  : Tot (list (string & ce_combinator)) (decreases fuel) =
+  match fuel, work with
+  | 0, _ -> acc
+  | _, [] -> acc
+  | n, k :: rest ->
+    // Look at this marker's someValuesFrom filler.
+    (match bgp_find_first_obj b k owl_someValuesFrom_iri with
+     | None -> add_inner_restrictions_acc b rest acc (n - 1)
+     | Some filler ->
+       match pt_marker_key filler with
+       | None -> add_inner_restrictions_acc b rest acc (n - 1)
+       | Some kf ->
+         let already =
+           List.Tot.existsb (fun (k', _) -> k' = kf) acc in
+         if already then add_inner_restrictions_acc b rest acc (n - 1)
+         else if is_svf_subject b kf then
+           // kf is an inner restriction — mark it and keep walking.
+           add_inner_restrictions_acc b
+             (List.Tot.append rest [kf])
+             (List.Tot.append acc [(kf, CE_SomeValuesFrom)])
+             (n - 1)
+         else add_inner_restrictions_acc b rest acc (n - 1))
 
 let find_markers (b : bgp) : list (string & ce_combinator) =
-  find_markers_acc b []
+  let flat   = find_flat_markers_acc b [] in
+  let withr  = add_restriction_markers_acc b b flat in
+  // Gather the initial work list: keys of all restriction markers
+  // added in this pass (we don't need to chase inner fillers for
+  // intersectionOf / unionOf markers, because their operands are
+  // handled by walk_rdf_collection + expand_ce_subject's existing
+  // recursion).
+  let restr_keys =
+    List.Tot.fold_left
+      (fun acc (k, c) -> match c with
+                        | CE_SomeValuesFrom -> List.Tot.append acc [k]
+                        | _ -> acc)
+      []
+      withr in
+  // Fuel = BGP length + 1 is a safe upper bound on restriction depth.
+  add_inner_restrictions_acc b restr_keys withr (List.Tot.length b + 1)
 
 // ------------------------------------------------------------------
 // Section 8. Rewrite a single BGP: apply one marker at a time,
@@ -579,22 +710,38 @@ let rewrite_bgp_flat (b : bgp) : group_graph_pattern =
 // closure step materialises a matching canonical restriction.
 // ------------------------------------------------------------------
 
-// Is this pattern_term a CE marker in BGP b (subject of intersectionOf
-// or unionOf)? Returns its key and combinator if so.
+// Is this pattern_term a CE marker in BGP b (subject of intersectionOf,
+// unionOf, or someValuesFrom)? Returns its key and combinator if so.
+//
+// IMPORTANT: this is an EXPANSION-TIME classifier, not a
+// top-level-marker classifier. It's called when `expand_ce_subject`
+// recurses into a CE operand / filler. At that point we want to fully
+// expand every CE bnode we encounter, including restrictions whose
+// filler is a named class (e.g. the INNER restriction in simple8,
+// whose filler is :B). Those are not top-level markers (so
+// `find_markers` skips them, keeping simple2 on the closure path),
+// but once we're already inside a nested expansion we must keep going.
 let ce_combinator_for_term (b : bgp) (pt : pattern_term)
   : option (string & ce_combinator) =
   match pt_marker_key pt with
   | None -> None
   | Some k ->
-    let markers = find_markers b in
+    // 1. Flat intersection / union markers.
+    let flat = find_flat_markers_acc b [] in
     let rec lookup (ms : list (string & ce_combinator))
       : Tot (option ce_combinator) (decreases ms) =
       match ms with
       | [] -> None
       | (k', c) :: rest -> if k' = k then Some c else lookup rest in
-    match lookup markers with
-    | None -> None
-    | Some c -> Some (k, c)
+    (match lookup flat with
+     | Some c -> Some (k, c)
+     | None ->
+       // 2. Restriction CE: any bnode with a someValuesFrom triple.
+       //    Named-class fillers still reach here during nested
+       //    expansion, and we expand them too (resulting in a simple
+       //    `?_sv_k rdf:type C` leaf).
+       if is_svf_subject b k then Some (k, CE_SomeValuesFrom)
+       else None)
 
 // Build a BGP containing a single `subj rdf:type leaf` triple.
 let single_type_bgp (subj : pattern_subject) (leaf : pattern_term) : bgp =
