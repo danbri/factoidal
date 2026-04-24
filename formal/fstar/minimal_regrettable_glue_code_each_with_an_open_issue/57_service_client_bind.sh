@@ -57,7 +57,8 @@ with open('$FILE', 'r') as f:
 # extracted as a record with a single field [gs_graph]. We construct
 # Some/None purely; the hashtable holds rdf_graph values keyed by IRI
 # string and we wrap them on lookup.
-old = '''let service_endpoint_lookup (uu___ : Prims.string) : graph_store FStar_Pervasives_Native.option=
+old = '''let service_endpoint_lookup (uu___ : RDF_Graph_Executable.wf_iri) :
+  graph_store FStar_Pervasives_Native.option=
   failwith \"Not yet implemented: SPARQL11.Algebra.service_endpoint_lookup\"'''
 
 new = '''(* SERVICE endpoint resolver — issue #57.

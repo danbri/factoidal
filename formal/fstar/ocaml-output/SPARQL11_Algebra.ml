@@ -3008,6 +3008,20 @@ let eval_property_path_fwd_ref :
 let eval_property_path_fwd (p : property_path)
   (g : RDF_Graph_Executable.rdf_graph) : path_result_fwd=
   !eval_property_path_fwd_ref p g
+(* SERVICE endpoint resolver — issue #57.
+   Global table populated by the test runner from qt:serviceData
+   manifest declarations. Lookup is keyed on the absolute IRI string
+   of the endpoint. *)
+let service_endpoint_table : (Prims.string, RDF_Graph_Executable.rdf_graph) Hashtbl.t =
+  Hashtbl.create 16
+let service_endpoint_register (iri : Prims.string) (g : RDF_Graph_Executable.rdf_graph) : unit =
+  Hashtbl.replace service_endpoint_table iri g
+let service_endpoint_clear () : unit =
+  Hashtbl.clear service_endpoint_table
+let service_endpoint_lookup (iri : Prims.string) : graph_store FStar_Pervasives_Native.option=
+  match Hashtbl.find_opt service_endpoint_table iri with
+  | Some g -> FStar_Pervasives_Native.Some { gs_graph = g }
+  | None -> FStar_Pervasives_Native.None
 let path_result_to_solutions (ps : pattern_subject) (pt : pattern_term)
   (pairs : path_result_fwd) : solution_sequence=
   list_filter_map
@@ -3165,7 +3179,11 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store)
                        | FStar_Pervasives_Native.None -> []) ng_results
                 else ng_results) dss.dss_named
        | uu___ -> eval_pattern_store p' gs dss)
-  | GP_Service (uu___, uu___1, uu___2) -> []
+  | GP_Service (iri, p', silent) ->
+      (match service_endpoint_lookup iri with
+       | FStar_Pervasives_Native.Some remote_gs ->
+           eval_pattern_store p' remote_gs dss
+       | FStar_Pervasives_Native.None -> if silent then [[]] else [])
   | GP_SubSelect q -> eval_subselect_fwd q gs.gs_graph (store_to_dataset dss)
   | GP_PropertyPath (ps, pp, pt) ->
       let pairs = eval_property_path_fwd pp gs.gs_graph in
