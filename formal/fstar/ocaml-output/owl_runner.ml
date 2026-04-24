@@ -1,18 +1,24 @@
-(* OWL 2 Test Cases runner — SKELETON (Phase 0).
+(* OWL 2 Test Cases runner — Phase 1 (profile-RL PositiveEntailmentTest).
 
    Reads one of the W3C OWL 2 Test Case RDF/XML catalog files (default
    third_party/testing/owl/profile-RL.rdf), parses it via the F*-extracted
-   Parser_RDFXML, extracts <test:TestCase> nodes, and prints per-test
-   identifier + rdf:type values. Emits a final count.
+   Parser_RDFXML, extracts <test:TestCase> nodes, and — for each
+   PositiveEntailmentTest — runs OWL-RL closure (with reflexivity) over
+   the embedded premise graph and checks that every triple of the
+   embedded conclusion graph appears in the closure.
 
    !! THIS IS I/O GLUE — NO RDF/SPARQL SEMANTIC LOGIC !!
-   See CLAUDE.md iron rule #10 and anti-pattern #15. This file MUST
-   never contain entailment logic — that belongs in .fst modules and
-   must be extracted. Phase 1 (next commit) will hook up
-   RDF_Graph_Executable.owl_rl_closure_with_reflexivity; this commit
-   deliberately stops at the manifest-reader skeleton.
+   See CLAUDE.md iron rule #10 and anti-pattern #15. Closure itself is
+   F*-extracted; what this file does is (a) extract premise/conclusion
+   literals from the manifest, (b) pre-expand DOCTYPE-declared catalog
+   entities (&rdf;, &rdfs;, &owl;, &test;, &xsd;) so Parser_XML can
+   tokenize them, and (c) do a relaxed "non-bnode exact + bnode
+   structural" entailment check over the closed graph. Proper bnode
+   isomorphism is deferred.
 
-   Scoping + phased plan: docs/designissues/2026-04-24-owl-test-harness.md
+   Scoping + phased plan:
+     docs/designissues/2026-04-24-owl-test-harness.md (skeleton)
+     docs/designissues/2026-04-24-owl-runner-phase1.md (this phase)
 
    Usage:
      ./owl_runner
@@ -23,6 +29,8 @@
          Reads the given RDF/XML catalog file.
      ./owl_runner --list
          Lists the catalog files under third_party/testing/owl/.
+     ./owl_runner -v | --verbose
+         Print the first mismatching triple per failing test.
      ./owl_runner --help
          Prints this help.
 *)
@@ -48,6 +56,7 @@ let catalog_entities : (string * string) list =
   [ ("&rdf;",  "http://www.w3.org/1999/02/22-rdf-syntax-ns#");
     ("&rdfs;", "http://www.w3.org/2000/01/rdf-schema#");
     ("&owl;",  "http://www.w3.org/2002/07/owl#");
+    ("&xsd;",  "http://www.w3.org/2001/XMLSchema#");
     ("&test;", "http://www.w3.org/2007/OWL/testOntology#") ]
 
 (* Strip the DOCTYPE block so Parser.XML doesn't have to skip it.
@@ -113,6 +122,9 @@ let rdf_type_iri   = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 let test_ns        = "http://www.w3.org/2007/OWL/testOntology#"
 let test_identifier = test_ns ^ "identifier"
 let test_profile    = test_ns ^ "profile"
+let test_premise    = test_ns ^ "rdfXmlPremiseOntology"
+let test_conclusion = test_ns ^ "rdfXmlConclusionOntology"
+let pos_entailment_iri = test_ns ^ "PositiveEntailmentTest"
 
 let subject_iri_opt (s : subject) : string option =
   match s with
@@ -168,6 +180,8 @@ type test_case_info = {
   identifier  : string option;     (* test:identifier string, if present *)
   types       : StrSet.t;          (* set of test:*Test rdf:types *)
   profiles    : StrSet.t;          (* set of test:profile values *)
+  premise     : string option;     (* test:rdfXmlPremiseOntology literal *)
+  conclusion  : string option;     (* test:rdfXmlConclusionOntology literal *)
 }
 
 let empty_info iri = {
@@ -175,6 +189,8 @@ let empty_info iri = {
   identifier = None;
   types = StrSet.empty;
   profiles = StrSet.empty;
+  premise = None;
+  conclusion = None;
 }
 
 (* Walk the triples once, build a map from subject-IRI (test:TestCase
@@ -211,6 +227,18 @@ let build_index (graph : triple list) : test_case_info list =
              let info = { info with profiles = StrSet.add obj info.profiles } in
              Hashtbl.replace tbl subj info
            | None -> ()
+         end else if t.p = test_premise then begin
+           match object_literal_opt t.o with
+           | Some lex ->
+             let info = { info with premise = Some lex } in
+             Hashtbl.replace tbl subj info
+           | None -> ()
+         end else if t.p = test_conclusion then begin
+           match object_literal_opt t.o with
+           | Some lex ->
+             let info = { info with conclusion = Some lex } in
+             Hashtbl.replace tbl subj info
+           | None -> ()
          end)
     graph;
   (* Keep only subjects that actually carry a test-type. *)
@@ -227,23 +255,136 @@ let identifier_display info =
   | Some s -> s
   | None -> "(no test:identifier)"
 
-let print_one info =
-  let types =
-    info.types
-    |> StrSet.elements
-    |> List.map short_type
-    |> String.concat ","
-  in
-  let profiles =
-    info.profiles
-    |> StrSet.elements
-    |> List.map short_profile
-    |> String.concat ","
-  in
-  let profiles = if profiles = "" then "-" else profiles in
-  Printf.printf "  [%s] types=%s profiles=%s  STUB: not yet wired into closure\n"
-    (identifier_display info) types profiles;
-  Printf.printf "    iri=%s\n" info.iri
+(* ------------------------------------------------------------------ *)
+(* Phase 1: closure + entailment check for PositiveEntailmentTest.
+
+   For each test with premise P and conclusion C:
+     closure   = owl_rl_closure_with_reflexivity(P, fuel=100)
+     pass iff  every triple of C is matched in closure
+
+   Match rule (relaxed):
+     - If C_triple contains no bnodes: exact triple_eq against closure.
+     - If C_triple contains one or more bnodes: structural match —
+       predicate must equal; for each position (s, o), if the
+       C-position is a bnode, any bnode in closure at that position
+       matches; otherwise exact value match required.
+
+   This over-approximates (any bnode in the closure at any position
+   can satisfy any bnode in the conclusion — there's no consistency
+   check across multiple bnode-containing triples). Full isomorphism
+   deferred. Limitation is printed with the score.
+*)
+
+let is_bnode_subject (s : RDF_Graph_Executable.subject) : bool =
+  match s with RDF_Graph_Executable.S_BNode _ -> true | _ -> false
+
+let is_bnode_term (t : RDF_Graph_Executable.rdf_term) : bool =
+  match t with RDF_Graph_Executable.T_BNode _ -> true | _ -> false
+
+let triple_has_bnode (t : RDF_Graph_Executable.triple) : bool =
+  is_bnode_subject t.s || is_bnode_term t.o
+
+let subject_matches
+      (pat : RDF_Graph_Executable.subject)
+      (sub : RDF_Graph_Executable.subject) : bool =
+  match pat with
+  | RDF_Graph_Executable.S_BNode _ -> is_bnode_subject sub
+  | _ -> RDF_Graph_Executable.subject_eq pat sub
+
+let object_matches
+      (pat : RDF_Graph_Executable.rdf_term)
+      (obj : RDF_Graph_Executable.rdf_term) : bool =
+  match pat with
+  | RDF_Graph_Executable.T_BNode _ -> is_bnode_term obj
+  | _ -> RDF_Graph_Executable.rdf_term_eq pat obj
+
+let triple_matches
+      (pat : RDF_Graph_Executable.triple)
+      (t : RDF_Graph_Executable.triple) : bool =
+  subject_matches pat.s t.s
+  && pat.p = t.p
+  && object_matches pat.o t.o
+
+let conclusion_triple_in_closure
+      (closure : RDF_Graph_Executable.rdf_graph)
+      (pat : RDF_Graph_Executable.triple) : bool =
+  if triple_has_bnode pat then
+    List.exists (triple_matches pat) closure
+  else
+    List.exists (RDF_Graph_Executable.triple_eq pat) closure
+
+type outcome =
+  | Pass
+  | Fail_conclusion_miss of RDF_Graph_Executable.triple
+  | Fail_parse_premise
+  | Fail_parse_conclusion
+  | Fail_no_premise
+  | Fail_no_conclusion
+
+let outcome_tag = function
+  | Pass -> "PASS"
+  | Fail_conclusion_miss _ -> "FAIL"
+  | Fail_parse_premise -> "FAIL/parse-premise"
+  | Fail_parse_conclusion -> "FAIL/parse-conclusion"
+  | Fail_no_premise -> "FAIL/no-premise"
+  | Fail_no_conclusion -> "FAIL/no-conclusion"
+
+let fuel_100 : Prims.nat = Z.of_int 100
+
+let run_positive_entailment (info : test_case_info) : outcome =
+  match info.premise, info.conclusion with
+  | None, _ -> Fail_no_premise
+  | _, None -> Fail_no_conclusion
+  | Some p_lex, Some c_lex ->
+    let p_src = expand_catalog_entities p_lex in
+    let c_src = expand_catalog_entities c_lex in
+    let base = info.iri in
+    let g_p =
+      try Parser_RDFXML.parse_rdfxml_with_base base p_src
+      with _ -> [] in
+    let g_c =
+      try Parser_RDFXML.parse_rdfxml_with_base base c_src
+      with _ -> [] in
+    if g_p = [] then Fail_parse_premise
+    else if g_c = [] then Fail_parse_conclusion
+    else begin
+      let closure =
+        try RDF_Graph_Executable.owl_rl_closure_with_reflexivity g_p fuel_100
+        with _ -> g_p in
+      let rec check = function
+        | [] -> Pass
+        | t :: rest ->
+          if conclusion_triple_in_closure closure t
+          then check rest
+          else Fail_conclusion_miss t
+      in
+      check g_c
+    end
+
+let format_subject = function
+  | RDF_Graph_Executable.S_IRI i -> "<" ^ i ^ ">"
+  | RDF_Graph_Executable.S_BNode b -> "_:" ^ b
+
+let format_object = function
+  | RDF_Graph_Executable.T_IRI i -> "<" ^ i ^ ">"
+  | RDF_Graph_Executable.T_BNode b -> "_:" ^ b
+  | RDF_Graph_Executable.T_Literal l ->
+    Printf.sprintf "\"%s\"^^<%s>" l.lexical_form l.datatype
+
+let format_triple (t : RDF_Graph_Executable.triple) : string =
+  Printf.sprintf "%s <%s> %s"
+    (format_subject t.s) t.p (format_object t.o)
+
+let print_outcome verbose info outcome =
+  let tag = outcome_tag outcome in
+  let id = identifier_display info in
+  Printf.printf "  %s  %s\n" tag id;
+  if verbose then begin
+    match outcome with
+    | Fail_conclusion_miss t ->
+      Printf.printf "      missing conclusion triple: %s\n" (format_triple t)
+    | _ -> ()
+  end
 
 (* ------------------------------------------------------------------ *)
 (* Repo-root resolution (so `./owl_runner` from any cwd works). *)
@@ -302,7 +443,7 @@ let print_help () =
 (* ------------------------------------------------------------------ *)
 (* Main. *)
 
-let run_catalog path =
+let run_catalog ?(verbose=false) path =
   Printf.printf "OWL 2 test catalog: %s\n" path;
   let t0 = Unix.gettimeofday () in
   let graph = parse_catalog path in
@@ -310,13 +451,11 @@ let run_catalog path =
   Printf.printf "  parsed %d triples in %.2fs\n"
     (List.length graph) (t1 -. t0);
   let tests = build_index graph in
-  (* Deterministic ordering by identifier (falling back to IRI). *)
   let key info = match info.identifier with
     | Some s -> s
     | None -> info.iri in
   let tests = List.sort (fun a b -> compare (key a) (key b)) tests in
-  List.iter print_one tests;
-  (* Per-type tally — just the four/five categories we expect. *)
+  (* Per-type tally — orientation for the human reader. *)
   let tally name =
     let iri = test_ns ^ name in
     List.fold_left
@@ -324,7 +463,6 @@ let run_catalog path =
       0 tests
   in
   let n = List.length tests in
-  Printf.printf "\n";
   Printf.printf "Totals: %d test cases\n" n;
   Printf.printf "  PositiveEntailmentTest:    %d\n" (tally "PositiveEntailmentTest");
   Printf.printf "  NegativeEntailmentTest:    %d\n" (tally "NegativeEntailmentTest");
@@ -332,15 +470,47 @@ let run_catalog path =
   Printf.printf "  InconsistencyTest:         %d\n" (tally "InconsistencyTest");
   Printf.printf "  ProfileIdentificationTest: %d\n" (tally "ProfileIdentificationTest");
   Printf.printf "\n";
-  Printf.printf "STUB: 0 pass, 0 fail (out of %d) — reasoning not yet wired.\n" n
+
+  (* Phase 1: score every PositiveEntailmentTest. *)
+  let pe_tests =
+    List.filter
+      (fun info -> StrSet.mem pos_entailment_iri info.types)
+      tests
+  in
+  let k = List.length pe_tests in
+  Printf.printf "Running %d PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...\n" k;
+  let t_run0 = Unix.gettimeofday () in
+  let outcomes = List.map (fun info -> (info, run_positive_entailment info)) pe_tests in
+  let t_run1 = Unix.gettimeofday () in
+  List.iter (fun (info, outcome) -> print_outcome verbose info outcome) outcomes;
+  let passes =
+    List.fold_left
+      (fun acc (_, o) -> match o with Pass -> acc + 1 | _ -> acc)
+      0 outcomes
+  in
+  let fails = k - passes in
+  Printf.printf "\n";
+  Printf.printf "Profile-RL PositiveEntailmentTests: %d pass, %d fail (out of %d) in %.2fs\n"
+    passes fails k (t_run1 -. t_run0);
+  Printf.printf "  (bnode match is structural only; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)\n"
 
 let () =
   let args = Array.to_list Sys.argv |> List.tl in
-  match args with
-  | [] -> run_catalog (default_catalog ())
-  | ["--help"] | ["-h"] -> print_help ()
-  | ["--list"] -> list_catalogs ()
-  | [path] -> run_catalog path
-  | _ ->
-    Printf.eprintf "owl_runner: unexpected arguments; try --help\n";
-    exit 2
+  let verbose = ref false in
+  let path = ref None in
+  let rec loop = function
+    | [] -> ()
+    | ("-v" | "--verbose") :: rest -> verbose := true; loop rest
+    | ("--help" | "-h") :: _ -> print_help (); exit 0
+    | "--list" :: _ -> list_catalogs (); exit 0
+    | p :: rest when !path = None -> path := Some p; loop rest
+    | _ ->
+      Printf.eprintf "owl_runner: unexpected arguments; try --help\n";
+      exit 2
+  in
+  loop args;
+  let catalog = match !path with
+    | Some p -> p
+    | None -> default_catalog ()
+  in
+  run_catalog ~verbose:!verbose catalog
