@@ -116,7 +116,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   #   SPARQL.Protocol       -> SPARQL11.Algebra, Parser.CSVResults, Parser.JSONResults
   for fst in RDF.Graph.Executable.fst Parquet.Footer.fst \
              Tableau.fst SPARQL11.Algebra.fst \
-             OWL.QueryRewrite.fst \
+             OWL.QueryRewrite.fst OWL.QueryEval.fst \
              Parser.FastString.fst Parser.IRI.fst \
              Parser.Combinators.fst Parser.TurtleScanner.fst SPARQL11.Parser.fst \
              Parser.NTriples.fst Parser.Turtle.fst \
@@ -184,7 +184,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     Parser_Ballyhoo.ml Parser_BallyhooBloom.ml \
     Parser_BallyhooHDT.ml Parser_BallyhooHDTQ.ml Parser_BallyhooCOTTAS.ml \
     fstar_pure_hashes.ml \
-    SPARQL11_Algebra.ml OWL_QueryRewrite.ml SPARQL11_Parser.ml SPARQL11_Store.ml SPARQL_Protocol.ml \
+    SPARQL11_Algebra.ml OWL_QueryRewrite.ml OWL_QueryEval.ml SPARQL11_Parser.ml SPARQL11_Store.ml SPARQL_Protocol.ml \
     SPARQL_HTTP.ml"
 
   # Parquet/Zstd C stub — compiled and linked into native binaries when the
@@ -338,7 +338,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
     Parser_Ballyhoo.ml Parser_BallyhooBloom.ml Parser_BallyhooCOTTAS.ml
     fstar_pure_hashes.ml
-    SPARQL11_Algebra.ml OWL_QueryRewrite.ml SPARQL11_Parser.ml SPARQL_Protocol.ml
+    SPARQL11_Algebra.ml OWL_QueryRewrite.ml OWL_QueryEval.ml SPARQL11_Parser.ml SPARQL_Protocol.ml
     SPARQL_HTTP.ml
   )
 
