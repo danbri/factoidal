@@ -698,16 +698,14 @@ ORDER BY ?title
   <details class="dataset-card">
     <summary><strong>schema.org class hierarchy</strong> (entailment demo, Turtle)</summary>
     <p class="card-note">
-      This card's entailment regime is a fixed attribute on the element
-      (<code>entail="none"</code> by default). To see how RDFS / OWL-RL
-      changes the results, edit the source and set
-      <code>entail="RDFS"</code> or <code>entail="OWL-RL"</code> on the
-      <code>&lt;factoidal-sparql-client&gt;</code> below. The per-run
-      Logic radio from the old page is gone — see commit message.
+      The <strong>Logic:</strong> radio in the toolbar (None / RDFS /
+      OWL-RL) switches entailment regime per run. Try "None" then
+      "RDFS" on the "All Places" query to see sub-class inference
+      kick in.
     </p>
     <factoidal-sparql-client
         engines="js,wasm" default-engine="js"
-        entail="none"
+        default-logic="none"
         src-data='[{"url":"./samples/schema-org.ttl","vfs":"/tmp/data.ttl"}]'>
       <factoidal-query name="so-all-places" label="All Places (needs RDFS)">
 PREFIX schema: &lt;http://schema.org/&gt;

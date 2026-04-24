@@ -491,7 +491,8 @@ function payloadsToTriG(payloads) {
 class FactoidalSparqlClient extends HTMLElement {
 
   static get observedAttributes() {
-    return ['src-data', 'engines', 'default-engine', 'entail',
+    return ['src-data', 'engines', 'default-engine',
+            'logics', 'default-logic', 'entail',
             'js-url', 'wasm-url', 'queries', 'warm'];
   }
 
@@ -535,6 +536,9 @@ class FactoidalSparqlClient extends HTMLElement {
       this._renderQueryList();
       this._renderEngineToggle();
     }
+    if (name === 'logics' || name === 'default-logic' || name === 'entail') {
+      this._renderLogicToggle();
+    }
   }
 
   get queries() {
@@ -570,8 +574,39 @@ class FactoidalSparqlClient extends HTMLElement {
     return this.engines.includes(e) ? e : this.engines[0] || 'js';
   }
 
+  // Entailment regime ("Logic") — runtime-switchable radio, parallel to
+  // the engine picker. `logics` lists the options to show; if omitted
+  // we offer the full set (none / RDFS / OWL-RL). `default-logic` picks
+  // the initial selection; legacy `entail` attribute is accepted as a
+  // back-compat synonym for `default-logic`.
+  get logics() {
+    const raw = this.getAttribute('logics');
+    if (raw) {
+      return raw.split(',').map(s => s.trim()).filter(Boolean);
+    }
+    return ['none', 'RDFS', 'OWL-RL'];
+  }
+
+  get defaultLogic() {
+    const raw = (this.getAttribute('default-logic')
+              || this.getAttribute('entail')
+              || 'none');
+    const opts = this.logics;
+    // Normalise: case-insensitive lookup, fallback to first option.
+    const hit = opts.find(o => o.toLowerCase() === raw.toLowerCase());
+    return hit || opts[0] || 'none';
+  }
+
+  // Kept for back-compat with early callers that read `entail` as a
+  // static setting. Returns the currently-selected Logic radio value
+  // when the UI has been rendered; otherwise falls back to the
+  // attribute-derived default.
   get entail() {
-    return this.getAttribute('entail') || 'none';
+    if (this._logicBox) {
+      const r = this._logicBox.querySelector('input[name="fc-logic"]:checked');
+      if (r) return r.value;
+    }
+    return this.defaultLogic;
   }
 
   get jsUrl() {
@@ -671,6 +706,12 @@ class FactoidalSparqlClient extends HTMLElement {
     this._engineBox.setAttribute('aria-label', 'Engine');
     row1.appendChild(this._engineBox);
 
+    this._logicBox = document.createElement('span');
+    this._logicBox.className = 'radio-group';
+    this._logicBox.setAttribute('role', 'radiogroup');
+    this._logicBox.setAttribute('aria-label', 'Logic (entailment regime)');
+    row1.appendChild(this._logicBox);
+
     this._statusEl = document.createElement('span');
     this._statusEl.className = 'status';
     this._statusEl.setAttribute('part', 'status');
@@ -711,6 +752,7 @@ class FactoidalSparqlClient extends HTMLElement {
 
     this._renderQueryList();
     this._renderEngineToggle();
+    this._renderLogicToggle();
     this._statusEl.textContent = 'Ready (engines will load on first run).';
     this._statusEl.className = 'status ok';
   }
@@ -773,6 +815,40 @@ class FactoidalSparqlClient extends HTMLElement {
   _currentEngine() {
     const r = this._engineBox.querySelector('input[name="fc-engine"]:checked');
     return r ? r.value : this.defaultEngine;
+  }
+
+  _renderLogicToggle() {
+    if (!this._logicBox) return;
+    const logics = this.logics;
+    const def = this.defaultLogic;
+    this._logicBox.innerHTML = '';
+
+    // Label prefix — "Logic:" before the radios so screen readers and
+    // sighted users both see what this row of buttons is for.
+    const lab = document.createElement('span');
+    lab.className = 'radio-group-label';
+    lab.textContent = 'Logic:';
+    lab.setAttribute('aria-hidden', 'true');
+    this._logicBox.appendChild(lab);
+
+    logics.forEach(l => {
+      const label = document.createElement('label');
+      label.title =
+        l === 'RDFS'   ? 'RDFS entailment closure + reflexivity axioms'
+      : l === 'OWL-RL' ? 'OWL 2 RL Datalog subset (includes RDFS)'
+      :                  'No entailment — query the raw data';
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = 'fc-logic';
+      input.value = l;
+      input.checked = (l === def);
+      const span = document.createElement('span');
+      // "none" → "None" for display; keep RDFS / OWL-RL as-is.
+      span.textContent = l === 'none' ? 'None' : l;
+      label.appendChild(input);
+      label.appendChild(span);
+      this._logicBox.appendChild(label);
+    });
   }
 
   _onQueryChange() {
@@ -1285,6 +1361,15 @@ class FactoidalSparqlClient extends HTMLElement {
       const argv = ['node', 'factoidal'];
       payloads.forEach(p => { argv.push('--named', p.graph + '=' + p.vfs); });
       argv.push('-e', queryText, '-o', 'json');
+      // Forward the runtime Logic selection. factoidal CLI accepts
+      // --entail {none|RDFS|OWL-RL} (case-insensitive). "none" is the
+      // default; skip the flag in that case for a tidier argv.
+      {
+        const regime = this.entail;  // reads the Logic radio
+        if (regime && regime.toLowerCase() !== 'none') {
+          argv.push('--entail', regime);
+        }
+      }
       globalThis.process.argv = argv;
 
       let exitCode = 0;
