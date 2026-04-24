@@ -4270,14 +4270,17 @@ let find_max (vals : eval_result Prims.list) : eval_result=
       FStar_List_Tot_Base.fold_left
         (fun acc x ->
            if (sparql_order x acc) >= Prims.int_zero then x else acc) v rest
-let rec collect_strings (vals : eval_result Prims.list) :
-  Prims.string Prims.list=
+let rec collect_strings_acc (acc : Prims.string Prims.list)
+  (vals : eval_result Prims.list) : Prims.string Prims.list=
   match vals with
-  | [] -> []
+  | [] -> FStar_List_Tot_Base.rev acc
   | v::rest ->
       (match er_to_string v with
-       | FStar_Pervasives_Native.Some s -> s :: (collect_strings rest)
-       | FStar_Pervasives_Native.None -> collect_strings rest)
+       | FStar_Pervasives_Native.Some s ->
+           collect_strings_acc (s :: acc) rest
+       | FStar_Pervasives_Native.None -> collect_strings_acc acc rest)
+let collect_strings (vals : eval_result Prims.list) :
+  Prims.string Prims.list= collect_strings_acc [] vals
 let rec first_non_error (vals : eval_result Prims.list) : eval_result=
   match vals with
   | [] -> ER_Error
@@ -4824,6 +4827,14 @@ let rec instantiate_solutions (template : triple_pattern Prims.list)
       let here = instantiate_template template mu ix in
       let later = instantiate_solutions template rest (ix + Prims.int_one) in
       FStar_List_Tot_Base.append here later
+let dedup_triples (ts : RDF_Graph_Executable.triple Prims.list) :
+  RDF_Graph_Executable.triple Prims.list=
+  let acc =
+    FStar_List_Tot_Base.fold_left
+      (fun acc1 t ->
+         if RDF_Graph_Executable.mem_triple t acc1 then acc1 else t :: acc1)
+      [] ts in
+  FStar_List_Tot_Base.rev acc
 let eval_construct_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
   (ds : RDF_Graph_Executable.rdf_dataset) :
   RDF_Graph_Executable.triple Prims.list=
@@ -4837,7 +4848,7 @@ let eval_construct_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
       let limited =
         slice_solutions (q.q_modifier).sm_offset (q.q_modifier).sm_limit
           omega in
-      instantiate_solutions template limited Prims.int_zero
+      dedup_triples (instantiate_solutions template limited Prims.int_zero)
   | uu___ -> []
 type path_result =
   (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list

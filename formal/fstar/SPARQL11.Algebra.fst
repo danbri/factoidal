@@ -2776,14 +2776,19 @@ let find_max (vals : list eval_result) : eval_result =
       (fun acc x -> if sparql_order x acc >= 0 then x else acc)
       v rest
 
-(* Collect string representations from eval_results, skipping non-stringifiable *)
-let rec collect_strings (vals : list eval_result) : Tot (list string) (decreases vals) =
+// Collect string representations from eval_results, skipping non-stringifiable.
+// Tail-recursive via accumulator; List.Tot.rev restores original order.
+let rec collect_strings_acc (acc : list string) (vals : list eval_result)
+  : Tot (list string) (decreases vals) =
   match vals with
-  | [] -> []
+  | [] -> List.Tot.rev acc
   | v :: rest ->
     (match er_to_string v with
-     | Some s -> s :: collect_strings rest
-     | None -> collect_strings rest)
+     | Some s -> collect_strings_acc (s :: acc) rest
+     | None -> collect_strings_acc acc rest)
+
+let collect_strings (vals : list eval_result) : Tot (list string) =
+  collect_strings_acc [] vals
 
 (* Find the first non-error result *)
 let rec first_non_error (vals : list eval_result) : Tot eval_result (decreases vals) =
@@ -3328,6 +3333,22 @@ let rec instantiate_solutions
     let later = instantiate_solutions template rest (ix + 1) in
     List.Tot.append here later
 
+// SPARQL §16.2: the CONSTRUCT result is an RDF graph — i.e. a SET of
+// triples. Distinct (mu, template-triple) pairs can instantiate the same
+// ground triple (e.g. `CONSTRUCT WHERE { :s1 :p ?o . ?s2 :p ?o }` binds
+// ?s2 to both :s1 and :s2 so the template's first triple instantiates
+// twice to `:s1 :p :o1`). Without dedup the runner reports spurious
+// duplicates. Stack-safe fold_left accumulating into a reverse-built
+// list, with membership tested against the accumulator via triple_eq.
+let dedup_triples (ts : list triple) : list triple =
+  let acc = List.Tot.fold_left
+    (fun (acc : list triple) (t : triple) ->
+      if mem_triple t acc then acc else t :: acc)
+    []
+    ts
+  in
+  List.Tot.rev acc
+
 let eval_construct_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : list triple =
   match q.q_form with
   | QF_Construct template ->
@@ -3342,7 +3363,7 @@ let eval_construct_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : list t
     let limited =
       slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit omega
     in
-    instantiate_solutions template limited 0
+    dedup_triples (instantiate_solutions template limited 0)
   | _ -> []
 
 (* Specification of eval_select_query (full version with aggregation):
