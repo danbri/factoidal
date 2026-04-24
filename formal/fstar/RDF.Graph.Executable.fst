@@ -2570,6 +2570,61 @@ let owl_rule_xsd_datatype_axioms (g : rdf_graph) : rdf_graph =
     in
     add_triples_if_new (add_triples_if_new g sub_triples) dt_triples
 
+// OWL 2 RL/RDF scm-dom2: (P rdfs:domain C1) AND (C1 rdfs:subClassOf C2)
+// imply (P rdfs:domain C2). Mirrors rdfs9 but for property-domain instead
+// of subject-class.
+let owl_rule_scm_dom2 (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdfs_domain then
+        match t.o with
+        | T_IRI c1_iri ->
+          let supers = find_objects g (S_IRI c1_iri) rdfs_subClassOf in
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (c2_term : rdf_term) ->
+              let new_t : triple = { s = t.s; p = rdfs_domain; o = c2_term } in
+              add_triple_if_new acc2 new_t)
+            acc
+            supers
+        | _ -> acc
+      else acc)
+    g
+    g
+
+// OWL 2 RL/RDF scm-rng2: (P rdfs:range C1) AND (C1 rdfs:subClassOf C2)
+// imply (P rdfs:range C2). Targets WebOnt-I5.8-006 once Nu's xsd hierarchy
+// edges are present.
+let owl_rule_scm_rng2 (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdfs_range then
+        match t.o with
+        | T_IRI c1_iri ->
+          let supers = find_objects g (S_IRI c1_iri) rdfs_subClassOf in
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (c2_term : rdf_term) ->
+              let new_t : triple = { s = t.s; p = rdfs_range; o = c2_term } in
+              add_triple_if_new acc2 new_t)
+            acc
+            supers
+        | _ -> acc
+      else acc)
+    g
+    g
+
+// Always-on subset of the XSD vocabulary: emit `xsd:integer rdf:type
+// rdfs:Datatype` and the same for `xsd:string` regardless of whether the
+// premise mentions XSD. Targets WebOnt-I5.8-011 (empty-graph entailment).
+// Kept to a tiny fixed list so we don't pollute non-XSD graphs.
+let owl_xsd_core_datatype_axioms : list triple =
+  [
+    { s = S_IRI xsd_integer; p = rdf_type; o = T_IRI rdfs_Datatype };
+    { s = S_IRI xsd_string;  p = rdf_type; o = T_IRI rdfs_Datatype };
+  ]
+
+let owl_rule_xsd_core_datatype_axioms (g : rdf_graph) : rdf_graph =
+  add_triples_if_new g owl_xsd_core_datatype_axioms
+
 // Apply all OWL-RL rules once. Ordering: first do "axiom-introducing" rules
 // (equivalentClass/Property expansion, owl:inverseOf flip, symmetric/
 // transitive), then sameAs rules. The fixpoint loop re-applies them until
@@ -2619,7 +2674,17 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   // Tier-3: XSD datatype hierarchy + rdfs:Datatype axioms (gated on the
   // graph mentioning any XSD IRI). Targets WebOnt-I5.8-006/008/009/011.
   let g25 = owl_rule_xsd_datatype_axioms g24 in
-  g25
+  // Always-on core XSD Datatype declarations (xsd:integer / xsd:string).
+  // Required for WebOnt-I5.8-011 which entails the declarations from an
+  // empty graph (the gated rule above does not fire on empty input).
+  let g26 = owl_rule_xsd_core_datatype_axioms g25 in
+  // scm-dom2 / scm-rng2: propagate rdfs:domain and rdfs:range upward
+  // through the rdfs:subClassOf chain. After step g25 the XSD hierarchy
+  // edges are in scope, so a `:p rdfs:range xsd:byte` premise yields
+  // `:p rdfs:range xsd:short` (WebOnt-I5.8-006).
+  let g27 = owl_rule_scm_dom2 g26 in
+  let g28 = owl_rule_scm_rng2 g27 in
+  g28
 
 // Interleaved OWL-RL + RDFS fixpoint. RDFS rules run every iteration so
 // that triples introduced by cls-eqc1/2 and prp-eqp1/2 get propagated
