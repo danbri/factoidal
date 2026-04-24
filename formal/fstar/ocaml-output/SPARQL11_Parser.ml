@@ -4708,7 +4708,7 @@ and parse_select_body (pm : prefix_map) (fuel : Prims.nat)
          (match parse_select_vars pm (fuel - Prims.int_one) ts'' with
           | ParseErr m -> ParseErr m
           | ParseOk (sel, ts3) ->
-              (match parse_skip_from (fuel - Prims.int_one) ts3 with
+              (match parse_skip_from pm (fuel - Prims.int_one) ts3 with
                | ParseErr m -> ParseErr m
                | ParseOk (ds, ts4) ->
                    let ts41 =
@@ -4897,7 +4897,7 @@ and parse_ask_body (pm : prefix_map) (fuel : Prims.nat)
   then ParseErr "recursion limit"
   else
     (let ts' = parse_advance ts in
-     match parse_skip_from (fuel - Prims.int_one) ts' with
+     match parse_skip_from pm (fuel - Prims.int_one) ts' with
      | ParseErr m -> ParseErr m
      | ParseOk (ds, ts'') ->
          let ts''1 =
@@ -4946,7 +4946,7 @@ and parse_construct_body (pm : prefix_map) (fuel : Prims.nat)
     (let ts' = parse_advance ts in
      match parse_peek ts' with
      | Tok_WHERE ->
-         (match parse_skip_from (fuel - Prims.int_one) ts' with
+         (match parse_skip_from pm (fuel - Prims.int_one) ts' with
           | ParseErr m -> ParseErr m
           | ParseOk (ds, ts'') ->
               let ts''1 =
@@ -4984,7 +4984,7 @@ and parse_construct_body (pm : prefix_map) (fuel : Prims.nat)
                                  FStar_Pervasives_Native.None
                              }, ts4))))
      | Tok_FROM ->
-         (match parse_skip_from (fuel - Prims.int_one) ts' with
+         (match parse_skip_from pm (fuel - Prims.int_one) ts' with
           | ParseErr m -> ParseErr m
           | ParseOk (ds, ts'') ->
               let ts''1 =
@@ -5025,35 +5025,39 @@ and parse_construct_body (pm : prefix_map) (fuel : Prims.nat)
          (match parse_group_graph_pattern pm (fuel - Prims.int_one) ts' with
           | ParseErr m -> ParseErr m
           | ParseOk (template_pat, ts'') ->
-              let ts''1 =
-                match parse_peek ts'' with
-                | Tok_WHERE -> parse_advance ts''
-                | uu___1 -> ts'' in
-              (match parse_group_graph_pattern pm (fuel - Prims.int_one)
-                       ts''1
-               with
+              (match parse_skip_from pm (fuel - Prims.int_one) ts'' with
                | ParseErr m -> ParseErr m
-               | ParseOk (pattern, ts''') ->
-                   (match parse_solution_modifier pm (fuel - Prims.int_one)
-                            ts'''
+               | ParseOk (ds, ts''_ds) ->
+                   let ts''_body =
+                     match parse_peek ts''_ds with
+                     | Tok_WHERE -> parse_advance ts''_ds
+                     | uu___1 -> ts''_ds in
+                   (match parse_group_graph_pattern pm (fuel - Prims.int_one)
+                            ts''_body
                     with
                     | ParseErr m -> ParseErr m
-                    | ParseOk ((modifier, gb, hv), ts4) ->
-                        let template = collect_template_triples template_pat in
-                        ParseOk
-                          ({
-                             SPARQL11_Algebra.q_base = base;
-                             SPARQL11_Algebra.q_prefixes = pm;
-                             SPARQL11_Algebra.q_form =
-                               (SPARQL11_Algebra.QF_Construct template);
-                             SPARQL11_Algebra.q_dataset = [];
-                             SPARQL11_Algebra.q_pattern = pattern;
-                             SPARQL11_Algebra.q_group_by = gb;
-                             SPARQL11_Algebra.q_having = hv;
-                             SPARQL11_Algebra.q_modifier = modifier;
-                             SPARQL11_Algebra.q_values =
-                               FStar_Pervasives_Native.None
-                           }, ts4))))
+                    | ParseOk (pattern, ts''') ->
+                        (match parse_solution_modifier pm
+                                 (fuel - Prims.int_one) ts'''
+                         with
+                         | ParseErr m -> ParseErr m
+                         | ParseOk ((modifier, gb, hv), ts4) ->
+                             let template =
+                               collect_template_triples template_pat in
+                             ParseOk
+                               ({
+                                  SPARQL11_Algebra.q_base = base;
+                                  SPARQL11_Algebra.q_prefixes = pm;
+                                  SPARQL11_Algebra.q_form =
+                                    (SPARQL11_Algebra.QF_Construct template);
+                                  SPARQL11_Algebra.q_dataset = ds;
+                                  SPARQL11_Algebra.q_pattern = pattern;
+                                  SPARQL11_Algebra.q_group_by = gb;
+                                  SPARQL11_Algebra.q_having = hv;
+                                  SPARQL11_Algebra.q_modifier = modifier;
+                                  SPARQL11_Algebra.q_values =
+                                    FStar_Pervasives_Native.None
+                                }, ts4)))))
      | uu___1 -> ParseErr "expected WHERE or '{' after CONSTRUCT")
 and parse_select_vars (pm : prefix_map) (fuel : Prims.nat)
   (ts : token_stream) : SPARQL11_Algebra.select_clause parse_result=
@@ -5114,8 +5118,8 @@ and parse_select_items (pm : prefix_map) (fuel : Prims.nat)
                                  ts''')
                     | uu___1 -> ParseErr "expected variable after AS")))
      | uu___1 -> ParseOk ((FStar_List_Tot_Base.rev acc), ts))
-and parse_skip_from (fuel : Prims.nat) (ts : token_stream) :
-  SPARQL11_Algebra.dataset_clause Prims.list parse_result=
+and parse_skip_from (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
+  : SPARQL11_Algebra.dataset_clause Prims.list parse_result=
   if fuel = Prims.int_zero
   then ParseOk ([], ts)
   else
@@ -5126,17 +5130,63 @@ and parse_skip_from (fuel : Prims.nat) (ts : token_stream) :
           | Tok_NAMED ->
               let ts'' = parse_advance ts' in
               (match parse_peek ts'' with
-               | Tok_IRI uu___1 ->
-                   parse_skip_from (fuel - Prims.int_one)
-                     (parse_advance ts'')
-               | Tok_PNAME uu___1 ->
-                   parse_skip_from (fuel - Prims.int_one)
-                     (parse_advance ts'')
+               | Tok_IRI i ->
+                   let ri = resolve_tok_iri i in
+                   if RDF_Graph_Executable.is_iri ri
+                   then
+                     (match parse_skip_from pm (fuel - Prims.int_one)
+                              (parse_advance ts'')
+                      with
+                      | ParseErr m -> ParseErr m
+                      | ParseOk (rest, ts''') ->
+                          ParseOk
+                            (((SPARQL11_Algebra.DC_Named i) :: rest), ts'''))
+                   else ParseErr "invalid IRI after FROM NAMED"
+               | Tok_PNAME pn ->
+                   (match resolve_pname pn pm with
+                    | FStar_Pervasives_Native.None ->
+                        ParseErr "unresolved prefix in FROM NAMED"
+                    | FStar_Pervasives_Native.Some iri ->
+                        if RDF_Graph_Executable.is_iri iri
+                        then
+                          (match parse_skip_from pm (fuel - Prims.int_one)
+                                   (parse_advance ts'')
+                           with
+                           | ParseErr m -> ParseErr m
+                           | ParseOk (rest, ts''') ->
+                               ParseOk
+                                 (((SPARQL11_Algebra.DC_Named iri) :: rest),
+                                   ts'''))
+                        else ParseErr "invalid IRI after FROM NAMED")
                | uu___1 -> ParseErr "expected IRI after FROM NAMED")
-          | Tok_IRI uu___1 ->
-              parse_skip_from (fuel - Prims.int_one) (parse_advance ts')
-          | Tok_PNAME uu___1 ->
-              parse_skip_from (fuel - Prims.int_one) (parse_advance ts')
+          | Tok_IRI i ->
+              let ri = resolve_tok_iri i in
+              if RDF_Graph_Executable.is_iri ri
+              then
+                (match parse_skip_from pm (fuel - Prims.int_one)
+                         (parse_advance ts')
+                 with
+                 | ParseErr m -> ParseErr m
+                 | ParseOk (rest, ts'') ->
+                     ParseOk
+                       (((SPARQL11_Algebra.DC_Default i) :: rest), ts''))
+              else ParseErr "invalid IRI after FROM"
+          | Tok_PNAME pn ->
+              (match resolve_pname pn pm with
+               | FStar_Pervasives_Native.None ->
+                   ParseErr "unresolved prefix in FROM"
+               | FStar_Pervasives_Native.Some iri ->
+                   if RDF_Graph_Executable.is_iri iri
+                   then
+                     (match parse_skip_from pm (fuel - Prims.int_one)
+                              (parse_advance ts')
+                      with
+                      | ParseErr m -> ParseErr m
+                      | ParseOk (rest, ts'') ->
+                          ParseOk
+                            (((SPARQL11_Algebra.DC_Default iri) :: rest),
+                              ts''))
+                   else ParseErr "invalid IRI after FROM")
           | uu___1 -> ParseErr "expected IRI or NAMED after FROM")
      | uu___1 -> ParseOk ([], ts))
 and parse_group_condition (pm : prefix_map) (fuel : Prims.nat)

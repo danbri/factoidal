@@ -262,6 +262,17 @@ let next_li (st : rdfxml_state) : (Prims.string * rdfxml_state)=
       seen_ids = (st.seen_ids);
       has_error = (st.has_error)
     })
+let restore_scope (parent : rdfxml_state) (child : rdfxml_state) :
+  rdfxml_state=
+  {
+    base_iri = (parent.base_iri);
+    namespaces = (parent.namespaces);
+    lang = (parent.lang);
+    bnode_counter = (child.bnode_counter);
+    li_counter = (parent.li_counter);
+    seen_ids = (child.seen_ids);
+    has_error = (child.has_error)
+  }
 let rec find_colon_pos_in_list (cs : FStar_Char.char Prims.list)
   (idx : Prims.nat) : Prims.nat FStar_Pervasives_Native.option=
   match cs with
@@ -539,6 +550,89 @@ let rec is_all_text (children : Parser_XML.xml_node Prims.list) : Prims.bool=
        | Parser_XML.XCDATA uu___ -> is_all_text rest
        | Parser_XML.XComment uu___ -> is_all_text rest
        | Parser_XML.XElement (uu___, uu___1, uu___2) -> false)
+let is_seeded_default_ns (uri : Prims.string) : Prims.bool=
+  (((uri = rdfs_ns) || (uri = xml_ns)) || (uri = xmlns_ns)) || (uri = xsd_ns)
+let rec string_in_list (s : Prims.string) (xs : Prims.string Prims.list) :
+  Prims.bool=
+  match xs with
+  | [] -> false
+  | x::rest -> if x = s then true else string_in_list s rest
+let rec dedup_ns (ns : (Prims.string * Prims.string) Prims.list)
+  (seen : Prims.string Prims.list) :
+  (Prims.string * Prims.string) Prims.list=
+  match ns with
+  | [] -> []
+  | (p, u)::rest ->
+      if string_in_list p seen
+      then dedup_ns rest seen
+      else (p, u) :: (dedup_ns rest (p :: seen))
+let rec filter_c14n_ns (ns : (Prims.string * Prims.string) Prims.list) :
+  (Prims.string * Prims.string) Prims.list=
+  match ns with
+  | [] -> []
+  | (p, u)::rest ->
+      if (p = "xml") || (p = "xmlns")
+      then filter_c14n_ns rest
+      else
+        if is_seeded_default_ns u
+        then filter_c14n_ns rest
+        else (p, u) :: (filter_c14n_ns rest)
+let rec reverse_list : 'a . 'a Prims.list -> 'a Prims.list =
+  fun xs ->
+    match xs with
+    | [] -> []
+    | x::rest -> FStar_List_Tot_Base.append (reverse_list rest) [x]
+let render_ns_decls (ns : (Prims.string * Prims.string) Prims.list) :
+  Prims.string=
+  let deduped = dedup_ns ns [] in
+  let filtered = filter_c14n_ns deduped in
+  let in_source_order = reverse_list filtered in
+  let parts =
+    FStar_List_Tot_Base.map
+      (fun pu ->
+         let uu___ = pu in
+         match uu___ with
+         | (p, u) -> FStar_String.concat "" [" xmlns:"; p; "=\""; u; "\""])
+      in_source_order in
+  FStar_String.concat "" parts
+let rec serialize_xml_node_c14n (node : Parser_XML.xml_node)
+  (ns_decls : Prims.string) (is_root : Prims.bool) (fuel : Prims.nat) :
+  Prims.string=
+  if fuel = Prims.int_zero
+  then ""
+  else
+    (match node with
+     | Parser_XML.XText t -> t
+     | Parser_XML.XCDATA t -> FStar_String.concat "" ["<![CDATA["; t; "]]>"]
+     | Parser_XML.XComment t -> FStar_String.concat "" ["<!--"; t; "-->"]
+     | Parser_XML.XElement (tag, attrs, children) ->
+         let attr_strs =
+           FStar_List_Tot_Base.map
+             (fun a ->
+                FStar_String.concat ""
+                  [" ";
+                  a.Parser_XML.attr_name;
+                  "=\"";
+                  a.Parser_XML.attr_value;
+                  "\""]) attrs in
+         let attr_str = FStar_String.concat "" attr_strs in
+         let root_ns = if is_root then ns_decls else "" in
+         let child_strs =
+           FStar_List_Tot_Base.map
+             (fun c ->
+                serialize_xml_node_c14n c ns_decls false
+                  (fuel - Prims.int_one)) children in
+         let children_str = FStar_String.concat "" child_strs in
+         FStar_String.concat ""
+           ["<"; tag; root_ns; attr_str; ">"; children_str; "</"; tag; ">"])
+let serialize_children_xml (children : Parser_XML.xml_node Prims.list)
+  (ambient_ns : (Prims.string * Prims.string) Prims.list) : Prims.string=
+  let ns_decls = render_ns_decls ambient_ns in
+  let strs =
+    FStar_List_Tot_Base.map
+      (fun c -> serialize_xml_node_c14n c ns_decls true (Prims.of_int (100)))
+      children in
+  FStar_String.concat "" strs
 let rec serialize_xml_node (node : Parser_XML.xml_node) (fuel : Prims.nat) :
   Prims.string=
   if fuel = Prims.int_zero
@@ -569,12 +663,6 @@ let rec serialize_xml_node (node : Parser_XML.xml_node) (fuel : Prims.nat) :
             let children_str = FStar_String.concat "" child_strs in
             FStar_String.concat ""
               ["<"; tag; attr_str; ">"; children_str; "</"; tag; ">"]))
-let serialize_children_xml (children : Parser_XML.xml_node Prims.list) :
-  Prims.string=
-  let strs =
-    FStar_List_Tot_Base.map
-      (fun c -> serialize_xml_node c (Prims.of_int (100))) children in
-  FStar_String.concat "" strs
 type process_result =
   {
   pr_triples: RDF_Graph_Executable.triple Prims.list ;
@@ -899,7 +987,7 @@ let rec process_node_element (st : rdfxml_state) (node : Parser_XML.xml_node)
                   (FStar_List_Tot_Base.op_At type_triples
                      (FStar_List_Tot_Base.op_At prop_attr_triples
                         child_result.pr_triples));
-                pr_state = (child_result.pr_state)
+                pr_state = (restore_scope st child_result.pr_state)
               })
      | uu___1 -> empty_result st)
 and process_property_children (st : rdfxml_state)
@@ -985,7 +1073,8 @@ and process_property_element (st : rdfxml_state)
                         Parser_XML.find_attr "rdf:parseType" attrs in
                       match parse_type with
                       | FStar_Pervasives_Native.Some "Literal" ->
-                          let xml_content = serialize_children_xml children in
+                          let xml_content =
+                            serialize_children_xml children st1.namespaces in
                           if RDF_Graph_Executable.is_iri rdf_xmlliteral_iri
                           then
                             (match make_typed_literal xml_content
@@ -1028,7 +1117,8 @@ and process_property_element (st : rdfxml_state)
                                    (FStar_List_Tot_Base.op_At (link_triple ::
                                       (reif_of pred_iri obj_term))
                                       child_result.pr_triples);
-                                 pr_state = (child_result.pr_state)
+                                 pr_state =
+                                   (restore_scope st2 child_result.pr_state)
                                })
                       | FStar_Pervasives_Native.Some "Collection" ->
                           let collection_result =
@@ -1343,17 +1433,6 @@ and build_collection_list (st : rdfxml_state)
                           pr_triples = all_triples;
                           pr_state = (rest_result.pr_state)
                         }))))
-let restore_scope (parent : rdfxml_state) (child : rdfxml_state) :
-  rdfxml_state=
-  {
-    base_iri = (parent.base_iri);
-    namespaces = (parent.namespaces);
-    lang = (parent.lang);
-    bnode_counter = (child.bnode_counter);
-    li_counter = (parent.li_counter);
-    seen_ids = (child.seen_ids);
-    has_error = (child.has_error)
-  }
 let rec process_node_elements (st : rdfxml_state)
   (nodes : Parser_XML.xml_node Prims.list) (fuel : Prims.nat) :
   process_result=

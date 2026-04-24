@@ -4691,106 +4691,162 @@ let rec rewrite_query_bnodes_pattern (p : group_graph_pattern) :
       GP_PropertyPath
         ((rewrite_query_bnode_subject s), pp, (rewrite_query_bnode_term o))
   | uu___ -> p
+let rec q_dataset_default_iris (dcs : dataset_clause Prims.list) :
+  RDF_Graph_Executable.wf_iri Prims.list=
+  match dcs with
+  | [] -> []
+  | (DC_Default i)::rest -> i :: (q_dataset_default_iris rest)
+  | (DC_Named uu___)::rest -> q_dataset_default_iris rest
+let rec q_dataset_named_iris (dcs : dataset_clause Prims.list) :
+  RDF_Graph_Executable.wf_iri Prims.list=
+  match dcs with
+  | [] -> []
+  | (DC_Named i)::rest -> i :: (q_dataset_named_iris rest)
+  | (DC_Default uu___)::rest -> q_dataset_named_iris rest
+let rec q_union_named_graphs_by_iri
+  (iris : RDF_Graph_Executable.wf_iri Prims.list)
+  (named : RDF_Graph_Executable.named_graph Prims.list) :
+  RDF_Graph_Executable.rdf_graph=
+  match iris with
+  | [] -> RDF_Graph_Executable.empty_graph
+  | i::rest ->
+      let g =
+        match RDF_Graph_Executable.lookup_named_graph i named with
+        | FStar_Pervasives_Native.Some g1 -> g1
+        | FStar_Pervasives_Native.None -> RDF_Graph_Executable.empty_graph in
+      RDF_Graph_Executable.graph_union g
+        (q_union_named_graphs_by_iri rest named)
+let rec q_named_graphs_by_iri (iris : RDF_Graph_Executable.wf_iri Prims.list)
+  (named : RDF_Graph_Executable.named_graph Prims.list) :
+  RDF_Graph_Executable.named_graph Prims.list=
+  match iris with
+  | [] -> []
+  | i::rest ->
+      let g =
+        match RDF_Graph_Executable.lookup_named_graph i named with
+        | FStar_Pervasives_Native.Some g1 -> g1
+        | FStar_Pervasives_Native.None -> RDF_Graph_Executable.empty_graph in
+      { RDF_Graph_Executable.ng_name = i; RDF_Graph_Executable.ng_graph = g }
+        :: (q_named_graphs_by_iri rest named)
+let apply_query_dataset (dcs : dataset_clause Prims.list)
+  (g : RDF_Graph_Executable.rdf_graph)
+  (ds : RDF_Graph_Executable.rdf_dataset) :
+  (RDF_Graph_Executable.rdf_graph * RDF_Graph_Executable.rdf_dataset)=
+  match dcs with
+  | [] -> (g, ds)
+  | uu___ ->
+      let def_iris = q_dataset_default_iris dcs in
+      let nam_iris = q_dataset_named_iris dcs in
+      let new_def =
+        q_union_named_graphs_by_iri def_iris ds.RDF_Graph_Executable.ds_named in
+      let new_named =
+        q_named_graphs_by_iri nam_iris ds.RDF_Graph_Executable.ds_named in
+      (new_def,
+        {
+          RDF_Graph_Executable.ds_default = new_def;
+          RDF_Graph_Executable.ds_named = new_named
+        })
 let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
   (ds : RDF_Graph_Executable.rdf_dataset) : solution_sequence=
-  let q1 =
-    {
-      q_base = (q.q_base);
-      q_prefixes = (q.q_prefixes);
-      q_form = (q.q_form);
-      q_dataset = (q.q_dataset);
-      q_pattern = (rewrite_query_bnodes_pattern q.q_pattern);
-      q_group_by = (q.q_group_by);
-      q_having = (q.q_having);
-      q_modifier = (q.q_modifier);
-      q_values = (q.q_values)
-    } in
-  let saved_base = !current_base_iri_ref in
-  current_base_iri_ref := q1.q_base;
-  let result = match q1.q_form with
-  | QF_Select sel ->
-      let omega0 = eval_pattern q1.q_pattern g ds in
-      let omega =
-        match q1.q_values with
-        | FStar_Pervasives_Native.None -> omega0
-        | FStar_Pervasives_Native.Some vals -> join omega0 vals in
-      let needs_grouping =
-        match q1.q_group_by with
-        | FStar_Pervasives_Native.Some uu___ -> true
-        | FStar_Pervasives_Native.None -> select_has_aggregates sel in
-      if needs_grouping
-      then
-        let groups =
-          match q1.q_group_by with
-          | FStar_Pervasives_Native.Some conds -> group_by conds omega
-          | FStar_Pervasives_Native.None -> implicit_group omega in
-        let filtered_groups =
-          match q1.q_having with
-          | FStar_Pervasives_Native.Some conditions ->
-              having_filter conditions groups
-          | FStar_Pervasives_Native.None -> groups in
-        let omega' =
-          match sel with
-          | Select_Vars items -> aggregate_groups items filtered_groups
-          | Select_All ->
-              FStar_List_Tot_Base.map
-                (fun grp ->
-                   match grp.g_solutions with
-                   | mu::uu___ -> mu
-                   | [] -> sm_empty) filtered_groups in
-        let ordered =
-          match (q1.q_modifier).sm_order_by with
-          | FStar_Pervasives_Native.None -> omega'
-          | FStar_Pervasives_Native.Some o -> sort_solutions o omega' in
-        let deduped =
-          if (q1.q_modifier).sm_distinct
-          then distinct_solutions ordered
-          else
-            if (q1.q_modifier).sm_reduced
-            then reduced_solutions ordered
-            else ordered in
-        slice_solutions (q1.q_modifier).sm_offset (q1.q_modifier).sm_limit
-          deduped
-      else
-        (let omega' =
-           match sel with
-           | Select_Vars items -> eval_select_items items omega g
-           | Select_All -> omega in
-         let ordered =
-           match (q1.q_modifier).sm_order_by with
-           | FStar_Pervasives_Native.None -> omega'
-           | FStar_Pervasives_Native.Some o -> sort_solutions o omega' in
-         let projected =
-           match sel with
-           | Select_Vars items ->
-               project_solutions (select_item_vars items) ordered
-           | Select_All -> ordered in
-         let deduped =
-           if (q1.q_modifier).sm_distinct
-           then distinct_solutions projected
+  let uu___ = apply_query_dataset q.q_dataset g ds in
+  match uu___ with
+  | (g1, ds1) ->
+      let q1 =
+        {
+          q_base = (q.q_base);
+          q_prefixes = (q.q_prefixes);
+          q_form = (q.q_form);
+          q_dataset = (q.q_dataset);
+          q_pattern = (rewrite_query_bnodes_pattern q.q_pattern);
+          q_group_by = (q.q_group_by);
+          q_having = (q.q_having);
+          q_modifier = (q.q_modifier);
+          q_values = (q.q_values)
+        } in
+      (match q1.q_form with
+       | QF_Select sel ->
+           let omega0 = eval_pattern q1.q_pattern g1 ds1 in
+           let omega =
+             match q1.q_values with
+             | FStar_Pervasives_Native.None -> omega0
+             | FStar_Pervasives_Native.Some vals -> join omega0 vals in
+           let needs_grouping =
+             match q1.q_group_by with
+             | FStar_Pervasives_Native.Some uu___1 -> true
+             | FStar_Pervasives_Native.None -> select_has_aggregates sel in
+           if needs_grouping
+           then
+             let groups =
+               match q1.q_group_by with
+               | FStar_Pervasives_Native.Some conds -> group_by conds omega
+               | FStar_Pervasives_Native.None -> implicit_group omega in
+             let filtered_groups =
+               match q1.q_having with
+               | FStar_Pervasives_Native.Some conditions ->
+                   having_filter conditions groups
+               | FStar_Pervasives_Native.None -> groups in
+             let omega' =
+               match sel with
+               | Select_Vars items -> aggregate_groups items filtered_groups
+               | Select_All ->
+                   FStar_List_Tot_Base.map
+                     (fun grp ->
+                        match grp.g_solutions with
+                        | mu::uu___1 -> mu
+                        | [] -> sm_empty) filtered_groups in
+             let ordered =
+               match (q1.q_modifier).sm_order_by with
+               | FStar_Pervasives_Native.None -> omega'
+               | FStar_Pervasives_Native.Some o -> sort_solutions o omega' in
+             let deduped =
+               if (q1.q_modifier).sm_distinct
+               then distinct_solutions ordered
+               else
+                 if (q1.q_modifier).sm_reduced
+                 then reduced_solutions ordered
+                 else ordered in
+             slice_solutions (q1.q_modifier).sm_offset
+               (q1.q_modifier).sm_limit deduped
            else
-             if (q1.q_modifier).sm_reduced
-             then reduced_solutions projected
-             else projected in
-         slice_solutions (q1.q_modifier).sm_offset (q1.q_modifier).sm_limit
-           deduped)
-  | QF_Construct uu___ -> []
-  | QF_Ask -> []
-  | QF_Describe uu___ -> []
-  in
-  current_base_iri_ref := saved_base;
-  result
+             (let omega' =
+                match sel with
+                | Select_Vars items -> eval_select_items items omega g1
+                | Select_All -> omega in
+              let ordered =
+                match (q1.q_modifier).sm_order_by with
+                | FStar_Pervasives_Native.None -> omega'
+                | FStar_Pervasives_Native.Some o -> sort_solutions o omega' in
+              let projected =
+                match sel with
+                | Select_Vars items ->
+                    project_solutions (select_item_vars items) ordered
+                | Select_All -> ordered in
+              let deduped =
+                if (q1.q_modifier).sm_distinct
+                then distinct_solutions projected
+                else
+                  if (q1.q_modifier).sm_reduced
+                  then reduced_solutions projected
+                  else projected in
+              slice_solutions (q1.q_modifier).sm_offset
+                (q1.q_modifier).sm_limit deduped)
+       | QF_Construct uu___1 -> []
+       | QF_Ask -> []
+       | QF_Describe uu___1 -> [])
 let eval_ask_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
   (ds : RDF_Graph_Executable.rdf_dataset) : Prims.bool=
-  match q.q_form with
-  | QF_Ask ->
-      let omega0 = eval_pattern q.q_pattern g ds in
-      let omega =
-        match q.q_values with
-        | FStar_Pervasives_Native.None -> omega0
-        | FStar_Pervasives_Native.Some vals -> join omega0 vals in
-      (match omega with | [] -> false | uu___ -> true)
-  | uu___ -> false
+  let uu___ = apply_query_dataset q.q_dataset g ds in
+  match uu___ with
+  | (g1, ds1) ->
+      (match q.q_form with
+       | QF_Ask ->
+           let omega0 = eval_pattern q.q_pattern g1 ds1 in
+           let omega =
+             match q.q_values with
+             | FStar_Pervasives_Native.None -> omega0
+             | FStar_Pervasives_Native.Some vals -> join omega0 vals in
+           (match omega with | [] -> false | uu___1 -> true)
+       | uu___1 -> false)
 let fresh_bnode_for (sol_ix : Prims.nat) (template_label : Prims.string) :
   RDF_Graph_Executable.bnode_id=
   Prims.strcat "tpl_"
@@ -4875,18 +4931,22 @@ let dedup_triples (ts : RDF_Graph_Executable.triple Prims.list) :
 let eval_construct_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
   (ds : RDF_Graph_Executable.rdf_dataset) :
   RDF_Graph_Executable.triple Prims.list=
-  match q.q_form with
-  | QF_Construct template ->
-      let omega0 = eval_pattern q.q_pattern g ds in
-      let omega =
-        match q.q_values with
-        | FStar_Pervasives_Native.None -> omega0
-        | FStar_Pervasives_Native.Some vals -> join omega0 vals in
-      let limited =
-        slice_solutions (q.q_modifier).sm_offset (q.q_modifier).sm_limit
-          omega in
-      dedup_triples (instantiate_solutions template limited Prims.int_zero)
-  | uu___ -> []
+  let uu___ = apply_query_dataset q.q_dataset g ds in
+  match uu___ with
+  | (g1, ds1) ->
+      (match q.q_form with
+       | QF_Construct template ->
+           let omega0 = eval_pattern q.q_pattern g1 ds1 in
+           let omega =
+             match q.q_values with
+             | FStar_Pervasives_Native.None -> omega0
+             | FStar_Pervasives_Native.Some vals -> join omega0 vals in
+           let limited =
+             slice_solutions (q.q_modifier).sm_offset (q.q_modifier).sm_limit
+               omega in
+           dedup_triples
+             (instantiate_solutions template limited Prims.int_zero)
+       | uu___1 -> [])
 type path_result =
   (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.rdf_term) Prims.list
 let is_not_literal (t : RDF_Graph_Executable.rdf_term) : Prims.bool=

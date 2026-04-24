@@ -1048,6 +1048,8 @@ let owl_Restriction_iri : wf_iri= "http://www.w3.org/2002/07/owl#Restriction"
 let owl_onProperty_iri : wf_iri= "http://www.w3.org/2002/07/owl#onProperty"
 let owl_someValuesFrom_iri : wf_iri=
   "http://www.w3.org/2002/07/owl#someValuesFrom"
+let owl_allValuesFrom_iri : wf_iri=
+  "http://www.w3.org/2002/07/owl#allValuesFrom"
 let owl_minCardinality_iri : wf_iri=
   "http://www.w3.org/2002/07/owl#minCardinality"
 let owl_minQualifiedCardinality_iri : wf_iri=
@@ -1337,6 +1339,40 @@ let owl_rule_cls_maxc2 (g : rdf_graph) : rdf_graph=
                               ys) acc3 ys) acc2 members
               | uu___ -> acc2) acc props
        else acc) g g
+let owl_rule_cls_avf1 (g : rdf_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t_avf ->
+       if t_avf.p = owl_allValuesFrom_iri
+       then
+         match t_avf.o with
+         | T_IRI d ->
+             let r_subj = t_avf.s in
+             let props = find_objects g r_subj owl_onProperty_iri in
+             FStar_List_Tot_Base.fold_left
+               (fun acc2 p_term ->
+                  match p_term with
+                  | T_IRI p ->
+                      let members =
+                        find_subjects g rdf_type (subject_to_term r_subj) in
+                      FStar_List_Tot_Base.fold_left
+                        (fun acc3 x ->
+                           let ys = find_objects g x p in
+                           FStar_List_Tot_Base.fold_left
+                             (fun acc4 y ->
+                                match term_to_subject y with
+                                | FStar_Pervasives_Native.None -> acc4
+                                | FStar_Pervasives_Native.Some y_subj ->
+                                    let new_t =
+                                      {
+                                        s = y_subj;
+                                        p = rdf_type;
+                                        o = (T_IRI d)
+                                      } in
+                                    add_triple_if_new acc4 new_t) acc3 ys)
+                        acc2 members
+                  | uu___ -> acc2) acc props
+         | uu___ -> acc
+       else acc) g g
 let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
   let g1 = owl_rule_equivalent_class g in
   let g2 = owl_rule_equivalent_property g1 in
@@ -1356,7 +1392,7 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
   let g15 = owl_rule_cls_minc_qual1 g14 in
   let g16 = owl_rule_cls_maxqc1 g15 in
   let g17 = owl_rule_cls_exactqc1 g16 in
-  let g18 = owl_rule_cls_maxc2 g17 in g18
+  let g18 = owl_rule_cls_maxc2 g17 in let g19 = owl_rule_cls_avf1 g18 in g19
 let rec owl_rl_closure (g : rdf_graph) (fuel : Prims.nat) : rdf_graph=
   match fuel with
   | uu___ when uu___ = Prims.int_zero -> g

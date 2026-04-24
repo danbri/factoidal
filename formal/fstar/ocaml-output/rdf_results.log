@@ -894,9 +894,9 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: rdf-containers-syntax-vs-schema-test001
   PASS: rdf-containers-syntax-vs-schema-test002
   PASS: rdf-containers-syntax-vs-schema-test003
-  FAIL: rdf-containers-syntax-vs-schema-test004 — Triples mismatch: expected 15, got 15
+  PASS: rdf-containers-syntax-vs-schema-test004
   PASS: rdf-containers-syntax-vs-schema-test006
-  FAIL: rdf-containers-syntax-vs-schema-test007 — Triples mismatch: expected 4, got 4
+  PASS: rdf-containers-syntax-vs-schema-test007
   PASS: rdf-containers-syntax-vs-schema-test008
   PASS: rdf-element-not-mandatory-test001
   PASS: rdf-node-element-test001
@@ -1035,8 +1035,8 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: rdfs-domain-and-range-test002
   PASS: unrecognised-xml-attributes-test001
   PASS: unrecognised-xml-attributes-test002
-  FAIL: xml-canon-test001 — Triples mismatch: expected 1, got 1
-  FAIL: xml-canon-test002 — Triples mismatch: expected 5, got 5
+  PASS: xml-canon-test001
+  PASS: xml-canon-test002
   PASS: xmlbase-test001
   PASS: xmlbase-test002
   PASS: xmlbase-test003
@@ -1058,7 +1058,7 @@ Suite Results:
   rdf-n-triples                       pass:70 fail:0 skip:0 unsupported:0
   rdf-trig                            pass:356 fail:0 skip:0 unsupported:0
   rdf-turtle                          pass:313 fail:0 skip:0 unsupported:0
-  rdf-xml                             pass:162 fail:4 skip:0 unsupported:0
+  rdf-xml                             pass:166 fail:0 skip:0 unsupported:0
 ========================================
-TOTAL: 1027 pass, 4 fail, 0 skip, 0 unsupported
+TOTAL: 1031 pass, 0 fail, 0 skip, 0 unsupported
 ========================================
