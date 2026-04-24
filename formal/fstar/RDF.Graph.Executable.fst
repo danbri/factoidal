@@ -1544,6 +1544,249 @@ let owl_rule_inverse_functional (g : rdf_graph) : rdf_graph =
     g
     g
 
+// ---- OWL 2 RL restriction-membership rules (cls-minc1 / cls-svf2-qual /
+//      cls-minc-qual1) --------------------------------------------------------
+//
+// These three rules handle class-expression restrictions of the form
+//   [ a owl:Restriction ; owl:onProperty P ; owl:<marker> ... ]
+// under OWL-RL forward semantics. They are sound specialisations of the
+// OWL 2 RL/RDF table rules cls-svf1 / cls-svf2 (value-from existentials)
+// and of the value-equivalence between `someValuesFrom owl:Thing` and
+// `minCardinality 1`.
+//
+// The rules are targeted at W3C SPARQL 1.1 entailment tests parent4,
+// parent5, and parent6, where the QUERY asks for membership of an
+// anonymous restriction whose shape is value-equivalent to — but
+// structurally distinct from — the data-side restriction. Under the
+// runner's "bnodes-as-existentials" query rewrite (w3c_runner.ml),
+// the query bnode is a fresh variable and BGP matching looks for a
+// data-side bnode that carries the EXACT triple pattern. We therefore
+// materialise the missing structural shape on canonical bnodes
+// (deterministic — one per (P) or (P,C) pair) and emit the
+// corresponding rdf:type membership triples.
+//
+// Rule shapes (per docs/designissues/2026-04-23-entailment-plan.md §4 / Phase 2):
+//   cls-minc1-bridge     : (_:r owl:someValuesFrom owl:Thing ; owl:onProperty P)
+//                        ⇒ (_:r owl:minCardinality "1"^^xsd:nonNegativeInteger)
+//     Bridges the value-equivalence svf(Thing) ≡ minCard(1) on any
+//     restriction bnode already present in the data. Enables BGP
+//     matching for queries that ask via the minCard shape.
+//
+//   cls-svf2-qualified   : (x P y) ∧ (y rdf:type C), C a NAMED class,
+//                           C ≠ owl:Thing
+//                        ⇒ canonical _:rSVF(P,C) carries
+//                             rdf:type owl:Restriction,
+//                             owl:onProperty P,
+//                             owl:someValuesFrom C
+//                           AND (x rdf:type _:rSVF(P,C)).
+//     Guard: skip when C is owl:Thing — already covered by cls-svf1
+//     + Group E axioms on the data-side restriction.
+//
+//   cls-minc-qual1       : (x P y) ∧ (y rdf:type C), C a NAMED class,
+//                           C ≠ owl:Thing
+//                        ⇒ canonical _:rMINQC1(P,C) carries
+//                             rdf:type owl:Restriction,
+//                             owl:onProperty P,
+//                             owl:minQualifiedCardinality "1"^^xsd:nonNegativeInteger,
+//                             owl:onClass C
+//                           AND (x rdf:type _:rMINQC1(P,C)).
+//
+// Canonical bnode ids are derived from the IRIs of P (and C), so the
+// rule is total and the fixpoint terminates — no fresh bnodes are
+// invented per iteration.
+//
+// Non-interactions:
+//   * parent10 asks for `?C rdfs:subClassOf _:b` where `_:b`
+//     owl:someValuesFrom owl:Thing`. The canonical bnodes above have
+//     `owl:someValuesFrom C` where C is a NAMED class and C ≠ owl:Thing,
+//     so they cannot bind to parent10's restriction pattern. The
+//     bridge rule modifies existing data bnodes in place and only adds
+//     an `owl:minCardinality` triple — it does not change
+//     `someValuesFrom owl:Thing` membership.
+//   * We do NOT emit `_:canon rdfs:subClassOf _:canon` or any
+//     subClassOf relationship involving the canonical bnodes; that
+//     would pollute any query that ranges over rdfs:subClassOf (like
+//     parent10). The canonicals participate ONLY via rdf:type.
+//   * We do NOT register the canonical bnodes as instances of
+//     rdfs:Class / owl:Class; collect_classes therefore skips them,
+//     and rdfs_reflexivity_axioms will not emit reflexivity triples
+//     for them.
+
+let owl_Restriction_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#Restriction");
+  "http://www.w3.org/2002/07/owl#Restriction"
+
+let owl_onProperty_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#onProperty");
+  "http://www.w3.org/2002/07/owl#onProperty"
+
+let owl_someValuesFrom_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#someValuesFrom");
+  "http://www.w3.org/2002/07/owl#someValuesFrom"
+
+let owl_minCardinality_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#minCardinality");
+  "http://www.w3.org/2002/07/owl#minCardinality"
+
+let owl_minQualifiedCardinality_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#minQualifiedCardinality");
+  "http://www.w3.org/2002/07/owl#minQualifiedCardinality"
+
+let owl_onClass_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#onClass");
+  "http://www.w3.org/2002/07/owl#onClass"
+
+let xsd_nonNegativeInteger : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#nonNegativeInteger");
+  "http://www.w3.org/2001/XMLSchema#nonNegativeInteger"
+
+// The literal "1"^^xsd:nonNegativeInteger — datatype <> rdf_lang_string
+// and lang_tag = None, so literal_wf holds.
+let one_nonNegInteger_literal : wf_literal =
+  let l : literal = {
+    lexical_form = "1";
+    datatype     = xsd_nonNegativeInteger;
+    lang_tag     = None;
+  } in
+  // literal_wf l reduces by definition to (l.datatype <> rdf_lang_string),
+  // since l.lang_tag = None. xsd_nonNegativeInteger and rdf_lang_string are
+  // distinct concrete IRIs, so this is decidable by SMT.
+  assert (literal_wf l);
+  l
+
+// Canonical bnode ids. Deterministic: depend only on the IRIs of P (and C).
+let canonical_svf_restriction_bnode (p : wf_iri) (c : wf_iri) : bnode_id =
+  String.concat "" ["__rl_svf_"; p; "__on__"; c]
+let canonical_minqc1_restriction_bnode (p : wf_iri) (c : wf_iri) : bnode_id =
+  String.concat "" ["__rl_minqc1_"; p; "__on__"; c]
+
+// cls-minc1-bridge: for each restriction bnode `_:r` in g where
+//   (_:r owl:someValuesFrom owl:Thing) ∧ (_:r owl:onProperty P)
+// emit (_:r owl:minCardinality "1"^^xsd:nonNegativeInteger).
+//
+// Using fold_left + accumulator; stack-safe per the recent tail-rec audit.
+let owl_rule_minc1_bridge (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      // Trigger on (s owl:someValuesFrom owl:Thing).
+      if t.p = owl_someValuesFrom_iri && rdf_term_eq t.o (T_IRI owl_Thing) then
+        // Require also (s owl:onProperty P) for some IRI property P.
+        let onprops = find_objects g t.s owl_onProperty_iri in
+        List.Tot.fold_left
+          (fun (acc2 : rdf_graph) (op_term : rdf_term) ->
+            match op_term with
+            | T_IRI _ ->
+              let new_t : triple = {
+                s = t.s;
+                p = owl_minCardinality_iri;
+                o = T_Literal one_nonNegInteger_literal;
+              } in
+              add_triple_if_new acc2 new_t
+            | _ -> acc2)
+          acc
+          onprops
+      else acc)
+    g
+    g
+
+// cls-svf2-qualified materialise: for each (x P y) with (y rdf:type C)
+// and C a named class (C <> owl:Thing), create canonical restriction
+// bnode and emit membership.
+//
+// Two nested fold_lefts: outer over triples (x P y), inner over types
+// (y rdf:type C). Both stack-safe (fold_left + accumulator).
+let owl_rule_cls_svf2_qualified (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (edge : triple) ->
+      // Consider only "ordinary" object-property edges: predicate is an
+      // IRI, subject is any node, object convertible to a subject.
+      // Skip rdf:type and the OWL/RDFS meta-predicates.
+      if edge.p = rdf_type || is_owl_metapredicate edge.p then acc
+      else
+        match term_to_subject edge.o with
+        | None -> acc
+        | Some y_subj ->
+          let p = edge.p in
+          let x = edge.s in
+          // Types of y
+          let ytypes = find_objects g y_subj rdf_type in
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (ty : rdf_term) ->
+              match ty with
+              | T_IRI c ->
+                if c = owl_Thing then acc2
+                else
+                  let rb = canonical_svf_restriction_bnode p c in
+                  let rb_subj : subject = S_BNode rb in
+                  let rb_term : rdf_term = T_BNode rb in
+                  let shape1 : triple = { s = rb_subj; p = rdf_type;
+                                          o = T_IRI owl_Restriction_iri } in
+                  let shape2 : triple = { s = rb_subj; p = owl_onProperty_iri;
+                                          o = T_IRI p } in
+                  let shape3 : triple = { s = rb_subj; p = owl_someValuesFrom_iri;
+                                          o = T_IRI c } in
+                  let memb   : triple = { s = x; p = rdf_type; o = rb_term } in
+                  add_triple_if_new
+                    (add_triple_if_new
+                      (add_triple_if_new
+                        (add_triple_if_new acc2 shape1)
+                        shape2)
+                      shape3)
+                    memb
+              | _ -> acc2)
+            acc
+            ytypes)
+    g
+    g
+
+// cls-minc-qual1 materialise: for each (x P y) with (y rdf:type C)
+// and C a named class (C <> owl:Thing), create canonical
+// minQualifiedCardinality restriction and emit membership.
+let owl_rule_cls_minc_qual1 (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (edge : triple) ->
+      if edge.p = rdf_type || is_owl_metapredicate edge.p then acc
+      else
+        match term_to_subject edge.o with
+        | None -> acc
+        | Some y_subj ->
+          let p = edge.p in
+          let x = edge.s in
+          let ytypes = find_objects g y_subj rdf_type in
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (ty : rdf_term) ->
+              match ty with
+              | T_IRI c ->
+                if c = owl_Thing then acc2
+                else
+                  let rb = canonical_minqc1_restriction_bnode p c in
+                  let rb_subj : subject = S_BNode rb in
+                  let rb_term : rdf_term = T_BNode rb in
+                  let shape1 : triple = { s = rb_subj; p = rdf_type;
+                                          o = T_IRI owl_Restriction_iri } in
+                  let shape2 : triple = { s = rb_subj; p = owl_onProperty_iri;
+                                          o = T_IRI p } in
+                  let shape3 : triple = { s = rb_subj;
+                                          p = owl_minQualifiedCardinality_iri;
+                                          o = T_Literal one_nonNegInteger_literal } in
+                  let shape4 : triple = { s = rb_subj; p = owl_onClass_iri;
+                                          o = T_IRI c } in
+                  let memb   : triple = { s = x; p = rdf_type; o = rb_term } in
+                  add_triple_if_new
+                    (add_triple_if_new
+                      (add_triple_if_new
+                        (add_triple_if_new
+                          (add_triple_if_new acc2 shape1)
+                          shape2)
+                        shape3)
+                      shape4)
+                    memb
+              | _ -> acc2)
+            acc
+            ytypes)
+    g
+    g
+
 // Apply all OWL-RL rules once. Ordering: first do "axiom-introducing" rules
 // (equivalentClass/Property expansion, owl:inverseOf flip, symmetric/
 // transitive), then sameAs rules. The fixpoint loop re-applies them until
@@ -1561,7 +1804,11 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   let g10 = owl_rule_sameAs_replace_object g9 in
   let g11 = owl_rule_sameAs_replace_predicate g10 in
   let g12 = owl_rule_inverse_functional g11 in
-  g12
+  // Restriction-membership rules (parent4 / parent5 / parent6).
+  let g13 = owl_rule_minc1_bridge g12 in
+  let g14 = owl_rule_cls_svf2_qualified g13 in
+  let g15 = owl_rule_cls_minc_qual1 g14 in
+  g15
 
 // Interleaved OWL-RL + RDFS fixpoint. RDFS rules run every iteration so
 // that triples introduced by cls-eqc1/2 and prp-eqp1/2 get propagated
