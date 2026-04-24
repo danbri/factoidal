@@ -699,16 +699,24 @@ let is_nested_bookkeeping
   match ps_marker_key tp.tp_s, tp.tp_p with
   | Some sk, PT_IRI p ->
     let is_marker = List.Tot.existsb (fun (k', _) -> k' = sk) markers in
-    if is_marker then
-      p = owl_intersectionOf_iri ||
-      p = owl_unionOf_iri ||
-      (p = rdf_type_iri &&
-       (match tp.tp_o with
-        | PT_IRI oi -> oi = owl_Class_iri
-        | _ -> false))
-    else if List.Tot.mem sk all_chain_keys then
-      p = rdf_first_iri || p = rdf_rest_iri
-    else false
+    let is_on_chain = List.Tot.mem sk all_chain_keys in
+    // Marker-meta triples get stripped if the subject is a marker.
+    let marker_meta =
+      is_marker &&
+      (p = owl_intersectionOf_iri ||
+       p = owl_unionOf_iri ||
+       (p = rdf_type_iri &&
+        (match tp.tp_o with
+         | PT_IRI oi -> oi = owl_Class_iri
+         | _ -> false))) in
+    // Chain triples get stripped whenever the subject is on some
+    // marker's rdf:first/rdf:rest chain. A subject can be BOTH a
+    // marker and a chain cell (nested-CE case where the parser
+    // reuses the bnode as an inner list operand); both conditions
+    // must be checked with OR, not else-if.
+    let chain_meta =
+      is_on_chain && (p = rdf_first_iri || p = rdf_rest_iri) in
+    marker_meta || chain_meta
   | _, _ -> false
 
 // Compute the union of collection chain-keys for all markers in
@@ -802,10 +810,59 @@ let rewrite_bgp_nested (b : bgp) : group_graph_pattern =
 // ------------------------------------------------------------------
 // Section 9. Recurse over the group_graph_pattern tree. All non-BGP
 // constructors are structurally preserved; only GP_BGP nodes are
-// rewritten. Fuel bounds the recursion (the GGP tree is always
-// finite, but F* needs a decreasing measure through the mutual
-// recursion between GGP and query).
+// rewritten.
+//
+// IMPORTANT: the SPARQL parser splits BGPs apart on every period in
+// the source. A single user-level BGP like
+//   ?x a [ owl:intersectionOf (:A :B) ] .
+// parses to a GP_Join tree of ~4 one-/two-triple GP_BGPs. The CE
+// marker (owl:intersectionOf) and the rdf:first/rdf:rest chain live
+// in different leaves, so rewrite_bgp_nested on any single leaf
+// finds no markers. We therefore first FLATTEN contiguous
+// GP_Join-of-GP_BGPs into a single GP_BGP before rewriting, which
+// preserves SPARQL semantics (GP_Join of two BGPs = BGP-concat) and
+// gives the rewriter the full picture.
 // ------------------------------------------------------------------
+
+// Two-operand coalesce: if both operands are GP_BGP, merge into a
+// single GP_BGP by triple-list concatenation (preserves SPARQL
+// semantics of GP_Join). Otherwise, preserve the GP_Join tree but
+// also detect the left-deep shape where one side is a BGP and the
+// other is a GP_Join whose left-spine starts with a GP_BGP; we pull
+// the BGPs together in that case too. This coalesces arbitrary
+// contiguous GP_Join-of-GP_BGPs into a single GP_BGP.
+let coalesce_join (na : group_graph_pattern) (nb : group_graph_pattern)
+  : group_graph_pattern =
+  match na, nb with
+  | GP_BGP ba, GP_BGP bb ->
+    GP_BGP (List.Tot.append ba bb)
+  | GP_BGP ba, GP_Join (GP_BGP bb) rest ->
+    GP_Join (GP_BGP (List.Tot.append ba bb)) rest
+  | GP_Join left_spine (GP_BGP ba), GP_BGP bb ->
+    GP_Join left_spine (GP_BGP (List.Tot.append ba bb))
+  | _, _ -> GP_Join na nb
+
+// Normalise a GGP: recurse structurally, then coalesce adjacent
+// GP_BGPs under GP_Join. Accepted by F* with `decreases g` — each
+// recursive call is on a structurally smaller constructor argument
+// of `g`.
+let rec normalise_joins (g : group_graph_pattern)
+  : Tot group_graph_pattern (decreases g) =
+  match g with
+  | GP_BGP b           -> GP_BGP b
+  | GP_Join a b        ->
+    coalesce_join (normalise_joins a) (normalise_joins b)
+  | GP_LeftJoin a b e  -> GP_LeftJoin (normalise_joins a) (normalise_joins b) e
+  | GP_Filter e a      -> GP_Filter e (normalise_joins a)
+  | GP_Union a b       -> GP_Union (normalise_joins a) (normalise_joins b)
+  | GP_Graph gt a      -> GP_Graph gt (normalise_joins a)
+  | GP_Minus a b       -> GP_Minus (normalise_joins a) (normalise_joins b)
+  | GP_Bind e v a      -> GP_Bind e v (normalise_joins a)
+  | GP_Values vs rs    -> GP_Values vs rs
+  | GP_Service i a s   -> GP_Service i (normalise_joins a) s
+  | GP_SubSelect q     -> GP_SubSelect q
+  | GP_PropertyPath s pp o -> GP_PropertyPath s pp o
+  | GP_Empty           -> GP_Empty
 
 // Rewrite recursion on the group-graph-pattern tree. SubSelect bodies
 // are deliberately NOT descended into in Phase 3 — if that matters for
@@ -835,7 +892,14 @@ let rec rewrite_ggp (g : group_graph_pattern)
 // ------------------------------------------------------------------
 
 let rewrite_query (q : query) : query =
-  { q with q_pattern = rewrite_ggp q.q_pattern }
+  // Normalise GP_Join / GP_BGP chains into single GP_BGPs first so
+  // the CE-rewriter sees the full set of triples in one BGP. Without
+  // this step, the SPARQL parser's habit of splitting BGPs on every
+  // period leaves the CE marker (owl:intersectionOf _) and its
+  // rdf:first/rdf:rest chain in different BGP leaves and the
+  // rewriter finds nothing. See simple1 dump for the canonical
+  // example.
+  { q with q_pattern = rewrite_ggp (normalise_joins q.q_pattern) }
 
 // Convenience alias expected by the scoping doc ("rewrite_query" is
 // the top-level entrypoint).
