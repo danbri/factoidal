@@ -182,14 +182,15 @@ let rename_dataset_bnodes (prefix : Prims.string) (ds : rdf_dataset) :
     ds_named =
       (FStar_List_Tot_Base.map (rename_named_graph_bnodes prefix) ds.ds_named)
   }
-let rec graph_bnodes (g : rdf_graph) : bnode_id Prims.list=
+let rec graph_bnodes_acc (acc : bnode_id Prims.list) (g : rdf_graph) :
+  bnode_id Prims.list=
   match g with
-  | [] -> []
+  | [] -> FStar_List_Tot_Base.rev acc
   | hd::tl ->
-      let nodes = match hd.s with | S_BNode id -> [id] | uu___ -> [] in
-      let obj_nodes = match hd.o with | T_BNode id -> [id] | uu___ -> [] in
-      FStar_List_Tot_Base.op_At nodes
-        (FStar_List_Tot_Base.op_At obj_nodes (graph_bnodes tl))
+      let acc1 = match hd.s with | S_BNode id -> id :: acc | uu___ -> acc in
+      let acc2 = match hd.o with | T_BNode id -> id :: acc1 | uu___ -> acc1 in
+      graph_bnodes_acc acc2 tl
+let graph_bnodes (g : rdf_graph) : bnode_id Prims.list= graph_bnodes_acc [] g
 let rec mem_triple (t : triple) (g : rdf_graph) : Prims.bool=
   match g with
   | [] -> false

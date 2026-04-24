@@ -1,5 +1,5 @@
 === W3C SPARQL 1.1 Test Runner ===
-Test base: tests/w3c/sparql/sparql11
+Test base: third_party/testing/w3c/sparql/sparql11
 
 
 --- add ---
@@ -263,11 +263,11 @@ Test base: tests/w3c/sparql/sparql11
       UNMATCHED: ?parent=<http://example.org/test#Bob>
       UNMATCHED: ?parent=<http://example.org/test#Dudley> (18ms)
   FAIL: parent query with (hasChild some Female) restriction — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?parent=<http://example.org/test#Dudley> (17ms)
+      UNMATCHED: ?parent=<http://example.org/test#Dudley> (18ms)
   FAIL: parent query with (hasChild min 1 Female) restriction — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?parent=<http://example.org/test#Dudley> (17ms)
+      UNMATCHED: ?parent=<http://example.org/test#Dudley> (18ms)
   FAIL: parent query with (hasChild max 1 Female) restriction — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?parent=<http://example.org/test#Dudley> (17ms)
+      UNMATCHED: ?parent=<http://example.org/test#Dudley> (18ms)
   FAIL: parent query with (hasChild exactly 1 Female) restriction — Results mismatch: expected 1 rows, got 0
       UNMATCHED: ?parent=<http://example.org/test#Dudley> (17ms)
   FAIL: subclass query with (hasChild some Thing) restriction — Results mismatch: expected 4 rows, got 7 (18ms)

@@ -1,5 +1,5 @@
 === W3C RDF 1.1 Test Runner ===
-Test base: tests/w3c/rdf/rdf11
+Test base: third_party/testing/w3c/rdf/rdf11
 
 
 --- rdf-mt ---
