@@ -8,7 +8,6 @@
   :root {
     --fg: #222; --muted: #666; --bg: #fff; --surface: #f7f7f7;
     --border: #e0e0e0; --brand: #2d6a4f; --brand-dark: #1b4332;
-    --error: #c0392b; --ok: #2d6a4f;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
@@ -25,180 +24,20 @@
   header a  { color: var(--brand-dark); }
   main { max-width: 1100px; margin: 0 auto; padding: 1.5em; }
   .row { display: flex; gap: 1em; margin: 0.8em 0; align-items: center; flex-wrap: wrap; }
-  label { font-weight: 600; color: var(--muted); font-size: 0.9em; }
-  select, button {
-    font: inherit; padding: 0.4em 0.7em; border: 1px solid var(--border);
-    background: var(--bg); border-radius: 4px;
-  }
-  button {
-    background: var(--brand); color: #fff; border-color: var(--brand-dark);
-    cursor: pointer; font-weight: 600;
-    transition: transform 0.05s, background 0.1s, box-shadow 0.1s;
-  }
-  button:disabled { opacity: 0.6; cursor: wait; }
-  /* Immediate, tangible click feedback — fires synchronously the
-     instant the button is pressed, so the user can tell the click
-     registered even before the JS engine does any async work. */
-  button.run-btn:active:not(:disabled) {
-    transform: scale(0.96);
-    background: var(--brand-dark);
-  }
-  /* Sustained in-flight state — darker background, outlined, and a
-     slow pulse so the button looks unmistakably "busy" for 5+ s queries.
-     Only applied while the query is actually running. Removed in
-     every exit path of the handler (see finaliseStatus / cleanup). */
-  @keyframes runPulse {
-    0%   { box-shadow: 0 0 0 0    rgba(45, 106, 79, 0.75); }
-    60%  { box-shadow: 0 0 0 14px rgba(45, 106, 79, 0); }
-    100% { box-shadow: 0 0 0 0    rgba(45, 106, 79, 0); }
-  }
-  button.run-btn.running {
-    animation: runPulse 1.2s ease-out infinite;
-    background: var(--brand-dark);
-    cursor: wait;
-    opacity: 1;          /* override :disabled dimming so the pulse stays vivid */
-  }
-  /* Spinner dot next to the status text. Uses the same cheerful
-     green as the brand. */
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .spinner {
-    display: inline-block; width: 0.9em; height: 0.9em;
-    border: 2px solid var(--border); border-top-color: var(--brand);
-    border-radius: 50%; animation: spin 0.7s linear infinite;
-    vertical-align: -0.18em; margin-right: 0.35em;
-  }
-  /* Engine toggle — radio-group segmented control (mobile-friendly).
-     Inputs use the sr-only visually-hidden pattern so they take up
-     zero layout space. A plain `position:absolute; opacity:0` without
-     a positioned parent falls back to <body> and can overlap the
-     textarea, eating mouse-wheel and click events. */
-  .radio-group {
-    position: relative;
-    display: inline-flex; border: 1px solid var(--border);
-    border-radius: 4px; overflow: hidden; background: var(--bg);
-  }
-  .radio-group input[type="radio"] {
-    position: absolute; width: 1px; height: 1px; margin: -1px;
-    padding: 0; clip: rect(0 0 0 0); overflow: hidden;
-    white-space: nowrap; border: 0;
-  }
-  .radio-group label {
-    cursor: pointer; padding: 0.45em 0.9em; font-weight: 500;
-    font-size: 0.9em; color: var(--fg); user-select: none;
-    display: inline-flex; align-items: center; min-height: 32px;
-    transition: background 0.1s;
-  }
-  .radio-group label + label { border-left: 1px solid var(--border); }
-  .radio-group label:hover { background: var(--surface); }
-  .radio-group label:has(input:checked) {
-    background: var(--brand); color: #fff; font-weight: 600;
-  }
-  .radio-group label:focus-within {
-    outline: 2px solid var(--brand); outline-offset: -2px;
-  }
-  @media (max-width: 520px) {
-    .radio-group label { padding: 0.55em 0.8em; min-height: 40px; }
-  }
-  textarea {
-    width: 100%; min-height: 10em; font: 0.92em/1.45 ui-monospace, Menlo,
-    Consolas, monospace; padding: 0.7em; border: 1px solid var(--border);
-    border-radius: 4px; resize: vertical;
-  }
-  .status {
-    font-size: 0.9em; color: var(--muted); padding: 0.3em 0.6em;
-    background: var(--surface); border-radius: 4px;
-  }
-  .status.ok { color: var(--ok); }
-  .status.err { color: var(--error); }
-  #out { margin-top: 1em; }
-  #out.empty { color: var(--muted); padding: 1em; text-align: center;
-               background: var(--surface); border-radius: 4px; }
-  #out.error { color: var(--error); }
-  table.results {
-    border-collapse: collapse; width: 100%; font-size: 0.92em;
-  }
-  table.results th, table.results td {
-    border: 1px solid var(--border); padding: 0.3em 0.6em;
-    vertical-align: top; text-align: left;
-  }
-  table.results th { background: var(--surface); font-weight: 600; }
-  table.results td { font-family: ui-monospace, Menlo, Consolas, monospace; }
-  .result-meta { margin-top: 0.5em; color: var(--muted); font-size: 0.85em; }
-  /* Compact one-line summary shown in the main UI below the result
-     table — headline numbers only (engine, query ms, total ms). */
-  .timing-summary {
-    margin-top: 0.4em; color: var(--muted); font-size: 0.85em;
-  }
-  .timing-summary .num {
-    font-variant-numeric: tabular-nums; font-weight: 600; color: var(--fg);
-  }
-  .timing-summary a.details-link {
-    margin-left: 0.5em; color: var(--brand-dark);
-    text-decoration: underline; text-decoration-style: dotted;
-    font-size: 0.9em; cursor: pointer;
-  }
-  /* Full breakdown panel — lives only inside <details id="timing-
-     details"> below the results. */
-  .timing-detail {
-    font-size: 0.88em; color: var(--muted);
-  }
-  .timing-detail .timing-head {
-    font-weight: 600; color: var(--fg); margin-bottom: 0.4em;
-  }
-  .timing-detail ul {
-    list-style: none; margin: 0.2em 0 0; padding: 0;
-    display: grid; grid-template-columns: auto 1fr auto; gap: 0.15em 0.8em;
-    align-items: baseline;
-  }
-  .timing-detail ul li { display: contents; }
-  .timing-detail .tl { color: var(--fg); }
-  .timing-detail .tr { font-variant-numeric: tabular-nums; text-align: right; }
-  .timing-detail .bar {
-    background: var(--brand); height: 0.55em; border-radius: 2px;
-    align-self: center; min-width: 2px;
-  }
-  .timing-detail .bar.cached {
-    background: var(--border); height: 0.35em;
-  }
-  /* In-flight progress indicator shown in the output area while a
-     query is running. Stripes scroll at a steady rate so even
-     long-running queries (5+ s) show continuous motion. */
-  @keyframes progressStripe {
-    0%   { background-position: 0 0; }
-    100% { background-position: 48px 0; }
-  }
-  #out.running {
-    color: var(--fg); background: var(--surface);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 2em 1em; text-align: center;
-    position: relative; overflow: hidden;
-  }
-  #out.running .progress-bar {
-    height: 8px; border-radius: 4px; margin: 0.6em auto 0;
-    max-width: 420px;
-    background-image: linear-gradient(
-      45deg,
-      var(--brand) 25%, var(--brand-dark) 25%,
-      var(--brand-dark) 50%, var(--brand) 50%,
-      var(--brand) 75%, var(--brand-dark) 75%
-    );
-    background-size: 24px 24px;
-    animation: progressStripe 0.6s linear infinite;
-  }
-  #out.running .progress-label { font-weight: 600; font-size: 1.05em; }
-  #out.running .progress-sub { font-size: 0.85em; color: var(--muted); margin-top: 0.2em; }
-  pre.raw-error {
-    background: #fff6f4; border: 1px solid #f0c0c0; padding: 0.8em;
-    border-radius: 4px; white-space: pre-wrap; word-break: break-word;
-  }
   .chip {
     display: inline-block; padding: 0.1em 0.5em; border-radius: 10px;
     background: var(--surface); color: var(--muted); font-size: 0.8em;
     margin-right: 0.3em;
   }
-  details { margin-top: 1em; }
-  summary { cursor: pointer; color: var(--muted); font-size: 0.9em; }
-  .graphs { font-size: 0.9em; color: var(--muted); }
+  /* Page-level theming for the component (green brand). */
+  factoidal-sparql-client {
+    --fc-brand: var(--brand);
+    --fc-brand-dark: var(--brand-dark);
+    --fc-border: var(--border);
+    --fc-surface: var(--surface);
+    --fc-muted: var(--muted);
+  }
+  footer { text-align: center; color: var(--muted); font-size: 0.85em; padding: 2em 1em; }
 </style>
 </head>
 
@@ -222,97 +61,62 @@
   <span class="chip">disease.ttl — 27,421 triples</span>
 </div>
 
-<div class="row">
-  <label for="query-select">Query</label>
-  <select id="query-select"></select>
-  <button id="run-btn" class="run-btn" type="button">Run</button>
-  <span class="radio-group" role="radiogroup" aria-label="Engine">
-    <label title="js_of_ocaml — widest browser support">
-      <input type="radio" name="engine" value="js" checked><span>JS</span>
-    </label>
-    <label title="wasm_of_ocaml — needs Wasm-GC (Chrome/Edge 119+, Node 22+)">
-      <input type="radio" name="engine" value="wasm"><span>WASM</span>
-    </label>
-  </span>
-  <span id="status" class="status">Loading engine…</span>
-</div>
+<!-- The whole SPARQL client is one element. Queries declared as
+     light-DOM children; data sources passed as JSON on src-data. -->
+<factoidal-sparql-client
+    id="client"
+    engines="js,wasm"
+    default-engine="js"
+    warm
+    src-data='[
+      {"url":"./lifesci/chromosome.ttl",       "graph":"urn:kgx:chromosome",       "vfs":"/tmp/chromosome.ttl"},
+      {"url":"./lifesci/sequence_variant.ttl", "graph":"urn:kgx:sequence_variant", "vfs":"/tmp/sequence_variant.ttl"},
+      {"url":"./lifesci/disease.ttl",          "graph":"urn:kgx:disease",          "vfs":"/tmp/disease.ttl"}
+    ]'>
 
-<textarea id="query"></textarea>
-
-<div id="out" class="empty">Pick a query and click Run.</div>
-
-<details id="details-block">
-  <summary>Details</summary>
-  <div id="timing-details" class="graphs">
-    No query has run yet.
-  </div>
-</details>
-
-</main>
-
-<script>
-(function () {
-  'use strict';
-
-  // Three fixed Turtle files, same-origin. Paths relative to this page.
-  const FILES = [
-    { url: './lifesci/chromosome.ttl',       graph: 'urn:kgx:chromosome',       vfs: '/tmp/chromosome.ttl' },
-    { url: './lifesci/sequence_variant.ttl', graph: 'urn:kgx:sequence_variant', vfs: '/tmp/sequence_variant.ttl' },
-    { url: './lifesci/disease.ttl',          graph: 'urn:kgx:disease',          vfs: '/tmp/disease.ttl' },
-  ];
-
-  // Pre-populated queries. Keep each self-contained (own PREFIX lines) so
-  // the user sees exactly what's running.
-  const QUERIES = [
-    {
-      key: 'variant-chrom',
-      label: '03 — Sequence variants on chromosomes (cross-graph join)',
-      body:
-`# For each sequence variant, which chromosome is it located on?
-# <chromosome> holds the chromosome entities (wdt:P31 wd:Q37748);
-# <sequence_variant> links each variant to its chromosome via
+  <factoidal-query name="variant-chrom"
+                   label="03 — Sequence variants on chromosomes (cross-graph join)">
+# For each sequence variant, which chromosome is it located on?
+# &lt;chromosome&gt; holds the chromosome entities (wdt:P31 wd:Q37748);
+# &lt;sequence_variant&gt; links each variant to its chromosome via
 # wdt:P1057 (Wikidata property "chromosome"). The join matches
 # those links to the chromosome set, returning (variant, chromosome)
 # pairs. LIMIT 20 caps the result at the first twenty matches.
-PREFIX wdt: <http://www.wikidata.org/prop/direct/>
-PREFIX wd:  <http://www.wikidata.org/entity/>
+PREFIX wdt: &lt;http://www.wikidata.org/prop/direct/&gt;
+PREFIX wd:  &lt;http://www.wikidata.org/entity/&gt;
 
 SELECT ?variant ?chrom
 WHERE {
-  GRAPH <urn:kgx:chromosome>       { ?chrom wdt:P31 wd:Q37748 }
-  GRAPH <urn:kgx:sequence_variant> { ?variant wdt:P1057 ?chrom }
+  GRAPH &lt;urn:kgx:chromosome&gt;       { ?chrom wdt:P31 wd:Q37748 }
+  GRAPH &lt;urn:kgx:sequence_variant&gt; { ?variant wdt:P1057 ?chrom }
 }
 LIMIT 20
-`
-    },
-    {
-      key: 'top-diseases',
-      label: '04 — Top diseases by count of genetically-associated genes',
-      body:
-`# Which diseases have the most known genetic associations?
+  </factoidal-query>
+
+  <factoidal-query name="top-diseases"
+                   label="04 — Top diseases by count of genetically-associated genes">
+# Which diseases have the most known genetic associations?
 # For each disease, count how many distinct genes are linked to
-# it via wdt:P2293 ("genetic association") in the <disease> graph.
+# it via wdt:P2293 ("genetic association") in the &lt;disease&gt; graph.
 # ORDER BY DESC + LIMIT 10 returns the top ten diseases by count.
-PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX wdt: &lt;http://www.wikidata.org/prop/direct/&gt;
 
 SELECT ?disease (COUNT(?gene) AS ?associated_genes)
 WHERE {
-  GRAPH <urn:kgx:disease> { ?disease wdt:P2293 ?gene }
+  GRAPH &lt;urn:kgx:disease&gt; { ?disease wdt:P2293 ?gene }
 }
 GROUP BY ?disease
 ORDER BY DESC(?associated_genes)
 LIMIT 10
-`
-    },
-    {
-      key: 'count-per-graph',
-      label: '01 — Count triples per named graph',
-      body:
-`# How many triples does each named graph contain?
+  </factoidal-query>
+
+  <factoidal-query name="count-per-graph"
+                   label="01 — Count triples per named graph">
+# How many triples does each named graph contain?
 # The triple pattern ?s ?p ?o is fully unbound, so it matches
 # every triple; GROUP BY ?g partitions those matches by the
 # containing graph and COUNT(*) reports the size of each partition.
-PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+PREFIX xsd: &lt;http://www.w3.org/2001/XMLSchema#&gt;
 
 SELECT ?g (COUNT(*) AS ?triples)
 WHERE {
@@ -320,18 +124,16 @@ WHERE {
 }
 GROUP BY ?g
 ORDER BY DESC(?triples)
-`
-    },
-    {
-      key: 'top-types',
-      label: '02 — Top instance-of types across all three graphs',
-      body:
-`# What are the most common entity types across the three graphs?
+  </factoidal-query>
+
+  <factoidal-query name="top-types"
+                   label="02 — Top instance-of types across all three graphs">
+# What are the most common entity types across the three graphs?
 # Types are stated in two parallel ways: wdt:P31 (Wikidata's
 # "instance of") and rdf:type. UNION pulls both in. For each type
 # we count how many distinct subjects claim it, then take the top 10.
-PREFIX wdt: <http://www.wikidata.org/prop/direct/>
-PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX wdt: &lt;http://www.wikidata.org/prop/direct/&gt;
+PREFIX rdf: &lt;http://www.w3.org/1999/02/22-rdf-syntax-ns#&gt;
 
 SELECT ?type (COUNT(?s) AS ?instances)
 WHERE {
@@ -342,489 +144,32 @@ WHERE {
 GROUP BY ?type
 ORDER BY DESC(?instances)
 LIMIT 10
-`
-    },
-    {
-      key: 'disease-symptoms',
-      label: '05 — Diseases that cite wdt:P828 (cause)',
-      body:
-`# Diseases with a stated cause. wdt:P828 is Wikidata's "has cause"
+  </factoidal-query>
+
+  <factoidal-query name="disease-causes"
+                   label="05 — Diseases that cite wdt:P828 (cause)">
+# Diseases with a stated cause. wdt:P828 is Wikidata's "has cause"
 # property; each binding pairs a disease with one of its recorded
 # causes (a pathogen, environmental factor, or other entity). The
 # result is a starting point for exploring disease-aetiology links.
-PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX wdt: &lt;http://www.wikidata.org/prop/direct/&gt;
 
 SELECT DISTINCT ?disease ?cause
 WHERE {
-  GRAPH <urn:kgx:disease> { ?disease wdt:P828 ?cause }
+  GRAPH &lt;urn:kgx:disease&gt; { ?disease wdt:P828 ?cause }
 }
 LIMIT 25
-`
-    },
-  ];
+  </factoidal-query>
 
-  const querySelect = document.getElementById('query-select');
-  const queryEl     = document.getElementById('query');
-  const runBtn      = document.getElementById('run-btn');
-  const statusEl    = document.getElementById('status');
-  const outputWrap  = document.getElementById('out');
-  // -------------------------------------------------------------------
-  // Engine radio group: 'js' (factoidal.js, synchronous) or 'wasm'
-  // (factoidal.wasm.js, async loader + .wasm payload).
-  // Reads the current engine live off the DOM — no cached var, no
-  // change listener needed because we only consult it at click time.
-  // -------------------------------------------------------------------
-  function currentEngine() {
-    const r = document.querySelector('input[name="engine"]:checked');
-    return r ? r.value : 'js';
-  }
+</factoidal-sparql-client>
 
-  // Sort by leading NN — digits and numbered items first in natural
-  // order, then alphabetically. Previously the dropdown displayed
-  // 03, 04, 01, 02, Cross-graph because the array author kept the
-  // quickest query at the top; sorting fixes that without forcing
-  // an array rewrite.
-  const sortedQueries = QUERIES.slice().sort((a, b) => {
-    const na = /^(\d+)/.exec(a.label), nb = /^(\d+)/.exec(b.label);
-    if (na && nb) return parseInt(na[1], 10) - parseInt(nb[1], 10);
-    if (na) return -1;                     // numbered items come first
-    if (nb) return 1;
-    return a.label.localeCompare(b.label);
-  });
-  sortedQueries.forEach(q => {
-    const opt = document.createElement('option');
-    opt.value = q.key; opt.textContent = q.label;
-    querySelect.appendChild(opt);
-  });
-  function loadQuery() {
-    const k = querySelect.value;
-    const q = QUERIES.find(x => x.key === k) || QUERIES[0];
-    queryEl.value = q.body;
-  }
-  querySelect.addEventListener('change', loadQuery);
-  loadQuery();
+</main>
 
-  // -------------------------------------------------------------------
-  // Fetch the three Turtle files in parallel and cache as strings.
-  // Tracks per-file fetch time so the timing panel can attribute.
-  // -------------------------------------------------------------------
-  let filePayloads = null;
-  const fileTimings = {};  // { url: {ms, bytes, cached} }
-  async function getFilePayloads() {
-    if (filePayloads) {
-      // Mark every file as cached on subsequent calls.
-      filePayloads.forEach(p => { fileTimings[p.url] = { ...fileTimings[p.url], cached: true }; });
-      return filePayloads;
-    }
-    statusEl.textContent = 'Fetching Turtle data…';
-    const results = await Promise.all(FILES.map(async f => {
-      const t0 = performance.now();
-      const r = await fetch(f.url);
-      if (!r.ok) throw new Error(`fetch ${f.url}: ${r.status}`);
-      const content = await r.text();
-      fileTimings[f.url] = {
-        ms: performance.now() - t0,
-        bytes: content.length,
-        cached: false,
-      };
-      return { ...f, content };
-    }));
-    filePayloads = results;
-    return results;
-  }
+<footer>
+  Built from <a href="https://github.com/danbri/factoidal">github.com/danbri/factoidal</a>
+</footer>
 
-  // -------------------------------------------------------------------
-  // Engine loaders.
-  //
-  //   js   — factoidal.js (js_of_ocaml). Synchronous: load the text,
-  //          stash argv, `new Function(src)()` invokes it top-to-bottom.
-  //   wasm — factoidal.wasm.js (wasm_of_ocaml loader) + .wasm payload
-  //          fetched relative to this page. Also text-evaluated; the
-  //          loader itself uses top-level `await` in modern v8.
-  //
-  // Both are cached after first fetch. Warming both in parallel on
-  // page load means the toggle feels instant after the first run.
-  // -------------------------------------------------------------------
-  const engineSources = { js: null, wasm: null };
-  const enginePromises = { js: null, wasm: null };
-  const engineTimings = { js: null, wasm: null };  // { ms, bytes, cached }
-  function getEngineSource(which) {
-    if (engineSources[which]) {
-      if (engineTimings[which]) engineTimings[which].cached = true;
-      return Promise.resolve(engineSources[which]);
-    }
-    if (enginePromises[which]) return enginePromises[which];
-    const url = which === 'wasm' ? './factoidal.wasm.js' : './factoidal.js';
-    const t0 = performance.now();
-    enginePromises[which] = fetch(url)
-      .then(r => { if (!r.ok) throw new Error('fetch ' + url + ': ' + r.status); return r.text(); })
-      .then(t => {
-        engineSources[which] = t;
-        engineTimings[which] = {
-          ms: performance.now() - t0,
-          bytes: t.length,
-          cached: false,
-        };
-        return t;
-      });
-    return enginePromises[which];
-  }
-
-  // Warm both engines + the data in parallel at page-load.
-  Promise.all([getEngineSource('js'), getEngineSource('wasm'), getFilePayloads()])
-    .then(() => { statusEl.textContent = 'Ready.'; statusEl.className = 'status ok'; })
-    .catch(e => { statusEl.textContent = 'Load failed: ' + e.message;
-                  statusEl.className = 'status err'; });
-
-  // -------------------------------------------------------------------
-  // Result rendering (lifted from index.html, trimmed to what this
-  // demo uses).
-  // -------------------------------------------------------------------
-  function abbrev(iri) {
-    const P = [
-      ['http://www.w3.org/1999/02/22-rdf-syntax-ns#', 'rdf:'],
-      ['http://www.w3.org/2000/01/rdf-schema#',       'rdfs:'],
-      ['http://www.w3.org/2001/XMLSchema#',           'xsd:'],
-      ['http://www.wikidata.org/entity/',             'wd:'],
-      ['http://www.wikidata.org/prop/direct/',        'wdt:'],
-      ['https://bioschemas.org/',                     'bio:'],
-      ['https://schema.org/',                         'schema:'],
-    ];
-    for (const [ns, px] of P) if (iri.startsWith(ns)) return px + iri.slice(ns.length);
-    return '<' + iri + '>';
-  }
-
-  function renderBinding(v, b) {
-    const td = document.createElement('td');
-    if (!b) { td.textContent = ''; return td; }
-    if (b.type === 'uri') {
-      const a = document.createElement('a');
-      a.href = b.value; a.target = '_blank'; a.rel = 'noopener';
-      a.textContent = abbrev(b.value);
-      td.appendChild(a);
-    } else {
-      td.textContent = b.value;
-      if (b['xml:lang']) td.textContent += '@' + b['xml:lang'];
-      else if (b.datatype && b.datatype !== 'http://www.w3.org/2001/XMLSchema#string')
-        td.textContent += '  ^^' + abbrev(b.datatype);
-    }
-    return td;
-  }
-
-  function renderResultsJSON(json) {
-    outputWrap.className = ''; outputWrap.innerHTML = '';
-    if (typeof json.boolean === 'boolean') {
-      outputWrap.textContent = json.boolean ? 'Yes' : 'No';
-      return;
-    }
-    const vars = (json.head && json.head.vars) || [];
-    const bindings = (json.results && json.results.bindings) || [];
-    const table = document.createElement('table');
-    table.className = 'results';
-    const thead = document.createElement('thead');
-    const hrow = document.createElement('tr');
-    vars.forEach(v => {
-      const th = document.createElement('th'); th.textContent = '?' + v;
-      hrow.appendChild(th);
-    });
-    thead.appendChild(hrow); table.appendChild(thead);
-    const tbody = document.createElement('tbody');
-    bindings.forEach(row => {
-      const tr = document.createElement('tr');
-      vars.forEach(v => tr.appendChild(renderBinding(v, row[v])));
-      tbody.appendChild(tr);
-    });
-    table.appendChild(tbody);
-    outputWrap.appendChild(table);
-    const meta = document.createElement('div');
-    meta.className = 'result-meta';
-    meta.textContent = bindings.length + ' result' + (bindings.length === 1 ? '' : 's');
-    outputWrap.appendChild(meta);
-  }
-
-  function renderRawError(text) {
-    outputWrap.className = 'error'; outputWrap.innerHTML = '';
-    const pre = document.createElement('pre');
-    pre.className = 'raw-error'; pre.textContent = text;
-    outputWrap.appendChild(pre);
-  }
-
-  // -------------------------------------------------------------------
-  // Timing panel. Renders a row-per-phase breakdown above the results
-  // table in the main UI, and copies the same summary into the
-  // <details id="timing-details"> block.
-  //
-  // The browser side can see: (a) engine-source fetch, (b) three
-  // data-file fetches, (c) total "engine run" — the IIFE covers
-  // parse + query + JSON serialize; we can't sub-split that yet
-  // because the engine is a black-box CLI. All of engine-source
-  // fetch and data fetches can be cached on second+ runs; we mark
-  // those as such.
-  // -------------------------------------------------------------------
-  function formatMs(ms) {
-    if (ms == null) return '—';
-    if (ms < 1) return '<1 ms';
-    if (ms < 1000) return ms.toFixed(0) + ' ms';
-    return (ms / 1000).toFixed(2) + ' s';
-  }
-  function formatBytes(n) {
-    if (n == null) return '';
-    if (n < 1024) return n + ' B';
-    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
-    return (n / (1024 * 1024)).toFixed(2) + ' MB';
-  }
-  function buildPhases(engineName, runMs) {
-    const out = [];
-    const es = engineTimings[engineName];
-    out.push({
-      label: 'Engine bundle (' + engineName + ')',
-      ms: es ? es.ms : 0,
-      bytes: es ? es.bytes : null,
-      cached: es ? es.cached : true,
-    });
-    FILES.forEach(f => {
-      const t = fileTimings[f.url];
-      const name = f.url.replace(/^\.\/lifesci\//, '');
-      out.push({
-        label: 'Fetch ' + name,
-        ms: t ? t.ms : 0,
-        bytes: t ? t.bytes : null,
-        cached: t ? t.cached : true,
-      });
-    });
-    out.push({ label: 'Query run (parse + eval + serialize)', ms: runMs });
-    return out;
-  }
-
-  // One-line summary for the main UI.
-  function renderTimingSummary(totalMs, engineName, runMs) {
-    const el = document.createElement('div');
-    el.className = 'timing-summary';
-    el.innerHTML =
-      'Done on ' + engineName.toUpperCase() +
-      ' — query <span class="num">' + formatMs(runMs) + '</span>' +
-      ', total <span class="num">' + formatMs(totalMs) + '</span>' +
-      '<a class="details-link" href="#details">see breakdown ↓</a>';
-    el.querySelector('a.details-link').addEventListener('click', (ev) => {
-      ev.preventDefault();
-      const det = document.getElementById('details-block');
-      if (det) { det.open = true; det.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
-    });
-    return el;
-  }
-
-  // Full breakdown for the <details> block only.
-  function renderTimingDetail(totalMs, engineName, runMs, phases) {
-    const fallback = Math.max(totalMs, 1);
-    const el = document.createElement('div');
-    el.className = 'timing-detail';
-    const head = document.createElement('div');
-    head.className = 'timing-head';
-    head.textContent = formatMs(totalMs) + ' total on ' + engineName.toUpperCase() +
-                       ' — query run ' + formatMs(runMs);
-    el.appendChild(head);
-    const ul = document.createElement('ul');
-    phases.forEach(p => {
-      const li = document.createElement('li');
-      const tl = document.createElement('span');
-      tl.className = 'tl';
-      tl.textContent = p.label + (p.bytes != null ? ' (' + formatBytes(p.bytes) + ')' : '');
-      const bar = document.createElement('span');
-      bar.className = 'bar' + (p.cached ? ' cached' : '');
-      bar.style.width = Math.max(2, Math.round(220 * ((p.ms || 0) / fallback))) + 'px';
-      const tr = document.createElement('span');
-      tr.className = 'tr';
-      tr.textContent = p.cached ? 'cached' : formatMs(p.ms);
-      li.appendChild(tl); li.appendChild(bar); li.appendChild(tr);
-      ul.appendChild(li);
-    });
-    el.appendChild(ul);
-    return el;
-  }
-
-  function renderTimingBoth(totalMs, engineName, runMs) {
-    const phases = buildPhases(engineName, runMs);
-    // Main UI: compact one-line summary below the result meta.
-    const meta = outputWrap.querySelector('.result-meta');
-    const summary = renderTimingSummary(totalMs, engineName, runMs);
-    if (meta) meta.appendChild(summary);
-    else outputWrap.appendChild(summary);
-    // Details block: full breakdown.
-    const detEl = document.getElementById('timing-details');
-    if (detEl) {
-      detEl.innerHTML = '';
-      detEl.appendChild(renderTimingDetail(totalMs, engineName, runMs, phases));
-    }
-  }
-
-  // -------------------------------------------------------------------
-  // Run
-  // -------------------------------------------------------------------
-  // -------------------------------------------------------------------
-  // Merge the three TTL payloads into a single TriG string for the
-  // wasm engine path. browser-wasm.js's query() takes one data file
-  // — no multi-file API there yet — so fold the three graphs into
-  // TriG: pull every @prefix/@base/PREFIX/BASE directive to the top,
-  // deduplicate, then wrap each file's remaining triples in
-  // `GRAPH <iri> { … }`.
-  // -------------------------------------------------------------------
-  function payloadsToTriG(payloads) {
-    const directives = new Set();
-    const blocks = [];
-    const dirRE = /^\s*(?:@prefix|@base|PREFIX|BASE)\b[^\n]*\.\s*$/i;
-    payloads.forEach(p => {
-      const bodyLines = [];
-      p.content.split(/\r?\n/).forEach(line => {
-        if (dirRE.test(line)) directives.add(line.trim());
-        else bodyLines.push(line);
-      });
-      blocks.push(
-        'GRAPH <' + p.graph + '> {\n' +
-        bodyLines.join('\n') +
-        '\n}\n'
-      );
-    });
-    return [...directives].join('\n') + '\n\n' + blocks.join('\n');
-  }
-
-  runBtn.addEventListener('click', async () => {
-    const engine = currentEngine();
-
-    // === IMMEDIATE synchronous feedback ===
-    // Everything in this block paints before the event loop yields to
-    // any await / fetch, so the user sees the click register the
-    // instant they release the mouse. The `await` after this block
-    // is just to force one frame to render before heavy work starts.
-    const originalLabel = runBtn.textContent;
-    runBtn.disabled = true;
-    runBtn.classList.add('running');
-    runBtn.setAttribute('aria-busy', 'true');
-    runBtn.textContent = 'Running…';
-    statusEl.className = 'status';
-    statusEl.innerHTML = '<span class="spinner" aria-hidden="true"></span>Running on ' + engine.toUpperCase() + '…';
-    outputWrap.className = 'running';
-    outputWrap.innerHTML =
-      '<div class="progress-label">Running on ' + engine.toUpperCase() + '…</div>' +
-      '<div class="progress-sub">Fetching data, parsing, evaluating…</div>' +
-      '<div class="progress-bar" role="progressbar" aria-label="query in progress"></div>';
-    // Yield one animation frame so the browser actually paints the
-    // "running" state before we hog the main thread with parse+eval.
-    await new Promise(r => requestAnimationFrame(() => r()));
-
-    const runStart = performance.now();
-    // Defensive: clear in-flight visuals on any exit path. If no other
-    // status update has happened, leave a generic "Ready" message so
-    // the spinner-laden "Running on …" can't possibly persist past
-    // the handler returning.
-    let statusFinalised = false;
-    const finaliseStatus = (text, cls) => {
-      statusEl.textContent = text;           // textContent wipes any child <span class="spinner">
-      statusEl.className = cls;
-      statusFinalised = true;
-    };
-    const cleanup = () => {
-      runBtn.disabled = false;
-      runBtn.classList.remove('running');
-      runBtn.removeAttribute('aria-busy');
-      runBtn.textContent = originalLabel;
-      if (!statusFinalised) finaliseStatus('Ready.', 'status ok');
-      if (outputWrap.classList.contains('running')) {
-        // Running state leaked — replace with a neutral empty.
-        outputWrap.className = 'empty';
-        outputWrap.textContent = '';
-      }
-    };
-
-    try {
-      const payloads = await getFilePayloads();
-
-      // ============================================================
-      // WASM path: drive factoidal.wasm.js via browser-wasm.js's
-      // query() API. Single data string, so we merge the 3 TTLs
-      // into one TriG string with all prefixes hoisted.
-      // ============================================================
-      if (engine === 'wasm') {
-        try {
-          const mod = await import(new URL('./browser-wasm.js', document.baseURI).href);
-          if (typeof mod.setFactoidalWasmUrl === 'function') {
-            mod.setFactoidalWasmUrl(new URL('./factoidal.wasm.js', document.baseURI));
-          }
-          const trigData = payloadsToTriG(payloads);
-          const qT0 = performance.now();
-          const parsed = await mod.query(trigData, queryEl.value, { dataFormat: 'trig' });
-          const qMs = performance.now() - qT0;
-          finaliseStatus('Done on WASM in ' + qMs.toFixed(0) + ' ms', 'status ok');
-          renderResultsJSON(parsed);
-          const totalMs = performance.now() - runStart;
-          renderTimingBoth(totalMs, 'wasm', qMs);
-        } catch (e) {
-          finaliseStatus('WASM error: ' + (e && e.message || e), 'status err');
-          renderRawError((e && e.message ? e.message : String(e))
-                          + (e && e.stderr ? '\n\n' + e.stderr : ''));
-        }
-        cleanup();
-        return;
-      }
-
-      // ============================================================
-      // JS path: js_of_ocaml IIFE runner, multi-file via jsoo_fs_tmp.
-      // ============================================================
-      const src = await getEngineSource(engine);
-      const buf = [];
-      const origLog = console.log, origErr = console.error;
-      console.log = (...a) => buf.push(a.join(' '));
-      console.error = (...a) => buf.push(a.join(' '));
-
-      globalThis.jsoo_fs_tmp = payloads.map(p => ({ name: p.vfs, content: p.content }));
-      globalThis.process = globalThis.process || {};
-      const argv = ['node', 'factoidal'];
-      payloads.forEach(p => { argv.push('--named', p.graph + '=' + p.vfs); });
-      argv.push('-e', queryEl.value, '-o', 'json');
-      globalThis.process.argv = argv;
-
-      let exitCode = 0;
-      const origExit = globalThis.process.exit;
-      globalThis.process.exit = (n) => { exitCode = n|0; throw new Error('__exit__'); };
-
-      const qT0 = performance.now();
-      try {
-        (new Function(src))();
-      } catch (e) {
-        if (!e || e.message !== '__exit__') { buf.push('\n[demo] ' + e.message); exitCode = 1; }
-      } finally {
-        globalThis.process.exit = origExit;
-      }
-      const qMs = performance.now() - qT0;
-
-      console.log = origLog; console.error = origErr;
-      const out = buf.join('\n').replace(/\n+$/, '');
-
-      if (exitCode !== 0) {
-        finaliseStatus('JS error after ' + qMs.toFixed(0) + ' ms', 'status err');
-        renderRawError(out || '(no output, exit ' + exitCode + ')');
-        cleanup();
-        return;
-      }
-
-      const first = out.indexOf('{'), last = out.lastIndexOf('}');
-      if (first < 0 || last < first) { renderRawError(out); cleanup(); return; }
-      let parsed;
-      try { parsed = JSON.parse(out.slice(first, last + 1)); }
-      catch { renderRawError(out); cleanup(); return; }
-      finaliseStatus('Done on JS in ' + qMs.toFixed(0) + ' ms', 'status ok');
-      renderResultsJSON(parsed);
-      const totalMs = performance.now() - runStart;
-      renderTimingBoth(totalMs, 'js', qMs);
-    } catch (e) {
-      finaliseStatus('Error: ' + (e && e.message || e), 'status err');
-      renderRawError(e && e.stack || String(e));
-    } finally {
-      cleanup();
-    }
-  });
-
-})();
-</script>
+<script type="module" src="./factoidal-sparql-client.js"></script>
 
 </body>
 </html>
