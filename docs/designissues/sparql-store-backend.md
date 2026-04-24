@@ -122,12 +122,12 @@ This avoids making correctness depend on HDT-native quad support.
 For quad-aware storage, the native target should be an F*-defined HDTQ-style
 dataset backend, not an opaque external engine. See also:
 
-- [`hdtq-native-backend.md`](/home/danbri/working/sandbox/foaf25/codex/factoidal/docs/designissues/hdtq-native-backend.md)
+- [`hdtq-native-backend.md`](hdtq-native-backend.md)
 
 For the current dataset-storage focus, COTTAS should be treated as a first-class
 native target too:
 
-- [`cottas-native-backend.md`](/home/danbri/working/sandbox/foaf25/codex/factoidal/docs/designissues/cottas-native-backend.md)
+- [`cottas-native-backend.md`](cottas-native-backend.md)
 
 ## Questions To Keep In Scope
 

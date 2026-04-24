@@ -29,6 +29,8 @@ jobs:
       - name: Build
         working-directory: docs
         run: npx @11ty/eleventy --output=_site
+      - name: Check Pages link integrity
+        run: ./tests/local/check_pages_links.sh docs/_site
       - uses: actions/upload-pages-artifact@v3
         with:
           path: docs/_site

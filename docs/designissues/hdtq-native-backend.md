@@ -26,7 +26,7 @@ So the dataset backend should not depend on pretending quads are an afterthought
 
 The new module:
 
-- [`Parser.BallyhooHDTQ.fst`](/home/danbri/working/sandbox/foaf25/codex/factoidal/formal/fstar/Parser.BallyhooHDTQ.fst)
+- [`Parser.BallyhooHDTQ.fst`](https://github.com/danbri/factoidal/blob/main/formal/fstar/Parser.BallyhooHDTQ.fst)
 
 defines the native F* representation for an HDTQ-style backend.
 

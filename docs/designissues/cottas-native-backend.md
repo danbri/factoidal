@@ -38,7 +38,7 @@ That means:
 
 The current native module for that is:
 
-- [`Parser.BallyhooCOTTAS.fst`](/home/danbri/working/sandbox/foaf25/codex/factoidal/formal/fstar/Parser.BallyhooCOTTAS.fst)
+- [`Parser.BallyhooCOTTAS.fst`](https://github.com/danbri/factoidal/blob/main/formal/fstar/Parser.BallyhooCOTTAS.fst)
 
 ## Current Model
 

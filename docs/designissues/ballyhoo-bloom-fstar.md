@@ -4,7 +4,7 @@ The Bloom sidecar story is no longer only Python/runtime glue.
 
 New module:
 
-- [`Parser.BallyhooBloom.fst`](/home/danbri/working/sandbox/foaf25/codex/factoidal/formal/fstar/Parser.BallyhooBloom.fst)
+- [`Parser.BallyhooBloom.fst`](https://github.com/danbri/factoidal/blob/main/formal/fstar/Parser.BallyhooBloom.fst)
 
 Current scope:
 
