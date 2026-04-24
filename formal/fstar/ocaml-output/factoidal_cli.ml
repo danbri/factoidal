@@ -679,12 +679,17 @@ let () =
     let is_ask = match query.q_form with QF_Ask -> true | _ -> false in
     (* ASK has its own evaluator that returns bool; eval_select_query
        hardcodes QF_Ask -> [] and loses the result. *)
+    (* Route both ASK and SELECT through OWL_QueryEval wrappers so the
+       OWL.QueryRewrite rewriter runs at every entry point, not just the
+       W3C runner's. Keeps the CLI and runner paths identical at the
+       F*-visible API level. The wrappers are structurally a no-op on
+       queries without OWL-CE markers. *)
     let ask_answer =
-      if is_ask then Some (eval_ask_query query graph dataset)
+      if is_ask then Some (OWL_QueryEval.eval_ask_query_owl query graph dataset)
       else None in
     let results =
       if is_ask then []  (* suppress the select path for ASK *)
-      else eval_select_query query graph dataset in
+      else OWL_QueryEval.eval_select_query_owl query graph dataset in
 
     (* Extract variable names from query or results *)
     let vars = match query.q_form with
