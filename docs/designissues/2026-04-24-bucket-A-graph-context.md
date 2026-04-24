@@ -92,7 +92,21 @@ Then evaluate WHERE against that view. The existing `build_where_dataset`
 / `dc_default_triples` / `dc_named_graphs` helpers (for USING) are
 structurally identical — factor out and share.
 
-**Implemented in this commit.**
+**Implemented in this commit.** Two pieces:
+1. `SPARQL11.Parser.fst`: `parse_skip_from` rewritten to actually build
+   `DC_Default i` / `DC_Named i` clauses instead of discarding them; also
+   extended to handle `Tok_PNAME` (prefixed-name FROM targets) and wired
+   into the CONSTRUCT long-form body which previously had no FROM
+   parsing at all.
+2. `SPARQL11.Algebra.fst`: new `apply_query_dataset` helper (FROM /
+   FROM NAMED dataset view construction, analogous to USING in
+   `build_where_dataset`), called at the top of `eval_select_query`,
+   `eval_ask_query`, and `eval_construct_query`.
+
+Caveat: `q_dataset` is only read at the top level — sub-selects will
+apply their own `q_dataset` when `eval_subselect_fwd` (= `eval_select_query`)
+recurses. That matches §13.2 which scopes dataset clauses to the
+enclosing query form, so the behaviour is correct.
 
 ### 4. `insert-05a` / `insert-data-same-bnode` — per-mapping bnode rename
 is too broad

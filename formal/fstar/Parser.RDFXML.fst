@@ -93,18 +93,19 @@ let next_li (st : rdfxml_state) : (string * rdfxml_state) =
   let prop = String.concat "" [rdf_ns; "_"; string_of_int st.li_counter] in
   (prop, { st with li_counter = st.li_counter + 1 })
 
-(* Restore lexically-scoped fields from [outer] into [inner], keeping
-   propagating fields (bnode_counter, seen_ids, has_error) from [inner].
-   Used when returning from a nested node-element scope: li_counter,
-   namespaces, base_iri, and lang must NOT leak out of their XML scope
-   (W3C RDF/XML §7.2 / §7.3). The li_counter leak was the root cause of
-   rdf-containers-syntax-vs-schema-test004 and -test007. *)
-let restore_scope (outer inner : rdfxml_state) : rdfxml_state =
-  { inner with
-      li_counter = outer.li_counter;
-      namespaces = outer.namespaces;
-      base_iri   = outer.base_iri;
-      lang       = outer.lang; }
+(* xml:base, xml:lang and xmlns declarations are XML Information-Set
+   scoped: an xml:base on element A does not leak to element A's
+   siblings. Similarly rdf:li auto-numbering (li_counter) is scoped
+   per node-element — nesting must not corrupt a parent's counter.
+   But the RDF-level bnode_counter MUST flow across siblings so two
+   fresh-bnode requests never collide, and rdf:ID-uniqueness tracking
+   (seen_ids) is document-global. Thread those fields across; restore
+   the rest from the parent. The li_counter leak between siblings was
+   the root cause of rdf-containers-syntax-vs-schema test004 / test007. *)
+let restore_scope (parent : rdfxml_state) (child : rdfxml_state) : rdfxml_state =
+  { parent with bnode_counter = child.bnode_counter;
+                seen_ids = child.seen_ids;
+                has_error = child.has_error }
 
 
 (* ================================================================ *)
@@ -1051,15 +1052,8 @@ and build_collection_list (st : rdfxml_state) (subj : subject) (pred_iri : strin
 (* Process top-level node elements (children of rdf:RDF or root)     *)
 (* ================================================================ *)
 
-(* xml:base, xml:lang and xmlns declarations are XML Information-Set
-   scoped: an xml:base on element A does not leak to element A's
-   siblings. But the RDF-level bnode_counter MUST flow across
-   siblings so two fresh-bnode requests never collide. Thread only
-   the counter across; restore the scoping fields from the parent. *)
-let restore_scope (parent : rdfxml_state) (child : rdfxml_state) : rdfxml_state =
-  { parent with bnode_counter = child.bnode_counter;
-                seen_ids = child.seen_ids;
-                has_error = child.has_error }
+(* [restore_scope] is defined earlier in this file; see comment near
+   [reset_li_counter]. *)
 
 let rec process_node_elements (st : rdfxml_state) (nodes : list xml_node) (fuel : nat)
   : Tot process_result (decreases fuel) =

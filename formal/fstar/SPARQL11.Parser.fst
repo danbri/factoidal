@@ -2491,8 +2491,8 @@ and parse_select_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (ts 
     begin match parse_select_vars pm (fuel-1) ts'' with
     | ParseErr m -> ParseErr m
     | ParseOk sel ts3 ->
-      (* Skip FROM clauses *)
-      begin match parse_skip_from (fuel-1) ts3 with
+      (* Parse FROM / FROM NAMED clauses *)
+      begin match parse_skip_from pm (fuel-1) ts3 with
       | ParseErr m -> ParseErr m
       | ParseOk ds ts4 ->
         (* Optional WHERE keyword *)
@@ -2579,8 +2579,8 @@ and parse_ask_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (ts : t
   if fuel = 0 then ParseErr "recursion limit"
   else begin
     let ts' = parse_advance ts in  (* consume ASK *)
-    (* Skip FROM clauses *)
-    begin match parse_skip_from (fuel-1) ts' with
+    (* Parse FROM / FROM NAMED clauses *)
+    begin match parse_skip_from pm (fuel-1) ts' with
     | ParseErr m -> ParseErr m
     | ParseOk ds ts'' ->
       let ts'' = match parse_peek ts'' with Tok_WHERE -> parse_advance ts'' | _ -> ts'' in
@@ -2626,7 +2626,7 @@ and parse_construct_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (
     begin match parse_peek ts' with
     | Tok_WHERE | Tok_FROM ->
       // CONSTRUCT [FROM ...] WHERE { pattern } — shorthand form (template = pattern)
-      begin match parse_skip_from (fuel-1) ts' with
+      begin match parse_skip_from pm (fuel-1) ts' with
       | ParseErr m -> ParseErr m
       | ParseOk ds ts'' ->
         let ts'' = match parse_peek ts'' with Tok_WHERE -> parse_advance ts'' | _ -> ts'' in
@@ -2650,14 +2650,18 @@ and parse_construct_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (
             }) ts4
           end end end
     | Tok_LBRACE ->
-      // CONSTRUCT { template } WHERE { pattern } — full form
-      // Parse the template as a group graph pattern, then expect WHERE + body
+      // CONSTRUCT { template } (FROM ...)* WHERE { pattern } — full form
+      // Parse the template as a group graph pattern, optional FROM list,
+      // then WHERE + body.
       begin match parse_group_graph_pattern pm (fuel-1) ts' with
       | ParseErr m -> ParseErr m
       | ParseOk template_pat ts'' ->
+        begin match parse_skip_from pm (fuel-1) ts'' with
+        | ParseErr m -> ParseErr m
+        | ParseOk ds ts''_ds ->
         // Expect WHERE or directly a { for the body
-        let ts'' = match parse_peek ts'' with Tok_WHERE -> parse_advance ts'' | _ -> ts'' in
-        begin match parse_group_graph_pattern pm (fuel-1) ts'' with
+        let ts''_body = match parse_peek ts''_ds with Tok_WHERE -> parse_advance ts''_ds | _ -> ts''_ds in
+        begin match parse_group_graph_pattern pm (fuel-1) ts''_body with
         | ParseErr m -> ParseErr m
         | ParseOk pattern ts''' ->
           begin match parse_solution_modifier pm (fuel-1) ts''' with
@@ -2667,11 +2671,11 @@ and parse_construct_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (
             ParseOk ({
               q_base = base; q_prefixes = pm;
               q_form = QF_Construct template;
-              q_dataset = []; q_pattern = pattern;
+              q_dataset = ds; q_pattern = pattern;
               q_group_by = gb; q_having = hv;
               q_modifier = modifier; q_values = None
             }) ts4
-          end end end
+          end end end end
     | _ -> ParseErr "expected WHERE or '{' after CONSTRUCT"
     end end
 
@@ -2724,8 +2728,10 @@ and parse_select_items (pm : prefix_map) (fuel : nat) (acc : list select_item) (
          end end)
   | _ -> ParseOk (List.Tot.rev acc) ts
 
-(* Parse FROM / FROM NAMED clauses *)
-and parse_skip_from (fuel : nat) (ts : token_stream)
+(* Parse FROM / FROM NAMED clauses into a list of dataset_clause.
+   Relative IRIs on FROM tokens are already pre-resolved against the
+   query base by `resolve_relative_iri_tokens` before parsing. *)
+and parse_skip_from (pm : prefix_map) (fuel : nat) (ts : token_stream)
   : Tot (parse_result (list dataset_clause)) (decreases fuel) =
   if fuel = 0 then ParseOk [] ts
   else match parse_peek ts with
@@ -2733,15 +2739,41 @@ and parse_skip_from (fuel : nat) (ts : token_stream)
     let ts' = parse_advance ts in
     begin match parse_peek ts' with
     | Tok_NAMED ->
-      // FROM NAMED <iri> — skip the IRI
+      // FROM NAMED <iri>
       let ts'' = parse_advance ts' in
       begin match parse_peek ts'' with
-      | Tok_IRI _ | Tok_PNAME _ -> parse_skip_from (fuel-1) (parse_advance ts'')
+      | Tok_IRI i ->
+        if is_iri i then
+          (match parse_skip_from pm (fuel-1) (parse_advance ts'') with
+           | ParseErr m -> ParseErr m
+           | ParseOk rest ts''' -> ParseOk (DC_Named i :: rest) ts''')
+        else ParseErr "invalid IRI after FROM NAMED"
+      | Tok_PNAME pn ->
+        (match resolve_pname pn pm with
+         | None -> ParseErr "unresolved prefix in FROM NAMED"
+         | Some iri ->
+           if is_iri iri then
+             (match parse_skip_from pm (fuel-1) (parse_advance ts'') with
+              | ParseErr m -> ParseErr m
+              | ParseOk rest ts''' -> ParseOk (DC_Named iri :: rest) ts''')
+           else ParseErr "invalid IRI after FROM NAMED")
       | _ -> ParseErr "expected IRI after FROM NAMED"
       end
-    | Tok_IRI _ | Tok_PNAME _ ->
-      // FROM <iri> — skip the IRI
-      parse_skip_from (fuel-1) (parse_advance ts')
+    | Tok_IRI i ->
+      if is_iri i then
+        (match parse_skip_from pm (fuel-1) (parse_advance ts') with
+         | ParseErr m -> ParseErr m
+         | ParseOk rest ts'' -> ParseOk (DC_Default i :: rest) ts'')
+      else ParseErr "invalid IRI after FROM"
+    | Tok_PNAME pn ->
+      (match resolve_pname pn pm with
+       | None -> ParseErr "unresolved prefix in FROM"
+       | Some iri ->
+         if is_iri iri then
+           (match parse_skip_from pm (fuel-1) (parse_advance ts') with
+            | ParseErr m -> ParseErr m
+            | ParseOk rest ts'' -> ParseOk (DC_Default iri :: rest) ts'')
+         else ParseErr "invalid IRI after FROM")
     | _ -> ParseErr "expected IRI or NAMED after FROM"
     end
   | _ -> ParseOk [] ts

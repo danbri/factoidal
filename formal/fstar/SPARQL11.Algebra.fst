@@ -3184,11 +3184,85 @@ let rec rewrite_query_bnodes_pattern (p : group_graph_pattern)
     GP_PropertyPath (rewrite_query_bnode_subject s) pp (rewrite_query_bnode_term o)
   | _ -> p
 
+(* ================================================================ *)
+(* Top-level dataset-clause application (FROM / FROM NAMED, §13.2). *)
+(*                                                                   *)
+(* If q.q_dataset is non-empty the query's dataset is REPLACED by    *)
+(* the dataset described by the FROM / FROM NAMED clauses, as        *)
+(* resolved against the ambient named-graph store `ds.ds_named`:     *)
+(*                                                                   *)
+(*   default = union of the triples of every DC_Default i            *)
+(*             (each i looked up in ds.ds_named; missing → empty)    *)
+(*   named   = [ { i, lookup i ds.ds_named } | DC_Named i ]          *)
+(*                                                                   *)
+(* When q.q_dataset is empty the original (g, ds) pair is used       *)
+(* verbatim.                                                         *)
+(*                                                                   *)
+(* Returns a (new default graph, new dataset) pair so the existing   *)
+(* `eval_pattern` signature stays unchanged. Structurally mirrors    *)
+(* the USING branch of `build_where_dataset` (Part 19d).             *)
+(* ================================================================ *)
+
+// Collect DC_Default / DC_Named iris from a query's dataset list.
+let rec q_dataset_default_iris (dcs : list dataset_clause)
+  : Tot (list wf_iri) (decreases dcs) =
+  match dcs with
+  | [] -> []
+  | DC_Default i :: rest -> i :: q_dataset_default_iris rest
+  | DC_Named _   :: rest -> q_dataset_default_iris rest
+
+let rec q_dataset_named_iris (dcs : list dataset_clause)
+  : Tot (list wf_iri) (decreases dcs) =
+  match dcs with
+  | [] -> []
+  | DC_Named i   :: rest -> i :: q_dataset_named_iris rest
+  | DC_Default _ :: rest -> q_dataset_named_iris rest
+
+// Union all named graphs whose name IRI appears in `iris` into one rdf_graph.
+// Missing IRIs contribute empty. Duplicated later by `build_where_dataset`'s
+// helper (Part 19d); defined separately here so the query-side evaluator
+// does not depend on update-side code.
+let rec q_union_named_graphs_by_iri (iris : list wf_iri) (named : list named_graph)
+  : Tot rdf_graph (decreases iris) =
+  match iris with
+  | [] -> empty_graph
+  | i :: rest ->
+    let g = (match lookup_named_graph i named with
+             | Some g -> g
+             | None -> empty_graph) in
+    graph_union g (q_union_named_graphs_by_iri rest named)
+
+let rec q_named_graphs_by_iri (iris : list wf_iri) (named : list named_graph)
+  : Tot (list named_graph) (decreases iris) =
+  match iris with
+  | [] -> []
+  | i :: rest ->
+    let g = (match lookup_named_graph i named with
+             | Some g -> g
+             | None -> empty_graph) in
+    { ng_name = i; ng_graph = g } :: q_named_graphs_by_iri rest named
+
+// Apply q.q_dataset (FROM / FROM NAMED) on top of the caller-supplied
+// (g, ds) pair. When q_dataset is empty this returns the inputs
+// unchanged; otherwise the returned dataset replaces both the default
+// graph and the named-graph set per §13.2.
+let apply_query_dataset (dcs : list dataset_clause)
+  (g : rdf_graph) (ds : rdf_dataset) : rdf_graph & rdf_dataset =
+  match dcs with
+  | [] -> (g, ds)
+  | _ ->
+    let def_iris = q_dataset_default_iris dcs in
+    let nam_iris = q_dataset_named_iris dcs in
+    let new_def = q_union_named_graphs_by_iri def_iris ds.ds_named in
+    let new_named = q_named_graphs_by_iri nam_iris ds.ds_named in
+    (new_def, { ds_default = new_def; ds_named = new_named })
+
 (* Top-level query evaluation for SELECT queries — CONCRETE.
    Applies: pattern evaluation → SELECT expressions → ORDER BY →
            projection → DISTINCT/REDUCED → OFFSET/LIMIT.
    GROUP BY, aggregation, and HAVING are skipped for now (assume val dependencies). *)
 let eval_select_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : solution_sequence =
+  let (g, ds) = apply_query_dataset q.q_dataset g ds in
   let q = { q with q_pattern = rewrite_query_bnodes_pattern q.q_pattern } in
   match q.q_form with
   | QF_Select sel ->
@@ -3274,6 +3348,7 @@ let eval_select_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : solution_
   | QF_Describe _ -> []
 
 let eval_ask_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : bool =
+  let (g, ds) = apply_query_dataset q.q_dataset g ds in
   match q.q_form with
   | QF_Ask ->
     let omega0 = eval_pattern q.q_pattern g ds in
@@ -3379,6 +3454,7 @@ let dedup_triples (ts : list triple) : list triple =
   List.Tot.rev acc
 
 let eval_construct_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : list triple =
+  let (g, ds) = apply_query_dataset q.q_dataset g ds in
   match q.q_form with
   | QF_Construct template ->
     let omega0 = eval_pattern q.q_pattern g ds in
