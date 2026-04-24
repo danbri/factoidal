@@ -1576,6 +1576,88 @@ let owl_rule_named_sameAs_to_equivClass (g : rdf_graph) : rdf_graph=
               else acc)
          | (uu___, uu___1) -> acc
        else acc) g g
+let xsd_long : wf_iri= "http://www.w3.org/2001/XMLSchema#long"
+let xsd_int : wf_iri= "http://www.w3.org/2001/XMLSchema#int"
+let xsd_short : wf_iri= "http://www.w3.org/2001/XMLSchema#short"
+let xsd_byte : wf_iri= "http://www.w3.org/2001/XMLSchema#byte"
+let xsd_positiveInteger : wf_iri=
+  "http://www.w3.org/2001/XMLSchema#positiveInteger"
+let xsd_unsignedLong : wf_iri=
+  "http://www.w3.org/2001/XMLSchema#unsignedLong"
+let xsd_unsignedInt : wf_iri= "http://www.w3.org/2001/XMLSchema#unsignedInt"
+let xsd_unsignedShort : wf_iri=
+  "http://www.w3.org/2001/XMLSchema#unsignedShort"
+let xsd_unsignedByte : wf_iri=
+  "http://www.w3.org/2001/XMLSchema#unsignedByte"
+let xsd_nonPositiveInteger : wf_iri=
+  "http://www.w3.org/2001/XMLSchema#nonPositiveInteger"
+let xsd_negativeInteger : wf_iri=
+  "http://www.w3.org/2001/XMLSchema#negativeInteger"
+let xsd_ns_prefix : Prims.string= "http://www.w3.org/2001/XMLSchema#"
+let iri_in_xsd_ns (i : wf_iri) : Prims.bool=
+  let plen = FStar_String.strlen xsd_ns_prefix in
+  let ilen = FStar_String.strlen i in
+  if ilen < plen
+  then false
+  else (FStar_String.sub i Prims.int_zero plen) = xsd_ns_prefix
+let term_in_xsd_ns (t : rdf_term) : Prims.bool=
+  match t with | T_IRI i -> iri_in_xsd_ns i | uu___ -> false
+let subject_in_xsd_ns (s : subject) : Prims.bool=
+  match s with | S_IRI i -> iri_in_xsd_ns i | uu___ -> false
+let triple_mentions_xsd (t : triple) : Prims.bool=
+  ((subject_in_xsd_ns t.s) || (iri_in_xsd_ns t.p)) || (term_in_xsd_ns t.o)
+let graph_mentions_xsd_iri (g : rdf_graph) : Prims.bool=
+  FStar_List_Tot_Base.existsb triple_mentions_xsd g
+let xsd_hierarchy_edges : (wf_iri * wf_iri) Prims.list=
+  [(xsd_byte, xsd_short);
+  (xsd_short, xsd_int);
+  (xsd_int, xsd_long);
+  (xsd_long, xsd_integer);
+  (xsd_positiveInteger, xsd_nonNegativeInteger);
+  (xsd_unsignedByte, xsd_unsignedShort);
+  (xsd_unsignedShort, xsd_unsignedInt);
+  (xsd_unsignedInt, xsd_unsignedLong);
+  (xsd_unsignedLong, xsd_nonNegativeInteger);
+  (xsd_nonNegativeInteger, xsd_integer);
+  (xsd_negativeInteger, xsd_nonPositiveInteger);
+  (xsd_nonPositiveInteger, xsd_integer);
+  (xsd_integer, xsd_decimal);
+  (xsd_decimal, xsd_double)]
+let xsd_all_datatypes : wf_iri Prims.list=
+  [xsd_string;
+  xsd_boolean;
+  xsd_double;
+  xsd_decimal;
+  xsd_integer;
+  xsd_long;
+  xsd_int;
+  xsd_short;
+  xsd_byte;
+  xsd_nonNegativeInteger;
+  xsd_positiveInteger;
+  xsd_unsignedLong;
+  xsd_unsignedInt;
+  xsd_unsignedShort;
+  xsd_unsignedByte;
+  xsd_nonPositiveInteger;
+  xsd_negativeInteger]
+let owl_rule_xsd_datatype_axioms (g : rdf_graph) : rdf_graph=
+  if Prims.op_Negation (graph_mentions_xsd_iri g)
+  then g
+  else
+    (let sub_triples =
+       FStar_List_Tot_Base.map
+         (fun pair ->
+            let uu___1 = pair in
+            match uu___1 with
+            | (sub_i, sup_i) ->
+                { s = (S_IRI sub_i); p = rdfs_subClassOf; o = (T_IRI sup_i) })
+         xsd_hierarchy_edges in
+     let dt_triples =
+       FStar_List_Tot_Base.map
+         (fun i -> { s = (S_IRI i); p = rdf_type; o = (T_IRI rdfs_Datatype) })
+         xsd_all_datatypes in
+     add_triples_if_new (add_triples_if_new g sub_triples) dt_triples)
 let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
   let g1 = owl_rule_equivalent_class g in
   let g2 = owl_rule_equivalent_property g1 in
@@ -1604,16 +1686,18 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
   let g21 = owl_rule_scm_cls_restriction g20 in
   let g22 = owl_rule_property_chain_2 g21 in
   let g23 = owl_rule_chain_to_transitive g22 in
-  let g24 = owl_rule_named_sameAs_to_equivClass g23 in g24
+  let g24 = owl_rule_named_sameAs_to_equivClass g23 in
+  let g25 = owl_rule_xsd_datatype_axioms g24 in g25
 let rec owl_rl_closure (g : rdf_graph) (fuel : Prims.nat) : rdf_graph=
   match fuel with
   | uu___ when uu___ = Prims.int_zero -> g
-  | n ->
+  | uu___ ->
+      let next_fuel = fuel - Prims.int_one in
       let g_owl = owl_rl_closure_step g in
       let g_rdfs = rdfs_closure_step g_owl in
       if (graph_len g_rdfs) = (graph_len g)
       then g
-      else owl_rl_closure g_rdfs (n - Prims.int_one)
+      else owl_rl_closure g_rdfs next_fuel
 let owl_thing_subject_iris (g : rdf_graph) : wf_iri Prims.list=
   FStar_List_Tot_Base.fold_left
     (fun acc t ->
