@@ -1826,6 +1826,18 @@ assume val eval_subselect_fwd : query -> rdf_graph -> rdf_dataset -> solution_se
 type path_result_fwd = list (rdf_term * rdf_term)
 assume val eval_property_path_fwd : property_path -> rdf_graph -> path_result_fwd
 
+(* SPARQL SERVICE endpoint resolver — issue #57.
+   Hook used by GP_Service evaluation. Given the absolute IRI of a
+   federation endpoint, return Some store if the runner has registered
+   an interceptor (W3C tests bind unreachable endpoints like
+   <http://example.org/sparql> to a local TTL graph via qt:serviceData),
+   else None. The OCaml side patches this to consult a global
+   hashtable populated by the test runner; live HTTP I/O is a later
+   phase (would require Dv-effecting evaluator).
+   Pure from F*'s perspective: each call sees the same snapshot
+   during one query evaluation. *)
+assume val service_endpoint_lookup : wf_iri -> option graph_store
+
 (* Convert property path results to solution mappings by matching against
    subject/object pattern terms *)
 let path_result_to_solutions (ps : pattern_subject) (pt : pattern_term)
@@ -1966,9 +1978,22 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store) (dss : r
          dss.dss_named
      | _ -> eval_pattern_store p' gs dss)  (* Other pattern terms: fallback to current graph *)
 
-  | GP_Service _ _ _ ->
-    (* SERVICE: remote execution, not supported *)
-    []
+  | GP_Service iri p' silent ->
+    (* SPARQL 1.1 federated query — issue #57.
+       The runner registers (endpoint_iri, graph_store) pairs via the
+       service_endpoint_lookup hook; we evaluate the inner pattern
+       against the registered remote graph. Live HTTP federation is
+       deferred (would require Dv-effecting evaluator). For SILENT,
+       SPARQL spec says "produce a solution mapping with no bindings"
+       on error, which under our solution_sequence type is a list with
+       one empty mapping; for non-SILENT the spec says error, but our
+       Tot type cannot signal that, so we return [] (empty bindings)
+       in both cases as a sentinel. *)
+    (match service_endpoint_lookup iri with
+     | Some remote_gs -> eval_pattern_store p' remote_gs dss
+     | None ->
+       if silent then [[]]  (* unbound but not erroring *)
+       else [])
 
   | GP_SubSelect q ->
     (* Sub-SELECT: recursively evaluate the inner SELECT query *)

@@ -9,6 +9,7 @@ tracking when it can be eliminated.**
 
 | File | Issue | Category | Target |
 |------|-------|----------|--------|
+| `57_service_client_bind.sh` | [#57](https://github.com/danbri/factoidal/issues/57) | assume-val stubs | SPARQL11_Algebra.ml |
 | `62_forward_ref_wiring.sh` | [#62](https://github.com/danbri/factoidal/issues/62) | Forward-ref wiring | SPARQL11_Algebra.ml |
 | `63_regex_hash_uuid_stubs.sh` | [#63](https://github.com/danbri/factoidal/issues/63) | assume-val stubs | SPARQL11_Algebra.ml |
 | `64_sparql_parser_escape_stubs.sh` | [#64](https://github.com/danbri/factoidal/issues/64) | assume-val stubs | SPARQL11_Parser.ml |
