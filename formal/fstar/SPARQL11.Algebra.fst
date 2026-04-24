@@ -2069,8 +2069,8 @@ let eval_xsd_cast (v : eval_result) (target_type : string) (full_iri : string) :
               match parse_int_string lex with
               | Some n -> ER_Dec (string_of_int n ^ ".0")
               | None -> ER_Error))
-    else if target_type = "float" || target_type = "double" then
-      // Boolean -> double/float: true="1.0E0", false="0.0E0"
+    else if target_type = "double" then
+      // Boolean -> double: true="1.0E0", false="0.0E0"
       (match v with
        | ER_Bool b -> ER_Dbl (if b then "1.0E0" else "0.0E0")
        | ER_Num n -> ER_Dbl (string_of_int n ^ ".0E0")
@@ -2090,6 +2090,35 @@ let eval_xsd_cast (v : eval_result) (target_type : string) (full_iri : string) :
             | None ->
               match parse_int_string lex with
               | Some n -> ER_Dbl (string_of_int n ^ ".0E0")
+              | None -> ER_Error))
+    else if target_type = "float" then
+      // xsd:float has no dedicated ER_* variant (eval uses ER_Dbl for both
+      // float and double in arithmetic). The cast preserves input lexical
+      // form and only rewrites the datatype tag — so we emit an explicit
+      // T_Literal with xsd_float rather than routing through ER_Dbl which
+      // always renders as xsd:double. This loses downstream arithmetic
+      // promotion, which is correct per SPARQL §17.4.2: casts return a
+      // new typed literal, not an ER_Num/ER_Dbl.
+      let mk_float (s : string) : eval_result =
+        ER_Term (T_Literal { lexical_form = s; datatype = xsd_float; lang_tag = None })
+      in
+      (match v with
+       | ER_Bool b -> mk_float (if b then "1.0E0" else "0.0E0")
+       | ER_Num n -> mk_float (string_of_int n ^ ".0E0")
+       | ER_Dbl _ -> mk_float lex
+       | ER_Dec _ ->
+         (match parse_to_scaled lex with
+          | Some _ -> mk_float lex
+          | None -> ER_Error)
+       | _ ->
+         (match parse_double_to_scaled lex with
+          | Some _ -> mk_float lex
+          | None ->
+            match parse_to_scaled lex with
+            | Some _ -> mk_float lex
+            | None ->
+              match parse_int_string lex with
+              | Some n -> mk_float (string_of_int n ^ ".0E0")
               | None -> ER_Error))
     else if target_type = "boolean" then
       // XSD boolean casting: numeric 0/0.0/0E0/NaN -> false, nonzero -> true

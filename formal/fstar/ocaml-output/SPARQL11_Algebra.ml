@@ -3292,7 +3292,7 @@ let eval_xsd_cast (v : eval_result) (target_type : Prims.string)
                                 (Prims.strcat (Prims.string_of_int n) ".0")
                           | FStar_Pervasives_Native.None -> ER_Error))))
         else
-          if (target_type = "float") || (target_type = "double")
+          if target_type = "double"
           then
             (match v with
              | ER_Bool b -> ER_Dbl (if b then "1.0E0" else "0.0E0")
@@ -3317,84 +3317,121 @@ let eval_xsd_cast (v : eval_result) (target_type : Prims.string)
                                      ".0E0")
                             | FStar_Pervasives_Native.None -> ER_Error))))
           else
-            if target_type = "boolean"
+            if target_type = "float"
             then
-              (match v with
-               | ER_Num n -> ER_Bool (n <> Prims.int_zero)
+              (let mk_float s =
+                 ER_Term
+                   (RDF_Graph_Executable.T_Literal
+                      {
+                        RDF_Graph_Executable.lexical_form = s;
+                        RDF_Graph_Executable.datatype = xsd_float;
+                        RDF_Graph_Executable.lang_tag =
+                          FStar_Pervasives_Native.None
+                      }) in
+               match v with
+               | ER_Bool b -> mk_float (if b then "1.0E0" else "0.0E0")
+               | ER_Num n ->
+                   mk_float (Prims.strcat (Prims.string_of_int n) ".0E0")
+               | ER_Dbl uu___3 -> mk_float lex
                | ER_Dec uu___3 ->
                    (match parse_to_scaled lex with
-                    | FStar_Pervasives_Native.Some (sv, uu___4) ->
-                        ER_Bool (sv <> Prims.int_zero)
-                    | FStar_Pervasives_Native.None ->
-                        (match parse_double_to_scaled lex with
-                         | FStar_Pervasives_Native.Some (sv, uu___4) ->
-                             ER_Bool (sv <> Prims.int_zero)
-                         | FStar_Pervasives_Native.None -> ER_Error))
-               | ER_Dbl uu___3 ->
-                   (match parse_to_scaled lex with
-                    | FStar_Pervasives_Native.Some (sv, uu___4) ->
-                        ER_Bool (sv <> Prims.int_zero)
-                    | FStar_Pervasives_Native.None ->
-                        (match parse_double_to_scaled lex with
-                         | FStar_Pervasives_Native.Some (sv, uu___4) ->
-                             ER_Bool (sv <> Prims.int_zero)
-                         | FStar_Pervasives_Native.None -> ER_Error))
-               | ER_Bool b -> ER_Bool b
+                    | FStar_Pervasives_Native.Some uu___4 -> mk_float lex
+                    | FStar_Pervasives_Native.None -> ER_Error)
                | uu___3 ->
-                   if (lex = "true") || (lex = "1")
-                   then ER_Bool true
-                   else
-                     if (lex = "false") || (lex = "0")
-                     then ER_Bool false
-                     else
-                       (match parse_int_string lex with
-                        | FStar_Pervasives_Native.Some n ->
-                            ER_Bool (n <> Prims.int_zero)
-                        | FStar_Pervasives_Native.None ->
-                            (match parse_to_scaled lex with
-                             | FStar_Pervasives_Native.Some (sv, uu___6) ->
-                                 ER_Bool (sv <> Prims.int_zero)
-                             | FStar_Pervasives_Native.None -> ER_Error)))
+                   (match parse_double_to_scaled lex with
+                    | FStar_Pervasives_Native.Some uu___4 -> mk_float lex
+                    | FStar_Pervasives_Native.None ->
+                        (match parse_to_scaled lex with
+                         | FStar_Pervasives_Native.Some uu___4 ->
+                             mk_float lex
+                         | FStar_Pervasives_Native.None ->
+                             (match parse_int_string lex with
+                              | FStar_Pervasives_Native.Some n ->
+                                  mk_float
+                                    (Prims.strcat (Prims.string_of_int n)
+                                       ".0E0")
+                              | FStar_Pervasives_Native.None -> ER_Error))))
             else
-              if target_type = "string"
+              if target_type = "boolean"
               then
                 (match v with
-                 | ER_Num uu___4 -> er_string lex
+                 | ER_Num n -> ER_Bool (n <> Prims.int_zero)
                  | ER_Dec uu___4 ->
                      (match parse_to_scaled lex with
-                      | FStar_Pervasives_Native.Some (sv, sc) ->
-                          let divisor = pow10 sc in
-                          if
-                            (divisor > Prims.int_zero) &&
-                              (((mod) sv divisor) = Prims.int_zero)
-                          then er_string (Prims.string_of_int (sv / divisor))
-                          else er_string lex
-                      | FStar_Pervasives_Native.None -> er_string lex)
+                      | FStar_Pervasives_Native.Some (sv, uu___5) ->
+                          ER_Bool (sv <> Prims.int_zero)
+                      | FStar_Pervasives_Native.None ->
+                          (match parse_double_to_scaled lex with
+                           | FStar_Pervasives_Native.Some (sv, uu___5) ->
+                               ER_Bool (sv <> Prims.int_zero)
+                           | FStar_Pervasives_Native.None -> ER_Error))
                  | ER_Dbl uu___4 ->
-                     (match parse_double_to_scaled lex with
-                      | FStar_Pervasives_Native.Some (sv, sc) ->
-                          let divisor = pow10 sc in
-                          if
-                            (divisor > Prims.int_zero) &&
-                              (((mod) sv divisor) = Prims.int_zero)
-                          then er_string (Prims.string_of_int (sv / divisor))
-                          else er_string lex
-                      | FStar_Pervasives_Native.None -> er_string lex)
-                 | uu___4 -> er_string lex)
+                     (match parse_to_scaled lex with
+                      | FStar_Pervasives_Native.Some (sv, uu___5) ->
+                          ER_Bool (sv <> Prims.int_zero)
+                      | FStar_Pervasives_Native.None ->
+                          (match parse_double_to_scaled lex with
+                           | FStar_Pervasives_Native.Some (sv, uu___5) ->
+                               ER_Bool (sv <> Prims.int_zero)
+                           | FStar_Pervasives_Native.None -> ER_Error))
+                 | ER_Bool b -> ER_Bool b
+                 | uu___4 ->
+                     if (lex = "true") || (lex = "1")
+                     then ER_Bool true
+                     else
+                       if (lex = "false") || (lex = "0")
+                       then ER_Bool false
+                       else
+                         (match parse_int_string lex with
+                          | FStar_Pervasives_Native.Some n ->
+                              ER_Bool (n <> Prims.int_zero)
+                          | FStar_Pervasives_Native.None ->
+                              (match parse_to_scaled lex with
+                               | FStar_Pervasives_Native.Some (sv, uu___7) ->
+                                   ER_Bool (sv <> Prims.int_zero)
+                               | FStar_Pervasives_Native.None -> ER_Error)))
               else
-                if
-                  (RDF_Graph_Executable.is_iri full_iri) &&
-                    (full_iri <> RDF_Graph_Executable.rdf_lang_string)
+                if target_type = "string"
                 then
-                  ER_Term
-                    (RDF_Graph_Executable.T_Literal
-                       {
-                         RDF_Graph_Executable.lexical_form = lex;
-                         RDF_Graph_Executable.datatype = full_iri;
-                         RDF_Graph_Executable.lang_tag =
-                           FStar_Pervasives_Native.None
-                       })
-                else ER_Error
+                  (match v with
+                   | ER_Num uu___5 -> er_string lex
+                   | ER_Dec uu___5 ->
+                       (match parse_to_scaled lex with
+                        | FStar_Pervasives_Native.Some (sv, sc) ->
+                            let divisor = pow10 sc in
+                            if
+                              (divisor > Prims.int_zero) &&
+                                (((mod) sv divisor) = Prims.int_zero)
+                            then
+                              er_string (Prims.string_of_int (sv / divisor))
+                            else er_string lex
+                        | FStar_Pervasives_Native.None -> er_string lex)
+                   | ER_Dbl uu___5 ->
+                       (match parse_double_to_scaled lex with
+                        | FStar_Pervasives_Native.Some (sv, sc) ->
+                            let divisor = pow10 sc in
+                            if
+                              (divisor > Prims.int_zero) &&
+                                (((mod) sv divisor) = Prims.int_zero)
+                            then
+                              er_string (Prims.string_of_int (sv / divisor))
+                            else er_string lex
+                        | FStar_Pervasives_Native.None -> er_string lex)
+                   | uu___5 -> er_string lex)
+                else
+                  if
+                    (RDF_Graph_Executable.is_iri full_iri) &&
+                      (full_iri <> RDF_Graph_Executable.rdf_lang_string)
+                  then
+                    ER_Term
+                      (RDF_Graph_Executable.T_Literal
+                         {
+                           RDF_Graph_Executable.lexical_form = lex;
+                           RDF_Graph_Executable.datatype = full_iri;
+                           RDF_Graph_Executable.lang_tag =
+                             FStar_Pervasives_Native.None
+                         })
+                  else ER_Error
 let current_base_iri_ref : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option ref =
   ref FStar_Pervasives_Native.None
 

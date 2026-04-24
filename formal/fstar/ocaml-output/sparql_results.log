@@ -113,29 +113,17 @@ Test base: tests/w3c/sparql/sparql11
       UNMATCHED: ?a=<http://example.org/s03>, ?v="-10.2E3"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="-1.02E4"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/s04>, ?v="+33.3300"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="3.333E1"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/s05>, ?v="0.0"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="0E0"^^<http://www.w3.org/2001/XMLSchema#float>
-      UNMATCHED: ?a=<http://example.org/s06>, ?v="0"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="0"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/s07>, ?v="0E1"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="0E0"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/s08>, ?v="1.5"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="1.5E0"^^<http://www.w3.org/2001/XMLSchema#float>
-      UNMATCHED: ?a=<http://example.org/s09>, ?v="1"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="1"^^<http://www.w3.org/2001/XMLSchema#float>
-      UNMATCHED: ?a=<http://example.org/s10>, ?v="1E0"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="1E0"^^<http://www.w3.org/2001/XMLSchema#float>
-      UNMATCHED: ?a=<http://example.org/s11>, ?v="13"^^<http://www.w3.org/2001/XMLSchema#string>, ?float="13"^^<http://www.w3.org/2001/XMLSchema#float>
-      UNMATCHED: ?a=<http://example.org/b01>, ?v="true"^^<http://www.w3.org/2001/XMLSchema#boolean>, ?float="1.0E0"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/b02>, ?v="false"^^<http://www.w3.org/2001/XMLSchema#boolean>, ?float="0E0"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/b03>, ?v="0"^^<http://www.w3.org/2001/XMLSchema#boolean>, ?float="0E0"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/n01>, ?v="0"^^<http://www.w3.org/2001/XMLSchema#integer>, ?float="0"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/n02>, ?v="1"^^<http://www.w3.org/2001/XMLSchema#integer>, ?float="1.0"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/n03>, ?v="-1"^^<http://www.w3.org/2001/XMLSchema#integer>, ?float="-1.0"^^<http://www.w3.org/2001/XMLSchema#float>
-      UNMATCHED: ?a=<http://example.org/n04>, ?v="0.0"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="0.0"^^<http://www.w3.org/2001/XMLSchema#float>
-      UNMATCHED: ?a=<http://example.org/n05>, ?v="1.0"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="1.0"^^<http://www.w3.org/2001/XMLSchema#float>
-      UNMATCHED: ?a=<http://example.org/n06>, ?v="-1.0"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="-1.0"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/n07>, ?v="0E1"^^<http://www.w3.org/2001/XMLSchema#double>, ?float="0.0"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/n08>, ?v="1E0"^^<http://www.w3.org/2001/XMLSchema#double>, ?float="1.0"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/n09>, ?v="0E1"^^<http://www.w3.org/2001/XMLSchema#float>, ?float="0.0"^^<http://www.w3.org/2001/XMLSchema#float>
       UNMATCHED: ?a=<http://example.org/n10>, ?v="1E0"^^<http://www.w3.org/2001/XMLSchema#float>, ?float="1.0"^^<http://www.w3.org/2001/XMLSchema#float>
-      UNMATCHED: ?a=<http://example.org/n11>, ?v="1.25"^^<http://www.w3.org/2001/XMLSchema#float>, ?float="1.25"^^<http://www.w3.org/2001/XMLSchema#float>
-      UNMATCHED: ?a=<http://example.org/n12>, ?v="-7.875"^^<http://www.w3.org/2001/XMLSchema#float>, ?float="-7.875"^^<http://www.w3.org/2001/XMLSchema#float>
-      UNMATCHED: ?a=<http://example.org/n13>, ?v="2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="2.5"^^<http://www.w3.org/2001/XMLSchema#float>
-      UNMATCHED: ?a=<http://example.org/n14>, ?v="-2.5"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?float="-2.5"^^<http://www.w3.org/2001/XMLSchema#float>
   PASS: xsd:double cast
   FAIL: xsd:decimal cast — Results mismatch: expected 31 rows, got 31
       UNMATCHED: ?a=<http://example.org/n09>, ?v="0.0"^^<http://www.w3.org/2001/XMLSchema#float>, ?decimal="0.0"^^<http://www.w3.org/2001/XMLSchema#decimal>
@@ -277,9 +265,9 @@ Test base: tests/w3c/sparql/sparql11
   FAIL: parent query with (hasChild some Female) restriction — Results mismatch: expected 1 rows, got 0
       UNMATCHED: ?parent=<http://example.org/test#Dudley> (17ms)
   FAIL: parent query with (hasChild min 1 Female) restriction — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?parent=<http://example.org/test#Dudley> (18ms)
+      UNMATCHED: ?parent=<http://example.org/test#Dudley> (17ms)
   FAIL: parent query with (hasChild max 1 Female) restriction — Results mismatch: expected 1 rows, got 0
-      UNMATCHED: ?parent=<http://example.org/test#Dudley> (18ms)
+      UNMATCHED: ?parent=<http://example.org/test#Dudley> (17ms)
   FAIL: parent query with (hasChild exactly 1 Female) restriction — Results mismatch: expected 1 rows, got 0
       UNMATCHED: ?parent=<http://example.org/test#Dudley> (17ms)
   FAIL: subclass query with (hasChild some Thing) restriction — Results mismatch: expected 4 rows, got 7 (18ms)
@@ -432,7 +420,7 @@ Test base: tests/w3c/sparql/sparql11
   PASS: UUID() pattern match
   PASS: UUID() per binding
   PASS: STRUUID() pattern match
-  [suite time: 0.0s]
+  [suite time: 0.1s]
 
 --- grouping ---
   PASS: Group-1
