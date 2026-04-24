@@ -45,21 +45,15 @@ let rec trig_find_named_graph (name : iri) (ngs : list named_graph)
       | Some (before, g, after) -> Some (ng :: before, g, after)
       | None -> None
 
-(** Add a triple to the appropriate graph in the dataset.
-
-    PERF: uses [graph_add_unchecked] (O(1) prepend, no dedup).
-    Bulk TriG parsing produces one quad at a time from raw input —
-    set semantics can be deferred to the SPARQL evaluator. This is the
-    fix for the 331 MB UK Parliament TriG O(N^2) load.
-    See docs/designissues/2026-04-24-graph-add-unchecked-perf.md. *)
+(** Add a triple to the appropriate graph in the dataset *)
 let trig_dataset_add (ds : rdf_dataset) (t : triple) (graph_name : option iri) : rdf_dataset =
   match graph_name with
   | None ->
-    { ds with ds_default = graph_add_unchecked t ds.ds_default }
+    { ds with ds_default = graph_add t ds.ds_default }
   | Some name ->
     match trig_find_named_graph name ds.ds_named with
     | Some (before, existing_g, after) ->
-      let updated_g = graph_add_unchecked t existing_g in
+      let updated_g = graph_add t existing_g in
       let updated_ng : named_graph = { ng_name = name; ng_graph = updated_g } in
       { ds with ds_named = List.Tot.append before (List.Tot.append [updated_ng] after) }
     | None ->
