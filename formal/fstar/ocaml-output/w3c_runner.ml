@@ -535,12 +535,17 @@ let row_to_verbose_string row =
 let parse_numeric_value s =
   try Some (float_of_string s) with _ -> None
 
-(* Check if two xsd:double or xsd:decimal values are numerically equal *)
+(* Check if two xsd:double / xsd:float / xsd:decimal / xsd:integer values
+   are numerically equal. Result-comparison harness only — no RDF semantics
+   live here. xsd:float included because the W3C cast suite expects ARQ-style
+   canonical lex (e.g. "0E1"^^xsd:float == "0.0"^^xsd:float by value). *)
 let numeric_literal_equal l1 l2 =
   let xsd_double = "http://www.w3.org/2001/XMLSchema#double" in
+  let xsd_float = "http://www.w3.org/2001/XMLSchema#float" in
   let xsd_decimal = "http://www.w3.org/2001/XMLSchema#decimal" in
   let xsd_integer = "http://www.w3.org/2001/XMLSchema#integer" in
-  let is_numeric dt = dt = xsd_double || dt = xsd_decimal || dt = xsd_integer in
+  let is_numeric dt =
+    dt = xsd_double || dt = xsd_float || dt = xsd_decimal || dt = xsd_integer in
   if is_numeric l1.datatype && is_numeric l2.datatype then
     match parse_numeric_value l1.lexical_form, parse_numeric_value l2.lexical_form with
     | Some v1, Some v2 -> v1 = v2
@@ -1353,6 +1358,15 @@ let run_test tc =
      | Sparql_unsupported msg -> Unsupported_feature msg
      | Sparql_parse_error msg -> Fail (Printf.sprintf "SPARQL parse: %s" msg)
      | Failure msg -> Fail (Printf.sprintf "Runtime: %s" msg))
+  | ("ProtocolTest" | "mf:ProtocolTest"
+     | "GraphStoreProtocolTest" | "mf:GraphStoreProtocolTest"
+     | "ServiceDescriptionTest" | "mf:ServiceDescriptionTest") as t ->
+    (* SPARQL Protocol / Graph Store HTTP / Service Description tests are
+       in-scope for factoidal but not yet wired into the runner — see
+       docs/designissues/2026-04-25-protocol-http-rdf-update-scoping.md
+       (commit 3db0591). They count as FAILs, not SKIPs, so the
+       conformance score reflects the gap honestly. *)
+    Fail (Printf.sprintf "Test type %s not yet dispatched (Phase 0 missing)" t)
   | other ->
     Skip (Printf.sprintf "Unknown test type: %s" other)
 
