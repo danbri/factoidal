@@ -785,7 +785,12 @@ let owl_rule_equivalent_class (g : rdf_graph) : rdf_graph=
                } in
              let t2 =
                { s = d_subj; p = rdfs_subClassOf; o = (subject_to_term t.s) } in
-             add_triple_if_new (add_triple_if_new acc t1) t2
+             (match ((t.s), d_subj) with
+              | (S_IRI uu___, S_IRI uu___1) ->
+                  add_triple_if_new (add_triple_if_new acc t1) t2
+              | (S_IRI uu___, S_BNode uu___1) -> add_triple_if_new acc t1
+              | (S_BNode uu___, S_IRI uu___1) -> add_triple_if_new acc t2
+              | (S_BNode uu___, S_BNode uu___1) -> acc)
          | FStar_Pervasives_Native.None -> acc
        else acc) g g
 let owl_rule_equivalent_property (g : rdf_graph) : rdf_graph=
@@ -1003,6 +1008,148 @@ let owl_rule_inverse_functional (g : rdf_graph) : rdf_graph=
                    { s = (t1.s); p = owl_sameAs; o = (subject_to_term z) } in
                  add_triple_if_new acc2 new_t)) acc zs
        else acc) g g
+let owl_Restriction_iri : wf_iri= "http://www.w3.org/2002/07/owl#Restriction"
+let owl_onProperty_iri : wf_iri= "http://www.w3.org/2002/07/owl#onProperty"
+let owl_someValuesFrom_iri : wf_iri=
+  "http://www.w3.org/2002/07/owl#someValuesFrom"
+let owl_minCardinality_iri : wf_iri=
+  "http://www.w3.org/2002/07/owl#minCardinality"
+let owl_minQualifiedCardinality_iri : wf_iri=
+  "http://www.w3.org/2002/07/owl#minQualifiedCardinality"
+let owl_onClass_iri : wf_iri= "http://www.w3.org/2002/07/owl#onClass"
+let xsd_nonNegativeInteger : wf_iri=
+  "http://www.w3.org/2001/XMLSchema#nonNegativeInteger"
+let one_nonNegInteger_literal : wf_literal=
+  let l =
+    {
+      lexical_form = "1";
+      datatype = xsd_nonNegativeInteger;
+      lang_tag = FStar_Pervasives_Native.None
+    } in
+  l
+let canonical_svf_restriction_bnode (p : wf_iri) (c : wf_iri) : bnode_id=
+  FStar_String.concat "" ["__rl_svf_"; p; "__on__"; c]
+let canonical_minqc1_restriction_bnode (p : wf_iri) (c : wf_iri) : bnode_id=
+  FStar_String.concat "" ["__rl_minqc1_"; p; "__on__"; c]
+let owl_rule_minc1_bridge (g : rdf_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if
+         (t.p = owl_someValuesFrom_iri) &&
+           (rdf_term_eq t.o (T_IRI owl_Thing))
+       then
+         let onprops = find_objects g t.s owl_onProperty_iri in
+         FStar_List_Tot_Base.fold_left
+           (fun acc2 op_term ->
+              match op_term with
+              | T_IRI uu___ ->
+                  let new_t =
+                    {
+                      s = (t.s);
+                      p = owl_minCardinality_iri;
+                      o = (T_Literal one_nonNegInteger_literal)
+                    } in
+                  add_triple_if_new acc2 new_t
+              | uu___ -> acc2) acc onprops
+       else acc) g g
+let owl_rule_cls_svf2_qualified (g : rdf_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc edge ->
+       if (edge.p = rdf_type) || (is_owl_metapredicate edge.p)
+       then acc
+       else
+         (match term_to_subject edge.o with
+          | FStar_Pervasives_Native.None -> acc
+          | FStar_Pervasives_Native.Some y_subj ->
+              let p = edge.p in
+              let x = edge.s in
+              let ytypes = find_objects g y_subj rdf_type in
+              FStar_List_Tot_Base.fold_left
+                (fun acc2 ty ->
+                   match ty with
+                   | T_IRI c ->
+                       if c = owl_Thing
+                       then acc2
+                       else
+                         (let rb = canonical_svf_restriction_bnode p c in
+                          let rb_subj = S_BNode rb in
+                          let rb_term = T_BNode rb in
+                          let shape1 =
+                            {
+                              s = rb_subj;
+                              p = rdf_type;
+                              o = (T_IRI owl_Restriction_iri)
+                            } in
+                          let shape2 =
+                            {
+                              s = rb_subj;
+                              p = owl_onProperty_iri;
+                              o = (T_IRI p)
+                            } in
+                          let shape3 =
+                            {
+                              s = rb_subj;
+                              p = owl_someValuesFrom_iri;
+                              o = (T_IRI c)
+                            } in
+                          let memb = { s = x; p = rdf_type; o = rb_term } in
+                          add_triple_if_new
+                            (add_triple_if_new
+                               (add_triple_if_new
+                                  (add_triple_if_new acc2 shape1) shape2)
+                               shape3) memb)
+                   | uu___1 -> acc2) acc ytypes)) g g
+let owl_rule_cls_minc_qual1 (g : rdf_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc edge ->
+       if (edge.p = rdf_type) || (is_owl_metapredicate edge.p)
+       then acc
+       else
+         (match term_to_subject edge.o with
+          | FStar_Pervasives_Native.None -> acc
+          | FStar_Pervasives_Native.Some y_subj ->
+              let p = edge.p in
+              let x = edge.s in
+              let ytypes = find_objects g y_subj rdf_type in
+              FStar_List_Tot_Base.fold_left
+                (fun acc2 ty ->
+                   match ty with
+                   | T_IRI c ->
+                       if c = owl_Thing
+                       then acc2
+                       else
+                         (let rb = canonical_minqc1_restriction_bnode p c in
+                          let rb_subj = S_BNode rb in
+                          let rb_term = T_BNode rb in
+                          let shape1 =
+                            {
+                              s = rb_subj;
+                              p = rdf_type;
+                              o = (T_IRI owl_Restriction_iri)
+                            } in
+                          let shape2 =
+                            {
+                              s = rb_subj;
+                              p = owl_onProperty_iri;
+                              o = (T_IRI p)
+                            } in
+                          let shape3 =
+                            {
+                              s = rb_subj;
+                              p = owl_minQualifiedCardinality_iri;
+                              o = (T_Literal one_nonNegInteger_literal)
+                            } in
+                          let shape4 =
+                            { s = rb_subj; p = owl_onClass_iri; o = (T_IRI c)
+                            } in
+                          let memb = { s = x; p = rdf_type; o = rb_term } in
+                          add_triple_if_new
+                            (add_triple_if_new
+                               (add_triple_if_new
+                                  (add_triple_if_new
+                                     (add_triple_if_new acc2 shape1) shape2)
+                                  shape3) shape4) memb)
+                   | uu___1 -> acc2) acc ytypes)) g g
 let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
   let g1 = owl_rule_equivalent_class g in
   let g2 = owl_rule_equivalent_property g1 in
@@ -1015,7 +1162,10 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
   let g9 = owl_rule_sameAs_replace_subject g8 in
   let g10 = owl_rule_sameAs_replace_object g9 in
   let g11 = owl_rule_sameAs_replace_predicate g10 in
-  let g12 = owl_rule_inverse_functional g11 in g12
+  let g12 = owl_rule_inverse_functional g11 in
+  let g13 = owl_rule_minc1_bridge g12 in
+  let g14 = owl_rule_cls_svf2_qualified g13 in
+  let g15 = owl_rule_cls_minc_qual1 g14 in g15
 let rec owl_rl_closure (g : rdf_graph) (fuel : Prims.nat) : rdf_graph=
   match fuel with
   | uu___ when uu___ = Prims.int_zero -> g
