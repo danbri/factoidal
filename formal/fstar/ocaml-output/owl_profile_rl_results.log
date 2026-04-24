@@ -1,5 +1,5 @@
 OWL 2 test catalog: /Users/danbri/working/factoidal/formal/fstar/../../third_party/testing/owl/profile-RL.rdf
-  parsed 1896 triples in 0.03s
+  parsed 1896 triples in 0.04s
 Totals: 91 test cases
   PositiveEntailmentTest:    30
   NegativeEntailmentTest:    6
