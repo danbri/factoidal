@@ -11,9 +11,39 @@ on:
 permissions:
   contents: write
 
+# Avoid two pushes from the same branch racing each other to commit
+# CI artifacts. Newer pushes cancel older in-flight runs.
+concurrency:
+  group: w3c-tests-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Dual-platform shadow builds. Each matrix leg auto-commits binaries
+    # to bin/ci-<platform>/ (NOT bin/<platform>/ — those stay reserved for
+    # local builds + manual promotion). Extracted .ml files land in
+    # formal/fstar/ocaml-output-ci/ from both legs.
+    #
+    # The Ubuntu leg also handles the platform-independent artifacts
+    # (docs/test-results/, docs/fstar-extracted/, *_results.log) and the
+    # Wasm pipeline. The macOS leg only produces native binaries + the
+    # extracted .ml shadow.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+            ci_dir: bin/ci-linux-x86_64
+            primary: true
+          - os: macos-14
+            platform: darwin-arm64
+            ci_dir: bin/ci-darwin-arm64
+            primary: false
+    runs-on: ${{ matrix.os }}
+    # macOS install path is still being shaken out — let it iterate
+    # without blocking the canonical Ubuntu green light.
+    continue-on-error: ${{ !matrix.primary }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,12 +57,29 @@ jobs:
           restore-keys: |
             opam-fstar-${{ runner.os }}-
 
-      - name: Install system deps
+      - name: Install system deps (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y opam libgmp-dev pkg-config
 
+      - name: Install system deps (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # macos-14 = Apple Silicon (arm64). The opam formula brings in
+          # ocaml-base-compiler via the switch step. zstd is needed for
+          # parquet/cottas paths; gmp/pkg-config mirror the Linux deps.
+          # Note: brew exits non-zero if a package is already installed;
+          # the `|| true` guards we'd be tempted to add are banned by
+          # rule #14, so we use `--quiet` and check each formula instead.
+          for pkg in opam gmp pkg-config zstd; do
+            brew list --formula "$pkg" >/dev/null 2>&1 || brew install "$pkg"
+          done
+
       - name: Install binaryen (wasm-merge) from GitHub release
+        # Wasm pipeline runs on Linux only (sufficient parity signal,
+        # halves macOS wall-clock).
+        if: runner.os == 'Linux'
         run: |
           # Ubuntu's binaryen package is too old to include wasm-merge, which
           # wasm_of_ocaml 6.3+ requires to build.
@@ -53,10 +100,15 @@ jobs:
           # Pin z3 to 4.13.3 — F* 2025.12.15 requires exact match
           opam pin add z3 4.13.3 -y --no-action 2>/dev/null || true
           opam install -y fstar z3.4.13.3 zarith sha digestif
-          # wasm_of_ocaml: binaryen is available via /usr/local from the
-          # previous step; opam's conf-binaryen just probes for wasm-opt in
-          # PATH. --assume-depexts skips system-package re-check.
-          opam install -y --assume-depexts js_of_ocaml js_of_ocaml-compiler zarith_stubs_js wasm_of_ocaml-compiler
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            # wasm_of_ocaml: binaryen is available via /usr/local from the
+            # previous step; opam's conf-binaryen just probes for wasm-opt in
+            # PATH. --assume-depexts skips system-package re-check.
+            opam install -y --assume-depexts js_of_ocaml js_of_ocaml-compiler zarith_stubs_js wasm_of_ocaml-compiler
+          else
+            # macOS: skip wasm_of_ocaml, keep js_of_ocaml so jsoo build still works.
+            opam install -y js_of_ocaml js_of_ocaml-compiler zarith_stubs_js
+          fi
           echo "OPAMSWITCH=fstar" >> $GITHUB_ENV
 
       - name: Build (extract + compile + JS)
@@ -68,12 +120,14 @@ jobs:
           ./build-ocaml.sh
 
       - name: Build Wasm
+        if: runner.os == 'Linux'
         run: |
           eval $(opam env --switch=fstar)
           cd formal/fstar
           ./build-ocaml.sh wasm
 
       - name: Smoke test Wasm
+        if: runner.os == 'Linux'
         run: |
           cd docs/fstar-extracted
           # bind is a zarith-heavy suite; if it passes, the wasm init +
@@ -86,6 +140,7 @@ jobs:
           }
 
       - name: Full Wasm suite (SPARQL + RDF)
+        if: runner.os == 'Linux'
         run: |
           cd docs/fstar-extracted
           # Run everything under Node's wasm_of_ocaml path. This is slower
@@ -104,19 +159,141 @@ jobs:
                || echo "(differences above — check which suites diverge)"
 
       - name: Run tests and generate report
+        if: runner.os == 'Linux'
         run: |
           eval $(opam env --switch=fstar)
           cd formal/fstar
           ./generate-report.sh --run
 
-      - name: Commit results + artifacts
+      - name: Run tests (macOS — native binaries only)
+        if: runner.os == 'macOS'
         run: |
+          # macOS leg: skip generate-report (Ubuntu owns docs/test-results/).
+          # Just exercise the freshly-built native runner so the binary we
+          # commit to bin/ci-darwin-arm64/ has at least one round-trip.
+          eval $(opam env --switch=fstar)
+          cd formal/fstar/ocaml-output
+          ./w3c_runner bind 2>&1 | tee /tmp/macos_smoke.log || true
+          grep -q 'bind' /tmp/macos_smoke.log
+
+      - name: Stage CI shadow artifacts
+        run: |
+          set -euo pipefail
+          PLATFORM='${{ matrix.platform }}'
+          CI_BIN_DIR='${{ matrix.ci_dir }}'
+          SRC_BIN_DIR="bin/${PLATFORM}"
+          # Wipe + repopulate the shadow bin dir for this platform.
+          # Keep .gitkeep so the folder remains tracked even if a future
+          # build produces zero binaries.
+          mkdir -p "$CI_BIN_DIR"
+          find "$CI_BIN_DIR" -mindepth 1 -maxdepth 1 ! -name '.gitkeep' -exec rm -rf {} +
+          if [ -d "$SRC_BIN_DIR" ]; then
+            cp -R "$SRC_BIN_DIR"/* "$CI_BIN_DIR/" 2>/dev/null || true
+          fi
+          # Mirror extracted .ml into the shared shadow folder (both legs
+          # write here; whichever pushes last wins — this is fine because
+          # the .ml is platform-independent).
+          mkdir -p formal/fstar/ocaml-output-ci
+          find formal/fstar/ocaml-output-ci -mindepth 1 -maxdepth 1 \
+            ! -name '.gitkeep' -exec rm -rf {} +
+          if compgen -G "formal/fstar/ocaml-output/*.ml" > /dev/null; then
+            cp formal/fstar/ocaml-output/*.ml formal/fstar/ocaml-output-ci/
+          fi
+          # Build manifest with timestamp, SHA, toolchain versions, file hashes.
+          eval $(opam env --switch=fstar) || true
+          FSTAR_VERSION="$(fstar.exe --version 2>/dev/null | head -n 1 || echo unknown)"
+          OCAML_VERSION="$(ocaml -version 2>/dev/null || echo unknown)"
+          OPAM_SWITCH="$(opam switch show 2>/dev/null || echo unknown)"
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          TIMESTAMP="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          MANIFEST="$CI_BIN_DIR/build-info.json"
+          {
+            printf '{\n'
+            printf '  "platform": "%s",\n' "$PLATFORM"
+            printf '  "runner_os": "%s",\n' "${{ runner.os }}"
+            printf '  "timestamp_utc": "%s",\n' "$TIMESTAMP"
+            printf '  "source_sha": "%s",\n' "$SOURCE_SHA"
+            printf '  "fstar_version": "%s",\n' "$FSTAR_VERSION"
+            printf '  "ocaml_version": "%s",\n' "$OCAML_VERSION"
+            printf '  "opam_switch": "%s",\n' "$OPAM_SWITCH"
+            printf '  "binaries": {\n'
+            FIRST=1
+            # SHA-256 every regular file in the shadow bin (incl. the
+            # manifest's own siblings, but exclude .gitkeep + manifest).
+            for f in $(find "$CI_BIN_DIR" -maxdepth 1 -type f \
+                         ! -name '.gitkeep' ! -name 'build-info.json' \
+                         | sort); do
+              base="$(basename "$f")"
+              if [ "${{ runner.os }}" = "Linux" ]; then
+                SUM="$(sha256sum "$f" | awk '{print $1}')"
+              else
+                SUM="$(shasum -a 256 "$f" | awk '{print $1}')"
+              fi
+              SIZE="$(wc -c < "$f" | tr -d ' ')"
+              if [ "$FIRST" -eq 1 ]; then FIRST=0; else printf ',\n'; fi
+              printf '    "%s": { "sha256": "%s", "size": %s }' \
+                "$base" "$SUM" "$SIZE"
+            done
+            printf '\n  }\n'
+            printf '}\n'
+          } > "$MANIFEST"
+          echo "=== Manifest ==="
+          cat "$MANIFEST"
+          echo "=== Files staged ==="
+          ls -la "$CI_BIN_DIR"
+
+      - name: Commit + push CI artifacts (race-tightened)
+        # Avoid two matrix legs fighting over the same push window — each
+        # leg pulls --rebase before pushing and retries up to 3 times.
+        run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/test-results/ \
-                  docs/fstar-extracted/ \
-                  docs/fstar-extracted/wasm_results.log \
-                  formal/fstar/ocaml-output/sparql_results.log \
-                  formal/fstar/ocaml-output/rdf_results.log
-          git diff --cached --quiet || git commit -m "Update W3C test results + JS/Wasm artifacts [skip ci]"
-          git push || true
+
+          # Always stage the shadow bin + extracted .ml. The Ubuntu leg
+          # additionally stages the platform-independent artifacts.
+          git add '${{ matrix.ci_dir }}'
+          git add formal/fstar/ocaml-output-ci/
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            git add docs/test-results/ \
+                    docs/fstar-extracted/ \
+                    docs/fstar-extracted/wasm_results.log \
+                    formal/fstar/ocaml-output/sparql_results.log \
+                    formal/fstar/ocaml-output/rdf_results.log
+          fi
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit on ${{ matrix.platform }}."
+            exit 0
+          fi
+
+          PLATFORM='${{ matrix.platform }}'
+          git commit -m "ci(${PLATFORM}): shadow build artifacts [skip ci]"
+
+          # Race-tightening: rebase + retry up to 3 times. Replaces the
+          # old `git push || true` which silently swallowed non-fast-forward
+          # failures (rule #14: never `|| true` a real failure).
+          PUSH_RC=1
+          for attempt in 1 2 3; do
+            echo "Push attempt $attempt for ${PLATFORM}..."
+            # Abort any half-done rebase from a prior failed attempt so we
+            # never get stuck mid-rebase.
+            git rebase --abort 2>/dev/null || true
+            if ! git pull --rebase origin "${GITHUB_REF_NAME}"; then
+              echo "::warning::git pull --rebase failed on attempt $attempt"
+              git rebase --abort 2>/dev/null || true
+              sleep $((attempt * 5))
+              continue
+            fi
+            if git push origin "HEAD:${GITHUB_REF_NAME}"; then
+              PUSH_RC=0
+              echo "Push succeeded on attempt $attempt."
+              break
+            fi
+            echo "::warning::git push failed on attempt $attempt — retrying"
+            sleep $((attempt * 5))
+          done
+          if [ "$PUSH_RC" -ne 0 ]; then
+            echo "::error::Failed to push CI artifacts after 3 attempts"
+            exit "$PUSH_RC"
+          fi

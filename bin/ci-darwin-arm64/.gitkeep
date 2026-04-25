@@ -1,0 +1,6 @@
+# CI shadow folder — populated by .github/workflows/w3c-tests.yml
+# (the macos-14 matrix job).
+#
+# Do NOT manually copy local builds here. Local builds belong in
+# bin/darwin-arm64/. This folder is write-only-by-CI until we are
+# comfortable promoting CI artifacts to the canonical bin/.

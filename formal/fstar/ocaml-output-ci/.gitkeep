@@ -1,0 +1,7 @@
+# CI shadow folder — extracted .ml files from cloud builds.
+# Populated by both ubuntu-latest and macos-14 matrix jobs in
+# .github/workflows/w3c-tests.yml.
+#
+# Do NOT manually copy local extraction here. Local extraction lands in
+# formal/fstar/ocaml-output/. This folder is write-only-by-CI until we
+# are comfortable promoting CI artifacts.
