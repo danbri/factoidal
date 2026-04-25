@@ -387,7 +387,7 @@ let charset_is_utf8_or_absent (ct : Prims.string) : Prims.bool=
   match extract_charset_param ct with
   | FStar_Pervasives_Native.None -> true
   | FStar_Pervasives_Native.Some v -> (v = "utf-8") || (v = "utf8")
-let build_from_kvs (is_update_path : Prims.bool)
+let build_from_kvs (is_get_method : Prims.bool) (is_update_path : Prims.bool)
   (kvs : (Prims.string * Prims.string) Prims.list) : sparql_request=
   let qs_all = collect_values "query" kvs in
   let us_all = collect_values "update" kvs in
@@ -401,25 +401,21 @@ let build_from_kvs (is_update_path : Prims.bool)
        let u_opt = first_value "update" kvs in
        let dflt = collect_values "default-graph-uri" kvs in
        let named = collect_values "named-graph-uri" kvs in
-       if is_update_path
-       then
-         match u_opt with
-         | FStar_Pervasives_Native.Some u -> PR_Update (u, dflt, named)
-         | FStar_Pervasives_Native.None ->
-             (match q_opt with
-              | FStar_Pervasives_Native.Some uu___2 ->
-                  PR_Bad "expected update= on /update endpoint, got query="
-              | FStar_Pervasives_Native.None ->
-                  PR_Bad "missing update parameter")
-       else
-         (match q_opt with
-          | FStar_Pervasives_Native.Some q -> PR_Query (q, dflt, named)
-          | FStar_Pervasives_Native.None ->
-              (match u_opt with
-               | FStar_Pervasives_Native.Some uu___3 ->
-                   PR_Bad "expected query= on /query endpoint, got update="
-               | FStar_Pervasives_Native.None ->
-                   PR_Bad "missing query parameter")))
+       match (q_opt, u_opt) with
+       | (FStar_Pervasives_Native.Some _, FStar_Pervasives_Native.Some _) ->
+           PR_Bad "both query= and update= present (Protocol 2.2.4)"
+       | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.None) ->
+           if is_update_path
+           then PR_Bad "missing update parameter"
+           else PR_Bad "missing query parameter"
+       | (FStar_Pervasives_Native.Some q, FStar_Pervasives_Native.None) ->
+           if is_update_path
+           then PR_Bad "expected update= on /update endpoint, got query="
+           else PR_Query (q, dflt, named)
+       | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.Some u) ->
+           if is_get_method
+           then PR_Bad "UPDATE invoked via GET (Protocol 2.2.2)"
+           else PR_Update (u, dflt, named))
 let decode_request (http_method : Prims.string) (url_path : Prims.string)
   (url_query : Prims.string) (content_type : Prims.string)
   (body : Prims.string) : sparql_request=
@@ -435,7 +431,7 @@ let decode_request (http_method : Prims.string) (url_path : Prims.string)
       if method_upper = "get"
       then
         let kvs = parse_query_string effective_qs in
-        build_from_kvs is_update kvs
+        build_from_kvs true is_update kvs
       else
         if method_upper = "post"
         then
@@ -452,7 +448,7 @@ let decode_request (http_method : Prims.string) (url_path : Prims.string)
                  if ct = "application/x-www-form-urlencoded"
                  then
                    (let kvs = parse_query_string body in
-                    build_from_kvs is_update kvs)
+                    build_from_kvs false is_update kvs)
                  else
                    if (FStar_String.strlen ct) = Prims.int_zero
                    then PR_Bad "POST request missing Content-Type"

@@ -485,8 +485,23 @@ let charset_is_utf8_or_absent (ct : string) : bool =
 
 // Build a PR_Query / PR_Update given the bag of kv pairs from either
 // the URL query string (GET) or the form body (POST form-encoded).
-// `is_update_path` determines which variant is constructed.
+//
+// Per Protocol §2.1.2 / §2.2.2, the form-key (`query=` vs `update=`)
+// is authoritative for distinguishing query from update on a
+// form-encoded POST: the W3C `update_post_form` test posts
+// `update=CLEAR%20ALL` to `/sparql/` (no `/update` segment) and
+// expects 2xx. Conversely, GET with `update=` MUST be rejected
+// (§2.2.2: "UPDATE operations cannot be invoked via GET", per the
+// `bad_update_get` test).
+//
+// Arguments:
+//   * `is_get_method` — true when the request was a GET. Used to
+//     reject `update=` outright.
+//   * `is_update_path` — best-effort path discriminator (last
+//     segment is `update`). Only consulted as a tiebreaker when no
+//     `query=` / `update=` is present.
 let build_from_kvs
+    (is_get_method  : bool)
     (is_update_path : bool)
     (kvs : list (string & string))
   : sparql_request =
@@ -504,23 +519,25 @@ let build_from_kvs
   let u_opt     = first_value "update" kvs in
   let dflt      = collect_values "default-graph-uri" kvs in
   let named     = collect_values "named-graph-uri"   kvs in
-  // Protocol says: if the path says /update, we expect update=...
-  //                otherwise we expect query=...
-  if is_update_path then
-    match u_opt with
-    | Some u -> PR_Update u dflt named
-    | None ->
-      // Fall back to query= for robustness (some harnesses are lax).
-      (match q_opt with
-       | Some _ -> PR_Bad "expected update= on /update endpoint, got query="
-       | None -> PR_Bad "missing update parameter")
-  else
-    match q_opt with
-    | Some q -> PR_Query q dflt named
-    | None ->
-      (match u_opt with
-       | Some _ -> PR_Bad "expected query= on /query endpoint, got update="
-       | None -> PR_Bad "missing query parameter")
+  // Reject ambiguous `query=` + `update=` on the same request (§2.2.4).
+  match q_opt, u_opt with
+  | Some _, Some _ ->
+    PR_Bad "both query= and update= present (Protocol 2.2.4)"
+  | None, None ->
+    // No form-key at all — fall back to path-based diagnostics.
+    if is_update_path then PR_Bad "missing update parameter"
+    else PR_Bad "missing query parameter"
+  | Some q, None ->
+    // `query=` present. Reject if path says /update (mismatch the
+    // server has explicitly chosen to police).
+    if is_update_path then
+      PR_Bad "expected update= on /update endpoint, got query="
+    else PR_Query q dflt named
+  | None, Some u ->
+    // `update=` present. §2.2.2: UPDATE forbidden via GET.
+    if is_get_method then
+      PR_Bad "UPDATE invoked via GET (Protocol 2.2.2)"
+    else PR_Update u dflt named
 
 // Decode the incoming HTTP request. http_method is the method as
 // received ("GET"/"POST"/...). url_path is the path only (no query
@@ -544,7 +561,7 @@ let decode_request
   let method_upper = ascii_lower_string http_method in
   if method_upper = "get" then
     let kvs = parse_query_string effective_qs in
-    build_from_kvs is_update kvs
+    build_from_kvs true is_update kvs
   else if method_upper = "post" then
     let ct = content_type_base content_type in
     // Protocol §2.1.6 / §2.2.x: a Content-Type with an explicit
@@ -557,7 +574,7 @@ let decode_request
       PR_Update body [] []
     else if ct = "application/x-www-form-urlencoded" then
       let kvs = parse_query_string body in
-      build_from_kvs is_update kvs
+      build_from_kvs false is_update kvs
     else if String.length ct = 0 then
       // No Content-Type: best-effort fall-back to form-encoded if the
       // body looks like a query string, otherwise bad request.
