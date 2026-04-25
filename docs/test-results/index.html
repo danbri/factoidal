@@ -130,11 +130,11 @@
 <div class="summary">
   <div class="tile ok">
     <div class="label">Pass</div>
-    <div class="value">1648</div>
+    <div class="value">1653</div>
   </div>
   <div class="tile err">
     <div class="label">Fail</div>
-    <div class="value">10</div>
+    <div class="value">5</div>
   </div>
   <div class="tile warn">
     <div class="label">Skipped</div>
@@ -142,7 +142,7 @@
   </div>
   <div class="tile">
     <div class="label">Pass / runnable</div>
-    <div class="value">99.4%<small> of 1658</small></div>
+    <div class="value">99.7%<small> of 1658</small></div>
   </div>
   <div class="tile">
     <div class="label">Total in suites</div>
@@ -159,7 +159,7 @@
   are linked below.
 </div>
 
-<h2>SPARQL 1.1 <span class="inline-numbers">617 pass · 10 fail · 4 skip</span></h2>
+<h2>SPARQL 1.1 <span class="inline-numbers">622 pass · 5 fail · 4 skip</span></h2>
 <div class="suites">
       <div class="suite-row perfect">
         <div class="suite-name">add</div>
@@ -313,11 +313,11 @@
           <small></small>
         </div>
       </div>
-      <div class="suite-row mixed">
+      <div class="suite-row near-perfect">
         <div class="suite-name">http-rdf-update</div>
-        <div class="suite-bar"><div class="fill" style="width:68%"></div></div>
+        <div class="suite-bar"><div class="fill" style="width:95%"></div></div>
         <div class="suite-numbers">
-          <span class="p">13</span>/<span class="f">6</span>
+          <span class="p">18</span>/<span class="f">1</span>
           <small></small>
         </div>
       </div>
@@ -487,9 +487,9 @@
       </div>
       <div class="suite-row mixed">
         <div class="suite-name">rdf-canon</div>
-        <div class="suite-bar"><div class="fill" style="width:59%"></div></div>
+        <div class="suite-bar"><div class="fill" style="width:67%"></div></div>
         <div class="suite-numbers">
-          <span class="p">38</span>/<span class="f">26</span>
+          <span class="p">43</span>/<span class="f">21</span>
           <small>skip 22</small>
         </div>
       </div>
@@ -583,13 +583,13 @@
   are live from the vendored catalogs, not stale snapshots.
 </p>
 
-<h2>RDFC-1.0 <span class="inline-numbers">38 pass &middot; 26 fail &middot; 22 stub &middot; of 86 total</span></h2>
+<h2>RDFC-1.0 <span class="inline-numbers">43 pass &middot; 21 fail &middot; 22 stub &middot; of 86 total</span></h2>
 <div class="suites">
   <div class="suite-row mixed">
     <div class="suite-name">eval (HFDQ)</div>
-    <div class="suite-bar"><div class="fill" style="width:59%"></div></div>
+    <div class="suite-bar"><div class="fill" style="width:67%"></div></div>
     <div class="suite-numbers">
-      <span class="p">38</span>/<span class="f">26</span>
+      <span class="p">43</span>/<span class="f">21</span>
       <small>of 64</small>
     </div>
   </div>
@@ -632,7 +632,7 @@
 <details>
   <summary>Raw per-suite numbers</summary>
   <h3 style="font-size: 0.95em; margin: 0.8em 0 0.3em;">SPARQL 1.1</h3>
-  <pre>631 total: 617 pass, 10 fail, 4 skip, 0 unsupported
+  <pre>631 total: 622 pass, 5 fail, 4 skip, 0 unsupported
   add                                 pass:8 fail:0 skip:0 unsupported:0
   aggregates                          pass:47 fail:0 skip:0 unsupported:0
   basic-update                        pass:13 fail:0 skip:0 unsupported:0
@@ -652,7 +652,7 @@
   exists                              pass:6 fail:0 skip:0 unsupported:0
   functions                           pass:75 fail:0 skip:0 unsupported:0
   grouping                            pass:6 fail:0 skip:0 unsupported:0
-  http-rdf-update                     pass:13 fail:6 skip:0 unsupported:0
+  http-rdf-update                     pass:18 fail:1 skip:0 unsupported:0
   json-res                            pass:4 fail:0 skip:0 unsupported:0
   move                                pass:6 fail:0 skip:0 unsupported:0
   negation                            pass:12 fail:0 skip:0 unsupported:0
@@ -692,9 +692,9 @@
 </main>
 
 <footer>
-  Generated <strong>2026-04-25 05:06 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/8f1a2c248bdef4a97f468642f31c00a301cd4b8a">8f1a2c2</a></code>
-  on branch <code>claude/main</code> — &ldquo;docs: import Codex's second-backend (oxigraph/qlever) note (was untracked)&rdquo;.
+  Generated <strong>2026-04-25 05:35 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/0844b154a79786cc1b85623fe2e9b3730e0f16cc">0844b15</a></code>
+  on branch <code>claude/main</code> — &ldquo;owl-imports-011: diagnosis — parser correct, needs imports-load + bnode-match relaxation&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 

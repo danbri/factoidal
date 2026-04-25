@@ -245,14 +245,44 @@ module Ballyhoo_cottas_runtime = struct
       }];
     }
 
+  (* Codex Phase 1 (2026-04-25): bulk per-column decode.
+     Previously this loop did 4 per-cell calls per row × N rows
+     (~12.6 M for the 3.14 M-quad parliament COTTAS), each of which
+     re-decompressed the column page and re-walked every prior length —
+     a per-column O(N^2) blowup. The F* helper
+     `probe_parquet_column_delta_length_byte_array_decode_all` does one
+     pass per column and returns every row's string in row order, so we
+     now do exactly 4 page decodes total. *)
+  let decode_column artifact_path col_idx =
+    match Parquet_Footer.probe_parquet_column_delta_length_byte_array_decode_all
+            artifact_path (Z.of_int col_idx) with
+    | FStar_Pervasives_Native.None ->
+      failwith (Printf.sprintf "Could not bulk-decode COTTAS column %d" col_idx)
+    | FStar_Pervasives_Native.Some lst ->
+      (* lst : (string option) list  in row order. Convert to an array of
+         strings so the row-zip below is O(1) per row. *)
+      let arr = Array.of_list lst in
+      Array.map (function
+        | FStar_Pervasives_Native.Some v -> v
+        | FStar_Pervasives_Native.None ->
+          failwith (Printf.sprintf "Missing COTTAS cell in column %d" col_idx))
+        arr
+
   let load_cache artifact_path =
     match Hashtbl.find_opt caches artifact_path with
     | Some cache -> cache
     | None ->
-      let value_count =
-        match Parquet_Footer.probe_parquet_column_delta_length_byte_array_value_count artifact_path Z.zero with
-        | FStar_Pervasives_Native.Some n -> Z.to_int n
-        | FStar_Pervasives_Native.None -> failwith "Could not read COTTAS row count from Parquet value stream" in
+      let s_col = decode_column artifact_path 0 in
+      let p_col = decode_column artifact_path 1 in
+      let o_col = decode_column artifact_path 2 in
+      let g_col = decode_column artifact_path 3 in
+      let value_count = Array.length s_col in
+      if Array.length p_col <> value_count
+         || Array.length o_col <> value_count
+         || Array.length g_col <> value_count then
+        failwith (Printf.sprintf
+          "COTTAS column row counts disagree: s=%d p=%d o=%d g=%d"
+          value_count (Array.length p_col) (Array.length o_col) (Array.length g_col));
       let cache = {
         quads = [];
         subject_to_id = Hashtbl.create 257;
@@ -267,19 +297,13 @@ module Ballyhoo_cottas_runtime = struct
       } in
       let quad_rev = ref [] in
       for i = 0 to value_count - 1 do
-        let zi = Z.of_int i in
-        let fetch col =
-          match Parquet_Footer.probe_parquet_column_delta_length_byte_array_value_string_at artifact_path col zi with
-          | FStar_Pervasives_Native.Some v -> v
-          | FStar_Pervasives_Native.None ->
-            failwith (Printf.sprintf "Missing Parquet value col=%s idx=%d" (Z.to_string col) i) in
-        let s = match parse_subject (fetch Z.zero) with
+        let s = match parse_subject s_col.(i) with
           | Some v -> v | None -> failwith "Invalid COTTAS subject token" in
-        let p = match parse_iri_token (fetch Z.one) with
+        let p = match parse_iri_token p_col.(i) with
           | Some v -> v | None -> failwith "Invalid COTTAS predicate token" in
-        let o = match parse_object (fetch (Z.of_int 2)) with
+        let o = match parse_object o_col.(i) with
           | Some v -> v | None -> failwith "Invalid COTTAS object token" in
-        let g = match parse_graph (fetch (Z.of_int 3)) with
+        let g = match parse_graph g_col.(i) with
           | Some v -> v | None -> failwith "Invalid COTTAS graph token" in
         let s_id = intern_subject cache s in
         let p_id = intern_predicate cache p in

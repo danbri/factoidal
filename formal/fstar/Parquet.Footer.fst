@@ -1451,3 +1451,208 @@ let probe_parquet_column_delta_length_byte_array_value_string_at (path:string) (
   | None -> None
   | Some value_hex ->
     ascii_string_of_hex_slice value_hex 0 (String.length value_hex / 2) []
+
+// ---------------------------------------------------------------------------
+// Bulk page-level decode for DELTA_LENGTH_BYTE_ARRAY columns.
+//
+// The legacy `_value_string_at` accessors above are O(N^2) per column:
+// each row pays for re-decompressing the page payload, re-walking every
+// prior length, and re-slicing the value byte stream. For the 3.14 M-quad
+// UK Parliament COTTAS that adds up to ~12.6 M re-probes per `COUNT(*)`.
+//
+// This block replaces the per-row work with three single passes:
+//   (a) one decompression of the column page,
+//   (b) one decode of the bit-packed length deltas into a length list,
+//   (c) one running prefix-sum over those lengths to slice all values.
+//
+// The result is a `dlba_page_cache` record that is consumed by the OCaml
+// glue (cottas_runtime.sh) to materialise all rows of one column with a
+// single F* call. See docs/designissues/2026-04-25-cottas-perf-fix-plan.md
+// for the full plan.
+// ---------------------------------------------------------------------------
+
+noeq type dlba_page_cache = {
+  dpc_payload_hex : string;       // full decompressed page bytes (hex)
+  dpc_values_offset : nat;        // byte offset of the varint header
+  dpc_value_count : nat;          // total values on the page
+  dpc_first_length : nat;         // first length, post-zigzag
+  dpc_min_delta : int;            // miniblock minimum delta (block-level)
+  dpc_bit_width : nat;            // first miniblock bit width
+  dpc_packed_start : nat;         // hex offset of the bit-packed deltas
+  dpc_value_data_offset : nat;    // byte offset of contiguous value bytes
+                                  //  (relative to values_offset)
+  dpc_lengths : list nat;         // decoded lengths in row order, length = dpc_value_count
+  dpc_value_starts : list nat;    // start-byte offsets relative to values_start
+                                  //  (length = dpc_value_count)
+}
+
+// Decode a single packed length delta from the bit-packed stream and return
+// the total length. Mirrors the inner step of `accumulate_lengths` from
+// `probe_parquet_column_delta_length_byte_array_length_at`.
+let decode_one_dlba_delta
+  (values_hex:string) (packed_start:nat) (bit_width:nat)
+  (min_delta:int) (delta_index:nat) (current_len:int)
+  : option int =
+  let start_bit = mul_nat delta_index bit_width in
+  match packed_lsb_value_hex values_hex packed_start start_bit bit_width 0 0 with
+  | None -> None
+  | Some adjusted -> Some (current_len + min_delta + adjusted)
+
+// Walk the bit-packed length deltas to build the list of all `value_count`
+// lengths. We use `value_count` as both decreases measure and natural bound;
+// each step lowers `remaining` by 1 and raises `delta_index` by 1.
+let rec build_dlba_length_list
+  (values_hex:string) (packed_start:nat) (bit_width:nat) (min_delta:int)
+  (delta_index:nat) (remaining:nat) (current_len:int) (acc:list nat)
+  : Tot (option (list nat)) (decreases remaining) =
+  if remaining = 0 then Some (List.Tot.rev acc)
+  else
+    if current_len < 0 then None
+    else
+      let safe_len : nat = current_len in
+      let acc' = safe_len :: acc in
+      if remaining = 1 then Some (List.Tot.rev acc')
+      else
+        match decode_one_dlba_delta values_hex packed_start bit_width
+                min_delta delta_index current_len with
+        | None -> None
+        | Some next_len ->
+          build_dlba_length_list values_hex packed_start bit_width min_delta
+            (delta_index + 1) (remaining - 1) next_len acc'
+
+// Build the running prefix-sum of value byte starts. `value_starts[0] = 0`,
+// `value_starts[i+1] = value_starts[i] + lengths[i]`. Output has the same
+// length as `lengths`.
+let rec prefix_sums (lengths:list nat) (running:nat) (acc:list nat)
+  : Tot (list nat) (decreases lengths) =
+  match lengths with
+  | [] -> List.Tot.rev acc
+  | hd :: tl -> prefix_sums tl (running + hd) (running :: acc)
+
+// Compute the total of a list of nats (zero-cost over the prefix sum, but
+// we do it once at the end of the page-cache build to size the value-data
+// region).
+let rec sum_nat_list (xs:list nat) : Tot nat (decreases xs) =
+  match xs with
+  | [] -> 0
+  | hd :: tl -> hd + sum_nat_list tl
+
+// One-shot DELTA_LENGTH_BYTE_ARRAY page cache builder. Given a path + column
+// index, decompress the page once, parse the four varints + bit_width, decode
+// every length, and return the populated cache. All subsequent value lookups
+// are O(1) string slices off `dpc_payload_hex`.
+let probe_parquet_column_delta_length_byte_array_page_cache
+  (path:string) (col_index:nat) : option dlba_page_cache =
+  match probe_parquet_column_decompressed_payload_hex path col_index,
+        probe_parquet_column_delta_length_byte_array_values_offset path col_index with
+  | Some payload_hex, Some values_offset ->
+    let payload_len_hex = String.length payload_hex in
+    let values_start_hex = mul_nat values_offset 2 in
+    if values_start_hex > payload_len_hex then None
+    else
+      let values_hex = String.sub payload_hex values_start_hex
+                         (payload_len_hex - values_start_hex) in
+      let vh_len = String.length values_hex in
+      // Parse varint header: block_size, miniblocks, value_count, first_length,
+      // min_delta, then a single bit_width byte for the first miniblock.
+      (match decode_varint_value_with_end_hex values_hex 0 0 0 vh_len with
+       | None -> None
+       | Some (_block_size, p1) ->
+         match decode_varint_value_with_end_hex values_hex p1 0 0 vh_len with
+         | None -> None
+         | Some (_miniblocks, p2) ->
+           match decode_varint_value_with_end_hex values_hex p2 0 0 vh_len with
+           | None -> None
+           | Some (value_count, p3) ->
+             match decode_varint_value_with_end_hex values_hex p3 0 0 vh_len with
+             | None -> None
+             | Some (first_raw, p4) ->
+               let first_length = zigzag_decode_nat first_raw in
+               match decode_varint_value_with_end_hex values_hex p4 0 0 vh_len with
+               | None -> None
+               | Some (min_delta_raw, p5) ->
+                 let min_delta = zigzag_decode_int min_delta_raw in
+                 if p5 + 1 >= vh_len then None
+                 else
+                   match byte_at_hex values_hex p5 with
+                   | None -> None
+                   | Some bit_width ->
+                     let packed_start = p5 + 16 in
+                     // Walk all `value_count` lengths in one pass.
+                     match build_dlba_length_list values_hex packed_start
+                             bit_width min_delta 0 value_count first_length [] with
+                     | None -> None
+                     | Some lengths ->
+                       let total_value_bytes = sum_nat_list lengths in
+                       let payload_byte_len = payload_len_hex / 2 in
+                       if values_offset > payload_byte_len then None
+                       else
+                         let values_stream_len = payload_byte_len - values_offset in
+                         if total_value_bytes > values_stream_len then None
+                         else
+                           let value_data_offset =
+                             values_stream_len - total_value_bytes in
+                           let starts = prefix_sums lengths 0 [] in
+                           Some {
+                             dpc_payload_hex = payload_hex;
+                             dpc_values_offset = values_offset;
+                             dpc_value_count = value_count;
+                             dpc_first_length = first_length;
+                             dpc_min_delta = min_delta;
+                             dpc_bit_width = bit_width;
+                             dpc_packed_start = packed_start;
+                             dpc_value_data_offset = value_data_offset;
+                             dpc_lengths = lengths;
+                             dpc_value_starts = starts;
+                           })
+  | _ -> None
+
+// Walk a length / start pair list together and produce, for every row, the
+// raw hex slice of the value bytes. Mirrors the inner string-slice of
+// `_value_hex_at`. Output length == `lengths` length.
+let rec slice_all_dlba_values
+  (payload_hex:string) (values_start_byte:nat)
+  (lengths:list nat) (starts:list nat) (acc:list (option string))
+  : Tot (list (option string)) (decreases lengths) =
+  match lengths, starts with
+  | [], _ -> List.Tot.rev acc
+  | _, [] -> List.Tot.rev acc
+  | len :: lts, st :: sts ->
+    let start_byte = values_start_byte + st in
+    let start = mul_nat start_byte 2 in
+    let want = mul_nat len 2 in
+    let slice =
+      if start + want <= String.length payload_hex
+      then Some (String.sub payload_hex start want)
+      else None in
+    slice_all_dlba_values payload_hex values_start_byte lts sts (slice :: acc)
+
+// Decode every value on the page into its hex slice in one shot.
+let dlba_page_decode_all_value_hex (cache:dlba_page_cache) : list (option string) =
+  let values_start_byte = cache.dpc_values_offset + cache.dpc_value_data_offset in
+  slice_all_dlba_values cache.dpc_payload_hex values_start_byte
+    cache.dpc_lengths cache.dpc_value_starts []
+
+// Map a list of hex slices to their ASCII string decoding.
+let rec ascii_strings_of_hex_slices (slices:list (option string)) (acc:list (option string))
+  : Tot (list (option string)) (decreases slices) =
+  match slices with
+  | [] -> List.Tot.rev acc
+  | None :: tl -> ascii_strings_of_hex_slices tl (None :: acc)
+  | Some hx :: tl ->
+    let s = ascii_string_of_hex_slice hx 0 (String.length hx / 2) [] in
+    ascii_strings_of_hex_slices tl (s :: acc)
+
+// Decode every value on the page directly to its ASCII string form.
+let dlba_page_decode_all_strings (cache:dlba_page_cache) : list (option string) =
+  ascii_strings_of_hex_slices (dlba_page_decode_all_value_hex cache) []
+
+// One-shot column-bulk entry point. Returns the decoded ASCII string for
+// every row in column `col_index`, or `None` if the column page cannot be
+// decoded. This is what the OCaml COTTAS runtime calls instead of the per-
+// row `_value_string_at` loop.
+let probe_parquet_column_delta_length_byte_array_decode_all
+  (path:string) (col_index:nat) : option (list (option string)) =
+  match probe_parquet_column_delta_length_byte_array_page_cache path col_index with
+  | None -> None
+  | Some cache -> Some (dlba_page_decode_all_strings cache)
