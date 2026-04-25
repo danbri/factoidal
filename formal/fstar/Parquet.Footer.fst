@@ -2176,3 +2176,371 @@ let probe_parquet_column_decode_all (path:string) (col_index:nat)
   | Some result -> Some result
   | None ->
     probe_parquet_column_rle_dictionary_decode_all path col_index
+
+// ===========================================================================
+// Issue #98 Gap B — multi-row-group iteration.
+//
+// All `probe_parquet_column_*` helpers above hard-code row-group 0
+// (the first element of footer.row_groups[]). For a multi-row-group
+// parquet file (e.g. UK Parliament COTTAS, ~25 row groups, ~3.14M rows)
+// they only see the first ~125k rows.
+//
+// The fix is strictly additive: a parallel family of `_in_row_group`
+// helpers takes an `rg_index:nat`, and a top-level
+// `_decode_all_row_groups` walks every row group and concatenates.
+//
+// The existing single-row-group entry points are preserved so that any
+// caller still hard-coding row-group-0 stays correct.
+// ===========================================================================
+
+// Locate the start (in metadata hex) of column_chunk[col_index] inside
+// row_group[rg_index]. Returns the in-meta hex offset of the column-chunk
+// struct's first field. Bundles the meta_hex + length so that follow-on
+// per-row-group helpers can reuse it without re-reading the footer.
+type meta_column_chunk_locator = {
+  mcc_meta_hex : string;
+  mcc_meta_hex_len : nat;
+  mcc_column_chunk_start : nat;
+}
+
+let probe_parquet_column_chunk_in_row_group_locator
+  (path:string) (rg_index:nat) (col_index:nat)
+  : option meta_column_chunk_locator =
+  match probe_parquet_footer path with
+  | None -> None
+  | Some footer ->
+    match parquet_read_tail_hex path footer.pf_footer_len with
+    | None -> None
+    | Some footer_hex ->
+      let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
+      if meta_hex_len <= String.length footer_hex then
+        let meta_hex = String.sub footer_hex 0 meta_hex_len in
+        match nth_field_hex meta_hex 4 0 0 meta_hex_len with
+        | None -> None
+        | Some row_groups_field ->
+          if row_groups_field.cf_type <> compact_t_list then None
+          else
+            match decode_compact_list_info_hex meta_hex
+                    row_groups_field.cf_value_start meta_hex_len with
+            | None -> None
+            | Some row_groups_info ->
+              if rg_index >= row_groups_info.cli_count
+                 || row_groups_info.cli_etype <> compact_t_struct then None
+              else
+                match nth_compact_list_element_start_hex meta_hex
+                        row_groups_field.cf_value_start rg_index meta_hex_len with
+                | None -> None
+                | Some rg_start ->
+                  match nth_field_hex meta_hex 1 rg_start 0 meta_hex_len with
+                  | None -> None
+                  | Some columns_field ->
+                    if columns_field.cf_type <> compact_t_list then None
+                    else
+                      match nth_compact_list_element_start_hex meta_hex
+                              columns_field.cf_value_start col_index meta_hex_len with
+                      | None -> None
+                      | Some column_chunk_start ->
+                        Some {
+                          mcc_meta_hex = meta_hex;
+                          mcc_meta_hex_len = meta_hex_len;
+                          mcc_column_chunk_start = column_chunk_start;
+                        }
+      else None
+
+// Helper: drill from column_chunk_start to column_metadata struct start.
+let column_metadata_start_of (loc:meta_column_chunk_locator) : option nat =
+  match nth_field_hex loc.mcc_meta_hex 3
+          loc.mcc_column_chunk_start 0 loc.mcc_meta_hex_len with
+  | None -> None
+  | Some metadata_field ->
+    if metadata_field.cf_type <> compact_t_struct then None
+    else Some metadata_field.cf_value_start
+
+// data_page_offset for one (rg_index, col_index). Field 9.
+let probe_parquet_column_data_page_offset_in_row_group
+  (path:string) (rg_index:nat) (col_index:nat) : option nat =
+  match probe_parquet_column_chunk_in_row_group_locator path rg_index col_index with
+  | None -> None
+  | Some loc ->
+    match column_metadata_start_of loc with
+    | None -> None
+    | Some md_start ->
+      match nth_field_hex loc.mcc_meta_hex 9 md_start 0 loc.mcc_meta_hex_len with
+      | None -> None
+      | Some offset_field ->
+        if offset_field.cf_type <> compact_t_i64 then None
+        else
+          match decode_varint_value_hex loc.mcc_meta_hex
+                  offset_field.cf_value_start 0 0 loc.mcc_meta_hex_len with
+          | None -> None
+          | Some raw -> Some (zigzag_decode_nat raw)
+
+// dictionary_page_offset for one (rg_index, col_index). Field 14.
+let probe_parquet_column_dictionary_page_offset_in_row_group
+  (path:string) (rg_index:nat) (col_index:nat) : option nat =
+  match probe_parquet_column_chunk_in_row_group_locator path rg_index col_index with
+  | None -> None
+  | Some loc ->
+    match column_metadata_start_of loc with
+    | None -> None
+    | Some md_start ->
+      match nth_field_hex loc.mcc_meta_hex 14 md_start 0 loc.mcc_meta_hex_len with
+      | None -> None
+      | Some offset_field ->
+        if offset_field.cf_type <> compact_t_i64 then None
+        else
+          match decode_varint_value_hex loc.mcc_meta_hex
+                  offset_field.cf_value_start 0 0 loc.mcc_meta_hex_len with
+          | None -> None
+          | Some raw -> Some (zigzag_decode_nat raw)
+
+// Page-header probes for a per-row-group data page. The page-header probes
+// `parquet_page_header_*_at` already take an explicit page offset, so all we
+// need is the per-row-group `data_page_offset`.
+let probe_parquet_column_page_header_compressed_size_in_row_group
+  (path:string) (rg_index:nat) (col_index:nat) : option nat =
+  match probe_parquet_column_data_page_offset_in_row_group path rg_index col_index with
+  | None -> None
+  | Some page_offset -> parquet_page_header_compressed_size_at path page_offset
+
+let probe_parquet_column_page_header_uncompressed_size_in_row_group
+  (path:string) (rg_index:nat) (col_index:nat) : option nat =
+  match probe_parquet_column_data_page_offset_in_row_group path rg_index col_index with
+  | None -> None
+  | Some page_offset -> parquet_page_header_uncompressed_size_at path page_offset
+
+let probe_parquet_column_page_header_length_in_row_group
+  (path:string) (rg_index:nat) (col_index:nat) : option nat =
+  match probe_parquet_column_data_page_offset_in_row_group path rg_index col_index with
+  | None -> None
+  | Some page_offset -> parquet_page_header_length_at path page_offset
+
+// data_page header.data_page_header.num_values (field 5 -> field 1, i32).
+let probe_parquet_column_page_header_num_values_in_row_group
+  (path:string) (rg_index:nat) (col_index:nat) : option nat =
+  match probe_parquet_column_data_page_offset_in_row_group path rg_index col_index with
+  | None -> None
+  | Some page_offset ->
+    match parquet_read_range_hex path page_offset 128 with
+    | None -> None
+    | Some page_hex ->
+      match nth_field_hex page_hex 5 0 0 (String.length page_hex) with
+      | None -> None
+      | Some data_page_header_field ->
+        if data_page_header_field.cf_type <> compact_t_struct then None
+        else
+          match nth_field_hex page_hex 1 data_page_header_field.cf_value_start 0
+                  (String.length page_hex) with
+          | None -> None
+          | Some num_values_field ->
+            if num_values_field.cf_type <> compact_t_i32 then None
+            else
+              match decode_varint_value_hex page_hex
+                      num_values_field.cf_value_start 0 0 (String.length page_hex) with
+              | None -> None
+              | Some raw -> Some (zigzag_decode_nat raw)
+
+// Decompress the data page payload for one (rg_index, col_index). Mirrors
+// `probe_parquet_column_decompressed_payload_hex` but per-row-group.
+let probe_parquet_column_decompressed_payload_hex_in_row_group
+  (path:string) (rg_index:nat) (col_index:nat) : option string =
+  match probe_parquet_column_data_page_offset_in_row_group path rg_index col_index,
+        probe_parquet_column_page_header_length_in_row_group path rg_index col_index,
+        probe_parquet_column_page_header_compressed_size_in_row_group path rg_index col_index,
+        probe_parquet_column_page_header_uncompressed_size_in_row_group path rg_index col_index with
+  | Some page_offset, Some header_len, Some compressed_size, Some uncompressed_size ->
+    let payload_offset = page_offset + header_len in
+    (match parquet_read_range_hex path payload_offset compressed_size with
+     | None -> None
+     | Some compressed_hex ->
+       parquet_zstd_decompress_hex compressed_hex uncompressed_size)
+  | _ -> None
+
+// First-level section length (LE u32 at offset 0 of the decompressed page).
+let probe_parquet_column_first_level_section_length_in_row_group
+  (path:string) (rg_index:nat) (col_index:nat) : option nat =
+  match probe_parquet_column_decompressed_payload_hex_in_row_group path rg_index col_index with
+  | None -> None
+  | Some payload_hex ->
+    if String.length payload_hex < 8 then None
+    else le_u32_at_hex payload_hex 0
+
+// DLBA value-stream byte offset (relative to start of decompressed page).
+let probe_parquet_column_delta_length_byte_array_values_offset_in_row_group
+  (path:string) (rg_index:nat) (col_index:nat) : option nat =
+  match probe_parquet_column_first_level_section_length_in_row_group path rg_index col_index with
+  | None -> None
+  | Some section_len -> Some (4 + section_len)
+
+// One-shot DELTA_LENGTH_BYTE_ARRAY page cache builder for one row group.
+// Mirrors `probe_parquet_column_delta_length_byte_array_page_cache` but
+// composed off the `_in_row_group` payload accessors.
+let probe_parquet_column_delta_length_byte_array_page_cache_in_row_group
+  (path:string) (rg_index:nat) (col_index:nat) : option dlba_page_cache =
+  match probe_parquet_column_decompressed_payload_hex_in_row_group path rg_index col_index,
+        probe_parquet_column_delta_length_byte_array_values_offset_in_row_group
+          path rg_index col_index with
+  | Some payload_hex, Some values_offset ->
+    let payload_len_hex = String.length payload_hex in
+    let values_start_hex = mul_nat values_offset 2 in
+    if values_start_hex > payload_len_hex then None
+    else
+      let values_hex = String.sub payload_hex values_start_hex
+                         (payload_len_hex - values_start_hex) in
+      let vh_len = String.length values_hex in
+      (match decode_varint_value_with_end_hex values_hex 0 0 0 vh_len with
+       | None -> None
+       | Some (block_size, p1) ->
+         match decode_varint_value_with_end_hex values_hex p1 0 0 vh_len with
+         | None -> None
+         | Some (miniblocks, p2) ->
+           if miniblocks = 0 then None
+           else
+           match decode_varint_value_with_end_hex values_hex p2 0 0 vh_len with
+           | None -> None
+           | Some (value_count, p3) ->
+             match decode_varint_value_with_end_hex values_hex p3 0 0 vh_len with
+             | None -> None
+             | Some (first_raw, p4) ->
+               let first_length = zigzag_decode_nat first_raw in
+               match decode_varint_value_with_end_hex values_hex p4 0 0 vh_len with
+               | None -> None
+               | Some (min_delta_raw, p5) ->
+                 let min_delta = zigzag_decode_int min_delta_raw in
+                 if p5 + 1 >= vh_len then None
+                 else
+                   match byte_at_hex values_hex p5 with
+                   | None -> None
+                   | Some bit_width ->
+                     let widths_offset = p5 in
+                     let packed_start = p5 + mul_nat miniblocks 2 in
+                     let values_per_miniblock : nat =
+                       if miniblocks > 0 then div_nat_pos block_size miniblocks
+                       else 0 in
+                     match build_dlba_length_list values_hex vh_len
+                             block_size miniblocks values_per_miniblock
+                             min_delta widths_offset packed_start bit_width
+                             0 0 value_count first_length [] with
+                     | None -> None
+                     | Some lengths ->
+                       let total_value_bytes = sum_nat_list lengths in
+                       let payload_byte_len = payload_len_hex / 2 in
+                       if values_offset > payload_byte_len then None
+                       else
+                         let values_stream_len =
+                           payload_byte_len - values_offset in
+                         if total_value_bytes > values_stream_len then None
+                         else
+                           let value_data_offset =
+                             values_stream_len - total_value_bytes in
+                           let starts = prefix_sums lengths 0 [] in
+                           Some {
+                             dpc_payload_hex = payload_hex;
+                             dpc_values_offset = values_offset;
+                             dpc_value_count = value_count;
+                             dpc_first_length = first_length;
+                             dpc_min_delta = min_delta;
+                             dpc_bit_width = bit_width;
+                             dpc_packed_start = packed_start;
+                             dpc_value_data_offset = value_data_offset;
+                             dpc_lengths = lengths;
+                             dpc_value_starts = starts;
+                           })
+  | _ -> None
+
+let probe_parquet_column_delta_length_byte_array_decode_all_in_row_group
+  (path:string) (rg_index:nat) (col_index:nat)
+  : option (list (option string)) =
+  match probe_parquet_column_delta_length_byte_array_page_cache_in_row_group
+          path rg_index col_index with
+  | None -> None
+  | Some cache -> Some (dlba_page_decode_all_strings cache)
+
+// RLE_DICTIONARY decoder for one row group. Composes per-row-group dictionary
+// page + data page. `parquet_decompressed_page_at` and
+// `parquet_dictionary_page_num_values_at` already work off arbitrary page
+// offsets, so they don't need a per-row-group sibling.
+let probe_parquet_column_rle_dictionary_decode_all_in_row_group
+  (path:string) (rg_index:nat) (col_index:nat)
+  : option (list (option string)) =
+  match probe_parquet_column_dictionary_page_offset_in_row_group
+          path rg_index col_index with
+  | None -> None
+  | Some dict_offset ->
+    match parquet_decompressed_page_at path dict_offset with
+    | None -> None
+    | Some dict_payload_hex ->
+      match parquet_dictionary_page_num_values_at path dict_offset with
+      | None -> None
+      | Some dict_num_values ->
+        match decode_plain_dictionary dict_payload_hex dict_num_values with
+        | None -> None
+        | Some dict ->
+          match probe_parquet_column_decompressed_payload_hex_in_row_group
+                  path rg_index col_index with
+          | None -> None
+          | Some data_payload_hex ->
+            match probe_parquet_column_page_header_num_values_in_row_group
+                    path rg_index col_index with
+            | None -> None
+            | Some value_count ->
+              match decode_rle_dictionary_data_page data_payload_hex value_count with
+              | None -> None
+              | Some indices -> Some (map_indices_to_dict indices dict [])
+
+// Per-row-group dispatcher: try DLBA first, fall back to RLE_DICTIONARY.
+// Bet4 (lazy mmap'd backend) calls this one row group at a time.
+let probe_parquet_column_decode_in_row_group
+  (path:string) (rg_index:nat) (col_index:nat)
+  : option (list (option string)) =
+  match probe_parquet_column_delta_length_byte_array_decode_all_in_row_group
+          path rg_index col_index with
+  | Some result -> Some result
+  | None ->
+    probe_parquet_column_rle_dictionary_decode_all_in_row_group
+      path rg_index col_index
+
+// Concatenate two lists, tail-recursive via reverse-then-flip. Avoids
+// `List.Tot.append`'s O(n) per-cons stack growth on the parliament-sized
+// (~3.14M element) lists.
+let rec list_rev_append (xs:list 'a) (acc:list 'a)
+  : Tot (list 'a) (decreases xs) =
+  match xs with
+  | [] -> acc
+  | hd :: tl -> list_rev_append tl (hd :: acc)
+
+let list_rev (xs:list 'a) : Tot (list 'a) =
+  list_rev_append xs []
+
+// Walk row groups [rg_index .. rg_count) and accumulate each row group's
+// decoded column into `acc_rev` in REVERSE row order. Caller flips at the end.
+//
+// We carry an explicit fuel parameter equal to `rg_count` so the F* totality
+// checker accepts the recursion (decreases on fuel).
+let rec collect_row_group_columns
+  (path:string) (col_index:nat)
+  (rg_index:nat) (rg_count:nat) (fuel:nat) (acc_rev:list (option string))
+  : Tot (option (list (option string))) (decreases fuel) =
+  if fuel = 0 then Some acc_rev
+  else if rg_index >= rg_count then Some acc_rev
+  else
+    match probe_parquet_column_decode_in_row_group path rg_index col_index with
+    | None -> None
+    | Some this_rg ->
+      // this_rg is in row order; prepend reversed onto acc_rev.
+      let acc_rev' = list_rev_append this_rg acc_rev in
+      collect_row_group_columns path col_index (rg_index + 1) rg_count
+        (fuel - 1) acc_rev'
+
+// Walk every row group in order and return the concatenation of column
+// decodes. Eager — for the ~3M-row parliament COTTAS this is the path the
+// existing in-memory loader uses.
+let probe_parquet_column_decode_all_row_groups
+  (path:string) (col_index:nat)
+  : option (list (option string)) =
+  match probe_parquet_row_group_count path with
+  | None -> None
+  | Some rg_count ->
+    match collect_row_group_columns path col_index 0 rg_count rg_count [] with
+    | None -> None
+    | Some acc_rev -> Some (list_rev acc_rev)
