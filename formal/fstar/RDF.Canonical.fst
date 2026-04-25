@@ -166,6 +166,29 @@ let rec dedup_strings_acc (acc : list string) (xs : list string)
 let dedup_strings (xs : list string) : list string =
   dedup_strings_acc [] xs
 
+(* Render-key for a qquad — used solely as a uniqueness key when
+   deduplicating duplicates per RDF set semantics (tests 076 / 077).
+   Two triples that render byte-identical here are by construction
+   the same triple. *)
+let qquad_key (q : qquad) : string =
+  let (g, t) = q in canon_quad g t
+
+let rec dedup_qquads_acc (acc : list qquad) (seen : list string) (qs : list qquad)
+  : Tot (list qquad) (decreases qs) =
+  match qs with
+  | [] -> List.Tot.rev acc
+  | q :: rest ->
+    let k = qquad_key q in
+    if mem_string k seen then dedup_qquads_acc acc seen rest
+    else dedup_qquads_acc (q :: acc) (k :: seen) rest
+
+(* RDF set semantics: a dataset's quads form a set, not a multiset.
+   The N-Quads parser yields a list which can carry duplicates from
+   the input syntax; collapse them before per-bnode hashing so HFDQ
+   neighbour counts stay correct (test077: same triple repeated would
+   otherwise double the bnode's HFDQ contribution). *)
+let dedup_qquads (qs : list qquad) : list qquad = dedup_qquads_acc [] [] qs
+
 let rec all_bnodes_acc (acc : list bnode_id) (qs : list qquad)
   : Tot (list bnode_id) (decreases qs) =
   match qs with
@@ -563,11 +586,30 @@ let rec compute_all_nbr2
     let h = compute_nbr_hash b qs key_of in
     (b, h) :: compute_all_nbr2 qs rest nbr1_table
 
+(* Level-3 neighbour hashes — uses the level-2 table as the related-key
+   source. Phase 3 (Nun): handles graphs where a literal/IRI distinction
+   is 3 structural steps away from a colliding bnode (e.g. test047 deep
+   diff: chain `_:e -> _:m -> _:t -> "lit"`, two such chains differing
+   only in the trailing literal — HFDQ identical, nbr1 identical, nbr2
+   identical for the mid node; nbr3 finally distinguishes via the
+   literal-bearing leaf's neighbour. *)
+let rec compute_all_nbr3
+    (qs : list qquad)
+    (bs : list bnode_id)
+    (nbr2_table : list bn_hfdq_pair)
+  : Tot (list bn_hfdq_pair) (decreases bs) =
+  match bs with
+  | [] -> []
+  | b :: rest ->
+    let key_of (rb : bnode_id) : string = lookup_hfdq rb nbr2_table in
+    let h = compute_nbr_hash b qs key_of in
+    (b, h) :: compute_all_nbr3 qs rest nbr2_table
+
 (* ------------------------------------------------------------------ *)
 (* Section 6c. Sorting with the HNDQ-augmented key.
 
-   Sort key: (hfdq, nbr1, nbr2, orig). Two bnodes that agree on
-   hfdq + nbr1 + nbr2 are very likely true automorphisms in the
+   Sort key: (hfdq, nbr1, nbr2, nbr3, orig). Two bnodes that agree on
+   hfdq + nbr1 + nbr2 + nbr3 are very likely true automorphisms in the
    graph; any deterministic tiebreak is acceptable for them
    (the W3C reference output for true automorphisms is itself
    one arbitrary choice from the orbit — but it matches the
@@ -579,6 +621,7 @@ type bn_full_key = {
   bk_hfdq : string;
   bk_nbr1 : string;
   bk_nbr2 : string;
+  bk_nbr3 : string;
 }
 
 let rec lookup_pair (b : bnode_id) (xs : list bn_hfdq_pair)
@@ -592,6 +635,7 @@ let rec build_full_keys
     (hfdq_t : list bn_hfdq_pair)
     (nbr1_t : list bn_hfdq_pair)
     (nbr2_t : list bn_hfdq_pair)
+    (nbr3_t : list bn_hfdq_pair)
   : Tot (list bn_full_key) (decreases bs) =
   match bs with
   | [] -> []
@@ -601,12 +645,14 @@ let rec build_full_keys
       bk_hfdq = lookup_pair b hfdq_t;
       bk_nbr1 = lookup_pair b nbr1_t;
       bk_nbr2 = lookup_pair b nbr2_t;
-    } :: build_full_keys rest hfdq_t nbr1_t nbr2_t
+      bk_nbr3 = lookup_pair b nbr3_t;
+    } :: build_full_keys rest hfdq_t nbr1_t nbr2_t nbr3_t
 
 let full_key_le (a b : bn_full_key) : bool =
   if a.bk_hfdq <> b.bk_hfdq then str_le a.bk_hfdq b.bk_hfdq
   else if a.bk_nbr1 <> b.bk_nbr1 then str_le a.bk_nbr1 b.bk_nbr1
   else if a.bk_nbr2 <> b.bk_nbr2 then str_le a.bk_nbr2 b.bk_nbr2
+  else if a.bk_nbr3 <> b.bk_nbr3 then str_le a.bk_nbr3 b.bk_nbr3
   else str_le a.bk_orig b.bk_orig
 
 let rec insert_full_key (x : bn_full_key) (xs : list bn_full_key)
@@ -729,12 +775,13 @@ let relabel_dataset (mapping : list (bnode_id * string)) (ds : rdf_dataset)
    cliques) are not handled by this layer; they would require full
    permutation enumeration with a cloned issuer (deferred). *)
 let build_canonical_mapping (ds : rdf_dataset) : list (bnode_id * string) =
-  let qs = dataset_quads ds in
+  let qs = dedup_qquads (dataset_quads ds) in
   let bs = dataset_bnodes ds in
   let hfdq_table = compute_all_hfdq qs bs in
   let nbr1_table = compute_all_nbr1 qs bs hfdq_table in
   let nbr2_table = compute_all_nbr2 qs bs nbr1_table in
-  let keys = build_full_keys bs hfdq_table nbr1_table nbr2_table in
+  let nbr3_table = compute_all_nbr3 qs bs nbr2_table in
+  let keys = build_full_keys bs hfdq_table nbr1_table nbr2_table nbr3_table in
   let sorted = sort_full_keys keys in
   let final_state = assign_full_in_order empty_issuer sorted in
   final_state.is_issued
@@ -753,11 +800,25 @@ let rec render_quads (qs : list qquad)
   | [] -> []
   | (g, t) :: rest -> canon_quad g t :: render_quads rest
 
+(* Dedup adjacent duplicates in a sorted list of strings. After
+   `insertion_sort`, RDF set semantics requires that identical canonical
+   N-Quads lines collapse to a single line (tests 076/077). Walking the
+   sorted list and dropping adjacent equals is sufficient. *)
+let rec dedup_sorted_strings (xs : list string)
+  : Tot (list string) (decreases xs) =
+  match xs with
+  | [] -> []
+  | [x] -> [x]
+  | x :: y :: rest ->
+    if x = y then dedup_sorted_strings (y :: rest)
+    else x :: dedup_sorted_strings (y :: rest)
+
 let canonical_nquads (ds : rdf_dataset) : string =
   let qs = dataset_quads ds in
   let lines = render_quads qs in
   let sorted = insertion_sort lines in
-  concat_strings sorted
+  let deduped = dedup_sorted_strings sorted in
+  concat_strings deduped
 
 (* Convenience: canonicalise then serialise. *)
 let canonicalize_to_nquads (ds : rdf_dataset) : string =
