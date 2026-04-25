@@ -385,30 +385,29 @@ let rec nth_field_hex (hex:string) (target_id:nat) (pos:nat) (prev_id:nat) (fuel
               if b < 128 then Some (acc', p + 2)
               else decode_varint_hex (p + 2) (shift + 7) acc' (fuel2 - 1)
         in
-        let field_id_opt =
+        // Thrift compact protocol: when the high-nibble field-id delta is 0,
+        // the field id is encoded inline as a zigzag-i16 varint; otherwise it
+        // is `prev_id + delta`. We decode the inline varint once and zigzag-
+        // decode it (the previous code skipped zigzag, so for any field id
+        // >= 16 we would land on the wrong field id and chain a bad
+        // prev_id forward through the rest of the struct).
+        let id_and_value_pos =
           if delta = 0 then
             match decode_varint_hex (pos + 2) 0 0 (fuel - 1) with
             | None -> None
-            | Some (fid, _) -> Some fid
-          else Some (prev_id + delta)
+            | Some (raw, p) -> Some (zigzag_decode_nat raw, p)
+          else Some (prev_id + delta, pos + 2)
         in
-        let value_pos_opt =
-          if delta = 0 then
-            match decode_varint_hex (pos + 2) 0 0 (fuel - 1) with
-            | None -> None
-            | Some (_, p) -> Some p
-          else Some (pos + 2)
-        in
-        (match field_id_opt, value_pos_opt with
-         | Some field_id, Some value_pos ->
+        (match id_and_value_pos with
+         | None -> None
+         | Some (field_id, value_pos) ->
            (match skip_compact_value_hex hex ftype value_pos (fuel - 1) with
             | None -> None
             | Some next ->
               if field_id = target_id then
                 Some { cf_id = field_id; cf_type = ftype; cf_value_start = value_pos; cf_next = next }
               else
-                nth_field_hex hex target_id next field_id (fuel - 1))
-         | _ -> None)
+                nth_field_hex hex target_id next field_id (fuel - 1)))
 
 let probe_parquet_num_rows (path:string) : option nat =
   match probe_parquet_footer path with
