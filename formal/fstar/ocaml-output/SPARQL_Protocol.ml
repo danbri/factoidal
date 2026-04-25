@@ -387,6 +387,56 @@ let charset_is_utf8_or_absent (ct : Prims.string) : Prims.bool=
   match extract_charset_param ct with
   | FStar_Pervasives_Native.None -> true
   | FStar_Pervasives_Native.Some v -> (v = "utf-8") || (v = "utf8")
+let is_ws_code (cd : Prims.nat) : Prims.bool=
+  (((cd = (Prims.of_int (0x20))) || (cd = (Prims.of_int (0x09)))) ||
+     (cd = (Prims.of_int (0x0A))))
+    || (cd = (Prims.of_int (0x0D)))
+let rec list_chars_starts_with (prefix : FStar_Char.char Prims.list)
+  (cs : FStar_Char.char Prims.list) : Prims.bool=
+  match (prefix, cs) with
+  | ([], uu___) -> true
+  | (uu___, []) -> false
+  | (p::ps, c::rest) ->
+      if (char_code p) = (char_code c)
+      then list_chars_starts_with ps rest
+      else false
+let rec chars_contains_word (kw : FStar_Char.char Prims.list)
+  (prev_was_ws : Prims.bool) (cs : FStar_Char.char Prims.list) : Prims.bool=
+  match cs with
+  | [] -> false
+  | c::rest ->
+      if prev_was_ws && (list_chars_starts_with kw cs)
+      then
+        let kw_len = FStar_List_Tot_Base.length kw in
+        (if (FStar_List_Tot_Base.length cs) <= kw_len
+         then true
+         else
+           (let rec drop_n n xs =
+              if n = Prims.int_zero
+              then xs
+              else
+                (match xs with
+                 | [] -> []
+                 | uu___2::t -> drop_n (n - Prims.int_one) t) in
+            match drop_n kw_len cs with
+            | [] -> true
+            | nxt::uu___1 -> is_ws_code (char_code nxt)))
+      else chars_contains_word kw (is_ws_code (char_code c)) rest
+let str_contains_word_ci (haystack : Prims.string) (kw_lo : Prims.string) :
+  Prims.bool=
+  let cs = FStar_String.list_of_string (ascii_lower_string haystack) in
+  let kw = FStar_String.list_of_string kw_lo in
+  chars_contains_word kw true cs
+let update_has_dataset_clause (u : Prims.string) : Prims.bool=
+  (str_contains_word_ci u "using") || (str_contains_word_ci u "with")
+let kvs_have_using_param (kvs : (Prims.string * Prims.string) Prims.list) :
+  Prims.bool=
+  match first_value "using-graph-uri" kvs with
+  | FStar_Pervasives_Native.Some uu___ -> true
+  | FStar_Pervasives_Native.None ->
+      (match first_value "using-named-graph-uri" kvs with
+       | FStar_Pervasives_Native.Some uu___ -> true
+       | FStar_Pervasives_Native.None -> false)
 let build_from_kvs (is_get_method : Prims.bool) (is_update_path : Prims.bool)
   (kvs : (Prims.string * Prims.string) Prims.list) : sparql_request=
   let qs_all = collect_values "query" kvs in
@@ -416,7 +466,12 @@ let build_from_kvs (is_get_method : Prims.bool) (is_update_path : Prims.bool)
        | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.Some u) ->
            if is_get_method
            then PR_Bad "UPDATE invoked via GET (Protocol 2.2.2)"
-           else PR_Update (u, dflt, named))
+           else
+             if (kvs_have_using_param kvs) && (update_has_dataset_clause u)
+             then
+               PR_Bad
+                 "using-graph-uri/using-named-graph-uri form params conflict with USING/WITH in update text (Protocol 2.2.4)"
+             else PR_Update (u, dflt, named))
 let decode_request (http_method : Prims.string) (url_path : Prims.string)
   (url_query : Prims.string) (content_type : Prims.string)
   (body : Prims.string) : sparql_request=

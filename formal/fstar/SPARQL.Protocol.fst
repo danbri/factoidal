@@ -483,6 +483,80 @@ let charset_is_utf8_or_absent (ct : string) : bool =
   | None -> true
   | Some v -> v = "utf-8" || v = "utf8"
 
+// Whitespace check used by has_keyword_in_update. Treats SPACE / TAB /
+// CR / LF as the only separators that bound an UPDATE keyword.
+let is_ws_code (cd : nat) : bool =
+  cd = 0x20 || cd = 0x09 || cd = 0x0A || cd = 0x0D
+
+// Does `cs` begin with `prefix`? Plain prefix-match on character lists.
+let rec list_chars_starts_with
+    (prefix : list FStar.Char.char)
+    (cs : list FStar.Char.char)
+  : Tot bool (decreases (List.Tot.length prefix)) =
+  match prefix, cs with
+  | [], _ -> true
+  | _, [] -> false
+  | p :: ps, c :: rest ->
+    if char_code p = char_code c
+    then list_chars_starts_with ps rest
+    else false
+
+// Scan `cs` for a whitespace-bounded occurrence of `kw`. The match
+// must be preceded by start-of-string-or-whitespace and followed by
+// whitespace or end-of-string. Used to detect `USING` / `WITH`
+// keywords in an UPDATE text (already lower-cased by the caller).
+let rec chars_contains_word
+    (kw : list FStar.Char.char)
+    (prev_was_ws : bool)
+    (cs : list FStar.Char.char)
+  : Tot bool (decreases (List.Tot.length cs)) =
+  match cs with
+  | [] -> false
+  | c :: rest ->
+    if prev_was_ws && list_chars_starts_with kw cs then
+      // Ensure the keyword ends at end-of-string or whitespace.
+      let kw_len = List.Tot.length kw in
+      if List.Tot.length cs <= kw_len then true
+      else
+        // Skip kw_len chars and look at the next.
+        let rec drop_n (n : nat) (xs : list FStar.Char.char)
+          : Tot (list FStar.Char.char) (decreases n) =
+          if n = 0 then xs
+          else match xs with
+               | [] -> []
+               | _ :: t -> drop_n (n - 1) t in
+        (match drop_n kw_len cs with
+         | [] -> true
+         | nxt :: _ -> is_ws_code (char_code nxt))
+    else
+      chars_contains_word kw (is_ws_code (char_code c)) rest
+
+let str_contains_word_ci (haystack : string) (kw_lo : string) : bool =
+  let cs = String.list_of_string (ascii_lower_string haystack) in
+  let kw = String.list_of_string kw_lo in
+  chars_contains_word kw true cs
+
+// Per Protocol §2.2.4: the update form-params `using-graph-uri` and
+// `using-named-graph-uri` MUST NOT be combined with `USING` / `WITH` /
+// `USING NAMED` clauses inside the SPARQL UPDATE text. We do a
+// conservative whitespace-bounded keyword scan on the update body.
+// `WITH <iri>` and `USING [NAMED] <iri>` both start with one of these
+// two keywords, so checking either is sufficient. False positives
+// require a literal `USING` or `WITH` token elsewhere in the update,
+// which is implausible for real updates (these aren't valid IRI
+// schemes or prefix names).
+let update_has_dataset_clause (u : string) : bool =
+  str_contains_word_ci u "using" ||
+  str_contains_word_ci u "with"
+
+let kvs_have_using_param (kvs : list (string & string)) : bool =
+  match first_value "using-graph-uri" kvs with
+  | Some _ -> true
+  | None ->
+    (match first_value "using-named-graph-uri" kvs with
+     | Some _ -> true
+     | None -> false)
+
 // Build a PR_Query / PR_Update given the bag of kv pairs from either
 // the URL query string (GET) or the form body (POST form-encoded).
 //
@@ -537,6 +611,11 @@ let build_from_kvs
     // `update=` present. §2.2.2: UPDATE forbidden via GET.
     if is_get_method then
       PR_Bad "UPDATE invoked via GET (Protocol 2.2.2)"
+    // Protocol §2.2.4: using-graph-uri / using-named-graph-uri form
+    // params MUST NOT coexist with USING / WITH clauses inside the
+    // update text. (`bad_update_dataset_conflict`.)
+    else if kvs_have_using_param kvs && update_has_dataset_clause u then
+      PR_Bad "using-graph-uri/using-named-graph-uri form params conflict with USING/WITH in update text (Protocol 2.2.4)"
     else PR_Update u dflt named
 
 // Decode the incoming HTTP request. http_method is the method as
