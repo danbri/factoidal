@@ -2282,6 +2282,30 @@ let owl_rule_minc1_bridge (g : rdf_graph) : rdf_graph =
     g
     g
 
+// SUBJECT-SIDE GUARD (parent7 close-out, 2026-04-25 Pe3): the
+// `is_schema_metapredicate edge.p` gate already rejects schema-vocab
+// PREDICATES, but a non-meta-predicate edge can still have a SUBJECT
+// that is itself a schema-vocab IRI (e.g. (rdfs:domain rdf:type
+// rdf:Property)) or one of the canonical bnodes a cls-* rule emits
+// (_:__rl_maxqc1_<P>__on__<C>). Both kinds leak into ?parent bindings
+// under bnodes-as-existential rewriting (Zayin diagnosis,
+// 2026-04-25-zayin-parent7-strip-not-effective.md). Reject them.
+//
+// Implementation: prefix-match the bnode label against "__rl_" using
+// String.sub (same pattern as `iri_in_xsd_ns` above).
+let rl_canonical_bnode_prefix : string = "__rl_"
+
+let bnode_is_rl_canonical (b : bnode_id) : bool =
+  let plen = String.length rl_canonical_bnode_prefix in
+  let blen = String.length b in
+  if blen < plen then false
+  else String.sub b 0 plen = rl_canonical_bnode_prefix
+
+let edge_subject_is_safe (e : triple) : bool =
+  match e.s with
+  | S_IRI i  -> not (is_schema_metapredicate i)
+  | S_BNode b -> not (bnode_is_rl_canonical b)
+
 // cls-svf2-qualified materialise: for each (x P y) with (y rdf:type C)
 // and C a named class (C <> owl:Thing), create canonical restriction
 // bnode and emit membership.
@@ -2299,6 +2323,7 @@ let owl_rule_cls_svf2_qualified (g : rdf_graph) : rdf_graph =
       // owl:onProperty / owl:onClass / owl:*Cardinality* / owl:*ValuesFrom
       // edges no longer trigger this rule).
       if edge.p = rdf_type || is_schema_metapredicate edge.p then acc
+      else if not (edge_subject_is_safe edge) then acc
       else
         match term_to_subject edge.o with
         | None -> acc
@@ -2348,6 +2373,7 @@ let owl_rule_cls_minc_qual1 (g : rdf_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (edge : triple) ->
       if edge.p = rdf_type || is_schema_metapredicate edge.p then acc
+      else if not (edge_subject_is_safe edge) then acc
       else
         match term_to_subject edge.o with
         | None -> acc
@@ -2488,6 +2514,7 @@ let owl_rule_cls_maxqc1 (g : rdf_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (edge : triple) ->
       if edge.p = rdf_type || is_schema_metapredicate edge.p then acc
+      else if not (edge_subject_is_safe edge) then acc
       else
         match term_to_subject edge.o with
         | None -> acc
@@ -2543,6 +2570,7 @@ let owl_rule_cls_exactqc1 (g : rdf_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (edge : triple) ->
       if edge.p = rdf_type || is_schema_metapredicate edge.p then acc
+      else if not (edge_subject_is_safe edge) then acc
       else
         match term_to_subject edge.o with
         | None -> acc
