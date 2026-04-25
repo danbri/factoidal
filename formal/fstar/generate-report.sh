@@ -357,6 +357,67 @@ OWL_SKIP_ROWS+="$(emit_owl_skip_row "type-negative-entailment" "$OWL_TNE_N" "blo
 OWL_SKIP_ROWS+="$(emit_owl_skip_row "type-consistency" "$OWL_TCON_N" "blocked on contradiction detection")"$'\n'
 OWL_SKIP_ROWS+="$(emit_owl_skip_row "type-inconsistency" "$OWL_TINC_N" "blocked on contradiction detection")"$'\n'
 
+# --- RDFC-1.0 panel ------------------------------------------------------
+# RDFC-1.0 (W3C RDF Dataset Canonicalization 1.0) gets its own headline
+# panel parallel to OWL 2 RL. It's a separate W3C suite with a different
+# denominator and shape. Eval tests check canonical-form bytewise; Map
+# tests check the bnode→canonical mapping (currently STUB — runner
+# emits no JSON map yet). NegEval tests check that pathological inputs
+# don't infinitely loop. Counts are live from rdfc10_runner.
+if [ "$RDFC10_PRESENT" -eq 1 ]; then
+  RDFC10_RUN_TOTAL=$((RDFC10_PASS + RDFC10_FAIL))
+  if [ "$RDFC10_RUN_TOTAL" -gt 0 ]; then
+    RDFC10_BAR_PCT=$(awk -v p="$RDFC10_PASS" -v t="$RDFC10_RUN_TOTAL" 'BEGIN{printf "%.0f", 100*p/t}')
+  else
+    RDFC10_BAR_PCT=0
+  fi
+  if [ "$RDFC10_FAIL" -eq 0 ] && [ "$RDFC10_PASS" -gt 0 ]; then
+    RDFC10_BAR_CLASS="perfect"
+  elif [ "$RDFC10_BAR_PCT" -ge 90 ]; then
+    RDFC10_BAR_CLASS="near-perfect"
+  else
+    RDFC10_BAR_CLASS="mixed"
+  fi
+else
+  RDFC10_BAR_PCT=0; RDFC10_BAR_CLASS="skipped"
+  RDFC10_PASS=0; RDFC10_FAIL=0; RDFC10_SKIP=0; RDFC10_TOTAL=0
+fi
+
+RDFC10_HTML=$(cat <<RDFCEOF
+<h2>RDFC-1.0 <span class="inline-numbers">${RDFC10_PASS} pass &middot; ${RDFC10_FAIL} fail &middot; ${RDFC10_SKIP} stub &middot; of ${RDFC10_TOTAL} total</span></h2>
+<div class="suites">
+  <div class="suite-row ${RDFC10_BAR_CLASS}">
+    <div class="suite-name">eval (HFDQ)</div>
+    <div class="suite-bar"><div class="fill" style="width:${RDFC10_BAR_PCT}%"></div></div>
+    <div class="suite-numbers">
+      <span class="p">${RDFC10_PASS}</span>/<span class="f">${RDFC10_FAIL}</span>
+      <small>of $((RDFC10_PASS + RDFC10_FAIL))</small>
+    </div>
+  </div>
+  <div class="suite-row skipped">
+    <div class="suite-name">map / negative-eval</div>
+    <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
+    <div class="suite-numbers">
+      <small>${RDFC10_SKIP} stub &mdash; runner does not emit map JSON / HNDQ termination guard</small>
+    </div>
+  </div>
+</div>
+<p style="margin: 0.3em 0 1em; color: var(--muted); font-size: 0.85em;">
+  <strong>RDFC-1.0 (W3C RDF Dataset Canonicalization):</strong>
+  We vendor the full W3C RDFC-1.0 Test Cases at
+  <code>third_party/testing/rdf-canon/</code>. The canonical-labelling
+  algorithm lives in F&#42; at <code>formal/fstar/RDF.Canonical.fst</code>
+  &mdash; <em>Hash First Degree Quads (HFDQ)</em> phase verifies cleanly
+  with no <code>--lax</code> and no <code>--admit_smt_queries</code>.
+  Eval tests check the canonical N-Quads form bytewise. Phase 2 work
+  (HNDQ &mdash; Hash N-Degree Quads with bounded permutation
+  enumeration) closes the remaining symmetric-cycle eval tests. Map
+  tests are STUB pending a runner-side bnode &rarr; canonical-id JSON
+  emitter; NegEval tests need an HNDQ termination guard.
+</p>
+RDFCEOF
+)
+
 OWL_HTML=$(cat <<OWLEOF
 <h2>OWL 2 <span class="inline-numbers">${OWL_PASS} pass &middot; ${OWL_FAIL} fail &middot; profile-RL PositiveEntailmentTests only</span></h2>
 <div class="suites">
@@ -559,6 +620,8 @@ ${RDF_ROWS_HTML}
 </div>
 
 ${OWL_HTML}
+
+${RDFC10_HTML}
 
 <details>
   <summary>Machine-readable artifacts</summary>

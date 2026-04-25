@@ -583,6 +583,38 @@
   are live from the vendored catalogs, not stale snapshots.
 </p>
 
+<h2>RDFC-1.0 <span class="inline-numbers">38 pass &middot; 26 fail &middot; 22 stub &middot; of 86 total</span></h2>
+<div class="suites">
+  <div class="suite-row mixed">
+    <div class="suite-name">eval (HFDQ)</div>
+    <div class="suite-bar"><div class="fill" style="width:59%"></div></div>
+    <div class="suite-numbers">
+      <span class="p">38</span>/<span class="f">26</span>
+      <small>of 64</small>
+    </div>
+  </div>
+  <div class="suite-row skipped">
+    <div class="suite-name">map / negative-eval</div>
+    <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
+    <div class="suite-numbers">
+      <small>22 stub &mdash; runner does not emit map JSON / HNDQ termination guard</small>
+    </div>
+  </div>
+</div>
+<p style="margin: 0.3em 0 1em; color: var(--muted); font-size: 0.85em;">
+  <strong>RDFC-1.0 (W3C RDF Dataset Canonicalization):</strong>
+  We vendor the full W3C RDFC-1.0 Test Cases at
+  <code>third_party/testing/rdf-canon/</code>. The canonical-labelling
+  algorithm lives in F&#42; at <code>formal/fstar/RDF.Canonical.fst</code>
+  &mdash; <em>Hash First Degree Quads (HFDQ)</em> phase verifies cleanly
+  with no <code>--lax</code> and no <code>--admit_smt_queries</code>.
+  Eval tests check the canonical N-Quads form bytewise. Phase 2 work
+  (HNDQ &mdash; Hash N-Degree Quads with bounded permutation
+  enumeration) closes the remaining symmetric-cycle eval tests. Map
+  tests are STUB pending a runner-side bnode &rarr; canonical-id JSON
+  emitter; NegEval tests need an HNDQ termination guard.
+</p>
+
 <details>
   <summary>Machine-readable artifacts</summary>
   <ul>
@@ -660,9 +692,9 @@
 </main>
 
 <footer>
-  Generated <strong>2026-04-25 01:53 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/b726c500a16cd52ec59d0d893ed0a1085e9da6ec">b726c50</a></code>
-  on branch <code>claude/main</code> — &ldquo;rdfc10: F* HFDQ canonicalisation — 13 → 38 of 64 eval tests pass (Phase 1)&rdquo;.
+  Generated <strong>2026-04-25 05:06 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/8f1a2c248bdef4a97f468642f31c00a301cd4b8a">8f1a2c2</a></code>
+  on branch <code>claude/main</code> — &ldquo;docs: import Codex's second-backend (oxigraph/qlever) note (was untracked)&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
