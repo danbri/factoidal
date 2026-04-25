@@ -1194,7 +1194,21 @@ h1{margin-bottom:.2em} p.lede{color:#666;margin-top:0}\n\
 code{font-size:12px}\n\
 factoidal-sparql-client{margin-top:1em;display:block}\n\
 footer{margin-top:2em;color:#888;font-size:12px}\n\
-@media (prefers-color-scheme:dark){p.lede,footer{color:#aaa}}\n\
+header.controls{display:flex;flex-wrap:wrap;gap:.6em;align-items:center;\n\
+  margin:1em 0;padding:.6em .8em;border:1px solid #ddd;border-radius:8px;\n\
+  background:rgba(127,127,127,.06)}\n\
+header.controls label{display:flex;flex-direction:column;font-size:11px;\n\
+  color:#666;text-transform:uppercase;letter-spacing:.04em}\n\
+header.controls select{font:inherit;padding:.25em .35em;min-width:14em}\n\
+.pill{display:inline-block;padding:.25em .7em;border-radius:999px;\n\
+  background:#1f7a4d;color:#fff;font-size:13px;font-weight:500;\n\
+  white-space:nowrap}\n\
+.pill.warn{background:#a85a00}\n\
+.pill.err{background:#933}\n\
+.pill.unknown{background:#666}\n\
+@media (prefers-color-scheme:dark){p.lede,footer{color:#aaa}\n\
+  header.controls{border-color:#444}\n\
+  header.controls label{color:#aaa}}\n\
 </style></head><body>\n\
 <h1>factoidal SPARQL endpoint</h1>\n\
 <p class=\"lede\">Verified RDF/SPARQL 1.1 service. Protocol endpoint at\n\
@@ -1205,7 +1219,17 @@ SPARQL 1.1 Protocol client; programmatic clients should hit\n\
 <a href=\"https://www.w3.org/TR/sparql11-protocol/\">SPARQL 1.1 Protocol</a>.\n\
 Sample queries are loaded from\n\
 <a href=\"/parliament-queries.json\"><code>/parliament-queries.json</code></a>\n\
-(the 24 vendored UK Parliament queries).</p>\n\
+(vendored UK Parliament queries plus He2's modernised variants).</p>\n\
+<header class=\"controls\">\n\
+  <label for=\"backend-select\">Backend\n\
+    <select id=\"backend-select\">\n\
+      <option value=\"auto\" selected>Auto (this server)</option>\n\
+      <option value=\"in-memory\">in-memory (N-Quads)</option>\n\
+      <option value=\"binary\">binary (COTTAS)</option>\n\
+    </select>\n\
+  </label>\n\
+  <span id=\"backend-pill\" class=\"pill unknown\">Backend: \xe2\x80\xa6</span>\n\
+</header>\n\
 <script type=\"module\" src=\"/factoidal-sparql-client.js\"></script>\n\
 <factoidal-sparql-client id=\"client\" endpoint=\"/sparql\">\n\
   <factoidal-query name=\"count\" label=\"00 \xe2\x80\x94 COUNT(*) (seed)\">\n\
@@ -1217,17 +1241,95 @@ table. The component sends <code>POST /sparql</code> with\n\
 <code>Content-Type: application/sparql-query</code> and\n\
 <code>Accept: application/sparql-results+json</code>.</footer>\n\
 <script>(function(){\n\
-fetch('/parliament-queries.json',{headers:{'Accept':'application/json'}})\n\
-  .then(function(r){return r.ok?r.json():null;})\n\
-  .then(function(arr){if(!arr||!arr.length)return;\n\
-    var c=document.getElementById('client');if(!c)return;\n\
-    /* Component setter accepts [{key,label,body}, ...] (line ~570 of\n\
-       factoidal-sparql-client.js); the seed light-DOM <factoidal-query>\n\
-       child is merged with this list. Precedence in the component:\n\
-       light-DOM > property > attribute, so the seed COUNT(*) entry\n\
-       stays available alongside the Parliament queries. */\n\
-    c.queries=arr;})\n\
-  .catch(function(){/* offline / 404: keep the seed COUNT(*) query */});\n\
+  /* ---- Backend picker --------------------------------------------------\n\
+     The web component's `endpoint` attribute is reflected; setting the\n\
+     property restamps every subsequent fetch. We do not touch the bundle\n\
+     itself (rule: no JS reimplementations of F* logic) \xe2\x80\x94 just steer it. */\n\
+  var qs = new URLSearchParams(location.search);\n\
+  var COTTAS_DEFAULT = 'http://100.107.116.70:3032/sparql';\n\
+  var cottasUrl = qs.get('cottas') || COTTAS_DEFAULT;\n\
+  var clientEl = document.getElementById('client');\n\
+  var pillEl = document.getElementById('backend-pill');\n\
+  var sel = document.getElementById('backend-select');\n\
+\n\
+  function fmtN(n){ try{ return Number(n).toLocaleString('en-GB'); }\n\
+                    catch(_){ return String(n); } }\n\
+  function pillClassForKind(k){\n\
+    if(k==='in-memory'||k==='binary'||k==='mixed') return 'pill';\n\
+    if(k==='empty') return 'pill warn';\n\
+    return 'pill unknown';\n\
+  }\n\
+  function pillTextForInfo(info){\n\
+    if(!info) return 'Backend: unknown';\n\
+    var kindLabel = info.kind==='in-memory' ? 'in-memory'\n\
+      : info.kind==='binary' ? 'binary COTTAS'\n\
+      : info.kind==='mixed' ? 'mixed (in-memory + COTTAS)'\n\
+      : info.kind==='empty' ? 'empty' : info.kind;\n\
+    var src = info.source && info.source !== '(none)'\n\
+      ? ' \xc2\xb7 ' + info.source : '';\n\
+    var n = (typeof info.triples === 'number')\n\
+      ? ' (' + fmtN(info.triples) + ' triples' + src + ')' : '';\n\
+    return 'Backend: ' + kindLabel + n;\n\
+  }\n\
+  function setPill(text, cls){ pillEl.textContent = text;\n\
+    pillEl.className = cls || 'pill unknown'; }\n\
+\n\
+  /* The pill always describes the picked endpoint; if a remote endpoint\n\
+     does not expose /backend-info.json (or CORS forbids it) we fall back\n\
+     to a plain label. */\n\
+  function refreshPill(endpoint){\n\
+    var infoUrl;\n\
+    if(endpoint && /^https?:/.test(endpoint)){\n\
+      try{ infoUrl = new URL('/backend-info.json', endpoint).href; }\n\
+      catch(_){ infoUrl = '/backend-info.json'; }\n\
+    } else {\n\
+      infoUrl = '/backend-info.json';\n\
+    }\n\
+    setPill('Backend: \xe2\x80\xa6 (' + infoUrl + ')', 'pill unknown');\n\
+    fetch(infoUrl, {headers:{'Accept':'application/json'}})\n\
+      .then(function(r){ return r.ok ? r.json() : null; })\n\
+      .then(function(info){\n\
+        if(!info){ setPill('Backend: ' + (endpoint||'?') +\n\
+          ' (no /backend-info.json)', 'pill warn'); return; }\n\
+        setPill(pillTextForInfo(info), pillClassForKind(info.kind));\n\
+      })\n\
+      .catch(function(){\n\
+        setPill('Backend: ' + (endpoint||'?') +\n\
+          ' (info unavailable, CORS or offline)', 'pill warn');\n\
+      });\n\
+  }\n\
+\n\
+  function endpointFor(kind){\n\
+    if(kind==='binary') return cottasUrl;\n\
+    if(kind==='in-memory') return location.origin + '/sparql';\n\
+    return '/sparql';\n\
+  }\n\
+\n\
+  sel.addEventListener('change', function(){\n\
+    var ep = endpointFor(sel.value);\n\
+    if(clientEl){ clientEl.endpoint = ep; }\n\
+    refreshPill(ep);\n\
+  });\n\
+\n\
+  /* Initial pill describes whatever this server is. */\n\
+  refreshPill('/sparql');\n\
+\n\
+  /* ---- Sample queries -------------------------------------------------- */\n\
+  fetch('/parliament-queries.json',{headers:{'Accept':'application/json'}})\n\
+    .then(function(r){return r.ok?r.json():null;})\n\
+    .then(function(arr){if(!arr||!arr.length)return;\n\
+      if(!clientEl)return;\n\
+      /* Component setter accepts [{key,label,body}, ...] (line ~570 of\n\
+         factoidal-sparql-client.js); the seed light-DOM <factoidal-query>\n\
+         child is merged with this list. Precedence in the component:\n\
+         light-DOM > property > attribute, so the seed COUNT(*) entry\n\
+         stays available alongside the Parliament queries. The `group`\n\
+         field on each entry is forward-compat for an <optgroup>-aware\n\
+         component upgrade; the current component ignores extra fields\n\
+         and the labels already carry a \"Vendored \xe2\x80\x94 \" / \"Modernised \xe2\x80\x94 \"\n\
+         prefix so the flat dropdown still groups visually. */\n\
+      clientEl.queries=arr;})\n\
+    .catch(function(){/* offline / 404: keep the seed COUNT(*) query */});\n\
 })();</script></body></html>\n"
 
 (* ----- /parliament-queries.json --------------------------------------------
@@ -1311,31 +1413,107 @@ let parliament_entries_for_group (root : string) (group : string)
   ) [] entries
   |> List.rev
 
-(* Build the JSON array as a string. We emit one line per object; ~16 KB
-   total for the current fixture set. The component re-reads this on every
-   page load, so He2's modernisations to the .rq files surface naturally. *)
+(* He2's modernised queries (commit cf22aad) live alongside the repo,
+   not under third_party/. The directory layout mirrors third_party's:
+     tools/sample-queries/ukparliament/{main,detail}/*_modern.rq
+   Resolution mirrors resolve_parliament_dir — try a few argv[0]/CWD-
+   relative paths so the binary works whether invoked from the repo
+   root, ocaml-output/, or an installed location. *)
+let resolve_modern_queries_dir () : string option =
+  let exe_dir =
+    try Filename.dirname (Unix.realpath Sys.argv.(0))
+    with _ -> Filename.dirname Sys.argv.(0)
+  in
+  let cwd = try Sys.getcwd () with _ -> "." in
+  let rel = "tools/sample-queries/ukparliament" in
+  let candidates = [
+    Filename.concat exe_dir (Filename.concat ".." rel);
+    Filename.concat exe_dir (Filename.concat "../.." rel);
+    Filename.concat exe_dir (Filename.concat "../../.." rel);
+    Filename.concat exe_dir (Filename.concat "../../../.." rel);
+    Filename.concat cwd rel;
+  ] in
+  List.find_opt (fun p ->
+    try Sys.is_directory p with _ -> false) candidates
+
+(* Walk one of the {main,detail} subdirectories under the modernised-
+   queries root, collecting (key, label, body) for every file ending in
+   _modern.rq. We deliberately filter on the _modern suffix so a future
+   sibling of vendored queries in the same tree won't bleed in. *)
+let modern_entries_for_group (root : string) (group : string)
+    : (string * string * string) list =
+  let dir = Filename.concat root group in
+  let entries =
+    try Sys.readdir dir with _ -> [||]
+  in
+  Array.sort compare entries;
+  Array.fold_left (fun acc name ->
+    let is_modern =
+      Filename.check_suffix name ".rq"
+      && (let stem = Filename.chop_suffix name ".rq" in
+          let n = String.length stem in
+          n >= 7 && String.sub stem (n - 7) 7 = "_modern")
+    in
+    if is_modern then
+      let path = Filename.concat dir name in
+      try
+        let body = read_file path in
+        let stem = Filename.chop_suffix name ".rq" in
+        let key = "modern/" ^ group ^ "/" ^ stem in
+        let label = "Modernised \xe2\x80\x94 " ^ group ^ " / " ^ stem in
+        (key, label, body) :: acc
+      with _ -> acc
+    else acc
+  ) [] entries
+  |> List.rev
+
+(* Build the JSON array as a string. We emit one line per object; ~32 KB
+   total once the modernised queries are folded in. The component re-
+   reads this on every page load, so He2's modernisations to the .rq
+   files surface naturally.
+
+   Each entry carries a `group` field ("Vendored" / "Modernised") so a
+   future component upgrade can render <optgroup>s. The current component
+   ignores extra fields, so this is forward-compatible. The label is
+   prefixed too so the existing flat dropdown still groups visually. *)
 let build_parliament_queries_json () : string =
-  match resolve_parliament_dir () with
-  | None -> "[]\n"
-  | Some root ->
-    let main = parliament_entries_for_group root "main" in
-    let detail = parliament_entries_for_group root "detail" in
-    let all = main @ detail in
-    let b = Buffer.create 16384 in
-    Buffer.add_char b '[';
-    let first = ref true in
-    List.iter (fun (key, label, body) ->
-      if !first then first := false else Buffer.add_char b ',';
-      Buffer.add_string b "\n  {\"key\":\"";
-      Buffer.add_string b (json_escape key);
-      Buffer.add_string b "\",\"label\":\"";
-      Buffer.add_string b (json_escape label);
-      Buffer.add_string b "\",\"body\":\"";
-      Buffer.add_string b (json_escape body);
-      Buffer.add_string b "\"}";
-    ) all;
-    Buffer.add_string b "\n]\n";
-    Buffer.contents b
+  let vendored =
+    match resolve_parliament_dir () with
+    | None -> []
+    | Some root ->
+      let main = parliament_entries_for_group root "main" in
+      let detail = parliament_entries_for_group root "detail" in
+      List.map (fun (k, l, b) ->
+        ("Vendored", k, "Vendored \xe2\x80\x94 " ^ l, b))
+        (main @ detail)
+  in
+  let modernised =
+    match resolve_modern_queries_dir () with
+    | None -> []
+    | Some root ->
+      let main = modern_entries_for_group root "main" in
+      let detail = modern_entries_for_group root "detail" in
+      List.map (fun (k, l, b) -> ("Modernised", k, l, b))
+        (main @ detail)
+  in
+  let all = vendored @ modernised in
+  let b = Buffer.create 32768 in
+  Buffer.add_char b '[';
+  let first = ref true in
+  List.iter (fun (group, key, label, body) ->
+    if !first then first := false else Buffer.add_char b ',';
+    Buffer.add_string b "\n  {\"group\":\"";
+    Buffer.add_string b (json_escape group);
+    Buffer.add_string b "\",\"key\":\"";
+    Buffer.add_string b (json_escape key);
+    Buffer.add_string b "\",\"label\":\"";
+    Buffer.add_string b (json_escape label);
+    Buffer.add_string b "\",\"body\":\"";
+    Buffer.add_string b (json_escape body);
+    Buffer.add_string b "\"}";
+  ) all;
+  Buffer.add_string b "\n]\n";
+  Buffer.contents b
 
 let serve_parliament_queries_json () : response_body =
   try
@@ -1349,6 +1527,68 @@ let serve_parliament_queries_json () : response_body =
       rb_body = "error building parliament queries: "
                 ^ Printexc.to_string e ^ "\n" }
 
+(* ----- /backend-info.json --------------------------------------------------
+   Self-describing record so the landing-page JS can render a "Backend:
+   ... (N triples)" pill. Pure I/O glue (rule #15): we just look at the
+   config + the current dataset_ref and serialise. The "kind" is
+   determined entirely by which command-line flags were used:
+
+     --dataset only          -> "in-memory"
+     --data-cottas only      -> "binary"
+     both                    -> "mixed"
+     neither                 -> "empty"
+
+   `triples` is a live count over the current ref (post-UPDATE); it's
+   List.length on an in-memory immutable graph, fast enough for a UI
+   pill at our dataset sizes. *)
+let count_dataset_triples (ds : rdf_dataset) : int * int * int * int =
+  let dflt = List.length ds.ds_default in
+  let named_count = List.length ds.ds_named in
+  let named_triples =
+    List.fold_left (fun acc ng -> acc + List.length ng.ng_graph)
+      0 ds.ds_named
+  in
+  (dflt + named_triples, dflt, named_count, named_triples)
+
+let backend_kind_string (cfg : config) : string =
+  match cfg.dataset_file, cfg.data_cottas_files with
+  | None, [] -> "empty"
+  | Some _, [] -> "in-memory"
+  | None, _ :: _ -> "binary"
+  | Some _, _ :: _ -> "mixed"
+
+let backend_source_string (cfg : config) : string =
+  match cfg.dataset_file, cfg.data_cottas_files with
+  | None, [] -> "(none)"
+  | Some f, [] -> Filename.basename f
+  | None, paths ->
+    String.concat ", " (List.map Filename.basename paths)
+  | Some f, paths ->
+    String.concat ", "
+      (Filename.basename f :: List.map Filename.basename paths)
+
+let serve_backend_info_json (cfg : config) (dataset_ref : rdf_dataset ref)
+    : response_body =
+  try
+    let ds = !dataset_ref in
+    let (total, dflt, ng_count, ng_triples) = count_dataset_triples ds in
+    let body =
+      Printf.sprintf
+        "{\"kind\":\"%s\",\"triples\":%d,\"default_graph_triples\":%d,\
+         \"named_graphs\":%d,\"named_graph_triples\":%d,\"source\":\"%s\"}\n"
+        (json_escape (backend_kind_string cfg))
+        total dflt ng_count ng_triples
+        (json_escape (backend_source_string cfg))
+    in
+    { rb_status = 200;
+      rb_content_type = "application/json; charset=utf-8";
+      rb_body = body }
+  with e ->
+    { rb_status = 500;
+      rb_content_type = "text/plain; charset=utf-8";
+      rb_body = "error building backend info: "
+                ^ Printexc.to_string e ^ "\n" }
+
 (* Does the Accept header indicate the client wants HTML? Coarse check —
    substring match for "text/html" is enough; we don't need full media-
    type parsing for this redirect heuristic. *)
@@ -1357,8 +1597,12 @@ let accept_wants_html (accept : string) : bool =
 
 (* Try to handle the request as a static / landing-page route. Returns
    Some response_body if the path matched, None to fall through to the
-   F* SPARQL Protocol decoder. *)
-let try_static_route ~meth ~path ~qs ~accept : response_body option =
+   F* SPARQL Protocol decoder.
+
+   [cfg] / [dataset_ref] are threaded through so /backend-info.json can
+   describe what's currently loaded; everything else here is stateless. *)
+let try_static_route ~cfg ~dataset_ref ~meth ~path ~qs ~accept
+    : response_body option =
   if meth <> "GET" then None
   else match path with
   | "/" | "/index.html" ->
@@ -1369,6 +1613,8 @@ let try_static_route ~meth ~path ~qs ~accept : response_body option =
     Some (serve_component_bundle ())
   | "/parliament-queries.json" ->
     Some (serve_parliament_queries_json ())
+  | "/backend-info.json" ->
+    Some (serve_backend_info_json cfg dataset_ref)
   | "/favicon.ico" ->
     (* Browsers always ask. We don't ship one yet — 204 keeps the
        devtools console clean and avoids the F* protocol decoder
@@ -1439,7 +1685,8 @@ let handle_connection cfg dataset_ref ic oc =
 
     (* Static / landing-page routes intercept before the F* protocol
        decoder. Pure I/O glue (rule #15). *)
-    (match try_static_route ~meth ~path ~qs ~accept with
+    (match try_static_route ~cfg ~dataset_ref
+              ~meth ~path ~qs ~accept with
      | Some resp ->
        let static_extras =
          (* 303 needs a Location header; everything else just inherits CORS. *)
