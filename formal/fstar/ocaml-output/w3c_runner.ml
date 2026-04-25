@@ -2327,16 +2327,51 @@ let apply_entailment_regime regime triples =
      with _ -> triples)
   | _ -> triples  (* unknown regime — just use the raw triples *)
 
+(* Normalise a filesystem path string by collapsing "." and ".." segments.
+   Pure string-level: no system calls, does not touch the filesystem, so
+   works on paths that may not exist yet. Preserves leading "/" for
+   absolute paths; leading ".." segments in a relative path are kept
+   verbatim because there is nothing to collapse them against. Idempotent
+   on already-normalised paths.
+
+   Why this matters: `Filename.concat (Sys.getcwd ()) "../../../foo"` does
+   NOT normalise the ".." segments, so prefix-subtraction against another
+   absolutised path fails and `relpath_under` falls back to basename,
+   dropping subdirectories from rdf-xml / rdf-trig test base IRIs. *)
+let normalise_path p =
+  if p = "" then p
+  else
+    let is_abs = p.[0] = '/' in
+    let segs = String.split_on_char '/' p in
+    let rec walk acc = function
+      | [] -> List.rev acc
+      | "" :: rest -> walk acc rest        (* skip empty segments from "//" *)
+      | "." :: rest -> walk acc rest
+      | ".." :: rest ->
+        (match acc with
+         | [] -> walk [".."] rest          (* leading ".." in relative path *)
+         | ".." :: _ -> walk (".." :: acc) rest
+         | _ :: tl -> walk tl rest)
+      | seg :: rest -> walk (seg :: acc) rest
+    in
+    let parts = walk [] segs in
+    let body = String.concat "/" parts in
+    if is_abs then "/" ^ body
+    else if body = "" then "."
+    else body
+
 (* Compute the path of `filepath` relative to `manifest_dir`, preserving
    any subdirectories (e.g. "rdf-ns-prefix-confusion/test0004.rdf").
    Falls back to basename if filepath isn't under manifest_dir. *)
 let relpath_under manifest_dir filepath =
-  let md = if Filename.is_relative manifest_dir
-           then Filename.concat (Sys.getcwd ()) manifest_dir
-           else manifest_dir in
-  let fp = if Filename.is_relative filepath
-           then Filename.concat (Sys.getcwd ()) filepath
-           else filepath in
+  let md_raw = if Filename.is_relative manifest_dir
+               then Filename.concat (Sys.getcwd ()) manifest_dir
+               else manifest_dir in
+  let fp_raw = if Filename.is_relative filepath
+               then Filename.concat (Sys.getcwd ()) filepath
+               else filepath in
+  let md = normalise_path md_raw in
+  let fp = normalise_path fp_raw in
   let md_slash = if String.length md > 0 && md.[String.length md - 1] = '/'
                  then md else md ^ "/" in
   if String.length fp > String.length md_slash
@@ -2357,7 +2392,7 @@ let make_turtle_base_tc assumed_base manifest_dir filepath =
   | Some base -> base ^ relpath_under manifest_dir filepath
   | None ->
     let abs_fp = if Filename.is_relative filepath then Filename.concat (Sys.getcwd ()) filepath else filepath in
-    "file://" ^ abs_fp
+    "file://" ^ normalise_path abs_fp
 
 (* Back-compat wrapper for call sites that don't have manifest_dir
    (currently none — every call is via run_rdf_test which has tc). *)
@@ -2365,7 +2400,7 @@ let make_turtle_base assumed_base filepath =
   let abs_fp = if Filename.is_relative filepath then Filename.concat (Sys.getcwd ()) filepath else filepath in
   match assumed_base with
   | Some base -> base ^ Filename.basename filepath
-  | None -> "file://" ^ abs_fp
+  | None -> "file://" ^ normalise_path abs_fp
 
 let run_rdf_test assumed_base tc =
   match tc.test_type with
