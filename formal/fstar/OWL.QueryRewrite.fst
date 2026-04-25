@@ -165,6 +165,30 @@ let owl_onClass_iri : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#onClass");
   "http://www.w3.org/2002/07/owl#onClass"
 
+// Class-complement marker. The bnode shape
+//   _:c a owl:Class ; owl:complementOf <C> .
+// is recognised as a CE bnode under OWL-Direct semantics (paper-Q3).
+// Rewrite shape: `?x rdf:type _:c` becomes
+//   { ?x rdf:type ?d . ?d owl:disjointWith <C> }
+//   UNION
+//   { ?x rdf:type ?d . <C> owl:disjointWith ?d }
+// — the rewriter mirror of Tableau.fst's `has_disjoint_witness` bridge.
+// Sound, monotonic, one direction (never produces solutions that aren't
+// entailed). Incomplete: complementOf-membership can also be derived
+// from explicit "not in C" assertions or open-world disjoint-classes
+// axioms — those paths are out of scope here.
+let owl_complementOf_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#complementOf");
+  "http://www.w3.org/2002/07/owl#complementOf"
+
+// owl:disjointWith is needed to emit the rewritten BGP. We include the
+// IRI literal here to avoid a cross-module dependency on Tableau.fst's
+// constant of the same name. String-equality unification means the
+// duplicate is free at runtime.
+let owl_disjointWith_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#disjointWith");
+  "http://www.w3.org/2002/07/owl#disjointWith"
+
 // Prefix the w3c_runner uses when rewriting pattern bnodes to synthetic
 // variables under RDFS / OWL regimes (see w3c_runner.ml ~line 687).
 // The rewriter recognises subjects/objects of either shape:
@@ -530,6 +554,7 @@ let build_union_ggp (branch_bgps : list bgp) : group_graph_pattern =
 type ce_combinator =
   | CE_Intersect | CE_Union | CE_SomeValuesFrom | CE_AllValuesFrom
   | CE_MinCardinality | CE_MaxCardinality | CE_ExactCardinality
+  | CE_ComplementOf
 
 // Predicates that classify a bnode as an intersection/union marker.
 // owl:someValuesFrom is deliberately NOT in this set: restriction
@@ -616,6 +641,17 @@ let is_svf_subject (b : bgp) (k : string) : bool =
 let is_avf_subject (b : bgp) (k : string) : bool =
   Some? (bgp_find_first_obj b k owl_allValuesFrom_iri)
 
+// Is `k` the subject of an owl:complementOf triple in `b`? Such a
+// bnode marks a CE shape `[a owl:Class ; owl:complementOf <C>]` —
+// see paper-sparqldl-Q3.
+let is_complementOf_subject (b : bgp) (k : string) : bool =
+  Some? (bgp_find_first_obj b k owl_complementOf_iri)
+
+// Look up the complement target (the negated class term) for the
+// complementOf bnode rooted at `k`.
+let complementOf_target (b : bgp) (k : string) : option pattern_term =
+  bgp_find_first_obj b k owl_complementOf_iri
+
 // Is `k` the subject of any cardinality predicate? Returns the
 // classifying combinator if so. Tries unqualified and qualified
 // variants in order: min*, max*, exact (cardinality / qualifiedCardinality).
@@ -662,10 +698,13 @@ let restriction_has_nested_filler (b : bgp) (k : string) : bool =
     | None -> false  // named IRI / literal / non-bnode-var filler
     | Some kf ->
       // filler is a bnode. CE-qualified iff flat marker OR itself a
-      // restriction (svf / avf) subject.
+      // restriction (svf / avf) subject OR a complementOf bnode (the
+      // bnode shape `[a owl:Class ; owl:complementOf :C]`,
+      // paper-sparqldl-Q3).
       let flat = find_flat_markers_acc b [] in
       List.Tot.existsb (fun (k', _) -> k' = kf) flat ||
-      is_restriction_subject b kf
+      is_restriction_subject b kf ||
+      is_complementOf_subject b kf
 
 // Scan the BGP for restriction bnodes (subjects of someValuesFrom or
 // allValuesFrom) and, for each, include as a marker according to the
@@ -700,6 +739,15 @@ let rec add_restriction_markers_acc
           if dup then add_restriction_markers_acc b rest acc
           else add_restriction_markers_acc b rest
                  (List.Tot.append acc [(k, CE_AllValuesFrom)]))
+       else if p = owl_complementOf_iri then
+         // ComplementOf bnode (paper-sparqldl-Q3 inner CE).
+         // We always mark it (no nested-filler guard like svf/avf):
+         // the closure has no canonical materialisation that handles
+         // class-complement, so the rewriter is the only path.
+         (let dup = List.Tot.existsb (fun (k', _) -> k' = k) acc in
+          if dup then add_restriction_markers_acc b rest acc
+          else add_restriction_markers_acc b rest
+                 (List.Tot.append acc [(k, CE_ComplementOf)]))
        else
          (match combinator_of_card_pred p with
           | Some c ->
@@ -744,6 +792,13 @@ let rec add_inner_restrictions_acc
            add_inner_restrictions_acc b
              (List.Tot.append rest [kf])
              (List.Tot.append acc [(kf, CE_AllValuesFrom)])
+             (n - 1)
+         else if is_complementOf_subject b kf then
+           // kf is an inner complementOf bnode — mark it for
+           // bookkeeping stripping. No further walk needed: the
+           // complement target is a class term, not a chain head.
+           add_inner_restrictions_acc b rest
+             (List.Tot.append acc [(kf, CE_ComplementOf)])
              (n - 1)
          else add_inner_restrictions_acc b rest acc (n - 1))
 
@@ -911,6 +966,7 @@ let ce_combinator_for_term (b : bgp) (pt : pattern_term)
        //    the FILTER NOT EXISTS chain for avf).
        if is_svf_subject b k then Some (k, CE_SomeValuesFrom)
        else if is_avf_subject b k then Some (k, CE_AllValuesFrom)
+       else if is_complementOf_subject b k then Some (k, CE_ComplementOf)
        else
          // 3. Cardinality CE: any bnode that is the subject of a
          //    minCardinality / maxCardinality / cardinality (or their
@@ -1256,6 +1312,85 @@ let rec expand_ce_subject
               join_ggps [prop_ggp; cls_ggp]
             | None -> prop_ggp)
        | _, _ -> GP_BGP (single_type_bgp subj op))
+    | Some (k, CE_ComplementOf) ->
+      // Class-complement: the bnode shape `[a owl:Class ;
+      //                                      owl:complementOf <C>]`.
+      // (paper-sparqldl-Q3 inner CE.)
+      //
+      // OWL-Direct semantics:
+      //   subj rdf:type (complementOf C)  iff  subj is NOT a C.
+      // Open-world rewriter cannot just emit `FILTER NOT EXISTS
+      // { subj a C }` (that is closed-world / absence-of-evidence).
+      // Instead, we emit the **disjointness-targeting** rewrite that
+      // mirrors Tableau.fst's `has_disjoint_witness` bridge:
+      //
+      //   { subj rdf:type ?_co_<k> .
+      //     ?_co_<k> owl:disjointWith C }
+      //   UNION
+      //   { subj rdf:type ?_co_<k> .
+      //     C owl:disjointWith ?_co_<k> }
+      //
+      // Soundness (one direction, monotonic): if subj has a type ?d
+      // and ?d is disjoint from C in either direction, then subj is
+      // provably not in C — i.e. subj is a member of (complementOf C).
+      // Never derives a binding that isn't entailed.
+      //
+      // Incompleteness: complementOf can also be derived from explicit
+      // negative-type assertions or from the closure-side
+      // disjointWith propagation rule (gap 3 in Shin's diagnosis);
+      // those paths are deliberately not synthesised here.
+      //
+      // Edge case: if the complement target is not a named class
+      // (e.g. a bnode CE), we fall through to the leaf form. Nested
+      // complementOf-of-CE is out of scope for this agent.
+      (match complementOf_target b k with
+       | Some (PT_IRI _) ->
+         let target_term : pattern_term =
+           (match complementOf_target b k with
+            | Some t -> t
+            | None   -> PT_IRI rdf_nil_iri  // unreachable; satisfies F* exhaustiveness
+           ) in
+         let fresh_name : string = "_co_" ^ k in
+         let fresh_subj : pattern_subject = PS_Var fresh_name in
+         let fresh_term : pattern_term    = PT_Var fresh_name in
+         // Triple A: subj rdf:type ?fresh
+         let type_triple : triple_pattern =
+           { tp_s = subj; tp_p = PT_IRI rdf_type_iri; tp_o = fresh_term } in
+         // Forward branch: ?fresh owl:disjointWith <C>
+         let forward_triple : triple_pattern =
+           { tp_s = fresh_subj;
+             tp_p = PT_IRI owl_disjointWith_iri;
+             tp_o = target_term } in
+         let forward_bgp : bgp = [type_triple; forward_triple] in
+         // Reverse branch: <C> owl:disjointWith ?fresh — needs <C> as a
+         // pattern_subject. PT_IRI converts to PS_IRI; non-IRI targets
+         // can't be the subject of a triple pattern, so we filter.
+         let reverse_branch_opt : option bgp =
+           match target_term with
+           | PT_IRI c_iri ->
+             let target_subj : pattern_subject = PS_IRI c_iri in
+             let reverse_triple : triple_pattern =
+               { tp_s = target_subj;
+                 tp_p = PT_IRI owl_disjointWith_iri;
+                 tp_o = fresh_term } in
+             Some [type_triple; reverse_triple]
+           | _ -> None in
+         (match reverse_branch_opt with
+          | Some reverse_bgp ->
+            // Two-branch UNION, wrapped in DISTINCT sub-select so a
+            // single subj that has two disjoint witnesses contributes
+            // one row (matches OWL set-theoretic semantics; same
+            // discipline as the unionOf / Section 8b code).
+            wrap_distinct_over_ggp
+              (GP_Union (GP_BGP forward_bgp) (GP_BGP reverse_bgp))
+          | None ->
+            // Target wasn't a named-class IRI — emit just the forward
+            // branch (still sound, just incomplete).
+            GP_BGP forward_bgp)
+       | _ ->
+         // Non-IRI complement target (e.g. bnode CE): leaf fallback.
+         // Sound — won't bind anything, but never adds wrong solutions.
+         GP_BGP (single_type_bgp subj op))
 
 // Top-level marker-set: the set of keys that are "top-level CE
 // markers reachable from ?x rdf:type m" — i.e. the object of some
@@ -1313,6 +1448,7 @@ let is_nested_bookkeeping
       is_marker &&
       (p = owl_intersectionOf_iri ||
        p = owl_unionOf_iri ||
+       p = owl_complementOf_iri ||
        p = owl_onProperty_iri ||
        p = owl_someValuesFrom_iri ||
        p = owl_allValuesFrom_iri ||
@@ -1523,6 +1659,7 @@ let tp_is_ce_marker_predicate (tp : triple_pattern) : bool =
   | PT_IRI p ->
       p = owl_intersectionOf_iri ||
       p = owl_unionOf_iri ||
+      p = owl_complementOf_iri ||
       p = owl_someValuesFrom_iri ||
       p = owl_allValuesFrom_iri ||
       p = owl_minCardinality_iri ||
