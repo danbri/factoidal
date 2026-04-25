@@ -1,0 +1,12 @@
+PREFIX : <https://id.parliament.uk/schema/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX id: <https://id.parliament.uk/>
+
+SELECT *
+WHERE {
+  ?House a :House ;
+         :name ?HouseName ;
+         :houseInLegislature ?Legislature .
+  ?Legislature :name ?LegislatureName .
+  FILTER (?House IN (id:1AFu55Hs))
+}
