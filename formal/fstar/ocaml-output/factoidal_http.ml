@@ -528,6 +528,7 @@ let header_value headers name =
 let status_text = function
   | 200 -> "OK"
   | 204 -> "No Content"
+  | 303 -> "See Other"
   | 400 -> "Bad Request"
   | 403 -> "Forbidden"
   | 404 -> "Not Found"
@@ -1032,6 +1033,163 @@ let dump_rw_graphs ~dir ~snapshot_iris (ds : rdf_dataset) =
   with e ->
     Printf.eprintf "[dump] error: %s\n%!" (Printexc.to_string e)
 
+(* ============================================================================
+   Landing page + bundled web component.
+
+   Pure I/O glue (rule #15): the dispatch decision "/ is HTML, /sparql is
+   the SPARQL Protocol endpoint" is an HTTP routing concern and lives here,
+   not in the F* protocol logic.
+
+   The HTML page below is a stand-alone SPARQL console that POSTs queries
+   to this server's own /sparql. It does NOT yet wire up the
+   factoidal-sparql-client web component as a remote-endpoint UI — the
+   component currently ships in-browser engines (js / wasm) only. We still
+   serve /factoidal-sparql-client.js from disk so a future upgrade (Aleph3:
+   add an endpoint="..." mode) can swap the inline UI for the component
+   by editing two lines of HTML.
+   ============================================================================ *)
+
+(* Resolve the on-disk location of the factoidal-sparql-client.js bundle.
+   We try a small list of candidates derived from the executable's
+   directory and CWD, returning the first that exists. None = bundle not
+   found, which leads to a 404 with a helpful message. *)
+let resolve_component_bundle () : string option =
+  let exe_dir =
+    try Filename.dirname (Unix.realpath Sys.argv.(0))
+    with _ -> Filename.dirname Sys.argv.(0)
+  in
+  let cwd = try Sys.getcwd () with _ -> "." in
+  let rel = "docs/fstar-extracted/factoidal-sparql-client.js" in
+  let candidates = [
+    Filename.concat exe_dir "factoidal-sparql-client.js";
+    Filename.concat exe_dir (Filename.concat ".." rel);
+    Filename.concat exe_dir (Filename.concat "../.." rel);
+    Filename.concat exe_dir (Filename.concat "../../.." rel);
+    Filename.concat cwd rel;
+    Filename.concat cwd "factoidal-sparql-client.js";
+  ] in
+  List.find_opt Sys.file_exists candidates
+
+(* Read the bundle into memory. We do not cache; the server is single-
+   threaded and the bundle is ~54 KB — reading it per-request keeps the
+   logic trivial and avoids stale-after-edit confusion in dev. *)
+let serve_component_bundle () : response_body =
+  match resolve_component_bundle () with
+  | None ->
+    { rb_status = 404;
+      rb_content_type = "text/plain; charset=utf-8";
+      rb_body =
+        "factoidal-sparql-client.js bundle not found.\n\
+         Searched paths derived from argv[0] and CWD; expected at\n\
+         docs/fstar-extracted/factoidal-sparql-client.js.\n" }
+  | Some path ->
+    (try
+       let body = read_file path in
+       { rb_status = 200;
+         rb_content_type = "application/javascript; charset=utf-8";
+         rb_body = body }
+     with e ->
+       { rb_status = 500;
+         rb_content_type = "text/plain; charset=utf-8";
+         rb_body = "error reading bundle: " ^ Printexc.to_string e ^ "\n" })
+
+(* The landing-page HTML. Self-contained: small inline stylesheet, a
+   textarea seeded with a COUNT-star aggregate, a Run button that POSTs
+   to /sparql, and a results panel that renders JSON SPARQL results as
+   a table. Forward-compatible: when the web component grows a remote-
+   endpoint mode, swap the body contents for a factoidal-sparql-client
+   element with endpoint="/sparql". *)
+let landing_page_html () : string =
+  "<!doctype html>\n\
+<html lang=\"en\"><head><meta charset=\"utf-8\">\n\
+<title>factoidal SPARQL endpoint</title>\n\
+<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n\
+<style>\n\
+:root{color-scheme:light dark}\n\
+body{font:15px/1.45 system-ui,-apple-system,sans-serif;max-width:900px;margin:1.5em auto;padding:0 1em}\n\
+h1{margin-bottom:.2em} p.lede{color:#666;margin-top:0}\n\
+textarea{width:100%;box-sizing:border-box;min-height:7em;font:13px/1.4 ui-monospace,Menlo,monospace;padding:.5em}\n\
+.row{margin:.6em 0;display:flex;gap:.6em;align-items:center}\n\
+button{font:inherit;padding:.4em 1em;cursor:pointer} #status{color:#666;font-size:13px}\n\
+table{border-collapse:collapse;margin-top:.6em;width:100%}\n\
+th,td{border:1px solid #ccc;padding:.25em .5em;text-align:left;vertical-align:top;font-size:13px}\n\
+th{background:#f4f4f4} pre.raw{background:#f7f7f7;padding:.6em;overflow-x:auto;font-size:12px}\n\
+footer{margin-top:2em;color:#888;font-size:12px} code{font-size:12px}\n\
+@media (prefers-color-scheme:dark){th{background:#222}pre.raw{background:#1a1a1a}\n\
+  p.lede,#status,footer{color:#aaa}th,td{border-color:#444}}\n\
+</style></head><body>\n\
+<h1>factoidal SPARQL endpoint</h1>\n\
+<p class=\"lede\">Verified RDF/SPARQL 1.1 service. Protocol endpoint at\n\
+<code>/sparql</code>. This page is a discoverable console; programmatic clients\n\
+should hit <code>/sparql</code> directly per\n\
+<a href=\"https://www.w3.org/TR/sparql11-protocol/\">SPARQL 1.1 Protocol</a>.</p>\n\
+<div class=\"row\"><label for=\"q\"><strong>Query:</strong></label></div>\n\
+<textarea id=\"q\">SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }</textarea>\n\
+<div class=\"row\"><button id=\"run\">Run</button><span id=\"status\">ready</span></div>\n\
+<div id=\"out\"></div>\n\
+<footer>Press Ctrl/Cmd+Enter in the textarea to run. Web component bundle:\n\
+<a href=\"/factoidal-sparql-client.js\">/factoidal-sparql-client.js</a>\n\
+(will be embedded here once the component grows a remote-endpoint mode).</footer>\n\
+<script>(function(){\n\
+var q=document.getElementById('q'),run=document.getElementById('run'),\n\
+    status=document.getElementById('status'),out=document.getElementById('out');\n\
+function esc(s){return String(s).replace(/[&<>\"']/g,function(c){\n\
+  return({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'})[c];});}\n\
+function term(t){if(!t)return'';\n\
+  if(t.type==='uri')return'<'+t.value+'>';\n\
+  if(t.type==='bnode')return'_:'+t.value;\n\
+  if(t['xml:lang'])return'\"'+t.value+'\"@'+t['xml:lang'];\n\
+  if(t.datatype)return'\"'+t.value+'\"^^<'+t.datatype+'>';\n\
+  return'\"'+t.value+'\"';}\n\
+function render(j){if(j.boolean!==undefined){\n\
+  out.innerHTML='<p><strong>ASK:</strong> '+(j.boolean?'true':'false')+'</p>';return;}\n\
+  var h=(j.head&&j.head.vars)||[],rs=(j.results&&j.results.bindings)||[];\n\
+  var s='<p>'+rs.length+' result(s)</p><table><thead><tr>';\n\
+  h.forEach(function(v){s+='<th>?'+esc(v)+'</th>';});s+='</tr></thead><tbody>';\n\
+  rs.forEach(function(r){s+='<tr>';h.forEach(function(v){s+='<td>'+esc(term(r[v]))+'</td>';});s+='</tr>';});\n\
+  out.innerHTML=s+'</tbody></table>';}\n\
+function raw(t,c,n){out.innerHTML='<p>HTTP '+n+' ('+esc(c||'')+')</p><pre class=\"raw\">'+esc(t)+'</pre>';}\n\
+function go(){var t0=performance.now();status.textContent='running\\u2026';out.innerHTML='';\n\
+  fetch('/sparql',{method:'POST',headers:{'Content-Type':'application/sparql-query',\n\
+    'Accept':'application/sparql-results+json'},body:q.value})\n\
+  .then(function(r){var c=r.headers.get('content-type')||'';\n\
+    return r.text().then(function(x){var dt=(performance.now()-t0).toFixed(0);\n\
+      status.textContent='HTTP '+r.status+' \\u00b7 '+dt+' ms';\n\
+      if(c.indexOf('json')>=0){try{render(JSON.parse(x));}catch(e){raw(x,c,r.status);}}\n\
+      else raw(x,c,r.status);});})\n\
+  .catch(function(e){status.textContent='error';\n\
+    out.innerHTML='<p>fetch failed: '+esc(String(e))+'</p>';});}\n\
+run.addEventListener('click',go);\n\
+q.addEventListener('keydown',function(e){if((e.ctrlKey||e.metaKey)&&e.key==='Enter')go();});\n\
+})();</script></body></html>\n"
+
+(* Does the Accept header indicate the client wants HTML? Coarse check —
+   substring match for "text/html" is enough; we don't need full media-
+   type parsing for this redirect heuristic. *)
+let accept_wants_html (accept : string) : bool =
+  ci_find accept "text/html" >= 0
+
+(* Try to handle the request as a static / landing-page route. Returns
+   Some response_body if the path matched, None to fall through to the
+   F* SPARQL Protocol decoder. *)
+let try_static_route ~meth ~path ~qs ~accept : response_body option =
+  if meth <> "GET" then None
+  else match path with
+  | "/" | "/index.html" ->
+    Some { rb_status = 200;
+           rb_content_type = "text/html; charset=utf-8";
+           rb_body = landing_page_html () }
+  | "/factoidal-sparql-client.js" ->
+    Some (serve_component_bundle ())
+  | "/sparql" | "/query" when qs = "" && accept_wants_html accept ->
+    (* Browser hit the bare protocol endpoint. Redirect to / so the
+       human gets a console rather than a 400. curl / RDFLib / Jena send
+       Accept: application/sparql-results+* and skip this branch. *)
+    Some { rb_status = 303;
+           rb_content_type = "text/plain; charset=utf-8";
+           rb_body = "See /\n" }
+  | _ -> None
+
 let handle_connection cfg dataset_ref ic oc =
   try
     (* Read the whole request (headers + body) into a single buffer,
@@ -1083,6 +1241,21 @@ let handle_connection cfg dataset_ref ic oc =
         ~content_type:"text/plain; charset=utf-8"
         ~body:""
     end else
+
+    (* Static / landing-page routes intercept before the F* protocol
+       decoder. Pure I/O glue (rule #15). *)
+    (match try_static_route ~meth ~path ~qs ~accept with
+     | Some resp ->
+       let static_extras =
+         (* 303 needs a Location header; everything else just inherits CORS. *)
+         if resp.rb_status = 303 then ("Location: /") :: cors_hdrs
+         else cors_hdrs
+       in
+       write_response ~extra_headers:static_extras oc
+         ~status:resp.rb_status
+         ~content_type:resp.rb_content_type
+         ~body:resp.rb_body
+     | None ->
 
     let dataset = !dataset_ref in
     let resp =
@@ -1174,7 +1347,7 @@ let handle_connection cfg dataset_ref ic oc =
     write_response ~extra_headers:cors_hdrs oc
       ~status:resp.rb_status
       ~content_type:resp.rb_content_type
-      ~body:resp.rb_body
+      ~body:resp.rb_body)
   with
   | Bad_request msg ->
     (* If the request line was malformed enough that we never read an
