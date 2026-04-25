@@ -2,7 +2,7 @@ FSTAR ?= fstar.exe
 KRML ?= krml
 KRML_HOME ?= /tmp/karamel
 
-MODULES = RDF.Graph.Executable SPARQL11.Algebra Tableau
+MODULES = RDF.Graph.Executable SPARQL11.Algebra Tableau SPARQL.ServiceDescription
 
 .PHONY: verify clean extract-c
 
