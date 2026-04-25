@@ -457,6 +457,16 @@ let build_from_kvs
     (is_update_path : bool)
     (kvs : list (string & string))
   : sparql_request =
+  let qs_all    = collect_values "query"  kvs in
+  let us_all    = collect_values "update" kvs in
+  // Protocol §2.1.4 / §2.2.4: more than one query= (or update=) parameter
+  // MUST yield 400. Keys are case-sensitive (collect_values uses byte
+  // equality), matching the spec.
+  if List.Tot.length qs_all > 1 then
+    PR_Bad "more than one query= parameter (Protocol 2.1.4)"
+  else if List.Tot.length us_all > 1 then
+    PR_Bad "more than one update= parameter (Protocol 2.2.4)"
+  else
   let q_opt     = first_value "query"  kvs in
   let u_opt     = first_value "update" kvs in
   let dflt      = collect_values "default-graph-uri" kvs in
