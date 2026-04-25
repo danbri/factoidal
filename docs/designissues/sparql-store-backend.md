@@ -211,3 +211,9 @@ comes from an HDT file.
 - Do not make named-graph correctness depend on quad-native HDT support.
 - Do not solve all property-path optimization before triple-pattern pushdown.
 - Keep the verified algebra as the semantic source of truth.
+
+## See also
+
+- [`docs/cottas-format-v1.md`](../cottas-format-v1.md) — the
+  COTTAS-on-Parquet v1 spec defines what a COTTAS-backed dataset
+  store reads from disk.

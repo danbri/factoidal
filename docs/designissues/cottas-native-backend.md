@@ -87,3 +87,9 @@ That makes it a plausible priority backend for the dataset side of Factoidal.
 3. Generalize dataset backend notes so HDTQ and COTTAS are peer native targets.
 4. Later, decide whether to parse Parquet/container metadata directly in F* or
    to define a narrower intermediate columnar quad format first.
+
+## See also
+
+- [`docs/cottas-format-v1.md`](../cottas-format-v1.md) — the
+  on-disk container layout factoidal currently reads (column schema,
+  encodings, default-graph sentinel, term-token grammar).
