@@ -2543,3 +2543,38 @@ let probe_parquet_column_decode_all_row_groups
     match collect_row_group_columns path col_index 0 rg_count rg_count [] with
     | None -> None
     | Some acc_rev -> Some (list_rev acc_rev)
+
+// ---------------------------------------------------------------------------
+// Tsade2 (issue #100 Phase D): per-row-group dictionary decode (data-page
+// SKIPPED).
+//
+// For column-prune query planning we need each row group's predicate (or
+// subject / object) DICTIONARY only, not its data page. The dictionary is
+// a small set of distinct strings — typically <1KB compressed; decompress
+// + plain-decode is fast (microseconds per rg).
+//
+// Reuses existing primitives:
+//   - probe_parquet_column_dictionary_page_offset_in_row_group
+//   - parquet_decompressed_page_at
+//   - parquet_dictionary_page_num_values_at
+//   - decode_plain_dictionary
+//
+// Returns None if the column doesn't have a dictionary page (e.g.
+// the column was encoded as DELTA_LENGTH_BYTE_ARRAY without a dict).
+// In that case, the column-prune planner falls back to a full walk of
+// that row group.
+// ---------------------------------------------------------------------------
+
+let probe_parquet_column_dictionary_in_row_group
+  (path:string) (rg_index:nat) (col_index:nat) : option (list string) =
+  match probe_parquet_column_dictionary_page_offset_in_row_group
+          path rg_index col_index with
+  | None -> None
+  | Some dict_offset ->
+    match parquet_decompressed_page_at path dict_offset with
+    | None -> None
+    | Some dict_payload_hex ->
+      match parquet_dictionary_page_num_values_at path dict_offset with
+      | None -> None
+      | Some dict_num_values ->
+        decode_plain_dictionary dict_payload_hex dict_num_values

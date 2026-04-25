@@ -417,6 +417,253 @@ let rec walk_row_groups_estimate
     walk_row_groups_estimate h bound_s bound_p bound_o bound_g
       (rg_index + 1) rg_count (fuel - 1) acc' c4
 
+// ----------------------------------------------------------------------
+// Tsade2 (issue #100 Phase D): per-row-group dictionary cache + column-
+// prune query planner.
+//
+// For predicate-bound queries like `?s wdt:P31 :Human`, we want to walk
+// only row groups whose predicate dictionary contains `wdt:P31` —
+// skipping the (decoder-expensive) data pages of row groups that
+// definitely don't contain the predicate.
+//
+// We use a per-query F* dict cache: `list ((rg_index, col_index) & list
+// string)`. On first need for column C, we populate cache entries for all
+// row groups of column C (one dict-page decompress per rg, cheap —
+// ~26 entries × ~50KB total for parliament). Subsequent membership
+// queries within the same column hit the cache.
+//
+// Per-query cache (re-built per call) — sufficient because each
+// `cottas_ondisk_search` call invokes the planner once. A handle-attached
+// cross-query cache would be a Phase E refinement.
+// ----------------------------------------------------------------------
+
+type dict_cache = list ((nat & nat) & list string)
+
+let rec dict_cache_lookup (c : dict_cache) (rg : nat) (col : nat)
+  : Tot (option (list string)) (decreases c) =
+  match c with
+  | [] -> None
+  | ((r, k), v) :: rest ->
+    if r = rg && k = col then Some v
+    else dict_cache_lookup rest rg col
+
+// Membership check on a dict list (linear scan). Dict lists are small
+// (parliament: 231 distinct predicates total; per-rg subset typically
+// smaller), so O(N) is fine.
+let rec list_string_mem (xs : list string) (s : string)
+  : Tot bool (decreases xs) =
+  match xs with
+  | [] -> false
+  | hd :: rest -> if hd = s then true else list_string_mem rest s
+
+// Populate `dict_cache` for column `col_index` across row groups
+// [rg_index .. rg_count). Each rg's dict is decoded via the new
+// `probe_parquet_column_dictionary_in_row_group` helper. Failures
+// (e.g. a column without a dict page) are stored as the empty list,
+// which causes the candidate-rgs computation to TREAT THAT RG AS
+// "may contain the term" — i.e. fall back to including it.
+//
+// To distinguish "dict absent" from "dict present and empty", we
+// store dict-absent rgs with an absent-marker `["__no_dict__"]` —
+// but actually a cleaner approach: skip insertion entirely on None
+// (lookup returns None, planner falls back to "include this rg").
+let rec populate_dict_cache_loop
+  (c : dict_cache) (path : string) (col_index : nat)
+  (rg_index : nat) (rg_count : nat) (fuel : nat)
+  : Tot dict_cache (decreases fuel) =
+  if fuel = 0 then c
+  else if rg_index >= rg_count then c
+  else
+    let c' =
+      match dict_cache_lookup c rg_index col_index with
+      | Some _ -> c  // already populated
+      | None ->
+        match probe_parquet_column_dictionary_in_row_group path rg_index col_index with
+        | None -> c  // no dict page — leave absent (planner falls back)
+        | Some dict -> ((rg_index, col_index), dict) :: c in
+    populate_dict_cache_loop c' path col_index (rg_index + 1) rg_count (fuel - 1)
+
+let populate_dict_cache_for_column
+  (c : dict_cache) (path : string) (col_index : nat) (rg_count : nat)
+  : Tot dict_cache =
+  populate_dict_cache_loop c path col_index 0 rg_count rg_count
+
+// Compute the candidate row-groups for a column-bound. `bound_token` is
+// the raw column-token string (e.g. "<https://id.parliament.uk/...>")
+// the search is looking for. Returns (candidate_rgs_in_REVERSE_order,
+// dict_cache).
+//
+// If a row group is absent from the dict cache (e.g. dict page missing,
+// or column has no dict at all), we INCLUDE it in candidates — safe
+// fallback that may cost a wasted data-page decode, never wrong answers.
+let rec compute_candidate_rgs_loop
+  (c : dict_cache) (col_index : nat) (bound_token : string)
+  (rg_index : nat) (rg_count : nat) (fuel : nat)
+  (acc_rev : list nat)
+  : Tot (list nat) (decreases fuel) =
+  if fuel = 0 then acc_rev
+  else if rg_index >= rg_count then acc_rev
+  else
+    let acc_rev' =
+      match dict_cache_lookup c rg_index col_index with
+      | None -> rg_index :: acc_rev  // safe fallback: include
+      | Some dict ->
+        if list_string_mem dict bound_token then rg_index :: acc_rev
+        else acc_rev in
+    compute_candidate_rgs_loop c col_index bound_token
+      (rg_index + 1) rg_count (fuel - 1) acc_rev'
+
+// Returns candidates in row-group order (low to high).
+let compute_candidate_rgs
+  (c : dict_cache) (col_index : nat) (bound_token : string) (rg_count : nat)
+  : Tot (list nat) =
+  let rev_list = compute_candidate_rgs_loop c col_index bound_token
+    0 rg_count rg_count [] in
+  // list_rev is defined in Parquet.Footer (open above brings it in).
+  list_rev rev_list
+
+// Intersect two sorted-ascending nat lists. Used to combine
+// per-column candidate sets when multiple bounds are present
+// (e.g. both subject AND predicate bound).
+let rec list_nat_intersect_sorted
+  (xs ys : list nat) (acc_rev : list nat) (fuel : nat)
+  : Tot (list nat) (decreases fuel) =
+  if fuel = 0 then acc_rev
+  else
+    match xs, ys with
+    | [], _ -> acc_rev
+    | _, [] -> acc_rev
+    | x :: xrest, y :: yrest ->
+      if x = y then
+        list_nat_intersect_sorted xrest yrest (x :: acc_rev) (fuel - 1)
+      else if x < y then
+        list_nat_intersect_sorted xrest ys acc_rev (fuel - 1)
+      else
+        list_nat_intersect_sorted xs yrest acc_rev (fuel - 1)
+
+// Public intersect: takes two ascending-sorted lists and returns the
+// ascending-sorted intersection.
+let intersect_sorted_rg_lists (xs ys : list nat) : Tot (list nat) =
+  let len_xs : nat = List.Tot.length xs in
+  let len_ys : nat = List.Tot.length ys in
+  let fuel : nat = len_xs + len_ys + 1 in
+  let rev = list_nat_intersect_sorted xs ys [] fuel in
+  list_rev rev
+
+// ---- Pruned row-group walk -----------------------------------------
+
+// Walk a SPECIFIC list of row-group indices (the candidate set),
+// decoding all 4 columns per rg and filtering. Same semantics as
+// `walk_row_groups_search` but driven by a candidate list rather
+// than a contiguous [rg_index .. rg_count) range.
+let rec walk_candidate_rgs_search
+  (h : cottas_ondisk_handle)
+  (bound_s bound_p bound_o bound_g : option string)
+  (candidates : list nat)
+  (acc_rev : list cottas_qp_row)
+  (cache : page_cache)
+  : Tot (list cottas_qp_row & page_cache) (decreases candidates) =
+  match candidates with
+  | [] -> (acc_rev, cache)
+  | rg_index :: rest ->
+    let cap = cache.pc_capacity in
+    let (s_col, c1) = pcache_decode_in_row_group cache  h.coh_path rg_index 0 cap in
+    let (p_col, c2) = pcache_decode_in_row_group c1     h.coh_path rg_index 1 cap in
+    let (o_col, c3) = pcache_decode_in_row_group c2     h.coh_path rg_index 2 cap in
+    let (g_col, c4) = pcache_decode_in_row_group c3     h.coh_path rg_index 3 cap in
+    let acc_rev' =
+      match s_col, p_col, o_col, g_col with
+      | Some sc, Some pc, Some oc, Some gc ->
+        filter_zipped_rows h bound_s bound_p bound_o bound_g
+          sc pc oc gc acc_rev
+      | _ -> acc_rev in
+    walk_candidate_rgs_search h bound_s bound_p bound_o bound_g
+      rest acc_rev' c4
+
+let rec walk_candidate_rgs_estimate
+  (h : cottas_ondisk_handle)
+  (bound_s bound_p bound_o bound_g : option string)
+  (candidates : list nat) (acc : nat)
+  (cache : page_cache)
+  : Tot (nat & page_cache) (decreases candidates) =
+  match candidates with
+  | [] -> (acc, cache)
+  | rg_index :: rest ->
+    let cap = cache.pc_capacity in
+    let (s_col, c1) = pcache_decode_in_row_group cache  h.coh_path rg_index 0 cap in
+    let (p_col, c2) = pcache_decode_in_row_group c1     h.coh_path rg_index 1 cap in
+    let (o_col, c3) = pcache_decode_in_row_group c2     h.coh_path rg_index 2 cap in
+    let (g_col, c4) = pcache_decode_in_row_group c3     h.coh_path rg_index 3 cap in
+    let acc' =
+      match s_col, p_col, o_col, g_col with
+      | Some sc, Some pc, Some oc, Some gc ->
+        count_zipped_rows bound_s bound_p bound_o bound_g
+          sc pc oc gc acc
+      | _ -> acc in
+    walk_candidate_rgs_estimate h bound_s bound_p bound_o bound_g
+      rest acc' c4
+
+// ---- Candidate-set computation -------------------------------------
+
+// Build the per-rg candidate set for one column-bound. col_index is the
+// parquet column index (0=subject, 1=predicate, 2=object, 3=graph).
+// Returns the (candidate_rgs_in_ascending_order, updated_dict_cache).
+let candidates_for_one_bound
+  (c : dict_cache) (path : string) (col_index : nat)
+  (bound_token : string) (rg_count : nat)
+  : Tot (list nat & dict_cache) =
+  let c' = populate_dict_cache_for_column c path col_index rg_count in
+  let cands = compute_candidate_rgs c' col_index bound_token rg_count in
+  (cands, c')
+
+// Generate the full ascending list [0 .. rg_count). Used as the
+// candidate set when no column-bound is present (degenerates to a
+// full walk, semantically equivalent to walk_row_groups_search).
+let rec all_rgs_loop (rg_index : nat) (rg_count : nat) (fuel : nat)
+  (acc_rev : list nat)
+  : Tot (list nat) (decreases fuel) =
+  if fuel = 0 then acc_rev
+  else if rg_index >= rg_count then acc_rev
+  else all_rgs_loop (rg_index + 1) rg_count (fuel - 1) (rg_index :: acc_rev)
+
+let all_rgs (rg_count : nat) : Tot (list nat) =
+  list_rev (all_rgs_loop 0 rg_count rg_count [])
+
+// Compose candidate sets for whichever bounds are present. Returns the
+// final candidate-rg list (ascending) + updated dict cache.
+//
+// Semantics:
+//   - No s/p/o bound → all_rgs (full walk).
+//   - One bound → that column's candidates.
+//   - Multiple bounds → intersection of their candidate sets.
+//   - Graph bound (col 3) is ALSO usable for pruning; we include it.
+let plan_candidate_rgs
+  (h : cottas_ondisk_handle)
+  (bound_s bound_p bound_o bound_g : option string)
+  (rg_count : nat)
+  : Tot (list nat & dict_cache) =
+  let path = h.coh_path in
+  // Start with "all rgs" as the universal set; intersect each present
+  // bound's candidate set into it. We track whether any bound has been
+  // applied to avoid a wasted intersect when none were.
+  let init : list nat & dict_cache & bool = (all_rgs rg_count, [], false) in
+  let step (acc : list nat & dict_cache & bool) (col_index : nat)
+           (bound : option string)
+    : Tot (list nat & dict_cache & bool) =
+    match bound with
+    | None -> acc
+    | Some tok ->
+      let (cur, c, _started) = acc in
+      let (cands, c') = candidates_for_one_bound c path col_index tok rg_count in
+      let combined = intersect_sorted_rg_lists cur cands in
+      (combined, c', true) in
+  let st1 = step init  0 bound_s in
+  let st2 = step st1   1 bound_p in
+  let st3 = step st2   2 bound_o in
+  let st4 = step st3   3 bound_g in
+  let (final, c, _) = st4 in
+  (final, c)
+
 // ---- Public search / estimate --------------------------------------
 
 let cottas_ondisk_search
@@ -431,10 +678,22 @@ let cottas_ondisk_search
   | None -> []
   | Some rg_count ->
     let cache0 = pcache_empty pcache_default_capacity in
-    let (acc_rev, _cache') = walk_row_groups_search h
-      bound_s bound_p bound_o bound_g
-      0 rg_count rg_count [] cache0 in
-    list_rev acc_rev
+    // Phase D: column-prune planner. If any column-bound is present,
+    // compute the candidate-rgs via per-rg dict probes; else full walk.
+    let any_bound_present =
+      Some? bound_s || Some? bound_p || Some? bound_o || Some? bound_g in
+    if any_bound_present then
+      let (candidates, _dc) = plan_candidate_rgs h
+        bound_s bound_p bound_o bound_g rg_count in
+      let (acc_rev, _cache') = walk_candidate_rgs_search h
+        bound_s bound_p bound_o bound_g
+        candidates [] cache0 in
+      list_rev acc_rev
+    else
+      let (acc_rev, _cache') = walk_row_groups_search h
+        bound_s bound_p bound_o bound_g
+        0 rg_count rg_count [] cache0 in
+      list_rev acc_rev
 
 let cottas_ondisk_estimate
   (ds : cottas_ondisk_store) (bound : cottas_bound_qp)
@@ -448,10 +707,20 @@ let cottas_ondisk_estimate
   | None -> 0
   | Some rg_count ->
     let cache0 = pcache_empty pcache_default_capacity in
-    let (count, _cache') = walk_row_groups_estimate h
-      bound_s bound_p bound_o bound_g
-      0 rg_count rg_count 0 cache0 in
-    count
+    let any_bound_present =
+      Some? bound_s || Some? bound_p || Some? bound_o || Some? bound_g in
+    if any_bound_present then
+      let (candidates, _dc) = plan_candidate_rgs h
+        bound_s bound_p bound_o bound_g rg_count in
+      let (count, _cache') = walk_candidate_rgs_estimate h
+        bound_s bound_p bound_o bound_g
+        candidates 0 cache0 in
+      count
+    else
+      let (count, _cache') = walk_row_groups_estimate h
+        bound_s bound_p bound_o bound_g
+        0 rg_count rg_count 0 cache0 in
+      count
 
 // ----------------------------------------------------------------------
 // Bound-pattern + row-to-quad helpers (moved from Parser.BallyhooCOTTAS).
