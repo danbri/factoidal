@@ -121,11 +121,16 @@ let __proj__Mktriple_pattern_bound__item__bo
   (projectee : triple_pattern_bound) :
   RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
   match projectee with | { bs; bp; bo;_} -> bo
-type graph_store = {
-  gs_graph: RDF_Graph_Executable.rdf_graph }
+type graph_store =
+  {
+  gs_graph: RDF_Graph_Executable.rdf_graph ;
+  gs_indexed: RDF_Graph_Executable.indexed_graph }
 let __proj__Mkgraph_store__item__gs_graph (projectee : graph_store) :
   RDF_Graph_Executable.rdf_graph=
-  match projectee with | { gs_graph;_} -> gs_graph
+  match projectee with | { gs_graph; gs_indexed;_} -> gs_graph
+let __proj__Mkgraph_store__item__gs_indexed (projectee : graph_store) :
+  RDF_Graph_Executable.indexed_graph=
+  match projectee with | { gs_graph; gs_indexed;_} -> gs_indexed
 type named_graph_store =
   {
   ngs_name: RDF_Graph_Executable.iri ;
@@ -147,7 +152,7 @@ let __proj__Mkrdf_dataset_store__item__dss_named
   (projectee : rdf_dataset_store) : named_graph_store Prims.list=
   match projectee with | { dss_default; dss_named;_} -> dss_named
 let graph_to_store (g : RDF_Graph_Executable.rdf_graph) : graph_store=
-  { gs_graph = g }
+  { gs_graph = g; gs_indexed = (RDF_Graph_Executable.build_indexed g) }
 let dataset_to_store (ds : RDF_Graph_Executable.rdf_dataset) :
   rdf_dataset_store=
   {
@@ -197,155 +202,87 @@ let triple_matches_bound (b : triple_pattern_bound)
                 RDF_Graph_Executable.rdf_term_eq o t.RDF_Graph_Executable.o in
           if (subj_ok && pred_ok) && obj_ok then t :: acc else acc)
        [] ts)
-(* Indexed graph store — post-extraction patch (issue #97).
-
-   Three Hashtbls per graph (predicate / subject / object), each
-   built lazily on first use, cached by physical equality on the
-   rdf_graph. OCaml list cells have stable identity, so the same
-   loaded graph reuses its indexes across every store_search call
-   in a BGP.
-
-   Key insight: real SPARQL triple patterns bind somewhere between
-   one and three components. With all three indexes in place,
-   store_search picks whichever bucket is smallest (among those
-   whose component is bound) as the candidate list and lets the
-   normal triple_matches_bound filter nail down the rest.
-
-   Selectivity on gene.ttl: predicate `a` → 92k, `wdt:P684` → 99k,
-   `wdt:P1057` → 11k, `wdt:P688` → 1.6k. Object `bio:Gene` → 92k.
-   Any unique subject → usually 1..10 matches. So for a two-TP BGP
-   where one TP has a highly-selective bound component, the nested
-   search through the other graph shrinks proportionally.
-
-   The cache is not weak; it lives for process lifetime. Factoidal
-   is a single-shot CLI / single-page browser demo so this is fine.
-   A long-running server would want Ephemeron.K1. *)
-
-module SseGraphHashtbl = Hashtbl.Make(struct
-  type t = RDF_Graph_Executable.rdf_graph
-  let equal = (==)
-  let hash g = Hashtbl.seeded_hash_param 10 100 5 g
-end)
-
-(* Three indexes per graph, bundled into one record for caching.
-   Storage shape: `(key, triple list) Hashtbl.t` with a single binding
-   per key whose value is the full bucket. The earlier shape used
-   `Hashtbl.add` multiple-bindings + `Hashtbl.find_all`, but OCaml's
-   stdlib `find_all` is cons-after-recurse — on a predicate like
-   `wdt:P31` that can appear in thousands of triples, the bucket
-   traversal blew the v8 stack (browser stack-overflow on the
-   lifesci cross-graph BGP demo). Single-binding + cons-to-front
-   eliminates the recursion entirely. *)
-type _sse_graph_indexes = {
-  pred_idx : (string, RDF_Graph_Executable.triple list) Hashtbl.t;
-  subj_idx : (string, RDF_Graph_Executable.triple list) Hashtbl.t;
-  obj_idx  : (string, RDF_Graph_Executable.triple list) Hashtbl.t;
-}
-
-let _sse_indexes_cache : _sse_graph_indexes SseGraphHashtbl.t =
-  SseGraphHashtbl.create 16
-
-(* Canonical string keys for subject / object indexing. We do NOT
-   try to index on literal values — they would require normalising
-   datatype and lang tag, and they rarely appear as the join axis.
-   Literal objects fall through to the predicate index. *)
-let _sse_subject_key (s : RDF_Graph_Executable.subject) : string option =
-  match s with
-  | RDF_Graph_Executable.S_IRI i   -> Some (Stdlib.String.concat "" ["i:"; i])
-  | RDF_Graph_Executable.S_BNode b -> Some (Stdlib.String.concat "" ["b:"; b])
-
-let _sse_object_key (o : RDF_Graph_Executable.rdf_term) : string option =
-  match o with
-  | RDF_Graph_Executable.T_IRI i   -> Some (Stdlib.String.concat "" ["i:"; i])
-  | RDF_Graph_Executable.T_BNode b -> Some (Stdlib.String.concat "" ["b:"; b])
-  | RDF_Graph_Executable.T_Literal _ -> None  (* not indexed; see above *)
-
-(* cons-to-front append into a (key, triple list) hashtable. *)
-let _sse_bucket_push (t : (string, RDF_Graph_Executable.triple list) Hashtbl.t)
-                      (k : string) (v : RDF_Graph_Executable.triple) =
-  let existing = try Hashtbl.find t k with Not_found -> [] in
-  Hashtbl.replace t k (v :: existing)
-
-let _sse_build_indexes (g : RDF_Graph_Executable.rdf_graph) :
-  _sse_graph_indexes =
-  let pred_t = Hashtbl.create 256 in
-  let subj_t = Hashtbl.create 256 in
-  let obj_t  = Hashtbl.create 256 in
-  Stdlib.List.iter (fun tr ->
-    _sse_bucket_push pred_t tr.RDF_Graph_Executable.p tr;
-    (match _sse_subject_key tr.RDF_Graph_Executable.s with
-     | Some k -> _sse_bucket_push subj_t k tr
-     | None -> ());
-    (match _sse_object_key tr.RDF_Graph_Executable.o with
-     | Some k -> _sse_bucket_push obj_t k tr
-     | None -> ())
-  ) g;
-  { pred_idx = pred_t; subj_idx = subj_t; obj_idx = obj_t }
-
-(* Fetch the bucket (empty list if absent). O(1) — single hashtable
-   lookup, no stdlib find_all recursion. *)
-let _sse_bucket_get (t : (string, RDF_Graph_Executable.triple list) Hashtbl.t)
-                     (k : string) : RDF_Graph_Executable.triple list =
-  try Hashtbl.find t k with Not_found -> []
-
-let _sse_get_indexes (g : RDF_Graph_Executable.rdf_graph) : _sse_graph_indexes =
-  match SseGraphHashtbl.find_opt _sse_indexes_cache g with
-  | Some i -> i
-  | None ->
-    let i = _sse_build_indexes g in
-    SseGraphHashtbl.add _sse_indexes_cache g i;
-    i
-
-(* Pick whichever bound component has the smallest bucket. Returns
-   the candidate triple list plus a tag for debugging/stats (unused
-   now but handy for future explain hooks). Hashtbl.find_all returns
-   the whole bucket as a list; buckets have stable length under
-   physical-equality caching. *)
-let _sse_smallest_candidate_bucket
-    (b : triple_pattern_bound)
-    (ixs : _sse_graph_indexes)
-    (fallback : RDF_Graph_Executable.rdf_graph) :
-    RDF_Graph_Executable.triple Prims.list =
-  let len (l : RDF_Graph_Executable.triple list) = Stdlib.List.length l in
-  let pred_bucket = match b.bp with
-    | FStar_Pervasives_Native.Some p -> Some (_sse_bucket_get ixs.pred_idx p)
-    | FStar_Pervasives_Native.None -> None in
-  let subj_bucket = match b.bs with
+let pick_smaller_bucket
+  (a : RDF_Graph_Executable.triple Prims.list FStar_Pervasives_Native.option)
+  (b : RDF_Graph_Executable.triple Prims.list FStar_Pervasives_Native.option)
+  : RDF_Graph_Executable.triple Prims.list FStar_Pervasives_Native.option=
+  match (a, b) with
+  | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.None) ->
+      FStar_Pervasives_Native.None
+  | (FStar_Pervasives_Native.Some uu___, FStar_Pervasives_Native.None) -> a
+  | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.Some uu___) -> b
+  | (FStar_Pervasives_Native.Some la, FStar_Pervasives_Native.Some lb) ->
+      if (FStar_List_Tot_Base.length la) <= (FStar_List_Tot_Base.length lb)
+      then FStar_Pervasives_Native.Some la
+      else FStar_Pervasives_Native.Some lb
+let ig_search (ig : RDF_Graph_Executable.indexed_graph)
+  (b : triple_pattern_bound) : RDF_Graph_Executable.triple Prims.list=
+  let pred_b =
+    match b.bp with
+    | FStar_Pervasives_Native.Some p ->
+        FStar_Pervasives_Native.Some
+          (RDF_Graph_Executable.bucket_lookup ig.RDF_Graph_Executable.ig_pred
+             p)
+    | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None in
+  let subj_b =
+    match b.bs with
     | FStar_Pervasives_Native.Some s ->
-      (match _sse_subject_key s with
-       | Some k -> Some (_sse_bucket_get ixs.subj_idx k)
-       | None -> None)
-    | FStar_Pervasives_Native.None -> None in
-  let obj_bucket = match b.bo with
+        FStar_Pervasives_Native.Some
+          (RDF_Graph_Executable.bucket_lookup ig.RDF_Graph_Executable.ig_subj
+             (RDF_Graph_Executable.subject_to_key s))
+    | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None in
+  let obj_b =
+    match b.bo with
     | FStar_Pervasives_Native.Some o ->
-      (match _sse_object_key o with
-       | Some k -> Some (_sse_bucket_get ixs.obj_idx k)
-       | None -> None)
-    | FStar_Pervasives_Native.None -> None in
-  let pick a b = match a, b with
-    | None, None -> None
-    | Some _, None -> a
-    | None, Some _ -> b
-    | Some la, Some lb -> if Stdlib.(<=) (len la) (len lb) then Some la else Some lb in
-  match pick (pick pred_bucket subj_bucket) obj_bucket with
-  | Some bucket -> bucket
-  | None -> fallback
-
+        (match RDF_Graph_Executable.term_to_key_opt o with
+         | FStar_Pervasives_Native.Some k ->
+             FStar_Pervasives_Native.Some
+               (RDF_Graph_Executable.bucket_lookup
+                  ig.RDF_Graph_Executable.ig_obj k)
+         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+    | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None in
+  let sp_b =
+    match ((b.bs), (b.bp)) with
+    | (FStar_Pervasives_Native.Some s, FStar_Pervasives_Native.Some p) ->
+        FStar_Pervasives_Native.Some
+          (RDF_Graph_Executable.bucket_lookup ig.RDF_Graph_Executable.ig_sp
+             (RDF_Graph_Executable.sp_key s p))
+    | uu___ -> FStar_Pervasives_Native.None in
+  let po_b =
+    match ((b.bp), (b.bo)) with
+    | (FStar_Pervasives_Native.Some p, FStar_Pervasives_Native.Some o) ->
+        (match RDF_Graph_Executable.po_key_opt p o with
+         | FStar_Pervasives_Native.Some k ->
+             FStar_Pervasives_Native.Some
+               (RDF_Graph_Executable.bucket_lookup
+                  ig.RDF_Graph_Executable.ig_po k)
+         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+    | uu___ -> FStar_Pervasives_Native.None in
+  let so_b =
+    match ((b.bs), (b.bo)) with
+    | (FStar_Pervasives_Native.Some s, FStar_Pervasives_Native.Some o) ->
+        (match RDF_Graph_Executable.so_key_opt s o with
+         | FStar_Pervasives_Native.Some k ->
+             FStar_Pervasives_Native.Some
+               (RDF_Graph_Executable.bucket_lookup
+                  ig.RDF_Graph_Executable.ig_so k)
+         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+    | uu___ -> FStar_Pervasives_Native.None in
+  let compound = pick_smaller_bucket (pick_smaller_bucket sp_b po_b) so_b in
+  let single = pick_smaller_bucket (pick_smaller_bucket pred_b subj_b) obj_b in
+  let candidate = pick_smaller_bucket compound single in
+  let pool =
+    match candidate with
+    | FStar_Pervasives_Native.Some bucket -> bucket
+    | FStar_Pervasives_Native.None -> ig.RDF_Graph_Executable.ig_triples in
+  triple_matches_bound b pool
+let ig_estimate (ig : RDF_Graph_Executable.indexed_graph)
+  (b : triple_pattern_bound) : Prims.nat=
+  FStar_List_Tot_Base.length (ig_search ig b)
 let store_search (g : graph_store) (b : triple_pattern_bound) :
-  RDF_Graph_Executable.triple Prims.list=
-  let has_any_bound =
-    (match b.bp with FStar_Pervasives_Native.Some _ -> true | _ -> false)
-    || (match b.bs with FStar_Pervasives_Native.Some _ -> true | _ -> false)
-    || (match b.bo with FStar_Pervasives_Native.Some _ -> true | _ -> false)
-  in
-  if has_any_bound then
-    let ixs = _sse_get_indexes g.gs_graph in
-    let candidates = _sse_smallest_candidate_bucket b ixs g.gs_graph in
-    triple_matches_bound b candidates
-  else
-    triple_matches_bound b g.gs_graph
+  RDF_Graph_Executable.triple Prims.list= ig_search g.gs_indexed b
 let store_estimate (g : graph_store) (b : triple_pattern_bound) : Prims.nat=
-  FStar_List_Tot_Base.length (store_search g b)
+  ig_estimate g.gs_indexed b
 let rec lookup_named_store (name : RDF_Graph_Executable.iri)
   (named : named_graph_store Prims.list) :
   graph_store FStar_Pervasives_Native.option=
@@ -3030,7 +2967,7 @@ let service_endpoint_clear () : unit =
   Hashtbl.clear service_endpoint_table
 let service_endpoint_lookup (iri : Prims.string) : graph_store FStar_Pervasives_Native.option=
   match Hashtbl.find_opt service_endpoint_table iri with
-  | Some g -> FStar_Pervasives_Native.Some { gs_graph = g }
+  | Some g -> FStar_Pervasives_Native.Some (graph_to_store g)
   | None -> FStar_Pervasives_Native.None
 let path_result_to_solutions (ps : pattern_subject) (pt : pattern_term)
   (pairs : path_result_fwd) : solution_sequence=
@@ -4940,6 +4877,18 @@ let rec rewrite_query_bnodes_pattern (p : group_graph_pattern) :
       GP_PropertyPath
         ((rewrite_query_bnode_subject s), pp, (rewrite_query_bnode_term o))
   | uu___ -> p
+let is_synthetic_bnode_var (v : var_name) : Prims.bool=
+  string_starts_with v "_bnode_"
+let strip_synthetic_bnode_vars_mu
+  (mu : RDF_Graph_Executable.solution_mapping) :
+  RDF_Graph_Executable.solution_mapping=
+  FStar_List_Tot_Base.filter
+    (fun uu___ ->
+       match uu___ with
+       | (v, uu___1) -> Prims.op_Negation (is_synthetic_bnode_var v)) mu
+let strip_synthetic_bnode_vars (omega : solution_sequence) :
+  solution_sequence=
+  FStar_List_Tot_Base.map strip_synthetic_bnode_vars_mu omega
 let rec q_dataset_default_iris (dcs : dataset_clause Prims.list) :
   RDF_Graph_Executable.wf_iri Prims.list=
   match dcs with
@@ -5012,7 +4961,9 @@ let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
           q_modifier = (q.q_modifier);
           q_values = (q.q_values)
         } in
-      (match q1.q_form with
+      (let saved_base = !current_base_iri_ref in
+       current_base_iri_ref := q1.q_base;
+       let result = (match q1.q_form with
        | QF_Select sel ->
            let omega0 = eval_pattern q1.q_pattern g1 ds1 in
            let omega =
@@ -5038,11 +4989,13 @@ let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
                match sel with
                | Select_Vars items -> aggregate_groups items filtered_groups
                | Select_All ->
-                   FStar_List_Tot_Base.map
-                     (fun grp ->
-                        match grp.g_solutions with
-                        | mu::uu___1 -> mu
-                        | [] -> sm_empty) filtered_groups in
+                   let reps =
+                     FStar_List_Tot_Base.map
+                       (fun grp ->
+                          match grp.g_solutions with
+                          | mu::uu___1 -> mu
+                          | [] -> sm_empty) filtered_groups in
+                   strip_synthetic_bnode_vars reps in
              let ordered =
                match (q1.q_modifier).sm_order_by with
                | FStar_Pervasives_Native.None -> omega'
@@ -5069,7 +5022,7 @@ let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
                 match sel with
                 | Select_Vars items ->
                     project_solutions (select_item_vars items) ordered
-                | Select_All -> ordered in
+                | Select_All -> strip_synthetic_bnode_vars ordered in
               let deduped =
                 if (q1.q_modifier).sm_distinct
                 then distinct_solutions projected
@@ -5081,7 +5034,9 @@ let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
                 (q1.q_modifier).sm_limit deduped)
        | QF_Construct uu___1 -> []
        | QF_Ask -> []
-       | QF_Describe uu___1 -> [])
+       | QF_Describe uu___1 -> []) in
+         current_base_iri_ref := saved_base;
+         result)
 let eval_ask_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
   (ds : RDF_Graph_Executable.rdf_dataset) : Prims.bool=
   let uu___ = apply_query_dataset q.q_dataset g ds in

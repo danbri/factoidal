@@ -1,6 +1,7 @@
 open Prims
 type graph_backend =
   | GB_List of RDF_Graph_Executable.rdf_graph 
+  | GB_Indexed of RDF_Graph_Executable.indexed_graph 
   | GB_HDT of Parser_BallyhooHDT.hdt_graph_store 
   | GB_COTTAS of Parser_BallyhooCOTTAS.cottas_dataset_store *
   RDF_Graph_Executable.iri FStar_Pervasives_Native.option 
@@ -9,6 +10,11 @@ let uu___is_GB_List (projectee : graph_backend) : Prims.bool=
   match projectee with | GB_List _0 -> true | uu___ -> false
 let __proj__GB_List__item___0 (projectee : graph_backend) :
   RDF_Graph_Executable.rdf_graph= match projectee with | GB_List _0 -> _0
+let uu___is_GB_Indexed (projectee : graph_backend) : Prims.bool=
+  match projectee with | GB_Indexed _0 -> true | uu___ -> false
+let __proj__GB_Indexed__item___0 (projectee : graph_backend) :
+  RDF_Graph_Executable.indexed_graph=
+  match projectee with | GB_Indexed _0 -> _0
 let uu___is_GB_HDT (projectee : graph_backend) : Prims.bool=
   match projectee with | GB_HDT _0 -> true | uu___ -> false
 let __proj__GB_HDT__item___0 (projectee : graph_backend) :
@@ -59,6 +65,21 @@ let list_dataset_backend (ds : RDF_Graph_Executable.rdf_dataset) :
               ngb_graph = (GB_List (ng.RDF_Graph_Executable.ng_graph))
             }) ds.RDF_Graph_Executable.ds_named)
   }
+let indexed_graph_backend (g : RDF_Graph_Executable.rdf_graph) :
+  graph_backend= GB_Indexed (RDF_Graph_Executable.build_indexed g)
+let indexed_dataset_backend (ds : RDF_Graph_Executable.rdf_dataset) :
+  dataset_backend=
+  {
+    dsb_default = (indexed_graph_backend ds.RDF_Graph_Executable.ds_default);
+    dsb_named =
+      (FStar_List_Tot_Base.map
+         (fun ng ->
+            {
+              ngb_name = (ng.RDF_Graph_Executable.ng_name);
+              ngb_graph =
+                (indexed_graph_backend ng.RDF_Graph_Executable.ng_graph)
+            }) ds.RDF_Graph_Executable.ds_named)
+  }
 let rec union_backend_search (members : graph_backend Prims.list)
   (b : SPARQL11_Algebra.triple_pattern_bound) :
   RDF_Graph_Executable.triple Prims.list=
@@ -73,6 +94,7 @@ and backend_search (gb : graph_backend)
   match gb with
   | GB_List g ->
       SPARQL11_Algebra.store_search (SPARQL11_Algebra.graph_to_store g) b
+  | GB_Indexed ig -> SPARQL11_Algebra.ig_search ig b
   | GB_HDT hgs ->
       Parser_BallyhooHDT.hdt_search_triples hgs b.SPARQL11_Algebra.bs
         b.SPARQL11_Algebra.bp b.SPARQL11_Algebra.bo
@@ -96,6 +118,7 @@ and backend_estimate (gb : graph_backend)
   match gb with
   | GB_List g ->
       SPARQL11_Algebra.store_estimate (SPARQL11_Algebra.graph_to_store g) b
+  | GB_Indexed ig -> SPARQL11_Algebra.ig_estimate ig b
   | GB_HDT hgs ->
       Parser_BallyhooHDT.hdt_estimate hgs
         (Parser_BallyhooHDT.hdt_build_bound_tp hgs b.SPARQL11_Algebra.bs
@@ -119,6 +142,14 @@ and backend_predicate_present (gb : graph_backend)
   match gb with
   | GB_List g ->
       (backend_estimate (GB_List g)
+         {
+           SPARQL11_Algebra.bs = FStar_Pervasives_Native.None;
+           SPARQL11_Algebra.bp = (FStar_Pervasives_Native.Some pred);
+           SPARQL11_Algebra.bo = FStar_Pervasives_Native.None
+         })
+        > Prims.int_zero
+  | GB_Indexed ig ->
+      (backend_estimate (GB_Indexed ig)
          {
            SPARQL11_Algebra.bs = FStar_Pervasives_Native.None;
            SPARQL11_Algebra.bp = (FStar_Pervasives_Native.Some pred);

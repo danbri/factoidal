@@ -227,6 +227,132 @@ let rec find_by_predicate (pred : wf_iri) (g : rdf_graph) : rdf_graph=
   | hd::tl ->
       let rest = find_by_predicate pred tl in
       if hd.p = pred then hd :: rest else rest
+type bucket_map = (Prims.string * triple Prims.list) Prims.list
+type indexed_graph =
+  {
+  ig_triples: triple Prims.list ;
+  ig_pred: bucket_map ;
+  ig_subj: bucket_map ;
+  ig_obj: bucket_map ;
+  ig_sp: bucket_map ;
+  ig_po: bucket_map ;
+  ig_so: bucket_map }
+let __proj__Mkindexed_graph__item__ig_triples (projectee : indexed_graph) :
+  triple Prims.list=
+  match projectee with
+  | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so;_} ->
+      ig_triples
+let __proj__Mkindexed_graph__item__ig_pred (projectee : indexed_graph) :
+  bucket_map=
+  match projectee with
+  | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so;_} -> ig_pred
+let __proj__Mkindexed_graph__item__ig_subj (projectee : indexed_graph) :
+  bucket_map=
+  match projectee with
+  | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so;_} -> ig_subj
+let __proj__Mkindexed_graph__item__ig_obj (projectee : indexed_graph) :
+  bucket_map=
+  match projectee with
+  | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so;_} -> ig_obj
+let __proj__Mkindexed_graph__item__ig_sp (projectee : indexed_graph) :
+  bucket_map=
+  match projectee with
+  | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so;_} -> ig_sp
+let __proj__Mkindexed_graph__item__ig_po (projectee : indexed_graph) :
+  bucket_map=
+  match projectee with
+  | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so;_} -> ig_po
+let __proj__Mkindexed_graph__item__ig_so (projectee : indexed_graph) :
+  bucket_map=
+  match projectee with
+  | { ig_triples; ig_pred; ig_subj; ig_obj; ig_sp; ig_po; ig_so;_} -> ig_so
+let subject_to_key (s : subject) : Prims.string=
+  match s with
+  | S_IRI i -> FStar_String.concat "" ["I_"; i]
+  | S_BNode b -> FStar_String.concat "" ["B_"; b]
+let term_to_key_opt (o : rdf_term) :
+  Prims.string FStar_Pervasives_Native.option=
+  match o with
+  | T_IRI i ->
+      FStar_Pervasives_Native.Some (FStar_String.concat "" ["I_"; i])
+  | T_BNode b ->
+      FStar_Pervasives_Native.Some (FStar_String.concat "" ["B_"; b])
+  | T_Literal uu___ -> FStar_Pervasives_Native.None
+let unit_sep : Prims.string= "\031"
+let sp_key (s : subject) (p : wf_iri) : Prims.string=
+  FStar_String.concat "" [subject_to_key s; unit_sep; p]
+let po_key_opt (p : wf_iri) (o : rdf_term) :
+  Prims.string FStar_Pervasives_Native.option=
+  match term_to_key_opt o with
+  | FStar_Pervasives_Native.Some k ->
+      FStar_Pervasives_Native.Some (FStar_String.concat "" [p; unit_sep; k])
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+let so_key_opt (s : subject) (o : rdf_term) :
+  Prims.string FStar_Pervasives_Native.option=
+  match term_to_key_opt o with
+  | FStar_Pervasives_Native.Some k ->
+      FStar_Pervasives_Native.Some
+        (FStar_String.concat "" [subject_to_key s; unit_sep; k])
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+let rec bucket_lookup (m : bucket_map) (k : Prims.string) :
+  triple Prims.list=
+  match m with
+  | [] -> []
+  | (k', v)::rest -> if k = k' then v else bucket_lookup rest k
+let rec bucket_replace (m : bucket_map) (k : Prims.string)
+  (v : triple Prims.list) : bucket_map=
+  match m with
+  | [] -> [(k, v)]
+  | (k', v')::rest ->
+      if k = k'
+      then (k, v) :: rest
+      else (k', v') :: (bucket_replace rest k v)
+let bucket_push (m : bucket_map) (k : Prims.string) (t : triple) :
+  bucket_map=
+  let existing = bucket_lookup m k in bucket_replace m k (t :: existing)
+let add_triple_to_indexes (ig : indexed_graph) (t : triple) : indexed_graph=
+  let new_pred = bucket_push ig.ig_pred t.p t in
+  let new_subj = bucket_push ig.ig_subj (subject_to_key t.s) t in
+  let new_obj =
+    match term_to_key_opt t.o with
+    | FStar_Pervasives_Native.Some k -> bucket_push ig.ig_obj k t
+    | FStar_Pervasives_Native.None -> ig.ig_obj in
+  let new_sp = bucket_push ig.ig_sp (sp_key t.s t.p) t in
+  let new_po =
+    match po_key_opt t.p t.o with
+    | FStar_Pervasives_Native.Some k -> bucket_push ig.ig_po k t
+    | FStar_Pervasives_Native.None -> ig.ig_po in
+  let new_so =
+    match so_key_opt t.s t.o with
+    | FStar_Pervasives_Native.Some k -> bucket_push ig.ig_so k t
+    | FStar_Pervasives_Native.None -> ig.ig_so in
+  {
+    ig_triples = (t :: (ig.ig_triples));
+    ig_pred = new_pred;
+    ig_subj = new_subj;
+    ig_obj = new_obj;
+    ig_sp = new_sp;
+    ig_po = new_po;
+    ig_so = new_so
+  }
+let rec build_indexed_aux (g : triple Prims.list) (acc : indexed_graph) :
+  indexed_graph=
+  match g with
+  | [] -> acc
+  | t::rest -> build_indexed_aux rest (add_triple_to_indexes acc t)
+let empty_indexed : indexed_graph=
+  {
+    ig_triples = [];
+    ig_pred = [];
+    ig_subj = [];
+    ig_obj = [];
+    ig_sp = [];
+    ig_po = [];
+    ig_so = []
+  }
+let build_indexed (g : rdf_graph) : indexed_graph=
+  build_indexed_aux g empty_indexed
+let ig_to_list (ig : indexed_graph) : triple Prims.list= ig.ig_triples
 let must_escape (c : FStar_Char.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in
   (((((((code = (Prims.of_int (0x5C))) || (code = (Prims.of_int (0x22)))) ||
@@ -1223,6 +1349,89 @@ let canonical_maxqc1_restriction_bnode (p : wf_iri) (c : wf_iri) : bnode_id=
   FStar_String.concat "" ["__rl_maxqc1_"; p; "__on__"; c]
 let canonical_exactqc1_restriction_bnode (p : wf_iri) (c : wf_iri) :
   bnode_id= FStar_String.concat "" ["__rl_exactqc1_"; p; "__on__"; c]
+let owl_rule_disjoint_with_propagation (g : rdf_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if t.p = owl_disjointWith_iri
+       then
+         match ((t.s), (t.o)) with
+         | (S_IRI c_iri, T_IRI d_iri) ->
+             let new_t =
+               {
+                 s = (S_IRI d_iri);
+                 p = owl_disjointWith_iri;
+                 o = (T_IRI c_iri)
+               } in
+             add_triple_if_new acc new_t
+         | (uu___, uu___1) -> acc
+       else
+         if t.p = owl_complementOf_iri
+         then
+           (match ((t.s), (t.o)) with
+            | (S_IRI c_iri, T_IRI d_iri) ->
+                let t1 =
+                  {
+                    s = (S_IRI c_iri);
+                    p = owl_disjointWith_iri;
+                    o = (T_IRI d_iri)
+                  } in
+                let t2 =
+                  {
+                    s = (S_IRI d_iri);
+                    p = owl_disjointWith_iri;
+                    o = (T_IRI c_iri)
+                  } in
+                add_triple_if_new (add_triple_if_new acc t1) t2
+            | (uu___1, uu___2) -> acc)
+         else acc) g g
+let canonical_svf2_witness_bnode (p : wf_iri) (c : wf_iri) (x : subject) :
+  bnode_id=
+  FStar_String.concat ""
+    ["__rl_svf2w__on__"; p; "__filler__"; c; "__from__"; subject_to_key x]
+let owl_rule_svf2_existential_witness (g : rdf_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc svf_t ->
+       if svf_t.p = owl_someValuesFrom_iri
+       then
+         match svf_t.o with
+         | T_IRI c ->
+             (if c = owl_Thing
+              then acc
+              else
+                (let r_subj = svf_t.s in
+                 let onprops = find_objects g r_subj owl_onProperty_iri in
+                 FStar_List_Tot_Base.fold_left
+                   (fun acc2 op_term ->
+                      match op_term with
+                      | T_IRI p ->
+                          let r_term = subject_to_term r_subj in
+                          let ancestors =
+                            find_subjects g rdfs_subClassOf r_term in
+                          FStar_List_Tot_Base.fold_left
+                            (fun acc3 cls_subj ->
+                               match cls_subj with
+                               | S_IRI cls_iri ->
+                                   let members =
+                                     find_subjects g rdf_type (T_IRI cls_iri) in
+                                   FStar_List_Tot_Base.fold_left
+                                     (fun acc4 x ->
+                                        let w_id =
+                                          canonical_svf2_witness_bnode p c x in
+                                        let edge_t =
+                                          { s = x; p; o = (T_BNode w_id) } in
+                                        let type_t =
+                                          {
+                                            s = (S_BNode w_id);
+                                            p = rdf_type;
+                                            o = (T_IRI c)
+                                          } in
+                                        add_triple_if_new
+                                          (add_triple_if_new acc4 edge_t)
+                                          type_t) acc3 members
+                               | uu___1 -> acc3) acc2 ancestors
+                      | uu___1 -> acc2) acc onprops))
+         | uu___ -> acc
+       else acc) g g
 let owl_rule_minc1_bridge (g : rdf_graph) : rdf_graph=
   FStar_List_Tot_Base.fold_left
     (fun acc t ->
@@ -1797,7 +2006,8 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
   let g2a = owl_rule_scm_eqc2 g2 in
   let g2b = owl_rule_scm_eqp2 g2a in
   let g3 = owl_rule_inverse_of g2b in
-  let g3a = owl_rule_inverseOf_domain_range_flip g3 in
+  let g3_disj = owl_rule_disjoint_with_propagation g3 in
+  let g3a = owl_rule_inverseOf_domain_range_flip g3_disj in
   let g4 = owl_rule_symmetric_property g3a in
   let g5 = owl_rule_transitive_property g4 in
   let g6 = owl_rule_sameAs_reflexivity g5 in
@@ -1810,7 +2020,8 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
   let g11a = owl_rule_functional g11 in
   let g12 = owl_rule_inverse_functional g11a in
   let g13 = owl_rule_minc1_bridge g12 in
-  let g14 = owl_rule_cls_svf2_qualified g13 in
+  let g13a = owl_rule_svf2_existential_witness g13 in
+  let g14 = owl_rule_cls_svf2_qualified g13a in
   let g15 = owl_rule_cls_minc_qual1 g14 in
   let g16 = owl_rule_cls_maxqc1 g15 in
   let g17 = owl_rule_cls_exactqc1 g16 in
