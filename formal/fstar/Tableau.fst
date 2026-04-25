@@ -67,6 +67,10 @@ let owl_complementOf : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#complementOf");
   "http://www.w3.org/2002/07/owl#complementOf"
 
+let owl_disjointWith : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#disjointWith");
+  "http://www.w3.org/2002/07/owl#disjointWith"
+
 let owl_Restriction : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#Restriction");
   "http://www.w3.org/2002/07/owl#Restriction"
@@ -364,6 +368,41 @@ let rec any_successor_sat (f : rdf_term -> bool) (xs : list rdf_term)
   | []      -> false
   | h :: tl -> if f h then true else any_successor_sat f tl
 
+(* disjointWith bridge for CE_ComplementOf:
+   sound rule (one direction, monotonic): if `c_iri owl:disjointWith d_iri`
+   (or symmetric `d_iri owl:disjointWith c_iri`) and `i rdf:type d_iri`
+   in the closed graph, then `i` is provably a member of `(complementOf c_iri)`.
+   We never produce Some false here; absence of a disjoint witness leaves
+   the existing flip logic in CE_ComplementOf unchanged. *)
+let rec any_disjoint_witness_in (g : rdf_graph) (i : subject)
+                                (ds : list rdf_term)
+  : Tot bool (decreases ds) =
+  match ds with
+  | []      -> false
+  | h :: tl ->
+    (match h with
+     | T_IRI d_iri -> if has_type g i d_iri then true
+                      else any_disjoint_witness_in g i tl
+     | _           -> any_disjoint_witness_in g i tl)
+
+let rec any_disjoint_witness_sym (g : rdf_graph) (i : subject) (c_iri : wf_iri)
+                                 (subjs : list subject)
+  : Tot bool (decreases subjs) =
+  match subjs with
+  | []      -> false
+  | h :: tl ->
+    (match h with
+     | S_IRI d_iri -> if has_type g i d_iri then true
+                      else any_disjoint_witness_sym g i c_iri tl
+     | _           -> any_disjoint_witness_sym g i c_iri tl)
+
+let has_disjoint_witness (g : rdf_graph) (i : subject) (c_iri : wf_iri) : bool =
+  let forward = find_objects g (S_IRI c_iri) owl_disjointWith in
+  if any_disjoint_witness_in g i forward then true
+  else
+    let reverse = find_subjects g owl_disjointWith (T_IRI c_iri) in
+    any_disjoint_witness_sym g i c_iri reverse
+
 (* is_member — main recursive entry.
 
    Termination: `fuel` decreases in every non-Named case. Within a single
@@ -436,10 +475,24 @@ let rec is_member (g : rdf_graph) (i : subject) (ce : class_expr) (fuel : nat)
       (* Partial: flip a definite answer. None stays None. This is NOT
          full classical negation; it cannot prove "i is not a C" unless
          we already have an explicit disproof of C. Stage (d) upgrades
-         this to dual-branch search. *)
-      (match is_member g i c (n - 1) with
-       | Some b -> Some (not b)
-       | None   -> None)
+         this to dual-branch search.
+
+         Phase 2 bridge (paper-Q3): when c is a named class c_iri and the
+         graph asserts `c_iri owl:disjointWith d_iri` (either direction)
+         with `i rdf:type d_iri`, then i is a member of (complementOf c_iri)
+         under OWL semantics. Sound, monotonic, one-direction only — never
+         derives Some false. *)
+      (match c with
+       | CE_Named c_iri ->
+         if has_disjoint_witness g i c_iri then Some true
+         else
+           (match is_member g i c (n - 1) with
+            | Some b -> Some (not b)
+            | None   -> None)
+       | _ ->
+         (match is_member g i c (n - 1) with
+          | Some b -> Some (not b)
+          | None   -> None))
 
     | CE_MinCard k p ->
       (* at-least-k P: count distinct known P-successors. Under UNA-off
