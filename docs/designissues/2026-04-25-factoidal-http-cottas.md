@@ -63,3 +63,65 @@ No overlap with the landing-page HTML helpers.
 ## F\* verify
 
 None — pure OCaml glue. The F\* COTTAS reader is unchanged.
+
+## Resolution (2026-04-25 ~08:00)
+
+Code changes landed in commit `807cbb1` alongside Gamma2's landing-page
+edits (the same file got both diffs squashed when Gamma2 picked up the
+in-flight change before staging). Smoke test on a small 2 KB COTTAS
+(`tmp/kgx-cottas-direct-import/therapeutic_use/data.cottas`):
+
+```
+factoidal-http --port 3033 --read-only --cors='*' \
+  --data-cottas .../therapeutic_use/data.cottas
+# READY in 2 s
+# store totals: 0 default-graph triples, 1 named graph(s)
+SELECT (COUNT(*) AS ?n) WHERE { GRAPH ?g { ?s ?p ?o } }  # -> 92
+SELECT DISTINCT ?g ...                                     # -> urn:factoidal:kgx:therapeutic_use
+```
+
+The argv parser, `load_cottas_dataset`, named-graph routing, and SPARQL
+evaluator are wired correctly end-to-end.
+
+### Pre-existing perf issue: Parliament-scale corpus
+
+3.14 M-quad UK Parliament COTTAS (62 MB) does **not** complete on
+either binary in this build:
+
+- `factoidal --data-cottas .../data.cottas --count` — **terminated
+  abnormally after 1329 s** (real), 1315 s user. Exit code 0 to the
+  shell, but no output. This is the existing CLI binary in HEAD
+  (Wave 13, `9378d52`).
+- `factoidal-http --data-cottas .../data.cottas` — same hang; the
+  process spends 100 % CPU in `Batteries.UTF8.nth_aux` (per `sample`
+  trace), tracking with the per-row UTF-8 token decode in
+  `cottas_runtime.sh:300-314`.
+- 1.2 MB COTTAS (`protein__protein1`) hung > 615 s — never reached
+  LISTEN. So the cliff is well below 3 M quads.
+
+This is documented separately in
+`2026-04-25-cottas-http-hang-diagnosis.md` (Zayin2). It is **not**
+caused by this `--data-cottas` wiring; the loader is the same code
+path the CLI already uses, and the CLI fails at the same point.
+Fixing belongs in F\* / `cottas_runtime.sh` (the per-row token
+parsing), not in `factoidal_http.ml`.
+
+### Launching the comparison endpoint (when the loader is fast)
+
+```
+# In-memory N-Quads endpoint (already running on :3030):
+factoidal-http --host 100.107.116.70 --port 3030 --read-only --cors='*' \
+  --dataset /tmp/ukpar_corpus/ukparliament-2019/v1/data.nq
+
+# Binary COTTAS endpoint:
+factoidal-http --host 100.107.116.70 --port 3032 --read-only --cors='*' \
+  --data-cottas /tmp/ukpar_corpus/ukparliament-2019/v1/data.cottas
+```
+
+Compare with:
+```
+curl -G --data-urlencode 'query=SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }' \
+     -H 'Accept: application/sparql-results+json' \
+     http://100.107.116.70:3032/sparql
+```
+
