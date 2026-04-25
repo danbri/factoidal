@@ -248,6 +248,29 @@ let rec mem_triple (t:triple) (g:rdf_graph) : bool =
 let graph_add (t:triple) (g:rdf_graph) : rdf_graph =
   if mem_triple t g then g else g @ [t]
 
+// O(1) prepend, no dedup. Bulk-parser hot path only — see
+// docs/designissues/2026-04-25-fstar-rdf-graph-perf-prepend-finalise.md.
+// Callers MUST run [graph_finalise] / [dataset_finalise] once at the end
+// of the bulk parse to restore insertion order.
+let graph_add_unchecked (t:triple) (g:rdf_graph) : rdf_graph = t :: g
+
+// Restore insertion order after a sequence of [graph_add_unchecked] calls.
+// Single-pass [List.Tot.rev] — Tot, total, F*-trivial termination on the
+// list spine. Callers that want set semantics should compose with a
+// downstream dedup; this helper does not dedup.
+let graph_finalise (g:rdf_graph) : rdf_graph = List.Tot.rev g
+
+// Apply [graph_finalise] to the default graph and every named graph in a
+// dataset. Used once at the end of bulk N-Quads / TriG parsing.
+let dataset_finalise (ds:rdf_dataset) : rdf_dataset =
+  {
+    ds_default = graph_finalise ds.ds_default;
+    ds_named = List.Tot.map
+      (fun (ng:named_graph) -> { ng_name = ng.ng_name;
+                                 ng_graph = graph_finalise ng.ng_graph })
+      ds.ds_named;
+  }
+
 // Remove all occurrences of a triple
 let graph_remove (t:triple) (g:rdf_graph) : rdf_graph =
   List.Tot.filter (fun hd -> not (triple_eq hd t)) g

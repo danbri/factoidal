@@ -167,17 +167,22 @@ let rec find_named_graph (name : iri) (ngs : list named_graph) : option (list na
 
 (** Add a triple to the appropriate graph in the dataset.
     If graph_name is None, add to default graph.
-    If graph_name is Some name, add to (or create) the named graph. *)
+    If graph_name is Some name, add to (or create) the named graph.
+
+    PERF: uses [graph_add_unchecked] (O(1) prepend). The caller-facing
+    [parse_nquads*] entry points wrap their result in [dataset_finalise]
+    to restore insertion order in O(N) at the end. See
+    docs/designissues/2026-04-25-fstar-rdf-graph-perf-prepend-finalise.md. *)
 let dataset_add_quad (ds : rdf_dataset) (t : triple) (graph_name : option iri) : rdf_dataset =
   match graph_name with
   | None ->
     (* Add to default graph *)
-    { ds with ds_default = graph_add t ds.ds_default }
+    { ds with ds_default = graph_add_unchecked t ds.ds_default }
   | Some name ->
     (* Add to named graph, creating it if needed *)
     match find_named_graph name ds.ds_named with
     | Some (before, existing_g, after) ->
-      let updated_g = graph_add t existing_g in
+      let updated_g = graph_add_unchecked t existing_g in
       let updated_ng : named_graph = { ng_name = name; ng_graph = updated_g } in
       { ds with ds_named = before @ [updated_ng] @ after }
     | None ->
@@ -253,7 +258,9 @@ let rec parse_nquads_acc (input:string) (pos:nat) (ds:rdf_dataset) (fuel:nat)
     Triples with a graph label go into the corresponding named graph. *)
 let parse_nquads (input:string) : rdf_dataset =
   let len = fs_byte_length input in
-  parse_nquads_acc input 0 empty_dataset (len + 1)
+  // PERF: dataset_add_quad uses graph_add_unchecked (O(1) prepend);
+  // dataset_finalise reverses each graph once to restore insertion order.
+  dataset_finalise (parse_nquads_acc input 0 empty_dataset (len + 1))
 
 let rec parse_nquads_strict_acc (input:string) (pos:nat) (ds:rdf_dataset) (fuel:nat)
   : Tot (option rdf_dataset) (decreases fuel) =
@@ -297,7 +304,9 @@ let rec parse_nquads_strict_acc (input:string) (pos:nat) (ds:rdf_dataset) (fuel:
 
 let parse_nquads_strict (input:string) : option rdf_dataset =
   let len = fs_byte_length input in
-  parse_nquads_strict_acc input 0 empty_dataset (len + 1)
+  match parse_nquads_strict_acc input 0 empty_dataset (len + 1) with
+  | Some ds -> Some (dataset_finalise ds)
+  | None -> None
 
 (* ================================================================ *)
 (* Convenience: parse N-Quads returning just a flat list of quads    *)
@@ -309,6 +318,12 @@ noeq type nquad = {
   nq_graph  : option iri;
 }
 
+// The decreases/fuel VC for parse_nquads_flat_acc is right at the edge of
+// Z3's default query size. Adding helpers in RDF.Graph.Executable
+// (graph_add_unchecked, dataset_finalise) shifted the surrounding context
+// just enough to tip it past the threshold. Pin locally to keep the proof
+// stable, matching the precedent set in Parser.Turtle for parse_turtle_doc.
+#push-options "--split_queries always"
 (** Parse an N-Quads document returning a flat list of quads *)
 let rec parse_nquads_flat_acc (input:string) (pos:nat) (acc:list nquad) (fuel:nat)
   : Tot (list nquad) (decreases fuel) =
@@ -360,6 +375,7 @@ let rec parse_nquads_flat_acc (input:string) (pos:nat) (acc:list nquad) (fuel:na
             let pos2 = skip_line pos1 (len - pos1) in
             if pos2 = pos1 then List.Tot.rev acc
             else parse_nquads_flat_acc input pos2 acc (fuel - 1)
+#pop-options
 
 let parse_nquads_flat (input:string) : list nquad =
   let len = fs_byte_length input in

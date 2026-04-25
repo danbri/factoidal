@@ -45,15 +45,20 @@ let rec trig_find_named_graph (name : iri) (ngs : list named_graph)
       | Some (before, g, after) -> Some (ng :: before, g, after)
       | None -> None
 
-(** Add a triple to the appropriate graph in the dataset *)
+(** Add a triple to the appropriate graph in the dataset.
+
+    PERF: uses [graph_add_unchecked] (O(1) prepend). The caller-facing
+    [parse_trig*] entry points wrap their result in [dataset_finalise]
+    to restore insertion order in O(N) at the end. See
+    docs/designissues/2026-04-25-fstar-rdf-graph-perf-prepend-finalise.md. *)
 let trig_dataset_add (ds : rdf_dataset) (t : triple) (graph_name : option iri) : rdf_dataset =
   match graph_name with
   | None ->
-    { ds with ds_default = graph_add t ds.ds_default }
+    { ds with ds_default = graph_add_unchecked t ds.ds_default }
   | Some name ->
     match trig_find_named_graph name ds.ds_named with
     | Some (before, existing_g, after) ->
-      let updated_g = graph_add t existing_g in
+      let updated_g = graph_add_unchecked t existing_g in
       let updated_ng : named_graph = { ng_name = name; ng_graph = updated_g } in
       { ds with ds_named = List.Tot.append before (List.Tot.append [updated_ng] after) }
     | None ->
@@ -481,13 +486,17 @@ let make_trig_parse_state (st: turtle_state) : trig_parse_state =
   { ts = st; has_error = false }
 
 (** Parse a TriG document string into an rdf_dataset.
-    Returns None if any parse errors were encountered. *)
+    Returns None if any parse errors were encountered.
+
+    PERF: wraps the result in [dataset_finalise] so the O(1)-prepend
+    accumulator (see [trig_dataset_add]) is reversed once at the end,
+    restoring insertion order. *)
 let parse_trig (input: string) : option rdf_dataset =
   let len = fs_byte_length input in
   let fuel = (len + 1) `op_Multiply` 3 in
   let tps = make_trig_parse_state empty_turtle_state in
   let (ds, tps') = parse_trig_doc tps input 0 empty_dataset fuel in
-  if tps'.has_error then None else Some ds
+  if tps'.has_error then None else Some (dataset_finalise ds)
 
 (** Parse a TriG document with a base IRI.
     Returns None if any parse errors were encountered. *)
@@ -497,7 +506,7 @@ let parse_trig_with_base (input: string) (base: string) : option rdf_dataset =
   let st = { empty_turtle_state with base_iri = base } in
   let tps = make_trig_parse_state st in
   let (ds, tps') = parse_trig_doc tps input 0 empty_dataset fuel in
-  if tps'.has_error then None else Some ds
+  if tps'.has_error then None else Some (dataset_finalise ds)
 
 // Lenient versions that always return a dataset (for positive tests / compatibility)
 let parse_trig_lenient (input: string) : rdf_dataset =
@@ -505,7 +514,7 @@ let parse_trig_lenient (input: string) : rdf_dataset =
   let fuel = (len + 1) `op_Multiply` 3 in
   let tps = make_trig_parse_state empty_turtle_state in
   let (ds, _) = parse_trig_doc tps input 0 empty_dataset fuel in
-  ds
+  dataset_finalise ds
 
 let parse_trig_with_base_lenient (input: string) (base: string) : rdf_dataset =
   let len = fs_byte_length input in
@@ -513,4 +522,4 @@ let parse_trig_with_base_lenient (input: string) (base: string) : rdf_dataset =
   let st = { empty_turtle_state with base_iri = base } in
   let tps = make_trig_parse_state st in
   let (ds, _) = parse_trig_doc tps input 0 empty_dataset fuel in
-  ds
+  dataset_finalise ds
