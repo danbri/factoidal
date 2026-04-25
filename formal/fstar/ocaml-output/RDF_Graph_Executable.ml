@@ -1172,6 +1172,39 @@ let owl_qualifiedCardinality_iri : wf_iri=
   "http://www.w3.org/2002/07/owl#qualifiedCardinality"
 let owl_cardinality_iri : wf_iri= "http://www.w3.org/2002/07/owl#cardinality"
 let owl_onClass_iri : wf_iri= "http://www.w3.org/2002/07/owl#onClass"
+let owl_hasValue_iri : wf_iri= "http://www.w3.org/2002/07/owl#hasValue"
+let owl_oneOf_iri : wf_iri= "http://www.w3.org/2002/07/owl#oneOf"
+let owl_intersectionOf_iri : wf_iri=
+  "http://www.w3.org/2002/07/owl#intersectionOf"
+let owl_unionOf_iri : wf_iri= "http://www.w3.org/2002/07/owl#unionOf"
+let owl_complementOf_iri : wf_iri=
+  "http://www.w3.org/2002/07/owl#complementOf"
+let owl_disjointWith_iri : wf_iri=
+  "http://www.w3.org/2002/07/owl#disjointWith"
+let is_schema_metapredicate (p : wf_iri) : Prims.bool=
+  (((((((((((((((((((((((is_owl_metapredicate p) || (p = rdfs_subClassOf)) ||
+                         (p = rdfs_subPropertyOf))
+                        || (p = rdfs_domain))
+                       || (p = rdfs_range))
+                      || (p = owl_onProperty_iri))
+                     || (p = owl_onClass_iri))
+                    || (p = owl_someValuesFrom_iri))
+                   || (p = owl_allValuesFrom_iri))
+                  || (p = owl_hasValue_iri))
+                 || (p = owl_minCardinality_iri))
+                || (p = owl_maxCardinality_iri))
+               || (p = owl_cardinality_iri))
+              || (p = owl_minQualifiedCardinality_iri))
+             || (p = owl_maxQualifiedCardinality_iri))
+            || (p = owl_qualifiedCardinality_iri))
+           || (p = owl_oneOf_iri))
+          || (p = owl_intersectionOf_iri))
+         || (p = owl_unionOf_iri))
+        || (p = owl_complementOf_iri))
+       || (p = owl_disjointWith_iri))
+      || (p = "http://www.w3.org/2002/07/owl#propertyChainAxiom"))
+     || (p = "http://www.w3.org/2002/07/owl#distinctMembers"))
+    || (p = "http://www.w3.org/2002/07/owl#members")
 let xsd_nonNegativeInteger : wf_iri=
   "http://www.w3.org/2001/XMLSchema#nonNegativeInteger"
 let one_nonNegInteger_literal : wf_literal=
@@ -1214,7 +1247,7 @@ let owl_rule_minc1_bridge (g : rdf_graph) : rdf_graph=
 let owl_rule_cls_svf2_qualified (g : rdf_graph) : rdf_graph=
   FStar_List_Tot_Base.fold_left
     (fun acc edge ->
-       if (edge.p = rdf_type) || (is_owl_metapredicate edge.p)
+       if (edge.p = rdf_type) || (is_schema_metapredicate edge.p)
        then acc
        else
          (match term_to_subject edge.o with
@@ -1261,7 +1294,7 @@ let owl_rule_cls_svf2_qualified (g : rdf_graph) : rdf_graph=
 let owl_rule_cls_minc_qual1 (g : rdf_graph) : rdf_graph=
   FStar_List_Tot_Base.fold_left
     (fun acc edge ->
-       if (edge.p = rdf_type) || (is_owl_metapredicate edge.p)
+       if (edge.p = rdf_type) || (is_schema_metapredicate edge.p)
        then acc
        else
          (match term_to_subject edge.o with
@@ -1325,7 +1358,7 @@ let count_p_successors_typed_c (g : rdf_graph) (x : subject) (p : wf_iri)
 let owl_rule_cls_maxqc1 (g : rdf_graph) : rdf_graph=
   FStar_List_Tot_Base.fold_left
     (fun acc edge ->
-       if (edge.p = rdf_type) || (is_owl_metapredicate edge.p)
+       if (edge.p = rdf_type) || (is_schema_metapredicate edge.p)
        then acc
        else
          (match term_to_subject edge.o with
@@ -1383,7 +1416,7 @@ let owl_rule_cls_maxqc1 (g : rdf_graph) : rdf_graph=
 let owl_rule_cls_exactqc1 (g : rdf_graph) : rdf_graph=
   FStar_List_Tot_Base.fold_left
     (fun acc edge ->
-       if (edge.p = rdf_type) || (is_owl_metapredicate edge.p)
+       if (edge.p = rdf_type) || (is_schema_metapredicate edge.p)
        then acc
        else
          (match term_to_subject edge.o with
