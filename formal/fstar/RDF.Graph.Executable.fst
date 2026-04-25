@@ -2094,6 +2094,165 @@ let canonical_maxqc1_restriction_bnode (p : wf_iri) (c : wf_iri) : bnode_id =
 let canonical_exactqc1_restriction_bnode (p : wf_iri) (c : wf_iri) : bnode_id =
   String.concat "" ["__rl_exactqc1_"; p; "__on__"; c]
 
+// disjointWith propagation (paper-Q3 gap 3, 2026-04-25 Tav3):
+//
+//   (1) Symmetry of owl:disjointWith — OWL says disjointWith is a
+//       symmetric property. For each (C owl:disjointWith D) emit
+//       (D owl:disjointWith C). Sound by the OWL 2 axiomatic schema
+//       (Table 5 / direct semantics).
+//   (2) complementOf -> disjointWith — (C owl:complementOf D) implies
+//       both (C owl:disjointWith D) and (D owl:disjointWith C). A
+//       class and its complement have empty intersection by
+//       definition, hence are disjoint.
+//
+// We deliberately do NOT emit complementOf from disjointWith — that
+// direction is unsound (disjointness is the weaker property; complement
+// also requires the union to be owl:Thing).
+//
+// Both subrules are restricted to IRI-IRI pairs to avoid bnode
+// pollution (anonymous class-expression bnodes appearing as ?C
+// bindings, parent9 lesson — see BNODE-POLLUTION GUARD comment near
+// owl_rule_equivalent_class).
+//
+// Mem's Tableau bridge (`Tableau.fst:368-403`) already searches both
+// directions of disjointWith, so subrule (1) is what makes the
+// rewriter's reverse-disjointWith UNION branch (Nun2's complementOf
+// rewrite) match data that only states disjointWith one way (e.g.
+// paper-sparqldl-data.ttl: `:Conference owl:disjointWith :Workshop`
+// is asserted only forward).
+let owl_rule_disjoint_with_propagation (g : rdf_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_disjointWith_iri then
+        // Symmetry: (C disjointWith D) -> (D disjointWith C).
+        match t.s, t.o with
+        | S_IRI c_iri, T_IRI d_iri ->
+          let new_t : triple =
+            { s = S_IRI d_iri; p = owl_disjointWith_iri; o = T_IRI c_iri } in
+          add_triple_if_new acc new_t
+        | _, _ -> acc
+      else if t.p = owl_complementOf_iri then
+        // complementOf -> disjointWith (both directions).
+        match t.s, t.o with
+        | S_IRI c_iri, T_IRI d_iri ->
+          let t1 : triple =
+            { s = S_IRI c_iri; p = owl_disjointWith_iri; o = T_IRI d_iri } in
+          let t2 : triple =
+            { s = S_IRI d_iri; p = owl_disjointWith_iri; o = T_IRI c_iri } in
+          add_triple_if_new (add_triple_if_new acc t1) t2
+        | _, _ -> acc
+      else acc)
+    g
+    g
+
+// Existential-witness synthesis (paper-Q3 gap 1, 2026-04-25 Tav3):
+//
+// For the someValuesFrom restriction shape
+//   _:r rdf:type owl:Restriction ;
+//       owl:onProperty P ;          // P an IRI predicate
+//       owl:someValuesFrom C        // C an IRI named class
+// and a subClassOf-ancestor IRI C' of _:r (C' rdfs:subClassOf _:r) and
+// (x rdf:type C'), OWL-Direct semantics says some witness w must
+// exist with (x P w) and (w rdf:type C). We synthesise w as a
+// deterministic skolem bnode.
+//
+// Skolem name: __rl_svf2w__on__<P>__filler__<C>__from__<x_key>
+//   * x_key = subject_to_key x (so IRIs and bnode origins are both
+//     supported and uniquely encoded).
+//   * Deterministic: re-running closure converges (idempotent under
+//     add_triple_if_new).
+//   * Per-(P,C,x): no collapse across individuals; each (x, P, C)
+//     triple gets its own witness.
+//   * Prefix `__rl_` matches the existing closure-skolem convention
+//     (canonical_svf_restriction_bnode etc.) so future strip-skolem
+//     passes can remove all in one filter.
+//
+// Soundness:
+//   * (x rdf:type [P some C]) entails the existence of a witness w
+//     with (x P w) ∧ (w rdf:type C) by OWL-Direct semantics.
+//     Materialising a fresh bnode witness is the standard
+//     skolemisation of that existential.
+//   * Monotonic: only adds triples.
+//   * No spurious sameAs: distinct (x, P, C) triples produce distinct
+//     skolem names, so we never force witness equality.
+//
+// Why closure-side and not query-rewriter-side: the witness bnode
+// produces a CONCRETE, queryable triple; downstream rules
+// (cls-svf2-qualified, Mem's bridge) can fire on it without needing
+// disjunctive rewriter machinery. complementOf etc. stay
+// rewriter-side (per `feedback_disjunction_in_rewriter`).
+//
+// Why we look up subClassOf-ancestors of `_:r` rather than members of
+// `_:r` directly: rdfs9 (rdfs_rule_subClassOf) does not propagate
+// rdf:type to bnode-class objects (the rule only matches T_IRI on the
+// RHS), so `(:paper1 rdf:type _:r)` is not in the closure. Instead we
+// walk `find_subjects g rdfs_subClassOf (T_BNode _:r)` to get every
+// named class C' with (C' rdfs:subClassOf _:r) and emit witnesses for
+// every (x rdf:type C'). The rdfs:subClassOf relation reaches `_:r`
+// as the OBJECT (the data-side `:ConferencePaper rdfs:subClassOf
+// [a owl:Restriction ...]` triple) so this lookup terminates.
+//
+// Stack-safe (fold_left + accumulator); four nested folds: outer over
+// (svf) triples, then over onProperty IRIs, then over subClassOf
+// ancestors, then over typed members.
+let canonical_svf2_witness_bnode (p : wf_iri) (c : wf_iri) (x : subject) : bnode_id =
+  String.concat ""
+    ["__rl_svf2w__on__"; p; "__filler__"; c; "__from__"; subject_to_key x]
+
+let owl_rule_svf2_existential_witness (g : rdf_graph) : rdf_graph =
+  // Outer fold: find (_:r owl:someValuesFrom C) with C an IRI named class.
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (svf_t : triple) ->
+      if svf_t.p = owl_someValuesFrom_iri then
+        match svf_t.o with
+        | T_IRI c ->
+          if c = owl_Thing then acc
+          else
+            let r_subj = svf_t.s in
+            // Require (_:r owl:onProperty P) with P IRI.
+            let onprops = find_objects g r_subj owl_onProperty_iri in
+            List.Tot.fold_left
+              (fun (acc2 : rdf_graph) (op_term : rdf_term) ->
+                match op_term with
+                | T_IRI p ->
+                  // Find every C' with (C' rdfs:subClassOf _:r).
+                  let r_term : rdf_term = subject_to_term r_subj in
+                  let ancestors : list subject =
+                    find_subjects g rdfs_subClassOf r_term in
+                  List.Tot.fold_left
+                    (fun (acc3 : rdf_graph) (cls_subj : subject) ->
+                      // Restrict to NAMED classes — bnode CEs as the
+                      // subClass side would compound bnode pollution
+                      // and have no individual members in any case
+                      // unless rdfs9 had emitted them, which it didn't.
+                      match cls_subj with
+                      | S_IRI cls_iri ->
+                        // For every x with (x rdf:type cls_iri):
+                        let members : list subject =
+                          find_subjects g rdf_type (T_IRI cls_iri) in
+                        List.Tot.fold_left
+                          (fun (acc4 : rdf_graph) (x : subject) ->
+                            let w_id = canonical_svf2_witness_bnode p c x in
+                            let edge_t : triple =
+                              { s = x; p = p; o = T_BNode w_id } in
+                            let type_t : triple =
+                              { s = S_BNode w_id; p = rdf_type; o = T_IRI c } in
+                            add_triple_if_new
+                              (add_triple_if_new acc4 edge_t)
+                              type_t)
+                          acc3
+                          members
+                      | _ -> acc3)
+                    acc2
+                    ancestors
+                | _ -> acc2)
+              acc
+              onprops
+        | _ -> acc
+      else acc)
+    g
+    g
+
 // cls-minc1-bridge: for each restriction bnode `_:r` in g where
 //   (_:r owl:someValuesFrom owl:Thing) ∧ (_:r owl:onProperty P)
 // emit (_:r owl:minCardinality "1"^^xsd:nonNegativeInteger).
@@ -2993,8 +3152,13 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   let g2a = owl_rule_scm_eqc2 g2 in
   let g2b = owl_rule_scm_eqp2 g2a in
   let g3 = owl_rule_inverse_of g2b in
+  // disjointWith propagation (paper-Q3 gap 3, 2026-04-25 Tav3):
+  // symmetry of disjointWith + complementOf -> disjointWith (both
+  // dirs). Runs early so downstream rules / the rewriter / Mem's
+  // tableau bridge see the symmetric form within one closure step.
+  let g3_disj = owl_rule_disjoint_with_propagation g3 in
   // Schema-level inverseOf flip (sparqldl-11 "domain test").
-  let g3a = owl_rule_inverseOf_domain_range_flip g3 in
+  let g3a = owl_rule_inverseOf_domain_range_flip g3_disj in
   let g4 = owl_rule_symmetric_property g3a in
   let g5 = owl_rule_transitive_property g4 in
   let g6 = owl_rule_sameAs_reflexivity g5 in
@@ -3010,7 +3174,14 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   let g12 = owl_rule_inverse_functional g11a in
   // Restriction-membership rules (parent4 / parent5 / parent6).
   let g13 = owl_rule_minc1_bridge g12 in
-  let g14 = owl_rule_cls_svf2_qualified g13 in
+  // svf2 existential-witness synthesis (paper-Q3 gap 1, 2026-04-25
+  // Tav3): for each (_:r owl:someValuesFrom C ; owl:onProperty P) and
+  // each (C' rdfs:subClassOf _:r) and (x rdf:type C'), emit
+  // (x P _:w) and (_:w rdf:type C) for a deterministic skolem _:w.
+  // Order: must run BEFORE cls-svf2-qualified so the witness's typing
+  // gets picked up by the forward direction in the same closure step.
+  let g13a = owl_rule_svf2_existential_witness g13 in
+  let g14 = owl_rule_cls_svf2_qualified g13a in
   let g15 = owl_rule_cls_minc_qual1 g14 in
   // Max/exact-cardinality rules (parent7 / parent8).
   let g16 = owl_rule_cls_maxqc1 g15 in
