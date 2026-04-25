@@ -345,12 +345,36 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   fi
   echo "  Built: bin/${PLATFORM}/rdfc10_runner ($(wc -c < "$BINDIR/rdfc10_runner") bytes)"
 
+  # cottas_ondisk_smoketest — issue #100 Phase 2 acceptance harness.
+  # Opens a COTTAS file via the F*-extracted on-disk store, reports
+  # startup/post-open/post-query RSS in MB, runs cottas_ondisk_estimate
+  # with all-None bounds. Acceptance #4: server RSS no longer scales
+  # with corpus size.
+  COTTAS_SMOKE_RC=0
+  run_with_heartbeat "ocamlopt cottas_ondisk_smoketest" "_ocamlopt_cottas_ondisk_smoketest.log" -- \
+    ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+    $STATIC_FLAGS \
+    $COMMON_MODULES \
+    $PARQUET_NATIVE_STUBS \
+    cottas_ondisk_smoketest.ml \
+    -o "$BINDIR/cottas_ondisk_smoketest" || COTTAS_SMOKE_RC=$?
+  cat _ocamlopt_cottas_ondisk_smoketest.log 2>/dev/null || true
+  if [[ "$COTTAS_SMOKE_RC" -ne 0 ]]; then
+    echo "  WARNING: cottas_ondisk_smoketest build failed (ocamlopt rc=$COTTAS_SMOKE_RC)" >&2
+    echo "  This is a non-blocking smoketest harness; main binaries are unaffected." >&2
+  else
+    echo "  Built: bin/${PLATFORM}/cottas_ondisk_smoketest ($(wc -c < "$BINDIR/cottas_ondisk_smoketest") bytes)"
+  fi
+
   # Symlink current platform binaries for convenience (relative from ocaml-output/)
   ln -sf "../../../bin/${PLATFORM}/w3c_runner" w3c_runner
   ln -sf "../../../bin/${PLATFORM}/factoidal" factoidal
   ln -sf "../../../bin/${PLATFORM}/factoidal-http" factoidal-http
   ln -sf "../../../bin/${PLATFORM}/owl_runner" owl_runner
   ln -sf "../../../bin/${PLATFORM}/rdfc10_runner" rdfc10_runner
+  if [[ -x "$BINDIR/cottas_ondisk_smoketest" ]]; then
+    ln -sf "../../../bin/${PLATFORM}/cottas_ondisk_smoketest" cottas_ondisk_smoketest
+  fi
 
   cd ..
   echo ""
