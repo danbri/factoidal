@@ -43,6 +43,21 @@
 #   -> slice_all_dlba_values  (one String.sub per row)
 # Both call sites use FStar_String.sub on a multi-MB hex string and
 # trigger the BatUTF8 O(N^2) blowup.
+#
+# Update 2026-04-25 (Yod3, #97): once the per-miniblock bit_width fix
+# lets `build_dlba_length_list` decode every length on the parliament
+# corpus, the next bottleneck moves to `ascii_string_of_hex_slice`
+# which builds an FStar.Char.char list and then calls
+# `String.string_of_list`.  FStar_String.string_of_list is implemented
+# as `BatUTF8.init n (fun i -> chr (List.at l i))` which is O(N^2) per
+# string -- and for parliament's ~12.6 M values that means many minutes
+# of post-decode CPU.  We now also override `string_of_list` for this
+# module: for ASCII chars the codepoint sequence equals the byte
+# sequence, so we can build the result via Bytes.create + unsafe_set
+# in O(N).  Same safety argument as the original three primitives: the
+# Parquet_Footer code only ever feeds ASCII bytes (digits/A-F when
+# reading from `_payload_hex`, or printable bytes 32-126 when decoding
+# `value_string_at` via `ascii_string_of_hex_slice`).
 
 set -euo pipefail
 
@@ -80,12 +95,13 @@ with open(path, 'r') as f:
     content = f.read()
 
 # Inject a private FStar_String shadow at the top of the module that
-# routes index/strlen/length/sub through OCaml byte ops.  This is only
-# correct for ASCII-only hex strings, which is exactly what the rest of
-# Parquet_Footer manipulates (every helper either consumes
-# `payload_hex` / `tail` / `footer_hex` / etc., or builds a list of
-# codepoints via `string_of_list`).  `string_of_list` we leave alone --
-# it's outside the hot path.
+# routes index/strlen/length/sub/string_of_list through OCaml byte ops.
+# This is only correct for ASCII-only hex strings, which is exactly
+# what the rest of Parquet_Footer manipulates (every helper either
+# consumes `payload_hex` / `tail` / `footer_hex` / etc., or builds a
+# list of single-byte ASCII codepoints via `ascii_string_of_hex_slice`
+# whose chars come from `byte_at_hex` and are therefore in [0,255] and
+# in practice [32,126] for printable ASCII payload).
 
 shadow = (
     "\n"
@@ -106,6 +122,20 @@ shadow = (
     "  let length = strlen\n"
     "  let sub (s : Stdlib.String.t) (i : Z.t) (j : Z.t) : Stdlib.String.t =\n"
     "    Stdlib.String.sub s (Z.to_int i) (Z.to_int j)\n"
+    "  (* string_of_list: ASCII fast-path. Original walks the list O(n^2)\n"
+    "     via BatUTF8.init+List.at; we materialise once into a Bytes.\n"
+    "     The fstar.lib runtime declares `type char = FStar_Char.char =\n"
+    "     int`, so the list is a list of codepoint ints. Safe iff every\n"
+    "     codepoint fits in one byte, which is true for the\n"
+    "     ascii_string_of_hex_slice path (chars come from byte_at_hex\n"
+    "     and are always in [0,255]). *)\n"
+    "  let string_of_list (l : FStar_Char.char list) : Stdlib.String.t =\n"
+    "    let n = Stdlib.List.length l in\n"
+    "    let b = Stdlib.Bytes.create n in\n"
+    "    Stdlib.List.iteri (fun i c ->\n"
+    "      Stdlib.Bytes.unsafe_set b i\n"
+    "        (Stdlib.Char.unsafe_chr (c land 0xff))) l;\n"
+    "    Stdlib.Bytes.unsafe_to_string b\n"
     "end\n"
     "\n"
 )

@@ -1498,27 +1498,130 @@ let decode_one_dlba_delta
   | None -> None
   | Some adjusted -> Some (current_len + min_delta + adjusted)
 
-// Walk the bit-packed length deltas to build the list of all `value_count`
-// lengths. We use `value_count` as both decreases measure and natural bound;
-// each step lowers `remaining` by 1 and raises `delta_index` by 1.
+// Decode a single packed length delta using an explicit miniblock-relative
+// `mb_pos` (so each miniblock's bit-packed area is independent — the delta
+// at index 0 within a miniblock starts at `packed_start` itself). Mirrors
+// `decode_one_dlba_delta` but indexed against the active miniblock's start.
+let decode_one_dlba_delta_at_miniblock
+  (values_hex:string) (mb_packed_start:nat) (bit_width:nat)
+  (min_delta:int) (mb_pos:nat) (current_len:int)
+  : option int =
+  let start_bit = mul_nat mb_pos bit_width in
+  match packed_lsb_value_hex values_hex mb_packed_start start_bit bit_width 0 0 with
+  | None -> None
+  | Some adjusted -> Some (current_len + min_delta + adjusted)
+
+// Hex chars consumed by a complete miniblock at the given width.
+//   values_per_miniblock * bit_width bits
+// = values_per_miniblock * bit_width / 8 bytes
+// = values_per_miniblock * bit_width / 4 hex chars
+// `values_per_miniblock` is required by the Parquet spec to be a multiple
+// of 8, so this is exact.
+let miniblock_hex_size (values_per_miniblock:nat) (bit_width:nat) : nat =
+  mul_nat values_per_miniblock bit_width / 4
+
+// Read the `idx`-th width byte (one byte per miniblock) starting at
+// `widths_offset` (hex offset). Each width byte is two hex chars.
+let widths_byte_at (values_hex:string) (widths_offset:nat) (idx:nat) : option nat =
+  let p = widths_offset + mul_nat idx 2 in
+  if p + 1 >= String.length values_hex then None
+  else
+    match byte_at_hex values_hex p with
+    | None -> None
+    | Some b -> let n : nat = b in Some n
+
+// Walk the bit-packed length deltas across every (block, miniblock, value)
+// position to build the list of all `value_count` lengths.
+//
+// State threaded through the recursion:
+//   `min_delta`         — current block's zigzag-decoded min delta
+//   `widths_offset`     — hex offset of the current block's bit_widths[]
+//   `mb_packed_start`   — hex offset of the current miniblock's packed area
+//   `bit_width`         — current miniblock's bit width
+//   `mb_idx`            — index of the current miniblock within the block
+//                         (0..miniblocks-1)
+//   `mb_pos`            — position within the current miniblock
+//                         (0..values_per_miniblock-1)
+//
+// Each iteration consumes one value (one width-bit-packed delta). At
+// miniblock boundaries we advance `mb_packed_start` past the just-finished
+// miniblock and pick up the next miniblock's width byte. At block
+// boundaries we re-read `min_delta` (varint) and the new bit_widths[]
+// array, then start at miniblock 0.
 let rec build_dlba_length_list
-  (values_hex:string) (packed_start:nat) (bit_width:nat) (min_delta:int)
-  (delta_index:nat) (remaining:nat) (current_len:int) (acc:list nat)
+  (values_hex:string) (vh_len:nat) (block_size:nat) (miniblocks:nat)
+  (values_per_miniblock:nat)
+  (min_delta:int) (widths_offset:nat) (mb_packed_start:nat) (bit_width:nat)
+  (mb_idx:nat) (mb_pos:nat)
+  (remaining:nat) (current_len:int) (acc:list nat)
   : Tot (option (list nat)) (decreases remaining) =
   if remaining = 0 then Some (List.Tot.rev acc)
+  else if current_len < 0 then None
+  // values_per_miniblock must be positive for the miniblock-pos arithmetic
+  // to be meaningful; the caller establishes this but we re-guard here so
+  // the function is total over its declared signature.
+  else if values_per_miniblock = 0 then None
   else
-    if current_len < 0 then None
+    let safe_len : nat = current_len in
+    let acc' = safe_len :: acc in
+    if remaining = 1 then Some (List.Tot.rev acc')
     else
-      let safe_len : nat = current_len in
-      let acc' = safe_len :: acc in
-      if remaining = 1 then Some (List.Tot.rev acc')
-      else
-        match decode_one_dlba_delta values_hex packed_start bit_width
-                min_delta delta_index current_len with
+      // Advance one position; figure out where the *next* value lives.
+      let mb_pos' = mb_pos + 1 in
+      if mb_pos' < values_per_miniblock then
+        // Still inside the same miniblock — just decode one more delta at
+        // the next miniblock-relative position.
+        match decode_one_dlba_delta_at_miniblock values_hex mb_packed_start
+                bit_width min_delta mb_pos current_len with
         | None -> None
         | Some next_len ->
-          build_dlba_length_list values_hex packed_start bit_width min_delta
-            (delta_index + 1) (remaining - 1) next_len acc'
+          build_dlba_length_list values_hex vh_len block_size miniblocks
+            values_per_miniblock min_delta widths_offset mb_packed_start
+            bit_width mb_idx mb_pos' (remaining - 1) next_len acc'
+      else
+        // Crossed a miniblock boundary. Decode the last delta of the
+        // *current* miniblock first (it lives at mb_pos == values_per_miniblock - 1
+        // within the current miniblock), then advance to the next miniblock.
+        match decode_one_dlba_delta_at_miniblock values_hex mb_packed_start
+                bit_width min_delta mb_pos current_len with
+        | None -> None
+        | Some next_len ->
+          // Advance `mb_packed_start` past the miniblock we just exited.
+          let next_mb_packed_start =
+            mb_packed_start + miniblock_hex_size values_per_miniblock bit_width in
+          let mb_idx' = mb_idx + 1 in
+          if mb_idx' < miniblocks then
+            // Next miniblock within the same block. Pick up its width byte.
+            match widths_byte_at values_hex widths_offset mb_idx' with
+            | None -> None
+            | Some next_bw ->
+              build_dlba_length_list values_hex vh_len block_size miniblocks
+                values_per_miniblock min_delta widths_offset
+                next_mb_packed_start next_bw mb_idx' 0
+                (remaining - 1) next_len acc'
+          else
+            // Crossed a block boundary. The next bytes in `values_hex` are
+            // the new block's `min_delta` varint, followed by `miniblocks`
+            // width bytes, then the new packed area.
+            match decode_varint_value_with_end_hex values_hex
+                    next_mb_packed_start 0 0 vh_len with
+            | None -> None
+            | Some (md_raw, after_md) ->
+              let new_min_delta = zigzag_decode_int md_raw in
+              let new_widths_offset : nat = after_md in
+              // miniblocks bytes of widths = 2 * miniblocks hex chars
+              let new_packed_start : nat =
+                new_widths_offset + mul_nat miniblocks 2 in
+              if new_widths_offset + 1 >= String.length values_hex then None
+              else
+                match byte_at_hex values_hex new_widths_offset with
+                | None -> None
+                | Some new_bw ->
+                  let new_bw_nat : nat = new_bw in
+                  build_dlba_length_list values_hex vh_len block_size
+                    miniblocks values_per_miniblock new_min_delta
+                    new_widths_offset new_packed_start new_bw_nat 0 0
+                    (remaining - 1) next_len acc'
 
 // Build the running prefix-sum of value byte starts. `value_starts[0] = 0`,
 // `value_starts[i+1] = value_starts[i] + lengths[i]`. Output has the same
@@ -1554,13 +1657,18 @@ let probe_parquet_column_delta_length_byte_array_page_cache
                          (payload_len_hex - values_start_hex) in
       let vh_len = String.length values_hex in
       // Parse varint header: block_size, miniblocks, value_count, first_length,
-      // min_delta, then a single bit_width byte for the first miniblock.
+      // then the first block's min_delta + bit_widths[miniblocks].
+      // Per the Parquet DELTA_LENGTH_BYTE_ARRAY spec, bit_width changes per
+      // miniblock and min_delta changes per block — `build_dlba_length_list`
+      // re-reads them at each boundary.
       (match decode_varint_value_with_end_hex values_hex 0 0 0 vh_len with
        | None -> None
-       | Some (_block_size, p1) ->
+       | Some (block_size, p1) ->
          match decode_varint_value_with_end_hex values_hex p1 0 0 vh_len with
          | None -> None
-         | Some (_miniblocks, p2) ->
+         | Some (miniblocks, p2) ->
+           if miniblocks = 0 then None
+           else
            match decode_varint_value_with_end_hex values_hex p2 0 0 vh_len with
            | None -> None
            | Some (value_count, p3) ->
@@ -1577,17 +1685,34 @@ let probe_parquet_column_delta_length_byte_array_page_cache
                    match byte_at_hex values_hex p5 with
                    | None -> None
                    | Some bit_width ->
-                     let packed_start = p5 + 16 in
+                     // First block's bit_widths[] starts at p5; the packed
+                     // data area for the first miniblock starts after all
+                     // `miniblocks` width bytes (2 hex chars per byte).
+                     let widths_offset = p5 in
+                     let packed_start = p5 + mul_nat miniblocks 2 in
+                     // miniblocks > 0 was already checked above, but the
+                     // refinement is lost across the nested matches.
+                     // `build_dlba_length_list` re-guards on
+                     // values_per_miniblock=0 so the call site only needs a
+                     // plain nat here. Re-wrap miniblocks via div_nat_pos
+                     // to get a nat result (FStar/Prims `/` over int yields
+                     // int).
+                     let values_per_miniblock : nat =
+                       if miniblocks > 0 then div_nat_pos block_size miniblocks
+                       else 0 in
                      // Walk all `value_count` lengths in one pass.
-                     match build_dlba_length_list values_hex packed_start
-                             bit_width min_delta 0 value_count first_length [] with
+                     match build_dlba_length_list values_hex vh_len
+                             block_size miniblocks values_per_miniblock
+                             min_delta widths_offset packed_start bit_width
+                             0 0 value_count first_length [] with
                      | None -> None
                      | Some lengths ->
                        let total_value_bytes = sum_nat_list lengths in
                        let payload_byte_len = payload_len_hex / 2 in
                        if values_offset > payload_byte_len then None
                        else
-                         let values_stream_len = payload_byte_len - values_offset in
+                         let values_stream_len =
+                           payload_byte_len - values_offset in
                          if total_value_bytes > values_stream_len then None
                          else
                            let value_data_offset =

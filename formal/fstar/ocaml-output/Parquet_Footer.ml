@@ -1,15 +1,36 @@
 open Prims
 
 (* __PARQUET_ASCII_STRING_FAST_PATH__
-   Patched by 103_parquet_ascii_string_fast_path.sh. *)
+   Patched by 103_parquet_ascii_string_fast_path.sh.
+   See the patch file for the safety argument: every Parquet_Footer
+   call site that reaches one of these helpers passes an ASCII-only
+   hex string, so codepoint ops collapse onto byte ops. *)
 module FStar_String = struct
   include FStar_String
+  (* The enclosing file does `open Prims`, which shadows OCaml's `int`
+     and `string` to Prims aliases (Z.t and Stdlib.String.t). All the
+     stdlib references below have to be fully qualified to escape that. *)
   let index (s : Stdlib.String.t) (i : Z.t) : Stdlib.Int.t =
     Stdlib.Char.code (Stdlib.String.unsafe_get s (Z.to_int i))
-  let strlen (s : Stdlib.String.t) : Z.t = Z.of_int (Stdlib.String.length s)
+  let strlen (s : Stdlib.String.t) : Z.t =
+    Z.of_int (Stdlib.String.length s)
   let length = strlen
   let sub (s : Stdlib.String.t) (i : Z.t) (j : Z.t) : Stdlib.String.t =
     Stdlib.String.sub s (Z.to_int i) (Z.to_int j)
+  (* string_of_list: ASCII fast-path. Original walks the list O(n^2)
+     via BatUTF8.init+List.at; we materialise once into a Bytes.
+     The fstar.lib runtime declares `type char = FStar_Char.char =
+     int`, so the list is a list of codepoint ints. Safe iff every
+     codepoint fits in one byte, which is true for the
+     ascii_string_of_hex_slice path (chars come from byte_at_hex
+     and are always in [0,255]). *)
+  let string_of_list (l : FStar_Char.char list) : Stdlib.String.t =
+    let n = Stdlib.List.length l in
+    let b = Stdlib.Bytes.create n in
+    Stdlib.List.iteri (fun i c ->
+      Stdlib.Bytes.unsafe_set b i
+        (Stdlib.Char.unsafe_chr (c land 0xff))) l;
+    Stdlib.Bytes.unsafe_to_string b
 end
 
 type parquet_footer =
@@ -2741,9 +2762,36 @@ let decode_one_dlba_delta (values_hex : Prims.string)
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some adjusted ->
       FStar_Pervasives_Native.Some ((current_len + min_delta) + adjusted)
+let decode_one_dlba_delta_at_miniblock (values_hex : Prims.string)
+  (mb_packed_start : Prims.nat) (bit_width : Prims.nat)
+  (min_delta : Prims.int) (mb_pos : Prims.nat) (current_len : Prims.int) :
+  Prims.int FStar_Pervasives_Native.option=
+  let start_bit = mul_nat mb_pos bit_width in
+  match packed_lsb_value_hex values_hex mb_packed_start start_bit bit_width
+          Prims.int_zero Prims.int_zero
+  with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some adjusted ->
+      FStar_Pervasives_Native.Some ((current_len + min_delta) + adjusted)
+let miniblock_hex_size (values_per_miniblock : Prims.nat)
+  (bit_width : Prims.nat) : Prims.nat=
+  (mul_nat values_per_miniblock bit_width) / (Prims.of_int (4))
+let widths_byte_at (values_hex : Prims.string) (widths_offset : Prims.nat)
+  (idx : Prims.nat) : Prims.nat FStar_Pervasives_Native.option=
+  let p = widths_offset + (mul_nat idx (Prims.of_int (2))) in
+  if (p + Prims.int_one) >= (FStar_String.strlen values_hex)
+  then FStar_Pervasives_Native.None
+  else
+    (match byte_at_hex values_hex p with
+     | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+     | FStar_Pervasives_Native.Some b ->
+         let n = b in FStar_Pervasives_Native.Some n)
 let rec build_dlba_length_list (values_hex : Prims.string)
-  (packed_start : Prims.nat) (bit_width : Prims.nat) (min_delta : Prims.int)
-  (delta_index : Prims.nat) (remaining : Prims.nat) (current_len : Prims.int)
+  (vh_len : Prims.nat) (block_size : Prims.nat) (miniblocks : Prims.nat)
+  (values_per_miniblock : Prims.nat) (min_delta : Prims.int)
+  (widths_offset : Prims.nat) (mb_packed_start : Prims.nat)
+  (bit_width : Prims.nat) (mb_idx : Prims.nat) (mb_pos : Prims.nat)
+  (remaining : Prims.nat) (current_len : Prims.int)
   (acc : Prims.nat Prims.list) :
   Prims.nat Prims.list FStar_Pervasives_Native.option=
   if remaining = Prims.int_zero
@@ -2752,19 +2800,78 @@ let rec build_dlba_length_list (values_hex : Prims.string)
     if current_len < Prims.int_zero
     then FStar_Pervasives_Native.None
     else
-      (let safe_len = current_len in
-       let acc' = safe_len :: acc in
-       if remaining = Prims.int_one
-       then FStar_Pervasives_Native.Some (FStar_List_Tot_Base.rev acc')
-       else
-         (match decode_one_dlba_delta values_hex packed_start bit_width
-                  min_delta delta_index current_len
-          with
-          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-          | FStar_Pervasives_Native.Some next_len ->
-              build_dlba_length_list values_hex packed_start bit_width
-                min_delta (delta_index + Prims.int_one)
-                (remaining - Prims.int_one) next_len acc'))
+      if values_per_miniblock = Prims.int_zero
+      then FStar_Pervasives_Native.None
+      else
+        (let safe_len = current_len in
+         let acc' = safe_len :: acc in
+         if remaining = Prims.int_one
+         then FStar_Pervasives_Native.Some (FStar_List_Tot_Base.rev acc')
+         else
+           (let mb_pos' = mb_pos + Prims.int_one in
+            if mb_pos' < values_per_miniblock
+            then
+              match decode_one_dlba_delta_at_miniblock values_hex
+                      mb_packed_start bit_width min_delta mb_pos current_len
+              with
+              | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+              | FStar_Pervasives_Native.Some next_len ->
+                  build_dlba_length_list values_hex vh_len block_size
+                    miniblocks values_per_miniblock min_delta widths_offset
+                    mb_packed_start bit_width mb_idx mb_pos'
+                    (remaining - Prims.int_one) next_len acc'
+            else
+              (match decode_one_dlba_delta_at_miniblock values_hex
+                       mb_packed_start bit_width min_delta mb_pos current_len
+               with
+               | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+               | FStar_Pervasives_Native.Some next_len ->
+                   let next_mb_packed_start =
+                     mb_packed_start +
+                       (miniblock_hex_size values_per_miniblock bit_width) in
+                   let mb_idx' = mb_idx + Prims.int_one in
+                   if mb_idx' < miniblocks
+                   then
+                     (match widths_byte_at values_hex widths_offset mb_idx'
+                      with
+                      | FStar_Pervasives_Native.None ->
+                          FStar_Pervasives_Native.None
+                      | FStar_Pervasives_Native.Some next_bw ->
+                          build_dlba_length_list values_hex vh_len block_size
+                            miniblocks values_per_miniblock min_delta
+                            widths_offset next_mb_packed_start next_bw
+                            mb_idx' Prims.int_zero
+                            (remaining - Prims.int_one) next_len acc')
+                   else
+                     (match decode_varint_value_with_end_hex values_hex
+                              next_mb_packed_start Prims.int_zero
+                              Prims.int_zero vh_len
+                      with
+                      | FStar_Pervasives_Native.None ->
+                          FStar_Pervasives_Native.None
+                      | FStar_Pervasives_Native.Some (md_raw, after_md) ->
+                          let new_min_delta = zigzag_decode_int md_raw in
+                          let new_widths_offset = after_md in
+                          let new_packed_start =
+                            new_widths_offset +
+                              (mul_nat miniblocks (Prims.of_int (2))) in
+                          if
+                            (new_widths_offset + Prims.int_one) >=
+                              (FStar_String.strlen values_hex)
+                          then FStar_Pervasives_Native.None
+                          else
+                            (match byte_at_hex values_hex new_widths_offset
+                             with
+                             | FStar_Pervasives_Native.None ->
+                                 FStar_Pervasives_Native.None
+                             | FStar_Pervasives_Native.Some new_bw ->
+                                 let new_bw_nat = new_bw in
+                                 build_dlba_length_list values_hex vh_len
+                                   block_size miniblocks values_per_miniblock
+                                   new_min_delta new_widths_offset
+                                   new_packed_start new_bw_nat Prims.int_zero
+                                   Prims.int_zero (remaining - Prims.int_one)
+                                   next_len acc')))))
 let rec prefix_sums (lengths : Prims.nat Prims.list) (running : Prims.nat)
   (acc : Prims.nat Prims.list) : Prims.nat Prims.list=
   match lengths with
@@ -2794,103 +2901,121 @@ let probe_parquet_column_delta_length_byte_array_page_cache
                  Prims.int_zero Prims.int_zero vh_len
          with
          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-         | FStar_Pervasives_Native.Some (_block_size, p1) ->
+         | FStar_Pervasives_Native.Some (block_size, p1) ->
              (match decode_varint_value_with_end_hex values_hex p1
                       Prims.int_zero Prims.int_zero vh_len
               with
               | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-              | FStar_Pervasives_Native.Some (_miniblocks, p2) ->
-                  (match decode_varint_value_with_end_hex values_hex p2
-                           Prims.int_zero Prims.int_zero vh_len
-                   with
-                   | FStar_Pervasives_Native.None ->
-                       FStar_Pervasives_Native.None
-                   | FStar_Pervasives_Native.Some (value_count, p3) ->
-                       (match decode_varint_value_with_end_hex values_hex p3
-                                Prims.int_zero Prims.int_zero vh_len
-                        with
-                        | FStar_Pervasives_Native.None ->
-                            FStar_Pervasives_Native.None
-                        | FStar_Pervasives_Native.Some (first_raw, p4) ->
-                            let first_length = zigzag_decode_nat first_raw in
-                            (match decode_varint_value_with_end_hex
-                                     values_hex p4 Prims.int_zero
-                                     Prims.int_zero vh_len
-                             with
-                             | FStar_Pervasives_Native.None ->
-                                 FStar_Pervasives_Native.None
-                             | FStar_Pervasives_Native.Some
-                                 (min_delta_raw, p5) ->
-                                 let min_delta =
-                                   zigzag_decode_int min_delta_raw in
-                                 if (p5 + Prims.int_one) >= vh_len
-                                 then FStar_Pervasives_Native.None
-                                 else
-                                   (match byte_at_hex values_hex p5 with
-                                    | FStar_Pervasives_Native.None ->
-                                        FStar_Pervasives_Native.None
-                                    | FStar_Pervasives_Native.Some bit_width
-                                        ->
-                                        let packed_start =
-                                          p5 + (Prims.of_int (16)) in
-                                        (match build_dlba_length_list
-                                                 values_hex packed_start
-                                                 bit_width min_delta
-                                                 Prims.int_zero value_count
-                                                 first_length []
-                                         with
-                                         | FStar_Pervasives_Native.None ->
-                                             FStar_Pervasives_Native.None
-                                         | FStar_Pervasives_Native.Some
-                                             lengths ->
-                                             let total_value_bytes =
-                                               sum_nat_list lengths in
-                                             let payload_byte_len =
-                                               payload_len_hex /
-                                                 (Prims.of_int (2)) in
-                                             if
-                                               values_offset >
-                                                 payload_byte_len
-                                             then
+              | FStar_Pervasives_Native.Some (miniblocks, p2) ->
+                  if miniblocks = Prims.int_zero
+                  then FStar_Pervasives_Native.None
+                  else
+                    (match decode_varint_value_with_end_hex values_hex p2
+                             Prims.int_zero Prims.int_zero vh_len
+                     with
+                     | FStar_Pervasives_Native.None ->
+                         FStar_Pervasives_Native.None
+                     | FStar_Pervasives_Native.Some (value_count, p3) ->
+                         (match decode_varint_value_with_end_hex values_hex
+                                  p3 Prims.int_zero Prims.int_zero vh_len
+                          with
+                          | FStar_Pervasives_Native.None ->
+                              FStar_Pervasives_Native.None
+                          | FStar_Pervasives_Native.Some (first_raw, p4) ->
+                              let first_length = zigzag_decode_nat first_raw in
+                              (match decode_varint_value_with_end_hex
+                                       values_hex p4 Prims.int_zero
+                                       Prims.int_zero vh_len
+                               with
+                               | FStar_Pervasives_Native.None ->
+                                   FStar_Pervasives_Native.None
+                               | FStar_Pervasives_Native.Some
+                                   (min_delta_raw, p5) ->
+                                   let min_delta =
+                                     zigzag_decode_int min_delta_raw in
+                                   if (p5 + Prims.int_one) >= vh_len
+                                   then FStar_Pervasives_Native.None
+                                   else
+                                     (match byte_at_hex values_hex p5 with
+                                      | FStar_Pervasives_Native.None ->
+                                          FStar_Pervasives_Native.None
+                                      | FStar_Pervasives_Native.Some
+                                          bit_width ->
+                                          let widths_offset = p5 in
+                                          let packed_start =
+                                            p5 +
+                                              (mul_nat miniblocks
+                                                 (Prims.of_int (2))) in
+                                          let values_per_miniblock =
+                                            if miniblocks > Prims.int_zero
+                                            then
+                                              div_nat_pos block_size
+                                                miniblocks
+                                            else Prims.int_zero in
+                                          (match build_dlba_length_list
+                                                   values_hex vh_len
+                                                   block_size miniblocks
+                                                   values_per_miniblock
+                                                   min_delta widths_offset
+                                                   packed_start bit_width
+                                                   Prims.int_zero
+                                                   Prims.int_zero value_count
+                                                   first_length []
+                                           with
+                                           | FStar_Pervasives_Native.None ->
                                                FStar_Pervasives_Native.None
-                                             else
-                                               (let values_stream_len =
-                                                  payload_byte_len -
-                                                    values_offset in
-                                                if
-                                                  total_value_bytes >
-                                                    values_stream_len
-                                                then
-                                                  FStar_Pervasives_Native.None
-                                                else
-                                                  (let value_data_offset =
-                                                     values_stream_len -
-                                                       total_value_bytes in
-                                                   let starts =
-                                                     prefix_sums lengths
-                                                       Prims.int_zero [] in
-                                                   FStar_Pervasives_Native.Some
-                                                     {
-                                                       dpc_payload_hex =
-                                                         payload_hex;
-                                                       dpc_values_offset =
-                                                         values_offset;
-                                                       dpc_value_count =
-                                                         value_count;
-                                                       dpc_first_length =
-                                                         first_length;
-                                                       dpc_min_delta =
-                                                         min_delta;
-                                                       dpc_bit_width =
-                                                         bit_width;
-                                                       dpc_packed_start =
-                                                         packed_start;
-                                                       dpc_value_data_offset
-                                                         = value_data_offset;
-                                                       dpc_lengths = lengths;
-                                                       dpc_value_starts =
-                                                         starts
-                                                     })))))))))
+                                           | FStar_Pervasives_Native.Some
+                                               lengths ->
+                                               let total_value_bytes =
+                                                 sum_nat_list lengths in
+                                               let payload_byte_len =
+                                                 payload_len_hex /
+                                                   (Prims.of_int (2)) in
+                                               if
+                                                 values_offset >
+                                                   payload_byte_len
+                                               then
+                                                 FStar_Pervasives_Native.None
+                                               else
+                                                 (let values_stream_len =
+                                                    payload_byte_len -
+                                                      values_offset in
+                                                  if
+                                                    total_value_bytes >
+                                                      values_stream_len
+                                                  then
+                                                    FStar_Pervasives_Native.None
+                                                  else
+                                                    (let value_data_offset =
+                                                       values_stream_len -
+                                                         total_value_bytes in
+                                                     let starts =
+                                                       prefix_sums lengths
+                                                         Prims.int_zero [] in
+                                                     FStar_Pervasives_Native.Some
+                                                       {
+                                                         dpc_payload_hex =
+                                                           payload_hex;
+                                                         dpc_values_offset =
+                                                           values_offset;
+                                                         dpc_value_count =
+                                                           value_count;
+                                                         dpc_first_length =
+                                                           first_length;
+                                                         dpc_min_delta =
+                                                           min_delta;
+                                                         dpc_bit_width =
+                                                           bit_width;
+                                                         dpc_packed_start =
+                                                           packed_start;
+                                                         dpc_value_data_offset
+                                                           =
+                                                           value_data_offset;
+                                                         dpc_lengths =
+                                                           lengths;
+                                                         dpc_value_starts =
+                                                           starts
+                                                       })))))))))
   | uu___ -> FStar_Pervasives_Native.None
 let rec slice_all_dlba_values (payload_hex : Prims.string)
   (values_start_byte : Prims.nat) (lengths : Prims.nat Prims.list)
