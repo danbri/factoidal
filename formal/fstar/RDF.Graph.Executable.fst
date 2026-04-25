@@ -1852,6 +1852,79 @@ let owl_onClass_iri : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#onClass");
   "http://www.w3.org/2002/07/owl#onClass"
 
+// Additional class-expression / restriction vocabulary IRIs used by the
+// schema-metapredicate guard below. Defined here (rather than at point of
+// first use) so they are in scope of `is_schema_metapredicate`.
+let owl_hasValue_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#hasValue");
+  "http://www.w3.org/2002/07/owl#hasValue"
+
+let owl_oneOf_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#oneOf");
+  "http://www.w3.org/2002/07/owl#oneOf"
+
+let owl_intersectionOf_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#intersectionOf");
+  "http://www.w3.org/2002/07/owl#intersectionOf"
+
+let owl_unionOf_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#unionOf");
+  "http://www.w3.org/2002/07/owl#unionOf"
+
+let owl_complementOf_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#complementOf");
+  "http://www.w3.org/2002/07/owl#complementOf"
+
+let owl_disjointWith_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#disjointWith");
+  "http://www.w3.org/2002/07/owl#disjointWith"
+
+// Wider domain-restriction guard for the restriction-membership rules
+// (cls-svf2-qualified / cls-minc-qual1 / cls-maxqc1 / cls-exactqc1). The
+// narrower `is_owl_metapredicate` only excludes 4 IRIs (sameAs / inverseOf /
+// equivalentClass / equivalentProperty), but those rules iterate over EVERY
+// non-rdf:type, non-meta edge in the (post-RDFS/OWL-closure) graph and
+// emit a canonical restriction membership for the (predicate, object-type)
+// pair. Without this wider guard, schema-vocab edges (rdfs:subClassOf,
+// owl:onProperty, owl:onClass, owl:*Cardinality*, owl:*ValuesFrom, etc.)
+// produced by closure get treated as data edges and the rules materialise
+// thousands of meaningless canonicals like
+//   _:__rl_maxqc1_<rdfs:subClassOf>__on__<owl:Class>
+// which then leak into ?parent / ?C bindings under bnodes-as-existential
+// query rewriting (see parent7 over-count regression, 2026-04-25 — Tav
+// diagnosis doc 2026-04-25-tav-parent7-overcount-diagnosis.md).
+//
+// The set below is the closed list of RDFS-schema and OWL-class-expression
+// vocabulary that may be introduced into closure but must not trigger
+// individual-level restriction-membership materialisation. We include the
+// predicates from owl:propertyChainAxiom too (defined lower in the file
+// — referenced via its concrete IRI literal).
+let is_schema_metapredicate (p : wf_iri) : bool =
+  is_owl_metapredicate p
+  || p = rdfs_subClassOf
+  || p = rdfs_subPropertyOf
+  || p = rdfs_domain
+  || p = rdfs_range
+  || p = owl_onProperty_iri
+  || p = owl_onClass_iri
+  || p = owl_someValuesFrom_iri
+  || p = owl_allValuesFrom_iri
+  || p = owl_hasValue_iri
+  || p = owl_minCardinality_iri
+  || p = owl_maxCardinality_iri
+  || p = owl_cardinality_iri
+  || p = owl_minQualifiedCardinality_iri
+  || p = owl_maxQualifiedCardinality_iri
+  || p = owl_qualifiedCardinality_iri
+  || p = owl_oneOf_iri
+  || p = owl_intersectionOf_iri
+  || p = owl_unionOf_iri
+  || p = owl_complementOf_iri
+  || p = owl_disjointWith_iri
+  || p = "http://www.w3.org/2002/07/owl#propertyChainAxiom"
+  || p = "http://www.w3.org/2002/07/owl#distinctMembers"
+  || p = "http://www.w3.org/2002/07/owl#members"
+
 let xsd_nonNegativeInteger : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2001/XMLSchema#nonNegativeInteger");
   "http://www.w3.org/2001/XMLSchema#nonNegativeInteger"
@@ -1920,8 +1993,12 @@ let owl_rule_cls_svf2_qualified (g : rdf_graph) : rdf_graph =
     (fun (acc : rdf_graph) (edge : triple) ->
       // Consider only "ordinary" object-property edges: predicate is an
       // IRI, subject is any node, object convertible to a subject.
-      // Skip rdf:type and the OWL/RDFS meta-predicates.
-      if edge.p = rdf_type || is_owl_metapredicate edge.p then acc
+      // Skip rdf:type and the OWL/RDFS meta-predicates (parent7 over-count
+      // fix 2026-04-25: extended from is_owl_metapredicate to
+      // is_schema_metapredicate so closure-emitted rdfs:subClassOf /
+      // owl:onProperty / owl:onClass / owl:*Cardinality* / owl:*ValuesFrom
+      // edges no longer trigger this rule).
+      if edge.p = rdf_type || is_schema_metapredicate edge.p then acc
       else
         match term_to_subject edge.o with
         | None -> acc
@@ -1962,10 +2039,15 @@ let owl_rule_cls_svf2_qualified (g : rdf_graph) : rdf_graph =
 // cls-minc-qual1 materialise: for each (x P y) with (y rdf:type C)
 // and C a named class (C <> owl:Thing), create canonical
 // minQualifiedCardinality restriction and emit membership.
+//
+// Schema-meta guard: see is_schema_metapredicate (parent7 over-count,
+// 2026-04-25). Without it, closure edges with predicate rdfs:subClassOf
+// / owl:onProperty / owl:onClass / etc. trigger spurious canonical
+// emissions.
 let owl_rule_cls_minc_qual1 (g : rdf_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (edge : triple) ->
-      if edge.p = rdf_type || is_owl_metapredicate edge.p then acc
+      if edge.p = rdf_type || is_schema_metapredicate edge.p then acc
       else
         match term_to_subject edge.o with
         | None -> acc
@@ -2095,10 +2177,17 @@ let count_p_successors_typed_c
       succs in
   List.Tot.length typed
 
+// Schema-meta guard: see is_schema_metapredicate (parent7 over-count,
+// 2026-04-25). is_owl_metapredicate (the previous guard) only excluded
+// 4 IRIs; under post-RDFS/OWL closure, schema edges (rdfs:subClassOf,
+// owl:onProperty, owl:onClass, owl:*Cardinality*, owl:*ValuesFrom, etc.)
+// were treated as data edges and the rule materialised hundreds of
+// meaningless canonicals like _:__rl_maxqc1_<rdfs:subClassOf>__on__<owl:Class>
+// that leaked into ?parent bindings under bnodes-as-existential rewriting.
 let owl_rule_cls_maxqc1 (g : rdf_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (edge : triple) ->
-      if edge.p = rdf_type || is_owl_metapredicate edge.p then acc
+      if edge.p = rdf_type || is_schema_metapredicate edge.p then acc
       else
         match term_to_subject edge.o with
         | None -> acc
@@ -2147,10 +2236,13 @@ let owl_rule_cls_maxqc1 (g : rdf_graph) : rdf_graph =
     g
     g
 
+// Schema-meta guard: see is_schema_metapredicate (parent7 over-count fix,
+// 2026-04-25). Same rationale as cls-maxqc1 above — without the wider
+// guard, schema-vocab closure edges trigger spurious exactqc1 canonicals.
 let owl_rule_cls_exactqc1 (g : rdf_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (edge : triple) ->
-      if edge.p = rdf_type || is_owl_metapredicate edge.p then acc
+      if edge.p = rdf_type || is_schema_metapredicate edge.p then acc
       else
         match term_to_subject edge.o with
         | None -> acc
