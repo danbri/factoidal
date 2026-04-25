@@ -300,14 +300,29 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # runs a placeholder no-op canonicaliser so the score harness has
   # something to wire to. The actual canonicalisation algorithm lands
   # in F* per docs/designissues/2026-04-24-rdfc10-plan.md.
+  #
+  # Failure path is explicit (vs. relying on `set -e` from the helper):
+  # if ocamlopt fails we dump the per-step log so the cause is visible
+  # in the build log without the human having to fish around in
+  # ocaml-output/ for _ocamlopt_*.log.
+  RDFC10_RC=0
   run_with_heartbeat "ocamlopt rdfc10_runner" "_ocamlopt_rdfc10_runner.log" -- \
     ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
     $STATIC_FLAGS \
     $COMMON_MODULES \
     $PARQUET_NATIVE_STUBS \
     rdfc10_runner.ml \
-    -o "$BINDIR/rdfc10_runner"
+    -o "$BINDIR/rdfc10_runner" || RDFC10_RC=$?
   cat _ocamlopt_rdfc10_runner.log
+  if [[ "$RDFC10_RC" -ne 0 ]]; then
+    echo "  ERROR: rdfc10_runner build failed (ocamlopt rc=$RDFC10_RC)" >&2
+    echo "  See full log above. Build aborted." >&2
+    exit "$RDFC10_RC"
+  fi
+  if [[ ! -x "$BINDIR/rdfc10_runner" ]]; then
+    echo "  ERROR: rdfc10_runner ocamlopt returned 0 but $BINDIR/rdfc10_runner is missing or not executable" >&2
+    exit 1
+  fi
   echo "  Built: bin/${PLATFORM}/rdfc10_runner ($(wc -c < "$BINDIR/rdfc10_runner") bytes)"
 
   # Symlink current platform binaries for convenience (relative from ocaml-output/)
