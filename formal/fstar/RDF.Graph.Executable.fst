@@ -2573,6 +2573,12 @@ let owl_rule_xsd_datatype_axioms (g : rdf_graph) : rdf_graph =
 // OWL 2 RL/RDF scm-dom2: (P rdfs:domain C1) AND (C1 rdfs:subClassOf C2)
 // imply (P rdfs:domain C2). Mirrors rdfs9 but for property-domain instead
 // of subject-class.
+// BNODE-POLLUTION GUARD on c2_term: only propagate to NAMED super-classes.
+// Without this, surrogate bnodes in the subClassOf chain (e.g. anonymous
+// owl:Restriction nodes) leak as exposed answers in queries that bind ?C
+// against rdfs:domain / rdfs:range. Regressed sparqldl-11 / sparqldl-12 at
+// `281f31d` until this guard was added (mirror of the same pattern in
+// owl_rule_equivalent_class — see lines ~1259-1284).
 let owl_rule_scm_dom2 (g : rdf_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
@@ -2582,8 +2588,11 @@ let owl_rule_scm_dom2 (g : rdf_graph) : rdf_graph =
           let supers = find_objects g (S_IRI c1_iri) rdfs_subClassOf in
           List.Tot.fold_left
             (fun (acc2 : rdf_graph) (c2_term : rdf_term) ->
-              let new_t : triple = { s = t.s; p = rdfs_domain; o = c2_term } in
-              add_triple_if_new acc2 new_t)
+              match c2_term with
+              | T_IRI _ ->
+                let new_t : triple = { s = t.s; p = rdfs_domain; o = c2_term } in
+                add_triple_if_new acc2 new_t
+              | _ -> acc2)
             acc
             supers
         | _ -> acc
@@ -2593,7 +2602,7 @@ let owl_rule_scm_dom2 (g : rdf_graph) : rdf_graph =
 
 // OWL 2 RL/RDF scm-rng2: (P rdfs:range C1) AND (C1 rdfs:subClassOf C2)
 // imply (P rdfs:range C2). Targets WebOnt-I5.8-006 once Nu's xsd hierarchy
-// edges are present.
+// edges are present. BNODE-POLLUTION GUARD on c2_term — see scm-dom2 above.
 let owl_rule_scm_rng2 (g : rdf_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
@@ -2603,8 +2612,11 @@ let owl_rule_scm_rng2 (g : rdf_graph) : rdf_graph =
           let supers = find_objects g (S_IRI c1_iri) rdfs_subClassOf in
           List.Tot.fold_left
             (fun (acc2 : rdf_graph) (c2_term : rdf_term) ->
-              let new_t : triple = { s = t.s; p = rdfs_range; o = c2_term } in
-              add_triple_if_new acc2 new_t)
+              match c2_term with
+              | T_IRI _ ->
+                let new_t : triple = { s = t.s; p = rdfs_range; o = c2_term } in
+                add_triple_if_new acc2 new_t
+              | _ -> acc2)
             acc
             supers
         | _ -> acc

@@ -1493,9 +1493,8 @@ let run_protocol_test tc =
          init_base. The `update_base_uri` test asserts exactly this:
          `<test>` should resolve against the service endpoint. *)
       let host =
-        match _proto_header req.pr_headers "host" with
-        | Some h -> h
-        | None -> "www.example" in
+        let h = _proto_header req.pr_headers "host" in
+        if h = "" then "www.example" else h in
       let path = if req.pr_path = "" then "/sparql/" else req.pr_path in
       let service_iri = "http://" ^ host ^ path in
       let init_base = Some service_iri in

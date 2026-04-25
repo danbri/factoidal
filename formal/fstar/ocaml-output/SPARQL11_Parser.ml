@@ -3011,7 +3011,9 @@ and parse_group_graph_pattern (pm : prefix_map) (fuel : Prims.nat)
      | ParseOk ((), ts') ->
          (match parse_peek ts' with
           | Tok_SELECT ->
-              (match parse_select_query pm (fuel - Prims.int_one) ts' with
+              (match parse_select_query pm FStar_Pervasives_Native.None
+                       (fuel - Prims.int_one) ts'
+               with
                | ParseErr m -> ParseErr m
                | ParseOk (q, ts'') ->
                    (match parse_expect Tok_RBRACE ts'' with
@@ -4653,14 +4655,14 @@ and parse_triples_block (pm : prefix_map) (fuel : Prims.nat)
                | Tok_TRUE -> ParseErr "expected dot between triples"
                | Tok_FALSE -> ParseErr "expected dot between triples"
                | uu___1 -> ParseOk (acc', ts''))))
-and parse_select_query (pm : prefix_map) (fuel : Prims.nat)
-  (ts : token_stream) : SPARQL11_Algebra.query parse_result=
+and parse_select_query (pm : prefix_map)
+  (init_base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (fuel : Prims.nat) (ts : token_stream) :
+  SPARQL11_Algebra.query parse_result=
   if fuel = Prims.int_zero
   then ParseErr "recursion limit"
   else
-    (let r =
-       parse_prologue pm FStar_Pervasives_Native.None (fuel - Prims.int_one)
-         ts in
+    (let r = parse_prologue pm init_base (fuel - Prims.int_one) ts in
      match r with
      | ParseErr m -> ParseErr m
      | ParseOk ((pm', base), ts') ->
@@ -4671,7 +4673,8 @@ and parse_select_query (pm : prefix_map) (fuel : Prims.nat)
           | Tok_ASK -> parse_ask_body pm' (fuel - Prims.int_one) base ts''
           | Tok_CONSTRUCT ->
               parse_construct_body pm' (fuel - Prims.int_one) base ts''
-          | Tok_DESCRIBE -> ParseErr "unsupported: DESCRIBE queries"
+          | Tok_DESCRIBE ->
+              parse_describe_body pm' (fuel - Prims.int_one) base ts''
           | uu___1 -> ParseErr "expected SELECT, ASK, CONSTRUCT, or DESCRIBE"))
 and parse_prologue (pm : prefix_map)
   (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
@@ -5089,6 +5092,141 @@ and parse_construct_body (pm : prefix_map) (fuel : Prims.nat)
                                     FStar_Pervasives_Native.None
                                 }, ts4)))))
      | uu___1 -> ParseErr "expected WHERE or '{' after CONSTRUCT")
+and parse_describe_targets (pm : prefix_map) (fuel : Prims.nat)
+  (acc : SPARQL11_Algebra.pattern_term Prims.list) (ts : token_stream) :
+  SPARQL11_Algebra.pattern_term Prims.list parse_result=
+  if fuel = Prims.int_zero
+  then ParseOk ((FStar_List_Tot_Base.rev acc), ts)
+  else
+    (match parse_peek ts with
+     | Tok_VAR v ->
+         parse_describe_targets pm (fuel - Prims.int_one)
+           ((SPARQL11_Algebra.PT_Var v) :: acc) (parse_advance ts)
+     | Tok_IRI i ->
+         let ri = resolve_tok_iri i in
+         if RDF_Graph_Executable.is_iri ri
+         then
+           parse_describe_targets pm (fuel - Prims.int_one)
+             ((SPARQL11_Algebra.PT_IRI i) :: acc) (parse_advance ts)
+         else ParseErr "invalid IRI in DESCRIBE list"
+     | Tok_PNAME pn ->
+         (match resolve_pname pn pm with
+          | FStar_Pervasives_Native.Some iri ->
+              if RDF_Graph_Executable.is_iri iri
+              then
+                parse_describe_targets pm (fuel - Prims.int_one)
+                  ((SPARQL11_Algebra.PT_IRI iri) :: acc) (parse_advance ts)
+              else ParseErr "invalid resolved IRI in DESCRIBE list"
+          | FStar_Pervasives_Native.None ->
+              ParseErr "unresolved prefix in DESCRIBE list")
+     | uu___1 -> ParseOk ((FStar_List_Tot_Base.rev acc), ts))
+and parse_describe_body (pm : prefix_map) (fuel : Prims.nat)
+  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (ts : token_stream) : SPARQL11_Algebra.query parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (let ts' = parse_advance ts in
+     match parse_peek ts' with
+     | Tok_STAR ->
+         let ts'' = parse_advance ts' in
+         parse_describe_after_targets pm (fuel - Prims.int_one) base [] ts''
+     | uu___1 ->
+         (match parse_describe_targets pm (fuel - Prims.int_one) [] ts' with
+          | ParseErr m -> ParseErr m
+          | ParseOk (targets, ts'') ->
+              if (FStar_List_Tot_Base.length targets) = Prims.int_zero
+              then ParseErr "DESCRIBE expects at least one IRI/var or '*'"
+              else
+                parse_describe_after_targets pm (fuel - Prims.int_one) base
+                  targets ts''))
+and parse_describe_after_targets (pm : prefix_map) (fuel : Prims.nat)
+  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (targets : SPARQL11_Algebra.pattern_term Prims.list) (ts : token_stream) :
+  SPARQL11_Algebra.query parse_result=
+  if fuel = Prims.int_zero
+  then ParseErr "recursion limit"
+  else
+    (match parse_skip_from pm (fuel - Prims.int_one) ts with
+     | ParseErr m -> ParseErr m
+     | ParseOk (ds, ts1) ->
+         (match parse_peek ts1 with
+          | Tok_WHERE ->
+              let ts2 =
+                match parse_peek ts1 with
+                | Tok_WHERE -> parse_advance ts1
+                | uu___1 -> ts1 in
+              (match parse_group_graph_pattern pm (fuel - Prims.int_one) ts2
+               with
+               | ParseErr m -> ParseErr m
+               | ParseOk (pattern, ts3) ->
+                   (match parse_solution_modifier pm (fuel - Prims.int_one)
+                            ts3
+                    with
+                    | ParseErr m -> ParseErr m
+                    | ParseOk ((modifier, gb, hv), ts4) ->
+                        ParseOk
+                          ({
+                             SPARQL11_Algebra.q_base = base;
+                             SPARQL11_Algebra.q_prefixes = pm;
+                             SPARQL11_Algebra.q_form =
+                               (SPARQL11_Algebra.QF_Describe targets);
+                             SPARQL11_Algebra.q_dataset = ds;
+                             SPARQL11_Algebra.q_pattern = pattern;
+                             SPARQL11_Algebra.q_group_by = gb;
+                             SPARQL11_Algebra.q_having = hv;
+                             SPARQL11_Algebra.q_modifier = modifier;
+                             SPARQL11_Algebra.q_values =
+                               FStar_Pervasives_Native.None
+                           }, ts4)))
+          | Tok_LBRACE ->
+              let ts2 =
+                match parse_peek ts1 with
+                | Tok_WHERE -> parse_advance ts1
+                | uu___1 -> ts1 in
+              (match parse_group_graph_pattern pm (fuel - Prims.int_one) ts2
+               with
+               | ParseErr m -> ParseErr m
+               | ParseOk (pattern, ts3) ->
+                   (match parse_solution_modifier pm (fuel - Prims.int_one)
+                            ts3
+                    with
+                    | ParseErr m -> ParseErr m
+                    | ParseOk ((modifier, gb, hv), ts4) ->
+                        ParseOk
+                          ({
+                             SPARQL11_Algebra.q_base = base;
+                             SPARQL11_Algebra.q_prefixes = pm;
+                             SPARQL11_Algebra.q_form =
+                               (SPARQL11_Algebra.QF_Describe targets);
+                             SPARQL11_Algebra.q_dataset = ds;
+                             SPARQL11_Algebra.q_pattern = pattern;
+                             SPARQL11_Algebra.q_group_by = gb;
+                             SPARQL11_Algebra.q_having = hv;
+                             SPARQL11_Algebra.q_modifier = modifier;
+                             SPARQL11_Algebra.q_values =
+                               FStar_Pervasives_Native.None
+                           }, ts4)))
+          | uu___1 ->
+              (match parse_solution_modifier pm (fuel - Prims.int_one) ts1
+               with
+               | ParseErr m -> ParseErr m
+               | ParseOk ((modifier, gb, hv), ts4) ->
+                   ParseOk
+                     ({
+                        SPARQL11_Algebra.q_base = base;
+                        SPARQL11_Algebra.q_prefixes = pm;
+                        SPARQL11_Algebra.q_form =
+                          (SPARQL11_Algebra.QF_Describe targets);
+                        SPARQL11_Algebra.q_dataset = ds;
+                        SPARQL11_Algebra.q_pattern =
+                          SPARQL11_Algebra.GP_Empty;
+                        SPARQL11_Algebra.q_group_by = gb;
+                        SPARQL11_Algebra.q_having = hv;
+                        SPARQL11_Algebra.q_modifier = modifier;
+                        SPARQL11_Algebra.q_values =
+                          FStar_Pervasives_Native.None
+                      }, ts4))))
 and parse_select_vars (pm : prefix_map) (fuel : Prims.nat)
   (ts : token_stream) : SPARQL11_Algebra.select_clause parse_result=
   if fuel = Prims.int_zero
@@ -6136,10 +6274,11 @@ and validate_bnode_scope_query (q : SPARQL11_Algebra.query) :
   validate_bnode_scope_pattern q.SPARQL11_Algebra.q_pattern
 let validate_bnode_scope_top (q : SPARQL11_Algebra.query) : Prims.bool=
   FStar_Pervasives_Native.fst (validate_bnode_scope_query q)
-let parse_sparql (input : Prims.string) :
-  SPARQL11_Algebra.query parse_result=
+let parse_sparql_with_base
+  (init_base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (input : Prims.string) : SPARQL11_Algebra.query parse_result=
   let tokens = tokenize input in
-  match parse_select_query [] (Prims.of_int (10000)) tokens with
+  match parse_select_query [] init_base (Prims.of_int (10000)) tokens with
   | ParseOk (q, rest) ->
       if Prims.op_Negation (tokens_only_eof rest)
       then ParseErr "unexpected tokens after query"
@@ -6148,6 +6287,9 @@ let parse_sparql (input : Prims.string) :
         then ParseErr "blank node label reused across graph-pattern scope"
         else ParseOk (q, rest)
   | ParseErr msg -> ParseErr msg
+let parse_sparql (input : Prims.string) :
+  SPARQL11_Algebra.query parse_result=
+  parse_sparql_with_base FStar_Pervasives_Native.None input
 let parse_iri_ref (pm : prefix_map) (ts : token_stream) :
   RDF_Graph_Executable.wf_iri parse_result=
   match parse_peek ts with
@@ -6781,11 +6923,16 @@ let rec bnode_labels_unique_across_data_ops (seen : Prims.string Prims.list)
       else
         bnode_labels_unique_across_data_ops (local_string_union labels seen)
           rest
-let parse_sparql_update (input : Prims.string) :
-  SPARQL11_Algebra.sparql_update parse_result=
+let parse_sparql_update_with_base
+  (init_base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (input : Prims.string) : SPARQL11_Algebra.sparql_update parse_result=
   let tokens = tokenize input in
-  match parse_update_seq [] FStar_Pervasives_Native.None [] false
-          (Prims.of_int (10000)) tokens
+  let tokens' =
+    match init_base with
+    | FStar_Pervasives_Native.Some uu___ ->
+        resolve_relative_iri_tokens init_base tokens
+    | FStar_Pervasives_Native.None -> tokens in
+  match parse_update_seq [] init_base [] false (Prims.of_int (10000)) tokens'
   with
   | ParseErr m -> ParseErr m
   | ParseOk ((pm, base, ops), rest) ->
@@ -6803,6 +6950,9 @@ let parse_sparql_update (input : Prims.string) :
                SPARQL11_Algebra.u_prefixes = (prefix_map_to_wf pm);
                SPARQL11_Algebra.u_ops = ops
              }, rest)
+let parse_sparql_update (input : Prims.string) :
+  SPARQL11_Algebra.sparql_update parse_result=
+  parse_sparql_update_with_base FStar_Pervasives_Native.None input
 let sse_wrap (tag : Prims.string) (body : Prims.string) : Prims.string=
   Prims.strcat "("
     (Prims.strcat tag (Prims.strcat " " (Prims.strcat body ")")))

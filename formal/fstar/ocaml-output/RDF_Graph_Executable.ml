@@ -1668,8 +1668,11 @@ let owl_rule_scm_dom2 (g : rdf_graph) : rdf_graph=
              let supers = find_objects g (S_IRI c1_iri) rdfs_subClassOf in
              FStar_List_Tot_Base.fold_left
                (fun acc2 c2_term ->
-                  let new_t = { s = (t.s); p = rdfs_domain; o = c2_term } in
-                  add_triple_if_new acc2 new_t) acc supers
+                  match c2_term with
+                  | T_IRI uu___ ->
+                      let new_t = { s = (t.s); p = rdfs_domain; o = c2_term } in
+                      add_triple_if_new acc2 new_t
+                  | uu___ -> acc2) acc supers
          | uu___ -> acc
        else acc) g g
 let owl_rule_scm_rng2 (g : rdf_graph) : rdf_graph=
@@ -1682,8 +1685,11 @@ let owl_rule_scm_rng2 (g : rdf_graph) : rdf_graph=
              let supers = find_objects g (S_IRI c1_iri) rdfs_subClassOf in
              FStar_List_Tot_Base.fold_left
                (fun acc2 c2_term ->
-                  let new_t = { s = (t.s); p = rdfs_range; o = c2_term } in
-                  add_triple_if_new acc2 new_t) acc supers
+                  match c2_term with
+                  | T_IRI uu___ ->
+                      let new_t = { s = (t.s); p = rdfs_range; o = c2_term } in
+                      add_triple_if_new acc2 new_t
+                  | uu___ -> acc2) acc supers
          | uu___ -> acc
        else acc) g g
 let owl_xsd_core_datatype_axioms : triple Prims.list=

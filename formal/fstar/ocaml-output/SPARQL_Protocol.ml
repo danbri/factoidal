@@ -402,7 +402,8 @@ let build_from_kvs (is_get_method : Prims.bool) (is_update_path : Prims.bool)
        let dflt = collect_values "default-graph-uri" kvs in
        let named = collect_values "named-graph-uri" kvs in
        match (q_opt, u_opt) with
-       | (FStar_Pervasives_Native.Some _, FStar_Pervasives_Native.Some _) ->
+       | (FStar_Pervasives_Native.Some uu___2, FStar_Pervasives_Native.Some
+          uu___3) ->
            PR_Bad "both query= and update= present (Protocol 2.2.4)"
        | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.None) ->
            if is_update_path

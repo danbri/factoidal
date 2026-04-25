@@ -39,5 +39,5 @@ Running 30 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   FAIL  owl2-rl-rules-fp-differentFrom
   FAIL  owl2-rl-rules-ifp-differentFrom
 
-Profile-RL PositiveEntailmentTests: 13 pass, 17 fail (out of 30) in 1.69s
+Profile-RL PositiveEntailmentTests: 13 pass, 17 fail (out of 30) in 1.68s
   (bnode match is structural only; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)

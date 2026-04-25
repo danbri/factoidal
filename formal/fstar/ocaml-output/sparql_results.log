@@ -220,78 +220,78 @@ Test base: third_party/testing/w3c/sparql/sparql11
 --- entailment ---
   PASS: bind01 - BIND fixed data for OWL DL (47ms)
   PASS: bind02 - BIND fixed data for OWL DL (46ms)
-  PASS: bind03 - BIND fixed data for OWL DL (47ms)
-  PASS: bind04 - BIND fixed data for OWL DL (47ms)
+  PASS: bind03 - BIND fixed data for OWL DL (46ms)
+  PASS: bind04 - BIND fixed data for OWL DL (46ms)
   PASS: bind05 - BIND fixed data for OWL DL (46ms)
-  PASS: bind06 - BIND fixed data for OWL DL (47ms)
+  PASS: bind06 - BIND fixed data for OWL DL (46ms)
   PASS: bind07 - BIND fixed data for OWL DL (47ms)
   PASS: bind08 - BIND fixed data for OWL DL (47ms)
   PASS: D-Entailment test to show that  neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers
   PASS: Literal with language tag test (45ms)
-  PASS: bnodes are not existentials (73ms)
-  PASS: bnodes are not existentials with answer (99ms)
-  PASS: paper-sparqldl-Q1 (168ms)
+  PASS: bnodes are not existentials (72ms)
+  PASS: bnodes are not existentials with answer (98ms)
+  PASS: paper-sparqldl-Q1 (165ms)
   PASS: paper-sparqldl-Q1-rdfs
   PASS: paper-sparqldl-Q2 (395ms)
   FAIL: paper-sparqldl-Q3 — Results mismatch: expected 2 rows, got 0
       UNMATCHED: ?x=<http://example.org/John>
-      UNMATCHED: ?x=<http://example.org/person1> (391ms)
-  PASS: paper-sparqldl-Q4 (167ms)
-  PASS: paper-sparqldl-Q5 (167ms)
-  PASS: filtered subclass query with (hasChild some Thing) restriction (671ms)
-  PASS: parent query with distinguished variable (256ms)
-  PASS: parent query with (hasChild some Thing) restriction (675ms)
+      UNMATCHED: ?x=<http://example.org/person1> (392ms)
+  PASS: paper-sparqldl-Q4 (169ms)
+  PASS: paper-sparqldl-Q5 (169ms)
+  PASS: filtered subclass query with (hasChild some Thing) restriction (654ms)
+  PASS: parent query with distinguished variable (254ms)
+  PASS: parent query with (hasChild some Thing) restriction (662ms)
   FAIL: parent query with (hasChild min 1) restriction — Results mismatch: expected 3 rows, got 2
-      UNMATCHED: ?parent=<http://example.org/test#Alice> (672ms)
-  PASS: parent query with (hasChild some Female) restriction (667ms)
-  PASS: parent query with (hasChild min 1 Female) restriction (663ms)
-  FAIL: parent query with (hasChild max 1 Female) restriction — Results mismatch: expected 1 rows, got 973 (669ms)
-  PASS: parent query with (hasChild exactly 1 Female) restriction (691ms)
-  PASS: subclass query with (hasChild some Thing) restriction (659ms)
-  PASS: Plain literals with language tag are not the same as the same literal without (46ms)
+      UNMATCHED: ?parent=<http://example.org/test#Alice> (665ms)
+  PASS: parent query with (hasChild some Female) restriction (660ms)
+  PASS: parent query with (hasChild min 1 Female) restriction (668ms)
+  FAIL: parent query with (hasChild max 1 Female) restriction — Results mismatch: expected 1 rows, got 973 (665ms)
+  PASS: parent query with (hasChild exactly 1 Female) restriction (681ms)
+  PASS: subclass query with (hasChild some Thing) restriction (656ms)
+  PASS: Plain literals with language tag are not the same as the same literal without (45ms)
   PASS: RDF inference test
   PASS: RDF inference test
   PASS: RDF test for blank node cardinalities
   PASS: simple triple pattern match (64ms)
   PASS: RDFS inference test rdfs:subPropertyOf (70ms)
-  PASS: RDFS inference test rdfs:subPropertyOf (70ms)
+  PASS: RDFS inference test rdfs:subPropertyOf (69ms)
   PASS: RDFS inference test combining subPropertyOf and domain
-  PASS: RDFS inference test subClassOf (46ms)
-  PASS: RDFS inference test subClassOf (67ms)
+  PASS: RDFS inference test subClassOf (45ms)
+  PASS: RDFS inference test subClassOf (66ms)
   PASS: RDFS inference test domain (66ms)
-  PASS: RDFS inference test range (87ms)
+  PASS: RDFS inference test range (86ms)
   PASS: RDFS inference test rdf:XMLLiteral subclass of rdfs:Literal
   PASS: RDFS inference test transitivity of subClassOf (51ms)
   PASS: RDFS inference test transitivity of subPropertyOf (100ms)
   PASS: RDFS inference test subProperty and instances
   PASS: RDFS inference test containers
-  PASS: RDFS inference test to show that neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers (45ms)
+  PASS: RDFS inference test to show that neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers (46ms)
   skip: RIF Logical Entailment (referencing RIF XML) — RIF not implemented
   skip: RIF Core WG tests: Frames — RIF not implemented
   skip: RIF Core WG tests: Modeling Brain Anatomy — RIF not implemented
   skip: RIF Core WG tests: RDF Combination Blank Node — RIF not implemented
-  PASS: simple 1 (334ms)
-  PASS: simple 2 (336ms)
-  PASS: simple 3 (335ms)
-  PASS: simple 4 (334ms)
-  PASS: simple 5 (333ms)
-  PASS: simple 6 (334ms)
-  PASS: simple 7 (332ms)
-  PASS: simple 8 (336ms)
+  PASS: simple 1 (329ms)
+  PASS: simple 2 (330ms)
+  PASS: simple 3 (331ms)
+  PASS: simple 4 (331ms)
+  PASS: simple 5 (331ms)
+  PASS: simple 6 (329ms)
+  PASS: simple 7 (329ms)
+  PASS: simple 8 (331ms)
   PASS: sparqldl-01.rq: triple pattern (50ms)
   PASS: sparqldl-02.rq: simple combined query (50ms)
-  PASS: sparqldl-03.rq: combined query with complex class description (100ms)
+  PASS: sparqldl-03.rq: combined query with complex class description (99ms)
   PASS: sparqldl-04.rq: bug fixing test (56ms)
-  PASS: sparqldl-05.rq: simple undistinguished variable test. (56ms)
+  PASS: sparqldl-05.rq: simple undistinguished variable test. (55ms)
   PASS: sparqldl-06.rq: cycle of undistinguished variables (101ms)
   PASS: sparqldl-07.rq: two distinguished variables + undist. (101ms)
   PASS: sparqldl-08.rq: two distinguished variables + undist. (102ms)
-  PASS: sparqldl-09.rq: undist vars test (75ms)
-  PASS: sparqldl-10.rq: undist vars test (74ms)
-  FAIL: sparqldl-11.rq: domain test — Results mismatch: expected 2 rows, got 3 (224ms)
-  FAIL: sparqldl-12.rq: range test — Results mismatch: expected 2 rows, got 3 (225ms)
+  PASS: sparqldl-09.rq: undist vars test (74ms)
+  PASS: sparqldl-10.rq: undist vars test (73ms)
+  PASS: sparqldl-11.rq: domain test (211ms)
+  PASS: sparqldl-12.rq: range test (203ms)
   PASS: sparqldl-13.rq: sameAs (80ms)
-  [suite time: 12.2s]
+  [suite time: 12.1s]
 
 --- exists ---
   PASS: Exists with one constant
@@ -390,24 +390,24 @@ Test base: third_party/testing/w3c/sparql/sparql11
   [suite time: 0.0s]
 
 --- http-rdf-update ---
-  FAIL: PUT - Initial state — Graph Store Protocol stateful path not yet implemented (need SPARQL.GraphStore.fst, PUT, PUT writes graph state) — Phase 2+
-  FAIL: GET of PUT - Initial state — Graph Store Protocol stateful path not yet implemented (need SPARQL.GraphStore.fst, GET, stateful GET (depends on prior PUT/POST)) — Phase 2+
-  FAIL: PUT - graph already in store — Graph Store Protocol stateful path not yet implemented (need SPARQL.GraphStore.fst, PUT, PUT writes graph state) — Phase 2+
-  FAIL: GET of PUT - graph already in store — Graph Store Protocol stateful path not yet implemented (need SPARQL.GraphStore.fst, GET, stateful GET (depends on prior PUT/POST)) — Phase 2+
-  FAIL: PUT - default graph — Graph Store Protocol stateful path not yet implemented (need SPARQL.GraphStore.fst, PUT, PUT writes graph state) — Phase 2+
-  FAIL: GET of PUT - default graph — Graph Store Protocol stateful path not yet implemented (need SPARQL.GraphStore.fst, GET, stateful GET (depends on prior PUT/POST)) — Phase 2+
-  FAIL: PUT - mismatched payload — Graph Store Protocol stateful path not yet implemented (need SPARQL.GraphStore.fst, PUT, PUT writes graph state) — Phase 2+
-  FAIL: DELETE - existing graph — Graph Store Protocol stateful path not yet implemented (need SPARQL.GraphStore.fst, DELETE, DELETE on existing graph requires state) — Phase 2+
+  PASS: PUT - Initial state
+  FAIL: GET of PUT - Initial state — GSP GET: expected 200, got 404 (target=http://$HOST$/$GRAPHSTORE$/person/1.ttl, seeded=false)
+  PASS: PUT - graph already in store
+  PASS: GET of PUT - graph already in store
+  PASS: PUT - default graph
+  FAIL: GET of PUT - default graph — GSP GET: expected 200, got 404 (target=<default>, seeded=false)
+  FAIL: PUT - mismatched payload — GSP PUT: expected 400, got 201 (target=$GRAPHSTORE$/person/1.ttl, seeded=false)
+  PASS: DELETE - existing graph
   PASS: GET of DELETE - existing graph
   PASS: DELETE - non-existent graph
-  FAIL: POST - existing graph — Graph Store Protocol stateful path not yet implemented (need SPARQL.GraphStore.fst, POST, POST writes graph state) — Phase 2+
-  FAIL: GET of POST - existing graph — Graph Store Protocol stateful path not yet implemented (need SPARQL.GraphStore.fst, GET, stateful GET (depends on prior PUT/POST)) — Phase 2+
-  FAIL: POST - multipart/form-data — Graph Store Protocol stateful path not yet implemented (need SPARQL.GraphStore.fst, POST, POST writes graph state) — Phase 2+
-  FAIL: GET of POST - multipart/form-data — Graph Store Protocol stateful path not yet implemented (need SPARQL.GraphStore.fst, GET, stateful GET (depends on prior PUT/POST)) — Phase 2+
-  FAIL: POST - create new graph — Graph Store Protocol stateful path not yet implemented (need SPARQL.GraphStore.fst, POST, POST writes graph state) — Phase 2+
-  FAIL: GET of POST - create new graph — Graph Store Protocol stateful path not yet implemented (need SPARQL.GraphStore.fst, GET, stateful GET (depends on prior PUT/POST)) — Phase 2+
-  FAIL: GET of POST - after noop — Graph Store Protocol stateful path not yet implemented (need SPARQL.GraphStore.fst, GET, stateful GET (depends on prior PUT/POST)) — Phase 2+
-  FAIL: HEAD on an existing graph — Graph Store Protocol stateful path not yet implemented (need SPARQL.GraphStore.fst, HEAD, stateful HEAD (depends on prior PUT)) — Phase 2+
+  PASS: POST - existing graph
+  PASS: GET of POST - existing graph
+  PASS: POST - multipart/form-data
+  FAIL: GET of POST - multipart/form-data — GSP GET: expected 200, got 404 (target=$GRAPHSTORE$/person/1.ttl, seeded=false)
+  PASS: POST - create new graph
+  FAIL: GET of POST - create new graph — GSP GET: expected 200, got 404 (target=$NEWPATH$, seeded=false)
+  FAIL: GET of POST - after noop — GSP GET: expected 200, got 404 (target=$NEWPATH$, seeded=false)
+  PASS: HEAD on an existing graph
   PASS: HEAD on a non-existing graph
   [suite time: 0.0s]
 
@@ -499,13 +499,13 @@ Test base: third_party/testing/w3c/sparql/sparql11
   PASS: query via GET
   PASS: query appropriate content type (expect one of: XML, JSON, CSV, TSV)
   PASS: query appropriate content type (expect one of: XML, JSON)
-  FAIL: query appropriate content type (expect one of: RDF/XML, Turtle, N-Triples, RDFa) — Expected 2xx/3xx but request was rejected: parse error: unsupported: DESCRIBE queries
+  PASS: query appropriate content type (expect one of: RDF/XML, Turtle, N-Triples, RDFa)
   PASS: query appropriate content type (expect one of: RDF/XML, Turtle, N-Triples, RDFa)
   PASS: update with protocol-specified default graph
   PASS: update with protocol-specified default graphs
   PASS: update with protocol-specified named graphs
   PASS: update with protocol-specified dataset (both named and default graphs)
-  FAIL: update via URL-encoded POST — Expected 2xx/3xx but request was rejected: expected query= on /query endpoint, got update=
+  PASS: update via URL-encoded POST
   PASS: update via POST directly
   PASS: test for service-defined BASE URI ("which MAY be the service endpoint")
   PASS: query via POST directly
@@ -522,7 +522,7 @@ Test base: third_party/testing/w3c/sparql/sparql11
   PASS: invoke update operation with url-encoded body, but without application/x-www-form-urlencoded media type
   PASS: invoke update operation with direct POST, but with a non-UTF8 encoding
   PASS: invoke update operation with invalid update syntax
-  PASS: invoke update with both using-graph-uri/using-named-graph-uri parameter and USING/WITH clause
+  FAIL: invoke update with both using-graph-uri/using-named-graph-uri parameter and USING/WITH clause — Expected 4xx but decode_request accepted (POST /sparql/)
   [suite time: 0.0s]
 
 --- service ---
@@ -755,17 +755,17 @@ Suite Results:
   delete-insert                       pass:17 fail:0 skip:0 unsupported:0
   delete-where                        pass:6 fail:0 skip:0 unsupported:0
   drop                                pass:4 fail:0 skip:0 unsupported:0
-  entailment                          pass:61 fail:5 skip:4 unsupported:0
+  entailment                          pass:63 fail:3 skip:4 unsupported:0
   exists                              pass:6 fail:0 skip:0 unsupported:0
   functions                           pass:75 fail:0 skip:0 unsupported:0
   grouping                            pass:6 fail:0 skip:0 unsupported:0
-  http-rdf-update                     pass:3 fail:16 skip:0 unsupported:0
+  http-rdf-update                     pass:13 fail:6 skip:0 unsupported:0
   json-res                            pass:4 fail:0 skip:0 unsupported:0
   move                                pass:6 fail:0 skip:0 unsupported:0
   negation                            pass:12 fail:0 skip:0 unsupported:0
   project-expression                  pass:7 fail:0 skip:0 unsupported:0
   property-path                       pass:33 fail:0 skip:0 unsupported:0
-  protocol                            pass:32 fail:2 skip:0 unsupported:0
+  protocol                            pass:33 fail:1 skip:0 unsupported:0
   service                             pass:7 fail:0 skip:0 unsupported:0
   service-description                 pass:3 fail:0 skip:0 unsupported:0
   subquery                            pass:14 fail:0 skip:0 unsupported:0
@@ -775,5 +775,5 @@ Suite Results:
   syntax-update-2                     pass:1 fail:0 skip:0 unsupported:0
   update-silent                       pass:13 fail:0 skip:0 unsupported:0
 ========================================
-TOTAL: 604 pass, 23 fail, 4 skip, 0 unsupported
+TOTAL: 617 pass, 10 fail, 4 skip, 0 unsupported
 ========================================

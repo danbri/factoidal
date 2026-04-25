@@ -130,11 +130,11 @@
 <div class="summary">
   <div class="tile ok">
     <div class="label">Pass</div>
-    <div class="value">1635</div>
+    <div class="value">1648</div>
   </div>
   <div class="tile err">
     <div class="label">Fail</div>
-    <div class="value">23</div>
+    <div class="value">10</div>
   </div>
   <div class="tile warn">
     <div class="label">Skipped</div>
@@ -142,7 +142,7 @@
   </div>
   <div class="tile">
     <div class="label">Pass / runnable</div>
-    <div class="value">98.6%<small> of 1658</small></div>
+    <div class="value">99.4%<small> of 1658</small></div>
   </div>
   <div class="tile">
     <div class="label">Total in suites</div>
@@ -159,7 +159,7 @@
   are linked below.
 </div>
 
-<h2>SPARQL 1.1 <span class="inline-numbers">604 pass · 23 fail · 4 skip</span></h2>
+<h2>SPARQL 1.1 <span class="inline-numbers">617 pass · 10 fail · 4 skip</span></h2>
 <div class="suites">
       <div class="suite-row perfect">
         <div class="suite-name">add</div>
@@ -283,9 +283,9 @@
       </div>
       <div class="suite-row near-perfect">
         <div class="suite-name">entailment</div>
-        <div class="suite-bar"><div class="fill" style="width:92%"></div></div>
+        <div class="suite-bar"><div class="fill" style="width:95%"></div></div>
         <div class="suite-numbers">
-          <span class="p">61</span>/<span class="f">5</span>
+          <span class="p">63</span>/<span class="f">3</span>
           <small>skip 4</small>
         </div>
       </div>
@@ -315,9 +315,9 @@
       </div>
       <div class="suite-row mixed">
         <div class="suite-name">http-rdf-update</div>
-        <div class="suite-bar"><div class="fill" style="width:16%"></div></div>
+        <div class="suite-bar"><div class="fill" style="width:68%"></div></div>
         <div class="suite-numbers">
-          <span class="p">3</span>/<span class="f">16</span>
+          <span class="p">13</span>/<span class="f">6</span>
           <small></small>
         </div>
       </div>
@@ -363,9 +363,9 @@
       </div>
       <div class="suite-row near-perfect">
         <div class="suite-name">protocol</div>
-        <div class="suite-bar"><div class="fill" style="width:94%"></div></div>
+        <div class="suite-bar"><div class="fill" style="width:97%"></div></div>
         <div class="suite-numbers">
-          <span class="p">32</span>/<span class="f">2</span>
+          <span class="p">33</span>/<span class="f">1</span>
           <small></small>
         </div>
       </div>
@@ -600,7 +600,7 @@
 <details>
   <summary>Raw per-suite numbers</summary>
   <h3 style="font-size: 0.95em; margin: 0.8em 0 0.3em;">SPARQL 1.1</h3>
-  <pre>631 total: 604 pass, 23 fail, 4 skip, 0 unsupported
+  <pre>631 total: 617 pass, 10 fail, 4 skip, 0 unsupported
   add                                 pass:8 fail:0 skip:0 unsupported:0
   aggregates                          pass:47 fail:0 skip:0 unsupported:0
   basic-update                        pass:13 fail:0 skip:0 unsupported:0
@@ -616,17 +616,17 @@
   delete-insert                       pass:17 fail:0 skip:0 unsupported:0
   delete-where                        pass:6 fail:0 skip:0 unsupported:0
   drop                                pass:4 fail:0 skip:0 unsupported:0
-  entailment                          pass:61 fail:5 skip:4 unsupported:0
+  entailment                          pass:63 fail:3 skip:4 unsupported:0
   exists                              pass:6 fail:0 skip:0 unsupported:0
   functions                           pass:75 fail:0 skip:0 unsupported:0
   grouping                            pass:6 fail:0 skip:0 unsupported:0
-  http-rdf-update                     pass:3 fail:16 skip:0 unsupported:0
+  http-rdf-update                     pass:13 fail:6 skip:0 unsupported:0
   json-res                            pass:4 fail:0 skip:0 unsupported:0
   move                                pass:6 fail:0 skip:0 unsupported:0
   negation                            pass:12 fail:0 skip:0 unsupported:0
   project-expression                  pass:7 fail:0 skip:0 unsupported:0
   property-path                       pass:33 fail:0 skip:0 unsupported:0
-  protocol                            pass:32 fail:2 skip:0 unsupported:0
+  protocol                            pass:33 fail:1 skip:0 unsupported:0
   service                             pass:7 fail:0 skip:0 unsupported:0
   service-description                 pass:3 fail:0 skip:0 unsupported:0
   subquery                            pass:14 fail:0 skip:0 unsupported:0
@@ -660,9 +660,9 @@
 </main>
 
 <footer>
-  Generated <strong>2026-04-25 00:43 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/915e6d5513460269b8fa96a9de7fc5a7c92fc2c9">915e6d5</a></code>
-  on branch <code>claude/main</code> — &ldquo;SERVICE ?var endpoint: parser + eval (#57 Phase 3)&rdquo;.
+  Generated <strong>2026-04-25 01:38 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/88c4f2e36b2be7b6f88a1093173e97557e6c304e">88c4f2e</a></code>
+  on branch <code>claude/main</code> — &ldquo;sparql-parser: relative IRI resolution in BGP/CONSTRUCT + minimal DESCRIBE&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
