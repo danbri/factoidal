@@ -72,7 +72,14 @@ let rec trig_dataset_add_triples (ds : rdf_dataset) (triples : list triple) (gra
 (* ================================================================ *)
 
 (** Parse a graph name: IRI, prefixed name, blank node label, or [].
-    Returns (graph_iri, updated_state). *)
+    Returns (graph_iri, updated_state).
+
+    Blank-node graph names (`_:label` or `[]`) are stored using the
+    same sentinel encoding as `Parser.NQuads`: the literal string
+    `"_:<label>"` is placed into the `iri`-typed `ng_name` slot.
+    `RDF.Canonical.canon_graph_name` detects this prefix to emit a
+    bnode rather than `<_:label>` in canonical N-Quads. See
+    `docs/designissues/2026-04-25-nquads-bnode-graph-fix.md`. *)
 let parse_trig_graph_name (st: turtle_state) (input: string) (pos: nat)
   : parse_result (iri & turtle_state) =
   let len = fs_byte_length input in

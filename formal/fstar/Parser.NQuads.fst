@@ -28,7 +28,18 @@ open Parser.NTriples
 (* ================================================================ *)
 
 (** Parse a graph label — either an IRI or a blank node.
-    Returns the graph name as an iri (string). *)
+    Returns the graph name as an `iri` (string).
+
+    Per W3C N-Quads §2.1 the graph slot may carry a blank-node label
+    (`_:bN`). The `named_graph.ng_name` field is typed as `iri` (a
+    `string`) — there is no sum type to discriminate IRI vs. bnode at
+    the type level. We use a sentinel encoding: blank-node graph
+    names are stored as the literal string `"_:<label>"` (with the
+    leading "_:") inside the iri slot. The canonical N-Quads
+    serialiser in `RDF.Canonical.fst` (`canon_graph_name`) detects
+    this prefix and emits the slot as a bnode rather than wrapping
+    it as `<_:label>`. See
+    `docs/designissues/2026-04-25-nquads-bnode-graph-fix.md`. *)
 let parse_graph_label : parser iri =
   fun input pos ->
     let len = fs_byte_length input in

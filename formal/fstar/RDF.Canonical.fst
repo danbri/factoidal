@@ -81,10 +81,30 @@ let canon_subject (s : subject) : string =
   | S_IRI i -> "<" ^ i ^ ">"
   | S_BNode b -> "_:" ^ b
 
+(* The N-Quads / TriG parsers store a blank-node graph name as the
+   string "_:<label>" inside the `iri`-typed `ng_name` field of
+   `named_graph`. Lacking a sum-typed `graph_label` (refactor tracked
+   separately), the canonical serialiser detects this sentinel and
+   emits the slot as a bnode rather than wrapping it as `<_:label>`.
+   See docs/designissues/2026-04-25-nquads-bnode-graph-fix.md. *)
+let is_bnode_graph_label (gi : iri) : bool =
+  let n = String.length gi in
+  if n < 2 then false
+  else String.sub gi 0 2 = "_:"
+
+let bnode_of_graph_label (gi : iri) : bnode_id =
+  let n = String.length gi in
+  if n < 2 then gi
+  else String.sub gi 2 (n - 2)
+
+let canon_graph_name (gi : iri) : string =
+  if is_bnode_graph_label gi then "_:" ^ bnode_of_graph_label gi
+  else "<" ^ gi ^ ">"
+
 (* Render a quad with its graph name. Default graph: graph slot omitted. *)
 let canon_quad (graph_name : option iri) (t : triple) : string =
   let g = match graph_name with
-    | Some gi -> " <" ^ gi ^ ">"
+    | Some gi -> " " ^ canon_graph_name gi
     | None -> ""
   in
   canon_subject t.s ^ " <" ^ t.p ^ "> " ^ canon_term t.o ^ g ^ " .\n"
@@ -117,10 +137,18 @@ let dataset_quads (ds : rdf_dataset) : list qquad =
 (* Section 3. Blank-node enumeration. *)
 
 let bnodes_in_quad (qq : qquad) : list bnode_id =
-  let (_, t) = qq in
+  let (g, t) = qq in
   let l1 = match t.s with | S_BNode b -> [b] | _ -> [] in
   let l2 = match t.o with | T_BNode b -> [b] | _ -> [] in
-  l1 @ l2
+  // N-Quads/TriG bnode graph names are encoded as "_:label" in the
+  // iri-typed `ng_name` slot. Surface them so HFDQ visits them.
+  let l3 = match g with
+           | Some gi -> if is_bnode_graph_label gi
+                        then [bnode_of_graph_label gi]
+                        else []
+           | None -> []
+  in
+  l1 @ l2 @ l3
 
 let rec mem_string (x : string) (xs : list string) : bool =
   match xs with
@@ -175,9 +203,13 @@ let rewrite_triple_for_hfdq (target : bnode_id) (t : triple) : triple =
   }
 
 let quad_mentions_bnode (target : bnode_id) (q : qquad) : bool =
-  let (_, t) = q in
+  let (g, t) = q in
   (match t.s with | S_BNode b -> b = target | _ -> false) ||
-  (match t.o with | T_BNode b -> b = target | _ -> false)
+  (match t.o with | T_BNode b -> b = target | _ -> false) ||
+  (match g with
+   | Some gi -> is_bnode_graph_label gi
+                && bnode_of_graph_label gi = target
+   | None -> false)
 
 let rec quads_for_bnode_acc (target : bnode_id) (qs : list qquad)
                             (acc : list qquad)
@@ -192,9 +224,21 @@ let rec quads_for_bnode_acc (target : bnode_id) (qs : list qquad)
 let quads_for_bnode (target : bnode_id) (qs : list qquad) : list qquad =
   quads_for_bnode_acc target qs []
 
+(* Rewrite a graph name slot for HFDQ: own bnode → "_:a", other bnodes → "_:z",
+   IRI graphs / default graph (None) unchanged. *)
+let rewrite_graph_for_hfdq (target : bnode_id) (g : option iri) : option iri =
+  match g with
+  | None -> None
+  | Some gi ->
+    if is_bnode_graph_label gi then
+      let lbl = bnode_of_graph_label gi in
+      if lbl = target then Some "_:a" else Some "_:z"
+    else Some gi
+
 let render_for_hfdq (target : bnode_id) (q : qquad) : string =
   let (g, t) = q in
-  canon_quad g (rewrite_triple_for_hfdq target t)
+  canon_quad (rewrite_graph_for_hfdq target g)
+             (rewrite_triple_for_hfdq target t)
 
 let rec render_all_for_hfdq (target : bnode_id) (qs : list qquad)
   : Tot (list string) (decreases qs) =
@@ -380,33 +424,75 @@ let rec lookup_hfdq (b : bnode_id) (xs : list bn_hfdq_pair)
    "target as subject" vs "target as object" in the rendered quad
    (canonical N-Quads serialisation already handles that), but we DO
    want symmetry-breaking when the same predicate connects two bnodes
-   in opposite directions (e.g. `_:a foo _:b` vs `_:b foo _:a`). *)
+   in opposite directions (e.g. `_:a foo _:b` vs `_:b foo _:a`).
+
+   Tag "g" marks a target appearing only in the graph slot; this lets
+   a bnode-typed graph name participate in HNDQ collision-breaking
+   alongside subject/object bnodes. *)
 let nbr_position_tag (target : bnode_id) (q : qquad) : string =
-  let (_, t) = q in
+  let (g, t) = q in
   let s_is_target = match t.s with | S_BNode b -> b = target | _ -> false in
   let o_is_target = match t.o with | T_BNode b -> b = target | _ -> false in
+  let g_is_target = match g with
+                    | Some gi -> is_bnode_graph_label gi
+                                 && bnode_of_graph_label gi = target
+                    | None -> false in
   if s_is_target && o_is_target then "ss"  // self-loop: target both ways
   else if s_is_target then "s"              // target is subject
   else if o_is_target then "o"              // target is object
+  else if g_is_target then "g"              // target is the graph name
   else "_"                                   // shouldn't happen — caller filtered
 
 (* Extract the related bnode (the *other* bnode in this quad), if any.
    Returns None when the quad has no second bnode (e.g. `_:n p "lit"`)
    or when target appears in both slots of a self-loop (treated as
-   "no related" — symmetry handled by the position tag "ss"). *)
+   "no related" — symmetry handled by the position tag "ss").
+
+   Graph-position bnodes count as candidates: when target is in s/o
+   the graph bnode is a structural neighbour, and when target is the
+   graph bnode the s/o bnodes are. Prefer s/o over g when both are
+   present and target is in s/o (consistent with the binary-relation
+   focus of the level-2 hash); use g only when there is no s/o
+   neighbour. *)
+let graph_bnode_of (q : qquad) : option bnode_id =
+  let (g, _) = q in
+  match g with
+  | Some gi -> if is_bnode_graph_label gi
+               then Some (bnode_of_graph_label gi)
+               else None
+  | None -> None
+
 let related_bnode (target : bnode_id) (q : qquad) : option bnode_id =
   let (_, t) = q in
   let s_bn = match t.s with | S_BNode b -> Some b | _ -> None in
   let o_bn = match t.o with | T_BNode b -> Some b | _ -> None in
-  match s_bn, o_bn with
-  | Some sb, Some ob ->
-    if sb = target && ob = target then None       // self-loop
-    else if sb = target then Some ob
-    else if ob = target then Some sb
-    else None                                      // shouldn't happen
-  | Some sb, None -> if sb = target then None else Some sb
-  | None, Some ob -> if ob = target then None else Some ob
-  | None, None -> None
+  let g_bn = graph_bnode_of q in
+  // Prefer the s/o "other" bnode; fall back to the graph bnode.
+  let so_other =
+    match s_bn, o_bn with
+    | Some sb, Some ob ->
+      if sb = target && ob = target then None       // self-loop
+      else if sb = target then Some ob
+      else if ob = target then Some sb
+      else None
+    | Some sb, None -> if sb = target then None else Some sb
+    | None, Some ob -> if ob = target then None else Some ob
+    | None, None -> None
+  in
+  match so_other with
+  | Some _ -> so_other
+  | None ->
+    // No s/o neighbour — look at the graph slot.
+    match g_bn with
+    | Some gb -> if gb = target then
+                   // target itself is the graph bnode; its neighbour
+                   // is whichever s/o bnode is present (target is not
+                   // in s/o by construction here).
+                   (match s_bn with
+                    | Some sb -> Some sb
+                    | None -> o_bn)
+                 else Some gb
+    | None -> None
 
 (* For a single quad mentioning `target`, build the contribution
    "<pos>|<pred>|<related_key>". `key_of` resolves the related-bnode
@@ -603,10 +689,22 @@ let relabel_triple (mapping : list (bnode_id * string)) (t : triple) : triple =
 let relabel_graph (mapping : list (bnode_id * string)) (g : rdf_graph) : rdf_graph =
   List.Tot.map (relabel_triple mapping) g
 
+(* Relabel a graph name slot if it carries a bnode sentinel.
+   Canonical labels are emitted bare (e.g. "c14n0"), so when we
+   rewrite back into the iri-typed slot we re-attach the "_:"
+   prefix to keep the sentinel scheme intact. *)
+let relabel_graph_name (mapping : list (bnode_id * string)) (gi : iri) : iri =
+  if is_bnode_graph_label gi then
+    let lbl = bnode_of_graph_label gi in
+    match lookup_issued lbl mapping with
+    | Some new_lbl -> "_:" ^ new_lbl
+    | None -> gi
+  else gi
+
 let relabel_named_graph (mapping : list (bnode_id * string)) (ng : named_graph)
   : named_graph =
   {
-    ng_name = ng.ng_name;
+    ng_name = relabel_graph_name mapping ng.ng_name;
     ng_graph = relabel_graph mapping ng.ng_graph;
   }
 
