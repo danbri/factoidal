@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>factoidal — life-sciences demo (stub)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{color-scheme:light dark}
+body{font:15px/1.45 system-ui,-apple-system,sans-serif;max-width:960px;margin:1.5em auto;padding:0 1em}
+h1{margin-bottom:.2em} p.lede{color:#666;margin-top:0}
+code{font-size:12px}
+factoidal-sparql-client{margin-top:1em;display:block}
+footer{margin-top:2em;color:#888;font-size:12px}
+@media (prefers-color-scheme:dark){p.lede,footer{color:#aaa}}
+</style></head><body>
+<h1>life-sciences SPARQL demo (stub)</h1>
+<p class="lede">Placeholder for a life-sciences corpus (KGX subset over
+Wikidata). The dataset and bespoke queries are not yet wired in; today
+this page just exposes the generic SPARQL playground over whatever
+dataset factoidal-http was launched with.</p>
+<p>To populate this demo, drop sample queries into a <code>queries.json</code>
+alongside this file and have the page fetch it in the bootstrap
+<code>&lt;script&gt;</code>. No recompile needed.</p>
+<script type="module" src="/factoidal-sparql-client.js"></script>
+<factoidal-sparql-client id="client" endpoint="/sparql">
+  <factoidal-query name="count" label="COUNT(*) (seed)">
+SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }
+  </factoidal-query>
+</factoidal-sparql-client>
+<footer>Stub demo — see
+<code>docs/web/demos/lifesci/index.html</code>.</footer>
+</body></html>

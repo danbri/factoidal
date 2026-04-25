@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>factoidal — UK Parliament SPARQL demo</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{color-scheme:light dark}
+body{font:15px/1.45 system-ui,-apple-system,sans-serif;max-width:960px;margin:1.5em auto;padding:0 1em}
+h1{margin-bottom:.2em} p.lede{color:#666;margin-top:0}
+code{font-size:12px}
+factoidal-sparql-client{margin-top:1em;display:block}
+footer{margin-top:2em;color:#888;font-size:12px}
+header.controls{display:flex;flex-wrap:wrap;gap:.6em;align-items:center;
+  margin:1em 0;padding:.6em .8em;border:1px solid #ddd;border-radius:8px;
+  background:rgba(127,127,127,.06)}
+header.controls label{display:flex;flex-direction:column;font-size:11px;
+  color:#666;text-transform:uppercase;letter-spacing:.04em}
+header.controls select{font:inherit;padding:.25em .35em;min-width:14em}
+.pill{display:inline-block;padding:.25em .7em;border-radius:999px;
+  background:#1f7a4d;color:#fff;font-size:13px;font-weight:500;white-space:nowrap}
+.pill.warn{background:#a85a00}.pill.err{background:#933}.pill.unknown{background:#666}
+@media (prefers-color-scheme:dark){p.lede,footer{color:#aaa}
+  header.controls{border-color:#444} header.controls label{color:#aaa}}
+</style></head><body>
+<h1>UK Parliament SPARQL demo</h1>
+<p class="lede">A console over the vendored UK Parliament
+Linked Data corpus, served by factoidal's verified RDF/SPARQL 1.1
+implementation. Endpoint at <code><a href="/sparql">/sparql</a></code>
+(<a href="https://www.w3.org/TR/sparql11-protocol/">SPARQL 1.1 Protocol</a>).
+Sample queries from
+<a href="/parliament-queries.json"><code>/parliament-queries.json</code></a>.</p>
+<header class="controls">
+  <label for="backend-select">Backend
+    <select id="backend-select">
+      <option value="auto" selected>Auto (this server)</option>
+      <option value="in-memory">in-memory (N-Quads)</option>
+      <option value="binary">binary (COTTAS)</option>
+    </select>
+  </label>
+  <span id="backend-pill" class="pill unknown">Backend: …</span>
+</header>
+<script type="module" src="/factoidal-sparql-client.js"></script>
+<factoidal-sparql-client id="client" endpoint="/sparql">
+  <factoidal-query name="count" label="00 — COUNT(*) (seed)">
+SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }
+  </factoidal-query>
+</factoidal-sparql-client>
+<footer>Timing in the <em>Details</em> pane. Component posts to
+<code>/sparql</code> as <code>application/sparql-query</code>.</footer>
+<script>(function(){
+  var qs=new URLSearchParams(location.search);
+  var COTTAS_DEFAULT='http://100.107.116.70:3032/sparql';
+  var cottasUrl=qs.get('cottas')||COTTAS_DEFAULT;
+  var clientEl=document.getElementById('client');
+  var pillEl=document.getElementById('backend-pill');
+  var sel=document.getElementById('backend-select');
+  function fmtN(n){try{return Number(n).toLocaleString('en-GB');}catch(_){return String(n);}}
+  function pillClassForKind(k){
+    if(k==='in-memory'||k==='binary'||k==='mixed')return 'pill';
+    if(k==='empty')return 'pill warn';
+    return 'pill unknown';
+  }
+  function pillTextForInfo(info){
+    if(!info)return 'Backend: unknown';
+    var kindLabel=info.kind==='in-memory'?'in-memory'
+      :info.kind==='binary'?'binary COTTAS'
+      :info.kind==='mixed'?'mixed (in-memory + COTTAS)'
+      :info.kind==='empty'?'empty':info.kind;
+    var src=info.source&&info.source!=='(none)'?' · '+info.source:'';
+    var n=(typeof info.triples==='number')?' ('+fmtN(info.triples)+' triples'+src+')':'';
+    return 'Backend: '+kindLabel+n;
+  }
+  function setPill(text,cls){pillEl.textContent=text;pillEl.className=cls||'pill unknown';}
+  function refreshPill(endpoint){
+    var infoUrl;
+    if(endpoint&&/^https?:/.test(endpoint)){
+      try{infoUrl=new URL('/backend-info.json',endpoint).href;}
+      catch(_){infoUrl='/backend-info.json';}
+    }else{infoUrl='/backend-info.json';}
+    setPill('Backend: … ('+infoUrl+')','pill unknown');
+    fetch(infoUrl,{headers:{'Accept':'application/json'}})
+      .then(function(r){return r.ok?r.json():null;})
+      .then(function(info){
+        if(!info){setPill('Backend: '+(endpoint||'?')+' (no /backend-info.json)','pill warn');return;}
+        setPill(pillTextForInfo(info),pillClassForKind(info.kind));
+      })
+      .catch(function(){
+        setPill('Backend: '+(endpoint||'?')+' (info unavailable)','pill warn');
+      });
+  }
+  function endpointFor(kind){
+    if(kind==='binary')return cottasUrl;
+    if(kind==='in-memory')return location.origin+'/sparql';
+    return '/sparql';
+  }
+  sel.addEventListener('change',function(){
+    var ep=endpointFor(sel.value);
+    if(clientEl){clientEl.endpoint=ep;}
+    refreshPill(ep);
+  });
+  refreshPill('/sparql');
+  fetch('/parliament-queries.json',{headers:{'Accept':'application/json'}})
+    .then(function(r){return r.ok?r.json():null;})
+    .then(function(arr){if(!arr||!arr.length||!clientEl)return;clientEl.queries=arr;})
+    .catch(function(){});
+})();</script></body></html>

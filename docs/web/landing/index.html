@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>factoidal SPARQL endpoint</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{color-scheme:light dark}
+body{font:15px/1.45 system-ui,-apple-system,sans-serif;max-width:960px;margin:1.5em auto;padding:0 1em}
+h1{margin-bottom:.2em} p.lede{color:#666;margin-top:0}
+code{font-size:12px}
+factoidal-sparql-client{margin-top:1em;display:block}
+footer{margin-top:2em;color:#888;font-size:12px}
+ul.demos{margin:.6em 0 1em 0;padding-left:1.4em}
+ul.demos li{margin:.2em 0}
+@media (prefers-color-scheme:dark){p.lede,footer{color:#aaa}}
+</style></head><body>
+<h1>factoidal SPARQL endpoint</h1>
+<p class="lede">Verified RDF/SPARQL 1.1 service. Protocol endpoint at
+<code><a href="/sparql">/sparql</a></code>. This page is a generic
+SPARQL playground using <code>&lt;factoidal-sparql-client&gt;</code> as a
+W3C SPARQL 1.1 Protocol client; programmatic clients should hit
+<code>/sparql</code> directly per
+<a href="https://www.w3.org/TR/sparql11-protocol/">SPARQL 1.1 Protocol</a>.</p>
+<p>Per-dataset demos are available with the
+<code>--web-demo &lt;id&gt;</code> flag, e.g. <code>--web-demo
+ukparliament</code>. Demo directories live under
+<code>docs/web/demos/&lt;id&gt;/</code>; to author a new demo, drop an
+<code>index.html</code> there (no recompile).</p>
+<script type="module" src="/factoidal-sparql-client.js"></script>
+<factoidal-sparql-client id="client" endpoint="/sparql">
+  <factoidal-query name="count" label="COUNT(*) — total triples">
+SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }
+  </factoidal-query>
+  <factoidal-query name="classes" label="Distinct rdf:type values">
+PREFIX rdf: &lt;http://www.w3.org/1999/02/22-rdf-syntax-ns#&gt;
+SELECT DISTINCT ?cls WHERE { ?s rdf:type ?cls } ORDER BY ?cls LIMIT 25
+  </factoidal-query>
+  <factoidal-query name="predicates" label="Most-used predicates">
+SELECT ?p (COUNT(*) AS ?n) WHERE { ?s ?p ?o }
+GROUP BY ?p ORDER BY DESC(?n) LIMIT 25
+  </factoidal-query>
+</factoidal-sparql-client>
+<footer>Per-query timing is in the <em>Details</em> pane below the results
+table. The component sends <code>POST /sparql</code> with
+<code>Content-Type: application/sparql-query</code> and
+<code>Accept: application/sparql-results+json</code>.</footer>
+</body></html>

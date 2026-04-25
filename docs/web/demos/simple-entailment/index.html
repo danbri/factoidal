@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>factoidal — simple entailment demo</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{color-scheme:light dark}
+body{font:15px/1.45 system-ui,-apple-system,sans-serif;max-width:960px;margin:1.5em auto;padding:0 1em}
+h1{margin-bottom:.2em} p.lede{color:#666;margin-top:0}
+code{font-size:12px}
+factoidal-sparql-client{margin-top:1em;display:block}
+footer{margin-top:2em;color:#888;font-size:12px}
+@media (prefers-color-scheme:dark){p.lede,footer{color:#aaa}}
+</style></head><body>
+<h1>simple entailment demo</h1>
+<p class="lede">Tiny dataset (<code>simple.ttl</code>) for exercising
+RDF / RDFS entailment regimes against the verified evaluator. Useful for
+checking that <code>rdf:type</code> propagation and
+<code>rdfs:subClassOf</code> closure behave the way the F* spec says
+they do, without the noise of a full corpus.</p>
+<p>Launch with:
+<code>factoidal-http --dataset simple.ttl --web-demo simple-entailment</code>.</p>
+<script type="module" src="/factoidal-sparql-client.js"></script>
+<factoidal-sparql-client id="client" endpoint="/sparql">
+  <factoidal-query name="count" label="00 — COUNT(*) (asserted triples)">
+SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }
+  </factoidal-query>
+  <factoidal-query name="types" label="01 — rdf:type assertions">
+PREFIX rdf: &lt;http://www.w3.org/1999/02/22-rdf-syntax-ns#&gt;
+SELECT ?s ?cls WHERE { ?s rdf:type ?cls } ORDER BY ?s
+  </factoidal-query>
+  <factoidal-query name="subclass" label="02 — rdfs:subClassOf hierarchy">
+PREFIX rdfs: &lt;http://www.w3.org/2000/01/rdf-schema#&gt;
+SELECT ?sub ?super WHERE { ?sub rdfs:subClassOf ?super } ORDER BY ?sub
+  </factoidal-query>
+  <factoidal-query name="domains" label="03 — predicate domains/ranges">
+PREFIX rdfs: &lt;http://www.w3.org/2000/01/rdf-schema#&gt;
+SELECT ?p ?dom ?rng WHERE {
+  ?p rdfs:domain ?dom .
+  OPTIONAL { ?p rdfs:range ?rng }
+} ORDER BY ?p
+  </factoidal-query>
+</factoidal-sparql-client>
+<footer>This demo focuses on schema-level facts so an entailment regime
+toggle (RDFS / OWL-RL) can be wired in via a query-string param later.
+For now everything runs under simple entailment.</footer>
+</body></html>

@@ -156,6 +156,11 @@ type config = {
   mutable dump_rw_graphs_on_exit : string option;
   (* Load named graphs from this N-Quads file on startup (after --dataset). *)
   mutable load_rw_graphs : string option;
+  (* Per-dataset web UI to mount at "/". Either a bare demo id (resolved
+     under docs/web/demos/<id>/) or an absolute path. None = generic
+     landing page in docs/web/landing/. The directory is served as a
+     recursive static-file tree; UI changes do not require a recompile. *)
+  mutable web_demo : string option;
 }
 
 let default_dump_dir =
@@ -176,6 +181,7 @@ let default_config () = {
   proxied_auth_rw_graphnames = None;
   dump_rw_graphs_on_exit = None;
   load_rw_graphs = None;
+  web_demo = None;
 }
 
 let usage () =
@@ -230,6 +236,13 @@ let usage () =
   print_endline "                         After loading --dataset, also parse FILE.nq and";
   print_endline "                         add its named graphs to the dataset (counterpart";
   print_endline "                         to --dump-rw-graphs-on-exit).";
+  print_endline "      --web-demo=ID_OR_PATH";
+  print_endline "                         Per-dataset web UI mounted at /. Bare id";
+  print_endline "                         resolves under docs/web/demos/<id>/; an";
+  print_endline "                         absolute path is served as-is. Default";
+  print_endline "                         (no flag) serves docs/web/landing/.";
+  print_endline "                         Examples: --web-demo=ukparliament";
+  print_endline "                                   --web-demo=/path/to/dir";
   print_endline "  -v, --verbose          Log every request";
   print_endline "  -h, --help             This help";
   print_endline "";
@@ -290,9 +303,15 @@ let split_eq arg =
     (String.sub arg 0 i,
      Some (String.sub arg (i + 1) (String.length arg - i - 1)))
 
-let parse_args () =
+(* parse_args reads from an explicit args list (NOT Sys.argv directly) so
+   the unified CLI dispatcher in factoidal_cli.ml can hand it the
+   post-`serve` argv tail. The default ?args resolves to the legacy
+   "tail of Sys.argv" path used by the standalone factoidal-http binary. *)
+let parse_args ?args () =
   let cfg = default_config () in
-  let args = Array.to_list Sys.argv |> List.tl in
+  let args = match args with
+    | Some a -> a
+    | None -> Array.to_list Sys.argv |> List.tl in
   let rec loop = function
     | [] -> ()
     | ("-h" | "--help") :: _ -> cfg.help_mode <- true
@@ -334,6 +353,10 @@ let parse_args () =
          cfg.load_rw_graphs <- Some v; loop rest
        | ("--load-rw-graphs", None, v :: rest') ->
          cfg.load_rw_graphs <- Some v; loop rest'
+       | ("--web-demo", Some v, _) ->
+         cfg.web_demo <- Some v; loop rest
+       | ("--web-demo", None, v :: rest') ->
+         cfg.web_demo <- Some v; loop rest'
        | _ ->
          Printf.eprintf "Error: unrecognised argument '%s' (try --help)\n" arg;
          exit 1)
@@ -1172,165 +1195,146 @@ let serve_component_bundle () : response_body =
          rb_content_type = "text/plain; charset=utf-8";
          rb_body = "error reading bundle: " ^ Printexc.to_string e ^ "\n" })
 
-(* The landing-page HTML. Mounts <factoidal-sparql-client> in remote-
-   endpoint mode pointed at this server's own /sparql, then asynchronously
-   fetches /parliament-queries.json and assigns it to the component's
-   `queries` property. The component renders the dropdown, manages the
-   editor textarea, runs the W3C SPARQL 1.1 Protocol POST, and shows
-   timing in its built-in "Details" pane — no bespoke client code here.
+(* Per-dataset web demo (rule #15: pure I/O glue).
 
-   Seed query (shown before the JSON manifest loads, and as the dropdown's
-   first entry) is the well-known COUNT-star aggregate so the page is
-   immediately runnable on an empty store. *)
-let landing_page_html () : string =
-  "<!doctype html>\n\
-<html lang=\"en\"><head><meta charset=\"utf-8\">\n\
-<title>factoidal SPARQL endpoint</title>\n\
-<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n\
-<style>\n\
-:root{color-scheme:light dark}\n\
-body{font:15px/1.45 system-ui,-apple-system,sans-serif;max-width:960px;margin:1.5em auto;padding:0 1em}\n\
-h1{margin-bottom:.2em} p.lede{color:#666;margin-top:0}\n\
-code{font-size:12px}\n\
-factoidal-sparql-client{margin-top:1em;display:block}\n\
-footer{margin-top:2em;color:#888;font-size:12px}\n\
-header.controls{display:flex;flex-wrap:wrap;gap:.6em;align-items:center;\n\
-  margin:1em 0;padding:.6em .8em;border:1px solid #ddd;border-radius:8px;\n\
-  background:rgba(127,127,127,.06)}\n\
-header.controls label{display:flex;flex-direction:column;font-size:11px;\n\
-  color:#666;text-transform:uppercase;letter-spacing:.04em}\n\
-header.controls select{font:inherit;padding:.25em .35em;min-width:14em}\n\
-.pill{display:inline-block;padding:.25em .7em;border-radius:999px;\n\
-  background:#1f7a4d;color:#fff;font-size:13px;font-weight:500;\n\
-  white-space:nowrap}\n\
-.pill.warn{background:#a85a00}\n\
-.pill.err{background:#933}\n\
-.pill.unknown{background:#666}\n\
-@media (prefers-color-scheme:dark){p.lede,footer{color:#aaa}\n\
-  header.controls{border-color:#444}\n\
-  header.controls label{color:#aaa}}\n\
-</style></head><body>\n\
-<h1>factoidal SPARQL endpoint</h1>\n\
-<p class=\"lede\">Verified RDF/SPARQL 1.1 service. Protocol endpoint at\n\
-<code><a href=\"/sparql\">/sparql</a></code>. This page is a discoverable\n\
-console using <code>&lt;factoidal-sparql-client&gt;</code> as a W3C\n\
-SPARQL 1.1 Protocol client; programmatic clients should hit\n\
-<code>/sparql</code> directly per\n\
-<a href=\"https://www.w3.org/TR/sparql11-protocol/\">SPARQL 1.1 Protocol</a>.\n\
-Sample queries are loaded from\n\
-<a href=\"/parliament-queries.json\"><code>/parliament-queries.json</code></a>\n\
-(vendored UK Parliament queries plus He2's modernised variants).</p>\n\
-<header class=\"controls\">\n\
-  <label for=\"backend-select\">Backend\n\
-    <select id=\"backend-select\">\n\
-      <option value=\"auto\" selected>Auto (this server)</option>\n\
-      <option value=\"in-memory\">in-memory (N-Quads)</option>\n\
-      <option value=\"binary\">binary (COTTAS)</option>\n\
-    </select>\n\
-  </label>\n\
-  <span id=\"backend-pill\" class=\"pill unknown\">Backend: \xe2\x80\xa6</span>\n\
-</header>\n\
-<script type=\"module\" src=\"/factoidal-sparql-client.js\"></script>\n\
-<factoidal-sparql-client id=\"client\" endpoint=\"/sparql\">\n\
-  <factoidal-query name=\"count\" label=\"00 \xe2\x80\x94 COUNT(*) (seed)\">\n\
-SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }\n\
-  </factoidal-query>\n\
-</factoidal-sparql-client>\n\
-<footer>Per-query timing is in the <em>Details</em> pane below the results\n\
-table. The component sends <code>POST /sparql</code> with\n\
-<code>Content-Type: application/sparql-query</code> and\n\
-<code>Accept: application/sparql-results+json</code>.</footer>\n\
-<script>(function(){\n\
-  /* ---- Backend picker --------------------------------------------------\n\
-     The web component's `endpoint` attribute is reflected; setting the\n\
-     property restamps every subsequent fetch. We do not touch the bundle\n\
-     itself (rule: no JS reimplementations of F* logic) \xe2\x80\x94 just steer it. */\n\
-  var qs = new URLSearchParams(location.search);\n\
-  var COTTAS_DEFAULT = 'http://100.107.116.70:3032/sparql';\n\
-  var cottasUrl = qs.get('cottas') || COTTAS_DEFAULT;\n\
-  var clientEl = document.getElementById('client');\n\
-  var pillEl = document.getElementById('backend-pill');\n\
-  var sel = document.getElementById('backend-select');\n\
-\n\
-  function fmtN(n){ try{ return Number(n).toLocaleString('en-GB'); }\n\
-                    catch(_){ return String(n); } }\n\
-  function pillClassForKind(k){\n\
-    if(k==='in-memory'||k==='binary'||k==='mixed') return 'pill';\n\
-    if(k==='empty') return 'pill warn';\n\
-    return 'pill unknown';\n\
-  }\n\
-  function pillTextForInfo(info){\n\
-    if(!info) return 'Backend: unknown';\n\
-    var kindLabel = info.kind==='in-memory' ? 'in-memory'\n\
-      : info.kind==='binary' ? 'binary COTTAS'\n\
-      : info.kind==='mixed' ? 'mixed (in-memory + COTTAS)'\n\
-      : info.kind==='empty' ? 'empty' : info.kind;\n\
-    var src = info.source && info.source !== '(none)'\n\
-      ? ' \xc2\xb7 ' + info.source : '';\n\
-    var n = (typeof info.triples === 'number')\n\
-      ? ' (' + fmtN(info.triples) + ' triples' + src + ')' : '';\n\
-    return 'Backend: ' + kindLabel + n;\n\
-  }\n\
-  function setPill(text, cls){ pillEl.textContent = text;\n\
-    pillEl.className = cls || 'pill unknown'; }\n\
-\n\
-  /* The pill always describes the picked endpoint; if a remote endpoint\n\
-     does not expose /backend-info.json (or CORS forbids it) we fall back\n\
-     to a plain label. */\n\
-  function refreshPill(endpoint){\n\
-    var infoUrl;\n\
-    if(endpoint && /^https?:/.test(endpoint)){\n\
-      try{ infoUrl = new URL('/backend-info.json', endpoint).href; }\n\
-      catch(_){ infoUrl = '/backend-info.json'; }\n\
-    } else {\n\
-      infoUrl = '/backend-info.json';\n\
-    }\n\
-    setPill('Backend: \xe2\x80\xa6 (' + infoUrl + ')', 'pill unknown');\n\
-    fetch(infoUrl, {headers:{'Accept':'application/json'}})\n\
-      .then(function(r){ return r.ok ? r.json() : null; })\n\
-      .then(function(info){\n\
-        if(!info){ setPill('Backend: ' + (endpoint||'?') +\n\
-          ' (no /backend-info.json)', 'pill warn'); return; }\n\
-        setPill(pillTextForInfo(info), pillClassForKind(info.kind));\n\
-      })\n\
-      .catch(function(){\n\
-        setPill('Backend: ' + (endpoint||'?') +\n\
-          ' (info unavailable, CORS or offline)', 'pill warn');\n\
-      });\n\
-  }\n\
-\n\
-  function endpointFor(kind){\n\
-    if(kind==='binary') return cottasUrl;\n\
-    if(kind==='in-memory') return location.origin + '/sparql';\n\
-    return '/sparql';\n\
-  }\n\
-\n\
-  sel.addEventListener('change', function(){\n\
-    var ep = endpointFor(sel.value);\n\
-    if(clientEl){ clientEl.endpoint = ep; }\n\
-    refreshPill(ep);\n\
-  });\n\
-\n\
-  /* Initial pill describes whatever this server is. */\n\
-  refreshPill('/sparql');\n\
-\n\
-  /* ---- Sample queries -------------------------------------------------- */\n\
-  fetch('/parliament-queries.json',{headers:{'Accept':'application/json'}})\n\
-    .then(function(r){return r.ok?r.json():null;})\n\
-    .then(function(arr){if(!arr||!arr.length)return;\n\
-      if(!clientEl)return;\n\
-      /* Component setter accepts [{key,label,body}, ...] (line ~570 of\n\
-         factoidal-sparql-client.js); the seed light-DOM <factoidal-query>\n\
-         child is merged with this list. Precedence in the component:\n\
-         light-DOM > property > attribute, so the seed COUNT(*) entry\n\
-         stays available alongside the Parliament queries. The `group`\n\
-         field on each entry is forward-compat for an <optgroup>-aware\n\
-         component upgrade; the current component ignores extra fields\n\
-         and the labels already carry a \"Vendored \xe2\x80\x94 \" / \"Modernised \xe2\x80\x94 \"\n\
-         prefix so the flat dropdown still groups visually. */\n\
-      clientEl.queries=arr;})\n\
-    .catch(function(){/* offline / 404: keep the seed COUNT(*) query */});\n\
-})();</script></body></html>\n"
+   The landing UI used to be a single inline OCaml string. It now lives as
+   static files under [docs/web/], so UI tweaks don't require recompiling
+   factoidal-http. Selection is via [--web-demo]:
+
+     None         -> docs/web/landing/   (generic SPARQL playground)
+     Some "id"    -> docs/web/demos/<id>/ (resolved relative to repo root)
+     Some "/abs"  -> /abs                 (absolute path served as-is)
+
+   The chosen directory is served as a recursive static-file tree at GET /.
+   /sparql, /factoidal-sparql-client.js, /parliament-queries.json,
+   /backend-info.json continue to be handled by their dedicated routes
+   (the demo HTML fetches them).
+
+   IGNORED: holes in F* logic do not belong here. This module's job is
+   filesystem -> bytes -> response_body, nothing more. *)
+
+(* Pick a list of plausible on-disk locations for the configured demo
+   directory and return the first that exists. Mirrors the search order
+   in [resolve_component_bundle] / [resolve_parliament_dir] so it works
+   from the repo root, from ocaml-output/, or from bin/<platform>/. *)
+let resolve_web_demo_dir (demo : string option) : string option =
+  let exe_dir =
+    try Filename.dirname (Unix.realpath Sys.argv.(0))
+    with _ -> Filename.dirname Sys.argv.(0)
+  in
+  let cwd = try Sys.getcwd () with _ -> "." in
+  let rels = match demo with
+    | None ->
+        ["docs/web/landing"]
+    | Some s when String.length s > 0 && s.[0] = '/' ->
+        [s]  (* absolute path: try as-is *)
+    | Some id ->
+        ["docs/web/demos/" ^ id]
+  in
+  let candidates =
+    List.concat_map (fun rel ->
+      if String.length rel > 0 && rel.[0] = '/' then [rel]
+      else [
+        Filename.concat exe_dir (Filename.concat ".." rel);
+        Filename.concat exe_dir (Filename.concat "../.." rel);
+        Filename.concat exe_dir (Filename.concat "../../.." rel);
+        Filename.concat exe_dir (Filename.concat "../../../.." rel);
+        Filename.concat cwd rel;
+      ]
+    ) rels
+  in
+  List.find_opt (fun p ->
+    try Sys.is_directory p with _ -> false) candidates
+
+(* Cheap content-type sniff by filename suffix. We deliberately keep the
+   table small — the demos only ship HTML/JS/CSS/JSON/SVG/PNG today. *)
+let content_type_for_path (path : string) : string =
+  let path = String.lowercase_ascii path in
+  let ends_with suf =
+    let lp = String.length path and ls = String.length suf in
+    lp >= ls && String.sub path (lp - ls) ls = suf
+  in
+  if ends_with ".html" || ends_with ".htm"
+    then "text/html; charset=utf-8"
+  else if ends_with ".css" then "text/css; charset=utf-8"
+  else if ends_with ".js" || ends_with ".mjs"
+    then "application/javascript; charset=utf-8"
+  else if ends_with ".json" then "application/json; charset=utf-8"
+  else if ends_with ".svg" then "image/svg+xml; charset=utf-8"
+  else if ends_with ".png" then "image/png"
+  else if ends_with ".jpg" || ends_with ".jpeg" then "image/jpeg"
+  else if ends_with ".ico" then "image/x-icon"
+  else if ends_with ".txt" || ends_with ".md" then "text/plain; charset=utf-8"
+  else if ends_with ".ttl" then "text/turtle; charset=utf-8"
+  else if ends_with ".nt"  then "application/n-triples; charset=utf-8"
+  else if ends_with ".nq"  then "application/n-quads; charset=utf-8"
+  else "application/octet-stream"
+
+(* Refuse traversal: the URL path must not contain "..". This is a
+   coarse but adequate guard since we only ever concatenate it onto
+   the resolved demo root. *)
+let path_has_dotdot (p : string) : bool =
+  let n = String.length p in
+  let rec loop i =
+    if i + 2 > n then false
+    else if String.sub p i 2 = ".." then true
+    else loop (i + 1)
+  in loop 0
+
+(* Strip a leading slash from URL path. *)
+let strip_leading_slash s =
+  if String.length s > 0 && s.[0] = '/'
+    then String.sub s 1 (String.length s - 1)
+  else s
+
+(* Resolve [/foo/bar] inside [root] to a full filesystem path, mapping
+   "/" and "/<dir>/" to "/<dir>/index.html". Returns None if the path
+   contains ".." or the resulting file does not exist. *)
+let resolve_demo_file (root : string) (url_path : string) : string option =
+  if path_has_dotdot url_path then None
+  else
+    let rel = strip_leading_slash url_path in
+    let rel = if rel = "" then "index.html" else rel in
+    let p = Filename.concat root rel in
+    let p =
+      if (try Sys.is_directory p with _ -> false)
+      then Filename.concat p "index.html" else p
+    in
+    if (try Sys.file_exists p && not (Sys.is_directory p)
+        with _ -> false) then Some p else None
+
+(* Serve a single static file from the configured demo directory.
+   - demo dir not found -> 404 plaintext pointing at --web-demo
+   - file not found     -> 404 plaintext
+   - read error         -> 500 plaintext *)
+let serve_static_demo ~cfg (url_path : string) : response_body =
+  match resolve_web_demo_dir cfg.web_demo with
+  | None ->
+    let id = match cfg.web_demo with
+      | None -> "(default: docs/web/landing)"
+      | Some s -> s in
+    { rb_status = 404;
+      rb_content_type = "text/plain; charset=utf-8";
+      rb_body =
+        "Web demo directory not found: " ^ id ^
+        ". Pass --web-demo=<id-or-path> (see docs/web/demos/).\n" }
+  | Some root ->
+    (match resolve_demo_file root url_path with
+     | None ->
+       { rb_status = 404;
+         rb_content_type = "text/plain; charset=utf-8";
+         rb_body = "Not found: " ^ url_path ^ "\n" }
+     | Some p ->
+       try
+         let body = read_file p in
+         { rb_status = 200;
+           rb_content_type = content_type_for_path p;
+           rb_body = body }
+       with e ->
+         { rb_status = 500;
+           rb_content_type = "text/plain; charset=utf-8";
+           rb_body = "error reading " ^ p ^ ": " ^ Printexc.to_string e ^ "\n" })
+
 
 (* ----- /parliament-queries.json --------------------------------------------
    Build a JSON manifest of the 24 vendored UK Parliament SPARQL queries
@@ -1600,15 +1604,20 @@ let accept_wants_html (accept : string) : bool =
    F* SPARQL Protocol decoder.
 
    [cfg] / [dataset_ref] are threaded through so /backend-info.json can
-   describe what's currently loaded; everything else here is stateless. *)
+   describe what's currently loaded; everything else here is stateless.
+
+   Routing order:
+     1. Reserved data / bundle endpoints win (parliament-queries.json,
+        backend-info.json, factoidal-sparql-client.js, favicon.ico).
+     2. /sparql GET with no body and Accept: text/html redirects to /
+        so a browser sees the console, not a 400.
+     3. Anything else GET-shaped is delegated to the static-file demo
+        directory (default docs/web/landing/, or whatever --web-demo
+        selected). Missing files yield 404 plaintext, not 500. *)
 let try_static_route ~cfg ~dataset_ref ~meth ~path ~qs ~accept
     : response_body option =
   if meth <> "GET" then None
   else match path with
-  | "/" | "/index.html" ->
-    Some { rb_status = 200;
-           rb_content_type = "text/html; charset=utf-8";
-           rb_body = landing_page_html () }
   | "/factoidal-sparql-client.js" ->
     Some (serve_component_bundle ())
   | "/parliament-queries.json" ->
@@ -1616,12 +1625,14 @@ let try_static_route ~cfg ~dataset_ref ~meth ~path ~qs ~accept
   | "/backend-info.json" ->
     Some (serve_backend_info_json cfg dataset_ref)
   | "/favicon.ico" ->
-    (* Browsers always ask. We don't ship one yet — 204 keeps the
-       devtools console clean and avoids the F* protocol decoder
-       reporting 400 for a cosmetic resource. *)
-    Some { rb_status = 204;
-           rb_content_type = "image/x-icon";
-           rb_body = "" }
+    (* Try the demo dir first (so a demo can ship its own favicon); on
+       miss, return 204 to keep the browser's devtools console quiet
+       rather than 404 spam. *)
+    let demo_resp = serve_static_demo ~cfg path in
+    if demo_resp.rb_status = 200 then Some demo_resp
+    else Some { rb_status = 204;
+                rb_content_type = "image/x-icon";
+                rb_body = "" }
   | "/sparql" | "/query" when qs = "" && accept_wants_html accept ->
     (* Browser hit the bare protocol endpoint. Redirect to / so the
        human gets a console rather than a 400. curl / RDFLib / Jena send
@@ -1629,7 +1640,12 @@ let try_static_route ~cfg ~dataset_ref ~meth ~path ~qs ~accept
     Some { rb_status = 303;
            rb_content_type = "text/plain; charset=utf-8";
            rb_body = "See /\n" }
-  | _ -> None
+  | "/sparql" | "/query" | "/update" ->
+    (* Protocol endpoint: fall through to the F* SPARQL Protocol decoder. *)
+    None
+  | _ ->
+    (* Everything else: try to serve from the configured demo dir. *)
+    Some (serve_static_demo ~cfg path)
 
 let handle_connection cfg dataset_ref ic oc =
   try
@@ -1849,6 +1865,13 @@ let run_server cfg =
              | Some t -> t | None -> "<none>")
      else "read-write (POST /update mutates in-memory dataset)");
   Printf.printf "  cors: %s\n" (cors_mode_to_string cfg.cors);
+  Printf.printf "  web demo: %s%s\n"
+    (match cfg.web_demo with
+     | None -> "(default landing)"
+     | Some s -> s)
+    (match resolve_web_demo_dir cfg.web_demo with
+     | Some d -> " -> " ^ d
+     | None -> " (NOT FOUND on disk; GET / will 404 with a hint)");
   (* Loud warning: --cors=* combined with writes lets any browser page hit
      POST /update cross-origin, bypassing same-origin CSRF protection. Flush
      stderr immediately so the warning lands before any request log lines. *)
