@@ -84,11 +84,67 @@ group) to confirm no regression on OWL-RL 13/30 and the new pass-ups.
 
 ## Hard limits respected
 
-* ≤ 80 LoC F\* edit (actual: ~30 LoC: 1 IRI binding + 1 rule + 1
-  pipeline line + comment touch-ups).
+* ≤ 80 LoC F\* edit (actual: ~46 LoC of new code in
+  `RDF.Graph.Executable.fst`: 1 IRI binding for
+  `owl_FunctionalProperty`, 1 rule `owl_rule_functional`, 2-line
+  pipeline wiring `g11a`, plus header-comment touch-ups).
 * No `Tableau.fst`, `OWL.QueryRewrite.fst`, `Parquet.Footer.fst`,
   `SPARQL11.Algebra.fst` touched.
-* No extract / compile attempted (Yod3 holds the Parquet.Footer
-  build lock; Pe2 holds an in-flight `cls-maxqc1` edit on this same
+* No extract / compile attempted (Yod3 held the Parquet.Footer
+  build lock; Pe2 had an in-flight `cls-maxqc1` edit in the same
   file but in a non-overlapping section near line 2018).
-* No `--lax`. The new rule typechecks under standard verify.
+* No `--lax`. F\* verify of `RDF.Graph.Executable.fst` after the edits:
+  `Verified module: RDF.Graph.Executable / All verification conditions
+  discharged successfully` (`.claude-runs/tsade-fstar-verify-…log`).
+
+## Where the changes landed
+
+Concurrent commits caused the Tsade prp-fp edits and the Pe2 cls-maxqc1
+edits to be staged together in the working tree at the same instant.
+Pe2 ran `git add formal/fstar/RDF.Graph.Executable.fst` and committed
+the merged file in commit **`b2e8c2a` ("owl-rl-closure: cls-maxqc1
+cardinality-aware skolem suppression (parent7)")**. That commit's
+`+91 / -2` line count covers BOTH features.
+
+In that commit:
+
+* Pe2's `count_p_successors_typed_c` helper + cls-maxqc1 cardinality
+  guard (lines ~2017-2071).
+* Tsade's `owl_FunctionalProperty` IRI (line 1241).
+* Tsade's `owl_rule_functional` (lines 1667-1705).
+* Tsade's pipeline wiring `g11a = owl_rule_functional g11` (line 2776).
+* Tsade's header-comment update (lines 1210, 1222).
+
+This document is the canonical traceability record for the Tsade-side
+work; please cross-reference it from the F4 line in
+`docs/designissues/2026-04-25-owl-dl-informant-corpus.md` when closing
+out F4.
+
+## Function names + line numbers (final)
+
+* `owl_FunctionalProperty : wf_iri` — `RDF.Graph.Executable.fst:1241`.
+* `owl_rule_functional : rdf_graph -> rdf_graph` — line `1673`
+  (preceded by an 8-line OWL-2-RL rule comment at line `1667`).
+* `let g11a = owl_rule_functional g11` — line `2776` of
+  `owl_rl_closure_step`.
+* Existing `owl_rule_inverse_functional` (prp-ifp, was already
+  present) — line `1715` of the post-edit file.
+
+## Expected OWL-RL test deltas
+
+Per Samekh2 F4 triage:
+
+* **WebOnt-FunctionalProperty-001 / -003** — premise of the form
+  `(P a owl:FunctionalProperty) ∧ (x P y) ∧ (x P z)` and conclusion
+  `(y owl:sameAs z)` (or a downstream consequence). prp-fp now
+  emits the `sameAs` triple; eq-rep-* downstream rules should
+  carry it through.
+* **WebOnt-cardinality-003 / -004** — exercise functional cardinality
+  reasoning where two-distinct-objects-under-functional → contradiction
+  (or → identity). prp-fp + existing eq-rep should now resolve the
+  positive entailments.
+* **OWL-RL Group 13/30** — prp-fp is additive (only emits sameAs);
+  no removals, no schema-level rewrites; existing 13/30 passes are
+  preserved.
+
+Confirmation pending an OWL-RL runner pass once the build lock clears.
