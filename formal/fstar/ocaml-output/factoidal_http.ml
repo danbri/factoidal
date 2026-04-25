@@ -128,6 +128,11 @@ type cors_policy =
 type config = {
   mutable port : int;
   mutable dataset_file : string option;
+  (* Binary COTTAS/Parquet dataset(s) to seed the store from. Repeatable.
+     Loaded after --dataset; default-graph triples are concatenated, named
+     graphs appended. Decoder lives in F* (Parser.BallyhooCOTTAS,
+     Parquet.Footer). *)
+  mutable data_cottas_files : string list;
   mutable input_format : rdf_format option;
   mutable base_iri : string option;
   mutable host : string;
@@ -159,6 +164,7 @@ let default_dump_dir =
 let default_config () = {
   port = 3030;
   dataset_file = None;
+  data_cottas_files = [];
   input_format = None;
   base_iri = None;
   host = "127.0.0.1";
@@ -183,6 +189,12 @@ let usage () =
   print_endline "      --host HOST        Bind address (default 127.0.0.1)";
   print_endline "      --dataset FILE     Seed default graph from an RDF file";
   print_endline "                         (auto-detected: .ttl .nt .nq .trig .rdf)";
+  print_endline "      --data-cottas FILE Seed dataset from a binary COTTAS/Parquet";
+  print_endline "                         artifact (repeatable). Decoded via the";
+  print_endline "                         F*-verified Parquet footer + DeltaLengthByteArray";
+  print_endline "                         path; Zstd via the C stub. Much faster than";
+  print_endline "                         re-parsing N-Quads/TriG on startup.";
+  print_endline "                         Alias: --cottas-data FILE.";
   print_endline "  -f, --format FMT       Force input format (turtle|ntriples|nquads|trig|rdfxml)";
   print_endline "  -b, --base IRI         Base IRI for parsing";
   print_endline "      --read-only        Reject POST /update with 403 Forbidden";
@@ -291,6 +303,8 @@ let parse_args () =
       loop rest
     | "--host" :: h :: rest -> cfg.host <- h; loop rest
     | "--dataset" :: f :: rest -> cfg.dataset_file <- Some f; loop rest
+    | ("--data-cottas" | "--cottas-data") :: f :: rest ->
+      cfg.data_cottas_files <- cfg.data_cottas_files @ [f]; loop rest
     | ("-f" | "--format") :: fmt :: rest ->
       (match format_of_string fmt with
        | Some f -> cfg.input_format <- Some f
@@ -354,6 +368,53 @@ let parse_args () =
    Dataset loading — delegates to the loader that factoidal_cli already uses.
    ============================================================================ *)
 
+(* Load a COTTAS/Parquet artifact as an rdf_dataset. Mirrors the loader
+   in factoidal_cli.ml. Pure OCaml glue: the Parquet footer parsing and
+   DeltaLengthByteArray decode happen in F*-extracted
+   [Parser_BallyhooCOTTAS] / [Parquet_Footer]; we only walk the cached
+   quad rows and bucket them into default + named graphs. *)
+let load_cottas_dataset (path : string) : rdf_dataset =
+  match Parser_BallyhooCOTTAS.cottas_open_dataset_store path
+          FStar_Pervasives_Native.None with
+  | FStar_Pervasives_Native.None ->
+    Printf.eprintf "Error: could not open COTTAS artifact: %s\n" path;
+    exit 1
+  | FStar_Pervasives_Native.Some ds ->
+    let cache = Parser_BallyhooCOTTAS.Ballyhoo_cottas_runtime.cache_for_store ds in
+    let default_rev = ref [] in
+    let named_tbl : (string, RDF_Graph_Executable.triple list ref) Hashtbl.t =
+      Hashtbl.create 17 in
+    let open Parser_BallyhooCOTTAS.Ballyhoo_cottas_runtime in
+    List.iter (fun row ->
+      let s = match Hashtbl.find_opt cache.id_to_subject row.qr_s with
+        | Some s -> s
+        | None -> failwith "cottas: missing subject id" in
+      let p = match Hashtbl.find_opt cache.id_to_predicate row.qr_p with
+        | Some p -> p
+        | None -> failwith "cottas: missing predicate id" in
+      let o = match Hashtbl.find_opt cache.id_to_object row.qr_o with
+        | Some o -> o
+        | None -> failwith "cottas: missing object id" in
+      let triple = RDF_Graph_Executable.({ s; p; o }) in
+      match row.qr_g with
+      | None -> default_rev := triple :: !default_rev
+      | Some gid ->
+        let g_iri = match Hashtbl.find_opt cache.id_to_graph gid with
+          | Some g -> g
+          | None -> failwith "cottas: missing graph id" in
+        let bucket = match Hashtbl.find_opt named_tbl g_iri with
+          | Some b -> b
+          | None ->
+            let b = ref [] in Hashtbl.add named_tbl g_iri b; b in
+        bucket := triple :: !bucket
+    ) cache.quads;
+    let default_g = List.rev !default_rev in
+    let named_gs = Hashtbl.fold (fun iri triples acc ->
+      RDF_Graph_Executable.(
+        { ng_name = iri; ng_graph = List.rev !triples }) :: acc
+    ) named_tbl [] in
+    RDF_Graph_Executable.({ ds_default = default_g; ds_named = named_gs })
+
 let load_dataset cfg =
   let base_ds =
     match cfg.dataset_file with
@@ -365,8 +426,25 @@ let load_dataset cfg =
         Printf.eprintf "Error loading dataset %s: %s\n" f (Printexc.to_string e);
         exit 1
   in
+  (* Fold each --data-cottas FILE into the dataset. Default-graph triples
+     concatenate; named graphs are appended (lookup_named_graph uses
+     first-match, so earlier --data-cottas wins on collision with the
+     --dataset file). *)
+  let with_cottas =
+    List.fold_left (fun acc path ->
+      let extra =
+        try load_cottas_dataset path
+        with e ->
+          Printf.eprintf "Error loading --data-cottas %s: %s\n"
+            path (Printexc.to_string e);
+          exit 1
+      in
+      { ds_default = acc.ds_default @ extra.ds_default;
+        ds_named = acc.ds_named @ extra.ds_named }
+    ) base_ds cfg.data_cottas_files
+  in
   match cfg.load_rw_graphs with
-  | None -> base_ds
+  | None -> with_cottas
   | Some f ->
     (try
        let content = read_file f in
@@ -374,8 +452,8 @@ let load_dataset cfg =
        (* Merge: extra's default-graph triples go into default; named graphs
           are appended (later entries with the same name shadow earlier ones
           only via lookup_named_graph's first-match semantics). *)
-       { ds_default = base_ds.ds_default @ extra.ds_default;
-         ds_named = base_ds.ds_named @ extra.ds_named }
+       { ds_default = with_cottas.ds_default @ extra.ds_default;
+         ds_named = with_cottas.ds_named @ extra.ds_named }
      with e ->
        Printf.eprintf "Error loading --load-rw-graphs %s: %s\n"
          f (Printexc.to_string e);
@@ -1040,13 +1118,14 @@ let dump_rw_graphs ~dir ~snapshot_iris (ds : rdf_dataset) =
    the SPARQL Protocol endpoint" is an HTTP routing concern and lives here,
    not in the F* protocol logic.
 
-   The HTML page below is a stand-alone SPARQL console that POSTs queries
-   to this server's own /sparql. It does NOT yet wire up the
-   factoidal-sparql-client web component as a remote-endpoint UI — the
-   component currently ships in-browser engines (js / wasm) only. We still
-   serve /factoidal-sparql-client.js from disk so a future upgrade (Aleph3:
-   add an endpoint="..." mode) can swap the inline UI for the component
-   by editing two lines of HTML.
+   The HTML page mounts <factoidal-sparql-client endpoint="/sparql"> —
+   the same web component shipped in the static demos — talking to this
+   server's own /sparql via the SPARQL 1.1 Protocol (Aleph3's remote-
+   endpoint mode, commit 56ab457). On load, the page fetches
+   /parliament-queries.json and assigns the array to the component's
+   `queries` property; the component renders them as a sample-query
+   dropdown above its textarea. No bespoke fetch code lives in the
+   landing page — the W3C Protocol client is the component itself.
    ============================================================================ *)
 
 (* Resolve the on-disk location of the factoidal-sparql-client.js bundle.
@@ -1093,12 +1172,16 @@ let serve_component_bundle () : response_body =
          rb_content_type = "text/plain; charset=utf-8";
          rb_body = "error reading bundle: " ^ Printexc.to_string e ^ "\n" })
 
-(* The landing-page HTML. Self-contained: small inline stylesheet, a
-   textarea seeded with a COUNT-star aggregate, a Run button that POSTs
-   to /sparql, and a results panel that renders JSON SPARQL results as
-   a table. Forward-compatible: when the web component grows a remote-
-   endpoint mode, swap the body contents for a factoidal-sparql-client
-   element with endpoint="/sparql". *)
+(* The landing-page HTML. Mounts <factoidal-sparql-client> in remote-
+   endpoint mode pointed at this server's own /sparql, then asynchronously
+   fetches /parliament-queries.json and assigns it to the component's
+   `queries` property. The component renders the dropdown, manages the
+   editor textarea, runs the W3C SPARQL 1.1 Protocol POST, and shows
+   timing in its built-in "Details" pane — no bespoke client code here.
+
+   Seed query (shown before the JSON manifest loads, and as the dropdown's
+   first entry) is the well-known COUNT-star aggregate so the page is
+   immediately runnable on an empty store. *)
 let landing_page_html () : string =
   "<!doctype html>\n\
 <html lang=\"en\"><head><meta charset=\"utf-8\">\n\
@@ -1106,62 +1189,165 @@ let landing_page_html () : string =
 <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n\
 <style>\n\
 :root{color-scheme:light dark}\n\
-body{font:15px/1.45 system-ui,-apple-system,sans-serif;max-width:900px;margin:1.5em auto;padding:0 1em}\n\
+body{font:15px/1.45 system-ui,-apple-system,sans-serif;max-width:960px;margin:1.5em auto;padding:0 1em}\n\
 h1{margin-bottom:.2em} p.lede{color:#666;margin-top:0}\n\
-textarea{width:100%;box-sizing:border-box;min-height:7em;font:13px/1.4 ui-monospace,Menlo,monospace;padding:.5em}\n\
-.row{margin:.6em 0;display:flex;gap:.6em;align-items:center}\n\
-button{font:inherit;padding:.4em 1em;cursor:pointer} #status{color:#666;font-size:13px}\n\
-table{border-collapse:collapse;margin-top:.6em;width:100%}\n\
-th,td{border:1px solid #ccc;padding:.25em .5em;text-align:left;vertical-align:top;font-size:13px}\n\
-th{background:#f4f4f4} pre.raw{background:#f7f7f7;padding:.6em;overflow-x:auto;font-size:12px}\n\
-footer{margin-top:2em;color:#888;font-size:12px} code{font-size:12px}\n\
-@media (prefers-color-scheme:dark){th{background:#222}pre.raw{background:#1a1a1a}\n\
-  p.lede,#status,footer{color:#aaa}th,td{border-color:#444}}\n\
+code{font-size:12px}\n\
+factoidal-sparql-client{margin-top:1em;display:block}\n\
+footer{margin-top:2em;color:#888;font-size:12px}\n\
+@media (prefers-color-scheme:dark){p.lede,footer{color:#aaa}}\n\
 </style></head><body>\n\
 <h1>factoidal SPARQL endpoint</h1>\n\
 <p class=\"lede\">Verified RDF/SPARQL 1.1 service. Protocol endpoint at\n\
-<code>/sparql</code>. This page is a discoverable console; programmatic clients\n\
-should hit <code>/sparql</code> directly per\n\
-<a href=\"https://www.w3.org/TR/sparql11-protocol/\">SPARQL 1.1 Protocol</a>.</p>\n\
-<div class=\"row\"><label for=\"q\"><strong>Query:</strong></label></div>\n\
-<textarea id=\"q\">SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }</textarea>\n\
-<div class=\"row\"><button id=\"run\">Run</button><span id=\"status\">ready</span></div>\n\
-<div id=\"out\"></div>\n\
-<footer>Press Ctrl/Cmd+Enter in the textarea to run. Web component bundle:\n\
-<a href=\"/factoidal-sparql-client.js\">/factoidal-sparql-client.js</a>\n\
-(will be embedded here once the component grows a remote-endpoint mode).</footer>\n\
+<code><a href=\"/sparql\">/sparql</a></code>. This page is a discoverable\n\
+console using <code>&lt;factoidal-sparql-client&gt;</code> as a W3C\n\
+SPARQL 1.1 Protocol client; programmatic clients should hit\n\
+<code>/sparql</code> directly per\n\
+<a href=\"https://www.w3.org/TR/sparql11-protocol/\">SPARQL 1.1 Protocol</a>.\n\
+Sample queries are loaded from\n\
+<a href=\"/parliament-queries.json\"><code>/parliament-queries.json</code></a>\n\
+(the 24 vendored UK Parliament queries).</p>\n\
+<script type=\"module\" src=\"/factoidal-sparql-client.js\"></script>\n\
+<factoidal-sparql-client id=\"client\" endpoint=\"/sparql\">\n\
+  <factoidal-query name=\"count\" label=\"00 \xe2\x80\x94 COUNT(*) (seed)\">\n\
+SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }\n\
+  </factoidal-query>\n\
+</factoidal-sparql-client>\n\
+<footer>Per-query timing is in the <em>Details</em> pane below the results\n\
+table. The component sends <code>POST /sparql</code> with\n\
+<code>Content-Type: application/sparql-query</code> and\n\
+<code>Accept: application/sparql-results+json</code>.</footer>\n\
 <script>(function(){\n\
-var q=document.getElementById('q'),run=document.getElementById('run'),\n\
-    status=document.getElementById('status'),out=document.getElementById('out');\n\
-function esc(s){return String(s).replace(/[&<>\"']/g,function(c){\n\
-  return({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'})[c];});}\n\
-function term(t){if(!t)return'';\n\
-  if(t.type==='uri')return'<'+t.value+'>';\n\
-  if(t.type==='bnode')return'_:'+t.value;\n\
-  if(t['xml:lang'])return'\"'+t.value+'\"@'+t['xml:lang'];\n\
-  if(t.datatype)return'\"'+t.value+'\"^^<'+t.datatype+'>';\n\
-  return'\"'+t.value+'\"';}\n\
-function render(j){if(j.boolean!==undefined){\n\
-  out.innerHTML='<p><strong>ASK:</strong> '+(j.boolean?'true':'false')+'</p>';return;}\n\
-  var h=(j.head&&j.head.vars)||[],rs=(j.results&&j.results.bindings)||[];\n\
-  var s='<p>'+rs.length+' result(s)</p><table><thead><tr>';\n\
-  h.forEach(function(v){s+='<th>?'+esc(v)+'</th>';});s+='</tr></thead><tbody>';\n\
-  rs.forEach(function(r){s+='<tr>';h.forEach(function(v){s+='<td>'+esc(term(r[v]))+'</td>';});s+='</tr>';});\n\
-  out.innerHTML=s+'</tbody></table>';}\n\
-function raw(t,c,n){out.innerHTML='<p>HTTP '+n+' ('+esc(c||'')+')</p><pre class=\"raw\">'+esc(t)+'</pre>';}\n\
-function go(){var t0=performance.now();status.textContent='running\\u2026';out.innerHTML='';\n\
-  fetch('/sparql',{method:'POST',headers:{'Content-Type':'application/sparql-query',\n\
-    'Accept':'application/sparql-results+json'},body:q.value})\n\
-  .then(function(r){var c=r.headers.get('content-type')||'';\n\
-    return r.text().then(function(x){var dt=(performance.now()-t0).toFixed(0);\n\
-      status.textContent='HTTP '+r.status+' \\u00b7 '+dt+' ms';\n\
-      if(c.indexOf('json')>=0){try{render(JSON.parse(x));}catch(e){raw(x,c,r.status);}}\n\
-      else raw(x,c,r.status);});})\n\
-  .catch(function(e){status.textContent='error';\n\
-    out.innerHTML='<p>fetch failed: '+esc(String(e))+'</p>';});}\n\
-run.addEventListener('click',go);\n\
-q.addEventListener('keydown',function(e){if((e.ctrlKey||e.metaKey)&&e.key==='Enter')go();});\n\
+fetch('/parliament-queries.json',{headers:{'Accept':'application/json'}})\n\
+  .then(function(r){return r.ok?r.json():null;})\n\
+  .then(function(arr){if(!arr||!arr.length)return;\n\
+    var c=document.getElementById('client');if(!c)return;\n\
+    /* Component setter accepts [{key,label,body}, ...] (line ~570 of\n\
+       factoidal-sparql-client.js); the seed light-DOM <factoidal-query>\n\
+       child is merged with this list. Precedence in the component:\n\
+       light-DOM > property > attribute, so the seed COUNT(*) entry\n\
+       stays available alongside the Parliament queries. */\n\
+    c.queries=arr;})\n\
+  .catch(function(){/* offline / 404: keep the seed COUNT(*) query */});\n\
 })();</script></body></html>\n"
+
+(* ----- /parliament-queries.json --------------------------------------------
+   Build a JSON manifest of the 24 vendored UK Parliament SPARQL queries
+   in third_party/data/ukparliament/sparql/{main,detail}/*.rq. Pure I/O
+   glue (rule #15): we just walk the directory, read each file's bytes,
+   and emit JSON. The web component on /  consumes the manifest as
+   [{key, label, body}, ...].
+
+   Resolution mirrors resolve_component_bundle: try a few argv[0]/CWD-
+   relative paths so the binary works whether invoked from the repo root,
+   from ocaml-output/, or from an installed location. *)
+let resolve_parliament_dir () : string option =
+  let exe_dir =
+    try Filename.dirname (Unix.realpath Sys.argv.(0))
+    with _ -> Filename.dirname Sys.argv.(0)
+  in
+  let cwd = try Sys.getcwd () with _ -> "." in
+  let rel = "third_party/data/ukparliament/sparql" in
+  let candidates = [
+    Filename.concat exe_dir (Filename.concat ".." rel);
+    Filename.concat exe_dir (Filename.concat "../.." rel);
+    Filename.concat exe_dir (Filename.concat "../../.." rel);
+    Filename.concat exe_dir (Filename.concat "../../../.." rel);
+    Filename.concat cwd rel;
+  ] in
+  List.find_opt (fun p ->
+    try Sys.is_directory p with _ -> false) candidates
+
+(* Minimal JSON string escaper for the few characters that matter when
+   embedding arbitrary SPARQL-query bodies in a JSON literal. *)
+let json_escape (s : string) : string =
+  let b = Buffer.create (String.length s + 16) in
+  String.iter (fun c ->
+    match c with
+    | '\\' -> Buffer.add_string b "\\\\"
+    | '"'  -> Buffer.add_string b "\\\""
+    | '\n' -> Buffer.add_string b "\\n"
+    | '\r' -> Buffer.add_string b "\\r"
+    | '\t' -> Buffer.add_string b "\\t"
+    | '\b' -> Buffer.add_string b "\\b"
+    | '\012' -> Buffer.add_string b "\\f"
+    | c when Char.code c < 0x20 ->
+        Buffer.add_string b (Printf.sprintf "\\u%04x" (Char.code c))
+    | c -> Buffer.add_char b c
+  ) s;
+  Buffer.contents b
+
+(* Strip the .rq suffix and any leading numeric prefix; return a short
+   human-readable label like "main / 03 — legislatures all" derived from
+   the filename. We deliberately do NOT try to parse the SPARQL — these
+   are fixture queries, the filename is the canonical handle. *)
+let parliament_label ~group ~filename : string =
+  let stem =
+    if Filename.check_suffix filename ".rq"
+    then Filename.chop_suffix filename ".rq"
+    else filename
+  in
+  group ^ " / " ^ stem
+
+(* Walk one of the {main,detail} subdirectories, collecting (key, label,
+   body) for every .rq file. Files that fail to read are skipped silently
+   — a malformed/locked file shouldn't break the dropdown for the others. *)
+let parliament_entries_for_group (root : string) (group : string)
+    : (string * string * string) list =
+  let dir = Filename.concat root group in
+  let entries =
+    try Sys.readdir dir with _ -> [||]
+  in
+  Array.sort compare entries;
+  Array.fold_left (fun acc name ->
+    if Filename.check_suffix name ".rq" then
+      let path = Filename.concat dir name in
+      try
+        let body = read_file path in
+        let key = group ^ "/" ^ Filename.chop_suffix name ".rq" in
+        let label = parliament_label ~group ~filename:name in
+        (key, label, body) :: acc
+      with _ -> acc
+    else acc
+  ) [] entries
+  |> List.rev
+
+(* Build the JSON array as a string. We emit one line per object; ~16 KB
+   total for the current fixture set. The component re-reads this on every
+   page load, so He2's modernisations to the .rq files surface naturally. *)
+let build_parliament_queries_json () : string =
+  match resolve_parliament_dir () with
+  | None -> "[]\n"
+  | Some root ->
+    let main = parliament_entries_for_group root "main" in
+    let detail = parliament_entries_for_group root "detail" in
+    let all = main @ detail in
+    let b = Buffer.create 16384 in
+    Buffer.add_char b '[';
+    let first = ref true in
+    List.iter (fun (key, label, body) ->
+      if !first then first := false else Buffer.add_char b ',';
+      Buffer.add_string b "\n  {\"key\":\"";
+      Buffer.add_string b (json_escape key);
+      Buffer.add_string b "\",\"label\":\"";
+      Buffer.add_string b (json_escape label);
+      Buffer.add_string b "\",\"body\":\"";
+      Buffer.add_string b (json_escape body);
+      Buffer.add_string b "\"}";
+    ) all;
+    Buffer.add_string b "\n]\n";
+    Buffer.contents b
+
+let serve_parliament_queries_json () : response_body =
+  try
+    let body = build_parliament_queries_json () in
+    { rb_status = 200;
+      rb_content_type = "application/json; charset=utf-8";
+      rb_body = body }
+  with e ->
+    { rb_status = 500;
+      rb_content_type = "text/plain; charset=utf-8";
+      rb_body = "error building parliament queries: "
+                ^ Printexc.to_string e ^ "\n" }
 
 (* Does the Accept header indicate the client wants HTML? Coarse check —
    substring match for "text/html" is enough; we don't need full media-
@@ -1181,6 +1367,15 @@ let try_static_route ~meth ~path ~qs ~accept : response_body option =
            rb_body = landing_page_html () }
   | "/factoidal-sparql-client.js" ->
     Some (serve_component_bundle ())
+  | "/parliament-queries.json" ->
+    Some (serve_parliament_queries_json ())
+  | "/favicon.ico" ->
+    (* Browsers always ask. We don't ship one yet — 204 keeps the
+       devtools console clean and avoids the F* protocol decoder
+       reporting 400 for a cosmetic resource. *)
+    Some { rb_status = 204;
+           rb_content_type = "image/x-icon";
+           rb_body = "" }
   | "/sparql" | "/query" when qs = "" && accept_wants_html accept ->
     (* Browser hit the bare protocol endpoint. Redirect to / so the
        human gets a console rather than a 400. curl / RDFLib / Jena send
@@ -1416,9 +1611,21 @@ let run_server cfg =
      Printf.eprintf "warning: any browser page can issue POST /update against this server\n";
      Printf.eprintf "warning: either add --read-only or an allowlist\n%!"
    | _ -> ());
-  (match cfg.dataset_file with
-   | Some f -> Printf.printf "  default graph: %s (%d triples)\n" f triple_count
-   | None -> Printf.printf "  default graph: <empty>\n");
+  (match cfg.dataset_file, cfg.data_cottas_files with
+   | Some f, [] ->
+     Printf.printf "  default graph: %s (%d triples)\n" f triple_count
+   | None, [] -> Printf.printf "  default graph: <empty>\n"
+   | dsf, cottas ->
+     (* Mixed and/or COTTAS-only: report per-source contributions. The
+        store's running totals after all loads are summarised below. *)
+     (match dsf with
+      | Some f -> Printf.printf "  default graph: --dataset %s + COTTAS\n" f
+      | None -> Printf.printf "  default graph: COTTAS-only\n");
+     List.iter (fun p ->
+       Printf.printf "    --data-cottas %s\n" p
+     ) cottas;
+     Printf.printf "  store totals: %d default-graph triples, %d named graph(s)\n"
+       triple_count (List.length (!dataset_ref).ds_named));
   (match cfg.load_rw_graphs with
    | Some f ->
      Printf.printf "  loaded RW graphs from: %s (%d named graph(s) now)\n"
