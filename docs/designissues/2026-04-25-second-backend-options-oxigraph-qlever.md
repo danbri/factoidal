@@ -20,9 +20,9 @@ The current load path:
 On the UK Parliament corpus, profiling showed that this time is spent in
 `load_cottas_dataset` / `load_cache`, not in algebra evaluation:
 
-- [formal/fstar/experimental_ocaml_glue/cottas_runtime.sh](/Users/danbri/working/factoidal/formal/fstar/experimental_ocaml_glue/cottas_runtime.sh:248)
-- [formal/fstar/Parquet.Footer.fst](/Users/danbri/working/factoidal/formal/fstar/Parquet.Footer.fst:1449)
-- [formal/fstar/ocaml-output/factoidal_cli.ml](/Users/danbri/working/factoidal/formal/fstar/ocaml-output/factoidal_cli.ml:195)
+- `formal/fstar/experimental_ocaml_glue/cottas_runtime.sh:248`
+- `formal/fstar/Parquet.Footer.fst:1449`
+- `formal/fstar/ocaml-output/factoidal_cli.ml:195`
 
 This is a backend shape problem, not only a micro-optimization problem.
 
