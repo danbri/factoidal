@@ -1,4 +1,4 @@
-(* cottas_ondisk_smoketest.ml — Phase 2 acceptance harness (issue #100).
+(* cottas_ondisk_smoketest.ml --Phase 2 acceptance harness (issue #100).
  *
  * Stand-alone CLI:
  *   cottas_ondisk_smoketest <path-to-data.cottas>
@@ -6,7 +6,7 @@
  * 1. Opens the COTTAS file via the F* on-disk store (cottas_ondisk_open).
  * 2. Reports startup RSS in MB.
  * 3. Runs the universal-bound triple pattern (None, None, None, None) =
- *    SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o } via cottas_ondisk_estimate.
+ *    SELECT (COUNT-star AS ?n) WHERE { ?s ?p ?o } via cottas_ondisk_estimate.
  * 4. Reports query wall-clock + post-query RSS.
  * 5. Verifies that backend_search through GB_CottasOnDisk returns the
  *    same triple count for an unbound BGP {?s ?p ?o}.
@@ -79,7 +79,7 @@ let main () =
 
   (* 4. Backend search through GB_CottasOnDisk: triple_pattern_bound with
      all-None should walk the on-disk store and decode terms only for
-     matches. We don't decode all 3.14M rows (that would be large) — just
+     matches. We don't decode all 3.14M rows (that would be large) --just
      do the estimate path. To exercise decode, run a search bounded by
      one specific predicate. *)
   let summary = cottas_ondisk_summary ds in

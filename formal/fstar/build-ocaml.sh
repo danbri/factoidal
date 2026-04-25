@@ -129,6 +129,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              Parser.Ballyhoo.fst Parser.BallyhooBloom.fst \
              Parser.BallyhooHDT.fst Parser.BallyhooHDTQ.fst \
              Parser.BallyhooCOTTAS.fst \
+             RDF.CottasStore.PageCache.fst \
              RDF.CottasStore.fst \
              SPARQL11.Store.fst \
              SPARQL.Protocol.fst \
@@ -189,6 +190,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
     Parser_Ballyhoo.ml Parser_BallyhooBloom.ml \
     Parser_BallyhooHDT.ml Parser_BallyhooHDTQ.ml Parser_BallyhooCOTTAS.ml \
+    RDF_CottasStore_PageCache.ml \
     RDF_CottasStore.ml \
     fstar_pure_hashes.ml \
     RDF_Canonical.ml \

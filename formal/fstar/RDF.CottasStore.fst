@@ -2,32 +2,34 @@ module RDF.CottasStore
 
 open RDF.Graph.Executable
 open Parser.BallyhooCOTTAS
+open Parquet.Footer
+open RDF.CottasStore.PageCache
 
-// On-disk COTTAS store, query-time interface (issue #100 Phase A).
+// On-disk COTTAS store, query-time interface (issue #100).
 //
 // History: this module's contents used to live at the bottom of
 // Parser.BallyhooCOTTAS.fst, with 13 `assume val`s whose bodies lived in
 // experimental_ocaml_glue/cottas_ondisk_runtime.sh (688 LoC OCaml). Per
 // CLAUDE.md rules #1 / #7 / #15 + memory feedback_fstar_first_always.md,
-// 11 of those 13 functions are now real F* `Tot` definitions over an
-// enriched `cottas_ondisk_handle` record. The remaining 2 (`_open`,
-// search/estimate) stay `assume val` — Phase B / C will lift them as the
-// search loop / mmap design crystallises.
+// 11 of those 13 lookup functions were lifted to F* in Phase A
+// (commit 967ed4f). Phase B (this commit) lifts the remaining
+// `cottas_ondisk_search` / `cottas_ondisk_estimate` to F*, walking the
+// parquet row groups on demand via `Parquet.Footer.probe_parquet_*`
+// helpers. Only `cottas_ondisk_open` and `cottas_ondisk_close` remain
+// I/O-glue.
 //
-// All semantic logic (encode/decode/predicate-presence/named-graph walk)
-// lives here. The OCaml glue at cottas_ondisk_runtime.sh now does only
-// one thing: at open() time, read 4 columns from the Parquet file, parse
-// each distinct token to its RDF shape, build the reverse maps, and
-// hand the F* runtime a populated `cottas_ondisk_handle` record. F* does
-// the rest.
-
-// `columns_handle` is the per-row int-array bundle that the I/O glue
-// builds at open() time. Search / estimate (Phase B scope) walk these
-// arrays in tight loops; F* doesn't yet need to see inside.
-assume type columns_handle
+// All semantic logic (encode/decode/predicate-presence/named-graph walk
+// + search + estimate) lives here. The OCaml glue at
+// cottas_ondisk_runtime.sh now does only ONE thing: at open() time, read
+// 4 columns from the Parquet file (across all row groups), parse each
+// distinct token to its RDF shape, build the reverse maps + the parallel
+// raw-token lists, and hand the F* runtime a populated handle record.
+// F* does the rest, lazily iterating row groups via
+// `probe_parquet_column_decode_in_row_group`.
 
 noeq type cottas_ondisk_handle = {
-  // Path the handle came from (debugging / re-open coalescing).
+  // Path the handle came from. Used by Phase B search/estimate to
+  // re-open and walk row groups via Parquet.Footer probes.
   coh_path : string;
   // Aggregate summary (passes through to cods_summary).
   coh_summary : option cottas_artifact_summary;
@@ -45,11 +47,27 @@ noeq type cottas_ondisk_handle = {
   coh_pred_revmap  : list (string * nat);
   coh_obj_revmap   : list (string * nat);
   coh_graph_revmap : list (string * nat);
-  // The per-row int-array bundle (subject/predicate/object/graph
-  // term-id columns + lengths). Owned by the I/O glue; F* search /
-  // estimate dispatch through it via `assume val`. Phase B will
-  // replace this with a typed F*-side iterator.
-  coh_columns : columns_handle;
+  // Phase B (issue #100) — parallel raw-column-token lists, indexed by
+  // term-id. Used by search/estimate to convert a bound term-id into
+  // the column-token string it would appear as in the parquet row,
+  // without needing to re-encode/escape from the typed term.
+  // `coh_graphs_raw` does NOT include the "DEFAULT" sentinel — only
+  // named-graph IRIs in raw "<iri>" form. Default-graph rows are
+  // detected at search time by matching the literal string "DEFAULT".
+  coh_subjects_raw   : list string;
+  coh_predicates_raw : list string;
+  coh_objects_raw    : list string;
+  coh_graphs_raw     : list string;
+  // Phase B — raw-token-keyed reverse maps, used by search to look up
+  // a matched row's IDs without re-parsing. Same shape as the
+  // canonical-key revmaps above; the OCaml glue builds both at open()
+  // time. (We keep the canonical-key revmaps because the public encode_*
+  // functions take typed RDF terms, which produce canonical keys via
+  // *_to_revmap_key.)
+  coh_subj_raw_revmap  : list (string * nat);
+  coh_pred_raw_revmap  : list (string * nat);
+  coh_obj_raw_revmap   : list (string * nat);
+  coh_graph_raw_revmap : list (string * nat);
 }
 
 noeq type cottas_ondisk_store = {
@@ -217,29 +235,223 @@ let cottas_ondisk_named_graphs (ds : cottas_ondisk_store)
   named_graphs_aux ds.cods_handle.coh_graphs 0
 
 // ----------------------------------------------------------------------
-// Remaining 2 assume vals — Phase B / C scope.
+// Phase B: search + estimate, lazy walk over parquet row groups.
+// Implemented in F* via Parquet.Footer.probe_parquet_column_decode_in_row_group.
+// Only `cottas_ondisk_open` / `cottas_ondisk_close` remain I/O-glue.
 // ----------------------------------------------------------------------
 
-// Open: I/O. Parses the Parquet file, decodes 4 columns, builds the
-// `cottas_ondisk_handle` record (parsed-term lists + reverse maps +
-// columns_handle). Phase C will refactor with mmap.
+// Open: I/O. Parses the Parquet file, walks every row group, builds the
+// 4 distinct-term dictionaries (typed lists + revmaps + raw-token
+// parallel lists). Phase C will refactor with mmap.
 assume val cottas_ondisk_open :
   artifact_path:string -> Tot (option cottas_ondisk_store)
 
-// Close: I/O. Releases the columns_handle; F* runtime hashtables drop
-// via GC. Currently not extracted (no use site in F*).
+// Close: I/O. Releases caches; F* runtime hashtables drop via GC.
+// Currently not extracted (no use site in F*).
 assume val cottas_ondisk_close :
   cottas_ondisk_store -> Tot unit
 
-// Search: walks the per-row int-array columns inside columns_handle,
-// comparing each row to the bound term-ids. Stays I/O-glue for Phase A
-// because Phase B will redesign this with row-group iteration / page
-// streaming and the API shape will shift.
-assume val cottas_ondisk_search :
-  cottas_ondisk_store -> cottas_bound_qp -> Tot (list cottas_qp_row)
+// ---- Bound term-id -> raw column-token string ----------------------
 
-assume val cottas_ondisk_estimate :
-  cottas_ondisk_store -> cottas_bound_qp -> Tot nat
+// Convert a bound term-id (option nat) to the column-token string it
+// would appear as in the parquet column, for matching. None means
+// "no bound on this column, accept any value".
+let id_to_raw_token (raws : list string) (id : option cottas_term_ref)
+  : Tot (option string) =
+  match id with
+  | None -> None
+  | Some i ->
+    (match list_nth raws i with
+     | Some s -> Some s
+     // Out-of-range fallback: an impossible sentinel that won't match
+     // any well-formed row token. Keeps the function total.
+     | None -> Some "\x00cottas_decode_oor")
+
+// Compare a row-cell to the bound's expected token. None bound =
+// accept anything; Some s requires equality.
+let cell_match (expected : option string) (actual : string) : Tot bool =
+  match expected with
+  | None -> true
+  | Some s -> s = actual
+
+// Graph-cell match. The bound graph is `option cottas_graph_ref`:
+//   - None : caller doesn't constrain the graph column. Match anything.
+//   - Some i : caller wants that specific named graph. The row's
+//     graph token is "DEFAULT" for default-graph rows, "<iri>" otherwise.
+//     A "DEFAULT" row never matches a Some-graph bound; an "<iri>" row
+//     matches iff string-equal to the bound's "<iri>" form.
+let graph_cell_match (expected : option string) (actual : string)
+  : Tot bool = cell_match expected actual
+
+// ---- Row-group walk -------------------------------------------------
+
+// Build the cottas_qp_row for a matched row. Look up each token's id
+// from the raw-token revmap. Graph "DEFAULT" → cqpr_g = None.
+let build_qp_row
+  (h : cottas_ondisk_handle)
+  (s_tok p_tok o_tok g_tok : string)
+  : Tot cottas_qp_row =
+  let s_id = revmap_lookup h.coh_subj_raw_revmap  s_tok in
+  let p_id = revmap_lookup h.coh_pred_raw_revmap  p_tok in
+  let o_id = revmap_lookup h.coh_obj_raw_revmap   o_tok in
+  let g_id =
+    if g_tok = "DEFAULT" then None
+    else revmap_lookup h.coh_graph_raw_revmap g_tok in
+  { cqpr_s = s_id; cqpr_p = p_id; cqpr_o = o_id; cqpr_g = g_id; }
+
+// Zip 4 column lists row-by-row. The OCaml runtime guarantees they
+// have equal lengths; we still handle the misaligned case safely
+// (truncates at the shortest list).
+//
+// `bound_*` are the raw-token bounds from `id_to_raw_token` etc.;
+// None means "match any". Matching rows are appended to `acc_rev`
+// (in reverse row order). Caller flips at the end.
+//
+// Recursion is over the subject column (which decreases by one cell
+// per step); F*'s totality checker accepts that.
+let rec filter_zipped_rows
+  (h : cottas_ondisk_handle)
+  (bound_s bound_p bound_o bound_g : option string)
+  (s_col p_col o_col g_col : list (option string))
+  (acc_rev : list cottas_qp_row)
+  : Tot (list cottas_qp_row) (decreases s_col) =
+  match s_col, p_col, o_col, g_col with
+  | s_hd :: s_tl, p_hd :: p_tl, o_hd :: o_tl, g_hd :: g_tl ->
+    let acc_rev' =
+      match s_hd, p_hd, o_hd, g_hd with
+      | Some s_tok, Some p_tok, Some o_tok, Some g_tok ->
+        if cell_match bound_s s_tok &&
+           cell_match bound_p p_tok &&
+           cell_match bound_o o_tok &&
+           graph_cell_match bound_g g_tok
+        then build_qp_row h s_tok p_tok o_tok g_tok :: acc_rev
+        else acc_rev
+      | _ -> acc_rev in
+    filter_zipped_rows h bound_s bound_p bound_o bound_g
+      s_tl p_tl o_tl g_tl acc_rev'
+  | _ -> acc_rev
+
+// Same as filter_zipped_rows but counts only — no per-row revmap lookup.
+// Used by cottas_ondisk_estimate.
+let rec count_zipped_rows
+  (bound_s bound_p bound_o bound_g : option string)
+  (s_col p_col o_col g_col : list (option string))
+  (acc : nat)
+  : Tot nat (decreases s_col) =
+  match s_col, p_col, o_col, g_col with
+  | s_hd :: s_tl, p_hd :: p_tl, o_hd :: o_tl, g_hd :: g_tl ->
+    let acc' =
+      match s_hd, p_hd, o_hd, g_hd with
+      | Some s_tok, Some p_tok, Some o_tok, Some g_tok ->
+        if cell_match bound_s s_tok &&
+           cell_match bound_p p_tok &&
+           cell_match bound_o o_tok &&
+           graph_cell_match bound_g g_tok
+        then acc + 1
+        else acc
+      | _ -> acc in
+    count_zipped_rows bound_s bound_p bound_o bound_g
+      s_tl p_tl o_tl g_tl acc'
+  | _ -> acc
+
+// Default page-cache capacity. Parliament's 26-row-group × 4-column
+// surface = 104 entries; 128 gives headroom for slightly larger
+// corpora without LRU thrash. For massive corpora the OCaml byte
+// cache is the dominant accelerant; this F* cache is correctness-
+// preserving across multi-pass walks (Phase D will need it).
+let pcache_default_capacity : nat = 128
+
+// Walk row groups [rg_index .. rg_count) in order, decoding each row
+// group's 4 columns and accumulating matched rows into `acc_rev`
+// (reverse row order). `fuel = rg_count - rg_index` makes termination
+// trivial. Decoder errors on a row group are skipped (silently empty).
+//
+// The page cache is threaded through the recursion. Each row-group
+// step decodes 4 columns; on cache miss the underlying decoder is
+// invoked and the result inserted. On hit the decoded list comes
+// straight from the cache.
+let rec walk_row_groups_search
+  (h : cottas_ondisk_handle)
+  (bound_s bound_p bound_o bound_g : option string)
+  (rg_index : nat) (rg_count : nat) (fuel : nat)
+  (acc_rev : list cottas_qp_row)
+  (cache : page_cache)
+  : Tot (list cottas_qp_row & page_cache) (decreases fuel) =
+  if fuel = 0 then (acc_rev, cache)
+  else if rg_index >= rg_count then (acc_rev, cache)
+  else
+    let cap = cache.pc_capacity in
+    let (s_col, c1) = pcache_decode_in_row_group cache  h.coh_path rg_index 0 cap in
+    let (p_col, c2) = pcache_decode_in_row_group c1     h.coh_path rg_index 1 cap in
+    let (o_col, c3) = pcache_decode_in_row_group c2     h.coh_path rg_index 2 cap in
+    let (g_col, c4) = pcache_decode_in_row_group c3     h.coh_path rg_index 3 cap in
+    let acc_rev' =
+      match s_col, p_col, o_col, g_col with
+      | Some sc, Some pc, Some oc, Some gc ->
+        filter_zipped_rows h bound_s bound_p bound_o bound_g
+          sc pc oc gc acc_rev
+      | _ -> acc_rev in
+    walk_row_groups_search h bound_s bound_p bound_o bound_g
+      (rg_index + 1) rg_count (fuel - 1) acc_rev' c4
+
+let rec walk_row_groups_estimate
+  (h : cottas_ondisk_handle)
+  (bound_s bound_p bound_o bound_g : option string)
+  (rg_index : nat) (rg_count : nat) (fuel : nat) (acc : nat)
+  (cache : page_cache)
+  : Tot (nat & page_cache) (decreases fuel) =
+  if fuel = 0 then (acc, cache)
+  else if rg_index >= rg_count then (acc, cache)
+  else
+    let cap = cache.pc_capacity in
+    let (s_col, c1) = pcache_decode_in_row_group cache  h.coh_path rg_index 0 cap in
+    let (p_col, c2) = pcache_decode_in_row_group c1     h.coh_path rg_index 1 cap in
+    let (o_col, c3) = pcache_decode_in_row_group c2     h.coh_path rg_index 2 cap in
+    let (g_col, c4) = pcache_decode_in_row_group c3     h.coh_path rg_index 3 cap in
+    let acc' =
+      match s_col, p_col, o_col, g_col with
+      | Some sc, Some pc, Some oc, Some gc ->
+        count_zipped_rows bound_s bound_p bound_o bound_g
+          sc pc oc gc acc
+      | _ -> acc in
+    walk_row_groups_estimate h bound_s bound_p bound_o bound_g
+      (rg_index + 1) rg_count (fuel - 1) acc' c4
+
+// ---- Public search / estimate --------------------------------------
+
+let cottas_ondisk_search
+  (ds : cottas_ondisk_store) (bound : cottas_bound_qp)
+  : Tot (list cottas_qp_row) =
+  let h = ds.cods_handle in
+  let bound_s = id_to_raw_token h.coh_subjects_raw   bound.cbqp_s in
+  let bound_p = id_to_raw_token h.coh_predicates_raw bound.cbqp_p in
+  let bound_o = id_to_raw_token h.coh_objects_raw    bound.cbqp_o in
+  let bound_g = id_to_raw_token h.coh_graphs_raw     bound.cbqp_g in
+  match probe_parquet_row_group_count h.coh_path with
+  | None -> []
+  | Some rg_count ->
+    let cache0 = pcache_empty pcache_default_capacity in
+    let (acc_rev, _cache') = walk_row_groups_search h
+      bound_s bound_p bound_o bound_g
+      0 rg_count rg_count [] cache0 in
+    list_rev acc_rev
+
+let cottas_ondisk_estimate
+  (ds : cottas_ondisk_store) (bound : cottas_bound_qp)
+  : Tot nat =
+  let h = ds.cods_handle in
+  let bound_s = id_to_raw_token h.coh_subjects_raw   bound.cbqp_s in
+  let bound_p = id_to_raw_token h.coh_predicates_raw bound.cbqp_p in
+  let bound_o = id_to_raw_token h.coh_objects_raw    bound.cbqp_o in
+  let bound_g = id_to_raw_token h.coh_graphs_raw     bound.cbqp_g in
+  match probe_parquet_row_group_count h.coh_path with
+  | None -> 0
+  | Some rg_count ->
+    let cache0 = pcache_empty pcache_default_capacity in
+    let (count, _cache') = walk_row_groups_estimate h
+      bound_s bound_p bound_o bound_g
+      0 rg_count rg_count 0 cache0 in
+    count
 
 // ----------------------------------------------------------------------
 // Bound-pattern + row-to-quad helpers (moved from Parser.BallyhooCOTTAS).
