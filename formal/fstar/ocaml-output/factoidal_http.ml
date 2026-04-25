@@ -541,7 +541,7 @@ let load_dataset cfg =
    triples. *)
 type cottas_ondisk_loaded = {
   cod_path : string;
-  cod_store : Parser_BallyhooCOTTAS.cottas_ondisk_store;
+  cod_store : RDF_CottasStore.cottas_ondisk_store;
 }
 
 (* Open all --data-cottas files as on-disk stores. Errors from individual
@@ -550,7 +550,7 @@ type cottas_ondisk_loaded = {
 let open_cottas_ondisk_files (paths : string list) : cottas_ondisk_loaded list =
   List.filter_map (fun path ->
     try
-      match Parser_BallyhooCOTTAS.cottas_ondisk_open path with
+      match RDF_CottasStore.cottas_ondisk_open path with
       | FStar_Pervasives_Native.Some store ->
         Some { cod_path = path; cod_store = store }
       | FStar_Pervasives_Native.None ->
@@ -2270,7 +2270,7 @@ let run_server cfg =
            List.map (fun (g : (RDF_Graph_Executable.iri *
                               Parser_BallyhooCOTTAS.cottas_graph_ref)) ->
              let (iri, _) = g in iri)
-             (Parser_BallyhooCOTTAS.cottas_ondisk_named_graphs s.cod_store))
+             (RDF_CottasStore.cottas_ondisk_named_graphs s.cod_store))
            opened
        in
        snapshot_iris_ref :=

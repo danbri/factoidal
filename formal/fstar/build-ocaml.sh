@@ -112,7 +112,8 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   #   Parser.*              -> RDF.Graph.Executable (combinators, individual formats)
   #   Parser.Ballyhoo*      -> RDF.Graph.Executable (+ Parquet.Footer for COTTAS)
   #   SPARQL11.Parser       -> SPARQL11.Algebra
-  #   SPARQL11.Store        -> SPARQL11.Algebra, Parser.BallyhooHDT, Parser.BallyhooCOTTAS
+  #   RDF.CottasStore       -> RDF.Graph.Executable, Parser.BallyhooCOTTAS (issue #100 Phase A)
+  #   SPARQL11.Store        -> SPARQL11.Algebra, Parser.BallyhooHDT, Parser.BallyhooCOTTAS, RDF.CottasStore
   #   SPARQL.Protocol       -> SPARQL11.Algebra, Parser.CSVResults, Parser.JSONResults
   for fst in RDF.Graph.Executable.fst Parquet.Footer.fst \
              RDF.Canonical.fst \
@@ -128,6 +129,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              Parser.Ballyhoo.fst Parser.BallyhooBloom.fst \
              Parser.BallyhooHDT.fst Parser.BallyhooHDTQ.fst \
              Parser.BallyhooCOTTAS.fst \
+             RDF.CottasStore.fst \
              SPARQL11.Store.fst \
              SPARQL.Protocol.fst \
              SPARQL.HTTP.fst \
@@ -187,6 +189,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
     Parser_Ballyhoo.ml Parser_BallyhooBloom.ml \
     Parser_BallyhooHDT.ml Parser_BallyhooHDTQ.ml Parser_BallyhooCOTTAS.ml \
+    RDF_CottasStore.ml \
     fstar_pure_hashes.ml \
     RDF_Canonical.ml \
     SPARQL11_Algebra.ml OWL_QueryRewrite.ml OWL_QueryEval.ml SPARQL11_Parser.ml SPARQL11_Store.ml SPARQL_Protocol.ml \
@@ -420,6 +423,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
     Parser_Ballyhoo.ml Parser_BallyhooBloom.ml Parser_BallyhooCOTTAS.ml
+    RDF_CottasStore.ml
     fstar_pure_hashes.ml
     SPARQL11_Algebra.ml OWL_QueryRewrite.ml OWL_QueryEval.ml SPARQL11_Parser.ml SPARQL_Protocol.ml
     SPARQL_HTTP.ml SPARQL_HTTP_Client.ml SPARQL_ServiceDescription.ml SPARQL_GraphStore.ml

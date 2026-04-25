@@ -4,6 +4,7 @@ open RDF.Graph.Executable
 open SPARQL11.Algebra
 open Parser.BallyhooHDT
 open Parser.BallyhooCOTTAS
+open RDF.CottasStore
 
 // Backend-neutral store layer for SPARQL evaluation.
 // The algebra remains the semantic source of truth; this module only dispatches

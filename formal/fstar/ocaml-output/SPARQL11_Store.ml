@@ -5,7 +5,7 @@ type graph_backend =
   | GB_HDT of Parser_BallyhooHDT.hdt_graph_store 
   | GB_COTTAS of Parser_BallyhooCOTTAS.cottas_dataset_store *
   RDF_Graph_Executable.iri FStar_Pervasives_Native.option 
-  | GB_CottasOnDisk of Parser_BallyhooCOTTAS.cottas_ondisk_store *
+  | GB_CottasOnDisk of RDF_CottasStore.cottas_ondisk_store *
   RDF_Graph_Executable.iri FStar_Pervasives_Native.option 
   | GB_Union of graph_backend Prims.list 
 let uu___is_GB_List (projectee : graph_backend) : Prims.bool=
@@ -32,7 +32,7 @@ let __proj__GB_COTTAS__item___1 (projectee : graph_backend) :
 let uu___is_GB_CottasOnDisk (projectee : graph_backend) : Prims.bool=
   match projectee with | GB_CottasOnDisk (_0, _1) -> true | uu___ -> false
 let __proj__GB_CottasOnDisk__item___0 (projectee : graph_backend) :
-  Parser_BallyhooCOTTAS.cottas_ondisk_store=
+  RDF_CottasStore.cottas_ondisk_store=
   match projectee with | GB_CottasOnDisk (_0, _1) -> _0
 let __proj__GB_CottasOnDisk__item___1 (projectee : graph_backend) :
   RDF_Graph_Executable.iri FStar_Pervasives_Native.option=
@@ -91,7 +91,7 @@ let indexed_dataset_backend (ds : RDF_Graph_Executable.rdf_dataset) :
             }) ds.RDF_Graph_Executable.ds_named)
   }
 let cottas_ondisk_dataset_backend
-  (cods : Parser_BallyhooCOTTAS.cottas_ondisk_store) : dataset_backend=
+  (cods : RDF_CottasStore.cottas_ondisk_store) : dataset_backend=
   {
     dsb_default = (GB_CottasOnDisk (cods, FStar_Pervasives_Native.None));
     dsb_named =
@@ -105,7 +105,7 @@ let cottas_ondisk_dataset_backend
                   ngb_graph =
                     (GB_CottasOnDisk
                        (cods, (FStar_Pervasives_Native.Some gname)))
-                }) (Parser_BallyhooCOTTAS.cottas_ondisk_named_graphs cods))
+                }) (RDF_CottasStore.cottas_ondisk_named_graphs cods))
   }
 let rec union_backend_search (members : graph_backend Prims.list)
   (b : SPARQL11_Algebra.triple_pattern_bound) :
@@ -134,15 +134,15 @@ and backend_search (gb : graph_backend)
       FStar_List_Tot_Base.map FStar_Pervasives_Native.fst
         (Parser_BallyhooCOTTAS.cottas_rows_to_quads cds rows)
   | GB_CottasOnDisk (cods, graph_name) ->
-      (match Parser_BallyhooCOTTAS.cottas_ondisk_build_bound_qp_opt cods
+      (match RDF_CottasStore.cottas_ondisk_build_bound_qp_opt cods
                b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
                b.SPARQL11_Algebra.bo graph_name
        with
        | FStar_Pervasives_Native.None -> []
        | FStar_Pervasives_Native.Some bound ->
-           let rows = Parser_BallyhooCOTTAS.cottas_ondisk_search cods bound in
+           let rows = RDF_CottasStore.cottas_ondisk_search cods bound in
            FStar_List_Tot_Base.map FStar_Pervasives_Native.fst
-             (Parser_BallyhooCOTTAS.cottas_ondisk_rows_to_quads cods rows))
+             (RDF_CottasStore.cottas_ondisk_rows_to_quads cods rows))
   | GB_Union members -> union_backend_search members b
 let rec union_backend_estimate (members : graph_backend Prims.list)
   (b : SPARQL11_Algebra.triple_pattern_bound) : Prims.nat=
@@ -166,13 +166,13 @@ and backend_estimate (gb : graph_backend)
            b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp b.SPARQL11_Algebra.bo
            graph_name)
   | GB_CottasOnDisk (cods, graph_name) ->
-      (match Parser_BallyhooCOTTAS.cottas_ondisk_build_bound_qp_opt cods
+      (match RDF_CottasStore.cottas_ondisk_build_bound_qp_opt cods
                b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
                b.SPARQL11_Algebra.bo graph_name
        with
        | FStar_Pervasives_Native.None -> Prims.int_zero
        | FStar_Pervasives_Native.Some bound ->
-           Parser_BallyhooCOTTAS.cottas_ondisk_estimate cods bound)
+           RDF_CottasStore.cottas_ondisk_estimate cods bound)
   | GB_Union members -> union_backend_estimate members b
 let rec union_backend_predicate_present (members : graph_backend Prims.list)
   (pred : RDF_Graph_Executable.wf_iri) : Prims.bool=
@@ -211,7 +211,7 @@ and backend_predicate_present (gb : graph_backend)
          })
         > Prims.int_zero
   | GB_CottasOnDisk (cods, uu___) ->
-      Parser_BallyhooCOTTAS.cottas_ondisk_predicate_present cods pred
+      RDF_CottasStore.cottas_ondisk_predicate_present cods pred
   | GB_Union members -> union_backend_predicate_present members pred
 let rec lookup_named_backend (name : RDF_Graph_Executable.iri)
   (named : named_graph_backend Prims.list) :

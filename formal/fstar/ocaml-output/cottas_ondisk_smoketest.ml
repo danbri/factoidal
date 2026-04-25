@@ -21,7 +21,8 @@
  * F*+OCaml glue is correct and gives a memory baseline.
  *)
 
-open Parser_BallyhooCOTTAS
+open Parser_BallyhooCOTTAS  (* cottas_bound_qp + cbqp_* still live here *)
+open RDF_CottasStore        (* cottas_ondisk_* lifted to F* in issue #100 Phase A *)
 
 let read_rss_mb () : float =
   (* macOS / Linux: parse 'ps -o rss= -p <pid>' (kilobytes on both). *)

@@ -229,33 +229,33 @@ Test base: ../../third_party/testing/w3c/sparql/sparql11
   PASS: D-Entailment test to show that  neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers
   PASS: Literal with language tag test
   PASS: bnodes are not existentials (12ms)
-  PASS: bnodes are not existentials with answer (15ms)
-  PASS: paper-sparqldl-Q1 (30ms)
+  PASS: bnodes are not existentials with answer (16ms)
+  PASS: paper-sparqldl-Q1 (31ms)
   PASS: paper-sparqldl-Q1-rdfs
-  PASS: paper-sparqldl-Q2 (63ms)
-  PASS: paper-sparqldl-Q3 (70ms)
-  PASS: paper-sparqldl-Q4 (30ms)
-  PASS: paper-sparqldl-Q5 (30ms)
-  PASS: filtered subclass query with (hasChild some Thing) restriction (139ms)
-  PASS: parent query with distinguished variable (54ms)
-  PASS: parent query with (hasChild some Thing) restriction (137ms)
-  PASS: parent query with (hasChild min 1) restriction (138ms)
-  PASS: parent query with (hasChild some Female) restriction (139ms)
-  PASS: parent query with (hasChild min 1 Female) restriction (138ms)
-  FAIL: parent query with (hasChild max 1 Female) restriction — Results mismatch: expected 1 rows, got 311 (139ms)
-  PASS: parent query with (hasChild exactly 1 Female) restriction (139ms)
-  PASS: subclass query with (hasChild some Thing) restriction (138ms)
+  PASS: paper-sparqldl-Q2 (66ms)
+  PASS: paper-sparqldl-Q3 (73ms)
+  PASS: paper-sparqldl-Q4 (32ms)
+  PASS: paper-sparqldl-Q5 (32ms)
+  PASS: filtered subclass query with (hasChild some Thing) restriction (143ms)
+  PASS: parent query with distinguished variable (56ms)
+  PASS: parent query with (hasChild some Thing) restriction (143ms)
+  PASS: parent query with (hasChild min 1) restriction (144ms)
+  PASS: parent query with (hasChild some Female) restriction (142ms)
+  PASS: parent query with (hasChild min 1 Female) restriction (144ms)
+  FAIL: parent query with (hasChild max 1 Female) restriction — Results mismatch: expected 1 rows, got 311 (144ms)
+  PASS: parent query with (hasChild exactly 1 Female) restriction (144ms)
+  PASS: subclass query with (hasChild some Thing) restriction (143ms)
   PASS: Plain literals with language tag are not the same as the same literal without
   PASS: RDF inference test
   PASS: RDF inference test
   PASS: RDF test for blank node cardinalities
-  PASS: simple triple pattern match (12ms)
+  PASS: simple triple pattern match (13ms)
   PASS: RDFS inference test rdfs:subPropertyOf (13ms)
   PASS: RDFS inference test rdfs:subPropertyOf (13ms)
   PASS: RDFS inference test combining subPropertyOf and domain
   PASS: RDFS inference test subClassOf
   PASS: RDFS inference test subClassOf (13ms)
-  PASS: RDFS inference test domain (12ms)
+  PASS: RDFS inference test domain (13ms)
   PASS: RDFS inference test range (15ms)
   PASS: RDFS inference test rdf:XMLLiteral subclass of rdfs:Literal
   PASS: RDFS inference test transitivity of subClassOf (11ms)
@@ -267,28 +267,28 @@ Test base: ../../third_party/testing/w3c/sparql/sparql11
   skip: RIF Core WG tests: Frames — RIF not implemented
   skip: RIF Core WG tests: Modeling Brain Anatomy — RIF not implemented
   skip: RIF Core WG tests: RDF Combination Blank Node — RIF not implemented
-  PASS: simple 1 (45ms)
-  PASS: simple 2 (45ms)
-  PASS: simple 3 (45ms)
-  PASS: simple 4 (49ms)
-  PASS: simple 5 (51ms)
-  PASS: simple 6 (87ms)
-  PASS: simple 7 (50ms)
-  PASS: simple 8 (46ms)
+  PASS: simple 1 (47ms)
+  PASS: simple 2 (47ms)
+  PASS: simple 3 (47ms)
+  PASS: simple 4 (51ms)
+  PASS: simple 5 (52ms)
+  PASS: simple 6 (91ms)
+  PASS: simple 7 (53ms)
+  PASS: simple 8 (48ms)
   PASS: sparqldl-01.rq: triple pattern
   PASS: sparqldl-02.rq: simple combined query
-  PASS: sparqldl-03.rq: combined query with complex class description (17ms)
+  PASS: sparqldl-03.rq: combined query with complex class description (18ms)
   PASS: sparqldl-04.rq: bug fixing test (11ms)
   PASS: sparqldl-05.rq: simple undistinguished variable test.
   PASS: sparqldl-06.rq: cycle of undistinguished variables (19ms)
-  PASS: sparqldl-07.rq: two distinguished variables + undist. (22ms)
+  PASS: sparqldl-07.rq: two distinguished variables + undist. (23ms)
   PASS: sparqldl-08.rq: two distinguished variables + undist. (23ms)
-  PASS: sparqldl-09.rq: undist vars test (16ms)
-  PASS: sparqldl-10.rq: undist vars test (15ms)
-  PASS: sparqldl-11.rq: domain test (39ms)
-  PASS: sparqldl-12.rq: range test (39ms)
-  PASS: sparqldl-13.rq: sameAs (16ms)
-  [suite time: 2.3s]
+  PASS: sparqldl-09.rq: undist vars test (17ms)
+  PASS: sparqldl-10.rq: undist vars test (16ms)
+  PASS: sparqldl-11.rq: domain test (41ms)
+  PASS: sparqldl-12.rq: range test (40ms)
+  PASS: sparqldl-13.rq: sameAs (17ms)
+  [suite time: 2.4s]
 
 --- exists ---
   PASS: Exists with one constant
@@ -375,7 +375,7 @@ Test base: ../../third_party/testing/w3c/sparql/sparql11
   PASS: UUID() pattern match
   PASS: UUID() per binding
   PASS: STRUUID() pattern match
-  [suite time: 0.0s]
+  [suite time: 0.1s]
 
 --- grouping ---
   PASS: Group-1
@@ -716,8 +716,8 @@ Test base: ../../third_party/testing/w3c/sparql/sparql11
   [suite time: 0.0s]
 
 --- syntax-update-2 ---
-  PASS: syntax-update-other-01 (1.3s)
-  [suite time: 1.3s]
+  PASS: syntax-update-other-01 (1.4s)
+  [suite time: 1.4s]
 
 --- update-silent ---
   PASS: LOAD SILENT
@@ -1342,7 +1342,7 @@ Test base: ../../third_party/testing/w3c/rdf/rdf11
   PASS: IRI-resolution-02
   PASS: IRI-resolution-07
   PASS: IRI-resolution-08
-  [suite time: 0.1s]
+  [suite time: 0.2s]
 
 --- rdf-turtle ---
   PASS: IRI_subject
