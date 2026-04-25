@@ -212,6 +212,8 @@ let rec pattern_predicate_hint (p : SPARQL11_Algebra.group_graph_pattern) :
       FStar_Pervasives_Native.None
   | SPARQL11_Algebra.GP_Service (uu___, uu___1, uu___2) ->
       FStar_Pervasives_Native.None
+  | SPARQL11_Algebra.GP_ServiceVar (uu___, uu___1, uu___2) ->
+      FStar_Pervasives_Native.None
   | SPARQL11_Algebra.GP_SubSelect uu___ -> FStar_Pervasives_Native.None
   | SPARQL11_Algebra.GP_PropertyPath (uu___, uu___1, uu___2) ->
       FStar_Pervasives_Native.None
@@ -305,6 +307,7 @@ let rec eval_pattern_backend (p : SPARQL11_Algebra.group_graph_pattern)
                 else ng_results) candidates
        | uu___ -> eval_pattern_backend p' gb dsb)
   | SPARQL11_Algebra.GP_Service (uu___, uu___1, uu___2) -> []
+  | SPARQL11_Algebra.GP_ServiceVar (uu___, uu___1, uu___2) -> []
   | SPARQL11_Algebra.GP_SubSelect q ->
       (match eval_select_query_backend_on_graph q gb dsb with
        | FStar_Pervasives_Native.Some omega -> omega

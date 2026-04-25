@@ -359,29 +359,67 @@ let split_path_qs (url_path : Prims.string) : (Prims.string * Prims.string)=
 let content_type_base (ct : Prims.string) : Prims.string=
   match split_once_on ct (FStar_Char.char_of_int (Prims.of_int (0x3B))) with
   | (base, uu___) -> ascii_lower_string (trim_ws base)
+let extract_charset_param (ct : Prims.string) :
+  Prims.string FStar_Pervasives_Native.option=
+  match split_once_on ct (FStar_Char.char_of_int (Prims.of_int (0x3B))) with
+  | (uu___, FStar_Pervasives_Native.None) -> FStar_Pervasives_Native.None
+  | (uu___, FStar_Pervasives_Native.Some params) ->
+      let param_list =
+        split_all_on params (FStar_Char.char_of_int (Prims.of_int (0x3B))) in
+      (match FStar_List_Tot_Base.tryFind
+               (fun p ->
+                  let lo = ascii_lower_string (trim_ws p) in
+                  ((FStar_String.strlen lo) >= (Prims.of_int (8))) &&
+                    ((FStar_String.sub lo Prims.int_zero (Prims.of_int (8)))
+                       = "charset=")) param_list
+       with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some p ->
+           let lo = ascii_lower_string (trim_ws p) in
+           if (FStar_String.strlen lo) >= (Prims.of_int (8))
+           then
+             FStar_Pervasives_Native.Some
+               (trim_ws
+                  (FStar_String.sub lo (Prims.of_int (8))
+                     ((FStar_String.strlen lo) - (Prims.of_int (8)))))
+           else FStar_Pervasives_Native.None)
+let charset_is_utf8_or_absent (ct : Prims.string) : Prims.bool=
+  match extract_charset_param ct with
+  | FStar_Pervasives_Native.None -> true
+  | FStar_Pervasives_Native.Some v -> (v = "utf-8") || (v = "utf8")
 let build_from_kvs (is_update_path : Prims.bool)
   (kvs : (Prims.string * Prims.string) Prims.list) : sparql_request=
-  let q_opt = first_value "query" kvs in
-  let u_opt = first_value "update" kvs in
-  let dflt = collect_values "default-graph-uri" kvs in
-  let named = collect_values "named-graph-uri" kvs in
-  if is_update_path
-  then
-    match u_opt with
-    | FStar_Pervasives_Native.Some u -> PR_Update (u, dflt, named)
-    | FStar_Pervasives_Native.None ->
-        (match q_opt with
-         | FStar_Pervasives_Native.Some uu___ ->
-             PR_Bad "expected update= on /update endpoint, got query="
-         | FStar_Pervasives_Native.None -> PR_Bad "missing update parameter")
+  let qs_all = collect_values "query" kvs in
+  let us_all = collect_values "update" kvs in
+  if (FStar_List_Tot_Base.length qs_all) > Prims.int_one
+  then PR_Bad "more than one query= parameter (Protocol 2.1.4)"
   else
-    (match q_opt with
-     | FStar_Pervasives_Native.Some q -> PR_Query (q, dflt, named)
-     | FStar_Pervasives_Native.None ->
-         (match u_opt with
-          | FStar_Pervasives_Native.Some uu___1 ->
-              PR_Bad "expected query= on /query endpoint, got update="
-          | FStar_Pervasives_Native.None -> PR_Bad "missing query parameter"))
+    if (FStar_List_Tot_Base.length us_all) > Prims.int_one
+    then PR_Bad "more than one update= parameter (Protocol 2.2.4)"
+    else
+      (let q_opt = first_value "query" kvs in
+       let u_opt = first_value "update" kvs in
+       let dflt = collect_values "default-graph-uri" kvs in
+       let named = collect_values "named-graph-uri" kvs in
+       if is_update_path
+       then
+         match u_opt with
+         | FStar_Pervasives_Native.Some u -> PR_Update (u, dflt, named)
+         | FStar_Pervasives_Native.None ->
+             (match q_opt with
+              | FStar_Pervasives_Native.Some uu___2 ->
+                  PR_Bad "expected update= on /update endpoint, got query="
+              | FStar_Pervasives_Native.None ->
+                  PR_Bad "missing update parameter")
+       else
+         (match q_opt with
+          | FStar_Pervasives_Native.Some q -> PR_Query (q, dflt, named)
+          | FStar_Pervasives_Native.None ->
+              (match u_opt with
+               | FStar_Pervasives_Native.Some uu___3 ->
+                   PR_Bad "expected query= on /query endpoint, got update="
+               | FStar_Pervasives_Native.None ->
+                   PR_Bad "missing query parameter")))
 let decode_request (http_method : Prims.string) (url_path : Prims.string)
   (url_query : Prims.string) (content_type : Prims.string)
   (body : Prims.string) : sparql_request=
@@ -402,20 +440,23 @@ let decode_request (http_method : Prims.string) (url_path : Prims.string)
         if method_upper = "post"
         then
           (let ct = content_type_base content_type in
-           if ct = "application/sparql-query"
-           then PR_Query (body, [], [])
+           if Prims.op_Negation (charset_is_utf8_or_absent content_type)
+           then PR_Bad "non-UTF-8 charset rejected per Protocol 2.1.6"
            else
-             if ct = "application/sparql-update"
-             then PR_Update (body, [], [])
+             if ct = "application/sparql-query"
+             then PR_Query (body, [], [])
              else
-               if ct = "application/x-www-form-urlencoded"
-               then
-                 (let kvs = parse_query_string body in
-                  build_from_kvs is_update kvs)
+               if ct = "application/sparql-update"
+               then PR_Update (body, [], [])
                else
-                 if (FStar_String.strlen ct) = Prims.int_zero
-                 then PR_Bad "POST request missing Content-Type"
-                 else PR_Bad (Prims.strcat "unsupported Content-Type: " ct))
+                 if ct = "application/x-www-form-urlencoded"
+                 then
+                   (let kvs = parse_query_string body in
+                    build_from_kvs is_update kvs)
+                 else
+                   if (FStar_String.strlen ct) = Prims.int_zero
+                   then PR_Bad "POST request missing Content-Type"
+                   else PR_Bad (Prims.strcat "unsupported Content-Type: " ct))
         else
           if (method_upper = "head") || (method_upper = "options")
           then

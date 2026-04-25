@@ -1658,6 +1658,39 @@ let owl_rule_xsd_datatype_axioms (g : rdf_graph) : rdf_graph=
          (fun i -> { s = (S_IRI i); p = rdf_type; o = (T_IRI rdfs_Datatype) })
          xsd_all_datatypes in
      add_triples_if_new (add_triples_if_new g sub_triples) dt_triples)
+let owl_rule_scm_dom2 (g : rdf_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if t.p = rdfs_domain
+       then
+         match t.o with
+         | T_IRI c1_iri ->
+             let supers = find_objects g (S_IRI c1_iri) rdfs_subClassOf in
+             FStar_List_Tot_Base.fold_left
+               (fun acc2 c2_term ->
+                  let new_t = { s = (t.s); p = rdfs_domain; o = c2_term } in
+                  add_triple_if_new acc2 new_t) acc supers
+         | uu___ -> acc
+       else acc) g g
+let owl_rule_scm_rng2 (g : rdf_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if t.p = rdfs_range
+       then
+         match t.o with
+         | T_IRI c1_iri ->
+             let supers = find_objects g (S_IRI c1_iri) rdfs_subClassOf in
+             FStar_List_Tot_Base.fold_left
+               (fun acc2 c2_term ->
+                  let new_t = { s = (t.s); p = rdfs_range; o = c2_term } in
+                  add_triple_if_new acc2 new_t) acc supers
+         | uu___ -> acc
+       else acc) g g
+let owl_xsd_core_datatype_axioms : triple Prims.list=
+  [{ s = (S_IRI xsd_integer); p = rdf_type; o = (T_IRI rdfs_Datatype) };
+  { s = (S_IRI xsd_string); p = rdf_type; o = (T_IRI rdfs_Datatype) }]
+let owl_rule_xsd_core_datatype_axioms (g : rdf_graph) : rdf_graph=
+  add_triples_if_new g owl_xsd_core_datatype_axioms
 let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
   let g1 = owl_rule_equivalent_class g in
   let g2 = owl_rule_equivalent_property g1 in
@@ -1687,7 +1720,9 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
   let g22 = owl_rule_property_chain_2 g21 in
   let g23 = owl_rule_chain_to_transitive g22 in
   let g24 = owl_rule_named_sameAs_to_equivClass g23 in
-  let g25 = owl_rule_xsd_datatype_axioms g24 in g25
+  let g25 = owl_rule_xsd_datatype_axioms g24 in
+  let g26 = owl_rule_xsd_core_datatype_axioms g25 in
+  let g27 = owl_rule_scm_dom2 g26 in let g28 = owl_rule_scm_rng2 g27 in g28
 let rec owl_rl_closure (g : rdf_graph) (fuel : Prims.nat) : rdf_graph=
   match fuel with
   | uu___ when uu___ = Prims.int_zero -> g

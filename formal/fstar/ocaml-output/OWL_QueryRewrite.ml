@@ -1079,6 +1079,8 @@ let rec normalise_joins (g : SPARQL11_Algebra.group_graph_pattern) :
       SPARQL11_Algebra.GP_Values (vs, rs)
   | SPARQL11_Algebra.GP_Service (i, a, s) ->
       SPARQL11_Algebra.GP_Service (i, (normalise_joins a), s)
+  | SPARQL11_Algebra.GP_ServiceVar (v, a, s) ->
+      SPARQL11_Algebra.GP_ServiceVar (v, (normalise_joins a), s)
   | SPARQL11_Algebra.GP_SubSelect q -> SPARQL11_Algebra.GP_SubSelect q
   | SPARQL11_Algebra.GP_PropertyPath (s, pp, o) ->
       SPARQL11_Algebra.GP_PropertyPath (s, pp, o)
@@ -1105,6 +1107,8 @@ let rec rewrite_ggp (g : SPARQL11_Algebra.group_graph_pattern) :
       SPARQL11_Algebra.GP_Values (vs, rs)
   | SPARQL11_Algebra.GP_Service (i, a, s) ->
       SPARQL11_Algebra.GP_Service (i, (rewrite_ggp a), s)
+  | SPARQL11_Algebra.GP_ServiceVar (v, a, s) ->
+      SPARQL11_Algebra.GP_ServiceVar (v, (rewrite_ggp a), s)
   | SPARQL11_Algebra.GP_SubSelect q -> SPARQL11_Algebra.GP_SubSelect q
   | SPARQL11_Algebra.GP_PropertyPath (s, pp, o) ->
       SPARQL11_Algebra.GP_PropertyPath (s, pp, o)
@@ -1142,6 +1146,7 @@ let rec ggp_has_ce_marker (g : SPARQL11_Algebra.group_graph_pattern) :
   | SPARQL11_Algebra.GP_Bind (uu___, uu___1, a) -> ggp_has_ce_marker a
   | SPARQL11_Algebra.GP_Values (uu___, uu___1) -> false
   | SPARQL11_Algebra.GP_Service (uu___, a, uu___1) -> ggp_has_ce_marker a
+  | SPARQL11_Algebra.GP_ServiceVar (uu___, a, uu___1) -> ggp_has_ce_marker a
   | SPARQL11_Algebra.GP_SubSelect uu___ -> false
   | SPARQL11_Algebra.GP_PropertyPath (uu___, uu___1, uu___2) -> false
   | SPARQL11_Algebra.GP_Empty -> false

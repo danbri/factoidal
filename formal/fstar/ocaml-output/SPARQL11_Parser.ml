@@ -3098,6 +3098,8 @@ and ggp_labeled_bnodes (g : SPARQL11_Algebra.group_graph_pattern) :
   | SPARQL11_Algebra.GP_Graph (uu___, g1) -> ggp_labeled_bnodes g1
   | SPARQL11_Algebra.GP_Bind (uu___, uu___1, g1) -> ggp_labeled_bnodes g1
   | SPARQL11_Algebra.GP_Service (uu___, g1, uu___1) -> ggp_labeled_bnodes g1
+  | SPARQL11_Algebra.GP_ServiceVar (uu___, g1, uu___1) ->
+      ggp_labeled_bnodes g1
   | SPARQL11_Algebra.GP_SubSelect q ->
       ggp_labeled_bnodes q.SPARQL11_Algebra.q_pattern
   | SPARQL11_Algebra.GP_Values (uu___, uu___1) -> []
@@ -3384,9 +3386,9 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
            | uu___2 -> (false, ts') in
          (match uu___1 with
           | (silent, ts'1) ->
-              (match parse_service_iri pm (fuel - Prims.int_one) ts'1 with
-               | ParseErr m -> ParseErr m
-               | ParseOk (siri, ts'') ->
+              (match parse_peek ts'1 with
+               | Tok_VAR v ->
+                   let ts'' = parse_advance ts'1 in
                    (match parse_group_graph_pattern pm (fuel - Prims.int_one)
                             ts''
                     with
@@ -3395,18 +3397,44 @@ and parse_ggp_body (pm : prefix_map) (fuel : Prims.nat)
                         let acc' =
                           match acc with
                           | SPARQL11_Algebra.GP_Empty ->
-                              SPARQL11_Algebra.GP_Service (siri, g, silent)
+                              SPARQL11_Algebra.GP_ServiceVar (v, g, silent)
                           | uu___2 ->
                               SPARQL11_Algebra.GP_Join
                                 (acc,
-                                  (SPARQL11_Algebra.GP_Service
-                                     (siri, g, silent))) in
+                                  (SPARQL11_Algebra.GP_ServiceVar
+                                     (v, g, silent))) in
                         let ts'''1 =
                           match parse_peek ts''' with
                           | Tok_DOT -> parse_advance ts'''
                           | uu___2 -> ts''' in
                         parse_ggp_body pm (fuel - Prims.int_one) acc' filters
-                          true ts'''1)))
+                          true ts'''1)
+               | uu___2 ->
+                   (match parse_service_iri pm (fuel - Prims.int_one) ts'1
+                    with
+                    | ParseErr m -> ParseErr m
+                    | ParseOk (siri, ts'') ->
+                        (match parse_group_graph_pattern pm
+                                 (fuel - Prims.int_one) ts''
+                         with
+                         | ParseErr m -> ParseErr m
+                         | ParseOk (g, ts''') ->
+                             let acc' =
+                               match acc with
+                               | SPARQL11_Algebra.GP_Empty ->
+                                   SPARQL11_Algebra.GP_Service
+                                     (siri, g, silent)
+                               | uu___3 ->
+                                   SPARQL11_Algebra.GP_Join
+                                     (acc,
+                                       (SPARQL11_Algebra.GP_Service
+                                          (siri, g, silent))) in
+                             let ts'''1 =
+                               match parse_peek ts''' with
+                               | Tok_DOT -> parse_advance ts'''
+                               | uu___3 -> ts''' in
+                             parse_ggp_body pm (fuel - Prims.int_one) acc'
+                               filters true ts'''1))))
      | Tok_FILTER ->
          let ts' = parse_advance ts in
          (match parse_filter_expr pm (fuel - Prims.int_one) ts' with
@@ -3609,7 +3637,9 @@ and parse_service_iri (pm : prefix_map) (fuel : Prims.nat)
               then ParseOk (iri, (parse_advance ts))
               else ParseErr "invalid IRI"
           | FStar_Pervasives_Native.None -> ParseErr "unresolved prefix")
-     | Tok_VAR uu___1 -> ParseErr "unsupported: variable SERVICE endpoint"
+     | Tok_VAR uu___1 ->
+         ParseErr
+           "internal: variable SERVICE endpoint reached parse_service_iri"
      | uu___1 -> ParseErr "expected IRI for SERVICE")
 and parse_data_value (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
   :
@@ -5907,6 +5937,8 @@ let rec validate_bnode_scope_pattern
   | SPARQL11_Algebra.GP_Graph (uu___, p1) -> validate_bnode_scope_pattern p1
   | SPARQL11_Algebra.GP_Service (uu___, p1, uu___1) ->
       validate_bnode_scope_pattern p1
+  | SPARQL11_Algebra.GP_ServiceVar (uu___, p1, uu___1) ->
+      validate_bnode_scope_pattern p1
   | SPARQL11_Algebra.GP_SubSelect q -> validate_bnode_scope_query q
 and validate_bnode_scope_expr (e : SPARQL11_Algebra.expr) :
   (Prims.bool * Prims.string Prims.list)=
@@ -6188,6 +6220,7 @@ let rec gp_has_var (g : SPARQL11_Algebra.group_graph_pattern) : Prims.bool=
   | SPARQL11_Algebra.GP_Bind (uu___, uu___1, inner) -> gp_has_var inner
   | SPARQL11_Algebra.GP_Values (uu___, uu___1) -> true
   | SPARQL11_Algebra.GP_Service (uu___, uu___1, uu___2) -> true
+  | SPARQL11_Algebra.GP_ServiceVar (uu___, uu___1, uu___2) -> true
   | SPARQL11_Algebra.GP_SubSelect uu___ -> true
 and bgp_has_any_var (b : SPARQL11_Algebra.bgp) : Prims.bool=
   match b with
@@ -6225,6 +6258,8 @@ let rec gp_has_bnode (g : SPARQL11_Algebra.group_graph_pattern) : Prims.bool=
   | SPARQL11_Algebra.GP_Bind (uu___, uu___1, inner) -> gp_has_bnode inner
   | SPARQL11_Algebra.GP_Values (uu___, uu___1) -> false
   | SPARQL11_Algebra.GP_Service (uu___, inner, uu___1) -> gp_has_bnode inner
+  | SPARQL11_Algebra.GP_ServiceVar (uu___, inner, uu___1) ->
+      gp_has_bnode inner
   | SPARQL11_Algebra.GP_SubSelect uu___ -> false
 and bgp_has_any_bnode (b : SPARQL11_Algebra.bgp) : Prims.bool=
   match b with
@@ -7008,6 +7043,11 @@ and sse_ggp (ggp : SPARQL11_Algebra.group_graph_pattern) : Prims.string=
         (Prims.strcat (if silent then "SILENT " else "")
            (Prims.strcat "<"
               (Prims.strcat iri (Prims.strcat ">\n  " (sse_ggp g)))))
+  | SPARQL11_Algebra.GP_ServiceVar (v, g, silent) ->
+      sse_wrap "service"
+        (Prims.strcat (if silent then "SILENT " else "")
+           (Prims.strcat "?"
+              (Prims.strcat v (Prims.strcat "\n  " (sse_ggp g)))))
   | SPARQL11_Algebra.GP_SubSelect q -> sse_query q
   | SPARQL11_Algebra.GP_PropertyPath (s, pp, o) ->
       sse_wrap "path"
