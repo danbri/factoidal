@@ -109,6 +109,39 @@ runtime = r'''module Cottas_ondisk_runtime = struct
   let handles : (string, cottas_ondisk_handle) Hashtbl.t = Hashtbl.create 17
   let fast_table_cache : (string, fast_tables) Hashtbl.t = Hashtbl.create 17
 
+  (* Pe4 instrumentation: cheap per-row-group RSS / fd / GC accounting.
+     `ps -o rss=` returns kilobytes on macOS + Linux. fd count from
+     /dev/fd. Used by the per-rg [pe4-trace] lines in search_fast and
+     estimate_fast.
+
+     Note: `int` is Prims.int (Z.t) inside this file, so all native-int
+     scalars must use the `pint` alias declared above. *)
+  let pe4_rss_mb () : pint =
+    try
+      let pid = Unix.getpid () in
+      let cmd = Printf.sprintf "ps -o rss= -p %d 2>/dev/null" pid in
+      let ic = Unix.open_process_in cmd in
+      let line = try input_line ic with End_of_file -> "" in
+      let _ = Unix.close_process_in ic in
+      let s = String.trim line in
+      if String.length s = 0 then (-1)
+      else (try (int_of_string s) / 1024 with _ -> (-1))
+    with _ -> (-1)
+
+  let pe4_fd_count () : pint =
+    let candidates = ["/dev/fd"; "/proc/self/fd"] in
+    let rec try_all = function
+      | [] -> (-1)
+      | d :: rest ->
+        (try Array.length (Sys.readdir d) with _ -> try_all rest)
+    in try_all candidates
+
+  let pe4_gc_mb () : pint =
+    let s = Gc.quick_stat () in
+    let words = s.Gc.heap_words in
+    (* OCaml word = 8 bytes on 64-bit *)
+    (words * 8) / (1024 * 1024)
+
   (* ---- Token parsing helpers. Convert an N-Triples-style raw column
          token (like "<iri>" / "_:b" / "\"lit\"^^<dt>" / "\"lit\"@en")
          to the matching F* RDF type. ---- *)
@@ -483,6 +516,8 @@ runtime = r'''module Cottas_ondisk_runtime = struct
       | FStar_Pervasives_Native.None -> 0
       | FStar_Pervasives_Native.Some n -> Z.to_int n in
     Printf.eprintf "[qof3-trace] search_fast: rg_count=%d\n%!" rg_count;
+    Printf.eprintf "[pe4-trace] search_fast pre-walk rss=%dMB heap=%dMB fd=%d\n%!"
+      (pe4_rss_mb ()) (pe4_gc_mb ()) (pe4_fd_count ());
     let acc = ref [] in
     let n_matches = ref 0 in
     let arr_of_col col_opt =
@@ -492,16 +527,34 @@ runtime = r'''module Cottas_ondisk_runtime = struct
     let cell_of = function
       | FStar_Pervasives_Native.Some s -> s
       | FStar_Pervasives_Native.None -> "" in
-    for rg = 0 to rg_count - 1 do
-      let s_arr = arr_of_col (Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int rg) Z.zero) in
-      let p_arr = arr_of_col (Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int rg) Z.one) in
-      let o_arr = arr_of_col (Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int rg) (Z.of_int 2)) in
-      let g_arr = arr_of_col (Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int rg) (Z.of_int 3)) in
+    let walk_rg rg =
+      Printf.eprintf "[pe4-trace] search_fast rg=%d enter rss=%dMB heap=%dMB matches=%d\n%!"
+        rg (pe4_rss_mb ()) (pe4_gc_mb ()) !n_matches;
+      let s_lst = Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int rg) Z.zero in
+      Printf.eprintf "[pe4-trace] search_fast rg=%d decoded col=0 (subject) rss=%dMB heap=%dMB\n%!"
+        rg (pe4_rss_mb ()) (pe4_gc_mb ());
+      let s_arr = arr_of_col s_lst in
+      Printf.eprintf "[pe4-trace] search_fast rg=%d arrayified col=0 n=%d rss=%dMB heap=%dMB\n%!"
+        rg (Array.length s_arr) (pe4_rss_mb ()) (pe4_gc_mb ());
+      let p_lst = Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int rg) Z.one in
+      Printf.eprintf "[pe4-trace] search_fast rg=%d decoded col=1 (predicate) rss=%dMB heap=%dMB\n%!"
+        rg (pe4_rss_mb ()) (pe4_gc_mb ());
+      let p_arr = arr_of_col p_lst in
+      let o_lst = Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int rg) (Z.of_int 2) in
+      Printf.eprintf "[pe4-trace] search_fast rg=%d decoded col=2 (object) rss=%dMB heap=%dMB\n%!"
+        rg (pe4_rss_mb ()) (pe4_gc_mb ());
+      let o_arr = arr_of_col o_lst in
+      let g_lst = Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int rg) (Z.of_int 3) in
+      Printf.eprintf "[pe4-trace] search_fast rg=%d decoded col=3 (graph) rss=%dMB heap=%dMB\n%!"
+        rg (pe4_rss_mb ()) (pe4_gc_mb ());
+      let g_arr = arr_of_col g_lst in
       let n = Array.length s_arr in
       if Array.length p_arr <> n || Array.length o_arr <> n || Array.length g_arr <> n then
         Printf.eprintf "[qof3-FATAL] search_fast: row-group %d column lengths disagree (s=%d p=%d o=%d g=%d)\n%!"
           rg n (Array.length p_arr) (Array.length o_arr) (Array.length g_arr)
       else begin
+        Printf.eprintf "[pe4-trace] search_fast rg=%d filter-loop start n=%d rss=%dMB heap=%dMB\n%!"
+          rg n (pe4_rss_mb ()) (pe4_gc_mb ());
         for i = 0 to n - 1 do
           let s_tok = cell_of s_arr.(i) in
           let p_tok = cell_of p_arr.(i) in
@@ -529,10 +582,22 @@ runtime = r'''module Cottas_ondisk_runtime = struct
             } :: !acc;
             incr n_matches
           end
-        done
+        done;
+        Printf.eprintf "[pe4-trace] search_fast rg=%d done matches_so_far=%d rss=%dMB heap=%dMB\n%!"
+          rg !n_matches (pe4_rss_mb ()) (pe4_gc_mb ())
       end
+    in
+    for rg = 0 to rg_count - 1 do
+      try walk_rg rg
+      with e ->
+        let bt = Printexc.get_backtrace () in
+        Printf.eprintf "[pe4-FATAL] search_fast rg=%d EXCEPTION: %s\nbacktrace=%s\n%!"
+          rg (Printexc.to_string e) bt;
+        raise e
     done;
     Printf.eprintf "[qof3-trace] search_fast: matched %d row(s) across %d row group(s)\n%!" !n_matches rg_count;
+    Printf.eprintf "[pe4-trace] search_fast post-walk rss=%dMB heap=%dMB matches=%d\n%!"
+      (pe4_rss_mb ()) (pe4_gc_mb ()) !n_matches;
     List.rev !acc
 
   (* Estimate: same loop as search_fast but counts only — no per-row
@@ -548,6 +613,8 @@ runtime = r'''module Cottas_ondisk_runtime = struct
       | FStar_Pervasives_Native.None -> 0
       | FStar_Pervasives_Native.Some n -> Z.to_int n in
     Printf.eprintf "[qof3-trace] estimate_fast: rg_count=%d\n%!" rg_count;
+    Printf.eprintf "[pe4-trace] estimate_fast pre-walk rss=%dMB heap=%dMB fd=%d\n%!"
+      (pe4_rss_mb ()) (pe4_gc_mb ()) (pe4_fd_count ());
     let count = ref 0 in
     let arr_of_col col_opt =
       match col_opt with
@@ -556,15 +623,25 @@ runtime = r'''module Cottas_ondisk_runtime = struct
     let cell_of = function
       | FStar_Pervasives_Native.Some s -> s
       | FStar_Pervasives_Native.None -> "" in
-    for rg = 0 to rg_count - 1 do
+    let walk_rg rg =
+      Printf.eprintf "[pe4-trace] estimate_fast rg=%d enter rss=%dMB heap=%dMB count=%d\n%!"
+        rg (pe4_rss_mb ()) (pe4_gc_mb ()) !count;
       let s_arr = arr_of_col (Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int rg) Z.zero) in
+      Printf.eprintf "[pe4-trace] estimate_fast rg=%d decoded col=0 n=%d rss=%dMB heap=%dMB\n%!"
+        rg (Array.length s_arr) (pe4_rss_mb ()) (pe4_gc_mb ());
       let p_arr = arr_of_col (Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int rg) Z.one) in
+      Printf.eprintf "[pe4-trace] estimate_fast rg=%d decoded col=1 rss=%dMB heap=%dMB\n%!"
+        rg (pe4_rss_mb ()) (pe4_gc_mb ());
       let o_arr = arr_of_col (Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int rg) (Z.of_int 2)) in
+      Printf.eprintf "[pe4-trace] estimate_fast rg=%d decoded col=2 rss=%dMB heap=%dMB\n%!"
+        rg (pe4_rss_mb ()) (pe4_gc_mb ());
       let g_arr = arr_of_col (Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int rg) (Z.of_int 3)) in
+      Printf.eprintf "[pe4-trace] estimate_fast rg=%d decoded col=3 rss=%dMB heap=%dMB\n%!"
+        rg (pe4_rss_mb ()) (pe4_gc_mb ());
       let n = Array.length s_arr in
       if Array.length p_arr <> n || Array.length o_arr <> n || Array.length g_arr <> n then
         Printf.eprintf "[qof3-FATAL] estimate_fast: row-group %d column lengths disagree\n%!" rg
-      else
+      else begin
         for i = 0 to n - 1 do
           let s_tok = cell_of s_arr.(i) in
           let p_tok = cell_of p_arr.(i) in
@@ -575,9 +652,22 @@ runtime = r'''module Cottas_ondisk_runtime = struct
              cell_match_str bound_o o_tok &&
              cell_match_str bound_g g_tok
           then incr count
-        done
+        done;
+        Printf.eprintf "[pe4-trace] estimate_fast rg=%d done count_so_far=%d rss=%dMB heap=%dMB\n%!"
+          rg !count (pe4_rss_mb ()) (pe4_gc_mb ())
+      end
+    in
+    for rg = 0 to rg_count - 1 do
+      try walk_rg rg
+      with e ->
+        let bt = Printexc.get_backtrace () in
+        Printf.eprintf "[pe4-FATAL] estimate_fast rg=%d EXCEPTION: %s\nbacktrace=%s\n%!"
+          rg (Printexc.to_string e) bt;
+        raise e
     done;
     Printf.eprintf "[qof3-trace] estimate_fast: matched %d row(s)\n%!" !count;
+    Printf.eprintf "[pe4-trace] estimate_fast post-walk rss=%dMB heap=%dMB count=%d\n%!"
+      (pe4_rss_mb ()) (pe4_gc_mb ()) !count;
     !count
 
   let decode_subject_fast (h : cottas_ondisk_handle) (id : Prims.nat)

@@ -739,6 +739,23 @@ let dispatch_subcommand () =
    ============================================================================ *)
 
 let () =
+  (* Pe4 instrumentation: enable backtraces + signal handlers so the
+     `factoidal serve` daemon doesn't disappear silently when the
+     cottas-ondisk runtime hits an abort/SIGPIPE/SIGTERM.  Mirrors the
+     handlers in factoidal_http_main.ml (which only fire for the
+     standalone factoidal-http binary).  See
+     docs/designissues/2026-04-25-pe4-mim2-daemon-crash-investigation.md. *)
+  Printexc.record_backtrace true;
+  let log_signal sname signo =
+    Printf.eprintf "[pe4-SIGNAL] caught %s (signo=%d) — printing backtrace and exiting\n%!"
+      sname signo;
+    Printexc.print_backtrace stderr;
+    Printf.eprintf "[pe4-SIGNAL] (note: backtrace may be empty if not raised via OCaml exception)\n%!";
+    exit 137
+  in
+  (try Sys.set_signal Sys.sigabrt (Sys.Signal_handle (log_signal "SIGABRT")) with _ -> ());
+  (try Sys.set_signal Sys.sigpipe (Sys.Signal_handle (log_signal "SIGPIPE")) with _ -> ());
+  (try Sys.set_signal Sys.sigterm (Sys.Signal_handle (log_signal "SIGTERM")) with _ -> ());
   let args = dispatch_subcommand () in
   let cfg = parse_args ~args () in
 
