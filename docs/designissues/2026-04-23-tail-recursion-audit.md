@@ -1,7 +1,40 @@
 # F* Tail-Recursion Audit Report
-**Date:** 2026-04-23  
-**Scope:** `/formal/fstar/*.fst` (top-level, excluding `practical/`, `midzone/`, `corespecs/`)  
+**Date:** 2026-04-23
+**Scope:** `/formal/fstar/*.fst` (top-level, excluding `practical/`, `midzone/`, `corespecs/`)
 **Target:** Stack-overflow hazards in v8 JS/Wasm extraction from F* to OCaml
+
+> **Sentinel update — 2026-04-25 (HEAD db3bfd0).** Several Top-5 hazards have
+> already been fixed since this audit was written. Status per function:
+>
+> - `graph_bnodes` — **FIXED** in commit `115d529` (now `graph_bnodes_acc` at
+>   `RDF.Graph.Executable.fst:228`).
+> - `find_objects`, `find_subjects` — **FIXED** in commit `752e7f8` (now
+>   `find_objects_acc` / `find_subjects_acc` at
+>   `RDF.Graph.Executable.fst:852` / `:865`).
+> - `collect_strings` — **FIXED** in commit `465907e` (now
+>   `collect_strings_acc` at `SPARQL11.Algebra.fst:3091`).
+> - `find_min` / `find_max` / COUNT(DISTINCT *) dedup — **FIXED** in commit
+>   `3046bbb` (still at `SPARQL11.Algebra.fst:3073` / `:3081`).
+> - `encode_uri_chars` — **STILL HAZARDOUS** at `SPARQL11.Algebra.fst:941`.
+> - `replace_first` — **STILL HAZARDOUS** at `SPARQL11.Algebra.fst:953`.
+> - `dedup_er` — **STILL HAZARDOUS** at `SPARQL11.Algebra.fst:3057`.
+> - `find_group` / `add_to_groups` — **STILL HAZARDOUS** at
+>   `SPARQL11.Algebra.fst:2995` / `:3008`.
+> - `filter_no_bnode_quads` — **STILL HAZARDOUS** at `SPARQL11.Algebra.fst:4716`.
+> - `mem_triple` — STILL at `RDF.Graph.Executable.fst:243` (or-short-circuited;
+>   stack frames per call still grow with graph size).
+> - `find_by_subject` — STILL at `RDF.Graph.Executable.fst:288`.
+> - `negated_direct_iris` — STILL at `SPARQL11.Algebra.fst:3831` (LOW —
+>   bounded input).
+> - `append_list` (Parser.Turtle.fst:50) — STILL cons-after-recurse.
+>
+> The original line numbers throughout this doc reflect the audit-day source
+> (2026-04-23); HEAD line numbers above supersede them. Five of the nine
+> functions tagged HIGH are still uncorrected — `encode_uri_chars`,
+> `replace_first`, `dedup_er`, `filter_no_bnode_quads`, plus the MED
+> `find_group`/`add_to_groups` pair. Recommended next patch cycle: tackle
+> `dedup_er` and `filter_no_bnode_quads` first; `encode_uri_chars` is also
+> reachable from any IRI write path. — Agent Ayin (P4 sentinel)
 
 ## Summary
 
