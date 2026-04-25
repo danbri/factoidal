@@ -259,6 +259,59 @@ let canonicalize_ds (ds : rdf_dataset) : rdf_dataset =
   RDF_Canonical.canonicalize ds
 
 (* ------------------------------------------------------------------ *)
+(* Map test: render the (original-label → canonical-label) mapping as
+   JSON, byte-matching the W3C testNNN-rdfc10map.json fixture format.
+
+   Format (see test003-rdfc10map.json etc.):
+     {
+       "e0": "c14n0",
+       "e1": "c14n1"
+     }
+
+   - Outer braces on their own lines.
+   - 2-space indent, "<orig>": "<canon>" with comma after every entry
+     except the last.
+   - Keys/values are bnode LABELS — no "_:" prefix. Parser_NQuads /
+     Parser_NTriples already strip "_:" when parsing the input, and
+     the canonical labels emitted by the issuer are plain "c14nN".
+   - Order: sorted by canonical-value integer (c14n0, c14n1, ...).
+   This is the issuance order produced by `assign_full_in_order`,
+   so `is_issued` is already in this order; we sort defensively. *)
+
+let canon_int_of (canon : string) : int =
+  (* Strip "c14n" prefix and parse the trailing integer. Defensive:
+     fall back to max_int if parse fails so unexpected values sort
+     last rather than crash the runner. *)
+  let pfx = "c14n" in
+  let pl = String.length pfx in
+  let n = String.length canon in
+  if n > pl && String.sub canon 0 pl = pfx
+  then
+    (try int_of_string (String.sub canon pl (n - pl))
+     with _ -> max_int)
+  else max_int
+
+let mapping_to_json (m : (string * string) list) : string =
+  let arr = Array.of_list m in
+  Array.sort (fun (_, a) (_, b) -> compare (canon_int_of a) (canon_int_of b)) arr;
+  let n = Array.length arr in
+  if n = 0 then "{}\n"
+  else begin
+    let b = Buffer.create (32 * (n + 2)) in
+    Buffer.add_string b "{\n";
+    Array.iteri (fun i (orig, canon) ->
+      Buffer.add_string b "  \"";
+      Buffer.add_string b orig;
+      Buffer.add_string b "\": \"";
+      Buffer.add_string b canon;
+      if i < n - 1
+      then Buffer.add_string b "\",\n"
+      else Buffer.add_string b "\"\n") arr;
+    Buffer.add_string b "}\n";
+    Buffer.contents b
+  end
+
+(* ------------------------------------------------------------------ *)
 (* Per-test runner. *)
 
 type outcome =
@@ -300,11 +353,33 @@ let run_eval_test (t : rdfc_test) : outcome =
              else Fail_diff (expected, got)
            with _ -> Fail_parse_error)))
 
+let run_map_test (t : rdfc_test) : outcome =
+  match t.action_iri, t.result_iri with
+  | None, _ -> Fail_no_input
+  | _, None -> Fail_no_expected
+  | Some a, Some r ->
+    let in_path  = iri_to_path a in
+    let out_path = iri_to_path r in
+    (match in_path, out_path with
+     | None, _ | _, None -> Fail_parse_error
+     | Some ip, Some op ->
+       (match read_file ip, read_file op with
+        | None, _ -> Fail_no_input
+        | _, None -> Fail_no_expected
+        | Some src, Some expected ->
+          (try
+             let ds = Parser_NQuads.parse_nquads src in
+             let mapping = RDF_Canonical.build_canonical_mapping ds in
+             let got = mapping_to_json mapping in
+             if got = expected then Pass
+             else Fail_diff (expected, got)
+           with _ -> Fail_parse_error)))
+
 let run_test (t : rdfc_test) : outcome =
   match t.kind with
   | TK_Eval    -> run_eval_test t
   | TK_NegEval -> Stub
-  | TK_Map     -> Stub
+  | TK_Map     -> run_map_test t
   | TK_Unknown -> Stub
 
 (* ------------------------------------------------------------------ *)
