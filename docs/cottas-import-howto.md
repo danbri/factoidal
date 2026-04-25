@@ -12,10 +12,11 @@ Important distinction:
 - `factoidal --data-cottas` queries those artifacts natively through the
   extracted Factoidal runtime. It does not need `pycottas` or
   `tools/cottas_bridge.py` at query time.
-- For large Turtle files, use a mature external RDF parser before the Factoidal
-  query step. In the KGX trial, `pyoxigraph` parsed Turtle and DuckDB wrote the
-  COTTAS/Parquet file. Those tools are importer/test-harness dependencies, not
-  Factoidal query-runtime dependencies.
+- For large Turtle/TriG/RDF/XML files, the current `tools/corpus_pipeline.py`
+  importer now prefers a streaming `pyoxigraph` front end to generate canonical
+  N-Quads on disk before calling `pycottas`. If `pyoxigraph` is unavailable it
+  falls back to the older `rdflib` conversion path. These are importer
+  dependencies, not Factoidal query-runtime dependencies.
 
 ## Install The Producer Toolkit
 
@@ -34,10 +35,11 @@ tmp/pycottas-venv/bin/python -c 'import pycottas, rdflib, duckdb; print(pycottas
 
 ## Preferred Input
 
-Use N-Quads or a direct Turtle-to-COTTAS importer for large data. Do not feed
-large Turtle directly to Factoidal's Turtle parser for benchmarking. If source
-data is Turtle, TriG, or RDF/XML, convert it first with a mature parser such as
-`riot`, `rapper`, `rdflib`, or `pyoxigraph`.
+Use N-Quads or a streaming external importer for large data. Do not feed large
+Turtle directly to Factoidal's Turtle parser for benchmarking. If source data
+is Turtle, TriG, or RDF/XML, convert it first with a mature parser such as
+`pyoxigraph`, `riot`, `rapper`, or `rdflib`. The repo's canonical corpus
+importer now does this for you before calling `pycottas`.
 
 The KGX local corpus is currently in:
 
@@ -70,6 +72,16 @@ verified=True
 
 The artifact is a Parquet file with four string columns: subject, predicate,
 object, graph.
+
+Current canonical import path:
+
+1. Parse source RDF with `pyoxigraph` when available.
+2. Emit strict N-Quads to `data.nq`.
+3. Materialize `data.cottas` with `pycottas`.
+
+This keeps large-file ingestion streaming on the parser side while staying
+aligned with the current `--data-cottas` producer/query path used by the repo's
+tests and F* runtime integration.
 
 ### Parquet Encoding Caveat
 

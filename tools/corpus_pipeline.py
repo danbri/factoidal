@@ -49,9 +49,10 @@ def slugify(text: str) -> str:
 # The line-based pipeline below (parse_nt_or_nq_line, write_factbin,
 # materialize-nq-cottas-corpus, etc.) expects N-Triples or N-Quads on
 # disk. For block-structured formats (TriG, Turtle, RDF/XML) we
-# pre-convert to N-Quads via rdflib. The streaming fragment writes
-# quads one per line, so callers can feed the resulting file through
-# the same `.nq` pipeline without touching inner logic.
+# pre-convert to N-Quads first. Prefer pyoxigraph's streaming parser
+# when present; fall back to rdflib when it is not. The conversion
+# writes quads one per line, so callers can feed the resulting file
+# through the same `.nq` pipeline without touching inner logic.
 #
 # Graph IRIs: quads from non-default contexts carry `<g>` as the 4th
 # term; default-graph triples omit the graph term (empty = default).
@@ -137,15 +138,72 @@ def _nquads_line_for(triple, graph) -> str:
     return f"{_nt_term(s)} {_nt_term(p)} {_nt_term(o)} {_nt_term(ident)} ."
 
 
+def _pyoxigraph_term(term) -> str:
+    cls_name = type(term).__name__
+    if cls_name == "NamedNode":
+        return f"<{term.value}>"
+    if cls_name == "BlankNode":
+        return f"_:{term.value}"
+    if cls_name == "Literal":
+        lex = _nt_escape_literal_lex(term.value)
+        lang = getattr(term, "language", None)
+        dt = getattr(term, "datatype", None)
+        if lang:
+            return f"\"{lex}\"@{lang}"
+        if dt is not None and str(dt) != "<http://www.w3.org/2001/XMLSchema#string>":
+            iri = dt.value if hasattr(dt, "value") else str(dt).strip("<>")
+            return f"\"{lex}\"^^<{iri}>"
+        return f"\"{lex}\""
+    return str(term)
+
+
+def convert_rdf_to_nquads_pyoxigraph(input_path: Path, input_format: str, output_nq_path: Path) -> int:
+    try:
+        from pyoxigraph import parse
+    except ImportError as exc:
+        raise RuntimeError(
+            "pyoxigraph is required for streaming RDF conversion; install it or use the rdflib fallback."
+        ) from exc
+
+    mime_by_format = {
+        "trig": "application/trig",
+        "turtle": "text/turtle",
+        "rdfxml": "application/rdf+xml",
+        "nt": "application/n-triples",
+        "nq": "application/n-quads",
+    }
+    mime = mime_by_format[input_format]
+    quad_count = 0
+    with input_path.open("rb") as src, output_nq_path.open("w", encoding="utf-8") as out:
+        for item in parse(src, mime):
+            subject = _pyoxigraph_term(item.subject)
+            predicate = _pyoxigraph_term(item.predicate)
+            obj = _pyoxigraph_term(item.object)
+            graph_name = getattr(item, "graph_name", None)
+            if graph_name is None or str(graph_name) == "DEFAULT":
+                out.write(f"{subject} {predicate} {obj} .\n")
+            else:
+                out.write(f"{subject} {predicate} {obj} {_pyoxigraph_term(graph_name)} .\n")
+            quad_count += 1
+    return quad_count
+
+
 def convert_rdf_to_nquads(input_path: Path, input_format: str, output_nq_path: Path) -> int:
     """Parse an RDF file and emit a line-per-quad .nq file at
     `output_nq_path`. Returns the quad count.
 
     For TriG/N-Quads multi-graph inputs, named-graph context is
     preserved. For single-graph inputs (Turtle/N-Triples/RDF/XML),
-    triples go to the default graph (empty 4th column). Uses rdflib
-    (loads input into memory — beware large TriG files).
+    triples go to the default graph (empty 4th column). Prefer the
+    pyoxigraph streaming parser; fall back to rdflib if pyoxigraph is
+    unavailable.
     """
+    if input_format in ("trig", "turtle", "rdfxml", "nt", "nq"):
+        try:
+            return convert_rdf_to_nquads_pyoxigraph(input_path, input_format, output_nq_path)
+        except ImportError:
+            pass
+
     try:
         from rdflib import Dataset, Graph
     except ImportError as exc:
@@ -981,7 +1039,7 @@ def materialize_nq_cottas_corpus(args: argparse.Namespace) -> int:
     # N-Quads on disk first (rdflib-backed). For nq/nt, stream through
     # a normalisation pass so comments/blank lines get filtered.
     if input_format in ("trig", "turtle", "rdfxml"):
-        print(f"Pre-converting {input_format} → N-Quads via rdflib …", file=sys.stderr)
+        print(f"Pre-converting {input_format} → N-Quads via parser pipeline …", file=sys.stderr)
         converted_count = convert_rdf_to_nquads(input_path, input_format, data_nq_path)
         print(f"  wrote {converted_count} quads to {data_nq_path}", file=sys.stderr)
         nq_input_path = data_nq_path

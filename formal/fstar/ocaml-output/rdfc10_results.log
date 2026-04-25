@@ -7,11 +7,11 @@ Totals: 86 test entries
 
   PASS  [Eval] test001c      simple id
   PASS  [Eval] test002c      duplicate property iri values
-  FAIL  [Eval] test003c      bnode
+  PASS  [Eval] test003c      bnode
   STUB  [Map] test003m      bnode (map test)
-  FAIL  [Eval] test004c      bnode plus embed w/subject
+  PASS  [Eval] test004c      bnode plus embed w/subject
   STUB  [Map] test004m      bnode plus embed w/subject (map test)
-  FAIL  [Eval] test005c      bnode embed
+  PASS  [Eval] test005c      bnode embed
   STUB  [Map] test005m      bnode embed (map test)
   PASS  [Eval] test006c      multiple rdf types
   PASS  [Eval] test008c      single subject complex
@@ -20,25 +20,25 @@ Totals: 86 test entries
   PASS  [Eval] test011c      type-coerced type
   PASS  [Eval] test013c      type-coerced type, cycle
   PASS  [Eval] test014c      check types
-  FAIL  [Eval] test016c      blank node - dual link - embed
+  PASS  [Eval] test016c      blank node - dual link - embed
   STUB  [Map] test016m      blank node - dual link - embed (map test)
-  FAIL  [Eval] test017c      blank node - dual link - non-embed
+  PASS  [Eval] test017c      blank node - dual link - non-embed
   STUB  [Map] test017m      blank node - dual link - non-embed (map test)
-  FAIL  [Eval] test018c      blank node - self link
+  PASS  [Eval] test018c      blank node - self link
   STUB  [Map] test018m      blank node - self link (map test)
-  FAIL  [Eval] test019c      blank node - disjoint self links
-  FAIL  [Eval] test020c      blank node - diamond
+  PASS  [Eval] test019c      blank node - disjoint self links
+  PASS  [Eval] test020c      blank node - diamond
   STUB  [Map] test020m      blank node - diamond (map test)
-  FAIL  [Eval] test021c      blank node - circle of 2
-  FAIL  [Eval] test022c      blank node - double circle of 2
-  FAIL  [Eval] test023c      blank node - circle of 3
+  PASS  [Eval] test021c      blank node - circle of 2
+  PASS  [Eval] test022c      blank node - double circle of 2
+  PASS  [Eval] test023c      blank node - circle of 3
   FAIL  [Eval] test024c      blank node - double circle of 3 (0-1-2)
   FAIL  [Eval] test025c      blank node - double circle of 3 (0-2-1)
   FAIL  [Eval] test026c      blank node - double circle of 3 (1-0-2)
   FAIL  [Eval] test027c      blank node - double circle of 3 (1-2-0)
   FAIL  [Eval] test028c      blank node - double circle of 3 (2-1-0)
   FAIL  [Eval] test029c      blank node - double circle of 3 (2-0-1)
-  FAIL  [Eval] test030c      blank node - point at circle of 3
+  PASS  [Eval] test030c      blank node - point at circle of 3
   STUB  [Map] test030m      blank node - point at circle of 3 (map test)
   FAIL  [Eval] test033c      disjoint identical subgraphs (1)
   FAIL  [Eval] test034c      disjoint identical subgraphs (2)
@@ -55,12 +55,12 @@ Totals: 86 test entries
   STUB  [Map] test047m      deep diff (1) (map test)
   FAIL  [Eval] test048c      deep diff (2)
   STUB  [Map] test048m      deep diff (2) (map test)
-  FAIL  [Eval] test053c      @list
+  PASS  [Eval] test053c      @list
   STUB  [Map] test053m      @list (map test)
   FAIL  [Eval] test054c      t-graph
-  FAIL  [Eval] test055c      simple reorder (1)
+  PASS  [Eval] test055c      simple reorder (1)
   STUB  [Map] test055m      simple reorder (1) (map test)
-  FAIL  [Eval] test056c      simple reorder (2)
+  PASS  [Eval] test056c      simple reorder (2)
   STUB  [Map] test056m      simple reorder (2) (map test)
   FAIL  [Eval] test057c      unnamed graph
   STUB  [Map] test057m      unnamed graph (map test)
@@ -70,19 +70,19 @@ Totals: 86 test entries
   STUB  [Map] test060m      n-quads escaping (map test)
   PASS  [Eval] test061c      same literal value with multiple languages
   PASS  [Eval] test062c      same literal value with multiple datatypes
-  FAIL  [Eval] test063c      blank node - diamond (with _:b)
+  PASS  [Eval] test063c      blank node - diamond (with _:b)
   STUB  [Map] test063m      blank node - diamond (with _:b) (map test)
-  FAIL  [Eval] test064c      blank node - double circle of 3 (0-1-2, reversed)
-  FAIL  [Eval] test065c      blank node - double circle of 3 (0-2-1, reversed)
-  FAIL  [Eval] test066c      blank node - double circle of 3 (1-0-2, reversed)
-  FAIL  [Eval] test067c      blank node - double circle of 3 (1-2-0, reversed)
-  FAIL  [Eval] test068c      blank node - double circle of 3 (2-1-0, reversed)
-  FAIL  [Eval] test069c      blank node - double circle of 3 (2-0-1, reversed)
-  FAIL  [Eval] test070c      dataset - isomorphic default and iri named
+  PASS  [Eval] test064c      blank node - double circle of 3 (0-1-2, reversed)
+  PASS  [Eval] test065c      blank node - double circle of 3 (0-2-1, reversed)
+  PASS  [Eval] test066c      blank node - double circle of 3 (1-0-2, reversed)
+  PASS  [Eval] test067c      blank node - double circle of 3 (1-2-0, reversed)
+  PASS  [Eval] test068c      blank node - double circle of 3 (2-1-0, reversed)
+  PASS  [Eval] test069c      blank node - double circle of 3 (2-0-1, reversed)
+  PASS  [Eval] test070c      dataset - isomorphic default and iri named
   STUB  [Map] test070m      dataset - isomorphic default and iri named (map test)
   FAIL  [Eval] test071c      dataset - isomorphic default and node named
   STUB  [Map] test071m      dataset - isomorphic default and node named (map test)
-  FAIL  [Eval] test072c      dataset - shared blank nodes
+  PASS  [Eval] test072c      dataset - shared blank nodes
   STUB  [Map] test072m      dataset - shared blank nodes (map test)
   FAIL  [Eval] test073c      dataset - referencing graph name
   STUB  [Map] test073m      dataset - referencing graph name (map test)
@@ -90,7 +90,7 @@ Totals: 86 test entries
   FAIL  [Eval] test075c      blank node - diamond (uses SHA-384)
   STUB  [Map] test075m      blank node - diamond (uses SHA-384) (map test)
   PASS  [Eval] test076c      duplicate ground triple in input
-  FAIL  [Eval] test077c      duplicate triple with blank node in input
+  PASS  [Eval] test077c      duplicate triple with blank node in input
 
-RDFC-1.0 tests: 13 pass, 51 fail, 22 stub (out of 86)
-  (Phase 0 skeleton; canonicalize_noop placeholder. Map / Negative tests reported as STUB. See docs/designissues/2026-04-24-rdfc10-plan.md.)
+RDFC-1.0 tests: 38 pass, 26 fail, 22 stub (out of 86)
+  (Phase 1: HFDQ + simple issuer (F* RDF.Canonical). HNDQ for collisions and Map / NegEval tests deferred. See docs/designissues/2026-04-25-rdfc10-algo-plan.md.)
