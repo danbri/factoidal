@@ -273,6 +273,14 @@ pre.raw-error {
 }
 details { margin-top: 1em; }
 summary { cursor: pointer; color: var(--fc-muted); font-size: 0.9em; }
+.endpoint-pill {
+  display: inline-flex; align-items: center;
+  border: 1px solid var(--fc-border); border-radius: 4px;
+  background: var(--fc-surface); padding: 0.35em 0.7em;
+  font-size: 0.88em; color: var(--fc-fg);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+.endpoint-pill .endpoint-pill-inner { white-space: nowrap; }
 `;
 
 // ---------------------------------------------------------------------
@@ -501,7 +509,8 @@ class FactoidalSparqlClient extends HTMLElement {
   static get observedAttributes() {
     return ['src-data', 'engines', 'default-engine',
             'logics', 'default-logic', 'entail',
-            'js-url', 'wasm-url', 'queries', 'warm'];
+            'js-url', 'wasm-url', 'queries', 'warm',
+            'endpoint'];
   }
 
   constructor() {
@@ -545,6 +554,12 @@ class FactoidalSparqlClient extends HTMLElement {
       this._renderEngineToggle();
     }
     if (name === 'logics' || name === 'default-logic' || name === 'entail') {
+      this._renderLogicToggle();
+    }
+    if (name === 'endpoint') {
+      // Remote-mode toggle changes which controls (engine/logic radios vs.
+      // endpoint pill) are visible; re-render both groups.
+      this._renderEngineToggle();
       this._renderLogicToggle();
     }
   }
@@ -624,6 +639,15 @@ class FactoidalSparqlClient extends HTMLElement {
     return this.getAttribute('wasm-url') || './factoidal.wasm.js';
   }
 
+  // Remote SPARQL Protocol endpoint URL. When set, _onRunClick takes the
+  // remote path: POST application/sparql-query to this URL, parse JSON
+  // response, render through the same UI as local mode. Local-mode engine
+  // bundles and src-data are not loaded.
+  get endpoint() {
+    const v = this.getAttribute('endpoint');
+    return v && v.trim() ? v.trim() : null;
+  }
+
   // Called by <factoidal-query> children on connect.
   _queriesChanged() {
     if (!this._rendered) return;
@@ -672,6 +696,9 @@ class FactoidalSparqlClient extends HTMLElement {
   }
 
   _warm() {
+    // Remote mode: nothing to prefetch — no local data files, no engine
+    // bundles. The endpoint is contacted lazily on Run.
+    if (this.endpoint) return;
     this._getFilePayloads().catch(() => {});
     if (this.engines.includes('js'))   this._getEngineSource('js').catch(() => {});
     if (this.engines.includes('wasm')) this._getEngineSource('wasm').catch(() => {});
@@ -761,7 +788,9 @@ class FactoidalSparqlClient extends HTMLElement {
     this._renderQueryList();
     this._renderEngineToggle();
     this._renderLogicToggle();
-    this._statusEl.textContent = 'Ready (engines will load on first run).';
+    this._statusEl.textContent = this.endpoint
+      ? 'Ready (remote endpoint).'
+      : 'Ready (engines will load on first run).';
     this._statusEl.className = 'status ok';
   }
 
@@ -797,9 +826,29 @@ class FactoidalSparqlClient extends HTMLElement {
   }
 
   _renderEngineToggle() {
+    this._engineBox.innerHTML = '';
+
+    // Remote mode: replace engine radios with a single pill that shows
+    // the endpoint host. Click toggles full URL in the title attr; this
+    // is a status indicator, not a control.
+    if (this.endpoint) {
+      this._engineBox.classList.remove('radio-group');
+      this._engineBox.classList.add('endpoint-pill');
+      const pill = document.createElement('span');
+      pill.className = 'endpoint-pill-inner';
+      let host = this.endpoint;
+      try { host = new URL(this.endpoint, document.baseURI).host || this.endpoint; }
+      catch (_) { /* leave as-is */ }
+      pill.textContent = 'Endpoint: ' + host;
+      pill.title = this.endpoint;
+      this._engineBox.appendChild(pill);
+      return;
+    }
+    this._engineBox.classList.remove('endpoint-pill');
+    this._engineBox.classList.add('radio-group');
+
     const engines = this.engines;
     const def = this.defaultEngine;
-    this._engineBox.innerHTML = '';
 
     // If only one engine, still render a single label for clarity.
     engines.forEach(e => {
@@ -827,9 +876,17 @@ class FactoidalSparqlClient extends HTMLElement {
 
   _renderLogicToggle() {
     if (!this._logicBox) return;
+    this._logicBox.innerHTML = '';
+
+    // Remote mode: entailment is the server's job; hide the Logic radio.
+    if (this.endpoint) {
+      this._logicBox.style.display = 'none';
+      return;
+    }
+    this._logicBox.style.display = '';
+
     const logics = this.logics;
     const def = this.defaultLogic;
-    this._logicBox.innerHTML = '';
 
     // Label prefix — "Logic:" before the radios so screen readers and
     // sighted users both see what this row of buttons is for.
@@ -1263,7 +1320,7 @@ class FactoidalSparqlClient extends HTMLElement {
   // The Run handler — faithful port of demo-lifesci.html's runBtn click.
   // -----------------------------------------------------------------
   async _onRunClick() {
-    const engine = this._currentEngine();
+    const engine = this.endpoint ? 'remote' : this._currentEngine();
     const queryText = this._queryEl.value;
 
     // Reset stale timing summary from any prior run; it's re-populated
@@ -1313,6 +1370,62 @@ class FactoidalSparqlClient extends HTMLElement {
     };
 
     try {
+      // ----------------------------------------------------------------
+      // Remote SPARQL Protocol path — POST application/sparql-query to
+      // the configured endpoint, parse JSON. No engine bundle, no local
+      // payloads. Server handles parse / eval / entailment.
+      // ----------------------------------------------------------------
+      if (this.endpoint) {
+        const url = this.endpoint;
+        const qT0 = performance.now();
+        try {
+          const resp = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/sparql-query',
+              'Accept': 'application/sparql-results+json',
+            },
+            body: queryText,
+          });
+          if (!resp.ok) {
+            const errText = await resp.text().catch(() => '');
+            throw new Error('HTTP ' + resp.status + ' ' + resp.statusText
+              + (errText ? '\n' + errText : ''));
+          }
+          const parsed = await resp.json();
+          const qMs = performance.now() - qT0;
+          finaliseStatus('Done via endpoint in ' + qMs.toFixed(0) + ' ms', 'status ok');
+          this._renderResultsJSON(parsed);
+          const totalMs = performance.now() - runStart;
+          // Phase breakdown: in remote mode there are no local engine /
+          // file fetches, just the wire round-trip.
+          this._lastTimingSummary = {
+            html: this._renderTimingSummary(totalMs, 'remote', qMs).outerHTML,
+          };
+          const meta = this._outEl.querySelector('.result-meta');
+          const summary = this._renderTimingSummary(totalMs, 'remote', qMs);
+          if (meta) meta.appendChild(summary); else this._outEl.appendChild(summary);
+          this._timingDetails.innerHTML = '';
+          this._timingDetails.appendChild(this._renderTimingDetail(
+            totalMs, 'remote', qMs,
+            [{ label: 'POST ' + url, ms: qMs, bytes: null, cached: false }]));
+          this.dispatchEvent(new CustomEvent('factoidal:query-done', {
+            bubbles: true, composed: true,
+            detail: { engine: 'remote', endpoint: url, query: queryText,
+                      results: parsed, runMs: qMs, totalMs },
+          }));
+        } catch (e) {
+          finaliseStatus('Endpoint error: ' + (e && e.message || e), 'status err');
+          this._renderRawError(e && e.stack ? e.stack : String(e && e.message || e));
+          this.dispatchEvent(new CustomEvent('factoidal:query-error', {
+            bubbles: true, composed: true,
+            detail: { engine: 'remote', endpoint: url, query: queryText, error: e },
+          }));
+        }
+        cleanup();
+        return;
+      }
+
       const payloads = await this._getFilePayloads();
 
       // ----------------------------------------------------------------

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>factoidal-sparql-client — remote endpoint demo</title>
+  <style>
+    body { font: 16px/1.5 system-ui, -apple-system, sans-serif;
+           max-width: 900px; margin: 2em auto; padding: 0 1em; color: #222; }
+    h1 { font-size: 1.4em; }
+    p code { background: #f4f4f4; padding: 0.1em 0.3em; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <h1>factoidal-sparql-client — remote SPARQL Protocol demo</h1>
+  <p>This page passes <code>endpoint=...</code> to the component, which then
+     bypasses the in-browser engine and POSTs queries to the remote endpoint
+     (<code>application/sparql-query</code> with <code>Accept:
+     application/sparql-results+json</code>).</p>
+
+  <factoidal-sparql-client
+      id="remote"
+      endpoint="http://100.107.116.70:3030/sparql">
+    <factoidal-query name="count" label="01 — Count all triples">
+      SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }
+    </factoidal-query>
+    <factoidal-query name="sample" label="02 — Sample 10 triples">
+      SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 10
+    </factoidal-query>
+    <factoidal-query name="classes" label="03 — Distinct types (top 20)">
+      SELECT ?type (COUNT(*) AS ?n) WHERE {
+        ?s a ?type
+      } GROUP BY ?type ORDER BY DESC(?n) LIMIT 20
+    </factoidal-query>
+  </factoidal-sparql-client>
+
+  <script type="module" src="./factoidal-sparql-client.js"></script>
+</body>
+</html>
