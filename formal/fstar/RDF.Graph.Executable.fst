@@ -1207,6 +1207,7 @@ let rdfs_closure_with_reflexivity (g : rdf_graph) (fuel : nat) : Tot rdf_graph =
 //   eq-rep-o    : sameAs substitution in object position
 //   prp-symp    : owl:SymmetricProperty
 //   prp-trp     : owl:TransitiveProperty
+//   prp-fp      : owl:FunctionalProperty (produces owl:sameAs on objects)
 //   prp-ifp     : owl:InverseFunctionalProperty (produces owl:sameAs)
 //   prp-inv1/2  : owl:inverseOf (both directions)
 //   cls-eqc1/2  : owl:equivalentClass expanded to rdfs:subClassOf both ways
@@ -1219,7 +1220,7 @@ let rdfs_closure_with_reflexivity (g : rdf_graph) (fuel : nat) : Tot rdf_graph =
 //
 // NOT implemented (tableau-style, out of scope for this pass):
 //   owl:hasValue, owl:someValuesFrom, owl:allValuesFrom restrictions;
-//   class disjointness propagation; owl:FunctionalProperty; consistency checks.
+//   class disjointness propagation; consistency checks.
 
 let owl_sameAs : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#sameAs");
@@ -1236,6 +1237,10 @@ let owl_TransitiveProperty : wf_iri =
 let owl_InverseFunctionalProperty : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#InverseFunctionalProperty");
   "http://www.w3.org/2002/07/owl#InverseFunctionalProperty"
+
+let owl_FunctionalProperty : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#FunctionalProperty");
+  "http://www.w3.org/2002/07/owl#FunctionalProperty"
 
 let owl_inverseOf : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#inverseOf");
@@ -1659,6 +1664,47 @@ let owl_rule_sameAs_replace_predicate (g : rdf_graph) : rdf_graph =
     g
     g
 
+// prp-fp: if (P rdf:type owl:FunctionalProperty), (x P y), (x P z) and
+// y =/= z, then (y owl:sameAs z). Mirrors prp-ifp but on the object side:
+// two values for the same subject under a functional property must be
+// the same individual. Literal objects are skipped — owl:sameAs is
+// defined only on named individuals (IRI or blank node), and literal
+// equality is handled by literal_value_eq elsewhere.
+let owl_rule_functional (g : rdf_graph) : rdf_graph =
+  let fp_props : list wf_iri =
+    List.Tot.fold_left
+      (fun (acc : list wf_iri) (t : triple) ->
+        if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_FunctionalProperty) then
+          match t.s with
+          | S_IRI p_iri -> cons_if_new_iri p_iri acc
+          | _ -> acc
+        else acc)
+      []
+      g
+  in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t1 : triple) ->
+      if List.Tot.mem t1.p fp_props then
+        // Need (x t1.p y_subj) where y_subj is t1.o-as-subject.
+        match term_to_subject t1.o with
+        | None -> acc  // literal object: no sameAs emission
+        | Some y_subj ->
+          // Find all other objects z of (t1.s t1.p ?z) and emit
+          // (y_subj sameAs z). Skip self (z = y_subj) and skip literals.
+          let zs = find_objects g t1.s t1.p in
+          List.Tot.fold_left
+            (fun (acc2 : rdf_graph) (z : rdf_term) ->
+              if rdf_term_eq z t1.o then acc2
+              else
+                let new_t : triple =
+                  { s = y_subj; p = owl_sameAs; o = z } in
+                add_triple_if_new acc2 new_t)
+            acc
+            zs
+      else acc)
+    g
+    g
+
 // prp-ifp: if (P rdf:type owl:InverseFunctionalProperty), (x P y), (z P y)
 // then (x owl:sameAs z). Produces additional owl:sameAs triples that will
 // feed into eq-* rules on the next fixpoint iteration.
@@ -2015,6 +2061,40 @@ let owl_rule_cls_minc_qual1 (g : rdf_graph) : rdf_graph =
 //   * Canonical bnodes are NOT registered as owl:Class / rdfs:Class,
 //     so rdfs-reflexivity does not emit extra subClassOf triples.
 
+// CARDINALITY GUARD (parent7 explosion, 2026-04-25): cls-maxqc1 originally
+// fired on every (x P y) AND (y rdf:type C), emitting (x rdf:type
+// canonical_maxqc1(P,C)) unconditionally. Because RDFS/OWL closure types
+// every individual under many superclasses, that emitted ~973 spurious
+// memberships for the 16-individual parent7 dataset. We now count x's
+// P-successors that are typed C and only emit if the count is <= 1
+// (the cardinality limit). Soundness: max-1 says no x can have >= 2
+// distinct C-typed P-successors; if the data already shows >= 2, claiming
+// (x in maxqc1(P,C)) would either force a sameAs merge of the witnesses
+// (correct DL semantics, but out of scope for closure-only) or be unsound.
+// Suppressing the assertion in that case is the conservative move and
+// matches parent7's expected single-row answer (:Dudley) without losing
+// the existing positive cases (parent7-data: count(:Dudley hasChild typed
+// :Female) = 1, count(:Bob hasChild typed :Female) = 0).
+//
+// count_p_successors_typed_c counts how many objects of (x P ?) are in g
+// AND have rdf:type C (read against the post-closure graph g, not the
+// in-flight accumulator — same convention as the surrounding rules).
+let count_p_successors_typed_c
+  (g : rdf_graph) (x : subject) (p : wf_iri) (c : wf_iri)
+  : nat =
+  let succs : list rdf_term = find_objects g x p in
+  let typed : list rdf_term =
+    List.Tot.filter
+      (fun (y : rdf_term) ->
+        match term_to_subject y with
+        | None -> false
+        | Some y_subj ->
+          let ts = find_objects g y_subj rdf_type in
+          List.Tot.existsb
+            (fun (t : rdf_term) -> rdf_term_eq t (T_IRI c)) ts)
+      succs in
+  List.Tot.length typed
+
 let owl_rule_cls_maxqc1 (g : rdf_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (edge : triple) ->
@@ -2032,6 +2112,13 @@ let owl_rule_cls_maxqc1 (g : rdf_graph) : rdf_graph =
               | T_IRI c ->
                 if c = owl_Thing then acc2
                 else
+                  // CARDINALITY GUARD: skip emission when x already has
+                  // >= 2 distinct P-successors typed C in g (max-1
+                  // would otherwise force a sameAs merge we can't yet
+                  // perform in pure closure).
+                  let n = count_p_successors_typed_c g x p c in
+                  if n > 1 then acc2
+                  else
                   let rb = canonical_maxqc1_restriction_bnode p c in
                   let rb_subj : subject = S_BNode rb in
                   let rb_term : rdf_term = T_BNode rb in
@@ -2685,7 +2772,9 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   let g9 = owl_rule_sameAs_replace_subject g8 in
   let g10 = owl_rule_sameAs_replace_object g9 in
   let g11 = owl_rule_sameAs_replace_predicate g10 in
-  let g12 = owl_rule_inverse_functional g11 in
+  // prp-fp / prp-ifp: functional + inverse-functional sameAs identification.
+  let g11a = owl_rule_functional g11 in
+  let g12 = owl_rule_inverse_functional g11a in
   // Restriction-membership rules (parent4 / parent5 / parent6).
   let g13 = owl_rule_minc1_bridge g12 in
   let g14 = owl_rule_cls_svf2_qualified g13 in
