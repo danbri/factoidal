@@ -614,12 +614,14 @@ let print_navigation_help () =
   Printf.printf "                   (also: factoidal --data X --query Q.rq, legacy form)\n";
   Printf.printf "  serve          Start the SPARQL 1.1 Protocol HTTP server\n";
   Printf.printf "                   factoidal serve --port 3030 --dataset X.ttl\n";
-  Printf.printf "                   (shim: execs sibling factoidal-http)\n";
+  Printf.printf "                   (shares Factoidal_http parser/server in-process)\n";
   Printf.printf "  dump FILE      Parse RDF and dump as N-Triples\n";
   Printf.printf "  count FILE     Parse RDF and count triples\n";
   Printf.printf "  cottas-import  Import RDF -> COTTAS/Parquet artifact\n";
   Printf.printf "                   factoidal cottas-import --input X.trig --corpus-root C ...\n";
   Printf.printf "                   (shim: execs python3 tools/corpus_pipeline.py)\n";
+  Printf.printf "  cottas-info    Summary stats for a COTTAS/Parquet file\n";
+  Printf.printf "                   factoidal cottas-info FILE.cottas\n";
   Printf.printf "  test SUITE     Run W3C / OWL / RDFC test suites\n";
   Printf.printf "                   factoidal test w3c          (sibling: w3c_runner)\n";
   Printf.printf "                   factoidal test owl-rl       (sibling: owl_runner)\n";
@@ -652,7 +654,14 @@ let dispatch_subcommand () =
     (match cmd with
      | "help" -> print_navigation_help (); exit 0
      | "version" -> version (); exit 0
-     | "serve" -> exec_sibling "factoidal-http" rest
+     | "serve" ->
+       (* In-process call (no exec). The native build links
+          factoidal_serve.ml (which forwards to Factoidal_http); the JS
+          build links factoidal_serve_jsoo.ml (a stub that errors out).
+          Either way the entry point is the same Factoidal_serve module.
+          Phase 2: docs/designissues/2026-04-25-cli-http-unification-phase2.md *)
+       Factoidal_serve.start_with_args rest;
+       exit 0
      | "test" ->
        (match rest with
         | "w3c" :: tail -> exec_sibling "w3c_runner" tail
@@ -669,11 +678,50 @@ let dispatch_subcommand () =
      | "cottas-import" ->
        exec_corpus_pipeline "materialize-nq-cottas-corpus" rest
      | "cottas-info" ->
-       Printf.eprintf
-         "factoidal: cottas-info not yet implemented (Phase 2).\n\
-          For now, use: python3 tools/corpus_pipeline.py ... or read the\n\
-          F* Parser_BallyhooCOTTAS module directly.\n";
-       exit 2
+       (* Minimal summary of a COTTAS/Parquet artifact: open via the
+          F*-extracted Parser_BallyhooCOTTAS, walk the cached quad rows,
+          and report distinct subject/predicate/object/graph counts plus
+          total quad count. All decoding (Parquet footer, DLBA strings)
+          happens in F*; this is pure read + count glue (rule #15). *)
+       (match rest with
+        | [] | ["--help"] | ["-h"] ->
+          Printf.printf
+            "Usage: factoidal cottas-info FILE\n\n\
+             Print summary statistics for a COTTAS/Parquet artifact:\n\
+               total quads, distinct subjects, predicates, objects, and\n\
+               named graphs.\n";
+          exit (if rest = [] then 2 else 0)
+        | path :: _ ->
+          (match Parser_BallyhooCOTTAS.cottas_open_dataset_store
+                   path FStar_Pervasives_Native.None with
+           | FStar_Pervasives_Native.None ->
+             Printf.eprintf "Error: could not open COTTAS artifact: %s\n" path;
+             exit 1
+           | FStar_Pervasives_Native.Some store ->
+             let cache =
+               Parser_BallyhooCOTTAS.Ballyhoo_cottas_runtime.cache_for_store
+                 store in
+             let n_quads = List.length cache.quads in
+             let s_set = Hashtbl.create 1024 in
+             let p_set = Hashtbl.create 64 in
+             let o_set = Hashtbl.create 1024 in
+             let g_set = Hashtbl.create 8 in
+             let open Parser_BallyhooCOTTAS.Ballyhoo_cottas_runtime in
+             List.iter (fun row ->
+               Hashtbl.replace s_set row.qr_s ();
+               Hashtbl.replace p_set row.qr_p ();
+               Hashtbl.replace o_set row.qr_o ();
+               (match row.qr_g with
+                | None -> ()
+                | Some g -> Hashtbl.replace g_set g ())
+             ) cache.quads;
+             Printf.printf "file:               %s\n" path;
+             Printf.printf "quads:              %d\n" n_quads;
+             Printf.printf "distinct subjects:  %d\n" (Hashtbl.length s_set);
+             Printf.printf "distinct predicates:%d\n" (Hashtbl.length p_set);
+             Printf.printf "distinct objects:   %d\n" (Hashtbl.length o_set);
+             Printf.printf "named graphs:       %d\n" (Hashtbl.length g_set);
+             exit 0))
      | "query" -> rest
      | "dump"  -> "--dump"  :: List.concat_map (fun f -> ["--data"; f]) rest
      | "count" -> "--count" :: List.concat_map (fun f -> ["--data"; f]) rest

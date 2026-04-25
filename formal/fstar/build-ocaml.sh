@@ -388,7 +388,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     Parser_Ballyhoo.ml Parser_BallyhooBloom.ml Parser_BallyhooCOTTAS.ml
     fstar_pure_hashes.ml
     SPARQL11_Algebra.ml OWL_QueryRewrite.ml OWL_QueryEval.ml SPARQL11_Parser.ml SPARQL_Protocol.ml
-    SPARQL_HTTP.ml SPARQL_HTTP_Client.ml SPARQL_ServiceDescription.ml
+    SPARQL_HTTP.ml SPARQL_HTTP_Client.ml SPARQL_ServiceDescription.ml SPARQL_GraphStore.ml
   )
 
   # Build w3c_runner bytecode for js_of_ocaml. We pass -custom + a tiny
