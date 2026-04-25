@@ -1,22 +1,17 @@
-(* RDF Dataset Canonicalization 1.0 (RDFC-1.0) test runner — Phase 0 skeleton.
+(* RDF Dataset Canonicalization 1.0 (RDFC-1.0) test runner.
 
    Reads third_party/testing/rdf-canon/tests/manifest.ttl via the
    F*-extracted Parser_Turtle, extracts each rdfc:RDFC10EvalTest /
    RDFC10MapTest / RDFC10NegativeEvalTest entry, loads the input
-   N-Quads file via Parser_NQuads, runs a placeholder no-op
-   canonicaliser, serialises back to N-Quads, and byte-compares
-   against the expected file.
+   N-Quads file via Parser_NQuads, runs the F*-extracted
+   RDF_Canonical.canonicalize_to_nquads, and byte-compares against
+   the expected file.
 
    !! THIS IS I/O GLUE — NO RDF/SPARQL SEMANTIC LOGIC !!
-   See CLAUDE.md iron rule #10 / anti-pattern #15. The actual
-   RDFC-1.0 algorithm (first-degree hash, issuer state, n-degree
-   hash) belongs in F\* and lands in Phase 1 per
-   docs/designissues/2026-04-24-rdfc10-plan.md.
-
-   Phase 0 (this file): turn the suite from "not running" into
-   labelled FAIL-with-diff so the score is visible. Per the
-   per-#25 rule we always print a labelled total
-   ("N pass, M fail (out of K)") rather than a bare ratio.
+   See CLAUDE.md iron rule #10 / anti-pattern #15. The RDFC-1.0
+   algorithm (HFDQ + identifier issuer, with HNDQ deferred) lives
+   in formal/fstar/RDF.Canonical.fst per
+   docs/designissues/2026-04-25-rdfc10-algo-plan.md.
 
    Usage:
      ./rdfc10_runner            Read default manifest at
@@ -258,14 +253,10 @@ let dataset_to_canonical_nquads (ds : rdf_dataset) : string =
   String.concat "" sorted
 
 (* ------------------------------------------------------------------ *)
-(* No-op canonicaliser (Phase 0 placeholder).
-
-   The real algorithm relabels every blank node `_:e0`, `_:b1`, etc.
-   to a deterministic `_:c14n0`, `_:c14n1`, … sequence. For Phase 0
-   we do nothing — passes only on tests with no blank nodes.
-   When the F\* `canonicalize` extracts, replace the body of this
-   function with `RDF_Canon.canonicalize ds`. *)
-let canonicalize_noop (ds : rdf_dataset) : rdf_dataset = ds
+(* Canonicalisation entry point — F*-extracted RDFC-1.0 (Phase 1: HFDQ).
+   See formal/fstar/RDF.Canonical.fst. *)
+let canonicalize_ds (ds : rdf_dataset) : rdf_dataset =
+  RDF_Canonical.canonicalize ds
 
 (* ------------------------------------------------------------------ *)
 (* Per-test runner. *)
@@ -302,8 +293,9 @@ let run_eval_test (t : rdfc_test) : outcome =
         | Some src, Some expected ->
           (try
              let ds = Parser_NQuads.parse_nquads src in
-             let canon = canonicalize_noop ds in
-             let got = dataset_to_canonical_nquads canon in
+             let got = RDF_Canonical.canonicalize_to_nquads ds in
+             let _ = canonicalize_ds in     (* keep symbol live *)
+             let _ = dataset_to_canonical_nquads in (* legacy helper *)
              if got = expected then Pass
              else Fail_diff (expected, got)
            with _ -> Fail_parse_error)))
@@ -404,9 +396,9 @@ let run_manifest ?(verbose=false) ~list_only path =
     Printf.printf "\n";
     Printf.printf "RDFC-1.0 tests: %d pass, %d fail, %d stub (out of %d)\n"
       pass fail stub n;
-    Printf.printf "  (Phase 0 skeleton; canonicalize_noop placeholder. \
-                  Map / Negative tests reported as STUB. \
-                  See docs/designissues/2026-04-24-rdfc10-plan.md.)\n"
+    Printf.printf "  (Phase 1: HFDQ + simple issuer (F* RDF.Canonical). \
+                  HNDQ for collisions and Map / NegEval tests deferred. \
+                  See docs/designissues/2026-04-25-rdfc10-algo-plan.md.)\n"
   end
 
 let () =

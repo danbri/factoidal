@@ -315,3 +315,25 @@ with open('$FILE', 'w') as f:
 fi
 
 echo "  Regex/hash/UUID stubs patched."
+
+# RDF_Canonical.ml — wire its hash_sha256 assume_val to Fstar_pure_hashes.sha256.
+# RDF.Canonical.fst declares its own assume val for self-containment (avoids a
+# back-edge from RDF.Canonical to SPARQL11.Algebra). Same shape as the
+# SPARQL11_Algebra patches above.
+CANON_FILE="$OUTDIR/RDF_Canonical.ml"
+if [[ -f "$CANON_FILE" ]]; then
+  echo "  Patching $CANON_FILE (hash_sha256 stub)..."
+  python3 -c "
+with open('$CANON_FILE', 'r') as f:
+    content = f.read()
+content = content.replace(
+    '''let hash_sha256 (uu___ : Prims.string) : Prims.string=
+  failwith \"Not yet implemented: RDF.Canonical.hash_sha256\"''',
+    '''let hash_sha256 (s : Prims.string) : Prims.string=
+  Fstar_pure_hashes.sha256 s'''
+)
+with open('$CANON_FILE', 'w') as f:
+    f.write(content)
+"
+  echo "  RDF_Canonical hash_sha256 wired to Fstar_pure_hashes.sha256."
+fi

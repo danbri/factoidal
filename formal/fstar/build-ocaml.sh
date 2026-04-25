@@ -115,6 +115,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   #   SPARQL11.Store        -> SPARQL11.Algebra, Parser.BallyhooHDT, Parser.BallyhooCOTTAS
   #   SPARQL.Protocol       -> SPARQL11.Algebra, Parser.CSVResults, Parser.JSONResults
   for fst in RDF.Graph.Executable.fst Parquet.Footer.fst \
+             RDF.Canonical.fst \
              Tableau.fst SPARQL11.Algebra.fst \
              OWL.QueryRewrite.fst OWL.QueryEval.fst \
              Parser.FastString.fst Parser.IRI.fst \
@@ -187,6 +188,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     Parser_Ballyhoo.ml Parser_BallyhooBloom.ml \
     Parser_BallyhooHDT.ml Parser_BallyhooHDTQ.ml Parser_BallyhooCOTTAS.ml \
     fstar_pure_hashes.ml \
+    RDF_Canonical.ml \
     SPARQL11_Algebra.ml OWL_QueryRewrite.ml OWL_QueryEval.ml SPARQL11_Parser.ml SPARQL11_Store.ml SPARQL_Protocol.ml \
     SPARQL_HTTP.ml SPARQL_HTTP_Client.ml SPARQL_ServiceDescription.ml \
     SPARQL_GraphStore.ml"
