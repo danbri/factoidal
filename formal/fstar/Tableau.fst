@@ -855,17 +855,132 @@ let rec materialise_eqc_expansion (g : rdf_graph) (all : rdf_graph)
       | None -> tail
     else tail
 
+(* -------------------------------------------------------------------
+   8a. Phase-1 EXISTENTIAL WITNESS INTRODUCTION (parent4 fix).
+
+   When the closed graph contains `(i rdf:type B)` where B is a
+   class-expression bnode that parses as `∃P.C` (or MinCard 1 / MinQualCard 1),
+   description-logic semantics requires SOME P-successor for i. OWL-RL
+   closure is Datalog and cannot synthesise that successor. We mint a
+   fresh deterministic bnode `_:bw_<i_str>_<p_str>` and emit:
+
+     i p _:bw_<i_str>_<p_str>
+     _:bw_<i_str>_<p_str> rdf:type C_iri        // only if C is CE_Named
+
+   Soundness: in every model of the closed graph there must exist some
+   P-successor of i in C. We exhibit a specific witness that any model
+   could be extended to satisfy. We never assert anything about distinct-
+   ness vs. existing successors, so this never contradicts the ABox.
+   The witness only fires when there is no already-known P-successor that
+   provably satisfies C — otherwise we'd duplicate.
+
+   Bound: only one witness per (i, p, C-shape) tuple is generated. Acts
+   as a single-step ∃-introduction without iteration; the closure caller
+   may re-run materialisation if desired.
+   ------------------------------------------------------------------- *)
+
+(* Pull out the (P, C) "obligation" of a CE if it is an existential
+   shape (∃P.C / MinCard 1 P / MinQualCard 1 P C). Returns None for
+   non-existential CEs and for k != 1 cardinality variants. *)
+let existential_obligation (ce : class_expr) : option (wf_iri & class_expr) =
+  match ce with
+  | CE_SomeValuesFrom p c -> Some (p, c)
+  | CE_MinCard k p ->
+    if k = 1 then Some (p, CE_Unknown) else None
+  | CE_MinQualCard k p c ->
+    if k = 1 then Some (p, c) else None
+  | _ -> None
+
+(* Build the deterministic witness bnode id for (i, p). We embed the
+   subject string and predicate IRI so different obligations get
+   different witnesses; bnode_id = string under the hood, so this is
+   just string concat. *)
+let witness_bnode_id (i : subject) (p : wf_iri) : bnode_id =
+  let i_str = match i with
+              | S_IRI s   -> s
+              | S_BNode b -> b in
+  String.concat "" ["_:bw_"; i_str; "__"; p]
+
+(* Decide whether `i` already has a known P-successor that provably
+   satisfies `c`. If so, no witness is needed.   *)
+let already_has_witness (g : rdf_graph) (i : subject) (p : wf_iri)
+                        (c : class_expr) : bool =
+  let succs = find_P_successors g i p in
+  match c with
+  | CE_Unknown ->
+    (* unqualified: any successor will do. *)
+    not (Nil? succs)
+  | _ ->
+    (match any_is_member g succs c 32 with
+     | Some true -> true
+     | _         -> false)
+
+(* For every CE-bnode that is an existential, find every i typed with
+   it, mint a witness if needed, emit (i p _:bw) and optionally
+   (_:bw rdf:type C_iri). Skips literals, skips already-satisfied
+   obligations. *)
+let witnesses_for_ce_bnode (g : rdf_graph) (ce_s : subject) (ce : class_expr)
+  : list triple =
+  match existential_obligation ce with
+  | None -> []
+  | Some (p, c) ->
+    let ce_term = subject_to_term ce_s in
+    let typed_individuals = find_subjects g rdf_type ce_term in
+    List.Tot.fold_left
+      (fun (acc : list triple) (i : subject) ->
+        if already_has_witness g i p c then acc
+        else
+          let bw_id = witness_bnode_id i p in
+          let bw_term = T_BNode bw_id in
+          let edge : triple = { s = i; p = p; o = bw_term } in
+          let acc1 = edge :: acc in
+          (* If C is a named class, also emit (witness rdf:type C). *)
+          match c with
+          | CE_Named c_iri ->
+            let type_t : triple = {
+              s = S_BNode bw_id; p = rdf_type; o = T_IRI c_iri;
+            } in
+            type_t :: acc1
+          | _ -> acc1)
+      []
+      typed_individuals
+
+(* Iterate over all CE bnodes, accumulating witness triples. *)
+let rec witnesses_for_all (g : rdf_graph) (ces : list subject)
+  : Tot (list triple) (decreases ces) =
+  match ces with
+  | []         -> []
+  | ce_s :: tl ->
+    let ce = parse_class_expr g (subject_to_term ce_s) 32 in
+    (match ce with
+     | CE_Unknown -> witnesses_for_all g tl
+     | _ ->
+       witnesses_for_ce_bnode g ce_s ce @ witnesses_for_all g tl)
+
+(* Public entry: introduce existential witnesses where the materialised
+   graph requires them. Sound — adds only triples that any model of
+   the input must already (essentially) satisfy. *)
+let tableau_introduce_witnesses (g : rdf_graph) : rdf_graph =
+  let ces = collect_ce_bnodes g g in
+  let extras = witnesses_for_all g ces in
+  add_triples_if_new g extras
+
 (* Public entry: one-shot materialisation pass. Runs to completion (no
    iteration) — the closure caller can re-run the Datalog closure
    afterwards to propagate any new rdf:type triples through
    rdfs:subClassOf etc. Stage (b) does not iterate materialisation ↔
-   closure to a fixpoint; that's a future optimisation.                *)
+   closure to a fixpoint; that's a future optimisation.
+
+   Phase 1: we first introduce existential witnesses (parent4 fix), then
+   materialise CE-bnode memberships against the augmented graph so newly-
+   minted witness P-successors can satisfy MinCard/SomeValuesFrom checks. *)
 let tableau_materialise (g : rdf_graph) : rdf_graph =
-  let ces = collect_ce_bnodes g g in
-  let individuals = collect_candidate_individuals g g in
-  let instance_triples   = materialise_all g individuals ces in
-  let structural_triples = materialise_eqc_expansion g g in
-  add_triples_if_new (add_triples_if_new g structural_triples) instance_triples
+  let g1 = tableau_introduce_witnesses g in
+  let ces = collect_ce_bnodes g1 g1 in
+  let individuals = collect_candidate_individuals g1 g1 in
+  let instance_triples   = materialise_all g1 individuals ces in
+  let structural_triples = materialise_eqc_expansion g1 g1 in
+  add_triples_if_new (add_triples_if_new g1 structural_triples) instance_triples
 
 (* -------------------------------------------------------------------
    9. In-file test matrix (guarded, dead-code).
@@ -977,6 +1092,22 @@ let _tableau_sanity_matrix : unit =
       let ce_min1_female = CE_MinQualCard 1 i_hasChild (CE_Named i_female2) in
       let res_min1_female = is_member g4 (S_IRI i_bob) ce_min1_female 8 in
       assert (res_min1_female = None);
+
+      // Phase 1 sanity: existential_obligation extracts (p, c) from
+      // CE_SomeValuesFrom and CE_MinCard 1 / MinQualCard 1, returns
+      // None for other CEs.
+      let obl1 = existential_obligation
+                   (CE_SomeValuesFrom i_hasChild (CE_Named i_male)) in
+      assert (obl1 = Some (i_hasChild, CE_Named i_male));
+      let obl2 = existential_obligation (CE_MinCard 1 i_hasChild) in
+      assert (obl2 = Some (i_hasChild, CE_Unknown));
+      let obl3 = existential_obligation
+                   (CE_MinQualCard 1 i_hasChild (CE_Named i_female2)) in
+      assert (obl3 = Some (i_hasChild, CE_Named i_female2));
+      let obl_neg1 = existential_obligation (CE_Named i_male) in
+      assert (obl_neg1 = None);
+      let obl_neg2 = existential_obligation (CE_MinCard 2 i_hasChild) in
+      assert (obl_neg2 = None);
 
       ()
     end
