@@ -5140,7 +5140,7 @@ and parse_skip_from (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
                       | ParseErr m -> ParseErr m
                       | ParseOk (rest, ts''') ->
                           ParseOk
-                            (((SPARQL11_Algebra.DC_Named i) :: rest), ts'''))
+                            (((SPARQL11_Algebra.DC_Named ri) :: rest), ts'''))
                    else ParseErr "invalid IRI after FROM NAMED"
                | Tok_PNAME pn ->
                    (match resolve_pname pn pm with
@@ -5169,7 +5169,7 @@ and parse_skip_from (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
                  | ParseErr m -> ParseErr m
                  | ParseOk (rest, ts'') ->
                      ParseOk
-                       (((SPARQL11_Algebra.DC_Default i) :: rest), ts''))
+                       (((SPARQL11_Algebra.DC_Default ri) :: rest), ts''))
               else ParseErr "invalid IRI after FROM"
           | Tok_PNAME pn ->
               (match resolve_pname pn pm with

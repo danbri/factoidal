@@ -130,19 +130,19 @@
 <div class="summary">
   <div class="tile ok">
     <div class="label">Pass</div>
-    <div class="value">1590</div>
+    <div class="value">1600</div>
   </div>
   <div class="tile err">
     <div class="label">Fail</div>
-    <div class="value">10</div>
+    <div class="value">58</div>
   </div>
   <div class="tile warn">
     <div class="label">Skipped</div>
-    <div class="value">62</div>
+    <div class="value">4</div>
   </div>
   <div class="tile">
     <div class="label">Pass / runnable</div>
-    <div class="value">99.4%<small> of 1600</small></div>
+    <div class="value">96.5%<small> of 1658</small></div>
   </div>
   <div class="tile">
     <div class="label">Total in suites</div>
@@ -159,7 +159,7 @@
   are linked below.
 </div>
 
-<h2>SPARQL 1.1 <span class="inline-numbers">559 pass · 10 fail · 62 skip</span></h2>
+<h2>SPARQL 1.1 <span class="inline-numbers">569 pass · 58 fail · 4 skip</span></h2>
 <div class="suites">
       <div class="suite-row perfect">
         <div class="suite-name">add</div>
@@ -201,11 +201,11 @@
           <small></small>
         </div>
       </div>
-      <div class="suite-row mixed">
+      <div class="suite-row perfect">
         <div class="suite-name">cast</div>
-        <div class="suite-bar"><div class="fill" style="width:67%"></div></div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
         <div class="suite-numbers">
-          <span class="p">4</span>/<span class="f">2</span>
+          <span class="p">6</span>/<span class="f">0</span>
           <small></small>
         </div>
       </div>
@@ -217,11 +217,11 @@
           <small></small>
         </div>
       </div>
-      <div class="suite-row mixed">
+      <div class="suite-row perfect">
         <div class="suite-name">construct</div>
-        <div class="suite-bar"><div class="fill" style="width:86%"></div></div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
         <div class="suite-numbers">
-          <span class="p">6</span>/<span class="f">1</span>
+          <span class="p">7</span>/<span class="f">0</span>
           <small></small>
         </div>
       </div>
@@ -313,12 +313,12 @@
           <small></small>
         </div>
       </div>
-      <div class="suite-row skipped">
+      <div class="suite-row mixed">
         <div class="suite-name">http-rdf-update</div>
         <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
         <div class="suite-numbers">
-          <span class="p">0</span>/<span class="f">0</span>
-          <small>skip 19</small>
+          <span class="p">0</span>/<span class="f">19</span>
+          <small></small>
         </div>
       </div>
       <div class="suite-row perfect">
@@ -337,11 +337,11 @@
           <small></small>
         </div>
       </div>
-      <div class="suite-row near-perfect">
+      <div class="suite-row perfect">
         <div class="suite-name">negation</div>
-        <div class="suite-bar"><div class="fill" style="width:92%"></div></div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
         <div class="suite-numbers">
-          <span class="p">11</span>/<span class="f">1</span>
+          <span class="p">12</span>/<span class="f">0</span>
           <small></small>
         </div>
       </div>
@@ -361,12 +361,12 @@
           <small></small>
         </div>
       </div>
-      <div class="suite-row skipped">
+      <div class="suite-row mixed">
         <div class="suite-name">protocol</div>
-        <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
+        <div class="suite-bar"><div class="fill" style="width:12%"></div></div>
         <div class="suite-numbers">
-          <span class="p">0</span>/<span class="f">0</span>
-          <small>skip 34</small>
+          <span class="p">4</span>/<span class="f">30</span>
+          <small></small>
         </div>
       </div>
       <div class="suite-row mixed">
@@ -377,12 +377,12 @@
           <small></small>
         </div>
       </div>
-      <div class="suite-row skipped">
+      <div class="suite-row mixed">
         <div class="suite-name">service-description</div>
         <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
         <div class="suite-numbers">
-          <span class="p">0</span>/<span class="f">0</span>
-          <small>skip 3</small>
+          <span class="p">0</span>/<span class="f">3</span>
+          <small></small>
         </div>
       </div>
       <div class="suite-row perfect">
@@ -429,8 +429,8 @@
         <div class="suite-name">update-silent</div>
         <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
         <div class="suite-numbers">
-          <span class="p">11</span>/<span class="f">0</span>
-          <small>skip 2</small>
+          <span class="p">13</span>/<span class="f">0</span>
+          <small></small>
         </div>
       </div>
 </div>
@@ -592,15 +592,15 @@
 <details>
   <summary>Raw per-suite numbers</summary>
   <h3 style="font-size: 0.95em; margin: 0.8em 0 0.3em;">SPARQL 1.1</h3>
-  <pre>631 total: 559 pass, 10 fail, 62 skip, 0 unsupported
+  <pre>631 total: 569 pass, 58 fail, 4 skip, 0 unsupported
   add                                 pass:8 fail:0 skip:0 unsupported:0
   aggregates                          pass:47 fail:0 skip:0 unsupported:0
   basic-update                        pass:11 fail:2 skip:0 unsupported:0
   bind                                pass:10 fail:0 skip:0 unsupported:0
   bindings                            pass:11 fail:0 skip:0 unsupported:0
-  cast                                pass:4 fail:2 skip:0 unsupported:0
+  cast                                pass:6 fail:0 skip:0 unsupported:0
   clear                               pass:4 fail:0 skip:0 unsupported:0
-  construct                           pass:6 fail:1 skip:0 unsupported:0
+  construct                           pass:7 fail:0 skip:0 unsupported:0
   copy                                pass:6 fail:0 skip:0 unsupported:0
   csv-tsv-res                         pass:6 fail:0 skip:0 unsupported:0
   delete                              pass:19 fail:0 skip:0 unsupported:0
@@ -612,21 +612,21 @@
   exists                              pass:6 fail:0 skip:0 unsupported:0
   functions                           pass:75 fail:0 skip:0 unsupported:0
   grouping                            pass:6 fail:0 skip:0 unsupported:0
-  http-rdf-update                     pass:0 fail:0 skip:19 unsupported:0
+  http-rdf-update                     pass:0 fail:19 skip:0 unsupported:0
   json-res                            pass:4 fail:0 skip:0 unsupported:0
   move                                pass:6 fail:0 skip:0 unsupported:0
-  negation                            pass:11 fail:1 skip:0 unsupported:0
+  negation                            pass:12 fail:0 skip:0 unsupported:0
   project-expression                  pass:7 fail:0 skip:0 unsupported:0
   property-path                       pass:33 fail:0 skip:0 unsupported:0
-  protocol                            pass:0 fail:0 skip:34 unsupported:0
+  protocol                            pass:4 fail:30 skip:0 unsupported:0
   service                             pass:6 fail:1 skip:0 unsupported:0
-  service-description                 pass:0 fail:0 skip:3 unsupported:0
+  service-description                 pass:0 fail:3 skip:0 unsupported:0
   subquery                            pass:14 fail:0 skip:0 unsupported:0
   syntax-fed                          pass:3 fail:0 skip:0 unsupported:0
   syntax-query                        pass:94 fail:0 skip:0 unsupported:0
   syntax-update-1                     pass:54 fail:0 skip:0 unsupported:0
   syntax-update-2                     pass:1 fail:0 skip:0 unsupported:0
-  update-silent                       pass:11 fail:0 skip:2 unsupported:0</pre>
+  update-silent                       pass:13 fail:0 skip:0 unsupported:0</pre>
   <h3 style="font-size: 0.95em; margin: 0.8em 0 0.3em;">RDF 1.1</h3>
   <pre>1031 total: 1031 pass, 0 fail, 0 skip, 0 unsupported
   rdf-mt                              pass:39 fail:0 skip:0 unsupported:0
@@ -652,9 +652,9 @@
 </main>
 
 <footer>
-  Generated <strong>2026-04-24 23:30 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/e25bfce7145dbae457a8ad5a9f9d1f7294c0c572">e25bfce</a></code>
-  on branch <code>claude/main</code> — &ldquo;runner: SERVICE qt:serviceData registration (Phase 2)&rdquo;.
+  Generated <strong>2026-04-25 00:05 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/d269ebdda79ee7c683e3fcbd55a1e1c32a1b4f00">d269ebd</a></code>
+  on branch <code>claude/main</code> — &ldquo;plan: SPARQL Update bnode-scoping fix for basic-update fails&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 

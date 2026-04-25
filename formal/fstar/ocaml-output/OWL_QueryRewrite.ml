@@ -233,6 +233,28 @@ let rec union_ladder (acc : SPARQL11_Algebra.group_graph_pattern)
   match branches with
   | [] -> acc
   | br::rest -> union_ladder (SPARQL11_Algebra.GP_Union (acc, br)) rest
+let wrap_distinct_over_ggp (g : SPARQL11_Algebra.group_graph_pattern) :
+  SPARQL11_Algebra.group_graph_pattern=
+  SPARQL11_Algebra.GP_SubSelect
+    {
+      SPARQL11_Algebra.q_base = FStar_Pervasives_Native.None;
+      SPARQL11_Algebra.q_prefixes = [];
+      SPARQL11_Algebra.q_form =
+        (SPARQL11_Algebra.QF_Select SPARQL11_Algebra.Select_All);
+      SPARQL11_Algebra.q_dataset = [];
+      SPARQL11_Algebra.q_pattern = g;
+      SPARQL11_Algebra.q_group_by = FStar_Pervasives_Native.None;
+      SPARQL11_Algebra.q_having = FStar_Pervasives_Native.None;
+      SPARQL11_Algebra.q_modifier =
+        {
+          SPARQL11_Algebra.sm_order_by = FStar_Pervasives_Native.None;
+          SPARQL11_Algebra.sm_distinct = true;
+          SPARQL11_Algebra.sm_reduced = false;
+          SPARQL11_Algebra.sm_offset = FStar_Pervasives_Native.None;
+          SPARQL11_Algebra.sm_limit = FStar_Pervasives_Native.None
+        };
+      SPARQL11_Algebra.q_values = FStar_Pervasives_Native.None
+    }
 let build_union_ggp (branch_bgps : SPARQL11_Algebra.bgp Prims.list) :
   SPARQL11_Algebra.group_graph_pattern=
   match branch_bgps with
@@ -245,7 +267,7 @@ let build_union_ggp (branch_bgps : SPARQL11_Algebra.bgp Prims.list) :
           (fun acc b ->
              FStar_List_Tot_Base.append acc [SPARQL11_Algebra.GP_BGP b]) []
           rest in
-      union_ladder head rec_branches
+      wrap_distinct_over_ggp (union_ladder head rec_branches)
 type ce_combinator =
   | CE_Intersect 
   | CE_Union 
@@ -636,9 +658,11 @@ let rec expand_ce_subject (b : SPARQL11_Algebra.bgp)
                  | [] -> SPARQL11_Algebra.GP_BGP (single_type_bgp subj op)
                  | g::[] -> g
                  | g::tl ->
-                     FStar_List_Tot_Base.fold_left
-                       (fun acc br -> SPARQL11_Algebra.GP_Union (acc, br)) g
-                       tl))
+                     let ladder =
+                       FStar_List_Tot_Base.fold_left
+                         (fun acc br -> SPARQL11_Algebra.GP_Union (acc, br))
+                         g tl in
+                     wrap_distinct_over_ggp ladder))
        | FStar_Pervasives_Native.Some (k, CE_SomeValuesFrom) ->
            let on_prop_opt = bgp_find_first_obj b k owl_onProperty_iri in
            let filler_opt = bgp_find_first_obj b k owl_someValuesFrom_iri in
@@ -1122,42 +1146,17 @@ let rec ggp_has_ce_marker (g : SPARQL11_Algebra.group_graph_pattern) :
   | SPARQL11_Algebra.GP_PropertyPath (uu___, uu___1, uu___2) -> false
   | SPARQL11_Algebra.GP_Empty -> false
 let rewrite_query (q : SPARQL11_Algebra.query) : SPARQL11_Algebra.query=
-  let ce_seen = ggp_has_ce_marker q.SPARQL11_Algebra.q_pattern in
-  let q' =
-    {
-      SPARQL11_Algebra.q_base = (q.SPARQL11_Algebra.q_base);
-      SPARQL11_Algebra.q_prefixes = (q.SPARQL11_Algebra.q_prefixes);
-      SPARQL11_Algebra.q_form = (q.SPARQL11_Algebra.q_form);
-      SPARQL11_Algebra.q_dataset = (q.SPARQL11_Algebra.q_dataset);
-      SPARQL11_Algebra.q_pattern =
-        (rewrite_ggp (normalise_joins q.SPARQL11_Algebra.q_pattern));
-      SPARQL11_Algebra.q_group_by = (q.SPARQL11_Algebra.q_group_by);
-      SPARQL11_Algebra.q_having = (q.SPARQL11_Algebra.q_having);
-      SPARQL11_Algebra.q_modifier = (q.SPARQL11_Algebra.q_modifier);
-      SPARQL11_Algebra.q_values = (q.SPARQL11_Algebra.q_values)
-    } in
-  if ce_seen
-  then
-    {
-      SPARQL11_Algebra.q_base = (q'.SPARQL11_Algebra.q_base);
-      SPARQL11_Algebra.q_prefixes = (q'.SPARQL11_Algebra.q_prefixes);
-      SPARQL11_Algebra.q_form = (q'.SPARQL11_Algebra.q_form);
-      SPARQL11_Algebra.q_dataset = (q'.SPARQL11_Algebra.q_dataset);
-      SPARQL11_Algebra.q_pattern = (q'.SPARQL11_Algebra.q_pattern);
-      SPARQL11_Algebra.q_group_by = (q'.SPARQL11_Algebra.q_group_by);
-      SPARQL11_Algebra.q_having = (q'.SPARQL11_Algebra.q_having);
-      SPARQL11_Algebra.q_modifier =
-        (let uu___ = q'.SPARQL11_Algebra.q_modifier in
-         {
-           SPARQL11_Algebra.sm_order_by =
-             (uu___.SPARQL11_Algebra.sm_order_by);
-           SPARQL11_Algebra.sm_distinct = true;
-           SPARQL11_Algebra.sm_reduced = (uu___.SPARQL11_Algebra.sm_reduced);
-           SPARQL11_Algebra.sm_offset = (uu___.SPARQL11_Algebra.sm_offset);
-           SPARQL11_Algebra.sm_limit = (uu___.SPARQL11_Algebra.sm_limit)
-         });
-      SPARQL11_Algebra.q_values = (q'.SPARQL11_Algebra.q_values)
-    }
-  else q'
+  {
+    SPARQL11_Algebra.q_base = (q.SPARQL11_Algebra.q_base);
+    SPARQL11_Algebra.q_prefixes = (q.SPARQL11_Algebra.q_prefixes);
+    SPARQL11_Algebra.q_form = (q.SPARQL11_Algebra.q_form);
+    SPARQL11_Algebra.q_dataset = (q.SPARQL11_Algebra.q_dataset);
+    SPARQL11_Algebra.q_pattern =
+      (rewrite_ggp (normalise_joins q.SPARQL11_Algebra.q_pattern));
+    SPARQL11_Algebra.q_group_by = (q.SPARQL11_Algebra.q_group_by);
+    SPARQL11_Algebra.q_having = (q.SPARQL11_Algebra.q_having);
+    SPARQL11_Algebra.q_modifier = (q.SPARQL11_Algebra.q_modifier);
+    SPARQL11_Algebra.q_values = (q.SPARQL11_Algebra.q_values)
+  }
 let rewrite_query_for_owl_direct (q : SPARQL11_Algebra.query) :
   SPARQL11_Algebra.query= rewrite_query q

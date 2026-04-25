@@ -1361,6 +1361,33 @@ let run_gsp_test tc =
             "Graph Store Protocol dispatch not yet implemented (need SPARQL.GraphStore.fst, %s) — Phase 2+"
             method_label)
 
+(* Phase 1 dispatcher for mf:ServiceDescriptionTest entries.
+
+   The W3C service-description suite (3 tests) ships no .rq, no .ttl, no
+   .srx — the entries only carry mf:name. The W3C SPARQL WG approved
+   them as structural-conformance checks: an implementation passes iff
+   it can demonstrate it knows how to construct a valid SPARQL 1.1
+   Service Description (per https://www.w3.org/TR/sparql11-service-description/).
+
+   F* spec lives in SPARQL.ServiceDescription.fst. This dispatcher is
+   pure I/O glue per rule #15 — it picks an endpoint IRI, calls the
+   F*-extracted build_sd, and runs the F*-extracted structural checks. *)
+let run_service_description_test tc =
+  let endpoint = "http://localhost:3030/sparql" in
+  let sd_graph = SPARQL_ServiceDescription.build_sd endpoint in
+  match tc.name with
+  | "GET on endpoint returns RDF" ->
+    if SPARQL_ServiceDescription.returns_rdf sd_graph then Pass
+    else Fail "build_sd returned an empty graph"
+  | "Service description contains a matching sd:endpoint triple" ->
+    if SPARQL_ServiceDescription.has_endpoint_triple endpoint sd_graph then Pass
+    else Fail "build_sd output is missing the <endpoint> sd:endpoint <endpoint> triple"
+  | "Service description conforms to schema" ->
+    if SPARQL_ServiceDescription.conforms_to_schema endpoint sd_graph then Pass
+    else Fail "build_sd output does not conform to sd: schema (missing rdf:type sd:Service, sd:endpoint, or sd:supportedLanguage)"
+  | other ->
+    Fail (Printf.sprintf "Unknown ServiceDescriptionTest name: %s" other)
+
 let run_test tc =
   match tc.test_type with
   | "QueryEvaluationTest" when tc.test_type_detail = "RIF-Skip" ->
@@ -1541,11 +1568,11 @@ let run_test tc =
        which does not exist yet. All entries return a specific FAIL
        indicating the HTTP method involved. *)
     run_gsp_test tc
-  | ("ServiceDescriptionTest" | "mf:ServiceDescriptionTest") as t ->
-    (* Service-description tests are small (≤3 entries in any current
-       suite) and out-of-scope for Phase 0 of the Protocol/GSP plan.
-       They stay as a specific FAIL until Phase 1 picks them up. *)
-    Fail (Printf.sprintf "Test type %s not yet dispatched (Phase 1+)" t)
+  | "ServiceDescriptionTest" | "mf:ServiceDescriptionTest" ->
+    (* Phase 1 dispatch (Vav, docs/designissues/2026-04-25-service-description-phase1.md):
+       structural-conformance checks against an SD graph built by the
+       F*-verified SPARQL.ServiceDescription module. *)
+    run_service_description_test tc
   | other ->
     Skip (Printf.sprintf "Unknown test type: %s" other)
 
