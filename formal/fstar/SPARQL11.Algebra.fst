@@ -3507,6 +3507,25 @@ let rec rewrite_query_bnodes_pattern (p : group_graph_pattern)
     GP_PropertyPath (rewrite_query_bnode_subject s) pp (rewrite_query_bnode_term o)
   | _ -> p
 
+(* SELECT * projection: skip synthetic variables introduced by
+   `rewrite_query_bnode_*` for blank nodes appearing in the WHERE clause.
+   Per SPARQL 1.1 §18.2.4 (OutScope of variables), the original query's
+   blank nodes are NOT in the user's variable scope; the rewriter binds
+   them to fresh `_bnode_<label>` variables only as a matching-side
+   convenience. Returning those variables under `SELECT *` would expose
+   implementation detail and inflate the row count by the number of
+   distinct synthetic-variable bindings (parent7: 1 expected row × 311
+   bindings = 311 spurious rows; see
+   docs/designissues/2026-04-25-tav2-parent7-finish.md). *)
+let is_synthetic_bnode_var (v : var_name) : bool =
+  string_starts_with v "_bnode_"
+
+let strip_synthetic_bnode_vars_mu (mu : solution_mapping) : solution_mapping =
+  List.Tot.filter (fun (v, _) -> not (is_synthetic_bnode_var v)) mu
+
+let strip_synthetic_bnode_vars (omega : solution_sequence) : solution_sequence =
+  List.Tot.map strip_synthetic_bnode_vars_mu omega
+
 (* ================================================================ *)
 (* Top-level dataset-clause application (FROM / FROM NAMED, §13.2). *)
 (*                                                                   *)
@@ -3617,11 +3636,14 @@ let eval_select_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : solution_
       let omega' = match sel with
         | Select_Vars items -> aggregate_groups items filtered_groups
         | Select_All ->
-          (* SELECT * with GROUP BY: return representative solutions *)
-          List.Tot.map (fun (grp : group) ->
+          (* SELECT * with GROUP BY: return representative solutions,
+             stripping rewriter-introduced synthetic _bnode_* vars (see
+             is_synthetic_bnode_var). *)
+          let reps = List.Tot.map (fun (grp : group) ->
             match grp.g_solutions with
             | mu :: _ -> mu
             | [] -> sm_empty) filtered_groups in
+          strip_synthetic_bnode_vars reps in
 
       (* 6. ORDER BY *)
       let ordered = match q.q_modifier.sm_order_by with
@@ -3650,10 +3672,15 @@ let eval_select_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : solution_
         | None -> omega'
         | Some o -> sort_solutions o omega' in
 
-      (* 7. Projection *)
+      (* 7. Projection.
+         For SELECT *, strip rewriter-introduced synthetic _bnode_* vars
+         BEFORE DISTINCT/REDUCED so duplicates that differ only in
+         synthetic-variable bindings collapse to one row. SPARQL §18.2.4
+         says `*` denotes the in-scope variables of the WHERE clause;
+         query-bnode existentials are not in the user's variable scope. *)
       let projected = match sel with
         | Select_Vars items -> project_solutions (select_item_vars items) ordered
-        | Select_All -> ordered in
+        | Select_All -> strip_synthetic_bnode_vars ordered in
 
       (* 8. DISTINCT / REDUCED *)
       let deduped =
