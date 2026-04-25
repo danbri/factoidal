@@ -38,6 +38,7 @@
 open RDF_Graph_Executable
 open SPARQL11_Algebra
 module P = SPARQL_Protocol
+module S = SPARQL11_Store
 
 (* ============================================================================
    RDF file loading — same shape as factoidal_cli, inlined here so we don't
@@ -512,6 +513,112 @@ let load_cottas_part cfg base =
 let load_dataset cfg =
   load_cottas_part cfg (load_dataset_fast cfg)
 
+(* ===========================================================================
+   Backend wiring (issue #100 Phase 2.5).
+
+   The SPARQL engine (SPARQL11_Store.eval_*_backend_dataset) operates on a
+   `dataset_backend` rather than the eager rdf_dataset. This lets us serve
+   queries from on-disk COTTAS without materialising every quad in RAM.
+
+   Two orthogonal pieces of state in this server:
+
+     - dataset_ref : rdf_dataset ref
+         Holds the in-memory side. UPDATE mutates this. SIGTERM dump and
+         /backend-info.json triple counts come from here.
+
+     - backend_ref : SPARQL11_Store.dataset_backend ref
+         Holds the engine view. Built from dataset_ref (indexed) plus, for
+         each --data-cottas file, an on-disk GB_CottasOnDisk leaf, all
+         union'd together. Queries run through this.
+
+   Invariant: after every loader step or UPDATE, backend_ref is rebuilt to
+   reflect dataset_ref + the open cottas-ondisk handles.
+   =========================================================================== *)
+
+(* A pair of (path, opened on-disk store) for each --data-cottas file.
+   Opens are stable for the lifetime of the server (no eviction yet); the
+   on-disk store holds Parquet readers + dictionary arrays, not the parsed
+   triples. *)
+type cottas_ondisk_loaded = {
+  cod_path : string;
+  cod_store : Parser_BallyhooCOTTAS.cottas_ondisk_store;
+}
+
+(* Open all --data-cottas files as on-disk stores. Errors from individual
+   files are logged + skipped (mirrors load_cottas_part: don't kill the
+   loader thread). Runs on the worker thread once the listener is bound. *)
+let open_cottas_ondisk_files (paths : string list) : cottas_ondisk_loaded list =
+  List.filter_map (fun path ->
+    try
+      match Parser_BallyhooCOTTAS.cottas_ondisk_open path with
+      | FStar_Pervasives_Native.Some store ->
+        Some { cod_path = path; cod_store = store }
+      | FStar_Pervasives_Native.None ->
+        Printf.eprintf "Error: cottas_ondisk_open returned None for %s\n%!" path;
+        None
+    with e ->
+      Printf.eprintf "Error opening --data-cottas %s on-disk: %s\n%!"
+        path (Printexc.to_string e);
+      None
+  ) paths
+
+(* Combine the in-memory rdf_dataset side and the cottas-ondisk side into a
+   single dataset_backend. Default + per-named-graph slots are unioned so
+   the engine sees both halves through the same backend_search dispatch.
+
+   Three shapes:
+     - cottas-ondisk only: union over each ondisk store's
+       cottas_ondisk_dataset_backend; the in-memory side contributes empty.
+     - in-memory only: indexed_dataset_backend over dataset_ref. *)
+let build_dataset_backend
+    (in_memory : rdf_dataset)
+    (cottas_stores : cottas_ondisk_loaded list)
+    : S.dataset_backend =
+  let in_memory_backend = S.indexed_dataset_backend in_memory in
+  match cottas_stores with
+  | [] -> in_memory_backend
+  | _ ->
+    let cottas_backends =
+      List.map (fun s -> S.cottas_ondisk_dataset_backend s.cod_store) cottas_stores
+    in
+    (* Union default graphs. *)
+    let dsb_default =
+      S.GB_Union (
+        in_memory_backend.S.dsb_default
+        :: List.map (fun (b : S.dataset_backend) -> b.S.dsb_default) cottas_backends
+      )
+    in
+    (* Merge named-graph lists. If two backends both expose the same
+       named-graph IRI, group them into a GB_Union for that name. We
+       preserve insertion order: in-memory first, then COTTAS in CLI
+       order. *)
+    let by_name : (RDF_Graph_Executable.iri,
+                   S.graph_backend list ref) Hashtbl.t =
+      Hashtbl.create 17 in
+    let order : RDF_Graph_Executable.iri list ref = ref [] in
+    let push_named (ngb : S.named_graph_backend) =
+      match Hashtbl.find_opt by_name ngb.S.ngb_name with
+      | Some r -> r := ngb.S.ngb_graph :: !r
+      | None ->
+        let r = ref [ngb.S.ngb_graph] in
+        Hashtbl.add by_name ngb.S.ngb_name r;
+        order := ngb.S.ngb_name :: !order
+    in
+    List.iter push_named in_memory_backend.S.dsb_named;
+    List.iter (fun (b : S.dataset_backend) ->
+      List.iter push_named b.S.dsb_named
+    ) cottas_backends;
+    let dsb_named =
+      List.rev_map (fun name ->
+        let parts = List.rev !(Hashtbl.find by_name name) in
+        let g = match parts with
+          | [single] -> single
+          | many -> S.GB_Union many in
+        { S.ngb_name = name; S.ngb_graph = g }
+      ) !order
+    in
+    { S.dsb_default; S.dsb_named }
+
 (* ============================================================================
    HTTP/1.1 request framing.
 
@@ -758,12 +865,19 @@ let select_vars query results =
     List.rev !acc
 
 (* Run the query and produce a response_body.
-   F* evaluator does the work; we just pick serialiser + content type. *)
-let run_query ~dataset ~accept query =
-  let graph = dataset.ds_default in
+   F* evaluator does the work; we just pick serialiser + content type.
+
+   Phase 2.5 (issue #100): SELECT/ASK go through the backend evaluator
+   (S.eval_*_backend_dataset) so that --data-cottas dispatches into
+   GB_CottasOnDisk without materialising the corpus in RAM. The
+   evaluators return option (None for unsupported query forms); we
+   surface that as an empty result rather than 500. *)
+let run_query ~backend ~accept query =
   match query.q_form with
   | QF_Ask ->
-    let b = eval_ask_query query graph dataset in
+    let b = match S.eval_ask_query_backend_dataset query backend with
+      | FStar_Pervasives_Native.Some v -> v
+      | FStar_Pervasives_Native.None -> false in
     let fmt = response_format_of_accept accept in
     (* For ASK, only JSON and XML have dedicated boolean serialisers;
        other formats fall back to JSON. *)
@@ -775,7 +889,9 @@ let run_query ~dataset ~accept query =
     in
     { rb_status = 200; rb_content_type = ct; rb_body = body }
   | QF_Select _ ->
-    let rows = eval_select_query query graph dataset in
+    let rows = match S.eval_select_query_backend_dataset query backend with
+      | FStar_Pervasives_Native.Some r -> r
+      | FStar_Pervasives_Native.None -> [] in
     let vars = select_vars query rows in
     let fmt = response_format_of_accept accept in
     let (ct, body) = match fmt with
@@ -790,13 +906,14 @@ let run_query ~dataset ~accept query =
     in
     { rb_status = 200; rb_content_type = ct; rb_body = body }
   | QF_Construct _ | QF_Describe _ ->
-    (* CONSTRUCT / DESCRIBE: the F* evaluator returns [] for these today
-       (SPARQL11.Algebra.fst's eval_select_query has stub arms for
-       QF_Construct / QF_Describe). We surface that as an empty result
-       in the caller's preferred results format so at least the protocol
-       round-trips cleanly. Serialising real triples in Turtle is a
-       future-stage deliverable. *)
-    let rows = eval_select_query query graph dataset in
+    (* CONSTRUCT / DESCRIBE: the F* evaluator's backend variants return
+       None for these forms. Surface as empty rows in the caller's
+       preferred results format so at least the protocol round-trips
+       cleanly. Real CONSTRUCT/DESCRIBE serialisation is a later
+       deliverable. *)
+    let rows = match S.eval_select_query_backend_dataset query backend with
+      | FStar_Pervasives_Native.Some r -> r
+      | FStar_Pervasives_Native.None -> [] in
     let fmt = response_format_of_accept accept in
     let vars = select_vars query rows in
     let (ct, body) = match fmt with
@@ -807,14 +924,14 @@ let run_query ~dataset ~accept query =
     in
     { rb_status = 200; rb_content_type = ct; rb_body = body }
 
-let parse_and_run ~dataset ~accept query_text =
+let parse_and_run ~backend ~accept query_text =
   match SPARQL11_Parser.parse_sparql query_text with
   | SPARQL11_Parser.ParseErr msg ->
     { rb_status = 400;
       rb_content_type = "text/plain; charset=utf-8";
       rb_body = "SPARQL parse error: " ^ msg ^ "\n" }
   | SPARQL11_Parser.ParseOk (query, _tokens) ->
-    (try run_query ~dataset ~accept query
+    (try run_query ~backend ~accept query
      with e ->
        { rb_status = 500;
          rb_content_type = "text/plain; charset=utf-8";
@@ -1678,7 +1795,7 @@ let try_static_route ~cfg ~dataset_ref ~meth ~path ~qs ~accept
     (* Everything else: try to serve from the configured demo dir. *)
     Some (serve_static_demo ~cfg path)
 
-let handle_connection cfg dataset_ref ic oc =
+let handle_connection cfg dataset_ref backend_ref cottas_stores_ref ic oc =
   try
     (* Read the whole request (headers + body) into a single buffer,
        then hand off to the F*-extracted framing parser. *)
@@ -1834,16 +1951,23 @@ let handle_connection cfg dataset_ref ic oc =
                    dataset
                in
                dataset_ref := new_ds;
+               (* Rebuild the backend so subsequent queries see the
+                  updated in-memory side. The cottas-ondisk handles are
+                  read-only and unchanged across UPDATEs (rule #15: glue
+                  only — no semantic change). *)
+               backend_ref :=
+                 build_dataset_backend new_ds !cottas_stores_ref;
                { rb_status = 204;
                  rb_content_type = "text/plain; charset=utf-8";
                  rb_body = "" }
            end))
       | P.PR_Query (q, _dflt, _named) ->
         (* Stage 1: ignore default-graph-uri / named-graph-uri (would
-           require HTTP fetch to honour). The dataset preloaded via
-           --dataset is served as the default graph; UPDATE ops
-           accumulated via POST /update mutate the shared ref. *)
-        parse_and_run ~dataset ~accept q
+           require HTTP fetch to honour). Phase 2.5 (issue #100):
+           queries dispatch through backend_ref so on-disk COTTAS rows
+           never have to be materialised. UPDATE keeps using the
+           in-memory dataset_ref. *)
+        parse_and_run ~backend:!backend_ref ~accept q
     in
     write_response ~extra_headers:cors_hdrs oc
       ~status:resp.rb_status
@@ -1885,6 +2009,13 @@ let run_server cfg =
      "loaded" startup state to be reflected in the first request). *)
   let dataset_ref = ref (load_dataset_fast cfg) in
   let has_cottas = cfg.data_cottas_files <> [] in
+  (* Phase 2.5 (issue #100): cottas_stores_ref holds the open on-disk
+     COTTAS handles; backend_ref holds the engine view (in-memory side
+     unioned with each on-disk store). Both are rebuilt after the
+     COTTAS loader thread completes and after every UPDATE. *)
+  let cottas_stores_ref : cottas_ondisk_loaded list ref = ref [] in
+  let backend_ref : S.dataset_backend ref =
+    ref (build_dataset_backend !dataset_ref []) in
   (* snapshot_iris is the list of named-graph IRIs present at full-load
      completion. It's used by the graceful-shutdown handler to diff
      against the live dataset and dump user-added (RW) graphs. We can't
@@ -2005,7 +2136,7 @@ let run_server cfg =
       | Some (client, _caddr) ->
         let ic = Unix.in_channel_of_descr client in
         let oc = Unix.out_channel_of_descr client in
-        (try handle_connection cfg dataset_ref ic oc
+        (try handle_connection cfg dataset_ref backend_ref cottas_stores_ref ic oc
          with e ->
            Printf.eprintf "  unhandled: %s\n%!" (Printexc.to_string e));
         (try close_out oc with _ -> ());
@@ -2022,30 +2153,60 @@ let run_server cfg =
     (* Run the accept loop on a worker thread; it just routes requests
        and never recurses, so 512 KB of pthread stack is plenty. *)
     let _tid = Thread.create accept_loop () in
-    (* Main thread: load the COTTAS data. Once done, swap dataset_ref
-       and flip loading=false. The accept thread's request handler
-       reads the same dataset_ref + loading flag through the mutex. *)
-    let base = !dataset_ref in
+    (* Main thread: open each --data-cottas file as an on-disk store.
+       Phase 2.5 (issue #100): we no longer materialise the COTTAS
+       corpus into an rdf_dataset. cottas_ondisk_open returns a handle
+       wrapping per-column term-id arrays + dictionaries; queries walk
+       these arrays through GB_CottasOnDisk dispatch.
+
+       After the open completes:
+         - dataset_ref keeps whatever the --dataset side contributed
+           (UPDATE will mutate this; cottas-ondisk is read-only).
+         - cottas_stores_ref holds the opened on-disk handles.
+         - backend_ref is rebuilt as the union of the two halves.
+         - snapshot_iris is taken from the named-graph IRIs visible
+           through cottas_ondisk_named_graphs + the in-memory side.
+
+       The accept thread reads backend_ref + loading flag through the
+       mutex; we still flip loading=false at the end so 503 stops. *)
     (try
-       let full = load_cottas_part cfg base in
+       let opened = open_cottas_ondisk_files cfg.data_cottas_files in
        Mutex.lock loading_mu;
-       dataset_ref := full;
+       cottas_stores_ref := opened;
+       backend_ref := build_dataset_backend !dataset_ref opened;
+       (* Build snapshot_iris from the union of in-memory named graphs
+          and cottas-ondisk named graphs. This gives the SIGTERM dumper
+          a complete pre-RW baseline; user-added graphs will diff out. *)
+       let cottas_named_iris =
+         List.concat_map (fun (s : cottas_ondisk_loaded) ->
+           List.map (fun (g : (RDF_Graph_Executable.iri *
+                              Parser_BallyhooCOTTAS.cottas_graph_ref)) ->
+             let (iri, _) = g in iri)
+             (Parser_BallyhooCOTTAS.cottas_ondisk_named_graphs s.cod_store))
+           opened
+       in
        snapshot_iris_ref :=
-         List.map (fun ng -> ng.ng_name) full.ds_named;
+         List.map (fun ng -> ng.ng_name) (!dataset_ref).ds_named
+         @ cottas_named_iris;
        snapshot_iris_ready := true;
        loading := false;
        Mutex.unlock loading_mu;
        let dt = Unix.gettimeofday () -. load_t0 in
-       let (total, dflt, ng_count, _ng_triples) =
-         count_dataset_triples full in
+       (* For an on-disk store, "total quads" is what cottas_ondisk_summary
+          reports per file plus the in-memory side. We compute the
+          in-memory total here; per-file totals were already printed by
+          cottas_ondisk_open's runtime glue (or are available via
+          cottas_ondisk_summary). *)
+       let in_mem_total =
+         let (t, _, _, _) = count_dataset_triples !dataset_ref in t in
        Printf.printf
-         "  COTTAS load complete: %d triples (%d default, %d named graph(s)) in %.1fs\n%!"
-         total dflt ng_count dt
+         "  COTTAS open complete: %d on-disk file(s), %d in-memory triple(s) in %.1fs\n%!"
+         (List.length opened) in_mem_total dt
      with e ->
-       Printf.eprintf "  COTTAS load failed: %s\n%!" (Printexc.to_string e);
+       Printf.eprintf "  COTTAS open failed: %s\n%!" (Printexc.to_string e);
        (* Flip loading=false so clients stop seeing 503; subsequent
           SPARQL requests will see whatever subset of data was already
-          in dataset_ref (typically just --dataset file contents). *)
+          in dataset_ref + any cottas stores opened so far. *)
        Mutex.lock loading_mu;
        snapshot_iris_ref :=
          List.map (fun ng -> ng.ng_name) (!dataset_ref).ds_named;
