@@ -1781,3 +1781,398 @@ let probe_parquet_column_delta_length_byte_array_decode_all
   match probe_parquet_column_delta_length_byte_array_page_cache path col_index with
   | None -> None
   | Some cache -> Some (dlba_page_decode_all_strings cache)
+
+// ===========================================================================
+// Issue #98 — RLE_DICTIONARY column decode.
+//
+// pycottas writes predicates (col 1) and graph-names (col 3) as
+// RLE_DICTIONARY because their cardinality is small and repetition is
+// heavy. The wire format for such a column is two pages:
+//
+//   1. Dictionary page (page header type=DICTIONARY_PAGE, encoding
+//      PLAIN_DICTIONARY): payload is a sequence of length-prefixed BYTE_ARRAY
+//      values. Each entry is `LE u32 length` followed by `length` bytes.
+//      Number of entries = page_header.dictionary_page_header.num_values.
+//   2. Data page (page header type=DATA_PAGE, encoding RLE_DICTIONARY):
+//      payload's first byte = bit-width of indices into the dictionary.
+//      Remaining bytes = hybrid RLE-bit-packed-encoded indices, count =
+//      page_header.data_page_header.num_values.
+//
+// The dictionary page lives at column_metadata.dictionary_page_offset
+// (Thrift field 14). The data page lives at column_metadata.data_page_offset
+// (field 9, already supported by the existing helpers).
+// ===========================================================================
+
+// Field-14 lookup of column_metadata.dictionary_page_offset. Mirrors the
+// shape of `probe_parquet_column_data_page_offset`.
+let probe_parquet_column_dictionary_page_offset (path:string) (col_index:nat) : option nat =
+  match probe_parquet_footer path with
+  | None -> None
+  | Some footer ->
+    match parquet_read_tail_hex path footer.pf_footer_len with
+    | None -> None
+    | Some footer_hex ->
+      let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
+      if meta_hex_len <= String.length footer_hex then
+        let meta_hex = String.sub footer_hex 0 meta_hex_len in
+        match nth_field_hex meta_hex 4 0 0 meta_hex_len with
+        | None -> None
+        | Some row_groups_field ->
+          if row_groups_field.cf_type <> compact_t_list then None
+          else
+            match decode_compact_list_info_hex meta_hex row_groups_field.cf_value_start meta_hex_len with
+            | None -> None
+            | Some row_groups_info ->
+              if row_groups_info.cli_count = 0 || row_groups_info.cli_etype <> compact_t_struct then None
+              else
+                match nth_field_hex meta_hex 1 row_groups_info.cli_payload_start 0 meta_hex_len with
+                | None -> None
+                | Some columns_field ->
+                  if columns_field.cf_type <> compact_t_list then None
+                  else
+                    match nth_compact_list_element_start_hex meta_hex columns_field.cf_value_start col_index meta_hex_len with
+                    | None -> None
+                    | Some column_chunk_start ->
+                      match nth_field_hex meta_hex 3 column_chunk_start 0 meta_hex_len with
+                      | None -> None
+                      | Some metadata_field ->
+                        if metadata_field.cf_type <> compact_t_struct then None
+                        else
+                          match nth_field_hex meta_hex 14 metadata_field.cf_value_start 0 meta_hex_len with
+                          | None -> None
+                          | Some offset_field ->
+                            if offset_field.cf_type <> compact_t_i64 then None
+                            else
+                              match decode_varint_value_hex meta_hex offset_field.cf_value_start 0 0 meta_hex_len with
+                              | None -> None
+                              | Some raw -> Some (zigzag_decode_nat raw)
+      else None
+
+// ---------------------------------------------------------------------------
+// Page-header probes parameterised by an explicit page-start byte offset.
+// The existing `probe_parquet_column_page_header_*` family hard-codes
+// `data_page_offset`, but for an RLE_DICTIONARY column we must read the
+// dictionary page header at `dictionary_page_offset` first. These helpers
+// mirror the existing shape but take a `page_offset:nat`.
+// ---------------------------------------------------------------------------
+
+let parquet_page_header_uncompressed_size_at (path:string) (page_offset:nat) : option nat =
+  match parquet_read_range_hex path page_offset 128 with
+  | None -> None
+  | Some page_hex ->
+    match nth_field_hex page_hex 2 0 0 (String.length page_hex) with
+    | None -> None
+    | Some size_field ->
+      if size_field.cf_type <> compact_t_i32 then None
+      else
+        match decode_varint_value_hex page_hex size_field.cf_value_start 0 0 (String.length page_hex) with
+        | None -> None
+        | Some raw -> Some (zigzag_decode_nat raw)
+
+let parquet_page_header_compressed_size_at (path:string) (page_offset:nat) : option nat =
+  match parquet_read_range_hex path page_offset 128 with
+  | None -> None
+  | Some page_hex ->
+    match nth_field_hex page_hex 3 0 0 (String.length page_hex) with
+    | None -> None
+    | Some size_field ->
+      if size_field.cf_type <> compact_t_i32 then None
+      else
+        match decode_varint_value_hex page_hex size_field.cf_value_start 0 0 (String.length page_hex) with
+        | None -> None
+        | Some raw -> Some (zigzag_decode_nat raw)
+
+let parquet_page_header_length_at (path:string) (page_offset:nat) : option nat =
+  match parquet_read_range_hex path page_offset 128 with
+  | None -> None
+  | Some page_hex ->
+    match skip_struct_fields_hex page_hex 0 (String.length page_hex) with
+    | None -> None
+    | Some end_hex -> Some (end_hex / 2)
+
+// Number of dictionary entries on a DICTIONARY_PAGE header. Field 7 of the
+// page header is the dictionary_page_header struct; field 1 of that struct
+// is its `num_values` (i32).
+let parquet_dictionary_page_num_values_at (path:string) (page_offset:nat) : option nat =
+  match parquet_read_range_hex path page_offset 128 with
+  | None -> None
+  | Some page_hex ->
+    match nth_field_hex page_hex 7 0 0 (String.length page_hex) with
+    | None -> None
+    | Some dict_header_field ->
+      if dict_header_field.cf_type <> compact_t_struct then None
+      else
+        match nth_field_hex page_hex 1 dict_header_field.cf_value_start 0 (String.length page_hex) with
+        | None -> None
+        | Some nv_field ->
+          if nv_field.cf_type <> compact_t_i32 then None
+          else
+            match decode_varint_value_hex page_hex nv_field.cf_value_start 0 0 (String.length page_hex) with
+            | None -> None
+            | Some raw -> Some (zigzag_decode_nat raw)
+
+// Decompress the page payload that begins at `page_offset` (header + payload
+// in storage). Mirrors the body of
+// `probe_parquet_column_decompressed_payload_hex`, but starting at an
+// arbitrary page offset.
+let parquet_decompressed_page_at (path:string) (page_offset:nat) : option string =
+  match parquet_page_header_length_at path page_offset with
+  | None -> None
+  | Some header_len ->
+    let payload_offset = page_offset + header_len in
+    match parquet_page_header_compressed_size_at path page_offset with
+    | None -> None
+    | Some compressed_size ->
+      match parquet_page_header_uncompressed_size_at path page_offset with
+      | None -> None
+      | Some uncompressed_size ->
+        match parquet_read_range_hex path payload_offset compressed_size with
+        | None -> None
+        | Some compressed_hex ->
+          parquet_zstd_decompress_hex compressed_hex uncompressed_size
+
+// ---------------------------------------------------------------------------
+// PLAIN_DICTIONARY parser: walk a sequence of `num_values` length-prefixed
+// byte strings (LE u32 length, then `length` bytes of ASCII).
+// ---------------------------------------------------------------------------
+
+// Decode one dictionary entry starting at hex position `pos`. Returns
+// `(entry_string, next_pos)` or None.
+let decode_one_plain_dictionary_entry (payload_hex:string) (pos:nat) : option (string & nat) =
+  // Need 4 bytes (8 hex chars) for the LE u32 length.
+  if pos + 7 >= String.length payload_hex then None
+  else
+    match le_u32_at_hex payload_hex pos with
+    | None -> None
+    | Some entry_len ->
+      let value_start = pos + 8 in
+      let value_hex_len = entry_len + entry_len in
+      let value_end = value_start + value_hex_len in
+      if value_end > String.length payload_hex then None
+      else
+        let value_hex = String.sub payload_hex value_start value_hex_len in
+        let s = ascii_string_of_hex_slice value_hex 0 entry_len [] in
+        match s with
+        | None -> None
+        | Some str -> Some (str, value_end)
+
+// Walk `num_values` PLAIN_DICTIONARY entries from the start of the
+// decompressed dictionary-page payload. Output preserves entry order.
+let rec decode_plain_dictionary_entries
+  (payload_hex:string) (pos:nat) (remaining:nat) (acc:list string)
+  : Tot (option (list string)) (decreases remaining) =
+  if remaining = 0 then Some (List.Tot.rev acc)
+  else
+    match decode_one_plain_dictionary_entry payload_hex pos with
+    | None -> None
+    | Some (s, next_pos) ->
+      decode_plain_dictionary_entries payload_hex next_pos (remaining - 1) (s :: acc)
+
+// Top-level entry: start from offset 0 of the decompressed dictionary-page
+// payload.
+let decode_plain_dictionary (payload_hex:string) (num_values:nat) : option (list string) =
+  decode_plain_dictionary_entries payload_hex 0 num_values []
+
+// ---------------------------------------------------------------------------
+// Hybrid RLE / bit-packed run decoder.
+//
+// Wire format (Parquet hybrid RLE, used by RLE_DICTIONARY data pages):
+//   <varint header> <run-body>
+//
+//   header = (run_length << 1) | mode
+//
+//   mode = 0  =>  RLE run.
+//                 run_length = repeat count.
+//                 body       = a single value, packed as
+//                              ceil(bit_width / 8) bytes, little-endian.
+//   mode = 1  =>  bit-packed run.
+//                 run_length = number of *groups of 8 values*.
+//                 body       = `run_length * bit_width` bytes containing
+//                              `run_length * 8` values, LSB-first within
+//                              each byte (same packing as DLBA bit_widths).
+//
+// We decode runs back-to-back until `remaining` indices have been collected.
+// ---------------------------------------------------------------------------
+
+// Read `bit_width` bits as a single LSB-first value, starting at bit 0 of
+// byte position `byte_start` (in hex chars). Reuses `packed_lsb_value_hex`.
+let read_lsb_packed_value (hex:string) (byte_start:nat) (start_bit:nat) (bit_width:nat) : option nat =
+  packed_lsb_value_hex hex byte_start start_bit bit_width 0 0
+
+// Bytes (= 2 hex chars) consumed by an RLE run body of width `bit_width`.
+//   ceil(bit_width / 8)
+let rle_run_body_hex_size (bit_width:nat) : nat =
+  let bytes = (bit_width + 7) / 8 in
+  mul_nat bytes 2
+
+// Read the single value of an RLE run as a little-endian unsigned int of
+// `ceil(bit_width / 8)` bytes. Returns the value and the position past the
+// body.
+let rec read_le_uint_bytes (hex:string) (pos:nat) (remaining_bytes:nat) (shift:nat) (acc:nat)
+  : Tot (option (nat & nat)) (decreases remaining_bytes) =
+  if remaining_bytes = 0 then Some (acc, pos)
+  else if pos + 1 >= String.length hex then None
+  else
+    match byte_at_hex hex pos with
+    | None -> None
+    | Some b ->
+      let acc' = acc + scale_pow2 b shift in
+      read_le_uint_bytes hex (pos + 2) (remaining_bytes - 1) (shift + 8) acc'
+
+// Append `count` copies of `value` to `acc`. Used to materialise an RLE run.
+let rec repeat_append (value:nat) (count:nat) (acc:list nat)
+  : Tot (list nat) (decreases count) =
+  if count = 0 then acc
+  else repeat_append value (count - 1) (value :: acc)
+
+// Decode `count` consecutive bit-packed indices starting at hex position
+// `byte_start`, mb-pos 0 within that packed area. Each index is `bit_width`
+// bits, LSB-first. Output is reverse-prepended to `acc` for tail-recursion;
+// the caller reverses if needed.
+let rec decode_bit_packed_indices
+  (values_hex:string) (byte_start:nat) (bit_width:nat)
+  (count:nat) (mb_pos:nat) (acc:list nat)
+  : Tot (option (list nat)) (decreases count) =
+  if count = 0 then Some acc
+  else
+    let start_bit = mul_nat mb_pos bit_width in
+    match read_lsb_packed_value values_hex byte_start start_bit bit_width with
+    | None -> None
+    | Some v ->
+      decode_bit_packed_indices values_hex byte_start bit_width
+        (count - 1) (mb_pos + 1) (v :: acc)
+
+// Decode hybrid RLE / bit-packed runs back-to-back until `remaining`
+// indices have been collected. `pos` is the hex position of the next run's
+// varint header. Output preserves index order.
+//
+// `fuel` bounds the run-iteration count; in practice it never blows up on
+// real Parquet pages (each run consumes at least one index), but the F*
+// totality checker needs an explicit decreasing measure.
+let rec decode_hybrid_rle_runs
+  (values_hex:string) (vh_len:nat) (pos:nat) (bit_width:nat)
+  (remaining:nat) (acc:list nat) (fuel:nat)
+  : Tot (option (list nat)) (decreases fuel) =
+  if remaining = 0 then Some (List.Tot.rev acc)
+  else if fuel = 0 then None
+  else
+    // 1. Read the run header (varint), then split: high bits = run_length,
+    //    low bit = mode (0 = RLE, 1 = bit-packed).
+    match decode_varint_value_with_end_hex values_hex pos 0 0 vh_len with
+    | None -> None
+    | Some (header_value, body_pos) ->
+      let mode = header_value % 2 in
+      let run_length = header_value / 2 in
+      if mode = 0 then begin
+        // RLE run: one little-endian value of ceil(bit_width / 8) bytes,
+        // repeated `run_length` times.
+        let body_bytes = (bit_width + 7) / 8 in
+        match read_le_uint_bytes values_hex body_pos body_bytes 0 0 with
+        | None -> None
+        | Some (value, next_pos) ->
+          let take = if run_length <= remaining then run_length else remaining in
+          let acc' = repeat_append value take acc in
+          decode_hybrid_rle_runs values_hex vh_len next_pos bit_width
+            (remaining - take) acc' (fuel - 1)
+      end else begin
+        // Bit-packed run: `run_length` groups of 8 values, total
+        // `run_length * 8` values; body length = `run_length * bit_width`
+        // bytes.
+        let total_values = mul_nat run_length 8 in
+        let body_bytes = mul_nat run_length bit_width in
+        let body_hex_len = mul_nat body_bytes 2 in
+        if body_pos + body_hex_len > vh_len then None
+        else begin
+          let take = if total_values <= remaining then total_values else remaining in
+          // Decode all `total_values` indices (or `remaining` of them, if
+          // we'd otherwise overshoot — Parquet sometimes pads the last
+          // bit-packed run, and the spec says to stop at value_count).
+          match decode_bit_packed_indices values_hex body_pos bit_width
+                  take 0 acc with
+          | None -> None
+          | Some acc' ->
+            decode_hybrid_rle_runs values_hex vh_len (body_pos + body_hex_len)
+              bit_width (remaining - take) acc' (fuel - 1)
+        end
+      end
+
+// Decode an RLE_DICTIONARY data-page payload. The first byte is the bit
+// width of indices; the remaining bytes are a hybrid RLE / bit-packed
+// stream that produces `value_count` indices.
+let decode_rle_dictionary_data_page (payload_hex:string) (value_count:nat)
+  : option (list nat) =
+  if String.length payload_hex < 2 then None
+  else
+    match byte_at_hex payload_hex 0 with
+    | None -> None
+    | Some bit_width ->
+      // Fuel: each run consumes at least one index (mode=0 with run_length=0
+      // is impossible — run_length=0 means "no indices", which would loop
+      // forever; we additionally cap fuel by `value_count + payload_hex /
+      // 4` to ensure total decreasing measure).
+      let fuel = value_count + (String.length payload_hex / 2) + 1 in
+      decode_hybrid_rle_runs payload_hex (String.length payload_hex)
+        2 bit_width value_count [] fuel
+
+// ---------------------------------------------------------------------------
+// Index-to-value lookup against the dictionary list. Returns None on
+// out-of-range indices (defensive — pycottas-emitted Parquet should never
+// produce them, but verification is "no holes").
+// ---------------------------------------------------------------------------
+
+let rec list_nth_string (xs:list string) (idx:nat) : Tot (option string) (decreases xs) =
+  match xs with
+  | [] -> None
+  | hd :: tl -> if idx = 0 then Some hd else list_nth_string tl (idx - 1)
+
+// Build a flat array-like cache of the dictionary entries for O(N) cons.
+// We expose a list-of-options because callers consume it as a row order
+// stream identical in shape to `dlba_page_decode_all_strings`.
+let rec map_indices_to_dict (indices:list nat) (dict:list string) (acc:list (option string))
+  : Tot (list (option string)) (decreases indices) =
+  match indices with
+  | [] -> List.Tot.rev acc
+  | i :: rest ->
+    let v = match list_nth_string dict i with
+            | Some s -> Some s
+            | None -> None in
+    map_indices_to_dict rest dict (v :: acc)
+
+// Top-level: decode every row of an RLE_DICTIONARY column. Returns the
+// list-of-option-string in row order (one entry per page row), or None if
+// either page is missing / mis-encoded.
+let probe_parquet_column_rle_dictionary_decode_all (path:string) (col_index:nat)
+  : option (list (option string)) =
+  match probe_parquet_column_dictionary_page_offset path col_index with
+  | None -> None
+  | Some dict_offset ->
+    match parquet_decompressed_page_at path dict_offset with
+    | None -> None
+    | Some dict_payload_hex ->
+      match parquet_dictionary_page_num_values_at path dict_offset with
+      | None -> None
+      | Some dict_num_values ->
+        match decode_plain_dictionary dict_payload_hex dict_num_values with
+        | None -> None
+        | Some dict ->
+          // Now read the data page (already at column.data_page_offset).
+          match probe_parquet_column_decompressed_payload_hex path col_index with
+          | None -> None
+          | Some data_payload_hex ->
+            match probe_parquet_column_page_header_num_values path col_index with
+            | None -> None
+            | Some value_count ->
+              match decode_rle_dictionary_data_page data_payload_hex value_count with
+              | None -> None
+              | Some indices -> Some (map_indices_to_dict indices dict [])
+
+// Combined dispatcher: try DELTA_LENGTH_BYTE_ARRAY first (covers cols 0+2
+// in a COTTAS), fall back to RLE_DICTIONARY (covers cols 1+3). Callers
+// (Parser.BallyhooCOTTAS) can swap to this single entry point and stop
+// caring about per-column encoding.
+let probe_parquet_column_decode_all (path:string) (col_index:nat)
+  : option (list (option string)) =
+  match probe_parquet_column_delta_length_byte_array_decode_all path col_index with
+  | Some result -> Some result
+  | None ->
+    probe_parquet_column_rle_dictionary_decode_all path col_index

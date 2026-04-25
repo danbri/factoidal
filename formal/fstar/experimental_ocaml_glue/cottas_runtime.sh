@@ -250,11 +250,12 @@ module Ballyhoo_cottas_runtime = struct
      (~12.6 M for the 3.14 M-quad parliament COTTAS), each of which
      re-decompressed the column page and re-walked every prior length —
      a per-column O(N^2) blowup. The F* helper
-     `probe_parquet_column_delta_length_byte_array_decode_all` does one
-     pass per column and returns every row's string in row order, so we
-     now do exactly 4 page decodes total. *)
+     `probe_parquet_column_decode_all` (issue #98) dispatches between the
+     DELTA_LENGTH_BYTE_ARRAY decoder (cols 0+2: subjects + objects) and the
+     RLE_DICTIONARY decoder (cols 1+3: predicates + graphs) so we get one
+     pass per column regardless of encoding, exactly 4 page decodes total. *)
   let decode_column artifact_path col_idx =
-    match Parquet_Footer.probe_parquet_column_delta_length_byte_array_decode_all
+    match Parquet_Footer.probe_parquet_column_decode_all
             artifact_path (Z.of_int col_idx) with
     | FStar_Pervasives_Native.None ->
       failwith (Printf.sprintf "Could not bulk-decode COTTAS column %d" col_idx)
