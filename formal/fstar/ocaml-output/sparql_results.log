@@ -228,40 +228,38 @@ Test base: third_party/testing/w3c/sparql/sparql11
   PASS: bind08 - BIND fixed data for OWL DL
   PASS: D-Entailment test to show that  neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers
   PASS: Literal with language tag test
-  PASS: bnodes are not existentials (10ms)
-  PASS: bnodes are not existentials with answer (13ms)
-  PASS: paper-sparqldl-Q1 (22ms)
+  PASS: bnodes are not existentials (12ms)
+  PASS: bnodes are not existentials with answer (16ms)
+  PASS: paper-sparqldl-Q1 (31ms)
   PASS: paper-sparqldl-Q1-rdfs
-  PASS: paper-sparqldl-Q2 (63ms)
-  FAIL: paper-sparqldl-Q3 — Results mismatch: expected 2 rows, got 0
-      UNMATCHED: ?x=<http://example.org/John>
-      UNMATCHED: ?x=<http://example.org/person1> (64ms)
-  PASS: paper-sparqldl-Q4 (22ms)
-  PASS: paper-sparqldl-Q5 (22ms)
-  PASS: filtered subclass query with (hasChild some Thing) restriction (125ms)
-  PASS: parent query with distinguished variable (45ms)
-  PASS: parent query with (hasChild some Thing) restriction (125ms)
-  PASS: parent query with (hasChild min 1) restriction (126ms)
-  PASS: parent query with (hasChild some Female) restriction (126ms)
-  PASS: parent query with (hasChild min 1 Female) restriction (126ms)
-  FAIL: parent query with (hasChild max 1 Female) restriction — Results mismatch: expected 1 rows, got 311 (125ms)
-  PASS: parent query with (hasChild exactly 1 Female) restriction (126ms)
-  PASS: subclass query with (hasChild some Thing) restriction (126ms)
+  PASS: paper-sparqldl-Q2 (66ms)
+  PASS: paper-sparqldl-Q3 (73ms)
+  PASS: paper-sparqldl-Q4 (31ms)
+  PASS: paper-sparqldl-Q5 (31ms)
+  PASS: filtered subclass query with (hasChild some Thing) restriction (143ms)
+  PASS: parent query with distinguished variable (56ms)
+  PASS: parent query with (hasChild some Thing) restriction (142ms)
+  PASS: parent query with (hasChild min 1) restriction (143ms)
+  PASS: parent query with (hasChild some Female) restriction (144ms)
+  PASS: parent query with (hasChild min 1 Female) restriction (143ms)
+  FAIL: parent query with (hasChild max 1 Female) restriction — Results mismatch: expected 1 rows, got 311 (144ms)
+  PASS: parent query with (hasChild exactly 1 Female) restriction (142ms)
+  PASS: subclass query with (hasChild some Thing) restriction (143ms)
   PASS: Plain literals with language tag are not the same as the same literal without
   PASS: RDF inference test
   PASS: RDF inference test
   PASS: RDF test for blank node cardinalities
-  PASS: simple triple pattern match
-  PASS: RDFS inference test rdfs:subPropertyOf (11ms)
-  PASS: RDFS inference test rdfs:subPropertyOf (11ms)
+  PASS: simple triple pattern match (13ms)
+  PASS: RDFS inference test rdfs:subPropertyOf (13ms)
+  PASS: RDFS inference test rdfs:subPropertyOf (13ms)
   PASS: RDFS inference test combining subPropertyOf and domain
   PASS: RDFS inference test subClassOf
-  PASS: RDFS inference test subClassOf (12ms)
-  PASS: RDFS inference test domain (11ms)
-  PASS: RDFS inference test range (12ms)
+  PASS: RDFS inference test subClassOf (13ms)
+  PASS: RDFS inference test domain (13ms)
+  PASS: RDFS inference test range (15ms)
   PASS: RDFS inference test rdf:XMLLiteral subclass of rdfs:Literal
-  PASS: RDFS inference test transitivity of subClassOf
-  PASS: RDFS inference test transitivity of subPropertyOf (17ms)
+  PASS: RDFS inference test transitivity of subClassOf (11ms)
+  PASS: RDFS inference test transitivity of subPropertyOf (21ms)
   PASS: RDFS inference test subProperty and instances
   PASS: RDFS inference test containers
   PASS: RDFS inference test to show that neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers
@@ -269,28 +267,28 @@ Test base: third_party/testing/w3c/sparql/sparql11
   skip: RIF Core WG tests: Frames — RIF not implemented
   skip: RIF Core WG tests: Modeling Brain Anatomy — RIF not implemented
   skip: RIF Core WG tests: RDF Combination Blank Node — RIF not implemented
-  PASS: simple 1 (42ms)
-  PASS: simple 2 (41ms)
-  PASS: simple 3 (42ms)
-  PASS: simple 4 (40ms)
-  PASS: simple 5 (42ms)
-  PASS: simple 6 (41ms)
-  PASS: simple 7 (41ms)
-  PASS: simple 8 (43ms)
+  PASS: simple 1 (47ms)
+  PASS: simple 2 (47ms)
+  PASS: simple 3 (47ms)
+  PASS: simple 4 (51ms)
+  PASS: simple 5 (52ms)
+  PASS: simple 6 (91ms)
+  PASS: simple 7 (53ms)
+  PASS: simple 8 (48ms)
   PASS: sparqldl-01.rq: triple pattern
   PASS: sparqldl-02.rq: simple combined query
-  PASS: sparqldl-03.rq: combined query with complex class description (14ms)
-  PASS: sparqldl-04.rq: bug fixing test
-  PASS: sparqldl-05.rq: simple undistinguished variable test. (11ms)
+  PASS: sparqldl-03.rq: combined query with complex class description (18ms)
+  PASS: sparqldl-04.rq: bug fixing test (11ms)
+  PASS: sparqldl-05.rq: simple undistinguished variable test.
   PASS: sparqldl-06.rq: cycle of undistinguished variables (19ms)
-  PASS: sparqldl-07.rq: two distinguished variables + undist. (19ms)
-  PASS: sparqldl-08.rq: two distinguished variables + undist. (19ms)
-  PASS: sparqldl-09.rq: undist vars test (15ms)
-  PASS: sparqldl-10.rq: undist vars test (14ms)
-  PASS: sparqldl-11.rq: domain test (33ms)
-  PASS: sparqldl-12.rq: range test (35ms)
-  PASS: sparqldl-13.rq: sameAs (14ms)
-  [suite time: 2.0s]
+  PASS: sparqldl-07.rq: two distinguished variables + undist. (24ms)
+  PASS: sparqldl-08.rq: two distinguished variables + undist. (23ms)
+  PASS: sparqldl-09.rq: undist vars test (16ms)
+  PASS: sparqldl-10.rq: undist vars test (17ms)
+  PASS: sparqldl-11.rq: domain test (43ms)
+  PASS: sparqldl-12.rq: range test (41ms)
+  PASS: sparqldl-13.rq: sameAs (17ms)
+  [suite time: 2.4s]
 
 --- exists ---
   PASS: Exists with one constant
@@ -718,8 +716,8 @@ Test base: third_party/testing/w3c/sparql/sparql11
   [suite time: 0.0s]
 
 --- syntax-update-2 ---
-  PASS: syntax-update-other-01 (1.3s)
-  [suite time: 1.3s]
+  PASS: syntax-update-other-01 (1.4s)
+  [suite time: 1.4s]
 
 --- update-silent ---
   PASS: LOAD SILENT
@@ -754,7 +752,7 @@ Suite Results:
   delete-insert                       pass:17 fail:0 skip:0 unsupported:0
   delete-where                        pass:6 fail:0 skip:0 unsupported:0
   drop                                pass:4 fail:0 skip:0 unsupported:0
-  entailment                          pass:64 fail:2 skip:4 unsupported:0
+  entailment                          pass:65 fail:1 skip:4 unsupported:0
   exists                              pass:6 fail:0 skip:0 unsupported:0
   functions                           pass:75 fail:0 skip:0 unsupported:0
   grouping                            pass:6 fail:0 skip:0 unsupported:0
@@ -774,5 +772,5 @@ Suite Results:
   syntax-update-2                     pass:1 fail:0 skip:0 unsupported:0
   update-silent                       pass:13 fail:0 skip:0 unsupported:0
 ========================================
-TOTAL: 625 pass, 2 fail, 4 skip, 0 unsupported
+TOTAL: 626 pass, 1 fail, 4 skip, 0 unsupported
 ========================================

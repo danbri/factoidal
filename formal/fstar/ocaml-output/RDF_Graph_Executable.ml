@@ -1453,104 +1453,124 @@ let owl_rule_minc1_bridge (g : rdf_graph) : rdf_graph=
                   add_triple_if_new acc2 new_t
               | uu___ -> acc2) acc onprops
        else acc) g g
+let rl_canonical_bnode_prefix : Prims.string= "__rl_"
+let bnode_is_rl_canonical (b : bnode_id) : Prims.bool=
+  let plen = FStar_String.strlen rl_canonical_bnode_prefix in
+  let blen = FStar_String.strlen b in
+  if blen < plen
+  then false
+  else (FStar_String.sub b Prims.int_zero plen) = rl_canonical_bnode_prefix
+let edge_subject_is_safe (e : triple) : Prims.bool=
+  match e.s with
+  | S_IRI i -> Prims.op_Negation (is_schema_metapredicate i)
+  | S_BNode b -> Prims.op_Negation (bnode_is_rl_canonical b)
 let owl_rule_cls_svf2_qualified (g : rdf_graph) : rdf_graph=
   FStar_List_Tot_Base.fold_left
     (fun acc edge ->
        if (edge.p = rdf_type) || (is_schema_metapredicate edge.p)
        then acc
        else
-         (match term_to_subject edge.o with
-          | FStar_Pervasives_Native.None -> acc
-          | FStar_Pervasives_Native.Some y_subj ->
-              let p = edge.p in
-              let x = edge.s in
-              let ytypes = find_objects g y_subj rdf_type in
-              FStar_List_Tot_Base.fold_left
-                (fun acc2 ty ->
-                   match ty with
-                   | T_IRI c ->
-                       if c = owl_Thing
-                       then acc2
-                       else
-                         (let rb = canonical_svf_restriction_bnode p c in
-                          let rb_subj = S_BNode rb in
-                          let rb_term = T_BNode rb in
-                          let shape1 =
-                            {
-                              s = rb_subj;
-                              p = rdf_type;
-                              o = (T_IRI owl_Restriction_iri)
-                            } in
-                          let shape2 =
-                            {
-                              s = rb_subj;
-                              p = owl_onProperty_iri;
-                              o = (T_IRI p)
-                            } in
-                          let shape3 =
-                            {
-                              s = rb_subj;
-                              p = owl_someValuesFrom_iri;
-                              o = (T_IRI c)
-                            } in
-                          let memb = { s = x; p = rdf_type; o = rb_term } in
-                          add_triple_if_new
-                            (add_triple_if_new
-                               (add_triple_if_new
-                                  (add_triple_if_new acc2 shape1) shape2)
-                               shape3) memb)
-                   | uu___1 -> acc2) acc ytypes)) g g
+         if Prims.op_Negation (edge_subject_is_safe edge)
+         then acc
+         else
+           (match term_to_subject edge.o with
+            | FStar_Pervasives_Native.None -> acc
+            | FStar_Pervasives_Native.Some y_subj ->
+                let p = edge.p in
+                let x = edge.s in
+                let ytypes = find_objects g y_subj rdf_type in
+                FStar_List_Tot_Base.fold_left
+                  (fun acc2 ty ->
+                     match ty with
+                     | T_IRI c ->
+                         if c = owl_Thing
+                         then acc2
+                         else
+                           (let rb = canonical_svf_restriction_bnode p c in
+                            let rb_subj = S_BNode rb in
+                            let rb_term = T_BNode rb in
+                            let shape1 =
+                              {
+                                s = rb_subj;
+                                p = rdf_type;
+                                o = (T_IRI owl_Restriction_iri)
+                              } in
+                            let shape2 =
+                              {
+                                s = rb_subj;
+                                p = owl_onProperty_iri;
+                                o = (T_IRI p)
+                              } in
+                            let shape3 =
+                              {
+                                s = rb_subj;
+                                p = owl_someValuesFrom_iri;
+                                o = (T_IRI c)
+                              } in
+                            let memb = { s = x; p = rdf_type; o = rb_term } in
+                            add_triple_if_new
+                              (add_triple_if_new
+                                 (add_triple_if_new
+                                    (add_triple_if_new acc2 shape1) shape2)
+                                 shape3) memb)
+                     | uu___2 -> acc2) acc ytypes)) g g
 let owl_rule_cls_minc_qual1 (g : rdf_graph) : rdf_graph=
   FStar_List_Tot_Base.fold_left
     (fun acc edge ->
        if (edge.p = rdf_type) || (is_schema_metapredicate edge.p)
        then acc
        else
-         (match term_to_subject edge.o with
-          | FStar_Pervasives_Native.None -> acc
-          | FStar_Pervasives_Native.Some y_subj ->
-              let p = edge.p in
-              let x = edge.s in
-              let ytypes = find_objects g y_subj rdf_type in
-              FStar_List_Tot_Base.fold_left
-                (fun acc2 ty ->
-                   match ty with
-                   | T_IRI c ->
-                       if c = owl_Thing
-                       then acc2
-                       else
-                         (let rb = canonical_minqc1_restriction_bnode p c in
-                          let rb_subj = S_BNode rb in
-                          let rb_term = T_BNode rb in
-                          let shape1 =
-                            {
-                              s = rb_subj;
-                              p = rdf_type;
-                              o = (T_IRI owl_Restriction_iri)
-                            } in
-                          let shape2 =
-                            {
-                              s = rb_subj;
-                              p = owl_onProperty_iri;
-                              o = (T_IRI p)
-                            } in
-                          let shape3 =
-                            {
-                              s = rb_subj;
-                              p = owl_minQualifiedCardinality_iri;
-                              o = (T_Literal one_nonNegInteger_literal)
-                            } in
-                          let shape4 =
-                            { s = rb_subj; p = owl_onClass_iri; o = (T_IRI c)
-                            } in
-                          let memb = { s = x; p = rdf_type; o = rb_term } in
-                          add_triple_if_new
-                            (add_triple_if_new
-                               (add_triple_if_new
-                                  (add_triple_if_new
-                                     (add_triple_if_new acc2 shape1) shape2)
-                                  shape3) shape4) memb)
-                   | uu___1 -> acc2) acc ytypes)) g g
+         if Prims.op_Negation (edge_subject_is_safe edge)
+         then acc
+         else
+           (match term_to_subject edge.o with
+            | FStar_Pervasives_Native.None -> acc
+            | FStar_Pervasives_Native.Some y_subj ->
+                let p = edge.p in
+                let x = edge.s in
+                let ytypes = find_objects g y_subj rdf_type in
+                FStar_List_Tot_Base.fold_left
+                  (fun acc2 ty ->
+                     match ty with
+                     | T_IRI c ->
+                         if c = owl_Thing
+                         then acc2
+                         else
+                           (let rb = canonical_minqc1_restriction_bnode p c in
+                            let rb_subj = S_BNode rb in
+                            let rb_term = T_BNode rb in
+                            let shape1 =
+                              {
+                                s = rb_subj;
+                                p = rdf_type;
+                                o = (T_IRI owl_Restriction_iri)
+                              } in
+                            let shape2 =
+                              {
+                                s = rb_subj;
+                                p = owl_onProperty_iri;
+                                o = (T_IRI p)
+                              } in
+                            let shape3 =
+                              {
+                                s = rb_subj;
+                                p = owl_minQualifiedCardinality_iri;
+                                o = (T_Literal one_nonNegInteger_literal)
+                              } in
+                            let shape4 =
+                              {
+                                s = rb_subj;
+                                p = owl_onClass_iri;
+                                o = (T_IRI c)
+                              } in
+                            let memb = { s = x; p = rdf_type; o = rb_term } in
+                            add_triple_if_new
+                              (add_triple_if_new
+                                 (add_triple_if_new
+                                    (add_triple_if_new
+                                       (add_triple_if_new acc2 shape1) shape2)
+                                    shape3) shape4) memb)
+                     | uu___2 -> acc2) acc ytypes)) g g
 let count_p_successors_typed_c (g : rdf_graph) (x : subject) (p : wf_iri)
   (c : wf_iri) : Prims.nat=
   let succs = find_objects g x p in
@@ -1570,109 +1590,120 @@ let owl_rule_cls_maxqc1 (g : rdf_graph) : rdf_graph=
        if (edge.p = rdf_type) || (is_schema_metapredicate edge.p)
        then acc
        else
-         (match term_to_subject edge.o with
-          | FStar_Pervasives_Native.None -> acc
-          | FStar_Pervasives_Native.Some y_subj ->
-              let p = edge.p in
-              let x = edge.s in
-              let ytypes = find_objects g y_subj rdf_type in
-              FStar_List_Tot_Base.fold_left
-                (fun acc2 ty ->
-                   match ty with
-                   | T_IRI c ->
-                       if c = owl_Thing
-                       then acc2
-                       else
-                         (let n = count_p_successors_typed_c g x p c in
-                          if n > Prims.int_one
-                          then acc2
-                          else
-                            (let rb = canonical_maxqc1_restriction_bnode p c in
-                             let rb_subj = S_BNode rb in
-                             let rb_term = T_BNode rb in
-                             let shape1 =
-                               {
-                                 s = rb_subj;
-                                 p = rdf_type;
-                                 o = (T_IRI owl_Restriction_iri)
-                               } in
-                             let shape2 =
-                               {
-                                 s = rb_subj;
-                                 p = owl_onProperty_iri;
-                                 o = (T_IRI p)
-                               } in
-                             let shape3 =
-                               {
-                                 s = rb_subj;
-                                 p = owl_maxQualifiedCardinality_iri;
-                                 o = (T_Literal one_nonNegInteger_literal)
-                               } in
-                             let shape4 =
-                               {
-                                 s = rb_subj;
-                                 p = owl_onClass_iri;
-                                 o = (T_IRI c)
-                               } in
-                             let memb = { s = x; p = rdf_type; o = rb_term } in
-                             add_triple_if_new
-                               (add_triple_if_new
-                                  (add_triple_if_new
-                                     (add_triple_if_new
-                                        (add_triple_if_new acc2 shape1)
-                                        shape2) shape3) shape4) memb))
-                   | uu___1 -> acc2) acc ytypes)) g g
+         if Prims.op_Negation (edge_subject_is_safe edge)
+         then acc
+         else
+           (match term_to_subject edge.o with
+            | FStar_Pervasives_Native.None -> acc
+            | FStar_Pervasives_Native.Some y_subj ->
+                let p = edge.p in
+                let x = edge.s in
+                let ytypes = find_objects g y_subj rdf_type in
+                FStar_List_Tot_Base.fold_left
+                  (fun acc2 ty ->
+                     match ty with
+                     | T_IRI c ->
+                         if c = owl_Thing
+                         then acc2
+                         else
+                           (let n = count_p_successors_typed_c g x p c in
+                            if n > Prims.int_one
+                            then acc2
+                            else
+                              (let rb =
+                                 canonical_maxqc1_restriction_bnode p c in
+                               let rb_subj = S_BNode rb in
+                               let rb_term = T_BNode rb in
+                               let shape1 =
+                                 {
+                                   s = rb_subj;
+                                   p = rdf_type;
+                                   o = (T_IRI owl_Restriction_iri)
+                                 } in
+                               let shape2 =
+                                 {
+                                   s = rb_subj;
+                                   p = owl_onProperty_iri;
+                                   o = (T_IRI p)
+                                 } in
+                               let shape3 =
+                                 {
+                                   s = rb_subj;
+                                   p = owl_maxQualifiedCardinality_iri;
+                                   o = (T_Literal one_nonNegInteger_literal)
+                                 } in
+                               let shape4 =
+                                 {
+                                   s = rb_subj;
+                                   p = owl_onClass_iri;
+                                   o = (T_IRI c)
+                                 } in
+                               let memb =
+                                 { s = x; p = rdf_type; o = rb_term } in
+                               add_triple_if_new
+                                 (add_triple_if_new
+                                    (add_triple_if_new
+                                       (add_triple_if_new
+                                          (add_triple_if_new acc2 shape1)
+                                          shape2) shape3) shape4) memb))
+                     | uu___2 -> acc2) acc ytypes)) g g
 let owl_rule_cls_exactqc1 (g : rdf_graph) : rdf_graph=
   FStar_List_Tot_Base.fold_left
     (fun acc edge ->
        if (edge.p = rdf_type) || (is_schema_metapredicate edge.p)
        then acc
        else
-         (match term_to_subject edge.o with
-          | FStar_Pervasives_Native.None -> acc
-          | FStar_Pervasives_Native.Some y_subj ->
-              let p = edge.p in
-              let x = edge.s in
-              let ytypes = find_objects g y_subj rdf_type in
-              FStar_List_Tot_Base.fold_left
-                (fun acc2 ty ->
-                   match ty with
-                   | T_IRI c ->
-                       if c = owl_Thing
-                       then acc2
-                       else
-                         (let rb = canonical_exactqc1_restriction_bnode p c in
-                          let rb_subj = S_BNode rb in
-                          let rb_term = T_BNode rb in
-                          let shape1 =
-                            {
-                              s = rb_subj;
-                              p = rdf_type;
-                              o = (T_IRI owl_Restriction_iri)
-                            } in
-                          let shape2 =
-                            {
-                              s = rb_subj;
-                              p = owl_onProperty_iri;
-                              o = (T_IRI p)
-                            } in
-                          let shape3 =
-                            {
-                              s = rb_subj;
-                              p = owl_qualifiedCardinality_iri;
-                              o = (T_Literal one_nonNegInteger_literal)
-                            } in
-                          let shape4 =
-                            { s = rb_subj; p = owl_onClass_iri; o = (T_IRI c)
-                            } in
-                          let memb = { s = x; p = rdf_type; o = rb_term } in
-                          add_triple_if_new
-                            (add_triple_if_new
-                               (add_triple_if_new
-                                  (add_triple_if_new
-                                     (add_triple_if_new acc2 shape1) shape2)
-                                  shape3) shape4) memb)
-                   | uu___1 -> acc2) acc ytypes)) g g
+         if Prims.op_Negation (edge_subject_is_safe edge)
+         then acc
+         else
+           (match term_to_subject edge.o with
+            | FStar_Pervasives_Native.None -> acc
+            | FStar_Pervasives_Native.Some y_subj ->
+                let p = edge.p in
+                let x = edge.s in
+                let ytypes = find_objects g y_subj rdf_type in
+                FStar_List_Tot_Base.fold_left
+                  (fun acc2 ty ->
+                     match ty with
+                     | T_IRI c ->
+                         if c = owl_Thing
+                         then acc2
+                         else
+                           (let rb = canonical_exactqc1_restriction_bnode p c in
+                            let rb_subj = S_BNode rb in
+                            let rb_term = T_BNode rb in
+                            let shape1 =
+                              {
+                                s = rb_subj;
+                                p = rdf_type;
+                                o = (T_IRI owl_Restriction_iri)
+                              } in
+                            let shape2 =
+                              {
+                                s = rb_subj;
+                                p = owl_onProperty_iri;
+                                o = (T_IRI p)
+                              } in
+                            let shape3 =
+                              {
+                                s = rb_subj;
+                                p = owl_qualifiedCardinality_iri;
+                                o = (T_Literal one_nonNegInteger_literal)
+                              } in
+                            let shape4 =
+                              {
+                                s = rb_subj;
+                                p = owl_onClass_iri;
+                                o = (T_IRI c)
+                              } in
+                            let memb = { s = x; p = rdf_type; o = rb_term } in
+                            add_triple_if_new
+                              (add_triple_if_new
+                                 (add_triple_if_new
+                                    (add_triple_if_new
+                                       (add_triple_if_new acc2 shape1) shape2)
+                                    shape3) shape4) memb)
+                     | uu___2 -> acc2) acc ytypes)) g g
 let owl_rule_cls_maxc2 (g : rdf_graph) : rdf_graph=
   FStar_List_Tot_Base.fold_left
     (fun acc t ->

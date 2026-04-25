@@ -228,25 +228,23 @@ Test base: ../../third_party/testing/w3c/sparql/sparql11
   PASS: bind08 - BIND fixed data for OWL DL
   PASS: D-Entailment test to show that  neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers
   PASS: Literal with language tag test
-  PASS: bnodes are not existentials (11ms)
-  PASS: bnodes are not existentials with answer (16ms)
+  PASS: bnodes are not existentials (12ms)
+  PASS: bnodes are not existentials with answer (15ms)
   PASS: paper-sparqldl-Q1 (30ms)
   PASS: paper-sparqldl-Q1-rdfs
-  PASS: paper-sparqldl-Q2 (64ms)
-  FAIL: paper-sparqldl-Q3 — Results mismatch: expected 2 rows, got 0
-      UNMATCHED: ?x=<http://example.org/John>
-      UNMATCHED: ?x=<http://example.org/person1> (65ms)
+  PASS: paper-sparqldl-Q2 (63ms)
+  PASS: paper-sparqldl-Q3 (70ms)
   PASS: paper-sparqldl-Q4 (30ms)
-  PASS: paper-sparqldl-Q5 (31ms)
-  PASS: filtered subclass query with (hasChild some Thing) restriction (140ms)
-  PASS: parent query with distinguished variable (53ms)
-  PASS: parent query with (hasChild some Thing) restriction (138ms)
-  PASS: parent query with (hasChild min 1) restriction (139ms)
+  PASS: paper-sparqldl-Q5 (30ms)
+  PASS: filtered subclass query with (hasChild some Thing) restriction (139ms)
+  PASS: parent query with distinguished variable (54ms)
+  PASS: parent query with (hasChild some Thing) restriction (137ms)
+  PASS: parent query with (hasChild min 1) restriction (138ms)
   PASS: parent query with (hasChild some Female) restriction (139ms)
   PASS: parent query with (hasChild min 1 Female) restriction (138ms)
   FAIL: parent query with (hasChild max 1 Female) restriction — Results mismatch: expected 1 rows, got 311 (139ms)
   PASS: parent query with (hasChild exactly 1 Female) restriction (139ms)
-  PASS: subclass query with (hasChild some Thing) restriction (139ms)
+  PASS: subclass query with (hasChild some Thing) restriction (138ms)
   PASS: Plain literals with language tag are not the same as the same literal without
   PASS: RDF inference test
   PASS: RDF inference test
@@ -270,11 +268,11 @@ Test base: ../../third_party/testing/w3c/sparql/sparql11
   skip: RIF Core WG tests: Modeling Brain Anatomy — RIF not implemented
   skip: RIF Core WG tests: RDF Combination Blank Node — RIF not implemented
   PASS: simple 1 (45ms)
-  PASS: simple 2 (46ms)
+  PASS: simple 2 (45ms)
   PASS: simple 3 (45ms)
-  PASS: simple 4 (50ms)
-  PASS: simple 5 (50ms)
-  PASS: simple 6 (88ms)
+  PASS: simple 4 (49ms)
+  PASS: simple 5 (51ms)
+  PASS: simple 6 (87ms)
   PASS: simple 7 (50ms)
   PASS: simple 8 (46ms)
   PASS: sparqldl-01.rq: triple pattern
@@ -283,10 +281,10 @@ Test base: ../../third_party/testing/w3c/sparql/sparql11
   PASS: sparqldl-04.rq: bug fixing test (11ms)
   PASS: sparqldl-05.rq: simple undistinguished variable test.
   PASS: sparqldl-06.rq: cycle of undistinguished variables (19ms)
-  PASS: sparqldl-07.rq: two distinguished variables + undist. (23ms)
-  PASS: sparqldl-08.rq: two distinguished variables + undist. (22ms)
+  PASS: sparqldl-07.rq: two distinguished variables + undist. (22ms)
+  PASS: sparqldl-08.rq: two distinguished variables + undist. (23ms)
   PASS: sparqldl-09.rq: undist vars test (16ms)
-  PASS: sparqldl-10.rq: undist vars test (16ms)
+  PASS: sparqldl-10.rq: undist vars test (15ms)
   PASS: sparqldl-11.rq: domain test (39ms)
   PASS: sparqldl-12.rq: range test (39ms)
   PASS: sparqldl-13.rq: sameAs (16ms)
@@ -754,7 +752,7 @@ Suite Results:
   delete-insert                       pass:17 fail:0 skip:0 unsupported:0
   delete-where                        pass:6 fail:0 skip:0 unsupported:0
   drop                                pass:4 fail:0 skip:0 unsupported:0
-  entailment                          pass:64 fail:2 skip:4 unsupported:0
+  entailment                          pass:65 fail:1 skip:4 unsupported:0
   exists                              pass:6 fail:0 skip:0 unsupported:0
   functions                           pass:75 fail:0 skip:0 unsupported:0
   grouping                            pass:6 fail:0 skip:0 unsupported:0
@@ -774,7 +772,7 @@ Suite Results:
   syntax-update-2                     pass:1 fail:0 skip:0 unsupported:0
   update-silent                       pass:13 fail:0 skip:0 unsupported:0
 ========================================
-TOTAL: 625 pass, 2 fail, 4 skip, 0 unsupported
+TOTAL: 626 pass, 1 fail, 4 skip, 0 unsupported
 ========================================
 
 
@@ -1674,42 +1672,42 @@ Test base: ../../third_party/testing/w3c/rdf/rdf11
   PASS: rdf-containers-syntax-vs-schema-test001
   PASS: rdf-containers-syntax-vs-schema-test002
   PASS: rdf-containers-syntax-vs-schema-test003
-  FAIL: rdf-containers-syntax-vs-schema-test004 — Triples mismatch: expected 15, got 15
-  FAIL: rdf-containers-syntax-vs-schema-test006 — Triples mismatch: expected 8, got 8
+  PASS: rdf-containers-syntax-vs-schema-test004
+  PASS: rdf-containers-syntax-vs-schema-test006
   PASS: rdf-containers-syntax-vs-schema-test007
   PASS: rdf-containers-syntax-vs-schema-test008
   PASS: rdf-element-not-mandatory-test001
   PASS: rdf-node-element-test001
   PASS: rdf-ns-prefix-confusion-test0001
   PASS: rdf-ns-prefix-confusion-test0003
-  FAIL: rdf-ns-prefix-confusion-test0004 — Triples mismatch: expected 1, got 1
+  PASS: rdf-ns-prefix-confusion-test0004
   PASS: rdf-ns-prefix-confusion-test0005
   PASS: rdf-ns-prefix-confusion-test0006
   PASS: rdf-ns-prefix-confusion-test0009
   PASS: rdf-ns-prefix-confusion-test0010
-  FAIL: rdf-ns-prefix-confusion-test0011 — Triples mismatch: expected 2, got 2
-  FAIL: rdf-ns-prefix-confusion-test0012 — Triples mismatch: expected 2, got 2
-  FAIL: rdf-ns-prefix-confusion-test0013 — Triples mismatch: expected 2, got 2
-  FAIL: rdf-ns-prefix-confusion-test0014 — Triples mismatch: expected 2, got 2
+  PASS: rdf-ns-prefix-confusion-test0011
+  PASS: rdf-ns-prefix-confusion-test0012
+  PASS: rdf-ns-prefix-confusion-test0013
+  PASS: rdf-ns-prefix-confusion-test0014
   PASS: rdfms-abouteach-error001
   PASS: rdfms-abouteach-error002
   PASS: rdfms-difference-between-ID-and-about-error1
-  FAIL: rdfms-difference-between-ID-and-about-test1 — Triples mismatch: expected 1, got 1
-  FAIL: rdfms-difference-between-ID-and-about-test2 — Triples mismatch: expected 1, got 1
-  FAIL: rdfms-difference-between-ID-and-about-test3 — Triples mismatch: expected 1, got 1
+  PASS: rdfms-difference-between-ID-and-about-test1
+  PASS: rdfms-difference-between-ID-and-about-test2
+  PASS: rdfms-difference-between-ID-and-about-test3
   PASS: rdfms-duplicate-member-props-test001
   PASS: rdfms-empty-property-elements-error001
   PASS: rdfms-empty-property-elements-error002
   PASS: rdfms-empty-property-elements-test001
   PASS: rdfms-empty-property-elements-test002
   PASS: rdfms-empty-property-elements-test004
-  FAIL: rdfms-empty-property-elements-test005 — Triples mismatch: expected 5, got 5
-  FAIL: rdfms-empty-property-elements-test006 — Triples mismatch: expected 5, got 5
+  PASS: rdfms-empty-property-elements-test005
+  PASS: rdfms-empty-property-elements-test006
   PASS: rdfms-empty-property-elements-test007
   PASS: rdfms-empty-property-elements-test008
   PASS: rdfms-empty-property-elements-test010
-  FAIL: rdfms-empty-property-elements-test011 — Triples mismatch: expected 5, got 5
-  FAIL: rdfms-empty-property-elements-test012 — Triples mismatch: expected 5, got 5
+  PASS: rdfms-empty-property-elements-test011
+  PASS: rdfms-empty-property-elements-test012
   PASS: rdfms-empty-property-elements-test013
   PASS: rdfms-empty-property-elements-test014
   PASS: rdfms-empty-property-elements-test015
@@ -1720,10 +1718,10 @@ Test base: ../../third_party/testing/w3c/rdf/rdf11
   PASS: rdfms-identity-anon-resources-test003
   PASS: rdfms-identity-anon-resources-test004
   PASS: rdfms-identity-anon-resources-test005
-  FAIL: rdfms-not-id-and-resource-attr-test001 — Triples mismatch: expected 6, got 6
+  PASS: rdfms-not-id-and-resource-attr-test001
   PASS: rdfms-not-id-and-resource-attr-test002
-  FAIL: rdfms-not-id-and-resource-attr-test004 — Triples mismatch: expected 5, got 5
-  FAIL: rdfms-not-id-and-resource-attr-test005 — Triples mismatch: expected 6, got 6
+  PASS: rdfms-not-id-and-resource-attr-test004
+  PASS: rdfms-not-id-and-resource-attr-test005
   PASS: rdfms-para196-test001
   PASS: rdfms-rdf-id-error001
   PASS: rdfms-rdf-id-error002
@@ -1799,7 +1797,7 @@ Test base: ../../third_party/testing/w3c/rdf/rdf11
   PASS: rdfms-syntax-incomplete-test001
   PASS: rdfms-syntax-incomplete-test002
   PASS: rdfms-syntax-incomplete-test003
-  FAIL: rdfms-syntax-incomplete-test004 — Triples mismatch: expected 6, got 6
+  PASS: rdfms-syntax-incomplete-test004
   PASS: rdfms-syntax-incomplete-error001
   PASS: rdfms-syntax-incomplete-error002
   PASS: rdfms-syntax-incomplete-error003
@@ -1828,7 +1826,7 @@ Test base: ../../third_party/testing/w3c/rdf/rdf11
   PASS: xmlbase-test010
   PASS: xmlbase-test011
   PASS: xmlbase-test013
-  FAIL: xmlbase-test014 — Triples mismatch: expected 2, got 2
+  PASS: xmlbase-test014
   [suite time: 0.1s]
 
 ========================================
@@ -1838,7 +1836,7 @@ Suite Results:
   rdf-n-triples                       pass:70 fail:0 skip:0 unsupported:0
   rdf-trig                            pass:356 fail:0 skip:0 unsupported:0
   rdf-turtle                          pass:313 fail:0 skip:0 unsupported:0
-  rdf-xml                             pass:147 fail:19 skip:0 unsupported:0
+  rdf-xml                             pass:166 fail:0 skip:0 unsupported:0
 ========================================
-TOTAL: 1012 pass, 19 fail, 0 skip, 0 unsupported
+TOTAL: 1031 pass, 0 fail, 0 skip, 0 unsupported
 ========================================

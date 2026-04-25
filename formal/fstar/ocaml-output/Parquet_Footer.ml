@@ -688,7 +688,7 @@ let rec nth_field_hex (hex : Prims.string) (target_id : Prims.nat)
                            decode_varint_hex (p + (Prims.of_int (2)))
                              (shift + (Prims.of_int (7))) acc'
                              (fuel2 - Prims.int_one)) in
-              let field_id_opt =
+              let id_and_value_pos =
                 if delta = Prims.int_zero
                 then
                   match decode_varint_hex (pos + (Prims.of_int (2)))
@@ -697,24 +697,15 @@ let rec nth_field_hex (hex : Prims.string) (target_id : Prims.nat)
                   with
                   | FStar_Pervasives_Native.None ->
                       FStar_Pervasives_Native.None
-                  | FStar_Pervasives_Native.Some (fid, uu___3) ->
-                      FStar_Pervasives_Native.Some fid
-                else FStar_Pervasives_Native.Some (prev_id + delta) in
-              let value_pos_opt =
-                if delta = Prims.int_zero
-                then
-                  match decode_varint_hex (pos + (Prims.of_int (2)))
-                          Prims.int_zero Prims.int_zero
-                          (fuel - Prims.int_one)
-                  with
-                  | FStar_Pervasives_Native.None ->
-                      FStar_Pervasives_Native.None
-                  | FStar_Pervasives_Native.Some (uu___3, p) ->
-                      FStar_Pervasives_Native.Some p
-                else FStar_Pervasives_Native.Some (pos + (Prims.of_int (2))) in
-              match (field_id_opt, value_pos_opt) with
-              | (FStar_Pervasives_Native.Some field_id,
-                 FStar_Pervasives_Native.Some value_pos) ->
+                  | FStar_Pervasives_Native.Some (raw, p) ->
+                      FStar_Pervasives_Native.Some
+                        ((zigzag_decode_nat raw), p)
+                else
+                  FStar_Pervasives_Native.Some
+                    ((prev_id + delta), (pos + (Prims.of_int (2)))) in
+              match id_and_value_pos with
+              | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+              | FStar_Pervasives_Native.Some (field_id, value_pos) ->
                   (match skip_compact_value_hex hex ftype value_pos
                            (fuel - Prims.int_one)
                    with
@@ -732,8 +723,7 @@ let rec nth_field_hex (hex : Prims.string) (target_id : Prims.nat)
                            }
                        else
                          nth_field_hex hex target_id next field_id
-                           (fuel - Prims.int_one))
-              | uu___3 -> FStar_Pervasives_Native.None))
+                           (fuel - Prims.int_one))))
 let probe_parquet_num_rows (path : Prims.string) :
   Prims.nat FStar_Pervasives_Native.option=
   match probe_parquet_footer path with
