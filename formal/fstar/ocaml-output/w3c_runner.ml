@@ -1485,6 +1485,20 @@ let run_protocol_test tc =
                       | S_5xx -> "5xx"
                       | _ -> "?")
                      reason) in
+      (* SPARQL 1.1 §4.1.1.1 / Protocol §6.1 say an implementation MAY
+         use the service URI as BASE when a query/update has no explicit
+         BASE directive. The W3C protocol manifest tests use Host:
+         www.example with paths like /sparql/ — so we synthesise a
+         service URI from the request and pass it to the F* parser as
+         init_base. The `update_base_uri` test asserts exactly this:
+         `<test>` should resolve against the service endpoint. *)
+      let host =
+        match _proto_header req.pr_headers "host" with
+        | Some h -> h
+        | None -> "www.example" in
+      let path = if req.pr_path = "" then "/sparql/" else req.pr_path in
+      let service_iri = "http://" ^ host ^ path in
+      let init_base = Some service_iri in
       (match decoded with
        | SPARQL_Protocol.PR_Bad reason -> pass_if_4xx reason
        | SPARQL_Protocol.PR_Query (q_text, _dflt, _named) ->
@@ -1492,12 +1506,23 @@ let run_protocol_test tc =
             fail at parse. For query_content_type_* we expect parse +
             eval to succeed. *)
          (try
-            let q = parse_sparql_query q_text in
+            (* Set current_base_iri_ref so patch-#65's resolve_tok_iri
+               also resolves any sites the F* parser hasn't yet been
+               taught to thread base through (defence in depth). *)
+            let saved_base = !SPARQL11_Algebra.current_base_iri_ref in
+            SPARQL11_Algebra.current_base_iri_ref := init_base;
+            let q =
+              match SPARQL11_Parser.parse_sparql_with_base init_base q_text with
+              | SPARQL11_Parser.ParseOk (q, _) -> hoist_query_filters q
+              | SPARQL11_Parser.ParseErr msg ->
+                SPARQL11_Algebra.current_base_iri_ref := saved_base;
+                raise (Sparql_parse_error msg) in
             (* Best-effort eval over an empty dataset. The evaluator
                result is dropped — the protocol test asserts on
                status-class, not on body content. *)
             let _ = OWL_QueryEval.eval_select_query_owl q []
                       RDF_Graph_Executable.({ ds_default = []; ds_named = [] }) in
+            SPARQL11_Algebra.current_base_iri_ref := saved_base;
             ignore q;
             pass_if_2or3 ()
           with
@@ -1518,7 +1543,14 @@ let run_protocol_test tc =
             else Fail "Evaluation raised unexpectedly")
        | SPARQL_Protocol.PR_Update (u_text, _dflt, _named) ->
          (try
-            let upd = parse_sparql_update u_text in
+            let saved_base = !SPARQL11_Algebra.current_base_iri_ref in
+            SPARQL11_Algebra.current_base_iri_ref := init_base;
+            let upd =
+              match SPARQL11_Parser.parse_sparql_update_with_base init_base u_text with
+              | SPARQL11_Parser.ParseOk (u, _) -> u
+              | SPARQL11_Parser.ParseErr msg ->
+                SPARQL11_Algebra.current_base_iri_ref := saved_base;
+                raise (Sparql_parse_error msg) in
             (* Apply over an empty dataset. Multi-step UPDATE-then-ASK
                tests (the update_dataset_ family) need state-carrying
                across two requests; Phase 1 only handles the single-shot
@@ -1526,6 +1558,7 @@ let run_protocol_test tc =
             let _ = apply_update
                       RDF_Graph_Executable.({ ds_default = []; ds_named = [] })
                       upd in
+            SPARQL11_Algebra.current_base_iri_ref := saved_base;
             pass_if_2or3 ()
           with
           | Sparql_parse_error msg ->

@@ -1513,7 +1513,9 @@ and parse_group_graph_pattern (pm : prefix_map) (fuel : nat) (ts : token_stream)
     (* Check for SubSelect *)
     begin match parse_peek ts' with
     | Tok_SELECT ->
-      (match parse_select_query pm (fuel-1) ts' with
+      // Subqueries: outer prologue already rewrote relative IRIs in the
+      // token stream, so pass init_base=None here.
+      (match parse_select_query pm None (fuel-1) ts' with
        | ParseErr m -> ParseErr m
        | ParseOk q ts'' ->
          begin match parse_expect Tok_RBRACE ts'' with
@@ -2448,12 +2450,17 @@ and parse_triples_block (pm : prefix_map) (fuel : nat) (acc : group_graph_patter
       | _ -> ParseOk acc' ts''
       end end
 
-(* ---- SELECT query parsing ---- *)
-and parse_select_query (pm : prefix_map) (fuel : nat) (ts : token_stream)
+(* ---- SELECT query parsing ----
+   `init_base` is the BASE IRI in scope before the query's own prologue,
+   typically supplied by the protocol/runner as the service URI per
+   SPARQL 1.1 §4.1.1.1. When the query carries its own `BASE`, the
+   prologue overrides this. Subqueries pass `None` (the outer query has
+   already rewritten relative IRIs in the token stream). *)
+and parse_select_query (pm : prefix_map) (init_base : option wf_iri) (fuel : nat) (ts : token_stream)
   : Tot (parse_result query) (decreases fuel) =
   if fuel = 0 then ParseErr "recursion limit"
   else
-    let r = parse_prologue pm None (fuel-1) ts in
+    let r = parse_prologue pm init_base (fuel-1) ts in
     (match r with
      | ParseErr m -> ParseErr m
      | ParseOk (pm', base) ts' ->
@@ -2462,7 +2469,7 @@ and parse_select_query (pm : prefix_map) (fuel : nat) (ts : token_stream)
         | Tok_SELECT -> parse_select_body pm' (fuel-1) base ts''
         | Tok_ASK -> parse_ask_body pm' (fuel-1) base ts''
         | Tok_CONSTRUCT -> parse_construct_body pm' (fuel-1) base ts''
-        | Tok_DESCRIBE -> ParseErr "unsupported: DESCRIBE queries"
+        | Tok_DESCRIBE -> parse_describe_body pm' (fuel-1) base ts''
         | _ -> ParseErr "expected SELECT, ASK, CONSTRUCT, or DESCRIBE"))
 
 (* Parse prologue: (PREFIX prefix: <iri> | BASE <iri>)* *)
@@ -2698,6 +2705,105 @@ and parse_construct_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (
           end end end end
     | _ -> ParseErr "expected WHERE or '{' after CONSTRUCT"
     end end
+
+// Parse DESCRIBE body — minimal SPARQL 1.1 §16.4 support.
+//
+// Grammar (SPARQL 1.1 §4.5):
+//   DescribeQuery := DESCRIBE ( VarOrIRIref+ | '*' ) DatasetClause* WhereClause? SolutionModifier
+//
+// `VarOrIRIref` is a Var, an IRI, or a prefixed name. The list of described
+// resources becomes a `list pattern_term` argument to `QF_Describe`. The
+// description itself (concise bounded description per §16.4.1) is
+// implementation-defined; a server MAY return any RDF graph that
+// "describes" the resource. Phase 0 evaluator returns []; the parser's
+// job is just to accept the syntax.
+//
+// W3C `query_content_type_describe` exercises `DESCRIBE <iri>` with no
+// FROM, no WHERE, no modifiers — the simplest valid form.
+and parse_describe_targets (pm : prefix_map) (fuel : nat) (acc : list pattern_term) (ts : token_stream)
+  : Tot (parse_result (list pattern_term)) (decreases fuel) =
+  if fuel = 0 then ParseOk (List.Tot.rev acc) ts
+  else match parse_peek ts with
+  | Tok_VAR v ->
+    parse_describe_targets pm (fuel-1) (PT_Var v :: acc) (parse_advance ts)
+  | Tok_IRI i ->
+    if is_iri i then
+      parse_describe_targets pm (fuel-1) (PT_IRI i :: acc) (parse_advance ts)
+    else ParseErr "invalid IRI in DESCRIBE list"
+  | Tok_PNAME pn ->
+    (match resolve_pname pn pm with
+     | Some iri ->
+       if is_iri iri then
+         parse_describe_targets pm (fuel-1) (PT_IRI iri :: acc) (parse_advance ts)
+       else ParseErr "invalid resolved IRI in DESCRIBE list"
+     | None -> ParseErr "unresolved prefix in DESCRIBE list")
+  | _ -> ParseOk (List.Tot.rev acc) ts
+
+and parse_describe_body (pm : prefix_map) (fuel : nat) (base : option wf_iri) (ts : token_stream)
+  : Tot (parse_result query) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else begin
+    let ts' = parse_advance ts in  (* consume DESCRIBE *)
+    // Targets: '*' | VarOrIRIref+
+    begin match parse_peek ts' with
+    | Tok_STAR ->
+      // DESCRIBE * — describe all vars in scope. With no WHERE clause this
+      // is no-op; with WHERE it would describe each binding's projected
+      // vars. Phase 0: stash empty target list (eval returns [] either way).
+      let ts'' = parse_advance ts' in
+      parse_describe_after_targets pm (fuel-1) base [] ts''
+    | _ ->
+      begin match parse_describe_targets pm (fuel-1) [] ts' with
+      | ParseErr m -> ParseErr m
+      | ParseOk targets ts'' ->
+        if List.Tot.length targets = 0 then
+          ParseErr "DESCRIBE expects at least one IRI/var or '*'"
+        else
+          parse_describe_after_targets pm (fuel-1) base targets ts''
+      end
+    end end
+
+and parse_describe_after_targets (pm : prefix_map) (fuel : nat) (base : option wf_iri)
+    (targets : list pattern_term) (ts : token_stream)
+  : Tot (parse_result query) (decreases fuel) =
+  if fuel = 0 then ParseErr "recursion limit"
+  else
+    // DatasetClause*
+    begin match parse_skip_from pm (fuel-1) ts with
+    | ParseErr m -> ParseErr m
+    | ParseOk ds ts1 ->
+      // Optional WhereClause
+      begin match parse_peek ts1 with
+      | Tok_WHERE | Tok_LBRACE ->
+        let ts2 = match parse_peek ts1 with Tok_WHERE -> parse_advance ts1 | _ -> ts1 in
+        begin match parse_group_graph_pattern pm (fuel-1) ts2 with
+        | ParseErr m -> ParseErr m
+        | ParseOk pattern ts3 ->
+          begin match parse_solution_modifier pm (fuel-1) ts3 with
+          | ParseErr m -> ParseErr m
+          | ParseOk (modifier, gb, hv) ts4 ->
+            ParseOk ({
+              q_base = base; q_prefixes = pm;
+              q_form = QF_Describe targets;
+              q_dataset = ds; q_pattern = pattern;
+              q_group_by = gb; q_having = hv;
+              q_modifier = modifier; q_values = None
+            }) ts4
+          end end
+      | _ ->
+        // No WHERE clause — pattern is empty, modifiers still parsed.
+        begin match parse_solution_modifier pm (fuel-1) ts1 with
+        | ParseErr m -> ParseErr m
+        | ParseOk (modifier, gb, hv) ts4 ->
+          ParseOk ({
+            q_base = base; q_prefixes = pm;
+            q_form = QF_Describe targets;
+            q_dataset = ds; q_pattern = GP_Empty;
+            q_group_by = gb; q_having = hv;
+            q_modifier = modifier; q_values = None
+          }) ts4
+        end
+      end end
 
 (* Parse SELECT variables: * | (Var | (expr AS Var))+ *)
 and parse_select_vars (pm : prefix_map) (fuel : nat) (ts : token_stream)
@@ -3210,15 +3316,22 @@ and validate_bnode_scope_query (q : query) : Tot (bool & list string) =
 let validate_bnode_scope_top (q : query) : bool =
   fst (validate_bnode_scope_query q)
 
-let parse_sparql (input : string) : parse_result query =
+// Top-level SPARQL Query parser, parameterised by a BASE IRI in scope
+// before the query's own prologue. Per SPARQL 1.1 §4.1.1.1 an
+// implementation MAY use the service URI as BASE when the query has no
+// explicit BASE directive; the protocol runner supplies that here.
+let parse_sparql_with_base (init_base : option wf_iri) (input : string) : parse_result query =
   let tokens = tokenize input in
-  match parse_select_query [] 10000 tokens with
+  match parse_select_query [] init_base 10000 tokens with
   | ParseOk q rest ->
     if not (tokens_only_eof rest) then ParseErr "unexpected tokens after query"
     else if not (validate_bnode_scope_top q) then
       ParseErr "blank node label reused across graph-pattern scope"
     else ParseOk q rest
   | ParseErr msg -> ParseErr msg
+
+let parse_sparql (input : string) : parse_result query =
+  parse_sparql_with_base None input
 
 
 (** ====================================================================== **)
@@ -3802,11 +3915,21 @@ let rec bnode_labels_unique_across_data_ops (seen : list string) (ops : list upd
     if local_string_overlaps labels seen then false
     else bnode_labels_unique_across_data_ops (local_string_union labels seen) rest
 
-// Top-level entry point for a SPARQL 1.1 Update request. Returns either
-// a populated sparql_update AST or a parse error. Stage (a): parser only.
-let parse_sparql_update (input : string) : parse_result sparql_update =
+// Top-level entry point for a SPARQL 1.1 Update request, parameterised
+// by an `init_base` IRI in scope before the update's own prologue (the
+// service URI per Protocol §6.1, when no explicit BASE appears). Pre-seeds
+// the token-stream relative-IRI rewrite via parse_update_seq.
+let parse_sparql_update_with_base (init_base : option wf_iri) (input : string)
+  : parse_result sparql_update =
   let tokens = tokenize input in
-  match parse_update_seq [] None [] false 10000 tokens with
+  // If we have an init_base, rewrite relative IRIs in the token stream up
+  // front. parse_update_seq's per-prologue rewrite (line ~3752) will
+  // re-rewrite once a BASE directive arrives, but the initial pass
+  // ensures relative IRIs in the *first* op are also resolved.
+  let tokens' = match init_base with
+    | Some _ -> resolve_relative_iri_tokens init_base tokens
+    | None -> tokens in
+  match parse_update_seq [] init_base [] false 10000 tokens' with
   | ParseErr m -> ParseErr m
   | ParseOk (pm, base, ops) rest ->
     if not (tokens_only_eof rest) then
@@ -3815,6 +3938,11 @@ let parse_sparql_update (input : string) : parse_result sparql_update =
       ParseErr "blank node label reused across INSERT DATA / DELETE DATA ops (SPARQL 1.1 Update §19.6)"
     else
       ParseOk ({ u_base = base; u_prefixes = prefix_map_to_wf pm; u_ops = ops }) rest
+
+// Top-level entry point for a SPARQL 1.1 Update request. Returns either
+// a populated sparql_update AST or a parse error. Stage (a): parser only.
+let parse_sparql_update (input : string) : parse_result sparql_update =
+  parse_sparql_update_with_base None input
 
 
 (** ====================================================================== **)
