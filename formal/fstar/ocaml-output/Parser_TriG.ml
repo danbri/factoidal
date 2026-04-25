@@ -24,14 +24,15 @@ let trig_dataset_add (ds : RDF_Graph_Executable.rdf_dataset)
   | FStar_Pervasives_Native.None ->
       {
         RDF_Graph_Executable.ds_default =
-          (RDF_Graph_Executable.graph_add t
+          (RDF_Graph_Executable.graph_add_unchecked t
              ds.RDF_Graph_Executable.ds_default);
         RDF_Graph_Executable.ds_named = (ds.RDF_Graph_Executable.ds_named)
       }
   | FStar_Pervasives_Native.Some name ->
       (match trig_find_named_graph name ds.RDF_Graph_Executable.ds_named with
        | FStar_Pervasives_Native.Some (before, existing_g, after) ->
-           let updated_g = RDF_Graph_Executable.graph_add t existing_g in
+           let updated_g =
+             RDF_Graph_Executable.graph_add_unchecked t existing_g in
            let updated_ng =
              {
                RDF_Graph_Executable.ng_name = name;
@@ -737,7 +738,9 @@ let parse_trig (input : Prims.string) :
   | (ds, tps') ->
       if tps'.has_error
       then FStar_Pervasives_Native.None
-      else FStar_Pervasives_Native.Some ds
+      else
+        FStar_Pervasives_Native.Some
+          (RDF_Graph_Executable.dataset_finalise ds)
 let parse_trig_with_base (input : Prims.string) (base : Prims.string) :
   RDF_Graph_Executable.rdf_dataset FStar_Pervasives_Native.option=
   let len = Parser_FastString.fs_byte_length input in
@@ -758,7 +761,9 @@ let parse_trig_with_base (input : Prims.string) (base : Prims.string) :
   | (ds, tps') ->
       if tps'.has_error
       then FStar_Pervasives_Native.None
-      else FStar_Pervasives_Native.Some ds
+      else
+        FStar_Pervasives_Native.Some
+          (RDF_Graph_Executable.dataset_finalise ds)
 let parse_trig_lenient (input : Prims.string) :
   RDF_Graph_Executable.rdf_dataset=
   let len = Parser_FastString.fs_byte_length input in
@@ -767,7 +772,7 @@ let parse_trig_lenient (input : Prims.string) :
   let uu___ =
     parse_trig_doc tps input Prims.int_zero
       RDF_Graph_Executable.empty_dataset fuel in
-  match uu___ with | (ds, uu___1) -> ds
+  match uu___ with | (ds, uu___1) -> RDF_Graph_Executable.dataset_finalise ds
 let parse_trig_with_base_lenient (input : Prims.string) (base : Prims.string)
   : RDF_Graph_Executable.rdf_dataset=
   let len = Parser_FastString.fs_byte_length input in
@@ -784,4 +789,4 @@ let parse_trig_with_base_lenient (input : Prims.string) (base : Prims.string)
   let uu___ =
     parse_trig_doc tps input Prims.int_zero
       RDF_Graph_Executable.empty_dataset fuel in
-  match uu___ with | (ds, uu___1) -> ds
+  match uu___ with | (ds, uu___1) -> RDF_Graph_Executable.dataset_finalise ds

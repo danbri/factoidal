@@ -1,5 +1,5 @@
 OWL 2 test catalog: /Users/danbri/working/factoidal/formal/fstar/../../third_party/testing/owl/profile-RL.rdf
-  parsed 1896 triples in 0.03s
+  parsed 1896 triples in 0.04s
 Totals: 91 test cases
   PositiveEntailmentTest:    30
   NegativeEntailmentTest:    6
@@ -39,5 +39,5 @@ Running 30 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   FAIL  owl2-rl-rules-fp-differentFrom
   FAIL  owl2-rl-rules-ifp-differentFrom
 
-Profile-RL PositiveEntailmentTests: 13 pass, 17 fail (out of 30) in 1.87s
+Profile-RL PositiveEntailmentTests: 13 pass, 17 fail (out of 30) in 1.63s
   (bnode match is structural only; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)

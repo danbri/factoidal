@@ -197,6 +197,17 @@ let rec mem_triple (t : triple) (g : rdf_graph) : Prims.bool=
   | hd::tl -> (triple_eq hd t) || (mem_triple t tl)
 let graph_add (t : triple) (g : rdf_graph) : rdf_graph=
   if mem_triple t g then g else FStar_List_Tot_Base.op_At g [t]
+let graph_add_unchecked (t : triple) (g : rdf_graph) : rdf_graph= t :: g
+let graph_finalise (g : rdf_graph) : rdf_graph= FStar_List_Tot_Base.rev g
+let dataset_finalise (ds : rdf_dataset) : rdf_dataset=
+  {
+    ds_default = (graph_finalise ds.ds_default);
+    ds_named =
+      (FStar_List_Tot_Base.map
+         (fun ng ->
+            { ng_name = (ng.ng_name); ng_graph = (graph_finalise ng.ng_graph)
+            }) ds.ds_named)
+  }
 let graph_remove (t : triple) (g : rdf_graph) : rdf_graph=
   FStar_List_Tot_Base.filter (fun hd -> Prims.op_Negation (triple_eq hd t)) g
 let graph_len (g : rdf_graph) : Prims.nat= FStar_List_Tot_Base.length g

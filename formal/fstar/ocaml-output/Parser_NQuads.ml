@@ -174,14 +174,15 @@ let dataset_add_quad (ds : RDF_Graph_Executable.rdf_dataset)
   | FStar_Pervasives_Native.None ->
       {
         RDF_Graph_Executable.ds_default =
-          (RDF_Graph_Executable.graph_add t
+          (RDF_Graph_Executable.graph_add_unchecked t
              ds.RDF_Graph_Executable.ds_default);
         RDF_Graph_Executable.ds_named = (ds.RDF_Graph_Executable.ds_named)
       }
   | FStar_Pervasives_Native.Some name ->
       (match find_named_graph name ds.RDF_Graph_Executable.ds_named with
        | FStar_Pervasives_Native.Some (before, existing_g, after) ->
-           let updated_g = RDF_Graph_Executable.graph_add t existing_g in
+           let updated_g =
+             RDF_Graph_Executable.graph_add_unchecked t existing_g in
            let updated_ng =
              {
                RDF_Graph_Executable.ng_name = name;
@@ -282,8 +283,9 @@ let rec parse_nquads_acc (input : Prims.string) (pos : Prims.nat)
                       parse_nquads_acc input pos2 ds (fuel - Prims.int_one)))))
 let parse_nquads (input : Prims.string) : RDF_Graph_Executable.rdf_dataset=
   let len = Parser_FastString.fs_byte_length input in
-  parse_nquads_acc input Prims.int_zero RDF_Graph_Executable.empty_dataset
-    (len + Prims.int_one)
+  RDF_Graph_Executable.dataset_finalise
+    (parse_nquads_acc input Prims.int_zero RDF_Graph_Executable.empty_dataset
+       (len + Prims.int_one))
 let rec parse_nquads_strict_acc (input : Prims.string) (pos : Prims.nat)
   (ds : RDF_Graph_Executable.rdf_dataset) (fuel : Prims.nat) :
   RDF_Graph_Executable.rdf_dataset FStar_Pervasives_Native.option=
@@ -347,8 +349,12 @@ let rec parse_nquads_strict_acc (input : Prims.string) (pos : Prims.nat)
 let parse_nquads_strict (input : Prims.string) :
   RDF_Graph_Executable.rdf_dataset FStar_Pervasives_Native.option=
   let len = Parser_FastString.fs_byte_length input in
-  parse_nquads_strict_acc input Prims.int_zero
-    RDF_Graph_Executable.empty_dataset (len + Prims.int_one)
+  match parse_nquads_strict_acc input Prims.int_zero
+          RDF_Graph_Executable.empty_dataset (len + Prims.int_one)
+  with
+  | FStar_Pervasives_Native.Some ds ->
+      FStar_Pervasives_Native.Some (RDF_Graph_Executable.dataset_finalise ds)
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
 type nquad =
   {
   nq_triple: RDF_Graph_Executable.triple ;
