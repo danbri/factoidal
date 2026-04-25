@@ -1589,7 +1589,8 @@ and ggp_labeled_bnodes (g : group_graph_pattern) : Tot (list string) (decreases 
   | GP_Filter _ g1
   | GP_Graph _ g1
   | GP_Bind _ _ g1
-  | GP_Service _ g1 _ ->
+  | GP_Service _ g1 _
+  | GP_ServiceVar _ g1 _ ->
     ggp_labeled_bnodes g1
   | GP_SubSelect q ->
     ggp_labeled_bnodes q.q_pattern
@@ -1651,18 +1652,35 @@ and parse_ggp_body (pm : prefix_map) (fuel : nat) (acc : group_graph_pattern)
     let ts' = parse_advance ts in
     let (silent, ts') = begin match parse_peek ts' with
       | Tok_SILENT -> (true, parse_advance ts') | _ -> (false, ts') end in
-    (match parse_service_iri pm (fuel-1) ts' with
-     | ParseErr m -> ParseErr m
-     | ParseOk siri ts'' ->
+    // SPARQL 1.1 §15.1: SERVICE endpoint is `VarOrIri`. Variable endpoints
+    // (e.g. `SERVICE ?service { ... }` in service05) are bound by an outer
+    // pattern; the algebra emits GP_ServiceVar and the evaluator dispatches
+    // per-solution via service_endpoint_lookup. Issue #57 Phase 3.
+    (match parse_peek ts' with
+     | Tok_VAR v ->
+       let ts'' = parse_advance ts' in
        begin match parse_group_graph_pattern pm (fuel-1) ts'' with
        | ParseErr m -> ParseErr m
        | ParseOk g ts''' ->
          let acc' = match acc with
-           | GP_Empty -> GP_Service siri g silent
-           | _ -> GP_Join acc (GP_Service siri g silent) in
+           | GP_Empty -> GP_ServiceVar v g silent
+           | _ -> GP_Join acc (GP_ServiceVar v g silent) in
          let ts''' = match parse_peek ts''' with Tok_DOT -> parse_advance ts''' | _ -> ts''' in
          parse_ggp_body pm (fuel-1) acc' filters true ts'''
-       end)
+       end
+     | _ ->
+       (match parse_service_iri pm (fuel-1) ts' with
+        | ParseErr m -> ParseErr m
+        | ParseOk siri ts'' ->
+          begin match parse_group_graph_pattern pm (fuel-1) ts'' with
+          | ParseErr m -> ParseErr m
+          | ParseOk g ts''' ->
+            let acc' = match acc with
+              | GP_Empty -> GP_Service siri g silent
+              | _ -> GP_Join acc (GP_Service siri g silent) in
+            let ts''' = match parse_peek ts''' with Tok_DOT -> parse_advance ts''' | _ -> ts''' in
+            parse_ggp_body pm (fuel-1) acc' filters true ts'''
+          end))
   | Tok_FILTER ->
     let ts' = parse_advance ts in
     // Collect filter expression; will be wrapped at group end per spec 18.2.4
@@ -1785,7 +1803,9 @@ and parse_service_iri (pm : prefix_map) (fuel : nat) (ts : token_stream)
     (match resolve_pname pn pm with
      | Some iri -> if is_iri iri then ParseOk iri (parse_advance ts) else ParseErr "invalid IRI"
      | None -> ParseErr "unresolved prefix")
-  | Tok_VAR _ -> ParseErr "unsupported: variable SERVICE endpoint"
+  // Variable endpoints are handled in the SERVICE branch of parse_ggp_body
+  // (issue #57 Phase 3) and never reach here; if it does, treat as an error.
+  | Tok_VAR _ -> ParseErr "internal: variable SERVICE endpoint reached parse_service_iri"
   | _ -> ParseErr "expected IRI for SERVICE"
 
 // ---- VALUES clause parsing ----
@@ -3079,7 +3099,8 @@ let rec validate_bnode_scope_pattern (p : group_graph_pattern)
     let (ok3, _) = validate_bnode_scope_expr e in
     (ok1 && ok2 && ok3 && not (string_overlaps b1 b2), string_union b1 b2)
   | GP_Graph _ p1
-  | GP_Service _ p1 _ ->
+  | GP_Service _ p1 _
+  | GP_ServiceVar _ p1 _ ->
     validate_bnode_scope_pattern p1
   | GP_SubSelect q ->
     validate_bnode_scope_query q
@@ -3299,6 +3320,7 @@ let rec gp_has_var (g : group_graph_pattern) : Tot bool (decreases g) =
   | GP_Bind _ _ inner -> gp_has_var inner
   | GP_Values _ _ -> true
   | GP_Service _ _ _ -> true
+  | GP_ServiceVar _ _ _ -> true
   | GP_SubSelect _ -> true
 
 and bgp_has_any_var (b : bgp) : Tot bool (decreases b) =
@@ -3326,6 +3348,7 @@ let rec gp_has_bnode (g : group_graph_pattern) : Tot bool (decreases g) =
   | GP_Bind _ _ inner -> gp_has_bnode inner
   | GP_Values _ _ -> false
   | GP_Service _ inner _ -> gp_has_bnode inner
+  | GP_ServiceVar _ inner _ -> gp_has_bnode inner
   | GP_SubSelect _ -> false
 
 and bgp_has_any_bnode (b : bgp) : Tot bool (decreases b) =
@@ -3954,6 +3977,8 @@ and sse_ggp (ggp : group_graph_pattern) : Tot string (decreases ggp) =
   | GP_Values vars rows -> sse_wrap "table" (sse_vars vars)
   | GP_Service iri g silent ->
     sse_wrap "service" ((if silent then "SILENT " else "") ^ "<" ^ iri ^ ">\n  " ^ sse_ggp g)
+  | GP_ServiceVar v g silent ->
+    sse_wrap "service" ((if silent then "SILENT " else "") ^ "?" ^ v ^ "\n  " ^ sse_ggp g)
   | GP_SubSelect q -> sse_query q
   | GP_PropertyPath s pp o ->
     sse_wrap "path" (sse_pattern_subject s ^ " " ^ sse_path pp ^ " " ^ sse_pattern_term o)

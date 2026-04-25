@@ -431,7 +431,10 @@ and group_graph_pattern =
   | GP_Values     : list var_name -> list (list (option rdf_term)) -> group_graph_pattern
       (* VALUES (?x ?y) { (1 2) (3 UNDEF) } — inline data *)
   | GP_Service    : wf_iri -> group_graph_pattern -> bool -> group_graph_pattern
-      (* SERVICE <iri> { P } silent? — EXCLUDED from evaluation [scope exclusion] *)
+      (* SERVICE <iri> { P } silent? — fixed-IRI endpoint *)
+  | GP_ServiceVar : var_name -> group_graph_pattern -> bool -> group_graph_pattern
+      (* SERVICE ?var { P } silent? — variable endpoint, resolved to GP_Service
+         by substitute_pattern once an outer pattern binds the variable to an IRI *)
   | GP_SubSelect  : query -> group_graph_pattern
       (* Sub-SELECT: treated as a group graph pattern *)
   | GP_PropertyPath : pattern_subject -> property_path -> pattern_term -> group_graph_pattern
@@ -2081,6 +2084,51 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store) (dss : r
   match p with
   | GP_BGP bgp -> eval_bgp_store bgp gs
 
+  | GP_Join p1 (GP_ServiceVar v inner silent) ->
+    (* SERVICE ?var pattern in scope of a left-hand pattern: evaluate the
+       left pattern first, then for each solution look up [v] to obtain the
+       endpoint IRI and dispatch through [service_endpoint_lookup] per
+       solution. Issue #57 Phase 3. Termination: [inner] is structurally
+       smaller than the outer [GP_Join _ (GP_ServiceVar _ inner _)]. *)
+    let omega1 = eval_pattern_store p1 gs dss in
+    List.Tot.concatMap
+      (fun mu ->
+        match sm_lookup v mu with
+        | Some (T_IRI iri) ->
+          if is_iri iri then
+            (match service_endpoint_lookup iri with
+             | Some remote_gs ->
+               let omega2 = eval_pattern_store inner remote_gs dss in
+               List.Tot.concatMap
+                 (fun mu2 ->
+                   if sm_compatible mu mu2 then [sm_merge mu mu2] else [])
+                 omega2
+             | None -> if silent then [mu] else [])
+          else (if silent then [mu] else [])
+        | _ -> if silent then [mu] else [])
+      omega1
+
+  | GP_Join (GP_ServiceVar v inner silent) p2 ->
+    (* Symmetric: SERVICE ?var on the left side of a join. Evaluate the
+       right side first to obtain bindings for [v]. *)
+    let omega2 = eval_pattern_store p2 gs dss in
+    List.Tot.concatMap
+      (fun mu ->
+        match sm_lookup v mu with
+        | Some (T_IRI iri) ->
+          if is_iri iri then
+            (match service_endpoint_lookup iri with
+             | Some remote_gs ->
+               let omega1 = eval_pattern_store inner remote_gs dss in
+               List.Tot.concatMap
+                 (fun mu1 ->
+                   if sm_compatible mu mu1 then [sm_merge mu mu1] else [])
+                 omega1
+             | None -> if silent then [mu] else [])
+          else (if silent then [mu] else [])
+        | _ -> if silent then [mu] else [])
+      omega2
+
   | GP_Join p1 p2 ->
     join (eval_pattern_store p1 gs dss) (eval_pattern_store p2 gs dss)
 
@@ -2162,6 +2210,16 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store) (dss : r
      | None ->
        if silent then [[]]  (* unbound but not erroring *)
        else [])
+
+  | GP_ServiceVar _ _ silent ->
+    (* SPARQL 1.1 federated query with variable endpoint, issue #57 Phase 3.
+       Outside a join context we have no outer mu to look up the variable
+       binding, so we cannot dispatch. Per SPARQL spec a SERVICE pattern
+       whose endpoint is unbound is an error; for SILENT we yield the
+       empty mapping, otherwise we yield no bindings. The common path
+       (variable bound by an adjacent BGP / VALUES) is handled in the
+       GP_Join branch above. *)
+    if silent then [[]] else []
 
   | GP_SubSelect q ->
     (* Sub-SELECT: recursively evaluate the inner SELECT query *)
@@ -4262,6 +4320,15 @@ let rec substitute_pattern (mu : solution_mapping) (p : group_graph_pattern)
   | GP_Bind e v p1 -> GP_Bind e v (substitute_pattern mu p1)
   | GP_Values vars rows -> GP_Values vars rows
   | GP_Service iri p1 silent -> GP_Service iri p1 silent
+  | GP_ServiceVar v p1 silent ->
+    (* If [mu] binds the endpoint variable to an IRI, lower to a fixed-IRI
+       GP_Service so downstream eval can dispatch directly. Otherwise keep
+       as a GP_ServiceVar (the inner pattern itself still gets substituted). *)
+    (match sm_lookup v mu with
+     | Some (T_IRI iri) ->
+       if is_iri iri then GP_Service iri (substitute_pattern mu p1) silent
+       else GP_ServiceVar v (substitute_pattern mu p1) silent
+     | _ -> GP_ServiceVar v (substitute_pattern mu p1) silent)
   | GP_SubSelect q -> GP_SubSelect q
   | GP_PropertyPath ps pp pt -> GP_PropertyPath (substitute_pattern_subject mu ps) pp (substitute_pattern_term mu pt)
   | GP_Empty -> GP_Empty
@@ -4291,6 +4358,7 @@ let rec ggp_has_var (v : var_name) (p : group_graph_pattern) : Tot bool (decreas
   | GP_Bind _ bv p1 -> bv = v || ggp_has_var v p1
   | GP_Values vars _ -> List.Tot.existsb (fun vn -> vn = v) vars
   | GP_Service _ p1 _ -> ggp_has_var v p1
+  | GP_ServiceVar sv p1 _ -> sv = v || ggp_has_var v p1
   | GP_SubSelect q ->
     // Subquery projected variables are in scope for the outer query
     (match q.q_form with

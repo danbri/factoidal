@@ -1478,6 +1478,7 @@ let rec normalise_joins (g : group_graph_pattern)
   | GP_Bind e v a      -> GP_Bind e v (normalise_joins a)
   | GP_Values vs rs    -> GP_Values vs rs
   | GP_Service i a s   -> GP_Service i (normalise_joins a) s
+  | GP_ServiceVar v a s -> GP_ServiceVar v (normalise_joins a) s
   | GP_SubSelect q     -> GP_SubSelect q
   | GP_PropertyPath s pp o -> GP_PropertyPath s pp o
   | GP_Empty           -> GP_Empty
@@ -1500,6 +1501,7 @@ let rec rewrite_ggp (g : group_graph_pattern)
   | GP_Bind e v a      -> GP_Bind e v (rewrite_ggp a)
   | GP_Values vs rs    -> GP_Values vs rs
   | GP_Service i a s   -> GP_Service i (rewrite_ggp a) s
+  | GP_ServiceVar v a s -> GP_ServiceVar v (rewrite_ggp a) s
   | GP_SubSelect q     -> GP_SubSelect q  // sub-select intentionally not rewritten here; Phase 4
   | GP_PropertyPath s pp o -> GP_PropertyPath s pp o
   | GP_Empty           -> GP_Empty
@@ -1547,6 +1549,7 @@ let rec ggp_has_ce_marker (g : group_graph_pattern)
   | GP_Bind _ _ a      -> ggp_has_ce_marker a
   | GP_Values _ _      -> false
   | GP_Service _ a _   -> ggp_has_ce_marker a
+  | GP_ServiceVar _ a _ -> ggp_has_ce_marker a
   | GP_SubSelect _     -> false   // sub-select bodies not inspected
   | GP_PropertyPath _ _ _ -> false
   | GP_Empty           -> false

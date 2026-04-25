@@ -156,6 +156,7 @@ let rec pattern_predicate_hint (p : group_graph_pattern)
   | GP_Empty -> None
   | GP_Values _ _ -> None
   | GP_Service _ _ _ -> None
+  | GP_ServiceVar _ _ _ -> None
   | GP_SubSelect _ -> None
   | GP_PropertyPath _ _ _ -> None
 
@@ -241,6 +242,12 @@ let rec eval_pattern_backend (p : group_graph_pattern) (gb : graph_backend) (dsb
        eval_pattern_backend p' gb dsb)
 
   | GP_Service _ _ _ ->
+    []
+
+  | GP_ServiceVar _ _ _ ->
+    (* Variable-endpoint federated query — backend evaluator does not currently
+       implement service dispatch. Issue #57 Phase 3 (Tet): full per-solution
+       handling lives in the in-memory eval_pattern_store path. *)
     []
 
   | GP_SubSelect q ->
