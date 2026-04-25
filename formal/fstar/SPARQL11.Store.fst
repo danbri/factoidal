@@ -14,6 +14,7 @@ noeq type graph_backend =
   | GB_Indexed : indexed_graph -> graph_backend
   | GB_HDT : hdt_graph_store -> graph_backend
   | GB_COTTAS : cottas_dataset_store -> option iri -> graph_backend
+  | GB_CottasOnDisk : cottas_ondisk_store -> option iri -> graph_backend
   | GB_Union : list graph_backend -> graph_backend
 
 noeq type named_graph_backend = {
@@ -55,6 +56,23 @@ let indexed_dataset_backend (ds : rdf_dataset) : dataset_backend =
         ds.ds_named
   }
 
+(* Build a dataset_backend whose default + named graphs all dispatch to
+   the same on-disk COTTAS store, with named-graph dispatch using the
+   stored graph IRI as the bound. The default graph is the COTTAS rows
+   whose graph column is unbound (DEFAULT) — modelled as `GB_CottasOnDisk
+   _ None`. Each named graph is a separate `GB_CottasOnDisk` filtering
+   on its IRI (issue #100 Phase 2). *)
+let cottas_ondisk_dataset_backend (cods : cottas_ondisk_store) : dataset_backend =
+  {
+    dsb_default = GB_CottasOnDisk cods None;
+    dsb_named =
+      List.Tot.map
+        (fun (g : (iri & cottas_graph_ref)) ->
+          let (gname, _) = g in
+          { ngb_name = gname; ngb_graph = GB_CottasOnDisk cods (Some gname) })
+        (cottas_ondisk_named_graphs cods)
+  }
+
 let rec union_backend_search (members : list graph_backend) (b : triple_pattern_bound)
   : Tot (list triple) (decreases members) =
   match members with
@@ -73,6 +91,16 @@ and backend_search (gb : graph_backend) (b : triple_pattern_bound) : list triple
   | GB_COTTAS cds graph_name ->
     let rows = cottas_search cds (cottas_build_bound_qp cds b.bs b.bp b.bo graph_name) in
     List.Tot.map fst (cottas_rows_to_quads cds rows)
+  | GB_CottasOnDisk cods graph_name ->
+    (* On-disk search: encode bounds → integer term-ids, walk per-row term-id
+       arrays (no parsed terms), decode terms only for matched rows.
+       If any bound term is absent from the dictionary the result is
+       definitively empty without scanning. *)
+    (match cottas_ondisk_build_bound_qp_opt cods b.bs b.bp b.bo graph_name with
+     | None -> []
+     | Some bound ->
+       let rows = cottas_ondisk_search cods bound in
+       List.Tot.map fst (cottas_ondisk_rows_to_quads cods rows))
   | GB_Union members ->
     union_backend_search members b
 
@@ -93,6 +121,10 @@ and backend_estimate (gb : graph_backend) (b : triple_pattern_bound) : nat =
     hdt_estimate hgs (hdt_build_bound_tp hgs b.bs b.bp b.bo)
   | GB_COTTAS cds graph_name ->
     cottas_estimate cds (cottas_build_bound_qp cds b.bs b.bp b.bo graph_name)
+  | GB_CottasOnDisk cods graph_name ->
+    (match cottas_ondisk_build_bound_qp_opt cods b.bs b.bp b.bo graph_name with
+     | None -> 0
+     | Some bound -> cottas_ondisk_estimate cods bound)
   | GB_Union members ->
     union_backend_estimate members b
 
@@ -127,6 +159,8 @@ and backend_predicate_present (gb : graph_backend) (pred : wf_iri)
       bp = Some pred;
       bo = None;
     } > 0
+  | GB_CottasOnDisk cods _ ->
+    cottas_ondisk_predicate_present cods pred
   | GB_Union members ->
     union_backend_predicate_present members pred
 
