@@ -4614,18 +4614,23 @@ let rec insert_quads (ds : rdf_dataset) (qs : list (option wf_iri * triple))
   | [] -> ds
   | q :: rest -> insert_quads (insert_quad ds q) rest
 
-// Build the fresh-bnode prefix for one INSERT DATA op. We use a small
-// stable tag `_insdata_<count>_` where count = dataset snapshot size BEFORE
-// the op. Different ops see different counts (each op grows the snapshot);
-// bnodes labelled the same within a single op share the same prefix and
-// therefore collapse to the same fresh node.
-let insert_data_bnode_prefix (ds : rdf_dataset) : string =
-  let n : nat = dataset_triple_count ds in
-  String.concat "" ["_insdata_"; string_of_int n]
-
-let apply_insert_data (ds : rdf_dataset) (ggp : group_graph_pattern) : rdf_dataset =
+// Per-request bnode prefix for INSERT DATA ops. SPARQL 1.1 Update §4.1.1
+// ("INSERTing the same bnode with INSERT DATA into two different Graphs is
+// the same bnode" — :insert-data-same-bnode in basic-update) requires that
+// blank-node labels in INSERT DATA be scoped to the entire UPDATE REQUEST,
+// not per individual op: two ops in the same request that share a label
+// must denote the SAME fresh node in the resulting graph store.
+//
+// `request_salt` is computed once at the start of `apply_update_ops` from
+// the snapshot of the dataset that was visible when the request began
+// (so different requests, run on the same store back-to-back, get
+// distinct prefixes). Every U_InsertData in the same request therefore
+// uses the same prefix; the rename step collapses same-label bnodes to
+// the same id, distinct-label bnodes to distinct ids.
+let apply_insert_data (request_salt : string) (ds : rdf_dataset)
+  (ggp : group_graph_pattern) : rdf_dataset =
   let quads = collect_quads None ggp in
-  let prefix = insert_data_bnode_prefix ds in
+  let prefix = String.concat "" ["_insdata_"; request_salt] in
   let renamed = List.Tot.map (rename_quad_bnodes prefix) quads in
   insert_quads ds renamed
 
@@ -4745,6 +4750,77 @@ let rec instantiate_bgp (b : bgp) (mu : solution_mapping)
      | None -> rest_ts
      | Some t -> t :: rest_ts)
 
+// ----- Template-bnode freshening for INSERT { ... } WHERE { ... } --------
+//
+// SPARQL 1.1 Update §4.1.3: blank nodes literally written in an INSERT
+// template are FRESH PER SOLUTION BINDING. Variable-bound bnodes (a `?S`
+// matched against a dataset bnode) are NOT freshened — they preserve
+// graph identity, otherwise the same template run twice via two
+// `INSERT { GRAPH :g2 { ?S ?P ?O } } WHERE { GRAPH :g1 { ?S ?P ?O } }`
+// ops would produce two distinct bnodes per row of g1 instead of one
+// (W3C basic-update test :insert-05a "INSERT same bnode twice").
+//
+// We distinguish at substitution time: a `PS_BNode b` / `PT_BNode b`
+// reaching the substituter is by definition a TEMPLATE bnode (the parser
+// never generates `PS_BNode`/`PT_BNode` from a query variable; bnodes in
+// query positions are rewritten to vars by `rewrite_query_bnodes_pattern`
+// upstream). Var-bound bnodes flow through `PS_Var v` → `sm_lookup` →
+// `T_BNode b` and pass through unchanged.
+//
+// Freshness key: `(op_salt, sol_ix, label)`. `op_salt` is the per-update-
+// op salt threaded by `apply_update_ops`. `sol_ix` is the row index in
+// the solution sequence. Same template label within one (op, sol_ix)
+// resolves to the same fresh node.
+let fresh_bnode_for_op (op_salt : string) (sol_ix : nat) (label : string)
+  : bnode_id =
+  String.concat "" [op_salt; "_sm"; string_of_int sol_ix; "_"; label]
+
+let bound_subject_of_pattern_freshen (op_salt : string) (sol_ix : nat)
+  (ps : pattern_subject) (mu : solution_mapping) : option subject =
+  match ps with
+  | PS_IRI i -> Some (S_IRI i)
+  | PS_BNode b ->
+    Some (S_BNode (fresh_bnode_for_op op_salt sol_ix b))
+  | PS_Var v ->
+    (match sm_lookup v mu with
+     | Some (T_IRI i) -> Some (S_IRI i)
+     | Some (T_BNode b) -> Some (S_BNode b)
+     | Some (T_Literal _) -> None
+     | None -> None)
+
+let bound_object_of_pattern_freshen (op_salt : string) (sol_ix : nat)
+  (pt : pattern_term) (mu : solution_mapping) : option rdf_term =
+  match pt with
+  | PT_IRI i -> Some (T_IRI i)
+  | PT_BNode b ->
+    Some (T_BNode (fresh_bnode_for_op op_salt sol_ix b))
+  | PT_Literal l -> Some (T_Literal l)
+  | PT_Var v -> sm_lookup v mu
+
+let instantiate_tp_freshen (op_salt : string) (sol_ix : nat)
+  (tp : triple_pattern) (mu : solution_mapping)
+  : option triple =
+  match bound_subject_of_pattern_freshen op_salt sol_ix tp.tp_s mu with
+  | None -> None
+  | Some s ->
+    match bound_predicate_of_pattern tp.tp_p mu with
+    | None -> None
+    | Some p ->
+      match bound_object_of_pattern_freshen op_salt sol_ix tp.tp_o mu with
+      | None -> None
+      | Some o -> Some ({ s = s; p = p; o = o })
+
+let rec instantiate_bgp_freshen (op_salt : string) (sol_ix : nat)
+  (b : bgp) (mu : solution_mapping)
+  : Tot (list triple) (decreases b) =
+  match b with
+  | [] -> []
+  | tp :: rest ->
+    let rest_ts = instantiate_bgp_freshen op_salt sol_ix rest mu in
+    (match instantiate_tp_freshen op_salt sol_ix tp mu with
+     | None -> rest_ts
+     | Some t -> t :: rest_ts)
+
 // Walk the template GGP under a single solution mapping and produce
 // (graph, triple) quads. Mirrors `collect_quads` but substitutes via mu.
 // Nested GRAPH <iri> { ... } sets the graph scope for the inner quads.
@@ -4766,6 +4842,28 @@ let rec instantiate_ggp_quads (outer : option wf_iri) (g : group_graph_pattern)
     (match gt with
      | PT_IRI g_iri -> instantiate_ggp_quads (Some g_iri) inner mu
      | _ -> instantiate_ggp_quads outer inner mu)
+  | _ -> []
+
+// Freshening variant: only PS_BNode/PT_BNode template positions are
+// rewritten to a fresh-per-(op,sol_ix) label; var-bound bnodes are
+// preserved verbatim. Used by apply_modify so var-bound dataset bnodes
+// keep their identity across repeated INSERT/WHERE ops in one request.
+let rec instantiate_ggp_quads_freshen (op_salt : string) (sol_ix : nat)
+  (outer : option wf_iri) (g : group_graph_pattern) (mu : solution_mapping)
+  : Tot (list (option wf_iri * triple)) (decreases g) =
+  match g with
+  | GP_Empty -> []
+  | GP_BGP b ->
+    let ts = instantiate_bgp_freshen op_salt sol_ix b mu in
+    List.Tot.map (fun t -> (outer, t)) ts
+  | GP_Join a b ->
+    instantiate_ggp_quads_freshen op_salt sol_ix outer a mu
+    @ instantiate_ggp_quads_freshen op_salt sol_ix outer b mu
+  | GP_Graph gt inner ->
+    (match gt with
+     | PT_IRI g_iri ->
+       instantiate_ggp_quads_freshen op_salt sol_ix (Some g_iri) inner mu
+     | _ -> instantiate_ggp_quads_freshen op_salt sol_ix outer inner mu)
   | _ -> []
 
 let rec instantiate_ggp_all (outer : option wf_iri) (g : group_graph_pattern)
@@ -4920,31 +5018,10 @@ let rec redirect_default_quads (with_iri : option wf_iri)
   | [] -> []
   | q :: rest -> redirect_default_quad with_iri q :: redirect_default_quads with_iri rest
 
-// --- Fresh bnode prefix per Modify op -----------------------------------
-// Deterministic label so repeated runs produce the same output and the
-// comparison against expected Turtle works byte-by-byte for simple cases.
-let modify_bnode_prefix (ds : rdf_dataset) : string =
-  let n : nat = dataset_triple_count ds in
-  String.concat "" ["_modify_"; string_of_int n]
-
-// Fresh-bnode rename happens PER MAPPING (§4.1.3 "blank nodes in an INSERT
-// template are fresh per solution binding"). We combine the dataset-derived
-// prefix with a running index to keep each mapping's bnodes separate.
-let rec insert_quads_per_mapping (ds : rdf_dataset)
-  (per_mu_quads : list (list (option wf_iri * triple)))
-  (base_prefix : string) (idx : nat)
-  : Tot rdf_dataset (decreases per_mu_quads) =
-  match per_mu_quads with
-  | [] -> ds
-  | qs :: rest ->
-    let prefix = String.concat "" [base_prefix; "_m"; string_of_int idx; "_"] in
-    let renamed = List.Tot.map (rename_quad_bnodes prefix) qs in
-    let ds' = insert_quads ds renamed in
-    insert_quads_per_mapping ds' rest base_prefix (idx + 1)
-
-// Per-mapping quad instantiation. Returns a list-of-lists: one inner list
-// per solution mapping. This preserves grouping so each mapping gets its
-// own freshened bnodes when we insert.
+// Per-mapping DELETE quad instantiation. Bnodes here are illegal per
+// §3.1.3 (the parser rejects them; if any slip through they simply fail
+// to match a real graph triple and get dropped). Use the non-freshening
+// variant — preserving any (illegal) literal label is harmless.
 let rec per_mapping_quads (outer : option wf_iri) (ggp : group_graph_pattern)
   (mus : solution_sequence)
   : Tot (list (list (option wf_iri * triple))) (decreases mus) =
@@ -4953,8 +5030,41 @@ let rec per_mapping_quads (outer : option wf_iri) (ggp : group_graph_pattern)
   | mu :: rest ->
     instantiate_ggp_quads outer ggp mu :: per_mapping_quads outer ggp rest
 
+// Per-mapping INSERT quad instantiation. Each solution mapping gets a
+// distinct sol_ix; template bnodes are freshened by
+// `instantiate_ggp_quads_freshen` (PS_BNode → fresh; PS_Var binding →
+// pass through). `op_salt` is the per-update-op salt threaded by
+// `apply_update_ops` so the same template across two consecutive
+// INSERT/WHERE ops produces DISTINCT bnodes (W3C basic-update test
+// :insert-where-same-bnode demands two ops → two bnodes).
+let rec per_mapping_insert_quads (op_salt : string)
+  (outer : option wf_iri) (ggp : group_graph_pattern)
+  (mus : solution_sequence) (sol_ix : nat)
+  : Tot (list (list (option wf_iri * triple))) (decreases mus) =
+  match mus with
+  | [] -> []
+  | mu :: rest ->
+    instantiate_ggp_quads_freshen op_salt sol_ix outer ggp mu
+    :: per_mapping_insert_quads op_salt outer ggp rest (sol_ix + 1)
+
+let rec insert_per_mapping_quads (ds : rdf_dataset)
+  (per_mu_quads : list (list (option wf_iri * triple)))
+  : Tot rdf_dataset (decreases per_mu_quads) =
+  match per_mu_quads with
+  | [] -> ds
+  | qs :: rest ->
+    let ds' = insert_quads ds qs in
+    insert_per_mapping_quads ds' rest
+
 // --- apply_modify --------------------------------------------------------
-let apply_modify (ds : rdf_dataset) (with_iri : option wf_iri)
+//
+// `op_salt` is provided by `apply_update_ops` and is unique per update op
+// in the request (e.g. `op_3`). Used to freshen INSERT template bnodes;
+// var-bound bnodes (`?S` matched against an existing graph bnode) pass
+// through unchanged so subsequent ops in the same request that re-read
+// the same dataset bnode see the SAME label (W3C :insert-05a).
+let apply_modify (op_salt : string) (ds : rdf_dataset)
+  (with_iri : option wf_iri)
   (delete_tmpl : option group_graph_pattern)
   (insert_tmpl : option group_graph_pattern)
   (using : list dataset_clause)
@@ -4983,18 +5093,17 @@ let apply_modify (ds : rdf_dataset) (with_iri : option wf_iri)
   let del_quads_redirected = redirect_default_quads with_iri del_quads_flat in
   let ds_after_delete = delete_quads ds del_quads_redirected in
 
-  // Step 2: substitute each mapping into insert_tmpl; redirect unscoped
-  // quads to WITH's graph; freshen bnodes per mapping; insert.
+  // Step 2: substitute each mapping into insert_tmpl with template-only
+  // bnode freshening; redirect unscoped quads to WITH's graph; insert.
+  // No post-rename step — `instantiate_ggp_quads_freshen` already gave
+  // template bnodes their fresh-per-(op,mapping) label.
   match insert_tmpl with
   | None -> ds_after_delete
   | Some it ->
-    let ins_quads_per_mu = per_mapping_quads None it mus in
-    // Redirect each per-mu list; keep the grouping so bnode freshening
-    // happens per-mapping.
+    let ins_quads_per_mu = per_mapping_insert_quads op_salt None it mus 0 in
     let redirected_per_mu = List.Tot.map
       (fun qs -> redirect_default_quads with_iri qs) ins_quads_per_mu in
-    let prefix = modify_bnode_prefix ds_after_delete in
-    insert_quads_per_mapping ds_after_delete redirected_per_mu prefix 0
+    insert_per_mapping_quads ds_after_delete redirected_per_mu
 
 (** ======================================================================= **)
 (** Part 19e: Graph-management UPDATE ops (§3.1.3 / §3.2)                    **)
@@ -5259,12 +5368,18 @@ let apply_add (ds : rdf_dataset) (silent : bool) (src : graph_ref)
 // For LOAD SILENT this is correct ("on fault, succeed silently with no
 // effect"). For non-silent LOAD it is a known gap — fetching + fault
 // signalling would have to flow through an effectful runtime hook.
-let apply_update_op (ds : rdf_dataset) (op : update_op) : rdf_dataset =
+// `request_salt` is shared across every U_InsertData op in the same
+// request (so `INSERT DATA { _:b … }; INSERT DATA { _:b … }` collapse to
+// the same bnode — see :insert-data-same-bnode). `op_idx` is the per-op
+// running index used to freshen INSERT-template bnodes inside a U_Modify.
+let apply_update_op (request_salt : string) (op_idx : nat)
+  (ds : rdf_dataset) (op : update_op) : rdf_dataset =
+  let op_salt = String.concat "" ["op"; string_of_int op_idx] in
   match op with
-  | U_InsertData g -> apply_insert_data ds g
+  | U_InsertData g -> apply_insert_data request_salt ds g
   | U_DeleteData g -> apply_delete_data ds g
   | U_DeleteWhere g -> apply_delete_where ds g
-  | U_Modify w d i u p -> apply_modify ds w d i u p
+  | U_Modify w d i u p -> apply_modify op_salt ds w d i u p
   // Graph management — stage d.
   | U_Create silent iri    -> apply_create ds silent iri
   | U_Clear  silent gr     -> apply_clear  ds silent gr
@@ -5275,11 +5390,22 @@ let apply_update_op (ds : rdf_dataset) (op : update_op) : rdf_dataset =
   // LOAD still needs I/O.
   | U_Load _ _ _ -> ds
 
-let rec apply_update_ops (ds : rdf_dataset) (ops : list update_op)
+let rec apply_update_ops_aux (request_salt : string) (op_idx : nat)
+  (ds : rdf_dataset) (ops : list update_op)
   : Tot rdf_dataset (decreases ops) =
   match ops with
   | [] -> ds
-  | op :: rest -> apply_update_ops (apply_update_op ds op) rest
+  | op :: rest ->
+    let ds' = apply_update_op request_salt op_idx ds op in
+    apply_update_ops_aux request_salt (op_idx + 1) ds' rest
+
+// Legacy wrapper kept for any downstream caller that still expects the
+// two-argument signature. Derives a request salt from the input dataset
+// snapshot (deterministic, stable across pure re-runs of the same input).
+let apply_update_ops (ds : rdf_dataset) (ops : list update_op)
+  : Tot rdf_dataset =
+  let request_salt = string_of_int (dataset_triple_count ds) in
+  apply_update_ops_aux request_salt 0 ds ops
 
 let apply_update (ds : rdf_dataset) (u : sparql_update) : rdf_dataset =
   apply_update_ops ds u.u_ops
