@@ -1,0 +1,27 @@
+# Modernised for the 2019-07-27 snapshot.
+#
+# Original: list every :EnablingThing -> :enabling -> ?EnabledThing.
+# Snapshot reality: no :EnablingThing instances. Surface anything with
+# an act-related property. To keep this cheap, anchor on a single
+# functional act predicate (year), then OPTIONALly pull the rest.
+PREFIX : <https://id.parliament.uk/schema/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT DISTINCT ?Thing ?Name ?Number ?Year ?Date ?URL
+WHERE {
+  {
+    ?Thing :actOfParliamentName ?Name .
+    OPTIONAL { ?Thing :actOfParliamentNumber ?Number . }
+    OPTIONAL { ?Thing :actOfParliamentYear   ?Year   . }
+    OPTIONAL { ?Thing :actOfParliamentRoyalAssentDate ?Date . }
+    OPTIONAL { ?Thing :actOfParliamentUrl    ?URL    . }
+  }
+  UNION
+  {
+    ?Thing :actOfParliamentYear ?Year .
+    OPTIONAL { ?Thing :actOfParliamentName   ?Name   . }
+    OPTIONAL { ?Thing :actOfParliamentNumber ?Number . }
+  }
+}
+ORDER BY ?Year ?Name
+LIMIT 50

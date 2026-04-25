@@ -1,0 +1,21 @@
+# Modernised for the 2019-07-27 snapshot.
+#
+# Original: list :Procedure with :name + :procedureDisplayOrder.
+# Snapshot reality: :Procedure isn't materialised in this dump. The
+# closest analogue is the per-petition "procedure-like" reference chain.
+# Fall back to listing the parliament-period taxonomy (57 instances),
+# ordered by :parliamentPeriodNumber when available — same intent
+# (ordered taxonomy listing).
+PREFIX : <https://id.parliament.uk/schema/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?PP ?Name ?Number ?Description
+WHERE {
+  ?PP a :ParliamentPeriod .
+  OPTIONAL { ?PP :parliamentPeriodName ?Name . }
+  OPTIONAL { ?PP rdfs:label ?Name . }
+  OPTIONAL { ?PP :parliamentPeriodNumber ?Number . }
+  OPTIONAL { ?PP :parliamentPeriodNote ?Description . }
+}
+ORDER BY ?Number ?Name
+LIMIT 60

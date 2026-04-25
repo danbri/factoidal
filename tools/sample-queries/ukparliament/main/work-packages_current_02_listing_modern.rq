@@ -1,0 +1,31 @@
+# Modernised for the 2019-07-27 snapshot.
+#
+# Original: paginated listing of "current" work packages.
+# Snapshot reality: no :WorkPackage. Replace with the structurally similar
+# "current items + flags" shape: 20 EPetitions with their most recent
+# signature count, plus a flag for whether they have an answer / debate.
+# Use a sub-SELECT to bind the LIMIT 20 first, so we don't fan out the
+# OPTIONAL flags across all 24 petitions twice.
+PREFIX : <https://id.parliament.uk/schema/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT
+  ?Petition
+  ?TotalSigs
+  ?Retrieved
+  (BOUND(?Answer)    AS ?hasAnswerFlag)
+  (BOUND(?Debate)    AS ?hasDebateFlag)
+WHERE {
+  {
+    SELECT ?Petition WHERE {
+      ?Petition a :EPetition .
+    } LIMIT 20
+  }
+  OPTIONAL {
+    ?Petition :ePetitionHasLocatedSignatureCount ?LC .
+    OPTIONAL { ?LC :signatureCount ?TotalSigs . }
+    OPTIONAL { ?LC :signatureCountRetrievedAt ?Retrieved . }
+  }
+  OPTIONAL { ?Petition :ePetitionHasAnswer ?Answer . }
+  OPTIONAL { ?Petition :ePetitionDebateDate ?Debate . }
+}

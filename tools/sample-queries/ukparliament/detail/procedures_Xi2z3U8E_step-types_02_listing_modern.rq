@@ -1,0 +1,25 @@
+# Modernised for the 2019-07-27 snapshot.
+#
+# Original: distinct :ProcedureStepType reachable from procedure id:Xi2z3U8E
+# via :procedureHasProcedureRoute property path.
+# Snapshot reality: zero procedure-route data. Replace with a much
+# lighter analogue: the distinct rdf:type values reachable from a
+# :ParliamentPeriod via any single outgoing predicate. Same property-
+# path-style shape ("entity reaches type"), without the full-graph
+# scan that the alternation above required.
+PREFIX : <https://id.parliament.uk/schema/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT DISTINCT ?Procedure ?ProcedureName ?stepType ?stepTypeLabel
+WHERE {
+  ?Procedure a :ParliamentPeriod .
+  OPTIONAL { ?Procedure :parliamentPeriodName ?ProcedureName . }
+  OPTIONAL { ?Procedure rdfs:label ?ProcedureName . }
+  ?Procedure ?p ?neighbour .
+  ?neighbour a ?stepType .
+  FILTER(STRSTARTS(STR(?stepType), "https://id.parliament.uk/schema/"))
+  OPTIONAL { ?stepType rdfs:label ?stepTypeLabel . }
+}
+ORDER BY ?stepTypeLabel
+LIMIT 30

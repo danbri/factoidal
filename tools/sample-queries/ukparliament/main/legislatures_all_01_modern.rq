@@ -1,0 +1,19 @@
+# Modernised for the 2019-07-27 snapshot.
+#
+# Original: list all :Legislature with :name.
+# Snapshot reality: no instances of :Legislature in this dump. Closest
+# stable structural class with a name-like label is :ParliamentPeriod
+# (57 instances), which represents periods of legislatures. Fall back to
+# listing those.
+PREFIX : <https://id.parliament.uk/schema/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?ParliamentPeriod ?Name
+WHERE {
+  ?ParliamentPeriod a :ParliamentPeriod .
+  OPTIONAL { ?ParliamentPeriod rdfs:label ?Name . }
+  OPTIONAL { ?ParliamentPeriod :parliamentPeriodName ?Name . }
+  OPTIONAL { ?ParliamentPeriod :name ?Name . }
+}
+ORDER BY ?Name
+LIMIT 60

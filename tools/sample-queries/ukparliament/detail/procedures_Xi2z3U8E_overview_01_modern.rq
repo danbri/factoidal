@@ -1,0 +1,22 @@
+# Modernised for the 2019-07-27 snapshot.
+#
+# Original: overview of procedure id:Xi2z3U8E with calculation-style join.
+# Snapshot reality: no :Procedure. Use ParliamentPeriod (closest taxonomy
+# entity), and surface any threshold-style child via :Threshold list.
+PREFIX : <https://id.parliament.uk/schema/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?Procedure ?ProcedureName ?ProcedureDescription
+       ?StyleEntity ?StyleEntityName
+WHERE {
+  ?Procedure a :ParliamentPeriod .
+  OPTIONAL { ?Procedure :parliamentPeriodName ?ProcedureName . }
+  OPTIONAL { ?Procedure rdfs:label ?ProcedureName . }
+  OPTIONAL { ?Procedure :parliamentPeriodNote ?ProcedureDescription . }
+  OPTIONAL {
+    ?StyleEntity a :Threshold .
+    OPTIONAL { ?StyleEntity rdfs:label ?StyleEntityName . }
+    OPTIONAL { ?StyleEntity :name      ?StyleEntityName . }
+  }
+}
+LIMIT 10

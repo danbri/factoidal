@@ -1,0 +1,25 @@
+timestamp_utc,name,path,category,status,kind,rows,ask,http_status,wallclock_ms,size_bytes,error
+2026-04-25T06:46:39Z,houses_1AFu55Hs_01_overview_modern.rq,tools/sample-queries/ukparliament/detail/houses_1AFu55Hs_01_overview_modern.rq,detail,OK,select,2,,200,3289.72,768,
+2026-04-25T06:46:39Z,houses_1AFu55Hs_02_steps-with-business-item-counts_modern.rq,tools/sample-queries/ukparliament/detail/houses_1AFu55Hs_02_steps-with-business-item-counts_modern.rq,detail,OK,select,12,,200,5758.9,904,
+2026-04-25T06:46:39Z,legislatures_4Mapsyb9_01_overview_modern.rq,tools/sample-queries/ukparliament/detail/legislatures_4Mapsyb9_01_overview_modern.rq,detail,OK,select,2,,200,254.51,476,
+2026-04-25T06:46:39Z,legislatures_4Mapsyb9_02_houses_modern.rq,tools/sample-queries/ukparliament/detail/legislatures_4Mapsyb9_02_houses_modern.rq,detail,OK,select,2,,200,10.11,922,
+2026-04-25T06:46:39Z,legislatures_4Mapsyb9_03_steps_modern.rq,tools/sample-queries/ukparliament/detail/legislatures_4Mapsyb9_03_steps_modern.rq,detail,OK,select,7,,200,41.73,773,
+2026-04-25T06:46:39Z,procedures_Xi2z3U8E_calculation-styles_01_overview_modern.rq,tools/sample-queries/ukparliament/detail/procedures_Xi2z3U8E_calculation-styles_01_overview_modern.rq,detail,OK,select,5,,200,10.11,799,
+2026-04-25T06:46:39Z,procedures_Xi2z3U8E_calculation-styles_02_listing_modern.rq,tools/sample-queries/ukparliament/detail/procedures_Xi2z3U8E_calculation-styles_02_listing_modern.rq,detail,OK,select,3,,200,10.87,780,
+2026-04-25T06:46:39Z,procedures_Xi2z3U8E_overview_01_modern.rq,tools/sample-queries/ukparliament/detail/procedures_Xi2z3U8E_overview_01_modern.rq,detail,OK,select,10,,200,10.83,867,
+2026-04-25T06:46:39Z,procedures_Xi2z3U8E_step-collections_01_overview_modern.rq,tools/sample-queries/ukparliament/detail/procedures_Xi2z3U8E_step-collections_01_overview_modern.rq,detail,OK,select,5,,200,9.83,799,
+2026-04-25T06:46:39Z,procedures_Xi2z3U8E_step-collections_02_listing_modern.rq,tools/sample-queries/ukparliament/detail/procedures_Xi2z3U8E_step-collections_02_listing_modern.rq,detail,OK,select,8,,200,5.79,636,
+2026-04-25T06:46:39Z,procedures_Xi2z3U8E_step-types_01_overview_modern.rq,tools/sample-queries/ukparliament/detail/procedures_Xi2z3U8E_step-types_01_overview_modern.rq,detail,OK,select,5,,200,9.26,775,
+2026-04-25T06:46:39Z,procedures_Xi2z3U8E_step-types_02_listing_modern.rq,tools/sample-queries/ukparliament/detail/procedures_Xi2z3U8E_step-types_02_listing_modern.rq,detail,TIMEOUT,,,,,30002.88,1141,TimeoutError: timed out
+2026-04-25T06:46:39Z,steps_hVzwNR07_overview_01_modern.rq,tools/sample-queries/ukparliament/detail/steps_hVzwNR07_overview_01_modern.rq,detail,TIMEOUT,,,,,30001.08,2082,TimeoutError: timed out
+2026-04-25T06:46:39Z,enabling-legislation_all_01_listing_modern.rq,tools/sample-queries/ukparliament/main/enabling-legislation_all_01_listing_modern.rq,main,ERROR,,,,,16925.14,1112,ConnectionResetError: [Errno 54] Connection reset by peer
+2026-04-25T06:46:39Z,enabling-legislation_all_02_first-letter-counts_modern.rq,tools/sample-queries/ukparliament/main/enabling-legislation_all_02_first-letter-counts_modern.rq,main,ERROR,,,,,0.78,702,URLError: <urlopen error [Errno 61] Connection refused>
+2026-04-25T06:46:39Z,legislatures_all_01_modern.rq,tools/sample-queries/ukparliament/main/legislatures_all_01_modern.rq,main,ERROR,,,,,0.49,688,URLError: <urlopen error [Errno 61] Connection refused>
+2026-04-25T06:46:39Z,organisations_all_01_count_modern.rq,tools/sample-queries/ukparliament/main/organisations_all_01_count_modern.rq,main,ERROR,,,,,0.33,557,URLError: <urlopen error [Errno 61] Connection refused>
+2026-04-25T06:46:39Z,organisations_all_02_listing_modern.rq,tools/sample-queries/ukparliament/main/organisations_all_02_listing_modern.rq,main,ERROR,,,,,0.32,605,URLError: <urlopen error [Errno 61] Connection refused>
+2026-04-25T06:46:39Z,procedures_all_01_modern.rq,tools/sample-queries/ukparliament/main/procedures_all_01_modern.rq,main,ERROR,,,,,0.3,820,URLError: <urlopen error [Errno 61] Connection refused>
+2026-04-25T06:46:39Z,procedures_main_01_modern.rq,tools/sample-queries/ukparliament/main/procedures_main_01_modern.rq,main,ERROR,,,,,0.28,694,URLError: <urlopen error [Errno 61] Connection refused>
+2026-04-25T06:46:39Z,step-collections_01_modern.rq,tools/sample-queries/ukparliament/main/step-collections_01_modern.rq,main,ERROR,,,,,0.29,1006,URLError: <urlopen error [Errno 61] Connection refused>
+2026-04-25T06:46:39Z,steps_by-type_01_modern.rq,tools/sample-queries/ukparliament/main/steps_by-type_01_modern.rq,main,ERROR,,,,,0.3,657,URLError: <urlopen error [Errno 61] Connection refused>
+2026-04-25T06:46:39Z,work-packages_current_01_count_modern.rq,tools/sample-queries/ukparliament/main/work-packages_current_01_count_modern.rq,main,ERROR,,,,,0.31,953,URLError: <urlopen error [Errno 61] Connection refused>
+2026-04-25T06:46:39Z,work-packages_current_02_listing_modern.rq,tools/sample-queries/ukparliament/main/work-packages_current_02_listing_modern.rq,main,ERROR,,,,,0.27,1295,URLError: <urlopen error [Errno 61] Connection refused>

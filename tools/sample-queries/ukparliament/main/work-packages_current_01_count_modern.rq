@@ -1,0 +1,11 @@
+# Modernised for the 2019-07-27 snapshot.
+#
+# Original: count "current" :WorkPackage chains. No :WorkPackage exists.
+# Lighter analogue: count distinct EPetitions in the snapshot. Same
+# count shape, no NOT-EXISTS sub-pattern.
+PREFIX : <https://id.parliament.uk/schema/>
+
+SELECT (COUNT(DISTINCT ?Petition) AS ?count)
+WHERE {
+  ?Petition a :EPetition .
+}

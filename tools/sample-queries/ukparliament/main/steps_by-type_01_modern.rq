@@ -1,0 +1,17 @@
+# Modernised for the 2019-07-27 snapshot.
+#
+# Original: list every :ProcedureStepType with its :name.
+# Snapshot reality: no :ProcedureStepType instances. Replace with the
+# distinct rdf:type values that DO appear in the data — same intent
+# ("show me the step/type taxonomy in this dataset").
+PREFIX : <https://id.parliament.uk/schema/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT DISTINCT ?Type ?TypeName
+WHERE {
+  ?s a ?Type .
+  FILTER(STRSTARTS(STR(?Type), "https://id.parliament.uk/schema/"))
+  OPTIONAL { ?Type rdfs:label ?TypeName . }
+}
+ORDER BY ASC(UCASE(STR(?TypeName)))

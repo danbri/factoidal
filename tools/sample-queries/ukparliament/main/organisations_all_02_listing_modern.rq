@@ -1,0 +1,16 @@
+# Modernised for the 2019-07-27 snapshot.
+#
+# Original: paginated list of :GovernmentOrganisation / :ArmsLengthBody
+# with :name + :startDate / :endDate.
+# Snapshot reality: 1 :ArmsLengthBody exists. Surface its properties
+# (the typed entity has a tiny adjacency, so this is fast).
+PREFIX : <https://id.parliament.uk/schema/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?Org ?p ?o
+WHERE {
+  ?Org a :ArmsLengthBody .
+  ?Org ?p ?o .
+}
+ORDER BY ?p
+LIMIT 50

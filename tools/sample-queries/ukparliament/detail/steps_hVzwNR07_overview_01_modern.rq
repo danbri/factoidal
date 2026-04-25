@@ -1,0 +1,20 @@
+# Modernised for the 2019-07-27 snapshot.
+#
+# Original: complete overview of a single :ProcedureStep id:hVzwNR07.
+# Snapshot reality: no :ProcedureStep, no fixed step IRI. The closest
+# "single entity full overview" analogue is a single :EPetition. To
+# avoid the cost of MAX over all signature counts, just pick the
+# first EPetition (LIMIT 1) and surface every property attached to it.
+PREFIX : <https://id.parliament.uk/schema/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?Step ?p ?o
+WHERE {
+  {
+    SELECT ?Step WHERE {
+      ?Step a :EPetition .
+    } LIMIT 1
+  }
+  ?Step ?p ?o .
+}
+LIMIT 50

@@ -1,0 +1,22 @@
+# Modernised for the 2019-07-27 snapshot.
+#
+# Original: list :ProcedureStepCollection joined to :Procedure and :House.
+# Snapshot reality: no :ProcedureStepCollection / :ProcedureStep classes.
+# Closest "container with named members" pattern is the petition/signature
+# graph: :EPetition aggregates its located signature counts. Use a sub-
+# SELECT-LIMIT to keep the cost bounded (avoid full pet/loc explosion).
+PREFIX : <https://id.parliament.uk/schema/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?Petition ?LC ?LocatedCount ?Place
+WHERE {
+  {
+    SELECT ?Petition ?LC WHERE {
+      ?Petition a :EPetition ;
+                :ePetitionHasLocatedSignatureCount ?LC .
+    } LIMIT 30
+  }
+  OPTIONAL { ?LC :signatureCount ?LocatedCount . }
+  OPTIONAL { ?LC :locatedSignatureCountHasPlace ?Place . }
+}
+ORDER BY DESC(?LocatedCount)

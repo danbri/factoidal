@@ -1,0 +1,23 @@
+# Modernised for the 2019-07-27 snapshot.
+#
+# Original: per-step counts of business items grouped under House id:1AFu55Hs,
+# with Commons/Lords flags from id:1AFu55Hs / id:WkUWUBMx.
+# Snapshot reality: no :ProcedureStep, no :BusinessItem, no fixed Commons/
+# Lords IRIs. Replace with: per-house, the predicates that have that house
+# as object/subject and how many distinct subjects use them. Same intent:
+# "what activity is associated with each house?"
+PREFIX : <https://id.parliament.uk/schema/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?House ?HouseName ?Predicate (COUNT(DISTINCT ?Other) AS ?n)
+WHERE {
+  ?House a :House .
+  OPTIONAL { ?House :houseName ?HouseName . }
+  OPTIONAL { ?House rdfs:label ?HouseName . }
+  { ?Other ?Predicate ?House . }
+  UNION
+  { ?House  ?Predicate ?Other . FILTER(isIRI(?Other)) }
+}
+GROUP BY ?House ?HouseName ?Predicate
+ORDER BY DESC(?n)
+LIMIT 30

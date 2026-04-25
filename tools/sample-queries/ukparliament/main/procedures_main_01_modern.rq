@@ -1,0 +1,19 @@
+# Modernised for the 2019-07-27 snapshot.
+#
+# Original: as procedures_all_01 but with required :procedureDescription
+# (i.e. only "fully described" procedures).
+# Snapshot reality: no :Procedure instances. Use ParliamentPeriods that
+# carry both a name and a note (the analogue of "described procedure").
+PREFIX : <https://id.parliament.uk/schema/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?PP ?Name ?Number ?Description
+WHERE {
+  ?PP a :ParliamentPeriod .
+  ?PP :parliamentPeriodNote ?Description .
+  OPTIONAL { ?PP :parliamentPeriodName ?Name . }
+  OPTIONAL { ?PP rdfs:label ?Name . }
+  OPTIONAL { ?PP :parliamentPeriodNumber ?Number . }
+}
+ORDER BY ?Number ?Name
+LIMIT 60

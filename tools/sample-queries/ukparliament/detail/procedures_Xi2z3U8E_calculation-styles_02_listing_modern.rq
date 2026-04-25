@@ -1,0 +1,18 @@
+# Modernised for the 2019-07-27 snapshot.
+#
+# Original: list calculation-styles of procedure id:Xi2z3U8E.
+# Snapshot reality: no :Procedure / :CalculationStyle. The structural
+# analogue ("named child rule applied to a parent") in this snapshot is
+# :Threshold (3 instances) — petition signature thresholds. List them.
+PREFIX : <https://id.parliament.uk/schema/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?Threshold ?ThresholdLabel ?ThresholdValue
+WHERE {
+  ?Threshold a :Threshold .
+  OPTIONAL { ?Threshold rdfs:label ?ThresholdLabel . }
+  OPTIONAL { ?Threshold :name ?ThresholdLabel . }
+  OPTIONAL { ?Threshold :thresholdValue ?ThresholdValue . }
+  OPTIONAL { ?Threshold :ePetitionSignatureCountThresholdValue ?ThresholdValue . }
+}
+ORDER BY ?ThresholdValue

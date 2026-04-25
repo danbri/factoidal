@@ -1,0 +1,24 @@
+# Modernised for the 2019-07-27 snapshot.
+#
+# Original: houses belonging to legislature id:4Mapsyb9 via :legislatureHasHouse.
+# Snapshot reality: no :Legislature, but :House (2 instances) does exist
+# and may carry :houseInLegislature pointing to a parliament-period or
+# similar parent. Walk that link backwards from any house, surfacing the
+# parent entity dynamically.
+PREFIX : <https://id.parliament.uk/schema/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?Legislature ?LegislatureName ?House ?HouseName
+WHERE {
+  ?House a :House .
+  OPTIONAL { ?House :houseName ?HouseName . }
+  OPTIONAL { ?House rdfs:label ?HouseName . }
+  OPTIONAL { ?House :name      ?HouseName . }
+  OPTIONAL {
+    ?House :houseInLegislature ?Legislature .
+    OPTIONAL { ?Legislature rdfs:label ?LegislatureName . }
+    OPTIONAL { ?Legislature :name      ?LegislatureName . }
+  }
+}
+ORDER BY ?LegislatureName ?HouseName
+LIMIT 20

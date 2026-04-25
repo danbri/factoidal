@@ -1,0 +1,15 @@
+# Modernised for the 2019-07-27 snapshot.
+#
+# Original: overview of legislature id:4Mapsyb9.
+# Snapshot reality: no :Legislature instances. Substitute the closest
+# top-of-hierarchy entity that does exist: an ArmsLengthBody (the only
+# subject explicitly typed at "organisation" level in the data).
+PREFIX : <https://id.parliament.uk/schema/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?Org ?p ?o
+WHERE {
+  ?Org a :ArmsLengthBody .
+  ?Org ?p ?o .
+}
+LIMIT 30

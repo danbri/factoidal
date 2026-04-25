@@ -1,0 +1,17 @@
+# Modernised for the 2019-07-27 snapshot.
+#
+# Original: count distinct :GovernmentOrganisation UNION :ArmsLengthBody
+# subjects that have a :name.
+# Snapshot reality: only :ArmsLengthBody (1 instance) exists; no
+# :GovernmentOrganisation. Drop the :name requirement (the one ALB
+# subject has no :name predicate populated) so the count is non-zero.
+PREFIX : <https://id.parliament.uk/schema/>
+
+SELECT (COUNT(DISTINCT ?Org) AS ?count)
+WHERE {
+  { ?Org a :GovernmentOrganisation . }
+  UNION
+  { ?Org a :ArmsLengthBody . }
+  UNION
+  { ?Org a :FormalBody . }
+}

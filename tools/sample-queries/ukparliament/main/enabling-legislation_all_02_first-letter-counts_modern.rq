@@ -1,0 +1,18 @@
+# Modernised for the 2019-07-27 snapshot.
+#
+# Original: first-letter counts of :EnablingThing names.
+# Snapshot reality: no :EnablingThing instances. Replace with first-letter
+# counts of WebArticle titles (top class with 331 instances), which has the
+# same shape: count distinct subjects grouped by UCASE(first char of name).
+PREFIX : <https://id.parliament.uk/schema/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?FirstLetter (COUNT(DISTINCT ?Article) AS ?Count)
+WHERE {
+  ?Article a :WebArticle .
+  OPTIONAL { ?Article :title ?Name . }
+  OPTIONAL { ?Article rdfs:label ?Name . }
+  BIND(UCASE(SUBSTR(STR(?Name), 1, 1)) AS ?FirstLetter)
+}
+GROUP BY ?FirstLetter
+ORDER BY ?FirstLetter

@@ -1,0 +1,20 @@
+# Modernised for the 2019-07-27 snapshot.
+#
+# Original: every :ProcedureStep under legislature id:4Mapsyb9, joined to
+# its step-type :name.
+# Snapshot reality: no :Legislature, no :ProcedureStep. Closest analogue:
+# distinct rdf:type values used by subjects in the parliament schema
+# namespace, with the count of distinct subjects per type. Same shape
+# (flat ordered list of "step-types"), real data.
+PREFIX : <https://id.parliament.uk/schema/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?StepType ?StepTypeName (COUNT(DISTINCT ?s) AS ?n)
+WHERE {
+  ?s a ?StepType .
+  FILTER(STRSTARTS(STR(?StepType), "https://id.parliament.uk/schema/"))
+  OPTIONAL { ?StepType rdfs:label ?StepTypeName . }
+}
+GROUP BY ?StepType ?StepTypeName
+ORDER BY DESC(?n)
+LIMIT 30

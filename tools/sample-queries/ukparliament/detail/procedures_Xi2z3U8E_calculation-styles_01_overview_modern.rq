@@ -1,0 +1,19 @@
+# Modernised for the 2019-07-27 snapshot.
+#
+# Original: overview of procedure id:Xi2z3U8E.
+# Snapshot reality: no :Procedure. Use the first ParliamentPeriod with a
+# note as the analogue procedure-overview ("ordered taxonomy entity with
+# description").
+PREFIX : <https://id.parliament.uk/schema/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?Procedure ?ProcedureName ?ProcedureDescription ?StartDate ?EndDate
+WHERE {
+  ?Procedure a :ParliamentPeriod .
+  OPTIONAL { ?Procedure :parliamentPeriodName ?ProcedureName . }
+  OPTIONAL { ?Procedure rdfs:label ?ProcedureName . }
+  OPTIONAL { ?Procedure :parliamentPeriodNote ?ProcedureDescription . }
+  OPTIONAL { ?Procedure :parliamentPeriodStartDate ?StartDate . }
+  OPTIONAL { ?Procedure :parliamentPeriodEndDate ?EndDate . }
+}
+LIMIT 5

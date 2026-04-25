@@ -1,0 +1,17 @@
+# Modernised for the 2019-07-27 snapshot.
+#
+# Original: list :ProcedureStepCollection children of procedure id:Xi2z3U8E.
+# Snapshot reality: no procedure / step-collection entities. Use the
+# rejection-code taxonomy (8 :RejectionCode instances) as the child-of-
+# procedure analogue.
+PREFIX : <https://id.parliament.uk/schema/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?StepCollection ?Label
+WHERE {
+  ?StepCollection a :RejectionCode .
+  OPTIONAL { ?StepCollection rdfs:label ?Label . }
+  OPTIONAL { ?StepCollection :name      ?Label . }
+  OPTIONAL { ?StepCollection :rejectionCodeName ?Label . }
+}
+ORDER BY ?Label

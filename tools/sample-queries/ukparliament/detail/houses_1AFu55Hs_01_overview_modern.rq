@@ -1,0 +1,21 @@
+# Modernised for the 2019-07-27 snapshot.
+#
+# Original: overview of House id:1AFu55Hs (Commons) joined to its legislature.
+# Snapshot reality: the dump contains 2 :House instances but neither has
+# IRI id:1AFu55Hs. Drop the IN-filter, bind ?House dynamically.
+PREFIX : <https://id.parliament.uk/schema/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?House ?HouseName ?Legislature ?LegislatureName
+WHERE {
+  ?House a :House .
+  OPTIONAL { ?House :houseName ?HouseName . }
+  OPTIONAL { ?House rdfs:label ?HouseName . }
+  OPTIONAL { ?House :name      ?HouseName . }
+  OPTIONAL {
+    ?House :houseInLegislature ?Legislature .
+    OPTIONAL { ?Legislature :name ?LegislatureName . }
+    OPTIONAL { ?Legislature rdfs:label ?LegislatureName . }
+  }
+}
+LIMIT 10
