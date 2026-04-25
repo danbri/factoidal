@@ -322,9 +322,10 @@ let issue_identifier (st : issuer_state) (b : bnode_id)
 
    1. Compute HFDQ for every blank node.
    2. Sort (hfdq, original-label) pairs lexicographically — primary
-      key hfdq, tiebreak original label (Phase 2 / HNDQ replaces
-      this tiebreak with proper structural recursion).
-   3. In sorted order, issue canonical identifiers.
+      key hfdq, tiebreak original label.
+   3. Phase 2 (HNDQ — see Section 6b) refines the tiebreak using
+      structural information from neighbour bnodes.
+   4. In sorted order, issue canonical identifiers.
 *)
 
 type bn_hfdq_pair = (bnode_id * string)  (* (orig, hfdq) *)
@@ -335,7 +336,208 @@ let rec compute_all_hfdq (qs : list qquad) (bs : list bnode_id)
   | [] -> []
   | b :: rest -> (b, compute_hfdq b qs) :: compute_all_hfdq qs rest
 
-(* Sort by HFDQ first, then by original label. *)
+let rec lookup_hfdq (b : bnode_id) (xs : list bn_hfdq_pair)
+  : Tot string (decreases xs) =
+  match xs with
+  | [] -> ""  // sentinel — every bnode in the dataset is in the table
+  | (k, h) :: rest -> if k = b then h else lookup_hfdq b rest
+
+(* ------------------------------------------------------------------ *)
+(* Section 6b. Hash N-Degree Quads (HNDQ) — single-level neighbour hash.
+
+   Per RDFC-1.0 §4.9. The full spec recursively enumerates permutations
+   of related bnodes through a cloned issuer; that handles graphs where
+   every collision class is itself only resolvable by structural
+   recursion (the "poison clique" / true-automorphism cases).
+
+   This implementation lands a *bounded* HNDQ:
+
+     - For each bnode `n`, walk the quads it appears in.
+     - For each occurrence, identify the *related* bnode (the bnode
+       in the other position of the same quad), the position tag
+       ("s" if `n` is subject and the related bnode is object,
+       "o" if `n` is object and the related bnode is subject,
+       "g" if the related bnode is in the graph-name slot — currently
+       not produced, since graph-name bnodes are uncommon, but the
+       tag space is reserved), and the predicate IRI.
+     - Build a list of strings of the form "<position>|<predicate>|<related_key>".
+       For the level-1 hash, `related_key` is the related bnode's HFDQ;
+       for the level-2 hash, it is the related bnode's level-1
+       neighbour-hash. If a quad mentions only `n` (e.g. `n` linked
+       to a literal or IRI, or `n` to itself in a self-loop where
+       both ends are `n`), the related_key is a sentinel "_".
+     - Sort the list lexicographically, concat, SHA-256.
+
+   Termination is structural: we only walk `qs` and the (finite)
+   list of HFDQ pairs, no fuel needed.
+
+   Two passes (level-1 then level-2 over the level-1 results) catch
+   collisions one structural step deeper than HFDQ alone. Spec-correct
+   resolution of n-step-symmetric graphs requires the full
+   permutation algorithm — deferred (see plan doc, test074c). *)
+
+(* Position-tag for a quad mentioning `target`. We do NOT distinguish
+   "target as subject" vs "target as object" in the rendered quad
+   (canonical N-Quads serialisation already handles that), but we DO
+   want symmetry-breaking when the same predicate connects two bnodes
+   in opposite directions (e.g. `_:a foo _:b` vs `_:b foo _:a`). *)
+let nbr_position_tag (target : bnode_id) (q : qquad) : string =
+  let (_, t) = q in
+  let s_is_target = match t.s with | S_BNode b -> b = target | _ -> false in
+  let o_is_target = match t.o with | T_BNode b -> b = target | _ -> false in
+  if s_is_target && o_is_target then "ss"  // self-loop: target both ways
+  else if s_is_target then "s"              // target is subject
+  else if o_is_target then "o"              // target is object
+  else "_"                                   // shouldn't happen — caller filtered
+
+(* Extract the related bnode (the *other* bnode in this quad), if any.
+   Returns None when the quad has no second bnode (e.g. `_:n p "lit"`)
+   or when target appears in both slots of a self-loop (treated as
+   "no related" — symmetry handled by the position tag "ss"). *)
+let related_bnode (target : bnode_id) (q : qquad) : option bnode_id =
+  let (_, t) = q in
+  let s_bn = match t.s with | S_BNode b -> Some b | _ -> None in
+  let o_bn = match t.o with | T_BNode b -> Some b | _ -> None in
+  match s_bn, o_bn with
+  | Some sb, Some ob ->
+    if sb = target && ob = target then None       // self-loop
+    else if sb = target then Some ob
+    else if ob = target then Some sb
+    else None                                      // shouldn't happen
+  | Some sb, None -> if sb = target then None else Some sb
+  | None, Some ob -> if ob = target then None else Some ob
+  | None, None -> None
+
+(* For a single quad mentioning `target`, build the contribution
+   "<pos>|<pred>|<related_key>". `key_of` resolves the related-bnode
+   key (HFDQ for level-1, neighbour-hash for level-2). *)
+let nbr_contribution
+    (target : bnode_id)
+    (q : qquad)
+    (key_of : bnode_id -> string)
+  : string =
+  let (_, t) = q in
+  let pos = nbr_position_tag target q in
+  let pred = t.p in
+  let rk = match related_bnode target q with
+    | None -> "_"
+    | Some rb -> key_of rb
+  in
+  pos ^ "|" ^ pred ^ "|" ^ rk
+
+let rec nbr_contributions
+    (target : bnode_id)
+    (qs : list qquad)
+    (key_of : bnode_id -> string)
+  : Tot (list string) (decreases qs) =
+  match qs with
+  | [] -> []
+  | q :: rest ->
+    nbr_contribution target q key_of :: nbr_contributions target rest key_of
+
+(* Compute a neighbour-hash for `target`, using `key_of` to look up the
+   key associated with each neighbouring bnode. The set of incident
+   quads is filtered first; then each contribution is computed,
+   sorted, concatenated, and hashed. *)
+let compute_nbr_hash
+    (target : bnode_id)
+    (qs : list qquad)
+    (key_of : bnode_id -> string)
+  : string =
+  let mentioning = quads_for_bnode target qs in
+  let contribs = nbr_contributions target mentioning key_of in
+  let sorted = insertion_sort contribs in
+  hash_sha256 (concat_strings sorted)
+
+(* Level-1 neighbour hashes for every bnode, keyed by HFDQ of the
+   related bnode. *)
+let rec compute_all_nbr1
+    (qs : list qquad)
+    (bs : list bnode_id)
+    (hfdq_table : list bn_hfdq_pair)
+  : Tot (list bn_hfdq_pair) (decreases bs) =
+  match bs with
+  | [] -> []
+  | b :: rest ->
+    let key_of (rb : bnode_id) : string = lookup_hfdq rb hfdq_table in
+    let h = compute_nbr_hash b qs key_of in
+    (b, h) :: compute_all_nbr1 qs rest hfdq_table
+
+(* Level-2 neighbour hashes — uses the level-1 table as the related-key
+   source. This catches collisions one structural step deeper. *)
+let rec compute_all_nbr2
+    (qs : list qquad)
+    (bs : list bnode_id)
+    (nbr1_table : list bn_hfdq_pair)
+  : Tot (list bn_hfdq_pair) (decreases bs) =
+  match bs with
+  | [] -> []
+  | b :: rest ->
+    let key_of (rb : bnode_id) : string = lookup_hfdq rb nbr1_table in
+    let h = compute_nbr_hash b qs key_of in
+    (b, h) :: compute_all_nbr2 qs rest nbr1_table
+
+(* ------------------------------------------------------------------ *)
+(* Section 6c. Sorting with the HNDQ-augmented key.
+
+   Sort key: (hfdq, nbr1, nbr2, orig). Two bnodes that agree on
+   hfdq + nbr1 + nbr2 are very likely true automorphisms in the
+   graph; any deterministic tiebreak is acceptable for them
+   (the W3C reference output for true automorphisms is itself
+   one arbitrary choice from the orbit — but it matches the
+   reference's enumeration order). For those, fall through to
+   original label. *)
+
+type bn_full_key = {
+  bk_orig : bnode_id;
+  bk_hfdq : string;
+  bk_nbr1 : string;
+  bk_nbr2 : string;
+}
+
+let rec lookup_pair (b : bnode_id) (xs : list bn_hfdq_pair)
+  : Tot string (decreases xs) =
+  match xs with
+  | [] -> ""
+  | (k, v) :: rest -> if k = b then v else lookup_pair b rest
+
+let rec build_full_keys
+    (bs : list bnode_id)
+    (hfdq_t : list bn_hfdq_pair)
+    (nbr1_t : list bn_hfdq_pair)
+    (nbr2_t : list bn_hfdq_pair)
+  : Tot (list bn_full_key) (decreases bs) =
+  match bs with
+  | [] -> []
+  | b :: rest ->
+    {
+      bk_orig = b;
+      bk_hfdq = lookup_pair b hfdq_t;
+      bk_nbr1 = lookup_pair b nbr1_t;
+      bk_nbr2 = lookup_pair b nbr2_t;
+    } :: build_full_keys rest hfdq_t nbr1_t nbr2_t
+
+let full_key_le (a b : bn_full_key) : bool =
+  if a.bk_hfdq <> b.bk_hfdq then str_le a.bk_hfdq b.bk_hfdq
+  else if a.bk_nbr1 <> b.bk_nbr1 then str_le a.bk_nbr1 b.bk_nbr1
+  else if a.bk_nbr2 <> b.bk_nbr2 then str_le a.bk_nbr2 b.bk_nbr2
+  else str_le a.bk_orig b.bk_orig
+
+let rec insert_full_key (x : bn_full_key) (xs : list bn_full_key)
+  : Tot (list bn_full_key) (decreases xs) =
+  match xs with
+  | [] -> [x]
+  | hd :: tl ->
+    if full_key_le x hd then x :: xs
+    else hd :: insert_full_key x tl
+
+let rec sort_full_keys (xs : list bn_full_key)
+  : Tot (list bn_full_key) (decreases xs) =
+  match xs with
+  | [] -> []
+  | hd :: tl -> insert_full_key hd (sort_full_keys tl)
+
+(* Legacy pair-based ordering (kept for backwards-compat / tests). *)
 let pair_le (a b : bn_hfdq_pair) : bool =
   let (oa, ha) = a in
   let (ob, hb) = b in
@@ -363,6 +565,14 @@ let rec assign_in_order (st : issuer_state) (xs : list bn_hfdq_pair)
   | (orig, _) :: rest ->
     let (st', _) = issue_identifier st orig in
     assign_in_order st' rest
+
+let rec assign_full_in_order (st : issuer_state) (xs : list bn_full_key)
+  : Tot issuer_state (decreases xs) =
+  match xs with
+  | [] -> st
+  | k :: rest ->
+    let (st', _) = issue_identifier st k.bk_orig in
+    assign_full_in_order st' rest
 
 (* ------------------------------------------------------------------ *)
 (* Section 7. Apply the issuer map to the dataset. *)
@@ -410,13 +620,25 @@ let relabel_dataset (mapping : list (bnode_id * string)) (ds : rdf_dataset)
 (* ------------------------------------------------------------------ *)
 (* Section 8. Public entry points. *)
 
-(* Build the full canonical-id mapping for a dataset (Phase 1). *)
+(* Build the full canonical-id mapping for a dataset.
+
+   Phase 1: HFDQ. Phase 2 (this version): adds two levels of
+   neighbour-hash refinement to break HFDQ ties using the structural
+   neighbourhood of each blank node. This handles the majority of
+   eval tests where collisions stem from local symmetry — including
+   tests where two collision-class members have neighbours with
+   distinct HFDQ. True n-step automorphisms (test074c-style poison
+   cliques) are not handled by this layer; they would require full
+   permutation enumeration with a cloned issuer (deferred). *)
 let build_canonical_mapping (ds : rdf_dataset) : list (bnode_id * string) =
   let qs = dataset_quads ds in
   let bs = dataset_bnodes ds in
-  let pairs = compute_all_hfdq qs bs in
-  let sorted = sort_pairs pairs in
-  let final_state = assign_in_order empty_issuer sorted in
+  let hfdq_table = compute_all_hfdq qs bs in
+  let nbr1_table = compute_all_nbr1 qs bs hfdq_table in
+  let nbr2_table = compute_all_nbr2 qs bs nbr1_table in
+  let keys = build_full_keys bs hfdq_table nbr1_table nbr2_table in
+  let sorted = sort_full_keys keys in
+  let final_state = assign_full_in_order empty_issuer sorted in
   final_state.is_issued
 
 (* Canonicalise a dataset: relabel every blank node deterministically. *)
