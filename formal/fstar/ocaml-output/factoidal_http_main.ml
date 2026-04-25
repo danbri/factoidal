@@ -10,6 +10,10 @@
    same code. *)
 
 let () =
+  (* Qof3 defensive instrumentation: enable backtraces for every uncaught
+     exception in the server / cottas-ondisk runtime.  See
+     docs/designissues/2026-04-25-qof3-3032-defensive-debug.md. *)
+  Printexc.record_backtrace true;
   let cfg = Factoidal_http.parse_args () in
   if cfg.help_mode then (Factoidal_http.usage (); exit 0);
   Factoidal_http.run_server cfg

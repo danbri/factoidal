@@ -872,12 +872,52 @@ let select_vars query results =
    GB_CottasOnDisk without materialising the corpus in RAM. The
    evaluators return option (None for unsupported query forms); we
    surface that as an empty result rather than 500. *)
+(* Qof3 defensive instrumentation: log backend kind + form before any
+   F*-evaluator call so we can correlate stderr traces to the request.
+   Diagnostic only (rule #15 — no semantic logic). *)
+let rec qof3_graph_kind (g : S.graph_backend) : string =
+  match g with
+  | S.GB_List _ -> "GB_List"
+  | S.GB_Indexed _ -> "GB_Indexed"
+  | S.GB_HDT _ -> "GB_HDT"
+  | S.GB_COTTAS _ -> "GB_COTTAS"
+  | S.GB_CottasOnDisk _ -> "GB_CottasOnDisk"
+  | S.GB_Union gs ->
+    let parts = List.map qof3_graph_kind gs in
+    "GB_Union[" ^ String.concat "," parts ^ "]"
+
+let qof3_backend_kind (b : S.dataset_backend) : string =
+  Printf.sprintf "{default=%s; named=%d graph(s)}"
+    (qof3_graph_kind b.S.dsb_default)
+    (List.length b.S.dsb_named)
+
+let qof3_query_form_str (q : SPARQL11_Algebra.query) : string =
+  match q.q_form with
+  | QF_Ask -> "ASK"
+  | QF_Select _ -> "SELECT"
+  | QF_Construct _ -> "CONSTRUCT"
+  | QF_Describe _ -> "DESCRIBE"
+
 let run_query ~backend ~accept query =
+  let bkind = qof3_backend_kind backend in
+  let qfstr = qof3_query_form_str query in
+  Printf.eprintf "[qof3] run_query: backend=%s form=%s\n%!" bkind qfstr;
   match query.q_form with
   | QF_Ask ->
-    let b = match S.eval_ask_query_backend_dataset query backend with
-      | FStar_Pervasives_Native.Some v -> v
-      | FStar_Pervasives_Native.None -> false in
+    Printf.eprintf "[qof3] calling S.eval_ask_query_backend_dataset (backend=%s)\n%!" bkind;
+    let b =
+      try
+        match S.eval_ask_query_backend_dataset query backend with
+        | FStar_Pervasives_Native.Some v ->
+          Printf.eprintf "[qof3] eval_ask returned Some %b\n%!" v; v
+        | FStar_Pervasives_Native.None ->
+          Printf.eprintf "[qof3] eval_ask returned None\n%!"; false
+      with e ->
+        let bt = Printexc.get_backtrace () in
+        Printf.eprintf "[qof3] eval_ask raised: %s\n%s%!"
+          (Printexc.to_string e) bt;
+        raise e
+    in
     let fmt = response_format_of_accept accept in
     (* For ASK, only JSON and XML have dedicated boolean serialisers;
        other formats fall back to JSON. *)
@@ -889,9 +929,20 @@ let run_query ~backend ~accept query =
     in
     { rb_status = 200; rb_content_type = ct; rb_body = body }
   | QF_Select _ ->
-    let rows = match S.eval_select_query_backend_dataset query backend with
-      | FStar_Pervasives_Native.Some r -> r
-      | FStar_Pervasives_Native.None -> [] in
+    Printf.eprintf "[qof3] calling S.eval_select_query_backend_dataset (backend=%s, form=SELECT)\n%!" bkind;
+    let rows =
+      try
+        match S.eval_select_query_backend_dataset query backend with
+        | FStar_Pervasives_Native.Some r ->
+          Printf.eprintf "[qof3] eval_select returned Some %d rows\n%!" (List.length r); r
+        | FStar_Pervasives_Native.None ->
+          Printf.eprintf "[qof3] eval_select returned None\n%!"; []
+      with e ->
+        let bt = Printexc.get_backtrace () in
+        Printf.eprintf "[qof3] eval_select raised: %s\n%s%!"
+          (Printexc.to_string e) bt;
+        raise e
+    in
     let vars = select_vars query rows in
     let fmt = response_format_of_accept accept in
     let (ct, body) = match fmt with
@@ -911,9 +962,20 @@ let run_query ~backend ~accept query =
        preferred results format so at least the protocol round-trips
        cleanly. Real CONSTRUCT/DESCRIBE serialisation is a later
        deliverable. *)
-    let rows = match S.eval_select_query_backend_dataset query backend with
-      | FStar_Pervasives_Native.Some r -> r
-      | FStar_Pervasives_Native.None -> [] in
+    Printf.eprintf "[qof3] calling S.eval_select_query_backend_dataset (backend=%s, form=CONSTRUCT/DESCRIBE)\n%!" bkind;
+    let rows =
+      try
+        match S.eval_select_query_backend_dataset query backend with
+        | FStar_Pervasives_Native.Some r ->
+          Printf.eprintf "[qof3] eval_select(c/d) returned Some %d rows\n%!" (List.length r); r
+        | FStar_Pervasives_Native.None ->
+          Printf.eprintf "[qof3] eval_select(c/d) returned None\n%!"; []
+      with e ->
+        let bt = Printexc.get_backtrace () in
+        Printf.eprintf "[qof3] eval_select(c/d) raised: %s\n%s%!"
+          (Printexc.to_string e) bt;
+        raise e
+    in
     let fmt = response_format_of_accept accept in
     let vars = select_vars query rows in
     let (ct, body) = match fmt with
@@ -925,17 +987,30 @@ let run_query ~backend ~accept query =
     { rb_status = 200; rb_content_type = ct; rb_body = body }
 
 let parse_and_run ~backend ~accept query_text =
+  Printf.eprintf "[qof3] parse_and_run: %d bytes of query text\n%!"
+    (String.length query_text);
   match SPARQL11_Parser.parse_sparql query_text with
   | SPARQL11_Parser.ParseErr msg ->
+    Printf.eprintf "[qof3] parse_and_run: SPARQL parse error: %s\n%!" msg;
     { rb_status = 400;
       rb_content_type = "text/plain; charset=utf-8";
       rb_body = "SPARQL parse error: " ^ msg ^ "\n" }
   | SPARQL11_Parser.ParseOk (query, _tokens) ->
-    (try run_query ~backend ~accept query
+    Printf.eprintf "[qof3] parse_and_run: parsed OK, dispatching run_query\n%!";
+    (try
+       let r = run_query ~backend ~accept query in
+       Printf.eprintf "[qof3] parse_and_run: run_query returned status=%d body_bytes=%d\n%!"
+         r.rb_status (String.length r.rb_body);
+       r
      with e ->
+       let bt = Printexc.get_backtrace () in
+       Printf.eprintf "[qof3] parse_and_run: run_query raised: %s\n%s%!"
+         (Printexc.to_string e) bt;
        { rb_status = 500;
          rb_content_type = "text/plain; charset=utf-8";
-         rb_body = "Query evaluation error: " ^ Printexc.to_string e ^ "\n" })
+         rb_body =
+           "Query evaluation error: " ^ Printexc.to_string e ^ "\n" ^
+           "Backtrace:\n" ^ bt })
 
 (* ============================================================================
    Per-connection handling.
@@ -1984,8 +2059,11 @@ let handle_connection cfg dataset_ref backend_ref cottas_stores_ref ic oc =
     (* Client closed before sending anything — benign. *)
     ()
   | e ->
-    Printf.eprintf "  connection error: %s\n%!" (Printexc.to_string e);
-    (try write_plain_error oc ~status:500 "Internal server error"
+    let bt = Printexc.get_backtrace () in
+    Printf.eprintf "[qof3] handle_connection error: %s\n%s%!"
+      (Printexc.to_string e) bt;
+    (try write_plain_error oc ~status:500
+       ("Internal server error: " ^ Printexc.to_string e)
      with _ -> ())
 
 (* ============================================================================
@@ -2133,12 +2211,22 @@ let run_server cfg =
                Printf.eprintf "  accept() failed: %s\n%!" (Unix.error_message err);
                None) with
       | None -> ()
-      | Some (client, _caddr) ->
+      | Some (client, caddr) ->
+        (* Qof3 defensive instrumentation: log every accepted connection so
+           we can confirm whether the daemon dies at-accept or mid-handler. *)
+        let peer = match caddr with
+          | Unix.ADDR_INET (a, p) ->
+            Printf.sprintf "%s:%d" (Unix.string_of_inet_addr a) p
+          | Unix.ADDR_UNIX s -> "unix:" ^ s in
+        Printf.eprintf "[qof3] [accept] peer=%s\n%!" peer;
         let ic = Unix.in_channel_of_descr client in
         let oc = Unix.out_channel_of_descr client in
         (try handle_connection cfg dataset_ref backend_ref cottas_stores_ref ic oc
          with e ->
-           Printf.eprintf "  unhandled: %s\n%!" (Printexc.to_string e));
+           let bt = Printexc.get_backtrace () in
+           Printf.eprintf "[qof3] unhandled in accept_loop: %s\n%s%!"
+             (Printexc.to_string e) bt);
+        Printf.eprintf "[qof3] [accept] peer=%s done\n%!" peer;
         (try close_out oc with _ -> ());
         (try Unix.close client with _ -> ())
     done

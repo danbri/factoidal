@@ -271,8 +271,12 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # spawns a background thread to load --data-cottas without blocking
   # the listener bind. See
   # docs/designissues/2026-04-25-mim-bind-port-first.md.
+  # Qof3 defensive-debug: -g enables source-line numbers in OCaml
+  # backtraces.  factoidal_http.ml now logs Printexc.get_backtrace ()
+  # on every uncaught exception in the cottas-ondisk query path, and
+  # without -g those frames just say "Called from unknown".
   run_with_heartbeat "ocamlopt factoidal" "_ocamlopt_factoidal.log" -- \
-    ocamlfind ocamlopt -thread -package fstar.lib,str,zarith,sha,digestif.c,unix,threads.posix -linkpkg -w -8-14-26 \
+    ocamlfind ocamlopt -g -thread -package fstar.lib,str,zarith,sha,digestif.c,unix,threads.posix -linkpkg -w -8-14-26 \
     $STATIC_FLAGS \
     $COMMON_MODULES \
     $PARQUET_NATIVE_STUBS \
@@ -289,8 +293,9 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # All argv parsing + server logic now lives in factoidal_http.ml as
   # a library; factoidal_http_main.ml just wires `let () = …`.
   # threads.posix: see comment above on the factoidal target.
+  # -g: see comment above on the factoidal target (qof3 defensive-debug).
   run_with_heartbeat "ocamlopt factoidal-http" "_ocamlopt_factoidal_http.log" -- \
-    ocamlfind ocamlopt -thread -package fstar.lib,str,zarith,sha,digestif.c,unix,threads.posix -linkpkg -w -8-14-26 \
+    ocamlfind ocamlopt -g -thread -package fstar.lib,str,zarith,sha,digestif.c,unix,threads.posix -linkpkg -w -8-14-26 \
     $STATIC_FLAGS \
     $COMMON_MODULES \
     $PARQUET_NATIVE_STUBS \
