@@ -58,6 +58,20 @@ module Ballyhoo_cottas_runtime = struct
     id_to_predicate: (Z.t, RDF_Graph_Executable.wf_iri) Hashtbl.t;
     id_to_object: (Z.t, RDF_Graph_Executable.rdf_term) Hashtbl.t;
     id_to_graph: (Z.t, RDF_Graph_Executable.iri) Hashtbl.t;
+    (* Vav2 (2026-04-25): O(1) per-column id counters. The previous
+       [next_id] walked all four hashtables (Hashtbl.fold) on every
+       intern call -- O(N) per row per column, which was O(N^2) overall
+       for the 3.14 M-quad parliament COTTAS load. Per-column monotonic
+       counters preserve semantics (id spaces were never shared across
+       columns -- decode functions dispatch off the column-typed
+       hashtable) and make each intern O(1). Single-threaded load => no
+       lock needed.
+       Note: stored as Z.t ref because [open Prims] at file top shadows
+       [int] with [Z.t]; using Z.t directly skips the conversion. *)
+    subj_counter: Z.t ref;
+    pred_counter: Z.t ref;
+    obj_counter: Z.t ref;
+    graph_counter: Z.t ref;
     summary: cottas_artifact_summary FStar_Pervasives_Native.option;
   }
 
@@ -170,19 +184,36 @@ module Ballyhoo_cottas_runtime = struct
       | Some iri -> Some (Some iri)
       | None -> None
 
-  let next_id tables =
-    let max_id tbl =
-      Hashtbl.fold (fun _ id acc -> if Z.gt id acc then id else acc) tbl Z.zero in
-    Z.succ (List.fold_left (fun acc tbl ->
-      let m = max_id tbl in if Z.gt m acc then m else acc
-    ) Z.zero tables)
+  (* Vav2 (2026-04-25): O(1) per-column allocators. Each call bumps a
+     Z.t-valued counter and returns the prior value. Counters start at
+     Z.one to preserve the previous behaviour (old [next_id] folded from
+     Z.zero then Z.succ'd, so the first id was always Z.one). *)
+  let alloc_subject_id cache =
+    let id = !(cache.subj_counter) in
+    cache.subj_counter := Z.succ id;
+    id
+
+  let alloc_predicate_id cache =
+    let id = !(cache.pred_counter) in
+    cache.pred_counter := Z.succ id;
+    id
+
+  let alloc_object_id cache =
+    let id = !(cache.obj_counter) in
+    cache.obj_counter := Z.succ id;
+    id
+
+  let alloc_graph_id cache =
+    let id = !(cache.graph_counter) in
+    cache.graph_counter := Z.succ id;
+    id
 
   let intern_subject cache s =
     let key = subject_key s in
     match Hashtbl.find_opt cache.subject_to_id key with
     | Some id -> id
     | None ->
-      let id = next_id [cache.subject_to_id; cache.predicate_to_id; cache.object_to_id; cache.graph_to_id] in
+      let id = alloc_subject_id cache in
       Hashtbl.add cache.subject_to_id key id;
       Hashtbl.add cache.id_to_subject id s;
       id
@@ -191,7 +222,7 @@ module Ballyhoo_cottas_runtime = struct
     match Hashtbl.find_opt cache.predicate_to_id p with
     | Some id -> id
     | None ->
-      let id = next_id [cache.subject_to_id; cache.predicate_to_id; cache.object_to_id; cache.graph_to_id] in
+      let id = alloc_predicate_id cache in
       Hashtbl.add cache.predicate_to_id p id;
       Hashtbl.add cache.id_to_predicate id p;
       id
@@ -201,7 +232,7 @@ module Ballyhoo_cottas_runtime = struct
     match Hashtbl.find_opt cache.object_to_id key with
     | Some id -> id
     | None ->
-      let id = next_id [cache.subject_to_id; cache.predicate_to_id; cache.object_to_id; cache.graph_to_id] in
+      let id = alloc_object_id cache in
       Hashtbl.add cache.object_to_id key id;
       Hashtbl.add cache.id_to_object id o;
       id
@@ -210,7 +241,7 @@ module Ballyhoo_cottas_runtime = struct
     match Hashtbl.find_opt cache.graph_to_id g with
     | Some id -> id
     | None ->
-      let id = next_id [cache.subject_to_id; cache.predicate_to_id; cache.object_to_id; cache.graph_to_id] in
+      let id = alloc_graph_id cache in
       Hashtbl.add cache.graph_to_id g id;
       Hashtbl.add cache.id_to_graph id g;
       id
@@ -298,6 +329,10 @@ module Ballyhoo_cottas_runtime = struct
         id_to_predicate = Hashtbl.create 257;
         id_to_object = Hashtbl.create 257;
         id_to_graph = Hashtbl.create 257;
+        subj_counter = ref Z.one;
+        pred_counter = ref Z.one;
+        obj_counter = ref Z.one;
+        graph_counter = ref Z.one;
         summary = FStar_Pervasives_Native.None;
       } in
       let quad_rev = ref [] in
