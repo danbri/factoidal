@@ -53,22 +53,26 @@ if [ "$1" = "--run" ]; then
   [ -x "$RUNNER" ] || { echo "Runner not found or not executable: $RUNNER" >&2; exit 2; }
   # Runner exits nonzero when any test fails (by design). `|| true` keeps
   # the log either way — the per-suite numbers are what we need.
+  # Always run from repo root so the runner's relative third_party/ paths
+  # resolve correctly regardless of caller CWD. Without this, rdf-xml
+  # base-URI tests false-fail with "expected X, got X" mismatches.
+  REPO_ROOT="$SCRIPT_DIR/../.."
   echo "Running SPARQL 1.1 suite…"
-  "$RUNNER"       > "$SPARQL_LOG" 2>&1 || true
+  ( cd "$REPO_ROOT" && "$RUNNER"       > "$SPARQL_LOG" 2>&1 ) || true
   echo "  done."
   echo "Running RDF 1.1 suite…"
-  "$RUNNER" --rdf > "$RDF_LOG" 2>&1 || true
+  ( cd "$REPO_ROOT" && "$RUNNER" --rdf > "$RDF_LOG" 2>&1 ) || true
   echo "  done."
   if [ -x "$OWL_RUNNER" ]; then
     echo "Running OWL 2 RL profile suite (PositiveEntailmentTests)…"
-    "$OWL_RUNNER" > "$OWL_LOG" 2>&1 || true
+    ( cd "$REPO_ROOT" && "$OWL_RUNNER" > "$OWL_LOG" 2>&1 ) || true
     echo "  done."
   else
     echo "  owl_runner not found at $OWL_RUNNER — skipping OWL 2 RL suite." >&2
   fi
   if [ -x "$RDFC10_RUNNER" ]; then
     echo "Running RDFC-1.0 (RDF Dataset Canonicalization) suite…"
-    "$RDFC10_RUNNER" > "$RDFC10_LOG" 2>&1 || true
+    ( cd "$REPO_ROOT" && "$RDFC10_RUNNER" > "$RDFC10_LOG" 2>&1 ) || true
     echo "  done."
   else
     echo "  rdfc10_runner not found at $RDFC10_RUNNER — skipping RDFC-1.0 suite." >&2

@@ -130,11 +130,11 @@
 <div class="summary">
   <div class="tile ok">
     <div class="label">Pass</div>
-    <div class="value">1655</div>
+    <div class="value">1656</div>
   </div>
   <div class="tile err">
     <div class="label">Fail</div>
-    <div class="value">3</div>
+    <div class="value">2</div>
   </div>
   <div class="tile warn">
     <div class="label">Skipped</div>
@@ -142,7 +142,7 @@
   </div>
   <div class="tile">
     <div class="label">Pass / runnable</div>
-    <div class="value">99.8%<small> of 1658</small></div>
+    <div class="value">99.9%<small> of 1658</small></div>
   </div>
   <div class="tile">
     <div class="label">Total in suites</div>
@@ -159,7 +159,7 @@
   are linked below.
 </div>
 
-<h2>SPARQL 1.1 <span class="inline-numbers">624 pass · 3 fail · 4 skip</span></h2>
+<h2>SPARQL 1.1 <span class="inline-numbers">625 pass · 2 fail · 4 skip</span></h2>
 <div class="suites">
       <div class="suite-row perfect">
         <div class="suite-name">add</div>
@@ -283,9 +283,9 @@
       </div>
       <div class="suite-row near-perfect">
         <div class="suite-name">entailment</div>
-        <div class="suite-bar"><div class="fill" style="width:95%"></div></div>
+        <div class="suite-bar"><div class="fill" style="width:97%"></div></div>
         <div class="suite-numbers">
-          <span class="p">63</span>/<span class="f">3</span>
+          <span class="p">64</span>/<span class="f">2</span>
           <small>skip 4</small>
         </div>
       </div>
@@ -487,10 +487,10 @@
       </div>
       <div class="suite-row mixed">
         <div class="suite-name">rdf-canon</div>
-        <div class="suite-bar"><div class="fill" style="width:64%"></div></div>
+        <div class="suite-bar"><div class="fill" style="width:69%"></div></div>
         <div class="suite-numbers">
-          <span class="p">41</span>/<span class="f">23</span>
-          <small>skip 22</small>
+          <span class="p">59</span>/<span class="f">26</span>
+          <small>skip 1</small>
         </div>
       </div>
 </div>
@@ -583,21 +583,21 @@
   are live from the vendored catalogs, not stale snapshots.
 </p>
 
-<h2>RDFC-1.0 <span class="inline-numbers">41 pass &middot; 23 fail &middot; 22 stub &middot; of 86 total</span></h2>
+<h2>RDFC-1.0 <span class="inline-numbers">59 pass &middot; 26 fail &middot; 1 stub &middot; of 86 total</span></h2>
 <div class="suites">
   <div class="suite-row mixed">
     <div class="suite-name">eval (HFDQ)</div>
-    <div class="suite-bar"><div class="fill" style="width:64%"></div></div>
+    <div class="suite-bar"><div class="fill" style="width:69%"></div></div>
     <div class="suite-numbers">
-      <span class="p">41</span>/<span class="f">23</span>
-      <small>of 64</small>
+      <span class="p">59</span>/<span class="f">26</span>
+      <small>of 85</small>
     </div>
   </div>
   <div class="suite-row skipped">
     <div class="suite-name">map / negative-eval</div>
     <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
     <div class="suite-numbers">
-      <small>22 stub &mdash; runner does not emit map JSON / HNDQ termination guard</small>
+      <small>1 stub &mdash; runner does not emit map JSON / HNDQ termination guard</small>
     </div>
   </div>
 </div>
@@ -632,7 +632,7 @@
 <details>
   <summary>Raw per-suite numbers</summary>
   <h3 style="font-size: 0.95em; margin: 0.8em 0 0.3em;">SPARQL 1.1</h3>
-  <pre>631 total: 624 pass, 3 fail, 4 skip, 0 unsupported
+  <pre>631 total: 625 pass, 2 fail, 4 skip, 0 unsupported
   add                                 pass:8 fail:0 skip:0 unsupported:0
   aggregates                          pass:47 fail:0 skip:0 unsupported:0
   basic-update                        pass:13 fail:0 skip:0 unsupported:0
@@ -648,7 +648,7 @@
   delete-insert                       pass:17 fail:0 skip:0 unsupported:0
   delete-where                        pass:6 fail:0 skip:0 unsupported:0
   drop                                pass:4 fail:0 skip:0 unsupported:0
-  entailment                          pass:63 fail:3 skip:4 unsupported:0
+  entailment                          pass:64 fail:2 skip:4 unsupported:0
   exists                              pass:6 fail:0 skip:0 unsupported:0
   functions                           pass:75 fail:0 skip:0 unsupported:0
   grouping                            pass:6 fail:0 skip:0 unsupported:0
@@ -692,9 +692,9 @@
 </main>
 
 <footer>
-  Generated <strong>2026-04-25 09:46 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/ed22b5ae7f6d69efe321e4cd600c42a341ddd949">ed22b5a</a></code>
-  on branch <code>claude/main</code> — &ldquo;docs/designissues: scratch doc for prp-fp + prp-ifp closure work (Tsade)&rdquo;.
+  Generated <strong>2026-04-25 10:16 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/c0ba26919a311e8015f94cfd0fbb3eec0187d1f1">c0ba269</a></code>
+  on branch <code>claude/main</code> — &ldquo;rdfc10: emit JSON bnode-mapping for Map tests&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 

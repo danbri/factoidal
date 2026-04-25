@@ -5,6 +5,8 @@ let owl_unionOf : RDF_Graph_Executable.wf_iri=
   "http://www.w3.org/2002/07/owl#unionOf"
 let owl_complementOf : RDF_Graph_Executable.wf_iri=
   "http://www.w3.org/2002/07/owl#complementOf"
+let owl_disjointWith : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/2002/07/owl#disjointWith"
 let owl_Restriction : RDF_Graph_Executable.wf_iri=
   "http://www.w3.org/2002/07/owl#Restriction"
 let owl_onProperty : RDF_Graph_Executable.wf_iri=
@@ -417,6 +419,43 @@ let rec any_successor_sat (f : RDF_Graph_Executable.rdf_term -> Prims.bool)
   match xs with
   | [] -> false
   | h::tl -> if f h then true else any_successor_sat f tl
+let rec any_disjoint_witness_in (g : RDF_Graph_Executable.rdf_graph)
+  (i : RDF_Graph_Executable.subject)
+  (ds : RDF_Graph_Executable.rdf_term Prims.list) : Prims.bool=
+  match ds with
+  | [] -> false
+  | h::tl ->
+      (match h with
+       | RDF_Graph_Executable.T_IRI d_iri ->
+           if has_type g i d_iri
+           then true
+           else any_disjoint_witness_in g i tl
+       | uu___ -> any_disjoint_witness_in g i tl)
+let rec any_disjoint_witness_sym (g : RDF_Graph_Executable.rdf_graph)
+  (i : RDF_Graph_Executable.subject) (c_iri : RDF_Graph_Executable.wf_iri)
+  (subjs : RDF_Graph_Executable.subject Prims.list) : Prims.bool=
+  match subjs with
+  | [] -> false
+  | h::tl ->
+      (match h with
+       | RDF_Graph_Executable.S_IRI d_iri ->
+           if has_type g i d_iri
+           then true
+           else any_disjoint_witness_sym g i c_iri tl
+       | uu___ -> any_disjoint_witness_sym g i c_iri tl)
+let has_disjoint_witness (g : RDF_Graph_Executable.rdf_graph)
+  (i : RDF_Graph_Executable.subject) (c_iri : RDF_Graph_Executable.wf_iri) :
+  Prims.bool=
+  let forward =
+    RDF_Graph_Executable.find_objects g (RDF_Graph_Executable.S_IRI c_iri)
+      owl_disjointWith in
+  if any_disjoint_witness_in g i forward
+  then true
+  else
+    (let reverse =
+       RDF_Graph_Executable.find_subjects g owl_disjointWith
+         (RDF_Graph_Executable.T_IRI c_iri) in
+     any_disjoint_witness_sym g i c_iri reverse)
 let rec is_member (g : RDF_Graph_Executable.rdf_graph)
   (i : RDF_Graph_Executable.subject) (ce : class_expr) (fuel : Prims.nat) :
   Prims.bool FStar_Pervasives_Native.option=
@@ -446,10 +485,22 @@ let rec is_member (g : RDF_Graph_Executable.rdf_graph)
            is_intersection_member g i ces (n - Prims.int_one)
        | CE_UnionOf ces -> is_union_member g i ces (n - Prims.int_one)
        | CE_ComplementOf c ->
-           (match is_member g i c (n - Prims.int_one) with
-            | FStar_Pervasives_Native.Some b ->
-                FStar_Pervasives_Native.Some (Prims.op_Negation b)
-            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+           (match c with
+            | CE_Named c_iri ->
+                if has_disjoint_witness g i c_iri
+                then FStar_Pervasives_Native.Some true
+                else
+                  (match is_member g i c (n - Prims.int_one) with
+                   | FStar_Pervasives_Native.Some b ->
+                       FStar_Pervasives_Native.Some (Prims.op_Negation b)
+                   | FStar_Pervasives_Native.None ->
+                       FStar_Pervasives_Native.None)
+            | uu___ ->
+                (match is_member g i c (n - Prims.int_one) with
+                 | FStar_Pervasives_Native.Some b ->
+                     FStar_Pervasives_Native.Some (Prims.op_Negation b)
+                 | FStar_Pervasives_Native.None ->
+                     FStar_Pervasives_Native.None))
        | CE_MinCard (k, p) ->
            let succs = find_P_successors g i p in
            if (FStar_List_Tot_Base.length succs) >= k
@@ -882,12 +933,98 @@ let rec materialise_eqc_expansion (g : RDF_Graph_Executable.rdf_graph)
                    | FStar_Pervasives_Native.None -> tail))
          | FStar_Pervasives_Native.None -> tail)
       else tail
-let tableau_materialise (g : RDF_Graph_Executable.rdf_graph) :
+let existential_obligation (ce : class_expr) :
+  (RDF_Graph_Executable.wf_iri * class_expr) FStar_Pervasives_Native.option=
+  match ce with
+  | CE_SomeValuesFrom (p, c) -> FStar_Pervasives_Native.Some (p, c)
+  | CE_MinCard (k, p) ->
+      if k = Prims.int_one
+      then FStar_Pervasives_Native.Some (p, CE_Unknown)
+      else FStar_Pervasives_Native.None
+  | CE_MinQualCard (k, p, c) ->
+      if k = Prims.int_one
+      then FStar_Pervasives_Native.Some (p, c)
+      else FStar_Pervasives_Native.None
+  | uu___ -> FStar_Pervasives_Native.None
+let witness_bnode_id (i : RDF_Graph_Executable.subject)
+  (p : RDF_Graph_Executable.wf_iri) : RDF_Graph_Executable.bnode_id=
+  let i_str =
+    match i with
+    | RDF_Graph_Executable.S_IRI s -> s
+    | RDF_Graph_Executable.S_BNode b -> b in
+  FStar_String.concat "" ["_:bw_"; i_str; "__"; p]
+let already_has_witness (g : RDF_Graph_Executable.rdf_graph)
+  (i : RDF_Graph_Executable.subject) (p : RDF_Graph_Executable.wf_iri)
+  (c : class_expr) : Prims.bool=
+  let succs = find_P_successors g i p in
+  match c with
+  | CE_Unknown -> Prims.op_Negation (Prims.uu___is_Nil succs)
+  | uu___ ->
+      (match any_is_member g succs c (Prims.of_int (32)) with
+       | FStar_Pervasives_Native.Some true -> true
+       | uu___1 -> false)
+let witnesses_for_ce_bnode (g : RDF_Graph_Executable.rdf_graph)
+  (ce_s : RDF_Graph_Executable.subject) (ce : class_expr) :
+  RDF_Graph_Executable.triple Prims.list=
+  match existential_obligation ce with
+  | FStar_Pervasives_Native.None -> []
+  | FStar_Pervasives_Native.Some (p, c) ->
+      let ce_term = RDF_Graph_Executable.subject_to_term ce_s in
+      let typed_individuals =
+        RDF_Graph_Executable.find_subjects g RDF_Graph_Executable.rdf_type
+          ce_term in
+      FStar_List_Tot_Base.fold_left
+        (fun acc i ->
+           if already_has_witness g i p c
+           then acc
+           else
+             (let bw_id = witness_bnode_id i p in
+              let bw_term = RDF_Graph_Executable.T_BNode bw_id in
+              let edge =
+                {
+                  RDF_Graph_Executable.s = i;
+                  RDF_Graph_Executable.p = p;
+                  RDF_Graph_Executable.o = bw_term
+                } in
+              let acc1 = edge :: acc in
+              match c with
+              | CE_Named c_iri ->
+                  let type_t =
+                    {
+                      RDF_Graph_Executable.s =
+                        (RDF_Graph_Executable.S_BNode bw_id);
+                      RDF_Graph_Executable.p = RDF_Graph_Executable.rdf_type;
+                      RDF_Graph_Executable.o =
+                        (RDF_Graph_Executable.T_IRI c_iri)
+                    } in
+                  type_t :: acc1
+              | uu___1 -> acc1)) [] typed_individuals
+let rec witnesses_for_all (g : RDF_Graph_Executable.rdf_graph)
+  (ces : RDF_Graph_Executable.subject Prims.list) :
+  RDF_Graph_Executable.triple Prims.list=
+  match ces with
+  | [] -> []
+  | ce_s::tl ->
+      let ce =
+        parse_class_expr g (RDF_Graph_Executable.subject_to_term ce_s)
+          (Prims.of_int (32)) in
+      (match ce with
+       | CE_Unknown -> witnesses_for_all g tl
+       | uu___ ->
+           FStar_List_Tot_Base.op_At (witnesses_for_ce_bnode g ce_s ce)
+             (witnesses_for_all g tl))
+let tableau_introduce_witnesses (g : RDF_Graph_Executable.rdf_graph) :
   RDF_Graph_Executable.rdf_graph=
   let ces = collect_ce_bnodes g g in
-  let individuals = collect_candidate_individuals g g in
-  let instance_triples = materialise_all g individuals ces in
-  let structural_triples = materialise_eqc_expansion g g in
+  let extras = witnesses_for_all g ces in
+  RDF_Graph_Executable.add_triples_if_new g extras
+let tableau_materialise (g : RDF_Graph_Executable.rdf_graph) :
+  RDF_Graph_Executable.rdf_graph=
+  let g1 = tableau_introduce_witnesses g in
+  let ces = collect_ce_bnodes g1 g1 in
+  let individuals = collect_candidate_individuals g1 g1 in
+  let instance_triples = materialise_all g1 individuals ces in
+  let structural_triples = materialise_eqc_expansion g1 g1 in
   RDF_Graph_Executable.add_triples_if_new
-    (RDF_Graph_Executable.add_triples_if_new g structural_triples)
+    (RDF_Graph_Executable.add_triples_if_new g1 structural_triples)
     instance_triples
