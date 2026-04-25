@@ -267,8 +267,12 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # factoidal_http.ml + factoidal_serve.ml so `factoidal serve …`
   # starts the HTTP server in-process (no exec into a sibling binary).
   # See docs/designissues/2026-04-25-cli-http-unification-phase2.md.
+  # threads.posix added 2026-04-25 (issue #99): factoidal_http.ml now
+  # spawns a background thread to load --data-cottas without blocking
+  # the listener bind. See
+  # docs/designissues/2026-04-25-mim-bind-port-first.md.
   run_with_heartbeat "ocamlopt factoidal" "_ocamlopt_factoidal.log" -- \
-    ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+    ocamlfind ocamlopt -thread -package fstar.lib,str,zarith,sha,digestif.c,unix,threads.posix -linkpkg -w -8-14-26 \
     $STATIC_FLAGS \
     $COMMON_MODULES \
     $PARQUET_NATIVE_STUBS \
@@ -284,8 +288,9 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # backward compatibility with anything that scripts the binary path.
   # All argv parsing + server logic now lives in factoidal_http.ml as
   # a library; factoidal_http_main.ml just wires `let () = …`.
+  # threads.posix: see comment above on the factoidal target.
   run_with_heartbeat "ocamlopt factoidal-http" "_ocamlopt_factoidal_http.log" -- \
-    ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+    ocamlfind ocamlopt -thread -package fstar.lib,str,zarith,sha,digestif.c,unix,threads.posix -linkpkg -w -8-14-26 \
     $STATIC_FLAGS \
     $COMMON_MODULES \
     $PARQUET_NATIVE_STUBS \

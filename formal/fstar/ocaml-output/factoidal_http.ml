@@ -391,6 +391,27 @@ let parse_args ?args () =
    Dataset loading — delegates to the loader that factoidal_cli already uses.
    ============================================================================ *)
 
+(* Background-load state (issue #99). When a --data-cottas artifact is large
+   enough that the parquet → in-memory rdf_dataset materialisation takes more
+   than a second or so, we'd rather bind the listening socket immediately and
+   load the data in a worker thread. While the worker runs:
+
+     - GET / and other static / landing-page routes serve normally;
+     - /backend-info.json serves the (currently empty / partial) dataset_ref;
+     - /sparql, /query, /update return HTTP 503 + Retry-After: 5.
+
+   Single-threaded accept loop + one loader thread = at most one writer at a
+   time to dataset_ref. The mutex protects the loading flag's flip + the ref
+   swap, so the request thread sees a consistent (loaded, ref) pair after the
+   flag goes false. *)
+let loading : bool ref = ref false
+let loading_mu : Mutex.t = Mutex.create ()
+let is_loading () =
+  Mutex.lock loading_mu;
+  let r = !loading in
+  Mutex.unlock loading_mu;
+  r
+
 (* Load a COTTAS/Parquet artifact as an rdf_dataset. Mirrors the loader
    in factoidal_cli.ml. Pure OCaml glue: the Parquet footer parsing and
    DeltaLengthByteArray decode happen in F*-extracted
@@ -438,7 +459,13 @@ let load_cottas_dataset (path : string) : rdf_dataset =
     ) named_tbl [] in
     RDF_Graph_Executable.({ ds_default = default_g; ds_named = named_gs })
 
-let load_dataset cfg =
+(* Load only the cheap parts of the dataset: --dataset (RDF file) and
+   --load-rw-graphs (N-Quads). COTTAS folding is deferred to
+   [load_cottas_part] so the HTTP listener can bind first.
+
+   For a server with no COTTAS at all this returns the full dataset; the
+   caller can skip the background thread entirely. *)
+let load_dataset_fast cfg =
   let base_ds =
     match cfg.dataset_file with
     | None -> { ds_default = []; ds_named = [] }
@@ -449,38 +476,41 @@ let load_dataset cfg =
         Printf.eprintf "Error loading dataset %s: %s\n" f (Printexc.to_string e);
         exit 1
   in
-  (* Fold each --data-cottas FILE into the dataset. Default-graph triples
-     concatenate; named graphs are appended (lookup_named_graph uses
-     first-match, so earlier --data-cottas wins on collision with the
-     --dataset file). *)
-  let with_cottas =
-    List.fold_left (fun acc path ->
-      let extra =
-        try load_cottas_dataset path
-        with e ->
-          Printf.eprintf "Error loading --data-cottas %s: %s\n"
-            path (Printexc.to_string e);
-          exit 1
-      in
-      { ds_default = acc.ds_default @ extra.ds_default;
-        ds_named = acc.ds_named @ extra.ds_named }
-    ) base_ds cfg.data_cottas_files
-  in
   match cfg.load_rw_graphs with
-  | None -> with_cottas
+  | None -> base_ds
   | Some f ->
     (try
        let content = read_file f in
        let extra = Parser_NQuads.parse_nquads content in
-       (* Merge: extra's default-graph triples go into default; named graphs
-          are appended (later entries with the same name shadow earlier ones
-          only via lookup_named_graph's first-match semantics). *)
-       { ds_default = with_cottas.ds_default @ extra.ds_default;
-         ds_named = with_cottas.ds_named @ extra.ds_named }
+       { ds_default = base_ds.ds_default @ extra.ds_default;
+         ds_named = base_ds.ds_named @ extra.ds_named }
      with e ->
        Printf.eprintf "Error loading --load-rw-graphs %s: %s\n"
          f (Printexc.to_string e);
        exit 1)
+
+(* Fold each --data-cottas FILE into [base]. Default-graph triples
+   concatenate; named graphs are appended (lookup_named_graph uses
+   first-match, so earlier --data-cottas wins on collision with the
+   --dataset file). Run on the loader thread; do NOT call exit on error
+   from a non-main thread — return the partial dataset and log instead. *)
+let load_cottas_part cfg base =
+  List.fold_left (fun acc path ->
+    let extra =
+      try load_cottas_dataset path
+      with e ->
+        Printf.eprintf "Error loading --data-cottas %s: %s\n%!"
+          path (Printexc.to_string e);
+        { ds_default = []; ds_named = [] }
+    in
+    { ds_default = acc.ds_default @ extra.ds_default;
+      ds_named = acc.ds_named @ extra.ds_named }
+  ) base cfg.data_cottas_files
+
+(* Convenience for callers that don't need the bind-first behaviour
+   (e.g. rdfc10_runner-style synchronous loaders, or future test code). *)
+let load_dataset cfg =
+  load_cottas_part cfg (load_dataset_fast cfg)
 
 (* ============================================================================
    HTTP/1.1 request framing.
@@ -637,6 +667,7 @@ let status_text = function
   | 413 -> "Payload Too Large"
   | 500 -> "Internal Server Error"
   | 501 -> "Not Implemented"
+  | 503 -> "Service Unavailable"
   | _ -> "Unknown"
 
 (* [extra_headers] is a list of already-formatted "Name: value" lines (no CRLF)
@@ -1715,6 +1746,18 @@ let handle_connection cfg dataset_ref ic oc =
          ~body:resp.rb_body
      | None ->
 
+    (* Background-load gate (issue #99). If the COTTAS loader thread is
+       still running, the dataset is empty / partial and any SPARQL
+       request would return misleading results. Reject with 503 +
+       Retry-After so clients back off and try again. Static routes
+       and /backend-info.json have already been handled above. *)
+    if is_loading () then
+      write_response ~extra_headers:("Retry-After: 5" :: cors_hdrs) oc
+        ~status:503
+        ~content_type:"text/plain; charset=utf-8"
+        ~body:"Dataset still loading; retry shortly\n"
+    else
+
     let dataset = !dataset_ref in
     let resp =
       match P.decode_request meth path qs ct body with
@@ -1836,13 +1879,21 @@ let resolve_host h =
     exit 1
 
 let run_server cfg =
-  let dataset_ref = ref (load_dataset cfg) in
-  (* Snapshot the set of named-graph IRIs at startup (after dataset +
-     load-rw-graphs) — on graceful exit we diff against this to identify
-     user-writable graphs. *)
-  let snapshot_iris =
-    List.map (fun ng -> ng.ng_name) (!dataset_ref).ds_named
-  in
+  (* Issue #99: bind the listening socket BEFORE doing any heavy COTTAS
+     parquet decoding. Load the cheap RDF/N-Quads parts up front (these
+     are usually fast and the user reasonably expects an "empty" or
+     "loaded" startup state to be reflected in the first request). *)
+  let dataset_ref = ref (load_dataset_fast cfg) in
+  let has_cottas = cfg.data_cottas_files <> [] in
+  (* snapshot_iris is the list of named-graph IRIs present at full-load
+     completion. It's used by the graceful-shutdown handler to diff
+     against the live dataset and dump user-added (RW) graphs. We can't
+     compute it until the COTTAS load finishes; populate it then. *)
+  let snapshot_iris_ref : string list ref = ref [] in
+  let snapshot_iris_ready = ref (not has_cottas) in
+  if not has_cottas then
+    snapshot_iris_ref :=
+      List.map (fun ng -> ng.ng_name) (!dataset_ref).ds_named;
   let addr = Unix.ADDR_INET (resolve_host cfg.host, cfg.port) in
   let sock = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
   (try Unix.setsockopt sock Unix.SO_REUSEADDR true with _ -> ());
@@ -1852,7 +1903,7 @@ let run_server cfg =
        cfg.host cfg.port (Unix.error_message err);
      exit 1);
   Unix.listen sock 16;
-  let triple_count = List.length (!dataset_ref).ds_default in
+  let initial_triple_count = List.length (!dataset_ref).ds_default in
   Printf.printf "factoidal-http listening on http://%s:%d/query\n"
     cfg.host cfg.port;
   Printf.printf "  mode: %s\n"
@@ -1883,19 +1934,20 @@ let run_server cfg =
    | _ -> ());
   (match cfg.dataset_file, cfg.data_cottas_files with
    | Some f, [] ->
-     Printf.printf "  default graph: %s (%d triples)\n" f triple_count
+     Printf.printf "  default graph: %s (%d triples)\n" f initial_triple_count
    | None, [] -> Printf.printf "  default graph: <empty>\n"
    | dsf, cottas ->
-     (* Mixed and/or COTTAS-only: report per-source contributions. The
-        store's running totals after all loads are summarised below. *)
+     (* Mixed and/or COTTAS-only: COTTAS parquet decode runs in a worker
+        thread (issue #99). Per-source totals appear once the worker
+        finishes. *)
      (match dsf with
-      | Some f -> Printf.printf "  default graph: --dataset %s + COTTAS\n" f
-      | None -> Printf.printf "  default graph: COTTAS-only\n");
+      | Some f -> Printf.printf "  default graph: --dataset %s + COTTAS (loading…)\n" f
+      | None -> Printf.printf "  default graph: COTTAS-only (loading…)\n");
      List.iter (fun p ->
        Printf.printf "    --data-cottas %s\n" p
      ) cottas;
-     Printf.printf "  store totals: %d default-graph triples, %d named graph(s)\n"
-       triple_count (List.length (!dataset_ref).ds_named));
+     Printf.printf "  store totals: %d default-graph triples loaded so far\n"
+       initial_triple_count);
   (match cfg.load_rw_graphs with
    | Some f ->
      Printf.printf "  loaded RW graphs from: %s (%d named graph(s) now)\n"
@@ -1905,6 +1957,9 @@ let run_server cfg =
    | Some d ->
      Printf.printf "  dump-on-exit: %s (SIGTERM/SIGINT)\n" d
    | None -> ());
+  if has_cottas then
+    Printf.printf
+      "  port bound at t=0; SPARQL endpoints will return 503 + Retry-After: 5 until COTTAS load completes\n";
   Printf.printf "  try: curl -H 'Accept: application/sparql-results+json' \\\n";
   Printf.printf "         'http://%s:%d/query?query=SELECT%%20*%%20WHERE%%20%%7B%%3Fs%%20%%3Fp%%20%%3Fo%%7D'\n"
     cfg.host cfg.port;
@@ -1917,27 +1972,93 @@ let run_server cfg =
       Printf.eprintf "\n[%s] graceful shutdown requested\n%!" signal_name;
       (match cfg.dump_rw_graphs_on_exit with
        | Some dir ->
-         dump_rw_graphs ~dir ~snapshot_iris !dataset_ref
+         (* If the loader thread never finished, snapshot_iris stays []
+            (safe: diff treats every named graph as "user-added" and
+            dumps everything, which is the right behaviour for an
+            interrupted load). *)
+         if not !snapshot_iris_ready then
+           Printf.eprintf "  warning: COTTAS load did not complete; dump may include preloaded graphs\n%!";
+         dump_rw_graphs ~dir
+           ~snapshot_iris:!snapshot_iris_ref !dataset_ref
        | None -> ());
       exit 0))
   in
   (try install_exit_handler "SIGTERM" Sys.sigterm with _ -> ());
   (try install_exit_handler "SIGINT" Sys.sigint with _ -> ());
-  while true do
-    match (try Some (Unix.accept sock) with
-           | Unix.Unix_error (err, _, _) ->
-             Printf.eprintf "  accept() failed: %s\n%!" (Unix.error_message err);
-             None) with
-    | None -> ()
-    | Some (client, _caddr) ->
-      let ic = Unix.in_channel_of_descr client in
-      let oc = Unix.out_channel_of_descr client in
-      (try handle_connection cfg dataset_ref ic oc
-       with e ->
-         Printf.eprintf "  unhandled: %s\n%!" (Printexc.to_string e));
-      (try close_out oc with _ -> ());
-      (try Unix.close client with _ -> ())
-  done
+  (* Issue #99: when --data-cottas is present, we want the listener up
+     immediately while the COTTAS parquet decode runs in the background.
+     The accept loop's per-request stack usage is bounded, so we put it
+     on a worker thread; the COTTAS loader stays on the main thread
+     (which has the OS's full default stack — typically 8 MB on macOS,
+     vs ~512 KB for pthread workers — and the loader's deep traversal
+     of large quad arrays would otherwise SIGBUS on a thread stack).
+
+     When there's no --data-cottas, we skip the thread entirely and
+     just run the accept loop inline as before. *)
+  let accept_loop () =
+    while true do
+      match (try Some (Unix.accept sock) with
+             | Unix.Unix_error (err, _, _) ->
+               Printf.eprintf "  accept() failed: %s\n%!" (Unix.error_message err);
+               None) with
+      | None -> ()
+      | Some (client, _caddr) ->
+        let ic = Unix.in_channel_of_descr client in
+        let oc = Unix.out_channel_of_descr client in
+        (try handle_connection cfg dataset_ref ic oc
+         with e ->
+           Printf.eprintf "  unhandled: %s\n%!" (Printexc.to_string e));
+        (try close_out oc with _ -> ());
+        (try Unix.close client with _ -> ())
+    done
+  in
+  if not has_cottas then
+    accept_loop ()
+  else begin
+    Mutex.lock loading_mu;
+    loading := true;
+    Mutex.unlock loading_mu;
+    let load_t0 = Unix.gettimeofday () in
+    (* Run the accept loop on a worker thread; it just routes requests
+       and never recurses, so 512 KB of pthread stack is plenty. *)
+    let _tid = Thread.create accept_loop () in
+    (* Main thread: load the COTTAS data. Once done, swap dataset_ref
+       and flip loading=false. The accept thread's request handler
+       reads the same dataset_ref + loading flag through the mutex. *)
+    let base = !dataset_ref in
+    (try
+       let full = load_cottas_part cfg base in
+       Mutex.lock loading_mu;
+       dataset_ref := full;
+       snapshot_iris_ref :=
+         List.map (fun ng -> ng.ng_name) full.ds_named;
+       snapshot_iris_ready := true;
+       loading := false;
+       Mutex.unlock loading_mu;
+       let dt = Unix.gettimeofday () -. load_t0 in
+       let (total, dflt, ng_count, _ng_triples) =
+         count_dataset_triples full in
+       Printf.printf
+         "  COTTAS load complete: %d triples (%d default, %d named graph(s)) in %.1fs\n%!"
+         total dflt ng_count dt
+     with e ->
+       Printf.eprintf "  COTTAS load failed: %s\n%!" (Printexc.to_string e);
+       (* Flip loading=false so clients stop seeing 503; subsequent
+          SPARQL requests will see whatever subset of data was already
+          in dataset_ref (typically just --dataset file contents). *)
+       Mutex.lock loading_mu;
+       snapshot_iris_ref :=
+         List.map (fun ng -> ng.ng_name) (!dataset_ref).ds_named;
+       snapshot_iris_ready := true;
+       loading := false;
+       Mutex.unlock loading_mu);
+    (* Block forever so the accept thread keeps running. The signal
+       handlers installed above call exit, so SIGTERM/SIGINT still
+       gracefully shut down the whole process. *)
+    while true do
+      Unix.sleep 3600
+    done
+  end
 
 (* Top-level [let () = ...] lives in factoidal_http_main.ml so this file
    is also linkable as a library module from factoidal_cli.ml. The CLI's
