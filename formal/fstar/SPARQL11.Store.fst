@@ -11,6 +11,7 @@ open Parser.BallyhooCOTTAS
 
 noeq type graph_backend =
   | GB_List : rdf_graph -> graph_backend
+  | GB_Indexed : indexed_graph -> graph_backend
   | GB_HDT : hdt_graph_store -> graph_backend
   | GB_COTTAS : cottas_dataset_store -> option iri -> graph_backend
   | GB_Union : list graph_backend -> graph_backend
@@ -37,6 +38,23 @@ let list_dataset_backend (ds : rdf_dataset) : dataset_backend =
         ds.ds_named
   }
 
+(* Wrap an rdf_graph as an indexed backend (issue #100 Phase 0). The
+   index is built once at construction; subsequent backend_search calls
+   on the same wrapper reuse the buckets. Semantically identical to
+   list_graph_backend — same triples, just faster lookup paths. *)
+let indexed_graph_backend (g : rdf_graph) : graph_backend =
+  GB_Indexed (build_indexed g)
+
+let indexed_dataset_backend (ds : rdf_dataset) : dataset_backend =
+  {
+    dsb_default = indexed_graph_backend ds.ds_default;
+    dsb_named =
+      List.Tot.map
+        (fun (ng : named_graph) ->
+          { ngb_name = ng.ng_name; ngb_graph = indexed_graph_backend ng.ng_graph })
+        ds.ds_named
+  }
+
 let rec union_backend_search (members : list graph_backend) (b : triple_pattern_bound)
   : Tot (list triple) (decreases members) =
   match members with
@@ -48,6 +66,8 @@ and backend_search (gb : graph_backend) (b : triple_pattern_bound) : list triple
   match gb with
   | GB_List g ->
     store_search (graph_to_store g) b
+  | GB_Indexed ig ->
+    ig_search ig b
   | GB_HDT hgs ->
     hdt_search_triples hgs b.bs b.bp b.bo
   | GB_COTTAS cds graph_name ->
@@ -67,6 +87,8 @@ and backend_estimate (gb : graph_backend) (b : triple_pattern_bound) : nat =
   match gb with
   | GB_List g ->
     store_estimate (graph_to_store g) b
+  | GB_Indexed ig ->
+    ig_estimate ig b
   | GB_HDT hgs ->
     hdt_estimate hgs (hdt_build_bound_tp hgs b.bs b.bp b.bo)
   | GB_COTTAS cds graph_name ->
@@ -87,6 +109,12 @@ and backend_predicate_present (gb : graph_backend) (pred : wf_iri)
   match gb with
   | GB_List g ->
     backend_estimate (GB_List g) {
+      bs = None;
+      bp = Some pred;
+      bo = None;
+    } > 0
+  | GB_Indexed ig ->
+    backend_estimate (GB_Indexed ig) {
       bs = None;
       bp = Some pred;
       bo = None;

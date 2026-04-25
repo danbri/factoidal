@@ -138,7 +138,8 @@ noeq type triple_pattern_bound = {
 }
 
 noeq type graph_store = {
-  gs_graph : rdf_graph;
+  gs_graph   : rdf_graph;
+  gs_indexed : indexed_graph;
 }
 
 noeq type named_graph_store = {
@@ -152,7 +153,7 @@ noeq type rdf_dataset_store = {
 }
 
 let graph_to_store (g : rdf_graph) : graph_store =
-  { gs_graph = g }
+  { gs_graph = g; gs_indexed = build_indexed g }
 
 let dataset_to_store (ds : rdf_dataset) : rdf_dataset_store =
   {
@@ -185,11 +186,52 @@ let rec triple_matches_bound (b : triple_pattern_bound) (ts : list triple)
     let rest' = triple_matches_bound b rest in
     if subj_ok && pred_ok && obj_ok then t :: rest' else rest'
 
+(* --------- Indexed-graph search (issue #100 Phase 0) --------- *)
+(* Pick the smallest available bound-component bucket among
+   (pred, subj, obj), then filter with triple_matches_bound. If no
+   component is bound (or none indexable, e.g. only a literal object),
+   fall back to the full triple list. Same algorithm as post-extraction
+   patch 97 (#97_indexed_graph_store.sh), now F*-side and verified. *)
+
+let pick_smaller_bucket (a b : option (list triple)) : option (list triple) =
+  match a, b with
+  | None, None -> None
+  | Some _, None -> a
+  | None, Some _ -> b
+  | Some la, Some lb ->
+    if List.Tot.length la <= List.Tot.length lb then Some la else Some lb
+
+let ig_search (ig : indexed_graph) (b : triple_pattern_bound) : list triple =
+  let pred_b = match b.bp with
+    | Some p -> Some (bucket_lookup ig.ig_pred p)
+    | None -> None in
+  let subj_b = match b.bs with
+    | Some s -> Some (bucket_lookup ig.ig_subj (subject_to_key s))
+    | None -> None in
+  let obj_b = match b.bo with
+    | Some o ->
+      (match term_to_key_opt o with
+       | Some k -> Some (bucket_lookup ig.ig_obj k)
+       | None -> None)
+    | None -> None in
+  let candidate = pick_smaller_bucket (pick_smaller_bucket pred_b subj_b) obj_b in
+  let pool = match candidate with
+    | Some bucket -> bucket
+    | None -> ig.ig_triples in
+  triple_matches_bound b pool
+
+let ig_estimate (ig : indexed_graph) (b : triple_pattern_bound) : nat =
+  List.Tot.length (ig_search ig b)
+
+(* Public store API: dispatch through the indexed buckets that
+   `graph_to_store` populated. Same triples as the old list-scan
+   `triple_matches_bound b g.gs_graph` — just smaller candidate
+   sets. Set semantics, so order-of-results is allowed to differ. *)
 let store_search (g : graph_store) (b : triple_pattern_bound) : list triple =
-  triple_matches_bound b g.gs_graph
+  ig_search g.gs_indexed b
 
 let store_estimate (g : graph_store) (b : triple_pattern_bound) : nat =
-  List.Tot.length (store_search g b)
+  ig_estimate g.gs_indexed b
 
 let rec lookup_named_store (name : iri) (named : list named_graph_store) : option graph_store =
   match named with

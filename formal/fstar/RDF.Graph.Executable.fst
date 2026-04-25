@@ -302,6 +302,109 @@ let rec find_by_predicate (pred:wf_iri) (g:rdf_graph) : rdf_graph =
     let rest = find_by_predicate pred tl in
     if hd.p = pred then hd :: rest else rest
 
+(** 6b. Indexed Graph — for fast triple-pattern lookup (issue #100 Phase 0) **)
+(* The list-backed graph is the source-of-truth for the algebra, but for
+   evaluation we want O(bucket-size) candidate-list access instead of an
+   O(graph-size) full scan per triple pattern. We add three buckets,
+   keyed by predicate / subject / object, populated once per graph at
+   load time. The algebra still treats the graph as a list — this layer
+   sits underneath as an optional physical optimisation.
+
+   The bucket map type is a plain association list. It extracts cleanly
+   to OCaml lists; verification is trivial. A future post-extraction
+   patch can swap the association list for a hashtable underneath the
+   same signature if profiling demands O(1) lookup; the algorithm and
+   correctness story stays in F* either way. The post-extraction patch 97
+   that does the analogous thing for the `graph_store` path stays alive
+   until that swap lands. *)
+
+type bucket_map = list (string * list triple)
+
+noeq type indexed_graph = {
+  ig_triples : list triple;     (* preserves source-of-truth order semantics *)
+  ig_pred    : bucket_map;       (* keyed by predicate IRI string *)
+  ig_subj    : bucket_map;       (* keyed by subject_to_key *)
+  ig_obj     : bucket_map;       (* keyed by term_to_key_opt; literals omitted *)
+}
+
+(* Canonical key for a subject. Total. *)
+let subject_to_key (s : subject) : string =
+  match s with
+  | S_IRI i   -> String.concat "" ["I_"; i]
+  | S_BNode b -> String.concat "" ["B_"; b]
+
+(* Canonical key for an rdf_term, or None for literals. We do NOT index
+   on literals because they would require datatype/lang-tag normalisation
+   and rarely appear as a join axis in real BGPs. Object-literal patterns
+   fall through to whichever bound component (predicate or subject) is
+   indexable, or to the full triple list if neither is. *)
+let term_to_key_opt (o : rdf_term) : option string =
+  match o with
+  | T_IRI i     -> Some (String.concat "" ["I_"; i])
+  | T_BNode b   -> Some (String.concat "" ["B_"; b])
+  | T_Literal _ -> None
+
+(* Look up a key in a bucket map. First match wins; absent => empty list. *)
+let rec bucket_lookup (m : bucket_map) (k : string)
+  : Tot (list triple) (decreases m) =
+  match m with
+  | [] -> []
+  | (k', v) :: rest -> if k = k' then v else bucket_lookup rest k
+
+(* Replace-or-add for a bucket map: keeps a single binding per key.
+   Mirrors OCaml's Hashtbl.replace; avoids the multi-binding shape that
+   forced the earlier `Hashtbl.find_all` workaround in patch 97. *)
+let rec bucket_replace (m : bucket_map) (k : string) (v : list triple)
+  : Tot bucket_map (decreases m) =
+  match m with
+  | [] -> [(k, v)]
+  | (k', v') :: rest ->
+    if k = k' then (k, v) :: rest
+    else (k', v') :: bucket_replace rest k v
+
+(* Push a single triple onto the bucket for k. Cons-to-front: mirrors
+   patch 97's stack-safe shape (one binding per key, value list grows). *)
+let bucket_push (m : bucket_map) (k : string) (t : triple) : bucket_map =
+  let existing = bucket_lookup m k in
+  bucket_replace m k (t :: existing)
+
+(* Single-step index update for one triple. *)
+let add_triple_to_indexes (ig : indexed_graph) (t : triple) : indexed_graph =
+  let new_pred = bucket_push ig.ig_pred t.p t in
+  let new_subj = bucket_push ig.ig_subj (subject_to_key t.s) t in
+  let new_obj  = match term_to_key_opt t.o with
+    | Some k -> bucket_push ig.ig_obj k t
+    | None -> ig.ig_obj in
+  {
+    ig_triples = t :: ig.ig_triples;
+    ig_pred = new_pred;
+    ig_subj = new_subj;
+    ig_obj = new_obj;
+  }
+
+(* Build the index from a flat triple list. Linear in the input length;
+   each insert is bucket-replace which is linear in the current bucket-map
+   size. Total cost O(N * K) where K is the number of distinct keys —
+   acceptable for one-shot load. A hashtable swap reduces this to O(N). *)
+let rec build_indexed_aux (g : list triple) (acc : indexed_graph)
+  : Tot indexed_graph (decreases g) =
+  match g with
+  | [] -> acc
+  | t :: rest -> build_indexed_aux rest (add_triple_to_indexes acc t)
+
+let empty_indexed : indexed_graph = {
+  ig_triples = [];
+  ig_pred = [];
+  ig_subj = [];
+  ig_obj = [];
+}
+
+let build_indexed (g : rdf_graph) : Tot indexed_graph =
+  build_indexed_aux g empty_indexed
+
+(* Round-trip: extract the source-of-truth triple list. *)
+let ig_to_list (ig : indexed_graph) : list triple = ig.ig_triples
+
 (** 7. Equality Reflexivity Lemmas **)
 
 // subject_eq is reflexive
