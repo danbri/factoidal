@@ -453,7 +453,11 @@ let usage () =
 let version () =
   Printf.printf "factoidal 0.1.0 (F*-extracted SPARQL/RDF)\n"
 
-let parse_args () =
+(* parse_args reads from an explicit args list (NOT Sys.argv directly) so
+   the subcommand dispatcher can hand it the post-subcommand tail. The
+   default ?args defaults to (Array.to_list Sys.argv |> List.tl) for the
+   legacy callers. *)
+let parse_args ?args () =
   let cfg = {
     data_files = []; data_cottas_files = []; named_graphs = []; query_file = None;
     query_string = None; base_iri = None; input_format = None;
@@ -461,7 +465,9 @@ let parse_args () =
     help_mode = false; version_mode = false;
     entail_regime = "";
   } in
-  let args = Array.to_list Sys.argv |> List.tl in
+  let args = match args with
+    | Some a -> a
+    | None -> Array.to_list Sys.argv |> List.tl in
   let rec loop = function
     | [] -> ()
     | ("--help" | "-h") :: _ -> cfg.help_mode <- true
@@ -513,11 +519,180 @@ let parse_args () =
   cfg
 
 (* ============================================================================
+   Subcommand dispatcher (Phase 0 navigation + Phase 1 exec shims)
+
+   Design + scope: docs/designissues/2026-04-25-unified-factoidal-cli-plan.md
+
+   `factoidal` historically takes long flags (--data, --query, --dump,
+   --count). We're consolidating to a git/cargo-style subcommand surface
+   without breaking the old form. Strategy:
+
+     * If argv[1] is a recognised subcommand keyword, dispatch.
+     * Otherwise fall through to the legacy flag parser below.
+
+   The keyword detector is conservative — it only triggers on bare words
+   in a fixed set, never on flag-shaped tokens. That means
+   `factoidal --data X --query Q.rq` stays untouched. *)
+
+let known_subcommands =
+  ["help"; "version"; "query"; "serve"; "dump"; "count";
+   "test"; "cottas-import"; "cottas-info"]
+
+(* Locate a sibling binary by the same convention busybox uses: look in
+   the same directory as argv[0] first, fall back to PATH. *)
+let sibling_binary name =
+  let argv0_dir = Filename.dirname Sys.executable_name in
+  let candidate = Filename.concat argv0_dir name in
+  if Sys.file_exists candidate then Some candidate
+  else None  (* PATH lookup happens implicitly via execvp *)
+
+(* exec a sibling: replace current process so signals/ttys behave right.
+   On Windows this would need Sys.command, but factoidal-http already
+   refuses to build on Windows (Unix-only), so Unix.execv is fine. *)
+let exec_sibling name args =
+  let path = match sibling_binary name with
+    | Some p -> p
+    | None -> name  (* let execvp search PATH *)
+  in
+  let argv = Array.of_list (path :: args) in
+  try Unix.execvp path argv
+  with Unix.Unix_error (e, _, _) ->
+    Printf.eprintf
+      "factoidal: could not exec '%s' (%s).\n\
+       This subcommand is a thin shim — it requires the standalone\n\
+       binary to be available next to factoidal or on PATH.\n\
+       Build it with: cd formal/fstar && ./build-ocaml.sh compile\n"
+      name (Unix.error_message e);
+    exit 127
+
+(* Find the repo root by walking up from argv[0] looking for
+   tools/corpus_pipeline.py. Honour FACTOIDAL_REPO_ROOT if set. *)
+let find_repo_root () =
+  match Sys.getenv_opt "FACTOIDAL_REPO_ROOT" with
+  | Some p when Sys.file_exists p -> Some p
+  | _ ->
+    let argv0_dir = Filename.dirname (
+      if Filename.is_relative Sys.executable_name
+      then Filename.concat (Sys.getcwd ()) Sys.executable_name
+      else Sys.executable_name
+    ) in
+    let rec walk dir =
+      let candidate = Filename.concat dir "tools/corpus_pipeline.py" in
+      if Sys.file_exists candidate then Some dir
+      else
+        let parent = Filename.dirname dir in
+        if parent = dir then None else walk parent
+    in
+    walk argv0_dir
+
+let exec_corpus_pipeline subcmd args =
+  match find_repo_root () with
+  | None ->
+    Printf.eprintf
+      "factoidal: cottas-import needs tools/corpus_pipeline.py.\n\
+       Could not locate repo root above %s.\n\
+       Set FACTOIDAL_REPO_ROOT=/path/to/factoidal and retry.\n"
+      Sys.executable_name;
+    exit 127
+  | Some root ->
+    let script = Filename.concat root "tools/corpus_pipeline.py" in
+    let argv = Array.of_list ("python3" :: script :: subcmd :: args) in
+    (try Unix.execvp "python3" argv
+     with Unix.Unix_error (e, _, _) ->
+       Printf.eprintf
+         "factoidal: could not exec python3 %s: %s\n"
+         script (Unix.error_message e);
+       exit 127)
+
+let print_navigation_help () =
+  Printf.printf "factoidal — formally verified RDF/SPARQL toolkit\n\n";
+  Printf.printf "Usage: factoidal <subcommand> [options...]\n\n";
+  Printf.printf "Subcommands (current target surface):\n\n";
+  Printf.printf "  query          Run a SPARQL query against RDF data\n";
+  Printf.printf "                   factoidal query --data X.ttl --query Q.rq\n";
+  Printf.printf "                   factoidal query --data X.ttl -e 'SELECT ...'\n";
+  Printf.printf "                   (also: factoidal --data X --query Q.rq, legacy form)\n";
+  Printf.printf "  serve          Start the SPARQL 1.1 Protocol HTTP server\n";
+  Printf.printf "                   factoidal serve --port 3030 --dataset X.ttl\n";
+  Printf.printf "                   (shim: execs sibling factoidal-http)\n";
+  Printf.printf "  dump FILE      Parse RDF and dump as N-Triples\n";
+  Printf.printf "  count FILE     Parse RDF and count triples\n";
+  Printf.printf "  cottas-import  Import RDF -> COTTAS/Parquet artifact\n";
+  Printf.printf "                   factoidal cottas-import --input X.trig --corpus-root C ...\n";
+  Printf.printf "                   (shim: execs python3 tools/corpus_pipeline.py)\n";
+  Printf.printf "  test SUITE     Run W3C / OWL / RDFC test suites\n";
+  Printf.printf "                   factoidal test w3c          (sibling: w3c_runner)\n";
+  Printf.printf "                   factoidal test owl-rl       (sibling: owl_runner)\n";
+  Printf.printf "                   factoidal test rdfc10       (sibling: rdfc10_runner)\n";
+  Printf.printf "  help           Show this help\n";
+  Printf.printf "  version        Show version\n";
+  Printf.printf "\n";
+  Printf.printf "Standalone binaries (still shipped, will be deprecated in 1.0):\n";
+  Printf.printf "  factoidal-http   -> factoidal serve\n";
+  Printf.printf "  w3c_runner       -> factoidal test w3c\n";
+  Printf.printf "  owl_runner       -> factoidal test owl-rl\n";
+  Printf.printf "  rdfc10_runner    -> factoidal test rdfc10\n";
+  Printf.printf "  tools/corpus_pipeline.py materialize-nq-cottas-corpus\n";
+  Printf.printf "                   -> factoidal cottas-import\n";
+  Printf.printf "\n";
+  Printf.printf "For the full legacy flag surface (--data, --query, --dump, --count,\n";
+  Printf.printf "--data-cottas, --entail RDFS|OWL-RL, etc.) run: factoidal query --help\n";
+  Printf.printf "\n";
+  Printf.printf "Plan: docs/designissues/2026-04-25-unified-factoidal-cli-plan.md\n"
+
+(* Returns the args (post-argv[0]) the legacy parser should consume.
+   - For navigation/exec subcommands, exits or execs and never returns.
+   - For `query`, returns the tail (subcommand stripped).
+   - For `dump`/`count`, prepends the legacy --dump / --count + --data flags.
+   - For everything else (legacy invocation), returns the original tail. *)
+let dispatch_subcommand () =
+  let argv_tail = Array.to_list Sys.argv |> List.tl in
+  match argv_tail with
+  | cmd :: rest when List.mem cmd known_subcommands ->
+    (match cmd with
+     | "help" -> print_navigation_help (); exit 0
+     | "version" -> version (); exit 0
+     | "serve" -> exec_sibling "factoidal-http" rest
+     | "test" ->
+       (match rest with
+        | "w3c" :: tail -> exec_sibling "w3c_runner" tail
+        | ("owl-rl" | "owl") :: tail -> exec_sibling "owl_runner" tail
+        | ("rdfc10" | "rdfc-10") :: tail -> exec_sibling "rdfc10_runner" tail
+        | suite :: _ ->
+          Printf.eprintf
+            "factoidal test: unknown suite '%s'. Try: w3c | owl-rl | rdfc10\n" suite;
+          exit 2
+        | [] ->
+          Printf.eprintf
+            "factoidal test: missing suite name. Try: w3c | owl-rl | rdfc10\n";
+          exit 2)
+     | "cottas-import" ->
+       exec_corpus_pipeline "materialize-nq-cottas-corpus" rest
+     | "cottas-info" ->
+       Printf.eprintf
+         "factoidal: cottas-info not yet implemented (Phase 2).\n\
+          For now, use: python3 tools/corpus_pipeline.py ... or read the\n\
+          F* Parser_BallyhooCOTTAS module directly.\n";
+       exit 2
+     | "query" -> rest
+     | "dump"  -> "--dump"  :: List.concat_map (fun f -> ["--data"; f]) rest
+     | "count" -> "--count" :: List.concat_map (fun f -> ["--data"; f]) rest
+     | _ -> argv_tail)  (* unreachable *)
+  | ("--help" | "-h") :: _ ->
+    (* Top-level --help shows BOTH the subcommand nav + legacy flags. *)
+    print_navigation_help ();
+    Printf.printf "\n--- Legacy flag-form usage (factoidal query) ---\n\n";
+    usage ();
+    exit 0
+  | _ -> argv_tail  (* fall through to legacy parser *)
+
+(* ============================================================================
    Main
    ============================================================================ *)
 
 let () =
-  let cfg = parse_args () in
+  let args = dispatch_subcommand () in
+  let cfg = parse_args ~args () in
 
   if cfg.help_mode then (usage (); exit 0);
   if cfg.version_mode then (version (); exit 0);
