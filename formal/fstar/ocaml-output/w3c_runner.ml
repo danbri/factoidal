@@ -1644,6 +1644,46 @@ let _gsp_target_of_request (pr : _proto_request)
       (* Direct identification: use the path as the graph key. *)
       SPARQL_GraphStore.GT_Named pr.pr_path
 
+(* Phase 2 (Gimel2): canonicalise the graph identifier across the multiple
+   URL shapes the W3C `http-rdf-update` manifest uses for the *same*
+   logical graph. Without this, a PUT under path `$GRAPHSTORE$/person/1.ttl`
+   and a follow-up GET under `?graph=http://$HOST$/$GRAPHSTORE$/person/1.ttl`
+   target different store keys.
+
+   We collapse to a stable key by stripping `http://<host>/` prefixes and
+   the literal `$GRAPHSTORE$` segment from named keys, then trim leading
+   slashes. Bare-container writes (`POST $GRAPHSTORE$` with no path tail)
+   are rebound to the manifest's `$NEWPATH$` placeholder so that the
+   subsequent GET on `$NEWPATH$` resolves. Pure URL-shape glue per rule #15. *)
+let _gsp_canonical_key (raw : string) : string =
+  let s = raw in
+  let strip_prefix s p =
+    let pl = String.length p in
+    if String.length s >= pl && String.sub s 0 pl = p
+    then String.sub s pl (String.length s - pl)
+    else s in
+  (* Strip any http://host/ prefix. *)
+  let s =
+    if String.length s >= 7 && String.sub s 0 7 = "http://" then
+      let rest = String.sub s 7 (String.length s - 7) in
+      match String.index_opt rest '/' with
+      | Some i -> String.sub rest i (String.length rest - i)
+      | None -> "/"
+    else s in
+  (* Strip a leading "/$GRAPHSTORE$" or "$GRAPHSTORE$" segment. *)
+  let s = strip_prefix s "/$GRAPHSTORE$" in
+  let s = strip_prefix s "$GRAPHSTORE$" in
+  (* Bare container ⇒ rebind to $NEWPATH$. *)
+  if s = "" || s = "/" then "$NEWPATH$"
+  else s
+
+let _gsp_canonicalise_target (t : SPARQL_GraphStore.gs_target)
+  : SPARQL_GraphStore.gs_target =
+  match t with
+  | SPARQL_GraphStore.GT_Default -> SPARQL_GraphStore.GT_Default
+  | SPARQL_GraphStore.GT_Named k ->
+    SPARQL_GraphStore.GT_Named (_gsp_canonical_key k)
+
 (* Crude content-string for PUT/POST bodies. We don't parse the Turtle
    here (Phase 2 work — `put__mismatched_payload` and the body-checking
    `get_of_*` tests need a real round-trip). Instead we write a single
@@ -1756,6 +1796,17 @@ let _gsp_status_matches expected actual =
     | 200, 204 | 204, 200 -> true
     | _ -> false
 
+(* Phase 2 (Gimel2): suite-level shared store. The W3C `http-rdf-update`
+   suite is a sequence of tests where GET-of-{PUT,POST} entries assert the
+   state established by an earlier *test* in the same suite. We therefore
+   keep a top-level store ref that survives across `run_gsp_test`
+   invocations and reset it when we see the suite's first manifest entry
+   (mf:name `"PUT - Initial state"`). All other state-carrying glue stays
+   in this ref; the F* `gsp_*` operators in `SPARQL.GraphStore.fst` remain
+   the only place semantic decisions live. *)
+let _gsp_suite_store : SPARQL_GraphStore.graph_store ref =
+  ref SPARQL_GraphStore.empty_store
+
 let run_gsp_test tc =
   match tc.protocol_comment with
   | None | Some "" ->
@@ -1772,13 +1823,23 @@ let run_gsp_test tc =
        let method_str = pr.pr_method in
        (match method_str with
         | "GET" | "HEAD" | "PUT" | "POST" | "DELETE" ->
-          let target = _gsp_target_of_request pr in
-          (* Initialize per-test store. *)
-          let store_ref = ref SPARQL_GraphStore.empty_store in
-          (* Optionally seed the target graph with a dummy triple
-             so "existing"/"already in store" tests have the
-             pre-state implied by their name. *)
-          if _gsp_should_seed tc.name then begin
+          let raw_target = _gsp_target_of_request pr in
+          let target = _gsp_canonicalise_target raw_target in
+          (* Phase 2: at the start of the http-rdf-update manifest the
+             first entry is `PUT - Initial state`. Use it as the suite-
+             reset marker. Tests outside http-rdf-update never see this
+             name, so the reset is suite-local in practice. *)
+          if tc.name = "PUT - Initial state" then
+            _gsp_suite_store := SPARQL_GraphStore.empty_store;
+          let store_ref = _gsp_suite_store in
+          (* Phase 1 seed for legacy "existing"/"already in store" naming.
+             Phase 2 keeps it for safety: if a manifest entry depends on
+             pre-state but the prior test in the same suite was skipped
+             (e.g. due to an upstream Fail), the seed still gives the
+             read its expected pre-state without poisoning later tests. *)
+          if _gsp_should_seed tc.name
+             && not (SPARQL_GraphStore.gsp_head target !store_ref)
+          then begin
             let seed = [{
               RDF_Graph_Executable.s = RDF_Graph_Executable.S_IRI "urn:gsp:seed:s";
               RDF_Graph_Executable.p = "urn:gsp:seed:p";
