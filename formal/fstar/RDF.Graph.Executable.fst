@@ -325,6 +325,13 @@ noeq type indexed_graph = {
   ig_pred    : bucket_map;       (* keyed by predicate IRI string *)
   ig_subj    : bucket_map;       (* keyed by subject_to_key *)
   ig_obj     : bucket_map;       (* keyed by term_to_key_opt; literals omitted *)
+  (* Phase 1 compound indexes (#100). Composite keys use ASCII unit
+     separator U+001F, which is forbidden in IRIs (RFC 3987) and never
+     appears in our blank-node keys. Literals (term_to_key_opt = None)
+     are not indexed; same rationale as ig_obj. *)
+  ig_sp      : bucket_map;       (* keyed by sp_key   : subj_key ^ "\x1f" ^ pred_iri *)
+  ig_po      : bucket_map;       (* keyed by po_key   : pred_iri ^ "\x1f" ^ obj_key  *)
+  ig_so      : bucket_map;       (* keyed by so_key   : subj_key ^ "\x1f" ^ obj_key  *)
 }
 
 (* Canonical key for a subject. Total. *)
@@ -343,6 +350,24 @@ let term_to_key_opt (o : rdf_term) : option string =
   | T_IRI i     -> Some (String.concat "" ["I_"; i])
   | T_BNode b   -> Some (String.concat "" ["B_"; b])
   | T_Literal _ -> None
+
+(* Composite key separator: ASCII Unit Separator (U+001F). Forbidden in
+   IRIs by RFC 3987, never appears in our subject/object keys (which are
+   "I_..."/"B_..."), so concatenation is unambiguous. *)
+let unit_sep : string = "\x1f"
+
+let sp_key (s : subject) (p : wf_iri) : string =
+  String.concat "" [subject_to_key s; unit_sep; p]
+
+let po_key_opt (p : wf_iri) (o : rdf_term) : option string =
+  match term_to_key_opt o with
+  | Some k -> Some (String.concat "" [p; unit_sep; k])
+  | None   -> None
+
+let so_key_opt (s : subject) (o : rdf_term) : option string =
+  match term_to_key_opt o with
+  | Some k -> Some (String.concat "" [subject_to_key s; unit_sep; k])
+  | None   -> None
 
 (* Look up a key in a bucket map. First match wins; absent => empty list. *)
 let rec bucket_lookup (m : bucket_map) (k : string)
@@ -375,11 +400,21 @@ let add_triple_to_indexes (ig : indexed_graph) (t : triple) : indexed_graph =
   let new_obj  = match term_to_key_opt t.o with
     | Some k -> bucket_push ig.ig_obj k t
     | None -> ig.ig_obj in
+  let new_sp   = bucket_push ig.ig_sp (sp_key t.s t.p) t in
+  let new_po   = match po_key_opt t.p t.o with
+    | Some k -> bucket_push ig.ig_po k t
+    | None -> ig.ig_po in
+  let new_so   = match so_key_opt t.s t.o with
+    | Some k -> bucket_push ig.ig_so k t
+    | None -> ig.ig_so in
   {
     ig_triples = t :: ig.ig_triples;
     ig_pred = new_pred;
     ig_subj = new_subj;
     ig_obj = new_obj;
+    ig_sp = new_sp;
+    ig_po = new_po;
+    ig_so = new_so;
   }
 
 (* Build the index from a flat triple list. Linear in the input length;
@@ -397,6 +432,9 @@ let empty_indexed : indexed_graph = {
   ig_pred = [];
   ig_subj = [];
   ig_obj = [];
+  ig_sp = [];
+  ig_po = [];
+  ig_so = [];
 }
 
 let build_indexed (g : rdf_graph) : Tot indexed_graph =

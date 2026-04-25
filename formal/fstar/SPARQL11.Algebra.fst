@@ -202,6 +202,7 @@ let pick_smaller_bucket (a b : option (list triple)) : option (list triple) =
     if List.Tot.length la <= List.Tot.length lb then Some la else Some lb
 
 let ig_search (ig : indexed_graph) (b : triple_pattern_bound) : list triple =
+  (* Single-key candidates *)
   let pred_b = match b.bp with
     | Some p -> Some (bucket_lookup ig.ig_pred p)
     | None -> None in
@@ -214,7 +215,28 @@ let ig_search (ig : indexed_graph) (b : triple_pattern_bound) : list triple =
        | Some k -> Some (bucket_lookup ig.ig_obj k)
        | None -> None)
     | None -> None in
-  let candidate = pick_smaller_bucket (pick_smaller_bucket pred_b subj_b) obj_b in
+  (* Compound-key candidates (issue #100 Phase 1). Each tighter than the
+     single-key alternatives whenever both keys are bound and the second
+     position is indexable. Literals fall through via po_key_opt /
+     so_key_opt returning None, dropping us back to single-key buckets. *)
+  let sp_b = match b.bs, b.bp with
+    | Some s, Some p -> Some (bucket_lookup ig.ig_sp (sp_key s p))
+    | _ -> None in
+  let po_b = match b.bp, b.bo with
+    | Some p, Some o ->
+      (match po_key_opt p o with
+       | Some k -> Some (bucket_lookup ig.ig_po k)
+       | None -> None)
+    | _ -> None in
+  let so_b = match b.bs, b.bo with
+    | Some s, Some o ->
+      (match so_key_opt s o with
+       | Some k -> Some (bucket_lookup ig.ig_so k)
+       | None -> None)
+    | _ -> None in
+  let compound = pick_smaller_bucket (pick_smaller_bucket sp_b po_b) so_b in
+  let single   = pick_smaller_bucket (pick_smaller_bucket pred_b subj_b) obj_b in
+  let candidate = pick_smaller_bucket compound single in
   let pool = match candidate with
     | Some bucket -> bucket
     | None -> ig.ig_triples in
@@ -4596,15 +4618,54 @@ let rec lemma_concatMap_all_nil (#a #b:Type) (f : a -> Tot (list b)) (l : list a
   | [] -> ()
   | _ :: tl -> lemma_concatMap_all_nil f tl
 
-let rec lemma_bgp_empty_graph (tp : triple_pattern) (rest : bgp) :
-  Lemma (ensures (eval_bgp (tp :: rest) [] == []))
-  (decreases rest) =
-  match rest with
-  | [] ->
-    ()
-  | tp2 :: rest2 ->
-    lemma_bgp_empty_graph tp2 rest2;
-    ()
+// Bridge lemma needed after Phase 1 (#100): ig_search with all-empty
+// bucket maps and an unbound `triple_pattern_bound` reduces to []. Made
+// explicit so SMT doesn't have to unfold all 6 bucket_lookups through
+// pick_smaller_bucket.
+let lemma_ig_search_empty (b : triple_pattern_bound) :
+  Lemma (ig_search empty_indexed b == []) =
+  // bucket_lookup [] _ == [] for all keys; so each of pred_b/subj_b/obj_b/
+  // sp_b/po_b/so_b is either None or Some []. pick_smaller_bucket of
+  // these is either None or Some []. pool = if None then [] else [].
+  // triple_matches_bound b [] = [] by definition.
+  ()
+
+let lemma_store_search_empty (b : triple_pattern_bound) :
+  Lemma (store_search (graph_to_store []) b == []) =
+  lemma_ig_search_empty b
+
+let lemma_eval_single_tp_empty (tp : triple_pattern) (mu : solution_mapping) :
+  Lemma (eval_single_tp_store tp (graph_to_store []) mu == []) =
+  let bound = {
+    bs = bound_subject_of_pattern tp.tp_s mu;
+    bp = bound_predicate_of_pattern tp.tp_p mu;
+    bo = bound_object_of_pattern tp.tp_o mu;
+  } in
+  lemma_store_search_empty bound
+
+// After Phase 1 (#100), empty_indexed grew from 4 to 7 fields. SMT can
+// no longer auto-unfold eval_bgp through the wider record in default
+// budget. Stepping helper proves the fuel-bounded inner function on
+// the empty graph for non-empty pattern lists with positive fuel; the
+// outer lemma chains through eval_bgp_store at fuel = len + 1 ≥ 1.
+let lemma_eval_bgp_store_empty_fuel
+  (patterns : bgp) (mu : solution_mapping) (fuel : nat)
+  : Lemma (ensures (
+      Cons? patterns /\ fuel > 0 ==>
+      eval_bgp_store_from_mu_fuel patterns (graph_to_store []) mu fuel == [])) =
+  match patterns with
+  | [] -> ()
+  | _ ->
+    (match choose_best_tp patterns (graph_to_store []) mu with
+     | None -> ()
+     | Some (tp, _rest) ->
+       lemma_eval_single_tp_empty tp mu)
+       // next = eval_single_tp_store tp gs mu = []
+       // concatMap _ [] reduces to [] by definition; SMT closes here.
+
+let lemma_bgp_empty_graph (tp : triple_pattern) (rest : bgp) :
+  Lemma (ensures (eval_bgp (tp :: rest) [] == [])) =
+  lemma_eval_bgp_store_empty_fuel (tp :: rest) sm_empty (List.Tot.length (tp :: rest) + 1)
 
 (** ====================================================================== **)
 (** Part 19b: SPARQL 1.1 Update evaluation — INSERT DATA + DELETE DATA     **)
