@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd plist template for the factoidal cloudflared tunnel.
+
+  This file is a template — `tools/cloudflare-tunnel-setup.sh` substitutes
+  __CLOUDFLARED__ and __CONFIG_PATH__ before installing into
+  ~/Library/LaunchAgents/com.factoidal.cloudflared.plist.
+
+  Companion docs: docs/deploy/cloudflare-tunnel.md
+
+  Manage manually with:
+    launchctl load   ~/Library/LaunchAgents/com.factoidal.cloudflared.plist
+    launchctl unload ~/Library/LaunchAgents/com.factoidal.cloudflared.plist
+    launchctl list | grep com.factoidal
+
+  Logs:
+    /tmp/cloudflared.factoidal.out.log
+    /tmp/cloudflared.factoidal.err.log
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.factoidal.cloudflared</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__CLOUDFLARED__</string>
+        <string>tunnel</string>
+        <string>--config</string>
+        <string>__CONFIG_PATH__</string>
+        <string>--no-autoupdate</string>
+        <string>run</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+        <key>NetworkState</key>
+        <true/>
+    </dict>
+
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/cloudflared.factoidal.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/cloudflared.factoidal.err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>TUNNEL_ORIGIN_ENABLE_HTTP2</key>
+        <string>true</string>
+    </dict>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <key>LowPriorityIO</key>
+    <false/>
+</dict>
+</plist>
