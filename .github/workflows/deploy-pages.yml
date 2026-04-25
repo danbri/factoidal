@@ -29,8 +29,18 @@ jobs:
       - name: Build
         working-directory: docs
         run: npx @11ty/eleventy --output=_site
-      - name: Check Pages link integrity
-        run: ./tests/local/check_pages_links.sh docs/_site
+      - name: Check Pages link integrity (advisory)
+        # Broken links should not block stats / test-results from
+        # publishing — those are independent of design-doc cross-refs.
+        # Step is advisory: surfaces broken links as a GitHub workflow
+        # annotation but always exits 0 so the deploy proceeds. Run
+        # locally for the exact list:
+        #   ./tests/local/check_pages_links.sh docs/_site
+        continue-on-error: true
+        run: |
+          if ! ./tests/local/check_pages_links.sh docs/_site; then
+            echo "::warning::Broken links present in docs/_site — see step log; deploy continues."
+          fi
       - uses: actions/upload-pages-artifact@v3
         with:
           path: docs/_site
