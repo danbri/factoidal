@@ -1939,7 +1939,8 @@ let run_server cfg =
       (try Unix.close client with _ -> ())
   done
 
-let () =
-  let cfg = parse_args () in
-  if cfg.help_mode then (usage (); exit 0);
-  run_server cfg
+(* Top-level [let () = ...] lives in factoidal_http_main.ml so this file
+   is also linkable as a library module from factoidal_cli.ml. The CLI's
+   `factoidal serve …` subcommand now calls Factoidal_http.parse_args +
+   run_server in-process (no exec). See
+   docs/designissues/2026-04-25-cli-http-unification-phase2.md. *)

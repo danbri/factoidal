@@ -262,24 +262,35 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   cat _ocamlopt_w3c_runner.log
   echo "  Built: bin/${PLATFORM}/w3c_runner ($(wc -c < "$BINDIR/w3c_runner") bytes)"
 
-  # factoidal CLI (SPARQL query + RDF parsing tool)
+  # factoidal CLI (SPARQL query + RDF parsing tool).
+  # Phase 2 unification (2026-04-25): the native CLI now links
+  # factoidal_http.ml + factoidal_serve.ml so `factoidal serve …`
+  # starts the HTTP server in-process (no exec into a sibling binary).
+  # See docs/designissues/2026-04-25-cli-http-unification-phase2.md.
   run_with_heartbeat "ocamlopt factoidal" "_ocamlopt_factoidal.log" -- \
     ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
     $STATIC_FLAGS \
     $COMMON_MODULES \
     $PARQUET_NATIVE_STUBS \
+    factoidal_http.ml \
+    factoidal_serve.ml \
     factoidal_cli.ml \
     -o "$BINDIR/factoidal"
   cat _ocamlopt_factoidal.log
   echo "  Built: bin/${PLATFORM}/factoidal ($(wc -c < "$BINDIR/factoidal") bytes)"
 
-  # factoidal-http — SPARQL 1.1 Protocol server (native only; needs Unix)
+  # factoidal-http — SPARQL 1.1 Protocol server (native only; needs Unix).
+  # Kept as a 5-line wrapper around Factoidal_http.run_server for
+  # backward compatibility with anything that scripts the binary path.
+  # All argv parsing + server logic now lives in factoidal_http.ml as
+  # a library; factoidal_http_main.ml just wires `let () = …`.
   run_with_heartbeat "ocamlopt factoidal-http" "_ocamlopt_factoidal_http.log" -- \
     ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
     $STATIC_FLAGS \
     $COMMON_MODULES \
     $PARQUET_NATIVE_STUBS \
     factoidal_http.ml \
+    factoidal_http_main.ml \
     -o "$BINDIR/factoidal-http"
   cat _ocamlopt_factoidal_http.log
   echo "  Built: bin/${PLATFORM}/factoidal-http ($(wc -c < "$BINDIR/factoidal-http") bytes)"
@@ -394,13 +405,30 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     -o w3c_runner.byte
   grep -i error _ocamlc_w3c_runner.log || true
 
-  # Build factoidal (query + parse CLI) bytecode for js_of_ocaml
+  # Build factoidal (query + parse CLI) bytecode for js_of_ocaml.
+  # The JS bundle does NOT link factoidal_http.ml (Unix-bound), so we
+  # swap in factoidal_serve_jsoo.ml as the Factoidal_serve module — it
+  # has the same signature as the native factoidal_serve.ml but errors
+  # at runtime if `serve` is invoked from the browser. The swap is
+  # trivially reversible: copy file into place, build, restore.
+  cp factoidal_serve.ml factoidal_serve.ml.native_backup
+  cp factoidal_serve_jsoo.ml factoidal_serve.ml
+  FACTOIDAL_BYTE_RC=0
   run_with_heartbeat "ocamlc factoidal.byte" "_ocamlc_factoidal.log" -- \
     ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
     -custom parquet_zstd_stubs_jsoo.c \
     "${FSTAR_MODULES[@]}" \
+    factoidal_serve.ml \
     factoidal_cli.ml \
-    -o factoidal.byte
+    -o factoidal.byte || FACTOIDAL_BYTE_RC=$?
+  # Restore the native impl so a subsequent native build doesn't pick
+  # up the stub. Always restore, even on compile failure.
+  mv factoidal_serve.ml.native_backup factoidal_serve.ml
+  if [[ "$FACTOIDAL_BYTE_RC" -ne 0 ]]; then
+    cat _ocamlc_factoidal.log
+    echo "  ERROR: factoidal.byte build failed (rc=$FACTOIDAL_BYTE_RC)" >&2
+    exit "$FACTOIDAL_BYTE_RC"
+  fi
   grep -i error _ocamlc_factoidal.log || true
 
   # Convert both to JS with zarith stubs. vendor/fzstd.umd.js is a

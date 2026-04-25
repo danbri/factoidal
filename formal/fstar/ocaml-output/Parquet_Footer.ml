@@ -1,4 +1,20 @@
 open Prims
+
+(* __PARQUET_ASCII_STRING_FAST_PATH__
+   Patched by 103_parquet_ascii_string_fast_path.sh.
+   See the patch file for the safety argument: every Parquet_Footer
+   call site that reaches one of these helpers passes an ASCII-only
+   hex string, so codepoint ops collapse onto byte ops. *)
+module FStar_String = struct
+  include FStar_String
+  let index (s : Stdlib.String.t) (i : Z.t) : Stdlib.Int.t =
+    Stdlib.Char.code (Stdlib.String.unsafe_get s (Z.to_int i))
+  let strlen (s : Stdlib.String.t) : Z.t = Z.of_int (Stdlib.String.length s)
+  let length = strlen
+  let sub (s : Stdlib.String.t) (i : Z.t) (j : Z.t) : Stdlib.String.t =
+    Stdlib.String.sub s (Z.to_int i) (Z.to_int j)
+end
+
 type parquet_footer =
   {
   pf_metadata_len: Prims.nat ;
@@ -2762,25 +2778,33 @@ let rec sum_nat_list (xs : Prims.nat Prims.list) : Prims.nat=
 let probe_parquet_column_delta_length_byte_array_page_cache
   (path : Prims.string) (col_index : Prims.nat) :
   dlba_page_cache FStar_Pervasives_Native.option=
-  match ((probe_parquet_column_decompressed_payload_hex path col_index),
+  let _dbg_pair = ((probe_parquet_column_decompressed_payload_hex path col_index),
           (probe_parquet_column_delta_length_byte_array_values_offset path
-             col_index))
+             col_index)) in
+  (match _dbg_pair with
+   | (FStar_Pervasives_Native.None, _) -> Stdlib.Printf.eprintf "DBG: payload_hex None (col %d)\n%!" (Z.to_int col_index)
+   | (_, FStar_Pervasives_Native.None) -> Stdlib.Printf.eprintf "DBG: values_offset None (col %d)\n%!" (Z.to_int col_index)
+   | _ -> ());
+  match _dbg_pair
   with
   | (FStar_Pervasives_Native.Some payload_hex, FStar_Pervasives_Native.Some
      values_offset) ->
       let payload_len_hex = FStar_String.strlen payload_hex in
       let values_start_hex = mul_nat values_offset (Prims.of_int (2)) in
+      Stdlib.Printf.eprintf "DBG col=%d payload_len_hex=%d values_offset=%d values_start_hex=%d\n%!"
+        (Z.to_int col_index) (Z.to_int payload_len_hex) (Z.to_int values_offset) (Z.to_int values_start_hex);
       if values_start_hex > payload_len_hex
-      then FStar_Pervasives_Native.None
+      then (Stdlib.Printf.eprintf "DBG: values_start_hex > payload_len_hex, returning None\n%!"; FStar_Pervasives_Native.None)
       else
         (let values_hex =
            FStar_String.sub payload_hex values_start_hex
              (payload_len_hex - values_start_hex) in
          let vh_len = FStar_String.strlen values_hex in
+         Stdlib.Printf.eprintf "DBG col=%d vh_len=%d (Stdlib len=%d) first8bytes=%s\n%!" (Z.to_int col_index) (Z.to_int vh_len) (Stdlib.String.length values_hex) (Stdlib.String.sub values_hex 0 16);
          match decode_varint_value_with_end_hex values_hex Prims.int_zero
                  Prims.int_zero Prims.int_zero vh_len
          with
-         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+         | FStar_Pervasives_Native.None -> Stdlib.Printf.eprintf "DBG col=%d varint1 None\n%!" (Z.to_int col_index); FStar_Pervasives_Native.None
          | FStar_Pervasives_Native.Some (_block_size, p1) ->
              (match decode_varint_value_with_end_hex values_hex p1
                       Prims.int_zero Prims.int_zero vh_len
