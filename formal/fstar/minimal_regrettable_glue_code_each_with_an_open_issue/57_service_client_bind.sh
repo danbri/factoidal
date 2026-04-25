@@ -73,7 +73,7 @@ let service_endpoint_clear () : unit =
   Hashtbl.clear service_endpoint_table
 let service_endpoint_lookup (iri : Prims.string) : graph_store FStar_Pervasives_Native.option=
   match Hashtbl.find_opt service_endpoint_table iri with
-  | Some g -> FStar_Pervasives_Native.Some { gs_graph = g }
+  | Some g -> FStar_Pervasives_Native.Some (graph_to_store g)
   | None -> FStar_Pervasives_Native.None'''
 
 if old not in content:

@@ -50,11 +50,22 @@ content = content.replace(
 let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :'''
 )
 
-# 2. Set/restore base_iri in eval_select_query. The extracted signature is
-# stable, but the body now includes a let-bound rewrite (q1 = { q with ... }).
-# Match both the 'match q.q_form' and 'match q1.q_form' forms.
+# 2. Set/restore base_iri in eval_select_query.  The extracted body now
+# begins with apply_query_dataset and the inner match is paren-wrapped:
+#   let eval_select_query ... =
+#     let uu___ = apply_query_dataset q.q_dataset g ds in
+#     match uu___ with
+#     | (g1, ds1) ->
+#         let q1 = { ... } in
+#         (match q1.q_form with
+#          | QF_Select sel -> ...
+#          ...
+#          | QF_Describe uu___1 -> [])
+# We anchor on '(match (q|q1).q_form with' followed by '| QF_Select sel ->'
+# at any indentation, then wrap the paren-bound match in save/restore of
+# the base IRI ref.
 m = re.search(
-    r'''(let eval_select_query \(q : query\) \(g : RDF_Graph_Executable\.rdf_graph\)\n  \(ds : RDF_Graph_Executable\.rdf_dataset\) : solution_sequence=\n)(?P<body>.*?)(?P<match>  match (?P<qvar>q1?)\.q_form with\n  \| QF_Select sel ->)''',
+    r'''(let eval_select_query \(q : query\) \(g : RDF_Graph_Executable\.rdf_graph\)\n  \(ds : RDF_Graph_Executable\.rdf_dataset\) : solution_sequence=\n)(?P<body>.*?)(?P<indent>[ ]+)\((?P<match>match (?P<qvar>q1?)\.q_form with\n[ ]+\| QF_Select sel ->)''',
     content,
     flags=re.DOTALL,
 )
@@ -62,23 +73,28 @@ if m is None:
     sys.stderr.write('WARNING: 65_base_iri_resolution could not find eval_select_query header\n')
 else:
     qvar = m.group('qvar')
+    indent = m.group('indent')
     new_header = (
         m.group(1)
         + m.group('body')
-        + '  let saved_base = !current_base_iri_ref in\n'
-        + '  current_base_iri_ref := ' + qvar + '.q_base;\n'
-        + '  let result = match ' + qvar + '.q_form with\n'
-        + '  | QF_Select sel ->'
+        + indent + '(let saved_base = !current_base_iri_ref in\n'
+        + indent + ' current_base_iri_ref := ' + qvar + '.q_base;\n'
+        + indent + ' let result = (' + m.group('match')
     )
     content = content[:m.start()] + new_header + content[m.end():]
 
+# Closing anchor.  The QF_Describe arm now uses uu___1 (numbered) and the
+# whole match is paren-wrapped.  Original ends '[])' (close of [] + close
+# of paren-wrapped match).  Add ')' (close of let-result match) + restore
+# + ')' (close of outer paren we opened in the header).
 content, n_close = re.subn(
-    r'''  \| QF_Describe uu___ -> \[\]\n(?:let \(\) = eval_subselect_fwd_ref := eval_select_query\n)?(?P<nextdef>type path_result =|let eval_ask_query )''',
-    r'''  | QF_Describe uu___ -> []
-  in
-  current_base_iri_ref := saved_base;
-  result
-\g<nextdef>''',
+    r'''(?P<arm>[ ]+\| QF_Describe uu___\d* -> \[\])\)\n(?P<nextdef>let \(\) = eval_subselect_fwd_ref := eval_select_query\n|type path_result =|let eval_ask_query )''',
+    lambda mm: (
+        mm.group('arm') + ') in\n'
+        + '         current_base_iri_ref := saved_base;\n'
+        + '         result)\n'
+        + mm.group('nextdef')
+    ),
     content,
     count=1,
 )
