@@ -450,6 +450,39 @@ let content_type_base (ct : string) : string =
   match split_once_on ct (FStar.Char.char_of_int 0x3B (* ; *)) with
   | (base, _) -> ascii_lower_string (trim_ws base)
 
+// Extract the value of a `charset=...` parameter from a full
+// Content-Type header (everything after the media type). Returns the
+// trimmed, lower-cased value, or None if no charset parameter is
+// present. Parameter names are matched case-insensitively per RFC 7231
+// §3.1.1.1.
+let extract_charset_param (ct : string) : option string =
+  match split_once_on ct (FStar.Char.char_of_int 0x3B (* ; *)) with
+  | (_, None) -> None
+  | (_, Some params) ->
+    let param_list = split_all_on params
+                       (FStar.Char.char_of_int 0x3B (* ; *)) in
+    (match List.Tot.tryFind
+            (fun (p : string) ->
+               let lo = ascii_lower_string (trim_ws p) in
+               String.length lo >= 8 &&
+               String.sub lo 0 8 = "charset=")
+            param_list
+     with
+     | None -> None
+     | Some p ->
+       let lo = ascii_lower_string (trim_ws p) in
+       if String.length lo >= 8
+       then Some (trim_ws (String.sub lo 8 (String.length lo - 8)))
+       else None)
+
+// Per Protocol §2.1.6 / §2.2.x: "the service MUST reject the request
+// if the Content-Type declares a charset other than UTF-8." Absent
+// charset is treated as UTF-8 by default (the canonical case).
+let charset_is_utf8_or_absent (ct : string) : bool =
+  match extract_charset_param ct with
+  | None -> true
+  | Some v -> v = "utf-8" || v = "utf8"
+
 // Build a PR_Query / PR_Update given the bag of kv pairs from either
 // the URL query string (GET) or the form body (POST form-encoded).
 // `is_update_path` determines which variant is constructed.
@@ -514,7 +547,11 @@ let decode_request
     build_from_kvs is_update kvs
   else if method_upper = "post" then
     let ct = content_type_base content_type in
-    if ct = "application/sparql-query" then
+    // Protocol §2.1.6 / §2.2.x: a Content-Type with an explicit
+    // charset parameter other than UTF-8 MUST be rejected.
+    if not (charset_is_utf8_or_absent content_type) then
+      PR_Bad "non-UTF-8 charset rejected per Protocol 2.1.6"
+    else if ct = "application/sparql-query" then
       PR_Query body [] []
     else if ct = "application/sparql-update" then
       PR_Update body [] []
