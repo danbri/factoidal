@@ -268,6 +268,51 @@ module Cottas_ondisk_lazy = struct
   let is_pred_loaded    path = Hashtbl.mem pred_loaded  path
   let is_obj_loaded     path = Hashtbl.mem obj_loaded   path
   let is_graph_loaded   path = Hashtbl.mem graph_loaded path
+
+  (* yod6: pred_presence_by_path installed (issue #100, 2026-04-26).
+     For each artifact path, a rg_index -> set-of-predicate-tokens map.
+     Populated by ensure_predicates_loaded (replaces the batched
+     collect_distinct walk). Consulted by search_fast / estimate_fast /
+     search_fast_limited to skip rgs that don't contain the bound
+     predicate.
+
+     Mirrors F*-side compute_candidate_rgs_loop (RDF.CottasStore.fst):
+     skip rg if `not (list_string_mem dict bound_token)`. Soundness:
+     the presence set is built by enumerating every value in the rg's
+     predicate column, so a rg marked absent provably contains zero
+     matching rows. *)
+  (* Use Stdlib.Int.t explicitly: the file's `open Prims` makes `int` mean
+     Prims.int = Z.t, even inside this submodule's `open Stdlib`. Bet7
+     hit the same issue and aliased `pint = Stdlib.Int.t` in
+     Cottas_ondisk_runtime; we mirror that. *)
+  let pred_presence_by_path
+    : (string, (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t) Hashtbl.t
+    = Hashtbl.create 17
+
+  let presence_for_path (path : string)
+    : (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t =
+    match Hashtbl.find_opt pred_presence_by_path path with
+    | Some t -> t
+    | None ->
+      let t : (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t = Hashtbl.create 32 in
+      Hashtbl.add pred_presence_by_path path t;
+      t
+
+  (* Returns true iff the rg might contain `pred_tok`, or there's no bound,
+     or we have no presence entry for this rg (safe fallback: walk it).
+     Returns false ONLY when we have an entry and the predicate is
+     definitively absent. *)
+  let pred_rg_could_contain (path : string) (rg : Stdlib.Int.t)
+    (bound_p : string option) : bool =
+    match bound_p with
+    | None -> true
+    | Some pred_tok ->
+      match Hashtbl.find_opt pred_presence_by_path path with
+      | None -> true
+      | Some by_rg ->
+        match Hashtbl.find_opt by_rg rg with
+        | None -> true  (* presence not yet recorded for this rg *)
+        | Some pred_set -> Hashtbl.mem pred_set pred_tok
 end
 
 module Cottas_ondisk_runtime = struct
@@ -744,20 +789,49 @@ module Cottas_ondisk_runtime = struct
   let ensure_predicates_loaded (h : cottas_ondisk_handle) (tables : fast_tables) : unit =
     if not (Cottas_ondisk_lazy.is_pred_loaded h.coh_path) then begin
       Printf.eprintf "[bet7-trace] ensure_predicates_loaded: lazy populate path=%s\n%!" h.coh_path;
-      let (p_strs, p_tok_to_id, _n) = collect_distinct h.coh_path 1 in
-      Hashtbl.iter (fun k v -> Hashtbl.replace tables.ft_pred_tok_to_id k v) p_tok_to_id;
-      List.iteri (fun i raw ->
-        match parse_iri_token raw with
-        | Some iri ->
-          Hashtbl.replace tables.ft_id_to_predicate i iri;
-          Hashtbl.replace tables.ft_id_to_pred_tok  i raw
-        | None ->
-          Printf.eprintf "[bet7-WARN] ensure_predicates_loaded: invalid predicate token id=%d val=%s\n%!" i raw)
-        p_strs;
+      (* yod6: walk predicate column per-rg to record per-rg presence
+         (vs. the previous batched collect_distinct that lost which rg
+         each token came from). *)
+      let presence = Cottas_ondisk_lazy.presence_for_path h.coh_path in
+      let next_id = ref (Hashtbl.length tables.ft_pred_tok_to_id) in
+      let rg_count = match Parquet_Footer.probe_parquet_row_group_count h.coh_path with
+        | FStar_Pervasives_Native.None -> 0
+        | FStar_Pervasives_Native.Some n -> Z.to_int n in
+      for rg = 0 to rg_count - 1 do
+        let rg_set : (string, unit) Hashtbl.t = Hashtbl.create 16 in
+        (match Parquet_Footer.probe_parquet_column_decode_in_row_group
+                 h.coh_path (Z.of_int rg) Z.one with
+         | FStar_Pervasives_Native.None ->
+           Printf.eprintf "[yod6-WARN] ensure_predicates_loaded: rg=%d decode failed\n%!" rg
+         | FStar_Pervasives_Native.Some lst ->
+           List.iter (function
+             | FStar_Pervasives_Native.None -> ()
+             | FStar_Pervasives_Native.Some raw ->
+               (* Record presence for this rg. *)
+               if not (Hashtbl.mem rg_set raw) then
+                 Hashtbl.add rg_set raw ();
+               (* Build global tok_to_id / id_to_predicate / id_to_pred_tok
+                  the same way collect_distinct would have. *)
+               if not (Hashtbl.mem tables.ft_pred_tok_to_id raw) then begin
+                 let id = !next_id in
+                 incr next_id;
+                 Hashtbl.add tables.ft_pred_tok_to_id raw id;
+                 (match parse_iri_token raw with
+                  | Some iri ->
+                    Hashtbl.replace tables.ft_id_to_predicate id iri;
+                    Hashtbl.replace tables.ft_id_to_pred_tok  id raw
+                  | None ->
+                    Printf.eprintf "[yod6-WARN] ensure_predicates_loaded: invalid predicate token id=%d val=%s\n%!" id raw)
+               end) lst);
+        Hashtbl.replace presence rg rg_set;
+        if rg = 0 || rg = rg_count - 1 || rg mod 5 = 0 then
+          Printf.eprintf "[yod6-trace] ensure_predicates_loaded rg=%d/%d distinct_preds=%d\n%!"
+            rg rg_count (Hashtbl.length rg_set)
+      done;
       Cottas_ondisk_lazy.mark_pred_loaded h.coh_path;
       Gc.full_major ();
-      Printf.eprintf "[bet7-trace] ensure_predicates_loaded: %d distinct predicates\n%!"
-        (Hashtbl.length tables.ft_pred_tok_to_id)
+      Printf.eprintf "[bet7-trace] ensure_predicates_loaded: %d distinct predicates (yod6 per-rg presence built for %d rgs)\n%!"
+        (Hashtbl.length tables.ft_pred_tok_to_id) rg_count
     end
 
   let ensure_graphs_loaded (h : cottas_ondisk_handle) (tables : fast_tables) : unit =
@@ -914,14 +988,23 @@ module Cottas_ondisk_runtime = struct
           rg !n_matches (pe4_rss_mb ()) (pe4_gc_mb ())
       end
     in
+    let n_skipped = ref 0 in
     for rg = 0 to rg_count - 1 do
-      try walk_rg rg
-      with e ->
-        let bt = Printexc.get_backtrace () in
-        Printf.eprintf "[pe4-FATAL] search_fast rg=%d EXCEPTION: %s\nbacktrace=%s\n%!"
-          rg (Printexc.to_string e) bt;
-        raise e
+      if not (Cottas_ondisk_lazy.pred_rg_could_contain path rg bound_p) then begin
+        incr n_skipped;
+        if !n_skipped <= 3 || !n_skipped mod 5 = 0 then
+          Printf.eprintf "[yod6-trace] search_fast rg=%d skipped (predicate absent)\n%!" rg
+      end else begin
+        try walk_rg rg
+        with e ->
+          let bt = Printexc.get_backtrace () in
+          Printf.eprintf "[pe4-FATAL] search_fast rg=%d EXCEPTION: %s\nbacktrace=%s\n%!"
+            rg (Printexc.to_string e) bt;
+          raise e
+      end
     done;
+    Printf.eprintf "[yod6-trace] search_fast: skipped %d/%d rg(s) for predicate=%s\n%!"
+      !n_skipped rg_count (match bound_p with None -> "_" | Some s -> s);
     Printf.eprintf "[qof3-trace] search_fast: matched %d row(s) across %d row group(s)\n%!" !n_matches rg_count;
     Printf.eprintf "[pe4-trace] search_fast post-walk rss=%dMB heap=%dMB matches=%d\n%!"
       (pe4_rss_mb ()) (pe4_gc_mb ()) !n_matches;
@@ -962,10 +1045,20 @@ module Cottas_ondisk_runtime = struct
     let cell_of = function
       | FStar_Pervasives_Native.Some s -> s
       | FStar_Pervasives_Native.None -> "" in
+    (* yod6: search_fast_limited needs ensure_predicates_loaded too,
+       so the presence table is populated before we consult it. *)
+    ensure_predicates_loaded h tables;
     let rg = ref 0 in
+    let n_skipped = ref 0 in
     (try
       while !rg < rg_count && !n_matches < limit do
         let r = !rg in
+        if not (Cottas_ondisk_lazy.pred_rg_could_contain path r bound_p) then begin
+          incr n_skipped;
+          if !n_skipped <= 3 || !n_skipped mod 5 = 0 then
+            Printf.eprintf "[yod6-trace] search_fast_limited rg=%d skipped (predicate absent)\n%!" r;
+          incr rg
+        end else begin
         let s_lst = Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int r) Z.zero in
         let s_arr = arr_of_col s_lst in
         let p_lst = Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int r) Z.one in
@@ -1012,12 +1105,15 @@ module Cottas_ondisk_runtime = struct
           done
         end;
         incr rg
+        end (* yod6: close the not-skipped branch *)
       done
     with e ->
       let bt = Printexc.get_backtrace () in
       Printf.eprintf "[aleph6-FATAL] search_fast_limited rg=%d EXCEPTION: %s\nbacktrace=%s\n%!"
         !rg (Printexc.to_string e) bt;
       raise e);
+    Printf.eprintf "[yod6-trace] search_fast_limited: skipped %d/%d rg(s) for predicate=%s\n%!"
+      !n_skipped rg_count (match bound_p with None -> "_" | Some s -> s);
     Printf.eprintf "[aleph6-trace] search_fast_limited: matched %d/%d row(s), walked %d/%d rg(s)\n%!"
       !n_matches limit !rg rg_count;
     List.rev !acc
@@ -1092,14 +1188,23 @@ module Cottas_ondisk_runtime = struct
           rg !count (pe4_rss_mb ()) (pe4_gc_mb ())
       end
     in
+    let n_skipped = ref 0 in
     for rg = 0 to rg_count - 1 do
-      try walk_rg rg
-      with e ->
-        let bt = Printexc.get_backtrace () in
-        Printf.eprintf "[pe4-FATAL] estimate_fast rg=%d EXCEPTION: %s\nbacktrace=%s\n%!"
-          rg (Printexc.to_string e) bt;
-        raise e
+      if not (Cottas_ondisk_lazy.pred_rg_could_contain path rg bound_p) then begin
+        incr n_skipped;
+        if !n_skipped <= 3 || !n_skipped mod 5 = 0 then
+          Printf.eprintf "[yod6-trace] estimate_fast rg=%d skipped (predicate absent)\n%!" rg
+      end else begin
+        try walk_rg rg
+        with e ->
+          let bt = Printexc.get_backtrace () in
+          Printf.eprintf "[pe4-FATAL] estimate_fast rg=%d EXCEPTION: %s\nbacktrace=%s\n%!"
+            rg (Printexc.to_string e) bt;
+          raise e
+      end
     done;
+    Printf.eprintf "[yod6-trace] estimate_fast: skipped %d/%d rg(s) for predicate=%s\n%!"
+      !n_skipped rg_count (match bound_p with None -> "_" | Some s -> s);
     Printf.eprintf "[qof3-trace] estimate_fast: matched %d row(s)\n%!" !count;
     Printf.eprintf "[pe4-trace] estimate_fast post-walk rss=%dMB heap=%dMB count=%d\n%!"
       (pe4_rss_mb ()) (pe4_gc_mb ()) !count;
