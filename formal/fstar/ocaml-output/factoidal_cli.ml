@@ -678,50 +678,90 @@ let dispatch_subcommand () =
      | "cottas-import" ->
        exec_corpus_pipeline "materialize-nq-cottas-corpus" rest
      | "cottas-info" ->
-       (* Minimal summary of a COTTAS/Parquet artifact: open via the
-          F*-extracted Parser_BallyhooCOTTAS, walk the cached quad rows,
-          and report distinct subject/predicate/object/graph counts plus
-          total quad count. All decoding (Parquet footer, DLBA strings)
-          happens in F*; this is pure read + count glue (rule #15). *)
+       (* Bet7 (issue #100, 2026-04-26): summary of a COTTAS/Parquet
+          artifact via Parquet_Footer probes only. Previously this opened
+          the corpus through Parser_BallyhooCOTTAS.cottas_open_dataset_store
+          which eagerly decoded all 4 columns across every row group +
+          interned every term — ~98 s + 2.2 GB RSS for the parliament
+          corpus.
+
+          The headline number cottas-info reports (quads) is derivable
+          from the Parquet footer alone. Distinct subject / predicate /
+          object / named-graph counts require walking the column data
+          pages: for the parliament corpus the predicate column has
+          ~232 distinct values but each row group's data page must still
+          be decoded to enumerate them (no separate dictionary page is
+          present in the COTTAS-style layout we ship). So this handler
+          now:
+            - quads, row groups: probe_parquet_*       (footer-only, ms).
+            - distinct subj/pred/obj/graph: SKIPPED by default. Pass
+              --full-scan to fall back to the old eager Ballyhoo load
+              (~100 s + 2 GB RSS on parliament).
+
+          F* / RDF semantics live in Parquet.Footer.probe_parquet_*; this
+          is pure read + arithmetic glue (rule #15). *)
        (match rest with
         | [] | ["--help"] | ["-h"] ->
           Printf.printf
-            "Usage: factoidal cottas-info FILE\n\n\
-             Print summary statistics for a COTTAS/Parquet artifact:\n\
-               total quads, distinct subjects, predicates, objects, and\n\
-               named graphs.\n";
+            "Usage: factoidal cottas-info [--full-scan] FILE\n\n\
+             Print summary statistics for a COTTAS/Parquet artifact.\n\n\
+             Reports total quads + row group count in seconds via Parquet\n\
+             footer probes (no data scan). Pass --full-scan to also report\n\
+             distinct subject / predicate / object / named-graph counts,\n\
+             which requires decoding every row group's columns (~100 s\n\
+             for the 3M-quad parliament corpus).\n";
           exit (if rest = [] then 2 else 0)
-        | path :: _ ->
-          (match Parser_BallyhooCOTTAS.cottas_open_dataset_store
-                   path FStar_Pervasives_Native.None with
-           | FStar_Pervasives_Native.None ->
-             Printf.eprintf "Error: could not open COTTAS artifact: %s\n" path;
-             exit 1
-           | FStar_Pervasives_Native.Some store ->
-             let cache =
-               Parser_BallyhooCOTTAS.Ballyhoo_cottas_runtime.cache_for_store
-                 store in
-             let n_quads = List.length cache.quads in
-             let s_set = Hashtbl.create 1024 in
-             let p_set = Hashtbl.create 64 in
-             let o_set = Hashtbl.create 1024 in
-             let g_set = Hashtbl.create 8 in
-             let open Parser_BallyhooCOTTAS.Ballyhoo_cottas_runtime in
-             List.iter (fun row ->
-               Hashtbl.replace s_set row.qr_s ();
-               Hashtbl.replace p_set row.qr_p ();
-               Hashtbl.replace o_set row.qr_o ();
-               (match row.qr_g with
-                | None -> ()
-                | Some g -> Hashtbl.replace g_set g ())
-             ) cache.quads;
-             Printf.printf "file:               %s\n" path;
-             Printf.printf "quads:              %d\n" n_quads;
-             Printf.printf "distinct subjects:  %d\n" (Hashtbl.length s_set);
-             Printf.printf "distinct predicates:%d\n" (Hashtbl.length p_set);
-             Printf.printf "distinct objects:   %d\n" (Hashtbl.length o_set);
-             Printf.printf "named graphs:       %d\n" (Hashtbl.length g_set);
-             exit 0))
+        | args ->
+          let full_scan = List.mem "--full-scan" args in
+          let path =
+            match List.filter (fun s -> s <> "--full-scan") args with
+            | p :: _ -> p
+            | [] ->
+              Printf.eprintf "Error: cottas-info requires a path\n";
+              exit 2
+          in
+          (* Footer-only probes: cheap (single tail read + thrift parse). *)
+          let n_quads = match Parquet_Footer.probe_parquet_num_rows path with
+            | FStar_Pervasives_Native.Some n -> Z.to_int n
+            | FStar_Pervasives_Native.None ->
+              Printf.eprintf "Error: could not read Parquet footer: %s\n" path;
+              exit 1 in
+          let n_row_groups = match Parquet_Footer.probe_parquet_row_group_count path with
+            | FStar_Pervasives_Native.Some n -> Z.to_int n
+            | FStar_Pervasives_Native.None -> 0 in
+          Printf.printf "file:               %s\n" path;
+          Printf.printf "quads:              %d\n" n_quads;
+          Printf.printf "row groups:         %d\n" n_row_groups;
+          if full_scan then begin
+            Printf.printf "(full-scan: walking all row groups for distinct counts ...)\n%!";
+            (match Parser_BallyhooCOTTAS.cottas_open_dataset_store
+                     path FStar_Pervasives_Native.None with
+             | FStar_Pervasives_Native.None ->
+               Printf.eprintf "Error: --full-scan open failed: %s\n" path;
+               exit 1
+             | FStar_Pervasives_Native.Some store ->
+               let cache =
+                 Parser_BallyhooCOTTAS.Ballyhoo_cottas_runtime.cache_for_store
+                   store in
+               (* The cache already has subject_to_id / predicate_to_id /
+                  object_to_id / graph_to_id hashtables populated by
+                  interning during load_cache; use their lengths directly
+                  rather than re-walking the quads list. *)
+               Printf.printf "distinct subjects:  %d\n"
+                 (Hashtbl.length cache.Parser_BallyhooCOTTAS.Ballyhoo_cottas_runtime.subject_to_id);
+               Printf.printf "distinct predicates:%d\n"
+                 (Hashtbl.length cache.Parser_BallyhooCOTTAS.Ballyhoo_cottas_runtime.predicate_to_id);
+               Printf.printf "distinct objects:   %d\n"
+                 (Hashtbl.length cache.Parser_BallyhooCOTTAS.Ballyhoo_cottas_runtime.object_to_id);
+               Printf.printf "named graphs:       %d\n"
+                 (Hashtbl.length cache.Parser_BallyhooCOTTAS.Ballyhoo_cottas_runtime.graph_to_id))
+          end else begin
+            Printf.printf "distinct subjects:  (skipped; pass --full-scan)\n";
+            Printf.printf "distinct predicates:(skipped; pass --full-scan)\n";
+            Printf.printf "distinct objects:   (skipped; pass --full-scan)\n";
+            Printf.printf "named graphs:       (skipped; pass --full-scan)\n"
+          end;
+          exit 0)
      | "query" -> rest
      | "dump"  -> "--dump"  :: List.concat_map (fun f -> ["--data"; f]) rest
      | "count" -> "--count" :: List.concat_map (fun f -> ["--data"; f]) rest

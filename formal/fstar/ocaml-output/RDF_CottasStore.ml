@@ -255,13 +255,19 @@ module Cottas_ondisk_lazy = struct
   (* Per-path "is column N populated yet" flags. Avoid relying on
      Hashtbl size (an empty hashtable on a single-graph corpus is a
      valid populated state). *)
-  let subj_loaded : (string, unit) Hashtbl.t = Hashtbl.create 17
-  let obj_loaded  : (string, unit) Hashtbl.t = Hashtbl.create 17
+  let subj_loaded  : (string, unit) Hashtbl.t = Hashtbl.create 17
+  let pred_loaded  : (string, unit) Hashtbl.t = Hashtbl.create 17
+  let obj_loaded   : (string, unit) Hashtbl.t = Hashtbl.create 17
+  let graph_loaded : (string, unit) Hashtbl.t = Hashtbl.create 17
 
-  let mark_subj_loaded path = Hashtbl.replace subj_loaded path ()
-  let mark_obj_loaded  path = Hashtbl.replace obj_loaded  path ()
-  let is_subj_loaded   path = Hashtbl.mem subj_loaded path
-  let is_obj_loaded    path = Hashtbl.mem obj_loaded  path
+  let mark_subj_loaded  path = Hashtbl.replace subj_loaded  path ()
+  let mark_pred_loaded  path = Hashtbl.replace pred_loaded  path ()
+  let mark_obj_loaded   path = Hashtbl.replace obj_loaded   path ()
+  let mark_graph_loaded path = Hashtbl.replace graph_loaded path ()
+  let is_subj_loaded    path = Hashtbl.mem subj_loaded  path
+  let is_pred_loaded    path = Hashtbl.mem pred_loaded  path
+  let is_obj_loaded     path = Hashtbl.mem obj_loaded   path
+  let is_graph_loaded   path = Hashtbl.mem graph_loaded path
 end
 
 module Cottas_ondisk_runtime = struct
@@ -547,43 +553,53 @@ module Cottas_ondisk_runtime = struct
      of Phase A are GONE — search/estimate work directly via parquet
      row-group probes in F* (or, in practice, via the fast_tables shim
      below). *)
-  (* Bet7 lazy-open (issue #100, 2026-04-26): skip eager subject (col 0)
-     and object (col 2) collection. Both have ~900 k+ distinct values
-     on the parliament corpus and dominate the 106 s open time. They
-     are populated lazily by Cottas_ondisk_lazy below on first lookup
-     in encode/decode/search/estimate. Predicates (col 1) + graphs
-     (col 3) stay eager: predicates are needed by the F* column-prune
-     planner the moment a predicate-bound query arrives, and graphs
-     are needed by cottas_ondisk_named_graphs which the daemon calls
-     post-open to compute snapshot IRIs. Both columns are tiny on
-     parliament: 232 + 0 distinct values respectively. *)
+  (* Bet7 lazy-open (issue #100, 2026-04-26): skip eager collection of
+     ALL four columns. Each `collect_distinct` decodes every row group's
+     data page for that column (~25 s + several hundred MB transient
+     allocations on the parliament 3.14M-quad corpus). Total open used
+     to be ~106 s + 1.4 GB RSS — far too slow + heavy for an interactive
+     demo. After Bet7 the open is footer-only; the per-column
+     dictionaries + Hashtbls are populated on demand by
+     `Cottas_ondisk_lazy.ensure_*_loaded` from inside the *_fast
+     lookup functions (search/estimate/encode/decode/predicate_present).
+
+     Trade-off: the FIRST query that needs a column's dict pays the
+     populate cost (~14 s for predicates, ~30 s each for subjects /
+     objects on parliament). Subsequent queries are fast. For the
+     daemon use case this means the listener comes up + binds the
+     port in <1 s; the first SPARQL request takes the populate hit;
+     warm requests are fast. cottas_ondisk_named_graphs called
+     immediately post-open returns [] until first encode_graph
+     populates — acceptable for parliament (which has 0 named
+     graphs); for corpora WITH named graphs, snapshot_iris is
+     populated after the first query.
+
+     Compatibility with Aleph6's search_fast_limited (added by patch
+     cottas_ondisk_zz_aleph6_count_limit.sh, runs after this patch):
+     Aleph6's body calls ensure_subjects_loaded / ensure_objects_loaded
+     (which are present here) but does NOT call ensure_predicates_loaded
+     / ensure_graphs_loaded (because at the time Aleph6 was written
+     this patch only deferred s+o). The Aleph6 patch now applies an
+     extra fixup further below to add the missing pred+graph hooks. *)
   let build_handle_and_tables artifact_path
     : (cottas_ondisk_handle * fast_tables) =
-    Printf.eprintf "[bet7-trace] build_handle path=%s (lazy open: skip s+o)\n%!" artifact_path;
-    let (p_strs, p_tok_to_id, n_rows_p) = collect_distinct       artifact_path 1 in
-    let (g_strs, g_tok_to_id, n_rows_g) = collect_distinct_graph artifact_path 3 in
-    (* For subjects + objects we don't decode the data pages now.
-       Total row count is read from the parquet footer; subj/obj
-       string lists, revmaps, and Hashtbls are filled on first
-       lazy-populate. *)
+    Printf.eprintf "[bet7-trace] build_handle path=%s (lazy open: defer all 4 columns)\n%!" artifact_path;
     let n_rows = match Parquet_Footer.probe_parquet_num_rows artifact_path with
       | FStar_Pervasives_Native.Some n -> Z.to_int n
-      | FStar_Pervasives_Native.None -> n_rows_p in
+      | FStar_Pervasives_Native.None -> 0 in
     let s_strs = [] in
     let s_tok_to_id : (string, pint) Hashtbl.t = Hashtbl.create 16 in
     let n_rows_s = n_rows in
+    let p_strs = [] in
+    let p_tok_to_id : (string, pint) Hashtbl.t = Hashtbl.create 16 in
+    let n_rows_p = n_rows in
     let o_strs = [] in
     let o_tok_to_id : (string, pint) Hashtbl.t = Hashtbl.create 16 in
     let n_rows_o = n_rows in
-    let _ = (n_rows_s, n_rows_o) in (* unused except for compatibility below *)
-    (* Reclaim memory from the temporary 3.14M-cell decode list that
-       collect_distinct produced for the predicate column above (it
-       dedupes to ~232 entries — the rest is garbage). full_major
-       collects the dead OCaml objects; compact returns the freed
-       heap pages to the OS allocator pool. Without this the post-open
-       RSS includes the unmaterialised waste. *)
-    Gc.full_major ();
-    Gc.compact ();
+    let g_strs = [] in
+    let g_tok_to_id : (string, pint) Hashtbl.t = Hashtbl.create 16 in
+    let n_rows_g = n_rows in
+    let _ = (n_rows_s, n_rows_p, n_rows_o, n_rows_g) in
     if n_rows_s <> n_rows_p || n_rows_s <> n_rows_o || n_rows_s <> n_rows_g then
       Printf.eprintf "[qof3-FATAL] build_handle: row counts disagree s=%d p=%d o=%d g=%d\n%!"
         n_rows_s n_rows_p n_rows_o n_rows_g;
@@ -725,6 +741,44 @@ module Cottas_ondisk_runtime = struct
         (Hashtbl.length tables.ft_obj_tok_to_id)
     end
 
+  let ensure_predicates_loaded (h : cottas_ondisk_handle) (tables : fast_tables) : unit =
+    if not (Cottas_ondisk_lazy.is_pred_loaded h.coh_path) then begin
+      Printf.eprintf "[bet7-trace] ensure_predicates_loaded: lazy populate path=%s\n%!" h.coh_path;
+      let (p_strs, p_tok_to_id, _n) = collect_distinct h.coh_path 1 in
+      Hashtbl.iter (fun k v -> Hashtbl.replace tables.ft_pred_tok_to_id k v) p_tok_to_id;
+      List.iteri (fun i raw ->
+        match parse_iri_token raw with
+        | Some iri ->
+          Hashtbl.replace tables.ft_id_to_predicate i iri;
+          Hashtbl.replace tables.ft_id_to_pred_tok  i raw
+        | None ->
+          Printf.eprintf "[bet7-WARN] ensure_predicates_loaded: invalid predicate token id=%d val=%s\n%!" i raw)
+        p_strs;
+      Cottas_ondisk_lazy.mark_pred_loaded h.coh_path;
+      Gc.full_major ();
+      Printf.eprintf "[bet7-trace] ensure_predicates_loaded: %d distinct predicates\n%!"
+        (Hashtbl.length tables.ft_pred_tok_to_id)
+    end
+
+  let ensure_graphs_loaded (h : cottas_ondisk_handle) (tables : fast_tables) : unit =
+    if not (Cottas_ondisk_lazy.is_graph_loaded h.coh_path) then begin
+      Printf.eprintf "[bet7-trace] ensure_graphs_loaded: lazy populate path=%s\n%!" h.coh_path;
+      let (g_strs, g_tok_to_id, _n) = collect_distinct_graph h.coh_path 3 in
+      Hashtbl.iter (fun k v -> Hashtbl.replace tables.ft_graph_tok_to_id k v) g_tok_to_id;
+      List.iteri (fun i raw ->
+        match parse_iri_token raw with
+        | Some iri ->
+          Hashtbl.replace tables.ft_id_to_graph     i iri;
+          Hashtbl.replace tables.ft_id_to_graph_tok i raw
+        | None ->
+          Printf.eprintf "[bet7-WARN] ensure_graphs_loaded: invalid graph token id=%d val=%s\n%!" i raw)
+        g_strs;
+      Cottas_ondisk_lazy.mark_graph_loaded h.coh_path;
+      Gc.full_major ();
+      Printf.eprintf "[bet7-trace] ensure_graphs_loaded: %d distinct graphs\n%!"
+        (Hashtbl.length tables.ft_graph_tok_to_id)
+    end
+
   let load_handle artifact_path : cottas_ondisk_handle =
     Printf.eprintf "[qof3-trace] load_handle path=%s\n%!" artifact_path;
     match Hashtbl.find_opt handles artifact_path with
@@ -769,8 +823,13 @@ module Cottas_ondisk_runtime = struct
     : Parser_BallyhooCOTTAS.cottas_qp_row list =
     let path = h.coh_path in
     let tables = tables_for h in
-    ensure_subjects_loaded h tables;
-    ensure_objects_loaded  h tables;
+    (* search needs all four columns: build_qp_row reads every cell
+       through the *_tok_to_id Hashtbls, and bound_id_to_token reads
+       *_id_to_*_tok. *)
+    ensure_subjects_loaded   h tables;
+    ensure_predicates_loaded h tables;
+    ensure_objects_loaded    h tables;
+    ensure_graphs_loaded     h tables;
     let bound_s = bound_id_to_token tables.ft_id_to_subj_tok  bound.Parser_BallyhooCOTTAS.cbqp_s in
     let bound_p = bound_id_to_token tables.ft_id_to_pred_tok  bound.Parser_BallyhooCOTTAS.cbqp_p in
     let bound_o = bound_id_to_token tables.ft_id_to_obj_tok   bound.Parser_BallyhooCOTTAS.cbqp_o in
@@ -968,16 +1027,18 @@ module Cottas_ondisk_runtime = struct
   let estimate_fast (h : cottas_ondisk_handle) (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) : pint =
     let path = h.coh_path in
     let tables = tables_for h in
-    (* Estimate's filter loop uses string equality on raw column tokens,
-       so it doesn't read the subj/obj revmaps directly. But
-       bound_id_to_token does need ft_id_to_subj_tok / ft_id_to_obj_tok
-       if a bound subject/object id was passed in. The cheap path here
-       is conditional: only populate if a bound is actually present. *)
+    (* Conditional populate: only the bound columns need their tables. *)
     (match bound.Parser_BallyhooCOTTAS.cbqp_s with
      | FStar_Pervasives_Native.Some _ -> ensure_subjects_loaded h tables
      | _ -> ());
+    (match bound.Parser_BallyhooCOTTAS.cbqp_p with
+     | FStar_Pervasives_Native.Some _ -> ensure_predicates_loaded h tables
+     | _ -> ());
     (match bound.Parser_BallyhooCOTTAS.cbqp_o with
      | FStar_Pervasives_Native.Some _ -> ensure_objects_loaded h tables
+     | _ -> ());
+    (match bound.Parser_BallyhooCOTTAS.cbqp_g with
+     | FStar_Pervasives_Native.Some _ -> ensure_graphs_loaded h tables
      | _ -> ());
     let bound_s = bound_id_to_token tables.ft_id_to_subj_tok  bound.Parser_BallyhooCOTTAS.cbqp_s in
     let bound_p = bound_id_to_token tables.ft_id_to_pred_tok  bound.Parser_BallyhooCOTTAS.cbqp_p in
@@ -1055,6 +1116,7 @@ module Cottas_ondisk_runtime = struct
   let decode_predicate_fast (h : cottas_ondisk_handle) (id : Prims.nat)
     : RDF_Graph_Executable.wf_iri =
     let tables = tables_for h in
+    ensure_predicates_loaded h tables;
     match Hashtbl.find_opt tables.ft_id_to_predicate (Z.to_int id) with
     | Some p -> p
     | None -> ("http://www.w3.org/1999/02/22-rdf-syntax-ns#type" : RDF_Graph_Executable.wf_iri)
@@ -1070,6 +1132,7 @@ module Cottas_ondisk_runtime = struct
   let decode_graph_fast (h : cottas_ondisk_handle) (id : Prims.nat)
     : RDF_Graph_Executable.iri =
     let tables = tables_for h in
+    ensure_graphs_loaded h tables;
     match Hashtbl.find_opt tables.ft_id_to_graph (Z.to_int id) with
     | Some g -> g
     | None -> ""
@@ -1088,6 +1151,7 @@ module Cottas_ondisk_runtime = struct
   let encode_predicate_fast (h : cottas_ondisk_handle) (p : RDF_Graph_Executable.wf_iri)
     : Prims.nat FStar_Pervasives_Native.option =
     let tables = tables_for h in
+    ensure_predicates_loaded h tables;
     let key = "<" ^ p ^ ">" in
     match Hashtbl.find_opt tables.ft_pred_tok_to_id key with
     | Some i -> FStar_Pervasives_Native.Some (Z.of_int i)
@@ -1119,6 +1183,7 @@ module Cottas_ondisk_runtime = struct
   let encode_graph_fast (h : cottas_ondisk_handle) (g : RDF_Graph_Executable.iri)
     : Prims.nat FStar_Pervasives_Native.option =
     let tables = tables_for h in
+    ensure_graphs_loaded h tables;
     let key = "<" ^ g ^ ">" in
     match Hashtbl.find_opt tables.ft_graph_tok_to_id key with
     | Some i -> FStar_Pervasives_Native.Some (Z.of_int i)
@@ -1126,6 +1191,7 @@ module Cottas_ondisk_runtime = struct
 
   let predicate_present_fast (h : cottas_ondisk_handle) (p : RDF_Graph_Executable.wf_iri) : bool =
     let tables = tables_for h in
+    ensure_predicates_loaded h tables;
     let key = "<" ^ p ^ ">" in
     Hashtbl.mem tables.ft_pred_tok_to_id key
 end

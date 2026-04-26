@@ -132,12 +132,83 @@ If this turns out to be insufficient or to break something, can also:
 3. W3C sweep stays at 1657 / 1 / 0 / 4.
 4. Aleph6's predicate-bound LIMIT 5 query still works.
 
-## Where I'll touch
+## Outcome
 
-- New: `formal/fstar/minimal_regrettable_glue_code_each_with_an_open_issue/100_cottas_open_lazy.sh`
-- Wire into `formal/fstar/ocaml-patches.sh` if it isn't already auto-applied.
-- (Possibly) tiny F\* tweak to make the spec functions tolerant of empty
-  fields — but the spec already returns `S_BNode "cottas_decode_oor"` /
-  `""` on out-of-range, so `[]` is fine.
-- Commit-only changes, no extraction needed unless we build the whole
-  system end-to-end.
+Two changes shipped:
+
+1. **`factoidal cottas-info` rewrite** (in `formal/fstar/ocaml-output/factoidal_cli.ml`,
+   handwritten OCaml CLI source — not extracted). Replaced the eager
+   Ballyhoo cache build with a footer-only path: reads quads via
+   `Parquet_Footer.probe_parquet_num_rows` and row groups via
+   `probe_parquet_row_group_count`. Distinct subject/predicate/object/
+   named-graph counts are deferred behind a new `--full-scan` flag.
+   - Before: 98.4 s, 2.2 GB peak RSS.
+   - After:  0.04 s, 77 MB RSS.
+   - `quads: 3143406` is reported correctly.
+
+2. **New post-extraction patch
+   `formal/fstar/experimental_ocaml_glue/cottas_ondisk_z_lazy_open.sh`**
+   — runs after `cottas_ondisk_runtime.sh` and before Aleph6's
+   `cottas_ondisk_zz_aleph6_count_limit.sh`. Deferred ALL four columns
+   (subjects/predicates/objects/graphs). `Cottas_ondisk_runtime.build_handle_and_tables`
+   no longer calls `collect_distinct` at open; instead a new
+   `Cottas_ondisk_lazy` module owns per-path "is column N populated"
+   flags and helper functions
+   `ensure_{subjects,predicates,objects,graphs}_loaded`. The `*_fast`
+   lookup functions (`encode_*_fast`, `decode_*_fast`,
+   `predicate_present_fast`, `search_fast`, `estimate_fast`) gained
+   conditional populate hooks at their entry. `search_fast` populates
+   all four columns; `estimate_fast` only populates the bound columns.
+   - Before: cottas_ondisk_open 106 s, post-open RSS 1.42 GB.
+   - After:  cottas_ondisk_open 0.023 s, post-open RSS 73 MB.
+   - Daemon: "COTTAS open complete: ... in 0.0s" (from 28 s).
+
+### Trade-off
+
+The first SPARQL query that needs each column's dictionary pays the
+populate cost (~14 s for predicates, ~30 s each for subjects + objects
+on the parliament corpus). Subsequent queries on the same predicate
+hit warm Hashtbls. For the daemon use case this means the listener
+binds the port + finishes "open complete" in <1 s, the first complex
+query takes a one-time hit, then warm queries are sub-second.
+
+`cottas_ondisk_named_graphs` returns `[]` until first
+`encode_graph_fast` populates the table — correct on parliament
+(0 named graphs) but on corpora WITH named graphs the daemon's
+post-open snapshot_iris would be empty until first query. Acceptable
+for demo; flagged for issue-tracker followup.
+
+### W3C sweep
+
+`./bin/darwin-arm64/w3c_runner --all` reports
+`SPARQL: 626 pass, 1 fail, 4 skip` + `RDF: 1031 pass, 0 fail, 0 skip`
+= **1657 / 1 / 0 / 4**, unchanged from baseline. The 1 fail is the
+pre-existing `parent query with (hasChild max 1 Female) restriction`
+OWL test, untouched by this work.
+
+### Aleph6 compatibility
+
+Aleph6's `cottas_ondisk_zz_aleph6_count_limit.sh` patch sorts AFTER
+`cottas_ondisk_z_lazy_open.sh` alphabetically. Their
+`search_fast_limited` body explicitly calls `ensure_subjects_loaded` +
+`ensure_objects_loaded` from this patch's helper module, so LIMIT 5
+queries lazy-load correctly. Verified by running:
+
+```
+factoidal serve --port 13043 --data-cottas ...
+curl 'http://localhost:13043/query' \
+  --data-urlencode 'query=SELECT ?s ?o WHERE { ?s rdf:type ?o } LIMIT 5'
+```
+
+returns 5 rows of valid parliament data.
+
+### Files touched
+
+- `formal/fstar/ocaml-output/factoidal_cli.ml` — handwritten OCaml CLI;
+  rewrote the `cottas-info` subcommand handler to use `Parquet_Footer`
+  probes only.
+- `formal/fstar/experimental_ocaml_glue/cottas_ondisk_z_lazy_open.sh`
+  — new patch file (also touched by Aleph6's commit 86c7251 as a
+  placeholder, now filled in).
+- Compiled binaries under `bin/darwin-arm64/`.
+- The F\* spec in `RDF.CottasStore.fst` is unchanged by this commit.
