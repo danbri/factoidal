@@ -58,13 +58,13 @@ WHERE { ?s a ?type }
 LIMIT 5
   </factoidal-query>
   <factoidal-query name="absent-predicate-demo" label="02 — Absent predicate (geo:asWKT) — instant via prune">
-PREFIX geo: <http://www.opengis.net/ont/geosparql#>
+PREFIX geo: &lt;http://www.opengis.net/ont/geosparql#&gt;
 SELECT ?s ?wkt
 WHERE { ?s geo:asWKT ?wkt }
 LIMIT 5
   </factoidal-query>
   <factoidal-query name="absent-class-demo" label="03 — Absent class (geo:wktLiteral as type) — graceful empty">
-PREFIX geo: <http://www.opengis.net/ont/geosparql#>
+PREFIX geo: &lt;http://www.opengis.net/ont/geosparql#&gt;
 SELECT ?s ?p ?o
 WHERE { ?s ?p ?o . ?o a geo:wktLiteral }
 LIMIT 3
