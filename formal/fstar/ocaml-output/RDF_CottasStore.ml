@@ -1585,8 +1585,8 @@ backtrace=%s
 
   let rec search_fast (h : cottas_ondisk_handle) (bound : Parser_BallyhooCOTTAS.cottas_bound_qp)
     : Parser_BallyhooCOTTAS.cottas_qp_row list =
-    (* lamed3: try offset-index path first. *)
-    match search_fast_via_offsets h bound with
+    (* q03_estimate_fix: bypass lamed3 *_via_offsets — falls through to *_inner *)
+    match (None : Parser_BallyhooCOTTAS.cottas_qp_row list option) with
     | Some result ->
       Printf.eprintf "[lamed3-trace] search_fast: served from offset index (%d rows)
 %!" (List.length result);
@@ -1726,7 +1726,7 @@ backtrace=%s
   let rec search_fast_limited (h : cottas_ondisk_handle) (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) (limit : pint)
     : Parser_BallyhooCOTTAS.cottas_qp_row list =
     (* lamed3: try offset-index path first for LIMIT pushdown. *)
-    match search_fast_limited_via_offsets h bound limit with
+    match (None : Parser_BallyhooCOTTAS.cottas_qp_row list option) with  (* q03_estimate_fix: bypass *)
     | Some result ->
       Printf.eprintf "[lamed3-trace] search_fast_limited: served from offset index (%d/%d rows)
 %!" (List.length result) limit;
@@ -1842,8 +1842,9 @@ backtrace=%s
 
   (* Estimate: same loop as search_fast but counts only — no per-row
      Hashtbl lookup or row allocation. *)
+  (* q03_estimate_fix marker — disables lamed3 *_via_offsets dispatchers *)
   let rec estimate_fast (h : cottas_ondisk_handle) (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) : pint =
-    match estimate_fast_via_offsets h bound with
+    match (None : pint option) with  (* q03_estimate_fix: bypass *_via_offsets *)
     | Some n ->
       Printf.eprintf "[lamed3-trace] estimate_fast: served from offset index (%d)
 %!" n;
