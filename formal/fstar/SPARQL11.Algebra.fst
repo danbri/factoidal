@@ -3441,13 +3441,30 @@ let rec sm_mem (mu : solution_mapping) (l : list solution_mapping)
   | [] -> false
   | hd :: tl -> sm_equal mu hd || sm_mem mu tl
 
-let rec list_deduplicate_sm (l : list solution_mapping)
+// Tail-rec dedup. The original recursed BEFORE consing, so DISTINCT on
+// a 3M-row solution sequence (Yod6's smoke-test crash signature)
+// overflowed the macOS main-thread stack inside list_deduplicate_sm
+// before the result ever reached Tav5's HTTP-level cap. Sin7 fix
+// (2026-04-26): walk tail-recursively, building seen-set in reverse order;
+// the dedup semantics (keep first occurrence; sm_mem checks tail) are
+// preserved by checking against `xs` (not `acc`) on every step. Order
+// preserved (rev once at end).
+//
+// Note: still O(n^2) in `sm_mem` per element. A proper hash-based dedup
+// is a separate optimisation — out of scope for this stack-overflow fix.
+let rec list_deduplicate_sm_acc (l : list solution_mapping)
+  (acc : list solution_mapping)
   : Tot (list solution_mapping) (decreases l) =
   match l with
-  | [] -> []
+  | [] -> acc
   | x :: xs ->
-    if sm_mem x xs then list_deduplicate_sm xs
-    else x :: list_deduplicate_sm xs
+    if sm_mem x xs
+    then list_deduplicate_sm_acc xs acc
+    else list_deduplicate_sm_acc xs (x :: acc)
+
+let list_deduplicate_sm (l : list solution_mapping)
+  : Tot (list solution_mapping) =
+  List.Tot.rev (list_deduplicate_sm_acc l [])
 
 let distinct_solutions (omega : solution_sequence) : solution_sequence =
   list_deduplicate_sm omega
@@ -3480,9 +3497,21 @@ let rec project (vars : list var_name) (mu : solution_mapping) : solution_mappin
     then (v, t) :: project vars rest
     else project vars rest
 
+// Tail-rec project. F* stdlib `List.Tot.map` is non-tail-rec
+// (`f a :: map f tl`); on a 3M-row solution sequence this overflows
+// the macOS main-thread stack. Sin7 fix (2026-04-26): tail-rec walk
+// with `List.Tot.rev_acc`-style accumulator, rev once at end.
+let rec project_solutions_acc (vars : list var_name) (omega : solution_sequence)
+  (acc : solution_sequence)
+  : Tot solution_sequence (decreases omega) =
+  match omega with
+  | [] -> acc
+  | mu :: rest ->
+    project_solutions_acc vars rest (project vars mu :: acc)
+
 let project_solutions (vars : list var_name) (omega : solution_sequence)
   : solution_sequence =
-  List.Tot.map (project vars) omega
+  List.Tot.rev (project_solutions_acc vars omega [])
 
 (** ====================================================================== **)
 (** Part 12: SPARQL 1.1 Query Evaluation (§18.2.4)                        **)
