@@ -697,13 +697,23 @@ let rec json_rows_body (rows : binding_row Prims.list) (first : Prims.bool) :
       if first
       then Prims.strcat piece (json_rows_body rest false)
       else Prims.strcat "," (Prims.strcat piece (json_rows_body rest false))
+let rec json_rows_body_acc (rows : binding_row Prims.list)
+  (first : Prims.bool) (acc : Prims.string Prims.list) :
+  Prims.string Prims.list=
+  match rows with
+  | [] -> acc
+  | r::rest ->
+      let piece = json_row r in
+      let chunk = if first then piece else Prims.strcat "," piece in
+      json_rows_body_acc rest false (chunk :: acc)
 let serialise_response_json (vars : Prims.string Prims.list)
   (rows : binding_row Prims.list) : Prims.string=
+  let body_pieces = FStar_List_Tot_Base.rev (json_rows_body_acc rows true []) in
   Prims.strcat "{\"head\":{\"vars\":["
     (Prims.strcat (json_var_list vars)
        (Prims.strcat "]},"
           (Prims.strcat "\"results\":{\"bindings\":["
-             (Prims.strcat (json_rows_body rows true) "]}}"))))
+             (Prims.strcat (FStar_String.concat "" body_pieces) "]}}"))))
 let serialise_response_boolean_json (b : Prims.bool) : Prims.string=
   if b
   then "{\"head\":{},\"boolean\":true}"
@@ -761,15 +771,22 @@ let rec xml_rows_body (rows : binding_row Prims.list) : Prims.string=
   match rows with
   | [] -> ""
   | r::rest -> Prims.strcat (xml_row r) (xml_rows_body rest)
+let rec xml_rows_body_acc (rows : binding_row Prims.list)
+  (acc : Prims.string Prims.list) : Prims.string Prims.list=
+  match rows with
+  | [] -> acc
+  | r::rest -> xml_rows_body_acc rest ((xml_row r) :: acc)
 let serialise_response_xml (vars : Prims.string Prims.list)
   (rows : binding_row Prims.list) : Prims.string=
+  let body_pieces = FStar_List_Tot_Base.rev (xml_rows_body_acc rows []) in
   Prims.strcat "<?xml version=\"1.0\"?>\n"
     (Prims.strcat "<sparql xmlns=\"http://www.w3.org/2005/sparql-results#\">"
        (Prims.strcat "<head>"
           (Prims.strcat (xml_head_vars_body vars)
              (Prims.strcat "</head>"
                 (Prims.strcat "<results>"
-                   (Prims.strcat (xml_rows_body rows) "</results></sparql>"))))))
+                   (Prims.strcat (FStar_String.concat "" body_pieces)
+                      "</results></sparql>"))))))
 let serialise_response_boolean_xml (b : Prims.bool) : Prims.string=
   let value = if b then "true" else "false" in
   Prims.strcat "<?xml version=\"1.0\"?>\n"
@@ -814,10 +831,19 @@ let rec csv_rows_body (vars : Prims.string Prims.list)
   | r::rest ->
       Prims.strcat (csv_row_body vars r true)
         (Prims.strcat "\r\n" (csv_rows_body vars rest))
+let rec csv_rows_body_acc (vars : Prims.string Prims.list)
+  (rows : binding_row Prims.list) (acc : Prims.string Prims.list) :
+  Prims.string Prims.list=
+  match rows with
+  | [] -> acc
+  | r::rest ->
+      let line = Prims.strcat (csv_row_body vars r true) "\r\n" in
+      csv_rows_body_acc vars rest (line :: acc)
 let serialise_response_csv (vars : Prims.string Prims.list)
   (rows : binding_row Prims.list) : Prims.string=
+  let body_pieces = FStar_List_Tot_Base.rev (csv_rows_body_acc vars rows []) in
   Prims.strcat (csv_header_body vars true)
-    (Prims.strcat "\r\n" (csv_rows_body vars rows))
+    (Prims.strcat "\r\n" (FStar_String.concat "" body_pieces))
 let tsv_term (t : RDF_Graph_Executable.rdf_term) : Prims.string=
   match t with
   | RDF_Graph_Executable.T_IRI i -> Prims.strcat "<" (Prims.strcat i ">")
@@ -870,10 +896,19 @@ let rec tsv_rows_body (vars : Prims.string Prims.list)
   | r::rest ->
       Prims.strcat (tsv_row_body vars r true)
         (Prims.strcat "\n" (tsv_rows_body vars rest))
+let rec tsv_rows_body_acc (vars : Prims.string Prims.list)
+  (rows : binding_row Prims.list) (acc : Prims.string Prims.list) :
+  Prims.string Prims.list=
+  match rows with
+  | [] -> acc
+  | r::rest ->
+      let line = Prims.strcat (tsv_row_body vars r true) "\n" in
+      tsv_rows_body_acc vars rest (line :: acc)
 let serialise_response_tsv (vars : Prims.string Prims.list)
   (rows : binding_row Prims.list) : Prims.string=
+  let body_pieces = FStar_List_Tot_Base.rev (tsv_rows_body_acc vars rows []) in
   Prims.strcat (tsv_header_body vars true)
-    (Prims.strcat "\n" (tsv_rows_body vars rows))
+    (Prims.strcat "\n" (FStar_String.concat "" body_pieces))
 let content_type_for (f : response_format) : Prims.string=
   match f with
   | RF_Json -> "application/sparql-results+json"

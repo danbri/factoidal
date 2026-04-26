@@ -107,14 +107,16 @@ let cottas_ondisk_dataset_backend
                        (cods, (FStar_Pervasives_Native.Some gname)))
                 }) (RDF_CottasStore.cottas_ondisk_named_graphs cods))
   }
-let rec union_backend_search (members : graph_backend Prims.list)
-  (b : SPARQL11_Algebra.triple_pattern_bound) :
+let rec union_backend_search_acc (members : graph_backend Prims.list)
+  (b : SPARQL11_Algebra.triple_pattern_bound)
+  (acc_rev : RDF_Graph_Executable.triple Prims.list) :
   RDF_Graph_Executable.triple Prims.list=
   match members with
-  | [] -> []
+  | [] -> FStar_List_Tot_Base.rev acc_rev
   | member::rest ->
-      FStar_List_Tot_Base.append (backend_search member b)
-        (union_backend_search rest b)
+      let part = backend_search member b in
+      union_backend_search_acc rest b
+        (FStar_List_Tot_Base.rev_acc part acc_rev)
 and backend_search (gb : graph_backend)
   (b : SPARQL11_Algebra.triple_pattern_bound) :
   RDF_Graph_Executable.triple Prims.list=
@@ -141,9 +143,12 @@ and backend_search (gb : graph_backend)
        | FStar_Pervasives_Native.None -> []
        | FStar_Pervasives_Native.Some bound ->
            let rows = RDF_CottasStore.cottas_ondisk_search cods bound in
-           FStar_List_Tot_Base.map FStar_Pervasives_Native.fst
-             (RDF_CottasStore.cottas_ondisk_rows_to_quads cods rows))
-  | GB_Union members -> union_backend_search members b
+           RDF_CottasStore.cottas_ondisk_rows_to_triples cods rows)
+  | GB_Union members -> union_backend_search_acc members b []
+let union_backend_search (members : graph_backend Prims.list)
+  (b : SPARQL11_Algebra.triple_pattern_bound) :
+  RDF_Graph_Executable.triple Prims.list=
+  union_backend_search_acc members b []
 let rec list_take_n : 'a . Prims.nat -> 'a Prims.list -> 'a Prims.list =
   fun n xs ->
     if n = Prims.int_zero
@@ -152,23 +157,21 @@ let rec list_take_n : 'a . Prims.nat -> 'a Prims.list -> 'a Prims.list =
       (match xs with
        | [] -> []
        | hd::tl -> hd :: (list_take_n (n - Prims.int_one) tl))
-let rec union_backend_search_limited (members : graph_backend Prims.list)
-  (b : SPARQL11_Algebra.triple_pattern_bound) (limit : Prims.nat) :
+let rec union_backend_search_limited_acc (members : graph_backend Prims.list)
+  (b : SPARQL11_Algebra.triple_pattern_bound) (limit : Prims.nat)
+  (acc_rev : RDF_Graph_Executable.triple Prims.list) (acc_len : Prims.nat) :
   RDF_Graph_Executable.triple Prims.list=
-  if limit = Prims.int_zero
-  then []
+  if acc_len >= limit
+  then acc_rev
   else
     (match members with
-     | [] -> []
+     | [] -> acc_rev
      | member::rest ->
-         let part = backend_search_limited member b limit in
+         let need = limit - acc_len in
+         let part = backend_search_limited member b need in
          let part_len = FStar_List_Tot_Base.length part in
-         if part_len >= limit
-         then list_take_n limit part
-         else
-           (let need = limit - part_len in
-            let more = union_backend_search_limited rest b need in
-            FStar_List_Tot_Base.append part more))
+         union_backend_search_limited_acc rest b limit
+           (FStar_List_Tot_Base.rev_acc part acc_rev) (acc_len + part_len))
 and backend_search_limited (gb : graph_backend)
   (b : SPARQL11_Algebra.triple_pattern_bound) (limit : Prims.nat) :
   RDF_Graph_Executable.triple Prims.list=
@@ -182,9 +185,14 @@ and backend_search_limited (gb : graph_backend)
        | FStar_Pervasives_Native.Some bound ->
            let rows =
              RDF_CottasStore.cottas_ondisk_search_limited cods bound limit in
-           FStar_List_Tot_Base.map FStar_Pervasives_Native.fst
-             (RDF_CottasStore.cottas_ondisk_rows_to_quads cods rows))
-  | GB_Union members -> union_backend_search_limited members b limit
+           RDF_CottasStore.cottas_ondisk_rows_to_triples cods rows)
+  | GB_Union members ->
+      if limit = Prims.int_zero
+      then []
+      else
+        (let result_rev =
+           union_backend_search_limited_acc members b limit [] Prims.int_zero in
+         list_take_n limit (FStar_List_Tot_Base.rev result_rev))
   | uu___ -> list_take_n limit (backend_search gb b)
 let rec union_backend_estimate (members : graph_backend Prims.list)
   (b : SPARQL11_Algebra.triple_pattern_bound) : Prims.nat=
@@ -346,7 +354,17 @@ let named_candidate_backends (named : named_graph_backend Prims.list)
   | FStar_Pervasives_Native.Some pred ->
       FStar_List_Tot_Base.filter
         (fun ngb -> backend_predicate_present ngb.ngb_graph pred) named
-let rec eval_bgp_backend_from_mu_fuel (patterns : SPARQL11_Algebra.bgp)
+let rec eval_bgp_concatmap_acc (rest : SPARQL11_Algebra.bgp)
+  (gb : graph_backend) (next : SPARQL11_Algebra.solution_sequence)
+  (fuel : Prims.nat) (acc_rev : SPARQL11_Algebra.solution_sequence) :
+  SPARQL11_Algebra.solution_sequence=
+  match next with
+  | [] -> acc_rev
+  | mu'::more ->
+      let part = eval_bgp_backend_from_mu_fuel rest gb mu' fuel in
+      eval_bgp_concatmap_acc rest gb more fuel
+        (FStar_List_Tot_Base.rev_acc part acc_rev)
+and eval_bgp_backend_from_mu_fuel (patterns : SPARQL11_Algebra.bgp)
   (gb : graph_backend) (mu : RDF_Graph_Executable.solution_mapping)
   (fuel : Prims.nat) : SPARQL11_Algebra.solution_sequence=
   if fuel = Prims.int_zero
@@ -359,10 +377,9 @@ let rec eval_bgp_backend_from_mu_fuel (patterns : SPARQL11_Algebra.bgp)
           | FStar_Pervasives_Native.None -> [mu]
           | FStar_Pervasives_Native.Some (tp, rest) ->
               let next = eval_single_tp_backend tp gb mu in
-              FStar_List_Tot_Base.concatMap
-                (fun mu' ->
-                   eval_bgp_backend_from_mu_fuel rest gb mu'
-                     (fuel - Prims.int_one)) next))
+              FStar_List_Tot_Base.rev
+                (eval_bgp_concatmap_acc rest gb next (fuel - Prims.int_one)
+                   [])))
 let eval_bgp_backend (patterns : SPARQL11_Algebra.bgp) (gb : graph_backend) :
   SPARQL11_Algebra.solution_sequence=
   eval_bgp_backend_from_mu_fuel patterns gb SPARQL11_Algebra.sm_empty

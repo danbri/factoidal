@@ -2287,14 +2287,40 @@ let cottas_ondisk_row_to_quad (ds : cottas_ondisk_store)
                 FStar_Pervasives_Native.Some
                   (cottas_ondisk_decode_graph_name ds gr))))
   | uu___ -> FStar_Pervasives_Native.None
-let rec cottas_ondisk_rows_to_quads (ds : cottas_ondisk_store)
-  (rows : Parser_BallyhooCOTTAS.cottas_qp_row Prims.list) :
+let rec cottas_ondisk_rows_to_quads_acc (ds : cottas_ondisk_store)
+  (rows : Parser_BallyhooCOTTAS.cottas_qp_row Prims.list)
+  (acc :
+    (RDF_Graph_Executable.triple * RDF_Graph_Executable.iri
+      FStar_Pervasives_Native.option) Prims.list)
+  :
   (RDF_Graph_Executable.triple * RDF_Graph_Executable.iri
     FStar_Pervasives_Native.option) Prims.list=
   match rows with
-  | [] -> []
+  | [] -> acc
   | row::rest ->
-      let rest' = cottas_ondisk_rows_to_quads ds rest in
       (match cottas_ondisk_row_to_quad ds row with
-       | FStar_Pervasives_Native.Some q -> q :: rest'
-       | FStar_Pervasives_Native.None -> rest')
+       | FStar_Pervasives_Native.None ->
+           cottas_ondisk_rows_to_quads_acc ds rest acc
+       | FStar_Pervasives_Native.Some quad ->
+           cottas_ondisk_rows_to_quads_acc ds rest (quad :: acc))
+let cottas_ondisk_rows_to_quads (ds : cottas_ondisk_store)
+  (rows : Parser_BallyhooCOTTAS.cottas_qp_row Prims.list) :
+  (RDF_Graph_Executable.triple * RDF_Graph_Executable.iri
+    FStar_Pervasives_Native.option) Prims.list=
+  FStar_List_Tot_Base.rev (cottas_ondisk_rows_to_quads_acc ds rows [])
+let rec cottas_ondisk_rows_to_triples_acc (ds : cottas_ondisk_store)
+  (rows : Parser_BallyhooCOTTAS.cottas_qp_row Prims.list)
+  (acc : RDF_Graph_Executable.triple Prims.list) :
+  RDF_Graph_Executable.triple Prims.list=
+  match rows with
+  | [] -> acc
+  | row::rest ->
+      (match cottas_ondisk_row_to_quad ds row with
+       | FStar_Pervasives_Native.None ->
+           cottas_ondisk_rows_to_triples_acc ds rest acc
+       | FStar_Pervasives_Native.Some (t, _gname) ->
+           cottas_ondisk_rows_to_triples_acc ds rest (t :: acc))
+let cottas_ondisk_rows_to_triples (ds : cottas_ondisk_store)
+  (rows : Parser_BallyhooCOTTAS.cottas_qp_row Prims.list) :
+  RDF_Graph_Executable.triple Prims.list=
+  FStar_List_Tot_Base.rev (cottas_ondisk_rows_to_triples_acc ds rows [])
