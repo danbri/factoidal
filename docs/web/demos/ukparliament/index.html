@@ -37,11 +37,37 @@ Sample queries from
     </select>
   </label>
   <span id="backend-pill" class="pill unknown">Backend: …</span>
+  <label for="show-wip" style="flex-direction:row;align-items:center;gap:.4em;
+    text-transform:none;letter-spacing:0;font-size:13px;color:inherit;cursor:pointer">
+    <input type="checkbox" id="show-wip">
+    <span>Show all queries (incl. <span id="wip-count">…</span> work-in-progress)</span>
+  </label>
 </header>
 <script type="module" src="/factoidal-sparql-client.js"></script>
 <factoidal-sparql-client id="client" endpoint="/sparql">
-  <factoidal-query name="count" label="00 — COUNT(*) (seed)">
+  <!-- Curated demo queries — hand-tested on parliament COTTAS, return in <10s.
+       Always shown, regardless of the "Show all queries" checkbox.
+       To promote a vendored / modernised query into this list: confirm
+       <10s response on the demo data, then add a <factoidal-query> here. -->
+  <factoidal-query name="count" label="00 — COUNT(*) (total triples)">
 SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }
+  </factoidal-query>
+  <factoidal-query name="sample-by-type" label="01 — 5 sample subjects + their type">
+SELECT ?s ?type
+WHERE { ?s a ?type }
+LIMIT 5
+  </factoidal-query>
+  <factoidal-query name="absent-predicate-demo" label="02 — Absent predicate (geo:asWKT) — instant via prune">
+PREFIX geo: <http://www.opengis.net/ont/geosparql#>
+SELECT ?s ?wkt
+WHERE { ?s geo:asWKT ?wkt }
+LIMIT 5
+  </factoidal-query>
+  <factoidal-query name="absent-class-demo" label="03 — Absent class (geo:wktLiteral as type) — graceful empty">
+PREFIX geo: <http://www.opengis.net/ont/geosparql#>
+SELECT ?s ?p ?o
+WHERE { ?s ?p ?o . ?o a geo:wktLiteral }
+LIMIT 3
   </factoidal-query>
 </factoidal-sparql-client>
 <footer>Timing in the <em>Details</em> pane. Component posts to
@@ -98,8 +124,30 @@ SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }
     refreshPill(ep);
   });
   refreshPill('/sparql');
+  // WIP-query gating. The dropdown shows two tiers:
+  //   1. Inline <factoidal-query> children = curated, hand-tested. Always visible.
+  //   2. /parliament-queries.json (Vendored originals + _modern adaptations) =
+  //      experimental on this corpus — most still time out or hit the 50000-row
+  //      cap on bound-everywhere queries. Hidden by default; the checkbox
+  //      reveals them as a visible to-do list.
+  // The web component (factoidal-sparql-client.js) merges children and the
+  // queries property; setting the property to [] keeps only children.
+  var wipCheckbox=document.getElementById('show-wip');
+  var wipCountEl=document.getElementById('wip-count');
+  var wipQueries=null;
+  function applyWip(){
+    if(!clientEl)return;
+    if(wipCheckbox.checked&&Array.isArray(wipQueries)){clientEl.queries=wipQueries;}
+    else{clientEl.queries=[];}
+  }
   fetch('/parliament-queries.json',{headers:{'Accept':'application/json'}})
     .then(function(r){return r.ok?r.json():null;})
-    .then(function(arr){if(!arr||!arr.length||!clientEl)return;clientEl.queries=arr;})
+    .then(function(arr){
+      if(!Array.isArray(arr))return;
+      wipQueries=arr;
+      if(wipCountEl)wipCountEl.textContent=String(arr.length);
+      applyWip();
+    })
     .catch(function(){});
+  wipCheckbox.addEventListener('change',applyWip);
 })();</script></body></html>
