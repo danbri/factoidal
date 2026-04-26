@@ -1848,12 +1848,30 @@ backtrace=%s
     ensure_predicates_loaded h tables;
     let rg = ref 0 in
     let n_skipped = ref 0 in
+    (* tet3_fstar_redirect_search_limited: search_fast_limited installed
+       (issue #100, 2026-04-26). Per-rg gate routed through F*'s
+       RDF_CottasStore_PresenceBitmap via the Tet3_fstar_redirect
+       helper (installed by the estimate-redirect patch). Fall back
+       to the existing Tet3 Hashtbl path only when could_via_fstar
+       returns None (companion file absent). *)
+    let n_via_fstar_lim = ref 0 in
+    let n_via_hashtbl_lim = ref 0 in
     (try
       while !rg < rg_count && !n_matches < limit do
         let r = !rg in
-        let could_p = Cottas_ondisk_lazy.pred_rg_could_contain path r bound_p in
-        let could_s = Cottas_ondisk_lazy.subj_rg_could_contain path r bound_s in
-        let could_o = Cottas_ondisk_lazy.obj_rg_could_contain  path r bound_o in
+        let could_via path_ col_idx bound_id bound_str fallback_get =
+          match Tet3_fstar_redirect.could_via_fstar
+                  path_ col_idx r bound_id with
+          | FStar_Pervasives_Native.Some b ->
+            incr n_via_fstar_lim; b
+          | FStar_Pervasives_Native.None ->
+            incr n_via_hashtbl_lim; fallback_get path_ r bound_str in
+        let could_p = could_via path 1 bound.Parser_BallyhooCOTTAS.cbqp_p
+          bound_p Cottas_ondisk_lazy.pred_rg_could_contain in
+        let could_s = could_via path 0 bound.Parser_BallyhooCOTTAS.cbqp_s
+          bound_s Cottas_ondisk_lazy.subj_rg_could_contain in
+        let could_o = could_via path 2 bound.Parser_BallyhooCOTTAS.cbqp_o
+          bound_o Cottas_ondisk_lazy.obj_rg_could_contain in
         if not (could_p && could_s && could_o) then begin
           incr n_skipped;
           if !n_skipped <= 3 || !n_skipped mod 5 = 0 then
@@ -1919,6 +1937,8 @@ backtrace=%s
       (match bound_s with None -> "_" | Some _ -> "<sub>")
       (match bound_p with None -> "_" | Some s -> s)
       (match bound_o with None -> "_" | Some _ -> "<obj>");
+    Printf.eprintf "[tet3-fstar-trace] search_fast_limited: rg-tests via_fstar=%d via_hashtbl=%d\n%!"
+      !n_via_fstar_lim !n_via_hashtbl_lim;
     Printf.eprintf "[aleph6-trace] search_fast_limited: matched %d/%d row(s), walked %d/%d rg(s)\n%!"
       !n_matches limit !rg rg_count;
     List.rev !acc
