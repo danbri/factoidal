@@ -415,6 +415,34 @@ let explain_triple_pattern_against_store
    `choose_best_tp_backend` directly — that would re-call the slow
    estimate path. Semantically the order matches what the runtime
    optimiser would compute, given that estimates are ordinal. *)
+(* Phase 2.2 (2026-04-26): direct call to F*'s real
+   choose_best_tp_backend. Iteratively pick the smallest-estimate
+   pattern under empty mu, exactly as the runtime planner does at
+   eval time. This is the GROUND-TRUTH planner output — what the
+   engine actually decides — as opposed to the parallel reimpl
+   below (`optimiser_order_for_bgp_from_explains`) which uses
+   pre-computed estimates and may diverge.
+
+   Performance note: this calls F*'s estimate path which on a
+   COTTAS store routes through Mem5's bitmap fast path -> usually
+   microseconds per call. So calling F*'s planner from --explain
+   is fine.
+
+   For diagnosing the Q03 regression: comparing this output to
+   the parallel-reimpl output reveals where the divergence is.
+*)
+let optimiser_order_via_fstar
+    (gb : S.graph_backend)
+    (patterns : A.bgp)
+  : A.triple_pattern list =
+  let rec loop remaining acc =
+    match S.choose_best_tp_backend remaining gb A.sm_empty with
+    | FStar_Pervasives_Native.None -> List.rev acc
+    | FStar_Pervasives_Native.Some (chosen, rest) ->
+      loop rest (chosen :: acc)
+  in
+  loop patterns []
+
 let optimiser_order_for_bgp_from_explains
     (rows : tp_explain list)
     (patterns : A.bgp)
@@ -652,12 +680,11 @@ let explain_query
      data-page walk. *)
   Printf.fprintf out "=== JOIN ORDER (per BGP) ===\n"; flush out;
   let bgps = bgps_in_query q in
-  let _ = first_store in
-  List.iteri (fun i tps ->
-    Printf.fprintf out "  BGP #%d: %d triple%s\n" (i+1) (List.length tps)
-      (if List.length tps = 1 then "" else "s");
-    let order = optimiser_order_for_bgp_from_explains rows tps in
-    Printf.fprintf out "  optimiser order:";
+  (* Build the GB_CottasOnDisk wrapper the engine uses, so we can call
+     F*'s real choose_best_tp_backend on it. None = default graph. *)
+  let gb = S.GB_CottasOnDisk (first_store, FStar_Pervasives_Native.None) in
+  let render_order out_label order =
+    Printf.fprintf out "  %s:" out_label;
     List.iter (fun tp ->
       let lbl = match index_of_tp tp labelled_tps with
         | Some l -> l
@@ -671,6 +698,23 @@ let explain_query
       Printf.fprintf out " %s(est=%d)" lbl est
     ) order;
     Printf.fprintf out "\n"
+  in
+  List.iteri (fun i tps ->
+    Printf.fprintf out "  BGP #%d: %d triple%s\n" (i+1) (List.length tps)
+      (if List.length tps = 1 then "" else "s");
+    (* GROUND TRUTH: F*'s real planner. Phase 2.2 unwind:
+       this is what the engine actually does. *)
+    let order_fstar = optimiser_order_via_fstar gb tps in
+    render_order "F* planner (runtime ground truth)" order_fstar;
+    (* Legacy: Pe5's parallel reimpl using pre-computed estimates.
+       Kept temporarily so we can SEE divergences during the unwind.
+       Will be deleted in a follow-up commit once we trust the F*
+       version. *)
+    let order_legacy = optimiser_order_for_bgp_from_explains rows tps in
+    if order_legacy <> order_fstar then
+      render_order "OCaml parallel reimpl (DIVERGES from F*)" order_legacy
+    else
+      Printf.fprintf out "  (OCaml parallel reimpl agrees with F*)\n"
   ) bgps;
   Printf.fprintf out "\n";
 

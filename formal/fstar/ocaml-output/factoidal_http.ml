@@ -2012,7 +2012,7 @@ let cottas_stores_total_quads (stores : cottas_ondisk_loaded list) : int =
    open cottas-ondisk stores — both feed backend_ref, which is the
    actual query-time view. Earlier versions only counted dataset_ref,
    so a --data-cottas-only daemon advertised "kind":"binary" with
-   "triples":0, despite COUNT(*) returning 3.14M. Reviewer flagged
+   "triples":0, despite COUNT-star returning 3.14M. Reviewer flagged
    2026-04-26. *)
 let serve_backend_info_json
     (cfg : config)

@@ -6,13 +6,13 @@ open Parser.BallyhooHDT
 open Parser.BallyhooCOTTAS
 open RDF.CottasStore
 
-(* Note: this module previously imported Util.Log for in-line debug
-   tracing in choose_best_tp_backend. Removed because F* erases
-   Tot-unit-discarded calls regardless of how they're wrapped. The
-   OCaml-side dry-runner in factoidal_explain.ml is the right place
-   for explain-mode logging — it calls F*'s choose_best_tp_backend
-   directly and logs each decision via Util_Log_runtime. The F*
-   planner is the runtime path; the logging is glue. *)
+// Note: this module previously imported Util.Log for in-line debug
+// tracing in choose_best_tp_backend. Removed because F* erases
+// Tot-unit-discarded calls regardless of how they're wrapped. The
+// OCaml-side dry-runner in factoidal_explain.ml is the right place
+// for explain-mode logging — it calls F*'s choose_best_tp_backend
+// directly and logs each decision via Util_Log_runtime. The F*
+// planner is the runtime path; the logging is glue.
 
 // Backend-neutral store layer for SPARQL evaluation.
 // The algebra remains the semantic source of truth; this module only dispatches
@@ -281,13 +281,13 @@ let estimate_tp_backend_mu (tp : triple_pattern) (gb : graph_backend) (mu : solu
     bo = bound_object_of_pattern tp.tp_o mu;
   }
 
-(* F* planner. Stays pure (Tot). Logging is the OCaml-side dry-runner's
-   job (factoidal_explain.ml calls choose_best_tp_backend recursively
-   and logs each decision via Util_Log_runtime). Earlier attempt to
-   embed Util.Log calls IN this F* function was reverted: F* erases
-   `Tot unit` returning calls in unused-result position, regardless of
-   whether they're assume-val or `let`-bodied. The clean split:
-   PLANNING in F*, LOGGING in OCaml glue. *)
+// F* planner. Stays pure (Tot). Logging is the OCaml-side dry-runner's
+// job (factoidal_explain.ml calls choose_best_tp_backend recursively
+// and logs each decision via Util_Log_runtime). Earlier attempt to
+// embed Util.Log calls IN this F* function was reverted: F* erases
+// `Tot unit` returning calls in unused-result position, regardless of
+// whether they're assume-val or `let`-bodied. The clean split:
+// PLANNING in F*, LOGGING in OCaml glue.
 let rec choose_best_tp_backend (patterns : bgp) (gb : graph_backend) (mu : solution_mapping)
   : Tot (option (triple_pattern * bgp)) (decreases patterns) =
   match patterns with
