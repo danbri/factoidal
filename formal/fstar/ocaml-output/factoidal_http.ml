@@ -589,15 +589,21 @@ type cottas_ondisk_loaded = {
    followup to 7ecf720. *)
 let prewarm_cottas_columns (path : string) (store : RDF_CottasStore.cottas_ondisk_store)
     : unit =
-  let t0 = Unix.gettimeofday () in
+  (* Vav3 (issue #100, 2026-04-26): persistent mmap'd companion indexes.
+     First boot: companions absent, build them once (~110s on parliament,
+     same as the old pre-warm) then mmap. Subsequent boots: mmap +
+     bulk-load Hashtbls in <2s. The companion file format is fully
+     F*-defined in RDF.CottasStore.OnDiskIndex.fst.
+
+     The bulk-load step keeps the existing *_fast Hashtbl-backed query
+     paths intact — they consult tables_for h.coh_path which is now
+     populated from the mmap'd .dict + .presence files. A follow-on
+     phase (Phase E) will swap the query path to consult the mmap'd
+     companions directly via RDF_CottasStore_OnDiskIndex.companion_*
+     functions, eliminating the Hashtbls entirely.
+  *)
   let h = store.RDF_CottasStore.cods_handle in
-  let tables = RDF_CottasStore.Cottas_ondisk_runtime.tables_for h in
-  RDF_CottasStore.Cottas_ondisk_runtime.ensure_predicates_loaded h tables;
-  RDF_CottasStore.Cottas_ondisk_runtime.ensure_subjects_loaded   h tables;
-  RDF_CottasStore.Cottas_ondisk_runtime.ensure_objects_loaded    h tables;
-  RDF_CottasStore.Cottas_ondisk_runtime.ensure_graphs_loaded     h tables;
-  let dt = Unix.gettimeofday () -. t0 in
-  Printf.eprintf "[mim3-trace] pre-warmed %s in %.2fs\n%!" path dt
+  RDF_CottasStore.Cottas_companion_boot.prewarm_via_companions path h
 
 (* Open all --data-cottas files as on-disk stores. Errors from individual
    files are logged + skipped (mirrors load_cottas_part: don't kill the

@@ -1349,9 +1349,20 @@ module Cottas_ondisk_runtime = struct
     : RDF_Graph_Executable.subject =
     let tables = tables_for h in
     ensure_subjects_loaded h tables;
-    match Hashtbl.find_opt tables.ft_id_to_subject (Z.to_int id) with
+    let id_int = Z.to_int id in
+    match Hashtbl.find_opt tables.ft_id_to_subject id_int with
     | Some s -> s
-    | None -> RDF_Graph_Executable.S_BNode "cottas_decode_oor"
+    | None ->
+      (* vav3: lazy decode-fast cache miss — bulk_load_column_into_tables
+         skipped eager parse to save boot time; parse on demand here. *)
+      (match Hashtbl.find_opt tables.ft_id_to_subj_tok id_int with
+       | None -> RDF_Graph_Executable.S_BNode "cottas_decode_oor"
+       | Some raw ->
+         (match parse_subject_str raw with
+          | Some s ->
+            Hashtbl.replace tables.ft_id_to_subject id_int s;
+            s
+          | None -> RDF_Graph_Executable.S_BNode "cottas_decode_oor"))
 
   let decode_predicate_fast (h : cottas_ondisk_handle) (id : Prims.nat)
     : RDF_Graph_Executable.wf_iri =
@@ -1365,9 +1376,19 @@ module Cottas_ondisk_runtime = struct
     : RDF_Graph_Executable.rdf_term =
     let tables = tables_for h in
     ensure_objects_loaded h tables;
-    match Hashtbl.find_opt tables.ft_id_to_object (Z.to_int id) with
+    let id_int = Z.to_int id in
+    match Hashtbl.find_opt tables.ft_id_to_object id_int with
     | Some o -> o
-    | None -> RDF_Graph_Executable.T_BNode "cottas_decode_oor"
+    | None ->
+      (* vav3: lazy decode-fast cache miss for objects. *)
+      (match Hashtbl.find_opt tables.ft_id_to_obj_tok id_int with
+       | None -> RDF_Graph_Executable.T_BNode "cottas_decode_oor"
+       | Some raw ->
+         (match parse_object_str raw with
+          | Some o ->
+            Hashtbl.replace tables.ft_id_to_object id_int o;
+            o
+          | None -> RDF_Graph_Executable.T_BNode "cottas_decode_oor"))
 
   let decode_graph_fast (h : cottas_ondisk_handle) (id : Prims.nat)
     : RDF_Graph_Executable.iri =
@@ -2324,3 +2345,447 @@ let cottas_ondisk_rows_to_triples (ds : cottas_ondisk_store)
   (rows : Parser_BallyhooCOTTAS.cottas_qp_row Prims.list) :
   RDF_Graph_Executable.triple Prims.list=
   FStar_List_Tot_Base.rev (cottas_ondisk_rows_to_triples_acc ds rows [])
+
+(* vav3: Cottas_companion_writer installed (issue #100, 2026-04-26).
+   Walks the parquet columns once per column (subjects, predicates,
+   objects, graphs) and writes the .dict + .presence companion files
+   sibling to the .cottas. Atomic: writes to .tmp, fsync, rename.
+
+   Same algorithmic cost as today's pre-warm. Once the companions exist,
+   subsequent boots skip this and just mmap. *)
+module Cottas_companion_writer = struct
+  open Stdlib
+  type pint = Stdlib.Int.t
+
+  let dict_magic : pint  = 0x44544f43  (* 'COTD' little-endian *)
+  let presence_magic : pint  = 0x50544f43  (* 'COTP' little-endian *)
+  let layout_version : pint = 1
+
+  let column_suffix = function
+    | 0 -> "s"
+    | 1 -> "p"
+    | 2 -> "o"
+    | 3 -> "g"
+    | _ -> "x"
+
+  let dict_path     base col_idx = Printf.sprintf "%s.%s.dict"     base (column_suffix col_idx)
+  let presence_path base col_idx = Printf.sprintf "%s.%s.presence" base (column_suffix col_idx)
+
+  let write_u32_le buf (v : pint) =
+    Buffer.add_char buf (Stdlib.Char.chr (v land 0xff));
+    Buffer.add_char buf (Stdlib.Char.chr ((v lsr 8) land 0xff));
+    Buffer.add_char buf (Stdlib.Char.chr ((v lsr 16) land 0xff));
+    Buffer.add_char buf (Stdlib.Char.chr ((v lsr 24) land 0xff))
+
+  let write_u64_le buf (v : pint) =
+    write_u32_le buf (v land 0xffffffff);
+    write_u32_le buf ((v lsr 32) land 0xffffffff)
+
+  (* Walk every row group of `path`, column `col_idx`, collecting
+     per-rg sets of distinct tokens AND a globally-sorted unique token
+     list. Returns:
+       (sorted_unique_tokens : string array,
+        sorted_token_to_id   : (string -> pint),  via Hashtbl
+        per_rg_token_set     : pint -> (string, unit) Hashtbl.t,
+        rg_count             : pint)
+     The sorted_unique_tokens is the ascending lexicographic ordering
+     used by the .dict's binary search. *)
+  let collect_distinct_per_rg (path : string) (col_idx : pint) =
+    let rg_count = match Parquet_Footer.probe_parquet_row_group_count path with
+      | FStar_Pervasives_Native.None -> 0
+      | FStar_Pervasives_Native.Some n -> Z.to_int n in
+    let global : (string, unit) Hashtbl.t = Hashtbl.create 1024 in
+    let per_rg : (pint, (string, unit) Hashtbl.t) Hashtbl.t = Hashtbl.create 32 in
+    for rg = 0 to rg_count - 1 do
+      let rg_set : (string, unit) Hashtbl.t = Hashtbl.create 256 in
+      (match Parquet_Footer.probe_parquet_column_decode_in_row_group
+               path (Z.of_int rg) (Z.of_int col_idx) with
+       | FStar_Pervasives_Native.None ->
+         Printf.eprintf "[vav3-WARN] writer: rg=%d col=%d decode failed\n%!" rg col_idx
+       | FStar_Pervasives_Native.Some lst ->
+         List.iter (function
+           | FStar_Pervasives_Native.None -> ()
+           | FStar_Pervasives_Native.Some raw ->
+             if not (Hashtbl.mem rg_set raw) then Hashtbl.add rg_set raw ();
+             if not (Hashtbl.mem global raw) then Hashtbl.add global raw ()
+         ) lst);
+      Hashtbl.replace per_rg rg rg_set;
+      if rg = 0 || rg = rg_count - 1 || rg mod 5 = 0 then
+        Printf.eprintf "[vav3-trace] writer rg=%d/%d col=%d distinct_so_far=%d\n%!"
+          rg rg_count col_idx (Hashtbl.length global)
+    done;
+    let arr = Array.make (Hashtbl.length global) "" in
+    let i = ref 0 in
+    Hashtbl.iter (fun k () -> arr.(!i) <- k; incr i) global;
+    Array.sort String.compare arr;
+    let tok_to_id : (string, pint) Hashtbl.t = Hashtbl.create (Array.length arr * 2 + 17) in
+    Array.iteri (fun id tok -> Hashtbl.add tok_to_id tok id) arr;
+    (arr, tok_to_id, per_rg, rg_count)
+
+  let atomic_write (path : string) (data : string) : unit =
+    let tmp = path ^ ".tmp" in
+    let oc = open_out_bin tmp in
+    output_string oc data;
+    flush oc;
+    (try Unix.fsync (Unix.descr_of_out_channel oc) with _ -> ());
+    close_out oc;
+    Sys.rename tmp path
+
+  (* Writer for one column's .dict file.
+     Layout (per RDF.CottasStore.OnDiskIndex.fst):
+       [ magic u32 | version u32 | num_tokens u32 | pad u32 ]
+       [ ids_offset u64 | tokens_offset u64 ]
+       [ ids[]         u32 * num_tokens, sorted ASC by token ]
+       [ token_offs[]  u64 * (num_tokens+1) ]
+       [ token_data    bytes ]
+  *)
+  let write_dict_file (path : string) (sorted_tokens : string array) : unit =
+    let n = Array.length sorted_tokens in
+    (* Header: 32 bytes. Then ids[] (4*n bytes). Then token_offs[]
+       (8*(n+1) bytes). Then token_data. *)
+    let header_size  = 32 in
+    let ids_size     = 4 * n in
+    let offs_size    = 8 * (n + 1) in
+    let ids_offset    = header_size in
+    let tokens_offset = header_size + ids_size in
+    let token_data_offset = tokens_offset + offs_size in
+    let total_token_bytes =
+      Array.fold_left (fun acc s -> acc + String.length s) 0 sorted_tokens in
+    let buf = Buffer.create (header_size + ids_size + offs_size + total_token_bytes) in
+    (* Header. *)
+    write_u32_le buf dict_magic;
+    write_u32_le buf layout_version;
+    write_u32_le buf n;
+    write_u32_le buf 0;  (* pad *)
+    write_u64_le buf ids_offset;
+    write_u64_le buf tokens_offset;
+    (* ids[] : since we sorted the global set, and assigned ids 0..n-1
+       in that sorted order (Hashtbl.add tok_to_id tok id with id =
+       sorted index), the binary-search invariant is "tokens[ids[i]] is
+       lexicographically ascending in i". With our id assignment that's
+       just ids[i] = i. *)
+    for i = 0 to n - 1 do write_u32_le buf i done;
+    (* token_offs[] *)
+    let cur_off = ref token_data_offset in
+    write_u64_le buf !cur_off;
+    for i = 0 to n - 1 do
+      cur_off := !cur_off + String.length sorted_tokens.(i);
+      write_u64_le buf !cur_off
+    done;
+    (* token_data *)
+    for i = 0 to n - 1 do
+      Buffer.add_string buf sorted_tokens.(i)
+    done;
+    atomic_write path (Buffer.contents buf)
+
+  (* Writer for one column's .presence file.
+     Layout:
+       [ magic u32 | version u32 | num_rgs u32 | num_tokens u32 ]
+       [ bitmap : ceil(num_rgs * num_tokens / 8) bytes, row-major,
+                  bit (rg*num_tokens + tok) ] *)
+  let write_presence_file (path : string)
+    (rg_count : pint)
+    (sorted_tokens : string array)
+    (tok_to_id : (string, pint) Hashtbl.t)
+    (per_rg : (pint, (string, unit) Hashtbl.t) Hashtbl.t) : unit =
+    let n = Array.length sorted_tokens in
+    let bits = rg_count * n in
+    let bytes = (bits + 7) / 8 in
+    let bitmap = Bytes.make bytes '\000' in
+    for rg = 0 to rg_count - 1 do
+      match Hashtbl.find_opt per_rg rg with
+      | None -> ()
+      | Some rg_set ->
+        Hashtbl.iter (fun tok () ->
+          match Hashtbl.find_opt tok_to_id tok with
+          | None -> ()
+          | Some tok_id ->
+            let bit_index = rg * n + tok_id in
+            let byte_index = bit_index / 8 in
+            let bit_in_byte = bit_index mod 8 in
+            let cur = Stdlib.Char.code (Bytes.unsafe_get bitmap byte_index) in
+            Bytes.unsafe_set bitmap byte_index
+              (Stdlib.Char.chr (cur lor (1 lsl bit_in_byte)))
+        ) rg_set
+    done;
+    let buf = Buffer.create (16 + bytes) in
+    write_u32_le buf presence_magic;
+    write_u32_le buf layout_version;
+    write_u32_le buf rg_count;
+    write_u32_le buf n;
+    Buffer.add_bytes buf bitmap;
+    atomic_write path (Buffer.contents buf)
+
+  let build_companion_pair (cottas_path : string) (col_idx : pint) : pint =
+    let dpath = dict_path     cottas_path col_idx in
+    let ppath = presence_path cottas_path col_idx in
+    Printf.eprintf "[vav3-trace] writer: building companion col=%d dict=%s presence=%s\n%!"
+      col_idx dpath ppath;
+    let t0 = Unix.gettimeofday () in
+    let (sorted, tok_to_id, per_rg, rg_count) = collect_distinct_per_rg cottas_path col_idx in
+    let t1 = Unix.gettimeofday () in
+    Printf.eprintf "[vav3-trace] writer col=%d collect_distinct: %.2fs (%d distinct, %d rgs)\n%!"
+      col_idx (t1 -. t0) (Array.length sorted) rg_count;
+    write_dict_file dpath sorted;
+    let t2 = Unix.gettimeofday () in
+    Printf.eprintf "[vav3-trace] wrote companion %s (Nbytes=%d) in %.2fs\n%!"
+      dpath (try (Unix.stat dpath).Unix.st_size with _ -> -1) (t2 -. t1);
+    write_presence_file ppath rg_count sorted tok_to_id per_rg;
+    let t3 = Unix.gettimeofday () in
+    Printf.eprintf "[vav3-trace] wrote companion %s (Nbytes=%d) in %.2fs\n%!"
+      ppath (try (Unix.stat ppath).Unix.st_size with _ -> -1) (t3 -. t2);
+    Array.length sorted
+end
+
+(* vav3: Cottas_companion_boot installed.
+   The orchestrator: open mmaps if companions exist + verify; else
+   build them via Cottas_companion_writer and then mmap. Then bulk-
+   populate the existing fast_tables Hashtbls + Yod6/Tet3 presence
+   maps from the mmap'd companions. Sub-second on parliament. *)
+module Cottas_companion_boot = struct
+  open Stdlib
+  type pint = Stdlib.Int.t
+
+  (* Check that all 4 .dict + 4 .presence companions exist for `cottas_path`
+     and verify their headers. Returns true iff every companion is loadable. *)
+  let companions_present_and_valid (cottas_path : string) : bool =
+    let all_ok = ref true in
+    for col_idx = 0 to 3 do
+      let dpath = Cottas_companion_writer.dict_path     cottas_path col_idx in
+      let ppath = Cottas_companion_writer.presence_path cottas_path col_idx in
+      if not (Sys.file_exists dpath && Sys.file_exists ppath) then begin
+        all_ok := false;
+        Printf.eprintf "[vav3-trace] companion absent for col=%d (dict=%s presence=%s)\n%!"
+          col_idx dpath ppath
+      end else begin
+        (* Verify headers via the F*-extracted readers. *)
+        let dh = RDF_CottasStore_OnDiskIndex.read_dict_header dpath in
+        let ph = RDF_CottasStore_OnDiskIndex.read_presence_header ppath in
+        match dh, ph with
+        | FStar_Pervasives_Native.Some dh', FStar_Pervasives_Native.Some ph' ->
+          if not (RDF_CottasStore_OnDiskIndex.dict_header_ok dh' &&
+                  RDF_CottasStore_OnDiskIndex.presence_header_ok ph') then begin
+            all_ok := false;
+            Printf.eprintf "[vav3-trace] companion header verify FAILED for col=%d\n%!" col_idx
+          end
+        | _ ->
+          all_ok := false;
+          Printf.eprintf "[vav3-trace] companion header read FAILED for col=%d\n%!" col_idx
+      end
+    done;
+    !all_ok
+
+  (* Build all 4 companion-pair files for `cottas_path`. One-time cost
+     (~110s on parliament); persists forever. *)
+  let build_all_companions (cottas_path : string) : unit =
+    Printf.eprintf "[vav3-trace] building all companions for %s\n%!" cottas_path;
+    let t0 = Unix.gettimeofday () in
+    for col_idx = 0 to 3 do
+      let _n = Cottas_companion_writer.build_companion_pair cottas_path col_idx in
+      ()
+    done;
+    let dt = Unix.gettimeofday () -. t0 in
+    Printf.eprintf "[vav3-trace] all 4 companion-pair files written in %.2fs\n%!" dt
+
+  (* Bulk-populate the Hashtbl-based fast_tables AND Yod6/Tet3 presence
+     maps from the mmap'd companions. Sub-second on parliament since the
+     mmap'd region is just a sequential walk.
+
+     We iterate dict tokens 0..num_tokens-1: each id maps to the raw
+     column-token via dict_decode_token. We also walk the presence
+     bitmap rg-by-rg: for each rg, scan the rg's bits to find set
+     positions and add those token strings to the rg_set Hashtbl.
+
+     This is the bulk-load shim: in a follow-on phase the _fast
+     functions will consult the mmap'd companions directly via
+     companion_encode/companion_decode/companion_rg_could_contain
+     (extracted from F-star), eliminating the Hashtbls entirely. *)
+  let bulk_load_column_into_tables
+    (cottas_path : string) (col_idx : pint)
+    (h : cottas_ondisk_handle)
+    (tables : Cottas_ondisk_runtime.fast_tables) : pint =
+    let dpath = Cottas_companion_writer.dict_path     cottas_path col_idx in
+    let ppath = Cottas_companion_writer.presence_path cottas_path col_idx in
+    let dh_opt = RDF_CottasStore_OnDiskIndex.read_dict_header dpath in
+    let ph_opt = RDF_CottasStore_OnDiskIndex.read_presence_header ppath in
+    match dh_opt, ph_opt with
+    | FStar_Pervasives_Native.Some dh, FStar_Pervasives_Native.Some ph ->
+      let n_tok = Z.to_int dh.RDF_CottasStore_OnDiskIndex.dh_num_tokens in
+      let n_rgs = Z.to_int ph.RDF_CottasStore_OnDiskIndex.ph_num_rgs in
+      Printf.eprintf "[vav3-trace] bulk-load col=%d num_tokens=%d num_rgs=%d\n%!"
+        col_idx n_tok n_rgs;
+      (* Step 1: walk the .dict to populate global tok_to_id + id_to_tok.
+         We use direct mmap reads (instead of dict_decode_token per id)
+         to amortise mmap-view-lookup cost. The F* spec is byte-identical;
+         this is a perf shim. *)
+      let _ = h in  (* h.coh_path used only for sanity; we use cottas_path explicitly *)
+      let _ = RDF_CottasStore_OnDiskIndex.Vav3_mmap.try_open_mmap dpath in
+      let dview_opt = Hashtbl.find_opt RDF_CottasStore_OnDiskIndex.Vav3_mmap.views dpath in
+      let read_token : pint -> string option = match dview_opt with
+        | None -> (fun _ -> None)
+        | Some dv ->
+          let mv_data = dv.RDF_CottasStore_OnDiskIndex.Vav3_mmap.mv_data in
+          let mv_size = dv.RDF_CottasStore_OnDiskIndex.Vav3_mmap.mv_size in
+          let tokens_offset_int = Z.to_int dh.RDF_CottasStore_OnDiskIndex.dh_tokens_offset in
+          (* Read u64 LE inline; assumes value fits in 63-bit int (yes: file
+             sizes are <500MB on parliament). *)
+          let read_u64 off =
+            if off + 8 > mv_size then None
+            else
+              let g i = Stdlib.Char.code (Bigarray.Array1.unsafe_get mv_data i) in
+              let b0 = g off in let b1 = g (off+1) in
+              let b2 = g (off+2) in let b3 = g (off+3) in
+              let b4 = g (off+4) in let b5 = g (off+5) in
+              let b6 = g (off+6) in let b7 = g (off+7) in
+              if b7 >= 0x80 then None
+              else
+                let lo = b0 lor (b1 lsl 8) lor (b2 lsl 16) lor (b3 lsl 24) in
+                let hi = b4 lor (b5 lsl 8) lor (b6 lsl 16) lor (b7 lsl 24) in
+                Some (lo lor (hi lsl 32)) in
+          (* Token start offset for token-id `id` at byte offset
+             tokens_offset + 8*id; end at tokens_offset + 8*(id+1). *)
+          (fun id ->
+            match read_u64 (tokens_offset_int + 8 * id) with
+            | None -> None
+            | Some token_start ->
+              match read_u64 (tokens_offset_int + 8 * (id + 1)) with
+              | None -> None
+              | Some token_end ->
+                if token_end < token_start then None
+                else
+                  let len = token_end - token_start in
+                  if token_start + len > mv_size then None
+                  else
+                    let buf = Stdlib.Bytes.create len in
+                    for i = 0 to len - 1 do
+                      Stdlib.Bytes.unsafe_set buf i
+                        (Bigarray.Array1.unsafe_get mv_data (token_start + i))
+                    done;
+                    Some (Stdlib.Bytes.unsafe_to_string buf)) in
+      (* Bulk-populate the raw token mappings (encode + id_to_tok). The
+         TYPED-term Hashtbls (ft_id_to_subject/predicate/object/graph)
+         are NOT populated here — typed parses happen lazily on first
+         decode_*_fast call. Predicates+graphs are tiny (232 + 1) so we
+         do parse them eagerly here for simplicity. *)
+      for id = 0 to n_tok - 1 do
+        match read_token id with
+        | None ->
+          Printf.eprintf "[vav3-WARN] bulk-load col=%d id=%d decode failed\n%!" col_idx id
+        | Some raw ->
+          (match col_idx with
+           | 0 ->
+             Hashtbl.replace tables.Cottas_ondisk_runtime.ft_subj_tok_to_id raw id;
+             Hashtbl.replace tables.Cottas_ondisk_runtime.ft_id_to_subj_tok id raw
+             (* Skip ft_id_to_subject; populated lazily by decode_subject_fast. *)
+           | 1 ->
+             Hashtbl.replace tables.Cottas_ondisk_runtime.ft_pred_tok_to_id raw id;
+             Hashtbl.replace tables.Cottas_ondisk_runtime.ft_id_to_pred_tok id raw;
+             (* Predicates are small (232); eager parse is fine. *)
+             (match Cottas_ondisk_runtime.parse_iri_token raw with
+              | Some iri ->
+                Hashtbl.replace tables.Cottas_ondisk_runtime.ft_id_to_predicate id (iri : RDF_Graph_Executable.wf_iri)
+              | None -> Printf.eprintf "[vav3-WARN] bulk-load: bad predicate id=%d raw=%s\n%!" id raw)
+           | 2 ->
+             Hashtbl.replace tables.Cottas_ondisk_runtime.ft_obj_tok_to_id raw id;
+             Hashtbl.replace tables.Cottas_ondisk_runtime.ft_id_to_obj_tok id raw
+             (* Skip ft_id_to_object; populated lazily by decode_object_fast. *)
+           | 3 ->
+             Hashtbl.replace tables.Cottas_ondisk_runtime.ft_graph_tok_to_id raw id;
+             Hashtbl.replace tables.Cottas_ondisk_runtime.ft_id_to_graph_tok id raw;
+             (match Cottas_ondisk_runtime.parse_iri_token raw with
+              | Some iri ->
+                Hashtbl.replace tables.Cottas_ondisk_runtime.ft_id_to_graph id (iri : RDF_Graph_Executable.iri)
+              | None ->
+                (* DEFAULT graph token doesn't parse to an IRI; skip silently. *)
+                if raw <> "DEFAULT" then
+                  Printf.eprintf "[vav3-WARN] bulk-load: bad graph id=%d raw=%s\n%!" id raw)
+           | _ -> ())
+      done;
+      (* Step 2: walk the .presence bitmap rg-by-rg to populate
+         Yod6/Tet3 presence maps. Sequential byte-walk over the
+         mmap'd bitmap region — one Hashtbl.add per set bit. The F*
+         spec `presence_test_bit` is byte-identical to this walk; we
+         skip the per-bit F* dispatch for boot speed. (Phase E swaps
+         the query path to read the bitmap directly via the F*-pure
+         primitive — this bulk-load is a transitional shim.) *)
+      let id_to_tok_table = match col_idx with
+        | 0 -> tables.Cottas_ondisk_runtime.ft_id_to_subj_tok
+        | 1 -> tables.Cottas_ondisk_runtime.ft_id_to_pred_tok
+        | 2 -> tables.Cottas_ondisk_runtime.ft_id_to_obj_tok
+        | 3 -> tables.Cottas_ondisk_runtime.ft_id_to_graph_tok
+        | _ -> Hashtbl.create 1 in
+      (* Pick the right presence table from Cottas_ondisk_lazy. *)
+      let target_presence_for_path : string -> (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t =
+        match col_idx with
+        | 0 -> Cottas_ondisk_lazy.subj_presence_for_path
+        | 1 -> Cottas_ondisk_lazy.presence_for_path
+        | 2 -> Cottas_ondisk_lazy.obj_presence_for_path
+        | _ -> (fun _ -> Hashtbl.create 0) in
+      let target_presence = target_presence_for_path cottas_path in
+      (* Direct mmap byte-walk. ph_num_tokens bits per rg, packed LSB-first.
+         Whole-byte zero-skip: when an entire byte is 0 it can't contain
+         any set bits, so we advance 8 bit-indices at once. Otherwise we
+         test each of the (up-to-)8 bits individually. *)
+      let _ = RDF_CottasStore_OnDiskIndex.Vav3_mmap.try_open_mmap ppath in
+      (match Hashtbl.find_opt RDF_CottasStore_OnDiskIndex.Vav3_mmap.views ppath with
+       | None ->
+         Printf.eprintf "[vav3-WARN] bulk-load col=%d: presence mmap not available\n%!" col_idx
+       | Some v ->
+         let bitmap_offset = 16 in  (* presence_header_size *)
+         let mv_data = v.RDF_CottasStore_OnDiskIndex.Vav3_mmap.mv_data in
+         for rg = 0 to n_rgs - 1 do
+           let rg_set : (string, unit) Hashtbl.t = Hashtbl.create 256 in
+           let base_bit = rg * n_tok in
+           let id = ref 0 in
+           while !id < n_tok do
+             let bit_index = base_bit + !id in
+             let byte_idx = bitmap_offset + bit_index / 8 in
+             let bit_in_byte = bit_index mod 8 in
+             let b = Stdlib.Char.code (Bigarray.Array1.unsafe_get mv_data byte_idx) in
+             if b = 0 then begin
+               (* Skip remaining bits in this byte (8 - bit_in_byte). *)
+               id := !id + (8 - bit_in_byte)
+             end else if (b lsr bit_in_byte) land 1 = 1 then begin
+               (match Hashtbl.find_opt id_to_tok_table !id with
+                | None -> ()
+                | Some raw ->
+                  if not (Hashtbl.mem rg_set raw) then Hashtbl.add rg_set raw ());
+               incr id
+             end else
+               incr id
+           done;
+           Hashtbl.replace target_presence rg rg_set
+         done);
+      n_tok
+    | _ ->
+      Printf.eprintf "[vav3-FATAL] bulk-load col=%d header read failed\n%!" col_idx;
+      0
+
+  let prewarm_via_companions (cottas_path : string)
+    (h : cottas_ondisk_handle) : unit =
+    let t0 = Unix.gettimeofday () in
+    let tables = Cottas_ondisk_runtime.tables_for h in
+    if not (companions_present_and_valid cottas_path) then begin
+      Printf.eprintf "[vav3-trace] companions absent or invalid; building (one-time cost)\n%!";
+      build_all_companions cottas_path
+    end else begin
+      Printf.eprintf "[vav3-trace] mmap'd companion files, skipping pre-warm\n%!"
+    end;
+    (* Bulk-load each column's tables from the (now-present) companions. *)
+    for col_idx = 0 to 3 do
+      let _ = bulk_load_column_into_tables cottas_path col_idx h tables in
+      ()
+    done;
+    (* Mark every column as loaded so the lazy populators (Bet7) skip. *)
+    Cottas_ondisk_lazy.mark_subj_loaded  cottas_path;
+    Cottas_ondisk_lazy.mark_pred_loaded  cottas_path;
+    Cottas_ondisk_lazy.mark_obj_loaded   cottas_path;
+    Cottas_ondisk_lazy.mark_graph_loaded cottas_path;
+    let dt = Unix.gettimeofday () -. t0 in
+    Printf.eprintf "[vav3-trace] prewarm_via_companions completed in %.2fs (subjs=%d preds=%d objs=%d graphs=%d)\n%!"
+      dt
+      (Hashtbl.length tables.Cottas_ondisk_runtime.ft_subj_tok_to_id)
+      (Hashtbl.length tables.Cottas_ondisk_runtime.ft_pred_tok_to_id)
+      (Hashtbl.length tables.Cottas_ondisk_runtime.ft_obj_tok_to_id)
+      (Hashtbl.length tables.Cottas_ondisk_runtime.ft_graph_tok_to_id)
+end
