@@ -67,7 +67,8 @@ not consulted; benchmarks in the report will reflect that.
 
 - Rule #15: writer is I/O glue only; the file format is documented here
   (and ideally as `OnDiskOffsetIdx` types in F\* later). No semantic logic.
-- Rule #11: do **not** run `./build-ocaml.sh extract`. Patch + dune.
+- Rule #11: do **not** run `./build-ocaml.sh extract`. Patch + `./build-ocaml.sh compile`
+  (this repo has no dune; compile is raw `ocamlfind ocamlopt`).
 - Time-box 3 h.
 
 ## Results (2026-04-26 evening)

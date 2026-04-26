@@ -70,7 +70,9 @@ Mirrors the existing 413 result-cap response shape.
 
 ## Smoke plan
 
-1. `dune build` (or `ocamlopt` per `build-ocaml.sh`) factoidal-http.
+1. `./build-ocaml.sh compile` (no dune in this repo; the script drives
+   `ocamlfind ocamlopt` directly to rebuild factoidal-http and the
+   sibling binaries).
 2. Start with `--query-timeout 5` against parliament corpus.
 3. `curl 'http://127.0.0.1:3030/query?query=SELECT+*+WHERE+{?s+?p+?o}'`
    → expect HTTP 504 in ~5s.

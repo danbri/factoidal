@@ -36,6 +36,8 @@ path. Het3's commit `b5396fc` already fixed the first offender
 
 ## Hard rules
 
-- No `build-ocaml.sh extract`. `dune build factoidal_http.exe` only.
+- No `build-ocaml.sh extract`. `./build-ocaml.sh compile` only (no dune;
+  the script invokes `ocamlfind ocamlopt` directly per
+  `formal/fstar/build-ocaml.sh`).
 - No push. Commit on `claude/main` locally; main thread pushes.
 - F\*-first: tail-rec rewrite goes in `.fst`, not OCaml patches.

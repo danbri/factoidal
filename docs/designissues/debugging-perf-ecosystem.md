@@ -16,8 +16,8 @@ The F\* sources in `formal/fstar/*.fst` are the source of truth. Each module can
 
 | Target | F\* command | Output artifact | Runs on | Today's status |
 |---|---|---|---|---|
-| **OCaml native** | `fstar.exe --codegen OCaml` | `.ml` files → `dune build *.exe` → Mach-O / ELF | macOS / Linux process | ✅ `bin/<platform>/factoidal-http`, this is what `:3032` runs |
-| **OCaml bytecode** | as above + `ocamlc -c` | `.cmo` / `.cma` → `ocamlrun` | OCaml bytecode VM | 🟡 not built today; `dune build *.bc` would produce it |
+| **OCaml native** | `fstar.exe --codegen OCaml` | `.ml` files → `ocamlfind ocamlopt -linkpkg` (per `formal/fstar/build-ocaml.sh`) → Mach-O / ELF | macOS / Linux process | ✅ `bin/<platform>/factoidal-http`, this is what `:3032` runs |
+| **OCaml bytecode** | as above + `ocamlfind ocamlc -linkpkg` | `.byte` standalone bytecode → `ocamlrun` | OCaml bytecode VM | 🟡 partially: `w3c_runner.byte` and `factoidal.byte` are built inside `./build-ocaml.sh js` as intermediates en route to `js_of_ocaml`. No standalone `factoidal_http.byte` today; adding it = a few more lines of `ocamlfind ocamlc` in `build-ocaml.sh compile`. |
 | **JavaScript** (`js_of_ocaml`) | as native, then `js_of_ocaml` | `factoidal.js` (~458 KB) | Browser, Node ≥ 20 | ✅ `docs/fstar-extracted/factoidal.js`; `kind=exe` (standalone CLI shape) |
 | **WebAssembly** (`wasm_of_ocaml`) | as native, then `wasm_of_ocaml` | `factoidal.wasm.js` shim + `*.wasm` | Browser (Chrome ≥ 110), Node ≥ 20 | ✅ `docs/fstar-extracted/factoidal.wasm.js` + assets |
 | **C** (KaRaMeL) | `fstar.exe --codegen C` then `kremlin` | `.c` / `.h` → `gcc` / `clang` | Bare metal, embedded, `cc -o`-anywhere | 🟡 blocked by `noeq` types in some modules; not building today |
@@ -187,19 +187,33 @@ The intersection: which tool, on which target, answers which question.
 
 ### 4.1 Why it's underused
 
-When the project converted from "vibe-coded OCaml" to "F\*-extracted OCaml," the build script (`formal/fstar/build-ocaml.sh`) only emits the `.exe` (native). No `.bc` (bytecode) target, so no `ocamldebug` substrate.
+When the project converted from "vibe-coded OCaml" to "F\*-extracted OCaml," the build script (`formal/fstar/build-ocaml.sh`) only emits native binaries from its `compile` step. The `js` step does build `w3c_runner.byte` and `factoidal.byte` as intermediates for `js_of_ocaml`, but nothing builds `factoidal_http.byte` today, so there's no `ocamldebug` substrate for the HTTP server.
 
 ### 4.2 What it would take
 
-A small build-script addition:
+A small build-script addition. The native `compile` step today runs:
 
 ```bash
-# Inside build-ocaml.sh, after the dune build .exe step:
-dune build factoidal_http.bc        # bytecode target
-dune build w3c_runner.bc            # likewise
+ocamlfind ocamlopt -g -thread \
+  -package fstar.lib,str,zarith,sha,digestif.c,unix,threads.posix \
+  -linkpkg -w -8-14-26 \
+  $COMMON_MODULES \
+  factoidal_http.ml factoidal_http_main.ml \
+  -o "$BINDIR/factoidal-http"
 ```
 
-The `dune` config already supports both — the `(modes (native exe) (byte exe))` stanza, or explicit `*.bc` targets. We just don't run them.
+Adding a bytecode target means a sibling invocation with `ocamlc` in place of `ocamlopt`:
+
+```bash
+ocamlfind ocamlc -g -thread \
+  -package fstar.lib,str,zarith,sha,digestif.c,unix,threads.posix \
+  -linkpkg -w -8-14-26 \
+  $COMMON_MODULES \
+  factoidal_http.ml factoidal_http_main.ml \
+  -o "$BINDIR/factoidal-http.byte"
+```
+
+(Same args modulo the compiler. There is no `dune-project` or `(modes …)` stanza to configure — the build is driven directly by `ocamlfind` invocations in `build-ocaml.sh`. Introducing dune is a separate, larger decision; it's not what's needed for this debugger gap.)
 
 ### 4.3 What it gives us
 
@@ -227,7 +241,7 @@ Bytecode is ~10× slower than native. So `ocamldebug` on a 30-minute extract isn
 
 ### 4.5 Action item (deferred)
 
-Add `dune build factoidal_http.bc` to `build-ocaml.sh`. Document a `make ocamldebug` target. ~30 min of work; high leverage when the next regression lands.
+Add an `ocamlfind ocamlc -linkpkg … -o factoidal_http.byte` invocation to the `compile` step of `build-ocaml.sh` (mirroring the existing `ocamlfind ocamlopt` line, swapping native for bytecode). Document a `make ocamldebug` target that runs `ocamldebug` against the resulting `.byte`. ~30 min of work; high leverage when the next regression lands.
 
 ---
 
@@ -345,7 +359,7 @@ When you have a specific question, this table picks the path.
 
 In rough priority order, none committed:
 
-1. **Emit `dune build factoidal_http.bc`** + document `make ocamldebug`. Highest leverage / lowest cost.
+1. **Emit `factoidal_http.byte` from the existing `build-ocaml.sh compile` step** (an `ocamlfind ocamlc -linkpkg` line alongside the existing `ocamlfind ocamlopt` one) + document `make ocamldebug`. Highest leverage / lowest cost.
 2. **Tools/factoidal-node-server.mjs** + `node --inspect` recipe. Unlocks server-side chrome devtools.
 3. **Differential W3C runner** (`make w3c-diff`) — run native + JS + WASM on the same suite, diff outputs. Catches extraction-fidelity bugs early.
 4. **Structured `[trace]` JSON-lines** in `factoidal_http.ml`. Pre-requisite for the introspection GUI.
