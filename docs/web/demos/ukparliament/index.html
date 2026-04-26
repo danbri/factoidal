@@ -3,23 +3,30 @@
 <title>factoidal — UK Parliament SPARQL demo</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-:root{color-scheme:light dark}
+/* Forced light mode (2026-04-26): on macOS desktop dark-mode the
+   web component's form controls and result panes were rendering
+   white-on-white / black-on-black. Until the component (and its
+   shadow DOM) ships a proper dark theme, lock everything to light.
+   `color-scheme: light` overrides the OS preference for both this
+   page AND form controls / scrollbars. */
+:root{color-scheme:light}
+html,body{background:#fff;color:#222}
 body{font:15px/1.45 system-ui,-apple-system,sans-serif;max-width:960px;margin:1.5em auto;padding:0 1em}
 h1{margin-bottom:.2em} p.lede{color:#666;margin-top:0}
 code{font-size:12px}
-factoidal-sparql-client{margin-top:1em;display:block}
+factoidal-sparql-client{margin-top:1em;display:block;color-scheme:light}
 footer{margin-top:2em;color:#888;font-size:12px}
 header.controls{display:flex;flex-wrap:wrap;gap:.6em;align-items:center;
   margin:1em 0;padding:.6em .8em;border:1px solid #ddd;border-radius:8px;
-  background:rgba(127,127,127,.06)}
+  background:rgba(127,127,127,.06);color:#222}
 header.controls label{display:flex;flex-direction:column;font-size:11px;
   color:#666;text-transform:uppercase;letter-spacing:.04em}
-header.controls select{font:inherit;padding:.25em .35em;min-width:14em}
+header.controls select{font:inherit;padding:.25em .35em;min-width:14em;
+  background:#fff;color:#222;border:1px solid #ccc}
+header.controls input[type=checkbox]{accent-color:#1f7a4d}
 .pill{display:inline-block;padding:.25em .7em;border-radius:999px;
   background:#1f7a4d;color:#fff;font-size:13px;font-weight:500;white-space:nowrap}
 .pill.warn{background:#a85a00}.pill.err{background:#933}.pill.unknown{background:#666}
-@media (prefers-color-scheme:dark){p.lede,footer{color:#aaa}
-  header.controls{border-color:#444} header.controls label{color:#aaa}}
 </style></head><body>
 <h1>UK Parliament SPARQL demo</h1>
 <p class="lede">A console over the vendored UK Parliament
