@@ -2883,8 +2883,11 @@ let rec prefix_sums (lengths : Prims.nat Prims.list) (running : Prims.nat)
   match lengths with
   | [] -> FStar_List_Tot_Base.rev acc
   | hd::tl -> prefix_sums tl (running + hd) (running :: acc)
-let rec sum_nat_list (xs : Prims.nat Prims.list) : Prims.nat=
-  match xs with | [] -> Prims.int_zero | hd::tl -> hd + (sum_nat_list tl)
+let rec sum_nat_list_aux (xs : Prims.nat Prims.list) (acc : Prims.nat) :
+  Prims.nat=
+  match xs with | [] -> acc | hd::tl -> sum_nat_list_aux tl (acc + hd)
+let sum_nat_list (xs : Prims.nat Prims.list) : Prims.nat=
+  sum_nat_list_aux xs Prims.int_zero
 let probe_parquet_column_delta_length_byte_array_page_cache
   (path : Prims.string) (col_index : Prims.nat) :
   dlba_page_cache FStar_Pervasives_Native.option=
@@ -3994,3 +3997,18 @@ let probe_parquet_column_decode_all_row_groups (path : Prims.string)
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some acc_rev ->
            FStar_Pervasives_Native.Some (list_rev acc_rev))
+let probe_parquet_column_dictionary_in_row_group (path : Prims.string)
+  (rg_index : Prims.nat) (col_index : Prims.nat) :
+  Prims.string Prims.list FStar_Pervasives_Native.option=
+  match probe_parquet_column_dictionary_page_offset_in_row_group path
+          rg_index col_index
+  with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some dict_offset ->
+      (match parquet_decompressed_page_at path dict_offset with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some dict_payload_hex ->
+           (match parquet_dictionary_page_num_values_at path dict_offset with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some dict_num_values ->
+                decode_plain_dictionary dict_payload_hex dict_num_values))

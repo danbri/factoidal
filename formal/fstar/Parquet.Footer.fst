@@ -1634,10 +1634,21 @@ let rec prefix_sums (lengths:list nat) (running:nat) (acc:list nat)
 // Compute the total of a list of nats (zero-cost over the prefix sum, but
 // we do it once at the end of the page-cache build to size the value-data
 // region).
-let rec sum_nat_list (xs:list nat) : Tot nat (decreases xs) =
+//
+// Issue #102 / Pe4 diagnosis (2026-04-25): the obvious
+//   `match ... | hd :: tl -> hd + sum_nat_list tl`
+// form is NOT tail-recursive; OCaml's Z.add wraps each recursive call in
+// a stack frame. The cohttp accept-loop worker thread on macOS gets a
+// 544 KB pthread stack, and the per-row-group lengths list at parliament
+// scale is ~120 k entries — ~120 k frames × ~128 B = ~15 MB → SIGBUS, no
+// exception trail. Rewrite as an explicit accumulator so the tail call
+// extracts cleanly.
+let rec sum_nat_list_aux (xs:list nat) (acc:nat) : Tot nat (decreases xs) =
   match xs with
-  | [] -> 0
-  | hd :: tl -> hd + sum_nat_list tl
+  | [] -> acc
+  | hd :: tl -> sum_nat_list_aux tl (acc + hd)
+
+let sum_nat_list (xs:list nat) : Tot nat = sum_nat_list_aux xs 0
 
 // One-shot DELTA_LENGTH_BYTE_ARRAY page cache builder. Given a path + column
 // index, decompress the page once, parse the four varints + bit_width, decode
