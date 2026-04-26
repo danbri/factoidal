@@ -544,14 +544,58 @@ type cottas_ondisk_loaded = {
   cod_store : RDF_CottasStore.cottas_ondisk_store;
 }
 
+(* Pre-warm all four lazy-populated dictionaries on the COTTAS handle.
+
+   Bet7's commit 7ecf720 shrank cottas_ondisk_open to ~0.023s by deferring
+   the per-column dictionary populate (subjects, predicates, objects,
+   graphs) until the FIRST query that needs each column. That helps the
+   open() latency, but the demo's first user-visible query then pays:
+
+     - first predicate-bound query: ~14s   (ensure_predicates_loaded)
+     - first subject-decoding query: ~30s  (ensure_subjects_loaded)
+     - first object-decoding query: ~30s   (ensure_objects_loaded)
+     - first graph-decoding query: ms..s   (ensure_graphs_loaded)
+
+   For interactive demos we'd rather pay the populate cost up-front
+   during daemon boot (the runner waits once) and have every user
+   query be warm. So immediately after each successful
+   cottas_ondisk_open, walk all four ensure_*_loaded helpers.
+
+   The four helpers are idempotent + per-path; calling them again from
+   the *_fast lookup paths is a hashtbl-mem hit and a no-op. Issue #100,
+   followup to 7ecf720. *)
+let prewarm_cottas_columns (path : string) (store : RDF_CottasStore.cottas_ondisk_store)
+    : unit =
+  let t0 = Unix.gettimeofday () in
+  let h = store.RDF_CottasStore.cods_handle in
+  let tables = RDF_CottasStore.Cottas_ondisk_runtime.tables_for h in
+  RDF_CottasStore.Cottas_ondisk_runtime.ensure_predicates_loaded h tables;
+  RDF_CottasStore.Cottas_ondisk_runtime.ensure_subjects_loaded   h tables;
+  RDF_CottasStore.Cottas_ondisk_runtime.ensure_objects_loaded    h tables;
+  RDF_CottasStore.Cottas_ondisk_runtime.ensure_graphs_loaded     h tables;
+  let dt = Unix.gettimeofday () -. t0 in
+  Printf.eprintf "[mim3-trace] pre-warmed %s in %.2fs\n%!" path dt
+
 (* Open all --data-cottas files as on-disk stores. Errors from individual
    files are logged + skipped (mirrors load_cottas_part: don't kill the
-   loader thread). Runs on the worker thread once the listener is bound. *)
+   loader thread). Runs on the worker thread once the listener is bound.
+
+   After each successful open, immediately pre-warm all four lazy
+   dictionaries (subjects, predicates, objects, graphs) so the first
+   user-visible query doesn't pay the cold-start tax. See
+   [prewarm_cottas_columns] above. *)
 let open_cottas_ondisk_files (paths : string list) : cottas_ondisk_loaded list =
   List.filter_map (fun path ->
     try
       match RDF_CottasStore.cottas_ondisk_open path with
       | FStar_Pervasives_Native.Some store ->
+        (* Pre-warm before returning. Failures here shouldn't kill the
+           open — log and continue; the lazy populators will run on first
+           query as a fallback. *)
+        (try prewarm_cottas_columns path store
+         with e ->
+           Printf.eprintf "[mim3-trace] pre-warm of %s failed: %s (lazy fallback)\n%!"
+             path (Printexc.to_string e));
         Some { cod_path = path; cod_store = store }
       | FStar_Pervasives_Native.None ->
         Printf.eprintf "Error: cottas_ondisk_open returned None for %s\n%!" path;
