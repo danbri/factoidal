@@ -380,6 +380,8 @@ type config = {
   mutable output_format : output_format;
   mutable dump_mode : bool;
   mutable count_mode : bool;
+  mutable explain_mode : bool;     (* --explain: parse + plan + estimate, no execution *)
+  mutable explain_out : string option;  (* --explain-out=PATH for JSON sidecar *)
   mutable help_mode : bool;
   mutable version_mode : bool;
   mutable entail_regime : string;  (* "" (none), "RDFS", or "OWL-RL" *)
@@ -436,6 +438,12 @@ let usage () =
   Printf.printf "                         Case-insensitive. All closures are F*-extracted.\n";
   Printf.printf "  --dump                 Parse RDF and dump as N-Triples\n";
   Printf.printf "  --count                Parse RDF and count triples\n";
+  Printf.printf "  --explain '<SPARQL>'   Plan dump without executing.\n";
+  Printf.printf "                         Reports algebra tree, per-triple-pattern\n";
+  Printf.printf "                         estimate, and join order. Requires\n";
+  Printf.printf "                         --data-cottas FILE.\n";
+  Printf.printf "  --explain-only         Enable explain on -e / --query input.\n";
+  Printf.printf "  --explain-out PATH     Write JSON explain to PATH.\n";
   Printf.printf "  --version              Show version\n";
   Printf.printf "  --help                 This help\n";
   Printf.printf "\n";
@@ -462,6 +470,7 @@ let parse_args ?args () =
     data_files = []; data_cottas_files = []; named_graphs = []; query_file = None;
     query_string = None; base_iri = None; input_format = None;
     output_format = Table; dump_mode = false; count_mode = false;
+    explain_mode = false; explain_out = None;
     help_mode = false; version_mode = false;
     entail_regime = "";
   } in
@@ -507,6 +516,20 @@ let parse_args ?args () =
          exit 1)
     | "--dump" :: rest -> cfg.dump_mode <- true; loop rest
     | "--count" :: rest -> cfg.count_mode <- true; loop rest
+    | "--explain" :: q :: rest ->
+      (* `--explain SPARQL` is the new "plan dump without execution" mode.
+         The argument is the SPARQL query text (or use --query-file with
+         --explain-only).  See factoidal_explain.ml. *)
+      cfg.explain_mode <- true;
+      cfg.query_string <- Some q;
+      loop rest
+    | "--explain-only" :: rest ->
+      (* Variant: enable explain mode but expect --query / -e to provide
+         the query text.  Useful when the query is in a file. *)
+      cfg.explain_mode <- true;
+      loop rest
+    | "--explain-out" :: f :: rest ->
+      cfg.explain_out <- Some f; loop rest
     | arg :: rest ->
       if String.length arg > 0 && arg.[0] = '-' then begin
         Printf.eprintf "Error: unknown option '%s' (try --help)\n" arg; exit 1
@@ -811,6 +834,41 @@ let () =
       concat_preserve_order
         (ds.ds_default :: List.map (fun ng -> ng.ng_graph) named)
   in
+
+  (* Explain mode: parse + algebra + per-triple-pattern cardinality estimates.
+     Does NOT execute the BGP walk. See factoidal_explain.ml + scratch
+     docs/designissues/2026-04-26-pe5-explain-mode.md.
+
+     Requires at least one --data-cottas FILE (the explain logic queries
+     the on-disk dictionaries to determine bound dictionary hits/misses
+     + estimate). The query text comes from -e, --explain "...", or
+     --query FILE with --explain-only. *)
+  if cfg.explain_mode then begin
+    let query_text = match cfg.query_string, cfg.query_file with
+      | Some q, _ -> q
+      | None, Some f -> read_file f
+      | None, None ->
+        Printf.eprintf "Error: --explain requires SPARQL via --explain '<query>', -e '<query>', or --query FILE.\n";
+        exit 1
+    in
+    if cfg.data_cottas_files = [] then begin
+      Printf.eprintf "Error: --explain requires at least one --data-cottas FILE.\n";
+      Printf.eprintf "       (Plan dump only makes sense against an on-disk store today.)\n";
+      exit 1
+    end;
+    let json_out = match cfg.explain_out with
+      | None -> None
+      | Some path -> Some (open_out path)
+    in
+    let rc = Factoidal_explain.explain_query
+      ~query_text
+      ~cottas_paths:cfg.data_cottas_files
+      ~json_out
+      ()
+    in
+    (match json_out with Some c -> close_out c | None -> ());
+    exit rc
+  end;
 
   (* Dump mode: parse and emit N-Triples *)
   if cfg.dump_mode then begin

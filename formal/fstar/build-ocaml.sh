@@ -289,6 +289,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     $PARQUET_NATIVE_STUBS \
     factoidal_http.ml \
     factoidal_serve.ml \
+    factoidal_explain.ml \
     factoidal_cli.ml \
     -o "$BINDIR/factoidal"
   cat _ocamlopt_factoidal.log

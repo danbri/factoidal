@@ -47,3 +47,63 @@ join ordering in OCaml (we just *report* it).
 DO NOT FIX THE REGRESSION — surface diagnosis, then user/main thread decides.
 
 Time-box: 2 hours wall-clock.
+
+## Outcome (2026-04-26)
+
+**Implemented.** New CLI flag `--explain '<SPARQL>' --data-cottas <path>`
+in `factoidal_cli.ml` + new module `factoidal_explain.ml`. Total 4.5s on
+parliament corpus including ~4.2s pre-warm; the explain logic itself is
+<20ms. JSON sidecar via `--explain-out PATH`.
+
+Q03 explain output reveals the smoking gun:
+
+```
+[T2] ?o rdf:type geo:wktLiteral
+    s: ?o (free)
+    p: rdf:type [hit]
+    o: geo:wktLiteral [hit]                  <- IS in dict (just not as rdf:type target)
+    bound built: true
+    predicate-presence: true
+    estimate: 120900 row(s)                  <- Mem5 over-estimate
+
+Optimiser order: T2(est=120900) T1(est=3143406)   <- Picks T2 first (correct)
+```
+
+The optimiser DOES correctly route T2 first. The real regression isn't
+join order — it's that T2's *execution* via `cottas_ondisk_search` falls
+into the same slow `estimate_fast_via_offsets` data-page walk path
+(when bound_p AND bound_o, walks columns of every candidate row group).
+Finding zero matches still costs the full walk → 30s timeout.
+
+## Implementation notes
+
+- `explain_query` calls `cottas_ondisk_open` + `prewarm_via_companions`
+  (4.2s on parliament; Vav3 mmap'd companions).
+- Parsed query → algebra dump → per-pattern explain rows.
+- Per pattern: `cottas_ondisk_encode_*` (fast hashtable) to determine
+  hit/miss, then `cottas_estimate_quick` which **bypasses the slow
+  lamed3 data-page walk** by calling `Cottas_ondisk_runtime.estimate_fast_inner`
+  (Mem5's bitmap-only path) directly when bound_p + (bound_s OR bound_o).
+  Other shapes use the public `cottas_ondisk_estimate` (footer-only or
+  lamed3 fast count path).
+- Join order replicates `choose_best_tp_backend` in OCaml using our
+  pre-computed estimates rather than re-calling F* (which would re-trigger
+  the slow path).
+
+## Pre-existing nun3 syntax errors
+
+The uncommitted state of `formal/fstar/ocaml-output/RDF_CottasStore.ml`
+contained ~720 lines of nun3-experiment code (Cottas_row_ids module)
+with two compile-blocking bugs:
+
+1. Line 1670: `(cbqp_*)` inside an OCaml comment — `*)` closes the
+   comment, the rest of the file became code → "Syntax error: 'end'
+   expected".
+2. Line 1711: `(b_s b_p b_o b_g : pint)` — invalid OCaml binder syntax,
+   should be `(b_s : pint) (b_p : pint) ...`.
+
+To make `build-ocaml.sh compile` succeed I reverted that file via
+`git checkout --` to the committed snapshot at c5146ec. The nun3 code
+was preserved in `/tmp/RDF_CottasStore_nun3.ml.bak` (a previous-agent
+experiment that was never committed). Anyone wanting to revive it
+needs to fix the two bugs above first.
