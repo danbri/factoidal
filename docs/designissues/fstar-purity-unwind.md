@@ -177,6 +177,38 @@ Phase 2.4 deferred until 2.5/2.6/2.7 land. Audit:
 
 **Goal:** the per-rg presence bitmaps and offset indexes are consulted by F\* code, not OCaml shims.
 
+**Progress (2026-04-26 ~24:00Z):**
+
+- **Tet3 (#5)**: F\* module `RDF.CottasStore.PresenceBitmap.fst` exists (Psi3,
+  commit `29e91eb`, ~257 LoC, lemma proven). All three Tet3 prune call
+  sites are F\*-routed via the `Tet3_fstar_redirect` helper:
+    - `estimate_fast_inner` — commit `c99dc31` (smoke: `via_fstar=78 via_hashtbl=0`).
+    - `search_fast_inner` — commit `ce922d7`.
+    - `search_fast_limited` — commit `0bf57f3`.
+  Tet3's local Hashtbls remain populated as a fallback when
+  `.presence` companion files are absent. Retiring those Hashtbls
+  (deleting `cottas_ondisk_zzzz_tet3_subj_obj_prune.sh`) is the next
+  step but requires checking that no-companion corpora still work.
+- **Lamed3 (#6)**: reader half retirement IN FLIGHT (Yod7 audit
+  `435637f`/`e053665` recommended option (a)). Source edits applied
+  to main worktree: lamed3 patch trimmed to writer-only (609 → 342
+  lines), q03 bypass `cottas_ondisk_zzzzzzzzz_q03_estimate_fix.sh`
+  deleted. Build cycle running. Acceptance: writer still produces
+  `.p.offsets` companion file; reader dispatchers and `*_via_offsets`
+  bodies gone; smoke confirms no `[lamed3-trace] served from offset
+  index` lines fire.
+- **Yod6 (#3)**: predicate-presence prune still on local Hashtbls.
+  Same redirect pattern as Tet3 will apply (PresenceBitmap module
+  already supports per-column lookup; just needs analogous
+  `Yod6_fstar_redirect` helper if the F\* module's API serves the
+  predicate-only case, or a small extension).
+- **Compound `(p,o)` bitmap (issue #104)**: design doc `8f586c7`
+  (nun4) — sparse-roaring storage, F\* module
+  `RDF.CottasStore.CompoundPresenceBitmap.fst` mirrors Psi3 shape.
+  Writer can develop in parallel (rule-#11(b) companion-file
+  writer); reader integration must wait until Tet3 single-bitmap
+  retirement completes and the dispatch path is settled.
+
 **Live diagnostic (2026-04-26, Q03 daemon trace):** The drift cost is
 not theoretical — Q03 (`?o a geo:wktLiteral`, zero matching triples)
 takes 4.2s on the live demo because Tet3's per-column bitmap returns
