@@ -865,13 +865,34 @@ let rec json_rows_body
     then piece ^ json_rows_body rest false
     else "," ^ piece ^ json_rows_body rest false
 
+// tav5 (2026-04-26): tail-rec accumulator variant for the unbounded
+// row-list walk. The original [json_rows_body] is non-tail-rec (`piece ^
+// json_rows_body rest`); on a 3M-row dataset that overflows the macOS
+// pthread default 544 KB stack and SIGBUSes the daemon. We keep the
+// original spec for in-module tests / readability and call the _acc
+// version from [serialise_response_json]. List.Tot.rev is tail-rec
+// (rev_acc); String.concat extracts to BatString.concat which is
+// Buffer-based (also tail-rec safe).
+let rec json_rows_body_acc
+    (rows : list binding_row)
+    (first : bool)
+    (acc : list string)
+  : Tot (list string) (decreases (List.Tot.length rows)) =
+  match rows with
+  | [] -> acc
+  | r :: rest ->
+    let piece = json_row r in
+    let chunk = if first then piece else "," ^ piece in
+    json_rows_body_acc rest false (chunk :: acc)
+
 let serialise_response_json
     (vars : list string)
     (rows : list binding_row)
   : string =
+  let body_pieces = List.Tot.rev (json_rows_body_acc rows true []) in
   "{\"head\":{\"vars\":[" ^ json_var_list vars ^ "]},"
     ^ "\"results\":{\"bindings\":["
-    ^ json_rows_body rows true
+    ^ String.concat "" body_pieces
     ^ "]}}"
 
 // ASK: {"head":{},"boolean":true|false}
@@ -936,14 +957,26 @@ let rec xml_rows_body (rows : list binding_row)
   | r :: rest ->
     xml_row r ^ xml_rows_body rest
 
+// tav5 (2026-04-26): tail-rec accumulator variant. See note on
+// [json_rows_body_acc] above.
+let rec xml_rows_body_acc
+    (rows : list binding_row)
+    (acc : list string)
+  : Tot (list string) (decreases (List.Tot.length rows)) =
+  match rows with
+  | [] -> acc
+  | r :: rest ->
+    xml_rows_body_acc rest (xml_row r :: acc)
+
 let serialise_response_xml
     (vars : list string)
     (rows : list binding_row)
   : string =
+  let body_pieces = List.Tot.rev (xml_rows_body_acc rows []) in
   "<?xml version=\"1.0\"?>\n"
     ^ "<sparql xmlns=\"http://www.w3.org/2005/sparql-results#\">"
     ^ "<head>" ^ xml_head_vars_body vars ^ "</head>"
-    ^ "<results>" ^ xml_rows_body rows ^ "</results>"
+    ^ "<results>" ^ String.concat "" body_pieces ^ "</results>"
     ^ "</sparql>"
 
 let serialise_response_boolean_xml (b : bool) : string =
@@ -1002,11 +1035,25 @@ let rec csv_rows_body
   | r :: rest ->
     csv_row_body vars r true ^ "\r\n" ^ csv_rows_body vars rest
 
+// tav5 (2026-04-26): tail-rec accumulator variant. See note on
+// [json_rows_body_acc] above.
+let rec csv_rows_body_acc
+    (vars : list string)
+    (rows : list binding_row)
+    (acc : list string)
+  : Tot (list string) (decreases (List.Tot.length rows)) =
+  match rows with
+  | [] -> acc
+  | r :: rest ->
+    let line = csv_row_body vars r true ^ "\r\n" in
+    csv_rows_body_acc vars rest (line :: acc)
+
 let serialise_response_csv
     (vars : list string)
     (rows : list binding_row)
   : string =
-  csv_header_body vars true ^ "\r\n" ^ csv_rows_body vars rows
+  let body_pieces = List.Tot.rev (csv_rows_body_acc vars rows []) in
+  csv_header_body vars true ^ "\r\n" ^ String.concat "" body_pieces
 
 // TSV: header keeps the ? prefix; cells use N-Triples-style syntax.
 let tsv_term (t : rdf_term) : string =
@@ -1062,11 +1109,25 @@ let rec tsv_rows_body
   | r :: rest ->
     tsv_row_body vars r true ^ "\n" ^ tsv_rows_body vars rest
 
+// tav5 (2026-04-26): tail-rec accumulator variant. See note on
+// [json_rows_body_acc] above.
+let rec tsv_rows_body_acc
+    (vars : list string)
+    (rows : list binding_row)
+    (acc : list string)
+  : Tot (list string) (decreases (List.Tot.length rows)) =
+  match rows with
+  | [] -> acc
+  | r :: rest ->
+    let line = tsv_row_body vars r true ^ "\n" in
+    tsv_rows_body_acc vars rest (line :: acc)
+
 let serialise_response_tsv
     (vars : list string)
     (rows : list binding_row)
   : string =
-  tsv_header_body vars true ^ "\n" ^ tsv_rows_body vars rows
+  let body_pieces = List.Tot.rev (tsv_rows_body_acc vars rows []) in
+  tsv_header_body vars true ^ "\n" ^ String.concat "" body_pieces
 
 
 (** ====================================================================== **)

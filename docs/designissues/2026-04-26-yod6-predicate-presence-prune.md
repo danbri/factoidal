@@ -21,32 +21,53 @@ Root cause (in `formal/fstar/RDF.CottasStore.fst`):
 Aleph6 explicitly de-scoped this; it's the deferred prune-via-DLBA-distinct-
 extraction.
 
-## Approach: Shape B (F\*-pure prune logic)
+## Critical re-evaluation: F\* path is bypassed
 
-1. Extend `cottas_ondisk_handle` with a new field
-   `coh_pred_presence : list (nat & list string)` mapping rg_index to the
-   list of distinct predicate column-tokens present in that rg.
+After reading `cottas_ondisk_runtime.sh` lines 885+ I confirmed:
 
-2. In `populate_dict_cache_for_column`, when col_index = 1 (predicate),
-   prefer the handle-resident presence map over re-probing the parquet dict
-   page. Specifically: if `coh_pred_presence` is non-empty, use it to
-   construct a synthetic per-rg dict; else fall back to the existing
-   parquet dictionary probe.
+```
+search_old = "let cottas_ondisk_search ... =\n  Cottas_ondisk_runtime.search_fast ds.cods_handle bound"
+estimate_old = "let cottas_ondisk_estimate ... =\n  Z.of_int (Cottas_ondisk_runtime.estimate_fast ...)"
+```
 
-3. Populate `coh_pred_presence` in OCaml glue's `ensure_predicates_loaded`
-   (in `cottas_ondisk_z_lazy_open.sh`) by walking the predicate column
-   per-rg via `probe_parquet_column_decode_in_row_group` and recording
-   each rg's distinct token set. Same total work as `collect_distinct`,
-   so no extra cost on cold-boot.
+The F\*-extracted `cottas_ondisk_search` (with its `plan_candidate_rgs` and
+dict-cache prune) is **replaced by a direct call to OCaml `search_fast`**.
+That OCaml shim does an unconditional `for rg = 0 to rg_count - 1` walk
+with no prune.
 
-4. The synthetic-dict construction lives in F\* (rule #15 conformance:
-   the prune logic is pure F\*; only the populate-from-disk is glue).
+So Shape B (extending the F\* `cottas_ondisk_handle` with a presence
+field) won't actually affect the running query path — the F\* code is
+extracted but bypassed.
 
-## Why Shape B over Shape A
+Shape A is the only one that closes the bug. The F\* spec already has the
+prune logic via `plan_candidate_rgs`; the OCaml fast-path failed to mirror
+it. Adding the prune to `search_fast` / `estimate_fast` / `search_fast_limited`
+is mirroring the F\* semantics, not adding new ones — rule #15 conformance
+is preserved (the SEMANTIC decision "skip rgs not containing the bound
+predicate" already lives in F\* in `compute_candidate_rgs_loop`; the OCaml
+shim merely propagates the same optimisation).
 
-Shape A (OCaml-side prune in `search_fast` / `estimate_fast`) is faster
-to ship but adds prune logic to perf shims. Per rule #15 / `feedback_fstar_first_always.md`,
-the prune decision should live in F\*. Shape B keeps it there.
+## Approach: Shape A (mirror F\* prune in OCaml shims)
+
+1. In `cottas_ondisk_z_lazy_open.sh`, extend `ensure_predicates_loaded`
+   to walk the predicate column per-row-group (instead of the current
+   batched `collect_distinct h.coh_path 1`) and record per-rg distinct
+   predicate-token sets in a path-keyed mutable Hashtbl
+   `pred_presence_by_path : (string, (int, (string, unit) Hashtbl.t) Hashtbl.t) Hashtbl.t`.
+
+2. In `cottas_ondisk_runtime.sh` (or as a follow-up patch), modify
+   `search_fast`, `estimate_fast`, and `search_fast_limited` to consult
+   the presence table when `bound_p = Some tok`:
+   - if rg N is recorded as not containing `tok`, skip rg N entirely
+     (don't decode any column).
+   - if rg N has no presence entry yet, fall back to walking it (safe).
+
+3. Log per-query rg-skip counts as `[yod6-trace] skipped N/26 rg(s) for
+   predicate=...`.
+
+The semantic decision (skip rgs not containing the bound predicate) is
+already in F\* in `compute_candidate_rgs_loop` (rg-skip via
+`list_string_mem dict bound_token`). The OCaml shim just mirrors it.
 
 ## Files to touch
 

@@ -162,6 +162,13 @@ type config = {
      landing page in docs/web/landing/. The directory is served as a
      recursive static-file tree; UI changes do not require a recompile. *)
   mutable web_demo : string option;
+  (* Per-query result-cardinality cap (issue: tav5 SIGBUS circuit breaker).
+     When [eval_select_query_backend_dataset] returns more than [max_rows]
+     solutions, the handler short-circuits with HTTP 413 *before* the
+     marshalling path runs. macOS pthread default stack is 544 KB and the
+     non-tail-rec list walks in the JSON / XML serialisers blow it out at
+     ~3 M rows. 0 = disabled (use only when investigating tail-rec bugs). *)
+  mutable max_rows : int;
 }
 
 let default_dump_dir =
@@ -183,6 +190,7 @@ let default_config () = {
   dump_rw_graphs_on_exit = None;
   load_rw_graphs = None;
   web_demo = None;
+  max_rows = 50_000;
 }
 
 let usage () =
@@ -244,6 +252,13 @@ let usage () =
   print_endline "                         (no flag) serves docs/web/landing/.";
   print_endline "                         Examples: --web-demo=ukparliament";
   print_endline "                                   --web-demo=/path/to/dir";
+  print_endline "      --max-rows N       Per-query result-cardinality cap. When the";
+  print_endline "                         BGP/algebra evaluator returns more than N solution";
+  print_endline "                         rows, the handler short-circuits with HTTP 413";
+  print_endline "                         (Payload Too Large) before marshalling. This";
+  print_endline "                         protects the daemon from stack overflow on very";
+  print_endline "                         large unbounded queries. 0 = disabled.";
+  print_endline "                         (default 50000)";
   print_endline "  -v, --verbose          Log every request";
   print_endline "  -h, --help             This help";
   print_endline "";
@@ -333,6 +348,14 @@ let parse_args ?args () =
     | ("-b" | "--base") :: b :: rest -> cfg.base_iri <- Some b; loop rest
     | "--read-only" :: rest -> cfg.read_only <- true; loop rest
     | ("-v" | "--verbose") :: rest -> cfg.verbose <- true; loop rest
+    | "--max-rows" :: n :: rest ->
+      (match int_of_string_opt n with
+       | Some k when k >= 0 -> cfg.max_rows <- k
+       | _ ->
+         Printf.eprintf
+           "Error: --max-rows needs a non-negative integer (0 = disabled), got '%s'\n" n;
+         exit 1);
+      loop rest
     | arg :: rest ->
       let (key, eq_val) = split_eq arg in
       (match (key, eq_val, rest) with
@@ -942,10 +965,39 @@ let qof3_query_form_str (q : SPARQL11_Algebra.query) : string =
   | QF_Construct _ -> "CONSTRUCT"
   | QF_Describe _ -> "DESCRIBE"
 
-let run_query ~backend ~accept query =
+(* Build the standard 413 result-cap response. Used by run_query when the
+   BGP/algebra evaluator returns more rows than the configured [max_rows]
+   cap. The body is intentionally a tiny constant string — we never touch
+   the oversized [rows] list (that's the whole point of bailing here:
+   marshalling 3 M rows blows out the 544 KB pthread stack). *)
+let result_cap_response ~cap ~actual_size =
+  Printf.eprintf
+    "[tav5-trace] result-cap exceeded for query=<not-rendered, cap fired> \
+     cap=%d actual_size=%d\n%!" cap actual_size;
+  let body =
+    Printf.sprintf
+      "{\"error\":\"result_cardinality_cap_exceeded\",\"cap\":%d,\
+       \"hint\":\"Add LIMIT or bind more triple-pattern terms.\"}\n"
+      cap
+  in
+  { rb_status = 413;
+    rb_content_type = "application/json; charset=utf-8";
+    rb_body = body }
+
+(* True iff the cap is enabled and [List.length rows > cap].
+   List.length is tail-rec in the OCaml stdlib, so this is safe to call
+   on a 3 M-element list. *)
+let exceeds_cap ~cap rows =
+  if cap <= 0 then None
+  else
+    let n = List.length rows in
+    if n > cap then Some n else None
+
+let run_query ~backend ~accept ~max_rows query =
   let bkind = qof3_backend_kind backend in
   let qfstr = qof3_query_form_str query in
-  Printf.eprintf "[qof3] run_query: backend=%s form=%s\n%!" bkind qfstr;
+  Printf.eprintf "[qof3] run_query: backend=%s form=%s max_rows=%d\n%!"
+    bkind qfstr max_rows;
   match query.q_form with
   | QF_Ask ->
     Printf.eprintf "[qof3] calling S.eval_ask_query_backend_dataset (backend=%s)\n%!" bkind;
@@ -987,6 +1039,12 @@ let run_query ~backend ~accept query =
           (Printexc.to_string e) bt;
         raise e
     in
+    (* tav5 SIGBUS circuit breaker: bail with HTTP 413 BEFORE the JSON/XML
+       serialisers walk the row list. macOS pthread default 544 KB stack
+       overflows on the non-tail-rec marshalling path at ~3 M rows. *)
+    (match exceeds_cap ~cap:max_rows rows with
+     | Some n -> result_cap_response ~cap:max_rows ~actual_size:n
+     | None ->
     let vars = select_vars query rows in
     let fmt = response_format_of_accept accept in
     let (ct, body) = match fmt with
@@ -999,7 +1057,7 @@ let run_query ~backend ~accept query =
       | _        -> (P.content_type_for P.RF_Json,
                      P.serialise_response_json vars rows)
     in
-    { rb_status = 200; rb_content_type = ct; rb_body = body }
+    { rb_status = 200; rb_content_type = ct; rb_body = body })
   | QF_Construct _ | QF_Describe _ ->
     (* CONSTRUCT / DESCRIBE: the F* evaluator's backend variants return
        None for these forms. Surface as empty rows in the caller's
@@ -1020,6 +1078,10 @@ let run_query ~backend ~accept query =
           (Printexc.to_string e) bt;
         raise e
     in
+    (* tav5 SIGBUS circuit breaker (CONSTRUCT/DESCRIBE branch). *)
+    (match exceeds_cap ~cap:max_rows rows with
+     | Some n -> result_cap_response ~cap:max_rows ~actual_size:n
+     | None ->
     let fmt = response_format_of_accept accept in
     let vars = select_vars query rows in
     let (ct, body) = match fmt with
@@ -1028,9 +1090,9 @@ let run_query ~backend ~accept query =
       | _        -> (P.content_type_for P.RF_Json,
                      P.serialise_response_json vars rows)
     in
-    { rb_status = 200; rb_content_type = ct; rb_body = body }
+    { rb_status = 200; rb_content_type = ct; rb_body = body })
 
-let parse_and_run ~backend ~accept query_text =
+let parse_and_run ~backend ~accept ~max_rows query_text =
   Printf.eprintf "[qof3] parse_and_run: %d bytes of query text\n%!"
     (String.length query_text);
   match SPARQL11_Parser.parse_sparql query_text with
@@ -1042,7 +1104,7 @@ let parse_and_run ~backend ~accept query_text =
   | SPARQL11_Parser.ParseOk (query, _tokens) ->
     Printf.eprintf "[qof3] parse_and_run: parsed OK, dispatching run_query\n%!";
     (try
-       let r = run_query ~backend ~accept query in
+       let r = run_query ~backend ~accept ~max_rows query in
        Printf.eprintf "[qof3] parse_and_run: run_query returned status=%d body_bytes=%d\n%!"
          r.rb_status (String.length r.rb_body);
        r
@@ -2086,7 +2148,8 @@ let handle_connection cfg dataset_ref backend_ref cottas_stores_ref ic oc =
            queries dispatch through backend_ref so on-disk COTTAS rows
            never have to be materialised. UPDATE keeps using the
            in-memory dataset_ref. *)
-        parse_and_run ~backend:!backend_ref ~accept q
+        parse_and_run ~backend:!backend_ref ~accept
+          ~max_rows:cfg.max_rows q
     in
     write_response ~extra_headers:cors_hdrs oc
       ~status:resp.rb_status
