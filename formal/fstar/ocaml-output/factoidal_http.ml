@@ -169,6 +169,12 @@ type config = {
      non-tail-rec list walks in the JSON / XML serialisers blow it out at
      ~3 M rows. 0 = disabled (use only when investigating tail-rec bugs). *)
   mutable max_rows : int;
+  (* Per-query wall-clock budget in seconds. Implemented via Unix.alarm +
+     SIGALRM; when exceeded, parse_and_run is unwound with a synthetic
+     [Query_timeout] exception and the handler returns HTTP 504 Gateway
+     Timeout, freeing the single-threaded accept loop for the next request.
+     0 = disabled (infinite). See docs/designissues/2026-04-26-heth3-query-timeout.md. *)
+  mutable query_timeout : int;
 }
 
 let default_dump_dir =
@@ -191,6 +197,7 @@ let default_config () = {
   load_rw_graphs = None;
   web_demo = None;
   max_rows = 50_000;
+  query_timeout = 30;
 }
 
 let usage () =
@@ -259,6 +266,13 @@ let usage () =
   print_endline "                         protects the daemon from stack overflow on very";
   print_endline "                         large unbounded queries. 0 = disabled.";
   print_endline "                         (default 50000)";
+  print_endline "      --query-timeout SECS  Per-query wall-clock budget. When the evaluator";
+  print_endline "                         takes longer than SECS, the handler returns HTTP";
+  print_endline "                         504 Gateway Timeout (freeing the worker for the";
+  print_endline "                         next request) instead of letting one slow query";
+  print_endline "                         block the single-threaded accept loop. Implemented";
+  print_endline "                         via Unix.alarm + SIGALRM. 0 = disabled (infinite).";
+  print_endline "                         (default 30)";
   print_endline "  -v, --verbose          Log every request";
   print_endline "  -h, --help             This help";
   print_endline "";
@@ -356,6 +370,14 @@ let parse_args ?args () =
            "Error: --max-rows needs a non-negative integer (0 = disabled), got '%s'\n" n;
          exit 1);
       loop rest
+    | "--query-timeout" :: n :: rest ->
+      (match int_of_string_opt n with
+       | Some k when k >= 0 -> cfg.query_timeout <- k
+       | _ ->
+         Printf.eprintf
+           "Error: --query-timeout needs a non-negative integer (0 = disabled), got '%s'\n" n;
+         exit 1);
+      loop rest
     | arg :: rest ->
       let (key, eq_val) = split_eq arg in
       (match (key, eq_val, rest) with
@@ -381,6 +403,14 @@ let parse_args ?args () =
          cfg.web_demo <- Some v; loop rest
        | ("--web-demo", None, v :: rest') ->
          cfg.web_demo <- Some v; loop rest'
+       | ("--query-timeout", Some v, _) ->
+         (match int_of_string_opt v with
+          | Some k when k >= 0 -> cfg.query_timeout <- k
+          | _ ->
+            Printf.eprintf
+              "Error: --query-timeout needs a non-negative integer (0 = disabled), got '%s'\n" v;
+            exit 1);
+         loop rest
        | _ ->
          Printf.eprintf "Error: unrecognised argument '%s' (try --help)\n" arg;
          exit 1)
@@ -708,6 +738,13 @@ let build_dataset_backend
    ============================================================================ *)
 
 exception Bad_request of string  (* retained for legacy raise sites *)
+
+(* Heth3: per-query wall-clock timeout. Raised by the SIGALRM handler that
+   Unix.alarm wakes up. Caught at the parse_and_run boundary (which then
+   re-raises so the call site can shape the HTTP 504 response without
+   colliding with the broader "evaluator exception → 500" catch).
+   See docs/designissues/2026-04-26-heth3-query-timeout.md. *)
+exception Query_timeout
 
 let max_header_bytes = 65536
 let max_body_bytes   = 10 * 1024 * 1024
@@ -1114,7 +1151,14 @@ let parse_and_run ~backend ~accept ~max_rows query_text =
        Printf.eprintf "[qof3] parse_and_run: run_query returned status=%d body_bytes=%d\n%!"
          r.rb_status (String.length r.rb_body);
        r
-     with e ->
+     with
+     | Query_timeout as e ->
+       (* Heth3: let the timeout escape parse_and_run so the per-request
+          handler can shape an HTTP 504. Catching it here would swallow
+          the timeout into a generic 500. *)
+       Printf.eprintf "[heth3] parse_and_run: query timeout (SIGALRM)\n%!";
+       raise e
+     | e ->
        let bt = Printexc.get_backtrace () in
        Printf.eprintf "[qof3] parse_and_run: run_query raised: %s\n%s%!"
          (Printexc.to_string e) bt;
@@ -1123,6 +1167,51 @@ let parse_and_run ~backend ~accept ~max_rows query_text =
          rb_body =
            "Query evaluation error: " ^ Printexc.to_string e ^ "\n" ^
            "Backtrace:\n" ^ bt })
+
+(* Heth3: build the standard 504 Gateway Timeout body when a query exceeds
+   the configured wall-clock budget. Mirrors result_cap_response's shape. *)
+let query_timeout_response ~secs =
+  let body =
+    Printf.sprintf
+      "{\"error\":\"query_timeout\",\"seconds\":%d,\
+       \"hint\":\"Add LIMIT or bind more triple-pattern terms.\"}\n"
+      secs
+  in
+  { rb_status = 504;
+    rb_content_type = "application/json; charset=utf-8";
+    rb_body = body }
+
+(* Heth3: run [f ()] under a process-global Unix.alarm. SIGALRM is
+   intercepted by a handler that raises [Query_timeout] inside whatever
+   OCaml stack frame happens to be running at the time. The alarm is
+   ALWAYS cancelled (Unix.alarm 0) on exit via Fun.protect, including the
+   exception path, so a follow-on request never inherits the previous
+   request's timer.
+
+   Caveats:
+     - Unix.alarm is per-process. Today we have a single-threaded accept
+       loop (or one accept-thread when COTTAS is loading), so this is
+       effectively per-request. A future worker pool will need a
+       per-thread polling abort flag instead.
+     - The signal handler is set/restored each call. The previous handler
+       is captured and restored on exit (defensive — none of our other
+       code uses SIGALRM, but we don't want to clobber it just in case).
+     - cfg.query_timeout = 0 disables the wrapper entirely (no signal
+       handler installed, no alarm set). *)
+let with_query_timeout ~secs (f : unit -> response_body) : response_body =
+  if secs <= 0 then f ()
+  else begin
+    let prev =
+      Sys.signal Sys.sigalrm
+        (Sys.Signal_handle (fun _ -> raise Query_timeout))
+    in
+    let _ : int = Unix.alarm secs in
+    Fun.protect
+      ~finally:(fun () ->
+        let _ : int = Unix.alarm 0 in
+        Sys.set_signal Sys.sigalrm prev)
+      f
+  end
 
 (* ============================================================================
    Per-connection handling.
@@ -2153,9 +2242,22 @@ let handle_connection cfg dataset_ref backend_ref cottas_stores_ref ic oc =
            require HTTP fetch to honour). Phase 2.5 (issue #100):
            queries dispatch through backend_ref so on-disk COTTAS rows
            never have to be materialised. UPDATE keeps using the
-           in-memory dataset_ref. *)
-        parse_and_run ~backend:!backend_ref ~accept
-          ~max_rows:cfg.max_rows q
+           in-memory dataset_ref.
+
+           Heth3: wrap parse_and_run in with_query_timeout so a single
+           slow query (e.g. unbound BGP estimate_fast walking 26 row
+           groups) cannot block the single-threaded accept loop for
+           minutes. Exceeding cfg.query_timeout returns HTTP 504 and
+           frees the worker for the next queued request. *)
+        (try
+           with_query_timeout ~secs:cfg.query_timeout (fun () ->
+             parse_and_run ~backend:!backend_ref ~accept
+               ~max_rows:cfg.max_rows q)
+         with Query_timeout ->
+           Printf.eprintf
+             "[heth3] query timeout after %ds — returning 504\n%!"
+             cfg.query_timeout;
+           query_timeout_response ~secs:cfg.query_timeout)
     in
     write_response ~extra_headers:cors_hdrs oc
       ~status:resp.rb_status
@@ -2238,6 +2340,9 @@ let run_server cfg =
              | Some t -> t | None -> "<none>")
      else "read-write (POST /update mutates in-memory dataset)");
   Printf.printf "  cors: %s\n" (cors_mode_to_string cfg.cors);
+  Printf.printf "  query timeout: %s\n"
+    (if cfg.query_timeout <= 0 then "disabled (queries may run indefinitely)"
+     else Printf.sprintf "%ds (HTTP 504 on overrun)" cfg.query_timeout);
   Printf.printf "  web demo: %s%s\n"
     (match cfg.web_demo with
      | None -> "(default landing)"
