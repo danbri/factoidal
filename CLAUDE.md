@@ -78,15 +78,39 @@ Rust/JS/OCaml/anything that "mirrors" a spec.
     file. Resolved: RDFS closure + reflexivity axioms (#60) — now lives in
     `RDF.Graph.Executable.fst` as `rdfs_closure_with_reflexivity`.
 
-11. **`experimental_ocaml_glue/` patches MUST NOT override F\* runtime
-    functions with semantic re-implementations.** This is a stricter form
-    of rule #10 specifically for the COTTAS-on-disk perf area. Between
-    2026-04-25 and 2026-04-26 the project accumulated ~3000 LoC of OCaml-
-    side semantic logic (Yod6 pred-presence, Tet3 subj/obj-presence,
-    Lamed3 offset-index, Mem5 estimate fast-path, Pe5 explain re-impl,
-    etc.) that REPLACED F\* runtime functions wholesale. The verified
-    extraction story collapsed: F\* spec became dead code, OCaml shims
-    became the runtime. **No more.**
+11. **`experimental_ocaml_glue/` patches AND hand-written
+    `formal/fstar/ocaml-output/*.ml` files MUST NOT carry semantic
+    backend logic.** This is a stricter form of rule #10 specifically
+    for the COTTAS-on-disk perf area AND for `factoidal_http.ml`.
+    Between 2026-04-25 and 2026-04-26 the project accumulated ~3000
+    LoC of OCaml-side semantic logic (Yod6 pred-presence, Tet3 subj/
+    obj-presence, Lamed3 offset-index, Mem5 estimate fast-path, Pe5
+    explain re-impl, etc.) that REPLACED F\* runtime functions whole-
+    sale. The verified extraction story collapsed: F\* spec became
+    dead code, OCaml shims became the runtime. Reviewer 2026-04-26
+    flagged that the drift extends to `factoidal_http.ml`'s
+    timeout policy, `/backend-info.json` aggregation, and
+    `RDF_CottasStore.ml`'s caching/index policy. **No more.**
+
+    **FREEZE (2026-04-26):** until
+    `docs/designissues/fstar-ocaml-boundary-audit.md` is complete and
+    each OCaml function has been classified (acceptable glue /
+    temporary prototype / semantic-must-migrate), no agent dispatch
+    or main-thread work may add **new** semantic behaviour to:
+      - `formal/fstar/ocaml-output/factoidal_http.ml`
+      - `formal/fstar/ocaml-output/RDF_CottasStore.ml`
+      - `formal/fstar/experimental_ocaml_glue/*.sh`
+    Bug fixes to existing logic are allowed; new features and new
+    optimisation paths are not. The boundary audit is the unblock.
+
+    **Qualified "verified" claim:** until the boundary audit is done
+    and the unwind has retired the rule-#11 violators, the project
+    must NOT be described as "verified RDF/SPARQL" without the
+    qualifier "**parser and algebra spec verified in F\*; on-disk
+    backend currently has unverified OCaml-side caching/optimisation
+    layers being migrated back to F\* (see fstar-purity-unwind.md)**".
+    READMEs, demo pages, talks, and PR descriptions must use this
+    qualification.
 
     Allowed in `experimental_ocaml_glue/`:
     - Realisations of `assume val` declarations (rule #3) — pure I/O, no

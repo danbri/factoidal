@@ -13,6 +13,45 @@ verified-extraction story for the COTTAS backend collapsed. CLAUDE.md
 rule #11 (added 2026-04-26) closes off the prompt loophole. This doc
 addresses the existing debt.
 
+## Scope clarification (reviewer 2026-04-26)
+
+The drift is **not just `experimental_ocaml_glue/`**. Two OCaml-side
+files in `formal/fstar/ocaml-output/` have accumulated substantial
+backend semantics that should also live in F\*:
+
+- `factoidal_http.ml` (~2500 LoC, hand-written) — query-timeout policy
+  (Heth3's SIGALRM wrapper), `/backend-info.json` aggregation across
+  in-memory + COTTAS state (just edited 2026-04-26), result-row cap
+  enforcement (Tav5), worker-thread coordination during COTTAS load,
+  serialiser dispatch. Some of this is genuinely OCaml's job
+  (HTTP protocol parsing, `Unix.accept`, signal handling); some
+  encodes server-correctness *decisions* that belong in F\*.
+
+- `RDF_CottasStore.ml` (extracted, but heavily mutated by
+  `experimental_ocaml_glue/` patches) — caching policy (page cache,
+  byte cache), index population, prune-dispatch logic. Most of this
+  is what the unwind aims to retire.
+
+The reviewer's distinction is useful: thin glue (HTTP routing,
+`Unix.read`, `printf`) belongs in OCaml. **Backend semantics,
+caching policy, timeout/cancellation policy, and server correctness
+decisions belong in F\*.** Phase 2.5 (retire `cottas_ondisk_runtime.sh`)
+addresses RDF_CottasStore.ml. Phase 2.6+ should also address the
+`factoidal_http.ml` drift specifically:
+
+- Move query-timeout policy into F\* via a `time_budget : nat` +
+  `assume val cancellation_polled : unit -> bool` discipline. The
+  OCaml side becomes a timer that flips the flag.
+- Move backend-info aggregation into F\* (`dataset_summary :
+  rdf_dataset -> list cottas_ondisk_store -> Tot summary_info`). The
+  OCaml side renders JSON.
+- HTTP routing, `Unix.accept` loop, file serving stay in OCaml — that
+  IS the genuinely-I/O part.
+
+This expands Phase 2.6 from "lift Yod6/Tet3/Lamed3 to F\*" to also
+include "lift factoidal_http.ml's policy/aggregation logic to F\*".
+Estimate +1 day. **Documented here so the recurring "but factoidal_http.ml is hand-written, surely it's fine" reflex stops.**
+
 ## Inventory of overrides
 
 In rough size order (largest first), with current F\* equivalent state:
