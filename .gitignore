@@ -41,3 +41,5 @@ formal/fstar/ocaml-output/_waoc_*.log
 formal/fstar/pycottas.duckdb
 tools/__pycache__/
 **/__pycache__/
+third_party/data/ukparliament/*.trig
+third_party/data/ukparliament/*.nq
