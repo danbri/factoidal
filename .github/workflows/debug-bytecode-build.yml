@@ -1,0 +1,128 @@
+name: Debug Bytecode Build
+
+on:
+  push:
+    branches: [main, master, claude/main]
+    paths:
+      - 'formal/fstar/**'
+      - '.github/workflows/debug-bytecode-build.yml'
+  schedule:
+    - cron: '20 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: debug-bytecode-${{ github.ref }}-${{ matrix.platform }}
+  cancel-in-progress: true
+
+jobs:
+  build-debug-bytecode:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            platform: darwin-arm64
+            primary: true
+          - os: ubuntu-latest
+            platform: linux-x86_64
+            primary: false
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ !matrix.primary }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Cache opam
+        uses: actions/cache@v4
+        with:
+          path: ~/.opam
+          key: opam-fstar-debug-${{ runner.os }}-v1
+          restore-keys: |
+            opam-fstar-debug-${{ runner.os }}-
+            opam-fstar-${{ runner.os }}-
+
+      - name: Install system deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y opam libgmp-dev pkg-config zstd
+
+      - name: Install system deps (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          for pkg in opam gmp pkg-config zstd; do
+            brew list --formula "$pkg" >/dev/null 2>&1 || brew install "$pkg"
+          done
+
+      - name: Setup opam + F*
+        run: |
+          if [ ! -d ~/.opam ]; then
+            opam init -y --disable-sandboxing
+            opam switch create fstar ocaml-base-compiler.4.14.1
+          fi
+          eval $(opam env --switch=fstar)
+          opam pin add z3 4.13.3 -y --no-action 2>/dev/null || true
+          opam install -y fstar z3.4.13.3 zarith sha digestif
+          echo "OPAMSWITCH=fstar" >> $GITHUB_ENV
+
+      - name: Extract F* to OCaml
+        run: |
+          eval $(opam env --switch=fstar)
+          cd formal/fstar
+          ./build-ocaml.sh extract
+
+      - name: Build debug bytecode
+        run: |
+          eval $(opam env --switch=fstar)
+          cd formal/fstar
+          ./build-ocaml-debug.sh factoidal
+
+      - name: Write build manifest
+        if: always()
+        run: |
+          eval $(opam env --switch=fstar) || true
+          mkdir -p ci-artifacts/debug-bytecode/${{ matrix.platform }}
+          DEBUG_BIN="bin/${{ matrix.platform }}/factoidal.byte"
+          MANIFEST="ci-artifacts/debug-bytecode/${{ matrix.platform }}/build-info.json"
+          FSTAR_VERSION="$(fstar.exe --version 2>/dev/null | head -n 1 || echo unknown)"
+          OCAML_VERSION="$(ocaml -version 2>/dev/null || echo unknown)"
+          TIMESTAMP="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          SHA="$(git rev-parse HEAD)"
+          EXISTS=false
+          SIZE=0
+          if [ -f "$DEBUG_BIN" ]; then
+            EXISTS=true
+            SIZE=$(wc -c < "$DEBUG_BIN")
+            cp "$DEBUG_BIN" "ci-artifacts/debug-bytecode/${{ matrix.platform }}/"
+          fi
+          cat > "$MANIFEST" <<EOF
+          {
+            "platform": "${{ matrix.platform }}",
+            "runner_os": "${{ runner.os }}",
+            "timestamp_utc": "$TIMESTAMP",
+            "source_sha": "$SHA",
+            "fstar_version": "$FSTAR_VERSION",
+            "ocaml_version": "$OCAML_VERSION",
+            "debug_binary": "factoidal.byte",
+            "exists": $EXISTS,
+            "size_bytes": $SIZE
+          }
+          EOF
+
+      - name: Collect logs
+        if: always()
+        run: |
+          mkdir -p ci-artifacts/debug-bytecode/${{ matrix.platform }}/logs
+          cp -R formal/fstar/ocaml-output/_*.log ci-artifacts/debug-bytecode/${{ matrix.platform }}/logs/ 2>/dev/null || true
+
+      - name: Upload debug artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-bytecode-${{ matrix.platform }}
+          path: ci-artifacts/debug-bytecode/${{ matrix.platform }}/
+          retention-days: 14

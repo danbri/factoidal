@@ -235,6 +235,57 @@ let load_cottas_dataset path =
     ) named_tbl [] in
     RDF_Graph_Executable.({ ds_default = default_g; ds_named = named_gs })
 
+let open_cottas_ondisk_store path =
+  match RDF_CottasStore.cottas_ondisk_open path with
+  | FStar_Pervasives_Native.Some store -> store
+  | FStar_Pervasives_Native.None ->
+    Printf.eprintf "Error: could not open on-disk COTTAS artifact: %s\n" path;
+    exit 1
+
+let build_dataset_backend
+    (in_memory : RDF_Graph_Executable.rdf_dataset)
+    (cottas_stores : RDF_CottasStore.cottas_ondisk_store list)
+    : SPARQL11_Store.dataset_backend =
+  let module S = SPARQL11_Store in
+  let in_memory_backend = S.indexed_dataset_backend in_memory in
+  match cottas_stores with
+  | [] -> in_memory_backend
+  | _ ->
+    let cottas_backends =
+      List.map S.cottas_ondisk_dataset_backend cottas_stores
+    in
+    let dsb_default =
+      S.GB_Union (
+        in_memory_backend.S.dsb_default
+        :: List.map (fun (b : S.dataset_backend) -> b.S.dsb_default) cottas_backends
+      )
+    in
+    let by_name : (RDF_Graph_Executable.iri, S.graph_backend list ref) Hashtbl.t =
+      Hashtbl.create 17 in
+    let order : RDF_Graph_Executable.iri list ref = ref [] in
+    let push_named (ngb : S.named_graph_backend) =
+      match Hashtbl.find_opt by_name ngb.S.ngb_name with
+      | Some r -> r := ngb.S.ngb_graph :: !r
+      | None ->
+        let r = ref [ngb.S.ngb_graph] in
+        Hashtbl.add by_name ngb.S.ngb_name r;
+        order := ngb.S.ngb_name :: !order
+    in
+    List.iter push_named in_memory_backend.S.dsb_named;
+    List.iter (fun (b : S.dataset_backend) ->
+      List.iter push_named b.S.dsb_named
+    ) cottas_backends;
+    let dsb_named =
+      List.rev_map (fun name ->
+        let parts = List.rev !(Hashtbl.find by_name name) in
+        let g = match parts with
+          | [single] -> single
+          | many -> S.GB_Union many in
+        { S.ngb_name = name; S.ngb_graph = g }
+      ) !order
+    in
+    { S.dsb_default; S.dsb_named }
+
 (* ============================================================================
    Result table formatting (like arq / isql)
    ============================================================================ *)
@@ -379,6 +430,7 @@ type config = {
   mutable input_format : rdf_format option;
   mutable output_format : output_format;
   mutable dump_mode : bool;
+  mutable dump_nq_mode : bool;
   mutable count_mode : bool;
   mutable explain_mode : bool;     (* --explain: parse + plan + estimate, no execution *)
   mutable explain_out : string option;  (* --explain-out=PATH for JSON sidecar *)
@@ -413,6 +465,7 @@ let usage () =
   Printf.printf "\n";
   Printf.printf "RDF parsing/dump:\n";
   Printf.printf "  factoidal --dump FILE.ttl           Parse and dump as N-Triples\n";
+  Printf.printf "  factoidal --dump-nq FILE.trig       Parse and dump as canonical N-Quads\n";
   Printf.printf "  factoidal --count FILE.ttl          Count triples\n";
   Printf.printf "  factoidal --dump --format rdfxml FILE.rdf\n";
   Printf.printf "\n";
@@ -437,6 +490,7 @@ let usage () =
   Printf.printf "                           OWL-RL  OWL 2 RL Datalog subset (includes RDFS)\n";
   Printf.printf "                         Case-insensitive. All closures are F*-extracted.\n";
   Printf.printf "  --dump                 Parse RDF and dump as N-Triples\n";
+  Printf.printf "  --dump-nq              Parse RDF and dump as canonical N-Quads\n";
   Printf.printf "  --count                Parse RDF and count triples\n";
   Printf.printf "  --explain '<SPARQL>'   Plan dump without executing.\n";
   Printf.printf "                         Reports algebra tree, per-triple-pattern\n";
@@ -469,7 +523,7 @@ let parse_args ?args () =
   let cfg = {
     data_files = []; data_cottas_files = []; named_graphs = []; query_file = None;
     query_string = None; base_iri = None; input_format = None;
-    output_format = Table; dump_mode = false; count_mode = false;
+    output_format = Table; dump_mode = false; dump_nq_mode = false; count_mode = false;
     explain_mode = false; explain_out = None;
     help_mode = false; version_mode = false;
     entail_regime = "";
@@ -515,6 +569,7 @@ let parse_args ?args () =
          Printf.eprintf "Error: unknown entailment regime '%s' (expected none, RDFS, or OWL-RL)\n" regime;
          exit 1)
     | "--dump" :: rest -> cfg.dump_mode <- true; loop rest
+    | "--dump-nq" :: rest -> cfg.dump_nq_mode <- true; loop rest
     | "--count" :: rest -> cfg.count_mode <- true; loop rest
     | "--explain" :: q :: rest ->
       (* `--explain SPARQL` is the new "plan dump without execution" mode.
@@ -558,7 +613,7 @@ let parse_args ?args () =
    `factoidal --data X --query Q.rq` stays untouched. *)
 
 let known_subcommands =
-  ["help"; "version"; "query"; "serve"; "dump"; "count";
+  ["help"; "version"; "query"; "serve"; "dump"; "dump-nq"; "count";
    "test"; "cottas-import"; "cottas-info"]
 
 (* Locate a sibling binary by the same convention busybox uses: look in
@@ -639,6 +694,7 @@ let print_navigation_help () =
   Printf.printf "                   factoidal serve --port 3030 --dataset X.ttl\n";
   Printf.printf "                   (shares Factoidal_http parser/server in-process)\n";
   Printf.printf "  dump FILE      Parse RDF and dump as N-Triples\n";
+  Printf.printf "  dump-nq FILE   Parse RDF and dump as canonical N-Quads\n";
   Printf.printf "  count FILE     Parse RDF and count triples\n";
   Printf.printf "  cottas-import  Import RDF -> COTTAS/Parquet artifact\n";
   Printf.printf "                   factoidal cottas-import --input X.trig --corpus-root C ...\n";
@@ -668,7 +724,7 @@ let print_navigation_help () =
 (* Returns the args (post-argv[0]) the legacy parser should consume.
    - For navigation/exec subcommands, exits or execs and never returns.
    - For `query`, returns the tail (subcommand stripped).
-   - For `dump`/`count`, prepends the legacy --dump / --count + --data flags.
+   - For `dump`/`dump-nq`/`count`, prepends the matching legacy flag + --data flags.
    - For everything else (legacy invocation), returns the original tail. *)
 let dispatch_subcommand () =
   let argv_tail = Array.to_list Sys.argv |> List.tl in
@@ -787,6 +843,7 @@ let dispatch_subcommand () =
           exit 0)
      | "query" -> rest
      | "dump"  -> "--dump"  :: List.concat_map (fun f -> ["--data"; f]) rest
+     | "dump-nq" -> "--dump-nq" :: List.concat_map (fun f -> ["--data"; f]) rest
      | "count" -> "--count" :: List.concat_map (fun f -> ["--data"; f]) rest
      | _ -> argv_tail)  (* unreachable *)
   | ("--help" | "-h") :: _ ->
@@ -892,6 +949,31 @@ let () =
     exit 0
   end;
 
+  if cfg.dump_nq_mode then begin
+    if cfg.data_files = [] && cfg.data_cottas_files = [] then begin
+      Printf.eprintf "Error: no data files specified (use --data FILE or just FILE)\n";
+      exit 1
+    end;
+    let file_datasets = List.map (fun f ->
+      try load_dataset ~format:cfg.input_format ~base:cfg.base_iri f
+      with e ->
+        Printf.eprintf "Error parsing %s: %s\n" f (Printexc.to_string e);
+        exit 1
+    ) cfg.data_files in
+    let cottas_datasets = List.map (fun f ->
+      try load_cottas_dataset f
+      with e ->
+        Printf.eprintf "Error loading COTTAS %s: %s\n" f (Printexc.to_string e);
+        exit 1
+    ) cfg.data_cottas_files in
+    let datasets = file_datasets @ cottas_datasets in
+    let ds_default = concat_map_preserve_order (fun ds -> ds.ds_default) datasets in
+    let ds_named = concat_map_preserve_order (fun ds -> ds.ds_named) datasets in
+    let dataset = RDF_Graph_Executable.({ ds_default; ds_named }) in
+    print_string (RDF_Canonical.canonical_nquads dataset);
+    exit 0
+  end;
+
   (* Count mode.
      Turtle fast path: Parser_Turtle.count_turtle_triples(_with_base)
      scans once without materialising a triple list — safe on
@@ -964,16 +1046,9 @@ let () =
       exit 1
   ) cfg.data_files in
 
-  (* Load COTTAS/Parquet data files as datasets *)
-  let cottas_datasets = List.map (fun f ->
-    try load_cottas_dataset f
-    with e ->
-      Printf.eprintf "Error loading COTTAS %s: %s\n" f (Printexc.to_string e);
-      exit 1
-  ) cfg.data_cottas_files in
-  let datasets = datasets @ cottas_datasets in
-
-  (* Merge all default graphs and named graphs *)
+  (* Merge all default graphs and named graphs from file-based inputs.
+     The on-disk COTTAS path is attached later as a dataset_backend so
+     SELECT/ASK can share the same executor as the production server. *)
   let graph = concat_map_preserve_order (fun ds -> ds.ds_default) datasets in
   let file_named_graphs = concat_map_preserve_order (fun ds -> ds.ds_named) datasets in
 
@@ -1012,22 +1087,53 @@ let () =
     ds_named = all_named
   }) in
 
+  let use_backend_exec =
+    cfg.data_cottas_files <> [] &&
+    cfg.entail_regime = "" &&
+    match query.q_form with
+    | QF_Select _ | QF_Ask -> true
+    | _ -> false
+  in
+
   (* Evaluate *)
   (try
     let is_ask = match query.q_form with QF_Ask -> true | _ -> false in
-    (* ASK has its own evaluator that returns bool; eval_select_query
-       hardcodes QF_Ask -> [] and loses the result. *)
-    (* Route both ASK and SELECT through OWL_QueryEval wrappers so the
-       OWL.QueryRewrite rewriter runs at every entry point, not just the
-       W3C runner's. Keeps the CLI and runner paths identical at the
-       F*-visible API level. The wrappers are structurally a no-op on
-       queries without OWL-CE markers. *)
-    let ask_answer =
-      if is_ask then Some (OWL_QueryEval.eval_ask_query_owl query graph dataset)
-      else None in
-    let results =
-      if is_ask then []  (* suppress the select path for ASK *)
-      else OWL_QueryEval.eval_select_query_owl query graph dataset in
+    let rewritten_query = OWL_QueryRewrite.rewrite_query query in
+    let ask_answer, results =
+      if use_backend_exec then begin
+        let cottas_stores = List.map (fun f ->
+          try open_cottas_ondisk_store f
+          with e ->
+            Printf.eprintf "Error opening on-disk COTTAS %s: %s\n" f (Printexc.to_string e);
+            exit 1
+        ) cfg.data_cottas_files in
+        let dsb = build_dataset_backend dataset cottas_stores in
+        let ask_answer =
+          if is_ask then
+            match SPARQL11_Store.eval_ask_query_backend_dataset rewritten_query dsb with
+            | Some b -> Some b
+            | None ->
+              Printf.eprintf "Query evaluation error: backend ASK path unavailable\n";
+              exit 1
+          else None in
+        let results =
+          if is_ask then []
+          else
+            match SPARQL11_Store.eval_select_query_backend_dataset rewritten_query dsb with
+            | Some rows -> rows
+            | None ->
+              Printf.eprintf "Query evaluation error: backend SELECT path unavailable\n";
+              exit 1 in
+        (ask_answer, results)
+      end else begin
+        let ask_answer =
+          if is_ask then Some (SPARQL11_Algebra.eval_ask_query rewritten_query graph dataset)
+          else None in
+        let results =
+          if is_ask then []
+          else SPARQL11_Algebra.eval_select_query rewritten_query graph dataset in
+        (ask_answer, results)
+      end in
 
     (* Extract variable names from query or results *)
     let vars = match query.q_form with

@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import struct
 import subprocess
@@ -74,8 +75,39 @@ RDF_FORMAT_BY_EXT: dict[str, str] = {
 }
 
 
+def detect_platform_tag() -> str:
+    if sys.platform == "darwin" and os.uname().machine == "arm64":
+        return "darwin-arm64"
+    if sys.platform == "darwin" and os.uname().machine == "x86_64":
+        return "darwin-x86_64"
+    if sys.platform.startswith("linux") and os.uname().machine == "x86_64":
+        return "linux-x86_64"
+    if sys.platform.startswith("linux") and os.uname().machine in ("aarch64", "arm64"):
+        return "linux-arm64"
+    return f"{sys.platform}-{os.uname().machine}"
+
+
 def infer_rdf_format(path: Path) -> str:
     return RDF_FORMAT_BY_EXT.get(path.suffix.lower(), "")
+
+
+def resolve_factoidal_bin() -> str:
+    env_bin = os.environ.get("FACTOIDAL_BIN")
+    if env_bin:
+        return env_bin
+    repo_root = Path(__file__).resolve().parent.parent
+    bindir = repo_root / "bin" / detect_platform_tag()
+    for name in ("factoidal-dump-nq.byte", "factoidal-dump-nq", "factoidal", "factoidal.byte"):
+        candidate = bindir / name
+        if candidate.exists():
+            return str(candidate)
+    found = shutil.which("factoidal")
+    if found:
+        return found
+    raise RuntimeError(
+        "Factoidal parser requested, but no factoidal binary was found. "
+        "Set FACTOIDAL_BIN=/path/to/factoidal(-dump-nq) or build bin/<platform>/factoidal-dump-nq.byte."
+    )
 
 
 def _nt_escape_literal_lex(value: str) -> str:
@@ -188,7 +220,29 @@ def convert_rdf_to_nquads_pyoxigraph(input_path: Path, input_format: str, output
     return quad_count
 
 
-def convert_rdf_to_nquads(input_path: Path, input_format: str, output_nq_path: Path) -> int:
+def convert_rdf_to_nquads_factoidal(input_path: Path, input_format: str, output_nq_path: Path) -> int:
+    factoidal_bin = resolve_factoidal_bin()
+    bin_name = os.path.basename(factoidal_bin)
+    if bin_name.startswith("factoidal-dump-nq"):
+        cmd = [factoidal_bin, "--format", input_format, str(input_path)]
+    else:
+        cmd = [factoidal_bin, "--dump-nq", "--format", input_format, str(input_path)]
+    try:
+        with output_nq_path.open("w", encoding="utf-8") as out:
+            subprocess.run(cmd, check=True, stdout=out)
+    except subprocess.CalledProcessError as exc:
+        pretty = " ".join(shlex.quote(part) for part in cmd)
+        raise RuntimeError(f"Factoidal dump-nq failed: {pretty}") from exc
+
+    quad_count = 0
+    with output_nq_path.open("r", encoding="utf-8") as src:
+        for line in src:
+            if line.strip() and not line.lstrip().startswith("#"):
+                quad_count += 1
+    return quad_count
+
+
+def convert_rdf_to_nquads_rdflib(input_path: Path, input_format: str, output_nq_path: Path) -> int:
     """Parse an RDF file and emit a line-per-quad .nq file at
     `output_nq_path`. Returns the quad count.
 
@@ -198,12 +252,6 @@ def convert_rdf_to_nquads(input_path: Path, input_format: str, output_nq_path: P
     pyoxigraph streaming parser; fall back to rdflib if pyoxigraph is
     unavailable.
     """
-    if input_format in ("trig", "turtle", "rdfxml", "nt", "nq"):
-        try:
-            return convert_rdf_to_nquads_pyoxigraph(input_path, input_format, output_nq_path)
-        except ImportError:
-            pass
-
     try:
         from rdflib import Dataset, Graph
     except ImportError as exc:
@@ -245,6 +293,44 @@ def convert_rdf_to_nquads(input_path: Path, input_format: str, output_nq_path: P
         return quad_count
 
     raise ValueError(f"Unsupported input format: {input_format}")
+
+
+def convert_rdf_to_nquads(
+    input_path: Path,
+    input_format: str,
+    output_nq_path: Path,
+    parser_name: str,
+) -> tuple[int, str]:
+    if input_format == "nq":
+        with output_nq_path.open("w", encoding="utf-8") as out:
+            with input_path.open("r", encoding="utf-8") as src:
+                quad_count = 0
+                for line in src:
+                    if line.strip() and not line.lstrip().startswith("#"):
+                        out.write(line)
+                        quad_count += 1
+        return quad_count, "passthrough"
+
+    if parser_name == "factoidal":
+        return convert_rdf_to_nquads_factoidal(input_path, input_format, output_nq_path), "factoidal"
+    if parser_name == "pyoxigraph":
+        return convert_rdf_to_nquads_pyoxigraph(input_path, input_format, output_nq_path), "pyoxigraph"
+    if parser_name == "rdflib":
+        return convert_rdf_to_nquads_rdflib(input_path, input_format, output_nq_path), "rdflib"
+    if parser_name == "python":
+        try:
+            return convert_rdf_to_nquads_pyoxigraph(input_path, input_format, output_nq_path), "pyoxigraph"
+        except ImportError:
+            return convert_rdf_to_nquads_rdflib(input_path, input_format, output_nq_path), "rdflib"
+    if parser_name == "auto":
+        try:
+            return convert_rdf_to_nquads_factoidal(input_path, input_format, output_nq_path), "factoidal"
+        except Exception:
+            try:
+                return convert_rdf_to_nquads_pyoxigraph(input_path, input_format, output_nq_path), "pyoxigraph"
+            except ImportError:
+                return convert_rdf_to_nquads_rdflib(input_path, input_format, output_nq_path), "rdflib"
+    raise ValueError(f"Unsupported parser selection: {parser_name}")
 
 
 def ensure_dir(path: Path) -> None:
@@ -1035,26 +1121,35 @@ def materialize_nq_cottas_corpus(args: argparse.Namespace) -> int:
             "(one of nq, nt, trig, turtle, rdfxml)"
         )
 
-    # For block-structured formats (trig/turtle/rdfxml), convert to
-    # N-Quads on disk first (rdflib-backed). For nq/nt, stream through
-    # a normalisation pass so comments/blank lines get filtered.
-    if input_format in ("trig", "turtle", "rdfxml"):
-        print(f"Pre-converting {input_format} → N-Quads via parser pipeline …", file=sys.stderr)
-        converted_count = convert_rdf_to_nquads(input_path, input_format, data_nq_path)
-        print(f"  wrote {converted_count} quads to {data_nq_path}", file=sys.stderr)
+    parser_name = getattr(args, "parser", "factoidal")
+    if input_format in ("trig", "turtle", "rdfxml", "nt"):
+        print(
+            f"Pre-converting {input_format} → N-Quads via parser={parser_name} …",
+            file=sys.stderr,
+        )
+        converted_count, parser_used = convert_rdf_to_nquads(
+            input_path,
+            input_format,
+            data_nq_path,
+            parser_name,
+        )
+        print(
+            f"  parser={parser_used} wrote {converted_count} quads to {data_nq_path}",
+            file=sys.stderr,
+        )
         nq_input_path = data_nq_path
-    elif input_format == "nt":
-        # N-Triples → N-Quads without grafting a graph. Passthrough works
-        # for the line-based parser below since nt lines validate under
-        # parse_nt_or_nq_line("nq") too (they just have no graph term).
-        print(f"Normalising N-Triples at {input_path} …", file=sys.stderr)
-        nq_input_path = data_nq_path
-        shutil.copy(str(input_path), str(data_nq_path))
     else:
-        # Already nq: consume in place, but still write a normalised copy
-        # to chunk_dir/data.nq so the factbin+cottas stages share the
-        # same resolved file.
-        nq_input_path = input_path
+        converted_count, parser_used = convert_rdf_to_nquads(
+            input_path,
+            input_format,
+            data_nq_path,
+            parser_name,
+        )
+        print(
+            f"Normalising {input_format} via parser={parser_used} …",
+            file=sys.stderr,
+        )
+        nq_input_path = data_nq_path
 
     graph_values: set[str] = set()
     quad_count = 0
@@ -1112,6 +1207,8 @@ def materialize_nq_cottas_corpus(args: argparse.Namespace) -> int:
         "source_format": source_mime,
         "dataset_name": args.dataset_name,
         "version": args.version,
+        "parser_requested": parser_name,
+        "parser_used": parser_used,
         "quad_count": quad_count,
         "graph_count": len(graph_values),
         "index": args.index.lower(),
@@ -1214,6 +1311,16 @@ def build_parser() -> argparse.ArgumentParser:
     cottas_parser.add_argument("--dataset-name", required=True)
     cottas_parser.add_argument("--chunk-name", help="Optional stable directory name for the dataset artifact")
     cottas_parser.add_argument("--dataset-iri", help="Optional synthetic dataset IRI for TOC/source-info metadata")
+    cottas_parser.add_argument(
+        "--parser",
+        choices=["factoidal", "auto", "python", "pyoxigraph", "rdflib"],
+        default="factoidal",
+        help=(
+            "RDF parser/serializer front end for non-.nq inputs. "
+            "factoidal uses the local factoidal binary's canonical N-Quads dump; "
+            "python prefers pyoxigraph and falls back to rdflib; auto tries factoidal first."
+        ),
+    )
     cottas_parser.add_argument("--index", default="spog", help="COTTAS index permutation, e.g. spo or spog")
     cottas_parser.add_argument("--disk", action="store_true", help="Use a disk-backed DuckDB database during pycottas conversion")
     cottas_parser.add_argument("--version", default="v1")
