@@ -18,6 +18,79 @@ freezes new semantic growth in these files until the audit is done.
 
 ---
 
+## The load-bearing distinction (reviewer 2026-04-26, second pass)
+
+Two further-sharpened buckets that the rest of this doc applies. **Get
+this distinction right and the rest is mechanical; get it wrong and we
+either over-classify trivial wiring as "must-be-F\*" (paralysis) or
+under-classify real semantics as "glue" (the drift this audit
+unwinds).**
+
+### Reasonable OCaml glue
+
+Application/runtime concerns that COMPOSE already-defined components
+without changing their meaning:
+
+- Parsing CLI flags
+- Opening files
+- Choosing which configured stores to mount
+- Unioning already-defined backends into a running server instance
+  (e.g. `build_dataset_backend`)
+- Rendering HTTP / JSON / static assets
+- Threading runtime mutable state (refs, mutexes) through request
+  handlers
+
+Even when these involve "policy" choices (union order, dedup behavior,
+empty-list shortcut), they're **composition** policies, not
+**meaning** policies. They decide how a server is wired together at
+process start; they do not decide what a stored dataset is.
+
+### Should move to F\*
+
+Anything that defines what the data MEANS or what operations on the
+data are SOUND:
+
+- Definition of companion index file formats (Vav3's `.dict`,
+  Yod6/Tet3's `.presence`, Lamed3's `.offsets`).
+- Encode/decode rules for those files.
+- Soundness conditions for using presence/offset/row-id indexes
+  (e.g. "a row group with predicate-bit X clear definitely contains
+  no rows with predicate=X" — invariant binding the bitmap to the
+  parquet payload).
+- Pruning and candidate-selection logic.
+- Invariants connecting the parquet payload to the sidecar indexes.
+- Query-evaluation logic (search, estimate, decode).
+- Termination/completeness conditions for the BGP walker.
+- Cancellation semantics — when is a query allowed to be aborted?
+
+The crux: **once the on-disk representation includes sidecar
+structures (dictionaries, bitmaps, offsets, row-id maps), the format
+semantics have expanded and the meaning of a stored dataset depends
+on those structures and their reader logic.** That's exactly what F\*
+is for.
+
+### Why this distinction matters more than `build_dataset_backend`
+
+My initial audit conflated "policy" (any choice with consequences)
+with "semantics" (decisions about what the data means). The reviewer
+sharpened: backend-composition decisions are application policy,
+acceptable in OCaml; representation-and-access decisions define
+semantics, must be in F\*.
+
+Worked example: `build_dataset_backend` chooses iteration order. That
+affects observable iteration-order behavior. But it does NOT change
+what triples exist in the dataset. Glue.
+
+Counter-example: Yod6's pred-presence prune decides which row groups
+to skip. That's a **soundness** claim — if the prune is wrong, the
+query returns wrong results. The bitmap format and the prune
+condition together define what a "valid" companion file means and
+what queries a reader is allowed to short-circuit. **Semantic.**
+
+So the load-bearing audit question for any OCaml-side function is:
+**does it merely route already-defined values, or does it encode
+soundness/format invariants?**
+
 ## Why this matters — the provenance framing (reviewer 2026-04-26)
 
 Every backend behaviour must be traceable to exactly **one** of four
@@ -105,7 +178,7 @@ imports F\*-extracted modules (`SPARQL11_Parser`, `SPARQL11_Algebra`,
 | Type definitions (`config`, `cottas_ondisk_loaded`, etc.) | 1–200 | **A** | Plain records / variants for OCaml runtime state. No semantics. |
 | CLI argument parsing (`parse_args`) | 200–420 | **A** | Standard option handling. Stores config; doesn't decide query semantics. |
 | Trace helpers (`Printf.eprintf [qof3-trace]` etc.) | scattered | **A** | Diagnostic I/O. Replace with Util.Log.* over time. |
-| Backend dispatch (`build_dataset_backend`) | 670–710 | **A** | Constructs `dataset_backend` value from `dataset_ref` + cottas stores. Trivial. |
+| Backend composition (`build_dataset_backend`) | 668–725 | **A** (composition glue, per refined reviewer guidance) | **Refined classification 2026-04-26 (later reviewer note):** This function takes already-defined backend values (`indexed_dataset_backend`, `cottas_ondisk_dataset_backend`) and wires them into a single `dataset_backend` for the running server. It does NO semantic transformation beyond assembly. The order policy, named-graph dedup, and empty-cottas shortcut are **application/runtime composition concerns**, not dataset semantics. The reviewer drew the line: glue composes already-defined components; semantics defines what the data MEANS. This stays in OCaml. (My previous "S" reclassification over-corrected; the reviewer's first note was a probe of my reasoning, the second tightened it.) |
 | `prewarm_cottas_columns` | 620–660 | **P** | Calls `ensure_*_loaded` hooks. With Vav3's mmap'd dicts, this becomes obsolete (Phase 2.7). |
 | `open_cottas_ondisk_files` | 646–670 | **A** | Opens each cottas file, builds `cottas_ondisk_loaded` records. Pure I/O glue. |
 | Query timeout (`with_query_timeout`, SIGALRM handler) | 1100–1300 | **S** | Encodes correctness policy: when does a long query get aborted? Process-global signal-based. Should be F\*-side cancellation token + OCaml timer flips flag. (Phase 2.6+.) |
@@ -121,13 +194,25 @@ imports F\*-extracted modules (`SPARQL11_Parser`, `SPARQL11_Algebra`,
 | Worker-thread coordination during COTTAS load | 2400–2480 | **S** | The 503/Retry-After policy during loading IS a server-correctness decision. Today it's gated by a `loading` mutex. Decision (when to 503) should be F\*-typed; mutex is glue. |
 | `main`, `Unix.bind`/`accept` loop | 2280–2495 | **A** | Standard daemon scaffolding. |
 
-**factoidal_http.ml summary:** of ~2500 LoC, roughly 300 LoC are
-classified **S** (semantic decisions that must lift to F\*) and a
-further 100 LoC are borderline. The rest is acceptable glue.
+**factoidal_http.ml summary (revised post-reviewer):** of ~2500 LoC,
+roughly 350 LoC are classified **S** (semantic decisions that must
+lift to F\*) — including `build_dataset_backend`'s composition
+policies which I initially mis-classified as glue. A further ~150
+LoC are borderline. The rest is acceptable glue.
 
-The single biggest **S** item is the **query timeout / cancellation
-policy**. The reviewer flagged it; the existing code documents its own
-caveat. Phase 2.6 adds it to the unwind.
+**The single biggest S item** is now ambiguous between the
+**query timeout / cancellation policy** (signal-based, hard to
+reason about under concurrency) and **`build_dataset_backend`'s
+union/order/dedup policies** (silently observable in iteration
+order and named-graph collisions). Both must lift to F\*. Phase
+2.6 covers them.
+
+**Reviewer caution applied:** when classifying, default to S or
+A/borderline rather than A. The cost of mis-classifying glue as
+semantics is a careful F\* re-write; the cost of mis-classifying
+semantics as glue is the drift this audit is supposed to unwind.
+A second pass over this table is warranted before the unwind
+starts — likely revealing more S items.
 
 ---
 

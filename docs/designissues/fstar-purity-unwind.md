@@ -189,7 +189,18 @@ glue duplicates the readers, retire the duplicates.
 **Steps:**
 1. CI script: walk `experimental_ocaml_glue/*.sh`, grep for `let cottas_ondisk_*` definitions, fail if any are present (other than allow-listed I/O writers).
 2. Same check for SPARQL evaluator overrides.
-3. Add to `.github/workflows/ci.yml`.
+3. Wire into the existing CI: this repo has
+   `.github/workflows/check-derived-files.yml`,
+   `.github/workflows/check-extraction.yml`,
+   `.github/workflows/deploy-pages.yml`, and
+   `.github/workflows/w3c-tests.yml`. **There is NO `.github/workflows/ci.yml`** — earlier draft of this doc referenced one as if it
+   existed. The recurrence check should either: (a) become a new
+   workflow `.github/workflows/check-fstar-purity.yml`; or (b) be
+   added as a job inside `check-extraction.yml` since that
+   workflow already runs the build pipeline. Pick (a) for
+   isolation; the job runs in seconds and a failure should be
+   blocking for the unwind invariant, separately from the
+   slower extraction-validity check.
 
 **Acceptance:** PR that adds a new override patch fails CI.
 
@@ -257,7 +268,7 @@ that:
 Phase 2.8 (the CI work). Independently shippable from the unwind. Could
 ship before Phase 2.2 starts — this is a backstop, not a refactor.
 
-### C. /backend-info.json under-reporting (FIXED 2026-04-26 commit ?????)
+### C. /backend-info.json under-reporting (FIXED 2026-04-26 commit 134fd93)
 
 Reviewer (2026-04-26): *"In a --data-cottas-only server, that can
 advertise 'kind':'binary' while still showing a zero or partial triple
@@ -270,24 +281,63 @@ can see where the rows come from. Web component pill will now show
 "binary COTTAS (3,143,406 triples · data.cottas)" on parliament
 deployments.
 
-## Time estimate (agent-pace, not human-pace)
+## Time estimate — tentative planning heuristic, NOT a delivery commitment
 
-Calibration: the original drift accumulated in ~24 hours of agent work
-(Aleph6, Bet7, Mim3, Vav3, Yod6, Tet3, Sin7, Lamed3, Mem5, Pe5).
-Unwinding it should not take dramatically longer.
+Reviewer 2026-04-26 (gpt5.5): *"docs/designissues/fstar-purity-unwind.md
+gives an unrealistically confident unwind estimate and frames it as
+roughly a five-day agent task. In a repo where the core issue is that
+fast fixes accumulated faster than provenance discipline, that
+estimate is dangerous. ... it reads like a delivery commitment. That
+encourages the same 'quickly patch through the mess' mindset that
+caused the drift."*
 
-| Phase | Estimate (agent-pace) |
-|---|---|
-| 2.2 Pe5 explain → F\* planner | 0.5 day |
-| 2.3 Vav3 read-path verify | 0.25 day |
-| 2.4 Aleph6 count-limit retire | 0.5 day |
-| 2.5a Make F\* search fast | 1-2 days |
-| 2.5b Delete runtime.sh | 0.5 day |
-| 2.6 Yod6/Tet3/Lamed3 to F\* | 1-2 days |
-| 2.7 Bet7 lazy populate retire | 0.25 day |
-| 2.8 CI check | 0.25 day |
+Correction. The numbers below are **planning heuristics** for sizing
+the work into independent commit-shaped chunks; they are NOT a
+schedule, NOT a commitment, and NOT calibrated to actual measurement.
+They were generated from a one-paragraph mental model ("the original
+drift accumulated in ~24 hours of agent work, so the unwind should be
+similar") — that's the wrong analogy because adding logic and
+**carefully retiring it under correctness invariants** are not
+symmetric activities. Retirement is harder.
 
-**Total: ~5 days agent-pace.** Human-pace would be ~3 weeks.
+Specifically, each phase below has at least one of these unknowns
+that could expand it 2-5×:
+
+- **F\* type-system friction** when porting OCaml-array-shaped logic
+  to F\*'s `list`/`Seq` shape. Verifying termination, refinement
+  invariants, and proof obligations may surface only when you try.
+- **Performance regression** when the F\*-extracted version replaces
+  the OCaml shadow. Phase 2.5a is "make F\* fast"; if F\* extraction
+  produces 5× slower code than the OCaml shim, the demo workload
+  regresses and we either accept the regression or do another
+  optimisation pass.
+- **W3C suite breakage**. Each phase must keep 1657/1/0/4. Subtle
+  semantic changes in F\* equivalents may break a test we didn't
+  expect; debugging the diff is unbounded.
+- **Cross-phase dependencies**. Phase 2.6 (Yod6/Tet3/Lamed3 to F\*)
+  may need Phase 2.5 done first. Or Phase 2.5a's optimisations may
+  obviate the need for some of 2.6. We won't know until we try.
+
+| Phase | Crude size estimate (agent-pace heuristic) | Risk multiplier |
+|---|---|---|
+| 2.2 Pe5 explain → F\* planner | 0.5 day | 2× if F\* planner exposure is harder than expected |
+| 2.3 Vav3 read-path verify | 0.25 day | low risk, narrow |
+| 2.4 Aleph6 count-limit retire | 0.5 day | 1.5× — small chance the F\* version doesn't match observable behaviour |
+| 2.5a Make F\* search fast | 1-2 days | **3-5× quite plausible** — biggest unknown |
+| 2.5b Delete runtime.sh | 0.5 day | 2× if perf regression triggers a re-evaluation |
+| 2.6 Yod6/Tet3/Lamed3/factoidal_http policy → F\* | 2-3 days (revised up after reviewer corrected build_dataset_backend mis-classification) | 2× |
+| 2.7 Bet7 lazy populate retire | 0.25 day | low |
+| 2.8 CI check | 0.5 day (revised — needs new workflow file, not a one-line addition) | low |
+
+**Take these numbers as crude order-of-magnitude only.** Realistic
+bounds: best case ~5 agent-days; pessimistic case where Phase 2.5a
+runs into F\*-extraction-perf cliffs and 2.6 surfaces type-system
+friction is ~3 weeks of agent-pace work. The honest framing is "we
+don't know until we try the first phase; budget the time-box for
+that phase, learn, then re-estimate."
+
+The drift was caused by treating the work as estimateable-and-
+sequential. The unwind should not repeat that mistake.
 
 ## Verification at each phase
 
