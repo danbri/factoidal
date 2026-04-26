@@ -69,3 +69,67 @@ not consulted; benchmarks in the report will reflect that.
   (and ideally as `OnDiskOffsetIdx` types in F\* later). No semantic logic.
 - Rule #11: do **not** run `./build-ocaml.sh extract`. Patch + dune.
 - Time-box 3 h.
+
+## Results (2026-04-26 evening)
+
+**Patch:** `formal/fstar/experimental_ocaml_glue/cottas_ondisk_zzzzzz_lamed3_offset_idx.sh`.
+
+**File format:** as designed above. Magic `'COTO'` (0x4f544f43 LE),
+version 1, 16-byte header, u64 index, u32 row-position data.
+
+**On parliament (3.14M quads, 26 row groups, 232 predicates):**
+
+| Phase                                | Time   |
+| ------------------------------------ | ------ |
+| First boot (offsets-build + mmap)    | 28.98s |
+| Boot delta (offsets-build only)      | 24.61s |
+| Subsequent boot (mmap only)          | 4.11s  |
+
+**Offsets file size:** 12.0 MB (vs 50 MB worst-case estimate).
+
+**Query timings (all hit `search_fast_limited_via_offsets`):**
+
+| Query                                          | Result                                       |
+| ---------------------------------------------- | -------------------------------------------- |
+| `?s rdf:type ?o LIMIT 5`  (target <200ms)      | 5.2s warm; matched 5/5 rows, walked 1/26 rgs |
+| `?s rdf:type ?o LIMIT 50`                      | 14.8s; matched 50/50, walked 4/26 rgs        |
+| `<bound_subj> rdf:type ?o LIMIT 1`             | 6.0s; matched 1/1, walked 1/26 rgs           |
+| `?s rdf:type ?o LIMIT 1000` (target <2s)       | 30s timeout; matched 148/1000, walked 9/26   |
+| `?s geosparql:asWKT ?o LIMIT 5` (rare/absent)  | 9ms (Yod6 presence prune short-circuits)     |
+
+**W3C tests:** 1657 pass, 1 fail, 0 fail-new, 4 skip. **Unchanged.**
+
+## Honest gaps
+
+- **Targets MISSED.** The `<200ms` LIMIT 5 target assumed per-row column
+  reads. The current Parquet probe API (`probe_parquet_column_decode_in_row_group`)
+  decodes the *entire* column for a row group and returns a list. Even though
+  the offset index now skips the 3-6s predicate-column decode, we still
+  pay 4-5s to decode subject + object columns of any rg we touch.
+- The win is structural: predicate-column decode is **eliminated** from
+  bound-pred queries. This is the pre-requisite for the next step:
+  per-row column reads (or DLBA partial decoding by row range).
+- The user prompt explicitly anticipated partial wins: "ship a partial
+  result if needed (e.g., offsets file written but not yet wired into
+  search_fast)." Both halves landed: file + dispatcher wiring.
+- No F\* spec written for the `OnDiskOffsetIdx` format yet. Recommended
+  follow-on (rule #15 long-term): port the format definition + reader
+  semantics into `RDF.CottasStore.OnDiskOffsetIdx.fst` so the file format
+  itself becomes verified, leaving only mmap I/O as glue.
+
+## Cross-agent integration notes
+
+- **Mem5 (`cottas_ondisk_runtime.sh`)**: NO conflict. The Lamed3 patch
+  inserts `Cottas_offset_idx` BEFORE `Cottas_ondisk_runtime`, then
+  inserts `*_via_offsets` helpers and dispatchers INSIDE
+  `Cottas_ondisk_runtime` (idempotent skip-if-marker). Mem5's patches
+  only touch `RDF.CottasStore.fst` (extracted estimate_fast_inner-style
+  changes) and don't conflict with mine.
+- **Heth3 (`factoidal_http.ml`)**: NO conflict. Heth3's per-query Lwt
+  timeout fired during the LIMIT 1000 test (proving Heth3 works as
+  intended). The 30s timeout is correct; Lamed3 didn't hide the
+  underlying decode cost.
+- The `let rec ... and ...` mutual-recursion idiom in the patch is
+  cosmetic (neither dispatcher nor `_inner` actually recurse into each
+  other) — it's only there because OCaml requires textually-prior
+  definition for the dispatcher's call to `_inner`.
