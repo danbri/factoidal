@@ -303,9 +303,25 @@ let named_candidate_backends (named : list named_graph_backend) (predicate_hint 
   | Some pred ->
     List.Tot.filter (fun ngb -> backend_predicate_present ngb.ngb_graph pred) named
 
-let rec eval_bgp_backend_from_mu_fuel
+// Tail-rec concatMap helper. F* stdlib `List.Tot.concatMap` is non-tail-rec
+// (recurses, then `append`s), so on a 3M-element solution list (e.g. first
+// BGP pattern matching the entire COTTAS dataset) the outer recursion alone
+// blows the macOS main-thread stack. Sin7 fix (2026-04-26): walk `next`
+// tail-recursively, using `List.Tot.rev_acc` to splice each per-mu result
+// list into a reversed accumulator. Order preserved (rev once at the end).
+let rec eval_bgp_concatmap_acc
+  (rest : bgp) (gb : graph_backend) (next : solution_sequence)
+  (fuel : nat) (acc_rev : solution_sequence)
+  : Tot solution_sequence (decreases %[fuel; 1; next]) =
+  match next with
+  | [] -> acc_rev
+  | mu' :: more ->
+    let part = eval_bgp_backend_from_mu_fuel rest gb mu' fuel in
+    eval_bgp_concatmap_acc rest gb more fuel (List.Tot.rev_acc part acc_rev)
+
+and eval_bgp_backend_from_mu_fuel
   (patterns : bgp) (gb : graph_backend) (mu : solution_mapping) (fuel : nat)
-  : Tot solution_sequence (decreases fuel) =
+  : Tot solution_sequence (decreases %[fuel; 0; ([] <: solution_sequence)]) =
   if fuel = 0 then [mu]
   else
     match patterns with
@@ -315,7 +331,7 @@ let rec eval_bgp_backend_from_mu_fuel
       | None -> [mu]
       | Some (tp, rest) ->
         let next = eval_single_tp_backend tp gb mu in
-        List.Tot.concatMap (fun mu' -> eval_bgp_backend_from_mu_fuel rest gb mu' (fuel - 1)) next
+        List.Tot.rev (eval_bgp_concatmap_acc rest gb next (fuel - 1) [])
 
 let eval_bgp_backend (patterns : bgp) (gb : graph_backend) : solution_sequence =
   eval_bgp_backend_from_mu_fuel patterns gb sm_empty (List.Tot.length patterns + 1)
