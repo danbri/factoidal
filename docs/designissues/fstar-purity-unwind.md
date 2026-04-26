@@ -61,7 +61,7 @@ In rough size order (largest first), with current F\* equivalent state:
 | 1 | `cottas_ondisk_runtime.sh` | 688 | `cottas_ondisk_search`, `_estimate`, `_decode_*`, `_encode_*` | Exists (Resh3/Mim2 work); replaced at runtime |
 | 2 | `factoidal_explain.ml` | 580 | (no override; reimplements `choose_best_tp_backend` for explain) | F\* planner exists; explain reimpl bypasses it |
 | 3 | `cottas_ondisk_zzz_yod6_pred_presence_prune.sh` | 412 | Mirrors `populate_dict_cache_for_column` / `compute_candidate_rgs_loop` | F\* prune logic exists at `RDF.CottasStore.fst:480-525`; OCaml duplicates and replaces |
-| 4 | `cottas_ondisk_z_lazy_open.sh` (Bet7) | 324 | Lazy populate of in-RAM Hashtbls | Largely OBSOLETE post-Vav3 (mmap'd dicts replace Hashtbls); see action below |
+| 4 | `cottas_ondisk_z_lazy_open.sh` (Bet7) | 324 | Lazy populate of in-RAM Hashtbls | **Still load-bearing** (tau3 audit 2026-04-26): Vav3 populates the same Hashtbls rather than replacing them; CLI + smoketest open paths skip prewarm entirely; HTTP + explain wrap prewarm in try/with with explicit lazy-populator fallback. Retirement blocked on Phase 2.6 lifting Yod6/Tet3 + a real F\*-pure mmap'd reader path. See `docs/designissues/2026-04-26-tau3-bet7-retire-audit.md`. |
 | 5 | `cottas_ondisk_zzzz_tet3_subj_obj_prune.sh` | 310 | Subject + object presence prune | No F\* equivalent (would be analogous to Yod6 in F\*) |
 | 6 | `cottas_ondisk_zzzzzz_lamed3_offset_idx.sh` | 300 | Per-rg predicate row-offset index reader/use | No F\* equivalent (writer can stay; reader/use must lift) |
 | 7 | `cottas_ondisk_zzzzz_ondisk_index.sh` (Vav3) | ~250 | Companion-file mmap'd readers | F\* `RDF.CottasStore.OnDiskIndex.fst` exists; verify reader path actually uses it |
@@ -214,14 +214,36 @@ disappears (via 2.5/2.6 lift) or is fixed in F\*).
 
 ### Phase 2.7 — Bet7 lazy populate (#4)
 
-**Goal:** retire `cottas_ondisk_z_lazy_open.sh`. With Vav3's mmap'd dicts as the runtime path, the lazy Hashtbl populate is obsolete.
+**Status (2026-04-26, tau3 audit):** **BLOCKED on Phase 2.6.** The
+original premise ("Vav3's mmap'd dicts replace Hashtbls") was wrong.
+Vav3 *populates* the same Hashtbls Bet7 populates and uses Bet7's
+`Cottas_ondisk_lazy.mark_*_loaded` flags as the "skip" guard. The
+runtime `*_fast` read path is still Hashtbl-based — there is no
+F\*-pure mmap'd reader consultation today. Two binaries
+(`factoidal_cli`, `cottas_ondisk_smoketest`) skip `prewarm_via_companions`
+entirely and rely on Bet7's lazy populators on first `*_fast` lookup;
+the HTTP and explain entry points wrap prewarm in `try/with` with
+explicit lazy-populator fallback. Yod6 + Tet3 *also* injected
+per-rg presence-Hashtbl construction directly INTO Bet7's
+`ensure_*_loaded`, so deleting Bet7 today implicitly undoes those
+patches' work surface as well.
 
-**Steps:**
-1. Confirm Vav3's `bulk-load` from companion files populates the same data Bet7's lazy populate did.
-2. Delete `cottas_ondisk_z_lazy_open.sh`.
-3. Re-extract. The handle's Hashtbls are no longer populated; queries route through F\* dict lookups via mmap.
+Audit: `docs/designissues/2026-04-26-tau3-bet7-retire-audit.md`.
 
-**Acceptance:** boot still <5s; queries still pass W3C.
+**Goal (post-unblock):** retire `cottas_ondisk_z_lazy_open.sh`.
+
+**Steps (post Phase 2.6):**
+1. Verify Yod6/Tet3 logic now lives in F\* (`RDF.CottasStore.PresenceBitmap.fst`),
+   not inside `ensure_*_loaded`.
+2. Verify the runtime `*_fast` read path consults `RDF.CottasStore.OnDiskIndex.fst`
+   mmap'd readers directly, not the Hashtbls (or, alternately, that
+   every `cottas_ondisk_open` caller is guaranteed to invoke the
+   companion-bulk-load step).
+3. Delete `cottas_ondisk_z_lazy_open.sh`.
+4. Re-extract.
+
+**Acceptance:** boot still <5s; queries still pass W3C; `factoidal_cli`
+and `cottas_ondisk_smoketest` still work against on-disk corpora.
 
 ### Phase 2.8 — Layer 3 CI check
 
