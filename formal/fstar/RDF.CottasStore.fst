@@ -852,16 +852,40 @@ let cottas_ondisk_estimate
             0 rg_count rg_count 0 cache0 in
           count))
   else
+    // Mem5 (issue #100, demo prep): presence-bitmap fast path for the
+    // BGP join-order optimiser. Compute candidate row-groups from the
+    // per-rg dictionary pages (cheap — `plan_candidate_rgs` reads only
+    // dict pages, never decodes data pages). Then approximate the
+    // estimate as `length(candidates) * avg_rows_per_rg`, where
+    // avg_rows_per_rg is read from the parquet footer (no I/O cost).
+    //
+    // This is an APPROXIMATION — the true count requires data-page
+    // decode and the slow filter walk that this used to do. The
+    // optimiser only needs ordinal cardinality (off-by-2x is fine,
+    // off-by-100x wastes plan budget but doesn't change results), so
+    // the approximation is acceptable. Empty candidates correctly
+    // returns 0 (early-out for definitively-empty patterns). For the
+    // exact count, callers should issue an actual COUNT(*) query.
+    //
+    // Replaces the previous walk_candidate_rgs_estimate path which
+    // decoded all 4 columns of every candidate rg and counted matching
+    // rows — minutes for a 3.1M-row corpus, microseconds with this.
     match probe_parquet_row_group_count h.coh_path with
     | None -> 0
     | Some rg_count ->
-      let cache0 = pcache_empty pcache_default_capacity in
       let (candidates, _dc) = plan_candidate_rgs h
         bound_s bound_p bound_o bound_g rg_count in
-      let (count, _cache') = walk_candidate_rgs_estimate h
-        bound_s bound_p bound_o bound_g
-        candidates 0 cache0 in
-      count
+      let n_candidates : nat = List.Tot.length candidates in
+      if n_candidates = 0 then 0
+      else if rg_count = 0 then 0
+      else
+        (match probe_parquet_num_rows h.coh_path with
+         | None -> n_candidates  // fallback: at least 1 row per candidate rg
+         | Some total_rows ->
+           // avg_rows_per_rg = total_rows / rg_count (truncating).
+           // estimate = n_candidates * avg_rows_per_rg.
+           let avg : nat = total_rows / rg_count in
+           n_candidates `op_Multiply` avg)
 
 // ----------------------------------------------------------------------
 // Bound-pattern + row-to-quad helpers (moved from Parser.BallyhooCOTTAS).
