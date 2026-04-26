@@ -1751,10 +1751,28 @@ backtrace=%s
       end
     in
     let n_skipped = ref 0 in
+    (* tet3_fstar_redirect_search: search_fast_inner installed
+       (issue #100, 2026-04-26). Per-rg gate routed through F*'s
+       RDF_CottasStore_PresenceBitmap via the Tet3_fstar_redirect
+       helper (installed by the prior estimate-redirect patch).
+       Fall back to the existing Tet3 Hashtbl path only when
+       could_via_fstar returns None (companion file absent). *)
+    let n_via_fstar_search = ref 0 in
+    let n_via_hashtbl_search = ref 0 in
     for rg = 0 to rg_count - 1 do
-      let could_p = Cottas_ondisk_lazy.pred_rg_could_contain path rg bound_p in
-      let could_s = Cottas_ondisk_lazy.subj_rg_could_contain path rg bound_s in
-      let could_o = Cottas_ondisk_lazy.obj_rg_could_contain  path rg bound_o in
+      let could_via path_ col_idx bound_id bound_str fallback_get =
+        match Tet3_fstar_redirect.could_via_fstar
+                path_ col_idx rg bound_id with
+        | FStar_Pervasives_Native.Some b ->
+          incr n_via_fstar_search; b
+        | FStar_Pervasives_Native.None ->
+          incr n_via_hashtbl_search; fallback_get path_ rg bound_str in
+      let could_p = could_via path 1 bound.Parser_BallyhooCOTTAS.cbqp_p
+        bound_p Cottas_ondisk_lazy.pred_rg_could_contain in
+      let could_s = could_via path 0 bound.Parser_BallyhooCOTTAS.cbqp_s
+        bound_s Cottas_ondisk_lazy.subj_rg_could_contain in
+      let could_o = could_via path 2 bound.Parser_BallyhooCOTTAS.cbqp_o
+        bound_o Cottas_ondisk_lazy.obj_rg_could_contain in
       if not (could_p && could_s && could_o) then begin
         incr n_skipped;
         if !n_skipped <= 3 || !n_skipped mod 5 = 0 then
@@ -1769,6 +1787,8 @@ backtrace=%s
           raise e
       end
     done;
+    Printf.eprintf "[tet3-fstar-trace] search_fast_inner: rg-tests via_fstar=%d via_hashtbl=%d\n%!"
+      !n_via_fstar_search !n_via_hashtbl_search;
     Printf.eprintf "[tet3-trace] search_fast: skipped %d/%d rg(s) (s=%s p=%s o=%s)\n%!"
       !n_skipped rg_count
       (match bound_s with None -> "_" | Some _ -> "<sub>")
