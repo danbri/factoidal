@@ -74,12 +74,22 @@ let cottas_ondisk_dataset_backend (cods : cottas_ondisk_store) : dataset_backend
         (cottas_ondisk_named_graphs cods)
   }
 
-let rec union_backend_search (members : list graph_backend) (b : triple_pattern_bound)
+// Tail-rec accumulator. The original used `backend_search member b @
+// union_backend_search rest b` — both the recursion AND the `@` walk the
+// LHS list (each search result, up to 3M triples) on every step. On a
+// multi-graph dataset that overflows the macOS main-thread stack BEFORE
+// Tav5's HTTP-level row cap (commit 4ff2321) can fire. Sin7 fix
+// (2026-04-26): walk members tail-recursively, accumulating each
+// member's results in reverse via `List.Tot.rev_acc`, then reverse once
+// at the end. Order is preserved (semantics unchanged).
+let rec union_backend_search_acc (members : list graph_backend)
+  (b : triple_pattern_bound) (acc_rev : list triple)
   : Tot (list triple) (decreases members) =
   match members with
-  | [] -> []
+  | [] -> List.Tot.rev acc_rev
   | member :: rest ->
-    backend_search member b @ union_backend_search rest b
+    let part = backend_search member b in
+    union_backend_search_acc rest b (List.Tot.rev_acc part acc_rev)
 
 and backend_search (gb : graph_backend) (b : triple_pattern_bound) : list triple =
   match gb with
@@ -103,7 +113,11 @@ and backend_search (gb : graph_backend) (b : triple_pattern_bound) : list triple
        let rows = cottas_ondisk_search cods bound in
        List.Tot.map fst (cottas_ondisk_rows_to_quads cods rows))
   | GB_Union members ->
-    union_backend_search members b
+    union_backend_search_acc members b []
+
+let union_backend_search (members : list graph_backend) (b : triple_pattern_bound)
+  : Tot (list triple) =
+  union_backend_search_acc members b []
 
 // Aleph6 (issue #100, demo prep): LIMIT-pushdown variant of backend_search.
 // The COTTAS-on-disk backend stops walking once `limit` matched rows are
@@ -117,21 +131,26 @@ let rec list_take_n (#a:Type) (n : nat) (xs : list a)
     | [] -> []
     | hd :: tl -> hd :: list_take_n (n - 1) tl
 
-let rec union_backend_search_limited (members : list graph_backend)
-  (b : triple_pattern_bound) (limit : nat)
+// Tail-rec accumulator for LIMIT-pushdown union search. Same hazard as
+// `union_backend_search` (sin7 2026-04-26): the original used `part @
+// more`, walking the LHS on every step. Even with LIMIT pushdown, a
+// single member's pre-truncate result list could still be large; the
+// per-member result is fed unchanged to `List.Tot.rev_acc`. Order
+// preserved (rev at end, then take_n).
+let rec union_backend_search_limited_acc (members : list graph_backend)
+  (b : triple_pattern_bound) (limit : nat) (acc_rev : list triple)
+  (acc_len : nat)
   : Tot (list triple) (decreases members) =
-  if limit = 0 then []
+  if acc_len >= limit then acc_rev
   else
     match members with
-    | [] -> []
+    | [] -> acc_rev
     | member :: rest ->
-      let part = backend_search_limited member b limit in
+      let need : nat = limit - acc_len in
+      let part = backend_search_limited member b need in
       let part_len = List.Tot.length part in
-      if part_len >= limit then list_take_n limit part
-      else
-        let need : nat = limit - part_len in
-        let more = union_backend_search_limited rest b need in
-        part @ more
+      union_backend_search_limited_acc rest b limit
+        (List.Tot.rev_acc part acc_rev) (acc_len + part_len)
 
 and backend_search_limited (gb : graph_backend) (b : triple_pattern_bound)
   (limit : nat)
@@ -145,7 +164,10 @@ and backend_search_limited (gb : graph_backend) (b : triple_pattern_bound)
        let rows = cottas_ondisk_search_limited cods bound limit in
        List.Tot.map fst (cottas_ondisk_rows_to_quads cods rows))
   | GB_Union members ->
-    union_backend_search_limited members b limit
+    if limit = 0 then []
+    else
+      let result_rev = union_backend_search_limited_acc members b limit [] 0 in
+      list_take_n limit (List.Tot.rev result_rev)
   | _ ->
     (* Other backends: no pushdown, just truncate. Their search results
        are already in memory; LIMIT is a small post-step. *)

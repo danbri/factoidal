@@ -627,15 +627,25 @@ noeq type sparql_update = {
 (** that prevented F* extraction — see comment nesting fix)                **)
 (** ====================================================================== **)
 
-(* filter_map: not in FStar.List.Tot, define here *)
-let rec list_filter_map (#a #b:Type) (f : a -> option b) (l : list a)
+(* filter_map: not in FStar.List.Tot, define here.
+   Tail-rec rewrite (sin7, 2026-04-26): this function is the immediate
+   consumer of `backend_search`'s 3M-row BGP result (Store.fst:229,
+   eval_single_tp_backend). The original cons-after-recurse pattern
+   overflowed the stack inside the BGP evaluator before Tav5's HTTP-level
+   `--max-rows 50000` cap could fire. Pattern matches Tav5's
+   `json_rows_body_acc` style. *)
+let rec list_filter_map_acc (#a #b:Type) (f : a -> option b) (l : list a) (acc : list b)
   : Tot (list b) (decreases l) =
   match l with
-  | [] -> []
+  | [] -> acc
   | x :: xs ->
     (match f x with
-     | Some y -> y :: list_filter_map f xs
-     | None -> list_filter_map f xs)
+     | Some y -> list_filter_map_acc f xs (y :: acc)
+     | None   -> list_filter_map_acc f xs acc)
+
+let list_filter_map (#a #b:Type) (f : a -> option b) (l : list a)
+  : Tot (list b) =
+  List.Tot.rev (list_filter_map_acc f l [])
 
 (* List-based string operations for contains/starts_with/ends_with *)
 let rec list_is_prefix (#a:eqtype) (prefix lst : list a) : Tot bool (decreases prefix) =

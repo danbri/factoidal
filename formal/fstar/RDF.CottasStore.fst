@@ -900,12 +900,24 @@ let cottas_ondisk_row_to_quad (ds : cottas_ondisk_store) (row : cottas_qp_row)
         | Some gr -> Some (cottas_ondisk_decode_graph_name ds gr)))
   | _ -> None
 
-let rec cottas_ondisk_rows_to_quads (ds : cottas_ondisk_store) (rows : list cottas_qp_row)
+// Tail-recursive accumulator companion. The original
+// `cottas_ondisk_rows_to_quads` was non-tail-rec (recurses BEFORE consing
+// the result). On a 3.14M-row result this overflowed the macOS main-thread
+// stack the same way Tav5's `json_rows_body` did (commit 4ff2321).
+// Pattern mirrors `json_rows_body_acc` / `xml_rows_body_acc` /
+// `csv_rows_body_acc` in `SPARQL.Protocol.fst`.
+let rec cottas_ondisk_rows_to_quads_acc
+    (ds : cottas_ondisk_store)
+    (rows : list cottas_qp_row)
+    (acc : list (triple & option iri))
   : Tot (list (triple & option iri)) (decreases rows) =
   match rows with
-  | [] -> []
+  | [] -> acc
   | row :: rest ->
-    let rest' = cottas_ondisk_rows_to_quads ds rest in
-    match cottas_ondisk_row_to_quad ds row with
-    | Some q -> q :: rest'
-    | None -> rest'
+    (match cottas_ondisk_row_to_quad ds row with
+     | None      -> cottas_ondisk_rows_to_quads_acc ds rest acc
+     | Some quad -> cottas_ondisk_rows_to_quads_acc ds rest (quad :: acc))
+
+let cottas_ondisk_rows_to_quads (ds : cottas_ondisk_store) (rows : list cottas_qp_row)
+  : Tot (list (triple & option iri)) =
+  List.Tot.rev (cottas_ondisk_rows_to_quads_acc ds rows [])
