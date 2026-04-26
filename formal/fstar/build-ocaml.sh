@@ -115,7 +115,8 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   #   RDF.CottasStore       -> RDF.Graph.Executable, Parser.BallyhooCOTTAS (issue #100 Phase A)
   #   SPARQL11.Store        -> SPARQL11.Algebra, Parser.BallyhooHDT, Parser.BallyhooCOTTAS, RDF.CottasStore
   #   SPARQL.Protocol       -> SPARQL11.Algebra, Parser.CSVResults, Parser.JSONResults
-  for fst in RDF.Graph.Executable.fst Parquet.Footer.fst \
+  for fst in Util.Log.fst \
+             RDF.Graph.Executable.fst Parquet.Footer.fst \
              RDF.Canonical.fst \
              Tableau.fst SPARQL11.Algebra.fst \
              OWL.QueryRewrite.fst OWL.QueryEval.fst \
