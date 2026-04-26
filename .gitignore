@@ -43,3 +43,7 @@ tools/__pycache__/
 **/__pycache__/
 third_party/data/ukparliament/*.trig
 third_party/data/ukparliament/*.nq
+
+# Application logs (per-invocation log files emitted by --log-file or
+# FACTOIDAL_LOG_FILE). Gitignored — these are runtime artefacts, not source.
+data/logs/

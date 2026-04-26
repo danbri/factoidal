@@ -5,6 +5,7 @@ open SPARQL11.Algebra
 open Parser.BallyhooHDT
 open Parser.BallyhooCOTTAS
 open RDF.CottasStore
+module Log = Util.Log
 
 // Backend-neutral store layer for SPARQL evaluation.
 // The algebra remains the semantic source of truth; this module only dispatches
@@ -255,24 +256,59 @@ let eval_single_tp_backend (tp : triple_pattern) (gb : graph_backend) (mu : solu
   let candidates = backend_search gb bound in
   list_filter_map (fun t -> tp_match tp t mu) candidates
 
+// Compact bound-shape descriptor for log output. Encodes which positions
+// have a bound term ("S", "P", "O") vs free ("_"). Reading order S-P-O.
+// Examples: "_PO" = predicate + object bound; "___" = all free.
+let tp_bound_shape (tp : triple_pattern) (mu : solution_mapping) : string =
+  let s = match bound_subject_of_pattern tp.tp_s mu with Some _ -> "S" | None -> "_" in
+  let p = match bound_predicate_of_pattern tp.tp_p mu with Some _ -> "P" | None -> "_" in
+  let o = match bound_object_of_pattern tp.tp_o mu with Some _ -> "O" | None -> "_" in
+  s ^ p ^ o
+
 let estimate_tp_backend_mu (tp : triple_pattern) (gb : graph_backend) (mu : solution_mapping) : nat =
-  backend_estimate gb {
+  let est = backend_estimate gb {
     bs = bound_subject_of_pattern tp.tp_s mu;
     bp = bound_predicate_of_pattern tp.tp_p mu;
     bo = bound_object_of_pattern tp.tp_o mu;
-  }
+  } in
+  let _ = Log.debug "estimate_tp_backend_mu"
+    (Prims.strcat "shape=" (Prims.strcat (tp_bound_shape tp mu)
+      (Prims.strcat " est=" (Prims.string_of_int est)))) in
+  est
 
 let rec choose_best_tp_backend (patterns : bgp) (gb : graph_backend) (mu : solution_mapping)
   : Tot (option (triple_pattern * bgp)) (decreases patterns) =
   match patterns with
-  | [] -> None
+  | [] ->
+    let _ = Log.trace "choose_best_tp_backend" "patterns=[] -> None" in
+    None
   | tp :: rest ->
+    let _ = Log.debug "choose_best_tp_backend"
+      (Prims.strcat "considering tp shape=" (tp_bound_shape tp mu)) in
     match choose_best_tp_backend rest gb mu with
-    | None -> Some (tp, [])
+    | None ->
+      let _ = Log.debug "choose_best_tp_backend"
+        (Prims.strcat "rest empty; picked tp shape=" (tp_bound_shape tp mu)) in
+      Some (tp, [])
     | Some (best, remaining) ->
-      if estimate_tp_backend_mu tp gb mu <= estimate_tp_backend_mu best gb mu
-      then Some (tp, rest)
-      else Some (best, tp :: remaining)
+      let est_tp = estimate_tp_backend_mu tp gb mu in
+      let est_best = estimate_tp_backend_mu best gb mu in
+      if est_tp <= est_best
+      then begin
+        let _ = Log.info "choose_best_tp_backend"
+          (Prims.strcat "REPLACE: new tp shape=" (Prims.strcat (tp_bound_shape tp mu)
+            (Prims.strcat " est=" (Prims.strcat (Prims.string_of_int est_tp)
+              (Prims.strcat " <= prev_best shape=" (Prims.strcat (tp_bound_shape best mu)
+                (Prims.strcat " est=" (Prims.string_of_int est_best)))))))) in
+        Some (tp, rest)
+      end else begin
+        let _ = Log.info "choose_best_tp_backend"
+          (Prims.strcat "KEEP: prev_best shape=" (Prims.strcat (tp_bound_shape best mu)
+            (Prims.strcat " est=" (Prims.strcat (Prims.string_of_int est_best)
+              (Prims.strcat " < new tp shape=" (Prims.strcat (tp_bound_shape tp mu)
+                (Prims.strcat " est=" (Prims.string_of_int est_tp)))))))) in
+        Some (best, tp :: remaining)
+      end
 
 let rec pattern_predicate_hint (p : group_graph_pattern)
   : Tot (option wf_iri) (decreases p) =

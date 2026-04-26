@@ -78,6 +78,48 @@ Rust/JS/OCaml/anything that "mirrors" a spec.
     file. Resolved: RDFS closure + reflexivity axioms (#60) — now lives in
     `RDF.Graph.Executable.fst` as `rdfs_closure_with_reflexivity`.
 
+11. **`experimental_ocaml_glue/` patches MUST NOT override F\* runtime
+    functions with semantic re-implementations.** This is a stricter form
+    of rule #10 specifically for the COTTAS-on-disk perf area. Between
+    2026-04-25 and 2026-04-26 the project accumulated ~3000 LoC of OCaml-
+    side semantic logic (Yod6 pred-presence, Tet3 subj/obj-presence,
+    Lamed3 offset-index, Mem5 estimate fast-path, Pe5 explain re-impl,
+    etc.) that REPLACED F\* runtime functions wholesale. The verified
+    extraction story collapsed: F\* spec became dead code, OCaml shims
+    became the runtime. **No more.**
+
+    Allowed in `experimental_ocaml_glue/`:
+    - Realisations of `assume val` declarations (rule #3) — pure I/O, no
+      decisions about what to compute, only how to read/write bytes.
+    - Companion-file writers that build disk artifacts (Vav3-style); the
+      reader path must be in F\*.
+    - Trivial dispatch shims that call F\*-extracted code (e.g. perf
+      shadow tables that the F\* code itself decides to consult).
+
+    Forbidden:
+    - Replacing the body of an F\*-extracted function with an OCaml
+      reimplementation (the `cottas_ondisk_search -> search_fast`
+      pattern).
+    - Adding pruning, optimisation, or query-planning logic in
+      OCaml. These belong in F\*. If F\*'s implementation is too slow,
+      MAKE F\*'s IMPLEMENTATION FAST — don't shadow it.
+    - "Shape A" agent prompts that tell an agent the F\* path is
+      bypassed so OCaml is acceptable. The opposite is now true: the
+      F\* path is the runtime. Agents may not bypass it.
+
+    **When dispatching an agent that touches the COTTAS backend or the
+    SPARQL evaluator, the prompt MUST include a clause forbidding
+    additions to `experimental_ocaml_glue/` other than the three
+    allowed cases above.** The dispatching coordinator (top-level
+    Claude) is responsible for enforcing this. If an agent's natural
+    path leads to a glue addition, re-scope the agent to write F\* +
+    `assume val` realisation only.
+
+    Layer-2 unwind (planned 2026-04-26): each existing override patch
+    is replaced by an F\* implementation. See
+    `docs/designissues/fstar-purity-unwind.md` (TBD) for the inventory
+    and order of operations.
+
 ## Agent Work Strategy
 
 Use subagents aggressively for parallelism — launch separate agents for
