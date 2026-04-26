@@ -423,13 +423,45 @@ tools/factoidal-debug-query.sh explain \
   -e 'PREFIX geo: <http://www.opengis.net/ont/geosparql#> SELECT ?s ?p ?o WHERE { ?s ?p ?o . ?o a geo:wktLiteral } LIMIT 3'
 ```
 
-**Result (full trace captured at `.claude-runs/yod7-lamed3-smoke-<ts>.log`):**
+**Result (full trace captured at
+`.claude-runs/yod7-lamed3-smoke-20260426T224848.log`, 28 lines).**
 
-(See "Smoke run section" below — appended after the smoke run lands.)
+`[lamed3-trace]` lines emitted by `tools/factoidal-debug-query.sh
+explain` (the HTTP-explain path that calls `prewarm_via_companions`):
 
-`[lamed3-trace]` lines emitted: confirmed match of the writer-side
-table in §2 — only writer + boot-mmap-confirmation lines. Zero reader
-dispatch traces. Validates the dead-code claim.
+```
+[lamed3-trace] offsets file present at .../data.cottas.p.offsets, skipping build
+[lamed3-trace] offsets reader: .../data.cottas.p.offsets mapped (rgs=26 preds=232 data_off=48280 total=12621904)
+```
+
+That's it. **Two lines only**: skip-if-present (writer-side) +
+boot-mmap-confirmation (`ensure_offsets_built` post-build
+`read_header` call at `RDF_CottasStore.ml:671`). The explain mode does
+NOT execute the query, so we additionally ran the same query via
+`./bin/darwin-arm64/factoidal --data-cottas ... --query` (the CLI
+binary, which per the tau3 Bet7 audit skips `prewarm_via_companions`
+and uses Bet7 lazy populators instead). Trace at
+`.claude-runs/yod7-lamed3-exec-20260426T224912.log` (59 lines):
+
+```
+$ grep -c lamed3 .claude-runs/yod7-lamed3-exec-20260426T224912.log
+0
+```
+
+**Zero lamed3 trace lines on the CLI execution path.** The CLI binary
+doesn't even open the `.p.offsets` file (no prewarm call → no
+`ensure_offsets_built` → no mmap of the offsets companion).
+
+Both paths confirm: **the reader half of Lamed3 is fully dead code in
+production today.** The HTTP path opens the mmap at boot and never
+consults it; the CLI path doesn't even open it.
+
+**Bonus runtime evidence:** the CLI execution shows Tet3's bitmap
+prune correctly skipping 25/26 row-groups for the same query
+(`search_fast rg=N skipped (could_p=true could_s=true could_o=false)`)
+— this is the path the q03 fix-patch's preamble said works correctly
+in microseconds. Validates the patch-author's claim that `*_inner`
+is the right path.
 
 ## Conclusion
 
