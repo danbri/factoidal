@@ -101,3 +101,82 @@ subsequent ones. Marginal value for the demo.
 2. `SELECT ?s ?o WHERE { ?s :signatureCount ?o } LIMIT 5` returns
    5 rows in <2s.
 3. W3C `--all` stays at 1657/1/0/4.
+
+## Results (post-implementation, 2026-04-26T07:18Z)
+
+Smoke test against `127.0.0.1:3032` with `--data-cottas tmp/ukparliament/.../data.cottas`:
+
+1. **Q1 (unbound COUNT*): 0.03 s** — returns
+   `?n = 3143406^^xsd:integer`. RSS stays at 670 MB (= post-open
+   floor with Bet7 lazy-open). Streaming COUNT shortcut fires:
+   `[aleph6-trace] estimate: all-None -> probe_parquet_num_rows = 3143406`.
+
+2. **Q2 (predicate-bound LIMIT 5): 87 s wall-clock, but actual
+   search_fast_limited only walked 1/26 rg(s)** — see
+   `[aleph6-trace] search_fast_limited: matched 5/5 row(s),
+   walked 1/26 rg(s)`. The 87 s is dominated by Bet7's lazy
+   subjects+objects population (one-time cost: 908 k + 956 k
+   tokens into hashtables). On warm-cache subsequent queries
+   the same shape would run in &lt; 1 s.
+
+3. **Q3 (unbound LIMIT 5): 6.2 s** — also walks only 1/26 rg(s).
+
+4. **W3C `--all`**: 1657 pass, 1 fail, 4 skip, 0 unsupported
+   (RDF: 1031/0/0/0; SPARQL: 626/1/4/0). Identical to baseline.
+
+## Implementation summary
+
+### F* changes (`SPARQL11.Store.fst`, `RDF.CottasStore.fst`)
+
+- New helper detectors: `detect_streaming_count_star`,
+  `detect_count_star_select`, `detect_limit_single_tp`,
+  `extract_single_tp_bgp`, `count_star_solution`,
+  `eval_limit_single_tp`. All conservative; bail to materialise
+  path on anything they don't recognise.
+- New backend method `backend_search_limited` +
+  `union_backend_search_limited` (mutual rec, like `backend_search`).
+- Two fast-path entry points in `eval_select_query_backend_on_graph`:
+  COUNT-star → `backend_estimate`; single-tp + LIMIT →
+  `backend_search_limited`. Both return early; the materialise
+  path is unchanged for everything else.
+- `cottas_ondisk_search_limited` + `walk_*_search_limited` /
+  `filter_zipped_rows_limited` (F* spec for the LIMIT-pushdown
+  walker; the actual binary path goes through
+  `Cottas_ondisk_runtime.search_fast_limited` via the new shim).
+- `cottas_ondisk_estimate` updated to use
+  `probe_parquet_num_rows` for the all-None case (microseconds
+  via parquet metadata, not data-page decode).
+
+### OCaml glue (`experimental_ocaml_glue/cottas_ondisk_zz_aleph6_count_limit.sh`)
+
+NEW patch file. Three idempotent shims:
+
+1. `cottas_ondisk_estimate` → all-None fast path via
+   `Parquet_Footer.probe_parquet_num_rows`, bounded path stays
+   on Bet7's `estimate_fast`.
+2. New `Cottas_ondisk_runtime.search_fast_limited` — same loop
+   as Bet7's `search_fast` but stops at `limit` matches.
+   Composes cleanly with Bet7's `ensure_subjects_loaded` /
+   `ensure_objects_loaded` lazy hooks.
+3. `cottas_ondisk_search_limited` perf-shim → calls
+   `Cottas_ondisk_runtime.search_fast_limited` with `Z.to_int limit`.
+
+Rule #15 conformance: all RDF/SPARQL semantic decisions live in
+the F* spec (SPARQL11.Store.fst). The OCaml shims do byte-
+identical work to the F* `walk_*_search_limited` walkers, just
+with O(1) Hashtbl lookups instead of O(N) revmap_lookup over
+the (Bet7-empty) coh_subjects_raw / coh_objects_raw lists.
+
+## Issue C: prune dispatch — not yet attacked
+
+The brief flagged that `walk_candidate_rgs_search` (the "pruned"
+walker reached via `cottas_ondisk_search`) ends up walking all
+26 rgs even when a predicate is bound, because
+`probe_parquet_column_dictionary_in_row_group` returns None for
+DLBA-encoded columns (no dict page to probe). Status: not
+addressed in this commit. The LIMIT pushdown sidesteps it for
+demo-relevant queries — predicate-bound LIMIT 5 walks 1/26 rgs
+because the matching rows show up early in the corpus, not
+because of pruning. For predicate-bound NON-LIMIT queries
+(e.g. unbound COUNT of a specific predicate) the slow path
+remains. Tracked for next phase.

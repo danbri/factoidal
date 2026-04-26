@@ -695,6 +695,129 @@ let cottas_ondisk_search
         0 rg_count rg_count [] cache0 in
       list_rev acc_rev
 
+// ----------------------------------------------------------------------
+// Aleph6 (issue #100, demo prep): LIMIT pushdown variants of the row-group
+// walkers. They short-circuit once `acc_rev` accumulates `limit` matched
+// rows, avoiding the rest-of-corpus walk for queries like
+// `SELECT ?s ?o WHERE { ?s :pred ?o } LIMIT 5`.
+//
+// Semantically equivalent to taking the first `limit` rows of
+// `cottas_ondisk_search`. The unlimited variants above stay for full-table
+// callers (e.g. CONSTRUCT, materialised SELECT without LIMIT).
+// ----------------------------------------------------------------------
+
+// Filter a single row-group's zipped columns, stopping when `acc_rev`
+// reaches `limit`. Returns (acc_rev, hit_limit).
+let rec filter_zipped_rows_limited
+  (h : cottas_ondisk_handle)
+  (bound_s bound_p bound_o bound_g : option string)
+  (s_col p_col o_col g_col : list (option string))
+  (acc_rev : list cottas_qp_row) (acc_count : nat) (limit : nat)
+  : Tot (list cottas_qp_row & nat & bool) (decreases s_col) =
+  if acc_count >= limit then (acc_rev, acc_count, true)
+  else
+    match s_col, p_col, o_col, g_col with
+    | s_hd :: s_tl, p_hd :: p_tl, o_hd :: o_tl, g_hd :: g_tl ->
+      let (acc_rev', acc_count') =
+        match s_hd, p_hd, o_hd, g_hd with
+        | Some s_tok, Some p_tok, Some o_tok, Some g_tok ->
+          if cell_match bound_s s_tok &&
+             cell_match bound_p p_tok &&
+             cell_match bound_o o_tok &&
+             graph_cell_match bound_g g_tok
+          then (build_qp_row h s_tok p_tok o_tok g_tok :: acc_rev,
+                acc_count + 1)
+          else (acc_rev, acc_count)
+        | _ -> (acc_rev, acc_count) in
+      filter_zipped_rows_limited h bound_s bound_p bound_o bound_g
+        s_tl p_tl o_tl g_tl acc_rev' acc_count' limit
+    | _ -> (acc_rev, acc_count, acc_count >= limit)
+
+let rec walk_row_groups_search_limited
+  (h : cottas_ondisk_handle)
+  (bound_s bound_p bound_o bound_g : option string)
+  (rg_index : nat) (rg_count : nat) (fuel : nat)
+  (acc_rev : list cottas_qp_row) (acc_count : nat) (limit : nat)
+  (cache : page_cache)
+  : Tot (list cottas_qp_row & page_cache) (decreases fuel) =
+  if fuel = 0 then (acc_rev, cache)
+  else if rg_index >= rg_count then (acc_rev, cache)
+  else if acc_count >= limit then (acc_rev, cache)
+  else
+    let cap = cache.pc_capacity in
+    let (s_col, c1) = pcache_decode_in_row_group cache  h.coh_path rg_index 0 cap in
+    let (p_col, c2) = pcache_decode_in_row_group c1     h.coh_path rg_index 1 cap in
+    let (o_col, c3) = pcache_decode_in_row_group c2     h.coh_path rg_index 2 cap in
+    let (g_col, c4) = pcache_decode_in_row_group c3     h.coh_path rg_index 3 cap in
+    let (acc_rev', acc_count', hit) =
+      match s_col, p_col, o_col, g_col with
+      | Some sc, Some pc, Some oc, Some gc ->
+        filter_zipped_rows_limited h bound_s bound_p bound_o bound_g
+          sc pc oc gc acc_rev acc_count limit
+      | _ -> (acc_rev, acc_count, false) in
+    if hit then (acc_rev', c4)
+    else
+      walk_row_groups_search_limited h bound_s bound_p bound_o bound_g
+        (rg_index + 1) rg_count (fuel - 1) acc_rev' acc_count' limit c4
+
+let rec walk_candidate_rgs_search_limited
+  (h : cottas_ondisk_handle)
+  (bound_s bound_p bound_o bound_g : option string)
+  (candidates : list nat)
+  (acc_rev : list cottas_qp_row) (acc_count : nat) (limit : nat)
+  (cache : page_cache)
+  : Tot (list cottas_qp_row & page_cache) (decreases candidates) =
+  if acc_count >= limit then (acc_rev, cache)
+  else
+    match candidates with
+    | [] -> (acc_rev, cache)
+    | rg_index :: rest ->
+      let cap = cache.pc_capacity in
+      let (s_col, c1) = pcache_decode_in_row_group cache  h.coh_path rg_index 0 cap in
+      let (p_col, c2) = pcache_decode_in_row_group c1     h.coh_path rg_index 1 cap in
+      let (o_col, c3) = pcache_decode_in_row_group c2     h.coh_path rg_index 2 cap in
+      let (g_col, c4) = pcache_decode_in_row_group c3     h.coh_path rg_index 3 cap in
+      let (acc_rev', acc_count', hit) =
+        match s_col, p_col, o_col, g_col with
+        | Some sc, Some pc, Some oc, Some gc ->
+          filter_zipped_rows_limited h bound_s bound_p bound_o bound_g
+            sc pc oc gc acc_rev acc_count limit
+        | _ -> (acc_rev, acc_count, false) in
+      if hit then (acc_rev', c4)
+      else
+        walk_candidate_rgs_search_limited h bound_s bound_p bound_o bound_g
+          rest acc_rev' acc_count' limit c4
+
+// LIMIT-pushdown public entry: same as `cottas_ondisk_search` but stops
+// once `limit` matching rows have been accumulated. Returns at most
+// `limit` rows.
+let cottas_ondisk_search_limited
+  (ds : cottas_ondisk_store) (bound : cottas_bound_qp) (limit : nat)
+  : Tot (list cottas_qp_row) =
+  let h = ds.cods_handle in
+  let bound_s = id_to_raw_token h.coh_subjects_raw   bound.cbqp_s in
+  let bound_p = id_to_raw_token h.coh_predicates_raw bound.cbqp_p in
+  let bound_o = id_to_raw_token h.coh_objects_raw    bound.cbqp_o in
+  let bound_g = id_to_raw_token h.coh_graphs_raw     bound.cbqp_g in
+  match probe_parquet_row_group_count h.coh_path with
+  | None -> []
+  | Some rg_count ->
+    let cache0 = pcache_empty pcache_default_capacity in
+    let any_bound_present =
+      Some? bound_s || Some? bound_p || Some? bound_o || Some? bound_g in
+    if any_bound_present then
+      let (candidates, _dc) = plan_candidate_rgs h
+        bound_s bound_p bound_o bound_g rg_count in
+      let (acc_rev, _cache') = walk_candidate_rgs_search_limited h
+        bound_s bound_p bound_o bound_g
+        candidates [] 0 limit cache0 in
+      list_rev acc_rev
+    else
+      let (acc_rev, _cache') = walk_row_groups_search_limited h
+        bound_s bound_p bound_o bound_g
+        0 rg_count rg_count [] 0 limit cache0 in
+      list_rev acc_rev
+
 let cottas_ondisk_estimate
   (ds : cottas_ondisk_store) (bound : cottas_bound_qp)
   : Tot nat =
@@ -703,23 +826,41 @@ let cottas_ondisk_estimate
   let bound_p = id_to_raw_token h.coh_predicates_raw bound.cbqp_p in
   let bound_o = id_to_raw_token h.coh_objects_raw    bound.cbqp_o in
   let bound_g = id_to_raw_token h.coh_graphs_raw     bound.cbqp_g in
-  match probe_parquet_row_group_count h.coh_path with
-  | None -> 0
-  | Some rg_count ->
-    let cache0 = pcache_empty pcache_default_capacity in
-    let any_bound_present =
-      Some? bound_s || Some? bound_p || Some? bound_o || Some? bound_g in
-    if any_bound_present then
+  let any_bound_present =
+    Some? bound_s || Some? bound_p || Some? bound_o || Some? bound_g in
+  if not any_bound_present then
+    // Aleph6 (issue #100, demo prep): unbound COUNT(*) fast path.
+    // The total row count is encoded in the parquet metadata's
+    // FileMetaData.num_rows field; reading it doesn't require decoding
+    // any data pages. For parliament's 3.1M-row corpus this is
+    // microseconds vs minutes for the per-row-group walk.
+    //
+    // Bounds-present queries still walk row groups: the bound determines
+    // which rows match, and the parquet metadata's per-rg row counts
+    // don't tell us that.
+    (match probe_parquet_num_rows h.coh_path with
+     | Some n -> n
+     | None ->
+       // Fallback: shouldn't reach here for well-formed parquet files.
+       // If the metadata read fails, do a row-group walk to be safe.
+       (match probe_parquet_row_group_count h.coh_path with
+        | None -> 0
+        | Some rg_count ->
+          let cache0 = pcache_empty pcache_default_capacity in
+          let (count, _cache') = walk_row_groups_estimate h
+            bound_s bound_p bound_o bound_g
+            0 rg_count rg_count 0 cache0 in
+          count))
+  else
+    match probe_parquet_row_group_count h.coh_path with
+    | None -> 0
+    | Some rg_count ->
+      let cache0 = pcache_empty pcache_default_capacity in
       let (candidates, _dc) = plan_candidate_rgs h
         bound_s bound_p bound_o bound_g rg_count in
       let (count, _cache') = walk_candidate_rgs_estimate h
         bound_s bound_p bound_o bound_g
         candidates 0 cache0 in
-      count
-    else
-      let (count, _cache') = walk_row_groups_estimate h
-        bound_s bound_p bound_o bound_g
-        0 rg_count rg_count 0 cache0 in
       count
 
 // ----------------------------------------------------------------------

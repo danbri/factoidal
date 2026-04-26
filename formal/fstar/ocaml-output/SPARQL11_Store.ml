@@ -144,6 +144,48 @@ and backend_search (gb : graph_backend)
            FStar_List_Tot_Base.map FStar_Pervasives_Native.fst
              (RDF_CottasStore.cottas_ondisk_rows_to_quads cods rows))
   | GB_Union members -> union_backend_search members b
+let rec list_take_n : 'a . Prims.nat -> 'a Prims.list -> 'a Prims.list =
+  fun n xs ->
+    if n = Prims.int_zero
+    then []
+    else
+      (match xs with
+       | [] -> []
+       | hd::tl -> hd :: (list_take_n (n - Prims.int_one) tl))
+let rec union_backend_search_limited (members : graph_backend Prims.list)
+  (b : SPARQL11_Algebra.triple_pattern_bound) (limit : Prims.nat) :
+  RDF_Graph_Executable.triple Prims.list=
+  if limit = Prims.int_zero
+  then []
+  else
+    (match members with
+     | [] -> []
+     | member::rest ->
+         let part = backend_search_limited member b limit in
+         let part_len = FStar_List_Tot_Base.length part in
+         if part_len >= limit
+         then list_take_n limit part
+         else
+           (let need = limit - part_len in
+            let more = union_backend_search_limited rest b need in
+            FStar_List_Tot_Base.append part more))
+and backend_search_limited (gb : graph_backend)
+  (b : SPARQL11_Algebra.triple_pattern_bound) (limit : Prims.nat) :
+  RDF_Graph_Executable.triple Prims.list=
+  match gb with
+  | GB_CottasOnDisk (cods, graph_name) ->
+      (match RDF_CottasStore.cottas_ondisk_build_bound_qp_opt cods
+               b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
+               b.SPARQL11_Algebra.bo graph_name
+       with
+       | FStar_Pervasives_Native.None -> []
+       | FStar_Pervasives_Native.Some bound ->
+           let rows =
+             RDF_CottasStore.cottas_ondisk_search_limited cods bound limit in
+           FStar_List_Tot_Base.map FStar_Pervasives_Native.fst
+             (RDF_CottasStore.cottas_ondisk_rows_to_quads cods rows))
+  | GB_Union members -> union_backend_search_limited members b limit
+  | uu___ -> list_take_n limit (backend_search gb b)
 let rec union_backend_estimate (members : graph_backend Prims.list)
   (b : SPARQL11_Algebra.triple_pattern_bound) : Prims.nat=
   match members with
@@ -325,6 +367,157 @@ let eval_bgp_backend (patterns : SPARQL11_Algebra.bgp) (gb : graph_backend) :
   SPARQL11_Algebra.solution_sequence=
   eval_bgp_backend_from_mu_fuel patterns gb SPARQL11_Algebra.sm_empty
     ((FStar_List_Tot_Base.length patterns) + Prims.int_one)
+let extract_single_tp_bgp (p : SPARQL11_Algebra.group_graph_pattern) :
+  SPARQL11_Algebra.triple_pattern FStar_Pervasives_Native.option=
+  match p with
+  | SPARQL11_Algebra.GP_BGP (tp::[]) -> FStar_Pervasives_Native.Some tp
+  | uu___ -> FStar_Pervasives_Native.None
+let detect_count_star_select (sel : SPARQL11_Algebra.select_clause) :
+  SPARQL11_Algebra.var_name FStar_Pervasives_Native.option=
+  match sel with
+  | SPARQL11_Algebra.Select_Vars ((SPARQL11_Algebra.SI_Expr (e, v))::[]) ->
+      (match e with
+       | SPARQL11_Algebra.E_Aggregate
+           (SPARQL11_Algebra.Agg_Count, distinct, sub_e) ->
+           if distinct
+           then FStar_Pervasives_Native.None
+           else
+             (match sub_e with
+              | SPARQL11_Algebra.E_Var "*" -> FStar_Pervasives_Native.Some v
+              | SPARQL11_Algebra.E_BoolLit true ->
+                  FStar_Pervasives_Native.Some v
+              | uu___1 -> FStar_Pervasives_Native.None)
+       | uu___ -> FStar_Pervasives_Native.None)
+  | uu___ -> FStar_Pervasives_Native.None
+let detect_streaming_count_star (q : SPARQL11_Algebra.query) :
+  (SPARQL11_Algebra.var_name * SPARQL11_Algebra.triple_pattern)
+    FStar_Pervasives_Native.option=
+  match q.SPARQL11_Algebra.q_form with
+  | SPARQL11_Algebra.QF_Select sel ->
+      (match detect_count_star_select sel with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some v ->
+           if
+             FStar_Pervasives_Native.uu___is_Some
+               q.SPARQL11_Algebra.q_group_by
+           then FStar_Pervasives_Native.None
+           else
+             if
+               FStar_Pervasives_Native.uu___is_Some
+                 q.SPARQL11_Algebra.q_having
+             then FStar_Pervasives_Native.None
+             else
+               if
+                 FStar_Pervasives_Native.uu___is_Some
+                   q.SPARQL11_Algebra.q_values
+               then FStar_Pervasives_Native.None
+               else
+                 if
+                   (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_distinct
+                 then FStar_Pervasives_Native.None
+                 else
+                   if
+                     (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_reduced
+                   then FStar_Pervasives_Native.None
+                   else
+                     if
+                       FStar_Pervasives_Native.uu___is_Some
+                         (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_order_by
+                     then FStar_Pervasives_Native.None
+                     else
+                       (match extract_single_tp_bgp
+                                q.SPARQL11_Algebra.q_pattern
+                        with
+                        | FStar_Pervasives_Native.None ->
+                            FStar_Pervasives_Native.None
+                        | FStar_Pervasives_Native.Some tp ->
+                            FStar_Pervasives_Native.Some (v, tp)))
+  | uu___ -> FStar_Pervasives_Native.None
+let count_star_solution (alias : SPARQL11_Algebra.var_name) (n : Prims.nat) :
+  SPARQL11_Algebra.solution_sequence=
+  let lit_term =
+    RDF_Graph_Executable.T_Literal
+      {
+        RDF_Graph_Executable.lexical_form = (Prims.string_of_int n);
+        RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_integer;
+        RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+      } in
+  [SPARQL11_Algebra.sm_bind alias lit_term SPARQL11_Algebra.sm_empty]
+let detect_limit_single_tp (q : SPARQL11_Algebra.query) :
+  (SPARQL11_Algebra.triple_pattern * Prims.nat)
+    FStar_Pervasives_Native.option=
+  match q.SPARQL11_Algebra.q_form with
+  | SPARQL11_Algebra.QF_Select sel ->
+      if SPARQL11_Algebra.select_has_aggregates sel
+      then FStar_Pervasives_Native.None
+      else
+        if FStar_Pervasives_Native.uu___is_Some q.SPARQL11_Algebra.q_group_by
+        then FStar_Pervasives_Native.None
+        else
+          if FStar_Pervasives_Native.uu___is_Some q.SPARQL11_Algebra.q_having
+          then FStar_Pervasives_Native.None
+          else
+            if
+              FStar_Pervasives_Native.uu___is_Some
+                q.SPARQL11_Algebra.q_values
+            then FStar_Pervasives_Native.None
+            else
+              if (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_distinct
+              then FStar_Pervasives_Native.None
+              else
+                if
+                  (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_reduced
+                then FStar_Pervasives_Native.None
+                else
+                  if
+                    FStar_Pervasives_Native.uu___is_Some
+                      (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_order_by
+                  then FStar_Pervasives_Native.None
+                  else
+                    if
+                      FStar_Pervasives_Native.uu___is_Some
+                        (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_offset
+                    then FStar_Pervasives_Native.None
+                    else
+                      (match (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_limit
+                       with
+                       | FStar_Pervasives_Native.None ->
+                           FStar_Pervasives_Native.None
+                       | FStar_Pervasives_Native.Some k ->
+                           (match extract_single_tp_bgp
+                                    q.SPARQL11_Algebra.q_pattern
+                            with
+                            | FStar_Pervasives_Native.None ->
+                                FStar_Pervasives_Native.None
+                            | FStar_Pervasives_Native.Some tp ->
+                                FStar_Pervasives_Native.Some (tp, k)))
+  | uu___ -> FStar_Pervasives_Native.None
+let eval_limit_single_tp (sel : SPARQL11_Algebra.select_clause)
+  (tp : SPARQL11_Algebra.triple_pattern) (gb : graph_backend)
+  (limit : Prims.nat) : SPARQL11_Algebra.solution_sequence=
+  let bound =
+    {
+      SPARQL11_Algebra.bs =
+        (SPARQL11_Algebra.bound_subject_of_pattern tp.SPARQL11_Algebra.tp_s
+           SPARQL11_Algebra.sm_empty);
+      SPARQL11_Algebra.bp =
+        (SPARQL11_Algebra.bound_predicate_of_pattern tp.SPARQL11_Algebra.tp_p
+           SPARQL11_Algebra.sm_empty);
+      SPARQL11_Algebra.bo =
+        (SPARQL11_Algebra.bound_object_of_pattern tp.SPARQL11_Algebra.tp_o
+           SPARQL11_Algebra.sm_empty)
+    } in
+  let candidates = backend_search_limited gb bound limit in
+  let omega =
+    SPARQL11_Algebra.list_filter_map
+      (fun t -> SPARQL11_Algebra.tp_match tp t SPARQL11_Algebra.sm_empty)
+      candidates in
+  let omega' = list_take_n limit omega in
+  match sel with
+  | SPARQL11_Algebra.Select_Vars items ->
+      SPARQL11_Algebra.project_solutions
+        (SPARQL11_Algebra.select_item_vars items) omega'
+  | SPARQL11_Algebra.Select_All -> omega'
 let rec eval_pattern_backend (p : SPARQL11_Algebra.group_graph_pattern)
   (gb : graph_backend) (dsb : dataset_backend) :
   SPARQL11_Algebra.solution_sequence=
@@ -443,91 +636,131 @@ and eval_select_query_backend_bgp (q : SPARQL11_Algebra.query)
 and eval_select_query_backend_on_graph (q : SPARQL11_Algebra.query)
   (gb : graph_backend) (dsb : dataset_backend) :
   SPARQL11_Algebra.solution_sequence FStar_Pervasives_Native.option=
-  match q.SPARQL11_Algebra.q_form with
-  | SPARQL11_Algebra.QF_Select sel ->
-      let omega0 = eval_pattern_backend q.SPARQL11_Algebra.q_pattern gb dsb in
-      let omega =
-        match q.SPARQL11_Algebra.q_values with
-        | FStar_Pervasives_Native.None -> omega0
-        | FStar_Pervasives_Native.Some vals ->
-            SPARQL11_Algebra.join omega0 vals in
-      let needs_grouping =
-        match q.SPARQL11_Algebra.q_group_by with
-        | FStar_Pervasives_Native.Some uu___ -> true
-        | FStar_Pervasives_Native.None ->
-            SPARQL11_Algebra.select_has_aggregates sel in
-      if needs_grouping
-      then
-        let groups =
-          match q.SPARQL11_Algebra.q_group_by with
-          | FStar_Pervasives_Native.Some conds ->
-              SPARQL11_Algebra.group_by conds omega
-          | FStar_Pervasives_Native.None ->
-              SPARQL11_Algebra.implicit_group omega in
-        let filtered_groups =
-          match q.SPARQL11_Algebra.q_having with
-          | FStar_Pervasives_Native.Some conditions ->
-              SPARQL11_Algebra.having_filter conditions groups
-          | FStar_Pervasives_Native.None -> groups in
-        let omega' =
-          match sel with
-          | SPARQL11_Algebra.Select_Vars items ->
-              SPARQL11_Algebra.aggregate_groups items filtered_groups
-          | SPARQL11_Algebra.Select_All ->
-              FStar_List_Tot_Base.map
-                (fun grp ->
-                   match grp.SPARQL11_Algebra.g_solutions with
-                   | mu::uu___ -> mu
-                   | [] -> SPARQL11_Algebra.sm_empty) filtered_groups in
-        let ordered =
-          match (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_order_by
-          with
-          | FStar_Pervasives_Native.None -> omega'
-          | FStar_Pervasives_Native.Some o ->
-              SPARQL11_Algebra.sort_solutions o omega' in
-        let deduped =
-          if (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_distinct
-          then SPARQL11_Algebra.distinct_solutions ordered
-          else
-            if (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_reduced
-            then SPARQL11_Algebra.reduced_solutions ordered
-            else ordered in
-        FStar_Pervasives_Native.Some
-          (SPARQL11_Algebra.slice_solutions
-             (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_offset
-             (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_limit
-             deduped)
-      else
-        (let omega' =
-           match sel with
-           | SPARQL11_Algebra.Select_Vars items ->
-               SPARQL11_Algebra.eval_select_items items omega []
-           | SPARQL11_Algebra.Select_All -> omega in
-         let ordered =
-           match (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_order_by
-           with
-           | FStar_Pervasives_Native.None -> omega'
-           | FStar_Pervasives_Native.Some o ->
-               SPARQL11_Algebra.sort_solutions o omega' in
-         let projected =
-           match sel with
-           | SPARQL11_Algebra.Select_Vars items ->
-               SPARQL11_Algebra.project_solutions
-                 (SPARQL11_Algebra.select_item_vars items) ordered
-           | SPARQL11_Algebra.Select_All -> ordered in
-         let deduped =
-           if (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_distinct
-           then SPARQL11_Algebra.distinct_solutions projected
-           else
-             if (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_reduced
-             then SPARQL11_Algebra.reduced_solutions projected
-             else projected in
-         FStar_Pervasives_Native.Some
-           (SPARQL11_Algebra.slice_solutions
-              (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_offset
-              (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_limit
-              deduped))
-  | uu___ -> FStar_Pervasives_Native.None
+  match detect_streaming_count_star q with
+  | FStar_Pervasives_Native.Some (alias, tp) ->
+      let bound =
+        {
+          SPARQL11_Algebra.bs =
+            (SPARQL11_Algebra.bound_subject_of_pattern
+               tp.SPARQL11_Algebra.tp_s SPARQL11_Algebra.sm_empty);
+          SPARQL11_Algebra.bp =
+            (SPARQL11_Algebra.bound_predicate_of_pattern
+               tp.SPARQL11_Algebra.tp_p SPARQL11_Algebra.sm_empty);
+          SPARQL11_Algebra.bo =
+            (SPARQL11_Algebra.bound_object_of_pattern
+               tp.SPARQL11_Algebra.tp_o SPARQL11_Algebra.sm_empty)
+        } in
+      let n = backend_estimate gb bound in
+      let omega = count_star_solution alias n in
+      FStar_Pervasives_Native.Some
+        (SPARQL11_Algebra.slice_solutions
+           (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_offset
+           (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_limit omega)
+  | FStar_Pervasives_Native.None ->
+      let limit_match =
+        match q.SPARQL11_Algebra.q_form with
+        | SPARQL11_Algebra.QF_Select uu___ -> detect_limit_single_tp q
+        | uu___ -> FStar_Pervasives_Native.None in
+      (match limit_match with
+       | FStar_Pervasives_Native.Some (tp, k) ->
+           (match q.SPARQL11_Algebra.q_form with
+            | SPARQL11_Algebra.QF_Select sel ->
+                FStar_Pervasives_Native.Some
+                  (eval_limit_single_tp sel tp gb k)
+            | uu___ -> FStar_Pervasives_Native.None)
+       | FStar_Pervasives_Native.None ->
+           (match q.SPARQL11_Algebra.q_form with
+            | SPARQL11_Algebra.QF_Select sel ->
+                let omega0 =
+                  eval_pattern_backend q.SPARQL11_Algebra.q_pattern gb dsb in
+                let omega =
+                  match q.SPARQL11_Algebra.q_values with
+                  | FStar_Pervasives_Native.None -> omega0
+                  | FStar_Pervasives_Native.Some vals ->
+                      SPARQL11_Algebra.join omega0 vals in
+                let needs_grouping =
+                  match q.SPARQL11_Algebra.q_group_by with
+                  | FStar_Pervasives_Native.Some uu___ -> true
+                  | FStar_Pervasives_Native.None ->
+                      SPARQL11_Algebra.select_has_aggregates sel in
+                if needs_grouping
+                then
+                  let groups =
+                    match q.SPARQL11_Algebra.q_group_by with
+                    | FStar_Pervasives_Native.Some conds ->
+                        SPARQL11_Algebra.group_by conds omega
+                    | FStar_Pervasives_Native.None ->
+                        SPARQL11_Algebra.implicit_group omega in
+                  let filtered_groups =
+                    match q.SPARQL11_Algebra.q_having with
+                    | FStar_Pervasives_Native.Some conditions ->
+                        SPARQL11_Algebra.having_filter conditions groups
+                    | FStar_Pervasives_Native.None -> groups in
+                  let omega' =
+                    match sel with
+                    | SPARQL11_Algebra.Select_Vars items ->
+                        SPARQL11_Algebra.aggregate_groups items
+                          filtered_groups
+                    | SPARQL11_Algebra.Select_All ->
+                        FStar_List_Tot_Base.map
+                          (fun grp ->
+                             match grp.SPARQL11_Algebra.g_solutions with
+                             | mu::uu___ -> mu
+                             | [] -> SPARQL11_Algebra.sm_empty)
+                          filtered_groups in
+                  let ordered =
+                    match (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_order_by
+                    with
+                    | FStar_Pervasives_Native.None -> omega'
+                    | FStar_Pervasives_Native.Some o ->
+                        SPARQL11_Algebra.sort_solutions o omega' in
+                  let deduped =
+                    if
+                      (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_distinct
+                    then SPARQL11_Algebra.distinct_solutions ordered
+                    else
+                      if
+                        (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_reduced
+                      then SPARQL11_Algebra.reduced_solutions ordered
+                      else ordered in
+                  FStar_Pervasives_Native.Some
+                    (SPARQL11_Algebra.slice_solutions
+                       (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_offset
+                       (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_limit
+                       deduped)
+                else
+                  (let omega' =
+                     match sel with
+                     | SPARQL11_Algebra.Select_Vars items ->
+                         SPARQL11_Algebra.eval_select_items items omega []
+                     | SPARQL11_Algebra.Select_All -> omega in
+                   let ordered =
+                     match (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_order_by
+                     with
+                     | FStar_Pervasives_Native.None -> omega'
+                     | FStar_Pervasives_Native.Some o ->
+                         SPARQL11_Algebra.sort_solutions o omega' in
+                   let projected =
+                     match sel with
+                     | SPARQL11_Algebra.Select_Vars items ->
+                         SPARQL11_Algebra.project_solutions
+                           (SPARQL11_Algebra.select_item_vars items) ordered
+                     | SPARQL11_Algebra.Select_All -> ordered in
+                   let deduped =
+                     if
+                       (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_distinct
+                     then SPARQL11_Algebra.distinct_solutions projected
+                     else
+                       if
+                         (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_reduced
+                       then SPARQL11_Algebra.reduced_solutions projected
+                       else projected in
+                   FStar_Pervasives_Native.Some
+                     (SPARQL11_Algebra.slice_solutions
+                        (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_offset
+                        (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_limit
+                        deduped))
+            | uu___ -> FStar_Pervasives_Native.None))
 and eval_select_query_backend_dataset (q : SPARQL11_Algebra.query)
   (dsb : dataset_backend) :
   SPARQL11_Algebra.solution_sequence FStar_Pervasives_Native.option=

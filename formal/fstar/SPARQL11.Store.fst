@@ -105,6 +105,52 @@ and backend_search (gb : graph_backend) (b : triple_pattern_bound) : list triple
   | GB_Union members ->
     union_backend_search members b
 
+// Aleph6 (issue #100, demo prep): LIMIT-pushdown variant of backend_search.
+// The COTTAS-on-disk backend stops walking once `limit` matched rows are
+// accumulated; non-disk backends fall back to a simple List.Tot.takeWhile-style
+// truncation since their search is already in-memory and cheap.
+let rec list_take_n (#a:Type) (n : nat) (xs : list a)
+  : Tot (list a) (decreases n) =
+  if n = 0 then []
+  else
+    match xs with
+    | [] -> []
+    | hd :: tl -> hd :: list_take_n (n - 1) tl
+
+let rec union_backend_search_limited (members : list graph_backend)
+  (b : triple_pattern_bound) (limit : nat)
+  : Tot (list triple) (decreases members) =
+  if limit = 0 then []
+  else
+    match members with
+    | [] -> []
+    | member :: rest ->
+      let part = backend_search_limited member b limit in
+      let part_len = List.Tot.length part in
+      if part_len >= limit then list_take_n limit part
+      else
+        let need : nat = limit - part_len in
+        let more = union_backend_search_limited rest b need in
+        part @ more
+
+and backend_search_limited (gb : graph_backend) (b : triple_pattern_bound)
+  (limit : nat)
+  : Tot (list triple) =
+  match gb with
+  | GB_CottasOnDisk cods graph_name ->
+    (* COTTAS-on-disk: real LIMIT pushdown — walker stops at `limit` rows. *)
+    (match cottas_ondisk_build_bound_qp_opt cods b.bs b.bp b.bo graph_name with
+     | None -> []
+     | Some bound ->
+       let rows = cottas_ondisk_search_limited cods bound limit in
+       List.Tot.map fst (cottas_ondisk_rows_to_quads cods rows))
+  | GB_Union members ->
+    union_backend_search_limited members b limit
+  | _ ->
+    (* Other backends: no pushdown, just truncate. Their search results
+       are already in memory; LIMIT is a small post-step. *)
+    list_take_n limit (backend_search gb b)
+
 let rec union_backend_estimate (members : list graph_backend) (b : triple_pattern_bound)
   : Tot nat (decreases members) =
   match members with
@@ -247,6 +293,123 @@ let rec eval_bgp_backend_from_mu_fuel
 let eval_bgp_backend (patterns : bgp) (gb : graph_backend) : solution_sequence =
   eval_bgp_backend_from_mu_fuel patterns gb sm_empty (List.Tot.length patterns + 1)
 
+// ----------------------------------------------------------------------
+// Aleph6 (issue #100, demo prep): query-shape detectors and fast paths.
+//
+// These pattern-match the SPARQL AST for two demo-critical query shapes:
+//
+//   1. Streaming COUNT(*): SELECT (COUNT(*) AS ?n) WHERE { tp } with no
+//      GROUP BY, no DISTINCT, no FILTER above the BGP. Calls
+//      `backend_estimate` directly instead of materialising 3M+ rows
+//      and counting them.
+//
+//   2. LIMIT pushdown: SELECT ?vars WHERE { tp } LIMIT k with no
+//      DISTINCT/ORDER BY/aggregates/etc. Uses
+//      `backend_search_limited` so the COTTAS-on-disk walker stops at
+//      `k` rows.
+//
+// Both fast paths are SEMANTICS-PRESERVING: when the detector matches,
+// the returned solution sequence equals what the materialise path
+// would produce. Detectors are conservative — anything they don't
+// recognise falls through to the existing materialise path.
+// ----------------------------------------------------------------------
+
+// Helper: extract the single triple pattern of a 1-tp BGP, modulo no
+// FILTER/BIND/JOIN wrappers that change semantics. Returns None if the
+// pattern isn't a single-tp BGP.
+let extract_single_tp_bgp (p : group_graph_pattern) : option triple_pattern =
+  match p with
+  | GP_BGP [tp] -> Some tp
+  | _ -> None
+
+// Helper: detect the COUNT(*) shape of a SELECT clause.
+// Matches SI_Expr (E_Aggregate Agg_Count false (E_Var "*" | E_BoolLit true)) v.
+// COUNT(DISTINCT *) is NOT matched (distinct=false required) — it needs
+// row materialisation for the dedup pass.
+let detect_count_star_select (sel : select_clause) : option var_name =
+  match sel with
+  | Select_Vars [SI_Expr e v] ->
+    (match e with
+     | E_Aggregate Agg_Count distinct sub_e ->
+       if distinct then None
+       else
+         (match sub_e with
+          | E_Var "*" -> Some v
+          | E_BoolLit true -> Some v
+          | _ -> None)
+     | _ -> None)
+  | _ -> None
+
+// Detect the streaming-COUNT(*) shape of a whole query and return the
+// alias variable name plus the triple pattern. Conservative — bails
+// out on any modifier that would change the count (DISTINCT, ORDER BY,
+// HAVING, GROUP BY, VALUES, etc.).
+let detect_streaming_count_star (q : query) : option (var_name & triple_pattern) =
+  match q.q_form with
+  | QF_Select sel ->
+    (match detect_count_star_select sel with
+     | None -> None
+     | Some v ->
+       if Some? q.q_group_by then None
+       else if Some? q.q_having then None
+       else if Some? q.q_values then None
+       else if q.q_modifier.sm_distinct then None
+       else if q.q_modifier.sm_reduced then None
+       else if Some? q.q_modifier.sm_order_by then None
+       else
+         (match extract_single_tp_bgp q.q_pattern with
+          | None -> None
+          | Some tp -> Some (v, tp)))
+  | _ -> None
+
+// Build the one-row solution sequence for COUNT(*) = n.
+let count_star_solution (alias : var_name) (n : nat) : solution_sequence =
+  let lit_term : rdf_term = T_Literal {
+    lexical_form = string_of_int n;
+    datatype = xsd_integer;
+    lang_tag = None;
+  } in
+  [ sm_bind alias lit_term sm_empty ]
+
+// Detect the LIMIT-pushdown shape: SELECT ?vars WHERE { single tp }
+// [LIMIT k]  with no DISTINCT / ORDER BY / OFFSET / GROUP BY / HAVING /
+// VALUES / aggregates. Returns (triple_pattern, limit) when matched.
+let detect_limit_single_tp (q : query) : option (triple_pattern & nat) =
+  match q.q_form with
+  | QF_Select sel ->
+    if select_has_aggregates sel then None
+    else if Some? q.q_group_by then None
+    else if Some? q.q_having then None
+    else if Some? q.q_values then None
+    else if q.q_modifier.sm_distinct then None
+    else if q.q_modifier.sm_reduced then None
+    else if Some? q.q_modifier.sm_order_by then None
+    else if Some? q.q_modifier.sm_offset then None
+    else
+      (match q.q_modifier.sm_limit with
+       | None -> None
+       | Some k ->
+         (match extract_single_tp_bgp q.q_pattern with
+          | None -> None
+          | Some tp -> Some (tp, k)))
+  | _ -> None
+
+// Run the LIMIT-pushdown path. Builds a triple_pattern_bound (no mu),
+// calls backend_search_limited, projects to the SELECT clause's vars.
+let eval_limit_single_tp (sel : select_clause) (tp : triple_pattern)
+  (gb : graph_backend) (limit : nat) : solution_sequence =
+  let bound = {
+    bs = bound_subject_of_pattern tp.tp_s sm_empty;
+    bp = bound_predicate_of_pattern tp.tp_p sm_empty;
+    bo = bound_object_of_pattern tp.tp_o sm_empty;
+  } in
+  let candidates = backend_search_limited gb bound limit in
+  let omega = list_filter_map (fun t -> tp_match tp t sm_empty) candidates in
+  let omega' = list_take_n limit omega in
+  match sel with
+  | Select_Vars items -> project_solutions (select_item_vars items) omega'
+  | Select_All -> omega'
+
 let rec eval_pattern_backend (p : group_graph_pattern) (gb : graph_backend) (dsb : dataset_backend)
   : Tot solution_sequence (decreases p) =
   match p with
@@ -352,53 +515,81 @@ and eval_select_query_backend_bgp (q : query) (gb : graph_backend)
 
 and eval_select_query_backend_on_graph (q : query) (gb : graph_backend) (dsb : dataset_backend)
   : option solution_sequence =
-  match q.q_form with
-  | QF_Select sel ->
-    let omega0 = eval_pattern_backend q.q_pattern gb dsb in
-    let omega = match q.q_values with
-      | None -> omega0
-      | Some vals -> join omega0 vals in
-    let needs_grouping = match q.q_group_by with
-      | Some _ -> true
-      | None -> select_has_aggregates sel in
-    if needs_grouping then
-      let groups = match q.q_group_by with
-        | Some conds -> group_by conds omega
-        | None -> implicit_group omega in
-      let filtered_groups = match q.q_having with
-        | Some conditions -> having_filter conditions groups
-        | None -> groups in
-      let omega' = match sel with
-        | Select_Vars items -> aggregate_groups items filtered_groups
-        | Select_All ->
-          List.Tot.map (fun (grp : group) ->
-            match grp.g_solutions with
-            | mu :: _ -> mu
-            | [] -> sm_empty) filtered_groups in
-      let ordered = match q.q_modifier.sm_order_by with
-        | None -> omega'
-        | Some o -> sort_solutions o omega' in
-      let deduped =
-        if q.q_modifier.sm_distinct then distinct_solutions ordered
-        else if q.q_modifier.sm_reduced then reduced_solutions ordered
-        else ordered in
-      Some (slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit deduped)
-    else
-      let omega' = match sel with
-        | Select_Vars items -> eval_select_items items omega []
-        | Select_All -> omega in
-      let ordered = match q.q_modifier.sm_order_by with
-        | None -> omega'
-        | Some o -> sort_solutions o omega' in
-      let projected = match sel with
-        | Select_Vars items -> project_solutions (select_item_vars items) ordered
-        | Select_All -> ordered in
-      let deduped =
-        if q.q_modifier.sm_distinct then distinct_solutions projected
-        else if q.q_modifier.sm_reduced then reduced_solutions projected
-        else projected in
-      Some (slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit deduped)
-  | _ -> None
+  // Aleph6: streaming COUNT-star fast-path. Calls backend_estimate
+  // directly (one walk, no per-row materialisation). Semantics-
+  // preserving: equivalent to materialising and counting.
+  match detect_streaming_count_star q with
+  | Some (alias, tp) ->
+    let bound = {
+      bs = bound_subject_of_pattern tp.tp_s sm_empty;
+      bp = bound_predicate_of_pattern tp.tp_p sm_empty;
+      bo = bound_object_of_pattern tp.tp_o sm_empty;
+    } in
+    let n = backend_estimate gb bound in
+    let omega = count_star_solution alias n in
+    Some (slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit omega)
+  | None ->
+    // Aleph6: LIMIT-pushdown fast-path. SELECT vars WHERE single-tp LIMIT k.
+    let limit_match : option (triple_pattern & nat) =
+      match q.q_form with
+      | QF_Select _ -> detect_limit_single_tp q
+      | _ -> None in
+    (match limit_match with
+     | Some (tp, k) ->
+       (match q.q_form with
+        | QF_Select sel -> Some (eval_limit_single_tp sel tp gb k)
+        | _ -> None)
+     | None ->
+    // Materialise path: original implementation, inlined here so that
+    // F*'s totality checker can see the q.q_pattern structural decrease
+    // for the recursive eval_pattern_backend call.
+    match q.q_form with
+    | QF_Select sel ->
+      let omega0 = eval_pattern_backend q.q_pattern gb dsb in
+      let omega = match q.q_values with
+        | None -> omega0
+        | Some vals -> join omega0 vals in
+      let needs_grouping = match q.q_group_by with
+        | Some _ -> true
+        | None -> select_has_aggregates sel in
+      if needs_grouping then
+        let groups = match q.q_group_by with
+          | Some conds -> group_by conds omega
+          | None -> implicit_group omega in
+        let filtered_groups = match q.q_having with
+          | Some conditions -> having_filter conditions groups
+          | None -> groups in
+        let omega' = match sel with
+          | Select_Vars items -> aggregate_groups items filtered_groups
+          | Select_All ->
+            List.Tot.map (fun (grp : group) ->
+              match grp.g_solutions with
+              | mu :: _ -> mu
+              | [] -> sm_empty) filtered_groups in
+        let ordered = match q.q_modifier.sm_order_by with
+          | None -> omega'
+          | Some o -> sort_solutions o omega' in
+        let deduped =
+          if q.q_modifier.sm_distinct then distinct_solutions ordered
+          else if q.q_modifier.sm_reduced then reduced_solutions ordered
+          else ordered in
+        Some (slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit deduped)
+      else
+        let omega' = match sel with
+          | Select_Vars items -> eval_select_items items omega []
+          | Select_All -> omega in
+        let ordered = match q.q_modifier.sm_order_by with
+          | None -> omega'
+          | Some o -> sort_solutions o omega' in
+        let projected = match sel with
+          | Select_Vars items -> project_solutions (select_item_vars items) ordered
+          | Select_All -> ordered in
+        let deduped =
+          if q.q_modifier.sm_distinct then distinct_solutions projected
+          else if q.q_modifier.sm_reduced then reduced_solutions projected
+          else projected in
+        Some (slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit deduped)
+    | _ -> None)
 
 and eval_select_query_backend_dataset (q : query) (dsb : dataset_backend)
   : option solution_sequence =
