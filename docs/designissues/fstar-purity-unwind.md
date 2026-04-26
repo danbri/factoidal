@@ -189,14 +189,19 @@ Phase 2.4 deferred until 2.5/2.6/2.7 land. Audit:
   `.presence` companion files are absent. Retiring those Hashtbls
   (deleting `cottas_ondisk_zzzz_tet3_subj_obj_prune.sh`) is the next
   step but requires checking that no-companion corpora still work.
-- **Lamed3 (#6)**: reader half retirement IN FLIGHT (Yod7 audit
-  `435637f`/`e053665` recommended option (a)). Source edits applied
-  to main worktree: lamed3 patch trimmed to writer-only (609 → 342
-  lines), q03 bypass `cottas_ondisk_zzzzzzzzz_q03_estimate_fix.sh`
-  deleted. Build cycle running. Acceptance: writer still produces
-  `.p.offsets` companion file; reader dispatchers and `*_via_offsets`
-  bodies gone; smoke confirms no `[lamed3-trace] served from offset
-  index` lines fire.
+- **Lamed3 (#6)**: reader half retirement ATTEMPTED + REVERTED.
+  Yod7's audit (`435637f`/`e053665`) recommended option (a)
+  ("keep writer, delete reader patch + delete q03 bypass"). The
+  attempt found a dependency Yod7's audit missed: **Lamed3 isn't
+  just a reader, it's also the patch that renames the base
+  `search_fast`/`estimate_fast` to `*_inner`** (so the dispatcher
+  can wrap them). Mem5 and the three Tet3 F\* redirects all anchor
+  against the `*_inner` names. Trimming Lamed3 to writer-only
+  removed those names → Mem5/Tet3-redirects all silently bailed
+  → binary regressed to pre-Mem5 / pre-Tet3-redirect state.
+  Reverted; tracked in **issue #105**. Fix needs Lamed3 decomposed
+  into (writer / rename-pivot / reader), or the rename moved
+  upstream so Lamed3 can be reader-only and trivially deletable.
 - **Yod6 (#3)**: predicate-presence prune still on local Hashtbls.
   Same redirect pattern as Tet3 will apply (PresenceBitmap module
   already supports per-column lookup; just needs analogous
