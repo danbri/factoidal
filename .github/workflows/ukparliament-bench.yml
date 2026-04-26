@@ -1,0 +1,205 @@
+# UK Parliament demo-query-shape regression gate.
+#
+# Companion concern B in docs/designissues/fstar-purity-unwind.md:
+# we have W3C as a correctness gate, but no demo-query gate. The Q03
+# regression that bit us today (see docs/designissues/) would have
+# been caught by a CI step that boots the daemon, runs the modernised
+# UK Parliament queries via tools/bench_ukpar_modern.py, and asserts
+# pass count doesn't regress vs a checked-in baseline JSON.
+#
+# This workflow is configuration / scripting only — no semantic
+# logic. Per CLAUDE.md rule #15.
+
+name: UK Parliament bench
+
+on:
+  push:
+    branches:
+      - claude/main
+      - 'claude/**'
+      - main
+  pull_request:
+    branches:
+      - claude/main
+      - main
+  schedule:
+    # Daily at 07:00 UTC, an hour after the W3C suite cron.
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ukpar-bench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    # Keep this within the 2h GitHub default but well under so a hung
+    # daemon doesn't burn the runner pool.
+    timeout-minutes: 30
+    env:
+      ENDPOINT: http://127.0.0.1:3030/sparql
+      BENCH_PORT: 3030
+      DAEMON_LOG: /tmp/factoidal-daemon.log
+      BENCH_TIMEOUT_S: 30
+      HEALTH_WAIT_S: 60
+      # docs/test-results/ukparliament-bench-modern.json is the baseline
+      # checked into the repo. The bench writes a new copy of it; we
+      # diff summary fields against the pre-existing one.
+      BASELINE_JSON: docs/test-results/ukparliament-bench-modern.json
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Verify pre-built linux binary is committed
+        id: bin_check
+        run: |
+          set -euo pipefail
+          BIN=bin/linux-x86_64/factoidal
+          if [ ! -x "$BIN" ]; then
+            echo "::warning::$BIN not found or not executable; bench skipped."
+            echo "have_bin=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Smoke: --version should respond instantly. Capture rc per
+          # rule #14; head exits 0 on truncated input but the pipe
+          # exits 0 if either side does.
+          VER_RC=0
+          "$BIN" version 2>&1 | head -3 || VER_RC=$?
+          if [ "$VER_RC" -ne 0 ]; then
+            echo "::warning::$BIN version returned rc=$VER_RC"
+          fi
+          echo "have_bin=1" >> "$GITHUB_OUTPUT"
+
+      - name: Verify parliament corpus is checked in
+        id: corpus_check
+        if: steps.bin_check.outputs.have_bin == '1'
+        run: |
+          set -euo pipefail
+          CORPUS=third_party/data/ukparliament/ukparliament-rdf-2019-07-27.trig
+          if [ ! -f "$CORPUS" ]; then
+            echo "::warning::$CORPUS not found; bench skipped."
+            echo "have_corpus=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # If git-lfs is in play the file may be a pointer; check size.
+          SIZE=$(wc -c < "$CORPUS" | tr -d ' ')
+          if [ "$SIZE" -lt 1048576 ]; then
+            echo "::warning::$CORPUS is suspiciously small ($SIZE bytes); LFS pointer? bench skipped."
+            echo "have_corpus=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "have_corpus=1" >> "$GITHUB_OUTPUT"
+          echo "corpus_path=$CORPUS" >> "$GITHUB_OUTPUT"
+
+      - name: Boot daemon (background)
+        if: >-
+          steps.bin_check.outputs.have_bin == '1' &&
+          steps.corpus_check.outputs.have_corpus == '1'
+        run: |
+          set -euo pipefail
+          BIN=bin/linux-x86_64/factoidal
+          CORPUS='${{ steps.corpus_check.outputs.corpus_path }}'
+          # Boot in background; tee log to a file and to stdout for live
+          # tailing. Per rule #14 we capture the PID instead of `|| true`.
+          nohup "$BIN" serve \
+                --port "$BENCH_PORT" \
+                --dataset "$CORPUS" \
+                > "$DAEMON_LOG" 2>&1 &
+          echo $! > /tmp/factoidal-daemon.pid
+          echo "Started factoidal daemon (PID $(cat /tmp/factoidal-daemon.pid))"
+          # Don't sleep-poll — bench_ukpar_modern.py has its own
+          # wait_for_endpoint with --health-wait. Just give the OS a
+          # second to bind the port so the readiness probe finds it.
+          sleep 2
+
+      - name: Run bench_ukpar_modern.py
+        id: bench
+        if: >-
+          steps.bin_check.outputs.have_bin == '1' &&
+          steps.corpus_check.outputs.have_corpus == '1'
+        run: |
+          set -euo pipefail
+          BENCH_RC=0
+          python3 tools/bench_ukpar_modern.py \
+            --endpoint "$ENDPOINT" \
+            --timeout "$BENCH_TIMEOUT_S" \
+            --health-wait "$HEALTH_WAIT_S" \
+            2>&1 | tee /tmp/bench.log || BENCH_RC=$?
+          echo "bench rc=$BENCH_RC"
+          echo "rc=$BENCH_RC" >> "$GITHUB_OUTPUT"
+          # rc=0 normal; rc=4 means 0 OK queries (regression!); rc=3
+          # endpoint unreachable; rc=2 config error. Don't blow up here
+          # — the next step compares against baseline.
+
+      - name: Compare bench summary vs baseline
+        if: >-
+          steps.bin_check.outputs.have_bin == '1' &&
+          steps.corpus_check.outputs.have_corpus == '1'
+        run: |
+          set -euo pipefail
+          NEW=docs/test-results/ukparliament-bench-modern.json
+          if [ ! -f "$NEW" ]; then
+            echo "::error::Bench did not write $NEW; treat as regression."
+            exit 1
+          fi
+          # Compare via a checked-in helper script. Heredoc Python in a
+          # YAML block scalar is a footgun (leading-whitespace + EOF marker
+          # placement), so we keep the comparator as a tracked file.
+          UKPAR_BENCH_HARD="${UKPAR_BENCH_HARD:-0}" \
+            python3 .github/scripts/ukparliament_bench_diff.py \
+              --new "$NEW" \
+              --baseline-ref "origin/claude/main" \
+              --baseline-path "docs/test-results/ukparliament-bench-modern.json"
+
+      - name: Stop daemon + dump log on failure
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -f /tmp/factoidal-daemon.pid ]; then
+            PID=$(cat /tmp/factoidal-daemon.pid)
+            if kill -0 "$PID" 2>/dev/null; then
+              # Capture exit codes per rule #14 — the only expected
+              # failure modes here are "process already gone" (race)
+              # which we tolerate by inspecting the rc.
+              KILL_RC=0; kill "$PID" || KILL_RC=$?
+              if [ "$KILL_RC" -ne 0 ]; then
+                echo "::warning::SIGTERM to PID $PID returned rc=$KILL_RC"
+              fi
+              sleep 1
+              KILL9_RC=0; kill -9 "$PID" 2>/dev/null || KILL9_RC=$?
+              # rc=1 is "no such process" — expected after SIGTERM took.
+              if [ "$KILL9_RC" -ne 0 ] && [ "$KILL9_RC" -ne 1 ]; then
+                echo "::warning::SIGKILL to PID $PID returned rc=$KILL9_RC"
+              fi
+            fi
+          fi
+          if [ -f "$DAEMON_LOG" ]; then
+            echo "=== daemon log (last 200 lines) ==="
+            TAIL_RC=0; tail -n 200 "$DAEMON_LOG" || TAIL_RC=$?
+            if [ "$TAIL_RC" -ne 0 ]; then
+              echo "::warning::tail $DAEMON_LOG returned rc=$TAIL_RC"
+            fi
+          fi
+
+      - name: Upload bench artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ukparliament-bench-${{ github.run_id }}
+          path: |
+            docs/test-results/ukparliament-bench-modern.csv
+            docs/test-results/ukparliament-bench-modern.json
+            /tmp/bench.log
+            /tmp/factoidal-daemon.log
+          if-no-files-found: ignore
+          retention-days: 14

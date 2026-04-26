@@ -1,0 +1,252 @@
+# Phase 2.8 Layer 3: rule #11 recurrence guard.
+#
+# This workflow detects net-new semantic logic added to the OCaml glue
+# directory `formal/fstar/experimental_ocaml_glue/`. It does NOT block
+# the existing accumulated drift (~3094 LoC inventoried in
+# docs/designissues/fstar-purity-unwind.md) — those are grandfathered in
+# and are being retired phase-by-phase. The guard only fires on NEW
+# additions in a PR diff.
+#
+# Soft-mode by default: emits ::warning:: annotations and a job-summary
+# block, but exits 0. To make it blocking, set repo variable
+# FSTAR_PURITY_HARD=1 (or env override below). This avoids surprising
+# in-flight PRs while we shake the check out.
+#
+# Per CLAUDE.md rule #11: patches are for stubs and workarounds, NOT
+# logic. Patches must never contain RDF/SPARQL semantic logic. Every
+# line of logic in a patch is unverified, won't extract to C/WASM, and
+# must be re-implemented for every target.
+#
+# This workflow itself is configuration / scripting, not semantic logic.
+
+name: Check F* purity (rule #11)
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - '**'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  check-purity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine diff base
+        id: base
+        run: |
+          set -euo pipefail
+          # On PRs: diff against the PR base branch.
+          # On push to non-default branches: diff against origin/claude/main.
+          # On push to claude/main itself: diff against the previous commit.
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF="origin/${{ github.base_ref }}"
+          elif [ "${{ github.ref }}" = "refs/heads/claude/main" ] || \
+               [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            BASE_REF="HEAD~1"
+          else
+            BASE_REF="origin/claude/main"
+          fi
+          echo "base_ref=$BASE_REF" >> "$GITHUB_OUTPUT"
+          echo "Diff base: $BASE_REF"
+          # Make sure the ref exists locally (origin/* refs come from
+          # actions/checkout@v4 with fetch-depth:0).
+          if ! git rev-parse --verify "$BASE_REF" >/dev/null 2>&1; then
+            echo "::warning::Could not resolve $BASE_REF; falling back to HEAD~1"
+            echo "base_ref=HEAD~1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Scan diff for new rule-#11 violations
+        id: scan
+        env:
+          # Soft-mode by default. Set to "1" via repo variable
+          # FSTAR_PURITY_HARD to make this blocking.
+          FSTAR_PURITY_HARD: ${{ vars.FSTAR_PURITY_HARD }}
+        run: |
+          set -euo pipefail
+          BASE_REF='${{ steps.base.outputs.base_ref }}'
+          GLUE_GLOB='formal/fstar/experimental_ocaml_glue/*.sh'
+
+          # The diff we care about: only added lines in glue files.
+          # `git diff -U0` collapses context to focus on adds/dels.
+          # Per rule #14 we capture the rc explicitly. `git diff`
+          # returns 0 on no-diff and 0/non-zero on diff (depending on
+          # --exit-code flag, which we don't use). The only failure
+          # we care about is rc>1 (real error).
+          DIFF_FILE=$(mktemp)
+          DIFF_RC=0
+          git diff -U0 "$BASE_REF"...HEAD -- $GLUE_GLOB > "$DIFF_FILE" || DIFF_RC=$?
+          if [ "$DIFF_RC" -gt 1 ]; then
+            echo "::error::git diff failed with rc=$DIFF_RC"
+            exit "$DIFF_RC"
+          fi
+
+          # Defensive: if there are no changed glue files, exit clean.
+          if [ ! -s "$DIFF_FILE" ]; then
+            echo "No diff in $GLUE_GLOB versus $BASE_REF — clean."
+            echo "violations=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Patterns we forbid in NEW additions. Each entry is
+          # "regex|human-readable-name". Tab-separated for safety.
+          # We grep added lines (start with '+' but not '+++' file marker).
+          # grep rc=1 is "no matches" (expected when the diff has only
+          # context/removals); rc>1 is a real error per rule #14.
+          ADDED_FILE=$(mktemp)
+          GREP_RC=0
+          grep -E '^\+[^+]' "$DIFF_FILE" > "$ADDED_FILE" || GREP_RC=$?
+          if [ "$GREP_RC" -gt 1 ]; then
+            echo "::error::grep failed with rc=$GREP_RC"
+            exit "$GREP_RC"
+          fi
+
+          # Track which file each added line belongs to.
+          FILE_MAP=$(mktemp)
+          AWK_RC=0
+          awk '
+            /^\+\+\+ b\// { sub(/^\+\+\+ b\//,""); cur=$0; next }
+            /^\+[^+]/     { print cur "\t" $0 }
+          ' "$DIFF_FILE" > "$FILE_MAP" || AWK_RC=$?
+          if [ "$AWK_RC" -ne 0 ]; then
+            echo "::warning::awk file-map rc=$AWK_RC"
+          fi
+
+          VIOLATIONS=0
+          REPORT=$(mktemp)
+          : > "$REPORT"
+
+          # Pattern 1: new top-level let cottas_ondisk_* definitions.
+          # Matches added lines like `+let cottas_ondisk_search_x ...` or
+          # `+and cottas_ondisk_decode_y ...` (recursive bindings count too).
+          while IFS=$'\t' read -r FILE LINE; do
+            if echo "$LINE" | grep -Eq '^\+(let|and)[[:space:]]+cottas_ondisk_[A-Za-z0-9_]+'; then
+              VIOLATIONS=$((VIOLATIONS+1))
+              printf -- '- %s: new `let cottas_ondisk_*` definition\n    %s\n' \
+                "$FILE" "${LINE:0:200}" >> "$REPORT"
+            fi
+          done < "$FILE_MAP"
+
+          # Pattern 2: new module Cottas_* blocks.
+          while IFS=$'\t' read -r FILE LINE; do
+            if echo "$LINE" | grep -Eq '^\+module[[:space:]]+Cottas_[A-Za-z0-9_]+'; then
+              VIOLATIONS=$((VIOLATIONS+1))
+              printf -- '- %s: new `module Cottas_*` block\n    %s\n' \
+                "$FILE" "${LINE:0:200}" >> "$REPORT"
+            fi
+          done < "$FILE_MAP"
+
+          # Pattern 3: semantic-decision indicators. `if ... rdfs ... then`
+          # is a smell — entailment-regime decisions belong in F*.
+          while IFS=$'\t' read -r FILE LINE; do
+            # Strip the leading + and lowercase for matching.
+            TXT=$(echo "$LINE" | sed 's/^\+//' | tr '[:upper:]' '[:lower:]')
+            if echo "$TXT" | grep -Eq 'if[[:space:]].*rdfs.*[[:space:]]then'; then
+              VIOLATIONS=$((VIOLATIONS+1))
+              printf -- '- %s: rdfs entailment-regime branch in OCaml glue\n    %s\n' \
+                "$FILE" "${LINE:0:200}" >> "$REPORT"
+            fi
+            # Variant: `if ... owl ... then` or `if ... entailment ... then`
+            if echo "$TXT" | grep -Eq 'if[[:space:]].*\b(owl|entailment_regime)\b.*[[:space:]]then'; then
+              VIOLATIONS=$((VIOLATIONS+1))
+              printf -- '- %s: owl/entailment-regime branch in OCaml glue\n    %s\n' \
+                "$FILE" "${LINE:0:200}" >> "$REPORT"
+            fi
+          done < "$FILE_MAP"
+
+          echo "violations=$VIOLATIONS" >> "$GITHUB_OUTPUT"
+
+          if [ "$VIOLATIONS" -eq 0 ]; then
+            echo "No new rule-#11 violations detected."
+            echo "## F* purity check: clean" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "No new \`let cottas_ondisk_*\` / \`module Cottas_*\` /" \
+                 "entailment-branch additions in this diff." \
+                 >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Render the report. Print to log AND to job summary.
+          MSG="Rule #11 violation: $VIOLATIONS new semantic-shaped addition(s) to OCaml glue. See CLAUDE.md rule #11."
+          echo "::warning title=F* purity drift::$MSG"
+          {
+            echo "## F* purity check: $VIOLATIONS new violation(s)"
+            echo ""
+            echo "$MSG"
+            echo ""
+            echo "Patches under \`formal/fstar/experimental_ocaml_glue/\` may"
+            echo "contain stubs and I/O glue, but **never** RDF/SPARQL"
+            echo "semantic logic. Every line of logic in a patch is"
+            echo "unverified, won't extract to C/WASM, and must be"
+            echo "re-implemented for every target."
+            echo ""
+            echo "### Offending additions"
+            echo ""
+            cat "$REPORT"
+            echo ""
+            echo "### What to do"
+            echo ""
+            echo "1. Move the logic into an \`.fst\` file under \`formal/fstar/\`."
+            echo "2. Re-extract via \`./build-ocaml.sh extract\`."
+            echo "3. Keep only \`assume val\` wiring / I/O writers in the patch."
+            echo ""
+            echo "If this is a false positive (e.g. you renamed an existing"
+            echo "function and the diff looks like an addition), comment on"
+            echo "the PR explaining; the check is in soft-mode and will not"
+            echo "block the merge."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Echo to stderr too so it's obvious in the raw log.
+          {
+            echo "==============================================="
+            echo "RULE #11 VIOLATION (soft-mode)"
+            echo "==============================================="
+            echo "$MSG"
+            echo ""
+            cat "$REPORT"
+            echo "==============================================="
+          } >&2
+
+          # Soft vs hard mode.
+          if [ "${FSTAR_PURITY_HARD:-0}" = "1" ]; then
+            echo "::error::FSTAR_PURITY_HARD=1; failing the build."
+            exit 1
+          fi
+          echo "FSTAR_PURITY_HARD not set; soft-mode only (exit 0)."
+          exit 0
+
+      - name: Comment on PR (soft-mode)
+        if: >-
+          github.event_name == 'pull_request' &&
+          steps.scan.outputs.violations != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const violations = '${{ steps.scan.outputs.violations }}';
+            const body = [
+              '### F* purity check (rule #11) — soft-mode warning',
+              '',
+              `This PR adds **${violations}** new semantic-shaped definition(s) to`,
+              '`formal/fstar/experimental_ocaml_glue/`. See the workflow run',
+              'job summary for the offending additions and CLAUDE.md rule',
+              '#11 for the rationale.',
+              '',
+              'The check is currently in soft-mode and will not block the',
+              'merge. Set repo variable `FSTAR_PURITY_HARD=1` to flip it',
+              'to blocking.',
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
