@@ -674,6 +674,69 @@ module Cottas_offset_idx = struct
      | Some _ -> ())
 end
 
+(* tet3_fstar_redirect: estimate helper installed (issue #100, 2026-04-26).
+   Bridges OCaml call sites to F*'s RDF_CottasStore_PresenceBitmap.
+   Caches `option bitmap_handle` per (cottas_path, col_idx). The cache
+   value is itself the `option bitmap_handle` so a "no companion"
+   result is memoised too — `None` fall through is fast.
+
+   Rule #11(c) compliant: trivial dispatch shim. The decision
+   "rg could contain token" lives in F*'s rg_could_contain. *)
+module Tet3_fstar_redirect = struct
+  open Stdlib
+  type pint = Stdlib.Int.t
+
+  (* Companion path suffix per column (matches Vav3's writer). *)
+  let presence_path (cottas_path : string) (col_idx : pint) : string =
+    let suf = match col_idx with
+      | 0 -> "s" | 1 -> "p" | 2 -> "o" | _ -> "g" in
+    Printf.sprintf "%s.%s.presence" cottas_path suf
+
+  (* Cache key (cottas_path, col_idx) -> option bitmap_handle. *)
+  let cache : (string * pint, RDF_CottasStore_PresenceBitmap.bitmap_handle FStar_Pervasives_Native.option) Hashtbl.t
+    = Hashtbl.create 17
+
+  let bitmap_for (cottas_path : string) (col_idx : pint)
+    : RDF_CottasStore_PresenceBitmap.bitmap_handle FStar_Pervasives_Native.option =
+    let key = (cottas_path, col_idx) in
+    match Hashtbl.find_opt cache key with
+    | Some oh -> oh
+    | None ->
+      let ppath = presence_path cottas_path col_idx in
+      let oh = RDF_CottasStore_PresenceBitmap.open_bitmap ppath in
+      Hashtbl.add cache key oh;
+      Printf.eprintf "[tet3-fstar-trace] bitmap_for col=%d path=%s opened=%b\n%!"
+        col_idx ppath
+        (match oh with FStar_Pervasives_Native.Some _ -> true | _ -> false);
+      oh
+
+  (* could_via_fstar:
+     Returns Some b iff the companion is present and the F* bitmap
+     gave a definitive answer. Returns None to mean "fall back to the
+     OCaml Tet3 Hashtbl path" (companion absent or header invalid).
+
+     Token-id type bridge: the OCaml call sites have
+     `bound.cbqp_X : Prims.nat option` (the dict-id namespace). We pass
+     it through as-is to rg_could_contain, which expects
+     `option nat`. Both forms are FStar_Pervasives_Native.option of
+     Prims.nat — same OCaml representation post-extraction. *)
+  let could_via_fstar
+    (cottas_path : string) (col_idx : pint) (rg : pint)
+    (bound_tok_id : Prims.nat FStar_Pervasives_Native.option)
+    : bool FStar_Pervasives_Native.option =
+    let oh = bitmap_for cottas_path col_idx in
+    match oh with
+    | FStar_Pervasives_Native.None ->
+      (* No companion file: fall back to existing Tet3 path (returns
+         None to signal "use the Hashtbl path"). *)
+      FStar_Pervasives_Native.None
+    | FStar_Pervasives_Native.Some _ ->
+      (* Companion is present: trust F*'s answer. *)
+      let b = RDF_CottasStore_PresenceBitmap.rg_could_contain
+                oh (Z.of_int rg) bound_tok_id in
+      FStar_Pervasives_Native.Some b
+end
+
 module Cottas_ondisk_runtime = struct
   open Stdlib
   (* `int` is shadowed by `open Prims` at the top of the file
@@ -1899,12 +1962,31 @@ backtrace=%s
          column does not have a Tet3-installed presence helper; the
          3-of-4 column intersection is sufficient for cardinality. *)
       let candidates = ref 0 in
+      let n_via_fstar = ref 0 in
+      let n_via_hashtbl = ref 0 in
       for rg = 0 to rg_count - 1 do
-        let could_p = Cottas_ondisk_lazy.pred_rg_could_contain path rg bound_p in
-        let could_s = Cottas_ondisk_lazy.subj_rg_could_contain path rg bound_s in
-        let could_o = Cottas_ondisk_lazy.obj_rg_could_contain  path rg bound_o in
+        (* tet3_fstar_redirect: try F* RDF_CottasStore_PresenceBitmap
+           first; fall back to Tet3's OCaml Hashtbl path only when the
+           companion file is absent (open_bitmap = None). On corpora
+           with companion files (parliament has all 4) the F* path is
+           always taken and the Hashtbl path is dead. *)
+        let could_via path_ col_idx bound_id bound_str fallback_get =
+          match Tet3_fstar_redirect.could_via_fstar
+                  path_ col_idx rg bound_id with
+          | FStar_Pervasives_Native.Some b ->
+            incr n_via_fstar; b
+          | FStar_Pervasives_Native.None ->
+            incr n_via_hashtbl; fallback_get path_ rg bound_str in
+        let could_p = could_via path 1 bound.Parser_BallyhooCOTTAS.cbqp_p
+          bound_p Cottas_ondisk_lazy.pred_rg_could_contain in
+        let could_s = could_via path 0 bound.Parser_BallyhooCOTTAS.cbqp_s
+          bound_s Cottas_ondisk_lazy.subj_rg_could_contain in
+        let could_o = could_via path 2 bound.Parser_BallyhooCOTTAS.cbqp_o
+          bound_o Cottas_ondisk_lazy.obj_rg_could_contain in
         if could_p && could_s && could_o then incr candidates
       done;
+      Printf.eprintf "[tet3-fstar-trace] estimate_fast_inner: rg-tests via_fstar=%d via_hashtbl=%d\n%!"
+        !n_via_fstar !n_via_hashtbl;
       let n_candidates = !candidates in
       Printf.eprintf "[mem5-trace] estimate_fast_inner: candidates=%d/%d (s=%s p=%s o=%s g=%s)\n%!"
         n_candidates rg_count
