@@ -2,56 +2,50 @@ module Util.Log
 
 (* F*-first logging primitive.
 
-   Spec view: emit is a no-op (returns unit, no observable effect on the
-   spec). Pure code that calls it remains pure. Removing all log calls
-   doesn't change correctness.
+   Spec view: each emit_* is a no-op (returns unit, no observable
+   effect on the spec). Pure code that calls them remains pure.
+   Removing all log calls doesn't change correctness.
 
    OCaml realisation (Util_Log_runtime in
    experimental_ocaml_glue/util_log_runtime.sh): writes structured lines
    to stderr or to a file based on level + sink configured at process
    start.
 
+   IMPORTANT: each level has its own `assume val` rather than a
+   convenience-alias dispatching through a single `emit`. F* extraction
+   inlines small `let` definitions like `let debug = emit LL_Debug`,
+   then sees the unit-typed result as dead code in `_ = debug "..." "..."`
+   contexts and erases the whole call. By making each level a standalone
+   `assume val`, F* can't inline them away — the calls survive extraction
+   intact. (Verified empirically 2026-04-26.)
+
    Industry-conventional levels (RFC 5424-ish):
-     LL_Error  : something is wrong; user-visible
-     LL_Warn   : recoverable anomaly worth surfacing
-     LL_Info   : milestone events (request start/end, plan chosen)
-     LL_Debug  : per-decision detail (e.g. each tp considered by planner)
-     LL_Trace  : per-step detail (e.g. each rg walked)
+     error  : something is wrong; user-visible
+     warn   : recoverable anomaly worth surfacing
+     info   : milestone events (request start/end, plan chosen)
+     debug  : per-decision detail (e.g. each tp considered by planner)
+     trace  : per-step detail (e.g. each rg walked)
 
-   Default level is LL_Warn (matches Unix tool norms). --log-level=info,
-   --log-level=debug, --log-level=trace lower the threshold; -v / -vv /
-   -vvv on the CLI map to info/debug/trace respectively.
+   Default level is warn (matches Unix tool norms). Set
+   FACTOIDAL_LOG_LEVEL=info|debug|trace (env var) or
+   --log-level=NAME (CLI, future) to lower the threshold.
 
-   This module deliberately keeps the API tiny. Callers format their
-   own messages. We can add structured-record helpers later without
-   breaking the spec view (the assume val signature is stable).
+   Callers format their own messages. We can add structured-record
+   helpers later without breaking the spec view (these signatures are
+   stable).
 *)
 
-type level =
-  | LL_Error
-  | LL_Warn
-  | LL_Info
-  | LL_Debug
-  | LL_Trace
+(* Each level is a separate assume val. F* won't fold them through a
+   common dispatcher and can't erase them as unit-discarded `let _`
+   expressions. *)
 
-(* The realisation in OCaml is impure. The spec sees it as Tot unit
-   because removing it preserves correctness. *)
-assume val emit : level -> string -> string -> Tot unit
-//                level    module   message
+assume val error : string -> string -> Tot unit
+//                 module    message
 
-(* Convenience aliases. Pure spec-side; same underlying assume val. *)
+assume val warn : string -> string -> Tot unit
 
-let error (modname : string) (msg : string) : Tot unit =
-  emit LL_Error modname msg
+assume val info : string -> string -> Tot unit
 
-let warn (modname : string) (msg : string) : Tot unit =
-  emit LL_Warn modname msg
+assume val debug : string -> string -> Tot unit
 
-let info (modname : string) (msg : string) : Tot unit =
-  emit LL_Info modname msg
-
-let debug (modname : string) (msg : string) : Tot unit =
-  emit LL_Debug modname msg
-
-let trace (modname : string) (msg : string) : Tot unit =
-  emit LL_Trace modname msg
+assume val trace : string -> string -> Tot unit

@@ -139,19 +139,25 @@ module Util_Log_runtime = struct
     end
 end
 
-(* Realise the F* assume val. The F* level type is a sum
-   (LL_Error | LL_Warn | LL_Info | LL_Debug | LL_Trace) which
-   js_of_ocaml extracts as integer constructors 0..4. We pattern-
-   match on the F*-extracted constructor representation. *)
-let emit (lvl : level) (modname : Prims.string) (msg : Prims.string) : unit =
-  let l = match lvl with
-    | LL_Error -> Util_Log_runtime.Error
-    | LL_Warn  -> Util_Log_runtime.Warn
-    | LL_Info  -> Util_Log_runtime.Info
-    | LL_Debug -> Util_Log_runtime.Debug
-    | LL_Trace -> Util_Log_runtime.Trace
-  in
-  Util_Log_runtime.do_emit l modname msg
+(* Realise the F* assume vals — one per level. Each level is its own
+   F* `assume val` (not a convenience alias around a single emit) so
+   F*'s extraction can't inline the dispatch and erase the unit-typed
+   result. See Util.Log.fst header for why this matters. *)
+
+let error (modname : Prims.string) (msg : Prims.string) : unit =
+  Util_Log_runtime.do_emit Util_Log_runtime.Error modname msg
+
+let warn (modname : Prims.string) (msg : Prims.string) : unit =
+  Util_Log_runtime.do_emit Util_Log_runtime.Warn modname msg
+
+let info (modname : Prims.string) (msg : Prims.string) : unit =
+  Util_Log_runtime.do_emit Util_Log_runtime.Info modname msg
+
+let debug (modname : Prims.string) (msg : Prims.string) : unit =
+  Util_Log_runtime.do_emit Util_Log_runtime.Debug modname msg
+
+let trace (modname : Prims.string) (msg : Prims.string) : unit =
+  Util_Log_runtime.do_emit Util_Log_runtime.Trace modname msg
 OCAML
 
 echo "  [util_log_runtime] applied: emit -> Util_Log_runtime.do_emit (file/stderr sink, threshold-gated)"
