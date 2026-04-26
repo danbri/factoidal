@@ -134,9 +134,23 @@ glue duplicates the readers, retire the duplicates.
 
 ### Phase 2.4 — Aleph6 count-limit (#8, ~150 LoC)
 
+**Status (2026-04-26, Chi3 audit):** **BLOCKED.** Three dependency
+blockers prevent Phase 2.4 from landing standalone:
+
+1. `cottas_ondisk_runtime.sh` (Phase 2.5) shadows the F\* runtime
+   functions Aleph6 calls into; deleting Aleph6 first would route
+   through the shadow, not F\*.
+2. Bet7's lazy-populate patch (Phase 2.7) leaves `coh_*_raw` empty
+   on cold open — Aleph6's F\* path needs them populated.
+3. Yod6/Tet3 patches (Phase 2.6) grep for the Aleph6 marker; deleting
+   it first breaks their anchor matching.
+
+Phase 2.4 deferred until 2.5/2.6/2.7 land. Audit:
+\`docs/designissues/2026-04-26-chi3-aleph6-retire.md\`.
+
 **Goal:** the streaming COUNT(*) and LIMIT pushdown F\* paths are the runtime path.
 
-**Steps:**
+**Steps (post-unblock):**
 1. Verify F\* `cottas_ondisk_search_limited` and the streaming COUNT detector in `SPARQL11.Store.fst` are present.
 2. Delete `cottas_ondisk_zz_aleph6_count_limit.sh` if it only re-implements those.
 3. Re-extract, verify smoke tests pass.
@@ -162,6 +176,33 @@ glue duplicates the readers, retire the duplicates.
 ### Phase 2.6 — Yod6, Tet3, Lamed3 prune+offset logic to F\* (#3, #5, #6)
 
 **Goal:** the per-rg presence bitmaps and offset indexes are consulted by F\* code, not OCaml shims.
+
+**Live diagnostic (2026-04-26, Q03 daemon trace):** The drift cost is
+not theoretical — Q03 (`?o a geo:wktLiteral`, zero matching triples)
+takes 4.2s on the live demo because Tet3's per-column bitmap returns
+`could_o=true` for rg=22 (`wktLiteral` appears as object somewhere in
+that rg, just never paired with `rdf:type`). Mem5 returns
+estimate=120,900 (overcount of the surviving rg's row count) — so the
+planner doesn't see the unsat-ness. Executor walks rg=22 with 4 full
+DLBA column decodes (subj/pred/obj/graph) of 122,880 rows, RSS
+278MB→1360MB, finds 0 matches.
+
+Phase 2.6 should produce **either** of:
+
+- **Compound `(p, o)` presence per rg** — companion `.po.presence`
+  file. Mem5 returns 0 → planner short-circuits → 0ms execute.
+  Verifiable in F\* (lemma: \"if compound bitmap says no, no row
+  matches\"). Filed as **issue #104**.
+- **Lazy column decode in `*_inner`** — decode predicate first
+  (cheap, 232 distinct), filter, then decode object on the survivors.
+  Cuts rg=22 from 4s to ms. Belongs in F\* `RDF.CottasStore`, not
+  the OCaml `*_inner` glue.
+
+Either fix completes the unwind for the prune layer and lands Q03
+near-instant. Whichever lands first should also delete the Q03 fix
+in `cottas_ondisk_zzzzzzzzz_q03_estimate_fix.sh` (the lamed3
+dispatcher bypass becomes obsolete once `*_via_offsets` either
+disappears (via 2.5/2.6 lift) or is fixed in F\*).
 
 **Steps:**
 1. **F\* module `RDF.CottasStore.PresenceBitmap.fst`**: companion-file readers + bitmap-test logic + AND-of-bitmaps. Refinement-typed where useful.
