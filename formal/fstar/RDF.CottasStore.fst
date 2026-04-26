@@ -921,3 +921,23 @@ let rec cottas_ondisk_rows_to_quads_acc
 let cottas_ondisk_rows_to_quads (ds : cottas_ondisk_store) (rows : list cottas_qp_row)
   : Tot (list (triple & option iri)) =
   List.Tot.rev (cottas_ondisk_rows_to_quads_acc ds rows [])
+
+// Fused tail-rec walk: rows -> triples (drops the graph-name component).
+// Avoids the non-tail-rec `List.Tot.map fst (cottas_ondisk_rows_to_quads
+// ...)` pattern on 3M-row results, which would re-walk the list and blow
+// the stack again. Sin7 fix (2026-04-26).
+let rec cottas_ondisk_rows_to_triples_acc
+    (ds : cottas_ondisk_store)
+    (rows : list cottas_qp_row)
+    (acc : list triple)
+  : Tot (list triple) (decreases rows) =
+  match rows with
+  | [] -> acc
+  | row :: rest ->
+    (match cottas_ondisk_row_to_quad ds row with
+     | None              -> cottas_ondisk_rows_to_triples_acc ds rest acc
+     | Some (t, _gname)  -> cottas_ondisk_rows_to_triples_acc ds rest (t :: acc))
+
+let cottas_ondisk_rows_to_triples (ds : cottas_ondisk_store) (rows : list cottas_qp_row)
+  : Tot (list triple) =
+  List.Tot.rev (cottas_ondisk_rows_to_triples_acc ds rows [])

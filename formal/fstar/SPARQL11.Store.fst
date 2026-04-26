@@ -106,12 +106,15 @@ and backend_search (gb : graph_backend) (b : triple_pattern_bound) : list triple
     (* On-disk search: encode bounds → integer term-ids, walk per-row term-id
        arrays (no parsed terms), decode terms only for matched rows.
        If any bound term is absent from the dictionary the result is
-       definitively empty without scanning. *)
+       definitively empty without scanning.
+       Sin7 (2026-04-26): use the fused tail-rec
+       `cottas_ondisk_rows_to_triples` to avoid the non-tail-rec
+       `List.Tot.map fst` walk on 3M-row results. *)
     (match cottas_ondisk_build_bound_qp_opt cods b.bs b.bp b.bo graph_name with
      | None -> []
      | Some bound ->
        let rows = cottas_ondisk_search cods bound in
-       List.Tot.map fst (cottas_ondisk_rows_to_quads cods rows))
+       cottas_ondisk_rows_to_triples cods rows)
   | GB_Union members ->
     union_backend_search_acc members b []
 
@@ -157,12 +160,14 @@ and backend_search_limited (gb : graph_backend) (b : triple_pattern_bound)
   : Tot (list triple) =
   match gb with
   | GB_CottasOnDisk cods graph_name ->
-    (* COTTAS-on-disk: real LIMIT pushdown — walker stops at `limit` rows. *)
+    (* COTTAS-on-disk: real LIMIT pushdown — walker stops at `limit` rows.
+       Sin7 (2026-04-26): tail-rec rows->triples to avoid stack overflow
+       even at LIMIT=50000 if pushdown returns more than expected. *)
     (match cottas_ondisk_build_bound_qp_opt cods b.bs b.bp b.bo graph_name with
      | None -> []
      | Some bound ->
        let rows = cottas_ondisk_search_limited cods bound limit in
-       List.Tot.map fst (cottas_ondisk_rows_to_quads cods rows))
+       cottas_ondisk_rows_to_triples cods rows)
   | GB_Union members ->
     if limit = 0 then []
     else

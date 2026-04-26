@@ -175,16 +175,26 @@ let store_to_dataset (dss : rdf_dataset_store) : rdf_dataset =
         dss.dss_named
   }
 
-let rec triple_matches_bound (b : triple_pattern_bound) (ts : list triple)
+// Tail-rec rewrite (sin7 2026-04-26). The original recursed BEFORE
+// consing the matched triple. On the GB_List / GB_Indexed paths a 3M-row
+// bucket would overflow the macOS main-thread stack the same way the
+// COTTAS path does. Order preserved (rev once at end).
+let rec triple_matches_bound_acc (b : triple_pattern_bound) (ts : list triple)
+  (acc : list triple)
   : Tot (list triple) (decreases ts) =
   match ts with
-  | [] -> []
+  | [] -> acc
   | t :: rest ->
     let subj_ok = match b.bs with | None -> true | Some s -> subject_eq s t.s in
     let pred_ok = match b.bp with | None -> true | Some p -> p = t.p in
     let obj_ok = match b.bo with | None -> true | Some o -> rdf_term_eq o t.o in
-    let rest' = triple_matches_bound b rest in
-    if subj_ok && pred_ok && obj_ok then t :: rest' else rest'
+    if subj_ok && pred_ok && obj_ok
+    then triple_matches_bound_acc b rest (t :: acc)
+    else triple_matches_bound_acc b rest acc
+
+let triple_matches_bound (b : triple_pattern_bound) (ts : list triple)
+  : Tot (list triple) =
+  List.Tot.rev (triple_matches_bound_acc b ts [])
 
 (* --------- Indexed-graph search (issue #100 Phase 0) --------- *)
 (* Pick the smallest available bound-component bucket among
