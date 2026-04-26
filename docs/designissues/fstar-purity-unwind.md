@@ -154,6 +154,83 @@ glue duplicates the readers, retire the duplicates.
 
 **Acceptance:** PR that adds a new override patch fails CI.
 
+## Companion architectural concerns (out-of-band, non-rule-violating)
+
+Two reviewer-flagged issues that are NOT rule-#11 violations but matter
+for the same correctness/quality posture:
+
+### A. SIGALRM-based per-query timeout is process-global
+
+Heth3's commit `afb4c1d` uses `Unix.alarm` + `SIGALRM` to interrupt a
+running query. The handler raises `Query_timeout` inside whatever OCaml
+stack frame happens to be running when the signal fires. The code at
+`factoidal_http.ml:1184` documents the caveat: *"Unix.alarm is per-
+process. Today we have a single-threaded accept loop (or one
+accept-thread when COTTAS is loading), so this is effectively
+per-request. A future worker pool will need a per-thread polling abort
+flag instead."*
+
+Reviewer (2026-04-26): *"The server is already running an accept loop
+on a worker thread when COTTAS is loading at
+factoidal_http.ml:2459. ... it is the kind of mechanism that makes
+failure isolation and future concurrency much harder."*
+
+**Verdict:** the reviewer is right. Today's deployment is single-
+request-at-a-time so this works, but as soon as we add real
+concurrency (worker pool, Lwt, or async COTTAS open + concurrent
+queries) the global alarm becomes wrong. Replacement options:
+
+- **Per-thread polling abort flag** — long-running loops in F\* (BGP
+  walker, search_fast, estimate_fast) check a thread-local atomic
+  every N iterations. Threading the flag through F\* is invasive;
+  lifting it to an `assume val` is feasible.
+- **Lwt-style cooperative cancellation** — would require refactoring
+  the accept loop to Lwt; large change.
+- **`pthread_kill`** — sends a signal to a specific thread. Less
+  portable; macOS and Linux differ in subtle ways. Works in practice
+  for single-threaded blocking code.
+
+**Decision:** defer until Phase 2.5 (when the F\* `cottas_ondisk_search`
+becomes the runtime path). At that point we'll add a polling abort flag
+to F\*'s search loop. Until then, document the limitation in the daemon
+help text and don't enable concurrency.
+
+### B. UK Parliament benchmark is not a CI gate
+
+Reviewer (2026-04-26): *"tools/bench_ukpar_modern.py writes the
+benchmark artifacts, but my search only found it referenced in docs and
+not wired into any workflow under .github/workflows. So a regression
+from 'some curated queries work' to 'half the demo query set fails and
+the server dies' can land without an automated gate."*
+
+**Verdict:** the reviewer is right. We have the W3C test suite as a
+correctness gate (1657/1/0/4) but no demo-query-shape gate. The Q03
+regression that bit us today would have been caught by a CI step
+that:
+
+1. Builds the daemon
+2. Boots it with parliament corpus
+3. Issues each `tools/sample-queries/ukparliament/**/*_modern.rq`
+4. Asserts pass/fail counts vs a baseline
+5. Asserts wall-time within tolerance
+
+**Decision:** add `.github/workflows/ukparliament-bench.yml` as part of
+Phase 2.8 (the CI work). Independently shippable from the unwind. Could
+ship before Phase 2.2 starts — this is a backstop, not a refactor.
+
+### C. /backend-info.json under-reporting (FIXED 2026-04-26 commit ?????)
+
+Reviewer (2026-04-26): *"In a --data-cottas-only server, that can
+advertise 'kind':'binary' while still showing a zero or partial triple
+count."*
+
+Now fixed: `serve_backend_info_json` sums `dataset_ref` quads + open
+COTTAS stores' `cas_num_quads`. JSON also splits the breakdown
+(`in_memory_triples`, `cottas_triples`, `cottas_files`) so consumers
+can see where the rows come from. Web component pill will now show
+"binary COTTAS (3,143,406 triples · data.cottas)" on parliament
+deployments.
+
 ## Time estimate (agent-pace, not human-pace)
 
 Calibration: the original drift accumulated in ~24 hours of agent work

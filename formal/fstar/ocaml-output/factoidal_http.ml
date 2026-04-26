@@ -1995,17 +1995,49 @@ let backend_source_string (cfg : config) : string =
     String.concat ", "
       (Filename.basename f :: List.map Filename.basename paths)
 
-let serve_backend_info_json (cfg : config) (dataset_ref : rdf_dataset ref)
+(* Sum cas_num_quads across the open cottas-ondisk stores. Returns a
+   conservative 0 when the summary is absent (it shouldn't be in
+   practice — cottas_ondisk_open populates cods_summary — but treat
+   that as "we honestly don't know" rather than crash the
+   /backend-info.json path). *)
+let cottas_stores_total_quads (stores : cottas_ondisk_loaded list) : int =
+  List.fold_left (fun acc s ->
+    match RDF_CottasStore.cottas_ondisk_summary s.cod_store with
+    | FStar_Pervasives_Native.Some summ ->
+      acc + Z.to_int summ.Parser_BallyhooCOTTAS.cas_num_quads
+    | FStar_Pervasives_Native.None -> acc
+  ) 0 stores
+
+(* /backend-info.json. Reports the union of in-memory dataset_ref AND
+   open cottas-ondisk stores — both feed backend_ref, which is the
+   actual query-time view. Earlier versions only counted dataset_ref,
+   so a --data-cottas-only daemon advertised "kind":"binary" with
+   "triples":0, despite COUNT(*) returning 3.14M. Reviewer flagged
+   2026-04-26. *)
+let serve_backend_info_json
+    (cfg : config)
+    (dataset_ref : rdf_dataset ref)
+    (cottas_stores_ref : cottas_ondisk_loaded list ref)
     : response_body =
   try
     let ds = !dataset_ref in
-    let (total, dflt, ng_count, ng_triples) = count_dataset_triples ds in
+    let stores = !cottas_stores_ref in
+    let (in_mem_total, in_mem_dflt, in_mem_ng_count, in_mem_ng_triples) =
+      count_dataset_triples ds in
+    let cottas_quads = cottas_stores_total_quads stores in
+    let cottas_files = List.length stores in
+    let total = in_mem_total + cottas_quads in
     let body =
       Printf.sprintf
-        "{\"kind\":\"%s\",\"triples\":%d,\"default_graph_triples\":%d,\
-         \"named_graphs\":%d,\"named_graph_triples\":%d,\"source\":\"%s\"}\n"
+        "{\"kind\":\"%s\",\"triples\":%d,\
+         \"in_memory_triples\":%d,\"in_memory_default_graph_triples\":%d,\
+         \"in_memory_named_graphs\":%d,\"in_memory_named_graph_triples\":%d,\
+         \"cottas_triples\":%d,\"cottas_files\":%d,\
+         \"source\":\"%s\"}\n"
         (json_escape (backend_kind_string cfg))
-        total dflt ng_count ng_triples
+        total
+        in_mem_total in_mem_dflt in_mem_ng_count in_mem_ng_triples
+        cottas_quads cottas_files
         (json_escape (backend_source_string cfg))
     in
     { rb_status = 200;
@@ -2038,7 +2070,7 @@ let accept_wants_html (accept : string) : bool =
      3. Anything else GET-shaped is delegated to the static-file demo
         directory (default docs/web/landing/, or whatever --web-demo
         selected). Missing files yield 404 plaintext, not 500. *)
-let try_static_route ~cfg ~dataset_ref ~meth ~path ~qs ~accept
+let try_static_route ~cfg ~dataset_ref ~cottas_stores_ref ~meth ~path ~qs ~accept
     : response_body option =
   if meth <> "GET" then None
   else match path with
@@ -2047,7 +2079,7 @@ let try_static_route ~cfg ~dataset_ref ~meth ~path ~qs ~accept
   | "/parliament-queries.json" ->
     Some (serve_parliament_queries_json ())
   | "/backend-info.json" ->
-    Some (serve_backend_info_json cfg dataset_ref)
+    Some (serve_backend_info_json cfg dataset_ref cottas_stores_ref)
   | "/favicon.ico" ->
     (* Try the demo dir first (so a demo can ship its own favicon); on
        miss, return 204 to keep the browser's devtools console quiet
@@ -2125,7 +2157,7 @@ let handle_connection cfg dataset_ref backend_ref cottas_stores_ref ic oc =
 
     (* Static / landing-page routes intercept before the F* protocol
        decoder. Pure I/O glue (rule #15). *)
-    (match try_static_route ~cfg ~dataset_ref
+    (match try_static_route ~cfg ~dataset_ref ~cottas_stores_ref
               ~meth ~path ~qs ~accept with
      | Some resp ->
        let static_extras =
