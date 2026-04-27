@@ -76,49 +76,21 @@ SELECT ?s ?p ?o
 WHERE { ?s ?p ?o . ?o a geo:wktLiteral }
 LIMIT 3
   </factoidal-query>
-  <factoidal-query name="organisations-count" label="04 — Count organisations (GovernmentOrganisation ∪ ArmsLengthBody)">
-PREFIX : &lt;https://id.parliament.uk/schema/&gt;
-PREFIX rdfs: &lt;http://www.w3.org/2000/01/rdf-schema#&gt;
+  <factoidal-query name="owl-classes" label="04 — OWL Classes — schema overview (180 classes total)">
+PREFIX owl: &lt;http://www.w3.org/2002/07/owl#&gt;
 
-SELECT DISTINCT (COUNT(DISTINCT ?Organisations) AS ?count)
-WHERE {
-  { ?Organisations a :GovernmentOrganisation . }
-  UNION
-  { ?Organisations a :ArmsLengthBody . }
-  ?Organisations :name ?Name .
-}
+SELECT ?cls
+WHERE { ?cls a owl:Class }
+LIMIT 30
   </factoidal-query>
-  <factoidal-query name="work-packages-count" label="05 — Count current work-packages (complex MINUS / OPTIONAL chain)">
-PREFIX rdfs: &lt;http://www.w3.org/2000/01/rdf-schema#&gt;
-PREFIX : &lt;https://id.parliament.uk/schema/&gt;
-PREFIX id: &lt;https://id.parliament.uk/&gt;
+  <factoidal-query name="owl-object-properties" label="05 — OWL Object Properties — relations between entities">
+PREFIX owl: &lt;http://www.w3.org/2002/07/owl#&gt;
 
-SELECT DISTINCT (COUNT(DISTINCT ?workPackage) AS ?count)
-WHERE {
-  ?Paper a :WorkPackagedThing .
-  ?Paper :name ?Papername ;
-         :workPackagedThingHasWorkPackage ?workPackage .
-  OPTIONAL {
-    ?Paper :laidThingHasLaying ?laying .
-    ?laying :layingDate ?laidDate
-  }
-  ?workPackage :workPackageHasProcedure ?procedure .
-  ?procedure :name ?procedureName .
-  OPTIONAL {
-    ?workPackage :workPackageHasCalculationStyle ?calculationStyle .
-    ?calculationStyle :name ?calculationStyleName .
-  }
-  MINUS {
-    ?workPackage :workPackageHasBusinessItem ?bi2 .
-    ?bi2 :businessItemHasProcedureStep ?stepId2 .
-    ?stepId2
-      :procedureStepHasProcedureStepCollectionMembership/
-      :procedureStepCollectionMembershipHasProcedureStepCollection
-      id:TRohjSuI
-  }
-}
+SELECT ?p
+WHERE { ?p a owl:ObjectProperty }
+LIMIT 10
   </factoidal-query>
-  <factoidal-query name="alb-overview" label="06 — ArmsLengthBody overview (entity adjacency, modernised)">
+  <factoidal-query name="alb-overview" label="06 — ArmsLengthBody overview (the only typed organisation in this snapshot)">
 PREFIX : &lt;https://id.parliament.uk/schema/&gt;
 
 SELECT ?Org ?p ?o
@@ -129,13 +101,14 @@ WHERE {
 ORDER BY ?p
 LIMIT 50
   </factoidal-query>
-  <factoidal-query name="epetitions-count" label="07 — Count EPetitions (modernised; instant via dictionary)">
-PREFIX : &lt;https://id.parliament.uk/schema/&gt;
-
-SELECT (COUNT(DISTINCT ?Petition) AS ?count)
-WHERE {
-  ?Petition a :EPetition .
-}
+  <factoidal-query name="petition-easa-text" label="07 — Petition text — “Create a Minister for Men” (real e-petition record)">
+SELECT ?p ?o
+WHERE { &lt;https://id.parliament.uk/Easa0LyN&gt; ?p ?o }
+  </factoidal-query>
+  <factoidal-query name="petition-with-signatures" label="08 — Petition with location-keyed signature counts (entity-graph traversal)">
+SELECT ?p ?o
+WHERE { &lt;https://id.parliament.uk/B8ngSsUZ&gt; ?p ?o }
+LIMIT 30
   </factoidal-query>
 </factoidal-sparql-client>
 <footer>Timing in the <em>Details</em> pane. Component posts to
