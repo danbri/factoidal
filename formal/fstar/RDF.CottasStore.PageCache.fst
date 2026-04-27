@@ -1,5 +1,7 @@
 module RDF.CottasStore.PageCache
 
+open RDF.CottasStore.ColumnSeq
+
 // Mim2 (issue #100 Phase C): F*-internal page cache for the on-disk
 // COTTAS backend.
 //
@@ -31,10 +33,16 @@ module RDF.CottasStore.PageCache
 // Page-cache key: (row-group index, column index)
 type pcache_key = nat & nat
 
-// Page-cache entry: key + decoded payload + age stamp
+// Page-cache entry: key + decoded payload + age stamp.
+//
+// Phase 2.5c (issue #118): pce_value is now `cottas_column` (an
+// abstract type extracted to OCaml `string option array`) instead of
+// `list (option string)`. This eliminates the per-cell list cons
+// cost on column walks. Cache integrity (LRU + clock) unchanged;
+// only the stored value's shape differs.
 noeq type pcache_entry = {
   pce_key : pcache_key;
-  pce_value : list (option string);
+  pce_value : cottas_column;
   pce_age : nat;
 }
 
@@ -90,7 +98,7 @@ let rec drop_entry (entries : list pcache_entry) (k : pcache_key)
 // matched entry's age bumped. (Threading the cache through is required
 // because F* is pure-by-default; callers chain calls explicitly.)
 let pcache_get (cache : page_cache) (k : pcache_key)
-  : Tot (option (list (option string)) & page_cache) =
+  : Tot (option cottas_column & page_cache) =
   match lookup_entry cache.pc_entries k with
   | None -> (None, cache)
   | Some entry ->
@@ -133,7 +141,7 @@ let rec list_len (#a:Type) (xs : list a) : Tot nat (decreases xs) =
 // (bumping age). Otherwise prepend. If the resulting list exceeds
 // capacity, evict the oldest entry.
 let pcache_put
-  (cache : page_cache) (k : pcache_key) (v : list (option string))
+  (cache : page_cache) (k : pcache_key) (v : cottas_column)
   (capacity : nat)
   : Tot page_cache =
   if capacity = 0 then cache
@@ -163,17 +171,15 @@ let pcache_put
 //   let (col, cache) = pcache_decode_in_row_group cache path rg col cap in
 // ----------------------------------------------------------------------
 
-open Parquet.Footer
-
 let pcache_decode_in_row_group
   (cache : page_cache) (path : string)
   (rg_index : nat) (col_index : nat) (capacity : nat)
-  : Tot (option (list (option string)) & page_cache) =
+  : Tot (option cottas_column & page_cache) =
   let key = (rg_index, col_index) in
   match pcache_get cache key with
   | (Some v, c1) -> (Some v, c1)
   | (None, c1) ->
-    match probe_parquet_column_decode_in_row_group path rg_index col_index with
+    match probe_parquet_column_decode_in_row_group_seq path rg_index col_index with
     | None -> (None, c1)
     | Some v ->
       let c2 = pcache_put c1 key v capacity in

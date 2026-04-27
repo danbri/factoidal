@@ -1,4 +1,38 @@
 open Prims
+
+(* __PARQUET_ASCII_STRING_FAST_PATH__
+   Patched by 103_parquet_ascii_string_fast_path.sh.
+   See the patch file for the safety argument: every Parquet_Footer
+   call site that reaches one of these helpers passes an ASCII-only
+   hex string, so codepoint ops collapse onto byte ops. *)
+module FStar_String = struct
+  include FStar_String
+  (* The enclosing file does `open Prims`, which shadows OCaml's `int`
+     and `string` to Prims aliases (Z.t and Stdlib.String.t). All the
+     stdlib references below have to be fully qualified to escape that. *)
+  let index (s : Stdlib.String.t) (i : Z.t) : Stdlib.Int.t =
+    Stdlib.Char.code (Stdlib.String.unsafe_get s (Z.to_int i))
+  let strlen (s : Stdlib.String.t) : Z.t =
+    Z.of_int (Stdlib.String.length s)
+  let length = strlen
+  let sub (s : Stdlib.String.t) (i : Z.t) (j : Z.t) : Stdlib.String.t =
+    Stdlib.String.sub s (Z.to_int i) (Z.to_int j)
+  (* string_of_list: ASCII fast-path. Original walks the list O(n^2)
+     via BatUTF8.init+List.at; we materialise once into a Bytes.
+     The fstar.lib runtime declares `type char = FStar_Char.char =
+     int`, so the list is a list of codepoint ints. Safe iff every
+     codepoint fits in one byte, which is true for the
+     ascii_string_of_hex_slice path (chars come from byte_at_hex
+     and are always in [0,255]). *)
+  let string_of_list (l : FStar_Char.char list) : Stdlib.String.t =
+    let n = Stdlib.List.length l in
+    let b = Stdlib.Bytes.create n in
+    Stdlib.List.iteri (fun i c ->
+      Stdlib.Bytes.unsafe_set b i
+        (Stdlib.Char.unsafe_chr (c land 0xff))) l;
+    Stdlib.Bytes.unsafe_to_string b
+end
+
 type parquet_footer =
   {
   pf_metadata_len: Prims.nat ;
@@ -57,15 +91,104 @@ let __proj__Mkcompact_list_info__item__cli_payload_start
   | { cli_count; cli_etype; cli_payload_start;_} -> cli_payload_start
 let parquet_magic : Prims.string= "PAR1"
 let parquet_magic_hex : Prims.string= "50415231"
+(* ---- Mim2 (issue #100 Phases B+C) ---------------------------------
+   Process-wide path-keyed byte cache. The first call to parquet_read_*
+   for a given path slurps the entire file into a single OCaml string
+   (immutable, GC-tracked). Subsequent calls return slices in O(count).
+   This is the in-process equivalent of mmap'ing the parquet file: at
+   the F* abstraction layer, the path IS the region handle, the cache
+   IS the mapped pages, and slicing IS a pointer dereference. We use
+   really_input_string instead of Unix.map_file because parliament is
+   66MB; for >1GB corpora a swap to Unix.map_file is one-line.
+
+   Without this cache, every probe_parquet_* call (and the column-
+   decode path inside it) reopens the file via open_in_bin, re-seeks,
+   and reads. The footer alone is read on every probe (the metadata
+   ASCII strings, num-rows, row-group-count, column descriptors, etc.).
+   For the parliament corpus that's hundreds of file-opens per SELECT
+   and hundreds of zstd decompressions; the daemon hangs.
+
+   This block (tail_impl) is inserted at the location of the original
+   parquet_read_tail_hex stub — earlier in the file than the
+   parquet_read_range_hex stub. So we define the byte cache + the raw
+   helpers + parquet_read_tail / parquet_read_range here, and the
+   range_impl block (inserted later) only adds parquet_read_range_hex. *)
+
+let __mim2_file_bytes_cache : (string, string) Hashtbl.t = Hashtbl.create 7
+
+let __mim2_load_file_bytes path =
+  match Hashtbl.find_opt __mim2_file_bytes_cache path with
+  | Some s -> Some s
+  | None ->
+    if not (Sys.file_exists path) then None
+    else
+      let ic = open_in_bin path in
+      let module S = Stdlib in
+      Fun.protect
+        ~finally:(fun () -> close_in_noerr ic)
+        (fun () ->
+           let file_len = in_channel_length ic in
+           let s = really_input_string ic file_len in
+           Hashtbl.add __mim2_file_bytes_cache path s;
+           Some s)
+
+let parquet_read_range (path : Prims.string) (start : Prims.nat) (count : Prims.nat) :
+  Prims.string FStar_Pervasives_Native.option=
+  let module S = Stdlib in
+  match __mim2_load_file_bytes path with
+  | None -> FStar_Pervasives_Native.None
+  | Some buf ->
+    let file_len = String.length buf in
+    let offset = Z.to_int start in
+    let want = Z.to_int count in
+    if S.(offset < 0 || want < 0 || offset > file_len || offset + want > file_len)
+    then FStar_Pervasives_Native.None
+    else FStar_Pervasives_Native.Some (String.sub buf offset want)
+
+let parquet_read_tail (path : Prims.string) (count : Prims.nat) :
+  Prims.string FStar_Pervasives_Native.option=
+  let module S = Stdlib in
+  match __mim2_load_file_bytes path with
+  | None -> FStar_Pervasives_Native.None
+  | Some buf ->
+    let file_len = String.length buf in
+    let want = Z.to_int count in
+    if S.(file_len < want) then FStar_Pervasives_Native.None
+    else
+      let start = S.(file_len - want) in
+      FStar_Pervasives_Native.Some (String.sub buf start want)
+
+(* Hex-encode a raw string. Buffer-once so the ~250MB row-group
+   payloads don't trigger O(N^2) string concat. *)
+let __mim2_hex_encode raw =
+  let module S = Stdlib in
+  let b = Buffer.create S.(2 * String.length raw) in
+  String.iter
+    (fun ch -> Buffer.add_string b (Printf.sprintf "%02X" (Char.code ch)))
+    raw;
+  Buffer.contents b
+
 let parquet_read_tail_hex (path : Prims.string) (count : Prims.nat) :
   Prims.string FStar_Pervasives_Native.option=
-  failwith "Not yet implemented: Parquet.Footer.parquet_read_tail_hex"
-let parquet_read_range_hex (path : Prims.string) (start : Prims.nat)
-  (count : Prims.nat) : Prims.string FStar_Pervasives_Native.option=
-  failwith "Not yet implemented: Parquet.Footer.parquet_read_range_hex"
-let parquet_zstd_decompress_hex (compressed_hex : Prims.string)
-  (expected_size : Prims.nat) : Prims.string FStar_Pervasives_Native.option=
-  failwith "Not yet implemented: Parquet.Footer.parquet_zstd_decompress_hex"
+  match parquet_read_tail path count with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some raw -> FStar_Pervasives_Native.Some (__mim2_hex_encode raw)
+(* parquet_read_range_hex: depends on helpers defined earlier in
+   the tail_impl block (Mim2 byte cache for issue #100 Phases B+C). *)
+
+let parquet_read_range_hex (path : Prims.string) (start : Prims.nat) (count : Prims.nat) :
+  Prims.string FStar_Pervasives_Native.option=
+  match parquet_read_range path start count with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some raw -> FStar_Pervasives_Native.Some (__mim2_hex_encode raw)
+
+external parquet_zstd_decompress_hex_runtime :
+  Prims.string -> Prims.string -> Prims.string FStar_Pervasives_Native.option
+  = "caml_parquet_zstd_decompress_hex"
+
+let parquet_zstd_decompress_hex (compressed_hex : Prims.string) (expected_size : Prims.nat) :
+  Prims.string FStar_Pervasives_Native.option=
+  parquet_zstd_decompress_hex_runtime compressed_hex (Prims.string_of_int expected_size)
 let hex_nibble (c : FStar_Char.char) :
   Prims.nat FStar_Pervasives_Native.option=
   let code = FStar_Char.int_of_char c in

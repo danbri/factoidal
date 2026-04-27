@@ -159,9 +159,12 @@ search_fast_limited = '''    Printf.eprintf "[qof3-trace] search_fast: matched %
     let acc = ref [] in
     let n_matches = ref 0 in
     let arr_of_col col_opt =
+      (* Phase 2.5c (issue #118): col_opt is `cottas_column option`
+         (= `string option array option`) post-pagecache-hot-path patch.
+         Identity-with-fallback. *)
       match col_opt with
       | FStar_Pervasives_Native.None -> [||]
-      | FStar_Pervasives_Native.Some lst -> Array.of_list lst in
+      | FStar_Pervasives_Native.Some arr -> arr in
     let cell_of = function
       | FStar_Pervasives_Native.Some s -> s
       | FStar_Pervasives_Native.None -> "" in

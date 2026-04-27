@@ -130,11 +130,11 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              Parser.Ballyhoo.fst Parser.BallyhooBloom.fst \
              Parser.BallyhooHDT.fst Parser.BallyhooHDTQ.fst \
              Parser.BallyhooCOTTAS.fst \
+             RDF.CottasStore.ColumnSeq.fst \
              RDF.CottasStore.PageCache.fst \
              RDF.CottasStore.OnDiskIndex.fst \
              RDF.CottasStore.PresenceBitmap.fst \
              RDF.CottasStore.CompoundPresenceBitmap.fst \
-             RDF.CottasStore.ColumnSeq.fst \
              RDF.CottasStore.fst \
              SPARQL11.Store.fst \
              SPARQL.Protocol.fst \
@@ -195,11 +195,11 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
     Parser_Ballyhoo.ml Parser_BallyhooBloom.ml \
     Parser_BallyhooHDT.ml Parser_BallyhooHDTQ.ml Parser_BallyhooCOTTAS.ml \
+    RDF_CottasStore_ColumnSeq.ml \
     RDF_CottasStore_PageCache.ml \
     RDF_CottasStore_OnDiskIndex.ml \
     RDF_CottasStore_PresenceBitmap.ml \
     RDF_CottasStore_CompoundPresenceBitmap.ml \
-    RDF_CottasStore_ColumnSeq.ml \
     RDF_CottasStore.ml \
     fstar_pure_hashes.ml \
     RDF_Canonical.ml \
@@ -435,10 +435,11 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
     Parser_Ballyhoo.ml Parser_BallyhooBloom.ml Parser_BallyhooCOTTAS.ml
+    RDF_CottasStore_ColumnSeq.ml
+    RDF_CottasStore_PageCache.ml
     RDF_CottasStore_OnDiskIndex.ml
     RDF_CottasStore_PresenceBitmap.ml
     RDF_CottasStore_CompoundPresenceBitmap.ml
-    RDF_CottasStore_ColumnSeq.ml
     RDF_CottasStore.ml
     fstar_pure_hashes.ml
     SPARQL11_Algebra.ml OWL_QueryRewrite.ml OWL_QueryEval.ml SPARQL11_Parser.ml SPARQL_Protocol.ml

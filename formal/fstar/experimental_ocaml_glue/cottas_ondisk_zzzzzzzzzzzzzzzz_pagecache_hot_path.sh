@@ -95,9 +95,12 @@ module Cottas_pagecache_hot = struct
      argument shape, same return type. The F* `pcache_decode_in_row_group`
      returns a `(value, new_cache)` tuple; we re-bind the ref to thread
      state. *)
+  (* Phase 2.5c (issue #118): return type changed to `cottas_column option`
+     (= `string option array option`). The page cache now stores arrays
+     directly; eliminates the per-cache-hit Array.of_list cost in
+     callers like cottas_ondisk_runtime.sh's arr_of_col. *)
   let cached_decode (path : string) (rg : Z.t) (col : Z.t)
-    : string FStar_Pervasives_Native.option Prims.list
-        FStar_Pervasives_Native.option =
+    : RDF_CottasStore_ColumnSeq.cottas_column FStar_Pervasives_Native.option =
     let cap = (!cache_ref).RDF_CottasStore_PageCache.pc_capacity in
     let key_present =
       let (v, _) = RDF_CottasStore_PageCache.pcache_get !cache_ref (rg, col) in

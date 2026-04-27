@@ -521,9 +521,14 @@ runtime = r'''module Cottas_ondisk_runtime = struct
     let acc = ref [] in
     let n_matches = ref 0 in
     let arr_of_col col_opt =
+      (* Phase 2.5c (issue #118): col_opt is now `cottas_column option`
+         (= `string option array option`), produced by
+         Cottas_pagecache_hot.cached_decode after the page-cache patch.
+         Identity-with-fallback. The previous shape was
+         `(option string) list option`, requiring Array.of_list. *)
       match col_opt with
       | FStar_Pervasives_Native.None -> [||]
-      | FStar_Pervasives_Native.Some lst -> Array.of_list lst in
+      | FStar_Pervasives_Native.Some arr -> arr in
     let cell_of = function
       | FStar_Pervasives_Native.Some s -> s
       | FStar_Pervasives_Native.None -> "" in
@@ -617,9 +622,14 @@ runtime = r'''module Cottas_ondisk_runtime = struct
       (pe4_rss_mb ()) (pe4_gc_mb ()) (pe4_fd_count ());
     let count = ref 0 in
     let arr_of_col col_opt =
+      (* Phase 2.5c (issue #118): col_opt is now `cottas_column option`
+         (= `string option array option`), produced by
+         Cottas_pagecache_hot.cached_decode after the page-cache patch.
+         Identity-with-fallback. The previous shape was
+         `(option string) list option`, requiring Array.of_list. *)
       match col_opt with
       | FStar_Pervasives_Native.None -> [||]
-      | FStar_Pervasives_Native.Some lst -> Array.of_list lst in
+      | FStar_Pervasives_Native.Some arr -> arr in
     let cell_of = function
       | FStar_Pervasives_Native.Some s -> s
       | FStar_Pervasives_Native.None -> "" in

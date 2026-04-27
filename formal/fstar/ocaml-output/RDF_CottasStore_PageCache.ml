@@ -3,13 +3,13 @@ type pcache_key = (Prims.nat * Prims.nat)
 type pcache_entry =
   {
   pce_key: pcache_key ;
-  pce_value: Prims.string FStar_Pervasives_Native.option Prims.list ;
+  pce_value: RDF_CottasStore_ColumnSeq.cottas_column ;
   pce_age: Prims.nat }
 let __proj__Mkpcache_entry__item__pce_key (projectee : pcache_entry) :
   pcache_key=
   match projectee with | { pce_key; pce_value; pce_age;_} -> pce_key
 let __proj__Mkpcache_entry__item__pce_value (projectee : pcache_entry) :
-  Prims.string FStar_Pervasives_Native.option Prims.list=
+  RDF_CottasStore_ColumnSeq.cottas_column=
   match projectee with | { pce_key; pce_value; pce_age;_} -> pce_value
 let __proj__Mkpcache_entry__item__pce_age (projectee : pcache_entry) :
   Prims.nat=
@@ -59,8 +59,8 @@ let rec drop_entry (entries : pcache_entry Prims.list) (k : pcache_key) :
   | [] -> []
   | e::rest -> if key_eq e.pce_key k then rest else e :: (drop_entry rest k)
 let pcache_get (cache : page_cache) (k : pcache_key) :
-  (Prims.string FStar_Pervasives_Native.option Prims.list
-    FStar_Pervasives_Native.option * page_cache)=
+  (RDF_CottasStore_ColumnSeq.cottas_column FStar_Pervasives_Native.option *
+    page_cache)=
   match lookup_entry cache.pc_entries k with
   | FStar_Pervasives_Native.None -> (FStar_Pervasives_Native.None, cache)
   | FStar_Pervasives_Native.Some entry ->
@@ -103,8 +103,8 @@ let rec list_len : 'a . 'a Prims.list -> Prims.nat =
     | [] -> Prims.int_zero
     | uu___::rest -> Prims.int_one + (list_len rest)
 let pcache_put (cache : page_cache) (k : pcache_key)
-  (v : Prims.string FStar_Pervasives_Native.option Prims.list)
-  (capacity : Prims.nat) : page_cache=
+  (v : RDF_CottasStore_ColumnSeq.cottas_column) (capacity : Prims.nat) :
+  page_cache=
   if capacity = Prims.int_zero
   then cache
   else
@@ -130,15 +130,15 @@ let pcache_put (cache : page_cache) (k : pcache_key)
      })
 let pcache_decode_in_row_group (cache : page_cache) (path : Prims.string)
   (rg_index : Prims.nat) (col_index : Prims.nat) (capacity : Prims.nat) :
-  (Prims.string FStar_Pervasives_Native.option Prims.list
-    FStar_Pervasives_Native.option * page_cache)=
+  (RDF_CottasStore_ColumnSeq.cottas_column FStar_Pervasives_Native.option *
+    page_cache)=
   let key = (rg_index, col_index) in
   match pcache_get cache key with
   | (FStar_Pervasives_Native.Some v, c1) ->
       ((FStar_Pervasives_Native.Some v), c1)
   | (FStar_Pervasives_Native.None, c1) ->
-      (match Parquet_Footer.probe_parquet_column_decode_in_row_group path
-               rg_index col_index
+      (match RDF_CottasStore_ColumnSeq.probe_parquet_column_decode_in_row_group_seq
+               path rg_index col_index
        with
        | FStar_Pervasives_Native.None -> (FStar_Pervasives_Native.None, c1)
        | FStar_Pervasives_Native.Some v ->
