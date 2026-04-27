@@ -71,6 +71,7 @@ select, button {
   border: 1px solid var(--fc-border);
   background: var(--fc-bg); border-radius: 4px;
 }
+select { background: var(--fc-query-bg, #e8f5e9); }
 button {
   background: var(--fc-brand); color: #fff;
   border-color: var(--fc-brand-dark);
