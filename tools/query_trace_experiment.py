@@ -246,6 +246,53 @@ def parse_order_label(step: str) -> str:
     return step.split("(", 1)[0]
 
 
+def bound_vars_for_pattern(tp: dict[str, Any]) -> list[str]:
+    vars_: list[str] = []
+    for key in ("s", "p", "o"):
+        cell = tp.get(key, {})
+        if cell.get("kind") == "var" and isinstance(cell.get("name"), str):
+            vars_.append(cell["name"])
+    return vars_
+
+
+def concrete_positions_for_pattern(tp: dict[str, Any]) -> list[str]:
+    positions: list[str] = []
+    for key in ("s", "p", "o"):
+        cell = tp.get(key, {})
+        if cell.get("kind") in {"hit", "miss", "other"}:
+            positions.append(key)
+    return positions
+
+
+def bgp_breakdown(
+    order: dict[str, Any], tp_by_label: dict[str, dict[str, Any]]
+) -> list[dict[str, Any]]:
+    produced: set[str] = set()
+    steps: list[dict[str, Any]] = []
+    for idx, step in enumerate(order.get("order", []), start=1):
+        label = parse_order_label(step)
+        tp = tp_by_label.get(label)
+        if tp is None:
+            continue
+        pattern_vars = bound_vars_for_pattern(tp)
+        already_bound = [v for v in pattern_vars if v in produced]
+        newly_bound = [v for v in pattern_vars if v not in produced]
+        produced.update(newly_bound)
+        steps.append(
+            {
+                "step": idx,
+                "label": label,
+                "pattern": tp["pattern"],
+                "estimate": tp.get("estimate"),
+                "concrete_positions": concrete_positions_for_pattern(tp),
+                "already_bound_inputs": already_bound,
+                "newly_bound_outputs": newly_bound,
+                "reason": planner_reason_for_pattern(tp),
+            }
+        )
+    return steps
+
+
 def planner_events_from_explain(
     explain_json: dict[str, Any], explain_sections: dict[str, list[str]]
 ) -> list[dict[str, Any]]:
@@ -346,6 +393,29 @@ def build_history_overview(trace_doc: dict[str, Any]) -> list[str]:
             if tp is not None:
                 history.append(
                     f"{label} = `{tp['pattern']}` because {planner_reason_for_pattern(tp)}."
+                )
+        breakdown = bgp_breakdown(order, tp_by_label)
+        if breakdown:
+            history.append(
+                f"BGP #{order['bgp_id']} should be read as a sequence of "
+                f"{len(breakdown)} triple-pattern lookups rather than one opaque lookup."
+            )
+            for step in breakdown:
+                concrete = ", ".join(step["concrete_positions"]) or "none"
+                inputs = (
+                    ", ".join(f"?{v}" for v in step["already_bound_inputs"])
+                    if step["already_bound_inputs"]
+                    else "none"
+                )
+                outputs = (
+                    ", ".join(f"?{v}" for v in step["newly_bound_outputs"])
+                    if step["newly_bound_outputs"]
+                    else "none"
+                )
+                history.append(
+                    f"BGP #{order['bgp_id']} step {step['step']}: lookup `{step['pattern']}`; "
+                    f"concrete positions = {concrete}; already-bound inputs = {inputs}; "
+                    f"new bindings expected from this step = {outputs}."
                 )
     if results.get("summary", {}).get("kind") == "select":
         count = results["summary"].get("binding_count", 0)
@@ -458,6 +528,14 @@ def build_trace_document(
         "algebra_text": "\n".join(explain_sections.get("ALGEBRA", [])).strip(),
         "index_use_summary": "\n".join(explain_sections.get("INDEX-USE SUMMARY", [])).strip(),
     }
+    tp_by_label = {tp["label"]: tp for tp in planner["triple_patterns"]}
+    planner["bgp_breakdowns"] = [
+        {
+            "bgp_id": order["bgp_id"],
+            "steps": bgp_breakdown(order, tp_by_label),
+        }
+        for order in planner["join_orders"]
+    ]
 
     trace_doc = {
         "trace_mode": trace_mode,
@@ -522,6 +600,33 @@ def write_history_markdown(trace_doc: dict[str, Any], out_path: Path) -> None:
             "```text",
             trace_doc["planner"].get("algebra_text", ""),
             "```",
+            "",
+            "## BGP Breakdown",
+            "",
+        ]
+    )
+    for bgp in trace_doc["planner"].get("bgp_breakdowns", []):
+        lines.append(f"### BGP #{bgp['bgp_id']}")
+        lines.append("")
+        for step in bgp.get("steps", []):
+            concrete = ", ".join(step["concrete_positions"]) or "none"
+            inputs = (
+                ", ".join(f"?{v}" for v in step["already_bound_inputs"])
+                if step["already_bound_inputs"]
+                else "none"
+            )
+            outputs = (
+                ", ".join(f"?{v}" for v in step["newly_bound_outputs"])
+                if step["newly_bound_outputs"]
+                else "none"
+            )
+            lines.append(f"- Step {step['step']}: `{step['pattern']}`")
+            lines.append(
+                f"  concrete positions: {concrete}; input bindings: {inputs}; new bindings: {outputs}; estimate: {step['estimate']}"
+            )
+        lines.append("")
+    lines.extend(
+        [
             "",
             "## Full Query",
             "",
