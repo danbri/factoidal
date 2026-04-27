@@ -1,0 +1,13 @@
+.git
+.gitignore
+
+tmp/
+formal/fstar/ocaml-output/
+formal/fstar/_build/
+node_modules/
+
+bin/darwin-arm64/
+bin/linux-x86_64/
+bin/ci-darwin-arm64/
+
+third_party/testing/

@@ -1,0 +1,32 @@
+app = "factoidal"
+primary_region = "lhr"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  HOST = "0.0.0.0"
+  PORT = "8080"
+  DATA_COTTAS = "/data/ukparliament/v1/data.cottas"
+  WEB_DEMO = "ukparliament"
+  QUERY_TIMEOUT = "30"
+  MAX_ROWS = "50000"
+  READ_ONLY = "1"
+  CORS = "*"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+[[mounts]]
+  source = "factoidal_data"
+  destination = "/data"
+
+[[vm]]
+  memory = "2048mb"
+  cpu_kind = "shared"
+  cpus = 1
