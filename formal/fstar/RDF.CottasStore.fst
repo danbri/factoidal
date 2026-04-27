@@ -189,8 +189,21 @@ let cottas_ondisk_decode_predicate
   match list_nth ds.cods_handle.coh_predicates id with
   | Some p -> p
   | None ->
-    // rdf:type as the stable out-of-range fallback wf_iri.
-    let fallback : iri = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" in
+    // Out-of-range / unpopulated-list fallback. We deliberately do
+    // NOT default to rdf:type here — that hid a real correctness bug
+    // for weeks (Bet7's lazy-open leaves `coh_predicates = []`, so
+    // every decode missed and silently returned rdf:type, which
+    // looked indistinguishable from "the data really had rdf:type
+    // here"). The visible-sentinel fallback below ensures the next
+    // identical bug crashes loudly into the result set instead.
+    //
+    // The actual runtime predicate lookup is provided by the
+    // OCaml-glue patch `cottas_ondisk_runtime.sh`, which substitutes
+    // a `Cottas_ondisk_runtime.decode_predicate_fast` body that
+    // consults the populated `tables.ft_id_to_predicate` Hashtbl.
+    // This sentinel only fires if that override hasn't run, e.g. on
+    // a corpus extracted with no glue patch applied.
+    let fallback : iri = "urn:factoidal:cottas-decode-predicate-unknown-id" in
     assert_norm (is_iri fallback);
     fallback
 

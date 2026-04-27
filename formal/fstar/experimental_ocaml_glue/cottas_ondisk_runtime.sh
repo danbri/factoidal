@@ -849,6 +849,24 @@ shim_replacements = {
   RDF_Graph_Executable.rdf_term=
   Cottas_ondisk_runtime.decode_object_fast ds.cods_handle id
 """,
+    # decode_predicate (correctness bug: was missing from this dict;
+    # F* version's `coh_predicates` list is empty post-Bet7 lazy-open,
+    # so every decode missed and fell back to the F* sentinel
+    # "urn:factoidal:cottas-decode-predicate-unknown-id" — or, before
+    # the F* fix, the silent rdf:type fallback that masked the bug.
+    # This shim routes through Cottas_ondisk_runtime.decode_predicate_fast
+    # which consults the populated `tables.ft_id_to_predicate` Hashtbl.)
+    """let cottas_ondisk_decode_predicate (ds : cottas_ondisk_store)
+  (id : Parser_BallyhooCOTTAS.cottas_term_ref) : RDF_Graph_Executable.wf_iri=
+  match list_nth (ds.cods_handle).coh_predicates id with
+  | FStar_Pervasives_Native.Some p -> p
+  | FStar_Pervasives_Native.None ->
+      let fallback = "urn:factoidal:cottas-decode-predicate-unknown-id" in
+      fallback
+""": """let cottas_ondisk_decode_predicate (ds : cottas_ondisk_store)
+  (id : Parser_BallyhooCOTTAS.cottas_term_ref) : RDF_Graph_Executable.wf_iri=
+  Cottas_ondisk_runtime.decode_predicate_fast ds.cods_handle id
+""",
     """let cottas_ondisk_decode_graph_name (ds : cottas_ondisk_store)
   (id : Parser_BallyhooCOTTAS.cottas_graph_ref) : RDF_Graph_Executable.iri=
   match list_nth (ds.cods_handle).coh_graphs id with

@@ -2275,11 +2275,7 @@ let cottas_ondisk_decode_subject (ds : cottas_ondisk_store)
   Cottas_ondisk_runtime.decode_subject_fast ds.cods_handle id
 let cottas_ondisk_decode_predicate (ds : cottas_ondisk_store)
   (id : Parser_BallyhooCOTTAS.cottas_term_ref) : RDF_Graph_Executable.wf_iri=
-  match list_nth (ds.cods_handle).coh_predicates id with
-  | FStar_Pervasives_Native.Some p -> p
-  | FStar_Pervasives_Native.None ->
-      let fallback = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" in
-      fallback
+  Cottas_ondisk_runtime.decode_predicate_fast ds.cods_handle id
 let cottas_ondisk_decode_object (ds : cottas_ondisk_store)
   (id : Parser_BallyhooCOTTAS.cottas_term_ref) :
   RDF_Graph_Executable.rdf_term=
