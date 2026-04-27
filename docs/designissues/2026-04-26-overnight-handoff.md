@@ -12,6 +12,16 @@
 | `51c6a79`/`d447ba4` | Tau3 audit — Bet7 still load-bearing, retire ONLY after 2.6 |
 | `420169a` | Unwind doc Phase 2.6 progress section |
 | `6a7f26b` | Unwind doc lamed3 regression update |
+| `04fff97` | **Compound `(p,o)` WRITER patch** (rule #11(b), 13-z naming so no anchor races); scratch doc |
+| `17520a0` | Rebuilt `bin/darwin-arm64/*` with the writer integrated |
+| `f9901d6` | Post-extract `RDF_CottasStore.ml` with `Cottas_compound_po_writer` module + boot hook |
+
+**Compound writer smoke (parliament corpus, 26 RGs, 3.14M triples):**
+- `.po.presence` file landed at 10.5 MB (1,379,085 unique `(p,o)` pairs)
+- Build cost 80s on first boot, idempotent skip thereafter
+- 0 unknown_p / 0 unknown_o / 0 nulls — clean enumeration
+- Q03 still returns `[]` in 3.82s (writer doesn't change query path; unchanged by design)
+- W3C: 1031 / 0 / 0 / 0 RDF (perfect, unchanged from baseline)
 
 All three Tet3 prune call sites now consult F\* `RDF.CottasStore.PresenceBitmap` first and fall back to per-column Hashtbls only if the companion bitmap is absent. Smoke confirms `[tet3-fstar-trace] estimate_fast_inner: rg-tests via_fstar=78 via_hashtbl=0` — the F\* path is the runtime ground truth.
 
@@ -58,9 +68,10 @@ Tracked in **issue #105**. Next session.
 ## Recommended next-session pick-up
 
 1. **Issue #105 — move rename pivot upstream.** This unblocks Yod7's lamed3 cleanup + makes the patch chain less entangled in general.
-2. **Compound `(p,o)` writer (task #104).** Per nun4 design doc — new patch, new companion file `.po.presence`, hooks into Vav3 column-decode walk. Reader integration deferred.
-3. **Yod6 redirect (task #103).** Same shape as Tet3 redirects. Predicate-presence prune to F\* `PresenceBitmap.rg_could_contain_token`. Should work without rename-pivot fix since Yod6 anchors against `search_fast` directly (pre-Lamed3-rename).
-4. **Tet3 main retirement (task #105[?])** — only safe AFTER all 3 redirects land AND the no-companion fallback path is decided. Delete `cottas_ondisk_zzzz_tet3_subj_obj_prune.sh`.
+2. ~~**Compound `(p,o)` writer (task #104).**~~ ✓ DONE this run (commits `04fff97`/`17520a0`/`f9901d6`).
+3. **Compound `(p,o)` reader integration (issue #104 follow-up).** F\* module `RDF.CottasStore.CompoundPresenceBitmap.fst` (read-only API mirroring Psi3's `PresenceBitmap.fst` shape, soundness lemma) + reader redirects in `mem5_estimate_fast_inner` (returns 0 → planner short-circuits Q03) and `search_fast_inner` (skips rg=22 full DLBA decode). This is the actual user-facing Q03 fix from 3.8s to ~0ms. **Touches the same anchor chain that the lamed3 cleanup regressed (#105) — wants supervision.**
+4. **Yod6 redirect (task #103).** Same shape as Tet3 redirects. Predicate-presence prune to F\* `PresenceBitmap.rg_could_contain_token`. Should work without rename-pivot fix since Yod6 anchors against `search_fast` directly (pre-Lamed3-rename).
+5. **Tet3 main retirement (task #105 cleanup)** — only safe AFTER all 3 redirects land AND the no-companion fallback path is decided. Delete `cottas_ondisk_zzzz_tet3_subj_obj_prune.sh`.
 
 ## Phase 2.4 / 2.5 / 2.7 still blocked
 
