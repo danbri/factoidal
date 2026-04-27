@@ -4,6 +4,7 @@ open RDF.Graph.Executable
 open Parser.BallyhooCOTTAS
 open Parquet.Footer
 open RDF.CottasStore.PageCache
+open RDF.CottasStore.ColumnSeq
 
 // On-disk COTTAS store, query-time interface (issue #100).
 //
@@ -431,6 +432,147 @@ let rec walk_row_groups_estimate
       (rg_index + 1) rg_count (fuel - 1) acc' c4
 
 // ----------------------------------------------------------------------
+// Phase 2.5b (issue #118): seq-shape variants of the hot-path walks.
+//
+// These mirror filter_zipped_rows / count_zipped_rows / walk_row_groups_*
+// but consume `cottas_column` (an array under the OCaml realisation)
+// instead of `list (option string)`. The change eliminates the O(N)
+// per-row list-cell allocation that dominated cold-path time on
+// parliament's 122,880-row row-groups; cell access is now O(1) via
+// `cottas_column_get` (extracted to `Array.unsafe_get`).
+//
+// Tail-recursion: the seq variants thread an explicit row-index `i`
+// alongside the count `n`. F* totality accepts `decreases (n - i)`.
+// Same acc-rev convention as the list variants — caller flips at the
+// end with `list_rev`.
+//
+// The list variants above are preserved for the candidate-rgs path
+// (still using the page cache) and for the limited / aleph6 LIMIT
+// pushdown path. Phase 2.5c will migrate those, which lets the page
+// cache value type itself shift to `cottas_column`. Phase 2.5e
+// retires the OCaml runtime perf-shim once the F* path is the
+// runtime ground truth.
+// ----------------------------------------------------------------------
+
+let rec filter_zipped_rows_seq
+  (h : cottas_ondisk_handle)
+  (bound_s bound_p bound_o bound_g : option string)
+  (s_col p_col o_col g_col : cottas_column)
+  (n : nat) (i : nat{i <= n})
+  (acc_rev : list cottas_qp_row)
+  : Tot (list cottas_qp_row) (decreases (n - i)) =
+  if i = n then acc_rev
+  else
+    let acc_rev' =
+      // Defensive bound checks: every column should have length >= n
+      // (parquet columns within a row-group share row count); the
+      // checks let F* discharge the refinement on cottas_column_get
+      // without an extra invariant.
+      if i < cottas_column_length s_col &&
+         i < cottas_column_length p_col &&
+         i < cottas_column_length o_col &&
+         i < cottas_column_length g_col
+      then
+        match cottas_column_get s_col i, cottas_column_get p_col i,
+              cottas_column_get o_col i, cottas_column_get g_col i with
+        | Some s_tok, Some p_tok, Some o_tok, Some g_tok ->
+          if cell_match bound_s s_tok &&
+             cell_match bound_p p_tok &&
+             cell_match bound_o o_tok &&
+             graph_cell_match bound_g g_tok
+          then build_qp_row h s_tok p_tok o_tok g_tok :: acc_rev
+          else acc_rev
+        | _ -> acc_rev
+      else acc_rev in
+    filter_zipped_rows_seq h bound_s bound_p bound_o bound_g
+      s_col p_col o_col g_col n (i + 1) acc_rev'
+
+let rec count_zipped_rows_seq
+  (bound_s bound_p bound_o bound_g : option string)
+  (s_col p_col o_col g_col : cottas_column)
+  (n : nat) (i : nat{i <= n})
+  (acc : nat)
+  : Tot nat (decreases (n - i)) =
+  if i = n then acc
+  else
+    let acc' =
+      if i < cottas_column_length s_col &&
+         i < cottas_column_length p_col &&
+         i < cottas_column_length o_col &&
+         i < cottas_column_length g_col
+      then
+        match cottas_column_get s_col i, cottas_column_get p_col i,
+              cottas_column_get o_col i, cottas_column_get g_col i with
+        | Some s_tok, Some p_tok, Some o_tok, Some g_tok ->
+          if cell_match bound_s s_tok &&
+             cell_match bound_p p_tok &&
+             cell_match bound_o o_tok &&
+             graph_cell_match bound_g g_tok
+          then acc + 1
+          else acc
+        | _ -> acc
+      else acc in
+    count_zipped_rows_seq bound_s bound_p bound_o bound_g
+      s_col p_col o_col g_col n (i + 1) acc'
+
+// Choose the smaller of two nats. Used to derive a uniform row-count
+// when the four columns have slightly different lengths (shouldn't
+// happen for well-formed parquet but we don't trust it without proof).
+let nat_min (a b : nat) : Tot nat = if a <= b then a else b
+
+let row_group_row_count (s_col p_col o_col g_col : cottas_column) : Tot nat =
+  let n_s = cottas_column_length s_col in
+  let n_p = cottas_column_length p_col in
+  let n_o = cottas_column_length o_col in
+  let n_g = cottas_column_length g_col in
+  nat_min (nat_min n_s n_p) (nat_min n_o n_g)
+
+let rec walk_row_groups_search_seq
+  (h : cottas_ondisk_handle)
+  (bound_s bound_p bound_o bound_g : option string)
+  (rg_index : nat) (rg_count : nat) (fuel : nat)
+  (acc_rev : list cottas_qp_row)
+  : Tot (list cottas_qp_row) (decreases fuel) =
+  if fuel = 0 then acc_rev
+  else if rg_index >= rg_count then acc_rev
+  else
+    let s_col_opt = probe_parquet_column_decode_in_row_group_seq h.coh_path rg_index 0 in
+    let p_col_opt = probe_parquet_column_decode_in_row_group_seq h.coh_path rg_index 1 in
+    let o_col_opt = probe_parquet_column_decode_in_row_group_seq h.coh_path rg_index 2 in
+    let g_col_opt = probe_parquet_column_decode_in_row_group_seq h.coh_path rg_index 3 in
+    let acc_rev' =
+      match s_col_opt, p_col_opt, o_col_opt, g_col_opt with
+      | Some sc, Some pc, Some oc, Some gc ->
+        let n = row_group_row_count sc pc oc gc in
+        filter_zipped_rows_seq h bound_s bound_p bound_o bound_g
+          sc pc oc gc n 0 acc_rev
+      | _ -> acc_rev in
+    walk_row_groups_search_seq h bound_s bound_p bound_o bound_g
+      (rg_index + 1) rg_count (fuel - 1) acc_rev'
+
+let rec walk_row_groups_estimate_seq
+  (h : cottas_ondisk_handle)
+  (bound_s bound_p bound_o bound_g : option string)
+  (rg_index : nat) (rg_count : nat) (fuel : nat) (acc : nat)
+  : Tot nat (decreases fuel) =
+  if fuel = 0 then acc
+  else if rg_index >= rg_count then acc
+  else
+    let s_col_opt = probe_parquet_column_decode_in_row_group_seq h.coh_path rg_index 0 in
+    let p_col_opt = probe_parquet_column_decode_in_row_group_seq h.coh_path rg_index 1 in
+    let o_col_opt = probe_parquet_column_decode_in_row_group_seq h.coh_path rg_index 2 in
+    let g_col_opt = probe_parquet_column_decode_in_row_group_seq h.coh_path rg_index 3 in
+    let acc' =
+      match s_col_opt, p_col_opt, o_col_opt, g_col_opt with
+      | Some sc, Some pc, Some oc, Some gc ->
+        let n = row_group_row_count sc pc oc gc in
+        count_zipped_rows_seq bound_s bound_p bound_o bound_g
+          sc pc oc gc n 0 acc
+      | _ -> acc in
+    walk_row_groups_estimate_seq h bound_s bound_p bound_o bound_g
+      (rg_index + 1) rg_count (fuel - 1) acc'
+
+// ----------------------------------------------------------------------
 // Tsade2 (issue #100 Phase D): per-row-group dictionary cache + column-
 // prune query planner.
 //
@@ -703,9 +845,13 @@ let cottas_ondisk_search
         candidates [] cache0 in
       list_rev acc_rev
     else
-      let (acc_rev, _cache') = walk_row_groups_search h
+      // Phase 2.5b (issue #118): full-walk branch consumes seq-shape
+      // columns directly via probe_parquet_column_decode_in_row_group_seq,
+      // dropping the per-row list-cell allocation. Page cache is bypassed
+      // here pending Phase 2.5c migration of pcache_value to cottas_column.
+      let acc_rev = walk_row_groups_search_seq h
         bound_s bound_p bound_o bound_g
-        0 rg_count rg_count [] cache0 in
+        0 rg_count rg_count [] in
       list_rev acc_rev
 
 // ----------------------------------------------------------------------
