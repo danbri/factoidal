@@ -799,6 +799,54 @@ module Compound_po_fstar_redirect = struct
       FStar_Pervasives_Native.None
 end
 
+(* Cottas_pagecache_hot: thread the F*-resident page cache through the
+   search/estimate hot-path column decodes. The cache LOGIC (LRU
+   eviction, monotone clock, key match) lives in
+   RDF_CottasStore_PageCache (Mim2's module). This OCaml shim only
+   maintains a mutable ref holding the current cache record and re-binds
+   it after each pure F* call.
+
+   __PAGECACHE_HOT_PATH_APPLIED__
+   *)
+module Cottas_pagecache_hot = struct
+  (* Capacity 256 covers parliament's 26 rgs * 4 cols = 104 entries
+     plus headroom for future larger corpora. Future tuning point. *)
+  let initial_cap = Z.of_int 256
+
+  let cache_ref : RDF_CottasStore_PageCache.page_cache ref =
+    ref (RDF_CottasStore_PageCache.pcache_empty initial_cap)
+
+  (* Stdlib.Int.t-typed counters — `open Prims` in this file shadows
+     `int` to `Z.t`, so we name the native OCaml int explicitly. *)
+  let n_hits : Stdlib.Int.t ref = Stdlib.ref 0
+  let n_misses : Stdlib.Int.t ref = Stdlib.ref 0
+
+  (* Drop-in replacement for
+     Parquet_Footer.probe_parquet_column_decode_in_row_group. Same
+     argument shape, same return type. The F* `pcache_decode_in_row_group`
+     returns a `(value, new_cache)` tuple; we re-bind the ref to thread
+     state. *)
+  let cached_decode (path : string) (rg : Z.t) (col : Z.t)
+    : string FStar_Pervasives_Native.option Prims.list
+        FStar_Pervasives_Native.option =
+    let cap = (!cache_ref).RDF_CottasStore_PageCache.pc_capacity in
+    let key_present =
+      let (v, _) = RDF_CottasStore_PageCache.pcache_get !cache_ref (rg, col) in
+      match v with FStar_Pervasives_Native.Some _ -> true | _ -> false in
+    let (result, c') =
+      RDF_CottasStore_PageCache.pcache_decode_in_row_group
+        !cache_ref path rg col cap in
+    cache_ref := c';
+    (if key_present then Stdlib.incr n_hits else Stdlib.incr n_misses);
+    let total : Stdlib.Int.t = Stdlib.(!n_hits + !n_misses) in
+    (if Stdlib.(total mod 32 = 0) then
+      Printf.eprintf "[pagecache-hot-trace] hits=%d misses=%d entries=%d cap=%d\n%!"
+        !n_hits !n_misses
+        (Stdlib.List.length (!cache_ref).RDF_CottasStore_PageCache.pc_entries)
+        (Z.to_int cap));
+    result
+end
+
 module Cottas_ondisk_runtime = struct
   open Stdlib
   (* `int` is shadowed by `open Prims` at the top of the file
@@ -1755,21 +1803,21 @@ backtrace=%s
     let walk_rg rg =
       Printf.eprintf "[pe4-trace] search_fast rg=%d enter rss=%dMB heap=%dMB matches=%d\n%!"
         rg (pe4_rss_mb ()) (pe4_gc_mb ()) !n_matches;
-      let s_lst = Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int rg) Z.zero in
+      let s_lst = Cottas_pagecache_hot.cached_decode path (Z.of_int rg) Z.zero in
       Printf.eprintf "[pe4-trace] search_fast rg=%d decoded col=0 (subject) rss=%dMB heap=%dMB\n%!"
         rg (pe4_rss_mb ()) (pe4_gc_mb ());
       let s_arr = arr_of_col s_lst in
       Printf.eprintf "[pe4-trace] search_fast rg=%d arrayified col=0 n=%d rss=%dMB heap=%dMB\n%!"
         rg (Array.length s_arr) (pe4_rss_mb ()) (pe4_gc_mb ());
-      let p_lst = Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int rg) Z.one in
+      let p_lst = Cottas_pagecache_hot.cached_decode path (Z.of_int rg) Z.one in
       Printf.eprintf "[pe4-trace] search_fast rg=%d decoded col=1 (predicate) rss=%dMB heap=%dMB\n%!"
         rg (pe4_rss_mb ()) (pe4_gc_mb ());
       let p_arr = arr_of_col p_lst in
-      let o_lst = Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int rg) (Z.of_int 2) in
+      let o_lst = Cottas_pagecache_hot.cached_decode path (Z.of_int rg) (Z.of_int 2) in
       Printf.eprintf "[pe4-trace] search_fast rg=%d decoded col=2 (object) rss=%dMB heap=%dMB\n%!"
         rg (pe4_rss_mb ()) (pe4_gc_mb ());
       let o_arr = arr_of_col o_lst in
-      let g_lst = Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int rg) (Z.of_int 3) in
+      let g_lst = Cottas_pagecache_hot.cached_decode path (Z.of_int rg) (Z.of_int 3) in
       Printf.eprintf "[pe4-trace] search_fast rg=%d decoded col=3 (graph) rss=%dMB heap=%dMB\n%!"
         rg (pe4_rss_mb ()) (pe4_gc_mb ());
       let g_arr = arr_of_col g_lst in
@@ -1953,13 +2001,13 @@ backtrace=%s
               r could_p could_s could_o;
           incr rg
         end else begin
-        let s_lst = Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int r) Z.zero in
+        let s_lst = Cottas_pagecache_hot.cached_decode path (Z.of_int r) Z.zero in
         let s_arr = arr_of_col s_lst in
-        let p_lst = Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int r) Z.one in
+        let p_lst = Cottas_pagecache_hot.cached_decode path (Z.of_int r) Z.one in
         let p_arr = arr_of_col p_lst in
-        let o_lst = Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int r) (Z.of_int 2) in
+        let o_lst = Cottas_pagecache_hot.cached_decode path (Z.of_int r) (Z.of_int 2) in
         let o_arr = arr_of_col o_lst in
-        let g_lst = Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int r) (Z.of_int 3) in
+        let g_lst = Cottas_pagecache_hot.cached_decode path (Z.of_int r) (Z.of_int 3) in
         let g_arr = arr_of_col g_lst in
         let n = Array.length s_arr in
         if Array.length p_arr <> n || Array.length o_arr <> n || Array.length g_arr <> n then
