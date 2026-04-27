@@ -706,6 +706,43 @@ def write_history_markdown(trace_doc: dict[str, Any], out_path: Path) -> None:
     lines.extend(
         [
             "",
+            "## Intended vs Observed",
+            "",
+            "### Intended BGP Flow",
+            "",
+        ]
+    )
+    for bgp in trace_doc["planner"].get("bgp_breakdowns", []):
+        lines.append(f"- BGP #{bgp['bgp_id']} is intended to execute as {len(bgp.get('steps', []))} ordered lookup step(s).")
+        for step in bgp.get("steps", []):
+            inputs = (
+                ", ".join(f"?{v}" for v in step["already_bound_inputs"])
+                if step["already_bound_inputs"]
+                else "none"
+            )
+            outputs = (
+                ", ".join(f"?{v}" for v in step["newly_bound_outputs"])
+                if step["newly_bound_outputs"]
+                else "none"
+            )
+            lines.append(
+                f"- Intended step {step['step']}: `{step['pattern']}` with input bindings {inputs}, expected to produce {outputs}."
+            )
+    lines.extend(
+        [
+            "",
+            "### Observed Runtime Progress",
+            "",
+        ]
+    )
+    if runtime_sample:
+        for event in runtime_sample:
+            lines.append(f"- Observed `{event['kind']}`: {event['summary']}")
+    else:
+        lines.append("- No runtime progress was captured.")
+    lines.extend(
+        [
+            "",
             "## Sample Output Rows",
             "",
         ]

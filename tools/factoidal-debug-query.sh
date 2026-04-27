@@ -39,6 +39,7 @@ Usage:
   tools/factoidal-debug-query.sh cottas-info --data-cottas FILE
   tools/factoidal-debug-query.sh explain --data-cottas FILE (--query FILE | -e 'SPARQL') [--explain-out FILE]
   tools/factoidal-debug-query.sh debug --data-cottas FILE (--query FILE | -e 'SPARQL') [--break MODULE:LINE]
+  tools/factoidal-debug-query.sh trace-experiment --data-cottas FILE (--query FILE | -e 'SPARQL') [--name NAME] [--exec-timeout-sec SEC] [--trace-mode plan|exec|debug]
 
 Notes:
   - build-debug uses formal/fstar/build-ocaml-debug.sh and does NOT alter the normal build path.
@@ -51,6 +52,8 @@ Notes:
   - debug launches ocamldebug on factoidal.byte. Today that query path can load
     --data-cottas, but it goes through the CLI's eager COTTAS loader rather than the
     server's GB_CottasOnDisk backend.
+  - trace-experiment wraps --explain-only plus a real CLI execution and writes
+    a first-cut trace JSON + human-readable report under tmp/query-trace-experiment/.
 EOF
 }
 
@@ -222,6 +225,16 @@ EOF
   explain)
     ensure_factoidal_bin
     exec "$FACTOIDAL_BIN" --explain-only "$@"
+    ;;
+
+  trace-experiment)
+    pybin="$(resolve_factoidal_python || true)"
+    if [[ -z "${pybin:-}" ]]; then
+      echo "error: no usable Python found for tools/query_trace_experiment.py" >&2
+      echo "set FACTOIDAL_PYTHON=/path/to/python if needed" >&2
+      exit 1
+    fi
+    exec "$pybin" "${ROOT_DIR}/tools/query_trace_experiment.py" "$@"
     ;;
 
   debug)
