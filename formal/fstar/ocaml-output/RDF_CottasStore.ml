@@ -1835,11 +1835,23 @@ backtrace=%s
         bound_s Cottas_ondisk_lazy.subj_rg_could_contain in
       let could_o = could_via path 2 bound.Parser_BallyhooCOTTAS.cbqp_o
         bound_o Cottas_ondisk_lazy.obj_rg_could_contain in
-      if not (could_p && could_s && could_o) then begin
+      (* compound_po_fstar_redirect (search): AND-compose the per-column
+         Tet3 verdict with the joint-(p, o) compound bitmap when both
+         are bound and the .po.presence companion is present. F*'s
+         rg_could_contain_pair does the actual binary search; we just
+         wire the AND. Same helper as the estimate-side redirect.
+         __COMPOUND_PO_REDIRECT_SEARCH_APPLIED__ *)
+      let compound_ok =
+        match Compound_po_fstar_redirect.could_contain_pair_via_fstar
+                path rg bound.Parser_BallyhooCOTTAS.cbqp_p
+                bound.Parser_BallyhooCOTTAS.cbqp_o with
+        | FStar_Pervasives_Native.Some b -> b
+        | FStar_Pervasives_Native.None -> true in
+      if not (could_p && could_s && could_o && compound_ok) then begin
         incr n_skipped;
         if !n_skipped <= 3 || !n_skipped mod 5 = 0 then
-          Printf.eprintf "[tet3-trace] search_fast rg=%d skipped (could_p=%b could_s=%b could_o=%b)\n%!"
-            rg could_p could_s could_o
+          Printf.eprintf "[tet3-trace] search_fast rg=%d skipped (could_p=%b could_s=%b could_o=%b compound_ok=%b)\n%!"
+            rg could_p could_s could_o compound_ok
       end else begin
         try walk_rg rg
         with e ->
