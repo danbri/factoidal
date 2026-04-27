@@ -293,6 +293,47 @@ def bgp_breakdown(
     return steps
 
 
+def tie_break_reason_for_order(
+    order: dict[str, Any], tp_by_label: dict[str, dict[str, Any]]
+) -> dict[str, Any] | None:
+    ordered_labels = [parse_order_label(step) for step in order.get("order", [])]
+    ordered_tps = [tp_by_label[label] for label in ordered_labels if label in tp_by_label]
+    if not ordered_tps:
+        return None
+    first = ordered_tps[0]
+    first_estimate = first.get("estimate")
+    tied = [tp for tp in ordered_tps if tp.get("estimate") == first_estimate]
+    if len(tied) <= 1:
+        return {
+            "kind": "estimate_winner",
+            "winner_label": first["label"],
+            "winner_estimate": first_estimate,
+            "summary": f"{first['label']} had the best estimate and won without a tie-break.",
+        }
+    tied_labels = [tp["label"] for tp in tied]
+    return {
+        "kind": "query_order_fallback",
+        "winner_label": first["label"],
+        "winner_estimate": first_estimate,
+        "tied_labels": tied_labels,
+        "summary": (
+            f"Patterns {', '.join(tied_labels)} tied at {first_estimate} row(s); "
+            f"current implementation fell back to query order, so {first['label']} won."
+        ),
+    }
+
+
+def sampled_runtime_events(events: list[dict[str, Any]], limit: int = 8) -> list[dict[str, Any]]:
+    interesting_kinds = {
+        "backend_search_started",
+        "candidate_row_groups_known",
+        "index_loaded",
+        "engine_trace",
+    }
+    chosen = [ev for ev in events if ev.get("kind") in interesting_kinds]
+    return chosen[:limit]
+
+
 def planner_events_from_explain(
     explain_json: dict[str, Any], explain_sections: dict[str, list[str]]
 ) -> list[dict[str, Any]]:
@@ -372,21 +413,11 @@ def build_history_overview(trace_doc: dict[str, Any]) -> list[str]:
     }
     for order in planner.get("join_orders", []):
         history.append(f"BGP #{order['bgp_id']} planner order: {' '.join(order['order'])}.")
-        ordered_labels = [parse_order_label(step) for step in order.get("order", [])]
-        ordered_tps = [tp_by_label[label] for label in ordered_labels if label in tp_by_label]
-        if ordered_tps:
-            first_estimate = ordered_tps[0].get("estimate")
-            tied = [
-                tp for tp in ordered_tps
-                if tp.get("estimate") == first_estimate
-            ]
-            if len(tied) > 1:
-                tied_labels = ", ".join(tp["label"] for tp in tied)
-                history.append(
-                    f"BGP #{order['bgp_id']} opened with a coarse estimate tie at "
-                    f"{first_estimate} row(s) between {tied_labels}; current implementation "
-                    "therefore falls back to query order."
-                )
+        tie_break = order.get("tie_break_reason")
+        if tie_break is not None:
+            history.append(
+                f"BGP #{order['bgp_id']} tie-break: {tie_break['summary']}"
+            )
         for step in order.get("order", []):
             label = parse_order_label(step)
             tp = tp_by_label.get(label)
@@ -417,6 +448,11 @@ def build_history_overview(trace_doc: dict[str, Any]) -> list[str]:
                     f"concrete positions = {concrete}; already-bound inputs = {inputs}; "
                     f"new bindings expected from this step = {outputs}."
                 )
+    runtime_sample = trace_doc.get("runtime_event_sample", [])
+    if runtime_sample:
+        history.append(
+            f"Observed runtime progress currently includes {len(runtime_sample)} sampled backend/index events."
+        )
     if results.get("summary", {}).get("kind") == "select":
         count = results["summary"].get("binding_count", 0)
         vars_ = ", ".join(results["summary"].get("vars", []))
@@ -533,9 +569,17 @@ def build_trace_document(
         {
             "bgp_id": order["bgp_id"],
             "steps": bgp_breakdown(order, tp_by_label),
+            "tie_break_reason": tie_break_reason_for_order(order, tp_by_label),
         }
         for order in planner["join_orders"]
     ]
+    join_orders_enriched = []
+    for order in planner["join_orders"]:
+        enriched = dict(order)
+        enriched["tie_break_reason"] = tie_break_reason_for_order(order, tp_by_label)
+        join_orders_enriched.append(enriched)
+    planner["join_orders"] = join_orders_enriched
+    runtime_sample = sampled_runtime_events(exec_events)
 
     trace_doc = {
         "trace_mode": trace_mode,
@@ -566,6 +610,7 @@ def build_trace_document(
             },
             "event_count": len(planner_events) + len(exec_events),
         },
+        "runtime_event_sample": runtime_sample,
         "events": planner_events + [
             {
                 "seq": len(planner_events) + ev["seq"],
@@ -608,6 +653,9 @@ def write_history_markdown(trace_doc: dict[str, Any], out_path: Path) -> None:
     for bgp in trace_doc["planner"].get("bgp_breakdowns", []):
         lines.append(f"### BGP #{bgp['bgp_id']}")
         lines.append("")
+        tie_break = bgp.get("tie_break_reason")
+        if tie_break is not None:
+            lines.append(f"- Tie-break reason: {tie_break['summary']}")
         for step in bgp.get("steps", []):
             concrete = ", ".join(step["concrete_positions"]) or "none"
             inputs = (
@@ -642,6 +690,19 @@ def write_history_markdown(trace_doc: dict[str, Any], out_path: Path) -> None:
         lines.append(
             f"- `{artifact['kind']}` `{artifact['path']}` ({artifact['size_bytes']} bytes)"
         )
+    lines.extend(
+        [
+            "",
+            "## Runtime Event Sample",
+            "",
+        ]
+    )
+    runtime_sample = trace_doc.get("runtime_event_sample", [])
+    if runtime_sample:
+        for event in runtime_sample:
+            lines.append(f"- `{event['kind']}` {event['summary']}")
+    else:
+        lines.append("- No sampled runtime events captured.")
     lines.extend(
         [
             "",
