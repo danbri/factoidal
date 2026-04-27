@@ -737,6 +737,68 @@ module Tet3_fstar_redirect = struct
       FStar_Pervasives_Native.Some b
 end
 
+(* compound_po_fstar_redirect: estimate helper installed (issue #104,
+   2026-04-26). Bridges the OCaml estimate_fast_inner candidate-counting
+   loop to F*'s RDF_CottasStore_CompoundPresenceBitmap. Caches
+   `option compound_handle` per cottas_path. Cache value is the option
+   itself, so a "no companion file" result is memoised too — `None`
+   fall-through is fast.
+
+   Rule #11(c) compliant: trivial dispatch shim. The decision
+   "rg could contain (p, o) jointly" lives in F*'s
+   rg_could_contain_pair. *)
+module Compound_po_fstar_redirect = struct
+  open Stdlib
+  type pint = Stdlib.Int.t
+
+  (* Companion path suffix: <cottas_path>.po.presence (matches the
+     writer patch's `compound_path`). *)
+  let compound_path (cottas_path : string) : string =
+    cottas_path ^ ".po.presence"
+
+  (* Cache key cottas_path -> option compound_handle. *)
+  let cache : (string, RDF_CottasStore_CompoundPresenceBitmap.compound_handle FStar_Pervasives_Native.option) Hashtbl.t
+    = Hashtbl.create 17
+
+  let compound_for (cottas_path : string)
+    : RDF_CottasStore_CompoundPresenceBitmap.compound_handle FStar_Pervasives_Native.option =
+    match Hashtbl.find_opt cache cottas_path with
+    | Some oh -> oh
+    | None ->
+      let cpath = compound_path cottas_path in
+      let oh = RDF_CottasStore_CompoundPresenceBitmap.open_compound cpath in
+      Hashtbl.add cache cottas_path oh;
+      Printf.eprintf "[compound-po-fstar-trace] compound_for path=%s opened=%b\n%!"
+        cpath
+        (match oh with FStar_Pervasives_Native.Some _ -> true | _ -> false);
+      oh
+
+  (* could_contain_pair_via_fstar:
+     Returns Some b iff the compound companion is present AND both p
+     and o are bound (the only case where compound says anything
+     meaningful). Returns None if the companion is absent OR either
+     bound is None — in either case the caller's per-column-only
+     verdict carries (we have no opinion). *)
+  let could_contain_pair_via_fstar
+    (cottas_path : string) (rg : pint)
+    (bound_p_id : Prims.nat FStar_Pervasives_Native.option)
+    (bound_o_id : Prims.nat FStar_Pervasives_Native.option)
+    : bool FStar_Pervasives_Native.option =
+    match bound_p_id, bound_o_id with
+    | FStar_Pervasives_Native.Some _, FStar_Pervasives_Native.Some _ ->
+      (let oh = compound_for cottas_path in
+       match oh with
+       | FStar_Pervasives_Native.None ->
+         FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some _ ->
+         let b = RDF_CottasStore_CompoundPresenceBitmap.compound_rg_passes_pair
+                   oh (Z.of_int rg) bound_p_id bound_o_id in
+         FStar_Pervasives_Native.Some b)
+    | _, _ ->
+      (* compound has no opinion when p or o is unbound *)
+      FStar_Pervasives_Native.None
+end
+
 module Cottas_ondisk_runtime = struct
   open Stdlib
   (* `int` is shadowed by `open Prims` at the top of the file
@@ -2023,7 +2085,19 @@ backtrace=%s
           bound_s Cottas_ondisk_lazy.subj_rg_could_contain in
         let could_o = could_via path 2 bound.Parser_BallyhooCOTTAS.cbqp_o
           bound_o Cottas_ondisk_lazy.obj_rg_could_contain in
-        if could_p && could_s && could_o then incr candidates
+        (* compound_po_fstar_redirect: AND-compose the per-column verdict
+           with the joint-(p, o) compound bitmap when both are bound and
+           the .po.presence companion is present. F*'s
+           rg_could_contain_pair does the actual binary-search; we just
+           wire the AND. *)
+        let compound_ok =
+          match Compound_po_fstar_redirect.could_contain_pair_via_fstar
+                  path rg bound.Parser_BallyhooCOTTAS.cbqp_p
+                  bound.Parser_BallyhooCOTTAS.cbqp_o with
+          | FStar_Pervasives_Native.Some b -> b
+          | FStar_Pervasives_Native.None -> true in
+        if could_p && could_s && could_o && compound_ok then
+          incr candidates
       done;
       Printf.eprintf "[tet3-fstar-trace] estimate_fast_inner: rg-tests via_fstar=%d via_hashtbl=%d\n%!"
         !n_via_fstar !n_via_hashtbl;

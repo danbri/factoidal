@@ -133,6 +133,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              RDF.CottasStore.PageCache.fst \
              RDF.CottasStore.OnDiskIndex.fst \
              RDF.CottasStore.PresenceBitmap.fst \
+             RDF.CottasStore.CompoundPresenceBitmap.fst \
              RDF.CottasStore.fst \
              SPARQL11.Store.fst \
              SPARQL.Protocol.fst \
@@ -196,6 +197,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     RDF_CottasStore_PageCache.ml \
     RDF_CottasStore_OnDiskIndex.ml \
     RDF_CottasStore_PresenceBitmap.ml \
+    RDF_CottasStore_CompoundPresenceBitmap.ml \
     RDF_CottasStore.ml \
     fstar_pure_hashes.ml \
     RDF_Canonical.ml \
@@ -433,6 +435,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     Parser_Ballyhoo.ml Parser_BallyhooBloom.ml Parser_BallyhooCOTTAS.ml
     RDF_CottasStore_OnDiskIndex.ml
     RDF_CottasStore_PresenceBitmap.ml
+    RDF_CottasStore_CompoundPresenceBitmap.ml
     RDF_CottasStore.ml
     fstar_pure_hashes.ml
     SPARQL11_Algebra.ml OWL_QueryRewrite.ml OWL_QueryEval.ml SPARQL11_Parser.ml SPARQL_Protocol.ml
