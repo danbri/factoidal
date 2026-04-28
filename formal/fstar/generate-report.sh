@@ -264,9 +264,17 @@ emit_suite_rows () {
     extra=""
     [ "$skip" -gt 0 ]  && extra="skip ${skip}"
     [ "$unsup" -gt 0 ] && extra="${extra} unsup ${unsup}"
+    # Inline scope hint for the SPARQL "entailment" suite — it's a
+    # narrow regime suite, NOT OWL conformance, and the name alone
+    # invites confusion. The OWL panel below is the larger, separate
+    # universe of entailment tests.
+    name_html="${name}"
+    if [ "$name" = "entailment" ]; then
+      name_html='entailment <small style="font-weight:normal;color:var(--muted)">(SPARQL 1.1 regime — RDFS / D-entailment, 70 tests)</small>'
+    fi
     cat <<ROW
       <div class="suite-row ${bar_class}">
-        <div class="suite-name">${name}</div>
+        <div class="suite-name">${name_html}</div>
         <div class="suite-bar"><div class="fill" style="width:${bar_pct}%"></div></div>
         <div class="suite-numbers">
           <span class="p">${pass}</span>/<span class="f">${fail}</span>
@@ -422,8 +430,29 @@ RDFC10_HTML=$(cat <<RDFCEOF
 RDFCEOF
 )
 
+OWL_TOTAL_UNIVERSE=$(( OWL_TOTAL + ${OWL_EL_N:-174} + ${OWL_QL_N:-130} + ${OWL_SEMDL_N:-976} + ${OWL_SYNDL_N:-646} + ${OWL_TPE_N:-412} + ${OWL_TNE_N:-46} + ${OWL_TCON_N:-708} + ${OWL_TINC_N:-256} ))
+if [ "$OWL_TOTAL_UNIVERSE" -gt 0 ]; then
+  OWL_UNIVERSE_PCT=$(awk -v p="$OWL_PASS" -v t="$OWL_TOTAL_UNIVERSE" 'BEGIN{printf "%.1f", (p/t)*100}')
+else
+  OWL_UNIVERSE_PCT="0"
+fi
+
 OWL_HTML=$(cat <<OWLEOF
-<h2>OWL 2 <span class="inline-numbers">${OWL_PASS} pass &middot; ${OWL_FAIL} fail &middot; profile-RL PositiveEntailmentTests only</span></h2>
+<h2>OWL 2 <span class="inline-numbers">${OWL_PASS} pass &middot; ${OWL_FAIL} fail &middot; out of ~${OWL_TOTAL_UNIVERSE} W3C OWL 2 tests in scope (≈${OWL_UNIVERSE_PCT}%)</span></h2>
+<p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">
+  <strong>Scope clarification.</strong> The SPARQL 1.1 <em>entailment</em>
+  row in the SPARQL table above (65/70 pass) is the
+  <strong>SPARQL 1.1 entailment-regime test suite</strong> — a narrow,
+  well-defined slice of W3C testing that covers RDF / RDFS /
+  D-entailment <em>regimes attached to BGP matching</em>. It is
+  <strong>not</strong> a measure of OWL conformance. The full W3C OWL 2
+  Test Cases (~${OWL_TOTAL_UNIVERSE} tests across 9 categories below) are
+  the larger, ultimate goal — currently only the profile-RL
+  <code>PositiveEntailmentTests</code> slot (${OWL_TOTAL} tests) is wired
+  into the runner. The headline percentage above is against the full
+  OWL 2 universe, not the profile-RL subset, so it reflects honest
+  end-to-end coverage.
+</p>
 <div class="suites">
   <div class="suite-row ${OWL_BAR_CLASS}">
     <div class="suite-name">profile-RL PosEnt</div>
