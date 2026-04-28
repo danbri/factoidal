@@ -92,6 +92,24 @@ run_with_heartbeat() {
   return "$rc"
 }
 
+# needs_rebuild_from_sources <target> <source>...
+#
+# Returns success (0) when the target is missing or any listed source is
+# newer than the target. Missing sources are ignored so callers can pass
+# optional files safely.
+needs_rebuild_from_sources() {
+  local target="$1"; shift
+  local src
+  [[ ! -e "$target" ]] && return 0
+  for src in "$@"; do
+    [[ -e "$src" ]] || continue
+    if [[ "$src" -nt "$target" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 echo "=== F* → OCaml → JavaScript Pipeline ==="
 echo ""
 
@@ -104,6 +122,8 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   # Extraction MUST succeed for every module — no silent failures
   echo "  Extracting all F* modules (verified)..."
   EXTRACT_FAILED=0
+  EXTRACT_CHAIN_DIRTY=0
+  EXTRACT_COUNT=0
   # Dependency order:
   #   RDF.Graph.Executable  -> (no deps other than Prims/Stdlib)
   #   Parquet.Footer        -> RDF.Graph.Executable
@@ -143,6 +163,12 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              SPARQL.ServiceDescription.fst \
              SPARQL.GraphStore.fst; do
     if [ -f "$fst" ]; then
+      out_ml="$OUTDIR/${fst%.fst}"
+      out_ml="${out_ml//./_}.ml"
+      if [[ "$EXTRACT_CHAIN_DIRTY" -eq 0 ]] && [[ -f "$out_ml" ]] && [[ ! "$fst" -nt "$out_ml" ]]; then
+        echo "    $fst (up to date)"
+        continue
+      fi
       echo "    $fst"
       FSTAR_RC=0
       # Run fstar.exe with a 30s heartbeat so (a) subagents that watch
@@ -157,6 +183,9 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
       if ! grep -q "^Extracted module" "$FSTAR_LOG"; then
         echo "  ERROR: $fst failed to extract! (exit code $FSTAR_RC)"
         EXTRACT_FAILED=1
+      else
+        EXTRACT_CHAIN_DIRTY=1
+        EXTRACT_COUNT=$((EXTRACT_COUNT + 1))
       fi
     fi
   done
@@ -167,6 +196,11 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   fi
   echo "  RDF:    $(wc -l < "$OUTDIR/RDF_Graph_Executable.ml") lines"
   echo "  SPARQL: $(wc -l < "$OUTDIR/SPARQL11_Algebra.ml") lines"
+  if [[ "$EXTRACT_COUNT" -eq 0 ]]; then
+    echo "  Extraction outputs already up to date; no F* modules re-extracted."
+  else
+    echo "  Re-extracted modules: $EXTRACT_COUNT"
+  fi
 
   # Apply post-extraction patches (assume-val stubs, IRI resolution, validation, etc.)
   ./ocaml-patches.sh "$OUTDIR"
@@ -263,76 +297,109 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   mkdir -p "$BINDIR"
   echo "  Platform: ${PLATFORM}"
 
-  # W3C test runner (reads real W3C manifests, calls F*-extracted code).
-  # The Ballyhoo HDT/COTTAS runtime glue pulls in Unix (Unix.open_process_full,
-  # etc.), so we now always link -package unix.
-  run_with_heartbeat "ocamlopt w3c_runner" "_ocamlopt_w3c_runner.log" -- \
-    ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
-    $STATIC_FLAGS \
-    $COMMON_MODULES \
-    $PARQUET_NATIVE_STUBS \
-    w3c_runner.ml \
-    -o "$BINDIR/w3c_runner"
-  cat _ocamlopt_w3c_runner.log
-  echo "  Built: bin/${PLATFORM}/w3c_runner ($(wc -c < "$BINDIR/w3c_runner") bytes)"
+  NATIVE_TARGETS=(
+    "$BINDIR/w3c_runner"
+    "$BINDIR/factoidal"
+    "$BINDIR/factoidal-http"
+    "$BINDIR/owl_runner"
+    "$BINDIR/rdfc10_runner"
+    "$BINDIR/cottas_ondisk_smoketest"
+  )
+  NATIVE_SOURCES=(
+    $COMMON_MODULES
+    w3c_runner.ml
+    factoidal_http.ml
+    factoidal_serve.ml
+    factoidal_explain.ml
+    factoidal_cli.ml
+    factoidal_http_main.ml
+    owl_runner.ml
+    rdfc10_runner.ml
+    cottas_ondisk_smoketest.ml
+    ../experimental_ocaml_glue/parquet_zstd_stubs.c
+  )
+  NATIVE_NEEDS_REBUILD=0
+  for target in "${NATIVE_TARGETS[@]}"; do
+    if needs_rebuild_from_sources "$target" "${NATIVE_SOURCES[@]}"; then
+      NATIVE_NEEDS_REBUILD=1
+      break
+    fi
+  done
 
-  # factoidal CLI (SPARQL query + RDF parsing tool).
-  # Phase 2 unification (2026-04-25): the native CLI now links
-  # factoidal_http.ml + factoidal_serve.ml so `factoidal serve …`
-  # starts the HTTP server in-process (no exec into a sibling binary).
-  # See docs/designissues/2026-04-25-cli-http-unification-phase2.md.
-  # threads.posix added 2026-04-25 (issue #99): factoidal_http.ml now
-  # spawns a background thread to load --data-cottas without blocking
-  # the listener bind. See
-  # docs/designissues/2026-04-25-mim-bind-port-first.md.
-  # Qof3 defensive-debug: -g enables source-line numbers in OCaml
-  # backtraces.  factoidal_http.ml now logs Printexc.get_backtrace ()
-  # on every uncaught exception in the cottas-ondisk query path, and
-  # without -g those frames just say "Called from unknown".
-  run_with_heartbeat "ocamlopt factoidal" "_ocamlopt_factoidal.log" -- \
-    ocamlfind ocamlopt -g -thread -package fstar.lib,str,zarith,sha,digestif.c,unix,threads.posix -linkpkg -w -8-14-26 \
-    $STATIC_FLAGS \
-    $COMMON_MODULES \
-    $PARQUET_NATIVE_STUBS \
-    factoidal_http.ml \
-    factoidal_serve.ml \
-    factoidal_explain.ml \
-    factoidal_cli.ml \
-    -o "$BINDIR/factoidal"
-  cat _ocamlopt_factoidal.log
-  echo "  Built: bin/${PLATFORM}/factoidal ($(wc -c < "$BINDIR/factoidal") bytes)"
+  if [[ "$NATIVE_NEEDS_REBUILD" -eq 0 ]]; then
+    echo "  Native binaries already up to date; skipping ocamlopt rebuild."
+  else
 
-  # factoidal-http — SPARQL 1.1 Protocol server (native only; needs Unix).
-  # Kept as a 5-line wrapper around Factoidal_http.run_server for
-  # backward compatibility with anything that scripts the binary path.
-  # All argv parsing + server logic now lives in factoidal_http.ml as
-  # a library; factoidal_http_main.ml just wires `let () = …`.
-  # threads.posix: see comment above on the factoidal target.
-  # -g: see comment above on the factoidal target (qof3 defensive-debug).
-  run_with_heartbeat "ocamlopt factoidal-http" "_ocamlopt_factoidal_http.log" -- \
-    ocamlfind ocamlopt -g -thread -package fstar.lib,str,zarith,sha,digestif.c,unix,threads.posix -linkpkg -w -8-14-26 \
-    $STATIC_FLAGS \
-    $COMMON_MODULES \
-    $PARQUET_NATIVE_STUBS \
-    factoidal_http.ml \
-    factoidal_http_main.ml \
-    -o "$BINDIR/factoidal-http"
-  cat _ocamlopt_factoidal_http.log
-  echo "  Built: bin/${PLATFORM}/factoidal-http ($(wc -c < "$BINDIR/factoidal-http") bytes)"
+    # W3C test runner (reads real W3C manifests, calls F*-extracted code).
+    # The Ballyhoo HDT/COTTAS runtime glue pulls in Unix (Unix.open_process_full,
+    # etc.), so we now always link -package unix.
+    run_with_heartbeat "ocamlopt w3c_runner" "_ocamlopt_w3c_runner.log" -- \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      w3c_runner.ml \
+      -o "$BINDIR/w3c_runner"
+    cat _ocamlopt_w3c_runner.log
+    echo "  Built: bin/${PLATFORM}/w3c_runner ($(wc -c < "$BINDIR/w3c_runner") bytes)"
 
-  # owl_runner — OWL 2 Test Cases runner (Phase 0 skeleton: reads a
-  # W3C OWL test catalog via Parser_RDFXML, prints per-test identifier
-  # + types, emits final count. No reasoning wired yet.
-  # See docs/designissues/2026-04-24-owl-test-harness.md.
-  run_with_heartbeat "ocamlopt owl_runner" "_ocamlopt_owl_runner.log" -- \
-    ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
-    $STATIC_FLAGS \
-    $COMMON_MODULES \
-    $PARQUET_NATIVE_STUBS \
-    owl_runner.ml \
-    -o "$BINDIR/owl_runner"
-  cat _ocamlopt_owl_runner.log
-  echo "  Built: bin/${PLATFORM}/owl_runner ($(wc -c < "$BINDIR/owl_runner") bytes)"
+    # factoidal CLI (SPARQL query + RDF parsing tool).
+    # Phase 2 unification (2026-04-25): the native CLI now links
+    # factoidal_http.ml + factoidal_serve.ml so `factoidal serve …`
+    # starts the HTTP server in-process (no exec into a sibling binary).
+    # See docs/designissues/2026-04-25-cli-http-unification-phase2.md.
+    # threads.posix added 2026-04-25 (issue #99): factoidal_http.ml now
+    # spawns a background thread to load --data-cottas without blocking
+    # the listener bind. See
+    # docs/designissues/2026-04-25-mim-bind-port-first.md.
+    # Qof3 defensive-debug: -g enables source-line numbers in OCaml
+    # backtraces.  factoidal_http.ml now logs Printexc.get_backtrace ()
+    # on every uncaught exception in the cottas-ondisk query path, and
+    # without -g those frames just say "Called from unknown".
+    run_with_heartbeat "ocamlopt factoidal" "_ocamlopt_factoidal.log" -- \
+      ocamlfind ocamlopt -g -thread -package fstar.lib,str,zarith,sha,digestif.c,unix,threads.posix -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      factoidal_http.ml \
+      factoidal_serve.ml \
+      factoidal_explain.ml \
+      factoidal_cli.ml \
+      -o "$BINDIR/factoidal"
+    cat _ocamlopt_factoidal.log
+    echo "  Built: bin/${PLATFORM}/factoidal ($(wc -c < "$BINDIR/factoidal") bytes)"
+
+    # factoidal-http — SPARQL 1.1 Protocol server (native only; needs Unix).
+    # Kept as a 5-line wrapper around Factoidal_http.run_server for
+    # backward compatibility with anything that scripts the binary path.
+    # All argv parsing + server logic now lives in factoidal_http.ml as
+    # a library; factoidal_http_main.ml just wires `let () = …`.
+    # threads.posix: see comment above on the factoidal target.
+    # -g: see comment above on the factoidal target (qof3 defensive-debug).
+    run_with_heartbeat "ocamlopt factoidal-http" "_ocamlopt_factoidal_http.log" -- \
+      ocamlfind ocamlopt -g -thread -package fstar.lib,str,zarith,sha,digestif.c,unix,threads.posix -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      factoidal_http.ml \
+      factoidal_http_main.ml \
+      -o "$BINDIR/factoidal-http"
+    cat _ocamlopt_factoidal_http.log
+    echo "  Built: bin/${PLATFORM}/factoidal-http ($(wc -c < "$BINDIR/factoidal-http") bytes)"
+
+    # owl_runner — OWL 2 Test Cases runner (Phase 0 skeleton: reads a
+    # W3C OWL test catalog via Parser_RDFXML, prints per-test identifier
+    # + types, emits final count. No reasoning wired yet.
+    # See docs/designissues/2026-04-24-owl-test-harness.md.
+    run_with_heartbeat "ocamlopt owl_runner" "_ocamlopt_owl_runner.log" -- \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      owl_runner.ml \
+      -o "$BINDIR/owl_runner"
+    cat _ocamlopt_owl_runner.log
+    echo "  Built: bin/${PLATFORM}/owl_runner ($(wc -c < "$BINDIR/owl_runner") bytes)"
 
   # rdfc10_runner — RDF Dataset Canonicalization 1.0 (RDFC-1.0) runner.
   # Phase 0 skeleton: parses third_party/testing/rdf-canon/tests/manifest.ttl
@@ -345,45 +412,46 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # if ocamlopt fails we dump the per-step log so the cause is visible
   # in the build log without the human having to fish around in
   # ocaml-output/ for _ocamlopt_*.log.
-  RDFC10_RC=0
-  run_with_heartbeat "ocamlopt rdfc10_runner" "_ocamlopt_rdfc10_runner.log" -- \
-    ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
-    $STATIC_FLAGS \
-    $COMMON_MODULES \
-    $PARQUET_NATIVE_STUBS \
-    rdfc10_runner.ml \
-    -o "$BINDIR/rdfc10_runner" || RDFC10_RC=$?
-  cat _ocamlopt_rdfc10_runner.log
-  if [[ "$RDFC10_RC" -ne 0 ]]; then
-    echo "  ERROR: rdfc10_runner build failed (ocamlopt rc=$RDFC10_RC)" >&2
-    echo "  See full log above. Build aborted." >&2
-    exit "$RDFC10_RC"
-  fi
-  if [[ ! -x "$BINDIR/rdfc10_runner" ]]; then
-    echo "  ERROR: rdfc10_runner ocamlopt returned 0 but $BINDIR/rdfc10_runner is missing or not executable" >&2
-    exit 1
-  fi
-  echo "  Built: bin/${PLATFORM}/rdfc10_runner ($(wc -c < "$BINDIR/rdfc10_runner") bytes)"
+    RDFC10_RC=0
+    run_with_heartbeat "ocamlopt rdfc10_runner" "_ocamlopt_rdfc10_runner.log" -- \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      rdfc10_runner.ml \
+      -o "$BINDIR/rdfc10_runner" || RDFC10_RC=$?
+    cat _ocamlopt_rdfc10_runner.log
+    if [[ "$RDFC10_RC" -ne 0 ]]; then
+      echo "  ERROR: rdfc10_runner build failed (ocamlopt rc=$RDFC10_RC)" >&2
+      echo "  See full log above. Build aborted." >&2
+      exit "$RDFC10_RC"
+    fi
+    if [[ ! -x "$BINDIR/rdfc10_runner" ]]; then
+      echo "  ERROR: rdfc10_runner ocamlopt returned 0 but $BINDIR/rdfc10_runner is missing or not executable" >&2
+      exit 1
+    fi
+    echo "  Built: bin/${PLATFORM}/rdfc10_runner ($(wc -c < "$BINDIR/rdfc10_runner") bytes)"
 
-  # cottas_ondisk_smoketest — issue #100 Phase 2 acceptance harness.
-  # Opens a COTTAS file via the F*-extracted on-disk store, reports
-  # startup/post-open/post-query RSS in MB, runs cottas_ondisk_estimate
-  # with all-None bounds. Acceptance #4: server RSS no longer scales
-  # with corpus size.
-  COTTAS_SMOKE_RC=0
-  run_with_heartbeat "ocamlopt cottas_ondisk_smoketest" "_ocamlopt_cottas_ondisk_smoketest.log" -- \
-    ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
-    $STATIC_FLAGS \
-    $COMMON_MODULES \
-    $PARQUET_NATIVE_STUBS \
-    cottas_ondisk_smoketest.ml \
-    -o "$BINDIR/cottas_ondisk_smoketest" || COTTAS_SMOKE_RC=$?
-  cat _ocamlopt_cottas_ondisk_smoketest.log 2>/dev/null || true
-  if [[ "$COTTAS_SMOKE_RC" -ne 0 ]]; then
-    echo "  WARNING: cottas_ondisk_smoketest build failed (ocamlopt rc=$COTTAS_SMOKE_RC)" >&2
-    echo "  This is a non-blocking smoketest harness; main binaries are unaffected." >&2
-  else
-    echo "  Built: bin/${PLATFORM}/cottas_ondisk_smoketest ($(wc -c < "$BINDIR/cottas_ondisk_smoketest") bytes)"
+    # cottas_ondisk_smoketest — issue #100 Phase 2 acceptance harness.
+    # Opens a COTTAS file via the F*-extracted on-disk store, reports
+    # startup/post-open/post-query RSS in MB, runs cottas_ondisk_estimate
+    # with all-None bounds. Acceptance #4: server RSS no longer scales
+    # with corpus size.
+    COTTAS_SMOKE_RC=0
+    run_with_heartbeat "ocamlopt cottas_ondisk_smoketest" "_ocamlopt_cottas_ondisk_smoketest.log" -- \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      cottas_ondisk_smoketest.ml \
+      -o "$BINDIR/cottas_ondisk_smoketest" || COTTAS_SMOKE_RC=$?
+    cat _ocamlopt_cottas_ondisk_smoketest.log 2>/dev/null || true
+    if [[ "$COTTAS_SMOKE_RC" -ne 0 ]]; then
+      echo "  WARNING: cottas_ondisk_smoketest build failed (ocamlopt rc=$COTTAS_SMOKE_RC)" >&2
+      echo "  This is a non-blocking smoketest harness; main binaries are unaffected." >&2
+    else
+      echo "  Built: bin/${PLATFORM}/cottas_ondisk_smoketest ($(wc -c < "$BINDIR/cottas_ondisk_smoketest") bytes)"
+    fi
   fi
 
   # Symlink current platform binaries for convenience (relative from ocaml-output/)
@@ -445,82 +513,112 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     SPARQL11_Algebra.ml OWL_QueryRewrite.ml OWL_QueryEval.ml SPARQL11_Parser.ml SPARQL_Protocol.ml
     SPARQL_HTTP.ml SPARQL_HTTP_Client.ml SPARQL_ServiceDescription.ml SPARQL_GraphStore.ml
   )
+  JS_TARGETS=(
+    w3c_runner.byte
+    factoidal.byte
+    ../../../docs/fstar-extracted/w3c-runner.js
+    ../../../docs/fstar-extracted/factoidal.js
+  )
+  JS_SOURCES=(
+    "${FSTAR_MODULES[@]}"
+    w3c_runner.ml
+    factoidal_serve.ml
+    factoidal_serve_jsoo.ml
+    factoidal_cli.ml
+    parquet_zstd_stubs_jsoo.c
+    fstar_int_stubs.js
+    fstar_hash_stubs.js
+    fstar_utf8_output_stubs.js
+    vendor/fzstd.umd.js
+    parquet_zstd_stubs.js
+  )
+  JS_NEEDS_REBUILD=0
+  for target in "${JS_TARGETS[@]}"; do
+    if needs_rebuild_from_sources "$target" "${JS_SOURCES[@]}"; then
+      JS_NEEDS_REBUILD=1
+      break
+    fi
+  done
+  if [[ "$JS_NEEDS_REBUILD" -eq 0 ]]; then
+    echo "  JavaScript bundles already up to date; skipping ocamlc/js_of_ocaml rebuild."
+  else
 
-  # Build w3c_runner bytecode for js_of_ocaml. We pass -custom + a tiny
-  # C stub (parquet_zstd_stubs_jsoo.c) to satisfy the bytecode linker:
-  # Parquet_Footer's `external caml_parquet_zstd_decompress_hex` must
-  # resolve to *some* symbol, even though js_of_ocaml replaces it with
-  # the JS shim at bundle time. The stub returns None and is never
-  # actually executed in the JS build path.
-  run_with_heartbeat "ocamlc w3c_runner.byte" "_ocamlc_w3c_runner.log" -- \
-    ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
-    -custom parquet_zstd_stubs_jsoo.c \
-    "${FSTAR_MODULES[@]}" \
-    w3c_runner.ml \
-    -o w3c_runner.byte
-  grep -i error _ocamlc_w3c_runner.log || true
+    # Build w3c_runner bytecode for js_of_ocaml. We pass -custom + a tiny
+    # C stub (parquet_zstd_stubs_jsoo.c) to satisfy the bytecode linker:
+    # Parquet_Footer's `external caml_parquet_zstd_decompress_hex` must
+    # resolve to *some* symbol, even though js_of_ocaml replaces it with
+    # the JS shim at bundle time. The stub returns None and is never
+    # actually executed in the JS build path.
+    run_with_heartbeat "ocamlc w3c_runner.byte" "_ocamlc_w3c_runner.log" -- \
+      ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
+      -custom parquet_zstd_stubs_jsoo.c \
+      "${FSTAR_MODULES[@]}" \
+      w3c_runner.ml \
+      -o w3c_runner.byte
+    grep -i error _ocamlc_w3c_runner.log || true
 
-  # Build factoidal (query + parse CLI) bytecode for js_of_ocaml.
-  # The JS bundle does NOT link factoidal_http.ml (Unix-bound), so we
-  # swap in factoidal_serve_jsoo.ml as the Factoidal_serve module — it
-  # has the same signature as the native factoidal_serve.ml but errors
-  # at runtime if `serve` is invoked from the browser. The swap is
-  # trivially reversible: copy file into place, build, restore.
-  cp factoidal_serve.ml factoidal_serve.ml.native_backup
-  cp factoidal_serve_jsoo.ml factoidal_serve.ml
-  FACTOIDAL_BYTE_RC=0
-  run_with_heartbeat "ocamlc factoidal.byte" "_ocamlc_factoidal.log" -- \
-    ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
-    -custom parquet_zstd_stubs_jsoo.c \
-    "${FSTAR_MODULES[@]}" \
-    factoidal_serve.ml \
-    factoidal_cli.ml \
-    -o factoidal.byte || FACTOIDAL_BYTE_RC=$?
-  # Restore the native impl so a subsequent native build doesn't pick
-  # up the stub. Always restore, even on compile failure.
-  mv factoidal_serve.ml.native_backup factoidal_serve.ml
-  if [[ "$FACTOIDAL_BYTE_RC" -ne 0 ]]; then
-    cat _ocamlc_factoidal.log
-    echo "  ERROR: factoidal.byte build failed (rc=$FACTOIDAL_BYTE_RC)" >&2
-    exit "$FACTOIDAL_BYTE_RC"
+    # Build factoidal (query + parse CLI) bytecode for js_of_ocaml.
+    # The JS bundle does NOT link factoidal_http.ml (Unix-bound), so we
+    # swap in factoidal_serve_jsoo.ml as the Factoidal_serve module — it
+    # has the same signature as the native factoidal_serve.ml but errors
+    # at runtime if `serve` is invoked from the browser. The swap is
+    # trivially reversible: copy file into place, build, restore.
+    cp factoidal_serve.ml factoidal_serve.ml.native_backup
+    cp factoidal_serve_jsoo.ml factoidal_serve.ml
+    FACTOIDAL_BYTE_RC=0
+    run_with_heartbeat "ocamlc factoidal.byte" "_ocamlc_factoidal.log" -- \
+      ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
+      -custom parquet_zstd_stubs_jsoo.c \
+      "${FSTAR_MODULES[@]}" \
+      factoidal_serve.ml \
+      factoidal_cli.ml \
+      -o factoidal.byte || FACTOIDAL_BYTE_RC=$?
+    # Restore the native impl so a subsequent native build doesn't pick
+    # up the stub. Always restore, even on compile failure.
+    mv factoidal_serve.ml.native_backup factoidal_serve.ml
+    if [[ "$FACTOIDAL_BYTE_RC" -ne 0 ]]; then
+      cat _ocamlc_factoidal.log
+      echo "  ERROR: factoidal.byte build failed (rc=$FACTOIDAL_BYTE_RC)" >&2
+      exit "$FACTOIDAL_BYTE_RC"
+    fi
+    grep -i error _ocamlc_factoidal.log || true
+
+    # Convert both to JS with zarith stubs. vendor/fzstd.umd.js is a
+    # vendored MIT-licensed Zstandard decompressor (~8 KB) that registers
+    # itself as globalThis.fzstd; parquet_zstd_stubs.js is our thin shim
+    # that implements caml_parquet_zstd_decompress_hex on top of it. Both
+    # are concatenated into the output by js_of_ocaml. Order matters:
+    # fzstd.umd.js must come before parquet_zstd_stubs.js so the global
+    # is defined when our shim's Requires: checks run at bundle load.
+    run_with_heartbeat "js_of_ocaml w3c-runner" "_jsoo_w3c_runner.log" -- \
+      js_of_ocaml \
+      +zarith_stubs_js/biginteger.js \
+      +zarith_stubs_js/runtime.js \
+      fstar_int_stubs.js \
+      fstar_hash_stubs.js \
+      fstar_utf8_output_stubs.js \
+      vendor/fzstd.umd.js \
+      parquet_zstd_stubs.js \
+      w3c_runner.byte \
+      -o ../../../docs/fstar-extracted/w3c-runner.js
+    grep -v "Warning \[deprecated" _jsoo_w3c_runner.log | grep -v "^$" || true
+
+    run_with_heartbeat "js_of_ocaml factoidal" "_jsoo_factoidal.log" -- \
+      js_of_ocaml \
+      +zarith_stubs_js/biginteger.js \
+      +zarith_stubs_js/runtime.js \
+      fstar_int_stubs.js \
+      fstar_hash_stubs.js \
+      fstar_utf8_output_stubs.js \
+      vendor/fzstd.umd.js \
+      parquet_zstd_stubs.js \
+      factoidal.byte \
+      -o ../../../docs/fstar-extracted/factoidal.js
+    grep -v "Warning \[deprecated" _jsoo_factoidal.log | grep -v "^$" || true
+
+    echo "  Built: docs/fstar-extracted/w3c-runner.js ($(wc -c < ../../../docs/fstar-extracted/w3c-runner.js) bytes)"
+    echo "  Built: docs/fstar-extracted/factoidal.js   ($(wc -c < ../../../docs/fstar-extracted/factoidal.js) bytes)"
   fi
-  grep -i error _ocamlc_factoidal.log || true
-
-  # Convert both to JS with zarith stubs. vendor/fzstd.umd.js is a
-  # vendored MIT-licensed Zstandard decompressor (~8 KB) that registers
-  # itself as globalThis.fzstd; parquet_zstd_stubs.js is our thin shim
-  # that implements caml_parquet_zstd_decompress_hex on top of it. Both
-  # are concatenated into the output by js_of_ocaml. Order matters:
-  # fzstd.umd.js must come before parquet_zstd_stubs.js so the global
-  # is defined when our shim's Requires: checks run at bundle load.
-  run_with_heartbeat "js_of_ocaml w3c-runner" "_jsoo_w3c_runner.log" -- \
-    js_of_ocaml \
-    +zarith_stubs_js/biginteger.js \
-    +zarith_stubs_js/runtime.js \
-    fstar_int_stubs.js \
-    fstar_hash_stubs.js \
-    fstar_utf8_output_stubs.js \
-    vendor/fzstd.umd.js \
-    parquet_zstd_stubs.js \
-    w3c_runner.byte \
-    -o ../../../docs/fstar-extracted/w3c-runner.js
-  grep -v "Warning \[deprecated" _jsoo_w3c_runner.log | grep -v "^$" || true
-
-  run_with_heartbeat "js_of_ocaml factoidal" "_jsoo_factoidal.log" -- \
-    js_of_ocaml \
-    +zarith_stubs_js/biginteger.js \
-    +zarith_stubs_js/runtime.js \
-    fstar_int_stubs.js \
-    fstar_hash_stubs.js \
-    fstar_utf8_output_stubs.js \
-    vendor/fzstd.umd.js \
-    parquet_zstd_stubs.js \
-    factoidal.byte \
-    -o ../../../docs/fstar-extracted/factoidal.js
-  grep -v "Warning \[deprecated" _jsoo_factoidal.log | grep -v "^$" || true
-
-  echo "  Built: docs/fstar-extracted/w3c-runner.js ($(wc -c < ../../../docs/fstar-extracted/w3c-runner.js) bytes)"
-  echo "  Built: docs/fstar-extracted/factoidal.js   ($(wc -c < ../../../docs/fstar-extracted/factoidal.js) bytes)"
 
   cd ..
   echo ""
@@ -541,31 +639,39 @@ if [[ "$STEP" == "wasm" ]]; then
     echo "  w3c_runner.byte missing — run './build-ocaml.sh js' first to build bytecode."
     exit 1
   fi
-  WASM_RC=0
-  run_with_heartbeat "wasm_of_ocaml w3c-runner" "_waoc_w3c_runner.log" -- \
-    wasm_of_ocaml compile \
-    +zarith_stubs_js/biginteger.js \
-    +zarith_stubs_js/runtime.js \
-    wasm_runtime/zarith_runtime_wasm.js \
-    wasm_runtime/zarith_runtime.wat \
-    fstar_int_stubs.js \
-    w3c_runner.byte \
-    -o ../../../docs/fstar-extracted/w3c-runner.wasm.js \
-    || WASM_RC=$?
-  grep -v "Warning \[deprecated" _waoc_w3c_runner.log | grep -v "^$" || true
-  if [[ -f ../../../docs/fstar-extracted/w3c-runner.wasm.js ]]; then
-    # Patch the throwing stubs so init survives.
-    python3 wasm_stub_shims.py ../../../docs/fstar-extracted/w3c-runner.wasm.js
+  W3C_WASM_LOADER="../../../docs/fstar-extracted/w3c-runner.wasm.js"
+  W3C_WASM_ASSET="$(ls -1 ../../../docs/fstar-extracted/w3c-runner.wasm.assets/*.wasm 2>/dev/null | head -n 1 || true)"
+  if [[ -n "$W3C_WASM_ASSET" ]] \
+     && ! needs_rebuild_from_sources "$W3C_WASM_LOADER" w3c_runner.byte wasm_runtime/zarith_runtime_wasm.js wasm_runtime/zarith_runtime.wat fstar_int_stubs.js \
+     && ! needs_rebuild_from_sources "$W3C_WASM_ASSET" w3c_runner.byte wasm_runtime/zarith_runtime_wasm.js wasm_runtime/zarith_runtime.wat fstar_int_stubs.js; then
+    echo "  WebAssembly bundle already up to date; skipping wasm_of_ocaml rebuild."
+  else
+    WASM_RC=0
+    run_with_heartbeat "wasm_of_ocaml w3c-runner" "_waoc_w3c_runner.log" -- \
+      wasm_of_ocaml compile \
+      +zarith_stubs_js/biginteger.js \
+      +zarith_stubs_js/runtime.js \
+      wasm_runtime/zarith_runtime_wasm.js \
+      wasm_runtime/zarith_runtime.wat \
+      fstar_int_stubs.js \
+      w3c_runner.byte \
+      -o ../../../docs/fstar-extracted/w3c-runner.wasm.js \
+      || WASM_RC=$?
+    grep -v "Warning \[deprecated" _waoc_w3c_runner.log | grep -v "^$" || true
+    if [[ -f ../../../docs/fstar-extracted/w3c-runner.wasm.js ]]; then
+      # Patch the throwing stubs so init survives.
+      python3 wasm_stub_shims.py ../../../docs/fstar-extracted/w3c-runner.wasm.js
 
-    LOADER_BYTES=$(wc -c < ../../../docs/fstar-extracted/w3c-runner.wasm.js)
-    WASM_FILE=$(ls -1 ../../../docs/fstar-extracted/w3c-runner.wasm.assets/*.wasm 2>/dev/null | head -n 1 || true)
-    if [[ -n "$WASM_FILE" ]]; then
-      WASM_BYTES=$(wc -c < "$WASM_FILE")
-      echo "  Built: docs/fstar-extracted/w3c-runner.wasm.js ($LOADER_BYTES bytes) + $(basename "$WASM_FILE") ($WASM_BYTES bytes)"
-    else
-      echo "  Built: docs/fstar-extracted/w3c-runner.wasm.js ($LOADER_BYTES bytes) — no .wasm asset"
+      LOADER_BYTES=$(wc -c < ../../../docs/fstar-extracted/w3c-runner.wasm.js)
+      WASM_FILE=$(ls -1 ../../../docs/fstar-extracted/w3c-runner.wasm.assets/*.wasm 2>/dev/null | head -n 1 || true)
+      if [[ -n "$WASM_FILE" ]]; then
+        WASM_BYTES=$(wc -c < "$WASM_FILE")
+        echo "  Built: docs/fstar-extracted/w3c-runner.wasm.js ($LOADER_BYTES bytes) + $(basename "$WASM_FILE") ($WASM_BYTES bytes)"
+      else
+        echo "  Built: docs/fstar-extracted/w3c-runner.wasm.js ($LOADER_BYTES bytes) — no .wasm asset"
+      fi
+      echo "  Smoke test: cd into docs/fstar-extracted and run 'node w3c-runner.wasm.js bind' — expect 10/10 pass."
     fi
-    echo "  Smoke test: cd into docs/fstar-extracted and run 'node w3c-runner.wasm.js bind' — expect 10/10 pass."
   fi
   cd ..
   echo ""
@@ -587,29 +693,37 @@ if [[ "$STEP" == "wasm-factoidal" ]]; then
     echo "  factoidal.byte missing — run './build-ocaml.sh js' first to build bytecode."
     exit 1
   fi
-  WASM_RC=0
-  run_with_heartbeat "wasm_of_ocaml factoidal" "_waoc_factoidal.log" -- \
-    wasm_of_ocaml compile \
-    +zarith_stubs_js/biginteger.js \
-    +zarith_stubs_js/runtime.js \
-    wasm_runtime/zarith_runtime_wasm.js \
-    wasm_runtime/zarith_runtime.wat \
-    fstar_int_stubs.js \
-    factoidal.byte \
-    -o ../../../docs/fstar-extracted/factoidal.wasm.js \
-    || WASM_RC=$?
-  grep -v "Warning \[deprecated" _waoc_factoidal.log | grep -v "^$" || true
-  if [[ -f ../../../docs/fstar-extracted/factoidal.wasm.js ]]; then
-    # Patch the throwing stubs so init survives.
-    python3 wasm_stub_shims.py ../../../docs/fstar-extracted/factoidal.wasm.js
+  FACTOIDAL_WASM_LOADER="../../../docs/fstar-extracted/factoidal.wasm.js"
+  FACTOIDAL_WASM_ASSET="$(ls -1 ../../../docs/fstar-extracted/factoidal.wasm.assets/*.wasm 2>/dev/null | head -n 1 || true)"
+  if [[ -n "$FACTOIDAL_WASM_ASSET" ]] \
+     && ! needs_rebuild_from_sources "$FACTOIDAL_WASM_LOADER" factoidal.byte wasm_runtime/zarith_runtime_wasm.js wasm_runtime/zarith_runtime.wat fstar_int_stubs.js \
+     && ! needs_rebuild_from_sources "$FACTOIDAL_WASM_ASSET" factoidal.byte wasm_runtime/zarith_runtime_wasm.js wasm_runtime/zarith_runtime.wat fstar_int_stubs.js; then
+    echo "  factoidal WebAssembly bundle already up to date; skipping wasm_of_ocaml rebuild."
+  else
+    WASM_RC=0
+    run_with_heartbeat "wasm_of_ocaml factoidal" "_waoc_factoidal.log" -- \
+      wasm_of_ocaml compile \
+      +zarith_stubs_js/biginteger.js \
+      +zarith_stubs_js/runtime.js \
+      wasm_runtime/zarith_runtime_wasm.js \
+      wasm_runtime/zarith_runtime.wat \
+      fstar_int_stubs.js \
+      factoidal.byte \
+      -o ../../../docs/fstar-extracted/factoidal.wasm.js \
+      || WASM_RC=$?
+    grep -v "Warning \[deprecated" _waoc_factoidal.log | grep -v "^$" || true
+    if [[ -f ../../../docs/fstar-extracted/factoidal.wasm.js ]]; then
+      # Patch the throwing stubs so init survives.
+      python3 wasm_stub_shims.py ../../../docs/fstar-extracted/factoidal.wasm.js
 
-    LOADER_BYTES=$(wc -c < ../../../docs/fstar-extracted/factoidal.wasm.js)
-    WASM_FILE=$(ls -1 ../../../docs/fstar-extracted/factoidal.wasm.assets/*.wasm 2>/dev/null | head -n 1 || true)
-    if [[ -n "$WASM_FILE" ]]; then
-      WASM_BYTES=$(wc -c < "$WASM_FILE")
-      echo "  Built: docs/fstar-extracted/factoidal.wasm.js ($LOADER_BYTES bytes) + $(basename "$WASM_FILE") ($WASM_BYTES bytes)"
-    else
-      echo "  Built: docs/fstar-extracted/factoidal.wasm.js ($LOADER_BYTES bytes) — no .wasm asset"
+      LOADER_BYTES=$(wc -c < ../../../docs/fstar-extracted/factoidal.wasm.js)
+      WASM_FILE=$(ls -1 ../../../docs/fstar-extracted/factoidal.wasm.assets/*.wasm 2>/dev/null | head -n 1 || true)
+      if [[ -n "$WASM_FILE" ]]; then
+        WASM_BYTES=$(wc -c < "$WASM_FILE")
+        echo "  Built: docs/fstar-extracted/factoidal.wasm.js ($LOADER_BYTES bytes) + $(basename "$WASM_FILE") ($WASM_BYTES bytes)"
+      else
+        echo "  Built: docs/fstar-extracted/factoidal.wasm.js ($LOADER_BYTES bytes) — no .wasm asset"
+      fi
     fi
   fi
   cd ..
