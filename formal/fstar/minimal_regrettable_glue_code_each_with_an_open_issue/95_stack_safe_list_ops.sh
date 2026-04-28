@@ -169,9 +169,15 @@ let triple_matches_bound (b : triple_pattern_bound)
           if (subj_ok && pred_ok) && obj_ok then t :: acc else acc)
        [] ts)'''
 
-if old_tmb not in s:
-    raise SystemExit("SPARQL11_Algebra.ml: expected triple_matches_bound shape not found")
-s = s.replace(old_tmb, new_tmb)
+if old_tmb in s:
+    # Pre-2026-04-28 F* extracted shape (cons-after-recurse). Rewrite
+    # to tail-rec via fold_left + List.rev.
+    s = s.replace(old_tmb, new_tmb)
+else:
+    # F*-side fix already in place (RDF.Graph.Executable / SPARQL11.Algebra
+    # define `triple_matches_bound = List.Tot.rev (triple_matches_bound_acc ...)`).
+    # No OCaml rewrite needed — the F* extraction is already tail-rec.
+    pass
 
 # ------------------------------------------------------------------
 # Step 3: rewrite list_filter_map to delegate to sse_filter_map.
@@ -199,9 +205,14 @@ let list_filter_map :
       'a Prims.list -> 'b Prims.list
   = sse_filter_map'''
 
-if old_lfm not in s:
-    raise SystemExit("SPARQL11_Algebra.ml: expected list_filter_map shape not found")
-s = s.replace(old_lfm, new_lfm)
+if old_lfm in s:
+    # Pre-2026-04-28 F* extracted shape (cons-after-recurse). Rewrite
+    # to delegate to the tail-rec sse_filter_map helper.
+    s = s.replace(old_lfm, new_lfm)
+else:
+    # F*-side fix already in place (list_filter_map = List.Tot.rev
+    # (list_filter_map_acc f l [])). No OCaml rewrite needed.
+    pass
 
 # ------------------------------------------------------------------
 # Step 4: rewrite list_deduplicate_sm (DISTINCT helper) and

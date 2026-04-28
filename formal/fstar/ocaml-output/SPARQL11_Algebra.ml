@@ -1,4 +1,27 @@
 open Prims
+
+(* Stack-safe list helpers — post-extraction patch (issue #95).
+   sse_concat_map is `flatten (map f l)`, which on
+   ~889k-element solution_sequences overflows the native stack via
+   non-tail-rec append inside flatten. These helpers use
+   List.rev_append + List.rev (both tail-rec) so the same pure
+   operation runs in constant stack. Observationally identical to
+   the originals. *)
+let sse_concat_map f l =
+  Stdlib.List.rev
+    (Stdlib.List.fold_left
+       (fun acc x -> Stdlib.List.rev_append (f x) acc)
+       [] l)
+let sse_filter_map f l =
+  Stdlib.List.rev
+    (Stdlib.List.fold_left
+       (fun acc x ->
+          match f x with
+          | FStar_Pervasives_Native.Some y -> y :: acc
+          | FStar_Pervasives_Native.None -> acc)
+       [] l)
+let sse_append xs ys =
+  Stdlib.List.rev_append (Stdlib.List.rev xs) ys
 let lit_lexical (l : RDF_Graph_Executable.wf_literal) : Prims.string=
   l.RDF_Graph_Executable.lexical_form
 let lit_datatype (l : RDF_Graph_Executable.wf_literal) :
@@ -1781,7 +1804,7 @@ let percent_encode_char (c : FStar_Char.char) : FStar_Char.char Prims.list=
     then
       (let b1 = (Prims.of_int (0xC0)) + (code / (Prims.of_int (64))) in
        let b2 = (Prims.of_int (0x80)) + ((mod) code (Prims.of_int (64))) in
-       FStar_List_Tot_Base.op_At (percent_encode_byte b1)
+       sse_append (percent_encode_byte b1)
          (percent_encode_byte b2))
     else
       if code < (Prims.parse_int "0x10000")
@@ -1791,8 +1814,8 @@ let percent_encode_char (c : FStar_Char.char) : FStar_Char.char Prims.list=
            (Prims.of_int (0x80)) +
              ((mod) (code / (Prims.of_int (64))) (Prims.of_int (64))) in
          let b3 = (Prims.of_int (0x80)) + ((mod) code (Prims.of_int (64))) in
-         FStar_List_Tot_Base.op_At (percent_encode_byte b1)
-           (FStar_List_Tot_Base.op_At (percent_encode_byte b2)
+         sse_append (percent_encode_byte b1)
+           (sse_append (percent_encode_byte b2)
               (percent_encode_byte b3)))
       else
         (let b1 = (Prims.of_int (0xF0)) + (code / (Prims.parse_int "262144")) in
@@ -1803,9 +1826,9 @@ let percent_encode_char (c : FStar_Char.char) : FStar_Char.char Prims.list=
            (Prims.of_int (0x80)) +
              ((mod) (code / (Prims.of_int (64))) (Prims.of_int (64))) in
          let b4 = (Prims.of_int (0x80)) + ((mod) code (Prims.of_int (64))) in
-         FStar_List_Tot_Base.op_At (percent_encode_byte b1)
-           (FStar_List_Tot_Base.op_At (percent_encode_byte b2)
-              (FStar_List_Tot_Base.op_At (percent_encode_byte b3)
+         sse_append (percent_encode_byte b1)
+           (sse_append (percent_encode_byte b2)
+              (sse_append (percent_encode_byte b3)
                  (percent_encode_byte b4))))
 let rec encode_uri_chars (cs : FStar_Char.char Prims.list) :
   FStar_Char.char Prims.list=
@@ -1815,7 +1838,7 @@ let rec encode_uri_chars (cs : FStar_Char.char Prims.list) :
       if is_uri_unreserved c
       then c :: (encode_uri_chars rest)
       else
-        FStar_List_Tot_Base.op_At (percent_encode_char c)
+        sse_append (percent_encode_char c)
           (encode_uri_chars rest)
 let string_encode_uri (s : Prims.string) : Prims.string=
   FStar_String.string_of_list
@@ -1828,7 +1851,7 @@ let rec replace_first (haystack : FStar_Char.char Prims.list)
   | hd::tl ->
       if list_is_prefix pattern haystack
       then
-        FStar_List_Tot_Base.op_At replacement
+        sse_append replacement
           (list_drop (FStar_List_Tot_Base.length pattern) haystack)
       else hd :: (replace_first tl pattern replacement)
 let rec replace_all_chars_fuel (haystack : FStar_Char.char Prims.list)
@@ -2667,10 +2690,10 @@ let resolve_iri (base : RDF_Graph_Executable.wf_iri)
                    Prims.int_zero
            with
            | FStar_Pervasives_Native.Some hash_pos ->
-               FStar_List_Tot_Base.op_At (take_chars hash_pos base_chars)
+               sse_append (take_chars hash_pos base_chars)
                  rel_chars
            | FStar_Pervasives_Native.None ->
-               FStar_List_Tot_Base.op_At base_chars rel_chars
+               sse_append base_chars rel_chars
          else
            if first_char = (FStar_Char.char_of_int (Prims.of_int (47)))
            then
@@ -2680,23 +2703,23 @@ let resolve_iri (base : RDF_Graph_Executable.wf_iri)
                            Prims.int_zero
                    with
                    | FStar_Pervasives_Native.Some auth_end ->
-                       FStar_List_Tot_Base.op_At
+                       sse_append
                          (take_chars auth_end base_chars) rel_chars
                    | FStar_Pervasives_Native.None ->
-                       FStar_List_Tot_Base.op_At base_chars rel_chars)
+                       sse_append base_chars rel_chars)
               | FStar_Pervasives_Native.None ->
-                  FStar_List_Tot_Base.op_At base_chars rel_chars)
+                  sse_append base_chars rel_chars)
            else
              (match find_last_slash base_chars Prims.int_zero
                       FStar_Pervasives_Native.None
               with
               | FStar_Pervasives_Native.Some slash_pos ->
-                  FStar_List_Tot_Base.op_At
+                  sse_append
                     (take_chars (slash_pos + Prims.int_one) base_chars)
                     rel_chars
               | FStar_Pervasives_Native.None ->
-                  FStar_List_Tot_Base.op_At base_chars
-                    (FStar_List_Tot_Base.op_At
+                  sse_append base_chars
+                    (sse_append
                        [FStar_Char.char_of_int (Prims.of_int (47))] rel_chars)) in
        let result = FStar_String.string_of_list result_chars in
        if RDF_Graph_Executable.is_iri result then result else base)
@@ -2886,7 +2909,7 @@ let rec eval_bgp_store_from_mu_fuel (patterns : bgp) (gs : graph_store)
           | FStar_Pervasives_Native.None -> [mu]
           | FStar_Pervasives_Native.Some (tp, rest) ->
               let next = eval_single_tp_store tp gs mu in
-              FStar_List_Tot_Base.concatMap
+              sse_concat_map
                 (fun mu' ->
                    eval_bgp_store_from_mu_fuel rest gs mu'
                      (fuel - Prims.int_one)) next))
@@ -2897,7 +2920,7 @@ let eval_bgp (patterns : bgp) (g : RDF_Graph_Executable.rdf_graph) :
   solution_sequence= eval_bgp_store patterns (graph_to_store g)
 let join (omega1 : solution_sequence) (omega2 : solution_sequence) :
   solution_sequence=
-  FStar_List_Tot_Base.concatMap
+  sse_concat_map
     (fun mu1 ->
        list_filter_map
          (fun mu2 ->
@@ -3016,7 +3039,7 @@ let path_result_to_solutions (ps : pattern_subject) (pt : pattern_term)
                 mu_o)) pairs
 let left_join (omega1 : solution_sequence) (omega2 : solution_sequence)
   (filter_expr : expr) : solution_sequence=
-  FStar_List_Tot_Base.concatMap
+  sse_concat_map
     (fun mu1 ->
        let joins =
          list_filter_map
@@ -3185,7 +3208,7 @@ let left_join_with_graph (omega1 : solution_sequence)
   (omega2 : solution_sequence) (filter_expr : expr)
   (g : RDF_Graph_Executable.rdf_graph)
   (ds : RDF_Graph_Executable.rdf_dataset) : solution_sequence=
-  FStar_List_Tot_Base.concatMap
+  sse_concat_map
     (fun mu1 ->
        let joins =
          list_filter_map
@@ -3202,7 +3225,7 @@ let left_join_with_graph (omega1 : solution_sequence)
        then joins
        else [mu1]) omega1
 let union (omega1 : solution_sequence) (omega2 : solution_sequence) :
-  solution_sequence= FStar_List_Tot_Base.op_At omega1 omega2
+  solution_sequence= sse_append omega1 omega2
 let rec domains_disjoint (mu1 : RDF_Graph_Executable.solution_mapping)
   (mu2 : RDF_Graph_Executable.solution_mapping) : Prims.bool=
   match mu1 with
@@ -3228,7 +3251,7 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store)
   | GP_BGP bgp1 -> eval_bgp_store bgp1 gs
   | GP_Join (p1, GP_ServiceVar (v, inner, silent)) ->
       let omega1 = eval_pattern_store p1 gs dss in
-      FStar_List_Tot_Base.concatMap
+      sse_concat_map
         (fun mu ->
            match sm_lookup v mu with
            | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI iri) ->
@@ -3237,7 +3260,7 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store)
                  (match service_endpoint_lookup iri with
                   | FStar_Pervasives_Native.Some remote_gs ->
                       let omega2 = eval_pattern_store inner remote_gs dss in
-                      FStar_List_Tot_Base.concatMap
+                      sse_concat_map
                         (fun mu2 ->
                            if sm_compatible mu mu2
                            then [sm_merge mu mu2]
@@ -3248,7 +3271,7 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store)
            | uu___ -> if silent then [mu] else []) omega1
   | GP_Join (GP_ServiceVar (v, inner, silent), p2) ->
       let omega2 = eval_pattern_store p2 gs dss in
-      FStar_List_Tot_Base.concatMap
+      sse_concat_map
         (fun mu ->
            match sm_lookup v mu with
            | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI iri) ->
@@ -3257,7 +3280,7 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store)
                  (match service_endpoint_lookup iri with
                   | FStar_Pervasives_Native.Some remote_gs ->
                       let omega1 = eval_pattern_store inner remote_gs dss in
-                      FStar_List_Tot_Base.concatMap
+                      sse_concat_map
                         (fun mu1 ->
                            if sm_compatible mu mu1
                            then [sm_merge mu mu1]
@@ -3299,12 +3322,12 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store)
                 eval_pattern_store p' ngs dss
             | FStar_Pervasives_Native.None -> [])
        | PT_Var v ->
-           FStar_List_Tot_Base.concatMap
+           sse_concat_map
              (fun ngs ->
                 let ng_results = eval_pattern_store p' ngs.ngs_store dss in
                 if RDF_Graph_Executable.is_iri ngs.ngs_name
                 then
-                  FStar_List_Tot_Base.concatMap
+                  sse_concat_map
                     (fun mu ->
                        match sm_bind_if_compatible v
                                (RDF_Graph_Executable.T_IRI (ngs.ngs_name)) mu
@@ -3348,7 +3371,7 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store)
             let new_terms = FStar_List_Tot_Base.filter
               (fun t -> not (has_reflexive t)) constant_terms in
             let reflexive = FStar_List_Tot_Base.map (fun n -> (n, n)) new_terms in
-            FStar_List_Tot_Base.op_At pairs reflexive
+            sse_append pairs reflexive
         | _ -> pairs in
       path_result_to_solutions ps pt pairs
 let eval_pattern (p : group_graph_pattern)
@@ -4411,19 +4434,29 @@ let rec find_group (key : eval_result Prims.list) (groups : group Prims.list)
          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
          | FStar_Pervasives_Native.Some (before, found, after) ->
              FStar_Pervasives_Native.Some ((g :: before), found, after))
+(* Stack-safe rewrite — issue #95. Tail-rec: walks the group list
+   once with fold_left, prepending either the original group or a
+   merged one; appends a fresh group if `found` stays false; then
+   reverses. Preserves the original iteration order of groups. *)
 let add_to_groups (key : eval_result Prims.list)
   (mu : RDF_Graph_Executable.solution_mapping) (groups : group Prims.list) :
   group Prims.list=
-  match find_group key groups with
-  | FStar_Pervasives_Native.Some (before, g, after) ->
-      FStar_List_Tot_Base.op_At before
-        (FStar_List_Tot_Base.op_At
-           [{
-              g_key = (g.g_key);
-              g_solutions = (FStar_List_Tot_Base.op_At g.g_solutions [mu])
-            }] after)
-  | FStar_Pervasives_Native.None ->
-      FStar_List_Tot_Base.op_At groups [{ g_key = key; g_solutions = [mu] }]
+  let (rev_groups, found) =
+    Stdlib.List.fold_left
+      (fun (acc, f) g ->
+         if Prims.op_Negation f && keys_equal key g.g_key
+         then
+           let g' = {
+             g_key = g.g_key;
+             g_solutions = sse_append g.g_solutions [mu]
+           } in
+           (g' :: acc, true)
+         else (g :: acc, f))
+      ([], false) groups
+  in
+  let ordered = Stdlib.List.rev rev_groups in
+  if found then ordered
+  else sse_append ordered [{ g_key = key; g_solutions = [mu] }]
 let extend_with_group_aliases (conds : group_condition Prims.list)
   (mu : RDF_Graph_Executable.solution_mapping) :
   RDF_Graph_Executable.solution_mapping=
@@ -4451,13 +4484,14 @@ let filter_non_error (vals : eval_result Prims.list) :
   eval_result Prims.list=
   FStar_List_Tot_Base.filter
     (fun v -> Prims.op_Negation (uu___is_ER_Error v)) vals
-let rec dedup_er (vals : eval_result Prims.list) : eval_result Prims.list=
-  match vals with
-  | [] -> []
-  | v::rest ->
-      if FStar_List_Tot_Base.existsb (fun x -> er_equal v x) rest
-      then dedup_er rest
-      else v :: (dedup_er rest)
+(* Stack-safe rewrite — issue #95. *)
+let dedup_er (vals : eval_result Prims.list) : eval_result Prims.list=
+  Stdlib.List.rev
+    (Stdlib.List.fold_left
+       (fun acc v ->
+          if FStar_List_Tot_Base.existsb (fun x -> er_equal v x) acc
+          then acc else v :: acc)
+       [] vals)
 let find_min (vals : eval_result Prims.list) : eval_result=
   match vals with
   | [] -> ER_Error
@@ -5192,13 +5226,13 @@ let graph_nodes (g : RDF_Graph_Executable.rdf_graph) :
   let pairs =
     dedup_path
       (FStar_List_Tot_Base.map (fun n -> (n, n))
-         (FStar_List_Tot_Base.op_At subj_nodes obj_nodes)) in
+         (sse_append subj_nodes obj_nodes)) in
   FStar_List_Tot_Base.map FStar_Pervasives_Native.fst pairs
 let rec eval_property_path (p : property_path)
   (g : RDF_Graph_Executable.rdf_graph) : path_result=
   match p with
   | PP_IRI iri ->
-      FStar_List_Tot_Base.concatMap
+      sse_concat_map
         (fun t ->
            if t.RDF_Graph_Executable.p = iri
            then
@@ -5207,7 +5241,7 @@ let rec eval_property_path (p : property_path)
            else []) g
   | PP_Inverse pp ->
       let pairs = eval_property_path pp g in
-      FStar_List_Tot_Base.concatMap
+      sse_concat_map
         (fun pair ->
            let uu___ = pair in
            match uu___ with
@@ -5215,12 +5249,12 @@ let rec eval_property_path (p : property_path)
   | PP_Sequence (p1, p2) ->
       let r1 = eval_property_path p1 g in
       let r2 = eval_property_path p2 g in
-      FStar_List_Tot_Base.concatMap
+      sse_concat_map
         (fun pair1 ->
            let uu___ = pair1 in
            match uu___ with
            | (s, mid1) ->
-               FStar_List_Tot_Base.concatMap
+               sse_concat_map
                  (fun pair2 ->
                     let uu___1 = pair2 in
                     match uu___1 with
@@ -5229,25 +5263,25 @@ let rec eval_property_path (p : property_path)
                         then [(s, o)]
                         else []) r2) r1
   | PP_Alternative (p1, p2) ->
-      FStar_List_Tot_Base.op_At (eval_property_path p1 g)
+      sse_append (eval_property_path p1 g)
         (eval_property_path p2 g)
   | PP_ZeroOrOne pp ->
       let reflexive =
         FStar_List_Tot_Base.map (fun n -> (n, n)) (graph_nodes g) in
       let step = eval_property_path pp g in
-      dedup_path (FStar_List_Tot_Base.op_At reflexive step)
+      dedup_path (sse_append reflexive step)
   | PP_ZeroOrMore pp ->
       let nodes = graph_nodes g in
       let reflexive = FStar_List_Tot_Base.map (fun n -> (n, n)) nodes in
       let step = eval_property_path pp g in
       let extend current =
         let new_pairs =
-          FStar_List_Tot_Base.concatMap
+          sse_concat_map
             (fun pair1 ->
                let uu___ = pair1 in
                match uu___ with
                | (s, mid) ->
-                   FStar_List_Tot_Base.concatMap
+                   sse_concat_map
                      (fun pair2 ->
                         let uu___1 = pair2 in
                         match uu___1 with
@@ -5255,7 +5289,7 @@ let rec eval_property_path (p : property_path)
                             if RDF_Graph_Executable.rdf_term_eq mid mid2
                             then [(s, o)]
                             else []) step) current in
-        dedup_path (FStar_List_Tot_Base.op_At current new_pairs) in
+        dedup_path (sse_append current new_pairs) in
       let max_iter = FStar_List_Tot_Base.length nodes in
       let rec fixpoint current fuel =
         if fuel = Prims.int_zero
@@ -5267,19 +5301,19 @@ let rec eval_property_path (p : property_path)
                (FStar_List_Tot_Base.length current)
            then current
            else fixpoint next (fuel - Prims.int_one)) in
-      fixpoint (dedup_path (FStar_List_Tot_Base.op_At reflexive step))
+      fixpoint (dedup_path (sse_append reflexive step))
         max_iter
   | PP_OneOrMore pp ->
       let nodes = graph_nodes g in
       let step = eval_property_path pp g in
       let extend current =
         let new_pairs =
-          FStar_List_Tot_Base.concatMap
+          sse_concat_map
             (fun pair1 ->
                let uu___ = pair1 in
                match uu___ with
                | (s, mid) ->
-                   FStar_List_Tot_Base.concatMap
+                   sse_concat_map
                      (fun pair2 ->
                         let uu___1 = pair2 in
                         match uu___1 with
@@ -5287,7 +5321,7 @@ let rec eval_property_path (p : property_path)
                             if RDF_Graph_Executable.rdf_term_eq mid mid2
                             then [(s, o)]
                             else []) step) current in
-        dedup_path (FStar_List_Tot_Base.op_At current new_pairs) in
+        dedup_path (sse_append current new_pairs) in
       let max_iter = FStar_List_Tot_Base.length nodes in
       let rec fixpoint current fuel =
         if fuel = Prims.int_zero
@@ -5311,7 +5345,7 @@ let rec eval_property_path (p : property_path)
         if has_inverse && (Prims.op_Negation has_direct)
         then []
         else
-          FStar_List_Tot_Base.concatMap
+          sse_concat_map
             (fun t ->
                if iri_in_list t.RDF_Graph_Executable.p excluded_direct
                then []
@@ -5322,14 +5356,14 @@ let rec eval_property_path (p : property_path)
         if has_direct && (Prims.op_Negation has_inverse)
         then []
         else
-          FStar_List_Tot_Base.concatMap
+          sse_concat_map
             (fun t ->
                if iri_in_list t.RDF_Graph_Executable.p excluded_inverse
                then []
                else
                  [((t.RDF_Graph_Executable.o),
                     (subject_to_term t.RDF_Graph_Executable.s))]) g in
-      FStar_List_Tot_Base.op_At direct_pairs inverse_pairs
+      sse_append direct_pairs inverse_pairs
 let () = eval_property_path_fwd_ref := eval_property_path
 type numeric_precision =
   | NP_Integer 
@@ -5862,7 +5896,7 @@ let rec collect_quads
       let ts = bgp_to_triples_concrete b in
       FStar_List_Tot_Base.map (fun t -> (outer, t)) ts
   | GP_Join (a, b) ->
-      FStar_List_Tot_Base.op_At (collect_quads outer a)
+      sse_append (collect_quads outer a)
         (collect_quads outer b)
   | GP_Graph (gt, inner) ->
       (match gt with
@@ -6116,7 +6150,7 @@ let rec instantiate_ggp_quads
       let ts = instantiate_bgp b mu in
       FStar_List_Tot_Base.map (fun t -> (outer, t)) ts
   | GP_Join (a, b) ->
-      FStar_List_Tot_Base.op_At (instantiate_ggp_quads outer a mu)
+      sse_append (instantiate_ggp_quads outer a mu)
         (instantiate_ggp_quads outer b mu)
   | GP_Graph (gt, inner) ->
       (match gt with
@@ -6137,7 +6171,7 @@ let rec instantiate_ggp_quads_freshen (op_salt : Prims.string)
       let ts = instantiate_bgp_freshen op_salt sol_ix b mu in
       FStar_List_Tot_Base.map (fun t -> (outer, t)) ts
   | GP_Join (a, b) ->
-      FStar_List_Tot_Base.op_At
+      sse_append
         (instantiate_ggp_quads_freshen op_salt sol_ix outer a mu)
         (instantiate_ggp_quads_freshen op_salt sol_ix outer b mu)
   | GP_Graph (gt, inner) ->
@@ -6155,7 +6189,7 @@ let rec instantiate_ggp_all
   match mus with
   | [] -> []
   | mu::rest ->
-      FStar_List_Tot_Base.op_At (instantiate_ggp_quads outer g mu)
+      sse_append (instantiate_ggp_quads outer g mu)
         (instantiate_ggp_all outer g rest)
 let apply_delete_where (ds : RDF_Graph_Executable.rdf_dataset)
   (ggp : group_graph_pattern) : RDF_Graph_Executable.rdf_dataset=
@@ -6306,7 +6340,7 @@ let apply_modify (op_salt : Prims.string)
         per_mapping_quads FStar_Pervasives_Native.None dt mus in
   let del_quads_flat =
     FStar_List_Tot_Base.fold_left
-      (fun acc qs -> FStar_List_Tot_Base.op_At acc qs) [] del_quads_per_mu in
+      (fun acc qs -> sse_append acc qs) [] del_quads_per_mu in
   let del_quads_redirected = redirect_default_quads with_iri del_quads_flat in
   let ds_after_delete = delete_quads ds del_quads_redirected in
   match insert_tmpl with
@@ -6389,7 +6423,7 @@ let ensure_named_graph (iri : RDF_Graph_Executable.wf_iri)
   if has_named_graph iri named
   then named
   else
-    FStar_List_Tot_Base.op_At named
+    sse_append named
       [{
          RDF_Graph_Executable.ng_name = iri;
          RDF_Graph_Executable.ng_graph = []

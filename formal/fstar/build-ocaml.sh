@@ -502,7 +502,9 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
-    Parser_Ballyhoo.ml Parser_BallyhooBloom.ml Parser_BallyhooCOTTAS.ml
+    Parser_Ballyhoo.ml Parser_BallyhooBloom.ml
+    Parser_BallyhooHDT.ml Parser_BallyhooHDTQ.ml
+    Parser_BallyhooCOTTAS.ml
     RDF_CottasStore_ColumnSeq.ml
     RDF_CottasStore_PageCache.ml
     RDF_CottasStore_OnDiskIndex.ml
@@ -510,7 +512,10 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_CottasStore_CompoundPresenceBitmap.ml
     RDF_CottasStore.ml
     fstar_pure_hashes.ml
-    SPARQL11_Algebra.ml OWL_QueryRewrite.ml OWL_QueryEval.ml SPARQL11_Parser.ml SPARQL_Protocol.ml
+    RDF_Canonical.ml
+    SPARQL11_Algebra.ml OWL_QueryRewrite.ml OWL_QueryEval.ml SPARQL11_Parser.ml
+    SPARQL11_Store.ml
+    SPARQL_Protocol.ml
     SPARQL_HTTP.ml SPARQL_HTTP_Client.ml SPARQL_ServiceDescription.ml SPARQL_GraphStore.ml
   )
   JS_TARGETS=(
@@ -550,7 +555,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     # the JS shim at bundle time. The stub returns None and is never
     # actually executed in the JS build path.
     run_with_heartbeat "ocamlc w3c_runner.byte" "_ocamlc_w3c_runner.log" -- \
-      ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
+      ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
       -custom parquet_zstd_stubs_jsoo.c \
       "${FSTAR_MODULES[@]}" \
       w3c_runner.ml \
@@ -567,9 +572,10 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     cp factoidal_serve_jsoo.ml factoidal_serve.ml
     FACTOIDAL_BYTE_RC=0
     run_with_heartbeat "ocamlc factoidal.byte" "_ocamlc_factoidal.log" -- \
-      ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
+      ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
       -custom parquet_zstd_stubs_jsoo.c \
       "${FSTAR_MODULES[@]}" \
+      factoidal_explain.ml \
       factoidal_serve.ml \
       factoidal_cli.ml \
       -o factoidal.byte || FACTOIDAL_BYTE_RC=$?
