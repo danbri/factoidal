@@ -172,6 +172,56 @@ lazy_module = '''module Cottas_ondisk_lazy = struct
   let is_pred_loaded    path = Hashtbl.mem pred_loaded  path
   let is_obj_loaded     path = Hashtbl.mem obj_loaded   path
   let is_graph_loaded   path = Hashtbl.mem graph_loaded path
+
+  (* Issue #110 Option B: Hashtbls and accessors retained for the Vav3
+     reader (cottas_ondisk_zzzzz_ondisk_index.sh) after the dead-shim
+     patches (yod6 / tet3 / mem5 / etc.) were retired. These are pure
+     structural plumbing — empty per-path Hashtbl-of-Hashtbl maps with
+     get-style accessors. The semantic prune logic that USED to populate
+     and consult them lived in the deleted shims and is no longer on
+     the public path; the F*-extracted `compute_candidate_rgs_loop`
+     in RDF.CottasStore handles candidate-rg pruning now. The Vav3
+     companion-file reader still references these accessors to seed
+     its on-disk index path; keeping them as empty tables is safe
+     glue (rule #11 allowed: structural, no decisions). *)
+  let pred_presence_by_path
+    : (string, (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t) Hashtbl.t
+    = Hashtbl.create 17
+
+  let subj_presence_by_path
+    : (string, (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t) Hashtbl.t
+    = Hashtbl.create 17
+
+  let obj_presence_by_path
+    : (string, (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t) Hashtbl.t
+    = Hashtbl.create 17
+
+  let presence_for_path (path : string)
+    : (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t =
+    match Hashtbl.find_opt pred_presence_by_path path with
+    | Some t -> t
+    | None ->
+      let t : (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t = Hashtbl.create 32 in
+      Hashtbl.add pred_presence_by_path path t;
+      t
+
+  let subj_presence_for_path (path : string)
+    : (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t =
+    match Hashtbl.find_opt subj_presence_by_path path with
+    | Some t -> t
+    | None ->
+      let t : (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t = Hashtbl.create 32 in
+      Hashtbl.add subj_presence_by_path path t;
+      t
+
+  let obj_presence_for_path (path : string)
+    : (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t =
+    match Hashtbl.find_opt obj_presence_by_path path with
+    | Some t -> t
+    | None ->
+      let t : (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t = Hashtbl.create 32 in
+      Hashtbl.add obj_presence_by_path path t;
+      t
 end
 
 '''
