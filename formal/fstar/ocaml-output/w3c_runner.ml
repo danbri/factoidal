@@ -2717,13 +2717,26 @@ let run_suite_generic base_dir runner suite_name =
   end else begin
     let (tests, assumed_base) = read_manifest manifest in
     let pass = ref 0 and fail = ref 0 and skip = ref 0 and unsup = ref 0 in
+    let total = List.length tests in
+    let n = ref 0 in
     List.iter (fun tc ->
+      incr n;
+      (* Per-test progress line on stderr: "  [N/M] suite/test_name"
+         (live tail-able when the runner is invoked from a TTY; doesn't
+         pollute stdout's PASS/FAIL/skip table). *)
+      Printf.eprintf "  [%d/%d] %s/%s%!" !n total suite_name tc.name;
       let t0 = Unix.gettimeofday () in
       let result = runner assumed_base tc in
       let elapsed = Unix.gettimeofday () -. t0 in
       let time_str = if elapsed >= 1.0 then Printf.sprintf " (%.1fs)" elapsed
                      else if elapsed >= 0.01 then Printf.sprintf " (%.0fms)" (elapsed *. 1000.0)
                      else "" in
+      let status_tag = match result with
+        | Pass -> "ok"
+        | Fail _ -> "FAIL"
+        | Skip _ -> "skip"
+        | Unsupported_feature _ -> "unsup" in
+      Printf.eprintf " %s%s\n%!" status_tag time_str;
       (match result with
        | Pass ->
          incr pass;

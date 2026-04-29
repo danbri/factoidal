@@ -147,7 +147,7 @@ for col, ensure_fn, table_field in column_specs:
         f"let {fn} (path : Prims.string) (token : Prims.string)\n"
         f"  : Prims.nat FStar_Pervasives_Native.option =\n"
         f"  Cottas_token_lookup_global.lookup_with_ensure\n"
-        f"    Cottas_ondisk_lazy.{ensure_fn}\n"
+        f"    Cottas_ondisk_runtime.{ensure_fn}\n"
         f"    (fun t -> t.Cottas_ondisk_runtime.{table_field})\n"
         f"    path token"
     )

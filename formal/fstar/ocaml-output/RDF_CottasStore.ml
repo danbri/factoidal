@@ -2119,25 +2119,25 @@ end
 let ondisk_lookup_subj_id_global (path : Prims.string) (token : Prims.string)
   : Prims.nat FStar_Pervasives_Native.option =
   Cottas_token_lookup_global.lookup_with_ensure
-    Cottas_ondisk_lazy.ensure_subjects_loaded
+    Cottas_ondisk_runtime.ensure_subjects_loaded
     (fun t -> t.Cottas_ondisk_runtime.ft_subj_tok_to_id)
     path token
 let ondisk_lookup_pred_id_global (path : Prims.string) (token : Prims.string)
   : Prims.nat FStar_Pervasives_Native.option =
   Cottas_token_lookup_global.lookup_with_ensure
-    Cottas_ondisk_lazy.ensure_predicates_loaded
+    Cottas_ondisk_runtime.ensure_predicates_loaded
     (fun t -> t.Cottas_ondisk_runtime.ft_pred_tok_to_id)
     path token
 let ondisk_lookup_obj_id_global (path : Prims.string) (token : Prims.string)
   : Prims.nat FStar_Pervasives_Native.option =
   Cottas_token_lookup_global.lookup_with_ensure
-    Cottas_ondisk_lazy.ensure_objects_loaded
+    Cottas_ondisk_runtime.ensure_objects_loaded
     (fun t -> t.Cottas_ondisk_runtime.ft_obj_tok_to_id)
     path token
 let ondisk_lookup_graph_id_global (path : Prims.string) (token : Prims.string)
   : Prims.nat FStar_Pervasives_Native.option =
   Cottas_token_lookup_global.lookup_with_ensure
-    Cottas_ondisk_lazy.ensure_graphs_loaded
+    Cottas_ondisk_runtime.ensure_graphs_loaded
     (fun t -> t.Cottas_ondisk_runtime.ft_graph_tok_to_id)
     path token
 let build_qp_row (h : cottas_ondisk_handle) (s_tok : Prims.string)
