@@ -999,6 +999,16 @@ let () =
             | Some b -> Parser_Turtle.count_turtle_triples_with_base content b
             | None -> Parser_Turtle.count_turtle_triples content in
           Printf.printf "%s: %s triples\n" label (Z.to_string n)
+        | NT ->
+          (* Issue #121: count-only avoids growing a 7M-element triple list. *)
+          let content = read_file f in
+          let n = Parser_NTriples.count_ntriples content in
+          Printf.printf "%s: %s triples\n" label (Z.to_string n)
+        | NQuads ->
+          (* Issue #121: count-only avoids growing the rdf_dataset. *)
+          let content = read_file f in
+          let n = Parser_NQuads.count_nquads_quads content in
+          Printf.printf "%s: %s triples\n" label (Z.to_string n)
         | _ ->
           let triples = load_triples ~format:cfg.input_format ~base:cfg.base_iri f in
           Printf.printf "%s: %d triples\n" label (List.length triples)

@@ -262,6 +262,64 @@ let parse_nquads (input:string) : rdf_dataset =
   // dataset_finalise reverses each graph once to restore insertion order.
   dataset_finalise (parse_nquads_acc input 0 empty_dataset (len + 1))
 
+(* Count-only variant for `--count` mode (issue #121).
+   Same control flow as parse_nquads_acc but the outer accumulator
+   is a `nat` counter — no rdf_dataset construction, no dataset_add_quad,
+   no dataset_finalise reverse. Per-line parse_nquad still allocates
+   and discards a single quad; what we save is the dataset growth. *)
+let rec count_nquads_acc (input:string) (pos:nat) (acc:nat) (fuel:nat)
+  : Tot nat (decreases fuel) =
+  if fuel = 0 then acc
+  else
+    let len = fs_byte_length input in
+    if pos >= len then acc
+    else
+      let pos1 : nat = match pws input pos with
+                       | ParseOk () p -> p
+                       | _ -> pos in
+      if pos1 >= len then acc
+      else
+        let ch = fs_byte_index input pos1 in
+        let code = FStar.Char.int_of_char ch in
+        if code = 0x23 then
+          let pos2 = skip_comment input pos1 in
+          let pos3 = skip_eol input pos2 in
+          if pos3 = pos1 then acc
+          else count_nquads_acc input pos3 acc (fuel - 1)
+        else if code = 0x0A || code = 0x0D then
+          let pos2 = skip_eol input pos1 in
+          if pos2 = pos1 then acc
+          else count_nquads_acc input pos2 acc (fuel - 1)
+        else
+          match parse_nquad input pos1 with
+          | ParseOk _ pos2 ->
+            let pos3 = match pws input pos2 with
+                       | ParseOk () p -> p
+                       | _ -> pos2 in
+            let pos4 = skip_comment input pos3 in
+            let pos5 = skip_eol input pos4 in
+            let pos_next = if pos5 > pos1 then pos5
+                          else if pos4 > pos1 then pos4
+                          else pos2 in
+            count_nquads_acc input pos_next (acc + 1) (fuel - 1)
+          | ParseFail _ _ ->
+            let rec skip_line (p:nat) (f:nat) : Tot nat (decreases f) =
+              if f = 0 then p
+              else if p >= len then p
+              else
+                let c = fs_byte_index input p in
+                let cc = FStar.Char.int_of_char c in
+                if cc = 0x0A || cc = 0x0D then skip_eol input p
+                else skip_line (p + 1) (f - 1)
+            in
+            let pos2 = skip_line pos1 (len - pos1) in
+            if pos2 = pos1 then acc
+            else count_nquads_acc input pos2 acc (fuel - 1)
+
+let count_nquads_quads (input:string) : nat =
+  let len = fs_byte_length input in
+  count_nquads_acc input 0 0 (len + 1)
+
 let rec parse_nquads_strict_acc (input:string) (pos:nat) (ds:rdf_dataset) (fuel:nat)
   : Tot (option rdf_dataset) (decreases fuel) =
   if fuel = 0 then None
