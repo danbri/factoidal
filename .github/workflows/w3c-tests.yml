@@ -187,9 +187,22 @@ jobs:
           PLATFORM='${{ matrix.platform }}'
           git commit -m "ci(${PLATFORM}): shadow build artifacts [skip ci]"
 
+          # Native builds leave local generated files outside the staged shadow
+          # dirs. Stash them so rebase can proceed cleanly if we need to sync
+          # with a newer branch tip before pushing.
+          if [ -n "$(git status --porcelain)" ]; then
+            git stash push --include-untracked -m "ci-shadow-pre-push-${PLATFORM}" || true
+          fi
+
           PUSH_RC=1
           for attempt in 1 2 3; do
             echo "Push attempt $attempt for ${PLATFORM}..."
+            if git push origin "HEAD:${GITHUB_REF_NAME}"; then
+              PUSH_RC=0
+              echo "Push succeeded on attempt $attempt."
+              break
+            fi
+            echo "::warning::git push failed on attempt $attempt — attempting rebase"
             git rebase --abort 2>/dev/null || true
             if ! git pull --rebase origin "${GITHUB_REF_NAME}"; then
               echo "::warning::git pull --rebase failed on attempt $attempt"
@@ -337,9 +350,21 @@ jobs:
 
           git commit -m "ci(linux-x86_64): generated docs artifacts [skip ci]"
 
+          # Docs/wasm generation leaves other outputs around; stash them so a
+          # rebase is not blocked by unrelated local modifications.
+          if [ -n "$(git status --porcelain)" ]; then
+            git stash push --include-untracked -m "ci-docs-pre-push" || true
+          fi
+
           PUSH_RC=1
           for attempt in 1 2 3; do
             echo "Push attempt $attempt for Linux generated docs artifacts..."
+            if git push origin "HEAD:${GITHUB_REF_NAME}"; then
+              PUSH_RC=0
+              echo "Push succeeded on attempt $attempt."
+              break
+            fi
+            echo "::warning::git push failed on attempt $attempt — attempting rebase"
             git rebase --abort 2>/dev/null || true
             if ! git pull --rebase origin "${GITHUB_REF_NAME}"; then
               echo "::warning::git pull --rebase failed on attempt $attempt"
