@@ -52,6 +52,11 @@ The Fly image therefore expects:
 If that file is missing, the container exits immediately with a clear
 error.
 
+Because that binary is an ELF Linux x86_64 executable, local container
+builds on Apple Silicon should also target `linux/amd64`. The provided
+`Dockerfile` now pins that explicitly so local `podman` / `docker`
+smoke builds match the artifact we actually ship to Fly.
+
 For now, target **Linux x86_64** on Fly.io, because that is the Linux CI
 machine type currently wired in `.github/workflows/w3c-tests.yml`.
 Support for a separate Fly ARM deployment can come later if CI starts
@@ -115,6 +120,19 @@ fly launch --no-deploy
 fly volumes create factoidal_data --region lhr --size 20
 fly deploy
 ```
+
+For local container smoke tests with the real Parliament corpus:
+
+```sh
+tools/podman-fly-smoke.sh
+```
+
+That helper:
+
+- builds the image with `podman`
+- mounts `tmp/ukparliament/CorpusCOTTAS/` at `/data`
+- publishes the service on `http://127.0.0.1:18080/query`
+- tails the first startup logs so you can see COTTAS open / prewarm
 
 Then populate the volume, for example with `fly ssh console` plus `scp`
 or a one-off machine that stages the dataset bundle into `/data`.

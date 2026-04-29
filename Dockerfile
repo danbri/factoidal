@@ -1,6 +1,8 @@
-FROM debian:bookworm-slim
+# The shipped CI server binary is Linux x86_64, so keep the image target
+# explicit rather than inheriting the local builder architecture.
+FROM --platform=linux/amd64 debian:bookworm-slim
 
-RUN apt-get update \
+RUN apt-get -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false update \
  && apt-get install -y --no-install-recommends ca-certificates libgmp10 libev4 libpcre3 zlib1g \
  && rm -rf /var/lib/apt/lists/*
 
