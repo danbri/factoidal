@@ -262,11 +262,79 @@ let parse_nquads (input:string) : rdf_dataset =
   // dataset_finalise reverses each graph once to restore insertion order.
   dataset_finalise (parse_nquads_acc input 0 empty_dataset (len + 1))
 
+(* ================================================================ *)
+(* Scan-only validators for --count mode (issue #121, step 2).      *)
+(* Mirror parse_graph_label / parse_nquad without fs_byte_sub.      *)
+(* ================================================================ *)
+
+let validate_graph_label (input:string) (pos:nat) : parse_result nat =
+  let len = fs_byte_length input in
+  if pos >= len then ParseFail "expected graph label" pos
+  else
+    let ch = fs_byte_index input pos in
+    let code = FStar.Char.int_of_char ch in
+    if code = 0x3C then validate_iri input pos
+    else if code = 0x5F then validate_bnode input pos
+    else ParseFail "expected '<' or '_:' for graph label" pos
+
+let validate_opt_graph_label (input:string) (pos:nat) : parse_result nat =
+  let len = fs_byte_length input in
+  match pws input pos with
+  | ParseOk () pos1 ->
+    if pos1 >= len then ParseOk pos1 pos1
+    else
+      let ch = fs_byte_index input pos1 in
+      let code = FStar.Char.int_of_char ch in
+      if code = 0x2E then ParseOk pos1 pos1
+      else if code = 0x3C || code = 0x5F then validate_graph_label input pos1
+      else if code = 0x22 then
+        ParseFail "literals are not allowed as graph names in N-Quads" pos1
+      else ParseOk pos1 pos1
+  | ParseFail msg fpos -> ParseFail msg fpos
+
+let validate_nquad (input:string) (pos:nat) : parse_result nat =
+  match pws input pos with
+  | ParseOk () pos1 ->
+    begin match validate_subject input pos1 with
+    | ParseOk pos2 _ ->
+      begin match pws input pos2 with
+      | ParseOk () pos3 ->
+        begin match validate_iri input pos3 with
+        | ParseOk pos4 _ ->
+          begin match pws input pos4 with
+          | ParseOk () pos5 ->
+            begin match validate_object input pos5 with
+            | ParseOk pos6 _ ->
+              begin match validate_opt_graph_label input pos6 with
+              | ParseOk pos7 _ ->
+                begin match pws input pos7 with
+                | ParseOk () pos8 ->
+                  let len = fs_byte_length input in
+                  if pos8 >= len then ParseFail "expected '.'" pos8
+                  else
+                    let dot = fs_byte_index input pos8 in
+                    if FStar.Char.int_of_char dot = 0x2E then
+                      ParseOk (pos8 + 1) (pos8 + 1)
+                    else
+                      ParseFail "expected '.'" pos8
+                | ParseFail msg fpos -> ParseFail msg fpos
+                end
+              | ParseFail msg fpos -> ParseFail msg fpos
+              end
+            | ParseFail msg fpos -> ParseFail msg fpos
+            end
+          | ParseFail msg fpos -> ParseFail msg fpos
+          end
+        | ParseFail msg fpos -> ParseFail msg fpos
+        end
+      | ParseFail msg fpos -> ParseFail msg fpos
+      end
+    | ParseFail msg fpos -> ParseFail msg fpos
+    end
+  | ParseFail msg fpos -> ParseFail msg fpos
+
 (* Count-only variant for `--count` mode (issue #121).
-   Same control flow as parse_nquads_acc but the outer accumulator
-   is a `nat` counter — no rdf_dataset construction, no dataset_add_quad,
-   no dataset_finalise reverse. Per-line parse_nquad still allocates
-   and discards a single quad; what we save is the dataset growth. *)
+   Step 2: uses validate_nquad — no per-line term/string allocation. *)
 let rec count_nquads_acc (input:string) (pos:nat) (acc:nat) (fuel:nat)
   : Tot nat (decreases fuel) =
   if fuel = 0 then acc
@@ -291,8 +359,8 @@ let rec count_nquads_acc (input:string) (pos:nat) (acc:nat) (fuel:nat)
           if pos2 = pos1 then acc
           else count_nquads_acc input pos2 acc (fuel - 1)
         else
-          match parse_nquad input pos1 with
-          | ParseOk _ pos2 ->
+          match validate_nquad input pos1 with
+          | ParseOk pos2 _ ->
             let pos3 = match pws input pos2 with
                        | ParseOk () p -> p
                        | _ -> pos2 in

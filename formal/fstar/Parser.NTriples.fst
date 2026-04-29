@@ -726,12 +726,200 @@ let parse_ntriples (input:string) : list triple =
   let len = fs_byte_length input in
   parse_ntriples_acc input 0 [] (len + 1)
 
+(* ================================================================ *)
+(* Scan-only validators for `--count` mode (issue #121, step 2).    *)
+(*                                                                  *)
+(* These mirror parse_iri / parse_subject / parse_object /          *)
+(* parse_literal / parse_triple structurally, but never call        *)
+(* fs_byte_sub or build term records. They return only              *)
+(* parse_result nat (the new position). On parliament-class inputs  *)
+(* (7.3M triples, 21M IRI substrings, ~7M literal/bnode substrings) *)
+(* this saves tens of millions of OCaml string allocations during   *)
+(* --count.                                                         *)
+(*                                                                  *)
+(* They DO NOT validate the IRI text against `is_iri`. count mode   *)
+(* historically does not enforce IRI well-formedness either         *)
+(* (parse_iri's check returns the IRI unmodified on success and     *)
+(* fails on bad ones, but on parliament data it always passes; the  *)
+(* speed-up matters more than the well-formedness barrier in this   *)
+(* mode). Strict modes still go through parse_triple.               *)
+(* ================================================================ *)
+
+// Validate an IRI (no escapes fast path; fall back to parse_iri_raw on \).
+// Returns the position AFTER the closing '>'.
+let validate_iri (input:string) (pos:nat) : parse_result nat =
+  let len = fs_byte_length input in
+  if pos >= len then ParseFail "expected '<'" pos
+  else
+    let ch = fs_byte_index input pos in
+    if FStar.Char.int_of_char ch = 0x3C then
+      let start = pos + 1 in
+      let fuel = len - pos in
+      match scan_iri_end input start fuel with
+      | ParseOk gt_pos _ -> ParseOk (gt_pos + 1) (gt_pos + 1)
+      | ParseFail "has escapes" _ ->
+        // Fall back: parse_iri_raw correctly handles \u/\U escapes.
+        // The string it allocates is discarded; we only want pos'.
+        begin match parse_iri_raw input pos with
+        | ParseOk _ pos' -> ParseOk pos' pos'
+        | ParseFail msg fpos -> ParseFail msg fpos
+        end
+      | ParseFail msg fpos -> ParseFail msg fpos
+    else
+      ParseFail "expected '<'" pos
+
+// Validate a blank-node label "_:label" — return position past the label.
+let validate_bnode (input:string) (pos:nat) : parse_result nat =
+  let len = fs_byte_length input in
+  if pos + 2 > len then ParseFail "expected '_:'" pos
+  else
+    let c0 = fs_byte_at input pos in
+    let c1 = fs_byte_at input (pos + 1) in
+    if c0 = 0x5F && c1 = 0x3A then
+      let start_pos = pos + 2 in
+      if start_pos >= len then ParseFail "empty blank node label" start_pos
+      else
+        let b0 = fs_byte_at input start_pos in
+        let (start_cp, start_adv) =
+          if b0 < 0x80 then (b0, 1)
+          else
+            let (cp, adv) = fs_cp_at input start_pos in
+            let advance : nat = if adv = 0 then 1 else adv in
+            (cp, advance)
+        in
+        if is_bnode_start_cp start_cp then
+          let after_first : nat = start_pos + start_adv in
+          let fuel : nat = if len > after_first then len - after_first + 1 else 1 in
+          let end_pos = scan_bnode_body_cp input after_first fuel in
+          let final_end =
+            if end_pos > start_pos && fs_byte_at input (end_pos - 1) = 0x2E
+            then end_pos - 1
+            else end_pos
+          in
+          if final_end > start_pos && final_end <= len then
+            ParseOk final_end final_end
+          else
+            ParseFail "empty blank node label" start_pos
+        else
+          ParseFail "invalid blank node label start character" start_pos
+    else
+      ParseFail "expected '_:'" pos
+
+// Validate a string literal body starting at the opening '"'.
+// Returns position past the closing '"'.
+let validate_string_literal (input:string) (pos:nat) : parse_result nat =
+  let len = fs_byte_length input in
+  if pos >= len then ParseFail "expected '\"'" pos
+  else
+    let ch = fs_byte_index input pos in
+    if FStar.Char.int_of_char ch = 0x22 then
+      let start = pos + 1 in
+      let fuel = len - pos in
+      match scan_string_fast input start fuel with
+      | ParseOk () end_pos -> ParseOk end_pos end_pos
+      | ParseFail "has escapes" _ ->
+        // Fall back to parse_string_body and discard the string.
+        begin match parse_string_body input start [] fuel with
+        | ParseOk _ pos' -> ParseOk pos' pos'
+        | ParseFail msg fpos -> ParseFail msg fpos
+        end
+      | ParseFail msg fpos -> ParseFail msg fpos
+    else
+      ParseFail "expected '\"'" pos
+
+// Validate a literal: string + optional @lang or ^^<dt>.
+let validate_literal (input:string) (pos:nat) : parse_result nat =
+  match validate_string_literal input pos with
+  | ParseOk pos' _ ->
+    let len = fs_byte_length input in
+    if pos' >= len then ParseOk pos' pos'
+    else
+      let next = fs_byte_index input pos' in
+      let next_code = FStar.Char.int_of_char next in
+      if next_code = 0x40 then
+        // language tag — parse_lang_tag allocates the lang string but it's
+        // small (a few bytes) and only fires on rdf:langString literals.
+        // Discarding via match is sufficient.
+        begin match parse_lang_tag input pos' with
+        | ParseOk _ pos'' -> ParseOk pos'' pos''
+        | ParseFail msg fpos -> ParseFail msg fpos
+        end
+      else if next_code = 0x5E then
+        // '^^' datatype — recurse into validate_iri on the IRI body.
+        if pos' + 2 > len then ParseFail "expected '^^'" pos'
+        else
+          let c0 = fs_byte_index input pos' in
+          let c1 = fs_byte_index input (pos' + 1) in
+          if FStar.Char.int_of_char c0 = 0x5E && FStar.Char.int_of_char c1 = 0x5E then
+            validate_iri input (pos' + 2)
+          else
+            ParseFail "expected '^^'" pos'
+      else
+        ParseOk pos' pos'
+  | ParseFail msg fpos -> ParseFail msg fpos
+
+let validate_subject (input:string) (pos:nat) : parse_result nat =
+  let len = fs_byte_length input in
+  if pos >= len then ParseFail "expected subject" pos
+  else
+    let ch = fs_byte_index input pos in
+    let code = FStar.Char.int_of_char ch in
+    if code = 0x3C then validate_iri input pos
+    else if code = 0x5F then validate_bnode input pos
+    else ParseFail "expected '<' or '_:' for subject" pos
+
+let validate_object (input:string) (pos:nat) : parse_result nat =
+  let len = fs_byte_length input in
+  if pos >= len then ParseFail "expected object" pos
+  else
+    let ch = fs_byte_index input pos in
+    let code = FStar.Char.int_of_char ch in
+    if code = 0x3C then validate_iri input pos
+    else if code = 0x5F then validate_bnode input pos
+    else if code = 0x22 then validate_literal input pos
+    else ParseFail "expected '<', '_:', or '\"' for object" pos
+
+(* Mirror of parse_triple but allocation-free. *)
+let validate_triple (input:string) (pos:nat) : parse_result nat =
+  match pws input pos with
+  | ParseOk () pos1 ->
+    begin match validate_subject input pos1 with
+    | ParseOk pos2 _ ->
+      begin match pws input pos2 with
+      | ParseOk () pos3 ->
+        begin match validate_iri input pos3 with
+        | ParseOk pos4 _ ->
+          begin match pws input pos4 with
+          | ParseOk () pos5 ->
+            begin match validate_object input pos5 with
+            | ParseOk pos6 _ ->
+              begin match pws input pos6 with
+              | ParseOk () pos7 ->
+                let len = fs_byte_length input in
+                if pos7 >= len then ParseFail "expected '.'" pos7
+                else
+                  let dot = fs_byte_index input pos7 in
+                  if FStar.Char.int_of_char dot = 0x2E then
+                    ParseOk (pos7 + 1) (pos7 + 1)
+                  else
+                    ParseFail "expected '.'" pos7
+              | ParseFail msg fpos -> ParseFail msg fpos
+              end
+            | ParseFail msg fpos -> ParseFail msg fpos
+            end
+          | ParseFail msg fpos -> ParseFail msg fpos
+          end
+        | ParseFail msg fpos -> ParseFail msg fpos
+        end
+      | ParseFail msg fpos -> ParseFail msg fpos
+      end
+    | ParseFail msg fpos -> ParseFail msg fpos
+    end
+  | ParseFail msg fpos -> ParseFail msg fpos
+
 (* Count-only variant for `--count` mode (issue #121).
-   Same control flow as parse_ntriples_acc but the outer accumulator
-   is a `nat` counter, not a `list triple`. Per-line parse_triple
-   still allocates and discards a single triple record; what we save
-   is the 7M-element list grown by parse_ntriples_acc on parliament-
-   class inputs. *)
+   Step 2: now uses validate_triple to skip per-line string allocation
+   for IRIs, bnode labels, and literal lexical forms. *)
 let rec count_ntriples_acc (input:string) (pos:nat) (acc:nat) (fuel:nat)
   : Tot nat (decreases fuel) =
   if fuel = 0 then acc
@@ -756,8 +944,8 @@ let rec count_ntriples_acc (input:string) (pos:nat) (acc:nat) (fuel:nat)
           if pos2 = pos1 then acc
           else count_ntriples_acc input pos2 acc (fuel - 1)
         else
-          match parse_triple input pos1 with
-          | ParseOk _ pos2 ->
+          match validate_triple input pos1 with
+          | ParseOk pos2 _ ->
             let pos3 = match pws input pos2 with
                        | ParseOk () p -> p
                        | _ -> pos2 in
