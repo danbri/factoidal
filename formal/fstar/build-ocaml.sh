@@ -89,6 +89,22 @@ run_with_heartbeat() {
   done
   local rc=0
   wait "$pid" || rc=$?
+  # Loud failure: dump the log + emit a clear FAIL marker so the
+  # caller can `grep` for it and so silent stale-binary commits
+  # become impossible. Successful steps stay quiet (the caller
+  # prints its own "Built: ..." line, no need for an OK marker
+  # cluttering the output).
+  if [[ "$rc" -ne 0 ]]; then
+    echo "" >&2
+    echo "============================================================" >&2
+    echo "  FAIL: ${label} (exit ${rc})" >&2
+    echo "  log: ${log}" >&2
+    echo "============================================================" >&2
+    if [[ -f "$log" ]]; then
+      tail -80 "$log" >&2
+      echo "------------------------------------------------------------" >&2
+    fi
+  fi
   return "$rc"
 }
 
@@ -803,3 +819,8 @@ EOF
 fi
 
 echo "=== Pipeline complete ==="
+# Loud success marker. With `set -e` propagating any earlier failure
+# this line is only reached on a clean run — useful to grep for in
+# build logs and to gate downstream automation. Symmetric with the
+# FAIL banner emitted by run_with_heartbeat's failure path.
+echo "BUILD_STATUS=OK"
