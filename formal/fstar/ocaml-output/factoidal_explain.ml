@@ -242,36 +242,18 @@ let bgps_in_query (q : A.query) : A.bgp list =
    directly tells us why the optimiser picked the order it did.
    ========================================================================= *)
 
-(* When `cottas_ondisk_estimate` is invoked with a bound predicate AND
-   another bound (s/o/g), it falls into `estimate_fast_via_offsets`'s
-   slow walk path that decodes data pages of every candidate row group.
-   That walk takes minutes on a 3M-row corpus.
-
-   For BGP join-order analysis we only need an *ordinal* cardinality
-   (off-by-2x is fine; off-by-100x wastes plan budget but doesn't
-   change correctness). Mem5's bitmap-only `estimate_fast_inner` gives
-   that in microseconds.
-
-   We bypass the slow lamed3 path by calling Mem5's inner function
-   directly when both bound_p AND (bound_s OR bound_o) are set. This
-   matches the optimiser-quality cardinality numbers without paying
-   the per-rg data-page decode tax. *)
+(* Issue #110 retirement (2026-04-29): the OCaml-side
+   `estimate_fast_inner` Mem5 bypass was retired with the rest of the
+   dead-on-public-path COTTAS shims. Use the F*-extracted public
+   `cottas_ondisk_estimate` for all bound shapes. If a future
+   estimate path turns out to be too slow on 3M-row corpora,
+   speed it up in F*, not by re-introducing an OCaml bypass
+   (rule #11). *)
 let cottas_estimate_quick
     (cods : C.cottas_ondisk_store)
     (bound : P.cottas_bound_qp)
   : int =
-  let h = cods.C.cods_handle in
-  let bp_set = bound.P.cbqp_p <> FStar_Pervasives_Native.None in
-  let bs_set = bound.P.cbqp_s <> FStar_Pervasives_Native.None in
-  let bo_set = bound.P.cbqp_o <> FStar_Pervasives_Native.None in
-  if bp_set && (bs_set || bo_set) then
-    (* Bypass lamed3 (which would do a slow data-page walk); go
-       straight to Mem5's bitmap-only inner path. *)
-    C.Cottas_ondisk_runtime.estimate_fast_inner h bound
-  else
-    (* Other shapes: cottas_ondisk_estimate is fast (footer-only or
-       lamed3 row-position-count fast path or mem5 unbound). *)
-    Z.to_int (C.cottas_ondisk_estimate cods bound)
+  Z.to_int (C.cottas_ondisk_estimate cods bound)
 
 type bound_status =
   | BS_Var of string                  (* ?varname — unbound *)
