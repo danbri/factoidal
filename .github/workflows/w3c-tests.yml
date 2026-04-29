@@ -18,16 +18,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    # Dual-platform shadow builds. Each matrix leg auto-commits binaries
-    # to bin/ci-<platform>/ (NOT bin/<platform>/ — those stay reserved for
-    # local builds + manual promotion). Extracted .ml files land in
-    # formal/fstar/ocaml-output-ci/ from both legs.
-    #
-    # The Ubuntu leg also handles the platform-independent artifacts
-    # (docs/test-results/, docs/fstar-extracted/, *_results.log) and the
-    # Wasm pipeline. The macOS leg only produces native binaries + the
-    # extracted .ml shadow.
+  native-shadow:
+    # Dual-platform native shadow builds. Each matrix leg auto-commits
+    # binaries to bin/ci-<platform>/ (NOT bin/<platform>/ — those stay
+    # reserved for local builds + manual promotion). Extracted .ml files
+    # land in formal/fstar/ocaml-output-ci/ from both legs.
     strategy:
       fail-fast: false
       matrix:
@@ -100,15 +95,6 @@ jobs:
           # Pin z3 to 4.13.3 — F* 2025.12.15 requires exact match
           opam pin add z3 4.13.3 -y --no-action 2>/dev/null || true
           opam install -y fstar z3.4.13.3 zarith sha digestif
-          if [ "${{ runner.os }}" = "Linux" ]; then
-            # wasm_of_ocaml: binaryen is available via /usr/local from the
-            # previous step; opam's conf-binaryen just probes for wasm-opt in
-            # PATH. --assume-depexts skips system-package re-check.
-            opam install -y --assume-depexts js_of_ocaml js_of_ocaml-compiler zarith_stubs_js wasm_of_ocaml-compiler
-          else
-            # macOS: skip wasm_of_ocaml, keep js_of_ocaml so jsoo build still works.
-            opam install -y js_of_ocaml js_of_ocaml-compiler zarith_stubs_js
-          fi
           echo "OPAMSWITCH=fstar" >> $GITHUB_ENV
 
       - name: Build native (extract + compile)
@@ -224,26 +210,95 @@ jobs:
             exit "$PUSH_RC"
           fi
 
-      - name: Build JS
+      - name: Run tests (Linux — native binaries only)
         if: runner.os == 'Linux'
+        run: |
+          eval $(opam env --switch=fstar)
+          cd formal/fstar
+          ./build-ocaml.sh test
+
+      - name: Run tests (macOS — native binaries only)
+        if: runner.os == 'macOS'
+        run: |
+          # macOS leg: skip the full suite / docs refresh (Linux owns those).
+          # Just exercise the freshly-built native runner so the binary we
+          # commit to bin/ci-darwin-arm64/ has at least one round-trip.
+          eval $(opam env --switch=fstar)
+          cd formal/fstar/ocaml-output
+          ./w3c_runner bind 2>&1 | tee /tmp/macos_smoke.log || true
+          grep -q 'bind' /tmp/macos_smoke.log
+
+  browser-artifacts:
+    # Linux-only browser/runtime artifacts. This job owns JS / wasm / docs
+    # generation and can fail independently from the native shadow binaries.
+    needs: native-shadow
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Cache opam
+        uses: actions/cache@v4
+        with:
+          path: ~/.opam
+          key: opam-fstar-${{ runner.os }}-v3
+          restore-keys: |
+            opam-fstar-${{ runner.os }}-
+
+      - name: Install system deps (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y opam libgmp-dev pkg-config
+
+      - name: Install binaryen (wasm-merge) from GitHub release
+        run: |
+          BINARYEN_VERSION=version_129
+          curl -sL "https://github.com/WebAssembly/binaryen/releases/download/${BINARYEN_VERSION}/binaryen-${BINARYEN_VERSION}-x86_64-linux.tar.gz" \
+            | sudo tar -xz -C /usr/local --strip-components=1
+          wasm-merge --version
+          wasm-opt --version
+
+      - name: Setup opam + F*
+        run: |
+          if [ ! -d ~/.opam ]; then
+            opam init -y --disable-sandboxing
+            opam switch create fstar ocaml-base-compiler.4.14.1
+          fi
+          eval $(opam env --switch=fstar)
+          opam pin add z3 4.13.3 -y --no-action 2>/dev/null || true
+          opam install -y fstar z3.4.13.3 zarith sha digestif
+          opam install -y --assume-depexts js_of_ocaml js_of_ocaml-compiler zarith_stubs_js wasm_of_ocaml-compiler
+          echo "OPAMSWITCH=fstar" >> $GITHUB_ENV
+
+      - name: Build native (extract + compile)
+        run: |
+          eval $(opam env --switch=fstar)
+          cd formal/fstar
+          ./build-ocaml.sh extract
+          ./build-ocaml.sh compile
+
+      - name: Build JS
         run: |
           eval $(opam env --switch=fstar)
           cd formal/fstar
           ./build-ocaml.sh js
 
       - name: Build Wasm
-        if: runner.os == 'Linux'
         run: |
           eval $(opam env --switch=fstar)
           cd formal/fstar
           ./build-ocaml.sh wasm
 
+      - name: Run tests and generate report
+        run: |
+          eval $(opam env --switch=fstar)
+          cd formal/fstar
+          ./build-ocaml.sh test
+
       - name: Smoke test Wasm
-        if: runner.os == 'Linux'
         run: |
           cd docs/fstar-extracted
-          # bind is a zarith-heavy suite; if it passes, the wasm init +
-          # zarith runtime + manifest parser all round-tripped cleanly.
           RESULT=$(node w3c-runner.wasm.js bind)
           echo "$RESULT"
           echo "$RESULT" | grep -q '^  bind[[:space:]]*pass:10 fail:0' || {
@@ -252,44 +307,18 @@ jobs:
           }
 
       - name: Full Wasm suite (SPARQL + RDF)
-        if: runner.os == 'Linux'
         run: |
           cd docs/fstar-extracted
-          # Run everything under Node's wasm_of_ocaml path. This is slower
-          # than native (~5-10 min) but gives us parity visibility vs the
-          # native runner. We record the results but do not gate CI on them
-          # — known wasm-side gaps (property-path: 29/33, 4 tests below
-          # native; some hashes if digestif regresses) don't block merges.
           WASM_RC=0
           node w3c-runner.wasm.js --all 2>&1 | tee wasm_results.log || WASM_RC=$?
           echo "Wasm runner exit: $WASM_RC"
-          # Extract the two TOTAL lines for quick CI-log visibility.
           grep -E '^TOTAL' wasm_results.log || true
           echo "=== Wasm vs native diff ==="
           diff <(grep -E '^  [a-z].*pass:' ../../formal/fstar/ocaml-output/sparql_results.log) \
                <(grep -E '^  [a-z].*pass:' wasm_results.log) \
                || echo "(differences above — check which suites diverge)"
 
-      - name: Run tests and generate report
-        if: runner.os == 'Linux'
-        run: |
-          eval $(opam env --switch=fstar)
-          cd formal/fstar
-          ./generate-report.sh --run
-
-      - name: Run tests (macOS — native binaries only)
-        if: runner.os == 'macOS'
-        run: |
-          # macOS leg: skip generate-report (Ubuntu owns docs/test-results/).
-          # Just exercise the freshly-built native runner so the binary we
-          # commit to bin/ci-darwin-arm64/ has at least one round-trip.
-          eval $(opam env --switch=fstar)
-          cd formal/fstar/ocaml-output
-          ./w3c_runner bind 2>&1 | tee /tmp/macos_smoke.log || true
-          grep -q 'bind' /tmp/macos_smoke.log
-
       - name: Commit + push Linux generated docs artifacts
-        if: runner.os == 'Linux'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
