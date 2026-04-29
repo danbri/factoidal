@@ -1,0 +1,17 @@
+{
+  "platform": "linux-x86_64",
+  "runner_os": "Linux",
+  "timestamp_utc": "2026-04-29T11:11:50Z",
+  "source_sha": "0da371ed89af63b435446cdc353984b22638237b",
+  "fstar_version": "F* 2025.12.15",
+  "ocaml_version": "The OCaml toplevel, version 4.14.1",
+  "opam_switch": "fstar",
+  "binaries": {
+    "cottas_ondisk_smoketest": { "sha256": "0da991026dcf2e98329b1761ddd27e17f33a027c853636411c3c009822c6adfb", "size": 9745936 },
+    "factoidal": { "sha256": "092edc16c1692269aed1bf90f0b93174017c05624e9e3253eb8412d34e02e443", "size": 10904024 },
+    "factoidal-http": { "sha256": "dea82fb76138ff34ae27aa09b6935f3af1cef78c577532915f2d35e69fd62f85", "size": 10687288 },
+    "owl_runner": { "sha256": "74702360d7c566254a59d993dd582ea2a014b2741f633d53a64f9a226a891a1a", "size": 9770768 },
+    "rdfc10_runner": { "sha256": "edf21b02b544414f17c0a7c9ee575584532c323ca005b00b5eff0dbe235db221", "size": 9770928 },
+    "w3c_runner": { "sha256": "cb5f966c9902c9a0e3a2704c6b1bfb8de1fdc3a20f57ca8101f79f8afcae4f11", "size": 9926704 }
+  }
+}
