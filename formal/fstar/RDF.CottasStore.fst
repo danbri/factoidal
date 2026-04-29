@@ -5,6 +5,7 @@ open Parser.BallyhooCOTTAS
 open Parquet.Footer
 open RDF.CottasStore.PageCache
 open RDF.CottasStore.ColumnSeq
+module CPO = RDF.CottasStore.CompoundPresenceBitmap
 
 // On-disk COTTAS store, query-time interface (issue #100).
 //
@@ -298,6 +299,50 @@ let graph_cell_match (expected : option string) (actual : string)
   : Tot bool = cell_match expected actual
 
 // ---- Row-group walk -------------------------------------------------
+
+// Phase 2.7-mini Phase 2 (issue #118): id→raw-token lookup, mirror of
+// the token→id assume-vals declared further below.
+//
+// Why: `id_to_raw_token` walks `h.coh_*_raw` assoc-lists which are
+// EMPTY on Bet7-lazy-opened handles (Bet7 defers their construction).
+// On Bet7 handles, `id_to_raw_token` falls through to a sentinel
+// `"\x00cottas_decode_oor"` which never matches a real column-token,
+// so the bound-query F* path silently degenerates: ALL row-groups
+// become "candidates" (compute_candidate_rgs_loop's safe-fallback)
+// and the executor walks them looking for matches that never come.
+// Net symptom: every bound query on a Bet7 handle hits the 30s
+// timeout (post-2.5e regression, masked through 7cf9ebc by stale
+// binaries).
+//
+// The OCaml runtime carries this data in
+// `Cottas_ondisk_runtime.fast_tables.ft_id_to_*_tok : (int, string)
+// Hashtbl.t`, populated by `Cottas_ondisk_lazy.ensure_*_loaded`. These
+// four assume-vals expose that lookup to the F* spec, just like
+// Phase 1's `ondisk_lookup_*_id_global` did for the inverse direction.
+assume val ondisk_id_to_subj_token_global :
+  (path : string) -> (id : nat) -> Tot (option string)
+assume val ondisk_id_to_pred_token_global :
+  (path : string) -> (id : nat) -> Tot (option string)
+assume val ondisk_id_to_obj_token_global :
+  (path : string) -> (id : nat) -> Tot (option string)
+assume val ondisk_id_to_graph_token_global :
+  (path : string) -> (id : nat) -> Tot (option string)
+
+// Bet7-aware mirror of `id_to_raw_token`. Used by cottas_ondisk_search
+// / _estimate / _search_limited to translate the user-supplied
+// `cottas_term_ref` (= nat id from cottas_ondisk_encode_*) to the raw
+// column-token string the executor's `cell_match` will compare
+// against. If the OCaml table doesn't have this id (definitively-empty
+// query: the bound term isn't in the corpus) we return None and the
+// caller short-circuits to an empty result.
+let id_to_raw_token_via_global
+  (lookup : string -> nat -> Tot (option string))
+  (path : string)
+  (id : option cottas_term_ref)
+  : Tot (option string) =
+  match id with
+  | None -> None
+  | Some i -> lookup path i
 
 // Phase 2.7-mini (issue #118): token→id lookup for the search hot path.
 //
@@ -939,6 +984,54 @@ let plan_candidate_rgs
   let (final, c, _) = st4 in
   (final, c)
 
+// Phase 2.6 (issue #118): compound (p, o) joint-presence prune.
+//
+// `plan_candidate_rgs` above intersects per-column dict-page candidate
+// sets — strictly more selective than the per-RG presence bitmaps but
+// still per-column. When BOTH bound_p and bound_o are present, the
+// compound (p, o) bitmap (`<path>.po.presence`, written at corpus
+// build time and read by `RDF.CottasStore.CompoundPresenceBitmap`)
+// can rule out RGs that have BOTH tokens present individually but
+// never as the same row. On the parliament corpus's Q03
+// (`?o a wktLiteral`) this drops candidates from 2 RGs to 0.
+//
+// Implementation notes:
+//
+//   * Token→id is resolved via `ondisk_lookup_pred_id_global` /
+//     `_obj_id_global` — the same Phase 2.7-mini boundary
+//     `build_qp_row` uses, so the lookup honours Bet7's lazy populate.
+//
+//   * Companion file `<path>.po.presence` is opened per call. It is
+//     small (kB-scale on parliament's 956k objects × 232 predicates
+//     × 26 RGs) so the open cost is negligible vs the saved DLBA
+//     decode of pruned RGs. Future: open at handle-open time and
+//     cache via assume val.
+//
+//   * Either bound missing, or either lookup returning None, or the
+//     companion file missing → return candidates unchanged
+//     (sound over-include; the executor's filter-loop will catch the
+//     rest).
+let filter_candidates_by_compound_po
+  (path : string)
+  (candidates : list nat)
+  (bound_p_str bound_o_str : option string)
+  : Tot (list nat) =
+  match bound_p_str, bound_o_str with
+  | Some bp, Some bo ->
+    let p_id = ondisk_lookup_pred_id_global path bp in
+    let o_id = ondisk_lookup_obj_id_global  path bo in
+    (match p_id, o_id with
+     | Some _, Some _ ->
+       let oh = CPO.open_compound (path ^ ".po.presence") in
+       (match oh with
+        | None -> candidates  // companion file missing → no opinion
+        | Some _ ->
+          List.Tot.filter
+            (fun rg -> CPO.compound_rg_passes_pair oh rg p_id o_id)
+            candidates)
+     | _ -> candidates)
+  | _ -> candidates
+
 // ---- Public search / estimate --------------------------------------
 
 // Phase 2.5e (issue #118): use the global-cache walks. Page cache state
@@ -953,10 +1046,10 @@ let cottas_ondisk_search
   (ds : cottas_ondisk_store) (bound : cottas_bound_qp)
   : Tot (list cottas_qp_row) =
   let h = ds.cods_handle in
-  let bound_s = id_to_raw_token h.coh_subjects_raw   bound.cbqp_s in
-  let bound_p = id_to_raw_token h.coh_predicates_raw bound.cbqp_p in
-  let bound_o = id_to_raw_token h.coh_objects_raw    bound.cbqp_o in
-  let bound_g = id_to_raw_token h.coh_graphs_raw     bound.cbqp_g in
+  let bound_s = id_to_raw_token_via_global ondisk_id_to_subj_token_global  h.coh_path bound.cbqp_s in
+  let bound_p = id_to_raw_token_via_global ondisk_id_to_pred_token_global  h.coh_path bound.cbqp_p in
+  let bound_o = id_to_raw_token_via_global ondisk_id_to_obj_token_global   h.coh_path bound.cbqp_o in
+  let bound_g = id_to_raw_token_via_global ondisk_id_to_graph_token_global h.coh_path bound.cbqp_g in
   match probe_parquet_row_group_count h.coh_path with
   | None -> []
   | Some rg_count ->
@@ -965,8 +1058,11 @@ let cottas_ondisk_search
     let any_bound_present =
       Some? bound_s || Some? bound_p || Some? bound_o || Some? bound_g in
     if any_bound_present then
-      let (candidates, _dc) = plan_candidate_rgs h
+      let (candidates0, _dc) = plan_candidate_rgs h
         bound_s bound_p bound_o bound_g rg_count in
+      // Phase 2.6: AND-compose with compound (p,o) bitmap when both bound.
+      let candidates = filter_candidates_by_compound_po
+        h.coh_path candidates0 bound_p bound_o in
       let acc_rev = walk_candidate_rgs_search_global h
         bound_s bound_p bound_o bound_g
         candidates [] in
@@ -1173,18 +1269,21 @@ let cottas_ondisk_search_limited
   (ds : cottas_ondisk_store) (bound : cottas_bound_qp) (limit : nat)
   : Tot (list cottas_qp_row) =
   let h = ds.cods_handle in
-  let bound_s = id_to_raw_token h.coh_subjects_raw   bound.cbqp_s in
-  let bound_p = id_to_raw_token h.coh_predicates_raw bound.cbqp_p in
-  let bound_o = id_to_raw_token h.coh_objects_raw    bound.cbqp_o in
-  let bound_g = id_to_raw_token h.coh_graphs_raw     bound.cbqp_g in
+  let bound_s = id_to_raw_token_via_global ondisk_id_to_subj_token_global  h.coh_path bound.cbqp_s in
+  let bound_p = id_to_raw_token_via_global ondisk_id_to_pred_token_global  h.coh_path bound.cbqp_p in
+  let bound_o = id_to_raw_token_via_global ondisk_id_to_obj_token_global   h.coh_path bound.cbqp_o in
+  let bound_g = id_to_raw_token_via_global ondisk_id_to_graph_token_global h.coh_path bound.cbqp_g in
   match probe_parquet_row_group_count h.coh_path with
   | None -> []
   | Some rg_count ->
     let any_bound_present =
       Some? bound_s || Some? bound_p || Some? bound_o || Some? bound_g in
     if any_bound_present then
-      let (candidates, _dc) = plan_candidate_rgs h
+      let (candidates0, _dc) = plan_candidate_rgs h
         bound_s bound_p bound_o bound_g rg_count in
+      // Phase 2.6: compound (p,o) prune.
+      let candidates = filter_candidates_by_compound_po
+        h.coh_path candidates0 bound_p bound_o in
       let acc_rev = walk_candidate_rgs_search_limited_global h
         bound_s bound_p bound_o bound_g
         candidates [] 0 limit in
@@ -1199,10 +1298,10 @@ let cottas_ondisk_estimate
   (ds : cottas_ondisk_store) (bound : cottas_bound_qp)
   : Tot nat =
   let h = ds.cods_handle in
-  let bound_s = id_to_raw_token h.coh_subjects_raw   bound.cbqp_s in
-  let bound_p = id_to_raw_token h.coh_predicates_raw bound.cbqp_p in
-  let bound_o = id_to_raw_token h.coh_objects_raw    bound.cbqp_o in
-  let bound_g = id_to_raw_token h.coh_graphs_raw     bound.cbqp_g in
+  let bound_s = id_to_raw_token_via_global ondisk_id_to_subj_token_global  h.coh_path bound.cbqp_s in
+  let bound_p = id_to_raw_token_via_global ondisk_id_to_pred_token_global  h.coh_path bound.cbqp_p in
+  let bound_o = id_to_raw_token_via_global ondisk_id_to_obj_token_global   h.coh_path bound.cbqp_o in
+  let bound_g = id_to_raw_token_via_global ondisk_id_to_graph_token_global h.coh_path bound.cbqp_g in
   let any_bound_present =
     Some? bound_s || Some? bound_p || Some? bound_o || Some? bound_g in
   if not any_bound_present then
@@ -1250,8 +1349,11 @@ let cottas_ondisk_estimate
     match probe_parquet_row_group_count h.coh_path with
     | None -> 0
     | Some rg_count ->
-      let (candidates, _dc) = plan_candidate_rgs h
+      let (candidates0, _dc) = plan_candidate_rgs h
         bound_s bound_p bound_o bound_g rg_count in
+      // Phase 2.6: compound (p,o) prune for the estimator too.
+      let candidates = filter_candidates_by_compound_po
+        h.coh_path candidates0 bound_p bound_o in
       let n_candidates : nat = List.Tot.length candidates in
       if n_candidates = 0 then 0
       else if rg_count = 0 then 0
@@ -1262,7 +1364,11 @@ let cottas_ondisk_estimate
            // avg_rows_per_rg = total_rows / rg_count (truncating).
            // estimate = n_candidates * avg_rows_per_rg.
            let avg : nat = total_rows / rg_count in
-           n_candidates `op_Multiply` avg)
+           // Clamp for the F* subtyping checker: `nat * nat = int` in
+           // Prims, so an explicit non-negative check is needed to
+           // give the function its declared `Tot nat` return type.
+           let prod : int = n_candidates `op_Multiply` avg in
+           if prod < 0 then 0 else prod)
 
 // ----------------------------------------------------------------------
 // Bound-pattern + row-to-quad helpers (moved from Parser.BallyhooCOTTAS).

@@ -103,15 +103,38 @@ module Cottas_token_lookup_global = struct
       (match Hashtbl.find_opt (table_of tables) token with
        | Some i -> FStar_Pervasives_Native.Some (Z.of_int i)
        | None   -> FStar_Pervasives_Native.None)
+
+  (* Phase 2.7-mini Phase 2: id -> raw token (mirror of lookup_with_ensure).
+     Used by `id_to_raw_token_via_global` in the F* spec. Same Bet7-aware
+     ensure_*_loaded routing; takes an id, returns the raw column-token
+     string. *)
+  let id_to_token_with_ensure
+      (ensure : cottas_ondisk_handle -> Cottas_ondisk_runtime.fast_tables -> unit)
+      (table_of : Cottas_ondisk_runtime.fast_tables -> (Stdlib.Int.t, string) Hashtbl.t)
+      (path : Prims.string) (id : Prims.nat)
+    : Prims.string FStar_Pervasives_Native.option =
+    match Hashtbl.find_opt Cottas_ondisk_runtime.handles path with
+    | None -> FStar_Pervasives_Native.None
+    | Some h ->
+      let tables = Cottas_ondisk_runtime.tables_for h in
+      ensure h tables;
+      (match Hashtbl.find_opt (table_of tables) (Z.to_int id) with
+       | Some s -> FStar_Pervasives_Native.Some s
+       | None   -> FStar_Pervasives_Native.None)
 end
 
 '''
 
-# Insert helper module just BEFORE the first `ondisk_lookup_*_id_global`
-# extracted stub so the realisations below can reference it.
-anchor = "let ondisk_lookup_subj_id_global "
+# Insert helper module just BEFORE the first ondisk_*_global extracted
+# stub so the realisations below can reference it. F* declares the
+# id->token assume-vals before the token->id ones, so the first stub
+# in OCaml extraction order is `ondisk_id_to_subj_token_global`.
+anchor = "let ondisk_id_to_subj_token_global "
 if anchor not in content:
-    sys.stderr.write("  [token-lookup-runtime] FATAL: ondisk_lookup_subj_id_global stub not found; F* extraction may have changed.\n")
+    # Fallback for older builds (only token->id assume-vals existed).
+    anchor = "let ondisk_lookup_subj_id_global "
+if anchor not in content:
+    sys.stderr.write("  [token-lookup-runtime] FATAL: no ondisk_*_global stub found; F* extraction may have changed.\n")
     sys.exit(1)
 
 content = content.replace(anchor, helper_block + anchor, 1)
@@ -130,6 +153,41 @@ column_specs = [
 ]
 
 applied = 0
+
+# ---- Phase 2: id -> raw token assume-vals (mirror of token -> id).
+id_to_tok_specs = [
+    ("subj",  "ensure_subjects_loaded",   "ft_id_to_subj_tok"),
+    ("pred",  "ensure_predicates_loaded", "ft_id_to_pred_tok"),
+    ("obj",   "ensure_objects_loaded",    "ft_id_to_obj_tok"),
+    ("graph", "ensure_graphs_loaded",     "ft_id_to_graph_tok"),
+]
+
+for col, ensure_fn, table_field in id_to_tok_specs:
+    fn = f"ondisk_id_to_{col}_token_global"
+    pattern = re.compile(
+        r"let " + re.escape(fn) +
+        r"\s*\(path\s*:\s*Prims\.string\)\s*\(id\s*:\s*Prims\.nat\)\s*"
+        r":\s*Prims\.string\s+FStar_Pervasives_Native\.option=\s*"
+        r"failwith\s*"
+        r'"Not yet implemented: RDF\.CottasStore\.' + re.escape(fn) + r'"',
+        re.MULTILINE,
+    )
+    new_body = (
+        f"let {fn} (path : Prims.string) (id : Prims.nat)\n"
+        f"  : Prims.string FStar_Pervasives_Native.option =\n"
+        f"  Cottas_token_lookup_global.id_to_token_with_ensure\n"
+        f"    Cottas_ondisk_runtime.{ensure_fn}\n"
+        f"    (fun t -> t.Cottas_ondisk_runtime.{table_field})\n"
+        f"    path id"
+    )
+    new_content, n = pattern.subn(new_body, content, count=1)
+    if n == 1:
+        content = new_content
+        applied += 1
+    else:
+        sys.stderr.write(f"  [token-lookup-runtime] WARN: {fn} stub not found (regex didn't match)\n")
+
+# ---- Phase 1: token -> id assume-vals (existing).
 for col, ensure_fn, table_field in column_specs:
     fn = f"ondisk_lookup_{col}_id_global"
     # Permissive pattern: header (any whitespace, including line breaks
@@ -159,7 +217,7 @@ for col, ensure_fn, table_field in column_specs:
         sys.stderr.write(f"  [token-lookup-runtime] WARN: {fn} stub not found (regex didn't match)\n")
 
 path.write_text(content)
-sys.stderr.write(f"  [token-lookup-runtime] applied {applied}/4 ondisk_lookup_*_id_global realisations\n")
+sys.stderr.write(f"  [token-lookup-runtime] applied {applied}/8 ondisk_lookup_*_id_global + ondisk_id_to_*_token_global realisations\n")
 PYEOF
 
 echo "  Cottas token-lookup runtime applied."

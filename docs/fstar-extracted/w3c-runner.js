@@ -10459,11 +10459,11 @@ b!=="number")switch(b[0]){case
 f=2===b[1][0]?1:0;return f?f:2===b[3][0]?1:0;case
 8:case
 11:break;case
-1:case
-2:case
-4:case
-6:var
-e=fG(b[1]);if(e)return e;b=b[2];continue;default:b=b[2];continue}return 0}var
+3:case
+5:case
+9:case
+10:b=b[2];continue;default:var
+e=fG(b[1]);if(e)return e;b=b[2];continue}return 0}var
 c=b[1];for(;;){if(c){var
 d=c[1],i=2===d[1][0]?1:0,j=i||(2===d[2][0]?1:0),g=j||(2===d[3][0]?1:0);if(!g){c=c[2];continue}var
 h=g}else

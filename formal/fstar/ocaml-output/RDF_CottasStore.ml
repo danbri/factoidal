@@ -2114,8 +2114,59 @@ module Cottas_token_lookup_global = struct
       (match Hashtbl.find_opt (table_of tables) token with
        | Some i -> FStar_Pervasives_Native.Some (Z.of_int i)
        | None   -> FStar_Pervasives_Native.None)
+
+  (* Phase 2.7-mini Phase 2: id -> raw token (mirror of lookup_with_ensure).
+     Used by `id_to_raw_token_via_global` in the F* spec. Same Bet7-aware
+     ensure_*_loaded routing; takes an id, returns the raw column-token
+     string. *)
+  let id_to_token_with_ensure
+      (ensure : cottas_ondisk_handle -> Cottas_ondisk_runtime.fast_tables -> unit)
+      (table_of : Cottas_ondisk_runtime.fast_tables -> (Stdlib.Int.t, string) Hashtbl.t)
+      (path : Prims.string) (id : Prims.nat)
+    : Prims.string FStar_Pervasives_Native.option =
+    match Hashtbl.find_opt Cottas_ondisk_runtime.handles path with
+    | None -> FStar_Pervasives_Native.None
+    | Some h ->
+      let tables = Cottas_ondisk_runtime.tables_for h in
+      ensure h tables;
+      (match Hashtbl.find_opt (table_of tables) (Z.to_int id) with
+       | Some s -> FStar_Pervasives_Native.Some s
+       | None   -> FStar_Pervasives_Native.None)
 end
 
+let ondisk_id_to_subj_token_global (path : Prims.string) (id : Prims.nat)
+  : Prims.string FStar_Pervasives_Native.option =
+  Cottas_token_lookup_global.id_to_token_with_ensure
+    Cottas_ondisk_runtime.ensure_subjects_loaded
+    (fun t -> t.Cottas_ondisk_runtime.ft_id_to_subj_tok)
+    path id
+let ondisk_id_to_pred_token_global (path : Prims.string) (id : Prims.nat)
+  : Prims.string FStar_Pervasives_Native.option =
+  Cottas_token_lookup_global.id_to_token_with_ensure
+    Cottas_ondisk_runtime.ensure_predicates_loaded
+    (fun t -> t.Cottas_ondisk_runtime.ft_id_to_pred_tok)
+    path id
+let ondisk_id_to_obj_token_global (path : Prims.string) (id : Prims.nat)
+  : Prims.string FStar_Pervasives_Native.option =
+  Cottas_token_lookup_global.id_to_token_with_ensure
+    Cottas_ondisk_runtime.ensure_objects_loaded
+    (fun t -> t.Cottas_ondisk_runtime.ft_id_to_obj_tok)
+    path id
+let ondisk_id_to_graph_token_global (path : Prims.string) (id : Prims.nat)
+  : Prims.string FStar_Pervasives_Native.option =
+  Cottas_token_lookup_global.id_to_token_with_ensure
+    Cottas_ondisk_runtime.ensure_graphs_loaded
+    (fun t -> t.Cottas_ondisk_runtime.ft_id_to_graph_tok)
+    path id
+let id_to_raw_token_via_global
+  (lookup :
+    Prims.string -> Prims.nat -> Prims.string FStar_Pervasives_Native.option)
+  (path : Prims.string)
+  (id : Parser_BallyhooCOTTAS.cottas_term_ref FStar_Pervasives_Native.option)
+  : Prims.string FStar_Pervasives_Native.option=
+  match id with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some i -> lookup path i
 let ondisk_lookup_subj_id_global (path : Prims.string) (token : Prims.string)
   : Prims.nat FStar_Pervasives_Native.option =
   Cottas_token_lookup_global.lookup_with_ensure
@@ -2765,18 +2816,46 @@ let plan_candidate_rgs (h : cottas_ondisk_handle)
   let st3 = step st2 (Prims.of_int (2)) bound_o in
   let st4 = step st3 (Prims.of_int (3)) bound_g in
   let uu___ = st4 in match uu___ with | (final, c, uu___1) -> (final, c)
+let filter_candidates_by_compound_po (path : Prims.string)
+  (candidates : Prims.nat Prims.list)
+  (bound_p_str : Prims.string FStar_Pervasives_Native.option)
+  (bound_o_str : Prims.string FStar_Pervasives_Native.option) :
+  Prims.nat Prims.list=
+  match (bound_p_str, bound_o_str) with
+  | (FStar_Pervasives_Native.Some bp, FStar_Pervasives_Native.Some bo) ->
+      let p_id = ondisk_lookup_pred_id_global path bp in
+      let o_id = ondisk_lookup_obj_id_global path bo in
+      (match (p_id, o_id) with
+       | (FStar_Pervasives_Native.Some uu___, FStar_Pervasives_Native.Some
+          uu___1) ->
+           let oh =
+             RDF_CottasStore_CompoundPresenceBitmap.open_compound
+               (Prims.strcat path ".po.presence") in
+           (match oh with
+            | FStar_Pervasives_Native.None -> candidates
+            | FStar_Pervasives_Native.Some uu___2 ->
+                FStar_List_Tot_Base.filter
+                  (fun rg ->
+                     RDF_CottasStore_CompoundPresenceBitmap.compound_rg_passes_pair
+                       oh rg p_id o_id) candidates)
+       | uu___ -> candidates)
+  | uu___ -> candidates
 let cottas_ondisk_search (ds : cottas_ondisk_store)
   (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) :
   Parser_BallyhooCOTTAS.cottas_qp_row Prims.list=
   let h = ds.cods_handle in
   let bound_s =
-    id_to_raw_token h.coh_subjects_raw bound.Parser_BallyhooCOTTAS.cbqp_s in
+    id_to_raw_token_via_global ondisk_id_to_subj_token_global h.coh_path
+      bound.Parser_BallyhooCOTTAS.cbqp_s in
   let bound_p =
-    id_to_raw_token h.coh_predicates_raw bound.Parser_BallyhooCOTTAS.cbqp_p in
+    id_to_raw_token_via_global ondisk_id_to_pred_token_global h.coh_path
+      bound.Parser_BallyhooCOTTAS.cbqp_p in
   let bound_o =
-    id_to_raw_token h.coh_objects_raw bound.Parser_BallyhooCOTTAS.cbqp_o in
+    id_to_raw_token_via_global ondisk_id_to_obj_token_global h.coh_path
+      bound.Parser_BallyhooCOTTAS.cbqp_o in
   let bound_g =
-    id_to_raw_token h.coh_graphs_raw bound.Parser_BallyhooCOTTAS.cbqp_g in
+    id_to_raw_token_via_global ondisk_id_to_graph_token_global h.coh_path
+      bound.Parser_BallyhooCOTTAS.cbqp_g in
   match Parquet_Footer.probe_parquet_row_group_count h.coh_path with
   | FStar_Pervasives_Native.None -> []
   | FStar_Pervasives_Native.Some rg_count ->
@@ -2790,7 +2869,10 @@ let cottas_ondisk_search (ds : cottas_ondisk_store)
         let uu___ =
           plan_candidate_rgs h bound_s bound_p bound_o bound_g rg_count in
         (match uu___ with
-         | (candidates, _dc) ->
+         | (candidates0, _dc) ->
+             let candidates =
+               filter_candidates_by_compound_po h.coh_path candidates0
+                 bound_p bound_o in
              let acc_rev =
                walk_candidate_rgs_search_global h bound_s bound_p bound_o
                  bound_g candidates [] in
@@ -3100,13 +3182,17 @@ let cottas_ondisk_search_limited (ds : cottas_ondisk_store)
   Parser_BallyhooCOTTAS.cottas_qp_row Prims.list=
   let h = ds.cods_handle in
   let bound_s =
-    id_to_raw_token h.coh_subjects_raw bound.Parser_BallyhooCOTTAS.cbqp_s in
+    id_to_raw_token_via_global ondisk_id_to_subj_token_global h.coh_path
+      bound.Parser_BallyhooCOTTAS.cbqp_s in
   let bound_p =
-    id_to_raw_token h.coh_predicates_raw bound.Parser_BallyhooCOTTAS.cbqp_p in
+    id_to_raw_token_via_global ondisk_id_to_pred_token_global h.coh_path
+      bound.Parser_BallyhooCOTTAS.cbqp_p in
   let bound_o =
-    id_to_raw_token h.coh_objects_raw bound.Parser_BallyhooCOTTAS.cbqp_o in
+    id_to_raw_token_via_global ondisk_id_to_obj_token_global h.coh_path
+      bound.Parser_BallyhooCOTTAS.cbqp_o in
   let bound_g =
-    id_to_raw_token h.coh_graphs_raw bound.Parser_BallyhooCOTTAS.cbqp_g in
+    id_to_raw_token_via_global ondisk_id_to_graph_token_global h.coh_path
+      bound.Parser_BallyhooCOTTAS.cbqp_g in
   match Parquet_Footer.probe_parquet_row_group_count h.coh_path with
   | FStar_Pervasives_Native.None -> []
   | FStar_Pervasives_Native.Some rg_count ->
@@ -3120,7 +3206,10 @@ let cottas_ondisk_search_limited (ds : cottas_ondisk_store)
         let uu___ =
           plan_candidate_rgs h bound_s bound_p bound_o bound_g rg_count in
         (match uu___ with
-         | (candidates, _dc) ->
+         | (candidates0, _dc) ->
+             let candidates =
+               filter_candidates_by_compound_po h.coh_path candidates0
+                 bound_p bound_o in
              let acc_rev =
                walk_candidate_rgs_search_limited_global h bound_s bound_p
                  bound_o bound_g candidates [] Prims.int_zero limit in
@@ -3134,13 +3223,17 @@ let cottas_ondisk_estimate (ds : cottas_ondisk_store)
   (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) : Prims.nat=
   let h = ds.cods_handle in
   let bound_s =
-    id_to_raw_token h.coh_subjects_raw bound.Parser_BallyhooCOTTAS.cbqp_s in
+    id_to_raw_token_via_global ondisk_id_to_subj_token_global h.coh_path
+      bound.Parser_BallyhooCOTTAS.cbqp_s in
   let bound_p =
-    id_to_raw_token h.coh_predicates_raw bound.Parser_BallyhooCOTTAS.cbqp_p in
+    id_to_raw_token_via_global ondisk_id_to_pred_token_global h.coh_path
+      bound.Parser_BallyhooCOTTAS.cbqp_p in
   let bound_o =
-    id_to_raw_token h.coh_objects_raw bound.Parser_BallyhooCOTTAS.cbqp_o in
+    id_to_raw_token_via_global ondisk_id_to_obj_token_global h.coh_path
+      bound.Parser_BallyhooCOTTAS.cbqp_o in
   let bound_g =
-    id_to_raw_token h.coh_graphs_raw bound.Parser_BallyhooCOTTAS.cbqp_g in
+    id_to_raw_token_via_global ondisk_id_to_graph_token_global h.coh_path
+      bound.Parser_BallyhooCOTTAS.cbqp_g in
   let any_bound_present =
     (((FStar_Pervasives_Native.uu___is_Some bound_s) ||
         (FStar_Pervasives_Native.uu___is_Some bound_p))
@@ -3163,7 +3256,10 @@ let cottas_ondisk_estimate (ds : cottas_ondisk_store)
          let uu___1 =
            plan_candidate_rgs h bound_s bound_p bound_o bound_g rg_count in
          (match uu___1 with
-          | (candidates, _dc) ->
+          | (candidates0, _dc) ->
+              let candidates =
+                filter_candidates_by_compound_po h.coh_path candidates0
+                  bound_p bound_o in
               let n_candidates = FStar_List_Tot_Base.length candidates in
               if n_candidates = Prims.int_zero
               then Prims.int_zero
@@ -3175,7 +3271,9 @@ let cottas_ondisk_estimate (ds : cottas_ondisk_store)
                    with
                    | FStar_Pervasives_Native.None -> n_candidates
                    | FStar_Pervasives_Native.Some total_rows ->
-                       let avg = total_rows / rg_count in n_candidates * avg)))
+                       let avg = total_rows / rg_count in
+                       let prod = n_candidates * avg in
+                       if prod < Prims.int_zero then Prims.int_zero else prod)))
 let cottas_ondisk_build_bound_qp_opt (ds : cottas_ondisk_store)
   (s : RDF_Graph_Executable.subject FStar_Pervasives_Native.option)
   (p : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
