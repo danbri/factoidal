@@ -109,38 +109,11 @@ runtime = r'''module Cottas_ondisk_runtime = struct
   let handles : (string, cottas_ondisk_handle) Hashtbl.t = Hashtbl.create 17
   let fast_table_cache : (string, fast_tables) Hashtbl.t = Hashtbl.create 17
 
-  (* Pe4 instrumentation: cheap per-row-group RSS / fd / GC accounting.
-     `ps -o rss=` returns kilobytes on macOS + Linux. fd count from
-     /dev/fd. Used by the per-rg [pe4-trace] lines in search_fast and
-     estimate_fast.
-
-     Note: `int` is Prims.int (Z.t) inside this file, so all native-int
-     scalars must use the `pint` alias declared above. *)
-  let pe4_rss_mb () : pint =
-    try
-      let pid = Unix.getpid () in
-      let cmd = Printf.sprintf "ps -o rss= -p %d 2>/dev/null" pid in
-      let ic = Unix.open_process_in cmd in
-      let line = try input_line ic with End_of_file -> "" in
-      let _ = Unix.close_process_in ic in
-      let s = String.trim line in
-      if String.length s = 0 then (-1)
-      else (try (int_of_string s) / 1024 with _ -> (-1))
-    with _ -> (-1)
-
-  let pe4_fd_count () : pint =
-    let candidates = ["/dev/fd"; "/proc/self/fd"] in
-    let rec try_all = function
-      | [] -> (-1)
-      | d :: rest ->
-        (try Array.length (Sys.readdir d) with _ -> try_all rest)
-    in try_all candidates
-
-  let pe4_gc_mb () : pint =
-    let s = Gc.quick_stat () in
-    let words = s.Gc.heap_words in
-    (* OCaml word = 8 bytes on 64-bit *)
-    (words * 8) / (1024 * 1024)
+  (* Issue #110 (2026-04-29): Pe4 instrumentation helpers
+     (pe4_rss_mb / pe4_fd_count / pe4_gc_mb) deleted along with the
+     search_fast / estimate_fast OCaml shim functions they served.
+     The F* extracted bodies now drive the public API path; their
+     tracing lives in the F* spec or the page-cache runtime. *)
 
   (* ---- Token parsing helpers. Convert an N-Triples-style raw column
          token (like "<iri>" / "_:b" / "\"lit\"^^<dt>" / "\"lit\"@en")
@@ -479,206 +452,20 @@ runtime = r'''module Cottas_ondisk_runtime = struct
       Hashtbl.add fast_table_cache handle.coh_path tables;
       tables
 
-  (* ---- Fast search/estimate (Hashtbl-backed; semantically equivalent
-         to the F* spec walk_row_groups_search/estimate but O(1) per
-         row instead of O(N) per revmap_lookup). ---- *)
-
-  let bound_id_to_token (id_to_tok : (pint, string) Hashtbl.t)
-    (b : Prims.nat FStar_Pervasives_Native.option) : string option =
-    match b with
-    | FStar_Pervasives_Native.None -> None
-    | FStar_Pervasives_Native.Some i ->
-      Hashtbl.find_opt id_to_tok (Z.to_int i)
-
-  let cell_match_str expected actual =
-    match expected with
-    | None -> true
-    | Some s -> s = actual
-
-  (* Walk all row groups, decode each column lazily, filter by string
-     bound, build cottas_qp_row via Hashtbl lookups. Mirrors
-     RDF_CottasStore.walk_row_groups_search but with O(1) revmap
-     lookups for build_qp_row. *)
-  let search_fast (h : cottas_ondisk_handle) (bound : Parser_BallyhooCOTTAS.cottas_bound_qp)
-    : Parser_BallyhooCOTTAS.cottas_qp_row list =
-    let path = h.coh_path in
-    let tables = tables_for h in
-    let bound_s = bound_id_to_token tables.ft_id_to_subj_tok  bound.Parser_BallyhooCOTTAS.cbqp_s in
-    let bound_p = bound_id_to_token tables.ft_id_to_pred_tok  bound.Parser_BallyhooCOTTAS.cbqp_p in
-    let bound_o = bound_id_to_token tables.ft_id_to_obj_tok   bound.Parser_BallyhooCOTTAS.cbqp_o in
-    let bound_g = bound_id_to_token tables.ft_id_to_graph_tok bound.Parser_BallyhooCOTTAS.cbqp_g in
-    Printf.eprintf "[qof3-trace] search_fast: bound s=%s p=%s o=%s g=%s\n%!"
-      (match bound_s with None -> "_" | Some s -> "<sub>" ^ s ^ "</sub>")
-      (match bound_p with None -> "_" | Some s -> s)
-      (match bound_o with None -> "_" | Some s -> "<obj>")
-      (match bound_g with None -> "_" | Some s -> s);
-    let rg_count = match Parquet_Footer.probe_parquet_row_group_count path with
-      | FStar_Pervasives_Native.None -> 0
-      | FStar_Pervasives_Native.Some n -> Z.to_int n in
-    Printf.eprintf "[qof3-trace] search_fast: rg_count=%d\n%!" rg_count;
-    Printf.eprintf "[pe4-trace] search_fast pre-walk rss=%dMB heap=%dMB fd=%d\n%!"
-      (pe4_rss_mb ()) (pe4_gc_mb ()) (pe4_fd_count ());
-    let acc = ref [] in
-    let n_matches = ref 0 in
-    let arr_of_col col_opt =
-      (* Phase 2.5c (issue #118): col_opt is now `cottas_column option`
-         (= `string option array option`), produced by
-         Cottas_pagecache_hot.cached_decode after the page-cache patch.
-         Identity-with-fallback. The previous shape was
-         `(option string) list option`, requiring Array.of_list. *)
-      match col_opt with
-      | FStar_Pervasives_Native.None -> [||]
-      | FStar_Pervasives_Native.Some arr -> arr in
-    let cell_of = function
-      | FStar_Pervasives_Native.Some s -> s
-      | FStar_Pervasives_Native.None -> "" in
-    let walk_rg rg =
-      Printf.eprintf "[pe4-trace] search_fast rg=%d enter rss=%dMB heap=%dMB matches=%d\n%!"
-        rg (pe4_rss_mb ()) (pe4_gc_mb ()) !n_matches;
-      let s_lst = Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int rg) Z.zero in
-      Printf.eprintf "[pe4-trace] search_fast rg=%d decoded col=0 (subject) rss=%dMB heap=%dMB\n%!"
-        rg (pe4_rss_mb ()) (pe4_gc_mb ());
-      let s_arr = arr_of_col s_lst in
-      Printf.eprintf "[pe4-trace] search_fast rg=%d arrayified col=0 n=%d rss=%dMB heap=%dMB\n%!"
-        rg (Array.length s_arr) (pe4_rss_mb ()) (pe4_gc_mb ());
-      let p_lst = Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int rg) Z.one in
-      Printf.eprintf "[pe4-trace] search_fast rg=%d decoded col=1 (predicate) rss=%dMB heap=%dMB\n%!"
-        rg (pe4_rss_mb ()) (pe4_gc_mb ());
-      let p_arr = arr_of_col p_lst in
-      let o_lst = Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int rg) (Z.of_int 2) in
-      Printf.eprintf "[pe4-trace] search_fast rg=%d decoded col=2 (object) rss=%dMB heap=%dMB\n%!"
-        rg (pe4_rss_mb ()) (pe4_gc_mb ());
-      let o_arr = arr_of_col o_lst in
-      let g_lst = Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int rg) (Z.of_int 3) in
-      Printf.eprintf "[pe4-trace] search_fast rg=%d decoded col=3 (graph) rss=%dMB heap=%dMB\n%!"
-        rg (pe4_rss_mb ()) (pe4_gc_mb ());
-      let g_arr = arr_of_col g_lst in
-      let n = Array.length s_arr in
-      if Array.length p_arr <> n || Array.length o_arr <> n || Array.length g_arr <> n then
-        Printf.eprintf "[qof3-FATAL] search_fast: row-group %d column lengths disagree (s=%d p=%d o=%d g=%d)\n%!"
-          rg n (Array.length p_arr) (Array.length o_arr) (Array.length g_arr)
-      else begin
-        Printf.eprintf "[pe4-trace] search_fast rg=%d filter-loop start n=%d rss=%dMB heap=%dMB\n%!"
-          rg n (pe4_rss_mb ()) (pe4_gc_mb ());
-        for i = 0 to n - 1 do
-          let s_tok = cell_of s_arr.(i) in
-          let p_tok = cell_of p_arr.(i) in
-          let o_tok = cell_of o_arr.(i) in
-          let g_tok = cell_of g_arr.(i) in
-          if cell_match_str bound_s s_tok &&
-             cell_match_str bound_p p_tok &&
-             cell_match_str bound_o o_tok &&
-             cell_match_str bound_g g_tok
-          then begin
-            let s_id = Hashtbl.find_opt tables.ft_subj_tok_to_id  s_tok in
-            let p_id = Hashtbl.find_opt tables.ft_pred_tok_to_id  p_tok in
-            let o_id = Hashtbl.find_opt tables.ft_obj_tok_to_id   o_tok in
-            let g_id =
-              if g_tok = "DEFAULT" then None
-              else Hashtbl.find_opt tables.ft_graph_tok_to_id g_tok in
-            let opt_to_z = function
-              | None -> FStar_Pervasives_Native.None
-              | Some i -> FStar_Pervasives_Native.Some (Z.of_int i) in
-            acc := {
-              Parser_BallyhooCOTTAS.cqpr_s = opt_to_z s_id;
-              cqpr_p = opt_to_z p_id;
-              cqpr_o = opt_to_z o_id;
-              cqpr_g = opt_to_z g_id;
-            } :: !acc;
-            incr n_matches
-          end
-        done;
-        Printf.eprintf "[pe4-trace] search_fast rg=%d done matches_so_far=%d rss=%dMB heap=%dMB\n%!"
-          rg !n_matches (pe4_rss_mb ()) (pe4_gc_mb ())
-      end
-    in
-    for rg = 0 to rg_count - 1 do
-      try walk_rg rg
-      with e ->
-        let bt = Printexc.get_backtrace () in
-        Printf.eprintf "[pe4-FATAL] search_fast rg=%d EXCEPTION: %s\nbacktrace=%s\n%!"
-          rg (Printexc.to_string e) bt;
-        raise e
-    done;
-    Printf.eprintf "[qof3-trace] search_fast: matched %d row(s) across %d row group(s)\n%!" !n_matches rg_count;
-    Printf.eprintf "[pe4-trace] search_fast post-walk rss=%dMB heap=%dMB matches=%d\n%!"
-      (pe4_rss_mb ()) (pe4_gc_mb ()) !n_matches;
-    List.rev !acc
-
-  (* Estimate: same loop as search_fast but counts only — no per-row
-     Hashtbl lookup or row allocation. *)
-  let estimate_fast (h : cottas_ondisk_handle) (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) : pint =
-    let path = h.coh_path in
-    let tables = tables_for h in
-    let bound_s = bound_id_to_token tables.ft_id_to_subj_tok  bound.Parser_BallyhooCOTTAS.cbqp_s in
-    let bound_p = bound_id_to_token tables.ft_id_to_pred_tok  bound.Parser_BallyhooCOTTAS.cbqp_p in
-    let bound_o = bound_id_to_token tables.ft_id_to_obj_tok   bound.Parser_BallyhooCOTTAS.cbqp_o in
-    let bound_g = bound_id_to_token tables.ft_id_to_graph_tok bound.Parser_BallyhooCOTTAS.cbqp_g in
-    let rg_count = match Parquet_Footer.probe_parquet_row_group_count path with
-      | FStar_Pervasives_Native.None -> 0
-      | FStar_Pervasives_Native.Some n -> Z.to_int n in
-    Printf.eprintf "[qof3-trace] estimate_fast: rg_count=%d\n%!" rg_count;
-    Printf.eprintf "[pe4-trace] estimate_fast pre-walk rss=%dMB heap=%dMB fd=%d\n%!"
-      (pe4_rss_mb ()) (pe4_gc_mb ()) (pe4_fd_count ());
-    let count = ref 0 in
-    let arr_of_col col_opt =
-      (* Phase 2.5c (issue #118): col_opt is now `cottas_column option`
-         (= `string option array option`), produced by
-         Cottas_pagecache_hot.cached_decode after the page-cache patch.
-         Identity-with-fallback. The previous shape was
-         `(option string) list option`, requiring Array.of_list. *)
-      match col_opt with
-      | FStar_Pervasives_Native.None -> [||]
-      | FStar_Pervasives_Native.Some arr -> arr in
-    let cell_of = function
-      | FStar_Pervasives_Native.Some s -> s
-      | FStar_Pervasives_Native.None -> "" in
-    let walk_rg rg =
-      Printf.eprintf "[pe4-trace] estimate_fast rg=%d enter rss=%dMB heap=%dMB count=%d\n%!"
-        rg (pe4_rss_mb ()) (pe4_gc_mb ()) !count;
-      let s_arr = arr_of_col (Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int rg) Z.zero) in
-      Printf.eprintf "[pe4-trace] estimate_fast rg=%d decoded col=0 n=%d rss=%dMB heap=%dMB\n%!"
-        rg (Array.length s_arr) (pe4_rss_mb ()) (pe4_gc_mb ());
-      let p_arr = arr_of_col (Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int rg) Z.one) in
-      Printf.eprintf "[pe4-trace] estimate_fast rg=%d decoded col=1 rss=%dMB heap=%dMB\n%!"
-        rg (pe4_rss_mb ()) (pe4_gc_mb ());
-      let o_arr = arr_of_col (Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int rg) (Z.of_int 2)) in
-      Printf.eprintf "[pe4-trace] estimate_fast rg=%d decoded col=2 rss=%dMB heap=%dMB\n%!"
-        rg (pe4_rss_mb ()) (pe4_gc_mb ());
-      let g_arr = arr_of_col (Parquet_Footer.probe_parquet_column_decode_in_row_group path (Z.of_int rg) (Z.of_int 3)) in
-      Printf.eprintf "[pe4-trace] estimate_fast rg=%d decoded col=3 rss=%dMB heap=%dMB\n%!"
-        rg (pe4_rss_mb ()) (pe4_gc_mb ());
-      let n = Array.length s_arr in
-      if Array.length p_arr <> n || Array.length o_arr <> n || Array.length g_arr <> n then
-        Printf.eprintf "[qof3-FATAL] estimate_fast: row-group %d column lengths disagree\n%!" rg
-      else begin
-        for i = 0 to n - 1 do
-          let s_tok = cell_of s_arr.(i) in
-          let p_tok = cell_of p_arr.(i) in
-          let o_tok = cell_of o_arr.(i) in
-          let g_tok = cell_of g_arr.(i) in
-          if cell_match_str bound_s s_tok &&
-             cell_match_str bound_p p_tok &&
-             cell_match_str bound_o o_tok &&
-             cell_match_str bound_g g_tok
-          then incr count
-        done;
-        Printf.eprintf "[pe4-trace] estimate_fast rg=%d done count_so_far=%d rss=%dMB heap=%dMB\n%!"
-          rg !count (pe4_rss_mb ()) (pe4_gc_mb ())
-      end
-    in
-    for rg = 0 to rg_count - 1 do
-      try walk_rg rg
-      with e ->
-        let bt = Printexc.get_backtrace () in
-        Printf.eprintf "[pe4-FATAL] estimate_fast rg=%d EXCEPTION: %s\nbacktrace=%s\n%!"
-          rg (Printexc.to_string e) bt;
-        raise e
-    done;
-    Printf.eprintf "[qof3-trace] estimate_fast: matched %d row(s)\n%!" !count;
-    Printf.eprintf "[pe4-trace] estimate_fast post-walk rss=%dMB heap=%dMB count=%d\n%!"
-      (pe4_rss_mb ()) (pe4_gc_mb ()) !count;
-    !count
+  (* Issue #110 (2026-04-29): retired. The Cottas_ondisk_runtime
+     OCaml shims `search_fast`, `estimate_fast`, and
+     `search_fast_limited` (plus their helpers `pe4_*`,
+     `bound_id_to_token`, `cell_match_str`, `arr_of_col`,
+     `cell_of`, `walk_rg`) used to live here. Phase 2.5e
+     (commit 7cf9ebc) moved the public-API path to the F*-extracted
+     `cottas_ondisk_search` / `_estimate` / `_search_limited`
+     bodies, which decode through the F*-verified page cache via
+     `pcache_decode_in_row_group_global` and resolve token->id via
+     `ondisk_lookup_*_id_global`. The shim functions were dead on
+     that path; the 9 retrofitting patches plus aleph6 and
+     rename_inner_pivot have all been deleted in the same commit. *)
+  (* Note: search_fast / estimate_fast / search_fast_limited are
+     INTENTIONALLY ABSENT from this module. Do not add them back. *)
 
   let decode_subject_fast (h : cottas_ondisk_handle) (id : Prims.nat)
     : RDF_Graph_Executable.subject =
@@ -920,12 +707,12 @@ sys.stderr.write(f"  [cottas_ondisk_runtime] perf-shim applied {applied}/{len(sh
 # (Phase 2.7-mini, realised by cottas_ondisk_zzzzzzzzzzzzzzzzz_token_lookup_runtime.sh)
 # which honours Bet7's lazy populate.
 #
-# `Cottas_ondisk_runtime.search_fast` and `estimate_fast` remain
-# defined above (the OCaml shim functions) for the other patches in
-# this chain that still reference them — Lamed3 dispatcher / Tet3
-# redirect / Mem5 fast path replace `estimate_fast_inner`'s body,
-# etc. Those are now dead code on the public-API path but kept until
-# those patches themselves are rewritten in 2.6.
+# Issue #110 (2026-04-29): `Cottas_ondisk_runtime.search_fast`,
+# `estimate_fast`, and `search_fast_limited` — and the 9 patches
+# that retrofitted them (yod6 / tet3 / mem5 / tet3-redirect /
+# compound-po-redirect / pagecache-hot-path) plus aleph6 and
+# rename_inner_pivot — have all been retired in this commit. The
+# F*-extracted public-API bodies are the only runtime now.
 
 path.write_text(content)
 PYEOF
