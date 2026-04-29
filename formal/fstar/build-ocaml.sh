@@ -489,6 +489,15 @@ if [[ "$STEP" == "all" || "$STEP" == "test" ]]; then
   echo "--- Step 3: Run native OCaml tests ---"
   W3C_RC=0; "$OUTDIR/w3c_runner" --all 2>&1 | tee "$OUTDIR/w3c_results.log" || W3C_RC=$?
   echo "  Full results: $OUTDIR/w3c_results.log ($(wc -l < "$OUTDIR/w3c_results.log") lines)"
+  # Refresh the human-readable test-results page (docs/test-results/index.html
+  # + latest.{csv,json} + history snapshot). generate-report.sh used to be a
+  # separate manual step, which is how the published page got 24h-stale on
+  # 2026-04-29: builds were green, w3c_results.log was current, but no one
+  # had remembered to regenerate the HTML. Now wired in unconditionally
+  # because the cost is fast and the value is the public-facing dashboard.
+  if [[ -x ./generate-report.sh ]]; then
+    ./generate-report.sh 2>&1 | tail -10
+  fi
   echo ""
 fi
 
