@@ -299,14 +299,16 @@ let rec bucket_lookup (m : bucket_map) (k : Prims.string) :
   match m with
   | [] -> []
   | (k', v)::rest -> if k = k' then v else bucket_lookup rest k
-let rec bucket_replace (m : bucket_map) (k : Prims.string)
-  (v : triple Prims.list) : bucket_map=
+let rec bucket_replace_acc (acc : bucket_map) (m : bucket_map)
+  (k : Prims.string) (v : triple Prims.list) : bucket_map=
   match m with
-  | [] -> [(k, v)]
+  | [] -> FStar_List_Tot_Base.rev_acc acc [(k, v)]
   | (k', v')::rest ->
       if k = k'
-      then (k, v) :: rest
-      else (k', v') :: (bucket_replace rest k v)
+      then FStar_List_Tot_Base.rev_acc acc ((k, v) :: rest)
+      else bucket_replace_acc ((k', v') :: acc) rest k v
+let bucket_replace (m : bucket_map) (k : Prims.string)
+  (v : triple Prims.list) : bucket_map= bucket_replace_acc [] m k v
 let bucket_push (m : bucket_map) (k : Prims.string) (t : triple) :
   bucket_map=
   let existing = bucket_lookup m k in bucket_replace m k (t :: existing)

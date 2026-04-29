@@ -378,14 +378,23 @@ let rec bucket_lookup (m : bucket_map) (k : string)
 
 (* Replace-or-add for a bucket map: keeps a single binding per key.
    Mirrors OCaml's Hashtbl.replace; avoids the multi-binding shape that
-   forced the earlier `Hashtbl.find_all` workaround in patch 97. *)
-let rec bucket_replace (m : bucket_map) (k : string) (v : list triple)
+   forced the earlier `Hashtbl.find_all` workaround in patch 97.
+
+   Tail-recursive accumulator form (issue #119): the prior straight-recursive
+   shape blew JS's ~10K stack at lifesci-scale ingest because each frame
+   wraps the recursive result in a fresh cons. *)
+let rec bucket_replace_acc
+  (acc : bucket_map) (m : bucket_map) (k : string) (v : list triple)
   : Tot bucket_map (decreases m) =
   match m with
-  | [] -> [(k, v)]
+  | [] -> List.Tot.rev_acc acc [(k, v)]
   | (k', v') :: rest ->
-    if k = k' then (k, v) :: rest
-    else (k', v') :: bucket_replace rest k v
+    if k = k' then List.Tot.rev_acc acc ((k, v) :: rest)
+    else bucket_replace_acc ((k', v') :: acc) rest k v
+
+let bucket_replace (m : bucket_map) (k : string) (v : list triple)
+  : Tot bucket_map =
+  bucket_replace_acc [] m k v
 
 (* Push a single triple onto the bucket for k. Cons-to-front: mirrors
    patch 97's stack-safe shape (one binding per key, value list grows). *)
