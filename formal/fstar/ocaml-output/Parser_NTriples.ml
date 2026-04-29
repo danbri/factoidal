@@ -1087,6 +1087,226 @@ let parse_ntriples (input : Prims.string) :
   RDF_Graph_Executable.triple Prims.list=
   let len = Parser_FastString.fs_byte_length input in
   parse_ntriples_acc input Prims.int_zero [] (len + Prims.int_one)
+let validate_iri (input : Prims.string) (pos : Prims.nat) :
+  Prims.nat Parser_Combinators.parse_result=
+  let len = Parser_FastString.fs_byte_length input in
+  if pos >= len
+  then Parser_Combinators.ParseFail ("expected '<'", pos)
+  else
+    (let ch = Parser_FastString.fs_byte_index input pos in
+     if (FStar_Char.int_of_char ch) = (Prims.of_int (0x3C))
+     then
+       let start = pos + Prims.int_one in
+       let fuel = len - pos in
+       match scan_iri_end input start fuel with
+       | Parser_Combinators.ParseOk (gt_pos, uu___1) ->
+           Parser_Combinators.ParseOk
+             ((gt_pos + Prims.int_one), (gt_pos + Prims.int_one))
+       | Parser_Combinators.ParseFail ("has escapes", uu___1) ->
+           (match parse_iri_raw input pos with
+            | Parser_Combinators.ParseOk (uu___2, pos') ->
+                Parser_Combinators.ParseOk (pos', pos')
+            | Parser_Combinators.ParseFail (msg, fpos) ->
+                Parser_Combinators.ParseFail (msg, fpos))
+       | Parser_Combinators.ParseFail (msg, fpos) ->
+           Parser_Combinators.ParseFail (msg, fpos)
+     else Parser_Combinators.ParseFail ("expected '<'", pos))
+let validate_bnode (input : Prims.string) (pos : Prims.nat) :
+  Prims.nat Parser_Combinators.parse_result=
+  let len = Parser_FastString.fs_byte_length input in
+  if (pos + (Prims.of_int (2))) > len
+  then Parser_Combinators.ParseFail ("expected '_:'", pos)
+  else
+    (let c0 = Parser_FastString.fs_byte_at input pos in
+     let c1 = Parser_FastString.fs_byte_at input (pos + Prims.int_one) in
+     if (c0 = (Prims.of_int (0x5F))) && (c1 = (Prims.of_int (0x3A)))
+     then
+       let start_pos = pos + (Prims.of_int (2)) in
+       (if start_pos >= len
+        then
+          Parser_Combinators.ParseFail ("empty blank node label", start_pos)
+        else
+          (let b0 = Parser_FastString.fs_byte_at input start_pos in
+           let uu___2 =
+             if b0 < (Prims.of_int (0x80))
+             then (b0, Prims.int_one)
+             else
+               (let uu___4 = Parser_FastString.fs_cp_at input start_pos in
+                match uu___4 with
+                | (cp, adv) ->
+                    let advance =
+                      if adv = Prims.int_zero then Prims.int_one else adv in
+                    (cp, advance)) in
+           match uu___2 with
+           | (start_cp, start_adv) ->
+               if is_bnode_start_cp start_cp
+               then
+                 let after_first = start_pos + start_adv in
+                 let fuel =
+                   if len > after_first
+                   then (len - after_first) + Prims.int_one
+                   else Prims.int_one in
+                 let end_pos = scan_bnode_body_cp input after_first fuel in
+                 let final_end =
+                   if
+                     (end_pos > start_pos) &&
+                       ((Parser_FastString.fs_byte_at input
+                           (end_pos - Prims.int_one))
+                          = (Prims.of_int (0x2E)))
+                   then end_pos - Prims.int_one
+                   else end_pos in
+                 (if (final_end > start_pos) && (final_end <= len)
+                  then Parser_Combinators.ParseOk (final_end, final_end)
+                  else
+                    Parser_Combinators.ParseFail
+                      ("empty blank node label", start_pos))
+               else
+                 Parser_Combinators.ParseFail
+                   ("invalid blank node label start character", start_pos)))
+     else Parser_Combinators.ParseFail ("expected '_:'", pos))
+let validate_string_literal (input : Prims.string) (pos : Prims.nat) :
+  Prims.nat Parser_Combinators.parse_result=
+  let len = Parser_FastString.fs_byte_length input in
+  if pos >= len
+  then Parser_Combinators.ParseFail ("expected '\"'", pos)
+  else
+    (let ch = Parser_FastString.fs_byte_index input pos in
+     if (FStar_Char.int_of_char ch) = (Prims.of_int (0x22))
+     then
+       let start = pos + Prims.int_one in
+       let fuel = len - pos in
+       match scan_string_fast input start fuel with
+       | Parser_Combinators.ParseOk ((), end_pos) ->
+           Parser_Combinators.ParseOk (end_pos, end_pos)
+       | Parser_Combinators.ParseFail ("has escapes", uu___1) ->
+           (match parse_string_body input start [] fuel with
+            | Parser_Combinators.ParseOk (uu___2, pos') ->
+                Parser_Combinators.ParseOk (pos', pos')
+            | Parser_Combinators.ParseFail (msg, fpos) ->
+                Parser_Combinators.ParseFail (msg, fpos))
+       | Parser_Combinators.ParseFail (msg, fpos) ->
+           Parser_Combinators.ParseFail (msg, fpos)
+     else Parser_Combinators.ParseFail ("expected '\"'", pos))
+let validate_literal (input : Prims.string) (pos : Prims.nat) :
+  Prims.nat Parser_Combinators.parse_result=
+  match validate_string_literal input pos with
+  | Parser_Combinators.ParseOk (pos', uu___) ->
+      let len = Parser_FastString.fs_byte_length input in
+      if pos' >= len
+      then Parser_Combinators.ParseOk (pos', pos')
+      else
+        (let next = Parser_FastString.fs_byte_index input pos' in
+         let next_code = FStar_Char.int_of_char next in
+         if next_code = (Prims.of_int (0x40))
+         then
+           match parse_lang_tag input pos' with
+           | Parser_Combinators.ParseOk (uu___2, pos'') ->
+               Parser_Combinators.ParseOk (pos'', pos'')
+           | Parser_Combinators.ParseFail (msg, fpos) ->
+               Parser_Combinators.ParseFail (msg, fpos)
+         else
+           if next_code = (Prims.of_int (0x5E))
+           then
+             (if (pos' + (Prims.of_int (2))) > len
+              then Parser_Combinators.ParseFail ("expected '^^'", pos')
+              else
+                (let c0 = Parser_FastString.fs_byte_index input pos' in
+                 let c1 =
+                   Parser_FastString.fs_byte_index input
+                     (pos' + Prims.int_one) in
+                 if
+                   ((FStar_Char.int_of_char c0) = (Prims.of_int (0x5E))) &&
+                     ((FStar_Char.int_of_char c1) = (Prims.of_int (0x5E)))
+                 then validate_iri input (pos' + (Prims.of_int (2)))
+                 else Parser_Combinators.ParseFail ("expected '^^'", pos')))
+           else Parser_Combinators.ParseOk (pos', pos'))
+  | Parser_Combinators.ParseFail (msg, fpos) ->
+      Parser_Combinators.ParseFail (msg, fpos)
+let validate_subject (input : Prims.string) (pos : Prims.nat) :
+  Prims.nat Parser_Combinators.parse_result=
+  let len = Parser_FastString.fs_byte_length input in
+  if pos >= len
+  then Parser_Combinators.ParseFail ("expected subject", pos)
+  else
+    (let ch = Parser_FastString.fs_byte_index input pos in
+     let code = FStar_Char.int_of_char ch in
+     if code = (Prims.of_int (0x3C))
+     then validate_iri input pos
+     else
+       if code = (Prims.of_int (0x5F))
+       then validate_bnode input pos
+       else
+         Parser_Combinators.ParseFail
+           ("expected '<' or '_:' for subject", pos))
+let validate_object (input : Prims.string) (pos : Prims.nat) :
+  Prims.nat Parser_Combinators.parse_result=
+  let len = Parser_FastString.fs_byte_length input in
+  if pos >= len
+  then Parser_Combinators.ParseFail ("expected object", pos)
+  else
+    (let ch = Parser_FastString.fs_byte_index input pos in
+     let code = FStar_Char.int_of_char ch in
+     if code = (Prims.of_int (0x3C))
+     then validate_iri input pos
+     else
+       if code = (Prims.of_int (0x5F))
+       then validate_bnode input pos
+       else
+         if code = (Prims.of_int (0x22))
+         then validate_literal input pos
+         else
+           Parser_Combinators.ParseFail
+             ("expected '<', '_:', or '\"' for object", pos))
+let validate_triple (input : Prims.string) (pos : Prims.nat) :
+  Prims.nat Parser_Combinators.parse_result=
+  match pws input pos with
+  | Parser_Combinators.ParseOk ((), pos1) ->
+      (match validate_subject input pos1 with
+       | Parser_Combinators.ParseOk (pos2, uu___) ->
+           (match pws input pos2 with
+            | Parser_Combinators.ParseOk ((), pos3) ->
+                (match validate_iri input pos3 with
+                 | Parser_Combinators.ParseOk (pos4, uu___1) ->
+                     (match pws input pos4 with
+                      | Parser_Combinators.ParseOk ((), pos5) ->
+                          (match validate_object input pos5 with
+                           | Parser_Combinators.ParseOk (pos6, uu___2) ->
+                               (match pws input pos6 with
+                                | Parser_Combinators.ParseOk ((), pos7) ->
+                                    let len =
+                                      Parser_FastString.fs_byte_length input in
+                                    if pos7 >= len
+                                    then
+                                      Parser_Combinators.ParseFail
+                                        ("expected '.'", pos7)
+                                    else
+                                      (let dot =
+                                         Parser_FastString.fs_byte_index
+                                           input pos7 in
+                                       if
+                                         (FStar_Char.int_of_char dot) =
+                                           (Prims.of_int (0x2E))
+                                       then
+                                         Parser_Combinators.ParseOk
+                                           ((pos7 + Prims.int_one),
+                                             (pos7 + Prims.int_one))
+                                       else
+                                         Parser_Combinators.ParseFail
+                                           ("expected '.'", pos7))
+                                | Parser_Combinators.ParseFail (msg, fpos) ->
+                                    Parser_Combinators.ParseFail (msg, fpos))
+                           | Parser_Combinators.ParseFail (msg, fpos) ->
+                               Parser_Combinators.ParseFail (msg, fpos))
+                      | Parser_Combinators.ParseFail (msg, fpos) ->
+                          Parser_Combinators.ParseFail (msg, fpos))
+                 | Parser_Combinators.ParseFail (msg, fpos) ->
+                     Parser_Combinators.ParseFail (msg, fpos))
+            | Parser_Combinators.ParseFail (msg, fpos) ->
+                Parser_Combinators.ParseFail (msg, fpos))
+       | Parser_Combinators.ParseFail (msg, fpos) ->
+           Parser_Combinators.ParseFail (msg, fpos))
+  | Parser_Combinators.ParseFail (msg, fpos) ->
+      Parser_Combinators.ParseFail (msg, fpos)
 let rec count_ntriples_acc (input : Prims.string) (pos : Prims.nat)
   (acc : Prims.nat) (fuel : Prims.nat) : Prims.nat=
   if fuel = Prims.int_zero
@@ -1122,8 +1342,8 @@ let rec count_ntriples_acc (input : Prims.string) (pos : Prims.nat)
                 then acc
                 else count_ntriples_acc input pos2 acc (fuel - Prims.int_one))
              else
-               (match parse_triple input pos1 with
-                | Parser_Combinators.ParseOk (uu___5, pos2) ->
+               (match validate_triple input pos1 with
+                | Parser_Combinators.ParseOk (pos2, uu___5) ->
                     let pos3 =
                       match pws input pos2 with
                       | Parser_Combinators.ParseOk ((), p) -> p

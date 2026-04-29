@@ -286,6 +286,108 @@ let parse_nquads (input : Prims.string) : RDF_Graph_Executable.rdf_dataset=
   RDF_Graph_Executable.dataset_finalise
     (parse_nquads_acc input Prims.int_zero RDF_Graph_Executable.empty_dataset
        (len + Prims.int_one))
+let validate_graph_label (input : Prims.string) (pos : Prims.nat) :
+  Prims.nat Parser_Combinators.parse_result=
+  let len = Parser_FastString.fs_byte_length input in
+  if pos >= len
+  then Parser_Combinators.ParseFail ("expected graph label", pos)
+  else
+    (let ch = Parser_FastString.fs_byte_index input pos in
+     let code = FStar_Char.int_of_char ch in
+     if code = (Prims.of_int (0x3C))
+     then Parser_NTriples.validate_iri input pos
+     else
+       if code = (Prims.of_int (0x5F))
+       then Parser_NTriples.validate_bnode input pos
+       else
+         Parser_Combinators.ParseFail
+           ("expected '<' or '_:' for graph label", pos))
+let validate_opt_graph_label (input : Prims.string) (pos : Prims.nat) :
+  Prims.nat Parser_Combinators.parse_result=
+  let len = Parser_FastString.fs_byte_length input in
+  match Parser_NTriples.pws input pos with
+  | Parser_Combinators.ParseOk ((), pos1) ->
+      if pos1 >= len
+      then Parser_Combinators.ParseOk (pos1, pos1)
+      else
+        (let ch = Parser_FastString.fs_byte_index input pos1 in
+         let code = FStar_Char.int_of_char ch in
+         if code = (Prims.of_int (0x2E))
+         then Parser_Combinators.ParseOk (pos1, pos1)
+         else
+           if
+             (code = (Prims.of_int (0x3C))) || (code = (Prims.of_int (0x5F)))
+           then validate_graph_label input pos1
+           else
+             if code = (Prims.of_int (0x22))
+             then
+               Parser_Combinators.ParseFail
+                 ("literals are not allowed as graph names in N-Quads", pos1)
+             else Parser_Combinators.ParseOk (pos1, pos1))
+  | Parser_Combinators.ParseFail (msg, fpos) ->
+      Parser_Combinators.ParseFail (msg, fpos)
+let validate_nquad (input : Prims.string) (pos : Prims.nat) :
+  Prims.nat Parser_Combinators.parse_result=
+  match Parser_NTriples.pws input pos with
+  | Parser_Combinators.ParseOk ((), pos1) ->
+      (match Parser_NTriples.validate_subject input pos1 with
+       | Parser_Combinators.ParseOk (pos2, uu___) ->
+           (match Parser_NTriples.pws input pos2 with
+            | Parser_Combinators.ParseOk ((), pos3) ->
+                (match Parser_NTriples.validate_iri input pos3 with
+                 | Parser_Combinators.ParseOk (pos4, uu___1) ->
+                     (match Parser_NTriples.pws input pos4 with
+                      | Parser_Combinators.ParseOk ((), pos5) ->
+                          (match Parser_NTriples.validate_object input pos5
+                           with
+                           | Parser_Combinators.ParseOk (pos6, uu___2) ->
+                               (match validate_opt_graph_label input pos6
+                                with
+                                | Parser_Combinators.ParseOk (pos7, uu___3)
+                                    ->
+                                    (match Parser_NTriples.pws input pos7
+                                     with
+                                     | Parser_Combinators.ParseOk ((), pos8)
+                                         ->
+                                         let len =
+                                           Parser_FastString.fs_byte_length
+                                             input in
+                                         if pos8 >= len
+                                         then
+                                           Parser_Combinators.ParseFail
+                                             ("expected '.'", pos8)
+                                         else
+                                           (let dot =
+                                              Parser_FastString.fs_byte_index
+                                                input pos8 in
+                                            if
+                                              (FStar_Char.int_of_char dot) =
+                                                (Prims.of_int (0x2E))
+                                            then
+                                              Parser_Combinators.ParseOk
+                                                ((pos8 + Prims.int_one),
+                                                  (pos8 + Prims.int_one))
+                                            else
+                                              Parser_Combinators.ParseFail
+                                                ("expected '.'", pos8))
+                                     | Parser_Combinators.ParseFail
+                                         (msg, fpos) ->
+                                         Parser_Combinators.ParseFail
+                                           (msg, fpos))
+                                | Parser_Combinators.ParseFail (msg, fpos) ->
+                                    Parser_Combinators.ParseFail (msg, fpos))
+                           | Parser_Combinators.ParseFail (msg, fpos) ->
+                               Parser_Combinators.ParseFail (msg, fpos))
+                      | Parser_Combinators.ParseFail (msg, fpos) ->
+                          Parser_Combinators.ParseFail (msg, fpos))
+                 | Parser_Combinators.ParseFail (msg, fpos) ->
+                     Parser_Combinators.ParseFail (msg, fpos))
+            | Parser_Combinators.ParseFail (msg, fpos) ->
+                Parser_Combinators.ParseFail (msg, fpos))
+       | Parser_Combinators.ParseFail (msg, fpos) ->
+           Parser_Combinators.ParseFail (msg, fpos))
+  | Parser_Combinators.ParseFail (msg, fpos) ->
+      Parser_Combinators.ParseFail (msg, fpos)
 let rec count_nquads_acc (input : Prims.string) (pos : Prims.nat)
   (acc : Prims.nat) (fuel : Prims.nat) : Prims.nat=
   if fuel = Prims.int_zero
@@ -321,8 +423,8 @@ let rec count_nquads_acc (input : Prims.string) (pos : Prims.nat)
                 then acc
                 else count_nquads_acc input pos2 acc (fuel - Prims.int_one))
              else
-               (match parse_nquad input pos1 with
-                | Parser_Combinators.ParseOk (uu___5, pos2) ->
+               (match validate_nquad input pos1 with
+                | Parser_Combinators.ParseOk (pos2, uu___5) ->
                     let pos3 =
                       match Parser_NTriples.pws input pos2 with
                       | Parser_Combinators.ParseOk ((), p) -> p
