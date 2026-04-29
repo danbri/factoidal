@@ -910,37 +910,22 @@ for old, new in shim_replacements.items():
         applied += 1
 sys.stderr.write(f"  [cottas_ondisk_runtime] perf-shim applied {applied}/{len(shim_replacements)} encode/decode/predicate replacements\n")
 
-# Now replace the F*-extracted slow cottas_ondisk_search/_estimate
-# bodies (which use revmap_lookup over 900k-entry assoc-lists) with
-# direct calls to Cottas_ondisk_runtime.search_fast / estimate_fast.
-search_old = """let cottas_ondisk_search (ds : cottas_ondisk_store)
-  (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) :
-  Parser_BallyhooCOTTAS.cottas_qp_row Prims.list="""
-search_new = """let cottas_ondisk_search (ds : cottas_ondisk_store)
-  (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) :
-  Parser_BallyhooCOTTAS.cottas_qp_row Prims.list=
-  Cottas_ondisk_runtime.search_fast ds.cods_handle bound
-let _spec_cottas_ondisk_search_unused (ds : cottas_ondisk_store)
-  (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) :
-  Parser_BallyhooCOTTAS.cottas_qp_row Prims.list="""
-if search_old in content:
-    content = content.replace(search_old, search_new, 1)
-    sys.stderr.write("  [cottas_ondisk_runtime] perf-shim: cottas_ondisk_search -> search_fast\n")
-else:
-    sys.stderr.write("  [cottas_ondisk_runtime] WARN: could not find cottas_ondisk_search header\n")
-
-estimate_old = """let cottas_ondisk_estimate (ds : cottas_ondisk_store)
-  (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) : Prims.nat="""
-estimate_new = """let cottas_ondisk_estimate (ds : cottas_ondisk_store)
-  (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) : Prims.nat=
-  Z.of_int (Cottas_ondisk_runtime.estimate_fast ds.cods_handle bound)
-let _spec_cottas_ondisk_estimate_unused (ds : cottas_ondisk_store)
-  (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) : Prims.nat="""
-if estimate_old in content:
-    content = content.replace(estimate_old, estimate_new, 1)
-    sys.stderr.write("  [cottas_ondisk_runtime] perf-shim: cottas_ondisk_estimate -> estimate_fast\n")
-else:
-    sys.stderr.write("  [cottas_ondisk_runtime] WARN: could not find cottas_ondisk_estimate header\n")
+# Phase 2.5e (issue #118): the cottas_ondisk_search /
+# cottas_ondisk_estimate dispatch substitutions are RETIRED. The
+# F*-extracted bodies now ARE the runtime — they call the seq-shape
+# walks (`walk_*_search_global` etc.) which decode through the
+# F*-verified page cache via `pcache_decode_in_row_group_global`
+# (realised by experimental_ocaml_glue/cottas_pagecache_global_runtime.sh).
+# Token→id resolution flows through `ondisk_lookup_*_id_global`
+# (Phase 2.7-mini, realised by cottas_ondisk_zzzzzzzzzzzzzzzzz_token_lookup_runtime.sh)
+# which honours Bet7's lazy populate.
+#
+# `Cottas_ondisk_runtime.search_fast` and `estimate_fast` remain
+# defined above (the OCaml shim functions) for the other patches in
+# this chain that still reference them — Lamed3 dispatcher / Tet3
+# redirect / Mem5 fast path replace `estimate_fast_inner`'s body,
+# etc. Those are now dead code on the public-API path but kept until
+# those patches themselves are rewritten in 2.6.
 
 path.write_text(content)
 PYEOF

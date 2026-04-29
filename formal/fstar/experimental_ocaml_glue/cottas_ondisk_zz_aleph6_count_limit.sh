@@ -233,28 +233,13 @@ search_fast_limited = '''    Printf.eprintf "[qof3-trace] search_fast: matched %
 content = content.replace(search_fast_anchor, search_fast_limited, 1)
 sys.stderr.write("  [aleph6] search_fast_limited installed\n")
 
-# ---- Step 3: Replace cottas_ondisk_search_limited's F* body with a
-# call to Cottas_ondisk_runtime.search_fast_limited.
-
-# The pattern is the F*-extracted body of cottas_ondisk_search_limited.
-# We replace it with a direct dispatch to search_fast_limited.
-shim_old = """let cottas_ondisk_search_limited (ds : cottas_ondisk_store)
-  (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) (limit : Prims.nat) :
-  Parser_BallyhooCOTTAS.cottas_qp_row Prims.list="""
-
-shim_new = """let cottas_ondisk_search_limited (ds : cottas_ondisk_store)
-  (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) (limit : Prims.nat) :
-  Parser_BallyhooCOTTAS.cottas_qp_row Prims.list=
-  Cottas_ondisk_runtime.search_fast_limited ds.cods_handle bound (Z.to_int limit)
-let _spec_cottas_ondisk_search_limited_unused (ds : cottas_ondisk_store)
-  (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) (limit : Prims.nat) :
-  Parser_BallyhooCOTTAS.cottas_qp_row Prims.list="""
-
-if shim_old in content:
-    content = content.replace(shim_old, shim_new, 1)
-    sys.stderr.write("  [aleph6] cottas_ondisk_search_limited -> search_fast_limited\n")
-else:
-    sys.stderr.write("  [aleph6] WARN: cottas_ondisk_search_limited header not found (F* extraction skipped Aleph6 changes?)\n")
+# Phase 2.5e (issue #118): the cottas_ondisk_search_limited dispatch
+# substitution is RETIRED. F*-extracted body now uses
+# walk_*_search_limited_global which decodes through the F*-verified
+# page cache (`pcache_decode_in_row_group_global`).
+# search_fast_limited (defined above) remains for Yod6 / Tet3 patches
+# that still rewrite its inner loop body — dead on the public API
+# path but kept until those patches are themselves rewritten in 2.6.
 
 path.write_text(content)
 PYEOF

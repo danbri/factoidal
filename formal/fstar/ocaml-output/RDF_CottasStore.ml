@@ -2094,16 +2094,62 @@ let cell_match (expected : Prims.string FStar_Pervasives_Native.option)
   | FStar_Pervasives_Native.Some s -> s = actual
 let graph_cell_match (expected : Prims.string FStar_Pervasives_Native.option)
   (actual : Prims.string) : Prims.bool= cell_match expected actual
+
+(* Phase 2.7-mini (issue #118): token -> id lookup helper, used by
+   build_qp_row's `ondisk_lookup_*_id_global` assume-val realisations
+   below. Rule #11(c) thin dispatch shim — no semantic decisions,
+   only the same routing search_fast already uses.
+   __TOKEN_LOOKUP_RUNTIME_APPLIED__ *)
+module Cottas_token_lookup_global = struct
+  let lookup_with_ensure
+      (ensure : cottas_ondisk_handle -> Cottas_ondisk_runtime.fast_tables -> unit)
+      (table_of : Cottas_ondisk_runtime.fast_tables -> (string, Stdlib.Int.t) Hashtbl.t)
+      (path : Prims.string) (token : Prims.string)
+    : Prims.nat FStar_Pervasives_Native.option =
+    match Hashtbl.find_opt Cottas_ondisk_runtime.handles path with
+    | None -> FStar_Pervasives_Native.None
+    | Some h ->
+      let tables = Cottas_ondisk_runtime.tables_for h in
+      ensure h tables;
+      (match Hashtbl.find_opt (table_of tables) token with
+       | Some i -> FStar_Pervasives_Native.Some (Z.of_int i)
+       | None   -> FStar_Pervasives_Native.None)
+end
+
+let ondisk_lookup_subj_id_global (path : Prims.string) (token : Prims.string)
+  : Prims.nat FStar_Pervasives_Native.option =
+  Cottas_token_lookup_global.lookup_with_ensure
+    Cottas_ondisk_lazy.ensure_subjects_loaded
+    (fun t -> t.Cottas_ondisk_runtime.ft_subj_tok_to_id)
+    path token
+let ondisk_lookup_pred_id_global (path : Prims.string) (token : Prims.string)
+  : Prims.nat FStar_Pervasives_Native.option =
+  Cottas_token_lookup_global.lookup_with_ensure
+    Cottas_ondisk_lazy.ensure_predicates_loaded
+    (fun t -> t.Cottas_ondisk_runtime.ft_pred_tok_to_id)
+    path token
+let ondisk_lookup_obj_id_global (path : Prims.string) (token : Prims.string)
+  : Prims.nat FStar_Pervasives_Native.option =
+  Cottas_token_lookup_global.lookup_with_ensure
+    Cottas_ondisk_lazy.ensure_objects_loaded
+    (fun t -> t.Cottas_ondisk_runtime.ft_obj_tok_to_id)
+    path token
+let ondisk_lookup_graph_id_global (path : Prims.string) (token : Prims.string)
+  : Prims.nat FStar_Pervasives_Native.option =
+  Cottas_token_lookup_global.lookup_with_ensure
+    Cottas_ondisk_lazy.ensure_graphs_loaded
+    (fun t -> t.Cottas_ondisk_runtime.ft_graph_tok_to_id)
+    path token
 let build_qp_row (h : cottas_ondisk_handle) (s_tok : Prims.string)
   (p_tok : Prims.string) (o_tok : Prims.string) (g_tok : Prims.string) :
   Parser_BallyhooCOTTAS.cottas_qp_row=
-  let s_id = revmap_lookup h.coh_subj_raw_revmap s_tok in
-  let p_id = revmap_lookup h.coh_pred_raw_revmap p_tok in
-  let o_id = revmap_lookup h.coh_obj_raw_revmap o_tok in
+  let s_id = ondisk_lookup_subj_id_global h.coh_path s_tok in
+  let p_id = ondisk_lookup_pred_id_global h.coh_path p_tok in
+  let o_id = ondisk_lookup_obj_id_global h.coh_path o_tok in
   let g_id =
     if g_tok = "DEFAULT"
     then FStar_Pervasives_Native.None
-    else revmap_lookup h.coh_graph_raw_revmap g_tok in
+    else ondisk_lookup_graph_id_global h.coh_path g_tok in
   {
     Parser_BallyhooCOTTAS.cqpr_s = s_id;
     Parser_BallyhooCOTTAS.cqpr_p = p_id;
@@ -2353,6 +2399,79 @@ let rec walk_row_groups_estimate (h : cottas_ondisk_handle)
                           walk_row_groups_estimate h bound_s bound_p bound_o
                             bound_g (rg_index + Prims.int_one) rg_count
                             (fuel - Prims.int_one) acc' c4))))
+let rec walk_row_groups_search_global (h : cottas_ondisk_handle)
+  (bound_s : Prims.string FStar_Pervasives_Native.option)
+  (bound_p : Prims.string FStar_Pervasives_Native.option)
+  (bound_o : Prims.string FStar_Pervasives_Native.option)
+  (bound_g : Prims.string FStar_Pervasives_Native.option)
+  (rg_index : Prims.nat) (rg_count : Prims.nat) (fuel : Prims.nat)
+  (acc_rev : Parser_BallyhooCOTTAS.cottas_qp_row Prims.list) :
+  Parser_BallyhooCOTTAS.cottas_qp_row Prims.list=
+  if fuel = Prims.int_zero
+  then acc_rev
+  else
+    if rg_index >= rg_count
+    then acc_rev
+    else
+      (let s_col =
+         RDF_CottasStore_PageCache.pcache_decode_in_row_group_global
+           h.coh_path rg_index Prims.int_zero in
+       let p_col =
+         RDF_CottasStore_PageCache.pcache_decode_in_row_group_global
+           h.coh_path rg_index Prims.int_one in
+       let o_col =
+         RDF_CottasStore_PageCache.pcache_decode_in_row_group_global
+           h.coh_path rg_index (Prims.of_int (2)) in
+       let g_col =
+         RDF_CottasStore_PageCache.pcache_decode_in_row_group_global
+           h.coh_path rg_index (Prims.of_int (3)) in
+       let acc_rev' =
+         match (s_col, p_col, o_col, g_col) with
+         | (FStar_Pervasives_Native.Some sc, FStar_Pervasives_Native.Some pc,
+            FStar_Pervasives_Native.Some oc, FStar_Pervasives_Native.Some gc)
+             ->
+             let n = row_group_row_count sc pc oc gc in
+             filter_zipped_rows_seq h bound_s bound_p bound_o bound_g sc pc
+               oc gc n Prims.int_zero acc_rev
+         | uu___2 -> acc_rev in
+       walk_row_groups_search_global h bound_s bound_p bound_o bound_g
+         (rg_index + Prims.int_one) rg_count (fuel - Prims.int_one) acc_rev')
+let rec walk_row_groups_estimate_global (h : cottas_ondisk_handle)
+  (bound_s : Prims.string FStar_Pervasives_Native.option)
+  (bound_p : Prims.string FStar_Pervasives_Native.option)
+  (bound_o : Prims.string FStar_Pervasives_Native.option)
+  (bound_g : Prims.string FStar_Pervasives_Native.option)
+  (rg_index : Prims.nat) (rg_count : Prims.nat) (fuel : Prims.nat)
+  (acc : Prims.nat) : Prims.nat=
+  if fuel = Prims.int_zero
+  then acc
+  else
+    if rg_index >= rg_count
+    then acc
+    else
+      (let s_col =
+         RDF_CottasStore_PageCache.pcache_decode_in_row_group_global
+           h.coh_path rg_index Prims.int_zero in
+       let p_col =
+         RDF_CottasStore_PageCache.pcache_decode_in_row_group_global
+           h.coh_path rg_index Prims.int_one in
+       let o_col =
+         RDF_CottasStore_PageCache.pcache_decode_in_row_group_global
+           h.coh_path rg_index (Prims.of_int (2)) in
+       let g_col =
+         RDF_CottasStore_PageCache.pcache_decode_in_row_group_global
+           h.coh_path rg_index (Prims.of_int (3)) in
+       let acc' =
+         match (s_col, p_col, o_col, g_col) with
+         | (FStar_Pervasives_Native.Some sc, FStar_Pervasives_Native.Some pc,
+            FStar_Pervasives_Native.Some oc, FStar_Pervasives_Native.Some gc)
+             ->
+             let n = row_group_row_count sc pc oc gc in
+             count_zipped_rows_seq bound_s bound_p bound_o bound_g sc pc oc
+               gc n Prims.int_zero acc
+         | uu___2 -> acc in
+       walk_row_groups_estimate_global h bound_s bound_p bound_o bound_g
+         (rg_index + Prims.int_one) rg_count (fuel - Prims.int_one) acc')
 type dict_cache =
   ((Prims.nat * Prims.nat) * Prims.string Prims.list) Prims.list
 let rec dict_cache_lookup (c : dict_cache) (rg : Prims.nat) (col : Prims.nat)
@@ -2536,6 +2655,72 @@ let rec walk_candidate_rgs_estimate (h : cottas_ondisk_handle)
                             | uu___4 -> acc in
                           walk_candidate_rgs_estimate h bound_s bound_p
                             bound_o bound_g rest acc' c4))))
+let rec walk_candidate_rgs_search_global (h : cottas_ondisk_handle)
+  (bound_s : Prims.string FStar_Pervasives_Native.option)
+  (bound_p : Prims.string FStar_Pervasives_Native.option)
+  (bound_o : Prims.string FStar_Pervasives_Native.option)
+  (bound_g : Prims.string FStar_Pervasives_Native.option)
+  (candidates : Prims.nat Prims.list)
+  (acc_rev : Parser_BallyhooCOTTAS.cottas_qp_row Prims.list) :
+  Parser_BallyhooCOTTAS.cottas_qp_row Prims.list=
+  match candidates with
+  | [] -> acc_rev
+  | rg_index::rest ->
+      let s_col =
+        RDF_CottasStore_PageCache.pcache_decode_in_row_group_global
+          h.coh_path rg_index Prims.int_zero in
+      let p_col =
+        RDF_CottasStore_PageCache.pcache_decode_in_row_group_global
+          h.coh_path rg_index Prims.int_one in
+      let o_col =
+        RDF_CottasStore_PageCache.pcache_decode_in_row_group_global
+          h.coh_path rg_index (Prims.of_int (2)) in
+      let g_col =
+        RDF_CottasStore_PageCache.pcache_decode_in_row_group_global
+          h.coh_path rg_index (Prims.of_int (3)) in
+      let acc_rev' =
+        match (s_col, p_col, o_col, g_col) with
+        | (FStar_Pervasives_Native.Some sc, FStar_Pervasives_Native.Some pc,
+           FStar_Pervasives_Native.Some oc, FStar_Pervasives_Native.Some gc)
+            ->
+            let n = row_group_row_count sc pc oc gc in
+            filter_zipped_rows_seq h bound_s bound_p bound_o bound_g sc pc oc
+              gc n Prims.int_zero acc_rev
+        | uu___ -> acc_rev in
+      walk_candidate_rgs_search_global h bound_s bound_p bound_o bound_g rest
+        acc_rev'
+let rec walk_candidate_rgs_estimate_global (h : cottas_ondisk_handle)
+  (bound_s : Prims.string FStar_Pervasives_Native.option)
+  (bound_p : Prims.string FStar_Pervasives_Native.option)
+  (bound_o : Prims.string FStar_Pervasives_Native.option)
+  (bound_g : Prims.string FStar_Pervasives_Native.option)
+  (candidates : Prims.nat Prims.list) (acc : Prims.nat) : Prims.nat=
+  match candidates with
+  | [] -> acc
+  | rg_index::rest ->
+      let s_col =
+        RDF_CottasStore_PageCache.pcache_decode_in_row_group_global
+          h.coh_path rg_index Prims.int_zero in
+      let p_col =
+        RDF_CottasStore_PageCache.pcache_decode_in_row_group_global
+          h.coh_path rg_index Prims.int_one in
+      let o_col =
+        RDF_CottasStore_PageCache.pcache_decode_in_row_group_global
+          h.coh_path rg_index (Prims.of_int (2)) in
+      let g_col =
+        RDF_CottasStore_PageCache.pcache_decode_in_row_group_global
+          h.coh_path rg_index (Prims.of_int (3)) in
+      let acc' =
+        match (s_col, p_col, o_col, g_col) with
+        | (FStar_Pervasives_Native.Some sc, FStar_Pervasives_Native.Some pc,
+           FStar_Pervasives_Native.Some oc, FStar_Pervasives_Native.Some gc)
+            ->
+            let n = row_group_row_count sc pc oc gc in
+            count_zipped_rows_seq bound_s bound_p bound_o bound_g sc pc oc gc
+              n Prims.int_zero acc
+        | uu___ -> acc in
+      walk_candidate_rgs_estimate_global h bound_s bound_p bound_o bound_g
+        rest acc'
 let candidates_for_one_bound (c : dict_cache) (path : Prims.string)
   (col_index : Prims.nat) (bound_token : Prims.string) (rg_count : Prims.nat)
   : (Prims.nat Prims.list * dict_cache)=
@@ -2583,10 +2768,6 @@ let plan_candidate_rgs (h : cottas_ondisk_handle)
 let cottas_ondisk_search (ds : cottas_ondisk_store)
   (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) :
   Parser_BallyhooCOTTAS.cottas_qp_row Prims.list=
-  Cottas_ondisk_runtime.search_fast ds.cods_handle bound
-let _spec_cottas_ondisk_search_unused (ds : cottas_ondisk_store)
-  (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) :
-  Parser_BallyhooCOTTAS.cottas_qp_row Prims.list=
   let h = ds.cods_handle in
   let bound_s =
     id_to_raw_token h.coh_subjects_raw bound.Parser_BallyhooCOTTAS.cbqp_s in
@@ -2599,8 +2780,6 @@ let _spec_cottas_ondisk_search_unused (ds : cottas_ondisk_store)
   match Parquet_Footer.probe_parquet_row_group_count h.coh_path with
   | FStar_Pervasives_Native.None -> []
   | FStar_Pervasives_Native.Some rg_count ->
-      let cache0 =
-        RDF_CottasStore_PageCache.pcache_empty pcache_default_capacity in
       let any_bound_present =
         (((FStar_Pervasives_Native.uu___is_Some bound_s) ||
             (FStar_Pervasives_Native.uu___is_Some bound_p))
@@ -2612,17 +2791,15 @@ let _spec_cottas_ondisk_search_unused (ds : cottas_ondisk_store)
           plan_candidate_rgs h bound_s bound_p bound_o bound_g rg_count in
         (match uu___ with
          | (candidates, _dc) ->
-             let uu___1 =
-               walk_candidate_rgs_search h bound_s bound_p bound_o bound_g
-                 candidates [] cache0 in
-             (match uu___1 with
-              | (acc_rev, _cache') -> Parquet_Footer.list_rev acc_rev))
+             let acc_rev =
+               walk_candidate_rgs_search_global h bound_s bound_p bound_o
+                 bound_g candidates [] in
+             Parquet_Footer.list_rev acc_rev)
       else
-        (let uu___1 =
-           walk_row_groups_search h bound_s bound_p bound_o bound_g
-             Prims.int_zero rg_count rg_count [] cache0 in
-         match uu___1 with
-         | (acc_rev, _cache') -> Parquet_Footer.list_rev acc_rev)
+        (let acc_rev =
+           walk_row_groups_search_global h bound_s bound_p bound_o bound_g
+             Prims.int_zero rg_count rg_count [] in
+         Parquet_Footer.list_rev acc_rev)
 let rec filter_zipped_rows_limited_seq (h : cottas_ondisk_handle)
   (bound_s : Prims.string FStar_Pervasives_Native.option)
   (bound_p : Prims.string FStar_Pervasives_Native.option)
@@ -2828,11 +3005,97 @@ let rec walk_candidate_rgs_search_limited (h : cottas_ondisk_handle)
                                     walk_candidate_rgs_search_limited h
                                       bound_s bound_p bound_o bound_g rest
                                       acc_rev' acc_count' limit c4))))))
-let cottas_ondisk_search_limited (ds : cottas_ondisk_store)
-  (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) (limit : Prims.nat) :
+let rec walk_row_groups_search_limited_global (h : cottas_ondisk_handle)
+  (bound_s : Prims.string FStar_Pervasives_Native.option)
+  (bound_p : Prims.string FStar_Pervasives_Native.option)
+  (bound_o : Prims.string FStar_Pervasives_Native.option)
+  (bound_g : Prims.string FStar_Pervasives_Native.option)
+  (rg_index : Prims.nat) (rg_count : Prims.nat) (fuel : Prims.nat)
+  (acc_rev : Parser_BallyhooCOTTAS.cottas_qp_row Prims.list)
+  (acc_count : Prims.nat) (limit : Prims.nat) :
   Parser_BallyhooCOTTAS.cottas_qp_row Prims.list=
-  Cottas_ondisk_runtime.search_fast_limited ds.cods_handle bound (Z.to_int limit)
-let _spec_cottas_ondisk_search_limited_unused (ds : cottas_ondisk_store)
+  if fuel = Prims.int_zero
+  then acc_rev
+  else
+    if rg_index >= rg_count
+    then acc_rev
+    else
+      if acc_count >= limit
+      then acc_rev
+      else
+        (let s_col =
+           RDF_CottasStore_PageCache.pcache_decode_in_row_group_global
+             h.coh_path rg_index Prims.int_zero in
+         let p_col =
+           RDF_CottasStore_PageCache.pcache_decode_in_row_group_global
+             h.coh_path rg_index Prims.int_one in
+         let o_col =
+           RDF_CottasStore_PageCache.pcache_decode_in_row_group_global
+             h.coh_path rg_index (Prims.of_int (2)) in
+         let g_col =
+           RDF_CottasStore_PageCache.pcache_decode_in_row_group_global
+             h.coh_path rg_index (Prims.of_int (3)) in
+         let uu___3 =
+           match (s_col, p_col, o_col, g_col) with
+           | (FStar_Pervasives_Native.Some sc, FStar_Pervasives_Native.Some
+              pc, FStar_Pervasives_Native.Some oc,
+              FStar_Pervasives_Native.Some gc) ->
+               let n = row_group_row_count sc pc oc gc in
+               filter_zipped_rows_limited_seq h bound_s bound_p bound_o
+                 bound_g sc pc oc gc n Prims.int_zero acc_rev acc_count limit
+           | uu___4 -> (acc_rev, acc_count, false) in
+         match uu___3 with
+         | (acc_rev', acc_count', hit) ->
+             if hit
+             then acc_rev'
+             else
+               walk_row_groups_search_limited_global h bound_s bound_p
+                 bound_o bound_g (rg_index + Prims.int_one) rg_count
+                 (fuel - Prims.int_one) acc_rev' acc_count' limit)
+let rec walk_candidate_rgs_search_limited_global (h : cottas_ondisk_handle)
+  (bound_s : Prims.string FStar_Pervasives_Native.option)
+  (bound_p : Prims.string FStar_Pervasives_Native.option)
+  (bound_o : Prims.string FStar_Pervasives_Native.option)
+  (bound_g : Prims.string FStar_Pervasives_Native.option)
+  (candidates : Prims.nat Prims.list)
+  (acc_rev : Parser_BallyhooCOTTAS.cottas_qp_row Prims.list)
+  (acc_count : Prims.nat) (limit : Prims.nat) :
+  Parser_BallyhooCOTTAS.cottas_qp_row Prims.list=
+  if acc_count >= limit
+  then acc_rev
+  else
+    (match candidates with
+     | [] -> acc_rev
+     | rg_index::rest ->
+         let s_col =
+           RDF_CottasStore_PageCache.pcache_decode_in_row_group_global
+             h.coh_path rg_index Prims.int_zero in
+         let p_col =
+           RDF_CottasStore_PageCache.pcache_decode_in_row_group_global
+             h.coh_path rg_index Prims.int_one in
+         let o_col =
+           RDF_CottasStore_PageCache.pcache_decode_in_row_group_global
+             h.coh_path rg_index (Prims.of_int (2)) in
+         let g_col =
+           RDF_CottasStore_PageCache.pcache_decode_in_row_group_global
+             h.coh_path rg_index (Prims.of_int (3)) in
+         let uu___1 =
+           match (s_col, p_col, o_col, g_col) with
+           | (FStar_Pervasives_Native.Some sc, FStar_Pervasives_Native.Some
+              pc, FStar_Pervasives_Native.Some oc,
+              FStar_Pervasives_Native.Some gc) ->
+               let n = row_group_row_count sc pc oc gc in
+               filter_zipped_rows_limited_seq h bound_s bound_p bound_o
+                 bound_g sc pc oc gc n Prims.int_zero acc_rev acc_count limit
+           | uu___2 -> (acc_rev, acc_count, false) in
+         (match uu___1 with
+          | (acc_rev', acc_count', hit) ->
+              if hit
+              then acc_rev'
+              else
+                walk_candidate_rgs_search_limited_global h bound_s bound_p
+                  bound_o bound_g rest acc_rev' acc_count' limit))
+let cottas_ondisk_search_limited (ds : cottas_ondisk_store)
   (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) (limit : Prims.nat) :
   Parser_BallyhooCOTTAS.cottas_qp_row Prims.list=
   let h = ds.cods_handle in
@@ -2847,8 +3110,6 @@ let _spec_cottas_ondisk_search_limited_unused (ds : cottas_ondisk_store)
   match Parquet_Footer.probe_parquet_row_group_count h.coh_path with
   | FStar_Pervasives_Native.None -> []
   | FStar_Pervasives_Native.Some rg_count ->
-      let cache0 =
-        RDF_CottasStore_PageCache.pcache_empty pcache_default_capacity in
       let any_bound_present =
         (((FStar_Pervasives_Native.uu___is_Some bound_s) ||
             (FStar_Pervasives_Native.uu___is_Some bound_p))
@@ -2860,39 +3121,16 @@ let _spec_cottas_ondisk_search_limited_unused (ds : cottas_ondisk_store)
           plan_candidate_rgs h bound_s bound_p bound_o bound_g rg_count in
         (match uu___ with
          | (candidates, _dc) ->
-             let uu___1 =
-               walk_candidate_rgs_search_limited h bound_s bound_p bound_o
-                 bound_g candidates [] Prims.int_zero limit cache0 in
-             (match uu___1 with
-              | (acc_rev, _cache') -> Parquet_Footer.list_rev acc_rev))
+             let acc_rev =
+               walk_candidate_rgs_search_limited_global h bound_s bound_p
+                 bound_o bound_g candidates [] Prims.int_zero limit in
+             Parquet_Footer.list_rev acc_rev)
       else
-        (let uu___1 =
-           walk_row_groups_search_limited h bound_s bound_p bound_o bound_g
-             Prims.int_zero rg_count rg_count [] Prims.int_zero limit cache0 in
-         match uu___1 with
-         | (acc_rev, _cache') -> Parquet_Footer.list_rev acc_rev)
+        (let acc_rev =
+           walk_row_groups_search_limited_global h bound_s bound_p bound_o
+             bound_g Prims.int_zero rg_count rg_count [] Prims.int_zero limit in
+         Parquet_Footer.list_rev acc_rev)
 let cottas_ondisk_estimate (ds : cottas_ondisk_store)
-  (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) : Prims.nat=
-  (* Aleph6 streaming-COUNT shortcut: all-None bound -> read num_rows
-     from the parquet footer (microseconds). Otherwise per-rg walk via
-     estimate_fast. *)
-  let any_bound_present =
-    (FStar_Pervasives_Native.uu___is_Some bound.Parser_BallyhooCOTTAS.cbqp_s)
-    || (FStar_Pervasives_Native.uu___is_Some bound.Parser_BallyhooCOTTAS.cbqp_p)
-    || (FStar_Pervasives_Native.uu___is_Some bound.Parser_BallyhooCOTTAS.cbqp_o)
-    || (FStar_Pervasives_Native.uu___is_Some bound.Parser_BallyhooCOTTAS.cbqp_g) in
-  if not any_bound_present then
-    (match Parquet_Footer.probe_parquet_num_rows
-             (ds.cods_handle).coh_path with
-     | FStar_Pervasives_Native.Some n ->
-       Printf.eprintf "[aleph6-trace] estimate: all-None -> probe_parquet_num_rows = %s\n%!"
-         (Z.to_string n);
-       n
-     | FStar_Pervasives_Native.None ->
-       Z.of_int (Cottas_ondisk_runtime.estimate_fast ds.cods_handle bound))
-  else
-    Z.of_int (Cottas_ondisk_runtime.estimate_fast ds.cods_handle bound)
-let _spec_cottas_ondisk_estimate_unused (ds : cottas_ondisk_store)
   (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) : Prims.nat=
   let h = ds.cods_handle in
   let bound_s =
@@ -2916,12 +3154,8 @@ let _spec_cottas_ondisk_estimate_unused (ds : cottas_ondisk_store)
         (match Parquet_Footer.probe_parquet_row_group_count h.coh_path with
          | FStar_Pervasives_Native.None -> Prims.int_zero
          | FStar_Pervasives_Native.Some rg_count ->
-             let cache0 =
-               RDF_CottasStore_PageCache.pcache_empty pcache_default_capacity in
-             let uu___ =
-               walk_row_groups_estimate h bound_s bound_p bound_o bound_g
-                 Prims.int_zero rg_count rg_count Prims.int_zero cache0 in
-             (match uu___ with | (count, _cache') -> count))
+             walk_row_groups_estimate_global h bound_s bound_p bound_o
+               bound_g Prims.int_zero rg_count rg_count Prims.int_zero)
   else
     (match Parquet_Footer.probe_parquet_row_group_count h.coh_path with
      | FStar_Pervasives_Native.None -> Prims.int_zero

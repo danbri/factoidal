@@ -184,3 +184,26 @@ let pcache_decode_in_row_group
     | Some v ->
       let c2 = pcache_put c1 key v capacity in
       (Some v, c2)
+
+// Phase 2.5e (issue #118): cross-call cached decoder. The decision
+// of WHEN to memoise (LRU eviction, monotone clock, key match) lives
+// in the pure F* `pcache_*` functions above and is verified by the
+// usual F* totality and Tot-purity. The CROSS-CALL STORAGE CELL —
+// a process-level mutable ref holding the current `page_cache` —
+// lives in OCaml because F* is pure-by-default, and threading the
+// cache through every call chain (cottas_ondisk_search →
+// walk_row_groups → ...) is both noisy and cannot survive multiple
+// HTTP requests anyway.
+//
+// Realisation: see
+//   experimental_ocaml_glue/cottas_pagecache_global_runtime.sh
+// for the OCaml-side stateful ref + realisation. Rule #11(c) thin
+// dispatch shim — no semantic decisions, only state plumbing.
+//
+// Callers (cottas_ondisk_search, cottas_ondisk_estimate,
+// cottas_ondisk_search_limited) use this `_global` decoder so they
+// inherit cross-query warm-cache hits without threading `page_cache`
+// through their walk arguments.
+assume val pcache_decode_in_row_group_global :
+  (path : string) -> (rg_index : nat) -> (col_index : nat) ->
+  Tot (option cottas_column)

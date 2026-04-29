@@ -299,18 +299,54 @@ let graph_cell_match (expected : option string) (actual : string)
 
 // ---- Row-group walk -------------------------------------------------
 
+// Phase 2.7-mini (issue #118): token→id lookup for the search hot path.
+//
+// The F* spec layer says: "given the raw column-token string `tok`,
+// return the term-id `i` such that `list_nth raws i = Some tok`, if
+// it exists; else None". Operationally we MIGHT walk the
+// `coh_*_raw_revmap` assoc-list (which is what `revmap_lookup` does),
+// but on Bet7-lazy-opened handles those F*-side assoc-lists are EMPTY
+// — Bet7 defers their construction to keep handle-open under 5 s for
+// the parliament corpus. The OCaml runtime carries the data in
+// `Cottas_ondisk_runtime.fast_tables.ft_*_tok_to_id` (Hashtbl<string,
+// int>), populated lazily by `Cottas_ondisk_lazy.ensure_*_loaded` on
+// first-touch.
+//
+// These four assume-vals are the F* boundary for that lazy lookup.
+// Their realisation (cottas_token_lookup_runtime.sh) is a thin
+// rule-#11(c) dispatch shim: ensure_loaded + Hashtbl.find_opt. The
+// F* spec treats them as oracles. Without this 2.7-mini bridge,
+// Phase 2.5e (retiring the OCaml `search_fast` dispatch shim in
+// favour of the F*-extracted `cottas_ondisk_search` body) returns
+// zero rows on Bet7-opened handles because `build_qp_row` can't
+// resolve any token to an id.
+//
+// Soundness: the assume-val outcome must be observably equivalent to
+// `revmap_lookup h.coh_*_raw_revmap tok` on a fully-populated handle.
+// The OCaml realisation upholds this by populating the same data the
+// F* revmap would have held, just in a different (Hashtbl) shape.
+assume val ondisk_lookup_subj_id_global :
+  (path : string) -> (token : string) -> Tot (option nat)
+assume val ondisk_lookup_pred_id_global :
+  (path : string) -> (token : string) -> Tot (option nat)
+assume val ondisk_lookup_obj_id_global :
+  (path : string) -> (token : string) -> Tot (option nat)
+assume val ondisk_lookup_graph_id_global :
+  (path : string) -> (token : string) -> Tot (option nat)
+
 // Build the cottas_qp_row for a matched row. Look up each token's id
-// from the raw-token revmap. Graph "DEFAULT" → cqpr_g = None.
+// via the OCaml-realised `ondisk_lookup_*_id_global` shim, which
+// honours Bet7's lazy populate. Graph "DEFAULT" → cqpr_g = None.
 let build_qp_row
   (h : cottas_ondisk_handle)
   (s_tok p_tok o_tok g_tok : string)
   : Tot cottas_qp_row =
-  let s_id = revmap_lookup h.coh_subj_raw_revmap  s_tok in
-  let p_id = revmap_lookup h.coh_pred_raw_revmap  p_tok in
-  let o_id = revmap_lookup h.coh_obj_raw_revmap   o_tok in
+  let s_id = ondisk_lookup_subj_id_global h.coh_path s_tok in
+  let p_id = ondisk_lookup_pred_id_global h.coh_path p_tok in
+  let o_id = ondisk_lookup_obj_id_global  h.coh_path o_tok in
   let g_id =
     if g_tok = "DEFAULT" then None
-    else revmap_lookup h.coh_graph_raw_revmap g_tok in
+    else ondisk_lookup_graph_id_global h.coh_path g_tok in
   { cqpr_s = s_id; cqpr_p = p_id; cqpr_o = o_id; cqpr_g = g_id; }
 
 // Phase 2.5b/c (issue #118): the seq-shape filter consumes
@@ -521,6 +557,64 @@ let rec walk_row_groups_estimate
       | _ -> acc in
     walk_row_groups_estimate h bound_s bound_p bound_o bound_g
       (rg_index + 1) rg_count (fuel - 1) acc' c4
+
+// ----------------------------------------------------------------------
+// Phase 2.5e (issue #118): global-cache walks. Same logic as
+// `walk_row_groups_search` / `walk_row_groups_estimate` above but call
+// the OCaml-realised `pcache_decode_in_row_group_global` — no cache
+// threading. The cross-call cache state lives in OCaml (Cottas-side
+// `pcache_global_ref`), so consecutive cottas_ondisk_search calls
+// inherit warm-cache hits without burying a `page_cache` argument in
+// every public-API caller.
+//
+// Used by `cottas_ondisk_search` and `cottas_ondisk_estimate` after
+// 2.5e retires the OCaml runtime perf-shim.
+// ----------------------------------------------------------------------
+
+let rec walk_row_groups_search_global
+  (h : cottas_ondisk_handle)
+  (bound_s bound_p bound_o bound_g : option string)
+  (rg_index : nat) (rg_count : nat) (fuel : nat)
+  (acc_rev : list cottas_qp_row)
+  : Tot (list cottas_qp_row) (decreases fuel) =
+  if fuel = 0 then acc_rev
+  else if rg_index >= rg_count then acc_rev
+  else
+    let s_col = pcache_decode_in_row_group_global h.coh_path rg_index 0 in
+    let p_col = pcache_decode_in_row_group_global h.coh_path rg_index 1 in
+    let o_col = pcache_decode_in_row_group_global h.coh_path rg_index 2 in
+    let g_col = pcache_decode_in_row_group_global h.coh_path rg_index 3 in
+    let acc_rev' =
+      match s_col, p_col, o_col, g_col with
+      | Some sc, Some pc, Some oc, Some gc ->
+        let n = row_group_row_count sc pc oc gc in
+        filter_zipped_rows_seq h bound_s bound_p bound_o bound_g
+          sc pc oc gc n 0 acc_rev
+      | _ -> acc_rev in
+    walk_row_groups_search_global h bound_s bound_p bound_o bound_g
+      (rg_index + 1) rg_count (fuel - 1) acc_rev'
+
+let rec walk_row_groups_estimate_global
+  (h : cottas_ondisk_handle)
+  (bound_s bound_p bound_o bound_g : option string)
+  (rg_index : nat) (rg_count : nat) (fuel : nat) (acc : nat)
+  : Tot nat (decreases fuel) =
+  if fuel = 0 then acc
+  else if rg_index >= rg_count then acc
+  else
+    let s_col = pcache_decode_in_row_group_global h.coh_path rg_index 0 in
+    let p_col = pcache_decode_in_row_group_global h.coh_path rg_index 1 in
+    let o_col = pcache_decode_in_row_group_global h.coh_path rg_index 2 in
+    let g_col = pcache_decode_in_row_group_global h.coh_path rg_index 3 in
+    let acc' =
+      match s_col, p_col, o_col, g_col with
+      | Some sc, Some pc, Some oc, Some gc ->
+        let n = row_group_row_count sc pc oc gc in
+        count_zipped_rows_seq bound_s bound_p bound_o bound_g
+          sc pc oc gc n 0 acc
+      | _ -> acc in
+    walk_row_groups_estimate_global h bound_s bound_p bound_o bound_g
+      (rg_index + 1) rg_count (fuel - 1) acc'
 
 // ----------------------------------------------------------------------
 // Phase 2.5b (issue #118): seq-shape variants of the hot-path walks.
@@ -738,6 +832,52 @@ let rec walk_candidate_rgs_estimate
     walk_candidate_rgs_estimate h bound_s bound_p bound_o bound_g
       rest acc' c4
 
+// Phase 2.5e: candidate-rg walks using the global-cache decoder.
+let rec walk_candidate_rgs_search_global
+  (h : cottas_ondisk_handle)
+  (bound_s bound_p bound_o bound_g : option string)
+  (candidates : list nat)
+  (acc_rev : list cottas_qp_row)
+  : Tot (list cottas_qp_row) (decreases candidates) =
+  match candidates with
+  | [] -> acc_rev
+  | rg_index :: rest ->
+    let s_col = pcache_decode_in_row_group_global h.coh_path rg_index 0 in
+    let p_col = pcache_decode_in_row_group_global h.coh_path rg_index 1 in
+    let o_col = pcache_decode_in_row_group_global h.coh_path rg_index 2 in
+    let g_col = pcache_decode_in_row_group_global h.coh_path rg_index 3 in
+    let acc_rev' =
+      match s_col, p_col, o_col, g_col with
+      | Some sc, Some pc, Some oc, Some gc ->
+        let n = row_group_row_count sc pc oc gc in
+        filter_zipped_rows_seq h bound_s bound_p bound_o bound_g
+          sc pc oc gc n 0 acc_rev
+      | _ -> acc_rev in
+    walk_candidate_rgs_search_global h bound_s bound_p bound_o bound_g
+      rest acc_rev'
+
+let rec walk_candidate_rgs_estimate_global
+  (h : cottas_ondisk_handle)
+  (bound_s bound_p bound_o bound_g : option string)
+  (candidates : list nat) (acc : nat)
+  : Tot nat (decreases candidates) =
+  match candidates with
+  | [] -> acc
+  | rg_index :: rest ->
+    let s_col = pcache_decode_in_row_group_global h.coh_path rg_index 0 in
+    let p_col = pcache_decode_in_row_group_global h.coh_path rg_index 1 in
+    let o_col = pcache_decode_in_row_group_global h.coh_path rg_index 2 in
+    let g_col = pcache_decode_in_row_group_global h.coh_path rg_index 3 in
+    let acc' =
+      match s_col, p_col, o_col, g_col with
+      | Some sc, Some pc, Some oc, Some gc ->
+        let n = row_group_row_count sc pc oc gc in
+        count_zipped_rows_seq bound_s bound_p bound_o bound_g
+          sc pc oc gc n 0 acc
+      | _ -> acc in
+    walk_candidate_rgs_estimate_global h bound_s bound_p bound_o bound_g
+      rest acc'
+
 // ---- Candidate-set computation -------------------------------------
 
 // Build the per-rg candidate set for one column-bound. col_index is the
@@ -801,6 +941,14 @@ let plan_candidate_rgs
 
 // ---- Public search / estimate --------------------------------------
 
+// Phase 2.5e (issue #118): use the global-cache walks. Page cache state
+// is now held in OCaml (`pcache_global_ref`); F* owns the search
+// algorithm and the LRU semantics, OCaml provides the cross-call
+// storage cell. Removes the rule-#11 violation where the OCaml runtime
+// patch substituted this body with a dispatch to
+// `Cottas_ondisk_runtime.search_fast`. Token→id resolution flows
+// through `ondisk_lookup_*_id_global` (Phase 2.7-mini) which honours
+// Bet7's lazy populate.
 let cottas_ondisk_search
   (ds : cottas_ondisk_store) (bound : cottas_bound_qp)
   : Tot (list cottas_qp_row) =
@@ -812,7 +960,6 @@ let cottas_ondisk_search
   match probe_parquet_row_group_count h.coh_path with
   | None -> []
   | Some rg_count ->
-    let cache0 = pcache_empty pcache_default_capacity in
     // Phase D: column-prune planner. If any column-bound is present,
     // compute the candidate-rgs via per-rg dict probes; else full walk.
     let any_bound_present =
@@ -820,14 +967,14 @@ let cottas_ondisk_search
     if any_bound_present then
       let (candidates, _dc) = plan_candidate_rgs h
         bound_s bound_p bound_o bound_g rg_count in
-      let (acc_rev, _cache') = walk_candidate_rgs_search h
+      let acc_rev = walk_candidate_rgs_search_global h
         bound_s bound_p bound_o bound_g
-        candidates [] cache0 in
+        candidates [] in
       list_rev acc_rev
     else
-      let (acc_rev, _cache') = walk_row_groups_search h
+      let acc_rev = walk_row_groups_search_global h
         bound_s bound_p bound_o bound_g
-        0 rg_count rg_count [] cache0 in
+        0 rg_count rg_count [] in
       list_rev acc_rev
 
 // ----------------------------------------------------------------------
@@ -960,9 +1107,68 @@ let rec walk_candidate_rgs_search_limited
         walk_candidate_rgs_search_limited h bound_s bound_p bound_o bound_g
           rest acc_rev' acc_count' limit c4
 
+// Phase 2.5e: global-cache LIMIT walks. Same shape as
+// walk_*_search_limited but no threaded cache; uses
+// `pcache_decode_in_row_group_global`.
+
+let rec walk_row_groups_search_limited_global
+  (h : cottas_ondisk_handle)
+  (bound_s bound_p bound_o bound_g : option string)
+  (rg_index : nat) (rg_count : nat) (fuel : nat)
+  (acc_rev : list cottas_qp_row) (acc_count : nat) (limit : nat)
+  : Tot (list cottas_qp_row) (decreases fuel) =
+  if fuel = 0 then acc_rev
+  else if rg_index >= rg_count then acc_rev
+  else if acc_count >= limit then acc_rev
+  else
+    let s_col = pcache_decode_in_row_group_global h.coh_path rg_index 0 in
+    let p_col = pcache_decode_in_row_group_global h.coh_path rg_index 1 in
+    let o_col = pcache_decode_in_row_group_global h.coh_path rg_index 2 in
+    let g_col = pcache_decode_in_row_group_global h.coh_path rg_index 3 in
+    let (acc_rev', acc_count', hit) =
+      match s_col, p_col, o_col, g_col with
+      | Some sc, Some pc, Some oc, Some gc ->
+        let n = row_group_row_count sc pc oc gc in
+        filter_zipped_rows_limited_seq h bound_s bound_p bound_o bound_g
+          sc pc oc gc n 0 acc_rev acc_count limit
+      | _ -> (acc_rev, acc_count, false) in
+    if hit then acc_rev'
+    else
+      walk_row_groups_search_limited_global h bound_s bound_p bound_o bound_g
+        (rg_index + 1) rg_count (fuel - 1) acc_rev' acc_count' limit
+
+let rec walk_candidate_rgs_search_limited_global
+  (h : cottas_ondisk_handle)
+  (bound_s bound_p bound_o bound_g : option string)
+  (candidates : list nat)
+  (acc_rev : list cottas_qp_row) (acc_count : nat) (limit : nat)
+  : Tot (list cottas_qp_row) (decreases candidates) =
+  if acc_count >= limit then acc_rev
+  else
+    match candidates with
+    | [] -> acc_rev
+    | rg_index :: rest ->
+      let s_col = pcache_decode_in_row_group_global h.coh_path rg_index 0 in
+      let p_col = pcache_decode_in_row_group_global h.coh_path rg_index 1 in
+      let o_col = pcache_decode_in_row_group_global h.coh_path rg_index 2 in
+      let g_col = pcache_decode_in_row_group_global h.coh_path rg_index 3 in
+      let (acc_rev', acc_count', hit) =
+        match s_col, p_col, o_col, g_col with
+        | Some sc, Some pc, Some oc, Some gc ->
+          let n = row_group_row_count sc pc oc gc in
+          filter_zipped_rows_limited_seq h bound_s bound_p bound_o bound_g
+            sc pc oc gc n 0 acc_rev acc_count limit
+        | _ -> (acc_rev, acc_count, false) in
+      if hit then acc_rev'
+      else
+        walk_candidate_rgs_search_limited_global h bound_s bound_p bound_o bound_g
+          rest acc_rev' acc_count' limit
+
 // LIMIT-pushdown public entry: same as `cottas_ondisk_search` but stops
 // once `limit` matching rows have been accumulated. Returns at most
 // `limit` rows.
+//
+// Phase 2.5e: global-cache walks. F* owns the algorithm.
 let cottas_ondisk_search_limited
   (ds : cottas_ondisk_store) (bound : cottas_bound_qp) (limit : nat)
   : Tot (list cottas_qp_row) =
@@ -974,20 +1180,19 @@ let cottas_ondisk_search_limited
   match probe_parquet_row_group_count h.coh_path with
   | None -> []
   | Some rg_count ->
-    let cache0 = pcache_empty pcache_default_capacity in
     let any_bound_present =
       Some? bound_s || Some? bound_p || Some? bound_o || Some? bound_g in
     if any_bound_present then
       let (candidates, _dc) = plan_candidate_rgs h
         bound_s bound_p bound_o bound_g rg_count in
-      let (acc_rev, _cache') = walk_candidate_rgs_search_limited h
+      let acc_rev = walk_candidate_rgs_search_limited_global h
         bound_s bound_p bound_o bound_g
-        candidates [] 0 limit cache0 in
+        candidates [] 0 limit in
       list_rev acc_rev
     else
-      let (acc_rev, _cache') = walk_row_groups_search_limited h
+      let acc_rev = walk_row_groups_search_limited_global h
         bound_s bound_p bound_o bound_g
-        0 rg_count rg_count [] 0 limit cache0 in
+        0 rg_count rg_count [] 0 limit in
       list_rev acc_rev
 
 let cottas_ondisk_estimate
@@ -1018,11 +1223,11 @@ let cottas_ondisk_estimate
        (match probe_parquet_row_group_count h.coh_path with
         | None -> 0
         | Some rg_count ->
-          let cache0 = pcache_empty pcache_default_capacity in
-          let (count, _cache') = walk_row_groups_estimate h
+          // Phase 2.5e: global-cache walk; F* owns algorithm, OCaml
+          // provides cross-call cache cell.
+          walk_row_groups_estimate_global h
             bound_s bound_p bound_o bound_g
-            0 rg_count rg_count 0 cache0 in
-          count))
+            0 rg_count rg_count 0))
   else
     // Mem5 (issue #100, demo prep): presence-bitmap fast path for the
     // BGP join-order optimiser. Compute candidate row-groups from the
