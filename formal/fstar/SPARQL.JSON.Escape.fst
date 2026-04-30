@@ -7,6 +7,13 @@ open Parser.FastString
 // Minimal JSON string escaper for the few characters that matter when
 // embedding arbitrary SPARQL-query bodies in a JSON literal.
 //
+// Verification surface: the algorithm itself is verified pure F*. The byte
+// access primitives `fs_byte_length` / `fs_byte_at` are declared via
+// `assume val` in `Parser.FastString.fst` and realised in OCaml glue
+// (patch 89). This module's correctness therefore reduces to those
+// primitives' realisation matching their declared specs, which is the
+// same trust boundary the rest of the parsers already rely on.
+//
 // Pure-data byte->byte function. The output is the same byte-for-byte
 // as the previous OCaml implementation in factoidal_http.ml:
 //   - 0x5C \\        -> \\ \\        (backslash)
