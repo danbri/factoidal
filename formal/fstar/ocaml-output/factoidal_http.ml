@@ -121,7 +121,12 @@ let load_rdf_dataset ?(format=None) ?(base=None) path =
    we warn at startup if combined with write access.
    [CORS_List origins] echoes the requesting Origin back only if it appears
    in the allowlist, and adds "Vary: Origin". *)
-type cors_policy =
+(* The cors_policy type is defined in F* (SPARQL.HTTP.Response) so the
+   header-emitter logic that switches on it can live in the verified spec.
+   We re-export the F*-extracted type here with an alias that re-binds the
+   constructor names, so the rest of this file (and any callers) keep
+   using [CORS_Off] / [CORS_Any] / [CORS_List] without qualification. *)
+type cors_policy = SPARQL_HTTP_Response.cors_policy =
   | CORS_Off
   | CORS_Any
   | CORS_List of string list
@@ -873,19 +878,9 @@ let header_value headers name =
    close). Body is a byte-string; we pass it through unmodified.
    ============================================================================ *)
 
-let status_text = function
-  | 200 -> "OK"
-  | 204 -> "No Content"
-  | 303 -> "See Other"
-  | 400 -> "Bad Request"
-  | 403 -> "Forbidden"
-  | 404 -> "Not Found"
-  | 405 -> "Method Not Allowed"
-  | 413 -> "Payload Too Large"
-  | 500 -> "Internal Server Error"
-  | 501 -> "Not Implemented"
-  | 503 -> "Service Unavailable"
-  | _ -> "Unknown"
+(* Reason phrase lookup lives in SPARQL.HTTP.Response. The F-star-extracted
+   version takes Z.t (Prims.int); we cast at the boundary. *)
+let status_text code = SPARQL_HTTP_Response.status_text (Z.of_int code)
 
 (* [extra_headers] is a list of already-formatted "Name: value" lines (no CRLF)
    that are emitted between the standard headers and the body. CORS headers
@@ -917,23 +912,9 @@ let write_plain_error ?(extra_headers=[]) oc ~status msg =
    Origin only if it's in the allowlist, and adds "Vary: Origin"; if the
    requesting origin is absent or not allowlisted, returns [] (letting the
    browser's default cross-origin rejection apply — the canonical pattern). *)
+(* Header-list construction lives in SPARQL.HTTP.Response. *)
 let cors_headers ~(policy : cors_policy) ~(origin : string option) : string list =
-  let common_headers =
-    [ "Access-Control-Allow-Methods: GET, POST, OPTIONS";
-      "Access-Control-Allow-Headers: Content-Type, Authorization, Cf-Access-Jwt-Assertion, Cf-Access-Authenticated-User-Email, X-Authid";
-      "Access-Control-Max-Age: 86400" ]
-  in
-  match policy with
-  | CORS_Off -> []
-  | CORS_Any ->
-    "Access-Control-Allow-Origin: *" :: common_headers
-  | CORS_List allowed ->
-    (match origin with
-     | Some o when List.mem o allowed ->
-       ("Access-Control-Allow-Origin: " ^ o)
-       :: "Vary: Origin"
-       :: common_headers
-     | _ -> [])
+  SPARQL_HTTP_Response.cors_headers policy origin
 
 (* ============================================================================
    SELECT / ASK / CONSTRUCT dispatch.
