@@ -203,6 +203,24 @@ For this deployment the most painful step was getting
 
 This is worth remembering for future corpus refreshes.
 
+### 6. Cold-start readiness currently gates static UI assets too
+
+The current server behavior returns the same warm-up `503` response for
+all routes until the COTTAS load completes, including:
+
+- `/factoidal-sparql-client.js`
+- the demo HTML's supporting fetches
+
+That means a cold-started machine can render the page shell while
+temporarily failing to load the custom-element JS bundle, which makes
+the demo look broken or incomplete until a refresh after warm-up.
+
+Possible follow-up fixes:
+
+- keep one machine warm with `min_machines_running = 1`
+- serve static assets even while the query backend is still warming
+- move the static demo assets behind a separate always-available layer
+
 ## Commands
 
 Typical Fly commands will look like:
