@@ -1380,14 +1380,31 @@ class FactoidalSparqlClient extends HTMLElement {
         const url = this.endpoint;
         const qT0 = performance.now();
         try {
-          const resp = await fetch(url, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/sparql-query',
-              'Accept': 'application/sparql-results+json',
-            },
-            body: queryText,
-          });
+          let resp = null;
+          let lastRetryAfterMs = 0;
+          const maxWarmRetries = 3;
+          for (let attempt = 0; attempt <= maxWarmRetries; attempt++) {
+            if (attempt > 0) {
+              const waitMs = lastRetryAfterMs || 5000;
+              const waitS = Math.max(1, Math.round(waitMs / 1000));
+              finaliseStatus('Dataset warming… retrying in ' + waitS + ' s', 'status run');
+              await new Promise((resolve) => setTimeout(resolve, waitMs));
+            }
+            resp = await fetch(url, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/sparql-query',
+                'Accept': 'application/sparql-results+json',
+              },
+              body: queryText,
+            });
+            if (resp.status !== 503) break;
+            const retryAfter = resp.headers.get('Retry-After');
+            const retryS = retryAfter ? parseInt(retryAfter, 10) : NaN;
+            lastRetryAfterMs = Number.isFinite(retryS) && retryS > 0 ? retryS * 1000 : 5000;
+            if (attempt === maxWarmRetries) break;
+          }
+          if (!resp) throw new Error('No response from endpoint');
           if (!resp.ok) {
             const errText = await resp.text().catch(() => '');
             throw new Error('HTTP ' + resp.status + ' ' + resp.statusText
