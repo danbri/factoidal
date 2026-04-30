@@ -115,7 +115,7 @@ LIMIT 30
 <code>/sparql</code> as <code>application/sparql-query</code>.</footer>
 <script>(function(){
   var qs=new URLSearchParams(location.search);
-  var COTTAS_DEFAULT='http://100.107.116.70:3032/sparql';
+  var COTTAS_DEFAULT=location.origin+'/sparql';
   var cottasUrl=qs.get('cottas')||COTTAS_DEFAULT;
   var clientEl=document.getElementById('client');
   var pillEl=document.getElementById('backend-pill');
