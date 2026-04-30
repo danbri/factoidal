@@ -1787,8 +1787,10 @@ let resolve_parliament_dir () : string option =
   List.find_opt (fun p ->
     try Sys.is_directory p with _ -> false) candidates
 
-(* JSON string escaper — dispatched to F*-verified SPARQL.JSON.Escape
-   per CLAUDE.md rule #1 (issue #121 follow-up: factoidal_http.ml unwind). *)
+(* JSON string escaper — dispatched to F*-extracted SPARQL.JSON.Escape
+   per CLAUDE.md rule #1 (factoidal_http.ml unwind step 1).
+   See SPARQL.JSON.Escape.fst for the verification surface (the algorithm
+   is verified in F*; the byte primitives are assume-val glue). *)
 let json_escape (s : string) : string =
   SPARQL_JSON_Escape.json_escape s
 
