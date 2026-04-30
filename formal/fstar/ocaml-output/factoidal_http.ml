@@ -1787,24 +1787,10 @@ let resolve_parliament_dir () : string option =
   List.find_opt (fun p ->
     try Sys.is_directory p with _ -> false) candidates
 
-(* Minimal JSON string escaper for the few characters that matter when
-   embedding arbitrary SPARQL-query bodies in a JSON literal. *)
+(* JSON string escaper — dispatched to F*-verified SPARQL.JSON.Escape
+   per CLAUDE.md rule #1 (issue #121 follow-up: factoidal_http.ml unwind). *)
 let json_escape (s : string) : string =
-  let b = Buffer.create (String.length s + 16) in
-  String.iter (fun c ->
-    match c with
-    | '\\' -> Buffer.add_string b "\\\\"
-    | '"'  -> Buffer.add_string b "\\\""
-    | '\n' -> Buffer.add_string b "\\n"
-    | '\r' -> Buffer.add_string b "\\r"
-    | '\t' -> Buffer.add_string b "\\t"
-    | '\b' -> Buffer.add_string b "\\b"
-    | '\012' -> Buffer.add_string b "\\f"
-    | c when Char.code c < 0x20 ->
-        Buffer.add_string b (Printf.sprintf "\\u%04x" (Char.code c))
-    | c -> Buffer.add_char b c
-  ) s;
-  Buffer.contents b
+  SPARQL_JSON_Escape.json_escape s
 
 (* Strip the .rq suffix and any leading numeric prefix; return a short
    human-readable label like "main / 03 — legislatures all" derived from

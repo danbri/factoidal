@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-04-30 14:03 UTC",
-  "commit": "26fc1f247e909e6d17c72d8c6a526ab00347d5a6",
-  "branch": "claude/json-escape-to-fstar",
+  "timestamp": "2026-04-29 18:28 UTC",
+  "commit": "b438b7a7f5e07d05592e4c241c1a040a70f9a62b",
+  "branch": "claude/121-scan-only-validate",
   "totals": {
     "sparql":   {"pass":626,"fail":1,"skip":4,"unsupported":0,"total":631},
     "rdf":      {"pass":1031,"fail":0,"skip":0,"unsupported":0,"total":1031},

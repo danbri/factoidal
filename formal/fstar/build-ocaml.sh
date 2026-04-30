@@ -163,6 +163,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              Parser.XML.fst Parser.RDFXML.fst \
              Parser.SRX.fst Parser.CSVResults.fst \
              Parser.JSONResults.fst \
+             SPARQL.JSON.Escape.fst \
              Parser.Ballyhoo.fst Parser.BallyhooBloom.fst \
              Parser.BallyhooHDT.fst Parser.BallyhooHDTQ.fst \
              Parser.BallyhooCOTTAS.fst \
@@ -243,6 +244,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
+    SPARQL_JSON_Escape.ml \
     Parser_Ballyhoo.ml Parser_BallyhooBloom.ml \
     Parser_BallyhooHDT.ml Parser_BallyhooHDTQ.ml Parser_BallyhooCOTTAS.ml \
     RDF_CottasStore_ColumnSeq.ml \
@@ -527,6 +529,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
+    SPARQL_JSON_Escape.ml
     Parser_Ballyhoo.ml Parser_BallyhooBloom.ml
     Parser_BallyhooHDT.ml Parser_BallyhooHDTQ.ml
     Parser_BallyhooCOTTAS.ml
