@@ -90,29 +90,12 @@ SELECT ?p
 WHERE { ?p a owl:ObjectProperty }
 LIMIT 10
   </factoidal-query>
-  <factoidal-query name="alb-overview" label="06 — ArmsLengthBody overview (the only typed organisation in this snapshot)">
-PREFIX : &lt;https://id.parliament.uk/schema/&gt;
-
-SELECT ?Org ?p ?o
-WHERE {
-  ?Org a :ArmsLengthBody .
-  ?Org ?p ?o .
-}
-ORDER BY ?p
-LIMIT 50
-  </factoidal-query>
-  <factoidal-query name="petition-easa-text" label="07 — Petition text — “Create a Minister for Men” (real e-petition record)">
-SELECT ?p ?o
-WHERE { &lt;https://id.parliament.uk/Easa0LyN&gt; ?p ?o }
-  </factoidal-query>
-  <factoidal-query name="petition-with-signatures" label="08 — Petition with location-keyed signature counts (entity-graph traversal)">
-SELECT ?p ?o
-WHERE { &lt;https://id.parliament.uk/B8ngSsUZ&gt; ?p ?o }
-LIMIT 30
-  </factoidal-query>
 </factoidal-sparql-client>
 <footer>Timing in the <em>Details</em> pane. Component posts to
-<code>/sparql</code> as <code>application/sparql-query</code>.</footer>
+<code>/sparql</code> as <code>application/sparql-query</code>.
+The heavier entity-detail and petition walkthrough queries remain
+available behind “Show all queries” until they are re-validated on the
+live Fly deployment.</footer>
 <script>(function(){
   var qs=new URLSearchParams(location.search);
   var COTTAS_DEFAULT=location.origin+'/sparql';
