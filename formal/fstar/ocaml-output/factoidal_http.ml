@@ -1947,12 +1947,15 @@ let count_dataset_triples (ds : rdf_dataset) : int * int * int * int =
   in
   (dflt + named_triples, dflt, named_count, named_triples)
 
-let backend_kind_string (cfg : config) : string =
+(* Map config flags onto the F-star `backend_kind` constructor. The
+   string form ("empty"/"in-memory"/"binary"/"mixed") is owned by F-star
+   now; see SPARQL.HTTP.BackendInfo.backend_kind_string. *)
+let backend_kind_of_cfg (cfg : config) : SPARQL_HTTP_BackendInfo.backend_kind =
   match cfg.dataset_file, cfg.data_cottas_files with
-  | None, [] -> "empty"
-  | Some _, [] -> "in-memory"
-  | None, _ :: _ -> "binary"
-  | Some _, _ :: _ -> "mixed"
+  | None, [] -> SPARQL_HTTP_BackendInfo.BK_Empty
+  | Some _, [] -> SPARQL_HTTP_BackendInfo.BK_InMem
+  | None, _ :: _ -> SPARQL_HTTP_BackendInfo.BK_CottasOnDisk
+  | Some _, _ :: _ -> SPARQL_HTTP_BackendInfo.BK_Hybrid
 
 let backend_source_string (cfg : config) : string =
   match cfg.dataset_file, cfg.data_cottas_files with
@@ -1964,25 +1967,38 @@ let backend_source_string (cfg : config) : string =
     String.concat ", "
       (Filename.basename f :: List.map Filename.basename paths)
 
-(* Sum cas_num_quads across the open cottas-ondisk stores. Returns a
-   conservative 0 when the summary is absent (it shouldn't be in
-   practice — cottas_ondisk_open populates cods_summary — but treat
-   that as "we honestly don't know" rather than crash the
-   /backend-info.json path). *)
-let cottas_stores_total_quads (stores : cottas_ondisk_loaded list) : int =
-  List.fold_left (fun acc s ->
-    match RDF_CottasStore.cottas_ondisk_summary s.cod_store with
-    | FStar_Pervasives_Native.Some summ ->
-      acc + Z.to_int summ.Parser_BallyhooCOTTAS.cas_num_quads
-    | FStar_Pervasives_Native.None -> acc
-  ) 0 stores
+(* Build a per-store cottas_summary list for the backend_info record.
+   Pure I/O glue: read whatever the F-star-extracted summary getter
+   gives us and forward the fields. Stores whose summary is absent
+   (cottas_ondisk_open should always populate cods_summary, but be
+   defensive) contribute 0 / 0 — same accounting the previous
+   sum-only path used. *)
+let cottas_stores_summaries (stores : cottas_ondisk_loaded list)
+    : SPARQL_HTTP_BackendInfo.cottas_summary list =
+  List.map (fun s ->
+    let (n_quads, n_rg) =
+      match RDF_CottasStore.cottas_ondisk_summary s.cod_store with
+      | FStar_Pervasives_Native.Some summ ->
+        (Z.to_int summ.Parser_BallyhooCOTTAS.cas_num_quads,
+         Z.to_int summ.Parser_BallyhooCOTTAS.cas_num_row_groups)
+      | FStar_Pervasives_Native.None -> (0, 0)
+    in
+    { SPARQL_HTTP_BackendInfo.cs_path = s.cod_path;
+      SPARQL_HTTP_BackendInfo.cs_quads = Z.of_int n_quads;
+      SPARQL_HTTP_BackendInfo.cs_row_groups = Z.of_int n_rg }
+  ) stores
 
 (* /backend-info.json. Reports the union of in-memory dataset_ref AND
    open cottas-ondisk stores — both feed backend_ref, which is the
    actual query-time view. Earlier versions only counted dataset_ref,
    so a --data-cottas-only daemon advertised "kind":"binary" with
    "triples":0, despite COUNT-star returning 3.14M. Reviewer flagged
-   2026-04-26. *)
+   2026-04-26.
+
+   The aggregation rule (sum, not max, not first) and the JSON shape
+   are now owned by F-star — see SPARQL.HTTP.BackendInfo.fst. This
+   function is reduced to pure I/O glue: deref the live state, pack a
+   `backend_info` record, ask the F-star renderer for the bytes. *)
 let serve_backend_info_json
     (cfg : config)
     (dataset_ref : rdf_dataset ref)
@@ -1993,22 +2009,16 @@ let serve_backend_info_json
     let stores = !cottas_stores_ref in
     let (in_mem_total, in_mem_dflt, in_mem_ng_count, in_mem_ng_triples) =
       count_dataset_triples ds in
-    let cottas_quads = cottas_stores_total_quads stores in
-    let cottas_files = List.length stores in
-    let total = in_mem_total + cottas_quads in
-    let body =
-      Printf.sprintf
-        "{\"kind\":\"%s\",\"triples\":%d,\
-         \"in_memory_triples\":%d,\"in_memory_default_graph_triples\":%d,\
-         \"in_memory_named_graphs\":%d,\"in_memory_named_graph_triples\":%d,\
-         \"cottas_triples\":%d,\"cottas_files\":%d,\
-         \"source\":\"%s\"}\n"
-        (json_escape (backend_kind_string cfg))
-        total
-        in_mem_total in_mem_dflt in_mem_ng_count in_mem_ng_triples
-        cottas_quads cottas_files
-        (json_escape (backend_source_string cfg))
+    let bi : SPARQL_HTTP_BackendInfo.backend_info =
+      { SPARQL_HTTP_BackendInfo.bi_kind = backend_kind_of_cfg cfg;
+        SPARQL_HTTP_BackendInfo.bi_source = backend_source_string cfg;
+        SPARQL_HTTP_BackendInfo.bi_in_memory_triples = Z.of_int in_mem_total;
+        SPARQL_HTTP_BackendInfo.bi_in_memory_default_graph_triples = Z.of_int in_mem_dflt;
+        SPARQL_HTTP_BackendInfo.bi_in_memory_named_graphs = Z.of_int in_mem_ng_count;
+        SPARQL_HTTP_BackendInfo.bi_in_memory_named_graph_triples = Z.of_int in_mem_ng_triples;
+        SPARQL_HTTP_BackendInfo.bi_cottas = cottas_stores_summaries stores }
     in
+    let body = SPARQL_HTTP_BackendInfo.render_backend_info bi in
     { rb_status = 200;
       rb_content_type = "application/json; charset=utf-8";
       rb_body = body }
