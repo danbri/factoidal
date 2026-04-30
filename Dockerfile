@@ -12,6 +12,7 @@ WORKDIR /app
 # local machine builds and cloud builds do not clobber each other.
 COPY bin/ci-linux-x86_64/ /app/bin/ci-linux-x86_64/
 COPY docs/web/ /app/docs/web/
+COPY docs/fstar-extracted/ /app/docs/fstar-extracted/
 COPY tools/docker-entrypoint.sh /app/tools/docker-entrypoint.sh
 
 ENV PORT=8080

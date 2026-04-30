@@ -81,6 +81,21 @@ The intended container command is:
 The image entrypoint wraps that command and reads the key values from
 environment variables.
 
+One important static-asset detail: the demo HTML pages load
+`/factoidal-sparql-client.js`, which currently lives in:
+
+- `docs/fstar-extracted/factoidal-sparql-client.js`
+
+So a deployable image must include **both**:
+
+- `docs/web/`
+- `docs/fstar-extracted/`
+
+If `docs/fstar-extracted/factoidal-sparql-client.js` is omitted from the
+image, the page HTML still renders, but the custom web component does
+not upgrade and the expected query UI controls such as "Run" and
+"Share" do not appear.
+
 ## Why a Fly volume first
 
 For the first deployment, prefer a mounted Fly volume at `/data` rather
@@ -110,6 +125,83 @@ The provided `fly.toml` therefore mounts:
    - `/`
    - `/query`
    - a simple `COUNT(*)` query against the Parliament corpus
+   - `/factoidal-sparql-client.js`
+
+## Runtime bundle actually required
+
+For the current Fly deployment, the required runtime dataset is the
+`data.cottas` family only. The deployed volume does **not** need the
+larger provenance / alternate-format files such as:
+
+- `data.nq`
+- `data.factbin`
+
+unless you want them there for debugging or future tooling.
+
+The current Parliament runtime bundle size is roughly:
+
+- `340,748,741` bytes (`~325 MiB`)
+
+which fits comfortably in a `1 GiB` Fly volume.
+
+## Hard-won deployment lessons
+
+### 1. The CI Linux HTTP binary is the real deploy input
+
+The working deploy path now uses:
+
+- `bin/ci-linux-x86_64/factoidal-http`
+
+not the local machine binary directories. That matters both for
+reproducibility and because Fly wants a Linux binary, not a macOS one.
+
+### 2. The app may be "up" before the data is query-ready
+
+`factoidal-http` binds `0.0.0.0:8080` immediately, then loads the COTTAS
+backend. During that warm-up window the SPARQL endpoints intentionally
+return:
+
+- `503`
+- `Retry-After: 5`
+
+That is expected behavior, not a crash.
+
+### 3. A conflicting Fly memory setting can silently cripple startup
+
+Be careful not to set both:
+
+- `memory = '2048mb'`
+- `memory_mb = 256`
+
+in the same `[[vm]]` block.
+
+In practice Fly honored the smaller value, and the app was OOM-killed
+during initial companion-file loading. Removing the conflicting smaller
+setting allowed the server to complete startup.
+
+### 4. The main remaining startup cost is companion-file loading
+
+On the Parliament bundle the app successfully:
+
+- bound `0.0.0.0:8080`
+- opened `data.cottas`
+- mmap'd the companion files
+
+and then, with insufficient RAM, was killed while bulk-loading the
+first column's metadata. So for future datasets, early memory sizing
+should be treated as part of deployment planning, not as an afterthought.
+
+### 5. Fly SSH/SFTP can be flaky for large files
+
+For this deployment the most painful step was getting
+`data.cottas.o.dict` onto the volume. The reliable path was:
+
+- upload the smaller files first
+- chunk the largest dictionary file
+- resume/retry chunk uploads rather than restarting the whole transfer
+- assemble the final file on the mounted volume
+
+This is worth remembering for future corpus refreshes.
 
 ## Commands
 
@@ -136,6 +228,9 @@ That helper:
 
 Then populate the volume, for example with `fly ssh console` plus `scp`
 or a one-off machine that stages the dataset bundle into `/data`.
+
+For large dictionary files, prefer chunked upload plus remote assembly
+over a single monolithic transfer.
 
 ## Current local serving path
 
