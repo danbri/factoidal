@@ -90,6 +90,77 @@ SELECT ?p
 WHERE { ?p a owl:ObjectProperty }
 LIMIT 10
   </factoidal-query>
+  <factoidal-query name="legislature-houses" label="06 — Houses and their legislature link (Parliament-specific)">
+PREFIX : &lt;https://id.parliament.uk/schema/&gt;
+PREFIX rdfs: &lt;http://www.w3.org/2000/01/rdf-schema#&gt;
+
+SELECT ?Legislature ?LegislatureName ?House ?HouseName
+WHERE {
+  ?House a :House .
+  OPTIONAL { ?House :houseName ?HouseName . }
+  OPTIONAL { ?House rdfs:label ?HouseName . }
+  OPTIONAL { ?House :name      ?HouseName . }
+  OPTIONAL {
+    ?House :houseInLegislature ?Legislature .
+    OPTIONAL { ?Legislature rdfs:label ?LegislatureName . }
+    OPTIONAL { ?Legislature :name      ?LegislatureName . }
+  }
+}
+ORDER BY ?LegislatureName ?HouseName
+LIMIT 20
+  </factoidal-query>
+  <factoidal-query name="house-overview" label="07 — House overview (Parliament-specific)">
+PREFIX : &lt;https://id.parliament.uk/schema/&gt;
+PREFIX rdfs: &lt;http://www.w3.org/2000/01/rdf-schema#&gt;
+
+SELECT ?House ?HouseName ?Legislature ?LegislatureName
+WHERE {
+  ?House a :House .
+  OPTIONAL { ?House :houseName ?HouseName . }
+  OPTIONAL { ?House rdfs:label ?HouseName . }
+  OPTIONAL { ?House :name      ?HouseName . }
+  OPTIONAL {
+    ?House :houseInLegislature ?Legislature .
+    OPTIONAL { ?Legislature :name ?LegislatureName . }
+    OPTIONAL { ?Legislature rdfs:label ?LegislatureName . }
+  }
+}
+LIMIT 10
+  </factoidal-query>
+  <factoidal-query name="procedure-overview" label="08 — Procedure-style overview via Parliament periods">
+PREFIX : &lt;https://id.parliament.uk/schema/&gt;
+PREFIX rdfs: &lt;http://www.w3.org/2000/01/rdf-schema#&gt;
+
+SELECT ?Procedure ?ProcedureName ?ProcedureDescription
+       ?StyleEntity ?StyleEntityName
+WHERE {
+  ?Procedure a :ParliamentPeriod .
+  OPTIONAL { ?Procedure :parliamentPeriodName ?ProcedureName . }
+  OPTIONAL { ?Procedure rdfs:label ?ProcedureName . }
+  OPTIONAL { ?Procedure :parliamentPeriodNote ?ProcedureDescription . }
+  OPTIONAL {
+    ?StyleEntity a :Threshold .
+    OPTIONAL { ?StyleEntity rdfs:label ?StyleEntityName . }
+    OPTIONAL { ?StyleEntity :name      ?StyleEntityName . }
+  }
+}
+LIMIT 10
+  </factoidal-query>
+  <factoidal-query name="parliament-period-overview" label="09 — Parliament periods with dates and notes">
+PREFIX : &lt;https://id.parliament.uk/schema/&gt;
+PREFIX rdfs: &lt;http://www.w3.org/2000/01/rdf-schema#&gt;
+
+SELECT ?Procedure ?ProcedureName ?ProcedureDescription ?StartDate ?EndDate
+WHERE {
+  ?Procedure a :ParliamentPeriod .
+  OPTIONAL { ?Procedure :parliamentPeriodName ?ProcedureName . }
+  OPTIONAL { ?Procedure rdfs:label ?ProcedureName . }
+  OPTIONAL { ?Procedure :parliamentPeriodNote ?ProcedureDescription . }
+  OPTIONAL { ?Procedure :parliamentPeriodStartDate ?StartDate . }
+  OPTIONAL { ?Procedure :parliamentPeriodEndDate ?EndDate . }
+}
+LIMIT 5
+  </factoidal-query>
 </factoidal-sparql-client>
 <footer>Timing in the <em>Details</em> pane. Component posts to
 <code>/sparql</code> as <code>application/sparql-query</code>.
