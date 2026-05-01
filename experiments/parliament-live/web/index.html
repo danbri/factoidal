@@ -1665,20 +1665,28 @@ async function viewParty(m, _q, gen) {
   const id = m[1];
   renderLoading('loading party…');
 
-  // Per-party detail endpoint /Parties/<id> returns empty (probed). We
-  // synthesise from the active-parties list (cheap, Cache-Control 300 s)
-  // plus a Members search filtered by partyId.
-  let activeC, activeL, members;
+  // No per-party detail endpoint exists (/Parties/<id> returns empty —
+  // probed). We synthesise from the active-parties list. House counts come
+  // from a House-scoped Members search for each chamber (because
+  // IsCurrentMember=true alone does not restrict by House — that's the bug
+  // we're fixing here: the Party page used to lump Commons + Lords into one
+  // total).
+  let activeC, activeL, mCommons, mLords;
   try {
-    [activeC, activeL] = await Promise.all([
+    [activeC, activeL, mCommons, mLords] = await Promise.all([
       fetchJson(`${API}/members/Parties/GetActive/Commons`),
       fetchJson(`${API}/members/Parties/GetActive/Lords`),
+      fetchJson(`${API}/members/Members/Search?partyId=${id}&House=1&IsCurrentMember=true&take=20`)
+        .catch(() => ({ items: [], totalResults: 0 })),
+      fetchJson(`${API}/members/Members/Search?partyId=${id}&House=2&IsCurrentMember=true&take=20`)
+        .catch(() => ({ items: [], totalResults: 0 })),
     ]);
   } catch (e) {
     if (gen === routeGen) renderError('party load failed: ' + e.message);
     return;
   }
   if (gen !== routeGen) return;
+
   const flat = [...(activeC.items || []), ...(activeL.items || [])]
     .map(it => it.value).filter(Boolean);
   const party = flat.find(p => String(p.id) === id);
@@ -1687,14 +1695,8 @@ async function viewParty(m, _q, gen) {
     return;
   }
 
-  try {
-    members = await fetchJson(
-      `${API}/members/Members/Search?partyId=${id}&IsCurrentMember=true&take=20`);
-  } catch (e) {
-    members = { items: [], totalResults: 0 };
-  }
-  if (gen !== routeGen) return;
-
+  const totalCommons = mCommons.totalResults || 0;
+  const totalLords   = mLords.totalResults   || 0;
   const cols = partyColours(party);
   const root = rootEl();
   root.append(el('div', { class: 'hero' },
@@ -1706,29 +1708,69 @@ async function viewParty(m, _q, gen) {
       }, party.abbreviation || ''),
       ' ',
       party.isIndependentParty ? 'Independent group' : 'Party',
-      ` · ${members.totalResults || 0} current members`)));
+      ' · ',
+      totalCommons ? `${totalCommons} in Commons` : null,
+      (totalCommons && totalLords) ? ' · ' : null,
+      totalLords ? `${totalLords} in Lords` : null,
+      (!totalCommons && !totalLords) ? '0 current members' : null
+    )));
 
-  // Members of this party (first 20)
-  const ul = el('ul', { class: 'rows' });
-  for (const it of (members.items || []).slice(0, 20)) {
-    const v = it.value || {};
-    const h = v.latestHouseMembership || {};
-    ul.append(el('li', {},
-      el('a', { class: 'row', href: `#/member/${v.id}` },
-        el('img', { class: 'thumb', loading: 'lazy', alt: '',
-          src: authedImg(`/members/Members/${v.id}/Thumbnail`),
-          onerror: function() { this.style.display = 'none'; } }),
-        el('div', { class: 'text' },
-          el('div', { class: 'title' }, v.nameDisplayAs || ''),
-          el('div', { class: 'sub' },
-            (h.house === 1 ? 'Commons' : h.house === 2 ? 'Lords' : '') +
-            (h.membershipFrom ? ' · ' + h.membershipFrom : ''))))));
+  // Per-house members lists. Within each list, sub-line surfaces the
+  // member's *exact* party variant (e.g. "Labour (Co-op)" vs "Labour")
+  // because the API folds those under one party id but distinguishes them
+  // on the member's latestParty.name. This matters most for Labour (id=15)
+  // which mixes plain Labour and Labour (Co-op).
+  for (const [houseLabel, search] of [['Commons', mCommons], ['Lords', mLords]]) {
+    const items = search.items || [];
+    if (!items.length) continue;
+    const ul = el('ul', { class: 'rows' });
+    for (const it of items.slice(0, 20)) {
+      const v = it.value || {};
+      const p = v.latestParty || {};
+      const h = v.latestHouseMembership || {};
+      // Surface variant: only show name when it differs from the parent.
+      const variant = (p.name && p.name !== party.name) ? p.name : null;
+      const sub = [
+        variant,
+        h.membershipFrom,
+      ].filter(Boolean).join(' · ');
+      ul.append(el('li', {},
+        el('a', { class: 'row', href: `#/member/${v.id}` },
+          el('img', { class: 'thumb', loading: 'lazy', alt: '',
+            src: authedImg(`/members/Members/${v.id}/Thumbnail`),
+            onerror: function() { this.style.display = 'none'; } }),
+          el('div', { class: 'text' },
+            el('div', { class: 'title' }, v.nameDisplayAs || ''),
+            el('div', { class: 'sub' }, sub)))));
+    }
+    root.append(el('div', { class: 'card' },
+      el('header', {},
+        el('h2', {}, houseLabel),
+        el('span', { class: 'meta' },
+          `${Math.min(items.length, 20)} of ${search.totalResults || items.length}`)),
+      el('div', { class: 'body tight' }, ul)));
   }
-  root.append(el('div', { class: 'card' },
-    el('header', {}, el('h2', {}, 'Members'),
-      el('span', { class: 'meta' },
-        ((members.items || []).length) + ' of ' + (members.totalResults || 0))),
-    el('div', { class: 'body tight' }, ul)));
+
+  // Note the Co-op flavour on Labour specifically. Trying to be informative
+  // without being confusing.
+  if (String(id) === '15') {
+    root.append(el('details', { class: 'heuristic-note' },
+      el('summary', {}, 'Why does this list include “Labour (Co-op)” members?'),
+      el('div', { class: 'note-body' },
+        el('p', { style: 'margin:0' },
+          'The Members API stores Labour and Labour (Co-op) under the same ',
+          el('code', {}, 'party.id = 15'),
+          ', distinguished only by the ',
+          el('code', {}, 'name'),
+          ' field on individual member records. ',
+          el('code', {}, 'StateOfTheParties'),
+          ' rolls them up as one row called "Labour"; this list does the same. ',
+          'The Co-operative Party is technically a sister organisation that ',
+          'stands candidates jointly with Labour, but the API treats them as ',
+          'one party for counting. The sub-line on each member card shows the ',
+          'variant where it differs from the canonical name.')
+      )));
+  }
 }
 
 // ============================================================================
