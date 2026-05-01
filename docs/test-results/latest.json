@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-05-01 14:16 UTC",
-  "commit": "8974f344d93130f21cde0dc60a3822e18016618e",
-  "branch": "claude/streaming-count-group-by-graph",
+  "timestamp": "2026-05-01 19:00 UTC",
+  "commit": "39ce3aaee9a75442b10e4e80a356ae9455ef1913",
+  "branch": "claude/inmem-cottas-phase-a",
   "totals": {
     "sparql":   {"pass":626,"fail":1,"skip":4,"unsupported":0,"total":631},
     "rdf":      {"pass":1031,"fail":0,"skip":0,"unsupported":0,"total":1031},
