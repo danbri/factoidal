@@ -72,7 +72,7 @@ const ROUTES = [
     exact: true },
 ];
 
-function matchRoute(reqPath) {
+export function matchRoute(reqPath) {
   for (const r of ROUTES) {
     if (r.exact) {
       if (reqPath === r.prefix) return { route: r, tail: '' };
@@ -87,7 +87,7 @@ function matchRoute(reqPath) {
 //
 // See README at top of file. Returns ms.
 
-function ttlMsFor(route, tail) {
+export function ttlMsFor(route, tail) {
   if (route.prefix === '/api/now/') {
     // tail looks like "CommonsMain/current" or "CommonsMain/2026-04-29T13:00:00Z"
     const m = tail.match(/^[^/]+\/(.+)$/);
@@ -137,12 +137,15 @@ setInterval(() => {
   for (const [k, v] of cache) if (v.expires < now) cache.delete(k);
 }, 60_000).unref();
 
-function buildUpstreamUrl(route, tail, search) {
+export function buildUpstreamUrl(route, tail, search) {
   const host = route.upstreamHost;
   const base = route.upstreamPath;
   const pathOut = route.exact ? base : (base + tail);
   return `https://${host}${pathOut}${search || ''}`;
 }
+
+// Re-export for tests
+export { ROUTES };
 
 // Per-upstream-host rate limit: enforce a minimum gap between successive
 // upstream requests to the same host. Caching + coalescing already prevent
@@ -342,13 +345,20 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, HOST, () => {
-  process.stdout.write(`fpkg proxy listening on http://${HOST}:${PORT}/\n`);
-  process.stdout.write(`  auth: ${PROXY_PASSWORD ? 'required (PROXY_PASSWORD set)' : 'open (PROXY_PASSWORD unset — dev mode)'}\n`);
-  process.stdout.write(`  /api/now/<zone>/<current|isoDate>\n`);
-  process.stdout.write(`  /api/members/<MembersApiPath>\n`);
-  process.stdout.write(`  /api/hansard/<HansardApiPath>\n`);
-  process.stdout.write(`  /api/cvotes/<CommonsVotesPath>  /api/lvotes/<LordsVotesPath>\n`);
-  process.stdout.write(`  /api/sparql?query=...\n`);
-  process.stdout.write(`  /_health  /_cache\n`);
-});
+// Only start listening when invoked as the entry point. When this module is
+// imported (e.g. by tests), the server stays inert.
+const invokedAsMain = import.meta.url === `file://${process.argv[1]}`;
+if (invokedAsMain) {
+  server.listen(PORT, HOST, () => {
+    process.stdout.write(`fpkg proxy listening on http://${HOST}:${PORT}/\n`);
+    process.stdout.write(`  auth: ${PROXY_PASSWORD ? 'required (PROXY_PASSWORD set)' : 'open (PROXY_PASSWORD unset — dev mode)'}\n`);
+    process.stdout.write(`  /api/now/<zone>/<current|isoDate>\n`);
+    process.stdout.write(`  /api/members/<MembersApiPath>\n`);
+    process.stdout.write(`  /api/hansard/<HansardApiPath>\n`);
+    process.stdout.write(`  /api/cvotes/<CommonsVotesPath>  /api/lvotes/<LordsVotesPath>\n`);
+    process.stdout.write(`  /api/sparql?query=...\n`);
+    process.stdout.write(`  /_health  /_cache\n`);
+  });
+}
+
+export { server };
