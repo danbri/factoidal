@@ -246,6 +246,9 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
     SPARQL_JSON_Escape.ml \
+    SPARQL_HTTP_Response.ml \
+    SPARQL_HTTP_BackendInfo.ml \
+    SPARQL_HTTP_QueriesIndex.ml \
     Parser_Ballyhoo.ml Parser_BallyhooBloom.ml \
     Parser_BallyhooHDT.ml Parser_BallyhooHDTQ.ml Parser_BallyhooCOTTAS.ml \
     RDF_CottasStore_ColumnSeq.ml \
@@ -532,6 +535,9 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
     SPARQL_JSON_Escape.ml
+    SPARQL_HTTP_Response.ml
+    SPARQL_HTTP_BackendInfo.ml
+    SPARQL_HTTP_QueriesIndex.ml
     Parser_Ballyhoo.ml Parser_BallyhooBloom.ml
     Parser_BallyhooHDT.ml Parser_BallyhooHDTQ.ml
     Parser_BallyhooCOTTAS.ml
