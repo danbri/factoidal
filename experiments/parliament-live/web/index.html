@@ -1,0 +1,2101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d0f12">
+<title>FPKG · Forgetmeknot Palace</title>
+<style>
+  :root {
+    /* contrast targets (vs. --bg #0d0f12):
+       --ink       16.4 : 1   primary body text
+       --ink-dim    9.8 : 1   secondary text — meets AA for any size
+       --ink-soft   5.1 : 1   captions / labels — meets AA at >= 14px
+       --ink-mute   3.6 : 1   decorative only, never primary text
+       --gold       8.1 : 1   links
+    */
+    --bg:#0d0f12; --panel:#13171c; --panel-2:#1a1f26; --line:#2a313b;
+    --ink:#f3f5fa; --ink-dim:#d6dbe4; --ink-soft:#a8b1bd; --ink-mute:#7c8593;
+    --commons:#1c8a52; --lords:#c43c54;
+    --gold:#e2c478; --gold-dim:#a98e3f;
+    --ok:#5cd28a; --warn:#f0b76a; --alert:#ff7e7e;
+    --topbar-h: 56px;
+    --safe-top: env(safe-area-inset-top, 0);
+    --safe-bottom: env(safe-area-inset-bottom, 0);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body {
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    min-height: 100dvh;
+    overflow-x: hidden;                /* never let stray content force horizontal scroll */
+    overscroll-behavior: contain;      /* block page-level pull-to-refresh and h-swipe back */
+    -webkit-text-size-adjust: 100%;
+    word-break: break-word;            /* long URLs / debate titles wrap on phones */
+    overflow-wrap: break-word;
+    touch-action: pan-y;               /* allow vertical scroll, suppress horizontal swipe gesture */
+  }
+  img { max-width: 100%; height: auto; }
+  ul.rows a.row, ul.rows .row, .card { touch-action: pan-y; }
+
+  /* ---- Focus indicator (WCAG 2.4.11) ----------------------------------- */
+  /* Suppress default outline only for non-keyboard focus; keyboard users
+     get a thick high-contrast indicator regardless of element type. */
+  :focus { outline: none; }
+  :focus-visible {
+    outline: 3px solid var(--gold);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* ---- Screen-reader-only utility -------------------------------------- */
+  .visually-hidden {
+    position: absolute !important;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap;
+    border: 0;
+  }
+
+  /* ---- Skip link (keyboard nav) ---------------------------------------- */
+  .skip-link {
+    position: absolute; left: 0; top: -100px;
+    background: var(--gold); color: #1a1500;
+    padding: .65rem 1rem; font-weight: 700; border-radius: 0 0 8px 0;
+    z-index: 200;
+    transition: top .15s ease;
+  }
+  .skip-link:focus { top: 0; }
+
+  /* ---- Reduced motion (WCAG 2.3.3 / vestibular safety) ----------------- */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
+      scroll-behavior: auto !important;
+    }
+    .chamber.bell-on { animation: none; }
+  }
+  a { color: var(--gold); text-decoration: none; }
+  a:hover { color: #f0d590; }
+  a:active { color: #f7e0a0; }
+
+  /* ---- Top bar ----------------------------------------------------------- */
+  .topbar {
+    position: sticky; top: 0; z-index: 30;
+    height: calc(var(--topbar-h) + var(--safe-top));
+    padding-top: var(--safe-top);
+    display: flex; align-items: center; gap: .25rem;
+    background: rgba(13,15,18,.92); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .topbar button.icon, .topbar a.icon {
+    appearance: none; background: transparent; border: 0; color: var(--ink);
+    width: 44px; height: 44px; border-radius: 22px;
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer;
+  }
+  .topbar button.icon:hover, .topbar a.icon:hover { background: var(--panel); }
+  .topbar svg { width: 22px; height: 22px; }
+  .topbar .title {
+    flex: 1; font: 600 16px/1 "SF Pro Display", system-ui, sans-serif;
+    letter-spacing: .005em;
+  }
+  .topbar .title .live-dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--ink-mute); margin-right: 6px; vertical-align: middle;
+    transition: background .3s, box-shadow .3s;
+  }
+  .topbar .title .live-dot.on  { background: var(--ok);    box-shadow: 0 0 10px var(--ok); }
+  .topbar .title .live-dot.warn{ background: var(--warn);  box-shadow: 0 0 10px var(--warn); }
+
+  /* ---- Drawer (hamburger menu) ------------------------------------------- */
+  .scrim {
+    position: fixed; inset: 0; background: rgba(0,0,0,.5); opacity: 0;
+    transition: opacity .2s ease; pointer-events: none; z-index: 40;
+  }
+  .scrim.open { opacity: 1; pointer-events: auto; }
+  nav.drawer {
+    position: fixed; top: 0; left: 0; bottom: 0;
+    width: min(280px, 80vw); padding-top: var(--safe-top);
+    background: var(--panel); border-right: 1px solid var(--line);
+    transform: translateX(-100%); transition: transform .25s cubic-bezier(.2,.7,.2,1);
+    z-index: 50; display: flex; flex-direction: column;
+  }
+  nav.drawer.open { transform: translateX(0); }
+  nav.drawer .brand {
+    padding: 1rem 1.1rem; display: flex; align-items: center; gap: .5rem;
+    border-bottom: 1px solid var(--line);
+  }
+  nav.drawer .brand svg { width: 22px; height: 22px; color: var(--gold); }
+  nav.drawer .brand b { font: 600 15px/1 system-ui; }
+  nav.drawer ul { list-style: none; margin: 0; padding: .35rem 0; flex: 1; overflow-y: auto; }
+  nav.drawer li.section {
+    padding: 1rem .9rem .35rem; font: 500 11px/1 "SF Mono", monospace;
+    letter-spacing: .15em; text-transform: uppercase; color: var(--ink-mute);
+  }
+  nav.drawer a.item {
+    display: flex; align-items: center; gap: .75rem;
+    padding: .75rem .9rem; color: var(--ink);
+    border-left: 3px solid transparent;
+  }
+  nav.drawer a.item:hover { background: var(--panel-2); }
+  nav.drawer a.item.active {
+    border-left-color: var(--gold); background: var(--panel-2);
+  }
+  nav.drawer a.item svg { width: 18px; height: 18px; color: var(--ink-dim); }
+  nav.drawer footer {
+    padding: .8rem 1rem calc(.8rem + var(--safe-bottom));
+    font-size: 11px; color: var(--ink-mute); border-top: 1px solid var(--line);
+  }
+
+  /* ---- Main canvas ------------------------------------------------------- */
+  main {
+    max-width: 720px; margin: 0 auto;
+    padding: 1rem 1rem calc(2rem + var(--safe-bottom));
+  }
+  @media (min-width: 720px) { main { padding: 1.4rem 1.4rem 3rem; } }
+
+  /* ---- Cards / widgets --------------------------------------------------- */
+  .card {
+    border: 1px solid var(--line); border-radius: 12px;
+    background: var(--panel);
+    margin-bottom: 1.1rem; overflow: hidden;
+  }
+  .card > header {
+    display: flex; align-items: baseline; gap: .5rem;
+    padding: .85rem 1rem; border-bottom: 1px solid var(--line);
+  }
+  .card > header h2 {
+    margin: 0; font: 600 16px/1.2 system-ui; color: var(--ink);
+  }
+  .card > header .meta { margin-left: auto; font: 500 13px/1.2 system-ui; color: var(--ink-soft); }
+  .card > .body { padding: 1rem; font-size: 15px; line-height: 1.55; color: var(--ink); }
+  .card > .body.tight { padding: 0; }
+
+  /* ---- Topic page hero (member / debate header) -------------------------- */
+  .hero { padding: 1.1rem 1rem .9rem; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+  .hero .crumb {
+    font: 500 13px/1.4 system-ui; color: var(--ink-soft);
+    margin-bottom: .35rem;
+  }
+  .hero h1 { margin: 0; font: 700 26px/1.2 "SF Pro Display", system-ui; letter-spacing: .005em; }
+  .hero .sub { margin-top: .35rem; font: 500 14px/1.5 system-ui; color: var(--ink-dim); }
+  .hero-row { display: flex; gap: 1rem; align-items: center; }
+  .hero-row img.portrait {
+    width: 72px; height: 72px; border-radius: 50%; object-fit: cover;
+    background: #222; border: 2px solid var(--gold-dim); flex: 0 0 72px;
+  }
+  .badge {
+    display: inline-block; font: 600 10px/1 "SF Mono", monospace;
+    letter-spacing: .12em; text-transform: uppercase;
+    padding: 4px 7px; border-radius: 3px; margin-right: 4px;
+    color: #fff; background: var(--ink-mute);
+  }
+
+  /* ---- Property tables --------------------------------------------------- */
+  table.props { width: 100%; border-collapse: collapse; }
+  table.props tr { border-top: 1px solid var(--line); }
+  table.props tr:first-child { border-top: 0; }
+  table.props td {
+    padding: .55rem 1rem; vertical-align: top; font-size: 14px;
+  }
+  table.props td.k {
+    color: var(--ink-mute); width: 130px; white-space: nowrap;
+    font: 500 12px/1.4 "SF Mono", monospace;
+  }
+  table.props td.v { color: var(--ink); word-break: break-word; }
+
+  /* ---- Lists (clickable rows for graph navigation) ----------------------- */
+  ul.rows { list-style: none; margin: 0; padding: 0; }
+  ul.rows li {
+    border-top: 1px solid var(--line); position: relative;
+  }
+  ul.rows li:first-child { border-top: 0; }
+  ul.rows a.row, ul.rows .row {
+    display: flex; align-items: center; gap: .75rem;
+    padding: .65rem 1rem; color: inherit; min-height: 48px;
+  }
+  ul.rows a.row:hover { background: var(--panel-2); }
+  ul.rows a.row::after {
+    content: "›"; margin-left: auto; color: var(--ink-mute); font: 18px/1 system-ui;
+    flex: 0 0 auto;
+  }
+  ul.rows .row .text { min-width: 0; flex: 1; }
+  ul.rows .row .title { font-weight: 600; color: var(--ink);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  ul.rows .row .sub { font: 500 11px/1.4 "SF Mono", monospace; color: var(--ink-mute);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  ul.rows .row img.thumb {
+    width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex: 0 0 36px;
+    background: #222;
+  }
+  ul.rows .row .stripe {
+    width: 4px; align-self: stretch; flex: 0 0 4px; border-radius: 2px;
+    background: var(--ink-mute); margin: 6px 0;
+  }
+
+  /* ---- Chamber panels (home view) --------------------------------------- */
+  .chambers { display: grid; gap: 1rem; grid-template-columns: 1fr; }
+  @media (min-width: 720px) { .chambers { grid-template-columns: 1fr 1fr; } }
+  .chamber {
+    border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+    background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
+  }
+  .chamber.commons { box-shadow: 0 0 0 1px rgba(0,105,55,.10); }
+  .chamber.lords   { box-shadow: 0 0 0 1px rgba(155,27,48,.16); }
+  .chamber.bell-on { animation: bellpulse 1.2s ease-in-out infinite; }
+  @keyframes bellpulse { 50% { filter: brightness(1.07); } }
+  .chamber > header {
+    display: flex; align-items: center; gap: .5rem;
+    padding: .7rem .9rem; border-bottom: 1px solid var(--line);
+  }
+  .chamber .label {
+    font: 600 11px/1 "SF Mono", monospace; letter-spacing: .14em;
+    text-transform: uppercase; padding: 4px 8px; border-radius: 3px; color: #fff;
+  }
+  .chamber.commons .label { background: var(--commons); }
+  .chamber.lords   .label { background: var(--lords); }
+  .chamber .meta { margin-left: auto; font: 500 11px/1 "SF Mono", monospace; color: var(--ink-mute); }
+  .freshness { font: 600 10px/1 "SF Mono", monospace; padding: 3px 6px; border-radius: 3px; margin-right: 4px; }
+  .freshness.fresh { background: rgba(92,210,138,.12); color: var(--ok); }
+  .freshness.stale { background: rgba(240,183,106,.12); color: var(--warn); }
+  .freshness.down  { background: rgba(255,110,110,.15); color: var(--alert); }
+  .slide {
+    padding: 1.25rem 1rem; min-height: 140px;
+    display: flex; flex-direction: column; gap: .25rem; justify-content: center; align-items: center;
+    text-align: center;
+  }
+  .slide .line { font: 600 18px/1.3 "Cambria", "Source Serif Pro", Georgia, serif; }
+  .slide .line.s-text110 { font-size: 22px; }
+  .slide .blank { color: var(--ink-mute); font-style: italic; font: italic 400 14px/1.3 "Cambria", Georgia, serif; }
+  .slide .member-row { margin-top: .8rem; display: flex; align-items: center; gap: .6rem; }
+  .slide .member-row img { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 2px solid var(--gold-dim); background: #222; }
+  .slide .member-row .name { font: 600 14px/1.2 system-ui; }
+
+  /* ---- Search overlay ---------------------------------------------------- */
+  .searchbar {
+    display: flex; gap: .5rem; align-items: center;
+    border: 1px solid var(--line); background: var(--panel);
+    border-radius: 999px; padding: .35rem .5rem .35rem .85rem;
+    margin-bottom: 1rem;
+  }
+  .searchbar input {
+    flex: 1; background: transparent; border: 0; color: var(--ink);
+    font: 15px system-ui; outline: none; padding: .4rem 0;
+    min-width: 0;
+  }
+  .searchbar select {
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--ink);
+    border-radius: 999px; padding: .35rem .6rem; font: 13px system-ui;
+  }
+
+  /* ---- Form / settings --------------------------------------------------- */
+  .field-row {
+    display: flex; align-items: center; gap: 1rem; padding: .8rem 1rem;
+    border-top: 1px solid var(--line);
+  }
+  .field-row:first-child { border-top: 0; }
+  .field-row .label { flex: 1; }
+  .field-row .label .name { font-weight: 600; }
+  .field-row .label .help { font-size: 12px; color: var(--ink-mute); }
+  .toggle {
+    appearance: none; -webkit-appearance: none;
+    width: 44px; height: 26px; border-radius: 13px; background: var(--panel-2);
+    border: 1px solid var(--line); position: relative; cursor: pointer; transition: background .15s;
+  }
+  .toggle::after {
+    content:""; position: absolute; top: 2px; left: 2px;
+    width: 20px; height: 20px; border-radius: 50%; background: var(--ink-dim);
+    transition: transform .15s, background .15s;
+  }
+  .toggle:checked { background: rgba(92,210,138,.25); border-color: var(--ok); }
+  .toggle:checked::after { transform: translateX(18px); background: var(--ok); }
+
+  button.btn {
+    appearance: none; background: var(--panel-2); border: 1px solid var(--line);
+    color: var(--ink); padding: .65rem 1rem; border-radius: 8px; cursor: pointer;
+    font: 15px system-ui;
+    min-height: 44px;                  /* WCAG 2.5.8 best practice */
+  }
+  button.btn:hover { border-color: var(--gold-dim); color: #f0d590; }
+  button.btn.primary { background: var(--gold-dim); color: #1a1500; border-color: var(--gold); }
+  button.btn.primary:hover { background: var(--gold); color: #1a1500; }
+  /* All clickable list rows are at least 48px tall; ul.rows already enforces 48px min via min-height. */
+  ul.rows a.row, ul.rows .row { min-height: 48px; }
+
+  /* ---- Empty / loading / error ------------------------------------------ */
+  .empty, .loading {
+    padding: 2rem 1rem; text-align: center; color: var(--ink-mute);
+    font-style: italic; font-size: 14px;
+  }
+  .errblock {
+    padding: 1rem; border: 1px solid rgba(255,110,110,.4); border-radius: 8px;
+    background: rgba(255,110,110,.07); color: var(--alert); font-size: 13px;
+    margin-bottom: 1rem;
+  }
+
+  /* ---- Login overlay ----------------------------------------------------- */
+  .login-overlay {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(13,15,18,.96); backdrop-filter: blur(6px);
+    display: none; align-items: center; justify-content: center;
+    padding: 1rem;
+  }
+  .login-overlay.show { display: flex; }
+  .login-box {
+    width: 100%; max-width: 360px;
+    border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+    padding: 1.4rem; text-align: center;
+  }
+  .login-box h2 { margin: 0 0 .25rem; font: 600 18px/1.2 system-ui; }
+  .login-box p  { margin: 0 0 1rem; font-size: 13px; color: var(--ink-dim); }
+  .login-box input {
+    width: 100%; padding: .65rem .9rem; font: 15px system-ui;
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--ink);
+    border-radius: 8px; outline: none; margin-bottom: .35rem;
+  }
+  .login-box input:focus { border-color: var(--gold-dim); }
+  .login-box .err { color: var(--alert); font-size: 12px; min-height: 18px; }
+
+  /* ---- Screensaver ------------------------------------------------------- */
+  .screensaver {
+    position: fixed; inset: 0; z-index: 90; background: #05070a;
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    padding: 2rem; cursor: pointer;
+    background-image:
+      radial-gradient(800px 500px at 30% 20%, rgba(0,105,55,.08), transparent 60%),
+      radial-gradient(800px 500px at 70% 80%, rgba(155,27,48,.08), transparent 60%);
+  }
+  .screensaver.show { display: flex; }
+  .screensaver .ss-card { text-align: center; max-width: 540px; }
+  .screensaver .ss-portrait {
+    width: 220px; height: 220px; border-radius: 50%; object-fit: cover;
+    margin: 0 auto 1.5rem; background: #222;
+    border: 3px solid var(--gold-dim);
+    box-shadow: 0 0 60px rgba(200,169,81,.15);
+    transition: opacity .9s ease;
+  }
+  .screensaver .ss-name {
+    font: 700 28px/1.2 "SF Pro Display", system-ui;
+    margin: 0 0 .25rem; transition: opacity .9s ease;
+  }
+  .screensaver .ss-meta {
+    font: 500 14px/1.4 "SF Mono", monospace; color: var(--ink-dim);
+    transition: opacity .9s ease;
+  }
+  .screensaver .ss-stripe {
+    width: 80px; height: 3px; margin: 1.2rem auto 0; border-radius: 2px;
+    background: var(--ink-mute); transition: background .9s ease;
+  }
+  .screensaver.fade .ss-portrait,
+  .screensaver.fade .ss-name,
+  .screensaver.fade .ss-meta { opacity: 0; }
+  .screensaver .ss-hint {
+    position: absolute; bottom: 1.5rem; left: 0; right: 0; text-align: center;
+    font: 500 11px/1 "SF Mono", monospace; letter-spacing: .15em;
+    text-transform: uppercase; color: var(--ink-mute);
+  }
+
+  footer.attribution {
+    color: var(--ink-mute); font-size: 11.5px; line-height: 1.5;
+    padding: 1.5rem 1rem 0; max-width: 720px; margin: 0 auto;
+  }
+  footer.attribution a { color: var(--gold-dim); }
+
+  hr.sep { border: 0; border-top: 1px solid var(--line); margin: 1.5rem 0; }
+</style>
+</head>
+<body>
+
+<a class="skip-link" href="#root">Skip to main content</a>
+
+<header class="topbar" role="banner">
+  <button class="icon" id="btn-menu"
+          aria-label="Open main menu" aria-expanded="false" aria-controls="drawer">
+    <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <path d="M3 6h18M3 12h18M3 18h18"/>
+    </svg>
+  </button>
+  <div class="title">
+    <span class="live-dot" id="live-dot" aria-hidden="true"></span>
+    <span aria-hidden="true">FPKG</span>
+    <span class="visually-hidden">Forgetmeknot Palace</span>
+  </div>
+  <a href="#/search" class="icon" aria-label="Search members">
+    <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>
+    </svg>
+  </a>
+</header>
+<div id="sr-status" role="status" aria-live="polite" class="visually-hidden"></div>
+
+<div class="scrim" id="scrim"></div>
+
+<nav class="drawer" id="drawer" aria-label="Main navigation" aria-hidden="true">
+  <div class="brand">
+    <!-- a small graph: node + three edges. Deliberately not architectural,
+         to avoid any echo of Crowned Portcullis / Parliament imagery (OPL §). -->
+    <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+      <circle cx="12" cy="12" r="2.4" fill="currentColor"/>
+      <circle cx="4"  cy="6"  r="1.6"/>
+      <circle cx="20" cy="7"  r="1.6"/>
+      <circle cx="6"  cy="19" r="1.6"/>
+      <circle cx="19" cy="18" r="1.6"/>
+      <path d="M5.4 6.8 L10.2 11"/>
+      <path d="M18.6 7.6 L13.7 10.7"/>
+      <path d="M7.2 18 L10.6 13.4"/>
+      <path d="M17.8 17.3 L13.6 13.5"/>
+    </svg>
+    <b>Forgetmeknot Palace</b>
+  </div>
+  <ul>
+    <li class="section">Browse</li>
+    <li><a href="#/" class="item" data-route="/">
+      <!-- broadcast / live signal: dot + radiating arcs -->
+      <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+        <circle cx="12" cy="12" r="1.6" fill="currentColor"/>
+        <path d="M8.5 8.5a5 5 0 0 0 0 7"/>
+        <path d="M15.5 8.5a5 5 0 0 1 0 7"/>
+        <path d="M5.6 5.6a9 9 0 0 0 0 12.8"/>
+        <path d="M18.4 5.6a9 9 0 0 1 0 12.8"/>
+      </svg>
+      Now</a></li>
+    <li><a href="#/search?house=1" class="item" data-route="/search">
+      <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      Members</a></li>
+    <li><a href="#/parties" class="item" data-route="/parties">
+      <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+      Parties</a></li>
+    <li><a href="#/house/Commons" class="item" data-route="/house">
+      <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 21V10l9-6 9 6v11"/><path d="M9 21v-7h6v7"/></svg>
+      Houses</a></li>
+    <li><a href="#/debates" class="item" data-route="/debates">
+      <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 6h18M3 12h12M3 18h18"/></svg>
+      Recent debates</a></li>
+    <li class="section">App</li>
+    <li><a href="#/settings" class="item" data-route="/settings">
+      <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9 1.7 1.7 0 0 0 4.3 7.2l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 9 4.7 1.7 1.7 0 0 0 10 3.2V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      Settings</a></li>
+    <li><a href="#/about" class="item" data-route="/about">
+      <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 8v.01M11 12h1v4h1"/></svg>
+      About</a></li>
+  </ul>
+  <footer>
+    <div style="margin-bottom:.5rem">v0.1 · prototype</div>
+    <button class="btn" id="drawer-signout" style="width:100%">Sign out</button>
+  </footer>
+</nav>
+
+<main id="root"></main>
+
+<footer class="attribution">
+  Contains Parliamentary information licensed under the
+  <a href="https://www.parliament.uk/site-information/copyright-parliament/open-parliament-licence/">Open Parliament Licence v3.0</a>.
+  Third-party prototype, not affiliated with the UK Parliament.
+</footer>
+
+<!-- Login overlay -->
+<div class="login-overlay" id="login" role="dialog" aria-modal="true" aria-labelledby="login-title" aria-describedby="login-desc" hidden>
+  <div class="login-box">
+    <h2 id="login-title">Forgetmeknot Palace</h2>
+    <p id="login-desc">
+      A small graph navigator over UK Parliament data. Independent prototype,
+      not affiliated with the UK Parliament. The password keeps the proxy from
+      becoming a free open relay; please get it from whoever shared the link.
+    </p>
+    <label for="login-pass" class="visually-hidden">Password</label>
+    <input type="password" id="login-pass"
+           placeholder="password"
+           aria-describedby="login-err login-desc"
+           autocomplete="current-password" autocapitalize="off" autocorrect="off">
+    <div class="err" id="login-err" role="alert" aria-live="assertive">&nbsp;</div>
+    <button class="btn primary" id="login-go" style="width:100%">Unlock</button>
+    <p style="margin-top:1rem;font-size:12px;color:var(--ink-soft);line-height:1.5">
+      No email or account is collected. The password is stored locally in your browser
+      so you don't have to re-enter it. Underlying data is published by Parliament under the
+      <a href="https://www.parliament.uk/site-information/copyright-parliament/open-parliament-licence/">Open Parliament Licence v3.0</a>.
+    </p>
+  </div>
+</div>
+
+<!-- Screensaver -->
+<div class="screensaver" id="screensaver">
+  <div class="ss-card">
+    <img class="ss-portrait" id="ss-img" alt="">
+    <div class="ss-name" id="ss-name">…</div>
+    <div class="ss-meta" id="ss-meta">…</div>
+    <div class="ss-stripe" id="ss-stripe"></div>
+  </div>
+  <div class="ss-hint">tap anywhere to exit</div>
+</div>
+
+<script>
+'use strict';
+
+// ============================================================================
+// Config + auth
+// ============================================================================
+
+// API base: relative whenever the page is served by an http(s) origin
+// (which covers the deployed fly.dev case AND local dev at :8787).
+// Only fall back to absolute localhost when the page is loaded with no
+// origin at all (file://, null-origin preview panel) — and even then we
+// don't try to reach the user's phone, only an explicit dev proxy.
+const PROXY_ORIGIN = 'http://localhost:8787';
+const API = (location.protocol === 'http:' || location.protocol === 'https:')
+  ? '/api' : (PROXY_ORIGIN + '/api');
+
+const AUTH_STORE = 'parl_auth_token';
+const AUTH_SALT  = 'parliament-live-2026';
+// Hash of correct password ('forgotmeknot' + AUTH_SALT) — sha256 hex.
+// Note: this only gates the page UI. Real enforcement is server-side.
+// sha256('forgotmeknot' + AUTH_SALT)
+const EXPECTED_HASH =
+  '9e3be1a7cc90b820f2c50db287286e77e6945148a997f4dbd3c10c99883994bf';
+const AUTH_COOKIE = 'fpkg_auth';
+
+let AUTH_TOKEN = null;
+
+async function sha256Hex(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+async function tryUnlock() {
+  const stored = localStorage.getItem(AUTH_STORE);
+  if (stored) {
+    AUTH_TOKEN = stored;
+    return true;
+  }
+  return false;
+}
+
+// Login overlay focus management. We remember the element that was focused
+// before the dialog opened so it can be restored on close (WCAG 2.4.3 / dialog
+// pattern). `hidden` attribute is toggled in addition to the .show class so
+// the dialog isn't in the accessibility tree when not displayed.
+let loginReturnFocusEl = null;
+
+function showLogin() {
+  loginReturnFocusEl = document.activeElement && document.activeElement !== document.body
+    ? document.activeElement : null;
+  const el = document.getElementById('login');
+  el.removeAttribute('hidden');
+  el.classList.add('show');
+  setTimeout(() => document.getElementById('login-pass').focus(), 50);
+}
+function hideLogin() {
+  const el = document.getElementById('login');
+  el.classList.remove('show');
+  el.setAttribute('hidden', '');
+  if (loginReturnFocusEl && document.contains(loginReturnFocusEl)) loginReturnFocusEl.focus();
+  loginReturnFocusEl = null;
+}
+
+document.getElementById('login-go').addEventListener('click', tryLogin);
+document.getElementById('login-pass').addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
+
+async function tryLogin() {
+  const pw  = document.getElementById('login-pass').value;
+  const err = document.getElementById('login-err');
+  err.textContent = '';
+  if (!pw) { err.textContent = 'password required'; return; }
+  // If we don't yet have a baked-in hash, accept anything (dev mode).
+  let ok = EXPECTED_HASH === '__EXPECTED_HASH_PLACEHOLDER__';
+  if (!ok) ok = (await sha256Hex(pw + AUTH_SALT)) === EXPECTED_HASH;
+  if (!ok) { err.textContent = 'wrong password'; return; }
+  localStorage.setItem(AUTH_STORE, pw);
+  // Cookie also — same-origin same-site, so image fetches authenticate
+  // automatically when we deploy with PROXY_PASSWORD set.
+  document.cookie = `${AUTH_COOKIE}=${encodeURIComponent(pw)}; Path=/; SameSite=Lax; Max-Age=2592000`;
+  AUTH_TOKEN = pw;
+  hideLogin();
+  boot();
+}
+
+// ============================================================================
+// Fetch helpers
+// ============================================================================
+
+async function fetchJson(url) {
+  const headers = { 'accept': 'application/json' };
+  if (AUTH_TOKEN) headers['authorization'] = 'Bearer ' + AUTH_TOKEN;
+  const r = await fetch(url, { headers });
+  if (r.status === 401) {
+    localStorage.removeItem(AUTH_STORE);
+    AUTH_TOKEN = null;
+    showLogin();
+    throw new Error('unauthorized');
+  }
+  if (!r.ok) throw new Error(url + ' -> ' + r.status);
+  return r.json();
+}
+
+function authedImg(path) {
+  // For simple GET image requests we cannot easily inject a header without
+  // fetching ourselves and creating a blob URL. Bearer auth on images is
+  // therefore opt-in: we route via the proxy which (when AUTH is off) just
+  // serves directly. For a hosted deploy with auth enabled we'll either
+  // expose a token-cookie or fetch+blob. For now the proxy doesn't gate
+  // /api/members/.../Thumbnail when running in dev; on fly we'll accept a
+  // cookie set at login time.
+  return `${API}${path}`;
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v == null) continue;
+    if (k === 'class') node.className = v;
+    else if (k === 'html') node.innerHTML = v;
+    else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2), v);
+    else node.setAttribute(k, v);
+  }
+  for (const c of children.flat()) {
+    if (c == null || c === false) continue;
+    node.append(c.nodeType ? c : document.createTextNode(String(c)));
+  }
+  return node;
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function stripHtml(s) { return String(s ?? '').replace(/<[^>]+>/g, ''); }
+
+function fmtDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return iso.slice(0, 10);
+  return d.toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function fmtTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  return d.toLocaleTimeString('en-GB', { hour12: false });
+}
+
+// Party badge colours: trust the API's foreground/background pair when it
+// gives a comfortable contrast ratio; otherwise pick black or white text by
+// the background's relative luminance so the badge meets WCAG AA (≥4.5:1).
+// Some parties' API-provided pair fails — e.g. Independent #909090/#FFFFFF is
+// only 2.5:1.
+function relLuminance(hex) {
+  const h = hex.replace(/^#/, '').padEnd(6, '0').slice(0, 6);
+  const r = parseInt(h.slice(0, 2), 16) / 255;
+  const g = parseInt(h.slice(2, 4), 16) / 255;
+  const b = parseInt(h.slice(4, 6), 16) / 255;
+  const lin = c => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+function contrastRatio(a, b) {
+  const la = relLuminance(a), lb = relLuminance(b);
+  const lo = Math.min(la, lb), hi = Math.max(la, lb);
+  return (hi + 0.05) / (lo + 0.05);
+}
+function partyColours(party) {
+  const bg = '#' + (party?.backgroundColour || '666666');
+  const apiFg = '#' + (party?.foregroundColour || 'ffffff');
+  // If the API-provided foreground passes AA (≥4.5:1), use it; otherwise
+  // pick black or white based on which gives more contrast.
+  let fg = apiFg;
+  if (contrastRatio(bg, apiFg) < 4.5) {
+    fg = contrastRatio(bg, '#000000') > contrastRatio(bg, '#ffffff') ? '#000000' : '#ffffff';
+  }
+  return { bg, fg, abbr: party?.abbreviation || party?.name || '' };
+}
+
+// ============================================================================
+// Drawer / hamburger
+// ============================================================================
+
+const drawerEl = document.getElementById('drawer');
+const scrimEl  = document.getElementById('scrim');
+const menuBtn  = document.getElementById('btn-menu');
+
+function openDrawer()  {
+  drawerEl.classList.add('open'); scrimEl.classList.add('open');
+  drawerEl.setAttribute('aria-hidden', 'false');
+  menuBtn.setAttribute('aria-expanded', 'true');
+  // Move focus to the first focusable item in the drawer (a11y dialog pattern).
+  const first = drawerEl.querySelector('a.item, button');
+  if (first) setTimeout(() => first.focus(), 10);
+}
+function closeDrawer() {
+  if (!drawerEl.classList.contains('open')) return;
+  drawerEl.classList.remove('open'); scrimEl.classList.remove('open');
+  drawerEl.setAttribute('aria-hidden', 'true');
+  menuBtn.setAttribute('aria-expanded', 'false');
+  menuBtn.focus();   // return focus to the trigger
+}
+menuBtn.addEventListener('click', openDrawer);
+scrimEl.addEventListener('click', closeDrawer);
+drawerEl.addEventListener('click', e => {
+  if (e.target.closest('a.item')) closeDrawer();
+});
+
+document.getElementById('drawer-signout').addEventListener('click', () => {
+  localStorage.removeItem(AUTH_STORE);
+  document.cookie = `${AUTH_COOKIE}=; Path=/; Max-Age=0`;
+  AUTH_TOKEN = null;
+  closeDrawer();
+  // Re-run boot so the page picks up the new auth state — either shows the
+  // login dialog (if proxy needs auth) or returns to the home view (if dev).
+  boot();
+});
+
+// ESC closes the drawer when open. (Login dialog ESC isn't wired — exit is
+// only via successful auth, since the page can't function without it.)
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && drawerEl.classList.contains('open')) {
+    e.preventDefault();
+    closeDrawer();
+  }
+});
+
+// ============================================================================
+// Router (location.hash → view function)
+// ============================================================================
+
+const routes = [
+  { match: /^\/?$/,                        view: viewHome,      title: 'Home' },
+  { match: /^\/search(\?.*)?$/,            view: viewSearch,    title: 'Members' },
+  { match: /^\/member\/(\d+)$/,            view: viewMember,    title: 'Member' },
+  { match: /^\/debate\/([0-9A-F-]+)$/i,    view: viewDebate,    title: 'Debate' },
+  { match: /^\/division\/([0-9A-F-]+)$/i,  view: viewDivision,  title: 'Division' },
+  { match: /^\/cvote\/(\d+)$/,             view: viewCommonsVote, title: 'Division' },
+  { match: /^\/lvote\/(\d+)$/,             view: viewLordsVote,   title: 'Division' },
+  { match: /^\/debates$/,                  view: viewDebatesList, title: 'Debates' },
+  { match: /^\/parties$/,                  view: viewParties,   title: 'Parties' },
+  { match: /^\/party\/(\d+)$/,             view: viewParty,     title: 'Party' },
+  { match: /^\/constituency\/(\d+)$/,      view: viewConstituency, title: 'Constituency' },
+  { match: /^\/house\/(Commons|Lords)$/,   view: viewHouse,     title: 'House' },
+  { match: /^\/settings$/,                 view: viewSettings,  title: 'Settings' },
+  { match: /^\/about$/,                    view: viewAbout,     title: 'About' },
+];
+
+let routeGen = 0;
+
+function parseHash() {
+  let h = location.hash || '#/';
+  if (h.startsWith('#')) h = h.slice(1);
+  if (!h.startsWith('/')) h = '/' + h;
+  return h;
+}
+
+function parseQuery(s) {
+  const i = s.indexOf('?'); if (i < 0) return {};
+  return Object.fromEntries(new URLSearchParams(s.slice(i + 1)));
+}
+
+async function dispatch() {
+  const path = parseHash();
+  const cleanPath = path.split('?')[0];
+  const myGen = ++routeGen;
+
+  // mark active drawer item
+  for (const a of drawerEl.querySelectorAll('a.item')) {
+    a.classList.toggle('active', a.dataset.route && cleanPath.startsWith(a.dataset.route) && a.dataset.route !== '/' || (a.dataset.route === '/' && cleanPath === '/'));
+  }
+
+  for (const r of routes) {
+    const m = path.match(r.match);
+    if (m) {
+      window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
+      try {
+        await r.view(m, parseQuery(path), myGen);
+      } catch (e) {
+        if (myGen === routeGen) renderError('Could not render view: ' + e.message);
+      }
+      return;
+    }
+  }
+  renderError('No route for ' + path);
+}
+
+window.addEventListener('hashchange', dispatch);
+
+function rootEl() {
+  const r = document.getElementById('root');
+  r.innerHTML = '';
+  return r;
+}
+
+function renderError(msg) {
+  rootEl().append(el('div', { class: 'errblock' }, msg));
+}
+
+function renderLoading(label = 'loading…') {
+  rootEl().append(el('div', { class: 'loading' }, label));
+}
+
+// ============================================================================
+// Home view (chambers + recent debates)
+// ============================================================================
+
+let homePollAborters = [];
+
+async function viewHome(_m, _q, gen) {
+  // stop any previous home pollers
+  homePollAborters.forEach(fn => fn());
+  homePollAborters = [];
+
+  const root = rootEl();
+  const chambersWrap = el('div', { class: 'chambers' });
+
+  for (const [houseKey, slug, klass] of [
+    ['Commons', 'CommonsMain', 'commons'],
+    ['Lords',   'LordsMain',   'lords'],
+  ]) {
+    const card = el('div', { class: `chamber ${klass}`, id: `ch-${houseKey}` });
+    card.innerHTML = `
+      <header>
+        <span class="label">${houseKey}</span>
+        <span class="meta">
+          <span class="freshness fresh" id="ch-${houseKey}-fresh">live</span>
+          <span id="ch-${houseKey}-publish">—</span>
+        </span>
+      </header>
+      <div class="slide" id="ch-${houseKey}-slide"><div class="blank">connecting…</div></div>`;
+    chambersWrap.append(card);
+    homePollAborters.push(startPolling(houseKey, slug, gen));
+  }
+
+  root.append(chambersWrap);
+  root.append(el('hr', { class: 'sep' }));
+
+  // last sitting day
+  const sittingCard = el('div', { class: 'card' });
+  sittingCard.innerHTML = `
+    <header><h2>Last sitting day</h2><span class="meta" id="sit-meta">—</span></header>
+    <ul class="rows" id="sit-list"><li><div class="loading">loading…</div></li></ul>`;
+  root.append(sittingCard);
+
+  try {
+    const [cDate, lDate] = await Promise.all([
+      fetchJson(`${API}/hansard/overview/lastsittingdate.json?house=Commons`),
+      fetchJson(`${API}/hansard/overview/lastsittingdate.json?house=Lords`),
+    ]);
+    if (gen !== routeGen) return;
+    document.getElementById('sit-meta').textContent =
+      `Commons ${cDate}  ·  Lords ${lDate}`;
+
+    const since = cDate || lDate;
+    const search = await fetchJson(
+      `${API}/hansard/search.json?queryParameters.startDate=${since}&queryParameters.endDate=${since}` +
+      `&queryParameters.house=Commons&queryParameters.take=12`);
+    if (gen !== routeGen) return;
+
+    const debates = search.Debates || [];
+    const list = document.getElementById('sit-list');
+    list.innerHTML = '';
+    if (!debates.length) {
+      list.append(el('li', {}, el('div', { class: 'empty' }, 'no debates indexed.')));
+      return;
+    }
+    for (const d of debates) {
+      list.append(el('li', {},
+        el('a', { class: 'row', href: `#/debate/${d.DebateSectionExtId}` },
+          el('div', { class: 'text' },
+            el('div', { class: 'title' }, (d.Title || '').trim() || '(untitled)'),
+            el('div', { class: 'sub'   }, `${d.House || ''} · ${d.DebateSection || ''} · ${(d.SittingDate || '').slice(0,10)}`)
+          )
+        )));
+    }
+  } catch (e) {
+    if (gen !== routeGen) return;
+    document.getElementById('sit-list').innerHTML = '';
+    document.getElementById('sit-list').append(el('li', {},
+      el('div', { class: 'errblock' }, 'load failed: ' + e.message)));
+  }
+}
+
+function startPolling(houseKey, slug, gen) {
+  let timer = 0;
+  let lastPublish = null;
+  const tick = async () => {
+    if (gen !== routeGen) return;
+    let nextMs = 5000;
+    try {
+      const data = await fetchJson(`${API}/now/${slug}/current`);
+      if (gen !== routeGen) return;
+      renderSlide(houseKey, data);
+      const blank = !data.slides?.length || data.slides[0].type === 'BlankSlide';
+      const same  = data.publishTime === lastPublish;
+      // Announce chamber updates only when the publish time actually changes,
+      // so screen readers don't get spammed every poll.
+      if (!same && !blank) {
+        const slide = data.slides[0];
+        const lines = (slide.lines || []).map(l => l.content || '').filter(Boolean);
+        if (lines.length) {
+          announceSr(`${houseKey}: ${lines.join('. ')}`);
+        }
+      }
+      lastPublish = data.publishTime;
+      nextMs = (blank && same) ? 30000 : 5000;
+      // top live dot
+      const dot = document.getElementById('live-dot');
+      dot.className = 'live-dot ' + (blank ? 'warn' : 'on');
+    } catch (e) {
+      nextMs = 30000;
+      console.warn(`[${houseKey}]`, e);
+    } finally {
+      timer = setTimeout(tick, nextMs);
+    }
+  };
+  tick();
+  return () => clearTimeout(timer);
+}
+
+function announceSr(text) {
+  const el = document.getElementById('sr-status');
+  if (!el) return;
+  // Force re-announcement even when text repeats, by clearing first.
+  el.textContent = '';
+  setTimeout(() => { el.textContent = text; }, 30);
+}
+
+function renderSlide(houseKey, payload) {
+  const slideEl = document.getElementById(`ch-${houseKey}-slide`);
+  if (!slideEl) return;
+  const root    = document.getElementById(`ch-${houseKey}`);
+  const bellOn  = (houseKey === 'Commons' && payload.showCommonsBell)
+               || (houseKey === 'Lords'   && payload.showLordsBell);
+  root.classList.toggle('bell-on', !!bellOn);
+
+  const fresh = (() => {
+    if (!payload.publishTime) return 'down';
+    const ageMin = (Date.now() - new Date(payload.publishTime).getTime()) / 60000;
+    return ageMin < 15 ? 'fresh' : 'stale';
+  })();
+  const fEl = document.getElementById(`ch-${houseKey}-fresh`);
+  fEl.className = 'freshness ' + fresh;
+  fEl.textContent = fresh === 'fresh' ? 'live' : (fresh === 'stale' ? 'idle' : 'down');
+  document.getElementById(`ch-${houseKey}-publish`).textContent =
+    payload.publishTime ? fmtTime(payload.publishTime) + ' ' + fmtDate(payload.publishTime) : '—';
+
+  slideEl.innerHTML = '';
+  const slide = (payload.slides || [])[0] || { type: 'BlankSlide', lines: [] };
+  if (!slide.lines?.length || slide.type === 'BlankSlide') {
+    slideEl.append(el('div', { class: 'blank' },
+      bellOn ? 'Division bell sounding' :
+      (fresh === 'fresh' ? 'Quiet — no slide currently active' : 'Chamber not in session')));
+    return;
+  }
+  for (const line of slide.lines) {
+    slideEl.append(el('div', { class: 'line s-' + (line.style || 'text90').toLowerCase() },
+      line.forceCapitalisation ? (line.content || '').toUpperCase() : (line.content || '')));
+  }
+  const memberLine = slide.lines.find(l => l.member && l.member.id);
+  if (memberLine?.member?.id) {
+    const m = memberLine.member;
+    const row = el('div', { class: 'member-row' });
+    row.append(el('img', { src: authedImg(`/members/Members/${m.id}/Thumbnail`), alt: '', loading: 'lazy' }));
+    const nameEl = el('a', { class: 'name', href: `#/member/${m.id}` }, m.nameDisplayAs || m.nameListAs || '');
+    row.append(nameEl);
+    slideEl.append(row);
+  }
+}
+
+// ============================================================================
+// Member view
+// ============================================================================
+
+async function viewMember(m, _q, gen) {
+  const id = m[1];
+  renderLoading('loading member…');
+  let data;
+  try {
+    data = await fetchJson(`${API}/members/Members/${id}`);
+  } catch (e) {
+    if (gen === routeGen) renderError('member load failed: ' + e.message);
+    return;
+  }
+  if (gen !== routeGen) return;
+  const v = data.value || {};
+  const p = v.latestParty || {};
+  const h = v.latestHouseMembership || {};
+  const cols = partyColours(p);
+  const root = rootEl();
+
+  // Hero
+  const hero = el('div', { class: 'hero' },
+    el('div', { class: 'hero-row' },
+      el('img', {
+        class: 'portrait',
+        src: authedImg(`/members/Members/${v.id}/Portrait?cropType=ThreeFour`),
+        onerror: function() { this.src = authedImg(`/members/Members/${v.id}/Thumbnail`); },
+        alt: ''
+      }),
+      el('div', {},
+        el('h1', {}, v.nameDisplayAs || ''),
+        el('div', { class: 'sub' },
+          el('span', {
+            class: 'badge',
+            style: `background:${cols.bg};color:${cols.fg};`
+          }, cols.abbr || ''),
+          ' ',
+          (h.house === 1 ? 'Commons' : h.house === 2 ? 'Lords' : ''),
+          h.membershipFrom ? (' · ' + h.membershipFrom) : ''
+        )
+      )
+    )
+  );
+  root.append(hero);
+
+  // Widgets dispatched by data shape
+  const widgetCtx = { id, member: v, party: p, house: h, gen };
+
+  await widgetSynopsis(widgetCtx, root);
+  widgetMemberFacts(widgetCtx, root);
+  await widgetMemberContact(widgetCtx, root);
+  await widgetMemberContributions(widgetCtx, root);
+  await widgetMemberVoting(widgetCtx, root);
+  await widgetMemberInterests(widgetCtx, root);
+}
+
+async function widgetSynopsis(ctx, root) {
+  const card = el('div', { class: 'card' },
+    el('header', {}, el('h2', {}, 'Synopsis')),
+    el('div', { class: 'body', id: `synop-${ctx.id}` }, el('div', { class: 'loading' }, '…')));
+  root.append(card);
+  try {
+    const data = await fetchJson(`${API}/members/Members/${ctx.id}/Synopsis`);
+    if (ctx.gen !== routeGen) return;
+    const body = card.querySelector('.body');
+    body.innerHTML = '';
+    body.append(el('div', { html: data.value || '<i>(none)</i>' }));
+    // rewrite internal /constituency/... or /Members/... links to hash routes (best-effort)
+    body.querySelectorAll('a[href]').forEach(a => {
+      const h = a.getAttribute('href') || '';
+      let m;
+      if ((m = h.match(/\/Members\/(\d+)/i))) {
+        a.setAttribute('href', '#/member/' + m[1]); a.setAttribute('target', '_self'); return;
+      }
+      if ((m = h.match(/\/constituency\/(\d+)/i))) {
+        a.setAttribute('href', '#/constituency/' + m[1]); a.setAttribute('target', '_self'); return;
+      }
+      if ((m = h.match(/\/parties?\/(\d+)/i))) {
+        a.setAttribute('href', '#/party/' + m[1]); a.setAttribute('target', '_self'); return;
+      }
+      if (/^https?:/i.test(h) && !h.startsWith(location.origin)) {
+        a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener noreferrer');
+      } else {
+        a.removeAttribute('href');
+      }
+    });
+  } catch {
+    card.querySelector('.body').innerHTML = '<div class="empty">no synopsis</div>';
+  }
+}
+
+function widgetMemberFacts(ctx, root) {
+  const v = ctx.member, h = ctx.house, p = ctx.party;
+  // Linked entities: party + constituency + house become hash-route links.
+  const partyLink = p.id
+    ? el('a', { href: `#/party/${p.id}` }, p.name || '')
+    : (p.name || '');
+  const constLink = h.membershipFromId
+    ? el('a', { href: `#/constituency/${h.membershipFromId}` }, h.membershipFrom || '')
+    : (h.membershipFrom || '');
+  const houseName = h.house === 1 ? 'Commons' : h.house === 2 ? 'Lords' : '';
+  const houseLink = houseName
+    ? el('a', { href: `#/house/${houseName}` }, houseName)
+    : '';
+  const rows = [
+    ['Party', partyLink],
+    ['Constituency', constLink],
+    ['House', houseLink],
+    ['Member since', (h.membershipStartDate || '').slice(0, 10)],
+    ['Status', (h.membershipStatus || {}).statusDescription],
+    ['Gender', v.gender === 'M' ? 'Male' : v.gender === 'F' ? 'Female' : v.gender],
+    ['MNIS ID', String(v.id || '')],
+  ].filter(([, val]) => val && (typeof val === 'string' ? val : true));
+  if (!rows.length) return;
+  const card = el('div', { class: 'card' },
+    el('header', {}, el('h2', {}, 'Facts')),
+    el('table', { class: 'props' },
+      ...rows.map(([k, val]) => el('tr', {},
+        el('td', { class: 'k' }, k),
+        el('td', { class: 'v' }, val)))));
+  root.append(card);
+}
+
+async function widgetMemberContact(ctx, root) {
+  const card = el('div', { class: 'card' },
+    el('header', {}, el('h2', {}, 'Contact')),
+    el('div', { class: 'body tight' }, el('div', { class: 'loading' }, '…')));
+  root.append(card);
+  try {
+    const data = await fetchJson(`${API}/members/Members/${ctx.id}/Contact`);
+    if (ctx.gen !== routeGen) return;
+    const items = (data.value || []).filter(c =>
+      c.line1 || c.email || c.phone || c.website || c.notes);
+    const body = card.querySelector('.body');
+    body.innerHTML = '';
+    if (!items.length) { body.append(el('div', { class: 'empty' }, 'no contact info')); return; }
+    const list = el('ul', { class: 'rows' });
+    for (const c of items) {
+      const text = el('div', { class: 'text' },
+        el('div', { class: 'title' }, c.type || 'Contact'),
+        el('div', { class: 'sub'   }, [
+          c.line1, c.email, c.phone, c.website,
+        ].filter(Boolean).join(' · '))
+      );
+      const lurl = c.isWebAddress && c.line1 ? c.line1
+                 : c.email ? `mailto:${c.email}`
+                 : c.phone ? `tel:${c.phone}`
+                 : null;
+      const row = lurl
+        ? el('a', { class: 'row', href: lurl, target: '_blank', rel: 'noopener' }, text)
+        : el('div', { class: 'row' }, text);
+      list.append(el('li', {}, row));
+    }
+    body.append(list);
+  } catch {
+    card.querySelector('.body').innerHTML = '<div class="empty">contact unavailable</div>';
+  }
+}
+
+async function widgetMemberContributions(ctx, root) {
+  const card = el('div', { class: 'card' },
+    el('header', {}, el('h2', {}, 'Recent contributions')),
+    el('div', { class: 'body tight' }, el('div', { class: 'loading' }, '…')));
+  root.append(card);
+  try {
+    const data = await fetchJson(`${API}/members/Members/${ctx.id}/ContributionSummary?page=1`);
+    if (ctx.gen !== routeGen) return;
+    const items = (data.items || []).slice(0, 6);
+    const body = card.querySelector('.body');
+    body.innerHTML = '';
+    if (!items.length) { body.append(el('div', { class: 'empty' }, 'no contributions yet')); return; }
+    const list = el('ul', { class: 'rows' });
+    for (const it of items) {
+      const v = it.value || {};
+      list.append(el('li', {},
+        el('a', { class: 'row', href: `#/debate/${v.debateWebsiteId}` },
+          el('div', { class: 'text' },
+            el('div', { class: 'title' }, v.debateTitle || '(debate)'),
+            el('div', { class: 'sub' },
+              `${(v.sittingDate || '').slice(0,10)} · ${v.section || ''} · ${v.totalContributions || 0} contributions`)))
+      ));
+    }
+    body.append(list);
+  } catch {
+    card.querySelector('.body').innerHTML = '<div class="empty">contributions unavailable</div>';
+  }
+}
+
+async function widgetMemberVoting(ctx, root) {
+  const card = el('div', { class: 'card' },
+    el('header', {}, el('h2', {}, 'Recent votes')),
+    el('div', { class: 'body tight' }, el('div', { class: 'loading' }, '…')));
+  root.append(card);
+  try {
+    const houseInt = ctx.house?.house || 1;
+    const data = await fetchJson(`${API}/members/Members/${ctx.id}/Voting?house=${houseInt}&page=1`);
+    if (ctx.gen !== routeGen) return;
+    const items = (data.items || []).slice(0, 6);
+    const body = card.querySelector('.body');
+    body.innerHTML = '';
+    if (!items.length) { body.append(el('div', { class: 'empty' }, 'no voting record')); return; }
+    const list = el('ul', { class: 'rows' });
+    for (const it of items) {
+      const v = it.value || {};
+      // Members-API voting shape (probed 2026-05-01):
+      //   value: { id, title, date, divisionNumber, inAffirmativeLobby,
+      //            inNegativeLobby, actedAsTeller, numberInFavour, numberAgainst, house }
+      // The numeric `id` is a commonsvotes-api division id → links into /api/cvotes/division/<id>.json
+      if (!v.title || !v.date) {
+        list.append(el('li', {},
+          el('div', { class: 'row', style: 'color:var(--warn)' },
+            el('div', { class: 'text' },
+              el('div', { class: 'title' }, '⚠ shape mismatch'),
+              el('div', { class: 'sub'   }, 'keys: ' + Object.keys(v).join(', '))))));
+        continue;
+      }
+      const isAye = !!v.inAffirmativeLobby;
+      const teller = v.actedAsTeller;
+      const stripeColour = isAye ? 'var(--ok)' : 'var(--alert)';
+      const sub = `${(v.date || '').slice(0,10)} · voted ${isAye ? 'Aye' : 'No'}` +
+                  (teller ? ' · acted as teller' : '') +
+                  (typeof v.numberInFavour === 'number'
+                    ? ` · ${v.numberInFavour} Aye / ${v.numberAgainst} No`
+                    : '');
+      const text = el('div', { class: 'text' },
+        el('div', { class: 'title' }, v.title),
+        el('div', { class: 'sub' }, sub));
+      const stripe = el('div', { class: 'stripe', style: `background:${stripeColour}` });
+      const route = v.house === 2 ? `#/lvote/${v.id}` : `#/cvote/${v.id}`;
+      list.append(el('li', {},
+        el('a', { class: 'row', href: route }, stripe, text)));
+    }
+    body.append(list);
+  } catch (e) {
+    card.querySelector('.body').innerHTML = '<div class="empty">voting unavailable</div>';
+  }
+}
+
+async function widgetMemberInterests(ctx, root) {
+  const card = el('div', { class: 'card' },
+    el('header', {}, el('h2', {}, 'Registered financial interests')),
+    el('div', { class: 'body' }, el('div', { class: 'loading' }, '…')));
+  root.append(card);
+  try {
+    const data = await fetchJson(`${API}/members/Members/${ctx.id}/RegisteredInterests`);
+    if (ctx.gen !== routeGen) return;
+    const cats = (data.value || []).filter(c => (c.interests || []).length);
+    const body = card.querySelector('.body');
+    body.innerHTML = '';
+    if (!cats.length) { body.append(el('div', { class: 'empty' }, 'no registered interests')); return; }
+    for (const cat of cats) {
+      body.append(el('h3', {
+        style: 'font:600 13px/1 system-ui;color:var(--ink);margin:.6rem 0 .35rem'
+      }, cat.name));
+      for (const inter of cat.interests.slice(0, 4)) {
+        body.append(el('div', {
+          style: 'font:400 13px/1.5 system-ui;color:var(--ink-dim);padding:.35rem 0;border-top:1px solid var(--line);white-space:pre-wrap'
+        }, (inter.interest || '').trim()));
+      }
+      if (cat.interests.length > 4) {
+        body.append(el('div', {
+          style: 'font:500 11px/1.4 "SF Mono",monospace;color:var(--ink-mute);padding:.35rem 0;'
+        }, `+ ${cat.interests.length - 4} more`));
+      }
+    }
+  } catch {
+    card.querySelector('.body').innerHTML = '<div class="empty">interests unavailable</div>';
+  }
+}
+
+// ============================================================================
+// Debate view
+// ============================================================================
+
+async function viewDebate(m, _q, gen) {
+  const extId = m[1];
+  renderLoading('loading debate…');
+  let data;
+  try {
+    data = await fetchJson(`${API}/hansard/debates/debate/${extId}.json`);
+  } catch (e) {
+    if (gen === routeGen) renderError('debate load failed: ' + e.message);
+    return;
+  }
+  if (gen !== routeGen) return;
+  const root = rootEl();
+  const ov = data.Overview || {};
+  const items = data.Items || [];
+
+  root.append(el('div', { class: 'hero' },
+    el('div', { class: 'crumb' }, `Debate · ${ov.House || ''} · ${(ov.Date || '').slice(0,10)}`),
+    el('h1', {}, ov.Title || '(untitled)'),
+    el('div', { class: 'sub' }, ov.Location || '')
+  ));
+
+  // Speakers / contributions list — clickable rows
+  const list = el('ul', { class: 'rows' });
+  for (const it of items.slice(0, 50)) {
+    const v = it.Value || it.ContributionText || '';
+    const txt = stripHtml(v).trim();
+    const row = it.MemberId
+      ? el('a', { class: 'row', href: `#/member/${it.MemberId}` })
+      : el('div', { class: 'row' });
+    if (it.MemberId) {
+      row.append(el('img', {
+        class: 'thumb', loading: 'lazy', alt: '',
+        src: authedImg(`/members/Members/${it.MemberId}/Thumbnail`),
+        onerror: function() { this.style.display = 'none'; }
+      }));
+    }
+    row.append(el('div', { class: 'text' },
+      el('div', { class: 'title' }, it.AttributedTo || it.MemberName || '(speaker)'),
+      el('div', { class: 'sub'   }, txt.slice(0, 120) + (txt.length > 120 ? '…' : ''))));
+    list.append(el('li', {}, row));
+  }
+  root.append(el('div', { class: 'card' },
+    el('header', {},
+      el('h2', {}, 'Contributions'),
+      el('span', { class: 'meta' }, String(items.length) + (items.length === 1 ? ' item' : ' items'))),
+    el('div', { class: 'body tight' }, list)));
+
+  // Child debates as further nav
+  if ((data.ChildDebates || []).length) {
+    const cd = el('ul', { class: 'rows' });
+    for (const c of data.ChildDebates) {
+      cd.append(el('li', {},
+        el('a', { class: 'row', href: `#/debate/${c.ExternalId}` },
+          el('div', { class: 'text' },
+            el('div', { class: 'title' }, c.Title || ''),
+            el('div', { class: 'sub'   }, c.HRSTag || '')))));
+    }
+    root.append(el('div', { class: 'card' },
+      el('header', {}, el('h2', {}, 'Sub-debates')),
+      el('div', { class: 'body tight' }, cd)));
+  }
+}
+
+// ============================================================================
+// Division view
+// ============================================================================
+
+async function viewDivision(m, _q, gen) {
+  const id = m[1];
+  renderLoading('loading division…');
+  let data;
+  try {
+    data = await fetchJson(`${API}/hansard/debates/division/${id}.json`);
+  } catch (e) {
+    if (gen === routeGen) renderError('division load failed: ' + e.message);
+    return;
+  }
+  if (gen !== routeGen) return;
+  const root = rootEl();
+  root.append(el('div', { class: 'hero' },
+    el('div', { class: 'crumb' }, 'Division'),
+    el('h1', {}, data.Title || '(untitled division)'),
+    el('div', { class: 'sub' }, fmtDate(data.Date))));
+
+  if (typeof data.AyesCount !== 'undefined' || typeof data.NoesCount !== 'undefined') {
+    const facts = [
+      ['Ayes', data.AyesCount],
+      ['Noes', data.NoesCount],
+      ['Tellers Ayes', data.TellersAyesCount],
+      ['Tellers Noes', data.TellersNoesCount],
+    ].filter(([, v]) => v != null);
+    root.append(el('div', { class: 'card' },
+      el('header', {}, el('h2', {}, 'Result')),
+      el('table', { class: 'props' },
+        ...facts.map(([k, v]) => el('tr', {},
+          el('td', { class: 'k' }, k),
+          el('td', { class: 'v' }, String(v)))))));
+  }
+  // members
+  for (const [grpName, list] of [['Ayes', data.AyesMembers || []], ['Noes', data.NoesMembers || []]]) {
+    if (!list.length) continue;
+    const ul = el('ul', { class: 'rows' });
+    for (const member of list.slice(0, 100)) {
+      ul.append(el('li', {},
+        el('a', { class: 'row', href: `#/member/${member.MemberId}` },
+          el('div', { class: 'text' },
+            el('div', { class: 'title' }, member.Name || ''),
+            el('div', { class: 'sub'   }, member.Party || '')))));
+    }
+    root.append(el('div', { class: 'card' },
+      el('header', {}, el('h2', {}, grpName), el('span', { class: 'meta' }, String(list.length))),
+      el('div', { class: 'body tight' }, ul)));
+  }
+}
+
+// ============================================================================
+// Recorded vote view (commonsvotes / lordsvotes)
+// ============================================================================
+
+async function viewCommonsVote(m, _q, gen) { return viewRecordedVote(m, _q, gen, 'cvotes', 'Commons'); }
+async function viewLordsVote(m, _q, gen)   { return viewRecordedVote(m, _q, gen, 'lvotes', 'Lords');   }
+
+async function viewRecordedVote(m, _q, gen, prefix, houseLabel) {
+  const id = m[1];
+  renderLoading('loading division…');
+  let data;
+  try {
+    data = await fetchJson(`${API}/${prefix}/division/${id}.json`);
+  } catch (e) {
+    if (gen === routeGen) renderError('division load failed: ' + e.message);
+    return;
+  }
+  if (gen !== routeGen) return;
+  const root = rootEl();
+
+  // Probed shape (cvotes/division/<id>.json):
+  //   DivisionId, Date, Number, Title, AyeCount, NoCount,
+  //   AyeTellers[], NoTellers[], Ayes[], Noes[], NoVoteRecorded[]
+  if (!data.Title || typeof data.AyeCount !== 'number') {
+    root.append(el('div', { class: 'errblock' },
+      `⚠ shape mismatch on /${prefix}/division/${id}: keys ` + Object.keys(data).join(', ')));
+    return;
+  }
+
+  root.append(el('div', { class: 'hero' },
+    el('h1', {}, data.Title),
+    el('div', { class: 'sub' },
+      `${houseLabel} division #${data.Number} · ${fmtDate(data.Date)} · ${fmtTime(data.Date)}`)));
+
+  // Tally
+  const total = data.AyeCount + data.NoCount;
+  root.append(el('div', { class: 'card' },
+    el('header', {}, el('h2', {}, 'Result'),
+      el('span', { class: 'meta' }, total + ' votes')),
+    el('table', { class: 'props' },
+      el('tr', {},
+        el('td', { class: 'k' }, 'Ayes'),
+        el('td', { class: 'v', style: 'color:var(--ok);font-weight:600' }, String(data.AyeCount))),
+      el('tr', {},
+        el('td', { class: 'k' }, 'Noes'),
+        el('td', { class: 'v', style: 'color:var(--alert);font-weight:600' }, String(data.NoCount))),
+      data.IsDeferred ? el('tr', {},
+        el('td', { class: 'k' }, 'Type'),
+        el('td', { class: 'v' }, 'Deferred division')) : null
+    )));
+
+  // Members on each side
+  for (const [name, list] of [['Ayes', data.Ayes || []], ['Noes', data.Noes || []]]) {
+    if (!list.length) continue;
+    const ul = el('ul', { class: 'rows' });
+    for (const member of list) {
+      const cols = partyColours({
+        backgroundColour: member.PartyColour,
+        abbreviation: member.PartyAbbreviation,
+        name: member.Party
+      });
+      ul.append(el('li', {},
+        el('a', { class: 'row', href: `#/member/${member.MemberId}` },
+          el('div', { class: 'stripe', style: `background:${cols.bg}` }),
+          el('img', { class: 'thumb', loading: 'lazy', alt: '',
+            src: authedImg(`/members/Members/${member.MemberId}/Thumbnail`),
+            onerror: function() { this.style.display = 'none'; } }),
+          el('div', { class: 'text' },
+            el('div', { class: 'title' }, member.Name || ''),
+            el('div', { class: 'sub' }, [member.Party, member.MemberFrom].filter(Boolean).join(' · '))))));
+    }
+    root.append(el('div', { class: 'card' },
+      el('header', {},
+        el('h2', {}, name),
+        el('span', { class: 'meta' }, String(list.length))),
+      el('div', { class: 'body tight' }, ul)));
+  }
+}
+
+// ============================================================================
+// Search view
+// ============================================================================
+
+async function viewSearch(_m, q, gen) {
+  const root = rootEl();
+  const initialQ     = q.q     || '';
+  const initialHouse = q.house || '1';
+
+  const bar = el('div', { class: 'searchbar', role: 'search' });
+  const inputId = 'member-search-input';
+  const houseId = 'member-search-house';
+  const inputLabel = el('label', { for: inputId, class: 'visually-hidden' }, 'Search members by name');
+  const input = el('input', {
+    id: inputId,
+    type: 'search', placeholder: 'search MPs / peers (e.g. Cooper)',
+    value: initialQ, autocomplete: 'off', autocapitalize: 'words',
+    'aria-describedby': 'srch-meta'
+  });
+  const houseLabel = el('label', { for: houseId, class: 'visually-hidden' }, 'Filter by house');
+  const sel = el('select', { id: houseId });
+  sel.append(el('option', { value: '1' }, 'Commons'));
+  sel.append(el('option', { value: '2' }, 'Lords'));
+  sel.value = initialHouse;
+  bar.append(inputLabel, input, houseLabel, sel);
+  root.append(bar);
+
+  const results = el('div', { class: 'card' },
+    el('header', {}, el('h2', {}, 'Members'), el('span', { class: 'meta', id: 'srch-meta' }, '')),
+    el('div', { class: 'body tight' }, el('ul', { class: 'rows', id: 'srch-list' },
+      el('li', {}, el('div', { class: 'empty' }, 'type a name to search.')))));
+  root.append(results);
+
+  let timer = 0, mySeq = 0;
+  async function go() {
+    const Q = input.value.trim();
+    const H = sel.value;
+    const seq = ++mySeq;
+    const list = document.getElementById('srch-list');
+    const meta = document.getElementById('srch-meta');
+    history.replaceState(null, '', `#/search?q=${encodeURIComponent(Q)}&house=${H}`);
+    if (!Q) {
+      list.innerHTML = ''; list.append(el('li', {}, el('div', { class: 'empty' }, 'type a name.')));
+      meta.textContent = ''; return;
+    }
+    list.innerHTML = ''; list.append(el('li', {}, el('div', { class: 'loading' }, 'searching…')));
+    try {
+      const data = await fetchJson(`${API}/members/Members/Search?Name=${encodeURIComponent(Q)}&House=${H}&take=20`);
+      if (seq !== mySeq || gen !== routeGen) return;
+      const items = data.items || [];
+      list.innerHTML = '';
+      meta.textContent = `${data.totalResults || items.length} matches`;
+      if (!items.length) { list.append(el('li', {}, el('div', { class: 'empty' }, 'no matches.'))); return; }
+      for (const it of items) {
+        const v = it.value || {}, p = v.latestParty || {}, h = v.latestHouseMembership || {};
+        const cols = partyColours(p);
+        list.append(el('li', {},
+          el('a', { class: 'row', href: `#/member/${v.id}` },
+            el('div', { class: 'stripe', style: `background:${cols.bg}` }),
+            el('img', { class: 'thumb', loading: 'lazy', alt: '',
+              src: authedImg(`/members/Members/${v.id}/Thumbnail`) }),
+            el('div', { class: 'text' },
+              el('div', { class: 'title' }, v.nameDisplayAs || ''),
+              el('div', { class: 'sub'   }, `${p.name || ''} · ${h.membershipFrom || ''}`))
+          )));
+      }
+    } catch (e) {
+      if (seq !== mySeq || gen !== routeGen) return;
+      list.innerHTML = ''; list.append(el('li', {}, el('div', { class: 'errblock' }, 'search failed: ' + e.message)));
+    }
+  }
+  input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(go, 220); });
+  sel.addEventListener('change', go);
+  if (initialQ) go();
+  setTimeout(() => input.focus(), 50);
+}
+
+// ============================================================================
+// Recent debates
+// ============================================================================
+
+async function viewDebatesList(_m, _q, gen) {
+  renderLoading('loading recent debates…');
+  try {
+    const cDate = await fetchJson(`${API}/hansard/overview/lastsittingdate.json?house=Commons`);
+    const lDate = await fetchJson(`${API}/hansard/overview/lastsittingdate.json?house=Lords`);
+    if (gen !== routeGen) return;
+    const since = cDate || lDate;
+    const data = await fetchJson(
+      `${API}/hansard/search.json?queryParameters.startDate=${since}&queryParameters.endDate=${since}` +
+      `&queryParameters.take=40`);
+    if (gen !== routeGen) return;
+    const root = rootEl();
+    const debates = data.Debates || [];
+    root.append(el('div', { class: 'hero' },
+      el('div', { class: 'crumb' }, 'Recent debates'),
+      el('h1', {}, since),
+      el('div', { class: 'sub' }, `${debates.length} indexed for the last sitting day`)));
+    const list = el('ul', { class: 'rows' });
+    if (!debates.length) list.append(el('li', {}, el('div', { class: 'empty' }, 'no debates')));
+    for (const d of debates) {
+      list.append(el('li', {},
+        el('a', { class: 'row', href: `#/debate/${d.DebateSectionExtId}` },
+          el('div', { class: 'text' },
+            el('div', { class: 'title' }, (d.Title || '').trim() || '(untitled)'),
+            el('div', { class: 'sub'   }, `${d.House || ''} · ${d.DebateSection || ''}`)))));
+    }
+    root.append(el('div', { class: 'card' }, el('div', { class: 'body tight' }, list)));
+  } catch (e) {
+    if (gen === routeGen) renderError('debates load failed: ' + e.message);
+  }
+}
+
+// ============================================================================
+// Parties index — list of active parties as cards
+// ============================================================================
+
+async function viewParties(_m, _q, gen) {
+  renderLoading('loading parties…');
+  let cData, lData;
+  try {
+    [cData, lData] = await Promise.all([
+      fetchJson(`${API}/members/Parties/GetActive/Commons`),
+      fetchJson(`${API}/members/Parties/GetActive/Lords`),
+    ]);
+  } catch (e) {
+    if (gen === routeGen) renderError('parties load failed: ' + e.message);
+    return;
+  }
+  if (gen !== routeGen) return;
+
+  const root = rootEl();
+  root.append(el('div', { class: 'hero' },
+    el('h1', {}, 'Parties'),
+    el('div', { class: 'sub' }, 'Active parties in each House')));
+
+  for (const [houseLabel, data] of [['Commons', cData], ['Lords', lData]]) {
+    const items = data.items || [];
+    if (!items.length) continue;
+    const ul = el('ul', { class: 'rows' });
+    for (const it of items) {
+      const v = it.value || {};
+      // Probed shape: { id, name, abbreviation, backgroundColour, foregroundColour, … }
+      if (!v.id || !v.name) {
+        ul.append(el('li', {}, el('div', { class: 'row', style: 'color:var(--warn)' },
+          el('div', { class: 'text' },
+            el('div', { class: 'title' }, '⚠ shape mismatch'),
+            el('div', { class: 'sub' }, 'keys: ' + Object.keys(v).join(', '))))));
+        continue;
+      }
+      const cols = partyColours(v);
+      ul.append(el('li', {},
+        el('a', { class: 'row', href: `#/party/${v.id}` },
+          el('div', { class: 'stripe', style: `background:${cols.bg}` }),
+          el('div', { class: 'text' },
+            el('div', { class: 'title' }, v.name),
+            el('div', { class: 'sub' }, [v.abbreviation, v.isIndependentParty ? 'independent' : null].filter(Boolean).join(' · '))))));
+    }
+    root.append(el('div', { class: 'card' },
+      el('header', {}, el('h2', {}, houseLabel), el('span', { class: 'meta' }, items.length + ' parties')),
+      el('div', { class: 'body tight' }, ul)));
+  }
+}
+
+// ============================================================================
+// Party — single-party landing
+// ============================================================================
+
+async function viewParty(m, _q, gen) {
+  const id = m[1];
+  renderLoading('loading party…');
+
+  // Per-party detail endpoint /Parties/<id> returns empty (probed). We
+  // synthesise from the active-parties list (cheap, Cache-Control 300 s)
+  // plus a Members search filtered by partyId.
+  let activeC, activeL, members;
+  try {
+    [activeC, activeL] = await Promise.all([
+      fetchJson(`${API}/members/Parties/GetActive/Commons`),
+      fetchJson(`${API}/members/Parties/GetActive/Lords`),
+    ]);
+  } catch (e) {
+    if (gen === routeGen) renderError('party load failed: ' + e.message);
+    return;
+  }
+  if (gen !== routeGen) return;
+  const flat = [...(activeC.items || []), ...(activeL.items || [])]
+    .map(it => it.value).filter(Boolean);
+  const party = flat.find(p => String(p.id) === id);
+  if (!party) {
+    rootEl().append(el('div', { class: 'errblock' }, `No active party with id ${id}.`));
+    return;
+  }
+
+  try {
+    members = await fetchJson(
+      `${API}/members/Members/Search?partyId=${id}&IsCurrentMember=true&take=20`);
+  } catch (e) {
+    members = { items: [], totalResults: 0 };
+  }
+  if (gen !== routeGen) return;
+
+  const cols = partyColours(party);
+  const root = rootEl();
+  root.append(el('div', { class: 'hero' },
+    el('h1', {}, party.name),
+    el('div', { class: 'sub' },
+      el('span', {
+        class: 'badge',
+        style: `background:${cols.bg};color:${cols.fg};`
+      }, party.abbreviation || ''),
+      ' ',
+      party.isIndependentParty ? 'Independent group' : 'Party',
+      ` · ${members.totalResults || 0} current members`)));
+
+  // Members of this party (first 20)
+  const ul = el('ul', { class: 'rows' });
+  for (const it of (members.items || []).slice(0, 20)) {
+    const v = it.value || {};
+    const h = v.latestHouseMembership || {};
+    ul.append(el('li', {},
+      el('a', { class: 'row', href: `#/member/${v.id}` },
+        el('img', { class: 'thumb', loading: 'lazy', alt: '',
+          src: authedImg(`/members/Members/${v.id}/Thumbnail`),
+          onerror: function() { this.style.display = 'none'; } }),
+        el('div', { class: 'text' },
+          el('div', { class: 'title' }, v.nameDisplayAs || ''),
+          el('div', { class: 'sub' },
+            (h.house === 1 ? 'Commons' : h.house === 2 ? 'Lords' : '') +
+            (h.membershipFrom ? ' · ' + h.membershipFrom : ''))))));
+  }
+  root.append(el('div', { class: 'card' },
+    el('header', {}, el('h2', {}, 'Members'),
+      el('span', { class: 'meta' },
+        ((members.items || []).length) + ' of ' + (members.totalResults || 0))),
+    el('div', { class: 'body tight' }, ul)));
+}
+
+// ============================================================================
+// Constituency — name, current MP, geometry
+// ============================================================================
+
+async function viewConstituency(m, _q, gen) {
+  const id = m[1];
+  renderLoading('loading constituency…');
+  let data;
+  try {
+    data = await fetchJson(`${API}/members/Location/Constituency/${id}`);
+  } catch (e) {
+    if (gen === routeGen) renderError('constituency load failed: ' + e.message);
+    return;
+  }
+  if (gen !== routeGen) return;
+  const v = data.value || {};
+  // Probed shape: { id, name, startDate, endDate, currentRepresentation: { member: { value: {…} } } }
+  if (!v.id || !v.name) {
+    rootEl().append(el('div', { class: 'errblock' },
+      `⚠ shape mismatch on Constituency/${id}: keys ` + Object.keys(v).join(', ')));
+    return;
+  }
+  const root = rootEl();
+  root.append(el('div', { class: 'hero' },
+    el('h1', {}, v.name),
+    el('div', { class: 'sub' },
+      `Constituency · since ${(v.startDate || '').slice(0,10)}` +
+      (v.endDate ? ` · until ${v.endDate.slice(0,10)}` : ''))));
+
+  // current MP card
+  const mp = v.currentRepresentation?.member?.value;
+  if (mp) {
+    const p = mp.latestParty || {};
+    const cols = partyColours(p);
+    root.append(el('div', { class: 'card' },
+      el('header', {}, el('h2', {}, 'Current MP')),
+      el('div', { class: 'body tight' },
+        el('ul', { class: 'rows' },
+          el('li', {},
+            el('a', { class: 'row', href: `#/member/${mp.id}` },
+              el('div', { class: 'stripe', style: `background:${cols.bg}` }),
+              el('img', { class: 'thumb', loading: 'lazy', alt: '',
+                src: authedImg(`/members/Members/${mp.id}/Thumbnail`),
+                onerror: function() { this.style.display = 'none'; } }),
+              el('div', { class: 'text' },
+                el('div', { class: 'title' }, mp.nameDisplayAs || ''),
+                el('div', { class: 'sub' },
+                  [p.name, mp.gender === 'F' ? 'F' : (mp.gender === 'M' ? 'M' : '')]
+                    .filter(Boolean).join(' · ')))))))));
+  } else {
+    root.append(el('div', { class: 'card' },
+      el('header', {}, el('h2', {}, 'Current MP')),
+      el('div', { class: 'body' }, el('div', { class: 'empty' }, 'no current representation'))));
+  }
+
+  // facts table
+  const facts = [
+    ['Name', v.name],
+    ['Constituency ID', String(v.id)],
+    ['Established', (v.startDate || '').slice(0, 10)],
+    v.endDate ? ['Abolished', v.endDate.slice(0, 10)] : null,
+  ].filter(Boolean);
+  root.append(el('div', { class: 'card' },
+    el('header', {}, el('h2', {}, 'Facts')),
+    el('table', { class: 'props' },
+      ...facts.map(([k, val]) => el('tr', {},
+        el('td', { class: 'k' }, k),
+        el('td', { class: 'v' }, val))))));
+}
+
+// ============================================================================
+// House — chamber panel + state of parties + last sitting
+// ============================================================================
+
+let housePollAborters = [];
+
+async function viewHouse(m, _q, gen) {
+  housePollAborters.forEach(fn => fn()); housePollAborters = [];
+  const houseLabel = m[1]; // "Commons" or "Lords"
+  const slug = houseLabel === 'Commons' ? 'CommonsMain' : 'LordsMain';
+  const klass = houseLabel.toLowerCase();
+  const root = rootEl();
+
+  root.append(el('div', { class: 'hero' },
+    el('h1', {}, 'House of ' + houseLabel),
+    el('div', { class: 'sub' }, 'Live state and recent activity')));
+
+  // Live chamber panel
+  const card = el('div', { class: `chamber ${klass}`, id: `ch-${houseLabel}` });
+  card.innerHTML = `
+    <header>
+      <span class="label">${houseLabel}</span>
+      <span class="meta">
+        <span class="freshness fresh" id="ch-${houseLabel}-fresh">live</span>
+        <span id="ch-${houseLabel}-publish">—</span>
+      </span>
+    </header>
+    <div class="slide" id="ch-${houseLabel}-slide"><div class="blank">connecting…</div></div>`;
+  root.append(card);
+  housePollAborters.push(startPolling(houseLabel, slug, gen));
+
+  // State of parties
+  const sopCard = el('div', { class: 'card' },
+    el('header', {}, el('h2', {}, 'State of the parties')),
+    el('div', { class: 'body tight' }, el('div', { class: 'loading' }, '…')));
+  root.append(sopCard);
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const sop = await fetchJson(
+      `${API}/members/Parties/StateOfTheParties/${houseLabel}/${today}`);
+    if (gen !== routeGen) return;
+    const items = sop.items || [];
+    const body = sopCard.querySelector('.body');
+    body.innerHTML = '';
+    if (!items.length) { body.append(el('div', { class: 'empty' }, 'unavailable')); }
+    else {
+      const ul = el('ul', { class: 'rows' });
+      // Probed shape: { value: { party: {id,name,...}, total, ... } }
+      const sorted = [...items].sort((a, b) =>
+        (b.value?.total || 0) - (a.value?.total || 0));
+      for (const it of sorted) {
+        const v = it.value || {}; const p = v.party || {};
+        if (!p.id || typeof v.total !== 'number') continue;
+        const cols = partyColours(p);
+        ul.append(el('li', {},
+          el('a', { class: 'row', href: `#/party/${p.id}` },
+            el('div', { class: 'stripe', style: `background:${cols.bg}` }),
+            el('div', { class: 'text' },
+              el('div', { class: 'title' }, p.name || ''),
+              el('div', { class: 'sub' }, p.abbreviation || '')),
+            el('div', { style: 'font:600 18px/1 system-ui;color:var(--ink);min-width:48px;text-align:right;margin-right:.5rem' },
+              String(v.total)))));
+      }
+      body.append(ul);
+    }
+  } catch {
+    sopCard.querySelector('.body').innerHTML = '<div class="empty">state of parties unavailable</div>';
+  }
+
+  // Last sitting day debates
+  const sitCard = el('div', { class: 'card' },
+    el('header', {}, el('h2', {}, 'Last sitting'), el('span', { class: 'meta', id: `${houseLabel}-sit-meta` }, '…')),
+    el('div', { class: 'body tight' }, el('ul', { class: 'rows', id: `${houseLabel}-sit-list` },
+      el('li', {}, el('div', { class: 'loading' }, '…')))));
+  root.append(sitCard);
+  try {
+    const date = await fetchJson(`${API}/hansard/overview/lastsittingdate.json?house=${houseLabel}`);
+    if (gen !== routeGen) return;
+    document.getElementById(`${houseLabel}-sit-meta`).textContent = date;
+    const search = await fetchJson(
+      `${API}/hansard/search.json?queryParameters.startDate=${date}&queryParameters.endDate=${date}` +
+      `&queryParameters.house=${houseLabel}&queryParameters.take=15`);
+    if (gen !== routeGen) return;
+    const list = document.getElementById(`${houseLabel}-sit-list`);
+    list.innerHTML = '';
+    const debates = search.Debates || [];
+    if (!debates.length) {
+      list.append(el('li', {}, el('div', { class: 'empty' }, 'no debates indexed.')));
+    } else {
+      for (const d of debates) {
+        list.append(el('li', {},
+          el('a', { class: 'row', href: `#/debate/${d.DebateSectionExtId}` },
+            el('div', { class: 'text' },
+              el('div', { class: 'title' }, (d.Title || '').trim() || '(untitled)'),
+              el('div', { class: 'sub' }, d.DebateSection || '')))));
+      }
+    }
+  } catch {
+    document.getElementById(`${houseLabel}-sit-list`).innerHTML =
+      '<li><div class="empty">last sitting unavailable</div></li>';
+  }
+}
+
+// ============================================================================
+// Settings
+// ============================================================================
+
+async function viewSettings() {
+  const root = rootEl();
+  root.append(el('div', { class: 'hero' },
+    el('div', { class: 'crumb' }, 'App'),
+    el('h1', {}, 'Settings')));
+
+  const card = el('div', { class: 'card' });
+  card.append(el('header', {}, el('h2', {}, 'Account')));
+  card.append(el('div', { class: 'field-row' },
+    el('div', { class: 'label' },
+      el('div', { class: 'name' }, 'Sign out'),
+      el('div', { class: 'help' }, 'forgets the saved password on this device')),
+    el('button', {
+      class: 'btn',
+      onclick: () => {
+        localStorage.removeItem(AUTH_STORE);
+        document.cookie = `${AUTH_COOKIE}=; Path=/; Max-Age=0`;
+        AUTH_TOKEN = null; showLogin();
+      }
+    }, 'sign out')));
+  root.append(card);
+
+  const card2 = el('div', { class: 'card' });
+  card2.append(el('header', {}, el('h2', {}, 'Cache')));
+  const stats = el('div', { class: 'empty' }, '…');
+  card2.append(el('div', { class: 'body' },
+    stats,
+    el('button', { class: 'btn', style: 'margin-top:.5rem',
+      onclick: async () => { try { await fetchJson(`${API}/../_cache`); } catch {} }
+    }, 'refresh proxy cache stats')));
+  const cacheUrl = (location.protocol === 'http:' || location.protocol === 'https:')
+    ? '/_cache' : (PROXY_ORIGIN + '/_cache');
+  try {
+    const j = await fetch(cacheUrl, {
+      headers: AUTH_TOKEN ? { authorization: 'Bearer ' + AUTH_TOKEN } : {}
+    }).then(r => r.json());
+    stats.classList.remove('empty');
+    stats.innerHTML = `<code style="color:var(--ink-dim)">${j.entries?.length || 0} cached entries</code>`;
+  } catch {}
+  root.append(card2);
+}
+
+// ============================================================================
+// About + screensaver
+// ============================================================================
+
+async function viewAbout() {
+  const root = rootEl();
+  root.append(el('div', { class: 'hero' },
+    el('div', { class: 'crumb' }, 'App'),
+    el('h1', {}, 'About')));
+  root.append(el('div', { class: 'card' },
+    el('header', {}, el('h2', {}, 'What this is')),
+    el('div', { class: 'body' },
+      el('p', { style: 'margin:0 0 .8rem' },
+        'A small navigator over the UK Parliament APIs — Members, Hansard, and the live ',
+        'annunciator (which says who is currently speaking in each chamber). Click anything ',
+        'to follow the link to its detail page; the goal is to walk the graph rather than to ',
+        'present curated views.'),
+      el('p', { style: 'margin:0 0 .8rem' },
+        'Data flows through a small caching proxy that sits between this page and the ',
+        el('code', {}, 'parliament.uk'), ' APIs (which do not allow direct browser access). ',
+        'TTLs are tuned per-endpoint based on what each API advertises and how the underlying ',
+        'data actually changes.'),
+      el('p', { style: 'margin:0' },
+        'Contains Parliamentary information licensed under the ',
+        el('a', { href: 'https://www.parliament.uk/site-information/copyright-parliament/open-parliament-licence/' },
+          'Open Parliament Licence v3.0'),
+        '. Third-party prototype, not affiliated with the UK Parliament.')
+    )));
+
+  root.append(el('div', { class: 'card' },
+    el('header', {}, el('h2', {}, 'Data sources')),
+    el('table', { class: 'props' },
+      el('tr', {}, el('td', { class: 'k' }, 'Now (annunciator)'), el('td', { class: 'v' }, 'now-api.parliament.uk')),
+      el('tr', {}, el('td', { class: 'k' }, 'Members'), el('td', { class: 'v' }, 'members-api.parliament.uk')),
+      el('tr', {}, el('td', { class: 'k' }, 'Hansard'), el('td', { class: 'v' }, 'hansard-api.parliament.uk')),
+      el('tr', {}, el('td', { class: 'k' }, 'SPARQL'), el('td', { class: 'v' }, 'api.parliament.uk/sparql (not yet wired in)'))
+    )));
+
+  // Easter-egg-y screensaver entry point
+  root.append(el('div', { class: 'card' },
+    el('header', {}, el('h2', {}, 'Display')),
+    el('div', { class: 'field-row' },
+      el('div', { class: 'label' },
+        el('div', { class: 'name' }, 'Screensaver'),
+        el('div', { class: 'help' }, 'a slow drift through MPs and peers · tap to exit')),
+      el('button', { class: 'btn primary', onclick: startScreensaver }, 'start'))));
+}
+
+// Screensaver: cycles through random members
+let ssTimer = 0, ssCancelled = false;
+async function startScreensaver() {
+  ssCancelled = false;
+  const overlay = document.getElementById('screensaver');
+  overlay.classList.add('show');
+  overlay.addEventListener('click', stopScreensaver, { once: true });
+  document.addEventListener('keydown', ssKeyListener, { once: true });
+
+  // pull a pool of members to drift through
+  let pool = [];
+  try {
+    const data = await fetchJson(`${API}/members/Members/Search?House=1&IsCurrentMember=true&take=20&skip=${Math.floor(Math.random() * 30) * 20}`);
+    pool = (data.items || []).map(it => it.value).filter(v => v?.id);
+  } catch (e) {
+    document.getElementById('ss-name').textContent = 'screensaver unavailable';
+    document.getElementById('ss-meta').textContent = e.message;
+    return;
+  }
+  let i = 0;
+  function step() {
+    if (ssCancelled) return;
+    if (!pool.length) { stopScreensaver(); return; }
+    const v = pool[i % pool.length]; i++;
+    const p = v.latestParty || {}, h = v.latestHouseMembership || {};
+    const cols = partyColours(p);
+    const ss = document.getElementById('screensaver');
+    ss.classList.add('fade');
+    setTimeout(() => {
+      if (ssCancelled) return;
+      document.getElementById('ss-img').src = authedImg(`/members/Members/${v.id}/Portrait?cropType=ThreeFour`);
+      document.getElementById('ss-name').textContent = v.nameDisplayAs || '';
+      document.getElementById('ss-meta').textContent =
+        [p.name, h.membershipFrom, h.house === 1 ? 'Commons' : (h.house === 2 ? 'Lords' : '')]
+          .filter(Boolean).join(' · ');
+      document.getElementById('ss-stripe').style.background = cols.bg;
+      ss.classList.remove('fade');
+    }, 900);
+    ssTimer = setTimeout(step, 7000);
+  }
+  step();
+}
+
+function ssKeyListener() { stopScreensaver(); }
+
+function stopScreensaver() {
+  ssCancelled = true;
+  clearTimeout(ssTimer);
+  document.getElementById('screensaver').classList.remove('show');
+}
+
+// ============================================================================
+// Boot
+// ============================================================================
+
+async function boot() {
+  const ok = await tryUnlock();
+
+  // Probe whether the server is reachable AND whether it requires auth.
+  // Three states: reachable+auth, reachable+open, unreachable.
+  // Use same-origin path on http(s) origins; the absolute fallback only
+  // matters in null-origin contexts (file://, srcdoc).
+  const healthUrl = (location.protocol === 'http:' || location.protocol === 'https:')
+    ? '/_health' : (PROXY_ORIGIN + '/_health');
+  let serverReachable = false;
+  let serverRequiresAuth = true;
+  try {
+    const r = await fetch(healthUrl);
+    if (r.ok) {
+      serverReachable = true;
+      const h = await r.json().catch(() => null);
+      if (h && h.authRequired === false) serverRequiresAuth = false;
+    }
+  } catch {}
+
+  // Proxy unreachable: don't show the login dialog (logging in wouldn't help).
+  // Render a clear "wrong place" banner with a link to the deployed app.
+  if (!serverReachable) {
+    showOfflineBanner();
+    return;
+  }
+
+  if (!ok && serverRequiresAuth && EXPECTED_HASH !== '__EXPECTED_HASH_PLACEHOLDER__') {
+    showLogin();
+    return;
+  }
+  if (!ok) AUTH_TOKEN = null;
+  dispatch();
+}
+
+function showOfflineBanner() {
+  const root = rootEl();
+  root.append(el('div', { class: 'card', style: 'margin-top:1.5rem' },
+    el('header', {}, el('h2', {}, 'Proxy not reachable')),
+    el('div', { class: 'body' },
+      el('p', { style: 'margin:0 0 .8rem' },
+        'This page can\'t talk to the FPKG proxy from where you\'re viewing it. ' +
+        'That can happen when the page is opened directly from a file or in a ' +
+        'preview pane that doesn\'t share the proxy origin.'),
+      el('p', { style: 'margin:0 0 .8rem' },
+        'Open the deployed app at ',
+        el('a', { href: 'https://fpkg.fly.dev/' }, 'https://fpkg.fly.dev/'),
+        ' in a normal browser tab and it should work straight away.'),
+      el('p', { style: 'margin:0;color:var(--ink-soft);font-size:13px' },
+        'Local dev: start the proxy with ',
+        el('code', {}, 'node server.mjs'),
+        ' from ',
+        el('code', {}, 'experiments/parliament-live/'),
+        ' and visit ',
+        el('code', {}, 'http://localhost:8787/'),
+        '.')
+    )));
+}
+
+boot();
+</script>
+
+</body>
+</html>
