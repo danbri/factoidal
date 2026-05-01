@@ -441,21 +441,30 @@ let count_star_solution (alias : var_name) (n : nat) : solution_sequence =
   [ sm_bind alias lit_term sm_empty ]
 
 // Detect:  SELECT ?g (COUNT(*) AS ?n) WHERE { GRAPH ?g { ?s ?p ?o } }
-//          GROUP BY ?g
-// Returns (graph_var, count_alias, tp) when the shape matches. The
-// inner BGP must be a single triple pattern with all three terms
-// being fresh variables. No HAVING / ORDER BY / VALUES / DISTINCT /
-// REDUCED. LIMIT/OFFSET allowed (applied via slice_solutions).
+//          GROUP BY ?g  [ORDER BY ?...  LIMIT/OFFSET]
+// Returns (graph_var, count_alias) when the shape matches.
+//
+// Allowed modifiers: ORDER BY (sorted post-aggregate via sort_solutions),
+//   LIMIT/OFFSET (sliced via slice_solutions).
+// Rejected modifiers: HAVING, VALUES, DISTINCT, REDUCED — any of these
+//   requires row materialisation and the streaming count is unsound.
+//
+// The inner BGP must be a single triple pattern with all three terms
+// being VARIABLES, all DISTINCT from each other, and all DISTINCT from
+// the graph variable ?g. Without that distinctness check, queries like
+//   GRAPH ?g { ?g ?p ?o }   -- ?g now also bound from subject column
+//   GRAPH ?g { ?s ?p ?s }   -- ?s appears twice; equality constraint
+// would still match, but the streaming estimate counts the whole graph
+// without honouring those equality constraints, returning a wrong
+// (over-)count. (Reviewer 2026-05-01.)
 let detect_streaming_count_group_by_graph (q : query)
-  : option (var_name & var_name & triple_pattern) =
+  : option (var_name & var_name) =
   match q.q_form with
   | QF_Select (Select_Vars items) ->
     if Some? q.q_having then None
     else if Some? q.q_values then None
     else if q.q_modifier.sm_distinct then None
     else if q.q_modifier.sm_reduced then None
-    // ORDER BY allowed: applied post-aggregation in the dispatcher via
-    // sort_solutions. Same is true for LIMIT/OFFSET (slice_solutions).
     else
       // SELECT must be exactly: SI_Var ?g, SI_Expr (COUNT(*) AS ?n)
       (match items with
@@ -474,7 +483,8 @@ let detect_streaming_count_group_by_graph (q : query)
                  if gbv <> gv then None
                  else
                    // WHERE: GP_Graph (PT_Var gv) (GP_BGP [tp]) where tp is
-                   // (PS_Var s, PT_Var p, PT_Var o), all distinct from gv.
+                   // (PS_Var s, PT_Var p, PT_Var o), all PAIRWISE DISTINCT
+                   // and all distinct from gv.
                    (match q.q_pattern with
                     | GP_Graph (PT_Var graph_v) inner ->
                       if graph_v <> gv then None
@@ -483,7 +493,14 @@ let detect_streaming_count_group_by_graph (q : query)
                          | None -> None
                          | Some tp ->
                            (match tp.tp_s, tp.tp_p, tp.tp_o with
-                            | PS_Var _, PT_Var _, PT_Var _ -> Some (gv, nv, tp)
+                            | PS_Var sv, PT_Var pv, PT_Var ov ->
+                              // Pairwise-distinct check: rejects shapes like
+                              // ?g/?p/?o or ?s/?p/?s that would carry an
+                              // implicit equality constraint the estimate
+                              // does not honour.
+                              if sv = gv || pv = gv || ov = gv then None
+                              else if sv = pv || sv = ov || pv = ov then None
+                              else Some (gv, nv)
                             | _ -> None))
                     | _ -> None)
                | _ -> None)
@@ -493,13 +510,19 @@ let detect_streaming_count_group_by_graph (q : query)
 
 // Build the per-graph solutions for the GROUP BY ?g COUNT(*) fast path.
 // One row per named graph: ?g = graph IRI, ?count_alias = backend_estimate.
-let rec count_group_by_graph_solutions
+//
+// Tail-recursive accumulator form (reviewer 2026-05-01): the prior
+// straight-recursive shape blew JS's ~10K stack on lifesci-class
+// datasets if a future caller passed in many named graphs. Same
+// pattern as the bucket_replace tail-rec fix in #119.
+let rec count_group_by_graph_solutions_acc
   (graph_var : var_name)
   (count_alias : var_name)
+  (acc : solution_sequence)
   (named : list named_graph_backend)
-  : solution_sequence =
+  : Tot solution_sequence (decreases named) =
   match named with
-  | [] -> []
+  | [] -> List.Tot.rev acc
   | ngb :: rest ->
     let bound : triple_pattern_bound = { bs = None; bp = None; bo = None } in
     let cnt = backend_estimate ngb.ngb_graph bound in
@@ -512,7 +535,14 @@ let rec count_group_by_graph_solutions
     let mu = if is_iri ngb.ngb_name
              then sm_bind graph_var (T_IRI ngb.ngb_name) mu0
              else mu0 in
-    mu :: count_group_by_graph_solutions graph_var count_alias rest
+    count_group_by_graph_solutions_acc graph_var count_alias (mu :: acc) rest
+
+let count_group_by_graph_solutions
+  (graph_var : var_name)
+  (count_alias : var_name)
+  (named : list named_graph_backend)
+  : solution_sequence =
+  count_group_by_graph_solutions_acc graph_var count_alias [] named
 
 // Detect the LIMIT-pushdown shape: SELECT ?vars WHERE { single tp }
 // [LIMIT k]  with no DISTINCT / ORDER BY / OFFSET / GROUP BY / HAVING /
@@ -741,7 +771,7 @@ and eval_select_query_backend_dataset (q : query) (dsb : dataset_backend)
   // Semantics-preserving for the matched shape: each named graph
   // contributes exactly one ?g=iri / ?n=count row.
   match detect_streaming_count_group_by_graph q with
-  | Some (graph_var, count_alias, _tp) ->
+  | Some (graph_var, count_alias) ->
     let omega = count_group_by_graph_solutions graph_var count_alias dsb.dsb_named in
     // Apply ORDER BY post-aggregation if present. The result set is
     // bounded by the number of named graphs (small, typically < 100),
