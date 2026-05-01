@@ -454,7 +454,8 @@ let detect_streaming_count_group_by_graph (q : query)
     else if Some? q.q_values then None
     else if q.q_modifier.sm_distinct then None
     else if q.q_modifier.sm_reduced then None
-    else if Some? q.q_modifier.sm_order_by then None
+    // ORDER BY allowed: applied post-aggregation in the dispatcher via
+    // sort_solutions. Same is true for LIMIT/OFFSET (slice_solutions).
     else
       // SELECT must be exactly: SI_Var ?g, SI_Expr (COUNT(*) AS ?n)
       (match items with
@@ -742,7 +743,13 @@ and eval_select_query_backend_dataset (q : query) (dsb : dataset_backend)
   match detect_streaming_count_group_by_graph q with
   | Some (graph_var, count_alias, _tp) ->
     let omega = count_group_by_graph_solutions graph_var count_alias dsb.dsb_named in
-    Some (slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit omega)
+    // Apply ORDER BY post-aggregation if present. The result set is
+    // bounded by the number of named graphs (small, typically < 100),
+    // so sorting cost is negligible compared to the saved BGP eval.
+    let ordered = match q.q_modifier.sm_order_by with
+      | None   -> omega
+      | Some o -> sort_solutions o omega in
+    Some (slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit ordered)
   | None ->
     eval_select_query_backend_on_graph q dsb.dsb_default dsb
 
