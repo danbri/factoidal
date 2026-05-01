@@ -1097,8 +1097,15 @@ let () =
     ds_named = all_named
   }) in
 
+  (* Take the SPARQL11_Store backend executor for SELECT/ASK whenever
+     entailment is the no-op identity — including the in-memory case.
+     build_dataset_backend handles the empty-cottas list (returns the
+     indexed_dataset_backend of the in-memory dataset). The previous
+     `data_cottas_files <> []` gate forced in-memory loads onto the
+     slower eval_select_query path, which also bypasses the
+     detect_streaming_count_group_by_graph fast path needed for Q01-
+     style demo queries. *)
   let use_backend_exec =
-    cfg.data_cottas_files <> [] &&
     cfg.entail_regime = "" &&
     match query.q_form with
     | QF_Select _ | QF_Ask -> true

@@ -253,7 +253,15 @@ let ig_search (ig : indexed_graph) (b : triple_pattern_bound) : list triple =
   triple_matches_bound b pool
 
 let ig_estimate (ig : indexed_graph) (b : triple_pattern_bound) : nat =
-  List.Tot.length (ig_search ig b)
+  // Fast path: all-None bound = full graph cardinality. Skips the
+  // ig_search -> triple_matches_bound -> List.length round-trip
+  // (which is O(2N) on an unbound BGP). Required for the streaming
+  // COUNT(*) GROUP BY ?g fast path on in-memory named graphs to be
+  // actually fast — without this, count_group_by_graph_solutions
+  // calls O(N) per named graph instead of O(1) per named graph.
+  match b.bs, b.bp, b.bo with
+  | None, None, None -> List.Tot.length ig.ig_triples
+  | _ -> List.Tot.length (ig_search ig b)
 
 (* Public store API: dispatch through the indexed buckets that
    `graph_to_store` populated. Same triples as the old list-scan
