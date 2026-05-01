@@ -405,6 +405,41 @@
   footer.attribution a { color: var(--gold-dim); }
 
   hr.sep { border: 0; border-top: 1px solid var(--line); margin: 1.5rem 0; }
+
+  /* ---- Heuristic-note disclosure (provenance / "why a heuristic?") ----- */
+  .heuristic-note {
+    border-top: 1px solid var(--line);
+    padding: .65rem 1rem .85rem;
+  }
+  .heuristic-note summary {
+    cursor: pointer;
+    color: var(--ink-dim);
+    font: 500 13px/1.4 system-ui;
+    list-style: none;                  /* hide default arrow */
+    padding: .35rem 0;
+    user-select: none;
+  }
+  .heuristic-note summary::-webkit-details-marker { display: none; }
+  .heuristic-note summary::before {
+    content: "▸";
+    display: inline-block; width: 1em; margin-right: .15rem;
+    color: var(--gold-dim); transition: transform .15s ease;
+  }
+  .heuristic-note[open] summary::before { transform: rotate(90deg); }
+  .heuristic-note .note-body {
+    padding: .4rem 0 0;
+    font-size: 14px; line-height: 1.6; color: var(--ink-dim);
+  }
+  .heuristic-note .note-body h3 {
+    font: 600 14px/1.3 system-ui; color: var(--ink);
+    margin: .9rem 0 .25rem;
+  }
+  .heuristic-note .note-body ul { margin: .35rem 0 .8rem; padding-left: 1.2rem; }
+  .heuristic-note .note-body li { margin: .25rem 0; }
+  .heuristic-note .note-body code {
+    background: var(--panel-2); padding: 1px 5px; border-radius: 3px;
+    font-size: 12.5px;
+  }
 </style>
 </head>
 <body>
@@ -1827,11 +1862,52 @@ async function viewConstituency(m, _q, gen) {
               el('div', { class: 'sub' },
                 `${s.count} of this seat's members went there next`)))));
       }
+      // Disclosure: how this widget is computed and how it could be replaced.
+      const details = el('details', { class: 'heuristic-note' },
+        el('summary', {}, 'Why is this an ad hoc heuristic?'),
+        el('div', { class: 'note-body' },
+          el('p', { style: 'margin:0 0 .5rem' },
+            'There is no successor endpoint in the Members API. This widget ',
+            'clusters each historical MP’s ',
+            el('code', {}, 'latestHouseMembership'),
+            ' (their most recent seat) and counts the most common one. That ',
+            'is right when an MP went directly from this seat to its ',
+            'geographic successor and hasn’t moved since (e.g. Chingford → ',
+            'Chingford and Woodford Green). It misleads when:'),
+          el('ul', {},
+            el('li', {}, 'An MP held three seats; ',
+              el('code', {}, 'latestHouseMembership'),
+              ' points at the third, unrelated to this seat’s actual successor'),
+            el('li', {}, 'All historical MPs have retired, died, or moved to the Lords — the cluster ends up empty even when a real successor exists'),
+            el('li', {}, 'The seat was redistributed across several directions with no single dominant successor')),
+          el('h3', {}, 'Two better paths'),
+          el('p', { style: 'margin:0 0 .35rem' },
+            el('b', {}, '1. SPARQL'), ' — authoritative. The Parliament linked-data graph (',
+            el('code', {}, 'api.parliament.uk/sparql'),
+            ') almost certainly publishes a ',
+            el('code', {}, 'parl:precededBy'),
+            ' / ',
+            el('code', {}, 'parl:succeededBy'),
+            ' edge per constituency group. The proxy already routes ',
+            el('code', {}, '/api/sparql'),
+            '; one query replaces this heuristic with the actual succession edge from the boundary commission.'),
+          el('p', { style: 'margin:0 0 .35rem' },
+            el('b', {}, '2. Per-member full history'), ' — still derived, more accurate. ',
+            'For each historical MP, fetch ',
+            el('code', {}, '/Members/{id}/HouseMemberships'),
+            ' and pick the seat whose start-date immediately follows this seat’s end-date for that member. Cluster as before. Replaces ',
+            el('code', {}, 'latestHouseMembership'),
+            ' with the actual next-seat per member, at the cost of N extra upstream calls per page.'),
+          el('p', { style: 'margin:.5rem 0 0;color:var(--ink-soft)' },
+            'Path 1 is the right answer; path 2 is the fallback if SPARQL doesn’t expose what we need.')
+        )
+      );
       root.append(el('div', { class: 'card' },
         el('header', {},
           el('h2', {}, 'Likely successor constituencies'),
           el('span', { class: 'meta' }, '(ad hoc heuristic)')),
-        el('div', { class: 'body tight' }, ul)));
+        el('div', { class: 'body tight' }, ul),
+        details));
     }
   }
 
