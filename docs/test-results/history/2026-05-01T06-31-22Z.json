@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-05-01 14:16 UTC",
-  "commit": "8974f344d93130f21cde0dc60a3822e18016618e",
-  "branch": "claude/streaming-count-group-by-graph",
+  "timestamp": "2026-05-01 06:31 UTC",
+  "commit": "00071012dde31730e43964f505a9db11805dae93",
+  "branch": "claude/http-update-sandbox-to-fstar",
   "totals": {
     "sparql":   {"pass":626,"fail":1,"skip":4,"unsupported":0,"total":631},
     "rdf":      {"pass":1031,"fail":0,"skip":0,"unsupported":0,"total":1031},

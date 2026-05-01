@@ -440,6 +440,79 @@ let count_star_solution (alias : var_name) (n : nat) : solution_sequence =
   } in
   [ sm_bind alias lit_term sm_empty ]
 
+// Detect:  SELECT ?g (COUNT(*) AS ?n) WHERE { GRAPH ?g { ?s ?p ?o } }
+//          GROUP BY ?g
+// Returns (graph_var, count_alias, tp) when the shape matches. The
+// inner BGP must be a single triple pattern with all three terms
+// being fresh variables. No HAVING / ORDER BY / VALUES / DISTINCT /
+// REDUCED. LIMIT/OFFSET allowed (applied via slice_solutions).
+let detect_streaming_count_group_by_graph (q : query)
+  : option (var_name & var_name & triple_pattern) =
+  match q.q_form with
+  | QF_Select (Select_Vars items) ->
+    if Some? q.q_having then None
+    else if Some? q.q_values then None
+    else if q.q_modifier.sm_distinct then None
+    else if q.q_modifier.sm_reduced then None
+    else if Some? q.q_modifier.sm_order_by then None
+    else
+      // SELECT must be exactly: SI_Var ?g, SI_Expr (COUNT(*) AS ?n)
+      (match items with
+       | [SI_Var gv; SI_Expr count_e nv] ->
+         (match count_e with
+          | E_Aggregate Agg_Count false sub_e ->
+            let count_ok = match sub_e with
+              | E_Var "*" -> true
+              | E_BoolLit true -> true
+              | _ -> false in
+            if not count_ok then None
+            else
+              // GROUP BY exactly [GC_Var gv]
+              (match q.q_group_by with
+               | Some [GC_Var gbv] ->
+                 if gbv <> gv then None
+                 else
+                   // WHERE: GP_Graph (PT_Var gv) (GP_BGP [tp]) where tp is
+                   // (PS_Var s, PT_Var p, PT_Var o), all distinct from gv.
+                   (match q.q_pattern with
+                    | GP_Graph (PT_Var graph_v) inner ->
+                      if graph_v <> gv then None
+                      else
+                        (match extract_single_tp_bgp inner with
+                         | None -> None
+                         | Some tp ->
+                           (match tp.tp_s, tp.tp_p, tp.tp_o with
+                            | PS_Var _, PT_Var _, PT_Var _ -> Some (gv, nv, tp)
+                            | _ -> None))
+                    | _ -> None)
+               | _ -> None)
+          | _ -> None)
+       | _ -> None)
+  | _ -> None
+
+// Build the per-graph solutions for the GROUP BY ?g COUNT(*) fast path.
+// One row per named graph: ?g = graph IRI, ?count_alias = backend_estimate.
+let rec count_group_by_graph_solutions
+  (graph_var : var_name)
+  (count_alias : var_name)
+  (named : list named_graph_backend)
+  : solution_sequence =
+  match named with
+  | [] -> []
+  | ngb :: rest ->
+    let bound : triple_pattern_bound = { bs = None; bp = None; bo = None } in
+    let cnt = backend_estimate ngb.ngb_graph bound in
+    let lit_term : rdf_term = T_Literal {
+      lexical_form = string_of_int cnt;
+      datatype = xsd_integer;
+      lang_tag = None;
+    } in
+    let mu0 = sm_bind count_alias lit_term sm_empty in
+    let mu = if is_iri ngb.ngb_name
+             then sm_bind graph_var (T_IRI ngb.ngb_name) mu0
+             else mu0 in
+    mu :: count_group_by_graph_solutions graph_var count_alias rest
+
 // Detect the LIMIT-pushdown shape: SELECT ?vars WHERE { single tp }
 // [LIMIT k]  with no DISTINCT / ORDER BY / OFFSET / GROUP BY / HAVING /
 // VALUES / aggregates. Returns (triple_pattern, limit) when matched.
@@ -662,7 +735,16 @@ and eval_select_query_backend_on_graph (q : query) (gb : graph_backend) (dsb : d
 
 and eval_select_query_backend_dataset (q : query) (dsb : dataset_backend)
   : option solution_sequence =
-  eval_select_query_backend_on_graph q dsb.dsb_default dsb
+  // Bet5: streaming COUNT(*) GROUP BY ?g over named graphs. One
+  // backend_estimate call per named graph, no per-row materialisation.
+  // Semantics-preserving for the matched shape: each named graph
+  // contributes exactly one ?g=iri / ?n=count row.
+  match detect_streaming_count_group_by_graph q with
+  | Some (graph_var, count_alias, _tp) ->
+    let omega = count_group_by_graph_solutions graph_var count_alias dsb.dsb_named in
+    Some (slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit omega)
+  | None ->
+    eval_select_query_backend_on_graph q dsb.dsb_default dsb
 
 and eval_ask_query_backend_dataset (q : query) (dsb : dataset_backend)
   : option bool =
