@@ -164,6 +164,9 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              Parser.SRX.fst Parser.CSVResults.fst \
              Parser.JSONResults.fst \
              SPARQL.JSON.Escape.fst \
+             SPARQL.HTTP.Response.fst \
+             SPARQL.HTTP.BackendInfo.fst \
+             SPARQL.HTTP.QueriesIndex.fst \
              Parser.Ballyhoo.fst Parser.BallyhooBloom.fst \
              Parser.BallyhooHDT.fst Parser.BallyhooHDTQ.fst \
              Parser.BallyhooCOTTAS.fst \
