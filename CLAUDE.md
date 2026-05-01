@@ -26,6 +26,24 @@ debugging extremely difficult.
 files for these sequences if you get mysterious syntax errors far from the
 actual cause.
 
+## :warning: F* Reserved-Word Pitfall :warning:
+
+F\*'s parser treats some innocuous-looking identifiers as reserved (or
+reserved in certain positions) and reports the resulting parse failure
+with a misleading line number — usually pointing at the line **after**
+the offending name. Confirmed traps:
+
+- `total` — banned as a let-bound name. The error points at the next
+  let-binding. (Step-3 agent burned ~5 min on this 2026-04-30.)
+- `in_mem` — same: looks like `in` keyword to the parser in some
+  contexts.
+- Anything containing `in` as a prefix where F\* expects a let-body.
+
+**Safe alternatives:** prefix with the domain noun (`triples_total`,
+`mem_dataset`). When you hit an unexplained "Syntax error" in F\* and
+the line it points at looks fine, check the line *above* for an
+identifier that could be a keyword fragment.
+
 ## What This Project Is
 
 A formally verified RDF/SPARQL implementation. The **F\* specifications are the
