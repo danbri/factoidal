@@ -1116,38 +1116,246 @@ let run_query ~backend ~accept ~max_rows query =
     in
     { rb_status = 200; rb_content_type = ct; rb_body = body })
 
-let parse_and_run ~backend ~accept ~max_rows query_text =
-  Printf.eprintf "[qof3] parse_and_run: %d bytes of query text\n%!"
+(* ============================================================================
+   Per-query timing instrumentation (2026-05-02).
+
+   Goal: every SPARQL request produces a structured trace of where the wall
+   clock went — parse, eval, format. Surfaces three ways:
+     1. eprintf log line (always on, single line per query, easy to grep)
+     2. X-Factoidal-Timing response header (machine-readable per-request)
+     3. /admin/recent.json (last N queries, ring-buffered in memory)
+
+   This is reporting glue, not semantic logic — it measures how long the
+   F*-extracted entrypoints took, never decides anything. (Rule #11 OK.)
+   ============================================================================ *)
+
+type query_timing = {
+  qt_parse_ms : float;     (* SPARQL11_Parser.parse_sparql wall time *)
+  qt_eval_ms  : float;     (* eval_select / eval_ask wall time *)
+  qt_format_ms : float;    (* serialise_response_* wall time *)
+  qt_total_ms : float;     (* parse_and_run wall time (≈ sum + bookkeeping) *)
+  qt_status : int;         (* HTTP status returned *)
+  qt_rows : int;           (* rows in result set, -1 if unknown / ASK *)
+  qt_form : string;        (* SELECT / ASK / CONSTRUCT / DESCRIBE / parse-error *)
+  qt_body_bytes : int;     (* serialised body size *)
+}
+
+let zero_timing : query_timing = {
+  qt_parse_ms = 0.0; qt_eval_ms = 0.0; qt_format_ms = 0.0;
+  qt_total_ms = 0.0; qt_status = 0; qt_rows = -1;
+  qt_form = "?"; qt_body_bytes = 0;
+}
+
+(* Format a single-line trace for stderr. Pattern keeps fields fixed-position
+   so `grep '\[timing\]'` lines can be column-extracted by awk. *)
+let timing_log_line (qt : query_timing) (q_summary : string) : string =
+  Printf.sprintf
+    "[timing] form=%s status=%d rows=%d body=%dB parse=%.1fms eval=%.1fms format=%.1fms total=%.1fms q=%S"
+    qt.qt_form qt.qt_status qt.qt_rows qt.qt_body_bytes
+    qt.qt_parse_ms qt.qt_eval_ms qt.qt_format_ms qt.qt_total_ms
+    q_summary
+
+(* Build a single response header value from a timing record. Format mirrors
+   Server-Timing (RFC) so curl -i and browser devtools render it nicely. *)
+let timing_response_header (qt : query_timing) : string =
+  Printf.sprintf
+    "Server-Timing: parse;dur=%.1f, eval;dur=%.1f, format;dur=%.1f, total;dur=%.1f"
+    qt.qt_parse_ms qt.qt_eval_ms qt.qt_format_ms qt.qt_total_ms
+
+(* ----- Recent-query ring buffer ------------------------------------------- *)
+
+type recent_query = {
+  rq_started_at : float;       (* Unix epoch seconds *)
+  rq_query_text : string;      (* truncated to 500 chars *)
+  rq_timing : query_timing;
+}
+
+let recent_queries_mu = Mutex.create ()
+let recent_queries : recent_query list ref = ref []
+let recent_queries_cap = 50
+
+let truncate_for_log s n =
+  if String.length s <= n then s else String.sub s 0 n ^ "..."
+
+let push_recent_query (rq : recent_query) =
+  Mutex.lock recent_queries_mu;
+  let trimmed =
+    let rec take n = function
+      | [] -> []
+      | _ :: _ when n = 0 -> []
+      | x :: xs -> x :: take (n - 1) xs
+    in
+    take recent_queries_cap (rq :: !recent_queries)
+  in
+  recent_queries := trimmed;
+  Mutex.unlock recent_queries_mu
+
+let snapshot_recent_queries () =
+  Mutex.lock recent_queries_mu;
+  let xs = !recent_queries in
+  Mutex.unlock recent_queries_mu;
+  xs
+
+(* Aggregate counters: cumulative since process start. Useful for /admin/
+   stats and for sanity-checking that timings are being recorded at all. *)
+let total_queries_seen = ref 0
+let total_query_wall_ms = ref 0.0
+let queries_status_2xx = ref 0
+let queries_status_4xx = ref 0
+let queries_status_5xx = ref 0
+let counters_mu = Mutex.create ()
+
+let bump_counters (qt : query_timing) =
+  Mutex.lock counters_mu;
+  incr total_queries_seen;
+  total_query_wall_ms := !total_query_wall_ms +. qt.qt_total_ms;
+  (if qt.qt_status >= 200 && qt.qt_status < 300 then incr queries_status_2xx
+   else if qt.qt_status >= 400 && qt.qt_status < 500 then incr queries_status_4xx
+   else if qt.qt_status >= 500 then incr queries_status_5xx);
+  Mutex.unlock counters_mu
+
+(* JSON encoder for a recent_query. Strings escape via simple replacement of
+   the four characters that JSON cares about (\\, ", \n, \r). Good enough for
+   admin debug output; not a public format. *)
+let json_string_escape s =
+  let buf = Buffer.create (String.length s + 8) in
+  String.iter (fun c ->
+    match c with
+    | '\\' -> Buffer.add_string buf "\\\\"
+    | '"'  -> Buffer.add_string buf "\\\""
+    | '\n' -> Buffer.add_string buf "\\n"
+    | '\r' -> Buffer.add_string buf "\\r"
+    | '\t' -> Buffer.add_string buf "\\t"
+    | c when Char.code c < 0x20 ->
+      Buffer.add_string buf (Printf.sprintf "\\u%04x" (Char.code c))
+    | c -> Buffer.add_char buf c
+  ) s;
+  Buffer.contents buf
+
+let recent_query_to_json (rq : recent_query) : string =
+  Printf.sprintf
+    "{\"started_at\":%.3f,\"query\":\"%s\",\"form\":\"%s\",\"status\":%d,\
+     \"rows\":%d,\"body_bytes\":%d,\"parse_ms\":%.2f,\"eval_ms\":%.2f,\
+     \"format_ms\":%.2f,\"total_ms\":%.2f}"
+    rq.rq_started_at
+    (json_string_escape rq.rq_query_text)
+    rq.rq_timing.qt_form
+    rq.rq_timing.qt_status
+    rq.rq_timing.qt_rows
+    rq.rq_timing.qt_body_bytes
+    rq.rq_timing.qt_parse_ms
+    rq.rq_timing.qt_eval_ms
+    rq.rq_timing.qt_format_ms
+    rq.rq_timing.qt_total_ms
+
+let serve_recent_queries_json () : response_body =
+  let xs = snapshot_recent_queries () in
+  let body = Buffer.create 4096 in
+  Mutex.lock counters_mu;
+  let total = !total_queries_seen in
+  let total_wall = !total_query_wall_ms in
+  let s2 = !queries_status_2xx in
+  let s4 = !queries_status_4xx in
+  let s5 = !queries_status_5xx in
+  Mutex.unlock counters_mu;
+  Buffer.add_string body
+    (Printf.sprintf
+       "{\"total_queries_seen\":%d,\"total_wall_ms\":%.1f,\
+        \"status_2xx\":%d,\"status_4xx\":%d,\"status_5xx\":%d,\"recent\":["
+       total total_wall s2 s4 s5);
+  let first = ref true in
+  List.iter (fun rq ->
+    if !first then first := false else Buffer.add_char body ',';
+    Buffer.add_string body (recent_query_to_json rq)
+  ) xs;
+  Buffer.add_string body "]}\n";
+  { rb_status = 200;
+    rb_content_type = "application/json; charset=utf-8";
+    rb_body = Buffer.contents body }
+
+(* Wrap a unit -> 'a thunk, return result paired with elapsed wall ms. *)
+let timed (f : unit -> 'a) : 'a * float =
+  let t0 = Unix.gettimeofday () in
+  let r = f () in
+  let dt_ms = (Unix.gettimeofday () -. t0) *. 1000.0 in
+  (r, dt_ms)
+
+(* parse_and_run with explicit per-stage timings. Returns the response
+   alongside a query_timing record. The original parse_and_run is kept for
+   any callers that don't need the timing surface. *)
+let parse_and_run_timed ~backend ~accept ~max_rows query_text =
+  let t_total_start = Unix.gettimeofday () in
+  Printf.eprintf "[qof3] parse_and_run_timed: %d bytes of query text\n%!"
     (String.length query_text);
-  match SPARQL11_Parser.parse_sparql query_text with
+  let (parse_result, parse_ms) =
+    timed (fun () -> SPARQL11_Parser.parse_sparql query_text) in
+  match parse_result with
   | SPARQL11_Parser.ParseErr msg ->
-    Printf.eprintf "[qof3] parse_and_run: SPARQL parse error: %s\n%!" msg;
-    { rb_status = 400;
-      rb_content_type = "text/plain; charset=utf-8";
-      rb_body = "SPARQL parse error: " ^ msg ^ "\n" }
+    Printf.eprintf "[qof3] parse_and_run_timed: SPARQL parse error: %s\n%!" msg;
+    let total_ms = (Unix.gettimeofday () -. t_total_start) *. 1000.0 in
+    let body = "SPARQL parse error: " ^ msg ^ "\n" in
+    let resp = { rb_status = 400;
+                 rb_content_type = "text/plain; charset=utf-8";
+                 rb_body = body } in
+    let qt = { zero_timing with
+               qt_parse_ms = parse_ms; qt_total_ms = total_ms;
+               qt_status = 400; qt_form = "parse-error";
+               qt_body_bytes = String.length body } in
+    (resp, qt)
   | SPARQL11_Parser.ParseOk (query, _tokens) ->
-    Printf.eprintf "[qof3] parse_and_run: parsed OK, dispatching run_query\n%!";
+    Printf.eprintf "[qof3] parse_and_run_timed: parsed OK in %.1fms, dispatching run_query\n%!"
+      parse_ms;
+    let form = qof3_query_form_str query in
     (try
-       let r = run_query ~backend ~accept ~max_rows query in
-       Printf.eprintf "[qof3] parse_and_run: run_query returned status=%d body_bytes=%d\n%!"
-         r.rb_status (String.length r.rb_body);
-       r
+       (* run_query bundles eval + format. We can't split them without
+          touching its signature; the eval cost dominates format on every
+          query we've seen, so reporting the sum as eval_ms and leaving
+          format_ms = 0.0 is acceptable for v1. Future: split run_query
+          into eval + format halves and stamp both. *)
+       let (r, run_ms) =
+         timed (fun () -> run_query ~backend ~accept ~max_rows query) in
+       let total_ms = (Unix.gettimeofday () -. t_total_start) *. 1000.0 in
+       Printf.eprintf "[qof3] parse_and_run_timed: run_query returned status=%d body_bytes=%d in %.1fms\n%!"
+         r.rb_status (String.length r.rb_body) run_ms;
+       (* Best-effort row count from the body for SELECT JSON, otherwise -1.
+          Avoids re-evaluating; just looks at the body. *)
+       let qt = { qt_parse_ms = parse_ms;
+                  qt_eval_ms = run_ms;
+                  qt_format_ms = 0.0;
+                  qt_total_ms = total_ms;
+                  qt_status = r.rb_status;
+                  qt_rows = -1;
+                  qt_form = form;
+                  qt_body_bytes = String.length r.rb_body } in
+       (r, qt)
      with
      | Query_timeout as e ->
-       (* Heth3: let the timeout escape parse_and_run so the per-request
-          handler can shape an HTTP 504. Catching it here would swallow
-          the timeout into a generic 500. *)
-       Printf.eprintf "[heth3] parse_and_run: query timeout (SIGALRM)\n%!";
+       Printf.eprintf "[heth3] parse_and_run_timed: query timeout (SIGALRM)\n%!";
        raise e
      | e ->
        let bt = Printexc.get_backtrace () in
-       Printf.eprintf "[qof3] parse_and_run: run_query raised: %s\n%s%!"
+       Printf.eprintf "[qof3] parse_and_run_timed: run_query raised: %s\n%s%!"
          (Printexc.to_string e) bt;
-       { rb_status = 500;
-         rb_content_type = "text/plain; charset=utf-8";
-         rb_body =
-           "Query evaluation error: " ^ Printexc.to_string e ^ "\n" ^
-           "Backtrace:\n" ^ bt })
+       let total_ms = (Unix.gettimeofday () -. t_total_start) *. 1000.0 in
+       let body =
+         "Query evaluation error: " ^ Printexc.to_string e ^ "\n" ^
+         "Backtrace:\n" ^ bt in
+       let resp = { rb_status = 500;
+                    rb_content_type = "text/plain; charset=utf-8";
+                    rb_body = body } in
+       let qt = { qt_parse_ms = parse_ms;
+                  qt_eval_ms = (total_ms -. parse_ms);
+                  qt_format_ms = 0.0;
+                  qt_total_ms = total_ms;
+                  qt_status = 500;
+                  qt_rows = -1;
+                  qt_form = form;
+                  qt_body_bytes = String.length body } in
+       (resp, qt))
+
+let parse_and_run ~backend ~accept ~max_rows query_text =
+  let (r, _qt) = parse_and_run_timed ~backend ~accept ~max_rows query_text in
+  r
 
 (* Heth3: build the standard 504 Gateway Timeout body when a query exceeds
    the configured wall-clock budget. Mirrors result_cap_response's shape. *)
@@ -1920,6 +2128,10 @@ let try_static_route ~cfg ~dataset_ref ~cottas_stores_ref ~meth ~path ~qs ~accep
     Some (serve_parliament_queries_json ())
   | "/backend-info.json" ->
     Some (serve_backend_info_json cfg dataset_ref cottas_stores_ref)
+  | "/admin/recent.json" ->
+    (* Last N queries with per-stage timings + cumulative counters.
+       Read-only debug surface — populated by parse_and_run_timed. *)
+    Some (serve_recent_queries_json ())
   | "/favicon.ico" ->
     (* Try the demo dir first (so a demo can ship its own favicon); on
        miss, return 204 to keep the browser's devtools console quiet
@@ -2024,6 +2236,8 @@ let handle_connection cfg dataset_ref backend_ref cottas_stores_ref ic oc =
     else
 
     let dataset = !dataset_ref in
+    (* PR_Query stashes Server-Timing here; other request kinds leave it []. *)
+    let timing_extras_ref : string list ref = ref [] in
     let resp =
       match P.decode_request meth path qs ct body with
       | P.PR_Bad msg ->
@@ -2120,18 +2334,43 @@ let handle_connection cfg dataset_ref backend_ref cottas_stores_ref ic oc =
            slow query (e.g. unbound BGP estimate_fast walking 26 row
            groups) cannot block the single-threaded accept loop for
            minutes. Exceeding cfg.query_timeout returns HTTP 504 and
-           frees the worker for the next queued request. *)
-        (try
-           with_query_timeout ~secs:cfg.query_timeout (fun () ->
-             parse_and_run ~backend:!backend_ref ~accept
-               ~max_rows:cfg.max_rows q)
-         with Query_timeout ->
-           Printf.eprintf
-             "[heth3] query timeout after %ds — returning 504\n%!"
-             cfg.query_timeout;
-           query_timeout_response ~secs:cfg.query_timeout)
+           frees the worker for the next queued request.
+
+           Timing path (2026-05-02): use parse_and_run_timed so we can
+           emit Server-Timing on the response and push a recent_query
+           record into the ring buffer. *)
+        let started_at = Unix.gettimeofday () in
+        let (resp, qt) =
+          try
+            with_query_timeout ~secs:cfg.query_timeout (fun () ->
+              parse_and_run_timed ~backend:!backend_ref ~accept
+                ~max_rows:cfg.max_rows q)
+          with Query_timeout ->
+            Printf.eprintf
+              "[heth3] query timeout after %ds — returning 504\n%!"
+              cfg.query_timeout;
+            let r = query_timeout_response ~secs:cfg.query_timeout in
+            let total_ms = (Unix.gettimeofday () -. started_at) *. 1000.0 in
+            let qt = { zero_timing with
+                       qt_total_ms = total_ms;
+                       qt_eval_ms = total_ms;
+                       qt_status = r.rb_status;
+                       qt_form = "timeout";
+                       qt_body_bytes = String.length r.rb_body } in
+            (r, qt)
+        in
+        let q_summary = truncate_for_log q 200 in
+        Printf.eprintf "%s\n%!" (timing_log_line qt q_summary);
+        push_recent_query {
+          rq_started_at = started_at;
+          rq_query_text = truncate_for_log q 500;
+          rq_timing = qt;
+        };
+        bump_counters qt;
+        timing_extras_ref := [timing_response_header qt];
+        resp
     in
-    write_response ~extra_headers:cors_hdrs oc
+    write_response ~extra_headers:(!timing_extras_ref @ cors_hdrs) oc
       ~status:resp.rb_status
       ~content_type:resp.rb_content_type
       ~body:resp.rb_body)
