@@ -318,6 +318,49 @@ function formatBytes(n) {
   return (n / (1024 * 1024)).toFixed(2) + ' MB';
 }
 
+// Parse a Server-Timing response header into per-stage phases consumable
+// by _renderTimingDetail. Recognises the factoidal-http format
+//   "parse;dur=N, eval;dur=N, format;dur=N, total;dur=N"
+// — names other than parse/eval/format are accepted and rendered with
+// their raw label. The "total" entry is dropped here (the renderer
+// already has its own total), so the bars sum to ≈ total.
+function parseServerTiming(headerValue) {
+  if (!headerValue) return [];
+  const phases = [];
+  headerValue.split(',').forEach(part => {
+    const trimmed = part.trim();
+    if (!trimmed) return;
+    // Each metric is: name (";dur=N")? (";desc=...")?
+    const segments = trimmed.split(';').map(s => s.trim());
+    const name = segments[0];
+    if (!name || name === 'total') return;
+    let ms = null;
+    segments.slice(1).forEach(s => {
+      const eq = s.indexOf('=');
+      if (eq < 0) return;
+      const k = s.slice(0, eq).trim();
+      const v = s.slice(eq + 1).trim();
+      if (k === 'dur') {
+        const f = parseFloat(v);
+        if (Number.isFinite(f)) ms = f;
+      }
+    });
+    if (ms == null) return;
+    const labels = {
+      parse: 'parse (SPARQL)',
+      eval: 'eval (engine)',
+      format: 'format (serialise)',
+    };
+    phases.push({
+      label: labels[name] || name,
+      ms,
+      bytes: null,
+      cached: false,
+    });
+  });
+  return phases;
+}
+
 // ---------------------------------------------------------------------
 // TriG-merge: the WASM path only accepts a single data string, so when
 // we have multiple named-graph TTL files we fold them into a TriG doc.
@@ -1410,13 +1453,18 @@ class FactoidalSparqlClient extends HTMLElement {
             throw new Error('HTTP ' + resp.status + ' ' + resp.statusText
               + (errText ? '\n' + errText : ''));
           }
+          // Server-Timing parse: factoidal-http emits
+          //   Server-Timing: parse;dur=N, eval;dur=N, format;dur=N, total;dur=N
+          // Surface the per-stage breakdown in the Details pane so
+          // collaborators can see exactly where the wall clock went —
+          // which is the whole point of "no black box" observability.
+          const serverTiming = resp.headers.get('Server-Timing') || '';
+          const stagePhases = parseServerTiming(serverTiming);
           const parsed = await resp.json();
           const qMs = performance.now() - qT0;
           finaliseStatus('Done via endpoint in ' + qMs.toFixed(0) + ' ms', 'status ok');
           this._renderResultsJSON(parsed);
           const totalMs = performance.now() - runStart;
-          // Phase breakdown: in remote mode there are no local engine /
-          // file fetches, just the wire round-trip.
           this._lastTimingSummary = {
             html: this._renderTimingSummary(totalMs, 'remote', qMs).outerHTML,
           };
@@ -1424,9 +1472,19 @@ class FactoidalSparqlClient extends HTMLElement {
           const summary = this._renderTimingSummary(totalMs, 'remote', qMs);
           if (meta) meta.appendChild(summary); else this._outEl.appendChild(summary);
           this._timingDetails.innerHTML = '';
+          // Phases: prefer server-side breakdown (parse / eval / format)
+          // when the header is present; otherwise fall back to a single
+          // wire-roundtrip row. The client-side wire-RTT row stays under
+          // the server stages so the user can see [parse + eval + format]
+          // ≈ server total ≤ wire RTT.
+          const phases = stagePhases.length > 0
+            ? stagePhases.concat([{
+                label: 'wire round-trip (POST ' + url + ')',
+                ms: qMs, bytes: null, cached: false,
+              }])
+            : [{ label: 'POST ' + url, ms: qMs, bytes: null, cached: false }];
           this._timingDetails.appendChild(this._renderTimingDetail(
-            totalMs, 'remote', qMs,
-            [{ label: 'POST ' + url, ms: qMs, bytes: null, cached: false }]));
+            totalMs, 'remote', qMs, phases));
           this.dispatchEvent(new CustomEvent('factoidal:query-done', {
             bubbles: true, composed: true,
             detail: { engine: 'remote', endpoint: url, query: queryText,
