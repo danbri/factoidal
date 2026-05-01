@@ -1075,24 +1075,7 @@ async function widgetSynopsis(ctx, root) {
     body.innerHTML = '';
     body.append(el('div', { html: data.value || '<i>(none)</i>' }));
     // rewrite internal /constituency/... or /Members/... links to hash routes (best-effort)
-    body.querySelectorAll('a[href]').forEach(a => {
-      const h = a.getAttribute('href') || '';
-      let m;
-      if ((m = h.match(/\/Members\/(\d+)/i))) {
-        a.setAttribute('href', '#/member/' + m[1]); a.setAttribute('target', '_self'); return;
-      }
-      if ((m = h.match(/\/constituency\/(\d+)/i))) {
-        a.setAttribute('href', '#/constituency/' + m[1]); a.setAttribute('target', '_self'); return;
-      }
-      if ((m = h.match(/\/parties?\/(\d+)/i))) {
-        a.setAttribute('href', '#/party/' + m[1]); a.setAttribute('target', '_self'); return;
-      }
-      if (/^https?:/i.test(h) && !h.startsWith(location.origin)) {
-        a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener noreferrer');
-      } else {
-        a.removeAttribute('href');
-      }
-    });
+    rewriteApiLinks(body);
   } catch {
     card.querySelector('.body').innerHTML = '<div class="empty">no synopsis</div>';
   }
@@ -1720,9 +1703,14 @@ async function viewParty(m, _q, gen) {
 async function viewConstituency(m, _q, gen) {
   const id = m[1];
   renderLoading('loading constituency…');
-  let data;
+  // Three independent calls — fire in parallel.
+  let data, synopsis, reps;
   try {
-    data = await fetchJson(`${API}/members/Location/Constituency/${id}`);
+    [data, synopsis, reps] = await Promise.all([
+      fetchJson(`${API}/members/Location/Constituency/${id}`),
+      fetchJson(`${API}/members/Location/Constituency/${id}/Synopsis`).catch(() => null),
+      fetchJson(`${API}/members/Location/Constituency/${id}/Representations`).catch(() => null),
+    ]);
   } catch (e) {
     if (gen === routeGen) renderError('constituency load failed: ' + e.message);
     return;
@@ -1742,12 +1730,22 @@ async function viewConstituency(m, _q, gen) {
       `Constituency · since ${(v.startDate || '').slice(0,10)}` +
       (v.endDate ? ` · until ${v.endDate.slice(0,10)}` : ''))));
 
-  // current MP card
+  // Synopsis prose with internal-link rewriting
+  if (synopsis?.value) {
+    const synCard = el('div', { class: 'card' },
+      el('header', {}, el('h2', {}, 'Synopsis')),
+      el('div', { class: 'body' }, el('div', { html: synopsis.value })));
+    root.append(synCard);
+    rewriteApiLinks(synCard.querySelector('.body'));
+  }
+
+  // Current MP — distinct visual emphasis (gold border) so it doesn't get
+  // confused with the historical-MPs list below.
   const mp = v.currentRepresentation?.member?.value;
   if (mp) {
     const p = mp.latestParty || {};
     const cols = partyColours(p);
-    root.append(el('div', { class: 'card' },
+    root.append(el('div', { class: 'card', style: 'border-color:var(--gold-dim)' },
       el('header', {}, el('h2', {}, 'Current MP')),
       el('div', { class: 'body tight' },
         el('ul', { class: 'rows' },
@@ -1760,15 +1758,84 @@ async function viewConstituency(m, _q, gen) {
               el('div', { class: 'text' },
                 el('div', { class: 'title' }, mp.nameDisplayAs || ''),
                 el('div', { class: 'sub' },
-                  [p.name, mp.gender === 'F' ? 'F' : (mp.gender === 'M' ? 'M' : '')]
+                  [p.name, mp.gender === 'F' ? 'Female' : (mp.gender === 'M' ? 'Male' : '')]
                     .filter(Boolean).join(' · ')))))))));
-  } else {
+  } else if (v.endDate) {
+    // Abolished — no current MP is correct, not an error
     root.append(el('div', { class: 'card' },
       el('header', {}, el('h2', {}, 'Current MP')),
-      el('div', { class: 'body' }, el('div', { class: 'empty' }, 'no current representation'))));
+      el('div', { class: 'body' },
+        el('div', { class: 'empty' },
+          `Abolished ${v.endDate.slice(0,10)} — no current representation.`))));
   }
 
-  // facts table
+  // Historical MPs — everyone /Representations returns. We strip the
+  // currently-sitting MP from this list (they're shown above) and surface
+  // their *next* constituency as the successor signal.
+  const allReps = (reps?.value || [])
+    .map(it => (it.member || {}).value)
+    .filter(Boolean);
+  const historical = allReps.filter(rep => rep.id !== mp?.id);
+
+  if (historical.length) {
+    const ul = el('ul', { class: 'rows' });
+    for (const rep of historical) {
+      const p = rep.latestParty || {};
+      const h = rep.latestHouseMembership || {};
+      const cols = partyColours(p);
+      // Where they ended up after this constituency: useful "successor" hint.
+      const movedTo = (h.membershipFromId && h.membershipFromId !== Number(id))
+        ? `now: ${h.membershipFrom}` : null;
+      ul.append(el('li', {},
+        el('a', { class: 'row', href: `#/member/${rep.id}` },
+          el('div', { class: 'stripe', style: `background:${cols.bg}` }),
+          el('img', { class: 'thumb', loading: 'lazy', alt: '',
+            src: authedImg(`/members/Members/${rep.id}/Thumbnail`),
+            onerror: function() { this.style.display = 'none'; } }),
+          el('div', { class: 'text' },
+            el('div', { class: 'title' }, rep.nameDisplayAs || ''),
+            el('div', { class: 'sub' },
+              [p.name, movedTo].filter(Boolean).join(' · '))))));
+    }
+    root.append(el('div', { class: 'card' },
+      el('header', {},
+        el('h2', {}, v.endDate ? 'Members who served' : 'Previous members'),
+        el('span', { class: 'meta' }, String(historical.length))),
+      el('div', { class: 'body tight' }, ul)));
+  }
+
+  // Successor constituencies — derived: the set of subsequent constituencies
+  // that historical MPs of this seat went on to represent. Cluster + count.
+  if (v.endDate || historical.length) {
+    const successors = new Map(); // id -> { name, count }
+    for (const rep of historical) {
+      const h = rep.latestHouseMembership || {};
+      if (h.membershipFromId && h.membershipFromId !== Number(id) && h.house === 1) {
+        const k = h.membershipFromId;
+        const prev = successors.get(k) || { id: k, name: h.membershipFrom, count: 0 };
+        prev.count += 1;
+        successors.set(k, prev);
+      }
+    }
+    if (successors.size) {
+      const ul = el('ul', { class: 'rows' });
+      for (const s of [...successors.values()].sort((a, b) => b.count - a.count)) {
+        ul.append(el('li', {},
+          el('a', { class: 'row', href: `#/constituency/${s.id}` },
+            el('div', { class: 'text' },
+              el('div', { class: 'title' }, s.name),
+              el('div', { class: 'sub' },
+                `${s.count} of this seat's members went there next`)))));
+      }
+      root.append(el('div', { class: 'card' },
+        el('header', {},
+          el('h2', {}, 'Likely successor constituencies'),
+          el('span', { class: 'meta' }, 'derived')),
+        el('div', { class: 'body tight' }, ul)));
+    }
+  }
+
+  // Facts table
   const facts = [
     ['Name', v.name],
     ['Constituency ID', String(v.id)],
@@ -1781,6 +1848,30 @@ async function viewConstituency(m, _q, gen) {
       ...facts.map(([k, val]) => el('tr', {},
         el('td', { class: 'k' }, k),
         el('td', { class: 'v' }, val))))));
+}
+
+// Shared link-rewriter — turn API-internal `/Members/<id>`,
+// `/constituency/<id>`, `/Parties/<id>` URLs into hash routes.
+function rewriteApiLinks(scope) {
+  if (!scope) return;
+  scope.querySelectorAll('a[href]').forEach(a => {
+    const h = a.getAttribute('href') || '';
+    let m;
+    if ((m = h.match(/\/Members\/(\d+)/i))) {
+      a.setAttribute('href', '#/member/' + m[1]); a.setAttribute('target', '_self'); return;
+    }
+    if ((m = h.match(/\/constituency\/(\d+)/i))) {
+      a.setAttribute('href', '#/constituency/' + m[1]); a.setAttribute('target', '_self'); return;
+    }
+    if ((m = h.match(/\/parties?\/(\d+)/i))) {
+      a.setAttribute('href', '#/party/' + m[1]); a.setAttribute('target', '_self'); return;
+    }
+    if (/^https?:/i.test(h) && !h.startsWith(location.origin)) {
+      a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener noreferrer');
+    } else {
+      a.removeAttribute('href');
+    }
+  });
 }
 
 // ============================================================================
