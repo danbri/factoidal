@@ -1259,8 +1259,12 @@ let string_replace_all ~needle ~replacement haystack =
     Buffer.contents buf
   end
 
+(* Thin OCaml dispatch shims around the verified F-star sandbox module.
+   The semantic policy (graph-target rewriting, alias expansion, accept/
+   reject decisions) lives in formal/fstar/SPARQL.Update.Sandbox.fst per
+   CLAUDE.md rule #1. Do not re-add OCaml-side semantic logic here. *)
 let expand_user_graph ~template ~authid =
-  string_replace_all ~needle:"{authid}" ~replacement:authid template
+  SPARQL_Update_Sandbox.expand_user_graph template authid
 
 (* The fixed prefix of the user-graph template: everything before
    "{authid}". We use this to detect which named graphs in the dataset
@@ -1275,155 +1279,26 @@ let template_prefix template =
     then String.sub template 0 i
     else template
 
-(* Unwrap a GP_Graph (PT_IRI g) { body } wrapper if the target graph matches
-   [usergraph]. Returns:
-     - `Ok: no change needed (no outer GRAPH wrapper, or wrapper matches)
-     - `Mismatch iri: outer GRAPH wrapper targets a different specific IRI
-     - `NonIri: outer GRAPH wrapper uses a variable (we reject; can't prove
-       this stays inside the sandbox at parse time) *)
-let check_ggp_graph_target (g : SPARQL11_Algebra.group_graph_pattern)
-    ~(usergraph : string) :
-  [ `Ok | `Mismatch of string | `NonIri ] =
-  match g with
-  | SPARQL11_Algebra.GP_Graph (pt, _inner) ->
-    (match pt with
-     | SPARQL11_Algebra.PT_IRI iri ->
-       if iri = usergraph then `Ok else `Mismatch iri
-     | _ -> `NonIri)
-  | _ -> `Ok
-
-(* If the ggp has no outer GRAPH wrapper, wrap it with GRAPH <usergraph> { ... }.
-   If it already has one (matching usergraph — caller has checked), leave as-is. *)
-let wrap_if_unwrapped (g : SPARQL11_Algebra.group_graph_pattern)
-    ~(usergraph : string) : SPARQL11_Algebra.group_graph_pattern =
-  match g with
-  | SPARQL11_Algebra.GP_Graph _ -> g
-  | _ -> SPARQL11_Algebra.GP_Graph (SPARQL11_Algebra.PT_IRI usergraph, g)
-
+(* Sandbox checking is implemented in F-star; this OCaml file only
+   converts at the boundary. See SPARQL.Update.Sandbox.fst. *)
 type sandbox_result =
   | SB_Ok of SPARQL11_Algebra.update_op
   | SB_Reject of string  (* human-readable reason *)
 
-(* Sandbox-check one update op. Returns SB_Ok (rewritten op) or SB_Reject msg. *)
+(* Sandbox-check one update op. Returns SB_Ok (rewritten op) or SB_Reject msg.
+   This is a one-line dispatch through the verified F-star module. *)
 let sandbox_op ~usergraph (op : SPARQL11_Algebra.update_op) : sandbox_result =
-  let open SPARQL11_Algebra in
-  let check_ggp which g =
-    match check_ggp_graph_target g ~usergraph with
-    | `Ok -> `Rewrite (wrap_if_unwrapped g ~usergraph)
-    | `Mismatch iri ->
-      `Reject (Printf.sprintf
-                 "%s targets graph <%s>; your sandbox is <%s>"
-                 which iri usergraph)
-    | `NonIri ->
-      `Reject (Printf.sprintf
-                 "%s uses a non-IRI graph target; only GRAPH <%s> is allowed"
-                 which usergraph)
-  in
-  let check_gref which gr =
-    match gr with
-    | GR_Graph iri when iri = usergraph -> `Ok
-    | GR_Graph iri ->
-      `Reject (Printf.sprintf
-                 "%s targets graph <%s>; your sandbox is <%s>"
-                 which iri usergraph)
-    | GR_Default ->
-      `Reject (Printf.sprintf
-                 "%s targets the default graph; your sandbox is <%s>"
-                 which usergraph)
-    | GR_Named ->
-      `Reject (Printf.sprintf
-                 "%s targets NAMED; your sandbox is <%s>"
-                 which usergraph)
-    | GR_All ->
-      `Reject (Printf.sprintf
-                 "%s targets ALL graphs; your sandbox is <%s>"
-                 which usergraph)
-  in
-  match op with
-  | U_InsertData g ->
-    (match check_ggp "INSERT DATA" g with
-     | `Rewrite g' -> SB_Ok (U_InsertData g')
-     | `Reject msg -> SB_Reject msg)
-  | U_DeleteData g ->
-    (match check_ggp "DELETE DATA" g with
-     | `Rewrite g' -> SB_Ok (U_DeleteData g')
-     | `Reject msg -> SB_Reject msg)
-  | U_DeleteWhere g ->
-    (match check_ggp "DELETE WHERE" g with
-     | `Rewrite g' -> SB_Ok (U_DeleteWhere g')
-     | `Reject msg -> SB_Reject msg)
-  | U_Modify (w, del_tpl, ins_tpl, using, where) ->
-    (* Template graphs (INSERT / DELETE clauses) must resolve to usergraph.
-       The WHERE clause is a query-side pattern — we leave it alone; the
-       query side can read from anywhere the dataset exposes. Sandbox is
-       about *writes*. *)
-    let check_tpl_opt label t =
-      match t with
-      | FStar_Pervasives_Native.None -> `Rewrite FStar_Pervasives_Native.None
-      | FStar_Pervasives_Native.Some g ->
-        (match check_ggp label g with
-         | `Rewrite g' -> `Rewrite (FStar_Pervasives_Native.Some g')
-         | `Reject msg -> `Reject msg)
-    in
-    (match check_tpl_opt "INSERT/DELETE: DELETE clause" del_tpl with
-     | `Reject msg -> SB_Reject msg
-     | `Rewrite del_tpl' ->
-       (match check_tpl_opt "INSERT/DELETE: INSERT clause" ins_tpl with
-        | `Reject msg -> SB_Reject msg
-        | `Rewrite ins_tpl' ->
-          SB_Ok (U_Modify (w, del_tpl', ins_tpl', using, where))))
-  | U_Clear (silent, gr) ->
-    (match check_gref "CLEAR" gr with
-     | `Ok -> SB_Ok (U_Clear (silent, gr))
-     | `Reject msg -> SB_Reject msg)
-  | U_Drop (silent, gr) ->
-    (match check_gref "DROP" gr with
-     | `Ok -> SB_Ok (U_Drop (silent, gr))
-     | `Reject msg -> SB_Reject msg)
-  | U_Create (silent, iri) ->
-    if iri = usergraph then SB_Ok (U_Create (silent, iri))
-    else SB_Reject (Printf.sprintf
-                      "CREATE targets graph <%s>; your sandbox is <%s>"
-                      iri usergraph)
-  | U_Add (silent, src, dst) ->
-    (match check_gref "ADD source" src with
-     | `Reject msg -> SB_Reject msg
-     | `Ok ->
-       (match check_gref "ADD dest" dst with
-        | `Ok -> SB_Ok (U_Add (silent, src, dst))
-        | `Reject msg -> SB_Reject msg))
-  | U_Move (silent, src, dst) ->
-    (match check_gref "MOVE source" src with
-     | `Reject msg -> SB_Reject msg
-     | `Ok ->
-       (match check_gref "MOVE dest" dst with
-        | `Ok -> SB_Ok (U_Move (silent, src, dst))
-        | `Reject msg -> SB_Reject msg))
-  | U_Copy (silent, src, dst) ->
-    (match check_gref "COPY source" src with
-     | `Reject msg -> SB_Reject msg
-     | `Ok ->
-       (match check_gref "COPY dest" dst with
-        | `Ok -> SB_Ok (U_Copy (silent, src, dst))
-        | `Reject msg -> SB_Reject msg))
-  | U_Load _ ->
-    (* U_Load is caught upstream by update_has_load -> 501. Defensive. *)
-    SB_Reject "LOAD is not permitted in sandboxed updates"
+  match SPARQL_Update_Sandbox.sandbox_op usergraph op with
+  | SPARQL_Update_Sandbox.SB_Ok op' -> SB_Ok op'
+  | SPARQL_Update_Sandbox.SB_Reject msg -> SB_Reject msg
 
 (* Sandbox-check and rewrite a whole sparql_update. Returns either the
    rewritten update or an error message identifying the first offending op. *)
 let sandbox_update ~usergraph (u : SPARQL11_Algebra.sparql_update) :
   (SPARQL11_Algebra.sparql_update, string) result =
-  let rec go acc = function
-    | [] -> Ok (List.rev acc)
-    | op :: rest ->
-      (match sandbox_op ~usergraph op with
-       | SB_Ok op' -> go (op' :: acc) rest
-       | SB_Reject msg -> Error msg)
-  in
-  match go [] u.u_ops with
-  | Error msg -> Error msg
-  | Ok ops' -> Ok { u with u_ops = ops' }
+  match SPARQL_Update_Sandbox.sandbox_update usergraph u with
+  | SPARQL_Update_Sandbox.USR_Ok u' -> Ok u'
+  | SPARQL_Update_Sandbox.USR_Error msg -> Error msg
 
 (* ============================================================================
    N-Quads emitter — inline, for dump-on-exit.

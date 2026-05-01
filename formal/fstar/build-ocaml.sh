@@ -175,9 +175,9 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              RDF.CottasStore.fst \
              SPARQL11.Store.fst \
              SPARQL.Protocol.fst \
+             SPARQL.Update.Sandbox.fst \
              SPARQL.HTTP.fst \
              SPARQL.HTTP.Client.fst \
-             SPARQL.HTTP.QueriesIndex.fst \
              SPARQL.ServiceDescription.fst \
              SPARQL.GraphStore.fst; do
     if [ -f "$fst" ]; then
@@ -257,7 +257,8 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     fstar_pure_hashes.ml \
     RDF_Canonical.ml \
     SPARQL11_Algebra.ml OWL_QueryRewrite.ml OWL_QueryEval.ml SPARQL11_Parser.ml SPARQL11_Store.ml SPARQL_Protocol.ml \
-    SPARQL_HTTP.ml SPARQL_HTTP_Client.ml SPARQL_HTTP_QueriesIndex.ml SPARQL_ServiceDescription.ml \
+    SPARQL_Update_Sandbox.ml \
+    SPARQL_HTTP.ml SPARQL_HTTP_Client.ml SPARQL_ServiceDescription.ml \
     SPARQL_GraphStore.ml"
 
   # Parquet/Zstd C stub — compiled and linked into native binaries when the
@@ -545,7 +546,8 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     SPARQL11_Algebra.ml OWL_QueryRewrite.ml OWL_QueryEval.ml SPARQL11_Parser.ml
     SPARQL11_Store.ml
     SPARQL_Protocol.ml
-    SPARQL_HTTP.ml SPARQL_HTTP_Client.ml SPARQL_HTTP_QueriesIndex.ml SPARQL_ServiceDescription.ml SPARQL_GraphStore.ml
+    SPARQL_Update_Sandbox.ml
+    SPARQL_HTTP.ml SPARQL_HTTP_Client.ml SPARQL_ServiceDescription.ml SPARQL_GraphStore.ml
   )
   JS_TARGETS=(
     w3c_runner.byte
