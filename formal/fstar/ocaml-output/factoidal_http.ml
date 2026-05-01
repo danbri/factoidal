@@ -1775,17 +1775,11 @@ let resolve_parliament_dir () : string option =
 let json_escape (s : string) : string =
   SPARQL_JSON_Escape.json_escape s
 
-(* Strip the .rq suffix and any leading numeric prefix; return a short
-   human-readable label like "main / 03 — legislatures all" derived from
-   the filename. We deliberately do NOT try to parse the SPARQL — these
-   are fixture queries, the filename is the canonical handle. *)
+(* Strip the .rq suffix and return "<group> / <stem>". Dispatched to
+   F-star-extracted SPARQL.HTTP.QueriesIndex.parliament_label per
+   CLAUDE.md rule #1 (factoidal_http.ml unwind step 4). *)
 let parliament_label ~group ~filename : string =
-  let stem =
-    if Filename.check_suffix filename ".rq"
-    then Filename.chop_suffix filename ".rq"
-    else filename
-  in
-  group ^ " / " ^ stem
+  SPARQL_HTTP_QueriesIndex.parliament_label group filename
 
 (* Walk one of the {main,detail} subdirectories, collecting (key, label,
    body) for every .rq file. Files that fail to read are skipped silently
@@ -1873,7 +1867,16 @@ let modern_entries_for_group (root : string) (group : string)
    future component upgrade can render <optgroup>s. The current component
    ignores extra fields, so this is forward-compatible. The label is
    prefixed too so the existing flat dropdown still groups visually. *)
+(* The OCaml side keeps Sys.readdir + read_file (pure I/O glue, rule #15).
+   The JSON shape is rendered by F-star-extracted
+   SPARQL.HTTP.QueriesIndex.render_queries_index per CLAUDE.md rule #1
+   (factoidal_http.ml unwind step 4). Output is byte-for-byte identical
+   to the previous Buffer-based emission. *)
 let build_parliament_queries_json () : string =
+  let to_entry (group : string) (key : string) (label : string) (body : string)
+    : SPARQL_HTTP_QueriesIndex.query_entry =
+    { qe_group = group; qe_key = key; qe_label = label; qe_body = body }
+  in
   let vendored =
     match resolve_parliament_dir () with
     | None -> []
@@ -1881,7 +1884,7 @@ let build_parliament_queries_json () : string =
       let main = parliament_entries_for_group root "main" in
       let detail = parliament_entries_for_group root "detail" in
       List.map (fun (k, l, b) ->
-        ("Vendored", k, "Vendored \xe2\x80\x94 " ^ l, b))
+        to_entry "Vendored" k ("Vendored \xe2\x80\x94 " ^ l) b)
         (main @ detail)
   in
   let modernised =
@@ -1890,27 +1893,10 @@ let build_parliament_queries_json () : string =
     | Some root ->
       let main = modern_entries_for_group root "main" in
       let detail = modern_entries_for_group root "detail" in
-      List.map (fun (k, l, b) -> ("Modernised", k, l, b))
+      List.map (fun (k, l, b) -> to_entry "Modernised" k l b)
         (main @ detail)
   in
-  let all = vendored @ modernised in
-  let b = Buffer.create 32768 in
-  Buffer.add_char b '[';
-  let first = ref true in
-  List.iter (fun (group, key, label, body) ->
-    if !first then first := false else Buffer.add_char b ',';
-    Buffer.add_string b "\n  {\"group\":\"";
-    Buffer.add_string b (json_escape group);
-    Buffer.add_string b "\",\"key\":\"";
-    Buffer.add_string b (json_escape key);
-    Buffer.add_string b "\",\"label\":\"";
-    Buffer.add_string b (json_escape label);
-    Buffer.add_string b "\",\"body\":\"";
-    Buffer.add_string b (json_escape body);
-    Buffer.add_string b "\"}";
-  ) all;
-  Buffer.add_string b "\n]\n";
-  Buffer.contents b
+  SPARQL_HTTP_QueriesIndex.render_queries_index (vendored @ modernised)
 
 let serve_parliament_queries_json () : response_body =
   try
