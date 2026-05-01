@@ -55,6 +55,14 @@ OUTDIR=ocaml-output
 JSDIR=../../docs/fstar-extracted
 STEP="${1:-all}"
 
+if ! command -v fstar.exe >/dev/null 2>&1; then
+  echo "FATAL: fstar.exe not found on PATH." >&2
+  echo "Hint: activate the F* opam switch first:" >&2
+  echo "  eval \$(opam env --switch=fstar)" >&2
+  echo "Then rerun ./build-ocaml.sh ${STEP}" >&2
+  exit 127
+fi
+
 # ---------------------------------------------------------------------------
 # run_with_heartbeat <label> <log-path> -- <command> [args...]
 #

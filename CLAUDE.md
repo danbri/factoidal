@@ -138,6 +138,14 @@ Rust/JS/OCaml/anything that "mirrors" a spec.
     - Trivial dispatch shims that call F\*-extracted code (e.g. perf
       shadow tables that the F\* code itself decides to consult).
 
+12. **Assume the F\* opam switch is required unless you are only using
+    prebuilt binaries.** Before any `formal/fstar/build-ocaml.sh`
+    `extract`, `compile`, `js`, `wasm`, or source-level test run, do:
+    `eval $(opam env --switch=fstar)`. If `fstar.exe` is missing from
+    `PATH`, stop and activate the switch rather than burning time on
+    partial builds. Do not assume a fresh shell has the right opam
+    environment active.
+
     Forbidden:
     - Replacing the body of an F\*-extracted function with an OCaml
       reimplementation (the `cottas_ondisk_search -> search_fast`
