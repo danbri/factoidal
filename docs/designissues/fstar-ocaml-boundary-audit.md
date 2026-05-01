@@ -1,15 +1,26 @@
 # F\*/OCaml boundary audit
 
-**Status:** active, written 2026-04-26 in response to reviewer feedback
-demanding a function-by-function inventory of what is F\*-authoritative,
-what is mechanically extracted, and what is hand-written OCaml that
-encodes semantics or policy.
+**Status:** **mostly resolved** as of 2026-05-01 — Phases 2.5-2.7
+landed; the COTTAS on-disk runtime is now F\*-resident, and four of
+the five "must-be-F\*" items in `factoidal_http.ml` have been migrated
+(PRs #126 merged, #127/#128/#129 awaiting review; update sandboxing
+in flight on `claude/http-update-sandbox-to-fstar`). See **Status
+update 2026-05-01** section near the bottom for the post-unwind LoC
+delta and the relaxed verification claim.
 
-**Trigger:** the project drifted from "F\* is the source of truth" to
-"~3000 LoC of OCaml shims override the F\* runtime path." Reviewer
-2026-04-26 noted this extends beyond `experimental_ocaml_glue/` to
-`factoidal_http.ml` and `RDF_CottasStore.ml`. CLAUDE.md rule #11 now
-freezes new semantic growth in these files until the audit is done.
+**Original status (2026-04-26):** active, written 2026-04-26 in
+response to reviewer feedback demanding a function-by-function
+inventory of what is F\*-authoritative, what is mechanically
+extracted, and what is hand-written OCaml that encodes semantics or
+policy.
+
+**Original trigger:** the project drifted from "F\* is the source of
+truth" to "~3000 LoC of OCaml shims override the F\* runtime path."
+Reviewer 2026-04-26 noted this extends beyond `experimental_ocaml_glue/`
+to `factoidal_http.ml` and `RDF_CottasStore.ml`. CLAUDE.md rule #11
+froze new semantic growth in these files until the audit was done.
+That freeze has held; the unwind is complete enough to lift it
+selectively (see status update).
 
 **Companion docs:**
 - `fstar-purity-unwind.md` — the migration plan (Phases 2.2 → 2.8).
@@ -296,6 +307,80 @@ language:
 > stack but not yet to the COTTAS on-disk runtime path.
 
 Removing the qualifier requires Phases 2.5–2.7 done at minimum.
+
+---
+
+## Status update 2026-05-01
+
+**Phases 2.5-2.7 done.** The COTTAS on-disk runtime is now F\*-resident:
+
+- Phase 2.5a-e: `cottas_ondisk_search` / `_estimate` / `_search_limited`
+  are F\*-extracted; the OCaml `search_fast` / `estimate_fast` / `walk_rg`
+  shadow shims are gone (PR #122).
+- Phase 2.6: F\* compound (p, o) presence-bitmap prune; Yod6/Tet3/Lamed3
+  redirected to F\* `PresenceBitmap` (PR #123, retired 11 dead patches +
+  −213 LoC dead OCaml shadow logic).
+- Phase 2.7: Bet7 lazy populate retired in spirit — page cache logic
+  lives in F\* `RDF.CottasStore.PageCache`; OCaml only owns the storage
+  cell.
+
+**factoidal_http.ml unwind:** four small JSON-shaping migrations on top
+of the COTTAS work:
+
+- PR #126 (merged): `json_escape` → `SPARQL.JSON.Escape.fst`.
+- PR #127 (open): `status_text` + `cors_headers` + `cors_policy`
+  → `SPARQL.HTTP.Response.fst`.
+- PR #128 (open): `/backend-info.json` renderer + aggregation rule
+  (addresses 2026-04-26 reviewer-flagged aggregation bug, now
+  auditable in F\*) → `SPARQL.HTTP.BackendInfo.fst`.
+- PR #129 (open): `parliament_label` + `render_queries_index`
+  → `SPARQL.HTTP.QueriesIndex.fst`.
+- In flight on `claude/http-update-sandbox-to-fstar`: `sandbox_op` +
+  `sandbox_update` + `expand_user_graph` (~170 LoC of update-policy
+  semantics) → `SPARQL.Update.Sandbox.fst`. After this, the largest
+  remaining S-class items in factoidal_http.ml (query timeout /
+  result-row cap / 503-Retry-After) need new F\*-typed infrastructure
+  before they can move.
+
+**LoC delta** (from the 2026-04-26 table; eyeballed):
+
+| File | Before (S-class) | After |
+|------|---:|---:|
+| `factoidal_http.ml` | ~350 | ~50 (after #127/#128/#129/sandbox land) |
+| `RDF_CottasStore.ml` (post-patch) | ~950 | ~0 (F\*-extracted; the .ml file is mechanical extract) |
+| `experimental_ocaml_glue/*.sh` | ~2000 | ~250 (rule-#11(c) thin glue: token Hashtbls, page-cache cell, lazy-populate hooks) |
+| **Total** | ~3300 | **~300** (≈10% of original) |
+
+**Relaxed verification claim** (replaces the 2026-04-26 qualified
+language above): once #127/#128/#129/sandbox are merged, READMEs /
+demos / talks may state:
+
+> Factoidal's RDF parsers, SPARQL 1.1 algebra, and the COTTAS on-disk
+> backend (search, estimate, page cache, presence-bitmap prune) are
+> formally verified in F\* and extracted to OCaml/JS/WASM via mechanical
+> extraction. The HTTP server and CLI are hand-written OCaml glue
+> (socket I/O, file open, argv parsing, CORS policy dispatch); the
+> semantic policy they implement (JSON rendering, response codes,
+> CORS allowlists, /backend-info aggregation, /parliament-queries
+> assembly, update sandboxing) is itself F\*-extracted.
+
+The pre-relaxation qualifier remains the safe choice for any document
+that goes out **before** PRs #127/#128/#129 merge.
+
+**Residual S-class items** still in OCaml (deferred, need F\* prep):
+
+- Query timeout / `with_query_timeout` (factoidal_http.ml:1201-1225) —
+  needs F\* cancellation-token type + `assume val` clock; signal
+  handling (SIGALRM) stays OCaml.
+- Result-row cap (`exceeds_cap`, `result_cap_response`,
+  factoidal_http.ml:1016-1037) — needs cap policy as F\*-typed value
+  threaded into the evaluator.
+- 503/Retry-After under loading (handle_connection ~2150-2300) —
+  needs F\*-typed server-state ADT.
+- `run_query` dispatch (factoidal_http.ml:1039-1136) — mixes glue
+  with policy; needs split first.
+
+These are the natural Phase 2.9 / 3.0 targets.
 
 ---
 
