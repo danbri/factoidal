@@ -164,7 +164,6 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              Parser.SRX.fst Parser.CSVResults.fst \
              Parser.JSONResults.fst \
              SPARQL.JSON.Escape.fst \
-             SPARQL.HTTP.Response.fst \
              Parser.Ballyhoo.fst Parser.BallyhooBloom.fst \
              Parser.BallyhooHDT.fst Parser.BallyhooHDTQ.fst \
              Parser.BallyhooCOTTAS.fst \
@@ -177,8 +176,8 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              SPARQL11.Store.fst \
              SPARQL.Protocol.fst \
              SPARQL.HTTP.fst \
-             SPARQL.HTTP.BackendInfo.fst \
              SPARQL.HTTP.Client.fst \
+             SPARQL.HTTP.QueriesIndex.fst \
              SPARQL.ServiceDescription.fst \
              SPARQL.GraphStore.fst; do
     if [ -f "$fst" ]; then
@@ -247,7 +246,6 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
     SPARQL_JSON_Escape.ml \
-    SPARQL_HTTP_Response.ml \
     Parser_Ballyhoo.ml Parser_BallyhooBloom.ml \
     Parser_BallyhooHDT.ml Parser_BallyhooHDTQ.ml Parser_BallyhooCOTTAS.ml \
     RDF_CottasStore_ColumnSeq.ml \
@@ -259,7 +257,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     fstar_pure_hashes.ml \
     RDF_Canonical.ml \
     SPARQL11_Algebra.ml OWL_QueryRewrite.ml OWL_QueryEval.ml SPARQL11_Parser.ml SPARQL11_Store.ml SPARQL_Protocol.ml \
-    SPARQL_HTTP.ml SPARQL_HTTP_BackendInfo.ml SPARQL_HTTP_Client.ml SPARQL_ServiceDescription.ml \
+    SPARQL_HTTP.ml SPARQL_HTTP_Client.ml SPARQL_HTTP_QueriesIndex.ml SPARQL_ServiceDescription.ml \
     SPARQL_GraphStore.ml"
 
   # Parquet/Zstd C stub — compiled and linked into native binaries when the
@@ -533,7 +531,6 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
     SPARQL_JSON_Escape.ml
-    SPARQL_HTTP_Response.ml
     Parser_Ballyhoo.ml Parser_BallyhooBloom.ml
     Parser_BallyhooHDT.ml Parser_BallyhooHDTQ.ml
     Parser_BallyhooCOTTAS.ml
@@ -548,7 +545,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     SPARQL11_Algebra.ml OWL_QueryRewrite.ml OWL_QueryEval.ml SPARQL11_Parser.ml
     SPARQL11_Store.ml
     SPARQL_Protocol.ml
-    SPARQL_HTTP.ml SPARQL_HTTP_BackendInfo.ml SPARQL_HTTP_Client.ml SPARQL_ServiceDescription.ml SPARQL_GraphStore.ml
+    SPARQL_HTTP.ml SPARQL_HTTP_Client.ml SPARQL_HTTP_QueriesIndex.ml SPARQL_ServiceDescription.ml SPARQL_GraphStore.ml
   )
   JS_TARGETS=(
     w3c_runner.byte
