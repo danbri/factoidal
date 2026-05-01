@@ -1280,6 +1280,96 @@ let timed (f : unit -> 'a) : 'a * float =
   let dt_ms = (Unix.gettimeofday () -. t0) *. 1000.0 in
   (r, dt_ms)
 
+(* /admin — built-in HTML dashboard. Polls /admin/recent.json every 2s
+   and renders a live table of recent queries with stage bars. Embedded
+   in this binary (not served from the demo dir) so it works regardless
+   of which --web-demo was selected. Pure UI glue: no F* logic. *)
+let admin_html_body : string =
+  "<!doctype html>\n\
+<html lang=\"en\"><head><meta charset=\"utf-8\">\n\
+<title>factoidal admin — recent queries</title>\n\
+<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n\
+<style>\n\
+:root{color-scheme:light dark;--ok:#4caf50;--warn:#ff9800;--err:#f44336;--mute:#888;--bar:#5b9dff}\n\
+body{font:14px/1.45 system-ui,-apple-system,sans-serif;max-width:1200px;margin:1em auto;padding:0 1em}\n\
+h1{margin:.2em 0}\n\
+.stats{display:flex;gap:1.5em;flex-wrap:wrap;margin:.6em 0 1em}\n\
+.stat{padding:.4em .7em;border:1px solid #ccc4;border-radius:6px;min-width:90px}\n\
+.stat .label{font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em}\n\
+.stat .num{font-size:1.4em;font-weight:600}\n\
+.stat .num.warn{color:var(--warn)}\n\
+.stat .num.err{color:var(--err)}\n\
+.controls{margin:.5em 0;color:var(--mute);font-size:12px}\n\
+table{border-collapse:collapse;width:100%;font-size:12px}\n\
+th,td{text-align:left;padding:.35em .5em;border-bottom:1px solid #ccc4;vertical-align:top}\n\
+th{font-size:11px;text-transform:uppercase;color:var(--mute);letter-spacing:.04em}\n\
+td.q{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;max-width:480px;word-break:break-all}\n\
+td.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}\n\
+.bars{display:grid;grid-template-columns:60px 1fr 50px;gap:.3em;align-items:center;margin:.1em 0;font-size:11px}\n\
+.bars .lbl{color:var(--mute);text-align:right}\n\
+.bars .bar{height:8px;background:var(--bar);border-radius:1px;min-width:1px}\n\
+.bars .v{text-align:right;font-variant-numeric:tabular-nums;color:var(--mute)}\n\
+.status-2xx{color:var(--ok)}\n\
+.status-4xx{color:var(--warn)}\n\
+.status-5xx{color:var(--err)}\n\
+footer{margin-top:1.5em;color:var(--mute);font-size:11px}\n\
+@media(prefers-color-scheme:dark){.stat{border-color:#5556}}\n\
+</style></head><body>\n\
+<h1>factoidal — recent queries</h1>\n\
+<div class=\"stats\" id=\"stats\">\n\
+  <div class=\"stat\"><div class=\"label\">total queries</div><div class=\"num\" id=\"s-total\">…</div></div>\n\
+  <div class=\"stat\"><div class=\"label\">total wall</div><div class=\"num\" id=\"s-wall\">…</div></div>\n\
+  <div class=\"stat\"><div class=\"label\">2xx</div><div class=\"num status-2xx\" id=\"s-2xx\">…</div></div>\n\
+  <div class=\"stat\"><div class=\"label\">4xx</div><div class=\"num status-4xx\" id=\"s-4xx\">…</div></div>\n\
+  <div class=\"stat\"><div class=\"label\">5xx</div><div class=\"num status-5xx\" id=\"s-5xx\">…</div></div>\n\
+  <div class=\"stat\"><div class=\"label\">avg total</div><div class=\"num\" id=\"s-avg\">…</div></div>\n\
+</div>\n\
+<div class=\"controls\">\n\
+  Auto-refreshing every 2 s. <span id=\"last-update\"></span>\n\
+  <a href=\"/admin/recent.json\" style=\"margin-left:1em\">raw JSON</a>\n\
+  <a href=\"/backend-info.json\" style=\"margin-left:1em\">/backend-info.json</a>\n\
+  <a href=\"/\" style=\"margin-left:1em\">SPARQL playground</a>\n\
+</div>\n\
+<table id=\"q\"><thead><tr>\n\
+  <th>when</th><th>form</th><th>status</th>\n\
+  <th>parse / eval / format</th>\n\
+  <th class=\"num\">total</th>\n\
+  <th class=\"num\">body</th>\n\
+  <th>query</th>\n\
+</tr></thead><tbody></tbody></table>\n\
+<footer>Built into factoidal-http. Last 50 queries, ring-buffered in process memory. Query text truncated to 500 chars.</footer>\n\
+<script>\n\
+function fmtMs(ms){if(ms==null)return '—';if(ms<1)return '<1 ms';if(ms<1000)return ms.toFixed(0)+' ms';return (ms/1000).toFixed(2)+' s'}\n\
+function fmtBytes(n){if(n==null)return '';if(n<1024)return n+' B';if(n<1048576)return (n/1024).toFixed(1)+' KB';return (n/1048576).toFixed(2)+' MB'}\n\
+function fmtTime(ts){const d=new Date(ts*1000);return d.toLocaleTimeString()}\n\
+function statusClass(s){if(s>=500)return 'status-5xx';if(s>=400)return 'status-4xx';return 'status-2xx'}\n\
+function bar(label,ms,maxMs){const w=Math.max(1,Math.round(220*ms/Math.max(1,maxMs)));return `<div class='bars'><span class='lbl'>${label}</span><span class='bar' style='width:${w}px'></span><span class='v'>${fmtMs(ms)}</span></div>`}\n\
+async function tick(){\n\
+  let d;try{d=await(await fetch('/admin/recent.json',{cache:'no-store'})).json()}catch(e){return}\n\
+  document.getElementById('s-total').textContent=d.total_queries_seen;\n\
+  document.getElementById('s-wall').textContent=fmtMs(d.total_wall_ms);\n\
+  document.getElementById('s-2xx').textContent=d.status_2xx;\n\
+  document.getElementById('s-4xx').textContent=d.status_4xx;\n\
+  document.getElementById('s-5xx').textContent=d.status_5xx;\n\
+  const avg=d.total_queries_seen>0?d.total_wall_ms/d.total_queries_seen:0;\n\
+  document.getElementById('s-avg').textContent=fmtMs(avg);\n\
+  document.getElementById('last-update').textContent='Updated '+new Date().toLocaleTimeString();\n\
+  const maxMs=Math.max(1,...d.recent.map(r=>r.total_ms));\n\
+  const tb=document.querySelector('#q tbody');\n\
+  tb.innerHTML=d.recent.map(r=>{\n\
+    const stages=bar('parse',r.parse_ms,maxMs)+bar('eval',r.eval_ms,maxMs)+bar('format',r.format_ms,maxMs);\n\
+    const qEsc=r.query.replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));\n\
+    return `<tr><td>${fmtTime(r.started_at)}</td><td>${r.form}</td><td class='${statusClass(r.status)}'>${r.status}</td><td>${stages}</td><td class='num'>${fmtMs(r.total_ms)}</td><td class='num'>${fmtBytes(r.body_bytes)}</td><td class='q'>${qEsc}</td></tr>`;\n\
+  }).join('');\n\
+}\n\
+tick();setInterval(tick,2000);\n\
+</script></body></html>\n"
+
+let serve_admin_html () : response_body =
+  { rb_status = 200;
+    rb_content_type = "text/html; charset=utf-8";
+    rb_body = admin_html_body }
+
 (* parse_and_run with explicit per-stage timings. Returns the response
    alongside a query_timing record. The original parse_and_run is kept for
    any callers that don't need the timing surface. *)
@@ -2132,6 +2222,10 @@ let try_static_route ~cfg ~dataset_ref ~cottas_stores_ref ~meth ~path ~qs ~accep
     (* Last N queries with per-stage timings + cumulative counters.
        Read-only debug surface — populated by parse_and_run_timed. *)
     Some (serve_recent_queries_json ())
+  | "/admin" | "/admin/" | "/admin/index.html" ->
+    (* Built-in HTML dashboard: live table of recent queries with
+       per-stage bars + counters. Polls /admin/recent.json every 2s. *)
+    Some (serve_admin_html ())
   | "/favicon.ico" ->
     (* Try the demo dir first (so a demo can ship its own favicon); on
        miss, return 204 to keep the browser's devtools console quiet
