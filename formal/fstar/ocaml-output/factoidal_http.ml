@@ -1215,8 +1215,10 @@ let bump_counters (qt : query_timing) =
   Mutex.unlock counters_mu
 
 (* JSON encoder for a recent_query. Strings escape via simple replacement of
-   the four characters that JSON cares about (\\, ", \n, \r). Good enough for
-   admin debug output; not a public format. *)
+   the characters JSON cares about: backslash, double-quote, newline,
+   carriage return, and tab. Plus a generic \uXXXX escape for any other
+   control character. Good enough for admin debug output; not a public
+   format. *)
 let json_string_escape s =
   let buf = Buffer.create (String.length s + 8) in
   String.iter (fun c ->
