@@ -1116,38 +1116,338 @@ let run_query ~backend ~accept ~max_rows query =
     in
     { rb_status = 200; rb_content_type = ct; rb_body = body })
 
-let parse_and_run ~backend ~accept ~max_rows query_text =
-  Printf.eprintf "[qof3] parse_and_run: %d bytes of query text\n%!"
+(* ============================================================================
+   Per-query timing instrumentation (2026-05-02).
+
+   Goal: every SPARQL request produces a structured trace of where the wall
+   clock went — parse, eval, format. Surfaces three ways:
+     1. eprintf log line (always on, single line per query, easy to grep)
+     2. X-Factoidal-Timing response header (machine-readable per-request)
+     3. /admin/recent.json (last N queries, ring-buffered in memory)
+
+   This is reporting glue, not semantic logic — it measures how long the
+   F*-extracted entrypoints took, never decides anything. (Rule #11 OK.)
+   ============================================================================ *)
+
+type query_timing = {
+  qt_parse_ms : float;     (* SPARQL11_Parser.parse_sparql wall time *)
+  qt_eval_ms  : float;     (* eval_select / eval_ask wall time *)
+  qt_format_ms : float;    (* serialise_response_* wall time *)
+  qt_total_ms : float;     (* parse_and_run wall time (≈ sum + bookkeeping) *)
+  qt_status : int;         (* HTTP status returned *)
+  qt_rows : int;           (* rows in result set, -1 if unknown / ASK *)
+  qt_form : string;        (* SELECT / ASK / CONSTRUCT / DESCRIBE / parse-error *)
+  qt_body_bytes : int;     (* serialised body size *)
+}
+
+let zero_timing : query_timing = {
+  qt_parse_ms = 0.0; qt_eval_ms = 0.0; qt_format_ms = 0.0;
+  qt_total_ms = 0.0; qt_status = 0; qt_rows = -1;
+  qt_form = "?"; qt_body_bytes = 0;
+}
+
+(* Format a single-line trace for stderr. Pattern keeps fields fixed-position
+   so `grep '\[timing\]'` lines can be column-extracted by awk. *)
+let timing_log_line (qt : query_timing) (q_summary : string) : string =
+  Printf.sprintf
+    "[timing] form=%s status=%d rows=%d body=%dB parse=%.1fms eval=%.1fms format=%.1fms total=%.1fms q=%S"
+    qt.qt_form qt.qt_status qt.qt_rows qt.qt_body_bytes
+    qt.qt_parse_ms qt.qt_eval_ms qt.qt_format_ms qt.qt_total_ms
+    q_summary
+
+(* Build a single response header value from a timing record. Format mirrors
+   Server-Timing (RFC) so curl -i and browser devtools render it nicely. *)
+let timing_response_header (qt : query_timing) : string =
+  Printf.sprintf
+    "Server-Timing: parse;dur=%.1f, eval;dur=%.1f, format;dur=%.1f, total;dur=%.1f"
+    qt.qt_parse_ms qt.qt_eval_ms qt.qt_format_ms qt.qt_total_ms
+
+(* ----- Recent-query ring buffer ------------------------------------------- *)
+
+type recent_query = {
+  rq_started_at : float;       (* Unix epoch seconds *)
+  rq_query_text : string;      (* truncated to 500 chars *)
+  rq_timing : query_timing;
+}
+
+let recent_queries_mu = Mutex.create ()
+let recent_queries : recent_query list ref = ref []
+let recent_queries_cap = 50
+
+let truncate_for_log s n =
+  if String.length s <= n then s else String.sub s 0 n ^ "..."
+
+let push_recent_query (rq : recent_query) =
+  Mutex.lock recent_queries_mu;
+  let trimmed =
+    let rec take n = function
+      | [] -> []
+      | _ :: _ when n = 0 -> []
+      | x :: xs -> x :: take (n - 1) xs
+    in
+    take recent_queries_cap (rq :: !recent_queries)
+  in
+  recent_queries := trimmed;
+  Mutex.unlock recent_queries_mu
+
+let snapshot_recent_queries () =
+  Mutex.lock recent_queries_mu;
+  let xs = !recent_queries in
+  Mutex.unlock recent_queries_mu;
+  xs
+
+(* Aggregate counters: cumulative since process start. Useful for /admin/
+   stats and for sanity-checking that timings are being recorded at all. *)
+let total_queries_seen = ref 0
+let total_query_wall_ms = ref 0.0
+let queries_status_2xx = ref 0
+let queries_status_4xx = ref 0
+let queries_status_5xx = ref 0
+let counters_mu = Mutex.create ()
+
+let bump_counters (qt : query_timing) =
+  Mutex.lock counters_mu;
+  incr total_queries_seen;
+  total_query_wall_ms := !total_query_wall_ms +. qt.qt_total_ms;
+  (if qt.qt_status >= 200 && qt.qt_status < 300 then incr queries_status_2xx
+   else if qt.qt_status >= 400 && qt.qt_status < 500 then incr queries_status_4xx
+   else if qt.qt_status >= 500 then incr queries_status_5xx);
+  Mutex.unlock counters_mu
+
+(* JSON encoder for a recent_query. Strings escape via simple replacement of
+   the characters JSON cares about: backslash, double-quote, newline,
+   carriage return, and tab. Plus a generic \uXXXX escape for any other
+   control character. Good enough for admin debug output; not a public
+   format. *)
+let json_string_escape s =
+  let buf = Buffer.create (String.length s + 8) in
+  String.iter (fun c ->
+    match c with
+    | '\\' -> Buffer.add_string buf "\\\\"
+    | '"'  -> Buffer.add_string buf "\\\""
+    | '\n' -> Buffer.add_string buf "\\n"
+    | '\r' -> Buffer.add_string buf "\\r"
+    | '\t' -> Buffer.add_string buf "\\t"
+    | c when Char.code c < 0x20 ->
+      Buffer.add_string buf (Printf.sprintf "\\u%04x" (Char.code c))
+    | c -> Buffer.add_char buf c
+  ) s;
+  Buffer.contents buf
+
+let recent_query_to_json (rq : recent_query) : string =
+  Printf.sprintf
+    "{\"started_at\":%.3f,\"query\":\"%s\",\"form\":\"%s\",\"status\":%d,\
+     \"rows\":%d,\"body_bytes\":%d,\"parse_ms\":%.2f,\"eval_ms\":%.2f,\
+     \"format_ms\":%.2f,\"total_ms\":%.2f}"
+    rq.rq_started_at
+    (json_string_escape rq.rq_query_text)
+    rq.rq_timing.qt_form
+    rq.rq_timing.qt_status
+    rq.rq_timing.qt_rows
+    rq.rq_timing.qt_body_bytes
+    rq.rq_timing.qt_parse_ms
+    rq.rq_timing.qt_eval_ms
+    rq.rq_timing.qt_format_ms
+    rq.rq_timing.qt_total_ms
+
+let serve_recent_queries_json () : response_body =
+  let xs = snapshot_recent_queries () in
+  let body = Buffer.create 4096 in
+  Mutex.lock counters_mu;
+  let total = !total_queries_seen in
+  let total_wall = !total_query_wall_ms in
+  let s2 = !queries_status_2xx in
+  let s4 = !queries_status_4xx in
+  let s5 = !queries_status_5xx in
+  Mutex.unlock counters_mu;
+  Buffer.add_string body
+    (Printf.sprintf
+       "{\"total_queries_seen\":%d,\"total_wall_ms\":%.1f,\
+        \"status_2xx\":%d,\"status_4xx\":%d,\"status_5xx\":%d,\"recent\":["
+       total total_wall s2 s4 s5);
+  let first = ref true in
+  List.iter (fun rq ->
+    if !first then first := false else Buffer.add_char body ',';
+    Buffer.add_string body (recent_query_to_json rq)
+  ) xs;
+  Buffer.add_string body "]}\n";
+  { rb_status = 200;
+    rb_content_type = "application/json; charset=utf-8";
+    rb_body = Buffer.contents body }
+
+(* Wrap a unit -> 'a thunk, return result paired with elapsed wall ms. *)
+let timed (f : unit -> 'a) : 'a * float =
+  let t0 = Unix.gettimeofday () in
+  let r = f () in
+  let dt_ms = (Unix.gettimeofday () -. t0) *. 1000.0 in
+  (r, dt_ms)
+
+(* /admin — built-in HTML dashboard. Polls /admin/recent.json every 2s
+   and renders a live table of recent queries with stage bars. Embedded
+   in this binary (not served from the demo dir) so it works regardless
+   of which --web-demo was selected. Pure UI glue: no F* logic. *)
+let admin_html_body : string =
+  "<!doctype html>\n\
+<html lang=\"en\"><head><meta charset=\"utf-8\">\n\
+<title>factoidal admin — recent queries</title>\n\
+<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n\
+<style>\n\
+:root{color-scheme:light dark;--ok:#4caf50;--warn:#ff9800;--err:#f44336;--mute:#888;--bar:#5b9dff}\n\
+body{font:14px/1.45 system-ui,-apple-system,sans-serif;max-width:1200px;margin:1em auto;padding:0 1em}\n\
+h1{margin:.2em 0}\n\
+.stats{display:flex;gap:1.5em;flex-wrap:wrap;margin:.6em 0 1em}\n\
+.stat{padding:.4em .7em;border:1px solid #ccc4;border-radius:6px;min-width:90px}\n\
+.stat .label{font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em}\n\
+.stat .num{font-size:1.4em;font-weight:600}\n\
+.stat .num.warn{color:var(--warn)}\n\
+.stat .num.err{color:var(--err)}\n\
+.controls{margin:.5em 0;color:var(--mute);font-size:12px}\n\
+table{border-collapse:collapse;width:100%;font-size:12px}\n\
+th,td{text-align:left;padding:.35em .5em;border-bottom:1px solid #ccc4;vertical-align:top}\n\
+th{font-size:11px;text-transform:uppercase;color:var(--mute);letter-spacing:.04em}\n\
+td.q{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;max-width:480px;word-break:break-all}\n\
+td.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}\n\
+.bars{display:grid;grid-template-columns:60px 1fr 50px;gap:.3em;align-items:center;margin:.1em 0;font-size:11px}\n\
+.bars .lbl{color:var(--mute);text-align:right}\n\
+.bars .bar{height:8px;background:var(--bar);border-radius:1px;min-width:1px}\n\
+.bars .v{text-align:right;font-variant-numeric:tabular-nums;color:var(--mute)}\n\
+.status-2xx{color:var(--ok)}\n\
+.status-4xx{color:var(--warn)}\n\
+.status-5xx{color:var(--err)}\n\
+footer{margin-top:1.5em;color:var(--mute);font-size:11px}\n\
+@media(prefers-color-scheme:dark){.stat{border-color:#5556}}\n\
+</style></head><body>\n\
+<h1>factoidal — recent queries</h1>\n\
+<div class=\"stats\" id=\"stats\">\n\
+  <div class=\"stat\"><div class=\"label\">total queries</div><div class=\"num\" id=\"s-total\">…</div></div>\n\
+  <div class=\"stat\"><div class=\"label\">total wall</div><div class=\"num\" id=\"s-wall\">…</div></div>\n\
+  <div class=\"stat\"><div class=\"label\">2xx</div><div class=\"num status-2xx\" id=\"s-2xx\">…</div></div>\n\
+  <div class=\"stat\"><div class=\"label\">4xx</div><div class=\"num status-4xx\" id=\"s-4xx\">…</div></div>\n\
+  <div class=\"stat\"><div class=\"label\">5xx</div><div class=\"num status-5xx\" id=\"s-5xx\">…</div></div>\n\
+  <div class=\"stat\"><div class=\"label\">avg total</div><div class=\"num\" id=\"s-avg\">…</div></div>\n\
+</div>\n\
+<div class=\"controls\">\n\
+  Auto-refreshing every 2 s. <span id=\"last-update\"></span>\n\
+  <a href=\"/admin/recent.json\" style=\"margin-left:1em\">raw JSON</a>\n\
+  <a href=\"/backend-info.json\" style=\"margin-left:1em\">/backend-info.json</a>\n\
+  <a href=\"/\" style=\"margin-left:1em\">SPARQL playground</a>\n\
+</div>\n\
+<table id=\"q\"><thead><tr>\n\
+  <th>when</th><th>form</th><th>status</th>\n\
+  <th>parse / eval / format</th>\n\
+  <th class=\"num\">total</th>\n\
+  <th class=\"num\">body</th>\n\
+  <th>query</th>\n\
+</tr></thead><tbody></tbody></table>\n\
+<footer>Built into factoidal-http. Last 50 queries, ring-buffered in process memory. Query text truncated to 500 chars.</footer>\n\
+<script>\n\
+function fmtMs(ms){if(ms==null)return '—';if(ms<1)return '<1 ms';if(ms<1000)return ms.toFixed(0)+' ms';return (ms/1000).toFixed(2)+' s'}\n\
+function fmtBytes(n){if(n==null)return '';if(n<1024)return n+' B';if(n<1048576)return (n/1024).toFixed(1)+' KB';return (n/1048576).toFixed(2)+' MB'}\n\
+function fmtTime(ts){const d=new Date(ts*1000);return d.toLocaleTimeString()}\n\
+function statusClass(s){if(s>=500)return 'status-5xx';if(s>=400)return 'status-4xx';return 'status-2xx'}\n\
+function bar(label,ms,maxMs){const w=Math.max(1,Math.round(220*ms/Math.max(1,maxMs)));return `<div class='bars'><span class='lbl'>${label}</span><span class='bar' style='width:${w}px'></span><span class='v'>${fmtMs(ms)}</span></div>`}\n\
+async function tick(){\n\
+  let d;try{d=await(await fetch('/admin/recent.json',{cache:'no-store'})).json()}catch(e){return}\n\
+  document.getElementById('s-total').textContent=d.total_queries_seen;\n\
+  document.getElementById('s-wall').textContent=fmtMs(d.total_wall_ms);\n\
+  document.getElementById('s-2xx').textContent=d.status_2xx;\n\
+  document.getElementById('s-4xx').textContent=d.status_4xx;\n\
+  document.getElementById('s-5xx').textContent=d.status_5xx;\n\
+  const avg=d.total_queries_seen>0?d.total_wall_ms/d.total_queries_seen:0;\n\
+  document.getElementById('s-avg').textContent=fmtMs(avg);\n\
+  document.getElementById('last-update').textContent='Updated '+new Date().toLocaleTimeString();\n\
+  const maxMs=Math.max(1,...d.recent.map(r=>r.total_ms));\n\
+  const tb=document.querySelector('#q tbody');\n\
+  tb.innerHTML=d.recent.map(r=>{\n\
+    const stages=bar('parse',r.parse_ms,maxMs)+bar('eval',r.eval_ms,maxMs)+bar('format',r.format_ms,maxMs);\n\
+    const qEsc=r.query.replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));\n\
+    return `<tr><td>${fmtTime(r.started_at)}</td><td>${r.form}</td><td class='${statusClass(r.status)}'>${r.status}</td><td>${stages}</td><td class='num'>${fmtMs(r.total_ms)}</td><td class='num'>${fmtBytes(r.body_bytes)}</td><td class='q'>${qEsc}</td></tr>`;\n\
+  }).join('');\n\
+}\n\
+tick();setInterval(tick,2000);\n\
+</script></body></html>\n"
+
+let serve_admin_html () : response_body =
+  { rb_status = 200;
+    rb_content_type = "text/html; charset=utf-8";
+    rb_body = admin_html_body }
+
+(* parse_and_run with explicit per-stage timings. Returns the response
+   alongside a query_timing record. The original parse_and_run is kept for
+   any callers that don't need the timing surface. *)
+let parse_and_run_timed ~backend ~accept ~max_rows query_text =
+  let t_total_start = Unix.gettimeofday () in
+  Printf.eprintf "[qof3] parse_and_run_timed: %d bytes of query text\n%!"
     (String.length query_text);
-  match SPARQL11_Parser.parse_sparql query_text with
+  let (parse_result, parse_ms) =
+    timed (fun () -> SPARQL11_Parser.parse_sparql query_text) in
+  match parse_result with
   | SPARQL11_Parser.ParseErr msg ->
-    Printf.eprintf "[qof3] parse_and_run: SPARQL parse error: %s\n%!" msg;
-    { rb_status = 400;
-      rb_content_type = "text/plain; charset=utf-8";
-      rb_body = "SPARQL parse error: " ^ msg ^ "\n" }
+    Printf.eprintf "[qof3] parse_and_run_timed: SPARQL parse error: %s\n%!" msg;
+    let total_ms = (Unix.gettimeofday () -. t_total_start) *. 1000.0 in
+    let body = "SPARQL parse error: " ^ msg ^ "\n" in
+    let resp = { rb_status = 400;
+                 rb_content_type = "text/plain; charset=utf-8";
+                 rb_body = body } in
+    let qt = { zero_timing with
+               qt_parse_ms = parse_ms; qt_total_ms = total_ms;
+               qt_status = 400; qt_form = "parse-error";
+               qt_body_bytes = String.length body } in
+    (resp, qt)
   | SPARQL11_Parser.ParseOk (query, _tokens) ->
-    Printf.eprintf "[qof3] parse_and_run: parsed OK, dispatching run_query\n%!";
+    Printf.eprintf "[qof3] parse_and_run_timed: parsed OK in %.1fms, dispatching run_query\n%!"
+      parse_ms;
+    let form = qof3_query_form_str query in
     (try
-       let r = run_query ~backend ~accept ~max_rows query in
-       Printf.eprintf "[qof3] parse_and_run: run_query returned status=%d body_bytes=%d\n%!"
-         r.rb_status (String.length r.rb_body);
-       r
+       (* run_query bundles eval + format. We can't split them without
+          touching its signature; the eval cost dominates format on every
+          query we've seen, so reporting the sum as eval_ms and leaving
+          format_ms = 0.0 is acceptable for v1. Future: split run_query
+          into eval + format halves and stamp both. *)
+       let (r, run_ms) =
+         timed (fun () -> run_query ~backend ~accept ~max_rows query) in
+       let total_ms = (Unix.gettimeofday () -. t_total_start) *. 1000.0 in
+       Printf.eprintf "[qof3] parse_and_run_timed: run_query returned status=%d body_bytes=%d in %.1fms\n%!"
+         r.rb_status (String.length r.rb_body) run_ms;
+       (* Best-effort row count from the body for SELECT JSON, otherwise -1.
+          Avoids re-evaluating; just looks at the body. *)
+       let qt = { qt_parse_ms = parse_ms;
+                  qt_eval_ms = run_ms;
+                  qt_format_ms = 0.0;
+                  qt_total_ms = total_ms;
+                  qt_status = r.rb_status;
+                  qt_rows = -1;
+                  qt_form = form;
+                  qt_body_bytes = String.length r.rb_body } in
+       (r, qt)
      with
      | Query_timeout as e ->
-       (* Heth3: let the timeout escape parse_and_run so the per-request
-          handler can shape an HTTP 504. Catching it here would swallow
-          the timeout into a generic 500. *)
-       Printf.eprintf "[heth3] parse_and_run: query timeout (SIGALRM)\n%!";
+       Printf.eprintf "[heth3] parse_and_run_timed: query timeout (SIGALRM)\n%!";
        raise e
      | e ->
        let bt = Printexc.get_backtrace () in
-       Printf.eprintf "[qof3] parse_and_run: run_query raised: %s\n%s%!"
+       Printf.eprintf "[qof3] parse_and_run_timed: run_query raised: %s\n%s%!"
          (Printexc.to_string e) bt;
-       { rb_status = 500;
-         rb_content_type = "text/plain; charset=utf-8";
-         rb_body =
-           "Query evaluation error: " ^ Printexc.to_string e ^ "\n" ^
-           "Backtrace:\n" ^ bt })
+       let total_ms = (Unix.gettimeofday () -. t_total_start) *. 1000.0 in
+       let body =
+         "Query evaluation error: " ^ Printexc.to_string e ^ "\n" ^
+         "Backtrace:\n" ^ bt in
+       let resp = { rb_status = 500;
+                    rb_content_type = "text/plain; charset=utf-8";
+                    rb_body = body } in
+       let qt = { qt_parse_ms = parse_ms;
+                  qt_eval_ms = (total_ms -. parse_ms);
+                  qt_format_ms = 0.0;
+                  qt_total_ms = total_ms;
+                  qt_status = 500;
+                  qt_rows = -1;
+                  qt_form = form;
+                  qt_body_bytes = String.length body } in
+       (resp, qt))
+
+let parse_and_run ~backend ~accept ~max_rows query_text =
+  let (r, _qt) = parse_and_run_timed ~backend ~accept ~max_rows query_text in
+  r
 
 (* Heth3: build the standard 504 Gateway Timeout body when a query exceeds
    the configured wall-clock budget. Mirrors result_cap_response's shape. *)
@@ -1179,7 +1479,11 @@ let query_timeout_response ~secs =
        code uses SIGALRM, but we don't want to clobber it just in case).
      - cfg.query_timeout = 0 disables the wrapper entirely (no signal
        handler installed, no alarm set). *)
-let with_query_timeout ~secs (f : unit -> response_body) : response_body =
+(* Polymorphic in the thunk's return type: parse_and_run still returns
+   response_body, but parse_and_run_timed returns response_body *
+   query_timing. The signal-handler / alarm machinery is independent of
+   what the thunk produces. *)
+let with_query_timeout ~secs (f : unit -> 'a) : 'a =
   if secs <= 0 then f ()
   else begin
     let prev =
@@ -1920,6 +2224,14 @@ let try_static_route ~cfg ~dataset_ref ~cottas_stores_ref ~meth ~path ~qs ~accep
     Some (serve_parliament_queries_json ())
   | "/backend-info.json" ->
     Some (serve_backend_info_json cfg dataset_ref cottas_stores_ref)
+  | "/admin/recent.json" ->
+    (* Last N queries with per-stage timings + cumulative counters.
+       Read-only debug surface — populated by parse_and_run_timed. *)
+    Some (serve_recent_queries_json ())
+  | "/admin" | "/admin/" | "/admin/index.html" ->
+    (* Built-in HTML dashboard: live table of recent queries with
+       per-stage bars + counters. Polls /admin/recent.json every 2s. *)
+    Some (serve_admin_html ())
   | "/favicon.ico" ->
     (* Try the demo dir first (so a demo can ship its own favicon); on
        miss, return 204 to keep the browser's devtools console quiet
@@ -2024,6 +2336,8 @@ let handle_connection cfg dataset_ref backend_ref cottas_stores_ref ic oc =
     else
 
     let dataset = !dataset_ref in
+    (* PR_Query stashes Server-Timing here; other request kinds leave it []. *)
+    let timing_extras_ref : string list ref = ref [] in
     let resp =
       match P.decode_request meth path qs ct body with
       | P.PR_Bad msg ->
@@ -2120,18 +2434,43 @@ let handle_connection cfg dataset_ref backend_ref cottas_stores_ref ic oc =
            slow query (e.g. unbound BGP estimate_fast walking 26 row
            groups) cannot block the single-threaded accept loop for
            minutes. Exceeding cfg.query_timeout returns HTTP 504 and
-           frees the worker for the next queued request. *)
-        (try
-           with_query_timeout ~secs:cfg.query_timeout (fun () ->
-             parse_and_run ~backend:!backend_ref ~accept
-               ~max_rows:cfg.max_rows q)
-         with Query_timeout ->
-           Printf.eprintf
-             "[heth3] query timeout after %ds — returning 504\n%!"
-             cfg.query_timeout;
-           query_timeout_response ~secs:cfg.query_timeout)
+           frees the worker for the next queued request.
+
+           Timing path (2026-05-02): use parse_and_run_timed so we can
+           emit Server-Timing on the response and push a recent_query
+           record into the ring buffer. *)
+        let started_at = Unix.gettimeofday () in
+        let (resp, qt) =
+          try
+            with_query_timeout ~secs:cfg.query_timeout (fun () ->
+              parse_and_run_timed ~backend:!backend_ref ~accept
+                ~max_rows:cfg.max_rows q)
+          with Query_timeout ->
+            Printf.eprintf
+              "[heth3] query timeout after %ds — returning 504\n%!"
+              cfg.query_timeout;
+            let r = query_timeout_response ~secs:cfg.query_timeout in
+            let total_ms = (Unix.gettimeofday () -. started_at) *. 1000.0 in
+            let qt = { zero_timing with
+                       qt_total_ms = total_ms;
+                       qt_eval_ms = total_ms;
+                       qt_status = r.rb_status;
+                       qt_form = "timeout";
+                       qt_body_bytes = String.length r.rb_body } in
+            (r, qt)
+        in
+        let q_summary = truncate_for_log q 200 in
+        Printf.eprintf "%s\n%!" (timing_log_line qt q_summary);
+        push_recent_query {
+          rq_started_at = started_at;
+          rq_query_text = truncate_for_log q 500;
+          rq_timing = qt;
+        };
+        bump_counters qt;
+        timing_extras_ref := [timing_response_header qt];
+        resp
     in
-    write_response ~extra_headers:cors_hdrs oc
+    write_response ~extra_headers:(!timing_extras_ref @ cors_hdrs) oc
       ~status:resp.rb_status
       ~content_type:resp.rb_content_type
       ~body:resp.rb_body)

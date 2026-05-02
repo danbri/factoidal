@@ -52,6 +52,13 @@ type cors_policy =
 let common_cors_headers : list string =
   [ "Access-Control-Allow-Methods: GET, POST, OPTIONS";
     "Access-Control-Allow-Headers: Content-Type, Authorization, Cf-Access-Jwt-Assertion, Cf-Access-Authenticated-User-Email, X-Authid";
+    // Timing-Allow-Origin lets cross-origin pages read the
+    // Server-Timing response header that factoidal_http emits per query
+    // (parse;dur=, eval;dur=, format;dur=, total;dur=). Without this,
+    // browsers strip Server-Timing from cross-origin fetch() reads and
+    // the demo-page timing breakdown panel comes back empty. Verified
+    // F* policy decision — every CORS-enabled response gets it.
+    "Timing-Allow-Origin: *";
     "Access-Control-Max-Age: 86400" ]
 
 // Linear membership check on a list of strings; F* doesn't carry an
