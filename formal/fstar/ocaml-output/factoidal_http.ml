@@ -1479,7 +1479,11 @@ let query_timeout_response ~secs =
        code uses SIGALRM, but we don't want to clobber it just in case).
      - cfg.query_timeout = 0 disables the wrapper entirely (no signal
        handler installed, no alarm set). *)
-let with_query_timeout ~secs (f : unit -> response_body) : response_body =
+(* Polymorphic in the thunk's return type: parse_and_run still returns
+   response_body, but parse_and_run_timed returns response_body *
+   query_timing. The signal-handler / alarm machinery is independent of
+   what the thunk produces. *)
+let with_query_timeout ~secs (f : unit -> 'a) : 'a =
   if secs <= 0 then f ()
   else begin
     let prev =
