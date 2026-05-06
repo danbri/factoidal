@@ -1461,12 +1461,10 @@ let with_query_timeout ~secs (f : unit -> 'a) : 'a =
 (* Detect whether an update contains any U_Load op (LOAD is still
    unimplemented — needs HTTP client).  We return 501 for requests
    that contain LOAD rather than silently skipping it. *)
-let update_has_load (u : SPARQL11_Algebra.sparql_update) : bool =
-  List.exists (fun op ->
-    match op with
-    | SPARQL11_Algebra.U_Load (_, _, _) -> true
-    | _ -> false
-  ) u.u_ops
+(* update_has_load lives in F* per rule #1; see
+   formal/fstar/SPARQL.Update.Analysis.fst. *)
+let update_has_load : SPARQL11_Algebra.sparql_update -> bool =
+  SPARQL_Update_Analysis.update_has_load
 
 (* ============================================================================
    Per-user UPDATE sandboxing.
