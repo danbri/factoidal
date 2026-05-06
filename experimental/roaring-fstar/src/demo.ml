@@ -92,4 +92,24 @@ let () =
   test_tzcnt "0x100" 0x100;
   test_tzcnt "0x80000000" 0x80000000;
 
-  Printf.printf "\n=== Done. F*-extracted Phase A + Bits is running. ===\n"
+  (* File round-trip via FStar.IO (no `assume val` for I/O). *)
+  Printf.printf "\n=== File round-trip via FStar.IO ===\n";
+  let path = "/tmp/roaring_demo.txt" in
+  let original : Container_Array.array_container =
+    [nat_of_int 7; nat_of_int 42; nat_of_int 50; nat_of_int 100]
+  in
+  Printf.printf "  encoded: \"%s\"\n"
+    (IODemo.encode original);
+  Printf.printf "  writing to %s ...\n" path;
+  IODemo.write_to_file path original;
+  Printf.printf "  reading back...\n";
+  (match IODemo.read_from_file path with
+   | None -> Printf.printf "  FAIL: decode returned None\n"
+   | Some restored ->
+     let same = (List.length original = List.length restored) &&
+                List.for_all2 (fun a b -> Z.equal a b) original restored in
+     Printf.printf "  decoded: ";
+     print_container "" restored;
+     Printf.printf "  matches original? %b\n" same);
+
+  Printf.printf "\n=== Done. F*-extracted Phase A + Bits + IO running. ===\n"
