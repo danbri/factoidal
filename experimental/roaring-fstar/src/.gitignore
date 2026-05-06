@@ -2,6 +2,7 @@
 Spec.ml
 Container_Array.ml
 Bits.ml
+IODemo.ml
 Test.ml
 
 # F* checked-file caches.
