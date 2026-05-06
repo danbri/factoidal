@@ -18,9 +18,10 @@ OCAMLFIND ?= ocamlfind
 MODULES = \
 	Spec \
 	Container.Array \
+	Bits \
 	Test
 
-EXTRACT_MODULES = Spec Container.Array
+EXTRACT_MODULES = Spec Container.Array Bits
 
 .PHONY: verify extract demo run clean
 
@@ -32,19 +33,19 @@ verify: $(addsuffix .verified, $(MODULES))
 
 # Extract the data-structure modules to OCaml. (Test.fst is verification-
 # only; not part of runtime.)
-extract: Spec.ml Container_Array.ml
+extract: Spec.ml Container_Array.ml Bits.ml
 
-Spec.ml Container_Array.ml: Spec.fst Container.Array.fst
-	$(FSTAR) --codegen OCaml --extract '* -FStar' Spec.fst Container.Array.fst
+Spec.ml Container_Array.ml Bits.ml: Spec.fst Container.Array.fst Bits.fst
+	$(FSTAR) --codegen OCaml --extract '* -FStar' Spec.fst Container.Array.fst Bits.fst
 
 # Native demo binary linking the extracted code with demo.ml.
 demo: extract demo.ml
 	$(OCAMLFIND) ocamlopt -package fstar.lib,zarith -linkpkg \
-		Spec.ml Container_Array.ml demo.ml -o demo
+		Spec.ml Container_Array.ml Bits.ml demo.ml -o demo
 
 run: demo
 	./demo
 
 clean:
 	rm -f *.verified *.checked *.checked.lax *.cmi *.cmo *.cmx *.o
-	rm -f Spec.ml Container_Array.ml Test.ml demo
+	rm -f Spec.ml Container_Array.ml Bits.ml Test.ml demo

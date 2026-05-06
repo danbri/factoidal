@@ -69,4 +69,27 @@ let () =
   Printf.printf "100 inserts of (i*37 mod 65536): cardinality = %d\n"
     (int_of_nat (array_cardinality !big));
 
-  Printf.printf "\n=== Done. F*-extracted Phase A is running. ===\n"
+  (* Pure-F* popcount and tzcnt — used by Phase B's bitmap container. *)
+  Printf.printf "\n=== Bit primitives (pure F*, no assume) ===\n";
+  let u64 i = Stdint.Uint64.of_int i in
+  let test_popcount label n =
+    Printf.printf "  popcount %s = %d\n" label
+      (int_of_nat (Bits.popcount_u64 (u64 n)))
+  in
+  test_popcount "0x0" 0;
+  test_popcount "0x1" 1;
+  test_popcount "0xFF" 0xFF;
+  test_popcount "0xAAAAAAAA" 0xAAAAAAAA;
+  test_popcount "0xFFFFFFFF" 0xFFFFFFFF;
+
+  let test_tzcnt label n =
+    Printf.printf "  tzcnt %s = %d\n" label
+      (int_of_nat (Bits.tzcnt_u64 (u64 n)))
+  in
+  test_tzcnt "0x0" 0;
+  test_tzcnt "0x1" 1;
+  test_tzcnt "0x2" 2;
+  test_tzcnt "0x100" 0x100;
+  test_tzcnt "0x80000000" 0x80000000;
+
+  Printf.printf "\n=== Done. F*-extracted Phase A + Bits is running. ===\n"
