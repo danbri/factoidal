@@ -1490,31 +1490,11 @@ let update_has_load (u : SPARQL11_Algebra.sparql_update) : bool =
    parse_sparql_update and apply_update. Pure OCaml glue, no F* changes.
    ============================================================================ *)
 
-(* Simple substring replace: replace every literal occurrence of [needle]
-   in [haystack] with [replacement]. *)
+(* string_replace_all lives in F* per rule #1
+   (formal/fstar/SPARQL.Update.Sandbox.fst). The local copy here
+   duplicated that logic; replaced with a thin alias. *)
 let string_replace_all ~needle ~replacement haystack =
-  if needle = "" then haystack
-  else begin
-    let nlen = String.length needle in
-    let hlen = String.length haystack in
-    let buf = Buffer.create (hlen + 16) in
-    let i = ref 0 in
-    while !i <= hlen - nlen do
-      if String.sub haystack !i nlen = needle then begin
-        Buffer.add_string buf replacement;
-        i := !i + nlen
-      end else begin
-        Buffer.add_char buf haystack.[!i];
-        incr i
-      end
-    done;
-    (* tail *)
-    while !i < hlen do
-      Buffer.add_char buf haystack.[!i];
-      incr i
-    done;
-    Buffer.contents buf
-  end
+  SPARQL_Update_Sandbox.string_replace_all needle replacement haystack
 
 (* Thin OCaml dispatch shims around the verified F-star sandbox module.
    The semantic policy (graph-target rewriting, alias expansion, accept/
