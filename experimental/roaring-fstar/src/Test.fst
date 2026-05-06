@@ -162,12 +162,11 @@ val prop_insert_idempotent_cardinality
         (ensures array_cardinality (array_insert c x) =
                  array_cardinality c)
 let prop_insert_idempotent_cardinality c x =
-  // PROOF DEBT: phase A — the postcondition of array_insert says
-  // `mem y result <==> (y = x \/ mem y c)`, which together with
-  // array_contains c x ==> mem x c (via array_contains_iff_mem)
-  // implies the multiset of result equals the multiset of c, and
-  // hence lengths match. Mechanical induction.
-  admit()
+  // array_contains c x ⇒ mem x c (via array_contains_iff_mem)
+  // ⇒ length (array_insert_aux c x) = length c (idempotent_len).
+  // The wrapper just calls array_insert_aux, so its length matches.
+  array_contains_iff_mem c x;
+  array_insert_aux_idempotent_len c x
 
 // Cardinality grows by 1 when inserting a fresh value.
 val prop_insert_fresh_grows_cardinality
@@ -177,7 +176,8 @@ val prop_insert_fresh_grows_cardinality
         (ensures array_cardinality (array_insert c x) =
                  array_cardinality c + 1)
 let prop_insert_fresh_grows_cardinality c x =
-  admit()  // PROOF DEBT: companion to the previous lemma.
+  array_contains_iff_mem c x;
+  array_insert_aux_fresh_grows_len c x
 
 // ---------------------------------------------------------------
 // Cross-layer property: array_insert agrees with Spec.insert_set
