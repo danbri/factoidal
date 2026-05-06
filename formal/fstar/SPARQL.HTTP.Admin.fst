@@ -97,3 +97,70 @@ let render_recent_queries_envelope
   ^ ",\"status_5xx\":" ^ string_of_int status_5xx
   ^ ",\"recent\":[" ^ join_array_elements recent_jsons
   ^ "]}\n"
+
+// ---------------------------------------------------------------
+// Per-query timing formatters.
+//
+// Two formatters consumed by the per-query [timing] eprintf log
+// line and the per-response Server-Timing HTTP header. Both are
+// public API surfaces (greppable log convention; RFC 8673 header).
+// Migrated from factoidal_http.ml's `timing_log_line` and
+// `timing_response_header` (PR #136 added these alongside the
+// /admin/recent.json renderer).
+//
+// As with render_recent_query_json, the OCaml caller pre-formats
+// the float strings via Printf "%.Nf" (F* lacks an exact match
+// for OCaml's FP rounding semantics); the F* function assembles
+// the output from those strings.
+// ---------------------------------------------------------------
+
+// Format example:
+//   [timing] form=SELECT status=200 rows=42 body=412B parse=0.4ms eval=137000.2ms format=0.0ms total=137000.6ms q="..."
+let render_timing_log_line
+    (form          : string)
+    (status        : int)
+    (rows          : int)
+    (body_bytes    : int)
+    (parse_ms_str  : string)
+    (eval_ms_str   : string)
+    (format_ms_str : string)
+    (total_ms_str  : string)
+    (q_summary     : string)        // already wrapped in quotes if desired
+  : Tot string =
+  "[timing] form=" ^ form
+  ^ " status=" ^ string_of_int status
+  ^ " rows=" ^ string_of_int rows
+  ^ " body=" ^ string_of_int body_bytes ^ "B"
+  ^ " parse=" ^ parse_ms_str ^ "ms"
+  ^ " eval=" ^ eval_ms_str ^ "ms"
+  ^ " format=" ^ format_ms_str ^ "ms"
+  ^ " total=" ^ total_ms_str ^ "ms"
+  ^ " q=" ^ q_summary
+
+// Format example:
+//   Server-Timing: parse;dur=0.4, eval;dur=137000.2, format;dur=0.0, total;dur=137000.6
+let render_timing_response_header
+    (parse_ms_str  : string)
+    (eval_ms_str   : string)
+    (format_ms_str : string)
+    (total_ms_str  : string)
+  : Tot string =
+  "Server-Timing: parse;dur=" ^ parse_ms_str
+  ^ ", eval;dur=" ^ eval_ms_str
+  ^ ", format;dur=" ^ format_ms_str
+  ^ ", total;dur=" ^ total_ms_str
+
+// ---------------------------------------------------------------
+// truncate_for_log: cap a query text at N bytes for logging /
+// ring-buffer storage; append "..." when truncated.
+//
+// Migrated from factoidal_http.ml's `truncate_for_log`. The cap
+// "500" is the caller's choice; this function takes it as a
+// parameter so the policy stays in OCaml even though the
+// truncation rule is in F*.
+// ---------------------------------------------------------------
+
+let truncate_for_log (s : string) (n : nat) : Tot string =
+  let len = FStar.String.length s in
+  if len <= n then s
+  else FStar.String.sub s 0 n ^ "..."

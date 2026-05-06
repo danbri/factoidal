@@ -1095,19 +1095,26 @@ let zero_timing : query_timing = {
 
 (* Format a single-line trace for stderr. Pattern keeps fields fixed-position
    so `grep '\[timing\]'` lines can be column-extracted by awk. *)
+(* Per-query timing formatters — F* owns the output bytes
+   (SPARQL.HTTP.Admin.fst per rule #1). The OCaml side handles the
+   Printf "%.Nf" float-to-string conversion (F* has no equivalent
+   FP formatter), and wraps the query text in OCaml-style quoting
+   for the [timing] log line ("%S" -> Scanf-compatible quoted form). *)
 let timing_log_line (qt : query_timing) (q_summary : string) : string =
-  Printf.sprintf
-    "[timing] form=%s status=%d rows=%d body=%dB parse=%.1fms eval=%.1fms format=%.1fms total=%.1fms q=%S"
+  SPARQL_HTTP_Admin.render_timing_log_line
     qt.qt_form qt.qt_status qt.qt_rows qt.qt_body_bytes
-    qt.qt_parse_ms qt.qt_eval_ms qt.qt_format_ms qt.qt_total_ms
-    q_summary
+    (Printf.sprintf "%.1f" qt.qt_parse_ms)
+    (Printf.sprintf "%.1f" qt.qt_eval_ms)
+    (Printf.sprintf "%.1f" qt.qt_format_ms)
+    (Printf.sprintf "%.1f" qt.qt_total_ms)
+    (Printf.sprintf "%S" q_summary)
 
-(* Build a single response header value from a timing record. Format mirrors
-   Server-Timing (RFC) so curl -i and browser devtools render it nicely. *)
 let timing_response_header (qt : query_timing) : string =
-  Printf.sprintf
-    "Server-Timing: parse;dur=%.1f, eval;dur=%.1f, format;dur=%.1f, total;dur=%.1f"
-    qt.qt_parse_ms qt.qt_eval_ms qt.qt_format_ms qt.qt_total_ms
+  SPARQL_HTTP_Admin.render_timing_response_header
+    (Printf.sprintf "%.1f" qt.qt_parse_ms)
+    (Printf.sprintf "%.1f" qt.qt_eval_ms)
+    (Printf.sprintf "%.1f" qt.qt_format_ms)
+    (Printf.sprintf "%.1f" qt.qt_total_ms)
 
 (* ----- Recent-query ring buffer ------------------------------------------- *)
 
@@ -1121,8 +1128,8 @@ let recent_queries_mu = Mutex.create ()
 let recent_queries : recent_query list ref = ref []
 let recent_queries_cap = 50
 
-let truncate_for_log s n =
-  if String.length s <= n then s else String.sub s 0 n ^ "..."
+let truncate_for_log : string -> int -> string =
+  fun s n -> SPARQL_HTTP_Admin.truncate_for_log s n
 
 let push_recent_query (rq : recent_query) =
   Mutex.lock recent_queries_mu;
