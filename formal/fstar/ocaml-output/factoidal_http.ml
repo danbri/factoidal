@@ -2112,15 +2112,17 @@ let backend_kind_of_cfg (cfg : config) : SPARQL_HTTP_BackendInfo.backend_kind =
     (cfg.dataset_file <> None)
     (cfg.data_cottas_files <> [])
 
+(* Source-mounted-paths display string — F* owns the format decisions
+   (separator, "(none)" placeholder, dataset-before-cottas ordering);
+   OCaml supplies the path basenames. See SPARQL.HTTP.BackendInfo.fst. *)
 let backend_source_string (cfg : config) : string =
-  match cfg.dataset_file, cfg.data_cottas_files with
-  | None, [] -> "(none)"
-  | Some f, [] -> Filename.basename f
-  | None, paths ->
-    String.concat ", " (List.map Filename.basename paths)
-  | Some f, paths ->
-    String.concat ", "
-      (Filename.basename f :: List.map Filename.basename paths)
+  let dataset_bn =
+    match cfg.dataset_file with
+    | Some f -> FStar_Pervasives_Native.Some (Filename.basename f)
+    | None -> FStar_Pervasives_Native.None
+  in
+  let cottas_bns = List.map Filename.basename cfg.data_cottas_files in
+  SPARQL_HTTP_BackendInfo.backend_source_string dataset_bn cottas_bns
 
 (* Build a per-store cottas_summary list for the backend_info record.
    Pure I/O glue: read whatever the F-star-extracted summary getter

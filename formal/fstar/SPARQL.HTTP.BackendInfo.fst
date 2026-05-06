@@ -124,3 +124,28 @@ let backend_kind_of_flags (has_dataset : bool) (has_cottas : bool)
     (if has_cottas then BK_Hybrid else BK_InMem)
   else
     (if has_cottas then BK_CottasOnDisk else BK_Empty)
+
+// ---------------------------------------------------------------
+// backend_source_string: human-readable summary of the data
+// sources mounted by the daemon, for the startup log and the
+// backend-info display.
+//
+// Migrated from factoidal_http.ml's `backend_source_string`. The
+// OCaml side calls `Filename.basename` to reduce a path to its
+// basename (OS-aware glue), then passes the resulting strings to
+// this F* function which encodes the formatting decisions:
+//   - empty config           -> "(none)"
+//   - just dataset file      -> "<basename>"
+//   - just cottas paths      -> "<bn>, <bn>, ..."
+//   - dataset + cottas paths -> "<dataset_bn>, <cottas_bn>, ..."
+// ---------------------------------------------------------------
+
+let backend_source_string
+    (dataset_basename : option string)
+    (cottas_basenames : list string)
+  : Tot string =
+  match dataset_basename, cottas_basenames with
+  | None,   [] -> "(none)"
+  | Some f, [] -> f
+  | None,   paths -> FStar.String.concat ", " paths
+  | Some f, paths -> FStar.String.concat ", " (f :: paths)
