@@ -384,6 +384,133 @@ These are the natural Phase 2.9 / 3.0 targets.
 
 ---
 
+## Status update 2026-05-06
+
+Five days after the 2026-05-01 update; further migrations have landed
+on `claude/main` plus three new ones are on this commit's branch
+queue. The "in flight" PRs from the previous status are all merged.
+
+### Landed on claude/main since 2026-05-01
+
+- **PR #126** (json_escape → SPARQL.JSON.Escape.fst) — was already
+  merged, included for completeness.
+- **PR #127** (status_text + cors_headers + cors_policy
+  → SPARQL.HTTP.Response.fst) — **merged**.
+- **PR #128** (/backend-info.json renderer + aggregation
+  → SPARQL.HTTP.BackendInfo.fst) — **merged**.
+- **PR #129** (parliament_label + render_queries_index
+  → SPARQL.HTTP.QueriesIndex.fst) — **merged**.
+- **claude/http-update-sandbox-to-fstar** (sandbox_op + sandbox_update
+  + expand_user_graph → SPARQL.Update.Sandbox.fst) — **merged**.
+- **PR #136** — per-stage query timing (Server-Timing header +
+  /admin/recent.json + admin landing page). Adds ~280 LoC of *thin
+  glue* to factoidal_http.ml (mutex-protected counters, ring buffer,
+  JSON renderers, admin page). The Phase 2.6 audit-by-process review
+  classified all of it as rule-#11(c)-acceptable per the "threading
+  runtime mutable state through request handlers" allowance. The
+  pre-existing SIGALRM-based `with_query_timeout` is grandfathered
+  pending the F\* `time_budget` / `cancellation_polled` infrastructure.
+  No net-new S-class drift. See `2026-05-06-fstar-drift-recheck.md`.
+- **PR #137** — Roaring bitmap F\* port Phase A under
+  `experimental/roaring-fstar/` (Spec, ArrayContainer, Bits,
+  IODemo, Test, all zero-admit / zero-assume). Doesn't modify any
+  existing F\* or OCaml runtime — purely additive experimental work.
+- **PR #138** — F\*-purity CI gate expanded to also watch
+  `factoidal_http.ml` and `factoidal_explain.ml`, with patterns for
+  re-introduction of migrated functions / SIGALRM regression /
+  planner-shape duplication. Soft-mode preserved. Plus the code-name
+  glossary at `docs/code-name-glossary.md`.
+- **PR #139** — `rdf_format` (the duplicated extension/short-label
+  table from factoidal_http.ml + factoidal_cli.ml) → `RDF.Format.fst`.
+  Net OCaml-side semantic LoC retired: -25.
+
+### In review on this audit's commit
+
+- **PR #140** — `term_short` / `term_to_ntriples` / `term_to_turtle`
+  / `pattern_*_short` / `triple_pattern_short`
+  → `RDF.Pretty.fst`. The two divergent prefix tables (CLI's
+  rdf/rdfs/xsd/owl/foaf/dcterms/dc/schema vs. explain's parliament-
+  corpus rdf/rdfs/xsd/owl/geo/`:`) become F\* `prefix_table`
+  constants; the algorithm becomes a single parameterised core.
+  Net OCaml-side semantic LoC retired: -95.
+- **PR #141** — `parse_cors_value` + `cors_mode_to_string` +
+  `select_vars`. The first two move to `SPARQL.HTTP.Response.fst`
+  (the .fst that already owns `cors_policy` / `cors_headers`); the
+  third learns to call the existing F\* `select_item_vars` instead
+  of reimplementing it inline. Net OCaml-side semantic LoC retired:
+  -21.
+
+### Updated LoC estimate
+
+| File | 2026-04-26 | 2026-05-01 | 2026-05-06 |
+|------|---:|---:|---:|
+| `factoidal_http.ml` (S-class only) | ~350 | ~50 | ~30 |
+| `factoidal_cli.ml` (S-class only) | n/a | n/a | ~10 (new from #140 audit) |
+| `factoidal_explain.ml` (S-class only) | ~580 (#2 in unwind) | ~580 | ~510 (after #140) |
+| `RDF_CottasStore.ml` | ~950 | ~0 | ~0 |
+| `experimental_ocaml_glue/*.sh` | ~2000 | ~250 | ~250 |
+| **Total** | ~3300 | ~300 | ~250 (incl. #140 / #141 once merged) |
+
+The biggest remaining S-class chunk is in `factoidal_explain.ml`'s
+optimiser/explain machinery (`bs_json`, `tpx_json`, the per-pattern
+estimator loop). The pretty-printers were the easy part of that
+file. Phase 2.2 of the unwind addresses the rest; it's the natural
+next migration target after #140 / #141 land.
+
+### Remaining "still S-class, blocked on new F\* infrastructure"
+
+Unchanged from 2026-05-01:
+
+- Query-timeout policy (`with_query_timeout`, factoidal_http.ml).
+  Needs `time_budget : nat` + `assume val cancellation_polled :
+  unit -> bool` discipline (audit §A).
+- Result-row cap enforcement (Tav5 / `--max-rows`). Same dependency
+  on the cancellation discipline.
+- 503-Retry-After dispatch. Same.
+
+These three are the only pieces of `factoidal_http.ml` that the
+audit still flags as S-class without a clear migration path on
+existing infrastructure.
+
+### Verification claim
+
+Once #140 / #141 land, the relaxed verification language from the
+2026-05-01 update is approximately accurate without further
+qualification beyond the standard rule-#11 caveat. The HTTP layer's
+remaining "S-class" surface is ~30 LoC of timeout/cap policy that's
+*architecturally* blocked rather than *engineering* blocked.
+
+**The CLAUDE.md rule-#11 FREEZE language can be lifted** for the
+migrate-to-F\* direction — the audit is substantively complete; the
+only remaining work is migrations enabled by new F\* infrastructure
+(timeout/cap/retry-after) and the planner duplication in
+`factoidal_explain.ml`. The agent-prompt-writing discipline (don't
+encourage "Shape A / Shape B" justifications for OCaml-side
+semantic logic) should remain — that was the original cause of the
+drift, and CI alone (omega3 gate) doesn't catch every shape.
+
+### Process signal: PR #135 (in-memory COTTAS Phase A.5 re-scope)
+
+Worth flagging as a **positive** signal of the audit-by-process
+working as intended. The dispatch prompt's plan would have required
+~6 OCaml-side patches across `Parquet_Footer.ml` + `RDF_CottasStore.ml`
+that "qualify as semantic glue rather than pure I/O routing."
+The agent recognised this and reported back recommending a re-scope
+to F\*-first (a new `GB_InMem` graph_backend variant) rather than
+landing patches. Doc at
+`docs/designissues/in-memory-cottas-phase-a5-block.md`.
+
+This is the sort of upstream gating the audit was meant to enable:
+the boundary classifications make the "is this glue or semantics?"
+question answerable before code lands, not after.
+
+### Next recheck
+
+After #140 / #141 / the timeout F\* infrastructure design lands; or
+in two weeks; whichever first.
+
+---
+
 ## Migration order (consolidated)
 
 Reproduces the unwind plan with this audit's classifications:
