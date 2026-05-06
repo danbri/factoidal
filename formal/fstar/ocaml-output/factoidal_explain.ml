@@ -473,20 +473,10 @@ let rec index_of_tp (tp : A.triple_pattern) (tps : (string * A.triple_pattern) l
          && A.pattern_term_eq t.A.tp_o tp.A.tp_o then Some lbl
     else index_of_tp tp rest
 
-let json_escape s =
-  let buf = Buffer.create (String.length s + 8) in
-  String.iter (fun c ->
-    match c with
-    | '"'  -> Buffer.add_string buf "\\\""
-    | '\\' -> Buffer.add_string buf "\\\\"
-    | '\n' -> Buffer.add_string buf "\\n"
-    | '\r' -> Buffer.add_string buf "\\r"
-    | '\t' -> Buffer.add_string buf "\\t"
-    | c when Char.code c < 0x20 ->
-      Buffer.add_string buf (Printf.sprintf "\\u%04x" (Char.code c))
-    | c -> Buffer.add_char buf c
-  ) s;
-  Buffer.contents buf
+(* json_escape lives in F* per rule #1 (PR #126 migrated it to
+   SPARQL.JSON.Escape). The local copy here was a duplicate; this
+   alias keeps the local symbol for downstream callers. *)
+let json_escape : string -> string = SPARQL_JSON_Escape.json_escape
 
 let bs_json = function
   | BS_Var v -> Printf.sprintf "{\"kind\":\"var\",\"name\":\"%s\"}" (json_escape v)
