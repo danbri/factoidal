@@ -20,19 +20,26 @@ container`. Each container holds the low-16 values for one chunk and
 is **one of three** types, chosen to minimise space for that chunk's
 density:
 
-| Container | Layout                        | Best when            | Size                     |
+| Container | Layout                        | Best when            | Serialized size          |
 |-----------|-------------------------------|----------------------|--------------------------|
-| Array     | sorted `u16[]`, distinct      | sparse (≤ 4096 vals) | `2 * card` bytes         |
+| Array     | sorted `u16[]`, distinct      | sparse (≤ 4096 vals) | `2 + 2c` bytes (card field + data) |
 | Bitmap    | `u64[1024]` (2^16 bits)       | medium / dense       | always 8192 bytes        |
-| Run       | sorted `(start: u16, len-1: u16)` pairs, non-overlapping, non-adjacent | long compressible runs | `4 * num_runs + 4` bytes |
+| Run       | sorted `(start: u16, len-1: u16)` pairs, non-overlapping, non-adjacent | long compressible runs | `2 + 4r` bytes (run-count + pairs) |
 
-The structure auto-converts: insert/remove flips an array to a bitmap
-once cardinality crosses 4096, a `runOptimize()` pass swaps to a run
-container when `4 * num_runs + 4 < min(2 * card, 8192)`. Per-chunk
-operations (AND/OR/XOR/ANDNOT) have separate hand-written routines for
-each pair of container types — nine combinations including
-`(array, array)`, `(array, bitmap)`, `(bitmap, bitmap)`,
-`(run, run)`, etc. — so the algebra is closed and predictable.
+The structure auto-converts. Insert/remove flips an array to a bitmap
+once cardinality crosses 4096; remove flips bitmap → array when
+cardinality drops to ≤ 4096. A `runOptimize()` pass swaps to a run
+container under two precise rules from §4 of the paper:
+
+- if cardinality > 4096: only allowed when `r ≤ ⌈(8192 − 2)/4⌉ = 2047`;
+- if cardinality ≤ 4096: only allowed when `r < c/2`.
+
+Per-chunk operations (AND/OR/XOR/ANDNOT) have separate hand-written
+routines for each pair of container types — six interesting cases
+since the algebra is symmetric: `(array, array)`, `(array, bitmap)`,
+`(bitmap, bitmap)`, `(run, run)`, `(run, array)`, `(run, bitmap)`.
+Each one predicts the output container type up front to avoid an
+expensive post-hoc conversion.
 
 **Paper:** Lemire, Ssi-Yan-Kai, Kaser. *Consistently faster and
 smaller compressed bitmaps with Roaring.* arXiv:1603.06549. (Earlier:
@@ -63,6 +70,9 @@ smaller compressed bitmaps with Roaring.* arXiv:1603.06549. (Earlier:
 3. **Run container.** Sorted array of `(start, length-1)` `u16` pairs,
    each pair encoding a maximal run `[start, start + length - 1]`.
    Runs are non-overlapping and non-adjacent (i.e. canonical).
+   **Cardinality is *not* cached at runtime** — only computed on the
+   fly or written into the serialized form. The paper argues this is
+   fine because run containers are expected to have few runs.
 
 ### 2.3 Conversion rules
 
@@ -75,25 +85,70 @@ smaller compressed bitmaps with Roaring.* arXiv:1603.06549. (Earlier:
 The 4096 threshold is the cross-over where a sorted `u16[]` (2 bytes
 each) costs the same as a fixed 8 KiB bitmap.
 
-### 2.4 Set algebra — the nine cases
+### 2.4 Set algebra — the six cases
 
-For each of AND, OR, XOR, ANDNOT and each ordered pair of container
-types, the paper gives a dedicated routine:
+For each of AND, OR, XOR, ANDNOT and each unordered pair of container
+types, the paper gives a dedicated routine. Output type is *predicted
+up front*; if the prediction is wrong the result is converted at the
+end. Key choices from §5:
 
-- `(array, array)` → galloping merge or simple two-pointer; output
-  array (promoted to bitmap if it would exceed 4096).
-- `(array, bitmap)` → for each value in array, test/flip in bitmap
-  copy. `O(card_array)`.
-- `(bitmap, bitmap)` → 1024-word loop with the corresponding bitwise
-  op; recompute cardinality via popcount; demote to array if result
-  cardinality ≤ 4096.
-- `(run, run)` → merge of two sorted run lists; each step extends or
-  emits a run. Output may be promoted/demoted.
-- `(run, array)` and `(run, bitmap)` → mostly bitmap-style (materialise
-  the run as bit operations) with cardinality tracking.
+- `(array, array)` AND: simple two-pointer merge if cardinalities are
+  similar (`c1/64 < c2 < 64·c1`), galloping intersection otherwise.
+  Output is always an array.
+- `(array, array)` OR: if `c1 + c2 ≤ 4096`, sorted merge into a new
+  array; else materialise into a bitmap, then demote to array if
+  popcount turns out to be ≤ 4096.
+- `(bitmap, bitmap)` AND: 1024-word loop computing pairwise AND, with
+  popcount accumulated *first* to decide if the output is a bitmap or
+  an array (exact-size allocation).
+- `(bitmap, bitmap)` OR: 1024-word loop, popcount alongside.
+- `(array, bitmap)` AND: scan the array, test each value against the
+  bitmap; output is an array sized to the input array.
+- `(array, bitmap)` OR: clone the bitmap, set the array's bits.
+- `(run, run)` AND: walk both run lists, emit overlap. Convert at the
+  end to bitmap (if too many runs) or array (if too few values).
+- `(run, run)` OR: walk both, append to output run, extending the
+  previous run when ranges touch. No conversion to array possible — by
+  construction the average run length only grows.
+- `(run, array)` AND: scan the array, advance the run pointer; output
+  is always an array.
+- `(run, array)` OR: treat array as a degenerate run container (all
+  length-1 runs), run the (run, run) OR algorithm, then check whether
+  the result wants demotion to bitmap *or* array.
+- `(run, bitmap)` AND: if `card_run ≤ 4096`, materialise array by
+  iterating run values and testing the bitmap; else clone the bitmap
+  and AND-NOT-out everything outside the runs (Algorithm 3).
+- `(run, bitmap)` OR: clone the bitmap, OR the run ranges in
+  (Algorithm 3).
+
+**Special-case optimisation.** If a run container holds the single run
+`[0, 2^16)` (i.e. the whole chunk is full), every union with it is
+just the other operand. Cheap to detect (one comparison), and it
+catches very common cross-container long-run cases cheaply.
 
 The paper proves the algebra closes correctly under the canonicalisation
 rule (always choose the smallest representation for the result).
+
+### 2.4a The three named algorithms (these are the load-bearing F* port targets)
+
+The paper formalises three by-name algorithms; everything else in §5
+is described prose-style. These three are the natural unit of F\*
+formalisation:
+
+- **Algorithm 1: count runs in a bitmap container.** Per word `Cᵢ`,
+  compute `bitCount((Cᵢ << 1) ANDNOT Cᵢ)` and add a cross-word
+  correction `(Cᵢ >> 63) ANDNOT Cᵢ₊₁`. The paper notes that you can
+  *short-circuit* once a lower bound exceeds 2047 — beyond that
+  threshold the answer "don't convert" is already determined.
+- **Algorithm 2: extract runs from a bitmap container.** Iterates
+  using `tzcnt` (least-significant 1-bit) to find run starts, then
+  `tzcnt` of the negated word to find run ends. Touches each word a
+  constant number of times.
+- **Algorithm 3: set/clear a range `[i, j)` of bits in a bitmap.**
+  Bit-twiddly mask construction `(Z << (i mod 64))` and
+  `(Z >> ((-(j mod 64)) mod 64))`, then a fast inner loop over the
+  fully-covered words. Used for both `OR` (set range) and `ANDNOT`
+  (clear range), parameterised by the operator.
 
 ### 2.5 Auxiliary operations
 
@@ -107,25 +162,118 @@ rule (always choose the smallest representation for the result).
 
 ### 2.6 Portable serialization (the "spec")
 
-The cross-language portable format begins with a 32-bit cookie:
+The paper §4 describes the on-the-wire layout (the cookies and exact
+byte offsets are pinned down by the separate
+`RoaringFormatSpec` repo, not the paper itself). Two variants:
 
-- `0x3BF0` (with a 16-bit `size - 1` field following) means the file
-  contains run containers somewhere; the next bytes include a bitset
-  saying which containers are run-encoded.
-- `0x3BC0` means no run containers in the file; older readers can use
-  this header.
+- **No-run variant** (`0x3BC0` cookie): `(key, cardinality - 1)`
+  pairs interleaved at the directory level — cardinalities stored as
+  `u16` for compactness — then payloads. The 16-bit cardinality field
+  works because no container exceeds 2^16 values.
+- **With-run variant** (`0x3BF0` cookie): same, plus an
+  uncompressed bit-per-container "is-this-a-run-container?" bitmap
+  immediately after the directory, before the payloads.
 
-Then a directory of `(key, cardinality - 1)` pairs, then offsets, then
-the container payloads (sorted `u16[]`, raw `u64[1024]`, or
-`u16 num_runs` followed by `num_runs * 4` bytes of run pairs).
+Container payloads:
+- Array: raw `u16[c]` (cardinality is in the directory).
+- Bitmap: raw `u64[1024]`.
+- Run: `u16 num_runs` then `num_runs × (u16 start, u16 length-1)` pairs.
+
+For run containers, *cardinality is computed and written to the
+directory at serialize time*, so memory-mapped readers don't pay the
+recompute cost.
+
+### 2.6a Lazy union (k-ary aggregation)
+
+The k-ary `union` of many bitmaps is a hot path. Recomputing
+cardinality after every pairwise union wastes ~30% (Chambi et al.,
+confirmed in this paper). The "lazy union" optimisation:
+
+- Skip cardinality maintenance during pairwise unions; mark the
+  affected bitmap container's cardinality field with the sentinel `-1`
+  ("unknown").
+- For `(run, array)` unions inside the chain, always emit a run
+  container (or bitmap if too many runs) — even when an array would
+  be smaller — to avoid intermediate type churn.
+- After the whole chain finishes, run a single "repair" pass: popcount
+  any bitmap whose cardinality is `-1`, and demote any over-budget
+  run containers.
+
+This pattern (work-with-sloppy-invariant, repair-at-end) is *also* a
+nice F\* formalisation target: the lazy form is observationally
+equivalent to the strict form, with the equivalence lemma deferred
+until after the repair.
+
+### 2.6b Naive vs heap-based k-ary union
+
+For `N` bitmaps of size `B`, naive 2-by-2 union has time `O(B·N²)`
+(when results grow) and memory `O(B)`. Heap-based pulls the two
+smallest off a min-heap each round: time `O(B·N·log N)`, memory
+`O(B·N)`. The paper finds *neither dominates* — naive wins on dense /
+unsorted data because pairwise unions become bitmap-vs-bitmap and stay
+in-place; heap wins on sparse-sorted data because intermediates remain
+small. Default in the reference implementation is naive.
+
+### 2.6c Array-container growth heuristic (capacity vs. cardinality)
+
+Worth mentioning because it's the kind of detail where a verified
+spec usually papers over the engineering choice. The paper actually
+specifies it:
+
+- < 64 entries: double on growth.
+- 64–1067 entries: ×3/2 on growth.
+- ≥ 1067 entries: ×5/4 on growth.
+- Cap at 4096; if grown above 3840, allocate the full 4096 immediately.
+
+This trades a small amount of speed for ~13% average overhead instead
+of the ~50% you get from naive doubling. For F\* purposes this is
+internal-implementation detail (the spec says nothing about capacity);
+worth knowing because the behaviour shows up in benchmarks.
 
 ### 2.7 Performance results
 
-The paper's headline: Roaring is consistently faster than WAH, Concise,
-EWAH on real-world workloads (Wikipedia revision sets, census,
-weather), often by **one or two orders of magnitude** on intersections,
-while compressing as well or better. Random access via `contains` is
-near-constant — RLE-only schemes have to scan from the start.
+Datasets used: CensusInc, Census1881, Weather, Wikileaks (each in
+original and lex-sorted variants — sorting matters a lot for RLE
+formats).
+
+| Test (best-of-table) | Roaring+Run vs Concise/WAH | Roaring+Run vs EWAH |
+|---|---|---|
+| Random access (in-heap)        | up to ~870× faster | up to ~360× faster |
+| Successive intersections       | 3.5× to ~460×      | 1.4× to ~150×      |
+| Successive unions              | 1.7× to ~210×      | 1.0× to ~43×       |
+| K-ary union (naïve)            | 2.7× to ~210×      | 0.88× to ~13× (one EWAH win) |
+| Memory-mapped intersection     | 5.3× to ~140×      | 1.3× to ~79×       |
+
+Compression is near-best for both sorted and unsorted data — the only
+case in the paper where Concise beats Roaring+Run on size is
+CensusInc-sorted (by 8%), and Roaring+Run is still 6–8× faster there.
+On Census1881 (sparse, unsorted) Roaring+Run uses ~60% the space of
+Concise *and* is dozens to hundreds of times faster.
+
+Container-mix observations from the appendix (worth noting for our
+RDF use case): on the very sparse `Wikileaks` dataset, **100% of
+Roaring containers are array containers** (no bitmaps at all). After
+runOptimize, **89.5% become run containers**, which compresses 3×
+better. This is the kind of profile RDF posting lists for rare
+predicates will look like.
+
+### 2.8 Future directions explicitly called out
+
+The conclusion section flags what the authors expect to add (most of
+which has happened by 2026):
+
+- Copy-on-write containers during unions.
+- Postponing/omitting cardinality calculation more aggressively.
+- Run-compression of intermediate results.
+- Dynamically-sized bitmap containers (only cover the used range).
+- **Lucene's "negated array container"** as a fourth container type
+  (an array of *absent* low-16 values, useful for near-full chunks).
+- Container-level parallelism, SIMD (CRoaring 2.x has done this on
+  x86/AVX-512 and ARM Neon), GPU/Xeon Phi adaptations.
+
+For our F\* port the negated-array container is worth flagging: it's
+an opt-in compatibility issue — files written by Lucene with negated
+arrays would need an extra container variant in our spec.
 
 ---
 
