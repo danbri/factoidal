@@ -185,6 +185,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              SPARQL.HTTP.Response.fst \
              SPARQL.HTTP.BackendInfo.fst \
              SPARQL.HTTP.QueriesIndex.fst \
+             SPARQL.HTTP.StaticFiles.fst \
              Parser.Ballyhoo.fst Parser.BallyhooBloom.fst \
              Parser.BallyhooHDT.fst Parser.BallyhooHDTQ.fst \
              Parser.BallyhooCOTTAS.fst \
@@ -273,6 +274,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     SPARQL_HTTP_Response.ml \
     SPARQL_HTTP_BackendInfo.ml \
     SPARQL_HTTP_QueriesIndex.ml \
+    SPARQL_HTTP_StaticFiles.ml \
     Parser_Ballyhoo.ml Parser_BallyhooBloom.ml \
     Parser_BallyhooHDT.ml Parser_BallyhooHDTQ.ml Parser_BallyhooCOTTAS.ml \
     RDF_CottasStore_ColumnSeq.ml \
@@ -566,6 +568,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     SPARQL_HTTP_Response.ml
     SPARQL_HTTP_BackendInfo.ml
     SPARQL_HTTP_QueriesIndex.ml
+    SPARQL_HTTP_StaticFiles.ml
     Parser_Ballyhoo.ml Parser_BallyhooBloom.ml
     Parser_BallyhooHDT.ml Parser_BallyhooHDTQ.ml
     Parser_BallyhooCOTTAS.ml

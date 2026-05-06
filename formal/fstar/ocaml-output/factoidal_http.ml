@@ -1777,38 +1777,14 @@ let resolve_web_demo_dir (demo : string option) : string option =
 
 (* Cheap content-type sniff by filename suffix. We deliberately keep the
    table small — the demos only ship HTML/JS/CSS/JSON/SVG/PNG today. *)
-let content_type_for_path (path : string) : string =
-  let path = String.lowercase_ascii path in
-  let ends_with suf =
-    let lp = String.length path and ls = String.length suf in
-    lp >= ls && String.sub path (lp - ls) ls = suf
-  in
-  if ends_with ".html" || ends_with ".htm"
-    then "text/html; charset=utf-8"
-  else if ends_with ".css" then "text/css; charset=utf-8"
-  else if ends_with ".js" || ends_with ".mjs"
-    then "application/javascript; charset=utf-8"
-  else if ends_with ".json" then "application/json; charset=utf-8"
-  else if ends_with ".svg" then "image/svg+xml; charset=utf-8"
-  else if ends_with ".png" then "image/png"
-  else if ends_with ".jpg" || ends_with ".jpeg" then "image/jpeg"
-  else if ends_with ".ico" then "image/x-icon"
-  else if ends_with ".txt" || ends_with ".md" then "text/plain; charset=utf-8"
-  else if ends_with ".ttl" then "text/turtle; charset=utf-8"
-  else if ends_with ".nt"  then "application/n-triples; charset=utf-8"
-  else if ends_with ".nq"  then "application/n-quads; charset=utf-8"
-  else "application/octet-stream"
+(* Static-file content-type mapping and path-traversal guard live in
+   F* per rule #1 (formal/fstar/SPARQL.HTTP.StaticFiles.fst); the
+   OCaml side is the read/stat syscalls. *)
+let content_type_for_path : string -> string =
+  SPARQL_HTTP_StaticFiles.content_type_for_path
 
-(* Refuse traversal: the URL path must not contain "..". This is a
-   coarse but adequate guard since we only ever concatenate it onto
-   the resolved demo root. *)
-let path_has_dotdot (p : string) : bool =
-  let n = String.length p in
-  let rec loop i =
-    if i + 2 > n then false
-    else if String.sub p i 2 = ".." then true
-    else loop (i + 1)
-  in loop 0
+let path_has_dotdot : string -> bool =
+  SPARQL_HTTP_StaticFiles.path_has_dotdot
 
 (* Strip a leading slash from URL path. *)
 let strip_leading_slash s =
