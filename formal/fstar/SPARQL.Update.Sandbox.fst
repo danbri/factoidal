@@ -75,6 +75,50 @@ val expand_user_graph : template:string -> authid:string -> string
 let expand_user_graph template authid =
   string_replace_all "{authid}" authid template
 
+(* Find the first '{' at or after position [pos] in [s]. Fuel-bounded
+   linear scan; returns None if not found within fuel. *)
+let rec find_open_brace
+    (s : string)
+    (pos : nat)
+    (fuel : nat)
+  : Tot (option nat) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let len = FStar.String.length s in
+    if pos >= len then None
+    else
+      let c : nat = FStar.Char.int_of_char (FStar.String.index s pos) in
+      if c = 0x7B then Some pos  (* '{' *)
+      else find_open_brace s (pos + 1) (fuel - 1)
+
+(* Return the fixed prefix of an auth-template up to (but not including)
+   "{authid}". If the template contains no "{authid}" placeholder, return
+   the whole template. Used by the HTTP server to detect which named
+   graphs in the dataset belong to the user-writable sandbox. *)
+val template_prefix : template:string -> string
+let template_prefix template =
+  let len = FStar.String.length template in
+  let key = "{authid}" in
+  let klen = FStar.String.length key in
+  let fuel : nat = len + 1 in
+  match find_open_brace template 0 fuel with
+  | None -> template
+  | Some i ->
+    if i + klen <= len && FStar.String.sub template i klen = key
+    then FStar.String.sub template 0 i
+    else template
+
+(* Smoke tests. *)
+let _test_template_prefix_authid =
+  template_prefix "https://example.org/users/{authid}/graph" = "https://example.org/users/"
+
+let _test_template_prefix_no_placeholder =
+  template_prefix "https://example.org/fixed-graph" = "https://example.org/fixed-graph"
+
+let _test_template_prefix_other_brace =
+  // A '{' that is NOT followed by 'authid}' should be passed through.
+  template_prefix "https://example.org/{x}/graph" = "https://example.org/{x}/graph"
+
 (* ========================================================================== *)
 (* GGP / graph_ref checks                                                     *)
 (* ========================================================================== *)
