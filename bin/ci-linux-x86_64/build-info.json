@@ -1,17 +1,17 @@
 {
   "platform": "linux-x86_64",
   "runner_os": "Linux",
-  "timestamp_utc": "2026-05-06T21:24:24Z",
-  "source_sha": "daf156e8d58837db13ac8267cfb400c99f985bf0",
+  "timestamp_utc": "2026-05-06T22:06:35Z",
+  "source_sha": "5a2531e12550486bff94ca365e557306268ed978",
   "fstar_version": "F* 2025.12.15",
   "ocaml_version": "The OCaml toplevel, version 4.14.1",
   "opam_switch": "fstar",
   "binaries": {
-    "cottas_ondisk_smoketest": { "sha256": "7fcee152c9195f7943cc8a0a51cb0ea8d92085b90a5c32f3a372069ac5f6e50d", "size": 9762104 },
-    "factoidal": { "sha256": "c6062a6d7d9a0ac31ca9b5f05156869fbb88d7f62ab2f3b31cac0c35a92246f1", "size": 10939464 },
-    "factoidal-http": { "sha256": "5fd16110b3dfb0f13256d5f001295cebb3da6d237db0df98ba4385e725dff0dc", "size": 10726504 },
-    "owl_runner": { "sha256": "ba163d5f3e9649c78ae790d251c93af97789383f257530e23f3aa36728b0fa66", "size": 9791000 },
-    "rdfc10_runner": { "sha256": "3e27ba0cecbcfd396d3e4f377deb3f72788f51afd8dd0b09a6a6985d0a9f657c", "size": 9791160 },
-    "w3c_runner": { "sha256": "9795a6a496ac492c8af89c112914e6b5a5ef295cc7bfc7d599dac4b7780b6050", "size": 9946928 }
+    "cottas_ondisk_smoketest": { "sha256": "c58fb21fc6a0096cf72638b668f3fc033cf1f7074481ff01f8229264e4c601e4", "size": 9768960 },
+    "factoidal": { "sha256": "9a43fa0e88c1dddb4a3d71e6eeb4b356a53044fed713fbd69bd405b089901158", "size": 10942176 },
+    "factoidal-http": { "sha256": "cfca43887f32a17bda241fbfe2e313ffb4ffd6ff8d0baa4a9081afe3bf4c3858", "size": 10730064 },
+    "owl_runner": { "sha256": "8cf8bcc80c712721cd3b6fba7c76a63ffdb836185ae25639bf791085aceb711d", "size": 9797856 },
+    "rdfc10_runner": { "sha256": "155134f35ec874cf8eadd167c39a549c6da40b6396934103b7943486a8a16c46", "size": 9798016 },
+    "w3c_runner": { "sha256": "9f94147d1afb071cd4d30258d8ea88eb61737c224dc92d7a3aa6332f46d1c3ae", "size": 9949688 }
   }
 }
