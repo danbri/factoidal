@@ -407,6 +407,10 @@ load into every session's context. They're now separate:
 - [`docs/claude-rules/current-state.md`](docs/claude-rules/current-state.md)
   — Current State (Honest Assessment): F\* inventory, `assume val` table,
   verification gaps, W3C suite scores, phased plan.
+- [`docs/code-name-glossary.md`](docs/code-name-glossary.md) — when you see
+  `Yod6`, `Tet3`, `Lamed3`, `Mem5`, `Pe5`, `Vav3`, `Bet7`, `Tav5`, `Heth3`,
+  etc. in a doc / commit / trace tag and don't know what it means, look
+  it up here. **No new short-codes** — name new things descriptively.
 
 See also [`docs/claude-rules/README.md`](docs/claude-rules/README.md) for
 an index and for the relationship between this file and the expanded docs.
