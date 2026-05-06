@@ -753,54 +753,24 @@ exception Query_timeout
 let max_header_bytes = 65536
 let max_body_bytes   = 10 * 1024 * 1024
 
-(* Scan a buffer for the HTTP header terminator "\r\n\r\n", return the
-   absolute index of its first byte, or -1 if absent. *)
+(* Streaming-buffer wrappers. The byte-level decisions live in
+   SPARQL.HTTP.fst (find_header_terminator_pos, ci_substring_index,
+   extract_content_length); these shims only convert Buffer.t / int
+   at the boundary. *)
 let find_header_terminator (b : Buffer.t) : int =
-  let s = Buffer.contents b in
-  let n = String.length s in
-  let rec loop i =
-    if i + 3 >= n then -1
-    else if s.[i] = '\r' && s.[i+1] = '\n' && s.[i+2] = '\r' && s.[i+3] = '\n'
-    then i
-    else loop (i + 1)
-  in
-  loop 0
+  match SPARQL_HTTP.find_header_terminator_pos (Buffer.contents b) with
+  | Some pos -> Z.to_int pos
+  | None -> -1
 
-(* Case-insensitive substring search (s contains t). *)
 let ci_find (s : string) (t : string) : int =
-  let sn = String.length s and tn = String.length t in
-  if tn = 0 || tn > sn then -1
-  else
-    let lc c = if c >= 'A' && c <= 'Z' then Char.chr (Char.code c + 32) else c in
-    let rec matches_at i j =
-      if j >= tn then true
-      else if lc s.[i + j] <> lc t.[j] then false
-      else matches_at i (j + 1)
-    in
-    let rec loop i =
-      if i + tn > sn then -1
-      else if matches_at i 0 then i
-      else loop (i + 1)
-    in
-    loop 0
+  match SPARQL_HTTP.ci_substring_index s t with
+  | Some pos -> Z.to_int pos
+  | None -> -1
 
-(* Parse Content-Length from the header region [buf] (before the CRLFCRLF
-   that ends at [term]). Returns Some n on success, None if absent, or
-   raises if the value is malformed. *)
 let extract_content_length (s : string) (term : int) : int option =
-  let head = String.sub s 0 term in
-  let key = "content-length:" in
-  let i = ci_find head key in
-  if i < 0 then None
-  else
-    let line_end =
-      match String.index_from_opt head (i + String.length key) '\r' with
-      | Some p -> p
-      | None -> String.length head
-    in
-    let start = i + String.length key in
-    let v = String.trim (String.sub head start (line_end - start)) in
-    (try Some (int_of_string v) with _ -> None)
+  match SPARQL_HTTP.extract_content_length s (Z.of_int term) with
+  | Some n -> Some (Z.to_int n)
+  | None -> None
 
 (* Read bytes from [ic] until the HTTP header terminator is found or the
    header cap is exceeded. Then, if Content-Length is present and valid,
