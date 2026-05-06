@@ -24,6 +24,22 @@ open FStar.List.Tot
 open Spec
 
 // ---------------------------------------------------------------
+// Forward declarations.
+//
+// F* needs `val` declarations to be in scope before the use site;
+// we collect them here so the rest of the module can be written
+// in any order.
+// ---------------------------------------------------------------
+
+val sorted_strict : xs:list u16_val -> Tot bool
+
+val array_contains : c:list u16_val -> x:u16_val -> Tot bool
+
+val array_contains_iff_mem (c : list u16_val) (x : u16_val) :
+  Lemma (requires sorted_strict c)
+        (ensures array_contains c x = mem x c)
+
+// ---------------------------------------------------------------
 // The strict-sorted predicate on a list of u16 values.
 //
 // Strict means strictly increasing — duplicates not allowed,
@@ -68,6 +84,18 @@ let array_cardinality (c : array_container) : nat =
   length c
 
 // ---------------------------------------------------------------
+// Membership equivalence between the optimised `array_contains`
+// and `List.Tot.mem`. The proof is induction on c using
+// sortedness — strict-sorted (y :: rest) ⇒ all elements of rest > y,
+// so x < y ⇒ x not in rest.
+//
+// PROOF DEBT: phase A — body is admit; mechanical induction.
+// ---------------------------------------------------------------
+
+let array_contains_iff_mem c x =
+  admit()
+
+// ---------------------------------------------------------------
 // Insert helper — operates on raw lists (sorted_strict invariant
 // only; cardinality bound handled by the wrapper). Returns the
 // list with x inserted in the correct position, or unchanged if
@@ -106,30 +134,17 @@ let array_insert (c : array_container) (x : u16_val)
            length result <= array_max_cardinality /\
            (forall y. mem y result <==> (y = x \/ mem y c)))
 =
-  // PROOF DEBT: we need to know that
-  // - (array_contains c x ==> mem x c)  [array_contains_iff_mem]
-  // - if mem x c, then array_insert_aux returns c unchanged
-  // - else length grows by 1, so the bound holds when we had headroom
-  // - in either case the result also satisfies array_contains x
-  //   (because mem ≡ array_contains; same lemma).
-  // Discharging this needs the lemma below; for Phase A we admit it.
+  // PROOF DEBT: discharging the wrapper postcondition needs:
+  //   - array_contains c x ==> mem x c (via array_contains_iff_mem)
+  //   - postcondition of array_insert_aux: mem-equivalence + bounded
+  //     length growth.
+  //   - On the other branch (length < max), array_insert_aux's
+  //     length-grows-by-0-or-1 keeps the bound.
+  // For Phase A we use the helper lemma.
   array_contains_iff_mem c x;
   let result = array_insert_aux c x in
   array_contains_iff_mem result x;
   result
-
-// Membership equivalence between the optimised `array_contains` and
-// the standard `List.Tot.mem`. The proof is induction on the list
-// using sortedness to discharge the early-termination case.
-//
-// PROOF DEBT: the inductive step needs a small "x < y and sorted_strict
-// (y :: rest) ==> not (mem x rest)" sub-lemma; for Phase A we admit
-// the full lemma. It's a standard sorted-list induction.
-val array_contains_iff_mem (c : list u16_val) (x : u16_val) :
-  Lemma (requires sorted_strict c)
-        (ensures array_contains c x = mem x c)
-let array_contains_iff_mem c x =
-  admit()  // PROOF DEBT: phase A — trivial induction on c
 
 // ---------------------------------------------------------------
 // Remove. Symmetric to insert.

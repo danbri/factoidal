@@ -21,6 +21,7 @@ module Spec
 
 open FStar.Mul
 open FStar.List.Tot
+open FStar.Math.Lemmas
 
 // ---------------------------------------------------------------
 // Bounds.
@@ -94,20 +95,25 @@ let low16 (x : u32_val) : u16_val =
   x % pow16
 
 // Recombination — given high and low 16, produce the original u32.
+//
+// Bound: h < pow16 and l < pow16 imply h*pow16 + l < pow16*pow16 = pow32.
+// We coerce h to (h+1) to get strict-multiplicative bound:
+//   h <= pow16 - 1, so h*pow16 <= (pow16-1)*pow16 = pow32 - pow16
+//   then h*pow16 + l <= pow32 - pow16 + pow16 - 1 = pow32 - 1
+// F* with FStar.Mul + nonlinear arith from z3 should discharge this
+// once the lemma below sets up the right multiplicative inequality.
 let combine16 (h : u16_val) (l : u16_val) : u32_val =
   let result = h * pow16 + l in
-  // The bound result < pow32 is what we need to prove. Because
-  // h < pow16 and l < pow16, we have h * pow16 + l < pow16*pow16
-  // = pow32. Multiplication of nats stays within nats; F* needs
-  // a hint to discharge the multiplicative bound.
-  Math.Lemmas.lemma_mult_lt_right pow16 h pow16;
+  // Hint: h+1 <= pow16, so (h+1)*pow16 <= pow16*pow16 = pow32, hence
+  // h*pow16 + pow16 <= pow32, hence h*pow16 + l < pow32 (since l < pow16).
+  lemma_mult_le_right pow16 (h + 1) pow16;
   result
 
 // Round-trip: split-then-combine is the identity.
 val combine_split (x : u32_val) :
   Lemma (combine16 (high16 x) (low16 x) = x)
 let combine_split x =
-  Math.Lemmas.lemma_div_mod x pow16
+  lemma_div_mod x pow16
 
 // And the other way: combining valid halves and then splitting
 // recovers them.
@@ -115,13 +121,19 @@ val split_combine_high (h : u16_val) (l : u16_val) :
   Lemma (high16 (combine16 h l) = h)
 let split_combine_high h l =
   // (h * pow16 + l) / pow16 = h, since 0 <= l < pow16.
-  Math.Lemmas.lemma_div_plus l h pow16
+  // FStar.Math.Lemmas.lemma_div_plus has signature
+  //   lemma_div_plus : a:int -> b:int -> n:pos -> Lemma ((a + b * n) / n = a / n + b)
+  // We want (h * pow16 + l) / pow16 = h, i.e. (l + h * pow16) / pow16 = l / pow16 + h
+  // and l / pow16 = 0 since l < pow16.
+  lemma_div_plus l h pow16;
+  small_div l pow16
 
 val split_combine_low (h : u16_val) (l : u16_val) :
   Lemma (low16 (combine16 h l) = l)
 let split_combine_low h l =
   // (h * pow16 + l) % pow16 = l, since 0 <= l < pow16.
-  Math.Lemmas.lemma_mod_plus l h pow16
+  lemma_mod_plus l h pow16;
+  small_mod l pow16
 
 // ---------------------------------------------------------------
 // Cardinality of a finite set, defined relative to a bounded
