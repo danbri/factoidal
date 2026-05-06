@@ -1184,25 +1184,27 @@ let json_string_escape s =
   ) s;
   Buffer.contents buf
 
+(* /admin/recent.json renderer — F* owns the JSON template
+   (SPARQL.HTTP.Admin.fst per rule #1). The OCaml side keeps the
+   ring buffer / counter Mutex protection (runtime mutable state =
+   thin glue per rule #11(c)) and pre-formats the per-call float
+   strings (OCaml Printf "%.Nf" semantics; F* has no equivalent
+   formatter). *)
 let recent_query_to_json (rq : recent_query) : string =
-  Printf.sprintf
-    "{\"started_at\":%.3f,\"query\":\"%s\",\"form\":\"%s\",\"status\":%d,\
-     \"rows\":%d,\"body_bytes\":%d,\"parse_ms\":%.2f,\"eval_ms\":%.2f,\
-     \"format_ms\":%.2f,\"total_ms\":%.2f}"
-    rq.rq_started_at
-    (json_string_escape rq.rq_query_text)
+  SPARQL_HTTP_Admin.render_recent_query_json
+    (Printf.sprintf "%.3f" rq.rq_started_at)
+    (SPARQL_JSON_Escape.json_escape rq.rq_query_text)
     rq.rq_timing.qt_form
     rq.rq_timing.qt_status
     rq.rq_timing.qt_rows
     rq.rq_timing.qt_body_bytes
-    rq.rq_timing.qt_parse_ms
-    rq.rq_timing.qt_eval_ms
-    rq.rq_timing.qt_format_ms
-    rq.rq_timing.qt_total_ms
+    (Printf.sprintf "%.2f" rq.rq_timing.qt_parse_ms)
+    (Printf.sprintf "%.2f" rq.rq_timing.qt_eval_ms)
+    (Printf.sprintf "%.2f" rq.rq_timing.qt_format_ms)
+    (Printf.sprintf "%.2f" rq.rq_timing.qt_total_ms)
 
 let serve_recent_queries_json () : response_body =
   let xs = snapshot_recent_queries () in
-  let body = Buffer.create 4096 in
   Mutex.lock counters_mu;
   let total = !total_queries_seen in
   let total_wall = !total_query_wall_ms in
@@ -1210,20 +1212,16 @@ let serve_recent_queries_json () : response_body =
   let s4 = !queries_status_4xx in
   let s5 = !queries_status_5xx in
   Mutex.unlock counters_mu;
-  Buffer.add_string body
-    (Printf.sprintf
-       "{\"total_queries_seen\":%d,\"total_wall_ms\":%.1f,\
-        \"status_2xx\":%d,\"status_4xx\":%d,\"status_5xx\":%d,\"recent\":["
-       total total_wall s2 s4 s5);
-  let first = ref true in
-  List.iter (fun rq ->
-    if !first then first := false else Buffer.add_char body ',';
-    Buffer.add_string body (recent_query_to_json rq)
-  ) xs;
-  Buffer.add_string body "]}\n";
+  let body =
+    SPARQL_HTTP_Admin.render_recent_queries_envelope
+      total
+      (Printf.sprintf "%.1f" total_wall)
+      s2 s4 s5
+      (List.map recent_query_to_json xs)
+  in
   { rb_status = 200;
     rb_content_type = "application/json; charset=utf-8";
-    rb_body = Buffer.contents body }
+    rb_body = body }
 
 (* Wrap a unit -> 'a thunk, return result paired with elapsed wall ms. *)
 let timed (f : unit -> 'a) : 'a * float =
