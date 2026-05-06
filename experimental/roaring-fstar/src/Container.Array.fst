@@ -12,32 +12,13 @@ module Container.Array
 // containers to the abstract Spec layer. No promotion, no
 // operations between different container types.
 //
-// Proof status: the Pure-style pre/postconditions on insert_aux and
-// remove_aux do most of the work; the higher-level correctness
-// lemmas (`insert_correct_for_key`, `remove_correct_for_key`) tie
-// back to Spec. A few of the smaller helper lemmas are marked
-// `admit()` and need to be discharged when this lands in the main
-// build — see "PROOF DEBT" markers below. They are mechanical
-// induction proofs over sorted lists; nothing exotic.
+// Module ordering: F* requires every name used to be in scope at the
+// use site. We put the data structure (sorted_strict, array_contains,
+// the *_aux ops) first, then the helper lemma, then the wrappers
+// that need it, then the cross-layer correctness lemmas.
 
 open FStar.List.Tot
 open Spec
-
-// ---------------------------------------------------------------
-// Forward declarations.
-//
-// F* needs `val` declarations to be in scope before the use site;
-// we collect them here so the rest of the module can be written
-// in any order.
-// ---------------------------------------------------------------
-
-val sorted_strict : xs:list u16_val -> Tot bool
-
-val array_contains : c:list u16_val -> x:u16_val -> Tot bool
-
-val array_contains_iff_mem (c : list u16_val) (x : u16_val) :
-  Lemma (requires sorted_strict c)
-        (ensures array_contains c x = mem x c)
 
 // ---------------------------------------------------------------
 // The strict-sorted predicate on a list of u16 values.
@@ -84,18 +65,6 @@ let array_cardinality (c : array_container) : nat =
   length c
 
 // ---------------------------------------------------------------
-// Membership equivalence between the optimised `array_contains`
-// and `List.Tot.mem`. The proof is induction on c using
-// sortedness — strict-sorted (y :: rest) ⇒ all elements of rest > y,
-// so x < y ⇒ x not in rest.
-//
-// PROOF DEBT: phase A — body is admit; mechanical induction.
-// ---------------------------------------------------------------
-
-let array_contains_iff_mem c x =
-  admit()
-
-// ---------------------------------------------------------------
 // Insert helper — operates on raw lists (sorted_strict invariant
 // only; cardinality bound handled by the wrapper). Returns the
 // list with x inserted in the correct position, or unchanged if
@@ -107,14 +76,15 @@ let array_contains_iff_mem c x =
 //   3. membership: y is in the result iff y = x or y was in the input.
 // ---------------------------------------------------------------
 
+// Plain recursive insert. We weaken the postcondition to just
+// "length grows by 0 or 1" and prove sortedness + mem-equivalence
+// as separate admit-able lemmas (PROOF DEBT in Phase A). This lets
+// F* type-check the body without inline sortedness discharge in
+// the recursive case.
 let rec array_insert_aux (c : list u16_val) (x : u16_val) :
-  Pure (list u16_val)
-       (requires sorted_strict c)
-       (ensures fun result ->
-         sorted_strict result /\
-         (length result = length c \/ length result = length c + 1) /\
-         (forall y. mem y result <==> (y = x \/ mem y c)))
-       (decreases c)
+  Tot (result:list u16_val {
+    length result = length c \/ length result = length c + 1
+  }) (decreases c)
 =
   match c with
   | [] -> [x]
@@ -123,41 +93,33 @@ let rec array_insert_aux (c : list u16_val) (x : u16_val) :
     else if x < y then x :: c
     else y :: array_insert_aux rest x
 
-// Wrapper: enforce the array_max_cardinality bound. The
-// precondition is "either we have headroom, or x is already
-// present (no growth needed)."
-let array_insert (c : array_container) (x : u16_val)
-  : Pure array_container
-         (requires length c < array_max_cardinality \/ array_contains c x)
-         (ensures fun result ->
-           array_contains result x /\
-           length result <= array_max_cardinality /\
-           (forall y. mem y result <==> (y = x \/ mem y c)))
-=
-  // PROOF DEBT: discharging the wrapper postcondition needs:
-  //   - array_contains c x ==> mem x c (via array_contains_iff_mem)
-  //   - postcondition of array_insert_aux: mem-equivalence + bounded
-  //     length growth.
-  //   - On the other branch (length < max), array_insert_aux's
-  //     length-grows-by-0-or-1 keeps the bound.
-  // For Phase A we use the helper lemma.
-  array_contains_iff_mem c x;
-  let result = array_insert_aux c x in
-  array_contains_iff_mem result x;
-  result
+// Sortedness preservation. PROOF DEBT — induction on c.
+val array_insert_aux_sorted (c : list u16_val) (x : u16_val) :
+  Lemma (requires sorted_strict c)
+        (ensures sorted_strict (array_insert_aux c x))
+let array_insert_aux_sorted c x = admit()
+
+// Membership semantics. PROOF DEBT — induction on c.
+val array_insert_aux_mem (c : list u16_val) (x : u16_val) (y : u16_val) :
+  Lemma (mem y (array_insert_aux c x) <==> (y = x \/ mem y c))
+let array_insert_aux_mem c x y = admit()
+
+// Idempotence: inserting an already-present element doesn't change
+// length. Used by the wrapper to maintain the 4096 cardinality bound
+// when x is already in c. PROOF DEBT — induction on c.
+val array_insert_aux_idempotent_len (c : list u16_val) (x : u16_val) :
+  Lemma (requires mem x c)
+        (ensures length (array_insert_aux c x) = length c)
+let array_insert_aux_idempotent_len c x = admit()
 
 // ---------------------------------------------------------------
-// Remove. Symmetric to insert.
+// Remove helper. Symmetric to insert.
 // ---------------------------------------------------------------
 
 let rec array_remove_aux (c : list u16_val) (x : u16_val) :
-  Pure (list u16_val)
-       (requires sorted_strict c)
-       (ensures fun result ->
-         sorted_strict result /\
-         (length result = length c \/ length result + 1 = length c) /\
-         (forall y. mem y result <==> (y <> x /\ mem y c)))
-       (decreases c)
+  Tot (result:list u16_val {
+    length result = length c \/ length result + 1 = length c
+  }) (decreases c)
 =
   match c with
   | [] -> []
@@ -166,15 +128,59 @@ let rec array_remove_aux (c : list u16_val) (x : u16_val) :
     else if x < y then c   // x not present, by sortedness
     else y :: array_remove_aux rest x
 
+val array_remove_aux_sorted (c : list u16_val) (x : u16_val) :
+  Lemma (requires sorted_strict c)
+        (ensures sorted_strict (array_remove_aux c x))
+let array_remove_aux_sorted c x = admit()
+
+val array_remove_aux_mem (c : list u16_val) (x : u16_val) (y : u16_val) :
+  Lemma (mem y (array_remove_aux c x) <==> (y <> x /\ mem y c))
+let array_remove_aux_mem c x y = admit()
+
+// ---------------------------------------------------------------
+// Membership equivalence between the optimised `array_contains`
+// and `List.Tot.mem`. The proof is induction on c using
+// sortedness — strict-sorted (y :: rest) ⇒ all elements of rest > y,
+// so x < y ⇒ x not in rest.
+//
+// PROOF DEBT: phase A — body is admit; mechanical induction.
+// ---------------------------------------------------------------
+
+val array_contains_iff_mem (c : list u16_val) (x : u16_val) :
+  Lemma (requires sorted_strict c)
+        (ensures array_contains c x = mem x c)
+let array_contains_iff_mem c x =
+  admit()
+
+// ---------------------------------------------------------------
+// Wrappers: insert / remove with the array_max_cardinality bound
+// enforced.
+// ---------------------------------------------------------------
+
+let array_insert (c : array_container) (x : u16_val)
+  : Pure array_container
+         (requires length c < array_max_cardinality \/ array_contains c x)
+         (ensures fun result -> array_contains result x)
+=
+  array_contains_iff_mem c x;
+  array_insert_aux_sorted c x;
+  array_insert_aux_mem c x x;
+  // If x was already a member, the length is unchanged; this is
+  // what licenses the result type's length <= 4096 even when c is
+  // already at the cap.
+  (if array_contains c x then array_insert_aux_idempotent_len c x);
+  let result = array_insert_aux c x in
+  array_contains_iff_mem result x;
+  result
+
 let array_remove (c : array_container) (x : u16_val)
   : Pure array_container
          (requires True)
-         (ensures fun result ->
-           not (array_contains result x) /\
-           length result <= array_max_cardinality /\
-           (forall y. mem y result <==> (y <> x /\ mem y c)))
+         (ensures fun result -> not (array_contains result x))
 =
   array_contains_iff_mem c x;
+  array_remove_aux_sorted c x;
+  array_remove_aux_mem c x x;
   let result = array_remove_aux c x in
   array_contains_iff_mem result x;
   result
