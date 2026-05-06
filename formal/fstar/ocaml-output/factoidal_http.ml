@@ -2102,24 +2102,15 @@ let serve_parliament_queries_json () : response_body =
    `triples` is a live count over the current ref (post-UPDATE); it's
    List.length on an in-memory immutable graph, fast enough for a UI
    pill at our dataset sizes. *)
+(* Dataset triple-count + backend-kind classification — F* is the
+   source of truth (formal/fstar/SPARQL.HTTP.BackendInfo.fst). *)
 let count_dataset_triples (ds : rdf_dataset) : int * int * int * int =
-  let dflt = List.length ds.ds_default in
-  let named_count = List.length ds.ds_named in
-  let named_triples =
-    List.fold_left (fun acc ng -> acc + List.length ng.ng_graph)
-      0 ds.ds_named
-  in
-  (dflt + named_triples, dflt, named_count, named_triples)
+  SPARQL_HTTP_BackendInfo.count_dataset_triples ds
 
-(* Map config flags onto the F-star `backend_kind` constructor. The
-   string form ("empty"/"in-memory"/"binary"/"mixed") is owned by F-star
-   now; see SPARQL.HTTP.BackendInfo.backend_kind_string. *)
 let backend_kind_of_cfg (cfg : config) : SPARQL_HTTP_BackendInfo.backend_kind =
-  match cfg.dataset_file, cfg.data_cottas_files with
-  | None, [] -> SPARQL_HTTP_BackendInfo.BK_Empty
-  | Some _, [] -> SPARQL_HTTP_BackendInfo.BK_InMem
-  | None, _ :: _ -> SPARQL_HTTP_BackendInfo.BK_CottasOnDisk
-  | Some _, _ :: _ -> SPARQL_HTTP_BackendInfo.BK_Hybrid
+  SPARQL_HTTP_BackendInfo.backend_kind_of_flags
+    (cfg.dataset_file <> None)
+    (cfg.data_cottas_files <> [])
 
 let backend_source_string (cfg : config) : string =
   match cfg.dataset_file, cfg.data_cottas_files with
