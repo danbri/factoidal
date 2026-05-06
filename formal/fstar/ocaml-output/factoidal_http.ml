@@ -45,26 +45,25 @@ module S = SPARQL11_Store
    link factoidal_cli.ml (which has its own [let () = ...] main).
    ============================================================================ *)
 
-type rdf_format = NT | Turtle | NQuads | TriG | RDFXML
+(* RDF format identification — F* is the source of truth.
+   Logic lives in formal/fstar/RDF.Format.fst (extracted as
+   RDF_Format.ml). The wrappers below re-export the constructors and
+   adapt F*'s option to OCaml's native option so existing
+   match-Some/None call sites compile unchanged. *)
+type rdf_format = RDF_Format.rdf_format =
+  | NT
+  | Turtle
+  | NQuads
+  | TriG
+  | RDFXML
 
 let detect_format filename =
-  let ext = String.lowercase_ascii (Filename.extension filename) in
-  match ext with
-  | ".nt" | ".ntriples" -> NT
-  | ".ttl" | ".turtle" -> Turtle
-  | ".nq" | ".nquads" -> NQuads
-  | ".trig" -> TriG
-  | ".rdf" | ".xml" | ".rdfxml" | ".owl" -> RDFXML
-  | _ -> Turtle
+  RDF_Format.detect_format_or_default (Filename.extension filename)
 
 let format_of_string s =
-  match String.lowercase_ascii s with
-  | "ntriples" | "nt" | "n-triples" -> Some NT
-  | "turtle" | "ttl" -> Some Turtle
-  | "nquads" | "nq" | "n-quads" -> Some NQuads
-  | "trig" -> Some TriG
-  | "rdfxml" | "rdf/xml" | "rdf" | "xml" -> Some RDFXML
-  | _ -> None
+  match RDF_Format.format_of_string s with
+  | FStar_Pervasives_Native.Some f -> Some f
+  | FStar_Pervasives_Native.None -> None
 
 let read_file path =
   let ic = open_in path in
