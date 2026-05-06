@@ -84,3 +84,37 @@ let cors_headers policy origin =
              :: common_cors_headers
            else []
        | None -> [])
+
+// JSON error-response body templates. The HTTP layer wraps these with
+// the corresponding 413 / 504 response_body record (status code,
+// content type); only the JSON body itself lives here.
+
+// 413 body: query produced too many rows for the configured cap. The
+// hint string is a stable user-facing recommendation matched by the
+// /admin demo page; do not edit without coordinating with the UI.
+val result_cap_response_body : cap:int -> string
+let result_cap_response_body cap =
+  String.concat "" [
+    "{\"error\":\"result_cardinality_cap_exceeded\",\"cap\":";
+    string_of_int cap;
+    ",\"hint\":\"Add LIMIT or bind more triple-pattern terms.\"}\n"
+  ]
+
+// 504 body: query exceeded its wall-clock budget. Same hint text as
+// the cap body so the UI can route both cases through the same panel.
+val query_timeout_response_body : secs:int -> string
+let query_timeout_response_body secs =
+  String.concat "" [
+    "{\"error\":\"query_timeout\",\"seconds\":";
+    string_of_int secs;
+    ",\"hint\":\"Add LIMIT or bind more triple-pattern terms.\"}\n"
+  ]
+
+// Smoke tests.
+let _test_cap_body =
+  result_cap_response_body 1000
+  = "{\"error\":\"result_cardinality_cap_exceeded\",\"cap\":1000,\"hint\":\"Add LIMIT or bind more triple-pattern terms.\"}\n"
+
+let _test_timeout_body =
+  query_timeout_response_body 30
+  = "{\"error\":\"query_timeout\",\"seconds\":30,\"hint\":\"Add LIMIT or bind more triple-pattern terms.\"}\n"
