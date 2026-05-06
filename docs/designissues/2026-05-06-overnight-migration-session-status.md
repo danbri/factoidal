@@ -15,8 +15,9 @@ needing to scroll back through the chat transcript.
 
 ## PRs opened during this session
 
-All target `claude/main`. All carry the CLAUDE.md rule-#11
-qualifier in the body. All cherry-pickable independently.
+All target `claude/main` (#148 stacks on #146). All carry the
+CLAUDE.md rule-#11 qualifier in the body. All cherry-pickable
+independently except #148.
 
 | PR | Title | Branch | Net OCaml LoC retired |
 |---:|---|---|---:|
@@ -27,14 +28,17 @@ qualifier in the body. All cherry-pickable independently.
 | **#144** | Lift N-Quads serializers to RDF.NQuads.Serialize.fst | `claude/nquads-serialize-fstar` | −32 |
 | **#145** | Lift update_has_load to SPARQL.Update.Analysis.fst | `claude/update-has-load-fstar` | −4 |
 | **#146** | Lift count_dataset_triples + backend_kind_of_cfg into SPARQL.HTTP.BackendInfo.fst | `claude/backend-info-helpers-fstar` | −16 |
+| **#147** | docs: overnight migration session status (original version of this doc) | `claude/migration-session-status-2026-05-06` | (doc-only) |
+| **#148** | Lift backend_source_string (stacked on #146) | `claude/backend-source-string-fstar-stacked` | −3 |
+| **#149** | Lift bgps_in_query to SPARQL.Query.Analysis.fst | `claude/bgps-in-query-fstar` | −19 |
+| **#150** | Retire factoidal_explain.ml's duplicate json_escape | `claude/explain-json-escape-cleanup` | −13 |
+| **#151** | Lift HTTP response-head template (render_response_head) | `claude/render-headers-fstar` | −8 |
 
-**Total net OCaml semantic LoC retired across the seven PRs: ~193.**
+**Total net OCaml semantic LoC retired across the twelve PRs: ~236.**
 
-Each PR adds the corresponding F\* source plus the extracted .ml file.
-The F\* additions total ~390 LoC; the bookkeeping is +390 / −193 in
-the strict sense, but the substantive change is the −193 LoC of
-duplicated/diverged OCaml-side semantic table that Iron Rule #1
-wanted out of OCaml.
+The substantive change is the −236 LoC of duplicated/diverged
+OCaml-side semantic table that Iron Rule #1 wanted out of OCaml.
+Plus six new F\* modules and two extended ones.
 
 ## New F\* modules created
 
@@ -42,11 +46,12 @@ wanted out of OCaml.
 - `SPARQL.HTTP.StaticFiles.fst` — Content-Type and path-traversal-guard.
 - `RDF.NQuads.Serialize.fst` — byte-correct N-Quads/N-Triples wire-format serializers.
 - `SPARQL.Update.Analysis.fst` — structural predicates over SPARQL UPDATE ASTs.
+- `SPARQL.Query.Analysis.fst` — structural predicates over SPARQL query ASTs (bgps_in_query, future predicates).
 
 ## Existing F\* modules extended
 
-- `SPARQL.HTTP.Response.fst` — added `parse_cors_value`, `cors_mode_to_string`, `trim_ascii`, helpers.
-- `SPARQL.HTTP.BackendInfo.fst` — added `count_dataset_triples`, `backend_kind_of_flags`, `sum_named_triples` helper.
+- `SPARQL.HTTP.Response.fst` — added `parse_cors_value`, `cors_mode_to_string`, `trim_ascii`, `render_response_head`, `concat_header_lines`, helpers.
+- `SPARQL.HTTP.BackendInfo.fst` — added `count_dataset_triples`, `backend_kind_of_flags`, `backend_source_string`, `sum_named_triples` helper.
 
 ## Audit doc state
 
