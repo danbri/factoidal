@@ -199,6 +199,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              SPARQL.Protocol.fst \
              SPARQL.Update.Sandbox.fst \
              SPARQL.Diagnostics.fst \
+             SPARQL.Explain.fst \
              SPARQL.HTTP.fst \
              SPARQL.HTTP.Client.fst \
              SPARQL.ServiceDescription.fst \
@@ -286,6 +287,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     SPARQL11_Algebra.ml OWL_QueryRewrite.ml OWL_QueryEval.ml SPARQL11_Parser.ml SPARQL11_Store.ml SPARQL_Protocol.ml \
     SPARQL_Update_Sandbox.ml \
     SPARQL_Diagnostics.ml \
+    SPARQL_Explain.ml \
     SPARQL_HTTP.ml SPARQL_HTTP_Client.ml SPARQL_ServiceDescription.ml \
     SPARQL_GraphStore.ml"
 
@@ -581,6 +583,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     SPARQL_Protocol.ml
     SPARQL_Update_Sandbox.ml
     SPARQL_Diagnostics.ml
+    SPARQL_Explain.ml
     SPARQL_HTTP.ml SPARQL_HTTP_Client.ml SPARQL_ServiceDescription.ml SPARQL_GraphStore.ml
   )
   JS_TARGETS=(
