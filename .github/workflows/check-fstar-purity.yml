@@ -1,11 +1,19 @@
 # Phase 2.8 Layer 3: rule #11 recurrence guard.
 #
-# This workflow detects net-new semantic logic added to the OCaml glue
-# directory `formal/fstar/experimental_ocaml_glue/`. It does NOT block
-# the existing accumulated drift (~3094 LoC inventoried in
-# docs/designissues/fstar-purity-unwind.md) — those are grandfathered in
-# and are being retired phase-by-phase. The guard only fires on NEW
-# additions in a PR diff.
+# This workflow detects net-new semantic logic added to:
+#
+#   - formal/fstar/experimental_ocaml_glue/*.sh   (the original scope,
+#     2026-04-26; CLAUDE.md rule #11 region).
+#   - formal/fstar/ocaml-output/factoidal_http.ml (extended 2026-05-06
+#     per the boundary audit's 2026-05-01 status update — still has
+#     S-class timeout/cap/sandbox logic).
+#   - formal/fstar/ocaml-output/factoidal_explain.ml (extended
+#     2026-05-06 — currently reimplements F* planner per audit #2).
+#
+# It does NOT block the existing accumulated drift (~3094 LoC
+# inventoried in docs/designissues/fstar-purity-unwind.md) — those
+# are grandfathered in and are being retired phase-by-phase. The
+# guard only fires on NEW additions in a PR diff.
 #
 # Soft-mode by default: emits ::warning:: annotations and a job-summary
 # block, but exits 0. To make it blocking, set repo variable
@@ -75,6 +83,16 @@ jobs:
           set -euo pipefail
           BASE_REF='${{ steps.base.outputs.base_ref }}'
           GLUE_GLOB='formal/fstar/experimental_ocaml_glue/*.sh'
+          # File list extended 2026-05-06 to also watch the two
+          # hand-written OCaml output files flagged in the audit's
+          # 2026-05-01 status update as still containing S-class
+          # logic. The COTTAS-on-disk runtime (RDF_CottasStore.ml) is
+          # extracted from F* and is checked separately by
+          # check-extraction.yml; we skip it here.
+          HAND_WRITTEN=(
+            'formal/fstar/ocaml-output/factoidal_http.ml'
+            'formal/fstar/ocaml-output/factoidal_explain.ml'
+          )
 
           # The diff we care about: only added lines in glue files.
           # `git diff -U0` collapses context to focus on adds/dels.
@@ -84,7 +102,7 @@ jobs:
           # we care about is rc>1 (real error).
           DIFF_FILE=$(mktemp)
           DIFF_RC=0
-          git diff -U0 "$BASE_REF"...HEAD -- $GLUE_GLOB > "$DIFF_FILE" || DIFF_RC=$?
+          git diff -U0 "$BASE_REF"...HEAD -- $GLUE_GLOB "${HAND_WRITTEN[@]}" > "$DIFF_FILE" || DIFF_RC=$?
           if [ "$DIFF_RC" -gt 1 ]; then
             echo "::error::git diff failed with rc=$DIFF_RC"
             exit "$DIFF_RC"
@@ -92,7 +110,7 @@ jobs:
 
           # Defensive: if there are no changed glue files, exit clean.
           if [ ! -s "$DIFF_FILE" ]; then
-            echo "No diff in $GLUE_GLOB versus $BASE_REF — clean."
+            echo "No diff in $GLUE_GLOB or factoidal_http/explain.ml versus $BASE_REF — clean."
             echo "violations=0" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -160,6 +178,73 @@ jobs:
               VIOLATIONS=$((VIOLATIONS+1))
               printf -- '- %s: owl/entailment-regime branch in OCaml glue\n    %s\n' \
                 "$FILE" "${LINE:0:200}" >> "$REPORT"
+            fi
+          done < "$FILE_MAP"
+
+          # Pattern 4 (added 2026-05-06): re-introduction of functions
+          # that were migrated from factoidal_http.ml to F* per the
+          # audit's 2026-05-01 status update. If any of these
+          # definitions reappears in factoidal_http.ml we want to know
+          # — it would mean a migration regressed.
+          #
+          # Migrated and watched:
+          #   json_escape           PR #126 (merged) → SPARQL.JSON.Escape.fst
+          #   status_text           PR #127 (open)   → SPARQL.HTTP.Response.fst
+          #   cors_headers          PR #127 (open)   → SPARQL.HTTP.Response.fst
+          #   cors_policy           PR #127 (open)   → SPARQL.HTTP.Response.fst
+          #   parliament_label      PR #129 (open)   → SPARQL.HTTP.QueriesIndex.fst
+          #   render_queries_index  PR #129 (open)   → SPARQL.HTTP.QueriesIndex.fst
+          #   sandbox_op            sandbox branch   → SPARQL.Update.Sandbox.fst
+          #   sandbox_update        sandbox branch   → SPARQL.Update.Sandbox.fst
+          #   expand_user_graph     sandbox branch   → SPARQL.Update.Sandbox.fst
+          #
+          # Pattern: a top-level `let NAME` (not `let _ = ...` or pattern
+          # binding) reappearing in factoidal_http.ml.
+          MIGRATED='json_escape|status_text|cors_headers|cors_policy|parliament_label|render_queries_index|sandbox_op|sandbox_update|expand_user_graph'
+          while IFS=$'\t' read -r FILE LINE; do
+            if [ "$FILE" != "formal/fstar/ocaml-output/factoidal_http.ml" ]; then
+              continue
+            fi
+            if echo "$LINE" | grep -Eq "^\\+let[[:space:]]+($MIGRATED)\\b"; then
+              VIOLATIONS=$((VIOLATIONS+1))
+              MATCHED=$(echo "$LINE" | sed -E "s/^\\+let[[:space:]]+(($MIGRATED))\\b.*/\\1/")
+              printf -- '- %s: re-introduction of migrated function `%s`\n    %s\n' \
+                "$FILE" "$MATCHED" "${LINE:0:200}" >> "$REPORT"
+            fi
+          done < "$FILE_MAP"
+
+          # Pattern 5 (added 2026-05-06): re-introducing SIGALRM-based
+          # query timeout. The audit's §A flagged the SIGALRM approach
+          # as architecturally wrong (process-global, doesn't compose
+          # with concurrent queries). The replacement is a
+          # `time_budget : nat` + `assume val cancellation_polled :
+          # unit -> bool` discipline; until that lands, the existing
+          # `with_query_timeout` wrapper is grandfathered in
+          # factoidal_http.ml. New uses of `Sys.set_signal Sys.sigalrm`
+          # in any watched file are flagged.
+          while IFS=$'\t' read -r FILE LINE; do
+            if echo "$LINE" | grep -Eq 'Sys\.set_signal[[:space:]]+Sys\.sigalrm'; then
+              VIOLATIONS=$((VIOLATIONS+1))
+              printf -- '- %s: new Sys.set_signal Sys.sigalrm — process-global timeout policy (audit §A)\n    %s\n' \
+                "$FILE" "${LINE:0:200}" >> "$REPORT"
+            fi
+          done < "$FILE_MAP"
+
+          # Pattern 6 (added 2026-05-06): planner-shape additions to
+          # factoidal_explain.ml. Per the audit (#2 in unwind
+          # inventory), factoidal_explain.ml currently reimplements
+          # `choose_best_tp_backend` rather than calling F*'s real
+          # planner. New planner-shaped functions are flagged so we
+          # don't compound the duplication.
+          while IFS=$'\t' read -r FILE LINE; do
+            if [ "$FILE" != "formal/fstar/ocaml-output/factoidal_explain.ml" ]; then
+              continue
+            fi
+            if echo "$LINE" | grep -Eq '^\+let[[:space:]]+(choose_best_tp|estimate_pattern|order_patterns|plan_bgp)\b'; then
+              VIOLATIONS=$((VIOLATIONS+1))
+              MATCHED=$(echo "$LINE" | sed -E 's/^\+let[[:space:]]+([A-Za-z_]+).*/\1/')
+              printf -- '- %s: planner-shaped function `%s` in OCaml explain (should call F* planner)\n    %s\n' \
+                "$FILE" "$MATCHED" "${LINE:0:200}" >> "$REPORT"
             fi
           done < "$FILE_MAP"
 
