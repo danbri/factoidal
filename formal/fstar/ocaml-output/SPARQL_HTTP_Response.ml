@@ -141,3 +141,35 @@ let (cors_mode_to_string : cors_policy -> Prims.string) =
     | CORS_List origins ->
         Prims.strcat "allowlist ("
           (Prims.strcat (join_with_comma_space origins) ")")
+let rec (concat_header_lines : Prims.string Prims.list -> Prims.string) =
+  fun xs ->
+    match xs with
+    | [] -> ""
+    | h::rest ->
+        Prims.strcat h (Prims.strcat "\r\n" (concat_header_lines rest))
+let (render_response_head :
+  Prims.int ->
+    Prims.string -> Prims.int -> Prims.string Prims.list -> Prims.string)
+  =
+  fun status ->
+    fun content_type ->
+      fun body_len ->
+        fun extra_headers ->
+          let reason = status_text status in
+          Prims.strcat "HTTP/1.1 "
+            (Prims.strcat (Prims.string_of_int status)
+               (Prims.strcat " "
+                  (Prims.strcat reason
+                     (Prims.strcat "\r\n"
+                        (Prims.strcat "Content-Type: "
+                           (Prims.strcat content_type
+                              (Prims.strcat "\r\n"
+                                 (Prims.strcat "Content-Length: "
+                                    (Prims.strcat
+                                       (Prims.string_of_int body_len)
+                                       (Prims.strcat "\r\n"
+                                          (Prims.strcat
+                                             "Connection: close\r\n"
+                                             (Prims.strcat
+                                                (concat_header_lines
+                                                   extra_headers) "\r\n"))))))))))))
