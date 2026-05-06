@@ -33,11 +33,15 @@ independently except #148.
 | **#149** | Lift bgps_in_query to SPARQL.Query.Analysis.fst | `claude/bgps-in-query-fstar` | −19 |
 | **#150** | Retire factoidal_explain.ml's duplicate json_escape | `claude/explain-json-escape-cleanup` | −13 |
 | **#151** | Lift HTTP response-head template (render_response_head) | `claude/render-headers-fstar` | −8 |
+| **#152** | Lift /admin/recent.json renderer to SPARQL.HTTP.Admin.fst | `claude/recent-query-json-fstar` | −22 |
+| **#153** | Lift timing_log_line + timing_response_header + truncate_for_log (stacked on #152) | `claude/timing-formatters-fstar` | −16 |
+| **#154** | Retire factoidal_http.ml's duplicate string_replace_all | `claude/string-replace-all-cleanup` | −22 |
 
-**Total net OCaml semantic LoC retired across the twelve PRs: ~236.**
+**Total net OCaml semantic LoC retired across the fifteen PRs: ~296.**
 
-The substantive change is the −236 LoC of duplicated/diverged
+The substantive change is the −296 LoC of duplicated/diverged
 OCaml-side semantic table that Iron Rule #1 wanted out of OCaml.
+Seven new F\* modules and three extended ones.
 Plus six new F\* modules and two extended ones.
 
 ## New F\* modules created
