@@ -135,3 +135,68 @@ let _ = assert_norm (
 // with a JSON timeout body — keep them locked together at extract
 // time.
 let _ = assert_norm (status_text 504 = "Gateway Timeout")
+
+// ---------------------------------------------------------------
+// CLI parsing: --cors=<value> string -> cors_policy.
+//
+// Migrated from factoidal_http.ml's parse_cors_value (rule #1 — F* is
+// the source of truth for the mapping). Two semantic decisions:
+//   - "*" means CORS_Any
+//   - otherwise, comma-separated origins (with whitespace trimmed and
+//     empty entries dropped); empty list falls back to CORS_Off so a
+//     stray "--cors=" or "--cors=," is a no-op rather than rejecting
+//     every request silently.
+//
+// We implement ASCII trim here rather than asking the caller to
+// pre-trim because the per-part trim after split(',') makes the
+// responsibility-split awkward.
+// ---------------------------------------------------------------
+
+let is_ascii_ws (c : FStar.Char.char) : Tot bool =
+  let n = FStar.Char.int_of_char c in
+  n = 0x20 || n = 0x09 || n = 0x0A || n = 0x0D
+
+let rec drop_leading_ws (cs : list FStar.Char.char)
+  : Tot (list FStar.Char.char) (decreases cs) =
+  match cs with
+  | [] -> []
+  | c :: rest -> if is_ascii_ws c then drop_leading_ws rest else cs
+
+let trim_ascii (s : string) : Tot string =
+  let cs = FStar.String.list_of_string s in
+  let l = drop_leading_ws cs in
+  let r = FStar.List.Tot.rev (drop_leading_ws (FStar.List.Tot.rev l)) in
+  FStar.String.string_of_list r
+
+let rec map_trim (xs : list string) : Tot (list string) (decreases xs) =
+  match xs with
+  | [] -> []
+  | x :: rest -> trim_ascii x :: map_trim rest
+
+let rec drop_empty (xs : list string) : Tot (list string) (decreases xs) =
+  match xs with
+  | [] -> []
+  | x :: rest -> if x = "" then drop_empty rest else x :: drop_empty rest
+
+let parse_cors_value (raw : string) : Tot cors_policy =
+  let v = trim_ascii raw in
+  if v = "*" then CORS_Any
+  else
+    let parts = drop_empty (map_trim (FStar.String.split [','] v)) in
+    match parts with
+    | [] -> CORS_Off
+    | _  -> CORS_List parts
+
+// Human-readable description of the CORS mode, for the startup log.
+let rec join_with_comma_space (xs : list string) : Tot string (decreases xs) =
+  match xs with
+  | [] -> ""
+  | [x] -> x
+  | x :: rest -> x ^ ", " ^ join_with_comma_space rest
+
+let cors_mode_to_string (p : cors_policy) : Tot string =
+  match p with
+  | CORS_Off  -> "off (no Access-Control-* headers)"
+  | CORS_Any  -> "any origin (Access-Control-Allow-Origin: *)"
+  | CORS_List origins ->
+      "allowlist (" ^ join_with_comma_space origins ^ ")"
