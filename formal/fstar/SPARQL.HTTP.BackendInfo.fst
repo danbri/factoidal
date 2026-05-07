@@ -83,3 +83,69 @@ let render_backend_info (info:backend_info) : string =
     ",\"source\":\""; source_s;
     "\"}\n"
   ]
+
+// ---------------------------------------------------------------
+// Helpers used by the OCaml caller to build a `backend_info`
+// record from the running server's live state. Migrated from
+// factoidal_http.ml's `count_dataset_triples` and
+// `backend_kind_of_cfg` (rule #1 — F\* is the source of truth for
+// the count formula and the kind classification).
+//
+// `count_dataset_triples` returns four ints that map directly onto
+// the bi_in_memory_* fields, in the same order as the legacy OCaml
+// return tuple: (total, default, num_named_graphs, named_total).
+//
+// `backend_kind_of_flags` takes pre-extracted booleans rather than
+// the OCaml `config` record. The OCaml caller is one line:
+//   backend_kind_of_flags
+//     (cfg.dataset_file <> None)
+//     (cfg.data_cottas_files <> [])
+// which keeps the OCaml-side `config` type out of F\*.
+// ---------------------------------------------------------------
+
+open RDF.Graph.Executable
+
+let rec sum_named_triples (ngs : list named_graph) : Tot nat (decreases ngs) =
+  match ngs with
+  | [] -> 0
+  | ng :: rest -> FStar.List.Tot.length ng.ng_graph + sum_named_triples rest
+
+let count_dataset_triples (ds : rdf_dataset) : Tot (int * int * int * int) =
+  let dflt          = FStar.List.Tot.length ds.ds_default in
+  let named_count   = FStar.List.Tot.length ds.ds_named in
+  let named_triples = sum_named_triples ds.ds_named in
+  (dflt + named_triples, dflt, named_count, named_triples)
+
+// has_dataset = the --data file slot is set.
+// has_cottas  = the --data-cottas slot has any path.
+let backend_kind_of_flags (has_dataset : bool) (has_cottas : bool)
+  : Tot backend_kind =
+  if has_dataset then
+    (if has_cottas then BK_Hybrid else BK_InMem)
+  else
+    (if has_cottas then BK_CottasOnDisk else BK_Empty)
+
+// ---------------------------------------------------------------
+// backend_source_string: human-readable summary of the data
+// sources mounted by the daemon, for the startup log and the
+// backend-info display.
+//
+// Migrated from factoidal_http.ml's `backend_source_string`. The
+// OCaml side calls `Filename.basename` to reduce a path to its
+// basename (OS-aware glue), then passes the resulting strings to
+// this F* function which encodes the formatting decisions:
+//   - empty config           -> "(none)"
+//   - just dataset file      -> "<basename>"
+//   - just cottas paths      -> "<bn>, <bn>, ..."
+//   - dataset + cottas paths -> "<dataset_bn>, <cottas_bn>, ..."
+// ---------------------------------------------------------------
+
+let backend_source_string
+    (dataset_basename : option string)
+    (cottas_basenames : list string)
+  : Tot string =
+  match dataset_basename, cottas_basenames with
+  | None,   [] -> "(none)"
+  | Some f, [] -> f
+  | None,   paths -> FStar.String.concat ", " paths
+  | Some f, paths -> FStar.String.concat ", " (f :: paths)
