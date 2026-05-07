@@ -80,18 +80,6 @@ let (template_prefix : Prims.string -> Prims.string) =
         if i <= len
         then FStar_String.sub template Prims.int_zero i
         else template
-let (_test_template_prefix_authid : Prims.bool) =
-  (template_prefix "https://example.org/users/{authid}/graph") =
-    "https://example.org/users/"
-let (_test_template_prefix_no_placeholder : Prims.bool) =
-  (template_prefix "https://example.org/fixed-graph") =
-    "https://example.org/fixed-graph"
-let (_test_template_prefix_skip_stray_brace : Prims.bool) =
-  (template_prefix "https://example.org/{x}/{authid}/graph") =
-    "https://example.org/{x}/"
-let (_test_template_prefix_only_stray_brace : Prims.bool) =
-  (template_prefix "https://example.org/{x}/graph") =
-    "https://example.org/{x}/graph"
 type ggp_target_status =
   | GTS_Ok 
   | GTS_Mismatch of Prims.string 

@@ -113,23 +113,34 @@ let template_prefix template =
     // below makes the bound visible to the SMT solver.
     if i <= len then FStar.String.sub template 0 i else template
 
-(* Smoke tests. *)
-let _test_template_prefix_authid =
-  template_prefix "https://example.org/users/{authid}/graph" = "https://example.org/users/"
+(* Smoke tests — assert_norm so any drift in template_prefix /
+   find_authid_placeholder fails verification rather than silently
+   evaluating to false. The local --fuel bump is needed because
+   find_authid_placeholder is a fuel-bounded recursion and the
+   assertion reduces it at normalization time. *)
+#push-options "--fuel 200 --ifuel 10"
 
-let _test_template_prefix_no_placeholder =
-  template_prefix "https://example.org/fixed-graph" = "https://example.org/fixed-graph"
+let _ = assert_norm (
+  template_prefix "https://example.org/users/{authid}/graph"
+    = "https://example.org/users/")
 
-let _test_template_prefix_skip_stray_brace =
-  // A '{' that is NOT '{authid}' must NOT cause an early split — keep
-  // scanning for the real placeholder.
+let _ = assert_norm (
+  template_prefix "https://example.org/fixed-graph"
+    = "https://example.org/fixed-graph")
+
+// A '{' that is NOT '{authid}' must NOT cause an early split — keep
+// scanning for the real placeholder.
+let _ = assert_norm (
   template_prefix "https://example.org/{x}/{authid}/graph"
-    = "https://example.org/{x}/"
+    = "https://example.org/{x}/")
 
-let _test_template_prefix_only_stray_brace =
-  // A template with a stray brace but no '{authid}' returns the whole
-  // template unchanged.
-  template_prefix "https://example.org/{x}/graph" = "https://example.org/{x}/graph"
+// A template with a stray brace but no '{authid}' returns the whole
+// template unchanged.
+let _ = assert_norm (
+  template_prefix "https://example.org/{x}/graph"
+    = "https://example.org/{x}/graph")
+
+#pop-options
 
 (* ========================================================================== *)
 (* GGP / graph_ref checks                                                     *)
