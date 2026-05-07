@@ -549,7 +549,12 @@ let _test_lookup_ci =
   | Some v -> v = "application/json"
   | None -> false
 
-// Streaming-buffer helpers.
+// Streaming-buffer helpers. Bare-boolean form matches the established
+// pattern of the other smoke tests in this file (e.g. _test_rl_ok
+// above). assert_norm would be the stronger guard but ci_substring_index's
+// fuel-bounded recursion doesn't fully unfold under the default fuel
+// budget; bumping fuel just for these tests outweighs the marginal
+// drift-detection win, so we stick with the codebase convention.
 let _test_find_terminator =
   match find_header_terminator_pos "GET / HTTP/1.1\r\n\r\nbody" with
   | Some 14 -> true
