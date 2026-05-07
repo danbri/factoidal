@@ -2,20 +2,38 @@ name: W3C Test Suite
 
 on:
   push:
-    branches: [main, master, claude/main, 'claude/**']
+    # Only main lines. Feature-branch pushes (claude/<topic>) used to
+    # trigger this workflow too, but each branch push triggered a full
+    # ~30-minute W3C suite run AND cancelled in-flight main runs via
+    # the concurrency rule below — so the dashboard's data became
+    # stale even when no real CI failure was present. Restrict to the
+    # branches whose results actually feed the public dashboard.
+    branches: [main, master, claude/main]
   schedule:
-    # Run daily at 06:00 UTC
+    # Daily 06:00 UTC safety-net run regardless of merge cadence.
     - cron: '0 6 * * *'
   workflow_dispatch:
 
 permissions:
   contents: write
 
-# Avoid two pushes from the same branch racing each other to commit
-# CI artifacts. Newer pushes cancel older in-flight runs.
+# Concurrency policy:
+#   - Per-ref grouping (so different branches don't fight each other).
+#   - cancel-in-progress is FALSE for refs/heads/claude/main: main
+#     runs always complete, so docs/test-results/latest.json gets
+#     committed for every merge. If two main pushes land within the
+#     same suite duration, the second queues until the first finishes.
+#   - For the schedule + workflow_dispatch case (github.ref defaults
+#     to claude/main / main), cancel-in-progress also ends up false,
+#     which is what we want.
+#
+# Old policy was cancel-in-progress: true unconditionally, which
+# (combined with rapid PR-merge cadence to claude/main) meant the
+# scheduled and post-merge runs got pre-empted by the next push and
+# the dashboard hadn't been updated since 2026-05-01 19:00 UTC.
 concurrency:
   group: w3c-tests-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/claude/main' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' }}
 
 jobs:
   native-shadow:
