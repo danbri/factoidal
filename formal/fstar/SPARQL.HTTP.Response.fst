@@ -31,6 +31,7 @@ let status_text code =
   else if code = 500 then "Internal Server Error"
   else if code = 501 then "Not Implemented"
   else if code = 503 then "Service Unavailable"
+  else if code = 504 then "Gateway Timeout"
   else "Unknown"
 
 // CORS policy — how the server responds to cross-origin browser requests.
@@ -84,3 +85,53 @@ let cors_headers policy origin =
              :: common_cors_headers
            else []
        | None -> [])
+
+// JSON error-response body templates. The HTTP layer wraps these with
+// the corresponding 413 / 504 response_body record (status code,
+// content type); only the JSON body itself lives here.
+
+// 413 body: query produced too many rows for the configured cap. The
+// hint string is a stable user-facing recommendation matched by the
+// /admin demo page; do not edit without coordinating with the UI.
+val result_cap_response_body : cap:int -> string
+let result_cap_response_body cap =
+  String.concat "" [
+    "{\"error\":\"result_cardinality_cap_exceeded\",\"cap\":";
+    string_of_int cap;
+    ",\"hint\":\"Add LIMIT or bind more triple-pattern terms.\"}\n"
+  ]
+
+// 504 body: query exceeded its wall-clock budget. Same hint text as
+// the cap body so the UI can route both cases through the same panel.
+val query_timeout_response_body : secs:int -> string
+let query_timeout_response_body secs =
+  String.concat "" [
+    "{\"error\":\"query_timeout\",\"seconds\":";
+    string_of_int secs;
+    ",\"hint\":\"Add LIMIT or bind more triple-pattern terms.\"}\n"
+  ]
+
+// Compile-time guards: pin both response-body templates and the
+// 504 status_text byte-for-byte. assert_norm forces F* to reduce
+// the body and check it against the expected string at type-check
+// time, so any future drift in the template — extra whitespace, a
+// missing comma, a renamed field — fails verification rather than
+// silently shipping. (A bare `let _test = expr = "..."` would only
+// type-check the boolean; F* is happy if it equals `false`.)
+let _ = assert_norm (
+  result_cap_response_body 1000
+    = "{\"error\":\"result_cardinality_cap_exceeded\",\"cap\":1000,\"hint\":\"Add LIMIT or bind more triple-pattern terms.\"}\n"
+)
+
+let _ = assert_norm (
+  query_timeout_response_body 30
+    = "{\"error\":\"query_timeout\",\"seconds\":30,\"hint\":\"Add LIMIT or bind more triple-pattern terms.\"}\n"
+)
+
+// Status_text 504 is a sibling guard: query_timeout_response_body
+// produces a 504 body, and the OCaml shim that wraps it pulls the
+// reason phrase from this same module's status_text. If those two
+// drift apart the wire response would say "HTTP/1.1 504 Unknown"
+// with a JSON timeout body — keep them locked together at extract
+// time.
+let _ = assert_norm (status_text 504 = "Gateway Timeout")

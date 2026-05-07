@@ -962,15 +962,9 @@ let result_cap_response ~cap ~actual_size =
   Printf.eprintf
     "[tav5-trace] result-cap exceeded for query=<not-rendered, cap fired> \
      cap=%d actual_size=%d\n%!" cap actual_size;
-  let body =
-    Printf.sprintf
-      "{\"error\":\"result_cardinality_cap_exceeded\",\"cap\":%d,\
-       \"hint\":\"Add LIMIT or bind more triple-pattern terms.\"}\n"
-      cap
-  in
   { rb_status = 413;
     rb_content_type = "application/json; charset=utf-8";
-    rb_body = body }
+    rb_body = SPARQL_HTTP_Response.result_cap_response_body (Z.of_int cap) }
 
 (* True iff the cap is enabled and [List.length rows > cap].
    List.length is tail-rec in the OCaml stdlib, so this is safe to call
@@ -1414,17 +1408,12 @@ let parse_and_run ~backend ~accept ~max_rows query_text =
   r
 
 (* Heth3: build the standard 504 Gateway Timeout body when a query exceeds
-   the configured wall-clock budget. Mirrors result_cap_response's shape. *)
+   the configured wall-clock budget. The JSON body shape is owned by
+   SPARQL.HTTP.Response.fst (rule #1). *)
 let query_timeout_response ~secs =
-  let body =
-    Printf.sprintf
-      "{\"error\":\"query_timeout\",\"seconds\":%d,\
-       \"hint\":\"Add LIMIT or bind more triple-pattern terms.\"}\n"
-      secs
-  in
   { rb_status = 504;
     rb_content_type = "application/json; charset=utf-8";
-    rb_body = body }
+    rb_body = SPARQL_HTTP_Response.query_timeout_response_body (Z.of_int secs) }
 
 (* Heth3: run [f ()] under a process-global Unix.alarm. SIGALRM is
    intercepted by a handler that raises [Query_timeout] inside whatever
