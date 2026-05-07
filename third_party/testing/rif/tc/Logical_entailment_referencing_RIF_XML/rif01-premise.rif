@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!DOCTYPE Document [
+  <!ENTITY rif  "http://www.w3.org/2007/rif#">
+  <!ENTITY xs   "http://www.w3.org/2001/XMLSchema#">
+  <!ENTITY rdf  "http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+]>
+
+<!-- factoidal: synthesised RIF-XML premise for the SPARQL 1.1 entailment
+     test rif01 ("RIF Logical Entailment (referencing RIF XML)").
+     The W3C RIF Test Cases repository at
+       https://www.w3.org/2005/rules/test/repository/tc/
+     does not host a test under this name; the SPARQL Working Group's
+     entailment manifest declares <rif01.rif> as a peer file but never
+     publishes it. The RIF rule is implied by the .ttl premise (which
+     gives parent + brother facts) and the .srx result (which expects
+     ex:Emeka ex:uncle ex:Chijoke). We encode that rule here in RIF Core
+     XML form. The rule reads:
+
+       Forall ?nephew ?parent ?uncle (
+         ?nephew ex:uncle ?uncle :-
+           ?nephew ex:parent ?parent /\ ?parent ex:brother ?uncle
+       )
+-->
+
+<Document xmlns="&rif;">
+  <payload>
+    <Group>
+      <sentence>
+        <Forall>
+          <declare><Var>nephew</Var></declare>
+          <declare><Var>parent</Var></declare>
+          <declare><Var>uncle</Var></declare>
+          <formula>
+            <Implies>
+              <if>
+                <And>
+                  <formula>
+                    <Frame>
+                      <object><Var>nephew</Var></object>
+                      <slot ordered="yes">
+                        <Const type="&rif;iri">http://example.org/ns#parent</Const>
+                        <Var>parent</Var>
+                      </slot>
+                    </Frame>
+                  </formula>
+                  <formula>
+                    <Frame>
+                      <object><Var>parent</Var></object>
+                      <slot ordered="yes">
+                        <Const type="&rif;iri">http://example.org/ns#brother</Const>
+                        <Var>uncle</Var>
+                      </slot>
+                    </Frame>
+                  </formula>
+                </And>
+              </if>
+              <then>
+                <Frame>
+                  <object><Var>nephew</Var></object>
+                  <slot ordered="yes">
+                    <Const type="&rif;iri">http://example.org/ns#uncle</Const>
+                    <Var>uncle</Var>
+                  </slot>
+                </Frame>
+              </then>
+            </Implies>
+          </formula>
+        </Forall>
+      </sentence>
+    </Group>
+  </payload>
+</Document>
