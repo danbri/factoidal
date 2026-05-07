@@ -247,6 +247,8 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              RDF.CottasStore.OnDiskIndex.fst \
              RDF.CottasStore.PresenceBitmap.fst \
              RDF.CottasStore.CompoundPresenceBitmap.fst \
+             SPARQL.Plan.Pruning.fst \
+             SPARQL.Plan.Estimate.fst \
              RDF.CottasStore.fst \
              RDF.CottasInMem.fst \
              SPARQL11.Store.fst \
@@ -340,6 +342,8 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     RDF_CottasStore_OnDiskIndex.ml \
     RDF_CottasStore_PresenceBitmap.ml \
     RDF_CottasStore_CompoundPresenceBitmap.ml \
+    SPARQL_Plan_Pruning.ml \
+    SPARQL_Plan_Estimate.ml \
     RDF_CottasStore.ml \
     RDF_CottasInMem.ml \
     fstar_pure_hashes.ml \

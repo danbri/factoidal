@@ -55,6 +55,27 @@
     font-weight: 400; color: var(--muted); font-size: 0.85em;
     margin-left: 0.4em;
   }
+  h2 .inline-numbers a {
+    color: inherit; text-decoration: underline; text-decoration-style: dotted;
+  }
+  h2 .inline-numbers a:hover { color: var(--brand-dark); }
+
+  .failure-detail {
+    margin: 0.4em 0 1em;
+    padding: 0.4em 0.8em;
+    border-left: 3px solid var(--muted);
+    background: rgba(0,0,0,0.02);
+    border-radius: 3px;
+    font-size: 0.85em;
+  }
+  .failure-detail summary { cursor: pointer; color: var(--muted); }
+  .failure-detail summary:hover { color: var(--brand-dark); }
+  .failure-detail ul {
+    margin: 0.5em 0 0; padding-left: 1.4em;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.88em;
+  }
+  .failure-detail li { margin: 0.2em 0; line-height: 1.4; }
 
   .suites { display: flex; flex-direction: column; gap: 0.2em; margin: 0 0 1em; }
   .suite-row {
@@ -159,7 +180,7 @@
   are linked below.
 </div>
 
-<h2>SPARQL 1.1 <span class="inline-numbers">626 pass · 1 fail · 4 skip</span></h2>
+<h2>SPARQL 1.1 <span class="inline-numbers">626 pass · <a href="#sparql-failures">1 fail</a> · <a href="#sparql-skips">4 skip</a></span></h2>
 <div class="suites">
       <div class="suite-row perfect">
         <div class="suite-name">add</div>
@@ -434,8 +455,24 @@
         </div>
       </div>
 </div>
+<details id="sparql-failures" class="failure-detail">
+  <summary>SPARQL 1.1 failures (click to expand)</summary>
+  <ul>
+<li>FAIL: parent query with (hasChild max 1 Female) restriction — Results mismatch: expected 1 rows, got 311 (144ms)</li>
+  </ul>
+</details>
 
-<h2>RDF 1.1 <span class="inline-numbers">1031 pass · 0 fail</span></h2>
+<details id="sparql-skips" class="failure-detail">
+  <summary>SPARQL 1.1 skips (click to expand)</summary>
+  <ul>
+<li>skip: RIF Logical Entailment (referencing RIF XML) — RIF not implemented</li>
+<li>skip: RIF Core WG tests: Frames — RIF not implemented</li>
+<li>skip: RIF Core WG tests: Modeling Brain Anatomy — RIF not implemented</li>
+<li>skip: RIF Core WG tests: RDF Combination Blank Node — RIF not implemented</li>
+  </ul>
+</details>
+
+<h2>RDF 1.1 <span class="inline-numbers">1031 pass · <a href="#rdf-failures">0 fail</a></span></h2>
 <div class="suites">
       <div class="suite-row perfect">
         <div class="suite-name">rdf-mt</div>
@@ -485,15 +522,20 @@
           <small></small>
         </div>
       </div>
-      <div class="suite-row mixed">
-        <div class="suite-name">rdf-canon</div>
-        <div class="suite-bar"><div class="fill" style="width:69%"></div></div>
-        <div class="suite-numbers">
-          <span class="p">59</span>/<span class="f">26</span>
-          <small>skip 1</small>
-        </div>
-      </div>
 </div>
+<details id="rdf-failures" class="failure-detail">
+  <summary>RDF 1.1 failures (click to expand)</summary>
+  <ul>
+<li>(none)</li>
+  </ul>
+</details>
+
+<details id="rdf-skips" class="failure-detail">
+  <summary>RDF 1.1 skips (click to expand)</summary>
+  <ul>
+<li>(none)</li>
+  </ul>
+</details>
 
 <h2>OWL 2 <span class="inline-numbers">13 pass &middot; 17 fail &middot; out of ~3378 W3C OWL 2 tests in scope (≈0.4%)</span></h2>
 <p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">
@@ -706,9 +748,9 @@
 </main>
 
 <footer>
-  Generated <strong>2026-05-01 19:00 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/39ce3aaee9a75442b10e4e80a356ae9455ef1913">39ce3aa</a></code>
-  on branch <code>claude/inmem-cottas-phase-a</code> — &ldquo;sparql algebra: streaming COUNT(*) GROUP BY ?g + use_backend_exec gate relax&rdquo;.
+  Generated <strong>2026-05-07 14:51 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/8f305d41dbf3477f2e87a10ae80f2e5f3913109a">8f305d4</a></code>
+  on branch <code>claude/sparql-plan-pruning-estimate</code> — &ldquo;fix: cast remaining int → Z.t at factoidal_http.ml call sites + rebuild binaries (#206)&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
