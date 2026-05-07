@@ -231,6 +231,8 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              Parser.SRX.fst Parser.CSVResults.fst \
              Parser.JSONResults.fst \
              SPARQL.JSON.Escape.fst \
+             SPARQL.Eval.TimeBudget.fst \
+             SPARQL.Eval.Limits.fst \
              SPARQL.HTTP.Response.fst \
              SPARQL.HTTP.BackendInfo.fst \
              SPARQL.HTTP.QueriesIndex.fst \
@@ -323,6 +325,8 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
     SPARQL_JSON_Escape.ml \
+    SPARQL_Eval_TimeBudget.ml \
+    SPARQL_Eval_Limits.ml \
     SPARQL_HTTP_Response.ml \
     SPARQL_HTTP_BackendInfo.ml \
     SPARQL_HTTP_QueriesIndex.ml \
