@@ -2956,6 +2956,47 @@ let owl_rule_named_sameAs_to_equivClass (g : rdf_graph) : rdf_graph =
     g
     g
 
+// Named-equivalentClass-to-sameAs (dual of owl_rule_named_sameAs_to_equivClass):
+// if (C owl:equivalentClass D) where C and D are both IRIs and both
+// already typed as owl:Class, emit
+//   (C owl:sameAs D) and (D owl:sameAs C).
+//
+// IRI-only / class-typed guard: mirrors the sibling rule above and
+// avoids feeding the bnode chain that `owl_rule_equivalent_class`
+// deliberately blocks (anonymous CE bnodes are existentials, not
+// individuals). Sound under OWL Full / RL where `owl:Class ⊆ rdfs:Class`
+// and named classes are individuals; extensional class equality between
+// named classes implies the underlying individual identity.
+//
+// Drives the OWL 2 RL annotation-propagation pattern: once we have
+// (c1 sameAs c2), the existing eq-rep-s/p/o rules copy every triple
+// carrying c1 (including annotation triples like rdfs:comment or
+// user-declared owl:AnnotationProperty assertions) onto c2 and back.
+//
+// Targets WebOnt-I4.6-005-Direct and WebOnt-equivalentClass-008-Direct
+// (cluster I+J of docs/designissues/2026-05-07-owl2-rl-next-steps.md).
+let owl_rule_named_equivClass_to_sameAs (g : rdf_graph) : rdf_graph =
+  let is_class (i : wf_iri) : bool =
+    let types = find_objects g (S_IRI i) rdf_type in
+    List.Tot.existsb (fun (x : rdf_term) -> rdf_term_eq x (T_IRI owl_Class)) types
+  in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_equivalentClass then
+        match t.s, t.o with
+        | S_IRI c_iri, T_IRI d_iri ->
+          if c_iri <> d_iri && is_class c_iri && is_class d_iri then
+            let t1 : triple =
+              { s = S_IRI c_iri; p = owl_sameAs; o = T_IRI d_iri } in
+            let t2 : triple =
+              { s = S_IRI d_iri; p = owl_sameAs; o = T_IRI c_iri } in
+            add_triple_if_new (add_triple_if_new acc t1) t2
+          else acc
+        | _, _ -> acc
+      else acc)
+    g
+    g
+
 // ---- Tier-3: XSD datatype hierarchy axioms ---------------------------------
 //
 // OWL 2 RL/RDF expects the standard XSD numeric tower to be available as
@@ -3198,7 +3239,13 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   let g3a = owl_rule_inverseOf_domain_range_flip g3_disj in
   let g4 = owl_rule_symmetric_property g3a in
   let g5 = owl_rule_transitive_property g4 in
-  let g6 = owl_rule_sameAs_reflexivity g5 in
+  // Named-equivalentClass-to-sameAs: must run BEFORE the sameAs rules
+  // so the freshly-emitted (c1 sameAs c2) facts feed eq-rep-s/p/o in
+  // the same step, propagating annotation properties from one named
+  // class to its equivalent. Targets WebOnt-I4.6-005-Direct and
+  // WebOnt-equivalentClass-008-Direct (cluster I+J).
+  let g5a = owl_rule_named_equivClass_to_sameAs g5 in
+  let g6 = owl_rule_sameAs_reflexivity g5a in
   let g7 = owl_rule_sameAs_symmetry g6 in
   // eq-diff-sym: differentFrom is symmetric.
   let g7a = owl_rule_differentFrom_symmetry g7 in

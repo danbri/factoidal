@@ -1912,6 +1912,35 @@ let owl_rule_named_sameAs_to_equivClass (g : rdf_graph) : rdf_graph=
               else acc)
          | (uu___, uu___1) -> acc
        else acc) g g
+let owl_rule_named_equivClass_to_sameAs (g : rdf_graph) : rdf_graph=
+  let is_class i =
+    let types = find_objects g (S_IRI i) rdf_type in
+    FStar_List_Tot_Base.existsb (fun x -> rdf_term_eq x (T_IRI owl_Class))
+      types in
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if t.p = owl_equivalentClass
+       then
+         match ((t.s), (t.o)) with
+         | (S_IRI c_iri, T_IRI d_iri) ->
+             (if ((c_iri <> d_iri) && (is_class c_iri)) && (is_class d_iri)
+              then
+                let t1 =
+                  {
+                    s = (S_IRI c_iri);
+                    p = owl_sameAs;
+                    o = (T_IRI d_iri)
+                  } in
+                let t2 =
+                  {
+                    s = (S_IRI d_iri);
+                    p = owl_sameAs;
+                    o = (T_IRI c_iri)
+                  } in
+                add_triple_if_new (add_triple_if_new acc t1) t2
+              else acc)
+         | (uu___, uu___1) -> acc
+       else acc) g g
 let xsd_long : wf_iri= "http://www.w3.org/2001/XMLSchema#long"
 let xsd_int : wf_iri= "http://www.w3.org/2001/XMLSchema#int"
 let xsd_short : wf_iri= "http://www.w3.org/2001/XMLSchema#short"
@@ -2043,7 +2072,8 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
   let g3a = owl_rule_inverseOf_domain_range_flip g3_disj in
   let g4 = owl_rule_symmetric_property g3a in
   let g5 = owl_rule_transitive_property g4 in
-  let g6 = owl_rule_sameAs_reflexivity g5 in
+  let g5a = owl_rule_named_equivClass_to_sameAs g5 in
+  let g6 = owl_rule_sameAs_reflexivity g5a in
   let g7 = owl_rule_sameAs_symmetry g6 in
   let g7a = owl_rule_differentFrom_symmetry g7 in
   let g8 = owl_rule_sameAs_transitivity g7a in
