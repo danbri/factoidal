@@ -156,3 +156,16 @@ let (backend_kind_of_flags : Prims.bool -> Prims.bool -> backend_kind) =
       if has_dataset
       then (if has_cottas then BK_Hybrid else BK_InMem)
       else if has_cottas then BK_CottasOnDisk else BK_Empty
+let (backend_source_string :
+  Prims.string FStar_Pervasives_Native.option ->
+    Prims.string Prims.list -> Prims.string)
+  =
+  fun dataset_basename ->
+    fun cottas_basenames ->
+      match (dataset_basename, cottas_basenames) with
+      | (FStar_Pervasives_Native.None, []) -> "(none)"
+      | (FStar_Pervasives_Native.Some f, []) -> f
+      | (FStar_Pervasives_Native.None, paths) ->
+          FStar_String.concat ", " paths
+      | (FStar_Pervasives_Native.Some f, paths) ->
+          FStar_String.concat ", " (f :: paths)
