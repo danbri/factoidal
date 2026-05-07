@@ -70,9 +70,9 @@ let rdf_type_iri = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 let mf_action = mf_ns ^ "action"
 let mf_result = mf_ns ^ "result"
 let mf_name   = mf_ns ^ "name"
-let rdfc_eval_test         = rdfc_ns ^ "RDFC10EvalTest"
-let rdfc_neg_eval_test     = rdfc_ns ^ "RDFC10NegativeEvalTest"
-let rdfc_map_test          = rdfc_ns ^ "RDFC10MapTest"
+let rdfc_eval_test     = RDF_Canonical_Manifest.rdfc_eval_test
+let rdfc_neg_eval_test = RDF_Canonical_Manifest.rdfc_neg_eval_test
+let rdfc_map_test      = RDF_Canonical_Manifest.rdfc_map_test
 
 (* The manifest is a Turtle file; parser yields a list of triples (the
    default graph). All identifiers come out as IRIs. *)
@@ -91,19 +91,14 @@ let parse_manifest path =
 (* ------------------------------------------------------------------ *)
 (* Per-test record. *)
 
-type test_kind = TK_Eval | TK_NegEval | TK_Map | TK_Unknown
+type test_kind = RDF_Canonical_Manifest.test_kind =
+  | TK_Eval
+  | TK_NegEval
+  | TK_Map
+  | TK_Unknown
 
-let kind_of_iri (iri : string) : test_kind =
-  if iri = rdfc_eval_test then TK_Eval
-  else if iri = rdfc_neg_eval_test then TK_NegEval
-  else if iri = rdfc_map_test then TK_Map
-  else TK_Unknown
-
-let kind_label = function
-  | TK_Eval    -> "Eval"
-  | TK_NegEval -> "NegEval"
-  | TK_Map     -> "Map"
-  | TK_Unknown -> "Unknown"
+let kind_of_iri = RDF_Canonical_Manifest.kind_of_iri
+let kind_label  = RDF_Canonical_Manifest.kind_label
 
 type rdfc_test = {
   iri        : string;
