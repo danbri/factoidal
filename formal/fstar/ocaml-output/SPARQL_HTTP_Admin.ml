@@ -87,3 +87,76 @@ let (render_recent_queries_envelope :
                                               (Prims.strcat
                                                  (join_array_elements
                                                     recent_jsons) "]}\n")))))))))))
+let (render_timing_log_line :
+  Prims.string ->
+    Prims.int ->
+      Prims.int ->
+        Prims.int ->
+          Prims.string ->
+            Prims.string ->
+              Prims.string -> Prims.string -> Prims.string -> Prims.string)
+  =
+  fun form ->
+    fun status ->
+      fun rows ->
+        fun body_bytes ->
+          fun parse_ms_str ->
+            fun eval_ms_str ->
+              fun format_ms_str ->
+                fun total_ms_str ->
+                  fun q_summary ->
+                    Prims.strcat "[timing] form="
+                      (Prims.strcat form
+                         (Prims.strcat " status="
+                            (Prims.strcat (Prims.string_of_int status)
+                               (Prims.strcat " rows="
+                                  (Prims.strcat (Prims.string_of_int rows)
+                                     (Prims.strcat " body="
+                                        (Prims.strcat
+                                           (Prims.string_of_int body_bytes)
+                                           (Prims.strcat "B"
+                                              (Prims.strcat " parse="
+                                                 (Prims.strcat parse_ms_str
+                                                    (Prims.strcat "ms"
+                                                       (Prims.strcat " eval="
+                                                          (Prims.strcat
+                                                             eval_ms_str
+                                                             (Prims.strcat
+                                                                "ms"
+                                                                (Prims.strcat
+                                                                   " format="
+                                                                   (Prims.strcat
+                                                                    format_ms_str
+                                                                    (Prims.strcat
+                                                                    "ms"
+                                                                    (Prims.strcat
+                                                                    " total="
+                                                                    (Prims.strcat
+                                                                    total_ms_str
+                                                                    (Prims.strcat
+                                                                    "ms"
+                                                                    (Prims.strcat
+                                                                    " q="
+                                                                    q_summary)))))))))))))))))))))
+let (render_timing_response_header :
+  Prims.string ->
+    Prims.string -> Prims.string -> Prims.string -> Prims.string)
+  =
+  fun parse_ms_str ->
+    fun eval_ms_str ->
+      fun format_ms_str ->
+        fun total_ms_str ->
+          Prims.strcat "Server-Timing: parse;dur="
+            (Prims.strcat parse_ms_str
+               (Prims.strcat ", eval;dur="
+                  (Prims.strcat eval_ms_str
+                     (Prims.strcat ", format;dur="
+                        (Prims.strcat format_ms_str
+                           (Prims.strcat ", total;dur=" total_ms_str))))))
+let (truncate_for_log : Prims.string -> Prims.nat -> Prims.string) =
+  fun s ->
+    fun n ->
+      let len = FStar_String.strlen s in
+      if len <= n
+      then s
+      else Prims.strcat (FStar_String.sub s Prims.int_zero n) "..."
