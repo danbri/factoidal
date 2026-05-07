@@ -769,7 +769,15 @@ let ci_find (s : string) (t : string) : int =
 
 let extract_content_length (s : string) (term : int) : int option =
   match SPARQL_HTTP.extract_content_length s (Z.of_int term) with
-  | Some n -> Some (Z.to_int n)
+  | Some n when Z.fits_int n -> Some (Z.to_int n)
+  | Some _ ->
+    (* Content-Length is well-formed digits but the value doesn't fit
+       OCaml's native int. Treat as malformed rather than letting
+       Z.to_int raise Z.Overflow (which would crash the accept loop
+       and turn an oversized header into a DoS). The phase-2 body
+       reader caps reads at max_body_bytes anyway, so any sane
+       Content-Length is far below int_max in practice. *)
+    None
   | None -> None
 
 (* Read bytes from [ic] until the HTTP header terminator is found or the
