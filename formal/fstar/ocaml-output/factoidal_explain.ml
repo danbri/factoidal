@@ -255,17 +255,16 @@ let cottas_estimate_quick
   : int =
   Z.to_int (C.cottas_ondisk_estimate cods bound)
 
-type bound_status =
-  | BS_Var of string                  (* ?varname — unbound *)
-  | BS_Hit of string                  (* concrete, present in dict *)
-  | BS_Miss of string                 (* concrete, ABSENT from dict (key for diagnosis!) *)
-  | BS_Other of string                (* concrete but no dict for this column (e.g. literal as pred) *)
+(* bound_status type and bs_string renderer live in F* per rule #1
+   (formal/fstar/SPARQL.Explain.fst). The re-export below preserves
+   the constructor names for the rest of the file. *)
+type bound_status = SPARQL_Explain.bound_status =
+  | BS_Var of string
+  | BS_Hit of string
+  | BS_Miss of string
+  | BS_Other of string
 
-let bs_string = function
-  | BS_Var v -> Printf.sprintf "?%s (free)" v
-  | BS_Hit s -> Printf.sprintf "%s [hit]" s
-  | BS_Miss s -> Printf.sprintf "%s [MISS — term not in dictionary; result definitely empty]" s
-  | BS_Other s -> Printf.sprintf "%s [non-encodable]" s
+let bs_string : bound_status -> string = SPARQL_Explain.bs_string
 
 (* For each leaf triple-pattern + a single-store cottas-ondisk handle, return
    - subject status (var or hit/miss)
