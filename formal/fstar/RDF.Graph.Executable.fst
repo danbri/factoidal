@@ -2831,6 +2831,10 @@ let owl_propertyChainAxiom : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#propertyChainAxiom");
   "http://www.w3.org/2002/07/owl#propertyChainAxiom"
 
+let owl_hasKey : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#hasKey");
+  "http://www.w3.org/2002/07/owl#hasKey"
+
 // Decode a 2-element RDF collection rooted at `head_subj`. Returns
 // `Some (p1, p2)` only when the list shape is exactly:
 //     head    rdf:first p1
@@ -3110,6 +3114,156 @@ let owl_rule_named_equivClass_to_sameAs (g : rdf_graph) : rdf_graph =
       else acc)
     g
     g
+
+// ---- Tier-3: prp-key (HasKey) — OWL 2 RL Cluster B -------------------------
+//
+// Decode an n-element rdf:Collection of IRIs rooted at `head_subj`.
+// Returns Some props on a well-formed list of IRIs terminated by rdf:nil,
+// None on any structural malformation, non-IRI element, or fuel exhaustion.
+//
+// Fuel is decremented on every rdf:rest hop so termination is structural.
+// Caller passes an upper bound (e.g. graph_len g) which dominates list
+// length under list-acyclicity.
+let rec decode_iri_list
+  (g : rdf_graph) (head_subj : subject) (fuel : nat)
+  : Tot (option (list wf_iri)) (decreases fuel)
+  =
+  // Empty list: head is rdf:nil itself.
+  let is_nil_head =
+    match head_subj with
+    | S_IRI i -> i = rdf_nil_iri
+    | _ -> false
+  in
+  if is_nil_head then Some []
+  else if fuel = 0 then None
+  else
+    let firsts = find_objects g head_subj rdf_first in
+    let rests  = find_objects g head_subj rdf_rest  in
+    match firsts, rests with
+    | (T_IRI p_iri) :: _, tail_term :: _ ->
+      (match term_to_subject tail_term with
+       | None -> None
+       | Some tail_subj ->
+         match decode_iri_list g tail_subj (fuel - 1) with
+         | None -> None
+         | Some rest_props -> Some (p_iri :: rest_props))
+    | _, _ -> None
+
+// Collect all (C owl:hasKey list) axioms as (class IRI, decoded prop list)
+// pairs. Skips any axiom whose subject is not an IRI, whose object cannot
+// be a list-head subject, or whose list fails to decode as a list of IRIs.
+let collect_haskey_axioms (g : rdf_graph) : list (wf_iri & list wf_iri) =
+  let fuel : nat = List.Tot.length g in
+  List.Tot.fold_left
+    (fun (acc : list (wf_iri & list wf_iri)) (t : triple) ->
+      if t.p = owl_hasKey then
+        match t.s, term_to_subject t.o with
+        | S_IRI c_iri, Some list_subj ->
+          (match decode_iri_list g list_subj fuel with
+           | Some props -> (c_iri, props) :: acc
+           | None -> acc)
+        | _, _ -> acc
+      else acc)
+    []
+    g
+
+// Find all named-individual subjects (IRIs only) typed as `cls` in `g`.
+// Bnodes are excluded — OWL 2 RL prp-key applies to named individuals.
+let members_of_class (g : rdf_graph) (cls : wf_iri) : list wf_iri =
+  List.Tot.fold_left
+    (fun (acc : list wf_iri) (t : triple) ->
+      if t.p = rdf_type && rdf_term_eq t.o (T_IRI cls) then
+        match t.s with
+        | S_IRI x_iri ->
+          if List.Tot.mem x_iri acc then acc else x_iri :: acc
+        | _ -> acc
+      else acc)
+    []
+    g
+
+// Test whether x and y agree on a single key property p:
+//   exists v. (x p v) and (y p v)
+// Object terms compared via rdf_term_eq (lexical/structural equality);
+// this matches the OWL 2 RL prp-key spec which compares zi values
+// without datatype-value normalisation.
+let agree_on_property
+  (g : rdf_graph) (x : wf_iri) (y : wf_iri) (p : wf_iri)
+  : bool
+  =
+  let xs_objs = find_objects g (S_IRI x) p in
+  let ys_objs = find_objects g (S_IRI y) p in
+  List.Tot.existsb
+    (fun (xv : rdf_term) ->
+      List.Tot.existsb (fun (yv : rdf_term) -> rdf_term_eq xv yv) ys_objs)
+    xs_objs
+
+// Test whether x and y agree on EVERY key property in props. Vacuously
+// true on the empty list — we filter empty key lists at the rule boundary
+// to avoid emitting sameAs across all members of C on a HasKey() with no
+// properties (which would be a no-op key axiom, but is nonetheless not
+// what prp-key entails).
+let rec all_keys_match
+  (g : rdf_graph) (x : wf_iri) (y : wf_iri) (props : list wf_iri)
+  : Tot bool (decreases props)
+  =
+  match props with
+  | [] -> true
+  | p :: rest ->
+    if agree_on_property g x y p
+    then all_keys_match g x y rest
+    else false
+
+// prp-key: OWL 2 RL Cluster B.
+//
+// Premises:
+//   (C owl:hasKey (p1 p2 ... pn))   with n >= 1
+//   (x rdf:type C), (y rdf:type C)  for IRI x, y
+//   for each pi: exists vi. (x pi vi) and (y pi vi)
+// Conclusion:
+//   (x owl:sameAs y)
+//
+// Restrictions (OWL 2 RL fragment):
+//   - x, y are named individuals (IRIs only).
+//   - Empty key lists are skipped (HasKey C () would otherwise merge all
+//     members of C, which is not the OWL 2 RL semantics).
+//   - x = y is skipped (sameAs reflexivity is handled separately).
+//
+// Termination: outer fold over hasKey axioms (finite); for each axiom an
+// inner double fold over the (finite) member list. Each emission goes
+// through add_triple_if_new so the closure fixpoint terminates.
+//
+// Targets New-Feature-Keys-003 (positive entailment) without breaking
+// New-Feature-Keys-004 (StPeter is not typed GriffinFamilyMember, so the
+// rdf:type guard prevents merging Peter with StPeter).
+let owl_rule_prp_key (g : rdf_graph) : rdf_graph =
+  let axioms = collect_haskey_axioms g in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (axiom : (wf_iri & list wf_iri)) ->
+      let (c_iri, props) = axiom in
+      match props with
+      | [] -> acc  // empty key list — no entailment
+      | _ ->
+        let members = members_of_class g c_iri in
+        // For each ordered pair (x, y) with x <> y, check key agreement.
+        // We emit BOTH (x sameAs y) and (y sameAs x) implicitly by walking
+        // ordered pairs; sameAs symmetry would also derive the converse,
+        // but emitting directly avoids one fixpoint round-trip.
+        List.Tot.fold_left
+          (fun (acc1 : rdf_graph) (x : wf_iri) ->
+            List.Tot.fold_left
+              (fun (acc2 : rdf_graph) (y : wf_iri) ->
+                if x = y then acc2
+                else if all_keys_match g x y props then
+                  let new_t : triple =
+                    { s = S_IRI x; p = owl_sameAs; o = T_IRI y } in
+                  add_triple_if_new acc2 new_t
+                else acc2)
+              acc1
+              members)
+          acc
+          members)
+    g
+    axioms
 
 // ---- Tier-3: XSD datatype hierarchy axioms ---------------------------------
 //
@@ -3403,9 +3557,14 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   let g22a = owl_rule_property_chain_n g22 in
   let g23 = owl_rule_chain_to_transitive g22a in
   let g24 = owl_rule_named_sameAs_to_equivClass g23 in
+  // Cluster B: prp-key (HasKey). Emits owl:sameAs between named
+  // individuals of class C that agree on every property in C's key list.
+  // Runs after the sameAs rules so freshly-emitted sameAs facts are
+  // propagated by eq-rep-s/p/o on the next fixpoint iteration.
+  let g24a = owl_rule_prp_key g24 in
   // Tier-3: XSD datatype hierarchy + rdfs:Datatype axioms (gated on the
   // graph mentioning any XSD IRI). Targets WebOnt-I5.8-006/008/009/011.
-  let g25 = owl_rule_xsd_datatype_axioms g24 in
+  let g25 = owl_rule_xsd_datatype_axioms g24a in
   // Always-on core XSD Datatype declarations (xsd:integer / xsd:string).
   // Required for WebOnt-I5.8-011 which entails the declarations from an
   // empty graph (the gated rule above does not fire on empty input).

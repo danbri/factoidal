@@ -1817,6 +1817,7 @@ let rdf_rest : wf_iri= "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
 let rdf_nil_iri : wf_iri= "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"
 let owl_propertyChainAxiom : wf_iri=
   "http://www.w3.org/2002/07/owl#propertyChainAxiom"
+let owl_hasKey : wf_iri= "http://www.w3.org/2002/07/owl#hasKey"
 let decode_chain_pair (g : rdf_graph) (head_subj : subject) :
   (wf_iri * wf_iri) FStar_Pervasives_Native.option=
   let firsts1 = find_objects g head_subj rdf_first in
@@ -1926,21 +1927,103 @@ let owl_rule_named_equivClass_to_sameAs (g : rdf_graph) : rdf_graph=
              (if ((c_iri <> d_iri) && (is_class c_iri)) && (is_class d_iri)
               then
                 let t1 =
-                  {
-                    s = (S_IRI c_iri);
-                    p = owl_sameAs;
-                    o = (T_IRI d_iri)
-                  } in
+                  { s = (S_IRI c_iri); p = owl_sameAs; o = (T_IRI d_iri) } in
                 let t2 =
-                  {
-                    s = (S_IRI d_iri);
-                    p = owl_sameAs;
-                    o = (T_IRI c_iri)
-                  } in
+                  { s = (S_IRI d_iri); p = owl_sameAs; o = (T_IRI c_iri) } in
                 add_triple_if_new (add_triple_if_new acc t1) t2
               else acc)
          | (uu___, uu___1) -> acc
        else acc) g g
+let rec decode_iri_list (g : rdf_graph) (head_subj : subject)
+  (fuel : Prims.nat) : wf_iri Prims.list FStar_Pervasives_Native.option=
+  let is_nil_head =
+    match head_subj with | S_IRI i -> i = rdf_nil_iri | uu___ -> false in
+  if is_nil_head
+  then FStar_Pervasives_Native.Some []
+  else
+    if fuel = Prims.int_zero
+    then FStar_Pervasives_Native.None
+    else
+      (let firsts = find_objects g head_subj rdf_first in
+       let rests = find_objects g head_subj rdf_rest in
+       match (firsts, rests) with
+       | ((T_IRI p_iri)::uu___2, tail_term::uu___3) ->
+           (match term_to_subject tail_term with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some tail_subj ->
+                (match decode_iri_list g tail_subj (fuel - Prims.int_one)
+                 with
+                 | FStar_Pervasives_Native.None ->
+                     FStar_Pervasives_Native.None
+                 | FStar_Pervasives_Native.Some rest_props ->
+                     FStar_Pervasives_Native.Some (p_iri :: rest_props)))
+       | (uu___2, uu___3) -> FStar_Pervasives_Native.None)
+let collect_haskey_axioms (g : rdf_graph) :
+  (wf_iri * wf_iri Prims.list) Prims.list=
+  let fuel = FStar_List_Tot_Base.length g in
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if t.p = owl_hasKey
+       then
+         match ((t.s), (term_to_subject t.o)) with
+         | (S_IRI c_iri, FStar_Pervasives_Native.Some list_subj) ->
+             (match decode_iri_list g list_subj fuel with
+              | FStar_Pervasives_Native.Some props -> (c_iri, props) :: acc
+              | FStar_Pervasives_Native.None -> acc)
+         | (uu___, uu___1) -> acc
+       else acc) [] g
+let members_of_class (g : rdf_graph) (cls : wf_iri) : wf_iri Prims.list=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if (t.p = rdf_type) && (rdf_term_eq t.o (T_IRI cls))
+       then
+         match t.s with
+         | S_IRI x_iri ->
+             (if FStar_List_Tot_Base.mem x_iri acc then acc else x_iri :: acc)
+         | uu___ -> acc
+       else acc) [] g
+let agree_on_property (g : rdf_graph) (x : wf_iri) (y : wf_iri) (p : wf_iri)
+  : Prims.bool=
+  let xs_objs = find_objects g (S_IRI x) p in
+  let ys_objs = find_objects g (S_IRI y) p in
+  FStar_List_Tot_Base.existsb
+    (fun xv ->
+       FStar_List_Tot_Base.existsb (fun yv -> rdf_term_eq xv yv) ys_objs)
+    xs_objs
+let rec all_keys_match (g : rdf_graph) (x : wf_iri) (y : wf_iri)
+  (props : wf_iri Prims.list) : Prims.bool=
+  match props with
+  | [] -> true
+  | p::rest ->
+      if agree_on_property g x y p then all_keys_match g x y rest else false
+let owl_rule_prp_key (g : rdf_graph) : rdf_graph=
+  let axioms = collect_haskey_axioms g in
+  FStar_List_Tot_Base.fold_left
+    (fun acc axiom ->
+       let uu___ = axiom in
+       match uu___ with
+       | (c_iri, props) ->
+           (match props with
+            | [] -> acc
+            | uu___1 ->
+                let members = members_of_class g c_iri in
+                FStar_List_Tot_Base.fold_left
+                  (fun acc1 x ->
+                     FStar_List_Tot_Base.fold_left
+                       (fun acc2 y ->
+                          if x = y
+                          then acc2
+                          else
+                            if all_keys_match g x y props
+                            then
+                              (let new_t =
+                                 {
+                                   s = (S_IRI x);
+                                   p = owl_sameAs;
+                                   o = (T_IRI y)
+                                 } in
+                               add_triple_if_new acc2 new_t)
+                            else acc2) acc1 members) acc members)) g axioms
 let xsd_long : wf_iri= "http://www.w3.org/2001/XMLSchema#long"
 let xsd_int : wf_iri= "http://www.w3.org/2001/XMLSchema#int"
 let xsd_short : wf_iri= "http://www.w3.org/2001/XMLSchema#short"
@@ -2095,7 +2178,8 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
   let g22 = owl_rule_property_chain_2 g21 in
   let g23 = owl_rule_chain_to_transitive g22 in
   let g24 = owl_rule_named_sameAs_to_equivClass g23 in
-  let g25 = owl_rule_xsd_datatype_axioms g24 in
+  let g24a = owl_rule_prp_key g24 in
+  let g25 = owl_rule_xsd_datatype_axioms g24a in
   let g26 = owl_rule_xsd_core_datatype_axioms g25 in
   let g27 = owl_rule_scm_dom2 g26 in let g28 = owl_rule_scm_rng2 g27 in g28
 let rec owl_rl_closure (g : rdf_graph) (fuel : Prims.nat) : rdf_graph=
