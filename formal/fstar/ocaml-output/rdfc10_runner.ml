@@ -196,17 +196,11 @@ let iri_to_path (iri : string) : string option =
    no-bnode tests in Phase 0. Phase 1+ replaces this with the
    F\*-extracted canonical_nquads serialiser. *)
 
-let escape_literal_lexical (s : string) : string =
-  let b = Buffer.create (String.length s + 8) in
-  String.iter (fun c ->
-    match c with
-    | '\\' -> Buffer.add_string b "\\\\"
-    | '"'  -> Buffer.add_string b "\\\""
-    | '\n' -> Buffer.add_string b "\\n"
-    | '\r' -> Buffer.add_string b "\\r"
-    | '\t' -> Buffer.add_string b "\\t"
-    | _    -> Buffer.add_char b c) s;
-  Buffer.contents b
+(* Delegates to F*'s RDF.NQuads.Serialize.nq_escape_literal. The
+   local OCaml impl was a byte-for-byte duplicate; per CLAUDE.md
+   rule #11 OCaml glue may not carry serialisation logic. *)
+let escape_literal_lexical : string -> string =
+  RDF_NQuads_Serialize.nq_escape_literal
 
 let term_nq (t : rdf_term) : string =
   match t with
