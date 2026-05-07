@@ -75,6 +75,73 @@ val expand_user_graph : template:string -> authid:string -> string
 let expand_user_graph template authid =
   string_replace_all "{authid}" authid template
 
+(* Find the first occurrence of the literal "{authid}" placeholder
+   in [s] at or after position [pos]. Returns the start index of the
+   match, or None if absent. Fuel-bounded linear scan. *)
+let rec find_authid_placeholder
+    (s : string)
+    (pos : nat)
+    (fuel : nat)
+  : Tot (option nat) (decreases fuel) =
+  let len = FStar.String.length s in
+  let key = "{authid}" in
+  let klen = FStar.String.length key in
+  if fuel = 0 then None
+  else if pos + klen > len then None
+  else if FStar.String.sub s pos klen = key then Some pos
+  else find_authid_placeholder s (pos + 1) (fuel - 1)
+
+(* Return the fixed prefix of an auth-template up to (but not including)
+   the first "{authid}" placeholder anywhere in the template. If the
+   template contains no "{authid}" placeholder, return the whole
+   template. Used by the HTTP server to detect which named graphs in
+   the dataset belong to the user-writable sandbox.
+
+   This scans for the literal placeholder string anywhere in the
+   template, not just at the first '{'. So a template with a stray
+   '{x}' before the real placeholder (e.g. "...{x}.../{authid}...")
+   correctly splits at the placeholder, not at the stray brace. *)
+val template_prefix : template:string -> string
+let template_prefix template =
+  let len = FStar.String.length template in
+  let fuel : nat = len + 1 in
+  match find_authid_placeholder template 0 fuel with
+  | None -> template
+  | Some i ->
+    // i is bounded by len because find_authid_placeholder requires
+    // pos + klen <= len before returning Some pos; explicit clamp
+    // below makes the bound visible to the SMT solver.
+    if i <= len then FStar.String.sub template 0 i else template
+
+(* Smoke tests — assert_norm so any drift in template_prefix /
+   find_authid_placeholder fails verification rather than silently
+   evaluating to false. The local --fuel bump is needed because
+   find_authid_placeholder is a fuel-bounded recursion and the
+   assertion reduces it at normalization time. *)
+#push-options "--fuel 200 --ifuel 10"
+
+let _ = assert_norm (
+  template_prefix "https://example.org/users/{authid}/graph"
+    = "https://example.org/users/")
+
+let _ = assert_norm (
+  template_prefix "https://example.org/fixed-graph"
+    = "https://example.org/fixed-graph")
+
+// A '{' that is NOT '{authid}' must NOT cause an early split — keep
+// scanning for the real placeholder.
+let _ = assert_norm (
+  template_prefix "https://example.org/{x}/{authid}/graph"
+    = "https://example.org/{x}/")
+
+// A template with a stray brace but no '{authid}' returns the whole
+// template unchanged.
+let _ = assert_norm (
+  template_prefix "https://example.org/{x}/graph"
+    = "https://example.org/{x}/graph")
+
+#pop-options
+
 (* ========================================================================== *)
 (* GGP / graph_ref checks                                                     *)
 (* ========================================================================== *)

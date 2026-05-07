@@ -1534,18 +1534,10 @@ let string_replace_all ~needle ~replacement haystack =
 let expand_user_graph ~template ~authid =
   SPARQL_Update_Sandbox.expand_user_graph template authid
 
-(* The fixed prefix of the user-graph template: everything before
-   "{authid}". We use this to detect which named graphs in the dataset
-   belong to the user-writable sandbox when dumping on exit. *)
-let template_prefix template =
-  match String.index_opt template '{' with
-  | None -> template
-  | Some i ->
-    (* Only treat "{authid}" as the placeholder. *)
-    if i + 8 <= String.length template
-       && String.sub template i 8 = "{authid}"
-    then String.sub template 0 i
-    else template
+(* template_prefix is implemented in F-star (SPARQL.Update.Sandbox.fst);
+   this OCaml shim is a thin re-export so existing call sites are
+   unchanged. CLAUDE.md rule #1. *)
+let template_prefix template = SPARQL_Update_Sandbox.template_prefix template
 
 (* Sandbox checking is implemented in F-star; this OCaml file only
    converts at the boundary. See SPARQL.Update.Sandbox.fst. *)
