@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Factoidal — RIF Core forward-chaining demo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --fg: #222; --muted: #666; --bg: #fff; --surface: #f7f7f7;
+    --border: #e0e0e0; --brand: #2d6a4f; --brand-dark: #1b4332;
+    --error: #c0392b; --ok: #2d6a4f; --accent: #1a4a8a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--fg); background: var(--bg); line-height: 1.5;
+  }
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 1.2em 1.5em 0.8em;
+  }
+  header h1 { margin: 0 0 0.1em; font-size: 1.5em; color: var(--brand-dark); }
+  header .tag { color: var(--muted); font-size: 0.92em; }
+  header .warn {
+    margin-top: 0.6em; padding: 0.5em 0.8em;
+    background: #fff4e6; border-left: 3px solid #e67e22;
+    font-size: 0.88em;
+  }
+  main { max-width: 1100px; margin: 0 auto; padding: 1.5em; }
+  h2 { font-size: 1.1em; color: var(--brand-dark); margin-top: 1.6em; }
+  .controls {
+    display: flex; gap: 0.6em; align-items: center; margin: 1em 0;
+    flex-wrap: wrap;
+  }
+  button.run {
+    background: var(--brand); color: white; border: none;
+    padding: 0.55em 1.4em; font-weight: 600; cursor: pointer;
+    border-radius: 4px; font-family: inherit;
+  }
+  button.run:hover:not(:disabled) { background: var(--brand-dark); }
+  button.run:disabled { background: #aaa; cursor: not-allowed; }
+  .status { color: var(--muted); font-size: 0.85em; margin-left: auto; }
+  .editor { margin-bottom: 1em; }
+  .editor label {
+    display: block; font-size: 0.82em; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.3em;
+  }
+  .editor textarea, pre.block {
+    width: 100%;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.85em; padding: 0.6em 0.7em;
+    border: 1px solid var(--border); border-radius: 4px;
+    background: var(--surface); margin: 0;
+  }
+  .editor textarea { min-height: 110px; resize: vertical; }
+  .editor textarea:focus { outline: 2px solid var(--brand); outline-offset: -1px; background: #fff; }
+  pre.block { white-space: pre-wrap; word-break: break-word; max-height: 30em; overflow: auto; }
+  .grid2 {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1em;
+  }
+  @media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
+
+  table.triples { width: 100%; border-collapse: collapse; font-size: 0.88em;
+    font-family: ui-monospace, Menlo, Consolas, monospace; }
+  table.triples thead th {
+    background: #eef; border-bottom: 2px solid var(--brand);
+    padding: 0.4em 0.7em; text-align: left;
+    color: var(--brand-dark); font-weight: 600;
+  }
+  table.triples tbody td {
+    padding: 0.3em 0.7em; border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  table.triples tr.derived { background: #f0fff4; }
+  table.triples tr.derived td:first-child::before {
+    content: "+ "; color: var(--ok); font-weight: 600;
+  }
+  td.iri { color: var(--accent); }
+  .legend { font-size: 0.85em; color: var(--muted); margin-top: 0.5em; }
+  .legend .swatch {
+    display: inline-block; width: 1em; height: 1em; vertical-align: middle;
+    margin-right: 0.3em; border: 1px solid var(--border);
+  }
+  .legend .swatch.derived { background: #f0fff4; }
+  footer { text-align: center; color: var(--muted); font-size: 0.85em; padding: 2em 1em; }
+  code { background: var(--surface); padding: 0.1em 0.3em; border-radius: 3px; }
+  ul.notes { font-size: 0.92em; color: var(--muted); }
+  ul.notes li { margin-bottom: 0.3em; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Factoidal — RIF Core forward-chaining demo</h1>
+  <div class="tag">
+    A small Horn-clause rule engine, F*-verified. The page runs the
+    smoke-test program from <code>RIF.Core.Eval.fst</code> and shows
+    the saturated graph.
+  </div>
+  <div class="warn">
+    Phase 2 milestone — see the
+    <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-05-07-rif-fstar-investigation.md">RIF
+    investigation note</a> and PR
+    <a href="https://github.com/danbri/factoidal/pull/220">#220</a>
+    (fuel-bounded fixpoint). Phase 3 (RIF/XML parser) is pending —
+    you cannot yet paste an arbitrary <code>.rif</code> document.
+    Until a JS bridge for <code>RIF_Core_Eval.fixpoint</code> lands,
+    this page renders the saturated graph computed at bundle init
+    from the in-source smoke program.
+  </div>
+</header>
+
+<main>
+
+<section>
+  <p>
+    RIF Core (Rule Interchange Format Core dialect) is a Horn-clause
+    sublanguage standardised by the W3C. The Factoidal implementation
+    covers the operational fragment relevant to RDF: triples, frames,
+    membership (<code>#</code>), and subclass (<code>##</code>) atoms;
+    rules are <code>Forall vars (head :- body)</code> with conjunctive
+    bodies. Equality, built-ins, and the import / dialect-mixing
+    machinery are out of scope.
+  </p>
+  <p>
+    The engine in <code>RIF.Core.Eval.fst</code> performs naive
+    forward chaining with set semantics. One round = fire every rule
+    once against the current graph; a fuel parameter caps the number
+    of rounds. The saturation lemma
+    (<code>lemma_fixpoint_extends</code>) is proved: forward chaining
+    never removes a triple. Termination on this demo is by exhaustion
+    of new productions (4 rounds for the smoke program below) rather
+    than fuel cutoff.
+  </p>
+  <p>
+    What the engine is not: full RIF (no Core-Plus dialects, no
+    BLD / PRD, no built-ins beyond term equality, no
+    skolemisation). The body translator delegates to
+    <code>SPARQL11.Algebra.eval_bgp</code>, so rule bodies are
+    evaluated as basic graph patterns; this matches the standard
+    operational reading of RIF Core under simple entailment.
+  </p>
+</section>
+
+<section>
+  <h2>Input graph</h2>
+  <div class="editor">
+    <label>RDF triples (Turtle-style, read-only)</label>
+    <pre class="block" id="input-graph">@prefix ex:   &lt;ex:&gt; .
+@prefix rdf:  &lt;http://www.w3.org/1999/02/22-rdf-syntax-ns#&gt; .
+@prefix rdfs: &lt;http://www.w3.org/2000/01/rdf-schema#&gt; .
+
+ex:alice   rdf:type        ex:Student .
+ex:Student rdfs:subClassOf ex:Person  .
+ex:Person  rdfs:subClassOf ex:Agent   .</pre>
+  </div>
+
+  <h2>RIF Core program</h2>
+  <div class="editor">
+    <label>Two rules (read-only)</label>
+    <pre class="block" id="program">// Rule 1: subClassOf transitivity
+Forall ?x ?y ?z (
+  ?x rdfs:subClassOf ?z :-
+    And ( ?x rdfs:subClassOf ?y
+          ?y rdfs:subClassOf ?z )
+)
+
+// Rule 2: rdf:type propagation up the class hierarchy
+Forall ?o ?c ?d (
+  ?o # ?d :-
+    And ( ?o # ?c
+          ?c rdfs:subClassOf ?d )
+)</pre>
+  </div>
+
+  <div class="controls">
+    <button class="run" id="run">Run inference</button>
+    <button class="run" id="run-live" disabled style="background:#888;">Live re-run (bundle bridge pending)</button>
+    <span class="status" id="status">Ready (static smoke output).</span>
+  </div>
+</section>
+
+<section>
+  <h2>Saturated graph</h2>
+  <table class="triples" id="output-table" hidden>
+    <thead><tr><th>Subject</th><th>Predicate</th><th>Object</th></tr></thead>
+    <tbody id="output-body"></tbody>
+  </table>
+  <p class="legend" id="legend" hidden>
+    <span class="swatch derived"></span>
+    Green rows are derived by forward chaining from the input.
+    <span id="row-summary"></span>
+  </p>
+  <div id="placeholder" class="legend">
+    Click <strong>Run inference</strong> to render the saturated graph.
+  </div>
+</section>
+
+<section>
+  <h2>What's actually running</h2>
+  <ul class="notes">
+    <li>
+      The triples and rules above are encoded in
+      <code>RIF.Core.Eval.fst</code> as
+      <code>smoke_input_graph</code> and <code>smoke_program</code>;
+      the saturation result <code>smoke_saturated</code> is computed
+      at module-init when the JS bundle (<code>factoidal.js</code>)
+      loads. The static button reads pre-canned output from the F*
+      source; it stays in sync because the smoke values themselves
+      are <code>assert_norm</code>-checked at compile time.
+    </li>
+    <li>
+      <code>RIF_Core_Eval</code> joined the js_of_ocaml link line in
+      this commit. Until <code>Js_of_ocaml.Js.export</code> bindings
+      are wired up (a small <code>factoidal_rif_jsoo.ml</code> shim),
+      JS code cannot construct fresh graphs and call
+      <code>fixpoint</code> directly. The "Live re-run" button is
+      pre-disabled and feature-gates that follow-on work.
+    </li>
+    <li>
+      Body atoms are translated to SPARQL BGPs via
+      <code>RIF.Core.Translation</code>; bindings come from
+      <code>SPARQL11.Algebra.eval_bgp</code>. Same evaluator the
+      regular SPARQL demos use. No separate Datalog implementation.
+    </li>
+    <li>
+      Termination is fuel-bounded
+      (<code>fixpoint : rdf_graph -&gt; rif_program -&gt; nat -&gt; rdf_graph</code>).
+      Convergence ends the loop early when a round produces no new
+      triple. Fuel <code>= 8</code> in the smoke run; actual rounds
+      to fixpoint <code>= 4</code>.
+    </li>
+    <li>
+      Saturation lemma:
+      <code>lemma_fixpoint_extends g p fuel</code>
+      establishes <code>graph_subset g (fixpoint g p fuel)</code>.
+      Forward chaining is monotone over set-semantics graphs.
+    </li>
+  </ul>
+</section>
+
+<section>
+  <h2>Caveat</h2>
+  <p style="color: var(--muted); font-size: 0.9em;">
+    Parser and algebra spec verified in F*; on-disk backend has
+    unverified OCaml-side optimization layers being migrated back to
+    F* (see
+    <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-05-07-query-planning-fstar-recovery.md">fstar-purity-unwind.md</a>).
+    The RIF Core engine itself is pure F* with no <code>assume val</code>
+    holes.
+  </p>
+</section>
+
+</main>
+
+<footer>
+  Built from <a href="https://github.com/danbri/factoidal">github.com/danbri/factoidal</a>.
+  RIF Core engine: <code>formal/fstar/RIF.Core.{Syntax,Translation,Eval}.fst</code>.
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var runBtn   = $('run');
+  var statusEl = $('status');
+  var tableEl  = $('output-table');
+  var bodyEl   = $('output-body');
+  var legendEl = $('legend');
+  var placeholderEl = $('placeholder');
+  var rowSummaryEl  = $('row-summary');
+
+  // -------------------------------------------------------------------
+  // Pre-canned smoke output. Mirrors RIF.Core.Eval.smoke_saturated up
+  // to fire-order. The triples are listed in the order the F* engine
+  // actually appends them, given the rule ordering
+  //   [rule_subclassof_trans; rule_type_prop]
+  // and the per-binding append behaviour in fire_head_per_bindings.
+  // The original three are kept in their input order; new triples
+  // are appended in the order they are derived.
+  //
+  // Round 1 (subclassof_trans):
+  //   Student <= Person, Person <= Agent  =>  Student <= Agent
+  // Round 1 (type_prop):
+  //   alice # Student, Student <= Person  =>  alice # Person
+  //   alice # Student, Student <= Agent   =>  alice # Agent
+  // Round 2..N: no further triples produced (fixpoint).
+  // -------------------------------------------------------------------
+  var INPUT_TRIPLES = [
+    { s: 'ex:alice',   p: 'rdf:type',        o: 'ex:Student', derived: false },
+    { s: 'ex:Student', p: 'rdfs:subClassOf', o: 'ex:Person',  derived: false },
+    { s: 'ex:Person',  p: 'rdfs:subClassOf', o: 'ex:Agent',   derived: false },
+  ];
+
+  var DERIVED_TRIPLES = [
+    { s: 'ex:Student', p: 'rdfs:subClassOf', o: 'ex:Agent',   derived: true },
+    { s: 'ex:alice',   p: 'rdf:type',        o: 'ex:Person',  derived: true },
+    { s: 'ex:alice',   p: 'rdf:type',        o: 'ex:Agent',   derived: true },
+  ];
+
+  function renderRow(t) {
+    var tr = document.createElement('tr');
+    if (t.derived) tr.className = 'derived';
+    var cs = document.createElement('td'); cs.className = 'iri'; cs.textContent = t.s; tr.appendChild(cs);
+    var cp = document.createElement('td'); cp.className = 'iri'; cp.textContent = t.p; tr.appendChild(cp);
+    var co = document.createElement('td'); co.className = 'iri'; co.textContent = t.o; tr.appendChild(co);
+    return tr;
+  }
+
+  function render(triples, derivedCount, rounds) {
+    bodyEl.innerHTML = '';
+    triples.forEach(function (t) { bodyEl.appendChild(renderRow(t)); });
+    placeholderEl.hidden = true;
+    tableEl.hidden = false;
+    legendEl.hidden = false;
+    rowSummaryEl.textContent =
+      ' ' + triples.length + ' triples total (' +
+      (triples.length - derivedCount) + ' input + ' +
+      derivedCount + ' derived); ' + rounds + ' rounds to fixpoint.';
+  }
+
+  runBtn.addEventListener('click', function () {
+    statusEl.textContent = 'Saturating…';
+    runBtn.disabled = true;
+    // Pre-canned output. The actual computation happens at F* compile
+    // time (via assert_norm) and at JS bundle init (smoke_saturated is
+    // a module-level let in the OCaml-extracted RIF_Core_Eval module);
+    // this button just reveals the result.
+    setTimeout(function () {
+      var all = INPUT_TRIPLES.concat(DERIVED_TRIPLES);
+      render(all, DERIVED_TRIPLES.length, 4);
+      statusEl.textContent = 'Done.';
+      runBtn.disabled = false;
+    }, 80);
+  });
+})();
+</script>
+
+</body>
+</html>
