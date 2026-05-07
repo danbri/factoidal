@@ -2,41 +2,110 @@ name: W3C Test Suite
 
 on:
   push:
-    # Only main lines. Feature-branch pushes (claude/<topic>) used to
-    # trigger this workflow too, but each branch push triggered a full
-    # ~30-minute W3C suite run AND cancelled in-flight main runs via
-    # the concurrency rule below — so the dashboard's data became
-    # stale even when no real CI failure was present. Restrict to the
-    # branches whose results actually feed the public dashboard.
+    # Only main lines. The dashboard at docs/test-results/latest.json
+    # is fed by these refs; feature-branch runs would not be useful
+    # anyway and previously caused minute-burn + cancellation storms.
     branches: [main, master, claude/main]
   schedule:
-    # Daily 06:00 UTC safety-net run regardless of merge cadence.
-    - cron: '0 6 * * *'
+    # Two safety-net runs at 04:00 and 05:00 UTC. Each entry below
+    # gates itself on "≥30 minutes of quiet on the head ref"; if
+    # there's been a recent push, the schedule run skips and the
+    # push's own debounced run is responsible for updating the
+    # dashboard. Two slots give a second chance if 04:00 happens
+    # to coincide with someone merging.
+    - cron: '0 4 * * *'
+    - cron: '0 5 * * *'
   workflow_dispatch:
 
 permissions:
   contents: write
 
-# Concurrency policy:
-#   - Per-ref grouping (so different branches don't fight each other).
-#   - cancel-in-progress is FALSE for refs/heads/claude/main: main
-#     runs always complete, so docs/test-results/latest.json gets
-#     committed for every merge. If two main pushes land within the
-#     same suite duration, the second queues until the first finishes.
-#   - For the schedule + workflow_dispatch case (github.ref defaults
-#     to claude/main / main), cancel-in-progress also ends up false,
-#     which is what we want.
-#
-# Old policy was cancel-in-progress: true unconditionally, which
-# (combined with rapid PR-merge cadence to claude/main) meant the
-# scheduled and post-merge runs got pre-empted by the next push and
-# the dashboard hadn't been updated since 2026-05-01 19:00 UTC.
+# Concurrency: per-SHA so concurrent debouncers from different
+# pushes don't cancel each other. The debouncer in the first job
+# decides whether each run actually proceeds (tail-edge debounce).
 concurrency:
-  group: w3c-tests-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/claude/main' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' }}
+  group: w3c-tests-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
+  # ---------------------------------------------------------------------
+  # debounce — tail-edge quiet-window guard.
+  #
+  # PR splurges (several related merges within minutes) used to fire one
+  # full ~30-minute W3C suite per merge. With cancel-in-progress: true
+  # this caused the dashboard to never update; with cancel-in-progress:
+  # false (#174) it just wasted CI minutes running the suite N times.
+  #
+  # This job sleeps 5 minutes, then checks whether HEAD has moved on the
+  # ref since this run was triggered. If HEAD moved, exit cleanly (the
+  # newer push's own debounce job is now in flight and will decide).
+  # Only the LAST push in a quiet window proceeds to the actual suite.
+  #
+  # For schedule triggers (04:00 / 05:00 UTC), an additional 30-minute
+  # quiet check on the head commit's age: if the ref has been written
+  # to within the last 30 minutes, the schedule run skips (a push-
+  # triggered run is responsible).
+  #
+  # workflow_dispatch always proceeds (manual override).
+  # ---------------------------------------------------------------------
+  debounce:
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.gate.outputs.proceed }}
+    steps:
+      - id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF: ${{ github.ref }}
+          MY_SHA: ${{ github.sha }}
+          EVENT: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -eu
+
+          # workflow_dispatch: always proceed, no debounce.
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "Manual dispatch — bypassing debounce."
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # schedule: skip if any commit on the ref in the last 30 min.
+          if [ "$EVENT" = "schedule" ]; then
+            HEAD_TIME=$(gh api "repos/$REPO/commits/$MY_SHA" --jq .commit.committer.date)
+            HEAD_EPOCH=$(date -u -d "$HEAD_TIME" +%s)
+            NOW_EPOCH=$(date -u +%s)
+            AGE=$(( NOW_EPOCH - HEAD_EPOCH ))
+            if [ "$AGE" -lt 1800 ]; then
+              echo "Schedule trigger but head ($MY_SHA) is only $AGE s old (< 30 min)."
+              echo "Skipping; a push-debounced run will handle it."
+              echo "proceed=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Schedule trigger; head age $AGE s (≥ 30 min). Proceeding through debounce."
+          fi
+
+          # Tail-edge debounce: sleep 5 min, then check if anyone else
+          # pushed during the wait. If yes, defer to the newer run.
+          echo "::group::Debounce — waiting 300s for activity to settle"
+          sleep 300
+          echo "::endgroup::"
+
+          BRANCH="${REF#refs/heads/}"
+          LATEST_SHA=$(gh api "repos/$REPO/commits/$BRANCH" --jq .sha)
+          if [ "$LATEST_SHA" != "$MY_SHA" ]; then
+            echo "HEAD moved during wait: $MY_SHA → $LATEST_SHA"
+            echo "Skipping; the run for $LATEST_SHA will take over."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Quiet for 5 minutes. Proceeding to W3C suite."
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
+
   native-shadow:
+    needs: debounce
+    if: needs.debounce.outputs.proceed == 'true'
     # Dual-platform native shadow builds. Each matrix leg auto-commits
     # binaries to bin/ci-<platform>/ (NOT bin/<platform>/ — those stay
     # reserved for local builds + manual promotion). Extracted .ml files
