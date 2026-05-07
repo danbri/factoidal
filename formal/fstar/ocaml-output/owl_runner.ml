@@ -124,6 +124,8 @@ let test_identifier = test_ns ^ "identifier"
 let test_profile    = test_ns ^ "profile"
 let test_premise    = test_ns ^ "rdfXmlPremiseOntology"
 let test_conclusion = test_ns ^ "rdfXmlConclusionOntology"
+let test_imported_ontology = test_ns ^ "importedOntology"
+let test_input_ontology   = test_ns ^ "rdfXmlInputOntology"
 let pos_entailment_iri = test_ns ^ "PositiveEntailmentTest"
 
 let subject_iri_opt (s : subject) : string option =
@@ -170,6 +172,9 @@ type test_case_info = {
   profiles    : StrSet.t;          (* set of test:profile values *)
   premise     : string option;     (* test:rdfXmlPremiseOntology literal *)
   conclusion  : string option;     (* test:rdfXmlConclusionOntology literal *)
+  imports     : StrSet.t;          (* test:importedOntology link IRIs (catalog
+                                       node IRIs that carry test:rdfXmlInputOntology
+                                       literals); resolved at run time *)
 }
 
 let empty_info iri = {
@@ -179,13 +184,22 @@ let empty_info iri = {
   profiles = StrSet.empty;
   premise = None;
   conclusion = None;
+  imports = StrSet.empty;
 }
 
 (* Walk the triples once, build a map from subject-IRI (test:TestCase
    subject) to test_case_info. We detect a test case by the presence of
-   an rdf:type triple whose object is one of the five test-type URIs. *)
-let build_index (graph : triple list) : test_case_info list =
+   an rdf:type triple whose object is one of the five test-type URIs.
+
+   Returns (test cases, import_lookup) where import_lookup maps a
+   test:importedOntology IRI (a sibling owl:Thing in the catalog) to
+   its test:rdfXmlInputOntology literal — the imported document as an
+   RDF/XML string, ready for the parser. The import map is shared
+   across all test cases since multiple tests may reference the same
+   imported document. *)
+let build_index (graph : triple list) : test_case_info list * (string, string) Hashtbl.t =
   let tbl : (string, test_case_info) Hashtbl.t = Hashtbl.create 1024 in
+  let imports_lookup : (string, string) Hashtbl.t = Hashtbl.create 64 in
   let get subj =
     match Hashtbl.find_opt tbl subj with
     | Some info -> info
@@ -227,13 +241,26 @@ let build_index (graph : triple list) : test_case_info list =
              let info = { info with conclusion = Some lex } in
              Hashtbl.replace tbl subj info
            | None -> ()
+         end else if t.p = test_imported_ontology then begin
+           match object_iri_opt t.o with
+           | Some obj ->
+             let info = { info with imports = StrSet.add obj info.imports } in
+             Hashtbl.replace tbl subj info
+           | None -> ()
+         end else if t.p = test_input_ontology then begin
+           match object_literal_opt t.o with
+           | Some lex -> Hashtbl.replace imports_lookup subj lex
+           | None -> ()
          end)
     graph;
   (* Keep only subjects that actually carry a test-type. *)
-  Hashtbl.fold
-    (fun _ info acc ->
-       if StrSet.is_empty info.types then acc else info :: acc)
-    tbl []
+  let cases =
+    Hashtbl.fold
+      (fun _ info acc ->
+         if StrSet.is_empty info.types then acc else info :: acc)
+      tbl []
+  in
+  (cases, imports_lookup)
 
 (* ------------------------------------------------------------------ *)
 (* Output. *)
@@ -254,13 +281,32 @@ let identifier_display info =
      - If C_triple contains no bnodes: exact triple_eq against closure.
      - If C_triple contains one or more bnodes: structural match —
        predicate must equal; for each position (s, o), if the
-       C-position is a bnode, any bnode in closure at that position
-       matches; otherwise exact value match required.
+       C-position is a bnode, ANY term (bnode or IRI) at that
+       position in the closure matches; otherwise exact value
+       match required.
 
-   This over-approximates (any bnode in the closure at any position
-   can satisfy any bnode in the conclusion — there's no consistency
-   check across multiple bnode-containing triples). Full isomorphism
-   deferred. Limitation is printed with the score.
+   Why bnode-pattern matches IRI: the OWL test convention treats an
+   anonymous-subject triple in the conclusion as existential
+   ("there exists some resource with this predicate-object skeleton").
+   A premise that names that resource (e.g.
+   `<owl:Ontology rdf:about=''>` resolving to the document base) and a
+   conclusion that leaves it anonymous (`<owl:Ontology/>` -> fresh
+   bnode per RDF/XML §6.1.4) describe the same shape. Cluster K /
+   WebOnt-imports-011 is the live instance:
+     premise closure has <premises011> rdf:type owl:Ontology
+     conclusion has    _:rdfxml_b0 rdf:type owl:Ontology
+   Bnode-only structural match was too strict; generalising to "any
+   term" honours the existential reading. See
+   docs/designissues/2026-04-25-owl-imports-011-diagnosis.md (option 2)
+   and docs/designissues/2026-05-07-owl2-rl-next-steps.md §K.
+
+   This over-approximates (any term in the closure at a bnode
+   position can satisfy any bnode in the conclusion — there's no
+   consistency check across multiple bnode-containing triples). Full
+   isomorphism deferred. Limitation is printed with the score.
+
+   This is harness/test-scoring policy, not RDF/SPARQL semantics —
+   the closure itself is F*-extracted (rule #15 boundary respected).
 *)
 
 let is_bnode_subject (s : RDF_Graph_Executable.subject) : bool =
@@ -272,18 +318,20 @@ let is_bnode_term (t : RDF_Graph_Executable.rdf_term) : bool =
 let triple_has_bnode (t : RDF_Graph_Executable.triple) : bool =
   is_bnode_subject t.s || is_bnode_term t.o
 
+(* Bnode pattern matches any term at this position (existential
+   reading); non-bnode pattern requires exact value match. *)
 let subject_matches
       (pat : RDF_Graph_Executable.subject)
       (sub : RDF_Graph_Executable.subject) : bool =
   match pat with
-  | RDF_Graph_Executable.S_BNode _ -> is_bnode_subject sub
+  | RDF_Graph_Executable.S_BNode _ -> let _ = sub in true
   | _ -> RDF_Graph_Executable.subject_eq pat sub
 
 let object_matches
       (pat : RDF_Graph_Executable.rdf_term)
       (obj : RDF_Graph_Executable.rdf_term) : bool =
   match pat with
-  | RDF_Graph_Executable.T_BNode _ -> is_bnode_term obj
+  | RDF_Graph_Executable.T_BNode _ -> let _ = obj in true
   | _ -> RDF_Graph_Executable.rdf_term_eq pat obj
 
 let triple_matches
@@ -319,7 +367,34 @@ let outcome_tag = function
 
 let fuel_100 : Prims.nat = Z.of_int 100
 
-let run_positive_entailment (info : test_case_info) : outcome =
+(* Parse and merge imported-ontology literals into the premise graph
+   before closure. Each imports_lookup hit gives us an RDF/XML literal
+   whose triples should be added to g_p, so the closure sees the union
+   of declared + imported axioms (the test-harness analogue of
+   owl:imports resolution; we never dereference URLs). *)
+let load_imports_into_premise
+      (info : test_case_info)
+      (imports_lookup : (string, string) Hashtbl.t)
+      (g_p : triple list) : triple list =
+  StrSet.fold
+    (fun import_iri acc ->
+       match Hashtbl.find_opt imports_lookup import_iri with
+       | None -> acc
+       | Some lit ->
+         let src = expand_catalog_entities lit in
+         (* Use the import-link IRI as the parser base. The imported
+            document typically declares its own xml:base which
+            overrides this; the fallback only matters when it does
+            not. *)
+         let base = import_iri in
+         (try Parser_RDFXML.parse_rdfxml_with_base base src
+          with _ -> []) @ acc)
+    info.imports
+    g_p
+
+let run_positive_entailment
+      (info : test_case_info)
+      (imports_lookup : (string, string) Hashtbl.t) : outcome =
   match info.premise, info.conclusion with
   | None, _ -> Fail_no_premise
   | _, None -> Fail_no_conclusion
@@ -327,9 +402,10 @@ let run_positive_entailment (info : test_case_info) : outcome =
     let p_src = expand_catalog_entities p_lex in
     let c_src = expand_catalog_entities c_lex in
     let base = info.iri in
-    let g_p =
+    let g_p_authored =
       try Parser_RDFXML.parse_rdfxml_with_base base p_src
       with _ -> [] in
+    let g_p = load_imports_into_premise info imports_lookup g_p_authored in
     let g_c =
       try Parser_RDFXML.parse_rdfxml_with_base base c_src
       with _ -> [] in
@@ -438,7 +514,7 @@ let run_catalog ?(verbose=false) path =
   let t1 = Unix.gettimeofday () in
   Printf.printf "  parsed %d triples in %.2fs\n"
     (List.length graph) (t1 -. t0);
-  let tests = build_index graph in
+  let (tests, imports_lookup) = build_index graph in
   let key info = match info.identifier with
     | Some s -> s
     | None -> info.iri in
@@ -468,7 +544,7 @@ let run_catalog ?(verbose=false) path =
   let k = List.length pe_tests in
   Printf.printf "Running %d PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...\n" k;
   let t_run0 = Unix.gettimeofday () in
-  let outcomes = List.map (fun info -> (info, run_positive_entailment info)) pe_tests in
+  let outcomes = List.map (fun info -> (info, run_positive_entailment info imports_lookup)) pe_tests in
   let t_run1 = Unix.gettimeofday () in
   List.iter (fun (info, outcome) -> print_outcome verbose info outcome) outcomes;
   let passes =
@@ -480,7 +556,7 @@ let run_catalog ?(verbose=false) path =
   Printf.printf "\n";
   Printf.printf "Profile-RL PositiveEntailmentTests: %d pass, %d fail (out of %d) in %.2fs\n"
     passes fails k (t_run1 -. t_run0);
-  Printf.printf "  (bnode match is structural only; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)\n"
+  Printf.printf "  (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)\n"
 
 let () =
   let args = Array.to_list Sys.argv |> List.tl in
