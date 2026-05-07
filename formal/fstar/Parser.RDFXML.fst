@@ -541,6 +541,32 @@ let add_triples (pr : process_result) (ts : list triple) : process_result =
    - rdf:nodeID="id" -> blank node subject
    - none of the above -> fresh blank node
 
+   The "none of the above" case is RDF/XML §6.1.4 (production
+   nodeElement / nodeElementURIs): a node element that carries
+   neither rdf:about nor rdf:ID nor rdf:nodeID denotes a blank node.
+   The xml:base in scope, whether empty or non-empty, does NOT
+   change this — bnode generation here is base-independent. The
+   bnode label produced by [fresh_bnode] is a counter (rdfxml_b<N>)
+   without any base prefix.
+
+   Empty-string rdf:about (e.g. `<owl:Ontology rdf:about=''>`) is
+   §5.4 "same-document reference" and resolves to the in-scope base
+   IRI. When that base is the empty string, [resolve_iri] returns
+   "" which fails [is_iri] and we fall back to a fresh bnode; the
+   author's "use base" intent is unsatisfiable when no base exists,
+   so a bnode is the only sound salvage. None of these branches
+   leak base into a bnode label.
+
+   Cluster K decision-gate (see
+   docs/designissues/2026-04-25-owl-imports-011-diagnosis.md and
+   docs/designissues/2026-05-07-owl2-rl-next-steps.md §K): the
+   WebOnt-imports-011 conclusion `<owl:Ontology/>` correctly maps
+   to a fresh bnode. The matching gap is harness-side
+   (owl_runner bnode-match policy + missing test:importedOntology
+   resolution), not parser-side. Do NOT "fix" this branch by
+   substituting the base IRI when attributes are absent — that
+   would break §6.1.4 across the rdf-xml suite.
+
    Read-only variant: does NOT update `seen_ids` / `has_error`.
    Used at probe call-sites where the inner call has already
    registered the ID authoritatively. *)
