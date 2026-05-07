@@ -199,6 +199,14 @@ let dataset_add_quad (ds : rdf_dataset) (t : triple) (graph_name : option iri) :
     - If '#', skip comment to end of line
     - If end of line or end of input, skip
     - Otherwise, parse a quad *)
+
+// parse_nquads_acc nests an inner let-rec (skip_line) plus four
+// outer recursive calls; F*'s default --z3rlimit 5 isn't enough to
+// discharge the Tot postcondition. Bump locally. Verified at rlimit
+// 30; sibling Parser.Turtle.fst:1820 uses the same pragma for
+// similar reasons.
+#push-options "--z3rlimit 30"
+
 let rec parse_nquads_acc (input:string) (pos:nat) (ds:rdf_dataset) (fuel:nat)
   : Tot rdf_dataset (decreases fuel) =
   if fuel = 0 then ds
@@ -252,6 +260,8 @@ let rec parse_nquads_acc (input:string) (pos:nat) (ds:rdf_dataset) (fuel:nat)
             let pos2 = skip_line pos1 (len - pos1) in
             if pos2 = pos1 then ds  (* no progress *)
             else parse_nquads_acc input pos2 ds (fuel - 1)
+
+#pop-options
 
 (** Parse a complete N-Quads document string into an rdf_dataset.
     Triples without a graph label go into the default graph.
