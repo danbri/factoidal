@@ -31,6 +31,7 @@ let status_text code =
   else if code = 500 then "Internal Server Error"
   else if code = 501 then "Not Implemented"
   else if code = 503 then "Service Unavailable"
+  else if code = 504 then "Gateway Timeout"
   else "Unknown"
 
 // CORS policy — how the server responds to cross-origin browser requests.
@@ -110,11 +111,27 @@ let query_timeout_response_body secs =
     ",\"hint\":\"Add LIMIT or bind more triple-pattern terms.\"}\n"
   ]
 
-// Smoke tests.
-let _test_cap_body =
+// Compile-time guards: pin both response-body templates and the
+// 504 status_text byte-for-byte. assert_norm forces F* to reduce
+// the body and check it against the expected string at type-check
+// time, so any future drift in the template — extra whitespace, a
+// missing comma, a renamed field — fails verification rather than
+// silently shipping. (A bare `let _test = expr = "..."` would only
+// type-check the boolean; F* is happy if it equals `false`.)
+let _ = assert_norm (
   result_cap_response_body 1000
-  = "{\"error\":\"result_cardinality_cap_exceeded\",\"cap\":1000,\"hint\":\"Add LIMIT or bind more triple-pattern terms.\"}\n"
+    = "{\"error\":\"result_cardinality_cap_exceeded\",\"cap\":1000,\"hint\":\"Add LIMIT or bind more triple-pattern terms.\"}\n"
+)
 
-let _test_timeout_body =
+let _ = assert_norm (
   query_timeout_response_body 30
-  = "{\"error\":\"query_timeout\",\"seconds\":30,\"hint\":\"Add LIMIT or bind more triple-pattern terms.\"}\n"
+    = "{\"error\":\"query_timeout\",\"seconds\":30,\"hint\":\"Add LIMIT or bind more triple-pattern terms.\"}\n"
+)
+
+// Status_text 504 is a sibling guard: query_timeout_response_body
+// produces a 504 body, and the OCaml shim that wraps it pulls the
+// reason phrase from this same module's status_text. If those two
+// drift apart the wire response would say "HTTP/1.1 504 Unknown"
+// with a JSON timeout body — keep them locked together at extract
+// time.
+let _ = assert_norm (status_text 504 = "Gateway Timeout")

@@ -33,7 +33,10 @@ let (status_text : Prims.int -> Prims.string) =
                       else
                         if code = (Prims.of_int (503))
                         then "Service Unavailable"
-                        else "Unknown"
+                        else
+                          if code = (Prims.of_int (504))
+                          then "Gateway Timeout"
+                          else "Unknown"
 type cors_policy =
   | CORS_Off 
   | CORS_Any 
@@ -88,9 +91,3 @@ let (query_timeout_response_body : Prims.int -> Prims.string) =
       ["{\"error\":\"query_timeout\",\"seconds\":";
       Prims.string_of_int secs;
       ",\"hint\":\"Add LIMIT or bind more triple-pattern terms.\"}\n"]
-let (_test_cap_body : Prims.bool) =
-  (result_cap_response_body (Prims.of_int (1000))) =
-    "{\"error\":\"result_cardinality_cap_exceeded\",\"cap\":1000,\"hint\":\"Add LIMIT or bind more triple-pattern terms.\"}\n"
-let (_test_timeout_body : Prims.bool) =
-  (query_timeout_response_body (Prims.of_int (30))) =
-    "{\"error\":\"query_timeout\",\"seconds\":30,\"hint\":\"Add LIMIT or bind more triple-pattern terms.\"}\n"
