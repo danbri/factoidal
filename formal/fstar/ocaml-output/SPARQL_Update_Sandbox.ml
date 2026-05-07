@@ -49,36 +49,35 @@ let (string_replace_all :
            FStar_String.string_of_list (FStar_List_Tot_Base.rev revc))
 let (expand_user_graph : Prims.string -> Prims.string -> Prims.string) =
   fun template -> fun authid -> string_replace_all "{authid}" authid template
-let rec (find_open_brace :
+let rec (find_authid_placeholder :
   Prims.string ->
     Prims.nat -> Prims.nat -> Prims.nat FStar_Pervasives_Native.option)
   =
   fun s ->
     fun pos ->
       fun fuel ->
+        let len = FStar_String.strlen s in
+        let key = "{authid}" in
+        let klen = FStar_String.strlen key in
         if fuel = Prims.int_zero
         then FStar_Pervasives_Native.None
         else
-          (let len = FStar_String.strlen s in
-           if pos >= len
-           then FStar_Pervasives_Native.None
-           else
-             (let c = FStar_Char.int_of_char (FStar_String.index s pos) in
-              if c = (Prims.of_int (0x7B))
-              then FStar_Pervasives_Native.Some pos
-              else
-                find_open_brace s (pos + Prims.int_one)
-                  (fuel - Prims.int_one)))
+          if (pos + klen) > len
+          then FStar_Pervasives_Native.None
+          else
+            if (FStar_String.sub s pos klen) = key
+            then FStar_Pervasives_Native.Some pos
+            else
+              find_authid_placeholder s (pos + Prims.int_one)
+                (fuel - Prims.int_one)
 let (template_prefix : Prims.string -> Prims.string) =
   fun template ->
     let len = FStar_String.strlen template in
-    let key = "{authid}" in
-    let klen = FStar_String.strlen key in
     let fuel = len + Prims.int_one in
-    match find_open_brace template Prims.int_zero fuel with
+    match find_authid_placeholder template Prims.int_zero fuel with
     | FStar_Pervasives_Native.None -> template
     | FStar_Pervasives_Native.Some i ->
-        if ((i + klen) <= len) && ((FStar_String.sub template i klen) = key)
+        if i <= len
         then FStar_String.sub template Prims.int_zero i
         else template
 let (_test_template_prefix_authid : Prims.bool) =
@@ -87,7 +86,10 @@ let (_test_template_prefix_authid : Prims.bool) =
 let (_test_template_prefix_no_placeholder : Prims.bool) =
   (template_prefix "https://example.org/fixed-graph") =
     "https://example.org/fixed-graph"
-let (_test_template_prefix_other_brace : Prims.bool) =
+let (_test_template_prefix_skip_stray_brace : Prims.bool) =
+  (template_prefix "https://example.org/{x}/{authid}/graph") =
+    "https://example.org/{x}/"
+let (_test_template_prefix_only_stray_brace : Prims.bool) =
   (template_prefix "https://example.org/{x}/graph") =
     "https://example.org/{x}/graph"
 type ggp_target_status =

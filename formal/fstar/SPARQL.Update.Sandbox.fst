@@ -75,38 +75,43 @@ val expand_user_graph : template:string -> authid:string -> string
 let expand_user_graph template authid =
   string_replace_all "{authid}" authid template
 
-(* Find the first '{' at or after position [pos] in [s]. Fuel-bounded
-   linear scan; returns None if not found within fuel. *)
-let rec find_open_brace
+(* Find the first occurrence of the literal "{authid}" placeholder
+   in [s] at or after position [pos]. Returns the start index of the
+   match, or None if absent. Fuel-bounded linear scan. *)
+let rec find_authid_placeholder
     (s : string)
     (pos : nat)
     (fuel : nat)
   : Tot (option nat) (decreases fuel) =
+  let len = FStar.String.length s in
+  let key = "{authid}" in
+  let klen = FStar.String.length key in
   if fuel = 0 then None
-  else
-    let len = FStar.String.length s in
-    if pos >= len then None
-    else
-      let c : nat = FStar.Char.int_of_char (FStar.String.index s pos) in
-      if c = 0x7B then Some pos  (* '{' *)
-      else find_open_brace s (pos + 1) (fuel - 1)
+  else if pos + klen > len then None
+  else if FStar.String.sub s pos klen = key then Some pos
+  else find_authid_placeholder s (pos + 1) (fuel - 1)
 
 (* Return the fixed prefix of an auth-template up to (but not including)
-   "{authid}". If the template contains no "{authid}" placeholder, return
-   the whole template. Used by the HTTP server to detect which named
-   graphs in the dataset belong to the user-writable sandbox. *)
+   the first "{authid}" placeholder anywhere in the template. If the
+   template contains no "{authid}" placeholder, return the whole
+   template. Used by the HTTP server to detect which named graphs in
+   the dataset belong to the user-writable sandbox.
+
+   This scans for the literal placeholder string anywhere in the
+   template, not just at the first '{'. So a template with a stray
+   '{x}' before the real placeholder (e.g. "...{x}.../{authid}...")
+   correctly splits at the placeholder, not at the stray brace. *)
 val template_prefix : template:string -> string
 let template_prefix template =
   let len = FStar.String.length template in
-  let key = "{authid}" in
-  let klen = FStar.String.length key in
   let fuel : nat = len + 1 in
-  match find_open_brace template 0 fuel with
+  match find_authid_placeholder template 0 fuel with
   | None -> template
   | Some i ->
-    if i + klen <= len && FStar.String.sub template i klen = key
-    then FStar.String.sub template 0 i
-    else template
+    // i is bounded by len because find_authid_placeholder requires
+    // pos + klen <= len before returning Some pos; explicit clamp
+    // below makes the bound visible to the SMT solver.
+    if i <= len then FStar.String.sub template 0 i else template
 
 (* Smoke tests. *)
 let _test_template_prefix_authid =
@@ -115,8 +120,15 @@ let _test_template_prefix_authid =
 let _test_template_prefix_no_placeholder =
   template_prefix "https://example.org/fixed-graph" = "https://example.org/fixed-graph"
 
-let _test_template_prefix_other_brace =
-  // A '{' that is NOT followed by 'authid}' should be passed through.
+let _test_template_prefix_skip_stray_brace =
+  // A '{' that is NOT '{authid}' must NOT cause an early split — keep
+  // scanning for the real placeholder.
+  template_prefix "https://example.org/{x}/{authid}/graph"
+    = "https://example.org/{x}/"
+
+let _test_template_prefix_only_stray_brace =
+  // A template with a stray brace but no '{authid}' returns the whole
+  // template unchanged.
   template_prefix "https://example.org/{x}/graph" = "https://example.org/{x}/graph"
 
 (* ========================================================================== *)
