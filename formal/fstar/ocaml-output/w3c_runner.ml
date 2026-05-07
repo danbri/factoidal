@@ -677,6 +677,56 @@ let load_triples df =
     then parse_rdfxml_fstar content (Some base)
     else parse_turtle_fstar content (Some base)
 
+(* RIF-XML preprocessor: strip the <!DOCTYPE ... [...]> internal subset
+   and inline the three standard RIF entity references. The vendored
+   third_party/testing/rif/tc/ documents all declare:
+
+     <!DOCTYPE Document [
+       <!ENTITY rif  "http://www.w3.org/2007/rif#">
+       <!ENTITY xs   "http://www.w3.org/2001/XMLSchema#">
+       <!ENTITY rdf  "http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+     ]>
+
+   The F-star Parser.XML scanner does not implement DTD parsing
+   (no entity-table support); the alternative is to inline the
+   expansions ourselves before handing the document to the parser.
+   Per rule #11(c) this is pure I/O glue — it does not interpret
+   the RIF semantics, only normalises the surface syntax to the
+   form Parser.XML accepts. *)
+let rif_xml_preprocess s =
+  let drop_doctype s =
+    (* Find "<!DOCTYPE" and the matching "]>" close (or the bare ">"
+       if no internal subset). The internal subset always ends with
+       a literal "]>" sequence in well-formed XML; we search for that
+       first and fall back to the bare ">" on the same opener. *)
+    match Str.search_forward (Str.regexp_string "<!DOCTYPE") s 0 with
+    | exception Not_found -> s
+    | start ->
+      let close_with_subset =
+        try Some (Str.search_forward (Str.regexp_string "]>") s start)
+        with Not_found -> None in
+      let close_idx =
+        match close_with_subset with
+        | Some i -> i + 2
+        | None ->
+          try (Str.search_forward (Str.regexp_string ">") s start) + 1
+          with Not_found -> String.length s
+      in
+      let pre = String.sub s 0 start in
+      let post = String.sub s close_idx (String.length s - close_idx) in
+      pre ^ post
+  in
+  let inline_entities s =
+    s
+    |> Str.global_replace (Str.regexp_string "&rif;")
+         "http://www.w3.org/2007/rif#"
+    |> Str.global_replace (Str.regexp_string "&xs;")
+         "http://www.w3.org/2001/XMLSchema#"
+    |> Str.global_replace (Str.regexp_string "&rdf;")
+         "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+  in
+  s |> drop_doctype |> inline_entities
+
 (* RIF rule-document path resolver.
 
    The W3C SPARQL 1.1 entailment manifest (third_party/testing/w3c/sparql/
@@ -770,12 +820,13 @@ let run_query_eval_test tc =
          it would have without rules). *)
       (try
          let rif_xml_path = rif_rules_path_for tc in
-         match read_file rif_xml_path with
-         | None -> graph
-         | Some rif_xml ->
-           (match RIF_Core_Tests.saturate_with_program rif_xml graph (Z.of_int 100) with
-            | None -> graph
-            | Some sat -> sat)
+         (match read_file rif_xml_path with
+          | None -> graph
+          | Some raw ->
+            let rif_xml = rif_xml_preprocess raw in
+            (match RIF_Core_Tests.saturate_with_program rif_xml graph (Z.of_int 100) with
+             | None -> graph
+             | Some sat -> sat))
        with _ -> graph)
     | _ -> graph in
 
