@@ -1,7 +1,8 @@
 #!/bin/bash
-# Iterative verify-and-show-errors loop for the roaring-fstar Phase A sources.
-# Runs fstar.exe on each module in dependency order; on first failure prints
-# the error and stops. Designed to be run repeatedly during proof iteration.
+# Iterative verify-and-show-errors loop for the formal/roaring sources
+# (Phases A through C). Runs fstar.exe on each module in dependency
+# order; on first failure prints the error and stops. Designed to be
+# run repeatedly during proof iteration.
 
 set -uo pipefail
 
@@ -21,13 +22,13 @@ fi
 
 cd "$(dirname "$0")"
 
-MODULES=(Spec Container.Array Test)
+MODULES=(Spec Bits Container.Array Container.Bitmap Container.Run Test)
 
 for m in "${MODULES[@]}"; do
   echo "=========================="
   echo "Verifying: $m"
   echo "=========================="
-  if ! fstar.exe "${m}.fst"; then
+  if ! fstar.exe --z3version 4.13.3 "${m}.fst"; then
     echo
     echo "FAILED on $m. Stop." >&2
     exit 1
@@ -36,4 +37,4 @@ for m in "${MODULES[@]}"; do
 done
 
 echo
-echo "All Phase A modules verified."
+echo "All roaring modules verified."

@@ -11,9 +11,9 @@ Date: 2026-05-06.
 Working branch: `claude/fstar-roaring-bitmap-D3f23`.
 
 Companion artefacts:
-- `experimental/roaring-fstar/README.md` — Roaring paper summary +
+- `formal/roaring/README.md` — Roaring paper summary +
   Rust crate API + an initial F\* layering sketch.
-- `experimental/roaring-fstar/paper/roaring.{pdf,txt}` — full text of
+- `formal/roaring/paper/roaring.{pdf,txt}` — full text of
   the Lemire/Ssi-Yan-Kai/Kaser arXiv:1603.06549.
 
 > **Note on path.** This file is at `design_issues/` per explicit
@@ -65,7 +65,7 @@ Out of scope:
 
 ## 3. Background: what Roaring is (paper)
 
-Full summary in `experimental/roaring-fstar/README.md`. Compressed
+Full summary in `formal/roaring/README.md`. Compressed
 recap of the load-bearing facts:
 
 ### 3.1 Structure
@@ -867,7 +867,7 @@ coupling itself is worth tracing rather than collapsed.
   - `docs/designissues/2026-04-19-hdt-fstar-status.md`
   - `docs/designissues/2026-04-24-indexing-audit.md`
   - `docs/designissues/2026-04-20-shrink-unverified-boundary.md`
-  - `experimental/roaring-fstar/README.md` (companion)
+  - `formal/roaring/README.md` (companion)
 
 ---
 

@@ -525,7 +525,7 @@ selection, threshold checks, and merge logic stays in `.fst`.
 
 ## 8. Suggested Next Step
 
-Stand up `experimental/roaring-fstar/Spec.fst` with **just** the
+Stand up `formal/roaring/Spec.fst` with **just** the
 container types + invariants + `denote` function, and prove
 `contains_correct` and `union_correct (Array, Array)`. That's the
 smallest possible end-to-end demonstration that the project's existing

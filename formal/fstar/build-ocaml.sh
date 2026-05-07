@@ -72,6 +72,51 @@ case "$STEP" in
     ;;
 esac
 
+# karamel pilot — emit .krml intermediate files for the C-extraction
+# track. See docs/designissues/2026-05-07-c-build-and-roaring-plan.md.
+# Standalone step (not part of the default `all` flow) so it can be
+# iterated independently while the krml binary is being installed.
+if [[ "$STEP" == "karamel" ]]; then
+  echo "=== F* → krml extraction (C-build pilot) ==="
+  mkdir -p krml-output
+  KRML_FAILED=0
+  for fst in SPARQL.JSON.Escape.fst \
+             SPARQL.Update.Analysis.fst \
+             SPARQL.Query.Analysis.fst \
+             SPARQL.HTTP.StaticFiles.fst \
+             SPARQL.HTTP.QueriesIndex.fst; do
+    mod="${fst%.fst}"
+    echo "  $fst -> krml-output/${mod//./_}.krml"
+    if ! fstar.exe --z3version 4.13.3 --codegen krml \
+           --odir krml-output --extract_module "$mod" "$fst" \
+           > "krml-output/_${mod}.log" 2>&1; then
+      echo "    FAIL — see krml-output/_${mod}.log" >&2
+      KRML_FAILED=1
+      continue
+    fi
+    if grep -q "^Verified module" "krml-output/_${mod}.log"; then
+      :
+    else
+      echo "    FAIL: no Verified marker in log" >&2
+      KRML_FAILED=1
+      continue
+    fi
+    if grep -q "Warning 250" "krml-output/_${mod}.log"; then
+      echo "    WARN: KaRaMeL extraction warning(s) — see log"
+    fi
+  done
+  if [[ "$KRML_FAILED" -ne 0 ]]; then
+    echo ""
+    echo "FATAL: one or more modules failed --codegen krml" >&2
+    exit 1
+  fi
+  echo ""
+  echo "Next step (blocked on krml binary install — see plan doc):"
+  echo "  krml -bundle '*' krml-output/*.krml -tmpdir c-output"
+  echo ""
+  exit 0
+fi
+
 # ---------------------------------------------------------------------------
 # run_with_heartbeat <label> <log-path> -- <command> [args...]
 #

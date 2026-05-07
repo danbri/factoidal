@@ -11,3 +11,7 @@ ocaml-output/w3c_tests
 ocaml-output/test_parser
 ocaml-output/test_fstar_parser
 z3-4.13.3
+
+# KaRaMeL pilot — see docs/designissues/2026-05-07-c-build-and-roaring-plan.md
+krml-output/
+c-output/
