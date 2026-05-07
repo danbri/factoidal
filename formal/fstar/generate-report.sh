@@ -288,6 +288,59 @@ ROW
 SPARQL_ROWS_HTML=$(emit_suite_rows "$SPARQL_SUITES")
 RDF_ROWS_HTML=$(emit_suite_rows "$RDF_SUITES")
 
+# ---------------------------------------------------------------------
+# emit_failure_detail — given a per-category log file and a section id,
+# extract every "FAIL: …" / "skip: …" / "SKIP: …" line and render an
+# inline <details> block. The h2 totals link to the section ids
+# (#sparql-failures, #sparql-skips, #rdf-failures) so a reader who
+# clicks "1 fail" lands on the actual failure description, not a
+# dead-end count.
+# ---------------------------------------------------------------------
+emit_failure_detail () {
+  local log="$1"
+  local id_prefix="$2"
+  local label="$3"
+
+  # Bail with empty output if the log doesn't exist (e.g. RDF-only run).
+  if [ ! -f "$log" ]; then
+    echo ""
+    return
+  fi
+
+  # FAIL lines.
+  local fail_block=""
+  fail_block=$(grep -E '^[[:space:]]*FAIL:' "$log" 2>/dev/null \
+               | sed -E 's/^[[:space:]]+//' \
+               | sed -E 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' \
+               | awk '{ printf "<li>%s</li>\n", $0 }' || true)
+
+  # skip lines (lower- and upper-case).
+  local skip_block=""
+  skip_block=$(grep -E '^[[:space:]]*([sS][kK][iI][pP]):' "$log" 2>/dev/null \
+               | sed -E 's/^[[:space:]]+//' \
+               | sed -E 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' \
+               | awk '{ printf "<li>%s</li>\n", $0 }' || true)
+
+  cat <<HTML
+<details id="${id_prefix}-failures" class="failure-detail">
+  <summary>${label} failures (click to expand)</summary>
+  <ul>
+${fail_block:-<li>(none)</li>}
+  </ul>
+</details>
+
+<details id="${id_prefix}-skips" class="failure-detail">
+  <summary>${label} skips (click to expand)</summary>
+  <ul>
+${skip_block:-<li>(none)</li>}
+  </ul>
+</details>
+HTML
+}
+
+SPARQL_FAILURE_DETAIL_HTML=$(emit_failure_detail "$SPARQL_LOG" "sparql" "SPARQL 1.1")
+RDF_FAILURE_DETAIL_HTML=$(emit_failure_detail "$RDF_LOG" "rdf" "RDF 1.1")
+
 # Note: RDFC-1.0 (RDF Dataset Canonicalization) is a SEPARATE W3C
 # corpus (vendored at third_party/testing/rdf-canon/). Earlier
 # versions of this report stitched a synthetic "rdf-canon" row into
@@ -536,6 +589,27 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
     font-weight: 400; color: var(--muted); font-size: 0.85em;
     margin-left: 0.4em;
   }
+  h2 .inline-numbers a {
+    color: inherit; text-decoration: underline; text-decoration-style: dotted;
+  }
+  h2 .inline-numbers a:hover { color: var(--brand-dark); }
+
+  .failure-detail {
+    margin: 0.4em 0 1em;
+    padding: 0.4em 0.8em;
+    border-left: 3px solid var(--muted);
+    background: rgba(0,0,0,0.02);
+    border-radius: 3px;
+    font-size: 0.85em;
+  }
+  .failure-detail summary { cursor: pointer; color: var(--muted); }
+  .failure-detail summary:hover { color: var(--brand-dark); }
+  .failure-detail ul {
+    margin: 0.5em 0 0; padding-left: 1.4em;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.88em;
+  }
+  .failure-detail li { margin: 0.2em 0; line-height: 1.4; }
 
   .suites { display: flex; flex-direction: column; gap: 0.2em; margin: 0 0 1em; }
   .suite-row {
@@ -640,15 +714,17 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
   are linked below.
 </div>
 
-<h2>SPARQL 1.1 <span class="inline-numbers">${SPARQL_PASS} pass · ${SPARQL_FAIL} fail · ${SPARQL_SKIP} skip</span></h2>
+<h2>SPARQL 1.1 <span class="inline-numbers">${SPARQL_PASS} pass · <a href="#sparql-failures">${SPARQL_FAIL} fail</a> · <a href="#sparql-skips">${SPARQL_SKIP} skip</a></span></h2>
 <div class="suites">
 ${SPARQL_ROWS_HTML}
 </div>
+${SPARQL_FAILURE_DETAIL_HTML}
 
-<h2>RDF 1.1 <span class="inline-numbers">${RDF_PASS} pass · ${RDF_FAIL} fail</span></h2>
+<h2>RDF 1.1 <span class="inline-numbers">${RDF_PASS} pass · <a href="#rdf-failures">${RDF_FAIL} fail</a></span></h2>
 <div class="suites">
 ${RDF_ROWS_HTML}
 </div>
+${RDF_FAILURE_DETAIL_HTML}
 
 ${OWL_HTML}
 
