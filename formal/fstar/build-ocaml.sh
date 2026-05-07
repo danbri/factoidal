@@ -271,7 +271,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
       # can be grepped later for diagnostics.
       FSTAR_LOG="$OUTDIR/_fstar_${fst%.fst}.log"
       run_with_heartbeat "fstar.exe $fst" "$FSTAR_LOG" -- \
-        fstar.exe --codegen OCaml --odir "$OUTDIR" "$fst" || FSTAR_RC=$?
+        fstar.exe --z3version 4.13.3 --codegen OCaml --odir "$OUTDIR" "$fst" || FSTAR_RC=$?
       grep -E "Extracted|Error|error" "$FSTAR_LOG" || true
       if ! grep -q "^Extracted module" "$FSTAR_LOG"; then
         echo "  ERROR: $fst failed to extract! (exit code $FSTAR_RC)"

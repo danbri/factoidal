@@ -1,4 +1,4 @@
-FSTAR ?= fstar.exe
+FSTAR ?= fstar.exe --z3version 4.13.3
 KRML ?= krml
 KRML_HOME ?= /tmp/karamel
 ROARING_DIR = ../roaring/src
