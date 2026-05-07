@@ -4,6 +4,9 @@
 
 Design + scoping. Doc-only. No code in this commit.
 
+Tracking issue: https://github.com/danbri/factoidal/issues/207
+("Epic: OWL 2 RL profile — 13/30 → 30/30").
+
 The user wrote "OWL 1.1 — rl"; OWL 1.1 was never standardised. The
 intended target is the **OWL 2 RL profile** (W3C Recommendation, 2012),
 which is what `formal/fstar/RDF.Graph.Executable.fst` already
