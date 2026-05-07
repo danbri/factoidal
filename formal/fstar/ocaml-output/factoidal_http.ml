@@ -173,11 +173,22 @@ type config = {
      non-tail-rec list walks in the JSON / XML serialisers blow it out at
      ~3 M rows. 0 = disabled (use only when investigating tail-rec bugs). *)
   mutable max_rows : int;
-  (* Per-query wall-clock budget in seconds. Implemented via Unix.alarm +
-     SIGALRM; when exceeded, parse_and_run is unwound with a synthetic
-     [Query_timeout] exception and the handler returns HTTP 504 Gateway
-     Timeout, freeing the single-threaded accept loop for the next request.
-     0 = disabled (infinite). See docs/designissues/2026-04-26-heth3-query-timeout.md. *)
+  (* Per-query wall-clock budget in seconds. Implemented as a cooperative
+     [SPARQL.Eval.TimeBudget.budget] value built via
+     [SPARQL_Eval_TimeBudget.mk_budget_secs]. The OCaml HTTP boundary
+     constructs the budget per request; after [parse_and_run] returns,
+     [SPARQL_Eval_TimeBudget.poll] is consulted and an HTTP 504 Gateway
+     Timeout is emitted (instead of the response) when the wallclock
+     deadline has elapsed. 0 = disabled (infinite).
+
+     Heth3 retirement: the prior implementation used Unix.alarm + SIGALRM
+     and an OCaml-side [Query_timeout] exception. SIGALRM is process-
+     global, so in the multi-threaded accept-loop / COTTAS-loader thread
+     pairing it could fire in the wrong thread. Replaced per recovery
+     plan Phase 5 (docs/designissues/2026-05-07-query-planning-fstar-
+     recovery.md) and Iron Rule #11. In-flight cancellation at evaluator
+     yield boundaries is a follow-up; this change retires the SIGALRM
+     architectural violation and relocates the timeout decision to F*. *)
   mutable query_timeout : int;
 }
 
@@ -274,9 +285,9 @@ let usage () =
   print_endline "                         takes longer than SECS, the handler returns HTTP";
   print_endline "                         504 Gateway Timeout (freeing the worker for the";
   print_endline "                         next request) instead of letting one slow query";
-  print_endline "                         block the single-threaded accept loop. Implemented";
-  print_endline "                         via Unix.alarm + SIGALRM. 0 = disabled (infinite).";
-  print_endline "                         (default 30)";
+  print_endline "                         block the single-threaded accept loop.";
+  print_endline "                         Cooperative budget via SPARQL.Eval.TimeBudget.";
+  print_endline "                         0 = disabled (infinite). (default 30)";
   print_endline "  -v, --verbose          Log every request";
   print_endline "  -h, --help             This help";
   print_endline "";
@@ -732,12 +743,17 @@ let build_dataset_backend
 
 exception Bad_request of string  (* retained for legacy raise sites *)
 
-(* Heth3: per-query wall-clock timeout. Raised by the SIGALRM handler that
-   Unix.alarm wakes up. Caught at the parse_and_run boundary (which then
-   re-raises so the call site can shape the HTTP 504 response without
-   colliding with the broader "evaluator exception → 500" catch).
-   See docs/designissues/2026-04-26-heth3-query-timeout.md. *)
-exception Query_timeout
+(* Heth3 retired: the per-query wall-clock timeout was previously
+   implemented as a SIGALRM-driven [Query_timeout] exception. The signal
+   handler is process-global, which is architecturally wrong in a
+   multi-threaded server (one thread's deadline could fire in another
+   thread's context). The cooperative budget pattern in
+   SPARQL.Eval.TimeBudget.fst is now the source of truth; the OCaml side
+   constructs a budget value via [SPARQL_Eval_TimeBudget.mk_budget_secs]
+   and consults [SPARQL_Eval_TimeBudget.poll] at the HTTP boundary. The
+   exception type is retired with the SIGALRM machinery. See
+   docs/designissues/2026-05-07-query-planning-fstar-recovery.md
+   Phase 5. *)
 
 let max_header_bytes = 65536
 let max_body_bytes   = 10 * 1024 * 1024
@@ -975,7 +991,8 @@ let result_cap_response ~cap ~actual_size =
    on a 3 M-element list.
 
    Heth3 (per-query timeout) is a separate F* module
-   ([SPARQL.Eval.TimeBudget]) and is migrated in a follow-up PR. *)
+   ([SPARQL.Eval.TimeBudget]); the OCaml HTTP boundary consults it via
+   [with_query_budget] / [SPARQL_Eval_TimeBudget.poll]. *)
 let row_cap_of_int (cap : int) : SPARQL_Eval_Limits.row_cap =
   SPARQL_Eval_Limits.mk_cap (Z.of_int (max 0 cap))
 
@@ -1407,9 +1424,6 @@ let parse_and_run_timed ~backend ~accept ~max_rows query_text =
                   qt_body_bytes = String.length r.rb_body } in
        (r, qt)
      with
-     | Query_timeout as e ->
-       Printf.eprintf "[heth3] parse_and_run_timed: query timeout (SIGALRM)\n%!";
-       raise e
      | e ->
        let bt = Printexc.get_backtrace () in
        Printf.eprintf "[qof3] parse_and_run_timed: run_query raised: %s\n%s%!"
@@ -1435,49 +1449,34 @@ let parse_and_run ~backend ~accept ~max_rows query_text =
   let (r, _qt) = parse_and_run_timed ~backend ~accept ~max_rows query_text in
   r
 
-(* Heth3: build the standard 504 Gateway Timeout body when a query exceeds
-   the configured wall-clock budget. The JSON body shape is owned by
+(* Build the standard 504 Gateway Timeout body when a query exceeds the
+   configured wall-clock budget. The JSON body shape is owned by
    SPARQL.HTTP.Response.fst (rule #1). *)
 let query_timeout_response ~secs =
   { rb_status = 504;
     rb_content_type = "application/json; charset=utf-8";
     rb_body = SPARQL_HTTP_Response.query_timeout_response_body (Z.of_int secs) }
 
-(* Heth3: run [f ()] under a process-global Unix.alarm. SIGALRM is
-   intercepted by a handler that raises [Query_timeout] inside whatever
-   OCaml stack frame happens to be running at the time. The alarm is
-   ALWAYS cancelled (Unix.alarm 0) on exit via Fun.protect, including the
-   exception path, so a follow-on request never inherits the previous
-   request's timer.
+(* Heth3 cooperative budget shim. Replaces the SIGALRM-based
+   [with_query_timeout] (process-global, wrong for a multi-threaded
+   server). The OCaml side here is a thin dispatcher: build the budget
+   in F* via [SPARQL_Eval_TimeBudget.mk_budget_secs], hand it to the
+   continuation [f], and let the caller decide whether to consult
+   [SPARQL_Eval_TimeBudget.poll] post-eval (or, in a future change that
+   threads the budget through the F* evaluator, between yield points).
 
-   Caveats:
-     - Unix.alarm is per-process. Today we have a single-threaded accept
-       loop (or one accept-thread when COTTAS is loading), so this is
-       effectively per-request. A future worker pool will need a
-       per-thread polling abort flag instead.
-     - The signal handler is set/restored each call. The previous handler
-       is captured and restored on exit (defensive — none of our other
-       code uses SIGALRM, but we don't want to clobber it just in case).
-     - cfg.query_timeout = 0 disables the wrapper entirely (no signal
-       handler installed, no alarm set). *)
-(* Polymorphic in the thunk's return type: parse_and_run still returns
-   response_body, but parse_and_run_timed returns response_body *
-   query_timing. The signal-handler / alarm machinery is independent of
-   what the thunk produces. *)
-let with_query_timeout ~secs (f : unit -> 'a) : 'a =
-  if secs <= 0 then f ()
-  else begin
-    let prev =
-      Sys.signal Sys.sigalrm
-        (Sys.Signal_handle (fun _ -> raise Query_timeout))
-    in
-    let _ : int = Unix.alarm secs in
-    Fun.protect
-      ~finally:(fun () ->
-        let _ : int = Unix.alarm 0 in
-        Sys.set_signal Sys.sigalrm prev)
-      f
-  end
+   No semantic decision is taken here — everything (deadline arithmetic,
+   wallclock read, expiry test) lives in F*. Iron Rule #11.
+
+   secs <= 0 is the project-wide convention for "disabled"; F*
+   [mk_budget_secs 0] returns the disabled-budget sentinel
+   ([is_disabled = true], [poll = false] always). *)
+let with_query_budget
+    ~secs
+    (f : SPARQL_Eval_TimeBudget.budget -> 'a) : 'a =
+  let secs_z = Z.of_int (max 0 secs) in
+  let b = SPARQL_Eval_TimeBudget.mk_budget_secs secs_z in
+  f b
 
 (* ============================================================================
    Per-connection handling.
@@ -2318,34 +2317,47 @@ let handle_connection cfg dataset_ref backend_ref cottas_stores_ref ic oc =
            never have to be materialised. UPDATE keeps using the
            in-memory dataset_ref.
 
-           Heth3: wrap parse_and_run in with_query_timeout so a single
-           slow query (e.g. unbound BGP estimate_fast walking 26 row
-           groups) cannot block the single-threaded accept loop for
-           minutes. Exceeding cfg.query_timeout returns HTTP 504 and
-           frees the worker for the next queued request.
+           Heth3 (cooperative budget): wrap parse_and_run in
+           with_query_budget so a single slow query (e.g. unbound BGP
+           estimate_fast walking 26 row groups) cannot, in steady state,
+           swallow the response slot for the next queued request — the
+           HTTP boundary consults SPARQL_Eval_TimeBudget.poll after
+           parse_and_run returns and emits HTTP 504 in lieu of the
+           result body when the deadline has elapsed.
+
+           This retires the prior SIGALRM mechanism (process-global, see
+           docs/designissues/2026-05-07-query-planning-fstar-recovery.md
+           Phase 5). In-flight cancellation across F* yield boundaries
+           is a follow-up that needs the budget threaded through
+           SPARQL11.Algebra / SPARQL11.Store eval signatures.
 
            Timing path (2026-05-02): use parse_and_run_timed so we can
            emit Server-Timing on the response and push a recent_query
            record into the ring buffer. *)
         let started_at = Unix.gettimeofday () in
         let (resp, qt) =
-          try
-            with_query_timeout ~secs:cfg.query_timeout (fun () ->
+          with_query_budget ~secs:cfg.query_timeout (fun budget ->
+            let (resp, qt) =
               parse_and_run_timed ~backend:!backend_ref ~accept
-                ~max_rows:cfg.max_rows q)
-          with Query_timeout ->
-            Printf.eprintf
-              "[heth3] query timeout after %ds — returning 504\n%!"
-              cfg.query_timeout;
-            let r = query_timeout_response ~secs:cfg.query_timeout in
-            let total_ms = (Unix.gettimeofday () -. started_at) *. 1000.0 in
-            let qt = { zero_timing with
-                       qt_total_ms = total_ms;
-                       qt_eval_ms = total_ms;
-                       qt_status = r.rb_status;
-                       qt_form = "timeout";
-                       qt_body_bytes = String.length r.rb_body } in
-            (r, qt)
+                ~max_rows:cfg.max_rows q in
+            (* F*-extracted poll: re-reads now_ms, compares against
+               the deadline. is_disabled-budgets always poll false,
+               so this is a no-op when --query-timeout 0. *)
+            if SPARQL_Eval_TimeBudget.poll budget then begin
+              Printf.eprintf
+                "[heth3] query timeout after %ds — returning 504\n%!"
+                cfg.query_timeout;
+              let r = query_timeout_response ~secs:cfg.query_timeout in
+              let total_ms =
+                (Unix.gettimeofday () -. started_at) *. 1000.0 in
+              let qt = { zero_timing with
+                         qt_total_ms = total_ms;
+                         qt_eval_ms = total_ms;
+                         qt_status = r.rb_status;
+                         qt_form = "timeout";
+                         qt_body_bytes = String.length r.rb_body } in
+              (r, qt)
+            end else (resp, qt))
         in
         let q_summary = truncate_for_log q 200 in
         Printf.eprintf "%s\n%!" (timing_log_line qt q_summary);
