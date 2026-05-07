@@ -88,6 +88,34 @@ let saturate_with_program
   | Some program -> Some (Ev.fixpoint premise program fuel)
 
 // ------------------------------------------------------------------
+// 2b. Imports-aware variant: parse-then-saturate where the caller
+// has already resolved the <Import><location>...</location> URLs
+// declared in the RIF-XML directive block to local data graphs and
+// merged them into `premise`. This entry point exposes the import
+// URL list to the caller so the OCaml glue can do the URL-to-local-
+// path resolution outside the verified library (rule #11: pure I/O
+// realisations live consumer-side).
+//
+// `parse_rif_imports` returns the list of import URLs without
+// touching the premise graph. The OCaml glue uses this to:
+//   1. Resolve each URL onto a local file under
+//      third_party/testing/rif/tc/<TestName>/.
+//   2. Parse it with the existing Parser.RDFXML / Parser.Turtle.
+//   3. Merge the triples into the premise graph.
+//   4. Call saturate_with_program on the merged graph.
+//
+// Returning None preserves the parse-failure short-circuit; an
+// empty import list means the document declared no imports.
+// ------------------------------------------------------------------
+
+let parse_rif_imports (rif_xml : string)
+  : option (list string)
+  =
+  match Pr.parse_rif_program_with_imports rif_xml with
+  | None -> None
+  | Some (imports, _) -> Some imports
+
+// ------------------------------------------------------------------
 // 3. ASK-style runner: triple membership in the saturated graph.
 //
 // W3C SPARQL ASK queries with a fully-ground triple pattern (or a
