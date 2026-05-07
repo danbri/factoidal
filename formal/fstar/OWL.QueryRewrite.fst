@@ -1222,9 +1222,35 @@ let rec expand_ce_subject
       //            Anchored on GP_Empty so the constraint is the
       //            whole group pattern.
       //            Qualified: FNE { subj :p ?fresh . ?fresh a :C }.
-      //   N >= 1 -> NOT IMPLEMENTED here. Fall back to the leaf form
-      //            (sound w.r.t. NOT introducing extra solutions, but
-      //            won't bind useful results without DL reasoning).
+      //   N = 1, qualified (onClass :C present) ->
+      //            Bind against the canonical maxqc1 restriction
+      //            materialised by RDF.Graph.Executable's
+      //            owl_rule_cls_maxqc1. That rule emits, for every
+      //            (x P y) with (y rdf:type C) where the count of
+      //            P-successors-typed-C of x is <= 1, a canonical
+      //            bnode _:rMAXQC1(P,C) carrying the four shape
+      //            triples (rdf:type owl:Restriction; owl:onProperty P;
+      //            owl:maxQualifiedCardinality 1; owl:onClass C) plus
+      //            the membership (x rdf:type _:rMAXQC1).
+      //            The query CE has the SAME shape but a DIFFERENT
+      //            (anonymous, query-side) bnode id. So leaf form
+      //            (subj rdf:type op) cannot match — the two bnodes
+      //            are not unified by SPARQL bnode-as-existential
+      //            semantics. Instead we discover any restriction in
+      //            the data with the same neighbourhood by emitting
+      //            the four shape triples against a fresh variable
+      //            ?_mxc_<k>, then assert (subj rdf:type ?_mxc_<k>).
+      //            This binds the canonical when present and yields
+      //            the correct subjects (parent7 / hasChild max 1
+      //            Female -> exactly the individuals whose hasChild-
+      //            successors typed Female number at most 1).
+      //   N = 1, unqualified (no onClass) -> still leaf fallback.
+      //            owl_rule_cls_maxqc1 only fires for the qualified
+      //            shape (it requires a NAMED filler class), so the
+      //            data does not carry a corresponding canonical to
+      //            bind against. Sound but won't bind useful results
+      //            without DL reasoning.
+      //   N >= 2 -> NOT IMPLEMENTED. Fall back to the leaf form.
       //            Larger-N encoding needs n+1 distinct vars + pairwise
       //            FILTERs and is deferred.
       let on_prop_opt = bgp_find_first_obj b k owl_onProperty_iri in
@@ -1238,10 +1264,7 @@ let rec expand_ce_subject
           | _ -> None in
       (match on_prop_opt, card_opt with
        | Some (PT_IRI p_iri), Some card_n ->
-         if card_n <> 0 then
-           // Larger-N maxCard not yet supported — leaf fallback.
-           GP_BGP (single_type_bgp subj op)
-         else
+         if card_n = 0 then
            let fresh_name : string = "_mxc_" ^ k in
            let fresh_term : pattern_term    = PT_Var fresh_name in
            let fresh_subj : pattern_subject = PS_Var fresh_name in
@@ -1255,6 +1278,42 @@ let rec expand_ce_subject
                join_ggps [prop_ggp; cls_ggp]
              | None -> prop_ggp in
            GP_Filter (E_NotExists inner_ggp) GP_Empty
+         else if card_n = 1 then
+           // N=1 qualified: bind to canonical owl_rule_cls_maxqc1
+           // materialisation via shape discovery. Unqualified N=1
+           // falls back to leaf (no canonical to bind against).
+           match on_class_opt with
+           | Some (PT_IRI c_iri) ->
+             let restr_name : string = "_mxqc1_r_" ^ k in
+             let restr_term : pattern_term    = PT_Var restr_name in
+             let restr_subj : pattern_subject = PS_Var restr_name in
+             let shape_type_triple : triple_pattern =
+               { tp_s = restr_subj; tp_p = PT_IRI rdf_type_iri;
+                 tp_o = PT_IRI owl_Restriction_iri } in
+             let shape_onprop_triple : triple_pattern =
+               { tp_s = restr_subj; tp_p = PT_IRI owl_onProperty_iri;
+                 tp_o = PT_IRI p_iri } in
+             let shape_maxqc_triple : triple_pattern =
+               { tp_s = restr_subj;
+                 tp_p = PT_IRI owl_maxQualifiedCardinality_iri;
+                 tp_o = PT_Literal one_nonNegInteger_literal } in
+             let shape_onclass_triple : triple_pattern =
+               { tp_s = restr_subj; tp_p = PT_IRI owl_onClass_iri;
+                 tp_o = PT_IRI c_iri } in
+             let memb_triple : triple_pattern =
+               { tp_s = subj; tp_p = PT_IRI rdf_type_iri;
+                 tp_o = restr_term } in
+             GP_BGP [ shape_type_triple;
+                      shape_onprop_triple;
+                      shape_maxqc_triple;
+                      shape_onclass_triple;
+                      memb_triple ]
+           | _ ->
+             // Unqualified maxCard 1, or non-IRI filler: leaf fallback.
+             GP_BGP (single_type_bgp subj op)
+         else
+           // N < 0 or N >= 2: leaf fallback.
+           GP_BGP (single_type_bgp subj op)
        | _, _ -> GP_BGP (single_type_bgp subj op))
     | Some (k, CE_ExactCardinality) ->
       // Exact-cardinality restriction:
