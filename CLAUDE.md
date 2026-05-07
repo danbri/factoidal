@@ -1,11 +1,19 @@
-# Factoidal — Verified RDF/SPARQL from F*
+# Factoidal — Verified RDF/SPARQL from F\*
 
-## :warning: F* Comment Syntax — DANGER :warning:
+A formally verified RDF/SPARQL implementation. The **F\* specifications are
+the product**. Executable code is obtained by **extraction**, not by
+hand-writing Rust/JS/OCaml/anything that "mirrors" a spec.
+
+> **CLAUDE.md is short on purpose.** Operational detail lives in skills
+> (`.claude/skills/<name>/SKILL.md`) and design docs
+> (`docs/designissues/`). The rules below are the ones every session must
+> have in working memory. The rest is one click away.
+
+## :warning: F\* Comment Syntax — DANGER :warning:
 
 **F\* comments `(* ... *)` support NESTING.** Any `*)` inside a comment
-prematurely closes it, and any `(*` opens a new nesting level. This means
-constructs containing `*)` will **silently corrupt the rest of your file**
-when placed inside comments.
+prematurely closes it; any `(*` opens a new nesting level. Constructs
+containing `*)` will **silently corrupt the rest of the file**.
 
 **This WILL break:**
 ```fstar
@@ -13,444 +21,174 @@ when placed inside comments.
    construct(*)
 *)
 ```
-The `*)` inside `construct(*)` closes the comment. Everything after it becomes
-code. F\* then reports a syntax error **hundreds of lines later**, making
-debugging extremely difficult.
+The `*)` inside `construct(*)` closes the comment. F\* reports a syntax
+error **hundreds of lines later**.
 
 **Safe alternatives:**
 - Reword to avoid parens-star: `(* COUNT-star special case *)`
-- Use `//` line comments (F\* supports them): `// COUNT(*) special case`
-- Escape or rephrase: `(* SELECT vars-or-star ... *)`
+- Use `//` line comments: `// COUNT(*) special case`
 
-**Rule: Never put `*)` or `(*` inside an F\* block comment.** Grep your `.fst`
-files for these sequences if you get mysterious syntax errors far from the
-actual cause.
+**Rule: Never put `*)` or `(*` inside an F\* block comment.** Same trap
+exists in the OCaml side — `(F*)` in an OCaml comment closes early; use
+`(F-star)`.
 
-## :warning: F* Reserved-Word Pitfall :warning:
+## :warning: F\* Reserved-Word Pitfall :warning:
 
-F\*'s parser treats some innocuous-looking identifiers as reserved (or
-reserved in certain positions) and reports the resulting parse failure
-with a misleading line number — usually pointing at the line **after**
-the offending name. Confirmed traps:
+F\*'s parser treats some innocuous identifiers as reserved and reports
+the resulting parse failure with a misleading line number — usually the
+line **after** the offender:
 
-- `total` — banned as a let-bound name. The error points at the next
-  let-binding. (Step-3 agent burned ~5 min on this 2026-04-30.)
-- `in_mem` — same: looks like `in` keyword to the parser in some
-  contexts.
+- `total` — banned as a let-bound name. Error points at the next let.
+- `in_mem` — looks like the `in` keyword in some contexts.
 - Anything containing `in` as a prefix where F\* expects a let-body.
 
 **Safe alternatives:** prefix with the domain noun (`triples_total`,
-`mem_dataset`). When you hit an unexplained "Syntax error" in F\* and
-the line it points at looks fine, check the line *above* for an
-identifier that could be a keyword fragment.
-
-## What This Project Is
-
-A formally verified RDF/SPARQL implementation. The **F\* specifications are the
-product**. Executable code is obtained by **extraction**, not by hand-writing
-Rust/JS/OCaml/anything that "mirrors" a spec.
+`mem_dataset`). When you hit an unexplained "Syntax error", check the
+line *above* the reported one.
 
 ## Iron Rules
 
 1. **F\* is the source of truth.** All RDF/SPARQL logic lives in `.fst` files.
-2. **Code is extracted, not hand-written.** Use `fstar.exe --codegen OCaml` (or
-   KaRaMeL for C/WASM). Never vibe-code an implementation and claim it "mirrors"
+2. **Code is extracted, not hand-written.** Use `fstar.exe --codegen OCaml`
+   or KaRaMeL for C/WASM. Never vibe-code an implementation that "mirrors"
    the spec.
-3. **assume val = acknowledged gap.** Every `assume val` must have a stub in
-   `minimal_regrettable_glue_code_each_with_an_open_issue/` (individual patch
-   files, each with a GitHub issue number in the filename). No silent holes.
-4. **Parsers belong in F\*.** RDF serialization parsers (N-Triples, Turtle,
-   N-Quads, TriG, RDF/XML, CSV/TSV results) are implemented in F\* and
-   extracted. All hand-written OCaml parsers have been removed. New parsers
-   MUST be written in F\* first.
-5. **Full SPARQL 1.1 is the target.** This includes Query, Update, Protocol,
-   SERVICE (federated query), and all result formats (XML/SRX, JSON, CSV, TSV).
-   Never default to 1.0 manifests when 1.1 exists.
-6. **Run the real W3C test files.** Read manifests, `.rq`, `.srx`, `.ttl` from
-   disk. Do not construct synthetic queries that are "inspired by" W3C tests.
-7. **No cobbling.** No hand-written JS/Rust/OCaml reimplementations of what F\*
-   defines. If you need new functionality, add it in F\* first, then extract.
-8. **RDF semantics are not optional.** The rdf-mt (model theory) tests verify
-   fundamental RDF graph semantics — literal equivalence, datatype handling,
-   language tag normalization, RDFS closure rules. These are core requirements,
-   not "just inference." Dismissing them is wrong.
-9. **Commit compiled binaries.** The compiled `w3c_runner` and `factoidal`
-   binaries live in `bin/<platform>/` (e.g., `bin/darwin-arm64/`,
-   `bin/linux-x86_64/`) and MUST be committed to git. This lets anyone
-   check out the repo and immediately run tests without needing an F\*/opam
-   toolchain. `ocaml-output/` contains symlinks to the current platform's
-   binaries. `build-ocaml.sh compile` auto-detects the platform and outputs
-   to the correct directory. Do not add binaries to `.gitignore`. Do not
-   skip them when staging.
-10. **Patches are for stubs and workarounds, NOT logic.** Post-extraction
-    patches live in `minimal_regrettable_glue_code_each_with_an_open_issue/`
-    as individual files named `<issue>_<description>.sh`. Each patch MUST
-    have a corresponding open GitHub issue. Patches may wire `assume val`
-    stubs, fix F\* type system limitations, and do forward-reference wiring.
-    They must **never** contain RDF/SPARQL semantic logic. If you find yourself
-    writing "if the entailment regime is RDFS then do X" in a patch, STOP —
-    that logic belongs in F\*. Every line of logic in a patch is unverified,
-    won't extract to C/WASM, and must be re-implemented for every target.
-    **Known violations:** blank-node-as-existential rewriting (#53).
-    When an issue is resolved (F\* replaces the patch), delete the patch
-    file. Resolved: RDFS closure + reflexivity axioms (#60) — now lives in
-    `RDF.Graph.Executable.fst` as `rdfs_closure_with_reflexivity`.
+3. **`assume val` = acknowledged gap.** Every `assume val` must have a
+   stub patch in
+   `formal/fstar/minimal_regrettable_glue_code_each_with_an_open_issue/`
+   named `<issue>_<description>.sh` with a corresponding open GitHub
+   issue. No silent holes.
+4. **Parsers belong in F\*.** RDF format parsers (N-Triples, Turtle,
+   N-Quads, TriG, RDF/XML, CSV/TSV results) are F\*-implemented and
+   extracted. New parsers MUST be written in F\* first.
+5. **Full SPARQL 1.1 is the target.** Query, Update, Protocol, SERVICE,
+   all result formats. Never default to 1.0 manifests when 1.1 exists.
+6. **Run the real W3C test files.** Read manifests, `.rq`, `.srx`,
+   `.ttl` from disk. No synthetic queries "inspired by" W3C tests.
+7. **No cobbling.** No hand-written JS/Rust/OCaml reimplementations of
+   what F\* defines. Add functionality in F\* first, then extract.
+8. **RDF semantics are not optional.** rdf-mt tests verify literal
+   equivalence, datatype handling, language-tag normalization, RDFS
+   closure rules. Core requirements, not "just inference."
+9. **Commit compiled binaries.** `bin/<platform>/factoidal` and
+   `bin/<platform>/w3c_runner` are committed so a fresh clone runs
+   tests without an F\* toolchain. `ocaml-output/` symlinks point at
+   the current platform's `bin/` dir. Do not gitignore binaries.
+10. **No `--lax`.** All F\* must verify under z3 4.13.3 with no `--lax`,
+    no `--admit_smt_queries`, no escape-hatch flags.
+11. **Inside the verified library boundary, OCaml is `assume val`
+    realisations only.** Hand-written `.ml` in
+    `formal/fstar/ocaml-output/*.ml` and patches in
+    `formal/fstar/experimental_ocaml_glue/*.sh` may only realise
+    `assume val` declarations: pure I/O (file/clock/socket),
+    host-engine call-outs (e.g. regex), or vendored crypto primitives.
+    Byte-layout for a companion file is **not** acceptable here — the
+    byte assembly belongs in F\* (`serialize : data -> Tot (list u8)`),
+    and the OCaml side reduces to `write_bytes`. Consumer tools (CLI,
+    runners, HTTP entry points) are not part of the verified library
+    and belong in `bin/<consumer>/`.
 
-11. **`experimental_ocaml_glue/` patches AND hand-written
-    `formal/fstar/ocaml-output/*.ml` files MUST NOT carry semantic
-    backend logic.** This is a stricter form of rule #10 specifically
-    for the COTTAS-on-disk perf area AND for `factoidal_http.ml`.
-    Between 2026-04-25 and 2026-04-26 the project accumulated ~3000
-    LoC of OCaml-side semantic logic (Yod6 pred-presence, Tet3 subj/
-    obj-presence, Lamed3 offset-index, Mem5 estimate fast-path, Pe5
-    explain re-impl, etc.) that REPLACED F\* runtime functions whole-
-    sale. The verified extraction story collapsed: F\* spec became
-    dead code, OCaml shims became the runtime. Reviewer 2026-04-26
-    flagged that the drift extends to `factoidal_http.ml`'s
-    timeout policy, `/backend-info.json` aggregation, and
-    `RDF_CottasStore.ml`'s caching/index policy. **No more.**
+    **Recovery plan + boundary audit + I/O verification pattern:**
+    - [`docs/designissues/2026-05-07-query-planning-fstar-recovery.md`](docs/designissues/2026-05-07-query-planning-fstar-recovery.md)
+    - [`docs/designissues/2026-05-07-io-verification-and-third-party.md`](docs/designissues/2026-05-07-io-verification-and-third-party.md)
 
-    **FREEZE (2026-04-26):** until
-    `docs/designissues/fstar-ocaml-boundary-audit.md` is complete and
-    each OCaml function has been classified (acceptable glue /
-    temporary prototype / semantic-must-migrate), no agent dispatch
-    or main-thread work may add **new** semantic behaviour to:
-      - `formal/fstar/ocaml-output/factoidal_http.ml`
-      - `formal/fstar/ocaml-output/RDF_CottasStore.ml`
-      - `formal/fstar/experimental_ocaml_glue/*.sh`
-    Bug fixes to existing logic are allowed; new features and new
-    optimisation paths are not. The boundary audit is the unblock.
-
-    **Qualified "verified" claim:** until the boundary audit is done
-    and the unwind has retired the rule-#11 violators, the project
-    must NOT be described as "verified RDF/SPARQL" without the
-    qualifier "**parser and algebra spec verified in F\*; on-disk
-    backend currently has unverified OCaml-side caching/optimisation
-    layers being migrated back to F\* (see fstar-purity-unwind.md)**".
-    READMEs, demo pages, talks, and PR descriptions must use this
-    qualification.
-
-    Allowed in `experimental_ocaml_glue/`:
-    - Realisations of `assume val` declarations (rule #3) — pure I/O, no
-      decisions about what to compute, only how to read/write bytes.
-    - Companion-file writers that build disk artifacts (Vav3-style); the
-      reader path must be in F\*.
-    - Trivial dispatch shims that call F\*-extracted code (e.g. perf
-      shadow tables that the F\* code itself decides to consult).
-
-12. **Assume the F\* opam switch is required unless you are only using
-    prebuilt binaries.** Before any `formal/fstar/build-ocaml.sh`
-    `extract`, `compile`, `js`, `wasm`, or source-level test run, do:
-    `eval $(opam env --switch=fstar)`. If `fstar.exe` is missing from
-    `PATH`, stop and activate the switch rather than burning time on
-    partial builds. Do not assume a fresh shell has the right opam
-    environment active.
-
-    Forbidden:
-    - Replacing the body of an F\*-extracted function with an OCaml
-      reimplementation (the `cottas_ondisk_search -> search_fast`
-      pattern).
-    - Adding pruning, optimisation, or query-planning logic in
-      OCaml. These belong in F\*. If F\*'s implementation is too slow,
-      MAKE F\*'s IMPLEMENTATION FAST — don't shadow it.
-    - "Shape A" agent prompts that tell an agent the F\* path is
-      bypassed so OCaml is acceptable. The opposite is now true: the
-      F\* path is the runtime. Agents may not bypass it.
-
-    **When dispatching an agent that touches the COTTAS backend or the
-    SPARQL evaluator, the prompt MUST include a clause forbidding
-    additions to `experimental_ocaml_glue/` other than the three
-    allowed cases above.** The dispatching coordinator (top-level
-    Claude) is responsible for enforcing this. If an agent's natural
-    path leads to a glue addition, re-scope the agent to write F\* +
-    `assume val` realisation only.
-
-    Layer-2 unwind (planned 2026-04-26): each existing override patch
-    is replaced by an F\* implementation. See
-    `docs/designissues/fstar-purity-unwind.md` (TBD) for the inventory
-    and order of operations.
+    **Until** the boundary audit completes and recovery Phase 9 lands,
+    the project carries the qualifier "**parser and algebra spec
+    verified in F\*; on-disk backend has unverified OCaml-side
+    optimization layers being migrated back to F\* (see fstar-purity-
+    unwind.md)**" on READMEs, demo pages, talks, and PR descriptions.
+12. **Activate the F\* opam switch before any F\* work.**
+    `eval $(opam env --switch=fstar)` — every shell, every time, before
+    `make verify` / `build-ocaml.sh` / `fstar.exe`. If `fstar.exe` is
+    missing from PATH, stop and activate; do not burn time on partial
+    builds. See the `fstar-env` skill for setup.
 
 ## Agent Work Strategy
 
-Use subagents aggressively for parallelism — launch separate agents for
-independent work (F\* verification + OCaml compile + test runs). Top-level
-Claude coordinates; never block the main loop waiting on one task when
-other work can proceed. Use `run_in_background: true` for long-running
-operations. See rules #19 / #20 / #21 for the timeout + logging discipline
-that makes this safe.
+Use subagents aggressively for parallelism — independent work
+(verification + compile + test) runs concurrently. Top-level Claude
+coordinates and never blocks the main loop. Use `run_in_background:
+true` for long-running ops.
 
-## Anti-Patterns (rules #1 – #25)
+**Per anti-pattern #23/#24:** scope every subagent to a single
+commit-sized goal; ship code sketches, not "figure it out". When
+dispatching against the COTTAS backend or evaluator, the agent prompt
+MUST forbid additions to `experimental_ocaml_glue/` other than the
+rule-#11 acceptable forms.
 
-The full text of each anti-pattern — with war-story justification, example
-bugs, and mitigation — lives in
-[`docs/claude-rules/anti-patterns.md`](docs/claude-rules/anti-patterns.md).
-The one-line summaries below are the shortcut. When a commit message says
-"per rule #17" or "anti-pattern #15", look it up there.
+## Anti-patterns (one-line summaries)
+
+Full text + war stories: [`docs/claude-rules/anti-patterns.md`](docs/claude-rules/anti-patterns.md).
+Commit messages and inline comments reference these by number ("per
+rule #17").
 
 1. Writing OCaml parsers instead of F\* parsers.
 2. Dismissing rdf-mt tests as "needing an inference engine."
 3. Reporting misleading test scores (unlabelled numerators/denominators).
 4. Building parallel OCaml toolkits instead of extending the F\* spec.
-5. Creating symlinks or hacks for version mismatches (esp. z3) — fix the env.
+5. Symlinks/hacks for version mismatches (esp. z3) — fix the env.
 6. Promoted-type blindness: handle `ER_Num`/`ER_Dec`/`ER_Dbl`/`ER_Bool`
    alongside `ER_Term(T_Literal _)` everywhere.
-7. Parser/evaluator AST mismatch: grep `SPARQL11_Parser.ml` to see what
-   the parser actually emits before adding evaluator logic.
-8. `parse_to_scaled` before `parse_double_to_scaled` — always try the
-   double-aware form first; E-notation gets mis-parsed as fractional digits
-   otherwise.
-9. Recursive string-function base cases kill metadata — handle the single-
-   element case explicitly to preserve lang tags and datatypes.
-10. OCaml `Str` regex operates on bytes, not codepoints; unmatched group
-    back-refs raise `Not_found`.
+7. Parser/evaluator AST mismatch: grep `SPARQL11_Parser.ml` first.
+8. `parse_to_scaled` before `parse_double_to_scaled` — try double-aware
+   first; E-notation gets mis-parsed otherwise.
+9. Recursive string-function base cases kill metadata — handle the
+   single-element case explicitly to preserve lang tags + datatypes.
+10. OCaml `Str` regex operates on bytes, not codepoints; unmatched
+    group back-refs raise `Not_found`.
 11. `build-ocaml.sh compile` does NOT apply `ocaml-patches.sh`. Use
-    `extract` after a fresh extraction or run the patches manually.
-12. `(*` inside F\* comments silently swallows the rest of the file.
-    Use `//` line comments when the text contains `(*` or `*)`.
-13. Never edit extracted `.ml` files in `ocaml-output/` directly — they
-    are regenerated by `./build-ocaml.sh extract`. Fix the `.fst` or add
-    a patch to `ocaml-patches.sh` instead.
-14. Never `|| true` to swallow shell failures — capture the exit code
+    `extract` after a fresh extraction.
+12. `(*` inside F\* comments silently swallows the file. Use `//`.
+13. Never edit extracted `.ml` files in `ocaml-output/` directly —
+    fix the `.fst` or add a patch.
+14. Never `|| true` to swallow shell failures — capture exit code
     explicitly (`CMD_RC=0; cmd || CMD_RC=$?`).
 15. Never sneak semantic logic into `ocaml-patches.sh` or `w3c_runner.ml`.
-    RDF/SPARQL decisions belong in `.fst` files; patches are I/O glue and
-    `assume val` wiring only.
-16. Never truncate command output with `tail -N` / `head -N` in scripts.
-    Use `tee` to save full output while streaming.
-17. Never let ad-hoc parse or SPARQL runs hang indefinitely — cap at
-    10 minutes (`timeout 600` or equivalent). Kill and shrink input on cap
-    trips; don't rerun and hope.
-18. Dump in-flight plan to `.claude-worklog.md` at checkpoints — the
-    harness persists transcripts but not in-memory plan state.
-19. Every long-running process gets a timestamped log under `.claude-runs/`,
-    runs in background, and has a hard wall-clock cap. Record start and
-    completion in `.claude-worklog.md`.
-20. Never burn clock time on the known-slow Turtle path. Launch
-    W3C-scale tests via subagent or `run_in_background`, not in the
-    foreground of the main loop.
-21. Never stall on parallel work. Push, CI, browser check in flight ≠
-    reason to wait — pick the next independent item off the queue.
-22. Subagent stall is a checkpoint, not a loss. Check `git status` /
-    `git log` / file mtimes before relaunching — the work may already
-    be on disk.
-23. Scope every subagent to a single commit-sized goal. One subagent =
-    one commit = one deliverable.
-24. Subagent prompts ship code sketches, not "figure it out". Include
-    the concrete diff, file + line, helper function signatures; cap
-    scope at one function or one rule.
+16. Never truncate command output with `tail -N` / `head -N` — use `tee`.
+17. Never let ad-hoc parse / SPARQL runs hang — cap at 10 min
+    (`timeout 600`). Kill and shrink input on cap trips.
+18. Dump in-flight plan to `.claude-worklog.md` at checkpoints.
+19. Long-running processes log to `.claude-runs/` with hard wall-clock cap.
+20. Never burn clock on the slow Turtle path — background it.
+21. Never stall on parallel work in flight; pick the next item.
+22. Subagent stall is a checkpoint, not a loss — check `git status`/log.
+23. One subagent = one commit = one deliverable.
+24. Subagent prompts ship code sketches + file:line + signatures.
 25. Never write cryptic score strings. "972/59" without labels is
     banned — write "972 pass, 59 fail (out of 1031)".
 
-## Setup
+## Skills (operational details, on-demand)
 
-### First-time clone
+- [`fstar-env`](.claude/skills/fstar-env/SKILL.md) — F\* / opam / z3
+  setup and repair.
+- [`build-and-test`](.claude/skills/build-and-test/SKILL.md) — build,
+  extract, compile, run W3C tests.
+- [`github-and-prs`](.claude/skills/github-and-prs/SKILL.md) — gh CLI
+  with `--repo danbri/factoidal`, branch + PR conventions.
+- [`repo-tour`](.claude/skills/repo-tour/SKILL.md) — directory layout,
+  "where does X live?".
 
-```bash
-git clone --recurse-submodules https://github.com/danbri/factoidal.git
-cd factoidal
-
-# If already cloned without --recurse-submodules:
-git submodule update --init --recursive
-```
-
-The W3C test files live in `third_party/testing/w3c/` (submodule pointing to
-`github.com/w3c/rdf-tests`). Without initialising the submodule, the test
-runner will have no test data.
-
-### System prerequisites
-
-```bash
-# Debian/Ubuntu
-sudo apt-get install -y opam libgmp-dev pkg-config
-
-# macOS (Homebrew)
-brew install opam gmp pkg-config
-```
-
-### F\* toolchain (opam)
-
-```bash
-# Initialize opam (first time only)
-opam init -y
-# Create the F* switch:
-opam switch create fstar ocaml-base-compiler.4.14.1
-eval $(opam env --switch=fstar)
-opam install fstar z3 js_of_ocaml js_of_ocaml-compiler zarith_stubs_js
-
-# Activate (run in every new shell)
-eval $(opam env --switch=fstar)
-```
-
-### Install z3 (CRITICAL — verification cannot work without it)
-
-**This project is about verified code. z3 is not optional.** Every session must
-ensure z3 is available before doing any F\* work. Without z3, extraction and
-verification will fail.
-
-```bash
-# Check if z3 is available:
-z3 --version  # must show 4.13.3
-
-# If z3 is missing, install the pre-built binary (opam build often fails):
-
-# Linux x86-64:
-cd /tmp
-curl -sL "https://github.com/Z3Prover/z3/releases/download/z3-4.13.3/z3-4.13.3-x64-glibc-2.35.zip" -o z3.zip
-unzip -q z3.zip
-cp z3-4.13.3-x64-glibc-2.35/bin/z3 /usr/local/bin/z3-4.13.3
-chmod +x /usr/local/bin/z3-4.13.3
-ln -sf /usr/local/bin/z3-4.13.3 /usr/local/bin/z3
-
-# macOS arm64 (Apple Silicon):
-cd /tmp
-curl -sL "https://github.com/Z3Prover/z3/releases/download/z3-4.13.3/z3-4.13.3-arm64-osx-13.7.zip" -o z3.zip
-unzip -q z3.zip
-cp z3-4.13.3-arm64-osx-13.7/bin/z3 /usr/local/bin/z3-4.13.3
-chmod +x /usr/local/bin/z3-4.13.3
-ln -sf /usr/local/bin/z3-4.13.3 /usr/local/bin/z3
-
-# macOS alternative (may not get exact version):
-brew install z3
-
-# Verify it works:
-z3-4.13.3 --version  # must show "Z3 version 4.13.3"
-```
-
-**Do NOT use `--lax` at all.** All F\* modules must verify and extract without
-`--lax`. The `--lax` flag is banned — it defeats the purpose of formal
-verification. Install z3 first, then verify and extract.
-
-
-### Quick verification
-
-```bash
-eval $(opam env --switch=fstar)
-cd formal/fstar
-
-# Verify F* specs
-make verify
-
-# Extract + compile + test
-./build-ocaml.sh
-
-# Run W3C tests (w3c_runner is built by build-ocaml.sh)
-cd ocaml-output
-./w3c_runner                    # all SPARQL suites
-./w3c_runner --rdf              # RDF parser suites
-./w3c_runner --all              # both
-./w3c_runner --list             # list suites
-./w3c_runner bind functions     # specific suites
-./w3c_runner -v aggregates      # verbose: full expected/actual dump on stderr
-```
-
-**Failure output**: FAIL lines always show UNMATCHED expected rows inline.
-Use `-v` for the full expected/actual row dump (goes to stderr).
-
-### Extraction notes
-
-- **Never use `--lax`** — all modules must verify before extraction
-- `--codegen OCaml` erases proofs, ghost code, spec-only material
-- Extracted `.ml` files use `FStar_*` runtime from `fstar.lib` opam package
-- `assume val` declarations extract as `failwith "Not yet implemented"` — must be patched
-- `noeq` types block KaRaMeL C extraction (OCaml extraction works fine)
-
-### W3C Test Suites
-
-```
-third_party/testing/w3c/                          git submodule: github.com/w3c/rdf-tests
-  rdf/rdf11/rdf-n-triples/         N-Triples syntax tests (70)
-  rdf/rdf11/rdf-turtle/            Turtle syntax+eval tests (313)
-  rdf/rdf11/rdf-n-quads/           N-Quads syntax tests (87)
-  rdf/rdf11/rdf-trig/              TriG syntax+eval tests (356)
-  rdf/rdf11/rdf-xml/               RDF/XML eval tests (166)
-  rdf/rdf11/rdf-mt/                Model theory / semantics (39)
-  sparql/sparql11/                 SPARQL 1.1 test suites (34 suites, 631 tests)
-```
-
-## Key Dependencies
-
-- `fstar` — F\* compiler (opam, 2025.12.15)
-- `z3` — SMT solver (required by F\*)
-- `fstar.lib` — F\* OCaml runtime library (opam)
-- `str` — OCaml regex library (for regex_match stub)
-- `zarith` — arbitrary-precision integers (F\* extracts `Prims.int` as `Z.t`)
-- `js_of_ocaml` — OCaml to JavaScript compiler (optional)
-- `zarith_stubs_js` — bigint stubs for js_of_ocaml (optional)
-- `libgmp-dev` — system package required by zarith (apt-get)
-
-## GitHub CLI (`gh`) in Claude Code
-
-The git remote uses a local proxy (`127.0.0.1`), so `gh` commands that infer
-the repo from the remote will fail with "none of the git remotes configured
-for this repository point to a known GitHub host." **Fix: always pass
-`--repo danbri/factoidal` explicitly.**
-
-```bash
-# These work:
-gh pr create --repo danbri/factoidal --base claude/main --head my-branch ...
-gh pr list --repo danbri/factoidal
-gh pr view 42 --repo danbri/factoidal
-
-# This does NOT work (no --repo):
-gh pr create --base claude/main ...  # ERROR: unknown host
-```
-
-## Expanded Docs
-
-The three sections below used to live in this file; they grew too long to
-load into every session's context. They're now separate:
+## Expanded docs (full reference)
 
 - [`docs/claude-rules/anti-patterns.md`](docs/claude-rules/anti-patterns.md)
-  — full text of the 25 numbered anti-pattern rules summarised above.
+  — full anti-pattern text with war stories.
 - [`docs/claude-rules/performance.md`](docs/claude-rules/performance.md)
-  — Known Performance Issues, esp. the Turtle parser audit + speed plan.
+  — Turtle parser audit + speed plan.
 - [`docs/claude-rules/current-state.md`](docs/claude-rules/current-state.md)
-  — Current State (Honest Assessment): F\* inventory, `assume val` table,
-  verification gaps, W3C suite scores, phased plan.
-- [`docs/code-name-glossary.md`](docs/code-name-glossary.md) — when you see
-  `Yod6`, `Tet3`, `Lamed3`, `Mem5`, `Pe5`, `Vav3`, `Bet7`, `Tav5`, `Heth3`,
-  etc. in a doc / commit / trace tag and don't know what it means, look
-  it up here. **No new short-codes** — name new things descriptively.
+  — F\* inventory, `assume val` table, W3C scores.
+- [`docs/code-name-glossary.md`](docs/code-name-glossary.md) — Yod6 /
+  Tet3 / Lamed3 / etc. decoder. **No new short-codes** — use
+  descriptive names per the recovery plan.
+- [`docs/claude-rules/README.md`](docs/claude-rules/README.md) — index
+  and the relationship between this file and the expanded docs.
 
-See also [`docs/claude-rules/README.md`](docs/claude-rules/README.md) for
-an index and for the relationship between this file and the expanded docs.
+## Recovery + planning docs
 
-## Repository Structure
-
-```
-factoidal/
-├── formal/fstar/              THE PRODUCT
-│   ├── RDF.Graph.Executable.fst   RDF graph types + operations
-│   ├── SPARQL11.Algebra.fst       SPARQL 1.1 algebra + evaluator
-│   ├── SPARQL11.Parser.fst        SPARQL parser (in development)
-│   ├── Parser.*.fst               RDF format parsers (combinators, Turtle, etc.)
-│   ├── Makefile
-│   ├── build-ocaml.sh
-│   ├── ocaml-patches.sh               applies patches from glue directory
-│   ├── minimal_regrettable_glue_code_each_with_an_open_issue/
-│   │   ├── 53_blank_node_variable_rewriting.sh
-│   │   ├── 62_forward_ref_wiring.sh
-│   │   ├── 63_regex_hash_uuid_stubs.sh
-│   │   ├── 64_sparql_parser_escape_stubs.sh
-│   │   ├── 65_base_iri_resolution.sh
-│   │   ├── 66_zero_length_property_path.sh
-│   │   ├── 67_rdfxml_validation.sh
-│   │   ├── 68_unicode_boundary_workarounds.sh
-│   │   └── 69_runner_io_glue.sh
-│   └── ocaml-output/          extracted .ml + symlinks to bin/<platform>/
-├── bin/                       pre-built binaries per platform
-│   ├── darwin-arm64/          macOS Apple Silicon
-│   │   ├── factoidal
-│   │   └── w3c_runner
-│   └── linux-x86_64/         Linux x86-64 (statically linked)
-│       ├── factoidal
-│       └── w3c_runner
-├── third_party/testing/w3c/                 git submodule (W3C test files)
-├── kgx/                       SPARQL CONSTRUCT queries (future)
-├── docs/
-│   ├── claude-rules/          expanded Claude rules (anti-patterns, perf, state)
-│   ├── designissues/          architecture docs
-│   └── skills/                operational knowledge
-├── junk/do_not_use/           vibe-coded artifacts (DO NOT USE)
-└── CLAUDE.md                  this file
-```
+- [`docs/designissues/2026-05-07-query-planning-fstar-recovery.md`](docs/designissues/2026-05-07-query-planning-fstar-recovery.md)
+  — F\*-only recovery roadmap; replaces the OCaml shadow logic
+  (Yod6/Tet3/Lamed3/Mem5/Pe5/Bet7/Tav5/Heth3) with proper F\*
+  modules.
+- [`docs/designissues/2026-05-07-io-verification-and-third-party.md`](docs/designissues/2026-05-07-io-verification-and-third-party.md)
+  — hash-based round-trip verification pattern; HACL\* / EverParse
+  vendoring policy; corrected boundary-audit taxonomy.
+- [`docs/designissues/2026-05-07-c-build-and-roaring-plan.md`](docs/designissues/2026-05-07-c-build-and-roaring-plan.md)
+  — KaRaMeL C-build pilot + Roaring continuation tracks.
