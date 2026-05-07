@@ -269,5 +269,5 @@ succeed, the toolchain is good.
 - `CLAUDE.md` § "Setup" — authoritative source for these instructions.
 - `docs/skills/testing.md` — what to do once the env works.
 - `docs/skills/measuring.md` — performance measurement setup.
-- `experimental/roaring-fstar/src/Makefile` — example of a standalone
+- `formal/roaring/src/Makefile` — example of a standalone
   `make verify` target outside the main F\* tree.

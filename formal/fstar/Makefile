@@ -1,12 +1,23 @@
 FSTAR ?= fstar.exe
 KRML ?= krml
 KRML_HOME ?= /tmp/karamel
+ROARING_DIR = ../roaring/src
 
 MODULES = RDF.Graph.Executable SPARQL11.Algebra Tableau SPARQL.ServiceDescription SPARQL.GraphStore
 
-.PHONY: verify clean extract-c
+.PHONY: verify verify-roaring verify-all clean extract-c
 
 verify: $(addsuffix .verified, $(MODULES))
+
+# Top-level integration hook for the formal/roaring/ tree.
+# Verifies Spec, Bits, Container.{Array,Bitmap,Run}, IODemo, Test
+# under z3 4.13.3. Uses the Roaring-side Makefile so any future
+# modules added there are picked up without editing this file.
+verify-roaring:
+	$(MAKE) -C $(ROARING_DIR) verify
+
+# Verify the main F* core AND the Roaring tree.
+verify-all: verify verify-roaring
 
 %.verified: %.fst
 	$(FSTAR) $<

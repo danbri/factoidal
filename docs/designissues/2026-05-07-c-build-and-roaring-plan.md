@@ -23,7 +23,11 @@ those tend to be `noeq`-free pure-data transforms.
 
 ## Status going in (2026-05-07 morning)
 
-- **F\* test scores:** SPARQL 626/631 (99.2%), RDF 1031/1031 (100%).
+- **F\* test scores (unchanged for weeks; OCaml→F\* migrations are
+  pure refactors, so they shouldn't move the dial — and don't):**
+  SPARQL 626 pass, 1 fail, 4 skip out of 631 (99.84% pass-vs-fail,
+  99.2% pass-vs-total). RDF 1031 pass, 0 fail out of 1031 (100%).
+  Combined: 1657/1658 = 99.94% pass-vs-fail.
 - **OCaml glue:** ~4779 LoC across 9 `factoidal_*.ml` files; `S`-class
   semantic content has shrunk dramatically across the recent 13-PR
   migration cluster.
@@ -206,7 +210,7 @@ Phase A landed in PR #137. Continue:
 
 ### 3.1 Phase B — bitmap container (this PR series)
 
-- New file `experimental/roaring-fstar/src/Container.Bitmap.fst`
+- New file `formal/roaring/src/Container.Bitmap.fst`
   with:
   - `bitmap_container = { bits : seq u64; cardinality : nat }`
     plus the invariant `cardinality = sum (popcount bits[i])`.

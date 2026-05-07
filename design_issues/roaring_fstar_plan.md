@@ -1,7 +1,7 @@
 # Pure F\* Roaring implementation — phased plan
 
 Status: **plan + first cut**. This document accompanies the
-work-in-progress at `experimental/roaring-fstar/src/`. Companion to
+work-in-progress at `formal/roaring/src/`. Companion to
 [`roaring_parquet_notes.md`](roaring_parquet_notes.md) (broader
 design space) and [`virtual_ngs.md`](virtual_ngs.md) (one of the
 target consumers).
@@ -49,7 +49,7 @@ Non-goals for the first cut:
 
 ## 2. Scope of the first cut (this PR series)
 
-Implement `experimental/roaring-fstar/src/`:
+Implement `formal/roaring/src/`:
 
 ```
 Spec.fst                  abstract set + helpers
@@ -315,12 +315,12 @@ lemmas).
 ## 9. What this PR (the one starting now) lands
 
 - This plan document.
-- `experimental/roaring-fstar/src/Spec.fst` — Phase A spec layer.
-- `experimental/roaring-fstar/src/Container.Array.fst` — Phase A
+- `formal/roaring/src/Spec.fst` — Phase A spec layer.
+- `formal/roaring/src/Container.Array.fst` — Phase A
   array container.
-- `experimental/roaring-fstar/src/Test.fst` — Phase A unit tests
+- `formal/roaring/src/Test.fst` — Phase A unit tests
   as `assert_norm` checks plus a couple of lemmas.
-- `experimental/roaring-fstar/Makefile` — verify/clean targets,
+- `formal/roaring/Makefile` — verify/clean targets,
   not yet wired into the main `formal/fstar/` build.
 - A README in the source directory pointing at this plan.
 

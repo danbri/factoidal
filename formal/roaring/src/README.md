@@ -23,7 +23,7 @@ F\* opam env):
 
 ```
 eval $(opam env --switch=fstar)
-cd experimental/roaring-fstar/src
+cd formal/roaring/src
 make verify
 ```
 
