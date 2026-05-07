@@ -218,9 +218,11 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              RDF.Graph.Executable.fst Parquet.Footer.fst \
              RDF.NQuads.Serialize.fst \
              RDF.Canonical.fst \
+             RDF.Canonical.Manifest.fst \
              Tableau.fst SPARQL11.Algebra.fst \
              RDF.Pretty.fst \
              OWL.QueryRewrite.fst OWL.QueryEval.fst \
+             OWL.Tests.Manifest.fst \
              Parser.FastString.fst Parser.IRI.fst \
              Parser.Combinators.fst Parser.TurtleScanner.fst SPARQL11.Parser.fst \
              Parser.NTriples.fst Parser.Turtle.fst \
@@ -337,7 +339,8 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     RDF_CottasInMem.ml \
     fstar_pure_hashes.ml \
     RDF_Canonical.ml \
-    SPARQL11_Algebra.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml SPARQL11_Parser.ml SPARQL11_Store.ml SPARQL_Protocol.ml \
+    RDF_Canonical_Manifest.ml \
+    SPARQL11_Algebra.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml SPARQL11_Parser.ml SPARQL11_Store.ml SPARQL_Protocol.ml \
     SPARQL_Update_Sandbox.ml \
     SPARQL_Update_Analysis.ml \
     SPARQL_Diagnostics.ml \

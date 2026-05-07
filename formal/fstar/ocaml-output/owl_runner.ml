@@ -119,7 +119,7 @@ let parse_catalog path =
 (* Triple projections. *)
 
 let rdf_type_iri   = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-let test_ns        = "http://www.w3.org/2007/OWL/testOntology#"
+let test_ns        = OWL_Tests_Manifest.test_ns
 let test_identifier = test_ns ^ "identifier"
 let test_profile    = test_ns ^ "profile"
 let test_premise    = test_ns ^ "rdfXmlPremiseOntology"
@@ -141,21 +141,9 @@ let object_literal_opt (t : rdf_term) : string option =
   | T_Literal l -> Some l.lexical_form
   | _ -> None
 
-(* Does this IRI name one of the five OWL-test test types? *)
-let is_test_type_iri (iri : string) : bool =
-  let prefix = test_ns in
-  let pl = String.length prefix in
-  let il = String.length iri in
-  if il < pl then false
-  else if String.sub iri 0 pl <> prefix then false
-  else
-    match String.sub iri pl (il - pl) with
-    | "PositiveEntailmentTest"
-    | "NegativeEntailmentTest"
-    | "ConsistencyTest"
-    | "InconsistencyTest"
-    | "ProfileIdentificationTest" -> true
-    | _ -> false
+(* Does this IRI name one of the five OWL-test test types?
+   Delegates to F* per CLAUDE.md rule #11. *)
+let is_test_type_iri = OWL_Tests_Manifest.is_test_type_iri
 
 let short_type (iri : string) : string =
   let pl = String.length test_ns in
