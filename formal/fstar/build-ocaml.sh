@@ -249,6 +249,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              RDF.CottasStore.CompoundPresenceBitmap.fst \
              SPARQL.Plan.Pruning.fst \
              SPARQL.Plan.Estimate.fst \
+             SPARQL.Plan.Loader.fst \
              RDF.CottasStore.fst \
              RDF.CottasInMem.fst \
              SPARQL11.Store.fst \
@@ -344,6 +345,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     RDF_CottasStore_CompoundPresenceBitmap.ml \
     SPARQL_Plan_Pruning.ml \
     SPARQL_Plan_Estimate.ml \
+    SPARQL_Plan_Loader.ml \
     RDF_CottasStore.ml \
     RDF_CottasInMem.ml \
     fstar_pure_hashes.ml \
