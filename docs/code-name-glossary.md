@@ -33,7 +33,7 @@ it up here. When in doubt, the doc references are authoritative.
 | **Mim2** | First iteration of mmap'd companion-file readers (pre-Vav3). | (mostly retired) |
 | **Mim3** | Pre-warm lazy-fallback warning log line. Emits `[mim3-trace]`. | `RDF_CottasStore.ml` |
 | **Bet5** | Earlier hashtable-cache iteration (largely retired by Vav3). | (historical) |
-| **Bet7** | Lazy populate of in-RAM Hashtbls when companion files are absent / fail. Emits `[bet7-trace]`. | `cottas_ondisk_z_lazy_open.sh` (glue, retired in spirit) |
+| **Bet7** | Lazy populate of in-RAM Hashtbls when companion files are absent / fail. Emits `[bet7-trace]`. The decision logic ("when do we mmap vs. fall back to in-RAM build?") now lives in `SPARQL.Plan.Loader.fst` (`choose_load_strategy`); the OCaml realisation that emits `[bet7-trace]` is retained as the `LS_InRamFallback` mechanism. | `SPARQL.Plan.Loader.fst` (decision); `cottas_ondisk_z_lazy_open.sh` (mechanism, populates Hashtbls on first lookup) |
 | **Tau3** | Audit doc reviewing whether Bet7 can be retired. | `2026-04-26-tau3-bet7-retire-audit.md` |
 | **Yod6** | Predicate-presence row-group prune. Bitmap says "predicate X *might* appear in row-group Y"; lets the evaluator skip RGs that can't match. | `cottas_ondisk_zzz_yod6_pred_presence_prune.sh`; F\* equivalent in `RDF.CottasStore.fst:480-525` |
 | **Tet3** | Subject + object presence row-group prune (analogous to Yod6 for S and O columns). | `cottas_ondisk_zzzz_tet3_subj_obj_prune.sh` |
