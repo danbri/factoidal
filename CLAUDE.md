@@ -40,6 +40,8 @@ line **after** the offender:
 
 - `total` — banned as a let-bound name. Error points at the next let.
 - `in_mem` — looks like the `in` keyword in some contexts.
+- `synth` — reserved meta-keyword; banned as an identifier. Error points
+  at the next def (caught during RIF Phase 3 #223).
 - Anything containing `in` as a prefix where F\* expects a let-body.
 
 **Safe alternatives:** prefix with the domain noun (`triples_total`,
