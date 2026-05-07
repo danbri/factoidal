@@ -771,7 +771,12 @@ and parse_group_node (n : xml_node) (fuel : nat)
 // 10. Document parsing.
 //
 // <Document>
-//   <directive> ... import etc. (ignored) ... </directive>
+//   <directive>
+//     <Import>
+//       <location>http://example.org/foo</location>
+//       <profile>http://www.w3.org/ns/entailment/Simple</profile>
+//     </Import>
+//   </directive>
 //   <payload>
 //     <Group> ... </Group>
 //   </payload>
@@ -780,6 +785,12 @@ and parse_group_node (n : xml_node) (fuel : nat)
 // We tolerate the absence of <payload> (some test inputs put the
 // Group directly under <Document>) and the absence of <Document>
 // (some test fragments are bare <Group> elements).
+//
+// The directive list is collected separately by extract_imports
+// below and exposed alongside the rule program; this is what the
+// rif04 / rif06 tests need so the OCaml glue can resolve the
+// referenced data graphs onto the local third_party/testing/rif
+// vendor mirror before saturation runs.
 // ------------------------------------------------------------------
 
 let extract_group_from_doc (root : xml_node) (fuel : nat)
@@ -828,3 +839,91 @@ let parse_rif_program (input : string) : option Syn.rif_program =
   match parse_xml_document input with
   | None -> None
   | Some root -> parse_rif_document root
+
+// ------------------------------------------------------------------
+// 12. <Import> directive resolution.
+//
+// RIF Core <directive><Import><location>URL</location></Import></directive>
+// declares an external data graph that the rule body refers to. The
+// SPARQL 1.1 entailment tests rif04 / rif06 use Imports to point at
+// .rdf companion files: without loading those files into the premise
+// graph, rule bodies that only mention imported facts never fire and
+// saturation produces nothing useful.
+//
+// This module returns the import URLs as plain strings; the OCaml
+// runner glue is responsible for mapping the URL back to a local
+// path under third_party/testing/rif/tc/<TestName>/, parsing the
+// data with Parser.RDFXML / Parser.Turtle as appropriate, and
+// merging the triples into the premise graph before saturation.
+// Resolution is consumer-side I/O (rule #11), not in F*.
+//
+// Optional <profile> children are read but ignored: RIF Core's
+// entailment-profile selection is out of scope for this PR; the
+// four target SPARQL tests only ever use Simple / RDF profiles
+// which the saturation engine already subsumes.
+// ------------------------------------------------------------------
+
+// Decoded text inside an <Import><location>...</location> child.
+let parse_import_location (import_node : xml_node) : option string =
+  match import_node with
+  | XElement _ _ children ->
+    (match first_child_with_local_name "location" children with
+     | None -> None
+     | Some loc_node ->
+       let raw = trim_ws (element_text loc_node) in
+       if String.length raw = 0 then None else Some raw)
+  | _ -> None
+
+// Walk one <directive> element, returning the import URL if it
+// contains an <Import><location>...</location>; None otherwise.
+let parse_directive_import (directive_node : xml_node) : option string =
+  match directive_node with
+  | XElement _ _ children ->
+    (match first_child_with_local_name "Import" children with
+     | None -> None
+     | Some imp_node -> parse_import_location imp_node)
+  | _ -> None
+
+// Collect the URLs from every <directive>/<Import>/<location> child
+// of a <Document> element. Directives that don't carry an Import or
+// don't carry a location are silently skipped -- the test suite only
+// uses the import form. Order is preserved so callers may rely on
+// the source-document ordering for diagnostics.
+let rec extract_imports_from_directives (children : list xml_node)
+  : Tot (list string) (decreases children) =
+  match children with
+  | [] -> []
+  | hd :: rest ->
+    (match hd with
+     | XElement t _ _ ->
+       if tag_is "directive" t then
+         (match parse_directive_import hd with
+          | None -> extract_imports_from_directives rest
+          | Some url -> url :: extract_imports_from_directives rest)
+       else
+         extract_imports_from_directives rest
+     | _ -> extract_imports_from_directives rest)
+
+// Top-level helper: given a <Document> root (or a bare <Group>),
+// return the imports declared at the document level. A bare Group
+// has no directives so we return [].
+let extract_document_imports (root : xml_node) : list string =
+  match root with
+  | XElement tag _ children ->
+    if tag_is "Document" tag
+    then extract_imports_from_directives children
+    else []
+  | _ -> []
+
+// Public entry: parse the RIF-XML, returning the import URLs and
+// the program in one pass. The OCaml glue can then resolve URLs
+// to local files and merge the data into the premise graph before
+// invoking RIF.Core.Eval.fixpoint.
+let parse_rif_program_with_imports (input : string)
+  : option (list string * Syn.rif_program) =
+  match parse_xml_document input with
+  | None -> None
+  | Some root ->
+    (match parse_rif_document root with
+     | None -> None
+     | Some prog -> Some (extract_document_imports root, prog))
