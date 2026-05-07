@@ -29,6 +29,7 @@ module SPARQL11.Algebra
 open FStar.String
 open FStar.List.Tot
 open RDF.Graph.Executable
+module Lh = RDF.List.Helpers
 
 (** ====================================================================== **)
 (** Part 1: Concrete RDF Types (imported from RDF.Graph.Executable)         **)
@@ -79,8 +80,11 @@ let xsd_yearMonthDuration : wf_iri =
 (* Solution mapping operations — concrete implementations *)
 let sm_empty : solution_mapping = []
 
+// Tail-rec form via RDF.List.Helpers. The stdlib List.Tot.assoc body
+// is already in tail position but we route through assoc_tr so this
+// hot-path helper grep-matches the project's `*_tr` audit policy.
 let sm_lookup (v : string) (mu : solution_mapping) : option rdf_term =
-  List.Tot.assoc v mu
+  Lh.assoc_tr v mu
 
 let sm_bind (v : string) (t : rdf_term) (mu : solution_mapping) : solution_mapping =
   (v, t) :: mu
@@ -1871,6 +1875,10 @@ let rec choose_best_tp (patterns : bgp) (gs : graph_store) (mu : solution_mappin
       then Some (tp, rest)
       else Some (best, tp :: remaining)
 
+// Tail-rec concatMap on the BGP fan-out. Replaces List.Tot.concatMap
+// (cons-after-recurse, non-tail-rec) per the same shape as the
+// issue #94 Turtle stack-overflow fix. lemma_concatMap_tr_eq in
+// RDF.List.Helpers establishes the external semantics is unchanged.
 let rec eval_bgp_store_from_mu_fuel
   (patterns : bgp) (gs : graph_store) (mu : solution_mapping) (fuel : nat)
   : Tot solution_sequence (decreases fuel) =
@@ -1883,7 +1891,7 @@ let rec eval_bgp_store_from_mu_fuel
       | None -> [mu]
       | Some (tp, rest) ->
         let next = eval_single_tp_store tp gs mu in
-        List.Tot.concatMap (fun mu' -> eval_bgp_store_from_mu_fuel rest gs mu' (fuel - 1)) next
+        Lh.concatMap_tr (fun mu' -> eval_bgp_store_from_mu_fuel rest gs mu' (fuel - 1)) next
 
 let eval_bgp_store (patterns : bgp) (gs : graph_store) : solution_sequence =
   eval_bgp_store_from_mu_fuel patterns gs sm_empty (List.Tot.length patterns + 1)

@@ -430,17 +430,41 @@ let smoke_input_graph : rdf_graph = [
   { s = S_IRI iri_Person;  p = rdfs_subClassOf; o = T_IRI iri_Agent   };
 ]
 
-// Saturation produces strictly more triples than the input.
+// Saturation produces exactly the three new triples expected by the
+// rule semantics:
+//   :Student rdfs:subClassOf :Agent   (rule 1, transitivity)
+//   :alice   rdf:type        :Person  (rule 2, type propagation 1 step)
+//   :alice   rdf:type        :Agent   (rule 2, type propagation 2 steps)
 //
-// Why graph_len strict increase, rather than asserting exact set
-// membership of (alice, type, Agent)? `assert_norm` reduction on
-// list-based set membership through the eval_bgp / sm_lookup tower
-// is heavy and tends to time out the SMT solver on this scale; a
-// length comparison is normalisable in finite steps and exercises
-// the same code paths.
+// The earlier check `graph_len smoke_saturated >= 4` was technically
+// correct but under-specified — it confirmed at least one new triple
+// without pinning which inferences fired. Asserting exact-membership
+// of all three derived triples is the spec-level statement, and it
+// passes once the normaliser has enough fuel to grind through the
+// graph_store / eval_bgp / sm_lookup tower across two fixpoint rounds.
 let smoke_saturated : rdf_graph =
   fixpoint smoke_input_graph smoke_program 8
 
 let _ = assert_norm (graph_len smoke_input_graph = 3)
 
-let _ = assert_norm (graph_len smoke_saturated >= 4)
+#push-options "--initial_fuel 64 --max_fuel 256 --initial_ifuel 16 --max_ifuel 64 --z3rlimit 120"
+
+// Rule 1, transitivity step.
+let _ = assert_norm
+  (mem_triple
+    ({ s = S_IRI iri_Student; p = rdfs_subClassOf; o = T_IRI iri_Agent })
+    smoke_saturated)
+
+// Rule 2, type propagation (alice in Person via Student).
+let _ = assert_norm
+  (mem_triple
+    ({ s = S_IRI iri_alice; p = rdf_type; o = T_IRI iri_Person })
+    smoke_saturated)
+
+// Rule 2 + rule 1 together: alice ends up in Agent.
+let _ = assert_norm
+  (mem_triple
+    ({ s = S_IRI iri_alice; p = rdf_type; o = T_IRI iri_Agent })
+    smoke_saturated)
+
+#pop-options
