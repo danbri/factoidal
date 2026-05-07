@@ -856,7 +856,7 @@ let write_response ?(extra_headers=[]) oc ~status ~content_type ~body =
      SPARQL.HTTP.Response.render_response_head. *)
   let head =
     SPARQL_HTTP_Response.render_response_head
-      status content_type (String.length body) extra_headers
+      (Z.of_int status) content_type (Z.of_int (String.length body)) extra_headers
   in
   output_string oc head;
   output_string oc body;
