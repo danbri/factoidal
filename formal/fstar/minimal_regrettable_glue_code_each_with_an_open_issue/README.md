@@ -21,6 +21,7 @@ tracking when it can be eliminated.**
 | `69_runner_io_glue.sh` | [#69](https://github.com/danbri/factoidal/issues/69) | I/O glue | w3c_runner.ml |
 | `89_fast_string_primitives.sh` | [#89](https://github.com/danbri/factoidal/issues/89) | assume-val stubs (perf) | Parser_FastString.ml |
 | `103_parquet_ascii_string_fast_path.sh` | [#103](https://github.com/danbri/factoidal/issues/103) | OCaml runtime override (perf) | Parquet_Footer.ml |
+| `202_now_ms.sh` | [#202](https://github.com/danbri/factoidal/issues/202) | assume-val stubs (I/O clock) | SPARQL_Eval_TimeBudget.ml |
 
 ## Categories
 

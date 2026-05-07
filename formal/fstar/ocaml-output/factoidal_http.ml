@@ -955,14 +955,48 @@ let result_cap_response ~cap ~actual_size =
     rb_content_type = "application/json; charset=utf-8";
     rb_body = SPARQL_HTTP_Response.result_cap_response_body (Z.of_int cap) }
 
-(* True iff the cap is enabled and [List.length rows > cap].
+(* Row-cap circuit breaker (recovery plan Phase 5 — codename Tav5
+   retired). The policy "stop after N rows" is defined in F* —
+   see formal/fstar/SPARQL.Eval.Limits.fst — and instantiated here
+   per request via [SPARQL_Eval_Limits.mk_cap]. The OCaml side is
+   now thin glue: build the cap record, ask F* whether the row list
+   reaches the cap, render the HTTP-413 response on overflow.
+
+   The long-standing OCaml [exceeds_cap] semantics are strictly-greater
+   (a result of exactly [cap] rows is allowed through; only
+   [length > cap] triggers HTTP 413). The F* predicate [cap_reached]
+   uses [n_rows >= max_rows] — i.e. it answers "is the cap reached?"
+   given a row count. To encode strict overflow we pass [cap + 1] as
+   the cap argument: [n >= cap + 1] iff [n > cap]. Wrapping it through
+   F* keeps the policy under [SPARQL.Eval.Limits] and lets a future
+   PR change the strict-vs-inclusive convention in one F* line.
+
    List.length is tail-rec in the OCaml stdlib, so this is safe to call
-   on a 3 M-element list. *)
+   on a 3 M-element list.
+
+   Heth3 (per-query timeout) is a separate F* module
+   ([SPARQL.Eval.TimeBudget]) and is migrated in a follow-up PR. *)
+let row_cap_of_int (cap : int) : SPARQL_Eval_Limits.row_cap =
+  SPARQL_Eval_Limits.mk_cap (Z.of_int (max 0 cap))
+
 let exceeds_cap ~cap rows =
   if cap <= 0 then None
   else
+    (* mk_cap (cap + 1) so [n >= cap + 1] iff [n > cap] (strict). *)
+    let strict_overflow_cap = row_cap_of_int (cap + 1) in
     let n = List.length rows in
-    if n > cap then Some n else None
+    if SPARQL_Eval_Limits.cap_reached strict_overflow_cap (Z.of_int n)
+    then Some n
+    else None
+
+(* F*-defined truncation combinator, exposed for future call sites
+   (streaming serialisers, paginated CONSTRUCT/DESCRIBE). The 413
+   path above doesn't use it because we want to detect overflow
+   rather than silently truncate; both behaviours sit under
+   [SPARQL.Eval.Limits]. The [_] prefix suppresses OCaml's
+   "unused let" warning until the first consumer lands. *)
+let _take_capped_rows ~cap rows =
+  SPARQL_Eval_Limits.take_capped (row_cap_of_int cap) rows
 
 let run_query ~backend ~accept ~max_rows query =
   let bkind = qof3_backend_kind backend in
