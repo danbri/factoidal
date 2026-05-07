@@ -269,23 +269,26 @@ module Cottas_ondisk_lazy = struct
   let is_obj_loaded     path = Hashtbl.mem obj_loaded   path
   let is_graph_loaded   path = Hashtbl.mem graph_loaded path
 
-  (* yod6: pred_presence_by_path installed (issue #100, 2026-04-26).
-     For each artifact path, a rg_index -> set-of-predicate-tokens map.
-     Populated by ensure_predicates_loaded (replaces the batched
-     collect_distinct walk). Consulted by search_fast / estimate_fast /
-     search_fast_limited to skip rgs that don't contain the bound
-     predicate.
-
-     Mirrors F*-side compute_candidate_rgs_loop (RDF.CottasStore.fst):
-     skip rg if `not (list_string_mem dict bound_token)`. Soundness:
-     the presence set is built by enumerating every value in the rg's
-     predicate column, so a rg marked absent provably contains zero
-     matching rows. *)
-  (* Use Stdlib.Int.t explicitly: the file's `open Prims` makes `int` mean
-     Prims.int = Z.t, even inside this submodule's `open Stdlib`. Bet7
-     hit the same issue and aliased `pint = Stdlib.Int.t` in
-     Cottas_ondisk_runtime; we mirror that. *)
+  (* Issue #110 Option B: Hashtbls and accessors retained for the Vav3
+     reader (cottas_ondisk_zzzzz_ondisk_index.sh) after the dead-shim
+     patches (yod6 / tet3 / mem5 / etc.) were retired. These are pure
+     structural plumbing — empty per-path Hashtbl-of-Hashtbl maps with
+     get-style accessors. The semantic prune logic that USED to populate
+     and consult them lived in the deleted shims and is no longer on
+     the public path; the F*-extracted `compute_candidate_rgs_loop`
+     in RDF.CottasStore handles candidate-rg pruning now. The Vav3
+     companion-file reader still references these accessors to seed
+     its on-disk index path; keeping them as empty tables is safe
+     glue (rule #11 allowed: structural, no decisions). *)
   let pred_presence_by_path
+    : (string, (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t) Hashtbl.t
+    = Hashtbl.create 17
+
+  let subj_presence_by_path
+    : (string, (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t) Hashtbl.t
+    = Hashtbl.create 17
+
+  let obj_presence_by_path
     : (string, (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t) Hashtbl.t
     = Hashtbl.create 17
 
@@ -297,38 +300,6 @@ module Cottas_ondisk_lazy = struct
       let t : (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t = Hashtbl.create 32 in
       Hashtbl.add pred_presence_by_path path t;
       t
-
-  (* Returns true iff the rg might contain `pred_tok`, or there's no bound,
-     or we have no presence entry for this rg (safe fallback: walk it).
-     Returns false ONLY when we have an entry and the predicate is
-     definitively absent. *)
-  let pred_rg_could_contain (path : string) (rg : Stdlib.Int.t)
-    (bound_p : string option) : bool =
-    match bound_p with
-    | None -> true
-    | Some pred_tok ->
-      match Hashtbl.find_opt pred_presence_by_path path with
-      | None -> true
-      | Some by_rg ->
-        match Hashtbl.find_opt by_rg rg with
-        | None -> true  (* presence not yet recorded for this rg *)
-        | Some pred_set -> Hashtbl.mem pred_set pred_tok
-
-  (* tet3: subj_presence_by_path installed (issue #100, 2026-04-26).
-     Same shape as pred_presence_by_path. Populated by
-     ensure_subjects_loaded; consulted via subj_rg_could_contain from
-     search_fast / estimate_fast / search_fast_limited.
-
-     Soundness: built by enumerating every value in the rg's subject
-     column, so a rg marked absent provably contains zero matching rows
-     for that bound subject. *)
-  let subj_presence_by_path
-    : (string, (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t) Hashtbl.t
-    = Hashtbl.create 17
-
-  let obj_presence_by_path
-    : (string, (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t) Hashtbl.t
-    = Hashtbl.create 17
 
   let subj_presence_for_path (path : string)
     : (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t =
@@ -347,30 +318,6 @@ module Cottas_ondisk_lazy = struct
       let t : (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t = Hashtbl.create 32 in
       Hashtbl.add obj_presence_by_path path t;
       t
-
-  let subj_rg_could_contain (path : string) (rg : Stdlib.Int.t)
-    (bound_s : string option) : bool =
-    match bound_s with
-    | None -> true
-    | Some s_tok ->
-      match Hashtbl.find_opt subj_presence_by_path path with
-      | None -> true
-      | Some by_rg ->
-        match Hashtbl.find_opt by_rg rg with
-        | None -> true
-        | Some s_set -> Hashtbl.mem s_set s_tok
-
-  let obj_rg_could_contain (path : string) (rg : Stdlib.Int.t)
-    (bound_o : string option) : bool =
-    match bound_o with
-    | None -> true
-    | Some o_tok ->
-      match Hashtbl.find_opt obj_presence_by_path path with
-      | None -> true
-      | Some by_rg ->
-        match Hashtbl.find_opt by_rg rg with
-        | None -> true
-        | Some o_set -> Hashtbl.mem o_set o_tok
 end
 
 
@@ -674,182 +621,6 @@ module Cottas_offset_idx = struct
      | Some _ -> ())
 end
 
-(* tet3_fstar_redirect: estimate helper installed (issue #100, 2026-04-26).
-   Bridges OCaml call sites to F*'s RDF_CottasStore_PresenceBitmap.
-   Caches `option bitmap_handle` per (cottas_path, col_idx). The cache
-   value is itself the `option bitmap_handle` so a "no companion"
-   result is memoised too — `None` fall through is fast.
-
-   Rule #11(c) compliant: trivial dispatch shim. The decision
-   "rg could contain token" lives in F*'s rg_could_contain. *)
-module Tet3_fstar_redirect = struct
-  open Stdlib
-  type pint = Stdlib.Int.t
-
-  (* Companion path suffix per column (matches Vav3's writer). *)
-  let presence_path (cottas_path : string) (col_idx : pint) : string =
-    let suf = match col_idx with
-      | 0 -> "s" | 1 -> "p" | 2 -> "o" | _ -> "g" in
-    Printf.sprintf "%s.%s.presence" cottas_path suf
-
-  (* Cache key (cottas_path, col_idx) -> option bitmap_handle. *)
-  let cache : (string * pint, RDF_CottasStore_PresenceBitmap.bitmap_handle FStar_Pervasives_Native.option) Hashtbl.t
-    = Hashtbl.create 17
-
-  let bitmap_for (cottas_path : string) (col_idx : pint)
-    : RDF_CottasStore_PresenceBitmap.bitmap_handle FStar_Pervasives_Native.option =
-    let key = (cottas_path, col_idx) in
-    match Hashtbl.find_opt cache key with
-    | Some oh -> oh
-    | None ->
-      let ppath = presence_path cottas_path col_idx in
-      let oh = RDF_CottasStore_PresenceBitmap.open_bitmap ppath in
-      Hashtbl.add cache key oh;
-      Printf.eprintf "[tet3-fstar-trace] bitmap_for col=%d path=%s opened=%b\n%!"
-        col_idx ppath
-        (match oh with FStar_Pervasives_Native.Some _ -> true | _ -> false);
-      oh
-
-  (* could_via_fstar:
-     Returns Some b iff the companion is present and the F* bitmap
-     gave a definitive answer. Returns None to mean "fall back to the
-     OCaml Tet3 Hashtbl path" (companion absent or header invalid).
-
-     Token-id type bridge: the OCaml call sites have
-     `bound.cbqp_X : Prims.nat option` (the dict-id namespace). We pass
-     it through as-is to rg_could_contain, which expects
-     `option nat`. Both forms are FStar_Pervasives_Native.option of
-     Prims.nat — same OCaml representation post-extraction. *)
-  let could_via_fstar
-    (cottas_path : string) (col_idx : pint) (rg : pint)
-    (bound_tok_id : Prims.nat FStar_Pervasives_Native.option)
-    : bool FStar_Pervasives_Native.option =
-    let oh = bitmap_for cottas_path col_idx in
-    match oh with
-    | FStar_Pervasives_Native.None ->
-      (* No companion file: fall back to existing Tet3 path (returns
-         None to signal "use the Hashtbl path"). *)
-      FStar_Pervasives_Native.None
-    | FStar_Pervasives_Native.Some _ ->
-      (* Companion is present: trust F*'s answer. *)
-      let b = RDF_CottasStore_PresenceBitmap.rg_could_contain
-                oh (Z.of_int rg) bound_tok_id in
-      FStar_Pervasives_Native.Some b
-end
-
-(* compound_po_fstar_redirect: estimate helper installed (issue #104,
-   2026-04-26). Bridges the OCaml estimate_fast_inner candidate-counting
-   loop to F*'s RDF_CottasStore_CompoundPresenceBitmap. Caches
-   `option compound_handle` per cottas_path. Cache value is the option
-   itself, so a "no companion file" result is memoised too — `None`
-   fall-through is fast.
-
-   Rule #11(c) compliant: trivial dispatch shim. The decision
-   "rg could contain (p, o) jointly" lives in F*'s
-   rg_could_contain_pair. *)
-module Compound_po_fstar_redirect = struct
-  open Stdlib
-  type pint = Stdlib.Int.t
-
-  (* Companion path suffix: <cottas_path>.po.presence (matches the
-     writer patch's `compound_path`). *)
-  let compound_path (cottas_path : string) : string =
-    cottas_path ^ ".po.presence"
-
-  (* Cache key cottas_path -> option compound_handle. *)
-  let cache : (string, RDF_CottasStore_CompoundPresenceBitmap.compound_handle FStar_Pervasives_Native.option) Hashtbl.t
-    = Hashtbl.create 17
-
-  let compound_for (cottas_path : string)
-    : RDF_CottasStore_CompoundPresenceBitmap.compound_handle FStar_Pervasives_Native.option =
-    match Hashtbl.find_opt cache cottas_path with
-    | Some oh -> oh
-    | None ->
-      let cpath = compound_path cottas_path in
-      let oh = RDF_CottasStore_CompoundPresenceBitmap.open_compound cpath in
-      Hashtbl.add cache cottas_path oh;
-      Printf.eprintf "[compound-po-fstar-trace] compound_for path=%s opened=%b\n%!"
-        cpath
-        (match oh with FStar_Pervasives_Native.Some _ -> true | _ -> false);
-      oh
-
-  (* could_contain_pair_via_fstar:
-     Returns Some b iff the compound companion is present AND both p
-     and o are bound (the only case where compound says anything
-     meaningful). Returns None if the companion is absent OR either
-     bound is None — in either case the caller's per-column-only
-     verdict carries (we have no opinion). *)
-  let could_contain_pair_via_fstar
-    (cottas_path : string) (rg : pint)
-    (bound_p_id : Prims.nat FStar_Pervasives_Native.option)
-    (bound_o_id : Prims.nat FStar_Pervasives_Native.option)
-    : bool FStar_Pervasives_Native.option =
-    match bound_p_id, bound_o_id with
-    | FStar_Pervasives_Native.Some _, FStar_Pervasives_Native.Some _ ->
-      (let oh = compound_for cottas_path in
-       match oh with
-       | FStar_Pervasives_Native.None ->
-         FStar_Pervasives_Native.None
-       | FStar_Pervasives_Native.Some _ ->
-         let b = RDF_CottasStore_CompoundPresenceBitmap.compound_rg_passes_pair
-                   oh (Z.of_int rg) bound_p_id bound_o_id in
-         FStar_Pervasives_Native.Some b)
-    | _, _ ->
-      (* compound has no opinion when p or o is unbound *)
-      FStar_Pervasives_Native.None
-end
-
-(* Cottas_pagecache_hot: thread the F*-resident page cache through the
-   search/estimate hot-path column decodes. The cache LOGIC (LRU
-   eviction, monotone clock, key match) lives in
-   RDF_CottasStore_PageCache (Mim2's module). This OCaml shim only
-   maintains a mutable ref holding the current cache record and re-binds
-   it after each pure F* call.
-
-   __PAGECACHE_HOT_PATH_APPLIED__
-   *)
-module Cottas_pagecache_hot = struct
-  (* Capacity 256 covers parliament's 26 rgs * 4 cols = 104 entries
-     plus headroom for future larger corpora. Future tuning point. *)
-  let initial_cap = Z.of_int 256
-
-  let cache_ref : RDF_CottasStore_PageCache.page_cache ref =
-    ref (RDF_CottasStore_PageCache.pcache_empty initial_cap)
-
-  (* Stdlib.Int.t-typed counters — `open Prims` in this file shadows
-     `int` to `Z.t`, so we name the native OCaml int explicitly. *)
-  let n_hits : Stdlib.Int.t ref = Stdlib.ref 0
-  let n_misses : Stdlib.Int.t ref = Stdlib.ref 0
-
-  (* Drop-in replacement for
-     Parquet_Footer.probe_parquet_column_decode_in_row_group. Same
-     argument shape, same return type. The F* `pcache_decode_in_row_group`
-     returns a `(value, new_cache)` tuple; we re-bind the ref to thread
-     state. *)
-  (* Phase 2.5c (issue #118): return type changed to `cottas_column option`
-     (= `string option array option`). The page cache now stores arrays
-     directly; eliminates the per-cache-hit Array.of_list cost in
-     callers like cottas_ondisk_runtime.sh's arr_of_col. *)
-  let cached_decode (path : string) (rg : Z.t) (col : Z.t)
-    : RDF_CottasStore_ColumnSeq.cottas_column FStar_Pervasives_Native.option =
-    let cap = (!cache_ref).RDF_CottasStore_PageCache.pc_capacity in
-    let key_present =
-      let (v, _) = RDF_CottasStore_PageCache.pcache_get !cache_ref (rg, col) in
-      match v with FStar_Pervasives_Native.Some _ -> true | _ -> false in
-    let (result, c') =
-      RDF_CottasStore_PageCache.pcache_decode_in_row_group
-        !cache_ref path rg col cap in
-    cache_ref := c';
-    (if key_present then Stdlib.incr n_hits else Stdlib.incr n_misses);
-    let total : Stdlib.Int.t = Stdlib.(!n_hits + !n_misses) in
-    (if Stdlib.(total mod 32 = 0) then
-      Printf.eprintf "[pagecache-hot-trace] hits=%d misses=%d entries=%d cap=%d\n%!"
-        !n_hits !n_misses
-        (Stdlib.List.length (!cache_ref).RDF_CottasStore_PageCache.pc_entries)
-        (Z.to_int cap));
-    result
-end
-
 module Cottas_ondisk_runtime = struct
   open Stdlib
   (* `int` is shadowed by `open Prims` at the top of the file
@@ -886,38 +657,11 @@ module Cottas_ondisk_runtime = struct
   let handles : (string, cottas_ondisk_handle) Hashtbl.t = Hashtbl.create 17
   let fast_table_cache : (string, fast_tables) Hashtbl.t = Hashtbl.create 17
 
-  (* Pe4 instrumentation: cheap per-row-group RSS / fd / GC accounting.
-     `ps -o rss=` returns kilobytes on macOS + Linux. fd count from
-     /dev/fd. Used by the per-rg [pe4-trace] lines in search_fast and
-     estimate_fast.
-
-     Note: `int` is Prims.int (Z.t) inside this file, so all native-int
-     scalars must use the `pint` alias declared above. *)
-  let pe4_rss_mb () : pint =
-    try
-      let pid = Unix.getpid () in
-      let cmd = Printf.sprintf "ps -o rss= -p %d 2>/dev/null" pid in
-      let ic = Unix.open_process_in cmd in
-      let line = try input_line ic with End_of_file -> "" in
-      let _ = Unix.close_process_in ic in
-      let s = String.trim line in
-      if String.length s = 0 then (-1)
-      else (try (int_of_string s) / 1024 with _ -> (-1))
-    with _ -> (-1)
-
-  let pe4_fd_count () : pint =
-    let candidates = ["/dev/fd"; "/proc/self/fd"] in
-    let rec try_all = function
-      | [] -> (-1)
-      | d :: rest ->
-        (try Array.length (Sys.readdir d) with _ -> try_all rest)
-    in try_all candidates
-
-  let pe4_gc_mb () : pint =
-    let s = Gc.quick_stat () in
-    let words = s.Gc.heap_words in
-    (* OCaml word = 8 bytes on 64-bit *)
-    (words * 8) / (1024 * 1024)
+  (* Issue #110 (2026-04-29): Pe4 instrumentation helpers
+     (pe4_rss_mb / pe4_fd_count / pe4_gc_mb) deleted along with the
+     search_fast / estimate_fast OCaml shim functions they served.
+     The F* extracted bodies now drive the public API path; their
+     tracing lives in the F* spec or the page-cache runtime. *)
 
   (* ---- Token parsing helpers. Convert an N-Triples-style raw column
          token (like "<iri>" / "_:b" / "\"lit\"^^<dt>" / "\"lit\"@en")
@@ -1284,145 +1028,60 @@ module Cottas_ondisk_runtime = struct
   let ensure_subjects_loaded (h : cottas_ondisk_handle) (tables : fast_tables) : unit =
     if not (Cottas_ondisk_lazy.is_subj_loaded h.coh_path) then begin
       Printf.eprintf "[bet7-trace] ensure_subjects_loaded: lazy populate path=%s\n%!" h.coh_path;
-      (* tet3: walk subject column per-rg to record per-rg presence
-         (vs. the previous batched collect_distinct that lost which rg
-         each token came from). *)
-      let presence = Cottas_ondisk_lazy.subj_presence_for_path h.coh_path in
-      let next_id = ref (Hashtbl.length tables.ft_subj_tok_to_id) in
-      let rg_count = match Parquet_Footer.probe_parquet_row_group_count h.coh_path with
-        | FStar_Pervasives_Native.None -> 0
-        | FStar_Pervasives_Native.Some n -> Z.to_int n in
-      for rg = 0 to rg_count - 1 do
-        let rg_set : (string, unit) Hashtbl.t = Hashtbl.create 4096 in
-        (match Parquet_Footer.probe_parquet_column_decode_in_row_group
-                 h.coh_path (Z.of_int rg) Z.zero with
-         | FStar_Pervasives_Native.None ->
-           Printf.eprintf "[tet3-WARN] ensure_subjects_loaded: rg=%d decode failed\n%!" rg
-         | FStar_Pervasives_Native.Some lst ->
-           List.iter (function
-             | FStar_Pervasives_Native.None -> ()
-             | FStar_Pervasives_Native.Some raw ->
-               (* Record presence for this rg. *)
-               if not (Hashtbl.mem rg_set raw) then
-                 Hashtbl.add rg_set raw ();
-               (* Build global tok_to_id / id_to_subject / id_to_subj_tok
-                  the same way collect_distinct would have. *)
-               if not (Hashtbl.mem tables.ft_subj_tok_to_id raw) then begin
-                 let id = !next_id in
-                 incr next_id;
-                 Hashtbl.add tables.ft_subj_tok_to_id raw id;
-                 (match parse_subject_str raw with
-                  | Some s ->
-                    Hashtbl.replace tables.ft_id_to_subject  id s;
-                    Hashtbl.replace tables.ft_id_to_subj_tok id raw
-                  | None ->
-                    Printf.eprintf "[tet3-WARN] ensure_subjects_loaded: invalid subject token id=%d val=%s\n%!" id raw)
-               end) lst);
-        Hashtbl.replace presence rg rg_set;
-        if rg = 0 || rg = rg_count - 1 || rg mod 5 = 0 then
-          Printf.eprintf "[tet3-trace] ensure_subjects_loaded rg=%d/%d distinct_subjs=%d\n%!"
-            rg rg_count (Hashtbl.length rg_set)
-      done;
+      let (s_strs, s_tok_to_id, _n) = collect_distinct h.coh_path 0 in
+      (* Move s_tok_to_id contents into tables.ft_subj_tok_to_id.
+         (We can't just reassign — the field is a fresh Hashtbl.) *)
+      Hashtbl.iter (fun k v -> Hashtbl.replace tables.ft_subj_tok_to_id k v) s_tok_to_id;
+      List.iteri (fun i raw ->
+        match parse_subject_str raw with
+        | Some s ->
+          Hashtbl.replace tables.ft_id_to_subject  i s;
+          Hashtbl.replace tables.ft_id_to_subj_tok i raw
+        | None ->
+          Printf.eprintf "[bet7-WARN] ensure_subjects_loaded: invalid subject token id=%d val=%s\n%!" i raw)
+        s_strs;
       Cottas_ondisk_lazy.mark_subj_loaded h.coh_path;
       Gc.full_major ();
-      Printf.eprintf "[bet7-trace] ensure_subjects_loaded: %d distinct subjects (tet3 per-rg presence built for %d rgs)\n%!"
-        (Hashtbl.length tables.ft_subj_tok_to_id) rg_count
+      Printf.eprintf "[bet7-trace] ensure_subjects_loaded: %d distinct subjects\n%!"
+        (Hashtbl.length tables.ft_subj_tok_to_id)
     end
 
   let ensure_objects_loaded (h : cottas_ondisk_handle) (tables : fast_tables) : unit =
     if not (Cottas_ondisk_lazy.is_obj_loaded h.coh_path) then begin
       Printf.eprintf "[bet7-trace] ensure_objects_loaded: lazy populate path=%s\n%!" h.coh_path;
-      (* tet3: walk object column per-rg to record per-rg presence
-         (vs. the previous batched collect_distinct that lost which rg
-         each token came from). *)
-      let presence = Cottas_ondisk_lazy.obj_presence_for_path h.coh_path in
-      let next_id = ref (Hashtbl.length tables.ft_obj_tok_to_id) in
-      let rg_count = match Parquet_Footer.probe_parquet_row_group_count h.coh_path with
-        | FStar_Pervasives_Native.None -> 0
-        | FStar_Pervasives_Native.Some n -> Z.to_int n in
-      for rg = 0 to rg_count - 1 do
-        let rg_set : (string, unit) Hashtbl.t = Hashtbl.create 4096 in
-        (match Parquet_Footer.probe_parquet_column_decode_in_row_group
-                 h.coh_path (Z.of_int rg) (Z.of_int 2) with
-         | FStar_Pervasives_Native.None ->
-           Printf.eprintf "[tet3-WARN] ensure_objects_loaded: rg=%d decode failed\n%!" rg
-         | FStar_Pervasives_Native.Some lst ->
-           List.iter (function
-             | FStar_Pervasives_Native.None -> ()
-             | FStar_Pervasives_Native.Some raw ->
-               (* Record presence for this rg. *)
-               if not (Hashtbl.mem rg_set raw) then
-                 Hashtbl.add rg_set raw ();
-               (* Build global tok_to_id / id_to_object / id_to_obj_tok
-                  the same way collect_distinct would have. *)
-               if not (Hashtbl.mem tables.ft_obj_tok_to_id raw) then begin
-                 let id = !next_id in
-                 incr next_id;
-                 Hashtbl.add tables.ft_obj_tok_to_id raw id;
-                 (match parse_object_str raw with
-                  | Some o ->
-                    Hashtbl.replace tables.ft_id_to_object  id o;
-                    Hashtbl.replace tables.ft_id_to_obj_tok id raw
-                  | None ->
-                    Printf.eprintf "[tet3-WARN] ensure_objects_loaded: invalid object token id=%d val=%s\n%!" id raw)
-               end) lst);
-        Hashtbl.replace presence rg rg_set;
-        if rg = 0 || rg = rg_count - 1 || rg mod 5 = 0 then
-          Printf.eprintf "[tet3-trace] ensure_objects_loaded rg=%d/%d distinct_objs=%d\n%!"
-            rg rg_count (Hashtbl.length rg_set)
-      done;
+      let (o_strs, o_tok_to_id, _n) = collect_distinct h.coh_path 2 in
+      Hashtbl.iter (fun k v -> Hashtbl.replace tables.ft_obj_tok_to_id k v) o_tok_to_id;
+      List.iteri (fun i raw ->
+        match parse_object_str raw with
+        | Some o ->
+          Hashtbl.replace tables.ft_id_to_object  i o;
+          Hashtbl.replace tables.ft_id_to_obj_tok i raw
+        | None ->
+          Printf.eprintf "[bet7-WARN] ensure_objects_loaded: invalid object token id=%d val=%s\n%!" i raw)
+        o_strs;
       Cottas_ondisk_lazy.mark_obj_loaded h.coh_path;
       Gc.full_major ();
-      Printf.eprintf "[bet7-trace] ensure_objects_loaded: %d distinct objects (tet3 per-rg presence built for %d rgs)\n%!"
-        (Hashtbl.length tables.ft_obj_tok_to_id) rg_count
+      Printf.eprintf "[bet7-trace] ensure_objects_loaded: %d distinct objects\n%!"
+        (Hashtbl.length tables.ft_obj_tok_to_id)
     end
 
   let ensure_predicates_loaded (h : cottas_ondisk_handle) (tables : fast_tables) : unit =
     if not (Cottas_ondisk_lazy.is_pred_loaded h.coh_path) then begin
       Printf.eprintf "[bet7-trace] ensure_predicates_loaded: lazy populate path=%s\n%!" h.coh_path;
-      (* yod6: walk predicate column per-rg to record per-rg presence
-         (vs. the previous batched collect_distinct that lost which rg
-         each token came from). *)
-      let presence = Cottas_ondisk_lazy.presence_for_path h.coh_path in
-      let next_id = ref (Hashtbl.length tables.ft_pred_tok_to_id) in
-      let rg_count = match Parquet_Footer.probe_parquet_row_group_count h.coh_path with
-        | FStar_Pervasives_Native.None -> 0
-        | FStar_Pervasives_Native.Some n -> Z.to_int n in
-      for rg = 0 to rg_count - 1 do
-        let rg_set : (string, unit) Hashtbl.t = Hashtbl.create 16 in
-        (match Parquet_Footer.probe_parquet_column_decode_in_row_group
-                 h.coh_path (Z.of_int rg) Z.one with
-         | FStar_Pervasives_Native.None ->
-           Printf.eprintf "[yod6-WARN] ensure_predicates_loaded: rg=%d decode failed\n%!" rg
-         | FStar_Pervasives_Native.Some lst ->
-           List.iter (function
-             | FStar_Pervasives_Native.None -> ()
-             | FStar_Pervasives_Native.Some raw ->
-               (* Record presence for this rg. *)
-               if not (Hashtbl.mem rg_set raw) then
-                 Hashtbl.add rg_set raw ();
-               (* Build global tok_to_id / id_to_predicate / id_to_pred_tok
-                  the same way collect_distinct would have. *)
-               if not (Hashtbl.mem tables.ft_pred_tok_to_id raw) then begin
-                 let id = !next_id in
-                 incr next_id;
-                 Hashtbl.add tables.ft_pred_tok_to_id raw id;
-                 (match parse_iri_token raw with
-                  | Some iri ->
-                    Hashtbl.replace tables.ft_id_to_predicate id iri;
-                    Hashtbl.replace tables.ft_id_to_pred_tok  id raw
-                  | None ->
-                    Printf.eprintf "[yod6-WARN] ensure_predicates_loaded: invalid predicate token id=%d val=%s\n%!" id raw)
-               end) lst);
-        Hashtbl.replace presence rg rg_set;
-        if rg = 0 || rg = rg_count - 1 || rg mod 5 = 0 then
-          Printf.eprintf "[yod6-trace] ensure_predicates_loaded rg=%d/%d distinct_preds=%d\n%!"
-            rg rg_count (Hashtbl.length rg_set)
-      done;
+      let (p_strs, p_tok_to_id, _n) = collect_distinct h.coh_path 1 in
+      Hashtbl.iter (fun k v -> Hashtbl.replace tables.ft_pred_tok_to_id k v) p_tok_to_id;
+      List.iteri (fun i raw ->
+        match parse_iri_token raw with
+        | Some iri ->
+          Hashtbl.replace tables.ft_id_to_predicate i iri;
+          Hashtbl.replace tables.ft_id_to_pred_tok  i raw
+        | None ->
+          Printf.eprintf "[bet7-WARN] ensure_predicates_loaded: invalid predicate token id=%d val=%s\n%!" i raw)
+        p_strs;
       Cottas_ondisk_lazy.mark_pred_loaded h.coh_path;
       Gc.full_major ();
-      Printf.eprintf "[bet7-trace] ensure_predicates_loaded: %d distinct predicates (yod6 per-rg presence built for %d rgs)\n%!"
-        (Hashtbl.length tables.ft_pred_tok_to_id) rg_count
+      Printf.eprintf "[bet7-trace] ensure_predicates_loaded: %d distinct predicates\n%!"
+        (Hashtbl.length tables.ft_pred_tok_to_id)
     end
 
   let ensure_graphs_loaded (h : cottas_ondisk_handle) (tables : fast_tables) : unit =
@@ -1464,448 +1123,20 @@ module Cottas_ondisk_runtime = struct
       Hashtbl.add fast_table_cache handle.coh_path tables;
       tables
 
-  (* ---- Fast search/estimate (Hashtbl-backed; semantically equivalent
-         to the F* spec walk_row_groups_search/estimate but O(1) per
-         row instead of O(N) per revmap_lookup). ---- *)
-
-  let bound_id_to_token (id_to_tok : (pint, string) Hashtbl.t)
-    (b : Prims.nat FStar_Pervasives_Native.option) : string option =
-    match b with
-    | FStar_Pervasives_Native.None -> None
-    | FStar_Pervasives_Native.Some i ->
-      Hashtbl.find_opt id_to_tok (Z.to_int i)
-
-  let cell_match_str expected actual =
-    match expected with
-    | None -> true
-    | Some s -> s = actual
-
-  (* Walk all row groups, decode each column lazily, filter by string
-     bound, build cottas_qp_row via Hashtbl lookups. Mirrors
-     RDF_CottasStore.walk_row_groups_search but with O(1) revmap
-     lookups for build_qp_row. *)
-  (* __RENAME_INNER_PIVOT_APPLIED__ — issue #105 fix.
-     `search_fast` is now a trivial pass-through to `search_fast_inner`;
-     downstream patches (Mem5, Tet3 redirects, Lamed3 reader half if
-     present) anchor against `_inner`. *)
-  let rec search_fast (h : cottas_ondisk_handle) (bound : Parser_BallyhooCOTTAS.cottas_bound_qp)
-    : Parser_BallyhooCOTTAS.cottas_qp_row list =
-    search_fast_inner h bound
-  and search_fast_inner (h : cottas_ondisk_handle) (bound : Parser_BallyhooCOTTAS.cottas_bound_qp)
-    : Parser_BallyhooCOTTAS.cottas_qp_row list =
-    let path = h.coh_path in
-    let tables = tables_for h in
-    (* search needs all four columns: build_qp_row reads every cell
-       through the *_tok_to_id Hashtbls, and bound_id_to_token reads
-       *_id_to_*_tok. *)
-    ensure_subjects_loaded   h tables;
-    ensure_predicates_loaded h tables;
-    ensure_objects_loaded    h tables;
-    ensure_graphs_loaded     h tables;
-    let bound_s = bound_id_to_token tables.ft_id_to_subj_tok  bound.Parser_BallyhooCOTTAS.cbqp_s in
-    let bound_p = bound_id_to_token tables.ft_id_to_pred_tok  bound.Parser_BallyhooCOTTAS.cbqp_p in
-    let bound_o = bound_id_to_token tables.ft_id_to_obj_tok   bound.Parser_BallyhooCOTTAS.cbqp_o in
-    let bound_g = bound_id_to_token tables.ft_id_to_graph_tok bound.Parser_BallyhooCOTTAS.cbqp_g in
-    Printf.eprintf "[qof3-trace] search_fast: bound s=%s p=%s o=%s g=%s\n%!"
-      (match bound_s with None -> "_" | Some s -> "<sub>" ^ s ^ "</sub>")
-      (match bound_p with None -> "_" | Some s -> s)
-      (match bound_o with None -> "_" | Some s -> "<obj>")
-      (match bound_g with None -> "_" | Some s -> s);
-    let rg_count = match Parquet_Footer.probe_parquet_row_group_count path with
-      | FStar_Pervasives_Native.None -> 0
-      | FStar_Pervasives_Native.Some n -> Z.to_int n in
-    Printf.eprintf "[qof3-trace] search_fast: rg_count=%d\n%!" rg_count;
-    Printf.eprintf "[pe4-trace] search_fast pre-walk rss=%dMB heap=%dMB fd=%d\n%!"
-      (pe4_rss_mb ()) (pe4_gc_mb ()) (pe4_fd_count ());
-    let acc = ref [] in
-    let n_matches = ref 0 in
-    let arr_of_col col_opt =
-      (* Phase 2.5c (issue #118): col_opt is now `cottas_column option`
-         (= `string option array option`), produced by
-         Cottas_pagecache_hot.cached_decode after the page-cache patch.
-         Identity-with-fallback. The previous shape was
-         `(option string) list option`, requiring Array.of_list. *)
-      match col_opt with
-      | FStar_Pervasives_Native.None -> [||]
-      | FStar_Pervasives_Native.Some arr -> arr in
-    let cell_of = function
-      | FStar_Pervasives_Native.Some s -> s
-      | FStar_Pervasives_Native.None -> "" in
-    let walk_rg rg =
-      Printf.eprintf "[pe4-trace] search_fast rg=%d enter rss=%dMB heap=%dMB matches=%d\n%!"
-        rg (pe4_rss_mb ()) (pe4_gc_mb ()) !n_matches;
-      let s_lst = Cottas_pagecache_hot.cached_decode path (Z.of_int rg) Z.zero in
-      Printf.eprintf "[pe4-trace] search_fast rg=%d decoded col=0 (subject) rss=%dMB heap=%dMB\n%!"
-        rg (pe4_rss_mb ()) (pe4_gc_mb ());
-      let s_arr = arr_of_col s_lst in
-      Printf.eprintf "[pe4-trace] search_fast rg=%d arrayified col=0 n=%d rss=%dMB heap=%dMB\n%!"
-        rg (Array.length s_arr) (pe4_rss_mb ()) (pe4_gc_mb ());
-      let p_lst = Cottas_pagecache_hot.cached_decode path (Z.of_int rg) Z.one in
-      Printf.eprintf "[pe4-trace] search_fast rg=%d decoded col=1 (predicate) rss=%dMB heap=%dMB\n%!"
-        rg (pe4_rss_mb ()) (pe4_gc_mb ());
-      let p_arr = arr_of_col p_lst in
-      let o_lst = Cottas_pagecache_hot.cached_decode path (Z.of_int rg) (Z.of_int 2) in
-      Printf.eprintf "[pe4-trace] search_fast rg=%d decoded col=2 (object) rss=%dMB heap=%dMB\n%!"
-        rg (pe4_rss_mb ()) (pe4_gc_mb ());
-      let o_arr = arr_of_col o_lst in
-      let g_lst = Cottas_pagecache_hot.cached_decode path (Z.of_int rg) (Z.of_int 3) in
-      Printf.eprintf "[pe4-trace] search_fast rg=%d decoded col=3 (graph) rss=%dMB heap=%dMB\n%!"
-        rg (pe4_rss_mb ()) (pe4_gc_mb ());
-      let g_arr = arr_of_col g_lst in
-      let n = Array.length s_arr in
-      if Array.length p_arr <> n || Array.length o_arr <> n || Array.length g_arr <> n then
-        Printf.eprintf "[qof3-FATAL] search_fast: row-group %d column lengths disagree (s=%d p=%d o=%d g=%d)\n%!"
-          rg n (Array.length p_arr) (Array.length o_arr) (Array.length g_arr)
-      else begin
-        Printf.eprintf "[pe4-trace] search_fast rg=%d filter-loop start n=%d rss=%dMB heap=%dMB\n%!"
-          rg n (pe4_rss_mb ()) (pe4_gc_mb ());
-        for i = 0 to n - 1 do
-          let s_tok = cell_of s_arr.(i) in
-          let p_tok = cell_of p_arr.(i) in
-          let o_tok = cell_of o_arr.(i) in
-          let g_tok = cell_of g_arr.(i) in
-          if cell_match_str bound_s s_tok &&
-             cell_match_str bound_p p_tok &&
-             cell_match_str bound_o o_tok &&
-             cell_match_str bound_g g_tok
-          then begin
-            let s_id = Hashtbl.find_opt tables.ft_subj_tok_to_id  s_tok in
-            let p_id = Hashtbl.find_opt tables.ft_pred_tok_to_id  p_tok in
-            let o_id = Hashtbl.find_opt tables.ft_obj_tok_to_id   o_tok in
-            let g_id =
-              if g_tok = "DEFAULT" then None
-              else Hashtbl.find_opt tables.ft_graph_tok_to_id g_tok in
-            let opt_to_z = function
-              | None -> FStar_Pervasives_Native.None
-              | Some i -> FStar_Pervasives_Native.Some (Z.of_int i) in
-            acc := {
-              Parser_BallyhooCOTTAS.cqpr_s = opt_to_z s_id;
-              cqpr_p = opt_to_z p_id;
-              cqpr_o = opt_to_z o_id;
-              cqpr_g = opt_to_z g_id;
-            } :: !acc;
-            incr n_matches
-          end
-        done;
-        Printf.eprintf "[pe4-trace] search_fast rg=%d done matches_so_far=%d rss=%dMB heap=%dMB\n%!"
-          rg !n_matches (pe4_rss_mb ()) (pe4_gc_mb ())
-      end
-    in
-    let n_skipped = ref 0 in
-    (* tet3_fstar_redirect_search: search_fast_inner installed
-       (issue #100, 2026-04-26). Per-rg gate routed through F*'s
-       RDF_CottasStore_PresenceBitmap via the Tet3_fstar_redirect
-       helper (installed by the prior estimate-redirect patch).
-       Fall back to the existing Tet3 Hashtbl path only when
-       could_via_fstar returns None (companion file absent). *)
-    let n_via_fstar_search = ref 0 in
-    let n_via_hashtbl_search = ref 0 in
-    for rg = 0 to rg_count - 1 do
-      let could_via path_ col_idx bound_id bound_str fallback_get =
-        match Tet3_fstar_redirect.could_via_fstar
-                path_ col_idx rg bound_id with
-        | FStar_Pervasives_Native.Some b ->
-          incr n_via_fstar_search; b
-        | FStar_Pervasives_Native.None ->
-          incr n_via_hashtbl_search; fallback_get path_ rg bound_str in
-      let could_p = could_via path 1 bound.Parser_BallyhooCOTTAS.cbqp_p
-        bound_p Cottas_ondisk_lazy.pred_rg_could_contain in
-      let could_s = could_via path 0 bound.Parser_BallyhooCOTTAS.cbqp_s
-        bound_s Cottas_ondisk_lazy.subj_rg_could_contain in
-      let could_o = could_via path 2 bound.Parser_BallyhooCOTTAS.cbqp_o
-        bound_o Cottas_ondisk_lazy.obj_rg_could_contain in
-      (* compound_po_fstar_redirect (search): AND-compose the per-column
-         Tet3 verdict with the joint-(p, o) compound bitmap when both
-         are bound and the .po.presence companion is present. F*'s
-         rg_could_contain_pair does the actual binary search; we just
-         wire the AND. Same helper as the estimate-side redirect.
-         __COMPOUND_PO_REDIRECT_SEARCH_APPLIED__ *)
-      let compound_ok =
-        match Compound_po_fstar_redirect.could_contain_pair_via_fstar
-                path rg bound.Parser_BallyhooCOTTAS.cbqp_p
-                bound.Parser_BallyhooCOTTAS.cbqp_o with
-        | FStar_Pervasives_Native.Some b -> b
-        | FStar_Pervasives_Native.None -> true in
-      if not (could_p && could_s && could_o && compound_ok) then begin
-        incr n_skipped;
-        if !n_skipped <= 3 || !n_skipped mod 5 = 0 then
-          Printf.eprintf "[tet3-trace] search_fast rg=%d skipped (could_p=%b could_s=%b could_o=%b compound_ok=%b)\n%!"
-            rg could_p could_s could_o compound_ok
-      end else begin
-        try walk_rg rg
-        with e ->
-          let bt = Printexc.get_backtrace () in
-          Printf.eprintf "[pe4-FATAL] search_fast rg=%d EXCEPTION: %s\nbacktrace=%s\n%!"
-            rg (Printexc.to_string e) bt;
-          raise e
-      end
-    done;
-    Printf.eprintf "[tet3-fstar-trace] search_fast_inner: rg-tests via_fstar=%d via_hashtbl=%d\n%!"
-      !n_via_fstar_search !n_via_hashtbl_search;
-    Printf.eprintf "[tet3-trace] search_fast: skipped %d/%d rg(s) (s=%s p=%s o=%s)\n%!"
-      !n_skipped rg_count
-      (match bound_s with None -> "_" | Some _ -> "<sub>")
-      (match bound_p with None -> "_" | Some s -> s)
-      (match bound_o with None -> "_" | Some _ -> "<obj>");
-    Printf.eprintf "[qof3-trace] search_fast: matched %d row(s) across %d row group(s)\n%!" !n_matches rg_count;
-    Printf.eprintf "[pe4-trace] search_fast post-walk rss=%dMB heap=%dMB matches=%d\n%!"
-      (pe4_rss_mb ()) (pe4_gc_mb ()) !n_matches;
-    List.rev !acc
-
-  (* aleph6: search_fast_limited installed.
-     Same as search_fast but stops once `limit` matches accumulate.
-     Used by F*-side cottas_ondisk_search_limited for LIMIT pushdown
-     (issue #100, 2026-04-26). Keeps Bet7 lazy-load semantics intact —
-     ensure_subjects_loaded / ensure_objects_loaded run on entry, then
-     the per-rg walk uses O(1) Hashtbl lookups in build_qp_row.
-     Matching predicate is byte-identical to search_fast. *)
-  let rec search_fast_limited (h : cottas_ondisk_handle) (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) (limit : pint)
-    : Parser_BallyhooCOTTAS.cottas_qp_row list =
-    search_fast_limited_inner h bound limit
-  and search_fast_limited_inner (h : cottas_ondisk_handle) (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) (limit : pint)
-    : Parser_BallyhooCOTTAS.cottas_qp_row list =
-    let path = h.coh_path in
-    let tables = tables_for h in
-    ensure_subjects_loaded h tables;
-    ensure_objects_loaded  h tables;
-    let bound_s = bound_id_to_token tables.ft_id_to_subj_tok  bound.Parser_BallyhooCOTTAS.cbqp_s in
-    let bound_p = bound_id_to_token tables.ft_id_to_pred_tok  bound.Parser_BallyhooCOTTAS.cbqp_p in
-    let bound_o = bound_id_to_token tables.ft_id_to_obj_tok   bound.Parser_BallyhooCOTTAS.cbqp_o in
-    let bound_g = bound_id_to_token tables.ft_id_to_graph_tok bound.Parser_BallyhooCOTTAS.cbqp_g in
-    Printf.eprintf "[aleph6-trace] search_fast_limited: limit=%d bound s=%s p=%s o=%s g=%s\n%!"
-      limit
-      (match bound_s with None -> "_" | Some _ -> "<sub>")
-      (match bound_p with None -> "_" | Some s -> s)
-      (match bound_o with None -> "_" | Some _ -> "<obj>")
-      (match bound_g with None -> "_" | Some s -> s);
-    let rg_count = match Parquet_Footer.probe_parquet_row_group_count path with
-      | FStar_Pervasives_Native.None -> 0
-      | FStar_Pervasives_Native.Some n -> Z.to_int n in
-    let acc = ref [] in
-    let n_matches = ref 0 in
-    let arr_of_col col_opt =
-      (* Phase 2.5c (issue #118): col_opt is `cottas_column option`
-         (= `string option array option`) post-pagecache-hot-path patch.
-         Identity-with-fallback. *)
-      match col_opt with
-      | FStar_Pervasives_Native.None -> [||]
-      | FStar_Pervasives_Native.Some arr -> arr in
-    let cell_of = function
-      | FStar_Pervasives_Native.Some s -> s
-      | FStar_Pervasives_Native.None -> "" in
-    (* yod6: search_fast_limited needs ensure_predicates_loaded too,
-       so the presence table is populated before we consult it. *)
-    ensure_predicates_loaded h tables;
-    let rg = ref 0 in
-    let n_skipped = ref 0 in
-    (* tet3_fstar_redirect_search_limited: search_fast_limited installed
-       (issue #100, 2026-04-26). Per-rg gate routed through F*'s
-       RDF_CottasStore_PresenceBitmap via the Tet3_fstar_redirect
-       helper (installed by the estimate-redirect patch). Fall back
-       to the existing Tet3 Hashtbl path only when could_via_fstar
-       returns None (companion file absent). *)
-    let n_via_fstar_lim = ref 0 in
-    let n_via_hashtbl_lim = ref 0 in
-    (try
-      while !rg < rg_count && !n_matches < limit do
-        let r = !rg in
-        let could_via path_ col_idx bound_id bound_str fallback_get =
-          match Tet3_fstar_redirect.could_via_fstar
-                  path_ col_idx r bound_id with
-          | FStar_Pervasives_Native.Some b ->
-            incr n_via_fstar_lim; b
-          | FStar_Pervasives_Native.None ->
-            incr n_via_hashtbl_lim; fallback_get path_ r bound_str in
-        let could_p = could_via path 1 bound.Parser_BallyhooCOTTAS.cbqp_p
-          bound_p Cottas_ondisk_lazy.pred_rg_could_contain in
-        let could_s = could_via path 0 bound.Parser_BallyhooCOTTAS.cbqp_s
-          bound_s Cottas_ondisk_lazy.subj_rg_could_contain in
-        let could_o = could_via path 2 bound.Parser_BallyhooCOTTAS.cbqp_o
-          bound_o Cottas_ondisk_lazy.obj_rg_could_contain in
-        if not (could_p && could_s && could_o) then begin
-          incr n_skipped;
-          if !n_skipped <= 3 || !n_skipped mod 5 = 0 then
-            Printf.eprintf "[tet3-trace] search_fast_limited rg=%d skipped (could_p=%b could_s=%b could_o=%b)\n%!"
-              r could_p could_s could_o;
-          incr rg
-        end else begin
-        let s_lst = Cottas_pagecache_hot.cached_decode path (Z.of_int r) Z.zero in
-        let s_arr = arr_of_col s_lst in
-        let p_lst = Cottas_pagecache_hot.cached_decode path (Z.of_int r) Z.one in
-        let p_arr = arr_of_col p_lst in
-        let o_lst = Cottas_pagecache_hot.cached_decode path (Z.of_int r) (Z.of_int 2) in
-        let o_arr = arr_of_col o_lst in
-        let g_lst = Cottas_pagecache_hot.cached_decode path (Z.of_int r) (Z.of_int 3) in
-        let g_arr = arr_of_col g_lst in
-        let n = Array.length s_arr in
-        if Array.length p_arr <> n || Array.length o_arr <> n || Array.length g_arr <> n then
-          Printf.eprintf "[aleph6-FATAL] search_fast_limited: rg=%d column lengths disagree (s=%d p=%d o=%d g=%d)\n%!"
-            r n (Array.length p_arr) (Array.length o_arr) (Array.length g_arr)
-        else begin
-          let i = ref 0 in
-          while !i < n && !n_matches < limit do
-            let idx = !i in
-            let s_tok = cell_of s_arr.(idx) in
-            let p_tok = cell_of p_arr.(idx) in
-            let o_tok = cell_of o_arr.(idx) in
-            let g_tok = cell_of g_arr.(idx) in
-            if cell_match_str bound_s s_tok &&
-               cell_match_str bound_p p_tok &&
-               cell_match_str bound_o o_tok &&
-               cell_match_str bound_g g_tok
-            then begin
-              let s_id = Hashtbl.find_opt tables.ft_subj_tok_to_id  s_tok in
-              let p_id = Hashtbl.find_opt tables.ft_pred_tok_to_id  p_tok in
-              let o_id = Hashtbl.find_opt tables.ft_obj_tok_to_id   o_tok in
-              let g_id =
-                if g_tok = "DEFAULT" then None
-                else Hashtbl.find_opt tables.ft_graph_tok_to_id g_tok in
-              let opt_to_z = function
-                | None -> FStar_Pervasives_Native.None
-                | Some i -> FStar_Pervasives_Native.Some (Z.of_int i) in
-              acc := {
-                Parser_BallyhooCOTTAS.cqpr_s = opt_to_z s_id;
-                cqpr_p = opt_to_z p_id;
-                cqpr_o = opt_to_z o_id;
-                cqpr_g = opt_to_z g_id;
-              } :: !acc;
-              incr n_matches
-            end;
-            incr i
-          done
-        end;
-        incr rg
-        end (* yod6: close the not-skipped branch *)
-      done
-    with e ->
-      let bt = Printexc.get_backtrace () in
-      Printf.eprintf "[aleph6-FATAL] search_fast_limited rg=%d EXCEPTION: %s\nbacktrace=%s\n%!"
-        !rg (Printexc.to_string e) bt;
-      raise e);
-    Printf.eprintf "[tet3-trace] search_fast_limited: skipped %d/%d rg(s) (s=%s p=%s o=%s)\n%!"
-      !n_skipped rg_count
-      (match bound_s with None -> "_" | Some _ -> "<sub>")
-      (match bound_p with None -> "_" | Some s -> s)
-      (match bound_o with None -> "_" | Some _ -> "<obj>");
-    Printf.eprintf "[tet3-fstar-trace] search_fast_limited: rg-tests via_fstar=%d via_hashtbl=%d\n%!"
-      !n_via_fstar_lim !n_via_hashtbl_lim;
-    Printf.eprintf "[aleph6-trace] search_fast_limited: matched %d/%d row(s), walked %d/%d rg(s)\n%!"
-      !n_matches limit !rg rg_count;
-    List.rev !acc
-
-  (* Estimate: same loop as search_fast but counts only — no per-row
-     Hashtbl lookup or row allocation. *)
-  let rec estimate_fast (h : cottas_ondisk_handle) (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) : pint =
-    estimate_fast_inner h bound
-  and estimate_fast_inner (h : cottas_ondisk_handle) (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) : pint =
-    (* mem5: estimate_fast_inner presence-bitmap fast path
-       (issue #100, 2026-04-26).
-
-       For BGP join-order optimisation, exact cardinality is
-       unnecessary; ordinal estimates suffice. We compute the
-       candidate row-groups using only Tet3's per-rg presence
-       bitmaps (already populated by ensure_predicates_loaded /
-       ensure_subjects_loaded / ensure_objects_loaded), then return
-       |candidates| * avg_rows_per_rg. Total cost: O(num_rgs *
-       num_bounds) — microseconds for the parliament corpus. *)
-    let path = h.coh_path in
-    let tables = tables_for h in
-    (* Populate only the presence tables for bound columns. *)
-    (match bound.Parser_BallyhooCOTTAS.cbqp_s with
-     | FStar_Pervasives_Native.Some _ -> ensure_subjects_loaded h tables
-     | _ -> ());
-    (match bound.Parser_BallyhooCOTTAS.cbqp_p with
-     | FStar_Pervasives_Native.Some _ -> ensure_predicates_loaded h tables
-     | _ -> ());
-    (match bound.Parser_BallyhooCOTTAS.cbqp_o with
-     | FStar_Pervasives_Native.Some _ -> ensure_objects_loaded h tables
-     | _ -> ());
-    (match bound.Parser_BallyhooCOTTAS.cbqp_g with
-     | FStar_Pervasives_Native.Some _ -> ensure_graphs_loaded h tables
-     | _ -> ());
-    let bound_s = bound_id_to_token tables.ft_id_to_subj_tok  bound.Parser_BallyhooCOTTAS.cbqp_s in
-    let bound_p = bound_id_to_token tables.ft_id_to_pred_tok  bound.Parser_BallyhooCOTTAS.cbqp_p in
-    let bound_o = bound_id_to_token tables.ft_id_to_obj_tok   bound.Parser_BallyhooCOTTAS.cbqp_o in
-    let bound_g = bound_id_to_token tables.ft_id_to_graph_tok bound.Parser_BallyhooCOTTAS.cbqp_g in
-    let any_bound_present =
-      bound_s <> None || bound_p <> None || bound_o <> None || bound_g <> None in
-    let rg_count = match Parquet_Footer.probe_parquet_row_group_count path with
-      | FStar_Pervasives_Native.None -> 0
-      | FStar_Pervasives_Native.Some n -> Z.to_int n in
-    if not any_bound_present then begin
-      (* Aleph6: footer-only fast path. Mirrors the F* spec wrapper. *)
-      let n =
-        match Parquet_Footer.probe_parquet_num_rows path with
-        | FStar_Pervasives_Native.None -> 0
-        | FStar_Pervasives_Native.Some n -> Z.to_int n in
-      Printf.eprintf "[mem5-trace] estimate_fast_inner: unbound -> footer total=%d\n%!" n;
-      n
-    end
-    else begin
-      (* AND of presence bitmaps across all bound columns. The graph
-         column does not have a Tet3-installed presence helper; the
-         3-of-4 column intersection is sufficient for cardinality. *)
-      let candidates = ref 0 in
-      let n_via_fstar = ref 0 in
-      let n_via_hashtbl = ref 0 in
-      for rg = 0 to rg_count - 1 do
-        (* tet3_fstar_redirect: try F* RDF_CottasStore_PresenceBitmap
-           first; fall back to Tet3's OCaml Hashtbl path only when the
-           companion file is absent (open_bitmap = None). On corpora
-           with companion files (parliament has all 4) the F* path is
-           always taken and the Hashtbl path is dead. *)
-        let could_via path_ col_idx bound_id bound_str fallback_get =
-          match Tet3_fstar_redirect.could_via_fstar
-                  path_ col_idx rg bound_id with
-          | FStar_Pervasives_Native.Some b ->
-            incr n_via_fstar; b
-          | FStar_Pervasives_Native.None ->
-            incr n_via_hashtbl; fallback_get path_ rg bound_str in
-        let could_p = could_via path 1 bound.Parser_BallyhooCOTTAS.cbqp_p
-          bound_p Cottas_ondisk_lazy.pred_rg_could_contain in
-        let could_s = could_via path 0 bound.Parser_BallyhooCOTTAS.cbqp_s
-          bound_s Cottas_ondisk_lazy.subj_rg_could_contain in
-        let could_o = could_via path 2 bound.Parser_BallyhooCOTTAS.cbqp_o
-          bound_o Cottas_ondisk_lazy.obj_rg_could_contain in
-        (* compound_po_fstar_redirect: AND-compose the per-column verdict
-           with the joint-(p, o) compound bitmap when both are bound and
-           the .po.presence companion is present. F*'s
-           rg_could_contain_pair does the actual binary-search; we just
-           wire the AND. *)
-        let compound_ok =
-          match Compound_po_fstar_redirect.could_contain_pair_via_fstar
-                  path rg bound.Parser_BallyhooCOTTAS.cbqp_p
-                  bound.Parser_BallyhooCOTTAS.cbqp_o with
-          | FStar_Pervasives_Native.Some b -> b
-          | FStar_Pervasives_Native.None -> true in
-        if could_p && could_s && could_o && compound_ok then
-          incr candidates
-      done;
-      Printf.eprintf "[tet3-fstar-trace] estimate_fast_inner: rg-tests via_fstar=%d via_hashtbl=%d\n%!"
-        !n_via_fstar !n_via_hashtbl;
-      let n_candidates = !candidates in
-      Printf.eprintf "[mem5-trace] estimate_fast_inner: candidates=%d/%d (s=%s p=%s o=%s g=%s)\n%!"
-        n_candidates rg_count
-        (match bound_s with None -> "_" | Some _ -> "<sub>")
-        (match bound_p with None -> "_" | Some s -> s)
-        (match bound_o with None -> "_" | Some _ -> "<obj>")
-        (match bound_g with None -> "_" | Some s -> s);
-      if n_candidates = 0 then 0
-      else if rg_count = 0 then 0
-      else begin
-        let total_rows =
-          match Parquet_Footer.probe_parquet_num_rows path with
-          | FStar_Pervasives_Native.None -> 0
-          | FStar_Pervasives_Native.Some n -> Z.to_int n in
-        if total_rows = 0 then n_candidates
-        else
-          let avg = total_rows / rg_count in
-          let est = n_candidates * avg in
-          Printf.eprintf "[mem5-trace] estimate_fast_inner: total=%d avg=%d est=%d\n%!"
-            total_rows avg est;
-          est
-      end
-    end
+  (* Issue #110 (2026-04-29): retired. The Cottas_ondisk_runtime
+     OCaml shims `search_fast`, `estimate_fast`, and
+     `search_fast_limited` (plus their helpers `pe4_*`,
+     `bound_id_to_token`, `cell_match_str`, `arr_of_col`,
+     `cell_of`, `walk_rg`) used to live here. Phase 2.5e
+     (commit 7cf9ebc) moved the public-API path to the F*-extracted
+     `cottas_ondisk_search` / `_estimate` / `_search_limited`
+     bodies, which decode through the F*-verified page cache via
+     `pcache_decode_in_row_group_global` and resolve token->id via
+     `ondisk_lookup_*_id_global`. The shim functions were dead on
+     that path; the 9 retrofitting patches plus aleph6 and
+     rename_inner_pivot have all been deleted in the same commit. *)
+  (* Note: search_fast / estimate_fast / search_fast_limited are
+     INTENTIONALLY ABSENT from this module. Do not add them back. *)
 
   let decode_subject_fast (h : cottas_ondisk_handle) (id : Prims.nat)
     : RDF_Graph_Executable.subject =
