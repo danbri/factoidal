@@ -14,7 +14,7 @@ open SPARQL11.Store
 // Render a graph_backend's outer constructor name. For GB_Union, recurses
 // into the children and emits "GB_Union[c1,c2,...]". Used to correlate
 // stderr traces with --data / --data-cottas / --data-hdt configurations.
-val graph_backend_kind_string : graph_backend -> string
+val graph_backend_kind_string : graph_backend -> Tot string
 let rec graph_backend_kind_string g =
   match g with
   | GB_List _        -> "GB_List"
@@ -23,16 +23,18 @@ let rec graph_backend_kind_string g =
   | GB_COTTAS _ _    -> "GB_COTTAS"
   | GB_CottasOnDisk _ _ -> "GB_CottasOnDisk"
   | GB_Union gs ->
-    "GB_Union[" ^ join_kinds gs true ^ "]"
+    "GB_Union[" ^ FStar.String.concat "," (map_kinds gs) ^ "]"
 
-and join_kinds (gs : list graph_backend) (first : bool)
-  : Tot string (decreases gs) =
+// Helper: map graph_backend_kind_string over each element of [gs].
+// Spelled out so the F* termination check sees a structurally-decreasing
+// list argument (each recursive call peels one constructor off [gs],
+// and the inner call to graph_backend_kind_string runs on a structurally-
+// smaller subterm of GB_Union gs).
+and map_kinds (gs : list graph_backend)
+  : Tot (list string) (decreases gs) =
   match gs with
-  | [] -> ""
-  | g :: rest ->
-    let k = graph_backend_kind_string g in
-    if first then k ^ join_kinds rest false
-    else "," ^ k ^ join_kinds rest false
+  | [] -> []
+  | g :: rest -> graph_backend_kind_string g :: map_kinds rest
 
 // Render a dataset_backend as "{default=...; named=N graph(s)}".
 val dataset_backend_kind_string : dataset_backend -> string

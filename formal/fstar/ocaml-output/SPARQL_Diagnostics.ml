@@ -9,18 +9,14 @@ let rec (graph_backend_kind_string :
     | SPARQL11_Store.GB_COTTAS (uu___, uu___1) -> "GB_COTTAS"
     | SPARQL11_Store.GB_CottasOnDisk (uu___, uu___1) -> "GB_CottasOnDisk"
     | SPARQL11_Store.GB_Union gs ->
-        Prims.strcat "GB_Union[" (Prims.strcat (join_kinds gs true) "]")
-and (join_kinds :
-  SPARQL11_Store.graph_backend Prims.list -> Prims.bool -> Prims.string) =
+        Prims.strcat "GB_Union["
+          (Prims.strcat (FStar_String.concat "," (map_kinds gs)) "]")
+and (map_kinds :
+  SPARQL11_Store.graph_backend Prims.list -> Prims.string Prims.list) =
   fun gs ->
-    fun first ->
-      match gs with
-      | [] -> ""
-      | g::rest ->
-          let k = graph_backend_kind_string g in
-          if first
-          then Prims.strcat k (join_kinds rest false)
-          else Prims.strcat "," (Prims.strcat k (join_kinds rest false))
+    match gs with
+    | [] -> []
+    | g::rest -> (graph_backend_kind_string g) :: (map_kinds rest)
 let (dataset_backend_kind_string :
   SPARQL11_Store.dataset_backend -> Prims.string) =
   fun b ->
