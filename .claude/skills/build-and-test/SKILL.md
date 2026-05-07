@@ -197,6 +197,27 @@ the runner reports zero tests.
 | `bin/linux-x86_64/w3c_runner` shows 0 tests | Stale binary; built before submodule paths added | Rebuild: `./build-ocaml.sh` |
 | Ext fails with `MLP_Const` translate error | Module has string-pattern match arms unsupported by KaRaMeL | Refactor to `if/else if`; or omit from karamel allowlist |
 | Compile fails on `Prims.int` mismatch | OCaml int passed where Z.t expected | Add `Z.of_int` at the call site |
+| `FATAL: another build-ocaml.sh is already running in this worktree` | Stale or concurrent invocation holds the per-worktree flock | Wait for the running build, or `pkill -f 'build-ocaml.sh'` if stuck |
+| Fresh build fails with `Unbound module FooBar` | Source-without-build-wiring (workflow-gotchas-debugging §3) | Add the new module to all three lists in `build-ocaml.sh` (extract loop, `COMMON_MODULES`, `FSTAR_MODULES`) |
+| Modules being re-extracted that should be cached | Concurrent fstar.exe runs from parallel agents corrupting the .checked.lax cache | Lock should prevent same-worktree races; check `ps aux \| grep fstar.exe` for cross-worktree contention |
+
+## Single-runner lock and build-running marker
+
+`build-ocaml.sh` opens a `flock` on `.build.lock` at entry. Concurrent
+invocations in the same worktree exit immediately with exit code 75
+and a `FATAL: another build-ocaml.sh is already running` message.
+
+The lock is per-worktree — two worktrees can build concurrently and
+won't block each other (their locks are at different paths). Only
+same-worktree concurrency is refused, which is enough to prevent the
+.cmi/.cmx/.checked-cache races we hit in 2026-05-07.
+
+The marker file `.build-running` is written on entry and removed via
+`trap` on exit (success or failure or signal). Stop hooks should
+suppress "uncommitted changes" warnings while this file exists, since
+the build is actively rewriting `.ml` and binary files.
+
+Both files are gitignored (`formal/fstar/.gitignore`).
 
 ## What this skill does NOT do
 

@@ -55,6 +55,39 @@ OUTDIR=ocaml-output
 JSDIR=../../docs/fstar-extracted
 STEP="${1:-all}"
 
+# ---------------------------------------------------------------------------
+# Single-runner lock + build-running marker.
+#
+# Concurrent extract/compile invocations in the same worktree are a recurring
+# hazard — multiple fstar.exe processes corrupt each other's .checked.lax cache
+# entries; concurrent ocamlopt runs race on .cmi/.cmx files. This lock makes
+# build-ocaml.sh refuse to run if another instance is already in flight in the
+# same worktree.
+#
+# The build-running marker (.build-running) is consumed by the stop hook to
+# silence "uncommitted changes" warnings while a build is rewriting .ml or
+# binary files. See .claude/skills/workflow-gotchas-debugging/SKILL.md
+# sections 2 and 5.
+#
+# The lock is per-worktree: each worktree has its own .build.lock, so parallel
+# agent worktrees don't block each other. Only same-worktree concurrency is
+# refused.
+# ---------------------------------------------------------------------------
+LOCK_FILE=".build.lock"
+exec 200>"$LOCK_FILE"
+if ! flock -n 200; then
+  echo "FATAL: another build-ocaml.sh is already running in this worktree." >&2
+  echo "       (lock file: $(pwd)/$LOCK_FILE)" >&2
+  echo "       Wait for it to finish, or kill it:" >&2
+  echo "         pkill -f 'build-ocaml.sh'" >&2
+  exit 75
+fi
+
+# Build-running marker, removed on any exit (success, failure, signal).
+MARKER_FILE=".build-running"
+echo "$$:$STEP:$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$MARKER_FILE"
+trap 'rm -f "$MARKER_FILE"' EXIT
+
 case "$STEP" in
   compile|js|wasm|patches)
     # These steps don't invoke fstar.exe; skip the preflight check so
