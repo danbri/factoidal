@@ -189,44 +189,25 @@ let iri_to_path (iri : string) : string option =
 (* ------------------------------------------------------------------ *)
 (* N-Quads serialiser.
 
-   This is intentionally minimal — same shape as factoidal_cli's
-   term_to_ntriples plus a graph-name slot. RDFC-1.0 specifies an
-   exact canonical N-Quads format (sorted lines, specific escaping);
-   we approximate here so byte-comparison can succeed for the trivial
-   no-bnode tests in Phase 0. Phase 1+ replaces this with the
-   F\*-extracted canonical_nquads serialiser. *)
+   Delegates to RDF.NQuads.Serialize (F-star). Per CLAUDE.md rule #11
+   OCaml glue may not carry serialisation logic — the byte-correct
+   N-Quads encoding (escapes, IRI/bnode/literal forms, optional
+   graph-IRI tail) lives in formal/fstar/RDF.NQuads.Serialize.fst. *)
 
-(* Delegates to F*'s RDF.NQuads.Serialize.nq_escape_literal. The
-   local OCaml impl was a byte-for-byte duplicate; per CLAUDE.md
-   rule #11 OCaml glue may not carry serialisation logic. *)
+(* Delegates to F*'s RDF.NQuads.Serialize. Per CLAUDE.md rule #11
+   OCaml glue may not carry serialisation logic — the byte-correct
+   N-Quads encoding (escapes, IRI/bnode/literal forms, optional
+   graph-IRI tail) lives in formal/fstar/RDF.NQuads.Serialize.fst. *)
 let escape_literal_lexical : string -> string =
   RDF_NQuads_Serialize.nq_escape_literal
 
-let term_nq (t : rdf_term) : string =
-  match t with
-  | T_IRI i -> "<" ^ i ^ ">"
-  | T_BNode b -> "_:" ^ b
-  | T_Literal l ->
-    let lex = escape_literal_lexical l.lexical_form in
-    (match l.lang_tag with
-     | Some tag -> Printf.sprintf "\"%s\"@%s" lex tag
-     | None ->
-       let xsd_string = "http://www.w3.org/2001/XMLSchema#string" in
-       if l.datatype = xsd_string || l.datatype = ""
-       then Printf.sprintf "\"%s\"" lex
-       else Printf.sprintf "\"%s\"^^<%s>" lex l.datatype)
-
-let subj_nq (s : subject) : string =
-  match s with
-  | S_IRI i -> "<" ^ i ^ ">"
-  | S_BNode b -> "_:" ^ b
+let term_nq : rdf_term -> string = RDF_NQuads_Serialize.nq_term_to_string
+let subj_nq : subject  -> string = RDF_NQuads_Serialize.nq_subject_to_string
 
 let triple_nq (graph : string option) (t : triple) : string =
-  let g = match graph with
-    | Some gi -> Printf.sprintf " <%s>" gi
-    | None -> ""
-  in
-  Printf.sprintf "%s <%s> %s%s .\n" (subj_nq t.s) t.p (term_nq t.o) g
+  match graph with
+  | Some gi -> RDF_NQuads_Serialize.nq_line_for_triple gi t
+  | None    -> RDF_NQuads_Serialize.nq_line_for_triple_default_graph t
 
 (* RDFC-1.0 §3.1: the canonical form sorts the *output* quads
    lexicographically. For Phase 0 we sort to give a fighting chance

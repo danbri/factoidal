@@ -109,3 +109,15 @@ let nq_subject_to_string (s : subject) : Tot string =
 let nq_line_for_triple (graph_iri : string) (t : triple) : Tot string =
   nq_subject_to_string t.s ^ " <" ^ t.p ^ "> "
   ^ nq_term_to_string t.o ^ " <" ^ graph_iri ^ "> .\n"
+
+// ---------------------------------------------------------------
+// nq_line_for_triple_default_graph : N-Triples-style line for a
+// triple in the default (unnamed) graph. Same as
+// nq_line_for_triple but without the trailing graph IRI.
+//
+// Output:  <subject> <predicate> <object> .\n
+// ---------------------------------------------------------------
+
+let nq_line_for_triple_default_graph (t : triple) : Tot string =
+  nq_subject_to_string t.s ^ " <" ^ t.p ^ "> "
+  ^ nq_term_to_string t.o ^ " .\n"
