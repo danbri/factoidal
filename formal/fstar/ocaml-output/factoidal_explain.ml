@@ -226,8 +226,13 @@ let bs_string : bound_status -> string = SPARQL_Explain.bs_string
    - whether the encoded bound succeeded (None → result definitely empty)
    - the F*-computed estimate via cottas_ondisk_estimate
    - whether predicate-presence said the predicate exists
-*)
-type tp_explain = {
+
+   The record type and JSON renderers (`bs_json`, `tpx_json`) live in F* per
+   rule #1 (formal/fstar/SPARQL.Explain.fst). The alias below keeps the
+   legacy field names visible to the rest of this file unchanged.
+   F* extracts `int` as `Prims.int = Z.t`, so `tpx_estimate` is `Z.t` here;
+   call sites convert with `Z.of_int` / `Z.to_int` at the boundary. *)
+type tp_explain = SPARQL_Explain.tp_explain = {
   tpx_label : string;
   tpx_tp : A.triple_pattern;
   tpx_s_status : bound_status;
@@ -235,7 +240,7 @@ type tp_explain = {
   tpx_o_status : bound_status;
   tpx_bound_built : bool;
   tpx_pred_present : bool option;
-  tpx_estimate : int;
+  tpx_estimate : Prims.int;
 }
 
 let explain_triple_pattern_against_store
@@ -326,7 +331,7 @@ let explain_triple_pattern_against_store
     tpx_o_status = o_status;
     tpx_bound_built = bound_built;
     tpx_pred_present = pred_present;
-    tpx_estimate = estimate;
+    tpx_estimate = Z.of_int estimate;
   }
 
 (* =========================================================================
@@ -381,14 +386,16 @@ let optimiser_order_for_bgp_from_explains
     (rows : tp_explain list)
     (patterns : A.bgp)
   : A.triple_pattern list =
-  (* Build a quick lookup tp -> estimate. *)
+  (* Build a quick lookup tp -> estimate. Estimates are Prims.int (Z.t)
+     after the SPARQL.Explain.fst migration; compare with Z.lt and use
+     a large Z.t sentinel for "not found". *)
   let est_of tp =
     match List.find_opt (fun r ->
       A.pattern_subject_eq r.tpx_tp.A.tp_s tp.A.tp_s
       && A.pattern_term_eq r.tpx_tp.A.tp_p tp.A.tp_p
       && A.pattern_term_eq r.tpx_tp.A.tp_o tp.A.tp_o) rows with
     | Some r -> r.tpx_estimate
-    | None -> max_int
+    | None -> Z.of_int max_int
   in
   let rec loop (remaining : A.bgp) (acc : A.triple_pattern list) =
     match remaining with
@@ -399,7 +406,7 @@ let optimiser_order_for_bgp_from_explains
         match best with
         | None -> Some tp, rest_rev
         | Some b ->
-          if est_of tp < est_of b then Some tp, b :: rest_rev
+          if Z.lt (est_of tp) (est_of b) then Some tp, b :: rest_rev
           else Some b, tp :: rest_rev
       ) (None, []) remaining in
       match best with
@@ -431,25 +438,12 @@ let rec index_of_tp (tp : A.triple_pattern) (tps : (string * A.triple_pattern) l
    alias keeps the local symbol for downstream callers. *)
 let json_escape : string -> string = SPARQL_JSON_Escape.json_escape
 
-let bs_json = function
-  | BS_Var v -> Printf.sprintf "{\"kind\":\"var\",\"name\":\"%s\"}" (json_escape v)
-  | BS_Hit s -> Printf.sprintf "{\"kind\":\"hit\",\"term\":\"%s\"}" (json_escape s)
-  | BS_Miss s -> Printf.sprintf "{\"kind\":\"miss\",\"term\":\"%s\"}" (json_escape s)
-  | BS_Other s -> Printf.sprintf "{\"kind\":\"other\",\"term\":\"%s\"}" (json_escape s)
+(* bs_json and tpx_json live in F* per rule #1
+   (formal/fstar/SPARQL.Explain.fst). The OCaml glue may not carry
+   rendering logic (rule #11). *)
+let bs_json : bound_status -> string = SPARQL_Explain.bs_json
 
-let tpx_json (tpx : tp_explain) : string =
-  Printf.sprintf
-    "{\"label\":\"%s\",\"pattern\":\"%s\",\"s\":%s,\"p\":%s,\"o\":%s,\"bound_built\":%b,\"predicate_present\":%s,\"estimate\":%d}"
-    (json_escape tpx.tpx_label)
-    (json_escape (triple_pattern_short tpx.tpx_tp))
-    (bs_json tpx.tpx_s_status)
-    (bs_json tpx.tpx_p_status)
-    (bs_json tpx.tpx_o_status)
-    tpx.tpx_bound_built
-    (match tpx.tpx_pred_present with
-     | None -> "null"
-     | Some b -> if b then "true" else "false")
-    tpx.tpx_estimate
+let tpx_json : tp_explain -> string = SPARQL_Explain.tpx_json
 
 (* =========================================================================
    Index-use summary.
@@ -593,7 +587,7 @@ let explain_query
        Printf.fprintf out "    predicate-presence: %s\n"
          (if b then "true (present in dictionary)"
           else "false (predicate ABSENT from corpus)"));
-    Printf.fprintf out "    estimate: %d row(s)\n" r.tpx_estimate;
+    Printf.fprintf out "    estimate: %s row(s)\n" (Z.to_string r.tpx_estimate);
     Printf.fprintf out "\n";
     flush out
   ) rows;
@@ -617,9 +611,9 @@ let explain_query
         A.pattern_subject_eq r.tpx_tp.A.tp_s tp.A.tp_s
         && A.pattern_term_eq r.tpx_tp.A.tp_p tp.A.tp_p
         && A.pattern_term_eq r.tpx_tp.A.tp_o tp.A.tp_o) rows with
-        | Some r -> r.tpx_estimate
-        | None -> -1 in
-      Printf.fprintf out " %s(est=%d)" lbl est
+        | Some r -> Z.to_string r.tpx_estimate
+        | None -> "-1" in
+      Printf.fprintf out " %s(est=%s)" lbl est
     ) order;
     Printf.fprintf out "\n"
   in
