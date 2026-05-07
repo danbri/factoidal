@@ -308,26 +308,15 @@ let usage () =
    "*" -> CORS_Any; otherwise split on commas and trim whitespace. An empty
    list (e.g. --cors= with nothing after) falls back to CORS_Off so the flag
    is effectively a no-op rather than rejecting every origin silently. *)
-let parse_cors_value (v : string) : cors_policy =
-  let v = String.trim v in
-  if v = "*" then CORS_Any
-  else begin
-    let parts =
-      String.split_on_char ',' v
-      |> List.map String.trim
-      |> List.filter (fun s -> s <> "")
-    in
-    match parts with
-    | [] -> CORS_Off
-    | _  -> CORS_List parts
-  end
+(* Forward to the F*-verified parse + display functions in
+   SPARQL_HTTP_Response. The semantic decisions (string -> CORS variant,
+   variant -> human description) are F*-source-of-truth per rule #1.
+   See formal/fstar/SPARQL.HTTP.Response.fst. *)
+let parse_cors_value : string -> cors_policy =
+  SPARQL_HTTP_Response.parse_cors_value
 
-(* Human-readable description of the CORS mode, for the startup log. *)
-let cors_mode_to_string = function
-  | CORS_Off -> "off (no Access-Control-* headers)"
-  | CORS_Any -> "any origin (Access-Control-Allow-Origin: *)"
-  | CORS_List origins ->
-    Printf.sprintf "allowlist (%s)" (String.concat ", " origins)
+let cors_mode_to_string : cors_policy -> string =
+  SPARQL_HTTP_Response.cors_mode_to_string
 
 (* Split "--key=value" into ("--key", Some "value"); otherwise (arg, None). *)
 let split_eq arg =
@@ -912,15 +901,18 @@ let response_format_of_accept accept =
   let entries = P.parse_accept_header accept in
   P.pick_response_format entries P.RF_Json
 
-(* Extract variable list from a SELECT query (same shape as factoidal_cli). *)
+(* Extract variable list from a SELECT query.
+   The "explicit projection" half (Select_Vars items) goes through the
+   F*-verified SPARQL11_Algebra.select_item_vars (rule #1 — F* is the
+   source of truth for SPARQL semantics). The star-projection fallback
+   "collect distinct vars from the actual result rows in first-seen
+   order" stays here as glue: it observes runtime data, doesn't make a
+   semantic decision about what the SELECT clause projects. *)
 let select_vars query results =
   match query.q_form with
   | QF_Select (Select_Vars items) ->
-    List.map (fun item -> match item with
-      | SI_Var v -> v
-      | SI_Expr (_, v) -> v) items
+    SPARQL11_Algebra.select_item_vars items
   | _ ->
-    (* Star projection — collect from actual result rows, keep first-seen order. *)
     let seen = Hashtbl.create 16 in
     let acc = ref [] in
     List.iter (fun row ->

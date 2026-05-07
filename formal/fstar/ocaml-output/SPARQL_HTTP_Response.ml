@@ -91,3 +91,53 @@ let (query_timeout_response_body : Prims.int -> Prims.string) =
       ["{\"error\":\"query_timeout\",\"seconds\":";
       Prims.string_of_int secs;
       ",\"hint\":\"Add LIMIT or bind more triple-pattern terms.\"}\n"]
+let (is_ascii_ws : FStar_Char.char -> Prims.bool) =
+  fun c ->
+    let n = FStar_Char.int_of_char c in
+    (((n = (Prims.of_int (0x20))) || (n = (Prims.of_int (0x09)))) ||
+       (n = (Prims.of_int (0x0A))))
+      || (n = (Prims.of_int (0x0D)))
+let rec (drop_leading_ws :
+  FStar_Char.char Prims.list -> FStar_Char.char Prims.list) =
+  fun cs ->
+    match cs with
+    | [] -> []
+    | c::rest -> if is_ascii_ws c then drop_leading_ws rest else cs
+let (trim_ascii : Prims.string -> Prims.string) =
+  fun s ->
+    let cs = FStar_String.list_of_string s in
+    let l = drop_leading_ws cs in
+    let r =
+      FStar_List_Tot_Base.rev (drop_leading_ws (FStar_List_Tot_Base.rev l)) in
+    FStar_String.string_of_list r
+let rec (map_trim : Prims.string Prims.list -> Prims.string Prims.list) =
+  fun xs ->
+    match xs with | [] -> [] | x::rest -> (trim_ascii x) :: (map_trim rest)
+let rec (drop_empty : Prims.string Prims.list -> Prims.string Prims.list) =
+  fun xs ->
+    match xs with
+    | [] -> []
+    | x::rest -> if x = "" then drop_empty rest else x :: (drop_empty rest)
+let (parse_cors_value : Prims.string -> cors_policy) =
+  fun raw ->
+    let v = trim_ascii raw in
+    if v = "*"
+    then CORS_Any
+    else
+      (let parts = drop_empty (map_trim (FStar_String.split [44] v)) in
+       match parts with | [] -> CORS_Off | uu___1 -> CORS_List parts)
+let rec (join_with_comma_space : Prims.string Prims.list -> Prims.string) =
+  fun xs ->
+    match xs with
+    | [] -> ""
+    | x::[] -> x
+    | x::rest ->
+        Prims.strcat x (Prims.strcat ", " (join_with_comma_space rest))
+let (cors_mode_to_string : cors_policy -> Prims.string) =
+  fun p ->
+    match p with
+    | CORS_Off -> "off (no Access-Control-* headers)"
+    | CORS_Any -> "any origin (Access-Control-Allow-Origin: *)"
+    | CORS_List origins ->
+        Prims.strcat "allowlist ("
+          (Prims.strcat (join_with_comma_space origins) ")")
