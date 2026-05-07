@@ -1,6 +1,6 @@
 ---
 name: issue-hygiene
-description: Sweep open GitHub issues against recent merged PRs + active design docs; close-with-link, update, or leave alone. Use on Fridays, after a merge cluster, when an issue is referenced in a PR body, or whenever the user types /issue-hygiene. Tracker is danbri/factoidal#198. Pairs with the github-and-prs skill for the gh CLI mechanics.
+description: Keep GitHub issues + their checklists / comments in sync with PR landings as work progresses (live tracking) AND run periodic sweeps for drift. Use AS PRs MERGE to tick checklist boxes and post short progress comments — don't batch this until Friday. Run a fuller sweep on Fridays, after a merge cluster, or when user types /issue-hygiene. Tracker is danbri/factoidal#198; migration epic is #200. Pairs with the github-and-prs skill.
 ---
 
 # Issue tracker hygiene
@@ -13,7 +13,63 @@ covered-by the recovery plan. This skill keeps the tracker honest.
 The standing home for findings + tech-debt items is **#198 (Issue
 tracker hygiene)**. The migration tracker is **#200**.
 
-## When to invoke
+There are **two postures** for this skill:
+
+- **Live tracking** — update issues as work lands, in the same session
+  the work happens. This is the default posture during active dev.
+- **Periodic sweep** — Friday afternoon, after a merge cluster, or
+  when explicitly invoked. Catches everything that the live-tracking
+  posture missed.
+
+## Live tracking — during active work
+
+The migration epic (#200) and any "tracker" issue (e.g. #198, profile-
+specific epics) carry checklists. As work lands on `claude/main`, those
+checklists fall out of date the moment the PR merges.
+
+**Rule of thumb**: every time a PR merges that ticks a checkbox, post a
+one-line update. Every time scores change, refresh the affected
+issues / docs in the same session.
+
+### Triggers
+
+- **PR merged that resolves a checkbox in a tracker issue.** Tick the
+  checkbox in the issue body; post a one-line comment naming the PR.
+- **PR merged that flips a W3C test suite score.** Update #200's
+  "Score snapshot" comment / checklist with the new pass/fail count.
+- **Agent reports back with a useful diagnosis** (even if no PR
+  lands). Post the diagnosis as a comment on the relevant issue so
+  the next agent doesn't re-investigate.
+- **Merge cluster ends** (≥3 PRs merged in <1 hour, then a quiet
+  period). Post a single status update on #200 summarising what
+  landed + new score snapshot.
+
+### What to post (live tracking)
+
+Short. Single sentence + PR link. Optional 1-line score delta. Examples:
+
+> #229 merged: prp-key (HasKey) lands. Profile-RL OWL 2 RL: 15 → 16
+> pass.
+
+> #230 merged: harness fix for imports-011. Profile-RL OWL 2 RL: 16 →
+> 17 pass (combined with #229).
+
+> Cluster K diagnosis update: agent confirmed Parser.RDFXML.fst is
+> §6.1.4-correct; the fix moves harness-side. See #227 for the
+> decision-gate doc.
+
+For the migration epic specifically: tick the relevant checkbox in
+the issue body using the `update_issue` API. Don't add the comment
+AND tick the box in two separate API calls — do both.
+
+### What NOT to post (live tracking)
+
+- Long progress essays — those go in design docs.
+- "Working on it" updates with no concrete change.
+- Sycophantic adjectives — see the `markdown-style` skill.
+- A new comment per merge in a 5-PR cluster — bundle into one.
+
+## When to invoke (full sweep)
 
 - **Friday** afternoon — full-sweep hygiene pass.
 - **After a merge cluster** (≥3 PRs merged in <1 hour) — quick pass to
