@@ -2900,6 +2900,120 @@ let owl_rule_property_chain_2 (g : rdf_graph) : rdf_graph =
     g
     g
 
+// Decode an arbitrary-length RDF Collection rooted at `head_subj`.
+// Walks rdf:first / rdf:rest links until rdf:nil (or runs out of fuel).
+// Returns `Some [p1; ...; pn]` for a well-formed list of IRIs of length
+// >= 1. Returns `None` if the list is empty (head = rdf:nil), malformed
+// (missing first/rest, multi-headed), contains a non-IRI element, or
+// exceeds the fuel bound. Fuel bound caps chain length and guarantees
+// termination. Cluster A of OWL 2 RL next-steps (issue #207).
+let rec decode_chain_list_fuel (g : rdf_graph) (head_subj : subject) (fuel : nat)
+  : Tot (option (list wf_iri)) (decreases fuel) =
+  // rdf:nil terminates a (sub-)list. The full chain is empty here, which
+  // we reject upstream — a propertyChainAxiom of length 0 has no semantics.
+  let is_nil =
+    match head_subj with
+    | S_IRI i -> i = rdf_nil_iri
+    | _       -> false
+  in
+  if is_nil then Some []
+  else if fuel = 0 then None
+  else
+    let firsts = find_objects g head_subj rdf_first in
+    let rests  = find_objects g head_subj rdf_rest  in
+    match firsts, rests with
+    | (T_IRI p1) :: _, tail_term :: _ ->
+      (match term_to_subject tail_term with
+       | Some tail_subj ->
+         (match decode_chain_list_fuel g tail_subj (fuel - 1) with
+          | Some tail_props -> Some (p1 :: tail_props)
+          | None            -> None)
+       | None -> None)
+    | _, _ -> None
+
+// Wrapper: chain length is bounded by graph_len (each list cell costs at
+// least one rdf:rest triple). Reject empty / overlong / malformed lists.
+let decode_chain_list (g : rdf_graph) (head_subj : subject)
+  : option (list wf_iri) =
+  let fuel : nat = graph_len g + 1 in
+  match decode_chain_list_fuel g head_subj fuel with
+  | Some [] -> None
+  | x       -> x
+
+// Given a chain [p1; p2; ...; pn] and a starting subject `x`, return the
+// list of terms `z` reachable by the n-hop join
+//   x -p1-> y1 -p2-> y2 ... -pn-> z
+// in `g`. Stack-safe via fold_left over the per-step frontier.
+// Empty input chain returns `[subject_to_term x]` (identity); the rule
+// rejects empty chains upstream so this is a defensive default.
+let rec find_chain_endpoints (g : rdf_graph) (chain : list wf_iri) (x : subject)
+  : Tot (list rdf_term) (decreases chain) =
+  match chain with
+  | [] -> [subject_to_term x]
+  | p :: rest ->
+    let next_terms = find_objects g x p in
+    List.Tot.fold_left
+      (fun (acc : list rdf_term) (y_term : rdf_term) ->
+        match term_to_subject y_term with
+        | Some y_subj -> List.Tot.append acc (find_chain_endpoints g rest y_subj)
+        | None        -> acc)
+      []
+      next_terms
+
+// prp-spo2 (general n>=2): for each (P owl:propertyChainAxiom L) where L
+// decodes to [P1; ...; Pn] (n >= 2), and for every starting subject x
+// such that there is a path
+//   x -P1-> y1 -P2-> y2 ... -Pn-> z
+// in g, emit (x P z). Generalises owl_rule_property_chain_2 to arbitrary
+// chain length. Cluster A of OWL 2 RL next-steps (issue #207).
+//
+// Termination: outer fold over chain-axiom triples; inner fold over the
+// finite set of starting subjects (every triple's subject); the recursive
+// find_chain_endpoints decreases on the chain. add_triple_if_new keeps
+// the closure idempotent.
+//
+// We deliberately fire only for n >= 2 — n = 1 is exactly rdfs:subPropertyOf
+// and is already covered by owl_rule_subProperty_propagation; n = 0 has
+// no semantics. The n = 2 case overlaps with owl_rule_property_chain_2;
+// running both is a no-op (add_triple_if_new dedupes).
+let owl_rule_property_chain_n (g : rdf_graph) : rdf_graph =
+  // Distinct subjects appearing in g — candidates for the path-start x.
+  let starting_subjects : list subject =
+    List.Tot.fold_left
+      (fun (acc : list subject) (t : triple) ->
+        if List.Tot.existsb (fun s -> subject_eq s t.s) acc
+        then acc else t.s :: acc)
+      []
+      g
+  in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (chain_t : triple) ->
+      if chain_t.p = owl_propertyChainAxiom then
+        match chain_t.s, term_to_subject chain_t.o with
+        | S_IRI p_iri, Some list_subj ->
+          (match decode_chain_list g list_subj with
+           | Some chain ->
+             // n >= 2 only — n = 1 is subPropertyOf, n = 0 is meaningless.
+             if List.Tot.length chain >= 2 then
+               List.Tot.fold_left
+                 (fun (acc1 : rdf_graph) (x : subject) ->
+                   let zs = find_chain_endpoints g chain x in
+                   List.Tot.fold_left
+                     (fun (acc2 : rdf_graph) (z_term : rdf_term) ->
+                       let new_t : triple =
+                         { s = x; p = p_iri; o = z_term } in
+                       add_triple_if_new acc2 new_t)
+                     acc1
+                     zs)
+                 acc
+                 starting_subjects
+             else acc
+           | None -> acc)
+        | _, _ -> acc
+      else acc)
+    g
+    g
+
 // scm-trans-from-chain (sound but not in OWL 2 RL/RDF Table 9): if
 // (P owl:propertyChainAxiom (P P)) — i.e. a chain of length 2 of P
 // composed with itself — then P is transitive. Drives the chain2trans1
@@ -3278,10 +3392,16 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   let g20 = owl_rule_reflexive_property g19 in
   // scm-cls (partial): owl:Restriction subjects are also owl:Class.
   let g21 = owl_rule_scm_cls_restriction g20 in
-  // Tier-2: prp-spo2 (n=2 chain composition), then scm-trans-from-chain
-  // (chain (P P) recognises P as transitive), then named-sameAs-to-eqClass.
+  // Tier-2: prp-spo2 (n=2 chain composition), then prp-spo2 (n>=3
+  // generalised chain), then scm-trans-from-chain (chain (P P)
+  // recognises P as transitive), then named-sameAs-to-eqClass.
+  // n=2 specialisation runs first as a fast path; n>=3 generaliser
+  // covers arbitrary chain length and is idempotent on n=2 inputs
+  // (add_triple_if_new dedupes). Cluster A of OWL 2 RL next-steps
+  // (issue #207).
   let g22 = owl_rule_property_chain_2 g21 in
-  let g23 = owl_rule_chain_to_transitive g22 in
+  let g22a = owl_rule_property_chain_n g22 in
+  let g23 = owl_rule_chain_to_transitive g22a in
   let g24 = owl_rule_named_sameAs_to_equivClass g23 in
   // Tier-3: XSD datatype hierarchy + rdfs:Datatype axioms (gated on the
   // graph mentioning any XSD IRI). Targets WebOnt-I5.8-006/008/009/011.
