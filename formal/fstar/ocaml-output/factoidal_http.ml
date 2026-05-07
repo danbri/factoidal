@@ -962,31 +962,18 @@ let select_vars query results =
    GB_CottasOnDisk without materialising the corpus in RAM. The
    evaluators return option (None for unsupported query forms); we
    surface that as an empty result rather than 500. *)
-(* Qof3 defensive instrumentation: log backend kind + form before any
-   F*-evaluator call so we can correlate stderr traces to the request.
-   Diagnostic only (rule #15 — no semantic logic). *)
-let rec qof3_graph_kind (g : S.graph_backend) : string =
-  match g with
-  | S.GB_List _ -> "GB_List"
-  | S.GB_Indexed _ -> "GB_Indexed"
-  | S.GB_HDT _ -> "GB_HDT"
-  | S.GB_COTTAS _ -> "GB_COTTAS"
-  | S.GB_CottasOnDisk _ -> "GB_CottasOnDisk"
-  | S.GB_Union gs ->
-    let parts = List.map qof3_graph_kind gs in
-    "GB_Union[" ^ String.concat "," parts ^ "]"
+(* Qof3 defensive instrumentation stringifiers live in F*
+   (SPARQL.Diagnostics). The OCaml side here is now a thin alias so
+   the existing call sites in run_query / parse_and_run_timed don't
+   have to change. Rule #1 / #15. *)
+let qof3_graph_kind (g : S.graph_backend) : string =
+  SPARQL_Diagnostics.graph_backend_kind_string g
 
 let qof3_backend_kind (b : S.dataset_backend) : string =
-  Printf.sprintf "{default=%s; named=%d graph(s)}"
-    (qof3_graph_kind b.S.dsb_default)
-    (List.length b.S.dsb_named)
+  SPARQL_Diagnostics.dataset_backend_kind_string b
 
 let qof3_query_form_str (q : SPARQL11_Algebra.query) : string =
-  match q.q_form with
-  | QF_Ask -> "ASK"
-  | QF_Select _ -> "SELECT"
-  | QF_Construct _ -> "CONSTRUCT"
-  | QF_Describe _ -> "DESCRIBE"
+  SPARQL_Diagnostics.query_form_string q
 
 (* Build the standard 413 result-cap response. Used by run_query when the
    BGP/algebra evaluator returns more rows than the configured [max_rows]
