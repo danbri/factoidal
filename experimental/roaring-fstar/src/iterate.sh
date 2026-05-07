@@ -21,13 +21,13 @@ fi
 
 cd "$(dirname "$0")"
 
-MODULES=(Spec Container.Array Test)
+MODULES=(Spec Bits Container.Array Container.Bitmap Test)
 
 for m in "${MODULES[@]}"; do
   echo "=========================="
   echo "Verifying: $m"
   echo "=========================="
-  if ! fstar.exe "${m}.fst"; then
+  if ! fstar.exe --z3version 4.13.3 "${m}.fst"; then
     echo
     echo "FAILED on $m. Stop." >&2
     exit 1
