@@ -1,5 +1,7 @@
 # 2026-05-07 — F\* debt reduction + C build + Roaring continuation plan
 
+Last refreshed: 2026-05-07 (suite scores re-measured against live runner).
+
 ## Objective
 
 Three coordinated tracks, executed in parallel where independent:
@@ -23,11 +25,10 @@ those tend to be `noeq`-free pure-data transforms.
 
 ## Status going in (2026-05-07 morning)
 
-- **F\* test scores (unchanged for weeks; OCaml→F\* migrations are
+- **F\* test scores (re-measured 2026-05-07; OCaml→F\* migrations are
   pure refactors, so they shouldn't move the dial — and don't):**
-  SPARQL 626 pass, 1 fail, 4 skip out of 631 (99.84% pass-vs-fail,
-  99.2% pass-vs-total). RDF 1031 pass, 0 fail out of 1031 (100%).
-  Combined: 1657/1658 = 99.94% pass-vs-fail.
+  SPARQL 630 pass, 1 fail (out of 631; 99.84%). RDF 1031 pass, 0 fail
+  out of 1031 (100%). Combined: 1661 pass, 1 fail (out of 1662).
 - **OCaml glue:** ~4779 LoC across 9 `factoidal_*.ml` files; `S`-class
   semantic content has shrunk dramatically across the recent 13-PR
   migration cluster.
