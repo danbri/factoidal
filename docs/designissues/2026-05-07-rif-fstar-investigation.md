@@ -1,16 +1,25 @@
 # 2026-05-07 — F\* RIF engine investigation
 
+Last refreshed: 2026-05-07 (entailment-suite numbers updated to live
+runner output; investigation premise is now historical — see status
+note below).
+
 ## Status
 
-Design investigation. Doc-only. Decision pending. No code lands until
-the open questions in the final section are resolved by the user.
+Design investigation. Superseded by implementation. The RIF Core
+engine sketched here has landed (see `RIF.Core.Eval.fst`,
+`RIF.Core.Tests.fst`, and the RIF dispatch added to
+`formal/fstar/ocaml-output/w3c_runner.ml`). The four previously-skipped
+RIF entailment-regime tests now pass.
 
-The current W3C SPARQL 1.1 score in
-[`docs/test-results/latest.json`](../test-results/latest.json) is
-626 pass, 1 fail, 4 skip (out of 631). All 4 skips are
-RIF entailment-regime tests under the `entailment` suite. This
-document explores whether a minimal F\*-verified RIF Core engine
-can resolve those 4 skips, and at what cost.
+The current W3C SPARQL 1.1 score against
+`bin/linux-x86_64/w3c_runner --all` is 630 pass, 1 fail (out of 631).
+Within the `entailment` suite specifically the score is 69 pass, 1 fail
+(out of 70); `docs/test-results/latest.json` still records the older
+65-pass, 1-fail, 4-skip breakdown. The remaining fail is a single
+non-RIF OWL DL cardinality case (`parent query with (hasChild max 1
+Female) restriction`). The body of this document remains as the
+design rationale for the RIF Core build that shipped.
 
 ## Background
 

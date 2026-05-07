@@ -1,5 +1,7 @@
 # 2026-05-07 — Tableau.fst audit + next-steps
 
+Last refreshed: 2026-05-07 (entailment-suite numbers updated to live runner output).
+
 ## Status
 
 Audit. Doc-only. No F\* / OCaml code edits in this PR-equivalent.
@@ -153,14 +155,14 @@ extraction) without running them.
 
 The runner exercises Tableau **on every OWL-Direct test** (§"What
 this gets you" in the entailment audit). The current SPARQL 1.1
-entailment suite score is **51 pass / 70 total** (per
-`docs/claude-rules/current-state.md`); the +2 attributable to
-stage-(b) class-expression satisfiability and the +0 from stage-(c)
-cardinality (commits `3f80014`, `eac72ae`) are reflected in that
-denominator. The remaining ~19 entailment failures
-correspond to the deferred stages (d), (e), (f) below plus the 2
-RIF tests (which are out of scope — they need a RIF rule engine,
-not OWL-DL).
+entailment suite score is **69 pass, 1 fail (out of 70)** (verified
+2026-05-07 against `bin/linux-x86_64/w3c_runner entailment`);
+the +2 attributable to stage-(b) class-expression satisfiability and
+the +0 from stage-(c) cardinality (commits `3f80014`, `eac72ae`) are
+reflected in that score. The single remaining entailment failure
+corresponds to a deferred-stage case below; the historical RIF tests
+that previously contributed to the gap are out of scope (they need a
+RIF rule engine, not OWL-DL).
 
 ## What it appears to do
 

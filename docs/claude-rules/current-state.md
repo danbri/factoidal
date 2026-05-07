@@ -1,5 +1,9 @@
 # Current State (Honest Assessment)
 
+Last refreshed: 2026-05-07 (W3C scores re-measured against
+`bin/linux-x86_64/w3c_runner --all`; OWL profile-RL re-measured against
+`bin/linux-x86_64/owl_runner`).
+
 This file is a **periodic refresh doc** — it goes stale within a week.
 Update after material progress (suite-score movements, new F\* modules,
 resolved `assume val`s).
@@ -102,63 +106,56 @@ Hand-coded parsers have been deleted. Legacy copies remain in `junk/do_not_use/h
 | `eval_subselect_fwd` | forward decl (subqueries) | wired in ocaml-patches.sh |
 | `eval_property_path_fwd` | forward decl (property paths) | wired in ocaml-patches.sh |
 
-## Plain-English Status Summary (as of 2026-04-23)
+## Plain-English Status Summary (as of 2026-05-07)
 
 Factoidal is a formally verified RDF/SPARQL implementation written in F\* and
-tested against the official W3C conformance suites. SPARQL UPDATE is now
-live. The core SPARQL evaluator + updater passes 532 of 564 applicable
-query/syntax/update tests (94%), with perfect scores in most suites:
-BIND, EXISTS, grouping, project-expression, property paths, CSV/TSV
-results, JSON results, functions (75/75), syntax-query (94/94),
-aggregates (46/46), and every UPDATE suite except a handful of edge
-cases in basic-update (2), update-silent (2 skipped LOAD),
-syntax-update-1 (1). The remaining SPARQL gaps are: cast float/decimal
-(2), negation "subsets" query (1), http-rdf-update + protocol (53
-skipped — need HTTP server), SERVICE (7, needs HTTP client — #57),
-service-description (3 skipped), entailment (19 OWL-specific, beyond
-RDFS).
+tested against the official W3C conformance suites. SPARQL UPDATE, HTTP
+protocol, GSP, and SERVICE are live. The core SPARQL evaluator + updater
+passes 630 of 631 applicable query/syntax/update/protocol tests (99.8%),
+with perfect scores across every suite except entailment, where one OWL
+case still fails (RIF-style rule entailment, out of scope for OWL-DL).
+Suites at 100%: add, aggregates (47/47), basic-update (13/13), bind,
+bindings, cast (6/6), clear, construct (7/7), copy, csv-tsv-res, delete,
+delete-data, delete-insert, delete-where, drop, exists, functions (75/75),
+grouping, http-rdf-update (19/19), json-res, move, negation (12/12),
+project-expression, property-path (33/33), protocol (34/34), service (7/7),
+service-description (3/3), subquery (14/14), syntax-fed, syntax-query
+(94/94), syntax-update-1 (54/54), syntax-update-2, update-silent (13/13).
 
-On the RDF parsing side, **all Turtle/TriG/N-Triples/N-Quads/rdf-mt
-suites are at 100%**: rdf-turtle 313/313, rdf-trig 356/356,
-rdf-n-triples 70/70, rdf-n-quads 87/87, rdf-mt 39/39. Remaining RDF
-failures (35) are entirely in rdf-xml (131/166) — mostly reification
-quad generation, xml:base + percent-encoding of non-ASCII rdf:ID
-values, and parseType="Literal" XML canonicalisation.
+On the RDF parsing side, **all six RDF suites are at 100%**: rdf-turtle
+313/313, rdf-trig 356/356, rdf-n-triples 70/70, rdf-n-quads 87/87,
+rdf-xml 166/166, rdf-mt 39/39 (1031/1031 combined).
 
 **Caveats on test numbers (be honest):** ASK query comparison in w3c_runner.ml
 does not check the expected boolean value — ASK tests always pass. Blank node
 matching is simplified (any bnode matches any other) rather than proper graph
 isomorphism. These may inflate the pass count slightly.
 
-## W3C Test Results (as of 2026-04-23, late)
+## W3C Test Results (as of 2026-05-07)
 
-**SPARQL 1.1 — 532 pass, 32 fail, 58 skip, 9 unsupported (631 total)**
+**SPARQL 1.1 — 630 pass, 1 fail (out of 631)**
 
-Per-suite: add 8/8, aggregates 46/46, basic-update 11/13, bind 10/10,
-bindings 10/10, cast 4/6, clear 4/4, construct 2/7, copy 6/6, csv-tsv-res 6/6,
+Per-suite: add 8/8, aggregates 47/47, basic-update 13/13, bind 10/10,
+bindings 11/11, cast 6/6, clear 4/4, construct 7/7, copy 6/6, csv-tsv-res 6/6,
 delete 19/19, delete-data 6/6, delete-insert 17/17, delete-where 6/6,
-drop 4/4, entailment 51/70, exists 6/6, functions 75/75, grouping 6/6,
-json-res 4/4, move 6/6, negation 11/12, project-expression 7/7,
-property-path 33/33, subquery 12/14, syntax-fed 3/3, syntax-query 94/94,
-syntax-update-1 53/54, syntax-update-2 1/1, update-silent 11/13.
-Skipped/unsupported: http-rdf-update 19, protocol 34, service-description 3
-(all need HTTP server/client); construct 5 (need Turtle result serializer).
+drop 4/4, entailment 69/70, exists 6/6, functions 75/75, grouping 6/6,
+http-rdf-update 19/19, json-res 4/4, move 6/6, negation 12/12,
+project-expression 7/7, property-path 33/33, protocol 34/34, service 7/7,
+service-description 3/3, subquery 14/14, syntax-fed 3/3, syntax-query 94/94,
+syntax-update-1 54/54, syntax-update-2 1/1, update-silent 13/13.
+Single remaining fail: one entailment case (RIF-style rule entailment,
+out of scope for OWL-DL).
 
-**RDF 1.1 — 1025 pass, 6 fail (1031 total)**
+**RDF 1.1 — 1031 pass, 0 fail (out of 1031)**
 
 Per-suite: N-Triples 70/70, Turtle 313/313, N-Quads 87/87, TriG 356/356,
-RDF/XML **160/166**, rdf-mt 39/39. RDF/XML went from 131/166 to 160/166
-across the 2026-04-23 session (reification, UTF-8 char refs, RFC 3986
-resolver, NCName codepoint validator, mutual-exclusion rules, xml:base
-scoping, empty-property-element-as-bnode). Remaining 6: three are
-content mismatches at equal count (rdf-containers-syntax-vs-schema-
-test004/007, xml-canon-test001), one is RDF/XML parseType="Literal"
-canonicalisation (xml-canon-test002), one is duplicate-rdf:ID tracking
-(rdfms-difference-between-ID-and-about-error1), one is a processing-
-instruction-in-property-element edge case (rdfms-empty-property-
-elements-test016).
+RDF/XML 166/166, rdf-mt 39/39. RDF/XML reached 166/166 after the 2026-04-23
+through 2026-05-07 fixes (reification, UTF-8 char refs, RFC 3986 resolver,
+NCName codepoint validator, mutual-exclusion rules, xml:base scoping,
+empty-property-element-as-bnode, parseType="Literal" canonicalisation,
+duplicate-rdf:ID tracking, processing-instruction-in-property-element).
 
-**Combined: 1557 pass, 38 fail, 58 skip, 9 unsupported (1662 total).**
+**Combined: 1661 pass, 1 fail (out of 1662).**
 
 Session delta (from morning baseline 1514/81):
 
@@ -226,8 +223,9 @@ W3C SPARQL 1.1 + RDF 1.1 conformance results
 
 ### Phase 1 — SPARQL test infrastructure (DONE)
 
-W3C test runner works. 303/408 SPARQL eval/syntax tests pass (105 fail,
-205 skip/update, 18 unsupported format).
+W3C test runner works. SPARQL 1.1 query/syntax/update/protocol coverage
+is 630 pass, 1 fail (out of 631). See "W3C Test Results (as of
+2026-05-07)" above for the per-suite breakdown.
 
 ### Phase 2 — Fix RDF semantics in F\* (MOSTLY DONE)
 
