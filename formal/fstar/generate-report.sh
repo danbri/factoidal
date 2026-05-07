@@ -288,16 +288,14 @@ ROW
 SPARQL_ROWS_HTML=$(emit_suite_rows "$SPARQL_SUITES")
 RDF_ROWS_HTML=$(emit_suite_rows "$RDF_SUITES")
 
-# RDFC-1.0 row for the RDF 1.1 panel.
-# rdfc10_runner emits a single labelled-totals line; synthesize the same
-# shape that emit_suite_rows expects so we share styling with the rest of
-# the suites.
-if [ "$RDFC10_PRESENT" -eq 1 ]; then
-  RDFC10_BLOB="  rdf-canon  pass:${RDFC10_PASS} fail:${RDFC10_FAIL} skip:${RDFC10_SKIP} unsupported:0"
-  RDFC10_ROW_HTML=$(emit_suite_rows "$RDFC10_BLOB")
-  RDF_ROWS_HTML="${RDF_ROWS_HTML}
-${RDFC10_ROW_HTML}"
-fi
+# Note: RDFC-1.0 (RDF Dataset Canonicalization) is a SEPARATE W3C
+# corpus (vendored at third_party/testing/rdf-canon/). Earlier
+# versions of this report stitched a synthetic "rdf-canon" row into
+# the RDF 1.1 panel above, which made readers think the 26 RDFC-1.0
+# fails were RDF 1.1 core fails. They are not — the RDF 1.1 totals
+# (~1031 tests) come exclusively from third_party/testing/w3c/rdf/
+# rdf11/{rdf-mt, rdf-n-quads, rdf-n-triples, rdf-trig, rdf-turtle,
+# rdf-xml}. RDFC-1.0 has its own dedicated panel below.
 
 # --- OWL 2 panel ---------------------------------------------------------
 # Distinct corpus, distinct denominator; deliberately NOT folded into the
