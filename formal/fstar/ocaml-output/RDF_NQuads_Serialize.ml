@@ -59,3 +59,12 @@ let (nq_line_for_triple :
               (Prims.strcat "> "
                  (Prims.strcat (nq_term_to_string t.RDF_Graph_Executable.o)
                     (Prims.strcat " <" (Prims.strcat graph_iri "> .\n"))))))
+let (nq_line_for_triple_default_graph :
+  RDF_Graph_Executable.triple -> Prims.string) =
+  fun t ->
+    Prims.strcat (nq_subject_to_string t.RDF_Graph_Executable.s)
+      (Prims.strcat " <"
+         (Prims.strcat t.RDF_Graph_Executable.p
+            (Prims.strcat "> "
+               (Prims.strcat (nq_term_to_string t.RDF_Graph_Executable.o)
+                  " .\n"))))
