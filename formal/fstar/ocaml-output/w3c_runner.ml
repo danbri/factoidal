@@ -764,6 +764,85 @@ let rif_rules_path_for tc =
        diagnostic rather than a runtime exception. *)
     Filename.concat base "_unknown_rif_test_.rif"
 
+(* RIF <Import><location>URL</location></Import> resolver.
+
+   The vendored W3C RIF tests rif04 / rif06 declare imports whose
+   <location> is a remote URL such as
+
+     http://www.w3.org/2005/rules/test/repository/tc/Modeling_Brain_Anatomy/Modeling_Brain_Anatomy-import001.rdf
+
+   The W3C-published RIF Test Cases repository at
+   https://www.w3.org/2005/rules/test/repository/tc/ is mirrored
+   into third_party/testing/rif/tc/ . We map the URL onto a local
+   file by extracting the basename and looking under
+   third_party/testing/rif/tc/<TestName>/. Some imports omit a
+   filename extension (rif06 imports
+   .../RDF_Combination_Blank_Node-import001 without `.rdf`); we
+   try the bare filename first, then `.rdf`, and finally `.ttl`.
+   Returns None if none of those resolve to an existing file.
+
+   This is consumer-side I/O glue (rule #11): the F* surface
+   `RIF_Core_Tests.parse_rif_imports` returns the URLs as strings;
+   the local-path mapping and file existence check are not part
+   of the verified library. *)
+let rif_resolve_import_local_path tc url =
+  let base = "third_party/testing/rif/tc" in
+  let testdir =
+    match tc.name with
+    | "RIF Logical Entailment (referencing RIF XML)" ->
+      Some (Filename.concat base "Logical_entailment_referencing_RIF_XML")
+    | "RIF Core WG tests: Frames" ->
+      Some (Filename.concat base "Frames")
+    | "RIF Core WG tests: Modeling Brain Anatomy" ->
+      Some (Filename.concat base "Modeling_Brain_Anatomy")
+    | "RIF Core WG tests: RDF Combination Blank Node" ->
+      Some (Filename.concat base "RDF_Combination_Blank_Node")
+    | _ -> None
+  in
+  match testdir with
+  | None -> None
+  | Some dir ->
+    let bn = Filename.basename url in
+    let candidates =
+      if Filename.check_suffix bn ".rdf" || Filename.check_suffix bn ".ttl"
+      then [bn]
+      else [bn ^ ".rdf"; bn ^ ".ttl"; bn]
+    in
+    let rec first_existing = function
+      | [] -> None
+      | c :: rest ->
+        let p = Filename.concat dir c in
+        if Sys.file_exists p then Some p else first_existing rest
+    in
+    first_existing candidates
+
+(* Resolve every <Import><location>URL</location></Import> declared
+   in `rif_xml` to a local file under third_party/testing/rif/tc/,
+   load it via load_triples (Turtle / RDF-XML auto-detect), and
+   return the merged triple list. Imports that don't resolve to an
+   existing local file are silently skipped — the test will then
+   fail at the SPARQL evaluation step rather than raise. *)
+let rif_load_imports tc rif_xml =
+  let imports =
+    match RIF_Core_Tests.parse_rif_imports rif_xml with
+    | None -> []
+    | Some urls -> urls
+  in
+  let result = List.fold_left (fun acc url ->
+    match rif_resolve_import_local_path tc url with
+    | None -> acc
+    | Some path -> acc @ load_triples path
+  ) [] imports in
+  (* Optional diagnostic — gated on FACTOIDAL_RIF_IMPORT_DEBUG so the
+     normal test runs are silent. Useful when debugging why a RIF
+     test isn't picking up imported facts. *)
+  if Sys.getenv_opt "FACTOIDAL_RIF_IMPORT_DEBUG" <> None then begin
+    Printf.eprintf "[rif-import] tc=%s imports=%d resolved-triples=%d\n"
+      tc.name (List.length imports) (List.length result);
+    List.iter (fun u -> Printf.eprintf "[rif-import]   url=%s\n" u) imports
+  end;
+  result
+
 let run_query_eval_test tc =
   (* SPARQL 1.1 SERVICE federated query (issue #57). Register every
      (endpoint_iri, ttl_file) pair from `qt:serviceData` into the F*
@@ -817,15 +896,23 @@ let run_query_eval_test tc =
          the fuel-bounded fixpoint, and returns the saturated graph
          (or None on parse failure, in which case we fall back to
          the input graph and let the SPARQL query report whatever
-         it would have without rules). *)
+         it would have without rules).
+
+         Before saturation, we resolve any <Import><location>URL</location>
+         directive declared in the RIF-XML to a local data graph via
+         rif_load_imports (consumer-side I/O glue). Without this, the
+         rif04 / rif06 rule bodies that mention imported facts never
+         fire and the head triple is never produced. *)
       (try
          let rif_xml_path = rif_rules_path_for tc in
          (match read_file rif_xml_path with
           | None -> graph
           | Some raw ->
             let rif_xml = rif_xml_preprocess raw in
-            (match RIF_Core_Tests.saturate_with_program rif_xml graph (Z.of_int 100) with
-             | None -> graph
+            let imported_triples = rif_load_imports tc rif_xml in
+            let merged = graph @ imported_triples in
+            (match RIF_Core_Tests.saturate_with_program rif_xml merged (Z.of_int 100) with
+             | None -> merged
              | Some sat -> sat))
        with _ -> graph)
     | _ -> graph in
