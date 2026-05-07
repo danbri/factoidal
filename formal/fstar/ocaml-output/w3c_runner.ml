@@ -813,7 +813,7 @@ let run_query_eval_test tc =
      existential variables — they match any term, not just blank nodes
      with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
   let query = match tc.test_type_detail with
-    | "RDFS" | "RDF" | "D" | "OWL-RL" | "OWL-Direct" ->
+    | "RDFS" | "RDF" | "D" | "OWL-RL" | "OWL-Direct" | "RIF" ->
       let open SPARQL11_Algebra in
       let rewrite_pt = function
         | PT_BNode b -> PT_Var ("_bnode_" ^ b)
@@ -849,7 +849,7 @@ let run_query_eval_test tc =
      with the same label. Rewrite PS_BNode/PT_BNode to fresh variables.
      NOTE: This logic should be elevated to F* — tracked in issue #61. *)
   let query = match tc.test_type_detail with
-    | "RDFS" | "RDF" | "D" | "OWL-RL" | "OWL-Direct" ->
+    | "RDFS" | "RDF" | "D" | "OWL-RL" | "OWL-Direct" | "RIF" ->
       let open SPARQL11_Algebra in
       let rewrite_pt = function
         | PT_BNode b -> PT_Var ("_bnode_" ^ b)
@@ -884,7 +884,7 @@ let run_query_eval_test tc =
      existential variables — they match any term, not just blank nodes
      with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
   let query = match tc.test_type_detail with
-    | "RDFS" | "RDF" | "D" | "OWL-RL" | "OWL-Direct" ->
+    | "RDFS" | "RDF" | "D" | "OWL-RL" | "OWL-Direct" | "RIF" ->
       let open SPARQL11_Algebra in
       let rewrite_pt = function
         | PT_BNode b -> PT_Var ("_bnode_" ^ b)
@@ -919,7 +919,7 @@ let run_query_eval_test tc =
      existential variables — they match any term, not just blank nodes
      with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
   let query = match tc.test_type_detail with
-    | "RDFS" | "RDF" | "D" | "OWL-RL" | "OWL-Direct" ->
+    | "RDFS" | "RDF" | "D" | "OWL-RL" | "OWL-Direct" | "RIF" ->
       let open SPARQL11_Algebra in
       let rewrite_pt = function
         | PT_BNode b -> PT_Var ("_bnode_" ^ b)
@@ -954,7 +954,7 @@ let run_query_eval_test tc =
      existential variables — they match any term, not just blank nodes
      with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
   let query = match tc.test_type_detail with
-    | "RDFS" | "RDF" | "D" | "OWL-RL" | "OWL-Direct" ->
+    | "RDFS" | "RDF" | "D" | "OWL-RL" | "OWL-Direct" | "RIF" ->
       let open SPARQL11_Algebra in
       let rewrite_pt = function
         | PT_BNode b -> PT_Var ("_bnode_" ^ b)
@@ -989,7 +989,7 @@ let run_query_eval_test tc =
      existential variables — they match any term, not just blank nodes
      with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
   let query = match tc.test_type_detail with
-    | "RDFS" | "RDF" | "D" | "OWL-RL" | "OWL-Direct" ->
+    | "RDFS" | "RDF" | "D" | "OWL-RL" | "OWL-Direct" | "RIF" ->
       let open SPARQL11_Algebra in
       let rewrite_pt = function
         | PT_BNode b -> PT_Var ("_bnode_" ^ b)
@@ -1024,7 +1024,7 @@ let run_query_eval_test tc =
      existential variables — they match any term, not just blank nodes
      with the same label. Rewrite PS_BNode/PT_BNode to fresh variables. *)
   let query = match tc.test_type_detail with
-    | "RDFS" | "RDF" | "D" | "OWL-RL" | "OWL-Direct" ->
+    | "RDFS" | "RDF" | "D" | "OWL-RL" | "OWL-Direct" | "RIF" ->
       let open SPARQL11_Algebra in
       let rewrite_pt = function
         | PT_BNode b -> PT_Var ("_bnode_" ^ b)

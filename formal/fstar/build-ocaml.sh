@@ -330,7 +330,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   COMMON_MODULES="Util_Log.ml RDF_Format.ml RDF_Graph_Executable.ml RDF_NQuads_Serialize.ml Parquet_Footer.ml Tableau.ml \
     Parser_FastString.ml Parser_IRI.ml \
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
-    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml Parser_RIFXML.ml \
+    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
     SPARQL_JSON_Escape.ml \
     SPARQL_Eval_TimeBudget.ml \
@@ -357,7 +357,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     fstar_pure_hashes.ml \
     RDF_Canonical.ml \
     RDF_Canonical_Manifest.ml \
-    SPARQL11_Algebra.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml RIF_Core_Translation.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SPARQL11_Store.ml SPARQL_Protocol.ml \
+    SPARQL11_Algebra.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SPARQL11_Store.ml SPARQL_Protocol.ml \
     SPARQL_Update_Sandbox.ml \
     SPARQL_Update_Analysis.ml \
     SPARQL_Diagnostics.ml \
@@ -636,7 +636,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_Graph_Executable.ml RDF_NQuads_Serialize.ml Parquet_Footer.ml Tableau.ml
     Parser_FastString.ml Parser_IRI.ml
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml
-    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml Parser_RIFXML.ml
+    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
     SPARQL_JSON_Escape.ml
     SPARQL_HTTP_Response.ml
@@ -656,7 +656,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_CottasInMem.ml
     fstar_pure_hashes.ml
     RDF_Canonical.ml
-    SPARQL11_Algebra.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml RIF_Core_Syntax.ml RIF_Core_Translation.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml
+    SPARQL11_Algebra.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml
     SPARQL11_Store.ml
     SPARQL_Protocol.ml
     SPARQL_Update_Sandbox.ml
