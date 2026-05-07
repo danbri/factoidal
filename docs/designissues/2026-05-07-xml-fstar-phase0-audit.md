@@ -147,6 +147,17 @@ same four functions and the same C14N-ish serialiser.
 **Recommendation: (B) build alongside, then migrate Parser.RDFXML in a
 follow-up PR.**
 
+**API style: DOM tree, namespace-aware AST, no streaming in Phase 1.**
+A separate API-style survey (DOM vs SAX vs StAX vs reader-monad vs
+EverParse format-spec) is recorded in
+[issue #185 comment](https://github.com/danbri/factoidal/issues/185#issuecomment-4398862203).
+Summary: the only in-tree consumer (`Parser.RDFXML.fst`) is DOM-shaped,
+the planned consumers (RSS / Atom / Sitemap / RIF-XML) all parse small
+documents and want a tree, and shipping streaming costs verifier
+complexity for zero current consumer. If a streaming consumer surfaces
+later, a pull-style `next_event` shim layers on the same tokeniser
+without breaking DOM consumers.
+
 Concrete shape:
 
 - `formal/fstar/XML.Core.fst` — refined AST: namespace-aware
