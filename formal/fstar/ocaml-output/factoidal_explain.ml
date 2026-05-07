@@ -175,27 +175,10 @@ let collect_triple_patterns (q : A.query) : (string * A.triple_pattern) list =
   List.rev !acc
 
 (* Pull the BGP back out of a GP_BGP wrapper for choose_best_tp_backend. *)
-let bgps_in_query (q : A.query) : A.bgp list =
-  let acc : A.bgp list ref = ref [] in
-  let rec go (p : A.group_graph_pattern) : unit =
-    match p with
-    | A.GP_BGP tps -> if tps <> [] then acc := tps :: !acc
-    | A.GP_Join (p1, p2) -> go p1; go p2
-    | A.GP_LeftJoin (p1, p2, _) -> go p1; go p2
-    | A.GP_Filter (_, p1) -> go p1
-    | A.GP_Union (p1, p2) -> go p1; go p2
-    | A.GP_Graph (_, p1) -> go p1
-    | A.GP_Minus (p1, p2) -> go p1; go p2
-    | A.GP_Bind (_, _, p1) -> go p1
-    | A.GP_Service (_, p1, _) -> go p1
-    | A.GP_ServiceVar (_, p1, _) -> go p1
-    | A.GP_SubSelect _ -> ()
-    | A.GP_Values _ -> ()
-    | A.GP_PropertyPath _ -> ()
-    | A.GP_Empty -> ()
-  in
-  go q.A.q_pattern;
-  List.rev !acc
+(* bgps_in_query lives in F* per rule #1; see
+   formal/fstar/SPARQL.Query.Analysis.fst. *)
+let bgps_in_query : A.query -> A.bgp list =
+  SPARQL_Query_Analysis.bgps_in_query
 
 (* =========================================================================
    Per-triple-pattern explain row.
