@@ -1,0 +1,55 @@
+# =====================================================================
+# CI shadow build artifacts
+# =====================================================================
+#
+# bin/ci-<platform>/ holds binaries auto-committed by the
+# .github/workflows/w3c-tests.yml workflow. Every push to claude/main
+# regenerates them, so divergent versions on PR branches vs. main were
+# the dominant source of merge conflicts during the F*-purity unwind
+# (PRs #155-#161 each had to be re-rebased multiple times).
+#
+# Two-layer fix:
+#
+# 1. Workflow-level (primary): the "Commit + push CI shadow artifacts"
+#    step in w3c-tests.yml is now gated on `github.ref ==
+#    'refs/heads/claude/main'`. PR-branch CI runs build the binaries
+#    (still needed for in-job tests) but no longer push them back.
+#    PR branches stop diverging from main on these paths entirely.
+#
+# 2. Driver-level (defense-in-depth): the `merge=ours` attribute below
+#    tells git's merge driver to keep main's version of these files
+#    when two inputs collide. Useful when two concurrent
+#    claude/main pushes race and the second one needs `git pull
+#    --rebase` to land — without this, the rebase would conflict on
+#    every CI shadow path. The driver is registered in the workflow's
+#    git-config setup (`git config merge.ours.driver true`).
+#
+# IMPORTANT CAVEAT: GitHub's web-UI merge button does NOT honor
+# custom merge drivers — it uses libgit2 server-side. The merge=ours
+# rule only helps the workflow's own rebases and any local-merge flow
+# where the driver is registered. The web-UI scenario is covered by
+# layer 1 above (PR branches don't push CI shadows, so there's
+# nothing to conflict).
+#
+# See:
+#   - https://git-scm.com/docs/gitattributes#_merge
+#   - .github/workflows/w3c-tests.yml
+# =====================================================================
+
+bin/ci-linux-x86_64/*  merge=ours
+bin/ci-darwin-arm64/*  merge=ours
+
+# Mark the binaries themselves as binary so git doesn't try to
+# normalize line endings or produce textual diffs for them.
+bin/ci-linux-x86_64/cottas_ondisk_smoketest  binary
+bin/ci-linux-x86_64/factoidal                binary
+bin/ci-linux-x86_64/factoidal-http           binary
+bin/ci-linux-x86_64/owl_runner               binary
+bin/ci-linux-x86_64/rdfc10_runner            binary
+bin/ci-linux-x86_64/w3c_runner               binary
+bin/ci-darwin-arm64/cottas_ondisk_smoketest  binary
+bin/ci-darwin-arm64/factoidal                binary
+bin/ci-darwin-arm64/factoidal-http           binary
+bin/ci-darwin-arm64/owl_runner               binary
+bin/ci-darwin-arm64/rdfc10_runner            binary
+bin/ci-darwin-arm64/w3c_runner               binary

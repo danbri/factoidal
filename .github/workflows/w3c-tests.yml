@@ -171,10 +171,21 @@ jobs:
           ls -la "$CI_BIN_DIR"
 
       - name: Commit + push CI shadow artifacts
+        # Only push back when running on claude/main. PR-branch builds
+        # still produce the binaries (used by the in-job test step),
+        # but we don't push them back to the branch. This keeps PR
+        # branches diverging from main only on the actual code changes,
+        # not on auto-generated binary blobs that would otherwise
+        # collide with main's shadow commits on every parallel PR.
+        if: github.ref == 'refs/heads/claude/main'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Register the `merge=ours` driver referenced by .gitattributes
+          # for bin/ci-*/*. Used below if `git pull --rebase` races with
+          # another concurrent main-branch push.
+          git config merge.ours.driver true
 
           git add '${{ matrix.ci_dir }}'
           git add formal/fstar/ocaml-output-ci/
@@ -332,10 +343,16 @@ jobs:
                || echo "(differences above — check which suites diverge)"
 
       - name: Commit + push Linux generated docs artifacts
+        # Same scope as the CI shadow artifacts step above: only push
+        # to claude/main, never to PR branches.
+        if: github.ref == 'refs/heads/claude/main'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Register the `merge=ours` driver referenced by .gitattributes
+          # (defense-in-depth for concurrent main-branch pushes).
+          git config merge.ours.driver true
 
           git add docs/test-results/ \
                   docs/fstar-extracted/ \
