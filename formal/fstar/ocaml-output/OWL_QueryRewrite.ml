@@ -837,31 +837,88 @@ let rec expand_ce_subject (b : SPARQL11_Algebra.bgp)
            (match (on_prop_opt, card_opt) with
             | (FStar_Pervasives_Native.Some (SPARQL11_Algebra.PT_IRI p_iri),
                FStar_Pervasives_Native.Some card_n) ->
-                if card_n <> Prims.int_zero
-                then SPARQL11_Algebra.GP_BGP (single_type_bgp subj op)
+                if card_n = Prims.int_zero
+                then
+                  let fresh_name = Prims.strcat "_mxc_" k in
+                  let fresh_term = SPARQL11_Algebra.PT_Var fresh_name in
+                  let fresh_subj = SPARQL11_Algebra.PS_Var fresh_name in
+                  let prop_triple =
+                    {
+                      SPARQL11_Algebra.tp_s = subj;
+                      SPARQL11_Algebra.tp_p = (SPARQL11_Algebra.PT_IRI p_iri);
+                      SPARQL11_Algebra.tp_o = fresh_term
+                    } in
+                  let prop_ggp = SPARQL11_Algebra.GP_BGP [prop_triple] in
+                  let inner_ggp =
+                    match on_class_opt with
+                    | FStar_Pervasives_Native.Some filler ->
+                        let cls_ggp =
+                          expand_ce_subject b fresh_subj filler
+                            (n - Prims.int_one) in
+                        join_ggps [prop_ggp; cls_ggp]
+                    | FStar_Pervasives_Native.None -> prop_ggp in
+                  SPARQL11_Algebra.GP_Filter
+                    ((SPARQL11_Algebra.E_NotExists inner_ggp),
+                      SPARQL11_Algebra.GP_Empty)
                 else
-                  (let fresh_name = Prims.strcat "_mxc_" k in
-                   let fresh_term = SPARQL11_Algebra.PT_Var fresh_name in
-                   let fresh_subj = SPARQL11_Algebra.PS_Var fresh_name in
-                   let prop_triple =
-                     {
-                       SPARQL11_Algebra.tp_s = subj;
-                       SPARQL11_Algebra.tp_p =
-                         (SPARQL11_Algebra.PT_IRI p_iri);
-                       SPARQL11_Algebra.tp_o = fresh_term
-                     } in
-                   let prop_ggp = SPARQL11_Algebra.GP_BGP [prop_triple] in
-                   let inner_ggp =
-                     match on_class_opt with
-                     | FStar_Pervasives_Native.Some filler ->
-                         let cls_ggp =
-                           expand_ce_subject b fresh_subj filler
-                             (n - Prims.int_one) in
-                         join_ggps [prop_ggp; cls_ggp]
-                     | FStar_Pervasives_Native.None -> prop_ggp in
-                   SPARQL11_Algebra.GP_Filter
-                     ((SPARQL11_Algebra.E_NotExists inner_ggp),
-                       SPARQL11_Algebra.GP_Empty))
+                  if card_n = Prims.int_one
+                  then
+                    (match on_class_opt with
+                     | FStar_Pervasives_Native.Some (SPARQL11_Algebra.PT_IRI
+                         c_iri) ->
+                         let restr_name = Prims.strcat "_mxqc1_r_" k in
+                         let restr_term = SPARQL11_Algebra.PT_Var restr_name in
+                         let restr_subj = SPARQL11_Algebra.PS_Var restr_name in
+                         let shape_type_triple =
+                           {
+                             SPARQL11_Algebra.tp_s = restr_subj;
+                             SPARQL11_Algebra.tp_p =
+                               (SPARQL11_Algebra.PT_IRI rdf_type_iri);
+                             SPARQL11_Algebra.tp_o =
+                               (SPARQL11_Algebra.PT_IRI owl_Restriction_iri)
+                           } in
+                         let shape_onprop_triple =
+                           {
+                             SPARQL11_Algebra.tp_s = restr_subj;
+                             SPARQL11_Algebra.tp_p =
+                               (SPARQL11_Algebra.PT_IRI owl_onProperty_iri);
+                             SPARQL11_Algebra.tp_o =
+                               (SPARQL11_Algebra.PT_IRI p_iri)
+                           } in
+                         let shape_maxqc_triple =
+                           {
+                             SPARQL11_Algebra.tp_s = restr_subj;
+                             SPARQL11_Algebra.tp_p =
+                               (SPARQL11_Algebra.PT_IRI
+                                  owl_maxQualifiedCardinality_iri);
+                             SPARQL11_Algebra.tp_o =
+                               (SPARQL11_Algebra.PT_Literal
+                                  RDF_Graph_Executable.one_nonNegInteger_literal)
+                           } in
+                         let shape_onclass_triple =
+                           {
+                             SPARQL11_Algebra.tp_s = restr_subj;
+                             SPARQL11_Algebra.tp_p =
+                               (SPARQL11_Algebra.PT_IRI owl_onClass_iri);
+                             SPARQL11_Algebra.tp_o =
+                               (SPARQL11_Algebra.PT_IRI c_iri)
+                           } in
+                         let memb_triple =
+                           {
+                             SPARQL11_Algebra.tp_s = subj;
+                             SPARQL11_Algebra.tp_p =
+                               (SPARQL11_Algebra.PT_IRI rdf_type_iri);
+                             SPARQL11_Algebra.tp_o = restr_term
+                           } in
+                         SPARQL11_Algebra.GP_BGP
+                           [shape_type_triple;
+                           shape_onprop_triple;
+                           shape_maxqc_triple;
+                           shape_onclass_triple;
+                           memb_triple]
+                     | uu___1 ->
+                         SPARQL11_Algebra.GP_BGP (single_type_bgp subj op))
+                  else SPARQL11_Algebra.GP_BGP (single_type_bgp subj op)
             | (uu___, uu___1) ->
                 SPARQL11_Algebra.GP_BGP (single_type_bgp subj op))
        | FStar_Pervasives_Native.Some (k, CE_ExactCardinality) ->
