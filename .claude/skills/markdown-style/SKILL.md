@@ -1,6 +1,6 @@
 ---
 name: markdown-style
-description: Markdown formatting rules for Claude-generated text in this repository — chat replies, design docs, READMEs, PR bodies, commit messages. Use whenever generating user-facing markdown that may be rendered in different clients (CLI, web, mobile chat, GitHub). The single load-bearing rule is "links must be unambiguously clickable" — bold/italic emphasis around URLs and link syntax frequently breaks the click target.
+description: Markdown formatting + prose register for Claude-generated text in this repository — chat replies, design docs, READMEs, PR bodies, commit messages. Two load-bearing rules. (1) Links must be unambiguously clickable — bold/italic emphasis around URLs and link syntax frequently breaks the click target. (2) No sycophantic adjectives — drop "honest", "genuine", "important", "critical", "big picture", "key insight", "headline", and similar candor-performance words. Use whenever generating user-facing markdown that may be rendered in different clients (CLI, web, mobile chat, GitHub).
 ---
 
 # Markdown style for Factoidal
@@ -151,6 +151,67 @@ Wrap prose at 80 columns where practical. Don't wrap inside link
 syntax — keep `[text](url)` on one line so the link doesn't
 visibly split when soft-wrapping is off.
 
+## Prose register — no sycophantic adjectives
+
+User-facing prose (chat replies, PR bodies, commit messages, design
+docs) must not perform candor through word choice. Drop the following
+filler:
+
+- `honest update`, `honest assessment`, `honestly`, `to be candid`
+- `genuine`, `genuinely`
+- `important`, `critical`, `big-picture`, `headline`, `key insight`,
+  `key finding`, `key headline`, `headline finding`
+- `notable`, `notably`
+- `surprising-but-good`, `striking`, `sharp finding`
+- Setup phrases like "Two headlines:", "Three things landed:",
+  "**Critical headline:**" — when the next sentence already
+  contains the substance, the setup is filler.
+
+Why these are bad: they signal "trust me this is real" instead of
+just being real. The sentence either carries weight or it doesn't.
+A genuine update is genuine in the absence of the word "genuine";
+adding the word performs the property rather than displays it.
+
+### Bad → Good rewrites
+
+❌ "Honest update on the migration: we retired Tav5 and Heth3."
+✅ "We retired Tav5 and Heth3."
+
+❌ "Important finding: the agent picked RL not DL."
+✅ "The agent picked RL not DL."
+
+❌ "**Big-picture honest update on the migration epic #200:**"
+✅ "Migration epic #200 status:"
+
+❌ "**Critical headline: the 1 non-RIF SPARQL fail is reachable
+   inside OWL 2 RL.**"
+✅ "The 1 non-RIF SPARQL fail is reachable inside OWL 2 RL."
+
+❌ "Genuinely good finding: the patches were already retired earlier."
+✅ "The patches were already retired earlier."
+
+### Heading rule
+
+When section content is already substantive, don't add a header
+that performs significance. `## Status` beats `## The current
+honest state`. `## Why this matters` is sometimes load-bearing;
+`## Key why-this-matters` is not.
+
+### One-word adjectives are fine when load-bearing
+
+`fast`, `slow`, `correct`, `verified`, `failing`, `merged`,
+`pending`, `blocked`, `pre-existing`, `out of scope`, `deferred`
+all carry information. Drop only the words that perform candor or
+significance without carrying it.
+
+### Why this rule exists
+
+User feedback (2026-05-07): "Spraying those adjectives around like
+cheap deodorant is a miserable, distracting and depressing pattern
+you are falling in to in your current Opus 4.x incarnation. Stop
+doing it." This skill is the durable form of that feedback so the
+correction survives session boundaries.
+
 ## Quick checklist before sending a reply or committing a doc
 
 1. Every URL is either bare on its own (no surrounding emphasis)
@@ -160,6 +221,10 @@ visibly split when soft-wrapping is off.
 3. No `**` immediately after a bare URL's final character.
 4. Code spans use the right number of backticks for their content.
 5. Tables are valid GFM; cells are single-line.
+6. No sycophantic adjectives (`honest`, `genuine`, `important`,
+   `critical`, `big-picture`, `headline`, `key insight`, …). When
+   you catch yourself typing one, delete it and re-read — the
+   sentence is almost always better without.
 
 ## Why this matters in this project
 

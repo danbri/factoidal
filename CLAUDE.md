@@ -155,6 +155,11 @@ rule #17").
 24. Subagent prompts ship code sketches + file:line + signatures.
 25. Never write cryptic score strings. "972/59" without labels is
     banned — write "972 pass, 59 fail (out of 1031)".
+26. No sycophantic adjectives in user-facing prose. `honest`,
+    `genuine`, `important`, `critical`, `big-picture`, `headline`,
+    `key insight`, `key finding`, etc. perform candor instead of
+    being clear. The sentence either carries weight or it doesn't.
+    Full rule + rewrites in `.claude/skills/markdown-style/SKILL.md`.
 
 ## Skills (operational details, on-demand)
 
