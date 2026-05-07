@@ -320,18 +320,39 @@ echo "  Regex/hash/UUID stubs patched."
 # RDF.Canonical.fst declares its own assume val for self-containment (avoids a
 # back-edge from RDF.Canonical to SPARQL11.Algebra). Same shape as the
 # SPARQL11_Algebra patches above.
+#
+# F* 2025.12.15 emits two distinct surface forms for `assume val`:
+#   form A:  let hash_sha256 (uu___ : Prims.string) : Prims.string=
+#              failwith "Not yet implemented: ..."
+#   form B:  let (hash_sha256 : Prims.string -> Prims.string) =
+#              fun uu___ -> failwith "Not yet implemented: ..."
+# SPARQL11_Algebra.ml extracts as form A; RDF_Canonical.ml as form B (the
+# determining factor appears to be module-level details, not the assume-val
+# itself). Patch both forms — the unmatched one is a no-op replace.
 CANON_FILE="$OUTDIR/RDF_Canonical.ml"
 if [[ -f "$CANON_FILE" ]]; then
   echo "  Patching $CANON_FILE (hash_sha256 stub)..."
   python3 -c "
+import sys
 with open('$CANON_FILE', 'r') as f:
     content = f.read()
-content = content.replace(
-    '''let hash_sha256 (uu___ : Prims.string) : Prims.string=
-  failwith \"Not yet implemented: RDF.Canonical.hash_sha256\"''',
-    '''let hash_sha256 (s : Prims.string) : Prims.string=
+form_a_old = '''let hash_sha256 (uu___ : Prims.string) : Prims.string=
+  failwith \"Not yet implemented: RDF.Canonical.hash_sha256\"'''
+form_a_new = '''let hash_sha256 (s : Prims.string) : Prims.string=
   Fstar_pure_hashes.sha256 s'''
-)
+form_b_old = '''let (hash_sha256 : Prims.string -> Prims.string) =
+  fun uu___ -> failwith \"Not yet implemented: RDF.Canonical.hash_sha256\"'''
+form_b_new = '''let (hash_sha256 : Prims.string -> Prims.string) =
+  fun s -> Fstar_pure_hashes.sha256 s'''
+matched = (form_a_old in content) or (form_b_old in content)
+already_patched = ('Fstar_pure_hashes.sha256 s' in content)
+content = content.replace(form_a_old, form_a_new)
+content = content.replace(form_b_old, form_b_new)
+if not matched and not already_patched:
+    sys.stderr.write('  ERROR: RDF_Canonical.ml hash_sha256 stub matched neither form A nor form B.\n')
+    sys.stderr.write('  RDFC-1.0 will fail every blank-node test (canonicalize raises failwith).\n')
+    sys.stderr.write('  Inspect $CANON_FILE around line 1-3 and update 63_regex_hash_uuid_stubs.sh.\n')
+    sys.exit(2)
 with open('$CANON_FILE', 'w') as f:
     f.write(content)
 "
