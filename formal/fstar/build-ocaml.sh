@@ -229,6 +229,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              Parser.NTriples.fst Parser.Turtle.fst \
              Parser.NQuads.fst Parser.TriG.fst \
              Parser.XML.fst Parser.RDFXML.fst Parser.RIFXML.fst \
+             RIF.Core.Eval.fst RIF.Core.Tests.fst \
              Parser.SRX.fst Parser.CSVResults.fst \
              Parser.JSONResults.fst \
              SPARQL.JSON.Escape.fst \
@@ -356,7 +357,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     fstar_pure_hashes.ml \
     RDF_Canonical.ml \
     RDF_Canonical_Manifest.ml \
-    SPARQL11_Algebra.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml RIF_Core_Translation.ml RIF_Core_Eval.ml SPARQL11_Parser.ml SPARQL11_Store.ml SPARQL_Protocol.ml \
+    SPARQL11_Algebra.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml RIF_Core_Translation.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml SPARQL11_Store.ml SPARQL_Protocol.ml \
     SPARQL_Update_Sandbox.ml \
     SPARQL_Update_Analysis.ml \
     SPARQL_Diagnostics.ml \
@@ -655,7 +656,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_CottasInMem.ml
     fstar_pure_hashes.ml
     RDF_Canonical.ml
-    SPARQL11_Algebra.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml RIF_Core_Syntax.ml RIF_Core_Translation.ml RIF_Core_Eval.ml SPARQL11_Parser.ml
+    SPARQL11_Algebra.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml RIF_Core_Syntax.ml RIF_Core_Translation.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SPARQL11_Parser.ml
     SPARQL11_Store.ml
     SPARQL_Protocol.ml
     SPARQL_Update_Sandbox.ml

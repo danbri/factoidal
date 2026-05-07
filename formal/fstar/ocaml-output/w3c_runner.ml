@@ -443,11 +443,16 @@ let extract_test_cases manifest_dir graph =
            else if List.exists (fun i -> i = ent_ns ^ "RDFS") regime_iris then "RDFS"
            else if List.exists (fun i -> i = ent_ns ^ "RDF") regime_iris then "RDF"
            else if List.exists (fun i -> i = ent_ns ^ "D") regime_iris then "D"
-           (* RIF entailment (ent:RIF / ent:RIF-Core) is out of scope for
-              factoidal -- we have no RIF implementation. Tag these so
-              run_test can skip them instead of reporting a misleading fail. *)
+           (* RIF entailment (ent:RIF / ent:RIF-Core): tag so the per-test
+              dispatch loads the vendored RIF-XML rules from
+              third_party/testing/rif/tc/<TestName>/, runs RIF saturation
+              over the .ttl premise via RIF_Core_Tests.saturate_with_program
+              (F-star extracted), then evaluates the SPARQL query against
+              the saturated graph. The semantic logic lives in F-star
+              (RIF.Core.Tests.fst, RIF.Core.Eval.fst); the dispatch below
+              is the rule #11 / #15 trivial glue. *)
            else if List.exists (fun i ->
-             i = ent_ns ^ "RIF" || i = ent_ns ^ "RIF-Core") regime_iris then "RIF-Skip"
+             i = ent_ns ^ "RIF" || i = ent_ns ^ "RIF-Core") regime_iris then "RIF"
            else ""
          | [] -> "") in
 
@@ -672,6 +677,43 @@ let load_triples df =
     then parse_rdfxml_fstar content (Some base)
     else parse_turtle_fstar content (Some base)
 
+(* RIF rule-document path resolver.
+
+   The W3C SPARQL 1.1 entailment manifest (third_party/testing/w3c/sparql/
+   sparql11/entailment/manifest.ttl) declares four RIF tests:
+
+     :rif01  "RIF Logical Entailment (referencing RIF XML)"
+     :rif03  "RIF Core WG tests: Frames"
+     :rif04  "RIF Core WG tests: Modeling Brain Anatomy"
+     :rif06  "RIF Core WG tests: RDF Combination Blank Node"
+
+   The rule-document filename is named in the .ttl premise (e.g.
+   `<rif01.rif> rif:usedWithProfile ent:Simple`), but the RIF-XML
+   file itself is not bundled with the SPARQL test suite. The
+   vendored copies under third_party/testing/rif/tc/ are the
+   authoritative source. We resolve by mf:name; the four-entry
+   table is exhaustive for the SPARQL 1.1 entailment manifest as
+   of the 2026-05-07 mirror. *)
+let rif_rules_path_for tc =
+  let base = "third_party/testing/rif/tc" in
+  match tc.name with
+  | "RIF Logical Entailment (referencing RIF XML)" ->
+    Filename.concat base "Logical_entailment_referencing_RIF_XML/rif01-premise.rif"
+  | "RIF Core WG tests: Frames" ->
+    Filename.concat base "Frames/Frames-premise.rif"
+  | "RIF Core WG tests: Modeling Brain Anatomy" ->
+    Filename.concat base "Modeling_Brain_Anatomy/Modeling_Brain_Anatomy-premise.rif"
+  | "RIF Core WG tests: RDF Combination Blank Node" ->
+    Filename.concat base "RDF_Combination_Blank_Node/RDF_Combination_Blank_Node-premise.rif"
+  | _ ->
+    (* Unknown RIF test: fall through to a non-existent path; the
+       caller's read_file returns None, the saturation step is a
+       no-op, and the SPARQL query runs against the unsaturated
+       graph. This is the right shape for "we don't have rules
+       for this test"; the result will be a clean Fail with a
+       diagnostic rather than a runtime exception. *)
+    Filename.concat base "_unknown_rif_test_.rif"
+
 let run_query_eval_test tc =
   (* SPARQL 1.1 SERVICE federated query (issue #57). Register every
      (endpoint_iri, ttl_file) pair from `qt:serviceData` into the F*
@@ -715,6 +757,25 @@ let run_query_eval_test tc =
        with _ -> graph)
     | "RDFS" | "RDF" ->
       (try RDF_Graph_Executable.rdfs_closure_with_reflexivity graph (Z.of_int 100)
+       with _ -> graph)
+    | "RIF" ->
+      (* RIF Core forward-chaining saturation. The vendored
+         third_party/testing/rif/tc/<TestName>/<file>.rif holds the
+         RIF-XML rules; the .ttl premise (already loaded into `graph`)
+         is the input data. RIF_Core_Tests.saturate_with_program is
+         the F-star-extracted entry point; it parses RIF-XML, runs
+         the fuel-bounded fixpoint, and returns the saturated graph
+         (or None on parse failure, in which case we fall back to
+         the input graph and let the SPARQL query report whatever
+         it would have without rules). *)
+      (try
+         let rif_xml_path = rif_rules_path_for tc in
+         match read_file rif_xml_path with
+         | None -> graph
+         | Some rif_xml ->
+           (match RIF_Core_Tests.saturate_with_program rif_xml graph (Z.of_int 100) with
+            | None -> graph
+            | Some sat -> sat)
        with _ -> graph)
     | _ -> graph in
 
@@ -1932,12 +1993,6 @@ let run_service_description_test tc =
 
 let run_test tc =
   match tc.test_type with
-  | "QueryEvaluationTest" when tc.test_type_detail = "RIF-Skip" ->
-    (* W3C RIF (Rule Interchange Format) entailment is not implemented in
-       factoidal and is not on the roadmap. Skip rather than fail so these
-       tests don't distort the score. See rule #15: this is I/O-glue, not
-       semantic logic. *)
-    Skip "RIF not implemented"
   | "QueryEvaluationTest" ->
     (try run_query_eval_test tc
      with
