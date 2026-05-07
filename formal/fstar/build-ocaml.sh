@@ -258,6 +258,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              SPARQL.Diagnostics.fst \
              SPARQL.Explain.fst \
              SPARQL.Query.Analysis.fst \
+             SPARQL.Plan.Explain.fst \
              SPARQL.HTTP.fst \
              SPARQL.HTTP.Client.fst \
              SPARQL.ServiceDescription.fst \
@@ -355,6 +356,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     SPARQL_Diagnostics.ml \
     SPARQL_Explain.ml \
     SPARQL_Query_Analysis.ml \
+    SPARQL_Plan_Explain.ml \
     SPARQL_HTTP.ml SPARQL_HTTP_Client.ml SPARQL_ServiceDescription.ml \
     SPARQL_GraphStore.ml"
 
