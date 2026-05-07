@@ -1,0 +1,10 @@
+Phase 0 placeholder for the XML-in-F* stretch goal (issue #185).
+
+The runner ML lands in Phase 1 once the F*-side parser exists at
+formal/fstar/XML.Core.fst + Parser.XMLDoc.fst.
+
+See docs/designissues/2026-05-07-xml-fstar-phase0-audit.md for the
+audit, the extend-vs-build-alongside decision, the EverParse-fit
+assessment, and the W3C test-corpus vendoring plan.
+
+Delete this file when xml_runner.ml lands.
