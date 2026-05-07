@@ -1558,50 +1558,17 @@ let sandbox_update ~usergraph (u : SPARQL11_Algebra.sparql_update) :
    Literals are quoted with proper escaping. Blank nodes are "_:id".
    ============================================================================ *)
 
-let nq_escape_literal s =
-  let buf = Buffer.create (String.length s + 4) in
-  String.iter (fun c ->
-    match c with
-    | '\\' -> Buffer.add_string buf "\\\\"
-    | '"'  -> Buffer.add_string buf "\\\""
-    | '\n' -> Buffer.add_string buf "\\n"
-    | '\r' -> Buffer.add_string buf "\\r"
-    | '\t' -> Buffer.add_string buf "\\t"
-    | c    -> Buffer.add_char buf c
-  ) s;
-  Buffer.contents buf
-
-let nq_term_to_string (t : rdf_term) =
-  match t with
-  | T_IRI i -> Printf.sprintf "<%s>" i
-  | T_BNode b -> Printf.sprintf "_:%s" b
-  | T_Literal l ->
-    let xsd_string = "http://www.w3.org/2001/XMLSchema#string" in
-    let rdf_lang_string =
-      "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString" in
-    let esc = nq_escape_literal l.lexical_form in
-    (match l.lang_tag with
-     | Some tag -> Printf.sprintf "\"%s\"@%s" esc tag
-     | None ->
-       if l.datatype = "" || l.datatype = xsd_string then
-         Printf.sprintf "\"%s\"" esc
-       else if l.datatype = rdf_lang_string then
-         (* Malformed — langString with no tag. Preserve lexically. *)
-         Printf.sprintf "\"%s\"^^<%s>" esc l.datatype
-       else
-         Printf.sprintf "\"%s\"^^<%s>" esc l.datatype)
-
-let nq_subject_to_string (s : subject) =
-  match s with
-  | S_IRI i -> Printf.sprintf "<%s>" i
-  | S_BNode b -> Printf.sprintf "_:%s" b
-
-let nq_line_for_triple ~graph_iri (t : triple) =
-  Printf.sprintf "%s <%s> %s <%s> .\n"
-    (nq_subject_to_string t.s)
-    t.p
-    (nq_term_to_string t.o)
-    graph_iri
+(* N-Quads wire-format serializers — F* is the source of truth.
+   formal/fstar/RDF.NQuads.Serialize.fst owns the byte-correct
+   escape/term/subject/line rendering. *)
+let nq_escape_literal : string -> string =
+  RDF_NQuads_Serialize.nq_escape_literal
+let nq_term_to_string : rdf_term -> string =
+  RDF_NQuads_Serialize.nq_term_to_string
+let nq_subject_to_string : subject -> string =
+  RDF_NQuads_Serialize.nq_subject_to_string
+let nq_line_for_triple ~graph_iri (t : triple) : string =
+  RDF_NQuads_Serialize.nq_line_for_triple graph_iri t
 
 (* Which named graphs in the current dataset belong to user-writable
    sandboxes? We compute this by listing every named graph whose IRI is not
