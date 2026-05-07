@@ -3,9 +3,13 @@
 ## Scope
 
 A second migration push during 2026-05-06, picking up where the
-22:35h-onwards session left off (see
-`2026-05-06-overnight-migration-session-status.md` on
-`claude/migration-session-status-2026-05-06`).
+22:35h-onwards session left off. The earlier session's status doc
+lives on the `claude/migration-session-status-2026-05-06` branch and
+will land on `main` only when [its PR][prior-status-pr] merges; until
+then this followup doc deliberately avoids in-tree links to it (a
+relative reference would be a dead link on `main` post-merge).
+
+[prior-status-pr]: https://github.com/danbri/factoidal/blob/claude/migration-session-status-2026-05-06/docs/designissues/2026-05-06-overnight-migration-session-status.md
 
 Goal: continue retiring rule-#11 violations (semantic logic in OCaml
 glue) by lifting small, independent, byte-for-byte-equivalent helper
