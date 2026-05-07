@@ -1136,7 +1136,7 @@ let zero_timing : query_timing = {
    for the [timing] log line ("%S" -> Scanf-compatible quoted form). *)
 let timing_log_line (qt : query_timing) (q_summary : string) : string =
   SPARQL_HTTP_Admin.render_timing_log_line
-    qt.qt_form qt.qt_status qt.qt_rows qt.qt_body_bytes
+    qt.qt_form (Z.of_int qt.qt_status) (Z.of_int qt.qt_rows) (Z.of_int qt.qt_body_bytes)
     (Printf.sprintf "%.1f" qt.qt_parse_ms)
     (Printf.sprintf "%.1f" qt.qt_eval_ms)
     (Printf.sprintf "%.1f" qt.qt_format_ms)
@@ -1163,7 +1163,7 @@ let recent_queries : recent_query list ref = ref []
 let recent_queries_cap = 50
 
 let truncate_for_log : string -> int -> string =
-  fun s n -> SPARQL_HTTP_Admin.truncate_for_log s n
+  fun s n -> SPARQL_HTTP_Admin.truncate_for_log s (Z.of_int n)
 
 let push_recent_query (rq : recent_query) =
   Mutex.lock recent_queries_mu;
@@ -1233,9 +1233,9 @@ let recent_query_to_json (rq : recent_query) : string =
     (Printf.sprintf "%.3f" rq.rq_started_at)
     (SPARQL_JSON_Escape.json_escape rq.rq_query_text)
     rq.rq_timing.qt_form
-    rq.rq_timing.qt_status
-    rq.rq_timing.qt_rows
-    rq.rq_timing.qt_body_bytes
+    (Z.of_int rq.rq_timing.qt_status)
+    (Z.of_int rq.rq_timing.qt_rows)
+    (Z.of_int rq.rq_timing.qt_body_bytes)
     (Printf.sprintf "%.2f" rq.rq_timing.qt_parse_ms)
     (Printf.sprintf "%.2f" rq.rq_timing.qt_eval_ms)
     (Printf.sprintf "%.2f" rq.rq_timing.qt_format_ms)
@@ -1252,9 +1252,9 @@ let serve_recent_queries_json () : response_body =
   Mutex.unlock counters_mu;
   let body =
     SPARQL_HTTP_Admin.render_recent_queries_envelope
-      total
+      (Z.of_int total)
       (Printf.sprintf "%.1f" total_wall)
-      s2 s4 s5
+      (Z.of_int s2) (Z.of_int s4) (Z.of_int s5)
       (List.map recent_query_to_json xs)
   in
   { rb_status = 200;
@@ -2000,7 +2000,8 @@ let serve_parliament_queries_json () : response_body =
 (* Dataset triple-count + backend-kind classification — F* is the
    source of truth (formal/fstar/SPARQL.HTTP.BackendInfo.fst). *)
 let count_dataset_triples (ds : rdf_dataset) : int * int * int * int =
-  SPARQL_HTTP_BackendInfo.count_dataset_triples ds
+  let (a, b, c, d) = SPARQL_HTTP_BackendInfo.count_dataset_triples ds in
+  (Z.to_int a, Z.to_int b, Z.to_int c, Z.to_int d)
 
 let backend_kind_of_cfg (cfg : config) : SPARQL_HTTP_BackendInfo.backend_kind =
   SPARQL_HTTP_BackendInfo.backend_kind_of_flags
