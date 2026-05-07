@@ -30,52 +30,22 @@ module P = Parser_BallyhooCOTTAS  (* cottas_bound_qp etc. *)
    triple_pattern leaves. Keep it scannable; the format is for humans.
    ========================================================================= *)
 
+(* Pretty-printers — F* is the source of truth.
+   Logic lives in formal/fstar/RDF.Pretty.fst (extracted as
+   RDF_Pretty.ml). The aliases below preserve the legacy names so
+   the rest of this file (print_ggp, explain_query, JSON renderers)
+   compiles unchanged. *)
 let term_short (t : G.rdf_term) : string =
-  match t with
-  | G.T_IRI i ->
-    let pfx = [
-      ("http://www.w3.org/1999/02/22-rdf-syntax-ns#", "rdf:");
-      ("http://www.w3.org/2000/01/rdf-schema#", "rdfs:");
-      ("http://www.w3.org/2001/XMLSchema#", "xsd:");
-      ("http://www.w3.org/2002/07/owl#", "owl:");
-      ("http://www.opengis.net/ont/geosparql#", "geo:");
-      ("https://id.parliament.uk/schema/", ":");
-    ] in
-    (match List.find_opt (fun (ns, _) ->
-       String.length i > String.length ns &&
-       String.sub i 0 (String.length ns) = ns) pfx with
-     | Some (ns, p) ->
-       p ^ String.sub i (String.length ns) (String.length i - String.length ns)
-     | None -> "<" ^ i ^ ">")
-  | G.T_BNode b -> "_:" ^ b
-  | G.T_Literal l ->
-    let xsd_string = "http://www.w3.org/2001/XMLSchema#string" in
-    (match l.G.lang_tag with
-     | Some tag -> Printf.sprintf "\"%s\"@%s" l.G.lexical_form tag
-     | None ->
-       if l.G.datatype = "" || l.G.datatype = xsd_string then
-         "\"" ^ l.G.lexical_form ^ "\""
-       else
-         Printf.sprintf "\"%s\"^^<%s>" l.G.lexical_form l.G.datatype)
+  RDF_Pretty.term_short_explain t
 
 let pattern_term_short (pt : A.pattern_term) : string =
-  match pt with
-  | A.PT_Var v -> "?" ^ v
-  | A.PT_IRI i -> term_short (G.T_IRI i)
-  | A.PT_BNode b -> "_:" ^ b
-  | A.PT_Literal l -> term_short (G.T_Literal l)
+  RDF_Pretty.pattern_term_short_explain pt
 
 let pattern_subject_short (ps : A.pattern_subject) : string =
-  match ps with
-  | A.PS_Var v -> "?" ^ v
-  | A.PS_IRI i -> term_short (G.T_IRI i)
-  | A.PS_BNode b -> "_:" ^ b
+  RDF_Pretty.pattern_subject_short_explain ps
 
 let triple_pattern_short (tp : A.triple_pattern) : string =
-  Printf.sprintf "%s %s %s"
-    (pattern_subject_short tp.A.tp_s)
-    (pattern_term_short tp.A.tp_p)
-    (pattern_term_short tp.A.tp_o)
+  RDF_Pretty.triple_pattern_short_explain tp
 
 (* Indent + print a group_graph_pattern recursively. *)
 let rec print_ggp (out : out_channel) (depth : int) (p : A.group_graph_pattern) : unit =

@@ -21,46 +21,14 @@ open SPARQL11_Algebra
    Output formatting
    ============================================================================ *)
 
-let term_to_ntriples t =
-  match t with
-  | T_IRI i -> Printf.sprintf "<%s>" i
-  | T_BNode b -> Printf.sprintf "_:%s" b
-  | T_Literal l ->
-    let xsd_string = "http://www.w3.org/2001/XMLSchema#string" in
-    match l.lang_tag with
-    | Some tag -> Printf.sprintf "\"%s\"@%s" l.lexical_form tag
-    | None ->
-      if l.datatype = "" || l.datatype = xsd_string then
-        Printf.sprintf "\"%s\"" l.lexical_form
-      else
-        Printf.sprintf "\"%s\"^^<%s>" l.lexical_form l.datatype
-
-let term_to_turtle t =
-  (* For display purposes, abbreviate common prefixes *)
-  match t with
-  | T_IRI i ->
-    let prefixes = [
-      ("http://www.w3.org/1999/02/22-rdf-syntax-ns#", "rdf:");
-      ("http://www.w3.org/2000/01/rdf-schema#", "rdfs:");
-      ("http://www.w3.org/2001/XMLSchema#", "xsd:");
-      ("http://www.w3.org/2002/07/owl#", "owl:");
-      ("http://xmlns.com/foaf/0.1/", "foaf:");
-      ("http://purl.org/dc/terms/", "dcterms:");
-      ("http://purl.org/dc/elements/1.1/", "dc:");
-      ("http://schema.org/", "schema:");
-    ] in
-    (match List.find_opt (fun (ns, _) ->
-       String.length i > String.length ns &&
-       String.sub i 0 (String.length ns) = ns) prefixes with
-     | Some (ns, prefix) ->
-       prefix ^ String.sub i (String.length ns) (String.length i - String.length ns)
-     | None -> "<" ^ i ^ ">")
-  | _ -> term_to_ntriples t
-
-let subject_to_string s =
-  match s with
-  | S_IRI i -> term_to_turtle (T_IRI i)
-  | S_BNode b -> "_:" ^ b
+(* Pretty-printers — F* is the source of truth.
+   Logic lives in formal/fstar/RDF.Pretty.fst (extracted as
+   RDF_Pretty.ml). The aliases below preserve the legacy names so
+   the rest of this file (output formatters, dump-nq, etc.) compiles
+   unchanged. *)
+let term_to_ntriples t = RDF_Pretty.term_to_ntriples t
+let term_to_turtle   t = RDF_Pretty.term_to_turtle   t
+let subject_to_string s = RDF_Pretty.subject_to_turtle s
 
 (* ============================================================================
    File I/O helpers
