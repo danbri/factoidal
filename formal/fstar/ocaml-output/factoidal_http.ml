@@ -852,16 +852,13 @@ let status_text code = SPARQL_HTTP_Response.status_text (Z.of_int code)
    that are emitted between the standard headers and the body. CORS headers
    go here. Empty list = historical behaviour. *)
 let write_response ?(extra_headers=[]) oc ~status ~content_type ~body =
-  let text = status_text status in
-  let extras =
-    List.fold_left (fun acc h -> acc ^ h ^ "\r\n") "" extra_headers
+  (* Response-head template lives in F* per rule #1; see
+     SPARQL.HTTP.Response.render_response_head. *)
+  let head =
+    SPARQL_HTTP_Response.render_response_head
+      status content_type (String.length body) extra_headers
   in
-  let headers =
-    Printf.sprintf
-      "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\n%s\r\n"
-      status text content_type (String.length body) extras
-  in
-  output_string oc headers;
+  output_string oc head;
   output_string oc body;
   flush oc
 

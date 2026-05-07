@@ -200,3 +200,44 @@ let cors_mode_to_string (p : cors_policy) : Tot string =
   | CORS_Any  -> "any origin (Access-Control-Allow-Origin: *)"
   | CORS_List origins ->
       "allowlist (" ^ join_with_comma_space origins ^ ")"
+
+// ---------------------------------------------------------------
+// render_response_head
+//
+// Build the HTTP/1.1 response head — status line + standard
+// headers + caller-supplied extras (CORS, Server-Timing, etc.).
+// The OCaml caller writes (head + body) to the connection's
+// out_channel; the F* function owns the byte template.
+//
+// Migrated from factoidal_http.ml's write_response template.
+// Byte-for-byte identical to the legacy OCaml Printf:
+//
+//   HTTP/1.1 <status> <reason>\r\n
+//   Content-Type: <content_type>\r\n
+//   Content-Length: <body_len>\r\n
+//   Connection: close\r\n
+//   <extras (each followed by CRLF)>
+//   \r\n
+//
+// where <reason> is from status_text and <body_len> is the size
+// of the response body in bytes.
+// ---------------------------------------------------------------
+
+let rec concat_header_lines (xs : list string) : Tot string (decreases xs) =
+  match xs with
+  | [] -> ""
+  | h :: rest -> h ^ "\r\n" ^ concat_header_lines rest
+
+let render_response_head
+    (status        : int)
+    (content_type  : string)
+    (body_len      : int)
+    (extra_headers : list string)
+  : Tot string =
+  let reason = status_text status in
+  "HTTP/1.1 " ^ string_of_int status ^ " " ^ reason ^ "\r\n"
+  ^ "Content-Type: " ^ content_type ^ "\r\n"
+  ^ "Content-Length: " ^ string_of_int body_len ^ "\r\n"
+  ^ "Connection: close\r\n"
+  ^ concat_header_lines extra_headers
+  ^ "\r\n"
