@@ -1,13 +1,13 @@
 # 2026-05-07 — OWL 2 RL: next steps + scoping
 
-Last refreshed: 2026-05-07 (OWL profile-RL and entailment scores re-measured against live runners).
+Last refreshed: 2026-05-07 (OWL profile-RL and entailment scores re-measured against live runners; bumped post-#229 prp-key + #230 imports-011).
 
 ## Status
 
 Design + scoping. Doc-only. No code in this commit.
 
 Tracking issue: https://github.com/danbri/factoidal/issues/207
-("Epic: OWL 2 RL profile — current 15/30 → 30/30").
+("Epic: OWL 2 RL profile — current 17/30 → 30/30").
 
 The user wrote "OWL 1.1 — rl"; OWL 1.1 was never standardised. The
 intended target is the **OWL 2 RL profile** (W3C Recommendation, 2012),
@@ -18,10 +18,10 @@ need; there is no separate "OWL 1.1 compatibility" track.
 
 ## Where we are
 
-- **W3C OWL 2 PositiveEntailmentTest, profile-RL.rdf:** 15 pass,
-  15 fail (out of 30) per `bin/linux-x86_64/owl_runner` (re-measured
-  2026-05-07; `docs/test-results/latest.json` still records the
-  earlier 13/17 split).
+- **W3C OWL 2 PositiveEntailmentTest, profile-RL.rdf:** 17 pass,
+  13 fail (out of 30) per `bin/linux-x86_64/owl_runner` after #229
+  (Cluster B prp-key) and #230 (Cluster K imports-011 harness fix).
+  The pre-#229+#230 baseline was 15/30; the per-PR delta was +1 each.
 - **W3C SPARQL 1.1 entailment suite:** 69 pass, 1 fail (out of 70)
   per `bin/linux-x86_64/w3c_runner entailment` (re-measured
   2026-05-07). The single fail is `parent query with (hasChild max 1
