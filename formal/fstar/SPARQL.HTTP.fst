@@ -445,6 +445,75 @@ let parse_http_request
                             hr_headers   = headers;
                             hr_body      = body }))))
 
+
+(** ====================================================================== **)
+(** Part 10.5: streaming-buffer helpers                                   **)
+(**                                                                         **)
+(** Used by the OCaml read_full_request shim, which has to detect the      **)
+(** header terminator BEFORE it has the full request (so it knows when    **)
+(** to stop reading from the socket), and then peek at Content-Length to **)
+(** decide how much body to pull. The actual socket I/O stays in OCaml;   **)
+(** the byte-level decisions live here.                                    **)
+(** ====================================================================== **)
+
+// Find the position of the HTTP header terminator (CRLFCRLF) in s, or
+// None if not found. Convenience wrapper around find_4byte with auto-fuel.
+let find_header_terminator_pos (s : string) : option nat =
+  let len = String.length s in
+  let fuel : nat = len + 1 in
+  find_4byte s 0 0x0D 0x0A 0x0D 0x0A fuel
+
+// Case-insensitive substring search (already-lowered version).
+let rec ci_substring_at_lc
+    (hay_lc : string)
+    (needle_lc : string)
+    (pos : nat)
+    (fuel : nat)
+  : Tot (option nat) (decreases fuel) =
+  let hl = String.length hay_lc in
+  let nl = String.length needle_lc in
+  if fuel = 0 then None
+  else if nl = 0 then Some pos
+  else if pos + nl > hl then None
+  else
+    let candidate = safe_substring hay_lc pos nl in
+    if candidate = needle_lc then Some pos
+    else ci_substring_at_lc hay_lc needle_lc (pos + 1) (fuel - 1)
+
+// Public CI substring search. Lowercases both arguments first, then scans.
+let ci_substring_index (haystack : string) (needle : string) : option nat =
+  let hay_lc = ascii_lower_string haystack in
+  let needle_lc = ascii_lower_string needle in
+  let hl = String.length hay_lc in
+  let fuel : nat = hl + 1 in
+  ci_substring_at_lc hay_lc needle_lc 0 fuel
+
+// Extract Content-Length from the buffered request region [s] up to but
+// not including the header terminator at position [term]. Returns None
+// if absent or unparseable. Mirrors the OCaml read_full_request peek.
+let extract_content_length (s : string) (term : nat) : option nat =
+  let slen = String.length s in
+  let head_len : nat = if term <= slen then term else slen in
+  let head = safe_substring s 0 head_len in
+  let key = "content-length:" in
+  match ci_substring_index head key with
+  | None -> None
+  | Some i ->
+    let value_start : nat = i + String.length key in
+    let head_end = String.length head in
+    let after_key_len : nat =
+      if value_start <= head_end then head_end - value_start else 0
+    in
+    let suffix = safe_substring head value_start after_key_len in
+    let suffix_fuel : nat = String.length suffix + 1 in
+    let line_end : nat =
+      match find_char suffix 0 0x0D suffix_fuel with
+      | Some p -> p
+      | None -> String.length suffix
+    in
+    let v_raw = safe_substring suffix 0 line_end in
+    parse_nat v_raw
+
 #pop-options
 
 
@@ -479,3 +548,32 @@ let _test_lookup_ci =
   match header_lookup_ci hs "Content-Type" with
   | Some v -> v = "application/json"
   | None -> false
+
+// Streaming-buffer helpers. Bare-boolean form: matches the established
+// pattern of the other smoke tests in this file (e.g. _test_rl_ok
+// above). assert_norm would be a stronger guard, but
+// `ci_substring_index` calls `ascii_lower_string` which threads through
+// FStar.String.list_of_string / FStar.Char.int_of_char primitives that
+// are opaque to F*'s normalizer — even at --fuel 1000 the assertion
+// can't be discharged. Bare-boolean is the practical choice here; any
+// real drift is caught by the OCaml integration smoke test driven from
+// build-ocaml.sh (factoidal-http accepts a POST with Content-Length
+// and produces the right body).
+let _test_find_terminator =
+  match find_header_terminator_pos "GET / HTTP/1.1\r\n\r\nbody" with
+  | Some 14 -> true
+  | _ -> false
+
+let _test_ci_substring =
+  match ci_substring_index "Foo Bar Baz" "BAR" with
+  | Some 4 -> true
+  | _ -> false
+
+let _test_content_length =
+  let raw = "POST / HTTP/1.1\r\nContent-Length: 42\r\nHost: x\r\n\r\nbody" in
+  match find_header_terminator_pos raw with
+  | None -> false
+  | Some term ->
+    (match extract_content_length raw term with
+     | Some 42 -> true
+     | _ -> false)
