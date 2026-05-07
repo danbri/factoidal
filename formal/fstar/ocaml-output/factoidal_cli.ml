@@ -338,42 +338,12 @@ let print_results_csv vars rows =
     Printf.printf "%s\n" (String.concat "," cells)
   ) rows
 
-let json_escape s =
-  let buf = Buffer.create (String.length s + 8) in
-  String.iter (fun c ->
-    match c with
-    | '"'  -> Buffer.add_string buf "\\\""
-    | '\\' -> Buffer.add_string buf "\\\\"
-    | '\n' -> Buffer.add_string buf "\\n"
-    | '\r' -> Buffer.add_string buf "\\r"
-    | '\t' -> Buffer.add_string buf "\\t"
-    | '\b' -> Buffer.add_string buf "\\b"
-    | '\012' -> Buffer.add_string buf "\\f"
-    | c when Char.code c < 0x20 ->
-      Buffer.add_string buf (Printf.sprintf "\\u%04x" (Char.code c))
-    | c -> Buffer.add_char buf c
-  ) s;
-  Buffer.contents buf
-
-let json_term t =
-  match t with
-  | T_IRI i ->
-    Printf.sprintf "{\"type\":\"uri\",\"value\":\"%s\"}" (json_escape i)
-  | T_BNode b ->
-    Printf.sprintf "{\"type\":\"bnode\",\"value\":\"%s\"}" (json_escape b)
-  | T_Literal l ->
-    let xsd_string = "http://www.w3.org/2001/XMLSchema#string" in
-    (match l.lang_tag with
-     | Some tag ->
-       Printf.sprintf "{\"type\":\"literal\",\"value\":\"%s\",\"xml:lang\":\"%s\"}"
-         (json_escape l.lexical_form) (json_escape tag)
-     | None ->
-       if l.datatype = "" || l.datatype = xsd_string then
-         Printf.sprintf "{\"type\":\"literal\",\"value\":\"%s\"}"
-           (json_escape l.lexical_form)
-       else
-         Printf.sprintf "{\"type\":\"literal\",\"value\":\"%s\",\"datatype\":\"%s\"}"
-           (json_escape l.lexical_form) (json_escape l.datatype))
+(* json_escape and json_term delegate to F*: SPARQL.JSON.Escape and
+   SPARQL.Protocol own the SPARQL Results JSON byte-level rendering.
+   factoidal_http.ml already does the same delegation; this brings
+   factoidal_cli.ml in line. Rule #1 / #11. *)
+let json_escape s = SPARQL_JSON_Escape.json_escape s
+let json_term t = SPARQL_Protocol.json_term t
 
 let print_results_json vars rows =
   let vars_json = String.concat "," (List.map (fun v ->
