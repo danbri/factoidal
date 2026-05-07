@@ -2478,20 +2478,32 @@ let owl_rule_cls_minc_qual1 (g : rdf_graph) : rdf_graph =
 //   * Canonical bnodes are NOT registered as owl:Class / rdfs:Class,
 //     so rdfs-reflexivity does not emit extra subClassOf triples.
 
-// CARDINALITY GUARD (parent7 explosion, 2026-04-25): cls-maxqc1 originally
-// fired on every (x P y) AND (y rdf:type C), emitting (x rdf:type
-// canonical_maxqc1(P,C)) unconditionally. Because RDFS/OWL closure types
-// every individual under many superclasses, that emitted ~973 spurious
-// memberships for the 16-individual parent7 dataset. We now count x's
-// P-successors that are typed C and only emit if the count is <= 1
-// (the cardinality limit). Soundness: max-1 says no x can have >= 2
-// distinct C-typed P-successors; if the data already shows >= 2, claiming
-// (x in maxqc1(P,C)) would either force a sameAs merge of the witnesses
-// (correct DL semantics, but out of scope for closure-only) or be unsound.
-// Suppressing the assertion in that case is the conservative move and
-// matches parent7's expected single-row answer (:Dudley) without losing
-// the existing positive cases (parent7-data: count(:Dudley hasChild typed
-// :Female) = 1, count(:Bob hasChild typed :Female) = 0).
+// CARDINALITY GUARD (parent7 explosion, 2026-04-25; tightened 2026-05-07):
+// cls-maxqc1 originally fired on every (x P y) AND (y rdf:type C), emitting
+// (x rdf:type canonical_maxqc1(P,C)) unconditionally. Because RDFS/OWL
+// closure types every individual under many superclasses, that emitted
+// ~973 spurious memberships for the 16-individual parent7 dataset.
+//
+// 2026-04-25 partial fix: skipped emission when n > 1 (count of P-
+// successors typed C). This eliminated cases where data already shows
+// >= 2 distinct C-typed P-successors (max-1 would force a sameAs merge
+// we cannot perform in pure closure).
+//
+// 2026-05-07 tightening: also skip emission when n = 0. Under OWA, a
+// vacuous max-1 holds for every individual, but Pellet/HermiT (and the
+// W3C parent7 expected result) only return individuals with at least
+// one witnessed C-typed P-successor. The guard is now n = 1 exactly.
+// This matches parent8 (cls-exactqc1) behaviour, where the iteration
+// over (x P y) edges with (y a C) implicitly enforces n >= 1.
+//
+// Soundness: emitting (x in maxqc1(P,C)) when n = 0 is correct under
+// strict DL but useless for the W3C entailment tests (it returns every
+// IRI/bnode in the closed graph). Restricting to n = 1 produces
+// exactly the witnesses Pellet/HermiT return: x has exactly one known
+// P-successor typed C, which both satisfies max-1 and is non-trivial.
+// parent7-data: count(:Dudley hasChild typed :Female) = 1 -> emit;
+// count(:Bob hasChild typed :Female) = 0 -> skip; nothing else has
+// a hasChild edge in this dataset.
 //
 // count_p_successors_typed_c counts how many objects of (x P ?) are in g
 // AND have rdf:type C (read against the post-closure graph g, not the
@@ -2537,12 +2549,19 @@ let owl_rule_cls_maxqc1 (g : rdf_graph) : rdf_graph =
               | T_IRI c ->
                 if c = owl_Thing then acc2
                 else
-                  // CARDINALITY GUARD: skip emission when x already has
-                  // >= 2 distinct P-successors typed C in g (max-1
-                  // would otherwise force a sameAs merge we can't yet
-                  // perform in pure closure).
+                  // CARDINALITY GUARD (n = 1 exact): skip emission when
+                  // x has 0 or >= 2 distinct P-successors typed C in g.
+                  // n = 0: vacuous max-1 holds under OWA but produces
+                  //        spurious bindings for every IRI/bnode in
+                  //        the closure (parent7 over-count, 2026-04-25/
+                  //        2026-05-07).
+                  // n >= 2: emitting max-1 would force a sameAs merge
+                  //        we cannot perform in pure closure.
+                  // Only n = 1 (a single witnessed C-typed P-successor)
+                  // produces the canonical maxqc1 typing the W3C
+                  // entailment tests expect.
                   let n = count_p_successors_typed_c g x p c in
-                  if n > 1 then acc2
+                  if n <> 1 then acc2
                   else
                   let rb = canonical_maxqc1_restriction_bnode p c in
                   let rb_subj : subject = S_BNode rb in
