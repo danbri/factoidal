@@ -194,7 +194,7 @@
   [68/70] rdf-n-triples/langtagged_string ok
   [69/70] rdf-n-triples/lantag_with_subtag ok
   [70/70] rdf-n-triples/minimal_whitespace ok
-  [1/356] rdf-trig/anonymous_blank_node_graph ok
+  [1/356] rdf-trig/anonymous_blank_node_graph ok (79ms)
   [2/356] rdf-trig/labeled_blank_node_graph ok
   [3/356] rdf-trig/alternating_iri_graphs ok
   [4/356] rdf-trig/alternating_bnode_graphs ok
@@ -257,7 +257,7 @@
   [61/356] rdf-trig/LITERAL1 ok
   [62/356] rdf-trig/LITERAL1_ascii_boundaries ok
   [63/356] rdf-trig/LITERAL1_with_UTF8_boundaries ok
-  [64/356] rdf-trig/LITERAL1_all_controls ok
+  [64/356] rdf-trig/LITERAL1_all_controls ok (135ms)
   [65/356] rdf-trig/LITERAL1_all_punctuation ok
   [66/356] rdf-trig/LITERAL_LONG1 ok
   [67/356] rdf-trig/LITERAL_LONG1_ascii_boundaries ok
@@ -554,7 +554,7 @@
   [2/313] rdf-turtle/IRI_with_four_digit_numeric_escape ok
   [3/313] rdf-turtle/IRI_with_eight_digit_numeric_escape ok
   [4/313] rdf-turtle/IRI_with_all_punctuation ok
-  [5/313] rdf-turtle/bareword_a_predicate ok
+  [5/313] rdf-turtle/bareword_a_predicate ok (110ms)
   [6/313] rdf-turtle/old_style_prefix ok
   [7/313] rdf-turtle/SPARQL_style_prefix ok
   [8/313] rdf-turtle/prefixed_IRI_predicate ok
@@ -1239,7 +1239,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   [suite time: 0.0s]
 
 --- rdf-trig ---
-  PASS: anonymous_blank_node_graph
+  PASS: anonymous_blank_node_graph (79ms)
   PASS: labeled_blank_node_graph
   PASS: alternating_iri_graphs
   PASS: alternating_bnode_graphs
@@ -1302,7 +1302,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: LITERAL1
   PASS: LITERAL1_ascii_boundaries
   PASS: LITERAL1_with_UTF8_boundaries
-  PASS: LITERAL1_all_controls
+  PASS: LITERAL1_all_controls (135ms)
   PASS: LITERAL1_all_punctuation
   PASS: LITERAL_LONG1
   PASS: LITERAL_LONG1_ascii_boundaries
@@ -1595,14 +1595,14 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: IRI-resolution-02
   PASS: IRI-resolution-07
   PASS: IRI-resolution-08
-  [suite time: 0.2s]
+  [suite time: 0.4s]
 
 --- rdf-turtle ---
   PASS: IRI_subject
   PASS: IRI_with_four_digit_numeric_escape
   PASS: IRI_with_eight_digit_numeric_escape
   PASS: IRI_with_all_punctuation
-  PASS: bareword_a_predicate
+  PASS: bareword_a_predicate (110ms)
   PASS: old_style_prefix
   PASS: SPARQL_style_prefix
   PASS: prefixed_IRI_predicate
@@ -1911,7 +1911,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: IRI-resolution-02
   PASS: IRI-resolution-07
   PASS: IRI-resolution-08
-  [suite time: 0.1s]
+  [suite time: 0.6s]
 
 --- rdf-xml ---
   PASS: amp-in-url-test001
