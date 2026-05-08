@@ -418,6 +418,10 @@ jobs:
           }
 
       - name: Full Wasm suite (SPARQL + RDF)
+        # Run even if smoke test failed — the full suite is diagnostic
+        # output that helps locate the wasm regression, and the dashboard
+        # commit step downstream looks for wasm_results.log.
+        if: always()
         run: |
           cd docs/fstar-extracted
           WASM_RC=0
@@ -432,7 +436,14 @@ jobs:
       - name: Commit + push Linux generated docs artifacts
         # Same scope as the CI shadow artifacts step above: only push
         # to claude/main, never to PR branches.
-        if: github.ref == 'refs/heads/claude/main'
+        # Run even if a preceding step (e.g. wasm smoke / full wasm
+        # suite) failed, so a wasm-side regression doesn't gate the
+        # dashboard refresh. The native test report at
+        # docs/test-results/latest.json is the source of truth for
+        # https://danbri.github.io/factoidal/test-results/ and was
+        # produced by the "Run tests and generate report" step above
+        # before any wasm step ran.
+        if: ${{ always() && github.ref == 'refs/heads/claude/main' }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
