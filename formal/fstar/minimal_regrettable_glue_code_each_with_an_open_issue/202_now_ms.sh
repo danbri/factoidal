@@ -55,19 +55,39 @@ path = sys.argv[1]
 with open(path, "r") as f:
     content = f.read()
 
-# F* extraction emits assume vals as a top-level
-#   let (now_ms : unit -> Prims.int) =
-#     fun uu___ -> failwith "Not yet implemented: SPARQL.Eval.TimeBudget.now_ms"
-# Replace the body, leaving the public type signature alone so the
-# OCaml compiler still sees the same ABI.
+# F* 2025.12.15 emits two distinct surface forms for `assume val`:
+#   form A:  let now_ms (uu___ : unit) : Prims.int=
+#              failwith "Not yet implemented: SPARQL.Eval.TimeBudget.now_ms"
+#   form B:  let (now_ms : unit -> Prims.int) =
+#              fun uu___ -> failwith "Not yet implemented: ..."
+# The determining factor is module-level details, not the assume-val itself
+# (same pattern hit hash_sha256 in #228). Patch both forms — the unmatched
+# one is a no-op replace.
 old_patterns = [
+    # form A — single line failwith
+    'let now_ms (uu___ : unit) : Prims.int=\n'
+    '  failwith "Not yet implemented: SPARQL.Eval.TimeBudget.now_ms"',
+    # form A — multi-line failwith
+    'let now_ms (uu___ : unit) : Prims.int=\n'
+    '  failwith\n'
+    '    "Not yet implemented: SPARQL.Eval.TimeBudget.now_ms"',
+    # form B — single line failwith
     'let (now_ms : unit -> Prims.int) =\n'
     '  fun uu___ -> failwith "Not yet implemented: SPARQL.Eval.TimeBudget.now_ms"',
+    # form B — multi-line failwith
     'let (now_ms : unit -> Prims.int) =\n'
     '  fun uu___ ->\n'
     '    failwith "Not yet implemented: SPARQL.Eval.TimeBudget.now_ms"',
 ]
-new_body = (
+new_body_form_a = (
+    'let now_ms (uu___ : unit) : Prims.int=\n'
+    '  (* Issue #202: rule-#11(a) pure-I/O realisation.\n'
+    '     Unix.gettimeofday returns seconds-as-float; multiply to ms,\n'
+    '     truncate, and lift to Prims.int (Z.t). Wallclock jumps are\n'
+    '     tolerated -- only affects polling cadence, not correctness. *)\n'
+    '  Z.of_int (int_of_float (Unix.gettimeofday () *. 1000.0))'
+)
+new_body_form_b = (
     'let (now_ms : unit -> Prims.int) =\n'
     '  (* Issue #202: rule-#11(a) pure-I/O realisation.\n'
     '     Unix.gettimeofday returns seconds-as-float; multiply to ms,\n'
@@ -78,13 +98,16 @@ new_body = (
 )
 
 replaced = False
-for old in old_patterns:
+already_patched = 'Unix.gettimeofday' in content
+# Try each old pattern; first 2 are form A, last 2 are form B.
+for i, old in enumerate(old_patterns):
     if old in content:
+        new_body = new_body_form_a if i < 2 else new_body_form_b
         content = content.replace(old, new_body, 1)
         replaced = True
         break
 
-if not replaced:
+if not replaced and not already_patched:
     sys.stderr.write(
         "  ERROR: 202_now_ms could not find the failwith stub for now_ms in "
         + path
