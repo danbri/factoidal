@@ -1,0 +1,150 @@
+name: Dashboard Refresh
+
+# Always-on, lightweight dashboard regeneration. The heavy w3c-tests
+# workflow has a 300s tail-edge debounce that drops dashboard
+# refreshes when pushes are bunched (rapid commit cadence on
+# claude/main is common). This workflow exists so the dashboard at
+# https://danbri.github.io/factoidal/test-results/ refreshes within
+# a minute of any push, regardless of debounce or browser-artifacts
+# job state.
+#
+# What it does:
+#   - Reads the committed *_results.log files in
+#     formal/fstar/ocaml-output/ (these are kept up-to-date by the
+#     heavy w3c-tests pipeline when it runs).
+#   - Runs formal/fstar/generate-report.sh (no --run — pure
+#     regeneration from cached logs; no F*/OCaml needed).
+#   - Commits + pushes docs/test-results/* updates.
+#
+# What it does NOT do:
+#   - Re-run any tests.
+#   - Build any F* / OCaml.
+#
+# Effect: the dashboard's "Last refresh" timestamp tracks every
+# commit, even when the underlying test data is from an earlier
+# run. The TEST data itself updates only when the heavy pipeline
+# completes successfully.
+#
+# This is the structural answer to "the dashboard is stuck at
+# X:YYam HOURS LATER" — separate dashboard liveness from test
+# liveness.
+
+on:
+  push:
+    branches: [main, master, claude/main]
+    # Skip our own self-pushes + the heavy pipeline's pushes — both
+    # write to docs/test-results/* and mustn't ricochet here.
+    paths-ignore:
+      - 'docs/test-results/**'
+      - 'docs/fstar-extracted/**'
+      - 'bin/ci-linux-x86_64/**'
+      - 'bin/ci-darwin-arm64/**'
+      - 'formal/fstar/ocaml-output-ci/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Concurrency: per-ref. Cancel older in-flight refreshes when a newer
+# one comes in — the dashboard reflects the LATEST source, so older
+# refreshes are wasted work.
+concurrency:
+  group: dashboard-refresh-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # We need full history so generate-report.sh's git-based
+          # date stamps resolve. fetch-depth: 0 is overkill but cheap.
+          fetch-depth: 0
+
+      - name: Sanity-check inputs
+        run: |
+          set -eu
+          # The committed *_results.log files are the data the
+          # dashboard derives from. If they're missing, this workflow
+          # is a no-op (the heavy pipeline hasn't populated them yet).
+          missing=0
+          for log in sparql_results.log rdf_results.log \
+                     rdfc10_results.log owl_profile_rl_results.log; do
+            if [ ! -f "formal/fstar/ocaml-output/$log" ]; then
+              echo "::warning::missing input: formal/fstar/ocaml-output/$log"
+              missing=$((missing + 1))
+            fi
+          done
+          if [ "$missing" -ge 4 ]; then
+            echo "::error::no committed *_results.log inputs found; nothing to refresh"
+            exit 0
+          fi
+          echo "Inputs present (some files may be missing — generate-report.sh handles partial inputs)."
+
+      - name: Regenerate dashboard
+        run: |
+          set -eu
+          cd formal/fstar
+          # No --run — we use the committed logs as-is.
+          ./generate-report.sh
+          echo "Dashboard regenerated."
+          echo "=== latest.json head ==="
+          head -50 ../../docs/test-results/latest.json 2>/dev/null || true
+
+      - name: Commit + push refreshed dashboard
+        if: github.ref == 'refs/heads/claude/main' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Save dashboard payload outside the worktree (same pattern
+          # as w3c-tests.yml's browser-artifacts step).
+          PAYLOAD=$(mktemp -d)
+          if [ -d docs/test-results ]; then
+            mkdir -p "$PAYLOAD/docs"
+            cp -a docs/test-results "$PAYLOAD/docs/test-results"
+          fi
+
+          PUSH_RC=1
+          for attempt in 1 2 3 4 5; do
+            echo "Push attempt $attempt for dashboard refresh..."
+
+            # Sync to latest origin tip; discard any local state.
+            git fetch origin "${GITHUB_REF_NAME}"
+            git reset --hard "origin/${GITHUB_REF_NAME}"
+            git clean -fdq -- docs/test-results
+
+            # Restore freshly-generated dashboard onto the new tip.
+            if [ -d "$PAYLOAD/docs/test-results" ]; then
+              mkdir -p docs
+              rm -rf docs/test-results
+              cp -a "$PAYLOAD/docs/test-results" docs/test-results
+            fi
+
+            git add -A docs/test-results
+
+            if git diff --cached --quiet; then
+              echo "No dashboard changes vs origin tip; nothing to commit."
+              PUSH_RC=0
+              break
+            fi
+
+            git commit -m "ci: refresh dashboard"
+
+            if git push origin "HEAD:${GITHUB_REF_NAME}"; then
+              PUSH_RC=0
+              echo "Push succeeded on attempt $attempt."
+              break
+            fi
+            echo "::warning::git push failed on attempt $attempt — origin moved; retrying"
+            sleep $((attempt * 2))
+          done
+
+          rm -rf "$PAYLOAD" || true
+
+          if [ "$PUSH_RC" -ne 0 ]; then
+            echo "::error::Failed to push dashboard refresh after 5 attempts"
+            exit "$PUSH_RC"
+          fi
