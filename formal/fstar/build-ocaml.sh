@@ -475,7 +475,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     factoidal_cli.ml
     factoidal_http_main.ml
     owl_runner.ml
-    rdfc10_runner.ml
+    ../../../bin/rdfc10-runner/rdfc10_runner.ml
     ../../../bin/cottas-ondisk-smoketest/cottas_ondisk_smoketest.ml
     ../experimental_ocaml_glue/parquet_zstd_stubs.c
   )
@@ -580,7 +580,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
-      rdfc10_runner.ml \
+      ../../../bin/rdfc10-runner/rdfc10_runner.ml \
       -o "$BINDIR/rdfc10_runner" || RDFC10_RC=$?
     cat _ocamlopt_rdfc10_runner.log
     if [[ "$RDFC10_RC" -ne 0 ]]; then
