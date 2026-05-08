@@ -6,6 +6,22 @@ on:
     # is fed by these refs; feature-branch runs would not be useful
     # anyway and previously caused minute-burn + cancellation storms.
     branches: [main, master, claude/main]
+    # Skip our own self-pushes: this workflow commits back the
+    # generated dashboard + shadow artifacts. Without paths-ignore +
+    # the commit message tweak below, those commits would either
+    # re-trigger w3c-tests (infinite loop) or carry [skip ci]
+    # (which would also block deploy-pages from publishing the
+    # dashboard).
+    paths-ignore:
+      - 'docs/test-results/**'
+      - 'docs/fstar-extracted/**'
+      - 'bin/ci-linux-x86_64/**'
+      - 'bin/ci-darwin-arm64/**'
+      - 'formal/fstar/ocaml-output-ci/**'
+      - 'formal/fstar/ocaml-output/sparql_results.log'
+      - 'formal/fstar/ocaml-output/rdf_results.log'
+      - 'formal/fstar/ocaml-output/rdfc10_results.log'
+      - 'formal/fstar/ocaml-output/owl_profile_rl_results.log'
   schedule:
     # Two safety-net runs at 04:00 and 05:00 UTC. Each entry below
     # gates itself on "≥30 minutes of quiet on the head ref"; if
@@ -316,7 +332,7 @@ jobs:
               break
             fi
 
-            git commit -m "ci(${PLATFORM}): shadow build artifacts [skip ci]"
+            git commit -m "ci(${PLATFORM}): shadow build artifacts"
 
             if git push origin "HEAD:${GITHUB_REF_NAME}"; then
               PUSH_RC=0
@@ -529,7 +545,7 @@ jobs:
               break
             fi
 
-            git commit -m "ci(linux-x86_64): generated docs artifacts [skip ci]"
+            git commit -m "ci(linux-x86_64): generated docs artifacts"
 
             if git push origin "HEAD:${GITHUB_REF_NAME}"; then
               PUSH_RC=0
