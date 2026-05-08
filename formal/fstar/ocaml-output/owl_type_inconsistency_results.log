@@ -1,6 +1,6 @@
 Closure regime: RL
 OWL 2 test catalog: third_party/testing/owl/type-inconsistency.rdf
-  parsed 3220 triples in 0.10s
+  parsed 3220 triples in 0.09s
 Totals: 128 test cases
   PositiveEntailmentTest:    0
   NegativeEntailmentTest:    0
@@ -25,11 +25,11 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   FAIL/no-premise  Inconsistent Disjoint Dataproperties
   FAIL/no-premise  Inconsistent String Pattern with Disjoint Dataproperties
   FAIL/no-premise  Minus Infinity is not in owl:real
-  FAIL/unexpected-consistency  New-Feature-AsymmetricProperty-001
+  PASS  New-Feature-AsymmetricProperty-001
   FAIL/unexpected-consistency  New-Feature-BottomDataProperty-001
   FAIL/unexpected-consistency  New-Feature-BottomObjectProperty-001
   FAIL/unexpected-consistency  New-Feature-DisjointDataProperties-001
-  FAIL/unexpected-consistency  New-Feature-IrreflexiveProperty-001
+  PASS  New-Feature-IrreflexiveProperty-001
   PASS  New-Feature-Keys-002
   FAIL/unexpected-consistency  New-Feature-Keys-006
   FAIL/unexpected-consistency  New-Feature-NegativeDataPropertyAssertion-001
@@ -121,9 +121,9 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   FAIL/no-premise  inconsistent_datatypes
   FAIL/unexpected-consistency  one=two
   PASS  rdfbased-sem-bool-complement-inst
-  FAIL/unexpected-consistency  rdfbased-sem-char-asymmetric-inst
-  FAIL/unexpected-consistency  rdfbased-sem-char-asymmetric-term
-  FAIL/unexpected-consistency  rdfbased-sem-char-irreflexive-inst
+  PASS  rdfbased-sem-char-asymmetric-inst
+  PASS  rdfbased-sem-char-asymmetric-term
+  PASS  rdfbased-sem-char-irreflexive-inst
   PASS  rdfbased-sem-class-nothing-ext
   PASS  rdfbased-sem-eqdis-different-irrflxv
   PASS  rdfbased-sem-eqdis-different-sameas
@@ -143,4 +143,4 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   FAIL/unexpected-consistency  rdfbased-sem-restrict-maxqcr-inst-obj-zero
   FAIL/no-premise  string-integer-clash
 
-Profile-RL InconsistencyTests: 10 pass, 118 fail (out of 128) in 5.85s
+Profile-RL InconsistencyTests: 15 pass, 113 fail (out of 128) in 5.82s
