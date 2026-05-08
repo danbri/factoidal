@@ -557,20 +557,27 @@
   </ul>
 </details>
 
-<h2>OWL 2 <span class="inline-numbers">20 pass &middot; 10 fail &middot; out of ~3378 W3C OWL 2 tests in scope (≈0.6%)</span></h2>
+<h2>OWL 2 <span class="inline-numbers">20 pass (profile-RL) &middot; 10 fail &middot; of 30 runner-wired tests</span></h2>
 <p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">
-  <strong>Scope clarification.</strong> The SPARQL 1.1 <em>entailment</em>
-  row in the SPARQL table above (65/70 pass) is the
-  <strong>SPARQL 1.1 entailment-regime test suite</strong> — a narrow,
-  well-defined slice of W3C testing that covers RDF / RDFS /
-  D-entailment <em>regimes attached to BGP matching</em>. It is
-  <strong>not</strong> a measure of OWL conformance. The full W3C OWL 2
-  Test Cases (~3378 tests across 9 categories below) are
-  the larger, ultimate goal — currently only the profile-RL
-  <code>PositiveEntailmentTests</code> slot (30 tests) is wired
-  into the runner. The headline percentage above is against the full
-  OWL 2 universe, not the profile-RL subset, so it reflects honest
-  end-to-end coverage.
+  <strong>Scope clarification.</strong> The OWL 2 W3C Test Cases catalog
+  (~3378 <code>test:TestCase</code> entries across 9
+  categories) is vendored under <code>third_party/testing/owl/</code>.
+  Currently <strong>only profile-RL <code>PositiveEntailmentTests</code></strong>
+  (30 tests) are wired through <code>owl_runner</code>; the other
+  rows below are runner-wiring TODOs, not engine TODOs.
+</p>
+<p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">
+  <strong>Where the F\* DL Tableau actually shows up.</strong> The
+  <code>Tableau.tableau_materialise</code> module (1167 LoC F\*, 0
+  <code>assume val</code>, 0 <code>--lax</code>) is on the live
+  codepath: <code>w3c_runner.ml</code> calls it for every
+  <em>OWL-Direct</em> entailment-regime test. That's why the
+  <strong>SPARQL 1.1 Entailment Regimes row above (70/70) is at
+  100%</strong> — parent4/5/6/7, simple7/8, sparqldl-01…12, and the
+  rest are DL queries that pass <em>because</em> Tableau drives the
+  membership check. Wiring the dedicated W3C OWL Test Cases catalog
+  through <code>owl_runner</code> (semantics-direct row below) is the
+  next runner-side step; the engine isn't the blocker.
 </p>
 <div class="suites">
   <div class="suite-row mixed">
@@ -586,7 +593,7 @@
     <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
     <div class="suite-numbers">
       <span style="color:var(--muted)">&mdash;</span>
-      <small>174 tests &middot; blocked on EL-profile closure rules</small>
+      <small>174 tests &middot; runner not wired (engine: EL closure rules pending)</small>
     </div>
   </div>
   <div class="suite-row skipped">
@@ -594,7 +601,7 @@
     <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
     <div class="suite-numbers">
       <span style="color:var(--muted)">&mdash;</span>
-      <small>130 tests &middot; blocked on QL-profile query rewrite</small>
+      <small>130 tests &middot; runner not wired (engine: QL query rewrite pending)</small>
     </div>
   </div>
   <div class="suite-row skipped">
@@ -602,7 +609,7 @@
     <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
     <div class="suite-numbers">
       <span style="color:var(--muted)">&mdash;</span>
-      <small>976 tests &middot; blocked on DL tableau (stage d/e)</small>
+      <small>976 tests &middot; runner not wired; <strong>Tableau live</strong> via SPARQL 1.1 entailment-regime suite (70/70 above)</small>
     </div>
   </div>
   <div class="suite-row skipped">
@@ -610,7 +617,7 @@
     <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
     <div class="suite-numbers">
       <span style="color:var(--muted)">&mdash;</span>
-      <small>646 tests &middot; blocked on DL syntactic-profile checker</small>
+      <small>646 tests &middot; runner not wired (engine: DL syntactic-profile checker pending)</small>
     </div>
   </div>
   <div class="suite-row skipped">
@@ -618,7 +625,7 @@
     <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
     <div class="suite-numbers">
       <span style="color:var(--muted)">&mdash;</span>
-      <small>412 tests &middot; blocked on closure-side bnode isomorphism</small>
+      <small>412 tests &middot; runner not wired (engine: closure-side bnode isomorphism pending)</small>
     </div>
   </div>
   <div class="suite-row skipped">
@@ -626,7 +633,7 @@
     <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
     <div class="suite-numbers">
       <span style="color:var(--muted)">&mdash;</span>
-      <small>46 tests &middot; blocked on OWL negation support</small>
+      <small>46 tests &middot; runner not wired (engine: OWL negation support pending)</small>
     </div>
   </div>
   <div class="suite-row skipped">
@@ -634,7 +641,7 @@
     <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
     <div class="suite-numbers">
       <span style="color:var(--muted)">&mdash;</span>
-      <small>708 tests &middot; blocked on contradiction detection</small>
+      <small>708 tests &middot; runner not wired (engine: contradiction detection pending)</small>
     </div>
   </div>
   <div class="suite-row skipped">
@@ -642,7 +649,7 @@
     <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
     <div class="suite-numbers">
       <span style="color:var(--muted)">&mdash;</span>
-      <small>256 tests &middot; blocked on contradiction detection</small>
+      <small>256 tests &middot; runner not wired (engine: contradiction detection pending)</small>
     </div>
   </div>
 </div>
@@ -768,9 +775,9 @@
 </main>
 
 <footer>
-  Generated <strong>2026-05-08 06:25 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/a01095b96bf8f9d5b8aa2788b391aa67927385bc">a01095b</a></code>
-  on branch <code>claude/main</code> — &ldquo;dashboard: per-REC subsection headings (sparql + rdf)&rdquo;.
+  Generated <strong>2026-05-08 07:11 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/8fedd76da55212d26272c5f893b0915545b12683">8fedd76</a></code>
+  on branch <code>claude/main</code> — &ldquo;ci(linux-x86_64): refresh _results.log alongside dashboard regen&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 

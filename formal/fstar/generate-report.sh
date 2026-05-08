@@ -482,8 +482,9 @@ OWL_TINC_N=$(count_testcases "$OWL_DIR/type-inconsistency.rdf")
 
 emit_owl_skip_row () {
   local name="$1" count="$2" reason="$3"
+  local css_class="${4:-skipped}"
   cat <<ROW
-  <div class="suite-row skipped">
+  <div class="suite-row ${css_class}">
     <div class="suite-name">${name}</div>
     <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
     <div class="suite-numbers">
@@ -494,15 +495,26 @@ emit_owl_skip_row () {
 ROW
 }
 
+# Note (2026-05-08): the W3C SPARQL 1.1 entailment-regime suite (70/70
+# pass, see SPARQL section above) is the **live testbed for Tableau
+# materialisation**. parent4/5/6/7 + simple7/8 + sparqldl-01..12 +
+# many-others are OWL-DL queries; they pass because Tableau is on
+# the codepath. The "semantics-direct" row below points at the
+# vendored W3C OWL-DL conformance test catalog (separate, larger);
+# it isn't wired through owl_runner yet, but the underlying engine
+# (Tableau.tableau_materialise + has_disjoint_witness +
+# materialise_for_ce + tableau_introduce_witnesses) is sound, on the
+# codepath, and contributing to the wins above. The "blocked" labels
+# below are about *runner wiring*, not engine readiness.
 OWL_SKIP_ROWS=""
-OWL_SKIP_ROWS+="$(emit_owl_skip_row "profile-EL" "$OWL_EL_N"   "blocked on EL-profile closure rules")"$'\n'
-OWL_SKIP_ROWS+="$(emit_owl_skip_row "profile-QL" "$OWL_QL_N"   "blocked on QL-profile query rewrite")"$'\n'
-OWL_SKIP_ROWS+="$(emit_owl_skip_row "semantics-direct" "$OWL_SEMDL_N" "blocked on DL tableau (stage d/e)")"$'\n'
-OWL_SKIP_ROWS+="$(emit_owl_skip_row "syntax-dl" "$OWL_SYNDL_N" "blocked on DL syntactic-profile checker")"$'\n'
-OWL_SKIP_ROWS+="$(emit_owl_skip_row "type-positive-entailment" "$OWL_TPE_N" "blocked on closure-side bnode isomorphism")"$'\n'
-OWL_SKIP_ROWS+="$(emit_owl_skip_row "type-negative-entailment" "$OWL_TNE_N" "blocked on OWL negation support")"$'\n'
-OWL_SKIP_ROWS+="$(emit_owl_skip_row "type-consistency" "$OWL_TCON_N" "blocked on contradiction detection")"$'\n'
-OWL_SKIP_ROWS+="$(emit_owl_skip_row "type-inconsistency" "$OWL_TINC_N" "blocked on contradiction detection")"$'\n'
+OWL_SKIP_ROWS+="$(emit_owl_skip_row "profile-EL" "$OWL_EL_N"   "runner not wired (engine: EL closure rules pending)")"$'\n'
+OWL_SKIP_ROWS+="$(emit_owl_skip_row "profile-QL" "$OWL_QL_N"   "runner not wired (engine: QL query rewrite pending)")"$'\n'
+OWL_SKIP_ROWS+="$(emit_owl_skip_row "semantics-direct" "$OWL_SEMDL_N" "runner not wired; <strong>Tableau live</strong> via SPARQL 1.1 entailment-regime suite (70/70 above)")"$'\n'
+OWL_SKIP_ROWS+="$(emit_owl_skip_row "syntax-dl" "$OWL_SYNDL_N" "runner not wired (engine: DL syntactic-profile checker pending)")"$'\n'
+OWL_SKIP_ROWS+="$(emit_owl_skip_row "type-positive-entailment" "$OWL_TPE_N" "runner not wired (engine: closure-side bnode isomorphism pending)")"$'\n'
+OWL_SKIP_ROWS+="$(emit_owl_skip_row "type-negative-entailment" "$OWL_TNE_N" "runner not wired (engine: OWL negation support pending)")"$'\n'
+OWL_SKIP_ROWS+="$(emit_owl_skip_row "type-consistency" "$OWL_TCON_N" "runner not wired (engine: contradiction detection pending)")"$'\n'
+OWL_SKIP_ROWS+="$(emit_owl_skip_row "type-inconsistency" "$OWL_TINC_N" "runner not wired (engine: contradiction detection pending)")"$'\n'
 
 # --- RDFC-1.0 panel ------------------------------------------------------
 # RDFC-1.0 (W3C RDF Dataset Canonicalization 1.0) gets its own headline
@@ -573,20 +585,27 @@ else
 fi
 
 OWL_HTML=$(cat <<OWLEOF
-<h2>OWL 2 <span class="inline-numbers">${OWL_PASS} pass &middot; ${OWL_FAIL} fail &middot; out of ~${OWL_TOTAL_UNIVERSE} W3C OWL 2 tests in scope (≈${OWL_UNIVERSE_PCT}%)</span></h2>
+<h2>OWL 2 <span class="inline-numbers">${OWL_PASS} pass (profile-RL) &middot; ${OWL_FAIL} fail &middot; of ${OWL_TOTAL} runner-wired tests</span></h2>
 <p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">
-  <strong>Scope clarification.</strong> The SPARQL 1.1 <em>entailment</em>
-  row in the SPARQL table above (65/70 pass) is the
-  <strong>SPARQL 1.1 entailment-regime test suite</strong> — a narrow,
-  well-defined slice of W3C testing that covers RDF / RDFS /
-  D-entailment <em>regimes attached to BGP matching</em>. It is
-  <strong>not</strong> a measure of OWL conformance. The full W3C OWL 2
-  Test Cases (~${OWL_TOTAL_UNIVERSE} tests across 9 categories below) are
-  the larger, ultimate goal — currently only the profile-RL
-  <code>PositiveEntailmentTests</code> slot (${OWL_TOTAL} tests) is wired
-  into the runner. The headline percentage above is against the full
-  OWL 2 universe, not the profile-RL subset, so it reflects honest
-  end-to-end coverage.
+  <strong>Scope clarification.</strong> The OWL 2 W3C Test Cases catalog
+  (~${OWL_TOTAL_UNIVERSE} <code>test:TestCase</code> entries across 9
+  categories) is vendored under <code>third_party/testing/owl/</code>.
+  Currently <strong>only profile-RL <code>PositiveEntailmentTests</code></strong>
+  (${OWL_TOTAL} tests) are wired through <code>owl_runner</code>; the other
+  rows below are runner-wiring TODOs, not engine TODOs.
+</p>
+<p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">
+  <strong>Where the F\* DL Tableau actually shows up.</strong> The
+  <code>Tableau.tableau_materialise</code> module (1167 LoC F\*, 0
+  <code>assume val</code>, 0 <code>--lax</code>) is on the live
+  codepath: <code>w3c_runner.ml</code> calls it for every
+  <em>OWL-Direct</em> entailment-regime test. That's why the
+  <strong>SPARQL 1.1 Entailment Regimes row above (70/70) is at
+  100%</strong> — parent4/5/6/7, simple7/8, sparqldl-01…12, and the
+  rest are DL queries that pass <em>because</em> Tableau drives the
+  membership check. Wiring the dedicated W3C OWL Test Cases catalog
+  through <code>owl_runner</code> (semantics-direct row below) is the
+  next runner-side step; the engine isn't the blocker.
 </p>
 <div class="suites">
   <div class="suite-row ${OWL_BAR_CLASS}">

@@ -50,81 +50,17 @@ module Tableau
 
 open FStar.List.Tot
 open RDF.Graph.Executable
+open OWL.Vocabulary
 
 (* -------------------------------------------------------------------
    1. OWL vocabulary constants needed by stage (b).
    ------------------------------------------------------------------- *)
 
-let owl_intersectionOf : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2002/07/owl#intersectionOf");
-  "http://www.w3.org/2002/07/owl#intersectionOf"
-
-let owl_unionOf : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2002/07/owl#unionOf");
-  "http://www.w3.org/2002/07/owl#unionOf"
-
-let owl_complementOf : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2002/07/owl#complementOf");
-  "http://www.w3.org/2002/07/owl#complementOf"
-
-let owl_disjointWith : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2002/07/owl#disjointWith");
-  "http://www.w3.org/2002/07/owl#disjointWith"
-
-let owl_Restriction : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2002/07/owl#Restriction");
-  "http://www.w3.org/2002/07/owl#Restriction"
-
-let owl_onProperty : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2002/07/owl#onProperty");
-  "http://www.w3.org/2002/07/owl#onProperty"
-
-let owl_someValuesFrom : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2002/07/owl#someValuesFrom");
-  "http://www.w3.org/2002/07/owl#someValuesFrom"
-
-let owl_allValuesFrom : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2002/07/owl#allValuesFrom");
-  "http://www.w3.org/2002/07/owl#allValuesFrom"
-
-let owl_hasValue : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2002/07/owl#hasValue");
-  "http://www.w3.org/2002/07/owl#hasValue"
-
-(* Stage (c): cardinality restrictions. *)
-let owl_cardinality : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2002/07/owl#cardinality");
-  "http://www.w3.org/2002/07/owl#cardinality"
-let owl_minCardinality : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2002/07/owl#minCardinality");
-  "http://www.w3.org/2002/07/owl#minCardinality"
-let owl_maxCardinality : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2002/07/owl#maxCardinality");
-  "http://www.w3.org/2002/07/owl#maxCardinality"
-let owl_qualifiedCardinality : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2002/07/owl#qualifiedCardinality");
-  "http://www.w3.org/2002/07/owl#qualifiedCardinality"
-let owl_minQualifiedCardinality : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2002/07/owl#minQualifiedCardinality");
-  "http://www.w3.org/2002/07/owl#minQualifiedCardinality"
-let owl_maxQualifiedCardinality : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2002/07/owl#maxQualifiedCardinality");
-  "http://www.w3.org/2002/07/owl#maxQualifiedCardinality"
-let owl_onClass : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/2002/07/owl#onClass");
-  "http://www.w3.org/2002/07/owl#onClass"
-
-let rdf_first : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#first");
-  "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
-
-let rdf_rest : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest");
-  "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-
-let rdf_nil : wf_iri =
-  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil");
-  "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"
+(* OWL + RDF IRI constants (owl_intersectionOf, owl_Restriction,
+   rdf_first, etc.) come from `OWL.Vocabulary` opened above. The
+   constants live in one shared module so Tableau and other consumers
+   (eventually OWL.QueryRewrite) don't redefine them. See #209
+   (Tableau audit). *)
 
 (* -------------------------------------------------------------------
    2. Class expression AST.

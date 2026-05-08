@@ -1,42 +1,4 @@
 open Prims
-let owl_intersectionOf : RDF_Graph_Executable.wf_iri=
-  "http://www.w3.org/2002/07/owl#intersectionOf"
-let owl_unionOf : RDF_Graph_Executable.wf_iri=
-  "http://www.w3.org/2002/07/owl#unionOf"
-let owl_complementOf : RDF_Graph_Executable.wf_iri=
-  "http://www.w3.org/2002/07/owl#complementOf"
-let owl_disjointWith : RDF_Graph_Executable.wf_iri=
-  "http://www.w3.org/2002/07/owl#disjointWith"
-let owl_Restriction : RDF_Graph_Executable.wf_iri=
-  "http://www.w3.org/2002/07/owl#Restriction"
-let owl_onProperty : RDF_Graph_Executable.wf_iri=
-  "http://www.w3.org/2002/07/owl#onProperty"
-let owl_someValuesFrom : RDF_Graph_Executable.wf_iri=
-  "http://www.w3.org/2002/07/owl#someValuesFrom"
-let owl_allValuesFrom : RDF_Graph_Executable.wf_iri=
-  "http://www.w3.org/2002/07/owl#allValuesFrom"
-let owl_hasValue : RDF_Graph_Executable.wf_iri=
-  "http://www.w3.org/2002/07/owl#hasValue"
-let owl_cardinality : RDF_Graph_Executable.wf_iri=
-  "http://www.w3.org/2002/07/owl#cardinality"
-let owl_minCardinality : RDF_Graph_Executable.wf_iri=
-  "http://www.w3.org/2002/07/owl#minCardinality"
-let owl_maxCardinality : RDF_Graph_Executable.wf_iri=
-  "http://www.w3.org/2002/07/owl#maxCardinality"
-let owl_qualifiedCardinality : RDF_Graph_Executable.wf_iri=
-  "http://www.w3.org/2002/07/owl#qualifiedCardinality"
-let owl_minQualifiedCardinality : RDF_Graph_Executable.wf_iri=
-  "http://www.w3.org/2002/07/owl#minQualifiedCardinality"
-let owl_maxQualifiedCardinality : RDF_Graph_Executable.wf_iri=
-  "http://www.w3.org/2002/07/owl#maxQualifiedCardinality"
-let owl_onClass : RDF_Graph_Executable.wf_iri=
-  "http://www.w3.org/2002/07/owl#onClass"
-let rdf_first : RDF_Graph_Executable.wf_iri=
-  "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
-let rdf_rest : RDF_Graph_Executable.wf_iri=
-  "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-let rdf_nil : RDF_Graph_Executable.wf_iri=
-  "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"
 type class_expr =
   | CE_Named of RDF_Graph_Executable.wf_iri 
   | CE_SomeValuesFrom of RDF_Graph_Executable.wf_iri * class_expr 
@@ -165,13 +127,14 @@ let rec walk_rdf_list (g : RDF_Graph_Executable.rdf_graph)
   | uu___ when uu___ = Prims.int_zero -> []
   | n ->
       (match head with
-       | RDF_Graph_Executable.T_IRI i -> if i = rdf_nil then [] else []
+       | RDF_Graph_Executable.T_IRI i ->
+           if i = OWL_Vocabulary.rdf_nil then [] else []
        | RDF_Graph_Executable.T_BNode uu___ ->
            (match term_as_subject head with
             | FStar_Pervasives_Native.None -> []
             | FStar_Pervasives_Native.Some s ->
-                let first = find_first_object g s rdf_first in
-                let rest = find_first_object g s rdf_rest in
+                let first = find_first_object g s OWL_Vocabulary.rdf_first in
+                let rest = find_first_object g s OWL_Vocabulary.rdf_rest in
                 (match (first, rest) with
                  | (FStar_Pervasives_Native.Some h,
                     FStar_Pervasives_Native.Some t) -> h ::
@@ -228,30 +191,36 @@ let rec parse_class_expr (g : RDF_Graph_Executable.rdf_graph)
            (match term_as_subject t with
             | FStar_Pervasives_Native.None -> CE_Unknown
             | FStar_Pervasives_Native.Some s ->
-                (match find_first_object g s owl_intersectionOf with
+                (match find_first_object g s
+                         OWL_Vocabulary.owl_intersectionOf
+                 with
                  | FStar_Pervasives_Native.Some list_head ->
                      let items = walk_rdf_list g list_head n in
                      CE_IntersectionOf
                        (parse_class_expr_list g items (n - Prims.int_one))
                  | FStar_Pervasives_Native.None ->
-                     (match find_first_object g s owl_unionOf with
+                     (match find_first_object g s OWL_Vocabulary.owl_unionOf
+                      with
                       | FStar_Pervasives_Native.Some list_head ->
                           let items = walk_rdf_list g list_head n in
                           CE_UnionOf
                             (parse_class_expr_list g items
                                (n - Prims.int_one))
                       | FStar_Pervasives_Native.None ->
-                          (match find_first_object g s owl_complementOf with
+                          (match find_first_object g s
+                                   OWL_Vocabulary.owl_complementOf
+                           with
                            | FStar_Pervasives_Native.Some c ->
                                CE_ComplementOf
                                  (parse_class_expr g c (n - Prims.int_one))
                            | FStar_Pervasives_Native.None ->
-                               (match find_first_object g s owl_onProperty
+                               (match find_first_object g s
+                                        OWL_Vocabulary.owl_onProperty
                                 with
                                 | FStar_Pervasives_Native.Some
                                     (RDF_Graph_Executable.T_IRI p) ->
                                     (match find_first_object g s
-                                             owl_someValuesFrom
+                                             OWL_Vocabulary.owl_someValuesFrom
                                      with
                                      | FStar_Pervasives_Native.Some c ->
                                          CE_SomeValuesFrom
@@ -260,7 +229,7 @@ let rec parse_class_expr (g : RDF_Graph_Executable.rdf_graph)
                                                 (n - Prims.int_one)))
                                      | FStar_Pervasives_Native.None ->
                                          (match find_first_object g s
-                                                  owl_allValuesFrom
+                                                  OWL_Vocabulary.owl_allValuesFrom
                                           with
                                           | FStar_Pervasives_Native.Some c ->
                                               CE_AllValuesFrom
@@ -269,7 +238,7 @@ let rec parse_class_expr (g : RDF_Graph_Executable.rdf_graph)
                                                      (n - Prims.int_one)))
                                           | FStar_Pervasives_Native.None ->
                                               (match find_first_object g s
-                                                       owl_hasValue
+                                                       OWL_Vocabulary.owl_hasValue
                                                with
                                                | FStar_Pervasives_Native.Some
                                                    v -> CE_HasValue (p, v)
@@ -277,13 +246,13 @@ let rec parse_class_expr (g : RDF_Graph_Executable.rdf_graph)
                                                    ->
                                                    (match cardinality_value g
                                                             s
-                                                            owl_minQualifiedCardinality
+                                                            OWL_Vocabulary.owl_minQualifiedCardinality
                                                     with
                                                     | FStar_Pervasives_Native.Some
                                                         k ->
                                                         (match find_first_object
                                                                  g s
-                                                                 owl_onClass
+                                                                 OWL_Vocabulary.owl_onClass
                                                          with
                                                          | FStar_Pervasives_Native.Some
                                                              c ->
@@ -302,13 +271,13 @@ let rec parse_class_expr (g : RDF_Graph_Executable.rdf_graph)
                                                         ->
                                                         (match cardinality_value
                                                                  g s
-                                                                 owl_maxQualifiedCardinality
+                                                                 OWL_Vocabulary.owl_maxQualifiedCardinality
                                                          with
                                                          | FStar_Pervasives_Native.Some
                                                              k ->
                                                              (match find_first_object
                                                                     g s
-                                                                    owl_onClass
+                                                                    OWL_Vocabulary.owl_onClass
                                                               with
                                                               | FStar_Pervasives_Native.Some
                                                                   c ->
@@ -326,14 +295,14 @@ let rec parse_class_expr (g : RDF_Graph_Executable.rdf_graph)
                                                              ->
                                                              (match cardinality_value
                                                                     g s
-                                                                    owl_qualifiedCardinality
+                                                                    OWL_Vocabulary.owl_qualifiedCardinality
                                                               with
                                                               | FStar_Pervasives_Native.Some
                                                                   k ->
                                                                   (match 
                                                                     find_first_object
                                                                     g s
-                                                                    owl_onClass
+                                                                    OWL_Vocabulary.owl_onClass
                                                                    with
                                                                    | 
                                                                    FStar_Pervasives_Native.Some
@@ -354,7 +323,7 @@ let rec parse_class_expr (g : RDF_Graph_Executable.rdf_graph)
                                                                   (match 
                                                                     cardinality_value
                                                                     g s
-                                                                    owl_minCardinality
+                                                                    OWL_Vocabulary.owl_minCardinality
                                                                    with
                                                                    | 
                                                                    FStar_Pervasives_Native.Some
@@ -367,7 +336,7 @@ let rec parse_class_expr (g : RDF_Graph_Executable.rdf_graph)
                                                                     (match 
                                                                     cardinality_value
                                                                     g s
-                                                                    owl_maxCardinality
+                                                                    OWL_Vocabulary.owl_maxCardinality
                                                                     with
                                                                     | 
                                                                     FStar_Pervasives_Native.Some
@@ -380,7 +349,7 @@ let rec parse_class_expr (g : RDF_Graph_Executable.rdf_graph)
                                                                     (match 
                                                                     cardinality_value
                                                                     g s
-                                                                    owl_cardinality
+                                                                    OWL_Vocabulary.owl_cardinality
                                                                     with
                                                                     | 
                                                                     FStar_Pervasives_Native.Some
@@ -448,12 +417,12 @@ let has_disjoint_witness (g : RDF_Graph_Executable.rdf_graph)
   Prims.bool=
   let forward =
     RDF_Graph_Executable.find_objects g (RDF_Graph_Executable.S_IRI c_iri)
-      owl_disjointWith in
+      OWL_Vocabulary.owl_disjointWith in
   if any_disjoint_witness_in g i forward
   then true
   else
     (let reverse =
-       RDF_Graph_Executable.find_subjects g owl_disjointWith
+       RDF_Graph_Executable.find_subjects g OWL_Vocabulary.owl_disjointWith
          (RDF_Graph_Executable.T_IRI c_iri) in
      any_disjoint_witness_sym g i c_iri reverse)
 let rec is_member (g : RDF_Graph_Executable.rdf_graph)
@@ -765,16 +734,16 @@ let is_class_expression_subject (g : RDF_Graph_Executable.rdf_graph)
   | RDF_Graph_Executable.S_IRI uu___ -> false
   | RDF_Graph_Executable.S_BNode uu___ ->
       (((FStar_Pervasives_Native.uu___is_Some
-           (find_first_object g s owl_intersectionOf))
+           (find_first_object g s OWL_Vocabulary.owl_intersectionOf))
           ||
           (FStar_Pervasives_Native.uu___is_Some
-             (find_first_object g s owl_unionOf)))
+             (find_first_object g s OWL_Vocabulary.owl_unionOf)))
          ||
          (FStar_Pervasives_Native.uu___is_Some
-            (find_first_object g s owl_complementOf)))
+            (find_first_object g s OWL_Vocabulary.owl_complementOf)))
         ||
         (FStar_Pervasives_Native.uu___is_Some
-           (find_first_object g s owl_onProperty))
+           (find_first_object g s OWL_Vocabulary.owl_onProperty))
 let rec collect_ce_bnodes (g : RDF_Graph_Executable.rdf_graph)
   (gfull : RDF_Graph_Executable.rdf_graph) :
   RDF_Graph_Executable.subject Prims.list=
@@ -916,14 +885,18 @@ let rec materialise_eqc_expansion (g : RDF_Graph_Executable.rdf_graph)
         (match RDF_Graph_Executable.term_to_subject t.RDF_Graph_Executable.o
          with
          | FStar_Pervasives_Native.Some ce_s ->
-             (match find_first_object all ce_s owl_intersectionOf with
+             (match find_first_object all ce_s
+                      OWL_Vocabulary.owl_intersectionOf
+              with
               | FStar_Pervasives_Native.Some list_head ->
                   let items = walk_rdf_list all list_head (Prims.of_int (64)) in
                   FStar_List_Tot_Base.op_At
                     (emit_intersection_subclasses_via_eqc
                        t.RDF_Graph_Executable.s items) tail
               | FStar_Pervasives_Native.None ->
-                  (match find_first_object all ce_s owl_unionOf with
+                  (match find_first_object all ce_s
+                           OWL_Vocabulary.owl_unionOf
+                   with
                    | FStar_Pervasives_Native.Some list_head ->
                        let items =
                          walk_rdf_list all list_head (Prims.of_int (64)) in
