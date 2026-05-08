@@ -396,6 +396,40 @@ let outcome_tag = function
 
 let fuel_100 : Prims.nat = Z.of_int 100
 
+(* Closure regime — Phase 2.3.
+   Regime selects which closure operation runs over the premise:
+     RL — owl_rl_closure_with_reflexivity (Datalog, sound for OWL 2 RL).
+     DL — RL → Tableau.tableau_materialise → RL (sound + extends to a
+          DL-sound subset including someValuesFrom / allValuesFrom /
+          hasValue / intersectionOf / unionOf class-expression
+          membership, mirroring w3c_runner.ml's OWL-Direct dispatch).
+
+   For the profile-RL.rdf catalog the test conclusions are RL-shape, so
+   DL agrees with RL; a few RL non-entailments may flip to DL
+   entailments (NegativeEntailmentTest scores can drop slightly). For
+   the type-* DL catalogs (semantics-direct.rdf, type-positive-
+   entailment.rdf, etc.), DL is the right regime. *)
+type closure_regime = Regime_RL | Regime_DL
+
+let regime : closure_regime ref = ref Regime_RL
+
+let regime_label () = match !regime with
+  | Regime_RL -> "RL"
+  | Regime_DL -> "DL"
+
+let apply_closure (g : RDF_Graph_Executable.rdf_graph)
+  : RDF_Graph_Executable.rdf_graph =
+  match !regime with
+  | Regime_RL ->
+    (try RDF_Graph_Executable.owl_rl_closure_with_reflexivity g fuel_100
+     with _ -> g)
+  | Regime_DL ->
+    (try
+       let g1 = RDF_Graph_Executable.owl_rl_closure_with_reflexivity g fuel_100 in
+       let g2 = Tableau.tableau_materialise g1 in
+       RDF_Graph_Executable.owl_rl_closure_with_reflexivity g2 fuel_100
+     with _ -> g)
+
 (* Parse and merge imported-ontology literals into the premise graph
    before closure. Each imports_lookup hit gives us an RDF/XML literal
    whose triples should be added to g_p, so the closure sees the union
@@ -442,7 +476,7 @@ let run_positive_entailment
     else if g_c = [] then Fail_parse_conclusion
     else begin
       let closure =
-        try RDF_Graph_Executable.owl_rl_closure_with_reflexivity g_p fuel_100
+        try apply_closure g_p
         with _ -> g_p in
       let rec check = function
         | [] -> Pass
@@ -490,7 +524,7 @@ let run_negative_entailment
     else if g_c = [] then Fail_parse_conclusion
     else begin
       let closure =
-        try RDF_Graph_Executable.owl_rl_closure_with_reflexivity g_p fuel_100
+        try apply_closure g_p
         with _ -> g_p in
       let any_missing =
         List.exists
@@ -520,7 +554,7 @@ let run_consistency_test
     if g_p = [] then Fail_parse_premise
     else begin
       let closure =
-        try RDF_Graph_Executable.owl_rl_closure_with_reflexivity g_p fuel_100
+        try apply_closure g_p
         with _ -> g_p in
       if RDF_Graph_Executable.is_inconsistent closure
       then Fail_unexpected_inconsistency
@@ -544,7 +578,7 @@ let run_inconsistency_test
     if g_p = [] then Fail_parse_premise
     else begin
       let closure =
-        try RDF_Graph_Executable.owl_rl_closure_with_reflexivity g_p fuel_100
+        try apply_closure g_p
         with _ -> g_p in
       if RDF_Graph_Executable.is_inconsistent closure
       then Pass
@@ -768,12 +802,21 @@ let () =
     | ("-v" | "--verbose") :: rest -> verbose := true; loop rest
     | ("--help" | "-h") :: _ -> print_help (); exit 0
     | "--list" :: _ -> list_catalogs (); exit 0
+    | "--regime" :: r :: rest ->
+      (match String.lowercase_ascii r with
+       | "rl" -> regime := Regime_RL
+       | "dl" -> regime := Regime_DL
+       | _ ->
+         Printf.eprintf "owl_runner: --regime expects rl|dl, got %S\n" r;
+         exit 2);
+      loop rest
     | p :: rest when !path = None -> path := Some p; loop rest
     | _ ->
       Printf.eprintf "owl_runner: unexpected arguments; try --help\n";
       exit 2
   in
   loop args;
+  Printf.printf "Closure regime: %s\n" (regime_label ());
   let catalog = match !path with
     | Some p -> p
     | None -> default_catalog ()
