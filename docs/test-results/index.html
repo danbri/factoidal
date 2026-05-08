@@ -19,45 +19,12 @@
   header {
     background: var(--surface);
     border-bottom: 1px solid var(--border); padding: 1.2em 1em;
-    position: relative;
   }
-  header .inner { max-width: 900px; margin: 0 auto; position: relative; }
+  header .inner { max-width: 900px; margin: 0 auto; }
   header h1 { margin: 0 0 0.15em; font-size: 1.3em; color: var(--brand-dark); }
   header p  { margin: 0; color: var(--muted); font-size: 0.9em; }
   header nav { margin-top: 0.7em; font-size: 0.9em; }
   header nav a { margin-right: 1.2em; color: var(--brand-dark); }
-
-  /* Top-right freshness panel — both timestamps in one place, no scroll.
-     "Rendered" = when this HTML was last regenerated (lightweight,
-     updates per push). "Tests" = when the underlying *_results.log
-     last changed (heavy pipeline; may lag). When both match, the
-     test data is current with the page; when they differ, the gap
-     tells you how stale the data is. */
-  .rendered-pill {
-    position: absolute;
-    top: 0; right: 0;
-    background: var(--bg); border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.35em 0.7em;
-    font-size: 0.74em; color: var(--muted);
-    line-height: 1.35;
-    white-space: nowrap;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-  }
-  .rendered-pill .row { display: block; }
-  .rendered-pill strong { color: var(--brand-dark); font-weight: 600; }
-  .rendered-pill .label {
-    display: inline-block; min-width: 4.4em;
-    color: var(--muted); font-weight: 400;
-  }
-  .rendered-pill.stale strong.tests { color: var(--warn); }
-  @media (max-width: 720px) {
-    .rendered-pill {
-      position: static;
-      display: inline-block;
-      margin-top: 0.6em;
-    }
-  }
   main { max-width: 900px; margin: 0 auto; padding: 1.5em 1em; }
 
   .summary {
@@ -180,10 +147,6 @@
 
 <header>
   <div class="inner">
-    <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-05-08 16:08 UTC</strong></span>
-      <span class="row"><span class="label">Tests</span><strong class="tests">2026-05-08 15:58 UTC</strong></span>
-    </div>
     <h1>W3C test results</h1>
     <p>Per-suite pass/fail counts against the W3C SPARQL 1.1 and RDF 1.1 conformance suites.</p>
     <nav>
@@ -625,30 +588,6 @@
       <small>of 30</small>
     </div>
   </div>
-  <div class="suite-row mixed">
-    <div class="suite-name">profile-RL NegEnt</div>
-    <div class="suite-bar"><div class="fill" style="width:50%"></div></div>
-    <div class="suite-numbers">
-      <span class="p">3</span>/<span class="f">3</span>
-      <small>of 6</small>
-    </div>
-  </div>
-  <div class="suite-row near-perfect">
-    <div class="suite-name">profile-RL Consistency</div>
-    <div class="suite-bar"><div class="fill" style="width:99%"></div></div>
-    <div class="suite-numbers">
-      <span class="p">75</span>/<span class="f">1</span>
-      <small>of 76</small>
-    </div>
-  </div>
-  <div class="suite-row mixed">
-    <div class="suite-name">profile-RL Inconsistency</div>
-    <div class="suite-bar"><div class="fill" style="width:14%"></div></div>
-    <div class="suite-numbers">
-      <span class="p">2</span>/<span class="f">12</span>
-      <small>of 14</small>
-    </div>
-  </div>
   <div class="suite-row skipped">
     <div class="suite-name">profile-EL</div>
     <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
@@ -836,9 +775,9 @@
 </main>
 
 <footer>
-  Generated <strong>2026-05-08 16:08 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/d62521416d7dc0a791d704f939f4c582acbce257">d625214</a></code>
-  on branch <code>claude/main</code> — &ldquo;owl-runner: --regime <rl|dl> flag for closure selection (Phase 2.3 prep)&rdquo;.
+  Generated <strong>2026-05-08 16:13 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/fcda6a3b032ed258282861a0436fa19ab01a9c77">fcda6a3</a></code>
+  on branch <code>claude/main</code> — &ldquo;docs: Section E reaudit — clear NEEDS-AUDIT, +1 VIOLATION (lamed3)&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
