@@ -285,8 +285,92 @@ ROW
   done <<<"$blob"
 }
 
-SPARQL_ROWS_HTML=$(emit_suite_rows "$SPARQL_SUITES")
-RDF_ROWS_HTML=$(emit_suite_rows "$RDF_SUITES")
+# Per-REC bucket → list of W3C suite names.
+# Each bucket gets its own <h3> subsection inside the SPARQL 1.1 / RDF 1.1
+# parents. Unmatched suites fall through to the "Other" bucket so they
+# stay visible on the dashboard.
+sparql_rec_for_suite () {
+  case "$1" in
+    aggregates|bind|bindings|cast|construct|csv-tsv-res|exists|functions|grouping|json-res|negation|project-expression|property-path|subquery|syntax-query)
+      echo "query" ;;
+    add|basic-update|clear|copy|delete|delete-data|delete-insert|delete-where|drop|move|syntax-update-1|syntax-update-2|update-silent)
+      echo "update" ;;
+    protocol|http-rdf-update)
+      echo "protocol" ;;
+    service|syntax-fed)
+      echo "federated" ;;
+    service-description)
+      echo "service-description" ;;
+    entailment)
+      echo "entailment" ;;
+    *)
+      echo "other" ;;
+  esac
+}
+
+rdf_rec_for_suite () {
+  case "$1" in
+    rdf-n-triples) echo "n-triples" ;;
+    rdf-turtle)    echo "turtle" ;;
+    rdf-n-quads)   echo "n-quads" ;;
+    rdf-trig)      echo "trig" ;;
+    rdf-xml)       echo "rdf-xml" ;;
+    rdf-mt)        echo "semantics" ;;
+    *)             echo "other" ;;
+  esac
+}
+
+# Filter $1 (raw suite log lines) to only those whose suite name maps
+# to bucket $2, using the bucket-fn $3.
+filter_suites_by_bucket () {
+  local blob="$1"; local target_bucket="$2"; local bucket_fn="$3"
+  local out=""
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    local name; name=$(echo "$line" | awk '{print $1}')
+    local bucket; bucket=$("$bucket_fn" "$name")
+    if [ "$bucket" = "$target_bucket" ]; then
+      out+="$line"$'\n'
+    fi
+  done <<<"$blob"
+  printf '%s' "$out"
+}
+
+# emit_rec_subsection — h3 + suite rows inside a per-REC bucket, but
+# only if the bucket has at least one suite. Layout: pure markup; the
+# h3 sits inside the parent .suites container in the existing CSS, so
+# subsection headings stay aligned with the surrounding bars.
+emit_rec_subsection () {
+  local title="$1"; local href="$2"; local lines="$3"
+  if [ -z "$(echo "$lines" | tr -d '[:space:]')" ]; then
+    return
+  fi
+  local rows; rows=$(emit_suite_rows "$lines")
+  cat <<HTML
+  <h3 class="rec-subhead"><a href="${href}" target="_blank" rel="noopener">${title}</a></h3>
+${rows}
+HTML
+}
+
+SPARQL_ROWS_HTML=$(
+  emit_rec_subsection "SPARQL 1.1 Query Language"      "https://www.w3.org/TR/sparql11-query/"               "$(filter_suites_by_bucket "$SPARQL_SUITES" query              sparql_rec_for_suite)"
+  emit_rec_subsection "SPARQL 1.1 Update"              "https://www.w3.org/TR/sparql11-update/"              "$(filter_suites_by_bucket "$SPARQL_SUITES" update             sparql_rec_for_suite)"
+  emit_rec_subsection "SPARQL 1.1 Protocol"            "https://www.w3.org/TR/sparql11-protocol/"            "$(filter_suites_by_bucket "$SPARQL_SUITES" protocol           sparql_rec_for_suite)"
+  emit_rec_subsection "SPARQL 1.1 Federated Query"     "https://www.w3.org/TR/sparql11-federated-query/"     "$(filter_suites_by_bucket "$SPARQL_SUITES" federated          sparql_rec_for_suite)"
+  emit_rec_subsection "SPARQL 1.1 Service Description" "https://www.w3.org/TR/sparql11-service-description/" "$(filter_suites_by_bucket "$SPARQL_SUITES" service-description sparql_rec_for_suite)"
+  emit_rec_subsection "SPARQL 1.1 Entailment Regimes"  "https://www.w3.org/TR/sparql11-entailment/"          "$(filter_suites_by_bucket "$SPARQL_SUITES" entailment         sparql_rec_for_suite)"
+  emit_rec_subsection "Other (uncategorised)"          ""                                                    "$(filter_suites_by_bucket "$SPARQL_SUITES" other              sparql_rec_for_suite)"
+)
+
+RDF_ROWS_HTML=$(
+  emit_rec_subsection "RDF 1.1 N-Triples"  "https://www.w3.org/TR/n-triples/"           "$(filter_suites_by_bucket "$RDF_SUITES" n-triples rdf_rec_for_suite)"
+  emit_rec_subsection "RDF 1.1 Turtle"     "https://www.w3.org/TR/turtle/"              "$(filter_suites_by_bucket "$RDF_SUITES" turtle    rdf_rec_for_suite)"
+  emit_rec_subsection "RDF 1.1 N-Quads"    "https://www.w3.org/TR/n-quads/"             "$(filter_suites_by_bucket "$RDF_SUITES" n-quads   rdf_rec_for_suite)"
+  emit_rec_subsection "RDF 1.1 TriG"       "https://www.w3.org/TR/trig/"                "$(filter_suites_by_bucket "$RDF_SUITES" trig      rdf_rec_for_suite)"
+  emit_rec_subsection "RDF 1.1 RDF/XML"    "https://www.w3.org/TR/rdf-syntax-grammar/"  "$(filter_suites_by_bucket "$RDF_SUITES" rdf-xml   rdf_rec_for_suite)"
+  emit_rec_subsection "RDF 1.1 Semantics"  "https://www.w3.org/TR/rdf11-mt/"            "$(filter_suites_by_bucket "$RDF_SUITES" semantics rdf_rec_for_suite)"
+  emit_rec_subsection "Other (uncategorised)" ""                                        "$(filter_suites_by_bucket "$RDF_SUITES" other     rdf_rec_for_suite)"
+)
 
 # ---------------------------------------------------------------------
 # emit_failure_detail — given a per-category log file and a section id,
@@ -593,6 +677,17 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
     color: inherit; text-decoration: underline; text-decoration-style: dotted;
   }
   h2 .inline-numbers a:hover { color: var(--brand-dark); }
+
+  /* Per-REC subsection headings inside SPARQL 1.1 / RDF 1.1 sections */
+  h3.rec-subhead {
+    margin: 1.0em 0 0.3em; font-size: 0.95em; font-weight: 500;
+    color: var(--brand-dark); border-bottom: 1px solid var(--card-border);
+    padding-bottom: 0.15em;
+  }
+  h3.rec-subhead a {
+    color: inherit; text-decoration: none; border-bottom: 1px dotted var(--muted);
+  }
+  h3.rec-subhead a:hover { color: var(--brand); border-bottom-color: var(--brand); }
 
   .failure-detail {
     margin: 0.4em 0 1em;

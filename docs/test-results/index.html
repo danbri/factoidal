@@ -60,6 +60,17 @@
   }
   h2 .inline-numbers a:hover { color: var(--brand-dark); }
 
+  /* Per-REC subsection headings inside SPARQL 1.1 / RDF 1.1 sections */
+  h3.rec-subhead {
+    margin: 1.0em 0 0.3em; font-size: 0.95em; font-weight: 500;
+    color: var(--brand-dark); border-bottom: 1px solid var(--card-border);
+    padding-bottom: 0.15em;
+  }
+  h3.rec-subhead a {
+    color: inherit; text-decoration: none; border-bottom: 1px dotted var(--muted);
+  }
+  h3.rec-subhead a:hover { color: var(--brand); border-bottom-color: var(--brand); }
+
   .failure-detail {
     margin: 0.4em 0 1em;
     padding: 0.4em 0.8em;
@@ -182,27 +193,12 @@
 
 <h2>SPARQL 1.1 <span class="inline-numbers">626 pass · <a href="#sparql-failures">1 fail</a> · <a href="#sparql-skips">4 skip</a></span></h2>
 <div class="suites">
-      <div class="suite-row perfect">
-        <div class="suite-name">add</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
-        <div class="suite-numbers">
-          <span class="p">8</span>/<span class="f">0</span>
-          <small></small>
-        </div>
-      </div>
+  <h3 class="rec-subhead"><a href="https://www.w3.org/TR/sparql11-query/" target="_blank" rel="noopener">SPARQL 1.1 Query Language</a></h3>
       <div class="suite-row perfect">
         <div class="suite-name">aggregates</div>
         <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
         <div class="suite-numbers">
           <span class="p">47</span>/<span class="f">0</span>
-          <small></small>
-        </div>
-      </div>
-      <div class="suite-row perfect">
-        <div class="suite-name">basic-update</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
-        <div class="suite-numbers">
-          <span class="p">13</span>/<span class="f">0</span>
           <small></small>
         </div>
       </div>
@@ -231,14 +227,6 @@
         </div>
       </div>
       <div class="suite-row perfect">
-        <div class="suite-name">clear</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
-        <div class="suite-numbers">
-          <span class="p">4</span>/<span class="f">0</span>
-          <small></small>
-        </div>
-      </div>
-      <div class="suite-row perfect">
         <div class="suite-name">construct</div>
         <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
         <div class="suite-numbers">
@@ -247,7 +235,7 @@
         </div>
       </div>
       <div class="suite-row perfect">
-        <div class="suite-name">copy</div>
+        <div class="suite-name">csv-tsv-res</div>
         <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
         <div class="suite-numbers">
           <span class="p">6</span>/<span class="f">0</span>
@@ -255,7 +243,104 @@
         </div>
       </div>
       <div class="suite-row perfect">
-        <div class="suite-name">csv-tsv-res</div>
+        <div class="suite-name">exists</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">6</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">functions</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">75</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">grouping</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">6</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">json-res</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">4</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">negation</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">12</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">project-expression</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">7</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">property-path</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">33</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">subquery</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">14</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">syntax-query</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">94</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+  <h3 class="rec-subhead"><a href="https://www.w3.org/TR/sparql11-update/" target="_blank" rel="noopener">SPARQL 1.1 Update</a></h3>
+      <div class="suite-row perfect">
+        <div class="suite-name">add</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">8</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">basic-update</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">13</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">clear</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">4</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">copy</div>
         <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
         <div class="suite-numbers">
           <span class="p">6</span>/<span class="f">0</span>
@@ -302,131 +387,11 @@
           <small></small>
         </div>
       </div>
-      <div class="suite-row near-perfect">
-        <div class="suite-name">entailment <small style="font-weight:normal;color:var(--muted)">(SPARQL 1.1 regime — RDFS / D-entailment, 70 tests)</small></div>
-        <div class="suite-bar"><div class="fill" style="width:98%"></div></div>
-        <div class="suite-numbers">
-          <span class="p">65</span>/<span class="f">1</span>
-          <small>skip 4</small>
-        </div>
-      </div>
-      <div class="suite-row perfect">
-        <div class="suite-name">exists</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
-        <div class="suite-numbers">
-          <span class="p">6</span>/<span class="f">0</span>
-          <small></small>
-        </div>
-      </div>
-      <div class="suite-row perfect">
-        <div class="suite-name">functions</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
-        <div class="suite-numbers">
-          <span class="p">75</span>/<span class="f">0</span>
-          <small></small>
-        </div>
-      </div>
-      <div class="suite-row perfect">
-        <div class="suite-name">grouping</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
-        <div class="suite-numbers">
-          <span class="p">6</span>/<span class="f">0</span>
-          <small></small>
-        </div>
-      </div>
-      <div class="suite-row perfect">
-        <div class="suite-name">http-rdf-update</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
-        <div class="suite-numbers">
-          <span class="p">19</span>/<span class="f">0</span>
-          <small></small>
-        </div>
-      </div>
-      <div class="suite-row perfect">
-        <div class="suite-name">json-res</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
-        <div class="suite-numbers">
-          <span class="p">4</span>/<span class="f">0</span>
-          <small></small>
-        </div>
-      </div>
       <div class="suite-row perfect">
         <div class="suite-name">move</div>
         <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
         <div class="suite-numbers">
           <span class="p">6</span>/<span class="f">0</span>
-          <small></small>
-        </div>
-      </div>
-      <div class="suite-row perfect">
-        <div class="suite-name">negation</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
-        <div class="suite-numbers">
-          <span class="p">12</span>/<span class="f">0</span>
-          <small></small>
-        </div>
-      </div>
-      <div class="suite-row perfect">
-        <div class="suite-name">project-expression</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
-        <div class="suite-numbers">
-          <span class="p">7</span>/<span class="f">0</span>
-          <small></small>
-        </div>
-      </div>
-      <div class="suite-row perfect">
-        <div class="suite-name">property-path</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
-        <div class="suite-numbers">
-          <span class="p">33</span>/<span class="f">0</span>
-          <small></small>
-        </div>
-      </div>
-      <div class="suite-row perfect">
-        <div class="suite-name">protocol</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
-        <div class="suite-numbers">
-          <span class="p">34</span>/<span class="f">0</span>
-          <small></small>
-        </div>
-      </div>
-      <div class="suite-row perfect">
-        <div class="suite-name">service</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
-        <div class="suite-numbers">
-          <span class="p">7</span>/<span class="f">0</span>
-          <small></small>
-        </div>
-      </div>
-      <div class="suite-row perfect">
-        <div class="suite-name">service-description</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
-        <div class="suite-numbers">
-          <span class="p">3</span>/<span class="f">0</span>
-          <small></small>
-        </div>
-      </div>
-      <div class="suite-row perfect">
-        <div class="suite-name">subquery</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
-        <div class="suite-numbers">
-          <span class="p">14</span>/<span class="f">0</span>
-          <small></small>
-        </div>
-      </div>
-      <div class="suite-row perfect">
-        <div class="suite-name">syntax-fed</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
-        <div class="suite-numbers">
-          <span class="p">3</span>/<span class="f">0</span>
-          <small></small>
-        </div>
-      </div>
-      <div class="suite-row perfect">
-        <div class="suite-name">syntax-query</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
-        <div class="suite-numbers">
-          <span class="p">94</span>/<span class="f">0</span>
           <small></small>
         </div>
       </div>
@@ -454,6 +419,58 @@
           <small></small>
         </div>
       </div>
+  <h3 class="rec-subhead"><a href="https://www.w3.org/TR/sparql11-protocol/" target="_blank" rel="noopener">SPARQL 1.1 Protocol</a></h3>
+      <div class="suite-row perfect">
+        <div class="suite-name">http-rdf-update</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">19</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">protocol</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">34</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+  <h3 class="rec-subhead"><a href="https://www.w3.org/TR/sparql11-federated-query/" target="_blank" rel="noopener">SPARQL 1.1 Federated Query</a></h3>
+      <div class="suite-row perfect">
+        <div class="suite-name">service</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">7</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+      <div class="suite-row perfect">
+        <div class="suite-name">syntax-fed</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">3</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+  <h3 class="rec-subhead"><a href="https://www.w3.org/TR/sparql11-service-description/" target="_blank" rel="noopener">SPARQL 1.1 Service Description</a></h3>
+      <div class="suite-row perfect">
+        <div class="suite-name">service-description</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">3</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+  <h3 class="rec-subhead"><a href="https://www.w3.org/TR/sparql11-entailment/" target="_blank" rel="noopener">SPARQL 1.1 Entailment Regimes</a></h3>
+      <div class="suite-row near-perfect">
+        <div class="suite-name">entailment <small style="font-weight:normal;color:var(--muted)">(SPARQL 1.1 regime — RDFS / D-entailment, 70 tests)</small></div>
+        <div class="suite-bar"><div class="fill" style="width:98%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">65</span>/<span class="f">1</span>
+          <small>skip 4</small>
+        </div>
+      </div>
 </div>
 <details id="sparql-failures" class="failure-detail">
   <summary>SPARQL 1.1 failures (click to expand)</summary>
@@ -474,22 +491,7 @@
 
 <h2>RDF 1.1 <span class="inline-numbers">1031 pass · <a href="#rdf-failures">0 fail</a></span></h2>
 <div class="suites">
-      <div class="suite-row perfect">
-        <div class="suite-name">rdf-mt</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
-        <div class="suite-numbers">
-          <span class="p">39</span>/<span class="f">0</span>
-          <small></small>
-        </div>
-      </div>
-      <div class="suite-row perfect">
-        <div class="suite-name">rdf-n-quads</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
-        <div class="suite-numbers">
-          <span class="p">87</span>/<span class="f">0</span>
-          <small></small>
-        </div>
-      </div>
+  <h3 class="rec-subhead"><a href="https://www.w3.org/TR/n-triples/" target="_blank" rel="noopener">RDF 1.1 N-Triples</a></h3>
       <div class="suite-row perfect">
         <div class="suite-name">rdf-n-triples</div>
         <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
@@ -498,14 +500,7 @@
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
-        <div class="suite-name">rdf-trig</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
-        <div class="suite-numbers">
-          <span class="p">356</span>/<span class="f">0</span>
-          <small></small>
-        </div>
-      </div>
+  <h3 class="rec-subhead"><a href="https://www.w3.org/TR/turtle/" target="_blank" rel="noopener">RDF 1.1 Turtle</a></h3>
       <div class="suite-row perfect">
         <div class="suite-name">rdf-turtle</div>
         <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
@@ -514,11 +509,39 @@
           <small></small>
         </div>
       </div>
+  <h3 class="rec-subhead"><a href="https://www.w3.org/TR/n-quads/" target="_blank" rel="noopener">RDF 1.1 N-Quads</a></h3>
+      <div class="suite-row perfect">
+        <div class="suite-name">rdf-n-quads</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">87</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+  <h3 class="rec-subhead"><a href="https://www.w3.org/TR/trig/" target="_blank" rel="noopener">RDF 1.1 TriG</a></h3>
+      <div class="suite-row perfect">
+        <div class="suite-name">rdf-trig</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">356</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+  <h3 class="rec-subhead"><a href="https://www.w3.org/TR/rdf-syntax-grammar/" target="_blank" rel="noopener">RDF 1.1 RDF/XML</a></h3>
       <div class="suite-row perfect">
         <div class="suite-name">rdf-xml</div>
         <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
         <div class="suite-numbers">
           <span class="p">166</span>/<span class="f">0</span>
+          <small></small>
+        </div>
+      </div>
+  <h3 class="rec-subhead"><a href="https://www.w3.org/TR/rdf11-mt/" target="_blank" rel="noopener">RDF 1.1 Semantics</a></h3>
+      <div class="suite-row perfect">
+        <div class="suite-name">rdf-mt</div>
+        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="suite-numbers">
+          <span class="p">39</span>/<span class="f">0</span>
           <small></small>
         </div>
       </div>
@@ -748,9 +771,9 @@
 </main>
 
 <footer>
-  Generated <strong>2026-05-08 03:23 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/726489ce694f9e72a35a2097eea9faa0e971da34">726489c</a></code>
-  on branch <code>claude/main</code> — &ldquo;ci: dashboard refresh resilient to wasm-smoke failure&rdquo;.
+  Generated <strong>2026-05-08 06:09 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/03a489cb5c99d93a76b098ac0383ede99a0ae806">03a489c</a></code>
+  on branch <code>claude/main</code> — &ldquo;ci: dashboard commit step uses fetch-reset-reapply instead of rebase&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
