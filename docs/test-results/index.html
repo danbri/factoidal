@@ -27,24 +27,30 @@
   header nav { margin-top: 0.7em; font-size: 0.9em; }
   header nav a { margin-right: 1.2em; color: var(--brand-dark); }
 
-  /* Top-right "rendered at" pill — moves the most-asked-for piece of
-     freshness signal to where the eye lands first, no scrolling. */
+  /* Top-right freshness panel — both timestamps in one place, no scroll.
+     "Rendered" = when this HTML was last regenerated (lightweight,
+     updates per push). "Tests" = when the underlying *_results.log
+     last changed (heavy pipeline; may lag). When both match, the
+     test data is current with the page; when they differ, the gap
+     tells you how stale the data is. */
   .rendered-pill {
     position: absolute;
     top: 0; right: 0;
     background: var(--bg); border: 1px solid var(--border);
-    border-radius: 999px;
-    padding: 0.25em 0.85em;
-    font-size: 0.78em; color: var(--muted);
-    line-height: 1.3;
+    border-radius: 6px;
+    padding: 0.35em 0.7em;
+    font-size: 0.74em; color: var(--muted);
+    line-height: 1.35;
     white-space: nowrap;
     box-shadow: 0 1px 2px rgba(0,0,0,0.04);
   }
+  .rendered-pill .row { display: block; }
   .rendered-pill strong { color: var(--brand-dark); font-weight: 600; }
   .rendered-pill .label {
-    display: inline-block; margin-right: 0.4em;
+    display: inline-block; min-width: 4.4em;
     color: var(--muted); font-weight: 400;
   }
+  .rendered-pill.stale strong.tests { color: var(--warn); }
   @media (max-width: 720px) {
     .rendered-pill {
       position: static;
@@ -174,8 +180,9 @@
 
 <header>
   <div class="inner">
-    <div class="rendered-pill" title="Page regenerated at this UTC time. The committed test logs may be older — see footer for the commit they came from.">
-      <span class="label">Rendered</span><strong>2026-05-08 14:37 UTC</strong>
+    <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
+      <span class="row"><span class="label">Rendered</span><strong>2026-05-08 14:42 UTC</strong></span>
+      <span class="row"><span class="label">Tests</span><strong class="tests">2026-05-08 08:21 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
     <p>Per-suite pass/fail counts against the W3C SPARQL 1.1 and RDF 1.1 conformance suites.</p>
@@ -805,9 +812,9 @@
 </main>
 
 <footer>
-  Generated <strong>2026-05-08 14:37 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/a7faecea224cbc9649e2a677258f8f5149c1a948">a7faece</a></code>
-  on branch <code>claude/main</code> — &ldquo;dashboard: rendered-at timestamp pill, top right of header&rdquo;.
+  Generated <strong>2026-05-08 14:42 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/2a8579ef3bf434862a81decea34190d4c32e71de">2a8579e</a></code>
+  on branch <code>claude/main</code> — &ldquo;ci+dashboard: two-timestamp pill + ensure heavy pipeline runs&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
