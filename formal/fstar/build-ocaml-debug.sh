@@ -148,9 +148,10 @@ case "$TARGET" in
     run_with_heartbeat "ocamlc factoidal-http.byte" "$LOG" -- \
       ocamlfind ocamlc -g -thread -package fstar.lib,str,zarith,sha,digestif.c,unix,threads.posix -linkpkg -w -8-14-26 \
       $PARQUET_BYTECODE_STUBS \
+      -I ../../../bin/factoidal-http \
       $COMMON_MODULES \
-      factoidal_http.ml \
-      factoidal_http_main.ml \
+      ../../../bin/factoidal-http/factoidal_http.ml \
+      ../../../bin/factoidal-http/factoidal_http_main.ml \
       -o "$OUT"
     ;;
   *)

@@ -470,11 +470,11 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   NATIVE_SOURCES=(
     $COMMON_MODULES
     ../../../bin/w3c-runner/w3c_runner.ml
-    factoidal_http.ml
+    ../../../bin/factoidal-http/factoidal_http.ml
     ../../../bin/factoidal-serve/factoidal_serve.ml
     ../../../bin/factoidal-explain/factoidal_explain.ml
     ../../../bin/factoidal-cli/factoidal_cli.ml
-    factoidal_http_main.ml
+    ../../../bin/factoidal-http/factoidal_http_main.ml
     ../../../bin/owl-runner/owl_runner.ml
     ../../../bin/rdfc10-runner/rdfc10_runner.ml
     ../../../bin/cottas-ondisk-smoketest/cottas_ondisk_smoketest.ml
@@ -523,9 +523,10 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       $STATIC_FLAGS \
       -I ../../../bin/factoidal-serve \
       -I ../../../bin/factoidal-explain \
+      -I ../../../bin/factoidal-http \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
-      factoidal_http.ml \
+      ../../../bin/factoidal-http/factoidal_http.ml \
       ../../../bin/factoidal-serve/factoidal_serve.ml \
       ../../../bin/factoidal-explain/factoidal_explain.ml \
       ../../../bin/factoidal-cli/factoidal_cli.ml \
@@ -543,10 +544,11 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     run_with_heartbeat "ocamlopt factoidal-http" "_ocamlopt_factoidal_http.log" -- \
       ocamlfind ocamlopt -g -thread -package fstar.lib,str,zarith,sha,digestif.c,unix,threads.posix -linkpkg -w -8-14-26 \
       $STATIC_FLAGS \
+      -I ../../../bin/factoidal-http \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
-      factoidal_http.ml \
-      factoidal_http_main.ml \
+      ../../../bin/factoidal-http/factoidal_http.ml \
+      ../../../bin/factoidal-http/factoidal_http_main.ml \
       -o "$BINDIR/factoidal-http"
     cat _ocamlopt_factoidal_http.log
     echo "  Built: bin/${PLATFORM}/factoidal-http ($(wc -c < "$BINDIR/factoidal-http") bytes)"
