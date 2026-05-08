@@ -54,7 +54,7 @@ let xsd_yearMonthDuration : RDF_Graph_Executable.wf_iri=
 let sm_empty : RDF_Graph_Executable.solution_mapping= []
 let sm_lookup (v : Prims.string) (mu : RDF_Graph_Executable.solution_mapping)
   : RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
-  FStar_List_Tot_Base.assoc v mu
+  RDF_List_Helpers.assoc_tr v mu
 let sm_bind (v : Prims.string) (t : RDF_Graph_Executable.rdf_term)
   (mu : RDF_Graph_Executable.solution_mapping) :
   RDF_Graph_Executable.solution_mapping= (v, t) :: mu
@@ -281,7 +281,11 @@ let ig_search (ig : RDF_Graph_Executable.indexed_graph)
   triple_matches_bound b pool
 let ig_estimate (ig : RDF_Graph_Executable.indexed_graph)
   (b : triple_pattern_bound) : Prims.nat=
-  FStar_List_Tot_Base.length (ig_search ig b)
+  match ((b.bs), (b.bp), (b.bo)) with
+  | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.None,
+     FStar_Pervasives_Native.None) ->
+      FStar_List_Tot_Base.length ig.RDF_Graph_Executable.ig_triples
+  | uu___ -> FStar_List_Tot_Base.length (ig_search ig b)
 let store_search (g : graph_store) (b : triple_pattern_bound) :
   RDF_Graph_Executable.triple Prims.list= ig_search g.gs_indexed b
 let store_estimate (g : graph_store) (b : triple_pattern_bound) : Prims.nat=
@@ -2909,7 +2913,7 @@ let rec eval_bgp_store_from_mu_fuel (patterns : bgp) (gs : graph_store)
           | FStar_Pervasives_Native.None -> [mu]
           | FStar_Pervasives_Native.Some (tp, rest) ->
               let next = eval_single_tp_store tp gs mu in
-              sse_concat_map
+              RDF_List_Helpers.concatMap_tr
                 (fun mu' ->
                    eval_bgp_store_from_mu_fuel rest gs mu'
                      (fuel - Prims.int_one)) next))
