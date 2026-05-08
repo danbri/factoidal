@@ -130,7 +130,26 @@ if [ -f "$OWL_LOG" ]; then
     OWL_NEG_FAIL=${OWL_NEG_FAIL:-0}
     OWL_NEG_TOTAL=${OWL_NEG_TOTAL:-0}
   fi
+  # Phase 2.2 — ConsistencyTest + InconsistencyTest (added 2026-05-08).
+  OWL_CONS_LINE=$(grep -E '^Profile-RL ConsistencyTests:' "$OWL_LOG" | tail -1 || true)
+  if [ -n "$OWL_CONS_LINE" ]; then
+    OWL_CONS_PRESENT=1
+    OWL_CONS_PASS=$(echo  "$OWL_CONS_LINE" | sed -nE 's/.* ([0-9]+) pass.*/\1/p')
+    OWL_CONS_FAIL=$(echo  "$OWL_CONS_LINE" | sed -nE 's/.* ([0-9]+) fail.*/\1/p')
+    OWL_CONS_TOTAL=$(echo "$OWL_CONS_LINE" | sed -nE 's/.*out of ([0-9]+).*/\1/p')
+  fi
+  OWL_INC_LINE=$(grep -E '^Profile-RL InconsistencyTests:' "$OWL_LOG" | tail -1 || true)
+  if [ -n "$OWL_INC_LINE" ]; then
+    OWL_INC_PRESENT=1
+    OWL_INC_PASS=$(echo  "$OWL_INC_LINE" | sed -nE 's/.* ([0-9]+) pass.*/\1/p')
+    OWL_INC_FAIL=$(echo  "$OWL_INC_LINE" | sed -nE 's/.* ([0-9]+) fail.*/\1/p')
+    OWL_INC_TOTAL=$(echo "$OWL_INC_LINE" | sed -nE 's/.*out of ([0-9]+).*/\1/p')
+  fi
 fi
+OWL_CONS_PRESENT=${OWL_CONS_PRESENT:-0}
+OWL_CONS_PASS=${OWL_CONS_PASS:-0}; OWL_CONS_FAIL=${OWL_CONS_FAIL:-0}; OWL_CONS_TOTAL=${OWL_CONS_TOTAL:-0}
+OWL_INC_PRESENT=${OWL_INC_PRESENT:-0}
+OWL_INC_PASS=${OWL_INC_PASS:-0};   OWL_INC_FAIL=${OWL_INC_FAIL:-0};   OWL_INC_TOTAL=${OWL_INC_TOTAL:-0}
 
 # --- RDFC-1.0 scoreboard (folded into the RDF table as suite "rdf-canon") ---
 # Score line in rdfc10_runner stdout:
@@ -513,6 +532,42 @@ else
   OWL_NEG_ROW=""
 fi
 
+# ConsistencyTest + InconsistencyTest bars (Phase 2.2, 2026-05-08).
+emit_owl_bar_row () {
+  local label="$1" pass="$2" fail="$3" total="$4"
+  local pct cls
+  if [ "$total" -gt 0 ]; then
+    pct=$(awk -v p="$pass" -v t="$total" 'BEGIN{printf "%.0f", 100*p/t}')
+  else
+    pct=0
+  fi
+  if [ "$pass" -eq "$total" ] && [ "$total" -gt 0 ]; then
+    cls="perfect"
+  elif [ "$pct" -ge 90 ]; then
+    cls="near-perfect"
+  elif [ "$pct" -ge 50 ]; then
+    cls="mixed"
+  else
+    cls="mixed"
+  fi
+  printf '<div class="suite-row %s">
+    <div class="suite-name">%s</div>
+    <div class="suite-bar"><div class="fill" style="width:%s%%"></div></div>
+    <div class="suite-numbers">
+      <span class="p">%s</span>/<span class="f">%s</span>
+      <small>of %s</small>
+    </div>
+  </div>' "$cls" "$label" "$pct" "$pass" "$fail" "$total"
+}
+OWL_CONS_ROW=""
+if [ "$OWL_CONS_PRESENT" -eq 1 ]; then
+  OWL_CONS_ROW=$(emit_owl_bar_row "profile-RL Consistency"   "$OWL_CONS_PASS" "$OWL_CONS_FAIL" "$OWL_CONS_TOTAL")
+fi
+OWL_INC_ROW=""
+if [ "$OWL_INC_PRESENT" -eq 1 ]; then
+  OWL_INC_ROW=$(emit_owl_bar_row  "profile-RL Inconsistency" "$OWL_INC_PASS"  "$OWL_INC_FAIL"  "$OWL_INC_TOTAL")
+fi
+
 # Deferred-category counts are the `<test:TestCase>` occurrences in each
 # vendored OWL 2 Test Cases catalog file (Agent D scoping on 2026-04-24).
 # Compute fresh so the numbers never go stale.
@@ -672,6 +727,8 @@ OWL_HTML=$(cat <<OWLEOF
     </div>
   </div>
   ${OWL_NEG_ROW}
+  ${OWL_CONS_ROW}
+  ${OWL_INC_ROW}
 ${OWL_SKIP_ROWS}</div>
 <p style="margin: 0.3em 0 1em; color: var(--muted); font-size: 0.85em;">
   <strong>OWL 2 (W3C conformance):</strong>

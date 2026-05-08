@@ -132,6 +132,8 @@ let test_imported_ontology = test_ns ^ "importedOntology"
 let test_input_ontology   = test_ns ^ "rdfXmlInputOntology"
 let pos_entailment_iri = test_ns ^ "PositiveEntailmentTest"
 let neg_entailment_iri = test_ns ^ "NegativeEntailmentTest"
+let consistency_iri    = test_ns ^ "ConsistencyTest"
+let inconsistency_iri  = test_ns ^ "InconsistencyTest"
 
 let subject_iri_opt (s : subject) : string option =
   match s with
@@ -367,9 +369,15 @@ let conclusion_triple_in_closure
 type outcome =
   | Pass
   | Fail_conclusion_miss of RDF_Graph_Executable.triple
-  (* For NegativeEntailmentTest: the conclusion was UNEXPECTEDLY entailed
-     by the closure. The test asserted non-entailment; closure refuted. *)
+  (* NegativeEntailmentTest: closure entailed the assertion-non-conclusion. *)
   | Fail_unexpected_entailment
+  (* ConsistencyTest: closure of an asserted-consistent premise contains
+     an inconsistency marker (rdf:type owl:Nothing, sameAs+differentFrom
+     conflict, disjoint-class instance, ...). *)
+  | Fail_unexpected_inconsistency
+  (* InconsistencyTest: closure of an asserted-inconsistent premise has
+     no inconsistency marker — the engine couldn't see the contradiction. *)
+  | Fail_unexpected_consistency
   | Fail_parse_premise
   | Fail_parse_conclusion
   | Fail_no_premise
@@ -379,6 +387,8 @@ let outcome_tag = function
   | Pass -> "PASS"
   | Fail_conclusion_miss _ -> "FAIL"
   | Fail_unexpected_entailment -> "FAIL/unexpected-entailment"
+  | Fail_unexpected_inconsistency -> "FAIL/unexpected-inconsistency"
+  | Fail_unexpected_consistency -> "FAIL/unexpected-consistency"
   | Fail_parse_premise -> "FAIL/parse-premise"
   | Fail_parse_conclusion -> "FAIL/parse-conclusion"
   | Fail_no_premise -> "FAIL/no-premise"
@@ -489,6 +499,56 @@ let run_negative_entailment
       in
       if any_missing then Pass
       else Fail_unexpected_entailment
+    end
+
+(* ConsistencyTest: premise is asserted CONSISTENT. Pass iff closure has
+   no inconsistency marker (per F*'s is_inconsistent in
+   RDF.Graph.Executable: no rdf:type owl:Nothing, no sameAs/differentFrom
+   conflict, no disjoint-class instance). No conclusion expected. *)
+let run_consistency_test
+      (info : test_case_info)
+      (imports_lookup : (string, string) Hashtbl.t) : outcome =
+  match info.premise with
+  | None -> Fail_no_premise
+  | Some p_lex ->
+    let p_src = expand_catalog_entities p_lex in
+    let base = info.iri in
+    let g_p_authored =
+      try Parser_RDFXML.parse_rdfxml_with_base base p_src
+      with _ -> [] in
+    let g_p = load_imports_into_premise info imports_lookup g_p_authored in
+    if g_p = [] then Fail_parse_premise
+    else begin
+      let closure =
+        try RDF_Graph_Executable.owl_rl_closure_with_reflexivity g_p fuel_100
+        with _ -> g_p in
+      if RDF_Graph_Executable.is_inconsistent closure
+      then Fail_unexpected_inconsistency
+      else Pass
+    end
+
+(* InconsistencyTest: premise is asserted INCONSISTENT. Pass iff closure
+   contains an inconsistency marker. *)
+let run_inconsistency_test
+      (info : test_case_info)
+      (imports_lookup : (string, string) Hashtbl.t) : outcome =
+  match info.premise with
+  | None -> Fail_no_premise
+  | Some p_lex ->
+    let p_src = expand_catalog_entities p_lex in
+    let base = info.iri in
+    let g_p_authored =
+      try Parser_RDFXML.parse_rdfxml_with_base base p_src
+      with _ -> [] in
+    let g_p = load_imports_into_premise info imports_lookup g_p_authored in
+    if g_p = [] then Fail_parse_premise
+    else begin
+      let closure =
+        try RDF_Graph_Executable.owl_rl_closure_with_reflexivity g_p fuel_100
+        with _ -> g_p in
+      if RDF_Graph_Executable.is_inconsistent closure
+      then Pass
+      else Fail_unexpected_consistency
     end
 
 let format_subject = function
@@ -649,6 +709,54 @@ let run_catalog ?(verbose=false) path =
     Printf.printf "\n";
     Printf.printf "Profile-RL NegativeEntailmentTests: %d pass, %d fail (out of %d) in %.2fs\n"
       n_passes n_fails nk (t_neg1 -. t_neg0)
+  end;
+
+  (* Phase 2.2: ConsistencyTest + InconsistencyTest. Both use the
+     F* `is_inconsistent` predicate over the saturated closure.
+     ConsistencyTest passes iff is_inconsistent = false; Inconsistency
+     reverses the condition. *)
+  let cons_tests =
+    List.filter (fun info -> StrSet.mem consistency_iri info.types) tests
+  in
+  let ck = List.length cons_tests in
+  if ck > 0 then begin
+    Printf.printf "\n";
+    Printf.printf "Running %d ConsistencyTest(s) through is_inconsistent (closure fuel=100)...\n" ck;
+    let t_cons0 = Unix.gettimeofday () in
+    let c_outcomes = List.map (fun info -> (info, run_consistency_test info imports_lookup)) cons_tests in
+    let t_cons1 = Unix.gettimeofday () in
+    List.iter (fun (info, outcome) -> print_outcome verbose info outcome) c_outcomes;
+    let c_passes =
+      List.fold_left
+        (fun acc (_, o) -> match o with Pass -> acc + 1 | _ -> acc)
+        0 c_outcomes
+    in
+    let c_fails = ck - c_passes in
+    Printf.printf "\n";
+    Printf.printf "Profile-RL ConsistencyTests: %d pass, %d fail (out of %d) in %.2fs\n"
+      c_passes c_fails ck (t_cons1 -. t_cons0)
+  end;
+
+  let inc_tests =
+    List.filter (fun info -> StrSet.mem inconsistency_iri info.types) tests
+  in
+  let ik = List.length inc_tests in
+  if ik > 0 then begin
+    Printf.printf "\n";
+    Printf.printf "Running %d InconsistencyTest(s) through is_inconsistent (closure fuel=100)...\n" ik;
+    let t_inc0 = Unix.gettimeofday () in
+    let i_outcomes = List.map (fun info -> (info, run_inconsistency_test info imports_lookup)) inc_tests in
+    let t_inc1 = Unix.gettimeofday () in
+    List.iter (fun (info, outcome) -> print_outcome verbose info outcome) i_outcomes;
+    let i_passes =
+      List.fold_left
+        (fun acc (_, o) -> match o with Pass -> acc + 1 | _ -> acc)
+        0 i_outcomes
+    in
+    let i_fails = ik - i_passes in
+    Printf.printf "\n";
+    Printf.printf "Profile-RL InconsistencyTests: %d pass, %d fail (out of %d) in %.2fs\n"
+      i_passes i_fails ik (t_inc1 -. t_inc0)
   end
 
 let () =

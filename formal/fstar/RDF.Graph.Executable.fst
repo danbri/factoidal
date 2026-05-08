@@ -3903,6 +3903,76 @@ let owl_rl_closure_with_reflexivity (g : rdf_graph) (fuel : nat) : Tot rdf_graph
   let with_thing = add_triples_if_new rdfs_closed thing_axioms in
   owl_rl_closure with_thing fuel
 
+// ---- Inconsistency detection on a closed graph ---------------------------
+//
+// OWL 2 RL/RDF inconsistency markers (Table 7 of the spec). A saturated
+// closure is inconsistent iff at least one of:
+//
+//   (1) Some triple `?x rdf:type owl:Nothing` exists. cax-dw, cls-com,
+//       and similar rules emit this when a class-disjointness or
+//       complement violation fires.
+//   (2) Some pair `(a, b)` has BOTH `a owl:sameAs b` and
+//       `a owl:differentFrom b` (or vice versa). eq-diff1 / fp / ifp
+//       contrapositives emit differentFrom that contradicts sameAs.
+//   (3) Some `?x` has `?x rdf:type ?C` and `?x rdf:type ?D` where
+//       `?C owl:disjointWith ?D` (cax-dw not yet emitted as Nothing in
+//       our closure — checked here directly).
+//
+// O(n^2) in the closure size for (2), O(n^3) worst case for (3).
+// Acceptable on OWL test catalogs whose per-test closures are
+// hundreds of triples max.
+let sameAs_in_graph (g : rdf_graph) (a : rdf_term) (b : rdf_term) : Tot bool =
+  List.Tot.existsb
+    (fun (t : triple) ->
+      t.p = owl_sameAs &&
+      ((rdf_term_eq (subject_to_term t.s) a && rdf_term_eq t.o b) ||
+       (rdf_term_eq (subject_to_term t.s) b && rdf_term_eq t.o a)))
+    g
+
+let has_disjoint_with (g : rdf_graph) (c1 : rdf_term) (c2 : rdf_term) : Tot bool =
+  List.Tot.existsb
+    (fun (t : triple) ->
+      t.p = owl_disjointWith_iri &&
+      ((rdf_term_eq (subject_to_term t.s) c1 && rdf_term_eq t.o c2) ||
+       (rdf_term_eq (subject_to_term t.s) c2 && rdf_term_eq t.o c1)))
+    g
+
+// rdf:type marker is `rdf_type` (defined elsewhere in this module).
+let is_inconsistent (g : rdf_graph) : Tot bool =
+  // (1) Some `?x rdf:type owl:Nothing`.
+  let has_nothing =
+    List.Tot.existsb
+      (fun (t : triple) ->
+        t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_Nothing))
+      g
+  in
+  if has_nothing then true
+  else
+    // (2) Some pair has both sameAs and differentFrom.
+    let has_sameAs_diff_clash =
+      List.Tot.existsb
+        (fun (t : triple) ->
+          t.p = owl_sameAs &&
+          differentFrom_in_graph g (subject_to_term t.s) t.o)
+        g
+    in
+    if has_sameAs_diff_clash then true
+    else
+      // (3) Disjoint classes share an instance. We look for two
+      // rdf:type triples on the same subject whose objects are
+      // disjoint per owl:disjointWith.
+      List.Tot.existsb
+        (fun (t1 : triple) ->
+          t1.p = rdf_type &&
+          List.Tot.existsb
+            (fun (t2 : triple) ->
+              t2.p = rdf_type &&
+              subject_eq t1.s t2.s &&
+              not (rdf_term_eq t1.o t2.o) &&
+              has_disjoint_with g t1.o t2.o)
+            g)
+        g
+
 // ---- Top-level entailment dispatch ----------------------------------------
 
 // An opaque-looking regime tag. Kept as a string so we don't have to extend

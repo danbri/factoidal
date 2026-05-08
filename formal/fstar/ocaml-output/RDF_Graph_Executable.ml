@@ -2474,6 +2474,45 @@ let owl_rl_closure_with_reflexivity (g : rdf_graph) (fuel : Prims.nat) :
   let thing_axioms = owl_thing_axioms rdfs_closed in
   let with_thing = add_triples_if_new rdfs_closed thing_axioms in
   owl_rl_closure with_thing fuel
+let sameAs_in_graph (g : rdf_graph) (a : rdf_term) (b : rdf_term) :
+  Prims.bool=
+  FStar_List_Tot_Base.existsb
+    (fun t ->
+       (t.p = owl_sameAs) &&
+         (((rdf_term_eq (subject_to_term t.s) a) && (rdf_term_eq t.o b)) ||
+            ((rdf_term_eq (subject_to_term t.s) b) && (rdf_term_eq t.o a))))
+    g
+let has_disjoint_with (g : rdf_graph) (c1 : rdf_term) (c2 : rdf_term) :
+  Prims.bool=
+  FStar_List_Tot_Base.existsb
+    (fun t ->
+       (t.p = owl_disjointWith_iri) &&
+         (((rdf_term_eq (subject_to_term t.s) c1) && (rdf_term_eq t.o c2)) ||
+            ((rdf_term_eq (subject_to_term t.s) c2) && (rdf_term_eq t.o c1))))
+    g
+let is_inconsistent (g : rdf_graph) : Prims.bool=
+  let has_nothing =
+    FStar_List_Tot_Base.existsb
+      (fun t -> (t.p = rdf_type) && (rdf_term_eq t.o (T_IRI owl_Nothing))) g in
+  if has_nothing
+  then true
+  else
+    (let has_sameAs_diff_clash =
+       FStar_List_Tot_Base.existsb
+         (fun t ->
+            (t.p = owl_sameAs) &&
+              (differentFrom_in_graph g (subject_to_term t.s) t.o)) g in
+     if has_sameAs_diff_clash
+     then true
+     else
+       FStar_List_Tot_Base.existsb
+         (fun t1 ->
+            (t1.p = rdf_type) &&
+              (FStar_List_Tot_Base.existsb
+                 (fun t2 ->
+                    (((t2.p = rdf_type) && (subject_eq t1.s t2.s)) &&
+                       (Prims.op_Negation (rdf_term_eq t1.o t2.o)))
+                      && (has_disjoint_with g t1.o t2.o)) g)) g)
 let regime_simple : Prims.string= "simple"
 let regime_rdf : Prims.string= "RDF"
 let regime_rdfs : Prims.string= "RDFS"
