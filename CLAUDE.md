@@ -104,6 +104,17 @@ line *above* the reported one.
     missing from PATH, stop and activate; do not burn time on partial
     builds. See the `fstar-env` skill for setup.
 
+## Known sound-but-narrow rewrites
+
+`OWL.QueryRewrite.fst` — N=1 qualified `CE_MaxCardinality` rewrite
+emits an anchor triple `?subj P ?_mxqc1_anchor_<k>` to make parent7
+pass. The anchor is sound for the SPARQL 1.1 entailment regime suite
+(70/70) but silently drops vacuous-truth individuals (zero `P`-edges
+satisfy max-1) and OWL Full punned class-individuals. Tracked in
+**#236**. Generalise from anchor → UNION as documented there before
+relying on this rewrite for OWL DL outside the entailment regime
+suite.
+
 ## Agent Work Strategy
 
 Use subagents aggressively for parallelism — independent work
