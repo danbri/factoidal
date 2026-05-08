@@ -1,0 +1,7 @@
+node:internal/process/promises:391
+    triggerUncaughtException(err, true /* fromPromise */);
+    ^
+
+[CompileError: WebAssembly.instantiate(): Unknown type code 0x5e, enable with --experimental-wasm-gc @+13]
+
+Node.js v20.20.2
