@@ -1019,20 +1019,23 @@ let percent_encode_char (c : FStar.Char.char) : list FStar.Char.char =
     // 2-byte UTF-8: 110xxxxx 10xxxxxx
     let b1 = 0xC0 + (code / 64) in
     let b2 = 0x80 + (code % 64) in
-    percent_encode_byte b1 @ percent_encode_byte b2
+    Lh.append_tr (percent_encode_byte b1) (percent_encode_byte b2)
   else if code < 0x10000 then
     // 3-byte UTF-8: 1110xxxx 10xxxxxx 10xxxxxx
     let b1 = 0xE0 + (code / 4096) in
     let b2 = 0x80 + ((code / 64) % 64) in
     let b3 = 0x80 + (code % 64) in
-    percent_encode_byte b1 @ percent_encode_byte b2 @ percent_encode_byte b3
+    Lh.append_tr (percent_encode_byte b1)
+      (Lh.append_tr (percent_encode_byte b2) (percent_encode_byte b3))
   else
     // 4-byte UTF-8: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
     let b1 = 0xF0 + (code / 262144) in
     let b2 = 0x80 + ((code / 4096) % 64) in
     let b3 = 0x80 + ((code / 64) % 64) in
     let b4 = 0x80 + (code % 64) in
-    percent_encode_byte b1 @ percent_encode_byte b2 @ percent_encode_byte b3 @ percent_encode_byte b4
+    Lh.append_tr (percent_encode_byte b1)
+      (Lh.append_tr (percent_encode_byte b2)
+        (Lh.append_tr (percent_encode_byte b3) (percent_encode_byte b4)))
 
 let rec encode_uri_chars (cs : list FStar.Char.char)
   : Tot (list FStar.Char.char) (decreases cs) =
@@ -1040,7 +1043,7 @@ let rec encode_uri_chars (cs : list FStar.Char.char)
   | [] -> []
   | c :: rest ->
     if is_uri_unreserved c then c :: encode_uri_chars rest
-    else percent_encode_char c @ encode_uri_chars rest
+    else Lh.append_tr (percent_encode_char c) (encode_uri_chars rest)
 
 let string_encode_uri (s : string) : string =
   String.string_of_list (encode_uri_chars (String.list_of_string s))
@@ -1053,7 +1056,7 @@ let rec replace_first (haystack pattern replacement : list FStar.Char.char)
   | hd :: tl ->
     if list_is_prefix pattern haystack then
       (* Skip past matched pattern, append rest unchanged *)
-      replacement @ list_drop (List.Tot.length pattern) haystack
+      Lh.append_tr replacement (list_drop (List.Tot.length pattern) haystack)
     else
       hd :: replace_first tl pattern replacement
 
@@ -1688,22 +1691,22 @@ let resolve_iri (base : wf_iri) (relative : string) : wf_iri =
       if first_char = FStar.Char.char_of_int 35 (* '#' *) then
         (* Fragment: append to base after removing any existing fragment *)
         match remove_fragment base_chars None 0 with
-        | Some hash_pos -> take_chars hash_pos base_chars @ rel_chars
-        | None -> base_chars @ rel_chars
+        | Some hash_pos -> Lh.append_tr (take_chars hash_pos base_chars) rel_chars
+        | None -> Lh.append_tr base_chars rel_chars
       else if first_char = FStar.Char.char_of_int 47 (* '/' *) then
         (* Absolute path: use scheme+authority from base *)
         match find_scheme_end base_chars 0 with
         | Some after_scheme ->
           (* Find the next '/' after "://" for end of authority *)
           (match find_slash_from base_chars after_scheme 0 with
-           | Some auth_end -> take_chars auth_end base_chars @ rel_chars
-           | None -> base_chars @ rel_chars)
-        | None -> base_chars @ rel_chars
+           | Some auth_end -> Lh.append_tr (take_chars auth_end base_chars) rel_chars
+           | None -> Lh.append_tr base_chars rel_chars)
+        | None -> Lh.append_tr base_chars rel_chars
       else
         (* Relative: replace everything after last '/' in base *)
         match find_last_slash base_chars 0 None with
-        | Some slash_pos -> take_chars (slash_pos + 1) base_chars @ rel_chars
-        | None -> base_chars @ [FStar.Char.char_of_int 47] @ rel_chars
+        | Some slash_pos -> Lh.append_tr (take_chars (slash_pos + 1) base_chars) rel_chars
+        | None -> Lh.append_tr base_chars (Lh.append_tr [FStar.Char.char_of_int 47] rel_chars)
     in
     (* The result should be a valid IRI since all branches preserve the base
        scheme prefix (which contains ':'). Rather than proving list_has_colon
@@ -2154,9 +2157,12 @@ let left_join_with_graph
       if List.Tot.length joins > 0 then joins else [mu1])
     omega1
 
-(* Union: multiset union of solution mappings *)
+(* Union: multiset union of solution mappings.
+   Tail-rec @ — issue #95. Stdlib `@` (List.Tot.append) is non-tail-rec
+   and overflows on million-row UNIONs. Lh.append_tr is provably equal
+   to append (lemma_append_tr_eq) so this is observationally identical. *)
 let union (omega1 omega2 : solution_sequence) : solution_sequence =
-  omega1 @ omega2
+  Lh.append_tr omega1 omega2
 
 (* Minus (§18.5) *)
 (* Ω1 Minus Ω2 = { μ1 | μ1 ∈ Ω1, ∀ μ2 ∈ Ω2:
@@ -2342,16 +2348,16 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store) (dss : r
       match pp with
       | PP_ZeroOrMore _ | PP_ZeroOrOne _ ->
         let constant_terms : list rdf_term =
-          (match ps with
-           | PS_IRI i   -> [T_IRI i]
-           | PS_BNode b -> [T_BNode b]
-           | PS_Var _   -> [])
-          @
-          (match pt with
-           | PT_IRI i     -> [T_IRI i]
-           | PT_BNode b   -> [T_BNode b]
-           | PT_Literal l -> [T_Literal l]
-           | PT_Var _     -> [])
+          Lh.append_tr
+            (match ps with
+             | PS_IRI i   -> [T_IRI i]
+             | PS_BNode b -> [T_BNode b]
+             | PS_Var _   -> [])
+            (match pt with
+             | PT_IRI i     -> [T_IRI i]
+             | PT_BNode b   -> [T_BNode b]
+             | PT_Literal l -> [T_Literal l]
+             | PT_Var _     -> [])
         in
         let has_reflexive (t : rdf_term) : bool =
           List.Tot.existsb
@@ -4069,7 +4075,7 @@ let rec iri_in_list (iri : wf_iri) (iris : list wf_iri) : Tot bool (decreases ir
 let graph_nodes (g : rdf_graph) : list rdf_term =
   let subj_nodes = List.Tot.map (fun (t : triple) -> subject_to_term t.s) g in
   let obj_nodes = List.Tot.map (fun (t : triple) -> t.o) g in
-  let pairs = dedup_path (List.Tot.map (fun (n : rdf_term) -> (n, n)) (subj_nodes @ obj_nodes)) in
+  let pairs = dedup_path (List.Tot.map (fun (n : rdf_term) -> (n, n)) (Lh.append_tr subj_nodes obj_nodes)) in
   List.Tot.map fst pairs
 
 (* Concrete implementation of property path evaluation.
@@ -4110,12 +4116,12 @@ let rec eval_property_path (p : property_path) (g : rdf_graph)
 
   | PP_Alternative p1 p2 ->
     (* eval p1 G ∪ eval p2 G — bag semantics *)
-    eval_property_path p1 g @ eval_property_path p2 g
+    Lh.append_tr (eval_property_path p1 g) (eval_property_path p2 g)
 
   | PP_ZeroOrOne pp ->
     let reflexive = List.Tot.map (fun (n : rdf_term) -> (n, n)) (graph_nodes g) in
     let step = eval_property_path pp g in
-    dedup_path (reflexive @ step)
+    dedup_path (Lh.append_tr reflexive step)
 
   | PP_ZeroOrMore pp ->
     (* ZeroOrMore: reflexive transitive closure.
@@ -4137,7 +4143,7 @@ let rec eval_property_path (p : property_path) (g : rdf_graph)
               if rdf_term_eq mid mid2 then [(s, o)] else [])
             step)
         current in
-      dedup_path (current @ new_pairs) in
+      dedup_path (Lh.append_tr current new_pairs) in
     (* Iterate up to |nodes| times to reach fixpoint *)
     let max_iter = List.Tot.length nodes in
     let rec fixpoint (current : path_result) (fuel : nat)
@@ -4147,7 +4153,7 @@ let rec eval_property_path (p : property_path) (g : rdf_graph)
         let next = extend current in
         if List.Tot.length next = List.Tot.length current then current
         else fixpoint next (fuel - 1) in
-    fixpoint (dedup_path (reflexive @ step)) max_iter
+    fixpoint (dedup_path (Lh.append_tr reflexive step)) max_iter
 
   | PP_OneOrMore pp ->
     (* OneOrMore: transitive closure (at least one step).
@@ -4164,7 +4170,7 @@ let rec eval_property_path (p : property_path) (g : rdf_graph)
               if rdf_term_eq mid mid2 then [(s, o)] else [])
             step)
         current in
-      dedup_path (current @ new_pairs) in
+      dedup_path (Lh.append_tr current new_pairs) in
     let max_iter = List.Tot.length nodes in
     let rec fixpoint (current : path_result) (fuel : nat)
       : Tot path_result (decreases fuel) =
@@ -4195,7 +4201,7 @@ let rec eval_property_path (p : property_path) (g : rdf_graph)
         (fun (t : triple) ->
           if iri_in_list t.p excluded_inverse then [] else [(t.o, subject_to_term t.s)])
         g in
-    direct_pairs @ inverse_pairs
+    Lh.append_tr direct_pairs inverse_pairs
 
 (* Specification (retained for reference):
 
@@ -4621,6 +4627,13 @@ open FStar.List.Tot.Properties
 (** 19.1 Union is associative — PROVED **)
 let lemma_union_assoc (o1 o2 o3 : solution_sequence) :
   Lemma (union (union o1 o2) o3 == union o1 (union o2 o3)) =
+  // Bridge `union` (= Lh.append_tr) to stdlib `@` via lemma_append_tr_eq,
+  // then use stdlib append_assoc. Necessary after #95 migration of `@`
+  // → Lh.append_tr at line 2159 (2026-05-08).
+  Lh.lemma_append_tr_eq o1 o2;
+  Lh.lemma_append_tr_eq (o1 @ o2) o3;
+  Lh.lemma_append_tr_eq o2 o3;
+  Lh.lemma_append_tr_eq o1 (o2 @ o3);
   append_assoc o1 o2 o3
 
 (** 19.2 Union with empty is identity — PROVED **)
@@ -4629,6 +4642,9 @@ let lemma_union_nil_l (omega : solution_sequence) :
 
 let lemma_union_nil_r (omega : solution_sequence) :
   Lemma (union omega [] == omega) =
+  // Bridge: union = Lh.append_tr (post-#95). Lh.append_tr omega [] ==
+  // append omega [] (lemma_append_tr_eq) == omega (append_l_nil).
+  Lh.lemma_append_tr_eq omega [];
   append_l_nil omega
 
 (** 19.3 Filter distributes over Union — PROVED **)
@@ -4645,6 +4661,10 @@ let filter_solutions (e : expr) (omega : solution_sequence) : solution_sequence 
 let lemma_filter_union (e : expr) (omega1 omega2 : solution_sequence) :
   Lemma (filter_solutions e (union omega1 omega2) ==
          union (filter_solutions e omega1) (filter_solutions e omega2)) =
+  // Bridge: union = Lh.append_tr (post-#95). lemma_filter_append is
+  // about stdlib `@` — convert via lemma_append_tr_eq before/after.
+  Lh.lemma_append_tr_eq omega1 omega2;
+  Lh.lemma_append_tr_eq (filter_solutions e omega1) (filter_solutions e omega2);
   lemma_filter_append (eval_expr_ebv e) omega1 omega2
 
 (** 19.4 OFFSET 0 is identity — PROVED **)
@@ -4735,6 +4755,9 @@ let lemma_minus_empty_r (omega : solution_sequence) :
 (** 19.19 Union length (commutativity as multisets) — PROVED **)
 let lemma_union_length (o1 o2 : solution_sequence) :
   Lemma (List.Tot.length (union o1 o2) = List.Tot.length o1 + List.Tot.length o2) =
+  // Bridge: union = Lh.append_tr (post-#95). length(append_tr) ==
+  // length(append) via lemma_append_tr_eq + append_length.
+  Lh.lemma_append_tr_eq o1 o2;
   append_length o1 o2
 
 (** 19.20 eval_bgp with empty graph — PROVED **)
@@ -4898,7 +4921,7 @@ let rec collect_quads (outer : option wf_iri) (g : group_graph_pattern)
   | GP_BGP b ->
     let ts = bgp_to_triples_concrete b in
     List.Tot.map (fun t -> (outer, t)) ts
-  | GP_Join a b -> collect_quads outer a @ collect_quads outer b
+  | GP_Join a b -> Lh.append_tr (collect_quads outer a) (collect_quads outer b)
   | GP_Graph gt inner ->
     (match gt with
      | PT_IRI g_iri -> collect_quads (Some g_iri) inner
@@ -5162,7 +5185,7 @@ let rec instantiate_ggp_quads (outer : option wf_iri) (g : group_graph_pattern)
     let ts = instantiate_bgp b mu in
     List.Tot.map (fun t -> (outer, t)) ts
   | GP_Join a b ->
-    instantiate_ggp_quads outer a mu @ instantiate_ggp_quads outer b mu
+    Lh.append_tr (instantiate_ggp_quads outer a mu) (instantiate_ggp_quads outer b mu)
   | GP_Graph gt inner ->
     (match gt with
      | PT_IRI g_iri -> instantiate_ggp_quads (Some g_iri) inner mu
@@ -5182,8 +5205,9 @@ let rec instantiate_ggp_quads_freshen (op_salt : string) (sol_ix : nat)
     let ts = instantiate_bgp_freshen op_salt sol_ix b mu in
     List.Tot.map (fun t -> (outer, t)) ts
   | GP_Join a b ->
-    instantiate_ggp_quads_freshen op_salt sol_ix outer a mu
-    @ instantiate_ggp_quads_freshen op_salt sol_ix outer b mu
+    Lh.append_tr
+      (instantiate_ggp_quads_freshen op_salt sol_ix outer a mu)
+      (instantiate_ggp_quads_freshen op_salt sol_ix outer b mu)
   | GP_Graph gt inner ->
     (match gt with
      | PT_IRI g_iri ->
@@ -5197,7 +5221,7 @@ let rec instantiate_ggp_all (outer : option wf_iri) (g : group_graph_pattern)
   match mus with
   | [] -> []
   | mu :: rest ->
-    instantiate_ggp_quads outer g mu @ instantiate_ggp_all outer g rest
+    Lh.append_tr (instantiate_ggp_quads outer g mu) (instantiate_ggp_all outer g rest)
 
 let apply_delete_where (ds : rdf_dataset) (ggp : group_graph_pattern)
   : rdf_dataset =
@@ -5413,7 +5437,7 @@ let apply_modify (op_salt : string) (ds : rdf_dataset)
       // template at parse time, but if any slipped through, substitution
       // would simply not produce a matching mapping. No rewrite needed.
       per_mapping_quads None dt mus in
-  let del_quads_flat = List.Tot.fold_left (fun acc qs -> acc @ qs)
+  let del_quads_flat = List.Tot.fold_left (fun acc qs -> Lh.append_tr acc qs)
                        [] del_quads_per_mu in
   let del_quads_redirected = redirect_default_quads with_iri del_quads_flat in
   let ds_after_delete = delete_quads ds del_quads_redirected in
@@ -5533,7 +5557,7 @@ let rec empty_all_named (named : list named_graph)
 let ensure_named_graph (iri : wf_iri) (named : list named_graph)
   : list named_graph =
   if has_named_graph iri named then named
-  else named @ [ { ng_name = iri; ng_graph = [] } ]
+  else Lh.append_tr named [ { ng_name = iri; ng_graph = [] } ]
 
 // --- Source / destination read + write helpers ----------------------------
 
