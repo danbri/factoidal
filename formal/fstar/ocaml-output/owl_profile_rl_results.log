@@ -1,5 +1,5 @@
-OWL 2 test catalog: /Users/danbri/working/factoidal/formal/fstar/../../third_party/testing/owl/profile-RL.rdf
-  parsed 1896 triples in 0.03s
+OWL 2 test catalog: /home/user/factoidal/third_party/testing/owl/profile-RL.rdf
+  parsed 1896 triples in 0.04s
 Totals: 91 test cases
   PositiveEntailmentTest:    30
   NegativeEntailmentTest:    6
@@ -11,16 +11,16 @@ Running 30 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   FAIL  DisjointClasses-001
   FAIL  DisjointClasses-003
   FAIL  New-Feature-DisjointDataProperties-002
-  FAIL  New-Feature-DisjointObjectProperties-001
+  PASS  New-Feature-DisjointObjectProperties-001
   FAIL  New-Feature-DisjointObjectProperties-002
-  FAIL  New-Feature-Keys-003
+  PASS  New-Feature-Keys-003
   PASS  New-Feature-ObjectPropertyChain-001
   FAIL/no-premise  New-Feature-ObjectPropertyChain-BJP-002
   PASS  New-Feature-ObjectPropertyChain-BJP-003
   FAIL  New-Feature-ObjectQCR-002
   PASS  New-Feature-ReflexiveProperty-001
   PASS  WebOnt-I4.6-003
-  FAIL  WebOnt-I4.6-005-Direct
+  PASS  WebOnt-I4.6-005-Direct
   FAIL  WebOnt-I5.26-010
   FAIL  WebOnt-I5.5-005
   PASS  WebOnt-I5.8-006
@@ -30,14 +30,14 @@ Running 30 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  WebOnt-differentFrom-001
   PASS  WebOnt-equivalentClass-002
   PASS  WebOnt-equivalentClass-003
-  FAIL  WebOnt-equivalentClass-008-Direct
+  PASS  WebOnt-equivalentClass-008-Direct
   PASS  WebOnt-equivalentProperty-002
   PASS  WebOnt-equivalentProperty-003
-  FAIL  WebOnt-imports-011
+  PASS  WebOnt-imports-011
   PASS  WebOnt-sameAs-001
   PASS  chain2trans1
-  FAIL  owl2-rl-rules-fp-differentFrom
-  FAIL  owl2-rl-rules-ifp-differentFrom
+  PASS  owl2-rl-rules-fp-differentFrom
+  PASS  owl2-rl-rules-ifp-differentFrom
 
-Profile-RL PositiveEntailmentTests: 13 pass, 17 fail (out of 30) in 0.28s
-  (bnode match is structural only; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
+Profile-RL PositiveEntailmentTests: 20 pass, 10 fail (out of 30) in 0.35s
+  (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)

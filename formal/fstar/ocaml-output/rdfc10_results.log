@@ -1,4 +1,4 @@
-RDFC-1.0 manifest: /Users/danbri/working/factoidal/formal/fstar/../../third_party/testing/rdf-canon/tests/manifest.ttl
+RDFC-1.0 manifest: /home/user/factoidal/third_party/testing/rdf-canon/tests/manifest.ttl
   parsed 713 triples in 0.01s
 Totals: 86 test entries
   RDFC10EvalTest:         64
@@ -31,21 +31,21 @@ Totals: 86 test entries
   PASS  [Map] test020m      blank node - diamond (map test)
   PASS  [Eval] test021c      blank node - circle of 2
   PASS  [Eval] test022c      blank node - double circle of 2
-  PASS  [Eval] test023c      blank node - circle of 3
-  FAIL  [Eval] test024c      blank node - double circle of 3 (0-1-2)
-  FAIL  [Eval] test025c      blank node - double circle of 3 (0-2-1)
-  FAIL  [Eval] test026c      blank node - double circle of 3 (1-0-2)
-  FAIL  [Eval] test027c      blank node - double circle of 3 (1-2-0)
-  FAIL  [Eval] test028c      blank node - double circle of 3 (2-1-0)
-  FAIL  [Eval] test029c      blank node - double circle of 3 (2-0-1)
+  FAIL  [Eval] test023c      blank node - circle of 3
+  PASS  [Eval] test024c      blank node - double circle of 3 (0-1-2)
+  PASS  [Eval] test025c      blank node - double circle of 3 (0-2-1)
+  PASS  [Eval] test026c      blank node - double circle of 3 (1-0-2)
+  PASS  [Eval] test027c      blank node - double circle of 3 (1-2-0)
+  PASS  [Eval] test028c      blank node - double circle of 3 (2-1-0)
+  PASS  [Eval] test029c      blank node - double circle of 3 (2-0-1)
   PASS  [Eval] test030c      blank node - point at circle of 3
   PASS  [Map] test030m      blank node - point at circle of 3 (map test)
   FAIL  [Eval] test033c      disjoint identical subgraphs (1)
   FAIL  [Eval] test034c      disjoint identical subgraphs (2)
   FAIL  [Eval] test035c      reordered w/strings (1)
   FAIL  [Eval] test036c      reordered w/strings (2)
-  PASS  [Eval] test038c      reordered 4 bnodes, reordered 2 properties (1)
-  PASS  [Eval] test039c      reordered 4 bnodes, reordered 2 properties (2)
+  FAIL  [Eval] test038c      reordered 4 bnodes, reordered 2 properties (1)
+  FAIL  [Eval] test039c      reordered 4 bnodes, reordered 2 properties (2)
   FAIL  [Eval] test040c      reordered 6 bnodes (1)
   PASS  [Eval] test043c      literal with language
   FAIL  [Eval] test044c      poison – evil (1)
@@ -92,5 +92,5 @@ Totals: 86 test entries
   PASS  [Eval] test076c      duplicate ground triple in input
   PASS  [Eval] test077c      duplicate triple with blank node in input
 
-RDFC-1.0 tests: 59 pass, 26 fail, 1 stub (out of 86)
+RDFC-1.0 tests: 62 pass, 23 fail, 1 stub (out of 86)
   (Phase 1: HFDQ + simple issuer (F* RDF.Canonical). HNDQ for collisions and Map / NegEval tests deferred. See docs/designissues/2026-04-25-rdfc10-algo-plan.md.)
