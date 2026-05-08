@@ -2326,8 +2326,45 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store) (dss : r
     eval_subselect_fwd q gs.gs_graph (store_to_dataset dss)
 
   | GP_PropertyPath ps pp pt ->
-    (* Evaluate property path and convert results to solution mappings *)
+    (* Evaluate property path and convert results to solution mappings.
+       Issue #66 fix (2026-05-08, Section E retirement): for
+       ZeroOrMore / ZeroOrOne paths, SPARQL 1.1 §18.2.2.5 requires
+       reflexive matches for any constant IRI/BNode in the pattern,
+       even when that node has zero edges of the path's predicate (or
+       isn't in the graph at all). eval_property_path_fwd's reflexive
+       set is built from graph_nodes, which only contains nodes that
+       actually appear in some triple — so a constant IRI from the
+       query that's mentioned nowhere in the data wouldn't be picked
+       up. Adds the missing reflexive pairs here, post-eval, only for
+       Zero* paths. *)
     let pairs = eval_property_path_fwd pp gs.gs_graph in
+    let pairs =
+      match pp with
+      | PP_ZeroOrMore _ | PP_ZeroOrOne _ ->
+        let constant_terms : list rdf_term =
+          (match ps with
+           | PS_IRI i   -> [T_IRI i]
+           | PS_BNode b -> [T_BNode b]
+           | PS_Var _   -> [])
+          @
+          (match pt with
+           | PT_IRI i     -> [T_IRI i]
+           | PT_BNode b   -> [T_BNode b]
+           | PT_Literal l -> [T_Literal l]
+           | PT_Var _     -> [])
+        in
+        let has_reflexive (t : rdf_term) : bool =
+          List.Tot.existsb
+            (fun (pair : rdf_term * rdf_term) ->
+              let (s, o) = pair in
+              rdf_term_eq s t && rdf_term_eq o t)
+            pairs
+        in
+        let new_terms = List.Tot.filter (fun t -> not (has_reflexive t)) constant_terms in
+        let new_reflexive = List.Tot.map (fun (n : rdf_term) -> (n, n)) new_terms in
+        Lh.append_tr pairs new_reflexive
+      | _ -> pairs
+    in
     path_result_to_solutions ps pt pairs
 
 (* Evaluate a group graph pattern against an RDF graph and dataset — CONCRETE.

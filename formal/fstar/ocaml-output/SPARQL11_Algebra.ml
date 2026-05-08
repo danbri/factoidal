@@ -3349,35 +3349,62 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store)
   | GP_SubSelect q -> eval_subselect_fwd q gs.gs_graph (store_to_dataset dss)
   | GP_PropertyPath (ps, pp, pt) ->
       let pairs = eval_property_path_fwd pp gs.gs_graph in
-      (* SPARQL semantics: ZeroOrMore/ZeroOrOne paths must include zero-length
-         matches for any constant IRI/BNode in the pattern, even on empty graphs.
-         eval_property_path only generates reflexive pairs for nodes in the graph,
-         so we add reflexive pairs for constants from the query pattern here,
-         but only if they are not already present (to avoid duplicates). *)
-      let pairs = match pp with
-        | PP_ZeroOrMore _ | PP_ZeroOrOne _ ->
+      let pairs1 =
+        match pp with
+        | PP_ZeroOrMore uu___ ->
             let constant_terms =
-              (match ps with
-               | PS_IRI i -> [RDF_Graph_Executable.T_IRI i]
-               | PS_BNode b -> [RDF_Graph_Executable.T_BNode b]
-               | PS_Var _ -> [])
-              @
-              (match pt with
-               | PT_IRI i -> [RDF_Graph_Executable.T_IRI i]
-               | PT_BNode b -> [RDF_Graph_Executable.T_BNode b]
-               | PT_Literal l -> [RDF_Graph_Executable.T_Literal l]
-               | PT_Var _ -> []) in
+              sse_append
+                (match ps with
+                 | PS_IRI i -> [RDF_Graph_Executable.T_IRI i]
+                 | PS_BNode b -> [RDF_Graph_Executable.T_BNode b]
+                 | PS_Var uu___1 -> [])
+                (match pt with
+                 | PT_IRI i -> [RDF_Graph_Executable.T_IRI i]
+                 | PT_BNode b -> [RDF_Graph_Executable.T_BNode b]
+                 | PT_Literal l -> [RDF_Graph_Executable.T_Literal l]
+                 | PT_Var uu___1 -> []) in
             let has_reflexive t =
               FStar_List_Tot_Base.existsb
-                (fun pair -> match pair with (s, o) ->
-                   RDF_Graph_Executable.rdf_term_eq s t &&
-                   RDF_Graph_Executable.rdf_term_eq o t) pairs in
-            let new_terms = FStar_List_Tot_Base.filter
-              (fun t -> not (has_reflexive t)) constant_terms in
-            let reflexive = FStar_List_Tot_Base.map (fun n -> (n, n)) new_terms in
-            sse_append pairs reflexive
-        | _ -> pairs in
-      path_result_to_solutions ps pt pairs
+                (fun pair ->
+                   let uu___1 = pair in
+                   match uu___1 with
+                   | (s, o) ->
+                       (RDF_Graph_Executable.rdf_term_eq s t) &&
+                         (RDF_Graph_Executable.rdf_term_eq o t)) pairs in
+            let new_terms =
+              FStar_List_Tot_Base.filter
+                (fun t -> Prims.op_Negation (has_reflexive t)) constant_terms in
+            let new_reflexive =
+              FStar_List_Tot_Base.map (fun n -> (n, n)) new_terms in
+            RDF_List_Helpers.append_tr pairs new_reflexive
+        | PP_ZeroOrOne uu___ ->
+            let constant_terms =
+              sse_append
+                (match ps with
+                 | PS_IRI i -> [RDF_Graph_Executable.T_IRI i]
+                 | PS_BNode b -> [RDF_Graph_Executable.T_BNode b]
+                 | PS_Var uu___1 -> [])
+                (match pt with
+                 | PT_IRI i -> [RDF_Graph_Executable.T_IRI i]
+                 | PT_BNode b -> [RDF_Graph_Executable.T_BNode b]
+                 | PT_Literal l -> [RDF_Graph_Executable.T_Literal l]
+                 | PT_Var uu___1 -> []) in
+            let has_reflexive t =
+              FStar_List_Tot_Base.existsb
+                (fun pair ->
+                   let uu___1 = pair in
+                   match uu___1 with
+                   | (s, o) ->
+                       (RDF_Graph_Executable.rdf_term_eq s t) &&
+                         (RDF_Graph_Executable.rdf_term_eq o t)) pairs in
+            let new_terms =
+              FStar_List_Tot_Base.filter
+                (fun t -> Prims.op_Negation (has_reflexive t)) constant_terms in
+            let new_reflexive =
+              FStar_List_Tot_Base.map (fun n -> (n, n)) new_terms in
+            RDF_List_Helpers.append_tr pairs new_reflexive
+        | uu___ -> pairs in
+      path_result_to_solutions ps pt pairs1
 let eval_pattern (p : group_graph_pattern)
   (g : RDF_Graph_Executable.rdf_graph)
   (ds : RDF_Graph_Executable.rdf_dataset) : solution_sequence=
