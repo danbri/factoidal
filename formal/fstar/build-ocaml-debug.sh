@@ -134,7 +134,7 @@ case "$TARGET" in
       $COMMON_MODULES \
       factoidal_serve.ml \
       ../../../bin/factoidal-explain/factoidal_explain.ml \
-      factoidal_cli.ml \
+      ../../../bin/factoidal-cli/factoidal_cli.ml \
       -o "$OUT" || FACTOIDAL_DEBUG_RC=$?
     rm -f factoidal_serve.ml
     if [[ "$FACTOIDAL_DEBUG_RC" -ne 0 ]]; then

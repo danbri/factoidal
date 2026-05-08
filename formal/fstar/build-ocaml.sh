@@ -473,7 +473,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     factoidal_http.ml
     ../../../bin/factoidal-serve/factoidal_serve.ml
     ../../../bin/factoidal-explain/factoidal_explain.ml
-    factoidal_cli.ml
+    ../../../bin/factoidal-cli/factoidal_cli.ml
     factoidal_http_main.ml
     ../../../bin/owl-runner/owl_runner.ml
     ../../../bin/rdfc10-runner/rdfc10_runner.ml
@@ -528,7 +528,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       factoidal_http.ml \
       ../../../bin/factoidal-serve/factoidal_serve.ml \
       ../../../bin/factoidal-explain/factoidal_explain.ml \
-      factoidal_cli.ml \
+      ../../../bin/factoidal-cli/factoidal_cli.ml \
       -o "$BINDIR/factoidal"
     cat _ocamlopt_factoidal.log
     echo "  Built: bin/${PLATFORM}/factoidal ($(wc -c < "$BINDIR/factoidal") bytes)"
@@ -719,7 +719,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     w3c_runner.ml
     ../../../bin/factoidal-serve/factoidal_serve.ml
     ../../../bin/factoidal-serve/factoidal_serve_jsoo.ml
-    factoidal_cli.ml
+    ../../../bin/factoidal-cli/factoidal_cli.ml
     parquet_zstd_stubs_jsoo.c
     fstar_int_stubs.js
     fstar_hash_stubs.js
@@ -771,7 +771,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
       "${FSTAR_MODULES[@]}" \
       ../../../bin/factoidal-explain/factoidal_explain.ml \
       factoidal_serve.ml \
-      factoidal_cli.ml \
+      ../../../bin/factoidal-cli/factoidal_cli.ml \
       -o factoidal.byte || FACTOIDAL_BYTE_RC=$?
     # Clean up the staged stub so a subsequent native build doesn't
     # pick it up. Always clean, even on compile failure.
