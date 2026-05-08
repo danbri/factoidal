@@ -21,13 +21,13 @@ let hex_val (c : FStar_Char.char) : Prims.int=
   | FStar_Pervasives_Native.None -> Prims.int_zero
 let valid_codepoint (cp : Prims.int) : Prims.bool=
   (cp >= Prims.int_zero) &&
-    ((cp < (Prims.of_int (0xD7FF))) ||
+    ((cp < (Prims.of_int (0xD800))) ||
        ((cp >= (Prims.of_int (0xE000))) &&
           (cp <= (Prims.parse_int "0x10FFFF"))))
 let safe_char_of_int (cp : Prims.int) : FStar_Char.char=
   if
     (cp >= Prims.int_zero) &&
-      ((cp < (Prims.of_int (0xD7FF))) ||
+      ((cp < (Prims.of_int (0xD800))) ||
          ((cp >= (Prims.of_int (0xE000))) &&
             (cp <= (Prims.parse_int "0x10FFFF"))))
   then let n = cp in FStar_Char.char_of_int n
