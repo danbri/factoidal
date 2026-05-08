@@ -1392,6 +1392,14 @@ let owl_FunctionalProperty : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#FunctionalProperty");
   "http://www.w3.org/2002/07/owl#FunctionalProperty"
 
+let owl_AsymmetricProperty : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#AsymmetricProperty");
+  "http://www.w3.org/2002/07/owl#AsymmetricProperty"
+
+let owl_IrreflexiveProperty : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#IrreflexiveProperty");
+  "http://www.w3.org/2002/07/owl#IrreflexiveProperty"
+
 let owl_inverseOf : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#inverseOf");
   "http://www.w3.org/2002/07/owl#inverseOf"
@@ -3961,17 +3969,65 @@ let is_inconsistent (g : rdf_graph) : Tot bool =
       // (3) Disjoint classes share an instance. We look for two
       // rdf:type triples on the same subject whose objects are
       // disjoint per owl:disjointWith.
-      List.Tot.existsb
-        (fun (t1 : triple) ->
-          t1.p = rdf_type &&
+      let has_disjoint_class_clash =
+        List.Tot.existsb
+          (fun (t1 : triple) ->
+            t1.p = rdf_type &&
+            List.Tot.existsb
+              (fun (t2 : triple) ->
+                t2.p = rdf_type &&
+                subject_eq t1.s t2.s &&
+                not (rdf_term_eq t1.o t2.o) &&
+                has_disjoint_with g t1.o t2.o)
+              g)
+          g
+      in
+      if has_disjoint_class_clash then true
+      else
+        // (4) Irreflexive property violation. P is declared
+        // owl:IrreflexiveProperty AND there exists `?x P ?x`. Per OWL 2
+        // RL/RDF rules (cax-irf), this is inconsistent.
+        let has_irreflexive_violation =
           List.Tot.existsb
-            (fun (t2 : triple) ->
-              t2.p = rdf_type &&
-              subject_eq t1.s t2.s &&
-              not (rdf_term_eq t1.o t2.o) &&
-              has_disjoint_with g t1.o t2.o)
-            g)
-        g
+            (fun (decl : triple) ->
+              decl.p = rdf_type &&
+              rdf_term_eq decl.o (T_IRI owl_IrreflexiveProperty) &&
+              // decl.s is the IRI of the irreflexive property; look
+              // for any triple `?x decl.s ?x` (subject = object).
+              (match decl.s with
+               | S_IRI prop_iri ->
+                 List.Tot.existsb
+                   (fun (use : triple) ->
+                     use.p = prop_iri &&
+                     rdf_term_eq (subject_to_term use.s) use.o)
+                   g
+               | _ -> false))
+            g
+        in
+        if has_irreflexive_violation then true
+        else
+          // (5) Asymmetric property violation. P is declared
+          // owl:AsymmetricProperty AND there exists `?x P ?y` AND
+          // `?y P ?x` (with ?x ≠ ?y syntactically — same subject is
+          // the irreflexive case in (4)).
+          List.Tot.existsb
+            (fun (decl : triple) ->
+              decl.p = rdf_type &&
+              rdf_term_eq decl.o (T_IRI owl_AsymmetricProperty) &&
+              (match decl.s with
+               | S_IRI prop_iri ->
+                 List.Tot.existsb
+                   (fun (t1 : triple) ->
+                     t1.p = prop_iri &&
+                     List.Tot.existsb
+                       (fun (t2 : triple) ->
+                         t2.p = prop_iri &&
+                         rdf_term_eq (subject_to_term t1.s) t2.o &&
+                         rdf_term_eq t1.o (subject_to_term t2.s))
+                       g)
+                   g
+               | _ -> false))
+            g
 
 // ---- Top-level entailment dispatch ----------------------------------------
 
