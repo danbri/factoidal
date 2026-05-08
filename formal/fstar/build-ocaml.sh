@@ -470,13 +470,13 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     $COMMON_MODULES
     w3c_runner.ml
     factoidal_http.ml
-    factoidal_serve.ml
+    ../../../bin/factoidal-serve/factoidal_serve.ml
     factoidal_explain.ml
     factoidal_cli.ml
     factoidal_http_main.ml
     owl_runner.ml
     rdfc10_runner.ml
-    cottas_ondisk_smoketest.ml
+    ../../../bin/cottas-ondisk-smoketest/cottas_ondisk_smoketest.ml
     ../experimental_ocaml_glue/parquet_zstd_stubs.c
   )
   NATIVE_NEEDS_REBUILD=0
@@ -520,10 +520,11 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     run_with_heartbeat "ocamlopt factoidal" "_ocamlopt_factoidal.log" -- \
       ocamlfind ocamlopt -g -thread -package fstar.lib,str,zarith,sha,digestif.c,unix,threads.posix -linkpkg -w -8-14-26 \
       $STATIC_FLAGS \
+      -I ../../../bin/factoidal-serve \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
       factoidal_http.ml \
-      factoidal_serve.ml \
+      ../../../bin/factoidal-serve/factoidal_serve.ml \
       factoidal_explain.ml \
       factoidal_cli.ml \
       -o "$BINDIR/factoidal"
@@ -714,8 +715,8 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
   JS_SOURCES=(
     "${FSTAR_MODULES[@]}"
     w3c_runner.ml
-    factoidal_serve.ml
-    factoidal_serve_jsoo.ml
+    ../../../bin/factoidal-serve/factoidal_serve.ml
+    ../../../bin/factoidal-serve/factoidal_serve_jsoo.ml
     factoidal_cli.ml
     parquet_zstd_stubs_jsoo.c
     fstar_int_stubs.js
@@ -753,10 +754,13 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     # The JS bundle does NOT link factoidal_http.ml (Unix-bound), so we
     # swap in factoidal_serve_jsoo.ml as the Factoidal_serve module — it
     # has the same signature as the native factoidal_serve.ml but errors
-    # at runtime if `serve` is invoked from the browser. The swap is
-    # trivially reversible: copy file into place, build, restore.
-    cp factoidal_serve.ml factoidal_serve.ml.native_backup
-    cp factoidal_serve_jsoo.ml factoidal_serve.ml
+    # at runtime if `serve` is invoked from the browser.
+    #
+    # Phase 8 (#200 D, 2026-05-08): factoidal_serve* sources moved to
+    # bin/factoidal-serve/. Stage a stub factoidal_serve.ml in cwd
+    # (which becomes the OCaml `Factoidal_serve` module name), pointed
+    # at the jsoo variant; clean up after the build.
+    cp ../../../bin/factoidal-serve/factoidal_serve_jsoo.ml factoidal_serve.ml
     FACTOIDAL_BYTE_RC=0
     run_with_heartbeat "ocamlc factoidal.byte" "_ocamlc_factoidal.log" -- \
       ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
@@ -766,9 +770,9 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
       factoidal_serve.ml \
       factoidal_cli.ml \
       -o factoidal.byte || FACTOIDAL_BYTE_RC=$?
-    # Restore the native impl so a subsequent native build doesn't pick
-    # up the stub. Always restore, even on compile failure.
-    mv factoidal_serve.ml.native_backup factoidal_serve.ml
+    # Clean up the staged stub so a subsequent native build doesn't
+    # pick it up. Always clean, even on compile failure.
+    rm -f factoidal_serve.ml
     if [[ "$FACTOIDAL_BYTE_RC" -ne 0 ]]; then
       cat _ocamlc_factoidal.log
       echo "  ERROR: factoidal.byte build failed (rc=$FACTOIDAL_BYTE_RC)" >&2

@@ -121,8 +121,11 @@ case "$TARGET" in
     LOG="_ocamlc_factoidal_debug.log"
     OUT="$BINDIR/factoidal.byte"
     echo "--- Building debug bytecode: factoidal.byte ---"
-    cp factoidal_serve.ml factoidal_serve.ml.debug_backup
-    cp factoidal_serve_debug.ml factoidal_serve.ml
+    # Phase 8 (#200 D, 2026-05-08): factoidal_serve* sources live in
+    # bin/factoidal-serve/. Stage the debug variant as factoidal_serve.ml
+    # in cwd (so the OCaml `Factoidal_serve` module name matches), then
+    # clean up regardless of compile outcome.
+    cp ../../../bin/factoidal-serve/factoidal_serve_debug.ml factoidal_serve.ml
     FACTOIDAL_DEBUG_RC=0
     run_with_heartbeat "ocamlc factoidal.byte" "$LOG" -- \
       ocamlfind ocamlc -g -thread -package fstar.lib,str,zarith,sha,digestif.c,unix,threads.posix -linkpkg -w -8-14-26 \
@@ -132,7 +135,7 @@ case "$TARGET" in
       factoidal_explain.ml \
       factoidal_cli.ml \
       -o "$OUT" || FACTOIDAL_DEBUG_RC=$?
-    mv factoidal_serve.ml.debug_backup factoidal_serve.ml
+    rm -f factoidal_serve.ml
     if [[ "$FACTOIDAL_DEBUG_RC" -ne 0 ]]; then
       exit "$FACTOIDAL_DEBUG_RC"
     fi
