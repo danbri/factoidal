@@ -1,0 +1,121 @@
+# Phase 8 D CI gate (#200): forbid hand-written .ml in
+# formal/fstar/ocaml-output/. That directory is reserved for
+# F\*-extracted output + assume-val realisations only.
+#
+# Detection:
+#   - F\*-extracted .ml always starts with `open Prims`.
+#   - Anything else is treated as hand-written and must be either:
+#     a) on the explicit allowlist below (grandfathered glue files),
+#        each with an in-line note about the migration plan, OR
+#     b) relocated to bin/<consumer>/ per the migration epic.
+#
+# Hard-fails on PR. Net-new hand-written .ml in ocaml-output/ that is
+# not in the allowlist will block the merge until the file is
+# relocated.
+
+name: Check formal/fstar/ocaml-output/ cleanliness (rule #11 D)
+
+on:
+  push:
+    branches: [main, master, claude/main]
+  pull_request:
+    branches: [main, master, claude/main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify ocaml-output/*.ml are F\*-extracted or grandfathered
+        run: |
+          set -euo pipefail
+          OUTDIR="formal/fstar/ocaml-output"
+
+          # Allowlist of hand-written files that may live in ocaml-output/.
+          # Each entry must have a brief comment explaining its status.
+          # The list shrinks as files get relocated under bin/<consumer>/
+          # or retired entirely. Adding to this list requires a PR-body
+          # justification; CI does not enforce that, but reviewers
+          # should.
+          ALLOWLIST=(
+            # Glue realisation: provides Fstar_pure_hashes.{sha256,sha1,md5}
+            # used by 63_regex_hash_uuid_stubs.sh to wire RDF_Canonical's
+            # assume val hash_sha256. Pure OCaml; rule #11(c) crypto.
+            # Relocation candidate: bin/fstar-pure-hashes/ (post-#200 D).
+            "fstar_pure_hashes.ml"
+            # Smoketest harness; relocation candidate is bin/parquet-probe/.
+            "parquet_probe.ml"
+            # Stub: SPARQL parser fallback used only by test_fstar_parser.
+            # Both are dead-ish; retirement candidate (already flagged in
+            # earlier session notes).
+            "sparql_parser_stubs.ml"
+            "test_fstar_parser.ml"
+            # HTTP client harness; relocation candidate is bin/factoidal-
+            # http-client/ once the CLI's --remote-endpoint path stabilises.
+            "factoidal_http_client.ml"
+          )
+
+          # Build a regex match for the allowlist for quick lookup.
+          declare -A allow
+          for f in "${ALLOWLIST[@]}"; do
+            allow["$f"]=1
+          done
+
+          violations=()
+          for ml in "$OUTDIR"/*.ml; do
+            [ -f "$ml" ] || continue
+            base=$(basename "$ml")
+
+            # F\*-extracted files always start with `open Prims`.
+            if head -1 "$ml" | grep -q "^open Prims$"; then
+              continue
+            fi
+
+            # Otherwise, must be on the allowlist.
+            if [ -n "${allow[$base]:-}" ]; then
+              continue
+            fi
+
+            violations+=("$ml")
+          done
+
+          if [ "${#violations[@]}" -gt 0 ]; then
+            echo "::error::Hand-written .ml in formal/fstar/ocaml-output/ — must be relocated to bin/<consumer>/ per #200 Section D."
+            echo ""
+            echo "The following files are neither F\*-extracted (no \`open Prims\` first line) nor on the allowlist:"
+            for v in "${violations[@]}"; do
+              echo "  - $v"
+            done
+            echo ""
+            echo "Per CLAUDE.md iron rule #11, formal/fstar/ocaml-output/ is reserved for"
+            echo "F\*-extracted output + assume-val realisations. Hand-written runners and"
+            echo "consumer-side glue belong under bin/<consumer>/."
+            echo ""
+            echo "If a file genuinely needs to live here (e.g. a new assume-val OCaml"
+            echo "realisation), add it to the ALLOWLIST in"
+            echo ".github/workflows/check-ocaml-output-cleanliness.yml with a one-line"
+            echo "comment noting the migration plan."
+            exit 1
+          fi
+
+          echo "ocaml-output/ cleanliness check passed."
+          echo ""
+          echo "Inventory:"
+          extracted_count=0
+          allow_count=0
+          for ml in "$OUTDIR"/*.ml; do
+            [ -f "$ml" ] || continue
+            base=$(basename "$ml")
+            if head -1 "$ml" | grep -q "^open Prims$"; then
+              extracted_count=$((extracted_count + 1))
+            elif [ -n "${allow[$base]:-}" ]; then
+              allow_count=$((allow_count + 1))
+            fi
+          done
+          echo "  F\*-extracted modules: $extracted_count"
+          echo "  Allowlisted glue:     $allow_count"
