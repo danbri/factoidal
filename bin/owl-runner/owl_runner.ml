@@ -124,9 +124,14 @@ let test_identifier = test_ns ^ "identifier"
 let test_profile    = test_ns ^ "profile"
 let test_premise    = test_ns ^ "rdfXmlPremiseOntology"
 let test_conclusion = test_ns ^ "rdfXmlConclusionOntology"
+(* NegativeEntailmentTest uses rdfXmlNonConclusionOntology — same RDF/XML
+   serialization shape, just a different predicate so the catalog
+   distinguishes "positive conclusion" from "negative non-conclusion". *)
+let test_non_conclusion = test_ns ^ "rdfXmlNonConclusionOntology"
 let test_imported_ontology = test_ns ^ "importedOntology"
 let test_input_ontology   = test_ns ^ "rdfXmlInputOntology"
 let pos_entailment_iri = test_ns ^ "PositiveEntailmentTest"
+let neg_entailment_iri = test_ns ^ "NegativeEntailmentTest"
 
 let subject_iri_opt (s : subject) : string option =
   match s with
@@ -236,6 +241,16 @@ let build_index (graph : triple list) : test_case_info list * (string, string) H
              Hashtbl.replace tbl subj info
            | None -> ()
          end else if t.p = test_conclusion then begin
+           match object_literal_opt t.o with
+           | Some lex ->
+             let info = { info with conclusion = Some lex } in
+             Hashtbl.replace tbl subj info
+           | None -> ()
+         end else if t.p = test_non_conclusion then begin
+           (* NegativeEntailmentTest stores its conclusion under
+              rdfXmlNonConclusionOntology. We collapse onto the same
+              `conclusion` field; the test-type dispatch decides
+              positive-vs-negative interpretation. *)
            match object_literal_opt t.o with
            | Some lex ->
              let info = { info with conclusion = Some lex } in
@@ -352,6 +367,9 @@ let conclusion_triple_in_closure
 type outcome =
   | Pass
   | Fail_conclusion_miss of RDF_Graph_Executable.triple
+  (* For NegativeEntailmentTest: the conclusion was UNEXPECTEDLY entailed
+     by the closure. The test asserted non-entailment; closure refuted. *)
+  | Fail_unexpected_entailment
   | Fail_parse_premise
   | Fail_parse_conclusion
   | Fail_no_premise
@@ -360,6 +378,7 @@ type outcome =
 let outcome_tag = function
   | Pass -> "PASS"
   | Fail_conclusion_miss _ -> "FAIL"
+  | Fail_unexpected_entailment -> "FAIL/unexpected-entailment"
   | Fail_parse_premise -> "FAIL/parse-premise"
   | Fail_parse_conclusion -> "FAIL/parse-conclusion"
   | Fail_no_premise -> "FAIL/no-premise"
@@ -423,6 +442,53 @@ let run_positive_entailment
           else Fail_conclusion_miss t
       in
       check g_c
+    end
+
+(* NegativeEntailmentTest: the conclusion is asserted to NOT be a
+   logical consequence of the premise. Pass iff at least one
+   conclusion triple is missing from the closure (= conclusion not
+   entailed). If every conclusion triple IS in the closure, the
+   negative-entailment assertion is refuted and the test fails.
+
+   Same closure path as PositiveEntailmentTest (owl_rl_closure_with_
+   reflexivity). RL-only — to certify a NEGATIVE entailment under a
+   stronger regime (DL/EL/QL), the closure must be COMPLETE for that
+   regime. RL closure is sound but incomplete for full DL, so a
+   "missing triple under RL closure" doesn't necessarily mean
+   "non-entailed under DL". For the profile-RL.rdf catalog, the
+   tests are scoped to RL semantics, so this is exact. For DL
+   catalogs the user should expect false-positives until tableau-
+   based negation is wired (Phase 3). *)
+let run_negative_entailment
+      (info : test_case_info)
+      (imports_lookup : (string, string) Hashtbl.t) : outcome =
+  match info.premise, info.conclusion with
+  | None, _ -> Fail_no_premise
+  | _, None -> Fail_no_conclusion
+  | Some p_lex, Some c_lex ->
+    let p_src = expand_catalog_entities p_lex in
+    let c_src = expand_catalog_entities c_lex in
+    let base = info.iri in
+    let g_p_authored =
+      try Parser_RDFXML.parse_rdfxml_with_base base p_src
+      with _ -> [] in
+    let g_p = load_imports_into_premise info imports_lookup g_p_authored in
+    let g_c =
+      try Parser_RDFXML.parse_rdfxml_with_base base c_src
+      with _ -> [] in
+    if g_p = [] then Fail_parse_premise
+    else if g_c = [] then Fail_parse_conclusion
+    else begin
+      let closure =
+        try RDF_Graph_Executable.owl_rl_closure_with_reflexivity g_p fuel_100
+        with _ -> g_p in
+      let any_missing =
+        List.exists
+          (fun t -> not (conclusion_triple_in_closure closure t))
+          g_c
+      in
+      if any_missing then Pass
+      else Fail_unexpected_entailment
     end
 
 let format_subject = function
@@ -556,7 +622,34 @@ let run_catalog ?(verbose=false) path =
   Printf.printf "\n";
   Printf.printf "Profile-RL PositiveEntailmentTests: %d pass, %d fail (out of %d) in %.2fs\n"
     passes fails k (t_run1 -. t_run0);
-  Printf.printf "  (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)\n"
+  Printf.printf "  (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)\n";
+
+  (* Phase 2.1: NegativeEntailmentTest. Same closure path as Phase 1
+     but inverts the pass condition. RL-sound; NOT complete for DL —
+     a Phase 3 task. *)
+  let ne_tests =
+    List.filter
+      (fun info -> StrSet.mem neg_entailment_iri info.types)
+      tests
+  in
+  let nk = List.length ne_tests in
+  if nk > 0 then begin
+    Printf.printf "\n";
+    Printf.printf "Running %d NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...\n" nk;
+    let t_neg0 = Unix.gettimeofday () in
+    let n_outcomes = List.map (fun info -> (info, run_negative_entailment info imports_lookup)) ne_tests in
+    let t_neg1 = Unix.gettimeofday () in
+    List.iter (fun (info, outcome) -> print_outcome verbose info outcome) n_outcomes;
+    let n_passes =
+      List.fold_left
+        (fun acc (_, o) -> match o with Pass -> acc + 1 | _ -> acc)
+        0 n_outcomes
+    in
+    let n_fails = nk - n_passes in
+    Printf.printf "\n";
+    Printf.printf "Profile-RL NegativeEntailmentTests: %d pass, %d fail (out of %d) in %.2fs\n"
+      n_passes n_fails nk (t_neg1 -. t_neg0)
+  end
 
 let () =
   let args = Array.to_list Sys.argv |> List.tl in

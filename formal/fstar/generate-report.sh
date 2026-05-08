@@ -107,6 +107,7 @@ RDF_UNSUP=$(extract_field    unsupported "$RDF_SUITES")
 # Score line in owl_runner stdout:
 #   Profile-RL PositiveEntailmentTests: 3 pass, 27 fail (out of 30) in 0.39s
 OWL_PASS=0; OWL_FAIL=0; OWL_TOTAL=0; OWL_PRESENT=0
+OWL_NEG_PASS=0; OWL_NEG_FAIL=0; OWL_NEG_TOTAL=0; OWL_NEG_PRESENT=0
 if [ -f "$OWL_LOG" ]; then
   OWL_LINE=$(grep -E '^Profile-RL PositiveEntailmentTests:' "$OWL_LOG" | tail -1 || true)
   if [ -n "$OWL_LINE" ]; then
@@ -117,6 +118,17 @@ if [ -f "$OWL_LOG" ]; then
     OWL_PASS=${OWL_PASS:-0}
     OWL_FAIL=${OWL_FAIL:-0}
     OWL_TOTAL=${OWL_TOTAL:-0}
+  fi
+  # Phase 2.1 — NegativeEntailmentTest (added 2026-05-08).
+  OWL_NEG_LINE=$(grep -E '^Profile-RL NegativeEntailmentTests:' "$OWL_LOG" | tail -1 || true)
+  if [ -n "$OWL_NEG_LINE" ]; then
+    OWL_NEG_PRESENT=1
+    OWL_NEG_PASS=$(echo  "$OWL_NEG_LINE" | sed -nE 's/.* ([0-9]+) pass.*/\1/p')
+    OWL_NEG_FAIL=$(echo  "$OWL_NEG_LINE" | sed -nE 's/.* ([0-9]+) fail.*/\1/p')
+    OWL_NEG_TOTAL=$(echo "$OWL_NEG_LINE" | sed -nE 's/.*out of ([0-9]+).*/\1/p')
+    OWL_NEG_PASS=${OWL_NEG_PASS:-0}
+    OWL_NEG_FAIL=${OWL_NEG_FAIL:-0}
+    OWL_NEG_TOTAL=${OWL_NEG_TOTAL:-0}
   fi
 fi
 
@@ -475,6 +487,32 @@ else
   OWL_PASS=0; OWL_FAIL=0; OWL_TOTAL=0
 fi
 
+# NegativeEntailmentTest bar (Phase 2.1, 2026-05-08).
+if [ "$OWL_NEG_PRESENT" -eq 1 ]; then
+  if [ "$OWL_NEG_TOTAL" -gt 0 ]; then
+    OWL_NEG_BAR_PCT=$(awk -v p="$OWL_NEG_PASS" -v t="$OWL_NEG_TOTAL" 'BEGIN{printf "%.0f", 100*p/t}')
+  else
+    OWL_NEG_BAR_PCT=0
+  fi
+  if [ "$OWL_NEG_PASS" -eq "$OWL_NEG_TOTAL" ] && [ "$OWL_NEG_TOTAL" -gt 0 ]; then
+    OWL_NEG_BAR_CLASS="perfect"
+  elif [ "$OWL_NEG_BAR_PCT" -ge 90 ]; then
+    OWL_NEG_BAR_CLASS="near-perfect"
+  else
+    OWL_NEG_BAR_CLASS="mixed"
+  fi
+  OWL_NEG_ROW="<div class=\"suite-row ${OWL_NEG_BAR_CLASS}\">
+    <div class=\"suite-name\">profile-RL NegEnt</div>
+    <div class=\"suite-bar\"><div class=\"fill\" style=\"width:${OWL_NEG_BAR_PCT}%\"></div></div>
+    <div class=\"suite-numbers\">
+      <span class=\"p\">${OWL_NEG_PASS}</span>/<span class=\"f\">${OWL_NEG_FAIL}</span>
+      <small>of ${OWL_NEG_TOTAL}</small>
+    </div>
+  </div>"
+else
+  OWL_NEG_ROW=""
+fi
+
 # Deferred-category counts are the `<test:TestCase>` occurrences in each
 # vendored OWL 2 Test Cases catalog file (Agent D scoping on 2026-04-24).
 # Compute fresh so the numbers never go stale.
@@ -633,6 +671,7 @@ OWL_HTML=$(cat <<OWLEOF
       <small>of ${OWL_TOTAL}</small>
     </div>
   </div>
+  ${OWL_NEG_ROW}
 ${OWL_SKIP_ROWS}</div>
 <p style="margin: 0.3em 0 1em; color: var(--muted); font-size: 0.85em;">
   <strong>OWL 2 (W3C conformance):</strong>
