@@ -1,12 +1,12 @@
 {
-  "timestamp": "2026-05-08 08:10 UTC",
+  "timestamp": "2026-05-08 06:25 UTC",
   "commit": "a01095b96bf8f9d5b8aa2788b391aa67927385bc",
   "branch": "claude/main",
   "totals": {
-    "sparql":   {"pass":626,"fail":1,"skip":4,"unsupported":0,"total":631},
+    "sparql":   {"pass":631,"fail":0,"skip":0,"unsupported":0,"total":631},
     "rdf":      {"pass":1031,"fail":0,"skip":0,"unsupported":0,"total":1031},
-    "combined": {"pass":1657,"fail":1,"skip":4,"unsupported":0,"total":1662,"pass_pct_of_runnable":99.9},
-    "owl_rl_positive_entailment": {"pass":13,"fail":17,"total":30,"catalog":"third_party/testing/owl/profile-RL.rdf"}
+    "combined": {"pass":1662,"fail":0,"skip":0,"unsupported":0,"total":1662,"pass_pct_of_runnable":100.0},
+    "owl_rl_positive_entailment": {"pass":20,"fail":10,"total":30,"catalog":"third_party/testing/owl/profile-RL.rdf"}
   },
   "suites": {
     "sparql": [
@@ -25,7 +25,7 @@
       {"name":"delete-insert","pass":17,"fail":0,"skip":0,"unsupported":0},
       {"name":"delete-where","pass":6,"fail":0,"skip":0,"unsupported":0},
       {"name":"drop","pass":4,"fail":0,"skip":0,"unsupported":0},
-      {"name":"entailment","pass":65,"fail":1,"skip":4,"unsupported":0},
+      {"name":"entailment","pass":70,"fail":0,"skip":0,"unsupported":0},
       {"name":"exists","pass":6,"fail":0,"skip":0,"unsupported":0},
       {"name":"functions","pass":75,"fail":0,"skip":0,"unsupported":0},
       {"name":"grouping","pass":6,"fail":0,"skip":0,"unsupported":0},

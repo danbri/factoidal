@@ -1,3 +1,634 @@
+  [1/8] add/ADD 1 ok
+  [2/8] add/ADD 2 ok
+  [3/8] add/ADD 3 ok
+  [4/8] add/ADD 4 ok
+  [5/8] add/ADD 5 ok
+  [6/8] add/ADD 6 ok
+  [7/8] add/ADD 7 ok
+  [8/8] add/ADD 8 ok
+  [1/47] aggregates/COUNT 1 ok
+  [2/47] aggregates/COUNT 2 ok
+  [3/47] aggregates/COUNT 3 ok
+  [4/47] aggregates/COUNT 4 ok
+  [5/47] aggregates/COUNT 5 ok
+  [6/47] aggregates/COUNT 6 ok
+  [7/47] aggregates/COUNT 7 ok
+  [8/47] aggregates/COUNT 8 ok
+  [9/47] aggregates/COUNT 8b ok
+  [10/47] aggregates/COUNT 9 ok
+  [11/47] aggregates/COUNT 10 ok
+  [12/47] aggregates/COUNT 11 ok
+  [13/47] aggregates/COUNT 12 ok
+  [14/47] aggregates/GROUP_CONCAT 1 ok
+  [15/47] aggregates/GROUP_CONCAT 2 ok
+  [16/47] aggregates/GROUP_CONCAT with SEPARATOR ok
+  [17/47] aggregates/GROUP_CONCAT with same language tag ok
+  [18/47] aggregates/GROUP_CONCAT with different language tags ok
+  [19/47] aggregates/GROUP_CONCAT with one element ok
+  [20/47] aggregates/SUM ok
+  [21/47] aggregates/SUM with GROUP BY ok
+  [22/47] aggregates/AVG ok
+  [23/47] aggregates/AVG with GROUP BY ok
+  [24/47] aggregates/AVG with empty group (value defined to be 0) ok
+  [25/47] aggregates/MIN ok
+  [26/47] aggregates/MIN with GROUP BY ok
+  [27/47] aggregates/MAX ok
+  [28/47] aggregates/MAX with GROUP BY ok
+  [29/47] aggregates/SAMPLE ok
+  [30/47] aggregates/Error in AVG ok
+  [31/47] aggregates/Protect from error in AVG ok
+  [32/47] aggregates/agg on empty set, explicit grouping ok
+  [33/47] aggregates/agg on empty set, no grouping ok
+  [34/47] aggregates/COUNT: no match, with group ok
+  [35/47] aggregates/COUNT: no match, no group ok
+  [36/47] aggregates/COUNT: no GROUP BY inside of GRAPH ok
+  [37/47] aggregates/HAVING: multiple conditions ok
+  [38/47] aggregates/GROUP BY with a function ok
+  [39/47] aggregates/GROUP BY with a built-in function ok
+  [40/47] aggregates/AVG DISTINCT with GROUP BY ok
+  [41/47] aggregates/COUNT DISTINCT with GROUP BY ok
+  [42/47] aggregates/COUNT(DISTINCT *) with GROUP BY ok
+  [43/47] aggregates/GROUP_CONCAT DISTINCT ok
+  [44/47] aggregates/MAX DISTINCT with GROUP BY ok
+  [45/47] aggregates/MIN DISTINCT with GROUP BY ok
+  [46/47] aggregates/SAMPLE DISTINCT ok
+  [47/47] aggregates/SUM DISTINCT with GROUP BY ok
+  [1/13] basic-update/Simple insert data 1 ok
+  [2/13] basic-update/Simple insert data named 1 ok
+  [3/13] basic-update/Simple insert data named 2 ok
+  [4/13] basic-update/Simple insert data named 3 ok
+  [5/13] basic-update/INSERT 01 ok
+  [6/13] basic-update/INSERT 02 ok
+  [7/13] basic-update/INSERT 03 ok
+  [8/13] basic-update/INSERT 04 ok
+  [9/13] basic-update/INSERT USING 01 ok
+  [10/13] basic-update/INSERT same bnode twice ok
+  [11/13] basic-update/INSERTing the same bnode with INSERT DATA into two different Graphs is the same bnode ok
+  [12/13] basic-update/INSERTing the same bnode with two INSERT WHERE statement within one request is NOT the same bnode ok
+  [13/13] basic-update/INSERTing the same bnode with two INSERT WHERE statement within one request is NOT the same bnode even if both WHERE clauses have the empty solution mapping as the only solution. ok
+  [1/10] bind/bind01 - BIND ok
+  [2/10] bind/bind02 - BIND ok
+  [3/10] bind/bind03 - BIND ok
+  [4/10] bind/bind04 - BIND ok
+  [5/10] bind/bind05 - BIND ok
+  [6/10] bind/bind06 - BIND ok
+  [7/10] bind/bind07 - BIND ok
+  [8/10] bind/bind08 - BIND ok
+  [9/10] bind/bind10 - BIND scoping - Variable in filter not in scope ok
+  [10/10] bind/bind11 - BIND scoping - Variable in filter in scope ok
+  [1/11] bindings/Post-query VALUES with subj-var, 1 row ok
+  [2/11] bindings/Post-query VALUES with obj-var, 1 row ok
+  [3/11] bindings/Post-query VALUES with 2 obj-vars, 1 row ok
+  [4/11] bindings/Post-query VALUES with 2 obj-vars, 1 row with UNDEF ok
+  [5/11] bindings/Post-query VALUES with 2 obj-vars, 2 rows with UNDEF ok
+  [6/11] bindings/Post-query VALUES with pred-var, 1 row ok
+  [7/11] bindings/Post-query VALUES with (OPTIONAL) obj-var, 1 row ok
+  [8/11] bindings/Post-query VALUES with subj/obj-vars, 2 rows with UNDEF ok
+  [9/11] bindings/Inline VALUES graph pattern ok
+  [10/11] bindings/Post-subquery VALUES ok
+  [11/11] bindings/VALUES inside GRAPH binding the same variable as the graph name ok
+  [1/6] cast/xsd:boolean cast ok
+  [2/6] cast/xsd:integer cast ok
+  [3/6] cast/xsd:float cast ok
+  [4/6] cast/xsd:double cast ok
+  [5/6] cast/xsd:decimal cast ok
+  [6/6] cast/xsd:string cast ok
+  [1/4] clear/CLEAR DEFAULT ok
+  [2/4] clear/CLEAR GRAPH ok
+  [3/4] clear/CLEAR NAMED ok
+  [4/4] clear/CLEAR ALL ok
+  [1/7] construct/constructwhere01 - CONSTRUCT WHERE ok
+  [2/7] construct/constructwhere02 - CONSTRUCT WHERE ok
+  [3/7] construct/constructwhere03 - CONSTRUCT WHERE ok
+  [4/7] construct/constructwhere04 - CONSTRUCT WHERE ok
+  [5/7] construct/constructwhere05 - CONSTRUCT WHERE ok
+  [6/7] construct/constructwhere06 - CONSTRUCT WHERE ok
+  [7/7] construct/CONSTRUCT list ok
+  [1/6] copy/COPY 1 ok
+  [2/6] copy/COPY 2 ok
+  [3/6] copy/COPY 3 ok
+  [4/6] copy/COPY 4 ok
+  [5/6] copy/COPY 6 ok
+  [6/6] copy/COPY 7 ok
+  [1/6] csv-tsv-res/csv01 - CSV Result Format ok
+  [2/6] csv-tsv-res/tsv01 - TSV Result Format ok
+  [3/6] csv-tsv-res/cvs02 - CSV Result Format ok
+  [4/6] csv-tsv-res/tsv02 - TSV Result Format ok
+  [5/6] csv-tsv-res/csv03 - CSV Result Format ok
+  [6/6] csv-tsv-res/tsv03 - TSV Result Format ok
+  [1/19] delete/Simple DELETE 1 ok
+  [2/19] delete/Simple DELETE 2 ok
+  [3/19] delete/Simple DELETE 3 ok
+  [4/19] delete/Simple DELETE 4 ok
+  [5/19] delete/Graph-specific DELETE 1 ok
+  [6/19] delete/Graph-specific DELETE 2 ok
+  [7/19] delete/Simple DELETE 7 ok
+  [8/19] delete/Simple DELETE 1 (WITH) ok
+  [9/19] delete/Simple DELETE 2 (WITH) ok
+  [10/19] delete/Simple DELETE 3 (WITH) ok
+  [11/19] delete/Simple DELETE 4 (WITH) ok
+  [12/19] delete/Graph-specific DELETE 1 (WITH) ok
+  [13/19] delete/Graph-specific DELETE 2 (WITH) ok
+  [14/19] delete/Simple DELETE 1 (USING) ok
+  [15/19] delete/Simple DELETE 2 (USING) ok
+  [16/19] delete/Simple DELETE 3 (USING) ok
+  [17/19] delete/Simple DELETE 4 (USING) ok
+  [18/19] delete/Graph-specific DELETE 1 (USING) ok
+  [19/19] delete/Graph-specific DELETE 2 (USING) ok
+  [1/6] delete-data/Simple DELETE DATA 1 ok
+  [2/6] delete-data/Simple DELETE DATA 2 ok
+  [3/6] delete-data/Simple DELETE DATA 3 ok
+  [4/6] delete-data/Simple DELETE DATA 4 ok
+  [5/6] delete-data/Graph-specific DELETE DATA 1 ok
+  [6/6] delete-data/Graph-specific DELETE DATA 2 ok
+  [1/17] delete-insert/DELETE INSERT 1 ok
+  [2/17] delete-insert/DELETE INSERT 1b ok
+  [3/17] delete-insert/DELETE INSERT 1c ok
+  [4/17] delete-insert/DELETE INSERT 2 ok
+  [5/17] delete-insert/DELETE INSERT 3 ok
+  [6/17] delete-insert/DELETE INSERT 3b ok
+  [7/17] delete-insert/DELETE INSERT 4 ok
+  [8/17] delete-insert/DELETE INSERT 4b ok
+  [9/17] delete-insert/DELETE INSERT 5 ok
+  [10/17] delete-insert/DELETE INSERT 5b ok
+  [11/17] delete-insert/DELETE INSERT 6 ok
+  [12/17] delete-insert/DELETE INSERT 6b ok
+  [13/17] delete-insert/DELETE INSERT 7 ok
+  [14/17] delete-insert/DELETE INSERT 7b ok
+  [15/17] delete-insert/DELETE INSERT 8 ok
+  [16/17] delete-insert/DELETE INSERT 9 ok
+  [17/17] delete-insert/Halloween Problem: A delete/insert operation should not be able to read its own writes ok
+  [1/6] delete-where/Simple DELETE WHERE 1 ok
+  [2/6] delete-where/Simple DELETE WHERE 2 ok
+  [3/6] delete-where/Simple DELETE WHERE 3 ok
+  [4/6] delete-where/Simple DELETE WHERE 4 ok
+  [5/6] delete-where/Graph-specific DELETE WHERE 1 ok
+  [6/6] delete-where/Graph-specific DELETE WHERE 2 ok
+  [1/4] drop/DROP DEFAULT ok
+  [2/4] drop/DROP GRAPH ok
+  [3/4] drop/DROP NAMED ok
+  [4/4] drop/DROP ALL ok
+  [1/70] entailment/bind01 - BIND fixed data for OWL DL ok (10ms)
+  [2/70] entailment/bind02 - BIND fixed data for OWL DL ok (11ms)
+  [3/70] entailment/bind03 - BIND fixed data for OWL DL ok (10ms)
+  [4/70] entailment/bind04 - BIND fixed data for OWL DL ok (10ms)
+  [5/70] entailment/bind05 - BIND fixed data for OWL DL ok (10ms)
+  [6/70] entailment/bind06 - BIND fixed data for OWL DL ok (10ms)
+  [7/70] entailment/bind07 - BIND fixed data for OWL DL ok (11ms)
+  [8/70] entailment/bind08 - BIND fixed data for OWL DL ok (10ms)
+  [9/70] entailment/D-Entailment test to show that  neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers ok
+  [10/70] entailment/Literal with language tag test ok
+  [11/70] entailment/bnodes are not existentials ok (14ms)
+  [12/70] entailment/bnodes are not existentials with answer ok (20ms)
+  [13/70] entailment/paper-sparqldl-Q1 ok (36ms)
+  [14/70] entailment/paper-sparqldl-Q1-rdfs ok
+  [15/70] entailment/paper-sparqldl-Q2 ok (92ms)
+  [16/70] entailment/paper-sparqldl-Q3 ok (102ms)
+  [17/70] entailment/paper-sparqldl-Q4 ok (37ms)
+  [18/70] entailment/paper-sparqldl-Q5 ok (37ms)
+  [19/70] entailment/filtered subclass query with (hasChild some Thing) restriction ok (166ms)
+  [20/70] entailment/parent query with distinguished variable ok (63ms)
+  [21/70] entailment/parent query with (hasChild some Thing) restriction ok (170ms)
+  [22/70] entailment/parent query with (hasChild min 1) restriction ok (166ms)
+  [23/70] entailment/parent query with (hasChild some Female) restriction ok (172ms)
+  [24/70] entailment/parent query with (hasChild min 1 Female) restriction ok (163ms)
+  [25/70] entailment/parent query with (hasChild max 1 Female) restriction ok (162ms)
+  [26/70] entailment/parent query with (hasChild exactly 1 Female) restriction ok (163ms)
+  [27/70] entailment/subclass query with (hasChild some Thing) restriction ok (163ms)
+  [28/70] entailment/Plain literals with language tag are not the same as the same literal without ok
+  [29/70] entailment/RDF inference test ok
+  [30/70] entailment/RDF inference test ok
+  [31/70] entailment/RDF test for blank node cardinalities ok
+  [32/70] entailment/simple triple pattern match ok (15ms)
+  [33/70] entailment/RDFS inference test rdfs:subPropertyOf ok (16ms)
+  [34/70] entailment/RDFS inference test rdfs:subPropertyOf ok (16ms)
+  [35/70] entailment/RDFS inference test combining subPropertyOf and domain ok
+  [36/70] entailment/RDFS inference test subClassOf ok (11ms)
+  [37/70] entailment/RDFS inference test subClassOf ok (15ms)
+  [38/70] entailment/RDFS inference test domain ok (16ms)
+  [39/70] entailment/RDFS inference test range ok (18ms)
+  [40/70] entailment/RDFS inference test rdf:XMLLiteral subclass of rdfs:Literal ok
+  [41/70] entailment/RDFS inference test transitivity of subClassOf ok (15ms)
+  [42/70] entailment/RDFS inference test transitivity of subPropertyOf ok (25ms)
+  [43/70] entailment/RDFS inference test subProperty and instances ok
+  [44/70] entailment/RDFS inference test containers ok
+  [45/70] entailment/RDFS inference test to show that neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers ok
+  [46/70] entailment/RIF Logical Entailment (referencing RIF XML) ok
+  [47/70] entailment/RIF Core WG tests: Frames ok
+  [48/70] entailment/RIF Core WG tests: Modeling Brain Anatomy ok
+  [49/70] entailment/RIF Core WG tests: RDF Combination Blank Node ok
+  [50/70] entailment/simple 1 ok (57ms)
+  [51/70] entailment/simple 2 ok (55ms)
+  [52/70] entailment/simple 3 ok (56ms)
+  [53/70] entailment/simple 4 ok (61ms)
+  [54/70] entailment/simple 5 ok (61ms)
+  [55/70] entailment/simple 6 ok (108ms)
+  [56/70] entailment/simple 7 ok (63ms)
+  [57/70] entailment/simple 8 ok (57ms)
+  [58/70] entailment/sparqldl-01.rq: triple pattern ok (11ms)
+  [59/70] entailment/sparqldl-02.rq: simple combined query ok (11ms)
+  [60/70] entailment/sparqldl-03.rq: combined query with complex class description ok (22ms)
+  [61/70] entailment/sparqldl-04.rq: bug fixing test ok (13ms)
+  [62/70] entailment/sparqldl-05.rq: simple undistinguished variable test. ok (11ms)
+  [63/70] entailment/sparqldl-06.rq: cycle of undistinguished variables ok (23ms)
+  [64/70] entailment/sparqldl-07.rq: two distinguished variables + undist. ok (27ms)
+  [65/70] entailment/sparqldl-08.rq: two distinguished variables + undist. ok (27ms)
+  [66/70] entailment/sparqldl-09.rq: undist vars test ok (26ms)
+  [67/70] entailment/sparqldl-10.rq: undist vars test ok (31ms)
+  [68/70] entailment/sparqldl-11.rq: domain test ok (55ms)
+  [69/70] entailment/sparqldl-12.rq: range test ok (48ms)
+  [70/70] entailment/sparqldl-13.rq: sameAs ok (20ms)
+  [1/6] exists/Exists with one constant ok
+  [2/6] exists/Exists with ground triple ok
+  [3/6] exists/Exists within graph pattern ok
+  [4/6] exists/Nested positive exists ok
+  [5/6] exists/Nested negative exists in positive exists ok
+  [6/6] exists/GRAPH variable inside of EXISTS is bound to external variable ok
+  [1/75] functions/STRDT() ok
+  [2/75] functions/STRDT(STR()) ok
+  [3/75] functions/STRDT() TypeErrors (updated for RDF 1.1) ok
+  [4/75] functions/STRLANG() ok
+  [5/75] functions/STRLANG(STR()) ok
+  [6/75] functions/STRLANG() TypeErrors (updated for RDF 1.1) ok
+  [7/75] functions/isNumeric() ok
+  [8/75] functions/ABS() ok
+  [9/75] functions/CEIL() ok
+  [10/75] functions/FLOOR() ok
+  [11/75] functions/ROUND() ok
+  [12/75] functions/CONCAT() ok
+  [13/75] functions/CONCAT() 2 ok
+  [14/75] functions/CONCAT() without parameter ok
+  [15/75] functions/CONCAT() with a single parameter ok
+  [16/75] functions/SUBSTR() (3-argument) ok
+  [17/75] functions/SUBSTR() (3-argument) on non-BMP unicode strings ok
+  [18/75] functions/SUBSTR() (2-argument) ok
+  [19/75] functions/SUBSTR() (2-argument) on non-BMP unicode strings ok
+  [20/75] functions/STRLEN() ok
+  [21/75] functions/STRLEN() on non-BMP unicode strings ok
+  [22/75] functions/UCASE() ok
+  [23/75] functions/UCASE() on non-BMP unicode strings ok
+  [24/75] functions/LCASE() ok
+  [25/75] functions/LCASE() on non-BMP unicode strings ok
+  [26/75] functions/ENCODE_FOR_URI() ok
+  [27/75] functions/ENCODE_FOR_URI() on non-BMP unicode strings ok
+  [28/75] functions/CONTAINS() ok
+  [29/75] functions/STRSTARTS() ok
+  [30/75] functions/STRENDS() ok
+  [31/75] functions/plus-1-corrected ok
+  [32/75] functions/plus-2-corrected ok
+  [33/75] functions/MD5() ok
+  [34/75] functions/MD5() over Unicode data ok
+  [35/75] functions/SHA1() ok
+  [36/75] functions/SHA1() on Unicode data ok
+  [37/75] functions/SHA256() ok
+  [38/75] functions/SHA256() on Unicode data ok
+  [39/75] functions/SHA384() ok
+  [40/75] functions/SHA384() on Unicode data ok
+  [41/75] functions/SHA512() ok
+  [42/75] functions/SHA512() on Unicode data ok
+  [43/75] functions/MINUTES() ok
+  [44/75] functions/SECONDS() ok
+  [45/75] functions/HOURS() ok
+  [46/75] functions/MONTH() ok
+  [47/75] functions/YEAR() ok
+  [48/75] functions/DAY() ok
+  [49/75] functions/TIMEZONE() ok
+  [50/75] functions/TZ() ok
+  [51/75] functions/BNODE(str) ok
+  [52/75] functions/BNODE() ok
+  [53/75] functions/IN 1 ok
+  [54/75] functions/IN 2 ok
+  [55/75] functions/NOT IN 1 ok
+  [56/75] functions/NOT IN 2 ok
+  [57/75] functions/NOW() ok
+  [58/75] functions/RAND() ok
+  [59/75] functions/IRI()/URI() ok
+  [60/75] functions/IRI()/URI() when the input is an IRI ok
+  [61/75] functions/IF() ok
+  [62/75] functions/IF() error propogation ok
+  [63/75] functions/COALESCE() ok
+  [64/75] functions/COALESCE() without arguments ok
+  [65/75] functions/STRBEFORE() ok
+  [66/75] functions/STRBEFORE() datatyping ok
+  [67/75] functions/STRAFTER() ok
+  [68/75] functions/STRAFTER() datatyping ok
+  [69/75] functions/REPLACE() ok
+  [70/75] functions/REPLACE() with overlapping pattern ok
+  [71/75] functions/REPLACE() with captured substring ok
+  [72/75] functions/REPLACE() with the 'i' option ok
+  [73/75] functions/UUID() pattern match ok
+  [74/75] functions/UUID() per binding ok
+  [75/75] functions/STRUUID() pattern match ok
+  [1/6] grouping/Group-1 ok
+  [2/6] grouping/Group-3 ok
+  [3/6] grouping/Group-4 ok
+  [4/6] grouping/Group-5 ok
+  [5/6] grouping/Group-6 ok
+  [6/6] grouping/Group-7 ok
+  [1/19] http-rdf-update/PUT - Initial state ok
+  [2/19] http-rdf-update/GET of PUT - Initial state ok
+  [3/19] http-rdf-update/PUT - graph already in store ok
+  [4/19] http-rdf-update/GET of PUT - graph already in store ok
+  [5/19] http-rdf-update/PUT - default graph ok
+  [6/19] http-rdf-update/GET of PUT - default graph ok
+  [7/19] http-rdf-update/PUT - mismatched payload ok
+  [8/19] http-rdf-update/DELETE - existing graph ok
+  [9/19] http-rdf-update/GET of DELETE - existing graph ok
+  [10/19] http-rdf-update/DELETE - non-existent graph ok
+  [11/19] http-rdf-update/POST - existing graph ok
+  [12/19] http-rdf-update/GET of POST - existing graph ok
+  [13/19] http-rdf-update/POST - multipart/form-data ok
+  [14/19] http-rdf-update/GET of POST - multipart/form-data ok
+  [15/19] http-rdf-update/POST - create new graph ok
+  [16/19] http-rdf-update/GET of POST - create new graph ok
+  [17/19] http-rdf-update/GET of POST - after noop ok
+  [18/19] http-rdf-update/HEAD on an existing graph ok
+  [19/19] http-rdf-update/HEAD on a non-existing graph ok
+  [1/4] json-res/jsonres01 - JSON Result Format ok
+  [2/4] json-res/jsonres02 - JSON Result Format ok (11ms)
+  [3/4] json-res/jsonres03 - JSON Result Format ok
+  [4/4] json-res/jsonres04 - JSON Result Format ok
+  [1/6] move/MOVE 1 ok
+  [2/6] move/MOVE 2 ok
+  [3/6] move/MOVE 3 ok
+  [4/6] move/MOVE 4 ok
+  [5/6] move/MOVE 6 ok
+  [6/6] move/MOVE 7 ok
+  [1/12] negation/Subsets by exclusion (NOT EXISTS) ok
+  [2/12] negation/Subsets by exclusion (MINUS) ok
+  [3/12] negation/Medical, temporal proximity by exclusion (NOT EXISTS) ok
+  [4/12] negation/Calculate which sets are subsets of others (include A subsetOf A) ok
+  [5/12] negation/Calculate which sets are subsets of others (exclude A subsetOf A) ok
+  [6/12] negation/Calculate which sets have the same elements ok
+  [7/12] negation/Calculate proper subset ok (12ms)
+  [8/12] negation/Positive EXISTS 1 ok
+  [9/12] negation/Positive EXISTS 2 ok
+  [10/12] negation/Subtraction with MINUS from a fully bound minuend ok
+  [11/12] negation/Subtraction with MINUS from a partially bound minuend ok
+  [12/12] negation/outer GRAPH operator does not affect MINUS disjointness ok
+  [1/7] project-expression/Expression is equality ok
+  [2/7] project-expression/Expression raise an error ok
+  [3/7] project-expression/Reuse a project expression variable in select ok
+  [4/7] project-expression/Reuse a project expression variable in order by ok
+  [5/7] project-expression/Expression may return no value ok
+  [6/7] project-expression/Expression has undefined variable ok
+  [7/7] project-expression/Expression has variable that may be unbound ok
+  [1/33] property-path/(pp01) Simple path ok
+  [2/33] property-path/(pp02) Star path ok
+  [3/33] property-path/(pp03) Simple path with loop ok
+  [4/33] property-path/(pp06) Path with two graphs ok
+  [5/33] property-path/(pp07) Path with one graph ok
+  [6/33] property-path/(pp08) Reverse path ok
+  [7/33] property-path/(pp09) Reverse sequence path ok
+  [8/33] property-path/(pp10) Path with negation ok
+  [9/33] property-path/(pp11) Simple path and two paths to same target node ok
+  [10/33] property-path/(pp12) Variable length path and two paths to same target node ok
+  [11/33] property-path/(pp14) Star path over foaf:knows ok
+  [12/33] property-path/(pp16) Duplicate paths and cycles through foaf:knows* ok
+  [13/33] property-path/(pp21) Diamond -- :p+ ok
+  [14/33] property-path/(pp23) Diamond, with tail -- :p+ ok
+  [15/33] property-path/(pp25) Diamond, with loop -- :p+ ok
+  [16/33] property-path/(pp28a) Diamond, with loop -- (:p/:p)? ok
+  [17/33] property-path/(pp30) Operator precedence 1 ok
+  [18/33] property-path/(pp31) Operator precedence 2 ok
+  [19/33] property-path/(pp32) Operator precedence 3 ok
+  [20/33] property-path/(pp33) Operator precedence 4 ok
+  [21/33] property-path/(pp34) Named Graph 1 ok
+  [22/33] property-path/(pp35) Named Graph 2 ok
+  [23/33] property-path/(pp36) Arbitrary path with bound endpoints ok
+  [24/33] property-path/(pp37) Nested (*)* ok
+  [25/33] property-path/ZeroOrX property paths should only return terms in the graph and not also terms defined in the query ok
+  [26/33] property-path/Negated Property Set with inverse properties ok
+  [27/33] property-path/Negated Property Set with both direct and inverse properties ok
+  [28/33] property-path/Negated Property Set with the rdf:type property written using 'a' ok
+  [29/33] property-path/Negated Property Set with the inverse rdf:type property written using '^a' ok
+  [30/33] property-path/* with start being a constant on the empty dataset ok
+  [31/33] property-path/* with end being a constant on the empty dataset ok
+  [32/33] property-path/? with start being a constant on the empty dataset ok
+  [33/33] property-path/? with end being a constant on the empty dataset ok
+  [1/34] protocol/query via URL-encoded POST ok
+  [2/34] protocol/GET query with protocol-specified default graph ok
+  [3/34] protocol/POST query with protocol-specified default graphs ok
+  [4/34] protocol/POST query with protocol-specified named graphs ok
+  [5/34] protocol/GET query with protocol-specified named graphs ok
+  [6/34] protocol/query with protocol-specified dataset (both named and default graphs) ok
+  [7/34] protocol/query specifying dataset in both query string and protocol; test for use of protocol-specified dataset ok
+  [8/34] protocol/query via GET ok
+  [9/34] protocol/query appropriate content type (expect one of: XML, JSON, CSV, TSV) ok
+  [10/34] protocol/query appropriate content type (expect one of: XML, JSON) ok
+  [11/34] protocol/query appropriate content type (expect one of: RDF/XML, Turtle, N-Triples, RDFa) ok
+  [12/34] protocol/query appropriate content type (expect one of: RDF/XML, Turtle, N-Triples, RDFa) ok
+  [13/34] protocol/update with protocol-specified default graph ok
+  [14/34] protocol/update with protocol-specified default graphs ok
+  [15/34] protocol/update with protocol-specified named graphs ok
+  [16/34] protocol/update with protocol-specified dataset (both named and default graphs) ok
+  [17/34] protocol/update via URL-encoded POST ok
+  [18/34] protocol/update via POST directly ok
+  [19/34] protocol/test for service-defined BASE URI ("which MAY be the service endpoint") ok
+  [20/34] protocol/query via POST directly ok
+  [21/34] protocol/invoke query operation with a method other than GET or POST ok
+  [22/34] protocol/invoke query operation with more than one query string ok
+  [23/34] protocol/invoke query operation with a POST with media type that's not url-encoded or application/sparql-query ok
+  [24/34] protocol/invoke query operation with url-encoded body, but without application/x-www-form-urlencoded media type ok
+  [25/34] protocol/invoke query operation with SPARQL body, but without application/sparql-query media type ok
+  [26/34] protocol/invoke query operation with direct POST, but with a non-UTF8 encoding (UTF-16) ok
+  [27/34] protocol/invoke query operation with invalid query syntax (4XX result) ok
+  [28/34] protocol/invoke update operation with GET ok
+  [29/34] protocol/invoke update operation with more than one update string ok
+  [30/34] protocol/invoke update operation with a POST with media type that's not url-encoded or application/sparql-update ok
+  [31/34] protocol/invoke update operation with url-encoded body, but without application/x-www-form-urlencoded media type ok
+  [32/34] protocol/invoke update operation with direct POST, but with a non-UTF8 encoding ok
+  [33/34] protocol/invoke update operation with invalid update syntax ok
+  [34/34] protocol/invoke update with both using-graph-uri/using-named-graph-uri parameter and USING/WITH clause ok
+  [1/7] service/SERVICE test 1 ok
+  [2/7] service/SERVICE test 2 ok
+  [3/7] service/SERVICE test 3 ok
+  [4/7] service/SERVICE test 4a with VALUES clause ok
+  [5/7] service/SERVICE test 5 ok
+  [6/7] service/SERVICE test 6 ok
+  [7/7] service/SERVICE test 7 ok
+  [1/3] service-description/Service description contains a matching sd:endpoint triple ok
+  [2/3] service-description/GET on endpoint returns RDF ok
+  [3/3] service-description/Service description conforms to schema ok
+  [1/14] subquery/sq01 - Subquery within graph pattern ok
+  [2/14] subquery/sq02 - Subquery within graph pattern, graph variable is bound ok
+  [3/14] subquery/sq03 - Subquery within graph pattern, graph variable is not bound ok
+  [4/14] subquery/sq04 - Subquery within graph pattern, default graph does not apply ok
+  [5/14] subquery/sq05 - Subquery within graph pattern, from named applies ok
+  [6/14] subquery/sq06 - Subquery with graph pattern, from named applies ok
+  [7/14] subquery/sq07 - Subquery with from  ok
+  [8/14] subquery/sq08 - Subquery with aggregate ok
+  [9/14] subquery/sq09 - Nested Subqueries ok
+  [10/14] subquery/sq10 - Subquery with exists ok
+  [11/14] subquery/sq11 - Subquery limit per resource ok
+  [12/14] subquery/sq12 - Subquery in CONSTRUCT with built-ins ok
+  [13/14] subquery/sq13 - Subqueries don't inject bindings ok
+  [14/14] subquery/sq14 - limit by resource ok
+  [1/3] syntax-fed/syntax-service-01.rq ok
+  [2/3] syntax-fed/syntax-service-02.rq ok
+  [3/3] syntax-fed/syntax-service-03.rq ok
+  [1/94] syntax-query/syntax-select-expr-01.rq ok
+  [2/94] syntax-query/syntax-select-expr-02.rq ok
+  [3/94] syntax-query/syntax-select-expr-03.rq ok
+  [4/94] syntax-query/syntax-select-expr-04.rq ok
+  [5/94] syntax-query/syntax-select-expr-05.rq ok
+  [6/94] syntax-query/syntax-aggregate-01.rq ok
+  [7/94] syntax-query/syntax-aggregate-02.rq ok
+  [8/94] syntax-query/syntax-aggregate-03.rq ok
+  [9/94] syntax-query/syntax-aggregate-04.rq ok
+  [10/94] syntax-query/syntax-aggregate-05.rq ok
+  [11/94] syntax-query/syntax-aggregate-06.rq ok
+  [12/94] syntax-query/syntax-aggregate-07.rq ok
+  [13/94] syntax-query/syntax-aggregate-08.rq ok
+  [14/94] syntax-query/syntax-aggregate-09.rq ok
+  [15/94] syntax-query/syntax-aggregate-10.rq ok
+  [16/94] syntax-query/syntax-aggregate-11.rq ok
+  [17/94] syntax-query/syntax-aggregate-12.rq ok
+  [18/94] syntax-query/syntax-aggregate-13.rq ok
+  [19/94] syntax-query/syntax-aggregate-14.rq ok
+  [20/94] syntax-query/syntax-aggregate-15.rq ok
+  [21/94] syntax-query/syntax-subquery-01.rq ok
+  [22/94] syntax-query/syntax-subquery-02.rq ok
+  [23/94] syntax-query/syntax-subquery-03.rq ok
+  [24/94] syntax-query/syntax-not-exists-01.rq ok
+  [25/94] syntax-query/syntax-not-exists-02.rq ok
+  [26/94] syntax-query/syntax-not-exists-03.rq ok
+  [27/94] syntax-query/syntax-exists-01.rq ok
+  [28/94] syntax-query/syntax-exists-02.rq ok
+  [29/94] syntax-query/syntax-exists-03.rq ok
+  [30/94] syntax-query/syntax-minus-01.rq ok
+  [31/94] syntax-query/syntax-oneof-01.rq ok
+  [32/94] syntax-query/syntax-oneof-02.rq ok
+  [33/94] syntax-query/syntax-oneof-03.rq ok
+  [34/94] syntax-query/syntax-bindingBINDscopes-01.rq ok
+  [35/94] syntax-query/syntax-bindings-02a.rq with VALUES clause ok
+  [36/94] syntax-query/syntax-bindings-03a.rq with VALUES clause ok
+  [37/94] syntax-query/syntax-bindings-05a.rq with VALUES clause ok
+  [38/94] syntax-query/syntax-bind-02.rq ok
+  [39/94] syntax-query/syntax-construct-where-01.rq ok
+  [40/94] syntax-query/syntax-construct-where-02.rq ok
+  [41/94] syntax-query/syn-bad-01.rq ok
+  [42/94] syntax-query/syn-bad-02.rq ok
+  [43/94] syntax-query/syn-bad-03.rq ok
+  [44/94] syntax-query/syn-bad-04.rq ok
+  [45/94] syntax-query/syn-bad-05.rq ok
+  [46/94] syntax-query/syn-bad-06.rq ok
+  [47/94] syntax-query/syn-bad-07.rq ok
+  [48/94] syntax-query/syn-bad-08.rq ok
+  [49/94] syntax-query/syntax-bindings-09.rq ok
+  [50/94] syntax-query/PrefixName with hex-encoded colons ok
+  [51/94] syntax-query/PrefixName with unescaped colons ok
+  [52/94] syntax-query/syntax-BINDscope1.rq ok
+  [53/94] syntax-query/syntax-BINDscope2.rq ok
+  [54/94] syntax-query/syntax-BINDscope3.rq ok
+  [55/94] syntax-query/syntax-BINDscope4.rq ok
+  [56/94] syntax-query/syntax-BINDscope5.rq ok
+  [57/94] syntax-query/syntax-BINDscope6.rq ok
+  [58/94] syntax-query/syntax-BINDscope7.rq ok
+  [59/94] syntax-query/syntax-BINDscope8.rq ok
+  [60/94] syntax-query/syntax-propertyPaths-01.rq ok
+  [61/94] syntax-query/syntax-SELECTscope1.rq ok
+  [62/94] syntax-query/syntax-SELECTscope2 ok
+  [63/94] syntax-query/syntax-SELECTscope3.rq ok
+  [64/94] syntax-query/syn-pname-01 ok
+  [65/94] syntax-query/syn-pname-02 ok
+  [66/94] syntax-query/syn-pname-03 ok
+  [67/94] syntax-query/syn-pname-04 ok
+  [68/94] syntax-query/syn-pname-05 ok
+  [69/94] syntax-query/syn-pname-06 ok
+  [70/94] syntax-query/syn-pname-07 ok
+  [71/94] syntax-query/syn-pname-08 ok
+  [72/94] syntax-query/syn-pname-09 ok
+  [73/94] syntax-query/syn-bad-pname-01 ok
+  [74/94] syntax-query/syn-bad-pname-02 ok
+  [75/94] syntax-query/syn-bad-pname-03 ok
+  [76/94] syntax-query/syn-bad-pname-04 ok
+  [77/94] syntax-query/syn-bad-pname-05 ok
+  [78/94] syntax-query/syn-bad-pname-06 ok
+  [79/94] syntax-query/syn-bad-pname-07 ok
+  [80/94] syntax-query/syn-bad-pname-08 ok
+  [81/94] syntax-query/syn-bad-pname-09 ok
+  [82/94] syntax-query/syn-bad-pname-10 ok
+  [83/94] syntax-query/syn-bad-pname-11 ok
+  [84/94] syntax-query/syn-bad-pname-12 ok
+  [85/94] syntax-query/syn-bad-pname-13 ok
+  [86/94] syntax-query/syn-pp-in-collection ok
+  [87/94] syntax-query/\U unicode codepoint escaping in literal ok
+  [88/94] syntax-query/Invalid multi-pass codepoint escaping (\u then \U) ok
+  [89/94] syntax-query/Invalid multi-pass codepoint escaping (\U then \u) ok
+  [90/94] syntax-query/utf8 literal using codepoints at notable unicode boundaries ok
+  [91/94] syntax-query/\U and \u unicode codepoint escaping in literal using codepoints at notable unicode boundaries ok
+  [92/94] syntax-query/\u unicode codepoint escaping in literal using partial surrogate pair ok
+  [93/94] syntax-query/Too few values in a VALUE clause compared to the number of variables ok
+  [94/94] syntax-query/Too many values in a VALUE clause compared to the number of variables ok
+  [1/54] syntax-update-1/syntax-update-01.ru ok
+  [2/54] syntax-update-1/syntax-update-02.ru ok
+  [3/54] syntax-update-1/syntax-update-03.ru ok
+  [4/54] syntax-update-1/syntax-update-04.ru ok
+  [5/54] syntax-update-1/syntax-update-05.ru ok
+  [6/54] syntax-update-1/syntax-update-06.ru ok
+  [7/54] syntax-update-1/syntax-update-07.ru ok
+  [8/54] syntax-update-1/syntax-update-08.ru ok
+  [9/54] syntax-update-1/syntax-update-09.ru ok
+  [10/54] syntax-update-1/syntax-update-10.ru ok
+  [11/54] syntax-update-1/syntax-update-11.ru ok
+  [12/54] syntax-update-1/syntax-update-12.ru ok
+  [13/54] syntax-update-1/syntax-update-13.ru ok
+  [14/54] syntax-update-1/syntax-update-14.ru ok
+  [15/54] syntax-update-1/syntax-update-15.ru ok
+  [16/54] syntax-update-1/syntax-update-16.ru ok
+  [17/54] syntax-update-1/syntax-update-17.ru ok
+  [18/54] syntax-update-1/syntax-update-18.ru ok
+  [19/54] syntax-update-1/syntax-update-19.ru ok
+  [20/54] syntax-update-1/syntax-update-20.ru ok
+  [21/54] syntax-update-1/syntax-update-21.ru ok
+  [22/54] syntax-update-1/syntax-update-22.ru ok
+  [23/54] syntax-update-1/syntax-update-23.ru ok
+  [24/54] syntax-update-1/syntax-update-24.ru ok
+  [25/54] syntax-update-1/syntax-update-25.ru ok
+  [26/54] syntax-update-1/syntax-update-26.ru ok
+  [27/54] syntax-update-1/syntax-update-27.ru ok
+  [28/54] syntax-update-1/syntax-update-28.ru ok
+  [29/54] syntax-update-1/syntax-update-29.ru ok
+  [30/54] syntax-update-1/syntax-update-30.ru ok
+  [31/54] syntax-update-1/syntax-update-31.ru ok
+  [32/54] syntax-update-1/syntax-update-32.ru ok
+  [33/54] syntax-update-1/syntax-update-33.ru ok
+  [34/54] syntax-update-1/syntax-update-34.ru ok
+  [35/54] syntax-update-1/syntax-update-35.ru ok
+  [36/54] syntax-update-1/syntax-update-36.ru ok
+  [37/54] syntax-update-1/syntax-update-37.ru ok
+  [38/54] syntax-update-1/syntax-update-38.ru ok
+  [39/54] syntax-update-1/syntax-update-39.ru ok
+  [40/54] syntax-update-1/syntax-update-40.ru ok
+  [41/54] syntax-update-1/syntax-update-bad-01.ru ok
+  [42/54] syntax-update-1/syntax-update-bad-02.ru ok
+  [43/54] syntax-update-1/syntax-update-bad-03.ru ok
+  [44/54] syntax-update-1/syntax-update-bad-04.ru ok
+  [45/54] syntax-update-1/syntax-update-bad-05.ru ok
+  [46/54] syntax-update-1/syntax-update-bad-06.ru ok
+  [47/54] syntax-update-1/syntax-update-bad-07.ru ok
+  [48/54] syntax-update-1/syntax-update-bad-08.ru ok
+  [49/54] syntax-update-1/syntax-update-bad-09.ru ok
+  [50/54] syntax-update-1/syntax-update-bad-10.ru ok
+  [51/54] syntax-update-1/syntax-update-bad-11.ru ok
+  [52/54] syntax-update-1/syntax-update-bad-12.ru ok
+  [53/54] syntax-update-1/syntax-update-53.ru ok
+  [54/54] syntax-update-1/syntax-update-54.ru ok
+  [1/1] syntax-update-2/syntax-update-other-01 ok (1.6s)
+  [1/13] update-silent/LOAD SILENT ok
+  [2/13] update-silent/LOAD SILENT INTO ok
+  [3/13] update-silent/CLEAR SILENT GRAPH iri ok
+  [4/13] update-silent/CLEAR SILENT DEFAULT ok
+  [5/13] update-silent/CREATE SILENT iri ok
+  [6/13] update-silent/DROP SILENT GRAPH iri ok
+  [7/13] update-silent/DROP SILENT DEFAULT ok
+  [8/13] update-silent/COPY SILENT ok
+  [9/13] update-silent/COPY SILENT TO DEFAULT ok
+  [10/13] update-silent/MOVE SILENT ok
+  [11/13] update-silent/MOVE SILENT TO DEFAULT ok
+  [12/13] update-silent/ADD SILENT ok
+  [13/13] update-silent/ADD SILENT TO DEFAULT ok
 === W3C SPARQL 1.1 Test Runner ===
 Test base: third_party/testing/w3c/sparql/sparql11
 
@@ -218,77 +849,77 @@ Test base: third_party/testing/w3c/sparql/sparql11
   [suite time: 0.0s]
 
 --- entailment ---
-  PASS: bind01 - BIND fixed data for OWL DL
-  PASS: bind02 - BIND fixed data for OWL DL
-  PASS: bind03 - BIND fixed data for OWL DL
-  PASS: bind04 - BIND fixed data for OWL DL
-  PASS: bind05 - BIND fixed data for OWL DL
-  PASS: bind06 - BIND fixed data for OWL DL
-  PASS: bind07 - BIND fixed data for OWL DL
-  PASS: bind08 - BIND fixed data for OWL DL
+  PASS: bind01 - BIND fixed data for OWL DL (10ms)
+  PASS: bind02 - BIND fixed data for OWL DL (11ms)
+  PASS: bind03 - BIND fixed data for OWL DL (10ms)
+  PASS: bind04 - BIND fixed data for OWL DL (10ms)
+  PASS: bind05 - BIND fixed data for OWL DL (10ms)
+  PASS: bind06 - BIND fixed data for OWL DL (10ms)
+  PASS: bind07 - BIND fixed data for OWL DL (11ms)
+  PASS: bind08 - BIND fixed data for OWL DL (10ms)
   PASS: D-Entailment test to show that  neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers
   PASS: Literal with language tag test
-  PASS: bnodes are not existentials (12ms)
-  PASS: bnodes are not existentials with answer (16ms)
-  PASS: paper-sparqldl-Q1 (31ms)
+  PASS: bnodes are not existentials (14ms)
+  PASS: bnodes are not existentials with answer (20ms)
+  PASS: paper-sparqldl-Q1 (36ms)
   PASS: paper-sparqldl-Q1-rdfs
-  PASS: paper-sparqldl-Q2 (66ms)
-  PASS: paper-sparqldl-Q3 (73ms)
-  PASS: paper-sparqldl-Q4 (31ms)
-  PASS: paper-sparqldl-Q5 (31ms)
-  PASS: filtered subclass query with (hasChild some Thing) restriction (143ms)
-  PASS: parent query with distinguished variable (56ms)
-  PASS: parent query with (hasChild some Thing) restriction (142ms)
-  PASS: parent query with (hasChild min 1) restriction (143ms)
-  PASS: parent query with (hasChild some Female) restriction (144ms)
-  PASS: parent query with (hasChild min 1 Female) restriction (143ms)
-  FAIL: parent query with (hasChild max 1 Female) restriction — Results mismatch: expected 1 rows, got 311 (144ms)
-  PASS: parent query with (hasChild exactly 1 Female) restriction (142ms)
-  PASS: subclass query with (hasChild some Thing) restriction (143ms)
+  PASS: paper-sparqldl-Q2 (92ms)
+  PASS: paper-sparqldl-Q3 (102ms)
+  PASS: paper-sparqldl-Q4 (37ms)
+  PASS: paper-sparqldl-Q5 (37ms)
+  PASS: filtered subclass query with (hasChild some Thing) restriction (166ms)
+  PASS: parent query with distinguished variable (63ms)
+  PASS: parent query with (hasChild some Thing) restriction (170ms)
+  PASS: parent query with (hasChild min 1) restriction (166ms)
+  PASS: parent query with (hasChild some Female) restriction (172ms)
+  PASS: parent query with (hasChild min 1 Female) restriction (163ms)
+  PASS: parent query with (hasChild max 1 Female) restriction (162ms)
+  PASS: parent query with (hasChild exactly 1 Female) restriction (163ms)
+  PASS: subclass query with (hasChild some Thing) restriction (163ms)
   PASS: Plain literals with language tag are not the same as the same literal without
   PASS: RDF inference test
   PASS: RDF inference test
   PASS: RDF test for blank node cardinalities
-  PASS: simple triple pattern match (13ms)
-  PASS: RDFS inference test rdfs:subPropertyOf (13ms)
-  PASS: RDFS inference test rdfs:subPropertyOf (13ms)
+  PASS: simple triple pattern match (15ms)
+  PASS: RDFS inference test rdfs:subPropertyOf (16ms)
+  PASS: RDFS inference test rdfs:subPropertyOf (16ms)
   PASS: RDFS inference test combining subPropertyOf and domain
-  PASS: RDFS inference test subClassOf
-  PASS: RDFS inference test subClassOf (13ms)
-  PASS: RDFS inference test domain (13ms)
-  PASS: RDFS inference test range (15ms)
+  PASS: RDFS inference test subClassOf (11ms)
+  PASS: RDFS inference test subClassOf (15ms)
+  PASS: RDFS inference test domain (16ms)
+  PASS: RDFS inference test range (18ms)
   PASS: RDFS inference test rdf:XMLLiteral subclass of rdfs:Literal
-  PASS: RDFS inference test transitivity of subClassOf (11ms)
-  PASS: RDFS inference test transitivity of subPropertyOf (21ms)
+  PASS: RDFS inference test transitivity of subClassOf (15ms)
+  PASS: RDFS inference test transitivity of subPropertyOf (25ms)
   PASS: RDFS inference test subProperty and instances
   PASS: RDFS inference test containers
   PASS: RDFS inference test to show that neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers
-  skip: RIF Logical Entailment (referencing RIF XML) — RIF not implemented
-  skip: RIF Core WG tests: Frames — RIF not implemented
-  skip: RIF Core WG tests: Modeling Brain Anatomy — RIF not implemented
-  skip: RIF Core WG tests: RDF Combination Blank Node — RIF not implemented
-  PASS: simple 1 (47ms)
-  PASS: simple 2 (47ms)
-  PASS: simple 3 (47ms)
-  PASS: simple 4 (51ms)
-  PASS: simple 5 (52ms)
-  PASS: simple 6 (91ms)
-  PASS: simple 7 (53ms)
-  PASS: simple 8 (48ms)
-  PASS: sparqldl-01.rq: triple pattern
-  PASS: sparqldl-02.rq: simple combined query
-  PASS: sparqldl-03.rq: combined query with complex class description (18ms)
-  PASS: sparqldl-04.rq: bug fixing test (11ms)
-  PASS: sparqldl-05.rq: simple undistinguished variable test.
-  PASS: sparqldl-06.rq: cycle of undistinguished variables (19ms)
-  PASS: sparqldl-07.rq: two distinguished variables + undist. (24ms)
-  PASS: sparqldl-08.rq: two distinguished variables + undist. (23ms)
-  PASS: sparqldl-09.rq: undist vars test (16ms)
-  PASS: sparqldl-10.rq: undist vars test (17ms)
-  PASS: sparqldl-11.rq: domain test (43ms)
-  PASS: sparqldl-12.rq: range test (41ms)
-  PASS: sparqldl-13.rq: sameAs (17ms)
-  [suite time: 2.4s]
+  PASS: RIF Logical Entailment (referencing RIF XML)
+  PASS: RIF Core WG tests: Frames
+  PASS: RIF Core WG tests: Modeling Brain Anatomy
+  PASS: RIF Core WG tests: RDF Combination Blank Node
+  PASS: simple 1 (57ms)
+  PASS: simple 2 (55ms)
+  PASS: simple 3 (56ms)
+  PASS: simple 4 (61ms)
+  PASS: simple 5 (61ms)
+  PASS: simple 6 (108ms)
+  PASS: simple 7 (63ms)
+  PASS: simple 8 (57ms)
+  PASS: sparqldl-01.rq: triple pattern (11ms)
+  PASS: sparqldl-02.rq: simple combined query (11ms)
+  PASS: sparqldl-03.rq: combined query with complex class description (22ms)
+  PASS: sparqldl-04.rq: bug fixing test (13ms)
+  PASS: sparqldl-05.rq: simple undistinguished variable test. (11ms)
+  PASS: sparqldl-06.rq: cycle of undistinguished variables (23ms)
+  PASS: sparqldl-07.rq: two distinguished variables + undist. (27ms)
+  PASS: sparqldl-08.rq: two distinguished variables + undist. (27ms)
+  PASS: sparqldl-09.rq: undist vars test (26ms)
+  PASS: sparqldl-10.rq: undist vars test (31ms)
+  PASS: sparqldl-11.rq: domain test (55ms)
+  PASS: sparqldl-12.rq: range test (48ms)
+  PASS: sparqldl-13.rq: sameAs (20ms)
+  [suite time: 2.9s]
 
 --- exists ---
   PASS: Exists with one constant
@@ -410,7 +1041,7 @@ Test base: third_party/testing/w3c/sparql/sparql11
 
 --- json-res ---
   PASS: jsonres01 - JSON Result Format
-  PASS: jsonres02 - JSON Result Format
+  PASS: jsonres02 - JSON Result Format (11ms)
   PASS: jsonres03 - JSON Result Format
   PASS: jsonres04 - JSON Result Format
   [suite time: 0.0s]
@@ -431,7 +1062,7 @@ Test base: third_party/testing/w3c/sparql/sparql11
   PASS: Calculate which sets are subsets of others (include A subsetOf A)
   PASS: Calculate which sets are subsets of others (exclude A subsetOf A)
   PASS: Calculate which sets have the same elements
-  PASS: Calculate proper subset
+  PASS: Calculate proper subset (12ms)
   PASS: Positive EXISTS 1
   PASS: Positive EXISTS 2
   PASS: Subtraction with MINUS from a fully bound minuend
@@ -716,8 +1347,8 @@ Test base: third_party/testing/w3c/sparql/sparql11
   [suite time: 0.0s]
 
 --- syntax-update-2 ---
-  PASS: syntax-update-other-01 (1.4s)
-  [suite time: 1.4s]
+  PASS: syntax-update-other-01 (1.6s)
+  [suite time: 1.6s]
 
 --- update-silent ---
   PASS: LOAD SILENT
@@ -752,7 +1383,7 @@ Suite Results:
   delete-insert                       pass:17 fail:0 skip:0 unsupported:0
   delete-where                        pass:6 fail:0 skip:0 unsupported:0
   drop                                pass:4 fail:0 skip:0 unsupported:0
-  entailment                          pass:65 fail:1 skip:4 unsupported:0
+  entailment                          pass:70 fail:0 skip:0 unsupported:0
   exists                              pass:6 fail:0 skip:0 unsupported:0
   functions                           pass:75 fail:0 skip:0 unsupported:0
   grouping                            pass:6 fail:0 skip:0 unsupported:0
@@ -772,5 +1403,5 @@ Suite Results:
   syntax-update-2                     pass:1 fail:0 skip:0 unsupported:0
   update-silent                       pass:13 fail:0 skip:0 unsupported:0
 ========================================
-TOTAL: 626 pass, 1 fail, 4 skip, 0 unsupported
+TOTAL: 631 pass, 0 fail, 0 skip, 0 unsupported
 ========================================
