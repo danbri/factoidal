@@ -27,8 +27,16 @@ HISTORY_DIR="$OUTPUT_DIR/history"
 SPARQL_LOG="$OCAML_DIR/sparql_results.log"
 RDF_LOG="$OCAML_DIR/rdf_results.log"
 OWL_LOG="$OCAML_DIR/owl_profile_rl_results.log"
-# Phase 2.3 DL catalog logs (added 2026-05-08).
+# Phase 2.3 DL catalog logs (added 2026-05-08). Per-catalog log
+# path so we can score independently and surface separate dashboard
+# rows. Loop-driven below.
 OWL_TPE_LOG="$OCAML_DIR/owl_type_positive_entailment_results.log"
+OWL_TNE_LOG="$OCAML_DIR/owl_type_negative_entailment_results.log"
+OWL_TCON_LOG="$OCAML_DIR/owl_type_consistency_results.log"
+OWL_TINC_LOG="$OCAML_DIR/owl_type_inconsistency_results.log"
+OWL_EL_LOG="$OCAML_DIR/owl_profile_el_results.log"
+OWL_QL_LOG="$OCAML_DIR/owl_profile_ql_results.log"
+OWL_SEMDL_LOG="$OCAML_DIR/owl_semantics_direct_results.log"
 RDFC10_LOG="$OCAML_DIR/rdfc10_results.log"
 
 mkdir -p "$OUTPUT_DIR" "$HISTORY_DIR"
@@ -69,15 +77,25 @@ if [ "$1" = "--run" ]; then
     echo "Running OWL 2 RL profile suite (PositiveEntailmentTests)…"
     ( cd "$REPO_ROOT" && "$OWL_RUNNER" > "$OWL_LOG" 2>&1 ) || true
     echo "  done."
-    # Phase 2.3 — OWL DL type-positive-entailment.rdf (206 tests).
-    # Runs under RL semantics for now (DL via Tableau is a follow-up;
-    # see #238 / #239 about Tableau perf). RL is sound but incomplete
-    # for DL — many false negatives expected on DL-only entailments.
-    echo "Running OWL 2 DL type-positive-entailment.rdf (RL baseline)…"
-    ( cd "$REPO_ROOT" && timeout 240 "$OWL_RUNNER" \
-        third_party/testing/owl/type-positive-entailment.rdf \
-        > "$OWL_TPE_LOG" 2>&1 ) || true
-    echo "  done."
+    # Phase 2.3 — OWL DL catalogs. Runs each catalog in turn under
+    # RL semantics (DL via Tableau is a follow-up; see #238 about
+    # Tableau perf). RL is sound but incomplete for DL — false-
+    # negative scores on DL-only entailments are expected; baseline
+    # gives a "what RL can certify" floor that DL strictly improves.
+    for entry in \
+        "type-positive-entailment.rdf $OWL_TPE_LOG  240" \
+        "type-negative-entailment.rdf $OWL_TNE_LOG   60" \
+        "type-consistency.rdf         $OWL_TCON_LOG 600" \
+        "type-inconsistency.rdf       $OWL_TINC_LOG 240" \
+        "profile-EL.rdf               $OWL_EL_LOG  120" \
+        "profile-QL.rdf               $OWL_QL_LOG  120"; do
+      IFS=' ' read -r catalog log_path budget <<< "$entry"
+      echo "Running OWL 2 catalog $catalog (RL, ${budget}s budget)…"
+      ( cd "$REPO_ROOT" && timeout "$budget" "$OWL_RUNNER" \
+          "third_party/testing/owl/$catalog" \
+          > "$log_path" 2>&1 ) || true
+      echo "  done."
+    done
   else
     echo "  owl_runner not found at $OWL_RUNNER — skipping OWL 2 RL suite." >&2
   fi
@@ -162,27 +180,40 @@ OWL_CONS_PASS=${OWL_CONS_PASS:-0}; OWL_CONS_FAIL=${OWL_CONS_FAIL:-0}; OWL_CONS_T
 OWL_INC_PRESENT=${OWL_INC_PRESENT:-0}
 OWL_INC_PASS=${OWL_INC_PASS:-0};   OWL_INC_FAIL=${OWL_INC_FAIL:-0};   OWL_INC_TOTAL=${OWL_INC_TOTAL:-0}
 
-# Phase 2.3 — type-positive-entailment.rdf scoring (added 2026-05-08).
-# Same score-line shape as profile-RL.rdf; we tag rows on the
-# dashboard with a TPE prefix so the catalog is unambiguous.
-OWL_TPE_PE_PRESENT=0; OWL_TPE_PE_PASS=0; OWL_TPE_PE_FAIL=0; OWL_TPE_PE_TOTAL=0
-OWL_TPE_CONS_PRESENT=0; OWL_TPE_CONS_PASS=0; OWL_TPE_CONS_FAIL=0; OWL_TPE_CONS_TOTAL=0
-if [ -f "$OWL_TPE_LOG" ]; then
-  L=$(grep -E '^Profile-RL PositiveEntailmentTests:' "$OWL_TPE_LOG" | tail -1 || true)
-  if [ -n "$L" ]; then
-    OWL_TPE_PE_PRESENT=1
-    OWL_TPE_PE_PASS=$(echo  "$L" | sed -nE 's/.* ([0-9]+) pass.*/\1/p')
-    OWL_TPE_PE_FAIL=$(echo  "$L" | sed -nE 's/.* ([0-9]+) fail.*/\1/p')
-    OWL_TPE_PE_TOTAL=$(echo "$L" | sed -nE 's/.*out of ([0-9]+).*/\1/p')
-  fi
-  L=$(grep -E '^Profile-RL ConsistencyTests:' "$OWL_TPE_LOG" | tail -1 || true)
-  if [ -n "$L" ]; then
-    OWL_TPE_CONS_PRESENT=1
-    OWL_TPE_CONS_PASS=$(echo  "$L" | sed -nE 's/.* ([0-9]+) pass.*/\1/p')
-    OWL_TPE_CONS_FAIL=$(echo  "$L" | sed -nE 's/.* ([0-9]+) fail.*/\1/p')
-    OWL_TPE_CONS_TOTAL=$(echo "$L" | sed -nE 's/.*out of ([0-9]+).*/\1/p')
-  fi
-fi
+# Phase 2.3 — generic per-catalog parser. Reads one log file and
+# extracts up to 4 score lines (Positive/NegativeEntailmentTests,
+# Consistency/InconsistencyTests). Returns nothing; sets four
+# 4-tuple variables prefixed by the caller-supplied prefix.
+#
+# Score-line shape (printed by owl_runner regardless of catalog):
+#   Profile-RL <Type>Tests: N pass, M fail (out of K) in <s>s
+extract_owl_scores () {
+  local prefix="$1" log="$2"
+  local t L p f tt
+  for t in PositiveEntailmentTests NegativeEntailmentTests ConsistencyTests InconsistencyTests; do
+    declare -g "${prefix}_${t}_PRESENT=0"
+    declare -g "${prefix}_${t}_PASS=0"
+    declare -g "${prefix}_${t}_FAIL=0"
+    declare -g "${prefix}_${t}_TOTAL=0"
+    [ -f "$log" ] || continue
+    L=$(grep -E "^Profile-RL ${t}:" "$log" | tail -1 || true)
+    [ -z "$L" ] && continue
+    p=$(echo  "$L" | sed -nE 's/.* ([0-9]+) pass.*/\1/p')
+    f=$(echo  "$L" | sed -nE 's/.* ([0-9]+) fail.*/\1/p')
+    tt=$(echo "$L" | sed -nE 's/.*out of ([0-9]+).*/\1/p')
+    declare -g "${prefix}_${t}_PRESENT=1"
+    declare -g "${prefix}_${t}_PASS=${p:-0}"
+    declare -g "${prefix}_${t}_FAIL=${f:-0}"
+    declare -g "${prefix}_${t}_TOTAL=${tt:-0}"
+  done
+}
+
+extract_owl_scores OWL_TPE  "$OWL_TPE_LOG"
+extract_owl_scores OWL_TNE  "$OWL_TNE_LOG"
+extract_owl_scores OWL_TCON "$OWL_TCON_LOG"
+extract_owl_scores OWL_TINC "$OWL_TINC_LOG"
+extract_owl_scores OWL_EL   "$OWL_EL_LOG"
+extract_owl_scores OWL_QL   "$OWL_QL_LOG"
 
 # --- RDFC-1.0 scoreboard (folded into the RDF table as suite "rdf-canon") ---
 # Score line in rdfc10_runner stdout:
@@ -600,15 +631,30 @@ OWL_INC_ROW=""
 if [ "$OWL_INC_PRESENT" -eq 1 ]; then
   OWL_INC_ROW=$(emit_owl_bar_row  "profile-RL Inconsistency" "$OWL_INC_PASS"  "$OWL_INC_FAIL"  "$OWL_INC_TOTAL")
 fi
-# Phase 2.3 — type-positive-entailment.rdf rows.
-OWL_TPE_PE_ROW=""
-if [ "$OWL_TPE_PE_PRESENT" -eq 1 ]; then
-  OWL_TPE_PE_ROW=$(emit_owl_bar_row "type-PosEnt PE" "$OWL_TPE_PE_PASS" "$OWL_TPE_PE_FAIL" "$OWL_TPE_PE_TOTAL")
-fi
-OWL_TPE_CONS_ROW=""
-if [ "$OWL_TPE_CONS_PRESENT" -eq 1 ]; then
-  OWL_TPE_CONS_ROW=$(emit_owl_bar_row "type-PosEnt Cons" "$OWL_TPE_CONS_PASS" "$OWL_TPE_CONS_FAIL" "$OWL_TPE_CONS_TOTAL")
-fi
+# Phase 2.3 — DL catalog rows (generic, loop-driven).
+emit_catalog_rows () {
+  # $1 = prefix (e.g. OWL_TPE), $2 = catalog short label (e.g. type-PosEnt)
+  local prefix="$1" label="$2"
+  local types_with_short="PositiveEntailmentTests:PE NegativeEntailmentTests:NE ConsistencyTests:Cons InconsistencyTests:Inc"
+  for entry in $types_with_short; do
+    local t="${entry%%:*}" short="${entry##*:}"
+    local p_var="${prefix}_${t}_PRESENT"
+    local present="${!p_var}"
+    [ "${present:-0}" -eq 1 ] || continue
+    local pass_var="${prefix}_${t}_PASS"
+    local fail_var="${prefix}_${t}_FAIL"
+    local total_var="${prefix}_${t}_TOTAL"
+    emit_owl_bar_row "$label $short" "${!pass_var}" "${!fail_var}" "${!total_var}"
+  done
+}
+OWL_DL_ROWS=$( {
+  emit_catalog_rows OWL_TPE  "type-PosEnt"
+  emit_catalog_rows OWL_TNE  "type-NegEnt"
+  emit_catalog_rows OWL_TCON "type-Cons"
+  emit_catalog_rows OWL_TINC "type-Inc"
+  emit_catalog_rows OWL_EL   "profile-EL"
+  emit_catalog_rows OWL_QL   "profile-QL"
+} )
 
 # Deferred-category counts are the `<test:TestCase>` occurrences in each
 # vendored OWL 2 Test Cases catalog file (Agent D scoping on 2026-04-24).
@@ -771,8 +817,7 @@ OWL_HTML=$(cat <<OWLEOF
   ${OWL_NEG_ROW}
   ${OWL_CONS_ROW}
   ${OWL_INC_ROW}
-  ${OWL_TPE_PE_ROW}
-  ${OWL_TPE_CONS_ROW}
+  ${OWL_DL_ROWS}
 ${OWL_SKIP_ROWS}</div>
 <p style="margin: 0.3em 0 1em; color: var(--muted); font-size: 0.85em;">
   <strong>OWL 2 (W3C conformance):</strong>

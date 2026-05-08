@@ -1,0 +1,68 @@
+Closure regime: RL
+OWL 2 test catalog: third_party/testing/owl/type-negative-entailment.rdf
+  parsed 594 triples in 0.02s
+Totals: 23 test cases
+  PositiveEntailmentTest:    0
+  NegativeEntailmentTest:    23
+  ConsistencyTest:           23
+  InconsistencyTest:         0
+  ProfileIdentificationTest: 18
+
+Running 0 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
+
+Profile-RL PositiveEntailmentTests: 0 pass, 0 fail (out of 0) in 0.00s
+  (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
+
+Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
+  PASS  New-Feature-Keys-004
+  PASS  New-Feature-Keys-007
+  PASS  New-Feature-ObjectPropertyChain-BJP-004
+  PASS  WebOnt-Class-004
+  PASS  WebOnt-Class-005
+  FAIL/unexpected-entailment  WebOnt-I4.6-004
+  FAIL/unexpected-entailment  WebOnt-I4.6-005
+  PASS  WebOnt-I5.5-006
+  PASS  WebOnt-I5.5-007
+  PASS  WebOnt-I5.8-005
+  PASS  WebOnt-I5.8-007
+  PASS  WebOnt-Ontology-003
+  PASS  WebOnt-Restriction-005
+  PASS  WebOnt-allValuesFrom-002
+  PASS  WebOnt-description-logic-209
+  PASS  WebOnt-description-logic-902
+  PASS  WebOnt-description-logic-904
+  PASS  WebOnt-equivalentClass-005
+  FAIL/unexpected-entailment  WebOnt-equivalentClass-008
+  FAIL/unexpected-entailment  WebOnt-imports-002
+  PASS  WebOnt-miscellaneous-301
+  PASS  WebOnt-miscellaneous-302
+  PASS  WebOnt-someValuesFrom-002
+
+Profile-RL NegativeEntailmentTests: 19 pass, 4 fail (out of 23) in 1.98s
+
+Running 23 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
+  PASS  New-Feature-Keys-004
+  PASS  New-Feature-Keys-007
+  PASS  New-Feature-ObjectPropertyChain-BJP-004
+  PASS  WebOnt-Class-004
+  PASS  WebOnt-Class-005
+  PASS  WebOnt-I4.6-004
+  PASS  WebOnt-I4.6-005
+  PASS  WebOnt-I5.5-006
+  PASS  WebOnt-I5.5-007
+  PASS  WebOnt-I5.8-005
+  PASS  WebOnt-I5.8-007
+  PASS  WebOnt-Ontology-003
+  PASS  WebOnt-Restriction-005
+  PASS  WebOnt-allValuesFrom-002
+  PASS  WebOnt-description-logic-209
+  PASS  WebOnt-description-logic-902
+  PASS  WebOnt-description-logic-904
+  PASS  WebOnt-equivalentClass-005
+  PASS  WebOnt-equivalentClass-008
+  PASS  WebOnt-imports-002
+  PASS  WebOnt-miscellaneous-301
+  PASS  WebOnt-miscellaneous-302
+  PASS  WebOnt-someValuesFrom-002
+
+Profile-RL ConsistencyTests: 23 pass, 0 fail (out of 23) in 2.05s

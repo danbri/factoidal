@@ -1,0 +1,113 @@
+Closure regime: RL
+OWL 2 test catalog: third_party/testing/owl/profile-QL.rdf
+  parsed 1275 triples in 0.03s
+Totals: 65 test cases
+  PositiveEntailmentTest:    20
+  NegativeEntailmentTest:    3
+  ConsistencyTest:           58
+  InconsistencyTest:         6
+  ProfileIdentificationTest: 65
+
+Running 20 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
+  FAIL  New-Feature-DisjointDataProperties-002
+  PASS  New-Feature-DisjointObjectProperties-001
+  FAIL  New-Feature-DisjointObjectProperties-002
+  PASS  New-Feature-ReflexiveProperty-001
+  PASS  WebOnt-I4.6-005-Direct
+  FAIL  WebOnt-I5.26-010
+  FAIL  WebOnt-I5.5-005
+  PASS  WebOnt-I5.8-011
+  PASS  WebOnt-Ontology-001
+  PASS  WebOnt-differentFrom-001
+  FAIL  WebOnt-disjointWith-001
+  PASS  WebOnt-equivalentClass-001
+  PASS  WebOnt-equivalentClass-002
+  PASS  WebOnt-equivalentClass-003
+  PASS  WebOnt-equivalentClass-008-Direct
+  PASS  WebOnt-equivalentProperty-001
+  PASS  WebOnt-equivalentProperty-002
+  PASS  WebOnt-equivalentProperty-003
+  PASS  WebOnt-imports-011
+  FAIL  WebOnt-miscellaneous-302-Direct
+
+Profile-RL PositiveEntailmentTests: 14 pass, 6 fail (out of 20) in 0.20s
+  (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
+
+Running 3 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
+  FAIL/unexpected-entailment  WebOnt-I4.6-005
+  FAIL/unexpected-entailment  WebOnt-equivalentClass-008
+  PASS  WebOnt-miscellaneous-302
+
+Profile-RL NegativeEntailmentTests: 1 pass, 2 fail (out of 3) in 0.03s
+
+Running 58 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
+  PASS  FS2RDF-different-individuals-2-annotation-ar
+  PASS  FS2RDF-different-individuals-2-ar
+  PASS  FS2RDF-different-individuals-3-annotation-ar
+  PASS  FS2RDF-different-individuals-3-ar
+  PASS  FS2RDF-disjoint-classes-2-annotation-ar
+  PASS  FS2RDF-disjoint-classes-2-ar
+  PASS  FS2RDF-disjoint-classes-3-annotation-ar
+  PASS  FS2RDF-disjoint-classes-3-ar
+  PASS  FS2RDF-domain-range-simple-ar
+  PASS  FS2RDF-equivalent-classes-2-annotation-ar
+  PASS  FS2RDF-equivalent-classes-2-ar
+  PASS  FS2RDF-equivalent-classes-3-annotation-ar
+  PASS  FS2RDF-equivalent-classes-3-ar
+  PASS  FS2RDF-ontology-annotation-annotation-ar
+  PASS  FS2RDF-propertychain-2-annotated-ar
+  PASS  FS2RDF-propertychain-2-ar
+  PASS  FS2RDF-same-individual-2-annotation-ar
+  PASS  FS2RDF-same-individual-3-annotation-ar
+  PASS  New-Feature-AnnotationAnnotations-001
+  PASS  New-Feature-AxiomAnnotations-001
+  PASS  New-Feature-DisjointDataProperties-002
+  PASS  New-Feature-DisjointObjectProperties-001
+  PASS  New-Feature-DisjointObjectProperties-002
+  PASS  New-Feature-ReflexiveProperty-001
+  PASS  WebOnt-AnnotationProperty-003
+  PASS  WebOnt-AnnotationProperty-004
+  PASS  WebOnt-I4.6-005
+  PASS  WebOnt-I4.6-005-Direct
+  PASS  WebOnt-I5.26-001
+  PASS  WebOnt-I5.26-002
+  PASS  WebOnt-I5.26-005
+  PASS  WebOnt-I5.26-010
+  PASS  WebOnt-I5.5-005
+  PASS  WebOnt-I5.8-011
+  PASS  WebOnt-Ontology-001
+  PASS  WebOnt-backwardCompatibleWith-002
+  PASS  WebOnt-differentFrom-001
+  PASS  WebOnt-disjointWith-001
+  PASS  WebOnt-disjointWith-003
+  PASS  WebOnt-disjointWith-004
+  PASS  WebOnt-disjointWith-005
+  PASS  WebOnt-disjointWith-006
+  PASS  WebOnt-disjointWith-007
+  PASS  WebOnt-disjointWith-008
+  PASS  WebOnt-disjointWith-009
+  PASS  WebOnt-equivalentClass-001
+  PASS  WebOnt-equivalentClass-002
+  PASS  WebOnt-equivalentClass-003
+  PASS  WebOnt-equivalentClass-008
+  PASS  WebOnt-equivalentClass-008-Direct
+  PASS  WebOnt-equivalentProperty-001
+  PASS  WebOnt-equivalentProperty-002
+  PASS  WebOnt-equivalentProperty-003
+  PASS  WebOnt-imports-011
+  PASS  WebOnt-miscellaneous-302
+  PASS  WebOnt-miscellaneous-302-Direct
+  PASS  WebOnt-miscellaneous-303
+  PASS  owl2-rl-invalid-rightside-somevaluesfrom
+
+Profile-RL ConsistencyTests: 58 pass, 0 fail (out of 58) in 0.71s
+
+Running 6 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
+  PASS  DisjointClasses-002
+  FAIL/unexpected-consistency  New-Feature-AsymmetricProperty-001
+  FAIL/unexpected-consistency  New-Feature-DisjointDataProperties-001
+  PASS  WebOnt-Nothing-001
+  PASS  WebOnt-Thing-003
+  FAIL/unexpected-consistency  WebOnt-description-logic-104
+
+Profile-RL InconsistencyTests: 3 pass, 3 fail (out of 6) in 0.07s
