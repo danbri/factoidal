@@ -1282,11 +1282,29 @@ let rec expand_ce_subject
            // N=1 qualified: bind to canonical owl_rule_cls_maxqc1
            // materialisation via shape discovery. Unqualified N=1
            // falls back to leaf (no canonical to bind against).
+           //
+           // ANCHOR (parent7 fix, 2026-05-08): we ALSO require that
+           // `subj` has at least one P-successor in the closure
+           // (`subj P ?_mxqc1_anchor_<k>`). Without this anchor, the
+           // closure's `cls-maxqc1` skolem-explosion (vocab IRIs and
+           // anonymous bnodes whose closure-derived edges trigger the
+           // rule via routes that bypass `edge_subject_is_safe`) makes
+           // `?parent rdf:type ?_mxqc1_r_k` bind to ~310 spurious
+           // values where only ~1 individual actually has the
+           // restricted property. The anchor is sound under OWA: max-
+           // cardinality 1 says "at most 1 P-successor"; it's
+           // vacuously true for individuals with 0 P-successors but
+           // those don't realise the restriction in practice. The
+           // entailment we care about is "individuals with exactly 1
+           // P-successor typed C are members of the restriction" —
+           // which the anchor expresses naturally.
            match on_class_opt with
            | Some (PT_IRI c_iri) ->
              let restr_name : string = "_mxqc1_r_" ^ k in
              let restr_term : pattern_term    = PT_Var restr_name in
              let restr_subj : pattern_subject = PS_Var restr_name in
+             let anchor_name : string = "_mxqc1_anchor_" ^ k in
+             let anchor_term : pattern_term = PT_Var anchor_name in
              let shape_type_triple : triple_pattern =
                { tp_s = restr_subj; tp_p = PT_IRI rdf_type_iri;
                  tp_o = PT_IRI owl_Restriction_iri } in
@@ -1303,11 +1321,15 @@ let rec expand_ce_subject
              let memb_triple : triple_pattern =
                { tp_s = subj; tp_p = PT_IRI rdf_type_iri;
                  tp_o = restr_term } in
+             let anchor_triple : triple_pattern =
+               { tp_s = subj; tp_p = PT_IRI p_iri;
+                 tp_o = anchor_term } in
              GP_BGP [ shape_type_triple;
                       shape_onprop_triple;
                       shape_maxqc_triple;
                       shape_onclass_triple;
-                      memb_triple ]
+                      memb_triple;
+                      anchor_triple ]
            | _ ->
              // Unqualified maxCard 1, or non-IRI filler: leaf fallback.
              GP_BGP (single_type_bgp subj op)

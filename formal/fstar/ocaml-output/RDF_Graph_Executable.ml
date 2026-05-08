@@ -1575,9 +1575,43 @@ let bnode_is_rl_canonical (b : bnode_id) : Prims.bool=
   if blen < plen
   then false
   else (FStar_String.sub b Prims.int_zero plen) = rl_canonical_bnode_prefix
+let is_owl_or_rdfs_metaclass (i : wf_iri) : Prims.bool=
+  ((((((((((((((((((((((((i = owl_Class) || (i = owl_Restriction_iri)) ||
+                          (i = owl_NamedIndividual))
+                         || (i = owl_Thing))
+                        || (i = owl_Nothing))
+                       || (i = owl_FunctionalProperty))
+                      || (i = owl_InverseFunctionalProperty))
+                     || (i = owl_TransitiveProperty))
+                    || (i = owl_SymmetricProperty))
+                   ||
+                   (i = "http://www.w3.org/2002/07/owl#AsymmetricProperty"))
+                  || (i = "http://www.w3.org/2002/07/owl#ReflexiveProperty"))
+                 || (i = "http://www.w3.org/2002/07/owl#IrreflexiveProperty"))
+                || (i = owl_ObjectProperty))
+               || (i = owl_DatatypeProperty))
+              || (i = "http://www.w3.org/2002/07/owl#AnnotationProperty"))
+             || (i = "http://www.w3.org/2002/07/owl#OntologyProperty"))
+            || (i = "http://www.w3.org/2002/07/owl#Ontology"))
+           || (i = rdfs_Class))
+          || (i = rdfs_Resource))
+         || (i = rdfs_Datatype))
+        || (i = rdfs_Literal))
+       || (i = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"))
+      || (i = "http://www.w3.org/1999/02/22-rdf-syntax-ns#List"))
+     || (i = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Statement"))
+    ||
+    (let xsd_prefix = "http://www.w3.org/2001/XMLSchema#" in
+     let plen = FStar_String.strlen xsd_prefix in
+     let ilen = FStar_String.strlen i in
+     if ilen < plen
+     then false
+     else (FStar_String.sub i Prims.int_zero plen) = xsd_prefix)
 let edge_subject_is_safe (e : triple) : Prims.bool=
   match e.s with
-  | S_IRI i -> Prims.op_Negation (is_schema_metapredicate i)
+  | S_IRI i ->
+      (Prims.op_Negation (is_schema_metapredicate i)) &&
+        (Prims.op_Negation (is_owl_or_rdfs_metaclass i))
   | S_BNode b -> Prims.op_Negation (bnode_is_rl_canonical b)
 let owl_rule_cls_svf2_qualified (g : rdf_graph) : rdf_graph=
   FStar_List_Tot_Base.fold_left

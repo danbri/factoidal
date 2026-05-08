@@ -2455,9 +2455,51 @@ let bnode_is_rl_canonical (b : bnode_id) : bool =
   if blen < plen then false
   else String.sub b 0 plen = rl_canonical_bnode_prefix
 
+// is_owl_or_rdfs_metaclass: classify well-known class/datatype IRIs that
+// should never appear as the subject of a "data" edge feeding into the
+// cardinality-canonical rules. Without this, parent7's 311-row regression
+// reappears: in the closed graph, (xsd:byte, p, y) edges (e.g. from XSD
+// axiom emission interacting with eq-rep / scm-* propagation) trigger
+// cls-maxqc1 emission for xsd:byte itself, which then satisfies the
+// query-side rewrite BGP `?parent rdf:type ?_mxc1_r_k`.
+//
+// See docs/designissues/2026-04-25-zayin-parent7-strip-not-effective.md.
+let is_owl_or_rdfs_metaclass (i : wf_iri) : bool =
+  i = owl_Class ||
+  i = owl_Restriction_iri ||
+  i = owl_NamedIndividual ||
+  i = owl_Thing ||
+  i = owl_Nothing ||
+  i = owl_FunctionalProperty ||
+  i = owl_InverseFunctionalProperty ||
+  i = owl_TransitiveProperty ||
+  i = owl_SymmetricProperty ||
+  i = "http://www.w3.org/2002/07/owl#AsymmetricProperty" ||
+  i = "http://www.w3.org/2002/07/owl#ReflexiveProperty" ||
+  i = "http://www.w3.org/2002/07/owl#IrreflexiveProperty" ||
+  i = owl_ObjectProperty ||
+  i = owl_DatatypeProperty ||
+  i = "http://www.w3.org/2002/07/owl#AnnotationProperty" ||
+  i = "http://www.w3.org/2002/07/owl#OntologyProperty" ||
+  i = "http://www.w3.org/2002/07/owl#Ontology" ||
+  i = rdfs_Class ||
+  i = rdfs_Resource ||
+  i = rdfs_Datatype ||
+  i = rdfs_Literal ||
+  i = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property" ||
+  i = "http://www.w3.org/1999/02/22-rdf-syntax-ns#List" ||
+  i = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Statement" ||
+  // XSD namespace prefix check — every XSD IRI counts as a metaclass for
+  // this filter, including xsd:byte / xsd:integer / xsd:string etc.
+  (let xsd_prefix = "http://www.w3.org/2001/XMLSchema#" in
+   let plen = String.length xsd_prefix in
+   let ilen = String.length i in
+   if ilen < plen then false
+   else String.sub i 0 plen = xsd_prefix)
+
 let edge_subject_is_safe (e : triple) : bool =
   match e.s with
-  | S_IRI i  -> not (is_schema_metapredicate i)
+  | S_IRI i  -> not (is_schema_metapredicate i) && not (is_owl_or_rdfs_metaclass i)
   | S_BNode b -> not (bnode_is_rl_canonical b)
 
 // cls-svf2-qualified materialise: for each (x P y) with (y rdf:type C)
