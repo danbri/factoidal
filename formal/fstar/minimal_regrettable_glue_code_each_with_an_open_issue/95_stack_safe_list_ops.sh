@@ -316,11 +316,17 @@ if old_atg in s:
 # Step 7 (final global swap): FStar_List_Tot_Base.concatMap -> sse_concat_map
 # and FStar_List_Tot_Base.op_At -> sse_append. Run LAST so previous
 # steps' `old_*` match strings see the pristine concatMap/op_At spellings.
+#
+# Phase-out path (issue #95):
+#   2026-05-08 — concatMap call sites migrated F*-side to
+#   Lh.concatMap_tr in SPARQL11.Algebra.fst. Extracted .ml now has
+#   0 FStar_List_Tot_Base.concatMap occurrences from those sites.
+#   This patch's count is now allowed to be 0 (was fatal); when @
+#   sites also migrate, the whole patch can be deleted.
 # ------------------------------------------------------------------
 n = s.count('FStar_List_Tot_Base.concatMap')
-if n == 0:
-    raise SystemExit("SPARQL11_Algebra.ml: no FStar_List_Tot_Base.concatMap call sites found")
-s = s.replace('FStar_List_Tot_Base.concatMap', 'sse_concat_map')
+if n > 0:
+    s = s.replace('FStar_List_Tot_Base.concatMap', 'sse_concat_map')
 
 n_at = s.count('FStar_List_Tot_Base.op_At')
 s = s.replace('FStar_List_Tot_Base.op_At', 'sse_append')
@@ -328,7 +334,7 @@ s = s.replace('FStar_List_Tot_Base.op_At', 'sse_append')
 with open(path, 'w') as f:
     f.write(s)
 
-print(f'  rewrote {n} concatMap + {n_at} op_At + triple_matches_bound + list_filter_map + list_deduplicate_sm + dedup_er + add_to_groups')
+print(f'  rewrote {n} concatMap + {n_at} op_At in SPARQL11_Algebra.ml (per-function rewrites are F*-side as of 2026-05-08; only globals remain)')
 PYEOF
 
 echo "  SPARQL11_Algebra.ml patched."

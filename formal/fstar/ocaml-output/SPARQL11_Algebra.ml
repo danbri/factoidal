@@ -2924,7 +2924,7 @@ let eval_bgp (patterns : bgp) (g : RDF_Graph_Executable.rdf_graph) :
   solution_sequence= eval_bgp_store patterns (graph_to_store g)
 let join (omega1 : solution_sequence) (omega2 : solution_sequence) :
   solution_sequence=
-  sse_concat_map
+  RDF_List_Helpers.concatMap_tr
     (fun mu1 ->
        list_filter_map
          (fun mu2 ->
@@ -3043,7 +3043,7 @@ let path_result_to_solutions (ps : pattern_subject) (pt : pattern_term)
                 mu_o)) pairs
 let left_join (omega1 : solution_sequence) (omega2 : solution_sequence)
   (filter_expr : expr) : solution_sequence=
-  sse_concat_map
+  RDF_List_Helpers.concatMap_tr
     (fun mu1 ->
        let joins =
          list_filter_map
@@ -3212,7 +3212,7 @@ let left_join_with_graph (omega1 : solution_sequence)
   (omega2 : solution_sequence) (filter_expr : expr)
   (g : RDF_Graph_Executable.rdf_graph)
   (ds : RDF_Graph_Executable.rdf_dataset) : solution_sequence=
-  sse_concat_map
+  RDF_List_Helpers.concatMap_tr
     (fun mu1 ->
        let joins =
          list_filter_map
@@ -3255,7 +3255,7 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store)
   | GP_BGP bgp1 -> eval_bgp_store bgp1 gs
   | GP_Join (p1, GP_ServiceVar (v, inner, silent)) ->
       let omega1 = eval_pattern_store p1 gs dss in
-      sse_concat_map
+      RDF_List_Helpers.concatMap_tr
         (fun mu ->
            match sm_lookup v mu with
            | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI iri) ->
@@ -3264,7 +3264,7 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store)
                  (match service_endpoint_lookup iri with
                   | FStar_Pervasives_Native.Some remote_gs ->
                       let omega2 = eval_pattern_store inner remote_gs dss in
-                      sse_concat_map
+                      RDF_List_Helpers.concatMap_tr
                         (fun mu2 ->
                            if sm_compatible mu mu2
                            then [sm_merge mu mu2]
@@ -3275,7 +3275,7 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store)
            | uu___ -> if silent then [mu] else []) omega1
   | GP_Join (GP_ServiceVar (v, inner, silent), p2) ->
       let omega2 = eval_pattern_store p2 gs dss in
-      sse_concat_map
+      RDF_List_Helpers.concatMap_tr
         (fun mu ->
            match sm_lookup v mu with
            | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI iri) ->
@@ -3284,7 +3284,7 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store)
                  (match service_endpoint_lookup iri with
                   | FStar_Pervasives_Native.Some remote_gs ->
                       let omega1 = eval_pattern_store inner remote_gs dss in
-                      sse_concat_map
+                      RDF_List_Helpers.concatMap_tr
                         (fun mu1 ->
                            if sm_compatible mu mu1
                            then [sm_merge mu mu1]
@@ -3326,12 +3326,12 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store)
                 eval_pattern_store p' ngs dss
             | FStar_Pervasives_Native.None -> [])
        | PT_Var v ->
-           sse_concat_map
+           RDF_List_Helpers.concatMap_tr
              (fun ngs ->
                 let ng_results = eval_pattern_store p' ngs.ngs_store dss in
                 if RDF_Graph_Executable.is_iri ngs.ngs_name
                 then
-                  sse_concat_map
+                  RDF_List_Helpers.concatMap_tr
                     (fun mu ->
                        match sm_bind_if_compatible v
                                (RDF_Graph_Executable.T_IRI (ngs.ngs_name)) mu
@@ -5242,7 +5242,7 @@ let rec eval_property_path (p : property_path)
   (g : RDF_Graph_Executable.rdf_graph) : path_result=
   match p with
   | PP_IRI iri ->
-      sse_concat_map
+      RDF_List_Helpers.concatMap_tr
         (fun t ->
            if t.RDF_Graph_Executable.p = iri
            then
@@ -5251,7 +5251,7 @@ let rec eval_property_path (p : property_path)
            else []) g
   | PP_Inverse pp ->
       let pairs = eval_property_path pp g in
-      sse_concat_map
+      RDF_List_Helpers.concatMap_tr
         (fun pair ->
            let uu___ = pair in
            match uu___ with
@@ -5259,12 +5259,12 @@ let rec eval_property_path (p : property_path)
   | PP_Sequence (p1, p2) ->
       let r1 = eval_property_path p1 g in
       let r2 = eval_property_path p2 g in
-      sse_concat_map
+      RDF_List_Helpers.concatMap_tr
         (fun pair1 ->
            let uu___ = pair1 in
            match uu___ with
            | (s, mid1) ->
-               sse_concat_map
+               RDF_List_Helpers.concatMap_tr
                  (fun pair2 ->
                     let uu___1 = pair2 in
                     match uu___1 with
@@ -5286,12 +5286,12 @@ let rec eval_property_path (p : property_path)
       let step = eval_property_path pp g in
       let extend current =
         let new_pairs =
-          sse_concat_map
+          RDF_List_Helpers.concatMap_tr
             (fun pair1 ->
                let uu___ = pair1 in
                match uu___ with
                | (s, mid) ->
-                   sse_concat_map
+                   RDF_List_Helpers.concatMap_tr
                      (fun pair2 ->
                         let uu___1 = pair2 in
                         match uu___1 with
@@ -5318,12 +5318,12 @@ let rec eval_property_path (p : property_path)
       let step = eval_property_path pp g in
       let extend current =
         let new_pairs =
-          sse_concat_map
+          RDF_List_Helpers.concatMap_tr
             (fun pair1 ->
                let uu___ = pair1 in
                match uu___ with
                | (s, mid) ->
-                   sse_concat_map
+                   RDF_List_Helpers.concatMap_tr
                      (fun pair2 ->
                         let uu___1 = pair2 in
                         match uu___1 with
@@ -5355,7 +5355,7 @@ let rec eval_property_path (p : property_path)
         if has_inverse && (Prims.op_Negation has_direct)
         then []
         else
-          sse_concat_map
+          RDF_List_Helpers.concatMap_tr
             (fun t ->
                if iri_in_list t.RDF_Graph_Executable.p excluded_direct
                then []
@@ -5366,7 +5366,7 @@ let rec eval_property_path (p : property_path)
         if has_direct && (Prims.op_Negation has_inverse)
         then []
         else
-          sse_concat_map
+          RDF_List_Helpers.concatMap_tr
             (fun t ->
                if iri_in_list t.RDF_Graph_Executable.p excluded_inverse
                then []

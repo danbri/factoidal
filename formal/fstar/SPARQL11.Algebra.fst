@@ -1907,7 +1907,7 @@ let eval_bgp (patterns : bgp) (g : rdf_graph) : solution_sequence =
 (* Join: compatible merge of solution mappings from two patterns *)
 (* Ω1 Join Ω2 = { merge(μ1, μ2) | μ1 ∈ Ω1, μ2 ∈ Ω2, compatible(μ1, μ2) } *)
 let join (omega1 omega2 : solution_sequence) : solution_sequence =
-  List.Tot.concatMap
+  Lh.concatMap_tr
     (fun mu1 -> list_filter_map
       (fun mu2 -> if sm_compatible mu1 mu2 then Some (sm_merge mu1 mu2) else None)
       omega2)
@@ -1971,7 +1971,7 @@ let path_result_to_solutions (ps : pattern_subject) (pt : pattern_term)
 
 (* LeftJoin (OPTIONAL): join + unmatched from left *)
 let left_join (omega1 omega2 : solution_sequence) (filter_expr : expr) : solution_sequence =
-  List.Tot.concatMap
+  Lh.concatMap_tr
     (fun mu1 ->
       let joins = list_filter_map
         (fun mu2 ->
@@ -2141,7 +2141,7 @@ let left_join_with_graph
   (omega1 omega2 : solution_sequence) (filter_expr : expr)
   (g : rdf_graph) (ds : rdf_dataset)
   : solution_sequence =
-  List.Tot.concatMap
+  Lh.concatMap_tr
     (fun mu1 ->
       let joins = list_filter_map
         (fun mu2 ->
@@ -2191,7 +2191,7 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store) (dss : r
        solution. Issue #57 Phase 3. Termination: [inner] is structurally
        smaller than the outer [GP_Join _ (GP_ServiceVar _ inner _)]. *)
     let omega1 = eval_pattern_store p1 gs dss in
-    List.Tot.concatMap
+    Lh.concatMap_tr
       (fun mu ->
         match sm_lookup v mu with
         | Some (T_IRI iri) ->
@@ -2199,7 +2199,7 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store) (dss : r
             (match service_endpoint_lookup iri with
              | Some remote_gs ->
                let omega2 = eval_pattern_store inner remote_gs dss in
-               List.Tot.concatMap
+               Lh.concatMap_tr
                  (fun mu2 ->
                    if sm_compatible mu mu2 then [sm_merge mu mu2] else [])
                  omega2
@@ -2212,7 +2212,7 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store) (dss : r
     (* Symmetric: SERVICE ?var on the left side of a join. Evaluate the
        right side first to obtain bindings for [v]. *)
     let omega2 = eval_pattern_store p2 gs dss in
-    List.Tot.concatMap
+    Lh.concatMap_tr
       (fun mu ->
         match sm_lookup v mu with
         | Some (T_IRI iri) ->
@@ -2220,7 +2220,7 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store) (dss : r
             (match service_endpoint_lookup iri with
              | Some remote_gs ->
                let omega1 = eval_pattern_store inner remote_gs dss in
-               List.Tot.concatMap
+               Lh.concatMap_tr
                  (fun mu1 ->
                    if sm_compatible mu mu1 then [sm_merge mu mu1] else [])
                  omega1
@@ -2280,11 +2280,11 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store) (dss : r
         | None -> [])  (* Named graph not in dataset → empty *)
      | PT_Var v ->
        (* GRAPH ?var { p } — iterate over all named graphs, binding ?var *)
-       List.Tot.concatMap
+       Lh.concatMap_tr
          (fun (ngs : named_graph_store) ->
            let ng_results = eval_pattern_store p' ngs.ngs_store dss in
            if is_iri ngs.ngs_name then
-             List.Tot.concatMap
+             Lh.concatMap_tr
                (fun mu ->
                  match sm_bind_if_compatible v (T_IRI ngs.ngs_name) mu with
                  | Some mu' -> [mu']
@@ -4042,7 +4042,7 @@ let rec eval_property_path (p : property_path) (g : rdf_graph)
   match p with
   | PP_IRI iri ->
     (* { (s, o) | (s, iri, o) ∈ G } *)
-    List.Tot.concatMap
+    Lh.concatMap_tr
       (fun (t : triple) ->
         if t.p = iri then [(subject_to_term t.s, t.o)] else [])
       g
@@ -4050,7 +4050,7 @@ let rec eval_property_path (p : property_path) (g : rdf_graph)
   | PP_Inverse pp ->
     (* { (o, s) | (s, o) ∈ eval pp G }, filtering out pairs where o is a literal *)
     let pairs = eval_property_path pp g in
-    List.Tot.concatMap
+    Lh.concatMap_tr
       (fun (pair : rdf_term * rdf_term) ->
         let (s, o) = pair in
         if is_not_literal o then [(o, s)] else [])
@@ -4061,10 +4061,10 @@ let rec eval_property_path (p : property_path) (g : rdf_graph)
        Bag semantics: preserve duplicates from different paths *)
     let r1 = eval_property_path p1 g in
     let r2 = eval_property_path p2 g in
-    List.Tot.concatMap
+    Lh.concatMap_tr
       (fun (pair1 : rdf_term * rdf_term) ->
         let (s, mid1) = pair1 in
-        List.Tot.concatMap
+        Lh.concatMap_tr
           (fun (pair2 : rdf_term * rdf_term) ->
             let (mid2, o) = pair2 in
             if rdf_term_eq mid1 mid2 then [(s, o)] else [])
@@ -4091,10 +4091,10 @@ let rec eval_property_path (p : property_path) (g : rdf_graph)
     (* Extend: for each (s, mid) in current and (mid2, o) in step where mid=mid2,
        add (s, o) if not already present *)
     let extend (current : path_result) : path_result =
-      let new_pairs = List.Tot.concatMap
+      let new_pairs = Lh.concatMap_tr
         (fun (pair1 : rdf_term * rdf_term) ->
           let (s, mid) = pair1 in
-          List.Tot.concatMap
+          Lh.concatMap_tr
             (fun (pair2 : rdf_term * rdf_term) ->
               let (mid2, o) = pair2 in
               if rdf_term_eq mid mid2 then [(s, o)] else [])
@@ -4118,10 +4118,10 @@ let rec eval_property_path (p : property_path) (g : rdf_graph)
     let nodes = graph_nodes g in
     let step = eval_property_path pp g in
     let extend (current : path_result) : path_result =
-      let new_pairs = List.Tot.concatMap
+      let new_pairs = Lh.concatMap_tr
         (fun (pair1 : rdf_term * rdf_term) ->
           let (s, mid) = pair1 in
-          List.Tot.concatMap
+          Lh.concatMap_tr
             (fun (pair2 : rdf_term * rdf_term) ->
               let (mid2, o) = pair2 in
               if rdf_term_eq mid mid2 then [(s, o)] else [])
@@ -4148,13 +4148,13 @@ let rec eval_property_path (p : property_path) (g : rdf_graph)
     let has_inverse = List.Tot.length excluded_inverse > 0 in
     let direct_pairs =
       if has_inverse && not has_direct then []
-      else List.Tot.concatMap
+      else Lh.concatMap_tr
         (fun (t : triple) ->
           if iri_in_list t.p excluded_direct then [] else [(subject_to_term t.s, t.o)])
         g in
     let inverse_pairs =
       if has_direct && not has_inverse then []
-      else List.Tot.concatMap
+      else Lh.concatMap_tr
         (fun (t : triple) ->
           if iri_in_list t.p excluded_inverse then [] else [(t.o, subject_to_term t.s)])
         g in

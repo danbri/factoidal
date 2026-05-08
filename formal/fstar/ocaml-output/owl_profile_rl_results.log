@@ -1,5 +1,6 @@
+Closure regime: RL
 OWL 2 test catalog: /home/user/factoidal/third_party/testing/owl/profile-RL.rdf
-  parsed 1896 triples in 0.04s
+  parsed 1896 triples in 0.09s
 Totals: 91 test cases
   PositiveEntailmentTest:    30
   NegativeEntailmentTest:    6
@@ -130,7 +131,7 @@ Running 76 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  owl2-rl-valid-oneof
   PASS  owl2-rl-valid-rightside-allvaluesfrom
 
-Profile-RL ConsistencyTests: 75 pass, 1 fail (out of 76) in 0.98s
+Profile-RL ConsistencyTests: 75 pass, 1 fail (out of 76) in 0.95s
 
 Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  DisjointClasses-002
@@ -148,4 +149,4 @@ Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   FAIL/no-premise  functionality-clash
   FAIL/no-premise  string-integer-clash
 
-Profile-RL InconsistencyTests: 2 pass, 12 fail (out of 14) in 0.16s
+Profile-RL InconsistencyTests: 2 pass, 12 fail (out of 14) in 0.15s
