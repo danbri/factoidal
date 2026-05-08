@@ -469,7 +469,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   )
   NATIVE_SOURCES=(
     $COMMON_MODULES
-    w3c_runner.ml
+    ../../../bin/w3c-runner/w3c_runner.ml
     factoidal_http.ml
     ../../../bin/factoidal-serve/factoidal_serve.ml
     ../../../bin/factoidal-explain/factoidal_explain.ml
@@ -500,7 +500,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
-      w3c_runner.ml \
+      ../../../bin/w3c-runner/w3c_runner.ml \
       -o "$BINDIR/w3c_runner"
     cat _ocamlopt_w3c_runner.log
     echo "  Built: bin/${PLATFORM}/w3c_runner ($(wc -c < "$BINDIR/w3c_runner") bytes)"
@@ -716,7 +716,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
   )
   JS_SOURCES=(
     "${FSTAR_MODULES[@]}"
-    w3c_runner.ml
+    ../../../bin/w3c-runner/w3c_runner.ml
     ../../../bin/factoidal-serve/factoidal_serve.ml
     ../../../bin/factoidal-serve/factoidal_serve_jsoo.ml
     ../../../bin/factoidal-cli/factoidal_cli.ml
@@ -748,7 +748,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
       ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
       -custom parquet_zstd_stubs_jsoo.c \
       "${FSTAR_MODULES[@]}" \
-      w3c_runner.ml \
+      ../../../bin/w3c-runner/w3c_runner.ml \
       -o w3c_runner.byte
     grep -i error _ocamlc_w3c_runner.log || true
 
