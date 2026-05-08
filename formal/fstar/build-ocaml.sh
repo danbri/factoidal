@@ -472,7 +472,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     w3c_runner.ml
     factoidal_http.ml
     ../../../bin/factoidal-serve/factoidal_serve.ml
-    factoidal_explain.ml
+    ../../../bin/factoidal-explain/factoidal_explain.ml
     factoidal_cli.ml
     factoidal_http_main.ml
     ../../../bin/owl-runner/owl_runner.ml
@@ -522,11 +522,12 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       ocamlfind ocamlopt -g -thread -package fstar.lib,str,zarith,sha,digestif.c,unix,threads.posix -linkpkg -w -8-14-26 \
       $STATIC_FLAGS \
       -I ../../../bin/factoidal-serve \
+      -I ../../../bin/factoidal-explain \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
       factoidal_http.ml \
       ../../../bin/factoidal-serve/factoidal_serve.ml \
-      factoidal_explain.ml \
+      ../../../bin/factoidal-explain/factoidal_explain.ml \
       factoidal_cli.ml \
       -o "$BINDIR/factoidal"
     cat _ocamlopt_factoidal.log
@@ -766,8 +767,9 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     run_with_heartbeat "ocamlc factoidal.byte" "_ocamlc_factoidal.log" -- \
       ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
       -custom parquet_zstd_stubs_jsoo.c \
+      -I ../../../bin/factoidal-explain \
       "${FSTAR_MODULES[@]}" \
-      factoidal_explain.ml \
+      ../../../bin/factoidal-explain/factoidal_explain.ml \
       factoidal_serve.ml \
       factoidal_cli.ml \
       -o factoidal.byte || FACTOIDAL_BYTE_RC=$?
