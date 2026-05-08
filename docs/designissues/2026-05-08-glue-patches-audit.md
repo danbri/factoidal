@@ -68,9 +68,9 @@ plan](2026-05-07-query-planning-fstar-recovery.md)).
 | `cottas_column_seq_runtime.sh` | ASSUME-OK | `cottas_column` abstract type + `Array.length` / `Array.unsafe_get`. Self-describes #11(c). |
 | `cottas_inmem_encoder_runtime.sh` | ASSUME-OK-WIP | Phase A scaffold (stub returns None). Phase A.5 will need re-audit when the encoder is filled out — encoder body must be byte-layout in F\*, not OCaml (per #11). |
 | `cottas_ondisk_runtime.sh` | ASSUME-OK | Self-describes Phase A+B migration to F\* (11/13 + 2/2 lookups now `Tot` in F\*). What's left here is I/O glue. |
-| `cottas_ondisk_z_lazy_open.sh` | NEEDS-AUDIT | Lazy-decode optimisation. Smells like execution-policy logic; needs read to confirm whether semantic decisions sneak in. |
+| `cottas_ondisk_z_lazy_open.sh` | ASSUME-OK | _Reaudit 2026-05-08:_ pure caching policy + lazy initialisation. The patch defers `collect_distinct` work for the subjects/objects parquet columns until the first lookup; predicates + graphs stay eager. Lookup results unchanged. State plumbing only — rule #11(c). |
 | `cottas_ondisk_zzzzz_ondisk_index.sh` | ASSUME-OK | mmap + byte-range I/O primitives (`mmap_companion_open`, `read_companion_u32_le`, etc.) realising 6 `assume val`s. Pure I/O. |
-| `cottas_ondisk_zzzzzz_lamed3_offset_idx.sh` | NEEDS-AUDIT | Per-(row-group, predicate-id) row-offset index. Index *building* is byte-layout (should be F\*); *use* may also encode pruning logic. |
+| `cottas_ondisk_zzzzzz_lamed3_offset_idx.sh` | **VIOLATION** | _Reaudit 2026-05-08:_ companion-file WRITER for `<cottas>.p.offsets` with end-to-end OCaml byte layout (magic `0x4f544f43`, version, num_rgs × num_predicates u64 offset table, packed u32 row-position data). The patch self-acknowledges "as a follow-up belongs in F\* as `RDF.CottasStore.OnDiskOffsetIdx`". Same canonical violation as `compound_po_writer.sh` — issue #100. |
 | `cottas_ondisk_zzzzzzzzzzzzz_compound_po_writer.sh` | **VIOLATION** | Companion-file WRITER. CLAUDE.md rule #11 explicitly forbids byte-layout in OCaml: "the byte assembly belongs in F\* (`serialize : data -> Tot (list u8)`), and the OCaml side reduces to `write_bytes`." This patch builds the `<cottas>.po.presence` file format end-to-end in OCaml. The patch self-claims "rule-#11(b)" but rule #11 has no (b) for companion-file writers — that taxonomy slot doesn't exist. |
 | `cottas_ondisk_zzzzzzzzzzzzzzzzz_token_lookup_runtime.sh` | ASSUME-OK | Hashtbl-based token-id lookup; thin dispatch over OCaml-side `Hashtbl<token, int>` infrastructure. Self-describes #11(c). |
 | `cottas_pagecache_global_runtime.sh` | ASSUME-OK | Process-level LRU page cache `ref` cell. F\* reasons about LRU semantics via pure helpers; OCaml owns only the storage cell. #11(c). |
@@ -79,33 +79,42 @@ plan](2026-05-07-query-planning-fstar-recovery.md)).
 | `util_log_runtime.sh` | ASSUME-OK | `emit` (logging) realisation. Pure I/O #11(a). |
 | `parquet_zstd_stubs.c` | ASSUME-OK | Vendored zstd C stubs — host call-out. |
 
-**Block B score:** 11 ASSUME-OK (one WIP) · 2 NEEDS-AUDIT · 1 VIOLATION
+**Block B score** _(after 2026-05-08 reaudit of the two NEEDS-AUDIT
+entries)_: 12 ASSUME-OK (one WIP) · 2 VIOLATION
 
-The single confirmed VIOLATION:
+Two confirmed VIOLATIONs (both same canonical pattern — companion
+file with byte-layout assembled in OCaml):
 
 - `cottas_ondisk_zzzzzzzzzzzzz_compound_po_writer.sh` (issue #104,
-  handle nun4) — companion-file writer with end-to-end OCaml byte
-  layout. This is the canonical rule #11 violation pattern.
+  handle nun4) — `<cottas>.po.presence` writer.
+- `cottas_ondisk_zzzzzz_lamed3_offset_idx.sh` (issue #100, handle
+  Lamed3) — `<cottas>.p.offsets` writer.
 
-Two NEEDS-AUDIT entries:
+Both should reduce to a thin `write_bytes` over an F\* `serialize`
+function (`RDF.CottasStore.OnDiskOffsetIdx.serialize_offsets` and a
+sister `RDF.CottasStore.OnDiskCompoundPo.serialize_compound_po`).
 
-- `cottas_ondisk_z_lazy_open.sh` — lazy-decode policy may smuggle
-  decisions.
-- `cottas_ondisk_zzzzzz_lamed3_offset_idx.sh` — per-(rg, pid) offset
-  index construction.
+NEEDS-AUDIT cleared (`cottas_ondisk_z_lazy_open.sh` upgraded to
+ASSUME-OK after deeper read — see Block B table).
 
 ## Aggregate
 
 | Category | Block A | Block B | Total |
 |---|---|---|---|
-| ASSUME-OK | 11 | 11 | 22 |
+| ASSUME-OK | 11 | 12 | 23 |
 | ASSUME-OK-PROVISIONAL | 2 (#64, #65) | 0 | 2 |
 | ASSUME-OK-WIP | 0 | 1 (inmem encoder) | 1 |
-| VIOLATION | 4 (#53, #66, #67, #95) | 1 (po-writer) | 5 |
-| NEEDS-AUDIT | 0 | 2 | 2 |
+| VIOLATION | 4 (#53, #66, #67, #95) | 2 (po-writer, lamed3) | 6 |
+| NEEDS-AUDIT | 0 | 0 (cleared 2026-05-08) | 0 |
 | **Total** | **15** | **14** (incl. .c) | **29** |
 
 (Two WIP/PROVISIONAL count under ASSUME-OK in the aggregate.)
+
+**Update 2026-05-08:** Both NEEDS-AUDIT entries resolved.
+`cottas_ondisk_z_lazy_open.sh` is ASSUME-OK (caching policy only).
+`cottas_ondisk_zzzzzz_lamed3_offset_idx.sh` is VIOLATION (companion
+file byte layout assembled in OCaml, same shape as #104). Total
+VIOLATION count: 5 → 6.
 
 ## Recovery Order
 
@@ -136,7 +145,14 @@ must be migrated to F\*. Estimated effort:
    OCaml side to `write_bytes`. Add a hash round-trip CI test
    ([io-verification pattern](2026-05-07-io-verification-and-third-party.md)).
 
-**Total:** ~3 weeks of focused work, parallelisable to ~1.5 weeks if
+6. **#100 / Lamed3** offsets writer — **3 days** _(after #104 lands)_.
+   Same shape as #104; once the F\* serialise + round-trip pattern is
+   in place, this is a pure copy-paste of the format definition into
+   `RDF.CottasStore.OnDiskOffsetIdx.fst`. Format: magic
+   `0x4f544f43` (`COTO`), version, num_rgs × num_predicates u64
+   offset table, packed u32 row-position data.
+
+**Total:** ~3.5 weeks of focused work, parallelisable to ~2 weeks if
 two engineers split blocks A and B.
 
 After landing 1–5 plus auditing the two NEEDS-AUDIT entries (which
