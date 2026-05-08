@@ -4,6 +4,18 @@ on:
   push:
     branches: [main, master, claude/main]
     paths: [docs/**]
+  # Bot-pushed commits that use the default GITHUB_TOKEN do NOT
+  # trigger other workflows (GitHub limitation, preventing
+  # infinite loops). So dashboard-refresh's "ci: refresh dashboard"
+  # auto-commits and w3c-tests's "ci(linux-x86_64): generated docs
+  # artifacts" updates land on origin but never fire deploy-pages
+  # via the push trigger above. workflow_run subscribes deploy-pages
+  # to those workflows directly so the dashboard-pages publication
+  # happens whenever upstream successfully refreshes the data.
+  workflow_run:
+    workflows: ["Dashboard Refresh", "W3C Test Suite"]
+    types: [completed]
+    branches: [main, master, claude/main]
   workflow_dispatch:
 
 permissions:
