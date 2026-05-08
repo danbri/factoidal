@@ -1,27 +1,4 @@
 open Prims
-
-(* Stack-safe list helpers — post-extraction patch (issue #95).
-   sse_concat_map is `flatten (map f l)`, which on
-   ~889k-element solution_sequences overflows the native stack via
-   non-tail-rec append inside flatten. These helpers use
-   List.rev_append + List.rev (both tail-rec) so the same pure
-   operation runs in constant stack. Observationally identical to
-   the originals. *)
-let sse_concat_map f l =
-  Stdlib.List.rev
-    (Stdlib.List.fold_left
-       (fun acc x -> Stdlib.List.rev_append (f x) acc)
-       [] l)
-let sse_filter_map f l =
-  Stdlib.List.rev
-    (Stdlib.List.fold_left
-       (fun acc x ->
-          match f x with
-          | FStar_Pervasives_Native.Some y -> y :: acc
-          | FStar_Pervasives_Native.None -> acc)
-       [] l)
-let sse_append xs ys =
-  Stdlib.List.rev_append (Stdlib.List.rev xs) ys
 let lit_lexical (l : RDF_Graph_Executable.wf_literal) : Prims.string=
   l.RDF_Graph_Executable.lexical_form
 let lit_datatype (l : RDF_Graph_Executable.wf_literal) :
