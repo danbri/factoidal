@@ -208,12 +208,35 @@ extract_owl_scores () {
   done
 }
 
-extract_owl_scores OWL_TPE  "$OWL_TPE_LOG"
-extract_owl_scores OWL_TNE  "$OWL_TNE_LOG"
-extract_owl_scores OWL_TCON "$OWL_TCON_LOG"
-extract_owl_scores OWL_TINC "$OWL_TINC_LOG"
-extract_owl_scores OWL_EL   "$OWL_EL_LOG"
-extract_owl_scores OWL_QL   "$OWL_QL_LOG"
+extract_owl_scores OWL_TPE   "$OWL_TPE_LOG"
+extract_owl_scores OWL_TNE   "$OWL_TNE_LOG"
+extract_owl_scores OWL_TCON  "$OWL_TCON_LOG"
+extract_owl_scores OWL_TINC  "$OWL_TINC_LOG"
+extract_owl_scores OWL_EL    "$OWL_EL_LOG"
+extract_owl_scores OWL_QL    "$OWL_QL_LOG"
+# semantics-direct.rdf — heaviest catalog (1127 tests). Runs in a
+# separate scheduled workflow, not in the dashboard-refresh hot path.
+extract_owl_scores OWL_SEMDL "$OWL_SEMDL_LOG"
+
+# RIF Core scoring derived from sparql_results.log (the SPARQL
+# entailment runner already executes RIF tests as part of the
+# entailment regime sub-suite). We surface them on the dashboard
+# as a dedicated row so RIF Core conformance is visible at a
+# glance, not buried under a SPARQL row.
+RIF_PRESENT=0; RIF_PASS=0; RIF_FAIL=0; RIF_TOTAL=0
+if [ -f "$SPARQL_LOG" ]; then
+  # `grep -c` always emits the count; exits non-zero on 0 matches.
+  # Use `|| true` (NOT `|| echo 0`) so we don't double-echo the
+  # zero count and end up with a multi-line value.
+  RIF_PASS=$(grep -cE "^[[:space:]]+PASS: RIF " "$SPARQL_LOG" || true)
+  RIF_FAIL=$(grep -cE "^[[:space:]]+FAIL: RIF " "$SPARQL_LOG" || true)
+  RIF_PASS=${RIF_PASS:-0}
+  RIF_FAIL=${RIF_FAIL:-0}
+  RIF_TOTAL=$((RIF_PASS + RIF_FAIL))
+  if [ "$RIF_TOTAL" -gt 0 ]; then
+    RIF_PRESENT=1
+  fi
+fi
 
 # --- RDFC-1.0 scoreboard (folded into the RDF table as suite "rdf-canon") ---
 # Score line in rdfc10_runner stdout:
@@ -648,13 +671,20 @@ emit_catalog_rows () {
   done
 }
 OWL_DL_ROWS=$( {
-  emit_catalog_rows OWL_TPE  "type-PosEnt"
-  emit_catalog_rows OWL_TNE  "type-NegEnt"
-  emit_catalog_rows OWL_TCON "type-Cons"
-  emit_catalog_rows OWL_TINC "type-Inc"
-  emit_catalog_rows OWL_EL   "profile-EL"
-  emit_catalog_rows OWL_QL   "profile-QL"
+  emit_catalog_rows OWL_TPE   "type-PosEnt"
+  emit_catalog_rows OWL_TNE   "type-NegEnt"
+  emit_catalog_rows OWL_TCON  "type-Cons"
+  emit_catalog_rows OWL_TINC  "type-Inc"
+  emit_catalog_rows OWL_EL    "profile-EL"
+  emit_catalog_rows OWL_QL    "profile-QL"
+  emit_catalog_rows OWL_SEMDL "sem-Direct"
 } )
+
+# RIF Core dedicated row (Phase 2.3c).
+RIF_ROW=""
+if [ "$RIF_PRESENT" -eq 1 ]; then
+  RIF_ROW=$(emit_owl_bar_row "RIF Core" "$RIF_PASS" "$RIF_FAIL" "$RIF_TOTAL")
+fi
 
 # Deferred-category counts are the `<test:TestCase>` occurrences in each
 # vendored OWL 2 Test Cases catalog file (Agent D scoping on 2026-04-24).
@@ -818,6 +848,7 @@ OWL_HTML=$(cat <<OWLEOF
   ${OWL_CONS_ROW}
   ${OWL_INC_ROW}
   ${OWL_DL_ROWS}
+  ${RIF_ROW}
 ${OWL_SKIP_ROWS}</div>
 <p style="margin: 0.3em 0 1em; color: var(--muted); font-size: 0.85em;">
   <strong>OWL 2 (W3C conformance):</strong>
