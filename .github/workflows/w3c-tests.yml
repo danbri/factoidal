@@ -555,6 +555,22 @@ jobs:
           cd formal/fstar
           ./build-ocaml.sh test
 
+      - name: Smoke test JS
+        # Parity check for the JS runtime (js_of_ocaml). Mirrors the
+        # Wasm smoke immediately below so a regression in either
+        # browser runtime surfaces independently. Both are
+        # continue-on-error: native results are authoritative.
+        continue-on-error: true
+        run: |
+          cd docs/fstar-extracted
+          RESULT=$(node w3c-runner.js bind 2>&1 || true)
+          echo "$RESULT"
+          if echo "$RESULT" | grep -q '^  bind[[:space:]]*pass:10 fail:0'; then
+            echo "JS smoke test passed (bind 10/10)."
+          else
+            echo "::warning::JS smoke test did not produce bind 10/10 — js_of_ocaml side may be regressed; native dashboard is authoritative."
+          fi
+
       - name: Smoke test Wasm
         # Soft check: log a warning + continue rather than fail the
         # job. The wasm side has known-flaky external-binding issues
@@ -572,6 +588,19 @@ jobs:
           else
             echo "::warning::Wasm smoke test did not produce bind 10/10 — wasm side may be regressed; native dashboard is authoritative."
           fi
+
+      - name: Full JS suite (SPARQL + RDF, diagnostic only)
+        # Mirror the Full Wasm suite. continue-on-error keeps the
+        # heavy pipeline dashboard-publishing path independent of any
+        # JS-runtime regression.
+        if: always()
+        continue-on-error: true
+        run: |
+          cd docs/fstar-extracted
+          JS_RC=0
+          node w3c-runner.js --all 2>&1 | tee js_results.log || JS_RC=$?
+          echo "JS runner exit: $JS_RC"
+          grep -E '^TOTAL' js_results.log || true
 
       - name: Full Wasm suite (SPARQL + RDF)
         # Run even if smoke test failed — the full suite is diagnostic
