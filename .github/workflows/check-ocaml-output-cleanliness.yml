@@ -43,21 +43,26 @@ jobs:
           # justification; CI does not enforce that, but reviewers
           # should.
           ALLOWLIST=(
-            # Glue realisation: provides Fstar_pure_hashes.{sha256,sha1,md5}
-            # used by 63_regex_hash_uuid_stubs.sh to wire RDF_Canonical's
-            # assume val hash_sha256. Pure OCaml; rule #11(c) crypto.
-            # Relocation candidate: bin/fstar-pure-hashes/ (post-#200 D).
+            # Vendored crypto: pure-OCaml MD5/SHA-1/SHA-2 implementations
+            # provide Fstar_pure_hashes.{sha256,sha1,md5} used by
+            # 63_regex_hash_uuid_stubs.sh to wire SPARQL11.Algebra's
+            # hash_* assume vals + RDF_Canonical's hash_sha256.
+            # Rule #11(c) — vendored crypto primitive realisation;
+            # permanent fixture, not a retirement candidate.
             "fstar_pure_hashes.ml"
-            # Smoketest harness; relocation candidate is bin/parquet-probe/.
-            "parquet_probe.ml"
-            # Stub: SPARQL parser fallback used only by test_fstar_parser.
-            # Both are dead-ish; retirement candidate (already flagged in
-            # earlier session notes).
+            # parquet_probe.ml relocated to bin/parquet-probe/ on
+            # 2026-05-08 (#200 PR5). No longer in ocaml-output/.
+            # SPARQL parser assume-val realisation: provides
+            # Sparql_parser_stubs.{utf8_of_codepoint,process_iri_escapes,
+            # process_string_escapes}_impl. Wired by
+            # formal/fstar/sparql-parser-patches.sh into the F*-extracted
+            # SPARQL11_Parser.ml. Pure OCaml; rule #11(c) host-engine
+            # call-out. Permanent fixture — not a retirement candidate.
             "sparql_parser_stubs.ml"
-            "test_fstar_parser.ml"
-            # HTTP client harness; relocation candidate is bin/factoidal-
-            # http-client/ once the CLI's --remote-endpoint path stabilises.
-            "factoidal_http_client.ml"
+            # test_fstar_parser.ml retired 2026-05-08 (dead — no references
+            # in build scripts; smoke test that was never integrated).
+            # factoidal_http_client.ml relocated to bin/factoidal-http-client/
+            # on 2026-05-08 (#200 PR5). No longer in ocaml-output/.
           )
 
           # Build a regex match for the allowlist for quick lookup.

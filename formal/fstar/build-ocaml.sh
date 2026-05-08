@@ -598,6 +598,45 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     fi
     echo "  Built: bin/${PLATFORM}/rdfc10_runner ($(wc -c < "$BINDIR/rdfc10_runner") bytes)"
 
+    # factoidal_http_client — minimal HTTP/1.1 client I/O glue around
+    # the F*-extracted SPARQL.HTTP.Client module. Has a module-init
+    # smoke-test hook gated on FACTOIDAL_HTTP_CLIENT_SMOKE=1 in the
+    # env. Source lives in bin/factoidal-http-client/ per #200 PR5
+    # (relocated 2026-05-08).
+    FACTOIDAL_HTTP_CLIENT_RC=0
+    run_with_heartbeat "ocamlopt factoidal_http_client" "_ocamlopt_factoidal_http_client.log" -- \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      ../../../bin/factoidal-http-client/factoidal_http_client.ml \
+      -o "$BINDIR/factoidal_http_client" || FACTOIDAL_HTTP_CLIENT_RC=$?
+    cat _ocamlopt_factoidal_http_client.log 2>/dev/null || true
+    if [[ "$FACTOIDAL_HTTP_CLIENT_RC" -ne 0 ]]; then
+      echo "  WARNING: factoidal_http_client build failed (ocamlopt rc=$FACTOIDAL_HTTP_CLIENT_RC)" >&2
+    else
+      echo "  Built: bin/${PLATFORM}/factoidal_http_client ($(wc -c < "$BINDIR/factoidal_http_client") bytes)"
+    fi
+
+    # parquet_probe — diagnostic CLI for poking at parquet metadata
+    # headers (magic, row groups, columns, page offsets). Built
+    # against the F*-extracted Parquet.Footer module. Source lives
+    # in bin/parquet-probe/ per #200 D Phase 8 (relocated 2026-05-08).
+    PARQUET_PROBE_RC=0
+    run_with_heartbeat "ocamlopt parquet_probe" "_ocamlopt_parquet_probe.log" -- \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      ../../../bin/parquet-probe/parquet_probe.ml \
+      -o "$BINDIR/parquet_probe" || PARQUET_PROBE_RC=$?
+    cat _ocamlopt_parquet_probe.log 2>/dev/null || true
+    if [[ "$PARQUET_PROBE_RC" -ne 0 ]]; then
+      echo "  WARNING: parquet_probe build failed (ocamlopt rc=$PARQUET_PROBE_RC)" >&2
+      echo "  This is a diagnostic CLI; main binaries are unaffected." >&2
+    else
+      echo "  Built: bin/${PLATFORM}/parquet_probe ($(wc -c < "$BINDIR/parquet_probe") bytes)"
+    fi
+
     # cottas_ondisk_smoketest — issue #100 Phase 2 acceptance harness.
     # Opens a COTTAS file via the F*-extracted on-disk store, reports
     # startup/post-open/post-query RSS in MB, runs cottas_ondisk_estimate
