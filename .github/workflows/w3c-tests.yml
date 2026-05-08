@@ -101,10 +101,14 @@ jobs:
             echo "Schedule trigger; head age $AGE s (≥ 30 min). Proceeding through debounce."
           fi
 
-          # Tail-edge debounce: sleep 5 min, then check if anyone else
+          # Tail-edge debounce: sleep 60s, then check if anyone else
           # pushed during the wait. If yes, defer to the newer run.
-          echo "::group::Debounce — waiting 300s for activity to settle"
-          sleep 300
+          # Was 300s — too aggressive for the claude/main push cadence
+          # (5-15 min between commits during active work). With 60s,
+          # most rapid bursts still coalesce, but the dashboard
+          # refreshes within ~30 min instead of "never".
+          echo "::group::Debounce — waiting 60s for activity to settle"
+          sleep 60
           echo "::endgroup::"
 
           BRANCH="${REF#refs/heads/}"
@@ -116,7 +120,7 @@ jobs:
             exit 0
           fi
 
-          echo "Quiet for 5 minutes. Proceeding to W3C suite."
+          echo "Quiet for 60 seconds. Proceeding to W3C suite."
           echo "proceed=true" >> "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------------
@@ -230,7 +234,11 @@ jobs:
           echo "Affected: [$SUITES_LINE] (mode=$MODE)"
 
   native-shadow:
-    needs: [debounce, affected-suites]
+    # affected-suites is informational only (per e2cae02). Don't make
+    # the heavy pipeline depend on it — a dispatcher script hiccup
+    # shouldn't block test execution. native-shadow continues to
+    # depend only on debounce.
+    needs: debounce
     if: needs.debounce.outputs.proceed == 'true'
     # Dual-platform native shadow builds. Each matrix leg auto-commits
     # binaries to bin/ci-<platform>/ (NOT bin/<platform>/ — those stay
@@ -481,7 +489,8 @@ jobs:
   browser-artifacts:
     # Linux-only browser/runtime artifacts. This job owns JS / wasm / docs
     # generation and can fail independently from the native shadow binaries.
-    needs: [native-shadow, affected-suites]
+    # Same affected-suites decoupling as native-shadow.
+    needs: native-shadow
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

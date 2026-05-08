@@ -164,6 +164,23 @@ GIT_SHA_FULL=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || echo "unknown"
 GIT_BRANCH=$(git -C "$SCRIPT_DIR" branch --show-current 2>/dev/null || echo "unknown")
 GIT_SUBJECT=$(git -C "$SCRIPT_DIR" log -1 --pretty=%s 2>/dev/null || echo "")
 
+# Tests-data timestamp: the most-recent commit that touched any of the
+# *_results.log inputs. Distinguishes "page rendered now" from "test
+# data is from N hours ago". Falls back to the page-render timestamp
+# if no log files are tracked or git is unavailable.
+TESTS_TIMESTAMP_RAW=$(git -C "$SCRIPT_DIR" log -1 --format='%ai' -- \
+  "$SPARQL_LOG" "$RDF_LOG" "$RDFC10_LOG" "$OWL_LOG" 2>/dev/null | head -1)
+if [ -n "$TESTS_TIMESTAMP_RAW" ]; then
+  # macOS BSD `date` rejects the GNU -d flag; fall back through both.
+  TESTS_TIMESTAMP_HUMAN=$(date -u -d "$TESTS_TIMESTAMP_RAW" +"%Y-%m-%d %H:%M UTC" 2>/dev/null || \
+    date -u -j -f "%Y-%m-%d %H:%M:%S %z" "$TESTS_TIMESTAMP_RAW" +"%Y-%m-%d %H:%M UTC" 2>/dev/null || \
+    echo "$TESTS_TIMESTAMP_RAW")
+else
+  TESTS_TIMESTAMP_HUMAN="$TIMESTAMP_HUMAN"
+fi
+TESTS_GIT_SHA=$(git -C "$SCRIPT_DIR" log -1 --format='%h' -- \
+  "$SPARQL_LOG" "$RDF_LOG" "$RDFC10_LOG" "$OWL_LOG" 2>/dev/null || echo "unknown")
+
 # --- CSV artifact ------------------------------------------------------------
 CSV="$OUTPUT_DIR/latest.csv"
 {
@@ -664,24 +681,30 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
   header nav { margin-top: 0.7em; font-size: 0.9em; }
   header nav a { margin-right: 1.2em; color: var(--brand-dark); }
 
-  /* Top-right "rendered at" pill — moves the most-asked-for piece of
-     freshness signal to where the eye lands first, no scrolling. */
+  /* Top-right freshness panel — both timestamps in one place, no scroll.
+     "Rendered" = when this HTML was last regenerated (lightweight,
+     updates per push). "Tests" = when the underlying *_results.log
+     last changed (heavy pipeline; may lag). When both match, the
+     test data is current with the page; when they differ, the gap
+     tells you how stale the data is. */
   .rendered-pill {
     position: absolute;
     top: 0; right: 0;
     background: var(--bg); border: 1px solid var(--border);
-    border-radius: 999px;
-    padding: 0.25em 0.85em;
-    font-size: 0.78em; color: var(--muted);
-    line-height: 1.3;
+    border-radius: 6px;
+    padding: 0.35em 0.7em;
+    font-size: 0.74em; color: var(--muted);
+    line-height: 1.35;
     white-space: nowrap;
     box-shadow: 0 1px 2px rgba(0,0,0,0.04);
   }
+  .rendered-pill .row { display: block; }
   .rendered-pill strong { color: var(--brand-dark); font-weight: 600; }
   .rendered-pill .label {
-    display: inline-block; margin-right: 0.4em;
+    display: inline-block; min-width: 4.4em;
     color: var(--muted); font-weight: 400;
   }
+  .rendered-pill.stale strong.tests { color: var(--warn); }
   @media (max-width: 720px) {
     .rendered-pill {
       position: static;
@@ -811,8 +834,9 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
 
 <header>
   <div class="inner">
-    <div class="rendered-pill" title="Page regenerated at this UTC time. The committed test logs may be older — see footer for the commit they came from.">
-      <span class="label">Rendered</span><strong>${TIMESTAMP_HUMAN}</strong>
+    <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
+      <span class="row"><span class="label">Rendered</span><strong>${TIMESTAMP_HUMAN}</strong></span>
+      <span class="row"><span class="label">Tests</span><strong class="tests">${TESTS_TIMESTAMP_HUMAN}</strong></span>
     </div>
     <h1>W3C test results</h1>
     <p>Per-suite pass/fail counts against the W3C SPARQL 1.1 and RDF 1.1 conformance suites.</p>
