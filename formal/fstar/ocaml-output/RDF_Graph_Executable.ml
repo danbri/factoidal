@@ -912,6 +912,8 @@ let owl_equivalentClass : wf_iri=
 let owl_equivalentProperty : wf_iri=
   "http://www.w3.org/2002/07/owl#equivalentProperty"
 let owl_differentFrom : wf_iri= "http://www.w3.org/2002/07/owl#differentFrom"
+let owl_propertyDisjointWith : wf_iri=
+  "http://www.w3.org/2002/07/owl#propertyDisjointWith"
 let is_owl_metapredicate (p : wf_iri) : Prims.bool=
   (((p = owl_sameAs) || (p = owl_inverseOf)) || (p = owl_equivalentClass)) ||
     (p = owl_equivalentProperty)
@@ -1281,6 +1283,117 @@ let owl_rule_inverse_functional (g : rdf_graph) : rdf_graph=
                 (let new_t =
                    { s = (t1.s); p = owl_sameAs; o = (subject_to_term z) } in
                  add_triple_if_new acc2 new_t)) acc zs
+       else acc) g g
+let differentFrom_in_graph (g : rdf_graph) (a : rdf_term) (b : rdf_term) :
+  Prims.bool=
+  FStar_List_Tot_Base.existsb
+    (fun t ->
+       (t.p = owl_differentFrom) &&
+         (((rdf_term_eq (subject_to_term t.s) a) && (rdf_term_eq t.o b)) ||
+            ((rdf_term_eq (subject_to_term t.s) b) && (rdf_term_eq t.o a))))
+    g
+let owl_rule_pdw_to_differentFrom (g : rdf_graph) : rdf_graph=
+  let pdw_pairs =
+    FStar_List_Tot_Base.fold_left
+      (fun acc t ->
+         if t.p = owl_propertyDisjointWith
+         then
+           match ((t.s), (t.o)) with
+           | (S_IRI p1, T_IRI p2) -> (p1, p2) :: acc
+           | uu___ -> acc
+         else acc) [] g in
+  FStar_List_Tot_Base.fold_left
+    (fun acc pair ->
+       let uu___ = pair in
+       match uu___ with
+       | (p1, p2) ->
+           FStar_List_Tot_Base.fold_left
+             (fun acc1 t1 ->
+                if t1.p = p1
+                then
+                  match term_to_subject t1.o with
+                  | FStar_Pervasives_Native.None -> acc1
+                  | FStar_Pervasives_Native.Some o1_subj ->
+                      let o2_terms = find_objects g t1.s p2 in
+                      FStar_List_Tot_Base.fold_left
+                        (fun acc2 o2_term ->
+                           if rdf_term_eq t1.o o2_term
+                           then acc2
+                           else
+                             (match term_to_subject o2_term with
+                              | FStar_Pervasives_Native.None -> acc2
+                              | FStar_Pervasives_Native.Some uu___2 ->
+                                  let new_t =
+                                    {
+                                      s = o1_subj;
+                                      p = owl_differentFrom;
+                                      o = o2_term
+                                    } in
+                                  add_triple_if_new acc2 new_t)) acc1
+                        o2_terms
+                else acc1) acc g) g pdw_pairs
+let owl_rule_fp_diff_to_diff (g : rdf_graph) : rdf_graph=
+  let fp_props =
+    FStar_List_Tot_Base.fold_left
+      (fun acc t ->
+         if
+           (t.p = rdf_type) &&
+             (rdf_term_eq t.o (T_IRI owl_FunctionalProperty))
+         then
+           match t.s with
+           | S_IRI p_iri -> cons_if_new_iri p_iri acc
+           | uu___ -> acc
+         else acc) [] g in
+  FStar_List_Tot_Base.fold_left
+    (fun acc t1 ->
+       if FStar_List_Tot_Base.mem t1.p fp_props
+       then
+         FStar_List_Tot_Base.fold_left
+           (fun acc2 t2 ->
+              if
+                ((t2.p = t1.p) && (Prims.op_Negation (subject_eq t2.s t1.s)))
+                  && (differentFrom_in_graph g t1.o t2.o)
+              then
+                let new_t =
+                  {
+                    s = (t1.s);
+                    p = owl_differentFrom;
+                    o = (subject_to_term t2.s)
+                  } in
+                add_triple_if_new acc2 new_t
+              else acc2) acc g
+       else acc) g g
+let owl_rule_ifp_diff_to_diff (g : rdf_graph) : rdf_graph=
+  let ifp_props =
+    FStar_List_Tot_Base.fold_left
+      (fun acc t ->
+         if
+           (t.p = rdf_type) &&
+             (rdf_term_eq t.o (T_IRI owl_InverseFunctionalProperty))
+         then
+           match t.s with
+           | S_IRI p_iri -> cons_if_new_iri p_iri acc
+           | uu___ -> acc
+         else acc) [] g in
+  FStar_List_Tot_Base.fold_left
+    (fun acc t1 ->
+       if FStar_List_Tot_Base.mem t1.p ifp_props
+       then
+         FStar_List_Tot_Base.fold_left
+           (fun acc2 t2 ->
+              if
+                ((t2.p = t1.p) && (Prims.op_Negation (subject_eq t2.s t1.s)))
+                  &&
+                  (differentFrom_in_graph g (subject_to_term t1.s)
+                     (subject_to_term t2.s))
+              then
+                match term_to_subject t1.o with
+                | FStar_Pervasives_Native.None -> acc2
+                | FStar_Pervasives_Native.Some y1_subj ->
+                    let new_t =
+                      { s = y1_subj; p = owl_differentFrom; o = (t2.o) } in
+                    add_triple_if_new acc2 new_t
+              else acc2) acc g
        else acc) g g
 let owl_Restriction_iri : wf_iri= "http://www.w3.org/2002/07/owl#Restriction"
 let owl_onProperty_iri : wf_iri= "http://www.w3.org/2002/07/owl#onProperty"
@@ -1862,6 +1975,79 @@ let owl_rule_property_chain_2 (g : rdf_graph) : rdf_graph=
               | FStar_Pervasives_Native.None -> acc)
          | (uu___, uu___1) -> acc
        else acc) g g
+let rec decode_chain_list_fuel (g : rdf_graph) (head_subj : subject)
+  (fuel : Prims.nat) : wf_iri Prims.list FStar_Pervasives_Native.option=
+  let is_nil =
+    match head_subj with | S_IRI i -> i = rdf_nil_iri | uu___ -> false in
+  if is_nil
+  then FStar_Pervasives_Native.Some []
+  else
+    if fuel = Prims.int_zero
+    then FStar_Pervasives_Native.None
+    else
+      (let firsts = find_objects g head_subj rdf_first in
+       let rests = find_objects g head_subj rdf_rest in
+       match (firsts, rests) with
+       | ((T_IRI p1)::uu___2, tail_term::uu___3) ->
+           (match term_to_subject tail_term with
+            | FStar_Pervasives_Native.Some tail_subj ->
+                (match decode_chain_list_fuel g tail_subj
+                         (fuel - Prims.int_one)
+                 with
+                 | FStar_Pervasives_Native.Some tail_props ->
+                     FStar_Pervasives_Native.Some (p1 :: tail_props)
+                 | FStar_Pervasives_Native.None ->
+                     FStar_Pervasives_Native.None)
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+       | (uu___2, uu___3) -> FStar_Pervasives_Native.None)
+let decode_chain_list (g : rdf_graph) (head_subj : subject) :
+  wf_iri Prims.list FStar_Pervasives_Native.option=
+  let fuel = (graph_len g) + Prims.int_one in
+  match decode_chain_list_fuel g head_subj fuel with
+  | FStar_Pervasives_Native.Some [] -> FStar_Pervasives_Native.None
+  | x -> x
+let rec find_chain_endpoints (g : rdf_graph) (chain : wf_iri Prims.list)
+  (x : subject) : rdf_term Prims.list=
+  match chain with
+  | [] -> [subject_to_term x]
+  | p::rest ->
+      let next_terms = find_objects g x p in
+      FStar_List_Tot_Base.fold_left
+        (fun acc y_term ->
+           match term_to_subject y_term with
+           | FStar_Pervasives_Native.Some y_subj ->
+               FStar_List_Tot_Base.append acc
+                 (find_chain_endpoints g rest y_subj)
+           | FStar_Pervasives_Native.None -> acc) [] next_terms
+let owl_rule_property_chain_n (g : rdf_graph) : rdf_graph=
+  let starting_subjects =
+    FStar_List_Tot_Base.fold_left
+      (fun acc t ->
+         if FStar_List_Tot_Base.existsb (fun s -> subject_eq s t.s) acc
+         then acc
+         else (t.s) :: acc) [] g in
+  FStar_List_Tot_Base.fold_left
+    (fun acc chain_t ->
+       if chain_t.p = owl_propertyChainAxiom
+       then
+         match ((chain_t.s), (term_to_subject chain_t.o)) with
+         | (S_IRI p_iri, FStar_Pervasives_Native.Some list_subj) ->
+             (match decode_chain_list g list_subj with
+              | FStar_Pervasives_Native.Some chain ->
+                  if (FStar_List_Tot_Base.length chain) >= (Prims.of_int (2))
+                  then
+                    FStar_List_Tot_Base.fold_left
+                      (fun acc1 x ->
+                         let zs = find_chain_endpoints g chain x in
+                         FStar_List_Tot_Base.fold_left
+                           (fun acc2 z_term ->
+                              let new_t = { s = x; p = p_iri; o = z_term } in
+                              add_triple_if_new acc2 new_t) acc1 zs) acc
+                      starting_subjects
+                  else acc
+              | FStar_Pervasives_Native.None -> acc)
+         | (uu___, uu___1) -> acc
+       else acc) g g
 let owl_rule_chain_to_transitive (g : rdf_graph) : rdf_graph=
   FStar_List_Tot_Base.fold_left
     (fun acc chain_t ->
@@ -2165,7 +2351,10 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
   let g11 = owl_rule_sameAs_replace_predicate g10 in
   let g11a = owl_rule_functional g11 in
   let g12 = owl_rule_inverse_functional g11a in
-  let g13 = owl_rule_minc1_bridge g12 in
+  let g12a = owl_rule_pdw_to_differentFrom g12 in
+  let g12b = owl_rule_fp_diff_to_diff g12a in
+  let g12c = owl_rule_ifp_diff_to_diff g12b in
+  let g13 = owl_rule_minc1_bridge g12c in
   let g13a = owl_rule_svf2_existential_witness g13 in
   let g14 = owl_rule_cls_svf2_qualified g13a in
   let g15 = owl_rule_cls_minc_qual1 g14 in
@@ -2176,7 +2365,8 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
   let g20 = owl_rule_reflexive_property g19 in
   let g21 = owl_rule_scm_cls_restriction g20 in
   let g22 = owl_rule_property_chain_2 g21 in
-  let g23 = owl_rule_chain_to_transitive g22 in
+  let g22a = owl_rule_property_chain_n g22 in
+  let g23 = owl_rule_chain_to_transitive g22a in
   let g24 = owl_rule_named_sameAs_to_equivClass g23 in
   let g24a = owl_rule_prp_key g24 in
   let g25 = owl_rule_xsd_datatype_axioms g24a in

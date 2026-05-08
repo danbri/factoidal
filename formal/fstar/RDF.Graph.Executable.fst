@@ -1408,6 +1408,10 @@ let owl_differentFrom : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#differentFrom");
   "http://www.w3.org/2002/07/owl#differentFrom"
 
+let owl_propertyDisjointWith : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#propertyDisjointWith");
+  "http://www.w3.org/2002/07/owl#propertyDisjointWith"
+
 // Check whether a predicate is one of the OWL predicates that we treat
 // specially (used to block no-op rule applications where we would re-emit
 // a triple that is already present).
@@ -1886,6 +1890,147 @@ let owl_rule_inverse_functional (g : rdf_graph) : rdf_graph =
               add_triple_if_new acc2 new_t)
           acc
           zs
+      else acc)
+    g
+    g
+
+// Helper: check whether (a, owl:differentFrom, b) or (b, owl:differentFrom, a)
+// is in the graph. Used by the 3 contrapositive rules below. The
+// owl_rule_differentFrom_symmetry rule keeps the relation symmetric in
+// the closure, so checking only one direction here is sufficient once
+// closure has reached fixpoint — but a separate fixpoint iteration in
+// the middle of the closure step might not yet have run symmetry, so
+// we check both.
+let differentFrom_in_graph (g : rdf_graph) (a : rdf_term) (b : rdf_term) : bool =
+  List.Tot.existsb
+    (fun (t : triple) ->
+      t.p = owl_differentFrom &&
+      ((rdf_term_eq (subject_to_term t.s) a && rdf_term_eq t.o b) ||
+       (rdf_term_eq (subject_to_term t.s) b && rdf_term_eq t.o a)))
+    g
+
+// prp-pdw-objects: contrapositive of prp-pdw. The OWL 2 RL/RDF
+// inconsistency rule prp-pdw says: T(p1, owl:propertyDisjointWith, p2),
+// T(s, p1, y), T(s, p2, y) → false. The Horn-clause contrapositive — if
+// (s p1 o1) and (s p2 o2) hold for disjoint p1 ≠ p2 with o1, o2
+// syntactically distinct, then o1 must be different from o2 (else the
+// inconsistency would already fire under sameAs propagation). This is
+// strictly weaker than the OWL 2 DL semantics that proves
+// differentFrom by Tableau refutation, but covers the W3C
+// New-Feature-DisjointObjectProperties / DisjointDataProperties tests
+// which exercise exactly this pattern.
+let owl_rule_pdw_to_differentFrom (g : rdf_graph) : rdf_graph =
+  let pdw_pairs : list (wf_iri & wf_iri) =
+    List.Tot.fold_left
+      (fun (acc : list (wf_iri & wf_iri)) (t : triple) ->
+        if t.p = owl_propertyDisjointWith then
+          match t.s, t.o with
+          | S_IRI p1, T_IRI p2 -> (p1, p2) :: acc
+          | _ -> acc
+        else acc)
+      []
+      g
+  in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (pair : (wf_iri & wf_iri)) ->
+      let (p1, p2) = pair in
+      // For each (s p1 o1), find any (s p2 o2) and emit (o1 differentFrom o2)
+      // when o1 and o2 are syntactically distinct subjects (not literals —
+      // owl:differentFrom is defined only over IRI/bnode individuals).
+      List.Tot.fold_left
+        (fun (acc1 : rdf_graph) (t1 : triple) ->
+          if t1.p = p1 then
+            match term_to_subject t1.o with
+            | None -> acc1
+            | Some o1_subj ->
+              let o2_terms = find_objects g t1.s p2 in
+              List.Tot.fold_left
+                (fun (acc2 : rdf_graph) (o2_term : rdf_term) ->
+                  if rdf_term_eq t1.o o2_term then acc2
+                  else
+                    match term_to_subject o2_term with
+                    | None -> acc2
+                    | Some _ ->
+                      let new_t : triple =
+                        { s = o1_subj; p = owl_differentFrom; o = o2_term } in
+                      add_triple_if_new acc2 new_t)
+                acc1
+                o2_terms
+          else acc1)
+        acc
+        g)
+    g
+    pdw_pairs
+
+// prp-fp-diff: contrapositive of prp-fp. If p is functional and (y1 p x1)
+// and (y2 p x2) and (x1 differentFrom x2), then (y1 differentFrom y2).
+// (If y1 = y2, prp-fp emits (x1 sameAs x2), contradicting differentFrom.)
+// Covers W3C owl2-rl-rules-fp-differentFrom.
+let owl_rule_fp_diff_to_diff (g : rdf_graph) : rdf_graph =
+  let fp_props : list wf_iri =
+    List.Tot.fold_left
+      (fun (acc : list wf_iri) (t : triple) ->
+        if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_FunctionalProperty) then
+          match t.s with
+          | S_IRI p_iri -> cons_if_new_iri p_iri acc
+          | _ -> acc
+        else acc)
+      []
+      g
+  in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t1 : triple) ->
+      // t1 is (y1, p, x1) — p must be functional.
+      if List.Tot.mem t1.p fp_props then
+        // Find every (y2, p, x2) where (x1, differentFrom, x2) (or symmetric).
+        List.Tot.fold_left
+          (fun (acc2 : rdf_graph) (t2 : triple) ->
+            if t2.p = t1.p && not (subject_eq t2.s t1.s) &&
+               differentFrom_in_graph g t1.o t2.o
+            then
+              let new_t : triple =
+                { s = t1.s; p = owl_differentFrom; o = subject_to_term t2.s } in
+              add_triple_if_new acc2 new_t
+            else acc2)
+          acc
+          g
+      else acc)
+    g
+    g
+
+// prp-ifp-diff: contrapositive of prp-ifp. If p is inverseFunctional
+// and (x1 p y1) and (x2 p y2) and (x1 differentFrom x2), then
+// (y1 differentFrom y2). Covers W3C owl2-rl-rules-ifp-differentFrom.
+let owl_rule_ifp_diff_to_diff (g : rdf_graph) : rdf_graph =
+  let ifp_props : list wf_iri =
+    List.Tot.fold_left
+      (fun (acc : list wf_iri) (t : triple) ->
+        if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_InverseFunctionalProperty) then
+          match t.s with
+          | S_IRI p_iri -> cons_if_new_iri p_iri acc
+          | _ -> acc
+        else acc)
+      []
+      g
+  in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t1 : triple) ->
+      // t1 is (x1, p, y1) — p must be inverseFunctional.
+      if List.Tot.mem t1.p ifp_props then
+        List.Tot.fold_left
+          (fun (acc2 : rdf_graph) (t2 : triple) ->
+            if t2.p = t1.p && not (subject_eq t2.s t1.s) &&
+               differentFrom_in_graph g (subject_to_term t1.s) (subject_to_term t2.s)
+            then
+              match term_to_subject t1.o with
+              | None -> acc2
+              | Some y1_subj ->
+                let new_t : triple =
+                  { s = y1_subj; p = owl_differentFrom; o = t2.o } in
+                add_triple_if_new acc2 new_t
+            else acc2)
+          acc
+          g
       else acc)
     g
     g
@@ -3524,8 +3669,16 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   // prp-fp / prp-ifp: functional + inverse-functional sameAs identification.
   let g11a = owl_rule_functional g11 in
   let g12 = owl_rule_inverse_functional g11a in
+  // Contrapositive rules — derive owl:differentFrom from disjointness +
+  // existing differentFrom assertions. Sound Horn specialisations of the
+  // OWL 2 RL/RDF inconsistency rules. Cover W3C
+  // New-Feature-DisjointObjectProperties / DisjointDataProperties /
+  // owl2-rl-rules-fp-differentFrom / -ifp-differentFrom.
+  let g12a = owl_rule_pdw_to_differentFrom g12 in
+  let g12b = owl_rule_fp_diff_to_diff g12a in
+  let g12c = owl_rule_ifp_diff_to_diff g12b in
   // Restriction-membership rules (parent4 / parent5 / parent6).
-  let g13 = owl_rule_minc1_bridge g12 in
+  let g13 = owl_rule_minc1_bridge g12c in
   // svf2 existential-witness synthesis (paper-Q3 gap 1, 2026-04-25
   // Tav3): for each (_:r owl:someValuesFrom C ; owl:onProperty P) and
   // each (C' rdfs:subClassOf _:r) and (x rdf:type C'), emit
