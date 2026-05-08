@@ -598,13 +598,17 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     # startup/post-open/post-query RSS in MB, runs cottas_ondisk_estimate
     # with all-None bounds. Acceptance #4: server RSS no longer scales
     # with corpus size.
+    #
+    # Phase 8 relocation (#200 D, 2026-05-08): source moved out of
+    # formal/fstar/ocaml-output/ into bin/cottas-ondisk-smoketest/ per
+    # iron rule #11 (consumer code is not part of the verified library).
     COTTAS_SMOKE_RC=0
     run_with_heartbeat "ocamlopt cottas_ondisk_smoketest" "_ocamlopt_cottas_ondisk_smoketest.log" -- \
       ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
-      cottas_ondisk_smoketest.ml \
+      ../../../bin/cottas-ondisk-smoketest/cottas_ondisk_smoketest.ml \
       -o "$BINDIR/cottas_ondisk_smoketest" || COTTAS_SMOKE_RC=$?
     cat _ocamlopt_cottas_ondisk_smoketest.log 2>/dev/null || true
     if [[ "$COTTAS_SMOKE_RC" -ne 0 ]]; then
