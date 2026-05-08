@@ -1,4 +1,13 @@
 open Prims
+(* SHACL phase-1 stub acknowledgement -- issue #181.
+   `validate`, `parse_shape_from_graph`, and
+   `eval_sparql_target_select` are extracted as `failwith`
+   stubs by design. Phase 2 replaces the first two with pure
+   F-star and rewires this patch to realise only the SPARQL
+   target call-out. See
+     formal/fstar/minimal_regrettable_glue_code_each_with_an_open_issue/
+     181_shacl_validate_stub.sh
+   for the migration plan. *)
 let sh_NodeShape : RDF_Graph_Executable.wf_iri=
   "http://www.w3.org/ns/shacl#NodeShape"
 let sh_PropertyShape : RDF_Graph_Executable.wf_iri=
