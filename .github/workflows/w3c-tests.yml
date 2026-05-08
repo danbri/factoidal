@@ -273,6 +273,27 @@ jobs:
           restore-keys: |
             opam-fstar-${{ runner.os }}-
 
+      # F* per-module verification cache (#238 Step 1, 2026-05-08).
+      # build-ocaml.sh extract passes --cache_checked_modules so F*
+      # writes a .fst.checked file next to each .fst (and reads them
+      # first on subsequent runs to skip re-verification when source +
+      # transitive deps are unchanged). Cache is keyed on the hash of
+      # all .fst/.fsti sources — any source change produces a new
+      # cache key (not a hit). Restore-keys lets older caches partially
+      # warm the newest run when only a few modules changed.
+      #
+      # Effect: pushes that touch zero .fst files (CSS / docs /
+      # manifests / runner glue) hit the cache 100% and extract
+      # becomes a near-no-op. Whole heavy pipeline drops from ~25 min
+      # to ~5 min on cache-warm trivial pushes.
+      - name: Cache F* .checked files
+        uses: actions/cache@v4
+        with:
+          path: formal/fstar/*.fst.checked
+          key: fstar-checked-${{ runner.os }}-${{ hashFiles('formal/fstar/*.fst', 'formal/fstar/*.fsti') }}
+          restore-keys: |
+            fstar-checked-${{ runner.os }}-
+
       - name: Install system deps (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -504,6 +525,27 @@ jobs:
           key: opam-fstar-${{ runner.os }}-v3
           restore-keys: |
             opam-fstar-${{ runner.os }}-
+
+      # F* per-module verification cache (#238 Step 1, 2026-05-08).
+      # build-ocaml.sh extract passes --cache_checked_modules so F*
+      # writes a .fst.checked file next to each .fst (and reads them
+      # first on subsequent runs to skip re-verification when source +
+      # transitive deps are unchanged). Cache is keyed on the hash of
+      # all .fst/.fsti sources — any source change produces a new
+      # cache key (not a hit). Restore-keys lets older caches partially
+      # warm the newest run when only a few modules changed.
+      #
+      # Effect: pushes that touch zero .fst files (CSS / docs /
+      # manifests / runner glue) hit the cache 100% and extract
+      # becomes a near-no-op. Whole heavy pipeline drops from ~25 min
+      # to ~5 min on cache-warm trivial pushes.
+      - name: Cache F* .checked files
+        uses: actions/cache@v4
+        with:
+          path: formal/fstar/*.fst.checked
+          key: fstar-checked-${{ runner.os }}-${{ hashFiles('formal/fstar/*.fst', 'formal/fstar/*.fsti') }}
+          restore-keys: |
+            fstar-checked-${{ runner.os }}-
 
       - name: Install system deps (Linux)
         run: |

@@ -121,7 +121,8 @@ if [[ "$STEP" == "karamel" ]]; then
     mod="${fst%.fst}"
     echo "  $fst -> krml-output/${mod//./_}.krml"
     if ! fstar.exe --z3version 4.13.3 --codegen krml \
-           --odir krml-output --extract_module "$mod" "$fst" \
+           --odir krml-output --cache_checked_modules \
+           --extract_module "$mod" "$fst" \
            > "krml-output/_${mod}.log" 2>&1; then
       echo "    FAIL — see krml-output/_${mod}.log" >&2
       KRML_FAILED=1
@@ -317,9 +318,22 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
       # that take 1-2 min to verify, and (b) humans see that something
       # is still happening. Per-module log stays under $OUTDIR so it
       # can be grepped later for diagnostics.
+      #
+      # Per-module verification cache (#238 Step 1, 2026-05-08): the
+      # `--cache_checked_modules` flag tells F* to write a .fst.checked
+      # file next to each .fst after verification, AND to read .checked
+      # files first on re-runs (skipping re-verification when the
+      # source + transitive deps are unchanged). .checked files are
+      # gitignored (`*.fst.checked` in repo root .gitignore), so they
+      # never enter version control. CI restores the cache via
+      # actions/cache@v4 keyed on hashFiles('**/*.fst', '**/*.fsti').
+      # On a "no .fst changed" push, every module's .checked is fresh
+      # and verification is a near-no-op.
       FSTAR_LOG="$OUTDIR/_fstar_${fst%.fst}.log"
       run_with_heartbeat "fstar.exe $fst" "$FSTAR_LOG" -- \
-        fstar.exe --z3version 4.13.3 --codegen OCaml --odir "$OUTDIR" "$fst" || FSTAR_RC=$?
+        fstar.exe --z3version 4.13.3 --codegen OCaml --odir "$OUTDIR" \
+                  --cache_checked_modules \
+                  "$fst" || FSTAR_RC=$?
       grep -E "Extracted|Error|error" "$FSTAR_LOG" || true
       if ! grep -q "^Extracted module" "$FSTAR_LOG"; then
         echo "  ERROR: $fst failed to extract! (exit code $FSTAR_RC)"
