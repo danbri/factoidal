@@ -252,6 +252,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              RDF.Graph.Executable.fst Parquet.Footer.fst \
              RDF.NQuads.Serialize.fst \
              RDF.List.Helpers.fst \
+             RDF.Store.Loader.fst \
              RDF.Canonical.fst \
              RDF.Canonical.Manifest.fst \
              OWL.Vocabulary.fst \
@@ -377,7 +378,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # (COTTAS runtime glue calls Parquet_Footer.probe_*). SPARQL11_Store
   # depends on Parser_BallyhooHDT and Parser_BallyhooCOTTAS. See
   # docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md §Phase 1.
-  COMMON_MODULES="Util_Log.ml RDF_Format.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_NQuads_Serialize.ml Parquet_Footer.ml OWL_Vocabulary.ml Tableau.ml \
+  COMMON_MODULES="Util_Log.ml RDF_Format.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Store_Loader.ml RDF_NQuads_Serialize.ml Parquet_Footer.ml OWL_Vocabulary.ml Tableau.ml \
     Parser_FastString.ml Parser_IRI.ml \
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
@@ -730,7 +731,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
   # See docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md.
   FSTAR_MODULES=(
     RDF_Format.ml
-    RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_NQuads_Serialize.ml Parquet_Footer.ml OWL_Vocabulary.ml Tableau.ml
+    RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Store_Loader.ml RDF_NQuads_Serialize.ml Parquet_Footer.ml OWL_Vocabulary.ml Tableau.ml
     Parser_FastString.ml Parser_IRI.ml
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml

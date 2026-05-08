@@ -551,19 +551,23 @@ let load_dataset_fast cfg =
    concatenate; named graphs are appended (lookup_named_graph uses
    first-match, so earlier --data-cottas wins on collision with the
    --dataset file). Run on the loader thread; do NOT call exit on error
-   from a non-main thread — return the partial dataset and log instead. *)
+   from a non-main thread — return the partial dataset and log instead.
+
+   Migration #200 PR3 (Section A non-codename, 2026-05-08): the pure
+   fold is now in F* at RDF.Store.Loader.merge_datasets. OCaml owns
+   the Parquet I/O (load_cottas_dataset path) + per-file try/with;
+   F* owns the pure merge. *)
 let load_cottas_part cfg base =
-  List.fold_left (fun acc path ->
-    let extra =
+  let extras =
+    List.map (fun path ->
       try load_cottas_dataset path
       with e ->
         Printf.eprintf "Error loading --data-cottas %s: %s\n%!"
           path (Printexc.to_string e);
         { ds_default = []; ds_named = [] }
-    in
-    { ds_default = acc.ds_default @ extra.ds_default;
-      ds_named = acc.ds_named @ extra.ds_named }
-  ) base cfg.data_cottas_files
+    ) cfg.data_cottas_files
+  in
+  RDF_Store_Loader.merge_datasets base extras
 
 (* Convenience for callers that don't need the bind-first behaviour
    (e.g. rdfc10_runner-style synchronous loaders, or future test code). *)
