@@ -119,8 +119,118 @@ jobs:
           echo "Quiet for 5 minutes. Proceeding to W3C suite."
           echo "proceed=true" >> "$GITHUB_OUTPUT"
 
-  native-shadow:
+  # ---------------------------------------------------------------------
+  # affected-suites — compute which W3C suites a given diff actually
+  # affects, by consulting the per-suite manifests under
+  # .github/test-suites/ and the dispatcher tool/dispatch_test_suites.sh.
+  #
+  # First-cut wiring (#235 step 5b): pure observability. The list is
+  # emitted to the job summary and to a job output but does NOT yet gate
+  # downstream native-shadow / browser-artifacts jobs. We want a few CI
+  # runs of evidence first that the manifests classify correctly, before
+  # using the output to skip the full pipeline.
+  #
+  # Step 5c will: (a) skip native-shadow + browser-artifacts when the
+  # affected list is empty, (b) pass the list through to the test runners
+  # so each invocation runs only the relevant sub-suite. Until then, this
+  # job is free signal: CI logs + run summaries surface the dispatcher's
+  # decisions, so we can spot misclassifications early.
+  #
+  # workflow_dispatch + schedule events bypass dispatcher (run all).
+  # ---------------------------------------------------------------------
+  affected-suites:
     needs: debounce
+    if: needs.debounce.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      suites: ${{ steps.compute.outputs.suites }}
+      mode: ${{ steps.compute.outputs.mode }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need at least 2 commits so HEAD~1 resolves for diff.
+          # fetch-depth: 0 is overkill here but the dispatcher works
+          # against arbitrary base refs, and a deeper history is harmless.
+          fetch-depth: 0
+
+      - id: compute
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -eu
+
+          # workflow_dispatch / schedule: bypass — fall back to "all".
+          if [ "$EVENT" = "workflow_dispatch" ] || [ "$EVENT" = "schedule" ]; then
+            echo "$EVENT trigger — running all suites."
+            ALL_SUITES=$(bash tools/dispatch_test_suites.sh --list)
+            {
+              echo "## Affected suites"
+              echo ""
+              echo "Mode: **all** (event: $EVENT)"
+              echo ""
+              echo "Suites:"
+              echo "$ALL_SUITES" | sed 's/^/- /'
+            } >> "$GITHUB_STEP_SUMMARY"
+            # Compress the list to space-separated for the output.
+            SUITES_LINE=$(echo "$ALL_SUITES" | tr '\n' ' ' | sed 's/ *$//')
+            echo "mode=all" >> "$GITHUB_OUTPUT"
+            echo "suites=$SUITES_LINE" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # push event: diff BASE_SHA..HEAD_SHA. If BASE_SHA is the
+          # all-zeros sentinel (new branch), fall back to HEAD~1.
+          if [ -z "${BASE_SHA:-}" ] || \
+             [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            BASE_SHA=$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)
+            echo "Note: synthesising base ref ($BASE_SHA) — original event.before was unset/zero."
+          fi
+
+          echo "Computing affected suites for $BASE_SHA..$HEAD_SHA"
+          SUITES_VERBOSE=$(bash tools/dispatch_test_suites.sh --diff "$BASE_SHA" "$HEAD_SHA" --verbose 2>&1 || true)
+          SUITES=$(bash tools/dispatch_test_suites.sh --diff "$BASE_SHA" "$HEAD_SHA" 2>/dev/null || true)
+
+          # Detect foundational hits — the verbose output prefixes them
+          # with "# Foundational change(s)".
+          if echo "$SUITES_VERBOSE" | grep -q 'Foundational change'; then
+            MODE="foundational"
+          elif [ -z "$SUITES" ]; then
+            MODE="none"
+          else
+            MODE="targeted"
+          fi
+
+          {
+            echo "## Affected suites"
+            echo ""
+            echo "Diff: \`$BASE_SHA..$HEAD_SHA\`"
+            echo "Mode: **$MODE**"
+            echo ""
+            if [ -n "$SUITES" ]; then
+              echo "Suites:"
+              echo "$SUITES" | sed 's/^/- /'
+            else
+              echo "_No suites affected by this diff._"
+            fi
+            echo ""
+            echo "<details><summary>Dispatcher trace</summary>"
+            echo ""
+            echo '```'
+            echo "$SUITES_VERBOSE"
+            echo '```'
+            echo ""
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          SUITES_LINE=$(echo "$SUITES" | tr '\n' ' ' | sed 's/ *$//')
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo "suites=$SUITES_LINE" >> "$GITHUB_OUTPUT"
+          echo "Affected: [$SUITES_LINE] (mode=$MODE)"
+
+  native-shadow:
+    needs: [debounce, affected-suites]
     if: needs.debounce.outputs.proceed == 'true'
     # Dual-platform native shadow builds. Each matrix leg auto-commits
     # binaries to bin/ci-<platform>/ (NOT bin/<platform>/ — those stay
@@ -371,7 +481,7 @@ jobs:
   browser-artifacts:
     # Linux-only browser/runtime artifacts. This job owns JS / wasm / docs
     # generation and can fail independently from the native shadow binaries.
-    needs: native-shadow
+    needs: [native-shadow, affected-suites]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
