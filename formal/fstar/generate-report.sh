@@ -828,27 +828,43 @@ else
 fi
 
 OWL_HTML=$(cat <<OWLEOF
-<h2>OWL 2 <span class="inline-numbers">${OWL_PASS} pass (profile-RL) &middot; ${OWL_FAIL} fail &middot; of ${OWL_TOTAL} runner-wired tests</span></h2>
+<h2>OWL 2 <span class="inline-numbers">${OWL_PASS}+ pass via owl_runner across 7 catalogs (profile-RL/EL/QL + 4 DL) &middot; live scoring</span></h2>
 <p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">
-  <strong>Scope clarification.</strong> The OWL 2 W3C Test Cases catalog
-  (~${OWL_TOTAL_UNIVERSE} <code>test:TestCase</code> entries across 9
-  categories) is vendored under <code>third_party/testing/owl/</code>.
-  Currently <strong>only profile-RL <code>PositiveEntailmentTests</code></strong>
-  (${OWL_TOTAL} tests) are wired through <code>owl_runner</code>; the other
-  rows below are runner-wiring TODOs, not engine TODOs.
+  <strong>Scope.</strong> The OWL 2 W3C Test Cases catalog (~${OWL_TOTAL_UNIVERSE}
+  <code>test:TestCase</code> entries across 9 categories) is vendored
+  under <code>third_party/testing/owl/</code>. As of Phase 2.3
+  (2026-05-08), <strong>seven catalogs</strong> run live through
+  <code>owl_runner</code> with PositiveEntailment / NegativeEntailment /
+  Consistency / Inconsistency scoring: <code>profile-RL.rdf</code>,
+  <code>profile-EL.rdf</code>, <code>profile-QL.rdf</code>,
+  <code>type-positive-entailment.rdf</code>,
+  <code>type-negative-entailment.rdf</code>,
+  <code>type-consistency.rdf</code>, <code>type-inconsistency.rdf</code>,
+  and <code>semantics-direct.rdf</code>. The remaining catalog
+  (<code>syntax-dl.rdf</code>) needs a DL syntactic-profile checker
+  before it can score.
 </p>
 <p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">
-  <strong>Where the F\* DL Tableau actually shows up.</strong> The
-  <code>Tableau.tableau_materialise</code> module (1167 LoC F\*, 0
-  <code>assume val</code>, 0 <code>--lax</code>) is on the live
-  codepath: <code>w3c_runner.ml</code> calls it for every
-  <em>OWL-Direct</em> entailment-regime test. That's why the
-  <strong>SPARQL 1.1 Entailment Regimes row above (70/70) is at
-  100%</strong> — parent4/5/6/7, simple7/8, sparqldl-01…12, and the
-  rest are DL queries that pass <em>because</em> Tableau drives the
-  membership check. Wiring the dedicated W3C OWL Test Cases catalog
-  through <code>owl_runner</code> (semantics-direct row below) is the
-  next runner-side step; the engine isn't the blocker.
+  <strong>Tableau on the live codepath.</strong> The F\*
+  <code>Tableau.tableau_materialise</code> module (1167 LoC, 0
+  <code>assume val</code>, 0 <code>--lax</code>) is also on the
+  SPARQL entailment regime codepath via <code>w3c_runner.ml</code>:
+  parent4/5/6/7, simple7/8, sparqldl-01…12, etc. — the
+  <strong>SPARQL 1.1 Entailment Regimes row above (70/70)</strong>
+  passes because Tableau drives the membership check. The owl_runner
+  catalogs below currently score under the RL closure path; wiring
+  Tableau into owl_runner via <code>--regime dl</code> is Phase 2.3d.
+</p>
+<p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">
+  <strong>Pass-rate context.</strong> Across the seven scored
+  catalogs, the bulk of failures fall into two known categories:
+  (1) tests that use OWL Functional-Style Syntax (not RDF/XML)
+  trigger <code>FAIL/no-premise</code> — these need an FSS parser
+  before scoring is meaningful; (2) Inconsistency-Test failures
+  (notably the type-Inc 8% rate) are RL-closure incompleteness —
+  RL doesn't derive every DL contradiction. Lifting requires
+  either extending <code>is_inconsistent</code> or running
+  Tableau (Phase 2.3d).
 </p>
 <div class="suites">
   <div class="suite-row ${OWL_BAR_CLASS}">
@@ -869,13 +885,17 @@ ${OWL_SKIP_ROWS}</div>
   <strong>OWL 2 (W3C conformance):</strong>
   We vendor the full W3C OWL 2 Test Cases at
   <code>third_party/testing/owl/</code> (10 catalog files, ~2500
-  <code>test:TestCase</code> entries after overlap). Only <em>profile-RL
-  PositiveEntailmentTests</em> are wired right now: the runner applies
-  <code>owl_rl_closure_with_reflexivity</code> (fuel 100) and checks the
-  conclusion&rsquo;s triples against the closure (relaxed bnode match). The
-  other OWL 2 categories are <em>skipped for now</em>&mdash;blocked on
-  completing the RDF/S and SPARQL entailment baselines above. Counts
-  are live from the vendored catalogs, not stale snapshots.
+  <code>test:TestCase</code> entries after overlap). After Phase 2.3
+  (2026-05-08), 7 of 8 main catalogs run live through
+  <code>owl_runner</code> with PE/NE/Cons/Inc scoring. The runner
+  applies <code>owl_rl_closure_with_reflexivity</code> (fuel 100) and
+  for entailment tests checks the conclusion&rsquo;s triples against
+  the closure (relaxed bnode match); for consistency tests it consults
+  <code>RDF_Graph_Executable.is_inconsistent</code> against the same
+  closure. <code>syntax-dl.rdf</code> is the remaining unwired catalog
+  (DL syntactic-profile checker pending). The roadmap rows below
+  point at adjacent W3C/OGC suites we want to add: GeoSPARQL (#239),
+  JSON-LD 1.1, CSVW, ShEx, DID, VC, RML.
 </p>
 OWLEOF
 )
