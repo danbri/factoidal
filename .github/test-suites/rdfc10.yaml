@@ -1,0 +1,39 @@
+name: RDF Dataset Canonicalization 1.0
+spec: https://www.w3.org/TR/rdf-canon/
+runner: bin/linux-x86_64/rdfc10_runner
+runner_args:
+  - third_party/testing/rdf-canon/tests/manifest.ttl
+manifest: third_party/testing/rdf-canon/tests/manifest.ttl
+log_path: formal/fstar/ocaml-output/rdfc10_results.log
+result_path: docs/test-results/by-suite/rdfc10.json
+domain: RDFC
+foundational: false
+
+# Triggers — change in any of these paths re-runs the RDFC-1.0 suite.
+# Foundational paths in _foundational.yaml ALSO fire this suite (any
+# change to RDF.Graph.Executable / RDF.Format / Parser.IRI / etc.
+# could affect canonicalisation correctness).
+triggers:
+  paths:
+    # The canonicaliser itself.
+    - formal/fstar/RDF.Canonical.fst
+    - formal/fstar/RDF.Canonical.Manifest.fst
+    # The runner consumer.
+    - bin/rdfc10-runner/**
+    # N-Quads serialisation — RDFC-1.0's canonical output is N-Quads,
+    # so any change to the serialiser changes the byte-for-byte test.
+    - formal/fstar/RDF.NQuads.Serialize.fst
+    # Hash glue — the patch script that wires hash_sha256 directly
+    # affects canonicalisation; the algorithm is hash-driven.
+    - formal/fstar/minimal_regrettable_glue_code_each_with_an_open_issue/63_regex_hash_uuid_stubs.sh
+    # Pure-OCaml hash impls used by 63_regex_hash_uuid_stubs.sh.
+    - formal/fstar/ocaml-output/fstar_pure_hashes.ml
+    # The canonicaliser uses the Turtle/TriG parser via Parser.* to
+    # ingest test premises. The parsers themselves are tracked in
+    # rdf-* suites; for RDFC-1.0 we only need to fire when the
+    # canonicaliser, its runner, the N-Quads serialiser, or the hash
+    # glue changes.
+
+  excludes:
+    # Future: if a finer-grained split lands.
+    []

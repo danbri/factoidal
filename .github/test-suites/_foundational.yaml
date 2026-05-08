@@ -1,0 +1,42 @@
+# Foundational paths: a change to ANY of these fires every test suite,
+# regardless of per-suite trigger lists. Per #235 + foundational tier
+# audit, this set should stay ≤ 10 paths.
+#
+# These are the load-bearing concepts every suite touches. Changes
+# here should be reviewed extra carefully because the blast radius
+# is the entire test corpus.
+
+foundational_paths:
+  # Type-level definitions: triple / wf_iri / subject / rdf_term /
+  # rdf_graph / bnode_id. Every other module references these.
+  # Stratification work (per the audit doc) would split this into
+  # narrower modules; until then, the whole file is foundational.
+  - formal/fstar/RDF.Graph.Executable.fst
+
+  # Format dispatch table; every parser + serialiser reads this.
+  - formal/fstar/RDF.Format.fst
+
+  # IRI normalisation (RFC 3987). Every parser + every serialiser +
+  # every entailment regime relies on this for rdf_term_eq correctness.
+  - formal/fstar/Parser.IRI.fst
+
+  # UTF-8 + char classification. Foundational because IRI/literal
+  # escape rules use it.
+  - formal/fstar/Parser.FastString.fst
+
+  # Shared OWL + RDF vocabulary IRI constants. Getting one wrong
+  # silently breaks reasoning anywhere a constant is referenced.
+  - formal/fstar/OWL.Vocabulary.fst
+
+  # Build infrastructure. Anything that affects how F* extracts to
+  # OCaml or how the OCaml binaries link can break every suite.
+  - formal/fstar/build-ocaml.sh
+  - formal/fstar/ocaml-patches.sh
+
+  # The CI workflow itself. A change here is a meta-change.
+  - .github/workflows/w3c-tests.yml
+
+  # The dispatch script (lands alongside this manifest set).
+  - tools/dispatch_test_suites.sh
+
+# Total: 9 paths. Within budget (≤ 10).
