@@ -83,12 +83,13 @@ if [ "$1" = "--run" ]; then
     # negative scores on DL-only entailments are expected; baseline
     # gives a "what RL can certify" floor that DL strictly improves.
     for entry in \
-        "type-positive-entailment.rdf $OWL_TPE_LOG  240" \
-        "type-negative-entailment.rdf $OWL_TNE_LOG   60" \
-        "type-consistency.rdf         $OWL_TCON_LOG 600" \
-        "type-inconsistency.rdf       $OWL_TINC_LOG 240" \
-        "profile-EL.rdf               $OWL_EL_LOG  120" \
-        "profile-QL.rdf               $OWL_QL_LOG  120"; do
+        "type-positive-entailment.rdf $OWL_TPE_LOG    240" \
+        "type-negative-entailment.rdf $OWL_TNE_LOG     60" \
+        "type-consistency.rdf         $OWL_TCON_LOG   600" \
+        "type-inconsistency.rdf       $OWL_TINC_LOG   240" \
+        "profile-EL.rdf               $OWL_EL_LOG     120" \
+        "profile-QL.rdf               $OWL_QL_LOG     120" \
+        "semantics-direct.rdf         $OWL_SEMDL_LOG  900"; do
       IFS=' ' read -r catalog log_path budget <<< "$entry"
       echo "Running OWL 2 catalog $catalog (RL, ${budget}s budget)…"
       ( cd "$REPO_ROOT" && timeout "$budget" "$OWL_RUNNER" \
@@ -735,14 +736,28 @@ ROW
 # codepath, and contributing to the wins above. The "blocked" labels
 # below are about *runner wiring*, not engine readiness.
 OWL_SKIP_ROWS=""
-OWL_SKIP_ROWS+="$(emit_owl_skip_row "profile-EL" "$OWL_EL_N"   "runner not wired (engine: EL closure rules pending)")"$'\n'
-OWL_SKIP_ROWS+="$(emit_owl_skip_row "profile-QL" "$OWL_QL_N"   "runner not wired (engine: QL query rewrite pending)")"$'\n'
-OWL_SKIP_ROWS+="$(emit_owl_skip_row "semantics-direct" "$OWL_SEMDL_N" "runner not wired; <strong>Tableau live</strong> via SPARQL 1.1 entailment-regime suite (70/70 above)")"$'\n'
+# Most catalog skip-rows above (profile-EL, profile-QL,
+# semantics-direct, type-*) were retired 2026-05-08 when their
+# runner wiring landed (Phase 2.1-2.3). The catalogs now have live
+# scored bars in the OWL panel.
+#
+# Remaining catalog still needing wiring:
 OWL_SKIP_ROWS+="$(emit_owl_skip_row "syntax-dl" "$OWL_SYNDL_N" "runner not wired (engine: DL syntactic-profile checker pending)")"$'\n'
-OWL_SKIP_ROWS+="$(emit_owl_skip_row "type-positive-entailment" "$OWL_TPE_N" "runner not wired (engine: closure-side bnode isomorphism pending)")"$'\n'
-OWL_SKIP_ROWS+="$(emit_owl_skip_row "type-negative-entailment" "$OWL_TNE_N" "runner not wired (engine: OWL negation support pending)")"$'\n'
-OWL_SKIP_ROWS+="$(emit_owl_skip_row "type-consistency" "$OWL_TCON_N" "runner not wired (engine: contradiction detection pending)")"$'\n'
-OWL_SKIP_ROWS+="$(emit_owl_skip_row "type-inconsistency" "$OWL_TINC_N" "runner not wired (engine: contradiction detection pending)")"$'\n'
+# RL-RDF-rules-tests.rdf (the per-rule attribution catalog) and
+# all.rdf (an aggregator) are intentionally skipped — they're not
+# independent test sets.
+#
+# OGC GeoSPARQL — Tier C, separate spec stack. Roadmap in #239.
+OWL_SKIP_ROWS+="$(emit_owl_skip_row "GeoSPARQL"  "?"            "vendoring + runner pending (see <a href='https://github.com/danbri/factoidal/issues/239'>#239</a>)")"$'\n'
+# JSON-LD 1.1 — adjacent. Not vendored.
+OWL_SKIP_ROWS+="$(emit_owl_skip_row "JSON-LD 1.1" "?"           "vendoring + runner pending (W3C suite ~250 tests)")"$'\n'
+# CSVW, DID, VC, ShEx, RML — vendored at third_party/testing/ but
+# no runners; surface as roadmap markers.
+OWL_SKIP_ROWS+="$(emit_owl_skip_row "CSVW"       "?"            "vendored at third_party/testing/csvw; runner pending")"$'\n'
+OWL_SKIP_ROWS+="$(emit_owl_skip_row "ShEx"       "?"            "vendored at third_party/testing/shex; runner pending")"$'\n'
+OWL_SKIP_ROWS+="$(emit_owl_skip_row "DID"        "?"            "vendored at third_party/testing/did; runner pending")"$'\n'
+OWL_SKIP_ROWS+="$(emit_owl_skip_row "VC"         "?"            "vendored at third_party/testing/vc; runner pending")"$'\n'
+OWL_SKIP_ROWS+="$(emit_owl_skip_row "RML"        "?"            "vendored at third_party/testing/rml; mapping engine pending")"$'\n'
 
 # --- RDFC-1.0 panel ------------------------------------------------------
 # RDFC-1.0 (W3C RDF Dataset Canonicalization 1.0) gets its own headline
