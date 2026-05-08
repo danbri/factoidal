@@ -3104,13 +3104,28 @@ let rec find_group (key : list eval_result) (groups : list group)
        | Some (before, found, after) -> Some (g :: before, found, after))
 
 (* Add a solution mapping to the correct group, creating a new group if needed.
-   O(n) scan per insertion — simple algorithm. *)
+   Tail-rec rewrite — issue #95. Walks groups once with fold_left, prepending
+   each (potentially modified) group to a reversed accumulator; reverses at
+   the end. Preserves original group order. The earlier triple-`@` form
+   (before @ ... @ after) was non-tail-rec inside List.Tot.append and
+   overflowed the JS / native stack on aggregations with hundreds of groups.
+   O(n) scan per insertion — simple algorithm; hash-based grouping is a
+   separate perf track. *)
 let add_to_groups (key : list eval_result) (mu : solution_mapping) (groups : list group) : list group =
-  match find_group key groups with
-  | Some (before, g, after) ->
-    before @ [{ g with g_solutions = g.g_solutions @ [mu] }] @ after
-  | None ->
-    groups @ [{ g_key = key; g_solutions = [mu] }]
+  let (rev_groups, found) =
+    List.Tot.fold_left
+      (fun (acc_f : list group * bool) g ->
+         let acc, f = acc_f in
+         if not f && keys_equal key g.g_key
+         then
+           let g' = { g with g_solutions = Lh.append_tr g.g_solutions [mu] } in
+           (g' :: acc, true)
+         else (g :: acc, f))
+      ([], false) groups
+  in
+  let ordered = List.Tot.rev rev_groups in
+  if found then ordered
+  else Lh.append_tr ordered [{ g_key = key; g_solutions = [mu] }]
 
 (* Extend a solution mapping with GROUP BY expression alias bindings.
    For each GC_Expr (e, Some v), evaluate e against mu and bind v to the result. *)
@@ -3153,14 +3168,24 @@ let eval_over_group (e : expr) (g : group) : list eval_result =
 let filter_non_error (vals : list eval_result) : list eval_result =
   List.Tot.filter (fun v -> not (ER_Error? v)) vals
 
-(* Remove duplicate eval_results using sparql_order for equality *)
-let rec dedup_er (vals : list eval_result) : Tot (list eval_result) (decreases vals) =
+(* Remove duplicate eval_results using sparql_order for equality.
+   Tail-rec rewrite — issue #95. The earlier cons-after-recurse form
+   overflowed the native stack on COUNT(DISTINCT) over multi-hundred-k
+   eval-result lists. Walk vals once with an accumulator, checking
+   membership against the growing prefix (acc); first occurrence wins.
+   Order is set-semantics for every caller (DISTINCT under aggregates),
+   so first-vs-last makes no observable difference. *)
+let rec dedup_er_acc (acc : list eval_result) (vals : list eval_result)
+  : Tot (list eval_result) (decreases vals) =
   match vals with
-  | [] -> []
+  | [] -> acc
   | v :: rest ->
-    if List.Tot.existsb (fun x -> er_equal v x) rest
-    then dedup_er rest
-    else v :: dedup_er rest
+    if List.Tot.existsb (fun x -> er_equal v x) acc
+    then dedup_er_acc acc rest
+    else dedup_er_acc (v :: acc) rest
+
+let dedup_er (vals : list eval_result) : Tot (list eval_result) =
+  List.Tot.rev (dedup_er_acc [] vals)
 
 // These are now replaced by sum_numeric, count_numeric, avg_numeric above
 

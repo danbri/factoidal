@@ -4438,29 +4438,33 @@ let rec find_group (key : eval_result Prims.list) (groups : group Prims.list)
          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
          | FStar_Pervasives_Native.Some (before, found, after) ->
              FStar_Pervasives_Native.Some ((g :: before), found, after))
-(* Stack-safe rewrite — issue #95. Tail-rec: walks the group list
-   once with fold_left, prepending either the original group or a
-   merged one; appends a fresh group if `found` stays false; then
-   reverses. Preserves the original iteration order of groups. *)
 let add_to_groups (key : eval_result Prims.list)
   (mu : RDF_Graph_Executable.solution_mapping) (groups : group Prims.list) :
   group Prims.list=
-  let (rev_groups, found) =
-    Stdlib.List.fold_left
-      (fun (acc, f) g ->
-         if Prims.op_Negation f && keys_equal key g.g_key
-         then
-           let g' = {
-             g_key = g.g_key;
-             g_solutions = sse_append g.g_solutions [mu]
-           } in
-           (g' :: acc, true)
-         else (g :: acc, f))
-      ([], false) groups
-  in
-  let ordered = Stdlib.List.rev rev_groups in
-  if found then ordered
-  else sse_append ordered [{ g_key = key; g_solutions = [mu] }]
+  let uu___ =
+    FStar_List_Tot_Base.fold_left
+      (fun acc_f g ->
+         let uu___1 = acc_f in
+         match uu___1 with
+         | (acc, f) ->
+             if (Prims.op_Negation f) && (keys_equal key g.g_key)
+             then
+               let g' =
+                 {
+                   g_key = (g.g_key);
+                   g_solutions =
+                     (RDF_List_Helpers.append_tr g.g_solutions [mu])
+                 } in
+               ((g' :: acc), true)
+             else ((g :: acc), f)) ([], false) groups in
+  match uu___ with
+  | (rev_groups, found) ->
+      let ordered = FStar_List_Tot_Base.rev rev_groups in
+      if found
+      then ordered
+      else
+        RDF_List_Helpers.append_tr ordered
+          [{ g_key = key; g_solutions = [mu] }]
 let extend_with_group_aliases (conds : group_condition Prims.list)
   (mu : RDF_Graph_Executable.solution_mapping) :
   RDF_Graph_Executable.solution_mapping=
@@ -4488,14 +4492,16 @@ let filter_non_error (vals : eval_result Prims.list) :
   eval_result Prims.list=
   FStar_List_Tot_Base.filter
     (fun v -> Prims.op_Negation (uu___is_ER_Error v)) vals
-(* Stack-safe rewrite — issue #95. *)
+let rec dedup_er_acc (acc : eval_result Prims.list)
+  (vals : eval_result Prims.list) : eval_result Prims.list=
+  match vals with
+  | [] -> acc
+  | v::rest ->
+      if FStar_List_Tot_Base.existsb (fun x -> er_equal v x) acc
+      then dedup_er_acc acc rest
+      else dedup_er_acc (v :: acc) rest
 let dedup_er (vals : eval_result Prims.list) : eval_result Prims.list=
-  Stdlib.List.rev
-    (Stdlib.List.fold_left
-       (fun acc v ->
-          if FStar_List_Tot_Base.existsb (fun x -> er_equal v x) acc
-          then acc else v :: acc)
-       [] vals)
+  FStar_List_Tot_Base.rev (dedup_er_acc [] vals)
 let find_min (vals : eval_result Prims.list) : eval_result=
   match vals with
   | [] -> ER_Error
