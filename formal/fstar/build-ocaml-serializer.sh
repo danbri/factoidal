@@ -49,14 +49,20 @@ NATIVE_OUT="$BINDIR/factoidal-dump-nq"
 BYTECODE_LOG="_ocamlc_factoidal_dump_nq.log"
 BYTECODE_OUT="$BINDIR/factoidal-dump-nq.byte"
 
+# Phase 8 (#200 D, 2026-05-08): factoidal_dump_nq.ml relocated out of
+# formal/fstar/ocaml-output/ into bin/factoidal-dump-nq/ per iron rule
+# #11 (consumer code is not part of the verified library). Source path
+# is three levels up from cwd ($OUTDIR = formal/fstar/ocaml-output).
+DUMP_NQ_SRC="../../../bin/factoidal-dump-nq/factoidal_dump_nq.ml"
+
 ocamlfind ocamlopt -g -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
   $COMMON_MODULES \
-  factoidal_dump_nq.ml \
+  "$DUMP_NQ_SRC" \
   -o "$NATIVE_OUT" > "$NATIVE_LOG" 2>&1
 
 ocamlfind ocamlc -g -package fstar.lib,str,zarith,sha,digestif.c -linkpkg -w -8-14-26 \
   $COMMON_MODULES \
-  factoidal_dump_nq.ml \
+  "$DUMP_NQ_SRC" \
   -o "$BYTECODE_OUT" > "$BYTECODE_LOG" 2>&1
 
 cat "$NATIVE_LOG"
