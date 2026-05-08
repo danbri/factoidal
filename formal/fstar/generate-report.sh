@@ -656,12 +656,39 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
   header {
     background: var(--surface);
     border-bottom: 1px solid var(--border); padding: 1.2em 1em;
+    position: relative;
   }
-  header .inner { max-width: 900px; margin: 0 auto; }
+  header .inner { max-width: 900px; margin: 0 auto; position: relative; }
   header h1 { margin: 0 0 0.15em; font-size: 1.3em; color: var(--brand-dark); }
   header p  { margin: 0; color: var(--muted); font-size: 0.9em; }
   header nav { margin-top: 0.7em; font-size: 0.9em; }
   header nav a { margin-right: 1.2em; color: var(--brand-dark); }
+
+  /* Top-right "rendered at" pill — moves the most-asked-for piece of
+     freshness signal to where the eye lands first, no scrolling. */
+  .rendered-pill {
+    position: absolute;
+    top: 0; right: 0;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.25em 0.85em;
+    font-size: 0.78em; color: var(--muted);
+    line-height: 1.3;
+    white-space: nowrap;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  }
+  .rendered-pill strong { color: var(--brand-dark); font-weight: 600; }
+  .rendered-pill .label {
+    display: inline-block; margin-right: 0.4em;
+    color: var(--muted); font-weight: 400;
+  }
+  @media (max-width: 720px) {
+    .rendered-pill {
+      position: static;
+      display: inline-block;
+      margin-top: 0.6em;
+    }
+  }
   main { max-width: 900px; margin: 0 auto; padding: 1.5em 1em; }
 
   .summary {
@@ -784,6 +811,9 @@ cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
 
 <header>
   <div class="inner">
+    <div class="rendered-pill" title="Page regenerated at this UTC time. The committed test logs may be older — see footer for the commit they came from.">
+      <span class="label">Rendered</span><strong>${TIMESTAMP_HUMAN}</strong>
+    </div>
     <h1>W3C test results</h1>
     <p>Per-suite pass/fail counts against the W3C SPARQL 1.1 and RDF 1.1 conformance suites.</p>
     <nav>
