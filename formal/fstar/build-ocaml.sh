@@ -474,7 +474,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     factoidal_explain.ml
     factoidal_cli.ml
     factoidal_http_main.ml
-    owl_runner.ml
+    ../../../bin/owl-runner/owl_runner.ml
     ../../../bin/rdfc10-runner/rdfc10_runner.ml
     ../../../bin/cottas-ondisk-smoketest/cottas_ondisk_smoketest.ml
     ../experimental_ocaml_glue/parquet_zstd_stubs.c
@@ -558,7 +558,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       $STATIC_FLAGS \
       $COMMON_MODULES \
       $PARQUET_NATIVE_STUBS \
-      owl_runner.ml \
+      ../../../bin/owl-runner/owl_runner.ml \
       -o "$BINDIR/owl_runner"
     cat _ocamlopt_owl_runner.log
     echo "  Built: bin/${PLATFORM}/owl_runner ($(wc -c < "$BINDIR/owl_runner") bytes)"
