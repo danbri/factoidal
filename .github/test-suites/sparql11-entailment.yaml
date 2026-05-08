@@ -1,0 +1,47 @@
+name: SPARQL 1.1 Entailment Regimes
+spec: https://www.w3.org/TR/sparql11-entailment/
+runner: bin/linux-x86_64/w3c_runner
+runner_args:
+  - entailment
+log_path: formal/fstar/ocaml-output/sparql_results.log
+result_path: docs/test-results/by-suite/sparql11-entailment.json
+domain: SPARQL.QUERY
+foundational: false
+
+# This is where the F* DL Tableau actually shows up: the entailment
+# suite covers RDFS / OWL DL / OWL EL / OWL QL / OWL RL / RIF Core
+# regimes. Tests like parent4-7, simple7-8, sparqldl-01..12 land
+# here.
+
+triggers:
+  paths:
+    # Closure rules + OWL 2 RL Horn rules + xsd axioms.
+    - formal/fstar/RDF.Graph.Executable.fst
+    # Bnode-CE rewrite + qualified-cardinality anchor.
+    - formal/fstar/OWL.QueryRewrite.fst
+    - formal/fstar/OWL.QueryEval.fst
+    # DL tableau (used for OWL Direct entailment paths).
+    - formal/fstar/Tableau.fst
+    # Shared OWL/RDF vocabulary IRIs.
+    - formal/fstar/OWL.Vocabulary.fst
+    # RIF Core eval + saturation (RIF entailment regime).
+    - formal/fstar/RIF.Core.Eval.fst
+    - formal/fstar/RIF.Core.Syntax.fst
+    - formal/fstar/RIF.Core.Translation.fst
+    - formal/fstar/RIF.Core.Tests.fst
+    - formal/fstar/Parser.RIFXML.fst
+    # SPARQL algebra + parser feed the entailment dispatcher.
+    - formal/fstar/SPARQL11.Algebra.fst
+    - formal/fstar/SPARQL11.Parser.fst
+    - formal/fstar/SPARQL11.Store.fst
+    # Eval helpers.
+    - formal/fstar/SPARQL.Eval.Limits.fst
+    - formal/fstar/SPARQL.Eval.TimeBudget.fst
+    # The runner.
+    - bin/w3c-runner/**
+    # Premise parsers.
+    - formal/fstar/Parser.Turtle.fst
+    - formal/fstar/Parser.TurtleScanner.fst
+    - formal/fstar/Parser.NTriples.fst
+
+  excludes: []

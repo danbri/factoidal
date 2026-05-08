@@ -1,0 +1,23 @@
+name: RDF 1.1 TriG
+spec: https://www.w3.org/TR/trig/
+runner: bin/linux-x86_64/w3c_runner
+runner_args:
+  - --rdf
+  - rdf-trig
+log_path: formal/fstar/ocaml-output/sparql_results.log
+result_path: docs/test-results/by-suite/rdf-trig.json
+domain: RDF
+foundational: false
+
+triggers:
+  paths:
+    # TriG is a Turtle superset (named graphs); both parsers fire it.
+    - formal/fstar/Parser.TriG.fst
+    - formal/fstar/Parser.Turtle.fst
+    - formal/fstar/Parser.TurtleScanner.fst
+    - formal/fstar/Parser.Combinators.fst
+    - formal/fstar/Parser.IRI.fst
+    - formal/fstar/RDF.Format.fst
+    - bin/w3c-runner/**
+
+  excludes: []

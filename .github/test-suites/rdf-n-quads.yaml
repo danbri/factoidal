@@ -1,0 +1,23 @@
+name: RDF 1.1 N-Quads
+spec: https://www.w3.org/TR/n-quads/
+runner: bin/linux-x86_64/w3c_runner
+runner_args:
+  - --rdf
+  - rdf-n-quads
+log_path: formal/fstar/ocaml-output/sparql_results.log
+result_path: docs/test-results/by-suite/rdf-n-quads.json
+domain: RDF
+foundational: false
+
+triggers:
+  paths:
+    - formal/fstar/Parser.NQuads.fst
+    - formal/fstar/Parser.NTriples.fst
+    - formal/fstar/Parser.Combinators.fst
+    - formal/fstar/Parser.IRI.fst
+    - formal/fstar/RDF.Format.fst
+    # N-Quads serialiser used by RDFC-1.0 round-trip is also tested here.
+    - formal/fstar/RDF.NQuads.Serialize.fst
+    - bin/w3c-runner/**
+
+  excludes: []

@@ -1,0 +1,27 @@
+name: SPARQL 1.1 Service Description
+spec: https://www.w3.org/TR/sparql11-service-description/
+runner: bin/linux-x86_64/w3c_runner
+runner_args:
+  - service-description
+log_path: formal/fstar/ocaml-output/sparql_results.log
+result_path: docs/test-results/by-suite/sparql11-service-description.json
+domain: SPARQL.PROTOCOL
+foundational: false
+
+triggers:
+  paths:
+    # Backend self-description.
+    - formal/fstar/SPARQL.HTTP.BackendInfo.fst
+    - formal/fstar/SPARQL.HTTP.QueriesIndex.fst
+    - formal/fstar/SPARQL.HTTP.fst
+    - formal/fstar/SPARQL.Protocol.fst
+    # The dataset graph that the SD describes is shared with Query.
+    - formal/fstar/SPARQL11.Algebra.fst
+    - formal/fstar/SPARQL11.Parser.fst
+    # Turtle is the SD output format used in the tests.
+    - formal/fstar/Parser.Turtle.fst
+    - formal/fstar/Parser.TurtleScanner.fst
+    # The runner.
+    - bin/w3c-runner/**
+
+  excludes: []

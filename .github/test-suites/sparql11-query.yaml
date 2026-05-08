@@ -1,0 +1,62 @@
+name: SPARQL 1.1 Query
+spec: https://www.w3.org/TR/sparql11-query/
+runner: bin/linux-x86_64/w3c_runner
+runner_args:
+  - aggregates
+  - bind
+  - bindings
+  - cast
+  - construct
+  - csv-tsv-res
+  - exists
+  - functions
+  - grouping
+  - json-res
+  - negation
+  - project-expression
+  - property-path
+  - subquery
+  - syntax-query
+log_path: formal/fstar/ocaml-output/sparql_results.log
+result_path: docs/test-results/by-suite/sparql11-query.json
+domain: SPARQL.QUERY
+foundational: false
+
+triggers:
+  paths:
+    # Core SPARQL 1.1 algebra + query language.
+    - formal/fstar/SPARQL11.Algebra.fst
+    - formal/fstar/SPARQL11.Parser.fst
+    - formal/fstar/SPARQL11.Store.fst
+    # Plan layer.
+    - formal/fstar/SPARQL.Plan.Pruning.fst
+    - formal/fstar/SPARQL.Plan.Estimate.fst
+    - formal/fstar/SPARQL.Plan.AccessPath.fst
+    - formal/fstar/SPARQL.Plan.Loader.fst
+    # Eval helpers.
+    - formal/fstar/SPARQL.Eval.Limits.fst
+    - formal/fstar/SPARQL.Eval.TimeBudget.fst
+    # Static analysis + diagnostics.
+    - formal/fstar/SPARQL.Query.Analysis.fst
+    - formal/fstar/SPARQL.Diagnostics.fst
+    # JSON results parser + serialiser depend on JSON.Escape.
+    - formal/fstar/SPARQL.JSON.Escape.fst
+    - formal/fstar/Parser.JSONResults.fst
+    - formal/fstar/Parser.SRX.fst
+    - formal/fstar/Parser.CSVResults.fst
+    # Tail-rec helpers used by the BGP eval hot path.
+    - formal/fstar/RDF.List.Helpers.fst
+    # OWL bnode-CE rewrite is part of the query eval pipeline.
+    - formal/fstar/OWL.QueryRewrite.fst
+    - formal/fstar/OWL.QueryEval.fst
+    # The runner consumer.
+    - bin/w3c-runner/**
+    # The parsers used in test premises (Turtle is pervasive).
+    - formal/fstar/Parser.Turtle.fst
+    - formal/fstar/Parser.TurtleScanner.fst
+    - formal/fstar/Parser.NTriples.fst
+    - formal/fstar/Parser.NQuads.fst
+    - formal/fstar/Parser.TriG.fst
+    - formal/fstar/Parser.Combinators.fst
+
+  excludes: []

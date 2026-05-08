@@ -1,0 +1,35 @@
+name: SPARQL 1.1 Protocol
+spec: https://www.w3.org/TR/sparql11-protocol/
+runner: bin/linux-x86_64/w3c_runner
+runner_args:
+  - protocol
+  - http-rdf-update
+log_path: formal/fstar/ocaml-output/sparql_results.log
+result_path: docs/test-results/by-suite/sparql11-protocol.json
+domain: SPARQL.PROTOCOL
+foundational: false
+
+triggers:
+  paths:
+    # Core protocol module.
+    - formal/fstar/SPARQL.Protocol.fst
+    # HTTP layer.
+    - formal/fstar/SPARQL.HTTP.fst
+    - formal/fstar/SPARQL.HTTP.Admin.fst
+    - formal/fstar/SPARQL.HTTP.BackendInfo.fst
+    - formal/fstar/SPARQL.HTTP.QueriesIndex.fst
+    - formal/fstar/SPARQL.HTTP.Response.fst
+    - formal/fstar/SPARQL.HTTP.StaticFiles.fst
+    - formal/fstar/SPARQL.GraphStore.fst
+    # SPARQL Algebra is needed (Protocol dispatches into Query/Update).
+    - formal/fstar/SPARQL11.Algebra.fst
+    - formal/fstar/SPARQL11.Parser.fst
+    - formal/fstar/SPARQL11.Store.fst
+    # JSON-Escape framing.
+    - formal/fstar/SPARQL.JSON.Escape.fst
+    # Consumer-side HTTP stacks.
+    - bin/factoidal-http/**
+    - bin/factoidal-serve/**
+    - bin/w3c-runner/**
+
+  excludes: []

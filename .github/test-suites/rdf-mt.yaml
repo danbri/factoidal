@@ -1,0 +1,33 @@
+name: RDF 1.1 Semantics (Model Theory)
+spec: https://www.w3.org/TR/rdf11-mt/
+runner: bin/linux-x86_64/w3c_runner
+runner_args:
+  - --rdf
+  - rdf-mt
+log_path: formal/fstar/ocaml-output/sparql_results.log
+result_path: docs/test-results/by-suite/rdf-mt.json
+domain: RDF
+foundational: false
+
+# rdf-mt covers literal equivalence, datatype handling, language-tag
+# normalisation, and RDFS closure. These are CORE RDF correctness
+# tests — see CLAUDE.md anti-pattern #2 ("not just inference").
+
+triggers:
+  paths:
+    # Closure rules + literal equivalence + datatype value-space live
+    # in RDF.Graph.Executable.
+    - formal/fstar/RDF.Graph.Executable.fst
+    # OWL.Vocabulary supplies the IRIs the rules dispatch on.
+    - formal/fstar/OWL.Vocabulary.fst
+    # Premise parsers (Turtle/N-Triples are pervasive in rdf-mt
+    # premises).
+    - formal/fstar/Parser.Turtle.fst
+    - formal/fstar/Parser.TurtleScanner.fst
+    - formal/fstar/Parser.NTriples.fst
+    - formal/fstar/Parser.Combinators.fst
+    - formal/fstar/Parser.IRI.fst
+    - formal/fstar/RDF.Format.fst
+    - bin/w3c-runner/**
+
+  excludes: []

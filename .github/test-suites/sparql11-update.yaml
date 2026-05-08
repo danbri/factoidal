@@ -1,0 +1,47 @@
+name: SPARQL 1.1 Update
+spec: https://www.w3.org/TR/sparql11-update/
+runner: bin/linux-x86_64/w3c_runner
+runner_args:
+  - add
+  - basic-update
+  - clear
+  - copy
+  - delete
+  - delete-data
+  - delete-insert
+  - delete-where
+  - drop
+  - move
+  - syntax-update-1
+  - syntax-update-2
+  - update-silent
+log_path: formal/fstar/ocaml-output/sparql_results.log
+result_path: docs/test-results/by-suite/sparql11-update.json
+domain: SPARQL.UPDATE
+foundational: false
+
+triggers:
+  paths:
+    # Update-specific F* modules.
+    - formal/fstar/SPARQL.Update.Analysis.fst
+    - formal/fstar/SPARQL.Update.Sandbox.fst
+    # Core algebra + parser still apply (UPDATE syntax shares lexer).
+    - formal/fstar/SPARQL11.Algebra.fst
+    - formal/fstar/SPARQL11.Parser.fst
+    - formal/fstar/SPARQL11.Store.fst
+    # Eval helpers.
+    - formal/fstar/SPARQL.Eval.Limits.fst
+    - formal/fstar/SPARQL.Eval.TimeBudget.fst
+    # JSON-Escape used by Update response framing.
+    - formal/fstar/SPARQL.JSON.Escape.fst
+    # The runner.
+    - bin/w3c-runner/**
+    # Parsers used in test premises.
+    - formal/fstar/Parser.Turtle.fst
+    - formal/fstar/Parser.TurtleScanner.fst
+    - formal/fstar/Parser.NTriples.fst
+    - formal/fstar/Parser.NQuads.fst
+    - formal/fstar/Parser.TriG.fst
+    - formal/fstar/Parser.Combinators.fst
+
+  excludes: []

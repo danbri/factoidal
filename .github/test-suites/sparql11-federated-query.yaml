@@ -1,0 +1,26 @@
+name: SPARQL 1.1 Federated Query
+spec: https://www.w3.org/TR/sparql11-federated-query/
+runner: bin/linux-x86_64/w3c_runner
+runner_args:
+  - service
+  - syntax-fed
+log_path: formal/fstar/ocaml-output/sparql_results.log
+result_path: docs/test-results/by-suite/sparql11-federated-query.json
+domain: SPARQL.QUERY
+foundational: false
+
+triggers:
+  paths:
+    # Federated query needs the SERVICE clause, which goes through
+    # SPARQL Algebra + the HTTP client.
+    - formal/fstar/SPARQL11.Algebra.fst
+    - formal/fstar/SPARQL11.Parser.fst
+    - formal/fstar/SPARQL.HTTP.Client.fst
+    # SRX/CSV/JSON results parsers needed for SERVICE response handling.
+    - formal/fstar/Parser.SRX.fst
+    - formal/fstar/Parser.CSVResults.fst
+    - formal/fstar/Parser.JSONResults.fst
+    # The runner.
+    - bin/w3c-runner/**
+
+  excludes: []

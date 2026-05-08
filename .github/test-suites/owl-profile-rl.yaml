@@ -1,0 +1,27 @@
+name: OWL 2 Profile RL Conformance
+spec: https://www.w3.org/TR/owl2-profiles/#OWL_2_RL
+runner: bin/linux-x86_64/owl_runner
+runner_args:
+  - third_party/testing/owl/profile-RL.rdf
+log_path: formal/fstar/ocaml-output/owl_results.log
+result_path: docs/test-results/by-suite/owl-profile-rl.json
+domain: OWL
+foundational: false
+
+# OWL 2 RL profile conformance via the standalone owl_runner. The RL
+# profile is the rule-based subset that maps directly onto Horn rules
+# in RDF.Graph.Executable's owl_rl_closure_step.
+
+triggers:
+  paths:
+    # Closure rules + Horn dispatch.
+    - formal/fstar/RDF.Graph.Executable.fst
+    # Shared OWL/RDF vocabulary IRIs.
+    - formal/fstar/OWL.Vocabulary.fst
+    # Catalog parser (RDF/XML).
+    - formal/fstar/Parser.RDFXML.fst
+    - formal/fstar/Parser.XML.fst
+    # The runner.
+    - bin/owl-runner/**
+
+  excludes: []

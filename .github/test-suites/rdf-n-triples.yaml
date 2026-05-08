@@ -1,0 +1,20 @@
+name: RDF 1.1 N-Triples
+spec: https://www.w3.org/TR/n-triples/
+runner: bin/linux-x86_64/w3c_runner
+runner_args:
+  - --rdf
+  - rdf-n-triples
+log_path: formal/fstar/ocaml-output/sparql_results.log
+result_path: docs/test-results/by-suite/rdf-n-triples.json
+domain: RDF
+foundational: false
+
+triggers:
+  paths:
+    - formal/fstar/Parser.NTriples.fst
+    - formal/fstar/Parser.Combinators.fst
+    - formal/fstar/Parser.IRI.fst
+    - formal/fstar/RDF.Format.fst
+    - bin/w3c-runner/**
+
+  excludes: []
