@@ -17,17 +17,23 @@
       "expected": {
         "kind": "row-count",
         "rows": 8,
-        "_note": "Actual row count from native run on docs/fstar-extracted/samples/people.ttl. The user-facing demo with the BatUChar bug truncated mid-stream after 1-2 rows; the 'expected' here is the truthful native answer."
+        "_note": "Actual row count from native run on docs/fstar-extracted/samples/people.ttl."
       },
-      "known_failures": {
-        "js-node": {
-          "issue": 240,
-          "note": "BatUChar.Out_of_range mid-stream after rendering 1-2 rows; truncated JSON; demo page silently shows partial results"
-        },
-        "wasm-node": {
-          "issue": 240,
-          "note": "Likely the same UTF-8 / codepoint cast as js-node; needs verification once the runner lands"
-        }
+      "_status": "fixed in #240; runners should now match native across native/js-node/wasm-node"
+    },
+    {
+      "name": "ucase-unicode",
+      "label": "UCASE/LCASE on non-ASCII (#250)",
+      "dataset": "people",
+      "file": "tests/beyond-w3c/fixtures/queries/ucase-unicode.rq",
+      "expected": {
+        "kind": "row-count",
+        "rows": 8,
+        "_note": "All 8 people; the query exists to surface the value-level UCASE/LCASE wrongness, not row-count."
+      },
+      "expected_to_fail": {
+        "issue": 250,
+        "note": "FStar_String.{upper,lower}case is BatString.{upper,lower}case_ascii — non-ASCII letters pass through unchanged. 'Eve Müller' uppercases to 'EVE MüLLER' instead of 'EVE MÜLLER'. Affects native + js-node + wasm-node equally; not a runtime asymmetry. When this turns green the expected_to_fail marker should be removed and a value-equivalence check added."
       }
     }
   ]

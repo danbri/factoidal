@@ -1,13 +1,22 @@
 #!/usr/bin/env bash
 # tests/beyond-w3c/runners/run-js-node.sh
 #
-# Phase 2a (sub-issue #243) — run a SPARQL query through the
-# js_of_ocaml bundle under Node. Same CLI shape as run-native.sh.
+# Phase 2a (#243): run a SPARQL query through the js_of_ocaml bundle
+# under Node. Prints SPARQL Results JSON to stdout, same surface as
+# run-native.sh, so run-parity.py can compare bundle output against
+# native uniformly.
 #
-# This is a STUB until #243 lands: it prints a structured marker so
-# run-parity.py can detect the runner is unimplemented and emit a grey
-# cell rather than a red one. Replace the body with a real wrapper
-# around `node docs/fstar-extracted/factoidal.js` once #243 starts.
+# Usage:
+#   run-js-node.sh --query QUERY.rq --data FILE[:FORMAT[:GRAPH]] [--data ...]
+#
+# Why this is the same surface as run-native.sh:
+# the bundle's CLI is the F*-extracted `factoidal_cli` driver —
+# `node docs/fstar-extracted/factoidal.js -d X.ttl --query Q.rq -o json`
+# accepts exactly the same flag set the native binary does. File I/O
+# under Node goes through MlNodeFd → require('node:fs'), reading raw
+# UTF-8 bytes; no jsoo_fs_tmp transcode is involved. The browser path
+# (factoidal-sparql-client.js) DOES transcode at the JS↔OCaml boundary
+# (see #240) — different concern, different runner (Phase 3 #245).
 
 set -euo pipefail
 
@@ -17,9 +26,34 @@ cd "$REPO_ROOT"
 JS_BUNDLE="docs/fstar-extracted/factoidal.js"
 [[ -f "$JS_BUNDLE" ]] || { echo "missing: $JS_BUNDLE (run ./formal/fstar/build-ocaml.sh js)" >&2; exit 2; }
 
-# Sentinel so the orchestrator (Phase 2 #243) knows this runner is a
-# stub. Real implementation: parse --query / --data the same way
-# run-native.sh does, marshal them through node + factoidal.js, capture
-# stdout, propagate exit code.
-echo '{"_runner_status":"unimplemented","sub_issue":243}'
-exit 77   # POSIX-ish "skip" sentinel
+command -v node >/dev/null || { echo "node not found on PATH" >&2; exit 2; }
+
+QUERY=""
+ARGS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --query) QUERY="$2"; shift 2 ;;
+    --data)
+      # Accept FILE[:FORMAT[:GRAPH]]
+      spec="$2"; shift 2
+      file="${spec%%:*}"
+      rest="${spec#*:}"
+      if [[ "$rest" == "$spec" ]]; then
+        ARGS+=( --data "$file" )
+      else
+        format="${rest%%:*}"
+        graph="${rest#*:}"
+        if [[ "$graph" == "$rest" ]]; then
+          ARGS+=( --data "$file" --format "$format" )
+        else
+          ARGS+=( --named "$graph=$file" --format "$format" )
+        fi
+      fi
+      ;;
+    *) echo "unknown arg: $1" >&2; exit 2 ;;
+  esac
+done
+
+[[ -n "$QUERY" ]] || { echo "missing --query" >&2; exit 2; }
+
+exec node "$JS_BUNDLE" --query "$QUERY" -o json "${ARGS[@]}"

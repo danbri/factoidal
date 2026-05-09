@@ -1,0 +1,84 @@
+name: beyond-w3c
+
+# Phase 2 (#241): per-PR sanity check that every demo-page query in
+# tests/beyond-w3c/fixtures/index.json runs without crashing on each
+# committed runtime (native + js-of-ocaml under Node). Wasm-node is
+# included once #244 lands a real run-wasm-node.sh.
+#
+# This is the CI hookup the user asked for after #240's silent-truncation
+# regression: that bug would have been caught here had this workflow
+# existed. The orchestrator (run-parity.py) marks any rc != 0 as
+# engine-crash unless the manifest declares a known_failures entry
+# pointing at an open issue. Adding new known_failures requires a
+# linked GitHub issue per repo policy.
+
+on:
+  push:
+    branches:
+      - main
+      - claude/main
+      - claude/**
+    paths:
+      # Re-run on changes to the bundles, the runners, the manifest,
+      # the sample data, or the orchestrator itself. Keep tightly
+      # scoped so unrelated commits (docs, test-results) don't
+      # re-trigger.
+      - 'docs/fstar-extracted/factoidal.js'
+      - 'docs/fstar-extracted/factoidal.wasm.js'
+      - 'docs/fstar-extracted/samples/**'
+      - 'tests/beyond-w3c/**'
+      - 'bin/**/factoidal'
+      - '.github/workflows/beyond-w3c.yml'
+  pull_request:
+    paths:
+      - 'docs/fstar-extracted/factoidal.js'
+      - 'docs/fstar-extracted/factoidal.wasm.js'
+      - 'docs/fstar-extracted/samples/**'
+      - 'tests/beyond-w3c/**'
+      - 'bin/**/factoidal'
+      - '.github/workflows/beyond-w3c.yml'
+  workflow_dispatch: {}
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Node 20 has TextEncoder, TextDecoder, and the v8 use-js-string
+          # behaviour the bundle expects. Anything older risks #240-style
+          # transcoding asymmetries.
+          node-version: '20'
+
+      - name: Make runners executable
+        run: |
+          chmod +x tests/beyond-w3c/runners/*.sh tests/beyond-w3c/bin/*.py
+
+      - name: Verify committed binaries are present
+        run: |
+          # The native binary and JS bundle are committed (CLAUDE.md
+          # iron rule #9), so a fresh clone runs tests without an F*
+          # toolchain. Fail loudly if either is missing.
+          test -x bin/linux-x86_64/factoidal || { echo "missing native binary"; exit 1; }
+          test -f docs/fstar-extracted/factoidal.js || { echo "missing JS bundle"; exit 1; }
+
+      - name: Run parity (native + js-node)
+        # Wasm-node intentionally omitted until #244's runner lands;
+        # adding it here as a stub would mark every query as 'skip'
+        # (rc=77) which clutters the output.
+        run: |
+          mkdir -p docs/test-results/beyond-w3c
+          tests/beyond-w3c/bin/run-parity.py \
+            --manifest tests/beyond-w3c/fixtures/index.json \
+            --runners native,js-node \
+            --output docs/test-results/beyond-w3c/latest.json
+
+      - name: Upload result JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: beyond-w3c-results
+          path: docs/test-results/beyond-w3c/latest.json
+          retention-days: 30
