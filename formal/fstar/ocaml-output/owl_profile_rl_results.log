@@ -149,4 +149,4 @@ Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   FAIL/no-premise  functionality-clash
   FAIL/no-premise  string-integer-clash
 
-Profile-RL InconsistencyTests: 4 pass, 10 fail (out of 14) in 0.16s
+Profile-RL InconsistencyTests: 4 pass, 10 fail (out of 14) in 0.14s
