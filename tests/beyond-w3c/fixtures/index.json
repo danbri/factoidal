@@ -1,0 +1,34 @@
+{
+  "_comment": "Beyond-W3C fixture for docs/fstar-extracted/index.html. Phase 1 (#242) populates this with all 33 queries by extracting from the HTML; this seed entry exists so Phase 2a (#243) has a concrete failing query to land its runner against. The bind-upper query is the canonical #240 reproducer.",
+  "page": "docs/fstar-extracted/index.html",
+  "datasets": [
+    {
+      "name": "people",
+      "file": "docs/fstar-extracted/samples/people.ttl",
+      "format": "turtle"
+    }
+  ],
+  "queries": [
+    {
+      "name": "bind-upper",
+      "label": "BIND + string functions",
+      "dataset": "people",
+      "file": "tests/beyond-w3c/fixtures/queries/bind-upper.rq",
+      "expected": {
+        "kind": "row-count",
+        "rows": 8,
+        "_note": "Actual row count from native run on docs/fstar-extracted/samples/people.ttl. The user-facing demo with the BatUChar bug truncated mid-stream after 1-2 rows; the 'expected' here is the truthful native answer."
+      },
+      "known_failures": {
+        "js-node": {
+          "issue": 240,
+          "note": "BatUChar.Out_of_range mid-stream after rendering 1-2 rows; truncated JSON; demo page silently shows partial results"
+        },
+        "wasm-node": {
+          "issue": 240,
+          "note": "Likely the same UTF-8 / codepoint cast as js-node; needs verification once the runner lands"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+
+SELECT ?name ?upper ?initial
+WHERE {
+  ?p foaf:name ?name .
+  BIND (UCASE(STR(?name))    AS ?upper)
+  BIND (SUBSTR(STR(?name),1,1) AS ?initial)
+}
+ORDER BY ?name
