@@ -721,7 +721,7 @@ let rec eval_pattern_backend (p : SPARQL11_Algebra.group_graph_pattern)
            let candidates =
              named_candidate_backends dsb.dsb_named
                (pattern_predicate_hint p') in
-           FStar_List_Tot_Base.concatMap
+           RDF_List_Helpers.concatMap_tr
              (fun ngb ->
                 let ng_results = eval_pattern_backend p' ngb.ngb_graph dsb in
                 if RDF_Graph_Executable.is_iri ngb.ngb_name

@@ -100,3 +100,62 @@ let rec sum_lengths_acc (acc : nat) (xs : list string)
 
 let sum_lengths (xs : list string) : Tot nat =
   sum_lengths_acc 0 xs
+
+(* --------------------------------------------------------------------
+   Read primitives — inverse of the write_u32_le / write_u64_le /
+   bytes_of_string helpers above. Used by parsers (parse_dict,
+   parse_presence, parse_offsets, parse_compound_presence) for the
+   round-trip witness pattern: parse (serialize x) == Some x.
+
+   All read primitives are total and pure. Each peels its consumed
+   bytes off the FRONT of the input and returns the unread suffix
+   alongside the parsed value. Returning [None] means the input was
+   shorter than the requested field.
+   -------------------------------------------------------------------- *)
+
+let int_of_byte (b : byte) : Tot (n:int{n >= 0 /\ n < 256}) =
+  let n = FStar.Char.int_of_char b in
+  if n < 0 || n >= 256 then 0 else n
+
+let parse_u32_le (bs : bytes) : Tot (option (nat & bytes)) =
+  match bs with
+  | b0 :: b1 :: b2 :: b3 :: rest ->
+    let v0 : nat = int_of_byte b0 in
+    let v1 : nat = (int_of_byte b1) `op_Multiply` 256 in
+    let v2 : nat = (int_of_byte b2) `op_Multiply` 65536 in
+    let v3 : nat = (int_of_byte b3) `op_Multiply` 16777216 in
+    let n : nat = v0 + v1 + v2 + v3 in
+    Some (n, rest)
+  | _ -> None
+
+let parse_u64_le (bs : bytes) : Tot (option (nat & bytes)) =
+  match bs with
+  | b0 :: b1 :: b2 :: b3 :: b4 :: b5 :: b6 :: b7 :: rest ->
+    let v0 : nat = int_of_byte b0 in
+    let v1 : nat = (int_of_byte b1) `op_Multiply` 256 in
+    let v2 : nat = (int_of_byte b2) `op_Multiply` 65536 in
+    let v3 : nat = (int_of_byte b3) `op_Multiply` 16777216 in
+    let v4 : nat = (int_of_byte b4) `op_Multiply` 4294967296 in
+    let v5 : nat = (int_of_byte b5) `op_Multiply` 1099511627776 in
+    let v6 : nat = (int_of_byte b6) `op_Multiply` 281474976710656 in
+    let v7 : nat = (int_of_byte b7) `op_Multiply` 72057594037927936 in
+    let n : nat = v0 + v1 + v2 + v3 + v4 + v5 + v6 + v7 in
+    Some (n, rest)
+  | _ -> None
+
+let rec parse_n_bytes (n : nat) (bs : bytes)
+  : Tot (option (bytes & bytes)) (decreases n) =
+  if n = 0 then Some ([], bs)
+  else
+    match bs with
+    | [] -> None
+    | b :: rest ->
+      match parse_n_bytes (n - 1) rest with
+      | None -> None
+      | Some (taken, remainder) -> Some (b :: taken, remainder)
+
+let parse_string_of_length (n : nat) (bs : bytes)
+  : Tot (option (string & bytes)) =
+  match parse_n_bytes n bs with
+  | None -> None
+  | Some (taken, remainder) -> Some (bytes_to_string taken, remainder)

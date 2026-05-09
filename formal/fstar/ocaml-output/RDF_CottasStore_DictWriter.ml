@@ -71,3 +71,84 @@ let serialize_dict (sorted_tokens : Prims.string Prims.list) :
         RDF_List_Helpers.append_tr header
           (RDF_List_Helpers.append_tr ids
              (RDF_List_Helpers.append_tr offs data))))
+let rec parse_n_offsets (k : Prims.nat) (bs : RDF_Bytes.bytes) :
+  (Prims.nat Prims.list * RDF_Bytes.bytes) FStar_Pervasives_Native.option=
+  if k = Prims.int_zero
+  then FStar_Pervasives_Native.Some ([], bs)
+  else
+    (match RDF_Bytes.parse_u64_le bs with
+     | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+     | FStar_Pervasives_Native.Some (o, rest) ->
+         (match parse_n_offsets (k - Prims.int_one) rest with
+          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+          | FStar_Pervasives_Native.Some (offs, after) ->
+              FStar_Pervasives_Native.Some ((o :: offs), after)))
+let rec parse_tokens_from_offsets (offsets : Prims.nat Prims.list)
+  (bs : RDF_Bytes.bytes) :
+  Prims.string Prims.list FStar_Pervasives_Native.option=
+  match offsets with
+  | [] -> FStar_Pervasives_Native.Some []
+  | uu___::[] -> FStar_Pervasives_Native.Some []
+  | o0::o1::rest_offs ->
+      if o1 < o0
+      then FStar_Pervasives_Native.None
+      else
+        (let len = o1 - o0 in
+         match RDF_Bytes.parse_string_of_length len bs with
+         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+         | FStar_Pervasives_Native.Some (tok, after) ->
+             (match parse_tokens_from_offsets (o1 :: rest_offs) after with
+              | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+              | FStar_Pervasives_Native.Some toks ->
+                  FStar_Pervasives_Native.Some (tok :: toks)))
+let parse_dict (bs : RDF_Bytes.bytes) :
+  Prims.string Prims.list FStar_Pervasives_Native.option=
+  match RDF_Bytes.parse_u32_le bs with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some (m, after_magic) ->
+      if Prims.op_Negation (m = dict_magic)
+      then FStar_Pervasives_Native.None
+      else
+        (match RDF_Bytes.parse_u32_le after_magic with
+         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+         | FStar_Pervasives_Native.Some (v, after_version) ->
+             if Prims.op_Negation (v = dict_version)
+             then FStar_Pervasives_Native.None
+             else
+               (match RDF_Bytes.parse_u32_le after_version with
+                | FStar_Pervasives_Native.None ->
+                    FStar_Pervasives_Native.None
+                | FStar_Pervasives_Native.Some (n, after_n) ->
+                    (match RDF_Bytes.parse_u32_le after_n with
+                     | FStar_Pervasives_Native.None ->
+                         FStar_Pervasives_Native.None
+                     | FStar_Pervasives_Native.Some (_pad, after_pad) ->
+                         (match RDF_Bytes.parse_u64_le after_pad with
+                          | FStar_Pervasives_Native.None ->
+                              FStar_Pervasives_Native.None
+                          | FStar_Pervasives_Native.Some
+                              (_ids_off, after_ids_off) ->
+                              (match RDF_Bytes.parse_u64_le after_ids_off
+                               with
+                               | FStar_Pervasives_Native.None ->
+                                   FStar_Pervasives_Native.None
+                               | FStar_Pervasives_Native.Some
+                                   (_tok_off, after_header) ->
+                                   let ids_bytes_count = id_size * n in
+                                   (match RDF_Bytes.parse_n_bytes
+                                            ids_bytes_count after_header
+                                    with
+                                    | FStar_Pervasives_Native.None ->
+                                        FStar_Pervasives_Native.None
+                                    | FStar_Pervasives_Native.Some
+                                        (_ids, after_ids) ->
+                                        (match parse_n_offsets
+                                                 (n + Prims.int_one)
+                                                 after_ids
+                                         with
+                                         | FStar_Pervasives_Native.None ->
+                                             FStar_Pervasives_Native.None
+                                         | FStar_Pervasives_Native.Some
+                                             (offsets, after_offsets) ->
+                                             parse_tokens_from_offsets
+                                               offsets after_offsets)))))))

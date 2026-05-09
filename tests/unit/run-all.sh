@@ -46,9 +46,13 @@ mkdir -p "$BUILD_DIR"
 # the build script.
 COMMON_MODULES=(
   RDF_Graph_Executable
+  RDF_List_Helpers
+  RDF_Bytes
   Parquet_Footer
+  OWL_Vocabulary
   Tableau
   Parser_FastString
+  Parser_IRI
   Parser_Combinators
   Parser_TurtleScanner
   Parser_NTriples
@@ -65,6 +69,21 @@ COMMON_MODULES=(
   Parser_BallyhooHDT
   Parser_BallyhooHDTQ
   Parser_BallyhooCOTTAS
+  RDF_CottasStore_ColumnSeq
+  RDF_CottasStore_PageCache
+  RDF_CottasStore_OnDiskIndex
+  RDF_CottasStore_DictWriter
+  RDF_CottasStore_PresenceBitmap
+  RDF_CottasStore_PresenceWriter
+  RDF_CottasStore_CompoundPresenceBitmap
+  RDF_CottasStore_CompoundPresenceWriter
+  RDF_CottasStore_OffsetsWriter
+  RDF_Store_Columnar_OffsetIndex
+  SPARQL_Plan_Pruning
+  SPARQL_Plan_Estimate
+  SPARQL_Plan_Loader
+  SPARQL_Plan_AccessPath
+  RDF_CottasStore
   fstar_pure_hashes
   SPARQL11_Algebra
   SPARQL11_Parser

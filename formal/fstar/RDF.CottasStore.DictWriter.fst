@@ -150,3 +150,95 @@ let serialize_dict (sorted_tokens : list string) : Tot RDF.Bytes.bytes =
       Lh.append_tr header
         (Lh.append_tr ids
           (Lh.append_tr offs data))
+
+(* --- Round-trip parser ------------------------------------------------ *)
+
+(* parse_n_offsets k bs
+     Read k u64_le values from the front of bs. Used to consume the
+     token_offs[] cumulative-offset array. *)
+let rec parse_n_offsets (k : nat) (bs : RDF.Bytes.bytes)
+  : Tot (option (list nat & RDF.Bytes.bytes)) (decreases k) =
+  if k = 0 then Some ([], bs)
+  else
+    match RDF.Bytes.parse_u64_le bs with
+    | None -> None
+    | Some (o, rest) ->
+      match parse_n_offsets (k - 1) rest with
+      | None -> None
+      | Some (offs, after) -> Some (o :: offs, after)
+
+(* parse_tokens_from_offsets offsets bs
+     Given cumulative byte offsets [o0; o1; ...; on] (n+1 entries —
+     the trailing entry is the sentinel = total token_data length)
+     and a byte sequence positioned at the start of token_data, peel
+     off n strings whose lengths are the consecutive offset
+     differences. Empty token_data (n=0) → single-element offset list,
+     handled by the [_] base case. *)
+let rec parse_tokens_from_offsets
+  (offsets : list nat) (bs : RDF.Bytes.bytes)
+  : Tot (option (list string)) (decreases (length offsets)) =
+  match offsets with
+  | [] -> Some []
+  | [_] -> Some []
+  | o0 :: o1 :: rest_offs ->
+    if o1 < o0 then None
+    else
+      let len : nat = o1 - o0 in
+      match RDF.Bytes.parse_string_of_length len bs with
+      | None -> None
+      | Some (tok, after) ->
+        match parse_tokens_from_offsets (o1 :: rest_offs) after with
+        | None -> None
+        | Some toks -> Some (tok :: toks)
+
+(* parse_dict bs
+     Inverse of [serialize_dict]. Reads the COKD header, skips the
+     trivially-redundant ids[] block (ids[i] = i for sorted tokens),
+     reads the (n+1)-element cumulative-offsets array, and slices the
+     token_data section into n strings.
+
+     Returns [None] if any of:
+       - magic mismatch ('COKD' = 0x444b4f43)
+       - version mismatch (currently 1)
+       - input shorter than declared by header
+       - cumulative offsets non-monotonic
+
+     The caller's expectation (round-trip witness):
+       parse_dict (serialize_dict sorted_tokens) == Some sorted_tokens
+     for any sorted_tokens with [length sorted_tokens < 2^32] and
+     [data_offset < 2^64] (the same bounds [serialize_dict] enforces).
+
+     Formal lemma deferred to a follow-up issue; the CI hash-roundtrip
+     test in tests/unit/dict_writer_roundtrip.ml gives empirical
+     evidence of round-trip on a representative fixture. *)
+let parse_dict (bs : RDF.Bytes.bytes) : Tot (option (list string)) =
+  match RDF.Bytes.parse_u32_le bs with
+  | None -> None
+  | Some (m, after_magic) ->
+    if not (m = dict_magic) then None
+    else
+      match RDF.Bytes.parse_u32_le after_magic with
+      | None -> None
+      | Some (v, after_version) ->
+        if not (v = dict_version) then None
+        else
+          match RDF.Bytes.parse_u32_le after_version with
+          | None -> None
+          | Some (n, after_n) ->
+            match RDF.Bytes.parse_u32_le after_n with
+            | None -> None
+            | Some (_pad, after_pad) ->
+              match RDF.Bytes.parse_u64_le after_pad with
+              | None -> None
+              | Some (_ids_off, after_ids_off) ->
+                match RDF.Bytes.parse_u64_le after_ids_off with
+                | None -> None
+                | Some (_tok_off, after_header) ->
+                  let ids_bytes_count : nat = id_size `op_Multiply` n in
+                  match RDF.Bytes.parse_n_bytes ids_bytes_count after_header with
+                  | None -> None
+                  | Some (_ids, after_ids) ->
+                    match parse_n_offsets (n + 1) after_ids with
+                    | None -> None
+                    | Some (offsets, after_offsets) ->
+                      parse_tokens_from_offsets offsets after_offsets
