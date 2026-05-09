@@ -459,7 +459,14 @@ module Cottas_companion_writer = struct
      Layout:
        [ magic u32 | version u32 | num_rgs u32 | num_tokens u32 ]
        [ bitmap : ceil(num_rgs * num_tokens / 8) bytes, row-major,
-                  bit (rg*num_tokens + tok) ] *)
+                  bit (rg*num_tokens + tok) ]
+
+     #200 PR2 part 2 (2026-05-09): the 16-byte header is now produced
+     by F* (RDF.CottasStore.PresenceWriter.serialize_presence_header).
+     Bitmap contents stay in OCaml because parliament-scale .presence
+     files reach ~12.5MB; materialising as F-star's list-of-char
+     would cost millions of cons cells per column. Atomic-write +
+     bitmap bit-set are rule-#11(a) acceptable I/O-glue work. *)
   let write_presence_file (path : string)
     (rg_count : pint)
     (sorted_tokens : string array)
@@ -485,11 +492,12 @@ module Cottas_companion_writer = struct
               (Stdlib.Char.chr (cur lor (1 lsl bit_in_byte)))
         ) rg_set
     done;
+    let header_chars =
+      RDF_CottasStore_PresenceWriter.serialize_presence_header
+        (Z.of_int rg_count) (Z.of_int n)
+    in
     let buf = Buffer.create (16 + bytes) in
-    write_u32_le buf presence_magic;
-    write_u32_le buf layout_version;
-    write_u32_le buf rg_count;
-    write_u32_le buf n;
+    List.iter (fun b -> Buffer.add_char buf (Char.chr (b land 0xff))) header_chars;
     Buffer.add_bytes buf bitmap;
     atomic_write path (Buffer.contents buf)
 
