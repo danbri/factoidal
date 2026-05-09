@@ -184,44 +184,10 @@ lazy_module = '''module Cottas_ondisk_lazy = struct
      companion-file reader still references these accessors to seed
      its on-disk index path; keeping them as empty tables is safe
      glue (rule #11 allowed: structural, no decisions). *)
-  let pred_presence_by_path
-    : (string, (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t) Hashtbl.t
-    = Hashtbl.create 17
-
-  let subj_presence_by_path
-    : (string, (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t) Hashtbl.t
-    = Hashtbl.create 17
-
-  let obj_presence_by_path
-    : (string, (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t) Hashtbl.t
-    = Hashtbl.create 17
-
-  let presence_for_path (path : string)
-    : (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t =
-    match Hashtbl.find_opt pred_presence_by_path path with
-    | Some t -> t
-    | None ->
-      let t : (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t = Hashtbl.create 32 in
-      Hashtbl.add pred_presence_by_path path t;
-      t
-
-  let subj_presence_for_path (path : string)
-    : (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t =
-    match Hashtbl.find_opt subj_presence_by_path path with
-    | Some t -> t
-    | None ->
-      let t : (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t = Hashtbl.create 32 in
-      Hashtbl.add subj_presence_by_path path t;
-      t
-
-  let obj_presence_for_path (path : string)
-    : (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t =
-    match Hashtbl.find_opt obj_presence_by_path path with
-    | Some t -> t
-    | None ->
-      let t : (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t = Hashtbl.create 32 in
-      Hashtbl.add obj_presence_by_path path t;
-      t
+  (* Yod6/Tet3 in-RAM presence Hashtbls + accessors retired (issue #249).
+     The query path consults RDF.CottasStore.PresenceBitmap.rg_could_contain
+     against the mmap'd companion file directly; this OCaml mirror was
+     populated but never read. *)
 end
 
 '''

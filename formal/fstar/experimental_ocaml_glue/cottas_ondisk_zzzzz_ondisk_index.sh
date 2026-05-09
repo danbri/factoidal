@@ -686,61 +686,13 @@ module Cottas_companion_boot = struct
                   Printf.eprintf "[vav3-WARN] bulk-load: bad graph id=%d raw=%s\n%!" id raw)
            | _ -> ())
       done;
-      (* Step 2: walk the .presence bitmap rg-by-rg to populate
-         Yod6/Tet3 presence maps. Sequential byte-walk over the
-         mmap'd bitmap region — one Hashtbl.add per set bit. The F*
-         spec `presence_test_bit` is byte-identical to this walk; we
-         skip the per-bit F* dispatch for boot speed. (Phase E swaps
-         the query path to read the bitmap directly via the F*-pure
-         primitive — this bulk-load is a transitional shim.) *)
-      let id_to_tok_table = match col_idx with
-        | 0 -> tables.Cottas_ondisk_runtime.ft_id_to_subj_tok
-        | 1 -> tables.Cottas_ondisk_runtime.ft_id_to_pred_tok
-        | 2 -> tables.Cottas_ondisk_runtime.ft_id_to_obj_tok
-        | 3 -> tables.Cottas_ondisk_runtime.ft_id_to_graph_tok
-        | _ -> Hashtbl.create 1 in
-      (* Pick the right presence table from Cottas_ondisk_lazy. *)
-      let target_presence_for_path : string -> (Stdlib.Int.t, (string, unit) Hashtbl.t) Hashtbl.t =
-        match col_idx with
-        | 0 -> Cottas_ondisk_lazy.subj_presence_for_path
-        | 1 -> Cottas_ondisk_lazy.presence_for_path
-        | 2 -> Cottas_ondisk_lazy.obj_presence_for_path
-        | _ -> (fun _ -> Hashtbl.create 0) in
-      let target_presence = target_presence_for_path cottas_path in
-      (* Direct mmap byte-walk. ph_num_tokens bits per rg, packed LSB-first.
-         Whole-byte zero-skip: when an entire byte is 0 it can't contain
-         any set bits, so we advance 8 bit-indices at once. Otherwise we
-         test each of the (up-to-)8 bits individually. *)
-      let _ = RDF_CottasStore_OnDiskIndex.Vav3_mmap.try_open_mmap ppath in
-      (match Hashtbl.find_opt RDF_CottasStore_OnDiskIndex.Vav3_mmap.views ppath with
-       | None ->
-         Printf.eprintf "[vav3-WARN] bulk-load col=%d: presence mmap not available\n%!" col_idx
-       | Some v ->
-         let bitmap_offset = 16 in  (* presence_header_size *)
-         let mv_data = v.RDF_CottasStore_OnDiskIndex.Vav3_mmap.mv_data in
-         for rg = 0 to n_rgs - 1 do
-           let rg_set : (string, unit) Hashtbl.t = Hashtbl.create 256 in
-           let base_bit = rg * n_tok in
-           let id = ref 0 in
-           while !id < n_tok do
-             let bit_index = base_bit + !id in
-             let byte_idx = bitmap_offset + bit_index / 8 in
-             let bit_in_byte = bit_index mod 8 in
-             let b = Stdlib.Char.code (Bigarray.Array1.unsafe_get mv_data byte_idx) in
-             if b = 0 then begin
-               (* Skip remaining bits in this byte (8 - bit_in_byte). *)
-               id := !id + (8 - bit_in_byte)
-             end else if (b lsr bit_in_byte) land 1 = 1 then begin
-               (match Hashtbl.find_opt id_to_tok_table !id with
-                | None -> ()
-                | Some raw ->
-                  if not (Hashtbl.mem rg_set raw) then Hashtbl.add rg_set raw ());
-               incr id
-             end else
-               incr id
-           done;
-           Hashtbl.replace target_presence rg rg_set
-         done);
+      (* Yod6/Tet3 presence Hashtbl population previously lived here as
+         a transitional shim. The query path now consults the F*-pure
+         RDF.CottasStore.PresenceBitmap.rg_could_contain (verifiable in
+         SPARQL.Plan.Pruning.fst) directly against the mmap'd companion
+         file, so the in-RAM Hashtbl mirror is unread dead code. Issue
+         #249 retires this presence-bytewalk; #200 Section A codename
+         track. *)
       n_tok
     | _ ->
       Printf.eprintf "[vav3-FATAL] bulk-load col=%d header read failed\n%!" col_idx;
