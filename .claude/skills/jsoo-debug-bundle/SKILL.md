@@ -43,11 +43,19 @@ Outputs:
 - `docs/fstar-extracted/factoidal.debug.map` (~4.2 MB, separate
   source map referenced from the bundle's tail)
 
-Reload the demo with `?jsoo-debug=1`:
+Reload the demo with `?jsoo-debug=1`. The `<factoidal-sparql>`
+custom element lives at `docs/fstar-extracted/index.html`, **not**
+at the Pages root (`docs/index.md` is just a landing page that
+links into `/fstar-extracted/`). The correct URL is:
 
 ```
-https://danbri.github.io/factoidal/?jsoo-debug=1
+https://danbri.github.io/factoidal/fstar-extracted/?jsoo-debug=1
 ```
+
+Other demo pages under the same dir (`demo-lifesci.html`,
+`demo-notebook.html`, `demo-remote-endpoint.html`) accept the
+same query param — append `?jsoo-debug=1` to whichever one
+reproduces the bug.
 
 Open Chrome devtools → Sources → toggle **"Pause on uncaught
 exceptions"**. Trigger the offending query. The break point lands
