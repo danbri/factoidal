@@ -252,6 +252,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              RDF.Graph.Executable.fst Parquet.Footer.fst \
              RDF.NQuads.Serialize.fst \
              RDF.List.Helpers.fst \
+             RDF.Bytes.fst \
              RDF.Store.Loader.fst \
              RDF.Canonical.fst \
              RDF.Canonical.Manifest.fst \
@@ -284,6 +285,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              RDF.CottasStore.ColumnSeq.fst \
              RDF.CottasStore.PageCache.fst \
              RDF.CottasStore.OnDiskIndex.fst \
+             RDF.CottasStore.DictWriter.fst \
              RDF.CottasStore.PresenceBitmap.fst \
              RDF.CottasStore.CompoundPresenceBitmap.fst \
              RDF.Store.Columnar.OffsetIndex.fst \
