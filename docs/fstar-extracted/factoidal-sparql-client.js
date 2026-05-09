@@ -677,6 +677,13 @@ class FactoidalSparqlClient extends HTMLElement {
   }
 
   get jsUrl() {
+    // ?jsoo-debug=1 — load the source-mapped, --pretty --no-inline
+    // bundle from build-jsoo-debug.sh. Used to pinpoint browser-V8-only
+    // crashes (BatUChar.Out_of_range, #240) that don't repro under Node.
+    try {
+      const dbg = new URLSearchParams(globalThis.location?.search || '').get('jsoo-debug');
+      if (dbg === '1') return './factoidal.debug.js';
+    } catch (_) { /* non-browser host */ }
     return this.getAttribute('js-url') || './factoidal.js';
   }
   get wasmUrl() {
