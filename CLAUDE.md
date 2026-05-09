@@ -5,9 +5,11 @@ the product**. Executable code is obtained by **extraction**, not by
 hand-writing Rust/JS/OCaml/anything that "mirrors" a spec.
 
 > **CLAUDE.md is short on purpose.** Operational detail lives in skills
-> (`.claude/skills/<name>/SKILL.md`) and design docs
-> (`docs/designissues/`). The rules below are the ones every session must
-> have in working memory. The rest is one click away.
+> (`skills/<name>/SKILL.md` — [agentskills.io](https://agentskills.io)
+> format, vendor-neutral; `.claude/skills` is a compatibility symlink
+> for Claude Code's discovery) and design docs (`docs/designissues/`).
+> The rules below are the ones every session must have in working
+> memory. The rest is one click away.
 
 ## :warning: F\* Comment Syntax — DANGER :warning:
 
@@ -172,18 +174,27 @@ rule #17").
     `genuine`, `important`, `critical`, `big-picture`, `headline`,
     `key insight`, `key finding`, etc. perform candor instead of
     being clear. The sentence either carries weight or it doesn't.
-    Full rule + rewrites in `.claude/skills/markdown-style/SKILL.md`.
+    Full rule + rewrites in `skills/markdown-style/SKILL.md`.
 
 ## Skills (operational details, on-demand)
 
-- [`fstar-env`](.claude/skills/fstar-env/SKILL.md) — F\* / opam / z3
+Skills live under `skills/<name>/SKILL.md` in the
+[agentskills.io](https://agentskills.io) format (vendor-neutral; Claude
+Code, Cursor, Codex, Gemini CLI, Goose, Copilot, OpenHands, etc. all
+read this format). `.claude/skills` is a symlink to `skills/` for
+Claude Code's default discovery path.
+
+- [`fstar-env`](skills/fstar-env/SKILL.md) — F\* / opam / z3
   setup and repair.
-- [`build-and-test`](.claude/skills/build-and-test/SKILL.md) — build,
+- [`build-and-test`](skills/build-and-test/SKILL.md) — build,
   extract, compile, run W3C tests.
-- [`github-and-prs`](.claude/skills/github-and-prs/SKILL.md) — gh CLI
+- [`github-and-prs`](skills/github-and-prs/SKILL.md) — gh CLI
   with `--repo danbri/factoidal`, branch + PR conventions.
-- [`repo-tour`](.claude/skills/repo-tour/SKILL.md) — directory layout,
+- [`repo-tour`](skills/repo-tour/SKILL.md) — directory layout,
   "where does X live?".
+- [`fstar-mcp`](skills/fstar-mcp/SKILL.md) — F\* MCP server for
+  interactive proof / typecheck queries (replaces batch `fstar.exe`
+  reruns for diagnostic work).
 
 ## Expanded docs (full reference)
 

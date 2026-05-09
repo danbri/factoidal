@@ -6,10 +6,14 @@ description: Use the F* MCP server (FStarLang/fstar-mcp) — a stdio bridge to F
 # F\* MCP — interactive proof/typecheck instead of batch reruns
 
 The Factoidal repo ships a project-scoped F\* MCP server (config in
-`.mcp.json` at repo root). On a fresh Anthropic sandbox the
-`session-start` hook (`.claude/hooks/session-start.sh`) installs the
-binary via `cargo install --git https://github.com/FStarLang/fstar-mcp.git`
-on first session; subsequent sessions reuse it.
+`.mcp.json` at repo root — agent-vendor-neutral; Cursor / Continue /
+Zed / Cline / Claude Code all read `.mcp.json`). On a fresh sandbox
+the bootstrap script `tools/sandbox-bootstrap.sh` installs the binary
+via `cargo install --locked --git https://github.com/FStarLang/fstar-mcp.git`
+on first session; subsequent sessions reuse it. Under Claude Code the
+bootstrap is triggered by `.claude/hooks/session-start.sh` (a one-line
+wrapper around `tools/sandbox-bootstrap.sh`); other agent harnesses
+can wire the same script into their own session-start hook.
 
 The MCP exposes F\*'s `--ide` stdio protocol. That replaces the batch
 loop of "edit `.fst` → `make verify` → wait 30 s+ → read error → guess

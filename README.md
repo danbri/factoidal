@@ -283,10 +283,13 @@ functions.
 The Rust toolchain is **optional** and agent-side: the project ships a
 project-scoped MCP server (`.mcp.json` → `tools/fstar-mcp-launch.sh`)
 that wraps F\*'s `--ide` protocol via [FStarLang/fstar-mcp](https://github.com/FStarLang/fstar-mcp).
-Claude Code sessions on the Anthropic remote sandbox install it
-automatically via `.claude/hooks/session-start.sh` on first start. Local
-contributors who want it run `cargo install --git https://github.com/FStarLang/fstar-mcp.git` once. Without it, F\* still verifies / extracts /
-runs normally — the MCP only changes the Claude diagnostic loop.
+Sandboxed agent sessions install it automatically via
+`tools/sandbox-bootstrap.sh` (invoked from `.claude/hooks/session-start.sh`
+under Claude Code; other agent harnesses can call the same script
+directly from their own session-start hook). Local contributors who
+want it run `cargo install --locked --git https://github.com/FStarLang/fstar-mcp.git`
+once. Without it, F\* still verifies / extracts / runs normally — the
+MCP only changes the agent's diagnostic loop.
 
 ### Build steps
 

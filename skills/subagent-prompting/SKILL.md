@@ -17,8 +17,8 @@ you didn't make. The agent's branch has nothing to push. Recovery
 takes 10-30 minutes per incident.
 
 This skill exists because we hit this hazard 3+ times in one session
-(2026-05-07; see `.claude/skills/workflow-gotchas-debugging/SKILL.md`
-for the full incident report).
+(2026-05-07; see `skills/workflow-gotchas-debugging/SKILL.md` for the
+full incident report).
 
 ## The two rules every agent prompt must include
 
