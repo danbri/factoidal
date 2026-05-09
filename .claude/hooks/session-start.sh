@@ -34,7 +34,12 @@ if ! command -v cargo >/dev/null 2>&1; then
 fi
 
 echo "session-start: installing FStarLang/fstar-mcp via cargo (~2-3 min on a cold sandbox)..." >&2
-if cargo install --git https://github.com/FStarLang/fstar-mcp.git --quiet 2>&1 | tail -20 >&2; then
+# --locked is essential. fstar-mcp's git dep `pmcp` (paiml/rust-mcp-sdk)
+# moved to an incompatible API at HEAD; without --locked, cargo resolves
+# to that and the build fails (StreamableHttpServerConfig missing
+# allowed_origins / max_request_bytes). The committed Cargo.lock pins
+# pmcp 1.9.4, which is what fstar-mcp's source actually compiles against.
+if cargo install --git https://github.com/FStarLang/fstar-mcp.git --locked --quiet 2>&1 | tail -20 >&2; then
   echo "session-start: fstar-mcp installed at $HOME/.cargo/bin/fstar-mcp" >&2
 else
   echo "session-start: fstar-mcp install failed; the F* MCP server will be unavailable this session" >&2
