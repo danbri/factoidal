@@ -30,7 +30,7 @@ Running 20 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  WebOnt-imports-011
   FAIL  WebOnt-miscellaneous-302-Direct
 
-Profile-RL PositiveEntailmentTests: 14 pass, 6 fail (out of 20) in 0.27s
+Profile-RL PositiveEntailmentTests: 14 pass, 6 fail (out of 20) in 0.28s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 3 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
@@ -100,7 +100,7 @@ Running 58 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-miscellaneous-303
   PASS  owl2-rl-invalid-rightside-somevaluesfrom
 
-Profile-RL ConsistencyTests: 58 pass, 0 fail (out of 58) in 0.93s
+Profile-RL ConsistencyTests: 58 pass, 0 fail (out of 58) in 1.00s
 
 Running 6 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  DisjointClasses-002
