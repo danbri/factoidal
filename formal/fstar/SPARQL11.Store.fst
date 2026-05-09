@@ -6,6 +6,8 @@ open Parser.BallyhooHDT
 open Parser.BallyhooCOTTAS
 open RDF.CottasStore
 
+module Lh = RDF.List.Helpers
+
 // Note: this module previously imported Util.Log for in-line debug
 // tracing in choose_best_tp_backend. Removed because F* erases
 // Tot-unit-discarded calls regardless of how they're wrapped. The
@@ -630,7 +632,7 @@ let rec eval_pattern_backend (p : group_graph_pattern) (gb : graph_backend) (dsb
         | None -> [])
      | PT_Var v ->
        let candidates = named_candidate_backends dsb.dsb_named (pattern_predicate_hint p') in
-       List.Tot.concatMap
+       Lh.concatMap_tr
          (fun (ngb : named_graph_backend) ->
            let ng_results = eval_pattern_backend p' ngb.ngb_graph dsb in
            if is_iri ngb.ngb_name then
