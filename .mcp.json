@@ -1,0 +1,9 @@
+{
+  "_comment": "Project-scoped MCP servers for the Factoidal repo. Loaded by Claude Code at session start; requires one-time per-project user approval. Future contributors can pre-approve via `claude mcp` or by accepting the prompt on first session.",
+  "mcpServers": {
+    "fstar": {
+      "_comment": "F* IDE-protocol bridge from FStarLang/fstar-mcp. The wrapper activates the fstar opam switch (so fstar.exe is on PATH) before exec'ing the fstar-mcp binary. The binary lives at ~/.cargo/bin/fstar-mcp; .claude/hooks/session-start.sh installs it on a fresh sandbox.",
+      "command": "tools/fstar-mcp-launch.sh"
+    }
+  }
+}

@@ -278,6 +278,15 @@ functions.
 | sha, digestif | Hash functions (MD5/SHA) | `opam install sha digestif` | `opam install sha digestif` |
 | js_of_ocaml, zarith_stubs_js | JavaScript extraction (optional) | `opam install js_of_ocaml zarith_stubs_js` | same |
 | wasm_of_ocaml-compiler, binaryen | WebAssembly extraction (optional) | `apt-get install binaryen && opam install wasm_of_ocaml-compiler` | `brew install binaryen && opam install wasm_of_ocaml-compiler` |
+| Rust toolchain (cargo, rustc) | Build the F\* MCP server (optional, agent-side only) | `apt-get install cargo` or `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` | `brew install rust` or rustup |
+
+The Rust toolchain is **optional** and agent-side: the project ships a
+project-scoped MCP server (`.mcp.json` → `tools/fstar-mcp-launch.sh`)
+that wraps F\*'s `--ide` protocol via [FStarLang/fstar-mcp](https://github.com/FStarLang/fstar-mcp).
+Claude Code sessions on the Anthropic remote sandbox install it
+automatically via `.claude/hooks/session-start.sh` on first start. Local
+contributors who want it run `cargo install --git https://github.com/FStarLang/fstar-mcp.git` once. Without it, F\* still verifies / extracts /
+runs normally — the MCP only changes the Claude diagnostic loop.
 
 ### Build steps
 
