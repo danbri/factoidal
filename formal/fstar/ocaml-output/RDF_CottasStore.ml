@@ -2711,43 +2711,20 @@ module Cottas_companion_writer = struct
        [ token_offs[]  u64 * (num_tokens+1) ]
        [ token_data    bytes ]
   *)
+  (* #200 PR2 (2026-05-09): byte assembly migrated to F* at
+     RDF.CottasStore.DictWriter.serialize_dict. The OCaml side here is
+     reduced to the rule-#11(a) I/O step: convert the F*-extracted byte
+     list to a string and atomic-write to disk. The F* serializer
+     enforces the same on-disk format invariants (magic 'COKD', version,
+     32-byte header, ids[], token_offs[], token_data) but with verified
+     overflow checks (n < 2^32, total_offset < 2^64). *)
   let write_dict_file (path : string) (sorted_tokens : string array) : unit =
-    let n = Array.length sorted_tokens in
-    (* Header: 32 bytes. Then ids[] (4*n bytes). Then token_offs[]
-       (8*(n+1) bytes). Then token_data. *)
-    let header_size  = 32 in
-    let ids_size     = 4 * n in
-    let offs_size    = 8 * (n + 1) in
-    let ids_offset    = header_size in
-    let tokens_offset = header_size + ids_size in
-    let token_data_offset = tokens_offset + offs_size in
-    let total_token_bytes =
-      Array.fold_left (fun acc s -> acc + String.length s) 0 sorted_tokens in
-    let buf = Buffer.create (header_size + ids_size + offs_size + total_token_bytes) in
-    (* Header. *)
-    write_u32_le buf dict_magic;
-    write_u32_le buf layout_version;
-    write_u32_le buf n;
-    write_u32_le buf 0;  (* pad *)
-    write_u64_le buf ids_offset;
-    write_u64_le buf tokens_offset;
-    (* ids[] : since we sorted the global set, and assigned ids 0..n-1
-       in that sorted order (Hashtbl.add tok_to_id tok id with id =
-       sorted index), the binary-search invariant is "tokens[ids[i]] is
-       lexicographically ascending in i". With our id assignment that's
-       just ids[i] = i. *)
-    for i = 0 to n - 1 do write_u32_le buf i done;
-    (* token_offs[] *)
-    let cur_off = ref token_data_offset in
-    write_u64_le buf !cur_off;
-    for i = 0 to n - 1 do
-      cur_off := !cur_off + String.length sorted_tokens.(i);
-      write_u64_le buf !cur_off
-    done;
-    (* token_data *)
-    for i = 0 to n - 1 do
-      Buffer.add_string buf sorted_tokens.(i)
-    done;
+    let bytes_list =
+      RDF_CottasStore_DictWriter.serialize_dict
+        (Array.to_list sorted_tokens)
+    in
+    let buf = Buffer.create (List.length bytes_list) in
+    List.iter (fun b -> Buffer.add_char buf (Char.chr (b land 0xff))) bytes_list;
     atomic_write path (Buffer.contents buf)
 
   (* Writer for one column's .presence file.

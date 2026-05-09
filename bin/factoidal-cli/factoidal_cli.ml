@@ -163,13 +163,13 @@ let load_cottas_dataset path =
     exit 1
   | FStar_Pervasives_Native.Some ds ->
     let cache = Parser_BallyhooCOTTAS.Ballyhoo_cottas_runtime.cache_for_store ds in
-    (* Walk each quad_row in the cache; decode via id_to_* hashtables;
-       bucket into default-graph and one triple-list per named graph IRI. *)
-    let default_rev = ref [] in
-    let named_tbl : (string, RDF_Graph_Executable.triple list ref) Hashtbl.t =
-      Hashtbl.create 17 in
     let open Parser_BallyhooCOTTAS.Ballyhoo_cottas_runtime in
-    List.iter (fun row ->
+    (* OCaml-side resolution: hashtable lookups are O(1); F* lists
+       are O(n). For parliament-scale corpora only the OCaml hashtable
+       path is tractable. The pure FOLD that buckets resolved quads
+       lives in F* at RDF.Store.Loader.bucket_quads.
+       #200 Section A non-codename migration, 2026-05-09. *)
+    let resolved = List.map (fun row ->
       let s = match Hashtbl.find_opt cache.id_to_subject row.qr_s with
         | Some s -> s
         | None -> failwith "cottas: missing subject id" in
@@ -180,24 +180,15 @@ let load_cottas_dataset path =
         | Some o -> o
         | None -> failwith "cottas: missing object id" in
       let triple = RDF_Graph_Executable.({ s; p; o }) in
-      match row.qr_g with
-      | None ->
-        default_rev := triple :: !default_rev
-      | Some gid ->
-        let g_iri = match Hashtbl.find_opt cache.id_to_graph gid with
-          | Some g -> g
-          | None -> failwith "cottas: missing graph id" in
-        let bucket = match Hashtbl.find_opt named_tbl g_iri with
-          | Some b -> b
-          | None ->
-            let b = ref [] in Hashtbl.add named_tbl g_iri b; b in
-        bucket := triple :: !bucket
-    ) cache.quads;
-    let default_g = List.rev !default_rev in
-    let named_gs = Hashtbl.fold (fun iri triples acc ->
-      RDF_Graph_Executable.({ ng_name = iri; ng_graph = List.rev !triples }) :: acc
-    ) named_tbl [] in
-    RDF_Graph_Executable.({ ds_default = default_g; ds_named = named_gs })
+      let g_opt = match row.qr_g with
+        | None -> FStar_Pervasives_Native.None
+        | Some gid ->
+          (match Hashtbl.find_opt cache.id_to_graph gid with
+           | Some g_iri -> FStar_Pervasives_Native.Some g_iri
+           | None -> failwith "cottas: missing graph id") in
+      RDF_Store_Loader.({ rq_triple = triple; rq_graph = g_opt })
+    ) cache.quads in
+    RDF_Store_Loader.bucket_quads resolved
 
 let open_cottas_ondisk_store path =
   match RDF_CottasStore.cottas_ondisk_open path with
