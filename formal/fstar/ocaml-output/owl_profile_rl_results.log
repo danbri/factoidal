@@ -1,6 +1,6 @@
 Closure regime: RL
 OWL 2 test catalog: /home/user/factoidal/third_party/testing/owl/profile-RL.rdf
-  parsed 1896 triples in 0.04s
+  parsed 1896 triples in 0.11s
 Totals: 91 test cases
   PositiveEntailmentTest:    30
   NegativeEntailmentTest:    6
@@ -40,7 +40,7 @@ Running 30 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  owl2-rl-rules-fp-differentFrom
   PASS  owl2-rl-rules-ifp-differentFrom
 
-Profile-RL PositiveEntailmentTests: 20 pass, 10 fail (out of 30) in 0.31s
+Profile-RL PositiveEntailmentTests: 20 pass, 10 fail (out of 30) in 0.46s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 6 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
@@ -51,7 +51,7 @@ Running 6 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fue
   PASS  WebOnt-I5.8-007
   FAIL/unexpected-entailment  WebOnt-equivalentClass-008
 
-Profile-RL NegativeEntailmentTests: 3 pass, 3 fail (out of 6) in 0.06s
+Profile-RL NegativeEntailmentTests: 3 pass, 3 fail (out of 6) in 0.08s
 
 Running 76 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  DisjointClasses-001
@@ -131,7 +131,7 @@ Running 76 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  owl2-rl-valid-oneof
   PASS  owl2-rl-valid-rightside-allvaluesfrom
 
-Profile-RL ConsistencyTests: 75 pass, 1 fail (out of 76) in 0.88s
+Profile-RL ConsistencyTests: 75 pass, 1 fail (out of 76) in 1.25s
 
 Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  DisjointClasses-002
@@ -149,4 +149,4 @@ Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   FAIL/no-premise  functionality-clash
   FAIL/no-premise  string-integer-clash
 
-Profile-RL InconsistencyTests: 4 pass, 10 fail (out of 14) in 0.14s
+Profile-RL InconsistencyTests: 4 pass, 10 fail (out of 14) in 0.19s
