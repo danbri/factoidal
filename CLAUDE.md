@@ -4,12 +4,13 @@ A formally verified RDF/SPARQL implementation. The **F\* specifications are
 the product**. Executable code is obtained by **extraction**, not by
 hand-writing Rust/JS/OCaml/anything that "mirrors" a spec.
 
-> **CLAUDE.md is short on purpose.** Operational detail lives in skills
-> (`skills/<name>/SKILL.md` — [agentskills.io](https://agentskills.io)
-> format, vendor-neutral; `.claude/skills` is a compatibility symlink
-> for Claude Code's discovery) and design docs (`docs/designissues/`).
-> The rules below are the ones every session must have in working
-> memory. The rest is one click away.
+> **CLAUDE.md is short on purpose.** Operational detail lives in
+> per-topic skill docs (`skills/<name>/SKILL.md` —
+> [agentskills.io](https://agentskills.io) format, vendor-neutral) and
+> design docs (`docs/designissues/`). The rules below are the ones
+> every session must have in working memory. The rest is one click
+> away — the `## Skills` section at the bottom of this file lists what
+> exists, follow the link when a topic comes up.
 
 ## :warning: F\* Comment Syntax — DANGER :warning:
 
@@ -178,11 +179,14 @@ rule #17").
 
 ## Skills (operational details, on-demand)
 
-Skills live under `skills/<name>/SKILL.md` in the
-[agentskills.io](https://agentskills.io) format (vendor-neutral; Claude
-Code, Cursor, Codex, Gemini CLI, Goose, Copilot, OpenHands, etc. all
-read this format). `.claude/skills` is a symlink to `skills/` for
-Claude Code's default discovery path.
+Skill files live at `skills/<name>/SKILL.md` in the
+[agentskills.io](https://agentskills.io) format — a vendor-neutral
+spec adopted by ~30 agent products (Claude Code, Cursor, Codex,
+Gemini CLI, Goose, Copilot, OpenHands, Roo, …). The repo does not
+ship per-tool discovery glue (no `.claude/skills/` symlink, no Cursor
+config, etc.); skills are referenced from this section and read on
+demand when relevant. Read the linked file the first time you touch
+that topic in a session.
 
 - [`fstar-env`](skills/fstar-env/SKILL.md) — F\* / opam / z3
   setup and repair.
@@ -195,6 +199,17 @@ Claude Code's default discovery path.
 - [`fstar-mcp`](skills/fstar-mcp/SKILL.md) — F\* MCP server for
   interactive proof / typecheck queries (replaces batch `fstar.exe`
   reruns for diagnostic work).
+- [`markdown-style`](skills/markdown-style/SKILL.md) — clickable-link
+  rules + the no-sycophantic-adjectives rewrite list.
+- [`subagent-prompting`](skills/subagent-prompting/SKILL.md) —
+  worktree path discipline + post-condition checks.
+- [`workflow-gotchas-debugging`](skills/workflow-gotchas-debugging/SKILL.md)
+  — diagnostic playbook for the dev-loop hazards we've actually hit.
+- [`issue-hygiene`](skills/issue-hygiene/SKILL.md) — keep GitHub
+  issues + checklists in sync as PRs land.
+- [`jsoo-debug-bundle`](skills/jsoo-debug-bundle/SKILL.md) — build a
+  source-mapped JS bundle so browser-only crashes show real OCaml
+  stacks.
 
 ## Expanded docs (full reference)
 

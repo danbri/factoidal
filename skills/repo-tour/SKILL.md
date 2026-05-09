@@ -113,7 +113,7 @@ factoidal/
 | `assume val` realisation | A patch file in `formal/fstar/minimal_regrettable_glue_code_each_with_an_open_issue/<issue>_<desc>.sh` referenced by `ocaml-patches.sh` |
 | Vendored 3rd-party F\* code | `formal/third_party/<lib>/` (see I/O verification design doc) |
 | Architecture decision doc | `docs/designissues/<YYYY-MM-DD>-<topic>.md` |
-| How-to / operational guide | `docs/skills/<topic>.md` (narrative) AND/OR `skills/<topic>/SKILL.md` (agentskills.io format; `.claude/skills` is a symlink to `skills/` for Claude Code) |
+| How-to / operational guide | `docs/skills/<topic>.md` (narrative) AND/OR `skills/<topic>/SKILL.md` (agentskills.io format; referenced from CLAUDE.md's `## Skills` section) |
 | Anti-pattern war story | New numbered entry in `docs/claude-rules/anti-patterns.md`; one-line summary in `CLAUDE.md` |
 | W3C test data | Don't add — submodules. Update the submodule pin if the W3C suite version changes |
 
