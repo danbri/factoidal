@@ -7,13 +7,25 @@ description: Use the F* MCP server (FStarLang/fstar-mcp) — a stdio bridge to F
 
 The Factoidal repo ships a project-scoped F\* MCP server (config in
 `.mcp.json` at repo root — agent-vendor-neutral; Cursor / Continue /
-Zed / Cline / Claude Code all read `.mcp.json`). On a fresh sandbox
-the bootstrap script `tools/sandbox-bootstrap.sh` installs the binary
-via `cargo install --locked --git https://github.com/FStarLang/fstar-mcp.git`
-on first session; subsequent sessions reuse it. Under Claude Code the
-bootstrap is triggered by `.claude/hooks/session-start.sh` (a one-line
-wrapper around `tools/sandbox-bootstrap.sh`); other agent harnesses
-can wire the same script into their own session-start hook.
+Zed / Cline / Claude Code all read `.mcp.json`). fstar-mcp 0.1.0
+exposes the MCP Streamable HTTP transport (no stdio mode), so the
+server runs as a background daemon on `http://127.0.0.1:3700` and
+clients connect over HTTP.
+
+Lifecycle:
+- `tools/sandbox-bootstrap.sh` runs on session start. It cargo-
+  installs the binary on first use (`cargo install --locked --git
+  https://github.com/FStarLang/fstar-mcp.git`) and then calls
+  `tools/fstar-mcp-server.sh start`. Both steps are idempotent.
+- `tools/fstar-mcp-server.sh {start|stop|status}` manages the daemon
+  directly. PID and log live under `.claude-runs/` (gitignored).
+- Under Claude Code, the bootstrap is triggered by
+  `.claude/hooks/session-start.sh` (a one-line wrapper). Other agent
+  harnesses can wire the same script into their own session-start
+  hook.
+
+Port 3700 is shared between `.mcp.json` and `fstar-mcp-server.sh` via
+the `FSTAR_MCP_PORT` env var. Change both if you hit a collision.
 
 The MCP exposes F\*'s `--ide` stdio protocol. That replaces the batch
 loop of "edit `.fst` → `make verify` → wait 30 s+ → read error → guess
@@ -96,13 +108,17 @@ If you're running locally (no `CLAUDE_CODE_REMOTE`) and want the MCP
 anyway:
 
 ```bash
-cargo install --git https://github.com/FStarLang/fstar-mcp.git
+cargo install --locked --git https://github.com/FStarLang/fstar-mcp.git
+tools/fstar-mcp-server.sh start
 ```
 
-That installs to `~/.cargo/bin/fstar-mcp`. The wrapper at
-`tools/fstar-mcp-launch.sh` finds it via `$HOME/.cargo/bin` then
-`$PATH`. Then restart Claude Code in the repo; project-scoped MCPs
-prompt for one-time approval on first session.
+The first command installs to `~/.cargo/bin/fstar-mcp`; the second
+launches the daemon on `:3700` and writes a PID to
+`.claude-runs/fstar-mcp.pid`. Then restart Claude Code in the repo;
+project-scoped MCPs prompt for one-time approval on first session.
+
+`tools/fstar-mcp-server.sh stop` shuts the daemon down when you're
+done; `status` reports running/not-running.
 
 ## Pairs with
 

@@ -281,15 +281,16 @@ functions.
 | Rust toolchain (cargo, rustc) | Build the F\* MCP server (optional, agent-side only) | `apt-get install cargo` or `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` | `brew install rust` or rustup |
 
 The Rust toolchain is **optional** and agent-side: the project ships a
-project-scoped MCP server (`.mcp.json` → `tools/fstar-mcp-launch.sh`)
-that wraps F\*'s `--ide` protocol via [FStarLang/fstar-mcp](https://github.com/FStarLang/fstar-mcp).
-Sandboxed agent sessions install it automatically via
-`tools/sandbox-bootstrap.sh` (invoked from `.claude/hooks/session-start.sh`
-under Claude Code; other agent harnesses can call the same script
-directly from their own session-start hook). Local contributors who
-want it run `cargo install --locked --git https://github.com/FStarLang/fstar-mcp.git`
-once. Without it, F\* still verifies / extracts / runs normally — the
-MCP only changes the agent's diagnostic loop.
+project-scoped MCP server config (`.mcp.json`) pointing at
+`http://127.0.0.1:3700`, where the [FStarLang/fstar-mcp](https://github.com/FStarLang/fstar-mcp)
+daemon runs and bridges F\*'s `--ide` protocol over MCP Streamable
+HTTP. Sandboxed agent sessions install the binary and start the
+daemon automatically via `tools/sandbox-bootstrap.sh` (invoked from
+`.claude/hooks/session-start.sh` under Claude Code; other agent
+harnesses can call the same script from their own session-start
+hook). Local contributors do `cargo install --locked --git https://github.com/FStarLang/fstar-mcp.git && tools/fstar-mcp-server.sh start`
+once. Without it, F\* still verifies / extracts / runs normally —
+the MCP only changes the agent's diagnostic loop.
 
 ### Build steps
 
