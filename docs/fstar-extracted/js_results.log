@@ -1,0 +1,5168 @@
+=== W3C SPARQL 1.1 Test Runner ===
+Test base: ../../third_party/testing/w3c/sparql/sparql11
+
+
+--- add ---
+  [1/8] add/ADD 1
+ ok
+  PASS: ADD 1
+  [2/8] add/ADD 2
+ ok
+  PASS: ADD 2
+  [3/8] add/ADD 3
+ ok
+  PASS: ADD 3
+  [4/8] add/ADD 4
+ ok
+  PASS: ADD 4
+  [5/8] add/ADD 5
+ ok
+  PASS: ADD 5
+  [6/8] add/ADD 6
+ ok
+  PASS: ADD 6
+  [7/8] add/ADD 7
+ ok
+  PASS: ADD 7
+  [8/8] add/ADD 8
+ ok
+  PASS: ADD 8
+  [suite time: 0.1s]
+
+--- aggregates ---
+  [1/47] aggregates/COUNT 1
+ ok
+  PASS: COUNT 1
+  [2/47] aggregates/COUNT 2
+ ok
+  PASS: COUNT 2
+  [3/47] aggregates/COUNT 3
+ ok
+  PASS: COUNT 3
+  [4/47] aggregates/COUNT 4
+ ok
+  PASS: COUNT 4
+  [5/47] aggregates/COUNT 5
+ ok
+  PASS: COUNT 5
+  [6/47] aggregates/COUNT 6
+ ok
+  PASS: COUNT 6
+  [7/47] aggregates/COUNT 7
+ ok
+  PASS: COUNT 7
+  [8/47] aggregates/COUNT 8
+ ok
+  PASS: COUNT 8
+  [9/47] aggregates/COUNT 8b
+ ok
+  PASS: COUNT 8b
+  [10/47] aggregates/COUNT 9
+ ok
+  PASS: COUNT 9
+  [11/47] aggregates/COUNT 10
+ ok
+  PASS: COUNT 10
+  [12/47] aggregates/COUNT 11
+ ok
+  PASS: COUNT 11
+  [13/47] aggregates/COUNT 12
+ ok
+  PASS: COUNT 12
+  [14/47] aggregates/GROUP_CONCAT 1
+ ok
+  PASS: GROUP_CONCAT 1
+  [15/47] aggregates/GROUP_CONCAT 2
+ ok
+  PASS: GROUP_CONCAT 2
+  [16/47] aggregates/GROUP_CONCAT with SEPARATOR
+ ok
+  PASS: GROUP_CONCAT with SEPARATOR
+  [17/47] aggregates/GROUP_CONCAT with same language tag
+ ok
+  PASS: GROUP_CONCAT with same language tag
+  [18/47] aggregates/GROUP_CONCAT with different language tags
+ ok
+  PASS: GROUP_CONCAT with different language tags
+  [19/47] aggregates/GROUP_CONCAT with one element
+ ok
+  PASS: GROUP_CONCAT with one element
+  [20/47] aggregates/SUM
+ ok
+  PASS: SUM
+  [21/47] aggregates/SUM with GROUP BY
+ ok
+  PASS: SUM with GROUP BY
+  [22/47] aggregates/AVG
+ ok
+  PASS: AVG
+  [23/47] aggregates/AVG with GROUP BY
+ ok
+  PASS: AVG with GROUP BY
+  [24/47] aggregates/AVG with empty group (value defined to be 0)
+ ok
+  PASS: AVG with empty group (value defined to be 0)
+  [25/47] aggregates/MIN
+ ok
+  PASS: MIN
+  [26/47] aggregates/MIN with GROUP BY
+ ok
+  PASS: MIN with GROUP BY
+  [27/47] aggregates/MAX
+ ok
+  PASS: MAX
+  [28/47] aggregates/MAX with GROUP BY
+ ok
+  PASS: MAX with GROUP BY
+  [29/47] aggregates/SAMPLE
+ ok
+  PASS: SAMPLE
+  [30/47] aggregates/Error in AVG
+ ok
+  PASS: Error in AVG
+  [31/47] aggregates/Protect from error in AVG
+ ok
+  PASS: Protect from error in AVG
+  [32/47] aggregates/agg on empty set, explicit grouping
+ ok
+  PASS: agg on empty set, explicit grouping
+  [33/47] aggregates/agg on empty set, no grouping
+ ok
+  PASS: agg on empty set, no grouping
+  [34/47] aggregates/COUNT: no match, with group
+ ok
+  PASS: COUNT: no match, with group
+  [35/47] aggregates/COUNT: no match, no group
+ ok
+  PASS: COUNT: no match, no group
+  [36/47] aggregates/COUNT: no GROUP BY inside of GRAPH
+ ok
+  PASS: COUNT: no GROUP BY inside of GRAPH
+  [37/47] aggregates/HAVING: multiple conditions
+ ok
+  PASS: HAVING: multiple conditions
+  [38/47] aggregates/GROUP BY with a function
+ ok
+  PASS: GROUP BY with a function
+  [39/47] aggregates/GROUP BY with a built-in function
+ ok
+  PASS: GROUP BY with a built-in function
+  [40/47] aggregates/AVG DISTINCT with GROUP BY
+ ok
+  PASS: AVG DISTINCT with GROUP BY
+  [41/47] aggregates/COUNT DISTINCT with GROUP BY
+ ok
+  PASS: COUNT DISTINCT with GROUP BY
+  [42/47] aggregates/COUNT(DISTINCT *) with GROUP BY
+ ok
+  PASS: COUNT(DISTINCT *) with GROUP BY
+  [43/47] aggregates/GROUP_CONCAT DISTINCT
+ ok
+  PASS: GROUP_CONCAT DISTINCT
+  [44/47] aggregates/MAX DISTINCT with GROUP BY
+ ok
+  PASS: MAX DISTINCT with GROUP BY
+  [45/47] aggregates/MIN DISTINCT with GROUP BY
+ ok
+  PASS: MIN DISTINCT with GROUP BY
+  [46/47] aggregates/SAMPLE DISTINCT
+ ok
+  PASS: SAMPLE DISTINCT
+  [47/47] aggregates/SUM DISTINCT with GROUP BY
+ ok
+  PASS: SUM DISTINCT with GROUP BY
+  [suite time: 0.2s]
+
+--- basic-update ---
+  [1/13] basic-update/Simple insert data 1
+ ok
+  PASS: Simple insert data 1
+  [2/13] basic-update/Simple insert data named 1
+ ok
+  PASS: Simple insert data named 1
+  [3/13] basic-update/Simple insert data named 2
+ ok
+  PASS: Simple insert data named 2
+  [4/13] basic-update/Simple insert data named 3
+ ok
+  PASS: Simple insert data named 3
+  [5/13] basic-update/INSERT 01
+ ok
+  PASS: INSERT 01
+  [6/13] basic-update/INSERT 02
+ ok
+  PASS: INSERT 02
+  [7/13] basic-update/INSERT 03
+ ok
+  PASS: INSERT 03
+  [8/13] basic-update/INSERT 04
+ ok
+  PASS: INSERT 04
+  [9/13] basic-update/INSERT USING 01
+ ok
+  PASS: INSERT USING 01
+  [10/13] basic-update/INSERT same bnode twice
+ ok
+  PASS: INSERT same bnode twice
+  [11/13] basic-update/INSERTing the same bnode with INSERT DATA into two different Graphs is the same bnode
+ ok
+  PASS: INSERTing the same bnode with INSERT DATA into two different Graphs is the same bnode
+  [12/13] basic-update/INSERTing the same bnode with two INSERT WHERE statement within one request is NOT the same bnode
+ ok
+  PASS: INSERTing the same bnode with two INSERT WHERE statement within one request is NOT the same bnode
+  [13/13] basic-update/INSERTing the same bnode with two INSERT WHERE statement within one request is NOT the same bnode even if both WHERE clauses have the empty solution mapping as the only solution.
+ ok
+  PASS: INSERTing the same bnode with two INSERT WHERE statement within one request is NOT the same bnode even if both WHERE clauses have the empty solution mapping as the only solution.
+  [suite time: 0.0s]
+
+--- bind ---
+  [1/10] bind/bind01 - BIND
+ ok
+  PASS: bind01 - BIND
+  [2/10] bind/bind02 - BIND
+ ok
+  PASS: bind02 - BIND
+  [3/10] bind/bind03 - BIND
+ ok
+  PASS: bind03 - BIND
+  [4/10] bind/bind04 - BIND
+ ok
+  PASS: bind04 - BIND
+  [5/10] bind/bind05 - BIND
+ ok
+  PASS: bind05 - BIND
+  [6/10] bind/bind06 - BIND
+ ok
+  PASS: bind06 - BIND
+  [7/10] bind/bind07 - BIND
+ ok
+  PASS: bind07 - BIND
+  [8/10] bind/bind08 - BIND
+ ok
+  PASS: bind08 - BIND
+  [9/10] bind/bind10 - BIND scoping - Variable in filter not in scope
+ ok
+  PASS: bind10 - BIND scoping - Variable in filter not in scope
+  [10/10] bind/bind11 - BIND scoping - Variable in filter in scope
+ ok
+  PASS: bind11 - BIND scoping - Variable in filter in scope
+  [suite time: 0.0s]
+
+--- bindings ---
+  [1/11] bindings/Post-query VALUES with subj-var, 1 row
+ ok
+  PASS: Post-query VALUES with subj-var, 1 row
+  [2/11] bindings/Post-query VALUES with obj-var, 1 row
+ ok
+  PASS: Post-query VALUES with obj-var, 1 row
+  [3/11] bindings/Post-query VALUES with 2 obj-vars, 1 row
+ ok
+  PASS: Post-query VALUES with 2 obj-vars, 1 row
+  [4/11] bindings/Post-query VALUES with 2 obj-vars, 1 row with UNDEF
+ ok
+  PASS: Post-query VALUES with 2 obj-vars, 1 row with UNDEF
+  [5/11] bindings/Post-query VALUES with 2 obj-vars, 2 rows with UNDEF
+ ok
+  PASS: Post-query VALUES with 2 obj-vars, 2 rows with UNDEF
+  [6/11] bindings/Post-query VALUES with pred-var, 1 row
+ ok
+  PASS: Post-query VALUES with pred-var, 1 row
+  [7/11] bindings/Post-query VALUES with (OPTIONAL) obj-var, 1 row
+ ok
+  PASS: Post-query VALUES with (OPTIONAL) obj-var, 1 row
+  [8/11] bindings/Post-query VALUES with subj/obj-vars, 2 rows with UNDEF
+ ok
+  PASS: Post-query VALUES with subj/obj-vars, 2 rows with UNDEF
+  [9/11] bindings/Inline VALUES graph pattern
+ ok
+  PASS: Inline VALUES graph pattern
+  [10/11] bindings/Post-subquery VALUES
+ ok
+  PASS: Post-subquery VALUES
+  [11/11] bindings/VALUES inside GRAPH binding the same variable as the graph name
+ ok
+  PASS: VALUES inside GRAPH binding the same variable as the graph name
+  [suite time: 0.0s]
+
+--- cast ---
+  [1/6] cast/xsd:boolean cast
+ ok (15ms)
+  PASS: xsd:boolean cast (15ms)
+  [2/6] cast/xsd:integer cast
+ ok (13ms)
+  PASS: xsd:integer cast (13ms)
+  [3/6] cast/xsd:float cast
+ ok (12ms)
+  PASS: xsd:float cast (12ms)
+  [4/6] cast/xsd:double cast
+ ok (12ms)
+  PASS: xsd:double cast (12ms)
+  [5/6] cast/xsd:decimal cast
+ ok (12ms)
+  PASS: xsd:decimal cast (12ms)
+  [6/6] cast/xsd:string cast
+ ok (16ms)
+  PASS: xsd:string cast (16ms)
+  [suite time: 0.1s]
+
+--- clear ---
+  [1/4] clear/CLEAR DEFAULT
+ ok
+  PASS: CLEAR DEFAULT
+  [2/4] clear/CLEAR GRAPH
+ ok
+  PASS: CLEAR GRAPH
+  [3/4] clear/CLEAR NAMED
+ ok
+  PASS: CLEAR NAMED
+  [4/4] clear/CLEAR ALL
+ ok
+  PASS: CLEAR ALL
+  [suite time: 0.0s]
+
+--- construct ---
+  [1/7] construct/constructwhere01 - CONSTRUCT WHERE
+ ok
+  PASS: constructwhere01 - CONSTRUCT WHERE
+  [2/7] construct/constructwhere02 - CONSTRUCT WHERE
+ ok
+  PASS: constructwhere02 - CONSTRUCT WHERE
+  [3/7] construct/constructwhere03 - CONSTRUCT WHERE
+ ok
+  PASS: constructwhere03 - CONSTRUCT WHERE
+  [4/7] construct/constructwhere04 - CONSTRUCT WHERE
+ ok
+  PASS: constructwhere04 - CONSTRUCT WHERE
+  [5/7] construct/constructwhere05 - CONSTRUCT WHERE
+ ok
+  PASS: constructwhere05 - CONSTRUCT WHERE
+  [6/7] construct/constructwhere06 - CONSTRUCT WHERE
+ ok
+  PASS: constructwhere06 - CONSTRUCT WHERE
+  [7/7] construct/CONSTRUCT list
+ ok
+  PASS: CONSTRUCT list
+  [suite time: 0.0s]
+
+--- copy ---
+  [1/6] copy/COPY 1
+ ok
+  PASS: COPY 1
+  [2/6] copy/COPY 2
+ ok
+  PASS: COPY 2
+  [3/6] copy/COPY 3
+ ok
+  PASS: COPY 3
+  [4/6] copy/COPY 4
+ ok
+  PASS: COPY 4
+  [5/6] copy/COPY 6
+ ok
+  PASS: COPY 6
+  [6/6] copy/COPY 7
+ ok
+  PASS: COPY 7
+  [suite time: 0.0s]
+
+--- csv-tsv-res ---
+  [1/6] csv-tsv-res/csv01 - CSV Result Format
+ ok
+  PASS: csv01 - CSV Result Format
+  [2/6] csv-tsv-res/tsv01 - TSV Result Format
+ ok
+  PASS: tsv01 - TSV Result Format
+  [3/6] csv-tsv-res/cvs02 - CSV Result Format
+ ok
+  PASS: cvs02 - CSV Result Format
+  [4/6] csv-tsv-res/tsv02 - TSV Result Format
+ ok
+  PASS: tsv02 - TSV Result Format
+  [5/6] csv-tsv-res/csv03 - CSV Result Format
+ ok
+  PASS: csv03 - CSV Result Format
+  [6/6] csv-tsv-res/tsv03 - TSV Result Format
+ ok
+  PASS: tsv03 - TSV Result Format
+  [suite time: 0.0s]
+
+--- delete ---
+  [1/19] delete/Simple DELETE 1
+ ok
+  PASS: Simple DELETE 1
+  [2/19] delete/Simple DELETE 2
+ ok
+  PASS: Simple DELETE 2
+  [3/19] delete/Simple DELETE 3
+ ok
+  PASS: Simple DELETE 3
+  [4/19] delete/Simple DELETE 4
+ ok
+  PASS: Simple DELETE 4
+  [5/19] delete/Graph-specific DELETE 1
+ ok
+  PASS: Graph-specific DELETE 1
+  [6/19] delete/Graph-specific DELETE 2
+ ok
+  PASS: Graph-specific DELETE 2
+  [7/19] delete/Simple DELETE 7
+ ok
+  PASS: Simple DELETE 7
+  [8/19] delete/Simple DELETE 1 (WITH)
+ ok
+  PASS: Simple DELETE 1 (WITH)
+  [9/19] delete/Simple DELETE 2 (WITH)
+ ok
+  PASS: Simple DELETE 2 (WITH)
+  [10/19] delete/Simple DELETE 3 (WITH)
+ ok
+  PASS: Simple DELETE 3 (WITH)
+  [11/19] delete/Simple DELETE 4 (WITH)
+ ok
+  PASS: Simple DELETE 4 (WITH)
+  [12/19] delete/Graph-specific DELETE 1 (WITH)
+ ok
+  PASS: Graph-specific DELETE 1 (WITH)
+  [13/19] delete/Graph-specific DELETE 2 (WITH)
+ ok
+  PASS: Graph-specific DELETE 2 (WITH)
+  [14/19] delete/Simple DELETE 1 (USING)
+ ok
+  PASS: Simple DELETE 1 (USING)
+  [15/19] delete/Simple DELETE 2 (USING)
+ ok
+  PASS: Simple DELETE 2 (USING)
+  [16/19] delete/Simple DELETE 3 (USING)
+ ok
+  PASS: Simple DELETE 3 (USING)
+  [17/19] delete/Simple DELETE 4 (USING)
+ ok
+  PASS: Simple DELETE 4 (USING)
+  [18/19] delete/Graph-specific DELETE 1 (USING)
+ ok
+  PASS: Graph-specific DELETE 1 (USING)
+  [19/19] delete/Graph-specific DELETE 2 (USING)
+ ok
+  PASS: Graph-specific DELETE 2 (USING)
+  [suite time: 0.1s]
+
+--- delete-data ---
+  [1/6] delete-data/Simple DELETE DATA 1
+ ok
+  PASS: Simple DELETE DATA 1
+  [2/6] delete-data/Simple DELETE DATA 2
+ ok
+  PASS: Simple DELETE DATA 2
+  [3/6] delete-data/Simple DELETE DATA 3
+ ok
+  PASS: Simple DELETE DATA 3
+  [4/6] delete-data/Simple DELETE DATA 4
+ ok
+  PASS: Simple DELETE DATA 4
+  [5/6] delete-data/Graph-specific DELETE DATA 1
+ ok
+  PASS: Graph-specific DELETE DATA 1
+  [6/6] delete-data/Graph-specific DELETE DATA 2
+ ok
+  PASS: Graph-specific DELETE DATA 2
+  [suite time: 0.0s]
+
+--- delete-insert ---
+  [1/17] delete-insert/DELETE INSERT 1
+ ok
+  PASS: DELETE INSERT 1
+  [2/17] delete-insert/DELETE INSERT 1b
+ ok
+  PASS: DELETE INSERT 1b
+  [3/17] delete-insert/DELETE INSERT 1c
+ ok
+  PASS: DELETE INSERT 1c
+  [4/17] delete-insert/DELETE INSERT 2
+ ok
+  PASS: DELETE INSERT 2
+  [5/17] delete-insert/DELETE INSERT 3
+ ok
+  PASS: DELETE INSERT 3
+  [6/17] delete-insert/DELETE INSERT 3b
+ ok
+  PASS: DELETE INSERT 3b
+  [7/17] delete-insert/DELETE INSERT 4
+ ok
+  PASS: DELETE INSERT 4
+  [8/17] delete-insert/DELETE INSERT 4b
+ ok
+  PASS: DELETE INSERT 4b
+  [9/17] delete-insert/DELETE INSERT 5
+ ok
+  PASS: DELETE INSERT 5
+  [10/17] delete-insert/DELETE INSERT 5b
+ ok
+  PASS: DELETE INSERT 5b
+  [11/17] delete-insert/DELETE INSERT 6
+ ok
+  PASS: DELETE INSERT 6
+  [12/17] delete-insert/DELETE INSERT 6b
+ ok
+  PASS: DELETE INSERT 6b
+  [13/17] delete-insert/DELETE INSERT 7
+ ok
+  PASS: DELETE INSERT 7
+  [14/17] delete-insert/DELETE INSERT 7b
+ ok
+  PASS: DELETE INSERT 7b
+  [15/17] delete-insert/DELETE INSERT 8
+ ok
+  PASS: DELETE INSERT 8
+  [16/17] delete-insert/DELETE INSERT 9
+ ok
+  PASS: DELETE INSERT 9
+  [17/17] delete-insert/Halloween Problem: A delete/insert operation should not be able to read its own writes
+ ok
+  PASS: Halloween Problem: A delete/insert operation should not be able to read its own writes
+  [suite time: 0.0s]
+
+--- delete-where ---
+  [1/6] delete-where/Simple DELETE WHERE 1
+ ok
+  PASS: Simple DELETE WHERE 1
+  [2/6] delete-where/Simple DELETE WHERE 2
+ ok
+  PASS: Simple DELETE WHERE 2
+  [3/6] delete-where/Simple DELETE WHERE 3
+ ok
+  PASS: Simple DELETE WHERE 3
+  [4/6] delete-where/Simple DELETE WHERE 4
+ ok
+  PASS: Simple DELETE WHERE 4
+  [5/6] delete-where/Graph-specific DELETE WHERE 1
+ ok
+  PASS: Graph-specific DELETE WHERE 1
+  [6/6] delete-where/Graph-specific DELETE WHERE 2
+ ok
+  PASS: Graph-specific DELETE WHERE 2
+  [suite time: 0.0s]
+
+--- drop ---
+  [1/4] drop/DROP DEFAULT
+ ok
+  PASS: DROP DEFAULT
+  [2/4] drop/DROP GRAPH
+ ok
+  PASS: DROP GRAPH
+  [3/4] drop/DROP NAMED
+ ok
+  PASS: DROP NAMED
+  [4/4] drop/DROP ALL
+ ok
+  PASS: DROP ALL
+  [suite time: 0.0s]
+
+--- entailment ---
+  [1/70] entailment/bind01 - BIND fixed data for OWL DL
+ ok (35ms)
+  PASS: bind01 - BIND fixed data for OWL DL (35ms)
+  [2/70] entailment/bind02 - BIND fixed data for OWL DL
+ ok (36ms)
+  PASS: bind02 - BIND fixed data for OWL DL (36ms)
+  [3/70] entailment/bind03 - BIND fixed data for OWL DL
+ ok (40ms)
+  PASS: bind03 - BIND fixed data for OWL DL (40ms)
+  [4/70] entailment/bind04 - BIND fixed data for OWL DL
+ ok (33ms)
+  PASS: bind04 - BIND fixed data for OWL DL (33ms)
+  [5/70] entailment/bind05 - BIND fixed data for OWL DL
+ ok (28ms)
+  PASS: bind05 - BIND fixed data for OWL DL (28ms)
+  [6/70] entailment/bind06 - BIND fixed data for OWL DL
+ ok (27ms)
+  PASS: bind06 - BIND fixed data for OWL DL (27ms)
+  [7/70] entailment/bind07 - BIND fixed data for OWL DL
+ ok (25ms)
+  PASS: bind07 - BIND fixed data for OWL DL (25ms)
+  [8/70] entailment/bind08 - BIND fixed data for OWL DL
+ ok (23ms)
+  PASS: bind08 - BIND fixed data for OWL DL (23ms)
+  [9/70] entailment/D-Entailment test to show that  neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers
+ ok
+  PASS: D-Entailment test to show that  neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers
+  [10/70] entailment/Literal with language tag test
+ ok (24ms)
+  PASS: Literal with language tag test (24ms)
+  [11/70] entailment/bnodes are not existentials
+ ok (29ms)
+  PASS: bnodes are not existentials (29ms)
+  [12/70] entailment/bnodes are not existentials with answer
+ ok (46ms)
+  PASS: bnodes are not existentials with answer (46ms)
+  [13/70] entailment/paper-sparqldl-Q1
+ ok (80ms)
+  PASS: paper-sparqldl-Q1 (80ms)
+  [14/70] entailment/paper-sparqldl-Q1-rdfs
+ ok
+  PASS: paper-sparqldl-Q1-rdfs
+  [15/70] entailment/paper-sparqldl-Q2
+ ok (175ms)
+  PASS: paper-sparqldl-Q2 (175ms)
+  [16/70] entailment/paper-sparqldl-Q3
+ ok (166ms)
+  PASS: paper-sparqldl-Q3 (166ms)
+  [17/70] entailment/paper-sparqldl-Q4
+ ok (80ms)
+  PASS: paper-sparqldl-Q4 (80ms)
+  [18/70] entailment/paper-sparqldl-Q5
+ ok (77ms)
+  PASS: paper-sparqldl-Q5 (77ms)
+  [19/70] entailment/filtered subclass query with (hasChild some Thing) restriction
+ ok (329ms)
+  PASS: filtered subclass query with (hasChild some Thing) restriction (329ms)
+  [20/70] entailment/parent query with distinguished variable
+ ok (117ms)
+  PASS: parent query with distinguished variable (117ms)
+  [21/70] entailment/parent query with (hasChild some Thing) restriction
+ ok (294ms)
+  PASS: parent query with (hasChild some Thing) restriction (294ms)
+  [22/70] entailment/parent query with (hasChild min 1) restriction
+ ok (290ms)
+  PASS: parent query with (hasChild min 1) restriction (290ms)
+  [23/70] entailment/parent query with (hasChild some Female) restriction
+ ok (284ms)
+  PASS: parent query with (hasChild some Female) restriction (284ms)
+  [24/70] entailment/parent query with (hasChild min 1 Female) restriction
+ ok (288ms)
+  PASS: parent query with (hasChild min 1 Female) restriction (288ms)
+  [25/70] entailment/parent query with (hasChild max 1 Female) restriction
+ ok (293ms)
+  PASS: parent query with (hasChild max 1 Female) restriction (293ms)
+  [26/70] entailment/parent query with (hasChild exactly 1 Female) restriction
+ ok (290ms)
+  PASS: parent query with (hasChild exactly 1 Female) restriction (290ms)
+  [27/70] entailment/subclass query with (hasChild some Thing) restriction
+ ok (286ms)
+  PASS: subclass query with (hasChild some Thing) restriction (286ms)
+  [28/70] entailment/Plain literals with language tag are not the same as the same literal without
+ ok (17ms)
+  PASS: Plain literals with language tag are not the same as the same literal without (17ms)
+  [29/70] entailment/RDF inference test
+ ok
+  PASS: RDF inference test
+  [30/70] entailment/RDF inference test
+ ok
+  PASS: RDF inference test
+  [31/70] entailment/RDF test for blank node cardinalities
+ ok
+  PASS: RDF test for blank node cardinalities
+  [32/70] entailment/simple triple pattern match
+ ok (25ms)
+  PASS: simple triple pattern match (25ms)
+  [33/70] entailment/RDFS inference test rdfs:subPropertyOf
+ ok (29ms)
+  PASS: RDFS inference test rdfs:subPropertyOf (29ms)
+  [34/70] entailment/RDFS inference test rdfs:subPropertyOf
+ ok (28ms)
+  PASS: RDFS inference test rdfs:subPropertyOf (28ms)
+  [35/70] entailment/RDFS inference test combining subPropertyOf and domain
+ ok
+  PASS: RDFS inference test combining subPropertyOf and domain
+  [36/70] entailment/RDFS inference test subClassOf
+ ok (19ms)
+  PASS: RDFS inference test subClassOf (19ms)
+  [37/70] entailment/RDFS inference test subClassOf
+ ok (27ms)
+  PASS: RDFS inference test subClassOf (27ms)
+  [38/70] entailment/RDFS inference test domain
+ ok (27ms)
+  PASS: RDFS inference test domain (27ms)
+  [39/70] entailment/RDFS inference test range
+ ok (32ms)
+  PASS: RDFS inference test range (32ms)
+  [40/70] entailment/RDFS inference test rdf:XMLLiteral subclass of rdfs:Literal
+ ok
+  PASS: RDFS inference test rdf:XMLLiteral subclass of rdfs:Literal
+  [41/70] entailment/RDFS inference test transitivity of subClassOf
+ ok (23ms)
+  PASS: RDFS inference test transitivity of subClassOf (23ms)
+  [42/70] entailment/RDFS inference test transitivity of subPropertyOf
+ ok (47ms)
+  PASS: RDFS inference test transitivity of subPropertyOf (47ms)
+  [43/70] entailment/RDFS inference test subProperty and instances
+ ok
+  PASS: RDFS inference test subProperty and instances
+  [44/70] entailment/RDFS inference test containers
+ ok
+  PASS: RDFS inference test containers
+  [45/70] entailment/RDFS inference test to show that neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers
+ ok (15ms)
+  PASS: RDFS inference test to show that neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers (15ms)
+  [46/70] entailment/RIF Logical Entailment (referencing RIF XML)
+ FAIL
+  FAIL: RIF Logical Entailment (referencing RIF XML) — Results mismatch: expected 1 rows, got 0
+      UNMATCHED: ?nephew=<http://example.org/ns#Emeka>, ?uncle=<http://example.org/ns#Chijoke>
+  [47/70] entailment/RIF Core WG tests: Frames
+ FAIL
+  FAIL: RIF Core WG tests: Frames — Results mismatch: expected 1 rows, got 0
+      UNMATCHED: ?discount="10"^^<http://www.w3.org/2001/XMLSchema#integer>
+  [48/70] entailment/RIF Core WG tests: Modeling Brain Anatomy
+ ok
+  PASS: RIF Core WG tests: Modeling Brain Anatomy
+  [49/70] entailment/RIF Core WG tests: RDF Combination Blank Node
+ ok
+  PASS: RIF Core WG tests: RDF Combination Blank Node
+  [50/70] entailment/simple 1
+ ok (103ms)
+  PASS: simple 1 (103ms)
+  [51/70] entailment/simple 2
+ ok (106ms)
+  PASS: simple 2 (106ms)
+  [52/70] entailment/simple 3
+ ok (103ms)
+  PASS: simple 3 (103ms)
+  [53/70] entailment/simple 4
+ ok (113ms)
+  PASS: simple 4 (113ms)
+  [54/70] entailment/simple 5
+ ok (112ms)
+  PASS: simple 5 (112ms)
+  [55/70] entailment/simple 6
+ ok (206ms)
+  PASS: simple 6 (206ms)
+  [56/70] entailment/simple 7
+ ok (111ms)
+  PASS: simple 7 (111ms)
+  [57/70] entailment/simple 8
+ ok (96ms)
+  PASS: simple 8 (96ms)
+  [58/70] entailment/sparqldl-01.rq: triple pattern
+ ok (25ms)
+  PASS: sparqldl-01.rq: triple pattern (25ms)
+  [59/70] entailment/sparqldl-02.rq: simple combined query
+ ok (21ms)
+  PASS: sparqldl-02.rq: simple combined query (21ms)
+  [60/70] entailment/sparqldl-03.rq: combined query with complex class description
+ ok (37ms)
+  PASS: sparqldl-03.rq: combined query with complex class description (37ms)
+  [61/70] entailment/sparqldl-04.rq: bug fixing test
+ ok (24ms)
+  PASS: sparqldl-04.rq: bug fixing test (24ms)
+  [62/70] entailment/sparqldl-05.rq: simple undistinguished variable test.
+ ok (19ms)
+  PASS: sparqldl-05.rq: simple undistinguished variable test. (19ms)
+  [63/70] entailment/sparqldl-06.rq: cycle of undistinguished variables
+ ok (41ms)
+  PASS: sparqldl-06.rq: cycle of undistinguished variables (41ms)
+  [64/70] entailment/sparqldl-07.rq: two distinguished variables + undist.
+ ok (52ms)
+  PASS: sparqldl-07.rq: two distinguished variables + undist. (52ms)
+  [65/70] entailment/sparqldl-08.rq: two distinguished variables + undist.
+ ok (51ms)
+  PASS: sparqldl-08.rq: two distinguished variables + undist. (51ms)
+  [66/70] entailment/sparqldl-09.rq: undist vars test
+ ok (37ms)
+  PASS: sparqldl-09.rq: undist vars test (37ms)
+  [67/70] entailment/sparqldl-10.rq: undist vars test
+ ok (36ms)
+  PASS: sparqldl-10.rq: undist vars test (36ms)
+  [68/70] entailment/sparqldl-11.rq: domain test
+ ok (99ms)
+  PASS: sparqldl-11.rq: domain test (99ms)
+  [69/70] entailment/sparqldl-12.rq: range test
+ ok (111ms)
+  PASS: sparqldl-12.rq: range test (111ms)
+  [70/70] entailment/sparqldl-13.rq: sameAs
+ ok (41ms)
+  PASS: sparqldl-13.rq: sameAs (41ms)
+  [suite time: 5.4s]
+
+--- exists ---
+  [1/6] exists/Exists with one constant
+ ok
+  PASS: Exists with one constant
+  [2/6] exists/Exists with ground triple
+ ok
+  PASS: Exists with ground triple
+  [3/6] exists/Exists within graph pattern
+ ok
+  PASS: Exists within graph pattern
+  [4/6] exists/Nested positive exists
+ ok
+  PASS: Nested positive exists
+  [5/6] exists/Nested negative exists in positive exists
+ ok
+  PASS: Nested negative exists in positive exists
+  [6/6] exists/GRAPH variable inside of EXISTS is bound to external variable
+ ok
+  PASS: GRAPH variable inside of EXISTS is bound to external variable
+  [suite time: 0.0s]
+
+--- functions ---
+  [1/75] functions/STRDT()
+ ok
+  PASS: STRDT()
+  [2/75] functions/STRDT(STR())
+ ok
+  PASS: STRDT(STR())
+  [3/75] functions/STRDT() TypeErrors (updated for RDF 1.1)
+ ok
+  PASS: STRDT() TypeErrors (updated for RDF 1.1)
+  [4/75] functions/STRLANG()
+ ok
+  PASS: STRLANG()
+  [5/75] functions/STRLANG(STR())
+ ok
+  PASS: STRLANG(STR())
+  [6/75] functions/STRLANG() TypeErrors (updated for RDF 1.1)
+ ok
+  PASS: STRLANG() TypeErrors (updated for RDF 1.1)
+  [7/75] functions/isNumeric()
+ ok
+  PASS: isNumeric()
+  [8/75] functions/ABS()
+ ok
+  PASS: ABS()
+  [9/75] functions/CEIL()
+ ok
+  PASS: CEIL()
+  [10/75] functions/FLOOR()
+ ok
+  PASS: FLOOR()
+  [11/75] functions/ROUND()
+ ok
+  PASS: ROUND()
+  [12/75] functions/CONCAT()
+ ok
+  PASS: CONCAT()
+  [13/75] functions/CONCAT() 2
+ ok
+  PASS: CONCAT() 2
+  [14/75] functions/CONCAT() without parameter
+ ok
+  PASS: CONCAT() without parameter
+  [15/75] functions/CONCAT() with a single parameter
+ ok
+  PASS: CONCAT() with a single parameter
+  [16/75] functions/SUBSTR() (3-argument)
+ ok
+  PASS: SUBSTR() (3-argument)
+  [17/75] functions/SUBSTR() (3-argument) on non-BMP unicode strings
+ ok
+  PASS: SUBSTR() (3-argument) on non-BMP unicode strings
+  [18/75] functions/SUBSTR() (2-argument)
+ ok
+  PASS: SUBSTR() (2-argument)
+  [19/75] functions/SUBSTR() (2-argument) on non-BMP unicode strings
+ ok
+  PASS: SUBSTR() (2-argument) on non-BMP unicode strings
+  [20/75] functions/STRLEN()
+ ok
+  PASS: STRLEN()
+  [21/75] functions/STRLEN() on non-BMP unicode strings
+ ok
+  PASS: STRLEN() on non-BMP unicode strings
+  [22/75] functions/UCASE()
+ ok
+  PASS: UCASE()
+  [23/75] functions/UCASE() on non-BMP unicode strings
+ ok
+  PASS: UCASE() on non-BMP unicode strings
+  [24/75] functions/LCASE()
+ ok
+  PASS: LCASE()
+  [25/75] functions/LCASE() on non-BMP unicode strings
+ ok
+  PASS: LCASE() on non-BMP unicode strings
+  [26/75] functions/ENCODE_FOR_URI()
+ ok
+  PASS: ENCODE_FOR_URI()
+  [27/75] functions/ENCODE_FOR_URI() on non-BMP unicode strings
+ ok
+  PASS: ENCODE_FOR_URI() on non-BMP unicode strings
+  [28/75] functions/CONTAINS()
+ ok
+  PASS: CONTAINS()
+  [29/75] functions/STRSTARTS()
+ ok
+  PASS: STRSTARTS()
+  [30/75] functions/STRENDS()
+ ok
+  PASS: STRENDS()
+  [31/75] functions/plus-1-corrected
+ ok
+  PASS: plus-1-corrected
+  [32/75] functions/plus-2-corrected
+ ok
+  PASS: plus-2-corrected
+  [33/75] functions/MD5()
+ ok
+  PASS: MD5()
+  [34/75] functions/MD5() over Unicode data
+ ok
+  PASS: MD5() over Unicode data
+  [35/75] functions/SHA1()
+ ok
+  PASS: SHA1()
+  [36/75] functions/SHA1() on Unicode data
+ ok
+  PASS: SHA1() on Unicode data
+  [37/75] functions/SHA256()
+ ok
+  PASS: SHA256()
+  [38/75] functions/SHA256() on Unicode data
+ ok
+  PASS: SHA256() on Unicode data
+  [39/75] functions/SHA384()
+ ok
+  PASS: SHA384()
+  [40/75] functions/SHA384() on Unicode data
+ ok
+  PASS: SHA384() on Unicode data
+  [41/75] functions/SHA512()
+ ok
+  PASS: SHA512()
+  [42/75] functions/SHA512() on Unicode data
+ ok
+  PASS: SHA512() on Unicode data
+  [43/75] functions/MINUTES()
+ ok
+  PASS: MINUTES()
+  [44/75] functions/SECONDS()
+ ok
+  PASS: SECONDS()
+  [45/75] functions/HOURS()
+ ok
+  PASS: HOURS()
+  [46/75] functions/MONTH()
+ ok
+  PASS: MONTH()
+  [47/75] functions/YEAR()
+ ok
+  PASS: YEAR()
+  [48/75] functions/DAY()
+ ok
+  PASS: DAY()
+  [49/75] functions/TIMEZONE()
+ ok
+  PASS: TIMEZONE()
+  [50/75] functions/TZ()
+ ok
+  PASS: TZ()
+  [51/75] functions/BNODE(str)
+ ok
+  PASS: BNODE(str)
+  [52/75] functions/BNODE()
+ ok
+  PASS: BNODE()
+  [53/75] functions/IN 1
+ ok
+  PASS: IN 1
+  [54/75] functions/IN 2
+ ok
+  PASS: IN 2
+  [55/75] functions/NOT IN 1
+ ok
+  PASS: NOT IN 1
+  [56/75] functions/NOT IN 2
+ ok
+  PASS: NOT IN 2
+  [57/75] functions/NOW()
+ ok
+  PASS: NOW()
+  [58/75] functions/RAND()
+ ok
+  PASS: RAND()
+  [59/75] functions/IRI()/URI()
+ ok
+  PASS: IRI()/URI()
+  [60/75] functions/IRI()/URI() when the input is an IRI
+ ok
+  PASS: IRI()/URI() when the input is an IRI
+  [61/75] functions/IF()
+ ok
+  PASS: IF()
+  [62/75] functions/IF() error propogation
+ ok
+  PASS: IF() error propogation
+  [63/75] functions/COALESCE()
+ ok
+  PASS: COALESCE()
+  [64/75] functions/COALESCE() without arguments
+ ok
+  PASS: COALESCE() without arguments
+  [65/75] functions/STRBEFORE()
+ ok
+  PASS: STRBEFORE()
+  [66/75] functions/STRBEFORE() datatyping
+ ok
+  PASS: STRBEFORE() datatyping
+  [67/75] functions/STRAFTER()
+ ok
+  PASS: STRAFTER()
+  [68/75] functions/STRAFTER() datatyping
+ ok
+  PASS: STRAFTER() datatyping
+  [69/75] functions/REPLACE()
+ ok
+  PASS: REPLACE()
+  [70/75] functions/REPLACE() with overlapping pattern
+ ok
+  PASS: REPLACE() with overlapping pattern
+  [71/75] functions/REPLACE() with captured substring
+ ok
+  PASS: REPLACE() with captured substring
+  [72/75] functions/REPLACE() with the 'i' option
+ ok
+  PASS: REPLACE() with the 'i' option
+  [73/75] functions/UUID() pattern match
+ ok
+  PASS: UUID() pattern match
+  [74/75] functions/UUID() per binding
+ ok
+  PASS: UUID() per binding
+  [75/75] functions/STRUUID() pattern match
+ ok
+  PASS: STRUUID() pattern match
+  [suite time: 0.3s]
+
+--- grouping ---
+  [1/6] grouping/Group-1
+ ok
+  PASS: Group-1
+  [2/6] grouping/Group-3
+ ok
+  PASS: Group-3
+  [3/6] grouping/Group-4
+ ok
+  PASS: Group-4
+  [4/6] grouping/Group-5
+ ok
+  PASS: Group-5
+  [5/6] grouping/Group-6
+ ok
+  PASS: Group-6
+  [6/6] grouping/Group-7
+ ok
+  PASS: Group-7
+  [suite time: 0.0s]
+
+--- http-rdf-update ---
+  [1/19] http-rdf-update/PUT - Initial state
+ ok
+  PASS: PUT - Initial state
+  [2/19] http-rdf-update/GET of PUT - Initial state
+ ok
+  PASS: GET of PUT - Initial state
+  [3/19] http-rdf-update/PUT - graph already in store
+ ok
+  PASS: PUT - graph already in store
+  [4/19] http-rdf-update/GET of PUT - graph already in store
+ ok
+  PASS: GET of PUT - graph already in store
+  [5/19] http-rdf-update/PUT - default graph
+ ok
+  PASS: PUT - default graph
+  [6/19] http-rdf-update/GET of PUT - default graph
+ ok
+  PASS: GET of PUT - default graph
+  [7/19] http-rdf-update/PUT - mismatched payload
+ ok
+  PASS: PUT - mismatched payload
+  [8/19] http-rdf-update/DELETE - existing graph
+ ok
+  PASS: DELETE - existing graph
+  [9/19] http-rdf-update/GET of DELETE - existing graph
+ ok
+  PASS: GET of DELETE - existing graph
+  [10/19] http-rdf-update/DELETE - non-existent graph
+ ok
+  PASS: DELETE - non-existent graph
+  [11/19] http-rdf-update/POST - existing graph
+ ok
+  PASS: POST - existing graph
+  [12/19] http-rdf-update/GET of POST - existing graph
+ ok
+  PASS: GET of POST - existing graph
+  [13/19] http-rdf-update/POST - multipart/form-data
+ ok
+  PASS: POST - multipart/form-data
+  [14/19] http-rdf-update/GET of POST - multipart/form-data
+ ok
+  PASS: GET of POST - multipart/form-data
+  [15/19] http-rdf-update/POST - create new graph
+ ok
+  PASS: POST - create new graph
+  [16/19] http-rdf-update/GET of POST - create new graph
+ ok
+  PASS: GET of POST - create new graph
+  [17/19] http-rdf-update/GET of POST - after noop
+ ok
+  PASS: GET of POST - after noop
+  [18/19] http-rdf-update/HEAD on an existing graph
+ ok
+  PASS: HEAD on an existing graph
+  [19/19] http-rdf-update/HEAD on a non-existing graph
+ ok
+  PASS: HEAD on a non-existing graph
+  [suite time: 0.0s]
+
+--- json-res ---
+  [1/4] json-res/jsonres01 - JSON Result Format
+ ok (14ms)
+  PASS: jsonres01 - JSON Result Format (14ms)
+  [2/4] json-res/jsonres02 - JSON Result Format
+ ok (21ms)
+  PASS: jsonres02 - JSON Result Format (21ms)
+  [3/4] json-res/jsonres03 - JSON Result Format
+ ok
+  PASS: jsonres03 - JSON Result Format
+  [4/4] json-res/jsonres04 - JSON Result Format
+ ok
+  PASS: jsonres04 - JSON Result Format
+  [suite time: 0.0s]
+
+--- move ---
+  [1/6] move/MOVE 1
+ ok
+  PASS: MOVE 1
+  [2/6] move/MOVE 2
+ ok
+  PASS: MOVE 2
+  [3/6] move/MOVE 3
+ ok
+  PASS: MOVE 3
+  [4/6] move/MOVE 4
+ ok
+  PASS: MOVE 4
+  [5/6] move/MOVE 6
+ ok
+  PASS: MOVE 6
+  [6/6] move/MOVE 7
+ ok
+  PASS: MOVE 7
+  [suite time: 0.0s]
+
+--- negation ---
+  [1/12] negation/Subsets by exclusion (NOT EXISTS)
+ ok
+  PASS: Subsets by exclusion (NOT EXISTS)
+  [2/12] negation/Subsets by exclusion (MINUS)
+ ok
+  PASS: Subsets by exclusion (MINUS)
+  [3/12] negation/Medical, temporal proximity by exclusion (NOT EXISTS)
+ ok
+  PASS: Medical, temporal proximity by exclusion (NOT EXISTS)
+  [4/12] negation/Calculate which sets are subsets of others (include A subsetOf A)
+ ok
+  PASS: Calculate which sets are subsets of others (include A subsetOf A)
+  [5/12] negation/Calculate which sets are subsets of others (exclude A subsetOf A)
+ ok (17ms)
+  PASS: Calculate which sets are subsets of others (exclude A subsetOf A) (17ms)
+  [6/12] negation/Calculate which sets have the same elements
+ ok (16ms)
+  PASS: Calculate which sets have the same elements (16ms)
+  [7/12] negation/Calculate proper subset
+ ok (25ms)
+  PASS: Calculate proper subset (25ms)
+  [8/12] negation/Positive EXISTS 1
+ ok
+  PASS: Positive EXISTS 1
+  [9/12] negation/Positive EXISTS 2
+ ok
+  PASS: Positive EXISTS 2
+  [10/12] negation/Subtraction with MINUS from a fully bound minuend
+ ok
+  PASS: Subtraction with MINUS from a fully bound minuend
+  [11/12] negation/Subtraction with MINUS from a partially bound minuend
+ ok
+  PASS: Subtraction with MINUS from a partially bound minuend
+  [12/12] negation/outer GRAPH operator does not affect MINUS disjointness
+ ok
+  PASS: outer GRAPH operator does not affect MINUS disjointness
+  [suite time: 0.1s]
+
+--- project-expression ---
+  [1/7] project-expression/Expression is equality
+ ok
+  PASS: Expression is equality
+  [2/7] project-expression/Expression raise an error
+ ok
+  PASS: Expression raise an error
+  [3/7] project-expression/Reuse a project expression variable in select
+ ok
+  PASS: Reuse a project expression variable in select
+  [4/7] project-expression/Reuse a project expression variable in order by
+ ok
+  PASS: Reuse a project expression variable in order by
+  [5/7] project-expression/Expression may return no value
+ ok
+  PASS: Expression may return no value
+  [6/7] project-expression/Expression has undefined variable
+ ok
+  PASS: Expression has undefined variable
+  [7/7] project-expression/Expression has variable that may be unbound
+ ok
+  PASS: Expression has variable that may be unbound
+  [suite time: 0.0s]
+
+--- property-path ---
+  [1/33] property-path/(pp01) Simple path
+ ok
+  PASS: (pp01) Simple path
+  [2/33] property-path/(pp02) Star path
+ ok
+  PASS: (pp02) Star path
+  [3/33] property-path/(pp03) Simple path with loop
+ ok
+  PASS: (pp03) Simple path with loop
+  [4/33] property-path/(pp06) Path with two graphs
+ ok
+  PASS: (pp06) Path with two graphs
+  [5/33] property-path/(pp07) Path with one graph
+ ok
+  PASS: (pp07) Path with one graph
+  [6/33] property-path/(pp08) Reverse path
+ ok
+  PASS: (pp08) Reverse path
+  [7/33] property-path/(pp09) Reverse sequence path
+ ok
+  PASS: (pp09) Reverse sequence path
+  [8/33] property-path/(pp10) Path with negation
+ ok
+  PASS: (pp10) Path with negation
+  [9/33] property-path/(pp11) Simple path and two paths to same target node
+ ok
+  PASS: (pp11) Simple path and two paths to same target node
+  [10/33] property-path/(pp12) Variable length path and two paths to same target node
+ ok
+  PASS: (pp12) Variable length path and two paths to same target node
+  [11/33] property-path/(pp14) Star path over foaf:knows
+ ok
+  PASS: (pp14) Star path over foaf:knows
+  [12/33] property-path/(pp16) Duplicate paths and cycles through foaf:knows*
+ ok
+  PASS: (pp16) Duplicate paths and cycles through foaf:knows*
+  [13/33] property-path/(pp21) Diamond -- :p+
+ ok
+  PASS: (pp21) Diamond -- :p+
+  [14/33] property-path/(pp23) Diamond, with tail -- :p+
+ ok
+  PASS: (pp23) Diamond, with tail -- :p+
+  [15/33] property-path/(pp25) Diamond, with loop -- :p+
+ ok
+  PASS: (pp25) Diamond, with loop -- :p+
+  [16/33] property-path/(pp28a) Diamond, with loop -- (:p/:p)?
+ ok
+  PASS: (pp28a) Diamond, with loop -- (:p/:p)?
+  [17/33] property-path/(pp30) Operator precedence 1
+ ok
+  PASS: (pp30) Operator precedence 1
+  [18/33] property-path/(pp31) Operator precedence 2
+ ok
+  PASS: (pp31) Operator precedence 2
+  [19/33] property-path/(pp32) Operator precedence 3
+ ok
+  PASS: (pp32) Operator precedence 3
+  [20/33] property-path/(pp33) Operator precedence 4
+ ok
+  PASS: (pp33) Operator precedence 4
+  [21/33] property-path/(pp34) Named Graph 1
+ ok
+  PASS: (pp34) Named Graph 1
+  [22/33] property-path/(pp35) Named Graph 2
+ ok
+  PASS: (pp35) Named Graph 2
+  [23/33] property-path/(pp36) Arbitrary path with bound endpoints
+ ok
+  PASS: (pp36) Arbitrary path with bound endpoints
+  [24/33] property-path/(pp37) Nested (*)*
+ ok
+  PASS: (pp37) Nested (*)*
+  [25/33] property-path/ZeroOrX property paths should only return terms in the graph and not also terms defined in the query
+ ok
+  PASS: ZeroOrX property paths should only return terms in the graph and not also terms defined in the query
+  [26/33] property-path/Negated Property Set with inverse properties
+ ok
+  PASS: Negated Property Set with inverse properties
+  [27/33] property-path/Negated Property Set with both direct and inverse properties
+ ok
+  PASS: Negated Property Set with both direct and inverse properties
+  [28/33] property-path/Negated Property Set with the rdf:type property written using 'a'
+ ok
+  PASS: Negated Property Set with the rdf:type property written using 'a'
+  [29/33] property-path/Negated Property Set with the inverse rdf:type property written using '^a'
+ ok
+  PASS: Negated Property Set with the inverse rdf:type property written using '^a'
+  [30/33] property-path/* with start being a constant on the empty dataset
+ ok
+  PASS: * with start being a constant on the empty dataset
+  [31/33] property-path/* with end being a constant on the empty dataset
+ ok
+  PASS: * with end being a constant on the empty dataset
+  [32/33] property-path/? with start being a constant on the empty dataset
+ ok
+  PASS: ? with start being a constant on the empty dataset
+  [33/33] property-path/? with end being a constant on the empty dataset
+ ok
+  PASS: ? with end being a constant on the empty dataset
+  [suite time: 0.1s]
+
+--- protocol ---
+  [1/34] protocol/query via URL-encoded POST
+ ok
+  PASS: query via URL-encoded POST
+  [2/34] protocol/GET query with protocol-specified default graph
+ ok
+  PASS: GET query with protocol-specified default graph
+  [3/34] protocol/POST query with protocol-specified default graphs
+ ok
+  PASS: POST query with protocol-specified default graphs
+  [4/34] protocol/POST query with protocol-specified named graphs
+ ok
+  PASS: POST query with protocol-specified named graphs
+  [5/34] protocol/GET query with protocol-specified named graphs
+ ok
+  PASS: GET query with protocol-specified named graphs
+  [6/34] protocol/query with protocol-specified dataset (both named and default graphs)
+ ok
+  PASS: query with protocol-specified dataset (both named and default graphs)
+  [7/34] protocol/query specifying dataset in both query string and protocol; test for use of protocol-specified dataset
+ ok
+  PASS: query specifying dataset in both query string and protocol; test for use of protocol-specified dataset
+  [8/34] protocol/query via GET
+ ok
+  PASS: query via GET
+  [9/34] protocol/query appropriate content type (expect one of: XML, JSON, CSV, TSV)
+ ok
+  PASS: query appropriate content type (expect one of: XML, JSON, CSV, TSV)
+  [10/34] protocol/query appropriate content type (expect one of: XML, JSON)
+ ok
+  PASS: query appropriate content type (expect one of: XML, JSON)
+  [11/34] protocol/query appropriate content type (expect one of: RDF/XML, Turtle, N-Triples, RDFa)
+ ok
+  PASS: query appropriate content type (expect one of: RDF/XML, Turtle, N-Triples, RDFa)
+  [12/34] protocol/query appropriate content type (expect one of: RDF/XML, Turtle, N-Triples, RDFa)
+ ok
+  PASS: query appropriate content type (expect one of: RDF/XML, Turtle, N-Triples, RDFa)
+  [13/34] protocol/update with protocol-specified default graph
+ ok
+  PASS: update with protocol-specified default graph
+  [14/34] protocol/update with protocol-specified default graphs
+ ok
+  PASS: update with protocol-specified default graphs
+  [15/34] protocol/update with protocol-specified named graphs
+ ok
+  PASS: update with protocol-specified named graphs
+  [16/34] protocol/update with protocol-specified dataset (both named and default graphs)
+ ok
+  PASS: update with protocol-specified dataset (both named and default graphs)
+  [17/34] protocol/update via URL-encoded POST
+ ok
+  PASS: update via URL-encoded POST
+  [18/34] protocol/update via POST directly
+ ok
+  PASS: update via POST directly
+  [19/34] protocol/test for service-defined BASE URI ("which MAY be the service endpoint")
+ ok
+  PASS: test for service-defined BASE URI ("which MAY be the service endpoint")
+  [20/34] protocol/query via POST directly
+ ok
+  PASS: query via POST directly
+  [21/34] protocol/invoke query operation with a method other than GET or POST
+ ok
+  PASS: invoke query operation with a method other than GET or POST
+  [22/34] protocol/invoke query operation with more than one query string
+ ok
+  PASS: invoke query operation with more than one query string
+  [23/34] protocol/invoke query operation with a POST with media type that's not url-encoded or application/sparql-query
+ ok
+  PASS: invoke query operation with a POST with media type that's not url-encoded or application/sparql-query
+  [24/34] protocol/invoke query operation with url-encoded body, but without application/x-www-form-urlencoded media type
+ ok
+  PASS: invoke query operation with url-encoded body, but without application/x-www-form-urlencoded media type
+  [25/34] protocol/invoke query operation with SPARQL body, but without application/sparql-query media type
+ ok
+  PASS: invoke query operation with SPARQL body, but without application/sparql-query media type
+  [26/34] protocol/invoke query operation with direct POST, but with a non-UTF8 encoding (UTF-16)
+ ok
+  PASS: invoke query operation with direct POST, but with a non-UTF8 encoding (UTF-16)
+  [27/34] protocol/invoke query operation with invalid query syntax (4XX result)
+ ok
+  PASS: invoke query operation with invalid query syntax (4XX result)
+  [28/34] protocol/invoke update operation with GET
+ ok
+  PASS: invoke update operation with GET
+  [29/34] protocol/invoke update operation with more than one update string
+ ok
+  PASS: invoke update operation with more than one update string
+  [30/34] protocol/invoke update operation with a POST with media type that's not url-encoded or application/sparql-update
+ ok
+  PASS: invoke update operation with a POST with media type that's not url-encoded or application/sparql-update
+  [31/34] protocol/invoke update operation with url-encoded body, but without application/x-www-form-urlencoded media type
+ ok
+  PASS: invoke update operation with url-encoded body, but without application/x-www-form-urlencoded media type
+  [32/34] protocol/invoke update operation with direct POST, but with a non-UTF8 encoding
+ ok
+  PASS: invoke update operation with direct POST, but with a non-UTF8 encoding
+  [33/34] protocol/invoke update operation with invalid update syntax
+ ok
+  PASS: invoke update operation with invalid update syntax
+  [34/34] protocol/invoke update with both using-graph-uri/using-named-graph-uri parameter and USING/WITH clause
+ ok
+  PASS: invoke update with both using-graph-uri/using-named-graph-uri parameter and USING/WITH clause
+  [suite time: 0.1s]
+
+--- service ---
+  [1/7] service/SERVICE test 1
+ ok
+  PASS: SERVICE test 1
+  [2/7] service/SERVICE test 2
+ ok
+  PASS: SERVICE test 2
+  [3/7] service/SERVICE test 3
+ ok
+  PASS: SERVICE test 3
+  [4/7] service/SERVICE test 4a with VALUES clause
+ ok
+  PASS: SERVICE test 4a with VALUES clause
+  [5/7] service/SERVICE test 5
+ ok
+  PASS: SERVICE test 5
+  [6/7] service/SERVICE test 6
+ ok
+  PASS: SERVICE test 6
+  [7/7] service/SERVICE test 7
+ ok
+  PASS: SERVICE test 7
+  [suite time: 0.0s]
+
+--- service-description ---
+  [1/3] service-description/Service description contains a matching sd:endpoint triple
+ ok
+  PASS: Service description contains a matching sd:endpoint triple
+  [2/3] service-description/GET on endpoint returns RDF
+ ok
+  PASS: GET on endpoint returns RDF
+  [3/3] service-description/Service description conforms to schema
+ ok
+  PASS: Service description conforms to schema
+  [suite time: 0.0s]
+
+--- subquery ---
+  [1/14] subquery/sq01 - Subquery within graph pattern
+ ok
+  PASS: sq01 - Subquery within graph pattern
+  [2/14] subquery/sq02 - Subquery within graph pattern, graph variable is bound
+ ok
+  PASS: sq02 - Subquery within graph pattern, graph variable is bound
+  [3/14] subquery/sq03 - Subquery within graph pattern, graph variable is not bound
+ ok
+  PASS: sq03 - Subquery within graph pattern, graph variable is not bound
+  [4/14] subquery/sq04 - Subquery within graph pattern, default graph does not apply
+ ok
+  PASS: sq04 - Subquery within graph pattern, default graph does not apply
+  [5/14] subquery/sq05 - Subquery within graph pattern, from named applies
+ ok
+  PASS: sq05 - Subquery within graph pattern, from named applies
+  [6/14] subquery/sq06 - Subquery with graph pattern, from named applies
+ ok
+  PASS: sq06 - Subquery with graph pattern, from named applies
+  [7/14] subquery/sq07 - Subquery with from 
+ ok
+  PASS: sq07 - Subquery with from 
+  [8/14] subquery/sq08 - Subquery with aggregate
+ ok
+  PASS: sq08 - Subquery with aggregate
+  [9/14] subquery/sq09 - Nested Subqueries
+ ok
+  PASS: sq09 - Nested Subqueries
+  [10/14] subquery/sq10 - Subquery with exists
+ ok
+  PASS: sq10 - Subquery with exists
+  [11/14] subquery/sq11 - Subquery limit per resource
+ ok
+  PASS: sq11 - Subquery limit per resource
+  [12/14] subquery/sq12 - Subquery in CONSTRUCT with built-ins
+ ok
+  PASS: sq12 - Subquery in CONSTRUCT with built-ins
+  [13/14] subquery/sq13 - Subqueries don't inject bindings
+ ok
+  PASS: sq13 - Subqueries don't inject bindings
+  [14/14] subquery/sq14 - limit by resource
+ ok
+  PASS: sq14 - limit by resource
+  [suite time: 0.0s]
+
+--- syntax-fed ---
+  [1/3] syntax-fed/syntax-service-01.rq
+ ok
+  PASS: syntax-service-01.rq
+  [2/3] syntax-fed/syntax-service-02.rq
+ ok
+  PASS: syntax-service-02.rq
+  [3/3] syntax-fed/syntax-service-03.rq
+ ok
+  PASS: syntax-service-03.rq
+  [suite time: 0.0s]
+
+--- syntax-query ---
+  [1/94] syntax-query/syntax-select-expr-01.rq
+ ok
+  PASS: syntax-select-expr-01.rq
+  [2/94] syntax-query/syntax-select-expr-02.rq
+ ok
+  PASS: syntax-select-expr-02.rq
+  [3/94] syntax-query/syntax-select-expr-03.rq
+ ok
+  PASS: syntax-select-expr-03.rq
+  [4/94] syntax-query/syntax-select-expr-04.rq
+ ok
+  PASS: syntax-select-expr-04.rq
+  [5/94] syntax-query/syntax-select-expr-05.rq
+ ok
+  PASS: syntax-select-expr-05.rq
+  [6/94] syntax-query/syntax-aggregate-01.rq
+ ok
+  PASS: syntax-aggregate-01.rq
+  [7/94] syntax-query/syntax-aggregate-02.rq
+ ok
+  PASS: syntax-aggregate-02.rq
+  [8/94] syntax-query/syntax-aggregate-03.rq
+ ok
+  PASS: syntax-aggregate-03.rq
+  [9/94] syntax-query/syntax-aggregate-04.rq
+ ok
+  PASS: syntax-aggregate-04.rq
+  [10/94] syntax-query/syntax-aggregate-05.rq
+ ok
+  PASS: syntax-aggregate-05.rq
+  [11/94] syntax-query/syntax-aggregate-06.rq
+ ok
+  PASS: syntax-aggregate-06.rq
+  [12/94] syntax-query/syntax-aggregate-07.rq
+ ok
+  PASS: syntax-aggregate-07.rq
+  [13/94] syntax-query/syntax-aggregate-08.rq
+ ok
+  PASS: syntax-aggregate-08.rq
+  [14/94] syntax-query/syntax-aggregate-09.rq
+ ok
+  PASS: syntax-aggregate-09.rq
+  [15/94] syntax-query/syntax-aggregate-10.rq
+ ok
+  PASS: syntax-aggregate-10.rq
+  [16/94] syntax-query/syntax-aggregate-11.rq
+ ok
+  PASS: syntax-aggregate-11.rq
+  [17/94] syntax-query/syntax-aggregate-12.rq
+ ok
+  PASS: syntax-aggregate-12.rq
+  [18/94] syntax-query/syntax-aggregate-13.rq
+ ok
+  PASS: syntax-aggregate-13.rq
+  [19/94] syntax-query/syntax-aggregate-14.rq
+ ok
+  PASS: syntax-aggregate-14.rq
+  [20/94] syntax-query/syntax-aggregate-15.rq
+ ok
+  PASS: syntax-aggregate-15.rq
+  [21/94] syntax-query/syntax-subquery-01.rq
+ ok
+  PASS: syntax-subquery-01.rq
+  [22/94] syntax-query/syntax-subquery-02.rq
+ ok
+  PASS: syntax-subquery-02.rq
+  [23/94] syntax-query/syntax-subquery-03.rq
+ ok
+  PASS: syntax-subquery-03.rq
+  [24/94] syntax-query/syntax-not-exists-01.rq
+ ok
+  PASS: syntax-not-exists-01.rq
+  [25/94] syntax-query/syntax-not-exists-02.rq
+ ok
+  PASS: syntax-not-exists-02.rq
+  [26/94] syntax-query/syntax-not-exists-03.rq
+ ok
+  PASS: syntax-not-exists-03.rq
+  [27/94] syntax-query/syntax-exists-01.rq
+ ok
+  PASS: syntax-exists-01.rq
+  [28/94] syntax-query/syntax-exists-02.rq
+ ok
+  PASS: syntax-exists-02.rq
+  [29/94] syntax-query/syntax-exists-03.rq
+ ok
+  PASS: syntax-exists-03.rq
+  [30/94] syntax-query/syntax-minus-01.rq
+ ok
+  PASS: syntax-minus-01.rq
+  [31/94] syntax-query/syntax-oneof-01.rq
+ ok
+  PASS: syntax-oneof-01.rq
+  [32/94] syntax-query/syntax-oneof-02.rq
+ ok
+  PASS: syntax-oneof-02.rq
+  [33/94] syntax-query/syntax-oneof-03.rq
+ ok
+  PASS: syntax-oneof-03.rq
+  [34/94] syntax-query/syntax-bindingBINDscopes-01.rq
+ ok
+  PASS: syntax-bindingBINDscopes-01.rq
+  [35/94] syntax-query/syntax-bindings-02a.rq with VALUES clause
+ ok
+  PASS: syntax-bindings-02a.rq with VALUES clause
+  [36/94] syntax-query/syntax-bindings-03a.rq with VALUES clause
+ ok
+  PASS: syntax-bindings-03a.rq with VALUES clause
+  [37/94] syntax-query/syntax-bindings-05a.rq with VALUES clause
+ ok
+  PASS: syntax-bindings-05a.rq with VALUES clause
+  [38/94] syntax-query/syntax-bind-02.rq
+ ok
+  PASS: syntax-bind-02.rq
+  [39/94] syntax-query/syntax-construct-where-01.rq
+ ok
+  PASS: syntax-construct-where-01.rq
+  [40/94] syntax-query/syntax-construct-where-02.rq
+ ok
+  PASS: syntax-construct-where-02.rq
+  [41/94] syntax-query/syn-bad-01.rq
+ ok
+  PASS: syn-bad-01.rq
+  [42/94] syntax-query/syn-bad-02.rq
+ ok
+  PASS: syn-bad-02.rq
+  [43/94] syntax-query/syn-bad-03.rq
+ ok
+  PASS: syn-bad-03.rq
+  [44/94] syntax-query/syn-bad-04.rq
+ ok
+  PASS: syn-bad-04.rq
+  [45/94] syntax-query/syn-bad-05.rq
+ ok
+  PASS: syn-bad-05.rq
+  [46/94] syntax-query/syn-bad-06.rq
+ ok
+  PASS: syn-bad-06.rq
+  [47/94] syntax-query/syn-bad-07.rq
+ ok
+  PASS: syn-bad-07.rq
+  [48/94] syntax-query/syn-bad-08.rq
+ ok
+  PASS: syn-bad-08.rq
+  [49/94] syntax-query/syntax-bindings-09.rq
+ ok
+  PASS: syntax-bindings-09.rq
+  [50/94] syntax-query/PrefixName with hex-encoded colons
+ ok
+  PASS: PrefixName with hex-encoded colons
+  [51/94] syntax-query/PrefixName with unescaped colons
+ ok
+  PASS: PrefixName with unescaped colons
+  [52/94] syntax-query/syntax-BINDscope1.rq
+ ok
+  PASS: syntax-BINDscope1.rq
+  [53/94] syntax-query/syntax-BINDscope2.rq
+ ok
+  PASS: syntax-BINDscope2.rq
+  [54/94] syntax-query/syntax-BINDscope3.rq
+ ok
+  PASS: syntax-BINDscope3.rq
+  [55/94] syntax-query/syntax-BINDscope4.rq
+ ok
+  PASS: syntax-BINDscope4.rq
+  [56/94] syntax-query/syntax-BINDscope5.rq
+ ok
+  PASS: syntax-BINDscope5.rq
+  [57/94] syntax-query/syntax-BINDscope6.rq
+ ok
+  PASS: syntax-BINDscope6.rq
+  [58/94] syntax-query/syntax-BINDscope7.rq
+ ok
+  PASS: syntax-BINDscope7.rq
+  [59/94] syntax-query/syntax-BINDscope8.rq
+ ok
+  PASS: syntax-BINDscope8.rq
+  [60/94] syntax-query/syntax-propertyPaths-01.rq
+ ok
+  PASS: syntax-propertyPaths-01.rq
+  [61/94] syntax-query/syntax-SELECTscope1.rq
+ ok
+  PASS: syntax-SELECTscope1.rq
+  [62/94] syntax-query/syntax-SELECTscope2
+ ok
+  PASS: syntax-SELECTscope2
+  [63/94] syntax-query/syntax-SELECTscope3.rq
+ ok
+  PASS: syntax-SELECTscope3.rq
+  [64/94] syntax-query/syn-pname-01
+ ok
+  PASS: syn-pname-01
+  [65/94] syntax-query/syn-pname-02
+ ok
+  PASS: syn-pname-02
+  [66/94] syntax-query/syn-pname-03
+ ok
+  PASS: syn-pname-03
+  [67/94] syntax-query/syn-pname-04
+ ok
+  PASS: syn-pname-04
+  [68/94] syntax-query/syn-pname-05
+ ok
+  PASS: syn-pname-05
+  [69/94] syntax-query/syn-pname-06
+ ok
+  PASS: syn-pname-06
+  [70/94] syntax-query/syn-pname-07
+ ok
+  PASS: syn-pname-07
+  [71/94] syntax-query/syn-pname-08
+ ok
+  PASS: syn-pname-08
+  [72/94] syntax-query/syn-pname-09
+ ok
+  PASS: syn-pname-09
+  [73/94] syntax-query/syn-bad-pname-01
+ ok
+  PASS: syn-bad-pname-01
+  [74/94] syntax-query/syn-bad-pname-02
+ ok
+  PASS: syn-bad-pname-02
+  [75/94] syntax-query/syn-bad-pname-03
+ ok
+  PASS: syn-bad-pname-03
+  [76/94] syntax-query/syn-bad-pname-04
+ ok
+  PASS: syn-bad-pname-04
+  [77/94] syntax-query/syn-bad-pname-05
+ ok
+  PASS: syn-bad-pname-05
+  [78/94] syntax-query/syn-bad-pname-06
+ ok
+  PASS: syn-bad-pname-06
+  [79/94] syntax-query/syn-bad-pname-07
+ ok
+  PASS: syn-bad-pname-07
+  [80/94] syntax-query/syn-bad-pname-08
+ ok
+  PASS: syn-bad-pname-08
+  [81/94] syntax-query/syn-bad-pname-09
+ ok
+  PASS: syn-bad-pname-09
+  [82/94] syntax-query/syn-bad-pname-10
+ ok
+  PASS: syn-bad-pname-10
+  [83/94] syntax-query/syn-bad-pname-11
+ ok
+  PASS: syn-bad-pname-11
+  [84/94] syntax-query/syn-bad-pname-12
+ ok
+  PASS: syn-bad-pname-12
+  [85/94] syntax-query/syn-bad-pname-13
+ ok
+  PASS: syn-bad-pname-13
+  [86/94] syntax-query/syn-pp-in-collection
+ ok
+  PASS: syn-pp-in-collection
+  [87/94] syntax-query/\U unicode codepoint escaping in literal
+ ok
+  PASS: \U unicode codepoint escaping in literal
+  [88/94] syntax-query/Invalid multi-pass codepoint escaping (\u then \U)
+ ok
+  PASS: Invalid multi-pass codepoint escaping (\u then \U)
+  [89/94] syntax-query/Invalid multi-pass codepoint escaping (\U then \u)
+ ok
+  PASS: Invalid multi-pass codepoint escaping (\U then \u)
+  [90/94] syntax-query/utf8 literal using codepoints at notable unicode boundaries
+ ok
+  PASS: utf8 literal using codepoints at notable unicode boundaries
+  [91/94] syntax-query/\U and \u unicode codepoint escaping in literal using codepoints at notable unicode boundaries
+ ok
+  PASS: \U and \u unicode codepoint escaping in literal using codepoints at notable unicode boundaries
+  [92/94] syntax-query/\u unicode codepoint escaping in literal using partial surrogate pair
+ ok
+  PASS: \u unicode codepoint escaping in literal using partial surrogate pair
+  [93/94] syntax-query/Too few values in a VALUE clause compared to the number of variables
+ ok
+  PASS: Too few values in a VALUE clause compared to the number of variables
+  [94/94] syntax-query/Too many values in a VALUE clause compared to the number of variables
+ ok
+  PASS: Too many values in a VALUE clause compared to the number of variables
+  [suite time: 0.1s]
+
+--- syntax-update-1 ---
+  [1/54] syntax-update-1/syntax-update-01.ru
+ ok
+  PASS: syntax-update-01.ru
+  [2/54] syntax-update-1/syntax-update-02.ru
+ ok
+  PASS: syntax-update-02.ru
+  [3/54] syntax-update-1/syntax-update-03.ru
+ ok
+  PASS: syntax-update-03.ru
+  [4/54] syntax-update-1/syntax-update-04.ru
+ ok
+  PASS: syntax-update-04.ru
+  [5/54] syntax-update-1/syntax-update-05.ru
+ ok
+  PASS: syntax-update-05.ru
+  [6/54] syntax-update-1/syntax-update-06.ru
+ ok
+  PASS: syntax-update-06.ru
+  [7/54] syntax-update-1/syntax-update-07.ru
+ ok
+  PASS: syntax-update-07.ru
+  [8/54] syntax-update-1/syntax-update-08.ru
+ ok
+  PASS: syntax-update-08.ru
+  [9/54] syntax-update-1/syntax-update-09.ru
+ ok
+  PASS: syntax-update-09.ru
+  [10/54] syntax-update-1/syntax-update-10.ru
+ ok
+  PASS: syntax-update-10.ru
+  [11/54] syntax-update-1/syntax-update-11.ru
+ ok
+  PASS: syntax-update-11.ru
+  [12/54] syntax-update-1/syntax-update-12.ru
+ ok
+  PASS: syntax-update-12.ru
+  [13/54] syntax-update-1/syntax-update-13.ru
+ ok
+  PASS: syntax-update-13.ru
+  [14/54] syntax-update-1/syntax-update-14.ru
+ ok
+  PASS: syntax-update-14.ru
+  [15/54] syntax-update-1/syntax-update-15.ru
+ ok
+  PASS: syntax-update-15.ru
+  [16/54] syntax-update-1/syntax-update-16.ru
+ ok
+  PASS: syntax-update-16.ru
+  [17/54] syntax-update-1/syntax-update-17.ru
+ ok
+  PASS: syntax-update-17.ru
+  [18/54] syntax-update-1/syntax-update-18.ru
+ ok
+  PASS: syntax-update-18.ru
+  [19/54] syntax-update-1/syntax-update-19.ru
+ ok
+  PASS: syntax-update-19.ru
+  [20/54] syntax-update-1/syntax-update-20.ru
+ ok
+  PASS: syntax-update-20.ru
+  [21/54] syntax-update-1/syntax-update-21.ru
+ ok
+  PASS: syntax-update-21.ru
+  [22/54] syntax-update-1/syntax-update-22.ru
+ ok
+  PASS: syntax-update-22.ru
+  [23/54] syntax-update-1/syntax-update-23.ru
+ ok
+  PASS: syntax-update-23.ru
+  [24/54] syntax-update-1/syntax-update-24.ru
+ ok
+  PASS: syntax-update-24.ru
+  [25/54] syntax-update-1/syntax-update-25.ru
+ ok
+  PASS: syntax-update-25.ru
+  [26/54] syntax-update-1/syntax-update-26.ru
+ ok
+  PASS: syntax-update-26.ru
+  [27/54] syntax-update-1/syntax-update-27.ru
+ ok
+  PASS: syntax-update-27.ru
+  [28/54] syntax-update-1/syntax-update-28.ru
+ ok
+  PASS: syntax-update-28.ru
+  [29/54] syntax-update-1/syntax-update-29.ru
+ ok
+  PASS: syntax-update-29.ru
+  [30/54] syntax-update-1/syntax-update-30.ru
+ ok
+  PASS: syntax-update-30.ru
+  [31/54] syntax-update-1/syntax-update-31.ru
+ ok
+  PASS: syntax-update-31.ru
+  [32/54] syntax-update-1/syntax-update-32.ru
+ ok
+  PASS: syntax-update-32.ru
+  [33/54] syntax-update-1/syntax-update-33.ru
+ ok
+  PASS: syntax-update-33.ru
+  [34/54] syntax-update-1/syntax-update-34.ru
+ ok
+  PASS: syntax-update-34.ru
+  [35/54] syntax-update-1/syntax-update-35.ru
+ ok
+  PASS: syntax-update-35.ru
+  [36/54] syntax-update-1/syntax-update-36.ru
+ ok
+  PASS: syntax-update-36.ru
+  [37/54] syntax-update-1/syntax-update-37.ru
+ ok
+  PASS: syntax-update-37.ru
+  [38/54] syntax-update-1/syntax-update-38.ru
+ ok
+  PASS: syntax-update-38.ru
+  [39/54] syntax-update-1/syntax-update-39.ru
+ ok
+  PASS: syntax-update-39.ru
+  [40/54] syntax-update-1/syntax-update-40.ru
+ ok
+  PASS: syntax-update-40.ru
+  [41/54] syntax-update-1/syntax-update-bad-01.ru
+ ok
+  PASS: syntax-update-bad-01.ru
+  [42/54] syntax-update-1/syntax-update-bad-02.ru
+ ok
+  PASS: syntax-update-bad-02.ru
+  [43/54] syntax-update-1/syntax-update-bad-03.ru
+ ok
+  PASS: syntax-update-bad-03.ru
+  [44/54] syntax-update-1/syntax-update-bad-04.ru
+ ok
+  PASS: syntax-update-bad-04.ru
+  [45/54] syntax-update-1/syntax-update-bad-05.ru
+ ok
+  PASS: syntax-update-bad-05.ru
+  [46/54] syntax-update-1/syntax-update-bad-06.ru
+ ok
+  PASS: syntax-update-bad-06.ru
+  [47/54] syntax-update-1/syntax-update-bad-07.ru
+ ok
+  PASS: syntax-update-bad-07.ru
+  [48/54] syntax-update-1/syntax-update-bad-08.ru
+ ok
+  PASS: syntax-update-bad-08.ru
+  [49/54] syntax-update-1/syntax-update-bad-09.ru
+ ok
+  PASS: syntax-update-bad-09.ru
+  [50/54] syntax-update-1/syntax-update-bad-10.ru
+ ok
+  PASS: syntax-update-bad-10.ru
+  [51/54] syntax-update-1/syntax-update-bad-11.ru
+ ok
+  PASS: syntax-update-bad-11.ru
+  [52/54] syntax-update-1/syntax-update-bad-12.ru
+ ok
+  PASS: syntax-update-bad-12.ru
+  [53/54] syntax-update-1/syntax-update-53.ru
+ ok
+  PASS: syntax-update-53.ru
+  [54/54] syntax-update-1/syntax-update-54.ru
+ ok
+  PASS: syntax-update-54.ru
+  [suite time: 0.1s]
+
+--- syntax-update-2 ---
+  [1/1] syntax-update-2/syntax-update-other-01
+ ok (2.7s)
+  PASS: syntax-update-other-01 (2.7s)
+  [suite time: 2.7s]
+
+--- update-silent ---
+  [1/13] update-silent/LOAD SILENT
+ ok
+  PASS: LOAD SILENT
+  [2/13] update-silent/LOAD SILENT INTO
+ ok
+  PASS: LOAD SILENT INTO
+  [3/13] update-silent/CLEAR SILENT GRAPH iri
+ ok
+  PASS: CLEAR SILENT GRAPH iri
+  [4/13] update-silent/CLEAR SILENT DEFAULT
+ ok
+  PASS: CLEAR SILENT DEFAULT
+  [5/13] update-silent/CREATE SILENT iri
+ ok
+  PASS: CREATE SILENT iri
+  [6/13] update-silent/DROP SILENT GRAPH iri
+ ok
+  PASS: DROP SILENT GRAPH iri
+  [7/13] update-silent/DROP SILENT DEFAULT
+ ok
+  PASS: DROP SILENT DEFAULT
+  [8/13] update-silent/COPY SILENT
+ ok
+  PASS: COPY SILENT
+  [9/13] update-silent/COPY SILENT TO DEFAULT
+ ok
+  PASS: COPY SILENT TO DEFAULT
+  [10/13] update-silent/MOVE SILENT
+ ok
+  PASS: MOVE SILENT
+  [11/13] update-silent/MOVE SILENT TO DEFAULT
+ ok
+  PASS: MOVE SILENT TO DEFAULT
+  [12/13] update-silent/ADD SILENT
+ ok
+  PASS: ADD SILENT
+  [13/13] update-silent/ADD SILENT TO DEFAULT
+ ok
+  PASS: ADD SILENT TO DEFAULT
+  [suite time: 0.0s]
+
+========================================
+Suite Results:
+  add                                 pass:8 fail:0 skip:0 unsupported:0
+  aggregates                          pass:47 fail:0 skip:0 unsupported:0
+  basic-update                        pass:13 fail:0 skip:0 unsupported:0
+  bind                                pass:10 fail:0 skip:0 unsupported:0
+  bindings                            pass:11 fail:0 skip:0 unsupported:0
+  cast                                pass:6 fail:0 skip:0 unsupported:0
+  clear                               pass:4 fail:0 skip:0 unsupported:0
+  construct                           pass:7 fail:0 skip:0 unsupported:0
+  copy                                pass:6 fail:0 skip:0 unsupported:0
+  csv-tsv-res                         pass:6 fail:0 skip:0 unsupported:0
+  delete                              pass:19 fail:0 skip:0 unsupported:0
+  delete-data                         pass:6 fail:0 skip:0 unsupported:0
+  delete-insert                       pass:17 fail:0 skip:0 unsupported:0
+  delete-where                        pass:6 fail:0 skip:0 unsupported:0
+  drop                                pass:4 fail:0 skip:0 unsupported:0
+  entailment                          pass:68 fail:2 skip:0 unsupported:0
+  exists                              pass:6 fail:0 skip:0 unsupported:0
+  functions                           pass:75 fail:0 skip:0 unsupported:0
+  grouping                            pass:6 fail:0 skip:0 unsupported:0
+  http-rdf-update                     pass:19 fail:0 skip:0 unsupported:0
+  json-res                            pass:4 fail:0 skip:0 unsupported:0
+  move                                pass:6 fail:0 skip:0 unsupported:0
+  negation                            pass:12 fail:0 skip:0 unsupported:0
+  project-expression                  pass:7 fail:0 skip:0 unsupported:0
+  property-path                       pass:33 fail:0 skip:0 unsupported:0
+  protocol                            pass:34 fail:0 skip:0 unsupported:0
+  service                             pass:7 fail:0 skip:0 unsupported:0
+  service-description                 pass:3 fail:0 skip:0 unsupported:0
+  subquery                            pass:14 fail:0 skip:0 unsupported:0
+  syntax-fed                          pass:3 fail:0 skip:0 unsupported:0
+  syntax-query                        pass:94 fail:0 skip:0 unsupported:0
+  syntax-update-1                     pass:54 fail:0 skip:0 unsupported:0
+  syntax-update-2                     pass:1 fail:0 skip:0 unsupported:0
+  update-silent                       pass:13 fail:0 skip:0 unsupported:0
+========================================
+TOTAL: 629 pass, 2 fail, 0 skip, 0 unsupported
+========================================
+
+
+=== W3C RDF 1.1 Test Runner ===
+Test base: ../../third_party/testing/w3c/rdf/rdf11
+
+
+--- rdf-mt ---
+  [1/39] rdf-mt/datatypes-intensional-xsd-integer-decimal-compatible
+ ok
+  PASS: datatypes-intensional-xsd-integer-decimal-compatible
+  [2/39] rdf-mt/datatypes-non-well-formed-literal-1
+ ok
+  PASS: datatypes-non-well-formed-literal-1
+  [3/39] rdf-mt/datatypes-non-well-formed-literal-2
+ ok
+  PASS: datatypes-non-well-formed-literal-2
+  [4/39] rdf-mt/datatypes-semantic-equivalence-within-type-1
+ ok
+  PASS: datatypes-semantic-equivalence-within-type-1
+  [5/39] rdf-mt/datatypes-semantic-equivalence-within-type-2
+ ok
+  PASS: datatypes-semantic-equivalence-within-type-2
+  [6/39] rdf-mt/datatypes-semantic-equivalence-between-datatypes
+ ok
+  PASS: datatypes-semantic-equivalence-between-datatypes
+  [7/39] rdf-mt/datatypes-range-clash
+ ok
+  PASS: datatypes-range-clash
+  [8/39] rdf-mt/datatypes-test008
+ ok
+  PASS: datatypes-test008
+  [9/39] rdf-mt/datatypes-test009
+ ok
+  PASS: datatypes-test009
+  [10/39] rdf-mt/datatypes-test010
+ ok
+  PASS: datatypes-test010
+  [11/39] rdf-mt/datatypes-plain-literal-and-xsd-string
+ ok
+  PASS: datatypes-plain-literal-and-xsd-string
+  [12/39] rdf-mt/horst-01-subClassOf-intensional
+ ok
+  PASS: horst-01-subClassOf-intensional
+  [13/39] rdf-mt/horst-01-subPropertyOf-intensional
+ ok
+  PASS: horst-01-subPropertyOf-intensional
+  [14/39] rdf-mt/rdf-charmod-uris-test003
+ ok
+  PASS: rdf-charmod-uris-test003
+  [15/39] rdf-mt/rdf-charmod-uris-test004
+ ok
+  PASS: rdf-charmod-uris-test004
+  [16/39] rdf-mt/rdfms-seq-representation-test002
+ ok
+  PASS: rdfms-seq-representation-test002
+  [17/39] rdf-mt/rdfms-seq-representation-test003
+ ok
+  PASS: rdfms-seq-representation-test003
+  [18/39] rdf-mt/rdfms-seq-representation-test004
+ ok
+  PASS: rdfms-seq-representation-test004
+  [19/39] rdf-mt/rdfms-xmllang-test007a
+ ok
+  PASS: rdfms-xmllang-test007a
+  [20/39] rdf-mt/rdfms-xmllang-test007b
+ ok
+  PASS: rdfms-xmllang-test007b
+  [21/39] rdf-mt/rdfms-xmllang-test007c
+ ok
+  PASS: rdfms-xmllang-test007c
+  [22/39] rdf-mt/rdfs-container-membership-superProperty-test001
+ ok
+  PASS: rdfs-container-membership-superProperty-test001
+  [23/39] rdf-mt/rdfs-domain-and-range-intensionality-range
+ ok
+  PASS: rdfs-domain-and-range-intensionality-range
+  [24/39] rdf-mt/rdfs-domain-and-range-intensionality-domain
+ ok
+  PASS: rdfs-domain-and-range-intensionality-domain
+  [25/39] rdf-mt/rdfs-entailment-test001
+ ok
+  PASS: rdfs-entailment-test001
+  [26/39] rdf-mt/rdfs-entailment-test002
+ ok
+  PASS: rdfs-entailment-test002
+  [27/39] rdf-mt/rdfs-no-cycles-in-subClassOf-test001
+ ok
+  PASS: rdfs-no-cycles-in-subClassOf-test001
+  [28/39] rdf-mt/rdfs-no-cycles-in-subPropertyOf-test001
+ ok
+  PASS: rdfs-no-cycles-in-subPropertyOf-test001
+  [29/39] rdf-mt/rdfs-subClassOf-a-Property-test001
+ ok
+  PASS: rdfs-subClassOf-a-Property-test001
+  [30/39] rdf-mt/rdfs-subPropertyOf-semantics-test001
+ ok
+  PASS: rdfs-subPropertyOf-semantics-test001
+  [31/39] rdf-mt/statement-entailment-test001
+ ok
+  PASS: statement-entailment-test001
+  [32/39] rdf-mt/statement-entailment-test002
+ ok
+  PASS: statement-entailment-test002
+  [33/39] rdf-mt/statement-entailment-test003
+ ok
+  PASS: statement-entailment-test003
+  [34/39] rdf-mt/statement-entailment-test004
+ ok
+  PASS: statement-entailment-test004
+  [35/39] rdf-mt/tex-01-language-tag-case-1
+ ok
+  PASS: tex-01-language-tag-case-1
+  [36/39] rdf-mt/tex-01-language-tag-case-2
+ ok
+  PASS: tex-01-language-tag-case-2
+  [37/39] rdf-mt/xmlsch-02-whitespace-facet-1
+ ok
+  PASS: xmlsch-02-whitespace-facet-1
+  [38/39] rdf-mt/xmlsch-02-whitespace-facet-2
+ ok
+  PASS: xmlsch-02-whitespace-facet-2
+  [39/39] rdf-mt/xmlsch-02-whitespace-facet-4
+ ok
+  PASS: xmlsch-02-whitespace-facet-4
+  [suite time: 0.1s]
+
+--- rdf-n-quads ---
+  [1/87] rdf-n-quads/nq-syntax-uri-01
+ ok
+  PASS: nq-syntax-uri-01
+  [2/87] rdf-n-quads/nq-syntax-uri-02
+ ok
+  PASS: nq-syntax-uri-02
+  [3/87] rdf-n-quads/nq-syntax-uri-03
+ ok
+  PASS: nq-syntax-uri-03
+  [4/87] rdf-n-quads/nq-syntax-uri-04
+ ok
+  PASS: nq-syntax-uri-04
+  [5/87] rdf-n-quads/nq-syntax-uri-05
+ ok
+  PASS: nq-syntax-uri-05
+  [6/87] rdf-n-quads/nq-syntax-uri-06
+ ok
+  PASS: nq-syntax-uri-06
+  [7/87] rdf-n-quads/nq-syntax-bnode-01
+ ok
+  PASS: nq-syntax-bnode-01
+  [8/87] rdf-n-quads/nq-syntax-bnode-02
+ ok
+  PASS: nq-syntax-bnode-02
+  [9/87] rdf-n-quads/nq-syntax-bnode-03
+ ok
+  PASS: nq-syntax-bnode-03
+  [10/87] rdf-n-quads/nq-syntax-bnode-04
+ ok
+  PASS: nq-syntax-bnode-04
+  [11/87] rdf-n-quads/nq-syntax-bnode-05
+ ok
+  PASS: nq-syntax-bnode-05
+  [12/87] rdf-n-quads/nq-syntax-bnode-06
+ ok
+  PASS: nq-syntax-bnode-06
+  [13/87] rdf-n-quads/nq-syntax-bad-literal-01
+ ok
+  PASS: nq-syntax-bad-literal-01
+  [14/87] rdf-n-quads/nq-syntax-bad-literal-02
+ ok
+  PASS: nq-syntax-bad-literal-02
+  [15/87] rdf-n-quads/nq-syntax-bad-literal-03
+ ok
+  PASS: nq-syntax-bad-literal-03
+  [16/87] rdf-n-quads/nq-syntax-bad-uri-01
+ ok
+  PASS: nq-syntax-bad-uri-01
+  [17/87] rdf-n-quads/nq-syntax-bad-quint-01
+ ok
+  PASS: nq-syntax-bad-quint-01
+  [18/87] rdf-n-quads/nt-syntax-file-01
+ ok
+  PASS: nt-syntax-file-01
+  [19/87] rdf-n-quads/nt-syntax-file-02
+ ok
+  PASS: nt-syntax-file-02
+  [20/87] rdf-n-quads/nt-syntax-file-03
+ ok
+  PASS: nt-syntax-file-03
+  [21/87] rdf-n-quads/nt-syntax-uri-01
+ ok
+  PASS: nt-syntax-uri-01
+  [22/87] rdf-n-quads/nt-syntax-uri-02
+ ok
+  PASS: nt-syntax-uri-02
+  [23/87] rdf-n-quads/nt-syntax-uri-03
+ ok
+  PASS: nt-syntax-uri-03
+  [24/87] rdf-n-quads/nt-syntax-uri-04
+ ok
+  PASS: nt-syntax-uri-04
+  [25/87] rdf-n-quads/nt-syntax-string-01
+ ok
+  PASS: nt-syntax-string-01
+  [26/87] rdf-n-quads/nt-syntax-string-02
+ ok
+  PASS: nt-syntax-string-02
+  [27/87] rdf-n-quads/nt-syntax-string-03
+ ok
+  PASS: nt-syntax-string-03
+  [28/87] rdf-n-quads/nt-syntax-str-esc-01
+ ok
+  PASS: nt-syntax-str-esc-01
+  [29/87] rdf-n-quads/nt-syntax-str-esc-02
+ ok
+  PASS: nt-syntax-str-esc-02
+  [30/87] rdf-n-quads/nt-syntax-str-esc-03
+ ok
+  PASS: nt-syntax-str-esc-03
+  [31/87] rdf-n-quads/nt-syntax-bnode-01
+ ok
+  PASS: nt-syntax-bnode-01
+  [32/87] rdf-n-quads/nt-syntax-bnode-02
+ ok
+  PASS: nt-syntax-bnode-02
+  [33/87] rdf-n-quads/nt-syntax-bnode-03
+ ok
+  PASS: nt-syntax-bnode-03
+  [34/87] rdf-n-quads/nt-syntax-datatypes-01
+ ok
+  PASS: nt-syntax-datatypes-01
+  [35/87] rdf-n-quads/nt-syntax-datatypes-02
+ ok
+  PASS: nt-syntax-datatypes-02
+  [36/87] rdf-n-quads/nt-syntax-bad-uri-01
+ ok
+  PASS: nt-syntax-bad-uri-01
+  [37/87] rdf-n-quads/nt-syntax-bad-uri-02
+ ok
+  PASS: nt-syntax-bad-uri-02
+  [38/87] rdf-n-quads/nt-syntax-bad-uri-03
+ ok
+  PASS: nt-syntax-bad-uri-03
+  [39/87] rdf-n-quads/nt-syntax-bad-uri-04
+ ok
+  PASS: nt-syntax-bad-uri-04
+  [40/87] rdf-n-quads/nt-syntax-bad-uri-05
+ ok
+  PASS: nt-syntax-bad-uri-05
+  [41/87] rdf-n-quads/nt-syntax-bad-uri-06
+ ok
+  PASS: nt-syntax-bad-uri-06
+  [42/87] rdf-n-quads/nt-syntax-bad-uri-07
+ ok
+  PASS: nt-syntax-bad-uri-07
+  [43/87] rdf-n-quads/nt-syntax-bad-uri-08
+ ok
+  PASS: nt-syntax-bad-uri-08
+  [44/87] rdf-n-quads/nt-syntax-bad-uri-09
+ ok
+  PASS: nt-syntax-bad-uri-09
+  [45/87] rdf-n-quads/nt-syntax-bad-prefix-01
+ ok
+  PASS: nt-syntax-bad-prefix-01
+  [46/87] rdf-n-quads/nt-syntax-bad-base-01
+ ok
+  PASS: nt-syntax-bad-base-01
+  [47/87] rdf-n-quads/nt-syntax-bad-bnode-01
+ ok
+  PASS: nt-syntax-bad-bnode-01
+  [48/87] rdf-n-quads/nt-syntax-bad-bnode-02
+ ok
+  PASS: nt-syntax-bad-bnode-02
+  [49/87] rdf-n-quads/nt-syntax-bad-struct-01
+ ok
+  PASS: nt-syntax-bad-struct-01
+  [50/87] rdf-n-quads/nt-syntax-bad-struct-02
+ ok
+  PASS: nt-syntax-bad-struct-02
+  [51/87] rdf-n-quads/nt-syntax-bad-lang-01
+ ok
+  PASS: nt-syntax-bad-lang-01
+  [52/87] rdf-n-quads/nt-syntax-bad-esc-01
+ ok
+  PASS: nt-syntax-bad-esc-01
+  [53/87] rdf-n-quads/nt-syntax-bad-esc-02
+ ok
+  PASS: nt-syntax-bad-esc-02
+  [54/87] rdf-n-quads/nt-syntax-bad-esc-03
+ ok
+  PASS: nt-syntax-bad-esc-03
+  [55/87] rdf-n-quads/nt-syntax-bad-string-01
+ ok
+  PASS: nt-syntax-bad-string-01
+  [56/87] rdf-n-quads/nt-syntax-bad-string-02
+ ok
+  PASS: nt-syntax-bad-string-02
+  [57/87] rdf-n-quads/nt-syntax-bad-string-03
+ ok
+  PASS: nt-syntax-bad-string-03
+  [58/87] rdf-n-quads/nt-syntax-bad-string-04
+ ok
+  PASS: nt-syntax-bad-string-04
+  [59/87] rdf-n-quads/nt-syntax-bad-string-05
+ ok
+  PASS: nt-syntax-bad-string-05
+  [60/87] rdf-n-quads/nt-syntax-bad-string-06
+ ok
+  PASS: nt-syntax-bad-string-06
+  [61/87] rdf-n-quads/nt-syntax-bad-string-07
+ ok
+  PASS: nt-syntax-bad-string-07
+  [62/87] rdf-n-quads/nt-syntax-bad-num-01
+ ok
+  PASS: nt-syntax-bad-num-01
+  [63/87] rdf-n-quads/nt-syntax-bad-num-02
+ ok
+  PASS: nt-syntax-bad-num-02
+  [64/87] rdf-n-quads/nt-syntax-bad-num-03
+ ok
+  PASS: nt-syntax-bad-num-03
+  [65/87] rdf-n-quads/nt-syntax-subm-01
+ ok
+  PASS: nt-syntax-subm-01
+  [66/87] rdf-n-quads/comment_following_triple
+ ok
+  PASS: comment_following_triple
+  [67/87] rdf-n-quads/literal
+ ok
+  PASS: literal
+  [68/87] rdf-n-quads/literal_all_controls
+ ok
+  PASS: literal_all_controls
+  [69/87] rdf-n-quads/literal_all_punctuation
+ ok
+  PASS: literal_all_punctuation
+  [70/87] rdf-n-quads/literal_ascii_boundaries
+ ok
+  PASS: literal_ascii_boundaries
+  [71/87] rdf-n-quads/literal_with_2_dquotes
+ ok
+  PASS: literal_with_2_dquotes
+  [72/87] rdf-n-quads/literal_with_2_squotes
+ ok
+  PASS: literal_with_2_squotes
+  [73/87] rdf-n-quads/literal_with_BACKSPACE
+ ok
+  PASS: literal_with_BACKSPACE
+  [74/87] rdf-n-quads/literal_with_CARRIAGE_RETURN
+ ok
+  PASS: literal_with_CARRIAGE_RETURN
+  [75/87] rdf-n-quads/literal_with_CHARACTER_TABULATION
+ ok
+  PASS: literal_with_CHARACTER_TABULATION
+  [76/87] rdf-n-quads/literal_with_dquote
+ ok
+  PASS: literal_with_dquote
+  [77/87] rdf-n-quads/literal_with_FORM_FEED
+ ok
+  PASS: literal_with_FORM_FEED
+  [78/87] rdf-n-quads/literal_with_LINE_FEED
+ ok
+  PASS: literal_with_LINE_FEED
+  [79/87] rdf-n-quads/literal_with_numeric_escape4
+ ok
+  PASS: literal_with_numeric_escape4
+  [80/87] rdf-n-quads/literal_with_numeric_escape8
+ ok
+  PASS: literal_with_numeric_escape8
+  [81/87] rdf-n-quads/literal_with_REVERSE_SOLIDUS
+ ok
+  PASS: literal_with_REVERSE_SOLIDUS
+  [82/87] rdf-n-quads/literal_with_REVERSE_SOLIDUS2
+ ok
+  PASS: literal_with_REVERSE_SOLIDUS2
+  [83/87] rdf-n-quads/literal_with_squote
+ ok
+  PASS: literal_with_squote
+  [84/87] rdf-n-quads/literal_with_UTF8_boundaries
+ ok
+  PASS: literal_with_UTF8_boundaries
+  [85/87] rdf-n-quads/langtagged_string
+ ok
+  PASS: langtagged_string
+  [86/87] rdf-n-quads/lantag_with_subtag
+ ok
+  PASS: lantag_with_subtag
+  [87/87] rdf-n-quads/minimal_whitespace
+ ok
+  PASS: minimal_whitespace
+  [suite time: 0.1s]
+
+--- rdf-n-triples ---
+  [1/70] rdf-n-triples/nt-syntax-file-01
+ ok
+  PASS: nt-syntax-file-01
+  [2/70] rdf-n-triples/nt-syntax-file-02
+ ok
+  PASS: nt-syntax-file-02
+  [3/70] rdf-n-triples/nt-syntax-file-03
+ ok
+  PASS: nt-syntax-file-03
+  [4/70] rdf-n-triples/nt-syntax-uri-01
+ ok
+  PASS: nt-syntax-uri-01
+  [5/70] rdf-n-triples/nt-syntax-uri-02
+ ok
+  PASS: nt-syntax-uri-02
+  [6/70] rdf-n-triples/nt-syntax-uri-03
+ ok
+  PASS: nt-syntax-uri-03
+  [7/70] rdf-n-triples/nt-syntax-uri-04
+ ok
+  PASS: nt-syntax-uri-04
+  [8/70] rdf-n-triples/nt-syntax-string-01
+ ok
+  PASS: nt-syntax-string-01
+  [9/70] rdf-n-triples/nt-syntax-string-02
+ ok
+  PASS: nt-syntax-string-02
+  [10/70] rdf-n-triples/nt-syntax-string-03
+ ok
+  PASS: nt-syntax-string-03
+  [11/70] rdf-n-triples/nt-syntax-str-esc-01
+ ok
+  PASS: nt-syntax-str-esc-01
+  [12/70] rdf-n-triples/nt-syntax-str-esc-02
+ ok
+  PASS: nt-syntax-str-esc-02
+  [13/70] rdf-n-triples/nt-syntax-str-esc-03
+ ok
+  PASS: nt-syntax-str-esc-03
+  [14/70] rdf-n-triples/nt-syntax-bnode-01
+ ok
+  PASS: nt-syntax-bnode-01
+  [15/70] rdf-n-triples/nt-syntax-bnode-02
+ ok
+  PASS: nt-syntax-bnode-02
+  [16/70] rdf-n-triples/nt-syntax-bnode-03
+ ok
+  PASS: nt-syntax-bnode-03
+  [17/70] rdf-n-triples/nt-syntax-datatypes-01
+ ok
+  PASS: nt-syntax-datatypes-01
+  [18/70] rdf-n-triples/nt-syntax-datatypes-02
+ ok
+  PASS: nt-syntax-datatypes-02
+  [19/70] rdf-n-triples/nt-syntax-bad-uri-01
+ ok
+  PASS: nt-syntax-bad-uri-01
+  [20/70] rdf-n-triples/nt-syntax-bad-uri-02
+ ok
+  PASS: nt-syntax-bad-uri-02
+  [21/70] rdf-n-triples/nt-syntax-bad-uri-03
+ ok
+  PASS: nt-syntax-bad-uri-03
+  [22/70] rdf-n-triples/nt-syntax-bad-uri-04
+ ok
+  PASS: nt-syntax-bad-uri-04
+  [23/70] rdf-n-triples/nt-syntax-bad-uri-05
+ ok
+  PASS: nt-syntax-bad-uri-05
+  [24/70] rdf-n-triples/nt-syntax-bad-uri-06
+ ok
+  PASS: nt-syntax-bad-uri-06
+  [25/70] rdf-n-triples/nt-syntax-bad-uri-07
+ ok
+  PASS: nt-syntax-bad-uri-07
+  [26/70] rdf-n-triples/nt-syntax-bad-uri-08
+ ok
+  PASS: nt-syntax-bad-uri-08
+  [27/70] rdf-n-triples/nt-syntax-bad-uri-09
+ ok
+  PASS: nt-syntax-bad-uri-09
+  [28/70] rdf-n-triples/nt-syntax-bad-prefix-01
+ ok
+  PASS: nt-syntax-bad-prefix-01
+  [29/70] rdf-n-triples/nt-syntax-bad-base-01
+ ok
+  PASS: nt-syntax-bad-base-01
+  [30/70] rdf-n-triples/nt-syntax-bad-bnode-01
+ ok
+  PASS: nt-syntax-bad-bnode-01
+  [31/70] rdf-n-triples/nt-syntax-bad-bnode-02
+ ok
+  PASS: nt-syntax-bad-bnode-02
+  [32/70] rdf-n-triples/nt-syntax-bad-struct-01
+ ok
+  PASS: nt-syntax-bad-struct-01
+  [33/70] rdf-n-triples/nt-syntax-bad-struct-02
+ ok
+  PASS: nt-syntax-bad-struct-02
+  [34/70] rdf-n-triples/nt-syntax-bad-lang-01
+ ok
+  PASS: nt-syntax-bad-lang-01
+  [35/70] rdf-n-triples/nt-syntax-bad-esc-01
+ ok
+  PASS: nt-syntax-bad-esc-01
+  [36/70] rdf-n-triples/nt-syntax-bad-esc-02
+ ok
+  PASS: nt-syntax-bad-esc-02
+  [37/70] rdf-n-triples/nt-syntax-bad-esc-03
+ ok
+  PASS: nt-syntax-bad-esc-03
+  [38/70] rdf-n-triples/nt-syntax-bad-string-01
+ ok
+  PASS: nt-syntax-bad-string-01
+  [39/70] rdf-n-triples/nt-syntax-bad-string-02
+ ok
+  PASS: nt-syntax-bad-string-02
+  [40/70] rdf-n-triples/nt-syntax-bad-string-03
+ ok
+  PASS: nt-syntax-bad-string-03
+  [41/70] rdf-n-triples/nt-syntax-bad-string-04
+ ok
+  PASS: nt-syntax-bad-string-04
+  [42/70] rdf-n-triples/nt-syntax-bad-string-05
+ ok
+  PASS: nt-syntax-bad-string-05
+  [43/70] rdf-n-triples/nt-syntax-bad-string-06
+ ok
+  PASS: nt-syntax-bad-string-06
+  [44/70] rdf-n-triples/nt-syntax-bad-string-07
+ ok
+  PASS: nt-syntax-bad-string-07
+  [45/70] rdf-n-triples/nt-syntax-bad-num-01
+ ok
+  PASS: nt-syntax-bad-num-01
+  [46/70] rdf-n-triples/nt-syntax-bad-num-02
+ ok
+  PASS: nt-syntax-bad-num-02
+  [47/70] rdf-n-triples/nt-syntax-bad-num-03
+ ok
+  PASS: nt-syntax-bad-num-03
+  [48/70] rdf-n-triples/nt-syntax-subm-01
+ ok
+  PASS: nt-syntax-subm-01
+  [49/70] rdf-n-triples/comment_following_triple
+ ok
+  PASS: comment_following_triple
+  [50/70] rdf-n-triples/literal
+ ok
+  PASS: literal
+  [51/70] rdf-n-triples/literal_all_controls
+ ok
+  PASS: literal_all_controls
+  [52/70] rdf-n-triples/literal_all_punctuation
+ ok
+  PASS: literal_all_punctuation
+  [53/70] rdf-n-triples/literal_ascii_boundaries
+ ok
+  PASS: literal_ascii_boundaries
+  [54/70] rdf-n-triples/literal_with_2_dquotes
+ ok
+  PASS: literal_with_2_dquotes
+  [55/70] rdf-n-triples/literal_with_2_squotes
+ ok
+  PASS: literal_with_2_squotes
+  [56/70] rdf-n-triples/literal_with_BACKSPACE
+ ok
+  PASS: literal_with_BACKSPACE
+  [57/70] rdf-n-triples/literal_with_CARRIAGE_RETURN
+ ok
+  PASS: literal_with_CARRIAGE_RETURN
+  [58/70] rdf-n-triples/literal_with_CHARACTER_TABULATION
+ ok
+  PASS: literal_with_CHARACTER_TABULATION
+  [59/70] rdf-n-triples/literal_with_dquote
+ ok
+  PASS: literal_with_dquote
+  [60/70] rdf-n-triples/literal_with_FORM_FEED
+ ok
+  PASS: literal_with_FORM_FEED
+  [61/70] rdf-n-triples/literal_with_LINE_FEED
+ ok
+  PASS: literal_with_LINE_FEED
+  [62/70] rdf-n-triples/literal_with_numeric_escape4
+ ok
+  PASS: literal_with_numeric_escape4
+  [63/70] rdf-n-triples/literal_with_numeric_escape8
+ ok
+  PASS: literal_with_numeric_escape8
+  [64/70] rdf-n-triples/literal_with_REVERSE_SOLIDUS
+ ok
+  PASS: literal_with_REVERSE_SOLIDUS
+  [65/70] rdf-n-triples/literal_with_REVERSE_SOLIDUS2
+ ok
+  PASS: literal_with_REVERSE_SOLIDUS2
+  [66/70] rdf-n-triples/literal_with_squote
+ ok
+  PASS: literal_with_squote
+  [67/70] rdf-n-triples/literal_with_UTF8_boundaries
+ ok
+  PASS: literal_with_UTF8_boundaries
+  [68/70] rdf-n-triples/langtagged_string
+ ok
+  PASS: langtagged_string
+  [69/70] rdf-n-triples/lantag_with_subtag
+ ok
+  PASS: lantag_with_subtag
+  [70/70] rdf-n-triples/minimal_whitespace
+ ok
+  PASS: minimal_whitespace
+  [suite time: 0.1s]
+
+--- rdf-trig ---
+  [1/356] rdf-trig/anonymous_blank_node_graph
+ ok
+  PASS: anonymous_blank_node_graph
+  [2/356] rdf-trig/labeled_blank_node_graph
+ ok
+  PASS: labeled_blank_node_graph
+  [3/356] rdf-trig/alternating_iri_graphs
+ ok
+  PASS: alternating_iri_graphs
+  [4/356] rdf-trig/alternating_bnode_graphs
+ ok
+  PASS: alternating_bnode_graphs
+  [5/356] rdf-trig/trig-syntax-bad-base-04
+ ok
+  PASS: trig-syntax-bad-base-04
+  [6/356] rdf-trig/trig-syntax-bad-base-05
+ ok
+  PASS: trig-syntax-bad-base-05
+  [7/356] rdf-trig/trig-syntax-bad-prefix-06
+ ok
+  PASS: trig-syntax-bad-prefix-06
+  [8/356] rdf-trig/trig-syntax-bad-prefix-07
+ ok
+  PASS: trig-syntax-bad-prefix-07
+  [9/356] rdf-trig/trig-syntax-struct-06
+ ok
+  PASS: trig-syntax-struct-06
+  [10/356] rdf-trig/trig-syntax-struct-07
+ ok
+  PASS: trig-syntax-struct-07
+  [11/356] rdf-trig/trig-syntax-minimal-whitespace-01
+ ok
+  PASS: trig-syntax-minimal-whitespace-01
+  [12/356] rdf-trig/IRI_subject
+ ok
+  PASS: IRI_subject
+  [13/356] rdf-trig/IRI_with_four_digit_numeric_escape
+ ok
+  PASS: IRI_with_four_digit_numeric_escape
+  [14/356] rdf-trig/IRI_with_eight_digit_numeric_escape
+ ok
+  PASS: IRI_with_eight_digit_numeric_escape
+  [15/356] rdf-trig/IRI_with_all_punctuation
+ ok
+  PASS: IRI_with_all_punctuation
+  [16/356] rdf-trig/bareword_a_predicate
+ ok
+  PASS: bareword_a_predicate
+  [17/356] rdf-trig/old_style_prefix
+ ok
+  PASS: old_style_prefix
+  [18/356] rdf-trig/SPARQL_style_prefix
+ ok
+  PASS: SPARQL_style_prefix
+  [19/356] rdf-trig/prefixed_IRI_predicate
+ ok
+  PASS: prefixed_IRI_predicate
+  [20/356] rdf-trig/prefixed_IRI_object
+ ok
+  PASS: prefixed_IRI_object
+  [21/356] rdf-trig/prefix_only_IRI
+ ok
+  PASS: prefix_only_IRI
+  [22/356] rdf-trig/prefix_with_PN_CHARS_BASE_character_boundaries
+ ok
+  PASS: prefix_with_PN_CHARS_BASE_character_boundaries
+  [23/356] rdf-trig/prefix_with_non_leading_extras
+ ok
+  PASS: prefix_with_non_leading_extras
+  [24/356] rdf-trig/default_namespace_IRI
+ ok
+  PASS: default_namespace_IRI
+  [25/356] rdf-trig/prefix_reassigned_and_used
+ ok
+  PASS: prefix_reassigned_and_used
+  [26/356] rdf-trig/reserved_escaped_localName
+ ok
+  PASS: reserved_escaped_localName
+  [27/356] rdf-trig/percent_escaped_localName
+ ok
+  PASS: percent_escaped_localName
+  [28/356] rdf-trig/HYPHEN_MINUS_in_localName
+ ok
+  PASS: HYPHEN_MINUS_in_localName
+  [29/356] rdf-trig/underscore_in_localName
+ ok
+  PASS: underscore_in_localName
+  [30/356] rdf-trig/localname_with_COLON
+ ok
+  PASS: localname_with_COLON
+  [31/356] rdf-trig/localName_with_assigned_nfc_bmp_PN_CHARS_BASE_character_boundaries
+ ok
+  PASS: localName_with_assigned_nfc_bmp_PN_CHARS_BASE_character_boundaries
+  [32/356] rdf-trig/localName_with_assigned_nfc_PN_CHARS_BASE_character_boundaries
+ ok
+  PASS: localName_with_assigned_nfc_PN_CHARS_BASE_character_boundaries
+  [33/356] rdf-trig/localName_with_nfc_PN_CHARS_BASE_character_boundaries
+ ok
+  PASS: localName_with_nfc_PN_CHARS_BASE_character_boundaries
+  [34/356] rdf-trig/localName_with_leading_underscore
+ ok
+  PASS: localName_with_leading_underscore
+  [35/356] rdf-trig/localName_with_leading_digit
+ ok
+  PASS: localName_with_leading_digit
+  [36/356] rdf-trig/localName_with_non_leading_extras
+ ok
+  PASS: localName_with_non_leading_extras
+  [37/356] rdf-trig/old_style_base
+ ok
+  PASS: old_style_base
+  [38/356] rdf-trig/SPARQL_style_base
+ ok
+  PASS: SPARQL_style_base
+  [39/356] rdf-trig/labeled_blank_node_subject
+ ok
+  PASS: labeled_blank_node_subject
+  [40/356] rdf-trig/labeled_blank_node_object
+ ok
+  PASS: labeled_blank_node_object
+  [41/356] rdf-trig/labeled_blank_node_with_PN_CHARS_BASE_character_boundaries
+ ok
+  PASS: labeled_blank_node_with_PN_CHARS_BASE_character_boundaries
+  [42/356] rdf-trig/labeled_blank_node_with_leading_underscore
+ ok
+  PASS: labeled_blank_node_with_leading_underscore
+  [43/356] rdf-trig/labeled_blank_node_with_leading_digit
+ ok
+  PASS: labeled_blank_node_with_leading_digit
+  [44/356] rdf-trig/labeled_blank_node_with_non_leading_extras
+ ok
+  PASS: labeled_blank_node_with_non_leading_extras
+  [45/356] rdf-trig/anonymous_blank_node_subject
+ ok
+  PASS: anonymous_blank_node_subject
+  [46/356] rdf-trig/anonymous_blank_node_object
+ ok
+  PASS: anonymous_blank_node_object
+  [47/356] rdf-trig/sole_blankNodePropertyList
+ ok
+  PASS: sole_blankNodePropertyList
+  [48/356] rdf-trig/blankNodePropertyList_as_subject
+ ok
+  PASS: blankNodePropertyList_as_subject
+  [49/356] rdf-trig/blankNodePropertyList_as_object
+ ok
+  PASS: blankNodePropertyList_as_object
+  [50/356] rdf-trig/blankNodePropertyList_as_object_containing_objectList
+ ok
+  PASS: blankNodePropertyList_as_object_containing_objectList
+  [51/356] rdf-trig/blankNodePropertyList_as_object_containing_objectList_of_two_objects
+ ok
+  PASS: blankNodePropertyList_as_object_containing_objectList_of_two_objects
+  [52/356] rdf-trig/blankNodePropertyList_with_multiple_triples
+ ok
+  PASS: blankNodePropertyList_with_multiple_triples
+  [53/356] rdf-trig/nested_blankNodePropertyLists
+ ok
+  PASS: nested_blankNodePropertyLists
+  [54/356] rdf-trig/blankNodePropertyList_containing_collection
+ ok
+  PASS: blankNodePropertyList_containing_collection
+  [55/356] rdf-trig/collection_subject
+ ok
+  PASS: collection_subject
+  [56/356] rdf-trig/collection_object
+ ok
+  PASS: collection_object
+  [57/356] rdf-trig/empty_collection
+ ok
+  PASS: empty_collection
+  [58/356] rdf-trig/nested_collection
+ ok
+  PASS: nested_collection
+  [59/356] rdf-trig/first
+ ok
+  PASS: first
+  [60/356] rdf-trig/last
+ ok
+  PASS: last
+  [61/356] rdf-trig/LITERAL1
+ ok
+  PASS: LITERAL1
+  [62/356] rdf-trig/LITERAL1_ascii_boundaries
+ ok
+  PASS: LITERAL1_ascii_boundaries
+  [63/356] rdf-trig/LITERAL1_with_UTF8_boundaries
+ ok
+  PASS: LITERAL1_with_UTF8_boundaries
+  [64/356] rdf-trig/LITERAL1_all_controls
+ ok
+  PASS: LITERAL1_all_controls
+  [65/356] rdf-trig/LITERAL1_all_punctuation
+ ok
+  PASS: LITERAL1_all_punctuation
+  [66/356] rdf-trig/LITERAL_LONG1
+ ok
+  PASS: LITERAL_LONG1
+  [67/356] rdf-trig/LITERAL_LONG1_ascii_boundaries
+ ok
+  PASS: LITERAL_LONG1_ascii_boundaries
+  [68/356] rdf-trig/LITERAL_LONG1_with_UTF8_boundaries
+ ok
+  PASS: LITERAL_LONG1_with_UTF8_boundaries
+  [69/356] rdf-trig/LITERAL_LONG1_with_1_squote
+ ok
+  PASS: LITERAL_LONG1_with_1_squote
+  [70/356] rdf-trig/LITERAL_LONG1_with_2_squotes
+ ok
+  PASS: LITERAL_LONG1_with_2_squotes
+  [71/356] rdf-trig/LITERAL2
+ ok
+  PASS: LITERAL2
+  [72/356] rdf-trig/LITERAL2_ascii_boundaries
+ ok
+  PASS: LITERAL2_ascii_boundaries
+  [73/356] rdf-trig/LITERAL2_with_UTF8_boundaries
+ ok
+  PASS: LITERAL2_with_UTF8_boundaries
+  [74/356] rdf-trig/LITERAL_LONG2
+ ok
+  PASS: LITERAL_LONG2
+  [75/356] rdf-trig/LITERAL_LONG2_ascii_boundaries
+ ok
+  PASS: LITERAL_LONG2_ascii_boundaries
+  [76/356] rdf-trig/LITERAL_LONG2_with_UTF8_boundaries
+ ok
+  PASS: LITERAL_LONG2_with_UTF8_boundaries
+  [77/356] rdf-trig/LITERAL_LONG2_with_1_squote
+ ok
+  PASS: LITERAL_LONG2_with_1_squote
+  [78/356] rdf-trig/LITERAL_LONG2_with_2_squotes
+ ok
+  PASS: LITERAL_LONG2_with_2_squotes
+  [79/356] rdf-trig/literal_with_CHARACTER_TABULATION
+ ok
+  PASS: literal_with_CHARACTER_TABULATION
+  [80/356] rdf-trig/literal_with_BACKSPACE
+ ok
+  PASS: literal_with_BACKSPACE
+  [81/356] rdf-trig/literal_with_LINE_FEED
+ ok
+  PASS: literal_with_LINE_FEED
+  [82/356] rdf-trig/literal_with_CARRIAGE_RETURN
+ ok
+  PASS: literal_with_CARRIAGE_RETURN
+  [83/356] rdf-trig/literal_with_FORM_FEED
+ ok
+  PASS: literal_with_FORM_FEED
+  [84/356] rdf-trig/literal_with_REVERSE_SOLIDUS
+ ok
+  PASS: literal_with_REVERSE_SOLIDUS
+  [85/356] rdf-trig/literal_with_escaped_CHARACTER_TABULATION
+ ok
+  PASS: literal_with_escaped_CHARACTER_TABULATION
+  [86/356] rdf-trig/literal_with_escaped_BACKSPACE
+ ok
+  PASS: literal_with_escaped_BACKSPACE
+  [87/356] rdf-trig/literal_with_escaped_LINE_FEED
+ ok
+  PASS: literal_with_escaped_LINE_FEED
+  [88/356] rdf-trig/literal_with_escaped_CARRIAGE_RETURN
+ ok
+  PASS: literal_with_escaped_CARRIAGE_RETURN
+  [89/356] rdf-trig/literal_with_escaped_FORM_FEED
+ ok
+  PASS: literal_with_escaped_FORM_FEED
+  [90/356] rdf-trig/literal_with_numeric_escape4
+ ok
+  PASS: literal_with_numeric_escape4
+  [91/356] rdf-trig/literal_with_numeric_escape8
+ ok
+  PASS: literal_with_numeric_escape8
+  [92/356] rdf-trig/IRIREF_datatype
+ ok
+  PASS: IRIREF_datatype
+  [93/356] rdf-trig/prefixed_name_datatype
+ ok
+  PASS: prefixed_name_datatype
+  [94/356] rdf-trig/bareword_integer
+ ok
+  PASS: bareword_integer
+  [95/356] rdf-trig/bareword_decimal
+ ok
+  PASS: bareword_decimal
+  [96/356] rdf-trig/bareword_double
+ ok
+  PASS: bareword_double
+  [97/356] rdf-trig/double_lower_case_e
+ ok
+  PASS: double_lower_case_e
+  [98/356] rdf-trig/negative_numeric
+ ok
+  PASS: negative_numeric
+  [99/356] rdf-trig/positive_numeric
+ ok
+  PASS: positive_numeric
+  [100/356] rdf-trig/numeric_with_leading_0
+ ok
+  PASS: numeric_with_leading_0
+  [101/356] rdf-trig/literal_true
+ ok
+  PASS: literal_true
+  [102/356] rdf-trig/literal_false
+ ok
+  PASS: literal_false
+  [103/356] rdf-trig/langtagged_non_LONG
+ ok
+  PASS: langtagged_non_LONG
+  [104/356] rdf-trig/langtagged_LONG
+ ok
+  PASS: langtagged_LONG
+  [105/356] rdf-trig/lantag_with_subtag
+ ok
+  PASS: lantag_with_subtag
+  [106/356] rdf-trig/objectList_with_two_objects
+ ok
+  PASS: objectList_with_two_objects
+  [107/356] rdf-trig/predicateObjectList_with_two_objectLists
+ ok
+  PASS: predicateObjectList_with_two_objectLists
+  [108/356] rdf-trig/predicateObjectList_with_blankNodePropertyList_as_object
+ ok
+  PASS: predicateObjectList_with_blankNodePropertyList_as_object
+  [109/356] rdf-trig/repeated_semis_at_end
+ ok
+  PASS: repeated_semis_at_end
+  [110/356] rdf-trig/repeated_semis_not_at_end
+ ok
+  PASS: repeated_semis_not_at_end
+  [111/356] rdf-trig/comment_following_localName
+ ok
+  PASS: comment_following_localName
+  [112/356] rdf-trig/number_sign_following_localName
+ ok
+  PASS: number_sign_following_localName
+  [113/356] rdf-trig/comment_following_PNAME_NS
+ ok
+  PASS: comment_following_PNAME_NS
+  [114/356] rdf-trig/number_sign_following_PNAME_NS
+ ok
+  PASS: number_sign_following_PNAME_NS
+  [115/356] rdf-trig/LITERAL_LONG2_with_REVERSE_SOLIDUS
+ ok
+  PASS: LITERAL_LONG2_with_REVERSE_SOLIDUS
+  [116/356] rdf-trig/trig-syntax-bad-num-05
+ ok
+  PASS: trig-syntax-bad-num-05
+  [117/356] rdf-trig/two_LITERAL_LONG2s
+ ok
+  PASS: two_LITERAL_LONG2s
+  [118/356] rdf-trig/langtagged_LONG_with_subtag
+ ok
+  PASS: langtagged_LONG_with_subtag
+  [119/356] rdf-trig/trig-syntax-file-01
+ ok
+  PASS: trig-syntax-file-01
+  [120/356] rdf-trig/trig-syntax-file-02
+ ok
+  PASS: trig-syntax-file-02
+  [121/356] rdf-trig/trig-syntax-file-03
+ ok
+  PASS: trig-syntax-file-03
+  [122/356] rdf-trig/trig-syntax-uri-01
+ ok
+  PASS: trig-syntax-uri-01
+  [123/356] rdf-trig/trig-syntax-uri-02
+ ok
+  PASS: trig-syntax-uri-02
+  [124/356] rdf-trig/trig-syntax-uri-03
+ ok
+  PASS: trig-syntax-uri-03
+  [125/356] rdf-trig/trig-syntax-uri-04
+ ok
+  PASS: trig-syntax-uri-04
+  [126/356] rdf-trig/trig-syntax-base-01
+ ok
+  PASS: trig-syntax-base-01
+  [127/356] rdf-trig/trig-syntax-base-02
+ ok
+  PASS: trig-syntax-base-02
+  [128/356] rdf-trig/trig-syntax-base-03
+ ok
+  PASS: trig-syntax-base-03
+  [129/356] rdf-trig/trig-syntax-base-04
+ ok
+  PASS: trig-syntax-base-04
+  [130/356] rdf-trig/trig-syntax-prefix-01
+ ok
+  PASS: trig-syntax-prefix-01
+  [131/356] rdf-trig/trig-syntax-prefix-02
+ ok
+  PASS: trig-syntax-prefix-02
+  [132/356] rdf-trig/trig-syntax-prefix-03
+ ok
+  PASS: trig-syntax-prefix-03
+  [133/356] rdf-trig/trig-syntax-prefix-04
+ ok
+  PASS: trig-syntax-prefix-04
+  [134/356] rdf-trig/trig-syntax-prefix-05
+ ok
+  PASS: trig-syntax-prefix-05
+  [135/356] rdf-trig/trig-syntax-prefix-06
+ ok
+  PASS: trig-syntax-prefix-06
+  [136/356] rdf-trig/trig-syntax-prefix-07
+ ok
+  PASS: trig-syntax-prefix-07
+  [137/356] rdf-trig/trig-syntax-prefix-08
+ ok
+  PASS: trig-syntax-prefix-08
+  [138/356] rdf-trig/trig-syntax-prefix-09
+ ok
+  PASS: trig-syntax-prefix-09
+  [139/356] rdf-trig/trig-syntax-string-01
+ ok
+  PASS: trig-syntax-string-01
+  [140/356] rdf-trig/trig-syntax-string-02
+ ok
+  PASS: trig-syntax-string-02
+  [141/356] rdf-trig/trig-syntax-string-03
+ ok
+  PASS: trig-syntax-string-03
+  [142/356] rdf-trig/trig-syntax-string-04
+ ok
+  PASS: trig-syntax-string-04
+  [143/356] rdf-trig/trig-syntax-string-05
+ ok
+  PASS: trig-syntax-string-05
+  [144/356] rdf-trig/trig-syntax-string-06
+ ok
+  PASS: trig-syntax-string-06
+  [145/356] rdf-trig/trig-syntax-string-07
+ ok
+  PASS: trig-syntax-string-07
+  [146/356] rdf-trig/trig-syntax-string-08
+ ok
+  PASS: trig-syntax-string-08
+  [147/356] rdf-trig/trig-syntax-string-09
+ ok
+  PASS: trig-syntax-string-09
+  [148/356] rdf-trig/trig-syntax-string-10
+ ok
+  PASS: trig-syntax-string-10
+  [149/356] rdf-trig/trig-syntax-string-11
+ ok
+  PASS: trig-syntax-string-11
+  [150/356] rdf-trig/trig-syntax-str-esc-01
+ ok
+  PASS: trig-syntax-str-esc-01
+  [151/356] rdf-trig/trig-syntax-str-esc-02
+ ok
+  PASS: trig-syntax-str-esc-02
+  [152/356] rdf-trig/trig-syntax-str-esc-03
+ ok
+  PASS: trig-syntax-str-esc-03
+  [153/356] rdf-trig/trig-syntax-pname-esc-01
+ ok
+  PASS: trig-syntax-pname-esc-01
+  [154/356] rdf-trig/trig-syntax-pname-esc-02
+ ok
+  PASS: trig-syntax-pname-esc-02
+  [155/356] rdf-trig/trig-syntax-pname-esc-03
+ ok
+  PASS: trig-syntax-pname-esc-03
+  [156/356] rdf-trig/trig-syntax-bnode-01
+ ok
+  PASS: trig-syntax-bnode-01
+  [157/356] rdf-trig/trig-syntax-bnode-02
+ ok
+  PASS: trig-syntax-bnode-02
+  [158/356] rdf-trig/trig-syntax-bnode-03
+ ok
+  PASS: trig-syntax-bnode-03
+  [159/356] rdf-trig/trig-syntax-bnode-04
+ ok
+  PASS: trig-syntax-bnode-04
+  [160/356] rdf-trig/trig-syntax-bnode-05
+ ok
+  PASS: trig-syntax-bnode-05
+  [161/356] rdf-trig/trig-syntax-bnode-06
+ ok
+  PASS: trig-syntax-bnode-06
+  [162/356] rdf-trig/trig-syntax-bnode-07
+ ok
+  PASS: trig-syntax-bnode-07
+  [163/356] rdf-trig/trig-syntax-bnode-08
+ ok
+  PASS: trig-syntax-bnode-08
+  [164/356] rdf-trig/trig-syntax-bnode-09
+ ok
+  PASS: trig-syntax-bnode-09
+  [165/356] rdf-trig/trig-syntax-bnode-10
+ ok
+  PASS: trig-syntax-bnode-10
+  [166/356] rdf-trig/trig-syntax-number-01
+ ok
+  PASS: trig-syntax-number-01
+  [167/356] rdf-trig/trig-syntax-number-02
+ ok
+  PASS: trig-syntax-number-02
+  [168/356] rdf-trig/trig-syntax-number-03
+ ok
+  PASS: trig-syntax-number-03
+  [169/356] rdf-trig/trig-syntax-number-04
+ ok
+  PASS: trig-syntax-number-04
+  [170/356] rdf-trig/trig-syntax-number-05
+ ok
+  PASS: trig-syntax-number-05
+  [171/356] rdf-trig/trig-syntax-number-06
+ ok
+  PASS: trig-syntax-number-06
+  [172/356] rdf-trig/trig-syntax-number-07
+ ok
+  PASS: trig-syntax-number-07
+  [173/356] rdf-trig/trig-syntax-number-08
+ ok
+  PASS: trig-syntax-number-08
+  [174/356] rdf-trig/trig-syntax-number-09
+ ok
+  PASS: trig-syntax-number-09
+  [175/356] rdf-trig/trig-syntax-number-10
+ ok
+  PASS: trig-syntax-number-10
+  [176/356] rdf-trig/trig-syntax-number-11
+ ok
+  PASS: trig-syntax-number-11
+  [177/356] rdf-trig/trig-syntax-number-12
+ ok
+  PASS: trig-syntax-number-12
+  [178/356] rdf-trig/trig-syntax-number-13
+ ok
+  PASS: trig-syntax-number-13
+  [179/356] rdf-trig/trig-syntax-datatypes-01
+ ok
+  PASS: trig-syntax-datatypes-01
+  [180/356] rdf-trig/trig-syntax-datatypes-02
+ ok
+  PASS: trig-syntax-datatypes-02
+  [181/356] rdf-trig/trig-syntax-kw-01
+ ok
+  PASS: trig-syntax-kw-01
+  [182/356] rdf-trig/trig-syntax-kw-02
+ ok
+  PASS: trig-syntax-kw-02
+  [183/356] rdf-trig/trig-syntax-kw-03
+ ok
+  PASS: trig-syntax-kw-03
+  [184/356] rdf-trig/trig-syntax-struct-01
+ ok
+  PASS: trig-syntax-struct-01
+  [185/356] rdf-trig/trig-syntax-struct-02
+ ok
+  PASS: trig-syntax-struct-02
+  [186/356] rdf-trig/trig-syntax-struct-03
+ ok
+  PASS: trig-syntax-struct-03
+  [187/356] rdf-trig/trig-syntax-struct-04
+ ok
+  PASS: trig-syntax-struct-04
+  [188/356] rdf-trig/trig-syntax-struct-05
+ ok
+  PASS: trig-syntax-struct-05
+  [189/356] rdf-trig/trig-syntax-lists-01
+ ok
+  PASS: trig-syntax-lists-01
+  [190/356] rdf-trig/trig-syntax-lists-02
+ ok
+  PASS: trig-syntax-lists-02
+  [191/356] rdf-trig/trig-syntax-lists-03
+ ok
+  PASS: trig-syntax-lists-03
+  [192/356] rdf-trig/trig-syntax-lists-04
+ ok
+  PASS: trig-syntax-lists-04
+  [193/356] rdf-trig/trig-syntax-lists-05
+ ok
+  PASS: trig-syntax-lists-05
+  [194/356] rdf-trig/trig-syntax-bad-uri-01
+ ok
+  PASS: trig-syntax-bad-uri-01
+  [195/356] rdf-trig/trig-syntax-bad-uri-02
+ ok
+  PASS: trig-syntax-bad-uri-02
+  [196/356] rdf-trig/trig-syntax-bad-uri-03
+ ok
+  PASS: trig-syntax-bad-uri-03
+  [197/356] rdf-trig/trig-syntax-bad-uri-04
+ ok
+  PASS: trig-syntax-bad-uri-04
+  [198/356] rdf-trig/trig-syntax-bad-uri-05
+ ok
+  PASS: trig-syntax-bad-uri-05
+  [199/356] rdf-trig/trig-syntax-bad-prefix-01
+ ok
+  PASS: trig-syntax-bad-prefix-01
+  [200/356] rdf-trig/trig-syntax-bad-prefix-02
+ ok
+  PASS: trig-syntax-bad-prefix-02
+  [201/356] rdf-trig/trig-syntax-bad-prefix-03
+ ok
+  PASS: trig-syntax-bad-prefix-03
+  [202/356] rdf-trig/trig-syntax-bad-prefix-04
+ ok
+  PASS: trig-syntax-bad-prefix-04
+  [203/356] rdf-trig/trig-syntax-bad-prefix-05
+ ok
+  PASS: trig-syntax-bad-prefix-05
+  [204/356] rdf-trig/trig-syntax-bad-base-01
+ ok
+  PASS: trig-syntax-bad-base-01
+  [205/356] rdf-trig/trig-syntax-bad-base-02
+ ok
+  PASS: trig-syntax-bad-base-02
+  [206/356] rdf-trig/trig-syntax-bad-base-03
+ ok
+  PASS: trig-syntax-bad-base-03
+  [207/356] rdf-trig/trig-syntax-bad-bnode-01
+ ok
+  PASS: trig-syntax-bad-bnode-01
+  [208/356] rdf-trig/trig-syntax-bad-bnode-02
+ ok
+  PASS: trig-syntax-bad-bnode-02
+  [209/356] rdf-trig/trig-syntax-bad-struct-02
+ ok
+  PASS: trig-syntax-bad-struct-02
+  [210/356] rdf-trig/trig-syntax-bad-struct-03
+ ok
+  PASS: trig-syntax-bad-struct-03
+  [211/356] rdf-trig/trig-syntax-bad-struct-04
+ ok
+  PASS: trig-syntax-bad-struct-04
+  [212/356] rdf-trig/trig-syntax-bad-struct-05
+ ok
+  PASS: trig-syntax-bad-struct-05
+  [213/356] rdf-trig/trig-syntax-bad-struct-06
+ ok
+  PASS: trig-syntax-bad-struct-06
+  [214/356] rdf-trig/trig-syntax-bad-struct-07
+ ok
+  PASS: trig-syntax-bad-struct-07
+  [215/356] rdf-trig/trig-syntax-bad-kw-01
+ ok
+  PASS: trig-syntax-bad-kw-01
+  [216/356] rdf-trig/trig-syntax-bad-kw-02
+ ok
+  PASS: trig-syntax-bad-kw-02
+  [217/356] rdf-trig/trig-syntax-bad-kw-03
+ ok
+  PASS: trig-syntax-bad-kw-03
+  [218/356] rdf-trig/trig-syntax-bad-kw-04
+ ok
+  PASS: trig-syntax-bad-kw-04
+  [219/356] rdf-trig/trig-syntax-bad-kw-05
+ ok
+  PASS: trig-syntax-bad-kw-05
+  [220/356] rdf-trig/trig-syntax-bad-n3-extras-01
+ ok
+  PASS: trig-syntax-bad-n3-extras-01
+  [221/356] rdf-trig/trig-syntax-bad-n3-extras-02
+ ok
+  PASS: trig-syntax-bad-n3-extras-02
+  [222/356] rdf-trig/trig-syntax-bad-n3-extras-03
+ ok
+  PASS: trig-syntax-bad-n3-extras-03
+  [223/356] rdf-trig/trig-syntax-bad-n3-extras-04
+ ok
+  PASS: trig-syntax-bad-n3-extras-04
+  [224/356] rdf-trig/trig-syntax-bad-n3-extras-05
+ ok
+  PASS: trig-syntax-bad-n3-extras-05
+  [225/356] rdf-trig/trig-syntax-bad-n3-extras-06
+ ok
+  PASS: trig-syntax-bad-n3-extras-06
+  [226/356] rdf-trig/trig-syntax-bad-n3-extras-07
+ ok
+  PASS: trig-syntax-bad-n3-extras-07
+  [227/356] rdf-trig/trig-syntax-bad-n3-extras-08
+ ok
+  PASS: trig-syntax-bad-n3-extras-08
+  [228/356] rdf-trig/trig-syntax-bad-n3-extras-09
+ ok
+  PASS: trig-syntax-bad-n3-extras-09
+  [229/356] rdf-trig/trig-syntax-bad-n3-extras-10
+ ok
+  PASS: trig-syntax-bad-n3-extras-10
+  [230/356] rdf-trig/trig-syntax-bad-n3-extras-11
+ ok
+  PASS: trig-syntax-bad-n3-extras-11
+  [231/356] rdf-trig/trig-syntax-bad-n3-extras-12
+ ok
+  PASS: trig-syntax-bad-n3-extras-12
+  [232/356] rdf-trig/trig-syntax-bad-n3-extras-13
+ ok
+  PASS: trig-syntax-bad-n3-extras-13
+  [233/356] rdf-trig/trig-syntax-bad-numeric-escape-01
+ ok
+  PASS: trig-syntax-bad-numeric-escape-01
+  [234/356] rdf-trig/trig-syntax-bad-numeric-escape-02
+ ok
+  PASS: trig-syntax-bad-numeric-escape-02
+  [235/356] rdf-trig/trig-syntax-bad-numeric-escape-03
+ ok
+  PASS: trig-syntax-bad-numeric-escape-03
+  [236/356] rdf-trig/trig-syntax-bad-numeric-escape-04
+ ok
+  PASS: trig-syntax-bad-numeric-escape-04
+  [237/356] rdf-trig/trig-syntax-bad-numeric-escape-05
+ ok
+  PASS: trig-syntax-bad-numeric-escape-05
+  [238/356] rdf-trig/trig-syntax-bad-numeric-escape-06
+ ok
+  PASS: trig-syntax-bad-numeric-escape-06
+  [239/356] rdf-trig/trig-syntax-bad-numeric-escape-07
+ ok
+  PASS: trig-syntax-bad-numeric-escape-07
+  [240/356] rdf-trig/trig-syntax-bad-numeric-escape-08
+ ok
+  PASS: trig-syntax-bad-numeric-escape-08
+  [241/356] rdf-trig/trig-syntax-bad-numeric-escape-09
+ ok
+  PASS: trig-syntax-bad-numeric-escape-09
+  [242/356] rdf-trig/trig-syntax-bad-numeric-escape-10
+ ok
+  PASS: trig-syntax-bad-numeric-escape-10
+  [243/356] rdf-trig/trig-syntax-bad-struct-09
+ ok
+  PASS: trig-syntax-bad-struct-09
+  [244/356] rdf-trig/trig-syntax-bad-struct-10
+ ok
+  PASS: trig-syntax-bad-struct-10
+  [245/356] rdf-trig/trig-syntax-bad-struct-12
+ ok
+  PASS: trig-syntax-bad-struct-12
+  [246/356] rdf-trig/trig-syntax-bad-struct-13
+ ok
+  PASS: trig-syntax-bad-struct-13
+  [247/356] rdf-trig/trig-syntax-bad-struct-14
+ ok
+  PASS: trig-syntax-bad-struct-14
+  [248/356] rdf-trig/trig-syntax-bad-struct-15
+ ok
+  PASS: trig-syntax-bad-struct-15
+  [249/356] rdf-trig/trig-syntax-bad-struct-16
+ ok
+  PASS: trig-syntax-bad-struct-16
+  [250/356] rdf-trig/trig-syntax-bad-struct-17
+ ok
+  PASS: trig-syntax-bad-struct-17
+  [251/356] rdf-trig/trig-syntax-bad-lang-01
+ ok
+  PASS: trig-syntax-bad-lang-01
+  [252/356] rdf-trig/trig-syntax-bad-esc-01
+ ok
+  PASS: trig-syntax-bad-esc-01
+  [253/356] rdf-trig/trig-syntax-bad-esc-02
+ ok
+  PASS: trig-syntax-bad-esc-02
+  [254/356] rdf-trig/trig-syntax-bad-esc-03
+ ok
+  PASS: trig-syntax-bad-esc-03
+  [255/356] rdf-trig/trig-syntax-bad-esc-04
+ ok
+  PASS: trig-syntax-bad-esc-04
+  [256/356] rdf-trig/trig-syntax-bad-pname-01
+ ok
+  PASS: trig-syntax-bad-pname-01
+  [257/356] rdf-trig/trig-syntax-bad-pname-02
+ ok
+  PASS: trig-syntax-bad-pname-02
+  [258/356] rdf-trig/trig-syntax-bad-pname-03
+ ok
+  PASS: trig-syntax-bad-pname-03
+  [259/356] rdf-trig/trig-syntax-bad-string-01
+ ok
+  PASS: trig-syntax-bad-string-01
+  [260/356] rdf-trig/trig-syntax-bad-string-02
+ ok
+  PASS: trig-syntax-bad-string-02
+  [261/356] rdf-trig/trig-syntax-bad-string-03
+ ok
+  PASS: trig-syntax-bad-string-03
+  [262/356] rdf-trig/trig-syntax-bad-string-04
+ ok
+  PASS: trig-syntax-bad-string-04
+  [263/356] rdf-trig/trig-syntax-bad-string-05
+ ok
+  PASS: trig-syntax-bad-string-05
+  [264/356] rdf-trig/trig-syntax-bad-string-06
+ ok
+  PASS: trig-syntax-bad-string-06
+  [265/356] rdf-trig/trig-syntax-bad-string-07
+ ok
+  PASS: trig-syntax-bad-string-07
+  [266/356] rdf-trig/trig-syntax-bad-num-01
+ ok
+  PASS: trig-syntax-bad-num-01
+  [267/356] rdf-trig/trig-syntax-bad-num-02
+ ok
+  PASS: trig-syntax-bad-num-02
+  [268/356] rdf-trig/trig-syntax-bad-num-03
+ ok
+  PASS: trig-syntax-bad-num-03
+  [269/356] rdf-trig/trig-syntax-bad-num-04
+ ok
+  PASS: trig-syntax-bad-num-04
+  [270/356] rdf-trig/trig-syntax-bad-num-05
+ ok
+  PASS: trig-syntax-bad-num-05
+  [271/356] rdf-trig/trig-eval-struct-01
+ ok
+  PASS: trig-eval-struct-01
+  [272/356] rdf-trig/trig-eval-struct-02
+ ok
+  PASS: trig-eval-struct-02
+  [273/356] rdf-trig/trig-subm-01
+ ok
+  PASS: trig-subm-01
+  [274/356] rdf-trig/trig-subm-02
+ ok
+  PASS: trig-subm-02
+  [275/356] rdf-trig/trig-subm-03
+ ok
+  PASS: trig-subm-03
+  [276/356] rdf-trig/trig-subm-04
+ ok
+  PASS: trig-subm-04
+  [277/356] rdf-trig/trig-subm-05
+ ok
+  PASS: trig-subm-05
+  [278/356] rdf-trig/trig-subm-06
+ ok
+  PASS: trig-subm-06
+  [279/356] rdf-trig/trig-subm-07
+ ok
+  PASS: trig-subm-07
+  [280/356] rdf-trig/trig-subm-08
+ ok
+  PASS: trig-subm-08
+  [281/356] rdf-trig/trig-subm-09
+ ok
+  PASS: trig-subm-09
+  [282/356] rdf-trig/trig-subm-10
+ ok
+  PASS: trig-subm-10
+  [283/356] rdf-trig/trig-subm-11
+ ok
+  PASS: trig-subm-11
+  [284/356] rdf-trig/trig-subm-12
+ ok
+  PASS: trig-subm-12
+  [285/356] rdf-trig/trig-subm-13
+ ok
+  PASS: trig-subm-13
+  [286/356] rdf-trig/trig-subm-14
+ ok
+  PASS: trig-subm-14
+  [287/356] rdf-trig/trig-subm-15
+ ok
+  PASS: trig-subm-15
+  [288/356] rdf-trig/trig-subm-16
+ ok
+  PASS: trig-subm-16
+  [289/356] rdf-trig/trig-subm-17
+ ok
+  PASS: trig-subm-17
+  [290/356] rdf-trig/trig-subm-18
+ ok
+  PASS: trig-subm-18
+  [291/356] rdf-trig/trig-subm-19
+ ok
+  PASS: trig-subm-19
+  [292/356] rdf-trig/trig-subm-20
+ ok
+  PASS: trig-subm-20
+  [293/356] rdf-trig/trig-subm-21
+ ok
+  PASS: trig-subm-21
+  [294/356] rdf-trig/trig-subm-22
+ ok
+  PASS: trig-subm-22
+  [295/356] rdf-trig/trig-subm-23
+ ok
+  PASS: trig-subm-23
+  [296/356] rdf-trig/trig-subm-24
+ ok
+  PASS: trig-subm-24
+  [297/356] rdf-trig/trig-subm-25
+ ok
+  PASS: trig-subm-25
+  [298/356] rdf-trig/trig-subm-26
+ ok
+  PASS: trig-subm-26
+  [299/356] rdf-trig/trig-subm-27
+ ok
+  PASS: trig-subm-27
+  [300/356] rdf-trig/trig-eval-bad-01
+ ok
+  PASS: trig-eval-bad-01
+  [301/356] rdf-trig/trig-eval-bad-02
+ ok
+  PASS: trig-eval-bad-02
+  [302/356] rdf-trig/trig-eval-bad-03
+ ok
+  PASS: trig-eval-bad-03
+  [303/356] rdf-trig/trig-eval-bad-04
+ ok
+  PASS: trig-eval-bad-04
+  [304/356] rdf-trig/trig-syntax-bad-blank-label-dot-end
+ ok
+  PASS: trig-syntax-bad-blank-label-dot-end
+  [305/356] rdf-trig/trig-syntax-bad-ln-dash-start
+ ok
+  PASS: trig-syntax-bad-ln-dash-start
+  [306/356] rdf-trig/trig-syntax-bad-ln-escape-start
+ ok
+  PASS: trig-syntax-bad-ln-escape-start
+  [307/356] rdf-trig/trig-syntax-bad-ln-escape
+ ok
+  PASS: trig-syntax-bad-ln-escape
+  [308/356] rdf-trig/trig-syntax-bad-missing-ns-dot-end
+ ok
+  PASS: trig-syntax-bad-missing-ns-dot-end
+  [309/356] rdf-trig/trig-syntax-bad-missing-ns-dot-start
+ ok
+  PASS: trig-syntax-bad-missing-ns-dot-start
+  [310/356] rdf-trig/trig-syntax-bad-ns-dot-end
+ ok
+  PASS: trig-syntax-bad-ns-dot-end
+  [311/356] rdf-trig/trig-syntax-bad-ns-dot-start
+ ok
+  PASS: trig-syntax-bad-ns-dot-start
+  [312/356] rdf-trig/trig-syntax-bad-number-dot-in-anon
+ ok
+  PASS: trig-syntax-bad-number-dot-in-anon
+  [313/356] rdf-trig/trig-syntax-bad-list-01
+ ok
+  PASS: trig-syntax-bad-list-01
+  [314/356] rdf-trig/trig-syntax-bad-list-02
+ ok
+  PASS: trig-syntax-bad-list-02
+  [315/356] rdf-trig/trig-syntax-bad-list-03
+ ok
+  PASS: trig-syntax-bad-list-03
+  [316/356] rdf-trig/trig-syntax-bad-list-04
+ ok
+  PASS: trig-syntax-bad-list-04
+  [317/356] rdf-trig/trig-syntax-blank-label
+ ok
+  PASS: trig-syntax-blank-label
+  [318/356] rdf-trig/trig-syntax-ln-colons
+ ok
+  PASS: trig-syntax-ln-colons
+  [319/356] rdf-trig/trig-syntax-ln-dots
+ ok
+  PASS: trig-syntax-ln-dots
+  [320/356] rdf-trig/trig-syntax-ns-dots
+ ok
+  PASS: trig-syntax-ns-dots
+  [321/356] rdf-trig/trig-kw-graph-01
+ ok
+  PASS: trig-kw-graph-01
+  [322/356] rdf-trig/trig-kw-graph-02
+ ok
+  PASS: trig-kw-graph-02
+  [323/356] rdf-trig/trig-kw-graph-03
+ ok
+  PASS: trig-kw-graph-03
+  [324/356] rdf-trig/trig-kw-graph-04
+ ok
+  PASS: trig-kw-graph-04
+  [325/356] rdf-trig/trig-kw-graph-05
+ ok
+  PASS: trig-kw-graph-05
+  [326/356] rdf-trig/trig-kw-graph-06
+ ok
+  PASS: trig-kw-graph-06
+  [327/356] rdf-trig/trig-kw-graph-07
+ ok
+  PASS: trig-kw-graph-07
+  [328/356] rdf-trig/trig-kw-graph-08
+ ok
+  PASS: trig-kw-graph-08
+  [329/356] rdf-trig/trig-kw-graph-09
+ ok
+  PASS: trig-kw-graph-09
+  [330/356] rdf-trig/trig-kw-graph-10
+ ok
+  PASS: trig-kw-graph-10
+  [331/356] rdf-trig/trig-graph-bad-01
+ ok
+  PASS: trig-graph-bad-01
+  [332/356] rdf-trig/trig-graph-bad-02
+ ok
+  PASS: trig-graph-bad-02
+  [333/356] rdf-trig/trig-graph-bad-03
+ ok
+  PASS: trig-graph-bad-03
+  [334/356] rdf-trig/trig-graph-bad-04
+ ok
+  PASS: trig-graph-bad-04
+  [335/356] rdf-trig/trig-graph-bad-05
+ ok
+  PASS: trig-graph-bad-05
+  [336/356] rdf-trig/trig-graph-bad-06
+ ok
+  PASS: trig-graph-bad-06
+  [337/356] rdf-trig/trig-graph-bad-07
+ ok
+  PASS: trig-graph-bad-07
+  [338/356] rdf-trig/trig-graph-bad-08
+ ok
+  PASS: trig-graph-bad-08
+  [339/356] rdf-trig/trig-graph-bad-09
+ ok
+  PASS: trig-graph-bad-09
+  [340/356] rdf-trig/trig-graph-bad-10
+ ok
+  PASS: trig-graph-bad-10
+  [341/356] rdf-trig/trig-graph-bad-11
+ ok
+  PASS: trig-graph-bad-11
+  [342/356] rdf-trig/trig-bnodeplist-graph-bad-01
+ ok
+  PASS: trig-bnodeplist-graph-bad-01
+  [343/356] rdf-trig/trig-collection-graph-bad-01
+ ok
+  PASS: trig-collection-graph-bad-01
+  [344/356] rdf-trig/trig-collection-graph-bad-02
+ ok
+  PASS: trig-collection-graph-bad-02
+  [345/356] rdf-trig/trig-turtle-01
+ ok
+  PASS: trig-turtle-01
+  [346/356] rdf-trig/trig-turtle-02
+ ok
+  PASS: trig-turtle-02
+  [347/356] rdf-trig/trig-turtle-03
+ ok
+  PASS: trig-turtle-03
+  [348/356] rdf-trig/trig-turtle-04
+ ok
+  PASS: trig-turtle-04
+  [349/356] rdf-trig/trig-turtle-05
+ ok
+  PASS: trig-turtle-05
+  [350/356] rdf-trig/trig-turtle-06
+ ok
+  PASS: trig-turtle-06
+  [351/356] rdf-trig/trig-turtle-bad-01
+ ok
+  PASS: trig-turtle-bad-01
+  [352/356] rdf-trig/trig-turtle-bad-02
+ ok
+  PASS: trig-turtle-bad-02
+  [353/356] rdf-trig/IRI-resolution-01
+ ok
+  PASS: IRI-resolution-01
+  [354/356] rdf-trig/IRI-resolution-02
+ ok
+  PASS: IRI-resolution-02
+  [355/356] rdf-trig/IRI-resolution-07
+ ok
+  PASS: IRI-resolution-07
+  [356/356] rdf-trig/IRI-resolution-08
+ ok
+  PASS: IRI-resolution-08
+  [suite time: 0.7s]
+
+--- rdf-turtle ---
+  [1/313] rdf-turtle/IRI_subject
+ ok
+  PASS: IRI_subject
+  [2/313] rdf-turtle/IRI_with_four_digit_numeric_escape
+ ok
+  PASS: IRI_with_four_digit_numeric_escape
+  [3/313] rdf-turtle/IRI_with_eight_digit_numeric_escape
+ ok
+  PASS: IRI_with_eight_digit_numeric_escape
+  [4/313] rdf-turtle/IRI_with_all_punctuation
+ ok
+  PASS: IRI_with_all_punctuation
+  [5/313] rdf-turtle/bareword_a_predicate
+ ok
+  PASS: bareword_a_predicate
+  [6/313] rdf-turtle/old_style_prefix
+ ok
+  PASS: old_style_prefix
+  [7/313] rdf-turtle/SPARQL_style_prefix
+ ok
+  PASS: SPARQL_style_prefix
+  [8/313] rdf-turtle/prefixed_IRI_predicate
+ ok
+  PASS: prefixed_IRI_predicate
+  [9/313] rdf-turtle/prefixed_IRI_object
+ ok
+  PASS: prefixed_IRI_object
+  [10/313] rdf-turtle/prefix_only_IRI
+ ok
+  PASS: prefix_only_IRI
+  [11/313] rdf-turtle/prefix_with_PN_CHARS_BASE_character_boundaries
+ ok
+  PASS: prefix_with_PN_CHARS_BASE_character_boundaries
+  [12/313] rdf-turtle/prefix_with_non_leading_extras
+ ok
+  PASS: prefix_with_non_leading_extras
+  [13/313] rdf-turtle/default_namespace_IRI
+ ok
+  PASS: default_namespace_IRI
+  [14/313] rdf-turtle/prefix_reassigned_and_used
+ ok
+  PASS: prefix_reassigned_and_used
+  [15/313] rdf-turtle/reserved_escaped_localName
+ ok
+  PASS: reserved_escaped_localName
+  [16/313] rdf-turtle/percent_escaped_localName
+ ok
+  PASS: percent_escaped_localName
+  [17/313] rdf-turtle/HYPHEN_MINUS_in_localName
+ ok
+  PASS: HYPHEN_MINUS_in_localName
+  [18/313] rdf-turtle/underscore_in_localName
+ ok
+  PASS: underscore_in_localName
+  [19/313] rdf-turtle/localname_with_COLON
+ ok
+  PASS: localname_with_COLON
+  [20/313] rdf-turtle/localName_with_assigned_nfc_bmp_PN_CHARS_BASE_character_boundaries
+ ok
+  PASS: localName_with_assigned_nfc_bmp_PN_CHARS_BASE_character_boundaries
+  [21/313] rdf-turtle/localName_with_assigned_nfc_PN_CHARS_BASE_character_boundaries
+ ok
+  PASS: localName_with_assigned_nfc_PN_CHARS_BASE_character_boundaries
+  [22/313] rdf-turtle/localName_with_nfc_PN_CHARS_BASE_character_boundaries
+ ok
+  PASS: localName_with_nfc_PN_CHARS_BASE_character_boundaries
+  [23/313] rdf-turtle/localName_with_leading_underscore
+ ok
+  PASS: localName_with_leading_underscore
+  [24/313] rdf-turtle/localName_with_leading_digit
+ ok
+  PASS: localName_with_leading_digit
+  [25/313] rdf-turtle/localName_with_non_leading_extras
+ ok
+  PASS: localName_with_non_leading_extras
+  [26/313] rdf-turtle/old_style_base
+ ok
+  PASS: old_style_base
+  [27/313] rdf-turtle/SPARQL_style_base
+ ok
+  PASS: SPARQL_style_base
+  [28/313] rdf-turtle/labeled_blank_node_subject
+ ok
+  PASS: labeled_blank_node_subject
+  [29/313] rdf-turtle/labeled_blank_node_object
+ ok
+  PASS: labeled_blank_node_object
+  [30/313] rdf-turtle/labeled_blank_node_with_PN_CHARS_BASE_character_boundaries
+ ok
+  PASS: labeled_blank_node_with_PN_CHARS_BASE_character_boundaries
+  [31/313] rdf-turtle/labeled_blank_node_with_leading_underscore
+ ok
+  PASS: labeled_blank_node_with_leading_underscore
+  [32/313] rdf-turtle/labeled_blank_node_with_leading_digit
+ ok
+  PASS: labeled_blank_node_with_leading_digit
+  [33/313] rdf-turtle/labeled_blank_node_with_non_leading_extras
+ ok
+  PASS: labeled_blank_node_with_non_leading_extras
+  [34/313] rdf-turtle/anonymous_blank_node_subject
+ ok
+  PASS: anonymous_blank_node_subject
+  [35/313] rdf-turtle/anonymous_blank_node_object
+ ok
+  PASS: anonymous_blank_node_object
+  [36/313] rdf-turtle/sole_blankNodePropertyList
+ ok
+  PASS: sole_blankNodePropertyList
+  [37/313] rdf-turtle/blankNodePropertyList_as_subject
+ ok
+  PASS: blankNodePropertyList_as_subject
+  [38/313] rdf-turtle/blankNodePropertyList_as_object
+ ok
+  PASS: blankNodePropertyList_as_object
+  [39/313] rdf-turtle/blankNodePropertyList_as_object_containing_objectList
+ ok
+  PASS: blankNodePropertyList_as_object_containing_objectList
+  [40/313] rdf-turtle/blankNodePropertyList_as_object_containing_objectList_of_two_objects
+ ok
+  PASS: blankNodePropertyList_as_object_containing_objectList_of_two_objects
+  [41/313] rdf-turtle/blankNodePropertyList_with_multiple_triples
+ ok
+  PASS: blankNodePropertyList_with_multiple_triples
+  [42/313] rdf-turtle/nested_blankNodePropertyLists
+ ok
+  PASS: nested_blankNodePropertyLists
+  [43/313] rdf-turtle/blankNodePropertyList_containing_collection
+ ok
+  PASS: blankNodePropertyList_containing_collection
+  [44/313] rdf-turtle/collection_subject
+ ok
+  PASS: collection_subject
+  [45/313] rdf-turtle/collection_object
+ ok
+  PASS: collection_object
+  [46/313] rdf-turtle/empty_collection
+ ok
+  PASS: empty_collection
+  [47/313] rdf-turtle/nested_collection
+ ok
+  PASS: nested_collection
+  [48/313] rdf-turtle/first
+ ok
+  PASS: first
+  [49/313] rdf-turtle/last
+ ok
+  PASS: last
+  [50/313] rdf-turtle/LITERAL1
+ ok
+  PASS: LITERAL1
+  [51/313] rdf-turtle/LITERAL1_ascii_boundaries
+ ok
+  PASS: LITERAL1_ascii_boundaries
+  [52/313] rdf-turtle/LITERAL1_with_UTF8_boundaries
+ ok
+  PASS: LITERAL1_with_UTF8_boundaries
+  [53/313] rdf-turtle/LITERAL1_all_controls
+ ok
+  PASS: LITERAL1_all_controls
+  [54/313] rdf-turtle/LITERAL1_all_punctuation
+ ok
+  PASS: LITERAL1_all_punctuation
+  [55/313] rdf-turtle/LITERAL_LONG1
+ ok
+  PASS: LITERAL_LONG1
+  [56/313] rdf-turtle/LITERAL_LONG1_ascii_boundaries
+ ok
+  PASS: LITERAL_LONG1_ascii_boundaries
+  [57/313] rdf-turtle/LITERAL_LONG1_with_UTF8_boundaries
+ ok
+  PASS: LITERAL_LONG1_with_UTF8_boundaries
+  [58/313] rdf-turtle/LITERAL_LONG1_with_1_squote
+ ok
+  PASS: LITERAL_LONG1_with_1_squote
+  [59/313] rdf-turtle/LITERAL_LONG1_with_2_squotes
+ ok
+  PASS: LITERAL_LONG1_with_2_squotes
+  [60/313] rdf-turtle/LITERAL2
+ ok
+  PASS: LITERAL2
+  [61/313] rdf-turtle/LITERAL2_ascii_boundaries
+ ok
+  PASS: LITERAL2_ascii_boundaries
+  [62/313] rdf-turtle/LITERAL2_with_UTF8_boundaries
+ ok
+  PASS: LITERAL2_with_UTF8_boundaries
+  [63/313] rdf-turtle/LITERAL_LONG2
+ ok
+  PASS: LITERAL_LONG2
+  [64/313] rdf-turtle/LITERAL_LONG2_ascii_boundaries
+ ok
+  PASS: LITERAL_LONG2_ascii_boundaries
+  [65/313] rdf-turtle/LITERAL_LONG2_with_UTF8_boundaries
+ ok
+  PASS: LITERAL_LONG2_with_UTF8_boundaries
+  [66/313] rdf-turtle/LITERAL_LONG2_with_1_squote
+ ok
+  PASS: LITERAL_LONG2_with_1_squote
+  [67/313] rdf-turtle/LITERAL_LONG2_with_2_squotes
+ ok
+  PASS: LITERAL_LONG2_with_2_squotes
+  [68/313] rdf-turtle/literal_with_CHARACTER_TABULATION
+ ok
+  PASS: literal_with_CHARACTER_TABULATION
+  [69/313] rdf-turtle/literal_with_BACKSPACE
+ ok
+  PASS: literal_with_BACKSPACE
+  [70/313] rdf-turtle/literal_with_LINE_FEED
+ ok
+  PASS: literal_with_LINE_FEED
+  [71/313] rdf-turtle/literal_with_CARRIAGE_RETURN
+ ok
+  PASS: literal_with_CARRIAGE_RETURN
+  [72/313] rdf-turtle/literal_with_FORM_FEED
+ ok
+  PASS: literal_with_FORM_FEED
+  [73/313] rdf-turtle/literal_with_REVERSE_SOLIDUS
+ ok
+  PASS: literal_with_REVERSE_SOLIDUS
+  [74/313] rdf-turtle/literal_with_escaped_CHARACTER_TABULATION
+ ok
+  PASS: literal_with_escaped_CHARACTER_TABULATION
+  [75/313] rdf-turtle/literal_with_escaped_BACKSPACE
+ ok
+  PASS: literal_with_escaped_BACKSPACE
+  [76/313] rdf-turtle/literal_with_escaped_LINE_FEED
+ ok
+  PASS: literal_with_escaped_LINE_FEED
+  [77/313] rdf-turtle/literal_with_escaped_CARRIAGE_RETURN
+ ok
+  PASS: literal_with_escaped_CARRIAGE_RETURN
+  [78/313] rdf-turtle/literal_with_escaped_FORM_FEED
+ ok
+  PASS: literal_with_escaped_FORM_FEED
+  [79/313] rdf-turtle/literal_with_numeric_escape4
+ ok
+  PASS: literal_with_numeric_escape4
+  [80/313] rdf-turtle/literal_with_numeric_escape8
+ ok
+  PASS: literal_with_numeric_escape8
+  [81/313] rdf-turtle/IRIREF_datatype
+ ok
+  PASS: IRIREF_datatype
+  [82/313] rdf-turtle/prefixed_name_datatype
+ ok
+  PASS: prefixed_name_datatype
+  [83/313] rdf-turtle/bareword_integer
+ ok
+  PASS: bareword_integer
+  [84/313] rdf-turtle/bareword_decimal
+ ok
+  PASS: bareword_decimal
+  [85/313] rdf-turtle/bareword_double
+ ok
+  PASS: bareword_double
+  [86/313] rdf-turtle/double_lower_case_e
+ ok
+  PASS: double_lower_case_e
+  [87/313] rdf-turtle/negative_numeric
+ ok
+  PASS: negative_numeric
+  [88/313] rdf-turtle/positive_numeric
+ ok
+  PASS: positive_numeric
+  [89/313] rdf-turtle/numeric_with_leading_0
+ ok
+  PASS: numeric_with_leading_0
+  [90/313] rdf-turtle/literal_true
+ ok
+  PASS: literal_true
+  [91/313] rdf-turtle/literal_false
+ ok
+  PASS: literal_false
+  [92/313] rdf-turtle/langtagged_non_LONG
+ ok
+  PASS: langtagged_non_LONG
+  [93/313] rdf-turtle/langtagged_LONG
+ ok
+  PASS: langtagged_LONG
+  [94/313] rdf-turtle/lantag_with_subtag
+ ok
+  PASS: lantag_with_subtag
+  [95/313] rdf-turtle/objectList_with_two_objects
+ ok
+  PASS: objectList_with_two_objects
+  [96/313] rdf-turtle/predicateObjectList_with_two_objectLists
+ ok
+  PASS: predicateObjectList_with_two_objectLists
+  [97/313] rdf-turtle/predicateObjectList_with_blankNodePropertyList_as_object
+ ok
+  PASS: predicateObjectList_with_blankNodePropertyList_as_object
+  [98/313] rdf-turtle/repeated_semis_at_end
+ ok
+  PASS: repeated_semis_at_end
+  [99/313] rdf-turtle/repeated_semis_not_at_end
+ ok
+  PASS: repeated_semis_not_at_end
+  [100/313] rdf-turtle/comment_following_localName
+ ok
+  PASS: comment_following_localName
+  [101/313] rdf-turtle/number_sign_following_localName
+ ok
+  PASS: number_sign_following_localName
+  [102/313] rdf-turtle/comment_following_PNAME_NS
+ ok
+  PASS: comment_following_PNAME_NS
+  [103/313] rdf-turtle/number_sign_following_PNAME_NS
+ ok
+  PASS: number_sign_following_PNAME_NS
+  [104/313] rdf-turtle/LITERAL_LONG2_with_REVERSE_SOLIDUS
+ ok
+  PASS: LITERAL_LONG2_with_REVERSE_SOLIDUS
+  [105/313] rdf-turtle/turtle-syntax-bad-num-05
+ ok
+  PASS: turtle-syntax-bad-num-05
+  [106/313] rdf-turtle/two_LITERAL_LONG2s
+ ok
+  PASS: two_LITERAL_LONG2s
+  [107/313] rdf-turtle/langtagged_LONG_with_subtag
+ ok
+  PASS: langtagged_LONG_with_subtag
+  [108/313] rdf-turtle/turtle-syntax-file-01
+ ok
+  PASS: turtle-syntax-file-01
+  [109/313] rdf-turtle/turtle-syntax-file-02
+ ok
+  PASS: turtle-syntax-file-02
+  [110/313] rdf-turtle/turtle-syntax-file-03
+ ok
+  PASS: turtle-syntax-file-03
+  [111/313] rdf-turtle/turtle-syntax-uri-01
+ ok
+  PASS: turtle-syntax-uri-01
+  [112/313] rdf-turtle/turtle-syntax-uri-02
+ ok
+  PASS: turtle-syntax-uri-02
+  [113/313] rdf-turtle/turtle-syntax-uri-03
+ ok
+  PASS: turtle-syntax-uri-03
+  [114/313] rdf-turtle/turtle-syntax-uri-04
+ ok
+  PASS: turtle-syntax-uri-04
+  [115/313] rdf-turtle/turtle-syntax-base-01
+ ok
+  PASS: turtle-syntax-base-01
+  [116/313] rdf-turtle/turtle-syntax-base-02
+ ok
+  PASS: turtle-syntax-base-02
+  [117/313] rdf-turtle/turtle-syntax-base-03
+ ok
+  PASS: turtle-syntax-base-03
+  [118/313] rdf-turtle/turtle-syntax-base-04
+ ok
+  PASS: turtle-syntax-base-04
+  [119/313] rdf-turtle/turtle-syntax-prefix-01
+ ok
+  PASS: turtle-syntax-prefix-01
+  [120/313] rdf-turtle/turtle-syntax-prefix-02
+ ok
+  PASS: turtle-syntax-prefix-02
+  [121/313] rdf-turtle/turtle-syntax-prefix-03
+ ok
+  PASS: turtle-syntax-prefix-03
+  [122/313] rdf-turtle/turtle-syntax-prefix-04
+ ok
+  PASS: turtle-syntax-prefix-04
+  [123/313] rdf-turtle/turtle-syntax-prefix-05
+ ok
+  PASS: turtle-syntax-prefix-05
+  [124/313] rdf-turtle/turtle-syntax-prefix-06
+ ok
+  PASS: turtle-syntax-prefix-06
+  [125/313] rdf-turtle/turtle-syntax-prefix-07
+ ok
+  PASS: turtle-syntax-prefix-07
+  [126/313] rdf-turtle/turtle-syntax-prefix-08
+ ok
+  PASS: turtle-syntax-prefix-08
+  [127/313] rdf-turtle/turtle-syntax-prefix-09
+ ok
+  PASS: turtle-syntax-prefix-09
+  [128/313] rdf-turtle/turtle-syntax-string-01
+ ok
+  PASS: turtle-syntax-string-01
+  [129/313] rdf-turtle/turtle-syntax-string-02
+ ok
+  PASS: turtle-syntax-string-02
+  [130/313] rdf-turtle/turtle-syntax-string-03
+ ok
+  PASS: turtle-syntax-string-03
+  [131/313] rdf-turtle/turtle-syntax-string-04
+ ok
+  PASS: turtle-syntax-string-04
+  [132/313] rdf-turtle/turtle-syntax-string-05
+ ok
+  PASS: turtle-syntax-string-05
+  [133/313] rdf-turtle/turtle-syntax-string-06
+ ok
+  PASS: turtle-syntax-string-06
+  [134/313] rdf-turtle/turtle-syntax-string-07
+ ok
+  PASS: turtle-syntax-string-07
+  [135/313] rdf-turtle/turtle-syntax-string-08
+ ok
+  PASS: turtle-syntax-string-08
+  [136/313] rdf-turtle/turtle-syntax-string-09
+ ok
+  PASS: turtle-syntax-string-09
+  [137/313] rdf-turtle/turtle-syntax-string-10
+ ok
+  PASS: turtle-syntax-string-10
+  [138/313] rdf-turtle/turtle-syntax-string-11
+ ok
+  PASS: turtle-syntax-string-11
+  [139/313] rdf-turtle/turtle-syntax-str-esc-01
+ ok
+  PASS: turtle-syntax-str-esc-01
+  [140/313] rdf-turtle/turtle-syntax-str-esc-02
+ ok
+  PASS: turtle-syntax-str-esc-02
+  [141/313] rdf-turtle/turtle-syntax-str-esc-03
+ ok
+  PASS: turtle-syntax-str-esc-03
+  [142/313] rdf-turtle/turtle-syntax-pname-esc-01
+ ok
+  PASS: turtle-syntax-pname-esc-01
+  [143/313] rdf-turtle/turtle-syntax-pname-esc-02
+ ok
+  PASS: turtle-syntax-pname-esc-02
+  [144/313] rdf-turtle/turtle-syntax-pname-esc-03
+ ok
+  PASS: turtle-syntax-pname-esc-03
+  [145/313] rdf-turtle/turtle-syntax-bnode-01
+ ok
+  PASS: turtle-syntax-bnode-01
+  [146/313] rdf-turtle/turtle-syntax-bnode-02
+ ok
+  PASS: turtle-syntax-bnode-02
+  [147/313] rdf-turtle/turtle-syntax-bnode-03
+ ok
+  PASS: turtle-syntax-bnode-03
+  [148/313] rdf-turtle/turtle-syntax-bnode-04
+ ok
+  PASS: turtle-syntax-bnode-04
+  [149/313] rdf-turtle/turtle-syntax-bnode-05
+ ok
+  PASS: turtle-syntax-bnode-05
+  [150/313] rdf-turtle/turtle-syntax-bnode-06
+ ok
+  PASS: turtle-syntax-bnode-06
+  [151/313] rdf-turtle/turtle-syntax-bnode-07
+ ok
+  PASS: turtle-syntax-bnode-07
+  [152/313] rdf-turtle/turtle-syntax-bnode-08
+ ok
+  PASS: turtle-syntax-bnode-08
+  [153/313] rdf-turtle/turtle-syntax-bnode-09
+ ok
+  PASS: turtle-syntax-bnode-09
+  [154/313] rdf-turtle/turtle-syntax-bnode-10
+ ok
+  PASS: turtle-syntax-bnode-10
+  [155/313] rdf-turtle/turtle-syntax-number-01
+ ok
+  PASS: turtle-syntax-number-01
+  [156/313] rdf-turtle/turtle-syntax-number-02
+ ok
+  PASS: turtle-syntax-number-02
+  [157/313] rdf-turtle/turtle-syntax-number-03
+ ok
+  PASS: turtle-syntax-number-03
+  [158/313] rdf-turtle/turtle-syntax-number-04
+ ok
+  PASS: turtle-syntax-number-04
+  [159/313] rdf-turtle/turtle-syntax-number-05
+ ok
+  PASS: turtle-syntax-number-05
+  [160/313] rdf-turtle/turtle-syntax-number-06
+ ok
+  PASS: turtle-syntax-number-06
+  [161/313] rdf-turtle/turtle-syntax-number-07
+ ok
+  PASS: turtle-syntax-number-07
+  [162/313] rdf-turtle/turtle-syntax-number-08
+ ok
+  PASS: turtle-syntax-number-08
+  [163/313] rdf-turtle/turtle-syntax-number-09
+ ok
+  PASS: turtle-syntax-number-09
+  [164/313] rdf-turtle/turtle-syntax-number-10
+ ok
+  PASS: turtle-syntax-number-10
+  [165/313] rdf-turtle/turtle-syntax-number-11
+ ok
+  PASS: turtle-syntax-number-11
+  [166/313] rdf-turtle/turtle-syntax-number-12
+ ok
+  PASS: turtle-syntax-number-12
+  [167/313] rdf-turtle/turtle-syntax-number-13
+ ok
+  PASS: turtle-syntax-number-13
+  [168/313] rdf-turtle/turtle-syntax-datatypes-01
+ ok
+  PASS: turtle-syntax-datatypes-01
+  [169/313] rdf-turtle/turtle-syntax-datatypes-02
+ ok
+  PASS: turtle-syntax-datatypes-02
+  [170/313] rdf-turtle/turtle-syntax-kw-01
+ ok
+  PASS: turtle-syntax-kw-01
+  [171/313] rdf-turtle/turtle-syntax-kw-02
+ ok
+  PASS: turtle-syntax-kw-02
+  [172/313] rdf-turtle/turtle-syntax-kw-03
+ ok
+  PASS: turtle-syntax-kw-03
+  [173/313] rdf-turtle/turtle-syntax-struct-01
+ ok
+  PASS: turtle-syntax-struct-01
+  [174/313] rdf-turtle/turtle-syntax-struct-02
+ ok
+  PASS: turtle-syntax-struct-02
+  [175/313] rdf-turtle/turtle-syntax-struct-03
+ ok
+  PASS: turtle-syntax-struct-03
+  [176/313] rdf-turtle/turtle-syntax-struct-04
+ ok
+  PASS: turtle-syntax-struct-04
+  [177/313] rdf-turtle/turtle-syntax-struct-05
+ ok
+  PASS: turtle-syntax-struct-05
+  [178/313] rdf-turtle/turtle-eval-lists-01
+ ok
+  PASS: turtle-eval-lists-01
+  [179/313] rdf-turtle/turtle-eval-lists-02
+ ok
+  PASS: turtle-eval-lists-02
+  [180/313] rdf-turtle/turtle-eval-lists-03
+ ok
+  PASS: turtle-eval-lists-03
+  [181/313] rdf-turtle/turtle-eval-lists-04
+ ok
+  PASS: turtle-eval-lists-04
+  [182/313] rdf-turtle/turtle-eval-lists-05
+ ok
+  PASS: turtle-eval-lists-05
+  [183/313] rdf-turtle/turtle-eval-lists-06
+ ok
+  PASS: turtle-eval-lists-06
+  [184/313] rdf-turtle/turtle-syntax-bad-uri-01
+ ok
+  PASS: turtle-syntax-bad-uri-01
+  [185/313] rdf-turtle/turtle-syntax-bad-uri-02
+ ok
+  PASS: turtle-syntax-bad-uri-02
+  [186/313] rdf-turtle/turtle-syntax-bad-uri-03
+ ok
+  PASS: turtle-syntax-bad-uri-03
+  [187/313] rdf-turtle/turtle-syntax-bad-uri-04
+ ok
+  PASS: turtle-syntax-bad-uri-04
+  [188/313] rdf-turtle/turtle-syntax-bad-uri-05
+ ok
+  PASS: turtle-syntax-bad-uri-05
+  [189/313] rdf-turtle/turtle-syntax-bad-prefix-01
+ ok
+  PASS: turtle-syntax-bad-prefix-01
+  [190/313] rdf-turtle/turtle-syntax-bad-prefix-02
+ ok
+  PASS: turtle-syntax-bad-prefix-02
+  [191/313] rdf-turtle/turtle-syntax-bad-prefix-03
+ ok
+  PASS: turtle-syntax-bad-prefix-03
+  [192/313] rdf-turtle/turtle-syntax-bad-prefix-04
+ ok
+  PASS: turtle-syntax-bad-prefix-04
+  [193/313] rdf-turtle/turtle-syntax-bad-prefix-05
+ ok
+  PASS: turtle-syntax-bad-prefix-05
+  [194/313] rdf-turtle/turtle-syntax-bad-base-01
+ ok
+  PASS: turtle-syntax-bad-base-01
+  [195/313] rdf-turtle/turtle-syntax-bad-base-02
+ ok
+  PASS: turtle-syntax-bad-base-02
+  [196/313] rdf-turtle/turtle-syntax-bad-base-03
+ ok
+  PASS: turtle-syntax-bad-base-03
+  [197/313] rdf-turtle/turtle-syntax-bad-bnode-01
+ ok
+  PASS: turtle-syntax-bad-bnode-01
+  [198/313] rdf-turtle/turtle-syntax-bad-bnode-02
+ ok
+  PASS: turtle-syntax-bad-bnode-02
+  [199/313] rdf-turtle/turtle-syntax-bad-struct-01
+ ok
+  PASS: turtle-syntax-bad-struct-01
+  [200/313] rdf-turtle/turtle-syntax-bad-struct-02
+ ok
+  PASS: turtle-syntax-bad-struct-02
+  [201/313] rdf-turtle/turtle-syntax-bad-struct-03
+ ok
+  PASS: turtle-syntax-bad-struct-03
+  [202/313] rdf-turtle/turtle-syntax-bad-struct-04
+ ok
+  PASS: turtle-syntax-bad-struct-04
+  [203/313] rdf-turtle/turtle-syntax-bad-struct-05
+ ok
+  PASS: turtle-syntax-bad-struct-05
+  [204/313] rdf-turtle/turtle-syntax-bad-struct-06
+ ok
+  PASS: turtle-syntax-bad-struct-06
+  [205/313] rdf-turtle/turtle-syntax-bad-struct-07
+ ok
+  PASS: turtle-syntax-bad-struct-07
+  [206/313] rdf-turtle/turtle-syntax-bad-kw-01
+ ok
+  PASS: turtle-syntax-bad-kw-01
+  [207/313] rdf-turtle/turtle-syntax-bad-kw-02
+ ok
+  PASS: turtle-syntax-bad-kw-02
+  [208/313] rdf-turtle/turtle-syntax-bad-kw-03
+ ok
+  PASS: turtle-syntax-bad-kw-03
+  [209/313] rdf-turtle/turtle-syntax-bad-kw-04
+ ok
+  PASS: turtle-syntax-bad-kw-04
+  [210/313] rdf-turtle/turtle-syntax-bad-kw-05
+ ok
+  PASS: turtle-syntax-bad-kw-05
+  [211/313] rdf-turtle/turtle-syntax-bad-n3-extras-01
+ ok
+  PASS: turtle-syntax-bad-n3-extras-01
+  [212/313] rdf-turtle/turtle-syntax-bad-n3-extras-02
+ ok
+  PASS: turtle-syntax-bad-n3-extras-02
+  [213/313] rdf-turtle/turtle-syntax-bad-n3-extras-03
+ ok
+  PASS: turtle-syntax-bad-n3-extras-03
+  [214/313] rdf-turtle/turtle-syntax-bad-n3-extras-04
+ ok
+  PASS: turtle-syntax-bad-n3-extras-04
+  [215/313] rdf-turtle/turtle-syntax-bad-n3-extras-05
+ ok
+  PASS: turtle-syntax-bad-n3-extras-05
+  [216/313] rdf-turtle/turtle-syntax-bad-n3-extras-06
+ ok
+  PASS: turtle-syntax-bad-n3-extras-06
+  [217/313] rdf-turtle/turtle-syntax-bad-n3-extras-07
+ ok
+  PASS: turtle-syntax-bad-n3-extras-07
+  [218/313] rdf-turtle/turtle-syntax-bad-n3-extras-08
+ ok
+  PASS: turtle-syntax-bad-n3-extras-08
+  [219/313] rdf-turtle/turtle-syntax-bad-n3-extras-09
+ ok
+  PASS: turtle-syntax-bad-n3-extras-09
+  [220/313] rdf-turtle/turtle-syntax-bad-n3-extras-10
+ ok
+  PASS: turtle-syntax-bad-n3-extras-10
+  [221/313] rdf-turtle/turtle-syntax-bad-n3-extras-11
+ ok
+  PASS: turtle-syntax-bad-n3-extras-11
+  [222/313] rdf-turtle/turtle-syntax-bad-n3-extras-12
+ ok
+  PASS: turtle-syntax-bad-n3-extras-12
+  [223/313] rdf-turtle/turtle-syntax-bad-n3-extras-13
+ ok
+  PASS: turtle-syntax-bad-n3-extras-13
+  [224/313] rdf-turtle/turtle-syntax-bad-numeric-escape-01
+ ok
+  PASS: turtle-syntax-bad-numeric-escape-01
+  [225/313] rdf-turtle/turtle-syntax-bad-numeric-escape-02
+ ok
+  PASS: turtle-syntax-bad-numeric-escape-02
+  [226/313] rdf-turtle/turtle-syntax-bad-numeric-escape-03
+ ok
+  PASS: turtle-syntax-bad-numeric-escape-03
+  [227/313] rdf-turtle/turtle-syntax-bad-numeric-escape-04
+ ok
+  PASS: turtle-syntax-bad-numeric-escape-04
+  [228/313] rdf-turtle/turtle-syntax-bad-numeric-escape-05
+ ok
+  PASS: turtle-syntax-bad-numeric-escape-05
+  [229/313] rdf-turtle/turtle-syntax-bad-numeric-escape-06
+ ok
+  PASS: turtle-syntax-bad-numeric-escape-06
+  [230/313] rdf-turtle/turtle-syntax-bad-numeric-escape-07
+ ok
+  PASS: turtle-syntax-bad-numeric-escape-07
+  [231/313] rdf-turtle/turtle-syntax-bad-numeric-escape-08
+ ok
+  PASS: turtle-syntax-bad-numeric-escape-08
+  [232/313] rdf-turtle/turtle-syntax-bad-numeric-escape-09
+ ok
+  PASS: turtle-syntax-bad-numeric-escape-09
+  [233/313] rdf-turtle/turtle-syntax-bad-numeric-escape-10
+ ok
+  PASS: turtle-syntax-bad-numeric-escape-10
+  [234/313] rdf-turtle/turtle-syntax-bad-struct-08
+ ok
+  PASS: turtle-syntax-bad-struct-08
+  [235/313] rdf-turtle/turtle-syntax-bad-struct-09
+ ok
+  PASS: turtle-syntax-bad-struct-09
+  [236/313] rdf-turtle/turtle-syntax-bad-struct-10
+ ok
+  PASS: turtle-syntax-bad-struct-10
+  [237/313] rdf-turtle/turtle-syntax-bad-struct-11
+ ok
+  PASS: turtle-syntax-bad-struct-11
+  [238/313] rdf-turtle/turtle-syntax-bad-struct-12
+ ok
+  PASS: turtle-syntax-bad-struct-12
+  [239/313] rdf-turtle/turtle-syntax-bad-struct-13
+ ok
+  PASS: turtle-syntax-bad-struct-13
+  [240/313] rdf-turtle/turtle-syntax-bad-struct-14
+ ok
+  PASS: turtle-syntax-bad-struct-14
+  [241/313] rdf-turtle/turtle-syntax-bad-struct-15
+ ok
+  PASS: turtle-syntax-bad-struct-15
+  [242/313] rdf-turtle/turtle-syntax-bad-struct-16
+ ok
+  PASS: turtle-syntax-bad-struct-16
+  [243/313] rdf-turtle/turtle-syntax-bad-struct-17
+ ok
+  PASS: turtle-syntax-bad-struct-17
+  [244/313] rdf-turtle/turtle-syntax-bad-lang-01
+ ok
+  PASS: turtle-syntax-bad-lang-01
+  [245/313] rdf-turtle/turtle-syntax-bad-esc-01
+ ok
+  PASS: turtle-syntax-bad-esc-01
+  [246/313] rdf-turtle/turtle-syntax-bad-esc-02
+ ok
+  PASS: turtle-syntax-bad-esc-02
+  [247/313] rdf-turtle/turtle-syntax-bad-esc-03
+ ok
+  PASS: turtle-syntax-bad-esc-03
+  [248/313] rdf-turtle/turtle-syntax-bad-esc-04
+ ok
+  PASS: turtle-syntax-bad-esc-04
+  [249/313] rdf-turtle/turtle-syntax-bad-pname-01
+ ok
+  PASS: turtle-syntax-bad-pname-01
+  [250/313] rdf-turtle/turtle-syntax-bad-pname-02
+ ok
+  PASS: turtle-syntax-bad-pname-02
+  [251/313] rdf-turtle/turtle-syntax-bad-pname-03
+ ok
+  PASS: turtle-syntax-bad-pname-03
+  [252/313] rdf-turtle/turtle-syntax-bad-string-01
+ ok
+  PASS: turtle-syntax-bad-string-01
+  [253/313] rdf-turtle/turtle-syntax-bad-string-02
+ ok
+  PASS: turtle-syntax-bad-string-02
+  [254/313] rdf-turtle/turtle-syntax-bad-string-03
+ ok
+  PASS: turtle-syntax-bad-string-03
+  [255/313] rdf-turtle/turtle-syntax-bad-string-04
+ ok
+  PASS: turtle-syntax-bad-string-04
+  [256/313] rdf-turtle/turtle-syntax-bad-string-05
+ ok
+  PASS: turtle-syntax-bad-string-05
+  [257/313] rdf-turtle/turtle-syntax-bad-string-06
+ ok
+  PASS: turtle-syntax-bad-string-06
+  [258/313] rdf-turtle/turtle-syntax-bad-string-07
+ ok
+  PASS: turtle-syntax-bad-string-07
+  [259/313] rdf-turtle/turtle-syntax-bad-num-01
+ ok
+  PASS: turtle-syntax-bad-num-01
+  [260/313] rdf-turtle/turtle-syntax-bad-num-02
+ ok
+  PASS: turtle-syntax-bad-num-02
+  [261/313] rdf-turtle/turtle-syntax-bad-num-03
+ ok
+  PASS: turtle-syntax-bad-num-03
+  [262/313] rdf-turtle/turtle-syntax-bad-num-04
+ ok
+  PASS: turtle-syntax-bad-num-04
+  [263/313] rdf-turtle/turtle-syntax-bad-num-05
+ ok
+  PASS: turtle-syntax-bad-num-05
+  [264/313] rdf-turtle/turtle-eval-struct-01
+ ok
+  PASS: turtle-eval-struct-01
+  [265/313] rdf-turtle/turtle-eval-struct-02
+ ok
+  PASS: turtle-eval-struct-02
+  [266/313] rdf-turtle/turtle-subm-01
+ ok
+  PASS: turtle-subm-01
+  [267/313] rdf-turtle/turtle-subm-02
+ ok
+  PASS: turtle-subm-02
+  [268/313] rdf-turtle/turtle-subm-03
+ ok
+  PASS: turtle-subm-03
+  [269/313] rdf-turtle/turtle-subm-04
+ ok
+  PASS: turtle-subm-04
+  [270/313] rdf-turtle/turtle-subm-05
+ ok
+  PASS: turtle-subm-05
+  [271/313] rdf-turtle/turtle-subm-06
+ ok
+  PASS: turtle-subm-06
+  [272/313] rdf-turtle/turtle-subm-07
+ ok
+  PASS: turtle-subm-07
+  [273/313] rdf-turtle/turtle-subm-08
+ ok
+  PASS: turtle-subm-08
+  [274/313] rdf-turtle/turtle-subm-09
+ ok
+  PASS: turtle-subm-09
+  [275/313] rdf-turtle/turtle-subm-10
+ ok
+  PASS: turtle-subm-10
+  [276/313] rdf-turtle/turtle-subm-11
+ ok
+  PASS: turtle-subm-11
+  [277/313] rdf-turtle/turtle-subm-12
+ ok
+  PASS: turtle-subm-12
+  [278/313] rdf-turtle/turtle-subm-13
+ ok
+  PASS: turtle-subm-13
+  [279/313] rdf-turtle/turtle-subm-14
+ ok
+  PASS: turtle-subm-14
+  [280/313] rdf-turtle/turtle-subm-15
+ ok
+  PASS: turtle-subm-15
+  [281/313] rdf-turtle/turtle-subm-16
+ ok
+  PASS: turtle-subm-16
+  [282/313] rdf-turtle/turtle-subm-17
+ ok
+  PASS: turtle-subm-17
+  [283/313] rdf-turtle/turtle-subm-18
+ ok
+  PASS: turtle-subm-18
+  [284/313] rdf-turtle/turtle-subm-19
+ ok
+  PASS: turtle-subm-19
+  [285/313] rdf-turtle/turtle-subm-20
+ ok
+  PASS: turtle-subm-20
+  [286/313] rdf-turtle/turtle-subm-21
+ ok
+  PASS: turtle-subm-21
+  [287/313] rdf-turtle/turtle-subm-22
+ ok
+  PASS: turtle-subm-22
+  [288/313] rdf-turtle/turtle-subm-23
+ ok
+  PASS: turtle-subm-23
+  [289/313] rdf-turtle/turtle-subm-24
+ ok
+  PASS: turtle-subm-24
+  [290/313] rdf-turtle/turtle-subm-25
+ ok
+  PASS: turtle-subm-25
+  [291/313] rdf-turtle/turtle-subm-26
+ ok
+  PASS: turtle-subm-26
+  [292/313] rdf-turtle/turtle-subm-27
+ ok
+  PASS: turtle-subm-27
+  [293/313] rdf-turtle/turtle-eval-bad-01
+ ok
+  PASS: turtle-eval-bad-01
+  [294/313] rdf-turtle/turtle-eval-bad-02
+ ok
+  PASS: turtle-eval-bad-02
+  [295/313] rdf-turtle/turtle-eval-bad-03
+ ok
+  PASS: turtle-eval-bad-03
+  [296/313] rdf-turtle/turtle-eval-bad-04
+ ok
+  PASS: turtle-eval-bad-04
+  [297/313] rdf-turtle/turtle-syntax-bad-blank-label-dot-end
+ ok
+  PASS: turtle-syntax-bad-blank-label-dot-end
+  [298/313] rdf-turtle/turtle-syntax-bad-ln-dash-start
+ ok
+  PASS: turtle-syntax-bad-ln-dash-start
+  [299/313] rdf-turtle/turtle-syntax-bad-ln-escape-start
+ ok
+  PASS: turtle-syntax-bad-ln-escape-start
+  [300/313] rdf-turtle/turtle-syntax-bad-ln-escape
+ ok
+  PASS: turtle-syntax-bad-ln-escape
+  [301/313] rdf-turtle/turtle-syntax-bad-missing-ns-dot-end
+ ok
+  PASS: turtle-syntax-bad-missing-ns-dot-end
+  [302/313] rdf-turtle/turtle-syntax-bad-missing-ns-dot-start
+ ok
+  PASS: turtle-syntax-bad-missing-ns-dot-start
+  [303/313] rdf-turtle/turtle-syntax-bad-ns-dot-end
+ ok
+  PASS: turtle-syntax-bad-ns-dot-end
+  [304/313] rdf-turtle/turtle-syntax-bad-ns-dot-start
+ ok
+  PASS: turtle-syntax-bad-ns-dot-start
+  [305/313] rdf-turtle/turtle-syntax-bad-number-dot-in-anon
+ ok
+  PASS: turtle-syntax-bad-number-dot-in-anon
+  [306/313] rdf-turtle/turtle-syntax-blank-label
+ ok
+  PASS: turtle-syntax-blank-label
+  [307/313] rdf-turtle/turtle-syntax-ln-colons
+ ok
+  PASS: turtle-syntax-ln-colons
+  [308/313] rdf-turtle/turtle-syntax-ln-dots
+ ok
+  PASS: turtle-syntax-ln-dots
+  [309/313] rdf-turtle/turtle-syntax-ns-dots
+ ok
+  PASS: turtle-syntax-ns-dots
+  [310/313] rdf-turtle/IRI-resolution-01
+ ok
+  PASS: IRI-resolution-01
+  [311/313] rdf-turtle/IRI-resolution-02
+ ok
+  PASS: IRI-resolution-02
+  [312/313] rdf-turtle/IRI-resolution-07
+ ok
+  PASS: IRI-resolution-07
+  [313/313] rdf-turtle/IRI-resolution-08
+ ok
+  PASS: IRI-resolution-08
+  [suite time: 0.5s]
+
+--- rdf-xml ---
+  [1/166] rdf-xml/amp-in-url-test001
+ ok
+  PASS: amp-in-url-test001
+  [2/166] rdf-xml/datatypes-test001
+ ok
+  PASS: datatypes-test001
+  [3/166] rdf-xml/datatypes-test002
+ ok
+  PASS: datatypes-test002
+  [4/166] rdf-xml/rdf-charmod-literals-test001
+ ok
+  PASS: rdf-charmod-literals-test001
+  [5/166] rdf-xml/rdf-charmod-uris-test001
+ ok
+  PASS: rdf-charmod-uris-test001
+  [6/166] rdf-xml/rdf-charmod-uris-test002
+ ok
+  PASS: rdf-charmod-uris-test002
+  [7/166] rdf-xml/rdf-containers-syntax-vs-schema-error001
+ ok
+  PASS: rdf-containers-syntax-vs-schema-error001
+  [8/166] rdf-xml/rdf-containers-syntax-vs-schema-error002
+ ok
+  PASS: rdf-containers-syntax-vs-schema-error002
+  [9/166] rdf-xml/rdf-containers-syntax-vs-schema-test001
+ ok
+  PASS: rdf-containers-syntax-vs-schema-test001
+  [10/166] rdf-xml/rdf-containers-syntax-vs-schema-test002
+ ok
+  PASS: rdf-containers-syntax-vs-schema-test002
+  [11/166] rdf-xml/rdf-containers-syntax-vs-schema-test003
+ ok
+  PASS: rdf-containers-syntax-vs-schema-test003
+  [12/166] rdf-xml/rdf-containers-syntax-vs-schema-test004
+ ok
+  PASS: rdf-containers-syntax-vs-schema-test004
+  [13/166] rdf-xml/rdf-containers-syntax-vs-schema-test006
+ ok
+  PASS: rdf-containers-syntax-vs-schema-test006
+  [14/166] rdf-xml/rdf-containers-syntax-vs-schema-test007
+ ok
+  PASS: rdf-containers-syntax-vs-schema-test007
+  [15/166] rdf-xml/rdf-containers-syntax-vs-schema-test008
+ ok
+  PASS: rdf-containers-syntax-vs-schema-test008
+  [16/166] rdf-xml/rdf-element-not-mandatory-test001
+ ok
+  PASS: rdf-element-not-mandatory-test001
+  [17/166] rdf-xml/rdf-node-element-test001
+ ok
+  PASS: rdf-node-element-test001
+  [18/166] rdf-xml/rdf-ns-prefix-confusion-test0001
+ ok
+  PASS: rdf-ns-prefix-confusion-test0001
+  [19/166] rdf-xml/rdf-ns-prefix-confusion-test0003
+ ok
+  PASS: rdf-ns-prefix-confusion-test0003
+  [20/166] rdf-xml/rdf-ns-prefix-confusion-test0004
+ ok
+  PASS: rdf-ns-prefix-confusion-test0004
+  [21/166] rdf-xml/rdf-ns-prefix-confusion-test0005
+ ok
+  PASS: rdf-ns-prefix-confusion-test0005
+  [22/166] rdf-xml/rdf-ns-prefix-confusion-test0006
+ ok
+  PASS: rdf-ns-prefix-confusion-test0006
+  [23/166] rdf-xml/rdf-ns-prefix-confusion-test0009
+ ok
+  PASS: rdf-ns-prefix-confusion-test0009
+  [24/166] rdf-xml/rdf-ns-prefix-confusion-test0010
+ ok
+  PASS: rdf-ns-prefix-confusion-test0010
+  [25/166] rdf-xml/rdf-ns-prefix-confusion-test0011
+ ok
+  PASS: rdf-ns-prefix-confusion-test0011
+  [26/166] rdf-xml/rdf-ns-prefix-confusion-test0012
+ ok
+  PASS: rdf-ns-prefix-confusion-test0012
+  [27/166] rdf-xml/rdf-ns-prefix-confusion-test0013
+ ok
+  PASS: rdf-ns-prefix-confusion-test0013
+  [28/166] rdf-xml/rdf-ns-prefix-confusion-test0014
+ ok
+  PASS: rdf-ns-prefix-confusion-test0014
+  [29/166] rdf-xml/rdfms-abouteach-error001
+ ok
+  PASS: rdfms-abouteach-error001
+  [30/166] rdf-xml/rdfms-abouteach-error002
+ ok
+  PASS: rdfms-abouteach-error002
+  [31/166] rdf-xml/rdfms-difference-between-ID-and-about-error1
+ ok
+  PASS: rdfms-difference-between-ID-and-about-error1
+  [32/166] rdf-xml/rdfms-difference-between-ID-and-about-test1
+ ok
+  PASS: rdfms-difference-between-ID-and-about-test1
+  [33/166] rdf-xml/rdfms-difference-between-ID-and-about-test2
+ ok
+  PASS: rdfms-difference-between-ID-and-about-test2
+  [34/166] rdf-xml/rdfms-difference-between-ID-and-about-test3
+ ok
+  PASS: rdfms-difference-between-ID-and-about-test3
+  [35/166] rdf-xml/rdfms-duplicate-member-props-test001
+ ok
+  PASS: rdfms-duplicate-member-props-test001
+  [36/166] rdf-xml/rdfms-empty-property-elements-error001
+ ok
+  PASS: rdfms-empty-property-elements-error001
+  [37/166] rdf-xml/rdfms-empty-property-elements-error002
+ ok
+  PASS: rdfms-empty-property-elements-error002
+  [38/166] rdf-xml/rdfms-empty-property-elements-test001
+ ok
+  PASS: rdfms-empty-property-elements-test001
+  [39/166] rdf-xml/rdfms-empty-property-elements-test002
+ ok
+  PASS: rdfms-empty-property-elements-test002
+  [40/166] rdf-xml/rdfms-empty-property-elements-test004
+ ok
+  PASS: rdfms-empty-property-elements-test004
+  [41/166] rdf-xml/rdfms-empty-property-elements-test005
+ ok
+  PASS: rdfms-empty-property-elements-test005
+  [42/166] rdf-xml/rdfms-empty-property-elements-test006
+ ok
+  PASS: rdfms-empty-property-elements-test006
+  [43/166] rdf-xml/rdfms-empty-property-elements-test007
+ ok
+  PASS: rdfms-empty-property-elements-test007
+  [44/166] rdf-xml/rdfms-empty-property-elements-test008
+ ok
+  PASS: rdfms-empty-property-elements-test008
+  [45/166] rdf-xml/rdfms-empty-property-elements-test010
+ ok
+  PASS: rdfms-empty-property-elements-test010
+  [46/166] rdf-xml/rdfms-empty-property-elements-test011
+ ok
+  PASS: rdfms-empty-property-elements-test011
+  [47/166] rdf-xml/rdfms-empty-property-elements-test012
+ ok
+  PASS: rdfms-empty-property-elements-test012
+  [48/166] rdf-xml/rdfms-empty-property-elements-test013
+ ok
+  PASS: rdfms-empty-property-elements-test013
+  [49/166] rdf-xml/rdfms-empty-property-elements-test014
+ ok
+  PASS: rdfms-empty-property-elements-test014
+  [50/166] rdf-xml/rdfms-empty-property-elements-test015
+ ok
+  PASS: rdfms-empty-property-elements-test015
+  [51/166] rdf-xml/rdfms-empty-property-elements-test016
+ ok
+  PASS: rdfms-empty-property-elements-test016
+  [52/166] rdf-xml/rdfms-empty-property-elements-test017
+ ok
+  PASS: rdfms-empty-property-elements-test017
+  [53/166] rdf-xml/rdfms-identity-anon-resources-test001
+ ok
+  PASS: rdfms-identity-anon-resources-test001
+  [54/166] rdf-xml/rdfms-identity-anon-resources-test002
+ ok
+  PASS: rdfms-identity-anon-resources-test002
+  [55/166] rdf-xml/rdfms-identity-anon-resources-test003
+ ok
+  PASS: rdfms-identity-anon-resources-test003
+  [56/166] rdf-xml/rdfms-identity-anon-resources-test004
+ ok
+  PASS: rdfms-identity-anon-resources-test004
+  [57/166] rdf-xml/rdfms-identity-anon-resources-test005
+ ok
+  PASS: rdfms-identity-anon-resources-test005
+  [58/166] rdf-xml/rdfms-not-id-and-resource-attr-test001
+ ok
+  PASS: rdfms-not-id-and-resource-attr-test001
+  [59/166] rdf-xml/rdfms-not-id-and-resource-attr-test002
+ ok
+  PASS: rdfms-not-id-and-resource-attr-test002
+  [60/166] rdf-xml/rdfms-not-id-and-resource-attr-test004
+ ok
+  PASS: rdfms-not-id-and-resource-attr-test004
+  [61/166] rdf-xml/rdfms-not-id-and-resource-attr-test005
+ ok
+  PASS: rdfms-not-id-and-resource-attr-test005
+  [62/166] rdf-xml/rdfms-para196-test001
+ ok
+  PASS: rdfms-para196-test001
+  [63/166] rdf-xml/rdfms-rdf-id-error001
+ ok
+  PASS: rdfms-rdf-id-error001
+  [64/166] rdf-xml/rdfms-rdf-id-error002
+ ok
+  PASS: rdfms-rdf-id-error002
+  [65/166] rdf-xml/rdfms-rdf-id-error003
+ ok
+  PASS: rdfms-rdf-id-error003
+  [66/166] rdf-xml/rdfms-rdf-id-error004
+ ok
+  PASS: rdfms-rdf-id-error004
+  [67/166] rdf-xml/rdfms-rdf-id-error005
+ ok
+  PASS: rdfms-rdf-id-error005
+  [68/166] rdf-xml/rdfms-rdf-id-error006
+ ok
+  PASS: rdfms-rdf-id-error006
+  [69/166] rdf-xml/rdfms-rdf-id-error007
+ ok
+  PASS: rdfms-rdf-id-error007
+  [70/166] rdf-xml/rdfms-rdf-names-use-error-001
+ ok
+  PASS: rdfms-rdf-names-use-error-001
+  [71/166] rdf-xml/rdfms-rdf-names-use-error-002
+ ok
+  PASS: rdfms-rdf-names-use-error-002
+  [72/166] rdf-xml/rdfms-rdf-names-use-error-003
+ ok
+  PASS: rdfms-rdf-names-use-error-003
+  [73/166] rdf-xml/rdfms-rdf-names-use-error-004
+ ok
+  PASS: rdfms-rdf-names-use-error-004
+  [74/166] rdf-xml/rdfms-rdf-names-use-error-005
+ ok
+  PASS: rdfms-rdf-names-use-error-005
+  [75/166] rdf-xml/rdfms-rdf-names-use-error-006
+ ok
+  PASS: rdfms-rdf-names-use-error-006
+  [76/166] rdf-xml/rdfms-rdf-names-use-error-007
+ ok
+  PASS: rdfms-rdf-names-use-error-007
+  [77/166] rdf-xml/rdfms-rdf-names-use-error-008
+ ok
+  PASS: rdfms-rdf-names-use-error-008
+  [78/166] rdf-xml/rdfms-rdf-names-use-error-009
+ ok
+  PASS: rdfms-rdf-names-use-error-009
+  [79/166] rdf-xml/rdfms-rdf-names-use-error-010
+ ok
+  PASS: rdfms-rdf-names-use-error-010
+  [80/166] rdf-xml/rdfms-rdf-names-use-error-011
+ ok
+  PASS: rdfms-rdf-names-use-error-011
+  [81/166] rdf-xml/rdfms-rdf-names-use-error-012
+ ok
+  PASS: rdfms-rdf-names-use-error-012
+  [82/166] rdf-xml/rdfms-rdf-names-use-error-013
+ ok
+  PASS: rdfms-rdf-names-use-error-013
+  [83/166] rdf-xml/rdfms-rdf-names-use-error-014
+ ok
+  PASS: rdfms-rdf-names-use-error-014
+  [84/166] rdf-xml/rdfms-rdf-names-use-error-015
+ ok
+  PASS: rdfms-rdf-names-use-error-015
+  [85/166] rdf-xml/rdfms-rdf-names-use-error-016
+ ok
+  PASS: rdfms-rdf-names-use-error-016
+  [86/166] rdf-xml/rdfms-rdf-names-use-error-017
+ ok
+  PASS: rdfms-rdf-names-use-error-017
+  [87/166] rdf-xml/rdfms-rdf-names-use-error-018
+ ok
+  PASS: rdfms-rdf-names-use-error-018
+  [88/166] rdf-xml/rdfms-rdf-names-use-error-019
+ ok
+  PASS: rdfms-rdf-names-use-error-019
+  [89/166] rdf-xml/rdfms-rdf-names-use-error-020
+ ok
+  PASS: rdfms-rdf-names-use-error-020
+  [90/166] rdf-xml/rdfms-rdf-names-use-test-001
+ ok
+  PASS: rdfms-rdf-names-use-test-001
+  [91/166] rdf-xml/rdfms-rdf-names-use-test-002
+ ok
+  PASS: rdfms-rdf-names-use-test-002
+  [92/166] rdf-xml/rdfms-rdf-names-use-test-003
+ ok
+  PASS: rdfms-rdf-names-use-test-003
+  [93/166] rdf-xml/rdfms-rdf-names-use-test-004
+ ok
+  PASS: rdfms-rdf-names-use-test-004
+  [94/166] rdf-xml/rdfms-rdf-names-use-test-005
+ ok
+  PASS: rdfms-rdf-names-use-test-005
+  [95/166] rdf-xml/rdfms-rdf-names-use-test-006
+ ok
+  PASS: rdfms-rdf-names-use-test-006
+  [96/166] rdf-xml/rdfms-rdf-names-use-test-007
+ ok
+  PASS: rdfms-rdf-names-use-test-007
+  [97/166] rdf-xml/rdfms-rdf-names-use-test-008
+ ok
+  PASS: rdfms-rdf-names-use-test-008
+  [98/166] rdf-xml/rdfms-rdf-names-use-test-009
+ ok
+  PASS: rdfms-rdf-names-use-test-009
+  [99/166] rdf-xml/rdfms-rdf-names-use-test-010
+ ok
+  PASS: rdfms-rdf-names-use-test-010
+  [100/166] rdf-xml/rdfms-rdf-names-use-test-011
+ ok
+  PASS: rdfms-rdf-names-use-test-011
+  [101/166] rdf-xml/rdfms-rdf-names-use-test-012
+ ok
+  PASS: rdfms-rdf-names-use-test-012
+  [102/166] rdf-xml/rdfms-rdf-names-use-test-013
+ ok
+  PASS: rdfms-rdf-names-use-test-013
+  [103/166] rdf-xml/rdfms-rdf-names-use-test-014
+ ok
+  PASS: rdfms-rdf-names-use-test-014
+  [104/166] rdf-xml/rdfms-rdf-names-use-test-015
+ ok
+  PASS: rdfms-rdf-names-use-test-015
+  [105/166] rdf-xml/rdfms-rdf-names-use-test-016
+ ok
+  PASS: rdfms-rdf-names-use-test-016
+  [106/166] rdf-xml/rdfms-rdf-names-use-test-017
+ ok
+  PASS: rdfms-rdf-names-use-test-017
+  [107/166] rdf-xml/rdfms-rdf-names-use-test-018
+ ok
+  PASS: rdfms-rdf-names-use-test-018
+  [108/166] rdf-xml/rdfms-rdf-names-use-test-019
+ ok
+  PASS: rdfms-rdf-names-use-test-019
+  [109/166] rdf-xml/rdfms-rdf-names-use-test-020
+ ok
+  PASS: rdfms-rdf-names-use-test-020
+  [110/166] rdf-xml/rdfms-rdf-names-use-test-021
+ ok
+  PASS: rdfms-rdf-names-use-test-021
+  [111/166] rdf-xml/rdfms-rdf-names-use-test-022
+ ok
+  PASS: rdfms-rdf-names-use-test-022
+  [112/166] rdf-xml/rdfms-rdf-names-use-test-023
+ ok
+  PASS: rdfms-rdf-names-use-test-023
+  [113/166] rdf-xml/rdfms-rdf-names-use-test-024
+ ok
+  PASS: rdfms-rdf-names-use-test-024
+  [114/166] rdf-xml/rdfms-rdf-names-use-test-025
+ ok
+  PASS: rdfms-rdf-names-use-test-025
+  [115/166] rdf-xml/rdfms-rdf-names-use-test-026
+ ok
+  PASS: rdfms-rdf-names-use-test-026
+  [116/166] rdf-xml/rdfms-rdf-names-use-test-027
+ ok
+  PASS: rdfms-rdf-names-use-test-027
+  [117/166] rdf-xml/rdfms-rdf-names-use-test-028
+ ok
+  PASS: rdfms-rdf-names-use-test-028
+  [118/166] rdf-xml/rdfms-rdf-names-use-test-029
+ ok
+  PASS: rdfms-rdf-names-use-test-029
+  [119/166] rdf-xml/rdfms-rdf-names-use-test-030
+ ok
+  PASS: rdfms-rdf-names-use-test-030
+  [120/166] rdf-xml/rdfms-rdf-names-use-test-031
+ ok
+  PASS: rdfms-rdf-names-use-test-031
+  [121/166] rdf-xml/rdfms-rdf-names-use-test-032
+ ok
+  PASS: rdfms-rdf-names-use-test-032
+  [122/166] rdf-xml/rdfms-rdf-names-use-test-033
+ ok
+  PASS: rdfms-rdf-names-use-test-033
+  [123/166] rdf-xml/rdfms-rdf-names-use-test-034
+ ok
+  PASS: rdfms-rdf-names-use-test-034
+  [124/166] rdf-xml/rdfms-rdf-names-use-test-035
+ ok
+  PASS: rdfms-rdf-names-use-test-035
+  [125/166] rdf-xml/rdfms-rdf-names-use-test-036
+ ok
+  PASS: rdfms-rdf-names-use-test-036
+  [126/166] rdf-xml/rdfms-rdf-names-use-test-037
+ ok
+  PASS: rdfms-rdf-names-use-test-037
+  [127/166] rdf-xml/rdfms-rdf-names-use-warn-001
+ ok
+  PASS: rdfms-rdf-names-use-warn-001
+  [128/166] rdf-xml/rdfms-rdf-names-use-warn-002
+ ok
+  PASS: rdfms-rdf-names-use-warn-002
+  [129/166] rdf-xml/rdfms-rdf-names-use-warn-003
+ ok
+  PASS: rdfms-rdf-names-use-warn-003
+  [130/166] rdf-xml/rdfms-reification-required-test001
+ ok
+  PASS: rdfms-reification-required-test001
+  [131/166] rdf-xml/rdfms-reification-required-test002
+ ok
+  PASS: rdfms-reification-required-test002
+  [132/166] rdf-xml/rdfms-seq-representation-test001
+ ok
+  PASS: rdfms-seq-representation-test001
+  [133/166] rdf-xml/rdfms-seq-representation-test002
+ ok
+  PASS: rdfms-seq-representation-test002
+  [134/166] rdf-xml/rdfms-syntax-incomplete-test001
+ ok
+  PASS: rdfms-syntax-incomplete-test001
+  [135/166] rdf-xml/rdfms-syntax-incomplete-test002
+ ok
+  PASS: rdfms-syntax-incomplete-test002
+  [136/166] rdf-xml/rdfms-syntax-incomplete-test003
+ ok
+  PASS: rdfms-syntax-incomplete-test003
+  [137/166] rdf-xml/rdfms-syntax-incomplete-test004
+ ok
+  PASS: rdfms-syntax-incomplete-test004
+  [138/166] rdf-xml/rdfms-syntax-incomplete-error001
+ ok
+  PASS: rdfms-syntax-incomplete-error001
+  [139/166] rdf-xml/rdfms-syntax-incomplete-error002
+ ok
+  PASS: rdfms-syntax-incomplete-error002
+  [140/166] rdf-xml/rdfms-syntax-incomplete-error003
+ ok
+  PASS: rdfms-syntax-incomplete-error003
+  [141/166] rdf-xml/rdfms-syntax-incomplete-error004
+ ok
+  PASS: rdfms-syntax-incomplete-error004
+  [142/166] rdf-xml/rdfms-syntax-incomplete-error005
+ ok
+  PASS: rdfms-syntax-incomplete-error005
+  [143/166] rdf-xml/rdfms-syntax-incomplete-error006
+ ok
+  PASS: rdfms-syntax-incomplete-error006
+  [144/166] rdf-xml/rdfms-uri-substructure-test001
+ ok
+  PASS: rdfms-uri-substructure-test001
+  [145/166] rdf-xml/rdfms-xmllang-test003
+ ok
+  PASS: rdfms-xmllang-test003
+  [146/166] rdf-xml/rdfms-xmllang-test004
+ ok
+  PASS: rdfms-xmllang-test004
+  [147/166] rdf-xml/rdfms-xmllang-test005
+ ok
+  PASS: rdfms-xmllang-test005
+  [148/166] rdf-xml/rdfms-xmllang-test006
+ ok
+  PASS: rdfms-xmllang-test006
+  [149/166] rdf-xml/rdfs-domain-and-range-test001
+ ok
+  PASS: rdfs-domain-and-range-test001
+  [150/166] rdf-xml/rdfs-domain-and-range-test002
+ ok
+  PASS: rdfs-domain-and-range-test002
+  [151/166] rdf-xml/unrecognised-xml-attributes-test001
+ ok
+  PASS: unrecognised-xml-attributes-test001
+  [152/166] rdf-xml/unrecognised-xml-attributes-test002
+ ok
+  PASS: unrecognised-xml-attributes-test002
+  [153/166] rdf-xml/xml-canon-test001
+ ok
+  PASS: xml-canon-test001
+  [154/166] rdf-xml/xml-canon-test002
+ ok
+  PASS: xml-canon-test002
+  [155/166] rdf-xml/xmlbase-test001
+ ok
+  PASS: xmlbase-test001
+  [156/166] rdf-xml/xmlbase-test002
+ ok
+  PASS: xmlbase-test002
+  [157/166] rdf-xml/xmlbase-test003
+ ok
+  PASS: xmlbase-test003
+  [158/166] rdf-xml/xmlbase-test004
+ ok
+  PASS: xmlbase-test004
+  [159/166] rdf-xml/xmlbase-test006
+ ok
+  PASS: xmlbase-test006
+  [160/166] rdf-xml/xmlbase-test007
+ ok
+  PASS: xmlbase-test007
+  [161/166] rdf-xml/xmlbase-test008
+ ok
+  PASS: xmlbase-test008
+  [162/166] rdf-xml/xmlbase-test009
+ ok
+  PASS: xmlbase-test009
+  [163/166] rdf-xml/xmlbase-test010
+ ok
+  PASS: xmlbase-test010
+  [164/166] rdf-xml/xmlbase-test011
+ ok
+  PASS: xmlbase-test011
+  [165/166] rdf-xml/xmlbase-test013
+ ok
+  PASS: xmlbase-test013
+  [166/166] rdf-xml/xmlbase-test014
+ ok
+  PASS: xmlbase-test014
+  [suite time: 0.3s]
+
+========================================
+Suite Results:
+  rdf-mt                              pass:39 fail:0 skip:0 unsupported:0
+  rdf-n-quads                         pass:87 fail:0 skip:0 unsupported:0
+  rdf-n-triples                       pass:70 fail:0 skip:0 unsupported:0
+  rdf-trig                            pass:356 fail:0 skip:0 unsupported:0
+  rdf-turtle                          pass:313 fail:0 skip:0 unsupported:0
+  rdf-xml                             pass:166 fail:0 skip:0 unsupported:0
+========================================
+TOTAL: 1031 pass, 0 fail, 0 skip, 0 unsupported
+========================================
