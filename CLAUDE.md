@@ -199,6 +199,10 @@ that topic in a session.
 - [`fstar-mcp`](skills/fstar-mcp/SKILL.md) — F\* MCP server for
   interactive proof / typecheck queries (replaces batch `fstar.exe`
   reruns for diagnostic work).
+- [`mcp-setup-readme`](skills/mcp-setup-readme/SKILL.md) — how the
+  repo's MCP wiring is configured (`.mcp.json`, bootstrap script,
+  daemon manager, port, transport). Read when adding/debugging the
+  MCP plumbing rather than using F* MCP for proofs.
 - [`markdown-style`](skills/markdown-style/SKILL.md) — clickable-link
   rules + the no-sycophantic-adjectives rewrite list.
 - [`subagent-prompting`](skills/subagent-prompting/SKILL.md) —
