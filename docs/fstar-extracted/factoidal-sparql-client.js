@@ -1586,6 +1586,15 @@ class FactoidalSparqlClient extends HTMLElement {
         }
       }
       globalThis.process.argv = argv;
+      // Enable js_of_ocaml's runtime backtrace recording so caught
+      // exceptions carry a real JS stack on .js_error.stack. Without
+      // OCAMLRUNPARAM=b the bundle's caml_maybe_attach_backtrace is a
+      // no-op and the throw site is invisible — see #240, the
+      // bind+strings BatUChar.Out_of_range case. Always on; cheap.
+      globalThis.process.env = globalThis.process.env || {};
+      if (!globalThis.process.env.OCAMLRUNPARAM) {
+        globalThis.process.env.OCAMLRUNPARAM = 'b';
+      }
 
       let exitCode = 0;
       const origExit = globalThis.process.exit;
@@ -1596,7 +1605,38 @@ class FactoidalSparqlClient extends HTMLElement {
         (new Function(src))();
       } catch (e) {
         if (!e || e.message !== '__exit__') {
-          buf.push('\n[factoidal-sparql-client] ' + (e && e.message || e));
+          // Dump full stack + any js_of_ocaml exception payload so the
+          // error panel surfaces real diagnostic info on hosts without
+          // devtools (iOS Safari, mobile Chrome). Without ?jsoo-debug=1
+          // the stack is minified single letters; with it, the stack
+          // resolves to OCaml frame names + /*<<src/file.ml:N:C>>*/
+          // markers that point at the throw site.
+          // js_of_ocaml exceptions:
+          //   - bare exception:  [248, "Name", id]                — array
+          //   - exception+arg:   [0, [248, "Failure", id], "msg"] — array
+          //   - with backtrace:  same array, plus .js_error = Error()
+          // The JS stack is on .js_error.stack (only present when the
+          // bundle was started with OCAMLRUNPARAM=b — see the env init
+          // above). For wrapped exceptions [0, exn, arg], the inner
+          // exn is at e[1] and the argument at e[2].
+          let detail = '';
+          try {
+            if (Array.isArray(e)) {
+              if (e[0] === 248) {
+                detail += '\n  ocaml_exn: ' + e[1];
+              } else if (e[0] === 0 && Array.isArray(e[1]) && e[1][0] === 248) {
+                detail += '\n  ocaml_exn: ' + e[1][1];
+                if (e.length > 2) detail += ' arg=' + JSON.stringify(e[2]).slice(0, 200);
+              }
+              if (e.js_error && e.js_error.stack) {
+                detail += '\n  stack:\n' + String(e.js_error.stack).split('\n').map(l => '    ' + l).join('\n');
+              }
+            } else if (e && typeof e === 'object') {
+              if (e.message) detail += '\n  msg: ' + e.message;
+              if (e.stack)   detail += '\n  stack:\n' + String(e.stack).split('\n').map(l => '    ' + l).join('\n');
+            }
+          } catch (_) { /* never let the diagnostic itself throw */ }
+          buf.push('\n[factoidal-sparql-client] ' + (e && e.message || e) + detail);
           exitCode = 1;
         }
       } finally {

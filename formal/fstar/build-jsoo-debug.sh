@@ -4,7 +4,12 @@
 # js_of_ocaml. Output:
 #
 #   docs/fstar-extracted/factoidal.debug.js
-#   docs/fstar-extracted/factoidal.debug.js.map
+#   docs/fstar-extracted/factoidal.debug.map
+#
+# js_of_ocaml derives the source-map filename from the .byte input
+# (factoidal.debug.byte → factoidal.debug.map), NOT from the -o
+# output, so the .map sits next to the .js without a .js.map suffix.
+# The bundle references it via //# sourceMappingURL=factoidal.debug.map.
 #
 # The production bundle (docs/fstar-extracted/factoidal.js) is NOT
 # touched. The public demo (factoidal-sparql-client.js) opts into the
@@ -110,8 +115,9 @@ js_of_ocaml \
   factoidal.debug.byte \
   -o "$OUT_JS"
 
-echo "  Built: docs/fstar-extracted/factoidal.debug.js     ($(wc -c < $OUT_JS) bytes)"
-[[ -f "${OUT_JS}.map" ]] && echo "  Built: docs/fstar-extracted/factoidal.debug.js.map ($(wc -c < ${OUT_JS}.map) bytes)"
+OUT_MAP="$(dirname "$OUT_JS")/factoidal.debug.map"
+echo "  Built: docs/fstar-extracted/factoidal.debug.js  ($(wc -c < "$OUT_JS") bytes)"
+[[ -f "$OUT_MAP" ]] && echo "  Built: docs/fstar-extracted/factoidal.debug.map ($(wc -c < "$OUT_MAP") bytes)"
 echo ""
 echo "Reload the public demo with ?jsoo-debug=1 (e.g."
 echo "  https://danbri.github.io/factoidal/?jsoo-debug=1 ) once this is pushed"
