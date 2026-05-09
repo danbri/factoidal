@@ -1560,6 +1560,31 @@ class FactoidalSparqlClient extends HTMLElement {
       console.log   = (...a) => buf.push(a.join(' '));
       console.error = (...a) => buf.push(a.join(' '));
 
+      // ?jsoo-debug=1 — surgical-instrument the debug bundle. js_of_ocaml's
+      // backtrace stubs (caml_get_exception_raw_backtrace,
+      // caml_convert_raw_backtrace) return [0], so the OCaml-runtime
+      // Printexc.handle_uncaught_exception path can't surface the stack
+      // even with OCAMLRUNPARAM=b. We intercept at the throw site
+      // instead — log the offending codepoint + JS stack via
+      // console.error, which the redirect above tees into `buf` and
+      // therefore into the on-page error panel. Independent of all
+      // OCaml-runtime backtrace plumbing; works on iOS Safari with no
+      // devtools. See #240.
+      let bundleSrc = src;
+      try {
+        const dbg = new URLSearchParams(globalThis.location?.search || '').get('jsoo-debug');
+        if (dbg === '1') {
+          const reBatUChar = /(\/\*<<src\/batUChar\.ml:55:7>>\*\/\s*throw\s+caml_maybe_attach_backtrace\s*\(\s*Out_of_range\s*,\s*1\s*\))/;
+          if (reBatUChar.test(bundleSrc)) {
+            bundleSrc = bundleSrc.replace(reBatUChar,
+              'console.error("[#240-probe BatUChar.chr] codepoint=" + n + " (0x" + n.toString(16) + ")\\nstack:\\n" + ((new Error()).stack || "<no stack>")); $1');
+            buf.push('[factoidal-sparql-client] jsoo-debug: BatUChar.chr$0 instrumented');
+          } else {
+            buf.push('[factoidal-sparql-client] jsoo-debug: BatUChar.chr$0 throw site not found — bundle layout changed, update reBatUChar');
+          }
+        }
+      } catch (_) { /* never let the diagnostic itself throw */ }
+
       globalThis.jsoo_fs_tmp = payloads.map(p => ({ name: p.vfs, content: p.content }));
       globalThis.process = globalThis.process || {};
       const argv = ['node', 'factoidal'];
@@ -1602,7 +1627,7 @@ class FactoidalSparqlClient extends HTMLElement {
 
       const qT0 = performance.now();
       try {
-        (new Function(src))();
+        (new Function(bundleSrc))();
       } catch (e) {
         if (!e || e.message !== '__exit__') {
           // Dump full stack + any js_of_ocaml exception payload so the
