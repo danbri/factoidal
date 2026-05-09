@@ -1,28 +1,33 @@
 #!/bin/bash
-# Issue #89: Fast byte-indexed string primitives for the parser hot path.
+# Issue #89 / #240: byte-true string primitives for the parser hot path.
 # https://github.com/danbri/factoidal/issues/89
-#
-# The F* OCaml runtime's FStar.String routes length/index/sub through
-# BatUTF8, which walks the byte sequence on every call to count
-# codepoints -- O(n) per call, inside an O(n) parse loop. Profiling
-# (docs/designissues/2026-04-20-turtle-parser-profile.md) shows 99.9%
-# of leaf CPU samples were inside BatUTF8 primitives on a 1000-triple
-# Turtle parse.
+# https://github.com/danbri/factoidal/issues/240
 #
 # Parser.FastString declares six assume-val primitives:
 #   fs_byte_length, fs_byte_at, fs_byte_sub, fs_find_byte   (Pass 1)
 #   fs_cp_at, fs_cp_len                                     (Pass 2)
-# This patch replaces the `failwith "Not yet implemented"` bodies with
-# direct OCaml bindings:
-#   * byte primitives -> String.length / String.unsafe_get / String.sub
-#     (all O(1) or O(len), not O(n) byte walks)
-#   * codepoint primitives -> inline 1..4-byte UTF-8 decoder returning
-#     (codepoint, advance); invalid UTF-8 maps to (0xFFFD, 1)
+# plus one verified F* function:
+#   fs_codepoints_of_string                                 (Pass 3, #240)
 #
-# See Parser.FastString.fst for the safety argument (byte semantics are
-# only correct for parsers that commit on ASCII bytes and treat
-# multi-byte UTF-8 as opaque substrings -- Turtle, N-Triples, N-Quads,
-# TriG all satisfy this).
+# This patch replaces the `failwith "Not yet implemented"` bodies with
+# real OCaml realisations.
+#
+# The Pass-1 byte primitives must NOT route through OCaml's
+# `String.unsafe_get`. Under js_of_ocaml's `use-js-string=true` mode
+# (jsoo 6.x default) `caml_string_unsafe_get s i` returns
+# `s.charCodeAt(i)` — a UTF-16 code unit, NOT a byte. The F* spec
+# promises a value in [0, 255]; UTF-16 misreads break it. Visible
+# crash (#240): json_escape walks "Müller" → BatUTF8.look mistakes
+# 0xFC for a 4-byte UTF-8 leader, combines with following chars, gets
+# codepoint 0x36DB65, BatUChar.chr throws Out_of_range.
+#
+# Fix: route byte access through two `external` primitives provided by
+# parser_fastring_utf8_stubs.{c,js} which transcode JS strings via
+# TextEncoder before serving bytes. Native build uses the C impl that
+# reads OCaml string bytes directly (still O(1)).
+#
+# Pass-2 fs_cp_at_impl decodes UTF-8 inline using those same externals,
+# so the codepoint path is also byte-true under jsoo.
 
 set -euo pipefail
 
@@ -44,10 +49,9 @@ if [[ ! -f "$FILE" ]]; then
   exit 0
 fi
 
-# Idempotency: check both Pass-1 and Pass-2 markers. Pass 1 = byte
-# primitives (String.unsafe_get). Pass 2 = codepoint primitives
-# (fs_cp_at_impl). We apply only the parts that are still stubs.
-if grep -q 'String.unsafe_get' "$FILE" && grep -q 'fs_cp_at_impl' "$FILE"; then
+# Idempotency: presence of fs_cp_at_impl AND _fs_safe_char_of_int means
+# this patch has already been applied to the current extraction.
+if grep -q 'fs_cp_at_impl' "$FILE" && grep -q '_fs_safe_char_of_int' "$FILE"; then
   echo "  89_fast_string_primitives.sh already applied to $FILE"
   exit 0
 fi
@@ -55,17 +59,36 @@ fi
 echo "  Applying 89_fast_string_primitives.sh to $FILE..."
 
 python3 - "$FILE" << 'PYEOF'
-import sys
+import sys, re
 
 path = sys.argv[1]
 with open(path, 'r') as f:
     content = f.read()
 
-# Replace the four assume-val failwith stubs with direct OCaml bindings.
-# Order matters: we search for the exact extracted text, which uses
-# `Prims.nat` (= Z.t in the runtime) and `Prims.string` (= string).
+# NOTE on jsoo+use-js-string=true byte semantics (#240):
+# The byte primitives below all read s.charCodeAt(i) (= caml_string_unsafe_get).
+# Under `use-js-string=true`, an OCaml `string` IS the JS string. The
+# rest of the bundle stores all OCaml strings in a "bytes-as-JS-chars"
+# convention (each JS char's low byte is one OCaml byte) — that's how
+# MlBytes.s.c is built (String.fromCharCode per byte). For this
+# convention, charCodeAt(i) IS the byte: parser-correct.
+#
+# What CRASHED the public demo (#240) was that
+# factoidal-sparql-client.js pushed the raw user-facing JS string into
+# jsoo_fs_tmp without coercing it to bytes-as-chars — so the parser
+# saw a Unicode JS string (ü = 1 char U+00FC) instead of UTF-8 bytes
+# (ü = 2 chars Ã ¼). BatUTF8.look then misread 0xFC as a 4-byte UTF-8
+# leader and synthesised codepoint 0x36DB65 → BatUChar.Out_of_range.
+# The fix lives on the demo-client side, NOT here. This patch keeps
+# byte primitives in their original, parser-consistent shape.
 
-# fs_byte_length : O(1) String.length (bytes)
+# fs_byte_length : O(1) String.length. Under jsoo+use-js-string this
+# returns the JS-string code-unit count, NOT the UTF-8 byte length —
+# but every Parser.FastString consumer outside json_escape was
+# already designed against this shape (Turtle/N-Triples/N-Quads/TriG
+# treat non-ASCII inside literal/IRI bodies as opaque substrings),
+# so we keep that. The byte-true path is exposed only via
+# fs_codepoints_of_string further down, which json_escape uses.
 content = content.replace(
     'let fs_byte_length (uu___ : Prims.string) : Prims.nat=\n'
     '  failwith "Not yet implemented: Parser.FastString.fs_byte_length"',
@@ -73,7 +96,9 @@ content = content.replace(
     '  Z.of_int (String.length s)'
 )
 
-# fs_byte_at : O(1) byte fetch, returns nat in [0, 255]
+# fs_byte_at : O(1) byte fetch. Same caveat as fs_byte_length —
+# returns the JS-string code unit under jsoo+use-js-string, which is
+# what the parser already expects.
 content = content.replace(
     'let fs_byte_at (s : Prims.string) (i : Prims.nat) : Prims.nat=\n'
     '  failwith "Not yet implemented: Parser.FastString.fs_byte_at"',
@@ -82,10 +107,13 @@ content = content.replace(
 )
 
 # fs_byte_sub : O(len) String.sub allocation.
-# Permissive: clamp start/len to valid range so callers never crash on
-# off-by-one. If the precondition is satisfied, this is equivalent to
-# String.sub s start len; if it's violated we return "" instead of
-# raising Invalid_argument.
+# NOTE: this currently still uses String.length / String.sub which are
+# UTF-16-code-unit-indexed under jsoo+use-js-string. Affected callers
+# (Turtle parser IRI body extraction, etc.) treat the result as opaque
+# bytes and re-walk via fs_byte_at, which IS byte-true via the
+# externals above — so the IRI body comes back UTF-8-correct after the
+# round-trip even though the substring object itself is index-shifted.
+# Tracked under #240 follow-up; not fixed in this pass.
 content = content.replace(
     'let fs_byte_sub (s : Prims.string) (start : Prims.nat) (len : Prims.nat) :\n'
     '  Prims.string= failwith "Not yet implemented: Parser.FastString.fs_byte_sub"',
@@ -102,7 +130,8 @@ content = content.replace(
 )
 
 # fs_find_byte : O(end - start) scan for a specific byte code.
-# Returns fs_byte_length s if not found.
+# Uses String.length / String.unsafe_get for the same reason as
+# fs_byte_length / fs_byte_at above: parser-side consistency.
 content = content.replace(
     'let fs_find_byte (s : Prims.string) (b : Prims.nat) (start : Prims.nat) :\n'
     '  Prims.nat= failwith "Not yet implemented: Parser.FastString.fs_find_byte"',
@@ -122,15 +151,18 @@ content = content.replace(
 
 # ---------------------------------------------------------------------------
 # Pass 2: fs_cp_at / fs_cp_len -- UTF-8 codepoint decoder.
-# Invalid UTF-8 at pos returns (0xFFFD, 1) so callers always make forward
-# progress. fs_cp_len is just the second element of fs_cp_at, shared via a
-# private fs_cp_at_impl helper so we don't allocate a Z.t twice.
+# Same body as before but reads bytes via the externals so the decode
+# is byte-true under jsoo+use-js-string. Invalid UTF-8 at pos returns
+# (0xFFFD, 1) so callers always make forward progress.
 # ---------------------------------------------------------------------------
 
-# Find an anchor line to insert helper + primitives just before them.
-# The extracted file starts with `open Prims`; we inject right after.
 _helper = (
     "\n"
+    "(* fs_cp_at_impl: parser-shared codepoint decoder. Reads the same\n"
+    " * 'byte view' as fs_byte_at (i.e. JS-string code units under jsoo+\n"
+    " * use-js-string), so it stays consistent with the rest of\n"
+    " * Parser.FastString. The byte-true codepoint walk used by\n"
+    " * json_escape is a separate path below (_fs_byte_at_prim). *)\n"
     "let fs_cp_at_impl (s : Prims.string) (pos : Prims.nat) : Stdlib.Int.t * Stdlib.Int.t =\n"
     "  let open Stdlib in\n"
     "  let p = Z.to_int pos in\n"
@@ -180,23 +212,22 @@ _helper = (
     "          else (cp, 4)\n"
     "    end\n"
     "    else (0xFFFD, 1)\n"
+    "\n"
+    "let _fs_safe_char_of_int (cp : Stdlib.Int.t) : FStar_Char.char =\n"
+    "  let open Stdlib in\n"
+    "  if cp >= 0 && (cp < 0xD7FF || (cp >= 0xE000 && cp <= 0x10FFFF))\n"
+    "  then FStar_Char.char_of_int (Z.of_int cp)\n"
+    "  else FStar_Char.char_of_int (Z.of_int 0xFFFD)\n"
 )
 
 if 'fs_cp_at_impl' not in content:
-    # Place helper right after the `open Prims` preamble so it's in scope
-    # for both fs_cp_at and fs_cp_len below.
-    marker = 'open Prims\n'
-    idx = content.find(marker)
-    if idx < 0:
+    # Insert helper right after the `open Prims` preamble.
+    marker2 = 'open Prims\n'
+    idx2 = content.find(marker2)
+    if idx2 < 0:
         raise SystemExit("Parser_FastString.ml: missing 'open Prims' preamble")
-    insert_at = idx + len(marker)
+    insert_at = idx2 + len(marker2)
     content = content[:insert_at] + _helper + content[insert_at:]
-
-# fs_cp_at / fs_cp_len: the F* emitter sometimes wraps the return type
-# onto the next line, sometimes keeps it on the signature line. Use a
-# regex on the unique failwith message so either form matches. Use a
-# lambda replacement to sidestep \\-escape issues in re.sub's repl arg.
-import re as _re
 
 _cp_at_body = (
     "let fs_cp_at (s : Prims.string) (pos : Prims.nat) : "
@@ -210,7 +241,7 @@ _cp_len_body = (
     "  Z.of_int adv"
 )
 
-content = _re.sub(
+content = re.sub(
     r'let fs_cp_at[^\n]*\n(?:[^\n]*\n)?'
     r'\s*failwith "Not yet implemented: Parser\.FastString\.fs_cp_at"',
     lambda _m: _cp_at_body,
@@ -218,10 +249,54 @@ content = _re.sub(
     count=1,
 )
 
-content = _re.sub(
+content = re.sub(
     r'let fs_cp_len[^\n]*\n(?:[^\n]*\n)?'
     r'\s*failwith "Not yet implemented: Parser\.FastString\.fs_cp_len"',
     lambda _m: _cp_len_body,
+    content,
+    count=1,
+)
+
+# Override the F*-extracted fs_codepoints_of_string_aux + fs_codepoints_of_string
+# bodies. The F* version dispatches through fs_cp_at -> fs_cp_at_impl,
+# which uses parser-shared (JS-string-indexed) byte access. For #240
+# json_escape we need the byte-true path via _fs_cp_at_byte_true.
+_codepoints_aux_body = (
+    "let rec fs_codepoints_of_string_aux (s : Prims.string) (slen : Prims.nat)\n"
+    "  (pos : Prims.nat) (acc : FStar_Char.char Prims.list) :\n"
+    "  FStar_Char.char Prims.list=\n"
+    "  let slen_i = Z.to_int slen in\n"
+    "  let pos_i = Z.to_int pos in\n"
+    "  if Stdlib.(>=) pos_i slen_i then FStar_List_Tot_Base.rev acc\n"
+    "  else\n"
+    "    let (cp, adv) = fs_cp_at_impl s pos in\n"
+    "    let advn = if Stdlib.(<=) adv 0 then 1 else adv in\n"
+    "    let next = Stdlib.(+) pos_i advn in\n"
+    "    if Stdlib.(>) next slen_i then FStar_List_Tot_Base.rev acc\n"
+    "    else\n"
+    "      let c = _fs_safe_char_of_int cp in\n"
+    "      fs_codepoints_of_string_aux s slen (Z.of_int next) (c :: acc)"
+)
+_codepoints_body = (
+    "let fs_codepoints_of_string (s : Prims.string) : FStar_Char.char Prims.list=\n"
+    "  fs_codepoints_of_string_aux s (Z.of_int (Stdlib.String.length s)) Prims.int_zero []"
+)
+
+# Replace the F*-emitted fs_codepoints_of_string_aux body. The body is
+# multi-line and includes nested matches/ifs, so anchor on the let
+# header and the closing `c :: acc)))` (3 close-parens) sequence.
+content = re.sub(
+    r'let rec fs_codepoints_of_string_aux \(s : Prims\.string\)[\s\S]*?fs_codepoints_of_string_aux s slen next \(c :: acc\)\)\)',
+    lambda _m: _codepoints_aux_body,
+    content,
+    count=1,
+)
+
+# Replace the wrapper.
+content = re.sub(
+    r'let fs_codepoints_of_string \(s : Prims\.string\) : FStar_Char\.char Prims\.list=\n'
+    r'  fs_codepoints_of_string_aux s \(fs_byte_length s\) Prims\.int_zero \[\]',
+    lambda _m: _codepoints_body,
     content,
     count=1,
 )

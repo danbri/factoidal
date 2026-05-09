@@ -88,6 +88,10 @@ FSTAR_MODULES=(
 echo "--- ocamlc factoidal.byte (-g, debug) ---"
 cp ../../../bin/factoidal-serve/factoidal_serve_jsoo.ml factoidal_serve.ml
 RC=0
+# Two -custom C stubs:
+#   parquet_zstd_stubs_jsoo.c           — placeholder for caml_parquet_zstd_*
+# Both are linker placeholders for the jsoo bytecode; js_of_ocaml swaps
+# in the .js stubs (parquet_zstd_stubs.js and
 ocamlfind ocamlc -g -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
   -custom parquet_zstd_stubs_jsoo.c \
   -I ../../../bin/factoidal-explain \

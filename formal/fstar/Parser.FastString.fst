@@ -129,3 +129,55 @@ let fs_byte_index (s: string) (i: nat) : char =
 // Convenience: char-returning version for call sites that don't want to
 // deal with nat. Matches the String.index surface.
 let fs_char_at (s: string) (i: nat) : char = fs_byte_index s i
+
+// ---------------------------------------------------------------------------
+// Codepoint-list view of a UTF-8 string (#240).
+//
+// FStar.String.list_of_string is realised in the F* OCaml runtime via
+// BatUTF8.length + BatUTF8.get, which read bytes through
+// String.unsafe_get. Under js_of_ocaml's `use-js-string=true` mode
+// String.unsafe_get returns a UTF-16 code unit instead of a byte, so
+// BatUTF8 misreads non-ASCII input and synthesises out-of-range
+// codepoints (BatUChar.Out_of_range, codepoints > 0x10FFFF). Visible
+// in the public demo as "Müller" → 0x36DB65 → BatUChar.chr crash.
+//
+// This is the same UTF-8 walk but goes through fs_cp_at, which we
+// realise via byte-true externals (parser_fastring_utf8_stubs.{c,js}).
+// Drop-in replacement for `FStar.String.list_of_string` whenever the
+// caller will round-trip the chars back into a string (e.g.
+// json_escape, xml_escape, n3_escape) — those re-encode each char via
+// FStar.String.string_of_list, which feeds BatUChar.chr and trips on
+// any value above 0x10FFFF.
+//
+// Termination: each step advances by `adv >= 1` bytes (fs_cp_at_impl
+// returns (0xFFFD, 1) on invalid input, never (_, 0)), so the
+// `byte_length s - pos` measure strictly decreases.
+// ---------------------------------------------------------------------------
+
+let rec fs_codepoints_of_string_aux (s : string) (slen : nat) (pos : nat)
+                                    (acc : list char)
+  : Tot (list char) (decreases (slen - pos))
+  =
+  if pos >= slen then FStar.List.Tot.rev acc
+  else
+    let (cp, adv) = fs_cp_at s pos in
+    let advn : nat = if adv = 0 then 1 else adv in
+    let next : nat = pos + advn in
+    // We need (slen - next) < (slen - pos), i.e. next > pos. advn >= 1
+    // gives that. F* needs help to see the witness via the refinement
+    // on advn.
+    if next > slen then FStar.List.Tot.rev acc
+    else
+      // Char.char_of_int precondition is i < 0xd7ff \/ (i >= 0xe000 /\
+      // i <= 0x10ffff). Split the branches so each matches one disjunct
+      // verbatim — the SMT solver needs the disjunct visible per arm.
+      let c : char =
+        if cp < 0xd7ff then char_of_int cp
+        else if cp >= 0xe000 && cp <= 0x10ffff then char_of_int cp
+        else char_of_int 0xFFFD
+      in
+      fs_codepoints_of_string_aux s slen next (c :: acc)
+
+val fs_codepoints_of_string : string -> list char
+let fs_codepoints_of_string s =
+  fs_codepoints_of_string_aux s (fs_byte_length s) 0 []

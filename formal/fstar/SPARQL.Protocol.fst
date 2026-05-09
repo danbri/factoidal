@@ -709,7 +709,10 @@ let rec json_escape_chars (cs : list FStar.Char.char)
   | c :: rest -> json_escape_char c ^ json_escape_chars rest
 
 let json_escape (s : string) : string =
-  json_escape_chars (String.list_of_string s)
+  // #240: switched from String.list_of_string (broken under jsoo
+  // use-js-string=true via BatUTF8) to Parser.FastString's byte-true
+  // codepoint walk. See Parser.FastString.fst for the rationale.
+  json_escape_chars (Parser.FastString.fs_codepoints_of_string s)
 
 let xml_escape_char (c : FStar.Char.char) : string =
   let code = char_code c in

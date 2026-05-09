@@ -558,7 +558,7 @@ let rec json_escape_chars (cs : FStar_Char.char Prims.list) : Prims.string=
   | [] -> ""
   | c::rest -> Prims.strcat (json_escape_char c) (json_escape_chars rest)
 let json_escape (s : Prims.string) : Prims.string=
-  json_escape_chars (FStar_String.list_of_string s)
+  json_escape_chars (Parser_FastString.fs_codepoints_of_string s)
 let xml_escape_char (c : FStar_Char.char) : Prims.string=
   let code = char_code c in
   if code = (Prims.of_int (0x26))

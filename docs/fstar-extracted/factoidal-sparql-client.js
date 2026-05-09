@@ -1560,7 +1560,69 @@ class FactoidalSparqlClient extends HTMLElement {
       console.log   = (...a) => buf.push(a.join(' '));
       console.error = (...a) => buf.push(a.join(' '));
 
-      globalThis.jsoo_fs_tmp = payloads.map(p => ({ name: p.vfs, content: p.content }));
+      // ?jsoo-debug=1 — surgical-instrument the debug bundle. js_of_ocaml's
+      // backtrace stubs (caml_get_exception_raw_backtrace,
+      // caml_convert_raw_backtrace) return [0], so the OCaml-runtime
+      // Printexc.handle_uncaught_exception path can't surface the stack
+      // even with OCAMLRUNPARAM=b. We intercept at the throw site
+      // instead — log the offending codepoint + JS stack via
+      // console.error, which the redirect above tees into `buf` and
+      // therefore into the on-page error panel. Independent of all
+      // OCaml-runtime backtrace plumbing; works on iOS Safari with no
+      // devtools. See #240.
+      let bundleSrc = src;
+      try {
+        const dbg = new URLSearchParams(globalThis.location?.search || '').get('jsoo-debug');
+        if (dbg === '1') {
+          const reBatUChar = /(\/\*<<src\/batUChar\.ml:55:7>>\*\/\s*throw\s+caml_maybe_attach_backtrace\s*\(\s*Out_of_range\s*,\s*1\s*\))/;
+          if (reBatUChar.test(bundleSrc)) {
+            bundleSrc = bundleSrc.replace(reBatUChar,
+              'console.error("[#240-probe BatUChar.chr] codepoint=" + n + " (0x" + n.toString(16) + ")\\nstack:\\n" + ((new Error()).stack || "<no stack>")); $1');
+            buf.push('[factoidal-sparql-client] jsoo-debug: BatUChar.chr$0 instrumented');
+          } else {
+            buf.push('[factoidal-sparql-client] jsoo-debug: BatUChar.chr$0 throw site not found — bundle layout changed, update reBatUChar');
+          }
+        }
+      } catch (_) { /* never let the diagnostic itself throw */ }
+
+      // #240: under js_of_ocaml use-js-string=true (jsoo 6.x default)
+      // OCaml strings ARE the host JS strings. The bundle stores all
+      // OCaml strings in a "bytes-as-JS-chars" convention (each JS
+      // char's low byte is one OCaml byte, built via String.fromCharCode
+      // per byte in MlBytes). Pass the same convention in: encode any
+      // content we hand to the bundle as UTF-8 bytes packed into a JS
+      // string with charCodeAt(i) === byte i. Otherwise the parser sees
+      // ü as one Unicode char, treats it as a UTF-8 4-byte leader, and
+      // BatUTF8 synthesises codepoint 0x36DB65 → BatUChar.Out_of_range.
+      const _enc_te = (typeof TextEncoder !== 'undefined') ? new TextEncoder() : null;
+      function jsToBytesAsChars(s) {
+        if (typeof s !== 'string') return s;
+        let u8;
+        if (_enc_te) {
+          u8 = _enc_te.encode(s);
+        } else {
+          // Manual UTF-8 encode for runtimes without TextEncoder.
+          const out = [];
+          for (let i = 0; i < s.length; i++) {
+            let c = s.charCodeAt(i);
+            if (c < 0x80) out.push(c);
+            else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
+            else if (c < 0xd800 || c >= 0xe000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+            else { const hi = c, lo = s.charCodeAt(++i); const cp = 0x10000 + (((hi & 0x3ff) << 10) | (lo & 0x3ff));
+                   out.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3f), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f)); }
+          }
+          u8 = new Uint8Array(out);
+        }
+        // Pack bytes into a JS string. fromCharCode.apply blows the
+        // arg-list limit on long inputs (~64K), so chunk.
+        let r = '';
+        for (let i = 0; i < u8.length; i += 0x4000) {
+          r += String.fromCharCode.apply(null, u8.subarray(i, Math.min(u8.length, i + 0x4000)));
+        }
+        return r;
+      }
+
+      globalThis.jsoo_fs_tmp = payloads.map(p => ({ name: p.vfs, content: jsToBytesAsChars(p.content) }));
       globalThis.process = globalThis.process || {};
       const argv = ['node', 'factoidal'];
       payloads.forEach(p => {
@@ -1575,7 +1637,7 @@ class FactoidalSparqlClient extends HTMLElement {
           argv.push('-d', p.vfs);
         }
       });
-      argv.push('-e', queryText, '-o', 'json');
+      argv.push('-e', jsToBytesAsChars(queryText), '-o', 'json');
       // Forward the runtime Logic selection. factoidal CLI accepts
       // --entail {none|RDFS|OWL-RL} (case-insensitive). "none" is the
       // default; skip the flag in that case for a tidier argv.
@@ -1602,7 +1664,7 @@ class FactoidalSparqlClient extends HTMLElement {
 
       const qT0 = performance.now();
       try {
-        (new Function(src))();
+        (new Function(bundleSrc))();
       } catch (e) {
         if (!e || e.message !== '__exit__') {
           // Dump full stack + any js_of_ocaml exception payload so the

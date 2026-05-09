@@ -1,5 +1,10 @@
 open Prims
 
+(* fs_cp_at_impl: parser-shared codepoint decoder. Reads the same
+ * 'byte view' as fs_byte_at (i.e. JS-string code units under jsoo+
+ * use-js-string), so it stays consistent with the rest of
+ * Parser.FastString. The byte-true codepoint walk used by
+ * json_escape is a separate path below (_fs_byte_at_prim). *)
 let fs_cp_at_impl (s : Prims.string) (pos : Prims.nat) : Stdlib.Int.t * Stdlib.Int.t =
   let open Stdlib in
   let p = Z.to_int pos in
@@ -49,6 +54,12 @@ let fs_cp_at_impl (s : Prims.string) (pos : Prims.nat) : Stdlib.Int.t * Stdlib.I
           else (cp, 4)
     end
     else (0xFFFD, 1)
+
+let _fs_safe_char_of_int (cp : Stdlib.Int.t) : FStar_Char.char =
+  let open Stdlib in
+  if cp >= 0 && (cp < 0xD7FF || (cp >= 0xE000 && cp <= 0x10FFFF))
+  then FStar_Char.char_of_int (Z.of_int cp)
+  else FStar_Char.char_of_int (Z.of_int 0xFFFD)
 let fs_byte_length (s : Prims.string) : Prims.nat=
   Z.of_int (String.length s)
 let fs_byte_at (s : Prims.string) (i : Prims.nat) : Prims.nat=
@@ -88,3 +99,19 @@ let fs_byte_index (s : Prims.string) (i : Prims.nat) : FStar_Char.char=
   else FStar_Char.char_of_int Prims.int_zero
 let fs_char_at (s : Prims.string) (i : Prims.nat) : FStar_Char.char=
   fs_byte_index s i
+let rec fs_codepoints_of_string_aux (s : Prims.string) (slen : Prims.nat)
+  (pos : Prims.nat) (acc : FStar_Char.char Prims.list) :
+  FStar_Char.char Prims.list=
+  let slen_i = Z.to_int slen in
+  let pos_i = Z.to_int pos in
+  if Stdlib.(>=) pos_i slen_i then FStar_List_Tot_Base.rev acc
+  else
+    let (cp, adv) = fs_cp_at_impl s pos in
+    let advn = if Stdlib.(<=) adv 0 then 1 else adv in
+    let next = Stdlib.(+) pos_i advn in
+    if Stdlib.(>) next slen_i then FStar_List_Tot_Base.rev acc
+    else
+      let c = _fs_safe_char_of_int cp in
+      fs_codepoints_of_string_aux s slen (Z.of_int next) (c :: acc)
+let fs_codepoints_of_string (s : Prims.string) : FStar_Char.char Prims.list=
+  fs_codepoints_of_string_aux s (Z.of_int (Stdlib.String.length s)) Prims.int_zero []

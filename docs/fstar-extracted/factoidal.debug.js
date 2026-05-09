@@ -29544,117 +29544,154 @@
     ba = [0, 65533, 1];
    function fs_cp_at_impl(s, pos){
     var
-     p =  /*<<Parser_FastString.ml:5:10>>*/ to_int(pos),
-     slen =  /*<<Parser_FastString.ml:6:2>>*/ caml_ml_string_length(s);
-     /*<<Parser_FastString.ml:7:2>>*/ if(0 <= p && slen > p){
-     var b0 =  /*<<Parser_FastString.ml:9:4>>*/ caml_string_unsafe_get(s, p);
-      /*<<Parser_FastString.ml:10:4>>*/ if(128 > b0)
-       /*<<Parser_FastString.ml:10:22>>*/ return [0, b0, 1];
-      /*<<Parser_FastString.ml:11:9>>*/ if(194 > b0)
-       /*<<Parser_FastString.ml:11:27>>*/ return bj;
-      /*<<Parser_FastString.ml:12:9>>*/ if(224 > b0){
-       /*<<Parser_FastString.ml:12:27>>*/ if(slen <= (p + 1 | 0))
-        /*<<Parser_FastString.ml:13:28>>*/ return bh;
+     p =  /*<<Parser_FastString.ml:10:10>>*/ to_int(pos),
+     slen =  /*<<Parser_FastString.ml:11:2>>*/ caml_ml_string_length(s);
+     /*<<Parser_FastString.ml:12:2>>*/ if(0 <= p && slen > p){
+     var b0 =  /*<<Parser_FastString.ml:14:4>>*/ caml_string_unsafe_get(s, p);
+      /*<<Parser_FastString.ml:15:4>>*/ if(128 > b0)
+       /*<<Parser_FastString.ml:15:22>>*/ return [0, b0, 1];
+      /*<<Parser_FastString.ml:16:9>>*/ if(194 > b0)
+       /*<<Parser_FastString.ml:16:27>>*/ return bj;
+      /*<<Parser_FastString.ml:17:9>>*/ if(224 > b0){
+       /*<<Parser_FastString.ml:17:27>>*/ if(slen <= (p + 1 | 0))
+        /*<<Parser_FastString.ml:18:28>>*/ return bh;
       var
        b1$1 =
-          /*<<Parser_FastString.ml:15:8>>*/ caml_string_unsafe_get
+          /*<<Parser_FastString.ml:20:8>>*/ caml_string_unsafe_get
           (s, p + 1 | 0);
-       /*<<Parser_FastString.ml:16:8>>*/ if(128 !== (b1$1 & 192))
-        /*<<Parser_FastString.ml:16:39>>*/ return bi;
+       /*<<Parser_FastString.ml:21:8>>*/ if(128 !== (b1$1 & 192))
+        /*<<Parser_FastString.ml:21:39>>*/ return bi;
       var
-       cp$1 =  /*<<Parser_FastString.ml:18:10>>*/ (b0 & 31) << 6 | b1$1 & 63;
-       /*<<Parser_FastString.ml:19:10>>*/ return [0, cp$1, 2];
+       cp$1 =  /*<<Parser_FastString.ml:23:10>>*/ (b0 & 31) << 6 | b1$1 & 63;
+       /*<<Parser_FastString.ml:24:10>>*/ return [0, cp$1, 2];
      }
-      /*<<Parser_FastString.ml:21:9>>*/ if(240 <= b0){
-       /*<<Parser_FastString.ml:35:9>>*/ if(245 <= b0)
-        /*<<Parser_FastString.ml:51:9>>*/ return ba;
-       /*<<Parser_FastString.ml:35:27>>*/ if(slen <= (p + 3 | 0))
-        /*<<Parser_FastString.ml:36:28>>*/ return bb;
+      /*<<Parser_FastString.ml:26:9>>*/ if(240 <= b0){
+       /*<<Parser_FastString.ml:40:9>>*/ if(245 <= b0)
+        /*<<Parser_FastString.ml:56:9>>*/ return ba;
+       /*<<Parser_FastString.ml:40:27>>*/ if(slen <= (p + 3 | 0))
+        /*<<Parser_FastString.ml:41:28>>*/ return bb;
       var
        b1 =
-          /*<<Parser_FastString.ml:38:8>>*/ caml_string_unsafe_get
+          /*<<Parser_FastString.ml:43:8>>*/ caml_string_unsafe_get
           (s, p + 1 | 0),
        b2 =
-          /*<<Parser_FastString.ml:39:8>>*/ caml_string_unsafe_get
+          /*<<Parser_FastString.ml:44:8>>*/ caml_string_unsafe_get
           (s, p + 2 | 0),
        b3 =
-          /*<<Parser_FastString.ml:40:8>>*/ caml_string_unsafe_get
+          /*<<Parser_FastString.ml:45:8>>*/ caml_string_unsafe_get
           (s, p + 3 | 0);
-       /*<<Parser_FastString.ml:41:8>>*/ if
+       /*<<Parser_FastString.ml:46:8>>*/ if
        (128 === (b1 & 192) && 128 === (b2 & 192) && 128 === (b3 & 192)){
        var
         cp =
-           /*<<Parser_FastString.ml:44:10>>*/ (b0 & 7) << 18 | (b1 & 63) << 12
+           /*<<Parser_FastString.ml:49:10>>*/ (b0 & 7) << 18 | (b1 & 63) << 12
           | (b2 & 63) << 6
           | b3 & 63;
-        /*<<Parser_FastString.ml:48:10>>*/ if(65536 <= cp && 1114111 >= cp)
-         /*<<Parser_FastString.ml:49:15>>*/ return [0, cp, 4];
-        /*<<Parser_FastString.ml:48:48>>*/ return bc;
+        /*<<Parser_FastString.ml:53:10>>*/ if(65536 <= cp && 1114111 >= cp)
+         /*<<Parser_FastString.ml:54:15>>*/ return [0, cp, 4];
+        /*<<Parser_FastString.ml:53:48>>*/ return bc;
       }
-       /*<<Parser_FastString.ml:42:39>>*/ return bd;
+       /*<<Parser_FastString.ml:47:39>>*/ return bd;
      }
-      /*<<Parser_FastString.ml:21:27>>*/ if(slen <= (p + 2 | 0))
-       /*<<Parser_FastString.ml:22:28>>*/ return be;
+      /*<<Parser_FastString.ml:26:27>>*/ if(slen <= (p + 2 | 0))
+       /*<<Parser_FastString.ml:27:28>>*/ return be;
      var
       b1$0 =
-         /*<<Parser_FastString.ml:24:8>>*/ caml_string_unsafe_get
+         /*<<Parser_FastString.ml:29:8>>*/ caml_string_unsafe_get
          (s, p + 1 | 0),
       b2$0 =
-         /*<<Parser_FastString.ml:25:8>>*/ caml_string_unsafe_get
+         /*<<Parser_FastString.ml:30:8>>*/ caml_string_unsafe_get
          (s, p + 2 | 0);
-      /*<<Parser_FastString.ml:26:8>>*/ if
+      /*<<Parser_FastString.ml:31:8>>*/ if
       (128 === (b1$0 & 192) && 128 === (b2$0 & 192)){
       var
        cp$0 =
-          /*<<Parser_FastString.ml:28:10>>*/ (b0 & 15) << 12
+          /*<<Parser_FastString.ml:33:10>>*/ (b0 & 15) << 12
          | (b1$0 & 63) << 6
          | b2$0 & 63;
       a:
       if(2048 <= cp$0){
-        /*<<Parser_FastString.ml:32:10>>*/ if(55296 <= cp$0 && 57343 >= cp$0)
+        /*<<Parser_FastString.ml:37:10>>*/ if(55296 <= cp$0 && 57343 >= cp$0)
         break a;
-        /*<<Parser_FastString.ml:33:15>>*/ return [0, cp$0, 3];
+        /*<<Parser_FastString.ml:38:15>>*/ return [0, cp$0, 3];
       }
-       /*<<Parser_FastString.ml:32:63>>*/ return bf;
+       /*<<Parser_FastString.ml:37:63>>*/ return bf;
      }
-      /*<<Parser_FastString.ml:26:65>>*/ return bg;
+      /*<<Parser_FastString.ml:31:65>>*/ return bg;
     }
-     /*<<Parser_FastString.ml:7:29>>*/ return a$;
-    /*<<Parser_FastString.ml:51:20>>*/ }
+     /*<<Parser_FastString.ml:12:29>>*/ return a$;
+    /*<<Parser_FastString.ml:56:20>>*/ }
+   function fs_safe_char_of_int(cp){
+    a:
+    if(0 <= cp){
+      /*<<Parser_FastString.ml:59:2>>*/ if
+      (55295 <= cp && (57344 > cp || 1114111 < cp))
+      break a;
+      /*<<Parser_FastString.ml:61:7>>*/ return char_of_int(cp) /*<<Parser_FastString.ml:62:47>>*/ ;
+    }
+     /*<<Parser_FastString.ml:62:7>>*/ return char_of_int(65533) /*<<Parser_FastString.ml:62:47>>*/ ;
+   }
    var
     fs_byte_length =  /*<<Parquet_Footer.ml:327:53>>*/ caml_ml_string_length;
    function fs_byte_at(s, i){
-     /*<<Parser_FastString.ml:55:43>>*/ return  /*<<Parser_FastString.ml:55:55>>*/ caml_string_unsafe_get
-            (s,  /*<<Parser_FastString.ml:55:43>>*/ to_int(i)) /*<<Parser_FastString.ml:55:57>>*/ ;
+     /*<<Parser_FastString.ml:66:43>>*/ return  /*<<Parser_FastString.ml:66:55>>*/ caml_string_unsafe_get
+            (s,  /*<<Parser_FastString.ml:66:43>>*/ to_int(i)) /*<<Parser_FastString.ml:66:57>>*/ ;
    }
    function fs_byte_sub(s, start, len){
     var
-     slen =  /*<<Parser_FastString.ml:58:2>>*/ caml_ml_string_length(s),
-     i =  /*<<Parser_FastString.ml:60:10>>*/ to_int(start),
-     n =  /*<<Parser_FastString.ml:61:10>>*/ to_int(len);
-     /*<<Parser_FastString.ml:62:2>>*/ if(0 <= i && 0 <= n && slen >= i){
+     slen =  /*<<Parser_FastString.ml:69:2>>*/ caml_ml_string_length(s),
+     i =  /*<<Parser_FastString.ml:71:10>>*/ to_int(start),
+     n =  /*<<Parser_FastString.ml:72:10>>*/ to_int(len);
+     /*<<Parser_FastString.ml:73:2>>*/ if(0 <= i && 0 <= n && slen >= i){
      var
       m =
-         /*<<Parser_FastString.ml:64:4>>*/ slen < (i + n | 0)
+         /*<<Parser_FastString.ml:75:4>>*/ slen < (i + n | 0)
          ? slen - i | 0
          : n;
-      /*<<Parser_FastString.ml:65:4>>*/ return sub$0(s, i, m) /*<<Parser_FastString.ml:65:20>>*/ ;
+      /*<<Parser_FastString.ml:76:4>>*/ return sub$0(s, i, m) /*<<Parser_FastString.ml:76:20>>*/ ;
     }
-     /*<<Parser_FastString.ml:62:37>>*/ return cst$1;
-    /*<<Parser_FastString.ml:65:20>>*/ }
+     /*<<Parser_FastString.ml:73:37>>*/ return cst$1;
+    /*<<Parser_FastString.ml:76:20>>*/ }
    function fs_cp_at(s, pos){
     var
-     match =  /*<<Parser_FastString.ml:79:18>>*/ fs_cp_at_impl(s, pos),
-     adv =  /*<<Parser_FastString.ml:79:37>>*/ match[2],
+     match =  /*<<Parser_FastString.ml:90:18>>*/ fs_cp_at_impl(s, pos),
+     adv =  /*<<Parser_FastString.ml:90:37>>*/ match[2],
      cp = match[1];
-     /*<<Parser_FastString.ml:80:2>>*/ return [0, cp, adv];
-    /*<<Parser_FastString.ml:80:29>>*/ }
+     /*<<Parser_FastString.ml:91:2>>*/ return [0, cp, adv];
+    /*<<Parser_FastString.ml:91:29>>*/ }
    function fs_byte_index(s, i){
-    var b =  /*<<Parser_FastString.ml:85:10>>*/ fs_byte_at(s, i);
-     /*<<Parser_FastString.ml:86:9>>*/ return  /*<<Parser_FastString.ml:86:5>>*/ symbol$6
-             (b,  /*<<Parser_FastString.ml:86:9>>*/ of_int(55296))
-            ?  /*<<Parser_FastString.ml:87:7>>*/ char_of_int(b)
-            :  /*<<Parser_FastString.ml:88:7>>*/ char_of_int(compact_t_stop) /*<<Parser_FastString.ml:88:44>>*/ ;
+    var b =  /*<<Parser_FastString.ml:96:10>>*/ fs_byte_at(s, i);
+     /*<<Parser_FastString.ml:97:9>>*/ return  /*<<Parser_FastString.ml:97:5>>*/ symbol$6
+             (b,  /*<<Parser_FastString.ml:97:9>>*/ of_int(55296))
+            ?  /*<<Parser_FastString.ml:98:7>>*/ char_of_int(b)
+            :  /*<<Parser_FastString.ml:99:7>>*/ char_of_int(compact_t_stop) /*<<Parser_FastString.ml:99:44>>*/ ;
+   }
+   function fs_codepoints_of_string_aux(s, slen, pos$0, acc$1){
+    var pos =  /*<<Parser_FastString.ml:105:15>>*/ pos$0, acc = acc$1;
+    for(;;){
+     var
+      slen_i = to_int(slen),
+      pos_i =  /*<<Parser_FastString.ml:106:14>>*/ to_int(pos);
+      /*<<Parser_FastString.ml:107:2>>*/ if(slen_i <= pos_i)
+       /*<<Parser_FastString.ml:107:35>>*/ return rev(acc) /*<<Parser_FastString.ml:115:67>>*/ ;
+     var
+      match =  /*<<Parser_FastString.ml:109:20>>*/ fs_cp_at_impl(s, pos),
+      adv =  /*<<Parser_FastString.ml:109:39>>*/ match[2],
+      cp = match[1],
+      advn =  /*<<Parser_FastString.ml:110:4>>*/ 0 < adv ? adv : 1,
+      next =  /*<<Parser_FastString.ml:111:4>>*/ pos_i + advn | 0;
+      /*<<Parser_FastString.ml:112:4>>*/ if(slen_i < next)
+       /*<<Parser_FastString.ml:112:35>>*/ return rev(acc) /*<<Parser_FastString.ml:115:67>>*/ ;
+     var
+      c =  /*<<Parser_FastString.ml:114:14>>*/ fs_safe_char_of_int(cp),
+      acc$0 =  /*<<Parser_FastString.ml:115:6>>*/ [0, c, acc];
+     pos = next;
+     acc = acc$0;
+    }
+    /*<<Parser_FastString.ml:115:67>>*/ }
+   function fs_codepoints_of_string(s){
+     /*<<Parser_FastString.ml:117:2>>*/ return fs_codepoints_of_string_aux
+            (s, caml_ml_string_length(s), compact_t_stop, 0) /*<<Parser_FastString.ml:117:85>>*/ ;
    }
    function find_colon(s, pos$1, fuel$1){
     var pos =  /*<<Parser_IRI.ml:33:12>>*/ pos$1, fuel = fuel$1;
@@ -77539,8 +77576,8 @@
             ( /*<<SPARQL_Protocol.ml:559:28>>*/ json_escape_char(c), a) /*<<SPARQL_Protocol.ml:559:73>>*/ ;
    }
    function json_escape$0(s){
-     /*<<SPARQL_Protocol.ml:561:20>>*/ return  /*<<SPARQL_Protocol.ml:561:51>>*/ json_escape_chars
-            ( /*<<SPARQL_Protocol.ml:561:20>>*/ list_of_string(s)) /*<<SPARQL_Protocol.ml:561:51>>*/ ;
+     /*<<SPARQL_Protocol.ml:561:20>>*/ return  /*<<SPARQL_Protocol.ml:561:65>>*/ json_escape_chars
+            ( /*<<SPARQL_Protocol.ml:561:20>>*/ fs_codepoints_of_string(s)) /*<<SPARQL_Protocol.ml:561:65>>*/ ;
    }
    var cst$33 =  /*<<?>>*/ '"}';
    function json_term(t){
