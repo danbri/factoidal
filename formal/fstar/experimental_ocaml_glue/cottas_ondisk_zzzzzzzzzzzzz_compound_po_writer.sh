@@ -338,12 +338,12 @@ module Cottas_compound_po_writer = struct
     Printf.eprintf "[compound-po-trace] total file size = %d bytes (%.1f MB)\n%!"
       total_size (float_of_int total_size /. (1024.0 *. 1024.0));
     let buf = Buffer.create total_size in
-    (* Header. *)
-    write_u32_le buf copo_magic;
-    write_u32_le buf layout_version;
-    write_u32_le buf num_rgs;
-    write_u32_le buf pred_dict_size;
-    write_u32_le buf obj_dict_size;
+    (* Header — produced by F* (rule #11(a) byte-layout boundary). *)
+    let header_chars =
+      RDF_CottasStore_CompoundPresenceWriter.serialize_compound_presence_header
+        (Z.of_int num_rgs) (Z.of_int pred_dict_size) (Z.of_int obj_dict_size)
+    in
+    List.iter (fun b -> Buffer.add_char buf (Char.chr (b land 0xff))) header_chars;
     (* Index. *)
     for i = 0 to n_index - 1 do
       write_u64_le buf rg_offsets.(i)
