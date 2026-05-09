@@ -439,11 +439,12 @@ module Cottas_offset_idx = struct
     Printf.eprintf "[lamed3-trace] offsets-build computed total_size=%d bytes (%.1f MB)\n%!"
       total_size (float_of_int total_size /. (1024.0 *. 1024.0));
     let buf = Buffer.create total_size in
-    (* Header. *)
-    write_u32_le buf offsets_magic;
-    write_u32_le buf layout_version;
-    write_u32_le buf num_rgs;
-    write_u32_le buf num_preds;
+    (* Header — produced by F* (rule #11(a) byte-layout boundary). *)
+    let header_chars =
+      RDF_CottasStore_OffsetsWriter.serialize_offsets_header
+        (Z.of_int num_rgs) (Z.of_int num_preds)
+    in
+    List.iter (fun b -> Buffer.add_char buf (Char.chr (b land 0xff))) header_chars;
     (* Index. *)
     for i = 0 to n_index - 1 do
       write_u64_le buf rg_offsets.(i)
