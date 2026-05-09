@@ -39,7 +39,7 @@ Running 29 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  chain2trans1
   FAIL  somevaluesfrom2bnode
 
-Profile-RL PositiveEntailmentTests: 20 pass, 9 fail (out of 29) in 1.45s
+Profile-RL PositiveEntailmentTests: 20 pass, 9 fail (out of 29) in 1.34s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 6 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
@@ -50,7 +50,7 @@ Running 6 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fue
   FAIL/unexpected-entailment  WebOnt-equivalentClass-008
   PASS  WebOnt-miscellaneous-302
 
-Profile-RL NegativeEntailmentTests: 4 pass, 2 fail (out of 6) in 0.08s
+Profile-RL NegativeEntailmentTests: 4 pass, 2 fail (out of 6) in 0.07s
 
 Running 72 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  FS2RDF-different-individuals-2-annotation-ar
@@ -126,7 +126,7 @@ Running 72 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  owl2-rl-invalid-rightside-somevaluesfrom
   PASS  somevaluesfrom2bnode
 
-Profile-RL ConsistencyTests: 71 pass, 1 fail (out of 72) in 2.08s
+Profile-RL ConsistencyTests: 71 pass, 1 fail (out of 72) in 1.91s
 
 Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  DisjointClasses-002

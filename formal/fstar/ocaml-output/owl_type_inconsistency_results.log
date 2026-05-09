@@ -143,4 +143,4 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   FAIL/unexpected-consistency  rdfbased-sem-restrict-maxqcr-inst-obj-zero
   FAIL/no-premise  string-integer-clash
 
-Profile-RL InconsistencyTests: 15 pass, 113 fail (out of 128) in 4.32s
+Profile-RL InconsistencyTests: 15 pass, 113 fail (out of 128) in 4.05s
