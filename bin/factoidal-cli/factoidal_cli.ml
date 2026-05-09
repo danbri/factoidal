@@ -203,43 +203,11 @@ let build_dataset_backend
     : SPARQL11_Store.dataset_backend =
   let module S = SPARQL11_Store in
   let in_memory_backend = S.indexed_dataset_backend in_memory in
-  match cottas_stores with
-  | [] -> in_memory_backend
-  | _ ->
-    let cottas_backends =
-      List.map S.cottas_ondisk_dataset_backend cottas_stores
-    in
-    let dsb_default =
-      S.GB_Union (
-        in_memory_backend.S.dsb_default
-        :: List.map (fun (b : S.dataset_backend) -> b.S.dsb_default) cottas_backends
-      )
-    in
-    let by_name : (RDF_Graph_Executable.iri, S.graph_backend list ref) Hashtbl.t =
-      Hashtbl.create 17 in
-    let order : RDF_Graph_Executable.iri list ref = ref [] in
-    let push_named (ngb : S.named_graph_backend) =
-      match Hashtbl.find_opt by_name ngb.S.ngb_name with
-      | Some r -> r := ngb.S.ngb_graph :: !r
-      | None ->
-        let r = ref [ngb.S.ngb_graph] in
-        Hashtbl.add by_name ngb.S.ngb_name r;
-        order := ngb.S.ngb_name :: !order
-    in
-    List.iter push_named in_memory_backend.S.dsb_named;
-    List.iter (fun (b : S.dataset_backend) ->
-      List.iter push_named b.S.dsb_named
-    ) cottas_backends;
-    let dsb_named =
-      List.rev_map (fun name ->
-        let parts = List.rev !(Hashtbl.find by_name name) in
-        let g = match parts with
-          | [single] -> single
-          | many -> S.GB_Union many in
-        { S.ngb_name = name; S.ngb_graph = g }
-      ) !order
-    in
-    { S.dsb_default; S.dsb_named }
+  let cottas_backends =
+    List.map S.cottas_ondisk_dataset_backend cottas_stores
+  in
+  RDF_Store_Combine.combine_dataset_backends
+    (in_memory_backend :: cottas_backends)
 
 (* ============================================================================
    Result table formatting (like arq / isql)
