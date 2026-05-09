@@ -1595,7 +1595,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: IRI-resolution-02
   PASS: IRI-resolution-07
   PASS: IRI-resolution-08
-  [suite time: 0.1s]
+  [suite time: 0.2s]
 
 --- rdf-turtle ---
   PASS: IRI_subject
