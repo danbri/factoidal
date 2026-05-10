@@ -1,0 +1,4091 @@
+{
+  "nodes": [
+    {
+      "id": "accept_entry",
+      "namespace": "SPARQL",
+      "module": "SPARQL.Protocol",
+      "kind": "alias",
+      "members": [],
+      "deps": 2,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "access_path",
+      "namespace": "SPARQL",
+      "module": "SPARQL.Plan.AccessPath",
+      "kind": "variant",
+      "members": [
+        "AP_Skip",
+        "AP_OffsetJump",
+        "AP_FullScan"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "aggregate_fn",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Algebra",
+      "kind": "variant",
+      "members": [
+        "Agg_Count",
+        "Agg_Sum",
+        "Agg_Min",
+        "Agg_Max",
+        "Agg_Avg",
+        "Agg_GroupConcat",
+        "Agg_Sample"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "algebra_op",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "variant",
+      "members": [
+        "BGP_Op",
+        "Filter_Op",
+        "Optional_Op",
+        "Union_Op"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "arith_op",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Algebra",
+      "kind": "alias",
+      "members": [],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "backend_info",
+      "namespace": "SPARQL",
+      "module": "SPARQL.HTTP.BackendInfo",
+      "kind": "record",
+      "members": [
+        "bi_kind",
+        "bi_source",
+        "bi_in_memory_triples",
+        "bi_in_memory_default_graph_triples",
+        "bi_in_memory_named_graphs",
+        "bi_in_memory_named_graph_triples",
+        "bi_cottas"
+      ],
+      "deps": 2,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "backend_kind",
+      "namespace": "SPARQL",
+      "module": "SPARQL.HTTP.BackendInfo",
+      "kind": "variant",
+      "members": [
+        "BK_InMem",
+        "BK_CottasOnDisk",
+        "BK_Hybrid",
+        "BK_Empty"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "ballyhoo_error",
+      "namespace": "Parser",
+      "module": "Parser.Ballyhoo",
+      "kind": "record",
+      "members": [
+        "be_line",
+        "be_message"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "ballyhoo_event",
+      "namespace": "Parser",
+      "module": "Parser.Ballyhoo",
+      "kind": "variant",
+      "members": [
+        "BE_DefaultTriple",
+        "BE_NamedTriple"
+      ],
+      "deps": 2,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "ballyhoo_mode",
+      "namespace": "Parser",
+      "module": "Parser.Ballyhoo",
+      "kind": "variant",
+      "members": [
+        "BM_NQuads"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "ballyhoo_order",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooHDT",
+      "kind": "variant",
+      "members": [
+        "BO_SPO",
+        "BO_SOP",
+        "BO_PSO",
+        "BO_POS",
+        "BO_OSP",
+        "BO_OPS"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "ballyhoo_state",
+      "namespace": "Parser",
+      "module": "Parser.Ballyhoo",
+      "kind": "record",
+      "members": [
+        "bs_mode",
+        "bs_carry",
+        "bs_line_no",
+        "bs_events_rev",
+        "bs_errors_rev",
+        "bs_lines_ok",
+        "bs_lines_failed"
+      ],
+      "deps": 3,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "bgp",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "alias",
+      "members": [],
+      "deps": 1,
+      "rdeps": 2,
+      "inProject": true
+    },
+    {
+      "id": "binding_row",
+      "namespace": "SPARQL",
+      "module": "SPARQL.Protocol",
+      "kind": "alias",
+      "members": [],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "bitmap_handle",
+      "namespace": "RDF",
+      "module": "RDF.CottasStore.PresenceBitmap",
+      "kind": "record",
+      "members": [
+        "bh_path",
+        "bh_header"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "bloom_bits",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooBloom",
+      "kind": "alias",
+      "members": [],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "bn_full_key",
+      "namespace": "RDF",
+      "module": "RDF.Canonical",
+      "kind": "record",
+      "members": [
+        "bk_orig",
+        "bk_hfdq",
+        "bk_nbr1",
+        "bk_nbr2",
+        "bk_nbr3"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "bn_hfdq_pair",
+      "namespace": "RDF",
+      "module": "RDF.Canonical",
+      "kind": "alias",
+      "members": [],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "bnode_id",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "alias",
+      "members": [],
+      "deps": 0,
+      "rdeps": 8,
+      "inProject": true
+    },
+    {
+      "id": "bound_status",
+      "namespace": "SPARQL",
+      "module": "SPARQL.Explain",
+      "kind": "variant",
+      "members": [
+        "BS_Var",
+        "BS_Hit",
+        "BS_Miss",
+        "BS_Other"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "bucket",
+      "namespace": "RDF",
+      "module": "RDF.Canonical",
+      "kind": "alias",
+      "members": [],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "bucket_map",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "alias",
+      "members": [],
+      "deps": 1,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "budget",
+      "namespace": "SPARQL",
+      "module": "SPARQL.Eval.TimeBudget",
+      "kind": "record",
+      "members": [],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "budgeted",
+      "namespace": "SPARQL",
+      "module": "SPARQL.Eval.TimeBudget",
+      "kind": "variant",
+      "members": [
+        "BudgetedOk",
+        "BudgetedExpired"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "cast_target",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Algebra",
+      "kind": "variant",
+      "members": [
+        "Cast_Integer",
+        "Cast_Decimal",
+        "Cast_Float",
+        "Cast_Double",
+        "Cast_String",
+        "Cast_Boolean",
+        "Cast_DateTime"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "ce_combinator",
+      "namespace": "OWL",
+      "module": "OWL.QueryRewrite",
+      "kind": "variant",
+      "members": [
+        "CE_Intersect",
+        "CE_MinCardinality",
+        "CE_ComplementOf"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "cell_decision",
+      "namespace": "RDF",
+      "module": "RDF.Store.Columnar.OffsetIndex",
+      "kind": "variant",
+      "members": [
+        "CD_NoInfo",
+        "CD_Empty",
+        "CD_Use"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "cell_view",
+      "namespace": "RDF",
+      "module": "RDF.Store.Columnar.OffsetIndex",
+      "kind": "record",
+      "members": [
+        "cv_start",
+        "cv_count"
+      ],
+      "deps": 0,
+      "rdeps": 2,
+      "inProject": true
+    },
+    {
+      "id": "class_expr",
+      "namespace": "Tableau",
+      "module": "Tableau",
+      "kind": "variant",
+      "members": [
+        "CE_Named",
+        "CE_SomeValuesFrom",
+        "CE_AllValuesFrom",
+        "CE_HasValue",
+        "CE_IntersectionOf",
+        "CE_UnionOf",
+        "CE_ComplementOf",
+        "CE_MinCard",
+        "CE_MaxCard",
+        "CE_ExactCard",
+        "CE_MinQualCard",
+        "CE_MaxQualCard",
+        "CE_ExactQualCard",
+        "CE_Unknown"
+      ],
+      "deps": 2,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "comp_op",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "variant",
+      "members": [
+        "Eq",
+        "Ne",
+        "Lt",
+        "Gt",
+        "Le",
+        "Ge"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "compact_field",
+      "namespace": "Parquet",
+      "module": "Parquet.Footer",
+      "kind": "record",
+      "members": [
+        "cf_id",
+        "cf_type",
+        "cf_value_start",
+        "cf_next"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "compact_list_info",
+      "namespace": "Parquet",
+      "module": "Parquet.Footer",
+      "kind": "record",
+      "members": [
+        "cli_count",
+        "cli_etype",
+        "cli_payload_start"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "companion_file_status",
+      "namespace": "SPARQL",
+      "module": "SPARQL.Plan.Loader",
+      "kind": "variant",
+      "members": [
+        "CFS_Present",
+        "CFS_Missing",
+        "CFS_Corrupt",
+        "CFS_StaleSchema"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "companion_status",
+      "namespace": "RDF",
+      "module": "RDF.CottasStore.OnDiskIndex",
+      "kind": "record",
+      "members": [
+        "cs_dict_path",
+        "cs_presence_path",
+        "cs_dict_header",
+        "cs_presence_header"
+      ],
+      "deps": 2,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "compound_handle",
+      "namespace": "RDF",
+      "module": "RDF.CottasStore.CompoundPresenceBitmap",
+      "kind": "record",
+      "members": [
+        "ph_path",
+        "ph_header"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "compound_header",
+      "namespace": "RDF",
+      "module": "RDF.CottasStore.CompoundPresenceBitmap",
+      "kind": "record",
+      "members": [
+        "ch_magic",
+        "ch_version",
+        "ch_num_rgs",
+        "ch_pred_dict_size",
+        "ch_obj_dict_size"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "constraint_component",
+      "namespace": "SHACL",
+      "module": "SHACL.Validation",
+      "kind": "variant",
+      "members": [
+        "CC_MinCount",
+        "CC_MaxCount",
+        "CC_Datatype",
+        "CC_NodeKind",
+        "CC_Class",
+        "CC_In",
+        "CC_HasValue",
+        "CC_Pattern",
+        "CC_MinLength",
+        "CC_MaxLength",
+        "CC_LanguageIn",
+        "CC_UniqueLang",
+        "CC_MinInclusive",
+        "CC_MaxInclusive",
+        "CC_MinExclusive",
+        "CC_MaxExclusive",
+        "CC_Not",
+        "CC_And",
+        "CC_Or",
+        "CC_Xone",
+        "CC_Equals",
+        "CC_Disjoint",
+        "CC_LessThan",
+        "CC_LessThanOrEq",
+        "CC_Closed",
+        "CC_Sparql"
+      ],
+      "deps": 4,
+      "rdeps": 2,
+      "inProject": true
+    },
+    {
+      "id": "corpus_graph_binding",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooHDT",
+      "kind": "record",
+      "members": [
+        "cgb_graph_name",
+        "cgb_artifact_path",
+        "cgb_summary"
+      ],
+      "deps": 2,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "cors_policy",
+      "namespace": "SPARQL",
+      "module": "SPARQL.HTTP.Response",
+      "kind": "variant",
+      "members": [
+        "CORS_Off",
+        "CORS_Any",
+        "CORS_List"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "cottas_artifact_summary",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooCOTTAS",
+      "kind": "record",
+      "members": [
+        "cas_path",
+        "cas_num_quads",
+        "cas_num_row_groups",
+        "cas_dictionary",
+        "cas_row_groups"
+      ],
+      "deps": 2,
+      "rdeps": 3,
+      "inProject": true
+    },
+    {
+      "id": "cottas_bound_qp",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooCOTTAS",
+      "kind": "record",
+      "members": [
+        "cbqp_s",
+        "cbqp_p",
+        "cbqp_o",
+        "cbqp_g"
+      ],
+      "deps": 2,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "cottas_column_kind",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooCOTTAS",
+      "kind": "variant",
+      "members": [
+        "CC_Subject",
+        "CC_Predicate",
+        "CC_Object",
+        "CC_Graph"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "cottas_column_summary",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooCOTTAS",
+      "kind": "record",
+      "members": [
+        "ccs_kind",
+        "ccs_num_values",
+        "ccs_null_count",
+        "ccs_encoding"
+      ],
+      "deps": 2,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "cottas_dataset_store",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooCOTTAS",
+      "kind": "record",
+      "members": [
+        "cds_artifact_path",
+        "cds_summary",
+        "cds_handle"
+      ],
+      "deps": 1,
+      "rdeps": 2,
+      "inProject": true
+    },
+    {
+      "id": "cottas_dictionary_summary",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooCOTTAS",
+      "kind": "record",
+      "members": [
+        "cds_num_terms",
+        "cds_num_graphs",
+        "cds_bytes_strings"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "cottas_encoding",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooCOTTAS",
+      "kind": "variant",
+      "members": [
+        "CE_Plain",
+        "CE_Dictionary",
+        "CE_RLE",
+        "CE_Delta"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "cottas_graph_ref",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooCOTTAS",
+      "kind": "alias",
+      "members": [],
+      "deps": 0,
+      "rdeps": 3,
+      "inProject": true
+    },
+    {
+      "id": "cottas_named_graph_store",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooCOTTAS",
+      "kind": "record",
+      "members": [
+        "cngs_name",
+        "cngs_ref",
+        "cngs_dataset"
+      ],
+      "deps": 3,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "cottas_ondisk_handle",
+      "namespace": "RDF",
+      "module": "RDF.CottasStore",
+      "kind": "record",
+      "members": [
+        "coh_path",
+        "coh_summary",
+        "coh_subjects",
+        "coh_predicates",
+        "coh_objects",
+        "coh_graphs",
+        "coh_subj_revmap",
+        "coh_pred_revmap",
+        "coh_obj_revmap",
+        "coh_graph_revmap",
+        "coh_subjects_raw",
+        "coh_predicates_raw",
+        "coh_objects_raw",
+        "coh_graphs_raw",
+        "coh_subj_raw_revmap",
+        "coh_pred_raw_revmap",
+        "coh_obj_raw_revmap",
+        "coh_graph_raw_revmap"
+      ],
+      "deps": 5,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "cottas_ondisk_store",
+      "namespace": "RDF",
+      "module": "RDF.CottasStore",
+      "kind": "record",
+      "members": [
+        "cods_artifact_path",
+        "cods_summary",
+        "cods_handle"
+      ],
+      "deps": 2,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "cottas_qp_row",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooCOTTAS",
+      "kind": "record",
+      "members": [
+        "cqpr_s",
+        "cqpr_p",
+        "cqpr_o",
+        "cqpr_g"
+      ],
+      "deps": 2,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "cottas_row_group_summary",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooCOTTAS",
+      "kind": "record",
+      "members": [
+        "crgs_index",
+        "crgs_num_rows",
+        "crgs_columns"
+      ],
+      "deps": 1,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "cottas_summary",
+      "namespace": "SPARQL",
+      "module": "SPARQL.HTTP.BackendInfo",
+      "kind": "record",
+      "members": [
+        "cs_path",
+        "cs_quads",
+        "cs_row_groups"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "cottas_term_ref",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooCOTTAS",
+      "kind": "alias",
+      "members": [],
+      "deps": 0,
+      "rdeps": 2,
+      "inProject": true
+    },
+    {
+      "id": "dataset_backend",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Store",
+      "kind": "record",
+      "members": [
+        "dsb_default",
+        "dsb_named"
+      ],
+      "deps": 2,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "dict_cache",
+      "namespace": "RDF",
+      "module": "RDF.CottasStore",
+      "kind": "alias",
+      "members": [],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "dict_header",
+      "namespace": "RDF",
+      "module": "RDF.CottasStore.OnDiskIndex",
+      "kind": "record",
+      "members": [
+        "dh_magic",
+        "dh_version",
+        "dh_num_tokens",
+        "dh_ids_offset",
+        "dh_tokens_offset"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "dlba_page_cache",
+      "namespace": "Parquet",
+      "module": "Parquet.Footer",
+      "kind": "record",
+      "members": [
+        "dpc_payload_hex",
+        "dpc_values_offset",
+        "dpc_value_count",
+        "dpc_first_length",
+        "dpc_min_delta",
+        "dpc_bit_width",
+        "dpc_packed_start",
+        "dpc_value_data_offset",
+        "dpc_lengths",
+        "dpc_value_starts"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "estimate_count",
+      "namespace": "SPARQL",
+      "module": "SPARQL.Plan.Estimate",
+      "kind": "variant",
+      "members": [
+        "EC_Exact",
+        "EC_Approx",
+        "EC_Unknown"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "eval_result",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Algebra",
+      "kind": "variant",
+      "members": [
+        "ER_Term",
+        "ER_Bool",
+        "ER_Num",
+        "ER_Dec",
+        "ER_Dbl",
+        "ER_Error"
+      ],
+      "deps": 1,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "expr",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Algebra",
+      "kind": "record",
+      "members": [
+        "sm_order_by",
+        "sm_distinct",
+        "sm_reduced",
+        "sm_offset",
+        "sm_limit",
+        "q_base",
+        "q_prefixes",
+        "q_form",
+        "q_dataset",
+        "q_pattern",
+        "q_group_by",
+        "q_having",
+        "q_modifier",
+        "q_values"
+      ],
+      "deps": 11,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "filter_expr_eval",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "alias",
+      "members": [],
+      "deps": 2,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "ggp_check_result",
+      "namespace": "SPARQL",
+      "module": "SPARQL.Update.Sandbox",
+      "kind": "variant",
+      "members": [
+        "GCR_Rewrite",
+        "GCR_Reject"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "ggp_target_status",
+      "namespace": "SPARQL",
+      "module": "SPARQL.Update.Sandbox",
+      "kind": "variant",
+      "members": [
+        "GTS_Ok",
+        "GTS_Mismatch",
+        "GTS_NonIri"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "graph_backend",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Store",
+      "kind": "variant",
+      "members": [
+        "GB_List",
+        "GB_Indexed",
+        "GB_HDT",
+        "GB_COTTAS",
+        "GB_CottasOnDisk",
+        "GB_Union"
+      ],
+      "deps": 6,
+      "rdeps": 2,
+      "inProject": true
+    },
+    {
+      "id": "graph_key",
+      "namespace": "SPARQL",
+      "module": "SPARQL.GraphStore",
+      "kind": "alias",
+      "members": [],
+      "deps": 0,
+      "rdeps": 2,
+      "inProject": true
+    },
+    {
+      "id": "graph_ref",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Algebra",
+      "kind": "variant",
+      "members": [
+        "GR_Default",
+        "GR_Named",
+        "GR_All",
+        "GR_Graph"
+      ],
+      "deps": 1,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "graph_store",
+      "namespace": "SPARQL",
+      "module": "SPARQL.GraphStore",
+      "kind": "record",
+      "members": [
+        "gs_default",
+        "gs_named"
+      ],
+      "deps": 2,
+      "rdeps": 2,
+      "inProject": true
+    },
+    {
+      "id": "gref_check_result",
+      "namespace": "SPARQL",
+      "module": "SPARQL.Update.Sandbox",
+      "kind": "variant",
+      "members": [
+        "GRCR_Ok",
+        "GRCR_Reject"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "group",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Algebra",
+      "kind": "record",
+      "members": [
+        "g_key",
+        "g_solutions"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "gs_named",
+      "namespace": "SPARQL",
+      "module": "SPARQL.GraphStore",
+      "kind": "record",
+      "members": [
+        "gn_iri",
+        "gn_graph"
+      ],
+      "deps": 2,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "gs_target",
+      "namespace": "SPARQL",
+      "module": "SPARQL.GraphStore",
+      "kind": "variant",
+      "members": [
+        "GT_Default",
+        "GT_Named"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "hdt_artifact_summary",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooHDT",
+      "kind": "record",
+      "members": [
+        "has_source_iri",
+        "has_dictionary",
+        "has_triples",
+        "has_statistics"
+      ],
+      "deps": 4,
+      "rdeps": 3,
+      "inProject": true
+    },
+    {
+      "id": "hdt_bound_tp",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooHDT",
+      "kind": "record",
+      "members": [
+        "hbt_s",
+        "hbt_p",
+        "hbt_o"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "hdt_control_info",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooHDT",
+      "kind": "record",
+      "members": [
+        "hci_format_iri",
+        "hci_length_hint"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "hdt_dictionary_summary",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooHDT",
+      "kind": "record",
+      "members": [
+        "hds_num_shared_subject_object",
+        "hds_num_subjects",
+        "hds_num_predicates",
+        "hds_num_objects",
+        "hds_size_strings"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "hdt_graph_store",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooHDT",
+      "kind": "record",
+      "members": [
+        "hgs_graph_name",
+        "hgs_artifact_path",
+        "hgs_summary",
+        "hgs_handle"
+      ],
+      "deps": 2,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "hdt_statistics",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooHDT",
+      "kind": "record",
+      "members": [
+        "hs_hdt_size",
+        "hs_original_size"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "hdt_term_ref",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooHDT",
+      "kind": "alias",
+      "members": [],
+      "deps": 0,
+      "rdeps": 4,
+      "inProject": true
+    },
+    {
+      "id": "hdt_tp_row",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooHDT",
+      "kind": "record",
+      "members": [
+        "hrow_s",
+        "hrow_p",
+        "hrow_o"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "hdt_triples_summary",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooHDT",
+      "kind": "record",
+      "members": [
+        "hts_num_triples",
+        "hts_order"
+      ],
+      "deps": 1,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "hdtq_annotation_mode",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooHDTQ",
+      "kind": "variant",
+      "members": [
+        "HQ_AnnotatedGraphs",
+        "HQ_AnnotatedTriples"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "hdtq_artifact_summary",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooHDTQ",
+      "kind": "record",
+      "members": [
+        "hqas_hdt",
+        "hqas_graph_dictionary",
+        "hqas_quad_info"
+      ],
+      "deps": 3,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "hdtq_bound_qp",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooHDTQ",
+      "kind": "record",
+      "members": [
+        "hqbp_s",
+        "hqbp_p",
+        "hqbp_o",
+        "hqbp_g"
+      ],
+      "deps": 2,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "hdtq_dataset_store",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooHDTQ",
+      "kind": "record",
+      "members": [
+        "hqds_artifact_path",
+        "hqds_summary",
+        "hqds_handle"
+      ],
+      "deps": 1,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "hdtq_graph_dictionary_summary",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooHDTQ",
+      "kind": "record",
+      "members": [
+        "hgds_num_graphs",
+        "hgds_size_strings"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "hdtq_graph_ref",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooHDTQ",
+      "kind": "alias",
+      "members": [],
+      "deps": 0,
+      "rdeps": 3,
+      "inProject": true
+    },
+    {
+      "id": "hdtq_named_graph_store",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooHDTQ",
+      "kind": "record",
+      "members": [
+        "hqng_name",
+        "hqng_ref",
+        "hqng_dataset"
+      ],
+      "deps": 3,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "hdtq_qp_row",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooHDTQ",
+      "kind": "record",
+      "members": [
+        "hqrow_s",
+        "hqrow_p",
+        "hqrow_o",
+        "hqrow_g"
+      ],
+      "deps": 2,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "hdtq_quad_info_summary",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooHDTQ",
+      "kind": "record",
+      "members": [
+        "hqis_num_quads",
+        "hqis_annotation_mode"
+      ],
+      "deps": 1,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "http_client_error",
+      "namespace": "SPARQL",
+      "module": "SPARQL.HTTP.Client",
+      "kind": "variant",
+      "members": [
+        "HCE_MalformedStatusLine",
+        "HCE_MalformedHeader",
+        "HCE_BadStatusCode",
+        "HCE_HeadersTooLarge",
+        "HCE_BodyTooLarge",
+        "HCE_MissingCRLF",
+        "HCE_BadResponse"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "http_client_result",
+      "namespace": "SPARQL",
+      "module": "SPARQL.HTTP.Client",
+      "kind": "alias",
+      "members": [],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "http_error",
+      "namespace": "SPARQL",
+      "module": "SPARQL.HTTP",
+      "kind": "variant",
+      "members": [
+        "HE_MalformedRequestLine",
+        "HE_MalformedHeader",
+        "HE_BadRequest",
+        "HE_BodyTooLarge",
+        "HE_HeadersTooLarge",
+        "HE_MissingCRLF"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "http_request",
+      "namespace": "SPARQL",
+      "module": "SPARQL.HTTP",
+      "kind": "record",
+      "members": [
+        "hr_method",
+        "hr_path",
+        "hr_query_str",
+        "hr_version",
+        "hr_headers",
+        "hr_body"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "http_request_msg",
+      "namespace": "SPARQL",
+      "module": "SPARQL.HTTP.Client",
+      "kind": "record",
+      "members": [
+        "rm_method",
+        "rm_path",
+        "rm_query_str",
+        "rm_version",
+        "rm_host",
+        "rm_headers",
+        "rm_body"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "http_response",
+      "namespace": "SPARQL",
+      "module": "SPARQL.HTTP.Client",
+      "kind": "record",
+      "members": [
+        "rsp_version",
+        "rsp_status",
+        "rsp_reason",
+        "rsp_headers",
+        "rsp_body"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "http_result",
+      "namespace": "SPARQL",
+      "module": "SPARQL.HTTP",
+      "kind": "alias",
+      "members": [],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "indexed_graph",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "record",
+      "members": [
+        "ig_triples",
+        "ig_pred",
+        "ig_subj",
+        "ig_obj",
+        "ig_sp",
+        "ig_po",
+        "ig_so"
+      ],
+      "deps": 2,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "iri",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "alias",
+      "members": [],
+      "deps": 0,
+      "rdeps": 15,
+      "inProject": true
+    },
+    {
+      "id": "iri_parts",
+      "namespace": "Parser",
+      "module": "Parser.IRI",
+      "kind": "record",
+      "members": [
+        "ip_scheme",
+        "ip_authority",
+        "ip_path",
+        "ip_query",
+        "ip_fragment"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "iri_ref_span",
+      "namespace": "Parser",
+      "module": "Parser.TurtleScanner",
+      "kind": "record",
+      "members": [
+        "irs_span",
+        "irs_has_colon"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "issuer_state",
+      "namespace": "RDF",
+      "module": "RDF.Canonical",
+      "kind": "record",
+      "members": [
+        "is_counter",
+        "is_issued"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "json_value",
+      "namespace": "Parser",
+      "module": "Parser.JSONResults",
+      "kind": "variant",
+      "members": [
+        "JNull",
+        "JBool",
+        "JString",
+        "JNumber",
+        "JArray",
+        "JObject"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "lex_result",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Parser",
+      "kind": "alias",
+      "members": [],
+      "deps": 2,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "literal",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "record",
+      "members": [
+        "lexical_form",
+        "datatype",
+        "lang_tag"
+      ],
+      "deps": 1,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "load_strategy",
+      "namespace": "SPARQL",
+      "module": "SPARQL.Plan.Loader",
+      "kind": "variant",
+      "members": [
+        "LS_Mmap",
+        "LS_InRamFallback",
+        "LS_Refuse"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "meta_column_chunk_locator",
+      "namespace": "Parquet",
+      "module": "Parquet.Footer",
+      "kind": "record",
+      "members": [
+        "mcc_meta_hex",
+        "mcc_meta_hex_len",
+        "mcc_column_chunk_start"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "modifier_result",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Parser",
+      "kind": "alias",
+      "members": [],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "named_graph",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "record",
+      "members": [
+        "ng_name",
+        "ng_graph"
+      ],
+      "deps": 2,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "named_graph_backend",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Store",
+      "kind": "record",
+      "members": [
+        "ngb_name",
+        "ngb_graph"
+      ],
+      "deps": 2,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "named_graph_store",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Algebra",
+      "kind": "record",
+      "members": [
+        "ngs_name",
+        "ngs_store"
+      ],
+      "deps": 2,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "node_kind",
+      "namespace": "SHACL",
+      "module": "SHACL.Validation",
+      "kind": "variant",
+      "members": [
+        "NK_BlankNode",
+        "NK_IRI",
+        "NK_Literal",
+        "NK_BlankNodeOrIRI",
+        "NK_BlankNodeOrLiteral",
+        "NK_IRIOrLiteral"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "nquad",
+      "namespace": "Parser",
+      "module": "Parser.NQuads",
+      "kind": "record",
+      "members": [
+        "nq_triple",
+        "nq_graph"
+      ],
+      "deps": 2,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "num_kind",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Algebra",
+      "kind": "alias",
+      "members": [],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "numeric_precision",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Algebra",
+      "kind": "variant",
+      "members": [
+        "NP_Integer",
+        "NP_Decimal",
+        "NP_Float",
+        "NP_Double"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "numeric_type",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "variant",
+      "members": [
+        "NT_Integer",
+        "NT_Decimal",
+        "NT_Double",
+        "NT_Float"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "object_result",
+      "namespace": "Parser",
+      "module": "Parser.Turtle",
+      "kind": "record",
+      "members": [
+        "or_term",
+        "or_triples",
+        "or_state"
+      ],
+      "deps": 3,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "offset_handle",
+      "namespace": "RDF",
+      "module": "RDF.Store.Columnar.OffsetIndex",
+      "kind": "record",
+      "members": [
+        "oih_path",
+        "oih_header"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "offset_header",
+      "namespace": "RDF",
+      "module": "RDF.Store.Columnar.OffsetIndex",
+      "kind": "record",
+      "members": [
+        "oh_magic",
+        "oh_version",
+        "oh_num_rgs",
+        "oh_num_preds"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "page_cache",
+      "namespace": "RDF",
+      "module": "RDF.CottasStore.PageCache",
+      "kind": "record",
+      "members": [
+        "pc_entries",
+        "pc_clock",
+        "pc_capacity"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "parquet_footer",
+      "namespace": "Parquet",
+      "module": "Parquet.Footer",
+      "kind": "record",
+      "members": [
+        "pf_metadata_len",
+        "pf_footer_len",
+        "pf_magic"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "parse_result",
+      "namespace": "Parser",
+      "module": "Parser.Combinators",
+      "kind": "variant",
+      "members": [
+        "ParseOk",
+        "ParseFail"
+      ],
+      "deps": 1,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "parser",
+      "namespace": "Parser",
+      "module": "Parser.Combinators",
+      "kind": "alias",
+      "members": [],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "path",
+      "namespace": "SHACL",
+      "module": "SHACL.Validation",
+      "kind": "variant",
+      "members": [
+        "P_Predicate",
+        "P_Inverse",
+        "P_Sequence",
+        "P_Alternative",
+        "P_ZeroOrMore",
+        "P_OneOrMore",
+        "P_ZeroOrOne"
+      ],
+      "deps": 1,
+      "rdeps": 2,
+      "inProject": true
+    },
+    {
+      "id": "path_result",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Algebra",
+      "kind": "alias",
+      "members": [],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "path_result_fwd",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Algebra",
+      "kind": "alias",
+      "members": [],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "pattern_bound_ids",
+      "namespace": "SPARQL",
+      "module": "SPARQL.Plan.Pruning",
+      "kind": "record",
+      "members": [
+        "pbi_s",
+        "pbi_p",
+        "pbi_o"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "pattern_subject",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "variant",
+      "members": [
+        "PS_Concrete",
+        "PS_Var"
+      ],
+      "deps": 2,
+      "rdeps": 2,
+      "inProject": true
+    },
+    {
+      "id": "pattern_term",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "variant",
+      "members": [
+        "PT_Concrete",
+        "PT_Var"
+      ],
+      "deps": 2,
+      "rdeps": 3,
+      "inProject": true
+    },
+    {
+      "id": "pcache_entry",
+      "namespace": "RDF",
+      "module": "RDF.CottasStore.PageCache",
+      "kind": "record",
+      "members": [
+        "pce_key",
+        "pce_value",
+        "pce_age"
+      ],
+      "deps": 1,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "pcache_key",
+      "namespace": "RDF",
+      "module": "RDF.CottasStore.PageCache",
+      "kind": "alias",
+      "members": [],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "plan_form",
+      "namespace": "SPARQL",
+      "module": "SPARQL.Plan.Explain",
+      "kind": "variant",
+      "members": [
+        "PF_Select_Vars",
+        "PF_Select_All",
+        "PF_Construct",
+        "PF_Ask",
+        "PF_Describe"
+      ],
+      "deps": 1,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "plan_node",
+      "namespace": "SPARQL",
+      "module": "SPARQL.Plan.Explain",
+      "kind": "variant",
+      "members": [
+        "Plan_Bgp",
+        "Plan_Join",
+        "Plan_LeftJoin",
+        "Plan_Filter",
+        "Plan_Union",
+        "Plan_Graph",
+        "Plan_Minus",
+        "Plan_Bind",
+        "Plan_Values",
+        "Plan_Service",
+        "Plan_ServiceVar",
+        "Plan_SubSelect",
+        "Plan_PropertyPath",
+        "Plan_Empty"
+      ],
+      "deps": 2,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "pos",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Parser",
+      "kind": "alias",
+      "members": [],
+      "deps": 0,
+      "rdeps": 2,
+      "inProject": true
+    },
+    {
+      "id": "predicate_bloom",
+      "namespace": "Parser",
+      "module": "Parser.BallyhooBloom",
+      "kind": "record",
+      "members": [
+        "pb_bit_count",
+        "pb_hash_count",
+        "pb_bits"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "prefix_map",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Parser",
+      "kind": "alias",
+      "members": [],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "prefix_table",
+      "namespace": "RDF",
+      "module": "RDF.Pretty",
+      "kind": "alias",
+      "members": [],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "prefixed_name_span",
+      "namespace": "Parser",
+      "module": "Parser.TurtleScanner",
+      "kind": "record",
+      "members": [
+        "pns_prefix",
+        "pns_local"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "presence_header",
+      "namespace": "RDF",
+      "module": "RDF.CottasStore.OnDiskIndex",
+      "kind": "record",
+      "members": [
+        "ph_magic",
+        "ph_version",
+        "ph_num_rgs",
+        "ph_num_tokens"
+      ],
+      "deps": 0,
+      "rdeps": 2,
+      "inProject": true
+    },
+    {
+      "id": "process_result",
+      "namespace": "Parser",
+      "module": "Parser.RDFXML",
+      "kind": "record",
+      "members": [
+        "pr_triples",
+        "pr_state"
+      ],
+      "deps": 2,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "q_priority",
+      "namespace": "SPARQL",
+      "module": "SPARQL.Protocol",
+      "kind": "record",
+      "members": [],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "qquad",
+      "namespace": "RDF",
+      "module": "RDF.Canonical",
+      "kind": "alias",
+      "members": [],
+      "deps": 2,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "query_entry",
+      "namespace": "SPARQL",
+      "module": "SPARQL.HTTP.QueriesIndex",
+      "kind": "record",
+      "members": [
+        "qe_group",
+        "qe_key",
+        "qe_label",
+        "qe_body"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "query_group",
+      "namespace": "SPARQL",
+      "module": "SPARQL.HTTP.QueriesIndex",
+      "kind": "record",
+      "members": [
+        "qg_name",
+        "qg_entries"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "query_plan",
+      "namespace": "SPARQL",
+      "module": "SPARQL.Plan.Explain",
+      "kind": "record",
+      "members": [
+        "qp_form",
+        "qp_distinct",
+        "qp_offset",
+        "qp_limit",
+        "qp_order_by",
+        "qp_root"
+      ],
+      "deps": 2,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "rdf_dataset",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "record",
+      "members": [
+        "ds_default",
+        "ds_named"
+      ],
+      "deps": 2,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "rdf_dataset_store",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Algebra",
+      "kind": "record",
+      "members": [
+        "dss_default",
+        "dss_named"
+      ],
+      "deps": 2,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "rdf_format",
+      "namespace": "RDF",
+      "module": "RDF.Format",
+      "kind": "variant",
+      "members": [
+        "NT",
+        "Turtle",
+        "NQuads",
+        "TriG",
+        "RDFXML"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "rdf_graph",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "alias",
+      "members": [],
+      "deps": 1,
+      "rdeps": 5,
+      "inProject": true
+    },
+    {
+      "id": "rdf_term",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "variant",
+      "members": [
+        "T_IRI",
+        "T_BNode",
+        "T_Literal"
+      ],
+      "deps": 3,
+      "rdeps": 18,
+      "inProject": true
+    },
+    {
+      "id": "rdfxml_state",
+      "namespace": "Parser",
+      "module": "Parser.RDFXML",
+      "kind": "record",
+      "members": [
+        "base_iri",
+        "namespaces",
+        "lang",
+        "bnode_counter",
+        "li_counter",
+        "seen_ids",
+        "has_error"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "resolved_quad",
+      "namespace": "RDF",
+      "module": "RDF.Store.Loader",
+      "kind": "record",
+      "members": [
+        "rq_triple",
+        "rq_graph"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "response_format",
+      "namespace": "SPARQL",
+      "module": "SPARQL.Protocol",
+      "kind": "variant",
+      "members": [
+        "RF_Json",
+        "RF_Xml",
+        "RF_Csv",
+        "RF_Tsv",
+        "RF_Turtle",
+        "RF_NTriples",
+        "RF_Text"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "rif_atom",
+      "namespace": "RIF",
+      "module": "RIF.Core.Syntax",
+      "kind": "variant",
+      "members": [
+        "RIF_Triple",
+        "RIF_Frame",
+        "RIF_Member",
+        "RIF_Sub"
+      ],
+      "deps": 1,
+      "rdeps": 2,
+      "inProject": true
+    },
+    {
+      "id": "rif_body",
+      "namespace": "RIF",
+      "module": "RIF.Core.Syntax",
+      "kind": "variant",
+      "members": [
+        "RIF_BodyAtom",
+        "RIF_BodyAnd"
+      ],
+      "deps": 1,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "rif_program",
+      "namespace": "RIF",
+      "module": "RIF.Core.Syntax",
+      "kind": "record",
+      "members": [
+        "rules"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "rif_rule",
+      "namespace": "RIF",
+      "module": "RIF.Core.Syntax",
+      "kind": "record",
+      "members": [
+        "rule_name",
+        "head",
+        "body"
+      ],
+      "deps": 2,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "rif_term",
+      "namespace": "RIF",
+      "module": "RIF.Core.Syntax",
+      "kind": "variant",
+      "members": [
+        "RIF_Var",
+        "RIF_Const"
+      ],
+      "deps": 2,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "rif_var",
+      "namespace": "RIF",
+      "module": "RIF.Core.Syntax",
+      "kind": "record",
+      "members": [
+        "var_name"
+      ],
+      "deps": 1,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "row_cap",
+      "namespace": "SPARQL",
+      "module": "SPARQL.Eval.Limits",
+      "kind": "record",
+      "members": [],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "sandbox_result",
+      "namespace": "SPARQL",
+      "module": "SPARQL.Update.Sandbox",
+      "kind": "variant",
+      "members": [
+        "SB_Ok",
+        "SB_Reject"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "scan_mode",
+      "namespace": "Parser",
+      "module": "Parser.TurtleScanner",
+      "kind": "variant",
+      "members": [
+        "SM_Normal",
+        "SM_Comment",
+        "SM_IriRef",
+        "SM_String"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "scanned_token",
+      "namespace": "Parser",
+      "module": "Parser.TurtleScanner",
+      "kind": "record",
+      "members": [
+        "st_kind",
+        "st_span"
+      ],
+      "deps": 2,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "scanner_state",
+      "namespace": "Parser",
+      "module": "Parser.TurtleScanner",
+      "kind": "record",
+      "members": [
+        "ss_mode",
+        "ss_carry"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "severity",
+      "namespace": "SHACL",
+      "module": "SHACL.Validation",
+      "kind": "variant",
+      "members": [
+        "Sev_Info",
+        "Sev_Warning",
+        "Sev_Violation"
+      ],
+      "deps": 0,
+      "rdeps": 2,
+      "inProject": true
+    },
+    {
+      "id": "shape",
+      "namespace": "SHACL",
+      "module": "SHACL.Validation",
+      "kind": "record",
+      "members": [
+        "shape_id",
+        "is_property",
+        "shape_path",
+        "targets",
+        "shape_sev",
+        "message",
+        "constraints",
+        "property_refs"
+      ],
+      "deps": 5,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "shape_ref",
+      "namespace": "SHACL",
+      "module": "SHACL.Validation",
+      "kind": "alias",
+      "members": [],
+      "deps": 0,
+      "rdeps": 3,
+      "inProject": true
+    },
+    {
+      "id": "shapes_graph",
+      "namespace": "SHACL",
+      "module": "SHACL.Validation",
+      "kind": "record",
+      "members": [
+        "shapes"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "short_string_span",
+      "namespace": "Parser",
+      "module": "Parser.TurtleScanner",
+      "kind": "record",
+      "members": [
+        "sss_quote",
+        "sss_content"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "solution_mapping",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "alias",
+      "members": [],
+      "deps": 2,
+      "rdeps": 2,
+      "inProject": true
+    },
+    {
+      "id": "solution_multiset",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "alias",
+      "members": [],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "span",
+      "namespace": "Parser",
+      "module": "Parser.TurtleScanner",
+      "kind": "record",
+      "members": [
+        "sp_start",
+        "sp_end"
+      ],
+      "deps": 0,
+      "rdeps": 4,
+      "inProject": true
+    },
+    {
+      "id": "sparql_request",
+      "namespace": "SPARQL",
+      "module": "SPARQL.Protocol",
+      "kind": "variant",
+      "members": [
+        "PR_Query",
+        "PR_Update",
+        "PR_Bad"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "sparql_update",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Algebra",
+      "kind": "record",
+      "members": [
+        "u_base",
+        "u_prefixes",
+        "u_ops"
+      ],
+      "deps": 2,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "sparql_value",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "variant",
+      "members": [
+        "SV_Numeric",
+        "SV_PlainLiteral",
+        "SV_LangLiteral",
+        "SV_Iri",
+        "SV_BNode",
+        "SV_TypedLiteral",
+        "SV_Boolean"
+      ],
+      "deps": 3,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "subject",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "variant",
+      "members": [
+        "S_IRI",
+        "S_BNode"
+      ],
+      "deps": 2,
+      "rdeps": 5,
+      "inProject": true
+    },
+    {
+      "id": "subject_result",
+      "namespace": "Parser",
+      "module": "Parser.Turtle",
+      "kind": "record",
+      "members": [
+        "sr_subject",
+        "sr_triples",
+        "sr_state",
+        "sr_is_bnode_proplist"
+      ],
+      "deps": 3,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "tab_branch",
+      "namespace": "Tableau",
+      "module": "Tableau",
+      "kind": "record",
+      "members": [
+        "tb_nodes",
+        "tb_status"
+      ],
+      "deps": 2,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "tab_individual",
+      "namespace": "Tableau",
+      "module": "Tableau",
+      "kind": "variant",
+      "members": [
+        "TI_IRI",
+        "TI_BNode",
+        "TI_Skolem"
+      ],
+      "deps": 2,
+      "rdeps": 2,
+      "inProject": true
+    },
+    {
+      "id": "tab_link",
+      "namespace": "Tableau",
+      "module": "Tableau",
+      "kind": "record",
+      "members": [
+        "tl_pred",
+        "tl_obj"
+      ],
+      "deps": 2,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "tab_node",
+      "namespace": "Tableau",
+      "module": "Tableau",
+      "kind": "record",
+      "members": [
+        "tn_indiv",
+        "tn_classes",
+        "tn_links",
+        "tn_same_as"
+      ],
+      "deps": 3,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "tab_obligation",
+      "namespace": "Tableau",
+      "module": "Tableau",
+      "kind": "record",
+      "members": [
+        "tob_owner",
+        "tob_desc"
+      ],
+      "deps": 1,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "tab_status",
+      "namespace": "Tableau",
+      "module": "Tableau",
+      "kind": "variant",
+      "members": [
+        "Open",
+        "Closed",
+        "Unknown"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "tableau_state",
+      "namespace": "Tableau",
+      "module": "Tableau",
+      "kind": "record",
+      "members": [
+        "ts_branches",
+        "ts_obligations",
+        "ts_una",
+        "ts_fuel_used"
+      ],
+      "deps": 2,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "target",
+      "namespace": "SHACL",
+      "module": "SHACL.Validation",
+      "kind": "variant",
+      "members": [
+        "T_Class",
+        "T_Node",
+        "T_SubjectsOf",
+        "T_ObjectsOf",
+        "T_ImplicitClass",
+        "T_Sparql"
+      ],
+      "deps": 2,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "test_kind",
+      "namespace": "RDF",
+      "module": "RDF.Canonical.Manifest",
+      "kind": "variant",
+      "members": [
+        "TK_Eval",
+        "TK_NegEval",
+        "TK_Map",
+        "TK_Unknown"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "token",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Parser",
+      "kind": "variant",
+      "members": [
+        "Tok_SELECT",
+        "Tok_WHERE",
+        "Tok_OPTIONAL",
+        "Tok_GRAPH",
+        "Tok_EXISTS",
+        "Tok_AS",
+        "Tok_ORDER",
+        "Tok_GROUP",
+        "Tok_LIMIT",
+        "Tok_FROM",
+        "Tok_IN",
+        "Tok_A",
+        "Tok_LBRACE",
+        "Tok_LBRACKET",
+        "Tok_DOT",
+        "Tok_STAR",
+        "Tok_PLUS",
+        "Tok_EQ",
+        "Tok_AND",
+        "Tok_HATHAT",
+        "Tok_IRI",
+        "Tok_PNAME",
+        "Tok_VAR",
+        "Tok_STRING",
+        "Tok_LANGTAG",
+        "Tok_INTEGER",
+        "Tok_DECIMAL",
+        "Tok_DOUBLE",
+        "Tok_BNODE",
+        "Tok_ANON",
+        "Tok_STR",
+        "Tok_IRI_KW",
+        "Tok_ABS",
+        "Tok_CONCAT",
+        "Tok_ENCODE_FOR_URI",
+        "Tok_STRBEFORE",
+        "Tok_SUBSTR",
+        "Tok_ISIRI",
+        "Tok_SAMETERM",
+        "Tok_COUNT",
+        "Tok_GROUP_CONCAT",
+        "Tok_COALESCE",
+        "Tok_YEAR",
+        "Tok_TIMEZONE",
+        "Tok_MD5",
+        "Tok_LOAD",
+        "Tok_ADD",
+        "Tok_INSERT",
+        "Tok_INTO",
+        "Tok_DEFAULT",
+        "Tok_EOF"
+      ],
+      "deps": 0,
+      "rdeps": 2,
+      "inProject": true
+    },
+    {
+      "id": "token_kind",
+      "namespace": "Parser",
+      "module": "Parser.TurtleScanner",
+      "kind": "variant",
+      "members": [
+        "TK_Dot",
+        "TK_Semicolon",
+        "TK_Comma",
+        "TK_LBracket",
+        "TK_RBracket",
+        "TK_LParen",
+        "TK_RParen",
+        "TK_IriRef",
+        "TK_PrefixedName"
+      ],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "token_stream",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Parser",
+      "kind": "alias",
+      "members": [],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "tp_explain",
+      "namespace": "SPARQL",
+      "module": "SPARQL.Explain",
+      "kind": "record",
+      "members": [
+        "tpx_label",
+        "tpx_tp",
+        "tpx_s_status",
+        "tpx_p_status",
+        "tpx_o_status",
+        "tpx_bound_built",
+        "tpx_pred_present",
+        "tpx_estimate"
+      ],
+      "deps": 2,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "tpl_opt_result",
+      "namespace": "SPARQL",
+      "module": "SPARQL.Update.Sandbox",
+      "kind": "variant",
+      "members": [
+        "TOR_Rewrite",
+        "TOR_Reject"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "trig_parse_state",
+      "namespace": "Parser",
+      "module": "Parser.TriG",
+      "kind": "record",
+      "members": [
+        "ts",
+        "has_error"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "triple",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "record",
+      "members": [
+        "s",
+        "p",
+        "o"
+      ],
+      "deps": 3,
+      "rdeps": 11,
+      "inProject": true
+    },
+    {
+      "id": "triple_pattern",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "record",
+      "members": [
+        "tp_s",
+        "tp_p",
+        "tp_o"
+      ],
+      "deps": 3,
+      "rdeps": 3,
+      "inProject": true
+    },
+    {
+      "id": "triple_pattern_bound",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Algebra",
+      "kind": "record",
+      "members": [
+        "bs",
+        "bp",
+        "bo"
+      ],
+      "deps": 3,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "turtle_doc_result",
+      "namespace": "Parser",
+      "module": "Parser.Turtle",
+      "kind": "record",
+      "members": [
+        "tdr_triples",
+        "tdr_state",
+        "tdr_has_error"
+      ],
+      "deps": 2,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "turtle_state",
+      "namespace": "Parser",
+      "module": "Parser.Turtle",
+      "kind": "record",
+      "members": [
+        "prefixes",
+        "base_iri",
+        "bnode_counter"
+      ],
+      "deps": 0,
+      "rdeps": 4,
+      "inProject": true
+    },
+    {
+      "id": "update_op",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Algebra",
+      "kind": "variant",
+      "members": [
+        "U_Load",
+        "U_Clear",
+        "U_Drop",
+        "U_Create",
+        "U_Add",
+        "U_Move",
+        "U_Copy",
+        "U_InsertData",
+        "U_DeleteData",
+        "U_DeleteWhere",
+        "U_Modify"
+      ],
+      "deps": 2,
+      "rdeps": 2,
+      "inProject": true
+    },
+    {
+      "id": "update_sandbox_result",
+      "namespace": "SPARQL",
+      "module": "SPARQL.Update.Sandbox",
+      "kind": "variant",
+      "members": [
+        "USR_Ok",
+        "USR_Error"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "validation_report",
+      "namespace": "SHACL",
+      "module": "SHACL.Validation",
+      "kind": "record",
+      "members": [
+        "conforms",
+        "results"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "var_name",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "alias",
+      "members": [],
+      "deps": 0,
+      "rdeps": 7,
+      "inProject": true
+    },
+    {
+      "id": "verb_or_path",
+      "namespace": "SPARQL11",
+      "module": "SPARQL11.Parser",
+      "kind": "variant",
+      "members": [
+        "VSimple",
+        "VPath"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
+      "id": "violation",
+      "namespace": "SHACL",
+      "module": "SHACL.Validation",
+      "kind": "record",
+      "members": [
+        "v_focus_node",
+        "v_path",
+        "v_value",
+        "v_source_shape",
+        "v_constraint",
+        "v_severity",
+        "v_message"
+      ],
+      "deps": 5,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "wf_iri",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "record",
+      "members": [],
+      "deps": 1,
+      "rdeps": 19,
+      "inProject": true
+    },
+    {
+      "id": "wf_literal",
+      "namespace": "RDF",
+      "module": "RDF.Graph.Executable",
+      "kind": "record",
+      "members": [],
+      "deps": 1,
+      "rdeps": 2,
+      "inProject": true
+    },
+    {
+      "id": "xml_attribute",
+      "namespace": "Parser",
+      "module": "Parser.XML",
+      "kind": "record",
+      "members": [],
+      "deps": 0,
+      "rdeps": 1,
+      "inProject": true
+    },
+    {
+      "id": "xml_node",
+      "namespace": "Parser",
+      "module": "Parser.XML",
+      "kind": "variant",
+      "members": [
+        "XText",
+        "XElement",
+        "XComment",
+        "XCDATA"
+      ],
+      "deps": 1,
+      "rdeps": 0,
+      "inProject": true
+    }
+  ],
+  "links": [
+    {
+      "source": "accept_entry",
+      "target": "q_priority",
+      "weight": 1
+    },
+    {
+      "source": "accept_entry",
+      "target": "response_format",
+      "weight": 1
+    },
+    {
+      "source": "access_path",
+      "target": "cell_view",
+      "weight": 1
+    },
+    {
+      "source": "algebra_op",
+      "target": "bgp",
+      "weight": 1
+    },
+    {
+      "source": "backend_info",
+      "target": "backend_kind",
+      "weight": 1
+    },
+    {
+      "source": "backend_info",
+      "target": "cottas_summary",
+      "weight": 1
+    },
+    {
+      "source": "ballyhoo_event",
+      "target": "iri",
+      "weight": 1
+    },
+    {
+      "source": "ballyhoo_event",
+      "target": "triple",
+      "weight": 1
+    },
+    {
+      "source": "ballyhoo_state",
+      "target": "ballyhoo_error",
+      "weight": 1
+    },
+    {
+      "source": "ballyhoo_state",
+      "target": "ballyhoo_event",
+      "weight": 1
+    },
+    {
+      "source": "ballyhoo_state",
+      "target": "ballyhoo_mode",
+      "weight": 1
+    },
+    {
+      "source": "bgp",
+      "target": "triple_pattern",
+      "weight": 1
+    },
+    {
+      "source": "binding_row",
+      "target": "rdf_term",
+      "weight": 1
+    },
+    {
+      "source": "bitmap_handle",
+      "target": "presence_header",
+      "weight": 1
+    },
+    {
+      "source": "bn_full_key",
+      "target": "bnode_id",
+      "weight": 1
+    },
+    {
+      "source": "bn_hfdq_pair",
+      "target": "bnode_id",
+      "weight": 1
+    },
+    {
+      "source": "bucket",
+      "target": "bnode_id",
+      "weight": 1
+    },
+    {
+      "source": "bucket_map",
+      "target": "triple",
+      "weight": 1
+    },
+    {
+      "source": "cell_decision",
+      "target": "cell_view",
+      "weight": 1
+    },
+    {
+      "source": "class_expr",
+      "target": "rdf_term",
+      "weight": 1
+    },
+    {
+      "source": "class_expr",
+      "target": "wf_iri",
+      "weight": 1
+    },
+    {
+      "source": "companion_status",
+      "target": "dict_header",
+      "weight": 1
+    },
+    {
+      "source": "companion_status",
+      "target": "presence_header",
+      "weight": 1
+    },
+    {
+      "source": "compound_handle",
+      "target": "compound_header",
+      "weight": 1
+    },
+    {
+      "source": "constraint_component",
+      "target": "node_kind",
+      "weight": 1
+    },
+    {
+      "source": "constraint_component",
+      "target": "rdf_term",
+      "weight": 1
+    },
+    {
+      "source": "constraint_component",
+      "target": "shape_ref",
+      "weight": 1
+    },
+    {
+      "source": "constraint_component",
+      "target": "wf_iri",
+      "weight": 1
+    },
+    {
+      "source": "corpus_graph_binding",
+      "target": "hdt_artifact_summary",
+      "weight": 1
+    },
+    {
+      "source": "corpus_graph_binding",
+      "target": "iri",
+      "weight": 1
+    },
+    {
+      "source": "cottas_artifact_summary",
+      "target": "cottas_dictionary_summary",
+      "weight": 1
+    },
+    {
+      "source": "cottas_artifact_summary",
+      "target": "cottas_row_group_summary",
+      "weight": 1
+    },
+    {
+      "source": "cottas_bound_qp",
+      "target": "cottas_graph_ref",
+      "weight": 1
+    },
+    {
+      "source": "cottas_bound_qp",
+      "target": "cottas_term_ref",
+      "weight": 1
+    },
+    {
+      "source": "cottas_column_summary",
+      "target": "cottas_column_kind",
+      "weight": 1
+    },
+    {
+      "source": "cottas_column_summary",
+      "target": "cottas_encoding",
+      "weight": 1
+    },
+    {
+      "source": "cottas_dataset_store",
+      "target": "cottas_artifact_summary",
+      "weight": 1
+    },
+    {
+      "source": "cottas_named_graph_store",
+      "target": "cottas_dataset_store",
+      "weight": 1
+    },
+    {
+      "source": "cottas_named_graph_store",
+      "target": "cottas_graph_ref",
+      "weight": 1
+    },
+    {
+      "source": "cottas_named_graph_store",
+      "target": "iri",
+      "weight": 1
+    },
+    {
+      "source": "cottas_ondisk_handle",
+      "target": "cottas_artifact_summary",
+      "weight": 1
+    },
+    {
+      "source": "cottas_ondisk_handle",
+      "target": "iri",
+      "weight": 1
+    },
+    {
+      "source": "cottas_ondisk_handle",
+      "target": "rdf_term",
+      "weight": 1
+    },
+    {
+      "source": "cottas_ondisk_handle",
+      "target": "subject",
+      "weight": 1
+    },
+    {
+      "source": "cottas_ondisk_handle",
+      "target": "wf_iri",
+      "weight": 1
+    },
+    {
+      "source": "cottas_ondisk_store",
+      "target": "cottas_artifact_summary",
+      "weight": 1
+    },
+    {
+      "source": "cottas_ondisk_store",
+      "target": "cottas_ondisk_handle",
+      "weight": 1
+    },
+    {
+      "source": "cottas_qp_row",
+      "target": "cottas_graph_ref",
+      "weight": 1
+    },
+    {
+      "source": "cottas_qp_row",
+      "target": "cottas_term_ref",
+      "weight": 1
+    },
+    {
+      "source": "cottas_row_group_summary",
+      "target": "cottas_column_summary",
+      "weight": 1
+    },
+    {
+      "source": "dataset_backend",
+      "target": "graph_backend",
+      "weight": 1
+    },
+    {
+      "source": "dataset_backend",
+      "target": "named_graph_backend",
+      "weight": 1
+    },
+    {
+      "source": "eval_result",
+      "target": "rdf_term",
+      "weight": 1
+    },
+    {
+      "source": "expr",
+      "target": "aggregate_fn",
+      "weight": 1
+    },
+    {
+      "source": "expr",
+      "target": "arith_op",
+      "weight": 1
+    },
+    {
+      "source": "expr",
+      "target": "bgp",
+      "weight": 1
+    },
+    {
+      "source": "expr",
+      "target": "comp_op",
+      "weight": 1
+    },
+    {
+      "source": "expr",
+      "target": "pattern_subject",
+      "weight": 1
+    },
+    {
+      "source": "expr",
+      "target": "pattern_term",
+      "weight": 1
+    },
+    {
+      "source": "expr",
+      "target": "rdf_term",
+      "weight": 1
+    },
+    {
+      "source": "expr",
+      "target": "triple_pattern",
+      "weight": 1
+    },
+    {
+      "source": "expr",
+      "target": "var_name",
+      "weight": 1
+    },
+    {
+      "source": "expr",
+      "target": "wf_iri",
+      "weight": 1
+    },
+    {
+      "source": "expr",
+      "target": "wf_literal",
+      "weight": 1
+    },
+    {
+      "source": "filter_expr_eval",
+      "target": "rdf_term",
+      "weight": 1
+    },
+    {
+      "source": "filter_expr_eval",
+      "target": "solution_mapping",
+      "weight": 1
+    },
+    {
+      "source": "ggp_target_status",
+      "target": "iri",
+      "weight": 1
+    },
+    {
+      "source": "graph_backend",
+      "target": "cottas_dataset_store",
+      "weight": 1
+    },
+    {
+      "source": "graph_backend",
+      "target": "cottas_ondisk_store",
+      "weight": 1
+    },
+    {
+      "source": "graph_backend",
+      "target": "hdt_graph_store",
+      "weight": 1
+    },
+    {
+      "source": "graph_backend",
+      "target": "indexed_graph",
+      "weight": 1
+    },
+    {
+      "source": "graph_backend",
+      "target": "iri",
+      "weight": 1
+    },
+    {
+      "source": "graph_backend",
+      "target": "rdf_graph",
+      "weight": 1
+    },
+    {
+      "source": "graph_ref",
+      "target": "wf_iri",
+      "weight": 1
+    },
+    {
+      "source": "graph_store",
+      "target": "gs_named",
+      "weight": 1
+    },
+    {
+      "source": "graph_store",
+      "target": "rdf_graph",
+      "weight": 1
+    },
+    {
+      "source": "group",
+      "target": "eval_result",
+      "weight": 1
+    },
+    {
+      "source": "gs_named",
+      "target": "graph_key",
+      "weight": 1
+    },
+    {
+      "source": "gs_named",
+      "target": "rdf_graph",
+      "weight": 1
+    },
+    {
+      "source": "gs_target",
+      "target": "graph_key",
+      "weight": 1
+    },
+    {
+      "source": "hdt_artifact_summary",
+      "target": "hdt_dictionary_summary",
+      "weight": 1
+    },
+    {
+      "source": "hdt_artifact_summary",
+      "target": "hdt_statistics",
+      "weight": 1
+    },
+    {
+      "source": "hdt_artifact_summary",
+      "target": "hdt_triples_summary",
+      "weight": 1
+    },
+    {
+      "source": "hdt_artifact_summary",
+      "target": "iri",
+      "weight": 1
+    },
+    {
+      "source": "hdt_bound_tp",
+      "target": "hdt_term_ref",
+      "weight": 1
+    },
+    {
+      "source": "hdt_graph_store",
+      "target": "hdt_artifact_summary",
+      "weight": 1
+    },
+    {
+      "source": "hdt_graph_store",
+      "target": "iri",
+      "weight": 1
+    },
+    {
+      "source": "hdt_tp_row",
+      "target": "hdt_term_ref",
+      "weight": 1
+    },
+    {
+      "source": "hdt_triples_summary",
+      "target": "ballyhoo_order",
+      "weight": 1
+    },
+    {
+      "source": "hdtq_artifact_summary",
+      "target": "hdt_artifact_summary",
+      "weight": 1
+    },
+    {
+      "source": "hdtq_artifact_summary",
+      "target": "hdtq_graph_dictionary_summary",
+      "weight": 1
+    },
+    {
+      "source": "hdtq_artifact_summary",
+      "target": "hdtq_quad_info_summary",
+      "weight": 1
+    },
+    {
+      "source": "hdtq_bound_qp",
+      "target": "hdt_term_ref",
+      "weight": 1
+    },
+    {
+      "source": "hdtq_bound_qp",
+      "target": "hdtq_graph_ref",
+      "weight": 1
+    },
+    {
+      "source": "hdtq_dataset_store",
+      "target": "hdtq_artifact_summary",
+      "weight": 1
+    },
+    {
+      "source": "hdtq_named_graph_store",
+      "target": "hdtq_dataset_store",
+      "weight": 1
+    },
+    {
+      "source": "hdtq_named_graph_store",
+      "target": "hdtq_graph_ref",
+      "weight": 1
+    },
+    {
+      "source": "hdtq_named_graph_store",
+      "target": "iri",
+      "weight": 1
+    },
+    {
+      "source": "hdtq_qp_row",
+      "target": "hdt_term_ref",
+      "weight": 1
+    },
+    {
+      "source": "hdtq_qp_row",
+      "target": "hdtq_graph_ref",
+      "weight": 1
+    },
+    {
+      "source": "hdtq_quad_info_summary",
+      "target": "hdtq_annotation_mode",
+      "weight": 1
+    },
+    {
+      "source": "http_client_result",
+      "target": "http_client_error",
+      "weight": 1
+    },
+    {
+      "source": "http_result",
+      "target": "http_error",
+      "weight": 1
+    },
+    {
+      "source": "indexed_graph",
+      "target": "bucket_map",
+      "weight": 1
+    },
+    {
+      "source": "indexed_graph",
+      "target": "triple",
+      "weight": 1
+    },
+    {
+      "source": "iri_ref_span",
+      "target": "span",
+      "weight": 1
+    },
+    {
+      "source": "issuer_state",
+      "target": "bnode_id",
+      "weight": 1
+    },
+    {
+      "source": "lex_result",
+      "target": "pos",
+      "weight": 1
+    },
+    {
+      "source": "lex_result",
+      "target": "token",
+      "weight": 1
+    },
+    {
+      "source": "literal",
+      "target": "wf_iri",
+      "weight": 1
+    },
+    {
+      "source": "named_graph",
+      "target": "iri",
+      "weight": 1
+    },
+    {
+      "source": "named_graph",
+      "target": "rdf_graph",
+      "weight": 1
+    },
+    {
+      "source": "named_graph_backend",
+      "target": "graph_backend",
+      "weight": 1
+    },
+    {
+      "source": "named_graph_backend",
+      "target": "iri",
+      "weight": 1
+    },
+    {
+      "source": "named_graph_store",
+      "target": "graph_store",
+      "weight": 1
+    },
+    {
+      "source": "named_graph_store",
+      "target": "iri",
+      "weight": 1
+    },
+    {
+      "source": "nquad",
+      "target": "iri",
+      "weight": 1
+    },
+    {
+      "source": "nquad",
+      "target": "triple",
+      "weight": 1
+    },
+    {
+      "source": "object_result",
+      "target": "rdf_term",
+      "weight": 1
+    },
+    {
+      "source": "object_result",
+      "target": "triple",
+      "weight": 1
+    },
+    {
+      "source": "object_result",
+      "target": "turtle_state",
+      "weight": 1
+    },
+    {
+      "source": "offset_handle",
+      "target": "offset_header",
+      "weight": 1
+    },
+    {
+      "source": "page_cache",
+      "target": "pcache_entry",
+      "weight": 1
+    },
+    {
+      "source": "parse_result",
+      "target": "pos",
+      "weight": 1
+    },
+    {
+      "source": "parser",
+      "target": "parse_result",
+      "weight": 1
+    },
+    {
+      "source": "path",
+      "target": "wf_iri",
+      "weight": 1
+    },
+    {
+      "source": "path_result",
+      "target": "rdf_term",
+      "weight": 1
+    },
+    {
+      "source": "path_result_fwd",
+      "target": "rdf_term",
+      "weight": 1
+    },
+    {
+      "source": "pattern_subject",
+      "target": "subject",
+      "weight": 1
+    },
+    {
+      "source": "pattern_subject",
+      "target": "var_name",
+      "weight": 1
+    },
+    {
+      "source": "pattern_term",
+      "target": "rdf_term",
+      "weight": 1
+    },
+    {
+      "source": "pattern_term",
+      "target": "var_name",
+      "weight": 1
+    },
+    {
+      "source": "pcache_entry",
+      "target": "pcache_key",
+      "weight": 1
+    },
+    {
+      "source": "plan_form",
+      "target": "var_name",
+      "weight": 1
+    },
+    {
+      "source": "plan_node",
+      "target": "tp_explain",
+      "weight": 1
+    },
+    {
+      "source": "plan_node",
+      "target": "var_name",
+      "weight": 1
+    },
+    {
+      "source": "predicate_bloom",
+      "target": "bloom_bits",
+      "weight": 1
+    },
+    {
+      "source": "prefixed_name_span",
+      "target": "span",
+      "weight": 1
+    },
+    {
+      "source": "process_result",
+      "target": "rdfxml_state",
+      "weight": 1
+    },
+    {
+      "source": "process_result",
+      "target": "triple",
+      "weight": 1
+    },
+    {
+      "source": "qquad",
+      "target": "iri",
+      "weight": 1
+    },
+    {
+      "source": "qquad",
+      "target": "triple",
+      "weight": 1
+    },
+    {
+      "source": "query_group",
+      "target": "query_entry",
+      "weight": 1
+    },
+    {
+      "source": "query_plan",
+      "target": "plan_form",
+      "weight": 1
+    },
+    {
+      "source": "query_plan",
+      "target": "plan_node",
+      "weight": 1
+    },
+    {
+      "source": "rdf_dataset",
+      "target": "named_graph",
+      "weight": 1
+    },
+    {
+      "source": "rdf_dataset",
+      "target": "rdf_graph",
+      "weight": 1
+    },
+    {
+      "source": "rdf_dataset_store",
+      "target": "graph_store",
+      "weight": 1
+    },
+    {
+      "source": "rdf_dataset_store",
+      "target": "named_graph_store",
+      "weight": 1
+    },
+    {
+      "source": "rdf_graph",
+      "target": "triple",
+      "weight": 1
+    },
+    {
+      "source": "rdf_term",
+      "target": "bnode_id",
+      "weight": 1
+    },
+    {
+      "source": "rdf_term",
+      "target": "wf_iri",
+      "weight": 1
+    },
+    {
+      "source": "rdf_term",
+      "target": "wf_literal",
+      "weight": 1
+    },
+    {
+      "source": "resolved_quad",
+      "target": "triple",
+      "weight": 1
+    },
+    {
+      "source": "rif_atom",
+      "target": "rif_term",
+      "weight": 1
+    },
+    {
+      "source": "rif_body",
+      "target": "rif_atom",
+      "weight": 1
+    },
+    {
+      "source": "rif_program",
+      "target": "rif_rule",
+      "weight": 1
+    },
+    {
+      "source": "rif_rule",
+      "target": "rif_atom",
+      "weight": 1
+    },
+    {
+      "source": "rif_rule",
+      "target": "rif_body",
+      "weight": 1
+    },
+    {
+      "source": "rif_term",
+      "target": "rdf_term",
+      "weight": 1
+    },
+    {
+      "source": "rif_term",
+      "target": "rif_var",
+      "weight": 1
+    },
+    {
+      "source": "rif_var",
+      "target": "var_name",
+      "weight": 1
+    },
+    {
+      "source": "sandbox_result",
+      "target": "update_op",
+      "weight": 1
+    },
+    {
+      "source": "scanned_token",
+      "target": "span",
+      "weight": 1
+    },
+    {
+      "source": "scanned_token",
+      "target": "token_kind",
+      "weight": 1
+    },
+    {
+      "source": "scanner_state",
+      "target": "scan_mode",
+      "weight": 1
+    },
+    {
+      "source": "shape",
+      "target": "constraint_component",
+      "weight": 1
+    },
+    {
+      "source": "shape",
+      "target": "path",
+      "weight": 1
+    },
+    {
+      "source": "shape",
+      "target": "severity",
+      "weight": 1
+    },
+    {
+      "source": "shape",
+      "target": "shape_ref",
+      "weight": 1
+    },
+    {
+      "source": "shape",
+      "target": "target",
+      "weight": 1
+    },
+    {
+      "source": "shapes_graph",
+      "target": "shape",
+      "weight": 1
+    },
+    {
+      "source": "short_string_span",
+      "target": "span",
+      "weight": 1
+    },
+    {
+      "source": "solution_mapping",
+      "target": "rdf_term",
+      "weight": 1
+    },
+    {
+      "source": "solution_mapping",
+      "target": "var_name",
+      "weight": 1
+    },
+    {
+      "source": "solution_multiset",
+      "target": "solution_mapping",
+      "weight": 1
+    },
+    {
+      "source": "sparql_update",
+      "target": "update_op",
+      "weight": 1
+    },
+    {
+      "source": "sparql_update",
+      "target": "wf_iri",
+      "weight": 1
+    },
+    {
+      "source": "sparql_value",
+      "target": "bnode_id",
+      "weight": 1
+    },
+    {
+      "source": "sparql_value",
+      "target": "numeric_type",
+      "weight": 1
+    },
+    {
+      "source": "sparql_value",
+      "target": "wf_iri",
+      "weight": 1
+    },
+    {
+      "source": "subject",
+      "target": "bnode_id",
+      "weight": 1
+    },
+    {
+      "source": "subject",
+      "target": "wf_iri",
+      "weight": 1
+    },
+    {
+      "source": "subject_result",
+      "target": "subject",
+      "weight": 1
+    },
+    {
+      "source": "subject_result",
+      "target": "triple",
+      "weight": 1
+    },
+    {
+      "source": "subject_result",
+      "target": "turtle_state",
+      "weight": 1
+    },
+    {
+      "source": "tab_branch",
+      "target": "tab_node",
+      "weight": 1
+    },
+    {
+      "source": "tab_branch",
+      "target": "tab_status",
+      "weight": 1
+    },
+    {
+      "source": "tab_individual",
+      "target": "bnode_id",
+      "weight": 1
+    },
+    {
+      "source": "tab_individual",
+      "target": "wf_iri",
+      "weight": 1
+    },
+    {
+      "source": "tab_link",
+      "target": "rdf_term",
+      "weight": 1
+    },
+    {
+      "source": "tab_link",
+      "target": "wf_iri",
+      "weight": 1
+    },
+    {
+      "source": "tab_node",
+      "target": "tab_individual",
+      "weight": 1
+    },
+    {
+      "source": "tab_node",
+      "target": "tab_link",
+      "weight": 1
+    },
+    {
+      "source": "tab_node",
+      "target": "wf_iri",
+      "weight": 1
+    },
+    {
+      "source": "tab_obligation",
+      "target": "tab_individual",
+      "weight": 1
+    },
+    {
+      "source": "tableau_state",
+      "target": "tab_branch",
+      "weight": 1
+    },
+    {
+      "source": "tableau_state",
+      "target": "tab_obligation",
+      "weight": 1
+    },
+    {
+      "source": "target",
+      "target": "rdf_term",
+      "weight": 1
+    },
+    {
+      "source": "target",
+      "target": "wf_iri",
+      "weight": 1
+    },
+    {
+      "source": "token_stream",
+      "target": "token",
+      "weight": 1
+    },
+    {
+      "source": "tp_explain",
+      "target": "bound_status",
+      "weight": 1
+    },
+    {
+      "source": "tp_explain",
+      "target": "triple_pattern",
+      "weight": 1
+    },
+    {
+      "source": "trig_parse_state",
+      "target": "turtle_state",
+      "weight": 1
+    },
+    {
+      "source": "triple",
+      "target": "rdf_term",
+      "weight": 1
+    },
+    {
+      "source": "triple",
+      "target": "subject",
+      "weight": 1
+    },
+    {
+      "source": "triple",
+      "target": "wf_iri",
+      "weight": 1
+    },
+    {
+      "source": "triple_pattern",
+      "target": "pattern_subject",
+      "weight": 1
+    },
+    {
+      "source": "triple_pattern",
+      "target": "pattern_term",
+      "weight": 1
+    },
+    {
+      "source": "triple_pattern",
+      "target": "wf_iri",
+      "weight": 1
+    },
+    {
+      "source": "triple_pattern_bound",
+      "target": "rdf_term",
+      "weight": 1
+    },
+    {
+      "source": "triple_pattern_bound",
+      "target": "subject",
+      "weight": 1
+    },
+    {
+      "source": "triple_pattern_bound",
+      "target": "wf_iri",
+      "weight": 1
+    },
+    {
+      "source": "turtle_doc_result",
+      "target": "triple",
+      "weight": 1
+    },
+    {
+      "source": "turtle_doc_result",
+      "target": "turtle_state",
+      "weight": 1
+    },
+    {
+      "source": "update_op",
+      "target": "graph_ref",
+      "weight": 1
+    },
+    {
+      "source": "update_op",
+      "target": "wf_iri",
+      "weight": 1
+    },
+    {
+      "source": "update_sandbox_result",
+      "target": "sparql_update",
+      "weight": 1
+    },
+    {
+      "source": "validation_report",
+      "target": "violation",
+      "weight": 1
+    },
+    {
+      "source": "verb_or_path",
+      "target": "pattern_term",
+      "weight": 1
+    },
+    {
+      "source": "violation",
+      "target": "constraint_component",
+      "weight": 1
+    },
+    {
+      "source": "violation",
+      "target": "path",
+      "weight": 1
+    },
+    {
+      "source": "violation",
+      "target": "rdf_term",
+      "weight": 1
+    },
+    {
+      "source": "violation",
+      "target": "severity",
+      "weight": 1
+    },
+    {
+      "source": "violation",
+      "target": "shape_ref",
+      "weight": 1
+    },
+    {
+      "source": "wf_iri",
+      "target": "iri",
+      "weight": 1
+    },
+    {
+      "source": "wf_literal",
+      "target": "literal",
+      "weight": 1
+    },
+    {
+      "source": "xml_node",
+      "target": "xml_attribute",
+      "weight": 1
+    }
+  ]
+}
