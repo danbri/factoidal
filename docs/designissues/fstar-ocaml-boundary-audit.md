@@ -197,16 +197,16 @@ on-disk bytes match the F\*-computed bytes.
 
 | Artifact | Byte-format-spec location | Writer location | Round-trip witness exists? | Action |
 |---|---|---|---|---|
-| `<cottas>.s.dict` (subjects) | F\* `RDF.CottasStore.OnDiskIndex.fst` defines `dict_header` + `dict_decode_token` (READER side) | OCaml `Cottas_companion_writer.build_companion_pair` in `cottas_ondisk_zzzzz_ondisk_index.sh` (WRITER) | NO | MIGRATE — add `serialize_dict : dict_data -> Tot (list u8)` to `RDF.CottasStore.OnDiskIndex.fst`; add roundtrip lemma; reduce OCaml writer to `write_bytes`. Add CI hash-roundtrip test. |
-| `<cottas>.p.dict` (predicates) | same | same | NO | same |
-| `<cottas>.o.dict` (objects) | same | same | NO | same |
-| `<cottas>.g.dict` (graphs) | same | same | NO | same |
-| `<cottas>.s.presence` (subject presence bitmap) | F\* `RDF.CottasStore.OnDiskIndex.fst` defines `presence_header` + `presence_test_bit` (READER side); F\* `RDF.CottasStore.PresenceBitmap.fst` defines abstract bitmap operations | OCaml writer (same patch as above) | NO | same — `serialize_presence` to F\*, hash roundtrip test |
-| `<cottas>.p.presence` (Yod6 — predicate presence) | same | same | NO | same |
-| `<cottas>.o.presence` (object presence) | same | same | NO | same |
-| `<cottas>.g.presence` (graph presence) | same | same | NO | same |
-| `<cottas>.p.offsets` (Lamed3 — per-rg predicate row offsets) | **Nowhere in F\*** — format defined entirely in `cottas_ondisk_zzzzzz_lamed3_offset_idx.sh` comment block (`COTO` magic, `num_rgs`, offsets array, packed u32 row positions) | OCaml writer in same patch | NO | MIGRATE — `RDF.Store.Columnar.OffsetIndex.fst` NEW (Phase 6); F\* `serialize_offsets` + parse + roundtrip lemma; OCaml writer reduces to `write_bytes`. Performance-critical (6 s → 200 ms win must be preserved). |
-| `<cottas>.po.presence` (compound predicate-object presence) | F\* `RDF.CottasStore.CompoundPresenceBitmap.fst` defines abstract bitmap + `rg_could_contain_pair_sound` lemma; **byte format** (`COPO` magic, header, sparse-roaring sorted (p_id,o_id) pair lists per RG) defined only in `cottas_ondisk_zzzzzzzzzzzzz_compound_po_writer.sh` comment | OCaml writer in same patch (writer-only; no reader yet) | NO | MIGRATE — extend `RDF.CottasStore.CompoundPresenceBitmap.fst` with `serialize`/`parse`/roundtrip; OCaml writer reduces to `write_bytes`. |
+| `<cottas>.s.dict` (subjects) | F\* `RDF.CottasStore.DictWriter.fst` defines `serialize_dict` + `parse_dict` (round-trip) and `RDF.CottasStore.OnDiskIndex.fst` defines the reader | OCaml `Cottas_companion_writer.write_dict_file` in `cottas_ondisk_zzzzz_ondisk_index.sh` (perf-optimised realisation under Option B) | YES (`tests/unit/dict_writer_roundtrip.ml`, 4 fixtures, SHA-256 pinned) | DONE — #200 PR1 `2b2b138` (2026-05-09). |
+| `<cottas>.p.dict` (predicates) | same | same | YES (same test) | DONE — same commit. |
+| `<cottas>.o.dict` (objects) | same | same | YES (same test) | DONE — same commit. |
+| `<cottas>.g.dict` (graphs) | same | same | YES (same test) | DONE — same commit. |
+| `<cottas>.s.presence` (subject presence bitmap) | F\* `RDF.CottasStore.PresenceWriter.fst` defines `serialize_presence` + `parse_presence` (round-trip); reader in `RDF.CottasStore.PresenceBitmap.fst` | OCaml `Cottas_companion_writer.write_presence_file` (perf-optimised realisation under Option B) | YES (`tests/unit/presence_writer_roundtrip.ml`, 5 fixtures, SHA-256 pinned) | DONE — #200 PR2 `da132dd` (2026-05-10). |
+| `<cottas>.p.presence` (Yod6 — predicate presence) | same | same | YES (same test) | DONE — same commit. |
+| `<cottas>.o.presence` (object presence) | same | same | YES (same test) | DONE — same commit. |
+| `<cottas>.g.presence` (graph presence) | same | same | YES (same test) | DONE — same commit. |
+| `<cottas>.p.offsets` (Lamed3 — per-rg predicate row offsets) | F\* `RDF.CottasStore.OffsetsWriter.fst` defines `serialize_offsets` + `parse_offsets` (round-trip; `COTO` magic, header, u64 rg_offsets array, u32 subject_ids); reader in `RDF.Store.Columnar.OffsetIndex.fst` | OCaml `Cottas_offset_idx` in `cottas_ondisk_zzzzzz_lamed3_offset_idx.sh` (perf-optimised realisation under Option B; preserves the 6 s → 200 ms win) | YES (`tests/unit/offsets_writer_roundtrip.ml`, 4 fixtures, SHA-256 pinned) | DONE — #200 PR4 (2026-05-10). |
+| `<cottas>.po.presence` (compound predicate-object presence) | F\* `RDF.CottasStore.CompoundPresenceWriter.fst` defines `serialize_compound_presence` + `parse_compound_presence` (round-trip; `COPO` magic, header, u64 rg_offsets, u64 pairs); abstract bitmap reader in `RDF.CottasStore.CompoundPresenceBitmap.fst` | OCaml `Cottas_compound_po_writer` in `cottas_ondisk_zzzzzzzzzzzzz_compound_po_writer.sh` (perf-optimised realisation under Option B) | YES (`tests/unit/compound_presence_writer_roundtrip.ml`, 4 fixtures, SHA-256 pinned) | DONE — #200 PR3 `435af40` (2026-05-10). |
 | COTTAS in-memory encoder (`cottas_inmem_open` Phase A.5) | Phase A: stub returns `None`. Phase A.5 deferred. | OCaml stub today; would land in `cottas_inmem_encoder_runtime.sh` | NO (no writer yet) | INVESTIGATE — when Phase A.5 lands, keep byte assembly in F\* per rule #11. Coordinate with Phase 6 of recovery plan. |
 
 **Summary:** 11 companion-file artifacts across 3 distinct byte formats
@@ -227,8 +227,8 @@ Re-stated from the recovery plan; current numbers below.
 | `MIXED` entries (Section 2) | 0 | 7 |
 | Hand-written `.ml` files in `formal/fstar/ocaml-output/` (excluding `EXTRACTED`) | 0 (all under `bin/<consumer>/`) | 9 (the audit set; plus `factoidal_http_client.ml`, `factoidal_http_main.ml`, `factoidal_serve_debug.ml`, `factoidal_serve_jsoo.ml`, `OWL_QueryEval.ml`, `OWL_QueryRewrite.ml` — see note below) |
 | Glue patches that aren't `ASSUME-*` (Section 3) | 0 | 13 (in `experimental_ocaml_glue/`: `cottas_ondisk_runtime.sh`, `cottas_ondisk_z_lazy_open.sh`, `cottas_ondisk_zzzzz_ondisk_index.sh` (writer half), `cottas_ondisk_zzzzzz_lamed3_offset_idx.sh`, `cottas_ondisk_zzzzzzzzzzzzz_compound_po_writer.sh`, `ballyhoo_hdt_runtime.sh`, `cottas_inmem_encoder_runtime.sh`, `cottas_runtime.sh`. In `minimal_regrettable_glue_code_each_with_an_open_issue/`: #53, #64, #65, #66, #67, #68. Plus `MIXED` ones #62, #63, #95, #103.) |
-| Companion-file artifacts with byte-format-spec in F\* (Section 4) | 11 / 11 | 0 / 11 (readers partially in F\*; writers all OCaml) |
-| Hash-based round-trip witnesses in CI (Section 4) | 11 | 0 |
+| Companion-file artifacts with byte-format-spec in F\* (Section 4) | 11 / 11 | **10 / 11** (DictWriter, PresenceWriter, CompoundPresenceWriter, OffsetsWriter all migrated under Option B; only the deferred COTTAS in-mem encoder remains) |
+| Hash-based round-trip witnesses in CI (Section 4) | 11 | **10** (`tests/unit/dict_writer_roundtrip.ml`, `presence_writer_roundtrip.ml`, `compound_presence_writer_roundtrip.ml`, `offsets_writer_roundtrip.ml`; pinned SHA-256s on representative fixtures) |
 | Codename violators retired (Yod6, Tet3, Lamed3, Mem5, Pe5, Bet7, Tav5, Heth3) | 8 / 8 | 0 / 8 |
 
 Notes on the hand-written-`.ml` count:
