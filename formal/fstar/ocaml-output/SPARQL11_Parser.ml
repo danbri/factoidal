@@ -591,37 +591,66 @@ let utf8_of_codepoint (cp : Prims.nat) : Prims.string=
              RDF_Bytes.byte_of_int b2;
              RDF_Bytes.byte_of_int b3])
         else ""
-let process_iri_escapes (s : Prims.string) : Prims.string =
-  let open Stdlib in
-  (* Process backslash-u and backslash-U escapes in IRI strings *)
-  let len = String.length s in
-  let buf = Buffer.create len in
-  let i = ref 0 in
-  while !i < len do
-    if !i + 1 < len && s.[!i] = '\\' then begin
-      let next = s.[!i + 1] in
-      if next = 'u' && !i + 5 < len then begin
-        let hex = String.sub s (!i + 2) 4 in
-        (try let cp = int_of_string ("0x" ^ hex) in
-             Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
-         with _ -> Buffer.add_string buf (String.sub s !i 6));
-        i := !i + 6
-      end else if next = 'U' && !i + 9 < len then begin
-        let hex = String.sub s (!i + 2) 8 in
-        (try let cp = int_of_string ("0x" ^ hex) in
-             Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
-         with _ -> Buffer.add_string buf (String.sub s !i 10));
-        i := !i + 10
-      end else begin
-        Buffer.add_char buf s.[!i];
-        i := !i + 1
-      end
-    end else begin
-      Buffer.add_char buf s.[!i];
-      i := !i + 1
-    end
-  done;
-  Buffer.contents buf
+let rec read_hex_digits (n : Prims.nat) (cs : FStar_Char.char Prims.list)
+  (acc : Prims.nat) :
+  (Prims.nat * FStar_Char.char Prims.list) FStar_Pervasives_Native.option=
+  if n = Prims.int_zero
+  then FStar_Pervasives_Native.Some (acc, cs)
+  else
+    (match cs with
+     | [] -> FStar_Pervasives_Native.None
+     | c::rest ->
+         let cd = char_code c in
+         if
+           (((cd >= (Prims.of_int (0x30))) && (cd <= (Prims.of_int (0x39))))
+              ||
+              ((cd >= (Prims.of_int (0x41))) && (cd <= (Prims.of_int (0x46)))))
+             ||
+             ((cd >= (Prims.of_int (0x61))) && (cd <= (Prims.of_int (0x66))))
+         then
+           read_hex_digits (n - Prims.int_one) rest
+             ((acc * (Prims.of_int (16))) + (hex_value c))
+         else FStar_Pervasives_Native.None)
+let rec process_iri_escapes_rec (cs : FStar_Char.char Prims.list)
+  (acc : FStar_Char.char Prims.list) : FStar_Char.char Prims.list=
+  match cs with
+  | [] -> FStar_List_Tot_Base.rev acc
+  | c1::rest1 ->
+      if (char_code c1) = (Prims.of_int (0x5C))
+      then
+        (match rest1 with
+         | c2::rest2 ->
+             let code2 = char_code c2 in
+             if code2 = (Prims.of_int (0x75))
+             then
+               (match read_hex_digits (Prims.of_int (4)) rest2 Prims.int_zero
+                with
+                | FStar_Pervasives_Native.Some (cp, after) ->
+                    let bs =
+                      FStar_String.list_of_string (utf8_of_codepoint cp) in
+                    process_iri_escapes_rec after
+                      (FStar_List_Tot_Base.rev_acc bs acc)
+                | FStar_Pervasives_Native.None ->
+                    process_iri_escapes_rec rest1 (c1 :: acc))
+             else
+               if code2 = (Prims.of_int (0x55))
+               then
+                 (match read_hex_digits (Prims.of_int (8)) rest2
+                          Prims.int_zero
+                  with
+                  | FStar_Pervasives_Native.Some (cp, after) ->
+                      let bs =
+                        FStar_String.list_of_string (utf8_of_codepoint cp) in
+                      process_iri_escapes_rec after
+                        (FStar_List_Tot_Base.rev_acc bs acc)
+                  | FStar_Pervasives_Native.None ->
+                      process_iri_escapes_rec rest1 (c1 :: acc))
+               else process_iri_escapes_rec rest1 (c1 :: acc)
+         | [] -> process_iri_escapes_rec [] (c1 :: acc))
+      else process_iri_escapes_rec rest1 (c1 :: acc)
+let process_iri_escapes (s : Prims.string) : Prims.string=
+  let cs = FStar_String.list_of_string s in
+  FStar_String.string_of_list (process_iri_escapes_rec cs [])
 let process_string_escapes (s : Prims.string) : Prims.string =
   let open Stdlib in
   (* Process string escape sequences: backslash-t, -n, -r, etc. *)

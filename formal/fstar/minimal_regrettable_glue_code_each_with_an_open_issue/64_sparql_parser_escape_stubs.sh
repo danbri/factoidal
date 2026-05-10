@@ -42,42 +42,10 @@ with open(path, 'r', encoding='utf-8') as f:
 # Patch no longer touches this stub; F* now produces the implementation
 # directly via byte_of_int + String.string_of_list.
 
-content = re.sub(
-    r'let process_iri_escapes \([^)]*\) : Prims\.string=\n  failwith "Not yet implemented: SPARQL11\.Parser\.process_iri_escapes"',
-    lambda _m: r'''let process_iri_escapes (s : Prims.string) : Prims.string =
-  let open Stdlib in
-  (* Process backslash-u and backslash-U escapes in IRI strings *)
-  let len = String.length s in
-  let buf = Buffer.create len in
-  let i = ref 0 in
-  while !i < len do
-    if !i + 1 < len && s.[!i] = '\\' then begin
-      let next = s.[!i + 1] in
-      if next = 'u' && !i + 5 < len then begin
-        let hex = String.sub s (!i + 2) 4 in
-        (try let cp = int_of_string ("0x" ^ hex) in
-             Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
-         with _ -> Buffer.add_string buf (String.sub s !i 6));
-        i := !i + 6
-      end else if next = 'U' && !i + 9 < len then begin
-        let hex = String.sub s (!i + 2) 8 in
-        (try let cp = int_of_string ("0x" ^ hex) in
-             Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
-         with _ -> Buffer.add_string buf (String.sub s !i 10));
-        i := !i + 10
-      end else begin
-        Buffer.add_char buf s.[!i];
-        i := !i + 1
-      end
-    end else begin
-      Buffer.add_char buf s.[!i];
-      i := !i + 1
-    end
-  done;
-  Buffer.contents buf''',
-    content,
-    count=1
-)
+# process_iri_escapes migrated to F* in SPARQL11.Parser.fst (2026-05-10).
+# Patch no longer touches this stub; F* now produces the implementation
+# via process_iri_escapes_rec (tail-rec over codepoint list with
+# read_hex_digits hex parser + utf8_of_codepoint expansion).
 
 content = re.sub(
     r'let process_string_escapes \([^)]*\) : Prims\.string=\n  failwith "Not yet implemented: SPARQL11\.Parser\.process_string_escapes"',

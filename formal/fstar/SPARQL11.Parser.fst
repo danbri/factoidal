@@ -223,9 +223,70 @@ let utf8_of_codepoint (cp : nat) : Tot string =
   else
     ""  (* invalid codepoint — out of Unicode range *)
 
-(* Process \uXXXX and \UXXXXXXXX escapes in an IRI string.
-   Delegated to OCaml stub — escape processing requires UTF-8 encoding. *)
-assume val process_iri_escapes : string -> string
+(* Helper: read exactly [n] hex digits from the front of [cs]. Returns
+   the accumulated value + remainder if successful, None if the front
+   doesn't have [n] hex digits.
+
+   Result-length refinement: when Some (_, rest), the rest is at most
+   length cs - n long. Used by process_iri_escapes_rec to discharge
+   the recursive-call termination obligation. *)
+let rec read_hex_digits (n : nat) (cs : list FStar.Char.char) (acc : nat)
+  : Tot (option (nat & (rest:list FStar.Char.char{
+      FStar.List.Tot.length rest + n <= FStar.List.Tot.length cs})))
+        (decreases n)
+  = if n = 0 then Some (acc, cs)
+    else
+      match cs with
+      | [] -> None
+      | c :: rest ->
+        let cd = char_code c in
+        if (cd >= 0x30 && cd <= 0x39) || (cd >= 0x41 && cd <= 0x46) || (cd >= 0x61 && cd <= 0x66)
+        then read_hex_digits (n - 1) rest (acc `op_Multiply` 16 + hex_value c)
+        else None
+
+(* Walk the codepoint list of an IRI string, expanding \uXXXX and
+   \UXXXXXXXX escapes into UTF-8 byte sequences. Tail-rec via reversed
+   accumulator; final List.Tot.rev at the top-level wrapper. *)
+let rec process_iri_escapes_rec
+  (cs : list FStar.Char.char) (acc : list FStar.Char.char)
+  : Tot (list FStar.Char.char) (decreases (FStar.List.Tot.length cs))
+  = match cs with
+    | [] -> FStar.List.Tot.rev acc
+    | c1 :: rest1 ->
+      if char_code c1 = 0x5C (* '\' *) then
+        match rest1 with
+        | c2 :: rest2 ->
+          let code2 = char_code c2 in
+          if code2 = 0x75 (* 'u' *) then begin
+            match read_hex_digits 4 rest2 0 with
+            | Some (cp, after) ->
+              let bs = String.list_of_string (utf8_of_codepoint cp) in
+              process_iri_escapes_rec after (FStar.List.Tot.rev_acc bs acc)
+            | None ->
+              process_iri_escapes_rec rest1 (c1 :: acc)
+          end
+          else if code2 = 0x55 (* 'U' *) then begin
+            match read_hex_digits 8 rest2 0 with
+            | Some (cp, after) ->
+              let bs = String.list_of_string (utf8_of_codepoint cp) in
+              process_iri_escapes_rec after (FStar.List.Tot.rev_acc bs acc)
+            | None ->
+              process_iri_escapes_rec rest1 (c1 :: acc)
+          end
+          else
+            process_iri_escapes_rec rest1 (c1 :: acc)
+        | [] ->
+          process_iri_escapes_rec [] (c1 :: acc)
+      else
+        process_iri_escapes_rec rest1 (c1 :: acc)
+
+(* Process \uXXXX and \UXXXXXXXX escapes in an IRI string. Pure F\*
+   implementation per #64. Equivalent to the OCaml fallback semantics:
+   when an escape can't parse (insufficient hex digits), emit the
+   backslash verbatim and continue with the next char. *)
+let process_iri_escapes (s : string) : Tot string =
+  let cs = String.list_of_string s in
+  String.string_of_list (process_iri_escapes_rec cs [])
 
 (* Process escape sequences in a string literal
    (\t \n \r \\ \" \' \uXXXX \UXXXXXXXX).
