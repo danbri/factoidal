@@ -333,20 +333,6 @@ let rec lemma_parse_n_u32s_serialize_u32_list
       RDF.Bytes.lemma_parse_write_u32_le_inverse x
         (FStar.List.Tot.append tail rest)
 
-(* last_of_or returns the last element of a non-empty list. *)
-let rec lemma_last_of_or_nonempty
-  (xs : list nat) (default_ : nat)
-  : Lemma
-      (requires Cons? xs)
-      (ensures (
-        match xs with
-        | [x] -> last_of_or xs default_ == x
-        | _ :: _ -> last_of_or xs default_ == last_of_or (FStar.List.Tot.tl xs) default_))
-      (decreases xs)
-  = match xs with
-    | [_] -> ()
-    | _ :: rest -> ()
-
 (* General case: serialize_offsets num_rgs num_preds rg_offsets subject_ids
    round-trips back to (num_rgs, num_preds, rg_offsets, subject_ids).
 
