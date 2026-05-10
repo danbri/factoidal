@@ -208,9 +208,11 @@ let rec parse_tokens_from_offsets
      for any sorted_tokens with [length sorted_tokens < 2^32] and
      [data_offset < 2^64] (the same bounds [serialize_dict] enforces).
 
-     Formal lemma deferred to a follow-up issue; the CI hash-roundtrip
-     test in tests/unit/dict_writer_roundtrip.ml gives empirical
-     evidence of round-trip on a representative fixture. *)
+     Formal lemma proof attempt: see [lemma_parse_serialize_dict]
+     below. The CI hash-roundtrip test in
+     tests/unit/dict_writer_roundtrip.ml provides empirical evidence
+     while the SMT-resistant pieces of the proof move to a tracking
+     issue. *)
 let parse_dict (bs : RDF.Bytes.bytes) : Tot (option (list string)) =
   match RDF.Bytes.parse_u32_le bs with
   | None -> None
@@ -242,3 +244,51 @@ let parse_dict (bs : RDF.Bytes.bytes) : Tot (option (list string)) =
                     | None -> None
                     | Some (offsets, after_offsets) ->
                       parse_tokens_from_offsets offsets after_offsets
+
+(* --- Round-trip lemma (attempted; admit-pending until tracker) ------- *)
+
+(* lemma_parse_serialize_dict tokens
+     The structural-induction round-trip property for the .dict
+     companion-file format.
+
+     Statement:
+       parse_dict (serialize_dict tokens) == Some tokens
+     under the same overflow preconditions [serialize_dict] requires
+     ([length tokens < 2^32] and the cumulative token-data offset
+     fits in u64).
+
+     Proof strategy: structural induction over [tokens], discharged
+     by composing four lower-level lemmas:
+       (a) parse_u32_le (write_u32_le n @ rest) == Some (n, rest)
+           for n < 2^32 — byte-LE inverse on the header / ids[] entries.
+       (b) parse_u64_le (write_u64_le n @ rest) == Some (n, rest)
+           for n < 2^64 — byte-LE inverse on the offset entries.
+       (c) parse_n_bytes (length bs) (bs @ rest) == Some (bs, rest)
+           — frame-rule for the ids[] / token_data slice.
+       (d) parse_string_of_length (String.length s) (bytes_of_string s
+             @ rest) == Some (s, rest)
+           — relies on the F* stdlib lemma `string_of_list_of_string`.
+
+     Lemmas (a)-(d) are the foundations; once they exist as proven
+     facts in [RDF.Bytes], the [serialize_dict] round-trip composes
+     them at each header / ids[] / offsets / data section boundary
+     plus an induction over the token list for the offsets and data
+     pieces.
+
+     Status: ADMITTED. The CI hash-roundtrip test in
+     tests/unit/dict_writer_roundtrip.ml provides 4-fixture empirical
+     evidence today (see commit 2b2b138). Promotion to a fully
+     SMT/induction proof is tracked in #252 — the four foundation
+     lemmas in RDF.Bytes (steps a–d above) are the prerequisite, and
+     writing them needs the [`FStar.List.Tot.Properties`] /
+     [`FStar.String`] composition lemmas to be in scope. *)
+let lemma_parse_serialize_dict
+  (sorted_tokens : list string)
+  : Lemma
+      (requires (let n = length sorted_tokens in
+                 let ids_offset = header_size in
+                 let tokens_offset : nat = ids_offset + (id_size `op_Multiply` n) in
+                 let data_offset : nat = tokens_offset + (offset_size `op_Multiply` (n + 1)) in
+                 n < 4294967296 /\ data_offset < 18446744073709551616))
+      (ensures parse_dict (serialize_dict sorted_tokens) == Some sorted_tokens)
+  = admit ()
