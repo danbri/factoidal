@@ -275,13 +275,27 @@ let parse_dict (bs : RDF.Bytes.bytes) : Tot (option (list string)) =
      plus an induction over the token list for the offsets and data
      pieces.
 
-     Status: ADMITTED. The CI hash-roundtrip test in
+     Status: ADMITTED for the general case. The empty-tokens base case
+     `lemma_parse_serialize_dict_empty_case` (below) is fully proven
+     via assert_norm — z3 unfolds the concrete byte-layout for `[]`
+     and discharges. The general case needs induction over the token
+     list with the four foundation lemmas in `RDF.Bytes`
+     (lemma_parse_write_u32_le_inverse, lemma_parse_write_u64_le_inverse,
+     lemma_parse_n_bytes_inverse, lemma_parse_string_of_length_inverse,
+     all proven post-#252) plus structural sub-lemmas for build_ids /
+     build_offs / build_data. The CI hash-roundtrip test in
      tests/unit/dict_writer_roundtrip.ml provides 4-fixture empirical
-     evidence today (see commit 2b2b138). Promotion to a fully
-     SMT/induction proof is tracked in #252 — the four foundation
-     lemmas in RDF.Bytes (steps a–d above) are the prerequisite, and
-     writing them needs the [`FStar.List.Tot.Properties`] /
-     [`FStar.String`] composition lemmas to be in scope. *)
+     evidence for the general case meanwhile. *)
+
+(* Base case: parse_dict (serialize_dict []) == Some [].
+
+   Verifies in <1s — z3 normalises the entire concrete byte sequence
+   (40 bytes: 32-byte header + 8-byte sentinel offset, no ids[] or
+   token_data) and discharges the parse-walk symbolically. *)
+let lemma_parse_serialize_dict_empty_case ()
+  : Lemma (ensures parse_dict (serialize_dict []) == Some [])
+  = assert_norm (parse_dict (serialize_dict []) == Some [])
+
 let lemma_parse_serialize_dict
   (sorted_tokens : list string)
   : Lemma
@@ -291,4 +305,6 @@ let lemma_parse_serialize_dict
                  let data_offset : nat = tokens_offset + (offset_size `op_Multiply` (n + 1)) in
                  n < 4294967296 /\ data_offset < 18446744073709551616))
       (ensures parse_dict (serialize_dict sorted_tokens) == Some sorted_tokens)
-  = admit ()
+  = match sorted_tokens with
+    | [] -> lemma_parse_serialize_dict_empty_case ()
+    | _ -> admit ()
