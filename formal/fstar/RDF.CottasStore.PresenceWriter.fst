@@ -189,3 +189,54 @@ let lemma_parse_serialize_presence_empty_case ()
     RDF.Bytes.lemma_parse_write_u32_le_inverse 0 b2;
     RDF.Bytes.lemma_parse_write_u32_le_inverse 0 [];
     RDF.Bytes.lemma_parse_n_bytes_inverse [] []
+
+(* General-case round-trip: serialize_presence num_rgs num_tokens bitmap
+   round-trips back to (num_rgs, num_tokens, bitmap), provided the
+   header-field bounds hold and the bitmap length matches what the
+   parser expects.
+
+   Note: the parser computes `needed = ceil(num_rgs * num_tokens / 8)`
+   and reads exactly that many bytes. The round-trip therefore only
+   holds when the supplied bitmap has THAT exact length. The lemma
+   states this as a precondition; the empty case is a special case
+   where length bitmap == 0 == ceil(0/8). *)
+let lemma_parse_serialize_presence
+  (num_rgs : nat) (num_tokens : nat) (bitmap : RDF.Bytes.bytes)
+  : Lemma
+      (requires num_rgs < 4294967296
+                /\ num_tokens < 4294967296
+                /\ FStar.List.Tot.length bitmap
+                   == (num_rgs `op_Multiply` num_tokens + 7) / 8)
+      (ensures parse_presence (serialize_presence num_rgs num_tokens bitmap)
+               == Some (num_rgs, num_tokens, bitmap))
+  = let m = RDF.Bytes.write_u32_le presence_magic in
+    let v = RDF.Bytes.write_u32_le presence_version in
+    let r = RDF.Bytes.write_u32_le num_rgs in
+    let nt = RDF.Bytes.write_u32_le num_tokens in
+    (* Bridge build_header's append_tr chain to FStar.List.Tot.append. *)
+    Lh.lemma_append_tr_eq r nt;
+    Lh.lemma_append_tr_eq v (Lh.append_tr r nt);
+    Lh.lemma_append_tr_eq m (Lh.append_tr v (Lh.append_tr r nt));
+    let header = build_header num_rgs num_tokens in
+    Lh.lemma_append_tr_eq header bitmap;
+    (* Re-associate: header @ bitmap = m @ (v @ (r @ (nt @ bitmap))). *)
+    FStar.List.Tot.Properties.append_assoc m
+      (FStar.List.Tot.append v (FStar.List.Tot.append r nt)) bitmap;
+    FStar.List.Tot.Properties.append_assoc v
+      (FStar.List.Tot.append r nt) bitmap;
+    FStar.List.Tot.Properties.append_assoc r nt bitmap;
+    (* Peel the four u32s. *)
+    RDF.Bytes.lemma_parse_write_u32_le_inverse presence_magic
+      (FStar.List.Tot.append v
+        (FStar.List.Tot.append r
+          (FStar.List.Tot.append nt bitmap)));
+    RDF.Bytes.lemma_parse_write_u32_le_inverse presence_version
+      (FStar.List.Tot.append r
+        (FStar.List.Tot.append nt bitmap));
+    RDF.Bytes.lemma_parse_write_u32_le_inverse num_rgs
+      (FStar.List.Tot.append nt bitmap);
+    RDF.Bytes.lemma_parse_write_u32_le_inverse num_tokens bitmap;
+    (* Peel the bitmap. parse_n_bytes (length bitmap) (bitmap @ []) =
+       Some (bitmap, []). *)
+    FStar.List.Tot.Properties.append_l_nil bitmap;
+    RDF.Bytes.lemma_parse_n_bytes_inverse bitmap []
