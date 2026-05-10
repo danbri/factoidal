@@ -209,6 +209,10 @@ that topic in a session.
   worktree path discipline + post-condition checks.
 - [`workflow-gotchas-debugging`](skills/workflow-gotchas-debugging/SKILL.md)
   — diagnostic playbook for the dev-loop hazards we've actually hit.
+- [`autonomous-time-discipline`](skills/autonomous-time-discipline/SKILL.md)
+  — wall-clock + Monitor + lock-cleanup pattern for long autonomous
+  sessions. Read when kicking long background builds, when "the
+  job has been silent for a while," or before a multi-hour solo run.
 - [`issue-hygiene`](skills/issue-hygiene/SKILL.md) — keep GitHub
   issues + checklists in sync as PRs land.
 - [`jsoo-debug-bundle`](skills/jsoo-debug-bundle/SKILL.md) — build a
