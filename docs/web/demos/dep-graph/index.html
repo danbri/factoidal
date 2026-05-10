@@ -38,7 +38,8 @@
   input[type=text]::placeholder { color: var(--muted); }
   label { display: block; margin: 8px 0 4px; color: var(--muted); font-size: 11px;
           text-transform: uppercase; letter-spacing: 0.06em; }
-  #graph { position: relative; overflow: hidden; touch-action: none; }
+  #graph { position: relative; overflow: hidden; touch-action: none; background: var(--bg); }
+  #graph:fullscreen, #graph:-webkit-full-screen { width: 100vw; height: 100vh; }
   svg { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
   svg:active { cursor: grabbing; }
   .node circle { stroke: #0c0e13; stroke-width: 1.5px; cursor: pointer; }
@@ -60,6 +61,9 @@
   .meta { color: var(--muted); font-size: 12px; }
   .pill { display: inline-block; padding: 1px 6px; border-radius: 8px; background: #1f2530;
           color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .members { margin: 4px 0 8px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .members .pill { background: #1c2533; color: var(--fg); font-family: ui-monospace,
+                   "SFMono-Regular", Menlo, monospace; font-size: 11px; }
   .dep-list { margin: 4px 0 0; padding: 0; list-style: none; }
   .dep-list li { padding: 6px 0; border-bottom: 1px dashed var(--border); cursor: pointer;
                  display: flex; align-items: center; gap: 6px; }
@@ -118,6 +122,7 @@
     <select id="view">
       <option value="modules">Per-module (every .fst/.fsti)</option>
       <option value="namespaces">By namespace (Parser, RDF, SPARQL, …)</option>
+      <option value="terms">Types &amp; terms (triple, graph, rdf_term, …)</option>
     </select>
 
     <h2>Namespaces</h2>
@@ -132,6 +137,7 @@
       <button id="btn-freeze">Freeze</button>
       <button id="btn-labels" class="on">Labels</button>
       <button id="btn-leaves" class="on">Leaves</button>
+      <button id="btn-fullscreen" title="Fullscreen graph (Esc to exit)">⛶</button>
     </div>
     <svg></svg>
     <div id="footer">drag to pan · wheel/pinch to zoom · click a node for details</div>
@@ -146,9 +152,10 @@
         <span class="pill" id="detail-ns"></span>
         <span class="pill" id="detail-deg"></span>
       </div>
-      <h2>Imports (<span id="dep-count">0</span>)</h2>
+      <div id="detail-members" style="display:none"></div>
+      <h2><span id="dep-heading">Imports</span> (<span id="dep-count">0</span>)</h2>
       <ul class="dep-list" id="dep-list"></ul>
-      <h2>Imported by (<span id="rdep-count">0</span>)</h2>
+      <h2><span id="rdep-heading">Imported by</span> (<span id="rdep-count">0</span>)</h2>
       <ul class="dep-list" id="rdep-list"></ul>
     </div>
   </aside>
@@ -170,34 +177,48 @@ const NS_COLOR = {
 };
 const COLOR = ns => NS_COLOR[ns] || "#cccccc";
 
-const state = { data: { modules: null, namespaces: null }, view: "modules",
+const state = { data: { modules: null, namespaces: null, terms: null }, view: "modules",
                 graph: null, sim: null, selected: null, hoverNs: null,
                 showLabels: true, showLeaves: true, frozen: false };
 
 async function load() {
-  const [m, n] = await Promise.all([
+  const [m, n, t] = await Promise.all([
     fetch("modules.json").then(r => r.json()),
     fetch("namespaces.json").then(r => r.json()),
+    fetch("terms.json").then(r => r.json()).catch(() => null),
   ]);
   state.data.modules = m;
   state.data.namespaces = n;
+  state.data.terms = t;
   document.getElementById("stats").textContent =
-    `${m.nodes.length} modules · ${m.links.length} edges · ${n.nodes.length} namespaces`;
+    `${m.nodes.length} modules · ${m.links.length} edges · ${n.nodes.length} namespaces`
+    + (t ? ` · ${t.nodes.length} types` : "");
   buildNsList();
   render();
 }
 
 function buildNsList() {
   const list = d3.select("#ns-list");
-  const by = d3.rollups(state.data.modules.nodes, v => v.length, d => d.namespace)
+  list.selectAll("*").remove();
+  const src = state.view === "terms" && state.data.terms
+    ? state.data.terms.nodes : state.data.modules.nodes;
+  const by = d3.rollups(src, v => v.length, d => d.namespace)
               .sort((a,b) => d3.descending(a[1], b[1]));
   list.selectAll("div.row").data(by).enter().append("div")
     .attr("class", "row")
     .on("mouseover", (e, [ns]) => { state.hoverNs = ns; refreshHighlight(); })
     .on("mouseout", () => { state.hoverNs = null; refreshHighlight(); })
     .on("click", (e, [ns]) => {
-      document.getElementById("search").value = ns + ".";
-      onSearch();
+      // In modules/namespaces views, prefix-search by namespace name. In
+      // terms view, term names don't carry the namespace, so we instead
+      // pin the namespace as a persistent dim filter.
+      if (state.view === "terms") {
+        state.pinnedNs = state.pinnedNs === ns ? null : ns;
+        refreshHighlight();
+      } else {
+        document.getElementById("search").value = ns + ".";
+        onSearch();
+      }
       if (matchMedia("(max-width: 900px)").matches) closeDrawers();
     })
     .call(div => {
@@ -233,15 +254,17 @@ function render() {
     weight: l.weight || 1,
   })).filter(l => l.source && l.target);
 
-  const isModuleView = state.view === "modules";
-  const radius = d => isModuleView
-    ? 4 + Math.sqrt((d.deps || 0) + (d.rdeps || 0)) * 1.6
-    : 8 + Math.sqrt(d.modules || 1) * 3;
+  const view = state.view;
+  const isNs = view === "namespaces";
+  const radius = d => isNs
+    ? 8 + Math.sqrt(d.modules || 1) * 3
+    : 4 + Math.sqrt((d.deps || 0) + (d.rdeps || 0)) * 1.6;
 
+  const linkDist = isNs ? 130 : (view === "terms" ? 50 : 55);
+  const charge = isNs ? -600 : (view === "terms" ? -120 : -90);
   const sim = d3.forceSimulation(nodes)
-    .force("link", d3.forceLink(links).id(d => d.id)
-      .distance(isModuleView ? 55 : 130).strength(0.6))
-    .force("charge", d3.forceManyBody().strength(isModuleView ? -90 : -600))
+    .force("link", d3.forceLink(links).id(d => d.id).distance(linkDist).strength(0.6))
+    .force("charge", d3.forceManyBody().strength(charge))
     .force("center", d3.forceCenter(w/2, h/2))
     .force("collide", d3.forceCollide().radius(d => radius(d) + 4))
     .alpha(1).alphaDecay(0.03);
@@ -266,14 +289,42 @@ function render() {
         .on("start", (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
         .on("drag",  (e, d) => { d.fx = e.x; d.fy = e.y; })
         .on("end",   (e, d) => { if (!e.active) sim.alphaTarget(0); if (!state.frozen) { d.fx = null; d.fy = null; } }));
-  node.append("circle")
-    .attr("r", radius).attr("fill", d => COLOR(d.namespace))
+  const nodeShape = view === "terms"
+    ? d => d.kind === "variant" ? "diamond" : (d.kind === "alias" ? "circle" : "square")
+    : () => "circle";
+  node.each(function(d) {
+    const sel = d3.select(this);
+    const r = radius(d);
+    const shape = nodeShape(d);
+    if (shape === "diamond") {
+      sel.append("polygon")
+        .attr("points", `0,${-r} ${r},0 0,${r} ${-r},0`)
+        .attr("fill", COLOR(d.namespace))
+        .attr("stroke", "#0c0e13").attr("stroke-width", 1.5).attr("class", "shape");
+    } else if (shape === "square") {
+      const s = r * 1.5;
+      sel.append("rect")
+        .attr("x", -s/2).attr("y", -s/2).attr("width", s).attr("height", s)
+        .attr("rx", 2)
+        .attr("fill", COLOR(d.namespace))
+        .attr("stroke", "#0c0e13").attr("stroke-width", 1.5).attr("class", "shape");
+    } else {
+      sel.append("circle")
+        .attr("r", r).attr("fill", COLOR(d.namespace))
+        .attr("stroke", "#0c0e13").attr("stroke-width", 1.5).attr("class", "shape");
+    }
+  });
+  node.select(".shape")
+    .style("cursor", "pointer")
     .on("click", (e, d) => { e.stopPropagation(); selectNode(d); })
     .on("mouseover", (e, d) => { state.hover = d; refreshHighlight(); })
     .on("mouseout",  ()      => { state.hover = null; refreshHighlight(); });
-  node.append("title").text(d => `${d.id}\nimports ${d.deps || 0}\nimported by ${d.rdeps || 0}`);
+  node.append("title").text(d =>
+    view === "terms"
+      ? `${d.id}  (${d.kind})\nin ${d.module}\nuses ${d.deps || 0}\nused by ${d.rdeps || 0}`
+      : `${d.id}\nimports ${d.deps || 0}\nimported by ${d.rdeps || 0}`);
   node.append("text").attr("x", d => radius(d) + 4).attr("y", 3)
-      .text(d => isModuleView ? d.id.split(".").slice(-1)[0] : d.id);
+      .text(d => view === "modules" ? d.id.split(".").slice(-1)[0] : d.id);
 
   state.graph = { nodes, links, link, node };
   toggleLabels(state.showLabels);
@@ -300,10 +351,27 @@ function updateDetails() {
   if (!state.selected) { empty.style.display = "block"; panel.style.display = "none"; return; }
   empty.style.display = "none"; panel.style.display = "block";
   const d = state.selected;
+  const isTerm = state.view === "terms";
   document.getElementById("detail-name").textContent = d.id;
-  document.getElementById("detail-ns").textContent = d.namespace;
-  document.getElementById("detail-deg").textContent =
-    `${d.deps || 0} imports · ${d.rdeps || 0} importers`;
+  document.getElementById("detail-ns").textContent =
+    isTerm ? `${d.kind} in ${d.module}` : d.namespace;
+  document.getElementById("detail-deg").textContent = isTerm
+    ? `uses ${d.deps || 0} · used by ${d.rdeps || 0}`
+    : `${d.deps || 0} imports · ${d.rdeps || 0} importers`;
+  document.getElementById("dep-heading").textContent = isTerm ? "Uses" : "Imports";
+  document.getElementById("rdep-heading").textContent = isTerm ? "Used by" : "Imported by";
+
+  const memBlock = document.getElementById("detail-members");
+  if (isTerm && d.members && d.members.length) {
+    const label = d.kind === "variant" ? "Constructors" : "Fields";
+    memBlock.innerHTML = `<h2>${label} (${d.members.length})</h2>`
+      + `<div class="members">` + d.members.map(m =>
+        `<span class="pill">${m}</span>`).join(" ") + `</div>`;
+    memBlock.style.display = "block";
+  } else {
+    memBlock.style.display = "none";
+  }
+
   const data = currentData();
   const incoming = data.links.filter(l => (l.target.id || l.target) === d.id).map(l => l.source.id || l.source);
   const outgoing = data.links.filter(l => (l.source.id || l.source) === d.id).map(l => l.target.id || l.target);
@@ -330,9 +398,9 @@ function fillList(id, ids) {
 
 function refreshHighlight() {
   if (!state.graph) return;
-  const sel = state.selected, hover = state.hover, hoverNs = state.hoverNs;
+  const sel = state.selected, hover = state.hover;
   const focus = hover || sel;
-  const focusNs = hoverNs;
+  const focusNs = state.hoverNs || state.pinnedNs;
   const focusId = focus ? focus.id : null;
   const neighbours = new Set();
   if (focusId) {
@@ -405,7 +473,10 @@ function freeze() {
 document.getElementById("search").addEventListener("input", onSearch);
 document.getElementById("view").addEventListener("change", e => {
   state.view = e.target.value;
-  state.selected = null; updateDetails(); render();
+  state.selected = null;
+  updateDetails();
+  buildNsList();
+  render();
 });
 document.getElementById("btn-fit").addEventListener("click", fit);
 document.getElementById("btn-freeze").addEventListener("click", freeze);
@@ -413,6 +484,34 @@ document.getElementById("btn-labels").addEventListener("click",
   () => toggleLabels(!state.showLabels));
 document.getElementById("btn-leaves").addEventListener("click",
   () => toggleLeaves(!state.showLeaves));
+document.getElementById("btn-fullscreen").addEventListener("click", toggleFullscreen);
+
+function toggleFullscreen() {
+  const el = document.getElementById("graph");
+  const fs = document.fullscreenElement || document.webkitFullscreenElement;
+  if (fs) {
+    (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  } else {
+    (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+  }
+}
+function onFsChange() {
+  const fs = document.fullscreenElement || document.webkitFullscreenElement;
+  document.getElementById("btn-fullscreen").classList.toggle("on", !!fs);
+  if (state.sim) {
+    state.sim.alpha(0.3).restart();
+    state.sim.force("center", d3.forceCenter(
+      d3.select("svg").node().clientWidth / 2,
+      d3.select("svg").node().clientHeight / 2));
+  }
+}
+document.addEventListener("fullscreenchange", onFsChange);
+document.addEventListener("webkitfullscreenchange", onFsChange);
+addEventListener("keydown", e => {
+  if (e.key === "f" && !["INPUT","TEXTAREA","SELECT"].includes(document.activeElement.tagName)) {
+    toggleFullscreen();
+  }
+});
 
 const isMobile = () => matchMedia("(max-width: 900px)").matches;
 const sidebarEl = document.getElementById("sidebar");

@@ -21,6 +21,7 @@ module.exports = function(eleventyConfig) {
   // design docs and offline viewing.
   eleventyConfig.addPassthroughCopy("web/demos/dep-graph/modules.json");
   eleventyConfig.addPassthroughCopy("web/demos/dep-graph/namespaces.json");
+  eleventyConfig.addPassthroughCopy("web/demos/dep-graph/terms.json");
   eleventyConfig.addPassthroughCopy("web/demos/dep-graph/modules.dot");
   eleventyConfig.addPassthroughCopy("web/demos/dep-graph/modules.mmd");
   eleventyConfig.addPassthroughCopy("web/demos/dep-graph/modules.png");
