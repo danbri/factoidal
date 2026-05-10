@@ -144,3 +144,48 @@ let parse_presence (bs : RDF.Bytes.bytes)
               | None -> None
               | Some (bitmap, _trailing) ->
                 Some (num_rgs, num_tokens, bitmap)
+
+(* Empty base case: serialize_presence 0 0 [] then parse_presence
+   round-trips to Some (0, 0, []). 16-byte header only, no bitmap.
+   Verifies via foundation lemmas in RDF.Bytes (post-#252).
+
+   The proof composes:
+     - Lh.lemma_append_tr_eq + FStar.List.Tot.Properties.append_l_nil
+       to show serialize_presence 0 0 [] reduces to build_header 0 0.
+     - Four applications of lemma_parse_write_u32_le_inverse to peel
+       the four u32 fields off the header.
+     - lemma_parse_n_bytes_inverse with bs = [] and rest = [] to
+       discharge the trailing parse_n_bytes 0 [] = Some([], []).
+
+   The CI hash-roundtrip test in tests/unit/presence_writer_roundtrip.ml
+   provides 5-fixture empirical evidence for the general non-empty
+   case meanwhile. Inductive case (general bitmap) is tracked as a
+   follow-up; mirrors the DictWriter cons-case work needed under
+   #200 Section B. *)
+let lemma_parse_serialize_presence_empty_case ()
+  : Lemma (ensures parse_presence (serialize_presence 0 0 []) == Some (0, 0, []))
+  = let header = build_header 0 0 in
+    Lh.lemma_append_tr_eq header [];
+    FStar.List.Tot.Properties.append_l_nil header;
+    assert (serialize_presence 0 0 [] == header);
+    (* header structurally is:
+         append_tr (write_u32_le magic) (
+           append_tr (write_u32_le version) (
+             append_tr (write_u32_le 0) (write_u32_le 0))) *)
+    let b1 = RDF.Bytes.write_u32_le 0 in
+    let b2 = RDF.Bytes.write_u32_le 0 in
+    let b3 = Lh.append_tr b1 b2 in
+    let b4 = RDF.Bytes.write_u32_le presence_version in
+    let b5 = Lh.append_tr b4 b3 in
+    let b6 = RDF.Bytes.write_u32_le presence_magic in
+    Lh.lemma_append_tr_eq b1 b2;
+    Lh.lemma_append_tr_eq b4 b3;
+    Lh.lemma_append_tr_eq b6 b5;
+    (* Now header == FStar.List.Tot.append b6 (append b4 (append b1 b2)). *)
+    RDF.Bytes.lemma_parse_write_u32_le_inverse presence_magic
+      (FStar.List.Tot.append b4 (FStar.List.Tot.append b1 b2));
+    RDF.Bytes.lemma_parse_write_u32_le_inverse presence_version
+      (FStar.List.Tot.append b1 b2);
+    RDF.Bytes.lemma_parse_write_u32_le_inverse 0 b2;
+    RDF.Bytes.lemma_parse_write_u32_le_inverse 0 [];
+    RDF.Bytes.lemma_parse_n_bytes_inverse [] []
