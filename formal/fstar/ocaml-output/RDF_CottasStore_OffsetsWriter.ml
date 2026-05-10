@@ -120,3 +120,5 @@ let parse_offsets (bs : RDF_Bytes.bytes) :
                                    FStar_Pervasives_Native.Some
                                      (num_rgs, num_preds, rg_offsets,
                                        subject_ids))))))
+let rec all_lt (xs : Prims.nat Prims.list) (bound : Prims.nat) : Prims.bool=
+  match xs with | [] -> true | x::rest -> (x < bound) && (all_lt rest bound)

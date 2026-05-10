@@ -38,40 +38,44 @@ let rdf_format_default : rdf_format = Turtle
 // inside the function rather than asking the caller, so the
 // semantic table here is the single source of truth and there's no
 // way to forget the normalization step at a call site.
+// Implementation note: `if/else if` chain rather than `match`-on-string
+// literals so that KaRaMeL's C extraction succeeds (Warning 250 /
+// `[MLP_Const]`). #200 G3.
 let format_of_extension (ext : string) : option rdf_format =
-  match lowercase ext with
-  | ".nt"        -> Some NT
-  | ".ntriples"  -> Some NT
-  | ".ttl"       -> Some Turtle
-  | ".turtle"    -> Some Turtle
-  | ".nq"        -> Some NQuads
-  | ".nquads"    -> Some NQuads
-  | ".trig"      -> Some TriG
-  | ".rdf"       -> Some RDFXML
-  | ".xml"       -> Some RDFXML
-  | ".rdfxml"    -> Some RDFXML
-  | ".owl"       -> Some RDFXML
-  | _            -> None
+  let lo = lowercase ext in
+  if      lo = ".nt"        then Some NT
+  else if lo = ".ntriples"  then Some NT
+  else if lo = ".ttl"       then Some Turtle
+  else if lo = ".turtle"    then Some Turtle
+  else if lo = ".nq"        then Some NQuads
+  else if lo = ".nquads"    then Some NQuads
+  else if lo = ".trig"      then Some TriG
+  else if lo = ".rdf"       then Some RDFXML
+  else if lo = ".xml"       then Some RDFXML
+  else if lo = ".rdfxml"    then Some RDFXML
+  else if lo = ".owl"       then Some RDFXML
+  else                           None
 
 // Like `format_of_extension`, but for the short labels accepted on
 // `--format X` / HTTP request `?format=X`. Same case-insensitive
-// match, same single source of truth.
+// matching, same single source of truth, same KaRaMeL-compatible
+// if/else-if shape.
 let format_of_string (s : string) : option rdf_format =
-  match lowercase s with
-  | "ntriples"   -> Some NT
-  | "nt"         -> Some NT
-  | "n-triples"  -> Some NT
-  | "turtle"     -> Some Turtle
-  | "ttl"        -> Some Turtle
-  | "nquads"     -> Some NQuads
-  | "nq"         -> Some NQuads
-  | "n-quads"    -> Some NQuads
-  | "trig"       -> Some TriG
-  | "rdfxml"     -> Some RDFXML
-  | "rdf/xml"    -> Some RDFXML
-  | "rdf"        -> Some RDFXML
-  | "xml"        -> Some RDFXML
-  | _            -> None
+  let lo = lowercase s in
+  if      lo = "ntriples"   then Some NT
+  else if lo = "nt"         then Some NT
+  else if lo = "n-triples"  then Some NT
+  else if lo = "turtle"     then Some Turtle
+  else if lo = "ttl"        then Some Turtle
+  else if lo = "nquads"     then Some NQuads
+  else if lo = "nq"         then Some NQuads
+  else if lo = "n-quads"    then Some NQuads
+  else if lo = "trig"       then Some TriG
+  else if lo = "rdfxml"     then Some RDFXML
+  else if lo = "rdf/xml"    then Some RDFXML
+  else if lo = "rdf"        then Some RDFXML
+  else if lo = "xml"        then Some RDFXML
+  else                           None
 
 // Verbose display name. Used in startup logs and `--format help`.
 let format_name (f : rdf_format) : string =

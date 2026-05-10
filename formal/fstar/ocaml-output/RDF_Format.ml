@@ -18,36 +18,82 @@ let uu___is_RDFXML (projectee : rdf_format) : Prims.bool=
 let rdf_format_default : rdf_format= Turtle
 let format_of_extension (ext : Prims.string) :
   rdf_format FStar_Pervasives_Native.option=
-  match FStar_String.lowercase ext with
-  | ".nt" -> FStar_Pervasives_Native.Some NT
-  | ".ntriples" -> FStar_Pervasives_Native.Some NT
-  | ".ttl" -> FStar_Pervasives_Native.Some Turtle
-  | ".turtle" -> FStar_Pervasives_Native.Some Turtle
-  | ".nq" -> FStar_Pervasives_Native.Some NQuads
-  | ".nquads" -> FStar_Pervasives_Native.Some NQuads
-  | ".trig" -> FStar_Pervasives_Native.Some TriG
-  | ".rdf" -> FStar_Pervasives_Native.Some RDFXML
-  | ".xml" -> FStar_Pervasives_Native.Some RDFXML
-  | ".rdfxml" -> FStar_Pervasives_Native.Some RDFXML
-  | ".owl" -> FStar_Pervasives_Native.Some RDFXML
-  | uu___ -> FStar_Pervasives_Native.None
+  let lo = FStar_String.lowercase ext in
+  if lo = ".nt"
+  then FStar_Pervasives_Native.Some NT
+  else
+    if lo = ".ntriples"
+    then FStar_Pervasives_Native.Some NT
+    else
+      if lo = ".ttl"
+      then FStar_Pervasives_Native.Some Turtle
+      else
+        if lo = ".turtle"
+        then FStar_Pervasives_Native.Some Turtle
+        else
+          if lo = ".nq"
+          then FStar_Pervasives_Native.Some NQuads
+          else
+            if lo = ".nquads"
+            then FStar_Pervasives_Native.Some NQuads
+            else
+              if lo = ".trig"
+              then FStar_Pervasives_Native.Some TriG
+              else
+                if lo = ".rdf"
+                then FStar_Pervasives_Native.Some RDFXML
+                else
+                  if lo = ".xml"
+                  then FStar_Pervasives_Native.Some RDFXML
+                  else
+                    if lo = ".rdfxml"
+                    then FStar_Pervasives_Native.Some RDFXML
+                    else
+                      if lo = ".owl"
+                      then FStar_Pervasives_Native.Some RDFXML
+                      else FStar_Pervasives_Native.None
 let format_of_string (s : Prims.string) :
   rdf_format FStar_Pervasives_Native.option=
-  match FStar_String.lowercase s with
-  | "ntriples" -> FStar_Pervasives_Native.Some NT
-  | "nt" -> FStar_Pervasives_Native.Some NT
-  | "n-triples" -> FStar_Pervasives_Native.Some NT
-  | "turtle" -> FStar_Pervasives_Native.Some Turtle
-  | "ttl" -> FStar_Pervasives_Native.Some Turtle
-  | "nquads" -> FStar_Pervasives_Native.Some NQuads
-  | "nq" -> FStar_Pervasives_Native.Some NQuads
-  | "n-quads" -> FStar_Pervasives_Native.Some NQuads
-  | "trig" -> FStar_Pervasives_Native.Some TriG
-  | "rdfxml" -> FStar_Pervasives_Native.Some RDFXML
-  | "rdf/xml" -> FStar_Pervasives_Native.Some RDFXML
-  | "rdf" -> FStar_Pervasives_Native.Some RDFXML
-  | "xml" -> FStar_Pervasives_Native.Some RDFXML
-  | uu___ -> FStar_Pervasives_Native.None
+  let lo = FStar_String.lowercase s in
+  if lo = "ntriples"
+  then FStar_Pervasives_Native.Some NT
+  else
+    if lo = "nt"
+    then FStar_Pervasives_Native.Some NT
+    else
+      if lo = "n-triples"
+      then FStar_Pervasives_Native.Some NT
+      else
+        if lo = "turtle"
+        then FStar_Pervasives_Native.Some Turtle
+        else
+          if lo = "ttl"
+          then FStar_Pervasives_Native.Some Turtle
+          else
+            if lo = "nquads"
+            then FStar_Pervasives_Native.Some NQuads
+            else
+              if lo = "nq"
+              then FStar_Pervasives_Native.Some NQuads
+              else
+                if lo = "n-quads"
+                then FStar_Pervasives_Native.Some NQuads
+                else
+                  if lo = "trig"
+                  then FStar_Pervasives_Native.Some TriG
+                  else
+                    if lo = "rdfxml"
+                    then FStar_Pervasives_Native.Some RDFXML
+                    else
+                      if lo = "rdf/xml"
+                      then FStar_Pervasives_Native.Some RDFXML
+                      else
+                        if lo = "rdf"
+                        then FStar_Pervasives_Native.Some RDFXML
+                        else
+                          if lo = "xml"
+                          then FStar_Pervasives_Native.Some RDFXML
+                          else FStar_Pervasives_Native.None
 let format_name (f : rdf_format) : Prims.string=
   match f with
   | NT -> "N-Triples"

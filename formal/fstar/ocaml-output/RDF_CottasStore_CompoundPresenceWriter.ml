@@ -113,3 +113,5 @@ let parse_compound_presence (bs : RDF_Bytes.bytes) :
                                         FStar_Pervasives_Native.Some
                                           (num_rgs, pred_size, obj_size,
                                             rg_offsets, pairs)))))))
+let rec all_lt (xs : Prims.nat Prims.list) (bound : Prims.nat) : Prims.bool=
+  match xs with | [] -> true | x::rest -> (x < bound) && (all_lt rest bound)

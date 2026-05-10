@@ -152,3 +152,19 @@ let parse_dict (bs : RDF_Bytes.bytes) :
                                              (offsets, after_offsets) ->
                                              parse_tokens_from_offsets
                                                offsets after_offsets)))))))
+let rec cum_offs (cur : Prims.nat) (tokens : Prims.string Prims.list) :
+  Prims.nat Prims.list=
+  match tokens with
+  | [] -> []
+  | t::rest ->
+      if cur >= (Prims.parse_int "18446744073709551616")
+      then []
+      else cur :: (cum_offs (cur + (FStar_String.strlen t)) rest)
+let rec cum_final (cur : Prims.nat) (tokens : Prims.string Prims.list) :
+  Prims.nat=
+  match tokens with
+  | [] -> cur
+  | t::rest ->
+      if cur >= (Prims.parse_int "18446744073709551616")
+      then cur
+      else cum_final (cur + (FStar_String.strlen t)) rest
