@@ -343,33 +343,20 @@ let explain_triple_pattern_against_store
    build the SAME GB_CottasOnDisk wrapper the engine uses.
    ========================================================================= *)
 
-(* Given a list of triple patterns and their per-pattern explain rows
-   (with estimates), reproduce the order `choose_best_tp_backend` would
-   visit them. The F* logic: at each step pick the pattern with the
-   minimum estimate (under the empty mu); after picking, the next
-   choose_best is over the remaining patterns.
-
-   We do this in OCaml using OUR pre-computed estimates (which avoid
-   the slow data-page walk) rather than calling F*'s
-   `choose_best_tp_backend` directly — that would re-call the slow
-   estimate path. Semantically the order matches what the runtime
-   optimiser would compute, given that estimates are ordinal. *)
-(* Phase 2.2 (2026-04-26): direct call to F*'s real
-   choose_best_tp_backend. Iteratively pick the smallest-estimate
-   pattern under empty mu, exactly as the runtime planner does at
-   eval time. This is the GROUND-TRUTH planner output — what the
-   engine actually decides — as opposed to the parallel reimpl
-   below (`optimiser_order_for_bgp_from_explains`) which uses
-   pre-computed estimates and may diverge.
+(* Direct call to F*'s real choose_best_tp_backend. Iteratively pick
+   the smallest-estimate pattern under empty mu, exactly as the
+   runtime planner does at eval time. This is the GROUND-TRUTH
+   planner output — what the engine actually decides.
 
    Performance note: this calls F*'s estimate path which on a
    COTTAS store routes through Mem5's bitmap fast path -> usually
    microseconds per call. So calling F*'s planner from --explain
    is fine.
 
-   For diagnosing the Q03 regression: comparing this output to
-   the parallel-reimpl output reveals where the divergence is.
-*)
+   #200 Section C 4/4 (2026-05-10): the parallel OCaml reimpl
+   (`optimiser_order_for_bgp_from_explains`, formerly defined here)
+   was an explicitly known-divergent shadow used to surface drift
+   during Pe5 unwinding. F* is the sole ground truth now. *)
 let optimiser_order_via_fstar
     (gb : S.graph_backend)
     (patterns : A.bgp)
@@ -379,40 +366,6 @@ let optimiser_order_via_fstar
     | FStar_Pervasives_Native.None -> List.rev acc
     | FStar_Pervasives_Native.Some (chosen, rest) ->
       loop rest (chosen :: acc)
-  in
-  loop patterns []
-
-let optimiser_order_for_bgp_from_explains
-    (rows : tp_explain list)
-    (patterns : A.bgp)
-  : A.triple_pattern list =
-  (* Build a quick lookup tp -> estimate. Estimates are Prims.int (Z.t)
-     after the SPARQL.Explain.fst migration; compare with Z.lt and use
-     a large Z.t sentinel for "not found". *)
-  let est_of tp =
-    match List.find_opt (fun r ->
-      A.pattern_subject_eq r.tpx_tp.A.tp_s tp.A.tp_s
-      && A.pattern_term_eq r.tpx_tp.A.tp_p tp.A.tp_p
-      && A.pattern_term_eq r.tpx_tp.A.tp_o tp.A.tp_o) rows with
-    | Some r -> r.tpx_estimate
-    | None -> Z.of_int max_int
-  in
-  let rec loop (remaining : A.bgp) (acc : A.triple_pattern list) =
-    match remaining with
-    | [] -> List.rev acc
-    | _ ->
-      (* Pick the pattern with the smallest estimate; tie-break by input order. *)
-      let best, rest = List.fold_left (fun (best, rest_rev) tp ->
-        match best with
-        | None -> Some tp, rest_rev
-        | Some b ->
-          if Z.lt (est_of tp) (est_of b) then Some tp, b :: rest_rev
-          else Some b, tp :: rest_rev
-      ) (None, []) remaining in
-      match best with
-      | None -> List.rev acc
-      | Some chosen ->
-        loop (List.rev rest) (chosen :: acc)
   in
   loop patterns []
 
@@ -620,19 +573,9 @@ let explain_query
   List.iteri (fun i tps ->
     Printf.fprintf out "  BGP #%d: %d triple%s\n" (i+1) (List.length tps)
       (if List.length tps = 1 then "" else "s");
-    (* GROUND TRUTH: F*'s real planner. Phase 2.2 unwind:
-       this is what the engine actually does. *)
+    (* GROUND TRUTH: F*'s real planner. *)
     let order_fstar = optimiser_order_via_fstar gb tps in
-    render_order "F* planner (runtime ground truth)" order_fstar;
-    (* Legacy: Pe5's parallel reimpl using pre-computed estimates.
-       Kept temporarily so we can SEE divergences during the unwind.
-       Will be deleted in a follow-up commit once we trust the F*
-       version. *)
-    let order_legacy = optimiser_order_for_bgp_from_explains rows tps in
-    if order_legacy <> order_fstar then
-      render_order "OCaml parallel reimpl (DIVERGES from F*)" order_legacy
-    else
-      Printf.fprintf out "  (OCaml parallel reimpl agrees with F*)\n"
+    render_order "F* planner (runtime ground truth)" order_fstar
   ) bgps;
   Printf.fprintf out "\n";
 
