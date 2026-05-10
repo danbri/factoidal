@@ -14,6 +14,23 @@ module.exports = function(eleventyConfig) {
   // but dropping sibling CSV/JSON.
   eleventyConfig.addPassthroughCopy("test-results");
 
+  // F* module dep-graph demo (web/demos/dep-graph/index.html) fetches
+  // modules.json + namespaces.json. JSON isn't an Eleventy template
+  // format so it isn't emitted by default. We also ship the static
+  // Graphviz/Mermaid/PNG/SVG/TXT renders alongside for embedding in
+  // design docs and offline viewing.
+  eleventyConfig.addPassthroughCopy("web/demos/dep-graph/modules.json");
+  eleventyConfig.addPassthroughCopy("web/demos/dep-graph/namespaces.json");
+  eleventyConfig.addPassthroughCopy("web/demos/dep-graph/modules.dot");
+  eleventyConfig.addPassthroughCopy("web/demos/dep-graph/modules.mmd");
+  eleventyConfig.addPassthroughCopy("web/demos/dep-graph/modules.png");
+  eleventyConfig.addPassthroughCopy("web/demos/dep-graph/modules.svg");
+  eleventyConfig.addPassthroughCopy("web/demos/dep-graph/modules.txt");
+  eleventyConfig.addPassthroughCopy("web/demos/dep-graph/namespaces.dot");
+  eleventyConfig.addPassthroughCopy("web/demos/dep-graph/namespaces.mmd");
+  eleventyConfig.addPassthroughCopy("web/demos/dep-graph/namespaces.png");
+  eleventyConfig.addPassthroughCopy("web/demos/dep-graph/namespaces.svg");
+
   // Rewrite cross-refs to .md files inside the rendered HTML so they point
   // at the .md-less URL Eleventy actually emits. Two shape fixes:
   //

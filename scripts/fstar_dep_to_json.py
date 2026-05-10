@@ -27,7 +27,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FSTAR_DIR = ROOT / "formal" / "fstar"
-OUT_DIR = FSTAR_DIR / "dep-graph"
+OUT_DIR = ROOT / "docs" / "web" / "demos" / "dep-graph"
 
 STDLIB_PREFIXES = (
     "FStar", "Prims", "LowStar", "Steel", "Lib", "Spec", "EverParse",
