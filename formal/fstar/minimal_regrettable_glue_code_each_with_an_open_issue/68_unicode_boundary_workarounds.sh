@@ -1,10 +1,31 @@
 #!/bin/bash
-# Post-extraction patch: Unicode boundary workarounds (surrogate validation)
+# Post-extraction patch: Unicode boundary workarounds (NTriples only)
 # Issue: https://github.com/danbri/factoidal/issues/68
 #
 # Patches:
 #   - Parser_NTriples.ml: 0xD7FF -> 0xD800 boundary fix
-#   - Parser_Turtle.ml: 4 surrogate validation guards in string parsers
+#
+# History (2026-05-10): the Turtle half of this patch was removed. The
+# F* `Parser.Turtle.fst` source already contains the four
+# `valid_codepoint` surrogate-validation guards (lines 1020, 1038, 1099,
+# 1117), so extraction produces them in `Parser_Turtle.ml` directly —
+# the regex-rewrite in this patch was a no-op (verified by md5sum
+# before/after). Removed to shrink the rule-#11(c) footprint.
+#
+# What remains: the NTriples `0xD7FF` → `0xD800` sed. This is a
+# workaround for an off-by-one in `FStar.Char.char_code`: the stdlib
+# type strictly excludes `U+D7FF` (`type char_code = n: U32.t{U32.v n
+# < 0xd7ff \/ ...}`), so `Parser.NTriples.fst`'s `valid_codepoint` /
+# `safe_char_of_int` must use `< 0xD7FF` to satisfy F*'s type system.
+# At runtime OCaml's `Char.chr 0xD7FF` succeeds, and per the Unicode
+# spec U+D7FF IS a valid scalar (the surrogate gap is 0xD800-0xDFFF).
+# This sed corrects the OCaml-side check to match Unicode while
+# leaving the F* type-checker happy.
+#
+# Full retirement of this patch is gated on either (a) an upstream F*
+# stdlib fix to `char_code` (probably loosening the strict `<` to `<=`
+# at 0xd7ff, plus the symmetric inclusive-`<=` at 0x10FFFF), or (b)
+# defining a project-local codepoint type that side-steps `char_code`.
 
 set -euo pipefail
 
@@ -25,89 +46,4 @@ if [[ -f "$FILE" ]]; then
     fi
   fi
   echo "  Parser_NTriples.ml patched."
-fi
-
-# ======================================================================
-# Parser_Turtle.ml — surrogate codepoint validation
-# ======================================================================
-FILE="$OUTDIR/Parser_Turtle.ml"
-if [[ -f "$FILE" ]]; then
-  echo "  Applying 68_unicode_boundary_workarounds.sh to $FILE..."
-  python3 - "$FILE" << 'PYEOF'
-import sys
-
-with open(sys.argv[1], 'r') as f:
-    content = f.read()
-
-changed = False
-
-# 1. parse_long_string_body, \u escape (4-digit, offset +6)
-old1 = '''                                          + h3 in
-                                      parse_long_string_body qch input
-                                        (pos + (Prims.of_int (6)))
-                                        ((Parser_NTriples.safe_char_of_int cp)'''
-new1 = '''                                          + h3 in
-                                      if Prims.op_Negation (Parser_NTriples.valid_codepoint cp)
-                                      then Parser_Combinators.ParseFail ("surrogate codepoint in \\\\u escape", pos)
-                                      else
-                                      parse_long_string_body qch input
-                                        (pos + (Prims.of_int (6)))
-                                        ((Parser_NTriples.safe_char_of_int cp)'''
-if old1 in content:
-    content = content.replace(old1, new1)
-    changed = True
-
-# 2. parse_long_string_body, \U escape (8-digit, offset +10)
-old2 = '''                                            + h7 in
-                                        parse_long_string_body qch input
-                                          (pos + (Prims.of_int (10)))
-                                          ((Parser_NTriples.safe_char_of_int'''
-new2 = '''                                            + h7 in
-                                        if Prims.op_Negation (Parser_NTriples.valid_codepoint cp)
-                                        then Parser_Combinators.ParseFail ("surrogate codepoint in \\\\U escape", pos)
-                                        else
-                                        parse_long_string_body qch input
-                                          (pos + (Prims.of_int (10)))
-                                          ((Parser_NTriples.safe_char_of_int'''
-if old2 in content:
-    content = content.replace(old2, new2)
-    changed = True
-
-# 3. parse_single_string_body, \u escape (4-digit, offset +6)
-old3 = '''                                          + h3 in
-                                      parse_single_string_body input
-                                        (pos + (Prims.of_int (6)))
-                                        ((Parser_NTriples.safe_char_of_int cp)'''
-new3 = '''                                          + h3 in
-                                      if Prims.op_Negation (Parser_NTriples.valid_codepoint cp)
-                                      then Parser_Combinators.ParseFail ("surrogate codepoint in \\\\u escape", pos)
-                                      else
-                                      parse_single_string_body input
-                                        (pos + (Prims.of_int (6)))
-                                        ((Parser_NTriples.safe_char_of_int cp)'''
-if old3 in content:
-    content = content.replace(old3, new3)
-    changed = True
-
-# 4. parse_single_string_body, \U escape (8-digit, offset +10)
-old4 = '''                                            + h7 in
-                                        parse_single_string_body input
-                                          (pos + (Prims.of_int (10)))
-                                          ((Parser_NTriples.safe_char_of_int'''
-new4 = '''                                            + h7 in
-                                        if Prims.op_Negation (Parser_NTriples.valid_codepoint cp)
-                                        then Parser_Combinators.ParseFail ("surrogate codepoint in \\\\U escape", pos)
-                                        else
-                                        parse_single_string_body input
-                                          (pos + (Prims.of_int (10)))
-                                          ((Parser_NTriples.safe_char_of_int'''
-if old4 in content:
-    content = content.replace(old4, new4)
-    changed = True
-
-if changed:
-    with open(sys.argv[1], 'w') as f:
-        f.write(content)
-PYEOF
-  echo "  Parser_Turtle.ml patched."
 fi
