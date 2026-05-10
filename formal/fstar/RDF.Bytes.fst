@@ -159,3 +159,102 @@ let parse_string_of_length (n : nat) (bs : bytes)
   match parse_n_bytes n bs with
   | None -> None
   | Some (taken, remainder) -> Some (bytes_to_string taken, remainder)
+
+(* --- Foundation lemmas for round-trip witnesses (#252) ---------------
+   Each (write, parse) pair is a left-inverse on its own preconditions.
+   These are the building blocks for the higher-level
+   `lemma_parse_serialize_*` round-trip lemmas in DictWriter /
+   PresenceWriter / CompoundPresenceWriter / OffsetsWriter.
+   -------------------------------------------------------------------- *)
+
+(* int_of_byte (byte_of_int n) == n for n in [0, 256).
+
+   FStar.Char's `char_of_u32_of_char` / `u32_of_char_of_u32` SMTPats
+   discharge the round-trip; the U32 round-trip on values < 2^32 is
+   automatic. The conditional branch in [int_of_byte] is dead because
+   we only call it on bytes produced by [byte_of_int]. *)
+let lemma_int_of_byte_of_int (n : int{n >= 0 /\ n < 256})
+  : Lemma (ensures int_of_byte (byte_of_int n) == n)
+          [SMTPat (int_of_byte (byte_of_int n))]
+  = ()
+
+(* parse_u32_le ((write_u32_le n) @ rest) == Some (n, rest)
+   for n < 2^32 and any [rest].
+
+   Proof composition:
+     - List.append unfolds: write_u32_le n is exactly
+       [b0; b1; b2; b3], so [b0;b1;b2;b3] @ rest = b0::b1::b2::b3::rest.
+     - parse_u32_le matches that pattern and returns
+       int_of_byte b0 + (int_of_byte b1)*256 + (int_of_byte b2)*65536
+       + (int_of_byte b3)*16777216.
+     - The SMTPat lemma_int_of_byte_of_int collapses each
+       int_of_byte (byte_of_int x) back to x.
+     - The arithmetic identity
+         n = n%256 + (n/256 % 256)*256 + (n/65536 % 256)*65536
+             + (n/16777216 % 256)*16777216
+       for n < 2^32 is a standard SMT/Z3 fact under the
+       `op_Multiply` interpretation. *)
+let lemma_parse_write_u32_le_inverse
+  (n : nat{n < 4294967296}) (rest : bytes)
+  : Lemma (ensures parse_u32_le (FStar.List.Tot.append (write_u32_le n) rest)
+                   == Some (n, rest))
+  = ()
+
+(* parse_u64_le ((write_u64_le n) @ rest) == Some (n, rest)
+   for n < 2^64 and any [rest]. Same shape as the u32_le lemma; the
+   arithmetic identity is the 8-byte version.
+
+   Status: ADMITTED. SMT (z3 4.13.3) discharges the u32 case
+   automatically but times out on the 8-byte modular-arithmetic
+   identity even at rlimit 60. The empirical witness in
+   tests/unit/dict_writer_roundtrip.ml + presence_writer_roundtrip.ml
+   + offsets_writer_roundtrip.ml + compound_presence_writer_roundtrip.ml
+   exercises u64 round-trips on representative fixtures with pinned
+   SHA-256 hashes. Promotion to a real proof is tracked in #252 —
+   options include (a) splitting the arithmetic into 4 u32_le halves
+   composed via shift-and-mask lemmas, or (b) a Tactics.V2 proof
+   that unfolds and discharges via the BV theory. *)
+let lemma_parse_write_u64_le_inverse
+  (n : nat{n < 18446744073709551616}) (rest : bytes)
+  : Lemma (ensures parse_u64_le (FStar.List.Tot.append (write_u64_le n) rest)
+                   == Some (n, rest))
+  = admit ()
+
+(* parse_n_bytes (length bs) (bs @ rest) == Some (bs, rest)
+   for any byte sequence [bs] and any tail [rest].
+
+   Proof: structural induction on [bs].
+     Base case bs = []: length [] = 0; parse_n_bytes 0 ([] @ rest) =
+       parse_n_bytes 0 rest = Some ([], rest).
+     Inductive case bs = b :: bs': by IH parse_n_bytes (length bs')
+       (bs' @ rest) == Some (bs', rest); then parse_n_bytes (length bs)
+       ((b :: bs') @ rest) = parse_n_bytes (length bs' + 1) (b :: (bs' @ rest))
+       takes b and recurses. *)
+let rec lemma_parse_n_bytes_inverse (bs : bytes) (rest : bytes)
+  : Lemma (ensures parse_n_bytes (FStar.List.Tot.length bs)
+                                  (FStar.List.Tot.append bs rest)
+                   == Some (bs, rest))
+          (decreases bs)
+  = match bs with
+    | [] -> ()
+    | _ :: bs' -> lemma_parse_n_bytes_inverse bs' rest
+
+(* parse_string_of_length (String.length s) (bytes_of_string s @ rest)
+     == Some (s, rest)
+   for any string [s] and any tail [rest].
+
+   Composes lemma_parse_n_bytes_inverse with the F\* stdlib lemma
+   FStar.String.string_of_list_of_string (the inverse round-trip on
+   the codepoint encoding). The latter requires `bytes_of_string`'s
+   output length to equal `String.length s`, which holds because
+   `String.list_of_string` produces a list of codepoints whose count
+   is the string's `length` per F\*'s string model. *)
+let lemma_parse_string_of_length_inverse (s : string) (rest : bytes)
+  : Lemma (ensures
+            (let bs = bytes_of_string s in
+             parse_string_of_length (FStar.List.Tot.length bs)
+                                    (FStar.List.Tot.append bs rest)
+               == Some (s, rest)))
+  = let bs = bytes_of_string s in
+    lemma_parse_n_bytes_inverse bs rest;
+    FStar.String.string_of_list_of_string s
