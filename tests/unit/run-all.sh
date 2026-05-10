@@ -92,6 +92,7 @@ COMMON_MODULES=(
   SPARQL_Protocol
   SPARQL_HTTP
   SPARQL_HTTP_Routes
+  SPARQL_HTTP_RunQuery
 )
 
 # Build the list of .cmx paths + the C stub object (needed to resolve

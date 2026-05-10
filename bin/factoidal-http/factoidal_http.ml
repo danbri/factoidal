@@ -996,15 +996,16 @@ let run_query ~backend ~accept ~max_rows query =
         raise e
     in
     let fmt = response_format_of_accept accept in
-    (* For ASK, only JSON and XML have dedicated boolean serialisers;
-       other formats fall back to JSON. *)
-    let (ct, body) = match fmt with
-      | P.RF_Xml -> (P.content_type_for P.RF_Xml,
-                     P.serialise_response_boolean_xml b)
-      | _        -> (P.content_type_for P.RF_Json,
-                     P.serialise_response_boolean_json b)
+    (* Strategy + content-type chosen by F* per SPARQL Results spec
+       (sparql-results-json §3.2 / sparql-results-xml §3.4). *)
+    let (strategy, ct) = SPARQL_HTTP_RunQuery.serialiser_strategy_for_ask fmt in
+    let body = match strategy with
+      | SPARQL_HTTP_RunQuery.SS_BooleanXml  -> P.serialise_response_boolean_xml b
+      | SPARQL_HTTP_RunQuery.SS_BooleanJson -> P.serialise_response_boolean_json b
+      | _ -> P.serialise_response_boolean_json b  (* unreachable per F* spec *)
     in
-    { rb_status = 200; rb_content_type = ct; rb_body = body }
+    { rb_status = Z.to_int SPARQL_HTTP_RunQuery.success_status;
+      rb_content_type = ct; rb_body = body }
   | QF_Select _ ->
     Printf.eprintf "[qof3] calling S.eval_select_query_backend_dataset (backend=%s, form=SELECT)\n%!" bkind;
     let rows =
@@ -1028,17 +1029,16 @@ let run_query ~backend ~accept ~max_rows query =
      | None ->
     let vars = select_vars query rows in
     let fmt = response_format_of_accept accept in
-    let (ct, body) = match fmt with
-      | P.RF_Xml -> (P.content_type_for P.RF_Xml,
-                     P.serialise_response_xml vars rows)
-      | P.RF_Csv -> (P.content_type_for P.RF_Csv,
-                     P.serialise_response_csv vars rows)
-      | P.RF_Tsv -> (P.content_type_for P.RF_Tsv,
-                     P.serialise_response_tsv vars rows)
-      | _        -> (P.content_type_for P.RF_Json,
-                     P.serialise_response_json vars rows)
+    let (strategy, ct) = SPARQL_HTTP_RunQuery.serialiser_strategy_for_select fmt in
+    let body = match strategy with
+      | SPARQL_HTTP_RunQuery.SS_RowsXml  -> P.serialise_response_xml vars rows
+      | SPARQL_HTTP_RunQuery.SS_RowsCsv  -> P.serialise_response_csv vars rows
+      | SPARQL_HTTP_RunQuery.SS_RowsTsv  -> P.serialise_response_tsv vars rows
+      | SPARQL_HTTP_RunQuery.SS_RowsJson -> P.serialise_response_json vars rows
+      | _ -> P.serialise_response_json vars rows  (* unreachable per F* spec *)
     in
-    { rb_status = 200; rb_content_type = ct; rb_body = body })
+    { rb_status = Z.to_int SPARQL_HTTP_RunQuery.success_status;
+      rb_content_type = ct; rb_body = body })
   | QF_Construct _ | QF_Describe _ ->
     (* CONSTRUCT / DESCRIBE: the F* evaluator's backend variants return
        None for these forms. Surface as empty rows in the caller's
@@ -1065,13 +1065,15 @@ let run_query ~backend ~accept ~max_rows query =
      | None ->
     let fmt = response_format_of_accept accept in
     let vars = select_vars query rows in
-    let (ct, body) = match fmt with
-      | P.RF_Xml -> (P.content_type_for P.RF_Xml,
-                     P.serialise_response_xml vars rows)
-      | _        -> (P.content_type_for P.RF_Json,
-                     P.serialise_response_json vars rows)
+    let (strategy, ct) =
+      SPARQL_HTTP_RunQuery.serialiser_strategy_for_construct_describe fmt in
+    let body = match strategy with
+      | SPARQL_HTTP_RunQuery.SS_RowsXml  -> P.serialise_response_xml vars rows
+      | SPARQL_HTTP_RunQuery.SS_RowsJson -> P.serialise_response_json vars rows
+      | _ -> P.serialise_response_json vars rows  (* unreachable per F* spec *)
     in
-    { rb_status = 200; rb_content_type = ct; rb_body = body })
+    { rb_status = Z.to_int SPARQL_HTTP_RunQuery.success_status;
+      rb_content_type = ct; rb_body = body })
 
 (* ============================================================================
    Per-query timing instrumentation (2026-05-02).
@@ -1347,13 +1349,16 @@ let parse_and_run_timed ~backend ~accept ~max_rows query_text =
   | SPARQL11_Parser.ParseErr msg ->
     Printf.eprintf "[qof3] parse_and_run_timed: SPARQL parse error: %s\n%!" msg;
     let total_ms = (Unix.gettimeofday () -. t_total_start) *. 1000.0 in
-    let body = "SPARQL parse error: " ^ msg ^ "\n" in
-    let resp = { rb_status = 400;
-                 rb_content_type = "text/plain; charset=utf-8";
+    (* Status code + body template owned by F* SPARQL.HTTP.RunQuery
+       per the SPARQL 1.1 Protocol response policy. *)
+    let body = SPARQL_HTTP_RunQuery.parse_error_body msg in
+    let status = Z.to_int SPARQL_HTTP_RunQuery.parse_error_status in
+    let resp = { rb_status = status;
+                 rb_content_type = SPARQL_HTTP_RunQuery.parse_error_content_type;
                  rb_body = body } in
     let qt = { zero_timing with
                qt_parse_ms = parse_ms; qt_total_ms = total_ms;
-               qt_status = 400; qt_form = "parse-error";
+               qt_status = status; qt_form = "parse-error";
                qt_body_bytes = String.length body } in
     (resp, qt)
   | SPARQL11_Parser.ParseOk (query, _tokens) ->
@@ -1388,17 +1393,19 @@ let parse_and_run_timed ~backend ~accept ~max_rows query_text =
        Printf.eprintf "[qof3] parse_and_run_timed: run_query raised: %s\n%s%!"
          (Printexc.to_string e) bt;
        let total_ms = (Unix.gettimeofday () -. t_total_start) *. 1000.0 in
+       (* Status code + body template owned by F* SPARQL.HTTP.RunQuery
+          per the SPARQL 1.1 Protocol response policy. *)
        let body =
-         "Query evaluation error: " ^ Printexc.to_string e ^ "\n" ^
-         "Backtrace:\n" ^ bt in
-       let resp = { rb_status = 500;
-                    rb_content_type = "text/plain; charset=utf-8";
+         SPARQL_HTTP_RunQuery.eval_error_body (Printexc.to_string e) bt in
+       let status = Z.to_int SPARQL_HTTP_RunQuery.eval_error_status in
+       let resp = { rb_status = status;
+                    rb_content_type = SPARQL_HTTP_RunQuery.eval_error_content_type;
                     rb_body = body } in
        let qt = { qt_parse_ms = parse_ms;
                   qt_eval_ms = (total_ms -. parse_ms);
                   qt_format_ms = 0.0;
                   qt_total_ms = total_ms;
-                  qt_status = 500;
+                  qt_status = status;
                   qt_rows = -1;
                   qt_form = form;
                   qt_body_bytes = String.length body } in
