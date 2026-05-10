@@ -15,10 +15,12 @@ Limitations (intentional, called out in the SPA):
 - only top-level types are nodes. fields and constructors are NOT
   separate nodes (they're listed inside the type they belong to).
 
-Output: docs/web/demos/dep-graph/terms.json
-  { "nodes": [{"id", "namespace", "module", "kind", "fields"|"ctors"?,
-               "deps", "rdeps"} ...],
-    "links": [{"source", "target", "weight": 1} ...] }
+Output (docs/web/demos/dep-graph/):
+  terms.json    — data for the D3 SPA (every type, including isolated)
+  terms.dot     — Graphviz, connected types only, rankdir=BT for
+                  bottom-up "foundations below, consumers above"
+                  layered package-structure planning
+  terms.svg/png — rendered (if `dot` on PATH)
 
 Run after fstar_dep_to_json.py (or stand-alone — they're independent).
 """
@@ -26,13 +28,15 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
 import sys
 from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FSTAR_DIR = ROOT / "formal" / "fstar"
-OUT = ROOT / "docs" / "web" / "demos" / "dep-graph" / "terms.json"
+OUT_DIR = ROOT / "docs" / "web" / "demos" / "dep-graph"
 
 TOP_LEVEL_KEYWORDS = (
     "let", "val", "type", "module", "open", "include", "effect",
@@ -182,14 +186,104 @@ def main() -> int:
         "nodes": nodes_out,
         "links": [{"source": a, "target": b, "weight": 1} for a, b in sorted(set(edges))],
     }
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(out, indent=2) + "\n")
-    print(f"types: {len(nodes_out)} nodes, {len(out['links'])} edges")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    (OUT_DIR / "terms.json").write_text(json.dumps(out, indent=2) + "\n")
+    print(f"terms.json: {len(nodes_out)} nodes, {len(out['links'])} edges")
+
+    write_layered_dot(nodes_out, out["links"])
     print(f"top referenced: " + ", ".join(
         f"{n['id']}({n['rdeps']})"
         for n in sorted(nodes_out, key=lambda n: -n["rdeps"])[:8]
     ))
     return 0
+
+
+NS_COLOR = {
+    "Parser":   "#cfe8ff",
+    "RDF":      "#d4f4dd",
+    "SPARQL":   "#ffe6b3",
+    "SPARQL11": "#ffd699",
+    "OWL":      "#e6ccff",
+    "RIF":      "#ffd1dc",
+    "SHACL":    "#fff5b3",
+    "Util":     "#eeeeee",
+    "Tableau":  "#f5cba7",
+    "Parquet":  "#c8d6e5",
+}
+KIND_SHAPE = {"record": "box", "variant": "diamond", "alias": "ellipse"}
+
+
+def write_layered_dot(nodes_out, links):
+    """Layered Graphviz diagram, connected nodes only.
+
+    rankdir=BT puts foundations at the bottom — types most-referenced
+    by others sink to the floor, leaf consumers float to the top.
+    Reading bottom-up traces dependency chains; horizontal neighbours
+    at the same rank are "candidates for the same package" since they
+    sit at the same depth and are likely used together.
+
+    NO module clusters: the goal is to plan a NEW package layout, so
+    forcing current-module groupings would obscure the natural
+    cleavage planes. Node colour still indicates current namespace via
+    a legend, so you can see "this type is currently in Parser but
+    its neighbours are mostly RDF — move it" at a glance.
+    """
+    connected = {n["id"] for n in nodes_out if n["deps"] + n["rdeps"] > 0}
+    node_info = {n["id"]: n for n in nodes_out if n["id"] in connected}
+    edges = [(l["source"], l["target"]) for l in links
+             if l["source"] in connected and l["target"] in connected]
+
+    namespaces_present = sorted({n["namespace"] for n in node_info.values()})
+
+    dot = ['digraph fstar_terms {',
+           '  rankdir=BT;',
+           '  concentrate=true;',
+           '  nodesep=0.22; ranksep=0.7;',
+           '  splines=spline;',
+           '  graph [fontname="Helvetica", fontsize=11, bgcolor="#0f1115",'
+           '         fontcolor="#cccccc", label="F* types — dependency hierarchy ('
+           f'{len(connected)} types, {len(edges)} edges)\\n'
+           'shape: ▭ record · ◇ variant · ◯ alias · '
+           'colour: namespace · arrow: A uses B", labelloc=t];',
+           '  node  [fontname="Helvetica", fontsize=11, style=filled,'
+           '         color="#0c0e13", fontcolor="#0c0e13", margin="0.06,0.03"];',
+           '  edge  [color="#5a6173", arrowsize=0.55, penwidth=0.7];']
+    for name in sorted(node_info):
+        n = node_info[name]
+        shape = KIND_SHAPE.get(n["kind"], "ellipse")
+        fill = NS_COLOR.get(n["namespace"], "#dddddd")
+        # Tooltip = current module for hover (works in SVG, not PNG)
+        dot.append(
+            f'  "{name}" [shape={shape}, fillcolor="{fill}", '
+            f'tooltip="{name} — {n["kind"]} in {n["module"]}"];'
+        )
+    for a, b in sorted(set(edges)):
+        dot.append(f'  "{a}" -> "{b}";')
+    # Legend cluster on the side
+    dot.append('  subgraph cluster_legend {')
+    dot.append('    label="namespace"; fontcolor="#9aa3b2"; fontsize=10;')
+    dot.append('    style="rounded,dashed"; color="#3a4252";')
+    dot.append('    rank=sink;')
+    for ns in namespaces_present:
+        fill = NS_COLOR.get(ns, "#dddddd")
+        dot.append(
+            f'    "_legend_{ns}" [label="{ns}", shape=box, '
+            f'fillcolor="{fill}", style=filled, fontsize=10];'
+        )
+    # Invisible edges to vertically stack the legend
+    for a, b in zip(namespaces_present, namespaces_present[1:]):
+        dot.append(f'    "_legend_{a}" -> "_legend_{b}" [style=invis];')
+    dot.append('  }')
+    dot.append("}")
+    (OUT_DIR / "terms.dot").write_text("\n".join(dot) + "\n")
+
+    if shutil.which("dot"):
+        subprocess.run(["dot", "-Tsvg", str(OUT_DIR / "terms.dot"),
+                        "-o", str(OUT_DIR / "terms.svg")], check=True)
+        subprocess.run(["dot", "-Tpng", "-Gdpi=110",
+                        str(OUT_DIR / "terms.dot"),
+                        "-o", str(OUT_DIR / "terms.png")], check=True)
+        print(f"terms.dot/svg/png written (connected nodes: {len(connected)}, edges: {len(edges)})")
 
 
 if __name__ == "__main__":

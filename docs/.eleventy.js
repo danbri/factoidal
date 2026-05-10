@@ -22,6 +22,9 @@ module.exports = function(eleventyConfig) {
   eleventyConfig.addPassthroughCopy("web/demos/dep-graph/modules.json");
   eleventyConfig.addPassthroughCopy("web/demos/dep-graph/namespaces.json");
   eleventyConfig.addPassthroughCopy("web/demos/dep-graph/terms.json");
+  eleventyConfig.addPassthroughCopy("web/demos/dep-graph/terms.dot");
+  eleventyConfig.addPassthroughCopy("web/demos/dep-graph/terms.svg");
+  eleventyConfig.addPassthroughCopy("web/demos/dep-graph/terms.png");
   eleventyConfig.addPassthroughCopy("web/demos/dep-graph/modules.dot");
   eleventyConfig.addPassthroughCopy("web/demos/dep-graph/modules.mmd");
   eleventyConfig.addPassthroughCopy("web/demos/dep-graph/modules.png");

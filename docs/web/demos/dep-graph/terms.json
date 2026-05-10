@@ -2301,6 +2301,23 @@
       "inProject": true
     },
     {
+      "id": "serialiser_strategy",
+      "namespace": "SPARQL",
+      "module": "SPARQL.HTTP.RunQuery",
+      "kind": "variant",
+      "members": [
+        "SS_BooleanJson",
+        "SS_BooleanXml",
+        "SS_RowsJson",
+        "SS_RowsXml",
+        "SS_RowsCsv",
+        "SS_RowsTsv"
+      ],
+      "deps": 0,
+      "rdeps": 0,
+      "inProject": true
+    },
+    {
       "id": "severity",
       "namespace": "SHACL",
       "module": "SHACL.Validation",

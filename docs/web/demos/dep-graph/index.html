@@ -125,6 +125,21 @@
       <option value="terms">Types &amp; terms (triple, graph, rdf_term, …)</option>
     </select>
 
+    <div id="terms-extras" style="display:none">
+      <h2>Layered diagram</h2>
+      <p class="meta" style="margin:0 0 6px">
+        Static Graphviz hierarchy, foundations at the bottom. Better for
+        planning a layered package structure than this force layout.
+      </p>
+      <p style="margin:0">
+        <a href="terms.svg" target="_blank" rel="noopener">↗ Open SVG</a>
+        &nbsp;·&nbsp;
+        <a href="terms.png" target="_blank" rel="noopener">PNG</a>
+        &nbsp;·&nbsp;
+        <a href="terms.dot" target="_blank" rel="noopener">.dot</a>
+      </p>
+    </div>
+
     <h2>Namespaces</h2>
     <div id="ns-list"></div>
   </aside>
@@ -429,31 +444,23 @@ function toggleLabels(on) {
   d3.select("#btn-labels").classed("on", on);
   refreshLabels();
 }
-function labelVisible(d) {
-  if (!state.showLabels) return false;
-  if (state.view !== "terms") return true;
-  // Terms view has 200+ nodes; only show labels for hubs by default to
-  // avoid an unreadable jumble. Hover/select always reveals the label.
-  if (state.selected && state.selected.id === d.id) return true;
-  if (state.hover    && state.hover.id    === d.id) return true;
-  if (state.hoverNs  && d.namespace === state.hoverNs) return true;
-  if (state.pinnedNs && d.namespace === state.pinnedNs) return true;
-  return ((d.deps || 0) + (d.rdeps || 0)) >= 3;
-}
 function refreshLabels() {
   if (!state.graph) return;
   state.graph.node.selectAll("text")
-    .style("display", d => labelVisible(d) ? "" : "none");
+    .style("display", state.showLabels ? "" : "none");
 }
 function toggleLeaves(on) {
   state.showLeaves = on;
   d3.select("#btn-leaves").classed("on", on);
   if (!state.graph) return;
-  state.graph.node.style("display", d => (!on && (d.deps + d.rdeps) <= 1) ? "none" : "");
+  // In terms view "leaf" = isolated (deg 0). In other views it's deg <= 1.
+  const threshold = state.view === "terms" ? 0 : 1;
+  state.graph.node.style("display", d =>
+    (!on && (d.deps + d.rdeps) <= threshold) ? "none" : "");
   state.graph.link.style("display", l => {
     if (on) return "";
     const a = l.source, b = l.target;
-    return ((a.deps + a.rdeps) <= 1 || (b.deps + b.rdeps) <= 1) ? "none" : "";
+    return ((a.deps + a.rdeps) <= threshold || (b.deps + b.rdeps) <= threshold) ? "none" : "";
   });
 }
 
@@ -494,6 +501,13 @@ document.getElementById("search").addEventListener("input", onSearch);
 document.getElementById("view").addEventListener("change", e => {
   state.view = e.target.value;
   state.selected = null;
+  document.getElementById("terms-extras").style.display =
+    state.view === "terms" ? "" : "none";
+  // Default the "Leaves" toggle to hide isolated types when entering
+  // terms view (34 of 208 have no edges at all and just clutter the
+  // planning view); back to on when leaving.
+  state.showLeaves = state.view !== "terms";
+  d3.select("#btn-leaves").classed("on", state.showLeaves);
   updateDetails();
   buildNsList();
   render();
