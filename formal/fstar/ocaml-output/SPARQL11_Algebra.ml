@@ -3542,8 +3542,9 @@ let eval_xsd_cast (v : eval_result) (target_type : Prims.string)
 let current_base_iri_ref : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option ref =
   ref FStar_Pervasives_Native.None
 
-let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
-  eval_result=
+let rec eval_expr_with_base
+  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (e : expr) (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
   match e with
   | E_Var v ->
       (match sm_lookup v mu with
@@ -3577,8 +3578,8 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
   | E_DecimalLit s -> ER_Dec s
   | E_DoubleLit s -> ER_Dbl s
   | E_Arith (op, e1, e2) ->
-      let v1 = eval_expr e1 mu in
-      let v2 = eval_expr e2 mu in
+      let v1 = eval_expr_with_base base e1 mu in
+      let v2 = eval_expr_with_base base e2 mu in
       (match (v1, v2) with
        | (ER_Num a, ER_Num b) -> eval_arith_int op a b
        | uu___ ->
@@ -3622,7 +3623,7 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
                             result_kind1))
             | (uu___1, uu___2) -> ER_Error))
   | E_UnaryMinus e1 ->
-      (match eval_expr e1 mu with
+      (match eval_expr_with_base base e1 mu with
        | ER_Num n -> ER_Num (Prims.int_zero - n)
        | ER_Dec s ->
            if
@@ -3649,32 +3650,39 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
              then ER_Dbl "0"
              else ER_Dbl (FStar_String.concat "" ["-"; s])
        | uu___ -> ER_Error)
-  | E_UnaryPlus e1 -> eval_expr e1 mu
+  | E_UnaryPlus e1 -> eval_expr_with_base base e1 mu
   | E_Compare (op, e1, e2) ->
-      (match value_compare (eval_expr e1 mu) (eval_expr e2 mu) op with
+      (match value_compare (eval_expr_with_base base e1 mu)
+               (eval_expr_with_base base e2 mu) op
+       with
        | FStar_Pervasives_Native.Some b -> ER_Bool b
        | FStar_Pervasives_Native.None -> ER_Error)
   | E_And (e1, e2) ->
-      ER_Bool ((ebv (eval_expr e1 mu)) && (ebv (eval_expr e2 mu)))
+      ER_Bool
+        ((ebv (eval_expr_with_base base e1 mu)) &&
+           (ebv (eval_expr_with_base base e2 mu)))
   | E_Or (e1, e2) ->
-      ER_Bool ((ebv (eval_expr e1 mu)) || (ebv (eval_expr e2 mu)))
-  | E_Not e1 -> ER_Bool (Prims.op_Negation (ebv (eval_expr e1 mu)))
-  | E_IsIRI e1 -> fn_isIRI (eval_expr e1 mu)
-  | E_IsBlank e1 -> fn_isBlank (eval_expr e1 mu)
-  | E_IsLiteral e1 -> fn_isLiteral (eval_expr e1 mu)
-  | E_IsNumeric e1 -> fn_isNumeric (eval_expr e1 mu)
-  | E_Str e1 -> fn_str (eval_expr e1 mu)
-  | E_Lang e1 -> fn_lang (eval_expr e1 mu)
-  | E_Datatype e1 -> fn_datatype (eval_expr e1 mu)
+      ER_Bool
+        ((ebv (eval_expr_with_base base e1 mu)) ||
+           (ebv (eval_expr_with_base base e2 mu)))
+  | E_Not e1 ->
+      ER_Bool (Prims.op_Negation (ebv (eval_expr_with_base base e1 mu)))
+  | E_IsIRI e1 -> fn_isIRI (eval_expr_with_base base e1 mu)
+  | E_IsBlank e1 -> fn_isBlank (eval_expr_with_base base e1 mu)
+  | E_IsLiteral e1 -> fn_isLiteral (eval_expr_with_base base e1 mu)
+  | E_IsNumeric e1 -> fn_isNumeric (eval_expr_with_base base e1 mu)
+  | E_Str e1 -> fn_str (eval_expr_with_base base e1 mu)
+  | E_Lang e1 -> fn_lang (eval_expr_with_base base e1 mu)
+  | E_Datatype e1 -> fn_datatype (eval_expr_with_base base e1 mu)
   | E_IRI_fn e1 ->
-      (match eval_expr e1 mu with
+      (match eval_expr_with_base base e1 mu with
        | ER_Term (RDF_Graph_Executable.T_IRI i) ->
            ER_Term (RDF_Graph_Executable.T_IRI i)
        | ER_Term (RDF_Graph_Executable.T_Literal l) ->
            let s = lit_lexical l in
-           (match !current_base_iri_ref with
-            | FStar_Pervasives_Native.Some base ->
-                ER_Term (RDF_Graph_Executable.T_IRI (resolve_iri base s))
+           (match base with
+            | FStar_Pervasives_Native.Some b ->
+                ER_Term (RDF_Graph_Executable.T_IRI (resolve_iri b s))
             | FStar_Pervasives_Native.None ->
                 (match string_to_iri s with
                  | FStar_Pervasives_Native.Some i ->
@@ -3682,13 +3690,15 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
                  | FStar_Pervasives_Native.None -> ER_Error))
        | uu___ -> ER_Error)
   | E_StrDt (e1, e2) ->
-      (match ((er_to_string (eval_expr e1 mu)), (eval_expr e2 mu)) with
+      (match ((er_to_string (eval_expr_with_base base e1 mu)),
+               (eval_expr_with_base base e2 mu))
+       with
        | (FStar_Pervasives_Native.Some s, ER_Term (RDF_Graph_Executable.T_IRI
           dt)) -> ER_Term (fn_strdt s dt)
        | (uu___, uu___1) -> ER_Error)
   | E_StrLang (e1, e2) ->
-      let v1 = eval_expr e1 mu in
-      (match (v1, (er_to_string (eval_expr e2 mu))) with
+      let v1 = eval_expr_with_base base e1 mu in
+      (match (v1, (er_to_string (eval_expr_with_base base e2 mu))) with
        | (ER_Term (RDF_Graph_Executable.T_Literal l),
           FStar_Pervasives_Native.Some lang) ->
            if
@@ -3703,23 +3713,25 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
   | E_Bound v ->
       ER_Bool (FStar_Pervasives_Native.uu___is_Some (sm_lookup v mu))
   | E_If (cond, then_e, else_e) ->
-      if ebv (eval_expr cond mu)
-      then eval_expr then_e mu
-      else eval_expr else_e mu
-  | E_Coalesce es -> eval_coalesce es mu
-  | E_In (ev, es) -> let v = eval_expr ev mu in eval_in v es mu
+      if ebv (eval_expr_with_base base cond mu)
+      then eval_expr_with_base base then_e mu
+      else eval_expr_with_base base else_e mu
+  | E_Coalesce es -> eval_coalesce_with_base base es mu
+  | E_In (ev, es) ->
+      let v = eval_expr_with_base base ev mu in
+      eval_in_with_base base v es mu
   | E_NotIn (ev, es) ->
-      let v = eval_expr ev mu in
-      (match eval_in v es mu with
+      let v = eval_expr_with_base base ev mu in
+      (match eval_in_with_base base v es mu with
        | ER_Bool b -> ER_Bool (Prims.op_Negation b)
        | other -> other)
   | E_StrLen e1 ->
-      (match er_to_string (eval_expr e1 mu) with
+      (match er_to_string (eval_expr_with_base base e1 mu) with
        | FStar_Pervasives_Native.Some s -> ER_Num (string_length s)
        | FStar_Pervasives_Native.None -> ER_Error)
   | E_Substr (e1, e2, e3_opt) ->
-      let v1 = eval_expr e1 mu in
-      (match ((er_string_info v1), (eval_expr e2 mu)) with
+      let v1 = eval_expr_with_base base e1 mu in
+      (match ((er_string_info v1), (eval_expr_with_base base e2 mu)) with
        | (FStar_Pervasives_Native.Some (s, lang, dt), ER_Num start) ->
            if start < Prims.int_zero
            then ER_Error
@@ -3727,7 +3739,7 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
              (let len_opt =
                 match e3_opt with
                 | FStar_Pervasives_Native.Some e3 ->
-                    (match eval_expr e3 mu with
+                    (match eval_expr_with_base base e3 mu with
                      | ER_Num n ->
                          if n >= Prims.int_zero
                          then FStar_Pervasives_Native.Some n
@@ -3738,41 +3750,41 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
               er_string_preserve (fn_substr_spec s start len_opt) lang dt)
        | (uu___, uu___1) -> ER_Error)
   | E_UCase e1 ->
-      let v1 = eval_expr e1 mu in
+      let v1 = eval_expr_with_base base e1 mu in
       (match er_string_info v1 with
        | FStar_Pervasives_Native.Some (s, lang, dt) ->
            er_string_preserve (string_upper s) lang dt
        | FStar_Pervasives_Native.None -> ER_Error)
   | E_LCase e1 ->
-      let v1 = eval_expr e1 mu in
+      let v1 = eval_expr_with_base base e1 mu in
       (match er_string_info v1 with
        | FStar_Pervasives_Native.Some (s, lang, dt) ->
            er_string_preserve (string_lower s) lang dt
        | FStar_Pervasives_Native.None -> ER_Error)
   | E_StrStarts (e1, e2) ->
-      (match ((er_to_string (eval_expr e1 mu)),
-               (er_to_string (eval_expr e2 mu)))
+      (match ((er_to_string (eval_expr_with_base base e1 mu)),
+               (er_to_string (eval_expr_with_base base e2 mu)))
        with
        | (FStar_Pervasives_Native.Some s, FStar_Pervasives_Native.Some
           prefix) -> ER_Bool (string_starts_with s prefix)
        | (uu___, uu___1) -> ER_Error)
   | E_StrEnds (e1, e2) ->
-      (match ((er_to_string (eval_expr e1 mu)),
-               (er_to_string (eval_expr e2 mu)))
+      (match ((er_to_string (eval_expr_with_base base e1 mu)),
+               (er_to_string (eval_expr_with_base base e2 mu)))
        with
        | (FStar_Pervasives_Native.Some s, FStar_Pervasives_Native.Some
           suffix) -> ER_Bool (string_ends_with s suffix)
        | (uu___, uu___1) -> ER_Error)
   | E_Contains (e1, e2) ->
-      (match ((er_to_string (eval_expr e1 mu)),
-               (er_to_string (eval_expr e2 mu)))
+      (match ((er_to_string (eval_expr_with_base base e1 mu)),
+               (er_to_string (eval_expr_with_base base e2 mu)))
        with
        | (FStar_Pervasives_Native.Some s, FStar_Pervasives_Native.Some sub)
            -> ER_Bool (string_contains s sub)
        | (uu___, uu___1) -> ER_Error)
   | E_StrBefore (e1, e2) ->
-      let v1 = eval_expr e1 mu in
-      let v2 = eval_expr e2 mu in
+      let v1 = eval_expr_with_base base e1 mu in
+      let v2 = eval_expr_with_base base e2 mu in
       (match ((er_string_info v1), (er_string_info v2)) with
        | (FStar_Pervasives_Native.Some (s, lang1, dt1),
           FStar_Pervasives_Native.Some (arg, lang2, dt2)) ->
@@ -3812,8 +3824,8 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
                 else er_string_preserve result lang1 dt1)
        | (uu___, uu___1) -> ER_Error)
   | E_StrAfter (e1, e2) ->
-      let v1 = eval_expr e1 mu in
-      let v2 = eval_expr e2 mu in
+      let v1 = eval_expr_with_base base e1 mu in
+      let v2 = eval_expr_with_base base e2 mu in
       (match ((er_string_info v1), (er_string_info v2)) with
        | (FStar_Pervasives_Native.Some (s, lang1, dt1),
           FStar_Pervasives_Native.Some (arg, lang2, dt2)) ->
@@ -3852,15 +3864,16 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
                 then er_string ""
                 else er_string_preserve result lang1 dt1)
        | (uu___, uu___1) -> ER_Error)
-  | E_Concat es -> eval_concat es mu
+  | E_Concat es -> eval_concat_with_base base es mu
   | E_EncodeForUri e1 ->
-      (match er_to_string (eval_expr e1 mu) with
+      (match er_to_string (eval_expr_with_base base e1 mu) with
        | FStar_Pervasives_Native.Some s -> er_string (string_encode_uri s)
        | FStar_Pervasives_Native.None -> ER_Error)
   | E_Replace (e1, e2, e3, e4_opt) ->
-      let v1 = eval_expr e1 mu in
-      (match ((er_string_info v1), (er_to_string (eval_expr e2 mu)),
-               (er_to_string (eval_expr e3 mu)))
+      let v1 = eval_expr_with_base base e1 mu in
+      (match ((er_string_info v1),
+               (er_to_string (eval_expr_with_base base e2 mu)),
+               (er_to_string (eval_expr_with_base base e3 mu)))
        with
        | (FStar_Pervasives_Native.Some (s, lang, dt),
           FStar_Pervasives_Native.Some pat, FStar_Pervasives_Native.Some rep)
@@ -3868,25 +3881,25 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
            let flags =
              match e4_opt with
              | FStar_Pervasives_Native.Some e4 ->
-                 er_to_string (eval_expr e4 mu)
+                 er_to_string (eval_expr_with_base base e4 mu)
              | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None in
            er_string_preserve (string_replace s pat rep flags) lang dt
        | (uu___, uu___1, uu___2) -> ER_Error)
   | E_Regex (e1, e2, e3_opt) ->
-      (match ((er_to_string (eval_expr e1 mu)),
-               (er_to_string (eval_expr e2 mu)))
+      (match ((er_to_string (eval_expr_with_base base e1 mu)),
+               (er_to_string (eval_expr_with_base base e2 mu)))
        with
        | (FStar_Pervasives_Native.Some s, FStar_Pervasives_Native.Some pat)
            ->
            let flags =
              match e3_opt with
              | FStar_Pervasives_Native.Some e3 ->
-                 er_to_string (eval_expr e3 mu)
+                 er_to_string (eval_expr_with_base base e3 mu)
              | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None in
            ER_Bool (fn_regex_spec s pat flags)
        | (uu___, uu___1) -> ER_Error)
   | E_Abs e1 ->
-      (match eval_expr e1 mu with
+      (match eval_expr_with_base base e1 mu with
        | ER_Num n -> ER_Num (int_abs n)
        | ER_Dec s ->
            if
@@ -3910,88 +3923,88 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
            else ER_Dbl s
        | uu___ -> ER_Error)
   | E_Round e1 ->
-      (match eval_expr e1 mu with
+      (match eval_expr_with_base base e1 mu with
        | ER_Num n -> ER_Num n
        | ER_Dec s -> ER_Dec (Prims.string_of_int (int_round s))
        | ER_Dbl s -> ER_Dbl (Prims.string_of_int (int_round s))
        | uu___ -> ER_Error)
   | E_Ceil e1 ->
-      (match eval_expr e1 mu with
+      (match eval_expr_with_base base e1 mu with
        | ER_Num n -> ER_Num n
        | ER_Dec s -> ER_Dec (Prims.string_of_int (int_ceil s))
        | ER_Dbl s -> ER_Dbl (Prims.string_of_int (int_ceil s))
        | uu___ -> ER_Error)
   | E_Floor e1 ->
-      (match eval_expr e1 mu with
+      (match eval_expr_with_base base e1 mu with
        | ER_Num n -> ER_Num n
        | ER_Dec s -> ER_Dec (Prims.string_of_int (int_floor s))
        | ER_Dbl s -> ER_Dbl (Prims.string_of_int (int_floor s))
        | uu___ -> ER_Error)
   | E_MD5 e1 ->
-      (match er_to_string (eval_expr e1 mu) with
+      (match er_to_string (eval_expr_with_base base e1 mu) with
        | FStar_Pervasives_Native.Some s -> er_string (hash_md5 s)
        | FStar_Pervasives_Native.None -> ER_Error)
   | E_SHA1 e1 ->
-      (match er_to_string (eval_expr e1 mu) with
+      (match er_to_string (eval_expr_with_base base e1 mu) with
        | FStar_Pervasives_Native.Some s -> er_string (hash_sha1 s)
        | FStar_Pervasives_Native.None -> ER_Error)
   | E_SHA256 e1 ->
-      (match er_to_string (eval_expr e1 mu) with
+      (match er_to_string (eval_expr_with_base base e1 mu) with
        | FStar_Pervasives_Native.Some s -> er_string (hash_sha256 s)
        | FStar_Pervasives_Native.None -> ER_Error)
   | E_SHA384 e1 ->
-      (match er_to_string (eval_expr e1 mu) with
+      (match er_to_string (eval_expr_with_base base e1 mu) with
        | FStar_Pervasives_Native.Some s -> er_string (hash_sha384 s)
        | FStar_Pervasives_Native.None -> ER_Error)
   | E_SHA512 e1 ->
-      (match er_to_string (eval_expr e1 mu) with
+      (match er_to_string (eval_expr_with_base base e1 mu) with
        | FStar_Pervasives_Native.Some s -> er_string (hash_sha512 s)
        | FStar_Pervasives_Native.None -> ER_Error)
   | E_Now -> ER_Error
   | E_Year e1 ->
-      (match er_to_datetime_lex (eval_expr e1 mu) with
+      (match er_to_datetime_lex (eval_expr_with_base base e1 mu) with
        | FStar_Pervasives_Native.Some s ->
            (match dt_year s with
             | FStar_Pervasives_Native.Some n -> ER_Num n
             | FStar_Pervasives_Native.None -> ER_Error)
        | FStar_Pervasives_Native.None -> ER_Error)
   | E_Month e1 ->
-      (match er_to_datetime_lex (eval_expr e1 mu) with
+      (match er_to_datetime_lex (eval_expr_with_base base e1 mu) with
        | FStar_Pervasives_Native.Some s ->
            (match dt_month s with
             | FStar_Pervasives_Native.Some n -> ER_Num n
             | FStar_Pervasives_Native.None -> ER_Error)
        | FStar_Pervasives_Native.None -> ER_Error)
   | E_Day e1 ->
-      (match er_to_datetime_lex (eval_expr e1 mu) with
+      (match er_to_datetime_lex (eval_expr_with_base base e1 mu) with
        | FStar_Pervasives_Native.Some s ->
            (match dt_day s with
             | FStar_Pervasives_Native.Some n -> ER_Num n
             | FStar_Pervasives_Native.None -> ER_Error)
        | FStar_Pervasives_Native.None -> ER_Error)
   | E_Hours e1 ->
-      (match er_to_datetime_lex (eval_expr e1 mu) with
+      (match er_to_datetime_lex (eval_expr_with_base base e1 mu) with
        | FStar_Pervasives_Native.Some s ->
            (match dt_hours s with
             | FStar_Pervasives_Native.Some n -> ER_Num n
             | FStar_Pervasives_Native.None -> ER_Error)
        | FStar_Pervasives_Native.None -> ER_Error)
   | E_Minutes e1 ->
-      (match er_to_datetime_lex (eval_expr e1 mu) with
+      (match er_to_datetime_lex (eval_expr_with_base base e1 mu) with
        | FStar_Pervasives_Native.Some s ->
            (match dt_minutes s with
             | FStar_Pervasives_Native.Some n -> ER_Num n
             | FStar_Pervasives_Native.None -> ER_Error)
        | FStar_Pervasives_Native.None -> ER_Error)
   | E_Seconds e1 ->
-      (match er_to_datetime_lex (eval_expr e1 mu) with
+      (match er_to_datetime_lex (eval_expr_with_base base e1 mu) with
        | FStar_Pervasives_Native.Some s ->
            (match dt_seconds s with
             | FStar_Pervasives_Native.Some ds -> ER_Dec ds
             | FStar_Pervasives_Native.None -> ER_Error)
        | FStar_Pervasives_Native.None -> ER_Error)
   | E_Timezone e1 ->
-      (match er_to_datetime_lex (eval_expr e1 mu) with
+      (match er_to_datetime_lex (eval_expr_with_base base e1 mu) with
        | FStar_Pervasives_Native.Some s ->
            (match dt_timezone s with
             | FStar_Pervasives_Native.Some "" -> ER_Error
@@ -4007,14 +4020,16 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
             | FStar_Pervasives_Native.None -> ER_Error)
        | FStar_Pervasives_Native.None -> ER_Error)
   | E_Tz e1 ->
-      (match er_to_datetime_lex (eval_expr e1 mu) with
+      (match er_to_datetime_lex (eval_expr_with_base base e1 mu) with
        | FStar_Pervasives_Native.Some s ->
            (match dt_tz s with
             | FStar_Pervasives_Native.Some tz -> er_string tz
             | FStar_Pervasives_Native.None -> ER_Error)
        | FStar_Pervasives_Native.None -> ER_Error)
   | E_SameTerm (e1, e2) ->
-      (match ((eval_expr e1 mu), (eval_expr e2 mu)) with
+      (match ((eval_expr_with_base base e1 mu),
+               (eval_expr_with_base base e2 mu))
+       with
        | (ER_Term t1, ER_Term t2) -> ER_Bool (same_term t1 t2)
        | (ER_Num a, ER_Num b) -> ER_Bool (a = b)
        | (ER_Dec a, ER_Dec b) -> ER_Bool (a = b)
@@ -4030,8 +4045,8 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
       then
         (match args with
          | e1::e2::[] ->
-             (match ((er_to_string (eval_expr e1 mu)),
-                      (er_to_string (eval_expr e2 mu)))
+             (match ((er_to_string (eval_expr_with_base base e1 mu)),
+                      (er_to_string (eval_expr_with_base base e2 mu)))
               with
               | (FStar_Pervasives_Native.Some tag,
                  FStar_Pervasives_Native.Some range) ->
@@ -4057,7 +4072,8 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
                 (match args with
                  | [] -> ER_Term (RDF_Graph_Executable.T_BNode "_:b0")
                  | e1::[] ->
-                     (match er_to_string (eval_expr e1 mu) with
+                     (match er_to_string (eval_expr_with_base base e1 mu)
+                      with
                       | FStar_Pervasives_Native.Some s ->
                           ER_Term
                             (RDF_Graph_Executable.T_BNode
@@ -4076,7 +4092,7 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
                  then
                    match args with
                    | e1::[] ->
-                       let v = eval_expr e1 mu in
+                       let v = eval_expr_with_base base e1 mu in
                        let target_type =
                          FStar_String.sub iri_s (FStar_String.strlen xsd_ns)
                            ((FStar_String.strlen iri_s) -
@@ -4084,35 +4100,43 @@ let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
                        eval_xsd_cast v target_type iri_s
                    | uu___5 -> ER_Error
                  else ER_Error)
-and eval_coalesce (es : expr Prims.list)
-  (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
+and eval_coalesce_with_base
+  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (es : expr Prims.list) (mu : RDF_Graph_Executable.solution_mapping) :
+  eval_result=
   match es with
   | [] -> ER_Error
   | e::rest ->
-      (match eval_expr e mu with | ER_Error -> eval_coalesce rest mu | v -> v)
-and eval_in (v : eval_result) (es : expr Prims.list)
+      (match eval_expr_with_base base e mu with
+       | ER_Error -> eval_coalesce_with_base base rest mu
+       | v -> v)
+and eval_in_with_base
+  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (v : eval_result) (es : expr Prims.list)
   (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
   match es with
   | [] -> ER_Bool false
   | e::rest ->
-      (match value_compare v (eval_expr e mu) CmpEq with
+      (match value_compare v (eval_expr_with_base base e mu) CmpEq with
        | FStar_Pervasives_Native.Some true -> ER_Bool true
-       | uu___ -> eval_in v rest mu)
-and eval_concat (es : expr Prims.list)
-  (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
+       | uu___ -> eval_in_with_base base v rest mu)
+and eval_concat_with_base
+  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (es : expr Prims.list) (mu : RDF_Graph_Executable.solution_mapping) :
+  eval_result=
   match es with
   | [] -> er_string ""
   | e::[] ->
-      let v = eval_expr e mu in
+      let v = eval_expr_with_base base e mu in
       (match er_string_info v with
        | FStar_Pervasives_Native.Some (s, lang, dt) ->
            er_string_preserve s lang dt
        | FStar_Pervasives_Native.None -> ER_Error)
   | e::rest ->
-      let v = eval_expr e mu in
+      let v = eval_expr_with_base base e mu in
       (match er_string_info v with
        | FStar_Pervasives_Native.Some (s, lang, dt) ->
-           (match eval_concat rest mu with
+           (match eval_concat_with_base base rest mu with
             | ER_Term (RDF_Graph_Executable.T_Literal l) ->
                 let combined = Prims.strcat s (lit_lexical l) in
                 (match (lang, (l.RDF_Graph_Executable.lang_tag)) with
@@ -4147,6 +4171,17 @@ and eval_concat (es : expr Prims.list)
             | ER_Error -> ER_Error
             | uu___ -> ER_Error)
        | FStar_Pervasives_Native.None -> ER_Error)
+let eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
+  eval_result= eval_expr_with_base (!current_base_iri_ref) e mu
+let eval_coalesce (es : expr Prims.list)
+  (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
+  eval_coalesce_with_base FStar_Pervasives_Native.None es mu
+let eval_in (v : eval_result) (es : expr Prims.list)
+  (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
+  eval_in_with_base FStar_Pervasives_Native.None v es mu
+let eval_concat (es : expr Prims.list)
+  (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
+  eval_concat_with_base FStar_Pervasives_Native.None es mu
 let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
 let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)
 let () = regex_replace_ref := (fun text pattern replacement flags ->

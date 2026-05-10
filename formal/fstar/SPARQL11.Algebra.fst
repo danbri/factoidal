@@ -2502,7 +2502,7 @@ let eval_xsd_cast (v : eval_result) (target_type : string) (full_iri : string) :
         ER_Term (T_Literal { lexical_form = lex; datatype = full_iri; lang_tag = None })
       else ER_Error
 
-let rec eval_expr (e : expr) (mu : solution_mapping)
+let rec eval_expr_with_base (base : option wf_iri) (e : expr) (mu : solution_mapping)
   : Tot eval_result (decreases e) =
   match e with
   (* Primary expressions *)
@@ -2534,8 +2534,8 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
 
   (* Arithmetic *)
   | E_Arith op e1 e2 ->
-    (let v1 = eval_expr e1 mu in
-     let v2 = eval_expr e2 mu in
+    (let v1 = eval_expr_with_base base e1 mu in
+     let v2 = eval_expr_with_base base e2 mu in
      match v1, v2 with
      | ER_Num a, ER_Num b -> eval_arith_int op a b
      | _ ->
@@ -2568,7 +2568,7 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
                else format_numeric_result (extended / divisor) extra result_kind)
         | _, _ -> ER_Error))
   | E_UnaryMinus e1 ->
-    (match eval_expr e1 mu with
+    (match eval_expr_with_base base e1 mu with
      | ER_Num n -> ER_Num (0 - n)
      | ER_Dec s ->
        if string_starts_with s "-" && String.length s > 1
@@ -2583,47 +2583,51 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
        then ER_Dbl "0"
        else ER_Dbl (String.concat "" ["-"; s])
      | _ -> ER_Error)
-  | E_UnaryPlus e1 -> eval_expr e1 mu
+  | E_UnaryPlus e1 -> eval_expr_with_base base e1 mu
 
   (* Comparison *)
   | E_Compare op e1 e2 ->
-    (match value_compare (eval_expr e1 mu) (eval_expr e2 mu) op with
+    (match value_compare (eval_expr_with_base base e1 mu) (eval_expr_with_base base e2 mu) op with
      | Some b -> ER_Bool b
      | None -> ER_Error)
 
   (* Logical connectives *)
-  | E_And e1 e2 -> ER_Bool (ebv (eval_expr e1 mu) && ebv (eval_expr e2 mu))
-  | E_Or e1 e2 -> ER_Bool (ebv (eval_expr e1 mu) || ebv (eval_expr e2 mu))
-  | E_Not e1 -> ER_Bool (not (ebv (eval_expr e1 mu)))
+  | E_And e1 e2 -> ER_Bool (ebv (eval_expr_with_base base e1 mu) && ebv (eval_expr_with_base base e2 mu))
+  | E_Or e1 e2 -> ER_Bool (ebv (eval_expr_with_base base e1 mu) || ebv (eval_expr_with_base base e2 mu))
+  | E_Not e1 -> ER_Bool (not (ebv (eval_expr_with_base base e1 mu)))
 
   (* Type tests *)
-  | E_IsIRI e1 -> fn_isIRI (eval_expr e1 mu)
-  | E_IsBlank e1 -> fn_isBlank (eval_expr e1 mu)
-  | E_IsLiteral e1 -> fn_isLiteral (eval_expr e1 mu)
-  | E_IsNumeric e1 -> fn_isNumeric (eval_expr e1 mu)
+  | E_IsIRI e1 -> fn_isIRI (eval_expr_with_base base e1 mu)
+  | E_IsBlank e1 -> fn_isBlank (eval_expr_with_base base e1 mu)
+  | E_IsLiteral e1 -> fn_isLiteral (eval_expr_with_base base e1 mu)
+  | E_IsNumeric e1 -> fn_isNumeric (eval_expr_with_base base e1 mu)
 
   (* Accessors *)
-  | E_Str e1 -> fn_str (eval_expr e1 mu)
-  | E_Lang e1 -> fn_lang (eval_expr e1 mu)
-  | E_Datatype e1 -> fn_datatype (eval_expr e1 mu)
+  | E_Str e1 -> fn_str (eval_expr_with_base base e1 mu)
+  | E_Lang e1 -> fn_lang (eval_expr_with_base base e1 mu)
+  | E_Datatype e1 -> fn_datatype (eval_expr_with_base base e1 mu)
   | E_IRI_fn e1 ->
-    (match eval_expr e1 mu with
+    (match eval_expr_with_base base e1 mu with
      | ER_Term (T_IRI i) -> ER_Term (T_IRI i)
      | ER_Term (T_Literal l) ->
-       (match string_to_iri (lit_lexical l) with
-        | Some i -> ER_Term (T_IRI i)
-        | None -> ER_Error)
+       let s = lit_lexical l in
+       (match base with
+        | Some b -> ER_Term (T_IRI (resolve_iri b s))
+        | None ->
+          (match string_to_iri s with
+           | Some i -> ER_Term (T_IRI i)
+           | None -> ER_Error))
      | _ -> ER_Error)
 
   (* Term constructors *)
   | E_StrDt e1 e2 ->
-    (match er_to_string (eval_expr e1 mu), eval_expr e2 mu with
+    (match er_to_string (eval_expr_with_base base e1 mu), eval_expr_with_base base e2 mu with
      | Some s, ER_Term (T_IRI dt) -> ER_Term (fn_strdt s dt)
      | _, _ -> ER_Error)
   | E_StrLang e1 e2 ->
     // STRLANG only works on simple literals (xsd:string, no lang tag)
-    let v1 = eval_expr e1 mu in
-    (match v1, er_to_string (eval_expr e2 mu) with
+    let v1 = eval_expr_with_base base e1 mu in
+    (match v1, er_to_string (eval_expr_with_base base e2 mu) with
      | ER_Term (T_Literal l), Some lang ->
        if (lit_datatype l = xsd_string || lit_datatype l = "") && l.lang_tag = None
        then ER_Term (fn_strlang (lit_lexical l) lang)
@@ -2635,61 +2639,61 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
 
   (* Conditional *)
   | E_If cond then_e else_e ->
-    if ebv (eval_expr cond mu) then eval_expr then_e mu
-    else eval_expr else_e mu
-  | E_Coalesce es -> eval_coalesce es mu
+    if ebv (eval_expr_with_base base cond mu) then eval_expr_with_base base then_e mu
+    else eval_expr_with_base base else_e mu
+  | E_Coalesce es -> eval_coalesce_with_base base es mu
   | E_In ev es ->
-    let v = eval_expr ev mu in
-    eval_in v es mu
+    let v = eval_expr_with_base base ev mu in
+    eval_in_with_base base v es mu
   | E_NotIn ev es ->
-    let v = eval_expr ev mu in
-    (match eval_in v es mu with
+    let v = eval_expr_with_base base ev mu in
+    (match eval_in_with_base base v es mu with
      | ER_Bool b -> ER_Bool (not b)
      | other -> other)
 
   (* String functions *)
   | E_StrLen e1 ->
-    (match er_to_string (eval_expr e1 mu) with
+    (match er_to_string (eval_expr_with_base base e1 mu) with
      | Some s -> ER_Num (string_length s)
      | None -> ER_Error)
   | E_Substr e1 e2 e3_opt ->
-    let v1 = eval_expr e1 mu in
-    (match er_string_info v1, eval_expr e2 mu with
+    let v1 = eval_expr_with_base base e1 mu in
+    (match er_string_info v1, eval_expr_with_base base e2 mu with
      | Some (s, lang, dt), ER_Num start ->
        if start < 0 then ER_Error
        else
          let len_opt = match e3_opt with
-           | Some e3 -> (match eval_expr e3 mu with
+           | Some e3 -> (match eval_expr_with_base base e3 mu with
                          | ER_Num n -> if n >= 0 then Some n else None
                          | _ -> None)
            | None -> None
          in er_string_preserve (fn_substr_spec s start len_opt) lang dt
      | _, _ -> ER_Error)
   | E_UCase e1 ->
-    let v1 = eval_expr e1 mu in
+    let v1 = eval_expr_with_base base e1 mu in
     (match er_string_info v1 with
      | Some (s, lang, dt) -> er_string_preserve (string_upper s) lang dt
      | None -> ER_Error)
   | E_LCase e1 ->
-    let v1 = eval_expr e1 mu in
+    let v1 = eval_expr_with_base base e1 mu in
     (match er_string_info v1 with
      | Some (s, lang, dt) -> er_string_preserve (string_lower s) lang dt
      | None -> ER_Error)
   | E_StrStarts e1 e2 ->
-    (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu) with
+    (match er_to_string (eval_expr_with_base base e1 mu), er_to_string (eval_expr_with_base base e2 mu) with
      | Some s, Some prefix -> ER_Bool (string_starts_with s prefix)
      | _, _ -> ER_Error)
   | E_StrEnds e1 e2 ->
-    (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu) with
+    (match er_to_string (eval_expr_with_base base e1 mu), er_to_string (eval_expr_with_base base e2 mu) with
      | Some s, Some suffix -> ER_Bool (string_ends_with s suffix)
      | _, _ -> ER_Error)
   | E_Contains e1 e2 ->
-    (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu) with
+    (match er_to_string (eval_expr_with_base base e1 mu), er_to_string (eval_expr_with_base base e2 mu) with
      | Some s, Some sub -> ER_Bool (string_contains s sub)
      | _, _ -> ER_Error)
   | E_StrBefore e1 e2 ->
-    let v1 = eval_expr e1 mu in
-    let v2 = eval_expr e2 mu in
+    let v1 = eval_expr_with_base base e1 mu in
+    let v2 = eval_expr_with_base base e2 mu in
     (match er_string_info v1, er_string_info v2 with
      | Some (s, lang1, dt1), Some (arg, lang2, dt2) ->
        // Argument compatibility per SPARQL 17.4.3.22
@@ -2707,8 +2711,8 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
          else er_string_preserve result lang1 dt1
      | _, _ -> ER_Error)
   | E_StrAfter e1 e2 ->
-    let v1 = eval_expr e1 mu in
-    let v2 = eval_expr e2 mu in
+    let v1 = eval_expr_with_base base e1 mu in
+    let v2 = eval_expr_with_base base e2 mu in
     (match er_string_info v1, er_string_info v2 with
      | Some (s, lang1, dt1), Some (arg, lang2, dt2) ->
        // Argument compatibility per SPARQL 17.4.3.23
@@ -2725,34 +2729,34 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
          if String.length result = 0 && not (string_contains s arg) then er_string ""
          else er_string_preserve result lang1 dt1
      | _, _ -> ER_Error)
-  | E_Concat es -> eval_concat es mu
+  | E_Concat es -> eval_concat_with_base base es mu
   | E_EncodeForUri e1 ->
     // ENCODE_FOR_URI always returns xsd:string (no lang preservation per spec)
-    (match er_to_string (eval_expr e1 mu) with
+    (match er_to_string (eval_expr_with_base base e1 mu) with
      | Some s -> er_string (string_encode_uri s)
      | None -> ER_Error)
   | E_Replace e1 e2 e3 e4_opt ->
-    let v1 = eval_expr e1 mu in
-    (match er_string_info v1, er_to_string (eval_expr e2 mu),
-           er_to_string (eval_expr e3 mu) with
+    let v1 = eval_expr_with_base base e1 mu in
+    (match er_string_info v1, er_to_string (eval_expr_with_base base e2 mu),
+           er_to_string (eval_expr_with_base base e3 mu) with
      | Some (s, lang, dt), Some pat, Some rep ->
        let flags = match e4_opt with
-         | Some e4 -> er_to_string (eval_expr e4 mu)
+         | Some e4 -> er_to_string (eval_expr_with_base base e4 mu)
          | None -> None
        in er_string_preserve (string_replace s pat rep flags) lang dt
      | _, _, _ -> ER_Error)
   | E_Regex e1 e2 e3_opt ->
-    (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu) with
+    (match er_to_string (eval_expr_with_base base e1 mu), er_to_string (eval_expr_with_base base e2 mu) with
      | Some s, Some pat ->
        let flags = match e3_opt with
-         | Some e3 -> er_to_string (eval_expr e3 mu)
+         | Some e3 -> er_to_string (eval_expr_with_base base e3 mu)
          | None -> None
        in ER_Bool (fn_regex_spec s pat flags)
      | _, _ -> ER_Error)
 
   (* Numeric functions *)
   | E_Abs e1 ->
-    (match eval_expr e1 mu with
+    (match eval_expr_with_base base e1 mu with
      | ER_Num n -> ER_Num (int_abs n)
      | ER_Dec s ->
        if String.length s > 0 && String.index s 0 = FStar.Char.char_of_int 45 (* '-' *)
@@ -2764,19 +2768,19 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
        else ER_Dbl s
      | _ -> ER_Error)
   | E_Round e1 ->
-    (match eval_expr e1 mu with
+    (match eval_expr_with_base base e1 mu with
      | ER_Num n -> ER_Num n
      | ER_Dec s -> ER_Dec (string_of_int (int_round s))
      | ER_Dbl s -> ER_Dbl (string_of_int (int_round s))
      | _ -> ER_Error)
   | E_Ceil e1 ->
-    (match eval_expr e1 mu with
+    (match eval_expr_with_base base e1 mu with
      | ER_Num n -> ER_Num n
      | ER_Dec s -> ER_Dec (string_of_int (int_ceil s))
      | ER_Dbl s -> ER_Dbl (string_of_int (int_ceil s))
      | _ -> ER_Error)
   | E_Floor e1 ->
-    (match eval_expr e1 mu with
+    (match eval_expr_with_base base e1 mu with
      | ER_Num n -> ER_Num n
      | ER_Dec s -> ER_Dec (string_of_int (int_floor s))
      | ER_Dbl s -> ER_Dbl (string_of_int (int_floor s))
@@ -2784,54 +2788,54 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
 
   (* Hash functions *)
   | E_MD5 e1 ->
-    (match er_to_string (eval_expr e1 mu) with
+    (match er_to_string (eval_expr_with_base base e1 mu) with
      | Some s -> er_string (hash_md5 s)
      | None -> ER_Error)
   | E_SHA1 e1 ->
-    (match er_to_string (eval_expr e1 mu) with
+    (match er_to_string (eval_expr_with_base base e1 mu) with
      | Some s -> er_string (hash_sha1 s)
      | None -> ER_Error)
   | E_SHA256 e1 ->
-    (match er_to_string (eval_expr e1 mu) with
+    (match er_to_string (eval_expr_with_base base e1 mu) with
      | Some s -> er_string (hash_sha256 s)
      | None -> ER_Error)
   | E_SHA384 e1 ->
-    (match er_to_string (eval_expr e1 mu) with
+    (match er_to_string (eval_expr_with_base base e1 mu) with
      | Some s -> er_string (hash_sha384 s)
      | None -> ER_Error)
   | E_SHA512 e1 ->
-    (match er_to_string (eval_expr e1 mu) with
+    (match er_to_string (eval_expr_with_base base e1 mu) with
      | Some s -> er_string (hash_sha512 s)
      | None -> ER_Error)
 
   (* Date/time functions *)
   | E_Now -> ER_Error  (* requires runtime context *)
   | E_Year e1 ->
-    (match er_to_datetime_lex (eval_expr e1 mu) with
+    (match er_to_datetime_lex (eval_expr_with_base base e1 mu) with
      | Some s -> (match dt_year s with Some n -> ER_Num n | None -> ER_Error)
      | None -> ER_Error)
   | E_Month e1 ->
-    (match er_to_datetime_lex (eval_expr e1 mu) with
+    (match er_to_datetime_lex (eval_expr_with_base base e1 mu) with
      | Some s -> (match dt_month s with Some n -> ER_Num n | None -> ER_Error)
      | None -> ER_Error)
   | E_Day e1 ->
-    (match er_to_datetime_lex (eval_expr e1 mu) with
+    (match er_to_datetime_lex (eval_expr_with_base base e1 mu) with
      | Some s -> (match dt_day s with Some n -> ER_Num n | None -> ER_Error)
      | None -> ER_Error)
   | E_Hours e1 ->
-    (match er_to_datetime_lex (eval_expr e1 mu) with
+    (match er_to_datetime_lex (eval_expr_with_base base e1 mu) with
      | Some s -> (match dt_hours s with Some n -> ER_Num n | None -> ER_Error)
      | None -> ER_Error)
   | E_Minutes e1 ->
-    (match er_to_datetime_lex (eval_expr e1 mu) with
+    (match er_to_datetime_lex (eval_expr_with_base base e1 mu) with
      | Some s -> (match dt_minutes s with Some n -> ER_Num n | None -> ER_Error)
      | None -> ER_Error)
   | E_Seconds e1 ->
-    (match er_to_datetime_lex (eval_expr e1 mu) with
+    (match er_to_datetime_lex (eval_expr_with_base base e1 mu) with
      | Some s -> (match dt_seconds s with Some ds -> ER_Dec ds | None -> ER_Error)
      | None -> ER_Error)
   | E_Timezone e1 ->
-    (match er_to_datetime_lex (eval_expr e1 mu) with
+    (match er_to_datetime_lex (eval_expr_with_base base e1 mu) with
      | Some s -> (match dt_timezone s with
                   | Some "" -> ER_Error  // no timezone = unbound
                   | Some tz -> ER_Term (T_Literal { lexical_form = tz;
@@ -2840,13 +2844,13 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
                   | None -> ER_Error)
      | None -> ER_Error)
   | E_Tz e1 ->
-    (match er_to_datetime_lex (eval_expr e1 mu) with
+    (match er_to_datetime_lex (eval_expr_with_base base e1 mu) with
      | Some s -> (match dt_tz s with Some tz -> er_string tz | None -> ER_Error)
      | None -> ER_Error)
 
   (* SameTerm *)
   | E_SameTerm e1 e2 ->
-    (match eval_expr e1 mu, eval_expr e2 mu with
+    (match eval_expr_with_base base e1 mu, eval_expr_with_base base e2 mu with
      | ER_Term t1, ER_Term t2 -> ER_Bool (same_term t1 t2)
      | ER_Num a, ER_Num b -> ER_Bool (a = b)
      | ER_Dec a, ER_Dec b -> ER_Bool (a = b)
@@ -2867,7 +2871,7 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
      if iri_s = "http://www.w3.org/2005/xpath-functions#langMatches" then
        match args with
        | [e1; e2] ->
-         (match er_to_string (eval_expr e1 mu), er_to_string (eval_expr e2 mu) with
+         (match er_to_string (eval_expr_with_base base e1 mu), er_to_string (eval_expr_with_base base e2 mu) with
           | Some tag, Some range -> ER_Bool (fn_langMatches_spec tag range)
           | _, _ -> ER_Error)
        | _ -> ER_Error
@@ -2882,7 +2886,7 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
        match args with
        | [] -> ER_Term (T_BNode "_:b0")
        | [e1] ->
-         (match er_to_string (eval_expr e1 mu) with
+         (match er_to_string (eval_expr_with_base base e1 mu) with
           | Some s -> ER_Term (T_BNode ("_:b" ^ s))
           | None -> ER_Error)
        | _ -> ER_Error
@@ -2893,49 +2897,49 @@ let rec eval_expr (e : expr) (mu : solution_mapping)
           String.sub iri_s 0 (String.length xsd_ns) = xsd_ns then
          match args with
          | [e1] ->
-           let v = eval_expr e1 mu in
+           let v = eval_expr_with_base base e1 mu in
            let target_type = String.sub iri_s (String.length xsd_ns) (String.length iri_s - String.length xsd_ns) in
            eval_xsd_cast v target_type iri_s
          | _ -> ER_Error
        else ER_Error)
 
 (* Coalesce: first non-error result from list *)
-and eval_coalesce (es : list expr) (mu : solution_mapping)
+and eval_coalesce_with_base (base : option wf_iri) (es : list expr) (mu : solution_mapping)
   : Tot eval_result (decreases es) =
   match es with
   | [] -> ER_Error
   | e :: rest ->
-    (match eval_expr e mu with
-     | ER_Error -> eval_coalesce rest mu
+    (match eval_expr_with_base base e mu with
+     | ER_Error -> eval_coalesce_with_base base rest mu
      | v -> v)
 
 (* IN: check if value equals any in list *)
-and eval_in (v : eval_result) (es : list expr) (mu : solution_mapping)
+and eval_in_with_base (base : option wf_iri) (v : eval_result) (es : list expr) (mu : solution_mapping)
   : Tot eval_result (decreases es) =
   match es with
   | [] -> ER_Bool false
   | e :: rest ->
-    (match value_compare v (eval_expr e mu) CmpEq with
+    (match value_compare v (eval_expr_with_base base e mu) CmpEq with
      | Some true -> ER_Bool true
-     | _ -> eval_in v rest mu)
+     | _ -> eval_in_with_base base v rest mu)
 
 (* CONCAT: concatenate string results *)
-and eval_concat (es : list expr) (mu : solution_mapping)
+and eval_concat_with_base (base : option wf_iri) (es : list expr) (mu : solution_mapping)
   : Tot eval_result (decreases es) =
   // CONCAT preserves lang tag if all args share the same tag; otherwise xsd:string
   match es with
   | [] -> er_string ""
   | [e] ->
     // Single element: preserve its string info (lang tag, datatype)
-    let v = eval_expr e mu in
+    let v = eval_expr_with_base base e mu in
     (match er_string_info v with
      | Some (s, lang, dt) -> er_string_preserve s lang dt
      | None -> ER_Error)
   | e :: rest ->
-    let v = eval_expr e mu in
+    let v = eval_expr_with_base base e mu in
     (match er_string_info v with
      | Some (s, lang, dt) ->
-       (match eval_concat rest mu with
+       (match eval_concat_with_base base rest mu with
         | ER_Term (T_Literal l) ->
           let combined = strcat s (lit_lexical l) in
           // Check if lang tags match
@@ -2953,6 +2957,36 @@ and eval_concat (es : list expr) (mu : solution_mapping)
         | ER_Error -> ER_Error
         | _ -> ER_Error)
      | None -> ER_Error)
+
+(* Non-mutual `base = None` wrappers — preserve the historical 2-arg
+   eval_expr / eval_coalesce / eval_in / eval_concat signatures so that
+   outer callers (eval_group_condition, eval_over_group, having_filter,
+   etc.) compile unchanged.
+
+   #65 Step 2a (2026-05-10): the mutual block above now takes the BASE
+   IRI as its first parameter (`option wf_iri`). These wrappers default
+   to `None`, which keeps the OCaml-extracted call sites byte-compatible
+   with the legacy "no BASE" call shape. The post-extraction OCaml patch
+   (`65_base_iri_resolution.sh`) replaces the wrapper body with one that
+   reads `!current_base_iri_ref` instead of passing `None`, so BASE-aware
+   evaluation still works for callers that haven't migrated to the
+   explicit `option wf_iri` argument yet. Step 2b/2c thread the real
+   `q.q_base` through the outer functions and retire the OCaml mutable. *)
+let eval_expr (e : expr) (mu : solution_mapping)
+  : Tot eval_result =
+  eval_expr_with_base None e mu
+
+let eval_coalesce (es : list expr) (mu : solution_mapping)
+  : Tot eval_result =
+  eval_coalesce_with_base None es mu
+
+let eval_in (v : eval_result) (es : list expr) (mu : solution_mapping)
+  : Tot eval_result =
+  eval_in_with_base None v es mu
+
+let eval_concat (es : list expr) (mu : solution_mapping)
+  : Tot eval_result =
+  eval_concat_with_base None es mu
 
 (* eval_expr_ebv is assumed above eval_pattern; assumed to equal ebv(eval_expr e mu) *)
 

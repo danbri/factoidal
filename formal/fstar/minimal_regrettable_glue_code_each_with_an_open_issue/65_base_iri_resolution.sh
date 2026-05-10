@@ -41,13 +41,20 @@ import re, sys
 with open('$FILE', 'r') as f:
     content = f.read()
 
-# 1. Add current_base_iri_ref before eval_expr so it's in scope
+# 1. Add current_base_iri_ref before eval_expr_with_base so it's in scope
+#    for the mutual block, the wrapper, and eval_select_query.
+#    #65 Step 2a (2026-05-10): the F*-side mutual eval functions were
+#    renamed to eval_expr_with_base / eval_coalesce_with_base / etc., and
+#    a non-mutual wrapper 'let eval_expr ... = eval_expr_with_base None ...'
+#    was added. Anchor on the renamed mutual head so the ref declaration
+#    sits above the entire eval* cluster.
 content = content.replace(
-    'let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :',
+    'let rec eval_expr_with_base',
     '''let current_base_iri_ref : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option ref =
   ref FStar_Pervasives_Native.None
 
-let rec eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :'''
+let rec eval_expr_with_base''',
+    1
 )
 
 # 2. Set/restore base_iri in eval_select_query.  The extracted body now
@@ -101,33 +108,23 @@ content, n_close = re.subn(
 if n_close == 0:
     sys.stderr.write('WARNING: 65_base_iri_resolution could not close eval_select_query result scope\n')
 
-# 3. Enhance IRI() function to resolve against base IRI
+# 3. Rewrite the eval_expr wrapper to consult current_base_iri_ref instead
+#    of passing FStar_Pervasives_Native.None. The F*-side mutual block
+#    (eval_expr_with_base) already handles E_IRI_fn correctly when given a
+#    Some-base — see SPARQL11.Algebra.fst's E_IRI_fn arm. The wrapper is
+#    the rule-#11 'wormhole' point where the OCaml-side current_base_iri_ref
+#    feeds into the F* algorithm.
+#
+#    #65 Step 2a (2026-05-10) replaces the previous ~25-line regex rewrite
+#    of the E_IRI_fn 'match … with' arm with this one-line wrapper rewrite.
+#    The resolution algorithm is now in F*, not in this patch. Future Step
+#    2b/2c will thread q.q_base explicitly and retire this wrapper hack
+#    along with current_base_iri_ref itself.
 content = content.replace(
-    '''  | E_IRI_fn e1 ->
-      (match eval_expr e1 mu with
-       | ER_Term (RDF_Graph_Executable.T_IRI i) ->
-           ER_Term (RDF_Graph_Executable.T_IRI i)
-       | ER_Term (RDF_Graph_Executable.T_Literal l) ->
-           (match string_to_iri (lit_lexical l) with
-            | FStar_Pervasives_Native.Some i ->
-                ER_Term (RDF_Graph_Executable.T_IRI i)
-            | FStar_Pervasives_Native.None -> ER_Error)
-       | uu___ -> ER_Error)''',
-    '''  | E_IRI_fn e1 ->
-      (match eval_expr e1 mu with
-       | ER_Term (RDF_Graph_Executable.T_IRI i) ->
-           ER_Term (RDF_Graph_Executable.T_IRI i)
-       | ER_Term (RDF_Graph_Executable.T_Literal l) ->
-           let s = lit_lexical l in
-           (match !current_base_iri_ref with
-            | FStar_Pervasives_Native.Some base ->
-                ER_Term (RDF_Graph_Executable.T_IRI (resolve_iri base s))
-            | FStar_Pervasives_Native.None ->
-                (match string_to_iri s with
-                 | FStar_Pervasives_Native.Some i ->
-                     ER_Term (RDF_Graph_Executable.T_IRI i)
-                 | FStar_Pervasives_Native.None -> ER_Error))
-       | uu___ -> ER_Error)'''
+    '''let eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
+  eval_result= eval_expr_with_base FStar_Pervasives_Native.None e mu''',
+    '''let eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
+  eval_result= eval_expr_with_base (!current_base_iri_ref) e mu'''
 )
 
 with open('$FILE', 'w') as f:
