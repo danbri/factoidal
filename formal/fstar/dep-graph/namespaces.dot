@@ -1,0 +1,33 @@
+digraph fstar_namespaces {
+  rankdir=LR;
+  node [shape=box, style="filled,rounded", fontname="Helvetica", fontsize=12];
+  edge [color="#666666"];
+  "OWL" [fillcolor="#e6ccff"];
+  "Parquet" [fillcolor="#c8d6e5"];
+  "Parser" [fillcolor="#cfe8ff"];
+  "RDF" [fillcolor="#d4f4dd"];
+  "RIF" [fillcolor="#ffd1dc"];
+  "SHACL" [fillcolor="#fff5b3"];
+  "SPARQL" [fillcolor="#ffe6b3"];
+  "SPARQL11" [fillcolor="#ffd699"];
+  "Tableau" [fillcolor="#f5cba7"];
+  "Util" [fillcolor="#eeeeee"];
+  "OWL" -> "RDF" [label="3", penwidth=2.2];
+  "OWL" -> "SPARQL11" [label="2", penwidth=1.8];
+  "Parser" -> "RDF" [label="14", penwidth=4.2];
+  "Parser" -> "RIF" [label="1", penwidth=1.4];
+  "RDF" -> "Parquet" [label="3", penwidth=2.2];
+  "RDF" -> "Parser" [label="2", penwidth=1.8];
+  "RDF" -> "SPARQL11" [label="2", penwidth=1.8];
+  "RIF" -> "Parser" [label="1", penwidth=1.4];
+  "RIF" -> "RDF" [label="4", penwidth=2.6];
+  "RIF" -> "SPARQL11" [label="2", penwidth=1.8];
+  "SHACL" -> "RDF" [label="1", penwidth=1.4];
+  "SPARQL" -> "Parser" [label="2", penwidth=1.8];
+  "SPARQL" -> "RDF" [label="10", penwidth=4.2];
+  "SPARQL" -> "SPARQL11" [label="7", penwidth=3.8];
+  "SPARQL11" -> "Parser" [label="2", penwidth=1.8];
+  "SPARQL11" -> "RDF" [label="6", penwidth=3.4];
+  "Tableau" -> "OWL" [label="1", penwidth=1.4];
+  "Tableau" -> "RDF" [label="1", penwidth=1.4];
+}

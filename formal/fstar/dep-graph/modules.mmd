@@ -1,0 +1,214 @@
+%% F* module dependency graph
+graph LR
+  OWL_QueryEval["OWL.QueryEval"]
+  OWL_QueryRewrite["OWL.QueryRewrite"]
+  OWL_Tests_Manifest["OWL.Tests.Manifest"]
+  OWL_Vocabulary["OWL.Vocabulary"]
+  Parquet_Footer["Parquet.Footer"]
+  Parser_Ballyhoo["Parser.Ballyhoo"]
+  Parser_BallyhooBloom["Parser.BallyhooBloom"]
+  Parser_BallyhooCOTTAS["Parser.BallyhooCOTTAS"]
+  Parser_BallyhooHDT["Parser.BallyhooHDT"]
+  Parser_BallyhooHDTQ["Parser.BallyhooHDTQ"]
+  Parser_CSVResults["Parser.CSVResults"]
+  Parser_Combinators["Parser.Combinators"]
+  Parser_FastString["Parser.FastString"]
+  Parser_IRI["Parser.IRI"]
+  Parser_JSONResults["Parser.JSONResults"]
+  Parser_NQuads["Parser.NQuads"]
+  Parser_NTriples["Parser.NTriples"]
+  Parser_RDFXML["Parser.RDFXML"]
+  Parser_RIFXML["Parser.RIFXML"]
+  Parser_SRX["Parser.SRX"]
+  Parser_TriG["Parser.TriG"]
+  Parser_Turtle["Parser.Turtle"]
+  Parser_TurtleScanner["Parser.TurtleScanner"]
+  Parser_XML["Parser.XML"]
+  RDF_Bytes["RDF.Bytes"]
+  RDF_Canonical["RDF.Canonical"]
+  RDF_Canonical_Manifest["RDF.Canonical.Manifest"]
+  RDF_CottasInMem["RDF.CottasInMem"]
+  RDF_CottasStore["RDF.CottasStore"]
+  RDF_CottasStore_ColumnSeq["RDF.CottasStore.ColumnSeq"]
+  RDF_CottasStore_CompoundPresenceBitmap["RDF.CottasStore.CompoundPresenceBitmap"]
+  RDF_CottasStore_CompoundPresenceWriter["RDF.CottasStore.CompoundPresenceWriter"]
+  RDF_CottasStore_DictWriter["RDF.CottasStore.DictWriter"]
+  RDF_CottasStore_OffsetsWriter["RDF.CottasStore.OffsetsWriter"]
+  RDF_CottasStore_OnDiskIndex["RDF.CottasStore.OnDiskIndex"]
+  RDF_CottasStore_PageCache["RDF.CottasStore.PageCache"]
+  RDF_CottasStore_PageCache_Bounds["RDF.CottasStore.PageCache.Bounds"]
+  RDF_CottasStore_PresenceBitmap["RDF.CottasStore.PresenceBitmap"]
+  RDF_CottasStore_PresenceWriter["RDF.CottasStore.PresenceWriter"]
+  RDF_Format["RDF.Format"]
+  RDF_Graph_Executable["RDF.Graph.Executable"]
+  RDF_List_Helpers["RDF.List.Helpers"]
+  RDF_NQuads_Serialize["RDF.NQuads.Serialize"]
+  RDF_Pretty["RDF.Pretty"]
+  RDF_Store_Columnar_OffsetIndex["RDF.Store.Columnar.OffsetIndex"]
+  RDF_Store_Combine["RDF.Store.Combine"]
+  RDF_Store_Loader["RDF.Store.Loader"]
+  RIF_Core_Eval["RIF.Core.Eval"]
+  RIF_Core_Syntax["RIF.Core.Syntax"]
+  RIF_Core_Tests["RIF.Core.Tests"]
+  RIF_Core_Translation["RIF.Core.Translation"]
+  SHACL_Validation["SHACL.Validation"]
+  SPARQL_Diagnostics["SPARQL.Diagnostics"]
+  SPARQL_Eval_Limits["SPARQL.Eval.Limits"]
+  SPARQL_Eval_TimeBudget["SPARQL.Eval.TimeBudget"]
+  SPARQL_Explain["SPARQL.Explain"]
+  SPARQL_GraphStore["SPARQL.GraphStore"]
+  SPARQL_HTTP["SPARQL.HTTP"]
+  SPARQL_HTTP_Admin["SPARQL.HTTP.Admin"]
+  SPARQL_HTTP_BackendInfo["SPARQL.HTTP.BackendInfo"]
+  SPARQL_HTTP_Client["SPARQL.HTTP.Client"]
+  SPARQL_HTTP_QueriesIndex["SPARQL.HTTP.QueriesIndex"]
+  SPARQL_HTTP_Response["SPARQL.HTTP.Response"]
+  SPARQL_HTTP_StaticFiles["SPARQL.HTTP.StaticFiles"]
+  SPARQL_JSON_Escape["SPARQL.JSON.Escape"]
+  SPARQL_Plan_AccessPath["SPARQL.Plan.AccessPath"]
+  SPARQL_Plan_Estimate["SPARQL.Plan.Estimate"]
+  SPARQL_Plan_Explain["SPARQL.Plan.Explain"]
+  SPARQL_Plan_Loader["SPARQL.Plan.Loader"]
+  SPARQL_Plan_Pruning["SPARQL.Plan.Pruning"]
+  SPARQL_Protocol["SPARQL.Protocol"]
+  SPARQL_Query_Analysis["SPARQL.Query.Analysis"]
+  SPARQL_ServiceDescription["SPARQL.ServiceDescription"]
+  SPARQL_Update_Analysis["SPARQL.Update.Analysis"]
+  SPARQL_Update_Sandbox["SPARQL.Update.Sandbox"]
+  SPARQL11_Algebra["SPARQL11.Algebra"]
+  SPARQL11_Parser["SPARQL11.Parser"]
+  SPARQL11_Store["SPARQL11.Store"]
+  Tableau["Tableau"]
+  Util_Log["Util.Log"]
+  OWL_QueryEval --> OWL_QueryRewrite
+  OWL_QueryEval --> RDF_Graph_Executable
+  OWL_QueryEval --> SPARQL11_Algebra
+  OWL_QueryRewrite --> RDF_Graph_Executable
+  OWL_QueryRewrite --> SPARQL11_Algebra
+  OWL_Vocabulary --> RDF_Graph_Executable
+  Parser_Ballyhoo --> Parser_Combinators
+  Parser_Ballyhoo --> Parser_NQuads
+  Parser_Ballyhoo --> RDF_Graph_Executable
+  Parser_BallyhooBloom --> RDF_Graph_Executable
+  Parser_BallyhooCOTTAS --> RDF_Graph_Executable
+  Parser_BallyhooHDT --> RDF_Graph_Executable
+  Parser_BallyhooHDTQ --> Parser_BallyhooHDT
+  Parser_BallyhooHDTQ --> RDF_Graph_Executable
+  Parser_CSVResults --> Parser_Combinators
+  Parser_CSVResults --> RDF_Graph_Executable
+  Parser_Combinators --> Parser_FastString
+  Parser_IRI --> Parser_FastString
+  Parser_JSONResults --> Parser_Combinators
+  Parser_JSONResults --> RDF_Graph_Executable
+  Parser_NQuads --> Parser_Combinators
+  Parser_NQuads --> Parser_FastString
+  Parser_NQuads --> Parser_NTriples
+  Parser_NQuads --> RDF_Graph_Executable
+  Parser_NTriples --> Parser_Combinators
+  Parser_NTriples --> Parser_FastString
+  Parser_NTriples --> RDF_Graph_Executable
+  Parser_RDFXML --> Parser_Combinators
+  Parser_RDFXML --> Parser_IRI
+  Parser_RDFXML --> Parser_XML
+  Parser_RDFXML --> RDF_Graph_Executable
+  Parser_RIFXML --> Parser_XML
+  Parser_RIFXML --> RDF_Graph_Executable
+  Parser_RIFXML --> RIF_Core_Syntax
+  Parser_SRX --> Parser_XML
+  Parser_SRX --> RDF_Graph_Executable
+  Parser_TriG --> Parser_Combinators
+  Parser_TriG --> Parser_FastString
+  Parser_TriG --> Parser_NTriples
+  Parser_TriG --> Parser_Turtle
+  Parser_TriG --> RDF_Graph_Executable
+  Parser_Turtle --> Parser_Combinators
+  Parser_Turtle --> Parser_FastString
+  Parser_Turtle --> Parser_IRI
+  Parser_Turtle --> Parser_NTriples
+  Parser_Turtle --> Parser_TurtleScanner
+  Parser_Turtle --> RDF_Graph_Executable
+  Parser_TurtleScanner --> Parser_Combinators
+  Parser_TurtleScanner --> Parser_FastString
+  Parser_XML --> Parser_Combinators
+  Parser_XML --> Parser_FastString
+  RDF_Canonical --> RDF_Graph_Executable
+  RDF_CottasInMem --> RDF_CottasStore
+  RDF_CottasInMem --> RDF_Graph_Executable
+  RDF_CottasStore --> Parquet_Footer
+  RDF_CottasStore --> Parser_BallyhooCOTTAS
+  RDF_CottasStore --> RDF_CottasStore_ColumnSeq
+  RDF_CottasStore --> RDF_CottasStore_CompoundPresenceBitmap
+  RDF_CottasStore --> RDF_CottasStore_PageCache
+  RDF_CottasStore --> RDF_Graph_Executable
+  RDF_CottasStore_CompoundPresenceBitmap --> RDF_CottasStore_OnDiskIndex
+  RDF_CottasStore_CompoundPresenceWriter --> RDF_List_Helpers
+  RDF_CottasStore_DictWriter --> RDF_List_Helpers
+  RDF_CottasStore_OffsetsWriter --> RDF_List_Helpers
+  RDF_CottasStore_OnDiskIndex --> Parquet_Footer
+  RDF_CottasStore_PageCache --> RDF_CottasStore_ColumnSeq
+  RDF_CottasStore_PageCache_Bounds --> Parquet_Footer
+  RDF_CottasStore_PageCache_Bounds --> Parser_BallyhooCOTTAS
+  RDF_CottasStore_PageCache_Bounds --> RDF_CottasStore
+  RDF_CottasStore_PageCache_Bounds --> RDF_CottasStore_PageCache
+  RDF_CottasStore_PresenceBitmap --> RDF_CottasStore_OnDiskIndex
+  RDF_CottasStore_PresenceWriter --> RDF_List_Helpers
+  RDF_NQuads_Serialize --> RDF_Graph_Executable
+  RDF_Pretty --> RDF_Graph_Executable
+  RDF_Pretty --> SPARQL11_Algebra
+  RDF_Store_Columnar_OffsetIndex --> RDF_CottasStore_OnDiskIndex
+  RDF_Store_Combine --> RDF_Graph_Executable
+  RDF_Store_Combine --> SPARQL11_Store
+  RDF_Store_Loader --> RDF_Graph_Executable
+  RDF_Store_Loader --> RDF_List_Helpers
+  RIF_Core_Eval --> RDF_Graph_Executable
+  RIF_Core_Eval --> RIF_Core_Syntax
+  RIF_Core_Eval --> RIF_Core_Translation
+  RIF_Core_Eval --> SPARQL11_Algebra
+  RIF_Core_Syntax --> RDF_Graph_Executable
+  RIF_Core_Tests --> Parser_RIFXML
+  RIF_Core_Tests --> RDF_Graph_Executable
+  RIF_Core_Tests --> RIF_Core_Eval
+  RIF_Core_Tests --> RIF_Core_Syntax
+  RIF_Core_Translation --> RDF_Graph_Executable
+  RIF_Core_Translation --> RIF_Core_Syntax
+  RIF_Core_Translation --> SPARQL11_Algebra
+  SHACL_Validation --> RDF_Graph_Executable
+  SPARQL_Diagnostics --> SPARQL11_Algebra
+  SPARQL_Diagnostics --> SPARQL11_Store
+  SPARQL_Explain --> RDF_Pretty
+  SPARQL_Explain --> SPARQL_JSON_Escape
+  SPARQL_Explain --> SPARQL11_Algebra
+  SPARQL_GraphStore --> RDF_Graph_Executable
+  SPARQL_HTTP_Admin --> SPARQL_JSON_Escape
+  SPARQL_HTTP_BackendInfo --> RDF_Graph_Executable
+  SPARQL_HTTP_BackendInfo --> SPARQL_JSON_Escape
+  SPARQL_HTTP_QueriesIndex --> Parser_FastString
+  SPARQL_HTTP_QueriesIndex --> SPARQL_JSON_Escape
+  SPARQL_JSON_Escape --> Parser_FastString
+  SPARQL_Plan_AccessPath --> RDF_Store_Columnar_OffsetIndex
+  SPARQL_Plan_AccessPath --> SPARQL_Plan_Pruning
+  SPARQL_Plan_Explain --> RDF_Pretty
+  SPARQL_Plan_Explain --> SPARQL_Explain
+  SPARQL_Plan_Explain --> SPARQL_JSON_Escape
+  SPARQL_Plan_Explain --> SPARQL_Plan_Estimate
+  SPARQL_Plan_Explain --> SPARQL11_Algebra
+  SPARQL_Plan_Pruning --> RDF_CottasStore_CompoundPresenceBitmap
+  SPARQL_Plan_Pruning --> RDF_CottasStore_PresenceBitmap
+  SPARQL_Protocol --> RDF_Graph_Executable
+  SPARQL_Query_Analysis --> SPARQL11_Algebra
+  SPARQL_ServiceDescription --> RDF_Graph_Executable
+  SPARQL_Update_Analysis --> SPARQL11_Algebra
+  SPARQL_Update_Sandbox --> RDF_Graph_Executable
+  SPARQL_Update_Sandbox --> SPARQL11_Algebra
+  SPARQL11_Algebra --> RDF_Graph_Executable
+  SPARQL11_Algebra --> RDF_List_Helpers
+  SPARQL11_Parser --> RDF_Graph_Executable
+  SPARQL11_Parser --> SPARQL11_Algebra
+  SPARQL11_Store --> Parser_BallyhooCOTTAS
+  SPARQL11_Store --> Parser_BallyhooHDT
+  SPARQL11_Store --> RDF_CottasStore
+  SPARQL11_Store --> RDF_Graph_Executable
+  SPARQL11_Store --> RDF_List_Helpers
+  SPARQL11_Store --> SPARQL11_Algebra
+  Tableau --> OWL_Vocabulary
+  Tableau --> RDF_Graph_Executable

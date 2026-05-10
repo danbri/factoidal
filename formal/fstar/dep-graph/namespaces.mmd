@@ -1,0 +1,30 @@
+%% F* namespace dependency graph
+graph LR
+  OWL["OWL"]
+  Parquet["Parquet"]
+  Parser["Parser"]
+  RDF["RDF"]
+  RIF["RIF"]
+  SHACL["SHACL"]
+  SPARQL["SPARQL"]
+  SPARQL11["SPARQL11"]
+  Tableau["Tableau"]
+  Util["Util"]
+  OWL -->|3| RDF
+  OWL -->|2| SPARQL11
+  Parser -->|14| RDF
+  Parser -->|1| RIF
+  RDF -->|3| Parquet
+  RDF -->|2| Parser
+  RDF -->|2| SPARQL11
+  RIF -->|1| Parser
+  RIF -->|4| RDF
+  RIF -->|2| SPARQL11
+  SHACL -->|1| RDF
+  SPARQL -->|2| Parser
+  SPARQL -->|10| RDF
+  SPARQL -->|7| SPARQL11
+  SPARQL11 -->|2| Parser
+  SPARQL11 -->|6| RDF
+  Tableau -->|1| OWL
+  Tableau -->|1| RDF

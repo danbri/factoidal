@@ -1,0 +1,83 @@
+# F* module dependency graph (open/include/module-abbrev derived)
+# 80 modules in formal/fstar/
+
+OWL.QueryEval -> OWL.QueryRewrite, RDF.Graph.Executable, SPARQL11.Algebra
+OWL.QueryRewrite -> RDF.Graph.Executable, SPARQL11.Algebra
+OWL.Tests.Manifest -> (no in-project deps)
+OWL.Vocabulary -> RDF.Graph.Executable
+Parquet.Footer -> (no in-project deps)
+Parser.Ballyhoo -> Parser.Combinators, Parser.NQuads, RDF.Graph.Executable
+Parser.BallyhooBloom -> RDF.Graph.Executable
+Parser.BallyhooCOTTAS -> RDF.Graph.Executable
+Parser.BallyhooHDT -> RDF.Graph.Executable
+Parser.BallyhooHDTQ -> Parser.BallyhooHDT, RDF.Graph.Executable
+Parser.CSVResults -> Parser.Combinators, RDF.Graph.Executable
+Parser.Combinators -> Parser.FastString
+Parser.FastString -> (no in-project deps)
+Parser.IRI -> Parser.FastString
+Parser.JSONResults -> Parser.Combinators, RDF.Graph.Executable
+Parser.NQuads -> Parser.Combinators, Parser.FastString, Parser.NTriples, RDF.Graph.Executable
+Parser.NTriples -> Parser.Combinators, Parser.FastString, RDF.Graph.Executable
+Parser.RDFXML -> Parser.Combinators, Parser.IRI, Parser.XML, RDF.Graph.Executable
+Parser.RIFXML -> Parser.XML, RDF.Graph.Executable, RIF.Core.Syntax
+Parser.SRX -> Parser.XML, RDF.Graph.Executable
+Parser.TriG -> Parser.Combinators, Parser.FastString, Parser.NTriples, Parser.Turtle, RDF.Graph.Executable
+Parser.Turtle -> Parser.Combinators, Parser.FastString, Parser.IRI, Parser.NTriples, Parser.TurtleScanner, RDF.Graph.Executable
+Parser.TurtleScanner -> Parser.Combinators, Parser.FastString
+Parser.XML -> Parser.Combinators, Parser.FastString
+RDF.Bytes -> (no in-project deps)
+RDF.Canonical -> RDF.Graph.Executable
+RDF.Canonical.Manifest -> (no in-project deps)
+RDF.CottasInMem -> RDF.CottasStore, RDF.Graph.Executable
+RDF.CottasStore -> Parquet.Footer, Parser.BallyhooCOTTAS, RDF.CottasStore.ColumnSeq, RDF.CottasStore.CompoundPresenceBitmap, RDF.CottasStore.PageCache, RDF.Graph.Executable
+RDF.CottasStore.ColumnSeq -> (no in-project deps)
+RDF.CottasStore.CompoundPresenceBitmap -> RDF.CottasStore.OnDiskIndex
+RDF.CottasStore.CompoundPresenceWriter -> RDF.List.Helpers
+RDF.CottasStore.DictWriter -> RDF.List.Helpers
+RDF.CottasStore.OffsetsWriter -> RDF.List.Helpers
+RDF.CottasStore.OnDiskIndex -> Parquet.Footer
+RDF.CottasStore.PageCache -> RDF.CottasStore.ColumnSeq
+RDF.CottasStore.PageCache.Bounds -> Parquet.Footer, Parser.BallyhooCOTTAS, RDF.CottasStore, RDF.CottasStore.PageCache
+RDF.CottasStore.PresenceBitmap -> RDF.CottasStore.OnDiskIndex
+RDF.CottasStore.PresenceWriter -> RDF.List.Helpers
+RDF.Format -> (no in-project deps)
+RDF.Graph.Executable -> (no in-project deps)
+RDF.List.Helpers -> (no in-project deps)
+RDF.NQuads.Serialize -> RDF.Graph.Executable
+RDF.Pretty -> RDF.Graph.Executable, SPARQL11.Algebra
+RDF.Store.Columnar.OffsetIndex -> RDF.CottasStore.OnDiskIndex
+RDF.Store.Combine -> RDF.Graph.Executable, SPARQL11.Store
+RDF.Store.Loader -> RDF.Graph.Executable, RDF.List.Helpers
+RIF.Core.Eval -> RDF.Graph.Executable, RIF.Core.Syntax, RIF.Core.Translation, SPARQL11.Algebra
+RIF.Core.Syntax -> RDF.Graph.Executable
+RIF.Core.Tests -> Parser.RIFXML, RDF.Graph.Executable, RIF.Core.Eval, RIF.Core.Syntax
+RIF.Core.Translation -> RDF.Graph.Executable, RIF.Core.Syntax, SPARQL11.Algebra
+SHACL.Validation -> RDF.Graph.Executable
+SPARQL.Diagnostics -> SPARQL11.Algebra, SPARQL11.Store
+SPARQL.Eval.Limits -> (no in-project deps)
+SPARQL.Eval.TimeBudget -> (no in-project deps)
+SPARQL.Explain -> RDF.Pretty, SPARQL.JSON.Escape, SPARQL11.Algebra
+SPARQL.GraphStore -> RDF.Graph.Executable
+SPARQL.HTTP -> (no in-project deps)
+SPARQL.HTTP.Admin -> SPARQL.JSON.Escape
+SPARQL.HTTP.BackendInfo -> RDF.Graph.Executable, SPARQL.JSON.Escape
+SPARQL.HTTP.Client -> (no in-project deps)
+SPARQL.HTTP.QueriesIndex -> Parser.FastString, SPARQL.JSON.Escape
+SPARQL.HTTP.Response -> (no in-project deps)
+SPARQL.HTTP.StaticFiles -> (no in-project deps)
+SPARQL.JSON.Escape -> Parser.FastString
+SPARQL.Plan.AccessPath -> RDF.Store.Columnar.OffsetIndex, SPARQL.Plan.Pruning
+SPARQL.Plan.Estimate -> (no in-project deps)
+SPARQL.Plan.Explain -> RDF.Pretty, SPARQL.Explain, SPARQL.JSON.Escape, SPARQL.Plan.Estimate, SPARQL11.Algebra
+SPARQL.Plan.Loader -> (no in-project deps)
+SPARQL.Plan.Pruning -> RDF.CottasStore.CompoundPresenceBitmap, RDF.CottasStore.PresenceBitmap
+SPARQL.Protocol -> RDF.Graph.Executable
+SPARQL.Query.Analysis -> SPARQL11.Algebra
+SPARQL.ServiceDescription -> RDF.Graph.Executable
+SPARQL.Update.Analysis -> SPARQL11.Algebra
+SPARQL.Update.Sandbox -> RDF.Graph.Executable, SPARQL11.Algebra
+SPARQL11.Algebra -> RDF.Graph.Executable, RDF.List.Helpers
+SPARQL11.Parser -> RDF.Graph.Executable, SPARQL11.Algebra
+SPARQL11.Store -> Parser.BallyhooCOTTAS, Parser.BallyhooHDT, RDF.CottasStore, RDF.Graph.Executable, RDF.List.Helpers, SPARQL11.Algebra
+Tableau -> OWL.Vocabulary, RDF.Graph.Executable
+Util.Log -> (no in-project deps)
