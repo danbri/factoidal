@@ -111,6 +111,22 @@ let query_timeout_response_body secs =
     ",\"hint\":\"Add LIMIT or bind more triple-pattern terms.\"}\n"
   ]
 
+// 503 body: dataset still loading. Loader thread is mid-COTTAS-build;
+// emitted by the SPARQL endpoint until is_loading() flips false.
+// Plain text rather than JSON so curl-without-flags users see a
+// readable retry hint, matching the prior factoidal_http.ml site.
+val service_unavailable_loading_body : unit -> string
+let service_unavailable_loading_body () =
+  "Dataset still loading; retry shortly\n"
+
+// Retry-After header lines for the 503 loading response. The 5-second
+// back-off matches the prior factoidal_http.ml site; both this list
+// and the body are pinned together so OCaml-side drift surfaces as
+// a verification failure rather than wire-protocol drift.
+val service_unavailable_retry_after_headers : unit -> list string
+let service_unavailable_retry_after_headers () =
+  [ "Retry-After: 5" ]
+
 // Compile-time guards: pin both response-body templates and the
 // 504 status_text byte-for-byte. assert_norm forces F* to reduce
 // the body and check it against the expected string at type-check
@@ -135,6 +151,16 @@ let _ = assert_norm (
 // with a JSON timeout body — keep them locked together at extract
 // time.
 let _ = assert_norm (status_text 504 = "Gateway Timeout")
+
+let _ = assert_norm (
+  service_unavailable_loading_body () = "Dataset still loading; retry shortly\n"
+)
+
+let _ = assert_norm (status_text 503 = "Service Unavailable")
+
+let _ = assert_norm (
+  service_unavailable_retry_after_headers () = [ "Retry-After: 5" ]
+)
 
 // ---------------------------------------------------------------
 // CLI parsing: --cors=<value> string -> cors_policy.

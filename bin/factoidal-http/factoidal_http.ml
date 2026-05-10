@@ -2175,10 +2175,18 @@ let handle_connection cfg dataset_ref backend_ref cottas_stores_ref ic oc =
        Retry-After so clients back off and try again. Static routes
        and /backend-info.json have already been handled above. *)
     if is_loading () then
-      write_response ~extra_headers:("Retry-After: 5" :: cors_hdrs) oc
+      (* #200 Section C: Retry-After headers + body lifted to F* per
+         rule #11. SPARQL_HTTP_Response.service_unavailable_loading_body
+         and service_unavailable_retry_after_headers pin the bytes via
+         assert_norm; OCaml side does only the I/O wrapper. *)
+      let retry_hdrs =
+        SPARQL_HTTP_Response.service_unavailable_retry_after_headers () in
+      let body_str =
+        SPARQL_HTTP_Response.service_unavailable_loading_body () in
+      write_response ~extra_headers:(retry_hdrs @ cors_hdrs) oc
         ~status:503
         ~content_type:"text/plain; charset=utf-8"
-        ~body:"Dataset still loading; retry shortly\n"
+        ~body:body_str
     else
 
     let dataset = !dataset_ref in

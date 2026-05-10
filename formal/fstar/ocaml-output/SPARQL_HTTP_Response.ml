@@ -82,6 +82,10 @@ let query_timeout_response_body (secs : Prims.int) : Prims.string=
     ["{\"error\":\"query_timeout\",\"seconds\":";
     Prims.string_of_int secs;
     ",\"hint\":\"Add LIMIT or bind more triple-pattern terms.\"}\n"]
+let service_unavailable_loading_body (uu___ : unit) : Prims.string=
+  "Dataset still loading; retry shortly\n"
+let service_unavailable_retry_after_headers (uu___ : unit) :
+  Prims.string Prims.list= ["Retry-After: 5"]
 let is_ascii_ws (c : FStar_Char.char) : Prims.bool=
   let n = FStar_Char.int_of_char c in
   (((n = (Prims.of_int (0x20))) || (n = (Prims.of_int (0x09)))) ||
