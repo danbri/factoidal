@@ -552,32 +552,45 @@ let hex_value (c : FStar_Char.char) : Prims.nat=
       if (code >= (Prims.of_int (0x61))) && (code <= (Prims.of_int (0x66)))
       then (code - (Prims.of_int (0x61))) + (Prims.of_int (10))
       else Prims.int_zero
-let utf8_of_codepoint (cp_z : Prims.nat) : Prims.string =
-  let cp = Z.to_int cp_z in
-  let open Stdlib in
-  if cp < 0x80 then String.make 1 (Char.chr cp)
-  else if cp < 0x800 then
-    let b0 = 0xC0 lor (cp lsr 6) in
-    let b1 = 0x80 lor (cp land 0x3F) in
-    let s = Bytes.create 2 in
-    Bytes.set s 0 (Char.chr b0); Bytes.set s 1 (Char.chr b1);
-    Bytes.to_string s
-  else if cp < 0x10000 then
-    let b0 = 0xE0 lor (cp lsr 12) in
-    let b1 = 0x80 lor ((cp lsr 6) land 0x3F) in
-    let b2 = 0x80 lor (cp land 0x3F) in
-    let s = Bytes.create 3 in
-    Bytes.set s 0 (Char.chr b0); Bytes.set s 1 (Char.chr b1); Bytes.set s 2 (Char.chr b2);
-    Bytes.to_string s
+let utf8_of_codepoint (cp : Prims.nat) : Prims.string=
+  if cp < (Prims.of_int (0x80))
+  then FStar_String.string_of_list [RDF_Bytes.byte_of_int cp]
   else
-    let b0 = 0xF0 lor (cp lsr 18) in
-    let b1 = 0x80 lor ((cp lsr 12) land 0x3F) in
-    let b2 = 0x80 lor ((cp lsr 6) land 0x3F) in
-    let b3 = 0x80 lor (cp land 0x3F) in
-    let s = Bytes.create 4 in
-    Bytes.set s 0 (Char.chr b0); Bytes.set s 1 (Char.chr b1);
-    Bytes.set s 2 (Char.chr b2); Bytes.set s 3 (Char.chr b3);
-    Bytes.to_string s
+    if cp < (Prims.of_int (0x800))
+    then
+      (let b0 = (Prims.of_int (0xC0)) + (cp / (Prims.of_int (64))) in
+       let b1 = (Prims.of_int (0x80)) + ((mod) cp (Prims.of_int (64))) in
+       FStar_String.string_of_list
+         [RDF_Bytes.byte_of_int b0; RDF_Bytes.byte_of_int b1])
+    else
+      if cp < (Prims.parse_int "0x10000")
+      then
+        (let b0 = (Prims.of_int (0xE0)) + (cp / (Prims.of_int (4096))) in
+         let b1 =
+           (Prims.of_int (0x80)) +
+             ((mod) (cp / (Prims.of_int (64))) (Prims.of_int (64))) in
+         let b2 = (Prims.of_int (0x80)) + ((mod) cp (Prims.of_int (64))) in
+         FStar_String.string_of_list
+           [RDF_Bytes.byte_of_int b0;
+           RDF_Bytes.byte_of_int b1;
+           RDF_Bytes.byte_of_int b2])
+      else
+        if cp < (Prims.parse_int "0x110000")
+        then
+          (let b0 = (Prims.of_int (0xF0)) + (cp / (Prims.parse_int "262144")) in
+           let b1 =
+             (Prims.of_int (0x80)) +
+               ((mod) (cp / (Prims.of_int (4096))) (Prims.of_int (64))) in
+           let b2 =
+             (Prims.of_int (0x80)) +
+               ((mod) (cp / (Prims.of_int (64))) (Prims.of_int (64))) in
+           let b3 = (Prims.of_int (0x80)) + ((mod) cp (Prims.of_int (64))) in
+           FStar_String.string_of_list
+             [RDF_Bytes.byte_of_int b0;
+             RDF_Bytes.byte_of_int b1;
+             RDF_Bytes.byte_of_int b2;
+             RDF_Bytes.byte_of_int b3])
+        else ""
 let process_iri_escapes (s : Prims.string) : Prims.string =
   let open Stdlib in
   (* Process backslash-u and backslash-U escapes in IRI strings *)
