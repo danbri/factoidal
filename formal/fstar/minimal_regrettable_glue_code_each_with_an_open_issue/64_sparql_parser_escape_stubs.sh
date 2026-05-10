@@ -38,37 +38,9 @@ path = sys.argv[1]
 with open(path, 'r', encoding='utf-8') as f:
     content = f.read()
 
-content = re.sub(
-    r'let utf8_of_codepoint \([^)]*\) : Prims\.string=\n  failwith "Not yet implemented: SPARQL11\.Parser\.utf8_of_codepoint"',
-    lambda _m: '''let utf8_of_codepoint (cp_z : Prims.nat) : Prims.string =
-  let cp = Z.to_int cp_z in
-  let open Stdlib in
-  if cp < 0x80 then String.make 1 (Char.chr cp)
-  else if cp < 0x800 then
-    let b0 = 0xC0 lor (cp lsr 6) in
-    let b1 = 0x80 lor (cp land 0x3F) in
-    let s = Bytes.create 2 in
-    Bytes.set s 0 (Char.chr b0); Bytes.set s 1 (Char.chr b1);
-    Bytes.to_string s
-  else if cp < 0x10000 then
-    let b0 = 0xE0 lor (cp lsr 12) in
-    let b1 = 0x80 lor ((cp lsr 6) land 0x3F) in
-    let b2 = 0x80 lor (cp land 0x3F) in
-    let s = Bytes.create 3 in
-    Bytes.set s 0 (Char.chr b0); Bytes.set s 1 (Char.chr b1); Bytes.set s 2 (Char.chr b2);
-    Bytes.to_string s
-  else
-    let b0 = 0xF0 lor (cp lsr 18) in
-    let b1 = 0x80 lor ((cp lsr 12) land 0x3F) in
-    let b2 = 0x80 lor ((cp lsr 6) land 0x3F) in
-    let b3 = 0x80 lor (cp land 0x3F) in
-    let s = Bytes.create 4 in
-    Bytes.set s 0 (Char.chr b0); Bytes.set s 1 (Char.chr b1);
-    Bytes.set s 2 (Char.chr b2); Bytes.set s 3 (Char.chr b3);
-    Bytes.to_string s''',
-    content,
-    count=1
-)
+# utf8_of_codepoint migrated to F* in SPARQL11.Parser.fst (2026-05-10).
+# Patch no longer touches this stub; F* now produces the implementation
+# directly via byte_of_int + String.string_of_list.
 
 content = re.sub(
     r'let process_iri_escapes \([^)]*\) : Prims\.string=\n  failwith "Not yet implemented: SPARQL11\.Parser\.process_iri_escapes"',

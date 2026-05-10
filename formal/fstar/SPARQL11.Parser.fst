@@ -187,8 +187,41 @@ let hex_value (c : FStar.Char.char) : nat =
   else if code >= 0x61 && code <= 0x66 then code - 0x61 + 10
   else 0
 
-(* UTF-8 encode a Unicode codepoint. Delegated to OCaml extraction. *)
-assume val utf8_of_codepoint : nat -> string
+(* UTF-8 encode a Unicode codepoint to a byte-sequence string.
+   Pure F\* implementation per #64. Returns the canonical 1-4 byte
+   UTF-8 encoding for cp in [0, 0x110000); empty string for invalid
+   codepoints (cp >= 0x110000).
+
+   Strategy: build a list of `byte_of_int b_i` values (each in [0, 256))
+   then String.string_of_list to produce a byte-transparent string.
+   The OCaml extraction treats `String.string_of_list` as
+   `String.init n (fun i -> l[i])`, so the resulting OCaml string is
+   the literal UTF-8 byte sequence. *)
+let utf8_of_codepoint (cp : nat) : Tot string =
+  if cp < 0x80 then
+    String.string_of_list [RDF.Bytes.byte_of_int cp]
+  else if cp < 0x800 then
+    let b0 : int = 0xC0 + cp / 64 in
+    let b1 : int = 0x80 + cp % 64 in
+    String.string_of_list [RDF.Bytes.byte_of_int b0; RDF.Bytes.byte_of_int b1]
+  else if cp < 0x10000 then
+    let b0 : int = 0xE0 + cp / 4096 in
+    let b1 : int = 0x80 + (cp / 64) % 64 in
+    let b2 : int = 0x80 + cp % 64 in
+    String.string_of_list [RDF.Bytes.byte_of_int b0;
+                           RDF.Bytes.byte_of_int b1;
+                           RDF.Bytes.byte_of_int b2]
+  else if cp < 0x110000 then
+    let b0 : int = 0xF0 + cp / 262144 in
+    let b1 : int = 0x80 + (cp / 4096) % 64 in
+    let b2 : int = 0x80 + (cp / 64) % 64 in
+    let b3 : int = 0x80 + cp % 64 in
+    String.string_of_list [RDF.Bytes.byte_of_int b0;
+                           RDF.Bytes.byte_of_int b1;
+                           RDF.Bytes.byte_of_int b2;
+                           RDF.Bytes.byte_of_int b3]
+  else
+    ""  (* invalid codepoint — out of Unicode range *)
 
 (* Process \uXXXX and \UXXXXXXXX escapes in an IRI string.
    Delegated to OCaml stub — escape processing requires UTF-8 encoding. *)
