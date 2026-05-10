@@ -1,0 +1,176 @@
+{
+  "nodes": [
+    {
+      "id": "OWL",
+      "namespace": "OWL",
+      "inProject": true,
+      "modules": 4,
+      "deps": 5,
+      "rdeps": 1
+    },
+    {
+      "id": "Parquet",
+      "namespace": "Parquet",
+      "inProject": true,
+      "modules": 1,
+      "deps": 0,
+      "rdeps": 3
+    },
+    {
+      "id": "Parser",
+      "namespace": "Parser",
+      "inProject": true,
+      "modules": 19,
+      "deps": 15,
+      "rdeps": 8
+    },
+    {
+      "id": "RDF",
+      "namespace": "RDF",
+      "inProject": true,
+      "modules": 23,
+      "deps": 7,
+      "rdeps": 40
+    },
+    {
+      "id": "RIF",
+      "namespace": "RIF",
+      "inProject": true,
+      "modules": 4,
+      "deps": 7,
+      "rdeps": 1
+    },
+    {
+      "id": "SHACL",
+      "namespace": "SHACL",
+      "inProject": true,
+      "modules": 1,
+      "deps": 1,
+      "rdeps": 0
+    },
+    {
+      "id": "SPARQL",
+      "namespace": "SPARQL",
+      "inProject": true,
+      "modules": 23,
+      "deps": 21,
+      "rdeps": 0
+    },
+    {
+      "id": "SPARQL11",
+      "namespace": "SPARQL11",
+      "inProject": true,
+      "modules": 3,
+      "deps": 8,
+      "rdeps": 13
+    },
+    {
+      "id": "Tableau",
+      "namespace": "Tableau",
+      "inProject": true,
+      "modules": 1,
+      "deps": 2,
+      "rdeps": 0
+    },
+    {
+      "id": "Util",
+      "namespace": "Util",
+      "inProject": true,
+      "modules": 1,
+      "deps": 0,
+      "rdeps": 0
+    }
+  ],
+  "links": [
+    {
+      "source": "OWL",
+      "target": "RDF",
+      "weight": 3
+    },
+    {
+      "source": "OWL",
+      "target": "SPARQL11",
+      "weight": 2
+    },
+    {
+      "source": "Parser",
+      "target": "RDF",
+      "weight": 14
+    },
+    {
+      "source": "Parser",
+      "target": "RIF",
+      "weight": 1
+    },
+    {
+      "source": "RDF",
+      "target": "Parquet",
+      "weight": 3
+    },
+    {
+      "source": "RDF",
+      "target": "Parser",
+      "weight": 2
+    },
+    {
+      "source": "RDF",
+      "target": "SPARQL11",
+      "weight": 2
+    },
+    {
+      "source": "RIF",
+      "target": "Parser",
+      "weight": 1
+    },
+    {
+      "source": "RIF",
+      "target": "RDF",
+      "weight": 4
+    },
+    {
+      "source": "RIF",
+      "target": "SPARQL11",
+      "weight": 2
+    },
+    {
+      "source": "SHACL",
+      "target": "RDF",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL",
+      "target": "Parser",
+      "weight": 3
+    },
+    {
+      "source": "SPARQL",
+      "target": "RDF",
+      "weight": 11
+    },
+    {
+      "source": "SPARQL",
+      "target": "SPARQL11",
+      "weight": 7
+    },
+    {
+      "source": "SPARQL11",
+      "target": "Parser",
+      "weight": 2
+    },
+    {
+      "source": "SPARQL11",
+      "target": "RDF",
+      "weight": 6
+    },
+    {
+      "source": "Tableau",
+      "target": "OWL",
+      "weight": 1
+    },
+    {
+      "source": "Tableau",
+      "target": "RDF",
+      "weight": 1
+    }
+  ]
+}

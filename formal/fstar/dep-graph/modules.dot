@@ -143,8 +143,12 @@ digraph fstar_modules {
   "RDF.CottasStore" -> "RDF.CottasStore.PageCache";
   "RDF.CottasStore" -> "RDF.Graph.Executable";
   "RDF.CottasStore.CompoundPresenceBitmap" -> "RDF.CottasStore.OnDiskIndex";
+  "RDF.CottasStore.CompoundPresenceBitmap" -> "RDF.CottasStore.PresenceBitmap";
+  "RDF.CottasStore.CompoundPresenceWriter" -> "RDF.Bytes";
   "RDF.CottasStore.CompoundPresenceWriter" -> "RDF.List.Helpers";
+  "RDF.CottasStore.DictWriter" -> "RDF.Bytes";
   "RDF.CottasStore.DictWriter" -> "RDF.List.Helpers";
+  "RDF.CottasStore.OffsetsWriter" -> "RDF.Bytes";
   "RDF.CottasStore.OffsetsWriter" -> "RDF.List.Helpers";
   "RDF.CottasStore.OnDiskIndex" -> "Parquet.Footer";
   "RDF.CottasStore.PageCache" -> "RDF.CottasStore.ColumnSeq";
@@ -153,6 +157,7 @@ digraph fstar_modules {
   "RDF.CottasStore.PageCache.Bounds" -> "RDF.CottasStore";
   "RDF.CottasStore.PageCache.Bounds" -> "RDF.CottasStore.PageCache";
   "RDF.CottasStore.PresenceBitmap" -> "RDF.CottasStore.OnDiskIndex";
+  "RDF.CottasStore.PresenceWriter" -> "RDF.Bytes";
   "RDF.CottasStore.PresenceWriter" -> "RDF.List.Helpers";
   "RDF.NQuads.Serialize" -> "RDF.Graph.Executable";
   "RDF.Pretty" -> "RDF.Graph.Executable";
@@ -189,6 +194,7 @@ digraph fstar_modules {
   "SPARQL.JSON.Escape" -> "Parser.FastString";
   "SPARQL.Plan.AccessPath" -> "RDF.Store.Columnar.OffsetIndex";
   "SPARQL.Plan.AccessPath" -> "SPARQL.Plan.Pruning";
+  "SPARQL.Plan.Explain" -> "RDF.Graph.Executable";
   "SPARQL.Plan.Explain" -> "RDF.Pretty";
   "SPARQL.Plan.Explain" -> "SPARQL.Explain";
   "SPARQL.Plan.Explain" -> "SPARQL.JSON.Escape";
@@ -196,6 +202,7 @@ digraph fstar_modules {
   "SPARQL.Plan.Explain" -> "SPARQL11.Algebra";
   "SPARQL.Plan.Pruning" -> "RDF.CottasStore.CompoundPresenceBitmap";
   "SPARQL.Plan.Pruning" -> "RDF.CottasStore.PresenceBitmap";
+  "SPARQL.Protocol" -> "Parser.FastString";
   "SPARQL.Protocol" -> "RDF.Graph.Executable";
   "SPARQL.Query.Analysis" -> "SPARQL11.Algebra";
   "SPARQL.ServiceDescription" -> "RDF.Graph.Executable";

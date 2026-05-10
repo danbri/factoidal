@@ -23,8 +23,8 @@ digraph fstar_namespaces {
   "RIF" -> "RDF" [label="4", penwidth=2.6];
   "RIF" -> "SPARQL11" [label="2", penwidth=1.8];
   "SHACL" -> "RDF" [label="1", penwidth=1.4];
-  "SPARQL" -> "Parser" [label="2", penwidth=1.8];
-  "SPARQL" -> "RDF" [label="10", penwidth=4.2];
+  "SPARQL" -> "Parser" [label="3", penwidth=2.2];
+  "SPARQL" -> "RDF" [label="11", penwidth=4.2];
   "SPARQL" -> "SPARQL11" [label="7", penwidth=3.8];
   "SPARQL11" -> "Parser" [label="2", penwidth=1.8];
   "SPARQL11" -> "RDF" [label="6", penwidth=3.4];

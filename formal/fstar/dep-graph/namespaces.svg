@@ -137,16 +137,16 @@
 <!-- SPARQL&#45;&gt;Parser -->
 <g id="edge12" class="edge">
 <title>SPARQL&#45;&gt;Parser</title>
-<path fill="none" stroke="#666666" stroke-width="1.8" d="M172.08,-49.73C207.49,-54.09 267.03,-61.77 318,-70 321.69,-70.6 325.53,-71.25 329.37,-71.93"/>
-<polygon fill="#666666" stroke="#666666" stroke-width="1.8" points="328.92,-75.41 339.38,-73.76 330.17,-68.52 328.92,-75.41"/>
-<text text-anchor="middle" x="254" y="-68.8" font-family="Times,serif" font-size="14.00">2</text>
+<path fill="none" stroke="#666666" stroke-width="2.2" d="M172.08,-49.73C207.49,-54.09 267.03,-61.77 318,-70 321.69,-70.6 325.53,-71.25 329.37,-71.93"/>
+<polygon fill="#666666" stroke="#666666" stroke-width="2.2" points="328.92,-75.41 339.38,-73.76 330.17,-68.52 328.92,-75.41"/>
+<text text-anchor="middle" x="254" y="-68.8" font-family="Times,serif" font-size="14.00">3</text>
 </g>
 <!-- SPARQL&#45;&gt;RDF -->
 <g id="edge13" class="edge">
 <title>SPARQL&#45;&gt;RDF</title>
 <path fill="none" stroke="#666666" stroke-width="4.2" d="M156.81,-64.21C176.07,-86.39 208.74,-124.02 230.59,-149.19"/>
 <polygon fill="#666666" stroke="#666666" stroke-width="4.2" points="227.94,-151.74 237.27,-156.88 233.49,-146.92 227.94,-151.74"/>
-<text text-anchor="middle" x="199.5" y="-126.8" font-family="Times,serif" font-size="14.00">10</text>
+<text text-anchor="middle" x="199.5" y="-126.8" font-family="Times,serif" font-size="14.00">11</text>
 </g>
 <!-- SPARQL&#45;&gt;SPARQL11 -->
 <g id="edge14" class="edge">

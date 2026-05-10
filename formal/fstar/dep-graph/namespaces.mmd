@@ -1,4 +1,4 @@
-%% F* namespace dependency graph
+%% F* namespace dependency graph (from fstar.exe --dep graph)
 graph LR
   OWL["OWL"]
   Parquet["Parquet"]
@@ -21,8 +21,8 @@ graph LR
   RIF -->|4| RDF
   RIF -->|2| SPARQL11
   SHACL -->|1| RDF
-  SPARQL -->|2| Parser
-  SPARQL -->|10| RDF
+  SPARQL -->|3| Parser
+  SPARQL -->|11| RDF
   SPARQL -->|7| SPARQL11
   SPARQL11 -->|2| Parser
   SPARQL11 -->|6| RDF

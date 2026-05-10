@@ -1,4 +1,4 @@
-%% F* module dependency graph
+%% F* module dependency graph (from fstar.exe --dep graph)
 graph LR
   OWL_QueryEval["OWL.QueryEval"]
   OWL_QueryRewrite["OWL.QueryRewrite"]
@@ -141,8 +141,12 @@ graph LR
   RDF_CottasStore --> RDF_CottasStore_PageCache
   RDF_CottasStore --> RDF_Graph_Executable
   RDF_CottasStore_CompoundPresenceBitmap --> RDF_CottasStore_OnDiskIndex
+  RDF_CottasStore_CompoundPresenceBitmap --> RDF_CottasStore_PresenceBitmap
+  RDF_CottasStore_CompoundPresenceWriter --> RDF_Bytes
   RDF_CottasStore_CompoundPresenceWriter --> RDF_List_Helpers
+  RDF_CottasStore_DictWriter --> RDF_Bytes
   RDF_CottasStore_DictWriter --> RDF_List_Helpers
+  RDF_CottasStore_OffsetsWriter --> RDF_Bytes
   RDF_CottasStore_OffsetsWriter --> RDF_List_Helpers
   RDF_CottasStore_OnDiskIndex --> Parquet_Footer
   RDF_CottasStore_PageCache --> RDF_CottasStore_ColumnSeq
@@ -151,6 +155,7 @@ graph LR
   RDF_CottasStore_PageCache_Bounds --> RDF_CottasStore
   RDF_CottasStore_PageCache_Bounds --> RDF_CottasStore_PageCache
   RDF_CottasStore_PresenceBitmap --> RDF_CottasStore_OnDiskIndex
+  RDF_CottasStore_PresenceWriter --> RDF_Bytes
   RDF_CottasStore_PresenceWriter --> RDF_List_Helpers
   RDF_NQuads_Serialize --> RDF_Graph_Executable
   RDF_Pretty --> RDF_Graph_Executable
@@ -187,6 +192,7 @@ graph LR
   SPARQL_JSON_Escape --> Parser_FastString
   SPARQL_Plan_AccessPath --> RDF_Store_Columnar_OffsetIndex
   SPARQL_Plan_AccessPath --> SPARQL_Plan_Pruning
+  SPARQL_Plan_Explain --> RDF_Graph_Executable
   SPARQL_Plan_Explain --> RDF_Pretty
   SPARQL_Plan_Explain --> SPARQL_Explain
   SPARQL_Plan_Explain --> SPARQL_JSON_Escape
@@ -194,6 +200,7 @@ graph LR
   SPARQL_Plan_Explain --> SPARQL11_Algebra
   SPARQL_Plan_Pruning --> RDF_CottasStore_CompoundPresenceBitmap
   SPARQL_Plan_Pruning --> RDF_CottasStore_PresenceBitmap
+  SPARQL_Protocol --> Parser_FastString
   SPARQL_Protocol --> RDF_Graph_Executable
   SPARQL_Query_Analysis --> SPARQL11_Algebra
   SPARQL_ServiceDescription --> RDF_Graph_Executable

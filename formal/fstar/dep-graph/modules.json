@@ -1,0 +1,1261 @@
+{
+  "nodes": [
+    {
+      "id": "OWL.QueryEval",
+      "namespace": "OWL",
+      "inProject": true,
+      "deps": 3,
+      "rdeps": 0
+    },
+    {
+      "id": "OWL.QueryRewrite",
+      "namespace": "OWL",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 1
+    },
+    {
+      "id": "OWL.Tests.Manifest",
+      "namespace": "OWL",
+      "inProject": true,
+      "deps": 0,
+      "rdeps": 0
+    },
+    {
+      "id": "OWL.Vocabulary",
+      "namespace": "OWL",
+      "inProject": true,
+      "deps": 1,
+      "rdeps": 1
+    },
+    {
+      "id": "Parquet.Footer",
+      "namespace": "Parquet",
+      "inProject": true,
+      "deps": 0,
+      "rdeps": 3
+    },
+    {
+      "id": "Parser.Ballyhoo",
+      "namespace": "Parser",
+      "inProject": true,
+      "deps": 3,
+      "rdeps": 0
+    },
+    {
+      "id": "Parser.BallyhooBloom",
+      "namespace": "Parser",
+      "inProject": true,
+      "deps": 1,
+      "rdeps": 0
+    },
+    {
+      "id": "Parser.BallyhooCOTTAS",
+      "namespace": "Parser",
+      "inProject": true,
+      "deps": 1,
+      "rdeps": 3
+    },
+    {
+      "id": "Parser.BallyhooHDT",
+      "namespace": "Parser",
+      "inProject": true,
+      "deps": 1,
+      "rdeps": 2
+    },
+    {
+      "id": "Parser.BallyhooHDTQ",
+      "namespace": "Parser",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 0
+    },
+    {
+      "id": "Parser.CSVResults",
+      "namespace": "Parser",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 0
+    },
+    {
+      "id": "Parser.Combinators",
+      "namespace": "Parser",
+      "inProject": true,
+      "deps": 1,
+      "rdeps": 10
+    },
+    {
+      "id": "Parser.FastString",
+      "namespace": "Parser",
+      "inProject": true,
+      "deps": 0,
+      "rdeps": 11
+    },
+    {
+      "id": "Parser.IRI",
+      "namespace": "Parser",
+      "inProject": true,
+      "deps": 1,
+      "rdeps": 2
+    },
+    {
+      "id": "Parser.JSONResults",
+      "namespace": "Parser",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 0
+    },
+    {
+      "id": "Parser.NQuads",
+      "namespace": "Parser",
+      "inProject": true,
+      "deps": 4,
+      "rdeps": 1
+    },
+    {
+      "id": "Parser.NTriples",
+      "namespace": "Parser",
+      "inProject": true,
+      "deps": 3,
+      "rdeps": 3
+    },
+    {
+      "id": "Parser.RDFXML",
+      "namespace": "Parser",
+      "inProject": true,
+      "deps": 4,
+      "rdeps": 0
+    },
+    {
+      "id": "Parser.RIFXML",
+      "namespace": "Parser",
+      "inProject": true,
+      "deps": 3,
+      "rdeps": 1
+    },
+    {
+      "id": "Parser.SRX",
+      "namespace": "Parser",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 0
+    },
+    {
+      "id": "Parser.TriG",
+      "namespace": "Parser",
+      "inProject": true,
+      "deps": 5,
+      "rdeps": 0
+    },
+    {
+      "id": "Parser.Turtle",
+      "namespace": "Parser",
+      "inProject": true,
+      "deps": 6,
+      "rdeps": 1
+    },
+    {
+      "id": "Parser.TurtleScanner",
+      "namespace": "Parser",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 1
+    },
+    {
+      "id": "Parser.XML",
+      "namespace": "Parser",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 3
+    },
+    {
+      "id": "RDF.Bytes",
+      "namespace": "RDF",
+      "inProject": true,
+      "deps": 0,
+      "rdeps": 4
+    },
+    {
+      "id": "RDF.Canonical",
+      "namespace": "RDF",
+      "inProject": true,
+      "deps": 1,
+      "rdeps": 0
+    },
+    {
+      "id": "RDF.Canonical.Manifest",
+      "namespace": "RDF",
+      "inProject": true,
+      "deps": 0,
+      "rdeps": 0
+    },
+    {
+      "id": "RDF.CottasInMem",
+      "namespace": "RDF",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 0
+    },
+    {
+      "id": "RDF.CottasStore",
+      "namespace": "RDF",
+      "inProject": true,
+      "deps": 6,
+      "rdeps": 3
+    },
+    {
+      "id": "RDF.CottasStore.ColumnSeq",
+      "namespace": "RDF",
+      "inProject": true,
+      "deps": 0,
+      "rdeps": 2
+    },
+    {
+      "id": "RDF.CottasStore.CompoundPresenceBitmap",
+      "namespace": "RDF",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 2
+    },
+    {
+      "id": "RDF.CottasStore.CompoundPresenceWriter",
+      "namespace": "RDF",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 0
+    },
+    {
+      "id": "RDF.CottasStore.DictWriter",
+      "namespace": "RDF",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 0
+    },
+    {
+      "id": "RDF.CottasStore.OffsetsWriter",
+      "namespace": "RDF",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 0
+    },
+    {
+      "id": "RDF.CottasStore.OnDiskIndex",
+      "namespace": "RDF",
+      "inProject": true,
+      "deps": 1,
+      "rdeps": 3
+    },
+    {
+      "id": "RDF.CottasStore.PageCache",
+      "namespace": "RDF",
+      "inProject": true,
+      "deps": 1,
+      "rdeps": 2
+    },
+    {
+      "id": "RDF.CottasStore.PageCache.Bounds",
+      "namespace": "RDF",
+      "inProject": true,
+      "deps": 4,
+      "rdeps": 0
+    },
+    {
+      "id": "RDF.CottasStore.PresenceBitmap",
+      "namespace": "RDF",
+      "inProject": true,
+      "deps": 1,
+      "rdeps": 2
+    },
+    {
+      "id": "RDF.CottasStore.PresenceWriter",
+      "namespace": "RDF",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 0
+    },
+    {
+      "id": "RDF.Format",
+      "namespace": "RDF",
+      "inProject": true,
+      "deps": 0,
+      "rdeps": 0
+    },
+    {
+      "id": "RDF.Graph.Executable",
+      "namespace": "RDF",
+      "inProject": true,
+      "deps": 0,
+      "rdeps": 39
+    },
+    {
+      "id": "RDF.List.Helpers",
+      "namespace": "RDF",
+      "inProject": true,
+      "deps": 0,
+      "rdeps": 7
+    },
+    {
+      "id": "RDF.NQuads.Serialize",
+      "namespace": "RDF",
+      "inProject": true,
+      "deps": 1,
+      "rdeps": 0
+    },
+    {
+      "id": "RDF.Pretty",
+      "namespace": "RDF",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 2
+    },
+    {
+      "id": "RDF.Store.Columnar.OffsetIndex",
+      "namespace": "RDF",
+      "inProject": true,
+      "deps": 1,
+      "rdeps": 1
+    },
+    {
+      "id": "RDF.Store.Combine",
+      "namespace": "RDF",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 0
+    },
+    {
+      "id": "RDF.Store.Loader",
+      "namespace": "RDF",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 0
+    },
+    {
+      "id": "RIF.Core.Eval",
+      "namespace": "RIF",
+      "inProject": true,
+      "deps": 4,
+      "rdeps": 1
+    },
+    {
+      "id": "RIF.Core.Syntax",
+      "namespace": "RIF",
+      "inProject": true,
+      "deps": 1,
+      "rdeps": 4
+    },
+    {
+      "id": "RIF.Core.Tests",
+      "namespace": "RIF",
+      "inProject": true,
+      "deps": 4,
+      "rdeps": 0
+    },
+    {
+      "id": "RIF.Core.Translation",
+      "namespace": "RIF",
+      "inProject": true,
+      "deps": 3,
+      "rdeps": 1
+    },
+    {
+      "id": "SHACL.Validation",
+      "namespace": "SHACL",
+      "inProject": true,
+      "deps": 1,
+      "rdeps": 0
+    },
+    {
+      "id": "SPARQL.Diagnostics",
+      "namespace": "SPARQL",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 0
+    },
+    {
+      "id": "SPARQL.Eval.Limits",
+      "namespace": "SPARQL",
+      "inProject": true,
+      "deps": 0,
+      "rdeps": 0
+    },
+    {
+      "id": "SPARQL.Eval.TimeBudget",
+      "namespace": "SPARQL",
+      "inProject": true,
+      "deps": 0,
+      "rdeps": 0
+    },
+    {
+      "id": "SPARQL.Explain",
+      "namespace": "SPARQL",
+      "inProject": true,
+      "deps": 3,
+      "rdeps": 1
+    },
+    {
+      "id": "SPARQL.GraphStore",
+      "namespace": "SPARQL",
+      "inProject": true,
+      "deps": 1,
+      "rdeps": 0
+    },
+    {
+      "id": "SPARQL.HTTP",
+      "namespace": "SPARQL",
+      "inProject": true,
+      "deps": 0,
+      "rdeps": 0
+    },
+    {
+      "id": "SPARQL.HTTP.Admin",
+      "namespace": "SPARQL",
+      "inProject": true,
+      "deps": 1,
+      "rdeps": 0
+    },
+    {
+      "id": "SPARQL.HTTP.BackendInfo",
+      "namespace": "SPARQL",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 0
+    },
+    {
+      "id": "SPARQL.HTTP.Client",
+      "namespace": "SPARQL",
+      "inProject": true,
+      "deps": 0,
+      "rdeps": 0
+    },
+    {
+      "id": "SPARQL.HTTP.QueriesIndex",
+      "namespace": "SPARQL",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 0
+    },
+    {
+      "id": "SPARQL.HTTP.Response",
+      "namespace": "SPARQL",
+      "inProject": true,
+      "deps": 0,
+      "rdeps": 0
+    },
+    {
+      "id": "SPARQL.HTTP.StaticFiles",
+      "namespace": "SPARQL",
+      "inProject": true,
+      "deps": 0,
+      "rdeps": 0
+    },
+    {
+      "id": "SPARQL.JSON.Escape",
+      "namespace": "SPARQL",
+      "inProject": true,
+      "deps": 1,
+      "rdeps": 5
+    },
+    {
+      "id": "SPARQL.Plan.AccessPath",
+      "namespace": "SPARQL",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 0
+    },
+    {
+      "id": "SPARQL.Plan.Estimate",
+      "namespace": "SPARQL",
+      "inProject": true,
+      "deps": 0,
+      "rdeps": 1
+    },
+    {
+      "id": "SPARQL.Plan.Explain",
+      "namespace": "SPARQL",
+      "inProject": true,
+      "deps": 6,
+      "rdeps": 0
+    },
+    {
+      "id": "SPARQL.Plan.Loader",
+      "namespace": "SPARQL",
+      "inProject": true,
+      "deps": 0,
+      "rdeps": 0
+    },
+    {
+      "id": "SPARQL.Plan.Pruning",
+      "namespace": "SPARQL",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 1
+    },
+    {
+      "id": "SPARQL.Protocol",
+      "namespace": "SPARQL",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 0
+    },
+    {
+      "id": "SPARQL.Query.Analysis",
+      "namespace": "SPARQL",
+      "inProject": true,
+      "deps": 1,
+      "rdeps": 0
+    },
+    {
+      "id": "SPARQL.ServiceDescription",
+      "namespace": "SPARQL",
+      "inProject": true,
+      "deps": 1,
+      "rdeps": 0
+    },
+    {
+      "id": "SPARQL.Update.Analysis",
+      "namespace": "SPARQL",
+      "inProject": true,
+      "deps": 1,
+      "rdeps": 0
+    },
+    {
+      "id": "SPARQL.Update.Sandbox",
+      "namespace": "SPARQL",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 0
+    },
+    {
+      "id": "SPARQL11.Algebra",
+      "namespace": "SPARQL11",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 13
+    },
+    {
+      "id": "SPARQL11.Parser",
+      "namespace": "SPARQL11",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 0
+    },
+    {
+      "id": "SPARQL11.Store",
+      "namespace": "SPARQL11",
+      "inProject": true,
+      "deps": 6,
+      "rdeps": 2
+    },
+    {
+      "id": "Tableau",
+      "namespace": "Tableau",
+      "inProject": true,
+      "deps": 2,
+      "rdeps": 0
+    },
+    {
+      "id": "Util.Log",
+      "namespace": "Util",
+      "inProject": true,
+      "deps": 0,
+      "rdeps": 0
+    }
+  ],
+  "links": [
+    {
+      "source": "OWL.QueryEval",
+      "target": "OWL.QueryRewrite",
+      "weight": 1
+    },
+    {
+      "source": "OWL.QueryEval",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "OWL.QueryEval",
+      "target": "SPARQL11.Algebra",
+      "weight": 1
+    },
+    {
+      "source": "OWL.QueryRewrite",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "OWL.QueryRewrite",
+      "target": "SPARQL11.Algebra",
+      "weight": 1
+    },
+    {
+      "source": "OWL.Vocabulary",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "Parser.Ballyhoo",
+      "target": "Parser.Combinators",
+      "weight": 1
+    },
+    {
+      "source": "Parser.Ballyhoo",
+      "target": "Parser.NQuads",
+      "weight": 1
+    },
+    {
+      "source": "Parser.Ballyhoo",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "Parser.BallyhooBloom",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "Parser.BallyhooCOTTAS",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "Parser.BallyhooHDT",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "Parser.BallyhooHDTQ",
+      "target": "Parser.BallyhooHDT",
+      "weight": 1
+    },
+    {
+      "source": "Parser.BallyhooHDTQ",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "Parser.CSVResults",
+      "target": "Parser.Combinators",
+      "weight": 1
+    },
+    {
+      "source": "Parser.CSVResults",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "Parser.Combinators",
+      "target": "Parser.FastString",
+      "weight": 1
+    },
+    {
+      "source": "Parser.IRI",
+      "target": "Parser.FastString",
+      "weight": 1
+    },
+    {
+      "source": "Parser.JSONResults",
+      "target": "Parser.Combinators",
+      "weight": 1
+    },
+    {
+      "source": "Parser.JSONResults",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "Parser.NQuads",
+      "target": "Parser.Combinators",
+      "weight": 1
+    },
+    {
+      "source": "Parser.NQuads",
+      "target": "Parser.FastString",
+      "weight": 1
+    },
+    {
+      "source": "Parser.NQuads",
+      "target": "Parser.NTriples",
+      "weight": 1
+    },
+    {
+      "source": "Parser.NQuads",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "Parser.NTriples",
+      "target": "Parser.Combinators",
+      "weight": 1
+    },
+    {
+      "source": "Parser.NTriples",
+      "target": "Parser.FastString",
+      "weight": 1
+    },
+    {
+      "source": "Parser.NTriples",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "Parser.RDFXML",
+      "target": "Parser.Combinators",
+      "weight": 1
+    },
+    {
+      "source": "Parser.RDFXML",
+      "target": "Parser.IRI",
+      "weight": 1
+    },
+    {
+      "source": "Parser.RDFXML",
+      "target": "Parser.XML",
+      "weight": 1
+    },
+    {
+      "source": "Parser.RDFXML",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "Parser.RIFXML",
+      "target": "Parser.XML",
+      "weight": 1
+    },
+    {
+      "source": "Parser.RIFXML",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "Parser.RIFXML",
+      "target": "RIF.Core.Syntax",
+      "weight": 1
+    },
+    {
+      "source": "Parser.SRX",
+      "target": "Parser.XML",
+      "weight": 1
+    },
+    {
+      "source": "Parser.SRX",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "Parser.TriG",
+      "target": "Parser.Combinators",
+      "weight": 1
+    },
+    {
+      "source": "Parser.TriG",
+      "target": "Parser.FastString",
+      "weight": 1
+    },
+    {
+      "source": "Parser.TriG",
+      "target": "Parser.NTriples",
+      "weight": 1
+    },
+    {
+      "source": "Parser.TriG",
+      "target": "Parser.Turtle",
+      "weight": 1
+    },
+    {
+      "source": "Parser.TriG",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "Parser.Turtle",
+      "target": "Parser.Combinators",
+      "weight": 1
+    },
+    {
+      "source": "Parser.Turtle",
+      "target": "Parser.FastString",
+      "weight": 1
+    },
+    {
+      "source": "Parser.Turtle",
+      "target": "Parser.IRI",
+      "weight": 1
+    },
+    {
+      "source": "Parser.Turtle",
+      "target": "Parser.NTriples",
+      "weight": 1
+    },
+    {
+      "source": "Parser.Turtle",
+      "target": "Parser.TurtleScanner",
+      "weight": 1
+    },
+    {
+      "source": "Parser.Turtle",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "Parser.TurtleScanner",
+      "target": "Parser.Combinators",
+      "weight": 1
+    },
+    {
+      "source": "Parser.TurtleScanner",
+      "target": "Parser.FastString",
+      "weight": 1
+    },
+    {
+      "source": "Parser.XML",
+      "target": "Parser.Combinators",
+      "weight": 1
+    },
+    {
+      "source": "Parser.XML",
+      "target": "Parser.FastString",
+      "weight": 1
+    },
+    {
+      "source": "RDF.Canonical",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasInMem",
+      "target": "RDF.CottasStore",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasInMem",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasStore",
+      "target": "Parquet.Footer",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasStore",
+      "target": "Parser.BallyhooCOTTAS",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasStore",
+      "target": "RDF.CottasStore.ColumnSeq",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasStore",
+      "target": "RDF.CottasStore.CompoundPresenceBitmap",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasStore",
+      "target": "RDF.CottasStore.PageCache",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasStore",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasStore.CompoundPresenceBitmap",
+      "target": "RDF.CottasStore.OnDiskIndex",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasStore.CompoundPresenceBitmap",
+      "target": "RDF.CottasStore.PresenceBitmap",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasStore.CompoundPresenceWriter",
+      "target": "RDF.Bytes",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasStore.CompoundPresenceWriter",
+      "target": "RDF.List.Helpers",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasStore.DictWriter",
+      "target": "RDF.Bytes",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasStore.DictWriter",
+      "target": "RDF.List.Helpers",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasStore.OffsetsWriter",
+      "target": "RDF.Bytes",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasStore.OffsetsWriter",
+      "target": "RDF.List.Helpers",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasStore.OnDiskIndex",
+      "target": "Parquet.Footer",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasStore.PageCache",
+      "target": "RDF.CottasStore.ColumnSeq",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasStore.PageCache.Bounds",
+      "target": "Parquet.Footer",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasStore.PageCache.Bounds",
+      "target": "Parser.BallyhooCOTTAS",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasStore.PageCache.Bounds",
+      "target": "RDF.CottasStore",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasStore.PageCache.Bounds",
+      "target": "RDF.CottasStore.PageCache",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasStore.PresenceBitmap",
+      "target": "RDF.CottasStore.OnDiskIndex",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasStore.PresenceWriter",
+      "target": "RDF.Bytes",
+      "weight": 1
+    },
+    {
+      "source": "RDF.CottasStore.PresenceWriter",
+      "target": "RDF.List.Helpers",
+      "weight": 1
+    },
+    {
+      "source": "RDF.NQuads.Serialize",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "RDF.Pretty",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "RDF.Pretty",
+      "target": "SPARQL11.Algebra",
+      "weight": 1
+    },
+    {
+      "source": "RDF.Store.Columnar.OffsetIndex",
+      "target": "RDF.CottasStore.OnDiskIndex",
+      "weight": 1
+    },
+    {
+      "source": "RDF.Store.Combine",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "RDF.Store.Combine",
+      "target": "SPARQL11.Store",
+      "weight": 1
+    },
+    {
+      "source": "RDF.Store.Loader",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "RDF.Store.Loader",
+      "target": "RDF.List.Helpers",
+      "weight": 1
+    },
+    {
+      "source": "RIF.Core.Eval",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "RIF.Core.Eval",
+      "target": "RIF.Core.Syntax",
+      "weight": 1
+    },
+    {
+      "source": "RIF.Core.Eval",
+      "target": "RIF.Core.Translation",
+      "weight": 1
+    },
+    {
+      "source": "RIF.Core.Eval",
+      "target": "SPARQL11.Algebra",
+      "weight": 1
+    },
+    {
+      "source": "RIF.Core.Syntax",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "RIF.Core.Tests",
+      "target": "Parser.RIFXML",
+      "weight": 1
+    },
+    {
+      "source": "RIF.Core.Tests",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "RIF.Core.Tests",
+      "target": "RIF.Core.Eval",
+      "weight": 1
+    },
+    {
+      "source": "RIF.Core.Tests",
+      "target": "RIF.Core.Syntax",
+      "weight": 1
+    },
+    {
+      "source": "RIF.Core.Translation",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "RIF.Core.Translation",
+      "target": "RIF.Core.Syntax",
+      "weight": 1
+    },
+    {
+      "source": "RIF.Core.Translation",
+      "target": "SPARQL11.Algebra",
+      "weight": 1
+    },
+    {
+      "source": "SHACL.Validation",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.Diagnostics",
+      "target": "SPARQL11.Algebra",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.Diagnostics",
+      "target": "SPARQL11.Store",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.Explain",
+      "target": "RDF.Pretty",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.Explain",
+      "target": "SPARQL.JSON.Escape",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.Explain",
+      "target": "SPARQL11.Algebra",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.GraphStore",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.HTTP.Admin",
+      "target": "SPARQL.JSON.Escape",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.HTTP.BackendInfo",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.HTTP.BackendInfo",
+      "target": "SPARQL.JSON.Escape",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.HTTP.QueriesIndex",
+      "target": "Parser.FastString",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.HTTP.QueriesIndex",
+      "target": "SPARQL.JSON.Escape",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.JSON.Escape",
+      "target": "Parser.FastString",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.Plan.AccessPath",
+      "target": "RDF.Store.Columnar.OffsetIndex",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.Plan.AccessPath",
+      "target": "SPARQL.Plan.Pruning",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.Plan.Explain",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.Plan.Explain",
+      "target": "RDF.Pretty",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.Plan.Explain",
+      "target": "SPARQL.Explain",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.Plan.Explain",
+      "target": "SPARQL.JSON.Escape",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.Plan.Explain",
+      "target": "SPARQL.Plan.Estimate",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.Plan.Explain",
+      "target": "SPARQL11.Algebra",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.Plan.Pruning",
+      "target": "RDF.CottasStore.CompoundPresenceBitmap",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.Plan.Pruning",
+      "target": "RDF.CottasStore.PresenceBitmap",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.Protocol",
+      "target": "Parser.FastString",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.Protocol",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.Query.Analysis",
+      "target": "SPARQL11.Algebra",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.ServiceDescription",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.Update.Analysis",
+      "target": "SPARQL11.Algebra",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.Update.Sandbox",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL.Update.Sandbox",
+      "target": "SPARQL11.Algebra",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL11.Algebra",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL11.Algebra",
+      "target": "RDF.List.Helpers",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL11.Parser",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL11.Parser",
+      "target": "SPARQL11.Algebra",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL11.Store",
+      "target": "Parser.BallyhooCOTTAS",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL11.Store",
+      "target": "Parser.BallyhooHDT",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL11.Store",
+      "target": "RDF.CottasStore",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL11.Store",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL11.Store",
+      "target": "RDF.List.Helpers",
+      "weight": 1
+    },
+    {
+      "source": "SPARQL11.Store",
+      "target": "SPARQL11.Algebra",
+      "weight": 1
+    },
+    {
+      "source": "Tableau",
+      "target": "OWL.Vocabulary",
+      "weight": 1
+    },
+    {
+      "source": "Tableau",
+      "target": "RDF.Graph.Executable",
+      "weight": 1
+    }
+  ]
+}
