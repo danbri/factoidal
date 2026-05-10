@@ -3005,19 +3005,21 @@ noeq type group = {
   g_solutions : solution_sequence; (* solutions in this group *)
 }
 
-(* Evaluate a single group condition against a solution mapping to get a key value *)
-let eval_group_condition (gc : group_condition) (mu : solution_mapping) : eval_result =
+(* Evaluate a single group condition against a solution mapping to get a key value.
+   #65 Step 2b (2026-05-10): threads BASE IRI from eval_select_query so
+   GROUP BY exprs see the same BASE as the rest of the query. *)
+let eval_group_condition (base : option wf_iri) (gc : group_condition) (mu : solution_mapping) : eval_result =
   match gc with
   | GC_Var v ->
     (match sm_lookup v mu with
      | Some t -> ER_Term t
      | None -> ER_Error)
-  | GC_Expr e _ -> eval_expr e mu
-  | GC_BuiltIn e -> eval_expr e mu
+  | GC_Expr e _ -> eval_expr_with_base base e mu
+  | GC_BuiltIn e -> eval_expr_with_base base e mu
 
 (* Evaluate all group conditions against a solution mapping to get the full key *)
-let eval_group_key (conds : list group_condition) (mu : solution_mapping) : list eval_result =
-  List.Tot.map (fun gc -> eval_group_condition gc mu) conds
+let eval_group_key (base : option wf_iri) (conds : list group_condition) (mu : solution_mapping) : list eval_result =
+  List.Tot.map (fun gc -> eval_group_condition base gc mu) conds
 
 (* Rank of an eval_result for the SPARQL ordering type hierarchy.
    Unbound/Error < Blank nodes < IRIs < Literals (booleans, numerics, strings). *)
@@ -3114,13 +3116,13 @@ let add_to_groups (key : list eval_result) (mu : solution_mapping) (groups : lis
 
 (* Extend a solution mapping with GROUP BY expression alias bindings.
    For each GC_Expr (e, Some v), evaluate e against mu and bind v to the result. *)
-let extend_with_group_aliases (conds : list group_condition) (mu : solution_mapping)
+let extend_with_group_aliases (base : option wf_iri) (conds : list group_condition) (mu : solution_mapping)
   : solution_mapping =
   List.Tot.fold_left
     (fun (acc : solution_mapping) (gc : group_condition) ->
       match gc with
       | GC_Expr e (Some v) ->
-        let r = eval_expr e mu in
+        let r = eval_expr_with_base base e mu in
         (match er_to_term r with
          | Some t -> sm_bind v t acc
          | None -> acc)
@@ -3130,11 +3132,11 @@ let extend_with_group_aliases (conds : list group_condition) (mu : solution_mapp
 
 (* Partition a solution sequence by GROUP BY expressions — CONCRETE implementation.
    Also extends each solution mapping with alias bindings from GC_Expr (e, Some v). *)
-let group_by (conds : list group_condition) (omega : solution_sequence) : list group =
+let group_by (base : option wf_iri) (conds : list group_condition) (omega : solution_sequence) : list group =
   List.Tot.fold_left
     (fun (groups : list group) (mu : solution_mapping) ->
-      let key = eval_group_key conds mu in
-      let mu' = extend_with_group_aliases conds mu in
+      let key = eval_group_key base conds mu in
+      let mu' = extend_with_group_aliases base conds mu in
       add_to_groups key mu' groups)
     []
     omega
@@ -3146,8 +3148,8 @@ let implicit_group (omega : solution_sequence) : list group =
 (** 10.2 Aggregate evaluation **)
 
 (* Collect evaluated results for an expression over all solutions in a group *)
-let eval_over_group (e : expr) (g : group) : list eval_result =
-  List.Tot.map (fun mu -> eval_expr e mu) g.g_solutions
+let eval_over_group (base : option wf_iri) (e : expr) (g : group) : list eval_result =
+  List.Tot.map (fun mu -> eval_expr_with_base base e mu) g.g_solutions
 
 (* Filter out ER_Error values *)
 let filter_non_error (vals : list eval_result) : list eval_result =
@@ -3216,8 +3218,9 @@ let rec first_non_error (vals : list eval_result) : Tot eval_result (decreases v
   | [] -> ER_Error
   | v :: rest -> if ER_Error? v then first_non_error rest else v
 
-(* Evaluate an aggregate function over a group — CONCRETE implementation (§18.5) *)
-let eval_aggregate (fn : aggregate_fn) (distinct : bool) (e : expr) (g : group) : eval_result =
+(* Evaluate an aggregate function over a group — CONCRETE implementation (§18.5).
+   #65 Step 2b (2026-05-10): base threaded through for aggregate sub-exprs. *)
+let eval_aggregate (base : option wf_iri) (fn : aggregate_fn) (distinct : bool) (e : expr) (g : group) : eval_result =
   match fn with
   | Agg_Count ->
     (* COUNT-star counts all solutions; COUNT-expr counts non-error evaluations *)
@@ -3249,11 +3252,11 @@ let eval_aggregate (fn : aggregate_fn) (distinct : bool) (e : expr) (g : group) 
          ER_Num (List.Tot.length (dedup_strings_tr (List.Tot.map to_key sols)))
        else ER_Num (List.Tot.length g.g_solutions)
      | _ ->
-       let vals = filter_non_error (eval_over_group e g) in
+       let vals = filter_non_error (eval_over_group base e g) in
        let vals = if distinct then dedup_er vals else vals in
        ER_Num (List.Tot.length vals))
   | Agg_Sum ->
-    let raw_vals = eval_over_group e g in
+    let raw_vals = eval_over_group base e g in
     let vals = filter_non_error raw_vals in
     let vals = if distinct then dedup_er vals else vals in
     // Per SPARQL 1.1 §18.5.1: if any value is non-numeric, result is error
@@ -3261,7 +3264,7 @@ let eval_aggregate (fn : aggregate_fn) (distinct : bool) (e : expr) (g : group) 
     then ER_Error
     else sum_numeric vals
   | Agg_Avg ->
-    let raw_vals = eval_over_group e g in
+    let raw_vals = eval_over_group base e g in
     let vals = filter_non_error raw_vals in
     let vals = if distinct then dedup_er vals else vals in
     // Per SPARQL 1.1 §18.5.1: if any value is non-numeric, result is error
@@ -3269,21 +3272,21 @@ let eval_aggregate (fn : aggregate_fn) (distinct : bool) (e : expr) (g : group) 
     then ER_Error
     else avg_numeric vals
   | Agg_Min ->
-    let vals = filter_non_error (eval_over_group e g) in
+    let vals = filter_non_error (eval_over_group base e g) in
     let vals = if distinct then dedup_er vals else vals in
     find_min vals
   | Agg_Max ->
-    let vals = filter_non_error (eval_over_group e g) in
+    let vals = filter_non_error (eval_over_group base e g) in
     let vals = if distinct then dedup_er vals else vals in
     find_max vals
   | Agg_GroupConcat sep_opt ->
-    let vals = filter_non_error (eval_over_group e g) in
+    let vals = filter_non_error (eval_over_group base e g) in
     let vals = if distinct then dedup_er vals else vals in
     let sep = (match sep_opt with | Some s -> s | None -> " ") in
     let strs = collect_strings vals in
     ER_Term (T_Literal (mk_plain_literal (String.concat sep strs)))
   | Agg_Sample ->
-    let vals = eval_over_group e g in
+    let vals = eval_over_group base e g in
     first_non_error vals
 
 (** 10.3 HAVING filter **)
@@ -3293,10 +3296,10 @@ let eval_aggregate (fn : aggregate_fn) (distinct : bool) (e : expr) (g : group) 
    HAVING conditions like  COUNT(?O) > 2  —  the E_Aggregate node for
    COUNT(?O) is replaced by E_NumericLit <computed count>, then eval_expr
    can evaluate the comparison normally. *)
-let rec rewrite_aggregates (e : expr) (g : group) : Tot expr (decreases e) =
+let rec rewrite_aggregates (base : option wf_iri) (e : expr) (g : group) : Tot expr (decreases e) =
   match e with
   | E_Aggregate fn distinct sub_e ->
-    let r = eval_aggregate fn distinct sub_e g in
+    let r = eval_aggregate base fn distinct sub_e g in
     (match r with
      | ER_Num n -> E_NumericLit n
      | ER_Bool b -> E_BoolLit b
@@ -3307,24 +3310,24 @@ let rec rewrite_aggregates (e : expr) (g : group) : Tot expr (decreases e) =
                      | T_Literal l -> E_Literal l
                      | _ -> E_BoolLit false)
      | ER_Error -> E_Var "_:error:")  // unbound variable evaluates to ER_Error
-  | E_Compare op e1 e2 -> E_Compare op (rewrite_aggregates e1 g) (rewrite_aggregates e2 g)
-  | E_And e1 e2 -> E_And (rewrite_aggregates e1 g) (rewrite_aggregates e2 g)
-  | E_Or e1 e2 -> E_Or (rewrite_aggregates e1 g) (rewrite_aggregates e2 g)
-  | E_Arith op e1 e2 -> E_Arith op (rewrite_aggregates e1 g) (rewrite_aggregates e2 g)
-  | E_Not e1 -> E_Not (rewrite_aggregates e1 g)
+  | E_Compare op e1 e2 -> E_Compare op (rewrite_aggregates base e1 g) (rewrite_aggregates base e2 g)
+  | E_And e1 e2 -> E_And (rewrite_aggregates base e1 g) (rewrite_aggregates base e2 g)
+  | E_Or e1 e2 -> E_Or (rewrite_aggregates base e1 g) (rewrite_aggregates base e2 g)
+  | E_Arith op e1 e2 -> E_Arith op (rewrite_aggregates base e1 g) (rewrite_aggregates base e2 g)
+  | E_Not e1 -> E_Not (rewrite_aggregates base e1 g)
   | _ -> e  (* Leaf expressions pass through unchanged *)
 
 (* HAVING filters groups after aggregation.
    Each HAVING condition is first rewritten to replace aggregate sub-expressions
    with their computed values, then evaluated against the representative solution. *)
-let having_filter (conditions : list having_condition) (groups : list group) : list group =
+let having_filter (base : option wf_iri) (conditions : list having_condition) (groups : list group) : list group =
   List.Tot.filter
     (fun g ->
       let mu = match g.g_solutions with | mu :: _ -> mu | [] -> sm_empty in
       List.Tot.for_all
         (fun cond ->
-          let rewritten = rewrite_aggregates cond g in
-          ebv (eval_expr rewritten mu))
+          let rewritten = rewrite_aggregates base cond g in
+          ebv (eval_expr_with_base base rewritten mu))
         conditions)
     groups
 
@@ -3335,14 +3338,14 @@ let having_filter (conditions : list having_condition) (groups : list group) : l
    over the group, then the result is evaluated against the representative
    solution mapping (first in the group).  This handles both top-level
    aggregates and nested ones (e.g., COUNT(?x) + 1). *)
-let eval_expr_in_group (e : expr) (g : group) : eval_result =
-  let rewritten = rewrite_aggregates e g in
+let eval_expr_in_group (base : option wf_iri) (e : expr) (g : group) : eval_result =
+  let rewritten = rewrite_aggregates base e g in
   match g.g_solutions with
-  | mu :: _ -> eval_expr rewritten mu
-  | [] -> eval_expr rewritten sm_empty
+  | mu :: _ -> eval_expr_with_base base rewritten mu
+  | [] -> eval_expr_with_base base rewritten sm_empty
 
 (* Evaluate a SELECT item in group context — handles aggregates *)
-let eval_select_item_group (item : select_item) (g : group)
+let eval_select_item_group (base : option wf_iri) (item : select_item) (g : group)
   : option (var_name * rdf_term) =
   match item with
   | SI_Var v ->
@@ -3353,18 +3356,18 @@ let eval_select_item_group (item : select_item) (g : group)
                    | None -> None)
      | [] -> None)
   | SI_Expr e v ->
-    let r = eval_expr_in_group e g in
+    let r = eval_expr_in_group base e g in
     (match er_to_term r with
      | Some t -> Some (v, t)
      | None -> None)
 
 (* Produce one solution mapping per group from SELECT items *)
-let aggregate_group (items : list select_item) (g : group) : solution_mapping =
-  list_filter_map (fun item -> eval_select_item_group item g) items
+let aggregate_group (base : option wf_iri) (items : list select_item) (g : group) : solution_mapping =
+  list_filter_map (fun item -> eval_select_item_group base item g) items
 
 (* Aggregate all groups into a solution sequence *)
-let aggregate_groups (items : list select_item) (groups : list group) : solution_sequence =
-  List.Tot.map (aggregate_group items) groups
+let aggregate_groups (base : option wf_iri) (items : list select_item) (groups : list group) : solution_sequence =
+  List.Tot.map (aggregate_group base items) groups
 
 (* Check if an expression contains any aggregate sub-expression *)
 let rec expr_has_aggregate (e : expr) : Tot bool (decreases e) =
@@ -3430,26 +3433,26 @@ let select_has_aggregates (sel : select_clause) : bool =
 
 (* Compare two solution mappings on a single order condition.
    Returns -1, 0, or 1. *)
-let compare_on_condition (c : order_condition) (mu1 mu2 : solution_mapping) : int =
+let compare_on_condition (base : option wf_iri) (c : order_condition) (mu1 mu2 : solution_mapping) : int =
   match c with
   | OC_Asc e ->
-    sparql_order (eval_expr e mu1) (eval_expr e mu2)
+    sparql_order (eval_expr_with_base base e mu1) (eval_expr_with_base base e mu2)
   | OC_Desc e ->
-    sparql_order (eval_expr e mu2) (eval_expr e mu1)
+    sparql_order (eval_expr_with_base base e mu2) (eval_expr_with_base base e mu1)
 
 (* Compare two solution mappings on a list of order conditions (lexicographic).
    First non-zero comparison wins. *)
-let rec compare_on_conditions (conds : list order_condition) (mu1 mu2 : solution_mapping) : int =
+let rec compare_on_conditions (base : option wf_iri) (conds : list order_condition) (mu1 mu2 : solution_mapping) : int =
   match conds with
   | [] -> 0
   | c :: rest ->
-    let r = compare_on_condition c mu1 mu2 in
+    let r = compare_on_condition base c mu1 mu2 in
     if r <> 0 then r
-    else compare_on_conditions rest mu1 mu2
+    else compare_on_conditions base rest mu1 mu2
 
 (* Sort a solution sequence by the given order conditions — CONCRETE implementation. *)
-let sort_solutions (conds : list order_condition) (omega : solution_sequence) : solution_sequence =
-  List.Tot.sortWith (compare_on_conditions conds) omega
+let sort_solutions (base : option wf_iri) (conds : list order_condition) (omega : solution_sequence) : solution_sequence =
+  List.Tot.sortWith (compare_on_conditions base conds) omega
 
 (** 11.2 DISTINCT / REDUCED (§18.4) **)
 
@@ -3550,20 +3553,20 @@ let project_solutions (vars : list var_name) (omega : solution_sequence)
 (* Evaluate a single SELECT expression item against a solution mapping.
    For SI_Var, the mapping is unchanged.
    For SI_Expr e v, evaluate e and bind the result to v. — CONCRETE *)
-let eval_select_item (item : select_item) (mu : solution_mapping) (g : rdf_graph)
+let eval_select_item (base : option wf_iri) (item : select_item) (mu : solution_mapping) (g : rdf_graph)
   : solution_mapping =
   match item with
   | SI_Var _ -> mu  (* variable already in mapping from WHERE *)
   | SI_Expr e v ->
-    let r = eval_expr e mu in
+    let r = eval_expr_with_base base e mu in
     match er_to_term r with
     | Some t -> sm_bind v t mu
     | None -> mu  (* expression error — leave unbound *)
 
 (* Apply SELECT expression items to each solution mapping — CONCRETE *)
-let eval_select_items (items : list select_item) (omega : solution_sequence) (g : rdf_graph)
+let eval_select_items (base : option wf_iri) (items : list select_item) (omega : solution_sequence) (g : rdf_graph)
   : solution_sequence =
-  List.Tot.map (fun mu -> List.Tot.fold_left (fun acc item -> eval_select_item item acc g) mu items) omega
+  List.Tot.map (fun mu -> List.Tot.fold_left (fun acc item -> eval_select_item base item acc g) mu items) omega
 
 (* Extract variable names from select items — CONCRETE *)
 let select_item_vars (items : list select_item) : list var_name =
@@ -3703,6 +3706,12 @@ let apply_query_dataset (dcs : list dataset_clause)
 let eval_select_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : solution_sequence =
   let (g, ds) = apply_query_dataset q.q_dataset g ds in
   let q = { q with q_pattern = rewrite_query_bnodes_pattern q.q_pattern } in
+  (* #65 Step 2b (2026-05-10): q.q_base is the BASE IRI for this query.
+     Thread it through every post-pattern stage (GROUP BY, HAVING,
+     aggregation, ORDER BY, SELECT exprs) so IRI() resolutions in
+     those stages see the right BASE without going through the
+     OCaml-side current_base_iri_ref. *)
+  let base = q.q_base in
   match q.q_form with
   | QF_Select sel ->
     (* 1. Evaluate WHERE clause *)
@@ -3721,17 +3730,17 @@ let eval_select_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : solution_
     if needs_grouping then begin
       (* 2a. Partition solutions into groups *)
       let groups = match q.q_group_by with
-        | Some conds -> group_by conds omega
+        | Some conds -> group_by base conds omega
         | None -> implicit_group omega in
 
       (* 3. HAVING — filter groups *)
       let filtered_groups = match q.q_having with
-        | Some conditions -> having_filter conditions groups
+        | Some conditions -> having_filter base conditions groups
         | None -> groups in
 
       (* 4. Aggregation — evaluate aggregate SELECT items per group *)
       let omega' = match sel with
-        | Select_Vars items -> aggregate_groups items filtered_groups
+        | Select_Vars items -> aggregate_groups base items filtered_groups
         | Select_All ->
           (* SELECT * with GROUP BY: return representative solutions,
              stripping rewriter-introduced synthetic _bnode_* vars (see
@@ -3745,7 +3754,7 @@ let eval_select_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : solution_
       (* 6. ORDER BY *)
       let ordered = match q.q_modifier.sm_order_by with
         | None -> omega'
-        | Some o -> sort_solutions o omega' in
+        | Some o -> sort_solutions base o omega' in
 
       (* 8. DISTINCT / REDUCED *)
       let deduped =
@@ -3761,13 +3770,13 @@ let eval_select_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : solution_
 
       (* 5. SELECT expressions — evaluate (expr AS ?var) *)
       let omega' = match sel with
-        | Select_Vars items -> eval_select_items items omega g
+        | Select_Vars items -> eval_select_items base items omega g
         | Select_All -> omega in
 
       (* 6. ORDER BY *)
       let ordered = match q.q_modifier.sm_order_by with
         | None -> omega'
-        | Some o -> sort_solutions o omega' in
+        | Some o -> sort_solutions base o omega' in
 
       (* 7. Projection.
          For SELECT *, strip rewriter-introduced synthetic _bnode_* vars

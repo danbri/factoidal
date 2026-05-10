@@ -661,6 +661,7 @@ let rec eval_pattern_backend (p : group_graph_pattern) (gb : graph_backend) (dsb
 
 and eval_select_query_backend_bgp (q : query) (gb : graph_backend)
   : option solution_sequence =
+  let base = q.q_base in
   match q.q_form, q.q_pattern with
   | QF_Select sel, GP_BGP bgp ->
     let omega0 = eval_bgp_backend bgp gb in
@@ -673,11 +674,11 @@ and eval_select_query_backend_bgp (q : query) (gb : graph_backend)
     if needs_grouping then None
     else
       let omega' = match sel with
-        | Select_Vars items -> eval_select_items items omega []
+        | Select_Vars items -> eval_select_items base items omega []
         | Select_All -> omega in
       let ordered = match q.q_modifier.sm_order_by with
         | None -> omega'
-        | Some o -> sort_solutions o omega' in
+        | Some o -> sort_solutions base o omega' in
       let projected = match sel with
         | Select_Vars items -> project_solutions (select_item_vars items) ordered
         | Select_All -> ordered in
@@ -720,6 +721,7 @@ and eval_select_query_backend_on_graph (q : query) (gb : graph_backend) (dsb : d
     // for the recursive eval_pattern_backend call.
     match q.q_form with
     | QF_Select sel ->
+      let base = q.q_base in
       let omega0 = eval_pattern_backend q.q_pattern gb dsb in
       let omega = match q.q_values with
         | None -> omega0
@@ -729,13 +731,13 @@ and eval_select_query_backend_on_graph (q : query) (gb : graph_backend) (dsb : d
         | None -> select_has_aggregates sel in
       if needs_grouping then
         let groups = match q.q_group_by with
-          | Some conds -> group_by conds omega
+          | Some conds -> group_by base conds omega
           | None -> implicit_group omega in
         let filtered_groups = match q.q_having with
-          | Some conditions -> having_filter conditions groups
+          | Some conditions -> having_filter base conditions groups
           | None -> groups in
         let omega' = match sel with
-          | Select_Vars items -> aggregate_groups items filtered_groups
+          | Select_Vars items -> aggregate_groups base items filtered_groups
           | Select_All ->
             List.Tot.map (fun (grp : group) ->
               match grp.g_solutions with
@@ -743,7 +745,7 @@ and eval_select_query_backend_on_graph (q : query) (gb : graph_backend) (dsb : d
               | [] -> sm_empty) filtered_groups in
         let ordered = match q.q_modifier.sm_order_by with
           | None -> omega'
-          | Some o -> sort_solutions o omega' in
+          | Some o -> sort_solutions base o omega' in
         let deduped =
           if q.q_modifier.sm_distinct then distinct_solutions ordered
           else if q.q_modifier.sm_reduced then reduced_solutions ordered
@@ -751,11 +753,11 @@ and eval_select_query_backend_on_graph (q : query) (gb : graph_backend) (dsb : d
         Some (slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit deduped)
       else
         let omega' = match sel with
-          | Select_Vars items -> eval_select_items items omega []
+          | Select_Vars items -> eval_select_items base items omega []
           | Select_All -> omega in
         let ordered = match q.q_modifier.sm_order_by with
           | None -> omega'
-          | Some o -> sort_solutions o omega' in
+          | Some o -> sort_solutions base o omega' in
         let projected = match sel with
           | Select_Vars items -> project_solutions (select_item_vars items) ordered
           | Select_All -> ordered in
@@ -780,7 +782,7 @@ and eval_select_query_backend_dataset (q : query) (dsb : dataset_backend)
     // so sorting cost is negligible compared to the saved BGP eval.
     let ordered = match q.q_modifier.sm_order_by with
       | None   -> omega
-      | Some o -> sort_solutions o omega in
+      | Some o -> sort_solutions q.q_base o omega in
     Some (slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit ordered)
   | None ->
     eval_select_query_backend_on_graph q dsb.dsb_default dsb

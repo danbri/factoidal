@@ -743,6 +743,7 @@ let rec eval_pattern_backend (p : SPARQL11_Algebra.group_graph_pattern)
 and eval_select_query_backend_bgp (q : SPARQL11_Algebra.query)
   (gb : graph_backend) :
   SPARQL11_Algebra.solution_sequence FStar_Pervasives_Native.option=
+  let base = q.SPARQL11_Algebra.q_base in
   match ((q.SPARQL11_Algebra.q_form), (q.SPARQL11_Algebra.q_pattern)) with
   | (SPARQL11_Algebra.QF_Select sel, SPARQL11_Algebra.GP_BGP bgp) ->
       let omega0 = eval_bgp_backend bgp gb in
@@ -762,14 +763,14 @@ and eval_select_query_backend_bgp (q : SPARQL11_Algebra.query)
         (let omega' =
            match sel with
            | SPARQL11_Algebra.Select_Vars items ->
-               SPARQL11_Algebra.eval_select_items items omega []
+               SPARQL11_Algebra.eval_select_items base items omega []
            | SPARQL11_Algebra.Select_All -> omega in
          let ordered =
            match (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_order_by
            with
            | FStar_Pervasives_Native.None -> omega'
            | FStar_Pervasives_Native.Some o ->
-               SPARQL11_Algebra.sort_solutions o omega' in
+               SPARQL11_Algebra.sort_solutions base o omega' in
          let projected =
            match sel with
            | SPARQL11_Algebra.Select_Vars items ->
@@ -827,6 +828,7 @@ and eval_select_query_backend_on_graph (q : SPARQL11_Algebra.query)
        | FStar_Pervasives_Native.None ->
            (match q.SPARQL11_Algebra.q_form with
             | SPARQL11_Algebra.QF_Select sel ->
+                let base = q.SPARQL11_Algebra.q_base in
                 let omega0 =
                   eval_pattern_backend q.SPARQL11_Algebra.q_pattern gb dsb in
                 let omega =
@@ -844,18 +846,18 @@ and eval_select_query_backend_on_graph (q : SPARQL11_Algebra.query)
                   let groups =
                     match q.SPARQL11_Algebra.q_group_by with
                     | FStar_Pervasives_Native.Some conds ->
-                        SPARQL11_Algebra.group_by conds omega
+                        SPARQL11_Algebra.group_by base conds omega
                     | FStar_Pervasives_Native.None ->
                         SPARQL11_Algebra.implicit_group omega in
                   let filtered_groups =
                     match q.SPARQL11_Algebra.q_having with
                     | FStar_Pervasives_Native.Some conditions ->
-                        SPARQL11_Algebra.having_filter conditions groups
+                        SPARQL11_Algebra.having_filter base conditions groups
                     | FStar_Pervasives_Native.None -> groups in
                   let omega' =
                     match sel with
                     | SPARQL11_Algebra.Select_Vars items ->
-                        SPARQL11_Algebra.aggregate_groups items
+                        SPARQL11_Algebra.aggregate_groups base items
                           filtered_groups
                     | SPARQL11_Algebra.Select_All ->
                         FStar_List_Tot_Base.map
@@ -869,7 +871,7 @@ and eval_select_query_backend_on_graph (q : SPARQL11_Algebra.query)
                     with
                     | FStar_Pervasives_Native.None -> omega'
                     | FStar_Pervasives_Native.Some o ->
-                        SPARQL11_Algebra.sort_solutions o omega' in
+                        SPARQL11_Algebra.sort_solutions base o omega' in
                   let deduped =
                     if
                       (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_distinct
@@ -888,14 +890,15 @@ and eval_select_query_backend_on_graph (q : SPARQL11_Algebra.query)
                   (let omega' =
                      match sel with
                      | SPARQL11_Algebra.Select_Vars items ->
-                         SPARQL11_Algebra.eval_select_items items omega []
+                         SPARQL11_Algebra.eval_select_items base items omega
+                           []
                      | SPARQL11_Algebra.Select_All -> omega in
                    let ordered =
                      match (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_order_by
                      with
                      | FStar_Pervasives_Native.None -> omega'
                      | FStar_Pervasives_Native.Some o ->
-                         SPARQL11_Algebra.sort_solutions o omega' in
+                         SPARQL11_Algebra.sort_solutions base o omega' in
                    let projected =
                      match sel with
                      | SPARQL11_Algebra.Select_Vars items ->
@@ -929,7 +932,7 @@ and eval_select_query_backend_dataset (q : SPARQL11_Algebra.query)
         with
         | FStar_Pervasives_Native.None -> omega
         | FStar_Pervasives_Native.Some o ->
-            SPARQL11_Algebra.sort_solutions o omega in
+            SPARQL11_Algebra.sort_solutions q.SPARQL11_Algebra.q_base o omega in
       FStar_Pervasives_Native.Some
         (SPARQL11_Algebra.slice_solutions
            (q.SPARQL11_Algebra.q_modifier).SPARQL11_Algebra.sm_offset
