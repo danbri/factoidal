@@ -296,6 +296,330 @@ let lemma_parse_serialize_dict_empty_case ()
   : Lemma (ensures parse_dict (serialize_dict []) == Some [])
   = assert_norm (parse_dict (serialize_dict []) == Some [])
 
+(* --- Structural sub-lemmas for the cons case round-trip proof ------- *)
+
+(* build_ids length: build_ids n produces 4*n bytes. Pure structural
+   induction on (n - i). *)
+let rec lemma_build_ids_acc_length (i : nat) (n : nat{i <= n /\ n < 4294967296})
+  : Lemma (ensures FStar.List.Tot.length (build_ids_acc i n) == 4 `op_Multiply` (n - i))
+          (decreases n - i) =
+  if i = n then ()
+  else begin
+    lemma_build_ids_acc_length (i + 1) n;
+    Lh.lemma_append_tr_eq (RDF.Bytes.write_u32_le i) (build_ids_acc (i + 1) n);
+    FStar.List.Tot.Properties.append_length
+      (RDF.Bytes.write_u32_le i) (build_ids_acc (i + 1) n)
+  end
+
+let lemma_build_ids_length (n : nat{n < 4294967296})
+  : Lemma (ensures FStar.List.Tot.length (build_ids n) == 4 `op_Multiply` n) =
+  lemma_build_ids_acc_length 0 n
+
+(* Value-level model of build_offs_acc's cumulative offsets.
+   `cum_offs cur tokens` = the list of u64 offsets emitted (one per token).
+   `cum_final cur tokens` = the final offset after walking all tokens. *)
+let rec cum_offs (cur : nat) (tokens : list string)
+  : Tot (list nat) (decreases tokens) =
+  match tokens with
+  | [] -> []
+  | t :: rest ->
+    if cur >= 18446744073709551616 then []
+    else cur :: cum_offs (cur + String.length t) rest
+
+let rec cum_final (cur : nat) (tokens : list string)
+  : Tot nat (decreases tokens) =
+  match tokens with
+  | [] -> cur
+  | t :: rest ->
+    if cur >= 18446744073709551616 then cur
+    else cum_final (cur + String.length t) rest
+
+let rec lemma_cum_final_mono (cur : nat) (tokens : list string)
+  : Lemma (ensures cum_final cur tokens >= cur) (decreases tokens) =
+  match tokens with
+  | [] -> ()
+  | t :: rest ->
+    if cur >= 18446744073709551616 then ()
+    else lemma_cum_final_mono (cur + String.length t) rest
+
+let rec lemma_build_offs_acc_final
+  (cur : nat) (tokens : list string)
+  : Lemma
+      (requires cur < 18446744073709551616
+                /\ cum_final cur tokens < 18446744073709551616)
+      (ensures (
+        let (| final, _ |) = build_offs_acc cur tokens in
+        final == cum_final cur tokens))
+      (decreases tokens)
+  = match tokens with
+    | [] -> ()
+    | t :: rest ->
+      let cur' = cur + String.length t in
+      lemma_cum_final_mono cur' rest;
+      lemma_build_offs_acc_final cur' rest
+
+let rec lemma_parse_n_offsets_build_offs_acc
+  (cur : nat) (tokens : list string) (rest : RDF.Bytes.bytes)
+  : Lemma
+      (requires cur < 18446744073709551616
+                /\ cum_final cur tokens < 18446744073709551616)
+      (ensures (
+        let (| _, body |) = build_offs_acc cur tokens in
+        parse_n_offsets (length tokens) (FStar.List.Tot.append body rest)
+        == Some (cum_offs cur tokens, rest)))
+      (decreases tokens)
+  = match tokens with
+    | [] -> ()
+    | t :: rest_tokens ->
+      let cur' = cur + String.length t in
+      lemma_cum_final_mono cur' rest_tokens;
+      lemma_parse_n_offsets_build_offs_acc cur' rest_tokens rest;
+      let (| _, rest_body |) = build_offs_acc cur' rest_tokens in
+      let head = RDF.Bytes.write_u64_le cur in
+      Lh.lemma_append_tr_eq head rest_body;
+      FStar.List.Tot.Properties.append_assoc head rest_body rest;
+      RDF.Bytes.lemma_parse_write_u64_le_inverse cur (FStar.List.Tot.append rest_body rest)
+
+let rec lemma_parse_tokens_from_offsets_build_data
+  (cur : nat) (tokens : list string) (rest : RDF.Bytes.bytes)
+  : Lemma
+      (requires cur < 18446744073709551616
+                /\ cum_final cur tokens < 18446744073709551616)
+      (ensures (
+        let offsets = FStar.List.Tot.append
+                        (cum_offs cur tokens)
+                        [cum_final cur tokens] in
+        parse_tokens_from_offsets offsets
+                                  (FStar.List.Tot.append (build_data tokens) rest)
+        == Some tokens))
+      (decreases tokens)
+  = match tokens with
+    | [] -> ()
+    | t :: rest_tokens ->
+      let cur' = cur + String.length t in
+      lemma_cum_final_mono cur' rest_tokens;
+      lemma_parse_tokens_from_offsets_build_data cur' rest_tokens rest;
+      let head_bytes = RDF.Bytes.bytes_of_string t in
+      let tail_data = build_data rest_tokens in
+      Lh.lemma_append_tr_eq head_bytes tail_data;
+      FStar.List.Tot.Properties.append_assoc head_bytes tail_data rest;
+      RDF.Bytes.lemma_parse_string_of_length_inverse t
+        (FStar.List.Tot.append tail_data rest);
+      FStar.String.list_of_string_of_list (RDF.Bytes.bytes_of_string t);
+      ()
+
+let rec lemma_cum_offs_length
+  (cur : nat) (tokens : list string)
+  : Lemma
+      (requires cur < 18446744073709551616
+                /\ cum_final cur tokens < 18446744073709551616)
+      (ensures length (cum_offs cur tokens) == length tokens)
+      (decreases tokens)
+  = match tokens with
+    | [] -> ()
+    | t :: rest ->
+      let cur' = cur + String.length t in
+      lemma_cum_final_mono cur' rest;
+      lemma_cum_offs_length cur' rest
+
+(* Append-stability for parse_*_le. General-purpose facts; could move
+   to RDF.Bytes in a future cleanup. *)
+let lemma_parse_u64_le_append
+  (front rear : RDF.Bytes.bytes)
+  : Lemma
+      (requires Some? (RDF.Bytes.parse_u64_le front))
+      (ensures (
+        let Some (o, front_rest) = RDF.Bytes.parse_u64_le front in
+        RDF.Bytes.parse_u64_le (FStar.List.Tot.append front rear)
+        == Some (o, FStar.List.Tot.append front_rest rear)))
+  = match front with
+    | b0 :: b1 :: b2 :: b3 :: b4 :: b5 :: b6 :: b7 :: rest -> ()
+
+let lemma_parse_u32_le_append
+  (front rear : RDF.Bytes.bytes)
+  : Lemma
+      (requires Some? (RDF.Bytes.parse_u32_le front))
+      (ensures (
+        let Some (o, front_rest) = RDF.Bytes.parse_u32_le front in
+        RDF.Bytes.parse_u32_le (FStar.List.Tot.append front rear)
+        == Some (o, FStar.List.Tot.append front_rest rear)))
+  = match front with
+    | b0 :: b1 :: b2 :: b3 :: rest -> ()
+
+let rec lemma_parse_n_offsets_append
+  (k : nat) (front rear : RDF.Bytes.bytes)
+  : Lemma
+      (requires Some? (parse_n_offsets k front))
+      (ensures (
+        let Some (l, mid) = parse_n_offsets k front in
+        parse_n_offsets k (FStar.List.Tot.append front rear)
+        == Some (l, FStar.List.Tot.append mid rear)))
+      (decreases k)
+  = if k = 0 then ()
+    else
+      match RDF.Bytes.parse_u64_le front with
+      | None -> ()
+      | Some (o, front_rest) ->
+        lemma_parse_u64_le_append front rear;
+        match parse_n_offsets (k - 1) front_rest with
+        | None -> ()
+        | Some (l_tail, mid') ->
+          lemma_parse_n_offsets_append (k - 1) front_rest rear
+
+(* build_offs cons unfolding: build_offs base (t :: rest) =
+   write_u64_le base ++ build_offs (base + len t) rest. *)
+let lemma_build_offs_cons
+  (base : nat) (t : string) (rest_tokens : list string)
+  : Lemma
+      (requires base < 18446744073709551616
+                /\ cum_final base (t :: rest_tokens) < 18446744073709551616)
+      (ensures (
+        let cur' = base + String.length t in
+        build_offs base (t :: rest_tokens)
+        == FStar.List.Tot.append (RDF.Bytes.write_u64_le base) (build_offs cur' rest_tokens)))
+  = let cur' = base + String.length t in
+    lemma_cum_final_mono cur' rest_tokens;
+    lemma_build_offs_acc_final base (t :: rest_tokens);
+    lemma_build_offs_acc_final cur' rest_tokens;
+    let (| _, rest_bytes |) = build_offs_acc cur' rest_tokens in
+    let head = RDF.Bytes.write_u64_le base in
+    let final = cum_final base (t :: rest_tokens) in
+    Lh.lemma_append_tr_eq head rest_bytes;
+    Lh.lemma_append_tr_eq (FStar.List.Tot.append head rest_bytes)
+                          (RDF.Bytes.write_u64_le final);
+    Lh.lemma_append_tr_eq rest_bytes (RDF.Bytes.write_u64_le final);
+    Lh.lemma_append_tr_eq head
+                          (FStar.List.Tot.append rest_bytes (RDF.Bytes.write_u64_le final));
+    FStar.List.Tot.Properties.append_assoc head rest_bytes (RDF.Bytes.write_u64_le final)
+
+let lemma_cum_offs_cons
+  (base : nat) (t : string) (rest_tokens : list string)
+  : Lemma
+      (requires base < 18446744073709551616)
+      (ensures (
+        let cur' = base + String.length t in
+        cum_offs base (t :: rest_tokens)
+        == base :: cum_offs cur' rest_tokens))
+  = ()
+
+let lemma_cum_final_cons
+  (base : nat) (t : string) (rest_tokens : list string)
+  : Lemma
+      (requires base < 18446744073709551616)
+      (ensures (
+        let cur' = base + String.length t in
+        cum_final base (t :: rest_tokens) == cum_final cur' rest_tokens))
+  = ()
+
+(* parse_n_offsets on (build_offs base tokens ++ rest) yields the
+   cumulative-offset list (n+1 entries, last = cum_final). Direct
+   induction over tokens. *)
+#push-options "--z3rlimit 30"
+let rec lemma_parse_n_offsets_build_offs
+  (base : nat) (tokens : list string) (rest : RDF.Bytes.bytes)
+  : Lemma
+      (requires base < 18446744073709551616
+                /\ cum_final base tokens < 18446744073709551616)
+      (ensures (
+        parse_n_offsets (length tokens + 1)
+                        (FStar.List.Tot.append (build_offs base tokens) rest)
+        == Some (FStar.List.Tot.append (cum_offs base tokens) [cum_final base tokens], rest)))
+      (decreases tokens)
+  = match tokens with
+    | [] ->
+      let body : RDF.Bytes.bytes = [] in
+      Lh.lemma_append_tr_eq body (RDF.Bytes.write_u64_le base);
+      FStar.List.Tot.Properties.append_l_nil (RDF.Bytes.write_u64_le base);
+      RDF.Bytes.lemma_parse_write_u64_le_inverse base rest
+    | t :: rest_tokens ->
+      let cur' = base + String.length t in
+      lemma_cum_final_mono cur' rest_tokens;
+      lemma_parse_n_offsets_build_offs cur' rest_tokens rest;
+      lemma_build_offs_cons base t rest_tokens;
+      let head = RDF.Bytes.write_u64_le base in
+      let inner = build_offs cur' rest_tokens in
+      FStar.List.Tot.Properties.append_assoc head inner rest;
+      RDF.Bytes.lemma_parse_write_u64_le_inverse base (FStar.List.Tot.append inner rest);
+      lemma_cum_offs_cons base t rest_tokens;
+      lemma_cum_final_cons base t rest_tokens
+#pop-options
+
+(* The cons branch of the round-trip lemma. Strengthened precondition:
+   we additionally require the cumulative sum of token data lengths to
+   fit in u64. The original `data_offset < 2^64` says only that the
+   START of token-data fits in u64; if `data_offset + sum_lengths`
+   overflows, build_offs silently truncates and the round-trip fails.
+   See the design doc for the discussion. *)
+#push-options "--z3rlimit 30"
+let lemma_parse_serialize_dict_cons
+  (sorted_tokens : list string)
+  : Lemma
+      (requires (
+        let n = length sorted_tokens in
+        let ids_offset = header_size in
+        let tokens_offset : nat = ids_offset + (id_size `op_Multiply` n) in
+        let data_offset : nat = tokens_offset + (offset_size `op_Multiply` (n + 1)) in
+        n < 4294967296
+        /\ data_offset < 18446744073709551616
+        /\ cum_final data_offset sorted_tokens < 18446744073709551616))
+      (ensures parse_dict (serialize_dict sorted_tokens) == Some sorted_tokens)
+  = let n = length sorted_tokens in
+    let ids_offset = header_size in
+    let tokens_offset : nat = ids_offset + (id_size `op_Multiply` n) in
+    let data_offset : nat = tokens_offset + (offset_size `op_Multiply` (n + 1)) in
+    let header = build_header n ids_offset tokens_offset in
+    let ids = build_ids n in
+    let offs = build_offs data_offset sorted_tokens in
+    let data = build_data sorted_tokens in
+    let offs_data = FStar.List.Tot.append offs data in
+    Lh.lemma_append_tr_eq offs data;
+    let ids_offs_data = FStar.List.Tot.append ids offs_data in
+    Lh.lemma_append_tr_eq ids offs_data;
+    Lh.lemma_append_tr_eq header ids_offs_data;
+    let m_bytes = RDF.Bytes.write_u32_le dict_magic in
+    let v_bytes = RDF.Bytes.write_u32_le dict_version in
+    let n_bytes = RDF.Bytes.write_u32_le n in
+    let p_bytes = RDF.Bytes.write_u32_le 0 in
+    let i_bytes = RDF.Bytes.write_u64_le ids_offset in
+    let t_bytes = RDF.Bytes.write_u64_le tokens_offset in
+    let i_t = FStar.List.Tot.append i_bytes t_bytes in
+    Lh.lemma_append_tr_eq i_bytes t_bytes;
+    let p_i_t = FStar.List.Tot.append p_bytes i_t in
+    Lh.lemma_append_tr_eq p_bytes i_t;
+    let n_p_i_t = FStar.List.Tot.append n_bytes p_i_t in
+    Lh.lemma_append_tr_eq n_bytes p_i_t;
+    let v_n_p_i_t = FStar.List.Tot.append v_bytes n_p_i_t in
+    Lh.lemma_append_tr_eq v_bytes n_p_i_t;
+    Lh.lemma_append_tr_eq m_bytes v_n_p_i_t;
+    let suffix1 = FStar.List.Tot.append v_n_p_i_t ids_offs_data in
+    FStar.List.Tot.Properties.append_assoc m_bytes v_n_p_i_t ids_offs_data;
+    RDF.Bytes.lemma_parse_write_u32_le_inverse dict_magic suffix1;
+    let suffix2 = FStar.List.Tot.append n_p_i_t ids_offs_data in
+    FStar.List.Tot.Properties.append_assoc v_bytes n_p_i_t ids_offs_data;
+    RDF.Bytes.lemma_parse_write_u32_le_inverse dict_version suffix2;
+    let suffix3 = FStar.List.Tot.append p_i_t ids_offs_data in
+    FStar.List.Tot.Properties.append_assoc n_bytes p_i_t ids_offs_data;
+    RDF.Bytes.lemma_parse_write_u32_le_inverse n suffix3;
+    let suffix4 = FStar.List.Tot.append i_t ids_offs_data in
+    FStar.List.Tot.Properties.append_assoc p_bytes i_t ids_offs_data;
+    RDF.Bytes.lemma_parse_write_u32_le_inverse 0 suffix4;
+    let suffix5 = FStar.List.Tot.append t_bytes ids_offs_data in
+    FStar.List.Tot.Properties.append_assoc i_bytes t_bytes ids_offs_data;
+    RDF.Bytes.lemma_parse_write_u64_le_inverse ids_offset suffix5;
+    let suffix6 = ids_offs_data in
+    RDF.Bytes.lemma_parse_write_u64_le_inverse tokens_offset suffix6;
+    let after_ids = offs_data in
+    FStar.List.Tot.Properties.append_assoc ids offs data;
+    lemma_build_ids_length n;
+    RDF.Bytes.lemma_parse_n_bytes_inverse ids after_ids;
+    lemma_parse_n_offsets_build_offs data_offset sorted_tokens data;
+    FStar.List.Tot.Properties.append_l_nil data;
+    lemma_parse_tokens_from_offsets_build_data data_offset sorted_tokens [];
+    ()
+#pop-options
+
+(* Top-level lemma. The strengthened precondition (cum_final < 2^64)
+   is what the cons branch genuinely needs. *)
 let lemma_parse_serialize_dict
   (sorted_tokens : list string)
   : Lemma
@@ -303,8 +627,10 @@ let lemma_parse_serialize_dict
                  let ids_offset = header_size in
                  let tokens_offset : nat = ids_offset + (id_size `op_Multiply` n) in
                  let data_offset : nat = tokens_offset + (offset_size `op_Multiply` (n + 1)) in
-                 n < 4294967296 /\ data_offset < 18446744073709551616))
+                 n < 4294967296
+                 /\ data_offset < 18446744073709551616
+                 /\ cum_final data_offset sorted_tokens < 18446744073709551616))
       (ensures parse_dict (serialize_dict sorted_tokens) == Some sorted_tokens)
   = match sorted_tokens with
     | [] -> lemma_parse_serialize_dict_empty_case ()
-    | _ -> admit ()
+    | _ -> lemma_parse_serialize_dict_cons sorted_tokens
