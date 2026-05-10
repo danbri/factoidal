@@ -2094,8 +2094,11 @@ let try_static_route ~cfg ~dataset_ref ~cottas_stores_ref ~meth ~path ~qs ~accep
     Some { rb_status = 303;
            rb_content_type = "text/plain; charset=utf-8";
            rb_body = "See /\n" }
-  | "/sparql" | "/query" | "/update" ->
-    (* Protocol endpoint: fall through to the F* SPARQL Protocol decoder. *)
+  | p when SPARQL_HTTP_Routes.is_sparql_protocol_path p ->
+    (* Protocol endpoint per F* `SPARQL.HTTP.Routes.is_sparql_protocol_path`
+       (the canonical SPARQL 1.1 Protocol query/update endpoint set —
+       /sparql, /query, /update). Fall through to the F* SPARQL
+       Protocol decoder. #200 Section 2 MIXED-row migration. *)
     None
   | _ ->
     (* Everything else: try to serve from the configured demo dir. *)

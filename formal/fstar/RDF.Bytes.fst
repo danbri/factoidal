@@ -205,15 +205,19 @@ let lemma_parse_write_u32_le_inverse
    arithmetic identity is the 8-byte version.
 
    Status: ADMITTED. SMT (z3 4.13.3) discharges the u32 case
-   automatically but times out on the 8-byte modular-arithmetic
-   identity even at rlimit 60. The empirical witness in
-   tests/unit/dict_writer_roundtrip.ml + presence_writer_roundtrip.ml
-   + offsets_writer_roundtrip.ml + compound_presence_writer_roundtrip.ml
-   exercises u64 round-trips on representative fixtures with pinned
-   SHA-256 hashes. Promotion to a real proof is tracked in #252 —
-   options include (a) splitting the arithmetic into 4 u32_le halves
-   composed via shift-and-mask lemmas, or (b) a Tactics.V2 proof
-   that unfolds and discharges via the BV theory. *)
+   automatically but stalls on the 8-byte modular-arithmetic
+   identity even at rlimit 200 with explicit byte-decomposition
+   assertions (the solver sits at 0% CPU for 20+ minutes — the
+   query's matchings explode). Two viable proof strategies for #252:
+     (a) Decompose n = lo + hi * 2^32 with lo = n % 2^32 and
+         hi = n / 2^32, prove
+           write_u64_le n == write_u32_le lo @ write_u32_le hi
+         as a sublemma (4-byte arithmetic, SMT-tractable), then
+         compose two applications of lemma_parse_write_u32_le_inverse
+         to walk the 8-byte parse.
+     (b) Tactics.V2 with the BV theory + `compute()`.
+   The empirical witness in the four CI hash tests covers u64
+   round-trip on representative fixtures meanwhile. *)
 let lemma_parse_write_u64_le_inverse
   (n : nat{n < 18446744073709551616}) (rest : bytes)
   : Lemma (ensures parse_u64_le (FStar.List.Tot.append (write_u64_le n) rest)
