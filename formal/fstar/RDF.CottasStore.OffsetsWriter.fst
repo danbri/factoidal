@@ -195,3 +195,90 @@ let parse_offsets (bs : RDF.Bytes.bytes)
                 | None -> None
                 | Some (subject_ids, _trailing) ->
                   Some (num_rgs, num_preds, rg_offsets, subject_ids)
+
+(* --- Empty base case sublemmas --------------------------------------- *)
+
+let lemma_parse_n_u64s_one (v : nat{v < 18446744073709551616}) (rest : RDF.Bytes.bytes)
+  : Lemma (ensures parse_n_u64s 1
+                     (FStar.List.Tot.append (RDF.Bytes.write_u64_le v) rest)
+                   == Some ([v], rest))
+  = RDF.Bytes.lemma_parse_write_u64_le_inverse v rest
+
+let lemma_parse_n_u32s_zero (bs : RDF.Bytes.bytes)
+  : Lemma (ensures parse_n_u32s 0 bs == Some ([], bs))
+  = ()
+
+let lemma_last_of_or_singleton_zero ()
+  : Lemma (ensures last_of_or [0] 0 == 0)
+  = ()
+
+(* Bridge: serialize_offsets 0 0 [0] [] reduces to a single right-
+   associated FStar.List.Tot.append chain. The proof chains six
+   lemma_append_tr_eq bridges + append_l_nil for the empty subj_b +
+   three append_assoc rewrites to land in the right-associated form. *)
+let lemma_serialize_offsets_empty_shape ()
+  : Lemma (ensures (
+      let m = RDF.Bytes.write_u32_le coto_magic in
+      let v = RDF.Bytes.write_u32_le coto_version in
+      let r = RDF.Bytes.write_u32_le 0 in
+      let p = RDF.Bytes.write_u32_le 0 in
+      let s = RDF.Bytes.write_u64_le 0 in
+      serialize_offsets 0 0 [0] []
+        == FStar.List.Tot.append m
+            (FStar.List.Tot.append v
+              (FStar.List.Tot.append r
+                (FStar.List.Tot.append p s)))))
+  = let m = RDF.Bytes.write_u32_le coto_magic in
+    let v = RDF.Bytes.write_u32_le coto_version in
+    let r = RDF.Bytes.write_u32_le 0 in
+    let p = RDF.Bytes.write_u32_le 0 in
+    let s = RDF.Bytes.write_u64_le 0 in
+    (* Build_header: append_tr m (append_tr v (append_tr r p)). *)
+    Lh.lemma_append_tr_eq r p;
+    Lh.lemma_append_tr_eq v (Lh.append_tr r p);
+    Lh.lemma_append_tr_eq m (Lh.append_tr v (Lh.append_tr r p));
+    (* serialize_u64_list [0] = append_tr s [] = s. *)
+    Lh.lemma_append_tr_eq s [];
+    FStar.List.Tot.Properties.append_l_nil s;
+    (* serialize_u32_list [] = []. *)
+    let off_b = serialize_u64_list [0] in
+    let subj_b = serialize_u32_list [] in
+    Lh.lemma_append_tr_eq off_b subj_b;
+    FStar.List.Tot.Properties.append_l_nil off_b;
+    (* Outer: append_tr header s. *)
+    let header = build_header 0 0 in
+    Lh.lemma_append_tr_eq header s;
+    (* Now serialize_offsets ≡ append (append m (append v (append r p))) s.
+       Right-associate via three append_assoc applications. *)
+    FStar.List.Tot.Properties.append_assoc m
+      (FStar.List.Tot.append v (FStar.List.Tot.append r p)) s;
+    FStar.List.Tot.Properties.append_assoc v
+      (FStar.List.Tot.append r p) s;
+    FStar.List.Tot.Properties.append_assoc r p s
+
+(* Empty base case: serialize_offsets 0 0 [0] [] then parse_offsets
+   round-trips to Some (0, 0, [0], []). 24 bytes total. *)
+let lemma_parse_serialize_offsets_empty_case ()
+  : Lemma (ensures parse_offsets (serialize_offsets 0 0 [0] []) == Some (0, 0, [0], []))
+  = let m = RDF.Bytes.write_u32_le coto_magic in
+    let v = RDF.Bytes.write_u32_le coto_version in
+    let r = RDF.Bytes.write_u32_le 0 in
+    let p = RDF.Bytes.write_u32_le 0 in
+    let s = RDF.Bytes.write_u64_le 0 in
+    lemma_serialize_offsets_empty_shape ();
+    (* Peel header u32s. *)
+    RDF.Bytes.lemma_parse_write_u32_le_inverse coto_magic
+      (FStar.List.Tot.append v
+        (FStar.List.Tot.append r
+          (FStar.List.Tot.append p s)));
+    RDF.Bytes.lemma_parse_write_u32_le_inverse coto_version
+      (FStar.List.Tot.append r
+        (FStar.List.Tot.append p s));
+    RDF.Bytes.lemma_parse_write_u32_le_inverse 0
+      (FStar.List.Tot.append p s);
+    RDF.Bytes.lemma_parse_write_u32_le_inverse 0 s;
+    (* Peel sentinel u64 + parse_n_u32s 0 []. *)
+    FStar.List.Tot.Properties.append_l_nil s;
+    lemma_parse_n_u64s_one 0 [];
+    lemma_last_of_or_singleton_zero ();
+    lemma_parse_n_u32s_zero []

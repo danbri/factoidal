@@ -191,3 +191,105 @@ let parse_compound_presence (bs : RDF.Bytes.bytes)
                   | None -> None
                   | Some (pairs, _trailing) ->
                     Some (num_rgs, pred_size, obj_size, rg_offsets, pairs)
+
+(* --- Empty base case sublemmas --------------------------------------- *)
+
+let lemma_parse_n_u64s_one (v : nat{v < 18446744073709551616}) (rest : RDF.Bytes.bytes)
+  : Lemma (ensures parse_n_u64s 1
+                     (FStar.List.Tot.append (RDF.Bytes.write_u64_le v) rest)
+                   == Some ([v], rest))
+  = RDF.Bytes.lemma_parse_write_u64_le_inverse v rest
+
+let lemma_parse_n_u64s_zero (bs : RDF.Bytes.bytes)
+  : Lemma (ensures parse_n_u64s 0 bs == Some ([], bs))
+  = ()
+
+let lemma_last_of_or_singleton_zero ()
+  : Lemma (ensures last_of_or [0] 0 == 0)
+  = ()
+
+(* Bridge: serialize_compound_presence 0 0 0 [0] [] reduces to a
+   right-associated FStar.List.Tot.append chain. Mirror of the
+   OffsetsWriter shape lemma; one extra u32 in the header
+   (5 u32s here vs. 4 in OffsetsWriter). *)
+let lemma_serialize_compound_presence_empty_shape ()
+  : Lemma (ensures (
+      let m = RDF.Bytes.write_u32_le copo_magic in
+      let v = RDF.Bytes.write_u32_le copo_version in
+      let r = RDF.Bytes.write_u32_le 0 in
+      let p = RDF.Bytes.write_u32_le 0 in
+      let o = RDF.Bytes.write_u32_le 0 in
+      let s = RDF.Bytes.write_u64_le 0 in
+      serialize_compound_presence 0 0 0 [0] []
+        == FStar.List.Tot.append m
+            (FStar.List.Tot.append v
+              (FStar.List.Tot.append r
+                (FStar.List.Tot.append p
+                  (FStar.List.Tot.append o s))))))
+  = let m = RDF.Bytes.write_u32_le copo_magic in
+    let v = RDF.Bytes.write_u32_le copo_version in
+    let r = RDF.Bytes.write_u32_le 0 in
+    let p = RDF.Bytes.write_u32_le 0 in
+    let o = RDF.Bytes.write_u32_le 0 in
+    let s = RDF.Bytes.write_u64_le 0 in
+    (* build_header: append_tr m (append_tr v (append_tr r (append_tr p o))). *)
+    Lh.lemma_append_tr_eq p o;
+    Lh.lemma_append_tr_eq r (Lh.append_tr p o);
+    Lh.lemma_append_tr_eq v (Lh.append_tr r (Lh.append_tr p o));
+    Lh.lemma_append_tr_eq m (Lh.append_tr v (Lh.append_tr r (Lh.append_tr p o)));
+    (* serialize_u64_list [0] = s; serialize_u64_list [] = []. *)
+    Lh.lemma_append_tr_eq s [];
+    FStar.List.Tot.Properties.append_l_nil s;
+    let off_b = serialize_u64_list [0] in
+    let pair_b = serialize_u64_list [] in
+    Lh.lemma_append_tr_eq off_b pair_b;
+    FStar.List.Tot.Properties.append_l_nil off_b;
+    let header = build_header 0 0 0 in
+    Lh.lemma_append_tr_eq header s;
+    (* Right-associate via four append_assoc applications. *)
+    FStar.List.Tot.Properties.append_assoc m
+      (FStar.List.Tot.append v
+        (FStar.List.Tot.append r
+          (FStar.List.Tot.append p o))) s;
+    FStar.List.Tot.Properties.append_assoc v
+      (FStar.List.Tot.append r
+        (FStar.List.Tot.append p o)) s;
+    FStar.List.Tot.Properties.append_assoc r
+      (FStar.List.Tot.append p o) s;
+    FStar.List.Tot.Properties.append_assoc p o s
+
+(* Empty base case: serialize_compound_presence 0 0 0 [0] [] then
+   parse_compound_presence round-trips to Some(0, 0, 0, [0], []).
+   28 bytes total (20-byte header + 8-byte sentinel u64). *)
+let lemma_parse_serialize_compound_presence_empty_case ()
+  : Lemma (ensures parse_compound_presence
+                     (serialize_compound_presence 0 0 0 [0] [])
+                   == Some (0, 0, 0, [0], []))
+  = let m = RDF.Bytes.write_u32_le copo_magic in
+    let v = RDF.Bytes.write_u32_le copo_version in
+    let r = RDF.Bytes.write_u32_le 0 in
+    let p = RDF.Bytes.write_u32_le 0 in
+    let o = RDF.Bytes.write_u32_le 0 in
+    let s = RDF.Bytes.write_u64_le 0 in
+    lemma_serialize_compound_presence_empty_shape ();
+    (* Peel five header u32s. *)
+    RDF.Bytes.lemma_parse_write_u32_le_inverse copo_magic
+      (FStar.List.Tot.append v
+        (FStar.List.Tot.append r
+          (FStar.List.Tot.append p
+            (FStar.List.Tot.append o s))));
+    RDF.Bytes.lemma_parse_write_u32_le_inverse copo_version
+      (FStar.List.Tot.append r
+        (FStar.List.Tot.append p
+          (FStar.List.Tot.append o s)));
+    RDF.Bytes.lemma_parse_write_u32_le_inverse 0
+      (FStar.List.Tot.append p
+        (FStar.List.Tot.append o s));
+    RDF.Bytes.lemma_parse_write_u32_le_inverse 0
+      (FStar.List.Tot.append o s);
+    RDF.Bytes.lemma_parse_write_u32_le_inverse 0 s;
+    (* Peel sentinel u64 + parse_n_u64s 0 (for pairs). *)
+    FStar.List.Tot.Properties.append_l_nil s;
+    lemma_parse_n_u64s_one 0 [];
+    lemma_last_of_or_singleton_zero ();
+    lemma_parse_n_u64s_zero []
