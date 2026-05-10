@@ -257,7 +257,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              RDF.Canonical.fst \
              RDF.Canonical.Manifest.fst \
              OWL.Vocabulary.fst \
-             Tableau.fst SPARQL11.Algebra.fst \
+             Tableau.fst SPARQL11.IRI.Resolve.fst SPARQL11.Algebra.fst \
              RDF.Pretty.fst \
              OWL.QueryRewrite.fst OWL.QueryEval.fst \
              OWL.Tests.Manifest.fst \
@@ -421,7 +421,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     fstar_pure_hashes.ml \
     RDF_Canonical.ml \
     RDF_Canonical_Manifest.ml \
-    SPARQL11_Algebra.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SHACL_Validation.ml SPARQL11_Parser.ml SPARQL11_Store.ml RDF_Store_Combine.ml SPARQL_Protocol.ml SPARQL_HTTP_RunQuery.ml \
+    SPARQL11_IRI_Resolve.ml SPARQL11_Algebra.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SHACL_Validation.ml SPARQL11_Parser.ml SPARQL11_Store.ml RDF_Store_Combine.ml SPARQL_Protocol.ml SPARQL_HTTP_RunQuery.ml \
     SPARQL_Update_Sandbox.ml \
     SPARQL_Update_Analysis.ml \
     SPARQL_Diagnostics.ml \
@@ -769,7 +769,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_CottasInMem.ml
     fstar_pure_hashes.ml
     RDF_Canonical.ml
-    SPARQL11_Algebra.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SHACL_Validation.ml SPARQL11_Parser.ml
+    SPARQL11_IRI_Resolve.ml SPARQL11_Algebra.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SHACL_Validation.ml SPARQL11_Parser.ml
     SPARQL11_Store.ml
     SPARQL_Protocol.ml
     SPARQL_HTTP_RunQuery.ml

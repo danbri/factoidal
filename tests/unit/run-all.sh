@@ -86,6 +86,7 @@ COMMON_MODULES=(
   SPARQL_Plan_AccessPath
   RDF_CottasStore
   fstar_pure_hashes
+  SPARQL11_IRI_Resolve
   SPARQL11_Algebra
   SPARQL11_Parser
   SPARQL11_Store
