@@ -293,3 +293,102 @@ let lemma_parse_serialize_compound_presence_empty_case ()
     lemma_parse_n_u64s_one 0 [];
     lemma_last_of_or_singleton_zero ();
     lemma_parse_n_u64s_zero []
+
+(* --- General-case round-trip lemma ----------------------------------- *)
+
+(* "All values in xs satisfy < bound". *)
+let rec all_lt (xs : list nat) (bound : nat) : Tot bool (decreases xs) =
+  match xs with
+  | [] -> true
+  | x :: rest -> x < bound && all_lt rest bound
+
+(* parse_n_u64s round-trip: when xs are all < 2^64, parsing
+   `length xs` u64s from `serialize_u64_list xs @ rest` yields
+   `(xs, rest)`. Inductive on xs. *)
+let rec lemma_parse_n_u64s_serialize_u64_list
+  (xs : list nat) (rest : RDF.Bytes.bytes)
+  : Lemma
+      (requires all_lt xs 18446744073709551616)
+      (ensures parse_n_u64s (FStar.List.Tot.length xs)
+                 (FStar.List.Tot.append (serialize_u64_list xs) rest)
+               == Some (xs, rest))
+      (decreases xs)
+  = match xs with
+    | [] -> ()
+    | x :: rest_xs ->
+      lemma_parse_n_u64s_serialize_u64_list rest_xs rest;
+      let head = RDF.Bytes.write_u64_le x in
+      let tail = serialize_u64_list rest_xs in
+      Lh.lemma_append_tr_eq head tail;
+      FStar.List.Tot.Properties.append_assoc head tail rest;
+      RDF.Bytes.lemma_parse_write_u64_le_inverse x
+        (FStar.List.Tot.append tail rest)
+
+(* General case: serialize_compound_presence num_rgs pred_size obj_size
+   rg_offsets pairs round-trips back. Same shape as OffsetsWriter
+   except both sections are u64 lists; one extra header u32. *)
+#push-options "--z3rlimit 30"
+let lemma_parse_serialize_compound_presence
+  (num_rgs : nat) (pred_size : nat) (obj_size : nat)
+  (rg_offsets : list nat) (pairs : list nat)
+  : Lemma
+      (requires num_rgs < 4294967296
+                /\ pred_size < 4294967296
+                /\ obj_size < 4294967296
+                /\ FStar.List.Tot.length rg_offsets == num_rgs + 1
+                /\ all_lt rg_offsets 18446744073709551616
+                /\ last_of_or rg_offsets 0
+                   == FStar.List.Tot.length pairs
+                /\ all_lt pairs 18446744073709551616)
+      (ensures parse_compound_presence
+                 (serialize_compound_presence num_rgs pred_size obj_size
+                                              rg_offsets pairs)
+               == Some (num_rgs, pred_size, obj_size, rg_offsets, pairs))
+  = let m = RDF.Bytes.write_u32_le copo_magic in
+    let v = RDF.Bytes.write_u32_le copo_version in
+    let r = RDF.Bytes.write_u32_le num_rgs in
+    let p = RDF.Bytes.write_u32_le pred_size in
+    let o = RDF.Bytes.write_u32_le obj_size in
+    let off_b = serialize_u64_list rg_offsets in
+    let pair_b = serialize_u64_list pairs in
+    (* Bridge build_header's append_tr chain. *)
+    Lh.lemma_append_tr_eq p o;
+    Lh.lemma_append_tr_eq r (Lh.append_tr p o);
+    Lh.lemma_append_tr_eq v (Lh.append_tr r (Lh.append_tr p o));
+    Lh.lemma_append_tr_eq m (Lh.append_tr v (Lh.append_tr r (Lh.append_tr p o)));
+    let header = build_header num_rgs pred_size obj_size in
+    let off_pair = FStar.List.Tot.append off_b pair_b in
+    Lh.lemma_append_tr_eq off_b pair_b;
+    Lh.lemma_append_tr_eq header off_pair;
+    (* Re-associate the header chain with off_pair tail. *)
+    FStar.List.Tot.Properties.append_assoc m
+      (FStar.List.Tot.append v
+        (FStar.List.Tot.append r (FStar.List.Tot.append p o))) off_pair;
+    FStar.List.Tot.Properties.append_assoc v
+      (FStar.List.Tot.append r (FStar.List.Tot.append p o)) off_pair;
+    FStar.List.Tot.Properties.append_assoc r
+      (FStar.List.Tot.append p o) off_pair;
+    FStar.List.Tot.Properties.append_assoc p o off_pair;
+    (* Peel five header u32s. *)
+    RDF.Bytes.lemma_parse_write_u32_le_inverse copo_magic
+      (FStar.List.Tot.append v
+        (FStar.List.Tot.append r
+          (FStar.List.Tot.append p
+            (FStar.List.Tot.append o off_pair))));
+    RDF.Bytes.lemma_parse_write_u32_le_inverse copo_version
+      (FStar.List.Tot.append r
+        (FStar.List.Tot.append p
+          (FStar.List.Tot.append o off_pair)));
+    RDF.Bytes.lemma_parse_write_u32_le_inverse num_rgs
+      (FStar.List.Tot.append p
+        (FStar.List.Tot.append o off_pair));
+    RDF.Bytes.lemma_parse_write_u32_le_inverse pred_size
+      (FStar.List.Tot.append o off_pair);
+    RDF.Bytes.lemma_parse_write_u32_le_inverse obj_size off_pair;
+    (* Peel rg_offsets list. *)
+    lemma_parse_n_u64s_serialize_u64_list rg_offsets pair_b;
+    assert (last_of_or rg_offsets 0
+            == FStar.List.Tot.length pairs);
+    FStar.List.Tot.Properties.append_l_nil pair_b;
+    lemma_parse_n_u64s_serialize_u64_list pairs []
+#pop-options

@@ -282,3 +282,137 @@ let lemma_parse_serialize_offsets_empty_case ()
     lemma_parse_n_u64s_one 0 [];
     lemma_last_of_or_singleton_zero ();
     lemma_parse_n_u32s_zero []
+
+(* --- General-case round-trip lemma ----------------------------------- *)
+
+(* "All values in xs satisfy < bound". Pure structural. *)
+let rec all_lt (xs : list nat) (bound : nat) : Tot bool (decreases xs) =
+  match xs with
+  | [] -> true
+  | x :: rest -> x < bound && all_lt rest bound
+
+(* parse_n_u64s round-trip: when xs are all < 2^64, parsing
+   `length xs` u64s from `serialize_u64_list xs @ rest` yields
+   `(xs, rest)`. Inductive on xs. *)
+let rec lemma_parse_n_u64s_serialize_u64_list
+  (xs : list nat) (rest : RDF.Bytes.bytes)
+  : Lemma
+      (requires all_lt xs 18446744073709551616)
+      (ensures parse_n_u64s (FStar.List.Tot.length xs)
+                 (FStar.List.Tot.append (serialize_u64_list xs) rest)
+               == Some (xs, rest))
+      (decreases xs)
+  = match xs with
+    | [] -> ()
+    | x :: rest_xs ->
+      lemma_parse_n_u64s_serialize_u64_list rest_xs rest;
+      let head = RDF.Bytes.write_u64_le x in
+      let tail = serialize_u64_list rest_xs in
+      Lh.lemma_append_tr_eq head tail;
+      FStar.List.Tot.Properties.append_assoc head tail rest;
+      RDF.Bytes.lemma_parse_write_u64_le_inverse x
+        (FStar.List.Tot.append tail rest)
+
+(* parse_n_u32s round-trip: analogous for u32 lists. *)
+let rec lemma_parse_n_u32s_serialize_u32_list
+  (xs : list nat) (rest : RDF.Bytes.bytes)
+  : Lemma
+      (requires all_lt xs 4294967296)
+      (ensures parse_n_u32s (FStar.List.Tot.length xs)
+                 (FStar.List.Tot.append (serialize_u32_list xs) rest)
+               == Some (xs, rest))
+      (decreases xs)
+  = match xs with
+    | [] -> ()
+    | x :: rest_xs ->
+      lemma_parse_n_u32s_serialize_u32_list rest_xs rest;
+      let head = RDF.Bytes.write_u32_le x in
+      let tail = serialize_u32_list rest_xs in
+      Lh.lemma_append_tr_eq head tail;
+      FStar.List.Tot.Properties.append_assoc head tail rest;
+      RDF.Bytes.lemma_parse_write_u32_le_inverse x
+        (FStar.List.Tot.append tail rest)
+
+(* last_of_or returns the last element of a non-empty list. *)
+let rec lemma_last_of_or_nonempty
+  (xs : list nat) (default_ : nat)
+  : Lemma
+      (requires Cons? xs)
+      (ensures (
+        match xs with
+        | [x] -> last_of_or xs default_ == x
+        | _ :: _ -> last_of_or xs default_ == last_of_or (FStar.List.Tot.tl xs) default_))
+      (decreases xs)
+  = match xs with
+    | [_] -> ()
+    | _ :: rest -> ()
+
+(* General case: serialize_offsets num_rgs num_preds rg_offsets subject_ids
+   round-trips back to (num_rgs, num_preds, rg_offsets, subject_ids).
+
+   Preconditions:
+   - num_rgs, num_preds < 2^32 (else serialize returns []).
+   - length rg_offsets == num_rgs * num_preds + 1 (parser reads this many
+     u64s; mismatch breaks the round-trip).
+   - all rg_offsets[i] < 2^64.
+   - last_of_or rg_offsets 0 == length subject_ids (parser computes
+     total_subjs from the trailing offset; mismatch breaks the round-trip).
+   - all subject_ids[i] < 2^32. *)
+#push-options "--z3rlimit 30"
+let lemma_parse_serialize_offsets
+  (num_rgs : nat) (num_preds : nat)
+  (rg_offsets : list nat) (subject_ids : list nat)
+  : Lemma
+      (requires num_rgs < 4294967296
+                /\ num_preds < 4294967296
+                /\ FStar.List.Tot.length rg_offsets
+                   == num_rgs `op_Multiply` num_preds + 1
+                /\ all_lt rg_offsets 18446744073709551616
+                /\ last_of_or rg_offsets 0
+                   == FStar.List.Tot.length subject_ids
+                /\ all_lt subject_ids 4294967296)
+      (ensures parse_offsets
+                 (serialize_offsets num_rgs num_preds rg_offsets subject_ids)
+               == Some (num_rgs, num_preds, rg_offsets, subject_ids))
+  = let m = RDF.Bytes.write_u32_le coto_magic in
+    let v = RDF.Bytes.write_u32_le coto_version in
+    let r = RDF.Bytes.write_u32_le num_rgs in
+    let p = RDF.Bytes.write_u32_le num_preds in
+    let off_b = serialize_u64_list rg_offsets in
+    let subj_b = serialize_u32_list subject_ids in
+    (* Bridge build_header's append_tr chain to FStar.List.Tot.append. *)
+    Lh.lemma_append_tr_eq r p;
+    Lh.lemma_append_tr_eq v (Lh.append_tr r p);
+    Lh.lemma_append_tr_eq m (Lh.append_tr v (Lh.append_tr r p));
+    let header = build_header num_rgs num_preds in
+    let off_subj = FStar.List.Tot.append off_b subj_b in
+    Lh.lemma_append_tr_eq off_b subj_b;
+    Lh.lemma_append_tr_eq header off_subj;
+    (* Re-associate: header @ (off_b @ subj_b)
+                  == m @ (v @ (r @ (p @ (off_b @ subj_b)))). *)
+    FStar.List.Tot.Properties.append_assoc m
+      (FStar.List.Tot.append v (FStar.List.Tot.append r p)) off_subj;
+    FStar.List.Tot.Properties.append_assoc v
+      (FStar.List.Tot.append r p) off_subj;
+    FStar.List.Tot.Properties.append_assoc r p off_subj;
+    (* Peel four header u32s. *)
+    RDF.Bytes.lemma_parse_write_u32_le_inverse coto_magic
+      (FStar.List.Tot.append v
+        (FStar.List.Tot.append r
+          (FStar.List.Tot.append p off_subj)));
+    RDF.Bytes.lemma_parse_write_u32_le_inverse coto_version
+      (FStar.List.Tot.append r
+        (FStar.List.Tot.append p off_subj));
+    RDF.Bytes.lemma_parse_write_u32_le_inverse num_rgs
+      (FStar.List.Tot.append p off_subj);
+    RDF.Bytes.lemma_parse_write_u32_le_inverse num_preds off_subj;
+    (* Peel rg_offsets list (n_offsets u64s). After this:
+       parse_n_u64s n_offsets (off_b @ subj_b) == Some (rg_offsets, subj_b). *)
+    lemma_parse_n_u64s_serialize_u64_list rg_offsets subj_b;
+    (* parse_offsets computes total_subjs = last_of_or rg_offsets 0;
+       precondition equates this with length subject_ids. *)
+    assert (last_of_or rg_offsets 0
+            == FStar.List.Tot.length subject_ids);
+    FStar.List.Tot.Properties.append_l_nil subj_b;
+    lemma_parse_n_u32s_serialize_u32_list subject_ids []
+#pop-options
