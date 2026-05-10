@@ -200,29 +200,121 @@ let lemma_parse_write_u32_le_inverse
                    == Some (n, rest))
   = ()
 
-(* parse_u64_le ((write_u64_le n) @ rest) == Some (n, rest)
-   for n < 2^64 and any [rest]. Same shape as the u32_le lemma; the
-   arithmetic identity is the 8-byte version.
+(* --- u64_le inverse: decomposition proof (#252 closed) -------------
 
-   Status: ADMITTED. SMT (z3 4.13.3) discharges the u32 case
-   automatically but stalls on the 8-byte modular-arithmetic
-   identity even at rlimit 200 with explicit byte-decomposition
-   assertions (the solver sits at 0% CPU for 20+ minutes — the
-   query's matchings explode). Two viable proof strategies for #252:
-     (a) Decompose n = lo + hi * 2^32 with lo = n % 2^32 and
-         hi = n / 2^32, prove
-           write_u64_le n == write_u32_le lo @ write_u32_le hi
-         as a sublemma (4-byte arithmetic, SMT-tractable), then
-         compose two applications of lemma_parse_write_u32_le_inverse
-         to walk the 8-byte parse.
-     (b) Tactics.V2 with the BV theory + `compute()`.
-   The empirical witness in the four CI hash tests covers u64
-   round-trip on representative fixtures meanwhile. *)
+   The straight-line analogue to lemma_parse_write_u32_le_inverse stalls
+   in z3 4.13.3 (a quantifier-matching loop on the 8-term polynomial
+   identity n == sum_i b_i * 256^i). The decomposition strategy below
+   sidesteps that pathology: we show
+       write_u64_le n == write_u32_le (n%2^32) @ write_u32_le (n/2^32)
+   via byte-by-byte equality, then compose two applications of the u32
+   inverse lemma. SMT only ever sees 4-byte arithmetic.
+
+   Foundation lemmas from FStar.Math.Lemmas:
+     - modulo_modulo_lemma         : (a % (b*c)) % b = a % b
+     - modulo_division_lemma       : (a % (b*c)) / b = (a/b) % c
+     - division_multiplication_lemma : a / (b*c) = (a/b)/c
+     - lemma_div_mod               : n = (n/b)*b + (n%b)
+
+   The 8 per-byte equalities chain these into the decomposition. Full
+   proof outline + war stories in
+   docs/designissues/2026-05-10-issue-252-u64-lemma-proof-sketch.md. *)
+
+(* LO half: bytes 0..3 of write_u64_le n equal bytes 0..3 of
+   write_u32_le (n%2^32). *)
+
+let lemma_lo_byte0 (n : nat{n < 18446744073709551616})
+  : Lemma (ensures (n % 4294967296) % 256 == n % 256)
+  = FStar.Math.Lemmas.modulo_modulo_lemma n 256 16777216
+
+let lemma_lo_byte1 (n : nat{n < 18446744073709551616})
+  : Lemma (ensures ((n % 4294967296) / 256) % 256 == (n / 256) % 256)
+  = FStar.Math.Lemmas.modulo_division_lemma n 256 16777216;
+    FStar.Math.Lemmas.modulo_modulo_lemma (n / 256) 256 65536
+
+let lemma_lo_byte2 (n : nat{n < 18446744073709551616})
+  : Lemma (ensures ((n % 4294967296) / 65536) % 256 == (n / 65536) % 256)
+  = FStar.Math.Lemmas.modulo_division_lemma n 65536 65536;
+    FStar.Math.Lemmas.modulo_modulo_lemma (n / 65536) 256 256
+
+let lemma_lo_byte3 (n : nat{n < 18446744073709551616})
+  : Lemma (ensures ((n % 4294967296) / 16777216) % 256 == (n / 16777216) % 256)
+  = FStar.Math.Lemmas.modulo_division_lemma n 16777216 256
+
+(* HI half: bytes 4..7 of write_u64_le n equal bytes 0..3 of
+   write_u32_le (n/2^32). hi_byte0 is reflexive after substitution. *)
+
+let lemma_hi_byte1 (n : nat{n < 18446744073709551616})
+  : Lemma (ensures ((n / 4294967296) / 256) % 256 == (n / 1099511627776) % 256)
+  = FStar.Math.Lemmas.division_multiplication_lemma n 4294967296 256
+
+let lemma_hi_byte2 (n : nat{n < 18446744073709551616})
+  : Lemma (ensures ((n / 4294967296) / 65536) % 256 == (n / 281474976710656) % 256)
+  = FStar.Math.Lemmas.division_multiplication_lemma n 4294967296 65536
+
+let lemma_hi_byte3 (n : nat{n < 18446744073709551616})
+  : Lemma (ensures ((n / 4294967296) / 16777216) % 256 == (n / 72057594037927936) % 256)
+  = FStar.Math.Lemmas.division_multiplication_lemma n 4294967296 16777216
+
+(* Decomposition: write_u64_le n == write_u32_le lo @ write_u32_le hi
+   where lo = n%2^32, hi = n/2^32. The seven byte-equalities above
+   give SMT enough to discharge cons-list equality byte-by-byte. *)
+let lemma_write_u64_le_decompose (n : nat{n < 18446744073709551616})
+  : Lemma (requires True)
+          (ensures (
+            let lo : nat = n % 4294967296 in
+            let hi : nat = n / 4294967296 in
+            lo < 4294967296 /\ hi < 4294967296 /\
+            write_u64_le n == FStar.List.Tot.append (write_u32_le lo) (write_u32_le hi)))
+  = lemma_lo_byte0 n;
+    lemma_lo_byte1 n;
+    lemma_lo_byte2 n;
+    lemma_lo_byte3 n;
+    lemma_hi_byte1 n;
+    lemma_hi_byte2 n;
+    lemma_hi_byte3 n
+
+(* Bridge: parsing 8 bytes as u64 = parsing first 4 as u32 + parsing
+   next 4 as u32 scaled by 2^32. Pure pattern-matching; closes in ms. *)
+let lemma_parse_u64_decompose
+  (b0 b1 b2 b3 b4 b5 b6 b7 : byte) (rest : bytes)
+  : Lemma (ensures (
+      match parse_u32_le [b0; b1; b2; b3] with
+      | Some (lo, _) ->
+        (match parse_u32_le [b4; b5; b6; b7] with
+         | Some (hi, _) ->
+           parse_u64_le (b0 :: b1 :: b2 :: b3 :: b4 :: b5 :: b6 :: b7 :: rest)
+             == Some (lo + hi `op_Multiply` 4294967296, rest)
+         | None -> False)
+      | None -> False))
+  = ()
+
+(* The target lemma — composes everything. Verifies in ~9s under
+   z3 4.13.3 with default rlimit. *)
 let lemma_parse_write_u64_le_inverse
   (n : nat{n < 18446744073709551616}) (rest : bytes)
   : Lemma (ensures parse_u64_le (FStar.List.Tot.append (write_u64_le n) rest)
                    == Some (n, rest))
-  = admit ()
+  = let lo : nat = n % 4294967296 in
+    let hi : nat = n / 4294967296 in
+    (* Decompose write_u64_le into the two write_u32_le slabs. *)
+    lemma_write_u64_le_decompose n;
+    (* Re-associate: (lo @ hi) @ rest = lo @ (hi @ rest). The right
+       associativity is what parse_u64_le's pattern needs. *)
+    FStar.List.Tot.Properties.append_assoc
+      (write_u32_le lo) (write_u32_le hi) rest;
+    (* Two applications of the u32 inverse — peel lo, then peel hi. *)
+    lemma_parse_write_u32_le_inverse lo (FStar.List.Tot.append (write_u32_le hi) rest);
+    lemma_parse_write_u32_le_inverse hi rest;
+    (* Bridge: parse_u64_le's 8-byte sum factors as parse_u32_le-on-lo
+       + parse_u32_le-on-hi * 2^32. The match-binding gives SMT byte
+       witnesses to instantiate lemma_parse_u64_decompose. *)
+    (match write_u32_le lo, write_u32_le hi with
+     | [b0; b1; b2; b3], [b4; b5; b6; b7] ->
+        lemma_parse_u64_decompose b0 b1 b2 b3 b4 b5 b6 b7 rest
+     | _ -> ());
+    (* Closing arithmetic: n = (n%2^32) + (n/2^32) * 2^32. *)
+    FStar.Math.Lemmas.lemma_div_mod n 4294967296
 
 (* parse_n_bytes (length bs) (bs @ rest) == Some (bs, rest)
    for any byte sequence [bs] and any tail [rest].
