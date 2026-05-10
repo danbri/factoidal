@@ -267,7 +267,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              Parser.Combinators.fst Parser.TurtleScanner.fst SPARQL11.Parser.fst \
              Parser.NTriples.fst Parser.Turtle.fst \
              Parser.NQuads.fst Parser.TriG.fst \
-             Parser.XML.fst Parser.RDFXML.fst Parser.RIFXML.fst \
+             Parser.XML.fst XML.Wellformedness.fst Parser.RDFXML.fst Parser.RIFXML.fst \
              RIF.Core.Eval.fst RIF.Core.Tests.fst \
              Parser.SRX.fst Parser.CSVResults.fst \
              Parser.JSONResults.fst \
@@ -387,7 +387,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   COMMON_MODULES="Util_Log.ml RDF_Format.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml RDF_NQuads_Serialize.ml Parquet_Footer.ml OWL_Vocabulary.ml Tableau.ml \
     Parser_FastString.ml Parser_IRI.ml \
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
-    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml \
+    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
     SPARQL_JSON_Escape.ml \
     SPARQL_Eval_TimeBudget.ml \
@@ -744,7 +744,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml RDF_NQuads_Serialize.ml Parquet_Footer.ml OWL_Vocabulary.ml Tableau.ml
     Parser_FastString.ml Parser_IRI.ml
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml
-    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml
+    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml Parser_RDFXML.ml
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
     SPARQL_JSON_Escape.ml
     SPARQL_HTTP_Response.ml

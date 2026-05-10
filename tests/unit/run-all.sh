@@ -60,6 +60,7 @@ COMMON_MODULES=(
   Parser_NQuads
   Parser_TriG
   Parser_XML
+  XML_Wellformedness
   Parser_RDFXML
   Parser_SRX
   Parser_CSVResults
