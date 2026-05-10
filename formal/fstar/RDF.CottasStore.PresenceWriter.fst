@@ -98,3 +98,49 @@ let serialize_presence
   else
     let header = build_header num_rgs num_tokens in
     Lh.append_tr header bitmap
+
+(* --- Round-trip parser ------------------------------------------------ *)
+
+(* parse_presence bs
+     Inverse of [serialize_presence]. Reads the COTP header, validates
+     magic + version, then peels (num_rgs, num_tokens) and the trailing
+     bitmap of length ceil(num_rgs * num_tokens / 8) bytes.
+
+     Returns [None] if any of:
+       - magic mismatch ('COTP' = 0x50544f43)
+       - version mismatch (currently 1)
+       - input shorter than declared by header
+       - header counts overflow u32
+
+     The caller's expectation (round-trip witness):
+       parse_presence (serialize_presence num_rgs num_tokens bm)
+         == Some (num_rgs, num_tokens, bm)
+     for any (num_rgs, num_tokens) under 2^32 and any bitmap whose
+     length matches ceil(num_rgs * num_tokens / 8). The CI hash test
+     in tests/unit/presence_writer_roundtrip.ml gives empirical
+     evidence; promotion to a formal F* lemma is deferred. *)
+let parse_presence (bs : RDF.Bytes.bytes)
+  : Tot (option (nat & nat & RDF.Bytes.bytes))
+  =
+  match RDF.Bytes.parse_u32_le bs with
+  | None -> None
+  | Some (m, after_magic) ->
+    if not (m = presence_magic) then None
+    else
+      match RDF.Bytes.parse_u32_le after_magic with
+      | None -> None
+      | Some (v, after_version) ->
+        if not (v = presence_version) then None
+        else
+          match RDF.Bytes.parse_u32_le after_version with
+          | None -> None
+          | Some (num_rgs, after_rgs) ->
+            match RDF.Bytes.parse_u32_le after_rgs with
+            | None -> None
+            | Some (num_tokens, after_header) ->
+              let bits : nat = num_rgs `op_Multiply` num_tokens in
+              let needed : nat = (bits + 7) / 8 in
+              match RDF.Bytes.parse_n_bytes needed after_header with
+              | None -> None
+              | Some (bitmap, _trailing) ->
+                Some (num_rgs, num_tokens, bitmap)
