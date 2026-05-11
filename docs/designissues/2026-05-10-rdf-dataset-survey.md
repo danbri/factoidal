@@ -338,6 +338,65 @@ LOD-a-lot HDT) and is excluded by request.
 | EU Cellar / EUR-Lex       | EU re-use     | yes (login) | RDF/XML            |
 | OpenCitations             | CC0           | yes        | NT + CSV            |
 
+## Hosting on GitHub
+
+Tiny + small + most of medium fits cleanly on GitHub; large is
+borderline; the biggest two need an external mirror.
+
+### GitHub storage limits
+
+| Mechanism | Per-file cap | Total / cost |
+|---|---|---|
+| Plain git push | 100 MB hard reject, 50 MB warning | ~5 GB repo soft cap |
+| Git LFS | 2 GB / file | 1 GB storage + 1 GB bandwidth free/month, then $5/mo per 50 GB pack |
+| Release assets | 2 GB / file | No documented repo total; fair-use bandwidth |
+| Issue / PR attachments | 25 MB images, 10 MB other | not a real distribution channel |
+
+Release assets are the right tool for dataset distribution: no
+per-repo size ceiling, public, served from a CDN, versionable
+(`v2026-05-snapshot`), and they do not count against repo size.
+LFS only earns its keep if the file needs to be in the working tree.
+
+### What fits where, by dataset (compressed, ballpark)
+
+| Dataset | ~Size compressed | Where |
+|---|---|---|
+| Nobel Prize | 15 MB | plain git |
+| PeriodO | 10 MB | plain git |
+| BBC Wildlife | few MB | plain git |
+| Pleiades daily dumps | 10–50 MB | plain git |
+| Nomisma concepts | 10–50 MB | plain git |
+| AGROVOC CORE | 50–100 MB | plain git or LFS |
+| Princeton WordNet | 50–100 MB | plain git or LFS |
+| Project Gutenberg metadata | ~100 MB | LFS (sits on the 100 MB line) |
+| Getty AAT | ~150 MB | LFS or release |
+| Getty TGN, ULAN | 300 MB – 1 GB each | release asset |
+| LCSH SKOS-RDF | ~40–230 MB | LFS or release |
+| Rijksmuseum NT | ~0.5–1 GB | release asset |
+| FactGrid | hundreds of MB | LFS or release |
+| GeoNames RDF | 2–3 GB | release asset (split to stay ≤ 2 GB/file) |
+| lobid-gnd | hundreds of MB – 1 GB | release asset |
+| DBLP RDF NT | 3–5 GB | release asset, split (`.001`, `.002`) |
+| VIAF clusters | ~2.1 GB | release asset, single or split |
+| LCNAF | 3–7 GB | release asset, split |
+| EU Cellar / EUR-Lex full | tens of GB | external mirror only |
+| OpenCitations full | tens of GB | external mirror only |
+
+### Suggested layout
+
+1. One repo `factoidal-corpus` (or a sub-path in this repo), with a
+   `manifest.json` per release that lists URL + SHA-256 + licence +
+   triple count + format.
+2. Tiny / small originals checked in as `.nt.gz` directly so they are
+   cloneable without extra tooling.
+3. Medium / large stored as release assets under a dated tag
+   (`v2026-05-10`); a fetch script downloads + verifies hashes.
+4. For files > 2 GB, split with `split -b 1900M` and reassemble
+   client-side; manifest records the part list.
+5. CELLAR full + OpenCitations full get a documented external URL
+   only — pin the upstream URL + hash in the manifest, do not try
+   to host them.
+
 ## Next steps
 
 If we want to commit to this as the F\* engine's regression corpus,
@@ -345,7 +404,8 @@ the obvious moves are:
 
 1. Pick one tiny + one small + one medium + one large for the
    nightly benchmark (e.g. Nobel + Pleiades + DBLP + OpenCitations).
-2. Mirror those dumps on a stable URL we control (originals rot).
+2. Mirror those dumps on a stable URL we control (originals rot) —
+   GitHub release assets per the layout above.
 3. Pin a snapshot date; bump it deliberately, not silently, so
    regressions can be attributed to the engine, not the data.
 4. Record VoID / triple-count / format-distribution metadata next to
