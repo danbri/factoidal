@@ -281,6 +281,96 @@ LOD-a-lot HDT) and is excluded by request.
 
 ---
 
+## More candidates (round 2)
+
+A second sweep turned up these. Same bucket conventions.
+
+### Tiny
+
+- **GEMET** — General Multilingual Environmental Thesaurus
+  (EEA). SKOS in 37+ languages, ~6 K concepts, single RDF/XML file,
+  CC-BY. Linked to AGROVOC, EuroVoc, DBpedia.
+  [eionet.europa.eu/gemet/en/exports/rdf/latest](https://www.eionet.europa.eu/gemet/en/exports/rdf/latest).
+  Pairs naturally with AGROVOC + EuroVoc + CELLAR.
+- **STW Thesaurus for Economics** (ZBW). ~6 K skos:Concept descriptors
+  + ~19 K altLabels in English + German, CC BY 4.0. SKOS dump from
+  [zbw.eu/stw](https://zbw.eu/stw/version/latest/).
+- **TheSoz** — Thesaurus for the Social Sciences (GESIS). ~12 K
+  keywords in DE/EN/FR. Cross-linked to STW, AGROVOC, DBpedia.
+  [lod.gesis.org/thesoz/](http://lod.gesis.org/thesoz/).
+- **WALS** — World Atlas of Language Structures. 2 650 languages
+  × 141 typological features, ~58 K datapoints. N-Triples dump
+  from [wals.info/download](https://wals.info/download); also as
+  CLDF.
+- **Glottolog** — catalogue of the world's languages, families,
+  dialects. SKOS for family relations. Bulk download from
+  [glottolog.org](https://glottolog.org/) (CC BY).
+- **Linked Jazz** — relationships in the jazz community, derived
+  from oral-history transcripts and crowdsourcing. NT / TTL / XML /
+  JSON-LD dumps, updated hourly. Tiny but charming.
+  [linkedjazz.org/api](https://linkedjazz.org/api/).
+- **Kerameikos** — ancient Greek pottery (vases, painters, shapes,
+  fabrics). RDF/XML dump + REST API + SPARQL.
+  [kerameikos.org](https://kerameikos.iath.virginia.edu/). Pairs
+  with Nomisma + Pleiades + PeriodO.
+- **SNAP:DRGN** — Standards for Networking Ancient Prosopographies.
+  RDF authority list for ancient persons; joins Pleiades + classical
+  databases via a common person vocabulary.
+  [snapdrgn.net](https://snapdrgn.net/).
+
+### Small
+
+- **ChEBI** — Chemical Entities of Biological Interest (EBI).
+  Ontology of small molecules, OWL download, CC BY. Wider audience
+  than the dense bio-RDF datasets (drugs, foods, contaminants all
+  appear here). [ebi.ac.uk/chebi](https://www.ebi.ac.uk/chebi/).
+- **WikiPathways** — community-curated biological pathways.
+  Two RDF graphs (GPMLRDF + WPRDF), Turtle bulk download.
+  [wikipathways.org/rdf.html](https://www.wikipathways.org/rdf.html).
+  CC0. Pairs with ChEBI for chemistry-to-biology joins.
+- **MeSH RDF** — Medical Subject Headings (US NLM).
+  Single `mesh.nt.gz`, updated nightly, public-domain.
+  [hhs.github.io/meshrdf/](https://hhs.github.io/meshrdf/). Joins
+  to MEDLINE / PubMed and to LCSH via dedicated mappings.
+- **NCI Thesaurus** — cancer-domain reference terminology (diseases,
+  genes, drugs, agents). OWL distribution, CC BY 4.0, from
+  [ftp1.nci.nih.gov/pub/cacore/EVS/NCI_Thesaurus/](ftp://ftp1.nci.nih.gov/pub/cacore/EVS/NCI_Thesaurus/).
+- **Linked Earth** — paleoclimate data via the LiPD ontology. RDF
+  per study + community wiki. Niche-feeling but the modelling
+  (proxies, archives, observations, ages) gives an honest
+  scientific-cube workload.
+  [linked.earth](https://wiki.linked.earth/Linked_Paleo_Data).
+
+### Medium
+
+- **BNB — British National Bibliography (Linked Open)**. ~4.4 M
+  records of UK + Ireland publications since the 1950s. Bulk dumps
+  in RDF/XML + N-Triples, CC0. Links to VIAF, ISNI, LCSH, Lexvo,
+  GeoNames, Dewey. [bnb.data.bl.uk](https://bnb.data.bl.uk/).
+- **data.bnf.fr** — Bibliothèque nationale de France. Works,
+  authors, subjects, places as RDF (XML / NT / N3) under Licence
+  Ouverte (commercial OK).
+  [api.bnf.fr/dumps-de-databnffr](https://api.bnf.fr/dumps-de-databnffr).
+  Complement to BNB for non-English literature.
+- **Eurostat Linked Data** — EU statistics via the RDF Data Cube
+  vocabulary; observations × dimensions × measures at country level.
+  [eurostat.linked-statistics.org](https://github.com/linked-statistics/eurostat).
+  Useful for testing aggregation / GROUP BY plans on a real cube,
+  not a synthetic one.
+
+## Dropped (do not pursue)
+
+- **Open Library** — not officially RDF; the data model
+  doesn't follow library standards and content negotiation was
+  unreliable last time anyone checked.
+- **Dewey.info** — the experimental SKOS/RDF service has not been
+  online since 2015; current Dewey linked data is subscription-only.
+- **GADM** — non-commercial-only license; fine for academic
+  experiments but a poor fit for a long-lived test corpus.
+- **ICD-11** — RDF/SKOS is API-only (no bulk dump that I could find).
+- **GoodRelations / Schema.org** — vocabularies, not datasets; live
+  in the "tiny vocabulary" pile alongside FOAF / SKOS / RDFS.
+
 ## Honourable mentions (not surveyed in detail)
 
 - **British Museum** — RDF / CIDOC-CRM via SPARQL endpoint at
@@ -301,16 +391,22 @@ LOD-a-lot HDT) and is excluded by request.
 
 ## Pairings worth trying
 
-- **Pleiades × PeriodO × Nomisma** — ancient places × periods ×
-  coins. Beautiful three-way join through small datasets; total
-  well under 10 M triples.
+- **Pleiades × PeriodO × Nomisma × Kerameikos × SNAP:DRGN** — five
+  ancient-world datasets, all small, sharing a common authority
+  layer for places / periods / people / coins / pots. Total still
+  under ~10 M triples.
 - **DBLP × OpenCitations × ORCID** — scholarly graph; tests how
   the engine joins across two different bibliographic universes.
 - **Getty AAT × Rijksmuseum × ULAN** — museum metadata pipeline,
   exercises CIDOC-CRM reasoning and SKOS broader-narrower hops.
-- **AGROVOC × EuroVoc × CELLAR** — agriculture vocabulary mapped to
-  EU thesaurus mapped to legislative texts that cite them. Real
-  policy-research workflow.
+- **AGROVOC × EuroVoc × GEMET × CELLAR** — agriculture +
+  environment thesauri mapped to EU legislative texts that cite
+  them. Real policy-research workflow with three different SKOS
+  schemes meeting in the middle.
+
+- **MeSH × ChEBI × WikiPathways × NCI Thesaurus** — biomedical
+  stack: subject headings → small molecules → pathways → cancer
+  terminology. All open licences, all RDF, all medium-or-smaller.
 - **lobid-gnd × VIAF × DBLP** — cross-walking three different
   authority files for the same people; classic owl:sameAs /
   skos:exactMatch handling.
