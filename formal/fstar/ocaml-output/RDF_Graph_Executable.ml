@@ -342,6 +342,64 @@ let rec build_indexed_aux (g : triple Prims.list) (acc : indexed_graph) :
   match g with
   | [] -> acc
   | t::rest -> build_indexed_aux rest (add_triple_to_indexes acc t)
+let bucket_key_pred (t : triple) :
+  Prims.string FStar_Pervasives_Native.option=
+  FStar_Pervasives_Native.Some (t.p)
+let bucket_key_subj (t : triple) :
+  Prims.string FStar_Pervasives_Native.option=
+  FStar_Pervasives_Native.Some (subject_to_key t.s)
+let bucket_key_obj (t : triple) :
+  Prims.string FStar_Pervasives_Native.option= term_to_key_opt t.o
+let bucket_key_sp (t : triple) : Prims.string FStar_Pervasives_Native.option=
+  FStar_Pervasives_Native.Some (sp_key t.s t.p)
+let bucket_key_po (t : triple) : Prims.string FStar_Pervasives_Native.option=
+  po_key_opt t.p t.o
+let bucket_key_so (t : triple) : Prims.string FStar_Pervasives_Native.option=
+  so_key_opt t.s t.o
+let triple_cmp_by_key
+  (key_of : triple -> Prims.string FStar_Pervasives_Native.option)
+  (t1 : triple) (t2 : triple) : Prims.int=
+  match ((key_of t1), (key_of t2)) with
+  | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.None) ->
+      Prims.int_zero
+  | (FStar_Pervasives_Native.None, FStar_Pervasives_Native.Some uu___) ->
+      (Prims.of_int (-1))
+  | (FStar_Pervasives_Native.Some uu___, FStar_Pervasives_Native.None) ->
+      Prims.int_one
+  | (FStar_Pervasives_Native.Some k1, FStar_Pervasives_Native.Some k2) ->
+      FStar_String.compare k1 k2
+let rec group_sorted_aux
+  (key_of : triple -> Prims.string FStar_Pervasives_Native.option)
+  (ts : triple Prims.list)
+  (cur_key : Prims.string FStar_Pervasives_Native.option)
+  (cur_bucket : triple Prims.list) (acc : bucket_map) : bucket_map=
+  match ts with
+  | [] ->
+      (match cur_key with
+       | FStar_Pervasives_Native.Some k -> (k, cur_bucket) :: acc
+       | FStar_Pervasives_Native.None -> acc)
+  | t::rest ->
+      (match key_of t with
+       | FStar_Pervasives_Native.None ->
+           group_sorted_aux key_of rest cur_key cur_bucket acc
+       | FStar_Pervasives_Native.Some k ->
+           (match cur_key with
+            | FStar_Pervasives_Native.Some k0 ->
+                if k = k0
+                then
+                  group_sorted_aux key_of rest cur_key (t :: cur_bucket) acc
+                else
+                  group_sorted_aux key_of rest
+                    (FStar_Pervasives_Native.Some k) [t] ((k0, cur_bucket) ::
+                    acc)
+            | FStar_Pervasives_Native.None ->
+                group_sorted_aux key_of rest (FStar_Pervasives_Native.Some k)
+                  [t] acc))
+let build_bucket
+  (key_of : triple -> Prims.string FStar_Pervasives_Native.option)
+  (ts : triple Prims.list) : bucket_map=
+  let sorted = FStar_List_Tot_Base.sortWith (triple_cmp_by_key key_of) ts in
+  group_sorted_aux key_of sorted FStar_Pervasives_Native.None [] []
 let empty_indexed : indexed_graph=
   {
     ig_triples = [];
@@ -353,7 +411,15 @@ let empty_indexed : indexed_graph=
     ig_so = []
   }
 let build_indexed (g : rdf_graph) : indexed_graph=
-  build_indexed_aux g empty_indexed
+  {
+    ig_triples = g;
+    ig_pred = (build_bucket bucket_key_pred g);
+    ig_subj = (build_bucket bucket_key_subj g);
+    ig_obj = (build_bucket bucket_key_obj g);
+    ig_sp = (build_bucket bucket_key_sp g);
+    ig_po = (build_bucket bucket_key_po g);
+    ig_so = (build_bucket bucket_key_so g)
+  }
 let ig_to_list (ig : indexed_graph) : triple Prims.list= ig.ig_triples
 let must_escape (c : FStar_Char.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in

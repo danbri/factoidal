@@ -429,12 +429,73 @@ let add_triple_to_indexes (ig : indexed_graph) (t : triple) : indexed_graph =
 (* Build the index from a flat triple list. Linear in the input length;
    each insert is bucket-replace which is linear in the current bucket-map
    size. Total cost O(N * K) where K is the number of distinct keys —
-   acceptable for one-shot load. A hashtable swap reduces this to O(N). *)
+   acceptable for one-shot load. A hashtable swap reduces this to O(N).
+
+   #259 fix (2026-05-11): for any N×K product that gets large enough to
+   matter (the lifesci demo's 27K-triple disease.ttl, K ≈ 5K-20K distinct
+   subjects/sp-pairs/etc., 270M+ list-walks per bucket) the cumulative
+   build cost dominates even `SELECT * LIMIT 1`. Switch to a sort-and-group
+   pass per bucket: `List.Tot.sortWith` is O(N log N), then a single
+   linear walk collapses adjacent same-key entries into one binding.
+   Net: O(N log N) per bucket × 6 buckets = ~6 N log N total.
+   Preserves the "one binding per key" invariant the lookup paths rely on. *)
 let rec build_indexed_aux (g : list triple) (acc : indexed_graph)
   : Tot indexed_graph (decreases g) =
   match g with
   | [] -> acc
   | t :: rest -> build_indexed_aux rest (add_triple_to_indexes acc t)
+
+(* Per-bucket key extractors. Each returns `None` for triples that
+   shouldn't appear in that bucket (e.g. ig_obj omits literal-keyed
+   triples because term_to_key_opt returns None on literals). *)
+let bucket_key_pred (t : triple) : option string = Some t.p
+let bucket_key_subj (t : triple) : option string = Some (subject_to_key t.s)
+let bucket_key_obj  (t : triple) : option string = term_to_key_opt t.o
+let bucket_key_sp   (t : triple) : option string = Some (sp_key t.s t.p)
+let bucket_key_po   (t : triple) : option string = po_key_opt t.p t.o
+let bucket_key_so   (t : triple) : option string = so_key_opt t.s t.o
+
+(* Comparator for List.Tot.sortWith. Triples without a key for this
+   bucket sort first; they're filtered out by the grouping pass. *)
+let triple_cmp_by_key (key_of : triple -> option string) (t1 t2 : triple) : int =
+  match key_of t1, key_of t2 with
+  | None, None       -> 0
+  | None, Some _     -> -1
+  | Some _, None     -> 1
+  | Some k1, Some k2 -> String.compare k1 k2
+
+(* Walk a key-sorted triple list, collapsing each run of same-key
+   entries into one (key, triples) binding. Tail-rec via reversed
+   accumulator; `bucket_map` lookup doesn't depend on bucket order so
+   we don't bother to reverse at the end. *)
+let rec group_sorted_aux
+    (key_of : triple -> option string)
+    (ts : list triple)
+    (cur_key : option string) (cur_bucket : list triple)
+    (acc : bucket_map)
+  : Tot bucket_map (decreases ts) =
+  match ts with
+  | [] ->
+    (match cur_key with
+     | Some k -> (k, cur_bucket) :: acc
+     | None   -> acc)
+  | t :: rest ->
+    (match key_of t with
+     | None -> group_sorted_aux key_of rest cur_key cur_bucket acc
+     | Some k ->
+       (match cur_key with
+        | Some k0 ->
+          if k = k0 then
+            group_sorted_aux key_of rest cur_key (t :: cur_bucket) acc
+          else
+            group_sorted_aux key_of rest (Some k) [t] ((k0, cur_bucket) :: acc)
+        | None ->
+          group_sorted_aux key_of rest (Some k) [t] acc))
+
+let build_bucket (key_of : triple -> option string) (ts : list triple)
+  : Tot bucket_map =
+  let sorted = List.Tot.sortWith (triple_cmp_by_key key_of) ts in
+  group_sorted_aux key_of sorted None [] []
 
 let empty_indexed : indexed_graph = {
   ig_triples = [];
@@ -447,7 +508,16 @@ let empty_indexed : indexed_graph = {
 }
 
 let build_indexed (g : rdf_graph) : Tot indexed_graph =
-  build_indexed_aux g empty_indexed
+  (* #259 fix: sort-and-group per bucket — see comment on build_indexed_aux. *)
+  {
+    ig_triples = g;
+    ig_pred = build_bucket bucket_key_pred g;
+    ig_subj = build_bucket bucket_key_subj g;
+    ig_obj  = build_bucket bucket_key_obj  g;
+    ig_sp   = build_bucket bucket_key_sp   g;
+    ig_po   = build_bucket bucket_key_po   g;
+    ig_so   = build_bucket bucket_key_so   g;
+  }
 
 (* Round-trip: extract the source-of-truth triple list. *)
 let ig_to_list (ig : indexed_graph) : list triple = ig.ig_triples
