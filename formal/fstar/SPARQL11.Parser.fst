@@ -289,9 +289,94 @@ let process_iri_escapes (s : string) : Tot string =
   String.string_of_list (process_iri_escapes_rec cs [])
 
 (* Process escape sequences in a string literal
-   (\t \n \r \\ \" \' \uXXXX \UXXXXXXXX).
-   Delegated to OCaml stub. *)
+   (\t \n \r \\ \" \' \b \f \uXXXX \UXXXXXXXX).
+   Delegated to OCaml stub.
+
+   #64 sub-step 1 (2026-05-11): a pure F* implementation
+   `process_string_escapes_opt` is provided just below. It returns
+   `option string` so callers can distinguish "well-formed" from
+   "contains \uD800-\uDFFF surrogate" (the only failure mode in the
+   OCaml stub, which currently raises `failwith`).
+
+   The OCaml-stub `assume val` stays for now to keep `scan_string`'s
+   signature stable. The next sub-step will (a) rewire `scan_string`
+   to consume the `option`, (b) introduce a `Tok_INVALID` variant so
+   the tokenizer can carry the diagnostic up to `parse_sparql_with_base`
+   without throwing OCaml exceptions, (c) retire the assume val. *)
 assume val process_string_escapes : string -> string
+
+(* Pure F* implementation: walk the codepoint list, expand \X escapes,
+   reject \uD800-\uDFFF and \U????D[8-9A-F]?? (surrogate halves). The
+   semantics match the OCaml stub minus its `failwith` — instead of
+   raising, return None on surrogate; the caller decides (parse-error
+   vs. continue-with-replacement). *)
+
+(* Decode one escape sequence at a position past the backslash.
+   Returns (decoded codepoint count, remainder after the sequence) on
+   success. None on either malformed sequence (e.g. \uXY in a 4-hex
+   span) or surrogate codepoint. The accumulator is reverse-built so
+   callers can prepend in O(1) and reverse once at the top.
+
+   The 2-element pattern (escape kind char + payload) keeps the
+   termination metric clear: one input char consumed unconditionally
+   plus the hex-digit run for `u`/`U`. *)
+let decode_string_escape
+  (cs : list FStar.Char.char)
+  : Tot (option (list FStar.Char.char & (rest:list FStar.Char.char{
+      FStar.List.Tot.length rest < FStar.List.Tot.length cs})))
+  = match cs with
+    | [] -> None
+    | c :: rest ->
+      let cd = char_code c in
+      if cd = 0x74 (* t *) then Some ([FStar.Char.char_of_int 0x09], rest)
+      else if cd = 0x6E (* n *) then Some ([FStar.Char.char_of_int 0x0A], rest)
+      else if cd = 0x72 (* r *) then Some ([FStar.Char.char_of_int 0x0D], rest)
+      else if cd = 0x5C (* \\ *) then Some ([c], rest)
+      else if cd = 0x22 (* " *) then Some ([c], rest)
+      else if cd = 0x27 (* ' *) then Some ([c], rest)
+      else if cd = 0x62 (* b *) then Some ([FStar.Char.char_of_int 0x08], rest)
+      else if cd = 0x66 (* f *) then Some ([FStar.Char.char_of_int 0x0C], rest)
+      else if cd = 0x75 (* u *) then begin
+        match read_hex_digits 4 rest 0 with
+        | Some (cp, after) ->
+          if cp >= 0xD800 && cp <= 0xDFFF then None
+          else Some (String.list_of_string (utf8_of_codepoint cp), after)
+        | None -> None
+      end
+      else if cd = 0x55 (* U *) then begin
+        match read_hex_digits 8 rest 0 with
+        | Some (cp, after) ->
+          if cp >= 0xD800 && cp <= 0xDFFF then None
+          else Some (String.list_of_string (utf8_of_codepoint cp), after)
+        | None -> None
+      end
+      else
+        (* Unknown escape: preserve backslash + char as-is. The caller
+           inserted the backslash already (we only see what's after); on
+           an unknown follower we just return the char itself, matching
+           the OCaml stub's "preserve next char" fallback. *)
+        Some ([c], rest)
+
+(* Walk the input. On `\`, consume the escape; otherwise pass through. *)
+let rec process_string_escapes_rec
+  (cs : list FStar.Char.char) (acc : list FStar.Char.char)
+  : Tot (option (list FStar.Char.char)) (decreases (FStar.List.Tot.length cs))
+  = match cs with
+    | [] -> Some (FStar.List.Tot.rev acc)
+    | c :: rest ->
+      if char_code c = 0x5C (* \ *) then
+        match decode_string_escape rest with
+        | None -> None
+        | Some (decoded, after) ->
+          process_string_escapes_rec after (FStar.List.Tot.rev_acc decoded acc)
+      else
+        process_string_escapes_rec rest (c :: acc)
+
+let process_string_escapes_opt (s : string) : Tot (option string) =
+  let cs = String.list_of_string s in
+  match process_string_escapes_rec cs [] with
+  | Some chars -> Some (String.string_of_list chars)
+  | None -> None
 
 (* Find position of a character in a string, starting from p *)
 let rec find_char_pos (input : string) (p : pos) (target : nat)
