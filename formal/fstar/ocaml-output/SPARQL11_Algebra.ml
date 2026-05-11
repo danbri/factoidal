@@ -3569,9 +3569,6 @@ let eval_xsd_cast (v : eval_result) (target_type : Prims.string)
                              FStar_Pervasives_Native.None
                          })
                   else ER_Error
-let current_base_iri_ref : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option ref =
-  ref FStar_Pervasives_Native.None
-
 let rec eval_expr_with_base
   (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
   (e : expr) (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
@@ -4202,7 +4199,7 @@ and eval_concat_with_base
             | uu___ -> ER_Error)
        | FStar_Pervasives_Native.None -> ER_Error)
 let eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
-  eval_result= eval_expr_with_base (!current_base_iri_ref) e mu
+  eval_result= eval_expr_with_base FStar_Pervasives_Native.None e mu
 let eval_coalesce (es : expr Prims.list)
   (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
   eval_coalesce_with_base FStar_Pervasives_Native.None es mu
@@ -4223,6 +4220,9 @@ let () = regex_replace_ref := (fun text pattern replacement flags ->
     let re = if case_insensitive
       then Str.regexp_case_fold converted
       else Str.regexp converted in
+    (* Manual global replace that handles unmatched groups gracefully.
+       OCaml Str.matched_group raises Not_found for unmatched groups;
+       we replace them with empty string per XPath/SPARQL semantics. *)
     let open Stdlib in
     let build_replacement matched_text =
       let len = String.length replacement in
@@ -4242,6 +4242,15 @@ let () = regex_replace_ref := (fun text pattern replacement flags ->
       done;
       Buffer.contents buf
     in
+    (* UTF-8 correction: OCaml Str treats the input as bytes. A character
+       class like  will match each byte of a multi-byte codepoint
+       separately — e.g. 日 (E6 97 A5) produces three matches instead of one.
+       We post-process Str matches so that:
+         * a match starting at a UTF-8 continuation byte is skipped
+           (it's inside a codepoint the regex couldn't actually match),
+         * a single-byte match whose byte is a UTF-8 lead byte is extended
+           to cover the whole codepoint.
+       SPARQL REPLACE is defined over codepoint strings (XPath regex). *)
     let utf8_cp_len_at s pos =
       if pos >= String.length s then 1
       else
@@ -4988,9 +4997,7 @@ let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
           q_values = (q.q_values)
         } in
       let base = q1.q_base in
-      (let saved_base = !current_base_iri_ref in
-       current_base_iri_ref := q1.q_base;
-       let result = (match q1.q_form with
+      (match q1.q_form with
        | QF_Select sel ->
            let omega0 = eval_pattern base q1.q_pattern g1 ds1 in
            let omega =
@@ -5065,9 +5072,7 @@ let eval_select_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
                 (q1.q_modifier).sm_limit deduped)
        | QF_Construct uu___1 -> []
        | QF_Ask -> []
-       | QF_Describe uu___1 -> []) in
-         current_base_iri_ref := saved_base;
-         result)
+       | QF_Describe uu___1 -> [])
 let eval_ask_query (q : query) (g : RDF_Graph_Executable.rdf_graph)
   (ds : RDF_Graph_Executable.rdf_dataset) : Prims.bool=
   let uu___ = apply_query_dataset q.q_dataset g ds in

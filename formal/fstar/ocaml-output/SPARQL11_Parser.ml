@@ -758,15 +758,6 @@ let rec scan_iri_end (input : Prims.string) (p : pos) : pos=
        else scan_iri_end input (p + Prims.int_one))
 let safe_sub (a : Prims.int) (b : Prims.int) : Prims.nat=
   if a >= b then a - b else Prims.int_zero
-(* Resolve a potentially relative IRI against the current BASE.
-   If the IRI is already absolute (passes is_iri), return it unchanged.
-   Otherwise, try resolving against the global current_base_iri_ref. *)
-let resolve_tok_iri (i : Prims.string) : Prims.string =
-  if RDF_Graph_Executable.is_iri i then i
-  else match !(SPARQL11_Algebra.current_base_iri_ref) with
-    | Some base -> SPARQL11_Algebra.resolve_iri base i
-    | None -> i
-
 let scan_iri (input : Prims.string) (p : pos) : (Prims.string * pos)=
   let end_p = scan_iri_end input p in
   let len = if end_p >= p then end_p - p else Prims.int_zero in
@@ -2346,15 +2337,14 @@ and parse_primary_expr (pm : prefix_map) (fuel : Prims.nat)
          parse_rdf_literal_expr pm (fuel - Prims.int_one) s
            (parse_advance ts)
      | Tok_IRI i ->
-         let ri = resolve_tok_iri i in
-         if RDF_Graph_Executable.is_iri ri
+         if RDF_Graph_Executable.is_iri i
          then
            let ts' = parse_advance ts in
            (match parse_peek ts' with
             | Tok_LPAREN ->
-                parse_func_call pm (fuel - Prims.int_one) ri
+                parse_func_call pm (fuel - Prims.int_one) i
                   (parse_advance ts')
-            | uu___1 -> ParseOk ((SPARQL11_Algebra.E_IRI ri), ts'))
+            | uu___1 -> ParseOk ((SPARQL11_Algebra.E_IRI i), ts'))
          else ParseErr (Prims.strcat "invalid IRI: " i)
      | Tok_PNAME pn ->
          parse_pname_expr pm (fuel - Prims.int_one) pn (parse_advance ts)
@@ -3010,7 +3000,6 @@ and parse_rdf_literal_expr (pm : prefix_map) (fuel : Prims.nat)
          let ts' = parse_advance ts in
          (match parse_peek ts' with
           | Tok_IRI dt ->
-              let dt = resolve_tok_iri dt in
               if RDF_Graph_Executable.is_iri dt
               then
                 (match make_typed_literal s dt with
@@ -3650,9 +3639,8 @@ and parse_graph_name (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
     (match parse_peek ts with
      | Tok_VAR v -> ParseOk ((SPARQL11_Algebra.PT_Var v), (parse_advance ts))
      | Tok_IRI i ->
-         let ri = resolve_tok_iri i in
-         if RDF_Graph_Executable.is_iri ri
-         then ParseOk ((SPARQL11_Algebra.PT_IRI ri), (parse_advance ts))
+         if RDF_Graph_Executable.is_iri i
+         then ParseOk ((SPARQL11_Algebra.PT_IRI i), (parse_advance ts))
          else ParseErr "invalid IRI"
      | Tok_PNAME pn ->
          (match resolve_pname pn pm with
@@ -3670,9 +3658,8 @@ and parse_service_iri (pm : prefix_map) (fuel : Prims.nat)
   else
     (match parse_peek ts with
      | Tok_IRI i ->
-         let ri = resolve_tok_iri i in
-         if RDF_Graph_Executable.is_iri ri
-         then ParseOk (ri, (parse_advance ts))
+         if RDF_Graph_Executable.is_iri i
+         then ParseOk (i, (parse_advance ts))
          else ParseErr "invalid IRI"
      | Tok_PNAME pn ->
          (match resolve_pname pn pm with
@@ -3695,11 +3682,10 @@ and parse_data_value (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
      | Tok_UNDEF ->
          ParseOk (FStar_Pervasives_Native.None, (parse_advance ts))
      | Tok_IRI i ->
-         let ri = resolve_tok_iri i in
-         if RDF_Graph_Executable.is_iri ri
+         if RDF_Graph_Executable.is_iri i
          then
            ParseOk
-             ((FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI ri)),
+             ((FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI i)),
                (parse_advance ts))
          else ParseErr "invalid IRI"
      | Tok_PNAME pn ->
@@ -3968,11 +3954,10 @@ and parse_subject_with_extras (pm : prefix_map) (fuel : Prims.nat)
            (((SPARQL11_Algebra.PS_Var v), SPARQL11_Algebra.GP_Empty, false),
              (parse_advance ts))
      | Tok_IRI i ->
-         let ri = resolve_tok_iri i in
-         if RDF_Graph_Executable.is_iri ri
+         if RDF_Graph_Executable.is_iri i
          then
            ParseOk
-             (((SPARQL11_Algebra.PS_IRI ri), SPARQL11_Algebra.GP_Empty, false),
+             (((SPARQL11_Algebra.PS_IRI i), SPARQL11_Algebra.GP_Empty, false),
                (parse_advance ts))
          else ParseErr "invalid IRI"
      | Tok_PNAME pn ->
@@ -4120,9 +4105,8 @@ and parse_path_primary (pm : prefix_map) (fuel : Prims.nat)
   else
     (match parse_peek ts with
      | Tok_IRI i ->
-         let ri = resolve_tok_iri i in
-         if RDF_Graph_Executable.is_iri ri
-         then ParseOk ((SPARQL11_Algebra.PP_IRI ri), (parse_advance ts))
+         if RDF_Graph_Executable.is_iri i
+         then ParseOk ((SPARQL11_Algebra.PP_IRI i), (parse_advance ts))
          else ParseErr "invalid IRI"
      | Tok_PNAME pn ->
          (match resolve_pname pn pm with
@@ -4176,9 +4160,8 @@ and parse_path_one_in_set (pm : prefix_map) (fuel : Prims.nat)
   else
     (match parse_peek ts with
      | Tok_IRI i ->
-         let ri = resolve_tok_iri i in
-         if RDF_Graph_Executable.is_iri ri
-         then ParseOk ((SPARQL11_Algebra.PP_IRI ri), (parse_advance ts))
+         if RDF_Graph_Executable.is_iri i
+         then ParseOk ((SPARQL11_Algebra.PP_IRI i), (parse_advance ts))
          else ParseErr "invalid IRI"
      | Tok_PNAME pn ->
          (match resolve_pname pn pm with
@@ -4195,11 +4178,10 @@ and parse_path_one_in_set (pm : prefix_map) (fuel : Prims.nat)
          let ts' = parse_advance ts in
          (match parse_peek ts' with
           | Tok_IRI i ->
-              let ri = resolve_tok_iri i in
-              if RDF_Graph_Executable.is_iri ri
+              if RDF_Graph_Executable.is_iri i
               then
                 ParseOk
-                  ((SPARQL11_Algebra.PP_Inverse (SPARQL11_Algebra.PP_IRI ri)),
+                  ((SPARQL11_Algebra.PP_Inverse (SPARQL11_Algebra.PP_IRI i)),
                     (parse_advance ts'))
               else ParseErr "invalid IRI"
           | Tok_PNAME pn ->
@@ -4294,11 +4276,10 @@ and parse_object_with_extras (pm : prefix_map) (fuel : Prims.nat)
            (((SPARQL11_Algebra.PT_Var v), SPARQL11_Algebra.GP_Empty),
              (parse_advance ts))
      | Tok_IRI i ->
-         let ri = resolve_tok_iri i in
-         if RDF_Graph_Executable.is_iri ri
+         if RDF_Graph_Executable.is_iri i
          then
            ParseOk
-             (((SPARQL11_Algebra.PT_IRI ri), SPARQL11_Algebra.GP_Empty),
+             (((SPARQL11_Algebra.PT_IRI i), SPARQL11_Algebra.GP_Empty),
                (parse_advance ts))
          else ParseErr "invalid IRI"
      | Tok_PNAME pn ->
@@ -4475,7 +4456,6 @@ and parse_rdf_literal_pt (pm : prefix_map) (fuel : Prims.nat)
          let ts' = parse_advance ts in
          (match parse_peek ts' with
           | Tok_IRI dt ->
-              let dt = resolve_tok_iri dt in
               if RDF_Graph_Executable.is_iri dt
               then
                 (match make_typed_literal s dt with
@@ -5145,8 +5125,7 @@ and parse_describe_targets (pm : prefix_map) (fuel : Prims.nat)
          parse_describe_targets pm (fuel - Prims.int_one)
            ((SPARQL11_Algebra.PT_Var v) :: acc) (parse_advance ts)
      | Tok_IRI i ->
-         let ri = resolve_tok_iri i in
-         if RDF_Graph_Executable.is_iri ri
+         if RDF_Graph_Executable.is_iri i
          then
            parse_describe_targets pm (fuel - Prims.int_one)
              ((SPARQL11_Algebra.PT_IRI i) :: acc) (parse_advance ts)
@@ -5341,8 +5320,7 @@ and parse_skip_from (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
               let ts'' = parse_advance ts' in
               (match parse_peek ts'' with
                | Tok_IRI i ->
-                   let ri = resolve_tok_iri i in
-                   if RDF_Graph_Executable.is_iri ri
+                   if RDF_Graph_Executable.is_iri i
                    then
                      (match parse_skip_from pm (fuel - Prims.int_one)
                               (parse_advance ts'')
@@ -5350,7 +5328,7 @@ and parse_skip_from (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
                       | ParseErr m -> ParseErr m
                       | ParseOk (rest, ts''') ->
                           ParseOk
-                            (((SPARQL11_Algebra.DC_Named ri) :: rest), ts'''))
+                            (((SPARQL11_Algebra.DC_Named i) :: rest), ts'''))
                    else ParseErr "invalid IRI after FROM NAMED"
                | Tok_PNAME pn ->
                    (match resolve_pname pn pm with
@@ -5370,8 +5348,7 @@ and parse_skip_from (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
                         else ParseErr "invalid IRI after FROM NAMED")
                | uu___1 -> ParseErr "expected IRI after FROM NAMED")
           | Tok_IRI i ->
-              let ri = resolve_tok_iri i in
-              if RDF_Graph_Executable.is_iri ri
+              if RDF_Graph_Executable.is_iri i
               then
                 (match parse_skip_from pm (fuel - Prims.int_one)
                          (parse_advance ts')
@@ -5379,7 +5356,7 @@ and parse_skip_from (pm : prefix_map) (fuel : Prims.nat) (ts : token_stream)
                  | ParseErr m -> ParseErr m
                  | ParseOk (rest, ts'') ->
                      ParseOk
-                       (((SPARQL11_Algebra.DC_Default ri) :: rest), ts''))
+                       (((SPARQL11_Algebra.DC_Default i) :: rest), ts''))
               else ParseErr "invalid IRI after FROM"
           | Tok_PNAME pn ->
               (match resolve_pname pn pm with
@@ -6336,9 +6313,8 @@ let parse_iri_ref (pm : prefix_map) (ts : token_stream) :
   RDF_Graph_Executable.wf_iri parse_result=
   match parse_peek ts with
   | Tok_IRI i ->
-      let ri = resolve_tok_iri i in
-      if RDF_Graph_Executable.is_iri ri
-      then ParseOk (ri, (parse_advance ts))
+      if RDF_Graph_Executable.is_iri i
+      then ParseOk (i, (parse_advance ts))
       else ParseErr "invalid IRI"
   | Tok_PNAME pn ->
       (match resolve_pname pn pm with

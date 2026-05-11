@@ -77,26 +77,26 @@ let file_to_base_uri path =
   "file://" ^ abs
 
 let parse_sparql_query ?(base_file=None) content =
-  (match base_file with
-   | Some path -> SPARQL11_Algebra.current_base_iri_ref := Some (file_to_base_uri path)
-   | None -> ());
-  let result =
-    match SPARQL11_Parser.parse_sparql content with
-    | SPARQL11_Parser.ParseOk (q, _remaining) -> hoist_query_filters q
-    | SPARQL11_Parser.ParseErr msg -> raise (Sparql_parse_error msg) in
-  (match result.SPARQL11_Algebra.q_base with
-   | Some iri -> SPARQL11_Algebra.current_base_iri_ref := Some iri
-   | None -> ());
-  result
+  (* #65 Step 3 (2026-05-11): pass base_file as init_base directly to the
+     F* parser. Previously this was wired through the OCaml-side
+     current_base_iri_ref ref so eval_expr's E_IRI_fn arm could see it,
+     but Steps 2a/2b/2c retired that mechanism — eval_expr now takes
+     `base : option wf_iri` explicitly via q.q_base in eval_select_query. *)
+  let init_base = match base_file with
+    | Some path -> Some (file_to_base_uri path)
+    | None -> None in
+  match SPARQL11_Parser.parse_sparql_with_base init_base content with
+  | SPARQL11_Parser.ParseOk (q, _remaining) -> hoist_query_filters q
+  | SPARQL11_Parser.ParseErr msg -> raise (Sparql_parse_error msg)
 
 (* SPARQL 1.1 Update parser wrapper — grammar + AST only (stage a).
    Evaluation of update ops is not yet implemented; only the parse result
    matters here. *)
 let parse_sparql_update ?(base_file=None) content =
-  (match base_file with
-   | Some path -> SPARQL11_Algebra.current_base_iri_ref := Some (file_to_base_uri path)
-   | None -> ());
-  match SPARQL11_Parser.parse_sparql_update content with
+  let init_base = match base_file with
+    | Some path -> Some (file_to_base_uri path)
+    | None -> None in
+  match SPARQL11_Parser.parse_sparql_update_with_base init_base content with
   | SPARQL11_Parser.ParseOk (u, _remaining) -> u
   | SPARQL11_Parser.ParseErr msg -> raise (Sparql_parse_error msg)
 
@@ -1564,23 +1564,20 @@ let run_protocol_test tc =
             fail at parse. For query_content_type_* we expect parse +
             eval to succeed. *)
          (try
-            (* Set current_base_iri_ref so patch-#65's resolve_tok_iri
-               also resolves any sites the F* parser hasn't yet been
-               taught to thread base through (defence in depth). *)
-            let saved_base = !SPARQL11_Algebra.current_base_iri_ref in
-            SPARQL11_Algebra.current_base_iri_ref := init_base;
+            (* #65 Step 3 (2026-05-11): init_base flows into the F* parser
+               directly via parse_sparql_with_base; eval_expr now reads
+               q.q_base in eval_select_query and threads it down. The
+               OCaml current_base_iri_ref save/restore is retired. *)
             let q =
               match SPARQL11_Parser.parse_sparql_with_base init_base q_text with
               | SPARQL11_Parser.ParseOk (q, _) -> hoist_query_filters q
               | SPARQL11_Parser.ParseErr msg ->
-                SPARQL11_Algebra.current_base_iri_ref := saved_base;
                 raise (Sparql_parse_error msg) in
             (* Best-effort eval over an empty dataset. The evaluator
                result is dropped — the protocol test asserts on
                status-class, not on body content. *)
             let _ = OWL_QueryEval.eval_select_query_owl q []
                       RDF_Graph_Executable.({ ds_default = []; ds_named = [] }) in
-            SPARQL11_Algebra.current_base_iri_ref := saved_base;
             ignore q;
             pass_if_2or3 ()
           with
@@ -1601,13 +1598,11 @@ let run_protocol_test tc =
             else Fail "Evaluation raised unexpectedly")
        | SPARQL_Protocol.PR_Update (u_text, _dflt, _named) ->
          (try
-            let saved_base = !SPARQL11_Algebra.current_base_iri_ref in
-            SPARQL11_Algebra.current_base_iri_ref := init_base;
+            (* #65 Step 3: same retirement as the query path above. *)
             let upd =
               match SPARQL11_Parser.parse_sparql_update_with_base init_base u_text with
               | SPARQL11_Parser.ParseOk (u, _) -> u
               | SPARQL11_Parser.ParseErr msg ->
-                SPARQL11_Algebra.current_base_iri_ref := saved_base;
                 raise (Sparql_parse_error msg) in
             (* Apply over an empty dataset. Multi-step UPDATE-then-ASK
                tests (the update_dataset_ family) need state-carrying
@@ -1616,7 +1611,6 @@ let run_protocol_test tc =
             let _ = apply_update
                       RDF_Graph_Executable.({ ds_default = []; ds_named = [] })
                       upd in
-            SPARQL11_Algebra.current_base_iri_ref := saved_base;
             pass_if_2or3 ()
           with
           | Sparql_parse_error msg ->
