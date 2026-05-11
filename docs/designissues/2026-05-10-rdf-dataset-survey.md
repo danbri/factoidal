@@ -434,7 +434,98 @@ A second sweep turned up these. Same bucket conventions.
 | EU Cellar / EUR-Lex       | EU re-use     | yes (login) | RDF/XML            |
 | OpenCitations             | CC0           | yes        | NT + CSV            |
 
-## Hosting on GitHub
+## Beyond the LOD Cloud diagram (round 3)
+
+The classic LOD-cloud picture under-represents two whole worlds: the
+biomedical ontology stack (BioPortal / OBO) and structured data
+*extracted from the open web* (Web Data Commons). It also misses the
+long tail of post-2020 Wikibase instances and a number of knowledge
+graphs that ship in RDF* / OntoLex / NIF.
+
+### Web-extracted structured data
+
+- **Web Data Commons (Schema.org / RDFa / Microdata / JSON-LD)** —
+  74 B quads in the January 2025 release, extracted from 2.4 B HTML
+  pages in Common Crawl (October 2024 snapshot). Sliced into class-
+  specific subsets for 50 popular schema.org classes (Product,
+  LocalBusiness, Event, Recipe, JobPosting, …) so you can pick a
+  ~10 M-triple slice without taking 1.4 TB. CC0-equivalent
+  ("derived from CC pages"). The Product, Recipe and JobPosting
+  slices are particularly fun for query workloads because they are
+  real-world dirty data, not curated.
+  [webdatacommons.org/structureddata](https://www.webdatacommons.org/structureddata/).
+- **DBnary** — Wiktionary in RDF (OntoLex-Lemon), 26+ language
+  editions, one Turtle file per language. English alone is several
+  hundred million triples; smaller editions are very small. New
+  releases twice a month, archived on Zenodo.
+  [kaiko.getalp.org/about-dbnary](http://kaiko.getalp.org/about-dbnary/).
+  Sits in the *Linguistic* LOD cloud, not the main diagram.
+
+### Biomedical ontology cloud
+
+- **OBO Foundry + BioPortal** — 300+ biomedical ontologies in OWL /
+  RDF/XML; BioPortal aggregates ~190 M triples across all of them.
+  ChEBI / GO / DOID / HPO / SO / ChEMBL ontology / NCIT all live
+  here. Individual ontology downloads are small (Mb–low Gb).
+  [obofoundry.org](https://obofoundry.org/) /
+  [sparql.bioontology.org](http://sparql.bioontology.org/).
+- **EBI Ontology Lookup Service (OLS)** — parallel aggregator with
+  API + bulk downloads; mirrors most of OBO plus EFO, Uberon, etc.
+  Picking a coherent vertical slice (e.g. "anatomy + disease +
+  phenotype") gives a few hundred MB of dense, reasoning-friendly
+  OWL.
+
+### Derived / fused knowledge graphs
+
+- **YAGO 4** — 2 B type-consistent triples for 64 M entities;
+  derived from Wikidata + Schema.org but published as its own
+  graph with a strict 10 K-class taxonomy and OWL2-RL-compatible
+  constraints. RDF* / N-Triples downloads.
+  [yago-knowledge.org/downloads/yago-4](https://yago-knowledge.org/downloads/yago-4).
+  Yago 4 *Wikipedia* and *English Wikipedia* flavours give smaller
+  subsets if 2 B is too much.
+
+### Wikibase Cloud long tail
+
+- Beyond FactGrid there are now dozens of public Wikibase instances
+  hosted on [wikibase.cloud](https://www.wikibase.cloud/) — research
+  databases, university-of-X graphs, DH projects (MiMoTextBase for
+  French Enlightenment novels, Lingua Libre for spoken-language
+  recordings, EU Knowledge Graph, …). Each speaks the same Wikibase
+  RDF dump format as Wikidata, so the SPARQL dialect transfers.
+  Most are small enough to fit in the "small" bucket.
+  The [Wikibase Registry](https://wikibase-registry-archive.wmcloud.org/wiki/Main_Page)
+  lists them.
+
+### Linguistic corpora as RDF
+
+- **CoNLL-RDF + NIF-aligned treebanks** — Universal Dependencies
+  released as RDF via the
+  [acoli-repo/conll-rdf](https://github.com/acoli-repo/conll-rdf)
+  toolchain. Tokens, dependencies, morphology, alignments — heavy
+  reification, lots of small named graphs. Fairly niche but
+  exercises quad-store + property-path queries hard.
+
+### Notable non-fits
+
+- **Software Heritage Graph** — published as Apache Parquet / ORC /
+  compressed CSV, *not* RDF, despite the graph framing. Out of scope
+  for this corpus.
+- **Google Data Commons** — billions of triples but bulk RDF is not
+  publicly downloadable; only API / per-variable CSV. Not a
+  practical mirror target.
+
+### Things I deliberately did not chase
+
+- DBpedia language chapters (German, French, Spanish, Japanese …).
+  Each is its own large dump, but the family is still "DBpedia" and
+  the user excluded full DBpedia by spirit.
+- LOD Laundromat / LOD-a-lot (38 B-triple HDT aggregation of crawled
+  LOD). Aggregations, not source datasets.
+- Hugging Face / Kaggle "knowledge graph" datasets — mostly tabular
+  or text, not RDF.
+
+
 
 Tiny + small + most of medium fits cleanly on GitHub; large is
 borderline; the biggest two need an external mirror.
