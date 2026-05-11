@@ -674,33 +674,34 @@ let eval_limit_single_tp (sel : SPARQL11_Algebra.select_clause)
       SPARQL11_Algebra.project_solutions
         (SPARQL11_Algebra.select_item_vars items) omega'
   | SPARQL11_Algebra.Select_All -> omega'
-let rec eval_pattern_backend (p : SPARQL11_Algebra.group_graph_pattern)
-  (gb : graph_backend) (dsb : dataset_backend) :
-  SPARQL11_Algebra.solution_sequence=
+let rec eval_pattern_backend
+  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
+  (p : SPARQL11_Algebra.group_graph_pattern) (gb : graph_backend)
+  (dsb : dataset_backend) : SPARQL11_Algebra.solution_sequence=
   match p with
   | SPARQL11_Algebra.GP_BGP bgp -> eval_bgp_backend bgp gb
   | SPARQL11_Algebra.GP_Join (p1, p2) ->
-      SPARQL11_Algebra.join (eval_pattern_backend p1 gb dsb)
-        (eval_pattern_backend p2 gb dsb)
+      SPARQL11_Algebra.join (eval_pattern_backend base p1 gb dsb)
+        (eval_pattern_backend base p2 gb dsb)
   | SPARQL11_Algebra.GP_LeftJoin (p1, p2, filter_e) ->
-      SPARQL11_Algebra.left_join (eval_pattern_backend p1 gb dsb)
-        (eval_pattern_backend p2 gb dsb) filter_e
+      SPARQL11_Algebra.left_join base (eval_pattern_backend base p1 gb dsb)
+        (eval_pattern_backend base p2 gb dsb) filter_e
   | SPARQL11_Algebra.GP_Filter (e, p') ->
-      SPARQL11_Algebra.filter_solutions_fwd e
-        (eval_pattern_backend p' gb dsb)
+      SPARQL11_Algebra.filter_solutions_fwd base e
+        (eval_pattern_backend base p' gb dsb)
   | SPARQL11_Algebra.GP_Union (p1, p2) ->
-      SPARQL11_Algebra.union (eval_pattern_backend p1 gb dsb)
-        (eval_pattern_backend p2 gb dsb)
+      SPARQL11_Algebra.union (eval_pattern_backend base p1 gb dsb)
+        (eval_pattern_backend base p2 gb dsb)
   | SPARQL11_Algebra.GP_Minus (p1, p2) ->
-      SPARQL11_Algebra.minus (eval_pattern_backend p1 gb dsb)
-        (eval_pattern_backend p2 gb dsb)
+      SPARQL11_Algebra.minus (eval_pattern_backend base p1 gb dsb)
+        (eval_pattern_backend base p2 gb dsb)
   | SPARQL11_Algebra.GP_Empty -> [SPARQL11_Algebra.sm_empty]
   | SPARQL11_Algebra.GP_Bind (e, v, p') ->
-      let omega = eval_pattern_backend p' gb dsb in
+      let omega = eval_pattern_backend base p' gb dsb in
       FStar_List_Tot_Base.map
         (fun mu ->
            match SPARQL11_Algebra.er_to_term
-                   (SPARQL11_Algebra.eval_expr_fwd e mu)
+                   (SPARQL11_Algebra.eval_expr_fwd base e mu)
            with
            | FStar_Pervasives_Native.Some t ->
                (match SPARQL11_Algebra.sm_lookup v mu with
@@ -715,7 +716,7 @@ let rec eval_pattern_backend (p : SPARQL11_Algebra.group_graph_pattern)
        | SPARQL11_Algebra.PT_IRI name ->
            (match lookup_named_backend name dsb.dsb_named with
             | FStar_Pervasives_Native.Some ngb ->
-                eval_pattern_backend p' ngb dsb
+                eval_pattern_backend base p' ngb dsb
             | FStar_Pervasives_Native.None -> [])
        | SPARQL11_Algebra.PT_Var v ->
            let candidates =
@@ -723,7 +724,8 @@ let rec eval_pattern_backend (p : SPARQL11_Algebra.group_graph_pattern)
                (pattern_predicate_hint p') in
            RDF_List_Helpers.concatMap_tr
              (fun ngb ->
-                let ng_results = eval_pattern_backend p' ngb.ngb_graph dsb in
+                let ng_results =
+                  eval_pattern_backend base p' ngb.ngb_graph dsb in
                 if RDF_Graph_Executable.is_iri ngb.ngb_name
                 then
                   FStar_List_Tot_Base.map
@@ -732,7 +734,7 @@ let rec eval_pattern_backend (p : SPARQL11_Algebra.group_graph_pattern)
                          (RDF_Graph_Executable.T_IRI (ngb.ngb_name)) mu)
                     ng_results
                 else ng_results) candidates
-       | uu___ -> eval_pattern_backend p' gb dsb)
+       | uu___ -> eval_pattern_backend base p' gb dsb)
   | SPARQL11_Algebra.GP_Service (uu___, uu___1, uu___2) -> []
   | SPARQL11_Algebra.GP_ServiceVar (uu___, uu___1, uu___2) -> []
   | SPARQL11_Algebra.GP_SubSelect q ->
@@ -830,7 +832,8 @@ and eval_select_query_backend_on_graph (q : SPARQL11_Algebra.query)
             | SPARQL11_Algebra.QF_Select sel ->
                 let base = q.SPARQL11_Algebra.q_base in
                 let omega0 =
-                  eval_pattern_backend q.SPARQL11_Algebra.q_pattern gb dsb in
+                  eval_pattern_backend base q.SPARQL11_Algebra.q_pattern gb
+                    dsb in
                 let omega =
                   match q.SPARQL11_Algebra.q_values with
                   | FStar_Pervasives_Native.None -> omega0
@@ -944,7 +947,8 @@ and eval_ask_query_backend_dataset (q : SPARQL11_Algebra.query)
   match q.SPARQL11_Algebra.q_form with
   | SPARQL11_Algebra.QF_Ask ->
       let omega0 =
-        eval_pattern_backend q.SPARQL11_Algebra.q_pattern dsb.dsb_default dsb in
+        eval_pattern_backend q.SPARQL11_Algebra.q_base
+          q.SPARQL11_Algebra.q_pattern dsb.dsb_default dsb in
       let omega =
         match q.SPARQL11_Algebra.q_values with
         | FStar_Pervasives_Native.None -> omega0

@@ -215,11 +215,14 @@ content = content.replace(
 # (xpath_to_str_regex is defined inside the regex_match patch)
 # This replaces the wiring block that issue #62 inserts for eval_expr refs
 # by appending regex_replace_ref wiring after those lines.
+# #65 Step 2c (2026-05-10): the eval_expr_ebv_ref / eval_expr_fwd_ref
+# wiring lines now thread `base` through to eval_expr_with_base. Anchor
+# updated; the regex_replace_ref body itself is BASE-independent.
 content = content.replace(
-    '''let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
-let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)''',
-    '''let () = eval_expr_ebv_ref := (fun e mu -> ebv (eval_expr e mu))
-let () = eval_expr_fwd_ref := (fun e mu -> eval_expr e mu)
+    '''let () = eval_expr_ebv_ref := (fun base e mu -> ebv (eval_expr_with_base base e mu))
+let () = eval_expr_fwd_ref := (fun base e mu -> eval_expr_with_base base e mu)''',
+    '''let () = eval_expr_ebv_ref := (fun base e mu -> ebv (eval_expr_with_base base e mu))
+let () = eval_expr_fwd_ref := (fun base e mu -> eval_expr_with_base base e mu)
 let () = regex_replace_ref := (fun text pattern replacement flags ->
   try
     let case_insensitive = match flags with
@@ -315,6 +318,103 @@ with open('$FILE', 'w') as f:
 fi
 
 echo "  Regex/hash/UUID stubs patched."
+
+# Belt-and-suspenders: ensure regex_replace_ref is wired even if the
+# guarded python block above was skipped (xpath_to_str_regex already
+# present from a prior run, etc.). The wiring depends on 62 having
+# added the eval_expr_ebv_ref / eval_expr_fwd_ref lines above; this
+# block targets the freshly-emitted shape after #65 Step 2c.
+if ! grep -q 'regex_replace_ref :=' "$FILE"; then
+  python3 - "$FILE" << 'PYEOF'
+import sys
+path = sys.argv[1]
+with open(path) as f:
+    content = f.read()
+old = '''let () = eval_expr_ebv_ref := (fun base e mu -> ebv (eval_expr_with_base base e mu))
+let () = eval_expr_fwd_ref := (fun base e mu -> eval_expr_with_base base e mu)'''
+if old in content:
+    new = old + '''
+let () = regex_replace_ref := (fun text pattern replacement flags ->
+  try
+    let case_insensitive = match flags with
+      | FStar_Pervasives_Native.Some f -> String.contains f 'i'
+      | FStar_Pervasives_Native.None -> false in
+    let converted = xpath_to_str_regex pattern in
+    let re = if case_insensitive
+      then Str.regexp_case_fold converted
+      else Str.regexp converted in
+    let open Stdlib in
+    let build_replacement matched_text =
+      let len = String.length replacement in
+      let buf = Buffer.create len in
+      let i = ref 0 in
+      while !i < len do
+        if replacement.[!i] = '$' && !i + 1 < len &&
+           replacement.[!i + 1] >= '0' && replacement.[!i + 1] <= '9' then begin
+          let group_n = Char.code replacement.[!i + 1] - Char.code '0' in
+          (try Buffer.add_string buf (Str.matched_group group_n matched_text)
+           with Not_found -> ());
+          i := !i + 2
+        end else begin
+          Buffer.add_char buf replacement.[!i];
+          i := !i + 1
+        end
+      done;
+      Buffer.contents buf
+    in
+    let utf8_cp_len_at s pos =
+      if pos >= String.length s then 1
+      else
+        let c = Char.code s.[pos] in
+        if c < 0x80 then 1
+        else if c < 0xC0 then 1
+        else if c < 0xE0 then 2
+        else if c < 0xF0 then 3
+        else 4
+    in
+    let is_utf8_cont s pos =
+      pos < String.length s && (Char.code s.[pos] land 0xC0) = 0x80
+    in
+    let result = Buffer.create (String.length text) in
+    let pos = ref 0 in
+    (try
+      while true do
+        ignore (Str.search_forward re text !pos);
+        let m_start = Str.match_beginning () in
+        let m_end = Str.match_end () in
+        if is_utf8_cont text m_start then begin
+          Buffer.add_string result (String.sub text !pos (m_start - !pos));
+          Buffer.add_char result text.[m_start];
+          pos := m_start + 1
+        end else begin
+          let m_end' =
+            if m_end = m_start + 1 then
+              let cp_len = utf8_cp_len_at text m_start in
+              if cp_len > 1 then m_start + cp_len else m_end
+            else m_end
+          in
+          Buffer.add_string result (String.sub text !pos (m_start - !pos));
+          Buffer.add_string result (build_replacement text);
+          pos := m_end';
+          if m_start = m_end' then begin
+            if !pos < String.length text then begin
+              let step = utf8_cp_len_at text !pos in
+              Buffer.add_string result (String.sub text !pos step);
+              pos := !pos + step
+            end else raise Not_found
+          end
+        end
+      done
+    with Not_found -> ());
+    Buffer.add_string result (String.sub text !pos (String.length text - !pos));
+    Buffer.contents result
+  with _ -> text)'''
+    content = content.replace(old, new, 1)
+    with open(path, 'w') as f:
+        f.write(content)
+    print("  regex_replace_ref wiring applied (belt-and-suspenders).")
+PYEOF
+fi
 
 # RDF_Canonical.ml — wire its hash_sha256 assume_val to Fstar_pure_hashes.sha256.
 # RDF.Canonical.fst declares its own assume val for self-containment (avoids a

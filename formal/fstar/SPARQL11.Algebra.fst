@@ -1824,12 +1824,17 @@ let join (omega1 omega2 : solution_sequence) : solution_sequence =
       omega2)
     omega1
 
-(* Forward declarations — concrete definitions follow eval_pattern *)
-assume val eval_expr_ebv : expr -> solution_mapping -> bool
-assume val eval_expr_fwd : expr -> solution_mapping -> eval_result
+(* Forward declarations — concrete definitions follow eval_pattern.
+   #65 Step 2c (2026-05-10): both forward refs take `option wf_iri` so
+   the FILTER / BIND paths in eval_pattern_store thread the BASE IRI
+   from eval_select_query through to eval_expr_with_base. Their OCaml
+   realisations in 62_forward_ref_wiring.sh wire them to the renamed
+   mutual block (eval_expr_with_base) directly. *)
+assume val eval_expr_ebv : option wf_iri -> expr -> solution_mapping -> bool
+assume val eval_expr_fwd : option wf_iri -> expr -> solution_mapping -> eval_result
 
 (* EXISTS/NOT EXISTS need graph + dataset context — forward ref to concrete eval_exists *)
-assume val eval_exists_fwd : group_graph_pattern -> solution_mapping -> rdf_graph -> rdf_dataset -> bool
+assume val eval_exists_fwd : option wf_iri -> group_graph_pattern -> solution_mapping -> rdf_graph -> rdf_dataset -> bool
 
 (* Sub-SELECT evaluation — concrete definition in Part 16, forward-declared
    here so eval_pattern can use it for GP_SubSelect *)
@@ -1881,22 +1886,22 @@ let path_result_to_solutions (ps : pattern_subject) (pt : pattern_term)
     pairs
 
 (* LeftJoin (OPTIONAL): join + unmatched from left *)
-let left_join (omega1 omega2 : solution_sequence) (filter_expr : expr) : solution_sequence =
+let left_join (base : option wf_iri) (omega1 omega2 : solution_sequence) (filter_expr : expr) : solution_sequence =
   Lh.concatMap_tr
     (fun mu1 ->
       let joins = list_filter_map
         (fun mu2 ->
           if sm_compatible mu1 mu2 then
             let merged = sm_merge mu1 mu2 in
-            if eval_expr_ebv filter_expr merged then Some merged else None
+            if eval_expr_ebv base filter_expr merged then Some merged else None
           else None)
         omega2 in
       if List.Tot.length joins > 0 then joins else [mu1])
     omega1
 
 (* Filter: retain solutions where expression evaluates to true *)
-let filter_solutions_fwd (e : expr) (omega : solution_sequence) : solution_sequence =
-  List.Tot.filter (eval_expr_ebv e) omega
+let filter_solutions_fwd (base : option wf_iri) (e : expr) (omega : solution_sequence) : solution_sequence =
+  List.Tot.filter (eval_expr_ebv base e) omega
 
 (* Pre-evaluate every E_Exists / E_NotExists sub-expression of [e] under
    solution mapping [mu] against [g]/[ds], replacing each with E_BoolLit.
@@ -1907,148 +1912,153 @@ let filter_solutions_fwd (e : expr) (omega : solution_sequence) : solution_seque
    are evaluated by eval_exists_fwd (which uses substitute_pattern internally)
    and are NOT recursed into here, so termination is by decreases on [e]. *)
 let rec substitute_existentials
+  (base : option wf_iri)
   (e : expr) (mu : solution_mapping)
   (g : rdf_graph) (ds : rdf_dataset)
   : Tot expr (decreases e) =
   match e with
   | E_Exists p ->
-    E_BoolLit (eval_exists_fwd p mu g ds)
+    E_BoolLit (eval_exists_fwd base p mu g ds)
   | E_NotExists p ->
-    E_BoolLit (not (eval_exists_fwd p mu g ds))
+    E_BoolLit (not (eval_exists_fwd base p mu g ds))
   // Recurse into sub-expressions
   | E_Arith op e1 e2 ->
-    E_Arith op (substitute_existentials e1 mu g ds)
-               (substitute_existentials e2 mu g ds)
-  | E_UnaryMinus e1 -> E_UnaryMinus (substitute_existentials e1 mu g ds)
-  | E_UnaryPlus e1 -> E_UnaryPlus (substitute_existentials e1 mu g ds)
+    E_Arith op (substitute_existentials base e1 mu g ds)
+               (substitute_existentials base e2 mu g ds)
+  | E_UnaryMinus e1 -> E_UnaryMinus (substitute_existentials base e1 mu g ds)
+  | E_UnaryPlus e1 -> E_UnaryPlus (substitute_existentials base e1 mu g ds)
   | E_Compare op e1 e2 ->
-    E_Compare op (substitute_existentials e1 mu g ds)
-                 (substitute_existentials e2 mu g ds)
+    E_Compare op (substitute_existentials base e1 mu g ds)
+                 (substitute_existentials base e2 mu g ds)
   | E_And e1 e2 ->
-    E_And (substitute_existentials e1 mu g ds)
-          (substitute_existentials e2 mu g ds)
+    E_And (substitute_existentials base e1 mu g ds)
+          (substitute_existentials base e2 mu g ds)
   | E_Or e1 e2 ->
-    E_Or (substitute_existentials e1 mu g ds)
-         (substitute_existentials e2 mu g ds)
-  | E_Not e1 -> E_Not (substitute_existentials e1 mu g ds)
-  | E_IsIRI e1 -> E_IsIRI (substitute_existentials e1 mu g ds)
-  | E_IsBlank e1 -> E_IsBlank (substitute_existentials e1 mu g ds)
-  | E_IsLiteral e1 -> E_IsLiteral (substitute_existentials e1 mu g ds)
-  | E_IsNumeric e1 -> E_IsNumeric (substitute_existentials e1 mu g ds)
-  | E_Str e1 -> E_Str (substitute_existentials e1 mu g ds)
-  | E_Lang e1 -> E_Lang (substitute_existentials e1 mu g ds)
-  | E_Datatype e1 -> E_Datatype (substitute_existentials e1 mu g ds)
-  | E_IRI_fn e1 -> E_IRI_fn (substitute_existentials e1 mu g ds)
+    E_Or (substitute_existentials base e1 mu g ds)
+         (substitute_existentials base e2 mu g ds)
+  | E_Not e1 -> E_Not (substitute_existentials base e1 mu g ds)
+  | E_IsIRI e1 -> E_IsIRI (substitute_existentials base e1 mu g ds)
+  | E_IsBlank e1 -> E_IsBlank (substitute_existentials base e1 mu g ds)
+  | E_IsLiteral e1 -> E_IsLiteral (substitute_existentials base e1 mu g ds)
+  | E_IsNumeric e1 -> E_IsNumeric (substitute_existentials base e1 mu g ds)
+  | E_Str e1 -> E_Str (substitute_existentials base e1 mu g ds)
+  | E_Lang e1 -> E_Lang (substitute_existentials base e1 mu g ds)
+  | E_Datatype e1 -> E_Datatype (substitute_existentials base e1 mu g ds)
+  | E_IRI_fn e1 -> E_IRI_fn (substitute_existentials base e1 mu g ds)
   | E_StrDt e1 e2 ->
-    E_StrDt (substitute_existentials e1 mu g ds)
-            (substitute_existentials e2 mu g ds)
+    E_StrDt (substitute_existentials base e1 mu g ds)
+            (substitute_existentials base e2 mu g ds)
   | E_StrLang e1 e2 ->
-    E_StrLang (substitute_existentials e1 mu g ds)
-              (substitute_existentials e2 mu g ds)
+    E_StrLang (substitute_existentials base e1 mu g ds)
+              (substitute_existentials base e2 mu g ds)
   | E_If c t f ->
-    E_If (substitute_existentials c mu g ds)
-         (substitute_existentials t mu g ds)
-         (substitute_existentials f mu g ds)
+    E_If (substitute_existentials base c mu g ds)
+         (substitute_existentials base t mu g ds)
+         (substitute_existentials base f mu g ds)
   | E_Coalesce es ->
-    E_Coalesce (substitute_existentials_list es mu g ds)
+    E_Coalesce (substitute_existentials_list base es mu g ds)
   | E_In ev es ->
-    E_In (substitute_existentials ev mu g ds)
-         (substitute_existentials_list es mu g ds)
+    E_In (substitute_existentials base ev mu g ds)
+         (substitute_existentials_list base es mu g ds)
   | E_NotIn ev es ->
-    E_NotIn (substitute_existentials ev mu g ds)
-            (substitute_existentials_list es mu g ds)
-  | E_StrLen e1 -> E_StrLen (substitute_existentials e1 mu g ds)
+    E_NotIn (substitute_existentials base ev mu g ds)
+            (substitute_existentials_list base es mu g ds)
+  | E_StrLen e1 -> E_StrLen (substitute_existentials base e1 mu g ds)
   | E_Substr e1 e2 e3_opt ->
-    E_Substr (substitute_existentials e1 mu g ds)
-             (substitute_existentials e2 mu g ds)
-             (substitute_existentials_opt e3_opt mu g ds)
-  | E_UCase e1 -> E_UCase (substitute_existentials e1 mu g ds)
-  | E_LCase e1 -> E_LCase (substitute_existentials e1 mu g ds)
+    E_Substr (substitute_existentials base e1 mu g ds)
+             (substitute_existentials base e2 mu g ds)
+             (substitute_existentials_opt base e3_opt mu g ds)
+  | E_UCase e1 -> E_UCase (substitute_existentials base e1 mu g ds)
+  | E_LCase e1 -> E_LCase (substitute_existentials base e1 mu g ds)
   | E_StrStarts e1 e2 ->
-    E_StrStarts (substitute_existentials e1 mu g ds)
-                (substitute_existentials e2 mu g ds)
+    E_StrStarts (substitute_existentials base e1 mu g ds)
+                (substitute_existentials base e2 mu g ds)
   | E_StrEnds e1 e2 ->
-    E_StrEnds (substitute_existentials e1 mu g ds)
-              (substitute_existentials e2 mu g ds)
+    E_StrEnds (substitute_existentials base e1 mu g ds)
+              (substitute_existentials base e2 mu g ds)
   | E_Contains e1 e2 ->
-    E_Contains (substitute_existentials e1 mu g ds)
-               (substitute_existentials e2 mu g ds)
+    E_Contains (substitute_existentials base e1 mu g ds)
+               (substitute_existentials base e2 mu g ds)
   | E_StrBefore e1 e2 ->
-    E_StrBefore (substitute_existentials e1 mu g ds)
-                (substitute_existentials e2 mu g ds)
+    E_StrBefore (substitute_existentials base e1 mu g ds)
+                (substitute_existentials base e2 mu g ds)
   | E_StrAfter e1 e2 ->
-    E_StrAfter (substitute_existentials e1 mu g ds)
-               (substitute_existentials e2 mu g ds)
+    E_StrAfter (substitute_existentials base e1 mu g ds)
+               (substitute_existentials base e2 mu g ds)
   | E_Concat es ->
-    E_Concat (substitute_existentials_list es mu g ds)
-  | E_EncodeForUri e1 -> E_EncodeForUri (substitute_existentials e1 mu g ds)
+    E_Concat (substitute_existentials_list base es mu g ds)
+  | E_EncodeForUri e1 -> E_EncodeForUri (substitute_existentials base e1 mu g ds)
   | E_Replace e1 e2 e3 e4_opt ->
-    E_Replace (substitute_existentials e1 mu g ds)
-              (substitute_existentials e2 mu g ds)
-              (substitute_existentials e3 mu g ds)
-              (substitute_existentials_opt e4_opt mu g ds)
+    E_Replace (substitute_existentials base e1 mu g ds)
+              (substitute_existentials base e2 mu g ds)
+              (substitute_existentials base e3 mu g ds)
+              (substitute_existentials_opt base e4_opt mu g ds)
   | E_Regex e1 e2 e3_opt ->
-    E_Regex (substitute_existentials e1 mu g ds)
-            (substitute_existentials e2 mu g ds)
-            (substitute_existentials_opt e3_opt mu g ds)
-  | E_Abs e1 -> E_Abs (substitute_existentials e1 mu g ds)
-  | E_Round e1 -> E_Round (substitute_existentials e1 mu g ds)
-  | E_Ceil e1 -> E_Ceil (substitute_existentials e1 mu g ds)
-  | E_Floor e1 -> E_Floor (substitute_existentials e1 mu g ds)
-  | E_MD5 e1 -> E_MD5 (substitute_existentials e1 mu g ds)
-  | E_SHA1 e1 -> E_SHA1 (substitute_existentials e1 mu g ds)
-  | E_SHA256 e1 -> E_SHA256 (substitute_existentials e1 mu g ds)
-  | E_SHA384 e1 -> E_SHA384 (substitute_existentials e1 mu g ds)
-  | E_SHA512 e1 -> E_SHA512 (substitute_existentials e1 mu g ds)
-  | E_Year e1 -> E_Year (substitute_existentials e1 mu g ds)
-  | E_Month e1 -> E_Month (substitute_existentials e1 mu g ds)
-  | E_Day e1 -> E_Day (substitute_existentials e1 mu g ds)
-  | E_Hours e1 -> E_Hours (substitute_existentials e1 mu g ds)
-  | E_Minutes e1 -> E_Minutes (substitute_existentials e1 mu g ds)
-  | E_Seconds e1 -> E_Seconds (substitute_existentials e1 mu g ds)
-  | E_Timezone e1 -> E_Timezone (substitute_existentials e1 mu g ds)
-  | E_Tz e1 -> E_Tz (substitute_existentials e1 mu g ds)
+    E_Regex (substitute_existentials base e1 mu g ds)
+            (substitute_existentials base e2 mu g ds)
+            (substitute_existentials_opt base e3_opt mu g ds)
+  | E_Abs e1 -> E_Abs (substitute_existentials base e1 mu g ds)
+  | E_Round e1 -> E_Round (substitute_existentials base e1 mu g ds)
+  | E_Ceil e1 -> E_Ceil (substitute_existentials base e1 mu g ds)
+  | E_Floor e1 -> E_Floor (substitute_existentials base e1 mu g ds)
+  | E_MD5 e1 -> E_MD5 (substitute_existentials base e1 mu g ds)
+  | E_SHA1 e1 -> E_SHA1 (substitute_existentials base e1 mu g ds)
+  | E_SHA256 e1 -> E_SHA256 (substitute_existentials base e1 mu g ds)
+  | E_SHA384 e1 -> E_SHA384 (substitute_existentials base e1 mu g ds)
+  | E_SHA512 e1 -> E_SHA512 (substitute_existentials base e1 mu g ds)
+  | E_Year e1 -> E_Year (substitute_existentials base e1 mu g ds)
+  | E_Month e1 -> E_Month (substitute_existentials base e1 mu g ds)
+  | E_Day e1 -> E_Day (substitute_existentials base e1 mu g ds)
+  | E_Hours e1 -> E_Hours (substitute_existentials base e1 mu g ds)
+  | E_Minutes e1 -> E_Minutes (substitute_existentials base e1 mu g ds)
+  | E_Seconds e1 -> E_Seconds (substitute_existentials base e1 mu g ds)
+  | E_Timezone e1 -> E_Timezone (substitute_existentials base e1 mu g ds)
+  | E_Tz e1 -> E_Tz (substitute_existentials base e1 mu g ds)
   | E_SameTerm e1 e2 ->
-    E_SameTerm (substitute_existentials e1 mu g ds)
-               (substitute_existentials e2 mu g ds)
+    E_SameTerm (substitute_existentials base e1 mu g ds)
+               (substitute_existentials base e2 mu g ds)
   | E_Aggregate fn dist e1 ->
-    E_Aggregate fn dist (substitute_existentials e1 mu g ds)
+    E_Aggregate fn dist (substitute_existentials base e1 mu g ds)
   | E_FunctionCall iri args ->
-    E_FunctionCall iri (substitute_existentials_list args mu g ds)
+    E_FunctionCall iri (substitute_existentials_list base args mu g ds)
   // Leaf cases pass through unchanged
   | _ -> e
 
 and substitute_existentials_list
+  (base : option wf_iri)
   (es : list expr) (mu : solution_mapping)
   (g : rdf_graph) (ds : rdf_dataset)
   : Tot (list expr) (decreases es) =
   match es with
   | [] -> []
   | hd :: tl ->
-    substitute_existentials hd mu g ds
-      :: substitute_existentials_list tl mu g ds
+    substitute_existentials base hd mu g ds
+      :: substitute_existentials_list base tl mu g ds
 
 and substitute_existentials_opt
+  (base : option wf_iri)
   (eo : option expr) (mu : solution_mapping)
   (g : rdf_graph) (ds : rdf_dataset)
   : Tot (option expr) (decreases eo) =
   match eo with
   | None -> None
-  | Some e -> Some (substitute_existentials e mu g ds)
+  | Some e -> Some (substitute_existentials base e mu g ds)
 
 (* Filter with graph context: pre-substitute existentials, then filter. *)
 let filter_solutions_with_graph
+  (base : option wf_iri)
   (e : expr) (omega : solution_sequence)
   (g : rdf_graph) (ds : rdf_dataset)
   : solution_sequence =
   List.Tot.filter
     (fun mu ->
-      let e' = substitute_existentials e mu g ds in
-      eval_expr_ebv e' mu)
+      let e' = substitute_existentials base e mu g ds in
+      eval_expr_ebv base e' mu)
     omega
 
 (* LeftJoin with graph context: same substitution applied per-mapping. *)
 let left_join_with_graph
+  (base : option wf_iri)
   (omega1 omega2 : solution_sequence) (filter_expr : expr)
   (g : rdf_graph) (ds : rdf_dataset)
   : solution_sequence =
@@ -2058,8 +2068,8 @@ let left_join_with_graph
         (fun mu2 ->
           if sm_compatible mu1 mu2 then
             let merged = sm_merge mu1 mu2 in
-            let e' = substitute_existentials filter_expr merged g ds in
-            if eval_expr_ebv e' merged then Some merged else None
+            let e' = substitute_existentials base filter_expr merged g ds in
+            if eval_expr_ebv base e' merged then Some merged else None
           else None)
         omega2 in
       if List.Tot.length joins > 0 then joins else [mu1])
@@ -2092,8 +2102,10 @@ let minus (omega1 omega2 : solution_sequence) : solution_sequence =
 
 (** 7.4 Graph pattern evaluation (§18.6) — CONCRETE **)
 
-(* Evaluate a group graph pattern against a graph store and dataset store. *)
-let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store) (dss : rdf_dataset_store)
+(* Evaluate a group graph pattern against a graph store and dataset store.
+   #65 Step 2c (2026-05-10): threads BASE IRI for IRI() resolution in
+   FILTER / BIND sub-expressions and through sub-SELECT evaluation. *)
+let rec eval_pattern_store (base : option wf_iri) (p : group_graph_pattern) (gs : graph_store) (dss : rdf_dataset_store)
   : Tot solution_sequence (decreases p) =
   match p with
   | GP_BGP bgp -> eval_bgp_store bgp gs
@@ -2104,7 +2116,7 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store) (dss : r
        endpoint IRI and dispatch through [service_endpoint_lookup] per
        solution. Issue #57 Phase 3. Termination: [inner] is structurally
        smaller than the outer [GP_Join _ (GP_ServiceVar _ inner _)]. *)
-    let omega1 = eval_pattern_store p1 gs dss in
+    let omega1 = eval_pattern_store base p1 gs dss in
     Lh.concatMap_tr
       (fun mu ->
         match sm_lookup v mu with
@@ -2112,7 +2124,7 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store) (dss : r
           if is_iri iri then
             (match service_endpoint_lookup iri with
              | Some remote_gs ->
-               let omega2 = eval_pattern_store inner remote_gs dss in
+               let omega2 = eval_pattern_store base inner remote_gs dss in
                Lh.concatMap_tr
                  (fun mu2 ->
                    if sm_compatible mu mu2 then [sm_merge mu mu2] else [])
@@ -2125,7 +2137,7 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store) (dss : r
   | GP_Join (GP_ServiceVar v inner silent) p2 ->
     (* Symmetric: SERVICE ?var on the left side of a join. Evaluate the
        right side first to obtain bindings for [v]. *)
-    let omega2 = eval_pattern_store p2 gs dss in
+    let omega2 = eval_pattern_store base p2 gs dss in
     Lh.concatMap_tr
       (fun mu ->
         match sm_lookup v mu with
@@ -2133,7 +2145,7 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store) (dss : r
           if is_iri iri then
             (match service_endpoint_lookup iri with
              | Some remote_gs ->
-               let omega1 = eval_pattern_store inner remote_gs dss in
+               let omega1 = eval_pattern_store base inner remote_gs dss in
                Lh.concatMap_tr
                  (fun mu1 ->
                    if sm_compatible mu mu1 then [sm_merge mu mu1] else [])
@@ -2144,36 +2156,36 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store) (dss : r
       omega2
 
   | GP_Join p1 p2 ->
-    join (eval_pattern_store p1 gs dss) (eval_pattern_store p2 gs dss)
+    join (eval_pattern_store base p1 gs dss) (eval_pattern_store base p2 gs dss)
 
   | GP_LeftJoin p1 p2 filter_e ->
-    left_join_with_graph
-      (eval_pattern_store p1 gs dss)
-      (eval_pattern_store p2 gs dss)
+    left_join_with_graph base
+      (eval_pattern_store base p1 gs dss)
+      (eval_pattern_store base p2 gs dss)
       filter_e gs.gs_graph (store_to_dataset dss)
 
   | GP_Filter e p' ->
-    let omega = eval_pattern_store p' gs dss in
+    let omega = eval_pattern_store base p' gs dss in
     (* EXISTS / NOT EXISTS may appear at the top level of [e] OR nested
        inside E_And / E_Or / E_Not / E_If etc. The pre-substitution pass
        below replaces every existential sub-expression with E_BoolLit
        evaluated against the current graph + dataset, so the graph-free
        eval_expr_ebv can finish the job. Issue: w3c negation/subset-02. *)
-    filter_solutions_with_graph e omega gs.gs_graph (store_to_dataset dss)
+    filter_solutions_with_graph base e omega gs.gs_graph (store_to_dataset dss)
 
   | GP_Union p1 p2 ->
-    union (eval_pattern_store p1 gs dss) (eval_pattern_store p2 gs dss)
+    union (eval_pattern_store base p1 gs dss) (eval_pattern_store base p2 gs dss)
 
   | GP_Minus p1 p2 ->
-    minus (eval_pattern_store p1 gs dss) (eval_pattern_store p2 gs dss)
+    minus (eval_pattern_store base p1 gs dss) (eval_pattern_store base p2 gs dss)
 
   | GP_Empty -> [sm_empty]
 
   | GP_Bind e v p' ->
-    let omega = eval_pattern_store p' gs dss in
+    let omega = eval_pattern_store base p' gs dss in
     List.Tot.map
       (fun mu ->
-        match er_to_term (eval_expr_fwd e mu) with
+        match er_to_term (eval_expr_fwd base e mu) with
         | Some t ->
           (match sm_lookup v mu with
            | Some _ -> mu
@@ -2190,13 +2202,13 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store) (dss : r
      | PT_IRI name ->
        (* GRAPH <iri> { p } — evaluate p against the named graph identified by iri *)
        (match lookup_named_store name dss.dss_named with
-        | Some ngs -> eval_pattern_store p' ngs dss
+        | Some ngs -> eval_pattern_store base p' ngs dss
         | None -> [])  (* Named graph not in dataset → empty *)
      | PT_Var v ->
        (* GRAPH ?var { p } — iterate over all named graphs, binding ?var *)
        Lh.concatMap_tr
          (fun (ngs : named_graph_store) ->
-           let ng_results = eval_pattern_store p' ngs.ngs_store dss in
+           let ng_results = eval_pattern_store base p' ngs.ngs_store dss in
            if is_iri ngs.ngs_name then
              Lh.concatMap_tr
                (fun mu ->
@@ -2206,7 +2218,7 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store) (dss : r
                ng_results
            else ng_results)
          dss.dss_named
-     | _ -> eval_pattern_store p' gs dss)  (* Other pattern terms: fallback to current graph *)
+     | _ -> eval_pattern_store base p' gs dss)  (* Other pattern terms: fallback to current graph *)
 
   | GP_Service iri p' silent ->
     (* SPARQL 1.1 federated query — issue #57.
@@ -2220,7 +2232,7 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store) (dss : r
        Tot type cannot signal that, so we return [] (empty bindings)
        in both cases as a sentinel. *)
     (match service_endpoint_lookup iri with
-     | Some remote_gs -> eval_pattern_store p' remote_gs dss
+     | Some remote_gs -> eval_pattern_store base p' remote_gs dss
      | None ->
        if silent then [[]]  (* unbound but not erroring *)
        else [])
@@ -2284,10 +2296,11 @@ let rec eval_pattern_store (p : group_graph_pattern) (gs : graph_store) (dss : r
 (* Evaluate a group graph pattern against an RDF graph and dataset — CONCRETE.
    The dataset carries named graphs for GP_Graph evaluation.
    [S1] Property paths deferred.
-   Sub-SELECT deferred (requires eval_select_query). *)
-let eval_pattern (p : group_graph_pattern) (g : rdf_graph) (ds : rdf_dataset)
+   Sub-SELECT deferred (requires eval_select_query).
+   #65 Step 2c (2026-05-10): threads BASE IRI through. *)
+let eval_pattern (base : option wf_iri) (p : group_graph_pattern) (g : rdf_graph) (ds : rdf_dataset)
   : solution_sequence =
-  eval_pattern_store p (graph_to_store g) (dataset_to_store ds)
+  eval_pattern_store base p (graph_to_store g) (dataset_to_store ds)
 
 (** ====================================================================== **)
 (** Part 8: SPARQL 1.1 Expression Evaluation (§17)                         **)
@@ -3715,7 +3728,7 @@ let eval_select_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : solution_
   match q.q_form with
   | QF_Select sel ->
     (* 1. Evaluate WHERE clause *)
-    let omega0 = eval_pattern q.q_pattern g ds in
+    let omega0 = eval_pattern base q.q_pattern g ds in
 
     (* 1b. Post-query VALUES — join against WHERE results *)
     let omega = match q.q_values with
@@ -3805,9 +3818,10 @@ let eval_select_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : solution_
 
 let eval_ask_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : bool =
   let (g, ds) = apply_query_dataset q.q_dataset g ds in
+  let base = q.q_base in
   match q.q_form with
   | QF_Ask ->
-    let omega0 = eval_pattern q.q_pattern g ds in
+    let omega0 = eval_pattern base q.q_pattern g ds in
     let omega = match q.q_values with
       | None -> omega0
       | Some vals -> join omega0 vals in
@@ -3911,9 +3925,10 @@ let dedup_triples (ts : list triple) : list triple =
 
 let eval_construct_query (q : query) (g : rdf_graph) (ds : rdf_dataset) : list triple =
   let (g, ds) = apply_query_dataset q.q_dataset g ds in
+  let base = q.q_base in
   match q.q_form with
   | QF_Construct template ->
-    let omega0 = eval_pattern q.q_pattern g ds in
+    let omega0 = eval_pattern base q.q_pattern g ds in
     let omega = match q.q_values with
       | None -> omega0
       | Some vals -> join omega0 vals in
@@ -4549,14 +4564,14 @@ let rec ggp_has_var (v : var_name) (p : group_graph_pattern) : Tot bool (decreas
     (match pt with PT_Var tv -> tv = v | _ -> false)
   | GP_Empty -> false
 
-let eval_exists (pattern : group_graph_pattern) (mu : solution_mapping)
+let eval_exists (base : option wf_iri) (pattern : group_graph_pattern) (mu : solution_mapping)
   (graph : rdf_graph) (ds : rdf_dataset) : bool =
   let substituted = substitute_pattern mu pattern in
-  List.Tot.length (eval_pattern substituted graph ds) > 0
+  List.Tot.length (eval_pattern base substituted graph ds) > 0
 
-let eval_not_exists (pattern : group_graph_pattern) (mu : solution_mapping)
+let eval_not_exists (base : option wf_iri) (pattern : group_graph_pattern) (mu : solution_mapping)
   (graph : rdf_graph) (ds : rdf_dataset) : bool =
-  not (eval_exists pattern mu graph ds)
+  not (eval_exists base pattern mu graph ds)
 
 (** ====================================================================== **)
 (** Part 18: SPARQL 1.1 Sub-SELECT (§12)                                  **)
@@ -4606,17 +4621,17 @@ let rec lemma_filter_append (#a:Type) (f : a -> bool) (l1 l2 : list a) :
   | hd :: tl -> lemma_filter_append f tl l2
 
 (* filter_solutions: helper for lemmas *)
-let filter_solutions (e : expr) (omega : solution_sequence) : solution_sequence =
-  List.Tot.filter (eval_expr_ebv e) omega
+let filter_solutions (base : option wf_iri) (e : expr) (omega : solution_sequence) : solution_sequence =
+  List.Tot.filter (eval_expr_ebv base e) omega
 
-let lemma_filter_union (e : expr) (omega1 omega2 : solution_sequence) :
-  Lemma (filter_solutions e (union omega1 omega2) ==
-         union (filter_solutions e omega1) (filter_solutions e omega2)) =
+let lemma_filter_union (base : option wf_iri) (e : expr) (omega1 omega2 : solution_sequence) :
+  Lemma (filter_solutions base e (union omega1 omega2) ==
+         union (filter_solutions base e omega1) (filter_solutions base e omega2)) =
   // Bridge: union = Lh.append_tr (post-#95). lemma_filter_append is
   // about stdlib `@` — convert via lemma_append_tr_eq before/after.
   Lh.lemma_append_tr_eq omega1 omega2;
-  Lh.lemma_append_tr_eq (filter_solutions e omega1) (filter_solutions e omega2);
-  lemma_filter_append (eval_expr_ebv e) omega1 omega2
+  Lh.lemma_append_tr_eq (filter_solutions base e omega1) (filter_solutions base e omega2);
+  lemma_filter_append (eval_expr_ebv base e) omega1 omega2
 
 (** 19.4 OFFSET 0 is identity — PROVED **)
 let lemma_offset_zero (omega : solution_sequence) :
@@ -5183,7 +5198,7 @@ let apply_delete_where (ds : rdf_dataset) (ggp : group_graph_pattern)
   let rewritten = rewrite_query_bnodes_pattern ggp in
   // Evaluate against the default graph + dataset. GP_Graph inside the
   // template is still honoured by eval_pattern itself.
-  let mus = eval_pattern rewritten ds.ds_default ds in
+  let mus = eval_pattern None rewritten ds.ds_default ds in
   // For each mapping, substitute into the (rewritten) template to get
   // concrete quads.
   let quads = instantiate_ggp_all None rewritten mus in
@@ -5377,7 +5392,7 @@ let apply_modify (op_salt : string) (ds : rdf_dataset)
 
   // Evaluate WHERE against the view. GP_Graph inside the pattern is still
   // honoured by eval_pattern against the view's named set.
-  let mus = eval_pattern where_rewritten where_ds.ds_default where_ds in
+  let mus = eval_pattern None where_rewritten where_ds.ds_default where_ds in
 
   // Step 1: substitute each mapping into delete_tmpl; redirect unscoped
   // quads to WITH's graph if set; delete from the original dataset.

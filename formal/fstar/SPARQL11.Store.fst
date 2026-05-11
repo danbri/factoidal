@@ -585,35 +585,35 @@ let eval_limit_single_tp (sel : select_clause) (tp : triple_pattern)
   | Select_Vars items -> project_solutions (select_item_vars items) omega'
   | Select_All -> omega'
 
-let rec eval_pattern_backend (p : group_graph_pattern) (gb : graph_backend) (dsb : dataset_backend)
+let rec eval_pattern_backend (base : option wf_iri) (p : group_graph_pattern) (gb : graph_backend) (dsb : dataset_backend)
   : Tot solution_sequence (decreases p) =
   match p with
   | GP_BGP bgp ->
     eval_bgp_backend bgp gb
 
   | GP_Join p1 p2 ->
-    join (eval_pattern_backend p1 gb dsb) (eval_pattern_backend p2 gb dsb)
+    join (eval_pattern_backend base p1 gb dsb) (eval_pattern_backend base p2 gb dsb)
 
   | GP_LeftJoin p1 p2 filter_e ->
-    left_join (eval_pattern_backend p1 gb dsb) (eval_pattern_backend p2 gb dsb) filter_e
+    left_join base (eval_pattern_backend base p1 gb dsb) (eval_pattern_backend base p2 gb dsb) filter_e
 
   | GP_Filter e p' ->
-    filter_solutions_fwd e (eval_pattern_backend p' gb dsb)
+    filter_solutions_fwd base e (eval_pattern_backend base p' gb dsb)
 
   | GP_Union p1 p2 ->
-    union (eval_pattern_backend p1 gb dsb) (eval_pattern_backend p2 gb dsb)
+    union (eval_pattern_backend base p1 gb dsb) (eval_pattern_backend base p2 gb dsb)
 
   | GP_Minus p1 p2 ->
-    minus (eval_pattern_backend p1 gb dsb) (eval_pattern_backend p2 gb dsb)
+    minus (eval_pattern_backend base p1 gb dsb) (eval_pattern_backend base p2 gb dsb)
 
   | GP_Empty ->
     [sm_empty]
 
   | GP_Bind e v p' ->
-    let omega = eval_pattern_backend p' gb dsb in
+    let omega = eval_pattern_backend base p' gb dsb in
     List.Tot.map
       (fun mu ->
-        match er_to_term (eval_expr_fwd e mu) with
+        match er_to_term (eval_expr_fwd base e mu) with
         | Some t ->
           (match sm_lookup v mu with
            | Some _ -> mu
@@ -628,19 +628,19 @@ let rec eval_pattern_backend (p : group_graph_pattern) (gb : graph_backend) (dsb
     (match gt with
      | PT_IRI name ->
        (match lookup_named_backend name dsb.dsb_named with
-        | Some ngb -> eval_pattern_backend p' ngb dsb
+        | Some ngb -> eval_pattern_backend base p' ngb dsb
         | None -> [])
      | PT_Var v ->
        let candidates = named_candidate_backends dsb.dsb_named (pattern_predicate_hint p') in
        Lh.concatMap_tr
          (fun (ngb : named_graph_backend) ->
-           let ng_results = eval_pattern_backend p' ngb.ngb_graph dsb in
+           let ng_results = eval_pattern_backend base p' ngb.ngb_graph dsb in
            if is_iri ngb.ngb_name then
              List.Tot.map (fun mu -> sm_bind v (T_IRI ngb.ngb_name) mu) ng_results
            else ng_results)
          candidates
      | _ ->
-       eval_pattern_backend p' gb dsb)
+       eval_pattern_backend base p' gb dsb)
 
   | GP_Service _ _ _ ->
     []
@@ -722,7 +722,7 @@ and eval_select_query_backend_on_graph (q : query) (gb : graph_backend) (dsb : d
     match q.q_form with
     | QF_Select sel ->
       let base = q.q_base in
-      let omega0 = eval_pattern_backend q.q_pattern gb dsb in
+      let omega0 = eval_pattern_backend base q.q_pattern gb dsb in
       let omega = match q.q_values with
         | None -> omega0
         | Some vals -> join omega0 vals in
@@ -791,7 +791,7 @@ and eval_ask_query_backend_dataset (q : query) (dsb : dataset_backend)
   : option bool =
   match q.q_form with
   | QF_Ask ->
-    let omega0 = eval_pattern_backend q.q_pattern dsb.dsb_default dsb in
+    let omega0 = eval_pattern_backend q.q_base q.q_pattern dsb.dsb_default dsb in
     let omega = match q.q_values with
       | None -> omega0
       | Some vals -> join omega0 vals in
