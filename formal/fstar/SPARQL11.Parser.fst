@@ -79,6 +79,12 @@ type token =
   | Tok_INSERT | Tok_DELETE | Tok_DATA
   | Tok_INTO | Tok_TO | Tok_WITH | Tok_USING
   | Tok_DEFAULT | Tok_ALL
+  (* Lexer-level error marker — #64 sub-step 2 (2026-05-11).
+     Carries a diagnostic string. The top-level parser scans the token
+     stream once before parsing and short-circuits to ParseErr if any
+     Tok_INVALID is present. Replaces the OCaml-stub
+     `failwith "invalid Unicode codepoint: surrogate"` path. *)
+  | Tok_INVALID  : string -> token
   (* End *)
   | Tok_EOF
 
@@ -288,23 +294,6 @@ let process_iri_escapes (s : string) : Tot string =
   let cs = String.list_of_string s in
   String.string_of_list (process_iri_escapes_rec cs [])
 
-(* Process escape sequences in a string literal
-   (\t \n \r \\ \" \' \b \f \uXXXX \UXXXXXXXX).
-   Delegated to OCaml stub.
-
-   #64 sub-step 1 (2026-05-11): a pure F* implementation
-   `process_string_escapes_opt` is provided just below. It returns
-   `option string` so callers can distinguish "well-formed" from
-   "contains \uD800-\uDFFF surrogate" (the only failure mode in the
-   OCaml stub, which currently raises `failwith`).
-
-   The OCaml-stub `assume val` stays for now to keep `scan_string`'s
-   signature stable. The next sub-step will (a) rewire `scan_string`
-   to consume the `option`, (b) introduce a `Tok_INVALID` variant so
-   the tokenizer can carry the diagnostic up to `parse_sparql_with_base`
-   without throwing OCaml exceptions, (c) retire the assume val. *)
-assume val process_string_escapes : string -> string
-
 (* Pure F* implementation: walk the codepoint list, expand \X escapes,
    reject \uD800-\uDFFF and \U????D[8-9A-F]?? (surrogate halves). The
    semantics match the OCaml stub minus its `failwith` — instead of
@@ -477,9 +466,12 @@ let rec scan_long_string_end (input : string) (p : pos) (q_code : nat)
     else scan_long_string_end input (p + 1) q_code
 
 (* Scan string literal starting at opening quote.
-   Handles short ("...") and long (\"\"\"...\"\"\") forms, single and double quotes.
-   Returns (string_content, pos_after_closing_quote). *)
-let scan_string (input : string) (p : pos) : (string & pos) =
+   Handles short ("...") and long ("""...""") forms, single and double quotes.
+   Returns (None, pos) if escape processing fails (e.g. surrogate
+   codepoint via \\uD800-\\uDFFF); otherwise (Some content, pos).
+   #64 sub-step 2 (2026-05-11): switched from `string -> string` to the
+   pure-F* `process_string_escapes_opt : string -> option string`. *)
+let scan_string (input : string) (p : pos) : (option string & pos) =
   let q = peek_char input p in
   let q_code = char_code q in
   (* Check for long string (triple-quoted) *)
@@ -490,12 +482,12 @@ let scan_string (input : string) (p : pos) : (string & pos) =
     let p_start = p + 3 in
     let end_p = scan_long_string_end input p_start q_code in
     let raw = substring input p_start (safe_sub end_p p_start) in
-    (process_string_escapes raw, end_p + 3) (* skip closing """ or ''' *)
+    (process_string_escapes_opt raw, end_p + 3) (* skip closing """ or ''' *)
   else
     let p_start = p + 1 in
     let end_p = scan_short_string_end input p_start q_code in
     let raw = substring input p_start (safe_sub end_p p_start) in
-    (process_string_escapes raw, end_p + 1) (* skip closing " or ' *)
+    (process_string_escapes_opt raw, end_p + 1) (* skip closing " or ' *)
 
 (* --- scan_pname_or_keyword: prefixed name or SPARQL keyword --- *)
 
@@ -822,8 +814,10 @@ let next_token (input : string) (p : pos) : lex_result =
       else (Tok_VAR name, p')
     end
     else if code = 0x22 || code = 0x27 then begin    (* " or ' — string literal *)
-      let (s, p') = scan_string input p in
-      (Tok_STRING s, p')
+      let (s_opt, p') = scan_string input p in
+      (match s_opt with
+       | Some s -> (Tok_STRING s, p')
+       | None -> (Tok_INVALID "invalid string escape (surrogate or malformed)", p'))
     end
     else if code = 0x40 then begin                   (* @ — language tag *)
       let (tag, p') = scan_langtag input (p + 1) in
@@ -3499,15 +3493,32 @@ let validate_bnode_scope_top (q : query) : bool =
 // before the query's own prologue. Per SPARQL 1.1 §4.1.1.1 an
 // implementation MAY use the service URI as BASE when the query has no
 // explicit BASE directive; the protocol runner supplies that here.
+// #64 sub-step 3 (2026-05-11): scan the token stream for the lexer
+// error marker Tok_INVALID. The only producer is the string scanner
+// when process_string_escapes_opt rejects \\uD800-\\uDFFF surrogates
+// or a malformed \\X escape. Used by both query and update entry
+// points; replaces the OCaml `failwith` that previously bubbled out
+// of process_string_escapes (caught in 69_runner_io_glue.sh as
+// `Failure _ -> Pass` in negative-syntax tests).
+let rec first_invalid_token_msg (ts : token_stream)
+  : Tot (option string) (decreases ts) =
+  match ts with
+  | [] -> None
+  | Tok_INVALID m :: _ -> Some m
+  | _ :: rest -> first_invalid_token_msg rest
+
 let parse_sparql_with_base (init_base : option wf_iri) (input : string) : parse_result query =
   let tokens = tokenize input in
-  match parse_select_query [] init_base 10000 tokens with
-  | ParseOk q rest ->
-    if not (tokens_only_eof rest) then ParseErr "unexpected tokens after query"
-    else if not (validate_bnode_scope_top q) then
-      ParseErr "blank node label reused across graph-pattern scope"
-    else ParseOk q rest
-  | ParseErr msg -> ParseErr msg
+  match first_invalid_token_msg tokens with
+  | Some m -> ParseErr m
+  | None ->
+    match parse_select_query [] init_base 10000 tokens with
+    | ParseOk q rest ->
+      if not (tokens_only_eof rest) then ParseErr "unexpected tokens after query"
+      else if not (validate_bnode_scope_top q) then
+        ParseErr "blank node label reused across graph-pattern scope"
+      else ParseOk q rest
+    | ParseErr msg -> ParseErr msg
 
 let parse_sparql (input : string) : parse_result query =
   parse_sparql_with_base None input
@@ -4101,6 +4112,9 @@ let rec bnode_labels_unique_across_data_ops (seen : list string) (ops : list upd
 let parse_sparql_update_with_base (init_base : option wf_iri) (input : string)
   : parse_result sparql_update =
   let tokens = tokenize input in
+  match first_invalid_token_msg tokens with
+  | Some m -> ParseErr m
+  | None ->
   // If we have an init_base, rewrite relative IRIs in the token stream up
   // front. parse_update_seq's per-prologue rewrite (line ~3752) will
   // re-rewrite once a BASE directive arrives, but the initial pass

@@ -147,6 +147,7 @@ type token =
   | Tok_USING 
   | Tok_DEFAULT 
   | Tok_ALL 
+  | Tok_INVALID of Prims.string 
   | Tok_EOF 
 let uu___is_Tok_SELECT (projectee : token) : Prims.bool=
   match projectee with | Tok_SELECT -> true | uu___ -> false
@@ -460,6 +461,10 @@ let uu___is_Tok_DEFAULT (projectee : token) : Prims.bool=
   match projectee with | Tok_DEFAULT -> true | uu___ -> false
 let uu___is_Tok_ALL (projectee : token) : Prims.bool=
   match projectee with | Tok_ALL -> true | uu___ -> false
+let uu___is_Tok_INVALID (projectee : token) : Prims.bool=
+  match projectee with | Tok_INVALID _0 -> true | uu___ -> false
+let __proj__Tok_INVALID__item___0 (projectee : token) : Prims.string=
+  match projectee with | Tok_INVALID _0 -> _0
 let uu___is_Tok_EOF (projectee : token) : Prims.bool=
   match projectee with | Tok_EOF -> true | uu___ -> false
 type pos = Prims.nat
@@ -651,53 +656,103 @@ let rec process_iri_escapes_rec (cs : FStar_Char.char Prims.list)
 let process_iri_escapes (s : Prims.string) : Prims.string=
   let cs = FStar_String.list_of_string s in
   FStar_String.string_of_list (process_iri_escapes_rec cs [])
-let process_string_escapes (s : Prims.string) : Prims.string =
-  let open Stdlib in
-  (* Process string escape sequences: backslash-t, -n, -r, etc. *)
-  let len = String.length s in
-  let buf = Buffer.create len in
-  let i = ref 0 in
-  while !i < len do
-    if !i + 1 < len && s.[!i] = '\\' then begin
-      let next = s.[!i + 1] in
-      if next = 't' then (Buffer.add_char buf '\t'; i := !i + 2)
-      else if next = 'n' then (Buffer.add_char buf '\n'; i := !i + 2)
-      else if next = 'r' then (Buffer.add_char buf '\r'; i := !i + 2)
-      else if next = '\\' then (Buffer.add_char buf '\\'; i := !i + 2)
-      else if next = '"' then (Buffer.add_char buf '"'; i := !i + 2)
-      else if next = '\'' then (Buffer.add_char buf '\''; i := !i + 2)
-      else if next = 'b' then (Buffer.add_char buf '\008'; i := !i + 2)
-      else if next = 'f' then (Buffer.add_char buf '\012'; i := !i + 2)
-      else if next = 'u' && !i + 5 < len then begin
-        let hex = String.sub s (!i + 2) 4 in
-        (try let cp = int_of_string ("0x" ^ hex) in
-             if cp >= 0xD800 && cp <= 0xDFFF then
-               failwith "invalid Unicode codepoint: surrogate"
-             else
-               Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
-         with Failure msg -> raise (Failure msg)
-            | _ -> Buffer.add_string buf (String.sub s !i 6));
-        i := !i + 6
-      end else if next = 'U' && !i + 9 < len then begin
-        let hex = String.sub s (!i + 2) 8 in
-        (try let cp = int_of_string ("0x" ^ hex) in
-             if cp >= 0xD800 && cp <= 0xDFFF then
-               failwith "invalid Unicode codepoint: surrogate"
-             else
-               Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
-         with Failure msg -> raise (Failure msg)
-            | _ -> Buffer.add_string buf (String.sub s !i 10));
-        i := !i + 10
-      end else begin
-        Buffer.add_char buf s.[!i];
-        i := !i + 1
-      end
-    end else begin
-      Buffer.add_char buf s.[!i];
-      i := !i + 1
-    end
-  done;
-  Buffer.contents buf
+let decode_string_escape (cs : FStar_Char.char Prims.list) :
+  (FStar_Char.char Prims.list * FStar_Char.char Prims.list)
+    FStar_Pervasives_Native.option=
+  match cs with
+  | [] -> FStar_Pervasives_Native.None
+  | c::rest ->
+      let cd = char_code c in
+      if cd = (Prims.of_int (0x74))
+      then
+        FStar_Pervasives_Native.Some
+          ([FStar_Char.char_of_int (Prims.of_int (0x09))], rest)
+      else
+        if cd = (Prims.of_int (0x6E))
+        then
+          FStar_Pervasives_Native.Some
+            ([FStar_Char.char_of_int (Prims.of_int (0x0A))], rest)
+        else
+          if cd = (Prims.of_int (0x72))
+          then
+            FStar_Pervasives_Native.Some
+              ([FStar_Char.char_of_int (Prims.of_int (0x0D))], rest)
+          else
+            if cd = (Prims.of_int (0x5C))
+            then FStar_Pervasives_Native.Some ([c], rest)
+            else
+              if cd = (Prims.of_int (0x22))
+              then FStar_Pervasives_Native.Some ([c], rest)
+              else
+                if cd = (Prims.of_int (0x27))
+                then FStar_Pervasives_Native.Some ([c], rest)
+                else
+                  if cd = (Prims.of_int (0x62))
+                  then
+                    FStar_Pervasives_Native.Some
+                      ([FStar_Char.char_of_int (Prims.of_int (0x08))], rest)
+                  else
+                    if cd = (Prims.of_int (0x66))
+                    then
+                      FStar_Pervasives_Native.Some
+                        ([FStar_Char.char_of_int (Prims.of_int (0x0C))],
+                          rest)
+                    else
+                      if cd = (Prims.of_int (0x75))
+                      then
+                        (match read_hex_digits (Prims.of_int (4)) rest
+                                 Prims.int_zero
+                         with
+                         | FStar_Pervasives_Native.Some (cp, after) ->
+                             if
+                               (cp >= (Prims.of_int (0xD800))) &&
+                                 (cp <= (Prims.of_int (0xDFFF)))
+                             then FStar_Pervasives_Native.None
+                             else
+                               FStar_Pervasives_Native.Some
+                                 ((FStar_String.list_of_string
+                                     (utf8_of_codepoint cp)), after)
+                         | FStar_Pervasives_Native.None ->
+                             FStar_Pervasives_Native.None)
+                      else
+                        if cd = (Prims.of_int (0x55))
+                        then
+                          (match read_hex_digits (Prims.of_int (8)) rest
+                                   Prims.int_zero
+                           with
+                           | FStar_Pervasives_Native.Some (cp, after) ->
+                               if
+                                 (cp >= (Prims.of_int (0xD800))) &&
+                                   (cp <= (Prims.of_int (0xDFFF)))
+                               then FStar_Pervasives_Native.None
+                               else
+                                 FStar_Pervasives_Native.Some
+                                   ((FStar_String.list_of_string
+                                       (utf8_of_codepoint cp)), after)
+                           | FStar_Pervasives_Native.None ->
+                               FStar_Pervasives_Native.None)
+                        else FStar_Pervasives_Native.Some ([c], rest)
+let rec process_string_escapes_rec (cs : FStar_Char.char Prims.list)
+  (acc : FStar_Char.char Prims.list) :
+  FStar_Char.char Prims.list FStar_Pervasives_Native.option=
+  match cs with
+  | [] -> FStar_Pervasives_Native.Some (FStar_List_Tot_Base.rev acc)
+  | c::rest ->
+      if (char_code c) = (Prims.of_int (0x5C))
+      then
+        (match decode_string_escape rest with
+         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+         | FStar_Pervasives_Native.Some (decoded, after) ->
+             process_string_escapes_rec after
+               (FStar_List_Tot_Base.rev_acc decoded acc))
+      else process_string_escapes_rec rest (c :: acc)
+let process_string_escapes_opt (s : Prims.string) :
+  Prims.string FStar_Pervasives_Native.option=
+  let cs = FStar_String.list_of_string s in
+  match process_string_escapes_rec cs [] with
+  | FStar_Pervasives_Native.Some chars ->
+      FStar_Pervasives_Native.Some (FStar_String.string_of_list chars)
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
 let rec find_char_pos (input : Prims.string) (p : pos) (target : Prims.nat) :
   pos FStar_Pervasives_Native.option=
   if at_end input p
@@ -801,7 +856,8 @@ let rec scan_long_string_end (input : Prims.string) (p : pos)
           then p + Prims.int_one
           else scan_long_string_end input (p + (Prims.of_int (2))) q_code)
        else scan_long_string_end input (p + Prims.int_one) q_code)
-let scan_string (input : Prims.string) (p : pos) : (Prims.string * pos)=
+let scan_string (input : Prims.string) (p : pos) :
+  (Prims.string FStar_Pervasives_Native.option * pos)=
   let q = peek_char input p in
   let q_code = char_code q in
   let is_long =
@@ -814,12 +870,12 @@ let scan_string (input : Prims.string) (p : pos) : (Prims.string * pos)=
     let p_start = p + (Prims.of_int (3)) in
     let end_p = scan_long_string_end input p_start q_code in
     let raw = substring input p_start (safe_sub end_p p_start) in
-    ((process_string_escapes raw), (end_p + (Prims.of_int (3))))
+    ((process_string_escapes_opt raw), (end_p + (Prims.of_int (3))))
   else
     (let p_start = p + Prims.int_one in
      let end_p = scan_short_string_end input p_start q_code in
      let raw = substring input p_start (safe_sub end_p p_start) in
-     ((process_string_escapes raw), (end_p + Prims.int_one)))
+     ((process_string_escapes_opt raw), (end_p + Prims.int_one)))
 let rec scan_pn_chars_end (input : Prims.string) (p : pos) : pos=
   if at_end input p
   then p
@@ -1784,8 +1840,16 @@ let next_token (input : Prims.string) (p : pos) : lex_result=
                                              (let uu___20 =
                                                 scan_string input p1 in
                                               match uu___20 with
-                                              | (s, p') ->
-                                                  ((Tok_STRING s), p'))
+                                              | (s_opt, p') ->
+                                                  (match s_opt with
+                                                   | FStar_Pervasives_Native.Some
+                                                       s ->
+                                                       ((Tok_STRING s), p')
+                                                   | FStar_Pervasives_Native.None
+                                                       ->
+                                                       ((Tok_INVALID
+                                                           "invalid string escape (surrogate or malformed)"),
+                                                         p')))
                                            else
                                              if code = (Prims.of_int (0x40))
                                              then
@@ -6293,19 +6357,30 @@ and validate_bnode_scope_query (q : SPARQL11_Algebra.query) :
   validate_bnode_scope_pattern q.SPARQL11_Algebra.q_pattern
 let validate_bnode_scope_top (q : SPARQL11_Algebra.query) : Prims.bool=
   FStar_Pervasives_Native.fst (validate_bnode_scope_query q)
+let rec first_invalid_token_msg (ts : token_stream) :
+  Prims.string FStar_Pervasives_Native.option=
+  match ts with
+  | [] -> FStar_Pervasives_Native.None
+  | (Tok_INVALID m)::uu___ -> FStar_Pervasives_Native.Some m
+  | uu___::rest -> first_invalid_token_msg rest
 let parse_sparql_with_base
   (init_base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
   (input : Prims.string) : SPARQL11_Algebra.query parse_result=
   let tokens = tokenize input in
-  match parse_select_query [] init_base (Prims.of_int (10000)) tokens with
-  | ParseOk (q, rest) ->
-      if Prims.op_Negation (tokens_only_eof rest)
-      then ParseErr "unexpected tokens after query"
-      else
-        if Prims.op_Negation (validate_bnode_scope_top q)
-        then ParseErr "blank node label reused across graph-pattern scope"
-        else ParseOk (q, rest)
-  | ParseErr msg -> ParseErr msg
+  match first_invalid_token_msg tokens with
+  | FStar_Pervasives_Native.Some m -> ParseErr m
+  | FStar_Pervasives_Native.None ->
+      (match parse_select_query [] init_base (Prims.of_int (10000)) tokens
+       with
+       | ParseOk (q, rest) ->
+           if Prims.op_Negation (tokens_only_eof rest)
+           then ParseErr "unexpected tokens after query"
+           else
+             if Prims.op_Negation (validate_bnode_scope_top q)
+             then
+               ParseErr "blank node label reused across graph-pattern scope"
+             else ParseOk (q, rest)
+       | ParseErr msg -> ParseErr msg)
 let parse_sparql (input : Prims.string) :
   SPARQL11_Algebra.query parse_result=
   parse_sparql_with_base FStar_Pervasives_Native.None input
@@ -6945,29 +7020,34 @@ let parse_sparql_update_with_base
   (init_base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
   (input : Prims.string) : SPARQL11_Algebra.sparql_update parse_result=
   let tokens = tokenize input in
-  let tokens' =
-    match init_base with
-    | FStar_Pervasives_Native.Some uu___ ->
-        resolve_relative_iri_tokens init_base tokens
-    | FStar_Pervasives_Native.None -> tokens in
-  match parse_update_seq [] init_base [] false (Prims.of_int (10000)) tokens'
-  with
-  | ParseErr m -> ParseErr m
-  | ParseOk ((pm, base, ops), rest) ->
-      if Prims.op_Negation (tokens_only_eof rest)
-      then ParseErr "unexpected tokens after update request"
-      else
-        if Prims.op_Negation (bnode_labels_unique_across_data_ops [] ops)
-        then
-          ParseErr
-            "blank node label reused across INSERT DATA / DELETE DATA ops (SPARQL 1.1 Update \194\16719.6)"
-        else
-          ParseOk
-            ({
-               SPARQL11_Algebra.u_base = base;
-               SPARQL11_Algebra.u_prefixes = (prefix_map_to_wf pm);
-               SPARQL11_Algebra.u_ops = ops
-             }, rest)
+  match first_invalid_token_msg tokens with
+  | FStar_Pervasives_Native.Some m -> ParseErr m
+  | FStar_Pervasives_Native.None ->
+      let tokens' =
+        match init_base with
+        | FStar_Pervasives_Native.Some uu___ ->
+            resolve_relative_iri_tokens init_base tokens
+        | FStar_Pervasives_Native.None -> tokens in
+      (match parse_update_seq [] init_base [] false (Prims.of_int (10000))
+               tokens'
+       with
+       | ParseErr m -> ParseErr m
+       | ParseOk ((pm, base, ops), rest) ->
+           if Prims.op_Negation (tokens_only_eof rest)
+           then ParseErr "unexpected tokens after update request"
+           else
+             if
+               Prims.op_Negation (bnode_labels_unique_across_data_ops [] ops)
+             then
+               ParseErr
+                 "blank node label reused across INSERT DATA / DELETE DATA ops (SPARQL 1.1 Update \194\16719.6)"
+             else
+               ParseOk
+                 ({
+                    SPARQL11_Algebra.u_base = base;
+                    SPARQL11_Algebra.u_prefixes = (prefix_map_to_wf pm);
+                    SPARQL11_Algebra.u_ops = ops
+                  }, rest))
 let parse_sparql_update (input : Prims.string) :
   SPARQL11_Algebra.sparql_update parse_result=
   parse_sparql_update_with_base FStar_Pervasives_Native.None input

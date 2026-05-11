@@ -1,12 +1,24 @@
 #!/bin/bash
-# Issue #64: SPARQL parser escape processing stubs for SPARQL11_Parser.ml
+# Issue #64: SPARQL parser escape processing stubs — RETIRED 2026-05-11.
 # https://github.com/danbri/factoidal/issues/64
 #
-# Replaces F*-extracted failwith stubs for:
-#   - utf8_of_codepoint: converts Unicode codepoint to UTF-8 string
-#   - process_iri_escapes: processes \u and \U escapes in IRI strings
-#   - process_string_escapes: processes string escape sequences (\t, \n, \r, etc.)
-#     with surrogate codepoint validation
+# All three escape-processing functions are now implemented in pure F*
+# in `SPARQL11.Parser.fst`:
+#   - utf8_of_codepoint     (commit 1d2b669, 2026-05-10)
+#   - process_iri_escapes   (commit e79c387, 2026-05-10)
+#   - process_string_escapes_opt + Tok_INVALID + first_invalid_token_msg
+#                           (commits d92311d / Step-2/Step-3, 2026-05-11)
+#
+# The `process_string_escapes` `assume val` is gone from F* sources;
+# `scan_string` consumes `process_string_escapes_opt : string -> option string`
+# directly, the tokenizer emits `Tok_INVALID msg` on None, and
+# `parse_sparql_with_base` / `parse_sparql_update_with_base` short-circuit
+# to `ParseErr msg` if any `Tok_INVALID` is in the token stream — replacing
+# the OCaml `failwith "invalid Unicode codepoint: surrogate"` path.
+#
+# Kept as a no-op shell stub for the audit trail. Can be deleted entirely
+# after a few CI cycles confirm the W3C syntax-query suite still rejects
+# `syn-invalid-codepoint-escaped-bad-01.rq` correctly.
 
 set -euo pipefail
 
@@ -22,86 +34,4 @@ if [[ ! -d "$OUTDIR" ]]; then
   exit 1
 fi
 
-FILE="$OUTDIR/SPARQL11_Parser.ml"
-if [[ ! -f "$FILE" ]]; then
-  echo "Error: $FILE not found" >&2
-  exit 1
-fi
-
-echo "  Patching $FILE (escape processing stubs)..."
-
-python3 - "$FILE" << 'PYEOF'
-import re
-import sys
-
-path = sys.argv[1]
-with open(path, 'r', encoding='utf-8') as f:
-    content = f.read()
-
-# utf8_of_codepoint migrated to F* in SPARQL11.Parser.fst (2026-05-10).
-# Patch no longer touches this stub; F* now produces the implementation
-# directly via byte_of_int + String.string_of_list.
-
-# process_iri_escapes migrated to F* in SPARQL11.Parser.fst (2026-05-10).
-# Patch no longer touches this stub; F* now produces the implementation
-# via process_iri_escapes_rec (tail-rec over codepoint list with
-# read_hex_digits hex parser + utf8_of_codepoint expansion).
-
-content = re.sub(
-    r'let process_string_escapes \([^)]*\) : Prims\.string=\n  failwith "Not yet implemented: SPARQL11\.Parser\.process_string_escapes"',
-    lambda _m: r'''let process_string_escapes (s : Prims.string) : Prims.string =
-  let open Stdlib in
-  (* Process string escape sequences: backslash-t, -n, -r, etc. *)
-  let len = String.length s in
-  let buf = Buffer.create len in
-  let i = ref 0 in
-  while !i < len do
-    if !i + 1 < len && s.[!i] = '\\' then begin
-      let next = s.[!i + 1] in
-      if next = 't' then (Buffer.add_char buf '\t'; i := !i + 2)
-      else if next = 'n' then (Buffer.add_char buf '\n'; i := !i + 2)
-      else if next = 'r' then (Buffer.add_char buf '\r'; i := !i + 2)
-      else if next = '\\' then (Buffer.add_char buf '\\'; i := !i + 2)
-      else if next = '"' then (Buffer.add_char buf '"'; i := !i + 2)
-      else if next = '\'' then (Buffer.add_char buf '\''; i := !i + 2)
-      else if next = 'b' then (Buffer.add_char buf '\008'; i := !i + 2)
-      else if next = 'f' then (Buffer.add_char buf '\012'; i := !i + 2)
-      else if next = 'u' && !i + 5 < len then begin
-        let hex = String.sub s (!i + 2) 4 in
-        (try let cp = int_of_string ("0x" ^ hex) in
-             if cp >= 0xD800 && cp <= 0xDFFF then
-               failwith "invalid Unicode codepoint: surrogate"
-             else
-               Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
-         with Failure msg -> raise (Failure msg)
-            | _ -> Buffer.add_string buf (String.sub s !i 6));
-        i := !i + 6
-      end else if next = 'U' && !i + 9 < len then begin
-        let hex = String.sub s (!i + 2) 8 in
-        (try let cp = int_of_string ("0x" ^ hex) in
-             if cp >= 0xD800 && cp <= 0xDFFF then
-               failwith "invalid Unicode codepoint: surrogate"
-             else
-               Buffer.add_string buf (utf8_of_codepoint (Z.of_int cp))
-         with Failure msg -> raise (Failure msg)
-            | _ -> Buffer.add_string buf (String.sub s !i 10));
-        i := !i + 10
-      end else begin
-        Buffer.add_char buf s.[!i];
-        i := !i + 1
-      end
-    end else begin
-      Buffer.add_char buf s.[!i];
-      i := !i + 1
-    end
-  done;
-  Buffer.contents buf''',
-    content,
-    count=1
-)
-
-with open(path, 'w', encoding='utf-8') as f:
-    f.write(content)
-PYEOF
-
-echo "  SPARQL parser escape stubs patched."
+echo "  #64 escape-processing patch retired — F*-side covers all paths."
