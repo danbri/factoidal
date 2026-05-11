@@ -511,12 +511,12 @@ graphs that ship in RDF* / OntoLex / NIF.
 - **Software Heritage Graph** — published as Apache Parquet / ORC /
   compressed CSV, *not* RDF, despite the graph framing. Out of scope
   for this corpus.
-- **Google Data Commons** — billions of triples but bulk RDF is not
-  publicly downloadable; only API / per-variable CSV. Not a
-  practical mirror target.
 
 ### Things I deliberately did not chase
 
+- **Google Data Commons** — billions of triples but bulk RDF is not
+  publicly downloadable; only API / per-variable CSV. Not a
+  practical mirror target.
 - DBpedia language chapters (German, French, Spanish, Japanese …).
   Each is its own large dump, but the family is still "DBpedia" and
   the user excluded full DBpedia by spirit.
