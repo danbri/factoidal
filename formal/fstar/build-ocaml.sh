@@ -764,13 +764,23 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_CottasStore_OnDiskIndex.ml
     RDF_CottasStore_DictWriter.ml
     RDF_CottasStore_PresenceBitmap.ml
+    RDF_CottasStore_PresenceWriter.ml
     RDF_CottasStore_CompoundPresenceBitmap.ml
+    RDF_CottasStore_CompoundPresenceWriter.ml
+    RDF_CottasStore_OffsetsWriter.ml
+    RDF_Store_Columnar_OffsetIndex.ml
+    SPARQL_Plan_Pruning.ml
+    SPARQL_Plan_Estimate.ml
+    SPARQL_Plan_Loader.ml
+    SPARQL_Plan_AccessPath.ml
     RDF_CottasStore.ml
     RDF_CottasInMem.ml
     fstar_pure_hashes.ml
     RDF_Canonical.ml
-    SPARQL11_IRI_Resolve.ml SPARQL11_Algebra.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SHACL_Validation.ml SPARQL11_Parser.ml
+    RDF_Canonical_Manifest.ml
+    SPARQL11_IRI_Resolve.ml SPARQL11_Algebra.ml RDF_Pretty.ml OWL_QueryRewrite.ml OWL_QueryEval.ml OWL_Tests_Manifest.ml RIF_Core_Syntax.ml Parser_RIFXML.ml RIF_Core_Translation.ml RIF_Core_Eval.ml RIF_Core_Tests.ml SHACL_Validation.ml SPARQL11_Parser.ml
     SPARQL11_Store.ml
+    RDF_Store_Combine.ml
     SPARQL_Protocol.ml
     SPARQL_HTTP_RunQuery.ml
     SPARQL_Update_Sandbox.ml
