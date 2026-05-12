@@ -790,6 +790,42 @@ let find_subjects (g : rdf_graph) (pred : wf_iri) (obj : rdf_term) :
   subject Prims.list= find_subjects_acc [] g pred obj
 let has_triple (g : rdf_graph) (t : triple) : Prims.bool= mem_triple t g
 let add_triple_if_new (g : rdf_graph) (t : triple) : rdf_graph= graph_add t g
+let add_triple_unchecked (g : rdf_graph) (t : triple) : rdf_graph= t :: g
+let term_to_key_total (o : rdf_term) : Prims.string=
+  match o with
+  | T_IRI i -> FStar_String.concat "" ["I_"; i]
+  | T_BNode b -> FStar_String.concat "" ["B_"; b]
+  | T_Literal l ->
+      FStar_String.concat ""
+        ["L_";
+        l.lexical_form;
+        "^^";
+        l.datatype;
+        (match l.lang_tag with
+         | FStar_Pervasives_Native.Some t -> FStar_String.concat "" ["@"; t]
+         | FStar_Pervasives_Native.None -> "")]
+let triple_to_key (t : triple) : Prims.string=
+  FStar_String.concat ""
+    [subject_to_key t.s; unit_sep; t.p; unit_sep; term_to_key_total t.o]
+let triple_cmp (t1 : triple) (t2 : triple) : Prims.int=
+  FStar_String.compare (triple_to_key t1) (triple_to_key t2)
+let rec dedup_sorted_aux
+  (prev_key : Prims.string FStar_Pervasives_Native.option)
+  (ts : triple Prims.list) (acc : triple Prims.list) : triple Prims.list=
+  match ts with
+  | [] -> FStar_List_Tot_Base.rev acc
+  | t::rest ->
+      let k = triple_to_key t in
+      let dup =
+        match prev_key with
+        | FStar_Pervasives_Native.Some p -> p = k
+        | FStar_Pervasives_Native.None -> false in
+      if dup
+      then dedup_sorted_aux prev_key rest acc
+      else dedup_sorted_aux (FStar_Pervasives_Native.Some k) rest (t :: acc)
+let graph_dedup_sort (g : rdf_graph) : rdf_graph=
+  let sorted = FStar_List_Tot_Base.sortWith triple_cmp g in
+  dedup_sorted_aux FStar_Pervasives_Native.None sorted []
 let rec add_triples_if_new (g : rdf_graph) (ts : triple Prims.list) :
   rdf_graph=
   match ts with
@@ -804,7 +840,7 @@ let rdfs_rule_subPropertyOf (g : rdf_graph) : rdf_graph=
             match q_term with
             | T_IRI q ->
                 let new_t = { s = (t.s); p = q; o = (t.o) } in
-                add_triple_if_new acc2 new_t
+                add_triple_unchecked acc2 new_t
             | uu___ -> acc2) acc super_props) g g
 let rdfs_rule_domain (g : rdf_graph) : rdf_graph=
   FStar_List_Tot_Base.fold_left
@@ -813,7 +849,7 @@ let rdfs_rule_domain (g : rdf_graph) : rdf_graph=
        FStar_List_Tot_Base.fold_left
          (fun acc2 c_term ->
             let new_t = { s = (t.s); p = rdf_type; o = c_term } in
-            add_triple_if_new acc2 new_t) acc domain_classes) g g
+            add_triple_unchecked acc2 new_t) acc domain_classes) g g
 let rdfs_rule_range (g : rdf_graph) : rdf_graph=
   FStar_List_Tot_Base.fold_left
     (fun acc t ->
@@ -823,7 +859,7 @@ let rdfs_rule_range (g : rdf_graph) : rdf_graph=
            FStar_List_Tot_Base.fold_left
              (fun acc2 c_term ->
                 let new_t = { s = b_subj; p = rdf_type; o = c_term } in
-                add_triple_if_new acc2 new_t) acc range_classes
+                add_triple_unchecked acc2 new_t) acc range_classes
        | FStar_Pervasives_Native.None -> acc) g g
 let rdfs_rule_subClassOf (g : rdf_graph) : rdf_graph=
   FStar_List_Tot_Base.fold_left
@@ -837,7 +873,7 @@ let rdfs_rule_subClassOf (g : rdf_graph) : rdf_graph=
              FStar_List_Tot_Base.fold_left
                (fun acc2 b_term ->
                   let new_t = { s = (t.s); p = rdf_type; o = b_term } in
-                  add_triple_if_new acc2 new_t) acc super_classes
+                  add_triple_unchecked acc2 new_t) acc super_classes
          | uu___ -> acc
        else acc) g g
 let rdfs_rule_subClassOf_trans (g : rdf_graph) : rdf_graph=
@@ -851,7 +887,7 @@ let rdfs_rule_subClassOf_trans (g : rdf_graph) : rdf_graph=
              FStar_List_Tot_Base.fold_left
                (fun acc2 c_term ->
                   let new_t = { s = (t.s); p = rdfs_subClassOf; o = c_term } in
-                  add_triple_if_new acc2 new_t) acc supers
+                  add_triple_unchecked acc2 new_t) acc supers
          | FStar_Pervasives_Native.None -> acc
        else acc) g g
 let rdfs_rule_subPropertyOf_trans (g : rdf_graph) : rdf_graph=
@@ -866,7 +902,7 @@ let rdfs_rule_subPropertyOf_trans (g : rdf_graph) : rdf_graph=
                (fun acc2 r_term ->
                   let new_t =
                     { s = (t.s); p = rdfs_subPropertyOf; o = r_term } in
-                  add_triple_if_new acc2 new_t) acc supers
+                  add_triple_unchecked acc2 new_t) acc supers
          | FStar_Pervasives_Native.None -> acc
        else acc) g g
 let rdfs_rule_container_membership (g : rdf_graph) : rdf_graph=
@@ -880,7 +916,7 @@ let rdfs_rule_container_membership (g : rdf_graph) : rdf_graph=
            p = rdf_type;
            o = (T_IRI rdfs_ContainerMembershipProperty)
          } in
-       add_triple_if_new (add_triple_if_new acc t1) t2) g
+       add_triple_unchecked (add_triple_unchecked acc t1) t2) g
     container_membership_properties
 let rdfs_closure_step (g : rdf_graph) : rdf_graph=
   let g1 = rdfs_rule_subPropertyOf g in
@@ -889,7 +925,7 @@ let rdfs_closure_step (g : rdf_graph) : rdf_graph=
   let g4 = rdfs_rule_subClassOf g3 in
   let g5 = rdfs_rule_container_membership g4 in
   let g6 = rdfs_rule_subClassOf_trans g5 in
-  let g7 = rdfs_rule_subPropertyOf_trans g6 in g7
+  let g7 = rdfs_rule_subPropertyOf_trans g6 in graph_dedup_sort g7
 let rec rdfs_closure (g : rdf_graph) (fuel : Prims.nat) : rdf_graph=
   match fuel with
   | uu___ when uu___ = Prims.int_zero -> g
@@ -1001,9 +1037,9 @@ let owl_rule_equivalent_class (g : rdf_graph) : rdf_graph=
                { s = d_subj; p = rdfs_subClassOf; o = (subject_to_term t.s) } in
              (match ((t.s), d_subj) with
               | (S_IRI uu___, S_IRI uu___1) ->
-                  add_triple_if_new (add_triple_if_new acc t1) t2
-              | (S_IRI uu___, S_BNode uu___1) -> add_triple_if_new acc t1
-              | (S_BNode uu___, S_IRI uu___1) -> add_triple_if_new acc t2
+                  add_triple_unchecked (add_triple_unchecked acc t1) t2
+              | (S_IRI uu___, S_BNode uu___1) -> add_triple_unchecked acc t1
+              | (S_BNode uu___, S_IRI uu___1) -> add_triple_unchecked acc t2
               | (S_BNode uu___, S_BNode uu___1) -> acc)
          | FStar_Pervasives_Native.None -> acc
        else acc) g g
@@ -1020,7 +1056,7 @@ let owl_rule_equivalent_property (g : rdf_graph) : rdf_graph=
              let t2 =
                { s = (S_IRI q_iri); p = rdfs_subPropertyOf; o = (T_IRI p_iri)
                } in
-             add_triple_if_new (add_triple_if_new acc t1) t2
+             add_triple_unchecked (add_triple_unchecked acc t1) t2
          | (uu___, uu___1) -> acc
        else acc) g g
 let owl_rule_scm_eqc2 (g : rdf_graph) : rdf_graph=
@@ -1045,7 +1081,7 @@ let owl_rule_scm_eqc2 (g : rdf_graph) : rdf_graph=
                        p = owl_equivalentClass;
                        o = (T_IRI d_iri)
                      } in
-                   add_triple_if_new acc new_t
+                   add_triple_unchecked acc new_t
                  else acc))
          | (uu___, uu___1) -> acc
        else acc) g g
@@ -1071,7 +1107,7 @@ let owl_rule_scm_eqp2 (g : rdf_graph) : rdf_graph=
                        p = owl_equivalentProperty;
                        o = (T_IRI q_iri)
                      } in
-                   add_triple_if_new acc new_t
+                   add_triple_unchecked acc new_t
                  else acc))
          | (uu___, uu___1) -> acc
        else acc) g g
@@ -1095,7 +1131,7 @@ let owl_rule_symmetric_property (g : rdf_graph) : rdf_graph=
          | FStar_Pervasives_Native.Some new_subj ->
              let new_t =
                { s = new_subj; p = (t.p); o = (subject_to_term t.s) } in
-             add_triple_if_new acc new_t
+             add_triple_unchecked acc new_t
          | FStar_Pervasives_Native.None -> acc
        else acc) g g
 let owl_rule_transitive_property (g : rdf_graph) : rdf_graph=
@@ -1120,7 +1156,7 @@ let owl_rule_transitive_property (g : rdf_graph) : rdf_graph=
              FStar_List_Tot_Base.fold_left
                (fun acc2 z_term ->
                   let new_t = { s = (t.s); p = (t.p); o = z_term } in
-                  add_triple_if_new acc2 new_t) acc zs
+                  add_triple_unchecked acc2 new_t) acc zs
          | FStar_Pervasives_Native.None -> acc
        else acc) g g
 let owl_rule_inverseOf_domain_range_flip (g : rdf_graph) : rdf_graph=
@@ -1135,7 +1171,7 @@ let owl_rule_inverseOf_domain_range_flip (g : rdf_graph) : rdf_graph=
                   let add_flip target_p target_pred acc3 =
                     match t.o with
                     | T_IRI c ->
-                        add_triple_if_new acc3
+                        add_triple_unchecked acc3
                           {
                             s = (S_IRI target_p);
                             p = target_pred;
@@ -1177,7 +1213,7 @@ let owl_rule_inverse_of (g : rdf_graph) : rdf_graph=
                             p = target_p;
                             o = (subject_to_term t.s)
                           } in
-                        add_triple_if_new acc3 new_t
+                        add_triple_unchecked acc3 new_t
                     | FStar_Pervasives_Native.None -> acc3 in
                   if t.p = p1_iri
                   then add_inverse p2_iri acc2
@@ -1209,7 +1245,7 @@ let owl_rule_sameAs_reflexivity (g : rdf_graph) : rdf_graph=
   FStar_List_Tot_Base.fold_left
     (fun acc n ->
        let new_t = { s = n; p = owl_sameAs; o = (subject_to_term n) } in
-       add_triple_if_new acc new_t) g nodes
+       add_triple_unchecked acc new_t) g nodes
 let owl_rule_sameAs_symmetry (g : rdf_graph) : rdf_graph=
   FStar_List_Tot_Base.fold_left
     (fun acc t ->
@@ -1219,7 +1255,7 @@ let owl_rule_sameAs_symmetry (g : rdf_graph) : rdf_graph=
          | FStar_Pervasives_Native.Some new_subj ->
              let new_t =
                { s = new_subj; p = owl_sameAs; o = (subject_to_term t.s) } in
-             add_triple_if_new acc new_t
+             add_triple_unchecked acc new_t
          | FStar_Pervasives_Native.None -> acc
        else acc) g g
 let owl_rule_differentFrom_symmetry (g : rdf_graph) : rdf_graph=
@@ -1235,7 +1271,7 @@ let owl_rule_differentFrom_symmetry (g : rdf_graph) : rdf_graph=
                  p = owl_differentFrom;
                  o = (subject_to_term t.s)
                } in
-             add_triple_if_new acc new_t
+             add_triple_unchecked acc new_t
          | FStar_Pervasives_Native.None -> acc
        else acc) g g
 let owl_rule_sameAs_transitivity (g : rdf_graph) : rdf_graph=
@@ -1249,7 +1285,7 @@ let owl_rule_sameAs_transitivity (g : rdf_graph) : rdf_graph=
              FStar_List_Tot_Base.fold_left
                (fun acc2 z_term ->
                   let new_t = { s = (t.s); p = owl_sameAs; o = z_term } in
-                  add_triple_if_new acc2 new_t) acc zs
+                  add_triple_unchecked acc2 new_t) acc zs
          | FStar_Pervasives_Native.None -> acc
        else acc) g g
 let owl_rule_sameAs_replace_subject (g : rdf_graph) : rdf_graph=
@@ -1264,7 +1300,7 @@ let owl_rule_sameAs_replace_subject (g : rdf_graph) : rdf_graph=
                   if (subject_eq src.s t.s) && (src.p <> owl_sameAs)
                   then
                     let new_t = { s = s_prime; p = (src.p); o = (src.o) } in
-                    add_triple_if_new acc2 new_t
+                    add_triple_unchecked acc2 new_t
                   else acc2) acc g
          | FStar_Pervasives_Native.None -> acc
        else acc) g g
@@ -1279,7 +1315,7 @@ let owl_rule_sameAs_replace_object (g : rdf_graph) : rdf_graph=
               if (src.p <> owl_sameAs) && (rdf_term_eq src.o o_as_term)
               then
                 let new_t = { s = (src.s); p = (src.p); o = (sameAs_t.o) } in
-                add_triple_if_new acc2 new_t
+                add_triple_unchecked acc2 new_t
               else acc2) acc g
        else acc) g g
 let owl_rule_sameAs_replace_predicate (g : rdf_graph) : rdf_graph=
@@ -1296,7 +1332,7 @@ let owl_rule_sameAs_replace_predicate (g : rdf_graph) : rdf_graph=
                       (Prims.op_Negation (is_owl_metapredicate src.p))
                   then
                     let new_t = { s = (src.s); p = p_prime_iri; o = (src.o) } in
-                    add_triple_if_new acc2 new_t
+                    add_triple_unchecked acc2 new_t
                   else acc2) acc g
          | (uu___, uu___1) -> acc
        else acc) g g
@@ -1326,7 +1362,7 @@ let owl_rule_functional (g : rdf_graph) : rdf_graph=
                   then acc2
                   else
                     (let new_t = { s = y_subj; p = owl_sameAs; o = z } in
-                     add_triple_if_new acc2 new_t)) acc zs
+                     add_triple_unchecked acc2 new_t)) acc zs
        else acc) g g
 let owl_rule_inverse_functional (g : rdf_graph) : rdf_graph=
   let ifp_props =
@@ -1352,7 +1388,7 @@ let owl_rule_inverse_functional (g : rdf_graph) : rdf_graph=
               else
                 (let new_t =
                    { s = (t1.s); p = owl_sameAs; o = (subject_to_term z) } in
-                 add_triple_if_new acc2 new_t)) acc zs
+                 add_triple_unchecked acc2 new_t)) acc zs
        else acc) g g
 let differentFrom_in_graph (g : rdf_graph) (a : rdf_term) (b : rdf_term) :
   Prims.bool=
@@ -1399,7 +1435,7 @@ let owl_rule_pdw_to_differentFrom (g : rdf_graph) : rdf_graph=
                                       p = owl_differentFrom;
                                       o = o2_term
                                     } in
-                                  add_triple_if_new acc2 new_t)) acc1
+                                  add_triple_unchecked acc2 new_t)) acc1
                         o2_terms
                 else acc1) acc g) g pdw_pairs
 let owl_rule_fp_diff_to_diff (g : rdf_graph) : rdf_graph=
@@ -1430,7 +1466,7 @@ let owl_rule_fp_diff_to_diff (g : rdf_graph) : rdf_graph=
                     p = owl_differentFrom;
                     o = (subject_to_term t2.s)
                   } in
-                add_triple_if_new acc2 new_t
+                add_triple_unchecked acc2 new_t
               else acc2) acc g
        else acc) g g
 let owl_rule_ifp_diff_to_diff (g : rdf_graph) : rdf_graph=
@@ -1462,7 +1498,7 @@ let owl_rule_ifp_diff_to_diff (g : rdf_graph) : rdf_graph=
                 | FStar_Pervasives_Native.Some y1_subj ->
                     let new_t =
                       { s = y1_subj; p = owl_differentFrom; o = (t2.o) } in
-                    add_triple_if_new acc2 new_t
+                    add_triple_unchecked acc2 new_t
               else acc2) acc g
        else acc) g g
 let owl_Restriction_iri : wf_iri= "http://www.w3.org/2002/07/owl#Restriction"
@@ -1547,7 +1583,7 @@ let owl_rule_disjoint_with_propagation (g : rdf_graph) : rdf_graph=
                  p = owl_disjointWith_iri;
                  o = (T_IRI c_iri)
                } in
-             add_triple_if_new acc new_t
+             add_triple_unchecked acc new_t
          | (uu___, uu___1) -> acc
        else
          if t.p = owl_complementOf_iri
@@ -1566,7 +1602,7 @@ let owl_rule_disjoint_with_propagation (g : rdf_graph) : rdf_graph=
                     p = owl_disjointWith_iri;
                     o = (T_IRI c_iri)
                   } in
-                add_triple_if_new (add_triple_if_new acc t1) t2
+                add_triple_unchecked (add_triple_unchecked acc t1) t2
             | (uu___1, uu___2) -> acc)
          else acc) g g
 let canonical_svf2_witness_bnode (p : wf_iri) (c : wf_iri) (x : subject) :
@@ -1610,8 +1646,8 @@ let owl_rule_svf2_existential_witness (g : rdf_graph) : rdf_graph=
                                             p = rdf_type;
                                             o = (T_IRI c)
                                           } in
-                                        add_triple_if_new
-                                          (add_triple_if_new acc4 edge_t)
+                                        add_triple_unchecked
+                                          (add_triple_unchecked acc4 edge_t)
                                           type_t) acc3 members
                                | uu___1 -> acc3) acc2 ancestors
                       | uu___1 -> acc2) acc onprops))
@@ -1635,7 +1671,7 @@ let owl_rule_minc1_bridge (g : rdf_graph) : rdf_graph=
                       p = owl_minCardinality_iri;
                       o = (T_Literal one_nonNegInteger_literal)
                     } in
-                  add_triple_if_new acc2 new_t
+                  add_triple_unchecked acc2 new_t
               | uu___ -> acc2) acc onprops
        else acc) g g
 let rl_canonical_bnode_prefix : Prims.string= "__rl_"
@@ -1727,10 +1763,10 @@ let owl_rule_cls_svf2_qualified (g : rdf_graph) : rdf_graph=
                                 o = (T_IRI c)
                               } in
                             let memb = { s = x; p = rdf_type; o = rb_term } in
-                            add_triple_if_new
-                              (add_triple_if_new
-                                 (add_triple_if_new
-                                    (add_triple_if_new acc2 shape1) shape2)
+                            add_triple_unchecked
+                              (add_triple_unchecked
+                                 (add_triple_unchecked
+                                    (add_triple_unchecked acc2 shape1) shape2)
                                  shape3) memb)
                      | uu___2 -> acc2) acc ytypes)) g g
 let owl_rule_cls_minc_qual1 (g : rdf_graph) : rdf_graph=
@@ -1783,12 +1819,12 @@ let owl_rule_cls_minc_qual1 (g : rdf_graph) : rdf_graph=
                                 o = (T_IRI c)
                               } in
                             let memb = { s = x; p = rdf_type; o = rb_term } in
-                            add_triple_if_new
-                              (add_triple_if_new
-                                 (add_triple_if_new
-                                    (add_triple_if_new
-                                       (add_triple_if_new acc2 shape1) shape2)
-                                    shape3) shape4) memb)
+                            add_triple_unchecked
+                              (add_triple_unchecked
+                                 (add_triple_unchecked
+                                    (add_triple_unchecked
+                                       (add_triple_unchecked acc2 shape1)
+                                       shape2) shape3) shape4) memb)
                      | uu___2 -> acc2) acc ytypes)) g g
 let count_p_successors_typed_c (g : rdf_graph) (x : subject) (p : wf_iri)
   (c : wf_iri) : Prims.nat=
@@ -1859,11 +1895,11 @@ let owl_rule_cls_maxqc1 (g : rdf_graph) : rdf_graph=
                                  } in
                                let memb =
                                  { s = x; p = rdf_type; o = rb_term } in
-                               add_triple_if_new
-                                 (add_triple_if_new
-                                    (add_triple_if_new
-                                       (add_triple_if_new
-                                          (add_triple_if_new acc2 shape1)
+                               add_triple_unchecked
+                                 (add_triple_unchecked
+                                    (add_triple_unchecked
+                                       (add_triple_unchecked
+                                          (add_triple_unchecked acc2 shape1)
                                           shape2) shape3) shape4) memb))
                      | uu___2 -> acc2) acc ytypes)) g g
 let owl_rule_cls_exactqc1 (g : rdf_graph) : rdf_graph=
@@ -1916,12 +1952,12 @@ let owl_rule_cls_exactqc1 (g : rdf_graph) : rdf_graph=
                                 o = (T_IRI c)
                               } in
                             let memb = { s = x; p = rdf_type; o = rb_term } in
-                            add_triple_if_new
-                              (add_triple_if_new
-                                 (add_triple_if_new
-                                    (add_triple_if_new
-                                       (add_triple_if_new acc2 shape1) shape2)
-                                    shape3) shape4) memb)
+                            add_triple_unchecked
+                              (add_triple_unchecked
+                                 (add_triple_unchecked
+                                    (add_triple_unchecked
+                                       (add_triple_unchecked acc2 shape1)
+                                       shape2) shape3) shape4) memb)
                      | uu___2 -> acc2) acc ytypes)) g g
 let owl_rule_cls_maxc2 (g : rdf_graph) : rdf_graph=
   FStar_List_Tot_Base.fold_left
@@ -1957,8 +1993,8 @@ let owl_rule_cls_maxc2 (g : rdf_graph) : rdf_graph=
                                             p = owl_sameAs;
                                             o = y2
                                           } in
-                                        add_triple_if_new acc5 new_t)) acc4
-                              ys) acc3 ys) acc2 members
+                                        add_triple_unchecked acc5 new_t))
+                              acc4 ys) acc3 ys) acc2 members
               | uu___ -> acc2) acc props
        else acc) g g
 let owl_rule_cls_avf1 (g : rdf_graph) : rdf_graph=
@@ -1990,7 +2026,7 @@ let owl_rule_cls_avf1 (g : rdf_graph) : rdf_graph=
                                         p = rdf_type;
                                         o = (T_IRI d)
                                       } in
-                                    add_triple_if_new acc4 new_t) acc3 ys)
+                                    add_triple_unchecked acc4 new_t) acc3 ys)
                         acc2 members
                   | uu___ -> acc2) acc props
          | uu___ -> acc
@@ -2020,14 +2056,14 @@ let owl_rule_reflexive_property (g : rdf_graph) : rdf_graph=
        FStar_List_Tot_Base.fold_left
          (fun acc2 x ->
             let new_t = { s = (S_IRI x); p = p_iri; o = (T_IRI x) } in
-            add_triple_if_new acc2 new_t) acc indivs) g refl_props
+            add_triple_unchecked acc2 new_t) acc indivs) g refl_props
 let owl_rule_scm_cls_restriction (g : rdf_graph) : rdf_graph=
   FStar_List_Tot_Base.fold_left
     (fun acc t ->
        if (t.p = rdf_type) && (rdf_term_eq t.o (T_IRI owl_Restriction_iri))
        then
          let new_t = { s = (t.s); p = rdf_type; o = (T_IRI owl_Class) } in
-         add_triple_if_new acc new_t
+         add_triple_unchecked acc new_t
        else acc) g g
 let rdf_first : wf_iri= "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
 let rdf_rest : wf_iri= "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
@@ -2073,7 +2109,7 @@ let owl_rule_property_chain_2 (g : rdf_graph) : rdf_graph=
                                (fun acc3 z_term ->
                                   let new_t =
                                     { s = (t1.s); p = p_iri; o = z_term } in
-                                  add_triple_if_new acc3 new_t) acc2 zs
+                                  add_triple_unchecked acc3 new_t) acc2 zs
                          | FStar_Pervasives_Native.None -> acc2
                        else acc2) acc g
               | FStar_Pervasives_Native.None -> acc)
@@ -2146,7 +2182,7 @@ let owl_rule_property_chain_n (g : rdf_graph) : rdf_graph=
                          FStar_List_Tot_Base.fold_left
                            (fun acc2 z_term ->
                               let new_t = { s = x; p = p_iri; o = z_term } in
-                              add_triple_if_new acc2 new_t) acc1 zs) acc
+                              add_triple_unchecked acc2 new_t) acc1 zs) acc
                       starting_subjects
                   else acc
               | FStar_Pervasives_Native.None -> acc)
@@ -2169,7 +2205,7 @@ let owl_rule_chain_to_transitive (g : rdf_graph) : rdf_graph=
                         p = rdf_type;
                         o = (T_IRI owl_TransitiveProperty)
                       } in
-                    add_triple_if_new acc new_t
+                    add_triple_unchecked acc new_t
                   else acc
               | FStar_Pervasives_Native.None -> acc)
          | (uu___, uu___1) -> acc
@@ -2199,7 +2235,7 @@ let owl_rule_named_sameAs_to_equivClass (g : rdf_graph) : rdf_graph=
                     p = owl_equivalentClass;
                     o = (T_IRI c_iri)
                   } in
-                add_triple_if_new (add_triple_if_new acc t1) t2
+                add_triple_unchecked (add_triple_unchecked acc t1) t2
               else acc)
          | (uu___, uu___1) -> acc
        else acc) g g
@@ -2220,7 +2256,7 @@ let owl_rule_named_equivClass_to_sameAs (g : rdf_graph) : rdf_graph=
                   { s = (S_IRI c_iri); p = owl_sameAs; o = (T_IRI d_iri) } in
                 let t2 =
                   { s = (S_IRI d_iri); p = owl_sameAs; o = (T_IRI c_iri) } in
-                add_triple_if_new (add_triple_if_new acc t1) t2
+                add_triple_unchecked (add_triple_unchecked acc t1) t2
               else acc)
          | (uu___, uu___1) -> acc
        else acc) g g
@@ -2312,7 +2348,7 @@ let owl_rule_prp_key (g : rdf_graph) : rdf_graph=
                                    p = owl_sameAs;
                                    o = (T_IRI y)
                                  } in
-                               add_triple_if_new acc2 new_t)
+                               add_triple_unchecked acc2 new_t)
                             else acc2) acc1 members) acc members)) g axioms
 let xsd_long : wf_iri= "http://www.w3.org/2001/XMLSchema#long"
 let xsd_int : wf_iri= "http://www.w3.org/2001/XMLSchema#int"
@@ -2409,7 +2445,7 @@ let owl_rule_scm_dom2 (g : rdf_graph) : rdf_graph=
                   match c2_term with
                   | T_IRI uu___ ->
                       let new_t = { s = (t.s); p = rdfs_domain; o = c2_term } in
-                      add_triple_if_new acc2 new_t
+                      add_triple_unchecked acc2 new_t
                   | uu___ -> acc2) acc supers
          | uu___ -> acc
        else acc) g g
@@ -2426,7 +2462,7 @@ let owl_rule_scm_rng2 (g : rdf_graph) : rdf_graph=
                   match c2_term with
                   | T_IRI uu___ ->
                       let new_t = { s = (t.s); p = rdfs_range; o = c2_term } in
-                      add_triple_if_new acc2 new_t
+                      add_triple_unchecked acc2 new_t
                   | uu___ -> acc2) acc supers
          | uu___ -> acc
        else acc) g g
@@ -2475,7 +2511,8 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
   let g24a = owl_rule_prp_key g24 in
   let g25 = owl_rule_xsd_datatype_axioms g24a in
   let g26 = owl_rule_xsd_core_datatype_axioms g25 in
-  let g27 = owl_rule_scm_dom2 g26 in let g28 = owl_rule_scm_rng2 g27 in g28
+  let g27 = owl_rule_scm_dom2 g26 in
+  let g28 = owl_rule_scm_rng2 g27 in graph_dedup_sort g28
 let rec owl_rl_closure (g : rdf_graph) (fuel : Prims.nat) : rdf_graph=
   match fuel with
   | uu___ when uu___ = Prims.int_zero -> g
