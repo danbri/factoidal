@@ -1606,7 +1606,7 @@ let is_owl_metapredicate (p : wf_iri) : bool =
 // for equivalent named-class reasoning, e.g. prp-eqp dual) and skip
 // entirely when both sides are bnodes (degenerate; no test relies on
 // bnode -> bnode subClassOf).
-let owl_rule_equivalent_class (g : rdf_graph) : rdf_graph =
+let owl_rule_equivalent_class (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
       if t.p = owl_equivalentClass then
@@ -1635,7 +1635,7 @@ let owl_rule_equivalent_class (g : rdf_graph) : rdf_graph =
 
 // prp-eqp1 + prp-eqp2: if (P owl:equivalentProperty Q) then
 //   (P rdfs:subPropertyOf Q) and (Q rdfs:subPropertyOf P).
-let owl_rule_equivalent_property (g : rdf_graph) : rdf_graph =
+let owl_rule_equivalent_property (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
       if t.p = owl_equivalentProperty then
@@ -1659,7 +1659,7 @@ let owl_rule_equivalent_property (g : rdf_graph) : rdf_graph =
 // BNODE-POLLUTION GUARD comment above). We also skip the degenerate
 // C = D case since (C equivalentClass C) follows trivially from
 // reflexivity and clutters the output.
-let owl_rule_scm_eqc2 (g : rdf_graph) : rdf_graph =
+let owl_rule_scm_eqc2 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
       if t.p = rdfs_subClassOf then
@@ -1669,7 +1669,7 @@ let owl_rule_scm_eqc2 (g : rdf_graph) : rdf_graph =
           else
             // Look up (D rdfs:subClassOf ?) and check whether C is among
             // the supers of D. If so, C and D are mutual subclasses.
-            let supers_of_d = find_objects g (S_IRI d_iri) rdfs_subClassOf in
+            let supers_of_d = find_objects_indexed ig (S_IRI d_iri) rdfs_subClassOf in
             if List.Tot.existsb (fun (x : rdf_term) -> rdf_term_eq x (T_IRI c_iri)) supers_of_d
             then
               let new_t : triple =
@@ -1686,7 +1686,7 @@ let owl_rule_scm_eqc2 (g : rdf_graph) : rdf_graph =
 //
 // As with scm-eqc2 we restrict to IRI-IRI pairs and skip the degenerate
 // P = Q case.
-let owl_rule_scm_eqp2 (g : rdf_graph) : rdf_graph =
+let owl_rule_scm_eqp2 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
       if t.p = rdfs_subPropertyOf then
@@ -1694,7 +1694,7 @@ let owl_rule_scm_eqp2 (g : rdf_graph) : rdf_graph =
         | S_IRI p_iri, T_IRI q_iri ->
           if p_iri = q_iri then acc
           else
-            let supers_of_q = find_objects g (S_IRI q_iri) rdfs_subPropertyOf in
+            let supers_of_q = find_objects_indexed ig (S_IRI q_iri) rdfs_subPropertyOf in
             if List.Tot.existsb (fun (x : rdf_term) -> rdf_term_eq x (T_IRI p_iri)) supers_of_q
             then
               let new_t : triple =
@@ -1708,7 +1708,7 @@ let owl_rule_scm_eqp2 (g : rdf_graph) : rdf_graph =
 
 // prp-symp: if (P rdf:type owl:SymmetricProperty) and (x P y) then (y P x).
 // y must be convertible to a subject (IRI or BNode — not a literal).
-let owl_rule_symmetric_property (g : rdf_graph) : rdf_graph =
+let owl_rule_symmetric_property (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   // Collect symmetric predicates first
   let sym_props : list wf_iri =
     List.Tot.fold_left
@@ -1734,7 +1734,7 @@ let owl_rule_symmetric_property (g : rdf_graph) : rdf_graph =
     g
 
 // prp-trp: if (P rdf:type owl:TransitiveProperty), (x P y), (y P z) then (x P z).
-let owl_rule_transitive_property (g : rdf_graph) : rdf_graph =
+let owl_rule_transitive_property (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   let trans_props : list wf_iri =
     List.Tot.fold_left
       (fun (acc : list wf_iri) (t : triple) ->
@@ -1752,7 +1752,7 @@ let owl_rule_transitive_property (g : rdf_graph) : rdf_graph =
       if List.Tot.mem t.p trans_props then
         match term_to_subject t.o with
         | Some y_subj ->
-          let zs = find_objects g y_subj t.p in
+          let zs = find_objects_indexed ig y_subj t.p in
           List.Tot.fold_left
             (fun (acc2 : rdf_graph) (z_term : rdf_term) ->
               let new_t : triple = { s = t.s; p = t.p; o = z_term } in
@@ -1776,7 +1776,7 @@ let owl_rule_transitive_property (g : rdf_graph) : rdf_graph =
 //   SELECT ?C WHERE { :parent rdfs:range ?C }
 // sees only scm-op's owl:Thing and misses the transposed data-domain
 // class (tested by W3C SPARQL entailment sparqldl-11 "domain test").
-let owl_rule_inverseOf_domain_range_flip (g : rdf_graph) : rdf_graph =
+let owl_rule_inverseOf_domain_range_flip (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (inv_t : triple) ->
       if inv_t.p = owl_inverseOf then
@@ -1811,7 +1811,7 @@ let owl_rule_inverseOf_domain_range_flip (g : rdf_graph) : rdf_graph =
 // prp-inv2: if (P1 owl:inverseOf P2) and (x P2 y) then (y P1 x).
 // We handle both by iterating every owl:inverseOf declaration and producing
 // the flipped triples for both directions.
-let owl_rule_inverse_of (g : rdf_graph) : rdf_graph =
+let owl_rule_inverse_of (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (inv_t : triple) ->
       if inv_t.p = owl_inverseOf then
@@ -1860,7 +1860,7 @@ let collect_iri_or_bnode_terms (g : rdf_graph) : list subject =
     []
     g
 
-let owl_rule_sameAs_reflexivity (g : rdf_graph) : rdf_graph =
+let owl_rule_sameAs_reflexivity (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   let nodes = collect_iri_or_bnode_terms g in
   List.Tot.fold_left
     (fun (acc : rdf_graph) (n : subject) ->
@@ -1870,7 +1870,7 @@ let owl_rule_sameAs_reflexivity (g : rdf_graph) : rdf_graph =
     nodes
 
 // eq-sym: if (x owl:sameAs y) then (y owl:sameAs x).
-let owl_rule_sameAs_symmetry (g : rdf_graph) : rdf_graph =
+let owl_rule_sameAs_symmetry (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
       if t.p = owl_sameAs then
@@ -1888,7 +1888,7 @@ let owl_rule_sameAs_symmetry (g : rdf_graph) : rdf_graph =
 // OWL semantics treats owl:differentFrom as symmetric; this is sound for
 // all OWL profiles. Mirror of owl_rule_sameAs_symmetry exactly, with
 // owl_sameAs replaced by owl_differentFrom.
-let owl_rule_differentFrom_symmetry (g : rdf_graph) : rdf_graph =
+let owl_rule_differentFrom_symmetry (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
       if t.p = owl_differentFrom then
@@ -1903,13 +1903,13 @@ let owl_rule_differentFrom_symmetry (g : rdf_graph) : rdf_graph =
     g
 
 // eq-trans: if (x owl:sameAs y) and (y owl:sameAs z) then (x owl:sameAs z).
-let owl_rule_sameAs_transitivity (g : rdf_graph) : rdf_graph =
+let owl_rule_sameAs_transitivity (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
       if t.p = owl_sameAs then
         match term_to_subject t.o with
         | Some y_subj ->
-          let zs = find_objects g y_subj owl_sameAs in
+          let zs = find_objects_indexed ig y_subj owl_sameAs in
           List.Tot.fold_left
             (fun (acc2 : rdf_graph) (z_term : rdf_term) ->
               let new_t : triple = { s = t.s; p = owl_sameAs; o = z_term } in
@@ -1922,7 +1922,7 @@ let owl_rule_sameAs_transitivity (g : rdf_graph) : rdf_graph =
     g
 
 // eq-rep-s: if (s owl:sameAs s') and (s p o) then (s' p o).
-let owl_rule_sameAs_replace_subject (g : rdf_graph) : rdf_graph =
+let owl_rule_sameAs_replace_subject (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
       // For each (s owl:sameAs s') where s = t.s, copy all triples
@@ -1944,7 +1944,7 @@ let owl_rule_sameAs_replace_subject (g : rdf_graph) : rdf_graph =
     g
 
 // eq-rep-o: if (o owl:sameAs o') and (s p o) then (s p o').
-let owl_rule_sameAs_replace_object (g : rdf_graph) : rdf_graph =
+let owl_rule_sameAs_replace_object (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (sameAs_t : triple) ->
       if sameAs_t.p = owl_sameAs then
@@ -1966,7 +1966,7 @@ let owl_rule_sameAs_replace_object (g : rdf_graph) : rdf_graph =
 // eq-rep-p: if (p owl:sameAs p') and p, p' are IRIs, then copy every
 // (s p o) as (s p' o). Only well-formed IRI predicates participate —
 // predicates cannot be blank nodes or literals.
-let owl_rule_sameAs_replace_predicate (g : rdf_graph) : rdf_graph =
+let owl_rule_sameAs_replace_predicate (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (sameAs_t : triple) ->
       if sameAs_t.p = owl_sameAs then
@@ -1992,7 +1992,7 @@ let owl_rule_sameAs_replace_predicate (g : rdf_graph) : rdf_graph =
 // the same individual. Literal objects are skipped — owl:sameAs is
 // defined only on named individuals (IRI or blank node), and literal
 // equality is handled by literal_value_eq elsewhere.
-let owl_rule_functional (g : rdf_graph) : rdf_graph =
+let owl_rule_functional (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   let fp_props : list wf_iri =
     List.Tot.fold_left
       (fun (acc : list wf_iri) (t : triple) ->
@@ -2013,7 +2013,7 @@ let owl_rule_functional (g : rdf_graph) : rdf_graph =
         | Some y_subj ->
           // Find all other objects z of (t1.s t1.p ?z) and emit
           // (y_subj sameAs z). Skip self (z = y_subj) and skip literals.
-          let zs = find_objects g t1.s t1.p in
+          let zs = find_objects_indexed ig t1.s t1.p in
           List.Tot.fold_left
             (fun (acc2 : rdf_graph) (z : rdf_term) ->
               if rdf_term_eq z t1.o then acc2
@@ -2030,7 +2030,7 @@ let owl_rule_functional (g : rdf_graph) : rdf_graph =
 // prp-ifp: if (P rdf:type owl:InverseFunctionalProperty), (x P y), (z P y)
 // then (x owl:sameAs z). Produces additional owl:sameAs triples that will
 // feed into eq-* rules on the next fixpoint iteration.
-let owl_rule_inverse_functional (g : rdf_graph) : rdf_graph =
+let owl_rule_inverse_functional (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   let ifp_props : list wf_iri =
     List.Tot.fold_left
       (fun (acc : list wf_iri) (t : triple) ->
@@ -2046,7 +2046,7 @@ let owl_rule_inverse_functional (g : rdf_graph) : rdf_graph =
     (fun (acc : rdf_graph) (t1 : triple) ->
       if List.Tot.mem t1.p ifp_props then
         // Find all z with (z t1.p t1.o)
-        let zs = find_subjects g t1.p t1.o in
+        let zs = find_subjects_indexed ig t1.p t1.o in
         List.Tot.fold_left
           (fun (acc2 : rdf_graph) (z : subject) ->
             // Avoid emitting (x sameAs x) twice and don't emit if z equals t1.s
@@ -2087,7 +2087,7 @@ let differentFrom_in_graph (g : rdf_graph) (a : rdf_term) (b : rdf_term) : bool 
 // differentFrom by Tableau refutation, but covers the W3C
 // New-Feature-DisjointObjectProperties / DisjointDataProperties tests
 // which exercise exactly this pattern.
-let owl_rule_pdw_to_differentFrom (g : rdf_graph) : rdf_graph =
+let owl_rule_pdw_to_differentFrom (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   let pdw_pairs : list (wf_iri & wf_iri) =
     List.Tot.fold_left
       (fun (acc : list (wf_iri & wf_iri)) (t : triple) ->
@@ -2111,7 +2111,7 @@ let owl_rule_pdw_to_differentFrom (g : rdf_graph) : rdf_graph =
             match term_to_subject t1.o with
             | None -> acc1
             | Some o1_subj ->
-              let o2_terms = find_objects g t1.s p2 in
+              let o2_terms = find_objects_indexed ig t1.s p2 in
               List.Tot.fold_left
                 (fun (acc2 : rdf_graph) (o2_term : rdf_term) ->
                   if rdf_term_eq t1.o o2_term then acc2
@@ -2134,7 +2134,7 @@ let owl_rule_pdw_to_differentFrom (g : rdf_graph) : rdf_graph =
 // and (y2 p x2) and (x1 differentFrom x2), then (y1 differentFrom y2).
 // (If y1 = y2, prp-fp emits (x1 sameAs x2), contradicting differentFrom.)
 // Covers W3C owl2-rl-rules-fp-differentFrom.
-let owl_rule_fp_diff_to_diff (g : rdf_graph) : rdf_graph =
+let owl_rule_fp_diff_to_diff (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   let fp_props : list wf_iri =
     List.Tot.fold_left
       (fun (acc : list wf_iri) (t : triple) ->
@@ -2169,7 +2169,7 @@ let owl_rule_fp_diff_to_diff (g : rdf_graph) : rdf_graph =
 // prp-ifp-diff: contrapositive of prp-ifp. If p is inverseFunctional
 // and (x1 p y1) and (x2 p y2) and (x1 differentFrom x2), then
 // (y1 differentFrom y2). Covers W3C owl2-rl-rules-ifp-differentFrom.
-let owl_rule_ifp_diff_to_diff (g : rdf_graph) : rdf_graph =
+let owl_rule_ifp_diff_to_diff (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   let ifp_props : list wf_iri =
     List.Tot.fold_left
       (fun (acc : list wf_iri) (t : triple) ->
@@ -2442,7 +2442,7 @@ let canonical_exactqc1_restriction_bnode (p : wf_iri) (c : wf_iri) : bnode_id =
 // rewrite) match data that only states disjointWith one way (e.g.
 // paper-sparqldl-data.ttl: `:Conference owl:disjointWith :Workshop`
 // is asserted only forward).
-let owl_rule_disjoint_with_propagation (g : rdf_graph) : rdf_graph =
+let owl_rule_disjoint_with_propagation (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
       if t.p = owl_disjointWith_iri then
@@ -2508,7 +2508,7 @@ let owl_rule_disjoint_with_propagation (g : rdf_graph) : rdf_graph =
 // `_:r` directly: rdfs9 (rdfs_rule_subClassOf) does not propagate
 // rdf:type to bnode-class objects (the rule only matches T_IRI on the
 // RHS), so `(:paper1 rdf:type _:r)` is not in the closure. Instead we
-// walk `find_subjects g rdfs_subClassOf (T_BNode _:r)` to get every
+// walk `find_subjects_indexed ig rdfs_subClassOf (T_BNode _:r)` to get every
 // named class C' with (C' rdfs:subClassOf _:r) and emit witnesses for
 // every (x rdf:type C'). The rdfs:subClassOf relation reaches `_:r`
 // as the OBJECT (the data-side `:ConferencePaper rdfs:subClassOf
@@ -2521,7 +2521,7 @@ let canonical_svf2_witness_bnode (p : wf_iri) (c : wf_iri) (x : subject) : bnode
   String.concat ""
     ["__rl_svf2w__on__"; p; "__filler__"; c; "__from__"; subject_to_key x]
 
-let owl_rule_svf2_existential_witness (g : rdf_graph) : rdf_graph =
+let owl_rule_svf2_existential_witness (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   // Outer fold: find (_:r owl:someValuesFrom C) with C an IRI named class.
   List.Tot.fold_left
     (fun (acc : rdf_graph) (svf_t : triple) ->
@@ -2532,7 +2532,7 @@ let owl_rule_svf2_existential_witness (g : rdf_graph) : rdf_graph =
           else
             let r_subj = svf_t.s in
             // Require (_:r owl:onProperty P) with P IRI.
-            let onprops = find_objects g r_subj owl_onProperty_iri in
+            let onprops = find_objects_indexed ig r_subj owl_onProperty_iri in
             List.Tot.fold_left
               (fun (acc2 : rdf_graph) (op_term : rdf_term) ->
                 match op_term with
@@ -2540,7 +2540,7 @@ let owl_rule_svf2_existential_witness (g : rdf_graph) : rdf_graph =
                   // Find every C' with (C' rdfs:subClassOf _:r).
                   let r_term : rdf_term = subject_to_term r_subj in
                   let ancestors : list subject =
-                    find_subjects g rdfs_subClassOf r_term in
+                    find_subjects_indexed ig rdfs_subClassOf r_term in
                   List.Tot.fold_left
                     (fun (acc3 : rdf_graph) (cls_subj : subject) ->
                       // Restrict to NAMED classes — bnode CEs as the
@@ -2551,7 +2551,7 @@ let owl_rule_svf2_existential_witness (g : rdf_graph) : rdf_graph =
                       | S_IRI cls_iri ->
                         // For every x with (x rdf:type cls_iri):
                         let members : list subject =
-                          find_subjects g rdf_type (T_IRI cls_iri) in
+                          find_subjects_indexed ig rdf_type (T_IRI cls_iri) in
                         List.Tot.fold_left
                           (fun (acc4 : rdf_graph) (x : subject) ->
                             let w_id = canonical_svf2_witness_bnode p c x in
@@ -2580,13 +2580,13 @@ let owl_rule_svf2_existential_witness (g : rdf_graph) : rdf_graph =
 // emit (_:r owl:minCardinality "1"^^xsd:nonNegativeInteger).
 //
 // Using fold_left + accumulator; stack-safe per the recent tail-rec audit.
-let owl_rule_minc1_bridge (g : rdf_graph) : rdf_graph =
+let owl_rule_minc1_bridge (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
       // Trigger on (s owl:someValuesFrom owl:Thing).
       if t.p = owl_someValuesFrom_iri && rdf_term_eq t.o (T_IRI owl_Thing) then
         // Require also (s owl:onProperty P) for some IRI property P.
-        let onprops = find_objects g t.s owl_onProperty_iri in
+        let onprops = find_objects_indexed ig t.s owl_onProperty_iri in
         List.Tot.fold_left
           (fun (acc2 : rdf_graph) (op_term : rdf_term) ->
             match op_term with
@@ -2676,7 +2676,7 @@ let edge_subject_is_safe (e : triple) : bool =
 //
 // Two nested fold_lefts: outer over triples (x P y), inner over types
 // (y rdf:type C). Both stack-safe (fold_left + accumulator).
-let owl_rule_cls_svf2_qualified (g : rdf_graph) : rdf_graph =
+let owl_rule_cls_svf2_qualified (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (edge : triple) ->
       // Consider only "ordinary" object-property edges: predicate is an
@@ -2695,7 +2695,7 @@ let owl_rule_cls_svf2_qualified (g : rdf_graph) : rdf_graph =
           let p = edge.p in
           let x = edge.s in
           // Types of y
-          let ytypes = find_objects g y_subj rdf_type in
+          let ytypes = find_objects_indexed ig y_subj rdf_type in
           List.Tot.fold_left
             (fun (acc2 : rdf_graph) (ty : rdf_term) ->
               match ty with
@@ -2733,7 +2733,7 @@ let owl_rule_cls_svf2_qualified (g : rdf_graph) : rdf_graph =
 // 2026-04-25). Without it, closure edges with predicate rdfs:subClassOf
 // / owl:onProperty / owl:onClass / etc. trigger spurious canonical
 // emissions.
-let owl_rule_cls_minc_qual1 (g : rdf_graph) : rdf_graph =
+let owl_rule_cls_minc_qual1 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (edge : triple) ->
       if edge.p = rdf_type || is_schema_metapredicate edge.p then acc
@@ -2744,7 +2744,7 @@ let owl_rule_cls_minc_qual1 (g : rdf_graph) : rdf_graph =
         | Some y_subj ->
           let p = edge.p in
           let x = edge.s in
-          let ytypes = find_objects g y_subj rdf_type in
+          let ytypes = find_objects_indexed ig y_subj rdf_type in
           List.Tot.fold_left
             (fun (acc2 : rdf_graph) (ty : rdf_term) ->
               match ty with
@@ -2852,16 +2852,16 @@ let owl_rule_cls_minc_qual1 (g : rdf_graph) : rdf_graph =
 // AND have rdf:type C (read against the post-closure graph g, not the
 // in-flight accumulator — same convention as the surrounding rules).
 let count_p_successors_typed_c
-  (g : rdf_graph) (x : subject) (p : wf_iri) (c : wf_iri)
+  (g : rdf_graph) (ig : indexed_graph) (x : subject) (p : wf_iri) (c : wf_iri)
   : nat =
-  let succs : list rdf_term = find_objects g x p in
+  let succs : list rdf_term = find_objects_indexed ig x p in
   let typed : list rdf_term =
     List.Tot.filter
       (fun (y : rdf_term) ->
         match term_to_subject y with
         | None -> false
         | Some y_subj ->
-          let ts = find_objects g y_subj rdf_type in
+          let ts = find_objects_indexed ig y_subj rdf_type in
           List.Tot.existsb
             (fun (t : rdf_term) -> rdf_term_eq t (T_IRI c)) ts)
       succs in
@@ -2874,7 +2874,7 @@ let count_p_successors_typed_c
 // were treated as data edges and the rule materialised hundreds of
 // meaningless canonicals like _:__rl_maxqc1_<rdfs:subClassOf>__on__<owl:Class>
 // that leaked into ?parent bindings under bnodes-as-existential rewriting.
-let owl_rule_cls_maxqc1 (g : rdf_graph) : rdf_graph =
+let owl_rule_cls_maxqc1 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (edge : triple) ->
       if edge.p = rdf_type || is_schema_metapredicate edge.p then acc
@@ -2885,7 +2885,7 @@ let owl_rule_cls_maxqc1 (g : rdf_graph) : rdf_graph =
         | Some y_subj ->
           let p = edge.p in
           let x = edge.s in
-          let ytypes = find_objects g y_subj rdf_type in
+          let ytypes = find_objects_indexed ig y_subj rdf_type in
           List.Tot.fold_left
             (fun (acc2 : rdf_graph) (ty : rdf_term) ->
               match ty with
@@ -2896,7 +2896,7 @@ let owl_rule_cls_maxqc1 (g : rdf_graph) : rdf_graph =
                   // >= 2 distinct P-successors typed C in g (max-1
                   // would otherwise force a sameAs merge we can't yet
                   // perform in pure closure).
-                  let n = count_p_successors_typed_c g x p c in
+                  let n = count_p_successors_typed_c g ig x p c in
                   if n > 1 then acc2
                   else
                   let rb = canonical_maxqc1_restriction_bnode p c in
@@ -2930,7 +2930,7 @@ let owl_rule_cls_maxqc1 (g : rdf_graph) : rdf_graph =
 // Schema-meta guard: see is_schema_metapredicate (parent7 over-count fix,
 // 2026-04-25). Same rationale as cls-maxqc1 above — without the wider
 // guard, schema-vocab closure edges trigger spurious exactqc1 canonicals.
-let owl_rule_cls_exactqc1 (g : rdf_graph) : rdf_graph =
+let owl_rule_cls_exactqc1 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (edge : triple) ->
       if edge.p = rdf_type || is_schema_metapredicate edge.p then acc
@@ -2941,7 +2941,7 @@ let owl_rule_cls_exactqc1 (g : rdf_graph) : rdf_graph =
         | Some y_subj ->
           let p = edge.p in
           let x = edge.s in
-          let ytypes = find_objects g y_subj rdf_type in
+          let ytypes = find_objects_indexed ig y_subj rdf_type in
           List.Tot.fold_left
             (fun (acc2 : rdf_graph) (ty : rdf_term) ->
               match ty with
@@ -2987,7 +2987,7 @@ let owl_rule_cls_exactqc1 (g : rdf_graph) : rdf_graph =
 // directly). Our materialised canonicals carry maxQualifiedCardinality,
 // not maxCardinality, so the rule does not apply to them and cannot
 // collapse our canonicals' membership into spurious sameAs.
-let owl_rule_cls_maxc2 (g : rdf_graph) : rdf_graph =
+let owl_rule_cls_maxc2 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   // For every restriction bnode _:R with maxCardinality 1:
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
@@ -2995,17 +2995,17 @@ let owl_rule_cls_maxc2 (g : rdf_graph) : rdf_graph =
          && rdf_term_eq t.o (T_Literal one_nonNegInteger_literal) then
         // _:R = t.s. Find its onProperty P (only IRIs).
         let r_subj = t.s in
-        let props = find_objects g r_subj owl_onProperty_iri in
+        let props = find_objects_indexed ig r_subj owl_onProperty_iri in
         List.Tot.fold_left
           (fun (acc2 : rdf_graph) (p_term : rdf_term) ->
             match p_term with
             | T_IRI p ->
               // For each x with (x rdf:type _:R):
-              let members = find_subjects g rdf_type (subject_to_term r_subj) in
+              let members = find_subjects_indexed ig rdf_type (subject_to_term r_subj) in
               List.Tot.fold_left
                 (fun (acc3 : rdf_graph) (x : subject) ->
                   // Find all y1, y2 with (x p yi).
-                  let ys = find_objects g x p in
+                  let ys = find_objects_indexed ig x p in
                   List.Tot.fold_left
                     (fun (acc4 : rdf_graph) (y1 : rdf_term) ->
                       List.Tot.fold_left
@@ -3045,7 +3045,7 @@ let owl_rule_cls_maxc2 (g : rdf_graph) : rdf_graph =
 // (fold_left + accumulator; four nested folds, outer over _:R, then
 // over onProperty/allValuesFrom tuples, then over members, then over
 // P-edges from each member).
-let owl_rule_cls_avf1 (g : rdf_graph) : rdf_graph =
+let owl_rule_cls_avf1 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   // Outer fold: find (_:R owl:allValuesFrom D) with D a named IRI.
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t_avf : triple) ->
@@ -3054,17 +3054,17 @@ let owl_rule_cls_avf1 (g : rdf_graph) : rdf_graph =
         | T_IRI d ->
           // _:R = t_avf.s. Find its onProperty (IRI only).
           let r_subj = t_avf.s in
-          let props = find_objects g r_subj owl_onProperty_iri in
+          let props = find_objects_indexed ig r_subj owl_onProperty_iri in
           List.Tot.fold_left
             (fun (acc2 : rdf_graph) (p_term : rdf_term) ->
               match p_term with
               | T_IRI p ->
                 // For each x with (x rdf:type _:R):
-                let members = find_subjects g rdf_type (subject_to_term r_subj) in
+                let members = find_subjects_indexed ig rdf_type (subject_to_term r_subj) in
                 List.Tot.fold_left
                   (fun (acc3 : rdf_graph) (x : subject) ->
                     // For each y with (x P y), emit (y rdf:type D).
-                    let ys = find_objects g x p in
+                    let ys = find_objects_indexed ig x p in
                     List.Tot.fold_left
                       (fun (acc4 : rdf_graph) (y : rdf_term) ->
                         match term_to_subject y with
@@ -3115,7 +3115,7 @@ let prp_rfl_individuals (g : rdf_graph) : list wf_iri =
     []
     g
 
-let owl_rule_reflexive_property (g : rdf_graph) : rdf_graph =
+let owl_rule_reflexive_property (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   // Collect reflexive predicates first.
   let refl_props : list wf_iri =
     List.Tot.fold_left
@@ -3156,7 +3156,7 @@ let owl_rule_reflexive_property (g : rdf_graph) : rdf_graph =
 //
 // Trivially terminating: emits at most one new triple per existing
 // (s rdf:type owl:Restriction) triple.
-let owl_rule_scm_cls_restriction (g : rdf_graph) : rdf_graph =
+let owl_rule_scm_cls_restriction (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
       if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_Restriction_iri) then
@@ -3198,16 +3198,16 @@ let owl_hasKey : wf_iri =
 //     tail    rdf:rest  rdf:nil
 // and both p1 and p2 are IRIs. Returns `None` otherwise (n != 2,
 // non-IRI elements, or malformed list). Two-hop, no recursion.
-let decode_chain_pair (g : rdf_graph) (head_subj : subject)
+let decode_chain_pair (g : rdf_graph) (ig : indexed_graph) (head_subj : subject)
   : option (wf_iri & wf_iri) =
-  let firsts1 = find_objects g head_subj rdf_first in
-  let rests1  = find_objects g head_subj rdf_rest  in
+  let firsts1 = find_objects_indexed ig head_subj rdf_first in
+  let rests1  = find_objects_indexed ig head_subj rdf_rest  in
   match firsts1, rests1 with
   | (T_IRI p1) :: _, tail_term :: _ ->
     (match term_to_subject tail_term with
      | Some tail_subj ->
-       let firsts2 = find_objects g tail_subj rdf_first in
-       let rests2  = find_objects g tail_subj rdf_rest  in
+       let firsts2 = find_objects_indexed ig tail_subj rdf_first in
+       let rests2  = find_objects_indexed ig tail_subj rdf_rest  in
        (match firsts2, rests2 with
         | (T_IRI p2) :: _, (T_IRI nil_iri) :: _ ->
           if nil_iri = rdf_nil_iri then Some (p1, p2) else None
@@ -3227,13 +3227,13 @@ let decode_chain_pair (g : rdf_graph) (head_subj : subject)
 // Restricted to n=2 (the common case, covers chain2trans1,
 // New-Feature-ObjectPropertyChain-001, BJP-003). General-n requires a
 // fuel-bounded list walker — left for a follow-up commit.
-let owl_rule_property_chain_2 (g : rdf_graph) : rdf_graph =
+let owl_rule_property_chain_2 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (chain_t : triple) ->
       if chain_t.p = owl_propertyChainAxiom then
         match chain_t.s, term_to_subject chain_t.o with
         | S_IRI p_iri, Some list_subj ->
-          (match decode_chain_pair g list_subj with
+          (match decode_chain_pair g ig list_subj with
            | Some (p1, p2) ->
              // For each (x p1 y) in g, find every (y p2 z) and emit (x p z).
              List.Tot.fold_left
@@ -3241,7 +3241,7 @@ let owl_rule_property_chain_2 (g : rdf_graph) : rdf_graph =
                  if t1.p = p1 then
                    match term_to_subject t1.o with
                    | Some y_subj ->
-                     let zs = find_objects g y_subj p2 in
+                     let zs = find_objects_indexed ig y_subj p2 in
                      List.Tot.fold_left
                        (fun (acc3 : rdf_graph) (z_term : rdf_term) ->
                          let new_t : triple =
@@ -3266,7 +3266,7 @@ let owl_rule_property_chain_2 (g : rdf_graph) : rdf_graph =
 // (missing first/rest, multi-headed), contains a non-IRI element, or
 // exceeds the fuel bound. Fuel bound caps chain length and guarantees
 // termination. Cluster A of OWL 2 RL next-steps (issue #207).
-let rec decode_chain_list_fuel (g : rdf_graph) (head_subj : subject) (fuel : nat)
+let rec decode_chain_list_fuel (g : rdf_graph) (ig : indexed_graph) (head_subj : subject) (fuel : nat)
   : Tot (option (list wf_iri)) (decreases fuel) =
   // rdf:nil terminates a (sub-)list. The full chain is empty here, which
   // we reject upstream — a propertyChainAxiom of length 0 has no semantics.
@@ -3278,13 +3278,13 @@ let rec decode_chain_list_fuel (g : rdf_graph) (head_subj : subject) (fuel : nat
   if is_nil then Some []
   else if fuel = 0 then None
   else
-    let firsts = find_objects g head_subj rdf_first in
-    let rests  = find_objects g head_subj rdf_rest  in
+    let firsts = find_objects_indexed ig head_subj rdf_first in
+    let rests  = find_objects_indexed ig head_subj rdf_rest  in
     match firsts, rests with
     | (T_IRI p1) :: _, tail_term :: _ ->
       (match term_to_subject tail_term with
        | Some tail_subj ->
-         (match decode_chain_list_fuel g tail_subj (fuel - 1) with
+         (match decode_chain_list_fuel g ig tail_subj (fuel - 1) with
           | Some tail_props -> Some (p1 :: tail_props)
           | None            -> None)
        | None -> None)
@@ -3292,10 +3292,10 @@ let rec decode_chain_list_fuel (g : rdf_graph) (head_subj : subject) (fuel : nat
 
 // Wrapper: chain length is bounded by graph_len (each list cell costs at
 // least one rdf:rest triple). Reject empty / overlong / malformed lists.
-let decode_chain_list (g : rdf_graph) (head_subj : subject)
+let decode_chain_list (g : rdf_graph) (ig : indexed_graph) (head_subj : subject)
   : option (list wf_iri) =
   let fuel : nat = graph_len g + 1 in
-  match decode_chain_list_fuel g head_subj fuel with
+  match decode_chain_list_fuel g ig head_subj fuel with
   | Some [] -> None
   | x       -> x
 
@@ -3305,16 +3305,16 @@ let decode_chain_list (g : rdf_graph) (head_subj : subject)
 // in `g`. Stack-safe via fold_left over the per-step frontier.
 // Empty input chain returns `[subject_to_term x]` (identity); the rule
 // rejects empty chains upstream so this is a defensive default.
-let rec find_chain_endpoints (g : rdf_graph) (chain : list wf_iri) (x : subject)
+let rec find_chain_endpoints (g : rdf_graph) (ig : indexed_graph) (chain : list wf_iri) (x : subject)
   : Tot (list rdf_term) (decreases chain) =
   match chain with
   | [] -> [subject_to_term x]
   | p :: rest ->
-    let next_terms = find_objects g x p in
+    let next_terms = find_objects_indexed ig x p in
     List.Tot.fold_left
       (fun (acc : list rdf_term) (y_term : rdf_term) ->
         match term_to_subject y_term with
-        | Some y_subj -> List.Tot.append acc (find_chain_endpoints g rest y_subj)
+        | Some y_subj -> List.Tot.append acc (find_chain_endpoints g ig rest y_subj)
         | None        -> acc)
       []
       next_terms
@@ -3335,7 +3335,7 @@ let rec find_chain_endpoints (g : rdf_graph) (chain : list wf_iri) (x : subject)
 // and is already covered by owl_rule_subProperty_propagation; n = 0 has
 // no semantics. The n = 2 case overlaps with owl_rule_property_chain_2;
 // running both is a no-op (add_triple_unchecked dedupes).
-let owl_rule_property_chain_n (g : rdf_graph) : rdf_graph =
+let owl_rule_property_chain_n (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   // Distinct subjects appearing in g — candidates for the path-start x.
   let starting_subjects : list subject =
     List.Tot.fold_left
@@ -3350,13 +3350,13 @@ let owl_rule_property_chain_n (g : rdf_graph) : rdf_graph =
       if chain_t.p = owl_propertyChainAxiom then
         match chain_t.s, term_to_subject chain_t.o with
         | S_IRI p_iri, Some list_subj ->
-          (match decode_chain_list g list_subj with
+          (match decode_chain_list g ig list_subj with
            | Some chain ->
              // n >= 2 only — n = 1 is subPropertyOf, n = 0 is meaningless.
              if List.Tot.length chain >= 2 then
                List.Tot.fold_left
                  (fun (acc1 : rdf_graph) (x : subject) ->
-                   let zs = find_chain_endpoints g chain x in
+                   let zs = find_chain_endpoints g ig chain x in
                    List.Tot.fold_left
                      (fun (acc2 : rdf_graph) (z_term : rdf_term) ->
                        let new_t : triple =
@@ -3378,13 +3378,13 @@ let owl_rule_property_chain_n (g : rdf_graph) : rdf_graph =
 // composed with itself — then P is transitive. Drives the chain2trans1
 // PositiveEntailmentTest. Bnode-guarded via decode_chain_pair (which
 // only returns IRI pairs).
-let owl_rule_chain_to_transitive (g : rdf_graph) : rdf_graph =
+let owl_rule_chain_to_transitive (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (chain_t : triple) ->
       if chain_t.p = owl_propertyChainAxiom then
         match chain_t.s, term_to_subject chain_t.o with
         | S_IRI p_iri, Some list_subj ->
-          (match decode_chain_pair g list_subj with
+          (match decode_chain_pair g ig list_subj with
            | Some (q1, q2) ->
              if q1 = p_iri && q2 = p_iri then
                let new_t : triple =
@@ -3407,9 +3407,9 @@ let owl_rule_chain_to_transitive (g : rdf_graph) : rdf_graph =
 // Sound: under OWL-RL, sameAs on named individuals which happen to
 // also be classes implies extensional class equality, hence
 // equivalentClass. Drives WebOnt-I4.6-003 and WebOnt-I4.6-005-Direct.
-let owl_rule_named_sameAs_to_equivClass (g : rdf_graph) : rdf_graph =
+let owl_rule_named_sameAs_to_equivClass (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   let is_class (i : wf_iri) : bool =
-    let types = find_objects g (S_IRI i) rdf_type in
+    let types = find_objects_indexed ig (S_IRI i) rdf_type in
     List.Tot.existsb (fun (x : rdf_term) -> rdf_term_eq x (T_IRI owl_Class)) types
   in
   List.Tot.fold_left
@@ -3448,9 +3448,9 @@ let owl_rule_named_sameAs_to_equivClass (g : rdf_graph) : rdf_graph =
 //
 // Targets WebOnt-I4.6-005-Direct and WebOnt-equivalentClass-008-Direct
 // (cluster I+J of docs/designissues/2026-05-07-owl2-rl-next-steps.md).
-let owl_rule_named_equivClass_to_sameAs (g : rdf_graph) : rdf_graph =
+let owl_rule_named_equivClass_to_sameAs (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   let is_class (i : wf_iri) : bool =
-    let types = find_objects g (S_IRI i) rdf_type in
+    let types = find_objects_indexed ig (S_IRI i) rdf_type in
     List.Tot.existsb (fun (x : rdf_term) -> rdf_term_eq x (T_IRI owl_Class)) types
   in
   List.Tot.fold_left
@@ -3480,7 +3480,7 @@ let owl_rule_named_equivClass_to_sameAs (g : rdf_graph) : rdf_graph =
 // Caller passes an upper bound (e.g. graph_len g) which dominates list
 // length under list-acyclicity.
 let rec decode_iri_list
-  (g : rdf_graph) (head_subj : subject) (fuel : nat)
+  (g : rdf_graph) (ig : indexed_graph) (head_subj : subject) (fuel : nat)
   : Tot (option (list wf_iri)) (decreases fuel)
   =
   // Empty list: head is rdf:nil itself.
@@ -3492,14 +3492,14 @@ let rec decode_iri_list
   if is_nil_head then Some []
   else if fuel = 0 then None
   else
-    let firsts = find_objects g head_subj rdf_first in
-    let rests  = find_objects g head_subj rdf_rest  in
+    let firsts = find_objects_indexed ig head_subj rdf_first in
+    let rests  = find_objects_indexed ig head_subj rdf_rest  in
     match firsts, rests with
     | (T_IRI p_iri) :: _, tail_term :: _ ->
       (match term_to_subject tail_term with
        | None -> None
        | Some tail_subj ->
-         match decode_iri_list g tail_subj (fuel - 1) with
+         match decode_iri_list g ig tail_subj (fuel - 1) with
          | None -> None
          | Some rest_props -> Some (p_iri :: rest_props))
     | _, _ -> None
@@ -3507,14 +3507,14 @@ let rec decode_iri_list
 // Collect all (C owl:hasKey list) axioms as (class IRI, decoded prop list)
 // pairs. Skips any axiom whose subject is not an IRI, whose object cannot
 // be a list-head subject, or whose list fails to decode as a list of IRIs.
-let collect_haskey_axioms (g : rdf_graph) : list (wf_iri & list wf_iri) =
+let collect_haskey_axioms (g : rdf_graph) (ig : indexed_graph) : list (wf_iri & list wf_iri) =
   let fuel : nat = List.Tot.length g in
   List.Tot.fold_left
     (fun (acc : list (wf_iri & list wf_iri)) (t : triple) ->
       if t.p = owl_hasKey then
         match t.s, term_to_subject t.o with
         | S_IRI c_iri, Some list_subj ->
-          (match decode_iri_list g list_subj fuel with
+          (match decode_iri_list g ig list_subj fuel with
            | Some props -> (c_iri, props) :: acc
            | None -> acc)
         | _, _ -> acc
@@ -3542,11 +3542,11 @@ let members_of_class (g : rdf_graph) (cls : wf_iri) : list wf_iri =
 // this matches the OWL 2 RL prp-key spec which compares zi values
 // without datatype-value normalisation.
 let agree_on_property
-  (g : rdf_graph) (x : wf_iri) (y : wf_iri) (p : wf_iri)
+  (g : rdf_graph) (ig : indexed_graph) (x : wf_iri) (y : wf_iri) (p : wf_iri)
   : bool
   =
-  let xs_objs = find_objects g (S_IRI x) p in
-  let ys_objs = find_objects g (S_IRI y) p in
+  let xs_objs = find_objects_indexed ig (S_IRI x) p in
+  let ys_objs = find_objects_indexed ig (S_IRI y) p in
   List.Tot.existsb
     (fun (xv : rdf_term) ->
       List.Tot.existsb (fun (yv : rdf_term) -> rdf_term_eq xv yv) ys_objs)
@@ -3558,14 +3558,14 @@ let agree_on_property
 // properties (which would be a no-op key axiom, but is nonetheless not
 // what prp-key entails).
 let rec all_keys_match
-  (g : rdf_graph) (x : wf_iri) (y : wf_iri) (props : list wf_iri)
+  (g : rdf_graph) (ig : indexed_graph) (x : wf_iri) (y : wf_iri) (props : list wf_iri)
   : Tot bool (decreases props)
   =
   match props with
   | [] -> true
   | p :: rest ->
-    if agree_on_property g x y p
-    then all_keys_match g x y rest
+    if agree_on_property g ig x y p
+    then all_keys_match g ig x y rest
     else false
 
 // prp-key: OWL 2 RL Cluster B.
@@ -3590,8 +3590,8 @@ let rec all_keys_match
 // Targets New-Feature-Keys-003 (positive entailment) without breaking
 // New-Feature-Keys-004 (StPeter is not typed GriffinFamilyMember, so the
 // rdf:type guard prevents merging Peter with StPeter).
-let owl_rule_prp_key (g : rdf_graph) : rdf_graph =
-  let axioms = collect_haskey_axioms g in
+let owl_rule_prp_key (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  let axioms = collect_haskey_axioms g ig in
   List.Tot.fold_left
     (fun (acc : rdf_graph) (axiom : (wf_iri & list wf_iri)) ->
       let (c_iri, props) = axiom in
@@ -3608,7 +3608,7 @@ let owl_rule_prp_key (g : rdf_graph) : rdf_graph =
             List.Tot.fold_left
               (fun (acc2 : rdf_graph) (y : wf_iri) ->
                 if x = y then acc2
-                else if all_keys_match g x y props then
+                else if all_keys_match g ig x y props then
                   let new_t : triple =
                     { s = S_IRI x; p = owl_sameAs; o = T_IRI y } in
                   add_triple_unchecked acc2 new_t
@@ -3755,7 +3755,7 @@ let xsd_all_datatypes : list wf_iri =
 // Closure rule: if the graph mentions any XSD IRI, emit the fixed XSD
 // numeric subtype tower plus an `rdf:type rdfs:Datatype` declaration for
 // every XSD datatype IRI in the tower. Idempotent via add_triple_unchecked.
-let owl_rule_xsd_datatype_axioms (g : rdf_graph) : rdf_graph =
+let owl_rule_xsd_datatype_axioms (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   if not (graph_mentions_xsd_iri g) then g
   else
     let sub_triples : list triple =
@@ -3782,13 +3782,13 @@ let owl_rule_xsd_datatype_axioms (g : rdf_graph) : rdf_graph =
 // against rdfs:domain / rdfs:range. Regressed sparqldl-11 / sparqldl-12 at
 // `281f31d` until this guard was added (mirror of the same pattern in
 // owl_rule_equivalent_class — see lines ~1259-1284).
-let owl_rule_scm_dom2 (g : rdf_graph) : rdf_graph =
+let owl_rule_scm_dom2 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
       if t.p = rdfs_domain then
         match t.o with
         | T_IRI c1_iri ->
-          let supers = find_objects g (S_IRI c1_iri) rdfs_subClassOf in
+          let supers = find_objects_indexed ig (S_IRI c1_iri) rdfs_subClassOf in
           List.Tot.fold_left
             (fun (acc2 : rdf_graph) (c2_term : rdf_term) ->
               match c2_term with
@@ -3806,13 +3806,13 @@ let owl_rule_scm_dom2 (g : rdf_graph) : rdf_graph =
 // OWL 2 RL/RDF scm-rng2: (P rdfs:range C1) AND (C1 rdfs:subClassOf C2)
 // imply (P rdfs:range C2). Targets WebOnt-I5.8-006 once Nu's xsd hierarchy
 // edges are present. BNODE-POLLUTION GUARD on c2_term — see scm-dom2 above.
-let owl_rule_scm_rng2 (g : rdf_graph) : rdf_graph =
+let owl_rule_scm_rng2 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
       if t.p = rdfs_range then
         match t.o with
         | T_IRI c1_iri ->
-          let supers = find_objects g (S_IRI c1_iri) rdfs_subClassOf in
+          let supers = find_objects_indexed ig (S_IRI c1_iri) rdfs_subClassOf in
           List.Tot.fold_left
             (fun (acc2 : rdf_graph) (c2_term : rdf_term) ->
               match c2_term with
@@ -3837,7 +3837,7 @@ let owl_xsd_core_datatype_axioms : list triple =
     { s = S_IRI xsd_string;  p = rdf_type; o = T_IRI rdfs_Datatype };
   ]
 
-let owl_rule_xsd_core_datatype_axioms (g : rdf_graph) : rdf_graph =
+let owl_rule_xsd_core_datatype_axioms (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   add_triples_if_new g owl_xsd_core_datatype_axioms
 
 // Apply all OWL-RL rules once. Ordering: first do "axiom-introducing" rules
@@ -3845,70 +3845,73 @@ let owl_rule_xsd_core_datatype_axioms (g : rdf_graph) : rdf_graph =
 // transitive), then sameAs rules. The fixpoint loop re-applies them until
 // no change.
 let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
-  let g1 = owl_rule_equivalent_class g in
-  let g2 = owl_rule_equivalent_property g1 in
+  (* OWL-RL Commit B: build the index once per step; thread to all
+     28 rules. Snapshot semantics — see #4 of the design doc. *)
+  let ig = build_indexed g in
+  let g1 = owl_rule_equivalent_class g ig in
+  let g2 = owl_rule_equivalent_property g1 ig in
   // scm-eqc2 / scm-eqp2: mutual subClassOf / subPropertyOf -> equivalent.
   // Run them after the forward expansion so the closure both produces
   // and recognises the symmetric pattern in the same step.
-  let g2a = owl_rule_scm_eqc2 g2 in
-  let g2b = owl_rule_scm_eqp2 g2a in
-  let g3 = owl_rule_inverse_of g2b in
+  let g2a = owl_rule_scm_eqc2 g2 ig in
+  let g2b = owl_rule_scm_eqp2 g2a ig in
+  let g3 = owl_rule_inverse_of g2b ig in
   // disjointWith propagation (paper-Q3 gap 3, 2026-04-25 Tav3):
   // symmetry of disjointWith + complementOf -> disjointWith (both
   // dirs). Runs early so downstream rules / the rewriter / Mem's
   // tableau bridge see the symmetric form within one closure step.
-  let g3_disj = owl_rule_disjoint_with_propagation g3 in
+  let g3_disj = owl_rule_disjoint_with_propagation g3 ig in
   // Schema-level inverseOf flip (sparqldl-11 "domain test").
-  let g3a = owl_rule_inverseOf_domain_range_flip g3_disj in
-  let g4 = owl_rule_symmetric_property g3a in
-  let g5 = owl_rule_transitive_property g4 in
+  let g3a = owl_rule_inverseOf_domain_range_flip g3_disj ig in
+  let g4 = owl_rule_symmetric_property g3a ig in
+  let g5 = owl_rule_transitive_property g4 ig in
   // Named-equivalentClass-to-sameAs: must run BEFORE the sameAs rules
   // so the freshly-emitted (c1 sameAs c2) facts feed eq-rep-s/p/o in
   // the same step, propagating annotation properties from one named
   // class to its equivalent. Targets WebOnt-I4.6-005-Direct and
   // WebOnt-equivalentClass-008-Direct (cluster I+J).
-  let g5a = owl_rule_named_equivClass_to_sameAs g5 in
-  let g6 = owl_rule_sameAs_reflexivity g5a in
-  let g7 = owl_rule_sameAs_symmetry g6 in
+  let g5a = owl_rule_named_equivClass_to_sameAs g5 ig in
+  let g6 = owl_rule_sameAs_reflexivity g5a ig in
+  let g7 = owl_rule_sameAs_symmetry g6 ig in
   // eq-diff-sym: differentFrom is symmetric.
-  let g7a = owl_rule_differentFrom_symmetry g7 in
-  let g8 = owl_rule_sameAs_transitivity g7a in
-  let g9 = owl_rule_sameAs_replace_subject g8 in
-  let g10 = owl_rule_sameAs_replace_object g9 in
-  let g11 = owl_rule_sameAs_replace_predicate g10 in
+  let g7a = owl_rule_differentFrom_symmetry g7 ig in
+  let g8 = owl_rule_sameAs_transitivity g7a ig in
+  let g9 = owl_rule_sameAs_replace_subject g8 ig in
+  let g10 = owl_rule_sameAs_replace_object g9 ig in
+  let g11 = owl_rule_sameAs_replace_predicate g10 ig in
   // prp-fp / prp-ifp: functional + inverse-functional sameAs identification.
-  let g11a = owl_rule_functional g11 in
-  let g12 = owl_rule_inverse_functional g11a in
+  let g11a = owl_rule_functional g11 ig in
+  let g12 = owl_rule_inverse_functional g11a ig in
   // Contrapositive rules — derive owl:differentFrom from disjointness +
   // existing differentFrom assertions. Sound Horn specialisations of the
   // OWL 2 RL/RDF inconsistency rules. Cover W3C
   // New-Feature-DisjointObjectProperties / DisjointDataProperties /
   // owl2-rl-rules-fp-differentFrom / -ifp-differentFrom.
-  let g12a = owl_rule_pdw_to_differentFrom g12 in
-  let g12b = owl_rule_fp_diff_to_diff g12a in
-  let g12c = owl_rule_ifp_diff_to_diff g12b in
+  let g12a = owl_rule_pdw_to_differentFrom g12 ig in
+  let g12b = owl_rule_fp_diff_to_diff g12a ig in
+  let g12c = owl_rule_ifp_diff_to_diff g12b ig in
   // Restriction-membership rules (parent4 / parent5 / parent6).
-  let g13 = owl_rule_minc1_bridge g12c in
+  let g13 = owl_rule_minc1_bridge g12c ig in
   // svf2 existential-witness synthesis (paper-Q3 gap 1, 2026-04-25
   // Tav3): for each (_:r owl:someValuesFrom C ; owl:onProperty P) and
   // each (C' rdfs:subClassOf _:r) and (x rdf:type C'), emit
   // (x P _:w) and (_:w rdf:type C) for a deterministic skolem _:w.
   // Order: must run BEFORE cls-svf2-qualified so the witness's typing
   // gets picked up by the forward direction in the same closure step.
-  let g13a = owl_rule_svf2_existential_witness g13 in
-  let g14 = owl_rule_cls_svf2_qualified g13a in
-  let g15 = owl_rule_cls_minc_qual1 g14 in
+  let g13a = owl_rule_svf2_existential_witness g13 ig in
+  let g14 = owl_rule_cls_svf2_qualified g13a ig in
+  let g15 = owl_rule_cls_minc_qual1 g14 ig in
   // Max/exact-cardinality rules (parent7 / parent8).
-  let g16 = owl_rule_cls_maxqc1 g15 in
-  let g17 = owl_rule_cls_exactqc1 g16 in
-  let g18 = owl_rule_cls_maxc2 g17 in
+  let g16 = owl_rule_cls_maxqc1 g15 ig in
+  let g17 = owl_rule_cls_exactqc1 g16 ig in
+  let g18 = owl_rule_cls_maxc2 g17 ig in
   // Universal-restriction rule (cls-avf1); target simple 6 when the
   // rewriter eventually lands the allValuesFrom-with-named-filler case.
-  let g19 = owl_rule_cls_avf1 g18 in
+  let g19 = owl_rule_cls_avf1 g18 ig in
   // prp-rfl: reflexive-property propagation.
-  let g20 = owl_rule_reflexive_property g19 in
+  let g20 = owl_rule_reflexive_property g19 ig in
   // scm-cls (partial): owl:Restriction subjects are also owl:Class.
-  let g21 = owl_rule_scm_cls_restriction g20 in
+  let g21 = owl_rule_scm_cls_restriction g20 ig in
   // Tier-2: prp-spo2 (n=2 chain composition), then prp-spo2 (n>=3
   // generalised chain), then scm-trans-from-chain (chain (P P)
   // recognises P as transitive), then named-sameAs-to-eqClass.
@@ -3916,31 +3919,32 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   // covers arbitrary chain length and is idempotent on n=2 inputs
   // (add_triple_unchecked dedupes). Cluster A of OWL 2 RL next-steps
   // (issue #207).
-  let g22 = owl_rule_property_chain_2 g21 in
-  let g22a = owl_rule_property_chain_n g22 in
-  let g23 = owl_rule_chain_to_transitive g22a in
-  let g24 = owl_rule_named_sameAs_to_equivClass g23 in
+  let g22 = owl_rule_property_chain_2 g21 ig in
+  let g22a = owl_rule_property_chain_n g22 ig in
+  let g23 = owl_rule_chain_to_transitive g22a ig in
+  let g24 = owl_rule_named_sameAs_to_equivClass g23 ig in
   // Cluster B: prp-key (HasKey). Emits owl:sameAs between named
   // individuals of class C that agree on every property in C's key list.
   // Runs after the sameAs rules so freshly-emitted sameAs facts are
   // propagated by eq-rep-s/p/o on the next fixpoint iteration.
-  let g24a = owl_rule_prp_key g24 in
+  let g24a = owl_rule_prp_key g24 ig in
   // Tier-3: XSD datatype hierarchy + rdfs:Datatype axioms (gated on the
   // graph mentioning any XSD IRI). Targets WebOnt-I5.8-006/008/009/011.
-  let g25 = owl_rule_xsd_datatype_axioms g24a in
+  let g25 = owl_rule_xsd_datatype_axioms g24a ig in
   // Always-on core XSD Datatype declarations (xsd:integer / xsd:string).
   // Required for WebOnt-I5.8-011 which entails the declarations from an
   // empty graph (the gated rule above does not fire on empty input).
-  let g26 = owl_rule_xsd_core_datatype_axioms g25 in
+  let g26 = owl_rule_xsd_core_datatype_axioms g25 ig in
   // scm-dom2 / scm-rng2: propagate rdfs:domain and rdfs:range upward
   // through the rdfs:subClassOf chain. After step g25 the XSD hierarchy
   // edges are in scope, so a `:p rdfs:range xsd:byte` premise yields
   // `:p rdfs:range xsd:short` (WebOnt-I5.8-006).
-  let g27 = owl_rule_scm_dom2 g26 in
-  let g28 = owl_rule_scm_rng2 g27 in
+  let g27 = owl_rule_scm_dom2 g26 ig in
+  let g28 = owl_rule_scm_rng2 g27 ig in
   (* #259 followup: collapse duplicates introduced by the unchecked
      prepends inside each rule. Single O(N log N) pass per closure step. *)
-  graph_dedup_sort g28
+  
+graph_dedup_sort g28
 
 // Interleaved OWL-RL + RDFS fixpoint. RDFS rules run every iteration so
 // that triples introduced by cls-eqc1/2 and prp-eqp1/2 get propagated
