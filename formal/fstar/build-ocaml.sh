@@ -293,6 +293,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              RDF.CottasStore.CompoundPresenceBitmap.fst \
              RDF.CottasStore.CompoundPresenceWriter.fst \
              RDF.CottasStore.OffsetsWriter.fst \
+             RDF.CottasStore.LazyDict.fst \
              RDF.Store.Columnar.OffsetIndex.fst \
              SPARQL.Plan.Pruning.fst \
              SPARQL.Plan.Estimate.fst \
@@ -413,6 +414,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     RDF_CottasStore_CompoundPresenceBitmap.ml \
     RDF_CottasStore_CompoundPresenceWriter.ml \
     RDF_CottasStore_OffsetsWriter.ml \
+    RDF_CottasStore_LazyDict.ml \
     RDF_Store_Columnar_OffsetIndex.ml \
     SPARQL_Plan_Pruning.ml \
     SPARQL_Plan_Estimate.ml \
@@ -771,6 +773,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_CottasStore_CompoundPresenceBitmap.ml
     RDF_CottasStore_CompoundPresenceWriter.ml
     RDF_CottasStore_OffsetsWriter.ml
+    RDF_CottasStore_LazyDict.ml
     RDF_Store_Columnar_OffsetIndex.ml
     SPARQL_Plan_Pruning.ml
     SPARQL_Plan_Estimate.ml
