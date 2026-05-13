@@ -21,17 +21,20 @@ let hex_val (c : FStar_Char.char) : Prims.int=
   | FStar_Pervasives_Native.None -> Prims.int_zero
 let valid_codepoint (cp : Prims.int) : Prims.bool=
   (cp >= Prims.int_zero) &&
-    ((cp < (Prims.of_int (0xD800))) ||
+    ((cp <= (Prims.of_int (0xD7FF))) ||
        ((cp >= (Prims.of_int (0xE000))) &&
           (cp <= (Prims.parse_int "0x10FFFF"))))
 let safe_char_of_int (cp : Prims.int) : FStar_Char.char=
-  if
-    (cp >= Prims.int_zero) &&
-      ((cp < (Prims.of_int (0xD800))) ||
-         ((cp >= (Prims.of_int (0xE000))) &&
-            (cp <= (Prims.parse_int "0x10FFFF"))))
-  then let n = cp in FStar_Char.char_of_int n
-  else FStar_Char.char_of_int (Prims.of_int (0xFFFD))
+  if cp = (Prims.of_int (0xD7FF))
+  then Parser_FastString.unsafe_char_of_d7ff cp
+  else
+    if
+      (cp >= Prims.int_zero) &&
+        ((cp < (Prims.of_int (0xD7FF))) ||
+           ((cp >= (Prims.of_int (0xE000))) &&
+              (cp <= (Prims.parse_int "0x10FFFF"))))
+    then (let n = cp in FStar_Char.char_of_int n)
+    else FStar_Char.char_of_int (Prims.of_int (0xFFFD))
 let codepoint_to_string (cp : Prims.int) : Prims.string=
   FStar_String.string_of_char (safe_char_of_int cp)
 let is_nt_ws (c : FStar_Char.char) : Prims.bool=

@@ -14,47 +14,6 @@ let rdf_nil_iri : Prims.string=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"
 let rdf_xmlliteral_iri : Prims.string=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral"
-
-(* RDF/XML validation: thin adapter over XML_Wellformedness.
-   The validation LOGIC (NCName productions, forbidden-name lists,
-   mutual-exclusion rules) lives in formal/fstar/XML.Wellformedness.fst
-   under #200 PR5. This patch is rule-#11(a) glue only. *)
-exception Rdfxml_error of string
-
-let forbidden_node_element_names =
-  XML_Wellformedness.forbidden_node_element_names
-
-let forbidden_property_element_names =
-  XML_Wellformedness.forbidden_property_element_names
-
-let is_valid_ncname s =
-  XML_Wellformedness.is_valid_ncname s
-
-(* Convert the OCaml record-list to the F*-shaped (string * string)
-   list. Pure byte-identical mapping. *)
-let attrs_to_pairs (attrs : Parser_XML.xml_attribute list)
-  : (Prims.string * Prims.string) list
-  =
-  List.map (fun (a : Parser_XML.xml_attribute) ->
-    (a.attr_name, a.attr_value)) attrs
-
-let validate_rdf_id_attr (attrs : Parser_XML.xml_attribute list) =
-  match XML_Wellformedness.validate_rdf_id_attr (attrs_to_pairs attrs) with
-  | FStar_Pervasives_Native.None -> ()
-  | FStar_Pervasives_Native.Some msg -> raise (Rdfxml_error msg)
-
-let check_conflicting_attrs (attrs : Parser_XML.xml_attribute list) =
-  match XML_Wellformedness.check_conflicting_attrs_node
-          (attrs_to_pairs attrs) with
-  | FStar_Pervasives_Native.None -> ()
-  | FStar_Pervasives_Native.Some msg -> raise (Rdfxml_error msg)
-
-let check_conflicting_attrs_property (attrs : Parser_XML.xml_attribute list) =
-  match XML_Wellformedness.check_conflicting_attrs_property
-          (attrs_to_pairs attrs) with
-  | FStar_Pervasives_Native.None -> ()
-  | FStar_Pervasives_Native.Some msg -> raise (Rdfxml_error msg)
-
 type rdfxml_state =
   {
   base_iri: Prims.string ;
@@ -782,14 +741,6 @@ let rec process_node_element (st : rdfxml_state) (node : Parser_XML.xml_node)
   else
     (match node with
      | Parser_XML.XElement (tag, attrs, children) ->
-         (* Validate: reject forbidden rdf: names as node elements *)
-         (match resolve_name st tag with
-          | Some full_iri ->
-            if List.mem full_iri forbidden_node_element_names then
-              raise (Rdfxml_error (Printf.sprintf "Forbidden node element name: %s" full_iri))
-          | None -> ());
-         validate_rdf_id_attr attrs;
-         check_conflicting_attrs attrs;
          let st1 = update_state_from_attrs st attrs in
          let uu___1 = determine_subject st1 attrs in
          (match uu___1 with
@@ -916,19 +867,6 @@ and process_property_element (st : rdfxml_state)
   else
     (match node with
      | Parser_XML.XElement (tag, attrs, children) ->
-         (* Validate: reject forbidden rdf: names as property elements *)
-         (match resolve_name st tag with
-          | Some full_iri ->
-            if List.mem full_iri forbidden_property_element_names then
-              raise (Rdfxml_error (Printf.sprintf "Forbidden property element name: %s" full_iri));
-            (* rdf:Bag/Seq/Alt ARE legal as property element names per
-               RDF/XML §7.2.2.1 — they are just IRIs in the rdf: namespace
-               when used as predicates. The guard that used to reject them
-               here failed tests rdfms-rdf-names-use-test-017/018/019. *)
-            ()
-          | None -> ());
-         validate_rdf_id_attr attrs;
-         check_conflicting_attrs_property attrs;
          let st1 = update_state_from_attrs st attrs in
          let reif_iri_opt = compute_reif_iri st1 attrs in
          let reif_of pred_iri obj =

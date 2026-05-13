@@ -1,6 +1,6 @@
 open Prims
-let hash_sha256 (s : Prims.string) : Prims.string=
-  Fstar_pure_hashes.sha256 s
+let hash_sha256 (uu___ : Prims.string) : Prims.string=
+  failwith "Not yet implemented: RDF.Canonical.hash_sha256"
 let escape_lit_char (c : FStar_Char.char) : Prims.string=
   let n = FStar_Char.int_of_char c in
   if n = (Prims.of_int (0x5C))

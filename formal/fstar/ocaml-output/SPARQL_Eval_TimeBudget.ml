@@ -1,10 +1,6 @@
 open Prims
 let now_ms (uu___ : unit) : Prims.int=
-  (* Issue #202: rule-#11(a) pure-I/O realisation.
-     Unix.gettimeofday returns seconds-as-float; multiply to ms,
-     truncate, and lift to Prims.int (Z.t). Wallclock jumps are
-     tolerated -- only affects polling cadence, not correctness. *)
-  Z.of_int (int_of_float (Unix.gettimeofday () *. 1000.0))
+  failwith "Not yet implemented: SPARQL.Eval.TimeBudget.now_ms"
 type budget = {
   deadline_ms: Prims.int }
 let __proj__Mkbudget__item__deadline_ms (projectee : budget) : Prims.int=
