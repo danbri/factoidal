@@ -376,6 +376,31 @@ let rec bucket_lookup (m : bucket_map) (k : string)
   | [] -> []
   | (k', v) :: rest -> if k = k' then v else bucket_lookup rest k
 
+(* #259 followup / OWL-RL Commit A (2026-05-13).
+   Index-backed (s, p, ?) lookup. Bucket: ig_sp.
+   Same return contract as find_objects: list of objects, no dedup.
+   Replaces O(N) linear scans inside the closure rules' outer fold;
+   per-rule cost drops from O(N^2) to O(log P + |result|). *)
+let find_objects_indexed (ig : indexed_graph) (subj : subject) (pred : wf_iri)
+  : Tot (list rdf_term) =
+  let bucket = bucket_lookup ig.ig_sp (sp_key subj pred) in
+  List.Tot.map (fun (t : triple) -> t.o) bucket
+
+(* Index-backed (?, p, o) lookup. Uses ig_po when o is non-literal
+   (the common case in closure rules); falls back to ig_pred + filter
+   when o is a literal (rare in OWL/RDFS schema axioms). *)
+let find_subjects_indexed (ig : indexed_graph) (pred : wf_iri) (obj : rdf_term)
+  : Tot (list subject) =
+  let bucket =
+    match po_key_opt pred obj with
+    | Some k -> bucket_lookup ig.ig_po k
+    | None ->
+      List.Tot.filter
+        (fun (t : triple) -> rdf_term_eq t.o obj)
+        (bucket_lookup ig.ig_pred pred)
+  in
+  List.Tot.map (fun (t : triple) -> t.s) bucket
+
 (* Replace-or-add for a bucket map: keeps a single binding per key.
    Mirrors OCaml's Hashtbl.replace; avoids the multi-binding shape that
    forced the earlier `Hashtbl.find_all` workaround in patch 97.
@@ -1172,10 +1197,10 @@ let rec add_triples_if_new (g : rdf_graph) (ts : list triple) : Tot rdf_graph (d
 (* rdfs7: If (a P b) and (P rdfs:subPropertyOf Q), infer (a Q b).
    For each triple (a P b) in g, find all Q such that (P subPropertyOf Q),
    then add (a Q b). *)
-let rdfs_rule_subPropertyOf (g : rdf_graph) : rdf_graph =
+let rdfs_rule_subPropertyOf (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
-      let super_props = find_objects g (S_IRI t.p) rdfs_subPropertyOf in
+      let super_props = find_objects_indexed ig (S_IRI t.p) rdfs_subPropertyOf in
       List.Tot.fold_left
         (fun (acc2 : rdf_graph) (q_term : rdf_term) ->
           match q_term with
@@ -1191,10 +1216,10 @@ let rdfs_rule_subPropertyOf (g : rdf_graph) : rdf_graph =
 (* rdfs2: If (a P b) and (P rdfs:domain C), infer (a rdf:type C).
    For each triple (a P b) in g, find all C such that (P domain C),
    then add (a type C). *)
-let rdfs_rule_domain (g : rdf_graph) : rdf_graph =
+let rdfs_rule_domain (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
-      let domain_classes = find_objects g (S_IRI t.p) rdfs_domain in
+      let domain_classes = find_objects_indexed ig (S_IRI t.p) rdfs_domain in
       List.Tot.fold_left
         (fun (acc2 : rdf_graph) (c_term : rdf_term) ->
           let new_t : triple = { s = t.s; p = rdf_type; o = c_term } in
@@ -1207,10 +1232,10 @@ let rdfs_rule_domain (g : rdf_graph) : rdf_graph =
 (* rdfs3: If (a P b) and (P rdfs:range C), infer (b rdf:type C).
    For each triple (a P b) in g, find all C such that (P range C),
    then add (b type C) — but only if b can be a subject (IRI or BNode). *)
-let rdfs_rule_range (g : rdf_graph) : rdf_graph =
+let rdfs_rule_range (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
-      let range_classes = find_objects g (S_IRI t.p) rdfs_range in
+      let range_classes = find_objects_indexed ig (S_IRI t.p) rdfs_range in
       match term_to_subject t.o with
       | Some b_subj ->
         List.Tot.fold_left
@@ -1226,13 +1251,13 @@ let rdfs_rule_range (g : rdf_graph) : rdf_graph =
 (* rdfs9: If (a rdf:type A) and (A rdfs:subClassOf B), infer (a rdf:type B).
    For each triple (a type A) in g, find all B such that (A subClassOf B),
    then add (a type B). *)
-let rdfs_rule_subClassOf (g : rdf_graph) : rdf_graph =
+let rdfs_rule_subClassOf (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
       if t.p = rdf_type then
         match t.o with
         | T_IRI class_iri ->
-          let super_classes = find_objects g (S_IRI class_iri) rdfs_subClassOf in
+          let super_classes = find_objects_indexed ig (S_IRI class_iri) rdfs_subClassOf in
           List.Tot.fold_left
             (fun (acc2 : rdf_graph) (b_term : rdf_term) ->
               let new_t : triple = { s = t.s; p = rdf_type; o = b_term } in
@@ -1247,7 +1272,7 @@ let rdfs_rule_subClassOf (g : rdf_graph) : rdf_graph =
 (* rdfs11: If (A rdfs:subClassOf B) and (B rdfs:subClassOf C) then
    (A rdfs:subClassOf C).
    Works uniformly for IRIs and bnodes in either position. *)
-let rdfs_rule_subClassOf_trans (g : rdf_graph) : rdf_graph =
+let rdfs_rule_subClassOf_trans (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
       if t.p = rdfs_subClassOf then
@@ -1255,7 +1280,7 @@ let rdfs_rule_subClassOf_trans (g : rdf_graph) : rdf_graph =
            B must be convertible to a subject (IRI or bnode). *)
         match term_to_subject t.o with
         | Some b_subj ->
-          let supers = find_objects g b_subj rdfs_subClassOf in
+          let supers = find_objects_indexed ig b_subj rdfs_subClassOf in
           List.Tot.fold_left
             (fun (acc2 : rdf_graph) (c_term : rdf_term) ->
               let new_t : triple = { s = t.s; p = rdfs_subClassOf; o = c_term } in
@@ -1269,13 +1294,13 @@ let rdfs_rule_subClassOf_trans (g : rdf_graph) : rdf_graph =
 
 (* rdfs5: If (P rdfs:subPropertyOf Q) and (Q rdfs:subPropertyOf R) then
    (P rdfs:subPropertyOf R).  Dual of rdfs11. *)
-let rdfs_rule_subPropertyOf_trans (g : rdf_graph) : rdf_graph =
+let rdfs_rule_subPropertyOf_trans (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
       if t.p = rdfs_subPropertyOf then
         match term_to_subject t.o with
         | Some q_subj ->
-          let supers = find_objects g q_subj rdfs_subPropertyOf in
+          let supers = find_objects_indexed ig q_subj rdfs_subPropertyOf in
           List.Tot.fold_left
             (fun (acc2 : rdf_graph) (r_term : rdf_term) ->
               let new_t : triple = { s = t.s; p = rdfs_subPropertyOf; o = r_term } in
@@ -1292,7 +1317,7 @@ let rdfs_rule_subPropertyOf_trans (g : rdf_graph) : rdf_graph =
    rdf:_2 rdfs:subPropertyOf rdfs:member
    ... etc.
    Also: each rdf:_n rdf:type rdfs:ContainerMembershipProperty *)
-let rdfs_rule_container_membership (g : rdf_graph) : rdf_graph =
+let rdfs_rule_container_membership (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
     (fun (acc : rdf_graph) (cmp : wf_iri) ->
       let t1 : triple = {
@@ -1315,13 +1340,16 @@ let rdfs_rule_container_membership (g : rdf_graph) : rdf_graph =
 
 (* Apply all RDFS rules once *)
 let rdfs_closure_step (g : rdf_graph) : rdf_graph =
-  let g1 = rdfs_rule_subPropertyOf g in
-  let g2 = rdfs_rule_domain g1 in
-  let g3 = rdfs_rule_range g2 in
-  let g4 = rdfs_rule_subClassOf g3 in
-  let g5 = rdfs_rule_container_membership g4 in
-  let g6 = rdfs_rule_subClassOf_trans g5 in     (* rdfs11: C<C transitivity *)
-  let g7 = rdfs_rule_subPropertyOf_trans g6 in  (* rdfs5:  P<P transitivity *)
+  (* OWL-RL Commit A: build the index once per step; share across all
+     7 rules. Snapshot semantics — see #4 of the design doc. *)
+  let ig = build_indexed g in
+  let g1 = rdfs_rule_subPropertyOf g ig in
+  let g2 = rdfs_rule_domain g1 ig in
+  let g3 = rdfs_rule_range g2 ig in
+  let g4 = rdfs_rule_subClassOf g3 ig in
+  let g5 = rdfs_rule_container_membership g4 ig in
+  let g6 = rdfs_rule_subClassOf_trans g5 ig in     (* rdfs11: C<C transitivity *)
+  let g7 = rdfs_rule_subPropertyOf_trans g6 ig in  (* rdfs5:  P<P transitivity *)
   (* #259 followup: each rule now emits duplicates via add_triple_unchecked
      (O(1) prepend). One sort-and-collapse pass here restores set semantics
      for the fixed-point check below and any downstream consumer. O(N log N)
