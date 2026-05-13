@@ -1,20 +1,20 @@
 {
   "platform": "linux-x86_64",
   "runner_os": "Linux",
-  "timestamp_utc": "2026-05-13T04:17:49Z",
-  "source_sha": "3ae8a81650883c8a074987270b4eab812221b28b",
+  "timestamp_utc": "2026-05-13T04:26:52Z",
+  "source_sha": "154d2a338f03034ea260e1b770ef42a68b88eb41",
   "fstar_version": "F* 2025.12.15",
   "ocaml_version": "The OCaml toplevel, version 4.14.1",
   "opam_switch": "fstar",
   "binaries": {
-    "cottas_ondisk_smoketest": { "sha256": "29532376187e770810384c11f0b05c78719841ba546e78f8a25b77df5fbe1523", "size": 10169944 },
-    "factoidal": { "sha256": "4f01e0e30bae94afe65c93ddde85304f63bccb6c7901debedbfd54223c4dcb4c", "size": 11380256 },
+    "cottas_ondisk_smoketest": { "sha256": "72ae6fa8ce5821a1286eb3f06a49aaab95016f795360a71df711c0ad7144e8f4", "size": 10172760 },
+    "factoidal": { "sha256": "8f6bafa36af931956556b49223804e803ed88dd6df356b024b2f9d575c99b6c4", "size": 11382760 },
     "factoidal-dump-nq": { "sha256": "f749509a99f22da53c94184ac57f14575c11e057d5ee4854799a30c2caed5745", "size": 7229536 },
     "factoidal-dump-nq.byte": { "sha256": "4349e43c8aa57f834d1b16f12e91bfb92a7cabf9ba27e98eecfc806fb982e886", "size": 8055824 },
-    "factoidal-http": { "sha256": "a39a9d355298d4cb66a269ae77d32d7ce6f079e3091f24c8e53a7c2a653ad40d", "size": 11201720 },
-    "owl_runner": { "sha256": "f101fbb9e34bdf7eb9330fec99298626a583d05d276844e86a0c029aa532290b", "size": 10212392 },
-    "parquet_probe": { "sha256": "8c11ef0ffdcceb6e8540090f5f7d5d349478d5febf3fbe6a7350b7876806cd11", "size": 10208096 },
-    "rdfc10_runner": { "sha256": "81a8fd0374ec32673925b5f32fd9b8ce8c0af3cdf4a79ab71beb9b4edad8cee4", "size": 10193880 },
-    "w3c_runner": { "sha256": "438e311a1c25d897ffd6741a75ff525c3714c18e56e35f1420e9e4d0b4c7750f", "size": 10337152 }
+    "factoidal-http": { "sha256": "ba294096fd4c7d66e535af608768734303ecddd512adae524e63d6566749303b", "size": 11204224 },
+    "owl_runner": { "sha256": "b36735a7fa144f7a05652f47b809a296e689a8db33fec656be364f8b8eb047c8", "size": 10215208 },
+    "parquet_probe": { "sha256": "8828e9eb37eb2f27c30d0d45559f7b30514a93c1773ef1d5c8726b0104724f6a", "size": 10210904 },
+    "rdfc10_runner": { "sha256": "0554108f6e4927b05491196480626be65b093f2700a20970e451fcada576e6ad", "size": 10196696 },
+    "w3c_runner": { "sha256": "d98bad2d3ec466fe16f9dcde3a1eb29c772385d50d6c473ff5ccddc139e747b5", "size": 10339968 }
   }
 }
