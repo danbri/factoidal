@@ -922,7 +922,7 @@ let qof3_query_form_str (q : SPARQL11_Algebra.query) : string =
    cap. The body is intentionally a tiny constant string — we never touch
    the oversized [rows] list (that's the whole point of bailing here:
    marshalling 3 M rows blows out the 544 KB pthread stack). *)
-let result_cap_response ~cap ~actual_size =
+let _result_cap_response ~cap ~actual_size =
   Printf.eprintf
     "[tav5-trace] result-cap exceeded for query=<not-rendered, cap fired> \
      cap=%d actual_size=%d\n%!" cap actual_size;
@@ -955,7 +955,7 @@ let result_cap_response ~cap ~actual_size =
 let row_cap_of_int (cap : int) : SPARQL_Eval_Limits.row_cap =
   SPARQL_Eval_Limits.mk_cap (Z.of_int (max 0 cap))
 
-let exceeds_cap ~cap rows =
+let _exceeds_cap ~cap rows =
   if cap <= 0 then None
   else
     (* mk_cap (cap + 1) so [n >= cap + 1] iff [n > cap] (strict). *)
@@ -974,106 +974,64 @@ let exceeds_cap ~cap rows =
 let _take_capped_rows ~cap rows =
   SPARQL_Eval_Limits.take_capped (row_cap_of_int cap) rows
 
+(* #200 Section F Commit 2 (2026-05-13): the entire ASK / SELECT /
+   CONSTRUCT / DESCRIBE dispatch + cap + serialiser-strategy + body
+   assembly now lives in F* `SPARQL_HTTP_RunQuery.run_query`. The
+   OCaml side reduces to: log, run the evaluator inside try/with for
+   host-runtime exception capture (rule #11(c)), compute vars, hand
+   the option to F*, convert the F*-typed response_body record to
+   the locally-defined response_body record. The local OCaml record
+   stays for one more commit so the ~10 unrelated `serve_*` helpers
+   keep compiling; Commit 3 inlines them onto the F* type. *)
 let run_query ~backend ~accept ~max_rows query =
   let bkind = qof3_backend_kind backend in
   let qfstr = qof3_query_form_str query in
   Printf.eprintf "[qof3] run_query: backend=%s form=%s max_rows=%d\n%!"
     bkind qfstr max_rows;
-  match query.q_form with
-  | QF_Ask ->
-    Printf.eprintf "[qof3] calling S.eval_ask_query_backend_dataset (backend=%s)\n%!" bkind;
-    let b =
-      try
-        match S.eval_ask_query_backend_dataset query backend with
-        | FStar_Pervasives_Native.Some v ->
-          Printf.eprintf "[qof3] eval_ask returned Some %b\n%!" v; v
-        | FStar_Pervasives_Native.None ->
-          Printf.eprintf "[qof3] eval_ask returned None\n%!"; false
-      with e ->
-        let bt = Printexc.get_backtrace () in
-        Printf.eprintf "[qof3] eval_ask raised: %s\n%s%!"
-          (Printexc.to_string e) bt;
-        raise e
-    in
-    let fmt = response_format_of_accept accept in
-    (* Strategy + content-type chosen by F* per SPARQL Results spec
-       (sparql-results-json §3.2 / sparql-results-xml §3.4). *)
-    let (strategy, ct) = SPARQL_HTTP_RunQuery.serialiser_strategy_for_ask fmt in
-    let body = match strategy with
-      | SPARQL_HTTP_RunQuery.SS_BooleanXml  -> P.serialise_response_boolean_xml b
-      | SPARQL_HTTP_RunQuery.SS_BooleanJson -> P.serialise_response_boolean_json b
-      | _ -> P.serialise_response_boolean_json b  (* unreachable per F* spec *)
-    in
-    { rb_status = Z.to_int SPARQL_HTTP_RunQuery.success_status;
-      rb_content_type = ct; rb_body = body }
-  | QF_Select _ ->
-    Printf.eprintf "[qof3] calling S.eval_select_query_backend_dataset (backend=%s, form=SELECT)\n%!" bkind;
-    let rows =
-      try
-        match S.eval_select_query_backend_dataset query backend with
-        | FStar_Pervasives_Native.Some r ->
-          Printf.eprintf "[qof3] eval_select returned Some %d rows\n%!" (List.length r); r
-        | FStar_Pervasives_Native.None ->
-          Printf.eprintf "[qof3] eval_select returned None\n%!"; []
-      with e ->
-        let bt = Printexc.get_backtrace () in
-        Printf.eprintf "[qof3] eval_select raised: %s\n%s%!"
-          (Printexc.to_string e) bt;
-        raise e
-    in
-    (* tav5 SIGBUS circuit breaker: bail with HTTP 413 BEFORE the JSON/XML
-       serialisers walk the row list. macOS pthread default 544 KB stack
-       overflows on the non-tail-rec marshalling path at ~3 M rows. *)
-    (match exceeds_cap ~cap:max_rows rows with
-     | Some n -> result_cap_response ~cap:max_rows ~actual_size:n
-     | None ->
-    let vars = select_vars query rows in
-    let fmt = response_format_of_accept accept in
-    let (strategy, ct) = SPARQL_HTTP_RunQuery.serialiser_strategy_for_select fmt in
-    let body = match strategy with
-      | SPARQL_HTTP_RunQuery.SS_RowsXml  -> P.serialise_response_xml vars rows
-      | SPARQL_HTTP_RunQuery.SS_RowsCsv  -> P.serialise_response_csv vars rows
-      | SPARQL_HTTP_RunQuery.SS_RowsTsv  -> P.serialise_response_tsv vars rows
-      | SPARQL_HTTP_RunQuery.SS_RowsJson -> P.serialise_response_json vars rows
-      | _ -> P.serialise_response_json vars rows  (* unreachable per F* spec *)
-    in
-    { rb_status = Z.to_int SPARQL_HTTP_RunQuery.success_status;
-      rb_content_type = ct; rb_body = body })
-  | QF_Construct _ | QF_Describe _ ->
-    (* CONSTRUCT / DESCRIBE: the F* evaluator's backend variants return
-       None for these forms. Surface as empty rows in the caller's
-       preferred results format so at least the protocol round-trips
-       cleanly. Real CONSTRUCT/DESCRIBE serialisation is a later
-       deliverable. *)
-    Printf.eprintf "[qof3] calling S.eval_select_query_backend_dataset (backend=%s, form=CONSTRUCT/DESCRIBE)\n%!" bkind;
-    let rows =
-      try
-        match S.eval_select_query_backend_dataset query backend with
-        | FStar_Pervasives_Native.Some r ->
-          Printf.eprintf "[qof3] eval_select(c/d) returned Some %d rows\n%!" (List.length r); r
-        | FStar_Pervasives_Native.None ->
-          Printf.eprintf "[qof3] eval_select(c/d) returned None\n%!"; []
-      with e ->
-        let bt = Printexc.get_backtrace () in
-        Printf.eprintf "[qof3] eval_select(c/d) raised: %s\n%s%!"
-          (Printexc.to_string e) bt;
-        raise e
-    in
-    (* tav5 SIGBUS circuit breaker (CONSTRUCT/DESCRIBE branch). *)
-    (match exceeds_cap ~cap:max_rows rows with
-     | Some n -> result_cap_response ~cap:max_rows ~actual_size:n
-     | None ->
-    let fmt = response_format_of_accept accept in
-    let vars = select_vars query rows in
-    let (strategy, ct) =
-      SPARQL_HTTP_RunQuery.serialiser_strategy_for_construct_describe fmt in
-    let body = match strategy with
-      | SPARQL_HTTP_RunQuery.SS_RowsXml  -> P.serialise_response_xml vars rows
-      | SPARQL_HTTP_RunQuery.SS_RowsJson -> P.serialise_response_json vars rows
-      | _ -> P.serialise_response_json vars rows  (* unreachable per F* spec *)
-    in
-    { rb_status = Z.to_int SPARQL_HTTP_RunQuery.success_status;
-      rb_content_type = ct; rb_body = body })
+  let try_eval label thunk =
+    try thunk () with e ->
+      let bt = Printexc.get_backtrace () in
+      Printf.eprintf "[qof3] %s raised: %s\n%s%!"
+        label (Printexc.to_string e) bt;
+      raise e
+  in
+  let to_some v = FStar_Pervasives_Native.Some v in
+  let from_opt = function
+    | FStar_Pervasives_Native.Some v -> Some v
+    | FStar_Pervasives_Native.None   -> None
+  in
+  let ask_result, rows_result = match query.q_form with
+    | QF_Ask ->
+      Printf.eprintf "[qof3] calling S.eval_ask_query_backend_dataset (backend=%s)\n%!" bkind;
+      let r = try_eval "eval_ask" (fun () ->
+        from_opt (S.eval_ask_query_backend_dataset query backend))
+      in
+      Printf.eprintf "[qof3] eval_ask returned %s\n%!"
+        (match r with Some v -> Printf.sprintf "Some %b" v | None -> "None");
+      (r, None)
+    | _ ->
+      Printf.eprintf "[qof3] calling S.eval_select_query_backend_dataset (backend=%s, form=%s)\n%!"
+        bkind qfstr;
+      let r = try_eval "eval_select" (fun () ->
+        from_opt (S.eval_select_query_backend_dataset query backend))
+      in
+      (match r with
+       | Some rows -> Printf.eprintf "[qof3] eval_select returned Some %d rows\n%!" (List.length rows)
+       | None -> Printf.eprintf "[qof3] eval_select returned None\n%!");
+      (None, r)
+  in
+  let rows_for_vars = match rows_result with Some r -> r | None -> [] in
+  let vars = select_vars query rows_for_vars in
+  let fmt = response_format_of_accept accept in
+  let ask_opt_z = match ask_result with Some v -> to_some v | None -> FStar_Pervasives_Native.None in
+  let rows_opt_z = match rows_result with Some r -> to_some r | None -> FStar_Pervasives_Native.None in
+  let resp =
+    SPARQL_HTTP_RunQuery.run_query
+      query.q_form fmt (Z.of_int (max 0 max_rows)) vars ask_opt_z rows_opt_z
+  in
+  { rb_status       = Z.to_int resp.SPARQL_HTTP_Response.rb_status;
+    rb_content_type = resp.SPARQL_HTTP_Response.rb_content_type;
+    rb_body         = resp.SPARQL_HTTP_Response.rb_body }
 
 (* ============================================================================
    Per-query timing instrumentation (2026-05-02).
