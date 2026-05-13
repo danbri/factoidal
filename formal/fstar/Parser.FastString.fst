@@ -110,6 +110,33 @@ assume val fs_cp_at : s:string -> pos:nat -> nat & nat
 assume val fs_cp_len : s:string -> pos:nat -> nat
 
 // ---------------------------------------------------------------------------
+// U+D7FF boundary escape hatch — #68 retirement (2026-05-11).
+//
+// `FStar.Char.char_code` is `n: U32.t{U32.v n < 0xd7ff \/ ...}` and
+// `FStar.Char.char_of_int (i: nat{i < 0xd7ff \/ ...})` — the strict `<`
+// excludes U+D7FF, which IS a valid Unicode scalar (the surrogate gap is
+// U+D800..U+DFFF inclusive). This forced `Parser.NTriples`'
+// `valid_codepoint` / `safe_char_of_int` to use the same off-by-one
+// bound, then a post-extraction `sed` (formerly the entire body of
+// `68_unicode_boundary_workarounds.sh`) flipped the OCaml-extracted
+// `(cp < (Prims.of_int (0xD7FF)))` back to `(cp < (Prims.of_int (0xD800)))`
+// so the runtime check matched the spec.
+//
+// This `assume val` lets us skip the sed entirely. In the OCaml runtime
+// `FStar_Char.char` is just `int` and `char_of_int = Z.to_int` — no
+// runtime check at all (`/root/.opam/fstar/lib/fstar/ulib/ml/app/FStar_Char.ml`).
+// So a 1-line realisation in `89_fast_string_primitives.sh` returns the
+// integer 0xD7FF; the spec-correct boundary lives in F* refinement
+// types only, and the off-by-one in `FStar.Char.char_of_int`'s
+// precondition is bypassed.
+//
+// Tracking: `docs/designissues/2026-05-10-issue-68-options.md` (subagent
+// report). Optional upstream-track suggestion: file an F* issue against
+// `ulib/FStar.Char.fsti` lines 38 and 57 — both should read `<= 0xd7ff`.
+// We don't block on it.
+assume val unsafe_char_of_d7ff : i:int{i = 0xD7FF} -> Tot FStar.Char.char
+
+// ---------------------------------------------------------------------------
 // Convenience: return the byte at position i as an FStar.Char.char, so
 // existing call sites that do "let c = String.index input pos in
 // let code = int_of_char c in ..." can keep their downstream code by

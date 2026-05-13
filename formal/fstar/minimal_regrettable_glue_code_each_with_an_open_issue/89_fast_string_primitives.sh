@@ -215,7 +215,11 @@ _helper = (
     "\n"
     "let _fs_safe_char_of_int (cp : Stdlib.Int.t) : FStar_Char.char =\n"
     "  let open Stdlib in\n"
-    "  if cp >= 0 && (cp < 0xD7FF || (cp >= 0xE000 && cp <= 0x10FFFF))\n"
+    (* #68 retirement (2026-05-11): inclusive `<=` matches the Unicode
+       spec; the strict `<` was a copy-paste of FStar.Char.char_of_int's
+       off-by-one precondition and would have silently corrupted U+D7FF
+       in the #240 JSON/XML escape path. *)
+    "  if cp >= 0 && (cp <= 0xD7FF || (cp >= 0xE000 && cp <= 0x10FFFF))\n"
     "  then FStar_Char.char_of_int (Z.of_int cp)\n"
     "  else FStar_Char.char_of_int (Z.of_int 0xFFFD)\n"
 )
@@ -253,6 +257,24 @@ content = re.sub(
     r'let fs_cp_len[^\n]*\n(?:[^\n]*\n)?'
     r'\s*failwith "Not yet implemented: Parser\.FastString\.fs_cp_len"',
     lambda _m: _cp_len_body,
+    content,
+    count=1,
+)
+
+# unsafe_char_of_d7ff: realises the assume val that lets the F*-side
+# valid_codepoint use the spec-correct inclusive `<= 0xD7FF` bound
+# without tripping FStar.Char.char_of_int's strict-`<` precondition.
+# In the OCaml runtime FStar_Char.char is just `int` and char_of_int is
+# Z.to_int — no value check at all, so the realisation is one line.
+# Replaces the entire body of `68_unicode_boundary_workarounds.sh`.
+_unsafe_char_of_d7ff_body = (
+    "let unsafe_char_of_d7ff (_ : Z.t) : FStar_Char.char = 0xD7FF"
+)
+
+content = re.sub(
+    r'let unsafe_char_of_d7ff[^\n]*\n(?:[^\n]*\n)?'
+    r'\s*failwith "Not yet implemented: Parser\.FastString\.unsafe_char_of_d7ff"',
+    lambda _m: _unsafe_char_of_d7ff_body,
     content,
     count=1,
 )

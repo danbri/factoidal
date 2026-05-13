@@ -29,16 +29,24 @@ let hex_val (c:FStar.Char.char) : int =
   | Some v -> v
   | None -> 0
 
-// Valid codepoint for F*'s char_of_int precondition: i < 0xD7FF.
-// NOTE: F*'s char type uses strict < 0xD7FF, excluding U+D7FF itself.
-// Unicode allows U+D7FF (surrogates are U+D800..U+DFFF). We patch the
-// extracted OCaml to use < 0xD800 via ocaml-patches.sh.
+// Valid codepoint per Unicode (the surrogate gap is U+D800..U+DFFF
+// inclusive, so U+D7FF IS valid). #68 retirement (2026-05-11): the
+// inclusive `<= 0xD7FF` bound replaces the strict `<` bound forced by
+// `FStar.Char.char_of_int`'s off-by-one precondition. The extracted
+// runtime check is now spec-correct without any post-extraction sed.
 let valid_codepoint (cp:int) : bool =
-  cp >= 0 && (cp < 0xD7FF || (cp >= 0xE000 && cp <= 0x10FFFF))
+  cp >= 0 && (cp <= 0xD7FF || (cp >= 0xE000 && cp <= 0x10FFFF))
 
-// Safe char_of_int: validates codepoint, returns U+FFFD for invalid
+// Safe char_of_int: validates codepoint, returns U+FFFD for invalid.
+// The single-codepoint dispatch on cp = 0xD7FF threads through
+// `Parser.FastString.unsafe_char_of_d7ff` (assume val realised in
+// `89_fast_string_primitives.sh` as a 1-line `Z.to_int`) so we
+// satisfy F*'s strict-`<` precondition without losing U+D7FF at
+// runtime. Everywhere else uses the standard `FStar.Char.char_of_int`.
 let safe_char_of_int (cp:int) : FStar.Char.char =
-  if cp >= 0 && (cp < 0xD7FF || (cp >= 0xE000 && cp <= 0x10FFFF)) then
+  if cp = 0xD7FF then
+    Parser.FastString.unsafe_char_of_d7ff cp
+  else if cp >= 0 && (cp < 0xD7FF || (cp >= 0xE000 && cp <= 0x10FFFF)) then
     let n : nat = cp in
     FStar.Char.char_of_int n
   else
