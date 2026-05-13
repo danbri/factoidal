@@ -36,6 +36,7 @@ module SPARQL.HTTP.RunQuery
    wrapping. No semantic logic stays in OCaml. *)
 
 open SPARQL.Protocol
+open SPARQL.HTTP.Response
 
 (* --- HTTP status codes for the SPARQL Protocol response policy ------ *)
 
@@ -117,3 +118,20 @@ let serialiser_strategy_for_construct_describe (fmt : response_format)
   match fmt with
   | RF_Xml -> (SS_RowsXml,  content_type_for RF_Xml)
   | _      -> (SS_RowsJson, content_type_for RF_Json)
+
+(* --- Response-body constructors for the three error/cap paths --- *)
+(* Section F Commit 1: the OCaml caller used to build these inline
+   from the existing status/body/content-type primitives. Hoisting
+   them into F* gives a single place where the response_body shape
+   is assembled, and lets the OCaml glue shrink to a thin dispatch. *)
+
+let make_parse_error_response (msg : string) : Tot response_body =
+  { rb_status       = parse_error_status;
+    rb_content_type = parse_error_content_type;
+    rb_body         = parse_error_body msg }
+
+let make_eval_error_response (msg : string) (backtrace : string)
+  : Tot response_body =
+  { rb_status       = eval_error_status;
+    rb_content_type = eval_error_content_type;
+    rb_body         = eval_error_body msg backtrace }

@@ -1,5 +1,14 @@
 module SPARQL.HTTP.Response
 
+(* Section F Commit 1 (2026-05-13). Used by SPARQL.HTTP.RunQuery and the
+   serve_* helpers in bin/factoidal-http/factoidal_http.ml. The OCaml side
+   converts rb_status to int via Z.to_int at the response boundary. *)
+type response_body = {
+  rb_status       : nat;       (* HTTP status (200/400/413/500/504/...) *)
+  rb_content_type : string;    (* RFC 7231 media-type with charset *)
+  rb_body         : string;    (* serialised response payload *)
+}
+
 open FStar.List.Tot
 
 // HTTP response helpers migrated from factoidal_http.ml per rule #1
