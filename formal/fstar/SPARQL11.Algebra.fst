@@ -3587,6 +3587,36 @@ let select_item_vars (items : list select_item) : list var_name =
     | SI_Var v -> v
     | SI_Expr _ v -> v) items
 
+(* Section F prep (2026-05-13): F* equivalent of the Hashtbl-based
+   star-projection branch in bin/factoidal-http/factoidal_http.ml's
+   `select_vars`. Walks a solution sequence and gathers every distinct
+   variable in first-seen order. List-mem dedup; OK for the typical
+   < 50-var row width. Used by SPARQL.HTTP.RunQuery's run_query for
+   the SELECT * / CONSTRUCT / DESCRIBE branches that don't have a
+   SI_Var list to project from. *)
+let rec collect_vars_from_row
+  (row : solution_mapping) (acc : list var_name)
+  : Tot (list var_name) (decreases row) =
+  match row with
+  | [] -> acc
+  | (v, _) :: rest ->
+    if List.Tot.mem v acc
+    then collect_vars_from_row rest acc
+    else collect_vars_from_row rest (v :: acc)
+
+let rec collect_distinct_vars_in_order_acc
+  (omega : solution_sequence) (acc : list var_name)
+  : Tot (list var_name) (decreases omega) =
+  match omega with
+  | [] -> acc
+  | row :: rest ->
+    collect_distinct_vars_in_order_acc rest (collect_vars_from_row row acc)
+
+(* Top-level: rev the reverse-built accumulator to restore first-seen
+   insertion order. *)
+let collect_distinct_vars_in_order (omega : solution_sequence) : list var_name =
+  List.Tot.rev (collect_distinct_vars_in_order_acc omega [])
+
 let rewrite_query_bnode_term (pt : pattern_term) : pattern_term =
   match pt with
   | PT_BNode b -> PT_Var ("_bnode_" ^ b)
