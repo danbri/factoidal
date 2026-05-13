@@ -885,16 +885,13 @@ let select_vars query results =
   | QF_Select (Select_Vars items) ->
     SPARQL11_Algebra.select_item_vars items
   | _ ->
-    let seen = Hashtbl.create 16 in
-    let acc = ref [] in
-    List.iter (fun row ->
-      List.iter (fun (v, _) ->
-        if not (Hashtbl.mem seen v) then begin
-          Hashtbl.add seen v ();
-          acc := v :: !acc
-        end) row
-    ) results;
-    List.rev !acc
+    (* #200 Section F: Hashtbl-based first-seen-order var collector
+       moved to F* as `collect_distinct_vars_in_order` (commit 9597f84,
+       SPARQL11.Algebra.fst). The list-mem dedup in the F* version is
+       O(N*K) where K is the result var count; for typical < 50-var
+       row widths this is observationally equivalent to the prior
+       Hashtbl-based code. *)
+    SPARQL11_Algebra.collect_distinct_vars_in_order results
 
 (* Run the query and produce a response_body.
    F* evaluator does the work; we just pick serialiser + content type.
