@@ -275,6 +275,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              SPARQL.Eval.TimeBudget.fst \
              SPARQL.Eval.Limits.fst \
              SPARQL.HTTP.Response.fst \
+             SPARQL.HTTP.Timing.fst \
              SPARQL.HTTP.BackendInfo.fst \
              SPARQL.HTTP.QueriesIndex.fst \
              SPARQL.HTTP.StaticFiles.fst \
@@ -395,6 +396,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     SPARQL_Eval_TimeBudget.ml \
     SPARQL_Eval_Limits.ml \
     SPARQL_HTTP_Response.ml \
+    SPARQL_HTTP_Timing.ml \
     SPARQL_HTTP_BackendInfo.ml \
     SPARQL_HTTP_QueriesIndex.ml \
     SPARQL_HTTP_StaticFiles.ml \
@@ -751,6 +753,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
     SPARQL_JSON_Escape.ml
     SPARQL_HTTP_Response.ml
+    SPARQL_HTTP_Timing.ml
     SPARQL_HTTP_BackendInfo.ml
     SPARQL_HTTP_QueriesIndex.ml
     SPARQL_HTTP_StaticFiles.ml

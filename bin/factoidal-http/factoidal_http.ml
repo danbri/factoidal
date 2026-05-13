@@ -974,6 +974,18 @@ let _exceeds_cap ~cap rows =
 let _take_capped_rows ~cap rows =
   SPARQL_Eval_Limits.take_capped (row_cap_of_int cap) rows
 
+(* Convert the F*-typed `SPARQL_HTTP_Response.response_body` (with
+   `nat`-encoded status, surfaced as `Z.t` in OCaml) into the local
+   OCaml `response_body` record (`int`-encoded status). The two records
+   have the same shape but different OCaml types because the local one
+   predates the F* lift. Used by both `run_query` (Commit 2) and
+   `parse_and_run_timed`'s error paths (Commit 3). *)
+let convert_fstar_response_body (r : SPARQL_HTTP_Response.response_body)
+  : response_body =
+  { rb_status       = Z.to_int r.SPARQL_HTTP_Response.rb_status;
+    rb_content_type = r.SPARQL_HTTP_Response.rb_content_type;
+    rb_body         = r.SPARQL_HTTP_Response.rb_body }
+
 (* #200 Section F Commit 2 (2026-05-13): the entire ASK / SELECT /
    CONSTRUCT / DESCRIBE dispatch + cap + serialiser-strategy + body
    assembly now lives in F* `SPARQL_HTTP_RunQuery.run_query`. The
@@ -1025,13 +1037,9 @@ let run_query ~backend ~accept ~max_rows query =
   let fmt = response_format_of_accept accept in
   let ask_opt_z = match ask_result with Some v -> to_some v | None -> FStar_Pervasives_Native.None in
   let rows_opt_z = match rows_result with Some r -> to_some r | None -> FStar_Pervasives_Native.None in
-  let resp =
-    SPARQL_HTTP_RunQuery.run_query
-      query.q_form fmt (Z.of_int (max 0 max_rows)) vars ask_opt_z rows_opt_z
-  in
-  { rb_status       = Z.to_int resp.SPARQL_HTTP_Response.rb_status;
-    rb_content_type = resp.SPARQL_HTTP_Response.rb_content_type;
-    rb_body         = resp.SPARQL_HTTP_Response.rb_body }
+  convert_fstar_response_body
+    (SPARQL_HTTP_RunQuery.run_query
+       query.q_form fmt (Z.of_int (max 0 max_rows)) vars ask_opt_z rows_opt_z)
 
 (* ============================================================================
    Per-query timing instrumentation (2026-05-02).
@@ -1295,8 +1303,18 @@ let serve_admin_html () : response_body =
     rb_body = admin_html_body }
 
 (* parse_and_run with explicit per-stage timings. Returns the response
-   alongside a query_timing record. The original parse_and_run is kept for
-   any callers that don't need the timing surface. *)
+   alongside a query_timing record.
+
+   #200 Section F Commit 3 (2026-05-13): the parse-error and eval-error
+   response bodies are built via the F* `make_parse_error_response` /
+   `make_eval_error_response` constructors in `SPARQL.HTTP.RunQuery`,
+   then converted to the local OCaml `response_body` via
+   `convert_fstar_response_body`. The error-status / content-type /
+   body string are 100% owned by F*; the OCaml side here just times,
+   logs, and converts.
+
+   Pre-Commit 3 inline status+body assembly is gone. *)
+
 let parse_and_run_timed ~backend ~accept ~max_rows query_text =
   let t_total_start = Unix.gettimeofday () in
   Printf.eprintf "[qof3] parse_and_run_timed: %d bytes of query text\n%!"
@@ -1307,17 +1325,13 @@ let parse_and_run_timed ~backend ~accept ~max_rows query_text =
   | SPARQL11_Parser.ParseErr msg ->
     Printf.eprintf "[qof3] parse_and_run_timed: SPARQL parse error: %s\n%!" msg;
     let total_ms = (Unix.gettimeofday () -. t_total_start) *. 1000.0 in
-    (* Status code + body template owned by F* SPARQL.HTTP.RunQuery
-       per the SPARQL 1.1 Protocol response policy. *)
-    let body = SPARQL_HTTP_RunQuery.parse_error_body msg in
-    let status = Z.to_int SPARQL_HTTP_RunQuery.parse_error_status in
-    let resp = { rb_status = status;
-                 rb_content_type = SPARQL_HTTP_RunQuery.parse_error_content_type;
-                 rb_body = body } in
+    let resp =
+      convert_fstar_response_body
+        (SPARQL_HTTP_RunQuery.make_parse_error_response msg) in
     let qt = { zero_timing with
                qt_parse_ms = parse_ms; qt_total_ms = total_ms;
-               qt_status = status; qt_form = "parse-error";
-               qt_body_bytes = String.length body } in
+               qt_status = resp.rb_status; qt_form = "parse-error";
+               qt_body_bytes = String.length resp.rb_body } in
     (resp, qt)
   | SPARQL11_Parser.ParseOk (query, _tokens) ->
     Printf.eprintf "[qof3] parse_and_run_timed: parsed OK in %.1fms, dispatching run_query\n%!"
@@ -1334,8 +1348,6 @@ let parse_and_run_timed ~backend ~accept ~max_rows query_text =
        let total_ms = (Unix.gettimeofday () -. t_total_start) *. 1000.0 in
        Printf.eprintf "[qof3] parse_and_run_timed: run_query returned status=%d body_bytes=%d in %.1fms\n%!"
          r.rb_status (String.length r.rb_body) run_ms;
-       (* Best-effort row count from the body for SELECT JSON, otherwise -1.
-          Avoids re-evaluating; just looks at the body. *)
        let qt = { qt_parse_ms = parse_ms;
                   qt_eval_ms = run_ms;
                   qt_format_ms = 0.0;
@@ -1351,22 +1363,17 @@ let parse_and_run_timed ~backend ~accept ~max_rows query_text =
        Printf.eprintf "[qof3] parse_and_run_timed: run_query raised: %s\n%s%!"
          (Printexc.to_string e) bt;
        let total_ms = (Unix.gettimeofday () -. t_total_start) *. 1000.0 in
-       (* Status code + body template owned by F* SPARQL.HTTP.RunQuery
-          per the SPARQL 1.1 Protocol response policy. *)
-       let body =
-         SPARQL_HTTP_RunQuery.eval_error_body (Printexc.to_string e) bt in
-       let status = Z.to_int SPARQL_HTTP_RunQuery.eval_error_status in
-       let resp = { rb_status = status;
-                    rb_content_type = SPARQL_HTTP_RunQuery.eval_error_content_type;
-                    rb_body = body } in
+       let resp =
+         convert_fstar_response_body
+           (SPARQL_HTTP_RunQuery.make_eval_error_response (Printexc.to_string e) bt) in
        let qt = { qt_parse_ms = parse_ms;
                   qt_eval_ms = (total_ms -. parse_ms);
                   qt_format_ms = 0.0;
                   qt_total_ms = total_ms;
-                  qt_status = status;
+                  qt_status = resp.rb_status;
                   qt_rows = -1;
                   qt_form = form;
-                  qt_body_bytes = String.length body } in
+                  qt_body_bytes = String.length resp.rb_body } in
        (resp, qt))
 
 let parse_and_run ~backend ~accept ~max_rows query_text =
