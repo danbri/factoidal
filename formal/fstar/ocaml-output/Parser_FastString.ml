@@ -86,6 +86,14 @@ let fs_find_byte (s : Prims.string) (b : Prims.nat) (start : Prims.nat) :
     else loop (i + 1)
   in
   loop (if si < 0 then 0 else si)
+let fs_string_of_list_ascii (l : Z.t Prims.list) : Prims.string=
+  let open Stdlib in
+  let n = List.length l in
+  let b = Bytes.create n in
+  List.iteri (fun i c ->
+    Bytes.unsafe_set b i
+      (Char.unsafe_chr ((Z.to_int c) land 0xff))) l;
+  Bytes.unsafe_to_string b
 let fs_cp_at (s : Prims.string) (pos : Prims.nat) : (Prims.nat * Prims.nat)=
   let (cp, adv) = fs_cp_at_impl s pos in
   (Z.of_int cp, Z.of_int adv)

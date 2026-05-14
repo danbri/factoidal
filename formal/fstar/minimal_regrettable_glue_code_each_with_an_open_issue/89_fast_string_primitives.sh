@@ -49,9 +49,12 @@ if [[ ! -f "$FILE" ]]; then
   exit 0
 fi
 
-# Idempotency: presence of fs_cp_at_impl AND _fs_safe_char_of_int means
-# this patch has already been applied to the current extraction.
-if grep -q 'fs_cp_at_impl' "$FILE" && grep -q '_fs_safe_char_of_int' "$FILE"; then
+# Idempotency: presence of fs_cp_at_impl AND _fs_safe_char_of_int AND
+# fs_string_of_list_ascii (#103 Phase A) means the patch is fully applied.
+if grep -q 'fs_cp_at_impl' "$FILE" \
+   && grep -q '_fs_safe_char_of_int' "$FILE" \
+   && grep -q 'fs_string_of_list_ascii' "$FILE" \
+   && ! grep -q 'failwith "Not yet implemented: Parser\.FastString\.fs_string_of_list_ascii"' "$FILE"; then
   echo "  89_fast_string_primitives.sh already applied to $FILE"
   exit 0
 fi
@@ -127,6 +130,25 @@ content = content.replace(
     '  else\n'
     '    let m = if i + n > slen then slen - i else n in\n'
     '    String.sub s i m'
+)
+
+# fs_string_of_list_ascii (#103 Phase A): build a string from a list
+# of byte-valued codepoints in O(N). Replaces FStar.String.string_of_list's
+# BatUTF8.init+List.at composition (O(N^2)) on the Parquet ASCII decode
+# path. The F* spec refines each list element to n < 256, so the
+# `land 0xff` mask below is a defensive no-op; passing a wider value is
+# a precondition violation at the caller.
+content = content.replace(
+    'let fs_string_of_list_ascii (l : Prims.nat Prims.list) : Prims.string=\n'
+    '  failwith "Not yet implemented: Parser.FastString.fs_string_of_list_ascii"',
+    'let fs_string_of_list_ascii (l : Z.t Prims.list) : Prims.string=\n'
+    '  let open Stdlib in\n'
+    '  let n = List.length l in\n'
+    '  let b = Bytes.create n in\n'
+    '  List.iteri (fun i c ->\n'
+    '    Bytes.unsafe_set b i\n'
+    '      (Char.unsafe_chr ((Z.to_int c) land 0xff))) l;\n'
+    '  Bytes.unsafe_to_string b'
 )
 
 # fs_find_byte : O(end - start) scan for a specific byte code.

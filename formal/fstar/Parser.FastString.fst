@@ -64,6 +64,28 @@ assume val fs_byte_sub : s:string -> start:nat -> len:nat -> string
 assume val fs_find_byte : s:string -> b:nat -> start:nat -> nat
 
 // ---------------------------------------------------------------------------
+// ASCII-fast-path string builder (#103).
+//
+// FStar.String.string_of_list is realised via BatUTF8.init+List.at, which
+// re-walks the list on every output byte — O(N^2) for long lists. For the
+// hex/ASCII decode paths in Parquet.Footer.fst (issue #103) where each
+// list element is a single byte (n < 256), we can materialise the result
+// in O(N) via Stdlib.Bytes.create + unsafe_set.
+//
+// Phase A of the #103 retirement plan
+// (docs/designissues/2026-05-14-issue-103-parquet-fastring-migration-plan.md).
+// Phases B-D migrate Parquet.Footer.fst's String.string_of_list call sites
+// to use this primitive; afterwards the OCaml-level FStar_String shadow
+// in 103_parquet_ascii_string_fast_path.sh becomes deletable.
+//
+// SAFETY: every list element must fit in one byte. The realisation
+// masks with `land 0xff` defensively, but a caller that passes a wider
+// codepoint is violating the refinement — that's a precondition bug at
+// the call site, not a sound mode of this primitive.
+// ---------------------------------------------------------------------------
+assume val fs_string_of_list_ascii : l:list (n:nat{n < 256}) -> string
+
+// ---------------------------------------------------------------------------
 // Codepoint-aware primitives (Pass 2 — issue #89).
 //
 // Some grammars (notably Turtle PN_CHARS validation) must interpret a run of
