@@ -49,11 +49,16 @@ Before installing anything, check what's already there:
 opam --version 2>&1 || echo "opam: missing"
 opam switch show 2>&1 | grep -q fstar && echo "fstar switch: present" || echo "fstar switch: missing"
 which fstar.exe 2>&1 || echo "fstar.exe: not on PATH (switch may not be activated)"
+z3-4.13.3 --version 2>&1 || echo "z3-4.13.3: missing (F* won't run without it)"
 z3 --version 2>&1 || echo "z3: missing"
 ```
 
 If `fstar switch` is present but `fstar.exe` is not on PATH, **the switch
-just needs activation** — see §4. Don't reinstall anything.
+just needs activation** — see §4. Don't reinstall anything. This is the
+single most common failure mode: `opam install fstar` succeeded ages
+ago, but a new shell hasn't sourced `opam env --switch=fstar`, so
+`fstar.exe`, the F\*-built `z3` shim, and the OCaml libraries all look
+absent. Sourcing the env makes them appear. **Every new shell**.
 
 If `z3 --version` shows something other than 4.13.3, replace it (§3). Wrong
 versions of z3 are a top-three time-sink in this project.
@@ -94,8 +99,9 @@ OCaml, and compile the native `factoidal` / `w3c_runner` binaries:
 `fstar` plus the OCaml runtime libraries the extracted code links against
 (`zarith` for bigints, `sha` + `digestif` for the MD5/SHA built-ins).
 The second is only needed for the optional `./build-ocaml.sh js` / `wasm`
-targets. The `z3` opam package is installed too, but the build often
-fails or produces the wrong version — §3 replaces the binary on PATH.
+targets. **The `z3` opam package is the wrong version** (today's opam
+ships z3 4.15.x; F\* refuses anything other than 4.13.3 with a runtime
+error) — §3 installs the correct binary on PATH alongside it. Don't skip §3.
 
 **Non-interactive / root / container environments.** `opam init -y` will
 prompt for sandbox setup and shell-rc edits on a TTY; in a sandbox or as
