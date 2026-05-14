@@ -441,6 +441,37 @@ runtime = r'''module Cottas_ondisk_runtime = struct
       let (h, tables) = build_handle_and_tables artifact_path in
       Hashtbl.add handles artifact_path h;
       Hashtbl.add fast_table_cache artifact_path tables;
+      (* #254 Commit 2b registry wiring: snapshot the freshly-built
+         eager dicts into the path-keyed LazyDictRegistry so the F*
+         consumers can consult them via the typed boundary. The
+         populate thunks here just return the already-computed data;
+         a future commit upgrades them to true lazy parquet reads. *)
+      (try
+        let zip3 typed_list raw_list =
+          let rec aux i ts rs = match ts, rs with
+            | t :: trest, r :: rrest -> (Z.of_int i, t, r) :: aux (i+1) trest rrest
+            | _, _ -> [] in
+          aux 0 typed_list raw_list in
+        let s_strs_snapshot = Hashtbl.fold (fun _ tok acc -> tok :: acc)
+                                tables.ft_id_to_subj_tok [] in
+        let p_strs_snapshot = Hashtbl.fold (fun _ tok acc -> tok :: acc)
+                                tables.ft_id_to_pred_tok [] in
+        let o_strs_snapshot = Hashtbl.fold (fun _ tok acc -> tok :: acc)
+                                tables.ft_id_to_obj_tok [] in
+        let g_strs_snapshot = Hashtbl.fold (fun _ tok acc -> tok :: acc)
+                                tables.ft_id_to_graph_tok [] in
+        RDF_CottasStore_LazyDictRegistry.register_for_path
+          artifact_path
+          (fun () -> zip3 h.coh_subjects   s_strs_snapshot)
+          (fun () -> zip3 h.coh_predicates p_strs_snapshot)
+          (fun () -> zip3 h.coh_objects    o_strs_snapshot)
+          (fun () -> zip3 h.coh_graphs     g_strs_snapshot)
+          subject_to_revmap_key
+          iri_to_revmap_key
+          object_to_revmap_key
+          iri_to_revmap_key
+      with _ ->
+        Printf.eprintf "[bet7-trace] register_for_path failed (non-fatal)\\n%!");
       h
 
   let tables_for handle : fast_tables =
