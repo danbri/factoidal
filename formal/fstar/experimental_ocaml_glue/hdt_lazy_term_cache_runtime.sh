@@ -71,8 +71,9 @@ abstract_type_candidates = [
 new_type = """type 'a lazy_term_cache = {
   mutable populated : bool;
   forward           : (int, 'a) Stdlib.Hashtbl.t;
-  reverse           : ('a, int) Stdlib.Hashtbl.t;
+  reverse           : (string, int) Stdlib.Hashtbl.t;
   populate          : unit -> (Z.t * 'a) Prims.list;
+  key_of            : 'a -> Prims.string;
   mu                : Stdlib.Mutex.t;
 } (* __LAZY_TERM_CACHE_RUNTIME_APPLIED__ *)
 """
@@ -105,18 +106,20 @@ def replace_failwith_stub(content, fn_name, signature, body):
 # ----------------------------------------------------------------------
 # 2. mk_lazy_term_cache — constructor.
 # ----------------------------------------------------------------------
-mk_sig = "(populate : unit -> (Z.t * 'a) Prims.list) : 'a lazy_term_cache"
+mk_sig = "(populate : unit -> (Z.t * 'a) Prims.list) (key_of : 'a -> Prims.string) : 'a lazy_term_cache"
 mk_body = """  { populated = false;
     forward   = Stdlib.Hashtbl.create 17;
     reverse   = Stdlib.Hashtbl.create 17;
     populate  = populate;
+    key_of    = key_of;
     mu        = Stdlib.Mutex.create () }"""
 content, _ok = replace_failwith_stub(content, "mk_lazy_term_cache", mk_sig, mk_body)
 
 # Internal helper: populate-on-demand, mutex-guarded, exception-safe.
 ensure_helper = """
 (* Run c.populate once; fill both hashtables; mark c.populated.
-   Idempotent + cross-thread safe (mutex). *)
+   Idempotent + cross-thread safe (mutex). The reverse hashtable
+   is keyed on the canonical-key string produced by c.key_of. *)
 let _lazy_term_cache_ensure (c : 'a lazy_term_cache) : unit =
   if not c.populated then begin
     Stdlib.Mutex.lock c.mu;
@@ -126,7 +129,7 @@ let _lazy_term_cache_ensure (c : 'a lazy_term_cache) : unit =
         Stdlib.List.iter (fun (id_z, v) ->
           let id = Z.to_int id_z in
           Stdlib.Hashtbl.replace c.forward id v;
-          Stdlib.Hashtbl.replace c.reverse v id
+          Stdlib.Hashtbl.replace c.reverse (c.key_of v) id
         ) entries;
         c.populated <- true
       end;
@@ -157,10 +160,10 @@ content, _ok = replace_failwith_stub(
 # 4. lookup_by_value
 # ----------------------------------------------------------------------
 content, _ok = replace_failwith_stub(
-    content, "lookup_by_value",
-    "(c : 'a lazy_term_cache) (v : 'a) : Prims.nat FStar_Pervasives_Native.option",
+    content, "lookup_by_key",
+    "(c : 'a lazy_term_cache) (k : Prims.string) : Prims.nat FStar_Pervasives_Native.option",
     """  _lazy_term_cache_ensure c;
-  match Stdlib.Hashtbl.find_opt c.reverse v with
+  match Stdlib.Hashtbl.find_opt c.reverse k with
   | Some i -> FStar_Pervasives_Native.Some (Z.of_int i)
   | None   -> FStar_Pervasives_Native.None""",
 )

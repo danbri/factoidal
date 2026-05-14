@@ -36,37 +36,40 @@ type entries (a : Type) = list (nat & a)
 // The abstract container. Realised as a 4-field OCaml record.
 assume new type lazy_term_cache (a : Type) : Type
 
-// Build a fresh lazy_term_cache from a populate thunk. The thunk
-// is held (not called); the cache starts in the "not populated"
-// state. The eqtype constraint on the value type lets the
-// realisation build a reverse Hashtbl keyed on a (with structural
-// equality).
+// Build a fresh lazy_term_cache from a populate thunk + a
+// canonical-key function. The thunk is held (not called); the
+// cache starts in the "not populated" state. The key_of function
+// canonicalises values for reverse-lookup — sidesteps the eqtype
+// constraint so values can be `noeq` (e.g. RDF.Graph.Executable's
+// `subject` type).
 assume val mk_lazy_term_cache
-  (#a : eqtype)
+  (#a : Type)
   (populate : unit -> ML (entries a))
+  (key_of   : a -> string)
   : ML (lazy_term_cache a)
 
 // Look up the typed value by id. Triggers populate on first call
 // across any of the lookup_* functions. Returns None if the id is
 // absent (id out of range).
 assume val lookup_by_id
-  (#a : eqtype) (c : lazy_term_cache a) (i : nat) : ML (option a)
+  (#a : Type) (c : lazy_term_cache a) (i : nat) : ML (option a)
 
-// Reverse-lookup by value (uses structural equality on `a`).
-// Returns None if the value isn't in the cache.
-assume val lookup_by_value
-  (#a : eqtype) (c : lazy_term_cache a) (v : a) : ML (option nat)
+// Reverse-lookup by canonical key (produced by the key_of
+// function the cache was constructed with). Returns None if the
+// canonical key is absent from this corpus.
+assume val lookup_by_key
+  (#a : Type) (c : lazy_term_cache a) (k : string) : ML (option nat)
 
 // Has this cache been populated yet? Pure observation; used by
 // diagnostics.
 assume val is_populated
-  (#a : eqtype) (c : lazy_term_cache a) : ML bool
+  (#a : Type) (c : lazy_term_cache a) : ML bool
 
 // Number of entries. 0 before populate; fixed positive nat after.
 assume val size
-  (#a : eqtype) (c : lazy_term_cache a) : ML nat
+  (#a : Type) (c : lazy_term_cache a) : ML nat
 
 // Materialise the full id-ordered list of typed values. Triggers
 // populate.
 assume val to_list
-  (#a : eqtype) (c : lazy_term_cache a) : ML (list a)
+  (#a : Type) (c : lazy_term_cache a) : ML (list a)
