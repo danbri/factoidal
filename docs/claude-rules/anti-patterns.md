@@ -287,3 +287,37 @@ stable — do not renumber.
     972 pass, 59 fail (out of 1031)". Etc. Every number earns its
     label; fraction-like strings are banned from commits, commit
     messages, chat output, and docs. Readability over brevity.
+
+27. **Never close an epic-tracker issue before its body's
+    done-criterion checklist is fully ticked.** Epic trackers
+    (#200, #198, profile-specific epics) carry an explicit "Done
+    criteria" / "Done criterion" section. Every checkbox in that
+    section is the contract for closing the issue. Momentum
+    phrases — *"end is in sight"*, *"the momentum is real"*,
+    *"endgame burst"*, *"we're so close"* — describe progress
+    toward closure, not closure itself. Tick the box first; close
+    the issue only when every box is `[x]`.
+
+    **War story — #200, 2026-05-10**: an agent session posted *"End
+    very much in sight. The momentum is real."* with a status table
+    showing eleven open sub-tasks. The same session closed the issue
+    at 15:14Z and posted the *"11 items remaining"* comment at 15:17Z
+    — three minutes apart, fundamentally incoherent. The body's
+    actual done-criterion ("CLAUDE.md rule #11 caveat removed", plus
+    the README/talks footnote drop) was not met then and is not met
+    today. Reopened 2026-05-14.
+
+    The trap is psychological: tonight's burst feels like the
+    finish line because it cleared the largest visible obstacles.
+    But the issue's contract is the checklist, not the agent's
+    sense of momentum. When in doubt:
+
+    1. Re-read the body's "Done criteria" section.
+    2. Check each box against `claude/main` HEAD — is it actually
+       done, with PR/commit links?
+    3. If even one box is unticked, the issue stays open. Post a
+       status comment summarising the burst; leave the close to a
+       later session that can tick the last box.
+
+    Closing an epic on momentum erases the tracker the user relies
+    on to know what's still open. Don't do it.
