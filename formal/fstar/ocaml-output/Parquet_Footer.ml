@@ -91,104 +91,15 @@ let __proj__Mkcompact_list_info__item__cli_payload_start
   | { cli_count; cli_etype; cli_payload_start;_} -> cli_payload_start
 let parquet_magic : Prims.string= "PAR1"
 let parquet_magic_hex : Prims.string= "50415231"
-(* ---- Mim2 (issue #100 Phases B+C) ---------------------------------
-   Process-wide path-keyed byte cache. The first call to parquet_read_*
-   for a given path slurps the entire file into a single OCaml string
-   (immutable, GC-tracked). Subsequent calls return slices in O(count).
-   This is the in-process equivalent of mmap'ing the parquet file: at
-   the F* abstraction layer, the path IS the region handle, the cache
-   IS the mapped pages, and slicing IS a pointer dereference. We use
-   really_input_string instead of Unix.map_file because parliament is
-   66MB; for >1GB corpora a swap to Unix.map_file is one-line.
-
-   Without this cache, every probe_parquet_* call (and the column-
-   decode path inside it) reopens the file via open_in_bin, re-seeks,
-   and reads. The footer alone is read on every probe (the metadata
-   ASCII strings, num-rows, row-group-count, column descriptors, etc.).
-   For the parliament corpus that's hundreds of file-opens per SELECT
-   and hundreds of zstd decompressions; the daemon hangs.
-
-   This block (tail_impl) is inserted at the location of the original
-   parquet_read_tail_hex stub — earlier in the file than the
-   parquet_read_range_hex stub. So we define the byte cache + the raw
-   helpers + parquet_read_tail / parquet_read_range here, and the
-   range_impl block (inserted later) only adds parquet_read_range_hex. *)
-
-let __mim2_file_bytes_cache : (string, string) Hashtbl.t = Hashtbl.create 7
-
-let __mim2_load_file_bytes path =
-  match Hashtbl.find_opt __mim2_file_bytes_cache path with
-  | Some s -> Some s
-  | None ->
-    if not (Sys.file_exists path) then None
-    else
-      let ic = open_in_bin path in
-      let module S = Stdlib in
-      Fun.protect
-        ~finally:(fun () -> close_in_noerr ic)
-        (fun () ->
-           let file_len = in_channel_length ic in
-           let s = really_input_string ic file_len in
-           Hashtbl.add __mim2_file_bytes_cache path s;
-           Some s)
-
-let parquet_read_range (path : Prims.string) (start : Prims.nat) (count : Prims.nat) :
-  Prims.string FStar_Pervasives_Native.option=
-  let module S = Stdlib in
-  match __mim2_load_file_bytes path with
-  | None -> FStar_Pervasives_Native.None
-  | Some buf ->
-    let file_len = String.length buf in
-    let offset = Z.to_int start in
-    let want = Z.to_int count in
-    if S.(offset < 0 || want < 0 || offset > file_len || offset + want > file_len)
-    then FStar_Pervasives_Native.None
-    else FStar_Pervasives_Native.Some (String.sub buf offset want)
-
-let parquet_read_tail (path : Prims.string) (count : Prims.nat) :
-  Prims.string FStar_Pervasives_Native.option=
-  let module S = Stdlib in
-  match __mim2_load_file_bytes path with
-  | None -> FStar_Pervasives_Native.None
-  | Some buf ->
-    let file_len = String.length buf in
-    let want = Z.to_int count in
-    if S.(file_len < want) then FStar_Pervasives_Native.None
-    else
-      let start = S.(file_len - want) in
-      FStar_Pervasives_Native.Some (String.sub buf start want)
-
-(* Hex-encode a raw string. Buffer-once so the ~250MB row-group
-   payloads don't trigger O(N^2) string concat. *)
-let __mim2_hex_encode raw =
-  let module S = Stdlib in
-  let b = Buffer.create S.(2 * String.length raw) in
-  String.iter
-    (fun ch -> Buffer.add_string b (Printf.sprintf "%02X" (Char.code ch)))
-    raw;
-  Buffer.contents b
-
 let parquet_read_tail_hex (path : Prims.string) (count : Prims.nat) :
   Prims.string FStar_Pervasives_Native.option=
-  match parquet_read_tail path count with
-  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-  | FStar_Pervasives_Native.Some raw -> FStar_Pervasives_Native.Some (__mim2_hex_encode raw)
-(* parquet_read_range_hex: depends on helpers defined earlier in
-   the tail_impl block (Mim2 byte cache for issue #100 Phases B+C). *)
-
-let parquet_read_range_hex (path : Prims.string) (start : Prims.nat) (count : Prims.nat) :
-  Prims.string FStar_Pervasives_Native.option=
-  match parquet_read_range path start count with
-  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-  | FStar_Pervasives_Native.Some raw -> FStar_Pervasives_Native.Some (__mim2_hex_encode raw)
-
-external parquet_zstd_decompress_hex_runtime :
-  Prims.string -> Prims.string -> Prims.string FStar_Pervasives_Native.option
-  = "caml_parquet_zstd_decompress_hex"
-
-let parquet_zstd_decompress_hex (compressed_hex : Prims.string) (expected_size : Prims.nat) :
-  Prims.string FStar_Pervasives_Native.option=
-  parquet_zstd_decompress_hex_runtime compressed_hex (Prims.string_of_int expected_size)
+  failwith "Not yet implemented: Parquet.Footer.parquet_read_tail_hex"
+let parquet_read_range_hex (path : Prims.string) (start : Prims.nat)
+  (count : Prims.nat) : Prims.string FStar_Pervasives_Native.option=
+  failwith "Not yet implemented: Parquet.Footer.parquet_read_range_hex"
+let parquet_zstd_decompress_hex (compressed_hex : Prims.string)
+  (expected_size : Prims.nat) : Prims.string FStar_Pervasives_Native.option=
+  failwith "Not yet implemented: Parquet.Footer.parquet_zstd_decompress_hex"
 let hex_nibble (c : FStar_Char.char) :
   Prims.nat FStar_Pervasives_Native.option=
   let code = FStar_Char.int_of_char c in
@@ -207,8 +118,11 @@ let hex_nibble (c : FStar_Char.char) :
       else FStar_Pervasives_Native.None
 let byte_at_hex (s : Prims.string) (i : Prims.nat) :
   Prims.nat FStar_Pervasives_Native.option=
-  match ((hex_nibble (FStar_String.index s i)),
-          (hex_nibble (FStar_String.index s (i + Prims.int_one))))
+  match ((hex_nibble
+            (FStar_Char.char_of_int (Parser_FastString.fs_byte_at s i))),
+          (hex_nibble
+             (FStar_Char.char_of_int
+                (Parser_FastString.fs_byte_at s (i + Prims.int_one)))))
   with
   | (FStar_Pervasives_Native.Some hi, FStar_Pervasives_Native.Some lo) ->
       let value =
@@ -248,12 +162,13 @@ let le_u32_at_hex (s : Prims.string) (start : Prims.nat) :
   | uu___ -> FStar_Pervasives_Native.None
 let parse_parquet_footer_tail_hex (tail : Prims.string) :
   parquet_footer FStar_Pervasives_Native.option=
-  let len = FStar_String.strlen tail in
+  let len = Parser_FastString.fs_byte_length tail in
   if len < (Prims.of_int (16))
   then FStar_Pervasives_Native.None
   else
     (let magic =
-       FStar_String.sub tail (len - (Prims.of_int (8))) (Prims.of_int (8)) in
+       Parser_FastString.fs_byte_sub tail (len - (Prims.of_int (8)))
+         (Prims.of_int (8)) in
      if magic <> parquet_magic_hex
      then FStar_Pervasives_Native.None
      else
@@ -277,7 +192,7 @@ let finish_ascii_run (current : FStar_Char.char Prims.list)
 let rec extract_ascii_strings_hex (hex : Prims.string) (pos : Prims.nat)
   (current : FStar_Char.char Prims.list) (acc : Prims.string Prims.list) :
   Prims.string Prims.list=
-  if (pos + Prims.int_one) >= (FStar_String.strlen hex)
+  if (pos + Prims.int_one) >= (Parser_FastString.fs_byte_length hex)
   then FStar_List_Tot_Base.rev (finish_ascii_run current acc)
   else
     (match byte_at_hex hex pos with
@@ -305,12 +220,12 @@ let probe_parquet_metadata_strings (path : Prims.string) :
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some footer_hex ->
            let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-           if meta_hex_len <= (FStar_String.strlen footer_hex)
+           if meta_hex_len <= (Parser_FastString.fs_byte_length footer_hex)
            then
              FStar_Pervasives_Native.Some
                (extract_ascii_strings_hex
-                  (FStar_String.sub footer_hex Prims.int_zero meta_hex_len)
-                  Prims.int_zero [] [])
+                  (Parser_FastString.fs_byte_sub footer_hex Prims.int_zero
+                     meta_hex_len) Prims.int_zero [] [])
            else FStar_Pervasives_Native.None)
 let compact_t_stop : Prims.nat= Prims.int_zero
 let compact_t_bool_true : Prims.nat= Prims.int_one
@@ -364,7 +279,7 @@ let rec skip_varint_hex (hex : Prims.string) (pos : Prims.nat)
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
-    if (pos + Prims.int_one) >= (FStar_String.strlen hex)
+    if (pos + Prims.int_one) >= (Parser_FastString.fs_byte_length hex)
     then FStar_Pervasives_Native.None
     else
       (match byte_at_hex hex pos with
@@ -393,7 +308,7 @@ and skip_struct_fields_hex (hex : Prims.string) (pos : Prims.nat)
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
-    if (pos + Prims.int_one) >= (FStar_String.strlen hex)
+    if (pos + Prims.int_one) >= (Parser_FastString.fs_byte_length hex)
     then FStar_Pervasives_Native.None
     else
       (match byte_at_hex hex pos with
@@ -436,7 +351,7 @@ and skip_compact_value_hex (hex : Prims.string) (ftype : Prims.nat)
     else
       if ftype = compact_t_byte
       then
-        (if (pos + Prims.int_one) < (FStar_String.strlen hex)
+        (if (pos + Prims.int_one) < (Parser_FastString.fs_byte_length hex)
          then FStar_Pervasives_Native.Some (pos + (Prims.of_int (2)))
          else FStar_Pervasives_Native.None)
       else
@@ -447,7 +362,9 @@ and skip_compact_value_hex (hex : Prims.string) (ftype : Prims.nat)
         else
           if ftype = compact_t_double
           then
-            (if (pos + (Prims.of_int (15))) < (FStar_String.strlen hex)
+            (if
+               (pos + (Prims.of_int (15))) <
+                 (Parser_FastString.fs_byte_length hex)
              then FStar_Pervasives_Native.Some (pos + (Prims.of_int (16)))
              else FStar_Pervasives_Native.None)
           else
@@ -460,7 +377,9 @@ and skip_compact_value_hex (hex : Prims.string) (ftype : Prims.nat)
                      if fuel2 = Prims.int_zero
                      then FStar_Pervasives_Native.None
                      else
-                       if (p + Prims.int_one) >= (FStar_String.strlen hex)
+                       if
+                         (p + Prims.int_one) >=
+                           (Parser_FastString.fs_byte_length hex)
                        then FStar_Pervasives_Native.None
                        else
                          (match byte_at_hex hex p with
@@ -482,13 +401,15 @@ and skip_compact_value_hex (hex : Prims.string) (ftype : Prims.nat)
                         FStar_Pervasives_Native.None
                     | FStar_Pervasives_Native.Some blen ->
                         let data_end = len_end + (blen + blen) in
-                        if data_end <= (FStar_String.strlen hex)
+                        if data_end <= (Parser_FastString.fs_byte_length hex)
                         then FStar_Pervasives_Native.Some data_end
                         else FStar_Pervasives_Native.None))
             else
               if (ftype = compact_t_list) || (ftype = compact_t_set)
               then
-                (if (pos + Prims.int_one) >= (FStar_String.strlen hex)
+                (if
+                   (pos + Prims.int_one) >=
+                     (Parser_FastString.fs_byte_length hex)
                  then FStar_Pervasives_Native.None
                  else
                    (match byte_at_hex hex pos with
@@ -508,7 +429,7 @@ and skip_compact_value_hex (hex : Prims.string) (ftype : Prims.nat)
                              else
                                if
                                  (p + Prims.int_one) >=
-                                   (FStar_String.strlen hex)
+                                   (Parser_FastString.fs_byte_length hex)
                                then FStar_Pervasives_Native.None
                                else
                                  (match byte_at_hex hex p with
@@ -555,7 +476,7 @@ let rec decode_varint_value_with_end_hex (hex : Prims.string) (p : Prims.nat)
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
-    if (p + Prims.int_one) >= (FStar_String.strlen hex)
+    if (p + Prims.int_one) >= (Parser_FastString.fs_byte_length hex)
     then FStar_Pervasives_Native.None
     else
       (match byte_at_hex hex p with
@@ -576,7 +497,7 @@ let rec decode_varint_value_hex (hex : Prims.string) (p : Prims.nat)
   | FStar_Pervasives_Native.Some (n, uu___) -> FStar_Pervasives_Native.Some n
 let decode_compact_list_info_hex (hex : Prims.string) (pos : Prims.nat)
   (fuel : Prims.nat) : compact_list_info FStar_Pervasives_Native.option=
-  if (pos + Prims.int_one) >= (FStar_String.strlen hex)
+  if (pos + Prims.int_one) >= (Parser_FastString.fs_byte_length hex)
   then FStar_Pervasives_Native.None
   else
     (match byte_at_hex hex pos with
@@ -620,7 +541,7 @@ let decode_compact_binary_hex (hex : Prims.string) (pos : Prims.nat)
   | FStar_Pervasives_Native.Some (blen, payload_start) ->
       let chars_hex_len = blen + blen in
       let payload_end = payload_start + chars_hex_len in
-      if payload_end > (FStar_String.strlen hex)
+      if payload_end > (Parser_FastString.fs_byte_length hex)
       then FStar_Pervasives_Native.None
       else
         (let rec build_chars p remaining acc =
@@ -672,7 +593,7 @@ let rec nth_field_hex (hex : Prims.string) (target_id : Prims.nat)
   if fuel = Prims.int_zero
   then FStar_Pervasives_Native.None
   else
-    if (pos + Prims.int_one) >= (FStar_String.strlen hex)
+    if (pos + Prims.int_one) >= (Parser_FastString.fs_byte_length hex)
     then FStar_Pervasives_Native.None
     else
       (match byte_at_hex hex pos with
@@ -687,7 +608,9 @@ let rec nth_field_hex (hex : Prims.string) (target_id : Prims.nat)
                 if fuel2 = Prims.int_zero
                 then FStar_Pervasives_Native.None
                 else
-                  if (p + Prims.int_one) >= (FStar_String.strlen hex)
+                  if
+                    (p + Prims.int_one) >=
+                      (Parser_FastString.fs_byte_length hex)
                   then FStar_Pervasives_Native.None
                   else
                     (match byte_at_hex hex p with
@@ -749,10 +672,11 @@ let probe_parquet_num_rows (path : Prims.string) :
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some footer_hex ->
            let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-           if meta_hex_len <= (FStar_String.strlen footer_hex)
+           if meta_hex_len <= (Parser_FastString.fs_byte_length footer_hex)
            then
              let meta_hex =
-               FStar_String.sub footer_hex Prims.int_zero meta_hex_len in
+               Parser_FastString.fs_byte_sub footer_hex Prims.int_zero
+                 meta_hex_len in
              (match nth_field_hex meta_hex (Prims.of_int (3)) Prims.int_zero
                       Prims.int_zero meta_hex_len
               with
@@ -779,10 +703,11 @@ let probe_parquet_row_group_count (path : Prims.string) :
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some footer_hex ->
            let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-           if meta_hex_len <= (FStar_String.strlen footer_hex)
+           if meta_hex_len <= (Parser_FastString.fs_byte_length footer_hex)
            then
              let meta_hex =
-               FStar_String.sub footer_hex Prims.int_zero meta_hex_len in
+               Parser_FastString.fs_byte_sub footer_hex Prims.int_zero
+                 meta_hex_len in
              (match nth_field_hex meta_hex (Prims.of_int (4)) Prims.int_zero
                       Prims.int_zero meta_hex_len
               with
@@ -803,10 +728,11 @@ let probe_parquet_first_row_group_num_rows (path : Prims.string) :
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some footer_hex ->
            let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-           if meta_hex_len <= (FStar_String.strlen footer_hex)
+           if meta_hex_len <= (Parser_FastString.fs_byte_length footer_hex)
            then
              let meta_hex =
-               FStar_String.sub footer_hex Prims.int_zero meta_hex_len in
+               Parser_FastString.fs_byte_sub footer_hex Prims.int_zero
+                 meta_hex_len in
              (match nth_field_hex meta_hex (Prims.of_int (4)) Prims.int_zero
                       Prims.int_zero meta_hex_len
               with
@@ -856,10 +782,11 @@ let probe_parquet_first_row_group_column_count (path : Prims.string) :
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some footer_hex ->
            let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-           if meta_hex_len <= (FStar_String.strlen footer_hex)
+           if meta_hex_len <= (Parser_FastString.fs_byte_length footer_hex)
            then
              let meta_hex =
-               FStar_String.sub footer_hex Prims.int_zero meta_hex_len in
+               Parser_FastString.fs_byte_sub footer_hex Prims.int_zero
+                 meta_hex_len in
              (match nth_field_hex meta_hex (Prims.of_int (4)) Prims.int_zero
                       Prims.int_zero meta_hex_len
               with
@@ -902,10 +829,11 @@ let probe_parquet_first_column_name (path : Prims.string) :
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some footer_hex ->
            let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-           if meta_hex_len <= (FStar_String.strlen footer_hex)
+           if meta_hex_len <= (Parser_FastString.fs_byte_length footer_hex)
            then
              let meta_hex =
-               FStar_String.sub footer_hex Prims.int_zero meta_hex_len in
+               Parser_FastString.fs_byte_sub footer_hex Prims.int_zero
+                 meta_hex_len in
              (match nth_field_hex meta_hex (Prims.of_int (4)) Prims.int_zero
                       Prims.int_zero meta_hex_len
               with
@@ -1000,10 +928,11 @@ let probe_parquet_first_column_data_page_offset (path : Prims.string) :
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some footer_hex ->
            let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-           if meta_hex_len <= (FStar_String.strlen footer_hex)
+           if meta_hex_len <= (Parser_FastString.fs_byte_length footer_hex)
            then
              let meta_hex =
-               FStar_String.sub footer_hex Prims.int_zero meta_hex_len in
+               Parser_FastString.fs_byte_sub footer_hex Prims.int_zero
+                 meta_hex_len in
              (match nth_field_hex meta_hex (Prims.of_int (4)) Prims.int_zero
                       Prims.int_zero meta_hex_len
               with
@@ -1098,10 +1027,11 @@ let probe_parquet_column_name (path : Prims.string) (col_index : Prims.nat) :
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some footer_hex ->
            let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-           if meta_hex_len <= (FStar_String.strlen footer_hex)
+           if meta_hex_len <= (Parser_FastString.fs_byte_length footer_hex)
            then
              let meta_hex =
-               FStar_String.sub footer_hex Prims.int_zero meta_hex_len in
+               Parser_FastString.fs_byte_sub footer_hex Prims.int_zero
+                 meta_hex_len in
              (match nth_field_hex meta_hex (Prims.of_int (4)) Prims.int_zero
                       Prims.int_zero meta_hex_len
               with
@@ -1196,10 +1126,11 @@ let probe_parquet_column_num_values (path : Prims.string)
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some footer_hex ->
            let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-           if meta_hex_len <= (FStar_String.strlen footer_hex)
+           if meta_hex_len <= (Parser_FastString.fs_byte_length footer_hex)
            then
              let meta_hex =
-               FStar_String.sub footer_hex Prims.int_zero meta_hex_len in
+               Parser_FastString.fs_byte_sub footer_hex Prims.int_zero
+                 meta_hex_len in
              (match nth_field_hex meta_hex (Prims.of_int (4)) Prims.int_zero
                       Prims.int_zero meta_hex_len
               with
@@ -1294,10 +1225,11 @@ let probe_parquet_column_total_compressed_size (path : Prims.string)
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some footer_hex ->
            let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-           if meta_hex_len <= (FStar_String.strlen footer_hex)
+           if meta_hex_len <= (Parser_FastString.fs_byte_length footer_hex)
            then
              let meta_hex =
-               FStar_String.sub footer_hex Prims.int_zero meta_hex_len in
+               Parser_FastString.fs_byte_sub footer_hex Prims.int_zero
+                 meta_hex_len in
              (match nth_field_hex meta_hex (Prims.of_int (4)) Prims.int_zero
                       Prims.int_zero meta_hex_len
               with
@@ -1392,10 +1324,11 @@ let probe_parquet_column_total_uncompressed_size (path : Prims.string)
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some footer_hex ->
            let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-           if meta_hex_len <= (FStar_String.strlen footer_hex)
+           if meta_hex_len <= (Parser_FastString.fs_byte_length footer_hex)
            then
              let meta_hex =
-               FStar_String.sub footer_hex Prims.int_zero meta_hex_len in
+               Parser_FastString.fs_byte_sub footer_hex Prims.int_zero
+                 meta_hex_len in
              (match nth_field_hex meta_hex (Prims.of_int (4)) Prims.int_zero
                       Prims.int_zero meta_hex_len
               with
@@ -1512,10 +1445,11 @@ let probe_parquet_column_compression_codec (path : Prims.string)
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some footer_hex ->
            let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-           if meta_hex_len <= (FStar_String.strlen footer_hex)
+           if meta_hex_len <= (Parser_FastString.fs_byte_length footer_hex)
            then
              let meta_hex =
-               FStar_String.sub footer_hex Prims.int_zero meta_hex_len in
+               Parser_FastString.fs_byte_sub footer_hex Prims.int_zero
+                 meta_hex_len in
              (match nth_field_hex meta_hex (Prims.of_int (4)) Prims.int_zero
                       Prims.int_zero meta_hex_len
               with
@@ -1611,10 +1545,11 @@ let probe_parquet_column_data_page_offset (path : Prims.string)
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some footer_hex ->
            let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-           if meta_hex_len <= (FStar_String.strlen footer_hex)
+           if meta_hex_len <= (Parser_FastString.fs_byte_length footer_hex)
            then
              let meta_hex =
-               FStar_String.sub footer_hex Prims.int_zero meta_hex_len in
+               Parser_FastString.fs_byte_sub footer_hex Prims.int_zero
+                 meta_hex_len in
              (match nth_field_hex meta_hex (Prims.of_int (4)) Prims.int_zero
                       Prims.int_zero meta_hex_len
               with
@@ -1792,7 +1727,8 @@ let probe_parquet_column_page_header_type (path : Prims.string)
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some page_hex ->
            (match nth_field_hex page_hex Prims.int_one Prims.int_zero
-                    Prims.int_zero (FStar_String.strlen page_hex)
+                    Prims.int_zero
+                    (Parser_FastString.fs_byte_length page_hex)
             with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some type_field ->
@@ -1801,7 +1737,8 @@ let probe_parquet_column_page_header_type (path : Prims.string)
                 else
                   (match decode_varint_value_hex page_hex
                            type_field.cf_value_start Prims.int_zero
-                           Prims.int_zero (FStar_String.strlen page_hex)
+                           Prims.int_zero
+                           (Parser_FastString.fs_byte_length page_hex)
                    with
                    | FStar_Pervasives_Native.None ->
                        FStar_Pervasives_Native.None
@@ -1818,7 +1755,8 @@ let probe_parquet_column_page_header_uncompressed_size (path : Prims.string)
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some page_hex ->
            (match nth_field_hex page_hex (Prims.of_int (2)) Prims.int_zero
-                    Prims.int_zero (FStar_String.strlen page_hex)
+                    Prims.int_zero
+                    (Parser_FastString.fs_byte_length page_hex)
             with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some size_field ->
@@ -1827,7 +1765,8 @@ let probe_parquet_column_page_header_uncompressed_size (path : Prims.string)
                 else
                   (match decode_varint_value_hex page_hex
                            size_field.cf_value_start Prims.int_zero
-                           Prims.int_zero (FStar_String.strlen page_hex)
+                           Prims.int_zero
+                           (Parser_FastString.fs_byte_length page_hex)
                    with
                    | FStar_Pervasives_Native.None ->
                        FStar_Pervasives_Native.None
@@ -1843,7 +1782,8 @@ let probe_parquet_column_page_header_compressed_size (path : Prims.string)
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some page_hex ->
            (match nth_field_hex page_hex (Prims.of_int (3)) Prims.int_zero
-                    Prims.int_zero (FStar_String.strlen page_hex)
+                    Prims.int_zero
+                    (Parser_FastString.fs_byte_length page_hex)
             with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some size_field ->
@@ -1852,7 +1792,8 @@ let probe_parquet_column_page_header_compressed_size (path : Prims.string)
                 else
                   (match decode_varint_value_hex page_hex
                            size_field.cf_value_start Prims.int_zero
-                           Prims.int_zero (FStar_String.strlen page_hex)
+                           Prims.int_zero
+                           (Parser_FastString.fs_byte_length page_hex)
                    with
                    | FStar_Pervasives_Native.None ->
                        FStar_Pervasives_Native.None
@@ -1868,7 +1809,8 @@ let probe_parquet_column_page_header_num_values (path : Prims.string)
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some page_hex ->
            (match nth_field_hex page_hex (Prims.of_int (5)) Prims.int_zero
-                    Prims.int_zero (FStar_String.strlen page_hex)
+                    Prims.int_zero
+                    (Parser_FastString.fs_byte_length page_hex)
             with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some data_page_header_field ->
@@ -1877,7 +1819,8 @@ let probe_parquet_column_page_header_num_values (path : Prims.string)
                 else
                   (match nth_field_hex page_hex Prims.int_one
                            data_page_header_field.cf_value_start
-                           Prims.int_zero (FStar_String.strlen page_hex)
+                           Prims.int_zero
+                           (Parser_FastString.fs_byte_length page_hex)
                    with
                    | FStar_Pervasives_Native.None ->
                        FStar_Pervasives_Native.None
@@ -1888,7 +1831,7 @@ let probe_parquet_column_page_header_num_values (path : Prims.string)
                          (match decode_varint_value_hex page_hex
                                   num_values_field.cf_value_start
                                   Prims.int_zero Prims.int_zero
-                                  (FStar_String.strlen page_hex)
+                                  (Parser_FastString.fs_byte_length page_hex)
                           with
                           | FStar_Pervasives_Native.None ->
                               FStar_Pervasives_Native.None
@@ -1905,7 +1848,7 @@ let probe_parquet_column_page_header_length (path : Prims.string)
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some page_hex ->
            (match skip_struct_fields_hex page_hex Prims.int_zero
-                    (FStar_String.strlen page_hex)
+                    (Parser_FastString.fs_byte_length page_hex)
             with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some end_hex ->
@@ -1928,7 +1871,8 @@ let probe_parquet_column_page_header_data_encoding (path : Prims.string)
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some page_hex ->
            (match nth_field_hex page_hex (Prims.of_int (5)) Prims.int_zero
-                    Prims.int_zero (FStar_String.strlen page_hex)
+                    Prims.int_zero
+                    (Parser_FastString.fs_byte_length page_hex)
             with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some data_page_header_field ->
@@ -1937,7 +1881,8 @@ let probe_parquet_column_page_header_data_encoding (path : Prims.string)
                 else
                   (match nth_field_hex page_hex (Prims.of_int (2))
                            data_page_header_field.cf_value_start
-                           Prims.int_zero (FStar_String.strlen page_hex)
+                           Prims.int_zero
+                           (Parser_FastString.fs_byte_length page_hex)
                    with
                    | FStar_Pervasives_Native.None ->
                        FStar_Pervasives_Native.None
@@ -1948,7 +1893,7 @@ let probe_parquet_column_page_header_data_encoding (path : Prims.string)
                          (match decode_varint_value_hex page_hex
                                   encoding_field.cf_value_start
                                   Prims.int_zero Prims.int_zero
-                                  (FStar_String.strlen page_hex)
+                                  (Parser_FastString.fs_byte_length page_hex)
                           with
                           | FStar_Pervasives_Native.None ->
                               FStar_Pervasives_Native.None
@@ -1967,7 +1912,8 @@ let probe_parquet_column_page_header_definition_level_encoding
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some page_hex ->
            (match nth_field_hex page_hex (Prims.of_int (5)) Prims.int_zero
-                    Prims.int_zero (FStar_String.strlen page_hex)
+                    Prims.int_zero
+                    (Parser_FastString.fs_byte_length page_hex)
             with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some data_page_header_field ->
@@ -1976,7 +1922,8 @@ let probe_parquet_column_page_header_definition_level_encoding
                 else
                   (match nth_field_hex page_hex (Prims.of_int (3))
                            data_page_header_field.cf_value_start
-                           Prims.int_zero (FStar_String.strlen page_hex)
+                           Prims.int_zero
+                           (Parser_FastString.fs_byte_length page_hex)
                    with
                    | FStar_Pervasives_Native.None ->
                        FStar_Pervasives_Native.None
@@ -1987,7 +1934,7 @@ let probe_parquet_column_page_header_definition_level_encoding
                          (match decode_varint_value_hex page_hex
                                   encoding_field.cf_value_start
                                   Prims.int_zero Prims.int_zero
-                                  (FStar_String.strlen page_hex)
+                                  (Parser_FastString.fs_byte_length page_hex)
                           with
                           | FStar_Pervasives_Native.None ->
                               FStar_Pervasives_Native.None
@@ -2006,7 +1953,8 @@ let probe_parquet_column_page_header_repetition_level_encoding
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some page_hex ->
            (match nth_field_hex page_hex (Prims.of_int (5)) Prims.int_zero
-                    Prims.int_zero (FStar_String.strlen page_hex)
+                    Prims.int_zero
+                    (Parser_FastString.fs_byte_length page_hex)
             with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some data_page_header_field ->
@@ -2015,7 +1963,8 @@ let probe_parquet_column_page_header_repetition_level_encoding
                 else
                   (match nth_field_hex page_hex (Prims.of_int (4))
                            data_page_header_field.cf_value_start
-                           Prims.int_zero (FStar_String.strlen page_hex)
+                           Prims.int_zero
+                           (Parser_FastString.fs_byte_length page_hex)
                    with
                    | FStar_Pervasives_Native.None ->
                        FStar_Pervasives_Native.None
@@ -2026,7 +1975,7 @@ let probe_parquet_column_page_header_repetition_level_encoding
                          (match decode_varint_value_hex page_hex
                                   encoding_field.cf_value_start
                                   Prims.int_zero Prims.int_zero
-                                  (FStar_String.strlen page_hex)
+                                  (Parser_FastString.fs_byte_length page_hex)
                           with
                           | FStar_Pervasives_Native.None ->
                               FStar_Pervasives_Native.None
@@ -2043,10 +1992,12 @@ let probe_parquet_column_page_payload_magic_hex (path : Prims.string)
        with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some payload_hex ->
-           if (FStar_String.strlen payload_hex) >= (Prims.of_int (8))
+           if
+             (Parser_FastString.fs_byte_length payload_hex) >=
+               (Prims.of_int (8))
            then
              FStar_Pervasives_Native.Some
-               (FStar_String.sub payload_hex Prims.int_zero
+               (Parser_FastString.fs_byte_sub payload_hex Prims.int_zero
                   (Prims.of_int (8)))
            else FStar_Pervasives_Native.None)
 let probe_parquet_column_zstd_frame_header_size (path : Prims.string)
@@ -2058,7 +2009,9 @@ let probe_parquet_column_zstd_frame_header_size (path : Prims.string)
        with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some payload_hex ->
-           if (FStar_String.strlen payload_hex) < (Prims.of_int (10))
+           if
+             (Parser_FastString.fs_byte_length payload_hex) <
+               (Prims.of_int (10))
            then FStar_Pervasives_Native.None
            else
              (match byte_at_hex payload_hex (Prims.of_int (8)) with
@@ -2082,7 +2035,9 @@ let probe_parquet_column_zstd_first_block_type (path : Prims.string)
             with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some block_hex ->
-                if (FStar_String.strlen block_hex) < (Prims.of_int (6))
+                if
+                  (Parser_FastString.fs_byte_length block_hex) <
+                    (Prims.of_int (6))
                 then FStar_Pervasives_Native.None
                 else
                   (match le_u24_at_hex block_hex Prims.int_zero with
@@ -2107,7 +2062,9 @@ let probe_parquet_column_zstd_first_block_last_flag (path : Prims.string)
             with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some block_hex ->
-                if (FStar_String.strlen block_hex) < (Prims.of_int (6))
+                if
+                  (Parser_FastString.fs_byte_length block_hex) <
+                    (Prims.of_int (6))
                 then FStar_Pervasives_Native.None
                 else
                   (match le_u24_at_hex block_hex Prims.int_zero with
@@ -2129,7 +2086,9 @@ let probe_parquet_column_zstd_first_block_size (path : Prims.string)
             with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some block_hex ->
-                if (FStar_String.strlen block_hex) < (Prims.of_int (6))
+                if
+                  (Parser_FastString.fs_byte_length block_hex) <
+                    (Prims.of_int (6))
                 then FStar_Pervasives_Native.None
                 else
                   (match le_u24_at_hex block_hex Prims.int_zero with
@@ -2209,10 +2168,10 @@ let probe_parquet_column_decompressed_payload_prefix_hex
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some payload_hex ->
       let want = prefix_bytes + prefix_bytes in
-      if want <= (FStar_String.strlen payload_hex)
+      if want <= (Parser_FastString.fs_byte_length payload_hex)
       then
         FStar_Pervasives_Native.Some
-          (FStar_String.sub payload_hex Prims.int_zero want)
+          (Parser_FastString.fs_byte_sub payload_hex Prims.int_zero want)
       else FStar_Pervasives_Native.Some payload_hex
 let probe_parquet_column_decompressed_payload_hex_length
   (path : Prims.string) (col_index : Prims.nat) :
@@ -2221,13 +2180,13 @@ let probe_parquet_column_decompressed_payload_hex_length
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some payload_hex ->
       FStar_Pervasives_Native.Some
-        ((FStar_String.strlen payload_hex) / (Prims.of_int (2)))
+        ((Parser_FastString.fs_byte_length payload_hex) / (Prims.of_int (2)))
 let probe_parquet_column_first_level_section_length (path : Prims.string)
   (col_index : Prims.nat) : Prims.nat FStar_Pervasives_Native.option=
   match probe_parquet_column_decompressed_payload_hex path col_index with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some payload_hex ->
-      if (FStar_String.strlen payload_hex) < (Prims.of_int (8))
+      if (Parser_FastString.fs_byte_length payload_hex) < (Prims.of_int (8))
       then FStar_Pervasives_Native.None
       else le_u32_at_hex payload_hex Prims.int_zero
 let probe_parquet_column_delta_length_byte_array_values_offset
@@ -2247,14 +2206,15 @@ let probe_parquet_column_delta_length_byte_array_values_prefix_hex
   | (FStar_Pervasives_Native.Some payload_hex, FStar_Pervasives_Native.Some
      value_offset) ->
       let start = value_offset + value_offset in
-      if start > (FStar_String.strlen payload_hex)
+      if start > (Parser_FastString.fs_byte_length payload_hex)
       then FStar_Pervasives_Native.None
       else
-        (let remaining = (FStar_String.strlen payload_hex) - start in
+        (let remaining =
+           (Parser_FastString.fs_byte_length payload_hex) - start in
          let want = prefix_bytes + prefix_bytes in
          let take = if want <= remaining then want else remaining in
          FStar_Pervasives_Native.Some
-           (FStar_String.sub payload_hex start take))
+           (Parser_FastString.fs_byte_sub payload_hex start take))
   | uu___ -> FStar_Pervasives_Native.None
 let probe_parquet_column_delta_length_byte_array_block_size
   (path : Prims.string) (col_index : Prims.nat) :
@@ -2265,7 +2225,8 @@ let probe_parquet_column_delta_length_byte_array_block_size
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some values_hex ->
       (match decode_varint_value_with_end_hex values_hex Prims.int_zero
-               Prims.int_zero Prims.int_zero (FStar_String.strlen values_hex)
+               Prims.int_zero Prims.int_zero
+               (Parser_FastString.fs_byte_length values_hex)
        with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some (n, uu___) ->
@@ -2279,13 +2240,14 @@ let probe_parquet_column_delta_length_byte_array_miniblock_count
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some values_hex ->
       (match decode_varint_value_with_end_hex values_hex Prims.int_zero
-               Prims.int_zero Prims.int_zero (FStar_String.strlen values_hex)
+               Prims.int_zero Prims.int_zero
+               (Parser_FastString.fs_byte_length values_hex)
        with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some (uu___, p1) ->
            (match decode_varint_value_with_end_hex values_hex p1
                     Prims.int_zero Prims.int_zero
-                    (FStar_String.strlen values_hex)
+                    (Parser_FastString.fs_byte_length values_hex)
             with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some (n, uu___1) ->
@@ -2299,19 +2261,20 @@ let probe_parquet_column_delta_length_byte_array_value_count
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some values_hex ->
       (match decode_varint_value_with_end_hex values_hex Prims.int_zero
-               Prims.int_zero Prims.int_zero (FStar_String.strlen values_hex)
+               Prims.int_zero Prims.int_zero
+               (Parser_FastString.fs_byte_length values_hex)
        with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some (uu___, p1) ->
            (match decode_varint_value_with_end_hex values_hex p1
                     Prims.int_zero Prims.int_zero
-                    (FStar_String.strlen values_hex)
+                    (Parser_FastString.fs_byte_length values_hex)
             with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some (uu___1, p2) ->
                 (match decode_varint_value_with_end_hex values_hex p2
                          Prims.int_zero Prims.int_zero
-                         (FStar_String.strlen values_hex)
+                         (Parser_FastString.fs_byte_length values_hex)
                  with
                  | FStar_Pervasives_Native.None ->
                      FStar_Pervasives_Native.None
@@ -2326,26 +2289,27 @@ let probe_parquet_column_delta_length_byte_array_first_length
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some values_hex ->
       (match decode_varint_value_with_end_hex values_hex Prims.int_zero
-               Prims.int_zero Prims.int_zero (FStar_String.strlen values_hex)
+               Prims.int_zero Prims.int_zero
+               (Parser_FastString.fs_byte_length values_hex)
        with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some (uu___, p1) ->
            (match decode_varint_value_with_end_hex values_hex p1
                     Prims.int_zero Prims.int_zero
-                    (FStar_String.strlen values_hex)
+                    (Parser_FastString.fs_byte_length values_hex)
             with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some (uu___1, p2) ->
                 (match decode_varint_value_with_end_hex values_hex p2
                          Prims.int_zero Prims.int_zero
-                         (FStar_String.strlen values_hex)
+                         (Parser_FastString.fs_byte_length values_hex)
                  with
                  | FStar_Pervasives_Native.None ->
                      FStar_Pervasives_Native.None
                  | FStar_Pervasives_Native.Some (uu___2, p3) ->
                      (match decode_varint_value_with_end_hex values_hex p3
                               Prims.int_zero Prims.int_zero
-                              (FStar_String.strlen values_hex)
+                              (Parser_FastString.fs_byte_length values_hex)
                       with
                       | FStar_Pervasives_Native.None ->
                           FStar_Pervasives_Native.None
@@ -2361,33 +2325,35 @@ let probe_parquet_column_delta_length_byte_array_first_min_delta
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some values_hex ->
       (match decode_varint_value_with_end_hex values_hex Prims.int_zero
-               Prims.int_zero Prims.int_zero (FStar_String.strlen values_hex)
+               Prims.int_zero Prims.int_zero
+               (Parser_FastString.fs_byte_length values_hex)
        with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some (uu___, p1) ->
            (match decode_varint_value_with_end_hex values_hex p1
                     Prims.int_zero Prims.int_zero
-                    (FStar_String.strlen values_hex)
+                    (Parser_FastString.fs_byte_length values_hex)
             with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some (uu___1, p2) ->
                 (match decode_varint_value_with_end_hex values_hex p2
                          Prims.int_zero Prims.int_zero
-                         (FStar_String.strlen values_hex)
+                         (Parser_FastString.fs_byte_length values_hex)
                  with
                  | FStar_Pervasives_Native.None ->
                      FStar_Pervasives_Native.None
                  | FStar_Pervasives_Native.Some (uu___2, p3) ->
                      (match decode_varint_value_with_end_hex values_hex p3
                               Prims.int_zero Prims.int_zero
-                              (FStar_String.strlen values_hex)
+                              (Parser_FastString.fs_byte_length values_hex)
                       with
                       | FStar_Pervasives_Native.None ->
                           FStar_Pervasives_Native.None
                       | FStar_Pervasives_Native.Some (uu___3, p4) ->
                           (match decode_varint_value_with_end_hex values_hex
                                    p4 Prims.int_zero Prims.int_zero
-                                   (FStar_String.strlen values_hex)
+                                   (Parser_FastString.fs_byte_length
+                                      values_hex)
                            with
                            | FStar_Pervasives_Native.None ->
                                FStar_Pervasives_Native.None
@@ -2403,40 +2369,43 @@ let probe_parquet_column_delta_length_byte_array_first_bit_width
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some values_hex ->
       (match decode_varint_value_with_end_hex values_hex Prims.int_zero
-               Prims.int_zero Prims.int_zero (FStar_String.strlen values_hex)
+               Prims.int_zero Prims.int_zero
+               (Parser_FastString.fs_byte_length values_hex)
        with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some (uu___, p1) ->
            (match decode_varint_value_with_end_hex values_hex p1
                     Prims.int_zero Prims.int_zero
-                    (FStar_String.strlen values_hex)
+                    (Parser_FastString.fs_byte_length values_hex)
             with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some (uu___1, p2) ->
                 (match decode_varint_value_with_end_hex values_hex p2
                          Prims.int_zero Prims.int_zero
-                         (FStar_String.strlen values_hex)
+                         (Parser_FastString.fs_byte_length values_hex)
                  with
                  | FStar_Pervasives_Native.None ->
                      FStar_Pervasives_Native.None
                  | FStar_Pervasives_Native.Some (uu___2, p3) ->
                      (match decode_varint_value_with_end_hex values_hex p3
                               Prims.int_zero Prims.int_zero
-                              (FStar_String.strlen values_hex)
+                              (Parser_FastString.fs_byte_length values_hex)
                       with
                       | FStar_Pervasives_Native.None ->
                           FStar_Pervasives_Native.None
                       | FStar_Pervasives_Native.Some (uu___3, p4) ->
                           (match decode_varint_value_with_end_hex values_hex
                                    p4 Prims.int_zero Prims.int_zero
-                                   (FStar_String.strlen values_hex)
+                                   (Parser_FastString.fs_byte_length
+                                      values_hex)
                            with
                            | FStar_Pervasives_Native.None ->
                                FStar_Pervasives_Native.None
                            | FStar_Pervasives_Native.Some (uu___4, p5) ->
                                if
                                  (p5 + Prims.int_one) >=
-                                   (FStar_String.strlen values_hex)
+                                   (Parser_FastString.fs_byte_length
+                                      values_hex)
                                then FStar_Pervasives_Native.None
                                else
                                  (match byte_at_hex values_hex p5 with
@@ -2454,7 +2423,8 @@ let rec packed_lsb_value_hex (hex : Prims.string) (byte_start : Prims.nat)
      let byte_index =
        byte_start +
          (mul_nat (absolute_bit / (Prims.of_int (8))) (Prims.of_int (2))) in
-     if (byte_index + Prims.int_one) >= (FStar_String.strlen hex)
+     if
+       (byte_index + Prims.int_one) >= (Parser_FastString.fs_byte_length hex)
      then FStar_Pervasives_Native.None
      else
        (match byte_at_hex hex byte_index with
@@ -2479,26 +2449,27 @@ let probe_parquet_column_delta_length_byte_array_length_at
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some values_hex ->
       (match decode_varint_value_with_end_hex values_hex Prims.int_zero
-               Prims.int_zero Prims.int_zero (FStar_String.strlen values_hex)
+               Prims.int_zero Prims.int_zero
+               (Parser_FastString.fs_byte_length values_hex)
        with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some (uu___, p1) ->
            (match decode_varint_value_with_end_hex values_hex p1
                     Prims.int_zero Prims.int_zero
-                    (FStar_String.strlen values_hex)
+                    (Parser_FastString.fs_byte_length values_hex)
             with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some (uu___1, p2) ->
                 (match decode_varint_value_with_end_hex values_hex p2
                          Prims.int_zero Prims.int_zero
-                         (FStar_String.strlen values_hex)
+                         (Parser_FastString.fs_byte_length values_hex)
                  with
                  | FStar_Pervasives_Native.None ->
                      FStar_Pervasives_Native.None
                  | FStar_Pervasives_Native.Some (uu___2, p3) ->
                      (match decode_varint_value_with_end_hex values_hex p3
                               Prims.int_zero Prims.int_zero
-                              (FStar_String.strlen values_hex)
+                              (Parser_FastString.fs_byte_length values_hex)
                       with
                       | FStar_Pervasives_Native.None ->
                           FStar_Pervasives_Native.None
@@ -2510,7 +2481,8 @@ let probe_parquet_column_delta_length_byte_array_length_at
                             (match decode_varint_value_with_end_hex
                                      values_hex p4 Prims.int_zero
                                      Prims.int_zero
-                                     (FStar_String.strlen values_hex)
+                                     (Parser_FastString.fs_byte_length
+                                        values_hex)
                              with
                              | FStar_Pervasives_Native.None ->
                                  FStar_Pervasives_Native.None
@@ -2520,7 +2492,8 @@ let probe_parquet_column_delta_length_byte_array_length_at
                                    zigzag_decode_int min_delta_raw in
                                  if
                                    (p5 + Prims.int_one) >=
-                                     (FStar_String.strlen values_hex)
+                                     (Parser_FastString.fs_byte_length
+                                        values_hex)
                                  then FStar_Pervasives_Native.None
                                  else
                                    (match byte_at_hex values_hex p5 with
@@ -2628,7 +2601,7 @@ let rec ascii_string_of_hex_slice (hex : Prims.string) (pos : Prims.nat)
     FStar_Pervasives_Native.Some
       (FStar_String.string_of_list (FStar_List_Tot_Base.rev acc))
   else
-    if (pos + Prims.int_one) >= (FStar_String.strlen hex)
+    if (pos + Prims.int_one) >= (Parser_FastString.fs_byte_length hex)
     then FStar_Pervasives_Native.None
     else
       (match byte_at_hex hex pos with
@@ -2668,10 +2641,11 @@ let probe_parquet_column_delta_length_byte_array_value_hex_at
            let start_byte = values_start + prior_len in
            let start = mul_nat start_byte (Prims.of_int (2)) in
            let want = mul_nat value_len (Prims.of_int (2)) in
-           if (start + want) <= (FStar_String.strlen payload_hex)
+           if
+             (start + want) <= (Parser_FastString.fs_byte_length payload_hex)
            then
              FStar_Pervasives_Native.Some
-               (FStar_String.sub payload_hex start want)
+               (Parser_FastString.fs_byte_sub payload_hex start want)
            else FStar_Pervasives_Native.None
        | uu___ -> FStar_Pervasives_Native.None)
   | uu___ -> FStar_Pervasives_Native.None
@@ -2684,7 +2658,8 @@ let probe_parquet_column_delta_length_byte_array_value_string_at
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some value_hex ->
       ascii_string_of_hex_slice value_hex Prims.int_zero
-        ((FStar_String.strlen value_hex) / (Prims.of_int (2))) []
+        ((Parser_FastString.fs_byte_length value_hex) / (Prims.of_int (2)))
+        []
 type dlba_page_cache =
   {
   dpc_payload_hex: Prims.string ;
@@ -2785,7 +2760,7 @@ let miniblock_hex_size (values_per_miniblock : Prims.nat)
 let widths_byte_at (values_hex : Prims.string) (widths_offset : Prims.nat)
   (idx : Prims.nat) : Prims.nat FStar_Pervasives_Native.option=
   let p = widths_offset + (mul_nat idx (Prims.of_int (2))) in
-  if (p + Prims.int_one) >= (FStar_String.strlen values_hex)
+  if (p + Prims.int_one) >= (Parser_FastString.fs_byte_length values_hex)
   then FStar_Pervasives_Native.None
   else
     (match byte_at_hex values_hex p with
@@ -2863,7 +2838,7 @@ let rec build_dlba_length_list (values_hex : Prims.string)
                               (mul_nat miniblocks (Prims.of_int (2))) in
                           if
                             (new_widths_offset + Prims.int_one) >=
-                              (FStar_String.strlen values_hex)
+                              (Parser_FastString.fs_byte_length values_hex)
                           then FStar_Pervasives_Native.None
                           else
                             (match byte_at_hex values_hex new_widths_offset
@@ -2897,15 +2872,15 @@ let probe_parquet_column_delta_length_byte_array_page_cache
   with
   | (FStar_Pervasives_Native.Some payload_hex, FStar_Pervasives_Native.Some
      values_offset) ->
-      let payload_len_hex = FStar_String.strlen payload_hex in
+      let payload_len_hex = Parser_FastString.fs_byte_length payload_hex in
       let values_start_hex = mul_nat values_offset (Prims.of_int (2)) in
       if values_start_hex > payload_len_hex
       then FStar_Pervasives_Native.None
       else
         (let values_hex =
-           FStar_String.sub payload_hex values_start_hex
+           Parser_FastString.fs_byte_sub payload_hex values_start_hex
              (payload_len_hex - values_start_hex) in
-         let vh_len = FStar_String.strlen values_hex in
+         let vh_len = Parser_FastString.fs_byte_length values_hex in
          match decode_varint_value_with_end_hex values_hex Prims.int_zero
                  Prims.int_zero Prims.int_zero vh_len
          with
@@ -3039,10 +3014,10 @@ let rec slice_all_dlba_values (payload_hex : Prims.string)
       let start = mul_nat start_byte (Prims.of_int (2)) in
       let want = mul_nat len (Prims.of_int (2)) in
       let slice =
-        if (start + want) <= (FStar_String.strlen payload_hex)
+        if (start + want) <= (Parser_FastString.fs_byte_length payload_hex)
         then
           FStar_Pervasives_Native.Some
-            (FStar_String.sub payload_hex start want)
+            (Parser_FastString.fs_byte_sub payload_hex start want)
         else FStar_Pervasives_Native.None in
       slice_all_dlba_values payload_hex values_start_byte lts sts (slice ::
         acc)
@@ -3063,7 +3038,7 @@ let rec ascii_strings_of_hex_slices
   | (FStar_Pervasives_Native.Some hx)::tl ->
       let s =
         ascii_string_of_hex_slice hx Prims.int_zero
-          ((FStar_String.strlen hx) / (Prims.of_int (2))) [] in
+          ((Parser_FastString.fs_byte_length hx) / (Prims.of_int (2))) [] in
       ascii_strings_of_hex_slices tl (s :: acc)
 let dlba_page_decode_all_strings (cache : dlba_page_cache) :
   Prims.string FStar_Pervasives_Native.option Prims.list=
@@ -3087,10 +3062,11 @@ let probe_parquet_column_dictionary_page_offset (path : Prims.string)
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some footer_hex ->
            let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-           if meta_hex_len <= (FStar_String.strlen footer_hex)
+           if meta_hex_len <= (Parser_FastString.fs_byte_length footer_hex)
            then
              let meta_hex =
-               FStar_String.sub footer_hex Prims.int_zero meta_hex_len in
+               Parser_FastString.fs_byte_sub footer_hex Prims.int_zero
+                 meta_hex_len in
              (match nth_field_hex meta_hex (Prims.of_int (4)) Prims.int_zero
                       Prims.int_zero meta_hex_len
               with
@@ -3182,7 +3158,7 @@ let parquet_page_header_uncompressed_size_at (path : Prims.string)
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some page_hex ->
       (match nth_field_hex page_hex (Prims.of_int (2)) Prims.int_zero
-               Prims.int_zero (FStar_String.strlen page_hex)
+               Prims.int_zero (Parser_FastString.fs_byte_length page_hex)
        with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some size_field ->
@@ -3191,7 +3167,7 @@ let parquet_page_header_uncompressed_size_at (path : Prims.string)
            else
              (match decode_varint_value_hex page_hex
                       size_field.cf_value_start Prims.int_zero Prims.int_zero
-                      (FStar_String.strlen page_hex)
+                      (Parser_FastString.fs_byte_length page_hex)
               with
               | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
               | FStar_Pervasives_Native.Some raw ->
@@ -3202,7 +3178,7 @@ let parquet_page_header_compressed_size_at (path : Prims.string)
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some page_hex ->
       (match nth_field_hex page_hex (Prims.of_int (3)) Prims.int_zero
-               Prims.int_zero (FStar_String.strlen page_hex)
+               Prims.int_zero (Parser_FastString.fs_byte_length page_hex)
        with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some size_field ->
@@ -3211,7 +3187,7 @@ let parquet_page_header_compressed_size_at (path : Prims.string)
            else
              (match decode_varint_value_hex page_hex
                       size_field.cf_value_start Prims.int_zero Prims.int_zero
-                      (FStar_String.strlen page_hex)
+                      (Parser_FastString.fs_byte_length page_hex)
               with
               | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
               | FStar_Pervasives_Native.Some raw ->
@@ -3222,7 +3198,7 @@ let parquet_page_header_length_at (path : Prims.string)
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some page_hex ->
       (match skip_struct_fields_hex page_hex Prims.int_zero
-               (FStar_String.strlen page_hex)
+               (Parser_FastString.fs_byte_length page_hex)
        with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some end_hex ->
@@ -3233,7 +3209,7 @@ let parquet_dictionary_page_num_values_at (path : Prims.string)
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some page_hex ->
       (match nth_field_hex page_hex (Prims.of_int (7)) Prims.int_zero
-               Prims.int_zero (FStar_String.strlen page_hex)
+               Prims.int_zero (Parser_FastString.fs_byte_length page_hex)
        with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some dict_header_field ->
@@ -3242,7 +3218,7 @@ let parquet_dictionary_page_num_values_at (path : Prims.string)
            else
              (match nth_field_hex page_hex Prims.int_one
                       dict_header_field.cf_value_start Prims.int_zero
-                      (FStar_String.strlen page_hex)
+                      (Parser_FastString.fs_byte_length page_hex)
               with
               | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
               | FStar_Pervasives_Native.Some nv_field ->
@@ -3251,7 +3227,8 @@ let parquet_dictionary_page_num_values_at (path : Prims.string)
                   else
                     (match decode_varint_value_hex page_hex
                              nv_field.cf_value_start Prims.int_zero
-                             Prims.int_zero (FStar_String.strlen page_hex)
+                             Prims.int_zero
+                             (Parser_FastString.fs_byte_length page_hex)
                      with
                      | FStar_Pervasives_Native.None ->
                          FStar_Pervasives_Native.None
@@ -3281,7 +3258,9 @@ let parquet_decompressed_page_at (path : Prims.string)
 let decode_one_plain_dictionary_entry (payload_hex : Prims.string)
   (pos : Prims.nat) :
   (Prims.string * Prims.nat) FStar_Pervasives_Native.option=
-  if (pos + (Prims.of_int (7))) >= (FStar_String.strlen payload_hex)
+  if
+    (pos + (Prims.of_int (7))) >=
+      (Parser_FastString.fs_byte_length payload_hex)
   then FStar_Pervasives_Native.None
   else
     (match le_u32_at_hex payload_hex pos with
@@ -3290,11 +3269,12 @@ let decode_one_plain_dictionary_entry (payload_hex : Prims.string)
          let value_start = pos + (Prims.of_int (8)) in
          let value_hex_len = entry_len + entry_len in
          let value_end = value_start + value_hex_len in
-         if value_end > (FStar_String.strlen payload_hex)
+         if value_end > (Parser_FastString.fs_byte_length payload_hex)
          then FStar_Pervasives_Native.None
          else
            (let value_hex =
-              FStar_String.sub payload_hex value_start value_hex_len in
+              Parser_FastString.fs_byte_sub payload_hex value_start
+                value_hex_len in
             let s =
               ascii_string_of_hex_slice value_hex Prims.int_zero entry_len [] in
             match s with
@@ -3330,7 +3310,7 @@ let rec read_le_uint_bytes (hex : Prims.string) (pos : Prims.nat)
   if remaining_bytes = Prims.int_zero
   then FStar_Pervasives_Native.Some (acc, pos)
   else
-    if (pos + Prims.int_one) >= (FStar_String.strlen hex)
+    if (pos + Prims.int_one) >= (Parser_FastString.fs_byte_length hex)
     then FStar_Pervasives_Native.None
     else
       (match byte_at_hex hex pos with
@@ -3413,7 +3393,7 @@ let rec decode_hybrid_rle_runs (values_hex : Prims.string)
 let decode_rle_dictionary_data_page (payload_hex : Prims.string)
   (value_count : Prims.nat) :
   Prims.nat Prims.list FStar_Pervasives_Native.option=
-  if (FStar_String.strlen payload_hex) < (Prims.of_int (2))
+  if (Parser_FastString.fs_byte_length payload_hex) < (Prims.of_int (2))
   then FStar_Pervasives_Native.None
   else
     (match byte_at_hex payload_hex Prims.int_zero with
@@ -3421,10 +3401,12 @@ let decode_rle_dictionary_data_page (payload_hex : Prims.string)
      | FStar_Pervasives_Native.Some bit_width ->
          let fuel =
            (value_count +
-              ((FStar_String.strlen payload_hex) / (Prims.of_int (2))))
+              ((Parser_FastString.fs_byte_length payload_hex) /
+                 (Prims.of_int (2))))
              + Prims.int_one in
-         decode_hybrid_rle_runs payload_hex (FStar_String.strlen payload_hex)
-           (Prims.of_int (2)) bit_width value_count [] fuel)
+         decode_hybrid_rle_runs payload_hex
+           (Parser_FastString.fs_byte_length payload_hex) (Prims.of_int (2))
+           bit_width value_count [] fuel)
 let rec list_nth_string (xs : Prims.string Prims.list) (idx : Prims.nat) :
   Prims.string FStar_Pervasives_Native.option=
   match xs with
@@ -3525,10 +3507,11 @@ let probe_parquet_column_chunk_in_row_group_locator (path : Prims.string)
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some footer_hex ->
            let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-           if meta_hex_len <= (FStar_String.strlen footer_hex)
+           if meta_hex_len <= (Parser_FastString.fs_byte_length footer_hex)
            then
              let meta_hex =
-               FStar_String.sub footer_hex Prims.int_zero meta_hex_len in
+               Parser_FastString.fs_byte_sub footer_hex Prims.int_zero
+                 meta_hex_len in
              (match nth_field_hex meta_hex (Prims.of_int (4)) Prims.int_zero
                       Prims.int_zero meta_hex_len
               with
@@ -3689,7 +3672,8 @@ let probe_parquet_column_page_header_num_values_in_row_group
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some page_hex ->
            (match nth_field_hex page_hex (Prims.of_int (5)) Prims.int_zero
-                    Prims.int_zero (FStar_String.strlen page_hex)
+                    Prims.int_zero
+                    (Parser_FastString.fs_byte_length page_hex)
             with
             | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
             | FStar_Pervasives_Native.Some data_page_header_field ->
@@ -3698,7 +3682,8 @@ let probe_parquet_column_page_header_num_values_in_row_group
                 else
                   (match nth_field_hex page_hex Prims.int_one
                            data_page_header_field.cf_value_start
-                           Prims.int_zero (FStar_String.strlen page_hex)
+                           Prims.int_zero
+                           (Parser_FastString.fs_byte_length page_hex)
                    with
                    | FStar_Pervasives_Native.None ->
                        FStar_Pervasives_Native.None
@@ -3709,7 +3694,7 @@ let probe_parquet_column_page_header_num_values_in_row_group
                          (match decode_varint_value_hex page_hex
                                   num_values_field.cf_value_start
                                   Prims.int_zero Prims.int_zero
-                                  (FStar_String.strlen page_hex)
+                                  (Parser_FastString.fs_byte_length page_hex)
                           with
                           | FStar_Pervasives_Native.None ->
                               FStar_Pervasives_Native.None
@@ -3745,7 +3730,7 @@ let probe_parquet_column_first_level_section_length_in_row_group
   with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some payload_hex ->
-      if (FStar_String.strlen payload_hex) < (Prims.of_int (8))
+      if (Parser_FastString.fs_byte_length payload_hex) < (Prims.of_int (8))
       then FStar_Pervasives_Native.None
       else le_u32_at_hex payload_hex Prims.int_zero
 let probe_parquet_column_delta_length_byte_array_values_offset_in_row_group
@@ -3767,15 +3752,15 @@ let probe_parquet_column_delta_length_byte_array_page_cache_in_row_group
   with
   | (FStar_Pervasives_Native.Some payload_hex, FStar_Pervasives_Native.Some
      values_offset) ->
-      let payload_len_hex = FStar_String.strlen payload_hex in
+      let payload_len_hex = Parser_FastString.fs_byte_length payload_hex in
       let values_start_hex = mul_nat values_offset (Prims.of_int (2)) in
       if values_start_hex > payload_len_hex
       then FStar_Pervasives_Native.None
       else
         (let values_hex =
-           FStar_String.sub payload_hex values_start_hex
+           Parser_FastString.fs_byte_sub payload_hex values_start_hex
              (payload_len_hex - values_start_hex) in
-         let vh_len = FStar_String.strlen values_hex in
+         let vh_len = Parser_FastString.fs_byte_length values_hex in
          match decode_varint_value_with_end_hex values_hex Prims.int_zero
                  Prims.int_zero Prims.int_zero vh_len
          with
