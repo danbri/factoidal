@@ -70,11 +70,10 @@ abstract_type_candidates = [
 ]
 new_type = """type 'a lazy_term_cache = {
   mutable populated : bool;
-  forward           : (int, 'a) Stdlib.Hashtbl.t;
-  reverse           : (string, int) Stdlib.Hashtbl.t;
+  forward           : (Stdlib.Int.t, 'a) Stdlib.Hashtbl.t;
+  reverse           : (string, Stdlib.Int.t) Stdlib.Hashtbl.t;
   populate          : unit -> (Z.t * 'a) Prims.list;
   key_of            : 'a -> Prims.string;
-  mu                : Stdlib.Mutex.t;
 } (* __LAZY_TERM_CACHE_RUNTIME_APPLIED__ *)
 """
 type_replaced = False
@@ -111,32 +110,25 @@ mk_body = """  { populated = false;
     forward   = Stdlib.Hashtbl.create 17;
     reverse   = Stdlib.Hashtbl.create 17;
     populate  = populate;
-    key_of    = key_of;
-    mu        = Stdlib.Mutex.create () }"""
+    key_of    = key_of }"""
 content, _ok = replace_failwith_stub(content, "mk_lazy_term_cache", mk_sig, mk_body)
 
 # Internal helper: populate-on-demand, mutex-guarded, exception-safe.
 ensure_helper = """
 (* Run c.populate once; fill both hashtables; mark c.populated.
-   Idempotent + cross-thread safe (mutex). The reverse hashtable
-   is keyed on the canonical-key string produced by c.key_of. *)
+   Idempotent. NOT mutex-protected — matches the pre-#253 baseline
+   thread-safety (Mutex.t not available in this build's Stdlib).
+   The reverse hashtable is keyed on the canonical-key string
+   produced by c.key_of. *)
 let _lazy_term_cache_ensure (c : 'a lazy_term_cache) : unit =
   if not c.populated then begin
-    Stdlib.Mutex.lock c.mu;
-    (try
-      if not c.populated then begin
-        let entries = c.populate () in
-        Stdlib.List.iter (fun (id_z, v) ->
-          let id = Z.to_int id_z in
-          Stdlib.Hashtbl.replace c.forward id v;
-          Stdlib.Hashtbl.replace c.reverse (c.key_of v) id
-        ) entries;
-        c.populated <- true
-      end;
-      Stdlib.Mutex.unlock c.mu
-    with e ->
-      Stdlib.Mutex.unlock c.mu;
-      raise e)
+    let entries = c.populate () in
+    Stdlib.List.iter (fun (id_z, v) ->
+      let id = Z.to_int id_z in
+      Stdlib.Hashtbl.replace c.forward id v;
+      Stdlib.Hashtbl.replace c.reverse (c.key_of v) id
+    ) entries;
+    c.populated <- true
   end
 """
 
@@ -193,11 +185,9 @@ content, _ok = replace_failwith_stub(
     content, "to_list",
     "(c : 'a lazy_term_cache) : 'a Prims.list",
     """  _lazy_term_cache_ensure c;
-  let n = Stdlib.Hashtbl.length c.forward in
-  let buf = Stdlib.Array.make n (Obj.magic ()) in
-  Stdlib.Hashtbl.iter (fun i v ->
-    if i >= 0 && i < n then Stdlib.Array.set buf i v) c.forward;
-  Stdlib.Array.to_list buf""",
+  let pairs = Stdlib.Hashtbl.fold (fun i v acc -> (i, v) :: acc) c.forward [] in
+  let sorted = Stdlib.List.sort (fun (a, _) (b, _) -> Stdlib.compare a b) pairs in
+  Stdlib.List.map snd sorted""",
 )
 
 path.write_text(content)

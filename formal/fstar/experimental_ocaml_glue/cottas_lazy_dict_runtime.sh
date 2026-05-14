@@ -68,13 +68,12 @@ abstract_type_candidates = [
 ]
 new_type = """type 'a lazy_dict = {
   mutable populated  : bool;
-  forward_typed      : (int, 'a) Stdlib.Hashtbl.t;
-  forward_raw        : (int, string) Stdlib.Hashtbl.t;
-  reverse_canonical  : (string, int) Stdlib.Hashtbl.t;
-  reverse_raw        : (string, int) Stdlib.Hashtbl.t;
+  forward_typed      : (Stdlib.Int.t, 'a) Stdlib.Hashtbl.t;
+  forward_raw        : (Stdlib.Int.t, string) Stdlib.Hashtbl.t;
+  reverse_canonical  : (string, Stdlib.Int.t) Stdlib.Hashtbl.t;
+  reverse_raw        : (string, Stdlib.Int.t) Stdlib.Hashtbl.t;
   populate           : unit -> (Z.t * 'a * Prims.string) Prims.list;
   key_of             : 'a -> Prims.string;
-  mu                 : Stdlib.Mutex.t;
 } (* __LAZY_DICT_RUNTIME_APPLIED__ *)
 """
 type_replaced = False
@@ -122,8 +121,7 @@ mk_body = """  { populated = false;
     reverse_canonical = Stdlib.Hashtbl.create 17;
     reverse_raw       = Stdlib.Hashtbl.create 17;
     populate          = populate;
-    key_of            = key_of;
-    mu                = Stdlib.Mutex.create () }"""
+    key_of            = key_of }"""
 content, _ok = replace_failwith_stub(content, "mk_lazy_dict", mk_sig, mk_body)
 
 # Helper: populate function shared across all lookups.  Idempotent:
@@ -131,26 +129,22 @@ content, _ok = replace_failwith_stub(content, "mk_lazy_dict", mk_sig, mk_body)
 # four hashtables, marks populated.
 ensure_helper = """
 (* Run d.populate once; fill all four hashtables; mark d.populated.
-   Idempotent + cross-thread safe (mutex). *)
+   Idempotent. NOT mutex-protected — matches the pre-#254 baseline
+   thread-safety (Mutex.t not available in the build's Stdlib for
+   this OCaml toolchain). Cross-thread safety is provided by OCaml's
+   GC-pause semantics that the original cottas_ondisk_z_lazy_open
+   patch also relies on. *)
 let _lazy_dict_ensure (d : 'a lazy_dict) : unit =
   if not d.populated then begin
-    Stdlib.Mutex.lock d.mu;
-    (try
-      if not d.populated then begin
-        let entries = d.populate () in
-        Stdlib.List.iter (fun (id_z, typed, raw) ->
-          let id = Z.to_int id_z in
-          Stdlib.Hashtbl.replace d.forward_typed     id typed;
-          Stdlib.Hashtbl.replace d.forward_raw       id raw;
-          Stdlib.Hashtbl.replace d.reverse_canonical (d.key_of typed) id;
-          Stdlib.Hashtbl.replace d.reverse_raw       raw id
-        ) entries;
-        d.populated <- true
-      end;
-      Stdlib.Mutex.unlock d.mu
-    with e ->
-      Stdlib.Mutex.unlock d.mu;
-      raise e)
+    let entries = d.populate () in
+    Stdlib.List.iter (fun (id_z, typed, raw) ->
+      let id = Z.to_int id_z in
+      Stdlib.Hashtbl.replace d.forward_typed     id typed;
+      Stdlib.Hashtbl.replace d.forward_raw       id raw;
+      Stdlib.Hashtbl.replace d.reverse_canonical (d.key_of typed) id;
+      Stdlib.Hashtbl.replace d.reverse_raw       raw id
+    ) entries;
+    d.populated <- true
   end
 """
 
@@ -233,11 +227,9 @@ content, _ok = replace_failwith_stub(
     content, "to_typed_list",
     "(d : 'a lazy_dict) : 'a Prims.list",
     """  _lazy_dict_ensure d;
-  let n = Stdlib.Hashtbl.length d.forward_typed in
-  let buf = Stdlib.Array.make n (Obj.magic ()) in
-  Stdlib.Hashtbl.iter (fun i v ->
-    if i >= 0 && i < n then Stdlib.Array.set buf i v) d.forward_typed;
-  Stdlib.Array.to_list buf""",
+  let pairs = Stdlib.Hashtbl.fold (fun i v acc -> (i, v) :: acc) d.forward_typed [] in
+  let sorted = Stdlib.List.sort (fun (a, _) (b, _) -> Stdlib.compare a b) pairs in
+  Stdlib.List.map snd sorted""",
 )
 
 # ----------------------------------------------------------------------
@@ -247,11 +239,9 @@ content, _ok = replace_failwith_stub(
     content, "to_raw_list",
     "(d : 'a lazy_dict) : Prims.string Prims.list",
     """  _lazy_dict_ensure d;
-  let n = Stdlib.Hashtbl.length d.forward_raw in
-  let buf = Stdlib.Array.make n "" in
-  Stdlib.Hashtbl.iter (fun i v ->
-    if i >= 0 && i < n then Stdlib.Array.set buf i v) d.forward_raw;
-  Stdlib.Array.to_list buf""",
+  let pairs = Stdlib.Hashtbl.fold (fun i v acc -> (i, v) :: acc) d.forward_raw [] in
+  let sorted = Stdlib.List.sort (fun (a, _) (b, _) -> Stdlib.compare a b) pairs in
+  Stdlib.List.map snd sorted""",
 )
 
 path.write_text(content)
