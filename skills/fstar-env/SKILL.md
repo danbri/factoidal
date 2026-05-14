@@ -38,7 +38,11 @@ Run this skill when any of the following are true:
 3. **z3 must be exactly 4.13.3.** Other versions silently produce wrong
    answers or refuse proofs that should go through. The `apt-get install z3`
    version is too old; the `opam install z3` build often fails. Use the
-   pre-built binary from the Z3Prover GitHub release (see §3).
+   pre-built binary from the Z3Prover GitHub release (see §3). F\*'s
+   installer message also asks for `z3-4.8.5`; ignore that for Factoidal
+   — every `--z3version` flag in this repo pins `4.13.3`, and no module
+   targets 4.8.5. The 4.8.5 ask is for other F\* ecosystem projects
+   (HACL\*, EverParse, Vale).
 
 ## Quick diagnostic
 

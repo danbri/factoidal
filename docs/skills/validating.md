@@ -37,7 +37,10 @@ Both modules currently verify: `All verification conditions discharged successfu
 
 **Tooling:**
 - `fstar.exe` 2025.12.15 (via `opam install fstar` on switch `fstar`)
-- `z3-4.8.5` and `z3-4.13.3` at `/usr/local/bin/`
+- `z3-4.13.3` at `/usr/local/bin/` — Factoidal pins this version only.
+  F\*'s installer mentions `z3-4.8.5` too, for the benefit of other
+  F\* ecosystem projects (HACL\*, EverParse, Vale); no Factoidal
+  module uses it.
 - `opam` with OCaml 4.14.1
 
 **Proofs completed (all verified, zero admit() in RDF.Graph.Executable.fst):**

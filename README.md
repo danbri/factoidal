@@ -26,6 +26,8 @@ opam install -y fstar z3 zarith sha digestif
 
 # Install z3 4.13.3 (REQUIRED — F* refuses any other version)
 # The version `opam install z3` gives you (currently 4.15.x) will not work.
+# (F*'s installer message also mentions z3-4.8.5; that's for other F* ecosystem
+# projects like HACL*/EverParse. No Factoidal module uses 4.8.5 — only 4.13.3.)
 # Grab the binary from the Z3Prover release (Linux x86-64 shown):
 curl -sSL https://github.com/Z3Prover/z3/releases/download/z3-4.13.3/z3-4.13.3-x64-glibc-2.35.zip -o /tmp/z3.zip \
   && unzip -q /tmp/z3.zip -d /tmp \
