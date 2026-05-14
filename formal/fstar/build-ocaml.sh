@@ -301,6 +301,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              SPARQL.Plan.Loader.fst \
              SPARQL.Plan.AccessPath.fst \
              RDF.CottasStore.fst \
+             RDF.CottasStore.OnDiskRuntime.fst \
              RDF.CottasInMem.fst \
              SPARQL11.Store.fst \
              RDF.Store.Combine.fst \
@@ -423,6 +424,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     SPARQL_Plan_Loader.ml \
     SPARQL_Plan_AccessPath.ml \
     RDF_CottasStore.ml \
+    RDF_CottasStore_OnDiskRuntime.ml \
     RDF_CottasInMem.ml \
     fstar_pure_hashes.ml \
     RDF_Canonical.ml \
@@ -783,6 +785,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     SPARQL_Plan_Loader.ml
     SPARQL_Plan_AccessPath.ml
     RDF_CottasStore.ml
+    RDF_CottasStore_OnDiskRuntime.ml
     RDF_CottasInMem.ml
     fstar_pure_hashes.ml
     RDF_Canonical.ml

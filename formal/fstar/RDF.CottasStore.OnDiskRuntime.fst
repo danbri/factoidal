@@ -31,31 +31,15 @@ open RDF.CottasStore
 // round-trip CI gates and the realisation patch update land in
 // follow-up commits.
 
-// Search: row groups that COULD match a bound triple pattern.
-// Contract: result is a sound over-approximation of the row-group set
-// where `cottas_ondisk_search_spec` would yield matches. Bounded
-// below by 1 when the spec yields any match; bounded above by the
-// row-group count. The OCaml realisation uses the fast-prune cascade
-// (Yod6 / Tet3 / Lamed3 / presence bitmap) for low-cardinality cases.
-assume val ondisk_search_indexed
-  (ds : cottas_ondisk_store)
-  (s : option cottas_term_ref)
-  (p : option cottas_term_ref)
-  (o : option cottas_term_ref)
-  (g : option cottas_graph_ref)
-  : ML (list nat)
-
-// Cardinality estimate: a non-negative integer that bounds the true
-// row count from above. The OCaml realisation may consult per-rg
-// histograms or bloom-filter counts. Used by the SPARQL planner to
-// order BGP triples by expected selectivity.
-assume val ondisk_estimate_indexed
-  (ds : cottas_ondisk_store)
-  (s : option cottas_term_ref)
-  (p : option cottas_term_ref)
-  (o : option cottas_term_ref)
-  (g : option cottas_graph_ref)
-  : ML nat
+// NOTE on search/estimate: cottas_ondisk_search_fast and
+// cottas_ondisk_estimate_fast no longer exist as separate OCaml
+// helpers — they were retired in earlier sessions in favour of the
+// F* `cottas_ondisk_search` / `cottas_ondisk_estimate` paths via
+// filter_zipped_rows / count_zipped_rows. So this Phase 2.5b module
+// exposes only the 8 token decoder + encoder primitives that DO have
+// Hashtbl-fast counterparts; search/estimate are already F*-pure.
+// Future work (Phase 2.5h) re-introduces ondisk_search_indexed +
+// ondisk_estimate_indexed once a perf-fast variant lands again.
 
 // Token decoders: identical contract to the Tot spec in
 // RDF.CottasStore.fst, but Hashtbl-fast. ML-effected because the
@@ -93,3 +77,7 @@ assume val ondisk_encode_predicate_indexed
 assume val ondisk_encode_object_indexed
   (ds : cottas_ondisk_store) (o : rdf_term)
   : ML (option cottas_term_ref)
+
+assume val ondisk_encode_graph_indexed
+  (ds : cottas_ondisk_store) (g : iri)
+  : ML (option cottas_graph_ref)
