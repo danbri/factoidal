@@ -81,3 +81,37 @@ assume val ondisk_encode_object_indexed
 assume val ondisk_encode_graph_indexed
   (ds : cottas_ondisk_store) (g : iri)
   : ML (option cottas_graph_ref)
+
+// Registry-backed helpers (Phase 2c onward). These consult the
+// `RDF.CottasStore.LazyDictRegistry` for the lazy_dict view of the
+// per-path eager dicts populated at handle-open. Consumers that
+// want the typed F* boundary without going through the
+// cottas_ondisk_runtime.sh sed-rewrite can call into these.
+// Returns None if the path has not had `register_for_path` called
+// (e.g. handle opened with an old code path) — caller can fall back
+// to ondisk_*_indexed above.
+
+assume val ondisk_decode_subject_via_registry
+  (path : string) (id : cottas_term_ref)
+  : ML (option subject)
+
+assume val ondisk_decode_predicate_via_registry
+  (path : string) (id : cottas_term_ref)
+  : ML (option wf_iri)
+
+assume val ondisk_decode_object_via_registry
+  (path : string) (id : cottas_term_ref)
+  : ML (option rdf_term)
+
+assume val ondisk_decode_graph_via_registry
+  (path : string) (id : cottas_graph_ref)
+  : ML (option iri)
+
+assume val ondisk_encode_subject_via_registry
+  (path : string) (s : subject) : ML (option cottas_term_ref)
+
+assume val ondisk_encode_predicate_via_registry
+  (path : string) (p : wf_iri) : ML (option cottas_term_ref)
+
+assume val ondisk_encode_object_via_registry
+  (path : string) (o : rdf_term) : ML (option cottas_term_ref)

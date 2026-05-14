@@ -109,8 +109,53 @@ for (fn, arg, ret) in [
   RDF_CottasStore.Cottas_ondisk_runtime.{fast_name} h v""",
     )
 
+# Registry-backed helpers (Phase 2c onward) — consult the
+# LazyDictRegistry instead of going through Cottas_ondisk_runtime
+# directly. Returns None if `register_for_path` hasn't been called.
+for (fn, get_fn, val_kind) in [
+    ("ondisk_decode_subject_via_registry",   "get_subjects_lazy",   "subject"),
+    ("ondisk_decode_predicate_via_registry", "get_predicates_lazy", "wf_iri"),
+    ("ondisk_decode_object_via_registry",    "get_objects_lazy",    "rdf_term"),
+    ("ondisk_decode_graph_via_registry",     "get_graphs_lazy",     "iri"),
+]:
+    if val_kind == "iri":
+        ret_ml = "Prims.string"
+    else:
+        ret_ml = f"RDF_Graph_Executable.{val_kind}"
+    content, _ok = replace_failwith_stub(
+        content, fn,
+        f"""(path : Prims.string) (id : Prims.nat)
+  : {ret_ml} FStar_Pervasives_Native.option""",
+        f"""  match RDF_CottasStore_LazyDictRegistry.{get_fn} path with
+  | FStar_Pervasives_Native.Some d ->
+    RDF_CottasStore_LazyDict.decode_by_id d id
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None""",
+    )
+
+# Registry-backed encoders (3 — graph encode would need a separate
+# canonical-key for iri; the existing 3 cover the SPARQL-relevant
+# subject/predicate/object cases).
+for (fn, get_fn, key_fn, arg_kind) in [
+    ("ondisk_encode_subject_via_registry",
+     "get_subjects_lazy",  "subject_to_revmap_key", "subject"),
+    ("ondisk_encode_predicate_via_registry",
+     "get_predicates_lazy", "iri_to_revmap_key", "wf_iri"),
+    ("ondisk_encode_object_via_registry",
+     "get_objects_lazy",   "object_to_revmap_key", "rdf_term"),
+]:
+    arg_ml = f"RDF_Graph_Executable.{arg_kind}"
+    content, _ok = replace_failwith_stub(
+        content, fn,
+        f"""(path : Prims.string) (v : {arg_ml})
+  : Prims.nat FStar_Pervasives_Native.option""",
+        f"""  match RDF_CottasStore_LazyDictRegistry.{get_fn} path with
+  | FStar_Pervasives_Native.Some d ->
+    RDF_CottasStore_LazyDict.encode_by_key d (RDF_CottasStore.{key_fn} v)
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None""",
+    )
+
 path.write_text(content)
-sys.stderr.write("  [ondisk-runtime-realise] all 9 assume_val routes applied\n")
+sys.stderr.write("  [ondisk-runtime-realise] all 15 assume_val routes applied (8 direct + 7 registry)\n")
 PYEOF
 
 echo "  RDF.CottasStore.OnDiskRuntime realisation applied."
