@@ -192,7 +192,7 @@ the runner reports zero tests.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `Unexpected Z3 version: expected '4.8.5', got '4.13.3'` | Pre-fix build-ocaml.sh extract | Merge `claude/build-z3version-flag` or pass `--z3version 4.13.3` manually |
+| `Unexpected Z3 version: expected '4.13.3', got '4.15.x'` | `eval $(opam env)` puts opam's z3 4.15.x first on PATH; F\* with `--z3version 4.13.3` rejects it | Install `z3-4.13.3` binary at `/usr/local/bin/z3-4.13.3` per `skills/fstar-env/SKILL.md` §3 — F\* finds it by name regardless of PATH order |
 | `failwith "Not yet implemented"` at runtime | Unpatched `assume val` | Run `./build-ocaml.sh extract` or `./ocaml-patches.sh` |
 | `bin/linux-x86_64/w3c_runner` shows 0 tests | Stale binary; built before submodule paths added | Rebuild: `./build-ocaml.sh` |
 | Ext fails with `MLP_Const` translate error | Module has string-pattern match arms unsupported by KaRaMeL | Refactor to `if/else if`; or omit from karamel allowlist |

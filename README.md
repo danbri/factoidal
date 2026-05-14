@@ -19,18 +19,38 @@ sudo apt-get install -y opam libgmp-dev pkg-config
 brew install opam gmp pkg-config
 
 # Set up OCaml + F* toolchain (first time only)
-opam init -y
+opam init -y                                    # add --bare --disable-sandboxing on a root/container shell
 opam switch create fstar ocaml-base-compiler.4.14.1
-eval $(opam env --switch=fstar)
-opam install fstar z3 zarith sha digestif
+eval $(opam env --switch=fstar)                 # see "About `eval $(opam env)`" below — every new shell
+opam install -y fstar z3 zarith sha digestif
+
+# Install z3 4.13.3 (REQUIRED — F* refuses any other version)
+# The version `opam install z3` gives you (currently 4.15.x) will not work.
+# (F*'s installer message also mentions z3-4.8.5; that's for other F* ecosystem
+# projects like HACL*/EverParse. No Factoidal module uses 4.8.5 — only 4.13.3.)
+# Grab the binary from the Z3Prover release (Linux x86-64 shown):
+curl -sSL https://github.com/Z3Prover/z3/releases/download/z3-4.13.3/z3-4.13.3-x64-glibc-2.35.zip -o /tmp/z3.zip \
+  && unzip -q /tmp/z3.zip -d /tmp \
+  && sudo install -m 0755 /tmp/z3-4.13.3-x64-glibc-2.35/bin/z3 /usr/local/bin/z3-4.13.3 \
+  && sudo ln -sf /usr/local/bin/z3-4.13.3 /usr/local/bin/z3
+# macOS arm64: swap the URL for z3-4.13.3-arm64-osx-13.7.zip (see skills/fstar-env/SKILL.md §3).
 
 # Clone with W3C test data
 git clone --recurse-submodules https://github.com/danbri/factoidal.git
 cd factoidal
+# (If you cloned without --recurse-submodules, run:
+#   git submodule update --init --recursive
+# from inside the repo to fetch the W3C / ShEx / CSVW / RDF-canon test data.)
+
+# Verify the toolchain is wired up (these MUST all succeed)
+eval $(opam env --switch=fstar)
+which fstar.exe                 # /root/.opam/fstar/bin/fstar.exe (or similar)
+fstar.exe --version             # F* 2026.03.24 or later
+z3-4.13.3 --version             # Z3 version 4.13.3 — F* looks for this exact binary name
 
 # Build everything (verify F* → extract OCaml → compile)
 cd formal/fstar
-eval $(opam env --switch=fstar)
+eval $(opam env --switch=fstar)                 # again — opam env is per-shell
 ./build-ocaml.sh
 
 # The factoidal CLI is now at:
@@ -40,6 +60,27 @@ eval $(opam env --switch=fstar)
 alias factoidal=`pwd`/formal/fstar/ocaml-output/factoidal
 
 ```
+
+### About `eval $(opam env --switch=fstar)`
+
+`opam install` puts `fstar.exe` and the OCaml libraries inside
+`~/.opam/fstar/`, but **nothing is on `PATH` until you source the opam
+env in the current shell**. Skip this step and `fstar.exe` will appear
+to be uninstalled even though it's right there.
+
+Run it once per shell, every shell that touches F\* — typically the
+first line of any session, and inside any script that calls
+`fstar.exe`, `make verify`, or `./build-ocaml.sh`. To make it
+permanent in a developer shell, drop the line into `~/.bashrc` /
+`~/.zshrc` (`opam init --shell-setup` will do this for you on a fresh
+laptop install). Containers / one-shot sessions can either re-source
+each time or `export OPAMSWITCH=fstar PATH=$HOME/.opam/fstar/bin:$PATH`
+manually.
+
+If F\* / Z3 commands "aren't installed" on a system that was working
+five minutes ago, this is almost always why. The
+[`fstar-env` skill](skills/fstar-env/SKILL.md) has the full diagnostic
+checklist.
 
 ## The `factoidal` Command-Line Tool
 

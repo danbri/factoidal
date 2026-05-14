@@ -38,7 +38,11 @@ Run this skill when any of the following are true:
 3. **z3 must be exactly 4.13.3.** Other versions silently produce wrong
    answers or refuse proofs that should go through. The `apt-get install z3`
    version is too old; the `opam install z3` build often fails. Use the
-   pre-built binary from the Z3Prover GitHub release (see §3).
+   pre-built binary from the Z3Prover GitHub release (see §3). F\*'s
+   installer message also asks for `z3-4.8.5`; ignore that for Factoidal
+   — every `--z3version` flag in this repo pins `4.13.3`, and no module
+   targets 4.8.5. The 4.8.5 ask is for other F\* ecosystem projects
+   (HACL\*, EverParse, Vale).
 
 ## Quick diagnostic
 
@@ -49,11 +53,16 @@ Before installing anything, check what's already there:
 opam --version 2>&1 || echo "opam: missing"
 opam switch show 2>&1 | grep -q fstar && echo "fstar switch: present" || echo "fstar switch: missing"
 which fstar.exe 2>&1 || echo "fstar.exe: not on PATH (switch may not be activated)"
+z3-4.13.3 --version 2>&1 || echo "z3-4.13.3: missing (F* won't run without it)"
 z3 --version 2>&1 || echo "z3: missing"
 ```
 
 If `fstar switch` is present but `fstar.exe` is not on PATH, **the switch
-just needs activation** — see §4. Don't reinstall anything.
+just needs activation** — see §4. Don't reinstall anything. This is the
+single most common failure mode: `opam install fstar` succeeded ages
+ago, but a new shell hasn't sourced `opam env --switch=fstar`, so
+`fstar.exe`, the F\*-built `z3` shim, and the OCaml libraries all look
+absent. Sourcing the env makes them appear. **Every new shell**.
 
 If `z3 --version` shows something other than 4.13.3, replace it (§3). Wrong
 versions of z3 are a top-three time-sink in this project.
@@ -83,12 +92,32 @@ First-time only:
 opam init -y
 opam switch create fstar ocaml-base-compiler.4.14.1
 eval $(opam env --switch=fstar)
-opam install -y fstar z3 js_of_ocaml js_of_ocaml-compiler zarith_stubs_js
+# Native build deps (required):
+opam install -y fstar z3 zarith sha digestif
+# JS / Wasm extraction deps (optional — only if you build the browser bundles):
+opam install -y js_of_ocaml js_of_ocaml-compiler zarith_stubs_js
 ```
 
-The `opam install` line installs F\* itself plus the JS extraction
-toolchain. The `z3` opam package is installed too, but the build often
-fails or produces the wrong version — §3 replaces the binary on PATH.
+The first `opam install` line covers what's needed to verify F\*, extract
+OCaml, and compile the native `factoidal` / `w3c_runner` binaries:
+`fstar` plus the OCaml runtime libraries the extracted code links against
+(`zarith` for bigints, `sha` + `digestif` for the MD5/SHA built-ins).
+The second is only needed for the optional `./build-ocaml.sh js` / `wasm`
+targets. **The `z3` opam package is the wrong version** (today's opam
+ships z3 4.15.x; F\* refuses anything other than 4.13.3 with a runtime
+error) — §3 installs the correct binary on PATH alongside it. Don't skip §3.
+
+**Non-interactive / root / container environments.** `opam init -y` will
+prompt for sandbox setup and shell-rc edits on a TTY; in a sandbox or as
+root those prompts can hang or fail. Use:
+
+```bash
+opam init -y --bare --disable-sandboxing
+```
+
+`--bare` skips the default switch (we make our own); `--disable-sandboxing`
+is needed when bubblewrap isn't available (most containers, root sessions).
+On a normal developer laptop, plain `opam init -y` is fine.
 
 ## §3. Install z3 4.13.3 (CRITICAL)
 

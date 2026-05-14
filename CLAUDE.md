@@ -176,6 +176,13 @@ rule #17").
     `key insight`, `key finding`, etc. perform candor instead of
     being clear. The sentence either carries weight or it doesn't.
     Full rule + rewrites in `skills/markdown-style/SKILL.md`.
+27. Never close an epic-tracker issue (#200, #198, etc.) until every
+    "done criteria" checkbox in its body is ticked. *"End in sight"*
+    / *"momentum is real"* / *"endgame burst"* are progress signals,
+    not completion. Body is the contract. War story: #200 closed
+    2026-05-10 15:14Z by an agent whose own follow-up comment three
+    minutes later said *"11 items remaining"*. Full rule in
+    `skills/issue-hygiene/SKILL.md` Cautions.
 
 ## Skills (operational details, on-demand)
 

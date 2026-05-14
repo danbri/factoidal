@@ -20,8 +20,15 @@ tracking when it can be eliminated.**
 | `53_blank_node_variable_rewriting.sh` | [#53](https://github.com/danbri/factoidal/issues/53) | **KNOWN VIOLATION** | w3c_runner.ml |
 | `69_runner_io_glue.sh` | [#69](https://github.com/danbri/factoidal/issues/69) | I/O glue | w3c_runner.ml |
 | `89_fast_string_primitives.sh` | [#89](https://github.com/danbri/factoidal/issues/89) | assume-val stubs (perf) | Parser_FastString.ml |
-| `103_parquet_ascii_string_fast_path.sh` | [#103](https://github.com/danbri/factoidal/issues/103) | OCaml runtime override (perf) | Parquet_Footer.ml |
+| ~~`103_parquet_ascii_string_fast_path.sh`~~ | (was: parquet ASCII fast-path) | RETIRED 2026-05-14 — Parquet.Footer.fst migrated to Parser.FastString primitives in Phases A/B/C; patch deleted in Phase D. | Parquet_Footer.ml (formerly) |
 | `202_now_ms.sh` | [#202](https://github.com/danbri/factoidal/issues/202) | assume-val stubs (I/O clock) | SPARQL_Eval_TimeBudget.ml |
+
+> **Note on the `103_` filename**: the patch was named to track a GitHub issue, but the
+> actual issue #103 on GitHub ("CONSTRUCT over --data-cottas still falls back to eager
+> in-memory path") is unrelated to the Parquet ASCII fast-path. The same drift exists for
+> the (already-retired) `95_stack_safe_list_ops.sh` ↔ GitHub `#95` (which is about WASM
+> demo perf). Future patches should either confirm the GitHub issue mapping before naming,
+> or use a local-only number that doesn't collide with the GitHub issue space.
 
 ## Categories
 

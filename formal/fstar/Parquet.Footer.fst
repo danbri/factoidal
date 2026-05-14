@@ -1,6 +1,14 @@
 module Parquet.Footer
 
 module U32 = FStar.UInt32
+module FS = Parser.FastString
+
+// #103 Phase B (2026-05-14): byte-indexed FastString primitives replace
+// FStar.String's BatUTF8-routed equivalents on the hex/ASCII decode path.
+// Every value passed through these helpers is constructed from ASCII bytes
+// (hex digits or printable 0x20-0x7E payload), so codepoint count equals
+// byte count and the substitution is observationally sound. See
+// docs/designissues/2026-05-14-issue-103-parquet-fastring-migration-plan.md.
 
 type parquet_footer = {
   pf_metadata_len : nat;
@@ -40,15 +48,16 @@ let hex_nibble (c:FStar.Char.char) : option nat =
   else if code >= 97 && code <= 102 then Some (code - 97 + 10)
   else None
 
-let byte_at_hex (s:string) (i:nat { i + 1 < String.length s }) : option (b:nat { b < 256 }) =
-  match hex_nibble (String.index s i), hex_nibble (String.index s (i + 1)) with
+let byte_at_hex (s:string) (i:nat { i + 1 < FS.fs_byte_length s }) : option (b:nat { b < 256 }) =
+  match hex_nibble (FStar.Char.char_of_int (FS.fs_byte_at s i)),
+        hex_nibble (FStar.Char.char_of_int (FS.fs_byte_at s (i + 1))) with
   | Some hi, Some lo ->
     let value:nat = hi + hi + hi + hi + hi + hi + hi + hi +
                     hi + hi + hi + hi + hi + hi + hi + hi + lo in
     Some value
   | _ -> None
 
-let le_u32_at_hex (s:string) (start:nat { start + 7 < String.length s }) : option nat =
+let le_u32_at_hex (s:string) (start:nat { start + 7 < FS.fs_byte_length s }) : option nat =
   match byte_at_hex s start,
         byte_at_hex s (start + 2),
         byte_at_hex s (start + 4),
@@ -62,10 +71,10 @@ let le_u32_at_hex (s:string) (start:nat { start + 7 < String.length s }) : optio
   | _ -> None
 
 let parse_parquet_footer_tail_hex (tail:string) : option parquet_footer =
-  let len = String.length tail in
+  let len = FS.fs_byte_length tail in
   if len < 16 then None
   else
-    let magic = String.sub tail (len - 8) 8 in
+    let magic = FS.fs_byte_sub tail (len - 8) 8 in
     if magic <> parquet_magic_hex then None
     else
       let footer_start = len - 16 in
@@ -81,21 +90,26 @@ let parse_parquet_footer_tail_hex (tail:string) : option parquet_footer =
 let is_printable_byte (b:nat) : bool =
   b >= 32 && b <= 126
 
-let finish_ascii_run (current:list FStar.Char.char) (acc:list string) : list string =
+// #103 Phase C (2026-05-14): callers carry a list of byte-valued nats
+// rather than `list FStar.Char.char`, so we can hand off directly to
+// FS.fs_string_of_list_ascii (O(N)) instead of the BatUTF8.init+List.at
+// composition behind FStar.String.string_of_list (O(N^2)). The byte
+// elements come from `byte_at_hex` which already refines them as < 256.
+let finish_ascii_run (current:list (n:nat{n < 256})) (acc:list string) : list string =
   if List.Tot.length current = 0 then acc
-  else (String.string_of_list (List.Tot.rev current)) :: acc
+  else (FS.fs_string_of_list_ascii (List.Tot.rev current)) :: acc
 
 let rec extract_ascii_strings_hex (hex:string) (pos:nat)
-  (current:list FStar.Char.char) (acc:list string)
-  : Tot (list string) (decreases (String.length hex - pos)) =
-  if pos + 1 >= String.length hex then
+  (current:list (n:nat{n < 256})) (acc:list string)
+  : Tot (list string) (decreases (FS.fs_byte_length hex - pos)) =
+  if pos + 1 >= FS.fs_byte_length hex then
     List.Tot.rev (finish_ascii_run current acc)
   else
     match byte_at_hex hex pos with
     | None -> List.Tot.rev (finish_ascii_run current acc)
     | Some b ->
       if is_printable_byte b then
-        extract_ascii_strings_hex hex (pos + 2) ((FStar.Char.char_of_int b) :: current) acc
+        extract_ascii_strings_hex hex (pos + 2) (b :: current) acc
       else
         extract_ascii_strings_hex hex (pos + 2) [] (finish_ascii_run current acc)
 
@@ -112,8 +126,8 @@ let probe_parquet_metadata_strings (path:string) : option (list string) =
     | None -> None
     | Some footer_hex ->
       let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-      if meta_hex_len <= String.length footer_hex then
-        Some (extract_ascii_strings_hex (String.sub footer_hex 0 meta_hex_len) 0 [] [])
+      if meta_hex_len <= FS.fs_byte_length footer_hex then
+        Some (extract_ascii_strings_hex (FS.fs_byte_sub footer_hex 0 meta_hex_len) 0 [] [])
       else
         None
 
@@ -155,7 +169,7 @@ let succ_nat (n:nat) : nat =
 let div_nat_pos (x:nat) (y:nat { y > 0 }) : nat =
   x / y
 
-let le_u24_at_hex (s:string) (start:nat { start + 5 < String.length s }) : option nat =
+let le_u24_at_hex (s:string) (start:nat { start + 5 < FS.fs_byte_length s }) : option nat =
   match byte_at_hex s start,
         byte_at_hex s (start + 2),
         byte_at_hex s (start + 4) with
@@ -166,7 +180,7 @@ let le_u24_at_hex (s:string) (start:nat { start + 5 < String.length s }) : optio
 let rec skip_varint_hex (hex:string) (pos:nat) (fuel:nat)
   : Tot (option nat) (decreases fuel) =
   if fuel = 0 then None
-  else if pos + 1 >= String.length hex then None
+  else if pos + 1 >= FS.fs_byte_length hex then None
   else
     match byte_at_hex hex pos with
     | None -> None
@@ -187,7 +201,7 @@ let rec skip_n_values_hex (hex:string) (etype:nat) (count:nat) (pos:nat) (fuel:n
 and skip_struct_fields_hex (hex:string) (pos:nat) (fuel:nat)
   : Tot (option nat) (decreases fuel) =
   if fuel = 0 then None
-  else if pos + 1 >= String.length hex then None
+  else if pos + 1 >= FS.fs_byte_length hex then None
   else
     match byte_at_hex hex pos with
     | None -> None
@@ -214,11 +228,11 @@ and skip_compact_value_hex (hex:string) (ftype:nat) (pos:nat) (fuel:nat)
   else
     if ftype = compact_t_bool_true || ftype = compact_t_bool_false then Some pos
     else if ftype = compact_t_byte then
-      if pos + 1 < String.length hex then Some (pos + 2) else None
+      if pos + 1 < FS.fs_byte_length hex then Some (pos + 2) else None
     else if ftype = compact_t_i16 || ftype = compact_t_i32 || ftype = compact_t_i64 then
       skip_varint_hex hex pos (fuel - 1)
     else if ftype = compact_t_double then
-      if pos + 15 < String.length hex then Some (pos + 16) else None
+      if pos + 15 < FS.fs_byte_length hex then Some (pos + 16) else None
     else if ftype = compact_t_binary then
       match skip_varint_hex hex pos (fuel - 1) with
       | None -> None
@@ -226,7 +240,7 @@ and skip_compact_value_hex (hex:string) (ftype:nat) (pos:nat) (fuel:nat)
         let rec decode_varint_hex (p:nat) (shift:nat) (acc:nat) (fuel2:nat)
           : Tot (option nat) (decreases fuel2) =
           if fuel2 = 0 then None
-          else if p + 1 >= String.length hex then None
+          else if p + 1 >= FS.fs_byte_length hex then None
           else
             match byte_at_hex hex p with
             | None -> None
@@ -239,9 +253,9 @@ and skip_compact_value_hex (hex:string) (ftype:nat) (pos:nat) (fuel:nat)
          | None -> None
          | Some blen ->
            let data_end = len_end + (blen + blen) in
-           if data_end <= String.length hex then Some data_end else None)
+           if data_end <= FS.fs_byte_length hex then Some data_end else None)
     else if ftype = compact_t_list || ftype = compact_t_set then
-      if pos + 1 >= String.length hex then None
+      if pos + 1 >= FS.fs_byte_length hex then None
       else match byte_at_hex hex pos with
       | None -> None
       | Some header ->
@@ -253,7 +267,7 @@ and skip_compact_value_hex (hex:string) (ftype:nat) (pos:nat) (fuel:nat)
           let rec decode_varint_hex (p:nat) (shift:nat) (acc:nat) (fuel2:nat)
             : Tot (option (nat & nat)) (decreases fuel2) =
             if fuel2 = 0 then None
-            else if p + 1 >= String.length hex then None
+            else if p + 1 >= FS.fs_byte_length hex then None
             else
               match byte_at_hex hex p with
               | None -> None
@@ -283,7 +297,7 @@ let zigzag_decode_int (n:nat) : int =
 let rec decode_varint_value_with_end_hex (hex:string) (p:nat) (shift:nat) (acc:nat) (fuel:nat)
   : Tot (option (nat & nat)) (decreases fuel) =
   if fuel = 0 then None
-  else if p + 1 >= String.length hex then None
+  else if p + 1 >= FS.fs_byte_length hex then None
   else
     match byte_at_hex hex p with
     | None -> None
@@ -300,7 +314,7 @@ let rec decode_varint_value_hex (hex:string) (p:nat) (shift:nat) (acc:nat) (fuel
   | Some (n, _) -> Some n
 
 let decode_compact_list_info_hex (hex:string) (pos:nat) (fuel:nat) : option compact_list_info =
-  if pos + 1 >= String.length hex then None
+  if pos + 1 >= FS.fs_byte_length hex then None
   else
     match byte_at_hex hex pos with
     | None -> None
@@ -326,21 +340,22 @@ let decode_compact_binary_hex (hex:string) (pos:nat) (fuel:nat) : option string 
   | Some (blen, payload_start) ->
     let chars_hex_len = blen + blen in
     let payload_end = payload_start + chars_hex_len in
-    if payload_end > String.length hex then None
+    if payload_end > FS.fs_byte_length hex then None
     else
-      let rec build_chars (p:nat) (remaining:nat) (acc:list FStar.Char.char)
-        : Tot (option (list FStar.Char.char)) (decreases remaining) =
+      // #103 Phase C: list of byte-valued nats fed to fs_string_of_list_ascii.
+      let rec build_chars (p:nat) (remaining:nat) (acc:list (n:nat{n < 256}))
+        : Tot (option (list (n:nat{n < 256}))) (decreases remaining) =
         if remaining = 0 then Some (List.Tot.rev acc)
         else if p + 1 >= payload_end then None
         else
           match byte_at_hex hex p with
           | None -> None
           | Some b ->
-            build_chars (p + 2) (remaining - 1) ((FStar.Char.char_of_int b) :: acc)
+            build_chars (p + 2) (remaining - 1) (b :: acc)
       in
       match build_chars payload_start blen [] with
       | None -> None
-      | Some chars -> Some (String.string_of_list chars)
+      | Some chars -> Some (FS.fs_string_of_list_ascii chars)
 
 let nth_compact_list_element_start_hex (hex:string) (list_pos:nat) (index:nat) (fuel:nat)
   : option nat =
@@ -363,7 +378,7 @@ let nth_compact_list_element_start_hex (hex:string) (list_pos:nat) (index:nat) (
 let rec nth_field_hex (hex:string) (target_id:nat) (pos:nat) (prev_id:nat) (fuel:nat)
   : Tot (option compact_field) (decreases fuel) =
   if fuel = 0 then None
-  else if pos + 1 >= String.length hex then None
+  else if pos + 1 >= FS.fs_byte_length hex then None
   else
     match byte_at_hex hex pos with
     | None -> None
@@ -375,7 +390,7 @@ let rec nth_field_hex (hex:string) (target_id:nat) (pos:nat) (prev_id:nat) (fuel
         let rec decode_varint_hex (p:nat) (shift:nat) (acc:nat) (fuel2:nat)
           : Tot (option (nat & nat)) (decreases fuel2) =
           if fuel2 = 0 then None
-          else if p + 1 >= String.length hex then None
+          else if p + 1 >= FS.fs_byte_length hex then None
           else
             match byte_at_hex hex p with
             | None -> None
@@ -417,8 +432,8 @@ let probe_parquet_num_rows (path:string) : option nat =
     | None -> None
     | Some footer_hex ->
       let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-      if meta_hex_len <= String.length footer_hex then
-        let meta_hex = String.sub footer_hex 0 meta_hex_len in
+      if meta_hex_len <= FS.fs_byte_length footer_hex then
+        let meta_hex = FS.fs_byte_sub footer_hex 0 meta_hex_len in
         match nth_field_hex meta_hex 3 0 0 meta_hex_len with
         | None -> None
         | Some field ->
@@ -437,8 +452,8 @@ let probe_parquet_row_group_count (path:string) : option nat =
     | None -> None
     | Some footer_hex ->
       let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-      if meta_hex_len <= String.length footer_hex then
-        let meta_hex = String.sub footer_hex 0 meta_hex_len in
+      if meta_hex_len <= FS.fs_byte_length footer_hex then
+        let meta_hex = FS.fs_byte_sub footer_hex 0 meta_hex_len in
         match nth_field_hex meta_hex 4 0 0 meta_hex_len with
         | None -> None
         | Some field ->
@@ -454,8 +469,8 @@ let probe_parquet_first_row_group_num_rows (path:string) : option nat =
     | None -> None
     | Some footer_hex ->
       let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-      if meta_hex_len <= String.length footer_hex then
-        let meta_hex = String.sub footer_hex 0 meta_hex_len in
+      if meta_hex_len <= FS.fs_byte_length footer_hex then
+        let meta_hex = FS.fs_byte_sub footer_hex 0 meta_hex_len in
         match nth_field_hex meta_hex 4 0 0 meta_hex_len with
         | None -> None
         | Some field ->
@@ -484,8 +499,8 @@ let probe_parquet_first_row_group_column_count (path:string) : option nat =
     | None -> None
     | Some footer_hex ->
       let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-      if meta_hex_len <= String.length footer_hex then
-        let meta_hex = String.sub footer_hex 0 meta_hex_len in
+      if meta_hex_len <= FS.fs_byte_length footer_hex then
+        let meta_hex = FS.fs_byte_sub footer_hex 0 meta_hex_len in
         match nth_field_hex meta_hex 4 0 0 meta_hex_len with
         | None -> None
         | Some field ->
@@ -511,8 +526,8 @@ let probe_parquet_first_column_name (path:string) : option string =
     | None -> None
     | Some footer_hex ->
       let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-      if meta_hex_len <= String.length footer_hex then
-        let meta_hex = String.sub footer_hex 0 meta_hex_len in
+      if meta_hex_len <= FS.fs_byte_length footer_hex then
+        let meta_hex = FS.fs_byte_sub footer_hex 0 meta_hex_len in
         match nth_field_hex meta_hex 4 0 0 meta_hex_len with
         | None -> None
         | Some row_groups_field ->
@@ -554,8 +569,8 @@ let probe_parquet_first_column_data_page_offset (path:string) : option nat =
     | None -> None
     | Some footer_hex ->
       let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-      if meta_hex_len <= String.length footer_hex then
-        let meta_hex = String.sub footer_hex 0 meta_hex_len in
+      if meta_hex_len <= FS.fs_byte_length footer_hex then
+        let meta_hex = FS.fs_byte_sub footer_hex 0 meta_hex_len in
         match nth_field_hex meta_hex 4 0 0 meta_hex_len with
         | None -> None
         | Some row_groups_field ->
@@ -597,8 +612,8 @@ let probe_parquet_column_name (path:string) (col_index:nat) : option string =
     | None -> None
     | Some footer_hex ->
       let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-      if meta_hex_len <= String.length footer_hex then
-        let meta_hex = String.sub footer_hex 0 meta_hex_len in
+      if meta_hex_len <= FS.fs_byte_length footer_hex then
+        let meta_hex = FS.fs_byte_sub footer_hex 0 meta_hex_len in
         match nth_field_hex meta_hex 4 0 0 meta_hex_len with
         | None -> None
         | Some row_groups_field ->
@@ -640,8 +655,8 @@ let probe_parquet_column_num_values (path:string) (col_index:nat) : option nat =
     | None -> None
     | Some footer_hex ->
       let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-      if meta_hex_len <= String.length footer_hex then
-        let meta_hex = String.sub footer_hex 0 meta_hex_len in
+      if meta_hex_len <= FS.fs_byte_length footer_hex then
+        let meta_hex = FS.fs_byte_sub footer_hex 0 meta_hex_len in
         match nth_field_hex meta_hex 4 0 0 meta_hex_len with
         | None -> None
         | Some row_groups_field ->
@@ -683,8 +698,8 @@ let probe_parquet_column_total_compressed_size (path:string) (col_index:nat) : o
     | None -> None
     | Some footer_hex ->
       let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-      if meta_hex_len <= String.length footer_hex then
-        let meta_hex = String.sub footer_hex 0 meta_hex_len in
+      if meta_hex_len <= FS.fs_byte_length footer_hex then
+        let meta_hex = FS.fs_byte_sub footer_hex 0 meta_hex_len in
         match nth_field_hex meta_hex 4 0 0 meta_hex_len with
         | None -> None
         | Some row_groups_field ->
@@ -726,8 +741,8 @@ let probe_parquet_column_total_uncompressed_size (path:string) (col_index:nat) :
     | None -> None
     | Some footer_hex ->
       let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-      if meta_hex_len <= String.length footer_hex then
-        let meta_hex = String.sub footer_hex 0 meta_hex_len in
+      if meta_hex_len <= FS.fs_byte_length footer_hex then
+        let meta_hex = FS.fs_byte_sub footer_hex 0 meta_hex_len in
         match nth_field_hex meta_hex 4 0 0 meta_hex_len with
         | None -> None
         | Some row_groups_field ->
@@ -780,8 +795,8 @@ let probe_parquet_column_compression_codec (path:string) (col_index:nat) : optio
     | None -> None
     | Some footer_hex ->
       let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-      if meta_hex_len <= String.length footer_hex then
-        let meta_hex = String.sub footer_hex 0 meta_hex_len in
+      if meta_hex_len <= FS.fs_byte_length footer_hex then
+        let meta_hex = FS.fs_byte_sub footer_hex 0 meta_hex_len in
         match nth_field_hex meta_hex 4 0 0 meta_hex_len with
         | None -> None
         | Some row_groups_field ->
@@ -823,8 +838,8 @@ let probe_parquet_column_data_page_offset (path:string) (col_index:nat) : option
     | None -> None
     | Some footer_hex ->
       let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-      if meta_hex_len <= String.length footer_hex then
-        let meta_hex = String.sub footer_hex 0 meta_hex_len in
+      if meta_hex_len <= FS.fs_byte_length footer_hex then
+        let meta_hex = FS.fs_byte_sub footer_hex 0 meta_hex_len in
         match nth_field_hex meta_hex 4 0 0 meta_hex_len with
         | None -> None
         | Some row_groups_field ->
@@ -915,12 +930,12 @@ let probe_parquet_column_page_header_type (path:string) (col_index:nat) : option
     match parquet_read_range_hex path page_offset 128 with
     | None -> None
     | Some page_hex ->
-      match nth_field_hex page_hex 1 0 0 (String.length page_hex) with
+      match nth_field_hex page_hex 1 0 0 (FS.fs_byte_length page_hex) with
       | None -> None
       | Some type_field ->
         if type_field.cf_type <> compact_t_i32 then None
         else
-          match decode_varint_value_hex page_hex type_field.cf_value_start 0 0 (String.length page_hex) with
+          match decode_varint_value_hex page_hex type_field.cf_value_start 0 0 (FS.fs_byte_length page_hex) with
           | None -> None
           | Some raw -> Some (parquet_page_type_name (zigzag_decode_nat raw))
 
@@ -931,12 +946,12 @@ let probe_parquet_column_page_header_uncompressed_size (path:string) (col_index:
     match parquet_read_range_hex path page_offset 128 with
     | None -> None
     | Some page_hex ->
-      match nth_field_hex page_hex 2 0 0 (String.length page_hex) with
+      match nth_field_hex page_hex 2 0 0 (FS.fs_byte_length page_hex) with
       | None -> None
       | Some size_field ->
         if size_field.cf_type <> compact_t_i32 then None
         else
-          match decode_varint_value_hex page_hex size_field.cf_value_start 0 0 (String.length page_hex) with
+          match decode_varint_value_hex page_hex size_field.cf_value_start 0 0 (FS.fs_byte_length page_hex) with
           | None -> None
           | Some raw -> Some (zigzag_decode_nat raw)
 
@@ -947,12 +962,12 @@ let probe_parquet_column_page_header_compressed_size (path:string) (col_index:na
     match parquet_read_range_hex path page_offset 128 with
     | None -> None
     | Some page_hex ->
-      match nth_field_hex page_hex 3 0 0 (String.length page_hex) with
+      match nth_field_hex page_hex 3 0 0 (FS.fs_byte_length page_hex) with
       | None -> None
       | Some size_field ->
         if size_field.cf_type <> compact_t_i32 then None
         else
-          match decode_varint_value_hex page_hex size_field.cf_value_start 0 0 (String.length page_hex) with
+          match decode_varint_value_hex page_hex size_field.cf_value_start 0 0 (FS.fs_byte_length page_hex) with
           | None -> None
           | Some raw -> Some (zigzag_decode_nat raw)
 
@@ -963,17 +978,17 @@ let probe_parquet_column_page_header_num_values (path:string) (col_index:nat) : 
     match parquet_read_range_hex path page_offset 128 with
     | None -> None
     | Some page_hex ->
-      match nth_field_hex page_hex 5 0 0 (String.length page_hex) with
+      match nth_field_hex page_hex 5 0 0 (FS.fs_byte_length page_hex) with
       | None -> None
       | Some data_page_header_field ->
         if data_page_header_field.cf_type <> compact_t_struct then None
         else
-          match nth_field_hex page_hex 1 data_page_header_field.cf_value_start 0 (String.length page_hex) with
+          match nth_field_hex page_hex 1 data_page_header_field.cf_value_start 0 (FS.fs_byte_length page_hex) with
           | None -> None
           | Some num_values_field ->
             if num_values_field.cf_type <> compact_t_i32 then None
             else
-              match decode_varint_value_hex page_hex num_values_field.cf_value_start 0 0 (String.length page_hex) with
+              match decode_varint_value_hex page_hex num_values_field.cf_value_start 0 0 (FS.fs_byte_length page_hex) with
               | None -> None
               | Some raw -> Some (zigzag_decode_nat raw)
 
@@ -984,7 +999,7 @@ let probe_parquet_column_page_header_length (path:string) (col_index:nat) : opti
     match parquet_read_range_hex path page_offset 128 with
     | None -> None
     | Some page_hex ->
-      match skip_struct_fields_hex page_hex 0 (String.length page_hex) with
+      match skip_struct_fields_hex page_hex 0 (FS.fs_byte_length page_hex) with
       | None -> None
       | Some end_hex -> Some (end_hex / 2)
 
@@ -1001,17 +1016,17 @@ let probe_parquet_column_page_header_data_encoding (path:string) (col_index:nat)
     match parquet_read_range_hex path page_offset 128 with
     | None -> None
     | Some page_hex ->
-      match nth_field_hex page_hex 5 0 0 (String.length page_hex) with
+      match nth_field_hex page_hex 5 0 0 (FS.fs_byte_length page_hex) with
       | None -> None
       | Some data_page_header_field ->
         if data_page_header_field.cf_type <> compact_t_struct then None
         else
-          match nth_field_hex page_hex 2 data_page_header_field.cf_value_start 0 (String.length page_hex) with
+          match nth_field_hex page_hex 2 data_page_header_field.cf_value_start 0 (FS.fs_byte_length page_hex) with
           | None -> None
           | Some encoding_field ->
             if encoding_field.cf_type <> compact_t_i32 then None
             else
-              match decode_varint_value_hex page_hex encoding_field.cf_value_start 0 0 (String.length page_hex) with
+              match decode_varint_value_hex page_hex encoding_field.cf_value_start 0 0 (FS.fs_byte_length page_hex) with
               | None -> None
               | Some raw -> Some (parquet_encoding_name (zigzag_decode_nat raw))
 
@@ -1022,17 +1037,17 @@ let probe_parquet_column_page_header_definition_level_encoding (path:string) (co
     match parquet_read_range_hex path page_offset 128 with
     | None -> None
     | Some page_hex ->
-      match nth_field_hex page_hex 5 0 0 (String.length page_hex) with
+      match nth_field_hex page_hex 5 0 0 (FS.fs_byte_length page_hex) with
       | None -> None
       | Some data_page_header_field ->
         if data_page_header_field.cf_type <> compact_t_struct then None
         else
-          match nth_field_hex page_hex 3 data_page_header_field.cf_value_start 0 (String.length page_hex) with
+          match nth_field_hex page_hex 3 data_page_header_field.cf_value_start 0 (FS.fs_byte_length page_hex) with
           | None -> None
           | Some encoding_field ->
             if encoding_field.cf_type <> compact_t_i32 then None
             else
-              match decode_varint_value_hex page_hex encoding_field.cf_value_start 0 0 (String.length page_hex) with
+              match decode_varint_value_hex page_hex encoding_field.cf_value_start 0 0 (FS.fs_byte_length page_hex) with
               | None -> None
               | Some raw -> Some (parquet_encoding_name (zigzag_decode_nat raw))
 
@@ -1043,17 +1058,17 @@ let probe_parquet_column_page_header_repetition_level_encoding (path:string) (co
     match parquet_read_range_hex path page_offset 128 with
     | None -> None
     | Some page_hex ->
-      match nth_field_hex page_hex 5 0 0 (String.length page_hex) with
+      match nth_field_hex page_hex 5 0 0 (FS.fs_byte_length page_hex) with
       | None -> None
       | Some data_page_header_field ->
         if data_page_header_field.cf_type <> compact_t_struct then None
         else
-          match nth_field_hex page_hex 4 data_page_header_field.cf_value_start 0 (String.length page_hex) with
+          match nth_field_hex page_hex 4 data_page_header_field.cf_value_start 0 (FS.fs_byte_length page_hex) with
           | None -> None
           | Some encoding_field ->
             if encoding_field.cf_type <> compact_t_i32 then None
             else
-              match decode_varint_value_hex page_hex encoding_field.cf_value_start 0 0 (String.length page_hex) with
+              match decode_varint_value_hex page_hex encoding_field.cf_value_start 0 0 (FS.fs_byte_length page_hex) with
               | None -> None
               | Some raw -> Some (parquet_encoding_name (zigzag_decode_nat raw))
 
@@ -1064,7 +1079,7 @@ let probe_parquet_column_page_payload_magic_hex (path:string) (col_index:nat) : 
     match parquet_read_range_hex path payload_offset 4 with
     | None -> None
     | Some payload_hex ->
-      if String.length payload_hex >= 8 then Some (String.sub payload_hex 0 8) else None
+      if FS.fs_byte_length payload_hex >= 8 then Some (FS.fs_byte_sub payload_hex 0 8) else None
 
 let probe_parquet_column_zstd_frame_header_size (path:string) (col_index:nat) : option nat =
   match probe_parquet_column_page_payload_offset path col_index with
@@ -1073,7 +1088,7 @@ let probe_parquet_column_zstd_frame_header_size (path:string) (col_index:nat) : 
     match parquet_read_range_hex path payload_offset 18 with
     | None -> None
     | Some payload_hex ->
-      if String.length payload_hex < 10 then None
+      if FS.fs_byte_length payload_hex < 10 then None
       else
         match byte_at_hex payload_hex 8 with
         | None -> None
@@ -1094,7 +1109,7 @@ let probe_parquet_column_zstd_first_block_type (path:string) (col_index:nat) : o
       match parquet_read_range_hex path (payload_offset + frame_header_size) 3 with
       | None -> None
       | Some block_hex ->
-        if String.length block_hex < 6 then None
+        if FS.fs_byte_length block_hex < 6 then None
         else
           match le_u24_at_hex block_hex 0 with
           | None -> None
@@ -1112,7 +1127,7 @@ let probe_parquet_column_zstd_first_block_last_flag (path:string) (col_index:nat
       match parquet_read_range_hex path (payload_offset + frame_header_size) 3 with
       | None -> None
       | Some block_hex ->
-        if String.length block_hex < 6 then None
+        if FS.fs_byte_length block_hex < 6 then None
         else
           match le_u24_at_hex block_hex 0 with
           | None -> None
@@ -1128,7 +1143,7 @@ let probe_parquet_column_zstd_first_block_size (path:string) (col_index:nat) : o
       match parquet_read_range_hex path (payload_offset + frame_header_size) 3 with
       | None -> None
       | Some block_hex ->
-        if String.length block_hex < 6 then None
+        if FS.fs_byte_length block_hex < 6 then None
         else
           match le_u24_at_hex block_hex 0 with
           | None -> None
@@ -1182,19 +1197,19 @@ let probe_parquet_column_decompressed_payload_prefix_hex (path:string) (col_inde
   | None -> None
   | Some payload_hex ->
     let want = prefix_bytes + prefix_bytes in
-    if want <= String.length payload_hex then Some (String.sub payload_hex 0 want)
+    if want <= FS.fs_byte_length payload_hex then Some (FS.fs_byte_sub payload_hex 0 want)
     else Some payload_hex
 
 let probe_parquet_column_decompressed_payload_hex_length (path:string) (col_index:nat) : option nat =
   match probe_parquet_column_decompressed_payload_hex path col_index with
   | None -> None
-  | Some payload_hex -> Some (String.length payload_hex / 2)
+  | Some payload_hex -> Some (FS.fs_byte_length payload_hex / 2)
 
 let probe_parquet_column_first_level_section_length (path:string) (col_index:nat) : option nat =
   match probe_parquet_column_decompressed_payload_hex path col_index with
   | None -> None
   | Some payload_hex ->
-    if String.length payload_hex < 8 then None
+    if FS.fs_byte_length payload_hex < 8 then None
     else le_u32_at_hex payload_hex 0
 
 let probe_parquet_column_delta_length_byte_array_values_offset (path:string) (col_index:nat) : option nat =
@@ -1208,19 +1223,19 @@ let probe_parquet_column_delta_length_byte_array_values_prefix_hex (path:string)
         probe_parquet_column_delta_length_byte_array_values_offset path col_index with
   | Some payload_hex, Some value_offset ->
     let start = value_offset + value_offset in
-    if start > String.length payload_hex then None
+    if start > FS.fs_byte_length payload_hex then None
     else
-      let remaining = String.length payload_hex - start in
+      let remaining = FS.fs_byte_length payload_hex - start in
       let want = prefix_bytes + prefix_bytes in
       let take = if want <= remaining then want else remaining in
-      Some (String.sub payload_hex start take)
+      Some (FS.fs_byte_sub payload_hex start take)
   | _ -> None
 
 let probe_parquet_column_delta_length_byte_array_block_size (path:string) (col_index:nat) : option nat =
   match probe_parquet_column_delta_length_byte_array_values_prefix_hex path col_index 32 with
   | None -> None
   | Some values_hex ->
-    match decode_varint_value_with_end_hex values_hex 0 0 0 (String.length values_hex) with
+    match decode_varint_value_with_end_hex values_hex 0 0 0 (FS.fs_byte_length values_hex) with
     | None -> None
     | Some (n, _) -> Some n
 
@@ -1228,10 +1243,10 @@ let probe_parquet_column_delta_length_byte_array_miniblock_count (path:string) (
   match probe_parquet_column_delta_length_byte_array_values_prefix_hex path col_index 32 with
   | None -> None
   | Some values_hex ->
-    match decode_varint_value_with_end_hex values_hex 0 0 0 (String.length values_hex) with
+    match decode_varint_value_with_end_hex values_hex 0 0 0 (FS.fs_byte_length values_hex) with
     | None -> None
     | Some (_, p1) ->
-      match decode_varint_value_with_end_hex values_hex p1 0 0 (String.length values_hex) with
+      match decode_varint_value_with_end_hex values_hex p1 0 0 (FS.fs_byte_length values_hex) with
       | None -> None
       | Some (n, _) -> Some n
 
@@ -1239,13 +1254,13 @@ let probe_parquet_column_delta_length_byte_array_value_count (path:string) (col_
   match probe_parquet_column_delta_length_byte_array_values_prefix_hex path col_index 32 with
   | None -> None
   | Some values_hex ->
-    match decode_varint_value_with_end_hex values_hex 0 0 0 (String.length values_hex) with
+    match decode_varint_value_with_end_hex values_hex 0 0 0 (FS.fs_byte_length values_hex) with
     | None -> None
     | Some (_, p1) ->
-      match decode_varint_value_with_end_hex values_hex p1 0 0 (String.length values_hex) with
+      match decode_varint_value_with_end_hex values_hex p1 0 0 (FS.fs_byte_length values_hex) with
       | None -> None
       | Some (_, p2) ->
-        match decode_varint_value_with_end_hex values_hex p2 0 0 (String.length values_hex) with
+        match decode_varint_value_with_end_hex values_hex p2 0 0 (FS.fs_byte_length values_hex) with
         | None -> None
         | Some (n, _) -> Some n
 
@@ -1253,16 +1268,16 @@ let probe_parquet_column_delta_length_byte_array_first_length (path:string) (col
   match probe_parquet_column_delta_length_byte_array_values_prefix_hex path col_index 32 with
   | None -> None
   | Some values_hex ->
-    match decode_varint_value_with_end_hex values_hex 0 0 0 (String.length values_hex) with
+    match decode_varint_value_with_end_hex values_hex 0 0 0 (FS.fs_byte_length values_hex) with
     | None -> None
     | Some (_, p1) ->
-      match decode_varint_value_with_end_hex values_hex p1 0 0 (String.length values_hex) with
+      match decode_varint_value_with_end_hex values_hex p1 0 0 (FS.fs_byte_length values_hex) with
       | None -> None
       | Some (_, p2) ->
-        match decode_varint_value_with_end_hex values_hex p2 0 0 (String.length values_hex) with
+        match decode_varint_value_with_end_hex values_hex p2 0 0 (FS.fs_byte_length values_hex) with
         | None -> None
         | Some (_, p3) ->
-          match decode_varint_value_with_end_hex values_hex p3 0 0 (String.length values_hex) with
+          match decode_varint_value_with_end_hex values_hex p3 0 0 (FS.fs_byte_length values_hex) with
           | None -> None
           | Some (raw, _) -> Some (zigzag_decode_nat raw)
 
@@ -1270,19 +1285,19 @@ let probe_parquet_column_delta_length_byte_array_first_min_delta (path:string) (
   match probe_parquet_column_delta_length_byte_array_values_prefix_hex path col_index 64 with
   | None -> None
   | Some values_hex ->
-    match decode_varint_value_with_end_hex values_hex 0 0 0 (String.length values_hex) with
+    match decode_varint_value_with_end_hex values_hex 0 0 0 (FS.fs_byte_length values_hex) with
     | None -> None
     | Some (_, p1) ->
-      match decode_varint_value_with_end_hex values_hex p1 0 0 (String.length values_hex) with
+      match decode_varint_value_with_end_hex values_hex p1 0 0 (FS.fs_byte_length values_hex) with
       | None -> None
       | Some (_, p2) ->
-        match decode_varint_value_with_end_hex values_hex p2 0 0 (String.length values_hex) with
+        match decode_varint_value_with_end_hex values_hex p2 0 0 (FS.fs_byte_length values_hex) with
         | None -> None
         | Some (_, p3) ->
-          match decode_varint_value_with_end_hex values_hex p3 0 0 (String.length values_hex) with
+          match decode_varint_value_with_end_hex values_hex p3 0 0 (FS.fs_byte_length values_hex) with
           | None -> None
           | Some (_, p4) ->
-            match decode_varint_value_with_end_hex values_hex p4 0 0 (String.length values_hex) with
+            match decode_varint_value_with_end_hex values_hex p4 0 0 (FS.fs_byte_length values_hex) with
             | None -> None
             | Some (raw, _) -> Some (zigzag_decode_int raw)
 
@@ -1290,22 +1305,22 @@ let probe_parquet_column_delta_length_byte_array_first_bit_width (path:string) (
   match probe_parquet_column_delta_length_byte_array_values_prefix_hex path col_index 64 with
   | None -> None
   | Some values_hex ->
-    match decode_varint_value_with_end_hex values_hex 0 0 0 (String.length values_hex) with
+    match decode_varint_value_with_end_hex values_hex 0 0 0 (FS.fs_byte_length values_hex) with
     | None -> None
     | Some (_, p1) ->
-      match decode_varint_value_with_end_hex values_hex p1 0 0 (String.length values_hex) with
+      match decode_varint_value_with_end_hex values_hex p1 0 0 (FS.fs_byte_length values_hex) with
       | None -> None
       | Some (_, p2) ->
-        match decode_varint_value_with_end_hex values_hex p2 0 0 (String.length values_hex) with
+        match decode_varint_value_with_end_hex values_hex p2 0 0 (FS.fs_byte_length values_hex) with
         | None -> None
         | Some (_, p3) ->
-          match decode_varint_value_with_end_hex values_hex p3 0 0 (String.length values_hex) with
+          match decode_varint_value_with_end_hex values_hex p3 0 0 (FS.fs_byte_length values_hex) with
           | None -> None
           | Some (_, p4) ->
-            match decode_varint_value_with_end_hex values_hex p4 0 0 (String.length values_hex) with
+            match decode_varint_value_with_end_hex values_hex p4 0 0 (FS.fs_byte_length values_hex) with
             | None -> None
             | Some (_, p5) ->
-              if p5 + 1 >= String.length values_hex then None
+              if p5 + 1 >= FS.fs_byte_length values_hex then None
               else
                 match byte_at_hex values_hex p5 with
                 | None -> None
@@ -1317,7 +1332,7 @@ let rec packed_lsb_value_hex (hex:string) (byte_start:nat) (start_bit:nat) (rema
   else
     let absolute_bit = start_bit + out_shift in
     let byte_index = byte_start + mul_nat (absolute_bit / 8) 2 in
-    if byte_index + 1 >= String.length hex then None
+    if byte_index + 1 >= FS.fs_byte_length hex then None
     else
       match byte_at_hex hex byte_index with
       | None -> None
@@ -1331,26 +1346,26 @@ let probe_parquet_column_delta_length_byte_array_length_at (path:string) (col_in
   match probe_parquet_column_delta_length_byte_array_values_prefix_hex path col_index 96 with
   | None -> None
   | Some values_hex ->
-    match decode_varint_value_with_end_hex values_hex 0 0 0 (String.length values_hex) with
+    match decode_varint_value_with_end_hex values_hex 0 0 0 (FS.fs_byte_length values_hex) with
     | None -> None
     | Some (_, p1) ->
-      match decode_varint_value_with_end_hex values_hex p1 0 0 (String.length values_hex) with
+      match decode_varint_value_with_end_hex values_hex p1 0 0 (FS.fs_byte_length values_hex) with
       | None -> None
       | Some (_, p2) ->
-        match decode_varint_value_with_end_hex values_hex p2 0 0 (String.length values_hex) with
+        match decode_varint_value_with_end_hex values_hex p2 0 0 (FS.fs_byte_length values_hex) with
         | None -> None
         | Some (_, p3) ->
-          match decode_varint_value_with_end_hex values_hex p3 0 0 (String.length values_hex) with
+          match decode_varint_value_with_end_hex values_hex p3 0 0 (FS.fs_byte_length values_hex) with
           | None -> None
           | Some (first_raw, p4) ->
             let first_len = zigzag_decode_int first_raw in
             if value_index = 0 then Some first_len
             else
-              match decode_varint_value_with_end_hex values_hex p4 0 0 (String.length values_hex) with
+              match decode_varint_value_with_end_hex values_hex p4 0 0 (FS.fs_byte_length values_hex) with
               | None -> None
               | Some (min_delta_raw, p5) ->
                 let min_delta = zigzag_decode_int min_delta_raw in
-                if p5 + 1 >= String.length values_hex then None
+                if p5 + 1 >= FS.fs_byte_length values_hex then None
                 else
                   match byte_at_hex values_hex p5 with
                   | None -> None
@@ -1410,15 +1425,16 @@ let probe_parquet_column_delta_length_byte_array_value_data_offset (path:string)
       else Some (values_stream_len - total_value_bytes)
   | _ -> None
 
-let rec ascii_string_of_hex_slice (hex:string) (pos:nat) (remaining:nat) (acc:list FStar.Char.char)
+// #103 Phase C: list of byte-valued nats fed to fs_string_of_list_ascii.
+let rec ascii_string_of_hex_slice (hex:string) (pos:nat) (remaining:nat) (acc:list (n:nat{n < 256}))
   : Tot (option string) (decreases remaining) =
-  if remaining = 0 then Some (String.string_of_list (List.Tot.rev acc))
-  else if pos + 1 >= String.length hex then None
+  if remaining = 0 then Some (FS.fs_string_of_list_ascii (List.Tot.rev acc))
+  else if pos + 1 >= FS.fs_byte_length hex then None
   else
     match byte_at_hex hex pos with
     | None -> None
     | Some b ->
-      ascii_string_of_hex_slice hex (pos + 2) (remaining - 1) ((FStar.Char.char_of_int b) :: acc)
+      ascii_string_of_hex_slice hex (pos + 2) (remaining - 1) (b :: acc)
 
 let probe_parquet_column_delta_length_byte_array_value_hex_at (path:string) (col_index:nat) (value_index:nat) : option string =
   match probe_parquet_column_decompressed_payload_hex path col_index,
@@ -1441,7 +1457,7 @@ let probe_parquet_column_delta_length_byte_array_value_hex_at (path:string) (col
        let start_byte = values_start + prior_len in
        let start = mul_nat start_byte 2 in
        let want = mul_nat value_len 2 in
-       if start + want <= String.length payload_hex then Some (String.sub payload_hex start want) else None
+       if start + want <= FS.fs_byte_length payload_hex then Some (FS.fs_byte_sub payload_hex start want) else None
      | _ -> None)
   | _ -> None
 
@@ -1449,7 +1465,7 @@ let probe_parquet_column_delta_length_byte_array_value_string_at (path:string) (
   match probe_parquet_column_delta_length_byte_array_value_hex_at path col_index value_index with
   | None -> None
   | Some value_hex ->
-    ascii_string_of_hex_slice value_hex 0 (String.length value_hex / 2) []
+    ascii_string_of_hex_slice value_hex 0 (FS.fs_byte_length value_hex / 2) []
 
 // ---------------------------------------------------------------------------
 // Bulk page-level decode for DELTA_LENGTH_BYTE_ARRAY columns.
@@ -1523,7 +1539,7 @@ let miniblock_hex_size (values_per_miniblock:nat) (bit_width:nat) : nat =
 // `widths_offset` (hex offset). Each width byte is two hex chars.
 let widths_byte_at (values_hex:string) (widths_offset:nat) (idx:nat) : option nat =
   let p = widths_offset + mul_nat idx 2 in
-  if p + 1 >= String.length values_hex then None
+  if p + 1 >= FS.fs_byte_length values_hex then None
   else
     match byte_at_hex values_hex p with
     | None -> None
@@ -1611,7 +1627,7 @@ let rec build_dlba_length_list
               // miniblocks bytes of widths = 2 * miniblocks hex chars
               let new_packed_start : nat =
                 new_widths_offset + mul_nat miniblocks 2 in
-              if new_widths_offset + 1 >= String.length values_hex then None
+              if new_widths_offset + 1 >= FS.fs_byte_length values_hex then None
               else
                 match byte_at_hex values_hex new_widths_offset with
                 | None -> None
@@ -1659,13 +1675,13 @@ let probe_parquet_column_delta_length_byte_array_page_cache
   match probe_parquet_column_decompressed_payload_hex path col_index,
         probe_parquet_column_delta_length_byte_array_values_offset path col_index with
   | Some payload_hex, Some values_offset ->
-    let payload_len_hex = String.length payload_hex in
+    let payload_len_hex = FS.fs_byte_length payload_hex in
     let values_start_hex = mul_nat values_offset 2 in
     if values_start_hex > payload_len_hex then None
     else
-      let values_hex = String.sub payload_hex values_start_hex
+      let values_hex = FS.fs_byte_sub payload_hex values_start_hex
                          (payload_len_hex - values_start_hex) in
-      let vh_len = String.length values_hex in
+      let vh_len = FS.fs_byte_length values_hex in
       // Parse varint header: block_size, miniblocks, value_count, first_length,
       // then the first block's min_delta + bit_widths[miniblocks].
       // Per the Parquet DELTA_LENGTH_BYTE_ARRAY spec, bit_width changes per
@@ -1757,8 +1773,8 @@ let rec slice_all_dlba_values
     let start = mul_nat start_byte 2 in
     let want = mul_nat len 2 in
     let slice =
-      if start + want <= String.length payload_hex
-      then Some (String.sub payload_hex start want)
+      if start + want <= FS.fs_byte_length payload_hex
+      then Some (FS.fs_byte_sub payload_hex start want)
       else None in
     slice_all_dlba_values payload_hex values_start_byte lts sts (slice :: acc)
 
@@ -1775,7 +1791,7 @@ let rec ascii_strings_of_hex_slices (slices:list (option string)) (acc:list (opt
   | [] -> List.Tot.rev acc
   | None :: tl -> ascii_strings_of_hex_slices tl (None :: acc)
   | Some hx :: tl ->
-    let s = ascii_string_of_hex_slice hx 0 (String.length hx / 2) [] in
+    let s = ascii_string_of_hex_slice hx 0 (FS.fs_byte_length hx / 2) [] in
     ascii_strings_of_hex_slices tl (s :: acc)
 
 // Decode every value on the page directly to its ASCII string form.
@@ -1823,8 +1839,8 @@ let probe_parquet_column_dictionary_page_offset (path:string) (col_index:nat) : 
     | None -> None
     | Some footer_hex ->
       let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-      if meta_hex_len <= String.length footer_hex then
-        let meta_hex = String.sub footer_hex 0 meta_hex_len in
+      if meta_hex_len <= FS.fs_byte_length footer_hex then
+        let meta_hex = FS.fs_byte_sub footer_hex 0 meta_hex_len in
         match nth_field_hex meta_hex 4 0 0 meta_hex_len with
         | None -> None
         | Some row_groups_field ->
@@ -1870,12 +1886,12 @@ let parquet_page_header_uncompressed_size_at (path:string) (page_offset:nat) : o
   match parquet_read_range_hex path page_offset 128 with
   | None -> None
   | Some page_hex ->
-    match nth_field_hex page_hex 2 0 0 (String.length page_hex) with
+    match nth_field_hex page_hex 2 0 0 (FS.fs_byte_length page_hex) with
     | None -> None
     | Some size_field ->
       if size_field.cf_type <> compact_t_i32 then None
       else
-        match decode_varint_value_hex page_hex size_field.cf_value_start 0 0 (String.length page_hex) with
+        match decode_varint_value_hex page_hex size_field.cf_value_start 0 0 (FS.fs_byte_length page_hex) with
         | None -> None
         | Some raw -> Some (zigzag_decode_nat raw)
 
@@ -1883,12 +1899,12 @@ let parquet_page_header_compressed_size_at (path:string) (page_offset:nat) : opt
   match parquet_read_range_hex path page_offset 128 with
   | None -> None
   | Some page_hex ->
-    match nth_field_hex page_hex 3 0 0 (String.length page_hex) with
+    match nth_field_hex page_hex 3 0 0 (FS.fs_byte_length page_hex) with
     | None -> None
     | Some size_field ->
       if size_field.cf_type <> compact_t_i32 then None
       else
-        match decode_varint_value_hex page_hex size_field.cf_value_start 0 0 (String.length page_hex) with
+        match decode_varint_value_hex page_hex size_field.cf_value_start 0 0 (FS.fs_byte_length page_hex) with
         | None -> None
         | Some raw -> Some (zigzag_decode_nat raw)
 
@@ -1896,7 +1912,7 @@ let parquet_page_header_length_at (path:string) (page_offset:nat) : option nat =
   match parquet_read_range_hex path page_offset 128 with
   | None -> None
   | Some page_hex ->
-    match skip_struct_fields_hex page_hex 0 (String.length page_hex) with
+    match skip_struct_fields_hex page_hex 0 (FS.fs_byte_length page_hex) with
     | None -> None
     | Some end_hex -> Some (end_hex / 2)
 
@@ -1907,17 +1923,17 @@ let parquet_dictionary_page_num_values_at (path:string) (page_offset:nat) : opti
   match parquet_read_range_hex path page_offset 128 with
   | None -> None
   | Some page_hex ->
-    match nth_field_hex page_hex 7 0 0 (String.length page_hex) with
+    match nth_field_hex page_hex 7 0 0 (FS.fs_byte_length page_hex) with
     | None -> None
     | Some dict_header_field ->
       if dict_header_field.cf_type <> compact_t_struct then None
       else
-        match nth_field_hex page_hex 1 dict_header_field.cf_value_start 0 (String.length page_hex) with
+        match nth_field_hex page_hex 1 dict_header_field.cf_value_start 0 (FS.fs_byte_length page_hex) with
         | None -> None
         | Some nv_field ->
           if nv_field.cf_type <> compact_t_i32 then None
           else
-            match decode_varint_value_hex page_hex nv_field.cf_value_start 0 0 (String.length page_hex) with
+            match decode_varint_value_hex page_hex nv_field.cf_value_start 0 0 (FS.fs_byte_length page_hex) with
             | None -> None
             | Some raw -> Some (zigzag_decode_nat raw)
 
@@ -1950,7 +1966,7 @@ let parquet_decompressed_page_at (path:string) (page_offset:nat) : option string
 // `(entry_string, next_pos)` or None.
 let decode_one_plain_dictionary_entry (payload_hex:string) (pos:nat) : option (string & nat) =
   // Need 4 bytes (8 hex chars) for the LE u32 length.
-  if pos + 7 >= String.length payload_hex then None
+  if pos + 7 >= FS.fs_byte_length payload_hex then None
   else
     match le_u32_at_hex payload_hex pos with
     | None -> None
@@ -1958,9 +1974,9 @@ let decode_one_plain_dictionary_entry (payload_hex:string) (pos:nat) : option (s
       let value_start = pos + 8 in
       let value_hex_len = entry_len + entry_len in
       let value_end = value_start + value_hex_len in
-      if value_end > String.length payload_hex then None
+      if value_end > FS.fs_byte_length payload_hex then None
       else
-        let value_hex = String.sub payload_hex value_start value_hex_len in
+        let value_hex = FS.fs_byte_sub payload_hex value_start value_hex_len in
         let s = ascii_string_of_hex_slice value_hex 0 entry_len [] in
         match s with
         | None -> None
@@ -2021,7 +2037,7 @@ let rle_run_body_hex_size (bit_width:nat) : nat =
 let rec read_le_uint_bytes (hex:string) (pos:nat) (remaining_bytes:nat) (shift:nat) (acc:nat)
   : Tot (option (nat & nat)) (decreases remaining_bytes) =
   if remaining_bytes = 0 then Some (acc, pos)
-  else if pos + 1 >= String.length hex then None
+  else if pos + 1 >= FS.fs_byte_length hex then None
   else
     match byte_at_hex hex pos with
     | None -> None
@@ -2111,7 +2127,7 @@ let rec decode_hybrid_rle_runs
 // stream that produces `value_count` indices.
 let decode_rle_dictionary_data_page (payload_hex:string) (value_count:nat)
   : option (list nat) =
-  if String.length payload_hex < 2 then None
+  if FS.fs_byte_length payload_hex < 2 then None
   else
     match byte_at_hex payload_hex 0 with
     | None -> None
@@ -2120,8 +2136,8 @@ let decode_rle_dictionary_data_page (payload_hex:string) (value_count:nat)
       // is impossible — run_length=0 means "no indices", which would loop
       // forever; we additionally cap fuel by `value_count + payload_hex /
       // 4` to ensure total decreasing measure).
-      let fuel = value_count + (String.length payload_hex / 2) + 1 in
-      decode_hybrid_rle_runs payload_hex (String.length payload_hex)
+      let fuel = value_count + (FS.fs_byte_length payload_hex / 2) + 1 in
+      decode_hybrid_rle_runs payload_hex (FS.fs_byte_length payload_hex)
         2 bit_width value_count [] fuel
 
 // ---------------------------------------------------------------------------
@@ -2223,8 +2239,8 @@ let probe_parquet_column_chunk_in_row_group_locator
     | None -> None
     | Some footer_hex ->
       let meta_hex_len = footer.pf_metadata_len + footer.pf_metadata_len in
-      if meta_hex_len <= String.length footer_hex then
-        let meta_hex = String.sub footer_hex 0 meta_hex_len in
+      if meta_hex_len <= FS.fs_byte_length footer_hex then
+        let meta_hex = FS.fs_byte_sub footer_hex 0 meta_hex_len in
         match nth_field_hex meta_hex 4 0 0 meta_hex_len with
         | None -> None
         | Some row_groups_field ->
@@ -2334,19 +2350,19 @@ let probe_parquet_column_page_header_num_values_in_row_group
     match parquet_read_range_hex path page_offset 128 with
     | None -> None
     | Some page_hex ->
-      match nth_field_hex page_hex 5 0 0 (String.length page_hex) with
+      match nth_field_hex page_hex 5 0 0 (FS.fs_byte_length page_hex) with
       | None -> None
       | Some data_page_header_field ->
         if data_page_header_field.cf_type <> compact_t_struct then None
         else
           match nth_field_hex page_hex 1 data_page_header_field.cf_value_start 0
-                  (String.length page_hex) with
+                  (FS.fs_byte_length page_hex) with
           | None -> None
           | Some num_values_field ->
             if num_values_field.cf_type <> compact_t_i32 then None
             else
               match decode_varint_value_hex page_hex
-                      num_values_field.cf_value_start 0 0 (String.length page_hex) with
+                      num_values_field.cf_value_start 0 0 (FS.fs_byte_length page_hex) with
               | None -> None
               | Some raw -> Some (zigzag_decode_nat raw)
 
@@ -2372,7 +2388,7 @@ let probe_parquet_column_first_level_section_length_in_row_group
   match probe_parquet_column_decompressed_payload_hex_in_row_group path rg_index col_index with
   | None -> None
   | Some payload_hex ->
-    if String.length payload_hex < 8 then None
+    if FS.fs_byte_length payload_hex < 8 then None
     else le_u32_at_hex payload_hex 0
 
 // DLBA value-stream byte offset (relative to start of decompressed page).
@@ -2391,13 +2407,13 @@ let probe_parquet_column_delta_length_byte_array_page_cache_in_row_group
         probe_parquet_column_delta_length_byte_array_values_offset_in_row_group
           path rg_index col_index with
   | Some payload_hex, Some values_offset ->
-    let payload_len_hex = String.length payload_hex in
+    let payload_len_hex = FS.fs_byte_length payload_hex in
     let values_start_hex = mul_nat values_offset 2 in
     if values_start_hex > payload_len_hex then None
     else
-      let values_hex = String.sub payload_hex values_start_hex
+      let values_hex = FS.fs_byte_sub payload_hex values_start_hex
                          (payload_len_hex - values_start_hex) in
-      let vh_len = String.length values_hex in
+      let vh_len = FS.fs_byte_length values_hex in
       (match decode_varint_value_with_end_hex values_hex 0 0 0 vh_len with
        | None -> None
        | Some (block_size, p1) ->

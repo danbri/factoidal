@@ -392,8 +392,11 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # (COTTAS runtime glue calls Parquet_Footer.probe_*). SPARQL11_Store
   # depends on Parser_BallyhooHDT and Parser_BallyhooCOTTAS. See
   # docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md §Phase 1.
-  COMMON_MODULES="Util_Log.ml RDF_Format.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml RDF_NQuads_Serialize.ml Parquet_Footer.ml OWL_Vocabulary.ml Tableau.ml \
-    Parser_FastString.ml Parser_IRI.ml \
+  # #103 Phase B (2026-05-14): Parquet_Footer.ml now calls Parser_FastString
+  # for byte-indexed string ops, so Parser_FastString.ml must precede
+  # Parquet_Footer.ml in the link order.
+  COMMON_MODULES="Util_Log.ml RDF_Format.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml RDF_NQuads_Serialize.ml Parser_FastString.ml Parquet_Footer.ml OWL_Vocabulary.ml Tableau.ml \
+    Parser_IRI.ml \
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
@@ -754,10 +757,11 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
   # --data-cottas path, so omitting HDT doesn't regress the CLI's JS
   # build. Phase 3 (wasm_of_ocaml) with Zstd is a follow-on commit.
   # See docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md.
+  # #103 Phase B (2026-05-14): Parser_FastString.ml precedes Parquet_Footer.ml.
   FSTAR_MODULES=(
     RDF_Format.ml
-    RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml RDF_NQuads_Serialize.ml Parquet_Footer.ml OWL_Vocabulary.ml Tableau.ml
-    Parser_FastString.ml Parser_IRI.ml
+    RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml RDF_NQuads_Serialize.ml Parser_FastString.ml Parquet_Footer.ml OWL_Vocabulary.ml Tableau.ml
+    Parser_IRI.ml
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml Parser_RDFXML.ml
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
