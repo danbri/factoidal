@@ -90,12 +90,17 @@ let parse_parquet_footer_tail_hex (tail:string) : option parquet_footer =
 let is_printable_byte (b:nat) : bool =
   b >= 32 && b <= 126
 
-let finish_ascii_run (current:list FStar.Char.char) (acc:list string) : list string =
+// #103 Phase C (2026-05-14): callers carry a list of byte-valued nats
+// rather than `list FStar.Char.char`, so we can hand off directly to
+// FS.fs_string_of_list_ascii (O(N)) instead of the BatUTF8.init+List.at
+// composition behind FStar.String.string_of_list (O(N^2)). The byte
+// elements come from `byte_at_hex` which already refines them as < 256.
+let finish_ascii_run (current:list (n:nat{n < 256})) (acc:list string) : list string =
   if List.Tot.length current = 0 then acc
-  else (String.string_of_list (List.Tot.rev current)) :: acc
+  else (FS.fs_string_of_list_ascii (List.Tot.rev current)) :: acc
 
 let rec extract_ascii_strings_hex (hex:string) (pos:nat)
-  (current:list FStar.Char.char) (acc:list string)
+  (current:list (n:nat{n < 256})) (acc:list string)
   : Tot (list string) (decreases (FS.fs_byte_length hex - pos)) =
   if pos + 1 >= FS.fs_byte_length hex then
     List.Tot.rev (finish_ascii_run current acc)
@@ -104,7 +109,7 @@ let rec extract_ascii_strings_hex (hex:string) (pos:nat)
     | None -> List.Tot.rev (finish_ascii_run current acc)
     | Some b ->
       if is_printable_byte b then
-        extract_ascii_strings_hex hex (pos + 2) ((FStar.Char.char_of_int b) :: current) acc
+        extract_ascii_strings_hex hex (pos + 2) (b :: current) acc
       else
         extract_ascii_strings_hex hex (pos + 2) [] (finish_ascii_run current acc)
 
@@ -337,19 +342,20 @@ let decode_compact_binary_hex (hex:string) (pos:nat) (fuel:nat) : option string 
     let payload_end = payload_start + chars_hex_len in
     if payload_end > FS.fs_byte_length hex then None
     else
-      let rec build_chars (p:nat) (remaining:nat) (acc:list FStar.Char.char)
-        : Tot (option (list FStar.Char.char)) (decreases remaining) =
+      // #103 Phase C: list of byte-valued nats fed to fs_string_of_list_ascii.
+      let rec build_chars (p:nat) (remaining:nat) (acc:list (n:nat{n < 256}))
+        : Tot (option (list (n:nat{n < 256}))) (decreases remaining) =
         if remaining = 0 then Some (List.Tot.rev acc)
         else if p + 1 >= payload_end then None
         else
           match byte_at_hex hex p with
           | None -> None
           | Some b ->
-            build_chars (p + 2) (remaining - 1) ((FStar.Char.char_of_int b) :: acc)
+            build_chars (p + 2) (remaining - 1) (b :: acc)
       in
       match build_chars payload_start blen [] with
       | None -> None
-      | Some chars -> Some (String.string_of_list chars)
+      | Some chars -> Some (FS.fs_string_of_list_ascii chars)
 
 let nth_compact_list_element_start_hex (hex:string) (list_pos:nat) (index:nat) (fuel:nat)
   : option nat =
@@ -1419,15 +1425,16 @@ let probe_parquet_column_delta_length_byte_array_value_data_offset (path:string)
       else Some (values_stream_len - total_value_bytes)
   | _ -> None
 
-let rec ascii_string_of_hex_slice (hex:string) (pos:nat) (remaining:nat) (acc:list FStar.Char.char)
+// #103 Phase C: list of byte-valued nats fed to fs_string_of_list_ascii.
+let rec ascii_string_of_hex_slice (hex:string) (pos:nat) (remaining:nat) (acc:list (n:nat{n < 256}))
   : Tot (option string) (decreases remaining) =
-  if remaining = 0 then Some (String.string_of_list (List.Tot.rev acc))
+  if remaining = 0 then Some (FS.fs_string_of_list_ascii (List.Tot.rev acc))
   else if pos + 1 >= FS.fs_byte_length hex then None
   else
     match byte_at_hex hex pos with
     | None -> None
     | Some b ->
-      ascii_string_of_hex_slice hex (pos + 2) (remaining - 1) ((FStar.Char.char_of_int b) :: acc)
+      ascii_string_of_hex_slice hex (pos + 2) (remaining - 1) (b :: acc)
 
 let probe_parquet_column_delta_length_byte_array_value_hex_at (path:string) (col_index:nat) (value_index:nat) : option string =
   match probe_parquet_column_decompressed_payload_hex path col_index,

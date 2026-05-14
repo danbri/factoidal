@@ -1,38 +1,4 @@
 open Prims
-
-(* __PARQUET_ASCII_STRING_FAST_PATH__
-   Patched by 103_parquet_ascii_string_fast_path.sh.
-   See the patch file for the safety argument: every Parquet_Footer
-   call site that reaches one of these helpers passes an ASCII-only
-   hex string, so codepoint ops collapse onto byte ops. *)
-module FStar_String = struct
-  include FStar_String
-  (* The enclosing file does `open Prims`, which shadows OCaml's `int`
-     and `string` to Prims aliases (Z.t and Stdlib.String.t). All the
-     stdlib references below have to be fully qualified to escape that. *)
-  let index (s : Stdlib.String.t) (i : Z.t) : Stdlib.Int.t =
-    Stdlib.Char.code (Stdlib.String.unsafe_get s (Z.to_int i))
-  let strlen (s : Stdlib.String.t) : Z.t =
-    Z.of_int (Stdlib.String.length s)
-  let length = strlen
-  let sub (s : Stdlib.String.t) (i : Z.t) (j : Z.t) : Stdlib.String.t =
-    Stdlib.String.sub s (Z.to_int i) (Z.to_int j)
-  (* string_of_list: ASCII fast-path. Original walks the list O(n^2)
-     via BatUTF8.init+List.at; we materialise once into a Bytes.
-     The fstar.lib runtime declares `type char = FStar_Char.char =
-     int`, so the list is a list of codepoint ints. Safe iff every
-     codepoint fits in one byte, which is true for the
-     ascii_string_of_hex_slice path (chars come from byte_at_hex
-     and are always in [0,255]). *)
-  let string_of_list (l : FStar_Char.char list) : Stdlib.String.t =
-    let n = Stdlib.List.length l in
-    let b = Stdlib.Bytes.create n in
-    Stdlib.List.iteri (fun i c ->
-      Stdlib.Bytes.unsafe_set b i
-        (Stdlib.Char.unsafe_chr (c land 0xff))) l;
-    Stdlib.Bytes.unsafe_to_string b
-end
-
 type parquet_footer =
   {
   pf_metadata_len: Prims.nat ;
@@ -184,13 +150,16 @@ let parse_parquet_footer_tail_hex (tail : Prims.string) :
               }))
 let is_printable_byte (b : Prims.nat) : Prims.bool=
   (b >= (Prims.of_int (32))) && (b <= (Prims.of_int (126)))
-let finish_ascii_run (current : FStar_Char.char Prims.list)
+let finish_ascii_run (current : Prims.nat Prims.list)
   (acc : Prims.string Prims.list) : Prims.string Prims.list=
   if (FStar_List_Tot_Base.length current) = Prims.int_zero
   then acc
-  else (FStar_String.string_of_list (FStar_List_Tot_Base.rev current)) :: acc
+  else
+    (Parser_FastString.fs_string_of_list_ascii
+       (FStar_List_Tot_Base.rev current))
+    :: acc
 let rec extract_ascii_strings_hex (hex : Prims.string) (pos : Prims.nat)
-  (current : FStar_Char.char Prims.list) (acc : Prims.string Prims.list) :
+  (current : Prims.nat Prims.list) (acc : Prims.string Prims.list) :
   Prims.string Prims.list=
   if (pos + Prims.int_one) >= (Parser_FastString.fs_byte_length hex)
   then FStar_List_Tot_Base.rev (finish_ascii_run current acc)
@@ -201,8 +170,8 @@ let rec extract_ascii_strings_hex (hex : Prims.string) (pos : Prims.nat)
      | FStar_Pervasives_Native.Some b ->
          if is_printable_byte b
          then
-           extract_ascii_strings_hex hex (pos + (Prims.of_int (2)))
-             ((FStar_Char.char_of_int b) :: current) acc
+           extract_ascii_strings_hex hex (pos + (Prims.of_int (2))) (b ::
+             current) acc
          else
            extract_ascii_strings_hex hex (pos + (Prims.of_int (2))) []
              (finish_ascii_run current acc))
@@ -556,12 +525,12 @@ let decode_compact_binary_hex (hex : Prims.string) (pos : Prims.nat)
                     FStar_Pervasives_Native.None
                 | FStar_Pervasives_Native.Some b ->
                     build_chars (p + (Prims.of_int (2)))
-                      (remaining - Prims.int_one) ((FStar_Char.char_of_int b)
-                      :: acc)) in
+                      (remaining - Prims.int_one) (b :: acc)) in
          match build_chars payload_start blen [] with
          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
          | FStar_Pervasives_Native.Some chars ->
-             FStar_Pervasives_Native.Some (FStar_String.string_of_list chars))
+             FStar_Pervasives_Native.Some
+               (Parser_FastString.fs_string_of_list_ascii chars))
 let nth_compact_list_element_start_hex (hex : Prims.string)
   (list_pos : Prims.nat) (index : Prims.nat) (fuel : Prims.nat) :
   Prims.nat FStar_Pervasives_Native.option=
@@ -2594,12 +2563,13 @@ let probe_parquet_column_delta_length_byte_array_value_data_offset
              (values_stream_len - total_value_bytes))
   | uu___ -> FStar_Pervasives_Native.None
 let rec ascii_string_of_hex_slice (hex : Prims.string) (pos : Prims.nat)
-  (remaining : Prims.nat) (acc : FStar_Char.char Prims.list) :
+  (remaining : Prims.nat) (acc : Prims.nat Prims.list) :
   Prims.string FStar_Pervasives_Native.option=
   if remaining = Prims.int_zero
   then
     FStar_Pervasives_Native.Some
-      (FStar_String.string_of_list (FStar_List_Tot_Base.rev acc))
+      (Parser_FastString.fs_string_of_list_ascii
+         (FStar_List_Tot_Base.rev acc))
   else
     if (pos + Prims.int_one) >= (Parser_FastString.fs_byte_length hex)
     then FStar_Pervasives_Native.None
@@ -2608,7 +2578,7 @@ let rec ascii_string_of_hex_slice (hex : Prims.string) (pos : Prims.nat)
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some b ->
            ascii_string_of_hex_slice hex (pos + (Prims.of_int (2)))
-             (remaining - Prims.int_one) ((FStar_Char.char_of_int b) :: acc))
+             (remaining - Prims.int_one) (b :: acc))
 let probe_parquet_column_delta_length_byte_array_value_hex_at
   (path : Prims.string) (col_index : Prims.nat) (value_index : Prims.nat) :
   Prims.string FStar_Pervasives_Native.option=
