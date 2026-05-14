@@ -215,10 +215,10 @@ _helper = (
     "\n"
     "let _fs_safe_char_of_int (cp : Stdlib.Int.t) : FStar_Char.char =\n"
     "  let open Stdlib in\n"
-    (* #68 retirement (2026-05-11): inclusive `<=` matches the Unicode
-       spec; the strict `<` was a copy-paste of FStar.Char.char_of_int's
-       off-by-one precondition and would have silently corrupted U+D7FF
-       in the #240 JSON/XML escape path. *)
+    # #68 retirement (2026-05-11): inclusive `<=` matches the Unicode
+    # spec; the strict `<` was a copy-paste of FStar.Char.char_of_int
+    # off-by-one precondition and would have silently corrupted U+D7FF
+    # in the #240 JSON/XML escape path.
     "  if cp >= 0 && (cp <= 0xD7FF || (cp >= 0xE000 && cp <= 0x10FFFF))\n"
     "  then FStar_Char.char_of_int (Z.of_int cp)\n"
     "  else FStar_Char.char_of_int (Z.of_int 0xFFFD)\n"
