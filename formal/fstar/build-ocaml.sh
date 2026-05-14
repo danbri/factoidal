@@ -296,6 +296,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              RDF.CottasStore.LazyDict.fst \
              RDF.CottasStore.LazyDictRegistry.fst \
              RDF.Store.LazyTermCache.fst \
+             RDF.Store.HDTTermCacheRegistry.fst \
              RDF.Store.Columnar.OffsetIndex.fst \
              SPARQL.Plan.Pruning.fst \
              SPARQL.Plan.Estimate.fst \
@@ -420,6 +421,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     RDF_CottasStore_LazyDict.ml \
     RDF_CottasStore_LazyDictRegistry.ml \
     RDF_Store_LazyTermCache.ml \
+    RDF_Store_HDTTermCacheRegistry.ml \
     RDF_Store_Columnar_OffsetIndex.ml \
     SPARQL_Plan_Pruning.ml \
     SPARQL_Plan_Estimate.ml \
@@ -782,6 +784,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_CottasStore_LazyDict.ml
     RDF_CottasStore_LazyDictRegistry.ml
     RDF_Store_LazyTermCache.ml
+    RDF_Store_HDTTermCacheRegistry.ml
     RDF_Store_Columnar_OffsetIndex.ml
     SPARQL_Plan_Pruning.ml
     SPARQL_Plan_Estimate.ml
