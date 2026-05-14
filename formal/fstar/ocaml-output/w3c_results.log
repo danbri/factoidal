@@ -168,14 +168,53 @@
   [2/4] drop/DROP GRAPH ok
   [3/4] drop/DROP NAMED ok
   [4/4] drop/DROP ALL ok
-  [1/70] entailment/bind01 - BIND fixed data for OWL DL ok (205.6s)
-  [2/70] entailment/bind02 - BIND fixed data for OWL DL ok (192.5s)
-  [3/70] entailment/bind03 - BIND fixed data for OWL DL ok (200.1s)
-  [4/70] entailment/bind04 - BIND fixed data for OWL DL ok (199.3s)
-  [5/70] entailment/bind05 - BIND fixed data for OWL DL ok (197.3s)
-  [6/70] entailment/bind06 - BIND fixed data for OWL DL ok (181.2s)
-  [7/70] entailment/bind07 - BIND fixed data for OWL DL ok (184.5s)
-  [8/70] entailment/bind08 - BIND fixed data for OWL DL ok (172.0s)
+  [1/70] entailment/bind01 - BIND fixed data for OWL DL ok (1.2s)
+  [2/70] entailment/bind02 - BIND fixed data for OWL DL ok (1.2s)
+  [3/70] entailment/bind03 - BIND fixed data for OWL DL ok (1.2s)
+  [4/70] entailment/bind04 - BIND fixed data for OWL DL ok (1.2s)
+  [5/70] entailment/bind05 - BIND fixed data for OWL DL ok (1.2s)
+  [6/70] entailment/bind06 - BIND fixed data for OWL DL ok (1.2s)
+  [7/70] entailment/bind07 - BIND fixed data for OWL DL ok (1.2s)
+  [8/70] entailment/bind08 - BIND fixed data for OWL DL ok (1.2s)
   [9/70] entailment/D-Entailment test to show that  neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers ok
-  [10/70] entailment/Literal with language tag test ok (165.1s)
-  [11/70] entailment/bnodes are not existentials
+  [10/70] entailment/Literal with language tag test ok (1.2s)
+  [11/70] entailment/bnodes are not existentials ok (2.0s)
+  [12/70] entailment/bnodes are not existentials with answer ok (4.0s)
+  [13/70] entailment/paper-sparqldl-Q1 ok (7.9s)
+  [14/70] entailment/paper-sparqldl-Q1-rdfs ok
+  [15/70] entailment/paper-sparqldl-Q2 ok (14.1s)
+  [16/70] entailment/paper-sparqldl-Q3 ok (14.1s)
+  [17/70] entailment/paper-sparqldl-Q4 ok (8.0s)
+  [18/70] entailment/paper-sparqldl-Q5 ok (7.8s)
+  [19/70] entailment/filtered subclass query with (hasChild some Thing) restriction ok (24.3s)
+  [20/70] entailment/parent query with distinguished variable ok (14.0s)
+  [21/70] entailment/parent query with (hasChild some Thing) restriction ok (24.2s)
+  [22/70] entailment/parent query with (hasChild min 1) restriction ok (24.3s)
+  [23/70] entailment/parent query with (hasChild some Female) restriction ok (24.5s)
+  [24/70] entailment/parent query with (hasChild min 1 Female) restriction ok (24.1s)
+  [25/70] entailment/parent query with (hasChild max 1 Female) restriction ok (24.4s)
+  [26/70] entailment/parent query with (hasChild exactly 1 Female) restriction ok (24.4s)
+  [27/70] entailment/subclass query with (hasChild some Thing) restriction ok (24.5s)
+  [28/70] entailment/Plain literals with language tag are not the same as the same literal without ok (1.1s)
+  [29/70] entailment/RDF inference test ok
+  [30/70] entailment/RDF inference test ok
+  [31/70] entailment/RDF test for blank node cardinalities ok
+  [32/70] entailment/simple triple pattern match ok (2.5s)
+  [33/70] entailment/RDFS inference test rdfs:subPropertyOf ok (2.9s)
+  [34/70] entailment/RDFS inference test rdfs:subPropertyOf ok (3.0s)
+  [35/70] entailment/RDFS inference test combining subPropertyOf and domain ok
+  [36/70] entailment/RDFS inference test subClassOf ok (1.7s)
+  [37/70] entailment/RDFS inference test subClassOf ok (2.7s)
+  [38/70] entailment/RDFS inference test domain ok (2.9s)
+  [39/70] entailment/RDFS inference test range ok (3.8s)
+  [40/70] entailment/RDFS inference test rdf:XMLLiteral subclass of rdfs:Literal ok
+  [41/70] entailment/RDFS inference test transitivity of subClassOf ok (2.1s)
+  [42/70] entailment/RDFS inference test transitivity of subPropertyOf ok (5.1s)
+  [43/70] entailment/RDFS inference test subProperty and instances ok
+  [44/70] entailment/RDFS inference test containers ok
+  [45/70] entailment/RDFS inference test to show that neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers ok (1.1s)
+  [46/70] entailment/RIF Logical Entailment (referencing RIF XML) ok
+  [47/70] entailment/RIF Core WG tests: Frames ok
+  [48/70] entailment/RIF Core WG tests: Modeling Brain Anatomy ok
+  [49/70] entailment/RIF Core WG tests: RDF Combination Blank Node ok
+  [50/70] entailment/simple 1
