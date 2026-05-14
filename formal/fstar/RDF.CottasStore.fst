@@ -5,7 +5,6 @@ open Parser.BallyhooCOTTAS
 open Parquet.Footer
 open RDF.CottasStore.PageCache
 open RDF.CottasStore.ColumnSeq
-open RDF.CottasStore.LazyDict
 module CPO = RDF.CottasStore.CompoundPresenceBitmap
 
 // On-disk COTTAS store, query-time interface (issue #100).
@@ -71,20 +70,6 @@ noeq type cottas_ondisk_handle = {
   coh_pred_raw_revmap  : list (string * nat);
   coh_obj_raw_revmap   : list (string * nat);
   coh_graph_raw_revmap : list (string * nat);
-
-  // #254 Bet7 retirement Commit 2 (2026-05-13): four lazy-populate
-  // alternatives to the eager `coh_*` / `coh_*_revmap` / `coh_*_raw`
-  // / `coh_*_raw_revmap` field families above. Populated by the
-  // OCaml-side `cottas_ondisk_open` realisation alongside the
-  // eager fields. Decode/encode call sites still consume the
-  // eager fields in this commit; consumer migration to the lazy
-  // path lands in a follow-up commit per the design plan's
-  // ML-effect-propagation mitigation. See:
-  //   docs/designissues/2026-05-13-issue-254-bet7-retirement-plan.md
-  coh_subjects_lazy   : lazy_dict subject;
-  coh_predicates_lazy : lazy_dict wf_iri;
-  coh_objects_lazy    : lazy_dict rdf_term;
-  coh_graphs_lazy     : lazy_dict iri;
 }
 
 noeq type cottas_ondisk_store = {

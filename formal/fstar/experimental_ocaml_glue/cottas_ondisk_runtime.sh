@@ -429,51 +429,6 @@ runtime = r'''module Cottas_ondisk_runtime = struct
       coh_pred_raw_revmap  = mapi_tr (fun i s -> (s, Z.of_int i)) p_strs;
       coh_obj_raw_revmap   = mapi_tr (fun i s -> (s, Z.of_int i)) o_strs;
       coh_graph_raw_revmap = mapi_tr (fun i s -> (s, Z.of_int i)) g_strs;
-      (* #254 Bet7 retirement Commit 2 (2026-05-13): four lazy_dict
-         mirrors of the eager fields above. populate thunks return
-         the already-computed data — this commit is the additive
-         bridge that proves the integration shape; full retirement
-         (Bet7 patch deletion + consumer migration) lands later. *)
-      coh_subjects_lazy =
-        RDF_CottasStore_LazyDict.mk_lazy_dict
-          (fun () ->
-            let zip3 typed_list raw_list =
-              let rec aux i ts rs = match ts, rs with
-                | t :: trest, r :: rrest -> (Z.of_int i, t, r) :: aux (i+1) trest rrest
-                | _, _ -> [] in
-              aux 0 typed_list raw_list in
-            zip3 coh_subjects s_strs)
-          RDF_CottasStore.subject_to_revmap_key;
-      coh_predicates_lazy =
-        RDF_CottasStore_LazyDict.mk_lazy_dict
-          (fun () ->
-            let zip3 typed_list raw_list =
-              let rec aux i ts rs = match ts, rs with
-                | t :: trest, r :: rrest -> (Z.of_int i, t, r) :: aux (i+1) trest rrest
-                | _, _ -> [] in
-              aux 0 typed_list raw_list in
-            zip3 coh_predicates p_strs)
-          RDF_CottasStore.iri_to_revmap_key;
-      coh_objects_lazy =
-        RDF_CottasStore_LazyDict.mk_lazy_dict
-          (fun () ->
-            let zip3 typed_list raw_list =
-              let rec aux i ts rs = match ts, rs with
-                | t :: trest, r :: rrest -> (Z.of_int i, t, r) :: aux (i+1) trest rrest
-                | _, _ -> [] in
-              aux 0 typed_list raw_list in
-            zip3 coh_objects o_strs)
-          RDF_CottasStore.object_to_revmap_key;
-      coh_graphs_lazy =
-        RDF_CottasStore_LazyDict.mk_lazy_dict
-          (fun () ->
-            let zip3 typed_list raw_list =
-              let rec aux i ts rs = match ts, rs with
-                | t :: trest, r :: rrest -> (Z.of_int i, t, r) :: aux (i+1) trest rrest
-                | _, _ -> [] in
-              aux 0 typed_list raw_list in
-            zip3 coh_graphs g_strs)
-          RDF_CottasStore.iri_to_revmap_key;
     } in
     (handle, tables)
 
