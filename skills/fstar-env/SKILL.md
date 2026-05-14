@@ -83,12 +83,31 @@ First-time only:
 opam init -y
 opam switch create fstar ocaml-base-compiler.4.14.1
 eval $(opam env --switch=fstar)
-opam install -y fstar z3 js_of_ocaml js_of_ocaml-compiler zarith_stubs_js
+# Native build deps (required):
+opam install -y fstar z3 zarith sha digestif
+# JS / Wasm extraction deps (optional — only if you build the browser bundles):
+opam install -y js_of_ocaml js_of_ocaml-compiler zarith_stubs_js
 ```
 
-The `opam install` line installs F\* itself plus the JS extraction
-toolchain. The `z3` opam package is installed too, but the build often
+The first `opam install` line covers what's needed to verify F\*, extract
+OCaml, and compile the native `factoidal` / `w3c_runner` binaries:
+`fstar` plus the OCaml runtime libraries the extracted code links against
+(`zarith` for bigints, `sha` + `digestif` for the MD5/SHA built-ins).
+The second is only needed for the optional `./build-ocaml.sh js` / `wasm`
+targets. The `z3` opam package is installed too, but the build often
 fails or produces the wrong version — §3 replaces the binary on PATH.
+
+**Non-interactive / root / container environments.** `opam init -y` will
+prompt for sandbox setup and shell-rc edits on a TTY; in a sandbox or as
+root those prompts can hang or fail. Use:
+
+```bash
+opam init -y --bare --disable-sandboxing
+```
+
+`--bare` skips the default switch (we make our own); `--disable-sandboxing`
+is needed when bubblewrap isn't available (most containers, root sessions).
+On a normal developer laptop, plain `opam init -y` is fine.
 
 ## §3. Install z3 4.13.3 (CRITICAL)
 

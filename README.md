@@ -27,6 +27,9 @@ opam install fstar z3 zarith sha digestif
 # Clone with W3C test data
 git clone --recurse-submodules https://github.com/danbri/factoidal.git
 cd factoidal
+# (If you cloned without --recurse-submodules, run:
+#   git submodule update --init --recursive
+# from inside the repo to fetch the W3C / ShEx / CSVW / RDF-canon test data.)
 
 # Build everything (verify F* → extract OCaml → compile)
 cd formal/fstar
