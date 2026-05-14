@@ -51,6 +51,31 @@ line **after** the offender:
 `mem_dataset`). When you hit an unexplained "Syntax error", check the
 line *above* the reported one.
 
+## Breaking a Stop-hook loop (mobile escape hatch)
+
+If a session is stuck in a Stop-hook response loop (the agent keeps
+producing minimal replies like "Acknowledged." because some Stop hook
+exits 2 to relaunch it) and slash commands are unavailable — e.g. on
+mobile, where `/goal clear` is sent as plain text args instead of
+invoking the command — create the sentinel file `.claude/STOP` in the
+project root.
+
+The project-level Stop hook at
+[`.claude/hooks/stop-escape.sh`](.claude/hooks/stop-escape.sh) detects
+the sentinel and force-terminates the Claude Code process tree,
+bypassing any user-level Stop hooks that would otherwise keep the
+agent alive.
+
+Two ways to drop the sentinel into a runaway session:
+
+- **From mobile chat**: send the agent "Run: `touch .claude/STOP`".
+  The next Stop fires the escape hook and kills the session.
+- **From the GitHub mobile UI**: create the file on the branch the
+  session is working on, then ask the agent to `git pull`. Same result.
+
+The sentinel is auto-removed after firing so the next session starts
+clean.
+
 ## Iron Rules
 
 1. **F\* is the source of truth.** All RDF/SPARQL logic lives in `.fst` files.
