@@ -5,6 +5,7 @@ open Parser.BallyhooCOTTAS
 open Parquet.Footer
 open RDF.CottasStore.PageCache
 open RDF.CottasStore.ColumnSeq
+open FStar.All
 module CPO = RDF.CottasStore.CompoundPresenceBitmap
 
 // On-disk COTTAS store, query-time interface (issue #100).
@@ -248,6 +249,83 @@ let rec named_graphs_aux
 let cottas_ondisk_named_graphs (ds : cottas_ondisk_store)
   : Tot (list (iri & cottas_graph_ref)) =
   named_graphs_aux ds.cods_handle.coh_graphs 0
+
+// ----------------------------------------------------------------------
+// ML-effected encode/decode variants — opt-in path through the
+// `RDF.CottasStore.LazyDictRegistry` typed boundary. Same semantic
+// contract as the Tot variants above but uses Hashtbl-backed
+// LazyDict O(1) lookups instead of list-assoc O(n). Consumers that
+// can tolerate the ML effect (e.g. external CLI/HTTP entry points
+// in bin/) call these for the fast path through the F*-typed
+// boundary; consumers that need Tot purity (e.g. the SPARQL
+// evaluator's BGP-walk inner loops) stick with the original
+// revmap_lookup-based variants above. #254 / #118 plans phase out
+// the sed-rewrite cottas_ondisk_runtime.sh patch by migrating
+// consumers to these.
+//
+// Returns None when register_for_path hasn't yet been called for
+// the handle's path (e.g. handle opened before the registry was
+// wired). Caller can fall back to the Tot variants in that case.
+
+let cottas_ondisk_encode_subject_ml
+  (ds : cottas_ondisk_store) (s : subject)
+  : ML (option cottas_term_ref) =
+  match RDF.CottasStore.LazyDictRegistry.get_subjects_lazy
+          ds.cods_handle.coh_path with
+  | Some d -> RDF.CottasStore.LazyDict.encode_by_key d
+                (subject_to_revmap_key s)
+  | None   -> cottas_ondisk_encode_subject ds s
+
+let cottas_ondisk_encode_predicate_ml
+  (ds : cottas_ondisk_store) (p : wf_iri)
+  : ML (option cottas_term_ref) =
+  match RDF.CottasStore.LazyDictRegistry.get_predicates_lazy
+          ds.cods_handle.coh_path with
+  | Some d -> RDF.CottasStore.LazyDict.encode_by_key d
+                (iri_to_revmap_key p)
+  | None   -> cottas_ondisk_encode_predicate ds p
+
+let cottas_ondisk_encode_object_ml
+  (ds : cottas_ondisk_store) (o : rdf_term)
+  : ML (option cottas_term_ref) =
+  match RDF.CottasStore.LazyDictRegistry.get_objects_lazy
+          ds.cods_handle.coh_path with
+  | Some d -> RDF.CottasStore.LazyDict.encode_by_key d
+                (object_to_revmap_key o)
+  | None   -> cottas_ondisk_encode_object ds o
+
+let cottas_ondisk_decode_subject_ml
+  (ds : cottas_ondisk_store) (id : cottas_term_ref)
+  : ML subject =
+  match RDF.CottasStore.LazyDictRegistry.get_subjects_lazy
+          ds.cods_handle.coh_path with
+  | Some d ->
+    (match RDF.CottasStore.LazyDict.decode_by_id d id with
+     | Some s -> s
+     | None   -> cottas_ondisk_decode_subject ds id)
+  | None   -> cottas_ondisk_decode_subject ds id
+
+let cottas_ondisk_decode_predicate_ml
+  (ds : cottas_ondisk_store) (id : cottas_term_ref)
+  : ML wf_iri =
+  match RDF.CottasStore.LazyDictRegistry.get_predicates_lazy
+          ds.cods_handle.coh_path with
+  | Some d ->
+    (match RDF.CottasStore.LazyDict.decode_by_id d id with
+     | Some p -> p
+     | None   -> cottas_ondisk_decode_predicate ds id)
+  | None   -> cottas_ondisk_decode_predicate ds id
+
+let cottas_ondisk_decode_object_ml
+  (ds : cottas_ondisk_store) (id : cottas_term_ref)
+  : ML rdf_term =
+  match RDF.CottasStore.LazyDictRegistry.get_objects_lazy
+          ds.cods_handle.coh_path with
+  | Some d ->
+    (match RDF.CottasStore.LazyDict.decode_by_id d id with
+     | Some o -> o
+     | None   -> cottas_ondisk_decode_object ds id)
+  | None   -> cottas_ondisk_decode_object ds id
 
 // ----------------------------------------------------------------------
 // Phase B: search + estimate, lazy walk over parquet row groups.
