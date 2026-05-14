@@ -252,14 +252,14 @@ let explain_triple_pattern_against_store
   let s_status, s_bound = match tp.A.tp_s with
     | A.PS_Var v -> BS_Var v, None
     | A.PS_IRI i ->
-      let r = C.cottas_ondisk_encode_subject cods (G.S_IRI i) in
+      let r = C.cottas_ondisk_encode_subject_ml cods (G.S_IRI i) in
       (match r with
        | FStar_Pervasives_Native.Some _ ->
          BS_Hit (term_short (G.T_IRI i)), Some (G.S_IRI i)
        | FStar_Pervasives_Native.None ->
          BS_Miss (term_short (G.T_IRI i)), Some (G.S_IRI i))
     | A.PS_BNode b ->
-      let r = C.cottas_ondisk_encode_subject cods (G.S_BNode b) in
+      let r = C.cottas_ondisk_encode_subject_ml cods (G.S_BNode b) in
       (match r with
        | FStar_Pervasives_Native.Some _ ->
          BS_Hit ("_:" ^ b), Some (G.S_BNode b)
@@ -270,7 +270,7 @@ let explain_triple_pattern_against_store
   let p_status, p_bound = match tp.A.tp_p with
     | A.PT_Var v -> BS_Var v, None
     | A.PT_IRI i ->
-      let r = C.cottas_ondisk_encode_predicate cods i in
+      let r = C.cottas_ondisk_encode_predicate_ml cods i in
       (match r with
        | FStar_Pervasives_Native.Some _ ->
          BS_Hit (term_short (G.T_IRI i)), Some i
@@ -283,21 +283,21 @@ let explain_triple_pattern_against_store
   let o_status, o_bound = match tp.A.tp_o with
     | A.PT_Var v -> BS_Var v, None
     | A.PT_IRI i ->
-      let r = C.cottas_ondisk_encode_object cods (G.T_IRI i) in
+      let r = C.cottas_ondisk_encode_object_ml cods (G.T_IRI i) in
       (match r with
        | FStar_Pervasives_Native.Some _ ->
          BS_Hit (term_short (G.T_IRI i)), Some (G.T_IRI i)
        | FStar_Pervasives_Native.None ->
          BS_Miss (term_short (G.T_IRI i)), Some (G.T_IRI i))
     | A.PT_BNode b ->
-      let r = C.cottas_ondisk_encode_object cods (G.T_BNode b) in
+      let r = C.cottas_ondisk_encode_object_ml cods (G.T_BNode b) in
       (match r with
        | FStar_Pervasives_Native.Some _ ->
          BS_Hit ("_:" ^ b), Some (G.T_BNode b)
        | FStar_Pervasives_Native.None ->
          BS_Miss ("_:" ^ b), Some (G.T_BNode b))
     | A.PT_Literal l ->
-      let r = C.cottas_ondisk_encode_object cods (G.T_Literal l) in
+      let r = C.cottas_ondisk_encode_object_ml cods (G.T_Literal l) in
       (match r with
        | FStar_Pervasives_Native.Some _ ->
          BS_Hit (term_short (G.T_Literal l)), Some (G.T_Literal l)
