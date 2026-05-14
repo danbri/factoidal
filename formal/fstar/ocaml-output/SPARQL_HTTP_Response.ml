@@ -1,4 +1,20 @@
 open Prims
+type response_body =
+  {
+  rb_status: Prims.nat ;
+  rb_content_type: Prims.string ;
+  rb_body: Prims.string }
+let __proj__Mkresponse_body__item__rb_status (projectee : response_body) :
+  Prims.nat=
+  match projectee with
+  | { rb_status; rb_content_type; rb_body;_} -> rb_status
+let __proj__Mkresponse_body__item__rb_content_type
+  (projectee : response_body) : Prims.string=
+  match projectee with
+  | { rb_status; rb_content_type; rb_body;_} -> rb_content_type
+let __proj__Mkresponse_body__item__rb_body (projectee : response_body) :
+  Prims.string=
+  match projectee with | { rb_status; rb_content_type; rb_body;_} -> rb_body
 let status_text (code : Prims.int) : Prims.string=
   if code = (Prims.of_int (200))
   then "OK"

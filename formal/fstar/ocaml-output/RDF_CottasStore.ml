@@ -1079,6 +1079,37 @@ module Cottas_ondisk_runtime = struct
       let (h, tables) = build_handle_and_tables artifact_path in
       Hashtbl.add handles artifact_path h;
       Hashtbl.add fast_table_cache artifact_path tables;
+      (* #254 Commit 2b registry wiring: snapshot the freshly-built
+         eager dicts into the path-keyed LazyDictRegistry so the F*
+         consumers can consult them via the typed boundary. The
+         populate thunks here just return the already-computed data;
+         a future commit upgrades them to true lazy parquet reads. *)
+      (try
+        let zip3 typed_list raw_list =
+          let rec aux i ts rs = match ts, rs with
+            | t :: trest, r :: rrest -> (Z.of_int i, t, r) :: aux (i+1) trest rrest
+            | _, _ -> [] in
+          aux 0 typed_list raw_list in
+        let s_strs_snapshot = Hashtbl.fold (fun _ tok acc -> tok :: acc)
+                                tables.ft_id_to_subj_tok [] in
+        let p_strs_snapshot = Hashtbl.fold (fun _ tok acc -> tok :: acc)
+                                tables.ft_id_to_pred_tok [] in
+        let o_strs_snapshot = Hashtbl.fold (fun _ tok acc -> tok :: acc)
+                                tables.ft_id_to_obj_tok [] in
+        let g_strs_snapshot = Hashtbl.fold (fun _ tok acc -> tok :: acc)
+                                tables.ft_id_to_graph_tok [] in
+        RDF_CottasStore_LazyDictRegistry.register_for_path
+          artifact_path
+          (fun () -> zip3 h.coh_subjects   s_strs_snapshot)
+          (fun () -> zip3 h.coh_predicates p_strs_snapshot)
+          (fun () -> zip3 h.coh_objects    o_strs_snapshot)
+          (fun () -> zip3 h.coh_graphs     g_strs_snapshot)
+          subject_to_revmap_key
+          iri_to_revmap_key
+          object_to_revmap_key
+          iri_to_revmap_key
+      with _ ->
+        Printf.eprintf "[bet7-trace] register_for_path failed (non-fatal)\\n%!");
       h
 
   let tables_for handle : fast_tables =
@@ -1265,6 +1296,74 @@ let cottas_ondisk_named_graphs (ds : cottas_ondisk_store) :
   (RDF_Graph_Executable.iri * Parser_BallyhooCOTTAS.cottas_graph_ref)
     Prims.list=
   named_graphs_aux (ds.cods_handle).coh_graphs Prims.int_zero
+let cottas_ondisk_encode_subject_ml (ds : cottas_ondisk_store)
+  (s : RDF_Graph_Executable.subject) :
+  Parser_BallyhooCOTTAS.cottas_term_ref FStar_Pervasives_Native.option=
+  let uu___ =
+    RDF_CottasStore_LazyDictRegistry.get_subjects_lazy
+      (ds.cods_handle).coh_path in
+  match uu___ with
+  | FStar_Pervasives_Native.Some d ->
+      RDF_CottasStore_LazyDict.encode_by_key d (subject_to_revmap_key s)
+  | FStar_Pervasives_Native.None -> cottas_ondisk_encode_subject ds s
+let cottas_ondisk_encode_predicate_ml (ds : cottas_ondisk_store)
+  (p : RDF_Graph_Executable.wf_iri) :
+  Parser_BallyhooCOTTAS.cottas_term_ref FStar_Pervasives_Native.option=
+  let uu___ =
+    RDF_CottasStore_LazyDictRegistry.get_predicates_lazy
+      (ds.cods_handle).coh_path in
+  match uu___ with
+  | FStar_Pervasives_Native.Some d ->
+      RDF_CottasStore_LazyDict.encode_by_key d (iri_to_revmap_key p)
+  | FStar_Pervasives_Native.None -> cottas_ondisk_encode_predicate ds p
+let cottas_ondisk_encode_object_ml (ds : cottas_ondisk_store)
+  (o : RDF_Graph_Executable.rdf_term) :
+  Parser_BallyhooCOTTAS.cottas_term_ref FStar_Pervasives_Native.option=
+  let uu___ =
+    RDF_CottasStore_LazyDictRegistry.get_objects_lazy
+      (ds.cods_handle).coh_path in
+  match uu___ with
+  | FStar_Pervasives_Native.Some d ->
+      RDF_CottasStore_LazyDict.encode_by_key d (object_to_revmap_key o)
+  | FStar_Pervasives_Native.None -> cottas_ondisk_encode_object ds o
+let cottas_ondisk_decode_subject_ml (ds : cottas_ondisk_store)
+  (id : Parser_BallyhooCOTTAS.cottas_term_ref) :
+  RDF_Graph_Executable.subject=
+  let uu___ =
+    RDF_CottasStore_LazyDictRegistry.get_subjects_lazy
+      (ds.cods_handle).coh_path in
+  match uu___ with
+  | FStar_Pervasives_Native.Some d ->
+      let uu___1 = RDF_CottasStore_LazyDict.decode_by_id d id in
+      (match uu___1 with
+       | FStar_Pervasives_Native.Some s -> s
+       | FStar_Pervasives_Native.None -> cottas_ondisk_decode_subject ds id)
+  | FStar_Pervasives_Native.None -> cottas_ondisk_decode_subject ds id
+let cottas_ondisk_decode_predicate_ml (ds : cottas_ondisk_store)
+  (id : Parser_BallyhooCOTTAS.cottas_term_ref) : RDF_Graph_Executable.wf_iri=
+  let uu___ =
+    RDF_CottasStore_LazyDictRegistry.get_predicates_lazy
+      (ds.cods_handle).coh_path in
+  match uu___ with
+  | FStar_Pervasives_Native.Some d ->
+      let uu___1 = RDF_CottasStore_LazyDict.decode_by_id d id in
+      (match uu___1 with
+       | FStar_Pervasives_Native.Some p -> p
+       | FStar_Pervasives_Native.None -> cottas_ondisk_decode_predicate ds id)
+  | FStar_Pervasives_Native.None -> cottas_ondisk_decode_predicate ds id
+let cottas_ondisk_decode_object_ml (ds : cottas_ondisk_store)
+  (id : Parser_BallyhooCOTTAS.cottas_term_ref) :
+  RDF_Graph_Executable.rdf_term=
+  let uu___ =
+    RDF_CottasStore_LazyDictRegistry.get_objects_lazy
+      (ds.cods_handle).coh_path in
+  match uu___ with
+  | FStar_Pervasives_Native.Some d ->
+      let uu___1 = RDF_CottasStore_LazyDict.decode_by_id d id in
+      (match uu___1 with
+       | FStar_Pervasives_Native.Some o -> o
+       | FStar_Pervasives_Native.None -> cottas_ondisk_decode_object ds id)
+  | FStar_Pervasives_Native.None -> cottas_ondisk_decode_object ds id
 let cottas_ondisk_open (artifact_path : Prims.string) :
   cottas_ondisk_store FStar_Pervasives_Native.option=
   Printf.eprintf "[qof3-trace] cottas_ondisk_open path=%s\n%!" artifact_path;

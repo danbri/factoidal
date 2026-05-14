@@ -144,8 +144,40 @@ let pcache_decode_in_row_group (cache : page_cache) (path : Prims.string)
        | FStar_Pervasives_Native.Some v ->
            let c2 = pcache_put c1 key v capacity in
            ((FStar_Pervasives_Native.Some v), c2))
+(* Phase 2.5e (issue #118): cross-call cache storage cell + realisation
+   of the F*-pure `pcache_decode_in_row_group_global` assume val.
+
+   The cache logic (LRU eviction, monotone clock, key match) lives in
+   the F*-verified `pcache_get` / `pcache_put` / `pcache_decode_in_row_group`
+   functions above. This shim only threads the mutable storage ref
+   across calls. Rule #11(c). __PAGECACHE_GLOBAL_APPLIED__ *)
+let pcache_global_capacity : Z.t = Z.of_int 256
+
+let pcache_global_ref : page_cache ref =
+  ref (pcache_empty pcache_global_capacity)
+
+(* Stdlib.Int.t-typed counters; `open Prims` shadows `int` to `Z.t`
+   in this file, so qualify with Stdlib explicitly. *)
+let pcache_global_n_hits   : Stdlib.Int.t ref = Stdlib.ref 0
+let pcache_global_n_misses : Stdlib.Int.t ref = Stdlib.ref 0
+
 let pcache_decode_in_row_group_global (path : Prims.string)
-  (rg_index : Prims.nat) (col_index : Prims.nat) :
-  RDF_CottasStore_ColumnSeq.cottas_column FStar_Pervasives_Native.option=
-  failwith
-    "Not yet implemented: RDF.CottasStore.PageCache.pcache_decode_in_row_group_global"
+  (rg_index : Prims.nat) (col_index : Prims.nat)
+  : RDF_CottasStore_ColumnSeq.cottas_column FStar_Pervasives_Native.option =
+  let cap = (!pcache_global_ref).pc_capacity in
+  let key_present =
+    let (v, _) = pcache_get !pcache_global_ref (rg_index, col_index) in
+    match v with FStar_Pervasives_Native.Some _ -> true | _ -> false in
+  let (result, c') =
+    pcache_decode_in_row_group !pcache_global_ref path rg_index col_index cap in
+  pcache_global_ref := c';
+  (if key_present then Stdlib.incr pcache_global_n_hits
+   else Stdlib.incr pcache_global_n_misses);
+  let total : Stdlib.Int.t = Stdlib.(!pcache_global_n_hits + !pcache_global_n_misses) in
+  (if Stdlib.(total mod 32 = 0) then
+    Printf.eprintf "[pagecache-global-trace] hits=%d misses=%d entries=%d cap=%d
+%!"
+      !pcache_global_n_hits !pcache_global_n_misses
+      (Stdlib.List.length (!pcache_global_ref).pc_entries)
+      (Z.to_int cap));
+  result

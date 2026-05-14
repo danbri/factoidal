@@ -60,3 +60,114 @@ let serialiser_strategy_for_construct_describe
   | uu___ ->
       (SS_RowsJson,
         (SPARQL_Protocol.content_type_for SPARQL_Protocol.RF_Json))
+let make_parse_error_response (msg : Prims.string) :
+  SPARQL_HTTP_Response.response_body=
+  {
+    SPARQL_HTTP_Response.rb_status = parse_error_status;
+    SPARQL_HTTP_Response.rb_content_type = parse_error_content_type;
+    SPARQL_HTTP_Response.rb_body = (parse_error_body msg)
+  }
+let make_eval_error_response (msg : Prims.string) (backtrace : Prims.string)
+  : SPARQL_HTTP_Response.response_body=
+  {
+    SPARQL_HTTP_Response.rb_status = eval_error_status;
+    SPARQL_HTTP_Response.rb_content_type = eval_error_content_type;
+    SPARQL_HTTP_Response.rb_body = (eval_error_body msg backtrace)
+  }
+let row_count_overflows (max_rows : Prims.nat)
+  (rows : SPARQL_Protocol.binding_row Prims.list) : Prims.bool=
+  let strict_cap = SPARQL_Eval_Limits.mk_cap (max_rows + Prims.int_one) in
+  SPARQL_Eval_Limits.cap_reached strict_cap (FStar_List_Tot_Base.length rows)
+let make_result_cap_response (max_rows : Prims.nat) :
+  SPARQL_HTTP_Response.response_body=
+  {
+    SPARQL_HTTP_Response.rb_status = (Prims.of_int (413));
+    SPARQL_HTTP_Response.rb_content_type = "application/json; charset=utf-8";
+    SPARQL_HTTP_Response.rb_body =
+      (SPARQL_HTTP_Response.result_cap_response_body max_rows)
+  }
+let body_for_ask_strategy (strat : serialiser_strategy) (b : Prims.bool) :
+  Prims.string=
+  match strat with
+  | SS_BooleanXml -> SPARQL_Protocol.serialise_response_boolean_xml b
+  | uu___ -> SPARQL_Protocol.serialise_response_boolean_json b
+let body_for_rows_strategy (strat : serialiser_strategy)
+  (vars : Prims.string Prims.list)
+  (rows : SPARQL_Protocol.binding_row Prims.list) : Prims.string=
+  match strat with
+  | SS_RowsXml -> SPARQL_Protocol.serialise_response_xml vars rows
+  | SS_RowsCsv -> SPARQL_Protocol.serialise_response_csv vars rows
+  | SS_RowsTsv -> SPARQL_Protocol.serialise_response_tsv vars rows
+  | uu___ -> SPARQL_Protocol.serialise_response_json vars rows
+let run_query (qform : SPARQL11_Algebra.query_form)
+  (fmt : SPARQL_Protocol.response_format) (max_rows : Prims.nat)
+  (vars : Prims.string Prims.list)
+  (ask_result : Prims.bool FStar_Pervasives_Native.option)
+  (rows_result :
+    SPARQL_Protocol.binding_row Prims.list FStar_Pervasives_Native.option)
+  : SPARQL_HTTP_Response.response_body=
+  match qform with
+  | SPARQL11_Algebra.QF_Ask ->
+      let b =
+        match ask_result with
+        | FStar_Pervasives_Native.Some v -> v
+        | FStar_Pervasives_Native.None -> false in
+      let uu___ = serialiser_strategy_for_ask fmt in
+      (match uu___ with
+       | (strat, ct) ->
+           {
+             SPARQL_HTTP_Response.rb_status = success_status;
+             SPARQL_HTTP_Response.rb_content_type = ct;
+             SPARQL_HTTP_Response.rb_body = (body_for_ask_strategy strat b)
+           })
+  | SPARQL11_Algebra.QF_Select uu___ ->
+      let rows =
+        match rows_result with
+        | FStar_Pervasives_Native.Some r -> r
+        | FStar_Pervasives_Native.None -> [] in
+      if row_count_overflows max_rows rows
+      then make_result_cap_response max_rows
+      else
+        (let uu___2 = serialiser_strategy_for_select fmt in
+         match uu___2 with
+         | (strat, ct) ->
+             {
+               SPARQL_HTTP_Response.rb_status = success_status;
+               SPARQL_HTTP_Response.rb_content_type = ct;
+               SPARQL_HTTP_Response.rb_body =
+                 (body_for_rows_strategy strat vars rows)
+             })
+  | SPARQL11_Algebra.QF_Construct uu___ ->
+      let rows =
+        match rows_result with
+        | FStar_Pervasives_Native.Some r -> r
+        | FStar_Pervasives_Native.None -> [] in
+      if row_count_overflows max_rows rows
+      then make_result_cap_response max_rows
+      else
+        (let uu___2 = serialiser_strategy_for_construct_describe fmt in
+         match uu___2 with
+         | (strat, ct) ->
+             {
+               SPARQL_HTTP_Response.rb_status = success_status;
+               SPARQL_HTTP_Response.rb_content_type = ct;
+               SPARQL_HTTP_Response.rb_body =
+                 (body_for_rows_strategy strat vars rows)
+             })
+  | SPARQL11_Algebra.QF_Describe uu___ ->
+      let rows =
+        match rows_result with
+        | FStar_Pervasives_Native.Some r -> r
+        | FStar_Pervasives_Native.None -> [] in
+      if row_count_overflows max_rows rows
+      then make_result_cap_response max_rows
+      else
+        (let uu___2 = serialiser_strategy_for_construct_describe fmt in
+         match uu___2 with
+         | (strat, ct) ->
+             {
+               SPARQL_HTTP_Response.rb_status = success_status;
+               SPARQL_HTTP_Response.rb_content_type = ct;
+               SPARQL_HTTP_Response.rb_body =
+                 (body_for_rows_strategy strat vars rows)
+             })
