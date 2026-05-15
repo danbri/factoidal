@@ -29,25 +29,25 @@ run_parser_pass() {
 }
 
 run_parser_pass "prefix-a-semicolon" "${QUERY_DIR}/prefix_a_semicolon.rq" \
-  --data-hdt "${BERLIN_HDT}"
+  --data "${BERLIN_HDT}"
 
 run_parser_pass "signed-numeric-literals" \
   "${ROOT}/third_party/testing/w3c/sparql/sparql10/expr-ops/query-add-literals.rq"
 
 run_parser_pass "named-graph" "${QUERY_DIR}/berlin_named_graph.rq" \
-  --named-hdt "${BERLIN_GRAPH_IRI}=${BERLIN_HDT}"
+  --named "${BERLIN_GRAPH_IRI}=${BERLIN_HDT}"
 
 run_parser_pass "bind-values" "${QUERY_DIR}/berlin_bind_values.rq" \
-  --data-hdt "${BERLIN_HDT}"
+  --data "${BERLIN_HDT}"
 
 run_parser_pass "named-ask" "${QUERY_DIR}/berlin_named_ask.rq" \
-  --named-hdt "${BERLIN_GRAPH_IRI}=${BERLIN_HDT}"
+  --named "${BERLIN_GRAPH_IRI}=${BERLIN_HDT}"
 
 run_parser_pass "named-group" "${QUERY_DIR}/berlin_named_group.rq" \
-  --named-hdt "${BERLIN_GRAPH_IRI}=${BERLIN_HDT}"
+  --named "${BERLIN_GRAPH_IRI}=${BERLIN_HDT}"
 
 run_parser_pass "named-subselect" "${QUERY_DIR}/berlin_named_subselect.rq" \
-  --named-hdt "${BERLIN_GRAPH_IRI}=${BERLIN_HDT}"
+  --named "${BERLIN_GRAPH_IRI}=${BERLIN_HDT}"
 
 echo "pass=${pass_count} fail=${fail_count}"
 
