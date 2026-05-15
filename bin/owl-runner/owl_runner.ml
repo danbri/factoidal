@@ -396,6 +396,37 @@ let outcome_tag = function
 
 let fuel_100 : Prims.nat = Z.of_int 100
 
+(* Per-test SIGALRM cap (issue #263). The OWL-RL closure can blow up
+   on some test premises (see issue #262). Without a per-test wall-
+   clock cap, a single hung test takes the whole catalog down — we
+   saw this on profile-RL.rdf and profile-EL.rdf (entire catalogs
+   silently consume wall-clock indefinitely). The cap fires raise
+   Exit; the surrounding (try _ with _ -> g) returns the un-closed
+   graph, and the entailment check below records the test as a
+   FAIL/no-closure rather than hanging the catalog. Override via
+   FACTOIDAL_OWL_CAP_SEC env var. *)
+let owl_closure_cap_seconds : float =
+  match Sys.getenv_opt "FACTOIDAL_OWL_CAP_SEC" with
+  | Some s -> (try float_of_string s with _ -> 30.0)
+  | None -> 30.0
+
+exception Owl_closure_timeout
+
+let with_owl_cap (f : unit -> 'a) : 'a =
+  let prev =
+    Sys.signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Owl_closure_timeout))
+  in
+  let restore () =
+    let _ = Unix.setitimer Unix.ITIMER_REAL { Unix.it_interval = 0.0; it_value = 0.0 } in
+    Sys.set_signal Sys.sigalrm prev
+  in
+  let _ = Unix.setitimer Unix.ITIMER_REAL
+            { Unix.it_interval = 0.0; it_value = owl_closure_cap_seconds }
+  in
+  match f () with
+  | v -> restore (); v
+  | exception e -> restore (); raise e
+
 (* Closure regime — Phase 2.3.
    Regime selects which closure operation runs over the premise:
      RL — owl_rl_closure_with_reflexivity (Datalog, sound for OWL 2 RL).
@@ -421,14 +452,25 @@ let apply_closure (g : RDF_Graph_Executable.rdf_graph)
   : RDF_Graph_Executable.rdf_graph =
   match !regime with
   | Regime_RL ->
-    (try RDF_Graph_Executable.owl_rl_closure_with_reflexivity g fuel_100
-     with _ -> g)
+    (try with_owl_cap (fun () ->
+       RDF_Graph_Executable.owl_rl_closure_with_reflexivity g fuel_100)
+     with
+     | Owl_closure_timeout ->
+       Printf.eprintf "  [owl_closure_timeout] RL closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
+         owl_closure_cap_seconds;
+       g
+     | _ -> g)
   | Regime_DL ->
-    (try
+    (try with_owl_cap (fun () ->
        let g1 = RDF_Graph_Executable.owl_rl_closure_with_reflexivity g fuel_100 in
        let g2 = Tableau.tableau_materialise g1 in
-       RDF_Graph_Executable.owl_rl_closure_with_reflexivity g2 fuel_100
-     with _ -> g)
+       RDF_Graph_Executable.owl_rl_closure_with_reflexivity g2 fuel_100)
+     with
+     | Owl_closure_timeout ->
+       Printf.eprintf "  [owl_closure_timeout] DL closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
+         owl_closure_cap_seconds;
+       g
+     | _ -> g)
 
 (* Parse and merge imported-ontology literals into the premise graph
    before closure. Each imports_lookup hit gives us an RDF/XML literal
@@ -458,6 +500,8 @@ let load_imports_into_premise
 let run_positive_entailment
       (info : test_case_info)
       (imports_lookup : (string, string) Hashtbl.t) : outcome =
+  Printf.eprintf "  [pe-running] %s\n%!"
+    (match info.identifier with Some id -> id | None -> info.iri);
   match info.premise, info.conclusion with
   | None, _ -> Fail_no_premise
   | _, None -> Fail_no_conclusion
