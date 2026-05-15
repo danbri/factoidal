@@ -164,16 +164,22 @@ let () =
   report ~prev:triples ~cur:g1 ~label:"Step 1 (fuel=1)" ~elapsed:dt1;
   incr pass;
 
-  (* fuel=2: capped — the diagnostic question is "what would step 2 add?"
-     Try it under a long cap and report whether it returns. *)
-  Printf.printf "\nAttempting fuel=2 with %.0fs cap...\n%!" cap_seconds;
-  (match with_cap cap_seconds (fun () -> run_closure 2) with
+  (* Step 2 isolated: run one more closure step starting from g1.
+     This isolates "what does step 2 produce" from "does the recursive
+     fixpoint terminate". *)
+  Printf.printf "\nAttempting one more closure step from g1 (cap=%.0fs)...\n%!" cap_seconds;
+  (match with_cap cap_seconds (fun () ->
+    let t0 = Unix.gettimeofday () in
+    let g = RDF_Graph_Executable.owl_rl_closure_step g1 in
+    let dt = Unix.gettimeofday () -. t0 in
+    (g, dt))
+  with
   | Some (g2, dt2) ->
-    Printf.printf "fuel=2 returned in %.3fs\n" dt2;
-    report ~prev:g1 ~cur:g2 ~label:"Step 2 (fuel=2)" ~elapsed:dt2;
+    Printf.printf "step-2 returned in %.3fs\n" dt2;
+    report ~prev:g1 ~cur:g2 ~label:"Step 2 (one step from g1)" ~elapsed:dt2;
     incr pass
   | None ->
-    Printf.printf "XFAIL fuel=2 did not return within %.0fs (issue #262)\n" cap_seconds;
+    Printf.printf "XFAIL step-2 did not return within %.0fs (issue #262 — step blows up)\n" cap_seconds;
     incr xfail);
 
   Printf.printf "\nsummary: %d pass, %d expected-fail, %d unexpected fail\n"
