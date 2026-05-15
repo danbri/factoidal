@@ -751,5 +751,37 @@ sys.stderr.write(f"  [cottas_ondisk_runtime] perf-shim applied {applied}/{len(sh
 # rename_inner_pivot — have all been retired in this commit. The
 # F*-extracted public-API bodies are the only runtime now.
 
+# #261 fix part B: cottas_ondisk_named_graphs reads from
+# ds.cods_handle.coh_graphs, which is empty on Bet7-lazy-opened
+# handles until first encode_graph populates the OCaml Hashtbl.
+# Result: COTTAS files with named graphs return dsb_named = [] at
+# dataset-construction time, so any `GRAPH ?g { ... }` query returns
+# 0 results. Fix: post-extraction, replace the body with one that
+# triggers ensure_graphs_loaded and reads ft_id_to_graph.
+old_named_graphs = '''let cottas_ondisk_named_graphs (ds : cottas_ondisk_store) :
+  (RDF_Graph_Executable.iri * Parser_BallyhooCOTTAS.cottas_graph_ref)
+    Prims.list=
+  named_graphs_aux (ds.cods_handle).coh_graphs Prims.int_zero'''
+new_named_graphs = '''let cottas_ondisk_named_graphs (ds : cottas_ondisk_store) :
+  (RDF_Graph_Executable.iri * Parser_BallyhooCOTTAS.cottas_graph_ref)
+    Prims.list=
+  (* #261 fix part B: Bet7-lazy-opened handles defer coh_graphs.
+     Trigger the OCaml-side populate, then read from ft_id_to_graph.
+     The default-graph sentinel ("DEFAULT") is not a named graph and
+     is excluded by ensure_graphs_loaded's id_to_graph population. *)
+  let h = ds.cods_handle in
+  let tables = Cottas_ondisk_runtime.tables_for h in
+  Cottas_ondisk_runtime.ensure_graphs_loaded h tables;
+  let acc = ref [] in
+  Hashtbl.iter (fun id iri ->
+    acc := (iri, Z.of_int id) :: !acc
+  ) tables.Cottas_ondisk_runtime.ft_id_to_graph;
+  !acc'''
+content = content.replace(old_named_graphs, new_named_graphs, 1)
+if 'cottas_ondisk_named_graphs (ds : cottas_ondisk_store)' not in content or '#261 fix part B' not in content:
+    sys.stderr.write("  [cottas_ondisk_runtime] WARN: cottas_ondisk_named_graphs replacement did not apply\n")
+else:
+    sys.stderr.write("  [cottas_ondisk_runtime] cottas_ondisk_named_graphs replaced for Bet7 awareness\n")
+
 path.write_text(content)
 PYEOF

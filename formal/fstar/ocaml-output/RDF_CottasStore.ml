@@ -1301,7 +1301,18 @@ let rec named_graphs_aux (graphs : RDF_Graph_Executable.iri Prims.list)
 let cottas_ondisk_named_graphs (ds : cottas_ondisk_store) :
   (RDF_Graph_Executable.iri * Parser_BallyhooCOTTAS.cottas_graph_ref)
     Prims.list=
-  named_graphs_aux (ds.cods_handle).coh_graphs Prims.int_zero
+  (* #261 fix part B: Bet7-lazy-opened handles defer coh_graphs.
+     Trigger the OCaml-side populate, then read from ft_id_to_graph.
+     The default-graph sentinel ("DEFAULT") is not a named graph and
+     is excluded by ensure_graphs_loaded's id_to_graph population. *)
+  let h = ds.cods_handle in
+  let tables = Cottas_ondisk_runtime.tables_for h in
+  Cottas_ondisk_runtime.ensure_graphs_loaded h tables;
+  let acc = ref [] in
+  Hashtbl.iter (fun id iri ->
+    acc := (iri, Z.of_int id) :: !acc
+  ) tables.Cottas_ondisk_runtime.ft_id_to_graph;
+  !acc
 let cottas_ondisk_encode_subject_ml (ds : cottas_ondisk_store)
   (s : RDF_Graph_Executable.subject) :
   Parser_BallyhooCOTTAS.cottas_term_ref FStar_Pervasives_Native.option=
