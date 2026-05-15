@@ -547,9 +547,6 @@ runtime = r'''module Cottas_ondisk_runtime = struct
   let encode_object_fast (h : cottas_ondisk_handle) (o : RDF_Graph_Executable.rdf_term)
     : Prims.nat FStar_Pervasives_Native.option =
     let tables = tables_for h in
-    (* For literals we don't have an inverse-encoder in F* (escape rules
-       differ between bound-input and parquet-stored form). Fall back to
-       the F*-extracted slow path for non-IRI/non-bnode objects. *)
     match o with
     | RDF_Graph_Executable.T_IRI i ->
       let key = "<" ^ i ^ ">" in
@@ -562,9 +559,18 @@ runtime = r'''module Cottas_ondisk_runtime = struct
        | Some i -> FStar_Pervasives_Native.Some (Z.of_int i)
        | None -> FStar_Pervasives_Native.None)
     | RDF_Graph_Executable.T_Literal _ ->
-      (* Slow path via F*'s canonical-key revmap. Bound objects with
-         literals are uncommon; correctness > speed here. *)
-      revmap_lookup h.coh_obj_revmap (object_to_revmap_key o)
+      (* #261 fix: produce the N-Triples form via the F* serialiser
+         (RDF.NQuads.Serialize.nq_term_to_string) and look up in the
+         Bet7-populated Hashtbl. The literal column stores tokens in
+         N-Triples form ("<lex>" / "<lex>"@lang / "<lex>"^^<<dt>>);
+         the old fallback to revmap_lookup against coh_obj_revmap
+         silently returned None on Bet7-lazy-opened handles because
+         the assoc list is empty by design. Keeps the literal byte
+         layout in F* per Iron Rule #11. *)
+      let key = RDF_NQuads_Serialize.nq_term_to_string o in
+      (match Hashtbl.find_opt tables.ft_obj_tok_to_id key with
+       | Some i -> FStar_Pervasives_Native.Some (Z.of_int i)
+       | None -> FStar_Pervasives_Native.None)
 
   let encode_graph_fast (h : cottas_ondisk_handle) (g : RDF_Graph_Executable.iri)
     : Prims.nat FStar_Pervasives_Native.option =
