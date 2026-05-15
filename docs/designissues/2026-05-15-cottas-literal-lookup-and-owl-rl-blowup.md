@@ -1,6 +1,14 @@
 # 2026-05-15 — Two regressions surfaced while wiring up the test environment
 
-**Status:** Findings, no fix attempted. Filed so the next session has both bug reports together.
+**Status (updated end-of-session):**
+- **#261 (COTTAS literal lookup):** **FIXED** in two parts.
+  - part A (literal-bound object encode): `1b4f412`.
+  - part B (named-graph dispatch on Bet7): `ac77a12`.
+  - All 4 `tests/local/cottas_corpus_regressions.sh` checks PASS; W3C SPARQL 561/561 and RDF 1031/1031 unchanged.
+- **#262 (OWL-RL closure explosion):** characterised but not fixed. Bisect (commit `8e62e67`) shows no single rule is responsible — the blow-up is in the sequential sameAs cluster within `owl_rl_closure_step`. Needs sequenced inter-rule timing to localise.
+- **#263 (owl_runner RDF/XML stall):** confirmed to be a duplicate of #262. The XML parser is fast (57 ms on the 260 KB profile-RL.rdf); the hang is in `owl_rl_closure_with_reflexivity` called per test premise.
+
+Original text preserved below for archaeology.
 
 While re-running the full test pipeline on a fresh build of
 `bin/linux-x86_64/{w3c_runner, factoidal}` (commit `7eaf955`) two
