@@ -27,16 +27,26 @@ run_pair() {
   local query="$2"
   local plain_out="${WORKDIR}/${name}.plain.out"
   local cottas_out="${WORKDIR}/${name}.cottas.out"
+  local plain_err="${WORKDIR}/${name}.plain.err"
+  local cottas_err="${WORKDIR}/${name}.cottas.err"
 
-  "${BIN}" --data "${INPUT}" --query "${query}" >"${plain_out}" 2>&1
-  "${BIN}" --data-cottas "${ARTIFACT_FILE}" --query "${query}" >"${cottas_out}" 2>&1
+  # Capture stdout (the user-visible answer) and stderr (traces +
+  # diagnostics) separately. The COTTAS backend currently emits
+  # `[bet7-trace]` / `[qof3-trace]` debug lines on stderr from the
+  # cottas_ondisk_runtime / lazy-open patches; those legitimately
+  # differ between the in-memory backend (silent) and COTTAS (chatty)
+  # without indicating an answer divergence. Compare stdout only.
+  "${BIN}" --data "${INPUT}" --query "${query}" >"${plain_out}" 2>"${plain_err}"
+  "${BIN}" --data-cottas "${ARTIFACT_FILE}" --query "${query}" >"${cottas_out}" 2>"${cottas_err}"
 
   if ! cmp -s "${plain_out}" "${cottas_out}"; then
     echo "FAIL ${name}"
-    echo "--- plain ---"
+    echo "--- plain stdout ---"
     cat "${plain_out}"
-    echo "--- cottas ---"
+    echo "--- cottas stdout ---"
     cat "${cottas_out}"
+    echo "--- cottas stderr (trace lines, not compared) ---"
+    cat "${cottas_err}"
     exit 1
   fi
 
