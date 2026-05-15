@@ -1930,6 +1930,15 @@ let owl_rule_sameAs_replace_subject (g : rdf_graph) (ig : indexed_graph) : rdf_g
       if t.p = owl_sameAs then
         match term_to_subject t.o with
         | Some s_prime ->
+          // Skip reflexive sameAs (s = s'): substituting s for itself in
+          // every (s p o) edge would produce duplicates of existing
+          // triples, which dedup-sort removes anyway but only after the
+          // O(|sameAs| * |edges|) work has been done. Reflexive sameAs
+          // is produced wholesale by sameAs_reflexivity (one per term);
+          // without this guard the replace_* cascade blows up — see
+          // issue #262 cascade diagnostic.
+          if subject_eq t.s s_prime then acc
+          else
           List.Tot.fold_left
             (fun (acc2 : rdf_graph) (src : triple) ->
               if subject_eq src.s t.s && src.p <> owl_sameAs then
@@ -1951,6 +1960,10 @@ let owl_rule_sameAs_replace_object (g : rdf_graph) (ig : indexed_graph) : rdf_gr
         // For each triple (s p o) where o matches sameAs_t.s (i.e., subject
         // of a sameAs statement), emit (s p sameAs_t.o).
         let o_as_term = subject_to_term sameAs_t.s in
+        // Skip reflexive sameAs — same reason as sameAs_replace_subject
+        // (see issue #262 cascade diagnostic).
+        if rdf_term_eq o_as_term sameAs_t.o then acc
+        else
         List.Tot.fold_left
           (fun (acc2 : rdf_graph) (src : triple) ->
             if src.p <> owl_sameAs && rdf_term_eq src.o o_as_term then
@@ -1972,6 +1985,10 @@ let owl_rule_sameAs_replace_predicate (g : rdf_graph) (ig : indexed_graph) : rdf
       if sameAs_t.p = owl_sameAs then
         match sameAs_t.s, sameAs_t.o with
         | S_IRI p_iri, T_IRI p_prime_iri ->
+          // Skip reflexive sameAs — same reason as sameAs_replace_subject
+          // / sameAs_replace_object (see issue #262 cascade diagnostic).
+          if p_iri = p_prime_iri then acc
+          else
           List.Tot.fold_left
             (fun (acc2 : rdf_graph) (src : triple) ->
               if src.p = p_iri && not (is_owl_metapredicate src.p) then
