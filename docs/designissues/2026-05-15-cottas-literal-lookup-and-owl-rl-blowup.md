@@ -159,3 +159,60 @@ bounded per test. Separately, audit which closure rules fire on
 `simple.ttl` between steps 1 and 2 — the 13× per-step growth at this
 input size suggests an unstratified reflexivity / sameAs rule firing
 once on every new triple it produces.
+
+## 3. owl_runner stalls on any non-trivial RDF/XML catalog
+
+### Symptom
+
+`bin/linux-x86_64/owl_runner` (no args) silently consumes wall-clock for
+10+ minutes then SIGTERM. Reading `profile-RL.rdf` (4919 lines / ~200KB)
+never produces output.
+
+### Repro
+
+```bash
+# the only catalog small enough to terminate (725 bytes, 24 lines):
+$ time owl_runner third_party/testing/owl/RL-RDF-rules-tests.rdf
+  parsed 3 triples in 0.00s
+  Totals: 0 test cases
+  ...
+real  0m0.027s
+
+# any catalog above ~1KB hangs:
+$ timeout 30 owl_runner third_party/testing/owl/profile-QL.rdf   # 181 KB
+Terminated  (exit 143)
+
+$ timeout 30 owl_runner third_party/testing/owl/profile-EL.rdf   # ~190 KB
+Terminated  (exit 143)
+```
+
+The runner never reaches the "parsed N triples in T.Ts" line on these
+inputs, so the hang is during RDF/XML parse, not during test execution.
+
+### Likely root cause
+
+`Parser.RDFXML.fst` exhibits superlinear behavior. The smallest file
+that succeeds is 24 lines / 3 triples; the smallest that fails is
+3289 lines / ~180KB. Native parsers for similar XML inputs typically
+take milliseconds.
+
+The 'parsers belong in F*' rule (Iron Rule #4) is preserved here, but
+the verified parser implementation needs an algorithmic audit. Likely
+suspects: string-append quadratic, list-prepend then reverse, or
+re-parsing the same nested element on every push.
+
+### Severity
+
+`owl_runner` is documented as a "Phase 0 skeleton — does NOT run any
+reasoning yet" per its `--help`. The dashboard's
+`owl_rl_positive_entailment: pass:20,fail:10,total:30` (`docs/test-results/latest.json`)
+must therefore use a different path — possibly a smaller manifest, an
+earlier pre-parsed catalog, or an entirely different runner. Worth
+clarifying which path produces that number before treating the dashboard
+as the source of truth for OWL.
+
+### Suggested next step
+
+Profile `Parser.RDFXML.fst` against a small RDF/XML fixture
+(e.g. `third_party/testing/w3c/rdf-tests/rdf/rdf11/rdf-xml/example-01.rdf`),
+locate the hot loop, audit for quadratic-in-input idioms.
