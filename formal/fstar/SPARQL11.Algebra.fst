@@ -121,12 +121,6 @@ let rec sm_merge_aux (mu1 : solution_mapping) (mu2 : solution_mapping)
 let sm_merge (mu1 mu2 : solution_mapping) : solution_mapping =
   sm_merge_aux mu1 mu2
 
-(* Graph operations — concrete via list/record access *)
-let graph_triples (g : rdf_graph) : list triple = g
-let triple_subject (t : triple) : subject = t.s
-let triple_predicate (t : triple) : wf_iri = t.p
-let triple_object (t : triple) : rdf_term = t.o
-
 (** ====================================================================== **)
 (** Part 1b: Storage Boundary (experimental, list-backed for now)          **)
 (** ====================================================================== **)
@@ -1088,19 +1082,15 @@ let string_replace_literal (s : string) (pattern : string) (replacement : string
 
 assume val regex_match : string -> string -> option string -> bool
 
-(* Spec-level wrappers for string functions *)
-let fn_strlen_spec (s : string) : nat = string_length s
+(* Spec-level wrappers for string functions. Only the variants actually
+   used by `eval_expr_typed_with_base` survive — the rest of the
+   `fn_*_spec` family (fn_strlen_spec, fn_ucase_spec, fn_lcase_spec,
+   fn_strstarts_spec, fn_strends_spec, fn_strbefore_spec, fn_strafter_spec,
+   fn_concat_spec, fn_encode_for_uri_spec, fn_abs_spec) were 1-line aliases
+   for their host-string namesakes and had no callers. Removed 2026-05-16. *)
 let fn_substr_spec (s : string) (start : nat) (len : option nat) : string =
   let idx = if start > 0 then start - 1 else 0 in
   string_substring s idx len
-let fn_ucase_spec (s : string) : string = string_upper s
-let fn_lcase_spec (s : string) : string = string_lower s
-let fn_strstarts_spec (s arg : string) : bool = string_starts_with s arg
-let fn_strends_spec (s arg : string) : bool = string_ends_with s arg
-let fn_strbefore_spec (s arg : string) : string = string_before s arg
-let fn_strafter_spec (s arg : string) : string = string_after s arg
-let fn_concat_spec (args : list string) : string = string_concat args
-let fn_encode_for_uri_spec (s : string) : string = string_encode_uri s
 
 (* Constructor functions *)
 let fn_strdt (lex : string) (dt : wf_iri) : rdf_term =
@@ -1133,7 +1123,6 @@ assume val hash_sha512 : string -> string
 
 (* Integer math helpers *)
 let int_abs (n : int) : int = if n >= 0 then n else 0 - n
-let fn_abs_spec (n : int) : int = int_abs n
 
 (* Helper: parse digit character to int *)
 let char_to_digit (c : FStar.Char.char) : option int =
@@ -1252,9 +1241,12 @@ let pad_left_zeros (s : string) (target : nat) : string =
   if len >= target then s
   else make_zeros (target - len) ^ s
 
-// Strip trailing zeros from a string, keeping at least min_keep chars
-let rec strip_trailing_zeros_chars (cs : list FStar.Char.char)
-  : Tot (list FStar.Char.char) (decreases cs) =
+// Strip trailing zeros from a char list, keeping at least one "0".
+// (Was declared `rec` with `decreases cs` but doesn't actually recurse;
+//  F* flagged the unused recursive binding. Dropped the `rec` keyword
+//  2026-05-16.)
+let strip_trailing_zeros_chars (cs : list FStar.Char.char)
+  : Tot (list FStar.Char.char) =
   match cs with
   | [] -> []
   | _ ->
@@ -1762,10 +1754,6 @@ let eval_single_tp_store (tp : triple_pattern) (gs : graph_store) (mu : solution
   } in
   let candidates = store_search gs bound in
   list_filter_map (fun t -> tp_match tp t mu) candidates
-
-let eval_single_tp (tp : triple_pattern) (g : rdf_graph) (mu : solution_mapping)
-  : solution_sequence =
-  eval_single_tp_store tp (graph_to_store g) mu
 
 let estimate_tp_store_mu (tp : triple_pattern) (gs : graph_store) (mu : solution_mapping) : nat =
   store_estimate gs {
@@ -2971,37 +2959,13 @@ and eval_concat_with_base (base : option wf_iri) (es : list expr) (mu : solution
         | _ -> ER_Error)
      | None -> ER_Error)
 
-(* Non-mutual `base = None` wrappers — preserve the historical 2-arg
-   eval_expr / eval_coalesce / eval_in / eval_concat signatures so that
-   outer callers (eval_group_condition, eval_over_group, having_filter,
-   etc.) compile unchanged.
-
-   #65 Step 2a (2026-05-10): the mutual block above now takes the BASE
-   IRI as its first parameter (`option wf_iri`). These wrappers default
-   to `None`, which keeps the OCaml-extracted call sites byte-compatible
-   with the legacy "no BASE" call shape. The post-extraction OCaml patch
-   (`65_base_iri_resolution.sh`) replaces the wrapper body with one that
-   reads `!current_base_iri_ref` instead of passing `None`, so BASE-aware
-   evaluation still works for callers that haven't migrated to the
-   explicit `option wf_iri` argument yet. Step 2b/2c thread the real
-   `q.q_base` through the outer functions and retire the OCaml mutable. *)
-let eval_expr (e : expr) (mu : solution_mapping)
-  : Tot eval_result =
-  eval_expr_with_base None e mu
-
-let eval_coalesce (es : list expr) (mu : solution_mapping)
-  : Tot eval_result =
-  eval_coalesce_with_base None es mu
-
-let eval_in (v : eval_result) (es : list expr) (mu : solution_mapping)
-  : Tot eval_result =
-  eval_in_with_base None v es mu
-
-let eval_concat (es : list expr) (mu : solution_mapping)
-  : Tot eval_result =
-  eval_concat_with_base None es mu
-
-(* eval_expr_ebv is assumed above eval_pattern; assumed to equal ebv(eval_expr e mu) *)
+(* The historical `base = None` wrappers (`eval_expr`, `eval_coalesce`,
+   `eval_in`, `eval_concat`) were removed (2026-05-16). They survived
+   the #65 BASE-IRI migration as backwards-compat shims for the
+   `65_base_iri_resolution.sh` post-extraction patch, but that patch
+   was retired upstream and the wrappers had no remaining callers.
+   All call sites now use the `_with_base` mutual-block variants
+   directly. *)
 
 (* Parts 9.1–9.10: Built-in functions defined in utility section above.
    Remaining unique content continues in Part 10. *)
@@ -4297,25 +4261,6 @@ type cast_target =
   | Cast_Boolean
   | Cast_DateTime
 
-(* Helper: extract lexical form from an eval_result that is a plain/typed literal *)
-let er_to_lexical (v : eval_result) : option string =
-  match v with
-  | ER_Term (T_Literal l) -> Some (lit_lexical l)
-  | ER_Term (T_IRI i) -> Some (iri_to_string i)
-  | ER_Term (T_BNode b) -> Some b
-  | ER_Num n -> Some (string_of_int n)
-  | ER_Dec s -> Some s
-  | ER_Dbl s -> Some s
-  | ER_Bool true -> Some "true"
-  | ER_Bool false -> Some "false"
-  | ER_Error -> None
-
-(* Helper: check if a string looks like a decimal (contains a dot, digits around it).
-   Simplified: we just check it can be parsed as integer after removing the dot,
-   or accept it as-is since ER_Dec already validated. *)
-let is_decimal_string (s : string) : bool =
-  String.length s > 0
-
 (* Cast a value to a target type. Returns None on invalid cast. *)
 let xsd_cast (v : eval_result) (target : cast_target) : option eval_result =
   match target with
@@ -4598,10 +4543,6 @@ let eval_exists (base : option wf_iri) (pattern : group_graph_pattern) (mu : sol
   (graph : rdf_graph) (ds : rdf_dataset) : bool =
   let substituted = substitute_pattern mu pattern in
   List.Tot.length (eval_pattern base substituted graph ds) > 0
-
-let eval_not_exists (base : option wf_iri) (pattern : group_graph_pattern) (mu : solution_mapping)
-  (graph : rdf_graph) (ds : rdf_dataset) : bool =
-  not (eval_exists base pattern mu graph ds)
 
 (** ====================================================================== **)
 (** Part 18: SPARQL 1.1 Sub-SELECT (§12)                                  **)

@@ -38,22 +38,13 @@ noeq type dataset_backend = {
   dsb_named : list named_graph_backend;
 }
 
-let list_graph_backend (g : rdf_graph) : graph_backend =
-  GB_List g
-
-let list_dataset_backend (ds : rdf_dataset) : dataset_backend =
-  {
-    dsb_default = GB_List ds.ds_default;
-    dsb_named =
-      List.Tot.map
-        (fun (ng : named_graph) -> { ngb_name = ng.ng_name; ngb_graph = GB_List ng.ng_graph })
-        ds.ds_named
-  }
+(* list_graph_backend / list_dataset_backend wrappers were removed
+   2026-05-16. All callers use the indexed_* variants below — same
+   triples, faster lookup paths. *)
 
 (* Wrap an rdf_graph as an indexed backend (issue #100 Phase 0). The
    index is built once at construction; subsequent backend_search calls
-   on the same wrapper reuse the buckets. Semantically identical to
-   list_graph_backend — same triples, just faster lookup paths. *)
+   on the same wrapper reuse the buckets. *)
 let indexed_graph_backend (g : rdf_graph) : graph_backend =
   GB_Indexed (build_indexed g)
 
@@ -266,16 +257,6 @@ let eval_single_tp_backend (tp : triple_pattern) (gb : graph_backend) (mu : solu
   list_filter_map (fun t -> tp_match tp t mu) candidates
 
 // Compact bound-shape descriptor. Encodes which positions have a
-// bound term ("S", "P", "O") vs free ("_"). Reading order S-P-O.
-// Examples: "_PO" = predicate + object bound; "___" = all free.
-// Used by the OCaml-side --explain dry-runner to render planner
-// decisions; kept in F* so the descriptor logic IS the spec.
-let tp_bound_shape (tp : triple_pattern) (mu : solution_mapping) : string =
-  let s = match bound_subject_of_pattern tp.tp_s mu with Some _ -> "S" | None -> "_" in
-  let p = match bound_predicate_of_pattern tp.tp_p mu with Some _ -> "P" | None -> "_" in
-  let o = match bound_object_of_pattern tp.tp_o mu with Some _ -> "O" | None -> "_" in
-  s ^ p ^ o
-
 let estimate_tp_backend_mu (tp : triple_pattern) (gb : graph_backend) (mu : solution_mapping) : nat =
   backend_estimate gb {
     bs = bound_subject_of_pattern tp.tp_s mu;

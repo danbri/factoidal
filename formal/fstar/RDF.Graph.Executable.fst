@@ -125,19 +125,6 @@ let literal_value_eq (l1 l2 : literal) : bool =
      datatypes directly — if both are xsd:string they match. *)
   l1.datatype = l2.datatype
 
-(* RDF 1.1 value equality for terms.
-   Extends rdf_term_eq with value-space semantics:
-   - Language tags compared case-insensitively (via literal_eq)
-   - Plain literal / xsd:string equivalence (via literal_value_eq)
-   Note: datatype value equivalence (e.g. "010"^^xsd:integer = "10"^^xsd:integer)
-   is NOT yet implemented — that requires numeric normalization in F*. *)
-let rdf_term_value_eq (t1 t2 : rdf_term) : bool =
-  match t1, t2 with
-  | T_IRI i1, T_IRI i2 -> i1 = i2
-  | T_BNode b1, T_BNode b2 -> b1 = b2
-  | T_Literal l1, T_Literal l2 -> literal_value_eq l1 l2
-  | _, _ -> false
-
 noeq type triple = {
   s : subject;
   p : wf_iri;
@@ -168,18 +155,11 @@ noeq type rdf_dataset = {
 
 let empty_dataset : rdf_dataset = { ds_default = empty_graph; ds_named = [] }
 
-let make_dataset (default_g : rdf_graph) (named : list named_graph) : rdf_dataset =
-  { ds_default = default_g; ds_named = named }
-
 (* Look up a named graph by IRI *)
 let rec lookup_named_graph (name : iri) (named : list named_graph) : option rdf_graph =
   match named with
   | [] -> None
   | ng :: rest -> if ng.ng_name = name then Some ng.ng_graph else lookup_named_graph name rest
-
-(* Collect all named graph IRIs *)
-let named_graph_iris (ds : rdf_dataset) : list iri =
-  List.Tot.map (fun ng -> ng.ng_name) ds.ds_named
 
 (* Blank node labels are scoped to the source document / dataset they came from.
    When multiple files are loaded independently and then merged for querying,
@@ -204,21 +184,6 @@ let rename_triple_bnodes (prefix:string) (t:triple) : triple =
     s = rename_subject_bnodes prefix t.s;
     p = t.p;
     o = rename_term_bnodes prefix t.o;
-  }
-
-let rename_graph_bnodes (prefix:string) (g:rdf_graph) : rdf_graph =
-  List.Tot.map (rename_triple_bnodes prefix) g
-
-let rename_named_graph_bnodes (prefix:string) (ng:named_graph) : named_graph =
-  {
-    ng_name = ng.ng_name;
-    ng_graph = rename_graph_bnodes prefix ng.ng_graph;
-  }
-
-let rename_dataset_bnodes (prefix:string) (ds:rdf_dataset) : rdf_dataset =
-  {
-    ds_default = rename_graph_bnodes prefix ds.ds_default;
-    ds_named = List.Tot.map (rename_named_graph_bnodes prefix) ds.ds_named;
   }
 
 // Computes the set of all blank nodes in the graph (subject then object per
@@ -544,9 +509,6 @@ let build_indexed (g : rdf_graph) : Tot indexed_graph =
     ig_so   = build_bucket bucket_key_so   g;
   }
 
-(* Round-trip: extract the source-of-truth triple list. *)
-let ig_to_list (ig : indexed_graph) : list triple = ig.ig_triples
-
 (** 7. Equality Reflexivity Lemmas **)
 
 // subject_eq is reflexive
@@ -581,66 +543,12 @@ let rec lemma_mem_triple_append (t : triple) (g : rdf_graph) :
 
 (** 8. Graph Properties (verified) **)
 
-// Adding a triple guarantees it's in the graph — PROVED (no more admit)
-let lemma_add_no_dup (t:triple) (g:rdf_graph) :
-  Lemma (mem_triple t (graph_add t g)) =
-  if mem_triple t g then ()
-  else lemma_mem_triple_append t g
-
 // Removing a triple guarantees it's gone — PROVED (no more admit)
 let rec lemma_remove_absent (t:triple) (g:rdf_graph) :
   Lemma (not (mem_triple t (graph_remove t g))) =
   match g with
   | [] -> ()
   | _ :: tl -> lemma_remove_absent t tl
-
-// Empty graph has no bnodes
-let lemma_empty_no_bnodes () :
-  Lemma (graph_bnodes empty_graph = []) = ()
-
-(** 8. N-Triples Serialization Specification **)
-
-// N-Triples escape table: characters that must be escaped in string literals
-let must_escape (c:FStar.Char.char) : bool =
-  let code = FStar.Char.int_of_char c in
-  code = 0x5C  // backslash
-  || code = 0x22  // double quote
-  || code = 0x0A  // newline
-  || code = 0x0D  // carriage return
-  || code = 0x09  // tab
-  || code = 0x08  // backspace
-  || code = 0x0C  // form feed
-  || code < 0x20  // other control characters
-
-// An N-Triples-safe string has no unescaped special characters
-// (This is a predicate for specifying the output of serialization)
-(* Checks that no character in s needs escaping.
-   Recursive definition over string index; termination assumed. *)
-let rec is_nt_escaped_list (cs : list FStar.Char.char) : bool =
-  match cs with
-  | [] -> true
-  | c :: rest ->
-    let code = FStar.Char.int_of_char c in
-    if code < 0x20 || code = 0x22 || code = 0x5C then false
-    else is_nt_escaped_list rest
-
-let is_nt_escaped (s : string) (n : nat) : bool =
-  let cs = String.list_of_string s in
-  let rec drop_n (l : list FStar.Char.char) (k : nat) : list FStar.Char.char =
-    match l with
-    | [] -> []
-    | _ :: tl -> if k = 0 then l else drop_n tl (k - 1)
-  in
-  is_nt_escaped_list (drop_n cs n)
-
-// Roundtrip property specification:
-// For any well-formed graph g, serializing to N-Triples and parsing back
-// should yield a graph with the same triples (modulo blank node renaming).
-// This is stated as a type-level specification; proof is future work.
-//
-// val roundtrip_preserves_triples :
-//   g:rdf_graph ->
-//   Lemma (graph_isomorphic g (parse_ntriples (serialize_ntriples g)))
 
 (** 9. SPARQL Algebra Specification **)
 
@@ -669,56 +577,11 @@ type solution_mapping = list (var_name * rdf_term)
 // Basic Graph Pattern = list of triple patterns
 type bgp = list triple_pattern
 
-// A single triple pattern matches against a graph triple under a mapping
-let pattern_subject_matches (ps:pattern_subject) (s:subject) (mu:solution_mapping) : bool =
-  match ps with
-  | PS_Concrete cs -> subject_eq cs s
-  | PS_Var v ->
-    (match List.Tot.assoc v mu with
-    | Some (T_IRI i) -> subject_eq s (S_IRI i)
-    | Some (T_BNode b) -> subject_eq s (S_BNode b)
-    | _ -> true)  // unbound variable matches anything (will be bound)
-
-let pattern_term_matches (pt:pattern_term) (t:rdf_term) (mu:solution_mapping) : bool =
-  match pt with
-  | PT_Concrete ct -> rdf_term_eq ct t
-  | PT_Var v ->
-    (match List.Tot.assoc v mu with
-    | Some bound -> rdf_term_eq bound t
-    | None -> true)  // unbound variable matches anything
-
-// A triple pattern matches a triple under a solution mapping
-let triple_pattern_matches (tp:triple_pattern) (t:triple) (mu:solution_mapping) : bool =
-  pattern_subject_matches tp.tp_s t.s mu &&
-  tp.tp_p = t.p &&
-  pattern_term_matches tp.tp_o t.o mu
-
-// SPARQL algebra operations (specification level)
-noeq type algebra_op =
-  | BGP_Op      : bgp -> algebra_op
-  | Filter_Op   : algebra_op -> algebra_op  // Filter expression omitted for now
-  | Optional_Op : algebra_op -> algebra_op -> algebra_op
-  | Union_Op    : algebra_op -> algebra_op -> algebra_op
-
-// Solution multiset (bag semantics)
-type solution_multiset = list solution_mapping
-
-// Evaluate a BGP: find all solution mappings for the pattern against the graph
-// (This is a specification — the Rust implementation should produce equivalent results)
-//
-// val eval_bgp : bgp -> rdf_graph -> solution_multiset
-
-(** 10. Graph Isomorphism (for bnode-insensitive comparison) **)
-
-// Two graphs are isomorphic if there exists a bijection on blank node IDs
-// such that applying the mapping to one graph yields the other.
-// (Stated declaratively; full proof would require a constructive witness)
-//
-// type bnode_mapping = bnode_id -> bnode_id
-//
-// val graph_isomorphic : rdf_graph -> rdf_graph -> bool
-//   (requires constructing a witness mapping, NP-complete in general,
-//    but tractable for small test graphs)
+(* Section 9 once held a prototype `pattern_*_matches` / `algebra_op` /
+   `solution_multiset` group; the production implementations of those
+   live in `SPARQL11.Algebra.fst`. The dead prototypes were removed
+   on 2026-05-16 (~50 lines). Section 10's `graph_isomorphic` /
+   `roundtrip_preserves_triples` were spec-only stubs, also removed. *)
 
 (* ======================================================================== *)
 (* SPARQL Evaluation Semantics                                              *)
@@ -859,13 +722,6 @@ let boolean_effective_value (v : sparql_value) : bool =
   | SV_BNode _ -> false     // BNodes have no boolean interpretation
   | SV_TypedLiteral _ _ -> false  // Unknown typed literals → false
 
-// For unbound variables, the EBV is false.
-// This models the SPARQL semantics where FILTER on an unbound variable fails.
-let bev_of_option (v : option sparql_value) : bool =
-  match v with
-  | None   -> false   // unbound → false
-  | Some x -> boolean_effective_value x
-
 (** 13. SPARQL BIND Semantics **)
 
 // BIND assigns the result of an expression to a variable in each solution.
@@ -899,17 +755,16 @@ let apply_bind (eval : filter_expr_eval) (var : var_name) (mu : solution_mapping
 
 (** 14. SPARQL String Function Signatures **)
 
-// Type specifications for SPARQL 1.1 string functions.
-// These mirror the FnStrLen, FnSubStr, FnUCase, FnLCase, FnConcat
-// branches in eval_filter_expr_typed in sparql.rs.
+// Type specifications for SPARQL 1.1 string functions. The SPARQL 1.1
+// evaluator now lives in `SPARQL11.Algebra.fst` (sparql_value-typed,
+// language/datatype-preserving); the once-shadow `sparql_strlen` /
+// `sparql_substr` / `sparql_ucase` / `sparql_lcase` were removed
+// (2026-05-16). `string_substring` and `sparql_concat` remain — both
+// are reused by external callers (OWL.QueryRewrite and the F*-side
+// CONCAT spec respectively).
 
-// STRLEN: returns the number of characters (not bytes) in the string
-let sparql_strlen (s : string) : nat =
-  String.length s
-
-// SUBSTR: 1-indexed substring extraction
-// start is 1-indexed per SPARQL spec; length is optional
-// Mirrors the Rust SUBSTR implementation which converts to 0-indexed internally
+// SUBSTR helper: 1-indexed substring extraction primitive. Used by
+// SPARQL11.Algebra.fst and OWL.QueryRewrite.fst.
 let string_substring (s : string) (i : nat) (len : nat) : string =
   let slen = String.length s in
   if i >= slen then ""
@@ -917,27 +772,6 @@ let string_substring (s : string) (i : nat) (len : nat) : string =
     let max_len = slen - i in
     let actual_len = if len <= max_len then len else max_len in
     String.sub s i actual_len
-
-let sparql_substr (s : string) (start : nat) (len : option nat) : string =
-  let start_idx = if start > 0 then start - 1 else 0 in
-  let remaining = if String.length s > start_idx then String.length s - start_idx else 0 in
-  match len with
-  | Some n -> string_substring s start_idx n
-  | None   -> string_substring s start_idx remaining
-
-// UCASE: convert all characters to upper case
-let string_to_upper (s : string) : string =
-  String.uppercase s
-
-let sparql_ucase (s : string) : string =
-  string_to_upper s
-
-// LCASE: convert all characters to lower case
-let string_to_lower (s : string) : string =
-  String.lowercase s
-
-let sparql_lcase (s : string) : string =
-  string_to_lower s
 
 // CONCAT: concatenate a list of strings
 let rec sparql_concat (args : list string) : string =
@@ -947,45 +781,12 @@ let rec sparql_concat (args : list string) : string =
 
 (** 15. Properties and Lemmas **)
 
-// Comparison reflexivity: any value that supports Eq is equal to itself — PROVED
-let lemma_compare_reflexive (v : sparql_value) :
-  Lemma (match v with
-         | SV_Numeric _ _      -> value_compare v v Eq = Some true
-         | SV_PlainLiteral _   -> value_compare v v Eq = Some true
-         | SV_LangLiteral _ _  -> value_compare v v Eq = Some true
-         | SV_Iri _            -> value_compare v v Eq = Some true
-         | SV_BNode _          -> value_compare v v Eq = Some true
-         | SV_Boolean _        -> value_compare v v Eq = Some true
-         | SV_TypedLiteral _ _ -> value_compare v v Eq = Some true) =
-  match v with
-  | SV_Numeric _ _      -> ()
-  | SV_PlainLiteral _   -> ()
-  | SV_LangLiteral _ _  -> ()
-  | SV_Iri _            -> ()
-  | SV_BNode _          -> ()
-  | SV_Boolean _        -> ()
-  | SV_TypedLiteral _ _ -> ()
-
-// Comparison symmetry for equality: Eq is symmetric for all comparable types — PROVED
-let lemma_compare_symmetric (a b : sparql_value) :
-  Lemma (value_compare a b Eq = value_compare b a Eq) =
-  match a, b with
-  | SV_Numeric _ _, SV_Numeric _ _             -> ()
-  | SV_Boolean _, SV_Boolean _                  -> ()
-  | SV_PlainLiteral _, SV_PlainLiteral _        -> ()
-  | SV_LangLiteral _ _, SV_LangLiteral _ _      -> ()
-  | SV_Iri _, SV_Iri _                          -> ()
-  | SV_BNode _, SV_BNode _                      -> ()
-  | SV_TypedLiteral _ dt1, SV_TypedLiteral _ dt2 ->
-    if dt1 = dt2 then () else ()
-  | _, _ -> ()
-
-// Incompatible type comparison: numeric vs plain literal returns None
-let lemma_incompatible_types (n : int) (nt : numeric_type) (s : string) :
-  Lemma (value_compare (SV_Numeric n nt) (SV_PlainLiteral s) Eq = None /\
-         value_compare (SV_Numeric n nt) (SV_PlainLiteral s) Lt = None /\
-         value_compare (SV_PlainLiteral s) (SV_Numeric n nt) Eq = None) =
-  ()
+(* Section 15 once held `lemma_compare_reflexive`, `_compare_symmetric`,
+   and `_incompatible_types`. They had no callers and no SMTPats, so
+   the verifier wasn't using them to discharge anything elsewhere.
+   Removed 2026-05-16 (~40 lines). The properties still hold; the
+   lemmas can be re-added if a downstream proof obligation needs
+   them. *)
 
 // BIND preserves existing bindings: if a variable is already bound,
 // apply_bind does not modify the solution mapping — PROVED
@@ -1118,10 +919,6 @@ let rec find_subjects_acc (acc : list subject) (g : rdf_graph) (pred : wf_iri) (
 
 let find_subjects (g : rdf_graph) (pred : wf_iri) (obj : rdf_term) : list subject =
   find_subjects_acc [] g pred obj
-
-(* Check if a triple exists in the graph *)
-let has_triple (g : rdf_graph) (t : triple) : bool =
-  mem_triple t g
 
 (* Add a triple only if not already present.
    #259 followup (2026-05-11): O(n) membership scan + O(n) tail-append.
@@ -4095,14 +3892,6 @@ let owl_rl_closure_with_reflexivity (g : rdf_graph) (fuel : nat) : Tot rdf_graph
 // O(n^2) in the closure size for (2), O(n^3) worst case for (3).
 // Acceptable on OWL test catalogs whose per-test closures are
 // hundreds of triples max.
-let sameAs_in_graph (g : rdf_graph) (a : rdf_term) (b : rdf_term) : Tot bool =
-  List.Tot.existsb
-    (fun (t : triple) ->
-      t.p = owl_sameAs &&
-      ((rdf_term_eq (subject_to_term t.s) a && rdf_term_eq t.o b) ||
-       (rdf_term_eq (subject_to_term t.s) b && rdf_term_eq t.o a)))
-    g
-
 let has_disjoint_with (g : rdf_graph) (c1 : rdf_term) (c2 : rdf_term) : Tot bool =
   List.Tot.existsb
     (fun (t : triple) ->
@@ -4200,7 +3989,6 @@ let is_inconsistent (g : rdf_graph) : Tot bool =
 // An opaque-looking regime tag. Kept as a string so we don't have to extend
 // the extracted OCaml type environment — the w3c_runner selects a value
 // based on the manifest-declared regime list.
-let regime_simple : string = "simple"
 let regime_rdf : string = "RDF"
 let regime_rdfs : string = "RDFS"
 let regime_owl_rl : string = "OWL-RL"
