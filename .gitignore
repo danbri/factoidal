@@ -23,6 +23,7 @@
 # Scratch work — fixtures generated for ad-hoc benchmarks, perf
 # traces, audit harnesses. Per-session, never committed.
 tmp/
+_tmp.junk/
 
 # Stale git worktree metadata from earlier subagent isolation attempts.
 .claude/worktrees/

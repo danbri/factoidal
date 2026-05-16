@@ -1213,9 +1213,6 @@ module Cottas_ondisk_runtime = struct
     : Prims.nat FStar_Pervasives_Native.option =
     let tables = tables_for h in
     ensure_objects_loaded h tables;
-    (* For literals we don't have an inverse-encoder in F* (escape rules
-       differ between bound-input and parquet-stored form). Fall back to
-       the F*-extracted slow path for non-IRI/non-bnode objects. *)
     match o with
     | RDF_Graph_Executable.T_IRI i ->
       let key = "<" ^ i ^ ">" in
@@ -1228,9 +1225,18 @@ module Cottas_ondisk_runtime = struct
        | Some i -> FStar_Pervasives_Native.Some (Z.of_int i)
        | None -> FStar_Pervasives_Native.None)
     | RDF_Graph_Executable.T_Literal _ ->
-      (* Slow path via F*'s canonical-key revmap. Bound objects with
-         literals are uncommon; correctness > speed here. *)
-      revmap_lookup h.coh_obj_revmap (object_to_revmap_key o)
+      (* #261 fix: produce the N-Triples form via the F* serialiser
+         (RDF.NQuads.Serialize.nq_term_to_string) and look up in the
+         Bet7-populated Hashtbl. The literal column stores tokens in
+         N-Triples form ("<lex>" / "<lex>"@lang / "<lex>"^^<<dt>>);
+         the old fallback to revmap_lookup against coh_obj_revmap
+         silently returned None on Bet7-lazy-opened handles because
+         the assoc list is empty by design. Keeps the literal byte
+         layout in F* per Iron Rule #11. *)
+      let key = RDF_NQuads_Serialize.nq_term_to_string o in
+      (match Hashtbl.find_opt tables.ft_obj_tok_to_id key with
+       | Some i -> FStar_Pervasives_Native.Some (Z.of_int i)
+       | None -> FStar_Pervasives_Native.None)
 
   let encode_graph_fast (h : cottas_ondisk_handle) (g : RDF_Graph_Executable.iri)
     : Prims.nat FStar_Pervasives_Native.option =
@@ -1295,7 +1301,18 @@ let rec named_graphs_aux (graphs : RDF_Graph_Executable.iri Prims.list)
 let cottas_ondisk_named_graphs (ds : cottas_ondisk_store) :
   (RDF_Graph_Executable.iri * Parser_BallyhooCOTTAS.cottas_graph_ref)
     Prims.list=
-  named_graphs_aux (ds.cods_handle).coh_graphs Prims.int_zero
+  (* #261 fix part B: Bet7-lazy-opened handles defer coh_graphs.
+     Trigger the OCaml-side populate, then read from ft_id_to_graph.
+     The default-graph sentinel ("DEFAULT") is not a named graph and
+     is excluded by ensure_graphs_loaded's id_to_graph population. *)
+  let h = ds.cods_handle in
+  let tables = Cottas_ondisk_runtime.tables_for h in
+  Cottas_ondisk_runtime.ensure_graphs_loaded h tables;
+  let acc = ref [] in
+  Hashtbl.iter (fun id iri ->
+    acc := (iri, Z.of_int id) :: !acc
+  ) tables.Cottas_ondisk_runtime.ft_id_to_graph;
+  !acc
 let cottas_ondisk_encode_subject_ml (ds : cottas_ondisk_store)
   (s : RDF_Graph_Executable.subject) :
   Parser_BallyhooCOTTAS.cottas_term_ref FStar_Pervasives_Native.option=

@@ -709,6 +709,9 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   ln -sf "../../../bin/${PLATFORM}/factoidal-http" factoidal-http
   ln -sf "../../../bin/${PLATFORM}/owl_runner" owl_runner
   ln -sf "../../../bin/${PLATFORM}/rdfc10_runner" rdfc10_runner
+  if [[ -x "$BINDIR/parquet_probe" ]]; then
+    ln -sf "../../../bin/${PLATFORM}/parquet_probe" parquet_probe
+  fi
   if [[ -x "$BINDIR/cottas_ondisk_smoketest" ]]; then
     ln -sf "../../../bin/${PLATFORM}/cottas_ondisk_smoketest" cottas_ondisk_smoketest
   fi

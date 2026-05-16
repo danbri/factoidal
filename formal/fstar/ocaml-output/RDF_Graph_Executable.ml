@@ -1323,13 +1323,16 @@ let owl_rule_sameAs_replace_subject (g : rdf_graph) (ig : indexed_graph) :
        then
          match term_to_subject t.o with
          | FStar_Pervasives_Native.Some s_prime ->
-             FStar_List_Tot_Base.fold_left
-               (fun acc2 src ->
-                  if (subject_eq src.s t.s) && (src.p <> owl_sameAs)
-                  then
-                    let new_t = { s = s_prime; p = (src.p); o = (src.o) } in
-                    add_triple_unchecked acc2 new_t
-                  else acc2) acc g
+             (if subject_eq t.s s_prime
+              then acc
+              else
+                FStar_List_Tot_Base.fold_left
+                  (fun acc2 src ->
+                     if (subject_eq src.s t.s) && (src.p <> owl_sameAs)
+                     then
+                       let new_t = { s = s_prime; p = (src.p); o = (src.o) } in
+                       add_triple_unchecked acc2 new_t
+                     else acc2) acc g)
          | FStar_Pervasives_Native.None -> acc
        else acc) g g
 let owl_rule_sameAs_replace_object (g : rdf_graph) (ig : indexed_graph) :
@@ -1339,13 +1342,16 @@ let owl_rule_sameAs_replace_object (g : rdf_graph) (ig : indexed_graph) :
        if sameAs_t.p = owl_sameAs
        then
          let o_as_term = subject_to_term sameAs_t.s in
-         FStar_List_Tot_Base.fold_left
-           (fun acc2 src ->
-              if (src.p <> owl_sameAs) && (rdf_term_eq src.o o_as_term)
-              then
-                let new_t = { s = (src.s); p = (src.p); o = (sameAs_t.o) } in
-                add_triple_unchecked acc2 new_t
-              else acc2) acc g
+         (if rdf_term_eq o_as_term sameAs_t.o
+          then acc
+          else
+            FStar_List_Tot_Base.fold_left
+              (fun acc2 src ->
+                 if (src.p <> owl_sameAs) && (rdf_term_eq src.o o_as_term)
+                 then
+                   let new_t = { s = (src.s); p = (src.p); o = (sameAs_t.o) } in
+                   add_triple_unchecked acc2 new_t
+                 else acc2) acc g)
        else acc) g g
 let owl_rule_sameAs_replace_predicate (g : rdf_graph) (ig : indexed_graph) :
   rdf_graph=
@@ -1355,15 +1361,19 @@ let owl_rule_sameAs_replace_predicate (g : rdf_graph) (ig : indexed_graph) :
        then
          match ((sameAs_t.s), (sameAs_t.o)) with
          | (S_IRI p_iri, T_IRI p_prime_iri) ->
-             FStar_List_Tot_Base.fold_left
-               (fun acc2 src ->
-                  if
-                    (src.p = p_iri) &&
-                      (Prims.op_Negation (is_owl_metapredicate src.p))
-                  then
-                    let new_t = { s = (src.s); p = p_prime_iri; o = (src.o) } in
-                    add_triple_unchecked acc2 new_t
-                  else acc2) acc g
+             (if p_iri = p_prime_iri
+              then acc
+              else
+                FStar_List_Tot_Base.fold_left
+                  (fun acc2 src ->
+                     if
+                       (src.p = p_iri) &&
+                         (Prims.op_Negation (is_owl_metapredicate src.p))
+                     then
+                       let new_t =
+                         { s = (src.s); p = p_prime_iri; o = (src.o) } in
+                       add_triple_unchecked acc2 new_t
+                     else acc2) acc g)
          | (uu___, uu___1) -> acc
        else acc) g g
 let owl_rule_functional (g : rdf_graph) (ig : indexed_graph) : rdf_graph=

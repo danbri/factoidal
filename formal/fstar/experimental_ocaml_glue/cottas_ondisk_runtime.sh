@@ -547,9 +547,6 @@ runtime = r'''module Cottas_ondisk_runtime = struct
   let encode_object_fast (h : cottas_ondisk_handle) (o : RDF_Graph_Executable.rdf_term)
     : Prims.nat FStar_Pervasives_Native.option =
     let tables = tables_for h in
-    (* For literals we don't have an inverse-encoder in F* (escape rules
-       differ between bound-input and parquet-stored form). Fall back to
-       the F*-extracted slow path for non-IRI/non-bnode objects. *)
     match o with
     | RDF_Graph_Executable.T_IRI i ->
       let key = "<" ^ i ^ ">" in
@@ -562,9 +559,18 @@ runtime = r'''module Cottas_ondisk_runtime = struct
        | Some i -> FStar_Pervasives_Native.Some (Z.of_int i)
        | None -> FStar_Pervasives_Native.None)
     | RDF_Graph_Executable.T_Literal _ ->
-      (* Slow path via F*'s canonical-key revmap. Bound objects with
-         literals are uncommon; correctness > speed here. *)
-      revmap_lookup h.coh_obj_revmap (object_to_revmap_key o)
+      (* #261 fix: produce the N-Triples form via the F* serialiser
+         (RDF.NQuads.Serialize.nq_term_to_string) and look up in the
+         Bet7-populated Hashtbl. The literal column stores tokens in
+         N-Triples form ("<lex>" / "<lex>"@lang / "<lex>"^^<<dt>>);
+         the old fallback to revmap_lookup against coh_obj_revmap
+         silently returned None on Bet7-lazy-opened handles because
+         the assoc list is empty by design. Keeps the literal byte
+         layout in F* per Iron Rule #11. *)
+      let key = RDF_NQuads_Serialize.nq_term_to_string o in
+      (match Hashtbl.find_opt tables.ft_obj_tok_to_id key with
+       | Some i -> FStar_Pervasives_Native.Some (Z.of_int i)
+       | None -> FStar_Pervasives_Native.None)
 
   let encode_graph_fast (h : cottas_ondisk_handle) (g : RDF_Graph_Executable.iri)
     : Prims.nat FStar_Pervasives_Native.option =
@@ -744,6 +750,38 @@ sys.stderr.write(f"  [cottas_ondisk_runtime] perf-shim applied {applied}/{len(sh
 # compound-po-redirect / pagecache-hot-path) plus aleph6 and
 # rename_inner_pivot — have all been retired in this commit. The
 # F*-extracted public-API bodies are the only runtime now.
+
+# #261 fix part B: cottas_ondisk_named_graphs reads from
+# ds.cods_handle.coh_graphs, which is empty on Bet7-lazy-opened
+# handles until first encode_graph populates the OCaml Hashtbl.
+# Result: COTTAS files with named graphs return dsb_named = [] at
+# dataset-construction time, so any `GRAPH ?g { ... }` query returns
+# 0 results. Fix: post-extraction, replace the body with one that
+# triggers ensure_graphs_loaded and reads ft_id_to_graph.
+old_named_graphs = '''let cottas_ondisk_named_graphs (ds : cottas_ondisk_store) :
+  (RDF_Graph_Executable.iri * Parser_BallyhooCOTTAS.cottas_graph_ref)
+    Prims.list=
+  named_graphs_aux (ds.cods_handle).coh_graphs Prims.int_zero'''
+new_named_graphs = '''let cottas_ondisk_named_graphs (ds : cottas_ondisk_store) :
+  (RDF_Graph_Executable.iri * Parser_BallyhooCOTTAS.cottas_graph_ref)
+    Prims.list=
+  (* #261 fix part B: Bet7-lazy-opened handles defer coh_graphs.
+     Trigger the OCaml-side populate, then read from ft_id_to_graph.
+     The default-graph sentinel ("DEFAULT") is not a named graph and
+     is excluded by ensure_graphs_loaded's id_to_graph population. *)
+  let h = ds.cods_handle in
+  let tables = Cottas_ondisk_runtime.tables_for h in
+  Cottas_ondisk_runtime.ensure_graphs_loaded h tables;
+  let acc = ref [] in
+  Hashtbl.iter (fun id iri ->
+    acc := (iri, Z.of_int id) :: !acc
+  ) tables.Cottas_ondisk_runtime.ft_id_to_graph;
+  !acc'''
+content = content.replace(old_named_graphs, new_named_graphs, 1)
+if 'cottas_ondisk_named_graphs (ds : cottas_ondisk_store)' not in content or '#261 fix part B' not in content:
+    sys.stderr.write("  [cottas_ondisk_runtime] WARN: cottas_ondisk_named_graphs replacement did not apply\n")
+else:
+    sys.stderr.write("  [cottas_ondisk_runtime] cottas_ondisk_named_graphs replaced for Bet7 awareness\n")
 
 path.write_text(content)
 PYEOF

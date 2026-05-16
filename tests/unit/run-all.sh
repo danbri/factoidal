@@ -45,9 +45,13 @@ mkdir -p "$BUILD_DIR"
 # before SPARQL11_Algebra) have link-order constraints encoded in
 # the build script.
 COMMON_MODULES=(
+  Util_Log
+  RDF_Format
   RDF_Graph_Executable
   RDF_List_Helpers
   RDF_Bytes
+  RDF_Store_Loader
+  RDF_NQuads_Serialize
   Parquet_Footer
   OWL_Vocabulary
   Tableau
@@ -65,6 +69,16 @@ COMMON_MODULES=(
   Parser_SRX
   Parser_CSVResults
   Parser_JSONResults
+  SPARQL_JSON_Escape
+  SPARQL_Eval_TimeBudget
+  SPARQL_Eval_Limits
+  SPARQL_HTTP_Response
+  SPARQL_HTTP_Timing
+  SPARQL_HTTP_BackendInfo
+  SPARQL_HTTP_QueriesIndex
+  SPARQL_HTTP_StaticFiles
+  SPARQL_HTTP_Admin
+  SPARQL_HTTP_Routes
   Parser_Ballyhoo
   Parser_BallyhooBloom
   Parser_BallyhooHDT
@@ -79,21 +93,48 @@ COMMON_MODULES=(
   RDF_CottasStore_CompoundPresenceBitmap
   RDF_CottasStore_CompoundPresenceWriter
   RDF_CottasStore_OffsetsWriter
+  RDF_CottasStore_LazyDict
+  RDF_CottasStore_LazyDictRegistry
+  RDF_Store_LazyTermCache
+  RDF_Store_HDTTermCacheRegistry
   RDF_Store_Columnar_OffsetIndex
   SPARQL_Plan_Pruning
   SPARQL_Plan_Estimate
   SPARQL_Plan_Loader
   SPARQL_Plan_AccessPath
   RDF_CottasStore
+  RDF_CottasStore_OnDiskRuntime
+  RDF_CottasInMem
   fstar_pure_hashes
+  RDF_Canonical
+  RDF_Canonical_Manifest
   SPARQL11_IRI_Resolve
   SPARQL11_Algebra
+  RDF_Pretty
+  OWL_QueryRewrite
+  OWL_QueryEval
+  OWL_Tests_Manifest
+  RIF_Core_Syntax
+  Parser_RIFXML
+  RIF_Core_Translation
+  RIF_Core_Eval
+  RIF_Core_Tests
+  SHACL_Validation
   SPARQL11_Parser
   SPARQL11_Store
+  RDF_Store_Combine
   SPARQL_Protocol
-  SPARQL_HTTP
-  SPARQL_HTTP_Routes
   SPARQL_HTTP_RunQuery
+  SPARQL_Update_Sandbox
+  SPARQL_Update_Analysis
+  SPARQL_Diagnostics
+  SPARQL_Explain
+  SPARQL_Query_Analysis
+  SPARQL_Plan_Explain
+  SPARQL_HTTP
+  SPARQL_HTTP_Client
+  SPARQL_ServiceDescription
+  SPARQL_GraphStore
 )
 
 # Build the list of .cmx paths + the C stub object (needed to resolve
