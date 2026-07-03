@@ -80,15 +80,28 @@ Both need: `unzip`, `curl` for fetching the z3 binary release.
 First-time only:
 
 ```bash
-opam init -y
+opam init -y                    # add --disable-sandboxing in containers
 opam switch create fstar ocaml-base-compiler.4.14.1
 eval $(opam env --switch=fstar)
-opam install -y fstar z3 js_of_ocaml js_of_ocaml-compiler zarith_stubs_js
+opam install -y fstar.2025.12.15 js_of_ocaml js_of_ocaml-compiler zarith_stubs_js sha digestif
 ```
 
-The `opam install` line installs F\* itself plus the JS extraction
-toolchain. The `z3` opam package is installed too, but the build often
-fails or produces the wrong version — §3 replaces the binary on PATH.
+**Pin the F\* version to what CI extracts with** — read
+`fstar_version` in `bin/ci-linux-x86_64/build-info.json` (2025.12.15
+at the time of writing) and install exactly that. A newer opam F\*
+verifies fine but its `--codegen OCaml` output differs, so a local
+extraction churns all ~90 tracked `.ml` files against CI's and the
+tree thrashes between versions per committer. Verified the hard way
+2026-07-03 (opam default gave 2026.03.24 vs CI's 2025.12.15;
+downgrade before extracting).
+
+Do NOT add the `z3` opam package: it installs a current z3 (4.16+)
+into the switch's bin, which then shadows the pinned 4.13.3 on PATH
+whenever the switch is active. This is survivable — every repo script
+passes `--z3version 4.13.3`, which makes F\* select the
+`z3-4.13.3`-named binary rather than plain `z3` — but a bare
+`fstar.exe` invocation without the flag will silently use the wrong
+solver. §3 installs the pinned binary.
 
 ## §3. Install z3 4.13.3 (CRITICAL)
 
@@ -105,6 +118,23 @@ sudo cp z3-4.13.3-x64-glibc-2.35/bin/z3 /usr/local/bin/z3-4.13.3
 sudo chmod +x /usr/local/bin/z3-4.13.3
 sudo ln -sf /usr/local/bin/z3-4.13.3 /usr/local/bin/z3
 ```
+
+### Proxied sandboxes where GitHub release downloads 403
+
+Some agent sandboxes (Claude Code on the web included) scope GitHub
+through a proxy that allows `git clone` but returns 403 JSON for
+release-asset downloads — the `z3.zip` above arrives as a 175-byte
+error body and unzip fails. Fallback that works because PyPI is open:
+
+```bash
+python3 -m venv /tmp/z3venv && /tmp/z3venv/bin/pip install -q z3-solver==4.13.3.0
+sudo cp /tmp/z3venv/bin/z3 /usr/local/bin/z3-4.13.3
+sudo chmod +x /usr/local/bin/z3-4.13.3
+sudo ln -sf /usr/local/bin/z3-4.13.3 /usr/local/bin/z3
+```
+
+(The wheel bundles the same upstream binary. Confirmed working
+2026-07-03.)
 
 ### macOS arm64 (Apple Silicon)
 
