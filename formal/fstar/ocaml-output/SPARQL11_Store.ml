@@ -210,6 +210,25 @@ and backend_estimate (gb : graph_backend)
        | FStar_Pervasives_Native.Some bound ->
            RDF_CottasStore.cottas_ondisk_estimate cods bound)
   | GB_Union members -> union_backend_estimate members b
+let rec union_backend_count_exact (members : graph_backend Prims.list)
+  (b : SPARQL11_Algebra.triple_pattern_bound) : Prims.nat=
+  match members with
+  | [] -> Prims.int_zero
+  | member::rest ->
+      (backend_count_exact member b) + (union_backend_count_exact rest b)
+and backend_count_exact (gb : graph_backend)
+  (b : SPARQL11_Algebra.triple_pattern_bound) : Prims.nat=
+  match gb with
+  | GB_CottasOnDisk (cods, graph_name) ->
+      (match RDF_CottasStore.cottas_ondisk_build_bound_qp_opt cods
+               b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
+               b.SPARQL11_Algebra.bo graph_name
+       with
+       | FStar_Pervasives_Native.None -> Prims.int_zero
+       | FStar_Pervasives_Native.Some bound ->
+           RDF_CottasStore.cottas_ondisk_count_exact cods bound)
+  | GB_Union members -> union_backend_count_exact members b
+  | uu___ -> backend_estimate gb b
 let rec union_backend_predicate_present (members : graph_backend Prims.list)
   (pred : RDF_Graph_Executable.wf_iri) : Prims.bool=
   match members with
@@ -540,7 +559,7 @@ let rec count_group_by_graph_solutions_acc
           SPARQL11_Algebra.bp = FStar_Pervasives_Native.None;
           SPARQL11_Algebra.bo = FStar_Pervasives_Native.None
         } in
-      let cnt = backend_estimate ngb.ngb_graph bound in
+      let cnt = backend_count_exact ngb.ngb_graph bound in
       let lit_term =
         RDF_Graph_Executable.T_Literal
           {
@@ -774,7 +793,7 @@ and eval_select_query_backend_on_graph (q : SPARQL11_Algebra.query)
             (SPARQL11_Algebra.bound_object_of_pattern
                tp.SPARQL11_Algebra.tp_o SPARQL11_Algebra.sm_empty)
         } in
-      let n = backend_estimate gb bound in
+      let n = backend_count_exact gb bound in
       let omega = count_star_solution alias n in
       FStar_Pervasives_Native.Some
         (SPARQL11_Algebra.slice_solutions

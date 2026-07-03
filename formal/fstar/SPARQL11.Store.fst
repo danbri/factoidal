@@ -203,6 +203,30 @@ and backend_estimate (gb : graph_backend) (b : triple_pattern_bound) : nat =
   | GB_Union members ->
     union_backend_estimate members b
 
+// EXACT counting for result-producing callers (the Bet5 streaming
+// GROUP BY ?g path and the Aleph6 COUNT-star path below).
+// backend_estimate is the join-order-optimiser contract and may
+// approximate (GB_CottasOnDisk's bounds-present branch does, by
+// design); consuming it as a query RESULT returned wrong per-graph
+// counts (E1 experiment, 2026-07-03). Every non-on-disk backend's
+// estimate is already exact, so only GB_CottasOnDisk (and unions
+// containing it) dispatch differently here.
+let rec union_backend_count_exact (members : list graph_backend) (b : triple_pattern_bound)
+  : Tot nat (decreases members) =
+  match members with
+  | [] -> 0
+  | member :: rest ->
+    backend_count_exact member b + union_backend_count_exact rest b
+
+and backend_count_exact (gb : graph_backend) (b : triple_pattern_bound) : Tot nat (decreases gb) =
+  match gb with
+  | GB_CottasOnDisk cods graph_name ->
+    (match cottas_ondisk_build_bound_qp_opt cods b.bs b.bp b.bo graph_name with
+     | None -> 0
+     | Some bound -> cottas_ondisk_count_exact cods bound)
+  | GB_Union members -> union_backend_count_exact members b
+  | _ -> backend_estimate gb b
+
 let rec union_backend_predicate_present (members : list graph_backend) (pred : wf_iri)
   : Tot bool (decreases members) =
   match members with
@@ -508,7 +532,8 @@ let rec count_group_by_graph_solutions_acc
   | [] -> List.Tot.rev acc
   | ngb :: rest ->
     let bound : triple_pattern_bound = { bs = None; bp = None; bo = None } in
-    let cnt = backend_estimate ngb.ngb_graph bound in
+    // Exact, not estimate: this count IS the query result (E1 bug).
+    let cnt = backend_count_exact ngb.ngb_graph bound in
     let lit_term : rdf_term = T_Literal {
       lexical_form = string_of_int cnt;
       datatype = xsd_integer;
@@ -682,7 +707,8 @@ and eval_select_query_backend_on_graph (q : query) (gb : graph_backend) (dsb : d
       bp = bound_predicate_of_pattern tp.tp_p sm_empty;
       bo = bound_object_of_pattern tp.tp_o sm_empty;
     } in
-    let n = backend_estimate gb bound in
+    // Exact, not estimate: this count IS the query result (E1 bug).
+    let n = backend_count_exact gb bound in
     let omega = count_star_solution alias n in
     Some (slice_solutions q.q_modifier.sm_offset q.q_modifier.sm_limit omega)
   | None ->

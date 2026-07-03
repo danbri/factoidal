@@ -740,6 +740,48 @@ let rec walk_row_groups_estimate_global
       (rg_index + 1) rg_count (fuel - 1) acc'
 
 // ----------------------------------------------------------------------
+// Exact counting for RESULT-producing paths (found via the E1
+// clustering experiment, 2026-07-03): cottas_ondisk_estimate's
+// bounds-present branch is a deliberate approximation
+// (candidate-row-groups x avg_rows_per_rg) for the join-order
+// optimiser, but the streaming COUNT fast paths in SPARQL11.Store
+// were consuming it as the query RESULT — GROUP BY ?g returned
+// near-total row counts for every graph. The walks below are exact.
+
+// Count rows in one graph column whose token matches bound_g.
+// Column-3-only: the COUNT(*) GROUP BY ?g shape never needs s/p/o
+// decoded, and the global page cache makes the per-named-graph
+// re-walks hit already-decoded pages.
+let rec count_graph_col_matches_seq
+  (bound_g : option string) (g_col : cottas_column)
+  (n : nat) (i : nat{i <= n}) (acc : nat)
+  : Tot nat (decreases (n - i)) =
+  if i = n then acc
+  else
+    let acc' =
+      if i < cottas_column_length g_col then
+        match cottas_column_get g_col i with
+        | Some g_tok -> if graph_cell_match bound_g g_tok then acc + 1 else acc
+        | None -> acc
+      else acc in
+    count_graph_col_matches_seq bound_g g_col n (i + 1) acc'
+
+let rec walk_row_groups_count_graph_global
+  (h : cottas_ondisk_handle) (bound_g : option string)
+  (rg_index : nat) (rg_count : nat) (fuel : nat) (acc : nat)
+  : Tot nat (decreases fuel) =
+  if fuel = 0 then acc
+  else if rg_index >= rg_count then acc
+  else
+    let acc' =
+      match pcache_decode_in_row_group_global h.coh_path rg_index 3 with
+      | Some gc ->
+        count_graph_col_matches_seq bound_g gc (cottas_column_length gc) 0 acc
+      | None -> acc in
+    walk_row_groups_count_graph_global h bound_g
+      (rg_index + 1) rg_count (fuel - 1) acc'
+
+// ----------------------------------------------------------------------
 // Phase 2.5b (issue #118): seq-shape variants of the hot-path walks.
 //
 // These mirror filter_zipped_rows / count_zipped_rows / walk_row_groups_*
@@ -1447,6 +1489,39 @@ let cottas_ondisk_estimate
            // give the function its declared `Tot nat` return type.
            let prod : int = n_candidates `op_Multiply` avg in
            if prod < 0 then 0 else prod)
+
+// EXACT count — for result-producing callers (the streaming COUNT
+// fast paths in SPARQL11.Store). Contract difference from
+// cottas_ondisk_estimate: never approximates. Unbound: parquet
+// num_rows metadata (exact, free). Graph-only bound: single-column
+// walk over the g column (page-cache-amortised across graphs).
+// General bounds: the full zipped row-group walk.
+let cottas_ondisk_count_exact
+  (ds : cottas_ondisk_store) (bound : cottas_bound_qp)
+  : Tot nat =
+  let h = ds.cods_handle in
+  let bound_s = id_to_raw_token_via_global ondisk_id_to_subj_token_global  h.coh_path bound.cbqp_s in
+  let bound_p = id_to_raw_token_via_global ondisk_id_to_pred_token_global  h.coh_path bound.cbqp_p in
+  let bound_o = id_to_raw_token_via_global ondisk_id_to_obj_token_global   h.coh_path bound.cbqp_o in
+  let bound_g = id_to_raw_token_via_global ondisk_id_to_graph_token_global h.coh_path bound.cbqp_g in
+  if None? bound_s && None? bound_p && None? bound_o && None? bound_g then
+    (match probe_parquet_num_rows h.coh_path with
+     | Some n -> n
+     | None ->
+       (match probe_parquet_row_group_count h.coh_path with
+        | None -> 0
+        | Some rg_count ->
+          walk_row_groups_estimate_global h
+            bound_s bound_p bound_o bound_g 0 rg_count rg_count 0))
+  else
+    (match probe_parquet_row_group_count h.coh_path with
+     | None -> 0
+     | Some rg_count ->
+       if None? bound_s && None? bound_p && None? bound_o then
+         walk_row_groups_count_graph_global h bound_g 0 rg_count rg_count 0
+       else
+         walk_row_groups_estimate_global h
+           bound_s bound_p bound_o bound_g 0 rg_count rg_count 0)
 
 // ----------------------------------------------------------------------
 // Bound-pattern + row-to-quad helpers (moved from Parser.BallyhooCOTTAS).
