@@ -358,8 +358,10 @@ emit_json_suites () {
     "$RDF_PASS" "$RDF_FAIL" "$RDF_SKIP" "$RDF_UNSUP" "$RDF_TOTAL"
   printf '    "combined": {"pass":%s,"fail":%s,"skip":%s,"unsupported":%s,"total":%s,"pass_pct_of_runnable":%s},\n' \
     "$COMBINED_PASS" "$COMBINED_FAIL" "$COMBINED_SKIP" "$COMBINED_UNSUP" "$COMBINED_TOTAL" "$COMBINED_PCT"
-  printf '    "owl_rl_positive_entailment": {"pass":%s,"fail":%s,"total":%s,"catalog":"third_party/testing/owl/profile-RL.rdf"}\n' \
+  printf '    "owl_rl_positive_entailment": {"pass":%s,"fail":%s,"total":%s,"catalog":"third_party/testing/owl/profile-RL.rdf"},\n' \
     "$OWL_PASS" "$OWL_FAIL" "$OWL_TOTAL"
+  printf '    "rdfc10": {"pass":%s,"fail":%s,"skip":%s,"total":%s,"spec":"https://www.w3.org/TR/rdf-canon/"}\n' \
+    "$RDFC10_PASS" "$RDFC10_FAIL" "$RDFC10_SKIP" "$RDFC10_TOTAL"
   printf '  },\n'
   printf '  "suites": {\n'
   printf '    "sparql": [\n'
