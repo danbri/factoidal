@@ -25,9 +25,20 @@ red always jumps the queue.
 1. **#118 — retire the COTTAS on-disk OCaml runtime** (718 lines of
    unverified glue on the hot path; plan doc scoped, ukparliament-bench
    gated). The precondition for dropping the rule-#11 qualifier.
-2. **#262 — OWL-RL sameAs closure blow-up** (characterised, not
-   fixed); plausibly connected to the 10 failing OWL RL
-   positive-entailment tests — the one red number on the dashboard.
+2. **#262 — OWL-RL sameAs closure blow-up** — diagnosed 2026-07-03
+   (`2026-07-03-owl-rl-sameas-blowup-diagnosis.md`): measured O(k⁶)
+   per closure step (163.87 s at a 24-individual sameAs clique); fix
+   sketch is snapshot-fold + bucket lookups for the five sameAs
+   rules. NOT the cause of the 10 PE fails; it bites ConsistencyTests
+   — which currently **mask** the stall by passing on the un-closed
+   graph after a 30 s cap trip (soundness hazard) — and the
+   entailment-regime simple1 stall.
+2b. **The 10 OWL RL positive-entailment fails** (20 pass, 10 fail of
+   30 — the dashboard red) are semantic gaps, not timeouts: 7 missing
+   bnode class-expression conclusions
+   (complementOf/AllDifferent/unionOf/Restriction), 2 XSD
+   range-hierarchy gaps, 1 no-premise. Separate work item from #262;
+   needs rule-coverage additions in the OWL-RL rule set.
 3. **Shrink `--admit_smt_queries` in `SPARQL11.Parser.fst`** (~65% of
    the file admitted; the biggest verification caveat we disclose).
 4. **Stratification** — split `RDF.Graph.Executable` and
