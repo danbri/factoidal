@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BIN="${ROOT}/formal/fstar/ocaml-output/factoidal"
+BIN="${FACTOIDAL_BIN:-${ROOT}/formal/fstar/ocaml-output/factoidal}"
 ASK_ROOT="${1:-/tmp/jena/jena-arq/testing/ARQ/Ask}"
 TMPDIR="${TMPDIR:-/tmp}"
 
