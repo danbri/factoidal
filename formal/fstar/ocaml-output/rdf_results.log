@@ -13,10 +13,10 @@
   [13/39] rdf-mt/horst-01-subPropertyOf-intensional ok
   [14/39] rdf-mt/rdf-charmod-uris-test003 ok
   [15/39] rdf-mt/rdf-charmod-uris-test004 ok
-  [16/39] rdf-mt/rdfms-seq-representation-test002 ok (71ms)
+  [16/39] rdf-mt/rdfms-seq-representation-test002 ok
   [17/39] rdf-mt/rdfms-seq-representation-test003 ok
   [18/39] rdf-mt/rdfms-seq-representation-test004 ok
-  [19/39] rdf-mt/rdfms-xmllang-test007a ok
+  [19/39] rdf-mt/rdfms-xmllang-test007a ok (293ms)
   [20/39] rdf-mt/rdfms-xmllang-test007b ok
   [21/39] rdf-mt/rdfms-xmllang-test007c ok
   [22/39] rdf-mt/rdfs-container-membership-superProperty-test001 ok
@@ -24,7 +24,7 @@
   [24/39] rdf-mt/rdfs-domain-and-range-intensionality-domain ok
   [25/39] rdf-mt/rdfs-entailment-test001 ok
   [26/39] rdf-mt/rdfs-entailment-test002 ok
-  [27/39] rdf-mt/rdfs-no-cycles-in-subClassOf-test001 ok (69ms)
+  [27/39] rdf-mt/rdfs-no-cycles-in-subClassOf-test001 ok
   [28/39] rdf-mt/rdfs-no-cycles-in-subPropertyOf-test001 ok
   [29/39] rdf-mt/rdfs-subClassOf-a-Property-test001 ok
   [30/39] rdf-mt/rdfs-subPropertyOf-semantics-test001 ok
@@ -194,7 +194,7 @@
   [68/70] rdf-n-triples/langtagged_string ok
   [69/70] rdf-n-triples/lantag_with_subtag ok
   [70/70] rdf-n-triples/minimal_whitespace ok
-  [1/356] rdf-trig/anonymous_blank_node_graph ok (55ms)
+  [1/356] rdf-trig/anonymous_blank_node_graph ok
   [2/356] rdf-trig/labeled_blank_node_graph ok
   [3/356] rdf-trig/alternating_iri_graphs ok
   [4/356] rdf-trig/alternating_bnode_graphs ok
@@ -257,7 +257,7 @@
   [61/356] rdf-trig/LITERAL1 ok
   [62/356] rdf-trig/LITERAL1_ascii_boundaries ok
   [63/356] rdf-trig/LITERAL1_with_UTF8_boundaries ok
-  [64/356] rdf-trig/LITERAL1_all_controls ok (161ms)
+  [64/356] rdf-trig/LITERAL1_all_controls ok
   [65/356] rdf-trig/LITERAL1_all_punctuation ok
   [66/356] rdf-trig/LITERAL_LONG1 ok
   [67/356] rdf-trig/LITERAL_LONG1_ascii_boundaries ok
@@ -554,7 +554,7 @@
   [2/313] rdf-turtle/IRI_with_four_digit_numeric_escape ok
   [3/313] rdf-turtle/IRI_with_eight_digit_numeric_escape ok
   [4/313] rdf-turtle/IRI_with_all_punctuation ok
-  [5/313] rdf-turtle/bareword_a_predicate ok (74ms)
+  [5/313] rdf-turtle/bareword_a_predicate ok
   [6/313] rdf-turtle/old_style_prefix ok
   [7/313] rdf-turtle/SPARQL_style_prefix ok
   [8/313] rdf-turtle/prefixed_IRI_predicate ok
@@ -1049,10 +1049,10 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: horst-01-subPropertyOf-intensional
   PASS: rdf-charmod-uris-test003
   PASS: rdf-charmod-uris-test004
-  PASS: rdfms-seq-representation-test002 (71ms)
+  PASS: rdfms-seq-representation-test002
   PASS: rdfms-seq-representation-test003
   PASS: rdfms-seq-representation-test004
-  PASS: rdfms-xmllang-test007a
+  PASS: rdfms-xmllang-test007a (293ms)
   PASS: rdfms-xmllang-test007b
   PASS: rdfms-xmllang-test007c
   PASS: rdfs-container-membership-superProperty-test001
@@ -1060,7 +1060,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: rdfs-domain-and-range-intensionality-domain
   PASS: rdfs-entailment-test001
   PASS: rdfs-entailment-test002
-  PASS: rdfs-no-cycles-in-subClassOf-test001 (69ms)
+  PASS: rdfs-no-cycles-in-subClassOf-test001
   PASS: rdfs-no-cycles-in-subPropertyOf-test001
   PASS: rdfs-subClassOf-a-Property-test001
   PASS: rdfs-subPropertyOf-semantics-test001
@@ -1073,7 +1073,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: xmlsch-02-whitespace-facet-1
   PASS: xmlsch-02-whitespace-facet-2
   PASS: xmlsch-02-whitespace-facet-4
-  [suite time: 0.2s]
+  [suite time: 0.3s]
 
 --- rdf-n-quads ---
   PASS: nq-syntax-uri-01
@@ -1239,7 +1239,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   [suite time: 0.0s]
 
 --- rdf-trig ---
-  PASS: anonymous_blank_node_graph (55ms)
+  PASS: anonymous_blank_node_graph
   PASS: labeled_blank_node_graph
   PASS: alternating_iri_graphs
   PASS: alternating_bnode_graphs
@@ -1302,7 +1302,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: LITERAL1
   PASS: LITERAL1_ascii_boundaries
   PASS: LITERAL1_with_UTF8_boundaries
-  PASS: LITERAL1_all_controls (161ms)
+  PASS: LITERAL1_all_controls
   PASS: LITERAL1_all_punctuation
   PASS: LITERAL_LONG1
   PASS: LITERAL_LONG1_ascii_boundaries
@@ -1595,14 +1595,14 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: IRI-resolution-02
   PASS: IRI-resolution-07
   PASS: IRI-resolution-08
-  [suite time: 0.5s]
+  [suite time: 0.2s]
 
 --- rdf-turtle ---
   PASS: IRI_subject
   PASS: IRI_with_four_digit_numeric_escape
   PASS: IRI_with_eight_digit_numeric_escape
   PASS: IRI_with_all_punctuation
-  PASS: bareword_a_predicate (74ms)
+  PASS: bareword_a_predicate
   PASS: old_style_prefix
   PASS: SPARQL_style_prefix
   PASS: prefixed_IRI_predicate
@@ -1911,7 +1911,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: IRI-resolution-02
   PASS: IRI-resolution-07
   PASS: IRI-resolution-08
-  [suite time: 0.4s]
+  [suite time: 0.3s]
 
 --- rdf-xml ---
   PASS: amp-in-url-test001

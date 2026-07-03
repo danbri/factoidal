@@ -102,12 +102,6 @@ let literal_value_eq (l1 : literal) (l2 : literal) : Prims.bool=
   ((l1.lexical_form = l2.lexical_form) &&
      (lang_tag_option_eq l1.lang_tag l2.lang_tag))
     && (l1.datatype = l2.datatype)
-let rdf_term_value_eq (t1 : rdf_term) (t2 : rdf_term) : Prims.bool=
-  match (t1, t2) with
-  | (T_IRI i1, T_IRI i2) -> i1 = i2
-  | (T_BNode b1, T_BNode b2) -> b1 = b2
-  | (T_Literal l1, T_Literal l2) -> literal_value_eq l1 l2
-  | (uu___, uu___1) -> false
 type triple = {
   s: subject ;
   p: wf_iri ;
@@ -138,8 +132,6 @@ let __proj__Mkrdf_dataset__item__ds_named (projectee : rdf_dataset) :
   named_graph Prims.list=
   match projectee with | { ds_default; ds_named;_} -> ds_named
 let empty_dataset : rdf_dataset= { ds_default = empty_graph; ds_named = [] }
-let make_dataset (default_g : rdf_graph) (named : named_graph Prims.list) :
-  rdf_dataset= { ds_default = default_g; ds_named = named }
 let rec lookup_named_graph (name : iri) (named : named_graph Prims.list) :
   rdf_graph FStar_Pervasives_Native.option=
   match named with
@@ -148,8 +140,6 @@ let rec lookup_named_graph (name : iri) (named : named_graph Prims.list) :
       if ng.ng_name = name
       then FStar_Pervasives_Native.Some (ng.ng_graph)
       else lookup_named_graph name rest
-let named_graph_iris (ds : rdf_dataset) : iri Prims.list=
-  FStar_List_Tot_Base.map (fun ng -> ng.ng_name) ds.ds_named
 let rename_bnode_id (prefix : Prims.string) (id : bnode_id) : bnode_id=
   FStar_String.concat "" [prefix; ":"; id]
 let rename_subject_bnodes (prefix : Prims.string) (s : subject) : subject=
@@ -166,21 +156,6 @@ let rename_triple_bnodes (prefix : Prims.string) (t : triple) : triple=
     s = (rename_subject_bnodes prefix t.s);
     p = (t.p);
     o = (rename_term_bnodes prefix t.o)
-  }
-let rename_graph_bnodes (prefix : Prims.string) (g : rdf_graph) : rdf_graph=
-  FStar_List_Tot_Base.map (rename_triple_bnodes prefix) g
-let rename_named_graph_bnodes (prefix : Prims.string) (ng : named_graph) :
-  named_graph=
-  {
-    ng_name = (ng.ng_name);
-    ng_graph = (rename_graph_bnodes prefix ng.ng_graph)
-  }
-let rename_dataset_bnodes (prefix : Prims.string) (ds : rdf_dataset) :
-  rdf_dataset=
-  {
-    ds_default = (rename_graph_bnodes prefix ds.ds_default);
-    ds_named =
-      (FStar_List_Tot_Base.map (rename_named_graph_bnodes prefix) ds.ds_named)
   }
 let rec graph_bnodes_acc (acc : bnode_id Prims.list) (g : rdf_graph) :
   bnode_id Prims.list=
@@ -433,34 +408,6 @@ let build_indexed (g : rdf_graph) : indexed_graph=
     ig_po = (build_bucket bucket_key_po g);
     ig_so = (build_bucket bucket_key_so g)
   }
-let ig_to_list (ig : indexed_graph) : triple Prims.list= ig.ig_triples
-let must_escape (c : FStar_Char.char) : Prims.bool=
-  let code = FStar_Char.int_of_char c in
-  (((((((code = (Prims.of_int (0x5C))) || (code = (Prims.of_int (0x22)))) ||
-         (code = (Prims.of_int (0x0A))))
-        || (code = (Prims.of_int (0x0D))))
-       || (code = (Prims.of_int (0x09))))
-      || (code = (Prims.of_int (0x08))))
-     || (code = (Prims.of_int (0x0C))))
-    || (code < (Prims.of_int (0x20)))
-let rec is_nt_escaped_list (cs : FStar_Char.char Prims.list) : Prims.bool=
-  match cs with
-  | [] -> true
-  | c::rest ->
-      let code = FStar_Char.int_of_char c in
-      if
-        ((code < (Prims.of_int (0x20))) || (code = (Prims.of_int (0x22)))) ||
-          (code = (Prims.of_int (0x5C)))
-      then false
-      else is_nt_escaped_list rest
-let is_nt_escaped (s : Prims.string) (n : Prims.nat) : Prims.bool=
-  let cs = FStar_String.list_of_string s in
-  let rec drop_n l k =
-    match l with
-    | [] -> []
-    | uu___::tl ->
-        if k = Prims.int_zero then l else drop_n tl (k - Prims.int_one) in
-  is_nt_escaped_list (drop_n cs n)
 type var_name = Prims.string
 type pattern_term =
   | PT_Concrete of rdf_term 
@@ -497,53 +444,6 @@ let __proj__Mktriple_pattern__item__tp_o (projectee : triple_pattern) :
   pattern_term= match projectee with | { tp_s; tp_p; tp_o;_} -> tp_o
 type solution_mapping = (var_name * rdf_term) Prims.list
 type bgp = triple_pattern Prims.list
-let pattern_subject_matches (ps : pattern_subject) (s : subject)
-  (mu : solution_mapping) : Prims.bool=
-  match ps with
-  | PS_Concrete cs -> subject_eq cs s
-  | PS_Var v ->
-      (match FStar_List_Tot_Base.assoc v mu with
-       | FStar_Pervasives_Native.Some (T_IRI i) -> subject_eq s (S_IRI i)
-       | FStar_Pervasives_Native.Some (T_BNode b) -> subject_eq s (S_BNode b)
-       | uu___ -> true)
-let pattern_term_matches (pt : pattern_term) (t : rdf_term)
-  (mu : solution_mapping) : Prims.bool=
-  match pt with
-  | PT_Concrete ct -> rdf_term_eq ct t
-  | PT_Var v ->
-      (match FStar_List_Tot_Base.assoc v mu with
-       | FStar_Pervasives_Native.Some bound -> rdf_term_eq bound t
-       | FStar_Pervasives_Native.None -> true)
-let triple_pattern_matches (tp : triple_pattern) (t : triple)
-  (mu : solution_mapping) : Prims.bool=
-  ((pattern_subject_matches tp.tp_s t.s mu) && (tp.tp_p = t.p)) &&
-    (pattern_term_matches tp.tp_o t.o mu)
-type algebra_op =
-  | BGP_Op of bgp 
-  | Filter_Op of algebra_op 
-  | Optional_Op of algebra_op * algebra_op 
-  | Union_Op of algebra_op * algebra_op 
-let uu___is_BGP_Op (projectee : algebra_op) : Prims.bool=
-  match projectee with | BGP_Op _0 -> true | uu___ -> false
-let __proj__BGP_Op__item___0 (projectee : algebra_op) : bgp=
-  match projectee with | BGP_Op _0 -> _0
-let uu___is_Filter_Op (projectee : algebra_op) : Prims.bool=
-  match projectee with | Filter_Op _0 -> true | uu___ -> false
-let __proj__Filter_Op__item___0 (projectee : algebra_op) : algebra_op=
-  match projectee with | Filter_Op _0 -> _0
-let uu___is_Optional_Op (projectee : algebra_op) : Prims.bool=
-  match projectee with | Optional_Op (_0, _1) -> true | uu___ -> false
-let __proj__Optional_Op__item___0 (projectee : algebra_op) : algebra_op=
-  match projectee with | Optional_Op (_0, _1) -> _0
-let __proj__Optional_Op__item___1 (projectee : algebra_op) : algebra_op=
-  match projectee with | Optional_Op (_0, _1) -> _1
-let uu___is_Union_Op (projectee : algebra_op) : Prims.bool=
-  match projectee with | Union_Op (_0, _1) -> true | uu___ -> false
-let __proj__Union_Op__item___0 (projectee : algebra_op) : algebra_op=
-  match projectee with | Union_Op (_0, _1) -> _0
-let __proj__Union_Op__item___1 (projectee : algebra_op) : algebra_op=
-  match projectee with | Union_Op (_0, _1) -> _1
-type solution_multiset = solution_mapping Prims.list
 type numeric_type =
   | NT_Integer 
   | NT_Decimal 
@@ -698,11 +598,6 @@ let boolean_effective_value (v : sparql_value) : Prims.bool=
   | SV_Iri uu___ -> false
   | SV_BNode uu___ -> false
   | SV_TypedLiteral (uu___, uu___1) -> false
-let bev_of_option (v : sparql_value FStar_Pervasives_Native.option) :
-  Prims.bool=
-  match v with
-  | FStar_Pervasives_Native.None -> false
-  | FStar_Pervasives_Native.Some x -> boolean_effective_value x
 type filter_expr_eval =
   solution_mapping -> rdf_term FStar_Pervasives_Native.option
 let bind_eval (eval : filter_expr_eval) (var : var_name)
@@ -720,7 +615,6 @@ let apply_bind (eval : filter_expr_eval) (var : var_name)
   match bind_eval eval var mu with
   | FStar_Pervasives_Native.Some pair -> pair :: mu
   | FStar_Pervasives_Native.None -> mu
-let sparql_strlen (s : Prims.string) : Prims.nat= FStar_String.strlen s
 let string_substring (s : Prims.string) (i : Prims.nat) (len : Prims.nat) :
   Prims.string=
   let slen = FStar_String.strlen s in
@@ -730,23 +624,6 @@ let string_substring (s : Prims.string) (i : Prims.nat) (len : Prims.nat) :
     (let max_len = slen - i in
      let actual_len = if len <= max_len then len else max_len in
      FStar_String.sub s i actual_len)
-let sparql_substr (s : Prims.string) (start : Prims.nat)
-  (len : Prims.nat FStar_Pervasives_Native.option) : Prims.string=
-  let start_idx =
-    if start > Prims.int_zero then start - Prims.int_one else Prims.int_zero in
-  let remaining =
-    if (FStar_String.strlen s) > start_idx
-    then (FStar_String.strlen s) - start_idx
-    else Prims.int_zero in
-  match len with
-  | FStar_Pervasives_Native.Some n -> string_substring s start_idx n
-  | FStar_Pervasives_Native.None -> string_substring s start_idx remaining
-let string_to_upper (s : Prims.string) : Prims.string=
-  FStar_String.uppercase s
-let sparql_ucase (s : Prims.string) : Prims.string= string_to_upper s
-let string_to_lower (s : Prims.string) : Prims.string=
-  FStar_String.lowercase s
-let sparql_lcase (s : Prims.string) : Prims.string= string_to_lower s
 let rec sparql_concat (args : Prims.string Prims.list) : Prims.string=
   match args with
   | [] -> ""
@@ -801,7 +678,6 @@ let rec find_subjects_acc (acc : subject Prims.list) (g : rdf_graph)
       else find_subjects_acc acc tl pred obj
 let find_subjects (g : rdf_graph) (pred : wf_iri) (obj : rdf_term) :
   subject Prims.list= find_subjects_acc [] g pred obj
-let has_triple (g : rdf_graph) (t : triple) : Prims.bool= mem_triple t g
 let add_triple_if_new (g : rdf_graph) (t : triple) : rdf_graph= graph_add t g
 let add_triple_unchecked (g : rdf_graph) (t : triple) : rdf_graph= t :: g
 let term_to_key_total (o : rdf_term) : Prims.string=
@@ -1270,19 +1146,52 @@ let owl_rule_sameAs_reflexivity (g : rdf_graph) (ig : indexed_graph) :
     (fun acc n ->
        let new_t = { s = n; p = owl_sameAs; o = (subject_to_term n) } in
        add_triple_unchecked acc new_t) g nodes
+let sameas_pair_key (xy : (subject * subject)) : Prims.string=
+  let uu___ = xy in
+  match uu___ with
+  | (x, y) ->
+      FStar_String.concat "" [subject_to_key x; unit_sep; subject_to_key y]
+let sameas_pair_cmp (a : (subject * subject)) (b : (subject * subject)) :
+  Prims.int= FStar_String.compare (sameas_pair_key a) (sameas_pair_key b)
+let rec dedup_pairs_sorted_aux
+  (prev_key : Prims.string FStar_Pervasives_Native.option)
+  (ps : (subject * subject) Prims.list)
+  (acc : (subject * subject) Prims.list) : (subject * subject) Prims.list=
+  match ps with
+  | [] -> FStar_List_Tot_Base.rev acc
+  | p::rest ->
+      let k = sameas_pair_key p in
+      let dup =
+        match prev_key with
+        | FStar_Pervasives_Native.Some q -> q = k
+        | FStar_Pervasives_Native.None -> false in
+      if dup
+      then dedup_pairs_sorted_aux prev_key rest acc
+      else
+        dedup_pairs_sorted_aux (FStar_Pervasives_Native.Some k) rest (p ::
+          acc)
+let sameas_pairs (ig : indexed_graph) : (subject * subject) Prims.list=
+  let raw =
+    FStar_List_Tot_Base.fold_left
+      (fun acc t ->
+         if t.p = owl_sameAs
+         then
+           match term_to_subject t.o with
+           | FStar_Pervasives_Native.Some y ->
+               (if subject_eq t.s y then acc else ((t.s), y) :: acc)
+           | FStar_Pervasives_Native.None -> acc
+         else acc) [] ig.ig_triples in
+  let sorted = FStar_List_Tot_Base.sortWith sameas_pair_cmp raw in
+  dedup_pairs_sorted_aux FStar_Pervasives_Native.None sorted []
 let owl_rule_sameAs_symmetry (g : rdf_graph) (ig : indexed_graph) :
   rdf_graph=
   FStar_List_Tot_Base.fold_left
-    (fun acc t ->
-       if t.p = owl_sameAs
-       then
-         match term_to_subject t.o with
-         | FStar_Pervasives_Native.Some new_subj ->
-             let new_t =
-               { s = new_subj; p = owl_sameAs; o = (subject_to_term t.s) } in
-             add_triple_unchecked acc new_t
-         | FStar_Pervasives_Native.None -> acc
-       else acc) g g
+    (fun acc xy ->
+       let uu___ = xy in
+       match uu___ with
+       | (x, y) ->
+           let new_t = { s = y; p = owl_sameAs; o = (subject_to_term x) } in
+           add_triple_unchecked acc new_t) g (sameas_pairs ig)
 let owl_rule_differentFrom_symmetry (g : rdf_graph) (ig : indexed_graph) :
   rdf_graph=
   FStar_List_Tot_Base.fold_left
@@ -1303,79 +1212,61 @@ let owl_rule_differentFrom_symmetry (g : rdf_graph) (ig : indexed_graph) :
 let owl_rule_sameAs_transitivity (g : rdf_graph) (ig : indexed_graph) :
   rdf_graph=
   FStar_List_Tot_Base.fold_left
-    (fun acc t ->
-       if t.p = owl_sameAs
-       then
-         match term_to_subject t.o with
-         | FStar_Pervasives_Native.Some y_subj ->
-             let zs = find_objects_indexed ig y_subj owl_sameAs in
-             FStar_List_Tot_Base.fold_left
-               (fun acc2 z_term ->
-                  let new_t = { s = (t.s); p = owl_sameAs; o = z_term } in
-                  add_triple_unchecked acc2 new_t) acc zs
-         | FStar_Pervasives_Native.None -> acc
-       else acc) g g
+    (fun acc xy ->
+       let uu___ = xy in
+       match uu___ with
+       | (x, y) ->
+           let zs = find_objects_indexed ig y owl_sameAs in
+           FStar_List_Tot_Base.fold_left
+             (fun acc2 z_term ->
+                let new_t = { s = x; p = owl_sameAs; o = z_term } in
+                add_triple_unchecked acc2 new_t) acc zs) g (sameas_pairs ig)
 let owl_rule_sameAs_replace_subject (g : rdf_graph) (ig : indexed_graph) :
   rdf_graph=
   FStar_List_Tot_Base.fold_left
-    (fun acc t ->
-       if t.p = owl_sameAs
-       then
-         match term_to_subject t.o with
-         | FStar_Pervasives_Native.Some s_prime ->
-             (if subject_eq t.s s_prime
-              then acc
-              else
-                FStar_List_Tot_Base.fold_left
-                  (fun acc2 src ->
-                     if (subject_eq src.s t.s) && (src.p <> owl_sameAs)
-                     then
-                       let new_t = { s = s_prime; p = (src.p); o = (src.o) } in
-                       add_triple_unchecked acc2 new_t
-                     else acc2) acc g)
-         | FStar_Pervasives_Native.None -> acc
-       else acc) g g
+    (fun acc xy ->
+       let uu___ = xy in
+       match uu___ with
+       | (x, s_prime) ->
+           let srcs = bucket_lookup ig.ig_subj (subject_to_key x) in
+           FStar_List_Tot_Base.fold_left
+             (fun acc2 src ->
+                if src.p <> owl_sameAs
+                then
+                  let new_t = { s = s_prime; p = (src.p); o = (src.o) } in
+                  add_triple_unchecked acc2 new_t
+                else acc2) acc srcs) g (sameas_pairs ig)
 let owl_rule_sameAs_replace_object (g : rdf_graph) (ig : indexed_graph) :
   rdf_graph=
   FStar_List_Tot_Base.fold_left
-    (fun acc sameAs_t ->
-       if sameAs_t.p = owl_sameAs
-       then
-         let o_as_term = subject_to_term sameAs_t.s in
-         (if rdf_term_eq o_as_term sameAs_t.o
-          then acc
-          else
-            FStar_List_Tot_Base.fold_left
-              (fun acc2 src ->
-                 if (src.p <> owl_sameAs) && (rdf_term_eq src.o o_as_term)
-                 then
-                   let new_t = { s = (src.s); p = (src.p); o = (sameAs_t.o) } in
-                   add_triple_unchecked acc2 new_t
-                 else acc2) acc g)
-       else acc) g g
+    (fun acc xy ->
+       let uu___ = xy in
+       match uu___ with
+       | (x, y) ->
+           let y_term = subject_to_term y in
+           let srcs = bucket_lookup ig.ig_obj (subject_to_key x) in
+           FStar_List_Tot_Base.fold_left
+             (fun acc2 src ->
+                if src.p <> owl_sameAs
+                then
+                  let new_t = { s = (src.s); p = (src.p); o = y_term } in
+                  add_triple_unchecked acc2 new_t
+                else acc2) acc srcs) g (sameas_pairs ig)
 let owl_rule_sameAs_replace_predicate (g : rdf_graph) (ig : indexed_graph) :
   rdf_graph=
   FStar_List_Tot_Base.fold_left
-    (fun acc sameAs_t ->
-       if sameAs_t.p = owl_sameAs
-       then
-         match ((sameAs_t.s), (sameAs_t.o)) with
-         | (S_IRI p_iri, T_IRI p_prime_iri) ->
-             (if p_iri = p_prime_iri
-              then acc
-              else
-                FStar_List_Tot_Base.fold_left
-                  (fun acc2 src ->
-                     if
-                       (src.p = p_iri) &&
-                         (Prims.op_Negation (is_owl_metapredicate src.p))
-                     then
-                       let new_t =
-                         { s = (src.s); p = p_prime_iri; o = (src.o) } in
-                       add_triple_unchecked acc2 new_t
-                     else acc2) acc g)
-         | (uu___, uu___1) -> acc
-       else acc) g g
+    (fun acc xy ->
+       match xy with
+       | (S_IRI p_iri, S_IRI p_prime_iri) ->
+           if is_owl_metapredicate p_iri
+           then acc
+           else
+             (let srcs = bucket_lookup ig.ig_pred p_iri in
+              FStar_List_Tot_Base.fold_left
+                (fun acc2 src ->
+                   let new_t = { s = (src.s); p = p_prime_iri; o = (src.o) } in
+                   add_triple_unchecked acc2 new_t) acc srcs)
+       | uu___ -> acc) g (sameas_pairs ig)
 let owl_rule_functional (g : rdf_graph) (ig : indexed_graph) : rdf_graph=
   let fp_props =
     FStar_List_Tot_Base.fold_left
@@ -2647,14 +2538,6 @@ let owl_rl_closure_with_reflexivity (g : rdf_graph) (fuel : Prims.nat) :
   let thing_axioms = owl_thing_axioms rdfs_closed in
   let with_thing = add_triples_if_new rdfs_closed thing_axioms in
   owl_rl_closure with_thing fuel
-let sameAs_in_graph (g : rdf_graph) (a : rdf_term) (b : rdf_term) :
-  Prims.bool=
-  FStar_List_Tot_Base.existsb
-    (fun t ->
-       (t.p = owl_sameAs) &&
-         (((rdf_term_eq (subject_to_term t.s) a) && (rdf_term_eq t.o b)) ||
-            ((rdf_term_eq (subject_to_term t.s) b) && (rdf_term_eq t.o a))))
-    g
 let has_disjoint_with (g : rdf_graph) (c1 : rdf_term) (c2 : rdf_term) :
   Prims.bool=
   FStar_List_Tot_Base.existsb
@@ -2726,7 +2609,6 @@ let is_inconsistent (g : rdf_graph) : Prims.bool=
                                         (rdf_term_eq t1.o
                                            (subject_to_term t2.s))) g)) g
                      | uu___4 -> false)) g)))
-let regime_simple : Prims.string= "simple"
 let regime_rdf : Prims.string= "RDF"
 let regime_rdfs : Prims.string= "RDFS"
 let regime_owl_rl : Prims.string= "OWL-RL"

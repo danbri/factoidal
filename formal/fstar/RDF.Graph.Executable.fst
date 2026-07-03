@@ -1666,20 +1666,67 @@ let owl_rule_sameAs_reflexivity (g : rdf_graph) (ig : indexed_graph) : rdf_graph
     g
     nodes
 
+// #262: deduplicated, non-reflexive sameAs pairs from the step-input
+// snapshot. The sameAs-cluster rules below fold over this list (k^2
+// entries for a k-individual sameAs clique) instead of re-scanning the
+// live, duplicate-laden triple list (~2k^3 entries mid-step), which
+// together with the O(list) inner folds in eq-rep-s/o/p made the
+// cluster O(k^6) per closure step. See
+// docs/designissues/2026-07-03-owl-rl-sameas-blowup-diagnosis.md.
+// Semantics note: the cluster is now a pure function of the step-input
+// snapshot ig — sameAs facts emitted earlier in the SAME step are
+// consumed one fixpoint iteration later; the fixpoint converges to the
+// identical closure (snapshot semantics is the declared model at
+// owl_rl_closure_step). Literals never appear: term_to_subject
+// filters them.
+let sameas_pair_key (xy : subject * subject) : string =
+  let (x, y) = xy in
+  String.concat "" [subject_to_key x; unit_sep; subject_to_key y]
+
+let sameas_pair_cmp (a b : subject * subject) : int =
+  String.compare (sameas_pair_key a) (sameas_pair_key b)
+
+// Walk a key-sorted pair list dropping adjacent duplicates. Mirrors
+// dedup_sorted_aux for triples.
+let rec dedup_pairs_sorted_aux
+    (prev_key : option string)
+    (ps : list (subject * subject)) (acc : list (subject * subject))
+  : Tot (list (subject * subject)) (decreases ps) =
+  match ps with
+  | [] -> List.Tot.rev acc
+  | p :: rest ->
+    let k = sameas_pair_key p in
+    let dup = match prev_key with
+              | Some q -> q = k
+              | None   -> false in
+    if dup then dedup_pairs_sorted_aux prev_key rest acc
+    else dedup_pairs_sorted_aux (Some k) rest (p :: acc)
+
+let sameas_pairs (ig : indexed_graph) : list (subject * subject) =
+  let raw =
+    List.Tot.fold_left
+      (fun (acc : list (subject * subject)) (t : triple) ->
+        if t.p = owl_sameAs then
+          match term_to_subject t.o with
+          | Some y -> if subject_eq t.s y then acc else (t.s, y) :: acc
+          | None -> acc
+        else acc)
+      [] ig.ig_triples
+  in
+  let sorted = List.Tot.sortWith sameas_pair_cmp raw in
+  dedup_pairs_sorted_aux None sorted []
+
 // eq-sym: if (x owl:sameAs y) then (y owl:sameAs x).
+// #262: folds over the deduped snapshot pair list, not the live graph.
 let owl_rule_sameAs_symmetry (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
-    (fun (acc : rdf_graph) (t : triple) ->
-      if t.p = owl_sameAs then
-        match term_to_subject t.o with
-        | Some new_subj ->
-          let new_t : triple =
-            { s = new_subj; p = owl_sameAs; o = subject_to_term t.s } in
-          add_triple_unchecked acc new_t
-        | None -> acc
-      else acc)
+    (fun (acc : rdf_graph) (xy : subject * subject) ->
+      let (x, y) = xy in
+      let new_t : triple =
+        { s = y; p = owl_sameAs; o = subject_to_term x } in
+      add_triple_unchecked acc new_t)
     g
-    g
+    (sameas_pairs ig)
 
 // eq-diff-sym: if (x owl:differentFrom y) then (y owl:differentFrom x).
 // OWL semantics treats owl:differentFrom as symmetric; this is sound for
@@ -1700,105 +1747,89 @@ let owl_rule_differentFrom_symmetry (g : rdf_graph) (ig : indexed_graph) : rdf_g
     g
 
 // eq-trans: if (x owl:sameAs y) and (y owl:sameAs z) then (x owl:sameAs z).
+// #262: outer loop over the deduped snapshot pair list (k^2, not
+// ~2k^3); successor lookup keeps the index.
 let owl_rule_sameAs_transitivity (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
-    (fun (acc : rdf_graph) (t : triple) ->
-      if t.p = owl_sameAs then
-        match term_to_subject t.o with
-        | Some y_subj ->
-          let zs = find_objects_indexed ig y_subj owl_sameAs in
-          List.Tot.fold_left
-            (fun (acc2 : rdf_graph) (z_term : rdf_term) ->
-              let new_t : triple = { s = t.s; p = owl_sameAs; o = z_term } in
-              add_triple_unchecked acc2 new_t)
-            acc
-            zs
-        | None -> acc
-      else acc)
+    (fun (acc : rdf_graph) (xy : subject * subject) ->
+      let (x, y) = xy in
+      let zs = find_objects_indexed ig y owl_sameAs in
+      List.Tot.fold_left
+        (fun (acc2 : rdf_graph) (z_term : rdf_term) ->
+          let new_t : triple = { s = x; p = owl_sameAs; o = z_term } in
+          add_triple_unchecked acc2 new_t)
+        acc
+        zs)
     g
-    g
+    (sameas_pairs ig)
 
 // eq-rep-s: if (s owl:sameAs s') and (s p o) then (s' p o).
+// #262: per deduped pair, an ig_subj bucket lookup replaces the
+// O(list) inner fold over the live graph — this inner fold was the
+// second half of the O(k^6) blow-up. Reflexive pairs are already
+// excluded by sameas_pairs.
 let owl_rule_sameAs_replace_subject (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
-    (fun (acc : rdf_graph) (t : triple) ->
-      // For each (s owl:sameAs s') where s = t.s, copy all triples
-      // with subject s to s'.
-      if t.p = owl_sameAs then
-        match term_to_subject t.o with
-        | Some s_prime ->
-          // Skip reflexive sameAs (s = s'): substituting s for itself in
-          // every (s p o) edge would produce duplicates of existing
-          // triples, which dedup-sort removes anyway but only after the
-          // O(|sameAs| * |edges|) work has been done. Reflexive sameAs
-          // is produced wholesale by sameAs_reflexivity (one per term);
-          // without this guard the replace_* cascade blows up — see
-          // issue #262 cascade diagnostic.
-          if subject_eq t.s s_prime then acc
-          else
-          List.Tot.fold_left
-            (fun (acc2 : rdf_graph) (src : triple) ->
-              if subject_eq src.s t.s && src.p <> owl_sameAs then
-                let new_t : triple = { s = s_prime; p = src.p; o = src.o } in
-                add_triple_unchecked acc2 new_t
-              else acc2)
-            acc
-            g
-        | None -> acc
-      else acc)
+    (fun (acc : rdf_graph) (xy : subject * subject) ->
+      let (x, s_prime) = xy in
+      let srcs = bucket_lookup ig.ig_subj (subject_to_key x) in
+      List.Tot.fold_left
+        (fun (acc2 : rdf_graph) (src : triple) ->
+          if src.p <> owl_sameAs then
+            let new_t : triple = { s = s_prime; p = src.p; o = src.o } in
+            add_triple_unchecked acc2 new_t
+          else acc2)
+        acc
+        srcs)
     g
-    g
+    (sameas_pairs ig)
 
 // eq-rep-o: if (o owl:sameAs o') and (s p o) then (s p o').
+// #262: per deduped pair (x, y), an ig_obj bucket lookup on x's key
+// replaces the O(list) inner fold. ig_obj is keyed by
+// term_to_key_opt, which uses the same I_/B_ key space as
+// subject_to_key and omits only literals — and sameAs subjects are
+// never literals, so the bucket is exact for this rule.
 let owl_rule_sameAs_replace_object (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
-    (fun (acc : rdf_graph) (sameAs_t : triple) ->
-      if sameAs_t.p = owl_sameAs then
-        // For each triple (s p o) where o matches sameAs_t.s (i.e., subject
-        // of a sameAs statement), emit (s p sameAs_t.o).
-        let o_as_term = subject_to_term sameAs_t.s in
-        // Skip reflexive sameAs — same reason as sameAs_replace_subject
-        // (see issue #262 cascade diagnostic).
-        if rdf_term_eq o_as_term sameAs_t.o then acc
-        else
-        List.Tot.fold_left
-          (fun (acc2 : rdf_graph) (src : triple) ->
-            if src.p <> owl_sameAs && rdf_term_eq src.o o_as_term then
-              let new_t : triple = { s = src.s; p = src.p; o = sameAs_t.o } in
-              add_triple_unchecked acc2 new_t
-            else acc2)
-          acc
-          g
-      else acc)
+    (fun (acc : rdf_graph) (xy : subject * subject) ->
+      let (x, y) = xy in
+      let y_term = subject_to_term y in
+      let srcs = bucket_lookup ig.ig_obj (subject_to_key x) in
+      List.Tot.fold_left
+        (fun (acc2 : rdf_graph) (src : triple) ->
+          if src.p <> owl_sameAs then
+            let new_t : triple = { s = src.s; p = src.p; o = y_term } in
+            add_triple_unchecked acc2 new_t
+          else acc2)
+        acc
+        srcs)
     g
-    g
+    (sameas_pairs ig)
 
 // eq-rep-p: if (p owl:sameAs p') and p, p' are IRIs, then copy every
 // (s p o) as (s p' o). Only well-formed IRI predicates participate —
 // predicates cannot be blank nodes or literals.
+// #262: per deduped IRI-IRI pair, an ig_pred bucket lookup (keyed by
+// the raw predicate IRI) replaces the O(list) inner fold.
 let owl_rule_sameAs_replace_predicate (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   List.Tot.fold_left
-    (fun (acc : rdf_graph) (sameAs_t : triple) ->
-      if sameAs_t.p = owl_sameAs then
-        match sameAs_t.s, sameAs_t.o with
-        | S_IRI p_iri, T_IRI p_prime_iri ->
-          // Skip reflexive sameAs — same reason as sameAs_replace_subject
-          // / sameAs_replace_object (see issue #262 cascade diagnostic).
-          if p_iri = p_prime_iri then acc
-          else
+    (fun (acc : rdf_graph) (xy : subject * subject) ->
+      match xy with
+      | (S_IRI p_iri, S_IRI p_prime_iri) ->
+        if is_owl_metapredicate p_iri then acc
+        else
+          let srcs = bucket_lookup ig.ig_pred p_iri in
           List.Tot.fold_left
             (fun (acc2 : rdf_graph) (src : triple) ->
-              if src.p = p_iri && not (is_owl_metapredicate src.p) then
-                let new_t : triple =
-                  { s = src.s; p = p_prime_iri; o = src.o } in
-                add_triple_unchecked acc2 new_t
-              else acc2)
+              let new_t : triple =
+                { s = src.s; p = p_prime_iri; o = src.o } in
+              add_triple_unchecked acc2 new_t)
             acc
-            g
-        | _, _ -> acc
-      else acc)
+            srcs
+      | _ -> acc)
     g
-    g
+    (sameas_pairs ig)
 
 // prp-fp: if (P rdf:type owl:FunctionalProperty), (x P y), (x P z) and
 // y =/= z, then (y owl:sameAs z). Mirrors prp-ifp but on the object side:

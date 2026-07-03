@@ -61,20 +61,6 @@ let __proj__Mkdataset_backend__item__dsb_default
 let __proj__Mkdataset_backend__item__dsb_named (projectee : dataset_backend)
   : named_graph_backend Prims.list=
   match projectee with | { dsb_default; dsb_named;_} -> dsb_named
-let list_graph_backend (g : RDF_Graph_Executable.rdf_graph) : graph_backend=
-  GB_List g
-let list_dataset_backend (ds : RDF_Graph_Executable.rdf_dataset) :
-  dataset_backend=
-  {
-    dsb_default = (GB_List (ds.RDF_Graph_Executable.ds_default));
-    dsb_named =
-      (FStar_List_Tot_Base.map
-         (fun ng ->
-            {
-              ngb_name = (ng.RDF_Graph_Executable.ng_name);
-              ngb_graph = (GB_List (ng.RDF_Graph_Executable.ng_graph))
-            }) ds.RDF_Graph_Executable.ds_named)
-  }
 let indexed_graph_backend (g : RDF_Graph_Executable.rdf_graph) :
   graph_backend= GB_Indexed (RDF_Graph_Executable.build_indexed g)
 let indexed_dataset_backend (ds : RDF_Graph_Executable.rdf_dataset) :
@@ -289,27 +275,6 @@ let eval_single_tp_backend (tp : SPARQL11_Algebra.triple_pattern)
   let candidates = backend_search gb bound in
   SPARQL11_Algebra.list_filter_map
     (fun t -> SPARQL11_Algebra.tp_match tp t mu) candidates
-let tp_bound_shape (tp : SPARQL11_Algebra.triple_pattern)
-  (mu : RDF_Graph_Executable.solution_mapping) : Prims.string=
-  let s =
-    match SPARQL11_Algebra.bound_subject_of_pattern tp.SPARQL11_Algebra.tp_s
-            mu
-    with
-    | FStar_Pervasives_Native.Some uu___ -> "S"
-    | FStar_Pervasives_Native.None -> "_" in
-  let p =
-    match SPARQL11_Algebra.bound_predicate_of_pattern
-            tp.SPARQL11_Algebra.tp_p mu
-    with
-    | FStar_Pervasives_Native.Some uu___ -> "P"
-    | FStar_Pervasives_Native.None -> "_" in
-  let o =
-    match SPARQL11_Algebra.bound_object_of_pattern tp.SPARQL11_Algebra.tp_o
-            mu
-    with
-    | FStar_Pervasives_Native.Some uu___ -> "O"
-    | FStar_Pervasives_Native.None -> "_" in
-  Prims.strcat s (Prims.strcat p o)
 let estimate_tp_backend_mu (tp : SPARQL11_Algebra.triple_pattern)
   (gb : graph_backend) (mu : RDF_Graph_Executable.solution_mapping) :
   Prims.nat=

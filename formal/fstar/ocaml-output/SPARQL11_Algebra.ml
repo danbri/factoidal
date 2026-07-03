@@ -73,14 +73,6 @@ let rec sm_merge_aux (mu1 : RDF_Graph_Executable.solution_mapping)
 let sm_merge (mu1 : RDF_Graph_Executable.solution_mapping)
   (mu2 : RDF_Graph_Executable.solution_mapping) :
   RDF_Graph_Executable.solution_mapping= sm_merge_aux mu1 mu2
-let graph_triples (g : RDF_Graph_Executable.rdf_graph) :
-  RDF_Graph_Executable.triple Prims.list= g
-let triple_subject (t : RDF_Graph_Executable.triple) :
-  RDF_Graph_Executable.subject= t.RDF_Graph_Executable.s
-let triple_predicate (t : RDF_Graph_Executable.triple) :
-  RDF_Graph_Executable.wf_iri= t.RDF_Graph_Executable.p
-let triple_object (t : RDF_Graph_Executable.triple) :
-  RDF_Graph_Executable.rdf_term= t.RDF_Graph_Executable.o
 type triple_pattern_bound =
   {
   bs: RDF_Graph_Executable.subject FStar_Pervasives_Native.option ;
@@ -1956,26 +1948,11 @@ let regex_match (text : Prims.string) (pattern : Prims.string)
     (try let _ = Str.search_forward re text 0 in true
      with Not_found -> false)
   with _ -> false
-let fn_strlen_spec (s : Prims.string) : Prims.nat= string_length s
 let fn_substr_spec (s : Prims.string) (start : Prims.nat)
   (len : Prims.nat FStar_Pervasives_Native.option) : Prims.string=
   let idx =
     if start > Prims.int_zero then start - Prims.int_one else Prims.int_zero in
   string_substring s idx len
-let fn_ucase_spec (s : Prims.string) : Prims.string= string_upper s
-let fn_lcase_spec (s : Prims.string) : Prims.string= string_lower s
-let fn_strstarts_spec (s : Prims.string) (arg : Prims.string) : Prims.bool=
-  string_starts_with s arg
-let fn_strends_spec (s : Prims.string) (arg : Prims.string) : Prims.bool=
-  string_ends_with s arg
-let fn_strbefore_spec (s : Prims.string) (arg : Prims.string) : Prims.string=
-  string_before s arg
-let fn_strafter_spec (s : Prims.string) (arg : Prims.string) : Prims.string=
-  string_after s arg
-let fn_concat_spec (args : Prims.string Prims.list) : Prims.string=
-  string_concat args
-let fn_encode_for_uri_spec (s : Prims.string) : Prims.string=
-  string_encode_uri s
 let fn_strdt (lex : Prims.string) (dt : RDF_Graph_Executable.wf_iri) :
   RDF_Graph_Executable.rdf_term=
   if dt = RDF_Graph_Executable.rdf_lang_string
@@ -2024,7 +2001,6 @@ let hash_sha512 (s : Prims.string) : Prims.string=
   Fstar_pure_hashes.sha512 s
 let int_abs (n : Prims.int) : Prims.int=
   if n >= Prims.int_zero then n else Prims.int_zero - n
-let fn_abs_spec (n : Prims.int) : Prims.int= int_abs n
 let char_to_digit (c : FStar_Char.char) :
   Prims.int FStar_Pervasives_Native.option=
   let n = FStar_Char.int_of_char c in
@@ -2151,7 +2127,7 @@ let rec make_zeros (n : Prims.nat) : Prims.string=
 let pad_left_zeros (s : Prims.string) (target : Prims.nat) : Prims.string=
   let len = FStar_String.strlen s in
   if len >= target then s else Prims.strcat (make_zeros (target - len)) s
-let rec strip_trailing_zeros_chars (cs : FStar_Char.char Prims.list) :
+let strip_trailing_zeros_chars (cs : FStar_Char.char Prims.list) :
   FStar_Char.char Prims.list=
   match cs with
   | [] -> []
@@ -2751,9 +2727,6 @@ let eval_single_tp_store (tp : triple_pattern) (gs : graph_store)
     } in
   let candidates = store_search gs bound in
   list_filter_map (fun t -> tp_match tp t mu) candidates
-let eval_single_tp (tp : triple_pattern) (g : RDF_Graph_Executable.rdf_graph)
-  (mu : RDF_Graph_Executable.solution_mapping) : solution_sequence=
-  eval_single_tp_store tp (graph_to_store g) mu
 let estimate_tp_store_mu (tp : triple_pattern) (gs : graph_store)
   (mu : RDF_Graph_Executable.solution_mapping) : Prims.nat=
   store_estimate gs
@@ -4198,17 +4171,6 @@ and eval_concat_with_base
             | ER_Error -> ER_Error
             | uu___ -> ER_Error)
        | FStar_Pervasives_Native.None -> ER_Error)
-let eval_expr (e : expr) (mu : RDF_Graph_Executable.solution_mapping) :
-  eval_result= eval_expr_with_base FStar_Pervasives_Native.None e mu
-let eval_coalesce (es : expr Prims.list)
-  (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
-  eval_coalesce_with_base FStar_Pervasives_Native.None es mu
-let eval_in (v : eval_result) (es : expr Prims.list)
-  (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
-  eval_in_with_base FStar_Pervasives_Native.None v es mu
-let eval_concat (es : expr Prims.list)
-  (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
-  eval_concat_with_base FStar_Pervasives_Native.None es mu
 let () = eval_expr_ebv_ref := (fun base e mu -> ebv (eval_expr_with_base base e mu))
 let () = eval_expr_fwd_ref := (fun base e mu -> eval_expr_with_base base e mu)
 let () = regex_replace_ref := (fun text pattern replacement flags ->
@@ -5466,23 +5428,6 @@ let uu___is_Cast_Boolean (projectee : cast_target) : Prims.bool=
   match projectee with | Cast_Boolean -> true | uu___ -> false
 let uu___is_Cast_DateTime (projectee : cast_target) : Prims.bool=
   match projectee with | Cast_DateTime -> true | uu___ -> false
-let er_to_lexical (v : eval_result) :
-  Prims.string FStar_Pervasives_Native.option=
-  match v with
-  | ER_Term (RDF_Graph_Executable.T_Literal l) ->
-      FStar_Pervasives_Native.Some (lit_lexical l)
-  | ER_Term (RDF_Graph_Executable.T_IRI i) ->
-      FStar_Pervasives_Native.Some (iri_to_string i)
-  | ER_Term (RDF_Graph_Executable.T_BNode b) ->
-      FStar_Pervasives_Native.Some b
-  | ER_Num n -> FStar_Pervasives_Native.Some (Prims.string_of_int n)
-  | ER_Dec s -> FStar_Pervasives_Native.Some s
-  | ER_Dbl s -> FStar_Pervasives_Native.Some s
-  | ER_Bool true -> FStar_Pervasives_Native.Some "true"
-  | ER_Bool false -> FStar_Pervasives_Native.Some "false"
-  | ER_Error -> FStar_Pervasives_Native.None
-let is_decimal_string (s : Prims.string) : Prims.bool=
-  (FStar_String.strlen s) > Prims.int_zero
 let xsd_cast (v : eval_result) (target : cast_target) :
   eval_result FStar_Pervasives_Native.option=
   match target with
@@ -5858,13 +5803,6 @@ let eval_exists
   let substituted = substitute_pattern mu pattern in
   (FStar_List_Tot_Base.length (eval_pattern base substituted graph ds)) >
     Prims.int_zero
-let eval_not_exists
-  (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
-  (pattern : group_graph_pattern)
-  (mu : RDF_Graph_Executable.solution_mapping)
-  (graph : RDF_Graph_Executable.rdf_graph)
-  (ds : RDF_Graph_Executable.rdf_dataset) : Prims.bool=
-  Prims.op_Negation (eval_exists base pattern mu graph ds)
 let () = eval_exists_fwd_ref := eval_exists
 let filter_solutions
   (base : RDF_Graph_Executable.wf_iri FStar_Pervasives_Native.option)
