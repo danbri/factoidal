@@ -8,6 +8,7 @@ TMPDIR="${TMPDIR:-/tmp}"
 
 pass_count=0
 fail_count=0
+skip_count=0
 BERLIN_HDT="${BERLIN_HDT:-/tmp/Corpus3/berlin-dbpedia-page/v1/data.hdt}"
 BERLIN_GRAPH_IRI="${BERLIN_GRAPH_IRI:-https://factoidaldb.com/id/graph/berlin}"
 
@@ -16,6 +17,27 @@ run_parser_pass() {
   local query_file="$2"
   local output_file="${TMPDIR}/factoidal_sparql_regression_${name}.out"
   shift 2
+
+  # Collect external fixture files from arguments to check before running
+  local fixtures=()
+  for arg in "$@"; do
+    # Check for /tmp paths (direct file paths)
+    if [[ "$arg" == /tmp/* ]]; then
+      fixtures+=("$arg")
+    # Check for GRAPH_IRI=FILE paths (from --named arguments)
+    elif [[ "$arg" == *=/tmp/* ]]; then
+      fixtures+=("${arg#*=}")
+    fi
+  done
+
+  # If any external fixtures are missing, skip this test
+  for fixture in "${fixtures[@]}"; do
+    if [[ ! -f "$fixture" ]]; then
+      echo "SKIP ${name} (external corpus not present: ${fixture})"
+      skip_count=$((skip_count + 1))
+      return
+    fi
+  done
 
   if "${BIN}" "$@" --query "${query_file}" >"${output_file}" 2>&1; then
     echo "PASS ${name}"
@@ -49,7 +71,7 @@ run_parser_pass "named-group" "${QUERY_DIR}/berlin_named_group.rq" \
 run_parser_pass "named-subselect" "${QUERY_DIR}/berlin_named_subselect.rq" \
   --named "${BERLIN_GRAPH_IRI}=${BERLIN_HDT}"
 
-echo "pass=${pass_count} fail=${fail_count}"
+echo "pass=${pass_count} fail=${fail_count} skip=${skip_count}"
 
 if [[ "${fail_count}" -ne 0 ]]; then
   exit 1
