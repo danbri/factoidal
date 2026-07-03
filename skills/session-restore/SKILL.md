@@ -35,10 +35,14 @@ container pays none of this.
   `tools/install-toolchain-cache.sh`. Rebuild when
   `fstar_version` in `bin/ci-linux-x86_64/build-info.json` changes;
   instructions in the branch README.
-- **`checked-cache`** (planned) — the repo's `formal/fstar/*.checked`
-  verification cache. Content-digest keyed by F\*, so even a stale
-  snapshot gives partial hits; a full cold re-verify of the tree
-  costs ~2 hours, which is what this saves.
+- **`checked-cache`** (live 2026-07-03) — the repo's
+  `formal/fstar/*.checked` verification cache (~13MB gzip, 88
+  modules), snapshotted from the gates-green state. Restored by
+  `tools/install-toolchain-cache.sh` step 4b. Content-digest keyed by
+  F\*, so even a stale snapshot gives partial hits; a full cold
+  re-verify of the tree costs ~2 hours, which is what this saves.
+  Refresh (single amended commit) after landing changes that
+  re-verified large parts of the tree — gates-green states only.
 
 **Gate rule (non-negotiable): cache artifacts are pushed only from a
 state that passed the full test battery** — F\* verification, the W3C

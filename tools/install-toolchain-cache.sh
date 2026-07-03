@@ -81,6 +81,21 @@ if [ ! -x "$SWITCH_PREFIX/bin/fstar.exe" ]; then
   rm -rf "$TC"
 fi
 
+# 4b. .checked verification cache (gates-green snapshots only; see
+#     skills/session-restore gate rule). Partial hits are still wins.
+if [ ! -e "$REPO_ROOT/formal/fstar/RDF.Graph.Executable.fst.checked" ]; then
+  if git -C "$REPO_ROOT" fetch -q origin checked-cache 2>/dev/null; then
+    CC=/tmp/checked-cache.$$
+    mkdir -p "$CC"
+    git -C "$REPO_ROOT" archive --format=tar origin/checked-cache | tar -x -C "$CC" \
+      && ( cd "$CC" && sha256sum -c SHA256SUMS >/dev/null 2>&1 ) \
+      && tar -C "$REPO_ROOT/formal/fstar" -xzf "$CC"/checked-*.tar.gz \
+      && log ".checked cache restored ($(ls "$REPO_ROOT"/formal/fstar/*.checked | wc -l) modules)" \
+      || log ".checked cache restore failed (non-fatal; cold verify will rebuild)"
+    rm -rf "$CC"
+  fi
+fi
+
 # 5. runtime deps for compile/js steps, in background (verify-only work
 #    does not need them)
 mkdir -p "$(dirname "$DEPS_LOG")"
