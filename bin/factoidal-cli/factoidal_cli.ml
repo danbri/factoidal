@@ -324,6 +324,7 @@ type config = {
   mutable output_format : output_format;
   mutable dump_mode : bool;
   mutable dump_nq_mode : bool;
+  mutable canonicalize_mode : bool;  (* RDFC-1.0 canonical N-Quads *)
   mutable count_mode : bool;
   mutable explain_mode : bool;     (* --explain: parse + plan + estimate, no execution *)
   mutable explain_out : string option;  (* --explain-out=PATH for JSON sidecar *)
@@ -358,7 +359,8 @@ let usage () =
   Printf.printf "\n";
   Printf.printf "RDF parsing/dump:\n";
   Printf.printf "  factoidal --dump FILE.ttl           Parse and dump as N-Triples\n";
-  Printf.printf "  factoidal --dump-nq FILE.trig       Parse and dump as canonical N-Quads\n";
+  Printf.printf "  factoidal --dump-nq FILE.trig       Parse and dump as sorted N-Quads\n";
+  Printf.printf "  factoidal --canonicalize FILE.trig  RDFC-1.0 canonical N-Quads\n";
   Printf.printf "  factoidal --count FILE.ttl          Count triples\n";
   Printf.printf "  factoidal --dump --format rdfxml FILE.rdf\n";
   Printf.printf "\n";
@@ -416,7 +418,8 @@ let parse_args ?args () =
   let cfg = {
     data_files = []; data_cottas_files = []; named_graphs = []; query_file = None;
     query_string = None; base_iri = None; input_format = None;
-    output_format = Table; dump_mode = false; dump_nq_mode = false; count_mode = false;
+    output_format = Table; dump_mode = false; dump_nq_mode = false;
+    canonicalize_mode = false; count_mode = false;
     explain_mode = false; explain_out = None;
     help_mode = false; version_mode = false;
     entail_regime = "";
@@ -463,6 +466,7 @@ let parse_args ?args () =
          exit 1)
     | "--dump" :: rest -> cfg.dump_mode <- true; loop rest
     | "--dump-nq" :: rest -> cfg.dump_nq_mode <- true; loop rest
+    | "--canonicalize" :: rest -> cfg.canonicalize_mode <- true; loop rest
     | "--count" :: rest -> cfg.count_mode <- true; loop rest
     | "--explain" :: q :: rest ->
       (* `--explain SPARQL` is the new "plan dump without execution" mode.
@@ -506,8 +510,8 @@ let parse_args ?args () =
    `factoidal --data X --query Q.rq` stays untouched. *)
 
 let known_subcommands =
-  ["help"; "version"; "query"; "serve"; "dump"; "dump-nq"; "count";
-   "test"; "cottas-import"; "cottas-info"]
+  ["help"; "version"; "query"; "serve"; "dump"; "dump-nq"; "canonicalize";
+   "count"; "test"; "cottas-import"; "cottas-info"]
 
 (* Locate a sibling binary by the same convention busybox uses: look in
    the same directory as argv[0] first, fall back to PATH. *)
@@ -587,7 +591,8 @@ let print_navigation_help () =
   Printf.printf "                   factoidal serve --port 3030 --dataset X.ttl\n";
   Printf.printf "                   (shares Factoidal_http parser/server in-process)\n";
   Printf.printf "  dump FILE      Parse RDF and dump as N-Triples\n";
-  Printf.printf "  dump-nq FILE   Parse RDF and dump as canonical N-Quads\n";
+  Printf.printf "  dump-nq FILE   Parse RDF and dump as sorted N-Quads\n";
+  Printf.printf "  canonicalize FILE  RDFC-1.0 canonical N-Quads (canonical bnode labels)\n";
   Printf.printf "  count FILE     Parse RDF and count triples\n";
   Printf.printf "  cottas-import  Import RDF -> COTTAS/Parquet artifact\n";
   Printf.printf "                   factoidal cottas-import --input X.trig --corpus-root C ...\n";
@@ -737,6 +742,7 @@ let dispatch_subcommand () =
      | "query" -> rest
      | "dump"  -> "--dump"  :: List.concat_map (fun f -> ["--data"; f]) rest
      | "dump-nq" -> "--dump-nq" :: List.concat_map (fun f -> ["--data"; f]) rest
+     | "canonicalize" -> "--canonicalize" :: List.concat_map (fun f -> ["--data"; f]) rest
      | "count" -> "--count" :: List.concat_map (fun f -> ["--data"; f]) rest
      | _ -> argv_tail)  (* unreachable *)
   | ("--help" | "-h") :: _ ->
@@ -864,6 +870,35 @@ let () =
     let ds_named = concat_map_preserve_order (fun ds -> ds.ds_named) datasets in
     let dataset = RDF_Graph_Executable.({ ds_default; ds_named }) in
     print_string (RDF_Canonical.canonical_nquads dataset);
+    exit 0
+  end;
+
+  (* Canonicalize mode: RDFC-1.0 (RDF Dataset Canonicalization).
+     Unlike dump-nq (which only sorts), this runs the canonical
+     blank-node labelling algorithm from RDF.Canonical.fst, then
+     serializes canonical N-Quads. Same load path as dump-nq. *)
+  if cfg.canonicalize_mode then begin
+    if cfg.data_files = [] && cfg.data_cottas_files = [] then begin
+      Printf.eprintf "Error: no data files specified (use --data FILE or just FILE)\n";
+      exit 1
+    end;
+    let file_datasets = List.map (fun f ->
+      try load_dataset ~format:cfg.input_format ~base:cfg.base_iri f
+      with e ->
+        Printf.eprintf "Error parsing %s: %s\n" f (Printexc.to_string e);
+        exit 1
+    ) cfg.data_files in
+    let cottas_datasets = List.map (fun f ->
+      try load_cottas_dataset f
+      with e ->
+        Printf.eprintf "Error loading COTTAS %s: %s\n" f (Printexc.to_string e);
+        exit 1
+    ) cfg.data_cottas_files in
+    let datasets = file_datasets @ cottas_datasets in
+    let ds_default = concat_map_preserve_order (fun ds -> ds.ds_default) datasets in
+    let ds_named = concat_map_preserve_order (fun ds -> ds.ds_named) datasets in
+    let dataset = RDF_Graph_Executable.({ ds_default; ds_named }) in
+    print_string (RDF_Canonical.canonicalize_to_nquads dataset);
     exit 0
   end;
 
