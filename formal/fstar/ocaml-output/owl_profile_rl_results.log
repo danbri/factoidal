@@ -81,7 +81,7 @@ Running 6 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fue
   PASS  WebOnt-I5.8-007
   FAIL/unexpected-entailment  WebOnt-equivalentClass-008
 
-Profile-RL NegativeEntailmentTests: 3 pass, 3 fail (out of 6) in 0.14s
+Profile-RL NegativeEntailmentTests: 3 pass, 3 fail (out of 6) in 0.15s
 
 Running 76 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  DisjointClasses-001
@@ -161,7 +161,7 @@ Running 76 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  owl2-rl-valid-oneof
   PASS  owl2-rl-valid-rightside-allvaluesfrom
 
-Profile-RL ConsistencyTests: 75 pass, 1 fail (out of 76) in 2.00s
+Profile-RL ConsistencyTests: 75 pass, 1 fail (out of 76) in 2.01s
 
 Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  DisjointClasses-002

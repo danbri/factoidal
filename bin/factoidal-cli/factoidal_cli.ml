@@ -108,12 +108,27 @@ let concat_preserve_order lists =
 let concat_map_preserve_order f xs =
   concat_preserve_order (List.rev_map f xs |> List.rev)
 
-(* Load as dataset, preserving named graph structure for NQuads/TriG *)
+(* Load as dataset, preserving named graph structure for NQuads/TriG.
+
+   Blank-node scoping (priority 2d, Jena graph-probe regression):
+   RDF 1.1 scopes bnode labels to their document. Each load_dataset
+   call is one document, so every loaded dataset gets its labels
+   prefixed with a per-call scope id via the F* renaming
+   (RDF.Dataset.Merge.rename_dataset_bnodes — the semantic decision
+   lives in F*, this is just the per-document counter). Without this,
+   _:x in two separately loaded files spuriously joined. *)
+let bnode_scope_counter = ref 0
+
+let scope_dataset_bnodes ds =
+  let n = !bnode_scope_counter in
+  incr bnode_scope_counter;
+  RDF_Dataset_Merge.rename_dataset_bnodes (Printf.sprintf "d%d_" n) ds
+
 let load_dataset ?(format=None) ?(base=None) path =
   let content = read_file path in
   let fmt = match format with Some f -> f | None -> detect_format path in
   let base_iri = match base with Some b -> Some b | None -> file_base_iri path in
-  match fmt with
+  scope_dataset_bnodes @@ match fmt with
   | NQuads ->
     Parser_NQuads.parse_nquads content
   | TriG ->
