@@ -142,10 +142,17 @@ sudo ln -sf /usr/local/bin/z3-4.13.3 /usr/local/bin/z3
 
 ### Proxied sandboxes where GitHub release downloads 403
 
-Some agent sandboxes (Claude Code on the web included) scope GitHub
-through a proxy that allows `git clone` but returns 403 JSON for
-release-asset downloads — the `z3.zip` above arrives as a 175-byte
-error body and unzip fails. Fallback that works because PyPI is open:
+Tested access model in Claude Code on the web sandboxes (2026-07-03,
+via `$HTTPS_PROXY/__agentproxy/status` + direct probes): **git
+protocol to ANY GitHub repository works** (clone/fetch/ls-remote,
+including into /tmp — not just the session-scoped repo), but
+`api.github.com` and `github.com/<owner>/<repo>/releases/download/...`
+return 403 JSON, so release assets and API calls fail — the `z3.zip`
+above arrives as a ~175-byte error body and unzip fails. Package
+registries (PyPI, npm, crates.io, proxy.golang.org) bypass the proxy
+entirely. Consequences: anything published as a release asset needs a
+mirror (this repo's `toolchain-cache` branch) or a registry-published
+equivalent. Fallback that works because PyPI is open:
 
 ```bash
 python3 -m venv /tmp/z3venv && /tmp/z3venv/bin/pip install -q z3-solver==4.13.3.0

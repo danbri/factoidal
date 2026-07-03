@@ -27,7 +27,14 @@ The SessionStart hook (`.claude/hooks/session-start.sh` →
 
 Trust the orientation block. Do not open a session with a dozen
 exploratory `ls`/`cat`/`git log` calls to establish what it already
-told you. What it does NOT set up: the opam/F\*/z3 toolchain (30–60
+told you.
+
+Network access model (tested 2026-07-03): git protocol to any GitHub
+repo works, including clones into /tmp; GitHub API and release-asset
+downloads 403; PyPI/npm/crates/golang registries are direct. Before
+declaring something unreachable, probe it and check
+`$HTTPS_PROXY/__agentproxy/status` — and record corrections in
+`fstar-env` § proxied sandboxes. What it does NOT set up: the opam/F\*/z3 toolchain (30–60
 min build) — only needed for editing `.fst`; run the `fstar-env`
 skill when a session actually needs it, and background the install
 while doing binary-based work.
