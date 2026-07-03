@@ -10,7 +10,7 @@ pass, 0 fail. OWL 2 RL positive-entailment via `generate-report.sh`:
 20 pass, 10 fail (out of 30). Turtle throughput re-measured the same
 day: ~100k triples/s, near-linear to 1M triples (details in
 `performance.md`). The module inventory and `assume val` tables below
-are still the 2026-05-07 snapshot.
+were refreshed 2026-07-03 from the live tree.
 
 This file is a **periodic refresh doc** — it goes stale within a week.
 Update after material progress (suite-score movements, new F\* modules,
@@ -51,30 +51,65 @@ Done recently: in-memory index-build wall (#259, verified fixed
 
 ## F\* Specifications
 
+Repository contains 90 F\* modules totalling 47517 lines of code. Key modules:
+
 ```
 formal/fstar/
-  RDF.Graph.Executable.fst     1052 lines, 0 admit, 0 assume val
-  SPARQL11.Algebra.fst        3783 lines, 4 admit (proof lemmas), 12 assume val
-  SPARQL11.Parser.fst         2942 lines, 3 assume val
-                               ⚠ ~65% uses --admit_smt_queries true (see below)
-  Parser.Combinators.fst       387 lines — parser combinator foundation
-  Parser.NTriples.fst          679 lines
-  Parser.Turtle.fst           1339 lines
-  Parser.NQuads.fst            302 lines
-  Parser.TriG.fst              505 lines
-  Parser.XML.fst               602 lines
-  Parser.RDFXML.fst            812 lines
-  Parser.SRX.fst               273 lines
-  Parser.CSVResults.fst        610 lines
-  Parser.JSONResults.fst       408 lines
-  Makefile                     verify + extract-c targets
-  build-ocaml.sh               F* -> OCaml -> js_of_ocaml pipeline
-  ocaml-patches.sh             master script: applies all patches from
-                               minimal_regrettable_glue_code_each_with_an_open_issue/
+
+Core (RDF/SPARQL evaluation):
+  SPARQL11.Algebra.fst            5777 lines, 13 assume val (query evaluator)
+  SPARQL11.Parser.fst             4343 lines
+                                  ⚠ ~65% uses --admit_smt_queries true (see below)
+  RDF.Graph.Executable.fst        4152 lines
+
+Query planning (on-disk backend infrastructure):
+  RDF.CottasStore.fst             1528 lines, 10 assume val
+  RDF.CottasStore.OnDiskIndex.fst  407 lines,  7 assume val
+  RDF.CottasStore.OnDiskRuntime.fst 117 lines, 15 assume val
+  SPARQL11.Store.fst               780 lines
+
+RDF parsers (all F*-extracted):
+  Parser.Turtle.fst               1918 lines
+  Parser.RDFXML.fst               1159 lines
+  Parser.NTriples.fst             1025 lines
+  Parser.TriG.fst                  525 lines
+  Parser.NQuads.fst                518 lines
+  Parser.XML.fst                   680 lines (non-validating XML foundation)
+  Parser.SRX.fst                   273 lines (SPARQL Results XML)
+  Parser.CSVResults.fst            610 lines
+  Parser.JSONResults.fst           408 lines
+  Parser.IRI.fst                   447 lines
+  Parser.Combinators.fst           396 lines (parser combinator foundation)
+
+OWL/RIF:
+  OWL.QueryRewrite.fst            1796 lines
+  RIF.Core.Eval.fst                470 lines
+  Tableau.fst                      1103 lines
+
+Query planning and diagnostics:
+  SPARQL.Protocol.fst             1229 lines
+  SPARQL.HTTP.fst                  579 lines
+
+Miscellaneous support:
+  Parquet.Footer.fst              2591 lines,  3 assume val
+  RDF.Canonical.fst               1142 lines,  1 assume val
+  SHACL.Validation.fst             340 lines,  3 assume val (Phase 1 skeleton)
+  Parser.FastString.fst            210 lines,  7 assume val
+  Parser.BallyhooHDTQ.fst          174 lines, 17 assume val
+  Parser.BallyhooHDT.fst           173 lines, 13 assume val
+  Parser.BallyhooCOTTAS.fst        170 lines, 17 assume val
+
+Build and test harness:
+  Makefile                         verify + extract-c targets
+  build-ocaml.sh                   F* -> OCaml -> js_of_ocaml pipeline
+  ocaml-patches.sh                 master script: applies all patches from
+                                   minimal_regrettable_glue_code_each_with_an_open_issue/
   minimal_regrettable_glue_code_each_with_an_open_issue/
-                               individual patch files, each named
-                               <issue>_<description>.sh with GitHub issue
+                                   individual patch files, each named
+                                   <issue>_<description>.sh with GitHub issue
 ```
+
+Inventory summary: 90 modules, 47517 lines total, 141 assume val declarations.
 
 ## ⚠ Verification Gaps — Be Honest About These
 
@@ -130,7 +165,11 @@ formal/fstar/ocaml-output/
 
 Hand-coded parsers have been deleted. Legacy copies remain in `junk/do_not_use/hand_coded_parsers/` as a warning.
 
-## assume val inventory (SPARQL11.Algebra.fst)
+## assume val inventory
+
+141 assume val declarations across 20 modules. Summary by module (largest first):
+
+**SPARQL11.Algebra.fst** (13 assume vals — query evaluator core):
 
 | assume val | Purpose | Stub |
 |-----------|---------|------|
@@ -146,6 +185,8 @@ Hand-coded parsers have been deleted. Legacy copies remain in `junk/do_not_use/h
 | `eval_exists_fwd` | forward decl (EXISTS) | wired in ocaml-patches.sh |
 | `eval_subselect_fwd` | forward decl (subqueries) | wired in ocaml-patches.sh |
 | `eval_property_path_fwd` | forward decl (property paths) | wired in ocaml-patches.sh |
+
+**Other modules with assume vals** (128 total): Ballyhoo HDT parsers (47: Parser.BallyhooCOTTAS.fst 17, Parser.BallyhooHDTQ.fst 17, Parser.BallyhooHDT.fst 13), on-disk store/indexing (44: RDF.CottasStore.OnDiskRuntime.fst 15, RDF.CottasStore.fst 10, RDF.CottasStore.OnDiskIndex.fst 7, RDF.CottasStore.LazyDict.fst 9, RDF.CottasStore.LazyDictRegistry.fst 5), fast string parsing (7: Parser.FastString.fst), lazy term caching (10: RDF.Store.LazyTermCache.fst 6, RDF.Store.HDTTermCacheRegistry.fst 4), misc (11: Parquet.Footer.fst 3, RDF.CottasStore.ColumnSeq.fst 3, SHACL.Validation.fst 3, Util.Log.fst 5).
 
 ## Plain-English Status Summary (as of 2026-05-07)
 
