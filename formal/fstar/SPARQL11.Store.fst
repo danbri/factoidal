@@ -778,3 +778,20 @@ and eval_ask_query_backend_dataset (q : query) (dsb : dataset_backend)
       | Some vals -> join omega0 vals in
     Some (match omega with | [] -> false | _ -> true)
   | _ -> None
+
+// Priority 2c (Jena basic-probe regression): the algebra path rewrites
+// blank-node pattern terms to variables at its entry
+// (eval_select_query, SPARQL11.Algebra); the backend path never did,
+// so bnode-pattern SELECT/ASK matched zero rows via the CLI's default
+// route. The rewrite cannot live inside the mutually recursive group
+// above — replacing q_pattern breaks its termination metric — so these
+// top-level entries do it once and delegate. Consumers call these.
+let run_select_query_backend_dataset (q : query) (dsb : dataset_backend)
+  : option solution_sequence =
+  eval_select_query_backend_dataset
+    ({ q with q_pattern = rewrite_query_bnodes_pattern q.q_pattern }) dsb
+
+let run_ask_query_backend_dataset (q : query) (dsb : dataset_backend)
+  : option bool =
+  eval_ask_query_backend_dataset
+    ({ q with q_pattern = rewrite_query_bnodes_pattern q.q_pattern }) dsb

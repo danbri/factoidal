@@ -1055,7 +1055,7 @@ let () =
         let dsb = build_dataset_backend dataset cottas_stores in
         let ask_answer =
           if is_ask then
-            match SPARQL11_Store.eval_ask_query_backend_dataset rewritten_query dsb with
+            match SPARQL11_Store.run_ask_query_backend_dataset rewritten_query dsb with
             | Some b -> Some b
             | None ->
               Printf.eprintf "Query evaluation error: backend ASK path unavailable\n";
@@ -1064,7 +1064,7 @@ let () =
         let results =
           if is_ask then []
           else
-            match SPARQL11_Store.eval_select_query_backend_dataset rewritten_query dsb with
+            match SPARQL11_Store.run_select_query_backend_dataset rewritten_query dsb with
             | Some rows -> rows
             | None ->
               Printf.eprintf "Query evaluation error: backend SELECT path unavailable\n";

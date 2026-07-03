@@ -422,7 +422,7 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   FAIL  rdfbased-sem-restrict-somevalues-inst-subj
   FAIL  somevaluesfrom2bnode
 
-Profile-RL PositiveEntailmentTests: 78 pass, 128 fail (out of 206) in 35.49s
+Profile-RL PositiveEntailmentTests: 78 pass, 128 fail (out of 206) in 34.59s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 206 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
@@ -633,4 +633,4 @@ Running 206 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL ConsistencyTests: 185 pass, 21 fail (out of 206) in 26.77s
+Profile-RL ConsistencyTests: 185 pass, 21 fail (out of 206) in 25.24s

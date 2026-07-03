@@ -922,3 +922,36 @@ and eval_ask_query_backend_dataset (q : SPARQL11_Algebra.query)
       FStar_Pervasives_Native.Some
         ((match omega with | [] -> false | uu___ -> true))
   | uu___ -> FStar_Pervasives_Native.None
+let run_select_query_backend_dataset (q : SPARQL11_Algebra.query)
+  (dsb : dataset_backend) :
+  SPARQL11_Algebra.solution_sequence FStar_Pervasives_Native.option=
+  eval_select_query_backend_dataset
+    {
+      SPARQL11_Algebra.q_base = (q.SPARQL11_Algebra.q_base);
+      SPARQL11_Algebra.q_prefixes = (q.SPARQL11_Algebra.q_prefixes);
+      SPARQL11_Algebra.q_form = (q.SPARQL11_Algebra.q_form);
+      SPARQL11_Algebra.q_dataset = (q.SPARQL11_Algebra.q_dataset);
+      SPARQL11_Algebra.q_pattern =
+        (SPARQL11_Algebra.rewrite_query_bnodes_pattern
+           q.SPARQL11_Algebra.q_pattern);
+      SPARQL11_Algebra.q_group_by = (q.SPARQL11_Algebra.q_group_by);
+      SPARQL11_Algebra.q_having = (q.SPARQL11_Algebra.q_having);
+      SPARQL11_Algebra.q_modifier = (q.SPARQL11_Algebra.q_modifier);
+      SPARQL11_Algebra.q_values = (q.SPARQL11_Algebra.q_values)
+    } dsb
+let run_ask_query_backend_dataset (q : SPARQL11_Algebra.query)
+  (dsb : dataset_backend) : Prims.bool FStar_Pervasives_Native.option=
+  eval_ask_query_backend_dataset
+    {
+      SPARQL11_Algebra.q_base = (q.SPARQL11_Algebra.q_base);
+      SPARQL11_Algebra.q_prefixes = (q.SPARQL11_Algebra.q_prefixes);
+      SPARQL11_Algebra.q_form = (q.SPARQL11_Algebra.q_form);
+      SPARQL11_Algebra.q_dataset = (q.SPARQL11_Algebra.q_dataset);
+      SPARQL11_Algebra.q_pattern =
+        (SPARQL11_Algebra.rewrite_query_bnodes_pattern
+           q.SPARQL11_Algebra.q_pattern);
+      SPARQL11_Algebra.q_group_by = (q.SPARQL11_Algebra.q_group_by);
+      SPARQL11_Algebra.q_having = (q.SPARQL11_Algebra.q_having);
+      SPARQL11_Algebra.q_modifier = (q.SPARQL11_Algebra.q_modifier);
+      SPARQL11_Algebra.q_values = (q.SPARQL11_Algebra.q_values)
+    } dsb
