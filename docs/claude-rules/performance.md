@@ -27,6 +27,17 @@ COTTAS quads) over re-parsing text — see the caveats in
 interface-only in F\* and shells out to `hdtSearch`; COTTAS has the
 substantial verified `Parquet.Footer` reader).
 
+The walls have moved, not vanished. In-memory: compliant but
+RAM-bound, with `indexed_dataset_backend` construction dominating
+load time (see `2026-05-01-perf-fast-path-vs-load.md` — ~135s of a
+137s demo query was index build). On-disk COTTAS: serves the 3.14M-quad
+UK Parliament corpus, but only via the unverified OCaml runtime
+override whose retirement is scoped in
+`2026-05-13-issue-118-cottas-ondisk-runtime-retirement-plan.md`.
+The current-walls summary lives in
+[`skills/perf-benchmarking/SKILL.md`](../../skills/perf-benchmarking/SKILL.md)
+§ "Scaling status".
+
 ## History: the slow-Turtle era (2026-04, fixed)
 
 Measured 2026-04-17, same fixtures: 1,000 triples took 25 s

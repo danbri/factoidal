@@ -68,6 +68,37 @@ Scaling is near-linear through 1M triples. Any doc still quoting
 pre-fix engine — see the history below. When you see such a number,
 re-measure and update the doc rather than propagating it.
 
+## Scaling status: where the walls are (2026-07)
+
+Parse throughput is no longer the bottleneck. The current walls:
+
+- **In-memory store**: fully W3C-compliant, but the whole dataset
+  lives in RAM as list-backed structures, and building the
+  `indexed_dataset_backend` dominates load time (the lifesci demo's
+  137s query was ~135s of index build — six bucket maps with O(N)
+  `bucket_replace_acc` per entry — and ~0.1s of eval; see
+  `docs/designissues/2026-05-01-perf-fast-path-vs-load.md`).
+  Compliance numbers say nothing about scale: the suites run on tiny
+  fixtures.
+- **On-disk (COTTAS)**: opens and serves the 3,143,406-quad UK
+  Parliament corpus (the Fly.io endpoint + ukparliament demo), but
+  the performant search/estimate path is the 718-line unverified
+  OCaml override (`cottas_ondisk_runtime.sh`); the extracted F\*
+  path is not yet fast enough to replace it. Retirement is scoped in
+  `docs/designissues/2026-05-13-issue-118-cottas-ondisk-runtime-retirement-plan.md`
+  (#118) with ukparliament-bench gating each step. History of
+  soundness bugs in this layer (silent literal-bound-object drops,
+  #261, fixed) is exactly why the glue must shrink.
+- **HDT**: interface-only in F\*; shells out to the external
+  `hdtSearch` CLI per query (#253 retirement plan).
+- **OWL-RL closure**: blows up on sameAs clusters
+  (`owl_rl_closure_step`, #262, characterised not fixed).
+
+The 2026-05-01 lesson generalises and is worth restating: **a correct
+fast path on the wrong layer saves nothing** — profile which *phase*
+(read, parse, index-build, eval, format) the time is in before
+optimising anything.
+
 ## The slowness history (why we care about boundaries)
 
 The Turtle path was once ~40 triples/s with super-linear scaling. The

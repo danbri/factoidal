@@ -26,11 +26,32 @@ Built with Eleventy (11ty) from `docs/`; published at
   (non-blocking in CI; run it locally after structural edits).
 
 Site content map: `docs/index.md` (front page + build-targets table),
-`docs/web/landing/` (landing page), `docs/web/demos/{dep-graph,
-lifesci,simple-entailment,ukparliament}/` (demo pages),
+`docs/web/landing/` (landing page), `docs/web/demos/` (demo pages),
 `docs/fstar-extracted/` (the browser engine — js_of_ocaml +
 wasm_of_ocaml bundles, **rebuilt and committed by CI**; see
-`jsoo-debug-bundle` for the debuggable variant).
+`jsoo-debug-bundle` for the debuggable variant — plus standalone demo
+HTML pages).
+
+## Demo inventory
+
+Every demo doubles as a scaling probe; when one breaks or gets slow,
+that is signal, not noise (the beyond-w3c parity CI exists because a
+demo regression slipped through once).
+
+| Demo | Where | What it exercises |
+|---|---|---|
+| UK Parliament | `docs/web/demos/ukparliament/` → Fly.io endpoint | the **big one**: 3,143,406 quads in the WIP COTTAS persistent store, queried over SPARQL Protocol. Scaling truth-teller for the on-disk path |
+| Life-sci | `docs/web/demos/lifesci/` + `docs/fstar-extracted/demo-lifesci*.html` | multi-named-graph Wikidata data in the in-memory engine (browser + `serve-lifesci-demo.sh`); where the index-build cost lesson was learned |
+| Simple entailment | `docs/web/demos/simple-entailment/` | OWL/RDFS rewriting in the browser |
+| Dep-graph | `docs/web/demos/dep-graph/` | self-hosting: module/namespace graphs of the repo itself |
+| COTTAS in-browser | `docs/fstar-extracted/demo-cottas.html` | Parquet/COTTAS reader compiled to JS, loading a `.cottas` in the page |
+| Remote endpoint | `docs/fstar-extracted/demo-remote-endpoint.html` | `factoidal-sparql-client` web component against a remote SPARQL Protocol endpoint |
+| Notebook | `docs/fstar-extracted/demo-notebook.html` | notebook-style multi-query page |
+| RIF | `docs/fstar-extracted/demo-rif.html` | RIF Core forward-chaining |
+
+Demo queries are pinned in `tests/beyond-w3c/fixtures/index.json` and
+run per-PR on native + JS runtimes (see `test-suites`). When adding a
+demo, add its queries there.
 
 ## The test-results dashboard (generated — do not hand-edit)
 

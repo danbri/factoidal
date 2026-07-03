@@ -8,10 +8,16 @@ hand-writing implementations.
 Status: work in progress. The W3C-runnable suites pass in full (see the
 live dashboard below), and the once-glacial Turtle path now parses about
 100,000 triples/second with near-linear scaling (1M triples in ~10s,
-measured 2026-07-03 on the committed linux-x86_64 binary). Qualifier:
-parser and algebra spec verified in F\*; the on-disk backend has
-unverified OCaml-side optimization layers being migrated back to F\*
-(see `docs/designissues/fstar-purity-unwind.md`).
+measured 2026-07-03 on the committed linux-x86_64 binary). The
+compliant engine is the **in-memory** one, and it scales poorly: the
+whole dataset lives in RAM and index construction dominates load time
+at demo scale. The **on-disk** store (COTTAS — Parquet-backed quads;
+~3.1M quads behind the [UK Parliament demo](https://danbri.github.io/factoidal/web/demos/ukparliament/))
+works but is not yet good: its fast paths are unverified OCaml
+optimization layers being migrated back to F\* (see
+`docs/designissues/fstar-purity-unwind.md` and issue #118). Qualifier:
+parser and algebra spec verified in F\*; on-disk backend unverified in
+the sense above.
 
 **[Live W3C test results](https://danbri.github.io/factoidal/test-results/)**
 
