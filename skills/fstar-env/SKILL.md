@@ -179,15 +179,33 @@ z3 errors will appear in the F\* output verbatim.
 
 ## §6. Submodules (test data)
 
-Factoidal vendors W3C test files as a git submodule. Without them,
-`./w3c_runner` has no test data:
+Test corpora are git submodules under `third_party/testing/`. A clone
+made without `--recurse-submodules` has empty directories there, and
+the runners then report **zero tests** — worse, `./w3c-tests.sh`
+(without `--cached`) will overwrite the committed result logs and
+dashboard with a 0/0 run. If you ever see "0 pass, 0 fail", this is
+why: init the submodules, `git checkout` the clobbered logs, rerun.
+
+Two submodules are load-bearing for the test suites:
 
 ```bash
 cd /path/to/factoidal
-git submodule update --init --recursive
+git submodule update --init third_party/testing/w3c \
+                            third_party/testing/rdf-canon
 ```
 
-`third_party/testing/w3c/` should be populated after this.
+- `third_party/testing/w3c` — w3c/rdf-tests (SPARQL 1.1 + RDF 1.1
+  suites; pinned to a commit on the RDF 1.2
+  `sparql-mixed-rdf-version-tests` branch). Feeds `w3c_runner`.
+- `third_party/testing/rdf-canon` — RDFC-1.0 canonicalization tests.
+  Feeds `rdfc10_runner`.
+
+The other five (`shex`, `csvw`, `vc`, `did`, `rml`) are vendored for
+future suites and not yet wired to any runner —
+`git submodule update --init --recursive` pulls everything if you
+prefer one command. OWL 2 test data is NOT a submodule (it's a static
+vendored drop at `third_party/testing/owl/`, present in every clone),
+and the UK Parliament perf corpus lives at `third_party/data/`.
 
 ## §7. Build the OCaml binaries
 

@@ -34,6 +34,10 @@ opam install fstar z3 zarith sha digestif
 git clone --recurse-submodules https://github.com/danbri/factoidal.git
 cd factoidal
 
+# Already cloned without submodules? The test runners need these two
+# (without them they report zero tests):
+git submodule update --init third_party/testing/w3c third_party/testing/rdf-canon
+
 # Build everything (verify F* → extract OCaml → compile)
 cd formal/fstar
 eval $(opam env --switch=fstar)

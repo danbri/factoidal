@@ -72,11 +72,14 @@ keeps the old path as a fallback):
 
 - `w3c/` — git **submodule** of `w3c/rdf-tests` (RDF 1.1 + SPARQL 1.1,
   plus RDF 1.2 via the `sparql-mixed-rdf-version-tests` branch).
-  `git submodule update --init --recursive` or the runner reports
-  zero tests — and `generate-report.sh --run` will then happily
-  **overwrite the committed logs and dashboard with a 0/0 result**.
-  If a run reports "0 pass, 0 fail", the suite didn't run: check the
-  submodules, `git checkout` the clobbered logs, and rerun.
+  Without it the runner reports zero tests — and
+  `generate-report.sh --run` will then happily **overwrite the
+  committed logs and dashboard with a 0/0 result**. If a run reports
+  "0 pass, 0 fail", the suite didn't run: init the submodules,
+  `git checkout` the clobbered logs, and rerun. The two suites need:
+  `git submodule update --init third_party/testing/w3c
+  third_party/testing/rdf-canon` (full setup detail in the
+  `fstar-env` skill, §6).
 - `owl/` — vendored static drop of the W3C OWL 2 Test Cases.
 - `rdf-canon/` — submodule, RDFC-1.0 canonicalization tests.
 - `rif/tc/` — RIF test cases. The four RIF Core entailment tests are

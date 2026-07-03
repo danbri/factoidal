@@ -128,8 +128,9 @@ The strategic point: every line of semantic OCaml narrows this table
 to one row. Keeping logic in F\* is what keeps C, WASM-via-C, and
 Low\* reachable. Established pipelines are F\*→OCaml and
 F\*→Low\*→KaRaMeL→C; there is no good F\*→Rust path, and asking a
-code assistant for one historically produced hand-written Rust
-(`docs/designissues/fstar_role.md`).
+code assistant for one historically produced a hand-written Rust
+implementation (the pre-pivot mistake this repo deleted; see Iron
+Rules #1–#2).
 
 ## What this skill does NOT cover
 
