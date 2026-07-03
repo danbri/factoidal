@@ -31,8 +31,8 @@ Test base: ../../third_party/testing/w3c/sparql/sparql11
 
 --- aggregates ---
   [1/47] aggregates/COUNT 1
- ok
-  PASS: COUNT 1
+ ok (11ms)
+  PASS: COUNT 1 (11ms)
   [2/47] aggregates/COUNT 2
  ok
   PASS: COUNT 2
@@ -208,8 +208,8 @@ Test base: ../../third_party/testing/w3c/sparql/sparql11
  ok
   PASS: INSERTing the same bnode with INSERT DATA into two different Graphs is the same bnode
   [12/13] basic-update/INSERTing the same bnode with two INSERT WHERE statement within one request is NOT the same bnode
- ok (12ms)
-  PASS: INSERTing the same bnode with two INSERT WHERE statement within one request is NOT the same bnode (12ms)
+ ok
+  PASS: INSERTing the same bnode with two INSERT WHERE statement within one request is NOT the same bnode
   [13/13] basic-update/INSERTing the same bnode with two INSERT WHERE statement within one request is NOT the same bnode even if both WHERE clauses have the empty solution mapping as the only solution.
  ok
   PASS: INSERTing the same bnode with two INSERT WHERE statement within one request is NOT the same bnode even if both WHERE clauses have the empty solution mapping as the only solution.
@@ -286,20 +286,20 @@ Test base: ../../third_party/testing/w3c/sparql/sparql11
 
 --- cast ---
   [1/6] cast/xsd:boolean cast
- ok (12ms)
-  PASS: xsd:boolean cast (12ms)
-  [2/6] cast/xsd:integer cast
- ok (20ms)
-  PASS: xsd:integer cast (20ms)
-  [3/6] cast/xsd:float cast
- ok (27ms)
-  PASS: xsd:float cast (27ms)
-  [4/6] cast/xsd:double cast
- ok (20ms)
-  PASS: xsd:double cast (20ms)
-  [5/6] cast/xsd:decimal cast
  ok (14ms)
-  PASS: xsd:decimal cast (14ms)
+  PASS: xsd:boolean cast (14ms)
+  [2/6] cast/xsd:integer cast
+ ok (13ms)
+  PASS: xsd:integer cast (13ms)
+  [3/6] cast/xsd:float cast
+ ok (14ms)
+  PASS: xsd:float cast (14ms)
+  [4/6] cast/xsd:double cast
+ ok (15ms)
+  PASS: xsd:double cast (15ms)
+  [5/6] cast/xsd:decimal cast
+ ok (13ms)
+  PASS: xsd:decimal cast (13ms)
   [6/6] cast/xsd:string cast
  ok (20ms)
   PASS: xsd:string cast (20ms)
@@ -559,89 +559,89 @@ Test base: ../../third_party/testing/w3c/sparql/sparql11
 
 --- entailment ---
   [1/70] entailment/bind01 - BIND fixed data for OWL DL
- ok (37ms)
-  PASS: bind01 - BIND fixed data for OWL DL (37ms)
+ ok (40ms)
+  PASS: bind01 - BIND fixed data for OWL DL (40ms)
   [2/70] entailment/bind02 - BIND fixed data for OWL DL
- ok (33ms)
-  PASS: bind02 - BIND fixed data for OWL DL (33ms)
+ ok (30ms)
+  PASS: bind02 - BIND fixed data for OWL DL (30ms)
   [3/70] entailment/bind03 - BIND fixed data for OWL DL
- ok (38ms)
-  PASS: bind03 - BIND fixed data for OWL DL (38ms)
+ ok (28ms)
+  PASS: bind03 - BIND fixed data for OWL DL (28ms)
   [4/70] entailment/bind04 - BIND fixed data for OWL DL
- ok (33ms)
-  PASS: bind04 - BIND fixed data for OWL DL (33ms)
+ ok (27ms)
+  PASS: bind04 - BIND fixed data for OWL DL (27ms)
   [5/70] entailment/bind05 - BIND fixed data for OWL DL
- ok (41ms)
-  PASS: bind05 - BIND fixed data for OWL DL (41ms)
+ ok (46ms)
+  PASS: bind05 - BIND fixed data for OWL DL (46ms)
   [6/70] entailment/bind06 - BIND fixed data for OWL DL
- ok (23ms)
-  PASS: bind06 - BIND fixed data for OWL DL (23ms)
-  [7/70] entailment/bind07 - BIND fixed data for OWL DL
  ok (24ms)
-  PASS: bind07 - BIND fixed data for OWL DL (24ms)
+  PASS: bind06 - BIND fixed data for OWL DL (24ms)
+  [7/70] entailment/bind07 - BIND fixed data for OWL DL
+ ok (25ms)
+  PASS: bind07 - BIND fixed data for OWL DL (25ms)
   [8/70] entailment/bind08 - BIND fixed data for OWL DL
- ok (22ms)
-  PASS: bind08 - BIND fixed data for OWL DL (22ms)
+ ok (23ms)
+  PASS: bind08 - BIND fixed data for OWL DL (23ms)
   [9/70] entailment/D-Entailment test to show that  neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers
  ok
   PASS: D-Entailment test to show that  neither literals in subject position nor newly introduced surrogate blank nodes are to be returned in query answers
   [10/70] entailment/Literal with language tag test
- ok (21ms)
-  PASS: Literal with language tag test (21ms)
+ ok (23ms)
+  PASS: Literal with language tag test (23ms)
   [11/70] entailment/bnodes are not existentials
- ok (45ms)
-  PASS: bnodes are not existentials (45ms)
+ ok (49ms)
+  PASS: bnodes are not existentials (49ms)
   [12/70] entailment/bnodes are not existentials with answer
- ok (51ms)
-  PASS: bnodes are not existentials with answer (51ms)
+ ok (56ms)
+  PASS: bnodes are not existentials with answer (56ms)
   [13/70] entailment/paper-sparqldl-Q1
- ok (88ms)
-  PASS: paper-sparqldl-Q1 (88ms)
+ ok (105ms)
+  PASS: paper-sparqldl-Q1 (105ms)
   [14/70] entailment/paper-sparqldl-Q1-rdfs
  ok
   PASS: paper-sparqldl-Q1-rdfs
   [15/70] entailment/paper-sparqldl-Q2
- ok (172ms)
-  PASS: paper-sparqldl-Q2 (172ms)
+ ok (174ms)
+  PASS: paper-sparqldl-Q2 (174ms)
   [16/70] entailment/paper-sparqldl-Q3
- ok (167ms)
-  PASS: paper-sparqldl-Q3 (167ms)
+ ok (168ms)
+  PASS: paper-sparqldl-Q3 (168ms)
   [17/70] entailment/paper-sparqldl-Q4
- ok (84ms)
-  PASS: paper-sparqldl-Q4 (84ms)
+ ok (91ms)
+  PASS: paper-sparqldl-Q4 (91ms)
   [18/70] entailment/paper-sparqldl-Q5
- ok (90ms)
-  PASS: paper-sparqldl-Q5 (90ms)
+ ok (96ms)
+  PASS: paper-sparqldl-Q5 (96ms)
   [19/70] entailment/filtered subclass query with (hasChild some Thing) restriction
- ok (328ms)
-  PASS: filtered subclass query with (hasChild some Thing) restriction (328ms)
+ ok (327ms)
+  PASS: filtered subclass query with (hasChild some Thing) restriction (327ms)
   [20/70] entailment/parent query with distinguished variable
- ok (125ms)
-  PASS: parent query with distinguished variable (125ms)
+ ok (123ms)
+  PASS: parent query with distinguished variable (123ms)
   [21/70] entailment/parent query with (hasChild some Thing) restriction
- ok (316ms)
-  PASS: parent query with (hasChild some Thing) restriction (316ms)
+ ok (299ms)
+  PASS: parent query with (hasChild some Thing) restriction (299ms)
   [22/70] entailment/parent query with (hasChild min 1) restriction
- ok (297ms)
-  PASS: parent query with (hasChild min 1) restriction (297ms)
+ ok (290ms)
+  PASS: parent query with (hasChild min 1) restriction (290ms)
   [23/70] entailment/parent query with (hasChild some Female) restriction
- ok (297ms)
-  PASS: parent query with (hasChild some Female) restriction (297ms)
+ ok (296ms)
+  PASS: parent query with (hasChild some Female) restriction (296ms)
   [24/70] entailment/parent query with (hasChild min 1 Female) restriction
- ok (297ms)
-  PASS: parent query with (hasChild min 1 Female) restriction (297ms)
+ ok (299ms)
+  PASS: parent query with (hasChild min 1 Female) restriction (299ms)
   [25/70] entailment/parent query with (hasChild max 1 Female) restriction
- ok (300ms)
-  PASS: parent query with (hasChild max 1 Female) restriction (300ms)
+ ok (308ms)
+  PASS: parent query with (hasChild max 1 Female) restriction (308ms)
   [26/70] entailment/parent query with (hasChild exactly 1 Female) restriction
- ok (307ms)
-  PASS: parent query with (hasChild exactly 1 Female) restriction (307ms)
+ ok (310ms)
+  PASS: parent query with (hasChild exactly 1 Female) restriction (310ms)
   [27/70] entailment/subclass query with (hasChild some Thing) restriction
- ok (295ms)
-  PASS: subclass query with (hasChild some Thing) restriction (295ms)
+ ok (287ms)
+  PASS: subclass query with (hasChild some Thing) restriction (287ms)
   [28/70] entailment/Plain literals with language tag are not the same as the same literal without
- ok (19ms)
-  PASS: Plain literals with language tag are not the same as the same literal without (19ms)
+ ok (20ms)
+  PASS: Plain literals with language tag are not the same as the same literal without (20ms)
   [29/70] entailment/RDF inference test
  ok
   PASS: RDF inference test
@@ -658,8 +658,8 @@ Test base: ../../third_party/testing/w3c/sparql/sparql11
  ok (33ms)
   PASS: RDFS inference test rdfs:subPropertyOf (33ms)
   [34/70] entailment/RDFS inference test rdfs:subPropertyOf
- ok (33ms)
-  PASS: RDFS inference test rdfs:subPropertyOf (33ms)
+ ok (35ms)
+  PASS: RDFS inference test rdfs:subPropertyOf (35ms)
   [35/70] entailment/RDFS inference test combining subPropertyOf and domain
  ok
   PASS: RDFS inference test combining subPropertyOf and domain
@@ -667,23 +667,23 @@ Test base: ../../third_party/testing/w3c/sparql/sparql11
  ok (23ms)
   PASS: RDFS inference test subClassOf (23ms)
   [37/70] entailment/RDFS inference test subClassOf
- ok (31ms)
-  PASS: RDFS inference test subClassOf (31ms)
+ ok (33ms)
+  PASS: RDFS inference test subClassOf (33ms)
   [38/70] entailment/RDFS inference test domain
- ok (32ms)
-  PASS: RDFS inference test domain (32ms)
+ ok (31ms)
+  PASS: RDFS inference test domain (31ms)
   [39/70] entailment/RDFS inference test range
- ok (36ms)
-  PASS: RDFS inference test range (36ms)
+ ok (38ms)
+  PASS: RDFS inference test range (38ms)
   [40/70] entailment/RDFS inference test rdf:XMLLiteral subclass of rdfs:Literal
  ok
   PASS: RDFS inference test rdf:XMLLiteral subclass of rdfs:Literal
   [41/70] entailment/RDFS inference test transitivity of subClassOf
- ok (28ms)
-  PASS: RDFS inference test transitivity of subClassOf (28ms)
+ ok (29ms)
+  PASS: RDFS inference test transitivity of subClassOf (29ms)
   [42/70] entailment/RDFS inference test transitivity of subPropertyOf
- ok (51ms)
-  PASS: RDFS inference test transitivity of subPropertyOf (51ms)
+ ok (52ms)
+  PASS: RDFS inference test transitivity of subPropertyOf (52ms)
   [43/70] entailment/RDFS inference test subProperty and instances
  ok
   PASS: RDFS inference test subProperty and instances
@@ -708,26 +708,26 @@ Test base: ../../third_party/testing/w3c/sparql/sparql11
  ok
   PASS: RIF Core WG tests: RDF Combination Blank Node
   [50/70] entailment/simple 1
- ok (151ms)
-  PASS: simple 1 (151ms)
+ ok (157ms)
+  PASS: simple 1 (157ms)
   [51/70] entailment/simple 2
- ok (118ms)
-  PASS: simple 2 (118ms)
+ ok (133ms)
+  PASS: simple 2 (133ms)
   [52/70] entailment/simple 3
- ok (106ms)
-  PASS: simple 3 (106ms)
+ ok (102ms)
+  PASS: simple 3 (102ms)
   [53/70] entailment/simple 4
- ok (119ms)
-  PASS: simple 4 (119ms)
+ ok (121ms)
+  PASS: simple 4 (121ms)
   [54/70] entailment/simple 5
- ok (123ms)
-  PASS: simple 5 (123ms)
+ ok (122ms)
+  PASS: simple 5 (122ms)
   [55/70] entailment/simple 6
- ok (256ms)
-  PASS: simple 6 (256ms)
+ ok (255ms)
+  PASS: simple 6 (255ms)
   [56/70] entailment/simple 7
- ok (123ms)
-  PASS: simple 7 (123ms)
+ ok (127ms)
+  PASS: simple 7 (127ms)
   [57/70] entailment/simple 8
  ok (105ms)
   PASS: simple 8 (105ms)
@@ -735,42 +735,42 @@ Test base: ../../third_party/testing/w3c/sparql/sparql11
  ok (23ms)
   PASS: sparqldl-01.rq: triple pattern (23ms)
   [59/70] entailment/sparqldl-02.rq: simple combined query
- ok (22ms)
-  PASS: sparqldl-02.rq: simple combined query (22ms)
+ ok (23ms)
+  PASS: sparqldl-02.rq: simple combined query (23ms)
   [60/70] entailment/sparqldl-03.rq: combined query with complex class description
- ok (42ms)
-  PASS: sparqldl-03.rq: combined query with complex class description (42ms)
+ ok (41ms)
+  PASS: sparqldl-03.rq: combined query with complex class description (41ms)
   [61/70] entailment/sparqldl-04.rq: bug fixing test
- ok (27ms)
-  PASS: sparqldl-04.rq: bug fixing test (27ms)
+ ok (28ms)
+  PASS: sparqldl-04.rq: bug fixing test (28ms)
   [62/70] entailment/sparqldl-05.rq: simple undistinguished variable test.
- ok (20ms)
-  PASS: sparqldl-05.rq: simple undistinguished variable test. (20ms)
+ ok (19ms)
+  PASS: sparqldl-05.rq: simple undistinguished variable test. (19ms)
   [63/70] entailment/sparqldl-06.rq: cycle of undistinguished variables
- ok (44ms)
-  PASS: sparqldl-06.rq: cycle of undistinguished variables (44ms)
+ ok (43ms)
+  PASS: sparqldl-06.rq: cycle of undistinguished variables (43ms)
   [64/70] entailment/sparqldl-07.rq: two distinguished variables + undist.
  ok (59ms)
   PASS: sparqldl-07.rq: two distinguished variables + undist. (59ms)
   [65/70] entailment/sparqldl-08.rq: two distinguished variables + undist.
- ok (54ms)
-  PASS: sparqldl-08.rq: two distinguished variables + undist. (54ms)
+ ok (57ms)
+  PASS: sparqldl-08.rq: two distinguished variables + undist. (57ms)
   [66/70] entailment/sparqldl-09.rq: undist vars test
- ok (40ms)
-  PASS: sparqldl-09.rq: undist vars test (40ms)
+ ok (42ms)
+  PASS: sparqldl-09.rq: undist vars test (42ms)
   [67/70] entailment/sparqldl-10.rq: undist vars test
  ok (41ms)
   PASS: sparqldl-10.rq: undist vars test (41ms)
   [68/70] entailment/sparqldl-11.rq: domain test
- ok (102ms)
-  PASS: sparqldl-11.rq: domain test (102ms)
+ ok (115ms)
+  PASS: sparqldl-11.rq: domain test (115ms)
   [69/70] entailment/sparqldl-12.rq: range test
- ok (110ms)
-  PASS: sparqldl-12.rq: range test (110ms)
+ ok (183ms)
+  PASS: sparqldl-12.rq: range test (183ms)
   [70/70] entailment/sparqldl-13.rq: sameAs
- ok (48ms)
-  PASS: sparqldl-13.rq: sameAs (48ms)
-  [suite time: 5.7s]
+ ok (46ms)
+  PASS: sparqldl-13.rq: sameAs (46ms)
+  [suite time: 5.9s]
 
 --- exists ---
   [1/6] exists/Exists with one constant
@@ -1149,17 +1149,17 @@ Test base: ../../third_party/testing/w3c/sparql/sparql11
  ok
   PASS: Medical, temporal proximity by exclusion (NOT EXISTS)
   [4/12] negation/Calculate which sets are subsets of others (include A subsetOf A)
- ok (18ms)
-  PASS: Calculate which sets are subsets of others (include A subsetOf A) (18ms)
+ ok (19ms)
+  PASS: Calculate which sets are subsets of others (include A subsetOf A) (19ms)
   [5/12] negation/Calculate which sets are subsets of others (exclude A subsetOf A)
- ok (31ms)
-  PASS: Calculate which sets are subsets of others (exclude A subsetOf A) (31ms)
+ ok (32ms)
+  PASS: Calculate which sets are subsets of others (exclude A subsetOf A) (32ms)
   [6/12] negation/Calculate which sets have the same elements
- ok (31ms)
-  PASS: Calculate which sets have the same elements (31ms)
+ ok (33ms)
+  PASS: Calculate which sets have the same elements (33ms)
   [7/12] negation/Calculate proper subset
- ok (59ms)
-  PASS: Calculate proper subset (59ms)
+ ok (57ms)
+  PASS: Calculate proper subset (57ms)
   [8/12] negation/Positive EXISTS 1
  ok
   PASS: Positive EXISTS 1
@@ -1350,8 +1350,8 @@ Test base: ../../third_party/testing/w3c/sparql/sparql11
  ok
   PASS: update with protocol-specified named graphs
   [16/34] protocol/update with protocol-specified dataset (both named and default graphs)
- ok (12ms)
-  PASS: update with protocol-specified dataset (both named and default graphs) (12ms)
+ ok (11ms)
+  PASS: update with protocol-specified dataset (both named and default graphs) (11ms)
   [17/34] protocol/update via URL-encoded POST
  ok
   PASS: update via URL-encoded POST
@@ -1482,12 +1482,12 @@ Test base: ../../third_party/testing/w3c/sparql/sparql11
  ok
   PASS: sq12 - Subquery in CONSTRUCT with built-ins
   [13/14] subquery/sq13 - Subqueries don't inject bindings
- ok
-  PASS: sq13 - Subqueries don't inject bindings
+ ok (13ms)
+  PASS: sq13 - Subqueries don't inject bindings (13ms)
   [14/14] subquery/sq14 - limit by resource
  ok
   PASS: sq14 - limit by resource
-  [suite time: 0.0s]
+  [suite time: 0.1s]
 
 --- syntax-fed ---
   [1/3] syntax-fed/syntax-service-01.rq
@@ -1953,9 +1953,9 @@ Test base: ../../third_party/testing/w3c/sparql/sparql11
 
 --- syntax-update-2 ---
   [1/1] syntax-update-2/syntax-update-other-01
- ok (3.5s)
-  PASS: syntax-update-other-01 (3.5s)
-  [suite time: 3.5s]
+ ok (3.1s)
+  PASS: syntax-update-other-01 (3.1s)
+  [suite time: 3.1s]
 
 --- update-silent ---
   [1/13] update-silent/LOAD SILENT
