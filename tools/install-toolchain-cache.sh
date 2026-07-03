@@ -32,8 +32,10 @@ fi
 
 # 1. apt
 if ! command -v opam >/dev/null 2>&1 || ! command -v ocaml >/dev/null 2>&1; then
-  log "apt: opam + ocaml + gmp (~1 min)"
-  apt-get update -qq && apt-get install -y -qq opam ocaml libgmp-dev pkg-config m4 \
+  log "apt: opam + ocaml + gmp + zstd (~1 min)"
+  # libzstd-dev: without it the compile step disables the Parquet zstd
+  # C stub and native linking fails on caml_parquet_zstd_decompress_hex
+  apt-get update -qq && apt-get install -y -qq opam ocaml libgmp-dev pkg-config m4 libzstd-dev \
     || { log "APT FAILED"; exit 1; }
 fi
 
