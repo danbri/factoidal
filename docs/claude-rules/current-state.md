@@ -4,6 +4,14 @@ Last refreshed: 2026-05-07 (W3C scores re-measured against
 `bin/linux-x86_64/w3c_runner --all`; OWL profile-RL re-measured against
 `bin/linux-x86_64/owl_runner`).
 
+Spot-check 2026-07-03 (`bin/linux-x86_64/w3c_runner --all` on a fresh
+clone with submodules initialised): SPARQL 631 pass, 0 fail; RDF 1031
+pass, 0 fail. OWL 2 RL positive-entailment via `generate-report.sh`:
+20 pass, 10 fail (out of 30). Turtle throughput re-measured the same
+day: ~100k triples/s, near-linear to 1M triples (details in
+`performance.md`). The module inventory and `assume val` tables below
+are still the 2026-05-07 snapshot.
+
 This file is a **periodic refresh doc** — it goes stale within a week.
 Update after material progress (suite-score movements, new F\* modules,
 resolved `assume val`s).

@@ -3,7 +3,9 @@
 `CLAUDE.md` at the repo root is the **short-form** file loaded into every
 Claude session's context. It's kept trim so the file fits in context.
 The full rationale, war-stories, and living-snapshot material lives here
-and is read on demand.
+and is read on demand. Operational how-to lives one level up in
+`skills/<name>/SKILL.md` (agentskills.io format, indexed from
+`CLAUDE.md` § Skills); these files are the rationale and the record.
 
 ## Index
 
@@ -12,9 +14,12 @@ and is read on demand.
   justifications. Read when writing subagent prompts or diagnosing a
   new failure mode. Cross-references like "rule #17" in commit messages
   point here.
-- [`performance.md`](./performance.md) — Known Performance Issues,
-  notably the Turtle parser audit (O(n²) behaviour, workarounds, the
-  Phase B structural plan).
+- [`performance.md`](./performance.md) — performance status +
+  history: current measured Turtle throughput, the 2026-04 slow-era
+  root causes, and the standing measurement rules.
+- [`scope.md`](./scope.md) — what is permanently in/out of scope
+  (RIF Core skips, tableau limits). Update **in the same commit** as
+  any scope-changing code.
 - [`current-state.md`](./current-state.md) — Current State (Honest
   Assessment): F\* module inventory, `assume val` table, verification
   gaps, W3C suite scores. Goes stale within a week — refresh after

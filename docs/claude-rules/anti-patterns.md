@@ -189,13 +189,14 @@ stable — do not renumber.
     reporting requirements. Anything that hits the cap is a reportable
     event, not a silent rerun.
 
-20. **Never burn clock time on the known-slow Turtle path.** The Turtle
-    parser is O(n²) on file size (see "Known Performance Issues" below),
-    so naive runs like `./build-ocaml.sh` (which triggers `w3c_runner
-    --all`, ~3–10+ minutes) or `factoidal --count bigfile.ttl` can tie
+20. **Never burn clock time in the foreground on long parses or full
+    builds.** (Historical name: "the known-slow Turtle path" — the
+    Turtle parser was O(n²) until 2026-04/05; it now runs ~100k
+    triples/s, see `performance.md`. The discipline survives the fix.)
+    Naive runs like `./build-ocaml.sh` (which triggers `w3c_runner
+    --all`, ~3–10+ minutes) or `factoidal --count hugefile.ttl` can tie
     up the main loop for ages while eating tokens. **Before running any
-    W3C-scale test, build-with-tests, or parse on non-trivial Turtle
-    input:**
+    W3C-scale test, build-with-tests, or parse on very large input:**
     - Launch it via an `Agent` subagent OR with `run_in_background: true`,
       never in the foreground of the main loop. Only the subagent /
       background stream pays the wait; the main loop keeps moving.

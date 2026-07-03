@@ -12,16 +12,16 @@ tracking when it can be eliminated.**
 | `57_service_client_bind.sh` | [#57](https://github.com/danbri/factoidal/issues/57) | assume-val stubs | SPARQL11_Algebra.ml |
 | `62_forward_ref_wiring.sh` | [#62](https://github.com/danbri/factoidal/issues/62) | Forward-ref wiring | SPARQL11_Algebra.ml |
 | `63_regex_hash_uuid_stubs.sh` | [#63](https://github.com/danbri/factoidal/issues/63) | assume-val stubs | SPARQL11_Algebra.ml |
-| `64_sparql_parser_escape_stubs.sh` | [#64](https://github.com/danbri/factoidal/issues/64) | assume-val stubs | SPARQL11_Parser.ml |
-| `65_base_iri_resolution.sh` | [#65](https://github.com/danbri/factoidal/issues/65) | F\* API gap workaround | SPARQL11_Algebra.ml, SPARQL11_Parser.ml |
-| `66_zero_length_property_path.sh` | [#66](https://github.com/danbri/factoidal/issues/66) | SPARQL semantics fix | SPARQL11_Algebra.ml |
 | `67_rdfxml_validation.sh` | [#67](https://github.com/danbri/factoidal/issues/67) | F\* semantic gap | Parser_RDFXML.ml |
-| `68_unicode_boundary_workarounds.sh` | [#68](https://github.com/danbri/factoidal/issues/68) | F\* type workaround | Parser_NTriples.ml, Parser_Turtle.ml |
-| `53_blank_node_variable_rewriting.sh` | [#53](https://github.com/danbri/factoidal/issues/53) | **KNOWN VIOLATION** | w3c_runner.ml |
-| `69_runner_io_glue.sh` | [#69](https://github.com/danbri/factoidal/issues/69) | I/O glue | w3c_runner.ml |
 | `89_fast_string_primitives.sh` | [#89](https://github.com/danbri/factoidal/issues/89) | assume-val stubs (perf) | Parser_FastString.ml |
 | `103_parquet_ascii_string_fast_path.sh` | [#103](https://github.com/danbri/factoidal/issues/103) | OCaml runtime override (perf) | Parquet_Footer.ml |
+| `181_shacl_validate_stub.sh` | [#181](https://github.com/danbri/factoidal/issues/181) | assume-val stubs | SHACL_Validation.ml |
 | `202_now_ms.sh` | [#202](https://github.com/danbri/factoidal/issues/202) | assume-val stubs (I/O clock) | SPARQL_Eval_TimeBudget.ml |
+
+Retired patches (F\* now covers them; kept in git history only): #53
+blank-node rewriting, #64 parser escape stubs, #65 base-IRI resolution,
+#66 zero-length property paths, #68 unicode boundary workarounds, #69
+runner I/O glue.
 
 ## Categories
 
@@ -40,8 +40,9 @@ Each `.sh` file:
 3. Checks if the patch is already applied (idempotency via grep markers)
 4. Applies the patch only if not already present
 
-The master script `apply_patches.sh` in the parent directory iterates through
-all files in this directory in sorted order.
+The master script `ocaml-patches.sh` in the parent directory applies this
+directory (in issue-number order) and then `experimental_ocaml_glue/`. It is
+run by `build-ocaml.sh extract` — NOT by `compile` (anti-pattern #11).
 
 ## Rules
 
