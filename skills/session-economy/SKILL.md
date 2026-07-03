@@ -89,6 +89,17 @@ the override and inherit the session model.
   includes the skill edit — that is this repo's definition of done
   for a lesson.
 
+## Working agreement (owner-set, 2026-07-03)
+
+Work as autonomously as possible, directly on `claude/main` — no PRs
+required; git rewind covers mistakes. Every push is gated: F\*
+verification + the affected suites + perf measurements pass BEFORE
+the commit lands (build → gates → push). Use disposable git worktrees
+for pushing while a build owns the main tree, and for any parallel
+mutation. The GitHub Pages site must never regress and must carry
+accurate perf numbers with dates and commit links —
+`site-and-dashboard` skill owns the specifics.
+
 ## Picking the next piece of work
 
 In priority order, consult:

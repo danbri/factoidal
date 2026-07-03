@@ -82,7 +82,12 @@ natively — they are not optional decoration.
    `api.github.com` + release assets are blocked; PyPI/npm/crates are
    direct. Check `$HTTPS_PROXY/__agentproxy/status`. Release-only
    artifacts get mirrored into a cache branch — that is this repo's
-   standard answer, endorsed as policy.
+   standard answer, endorsed as policy. (Asked and answered
+   2026-07-03: upstream F\* binaries are NOT git-fetchable —
+   `FStarLang/FStar` carries source only, release assets are the
+   blocked endpoint, and `FStarLang/binaries`' newest Linux tarball
+   dates to 2021-04. Our `toolchain-cache` branch is not duplication
+   of something upstream already serves.)
 4. **Big one-off costs run once, then get cached for everyone.** If
    a session pays >10 minutes for reusable state, pushing it to a
    cache branch is part of finishing the task.
