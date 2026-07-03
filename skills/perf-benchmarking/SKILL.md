@@ -72,13 +72,19 @@ re-measure and update the doc rather than propagating it.
 
 Parse throughput is no longer the bottleneck. The current walls:
 
-- **In-memory store**: fully W3C-compliant, but the whole dataset
-  lives in RAM as list-backed structures, and building the
-  `indexed_dataset_backend` dominates load time (the lifesci demo's
-  137s query was ~135s of index build — six bucket maps with O(N)
-  `bucket_replace_acc` per entry — and ~0.1s of eval; see
-  `docs/designissues/2026-05-01-perf-fast-path-vs-load.md`).
-  Compliance numbers say nothing about scale: the suites run on tiny
+- **In-memory store**: fully W3C-compliant and, since the #259
+  sort-and-group fix in `build_indexed`
+  (`RDF.Graph.Executable.fst`), linear in time and memory. Measured
+  2026-07-03 (committed linux binary, N-Quads → GRAPH-count query,
+  end-to-end incl. parse + index + eval): 43k quads 2.2s / 115 MB at
+  100k / 1M quads in 41s at ~1.2 GB. So the walls are a ~25k quads/s
+  end-to-end constant and ~1.2 KB of RAM per quad — the 3.1M-quad
+  Parliament corpus would need ~4 GB, more than the 2 GB Fly VM.
+  Historical note: before #259 the same lifesci query took 137s
+  (~135s of Θ(N·B) `bucket_replace_acc` index build; see
+  `docs/designissues/2026-05-01-perf-fast-path-vs-load.md`) — if you
+  see numbers like that quoted, they predate the fix. Compliance
+  numbers say nothing about scale either way: the suites run on tiny
   fixtures.
 - **On-disk (COTTAS)**: opens and serves the 3,143,406-quad UK
   Parliament corpus (the Fly.io endpoint + ukparliament demo), but

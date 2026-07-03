@@ -9,9 +9,10 @@ Status: work in progress. The W3C-runnable suites pass in full (see the
 live dashboard below), and the once-glacial Turtle path now parses about
 100,000 triples/second with near-linear scaling (1M triples in ~10s,
 measured 2026-07-03 on the committed linux-x86_64 binary). The
-compliant engine is the **in-memory** one, and it scales poorly: the
-whole dataset lives in RAM and index construction dominates load time
-at demo scale. The **on-disk** store (COTTAS — Parquet-backed quads;
+compliant engine is the **in-memory** one; it now scales linearly
+(1M quads: ~41s end-to-end, ~1.2 GB RAM, measured 2026-07-03) but
+holds everything in RAM at ~1.2 KB/quad, which caps practical corpus
+size well below what the on-disk path targets. The **on-disk** store (COTTAS — Parquet-backed quads;
 ~3.1M quads behind the [UK Parliament demo](https://danbri.github.io/factoidal/web/demos/ukparliament/))
 works but is not yet good: its fast paths are unverified OCaml
 optimization layers being migrated back to F\* (see

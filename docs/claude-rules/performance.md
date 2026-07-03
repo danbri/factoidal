@@ -27,12 +27,15 @@ COTTAS quads) over re-parsing text — see the caveats in
 interface-only in F\* and shells out to `hdtSearch`; COTTAS has the
 substantial verified `Parquet.Footer` reader).
 
-The walls have moved, not vanished. In-memory: compliant but
-RAM-bound, with `indexed_dataset_backend` construction dominating
-load time (see `2026-05-01-perf-fast-path-vs-load.md` — ~135s of a
-137s demo query was index build). On-disk COTTAS: serves the 3.14M-quad
-UK Parliament corpus, but only via the unverified OCaml runtime
-override whose retirement is scoped in
+The walls have moved, not vanished. In-memory: compliant and, since
+the #259 sort-and-group `build_indexed` fix, **linear** — measured
+2026-07-03: the lifesci Q01 that took 137s in the
+`2026-05-01-perf-fast-path-vs-load.md` incident now runs in 2.2s on
+the same 43k quads; 1M quads end-to-end (parse + index + GRAPH-count)
+in ~41s at ~1.2 GB peak RSS. The remaining in-memory walls are the
+~25k quads/s end-to-end constant and ~1.2 KB RAM per quad. On-disk
+COTTAS: serves the 3.14M-quad UK Parliament corpus, but only via the
+unverified OCaml runtime override whose retirement is scoped in
 `2026-05-13-issue-118-cottas-ondisk-runtime-retirement-plan.md`.
 The current-walls summary lives in
 [`skills/perf-benchmarking/SKILL.md`](../../skills/perf-benchmarking/SKILL.md)

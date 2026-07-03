@@ -1,6 +1,13 @@
 # A correct fast path on the wrong layer
 
-**Status:** lessons-learned note, 2026-05-01
+**Status:** lessons-learned note, 2026-05-01.
+**Resolution update (2026-07-03):** the index-build cost diagnosed
+below was fixed by the #259 sort-and-group rewrite of `build_indexed`
+(`RDF.Graph.Executable.fst`). Re-measured on the committed
+linux-x86_64 binary: this exact Q01 on the same 43k-quad lifesci data
+now runs in 2.2s end-to-end (was 137s), and the shape is linear to 1M
+quads (~41s, ~1.2 GB RSS). The layer lesson below is still the point
+of this doc; the specific numbers are history.
 **Trigger:** PR #131 + #132 added a streaming-count-group-by-graph
 fast path. Detector matches Q01, dispatcher routes correctly,
 W3C clean — and Q01 wall time on the lifesci demo went from 137s to
