@@ -152,6 +152,20 @@ after each extraction, and changes the extracted surface. Use it to
 locate a hotspot, record findings in a design doc, then remove it
 (`docs/ocaml-profiling.md`). Performance fixes land as F\* changes.
 
+## Perf opportunism (standing order)
+
+Every session watches for optimisation opportunities regardless of
+its task: a lopsided `Server-Timing` phase, a super-linear loop shape
+in code you happen to read, a linear scan where a presence bitmap or
+offset index already exists, repeated re-parsing where a canonical
+hash (RDFC-1.0) could key a cache. The protocol: don't chase it
+mid-task — capture the observation with just enough measurement to be
+actionable (one timing, one file:line) in
+`docs/claude-rules/current-state.md` § Standing priorities or a
+GitHub issue, then finish what you were doing. The wins so far
+(#70 byte-indexed parsing, #259 sort-and-group, Lamed3 offset index)
+all started as noticed smells, not scheduled work.
+
 ## Time discipline for perf work
 
 - Cap every ad-hoc parse/query at 10 minutes (`timeout 600`); if the

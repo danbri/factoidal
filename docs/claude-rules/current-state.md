@@ -35,19 +35,39 @@ red always jumps the queue.
    `skills/fstar-module-style/SKILL.md`; commit-sized slices, suites
    green at each step.
 5. **SHACL** — `SHACL.Validation.fst` is a Phase-1 skeleton with a
-   stubbed validator (#181), and the W3C SHACL core test suite
-   (~400 tests) is not yet vendored or wired to a runner. Needed for
-   the stated goal; currently the largest gap between goal and
-   engine. (Note: `third_party/testing/shex` is ShEx, a different
-   shapes language — also unwired, lower priority.)
-6. Small, fold into any session: rdf-canon totals missing from
-   `latest.json` (generate-report gap); full refresh of this file's
-   inventory tables; `tests/local/sparql_parser_regressions.sh`
-   depends on an external `/tmp/Corpus3` HDT corpus — make it
-   skip-or-fetch cleanly.
+   stubbed validator (#181). The W3C suite is now vendored at
+   `third_party/testing/shacl` (data-shapes-test-suite, core +
+   sparql) but unwired. Target shape: not just a conformance row but
+   a **user-facing tool** — `factoidal validate --shapes shapes.ttl
+   data.ttl` — validator in F\*, CLI wiring in `bin/factoidal-cli/`.
+   Currently the largest gap between goal and engine. (Note:
+   `third_party/testing/shex` is ShEx, a different shapes language —
+   also unwired, lower priority.)
+6. **RDFC-1.0 as a tool** — the canonicalization algorithm exists in
+   F\* (`RDF.Canonical.fst`) and is suite-tested (62 pass, 23 fail,
+   1 skip of 86), but the CLI never exposes it. Add
+   `factoidal canonicalize FILE` emitting RDFC-1.0 canonical N-Quads
+   (consumer wiring only, no new F\*), and chase the 23 fails.
+   Canonical output doubles as a perf primitive: canonical hashes
+   enable dataset diffing, dedup, and cache keys.
+7. Small, fold into any session: `tests/local`
+   scripts that need external corpora get skip-or-fetch treatment
+   (parser regressions done 2026-07-03; ukparliament bench corpus is
+   absent from fresh clones and self-skips in CI).
+
+Standing discipline: **every session watches for perf optimisation
+opportunities** while doing anything else — a suspicious phase in the
+`Server-Timing` breakdown, a super-linear shape in a loop you read, a
+list scan a bitmap could kill. Don't fix out-of-scope perf smells
+mid-task; measure enough to file them here or as an issue, then
+finish the task. Speed claims still need their own measured commit
+(`perf-benchmarking` skill).
 
 Done recently: in-memory index-build wall (#259, verified fixed
-2026-07-03 — 137s → 2.2s on lifesci Q01, linear to 1M quads).
+2026-07-03 — 137s → 2.2s on lifesci Q01, linear to 1M quads);
+rdf-canon totals in latest.json; parser-regressions external-corpus
+skip; SHACL suite vendored; current-state inventory refresh
+(2026-07-03).
 
 ## F\* Specifications
 

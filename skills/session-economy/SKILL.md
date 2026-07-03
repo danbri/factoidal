@@ -100,6 +100,15 @@ Never invent parallel infrastructure to avoid a hard F\* problem —
 that reflex is how the OCaml boundary disaster started
 (`ocaml-boundary` skill).
 
+Whatever the task, keep one eye open for perf optimisation
+opportunities (`perf-benchmarking` § Perf opportunism) — note them
+with a measurement and a file:line, file them, finish your task.
+
+Remember the deliverables are **tools**, not only test scores:
+`factoidal query/serve/dump/canonicalize/validate` are the product
+surface a user touches. Conformance suites gate them; they are not
+the end in themselves.
+
 ## What this skill does NOT cover
 
 - The bootstrap hook internals — read `tools/sandbox-bootstrap.sh`.
