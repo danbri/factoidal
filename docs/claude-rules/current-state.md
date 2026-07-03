@@ -16,6 +16,39 @@ This file is a **periodic refresh doc** — it goes stale within a week.
 Update after material progress (suite-score movements, new F\* modules,
 resolved `assume val`s).
 
+## Standing priorities (as of 2026-07-03)
+
+Toward the goal in CLAUDE.md (performant, compliant RDF/S + OWL +
+SHACL + RDFC + SPARQL engine). Re-rank when one lands; a dashboard
+red always jumps the queue.
+
+1. **#118 — retire the COTTAS on-disk OCaml runtime** (718 lines of
+   unverified glue on the hot path; plan doc scoped, ukparliament-bench
+   gated). The precondition for dropping the rule-#11 qualifier.
+2. **#262 — OWL-RL sameAs closure blow-up** (characterised, not
+   fixed); plausibly connected to the 10 failing OWL RL
+   positive-entailment tests — the one red number on the dashboard.
+3. **Shrink `--admit_smt_queries` in `SPARQL11.Parser.fst`** (~65% of
+   the file admitted; the biggest verification caveat we disclose).
+4. **Stratification** — split `RDF.Graph.Executable` and
+   `SPARQL11.Algebra` per the roadmap in
+   `skills/fstar-module-style/SKILL.md`; commit-sized slices, suites
+   green at each step.
+5. **SHACL** — `SHACL.Validation.fst` is a Phase-1 skeleton with a
+   stubbed validator (#181), and the W3C SHACL core test suite
+   (~400 tests) is not yet vendored or wired to a runner. Needed for
+   the stated goal; currently the largest gap between goal and
+   engine. (Note: `third_party/testing/shex` is ShEx, a different
+   shapes language — also unwired, lower priority.)
+6. Small, fold into any session: rdf-canon totals missing from
+   `latest.json` (generate-report gap); full refresh of this file's
+   inventory tables; `tests/local/sparql_parser_regressions.sh`
+   depends on an external `/tmp/Corpus3` HDT corpus — make it
+   skip-or-fetch cleanly.
+
+Done recently: in-memory index-build wall (#259, verified fixed
+2026-07-03 — 137s → 2.2s on lifesci Q01, linear to 1M quads).
+
 ## F\* Specifications
 
 ```

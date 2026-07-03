@@ -2,10 +2,21 @@
 # tools/sandbox-bootstrap.sh
 #
 # Vendor-neutral session-start bootstrap. Runs at the start of an
-# agent session in a sandboxed dev environment to (a) ensure the
-# fstar-mcp binary is installed and (b) start the fstar-mcp daemon
-# so .mcp.json's http://127.0.0.1:3700 has something to talk to.
-# Both steps are idempotent — fast no-op if already done.
+# agent session in a sandboxed dev environment to:
+#   (a) initialise the two load-bearing test-data submodules
+#       (third_party/testing/{w3c,rdf-canon}) — without them the
+#       runners report zero tests and w3c-tests.sh clobbers the
+#       committed dashboard with a 0/0 run;
+#   (b) smoke-check the committed binaries for this platform
+#       (Iron Rule #9: a fresh clone runs tests with no toolchain);
+#   (c) ensure the fstar-mcp binary is installed and its daemon
+#       started so .mcp.json's http://127.0.0.1:3700 answers;
+#   (d) print a compact orientation block for the agent.
+# Every step is idempotent — fast no-op if already done.
+#
+# Deliberately NOT done here: installing the opam/F*/z3 toolchain.
+# That is a 30-60 minute build, only needed when editing .fst files;
+# it stays an explicit step via skills/fstar-env/SKILL.md.
 #
 # Wired to:
 #   - Claude Code: .claude/hooks/session-start.sh (one-line wrapper)
@@ -32,27 +43,93 @@ if [[ "${CLAUDE_CODE_REMOTE:-}" != "true" ]]; then
   exit 0
 fi
 
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# 0a. Test-data submodules (idempotent: fast no-op when populated).
+#     Only the two the runners need; the other five (shex/csvw/vc/
+#     did/rml) are unwired and stay lazy.
+if [[ ! -e "$REPO_ROOT/third_party/testing/w3c/README.md" ]]; then
+  echo "session-start: initialising W3C test submodules (first run on this container)..." >&2
+  git -C "$REPO_ROOT" submodule update --init \
+    third_party/testing/w3c third_party/testing/rdf-canon >&2 \
+    || echo "session-start: submodule init FAILED — test runners will report zero tests; do not trust a 0/0 run" >&2
+fi
+
+# 0b. Committed-binary smoke check (never blocks; report only).
+case "$(uname -s)-$(uname -m)" in
+  Linux-x86_64)  PLAT=linux-x86_64 ;;
+  Darwin-arm64)  PLAT=darwin-arm64 ;;
+  *)             PLAT="" ;;
+esac
+BIN_STATUS="unknown platform: binaries must be built via build-ocaml.sh"
+if [[ -n "$PLAT" ]]; then
+  if "$REPO_ROOT/bin/$PLAT/factoidal" --help >/dev/null 2>&1; then
+    BIN_STATUS="bin/$PLAT committed binaries OK (tests runnable with no toolchain)"
+  else
+    BIN_STATUS="bin/$PLAT binaries missing or not runnable — see skills/build-and-test"
+  fi
+  # Iron Rule #9's second half: ocaml-output/ symlinks point at the
+  # platform bin/ dir. build-ocaml.sh makes these after a local build,
+  # but a fresh clone lacks the untracked ones and tests/local/*
+  # scripts hardcode the ocaml-output/ paths. Restore idempotently.
+  for b in w3c_runner factoidal factoidal-http owl_runner rdfc10_runner; do
+    if [[ ! -e "$REPO_ROOT/formal/fstar/ocaml-output/$b" && -x "$REPO_ROOT/bin/$PLAT/$b" ]]; then
+      ln -sf "../../../bin/$PLAT/$b" "$REPO_ROOT/formal/fstar/ocaml-output/$b"
+    fi
+  done
+fi
+
+# 0c. pycottas venv — tests/local/{cottas_corpus,backend_parity,
+#     parquet_footer}_regressions.sh need it to build .cottas
+#     artifacts from the in-repo sample. Idempotent; non-fatal.
+VENV="$REPO_ROOT/_tmp.junk/pycottas-venv"
+if [[ ! -x "$VENV/bin/python" ]] || ! "$VENV/bin/python" -c "import pycottas" >/dev/null 2>&1; then
+  echo "session-start: provisioning pycottas venv for tests/local COTTAS scripts..." >&2
+  ( python3 -m venv "$VENV" && "$VENV/bin/pip" install --quiet pycottas ) >&2 \
+    || echo "session-start: pycottas venv failed — tests/local COTTAS regressions will skip" >&2
+fi
+
 # 1. Install fstar-mcp if missing. --locked is essential: fstar-mcp's
 #    git dep `pmcp` (paiml/rust-mcp-sdk) moved to an incompatible API
 #    at HEAD, so without the committed Cargo.lock (pmcp 1.9.4) the
 #    build fails (StreamableHttpServerConfig missing allowed_origins /
 #    max_request_bytes).
+MCP_STATUS="F* MCP daemon on :3700"
 if [[ ! -x "$HOME/.cargo/bin/fstar-mcp" ]]; then
   if ! command -v cargo >/dev/null 2>&1; then
     echo "session-start: cargo not found; cannot install fstar-mcp" >&2
-    exit 0
-  fi
-  echo "session-start: installing FStarLang/fstar-mcp via cargo (~2-3 min on a cold sandbox)..." >&2
-  if cargo install --git https://github.com/FStarLang/fstar-mcp.git --locked --quiet 2>&1 | tail -20 >&2; then
-    echo "session-start: fstar-mcp installed at $HOME/.cargo/bin/fstar-mcp" >&2
+    MCP_STATUS="F* MCP unavailable (no cargo)"
   else
-    echo "session-start: fstar-mcp install failed; the F* MCP server will be unavailable this session" >&2
-    exit 0
+    echo "session-start: installing FStarLang/fstar-mcp via cargo (~2-3 min on a cold sandbox)..." >&2
+    if cargo install --git https://github.com/FStarLang/fstar-mcp.git --locked --quiet 2>&1 | tail -20 >&2; then
+      echo "session-start: fstar-mcp installed at $HOME/.cargo/bin/fstar-mcp" >&2
+    else
+      echo "session-start: fstar-mcp install failed; the F* MCP server will be unavailable this session" >&2
+      MCP_STATUS="F* MCP unavailable (install failed)"
+    fi
   fi
 fi
 
 # 2. Start (or rejoin) the daemon so MCP clients can connect.
-"$(dirname "$0")/fstar-mcp-server.sh" start || \
-  echo "session-start: fstar-mcp daemon failed to start; F* MCP unavailable" >&2
+if [[ "$MCP_STATUS" == "F* MCP daemon on :3700" ]]; then
+  "$(dirname "$0")/fstar-mcp-server.sh" start || \
+    { echo "session-start: fstar-mcp daemon failed to start; F* MCP unavailable" >&2; \
+      MCP_STATUS="F* MCP unavailable (daemon failed)"; }
+fi
+
+# 3. Compact orientation block (stdout → added to session context).
+#    Keep this short: it exists so the agent does NOT re-derive
+#    environment state with a dozen exploratory commands.
+FSTAR_STATUS="absent (committed binaries suffice for tests; for .fst work run skills/fstar-env)"
+command -v fstar.exe >/dev/null 2>&1 && FSTAR_STATUS="fstar.exe on PATH"
+cat <<ORIENT
+factoidal session bootstrap:
+- ${BIN_STATUS}
+- test submodules: $([ -e "$REPO_ROOT/third_party/testing/w3c/README.md" ] && echo present || echo "MISSING (0/0 runs will lie)")
+- F* toolchain: ${FSTAR_STATUS}
+- ${MCP_STATUS}
+- goal + working discipline: CLAUDE.md (skills index at the bottom)
+- run tests: ./w3c-tests.sh | current scores: docs/test-results/latest.json
+ORIENT
 
 exit 0

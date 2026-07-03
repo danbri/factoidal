@@ -4,6 +4,14 @@ A formally verified RDF/SPARQL implementation. The **F\* specifications are
 the product**. Executable code is obtained by **extraction**, not by
 hand-writing Rust/JS/OCaml/anything that "mirrors" a spec.
 
+**Goal:** a performant, compliant engine for RDF Core 1.1 (all concrete
+syntaxes), RDF/S, OWL, SHACL, RDFC-1.0 canonicalization, and full
+SPARQL 1.1 (query, update, protocol, results) — specified in F\*,
+extracted to native/JS/wasm (and C via KaRaMeL), with correctness and
+speed each proven by test suites and measurements, never by assertion.
+Standing priorities: `docs/claude-rules/current-state.md` § Standing
+priorities.
+
 > **CLAUDE.md is short on purpose.** Operational detail lives in
 > per-topic skill docs (`skills/<name>/SKILL.md` —
 > [agentskills.io](https://agentskills.io) format, vendor-neutral) and
@@ -166,6 +174,10 @@ config, etc.); skills are referenced from this section and read on
 demand when relevant. Read the linked file the first time you touch
 that topic in a session.
 
+- [`session-economy`](skills/session-economy/SKILL.md) — fresh-session
+  bootstrap contract, token prudence, subagent model/effort selection,
+  and how to pick the next piece of work. **Read first in autonomous
+  sessions.**
 - [`fstar-env`](skills/fstar-env/SKILL.md) — F\* / opam / z3
   setup and repair.
 - [`build-and-test`](skills/build-and-test/SKILL.md) — build,

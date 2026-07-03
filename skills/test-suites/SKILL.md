@@ -103,7 +103,12 @@ when 1.1 exists (Iron Rule #5).
   `sparql_parser_regressions.sh`, `sparql_negative_regressions.sh`,
   `backend_parity_regressions.sh`, `cottas_corpus_regressions.sh`,
   `parquet_footer_regressions.sh`, `check_pages_links.sh`.
-  Run the ones touching your area before pushing.
+  Run the ones touching your area before pushing. Environment notes:
+  the COTTAS/parity/footer scripts need the pycottas venv at
+  `_tmp.junk/pycottas-venv` (the session bootstrap hook provisions
+  it); `sparql_parser_regressions.sh` additionally expects an
+  external HDT corpus at `/tmp/Corpus3` — without it, 6 of its 7
+  checks fail on environment, not on code.
 - `tests/beyond-w3c/` — cross-runtime parity: every demo-page query in
   `tests/beyond-w3c/fixtures/index.json` runs on native and
   js-of-ocaml-under-Node via `tests/beyond-w3c/bin/run-parity.py`. Any non-zero exit is an engine crash unless the
