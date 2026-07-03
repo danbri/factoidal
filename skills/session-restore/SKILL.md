@@ -35,16 +35,24 @@ container pays none of this.
   `tools/install-toolchain-cache.sh`. Rebuild when
   `fstar_version` in `bin/ci-linux-x86_64/build-info.json` changes;
   instructions in the branch README.
-- **`checked-cache`** (planned; see the save/restore section of
-  `tools/install-toolchain-cache.sh` once landed) — the repo's
-  `formal/fstar/*.checked` verification cache. Content-digest keyed
-  by F\*, so even a stale snapshot gives partial hits; a full cold
-  re-verify of the tree costs ~2 hours, which is what this saves.
+- **`checked-cache`** (planned) — the repo's `formal/fstar/*.checked`
+  verification cache. Content-digest keyed by F\*, so even a stale
+  snapshot gives partial hits; a full cold re-verify of the tree
+  costs ~2 hours, which is what this saves.
+
+**Gate rule (non-negotiable): cache artifacts are pushed only from a
+state that passed the full test battery** — F\* verification, the W3C
+suites, and the perf gates — exactly like the committed binaries
+(Iron Rule #9). A `.checked` set or toolchain snapshot from an
+unproven tree would let every future session bootstrap from a
+regression. Same order of operations as binaries: build → gates →
+commit/push, never build → push → hope.
 
 Pattern for new cache artifacts: orphan branch, split files under
 100MB, SHA256SUMS, single amended commit (history of a cache is
 worthless bulk), consumer script on the main line, restore step wired
-into the bootstrap hook, entry in this table.
+into the bootstrap hook, entry in this table — and the gate rule
+above.
 
 ## Skill discovery is regenerated, never trusted stale
 
