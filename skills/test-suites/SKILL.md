@@ -1,0 +1,188 @@
+---
+name: test-suites
+description: Run and interpret every test suite in the Factoidal project — W3C conformance (SPARQL 1.1, RDF 1.1/1.2 syntax, rdf-mt, RDF canonicalization, OWL 2), local regression scripts, cross-runtime parity (native/JS/wasm), Apache Jena ARQ comparison probes, and the policy for importing external suites. Use when the user asks to "run the tests", "check conformance", "compare against Jena", to investigate a score change, or before claiming any change is done. Testing (with perf measured separately — see perf-benchmarking) drives everything in this project.
+---
+
+# Test suites: what exists, how to run them, what the numbers mean
+
+Every change in this repo is judged by test counts. Conformance and
+performance are measured on **separate, repeatable harnesses and never
+conflated**: this skill covers correctness; timing lives in the
+`perf-benchmarking` skill. A change is not done until the suites that
+cover it have been run and the numbers reported in full-sentence form
+(anti-pattern #25: "631 pass, 0 fail (out of 631)", never "631/631"
+without labels).
+
+## The one command
+
+```bash
+./w3c-tests.sh            # run the W3C suites, regenerate the dashboard
+./w3c-tests.sh --cached   # regenerate dashboard from the last logs, no re-run
+```
+
+Run it **from the repo root** — the runner resolves fixture base URIs
+via `Sys.getcwd()`; rdf-xml tests silently diverge (same triple counts,
+different IRI strings) if CWD changes. The wrapper enforces this by
+`cd`-ing to the repo root itself, so prefer it over calling the inner
+script directly.
+
+It wraps `formal/fstar/generate-report.sh`, which picks the platform
+binaries from `bin/darwin-arm64/` or `bin/linux-x86_64/` (committed per
+Iron Rule #9 — a fresh clone runs tests with **no F\*/opam toolchain**)
+and drives three runners:
+
+| Runner | Suites | Raw log |
+|---|---|---|
+| `w3c_runner` | SPARQL 1.1 query/update/protocol/service-description | `formal/fstar/ocaml-output/sparql_results.log` |
+| `w3c_runner --rdf` | N-Triples, Turtle, N-Quads, TriG, RDF/XML, rdf-mt | `formal/fstar/ocaml-output/rdf_results.log` |
+| `owl_runner` | OWL 2 RL PositiveEntailmentTests + 7 DL catalogs, each with its own timeout budget (60s–900s) | `owl_profile_rl_results.log` |
+| `rdfc10_runner` | RDF Dataset Canonicalization (RDFC-1.0) | `rdfc10_results.log` |
+
+Outputs: `docs/test-results/index.html` (dashboard),
+`latest.csv` / `latest.json` (machine-readable),
+`history/<iso-timestamp>.{csv,json}` (archive). These are
+**CI-maintained on the main lines** — do not commit local
+regenerations from feature branches; CI will overwrite them.
+
+Known reporting gap: rdf-canon scores appear in `latest.csv` but are
+not folded into `latest.json`'s RDF totals. Treat the CSV as the
+complete record until that is fixed.
+
+## Direct runner invocation
+
+```bash
+cd formal/fstar/ocaml-output   # or repo root — see CWD note above
+./w3c_runner                   # all SPARQL suites
+./w3c_runner --rdf             # all RDF suites
+./w3c_runner --all             # both
+./w3c_runner --list            # list suite names
+./w3c_runner bind functions    # just the named suites
+./w3c_runner -v aggregates     # verbose: full expected/actual rows on stderr
+```
+
+Scores as of 2026-07-03 (verify against
+`docs/test-results/latest.json` rather than trusting this file):
+SPARQL 631 pass, 0 fail; RDF 1031 pass, 0 fail — 1662/1662 runnable.
+OWL 2 RL profile positive-entailment: 20 pass, 10 fail (out of 30).
+
+## Where the test data lives
+
+`third_party/testing/` (moved from `tests/w3c/` in 2026-04; the runner
+keeps the old path as a fallback):
+
+- `w3c/` — git **submodule** of `w3c/rdf-tests` (RDF 1.1 + SPARQL 1.1,
+  plus RDF 1.2 via the `sparql-mixed-rdf-version-tests` branch).
+  `git submodule update --init --recursive` or the runner reports
+  zero tests — and `generate-report.sh --run` will then happily
+  **overwrite the committed logs and dashboard with a 0/0 result**.
+  If a run reports "0 pass, 0 fail", the suite didn't run: check the
+  submodules, `git checkout` the clobbered logs, and rerun.
+- `owl/` — vendored static drop of the W3C OWL 2 Test Cases.
+- `rdf-canon/` — submodule, RDFC-1.0 canonicalization tests.
+- `rif/tc/` — RIF test cases. The four RIF Core entailment tests are
+  **permanent SKIPs** per `docs/claude-rules/scope.md` (reported
+  skipped, not failed).
+- `shex/`, `csvw/`, `vc/`, `did/`, `rml/` — vendored for offline use,
+  **not yet wired** to any runner.
+- `third_party/data/ukparliament/` — perf-bench corpus (see
+  `perf-benchmarking`).
+
+Iron Rule #6 applies: run the real W3C files from disk. No synthetic
+queries "inspired by" W3C tests. Never default to SPARQL 1.0 manifests
+when 1.1 exists (Iron Rule #5).
+
+## First-party harnesses under `tests/`
+
+- `tests/unit/` — OCaml unit tests + `run-all.sh` (includes
+  companion-file writer round-trips, UTF-8/codepoint semantics,
+  RDF/XML perf repros).
+- `tests/local/` — regression shell scripts:
+  `sparql_parser_regressions.sh`, `sparql_negative_regressions.sh`,
+  `backend_parity_regressions.sh`, `cottas_corpus_regressions.sh`,
+  `parquet_footer_regressions.sh`, `check_pages_links.sh`.
+  Run the ones touching your area before pushing.
+- `tests/beyond-w3c/` — cross-runtime parity: every demo-page query in
+  `tests/beyond-w3c/fixtures/index.json` runs on native and
+  js-of-ocaml-under-Node via `tests/beyond-w3c/bin/run-parity.py`. Any non-zero exit is an engine crash unless the
+  manifest declares a `known_failures` entry **pointing at an open
+  GitHub issue**. CI: `.github/workflows/beyond-w3c.yml` (per-PR).
+- `tests/web-demos/` — demo-specific checks (`lifesci_parity.sh`).
+
+## Comparison probes against other engines
+
+Jena ARQ probes (scripts in `tools/`, expect a Jena checkout at
+`/tmp/jena` with `jena-arq/testing/DAWG-Final`):
+
+```bash
+tools/jena_arq_syntax_probe.sh   # syntax accept/reject parity
+tools/jena_arq_basic_probe.sh    # SELECT execution, row-count compare
+tools/jena_arq_graph_probe.sh    # named-graph semantics
+tools/jena_arq_ask_probe.sh      # ASK
+```
+
+These deliberately compare **row counts**, not full result-set
+isomorphism — fast signal, narrower claim. Findings and current scores
+are logged in `docs/designissues/jena-arq-probe.md`,
+`jena-arq-basic-probe.md`, `jena-arq-graph-probe.md`. Interesting Jena
+disagreements get distilled into `tests/local/` regressions so the
+probe environment isn't needed to keep the lesson.
+
+Parser-count comparison against pyoxigraph:
+`tools/compare_rdf_parser_counts.py` (see
+`docs/designissues/2026-04-25-fstar-parser-vs-pyoxigraph-and-parquet-cli.md`).
+
+## Importing external test suites
+
+Policy from
+`docs/designissues/2026-04-23-external-sparql-test-suites.md`:
+licence-clean only (no GPL/AGPL anywhere in the chain); land as
+`tests/external/<project>/` with provenance recorded in a
+`THIRD_PARTY_NOTICES.md`. Ranked candidates: Oxigraph (planner
+regressions, parser error-recovery), Eclipse RDF4J (SPARQL 1.2 draft
+fixtures, SERVICE federation), Apache Jena (RDFS rule tests, pre-baked
+BSBM). The single best idea found there: Jena's shaded-old-build
+pattern — benchmark the current build against a **frozen older binary
+of itself** (we already commit binaries, so a
+`bin/<platform>/factoidal.v<N>` + diff script is cheap to add).
+
+## CI: what runs when
+
+| Workflow | Role |
+|---|---|
+| `w3c-tests.yml` | Heavy pipeline on main lines + nightly cron: debounced, dual-platform shadow builds to `bin/ci-<platform>/`, full suites, commits dashboard artifacts |
+| `beyond-w3c.yml` | Per-PR native/JS parity over demo queries |
+| `ukparliament-bench.yml` | Perf-regression gate (see `perf-benchmarking`) |
+| `check-derived-files.yml`, `check-fstar-purity.yml`, `check-ocaml-output-cleanliness.yml`, `check-extraction.yml` | Boundary/extraction discipline gates (see `ocaml-boundary`) |
+| `dashboard-refresh.yml`, `deploy-pages.yml` | Publishing (see `site-and-dashboard`) |
+
+`.github/test-suites/*.yaml` holds one manifest per suite (runner,
+args, log path, `domain`, `foundational`, trigger paths) with
+`tools/dispatch_test_suites.sh --diff <base> <head>` computing which
+suites a change touches — the scaling plan for when OWL DL (~3000),
+JSON-LD (~800), SHACL (~400) tests are wired in. When you add a suite,
+add its manifest.
+
+## Reporting discipline
+
+- Full-sentence scores, labelled numerators and denominators, always
+  (anti-pattern #25). Distinguish pass-vs-fail from pass-vs-total when
+  skips exist.
+- Regressions block: if a previously passing test fails, diagnose
+  before committing. Run the affected suites before AND after.
+- Disclose the standing caveats whenever claiming "verified" or
+  quoting scores in public prose (from
+  `docs/claude-rules/current-state.md`): ASK comparison does not check
+  the expected boolean; blank-node comparison is
+  any-bnode-matches-any, not graph isomorphism;
+  `SPARQL11.Parser.fst` is ~65% under `--admit_smt_queries true`.
+- Scope changes (a test becoming a permanent SKIP, or un-skipped) must
+  update `docs/claude-rules/scope.md` **in the same commit**.
+- Cap ad-hoc runs at 10 minutes (`timeout 600`, anti-pattern #17); log
+  long runs under `.claude-runs/` (#19).
+
+## What this skill does NOT cover
+
+- Building the runners — `build-and-test` skill.
+- Timing/perf measurement — `perf-benchmarking` skill.
+- Publishing scores to the site/dashboard — `site-and-dashboard` skill.
+- Toolchain setup — `fstar-env` skill.

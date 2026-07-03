@@ -1,0 +1,111 @@
+---
+name: site-and-dashboard
+description: Update and publish the Factoidal website, test-results dashboard, demo pages, and the Fly.io SPARQL endpoint — and keep every progress/score table in the repo in sync with measured reality. Use when the user asks to "update the site", "refresh the dashboard", "publish the demo", "deploy", or when README/current-state/scorecard numbers have drifted from docs/test-results/latest.json. Stale public numbers are treated as bugs.
+---
+
+# Site, dashboard, demos, and progress tables
+
+The public face of the project is a set of generated artifacts plus a
+few hand-maintained summary tables. The generated parts are engineered
+to never go stale; the hand-maintained parts go stale unless every
+session treats drift as a bug. This skill says which is which and who
+updates what.
+
+## The static site (GitHub Pages)
+
+Built with Eleventy (11ty) from `docs/`; published at
+`https://danbri.github.io/factoidal/`.
+
+- Local build: `cd docs && npm ci && npx @11ty/eleventy --output=_site`
+- Deploy: `.github/workflows/deploy-pages.yml`, triggered by pushes to
+  `docs/**` on the main lines AND by `workflow_run` completion of
+  "Dashboard Refresh" / "W3C Test Suite" (bot commits made with
+  `GITHUB_TOKEN` never re-trigger push workflows — that's why the
+  `workflow_run` subscription exists; don't remove it).
+- Advisory link check: `tests/local/check_pages_links.sh docs/_site`
+  (non-blocking in CI; run it locally after structural edits).
+
+Site content map: `docs/index.md` (front page + build-targets table),
+`docs/web/landing/` (landing page), `docs/web/demos/{dep-graph,
+lifesci,simple-entailment,ukparliament}/` (demo pages),
+`docs/fstar-extracted/` (the browser engine — js_of_ocaml +
+wasm_of_ocaml bundles, **rebuilt and committed by CI**; see
+`jsoo-debug-bundle` for the debuggable variant).
+
+## The test-results dashboard (generated — do not hand-edit)
+
+`docs/test-results/{index.html,latest.csv,latest.json,history/*}` are
+produced by `./w3c-tests.sh` (see `test-suites`). Two CI layers keep
+them fresh:
+
+- `w3c-tests.yml` — the heavy pipeline: re-runs the suites on main
+  lines and nightly, commits new logs + dashboard.
+- `dashboard-refresh.yml` — lightweight: regenerates the dashboard
+  **from the committed `*_results.log` files** within ~1 minute of any
+  push, no toolchain, no re-run. This deliberately decouples
+  "dashboard freshness" from "test-data freshness": the page's
+  timestamp is always current; the numbers change only when the heavy
+  pipeline reruns.
+
+Rules:
+
+- Never hand-edit anything under `docs/test-results/`.
+- Don't commit locally regenerated dashboard artifacts from feature
+  branches — CI owns them on the main lines. (`--cached` regeneration
+  is fine for local inspection; discard the diff.)
+- The perf baselines `ukparliament-bench*.{csv,json}` in the same
+  directory are **checked-in baselines** updated via the bench harness
+  (see `perf-benchmarking`), not by hand.
+
+## The live SPARQL endpoint (Fly.io)
+
+`fly.toml` (app `factoidal`, region `lhr`) builds the `Dockerfile` and
+serves the UK Parliament COTTAS corpus read-only
+(`READ_ONLY=1`, `MAX_ROWS=50000`, `QUERY_TIMEOUT=30`,
+`WEB_DEMO=ukparliament`). The binary source of truth for deployment is
+the **CI shadow build** `bin/ci-linux-x86_64/factoidal-http` — not
+your local build. Docs: `docs/deploy/flyio.md`,
+`docs/deploy/cloudflare-tunnel.md`; container smoke test:
+`tools/podman-fly-smoke.sh`.
+
+Local demo serving: `serve-lifesci-demo.sh` assembles the life-sci
+Turtle graphs into named graphs and serves them with
+`bin/<platform>/factoidal-http --load-rw-graphs`.
+
+## Progress tables: the registry
+
+| Table | Where | Updated by | Discipline |
+|---|---|---|---|
+| Live scores | `docs/test-results/latest.{json,csv}` + dashboard | CI (generated) | never hand-edit |
+| Perf baselines | `docs/test-results/ukparliament-bench-modern.{csv,json}` | bench harness | update via harness, in the PR that shifts them |
+| State snapshot | `docs/claude-rules/current-state.md` | humans/agents | self-declared stale-within-a-week; refresh before citing it; date every refresh |
+| README "W3C Conformance Status" + status line | `README.md` | humans/agents | must match `latest.json` when touched; full-sentence scores; date perf claims |
+| Front-page build-targets table | `docs/index.md` | humans/agents | update when a target (native/JS/wasm/C) changes status |
+| Scope decisions | `docs/claude-rules/scope.md` | humans/agents | update **in the same commit** as the scope-changing code |
+| Parser perf status | `docs/designissues/parser-speed-status.md`, `turtle-parser-metrics.md` | humans/agents | only with fresh measurements (see `perf-benchmarking`) |
+
+When any session notices a hand-maintained number contradicting
+`latest.json` or a fresh measurement, fixing it is in-scope for that
+session — stale public numbers mislead every later reader (this is
+how "379 pass" survived in the README months after the engine hit
+631).
+
+## Prose rules for public pages
+
+- Full-sentence, labelled scores; no bare "972/59" ratios
+  (anti-pattern #25).
+- No sycophantic adjectives (`markdown-style` skill).
+- Until the OCaml-boundary recovery fully lands (Iron Rule #11), READMEs,
+  demo pages, and talks carry the qualifier: "parser and algebra spec
+  verified in F\*; on-disk backend has unverified OCaml-side
+  optimization layers being migrated back to F\*".
+- Disclose the verification caveats when quoting scores publicly
+  (ASK boolean unchecked, lenient bnode matching, parser
+  `--admit_smt_queries` — see `test-suites`).
+
+## What this skill does NOT cover
+
+- Running the suites that produce the numbers — `test-suites`.
+- Measuring performance — `perf-benchmarking`.
+- Building the browser bundles — `build-and-test` (`js` / `wasm`
+  steps) and `jsoo-debug-bundle`.
