@@ -66,6 +66,13 @@ red always jumps the queue.
    (parser regressions done 2026-07-03; ukparliament bench corpus is
    absent from fresh clones and self-skips in CI).
 
+Perf experiment queue (ranked, from
+`2026-07-03-shapes-canon-storage-strategies.md`): E1 characteristic-set
+row clustering in the COTTAS writer (zero reader changes, measured on
+ukparliament bench); E2 per-CS statistics sidecar for
+`cottas_ondisk_estimate`; E3 canonical-hash sidecars + Merkle roll-ups
+riding on `factoidal canonicalize` (item 6).
+
 Standing discipline: **every session watches for perf optimisation
 opportunities** while doing anything else — a suspicious phase in the
 `Server-Timing` breakdown, a super-linear shape in a loop you read, a
