@@ -38,7 +38,20 @@ red always jumps the queue.
    bnode class-expression conclusions
    (complementOf/AllDifferent/unionOf/Restriction), 2 XSD
    range-hierarchy gaps, 1 no-premise. Separate work item from #262;
-   needs rule-coverage additions in the OWL-RL rule set.
+   needs rule-coverage additions in the OWL-RL rule set. Fix sketches:
+   `2026-07-03-owl-rl-pe-fails-fix-sketch.md` (path to 27 pass, 2
+   documented fails, 1 skip).
+2c. **Backend eval path skips the bnode-pattern rewrite** — found by
+   the Jena probe refresh (`2026-07-03-jena-probe-refresh.md`),
+   invisible to the W3C dashboard: bnode-pattern SELECT/ASK via the
+   CLI's default route match 0 rows (`SPARQL11.Store.fst` ~752 misses
+   the `rewrite_query_bnodes_pattern` call the algebra path makes).
+   Small F\* fix; gate on the jena basic probe returning to 20 of 20.
+2d. **No per-file blank-node scoping at dataset load** — `_:x` in
+   separately loaded files spuriously joins (`factoidal_cli.ml:112`;
+   Jena graph probe 9 of 11, was 11 of 11). Bnode labels are
+   document-scoped per RDF 1.1; decide loader-namespacing vs F\*
+   dataset-merge fix.
 3. **Shrink `--admit_smt_queries` in `SPARQL11.Parser.fst`** (~65% of
    the file admitted; the biggest verification caveat we disclose).
 4. **Stratification** — split `RDF.Graph.Executable` and
