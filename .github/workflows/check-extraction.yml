@@ -26,10 +26,25 @@ jobs:
           restore-keys: |
             opam-fstar-${{ runner.os }}-
 
+      # F* per-module verification cache — mirrors w3c-tests.yml's
+      # block (#238). Without it this PR gate re-verifies the whole
+      # tree cold (the dominant cost of this workflow; ~2h measured
+      # locally). Keyed on the hash of all F* sources; restore-keys
+      # give partial hits (F*'s .checked invalidation is per-module
+      # content-digest, so stale entries for unchanged modules still
+      # count).
+      - name: Cache F* .checked files
+        uses: actions/cache@v4
+        with:
+          path: formal/fstar/*.fst.checked
+          key: fstar-checked-${{ runner.os }}-${{ hashFiles('formal/fstar/*.fst', 'formal/fstar/*.fsti') }}
+          restore-keys: |
+            fstar-checked-${{ runner.os }}-
+
       - name: Install system deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y opam libgmp-dev pkg-config
+          sudo apt-get install -y opam libgmp-dev pkg-config libzstd-dev
 
       - name: Setup opam + F*
         run: |
