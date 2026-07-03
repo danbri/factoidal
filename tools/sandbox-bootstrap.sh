@@ -89,6 +89,24 @@ if [[ ! -x "$VENV/bin/python" ]] || ! "$VENV/bin/python" -c "import pycottas" >/
     || echo "session-start: pycottas venv failed — tests/local COTTAS regressions will skip" >&2
 fi
 
+# 0c2. Skill discovery symlinks — .claude/skills/<name> -> ../../skills/<name>.
+#      Regenerated fresh from the skills/ directory EVERY session so
+#      discovery never trusts a stale committed list: new skills get
+#      linked, deleted skills get unlinked. skills/ is the source of
+#      truth; CLAUDE.md's ## Skills section is human documentation.
+mkdir -p "$REPO_ROOT/.claude/skills"
+for link in "$REPO_ROOT/.claude/skills"/*; do
+  [ -L "$link" ] && [ ! -e "$link" ] && rm -f "$link"   # dangling
+done
+SKILL_DRIFT=""
+for d in "$REPO_ROOT"/skills/*/; do
+  n=$(basename "$d")
+  [ -f "$d/SKILL.md" ] || continue
+  [ -e "$REPO_ROOT/.claude/skills/$n" ] || ln -sfn "../../skills/$n" "$REPO_ROOT/.claude/skills/$n"
+  grep -q "skills/$n/SKILL.md" "$REPO_ROOT/CLAUDE.md" || SKILL_DRIFT="$SKILL_DRIFT $n"
+done
+[ -n "$SKILL_DRIFT" ] && echo "session-start: WARNING skills missing from CLAUDE.md index:$SKILL_DRIFT" >&2
+
 # 0d. F* toolchain from the repo's toolchain-cache branch (~2-4 min
 #     cold, no-op warm). Backgrounded so session start never blocks;
 #     verify-capable when it completes, compile-capable when its

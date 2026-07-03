@@ -180,6 +180,11 @@ session.
   bootstrap contract, token prudence, subagent model/effort selection,
   and how to pick the next piece of work. **Read first in autonomous
   sessions.**
+- [`session-restore`](skills/session-restore/SKILL.md) — restore a
+  fresh/recycled VM to working state in minutes: cache-branch
+  inventory (toolchain-cache, checked-cache), what the hook restores
+  automatically, skill-symlink regeneration, and the never-again
+  rules from the 90-minutes-of-compiles incident.
 - [`fstar-env`](skills/fstar-env/SKILL.md) — F\* / opam / z3
   setup and repair.
 - [`build-and-test`](skills/build-and-test/SKILL.md) — build,
