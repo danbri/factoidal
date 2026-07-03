@@ -168,11 +168,13 @@ rule #17").
 Skill files live at `skills/<name>/SKILL.md` in the
 [agentskills.io](https://agentskills.io) format — a vendor-neutral
 spec adopted by ~30 agent products (Claude Code, Cursor, Codex,
-Gemini CLI, Goose, Copilot, OpenHands, Roo, …). The repo does not
-ship per-tool discovery glue (no `.claude/skills/` symlink, no Cursor
-config, etc.); skills are referenced from this section and read on
-demand when relevant. Read the linked file the first time you touch
-that topic in a session.
+Gemini CLI, Goose, Copilot, OpenHands, Roo, …). `skills/` is the
+single source of truth; `.claude/skills/` contains per-skill symlinks
+so Claude Code discovers them natively (frontmatter preloaded at
+session start). Other harnesses: point your skill discovery at
+`skills/` or add your own symlink dir — do not fork the content.
+Read the linked file the first time you touch that topic in a
+session.
 
 - [`session-economy`](skills/session-economy/SKILL.md) — fresh-session
   bootstrap contract, token prudence, subagent model/effort selection,
