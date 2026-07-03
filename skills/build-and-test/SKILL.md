@@ -78,16 +78,19 @@ Runs unit tests. Does not run W3C tests — use `./w3c_runner` for those.
 
 ### `./build-ocaml.sh js`
 
-Produces `docs/fstar-extracted/factoidal-fstar.js` via js_of_ocaml. Used
-for the demo page deployment. Optional; only relevant for browser
-deployment.
+Produces `docs/fstar-extracted/factoidal.js` via js_of_ocaml. Used
+for the demo page deployment (CI rebuilds and commits it). For a
+source-mapped debuggable variant see the `jsoo-debug-bundle` skill.
 
 ### `./build-ocaml.sh wasm`
 
-Experimental wasm_of_ocaml output. Most SPARQL suites pass under wasm
-runtime but suites invoking SHA/MD5 (the `functions` suite hash tests)
-crash because stub_sha\* / caml_digestif_\* have no wasm-side binding
-yet. Vendoring or hand-writing the wasm shims is pending.
+Experimental wasm_of_ocaml output, using the vendored zarith wasm
+runtime in `ocaml-output/wasm_runtime/` plus `wasm_stub_shims.py`
+post-processing. The historical SHA/MD5 crashes in the `functions`
+suite are why hashes are realised by the pure-OCaml
+`fstar_pure_hashes.ml` (no C primitives) — see the `ocaml-boundary`
+skill. Check `tests/beyond-w3c/` parity results for current
+wasm-runtime status before quoting a suite count.
 
 ### `./build-ocaml.sh karamel`
 
@@ -101,8 +104,9 @@ See `docs/designissues/2026-05-07-c-build-and-roaring-plan.md`.
 
 ## W3C test runner
 
-Lives at `formal/fstar/ocaml-output/w3c_runner` (symlink) and in
-`bin/<platform>/w3c_runner`.
+The committed binary is `bin/<platform>/w3c_runner` (works on a fresh
+clone with no toolchain). After a local build, a symlink also appears
+at `formal/fstar/ocaml-output/w3c_runner`.
 
 ### Test data discovery
 
@@ -145,20 +149,15 @@ The most-recent recorded run's JSON is at
   inline; -v adds the actual rows.
 - For a single test: `./w3c_runner -v <suite>` then grep stderr.
 
-### Per-suite scores (May 2026)
+### Current scores
 
-| Suite | Pass | Total |
-|---|---:|---:|
-| SPARQL 1.1 (all) | 626 | 631 |
-| RDF 1.1 N-Triples | 70 | 70 |
-| RDF 1.1 Turtle | 313 | 313 |
-| RDF 1.1 N-Quads | 87 | 87 |
-| RDF 1.1 TriG | 356 | 356 |
-| RDF 1.1 RDF/XML | 166 | 166 |
-| RDF 1.1 Model Theory | 39 | 39 |
-
-Combined: 1657 pass, 1 fail, 4 skip out of 1662. **99.94%
-pass-vs-fail**, 99.7% pass-vs-total.
+Do not trust score tables embedded in docs — they go stale. The live
+numbers are in `docs/test-results/latest.json` (and the dashboard at
+https://danbri.github.io/factoidal/test-results/). Regenerate locally
+with `./w3c-tests.sh --cached`. For reference: as of 2026-07-03 the
+runnable W3C total was 1662 pass, 0 fail (SPARQL 631, RDF 1031).
+The full testing landscape (OWL, RDFC-1.0, parity, probes) is in the
+`test-suites` skill.
 
 ## W3C test data layout (submodule)
 
@@ -231,5 +230,7 @@ Both files are gitignored (`formal/fstar/.gitignore`).
 - `fstar-env` skill — toolchain setup, z3 install, opam switch.
 - `docs/designissues/2026-05-07-c-build-and-roaring-plan.md` —
   KaRaMeL pilot details, krml install paths.
-- `docs/skills/testing.md` — narrative guide to running tests.
-- `docs/skills/measuring.md` — performance measurement workflow.
+- `test-suites` skill — every suite (W3C, OWL, RDFC, parity, probes)
+  and the reporting discipline.
+- `perf-benchmarking` skill — timing and performance measurement.
+- `ocaml-boundary` skill — what may be hand-written OCaml at all.

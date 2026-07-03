@@ -12,44 +12,22 @@ hand-writing Rust/JS/OCaml/anything that "mirrors" a spec.
 > away — the `## Skills` section at the bottom of this file lists what
 > exists, follow the link when a topic comes up.
 
-## :warning: F\* Comment Syntax — DANGER :warning:
+## :warning: F\* Syntax Traps :warning:
 
-**F\* comments `(* ... *)` support NESTING.** Any `*)` inside a comment
-prematurely closes it; any `(*` opens a new nesting level. Constructs
-containing `*)` will **silently corrupt the rest of the file**.
+Full examples + more traps: [`skills/fstar-module-style/SKILL.md`](skills/fstar-module-style/SKILL.md).
+The two that corrupt files silently:
 
-**This WILL break:**
-```fstar
-(* ARQ algebra example
-   construct(*)
-*)
-```
-The `*)` inside `construct(*)` closes the comment. F\* reports a syntax
-error **hundreds of lines later**.
-
-**Safe alternatives:**
-- Reword to avoid parens-star: `(* COUNT-star special case *)`
-- Use `//` line comments: `// COUNT(*) special case`
-
-**Rule: Never put `*)` or `(*` inside an F\* block comment.** Same trap
-exists in the OCaml side — `(F*)` in an OCaml comment closes early; use
-`(F-star)`.
-
-## :warning: F\* Reserved-Word Pitfall :warning:
-
-F\*'s parser treats some innocuous identifiers as reserved and reports
-the resulting parse failure with a misleading line number — usually the
-line **after** the offender:
-
-- `total` — banned as a let-bound name. Error points at the next let.
-- `in_mem` — looks like the `in` keyword in some contexts.
-- `synth` — reserved meta-keyword; banned as an identifier. Error points
-  at the next def (caught during RIF Phase 3 #223).
-- Anything containing `in` as a prefix where F\* expects a let-body.
-
-**Safe alternatives:** prefix with the domain noun (`triples_total`,
-`mem_dataset`). When you hit an unexplained "Syntax error", check the
-line *above* the reported one.
+1. **F\* block comments `(* ... *)` NEST.** A stray `*)` inside a
+   comment (e.g. quoting `construct(*)`) closes it early and F\*
+   reports a syntax error **hundreds of lines later**. Never put `*)`
+   or `(*` inside a block comment — reword ("COUNT-star") or use `//`
+   line comments. Same trap in OCaml: write `(F-star)`, not `(F*)`.
+2. **Reserved-ish identifiers with off-by-one errors.** `total`,
+   `synth`, `in_mem`, and anything a parser can read as a dangling
+   `in` are rejected with the error pointing at the line **after**
+   (or below) the offender. Prefix with the domain noun
+   (`triples_total`, `mem_dataset`). On any unexplained "Syntax
+   error", check the line *above* the reported one first.
 
 ## Iron Rules
 
@@ -164,7 +142,7 @@ rule #17").
     (`timeout 600`). Kill and shrink input on cap trips.
 18. Dump in-flight plan to `.claude-worklog.md` at checkpoints.
 19. Long-running processes log to `.claude-runs/` with hard wall-clock cap.
-20. Never burn clock on the slow Turtle path — background it.
+20. Never burn clock foregrounding long parses/full builds — background them.
 21. Never stall on parallel work in flight; pick the next item.
 22. Subagent stall is a checkpoint, not a loss — check `git status`/log.
 23. One subagent = one commit = one deliverable.
@@ -192,6 +170,21 @@ that topic in a session.
   setup and repair.
 - [`build-and-test`](skills/build-and-test/SKILL.md) — build,
   extract, compile, run W3C tests.
+- [`test-suites`](skills/test-suites/SKILL.md) — every suite (W3C,
+  OWL, RDFC-1.0, parity, Jena probes, external-suite policy) and the
+  score-reporting discipline. **Testing drives everything.**
+- [`perf-benchmarking`](skills/perf-benchmarking/SKILL.md) — timing
+  harnesses, baselines, observability, profiling policy. Speed is
+  measured separately from correctness, always.
+- [`site-and-dashboard`](skills/site-and-dashboard/SKILL.md) — the
+  11ty site, test-results dashboard, demos, Fly.io endpoint, and the
+  registry of progress tables + who updates each.
+- [`fstar-module-style`](skills/fstar-module-style/SKILL.md) — module
+  organization (semantic core vs pragmatics), stratification roadmap,
+  .fsti policy, syntax traps in full, KaRaMeL-compatible style.
+- [`ocaml-boundary`](skills/ocaml-boundary/SKILL.md) — rule #11 in
+  depth: the glue taxonomy, patch lifecycle, companion-file byte
+  rules, vendoring policy, extraction-target status.
 - [`github-and-prs`](skills/github-and-prs/SKILL.md) — gh CLI
   with `--repo danbri/factoidal`, branch + PR conventions.
 - [`repo-tour`](skills/repo-tour/SKILL.md) — directory layout,
@@ -224,7 +217,8 @@ that topic in a session.
 - [`docs/claude-rules/anti-patterns.md`](docs/claude-rules/anti-patterns.md)
   — full anti-pattern text with war stories.
 - [`docs/claude-rules/performance.md`](docs/claude-rules/performance.md)
-  — Turtle parser audit + speed plan.
+  — perf status + history (current measured throughput; the 2026-04
+  slow-Turtle root causes).
 - [`docs/claude-rules/current-state.md`](docs/claude-rules/current-state.md)
   — F\* inventory, `assume val` table, W3C scores.
 - [`docs/code-name-glossary.md`](docs/code-name-glossary.md) — Yod6 /

@@ -21,9 +21,8 @@ factoidal/
 │   │   ├── ocaml-patches.sh      applies all glue patches
 │   │   ├── ocaml-output/         extracted .ml + symlinks to bin/
 │   │   │   ├── *.ml              extracted F* OCaml output (tracked)
-│   │   │   ├── factoidal_*.ml    hand-written CLI/HTTP wrappers (TBD relocated)
-│   │   │   ├── w3c_runner.ml     W3C test runner (hand-written wrapper)
-│   │   │   └── *_runner.ml       per-suite runners (rdfc10, owl)
+│   │   │   ├── fstar_pure_hashes.ml   allowlisted hand-written assume-val realisation
+│   │   │   └── sparql_parser_stubs.ml allowlisted hand-written assume-val realisation
 │   │   ├── minimal_regrettable_glue_code_each_with_an_open_issue/
 │   │   │   └── <issue>_*.sh      assume-val realisations + bug fixes
 │   │   ├── experimental_ocaml_glue/    Layer-2 unwind targets (rule #11 violators)
@@ -42,14 +41,16 @@ factoidal/
 │   │   └── paper/roaring.{pdf,txt}   reference paper
 │   └── third_party/              future home for vendored F* deps
 │       └── (e.g. hacl-star/ for SHA-256 — see io-verification doc)
-├── bin/                          PRE-BUILT BINARIES (committed, per Iron Rule #9)
-│   ├── darwin-arm64/             macOS Apple Silicon
-│   │   ├── factoidal             CLI binary
-│   │   └── w3c_runner            test runner
-│   ├── linux-x86_64/             Linux x86-64 (statically linked)
-│   │   ├── factoidal
-│   │   └── w3c_runner
-│   └── ci-linux-x86_64/          CI shadow build artifacts
+├── bin/                          BINARIES + CONSUMER SOURCES
+│   ├── darwin-arm64/             committed binaries, macOS Apple Silicon
+│   ├── linux-x86_64/             committed binaries, Linux x86-64 (static):
+│   │                             factoidal, w3c_runner, owl_runner,
+│   │                             rdfc10_runner, factoidal-http, …
+│   ├── ci-linux-x86_64/          CI shadow builds (Fly deploy source of truth)
+│   ├── ci-darwin-arm64/          CI shadow builds
+│   └── <consumer>/               hand-written consumer .ml sources:
+│                                 factoidal-cli/, w3c-runner/, owl-runner/,
+│                                 factoidal-http/, factoidal-serve/, … (rule #11)
 ├── third_party/                  VENDORED CORPORA + DATA
 │   ├── testing/                  W3C test fixture submodules
 │   │   ├── w3c/                  rdf-tests submodule
@@ -72,24 +73,25 @@ factoidal/
 │   │   ├── 2026-05-07-c-build-and-roaring-plan.md
 │   │   ├── 2026-05-07-query-planning-fstar-recovery.md
 │   │   ├── 2026-05-07-io-verification-and-third-party.md
-│   │   ├── fstar-purity-unwind.md (TBD)
-│   │   ├── fstar-ocaml-boundary-audit.md (TBD)
+│   │   ├── fstar-purity-unwind.md
+│   │   ├── fstar-ocaml-boundary-audit.md
 │   │   └── (many historical drift / fix design docs)
-│   ├── skills/                   narrative how-to docs
-│   │   ├── testing.md
-│   │   ├── measuring.md
-│   │   ├── optimising.md
-│   │   ├── improving-sparql.md
-│   │   ├── rdf-format-conversion.md
-│   │   └── periodic-review.md
+│   ├── skills/                   RETIRED (pre-pivot Rust-era; see README there)
 │   ├── code-name-glossary.md     Yod6 / Tet3 / etc. — historical decoder ring
 │   ├── test-results/
-│   │   ├── latest.json           most recent W3C run
-│   │   ├── history/              timestamped JSON snapshots
+│   │   ├── latest.json           most recent W3C run (CI-maintained)
+│   │   ├── ukparliament-bench-modern.json   perf baseline (harness-maintained)
+│   │   ├── history/              timestamped snapshots
 │   │   └── index.html            dashboard (deployed to gh-pages)
-│   └── fstar-extracted/          js_of_ocaml output for browser demo
+│   ├── web/                      landing page + demo pages
+│   ├── deploy/                   Fly.io / Cloudflare tunnel notes
+│   └── fstar-extracted/          js_of_ocaml + wasm bundles for browser demo
+├── skills/                       SKILL FILES (agentskills.io format)
+│   └── <name>/SKILL.md           listed in CLAUDE.md's ## Skills section
+├── tests/                        first-party harnesses (unit, local
+│                                 regressions, beyond-w3c parity, web-demos)
+├── tools/                        probes + benches (jena_arq_*, bench_ukpar_*)
 ├── .claude/
-│   ├── skills/                   skill files (this skill, fstar-env, etc.)
 │   ├── settings.json             permissions, hooks
 │   └── settings.local.json       local overrides
 ├── .github/
@@ -108,14 +110,15 @@ factoidal/
 
 | Adding | Goes in |
 |---|---|
-| F\* spec module | `formal/fstar/<Module>.fst` (or `formal/roaring/src/` for roaring) — and add to the for-loop in `build-ocaml.sh extract` and to `COMMON_MODULES` |
-| Hand-written CLI tool | Currently `formal/fstar/ocaml-output/<name>.ml`; **target home** is `bin/<consumer>/` per the recovery plan (Phase 8 of the F\*-only query-planning plan) |
-| `assume val` realisation | A patch file in `formal/fstar/minimal_regrettable_glue_code_each_with_an_open_issue/<issue>_<desc>.sh` referenced by `ocaml-patches.sh` |
+| F\* spec module | `formal/fstar/<Module>.fst` (or `formal/roaring/src/` for roaring) — and add to ALL THREE lists in `build-ocaml.sh` (extract loop, `COMMON_MODULES`, `FSTAR_MODULES`); see the `fstar-module-style` skill for which tier it belongs to |
+| Hand-written CLI/runner/server tool | `bin/<consumer>/` (Phase 8 relocation is done — nothing hand-written goes in `ocaml-output/` except the two allowlisted assume-val realisations) |
+| `assume val` realisation | A patch file in `formal/fstar/minimal_regrettable_glue_code_each_with_an_open_issue/<issue>_<desc>.sh` referenced by `ocaml-patches.sh` + an open GitHub issue |
 | Vendored 3rd-party F\* code | `formal/third_party/<lib>/` (see I/O verification design doc) |
 | Architecture decision doc | `docs/designissues/<YYYY-MM-DD>-<topic>.md` |
-| How-to / operational guide | `docs/skills/<topic>.md` (narrative) AND/OR `skills/<topic>/SKILL.md` (agentskills.io format; referenced from CLAUDE.md's `## Skills` section) |
+| How-to / operational guide | `skills/<topic>/SKILL.md` (agentskills.io format; add it to CLAUDE.md's `## Skills` section) |
 | Anti-pattern war story | New numbered entry in `docs/claude-rules/anti-patterns.md`; one-line summary in `CLAUDE.md` |
-| W3C test data | Don't add — submodules. Update the submodule pin if the W3C suite version changes |
+| W3C test data | Don't add — submodules under `third_party/testing/`. Update the submodule pin if the W3C suite version changes |
+| External (non-W3C) test suite | `tests/external/<project>/` + `THIRD_PARTY_NOTICES.md` (licence-clean only; see `test-suites` skill) |
 
 ## "I see X in a commit message — what's it mean?"
 

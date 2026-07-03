@@ -266,8 +266,10 @@ succeed, the toolchain is good.
 
 ## Cross-references
 
-- `CLAUDE.md` § "Setup" — authoritative source for these instructions.
-- `docs/skills/testing.md` — what to do once the env works.
-- `docs/skills/measuring.md` — performance measurement setup.
+- `CLAUDE.md` — authoritative source for the iron rules here.
+- `build-and-test` skill — what to do once the env works.
+- `test-suites` skill — running the conformance suites (the committed
+  binaries in `bin/<platform>/` run them with NO toolchain at all).
+- `perf-benchmarking` skill — performance measurement setup.
 - `formal/roaring/src/Makefile` — example of a standalone
   `make verify` target outside the main F\* tree.

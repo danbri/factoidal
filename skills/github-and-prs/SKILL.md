@@ -176,10 +176,13 @@ This repo uses GitHub Actions. The relevant workflows:
 |---|---|---|
 | `check-extraction` | `.github/workflows/check-extraction.yml` | PR + push |
 | `check-fstar-purity` (Omega3) | `.github/workflows/check-fstar-purity.yml` | PR diff |
-| `w3c-tests` | `.github/workflows/w3c-tests.yml` | push to `claude/main` |
 | `check-derived-files` | `.github/workflows/check-derived-files.yml` | PR |
-| `deploy-pages` | `.github/workflows/deploy-pages.yml` | push to `claude/main` |
-| `ukparliament-bench` | `.github/workflows/ukparliament-bench.yml` | manual |
+| `check-ocaml-output-cleanliness` | `.github/workflows/check-ocaml-output-cleanliness.yml` | PR |
+| `beyond-w3c` | `.github/workflows/beyond-w3c.yml` | PR (native/JS parity over demo queries) |
+| `w3c-tests` | `.github/workflows/w3c-tests.yml` | push to main lines (debounced) + nightly cron |
+| `dashboard-refresh` | `.github/workflows/dashboard-refresh.yml` | every push (regenerates dashboard from committed logs) |
+| `deploy-pages` | `.github/workflows/deploy-pages.yml` | push to `docs/**` + workflow_run of w3c-tests / dashboard-refresh |
+| `ukparliament-bench` | `.github/workflows/ukparliament-bench.yml` | push + PR + daily cron (perf gate) |
 | `debug-bytecode-build` | `.github/workflows/debug-bytecode-build.yml` | manual |
 
 The `w3c-tests` workflow auto-pushes a "ci(linux-x86_64): shadow
