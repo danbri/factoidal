@@ -184,6 +184,12 @@ session.
   setup and repair.
 - [`build-and-test`](skills/build-and-test/SKILL.md) — build,
   extract, compile, run W3C tests.
+- [`fast-verify-extract`](skills/fast-verify-extract/SKILL.md) — make
+  the verify→extract→compile→test loop fast: .checked cache
+  semantics, targeted single-module rebuilds, safe parallelism
+  (make -j, never concurrent ad-hoc fstar.exe), CI cache proposals.
+  The loop speed is what keeps us validation-guided instead of
+  flying dark.
 - [`test-suites`](skills/test-suites/SKILL.md) — every suite (W3C,
   OWL, RDFC-1.0, parity, Jena probes, external-suite policy) and the
   score-reporting discipline. **Testing drives everything.**
