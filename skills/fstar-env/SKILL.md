@@ -77,7 +77,28 @@ Both need: `unzip`, `curl` for fetching the z3 binary release.
 
 ## §2. opam + F\* toolchain
 
-First-time only:
+**Fast path first (2-4 minutes, no compiles).** There is no upstream
+apt/deb package for F\*, opam builds it from source (~25 min), and
+F\*'s prebuilt GitHub release binaries are 403'd by scoped sandbox
+proxies. So the repo carries its own prebuilt cache on the
+`toolchain-cache` orphan branch (split <100MB chunks of
+`bin/fstar.exe` + `lib/fstar`, SHA256-verified; main-line clones
+never pay for it). One command:
+
+```bash
+tools/install-toolchain-cache.sh
+```
+
+apt ocaml (system 4.14.1 = CI's) + opam switch on the system compiler
++ pip-wheel z3 4.13.3 + untar F\* — verification-ready immediately;
+the small opam deps for compile/js (`zarith`, `sha`, `digestif`,
+`js_of_ocaml*`) install in the background
+(`.claude-runs/toolchain-deps.log`). The session bootstrap hook runs
+this automatically in remote sandboxes. When the pinned F\* version
+changes (see `fstar_version` in `bin/ci-linux-x86_64/build-info.json`),
+rebuild the chunks per the README on the `toolchain-cache` branch.
+
+**Source-build path (fallback / new versions).** First-time only:
 
 ```bash
 opam init -y                    # add --disable-sandboxing in containers

@@ -89,6 +89,17 @@ if [[ ! -x "$VENV/bin/python" ]] || ! "$VENV/bin/python" -c "import pycottas" >/
     || echo "session-start: pycottas venv failed — tests/local COTTAS regressions will skip" >&2
 fi
 
+# 0d. F* toolchain from the repo's toolchain-cache branch (~2-4 min
+#     cold, no-op warm). Backgrounded so session start never blocks;
+#     verify-capable when it completes, compile-capable when its
+#     background opam deps finish (see .claude-runs/toolchain-deps.log).
+if ! command -v fstar.exe >/dev/null 2>&1 && [[ ! -x "$HOME/.opam/fstar/bin/fstar.exe" ]]; then
+  echo "session-start: installing F* toolchain from cache branch in background -> .claude-runs/toolchain-cache-install.log" >&2
+  mkdir -p "$REPO_ROOT/.claude-runs"
+  nohup "$REPO_ROOT/tools/install-toolchain-cache.sh" \
+    > "$REPO_ROOT/.claude-runs/toolchain-cache-install.log" 2>&1 &
+fi
+
 # 1. Install fstar-mcp if missing. --locked is essential: fstar-mcp's
 #    git dep `pmcp` (paiml/rust-mcp-sdk) moved to an incompatible API
 #    at HEAD, so without the committed Cargo.lock (pmcp 1.9.4) the
