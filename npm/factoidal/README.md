@@ -131,7 +131,8 @@ JS enumeration and is always available.
   (bad input can yield an empty dataset).
 - No persistence in the npm build; the on-disk store (COTTAS) is
   native-only today.
-- Bundles are js_of_ocaml-scale (several MB). The Wasm entry trades
+- Bundle sizes (measured 2026-07-04): JS engine 554 KB, npm entry
+  461 KB, Wasm 43 KB loader + 1.3 MB assets. The Wasm entry trades
   startup cost for throughput.
 
 ## Testing
