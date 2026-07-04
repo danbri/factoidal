@@ -381,8 +381,8 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     RIF.Core.Eval.fst RIF.Core.Tests.fst
     Parser.SRX.fst Parser.CSVResults.fst
     Parser.JSONResults.fst
-    Parser.JSON.fst JSONLD.Context.fst JSONLD.Expand.fst Parser.JSONLD.fst
     SPARQL.JSON.Escape.fst
+    Parser.JSON.fst JSONLD.Context.fst JSONLD.Expand.fst Parser.JSONLD.fst
     SPARQL.Eval.TimeBudget.fst
     SPARQL.Eval.Limits.fst
     SPARQL.HTTP.Response.fst
@@ -666,15 +666,15 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   # (COTTAS runtime glue calls Parquet_Footer.probe_*). SPARQL11_Store
   # depends on Parser_BallyhooHDT and Parser_BallyhooCOTTAS. See
   # docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md §Phase 1.
-  COMMON_MODULES="Util_Log.ml RDF_Format.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml Tableau.ml SPARQL11_IRI_Resolve.ml \
-    Parser_FastString.ml Parser_IRI.ml \
+  COMMON_MODULES="Util_Log.ml RDF_Format.ml RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml Tableau.ml \
+    Parser_FastString.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml \
     RDF_NQuads_Serialize.ml \
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
     RDF_Turtle_Serialize.ml \
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
-    Parser_JSON.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml \
     SPARQL_JSON_Escape.ml \
+    Parser_JSON.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml \
     SPARQL_Eval_TimeBudget.ml \
     SPARQL_Eval_Limits.ml \
     SPARQL_HTTP_Response.ml \
@@ -1071,15 +1071,15 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
   # See docs/designissues/2026-04-19-cottas-parquet-wiring-plan.md.
   FSTAR_MODULES=(
     RDF_Format.ml
-    RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml Tableau.ml SPARQL11_IRI_Resolve.ml
-    Parser_FastString.ml Parser_IRI.ml
+    RDF_Graph_Executable.ml RDF_List_Helpers.ml RDF_Bytes.ml RDF_Store_Loader.ml Parquet_Footer.ml OWL_Vocabulary.ml Tableau.ml
+    Parser_FastString.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml
     RDF_NQuads_Serialize.ml
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml
     RDF_Turtle_Serialize.ml
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml Parser_RDFXML.ml
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
-    Parser_JSON.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml
     SPARQL_JSON_Escape.ml
+    Parser_JSON.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml
     SPARQL_Eval_TimeBudget.ml
     SPARQL_Eval_Limits.ml
     SPARQL_HTTP_Response.ml

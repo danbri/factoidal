@@ -82,10 +82,24 @@ module JSONLD.Expand
 //     key). Parser.JSONLD's PHASE 4 update interprets an "@graph" member
 //     found on ANY node object (not just the top level) as introducing a
 //     fresh, separate named graph in the dataset.
+//   - PHASE 5 @included: a node object's "@included" member (or a term
+//     whose mapping resolves to that keyword, e.g. toRdf/in03 — routed
+//     through expand_aliased_field exactly like a "@nest" alias) is
+//     expanded EXACTLY like "@graph" (expand_graph_items: each entry is
+//     a full node object, non-conforming entries dropped) but keeps the
+//     "@included" key in the output rather than becoming a fresh named
+//     graph — Parser.JSONLD's PHASE 5 update folds its contents into the
+//     ENCLOSING graph (not a new one) with no linking triple to the
+//     enclosing node, see that module's banner. Multiple "@included"
+//     occurrences on one node object (the literal keyword plus one or
+//     more aliasing terms, toRdf/in03) each produce their own output
+//     field entry — expand_fields_list already merges every field-list
+//     entry regardless of key repetition (established by @reverse), so
+//     no extra fold step is needed here either.
 //
-// OUT of scope for PHASE 4 — expand returns None (a document that needs
-// one of these stays an honest FAIL rather than silently-wrong RDF):
-//   - @included;
+// OUT of scope for PHASE 4/5 — expand returns None (a document that
+// needs one of these stays an honest FAIL rather than silently-wrong
+// RDF):
 //   - @direction (rdf:direction / i18n-datatype literals);
 //   - remote contexts (a JString context value — Phase 5 loader);
 //   - "@import" as a term-def member, "@prefix";
@@ -122,6 +136,33 @@ let jexp_as_array (v:json_val) : list json_val =
 
 let jexp_has_field (name:string) (fields:list (string & json_val)) : bool =
   List.Tot.existsb (fun (kv:(string & json_val)) -> fst kv = name) fields
+
+// True when EVERY member of a node object's field list is "@graph" (the
+// document-wrapper shape: {"@context": ..., "@graph": [...]}, whose
+// "@graph" contents belong to the DEFAULT graph, not a fresh named graph
+// — mirrors Parser.JSONLD.jld_only_graph_keys, duplicated here rather
+// than imported since Parser.JSONLD depends on THIS module, not the
+// other way around. See `expand`'s JObject case below for why this
+// matters: expand_node always produces a single node object, so without
+// this check a top-level "{"@graph": [...]}" document — after @context
+// extraction leaves exactly that one "@graph" field — would get wrapped
+// as `JArray [{"@graph": [...]}]` and Parser.JSONLD's jld_expand_top
+// would (correctly, per ITS OWN contract) treat that as a NAMED graph,
+// not the default-graph wrapper it actually is (toRdf's "IRI Resolution"
+// battery and several other @graph-at-top-level fixtures showed this as
+// a spurious extra graph-name column on every triple).
+let rec jexp_only_graph_keys (fields:list (string & json_val)) : Tot bool (decreases fields) =
+  match fields with
+  | [] -> true
+  | (k, _) :: rest -> k = "@graph" && jexp_only_graph_keys rest
+
+// Flatten every "@graph"-keyed field's (array-wrapped) value into one
+// item list — used only when jexp_only_graph_keys holds, so `fields`
+// consists solely of "@graph" entries.
+let rec jexp_collect_graph_values (fields:list (string & json_val)) : Tot (list json_val) (decreases fields) =
+  match fields with
+  | [] -> []
+  | (_, v) :: rest -> List.Tot.append (jexp_as_array v) (jexp_collect_graph_values rest)
 
 // Wrap a bare boolean/number scalar as a value object, applying a term's
 // @type coercion when present. @id / @vocab coercion is meaningless for a
@@ -424,7 +465,16 @@ and expand_one_field (ac:active_context) (key:string) (value:json_val) (fuel:nat
         | Some entries -> Some (Some [("@reverse", JObject entries)]))
      | _ -> None)
   else if key = "@index" then Some None
-  else if key = "@included" then None
+  else if key = "@included" then
+    // Unlike @graph's lenient drop-non-conforming policy, an @included
+    // entry that is NOT a node object (a bare string, a value object,
+    // a list object — the suite's "Error if @included value is ..."
+    // negatives) is a spec error ("invalid @included value"), so
+    // expansion fails the whole document rather than dropping it —
+    // expand_included_items below, not expand_graph_items.
+    (match expand_included_items ac (jexp_as_array value) (fuel - 1) with
+     | None -> None
+     | Some items -> Some (Some [("@included", JArray items)]))
   else if key = "@nest" then
     (match value with
      | JObject nfields ->
@@ -549,6 +599,20 @@ and expand_property_items (ac:active_context) (term_opt:option term_def) (value:
     let type_map = (match term_opt with Some td -> td.td_type_mapping | None -> None) in
     let lang_ovr = (match term_opt with Some td -> td.td_language | None -> None) in
     let ck = (match term_opt with Some td -> td.td_container | None -> CK_None) in
+    // PHASE 5: a term coerced "@type": "@json" (JSONLD.Context stores
+    // this as td_type_mapping = Some "@json" — expand_iri's keyword
+    // branch already lets "@json" through unchanged, so no context-side
+    // change was needed) turns its ENTIRE raw value — even when that
+    // value is itself a JSON array, e.g. toRdf/js07's `[{"foo":"bar"}]`
+    // — into ONE value object carrying the value VERBATIM (JSON-LD 1.1
+    // API §5(?) Value Expansion's "@json" case: expansion happens BEFORE
+    // the ordinary array-flattening rule below would otherwise split an
+    // array value into multiple property values). Parser.JSONLD's
+    // jld_value_object_to_term does the actual RFC 8785 JCS-subset
+    // canonicalization into an rdf:JSON literal — see that function.
+    if type_map = Some "@json" then
+      Some [JObject [("@value", value); ("@type", JString "@json")]]
+    else
     match ck, value with
     | CK_Index, JObject entries ->
       expand_property ac type_map lang_ovr (jexp_flatten_map_entries entries) (fuel - 1)
@@ -752,6 +816,28 @@ and expand_graph_items (ac:active_context) (items:list json_val) (fuel:nat)
        | None -> expand_graph_items ac rest (fuel - 1)
        | Some nodeobj -> nodeobj :: expand_graph_items ac rest (fuel - 1))
 
+// PHASE 5 @included contents: STRICT, unlike expand_graph_items — every
+// entry must be a node object (JSON-LD 1.1 API Expansion, the @included
+// case's "invalid @included value" error: not a string, not a value
+// object carrying "@value", not a list object carrying "@list"), and a
+// node-object entry that fails to expand fails the whole document.
+and expand_included_items (ac:active_context) (items:list json_val) (fuel:nat)
+  : Tot (option (list json_val)) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    match items with
+    | [] -> Some []
+    | JObject fields :: rest ->
+      if jexp_has_field "@value" fields || jexp_has_field "@list" fields then None
+      else
+        (match expand_node ac (JObject fields) (fuel - 1) with
+         | None -> None
+         | Some nodeobj ->
+           (match expand_included_items ac rest (fuel - 1) with
+            | None -> None
+            | Some restout -> Some (nodeobj :: restout)))
+    | _ -> None
+
 // ================================================================
 // Public API
 // ================================================================
@@ -767,6 +853,10 @@ let expand (ac:active_context) (doc:json_val) : Tot (option json_val) =
     (match expand_node ac doc fuel with
      | None -> None
      | Some (JObject []) -> Some (JArray [])
+     | Some (JObject fields1) ->
+       if jexp_only_graph_keys fields1
+       then Some (JArray (jexp_collect_graph_values fields1))
+       else Some (JArray [JObject fields1])
      | Some nodeobj -> Some (JArray [nodeobj]))
   | JArray items -> Some (JArray (expand_graph_items ac items fuel))
   | _ -> None

@@ -270,7 +270,14 @@ let jldctx_expand_fallback (ac:active_context) (value:string) (vocab:bool)
 
 let expand_iri (ac:active_context) (value:string) (vocab:bool) : Tot (option string) =
   let n = fs_byte_length value in
-  if n = 0 then None
+  if n = 0 then
+    // RFC 3986 §5.4: the EMPTY reference resolves to the base itself
+    // (minus any fragment; query preserved) — the "urn:ex:p": "" case
+    // of the toRdf IRI Resolution battery. Only meaningful
+    // document-relative; an empty TERM/vocab-relative key stays
+    // unresolvable (the suite's "Definition for the empty term"
+    // negative expects empty terms to be rejected).
+    (if vocab then None else jldctx_expand_fallback ac value false)
   else if jldctx_is_keyword value then Some value
   else
     match jldctx_find_term ac.ac_terms value with

@@ -57,13 +57,32 @@ module Parser.JSONLD
 // field-list entry regardless of key repetition, so no merge step is
 // needed on this side either.
 //
+// PHASE 5 adds @included consumption: a node object's ("@included",
+// [nodeobj, ...]) field (produced by JSONLD.Expand exactly like "@graph"'s
+// contents, see that module's banner) has each entry expanded as an
+// ordinary node object whose triples join the CURRENT graph (`acc`) —
+// jld_expand_graph_nodes, reused as-is — with NO linking triple to the
+// enclosing node (unlike @reverse/ordinary properties, @included nodes
+// are independent, merely co-located in the same graph). A node may
+// carry more than one "@included" field-list entry (the literal keyword
+// plus one or more aliasing terms, toRdf/in03); same no-merge-needed
+// reasoning as @reverse above.
+//
+// PHASE 5 adds JSON-literal (@type: @json / rdf:JSON) consumption: a
+// value object whose "@type" is the keyword "@json" (JSONLD.Expand keeps
+// the ORIGINAL, unexpanded json_val under "@value" for this case — see
+// that module's expand_property_items) is serialized via jld_json_canon
+// below (an RFC 8785 JCS SUBSET — see that function's banner for exactly
+// which cases are exact vs. an honest documented gap) into an rdf:JSON
+// (http://.../1999/02/22-rdf-syntax-ns#JSON) typed literal.
+//
 // Phase-2+ items deliberately NOT handled here (dropped silently, per the
 // spec's treatment of non-conforming data where possible):
 //   - @context (see banner above);
 //   - relative IRIs (dropped — is_iri requires a colon);
-//   - @index, @included, @direction, @json (rdf:JSON literals),
-//     @graph nested below the top level, generalized RDF (blank-node
-//     predicates);
+//   - @index, @direction, @graph nested below the top level (PHASE 4
+//     handles nested @graph — see that phase's note above),
+//     generalized RDF (blank-node predicates);
 //   - canonical lexical forms for xsd:double per the JSON-LD Data
 //     Round-Tripping algorithm (e.g. 2.5 SHOULD serialize as "2.5E0";
 //     this phase keeps the validated JSON lexeme verbatim);
@@ -82,6 +101,7 @@ open FStar.List.Tot
 open Parser.FastString
 open RDF.Graph.Executable
 open Parser.JSON
+open SPARQL.JSON.Escape
 open JSONLD.Context
 open JSONLD.Expand
 
@@ -104,6 +124,168 @@ let rdf_rest_iri : wf_iri =
 let rdf_nil_iri : wf_iri =
   assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil");
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"
+
+let rdf_json_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON");
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON"
+
+// ================================================================
+// PHASE 5: JSON canonicalization for @type: @json (rdf:JSON) literals —
+// an RFC 8785 JCS SUBSET.
+//
+// Exact for this suite's fixtures: booleans, null, plain-integer and
+// simple-decimal numbers (see jcanon_number below for the two special
+// cases handled), strings (via SPARQL.JSON.Escape.json_escape — the
+// same "\b\f\n\r\t\"\\, else \u00xy for other controls, everything else
+// byte-transparent" rule JCS mandates), and object-key sorting (via
+// RDF.Graph.Executable.string_lt, i.e. plain byte-order comparison —
+// equal to Unicode codepoint order for valid UTF-8, which is what JCS's
+// "sort by UTF-16 code unit" reduces to for every key in this suite;
+// the two orders diverge only when comparing an astral-plane character,
+// U+10000+, against a BMP character in U+E000..U+FFFF, which no
+// toRdf/js* fixture exercises).
+//
+// NOT exact: genuine ECMAScript Number::toString formatting (shortest
+// round-trip decimal selection; exponential notation for magnitudes
+// >= 1e21 or < 1e-6, e.g. "1E30" -> "1e+30", "2e-3" -> "0.002") is not
+// implemented — this codebase represents JSON numbers as validated
+// lexeme strings (Parser.JSON.JNumber), not floats, and reimplementing
+// float-to-shortest-decimal from scratch is out of scope for this
+// phase. A lexeme needing real reformatting canonicalizes verbatim,
+// which is an HONEST gap (the N-Quads comparison fails visibly,
+// toRdf/js12) rather than a silently wrong literal.
+// ================================================================
+
+// True when every byte of `s`, from `pos`, is one of the JSON-number
+// separator/sign/exponent-marker bytes or the digit '0' — i.e. the
+// lexeme denotes the value zero (e.g. "0", "0.0", "0.0e0"). Does NOT
+// distinguish mantissa digits from exponent digits, so a lexeme like
+// "0e5" (zero mantissa, non-zero exponent — still the value zero) is
+// handled correctly by accident (all its digits happen to be zero
+// too) but a hypothetical "0e1" would also pass (correctly, it's still
+// zero) while something exponent-bearing with a genuinely non-zero
+// exponent AND all-zero mantissa digits, e.g. "0e12", still resolves
+// correctly since '1' and '2' are digits, not zero, so this returns
+// false and the number falls through to jcanon_number's verbatim path
+// — the one honest gap this creates is such a lexeme not collapsing to
+// "0" (it stays a spelled-out non-canonical zero), not a WRONG value.
+let rec jcanon_mantissa_all_zero (s:string) (pos:nat) (fuel:nat) : Tot bool (decreases fuel) =
+  if fuel = 0 then true
+  else
+    let n = fs_byte_length s in
+    if pos >= n then true
+    else
+      let b = jbyte_at s pos in
+      if b = 0x2E (* . *) || b = 0x65 (* e *) || b = 0x45 (* E *)
+         || b = 0x2B (* + *) || b = 0x2D (* - *) || b = 0x30 (* 0 *)
+      then jcanon_mantissa_all_zero s (pos + 1) (fuel - 1)
+      else false
+
+let rec jcanon_has_exp_marker (s:string) (pos:nat) (fuel:nat) : Tot bool (decreases fuel) =
+  if fuel = 0 then false
+  else
+    let n = fs_byte_length s in
+    if pos >= n then false
+    else
+      let b = jbyte_at s pos in
+      if b = 0x65 || b = 0x45 then true
+      else jcanon_has_exp_marker s (pos + 1) (fuel - 1)
+
+let rec jcanon_find_dot (s:string) (pos:nat) (fuel:nat)
+  : Tot (option (p:nat{p < fs_byte_length s})) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let n = fs_byte_length s in
+    if pos >= n then None
+    else if jbyte_at s pos = 0x2E then Some pos
+    else jcanon_find_dot s (pos + 1) (fuel - 1)
+
+let rec jcanon_all_zero_from (s:string) (pos:nat) (fuel:nat) : Tot bool (decreases fuel) =
+  if fuel = 0 then true
+  else
+    let n = fs_byte_length s in
+    if pos >= n then true
+    else if jbyte_at s pos = 0x30 then jcanon_all_zero_from s (pos + 1) (fuel - 1)
+    else false
+
+// The two canonicalizations this phase implements exactly: an all-zero
+// value (any exponent/sign decoration) collapses to "0"; a plain
+// decimal (no exponent) whose fractional part is all zero digits drops
+// the fraction (e.g. "56.0" -> "56"). Everything else — including any
+// exponent-bearing non-zero lexeme — passes through verbatim (see
+// banner above for why).
+let jcanon_number (lexeme:string) : string =
+  let n = fs_byte_length lexeme in
+  if jcanon_mantissa_all_zero lexeme 0 (n + 1) then "0"
+  else if jcanon_has_exp_marker lexeme 0 (n + 1) then lexeme
+  else
+    match jcanon_find_dot lexeme 0 (n + 1) with
+    | None -> lexeme
+    | Some dot ->
+      if jcanon_all_zero_from lexeme (dot + 1) (n - dot) then fs_byte_sub lexeme 0 dot
+      else lexeme
+
+// JCS string: double-quoted, JSON-escaped per SPARQL.JSON.Escape's rule
+// (identical to RFC 8785 §3.2.2.2's mandatory escape set).
+let jcanon_string (s:string) : string =
+  String.concat "" ["\""; SPARQL.JSON.Escape.json_escape s; "\""]
+
+// Insertion-sort an object's fields by key, RFC 8785 §3.2.3 ("sort by
+// code point" — see banner above for the UTF-16-vs-codepoint caveat).
+let rec jcanon_insert_sorted (kv:(string & json_val)) (xs:list (string & json_val))
+  : Tot (list (string & json_val)) (decreases xs) =
+  match xs with
+  | [] -> [kv]
+  | (k2, v2) :: rest ->
+    if string_lt (fst kv) k2 then kv :: xs
+    else (k2, v2) :: jcanon_insert_sorted kv rest
+
+let rec jcanon_sort_fields (fields:list (string & json_val))
+  : Tot (list (string & json_val)) (decreases fields) =
+  match fields with
+  | [] -> []
+  | kv :: rest -> jcanon_insert_sorted kv (jcanon_sort_fields rest)
+
+// The JCS document itself: object keys sorted (jcanon_sort_fields),
+// arrays kept in their given order, no whitespace between tokens (JCS
+// mandates the tightest separators: ',' and ':' with nothing else).
+// Fuel is a generous over-provision (matches JSONLD.Expand.expand's own
+// "4 * json_size + 48" style — not a tight bound, just enough that a
+// real, if deeply nested, JSON-literal fixture never trips the fuel=0
+// safety net).
+let rec jcanon_serialize (v:json_val) (fuel:nat) : Tot string (decreases fuel) =
+  if fuel = 0 then "null"
+  else
+    match v with
+    | JNull -> "null"
+    | JBool b -> if b then "true" else "false"
+    | JNumber lex -> jcanon_number lex
+    | JString s -> jcanon_string s
+    | JArray items -> String.concat "" ["["; jcanon_serialize_items items (fuel - 1); "]"]
+    | JObject fields ->
+      String.concat "" ["{"; jcanon_serialize_fields (jcanon_sort_fields fields) (fuel - 1); "}"]
+
+and jcanon_serialize_items (items:list json_val) (fuel:nat) : Tot string (decreases fuel) =
+  if fuel = 0 then ""
+  else
+    match items with
+    | [] -> ""
+    | [x] -> jcanon_serialize x (fuel - 1)
+    | x :: rest ->
+      String.concat "" [jcanon_serialize x (fuel - 1); ","; jcanon_serialize_items rest (fuel - 1)]
+
+and jcanon_serialize_fields (fields:list (string & json_val)) (fuel:nat) : Tot string (decreases fuel) =
+  if fuel = 0 then ""
+  else
+    match fields with
+    | [] -> ""
+    | [(k, v)] -> String.concat "" [jcanon_string k; ":"; jcanon_serialize v (fuel - 1)]
+    | (k, v) :: rest ->
+      String.concat "" [jcanon_string k; ":"; jcanon_serialize v (fuel - 1);
+                         ","; jcanon_serialize_fields rest (fuel - 1)]
+
+let jcanon_document (v:json_val) : string =
+  jcanon_serialize v (op_Multiply 10 (json_size v) + 32)
 
 // ================================================================
 // Small helpers
@@ -205,11 +387,18 @@ let jld_value_object_to_term (obj:json_val) : option rdf_term =
         | JString s -> jld_make_literal s rdf_lang_string (Some lg)
         | _ -> None)
      | None, Some d ->
-       (match v with
-        | JString s -> jld_make_literal s d None
-        | JBool b -> jld_make_literal (if b then "true" else "false") d None
-        | JNumber n -> jld_make_literal n d None
-        | _ -> None)
+       if d = "@json" then
+         // PHASE 5: JSONLD.Expand's expand_property_items keeps the
+         // ORIGINAL (unexpanded) json_val under "@value" for a @json-
+         // coerced term — v here may be any json_val shape (object,
+         // array, string, number, bool, null), not just a scalar.
+         jld_make_literal (jcanon_document v) rdf_json_iri None
+       else
+         (match v with
+          | JString s -> jld_make_literal s d None
+          | JBool b -> jld_make_literal (if b then "true" else "false") d None
+          | JNumber n -> jld_make_literal n d None
+          | _ -> None)
      | None, None -> jld_scalar_to_term v)
 
 // ================================================================
@@ -373,6 +562,14 @@ and jld_expand_fields (subj:subject) (fields:list (string & json_val))
       let (acc1, named1, ctr1) =
         if key = "@type" then (jld_type_prepend subj value acc, named, ctr)
         else if key = "@reverse" then jld_expand_reverse_map subj value ctr acc named (fuel - 1)
+        else if key = "@included" then
+          // PHASE 5: each entry is a full node object (produced by
+          // JSONLD.Expand exactly like "@graph"'s contents — see that
+          // module's banner) whose triples join the CURRENT graph, with
+          // no linking triple to `subj` — jld_expand_graph_nodes already
+          // does exactly this (expand every node, threading acc), we
+          // just don't route the result into a fresh named graph.
+          jld_expand_graph_nodes (jld_as_array value) ctr acc named (fuel - 1)
         else if jld_is_keyword key then (acc, named, ctr)
         else if is_iri key then
           jld_expand_property subj key (jld_as_array value) ctr acc named (fuel - 1)
