@@ -100,6 +100,23 @@ in item 4 is where that class of bug goes to die.
    scripts that need external corpora get skip-or-fetch treatment
    (parser regressions done 2026-07-03; ukparliament bench corpus is
    absent from fresh clones and self-skips in CI).
+8. **`dump-nq`/`canonicalize` superlinear scaling + RDF/XML stack
+   overflow** — found 2026-07-04 while building
+   `tools/bench-parse-serialize.sh` (see `perf-benchmarking` skill).
+   `factoidal count` scales linearly as expected (~80-90k triples/s
+   through 1M), but on the *same* bnode-free fixtures
+   `factoidal-dump-nq` and `factoidal canonicalize` are severely
+   superlinear: `dump-nq` on 1,000 triples takes ~0.65s, on 2,000
+   triples ~12.9s (should be ~1.3s if linear); `canonicalize` shows
+   the same shape (1,000: ~0.46s, 2,000: ~8.6s). Both blow through a
+   120s/run cap well before 100k triples — the new bench records this
+   as a documented skip rather than hanging. Separately, RDF/XML
+   parsing (`factoidal count FILE.rdf`) crashes with `Stack overflow`
+   above ~10k triples, independent of the above. Not diagnosed or
+   fixed here — needs a GitHub issue and a profiling pass (candidate
+   suspects: whatever "sorted N-Quads" dedup/sort path `dump-nq` and
+   `canonicalize` share that `count` doesn't use; non-tail recursion
+   in `Parser.XML`/`Parser.RDFXML` for the stack overflow).
 
 Perf experiment queue (ranked, from
 `2026-07-03-shapes-canon-storage-strategies.md`): E1 characteristic-set

@@ -902,6 +902,19 @@ ${OWL_SKIP_ROWS}</div>
 OWLEOF
 )
 
+# --- Parse + serialize throughput (optional; fail-soft) ---------------------
+# Produced by tools/bench-parse-serialize.sh, which runs against the
+# committed binary and has no toolchain dependency. This script only
+# *includes* the fragment verbatim if present -- it does no JSON
+# parsing of its own, so a missing or stale file degrades to simply
+# omitting the section rather than breaking report generation.
+PERF_FRAGMENT="$OUTPUT_DIR/perf-parse-serialize.fragment.html"
+if [ -f "$PERF_FRAGMENT" ]; then
+  PERF_SECTION_HTML=$(cat "$PERF_FRAGMENT")
+else
+  PERF_SECTION_HTML=""
+fi
+
 [ -n "$GIT_SUBJECT" ] && GIT_SUBJECT_LINE=" — &ldquo;${GIT_SUBJECT}&rdquo;" || GIT_SUBJECT_LINE=""
 
 cat > "$OUTPUT_DIR/index.html" <<HTMLEOF
@@ -1151,12 +1164,15 @@ ${OWL_HTML}
 
 ${RDFC10_HTML}
 
+${PERF_SECTION_HTML}
+
 <details>
   <summary>Machine-readable artifacts</summary>
   <ul>
     <li><a href="latest.csv"><code>latest.csv</code></a> — one row per suite (timestamp, commit, branch, category, suite, pass/fail/skip/unsupported)</li>
     <li><a href="latest.json"><code>latest.json</code></a> — same data plus totals, structured</li>
     <li><code>history/&lt;timestamp&gt;.csv</code> / <code>.json</code> — timestamped copies, one pair per runner invocation</li>
+    <li><a href="perf-parse-serialize.json"><code>perf-parse-serialize.json</code></a> — parse/serialize/canonicalize throughput (if present; produced by <code>tools/bench-parse-serialize.sh</code>, not this script)</li>
   </ul>
   <p style="margin: 0.6em 0 0; color: var(--muted); font-size: 0.9em;">
     The raw runner logs (including per-test FAIL lines with diffs) are committed to

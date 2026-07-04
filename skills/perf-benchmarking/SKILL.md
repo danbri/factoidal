@@ -25,6 +25,42 @@ without a toolchain, generate the same fixtures and time
 `bin/<platform>/factoidal --count` directly — keep the median-of-N
 discipline.
 
+### Parse + serialize throughput — `tools/bench-parse-serialize.sh`
+
+Runs against the **committed** `bin/<platform>/factoidal` /
+`factoidal-dump-nq` binaries only — no F\* toolchain, no rebuild.
+Measures `factoidal count` (parse: N-Triples, Turtle, RDF/XML),
+`factoidal-dump-nq` (serialize: parse + sorted N-Quads dump), and
+`factoidal canonicalize` (RDFC-1.0; capped at 100k triples) at
+10k/100k/1M triples on deterministic synthetic fixtures, plus the UK
+Parliament TriG corpus if present (skipped gracefully if not). Each
+measurement is a median of 3 runs, each run capped at 120s
+(`timeout`); a cap trip is recorded as a **documented skip**, not a
+silent omission. `serialize_nq` and `canonicalize` numbers are
+end-to-end (parse included) — the CLI has no parse-once/format-many
+entry point.
+
+Outputs `docs/test-results/perf-parse-serialize.json` (machine-
+readable) and `.../perf-parse-serialize.fragment.html` (included
+fail-soft by `formal/fstar/generate-report.sh` into the public
+dashboard). CI: the `parse-serialize-bench` job in
+`.github/workflows/ukparliament-bench.yml`.
+
+**Known anomaly (measured 2026-07-04, committed `bin/linux-x86_64`):**
+`factoidal count` scales as expected (~80-90k triples/s through 1M,
+consistent with the baselines above), but `factoidal-dump-nq` and
+`factoidal canonicalize` are severely superlinear on the *same*
+triple-only (no-bnode) fixtures — e.g. `dump-nq` on 1,000 triples
+takes ~0.65s but on 2,000 triples takes ~12.9s (should be ~1.3s if
+linear). `canonicalize` shows the same shape (1,000: ~0.46s; 2,000:
+~8.6s). Both hit the 120s/run cap well before 100k triples. RDF/XML
+parsing separately crashes with `Stack overflow` above ~10k triples
+(likely non-tail-recursive descent in the XML/RDF-XML parser). None
+of these are fixed by this benchmarking work — they are flagged here
+per the "perf opportunism" standing order below; a GitHub issue
+should be filed before anyone relies on `dump-nq`/`canonicalize`/
+RDF-XML at scale.
+
 ### Query latency — UK Parliament bench
 
 `tools/bench_ukpar_modern.py` (and the older `bench_ukpar_queries.py`)

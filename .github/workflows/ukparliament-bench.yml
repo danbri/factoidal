@@ -203,3 +203,138 @@ jobs:
             /tmp/factoidal-daemon.log
           if-no-files-found: ignore
           retention-days: 14
+
+  # ---------------------------------------------------------------------
+  # parse-serialize-bench — parse + serialize throughput, against the
+  # committed binary (no toolchain build). Separate job from `bench`
+  # above so a query-bench daemon hiccup can't take this down and
+  # vice versa; same lightweight "committed binary only" character as
+  # the query bench, so it lives in this workflow rather than the
+  # heavy w3c-tests.yml pipeline (which needs a full opam/F* build and
+  # is debounced/~25min — the wrong home for a script whose whole
+  # point is running without a toolchain). Commits
+  # docs/test-results/perf-parse-serialize.json (+ the dashboard HTML
+  # fragment) using the same fetch/reset/reapply pattern w3c-tests.yml
+  # and dashboard-refresh.yml use to avoid racing concurrent CI
+  # pushes. See tools/bench-parse-serialize.sh and
+  # skills/perf-benchmarking/SKILL.md.
+  # ---------------------------------------------------------------------
+  parse-serialize-bench:
+    runs-on: ubuntu-latest
+    # Parse throughput is fast; factoidal-dump-nq / canonicalize have a
+    # known superlinear-scaling issue (see script header + perf docs)
+    # that can trip the 120s per-run cap several times across the
+    # size matrix. Budget generously so a slow (not hung) run doesn't
+    # get killed by the job timeout instead of the script's own cap.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Verify pre-built linux binaries are committed
+        id: bin_check
+        run: |
+          set -euo pipefail
+          FACTOIDAL_BIN=bin/linux-x86_64/factoidal
+          DUMPNQ_BIN=bin/linux-x86_64/factoidal-dump-nq
+          if [ ! -x "$FACTOIDAL_BIN" ] || [ ! -x "$DUMPNQ_BIN" ]; then
+            echo "::warning::$FACTOIDAL_BIN and/or $DUMPNQ_BIN not found or not executable; bench skipped."
+            echo "have_bin=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "have_bin=1" >> "$GITHUB_OUTPUT"
+
+      - name: Run parse + serialize bench
+        id: bench
+        if: steps.bin_check.outputs.have_bin == '1'
+        run: |
+          set -euo pipefail
+          BENCH_RC=0
+          ./tools/bench-parse-serialize.sh 2>&1 | tee /tmp/parse-serialize-bench.log || BENCH_RC=$?
+          echo "bench rc=$BENCH_RC"
+          # Non-zero here means the script itself errored out (e.g.
+          # missing binaries after all, or a bad arg) -- individual
+          # slow/crashing measurements are recorded as documented
+          # skips inside the JSON, not script failures.
+          if [ "$BENCH_RC" -ne 0 ]; then
+            echo "::error::bench-parse-serialize.sh exited $BENCH_RC"
+            exit "$BENCH_RC"
+          fi
+
+      - name: Commit + push perf-parse-serialize artifacts
+        if: >-
+          github.ref == 'refs/heads/claude/main' &&
+          steps.bin_check.outputs.have_bin == '1'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          PAYLOAD=$(mktemp -d)
+          for f in docs/test-results/perf-parse-serialize.json \
+                   docs/test-results/perf-parse-serialize.fragment.html; do
+            if [ -f "$f" ]; then
+              mkdir -p "$PAYLOAD/$(dirname "$f")"
+              cp -a "$f" "$PAYLOAD/$f"
+            fi
+          done
+
+          PUSH_RC=1
+          for attempt in 1 2 3 4 5; do
+            echo "Push attempt $attempt for perf-parse-serialize artifacts..."
+            git fetch origin "${GITHUB_REF_NAME}"
+            git reset --hard "origin/${GITHUB_REF_NAME}"
+
+            for f in docs/test-results/perf-parse-serialize.json \
+                     docs/test-results/perf-parse-serialize.fragment.html; do
+              src="$PAYLOAD/$f"
+              if [ -e "$src" ]; then
+                mkdir -p "$(dirname "$f")"
+                cp -a "$src" "$f"
+              fi
+            done
+
+            git add -A docs/test-results/perf-parse-serialize.json \
+                       docs/test-results/perf-parse-serialize.fragment.html
+
+            if git diff --cached --quiet; then
+              echo "No perf-parse-serialize changes vs origin tip; nothing to commit."
+              PUSH_RC=0
+              break
+            fi
+
+            git commit -m "ci: refresh parse+serialize perf bench"
+
+            if git push origin "HEAD:${GITHUB_REF_NAME}"; then
+              PUSH_RC=0
+              echo "Push succeeded on attempt $attempt."
+              break
+            fi
+            echo "::warning::git push failed on attempt $attempt — origin moved; retrying with fresh fetch"
+            sleep $((attempt * 3))
+          done
+
+          rm -rf "$PAYLOAD" || true
+
+          if [ "$PUSH_RC" -ne 0 ]; then
+            echo "::error::Failed to push perf-parse-serialize artifacts after 5 attempts"
+            exit "$PUSH_RC"
+          fi
+
+      - name: Upload parse+serialize bench artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parse-serialize-bench-${{ github.run_id }}
+          path: |
+            docs/test-results/perf-parse-serialize.json
+            docs/test-results/perf-parse-serialize.fragment.html
+            /tmp/parse-serialize-bench.log
+          if-no-files-found: ignore
+          retention-days: 14

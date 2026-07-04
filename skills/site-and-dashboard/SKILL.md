@@ -104,6 +104,7 @@ Turtle graphs into named graphs and serves them with
 | Front-page build-targets table | `docs/index.md` | humans/agents | update when a target (native/JS/wasm/C) changes status |
 | Scope decisions | `docs/claude-rules/scope.md` | humans/agents | update **in the same commit** as the scope-changing code |
 | Parser perf status | `docs/designissues/parser-speed-status.md`, `turtle-parser-metrics.md` | humans/agents | only with fresh measurements (see `perf-benchmarking`) |
+| Parse/serialize throughput | `docs/test-results/perf-parse-serialize.json` (+ `.fragment.html`, surfaced in the dashboard `index.html`) | `tools/bench-parse-serialize.sh` via the `parse-serialize-bench` job in `ukparliament-bench.yml` | committed-binary only, no toolchain; update via the harness, never by hand |
 
 When any session notices a hand-maintained number contradicting
 `latest.json` or a fresh measurement, fixing it is in-scope for that
