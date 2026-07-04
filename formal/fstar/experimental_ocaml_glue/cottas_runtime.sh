@@ -377,11 +377,16 @@ module Ballyhoo_cottas_runtime = struct
       match expected with
       | FStar_Pervasives_Native.None -> true
       | FStar_Pervasives_Native.Some e -> Z.equal e actual in
+    (* issue #267: cbqp_g is the 3-way cottas_graph_bound. In the cache
+       rows, qr_g = None is a default-graph row (the DEFAULT sentinel),
+       Some id a named-graph row. *)
     let match_graph expected actual =
       match expected, actual with
-      | FStar_Pervasives_Native.None, _ -> true
-      | FStar_Pervasives_Native.Some e, Some a -> Z.equal e a
-      | FStar_Pervasives_Native.Some _, None -> false in
+      | CGB_Unbound, _ -> true
+      | CGB_Default, None -> true
+      | CGB_Default, Some _ -> false
+      | CGB_Named e, Some a -> Z.equal e a
+      | CGB_Named _, None -> false in
     List.fold_right (fun row acc ->
       if match_opt bound.cbqp_s row.qr_s &&
          match_opt bound.cbqp_p row.qr_p &&
@@ -494,7 +499,7 @@ let cottas_predicate_present_in_graph (ng : cottas_named_graph_store)
       cbqp_s = FStar_Pervasives_Native.None;
       cbqp_p = FStar_Pervasives_Native.Some pred_ref;
       cbqp_o = FStar_Pervasives_Native.None;
-      cbqp_g = FStar_Pervasives_Native.Some ng.cngs_ref;
+      cbqp_g = CGB_Named ng.cngs_ref;
     } > Prims.int_zero
 
 let cottas_graph_candidates_for_predicate (ds : cottas_dataset_store)

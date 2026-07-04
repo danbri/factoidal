@@ -74,18 +74,6 @@ run_backend_checks () {
     "$("${BIN}" query ${data_flag} "${data_b}" -e "${Q_ASK_DEFAULT}" 2>/dev/null | ask_of)"
 }
 
-known_fail_count=0
-known_fail () {
-  local name="$1" expected="$2" actual="$3"
-  if [[ "${actual}" == "${expected}" ]]; then
-    echo "PASS ${name} (FIXED — flip this back to check(); see issue #267)"
-    pass_count=$((pass_count + 1))
-  else
-    echo "KNOWN-FAIL ${name} (issue #267): expected [${expected}] got [${actual}]"
-    known_fail_count=$((known_fail_count + 1))
-  fi
-}
-
 # In-memory backend.
 run_backend_checks "inmem" "--data" "${WORKDIR}/empty_default.nq" "${WORKDIR}/mixed.nq"
 
@@ -106,15 +94,12 @@ con.executemany("INSERT INTO t VALUES (?,?,?,?)", rows)
 con.execute(f"COPY t TO '{w}/{name}.cottas' (FORMAT PARQUET, COMPRESSION ZSTD, DICTIONARY_SIZE_LIMIT 0, PARQUET_VERSION V2)")
 PY
 done
-# COTTAS checks are KNOWN-FAIL pending issue #267 (default-graph
-# union + generic GRAPH returning nothing on the on-disk backend).
-saved_check=$(declare -f check)
-eval "orig_${saved_check}"
-check () { known_fail "$@"; }
+# issue #267 landed 2026-07-04: the COTTAS backend now enforces the
+# same dataset semantics as the in-memory path, so these are hard
+# checks (they were KNOWN-FAIL while the fix was pending).
 run_backend_checks "cottas" "--data-cottas" "${WORKDIR}/empty_default.cottas" "${WORKDIR}/mixed.cottas"
-eval "${saved_check}"
 
-echo "pass=${pass_count} fail=${fail_count} known_fail=${known_fail_count} (known-fail = issue #267)"
+echo "pass=${pass_count} fail=${fail_count}"
 if [[ "${fail_count}" -ne 0 ]]; then
   exit 1
 fi

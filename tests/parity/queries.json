@@ -12,8 +12,7 @@
       "query": "SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }",
       "expect": {
         "single_value": "0"
-      },
-      "known_divergent": "issue #267 \u2014 COTTAS BGP unions all quads into the default graph"
+      }
     },
     {
       "name": "empty-default-graph-count",
@@ -29,8 +28,7 @@
       "query": "ASK { ?s ?p ?o }",
       "expect": {
         "boolean": false
-      },
-      "known_divergent": "issue #267 \u2014 COTTAS BGP unions all quads into the default graph"
+      }
     },
     {
       "name": "empty-default-ask-graph",
@@ -62,8 +60,7 @@
       "query": "SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }",
       "expect": {
         "single_value": "4"
-      },
-      "known_divergent": "issue #267 \u2014 COTTAS BGP unions all quads into the default graph"
+      }
     },
     {
       "name": "mixed-graph-count",
@@ -79,8 +76,7 @@
       "query": "SELECT ?s WHERE { ?s ?p ?o }",
       "expect": {
         "rows": 4
-      },
-      "known_divergent": "issue #267 \u2014 COTTAS BGP unions all quads into the default graph"
+      }
     },
     {
       "name": "mixed-union-default-and-graph",
@@ -88,8 +84,7 @@
       "query": "SELECT ?s WHERE { { ?s ?p ?o } UNION { GRAPH ?g { ?s ?p ?o } } }",
       "expect": {
         "rows": 9
-      },
-      "known_divergent": "issue #267 \u2014 BGP branch unions all quads on COTTAS (GRAPH branch is correct on DLBA-clean artifacts)"
+      }
     },
     {
       "name": "mixed-named-graph-iri-count",
@@ -114,8 +109,7 @@
       "ordered": true,
       "expect": {
         "rows": 4
-      },
-      "known_divergent": "issue #267 \u2014 COTTAS BGP unions all quads into the default graph"
+      }
     },
     {
       "name": "people-count-all",
@@ -293,8 +287,7 @@
       "query": "SELECT ?x WHERE { <http://ex.org/alice> <http://xmlns.com/foaf/0.1/knows>+ ?x }",
       "expect": {
         "rows": 3
-      },
-      "known_divergent": "issue #268 \u2014 property paths return zero rows on the CLI/backend eval path"
+      }
     },
     {
       "name": "people-path-knows-name-seq",
@@ -302,8 +295,7 @@
       "query": "SELECT ?n WHERE { <http://ex.org/alice> <http://xmlns.com/foaf/0.1/knows>/<http://xmlns.com/foaf/0.1/name> ?n }",
       "expect": {
         "rows": 1
-      },
-      "known_divergent": "issue #268 \u2014 property paths return zero rows on the CLI/backend eval path"
+      }
     }
   ]
 }

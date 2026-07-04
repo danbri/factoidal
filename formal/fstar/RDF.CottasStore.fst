@@ -406,6 +406,41 @@ assume val ondisk_id_to_obj_token_global :
 assume val ondisk_id_to_graph_token_global :
   (path : string) -> (id : nat) -> Tot (option string)
 
+// Query-time scope for GB_CottasOnDisk (issue #267). Replaces the
+// former `option iri` second field of that constructor, which let
+// `None` be read by `cottas_ondisk_build_bound_qp_opt` as "no graph
+// constraint" even when it was meant as "this IS the default-graph
+// backend" — the bound layer then matched every row, default and
+// named alike (a plain BGP over the default graph unioned in every
+// named graph's rows).
+//   - COS_DefaultOnly : this backend represents ONLY the DEFAULT-
+//     sentinel rows (docs/cottas-format-v1.md section 6).
+//   - COS_NamedGraph iri : this backend represents ONLY rows whose
+//     graph column resolves to that IRI.
+// There is no "unrestricted" constructor: every GB_CottasOnDisk value
+// built by `cottas_ondisk_dataset_backend` (SPARQL11.Store.fst) is one
+// or the other, never "match anything."
+type cottas_ondisk_graph_scope =
+  | COS_DefaultOnly : cottas_ondisk_graph_scope
+  | COS_NamedGraph  : iri -> cottas_ondisk_graph_scope
+
+// Translate a `cottas_graph_bound` into the raw graph-column token the
+// row-walkers' `graph_cell_match` compares against (issue #267). This
+// is where the DEFAULT-scope fix actually lands: `CGB_Default` yields
+// `Some "DEFAULT"`, so a default-graph query bound now filters OUT
+// named-graph rows the same way a `CGB_Named r` bound filters out
+// every OTHER named graph (and the default rows). `CGB_Unbound` (only
+// reachable from the dead in-memory GB_COTTAS path — see
+// Parser.BallyhooCOTTAS.cottas_build_bound_qp) still yields `None`,
+// matching its pre-existing "no constraint" contract; no live
+// GB_CottasOnDisk caller produces it.
+let graph_bound_to_raw_token (path : string) (gb : cottas_graph_bound)
+  : Tot (option string) =
+  match gb with
+  | CGB_Unbound -> None
+  | CGB_Default -> Some "DEFAULT"
+  | CGB_Named r -> ondisk_id_to_graph_token_global path r
+
 // Bet7-aware mirror of `id_to_raw_token`. Used by cottas_ondisk_search
 // / _estimate / _search_limited to translate the user-supplied
 // `cottas_term_ref` (= nat id from cottas_ondisk_encode_*) to the raw
@@ -1169,7 +1204,11 @@ let cottas_ondisk_search
   let bound_s = id_to_raw_token_via_global ondisk_id_to_subj_token_global  h.coh_path bound.cbqp_s in
   let bound_p = id_to_raw_token_via_global ondisk_id_to_pred_token_global  h.coh_path bound.cbqp_p in
   let bound_o = id_to_raw_token_via_global ondisk_id_to_obj_token_global   h.coh_path bound.cbqp_o in
-  let bound_g = id_to_raw_token_via_global ondisk_id_to_graph_token_global h.coh_path bound.cbqp_g in
+  // issue #267: cbqp_g is now a 3-way cottas_graph_bound (Unbound /
+  // Default / Named), not a plain option; graph_bound_to_raw_token
+  // resolves CGB_Default to the literal "DEFAULT" sentinel token
+  // instead of leaving the graph column unconstrained.
+  let bound_g = graph_bound_to_raw_token h.coh_path bound.cbqp_g in
   match probe_parquet_row_group_count h.coh_path with
   | None -> []
   | Some rg_count ->
@@ -1392,7 +1431,11 @@ let cottas_ondisk_search_limited
   let bound_s = id_to_raw_token_via_global ondisk_id_to_subj_token_global  h.coh_path bound.cbqp_s in
   let bound_p = id_to_raw_token_via_global ondisk_id_to_pred_token_global  h.coh_path bound.cbqp_p in
   let bound_o = id_to_raw_token_via_global ondisk_id_to_obj_token_global   h.coh_path bound.cbqp_o in
-  let bound_g = id_to_raw_token_via_global ondisk_id_to_graph_token_global h.coh_path bound.cbqp_g in
+  // issue #267: cbqp_g is now a 3-way cottas_graph_bound (Unbound /
+  // Default / Named), not a plain option; graph_bound_to_raw_token
+  // resolves CGB_Default to the literal "DEFAULT" sentinel token
+  // instead of leaving the graph column unconstrained.
+  let bound_g = graph_bound_to_raw_token h.coh_path bound.cbqp_g in
   match probe_parquet_row_group_count h.coh_path with
   | None -> []
   | Some rg_count ->
@@ -1421,9 +1464,26 @@ let cottas_ondisk_estimate
   let bound_s = id_to_raw_token_via_global ondisk_id_to_subj_token_global  h.coh_path bound.cbqp_s in
   let bound_p = id_to_raw_token_via_global ondisk_id_to_pred_token_global  h.coh_path bound.cbqp_p in
   let bound_o = id_to_raw_token_via_global ondisk_id_to_obj_token_global   h.coh_path bound.cbqp_o in
-  let bound_g = id_to_raw_token_via_global ondisk_id_to_graph_token_global h.coh_path bound.cbqp_g in
+  // issue #267: cbqp_g is now a 3-way cottas_graph_bound (Unbound /
+  // Default / Named), not a plain option; graph_bound_to_raw_token
+  // resolves CGB_Default to the literal "DEFAULT" sentinel token
+  // instead of leaving the graph column unconstrained.
+  let bound_g = graph_bound_to_raw_token h.coh_path bound.cbqp_g in
   let any_bound_present =
     Some? bound_s || Some? bound_p || Some? bound_o || Some? bound_g in
+  // issue #267 interaction: post-fix, every GB_CottasOnDisk backend
+  // (default-graph OR named-graph) resolves cbqp_g to CGB_Default or
+  // CGB_Named, so `bound_g` above is `Some _` for EVERY on-disk query,
+  // never plain `None` — `any_bound_present` is therefore always true
+  // for a real GB_CottasOnDisk call, and the whole-store `num_rows`
+  // shortcut just below is reachable only via the dead in-memory
+  // GB_COTTAS path's CGB_Unbound (see cottas_build_bound_qp in
+  // Parser.BallyhooCOTTAS.fst — no live constructor builds that path
+  // today). Concretely: `backend_estimate` on the default-graph backend
+  // now always takes the bounds-present branch below, which is correct
+  // — the pre-#267 shortcut would have returned the WHOLE STORE's
+  // row count for a default-graph-only estimate, over-counting by
+  // every named graph's rows.
   if not any_bound_present then
     // Aleph6 (issue #100, demo prep): unbound COUNT(*) fast path.
     // The total row count is encoded in the parquet metadata's
@@ -1503,7 +1563,30 @@ let cottas_ondisk_count_exact
   let bound_s = id_to_raw_token_via_global ondisk_id_to_subj_token_global  h.coh_path bound.cbqp_s in
   let bound_p = id_to_raw_token_via_global ondisk_id_to_pred_token_global  h.coh_path bound.cbqp_p in
   let bound_o = id_to_raw_token_via_global ondisk_id_to_obj_token_global   h.coh_path bound.cbqp_o in
-  let bound_g = id_to_raw_token_via_global ondisk_id_to_graph_token_global h.coh_path bound.cbqp_g in
+  // issue #267: cbqp_g is now a 3-way cottas_graph_bound (Unbound /
+  // Default / Named), not a plain option; graph_bound_to_raw_token
+  // resolves CGB_Default to the literal "DEFAULT" sentinel token
+  // instead of leaving the graph column unconstrained.
+  let bound_g = graph_bound_to_raw_token h.coh_path bound.cbqp_g in
+  // issue #267 / COUNT(*) fast-path reasoning: `bound_g` is the query
+  // RESULT-relevant graph constraint, and post-fix it is `Some
+  // "DEFAULT"` for the default-graph backend and `Some "<iri>"` for a
+  // named-graph backend — plain `None` only arises from the dead
+  // in-memory GB_COTTAS/CGB_Unbound path (see graph_bound_to_raw_token
+  // above). So the whole-store `num_rows` shortcut immediately below
+  // (all four bounds `None`) is NOT reachable for a real
+  // GB_CottasOnDisk query anymore: `SELECT (COUNT(*) AS ?n) WHERE
+  // { ?s ?p ?o }` against the default graph now has `bound_g = Some
+  // "DEFAULT"`, so it falls into the `else` branch, and since s/p/o
+  // are all unbound there it takes the graph-only
+  // `walk_row_groups_count_graph_global` path — a single-column
+  // (graph column only) walk that counts ONLY rows whose token equals
+  // the bound (`"DEFAULT"` or a specific named-graph IRI). This is
+  // still cheap (one column decode per row group, no s/p/o decode) and
+  // now correct: pre-#267 the unbound branch counted the WHOLE STORE
+  // (every named graph's rows included) whenever COUNT(*) ran with no
+  // other bound, which is exactly the union-default bug issue #267
+  // reports for GROUP BY ?g / whole-graph counts.
   if None? bound_s && None? bound_p && None? bound_o && None? bound_g then
     (match probe_parquet_num_rows h.coh_path with
      | Some n -> n
@@ -1528,17 +1611,34 @@ let cottas_ondisk_count_exact
 // These compose the encode/decode primitives and are pure F*.
 // ----------------------------------------------------------------------
 
-// Build a bound query-pattern from a triple-pattern + a graph-IRI bound.
-// Returns None when any bound term is absent from the dictionary,
-// meaning a definitively empty result.
+// Build a bound query-pattern from a triple-pattern + a graph SCOPE
+// (issue #267 — `scope` replaces the former plain `option iri`, which
+// let the default-graph backend pass `None` through to `cbqp_g` and
+// be read downstream as "no graph constraint" instead of "constrain to
+// DEFAULT-sentinel rows"). Returns None when any bound term (including
+// a COS_NamedGraph IRI absent from this corpus's graph dictionary) is
+// absent from the dictionary, meaning a definitively empty result.
 let cottas_ondisk_build_bound_qp_opt
   (ds : cottas_ondisk_store)
-  (s : option subject) (p : option wf_iri) (o : option rdf_term) (g : option iri)
+  (s : option subject) (p : option wf_iri) (o : option rdf_term)
+  (scope : cottas_ondisk_graph_scope)
   : option cottas_bound_qp =
   let s' = match s with | None -> Some None | Some sv -> (match cottas_ondisk_encode_subject ds sv with | None -> None | Some r -> Some (Some r)) in
   let p' = match p with | None -> Some None | Some pv -> (match cottas_ondisk_encode_predicate ds pv with | None -> None | Some r -> Some (Some r)) in
   let o' = match o with | None -> Some None | Some ov -> (match cottas_ondisk_encode_object ds ov with | None -> None | Some r -> Some (Some r)) in
-  let g' = match g with | None -> Some None | Some gv -> (match cottas_ondisk_encode_graph_name ds gv with | None -> None | Some r -> Some (Some r)) in
+  // COS_DefaultOnly always resolves — the DEFAULT sentinel needs no
+  // dictionary lookup (graph_bound_to_raw_token maps CGB_Default
+  // straight to the literal token "DEFAULT"). COS_NamedGraph resolves
+  // via the graph-name dictionary exactly as the old `Some iri` branch
+  // did; an unknown graph IRI still makes the whole bound — and
+  // therefore the query — definitively empty.
+  let g' : option cottas_graph_bound =
+    match scope with
+    | COS_DefaultOnly -> Some CGB_Default
+    | COS_NamedGraph gv ->
+      (match cottas_ondisk_encode_graph_name ds gv with
+       | None -> None
+       | Some r -> Some (CGB_Named r)) in
   match s', p', o', g' with
   | Some sb, Some pb, Some ob, Some gb ->
     Some { cbqp_s = sb; cbqp_p = pb; cbqp_o = ob; cbqp_g = gb }

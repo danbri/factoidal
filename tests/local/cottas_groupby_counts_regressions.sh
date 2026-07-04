@@ -59,7 +59,12 @@ con.execute(f"COPY t TO '{w}/data.cottas' (FORMAT PARQUET, COMPRESSION ZSTD, DIC
 PY
 
 Q_GROUP='SELECT ?g (COUNT(*) AS ?n) WHERE { GRAPH ?g { ?s ?p ?o } } GROUP BY ?g ORDER BY DESC(?n)'
+# issue #267: a bare BGP matches the DEFAULT GRAPH ONLY (11 rows here);
+# the pre-#267 expectation of 818 encoded the union bug this suite now
+# guards against. The union query preserves issue #21's exact-count
+# coverage (818 = 11 default + 500 + 300 + 7 named).
 Q_TOTAL='SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }'
+Q_TOTAL_UNION='SELECT (COUNT(*) AS ?n) WHERE { { ?s ?p ?o } UNION { GRAPH ?g { ?s ?p ?o } } }'
 
 group_out="$("${BIN}" query --data-cottas "${WORKDIR}/data.cottas" -e "${Q_GROUP}" 2>/dev/null \
   | grep -oE 'graph/g[0-9]> \| "[0-9]+"' | tr -d '|"' | tr -s ' ' | paste -sd, -)"
@@ -67,7 +72,15 @@ check "cottas-groupby-exact" "graph/g1> 500,graph/g2> 300,graph/g3> 7" "${group_
 
 total_out="$("${BIN}" query --data-cottas "${WORKDIR}/data.cottas" -e "${Q_TOTAL}" 2>/dev/null \
   | grep -oE '"[0-9]+"' | head -1 | tr -d '"')"
-check "cottas-count-star-exact" "818" "${total_out}"
+check "cottas-count-star-default-only" "11" "${total_out}"
+
+total_union_out="$("${BIN}" query --data-cottas "${WORKDIR}/data.cottas" -e "${Q_TOTAL_UNION}" 2>/dev/null \
+  | grep -oE '"[0-9]+"' | head -1 | tr -d '"')"
+check "cottas-count-star-union-exact" "818" "${total_union_out}"
+
+mem_total_out="$("${BIN}" query --data "${WORKDIR}/multi.nq" -e "${Q_TOTAL}" 2>/dev/null \
+  | grep -oE '"[0-9]+"' | head -1 | tr -d '"')"
+check "inmem-count-star-parity" "${total_out}" "${mem_total_out}"
 
 # In-memory answers must agree (cross-backend parity on counts).
 mem_out="$("${BIN}" query --data "${WORKDIR}/multi.nq" -e "${Q_GROUP}" 2>/dev/null \

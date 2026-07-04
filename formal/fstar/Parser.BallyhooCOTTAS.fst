@@ -50,11 +50,33 @@ assume type cottas_handle
 type cottas_term_ref = nat
 type cottas_graph_ref = nat
 
+// Graph-column bound for a query pattern against a COTTAS-shaped quad
+// store (issue #267). Three explicit states, not the previous
+// `option cottas_graph_ref`, which conflated "no constraint on the
+// graph column" with "the caller means the default graph" — for the
+// on-disk backend that conflation let a plain BGP over the default
+// graph union in every named graph's rows too (see
+// RDF.CottasStore.cottas_ondisk_build_bound_qp_opt /
+// SPARQL11.Store.GB_CottasOnDisk).
+//   - CGB_Unbound : no constraint; any row (default or named) matches.
+//     Not produced by the on-disk backend post-#267 — kept for the
+//     in-memory `cottas_dataset_store` / GB_COTTAS path below, which
+//     has no live constructor today (dead code; SPARQL11.Store.fst
+//     never builds a `GB_COTTAS`).
+//   - CGB_Default : row must be a default-graph row (the on-disk
+//     "DEFAULT" sentinel token, docs/cottas-format-v1.md section 6).
+//   - CGB_Named r : row must belong to the named graph whose
+//     dictionary ref is `r`.
+type cottas_graph_bound =
+  | CGB_Unbound : cottas_graph_bound
+  | CGB_Default : cottas_graph_bound
+  | CGB_Named   : cottas_graph_ref -> cottas_graph_bound
+
 noeq type cottas_bound_qp = {
   cbqp_s : option cottas_term_ref;
   cbqp_p : option cottas_term_ref;
   cbqp_o : option cottas_term_ref;
-  cbqp_g : option cottas_graph_ref;
+  cbqp_g : cottas_graph_bound;
 }
 
 noeq type cottas_qp_row = {
@@ -136,7 +158,18 @@ let cottas_build_bound_qp (ds : cottas_dataset_store)
     cbqp_s = (match s with | None -> None | Some sv -> cottas_encode_subject ds sv);
     cbqp_p = (match p with | None -> None | Some pv -> cottas_encode_predicate ds pv);
     cbqp_o = (match o with | None -> None | Some ov -> cottas_encode_object ds ov);
-    cbqp_g = (match g with | None -> None | Some gv -> cottas_encode_graph_name ds gv);
+    // Dead-code path (no live GB_COTTAS constructor exists — see
+    // SPARQL11.Store.fst); preserved behaviour: no graph IRI given, or
+    // the given IRI isn't in this corpus's dictionary, both mean
+    // "no constraint" rather than "definitively empty," same as the
+    // pre-#267 shape. The on-disk backend below (cottas_ondisk_build_bound_qp_opt
+    // in RDF.CottasStore.fst) is the fixed, live path.
+    cbqp_g = (match g with
+      | None -> CGB_Unbound
+      | Some gv ->
+        (match cottas_encode_graph_name ds gv with
+         | None -> CGB_Unbound
+         | Some r -> CGB_Named r));
   }
 
 let cottas_row_to_quad (ds : cottas_dataset_store) (row : cottas_qp_row)

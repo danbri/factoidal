@@ -65,7 +65,8 @@ let main () =
     cbqp_s = FStar_Pervasives_Native.None;
     cbqp_p = FStar_Pervasives_Native.None;
     cbqp_o = FStar_Pervasives_Native.None;
-    cbqp_g = FStar_Pervasives_Native.None;
+    (* issue #267: CGB_Unbound = count every row, default and named. *)
+    cbqp_g = CGB_Unbound;
   } in
   let n = bench "cottas_ondisk_estimate (?s ?p ?o)" (fun () ->
     cottas_ondisk_estimate ds bound) in

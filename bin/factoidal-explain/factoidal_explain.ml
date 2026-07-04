@@ -310,7 +310,9 @@ let explain_triple_pattern_against_store
     (match s_bound with Some s -> FStar_Pervasives_Native.Some s | None -> FStar_Pervasives_Native.None)
     (match p_bound with Some p -> FStar_Pervasives_Native.Some p | None -> FStar_Pervasives_Native.None)
     (match o_bound with Some o -> FStar_Pervasives_Native.Some o | None -> FStar_Pervasives_Native.None)
-    FStar_Pervasives_Native.None
+    (* issue #267: a bare triple pattern estimates against the default
+       graph only, matching BGP dataset semantics. *)
+    C.COS_DefaultOnly
   in
   let bound_built, estimate = match bound_opt with
     | FStar_Pervasives_Native.None -> false, 0
@@ -552,8 +554,9 @@ let explain_query
   Printf.fprintf out "=== JOIN ORDER (per BGP) ===\n"; flush out;
   let bgps = bgps_in_query q in
   (* Build the GB_CottasOnDisk wrapper the engine uses, so we can call
-     F*'s real choose_best_tp_backend on it. None = default graph. *)
-  let gb = S.GB_CottasOnDisk (first_store, FStar_Pervasives_Native.None) in
+     F*'s real choose_best_tp_backend on it (issue #267: the scope arg
+     is now explicit — COS_DefaultOnly = default graph). *)
+  let gb = S.GB_CottasOnDisk (first_store, C.COS_DefaultOnly) in
   let render_order out_label order =
     Printf.fprintf out "  %s:" out_label;
     List.iter (fun tp ->

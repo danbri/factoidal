@@ -25,7 +25,12 @@ noeq type graph_backend =
   | GB_Indexed : indexed_graph -> graph_backend
   | GB_HDT : hdt_graph_store -> graph_backend
   | GB_COTTAS : cottas_dataset_store -> option iri -> graph_backend
-  | GB_CottasOnDisk : cottas_ondisk_store -> option iri -> graph_backend
+  // issue #267: second field is a scope (DefaultOnly | NamedGraph iri),
+  // not a plain `option iri` — see cottas_ondisk_dataset_backend below
+  // and RDF.CottasStore.cottas_ondisk_graph_scope for why the old
+  // `option iri` shape let the default-graph backend's `None` be
+  // read as "no graph constraint" instead of "DEFAULT rows only."
+  | GB_CottasOnDisk : cottas_ondisk_store -> cottas_ondisk_graph_scope -> graph_backend
   | GB_Union : list graph_backend -> graph_backend
 
 noeq type named_graph_backend = {
@@ -61,17 +66,20 @@ let indexed_dataset_backend (ds : rdf_dataset) : dataset_backend =
 (* Build a dataset_backend whose default + named graphs all dispatch to
    the same on-disk COTTAS store, with named-graph dispatch using the
    stored graph IRI as the bound. The default graph is the COTTAS rows
-   whose graph column is unbound (DEFAULT) — modelled as `GB_CottasOnDisk
-   _ None`. Each named graph is a separate `GB_CottasOnDisk` filtering
-   on its IRI (issue #100 Phase 2). *)
+   whose graph column carries the DEFAULT sentinel — modelled as
+   `GB_CottasOnDisk _ COS_DefaultOnly` (issue #267: previously
+   `GB_CottasOnDisk _ None`, which the bound layer read as "no graph
+   constraint," unioning every named graph's rows into a plain
+   default-graph BGP). Each named graph is a separate `GB_CottasOnDisk`
+   filtering on its IRI via `COS_NamedGraph` (issue #100 Phase 2). *)
 let cottas_ondisk_dataset_backend (cods : cottas_ondisk_store) : dataset_backend =
   {
-    dsb_default = GB_CottasOnDisk cods None;
+    dsb_default = GB_CottasOnDisk cods COS_DefaultOnly;
     dsb_named =
       List.Tot.map
         (fun (g : (iri & cottas_graph_ref)) ->
           let (gname, _) = g in
-          { ngb_name = gname; ngb_graph = GB_CottasOnDisk cods (Some gname) })
+          { ngb_name = gname; ngb_graph = GB_CottasOnDisk cods (COS_NamedGraph gname) })
         (cottas_ondisk_named_graphs cods)
   }
 
@@ -103,7 +111,7 @@ and backend_search (gb : graph_backend) (b : triple_pattern_bound) : list triple
   | GB_COTTAS cds graph_name ->
     let rows = cottas_search cds (cottas_build_bound_qp cds b.bs b.bp b.bo graph_name) in
     List.Tot.map fst (cottas_rows_to_quads cds rows)
-  | GB_CottasOnDisk cods graph_name ->
+  | GB_CottasOnDisk cods scope ->
     (* On-disk search: encode bounds → integer term-ids, walk per-row term-id
        arrays (no parsed terms), decode terms only for matched rows.
        If any bound term is absent from the dictionary the result is
@@ -111,7 +119,7 @@ and backend_search (gb : graph_backend) (b : triple_pattern_bound) : list triple
        Sin7 (2026-04-26): use the fused tail-rec
        `cottas_ondisk_rows_to_triples` to avoid the non-tail-rec
        `List.Tot.map fst` walk on 3M-row results. *)
-    (match cottas_ondisk_build_bound_qp_opt cods b.bs b.bp b.bo graph_name with
+    (match cottas_ondisk_build_bound_qp_opt cods b.bs b.bp b.bo scope with
      | None -> []
      | Some bound ->
        let rows = cottas_ondisk_search cods bound in
@@ -160,11 +168,11 @@ and backend_search_limited (gb : graph_backend) (b : triple_pattern_bound)
   (limit : nat)
   : Tot (list triple) =
   match gb with
-  | GB_CottasOnDisk cods graph_name ->
+  | GB_CottasOnDisk cods scope ->
     (* COTTAS-on-disk: real LIMIT pushdown — walker stops at `limit` rows.
        Sin7 (2026-04-26): tail-rec rows->triples to avoid stack overflow
        even at LIMIT=50000 if pushdown returns more than expected. *)
-    (match cottas_ondisk_build_bound_qp_opt cods b.bs b.bp b.bo graph_name with
+    (match cottas_ondisk_build_bound_qp_opt cods b.bs b.bp b.bo scope with
      | None -> []
      | Some bound ->
        let rows = cottas_ondisk_search_limited cods bound limit in
@@ -196,8 +204,8 @@ and backend_estimate (gb : graph_backend) (b : triple_pattern_bound) : nat =
     hdt_estimate hgs (hdt_build_bound_tp hgs b.bs b.bp b.bo)
   | GB_COTTAS cds graph_name ->
     cottas_estimate cds (cottas_build_bound_qp cds b.bs b.bp b.bo graph_name)
-  | GB_CottasOnDisk cods graph_name ->
-    (match cottas_ondisk_build_bound_qp_opt cods b.bs b.bp b.bo graph_name with
+  | GB_CottasOnDisk cods scope ->
+    (match cottas_ondisk_build_bound_qp_opt cods b.bs b.bp b.bo scope with
      | None -> 0
      | Some bound -> cottas_ondisk_estimate cods bound)
   | GB_Union members ->
@@ -220,8 +228,8 @@ let rec union_backend_count_exact (members : list graph_backend) (b : triple_pat
 
 and backend_count_exact (gb : graph_backend) (b : triple_pattern_bound) : Tot nat (decreases gb) =
   match gb with
-  | GB_CottasOnDisk cods graph_name ->
-    (match cottas_ondisk_build_bound_qp_opt cods b.bs b.bp b.bo graph_name with
+  | GB_CottasOnDisk cods scope ->
+    (match cottas_ondisk_build_bound_qp_opt cods b.bs b.bp b.bo scope with
      | None -> 0
      | Some bound -> cottas_ondisk_count_exact cods bound)
   | GB_Union members -> union_backend_count_exact members b
@@ -662,8 +670,67 @@ let rec eval_pattern_backend (base : option wf_iri) (p : group_graph_pattern) (g
      | Some omega -> omega
      | None -> [])
 
-  | GP_PropertyPath _ _ _ ->
-    []
+  | GP_PropertyPath ps pp pt ->
+    // Issue #268: this case used to return [] unconditionally, so
+    // property-path queries (`knows+`, `knows/name`, …) silently
+    // evaluated empty on the CLI/HTTP (backend) path while the
+    // in-memory algebra path (eval_pattern_store's GP_PropertyPath
+    // arm, SPARQL11.Algebra.fst ~2242) implemented them correctly —
+    // dashboard-invisible, since the W3C runner exercises the
+    // in-memory path.
+    //
+    // Fix: materialise the CURRENT graph backend's triples via an
+    // unbound backend_search, then delegate to the exact same
+    // path-evaluation logic the algebra path uses:
+    // `eval_property_path_fwd` (forward-declared in SPARQL11.Algebra,
+    // realised to the concrete `eval_property_path` via
+    // 62_forward_ref_wiring.sh) plus `path_result_to_solutions`, plus
+    // the issue #66 Zero* reflexive-pair fixup so ZeroOrMore/ZeroOrOne
+    // constants that appear nowhere in the data still get their
+    // reflexive match. `backend_search gb { bs = None; bp = None;
+    // bo = None }` already returns `list triple`, which IS `rdf_graph`
+    // (`RDF.Graph.Executable.rdf_graph = list triple`) — no
+    // graph_to_store / build_indexed wrapping needed, since
+    // eval_property_path_fwd walks a plain triple list, not an
+    // indexed shape.
+    //
+    // perf: this walks the WHOLE graph/backend for every property-path
+    // pattern — same cost class as an unbound BGP scan. The
+    // COTTAS-on-disk backend pays a full row-group decode per call.
+    // A faster on-disk path (BFS/DFS over an indexed adjacency without
+    // materialising every triple) is a follow-up; correctness first
+    // per issue #268.
+    let materialized_graph : rdf_graph =
+      backend_search gb { bs = None; bp = None; bo = None } in
+    let pairs = eval_property_path_fwd pp materialized_graph in
+    let pairs =
+      match pp with
+      | PP_ZeroOrMore _ | PP_ZeroOrOne _ ->
+        let constant_terms : list rdf_term =
+          Lh.append_tr
+            (match ps with
+             | PS_IRI i   -> [T_IRI i]
+             | PS_BNode b -> [T_BNode b]
+             | PS_Var _   -> [])
+            (match pt with
+             | PT_IRI i     -> [T_IRI i]
+             | PT_BNode b   -> [T_BNode b]
+             | PT_Literal l -> [T_Literal l]
+             | PT_Var _     -> [])
+        in
+        let has_reflexive (t : rdf_term) : bool =
+          List.Tot.existsb
+            (fun (pair : rdf_term * rdf_term) ->
+              let (s, o) = pair in
+              rdf_term_eq s t && rdf_term_eq o t)
+            pairs
+        in
+        let new_terms = List.Tot.filter (fun t -> not (has_reflexive t)) constant_terms in
+        let new_reflexive = List.Tot.map (fun (n : rdf_term) -> (n, n)) new_terms in
+        Lh.append_tr pairs new_reflexive
+      | _ -> pairs
+    in
+    path_result_to_solutions ps pt pairs
 
 and eval_select_query_backend_bgp (q : query) (gb : graph_backend)
   : option solution_sequence =
