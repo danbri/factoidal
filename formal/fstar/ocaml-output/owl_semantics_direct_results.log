@@ -206,7 +206,7 @@
   [pe-running] somevaluesfrom2bnode
 Closure regime: RL
 OWL 2 test catalog: third_party/testing/owl/semantics-direct.rdf
-  parsed 12070 triples in 0.38s
+  parsed 12070 triples in 0.41s
 Totals: 482 test cases
   PositiveEntailmentTest:    206
   NegativeEntailmentTest:    23
@@ -219,22 +219,25 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   PASS  DisjointClasses-001
   PASS  DisjointClasses-003
   FAIL  New-Feature-DataQCR-001
-  FAIL  New-Feature-DisjointDataProperties-002
+  PASS  New-Feature-DisjointDataProperties-002
   PASS  New-Feature-DisjointObjectProperties-001
-  FAIL  New-Feature-DisjointObjectProperties-002
+  PASS  New-Feature-DisjointObjectProperties-002
   FAIL  New-Feature-DisjointUnion-001
   PASS  New-Feature-Keys-001
   PASS  New-Feature-Keys-003
   PASS  New-Feature-ObjectPropertyChain-001
-  FAIL/no-premise  New-Feature-ObjectPropertyChain-BJP-002
+  SKIP/functional-syntax-only  New-Feature-ObjectPropertyChain-BJP-002
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
   PASS  New-Feature-ObjectPropertyChain-BJP-003
   FAIL  New-Feature-ObjectQCR-001
-  FAIL  New-Feature-ObjectQCR-002
+  PASS  New-Feature-ObjectQCR-002
   PASS  New-Feature-ReflexiveProperty-001
   FAIL  New-Feature-SelfRestriction-001
   FAIL  New-Feature-SelfRestriction-002
-  FAIL/no-premise  Qualified-cardinality-boolean
-  FAIL/no-premise  Qualified-cardinality-restricted-int
+  SKIP/functional-syntax-only  Qualified-cardinality-boolean
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
+  SKIP/functional-syntax-only  Qualified-cardinality-restricted-int
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
   FAIL  WebOnt-AllDifferent-001
   PASS  WebOnt-AnnotationProperty-002
   FAIL/parse-premise  WebOnt-Class-001
@@ -268,8 +271,8 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   FAIL  WebOnt-I5.5-005
   FAIL  WebOnt-I5.8-004
   PASS  WebOnt-I5.8-006
-  FAIL  WebOnt-I5.8-008
-  FAIL  WebOnt-I5.8-009
+  PASS  WebOnt-I5.8-008
+  PASS  WebOnt-I5.8-009
   FAIL  WebOnt-I5.8-010
   PASS  WebOnt-I5.8-011
   FAIL  WebOnt-I5.8-017
@@ -422,7 +425,7 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   FAIL  rdfbased-sem-restrict-somevalues-inst-subj
   FAIL  somevaluesfrom2bnode
 
-Profile-RL PositiveEntailmentTests: 80 pass, 126 fail (out of 206) in 29.15s
+Profile-RL PositiveEntailmentTests: 85 pass, 118 fail (out of 203 RDF/XML tests), 3 skipped (functional-syntax-only) in 25.42s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
@@ -450,7 +453,7 @@ Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-someValuesFrom-002
 
-Profile-RL NegativeEntailmentTests: 19 pass, 4 fail (out of 23) in 1.44s
+Profile-RL NegativeEntailmentTests: 19 pass, 4 fail (out of 23) in 1.07s
 
 Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   FAIL/no-premise  Consistent Datatype restrictions with Different Types
@@ -807,7 +810,7 @@ Running 353 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL ConsistencyTests: 323 pass, 30 fail (out of 353) in 33.97s
+Profile-RL ConsistencyTests: 323 pass, 30 fail (out of 353) in 30.01s
 
 Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   FAIL/no-premise  Contradicting datatype Restrictions
@@ -939,4 +942,4 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   FAIL/unexpected-consistency  rdfbased-sem-restrict-maxqcr-inst-obj-zero
   FAIL/no-premise  string-integer-clash
 
-Profile-RL InconsistencyTests: 16 pass, 112 fail (out of 128) in 6.55s
+Profile-RL InconsistencyTests: 16 pass, 112 fail (out of 128) in 5.46s

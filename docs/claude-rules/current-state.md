@@ -1,8 +1,10 @@
 # Current State (Honest Assessment)
 
-Last refreshed: 2026-05-07 (W3C scores re-measured against
-`bin/linux-x86_64/w3c_runner --all`; OWL profile-RL re-measured against
-`bin/linux-x86_64/owl_runner`).
+Last refreshed: 2026-07-05 (wave-4 battery: SPARQL 631/0, RDF
+1031/0, RDFC-1.0 82 pass 3 fail 1 stub of 86, SHACL core 98/0
+report-isomorphism + sparql 17/5 of 22, OWL RL PE 27 pass 2 fail 1
+skip of 30, JSON-LD toRdf 374 pass 82 fail 11 skip of 467, RIF 4/0,
+backend parity + Jena probes + unit 21/21 + npm 60/61 all green).
 
 Spot-check 2026-07-03 (`bin/linux-x86_64/w3c_runner --all` on a fresh
 clone with submodules initialised): SPARQL 631 pass, 0 fail; RDF 1031
@@ -21,6 +23,23 @@ resolved `assume val`s).
 Toward the goal in CLAUDE.md (performant, compliant RDF/S + OWL +
 SHACL + RDFC + SPARQL engine). Re-rank when one lands; a dashboard
 red always jumps the queue.
+
+Landed 2026-07-05 wave 4 (all six agents gate-evidenced together):
+SHACL phase 3 — core 98 pass, 0 fail (of 98) under the suite's full
+report-isomorphism rule (was conforms-only), sh:sparql dispatch in
+pure F\* with 17 pass, 5 fail (of 22; fails = custom constraint
+components, documented); JSON-LD options block — toRdf 374 pass, 82
+fail, 11 skip (of 467, was 307): @direction/rdfDirection, property
+index containers, canonical xsd:double, well-formedness gates,
+@prefix, keyword-lookalikes; RIF — live in-browser demo (rifSmoke +
+general rifEval via Parser.RIFXML) AND bin/rif-runner running the 4
+vendored W3C RIF cases end-to-end: 4 pass, 0 fail (scope.md updated
+from "permanent SKIP" to supported subset); npm functional/dataflow
+API (fn.js: frozen FnDataset, backend interface for future on-disk
+COTTAS, builder seam for streaming parsers, memoized RDFC hashes,
+cell/derive); all demo pages migrated to the npm package (legacy
+client is now UI-only); unit run-all + build-ocaml.sh link order
+fixed for the new SHACL→SPARQL11_Parser dependency.
 
 Landed 2026-07-04 night wave: JSON-LD remote contexts + @import +
 document base via the JSONLD.Loader seam (issue #275 closed) - toRdf
@@ -102,15 +121,17 @@ in item 4 is where that class of bug goes to die.
    + case-insensitive comparison — fixes the known literal_eq gap
    where @en-US and @en-us compare unequal). JSON-LD phases 3-4 need
    RDF.IRI + RDF.Unicode, so extraction of those two leads.
-5. **SHACL** — `SHACL.Validation.fst` is a Phase-1 skeleton with a
-   stubbed validator (#181). The W3C suite is now vendored at
-   `third_party/testing/shacl` (data-shapes-test-suite, core +
-   sparql) but unwired. Target shape: not just a conformance row but
-   a **user-facing tool** — `factoidal validate --shapes shapes.ttl
-   data.ttl` — validator in F\*, CLI wiring in `bin/factoidal-cli/`.
-   Currently the largest gap between goal and engine. (Note:
-   `third_party/testing/shex` is ShEx, a different shapes language —
-   also unwired, lower priority.)
+5. **[DONE to phase 3, 2026-07-05] SHACL** — `SHACL.Validation.fst`
+   is a full validator: core 98 pass, 0 fail (of 98) under the
+   suite's report-isomorphism comparison; sh:sparql constraints in
+   pure F\* (17 pass, 5 fail of 22 — the 5 are the custom-components
+   extensibility mechanism, not attempted); `factoidal validate
+   --shapes` is the user tool. One `assume val` left
+   (`eval_sparql_target_select`, unreachable, #181 stub patch).
+   Remaining: custom constraint components, $shapesGraph/$currentShape
+   pre-binding, SPARQL-SELECT targets. (`third_party/testing/shex` is
+   ShEx, a different shapes language — program plan in
+   `docs/designissues/2026-07-05-shex-program-plan.md`.)
 6. **RDFC-1.0 as a tool** — the canonicalization algorithm exists in
    F\* (`RDF.Canonical.fst`) and is suite-tested (62 pass, 23 fail,
    1 skip of 86), but the CLI never exposes it. Add
@@ -205,7 +226,7 @@ Query planning and diagnostics:
 Miscellaneous support:
   Parquet.Footer.fst              2591 lines,  3 assume val
   RDF.Canonical.fst               1142 lines,  1 assume val
-  SHACL.Validation.fst             340 lines,  3 assume val (Phase 1 skeleton)
+  SHACL.Validation.fst            2546 lines,  1 assume val (phase 3: reports + sh:sparql)
   Parser.FastString.fst            210 lines,  7 assume val
   Parser.BallyhooHDTQ.fst          174 lines, 17 assume val
   Parser.BallyhooHDT.fst           173 lines, 13 assume val

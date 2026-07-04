@@ -130,6 +130,15 @@ let test_conclusion = test_ns ^ "rdfXmlConclusionOntology"
 let test_non_conclusion = test_ns ^ "rdfXmlNonConclusionOntology"
 let test_imported_ontology = test_ns ^ "importedOntology"
 let test_input_ontology   = test_ns ^ "rdfXmlInputOntology"
+(* Some catalog entries carry only a functional-syntax premise
+   (test:fsPremiseOntology / test:fsConclusionOntology) instead of an
+   RDF/XML one. This runner reads only the rdfXml* literals; when
+   test:normativeSyntax names FUNCTIONAL and no rdfXml premise is
+   present, run_positive_entailment reports an honest SKIP rather than
+   folding the test into FAIL/no-premise. See
+   docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7. *)
+let test_normative_syntax = test_ns ^ "normativeSyntax"
+let test_syntax_functional = test_ns ^ "FUNCTIONAL"
 let pos_entailment_iri = test_ns ^ "PositiveEntailmentTest"
 let neg_entailment_iri = test_ns ^ "NegativeEntailmentTest"
 let consistency_iri    = test_ns ^ "ConsistencyTest"
@@ -179,6 +188,8 @@ type test_case_info = {
   profiles    : StrSet.t;          (* set of test:profile values *)
   premise     : string option;     (* test:rdfXmlPremiseOntology literal *)
   conclusion  : string option;     (* test:rdfXmlConclusionOntology literal *)
+  normative_syntax : StrSet.t;     (* test:normativeSyntax objects, e.g.
+                                       &test;FUNCTIONAL / &test;RDFXML *)
   imports     : StrSet.t;          (* test:importedOntology link IRIs (catalog
                                        node IRIs that carry test:rdfXmlInputOntology
                                        literals); resolved at run time *)
@@ -191,6 +202,7 @@ let empty_info iri = {
   profiles = StrSet.empty;
   premise = None;
   conclusion = None;
+  normative_syntax = StrSet.empty;
   imports = StrSet.empty;
 }
 
@@ -234,6 +246,12 @@ let build_index (graph : triple list) : test_case_info list * (string, string) H
            match object_iri_opt t.o with
            | Some obj ->
              let info = { info with profiles = StrSet.add obj info.profiles } in
+             Hashtbl.replace tbl subj info
+           | None -> ()
+         end else if t.p = test_normative_syntax then begin
+           match object_iri_opt t.o with
+           | Some obj ->
+             let info = { info with normative_syntax = StrSet.add obj info.normative_syntax } in
              Hashtbl.replace tbl subj info
            | None -> ()
          end else if t.p = test_premise then begin
@@ -382,6 +400,16 @@ type outcome =
   | Fail_parse_conclusion
   | Fail_no_premise
   | Fail_no_conclusion
+  (* Catalog entry provides only a functional-syntax premise
+     (test:fsPremiseOntology, test:normativeSyntax FUNCTIONAL) with no
+     test:rdfXmlPremiseOntology at all — this runner only reads rdfXml*
+     literals (rule #4: parsers belong in F*; no functional-syntax
+     parser exists yet). Distinct from Fail_no_premise so the score
+     reports an honest "unsupported input syntax" outcome instead of
+     silently counting a syntax gap as a semantic failure. Counted
+     outside the pass/fail denominator. See
+     docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7. *)
+  | Skip_functional_syntax_only
 
 let outcome_tag = function
   | Pass -> "PASS"
@@ -393,6 +421,7 @@ let outcome_tag = function
   | Fail_parse_conclusion -> "FAIL/parse-conclusion"
   | Fail_no_premise -> "FAIL/no-premise"
   | Fail_no_conclusion -> "FAIL/no-conclusion"
+  | Skip_functional_syntax_only -> "SKIP/functional-syntax-only"
 
 let fuel_100 : Prims.nat = Z.of_int 100
 
@@ -503,7 +532,10 @@ let run_positive_entailment
   Printf.eprintf "  [pe-running] %s\n%!"
     (match info.identifier with Some id -> id | None -> info.iri);
   match info.premise, info.conclusion with
-  | None, _ -> Fail_no_premise
+  | None, _ ->
+    if StrSet.mem test_syntax_functional info.normative_syntax
+    then Skip_functional_syntax_only
+    else Fail_no_premise
   | _, None -> Fail_no_conclusion
   | Some p_lex, Some c_lex ->
     let p_src = expand_catalog_entities p_lex in
@@ -647,6 +679,14 @@ let print_outcome verbose info outcome =
   let tag = outcome_tag outcome in
   let id = identifier_display info in
   Printf.printf "  %s  %s\n" tag id;
+  (match outcome with
+   | Skip_functional_syntax_only ->
+     (* Reason printed unconditionally (not gated on -v): a SKIP that
+        silently omits its cause is exactly the "misleading test score"
+        anti-pattern #3 warns about. *)
+     Printf.printf
+       "      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)\n"
+   | _ -> ());
   if verbose then begin
     match outcome with
     | Fail_conclusion_miss t ->
@@ -756,10 +796,16 @@ let run_catalog ?(verbose=false) path =
       (fun acc (_, o) -> match o with Pass -> acc + 1 | _ -> acc)
       0 outcomes
   in
-  let fails = k - passes in
+  let skips =
+    List.fold_left
+      (fun acc (_, o) -> match o with Skip_functional_syntax_only -> acc + 1 | _ -> acc)
+      0 outcomes
+  in
+  let scored = k - skips in
+  let fails = scored - passes in
   Printf.printf "\n";
-  Printf.printf "Profile-RL PositiveEntailmentTests: %d pass, %d fail (out of %d) in %.2fs\n"
-    passes fails k (t_run1 -. t_run0);
+  Printf.printf "Profile-RL PositiveEntailmentTests: %d pass, %d fail (out of %d RDF/XML tests), %d skipped (functional-syntax-only) in %.2fs\n"
+    passes fails scored skips (t_run1 -. t_run0);
   Printf.printf "  (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)\n";
 
   (* Phase 2.1: NegativeEntailmentTest. Same closure path as Phase 1

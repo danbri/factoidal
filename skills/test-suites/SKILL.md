@@ -78,8 +78,9 @@ and drives three runners:
 | `w3c_runner --rdf` | N-Triples, Turtle, N-Quads, TriG, RDF/XML, rdf-mt | `formal/fstar/ocaml-output/rdf_results.log` |
 | `owl_runner` | OWL 2 RL PositiveEntailmentTests + 7 DL catalogs, each with its own timeout budget (60s–900s) | `owl_profile_rl_results.log` |
 | `rdfc10_runner` | RDF Dataset Canonicalization (RDFC-1.0) | `rdfc10_results.log` |
-| `shacl_runner` | W3C SHACL core suite (98 tests; conforms-only compare this slice). Baseline 2026-07-04: 91 pass, 7 fail - all 7 are declared slice boundaries | stdout |
-| `jsonld_runner` | W3C JSON-LD 1.1 toRdf manifest (467 tests; not yet folded into generate-report — run directly). Score 2026-07-04 night: 307 pass, 149 fail, 11 skip; remote contexts/@import (issue #275) are most of the remainder | stdout |
+| `shacl_runner` | W3C SHACL core suite (98 tests; full report-isomorphism compare by default, `--conforms-only` for the slice-1 floor). Baseline 2026-07-05: core 98 pass, 0 fail; sparql section (pass manifest path) 17 pass, 5 fail (of 22 — fails are custom constraint components) | stdout |
+| `jsonld_runner` | W3C JSON-LD 1.1 toRdf manifest (467 tests; not yet folded into generate-report — run directly). Score 2026-07-05: 374 pass, 82 fail, 11 skip; remaining clusters documented in the wave-4 agent report (type-scoped previous-context, protected-term granularity, processingMode 1.0 negatives) | stdout |
+| `rif_runner` | The 4 vendored W3C RIF Core cases (was permanent SKIP; scope.md updated 2026-07-05). Baseline: 4 pass, 0 fail | stdout |
 
 Outputs: `docs/test-results/index.html` (dashboard),
 `latest.csv` / `latest.json` (machine-readable),
@@ -125,9 +126,11 @@ keeps the old path as a fallback):
   `fstar-env` skill, §6).
 - `owl/` — vendored static drop of the W3C OWL 2 Test Cases.
 - `rdf-canon/` — submodule, RDFC-1.0 canonicalization tests.
-- `rif/tc/` — RIF test cases. The four RIF Core entailment tests are
-  **permanent SKIPs** per `docs/claude-rules/scope.md` (reported
-  skipped, not failed).
+- `rif/tc/` — RIF test cases. The four RIF Core entailment tests run
+  via `bin/rif-runner` (4 pass, 0 fail since 2026-07-05; supported
+  subset documented in `docs/claude-rules/scope.md`). `w3c_runner`
+  still reports its own RIF entries as skips — the runner of record
+  is `rif_runner`.
 - `json-ld/` — submodule of w3c/json-ld-api (vendored 2026-07-04; 837
   toRdf test files + manifests). Not yet wired; the conformance
   target is the **toRdf manifest only** (compact/flatten/frame are

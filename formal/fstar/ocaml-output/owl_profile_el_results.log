@@ -41,7 +41,8 @@ Running 29 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  New-Feature-Keys-001
   PASS  New-Feature-Keys-003
   PASS  New-Feature-ObjectPropertyChain-001
-  FAIL/no-premise  New-Feature-ObjectPropertyChain-BJP-002
+  SKIP/functional-syntax-only  New-Feature-ObjectPropertyChain-BJP-002
+      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)
   PASS  New-Feature-ObjectPropertyChain-BJP-003
   PASS  New-Feature-ReflexiveProperty-001
   FAIL  New-Feature-SelfRestriction-001
@@ -68,7 +69,7 @@ Running 29 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  chain2trans1
   FAIL  somevaluesfrom2bnode
 
-Profile-RL PositiveEntailmentTests: 20 pass, 9 fail (out of 29) in 14.02s
+Profile-RL PositiveEntailmentTests: 20 pass, 8 fail (out of 28 RDF/XML tests), 1 skipped (functional-syntax-only) in 12.08s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 6 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
@@ -79,7 +80,7 @@ Running 6 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fue
   FAIL/unexpected-entailment  WebOnt-equivalentClass-008
   PASS  WebOnt-miscellaneous-302
 
-Profile-RL NegativeEntailmentTests: 4 pass, 2 fail (out of 6) in 0.17s
+Profile-RL NegativeEntailmentTests: 4 pass, 2 fail (out of 6) in 0.13s
 
 Running 72 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  FS2RDF-different-individuals-2-annotation-ar
@@ -155,7 +156,7 @@ Running 72 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  owl2-rl-invalid-rightside-somevaluesfrom
   PASS  somevaluesfrom2bnode
 
-Profile-RL ConsistencyTests: 71 pass, 1 fail (out of 72) in 14.08s
+Profile-RL ConsistencyTests: 71 pass, 1 fail (out of 72) in 12.67s
 
 Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  DisjointClasses-002
@@ -173,4 +174,4 @@ Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   FAIL/unexpected-consistency  WebOnt-Thing-005
   FAIL/no-premise  string-integer-clash
 
-Profile-RL InconsistencyTests: 4 pass, 10 fail (out of 14) in 0.32s
+Profile-RL InconsistencyTests: 4 pass, 10 fail (out of 14) in 0.24s

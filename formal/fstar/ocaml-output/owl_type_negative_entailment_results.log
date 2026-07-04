@@ -10,7 +10,7 @@ Totals: 23 test cases
 
 Running 0 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
 
-Profile-RL PositiveEntailmentTests: 0 pass, 0 fail (out of 0) in 0.00s
+Profile-RL PositiveEntailmentTests: 0 pass, 0 fail (out of 0 RDF/XML tests), 0 skipped (functional-syntax-only) in 0.00s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
@@ -38,7 +38,7 @@ Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-someValuesFrom-002
 
-Profile-RL NegativeEntailmentTests: 19 pass, 4 fail (out of 23) in 1.49s
+Profile-RL NegativeEntailmentTests: 19 pass, 4 fail (out of 23) in 1.10s
 
 Running 23 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  New-Feature-Keys-004
@@ -65,4 +65,4 @@ Running 23 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-someValuesFrom-002
 
-Profile-RL ConsistencyTests: 23 pass, 0 fail (out of 23) in 1.65s
+Profile-RL ConsistencyTests: 23 pass, 0 fail (out of 23) in 1.24s
