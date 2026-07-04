@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Factoidal — JSON-LD Playground</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --fg: #222; --muted: #666; --bg: #fff; --surface: #f7f7f7;
+    --border: #e0e0e0; --brand: #2d6a4f; --brand-dark: #1b4332;
+    --error: #c0392b; --ok: #2d6a4f; --warn-bg: #fff4e6; --warn-border: #e67e22;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--fg); background: var(--bg); line-height: 1.5;
+  }
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 1.2em 1.5em 0.8em;
+  }
+  header h1 { margin: 0 0 0.1em; font-size: 1.5em; color: var(--brand-dark); }
+  header .tag { color: var(--muted); font-size: 0.92em; }
+  header a { color: var(--brand-dark); }
+  header .warn {
+    margin-top: 0.6em; padding: 0.5em 0.8em;
+    background: var(--warn-bg); border-left: 3px solid var(--warn-border);
+    font-size: 0.88em;
+  }
+  main { max-width: 1200px; margin: 0 auto; padding: 1.5em; }
+  .controls {
+    display: flex; gap: 0.6em; align-items: center; margin: 0 0 1em;
+    flex-wrap: wrap;
+  }
+  button.run, button.secondary {
+    border: none; padding: 0.55em 1.2em; font-weight: 600; cursor: pointer;
+    border-radius: 4px; font-family: inherit; font-size: 0.92em;
+  }
+  button.run { background: var(--brand); color: white; }
+  button.run:hover:not(:disabled) { background: var(--brand-dark); }
+  button.run:disabled { background: #aaa; cursor: wait; }
+  button.secondary { background: var(--bg); color: var(--fg); border: 1px solid var(--border); }
+  button.secondary:hover { background: var(--surface); }
+  .status { color: var(--muted); font-size: 0.85em; }
+  .status.ok  { color: var(--ok); }
+  .status.err { color: var(--error); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2em; align-items: start; }
+  @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+  .pane label {
+    display: block; font-size: 0.8em; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.3em;
+  }
+  textarea#input-jsonld {
+    width: 100%; min-height: 22em; resize: vertical;
+    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.85em;
+    padding: 0.7em; border: 1px solid var(--border); border-radius: 4px;
+    background: var(--surface);
+  }
+  textarea#input-jsonld:focus { outline: 2px solid var(--brand); outline-offset: -1px; background: #fff; }
+  .example-links { font-size: 0.85em; margin-top: 0.4em; color: var(--muted); }
+  .example-links a { color: var(--brand-dark); cursor: pointer; text-decoration: underline; margin-right: 1em; }
+
+  .tabs { display: inline-flex; border: 1px solid var(--border); border-radius: 4px;
+          overflow: hidden; background: var(--bg); margin-bottom: 0.6em; }
+  .tabs button {
+    background: transparent; color: var(--fg); font-weight: 500;
+    border: 0; border-radius: 0; padding: 0.4em 0.9em; font-size: 0.88em; cursor: pointer;
+  }
+  .tabs button + button { border-left: 1px solid var(--border); }
+  .tabs button.active { background: var(--brand); color: #fff; font-weight: 600; }
+
+  pre.out {
+    background: var(--surface); border: 1px solid var(--border);
+    padding: 0.8em; border-radius: 4px; white-space: pre-wrap; word-break: break-word;
+    max-height: 30em; overflow: auto; font: 0.82em/1.4 ui-monospace, Menlo, Consolas, monospace;
+    margin: 0;
+  }
+  pre.out.error { color: var(--error); background: #fff6f4; border-color: #f0c0c0; }
+  table.triples { width: 100%; border-collapse: collapse; font-size: 0.85em;
+    font-family: ui-monospace, Menlo, Consolas, monospace; }
+  table.triples thead th {
+    background: #eef; border-bottom: 2px solid var(--brand);
+    padding: 0.35em 0.6em; text-align: left; color: var(--brand-dark); font-weight: 600;
+  }
+  table.triples tbody td { padding: 0.3em 0.6em; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .out-wrap { border: 1px solid var(--border); border-radius: 4px; max-height: 30em; overflow: auto; }
+  .out-wrap table.triples { border: none; }
+  .empty-note { color: var(--muted); font-size: 0.88em; padding: 1em; text-align: center; }
+  footer { text-align: center; color: var(--muted); font-size: 0.85em; padding: 2em 1em; }
+  code { background: var(--surface); padding: 0.1em 0.3em; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Factoidal — JSON-LD Playground</h1>
+  <div class="tag">
+    Paste JSON-LD, hit <strong>Run</strong>. Parsing (<code>toRdf</code>) and
+    RDFC-1.0 canonicalization run in your browser, F*-extracted, loaded from
+    this site's own <code>npm/foafos</code> package mirror — no npm install,
+    no server round-trip.
+    <a href="./">&larr; back to the main demo</a>
+  </div>
+  <div class="warn">
+    JSON-LD support is Phase 1-3b: expanded form, inline
+    <code>@context</code>, <code>@reverse</code>, container maps
+    (<code>@set</code>/<code>@list</code>), and <code>@base</code>
+    relative-IRI resolution all work. <strong>Remote contexts</strong> (a
+    bare URL string as <code>@context</code>) are <strong>not</strong>
+    supported yet — there is no context-loader/fetch step in
+    <code>JSONLD.Expand.fst</code>. Try the "remote-context example" button
+    below to see the honest failure rather than a silently-empty result.
+    Current W3C toRdf score and the phase plan:
+    <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-jsonld-phase2-runner.md">jsonld-phase2-runner.md</a>.
+  </div>
+</header>
+
+<main>
+
+<div class="controls">
+  <button class="run" id="run">Run</button>
+  <button class="secondary" id="load-sample">FOAF example</button>
+  <button class="secondary" id="load-remote">Remote-context example (unsupported)</button>
+  <span class="status" id="status">Loading engine…</span>
+</div>
+
+<div class="grid2">
+  <div class="pane">
+    <label for="input-jsonld">JSON-LD input</label>
+    <textarea id="input-jsonld" spellcheck="false" autocapitalize="off" autocorrect="off"></textarea>
+    <div class="example-links">
+      Inline <code>@context</code> · <code>@base</code> resolution ·
+      <code>@container: @set</code> · <code>@reverse</code> — all exercised
+      by the FOAF example.
+    </div>
+  </div>
+
+  <div class="pane">
+    <div class="tabs" role="tablist">
+      <button data-tab="nquads" class="active">N-Quads</button>
+      <button data-tab="canon">Canonized</button>
+      <button data-tab="table">Table</button>
+    </div>
+    <div id="out-nquads"><div class="empty-note">Click Run.</div></div>
+    <div id="out-canon" hidden><div class="empty-note">Click Run.</div></div>
+    <div id="out-table" hidden><div class="empty-note">Click Run.</div></div>
+  </div>
+</div>
+
+</main>
+
+<footer>
+  Built from <a href="https://github.com/danbri/factoidal">github.com/danbri/factoidal</a>.
+  Engine loaded from <code>../npm/foafos/browser.js</code> (this site's mirror of the
+  <code>@danbri/foafos</code> npm package — see its
+  <a href="https://github.com/danbri/factoidal/blob/claude/main/npm/factoidal/README.md">README</a>
+  for the jsDelivr CDN alternative). JSON-LD deserialization:
+  <code>formal/fstar/Parser.JSONLD.fst</code>,
+  <code>JSONLD.Context.fst</code>, <code>JSONLD.Expand.fst</code>.
+  Canonicalization: <code>formal/fstar/RDF.Canonical.fst</code> (RDFC-1.0).
+</footer>
+
+<script type="module">
+import { runFactoidalCli } from '../npm/foafos/browser.js';
+import {
+  buildJsonLdPlayground, parseNQuadsToRows,
+  SAMPLE_JSONLD, SAMPLE_JSONLD_REMOTE_CONTEXT,
+} from './jsonld-playground-client.mjs';
+
+const playground = buildJsonLdPlayground({ runCli: runFactoidalCli });
+
+const $ = (id) => document.getElementById(id);
+const inputEl  = $('input-jsonld');
+const runBtn   = $('run');
+const statusEl = $('status');
+const outs = {
+  nquads: $('out-nquads'),
+  canon:  $('out-canon'),
+  table:  $('out-table'),
+};
+let activeTab = 'nquads';
+
+document.querySelectorAll('.tabs button').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    activeTab = btn.dataset.tab;
+    document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('active', b === btn));
+    Object.keys(outs).forEach((k) => { outs[k].hidden = (k !== activeTab); });
+  });
+});
+
+$('load-sample').addEventListener('click', () => {
+  inputEl.value = SAMPLE_JSONLD;
+  run();
+});
+$('load-remote').addEventListener('click', () => {
+  inputEl.value = SAMPLE_JSONLD_REMOTE_CONTEXT;
+  run();
+});
+
+function renderNQuads(el, text) {
+  el.innerHTML = '';
+  const pre = document.createElement('pre');
+  pre.className = 'out';
+  pre.textContent = text.trim().length ? text : '(no triples)';
+  el.appendChild(pre);
+}
+
+function renderError(el, err) {
+  el.innerHTML = '';
+  const pre = document.createElement('pre');
+  pre.className = 'out error';
+  pre.textContent = (err && err.message) || String(err);
+  el.appendChild(pre);
+}
+
+function renderTable(el, nquads) {
+  el.innerHTML = '';
+  const rows = parseNQuadsToRows(nquads);
+  if (!rows.length) {
+    const note = document.createElement('div');
+    note.className = 'empty-note';
+    note.textContent = '(no triples)';
+    el.appendChild(note);
+    return;
+  }
+  const hasGraph = rows.some((r) => r.graph);
+  const wrap = document.createElement('div');
+  wrap.className = 'out-wrap';
+  const table = document.createElement('table');
+  table.className = 'triples';
+  const thead = document.createElement('thead');
+  thead.innerHTML = '<tr><th>Subject</th><th>Predicate</th><th>Object</th>' +
+    (hasGraph ? '<th>Graph</th>' : '') + '</tr>';
+  table.appendChild(thead);
+  const tbody = document.createElement('tbody');
+  rows.forEach((r) => {
+    const tr = document.createElement('tr');
+    const cells = [r.subject, r.predicate, r.object].concat(hasGraph ? [r.graph || ''] : []);
+    cells.forEach((c) => {
+      const td = document.createElement('td');
+      td.textContent = c;
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  el.appendChild(wrap);
+}
+
+async function run() {
+  const text = inputEl.value;
+  runBtn.disabled = true;
+  statusEl.className = 'status';
+  statusEl.textContent = 'Running…';
+
+  let rdfResult = null;
+  let rdfError = null;
+  try {
+    rdfResult = await playground.toRdf(text);
+  } catch (e) {
+    rdfError = e;
+  }
+
+  if (rdfError) {
+    renderError(outs.nquads, rdfError);
+    renderError(outs.canon, rdfError);
+    outs.table.innerHTML = '<div class="empty-note">toRdf failed — see N-Quads tab.</div>';
+    statusEl.className = 'status err';
+    statusEl.textContent = 'toRdf failed — engine rejected the input (see below).';
+    runBtn.disabled = false;
+    return;
+  }
+
+  renderNQuads(outs.nquads, rdfResult.nquads);
+  renderTable(outs.table, rdfResult.nquads);
+
+  try {
+    const canonResult = await playground.canonicalize(text);
+    renderNQuads(outs.canon, canonResult.nquads);
+    statusEl.className = 'status ok';
+    statusEl.textContent =
+      'toRdf ' + rdfResult.ms.toFixed(1) + ' ms · canonicalize ' +
+      canonResult.ms.toFixed(1) + ' ms · ' +
+      parseNQuadsToRows(rdfResult.nquads).length + ' triples.';
+  } catch (e) {
+    renderError(outs.canon, e);
+    statusEl.className = 'status err';
+    statusEl.textContent = 'toRdf ' + rdfResult.ms.toFixed(1) + ' ms; canonicalize failed (see Canonized tab).';
+  }
+
+  runBtn.disabled = false;
+}
+
+runBtn.addEventListener('click', run);
+
+// Init: preload the FOAF example and auto-run.
+inputEl.value = SAMPLE_JSONLD;
+statusEl.textContent = 'Ready.';
+run();
+</script>
+
+</body>
+</html>

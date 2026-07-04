@@ -721,36 +721,44 @@ let rec add_triples_if_new (g : rdf_graph) (ts : triple Prims.list) :
   | [] -> g
   | hd::tl -> add_triples_if_new (add_triple_if_new g hd) tl
 let rdfs_rule_subPropertyOf (g : rdf_graph) (ig : indexed_graph) : rdf_graph=
+  let decls = bucket_lookup ig.ig_pred rdfs_subPropertyOf in
   FStar_List_Tot_Base.fold_left
-    (fun acc t ->
-       let super_props =
-         find_objects_indexed ig (S_IRI (t.p)) rdfs_subPropertyOf in
-       FStar_List_Tot_Base.fold_left
-         (fun acc2 q_term ->
-            match q_term with
-            | T_IRI q ->
-                let new_t = { s = (t.s); p = q; o = (t.o) } in
-                add_triple_unchecked acc2 new_t
-            | uu___ -> acc2) acc super_props) g g
-let rdfs_rule_domain (g : rdf_graph) (ig : indexed_graph) : rdf_graph=
-  FStar_List_Tot_Base.fold_left
-    (fun acc t ->
-       let domain_classes = find_objects_indexed ig (S_IRI (t.p)) rdfs_domain in
-       FStar_List_Tot_Base.fold_left
-         (fun acc2 c_term ->
-            let new_t = { s = (t.s); p = rdf_type; o = c_term } in
-            add_triple_unchecked acc2 new_t) acc domain_classes) g g
-let rdfs_rule_range (g : rdf_graph) (ig : indexed_graph) : rdf_graph=
-  FStar_List_Tot_Base.fold_left
-    (fun acc t ->
-       let range_classes = find_objects_indexed ig (S_IRI (t.p)) rdfs_range in
-       match term_to_subject t.o with
-       | FStar_Pervasives_Native.Some b_subj ->
+    (fun acc decl ->
+       match ((decl.s), (decl.o)) with
+       | (S_IRI p, T_IRI q) ->
+           let matching = bucket_lookup ig.ig_pred p in
            FStar_List_Tot_Base.fold_left
-             (fun acc2 c_term ->
-                let new_t = { s = b_subj; p = rdf_type; o = c_term } in
-                add_triple_unchecked acc2 new_t) acc range_classes
-       | FStar_Pervasives_Native.None -> acc) g g
+             (fun acc2 t ->
+                let new_t = { s = (t.s); p = q; o = (t.o) } in
+                add_triple_unchecked acc2 new_t) acc matching
+       | (uu___, uu___1) -> acc) g decls
+let rdfs_rule_domain (g : rdf_graph) (ig : indexed_graph) : rdf_graph=
+  let decls = bucket_lookup ig.ig_pred rdfs_domain in
+  FStar_List_Tot_Base.fold_left
+    (fun acc decl ->
+       match decl.s with
+       | S_IRI p ->
+           let matching = bucket_lookup ig.ig_pred p in
+           FStar_List_Tot_Base.fold_left
+             (fun acc2 t ->
+                let new_t = { s = (t.s); p = rdf_type; o = (decl.o) } in
+                add_triple_unchecked acc2 new_t) acc matching
+       | uu___ -> acc) g decls
+let rdfs_rule_range (g : rdf_graph) (ig : indexed_graph) : rdf_graph=
+  let decls = bucket_lookup ig.ig_pred rdfs_range in
+  FStar_List_Tot_Base.fold_left
+    (fun acc decl ->
+       match decl.s with
+       | S_IRI p ->
+           let matching = bucket_lookup ig.ig_pred p in
+           FStar_List_Tot_Base.fold_left
+             (fun acc2 t ->
+                match term_to_subject t.o with
+                | FStar_Pervasives_Native.Some b_subj ->
+                    let new_t = { s = b_subj; p = rdf_type; o = (decl.o) } in
+                    add_triple_unchecked acc2 new_t
+                | FStar_Pervasives_Native.None -> acc2) acc matching
+       | uu___ -> acc) g decls
 let rdfs_rule_subClassOf (g : rdf_graph) (ig : indexed_graph) : rdf_graph=
   FStar_List_Tot_Base.fold_left
     (fun acc t ->
@@ -1970,6 +1978,99 @@ let owl_rule_cls_maxc2 (g : rdf_graph) (ig : indexed_graph) : rdf_graph=
                               acc4 ys) acc3 ys) acc2 members
               | uu___ -> acc2) acc props
        else acc) g g
+let object_has_type (ig : indexed_graph) (y : rdf_term) (c : wf_iri) :
+  Prims.bool=
+  match term_to_subject y with
+  | FStar_Pervasives_Native.None -> false
+  | FStar_Pervasives_Native.Some y_subj ->
+      let ts = find_objects_indexed ig y_subj rdf_type in
+      FStar_List_Tot_Base.existsb (fun ty -> rdf_term_eq ty (T_IRI c)) ts
+let owl_rule_cls_maxqc_comp (g : rdf_graph) (ig : indexed_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if
+         (t.p = owl_maxQualifiedCardinality_iri) &&
+           (rdf_term_eq t.o (T_Literal one_nonNegInteger_literal))
+       then
+         let r_subj = t.s in
+         let props = find_objects_indexed ig r_subj owl_onProperty_iri in
+         let classes = find_objects_indexed ig r_subj owl_onClass_iri in
+         FStar_List_Tot_Base.fold_left
+           (fun acc2 p_term ->
+              match p_term with
+              | T_IRI p ->
+                  FStar_List_Tot_Base.fold_left
+                    (fun acc3 c_term ->
+                       match c_term with
+                       | T_IRI c ->
+                           if (c = owl_Thing) || (c = owl_Nothing)
+                           then acc3
+                           else
+                             (let members =
+                                find_subjects_indexed ig rdf_type
+                                  (subject_to_term r_subj) in
+                              FStar_List_Tot_Base.fold_left
+                                (fun acc4 x ->
+                                   let ys = find_objects_indexed ig x p in
+                                   FStar_List_Tot_Base.fold_left
+                                     (fun acc5 y1 ->
+                                        if object_has_type ig y1 c
+                                        then
+                                          FStar_List_Tot_Base.fold_left
+                                            (fun acc6 y2 ->
+                                               if rdf_term_eq y1 y2
+                                               then acc6
+                                               else
+                                                 if
+                                                   Prims.op_Negation
+                                                     (differentFrom_in_graph
+                                                        g y1 y2)
+                                                 then acc6
+                                                 else
+                                                   (match term_to_subject y2
+                                                    with
+                                                    | FStar_Pervasives_Native.None
+                                                        -> acc6
+                                                    | FStar_Pervasives_Native.Some
+                                                        y2_subj ->
+                                                        let cb =
+                                                          S_BNode
+                                                            (canonical_complement_bnode
+                                                               c) in
+                                                        let shape1 =
+                                                          {
+                                                            s = cb;
+                                                            p =
+                                                              owl_complementOf_iri;
+                                                            o = (T_IRI c)
+                                                          } in
+                                                        let shape2 =
+                                                          {
+                                                            s = cb;
+                                                            p = rdf_type;
+                                                            o =
+                                                              (T_IRI
+                                                                 owl_Class)
+                                                          } in
+                                                        let memb =
+                                                          {
+                                                            s = y2_subj;
+                                                            p = rdf_type;
+                                                            o =
+                                                              (T_BNode
+                                                                 (canonical_complement_bnode
+                                                                    c))
+                                                          } in
+                                                        add_triple_unchecked
+                                                          (add_triple_unchecked
+                                                             (add_triple_unchecked
+                                                                acc6 shape1)
+                                                             shape2) memb))
+                                            acc5 ys
+                                        else acc5) acc4 ys) acc3 members)
+                       | uu___ -> acc3) acc2 classes
+              | uu___ -> acc2) acc props
+       else acc) g g
 let owl_rule_cls_avf1 (g : rdf_graph) (ig : indexed_graph) : rdf_graph=
   FStar_List_Tot_Base.fold_left
     (fun acc t_avf ->
@@ -2025,13 +2126,16 @@ let owl_rule_reflexive_property (g : rdf_graph) (ig : indexed_graph) :
            | S_IRI p_iri -> cons_if_new_iri p_iri acc
            | uu___ -> acc
          else acc) [] g in
-  let indivs = prp_rfl_individuals g in
-  FStar_List_Tot_Base.fold_left
-    (fun acc p_iri ->
-       FStar_List_Tot_Base.fold_left
-         (fun acc2 x ->
-            let new_t = { s = (S_IRI x); p = p_iri; o = (T_IRI x) } in
-            add_triple_unchecked acc2 new_t) acc indivs) g refl_props
+  match refl_props with
+  | [] -> g
+  | uu___ ->
+      let indivs = prp_rfl_individuals g in
+      FStar_List_Tot_Base.fold_left
+        (fun acc p_iri ->
+           FStar_List_Tot_Base.fold_left
+             (fun acc2 x ->
+                let new_t = { s = (S_IRI x); p = p_iri; o = (T_IRI x) } in
+                add_triple_unchecked acc2 new_t) acc indivs) g refl_props
 let owl_rule_scm_cls_restriction (g : rdf_graph) (ig : indexed_graph) :
   rdf_graph=
   FStar_List_Tot_Base.fold_left
@@ -2139,34 +2243,41 @@ let rec find_chain_endpoints (g : rdf_graph) (ig : indexed_graph)
            | FStar_Pervasives_Native.None -> acc) [] next_terms
 let owl_rule_property_chain_n (g : rdf_graph) (ig : indexed_graph) :
   rdf_graph=
-  let starting_subjects =
-    FStar_List_Tot_Base.fold_left
-      (fun acc t ->
-         if FStar_List_Tot_Base.existsb (fun s -> subject_eq s t.s) acc
-         then acc
-         else (t.s) :: acc) [] g in
-  FStar_List_Tot_Base.fold_left
-    (fun acc chain_t ->
-       if chain_t.p = owl_propertyChainAxiom
-       then
-         match ((chain_t.s), (term_to_subject chain_t.o)) with
-         | (S_IRI p_iri, FStar_Pervasives_Native.Some list_subj) ->
-             (match decode_chain_list g ig list_subj with
-              | FStar_Pervasives_Native.Some chain ->
-                  if (FStar_List_Tot_Base.length chain) >= (Prims.of_int (2))
-                  then
-                    FStar_List_Tot_Base.fold_left
-                      (fun acc1 x ->
-                         let zs = find_chain_endpoints g ig chain x in
-                         FStar_List_Tot_Base.fold_left
-                           (fun acc2 z_term ->
-                              let new_t = { s = x; p = p_iri; o = z_term } in
-                              add_triple_unchecked acc2 new_t) acc1 zs) acc
-                      starting_subjects
-                  else acc
-              | FStar_Pervasives_Native.None -> acc)
-         | (uu___, uu___1) -> acc
-       else acc) g g
+  let chain_decls = bucket_lookup ig.ig_pred owl_propertyChainAxiom in
+  match chain_decls with
+  | [] -> g
+  | uu___ ->
+      let starting_subjects =
+        FStar_List_Tot_Base.fold_left
+          (fun acc t ->
+             if FStar_List_Tot_Base.existsb (fun s -> subject_eq s t.s) acc
+             then acc
+             else (t.s) :: acc) [] g in
+      FStar_List_Tot_Base.fold_left
+        (fun acc chain_t ->
+           if chain_t.p = owl_propertyChainAxiom
+           then
+             match ((chain_t.s), (term_to_subject chain_t.o)) with
+             | (S_IRI p_iri, FStar_Pervasives_Native.Some list_subj) ->
+                 (match decode_chain_list g ig list_subj with
+                  | FStar_Pervasives_Native.Some chain ->
+                      if
+                        (FStar_List_Tot_Base.length chain) >=
+                          (Prims.of_int (2))
+                      then
+                        FStar_List_Tot_Base.fold_left
+                          (fun acc1 x ->
+                             let zs = find_chain_endpoints g ig chain x in
+                             FStar_List_Tot_Base.fold_left
+                               (fun acc2 z_term ->
+                                  let new_t =
+                                    { s = x; p = p_iri; o = z_term } in
+                                  add_triple_unchecked acc2 new_t) acc1 zs)
+                          acc starting_subjects
+                      else acc
+                  | FStar_Pervasives_Native.None -> acc)
+             | (uu___1, uu___2) -> acc
+           else acc) g g
 let owl_rule_chain_to_transitive (g : rdf_graph) (ig : indexed_graph) :
   rdf_graph=
   FStar_List_Tot_Base.fold_left
@@ -2418,6 +2529,47 @@ let owl_rule_xsd_datatype_axioms (g : rdf_graph) (ig : indexed_graph) :
          (fun i -> { s = (S_IRI i); p = rdf_type; o = (T_IRI rdfs_Datatype) })
          xsd_all_datatypes in
      add_triples_if_new (add_triples_if_new g sub_triples) dt_triples)
+let xsd_range_intersections :
+  (wf_iri * wf_iri * wf_iri Prims.list) Prims.list=
+  [(xsd_short, xsd_unsignedInt, [xsd_unsignedShort]);
+  (xsd_short, xsd_unsignedLong, [xsd_unsignedShort]);
+  (xsd_byte, xsd_unsignedInt, [xsd_unsignedByte]);
+  (xsd_nonNegativeInteger, xsd_nonPositiveInteger,
+    [xsd_byte; xsd_unsignedByte])]
+let owl_rule_dt_range_intersect (g : rdf_graph) (ig : indexed_graph) :
+  rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if t.p = rdfs_range
+       then
+         match t.o with
+         | T_IRI d1 ->
+             let others = find_objects_indexed ig t.s rdfs_range in
+             FStar_List_Tot_Base.fold_left
+               (fun acc1 d2_term ->
+                  match d2_term with
+                  | T_IRI d2 ->
+                      FStar_List_Tot_Base.fold_left
+                        (fun acc2 entry ->
+                           let uu___ = entry in
+                           match uu___ with
+                           | (e1, e2, outs) ->
+                               if
+                                 ((e1 = d1) && (e2 = d2)) ||
+                                   ((e1 = d2) && (e2 = d1))
+                               then
+                                 FStar_List_Tot_Base.fold_left
+                                   (fun acc3 d3 ->
+                                      add_triple_unchecked acc3
+                                        {
+                                          s = (t.s);
+                                          p = rdfs_range;
+                                          o = (T_IRI d3)
+                                        }) acc2 outs
+                               else acc2) acc1 xsd_range_intersections
+                  | uu___ -> acc1) acc others
+         | uu___ -> acc
+       else acc) g g
 let owl_rule_scm_dom2 (g : rdf_graph) (ig : indexed_graph) : rdf_graph=
   FStar_List_Tot_Base.fold_left
     (fun acc t ->
@@ -2526,7 +2678,8 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
   let g16 = owl_rule_cls_maxqc1 g15 ig in
   let g17 = owl_rule_cls_exactqc1 g16 ig in
   let g18 = owl_rule_cls_maxc2 g17 ig in
-  let g19 = owl_rule_cls_avf1 g18 ig in
+  let g18a = owl_rule_cls_maxqc_comp g18 ig in
+  let g19 = owl_rule_cls_avf1 g18a ig in
   let g20 = owl_rule_reflexive_property g19 ig in
   let g21 = owl_rule_scm_cls_restriction g20 ig in
   let g22 = owl_rule_property_chain_2 g21 ig in
@@ -2535,7 +2688,8 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
   let g24 = owl_rule_named_sameAs_to_equivClass g23 ig in
   let g24a = owl_rule_prp_key g24 ig in
   let g25 = owl_rule_xsd_datatype_axioms g24a ig in
-  let g26 = owl_rule_xsd_core_datatype_axioms g25 ig in
+  let g25a = owl_rule_dt_range_intersect g25 ig in
+  let g26 = owl_rule_xsd_core_datatype_axioms g25a ig in
   let g27 = owl_rule_scm_dom2 g26 ig in
   let g28 = owl_rule_scm_rng2 g27 ig in graph_dedup_sort g28
 let rec owl_rl_closure (g : rdf_graph) (fuel : Prims.nat) : rdf_graph=

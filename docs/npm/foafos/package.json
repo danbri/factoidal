@@ -1,0 +1,90 @@
+{
+  "name": "@danbri/foafos",
+  "version": "0.1.0-alpha.0",
+  "description": "DRAFT \u2014 formally verified RDF/SPARQL engine (F*-extracted) for JS and Wasm. Placeholder name; real package setup to follow.",
+  "keywords": [
+    "sparql",
+    "rdf",
+    "turtle",
+    "ntriples",
+    "nquads",
+    "trig",
+    "rdf-xml",
+    "fstar",
+    "formal-verification",
+    "semantic-web"
+  ],
+  "homepage": "https://github.com/danbri/factoidal",
+  "bugs": {
+    "url": "https://github.com/danbri/factoidal/issues"
+  },
+  "license": "Apache-2.0",
+  "author": "Dan Brickley <danbri@danbri.org>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/danbri/factoidal.git",
+    "directory": "npm/factoidal"
+  },
+  "main": "./index.js",
+  "module": "./index.mjs",
+  "browser": "./browser.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "browser": "./browser.js",
+      "import": "./index.mjs",
+      "require": "./index.js",
+      "default": "./index.js"
+    },
+    "./wasm": {
+      "types": "./wasm.d.ts",
+      "default": "./wasm.js"
+    },
+    "./rdfjs": "./rdfjs.js",
+    "./browser": "./browser.js",
+    "./browser-wasm": {
+      "browser": "./browser-wasm.js",
+      "default": "./browser-wasm.js"
+    },
+    "./factoidal.js": "./factoidal.js",
+    "./factoidal.wasm.js": "./factoidal.wasm.js",
+    "./factoidal.wasm.assets/*": "./factoidal.wasm.assets/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "index.mjs",
+    "index.d.ts",
+    "wasm.js",
+    "wasm.d.ts",
+    "rdfjs.js",
+    "lib/",
+    "browser.js",
+    "browser-wasm.js",
+    "factoidal.js",
+    "factoidal.wasm.js",
+    "factoidal.wasm.assets/",
+    "factoidal-npm-entry.js",
+    "factoidal-npm-entry.wasm.js",
+    "factoidal-npm-entry.wasm.assets/",
+    "version.json",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
+  "scripts": {
+    "build": "cd ../../formal/fstar && ./build-ocaml.sh npm",
+    "test": "node --test 'test/*.test.js'",
+    "test:smoke": "node test/smoke.js && node test/smoke-wasm.mjs",
+    "prepublishOnly": "echo 'Do not publish yet \u2014 0.1.0-alpha.0 is scaffolding only.' && exit 1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "private": true
+}

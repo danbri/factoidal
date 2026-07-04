@@ -1,0 +1,8 @@
+# Belt-and-braces: package.json `files` already whitelists what ships,
+# but this file documents intent and covers any future globbing drift.
+
+test/
+*.log
+.claude-runs/
+node_modules/
+.DS_Store

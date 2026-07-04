@@ -89,10 +89,12 @@ echo "$$:$STEP:$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$MARKER_FILE"
 trap 'rm -f "$MARKER_FILE"' EXIT
 
 case "$STEP" in
-  compile|js|wasm|patches)
+  compile|js|wasm|patches|npm)
     # These steps don't invoke fstar.exe; skip the preflight check so
     # editing OCaml glue + recompiling works without a full F* opam
     # switch active. Extraction-touching steps still demand fstar.exe.
+    # `npm` is pure file-copying from existing extraction output (see
+    # Step 6 below) — it never shells out to fstar.exe either.
     ;;
   *)
     if ! command -v fstar.exe >/dev/null 2>&1; then
@@ -1506,6 +1508,22 @@ if [[ "$STEP" == "npm" ]]; then
 EOF
   echo "  Wrote:  $NPMDIR/version.json (git=$GITSHA)"
   echo ""
+
+  # Mirror the package into the GitHub Pages tree so it is loadable
+  # directly by a <script type="module"> tag with no npm install and
+  # no CDN dependency -- raw.githubusercontent.com serves text/plain,
+  # which browsers refuse to execute as an ES module, so the Pages
+  # copy is the only same-origin path that works. This mirror is
+  # regenerated on every `./build-ocaml.sh npm` run (this step), so it
+  # never drifts from npm/factoidal/ — do not hand-edit anything under
+  # docs/npm/foafos/.
+  PAGESDIR="../../docs/npm/foafos"
+  echo "  Mirroring $NPMDIR -> $PAGESDIR (Pages, no-npm-install browser load) ..."
+  rm -rf "$PAGESDIR"
+  mkdir -p "$PAGESDIR"
+  rsync -a --exclude 'test' --exclude 'node_modules' "$NPMDIR/" "$PAGESDIR/"
+  MIRROR_COUNT=$(find "$PAGESDIR" -type f | wc -l | tr -d ' ')
+  echo "  Mirrored: $PAGESDIR ($MIRROR_COUNT files)"
 fi
 
 echo "=== Pipeline complete ==="

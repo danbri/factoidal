@@ -147,66 +147,77 @@ let jld_type_prepend (subj : RDF_Graph_Executable.subject)
   (v : Parser_JSON.json_val) (acc : RDF_Graph_Executable.triple Prims.list) :
   RDF_Graph_Executable.triple Prims.list=
   jld_type_prepend_items subj (jld_as_array v) acc
+let jld_graph_name_of_subject (s : RDF_Graph_Executable.subject) :
+  RDF_Graph_Executable.iri=
+  match s with
+  | RDF_Graph_Executable.S_IRI i -> i
+  | RDF_Graph_Executable.S_BNode b -> FStar_String.concat "" ["_:"; b]
 let rec jld_expand_value (v : Parser_JSON.json_val) (ctr : Prims.nat)
-  (acc : RDF_Graph_Executable.triple Prims.list) (fuel : Prims.nat) :
+  (acc : RDF_Graph_Executable.triple Prims.list)
+  (named : RDF_Graph_Executable.named_graph Prims.list) (fuel : Prims.nat) :
   (RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option *
-    RDF_Graph_Executable.triple Prims.list * Prims.nat)=
+    RDF_Graph_Executable.triple Prims.list * RDF_Graph_Executable.named_graph
+    Prims.list * Prims.nat)=
   if fuel = Prims.int_zero
-  then (FStar_Pervasives_Native.None, acc, ctr)
+  then (FStar_Pervasives_Native.None, acc, named, ctr)
   else
     (match v with
      | Parser_JSON.JObject uu___1 ->
          (match Parser_JSON.json_get_field "@value" v with
           | FStar_Pervasives_Native.Some uu___2 ->
-              ((jld_value_object_to_term v), acc, ctr)
+              ((jld_value_object_to_term v), acc, named, ctr)
           | FStar_Pervasives_Native.None ->
               (match Parser_JSON.json_get_field "@list" v with
                | FStar_Pervasives_Native.Some lst ->
                    let uu___2 =
-                     jld_expand_list (jld_as_array lst) ctr acc
+                     jld_expand_list (jld_as_array lst) ctr acc named
                        (fuel - Prims.int_one) in
                    (match uu___2 with
-                    | (t, acc1, ctr1) ->
-                        ((FStar_Pervasives_Native.Some t), acc1, ctr1))
+                    | (t, acc1, named1, ctr1) ->
+                        ((FStar_Pervasives_Native.Some t), acc1, named1,
+                          ctr1))
                | FStar_Pervasives_Native.None ->
                    let uu___2 =
-                     jld_expand_node v ctr acc (fuel - Prims.int_one) in
+                     jld_expand_node v ctr acc named (fuel - Prims.int_one) in
                    (match uu___2 with
-                    | (osubj, acc1, ctr1) ->
+                    | (osubj, acc1, named1, ctr1) ->
                         (match osubj with
                          | FStar_Pervasives_Native.Some subj ->
                              ((FStar_Pervasives_Native.Some
                                  (RDF_Graph_Executable.subject_to_term subj)),
-                               acc1, ctr1)
+                               acc1, named1, ctr1)
                          | FStar_Pervasives_Native.None ->
-                             (FStar_Pervasives_Native.None, acc1, ctr1)))))
-     | uu___1 -> ((jld_scalar_to_term v), acc, ctr))
+                             (FStar_Pervasives_Native.None, acc1, named1,
+                               ctr1)))))
+     | uu___1 -> ((jld_scalar_to_term v), acc, named, ctr))
 and jld_expand_list (items : Parser_JSON.json_val Prims.list)
   (ctr : Prims.nat) (acc : RDF_Graph_Executable.triple Prims.list)
-  (fuel : Prims.nat) :
+  (named : RDF_Graph_Executable.named_graph Prims.list) (fuel : Prims.nat) :
   (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.triple Prims.list *
-    Prims.nat)=
+    RDF_Graph_Executable.named_graph Prims.list * Prims.nat)=
   if fuel = Prims.int_zero
-  then ((RDF_Graph_Executable.T_IRI rdf_nil_iri), acc, ctr)
+  then ((RDF_Graph_Executable.T_IRI rdf_nil_iri), acc, named, ctr)
   else
     (match items with
-     | [] -> ((RDF_Graph_Executable.T_IRI rdf_nil_iri), acc, ctr)
+     | [] -> ((RDF_Graph_Executable.T_IRI rdf_nil_iri), acc, named, ctr)
      | item::rest ->
-         let uu___1 = jld_expand_value item ctr acc (fuel - Prims.int_one) in
+         let uu___1 =
+           jld_expand_value item ctr acc named (fuel - Prims.int_one) in
          (match uu___1 with
-          | (oterm, acc1, ctr1) ->
+          | (oterm, acc1, named1, ctr1) ->
               (match oterm with
                | FStar_Pervasives_Native.None ->
-                   jld_expand_list rest ctr1 acc1 (fuel - Prims.int_one)
+                   jld_expand_list rest ctr1 acc1 named1
+                     (fuel - Prims.int_one)
                | FStar_Pervasives_Native.Some t ->
                    let uu___2 = jld_fresh_bnode ctr1 in
                    (match uu___2 with
                     | (cell, ctr2) ->
                         let uu___3 =
-                          jld_expand_list rest ctr2 acc1
+                          jld_expand_list rest ctr2 acc1 named1
                             (fuel - Prims.int_one) in
                         (match uu___3 with
-                         | (rest_term, acc2, ctr3) ->
+                         | (rest_term, acc2, named2, ctr3) ->
                              let cell_subj =
                                RDF_Graph_Executable.S_BNode cell in
                              ((RDF_Graph_Executable.T_BNode cell),
@@ -219,13 +230,15 @@ and jld_expand_list (items : Parser_JSON.json_val Prims.list)
                                  RDF_Graph_Executable.s = cell_subj;
                                  RDF_Graph_Executable.p = rdf_first_iri;
                                  RDF_Graph_Executable.o = t
-                               } :: acc2), ctr3))))))
+                               } :: acc2), named2, ctr3))))))
 and jld_expand_node (v : Parser_JSON.json_val) (ctr : Prims.nat)
-  (acc : RDF_Graph_Executable.triple Prims.list) (fuel : Prims.nat) :
+  (acc : RDF_Graph_Executable.triple Prims.list)
+  (named : RDF_Graph_Executable.named_graph Prims.list) (fuel : Prims.nat) :
   (RDF_Graph_Executable.subject FStar_Pervasives_Native.option *
-    RDF_Graph_Executable.triple Prims.list * Prims.nat)=
+    RDF_Graph_Executable.triple Prims.list * RDF_Graph_Executable.named_graph
+    Prims.list * Prims.nat)=
   if fuel = Prims.int_zero
-  then (FStar_Pervasives_Native.None, acc, ctr)
+  then (FStar_Pervasives_Native.None, acc, named, ctr)
   else
     (match v with
      | Parser_JSON.JObject fields ->
@@ -245,91 +258,122 @@ and jld_expand_node (v : Parser_JSON.json_val) (ctr : Prims.nat)
           | (subj_opt, ctr1) ->
               (match subj_opt with
                | FStar_Pervasives_Native.None ->
-                   (FStar_Pervasives_Native.None, acc, ctr1)
+                   (FStar_Pervasives_Native.None, acc, named, ctr1)
                | FStar_Pervasives_Native.Some subj ->
-                   let uu___2 =
-                     jld_expand_fields subj fields ctr1 acc
-                       (fuel - Prims.int_one) in
-                   (match uu___2 with
-                    | (acc1, ctr2) ->
-                        ((FStar_Pervasives_Native.Some subj), acc1, ctr2))))
-     | uu___1 -> (FStar_Pervasives_Native.None, acc, ctr))
+                   (match Parser_JSON.json_get_field "@graph" v with
+                    | FStar_Pervasives_Native.Some g ->
+                        let uu___2 =
+                          jld_expand_graph_nodes (jld_as_array g) ctr1 []
+                            named (fuel - Prims.int_one) in
+                        (match uu___2 with
+                         | (gtris, named1, ctr2) ->
+                             let ng =
+                               {
+                                 RDF_Graph_Executable.ng_name =
+                                   (jld_graph_name_of_subject subj);
+                                 RDF_Graph_Executable.ng_graph = gtris
+                               } in
+                             let uu___3 =
+                               jld_expand_fields subj fields ctr2 acc (ng ::
+                                 named1) (fuel - Prims.int_one) in
+                             (match uu___3 with
+                              | (acc1, named2, ctr3) ->
+                                  ((FStar_Pervasives_Native.Some subj), acc1,
+                                    named2, ctr3)))
+                    | FStar_Pervasives_Native.None ->
+                        let uu___2 =
+                          jld_expand_fields subj fields ctr1 acc named
+                            (fuel - Prims.int_one) in
+                        (match uu___2 with
+                         | (acc1, named1, ctr2) ->
+                             ((FStar_Pervasives_Native.Some subj), acc1,
+                               named1, ctr2)))))
+     | uu___1 -> (FStar_Pervasives_Native.None, acc, named, ctr))
 and jld_expand_fields (subj : RDF_Graph_Executable.subject)
   (fields : (Prims.string * Parser_JSON.json_val) Prims.list)
   (ctr : Prims.nat) (acc : RDF_Graph_Executable.triple Prims.list)
-  (fuel : Prims.nat) : (RDF_Graph_Executable.triple Prims.list * Prims.nat)=
+  (named : RDF_Graph_Executable.named_graph Prims.list) (fuel : Prims.nat) :
+  (RDF_Graph_Executable.triple Prims.list * RDF_Graph_Executable.named_graph
+    Prims.list * Prims.nat)=
   if fuel = Prims.int_zero
-  then (acc, ctr)
+  then (acc, named, ctr)
   else
     (match fields with
-     | [] -> (acc, ctr)
+     | [] -> (acc, named, ctr)
      | (key, value)::rest ->
          let uu___1 =
            if key = "@type"
-           then ((jld_type_prepend subj value acc), ctr)
+           then ((jld_type_prepend subj value acc), named, ctr)
            else
              if key = "@reverse"
              then
-               jld_expand_reverse_map subj value ctr acc
+               jld_expand_reverse_map subj value ctr acc named
                  (fuel - Prims.int_one)
              else
                if jld_is_keyword key
-               then (acc, ctr)
+               then (acc, named, ctr)
                else
                  if RDF_Graph_Executable.is_iri key
                  then
                    jld_expand_property subj key (jld_as_array value) ctr acc
-                     (fuel - Prims.int_one)
-                 else (acc, ctr) in
+                     named (fuel - Prims.int_one)
+                 else (acc, named, ctr) in
          (match uu___1 with
-          | (acc1, ctr1) ->
-              jld_expand_fields subj rest ctr1 acc1 (fuel - Prims.int_one)))
+          | (acc1, named1, ctr1) ->
+              jld_expand_fields subj rest ctr1 acc1 named1
+                (fuel - Prims.int_one)))
 and jld_expand_reverse_map (subj : RDF_Graph_Executable.subject)
   (v : Parser_JSON.json_val) (ctr : Prims.nat)
-  (acc : RDF_Graph_Executable.triple Prims.list) (fuel : Prims.nat) :
-  (RDF_Graph_Executable.triple Prims.list * Prims.nat)=
+  (acc : RDF_Graph_Executable.triple Prims.list)
+  (named : RDF_Graph_Executable.named_graph Prims.list) (fuel : Prims.nat) :
+  (RDF_Graph_Executable.triple Prims.list * RDF_Graph_Executable.named_graph
+    Prims.list * Prims.nat)=
   if fuel = Prims.int_zero
-  then (acc, ctr)
+  then (acc, named, ctr)
   else
     (match v with
      | Parser_JSON.JObject entries ->
-         jld_expand_reverse_entries subj entries ctr acc
+         jld_expand_reverse_entries subj entries ctr acc named
            (fuel - Prims.int_one)
-     | uu___1 -> (acc, ctr))
+     | uu___1 -> (acc, named, ctr))
 and jld_expand_reverse_entries (subj : RDF_Graph_Executable.subject)
   (entries : (Prims.string * Parser_JSON.json_val) Prims.list)
   (ctr : Prims.nat) (acc : RDF_Graph_Executable.triple Prims.list)
-  (fuel : Prims.nat) : (RDF_Graph_Executable.triple Prims.list * Prims.nat)=
+  (named : RDF_Graph_Executable.named_graph Prims.list) (fuel : Prims.nat) :
+  (RDF_Graph_Executable.triple Prims.list * RDF_Graph_Executable.named_graph
+    Prims.list * Prims.nat)=
   if fuel = Prims.int_zero
-  then (acc, ctr)
+  then (acc, named, ctr)
   else
     (match entries with
-     | [] -> (acc, ctr)
+     | [] -> (acc, named, ctr)
      | (prop, value)::rest ->
          let uu___1 =
            if RDF_Graph_Executable.is_iri prop
            then
              jld_expand_reverse_prop subj prop (jld_as_array value) ctr acc
-               (fuel - Prims.int_one)
-           else (acc, ctr) in
+               named (fuel - Prims.int_one)
+           else (acc, named, ctr) in
          (match uu___1 with
-          | (acc1, ctr1) ->
-              jld_expand_reverse_entries subj rest ctr1 acc1
+          | (acc1, named1, ctr1) ->
+              jld_expand_reverse_entries subj rest ctr1 acc1 named1
                 (fuel - Prims.int_one)))
 and jld_expand_reverse_prop (subj : RDF_Graph_Executable.subject)
   (prop : RDF_Graph_Executable.wf_iri)
   (vals : Parser_JSON.json_val Prims.list) (ctr : Prims.nat)
-  (acc : RDF_Graph_Executable.triple Prims.list) (fuel : Prims.nat) :
-  (RDF_Graph_Executable.triple Prims.list * Prims.nat)=
+  (acc : RDF_Graph_Executable.triple Prims.list)
+  (named : RDF_Graph_Executable.named_graph Prims.list) (fuel : Prims.nat) :
+  (RDF_Graph_Executable.triple Prims.list * RDF_Graph_Executable.named_graph
+    Prims.list * Prims.nat)=
   if fuel = Prims.int_zero
-  then (acc, ctr)
+  then (acc, named, ctr)
   else
     (match vals with
-     | [] -> (acc, ctr)
+     | [] -> (acc, named, ctr)
      | v::rest ->
-         let uu___1 = jld_expand_node v ctr acc (fuel - Prims.int_one) in
+         let uu___1 = jld_expand_node v ctr acc named (fuel - Prims.int_one) in
          (match uu___1 with
-          | (osubj, acc1, ctr1) ->
+          | (osubj, acc1, named1, ctr1) ->
               let acc2 =
                 match osubj with
                 | FStar_Pervasives_Native.Some vsubj ->
@@ -340,22 +384,24 @@ and jld_expand_reverse_prop (subj : RDF_Graph_Executable.subject)
                         (RDF_Graph_Executable.subject_to_term subj)
                     } :: acc1
                 | FStar_Pervasives_Native.None -> acc1 in
-              jld_expand_reverse_prop subj prop rest ctr1 acc2
+              jld_expand_reverse_prop subj prop rest ctr1 acc2 named1
                 (fuel - Prims.int_one)))
 and jld_expand_property (subj : RDF_Graph_Executable.subject)
   (prop : RDF_Graph_Executable.wf_iri)
   (vals : Parser_JSON.json_val Prims.list) (ctr : Prims.nat)
-  (acc : RDF_Graph_Executable.triple Prims.list) (fuel : Prims.nat) :
-  (RDF_Graph_Executable.triple Prims.list * Prims.nat)=
+  (acc : RDF_Graph_Executable.triple Prims.list)
+  (named : RDF_Graph_Executable.named_graph Prims.list) (fuel : Prims.nat) :
+  (RDF_Graph_Executable.triple Prims.list * RDF_Graph_Executable.named_graph
+    Prims.list * Prims.nat)=
   if fuel = Prims.int_zero
-  then (acc, ctr)
+  then (acc, named, ctr)
   else
     (match vals with
-     | [] -> (acc, ctr)
+     | [] -> (acc, named, ctr)
      | v::rest ->
-         let uu___1 = jld_expand_value v ctr acc (fuel - Prims.int_one) in
+         let uu___1 = jld_expand_value v ctr acc named (fuel - Prims.int_one) in
          (match uu___1 with
-          | (oterm, acc1, ctr1) ->
+          | (oterm, acc1, named1, ctr1) ->
               let acc2 =
                 match oterm with
                 | FStar_Pervasives_Native.Some t ->
@@ -365,26 +411,24 @@ and jld_expand_property (subj : RDF_Graph_Executable.subject)
                       RDF_Graph_Executable.o = t
                     } :: acc1
                 | FStar_Pervasives_Native.None -> acc1 in
-              jld_expand_property subj prop rest ctr1 acc2
+              jld_expand_property subj prop rest ctr1 acc2 named1
                 (fuel - Prims.int_one)))
-let jld_graph_name_of_subject (s : RDF_Graph_Executable.subject) :
-  RDF_Graph_Executable.iri=
-  match s with
-  | RDF_Graph_Executable.S_IRI i -> i
-  | RDF_Graph_Executable.S_BNode b -> FStar_String.concat "" ["_:"; b]
-let rec jld_expand_graph_nodes (nodes : Parser_JSON.json_val Prims.list)
+and jld_expand_graph_nodes (nodes : Parser_JSON.json_val Prims.list)
   (ctr : Prims.nat) (acc : RDF_Graph_Executable.triple Prims.list)
-  (fuel : Prims.nat) : (RDF_Graph_Executable.triple Prims.list * Prims.nat)=
+  (named : RDF_Graph_Executable.named_graph Prims.list) (fuel : Prims.nat) :
+  (RDF_Graph_Executable.triple Prims.list * RDF_Graph_Executable.named_graph
+    Prims.list * Prims.nat)=
   if fuel = Prims.int_zero
-  then (acc, ctr)
+  then (acc, named, ctr)
   else
     (match nodes with
-     | [] -> (acc, ctr)
+     | [] -> (acc, named, ctr)
      | n::rest ->
-         let uu___1 = jld_expand_node n ctr acc (fuel - Prims.int_one) in
+         let uu___1 = jld_expand_node n ctr acc named (fuel - Prims.int_one) in
          (match uu___1 with
-          | (uu___2, acc1, ctr1) ->
-              jld_expand_graph_nodes rest ctr1 acc1 (fuel - Prims.int_one)))
+          | (uu___2, acc1, named1, ctr1) ->
+              jld_expand_graph_nodes rest ctr1 acc1 named1
+                (fuel - Prims.int_one)))
 let jld_expand_top (v : Parser_JSON.json_val)
   (dflt : RDF_Graph_Executable.triple Prims.list)
   (named : RDF_Graph_Executable.named_graph Prims.list) (ctr : Prims.nat)
@@ -413,23 +457,26 @@ let jld_expand_top (v : Parser_JSON.json_val)
                  | FStar_Pervasives_Native.None -> (dflt, named, ctr1)
                  | FStar_Pervasives_Native.Some gsubj ->
                      let uu___1 =
-                       jld_expand_graph_nodes (jld_as_array g) ctr1 [] fuel in
+                       jld_expand_graph_nodes (jld_as_array g) ctr1 [] named
+                         fuel in
                      (match uu___1 with
-                      | (gtris, ctr2) ->
+                      | (gtris, named1, ctr2) ->
                           let uu___2 =
-                            jld_expand_fields gsubj fields ctr2 dflt fuel in
+                            jld_expand_fields gsubj fields ctr2 dflt named1
+                              fuel in
                           (match uu___2 with
-                           | (dflt1, ctr3) ->
+                           | (dflt1, named2, ctr3) ->
                                let ng =
                                  {
                                    RDF_Graph_Executable.ng_name =
                                      (jld_graph_name_of_subject gsubj);
                                    RDF_Graph_Executable.ng_graph = gtris
                                  } in
-                               (dflt1, (ng :: named), ctr3)))))
+                               (dflt1, (ng :: named2), ctr3)))))
        | FStar_Pervasives_Native.None ->
-           let uu___ = jld_expand_node v ctr dflt fuel in
-           (match uu___ with | (uu___1, dflt1, ctr1) -> (dflt1, named, ctr1)))
+           let uu___ = jld_expand_node v ctr dflt named fuel in
+           (match uu___ with
+            | (uu___1, dflt1, named1, ctr1) -> (dflt1, named1, ctr1)))
   | uu___ -> (dflt, named, ctr)
 let rec jld_expand_tops (vs : Parser_JSON.json_val Prims.list)
   (dflt : RDF_Graph_Executable.triple Prims.list)
