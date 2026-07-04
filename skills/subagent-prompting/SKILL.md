@@ -85,6 +85,17 @@ can verify.
 
 ## Other patterns
 
+### Build-list edits respect the build lock
+
+`formal/fstar/build-ocaml.sh` module lists are BUILD INPUTS. An agent
+that adds its new module to the lists while `.build-running` exists
+poisons the running cycle: compile reads the updated list but the
+already-started extract never generated the new `.ml` ("Unbound
+module" failures, hit live 2026-07-04, cycle 7). Briefs must say:
+treat editing build-ocaml.sh / build-ocaml-serializer.sh exactly like
+running fstar.exe - only while `.build-running` is ABSENT. Writing
+the new `.fst` itself is always safe.
+
 ### Comment-trap warning in every .fst / .ml brief
 
 Any brief that asks the agent to WRITE F\* or OCaml must include this

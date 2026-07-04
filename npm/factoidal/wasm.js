@@ -1,7 +1,8 @@
 // factoidal — Node entry point for the **wasm** engine.
 //
 // Same public API as index.js (parse / query / update / serialize /
-// canonicalize / dataFactory / Dataset), backed by the wasm_of_ocaml
+// canonicalize / graphs / canonicalHash / dataFactory / Dataset),
+// backed by the wasm_of_ocaml
 // bundle (factoidal.wasm.js + factoidal.wasm.assets/). Requires a
 // WasmGC-capable runtime: Node >= 22.
 //
@@ -31,8 +32,13 @@ const version = pkg.version;
 // await initialization once, and cache the exported ABI object.
 // ---------------------------------------------------------------------
 
-const IIFE_MARKER = ';($=>async ';
-const IIFE_REWRITE = ';globalThis.__fwPromise=($=>async ';
+// The bundle's entry is an immediately-invoked async factory:
+//   ;(<param>=>async <arg>=>{...})(...)
+// wasm_of_ocaml minifies <param> differently across versions ('$'
+// before mid-2026, 'ag' in 6.4.1) - match the shape, not a fixed
+// name, and splice the __fwPromise capture in after the leading ';'.
+const IIFE_RE = /;\((\$|[A-Za-z_$][\w$]*)=>async /;
+const IIFE_CAPTURE = ';globalThis.__fwPromise=';
 
 function entryCandidates() {
   const c = [];
@@ -54,10 +60,9 @@ async function loadEntry() {
     for (const p of entryCandidates()) {
       if (!p || !fs.existsSync(p)) continue;
       const raw = fs.readFileSync(p, 'utf8');
-      const ix = raw.indexOf(IIFE_MARKER);
-      if (ix < 0) continue;
-      const src = raw.slice(0, ix) + IIFE_REWRITE +
-        raw.slice(ix + IIFE_MARKER.length);
+      const m = IIFE_RE.exec(raw);
+      if (!m) continue;
+      const src = raw.slice(0, m.index) + IIFE_CAPTURE + raw.slice(m.index + 1);
       const module_ = { exports: {} };
       const prevFw = globalThis.__fwPromise;
       delete globalThis.__fwPromise;
@@ -98,6 +103,8 @@ module.exports = {
   update: api.update,
   serialize: api.serialize,
   canonicalize: api.canonicalize,
+  graphs: api.graphs,
+  canonicalHash: api.canonicalHash,
   capabilities: api.capabilities,
   Dataset: rdfjs.Dataset,
   dataFactory: rdfjs.dataFactory,
