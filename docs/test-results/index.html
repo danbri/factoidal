@@ -181,8 +181,8 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-04 09:12 UTC</strong></span>
-      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-04 06:58 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-04 09:42 UTC</strong></span>
+      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-04 04:36 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
     <p>Per-suite pass/fail counts against the W3C SPARQL 1.1 and RDF 1.1 conformance suites.</p>
@@ -942,12 +942,15 @@
   emitter; NegEval tests need an HNDQ termination guard.
 </p>
 
+
+
 <details>
   <summary>Machine-readable artifacts</summary>
   <ul>
     <li><a href="latest.csv"><code>latest.csv</code></a> — one row per suite (timestamp, commit, branch, category, suite, pass/fail/skip/unsupported)</li>
     <li><a href="latest.json"><code>latest.json</code></a> — same data plus totals, structured</li>
     <li><code>history/&lt;timestamp&gt;.csv</code> / <code>.json</code> — timestamped copies, one pair per runner invocation</li>
+    <li><a href="perf-parse-serialize.json"><code>perf-parse-serialize.json</code></a> — parse/serialize/canonicalize throughput (if present; produced by <code>tools/bench-parse-serialize.sh</code>, not this script)</li>
   </ul>
   <p style="margin: 0.6em 0 0; color: var(--muted); font-size: 0.9em;">
     The raw runner logs (including per-test FAIL lines with diffs) are committed to
@@ -1019,9 +1022,9 @@
 </main>
 
 <footer>
-  Generated <strong>2026-07-04 09:12 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/f1ff05204c9dcfef5de24a8bb582764a79bda694">f1ff052</a></code>
-  on branch <code>claude/main</code> — &ldquo;test-suites skill: register jsonld_runner + its honest baseline&rdquo;.
+  Generated <strong>2026-07-04 09:42 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/f662736fdcb0950a2e6c671b8b71957eff1bd0ea">f662736</a></code>
+  on branch <code>claude/main</code> — &ldquo;Fix browser/npm wasm loaders for wasm_of_ocaml 6.4.1 bundle shape&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
