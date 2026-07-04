@@ -5,6 +5,19 @@ description: Run and interpret every test suite in the Factoidal project — W3C
 
 # Test suites: what exists, how to run them, what the numbers mean
 
+**Backend rule (owner directive, 2026-07-04): semantic compliance is
+claimed PER BACKEND, and every semantic regression test runs on all
+backends.** The W3C scores exercise the in-memory evaluation path
+only; the on-disk COTTAS path has its own search/scope code, and
+every soundness bug found in 2026-07 (#261, the GROUP BY estimate
+leak, #267 dataset semantics) lived exactly in that gap. Until #118
+makes the F\* spec the single runtime for all storage layers (the
+architectural fix — one verified semantics, storage as a data source
+with equivalence lemmas), the cross-backend parity harness is the
+detector: new semantic tests follow the
+`graph_default_semantics_regressions.sh` pattern — same fixtures,
+same queries, every backend, results diffed.
+
 Every change in this repo is judged by test counts. Conformance and
 performance are measured on **separate, repeatable harnesses and never
 conflated**: this skill covers correctness; timing lives in the
