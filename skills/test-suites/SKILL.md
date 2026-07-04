@@ -191,6 +191,24 @@ suites a change touches — the scaling plan for when OWL DL (~3000),
 JSON-LD (~800), SHACL (~400) tests are wired in. When you add a suite,
 add its manifest.
 
+## Regression-pinning discipline
+
+When fixing a bug, write the regression BEFORE rebuilding, assert the
+FIXED behavior, and run it against the current (broken) binary to
+confirm it FAILS for the expected reason. That pre-fix failing run is
+the proof the test bites; paste it in the report/commit. Two
+refinements from 2026-07-04:
+
+- If a future improvement could make the fixture stop reproducing the
+  setup condition (e.g. a decoder gets smarter and the "undecodable
+  column" fixture decodes), have the script self-check the condition
+  and SKIP loudly instead of passing vacuously
+  (`cottas_ask_decode_failure_regressions.sh` pattern).
+- A strict external consumer is a regression test you didn't have to
+  write: the npm entry's JSON.parse caught a weeks-old escaper bug
+  the suites never fed. When adding a serializer/writer, give its
+  output to the strictest available parser somewhere in the battery.
+
 ## Reporting discipline
 
 - Full-sentence scores, labelled numerators and denominators, always

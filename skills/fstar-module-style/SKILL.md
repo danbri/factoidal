@@ -155,6 +155,47 @@ case explicitly or lang tags/datatypes get dropped (anti-pattern #9).
 Handle the promoted result types `ER_Num`/`ER_Dec`/`ER_Dbl`/`ER_Bool`
 alongside `ER_Term (T_Literal _)` everywhere (anti-pattern #6).
 
+## Extraction-semantics traps (F-star totality is NOT OCaml totality)
+
+Four members of the same family bit us in production on 2026-07-04.
+The pattern: a function verifies as Tot in F-star, but its extracted
+OCaml realisation has DIFFERENT partiality or byte semantics. The
+suites never catch these until a consumer feeds them the right input.
+
+1. **`List.Tot.splitAt n l` extracts to `BatList.split_nth`, which
+   THROWS when n > length(l).** F-star's version is total (returns
+   the short list). Crashed `turtle_of_graph_auto` live on graphs
+   with fewer than 8 namespaces. Write an explicit `take_at_most`
+   recursion instead. Audit any stdlib call whose F-star docs say
+   "returns X when out of range" — the Batteries realisation may
+   raise instead.
+2. **The string primitives are split-brained.** `String.index` /
+   `list_of_string` decode UTF-8 (codepoint-oriented, BatUTF8);
+   `string_of_char` is byte-oriented `Char.chr` (crashes above 255,
+   Latin-1 mojibake for 128-255); `string_of_list` RE-ENCODES each
+   element as a codepoint. Consequences: never emit a char read via
+   `String.index` with `string_of_char` (use `string_of_list [c]`);
+   never hand-assemble UTF-8 bytes and feed them to `string_of_list`
+   (double encoding); byte-transparent copying needs
+   `Parser.FastString.fs_byte_sub`, not char lists. Issues #271 and
+   the JSON-escape rewrite are the case law.
+3. **Fixed fuel constants silently truncate.** `let fuel = 10000`
+   in a tree walk made 50k-triple RDF/XML documents parse to 4,998
+   triples with NO error (#273). Thread fuel from input size
+   (`String.length input + 1`), never a constant, and regression-test
+   with an input bigger than any constant you removed.
+4. **Accumulator order + a final `List.Tot.rev` is easy to verify
+   and easy to get backwards** — the mirrored-JSON-escape bug shipped
+   for weeks because nothing consumed the output strictly. Prefer
+   run-slicing over char-accumulators for string building; when an
+   accumulator is unavoidable, unit-test exact output strings
+   (`tests/unit/json_escape_unit.ml` pattern).
+
+Detection heuristic: any F-star module whose OUTPUT is consumed by a
+strict external parser (JSON.parse, a SPARQL client, a W3C fixture
+diff) deserves one exact-bytes unit test. Verified-total is not
+extracted-total, and the dashboard only sees what a suite feeds it.
+
 ## KaRaMeL-compatible style (write for C even before we extract to it)
 
 The C/WASM path (`fstar.exe --codegen krml`, see

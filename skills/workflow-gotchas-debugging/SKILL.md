@@ -272,6 +272,34 @@ Daily `git worktree prune --expire 1.day.ago` plus a CI sweep that
 deletes worktrees whose agent-id appears in the completed-agents
 ledger.
 
+## 8. Secondary compile scripts poisoning shared .cmx (2026-07-04)
+
+`build-ocaml-serializer.sh` used to compile its module subset INSIDE
+`ocaml-output/`, overwriting `.cmi`/`.cmx` files the main compile
+step had produced. Every later `ocamlopt` in that directory
+(tests/unit/run-all.sh) then failed with "inconsistent assumptions
+over implementation X" until a full recompile. Fix pattern: any
+secondary script compiles in a `mktemp -d` scratch copy. Detection:
+"inconsistent assumptions" errors right after running a secondary
+build script.
+
+## 9. Editing build inputs while a build runs (2026-07-04)
+
+Adding a new module to `build-ocaml.sh`'s lists while
+`.build-running` existed poisoned the running cycle: the compile
+phase read the updated list, but the already-started extract never
+generated the new `.ml`. Rule: treat build-script edits exactly like
+running fstar.exe — only while the lock is absent. (Also in
+`subagent-prompting`.)
+
+## 10. Diagnostics eaten by cleanup traps (2026-07-04)
+
+A script with `set -e` + a `trap 'rm -rf $SCRATCH' EXIT` that
+compiles in $SCRATCH loses the compiler log when compilation fails:
+set -e exits before the `cat`, the trap deletes the evidence. Always
+capture rc explicitly (`CMD_RC=0; cmd || CMD_RC=$?`, anti-pattern
+#14), cat the log, THEN exit on failure.
+
 ## Lessons from 2026-05-07
 
 This skill is the durable form of a single bad session:
