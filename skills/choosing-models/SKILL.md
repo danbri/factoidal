@@ -32,7 +32,7 @@ cheaper models reliable. Execution belongs downstream.
 | Mechanical fan-out: greps, inventories, doc-table refreshes, log triage, file moves | smallest available (e.g. `haiku`), low effort |
 | Coding to a sketch: implement a specified rule/function, wire a build list, write a regression script from a stated pattern, JS/consumer code | mid tier (e.g. `sonnet`) — the default for coding tasks per the core rule |
 | Coding where the plan may need local judgement (API shaping, refactors with taste, multi-file features) | mid tier first; escalate only after a failed attempt shows the brief wasn't the problem |
-| F\* proof debugging, spec-level design, adversarial verification of a claimed fix, root-cause on soundness bugs | inherit the session model (omit the override) |
+| F\* proof debugging, spec-level design, adversarial verification of a claimed fix, root-cause on soundness bugs | top tier — inherit the session model (omit the override) or dispatch an explicit Fable-class subagent (`model: "fable"`) when the orchestrator wants the work parallelised without giving up its own context |
 | Research/lit-review with synthesis | inherit; effort high |
 
 Session inheritance note: OMITTING the model override makes the agent
@@ -54,9 +54,15 @@ every dispatch.
 - **Retry escalation, not retry repetition**: if a lower-tier agent
   fails twice on a good brief, escalate the model once rather than
   re-rolling; if the brief was bad, fix the brief first.
-- **Effort is a second dial**: `effort: low` for mechanical work even
-  on mid-tier; high effort reserved for the hardest verify/judge
-  stages.
+- **Effort is a second dial with five settings** — `low`, `medium`,
+  `high`, `xhigh`, `max` — the "flavours of strength" within one
+  model. Where each knob lives in the current harness: the Agent tool
+  exposes `model` only; per-agent `effort` is available when
+  orchestrating through the Workflow tool's `agent()` calls. Use
+  `effort: low` for mechanical work even on mid-tier; reserve the
+  top efforts for the hardest verify/judge stages. Fable-class
+  subagents are permitted (owner, 2026-07-04) — the expensive default
+  to avoid is ACCIDENTAL inheritance, not deliberate choice.
 
 ## What this skill does NOT cover
 
