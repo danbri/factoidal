@@ -992,58 +992,87 @@ let rec add_triples_if_new (g : rdf_graph) (ts : list triple) : Tot rdf_graph (d
 (** ======================================================================== *)
 
 (* rdfs7: If (a P b) and (P rdfs:subPropertyOf Q), infer (a Q b).
-   For each triple (a P b) in g, find all Q such that (P subPropertyOf Q),
-   then add (a Q b). *)
+   task #36 join-reorder (2026-07-04, see docs/designissues/2026-07-04-
+   lifesci-demo-entailment-perf.md): the previous shape iterated every
+   DATA triple (a P b) and, for each, called find_objects_indexed on
+   ig_sp keyed by (subject = P, pred = rdfs:subPropertyOf) — a compound
+   key that essentially never exists on schema-free data, but
+   bucket_lookup is a linear scan of ig_sp's ~N-distinct-key association
+   list, so a non-match costs O(N) anyway. Measured: O(N) data triples x
+   O(N) failed lookup = O(N^2), confirmed empirically (27421-triple
+   lifesci disease.ttl: ~4.28s for this shape vs. sequence_variant's
+   6455 triples at ~0.24s — a 4.25x size increase costing ~18x time,
+   matching N^2 exactly).
+   Fix: drive the join from the (schema, usually zero-to-few) subPropertyOf
+   DECLARATIONS via one ig_pred lookup (that bucket's key is the bare
+   predicate IRI, so it stays small regardless of graph size), then for
+   each declared (P subPropertyOf Q) look up P's data triples via another
+   ig_pred lookup. Semantically identical to the original (same emitted
+   triple set for any graph); just the opposite join order. When there
+   are zero subPropertyOf declarations (the common case for data-only
+   graphs), this whole rule now costs O(1) instead of O(N^2). *)
 let rdfs_rule_subPropertyOf (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  let decls = bucket_lookup ig.ig_pred rdfs_subPropertyOf in
   List.Tot.fold_left
-    (fun (acc : rdf_graph) (t : triple) ->
-      let super_props = find_objects_indexed ig (S_IRI t.p) rdfs_subPropertyOf in
-      List.Tot.fold_left
-        (fun (acc2 : rdf_graph) (q_term : rdf_term) ->
-          match q_term with
-          | T_IRI q ->
-            let new_t : triple = { s = t.s; p = q; o = t.o } in
-            add_triple_unchecked acc2 new_t
-          | _ -> acc2)
-        acc
-        super_props)
-    g
-    g
-
-(* rdfs2: If (a P b) and (P rdfs:domain C), infer (a rdf:type C).
-   For each triple (a P b) in g, find all C such that (P domain C),
-   then add (a type C). *)
-let rdfs_rule_domain (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
-  List.Tot.fold_left
-    (fun (acc : rdf_graph) (t : triple) ->
-      let domain_classes = find_objects_indexed ig (S_IRI t.p) rdfs_domain in
-      List.Tot.fold_left
-        (fun (acc2 : rdf_graph) (c_term : rdf_term) ->
-          let new_t : triple = { s = t.s; p = rdf_type; o = c_term } in
-          add_triple_unchecked acc2 new_t)
-        acc
-        domain_classes)
-    g
-    g
-
-(* rdfs3: If (a P b) and (P rdfs:range C), infer (b rdf:type C).
-   For each triple (a P b) in g, find all C such that (P range C),
-   then add (b type C) — but only if b can be a subject (IRI or BNode). *)
-let rdfs_rule_range (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
-  List.Tot.fold_left
-    (fun (acc : rdf_graph) (t : triple) ->
-      let range_classes = find_objects_indexed ig (S_IRI t.p) rdfs_range in
-      match term_to_subject t.o with
-      | Some b_subj ->
+    (fun (acc : rdf_graph) (decl : triple) ->
+      match decl.s, decl.o with
+      | S_IRI p, T_IRI q ->
+        let matching = bucket_lookup ig.ig_pred p in
         List.Tot.fold_left
-          (fun (acc2 : rdf_graph) (c_term : rdf_term) ->
-            let new_t : triple = { s = b_subj; p = rdf_type; o = c_term } in
+          (fun (acc2 : rdf_graph) (t : triple) ->
+            let new_t : triple = { s = t.s; p = q; o = t.o } in
             add_triple_unchecked acc2 new_t)
           acc
-          range_classes
-      | None -> acc)
+          matching
+      | _, _ -> acc)
     g
+    decls
+
+(* rdfs2: If (a P b) and (P rdfs:domain C), infer (a rdf:type C).
+   Same join-reorder as rdfs_rule_subPropertyOf above (task #36):
+   drive from the domain DECLARATIONS (ig_pred lookup, small/empty on
+   schema-free data) rather than from every data triple. c_term is kept
+   as the raw rdf_term (not restricted to T_IRI) to match the original
+   rule's behaviour — domain classes were never IRI-restricted here. *)
+let rdfs_rule_domain (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  let decls = bucket_lookup ig.ig_pred rdfs_domain in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (decl : triple) ->
+      match decl.s with
+      | S_IRI p ->
+        let matching = bucket_lookup ig.ig_pred p in
+        List.Tot.fold_left
+          (fun (acc2 : rdf_graph) (t : triple) ->
+            let new_t : triple = { s = t.s; p = rdf_type; o = decl.o } in
+            add_triple_unchecked acc2 new_t)
+          acc
+          matching
+      | _ -> acc)
     g
+    decls
+
+(* rdfs3: If (a P b) and (P rdfs:range C), infer (b rdf:type C).
+   Same join-reorder as above (task #36): drive from the range
+   DECLARATIONS, not from every data triple. *)
+let rdfs_rule_range (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  let decls = bucket_lookup ig.ig_pred rdfs_range in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (decl : triple) ->
+      match decl.s with
+      | S_IRI p ->
+        let matching = bucket_lookup ig.ig_pred p in
+        List.Tot.fold_left
+          (fun (acc2 : rdf_graph) (t : triple) ->
+            match term_to_subject t.o with
+            | Some b_subj ->
+              let new_t : triple = { s = b_subj; p = rdf_type; o = decl.o } in
+              add_triple_unchecked acc2 new_t
+            | None -> acc2)
+          acc
+          matching
+      | _ -> acc)
+    g
+    decls
 
 (* rdfs9: If (a rdf:type A) and (A rdfs:subClassOf B), infer (a rdf:type B).
    For each triple (a type A) in g, find all B such that (A subClassOf B),
@@ -2916,6 +2945,108 @@ let owl_rule_cls_maxc2 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
     g
     g
 
+// Helper: does rdf_term y carry rdf:type c in ig? Literals never carry
+// rdf:type so term_to_subject failing is a clean false. Boolean sibling
+// of the inline filter inside count_p_successors_typed_c above (that one
+// is embedded in a List.Tot.filter; this one is a standalone predicate
+// for the contrapositive rule below).
+let object_has_type (ig : indexed_graph) (y : rdf_term) (c : wf_iri) : bool =
+  match term_to_subject y with
+  | None -> false
+  | Some y_subj ->
+    let ts = find_objects_indexed ig y_subj rdf_type in
+    List.Tot.existsb (fun (ty : rdf_term) -> rdf_term_eq ty (T_IRI c)) ts
+
+// cls-maxqc-comp (sound extension, not in RL Table 4 — bnode conclusion,
+// outside Theorem PR1's completeness guarantee, same family as
+// cax-dw-comp above): contrapositive of cls-maxqc1. For a data-side
+// restriction _:R with
+//   (_:R owl:maxQualifiedCardinality "1"^^xsd:nonNegativeInteger),
+//   (_:R owl:onProperty P), (_:R owl:onClass C),
+// and a member x of _:R (x rdf:type _:R) with P-successors y1, y2 where
+// y1 is typed C and (y1 owl:differentFrom y2) holds: the restriction's
+// single C-slot is taken by y1, so y2 cannot also be a C-instance — y2
+// lies in the class expression complementOf(C). Materialise that
+// reading via the SAME canonical_complement_bnode skolem cax-dw-comp
+// uses (deterministic, keyed only on C, so the two rules converge on
+// one shared scaffold node per class instead of two). IRI-only guard on
+// C mirrors cax-dw-comp's owl:Thing/owl:Nothing skip (Thing's
+// complement is the always-empty Nothing; nothing useful to assert).
+// Targets New-Feature-ObjectQCR-002; see
+// docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.4.
+//
+// Complexity: bucket-indexed throughout, mirrors cls-maxc2's shape.
+// Outer fold is O(|g|) filtering on the maxQualifiedCardinality-"1"
+// predicate/object pair; onProperty/onClass/member lookups are O(1)
+// bucket reads (find_objects_indexed / find_subjects_indexed); the
+// per-member y1 x y2 nesting is bounded by P's fan-out for that one
+// member (same bound as cls-maxc2's ys x ys), not a graph-wide
+// cross product.
+let owl_rule_cls_maxqc_comp (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_maxQualifiedCardinality_iri
+         && rdf_term_eq t.o (T_Literal one_nonNegInteger_literal) then
+        let r_subj = t.s in
+        let props = find_objects_indexed ig r_subj owl_onProperty_iri in
+        let classes = find_objects_indexed ig r_subj owl_onClass_iri in
+        List.Tot.fold_left
+          (fun (acc2 : rdf_graph) (p_term : rdf_term) ->
+            match p_term with
+            | T_IRI p ->
+              List.Tot.fold_left
+                (fun (acc3 : rdf_graph) (c_term : rdf_term) ->
+                  match c_term with
+                  | T_IRI c ->
+                    if c = owl_Thing || c = owl_Nothing then acc3
+                    else
+                      let members =
+                        find_subjects_indexed ig rdf_type (subject_to_term r_subj) in
+                      List.Tot.fold_left
+                        (fun (acc4 : rdf_graph) (x : subject) ->
+                          let ys = find_objects_indexed ig x p in
+                          List.Tot.fold_left
+                            (fun (acc5 : rdf_graph) (y1 : rdf_term) ->
+                              if object_has_type ig y1 c then
+                                List.Tot.fold_left
+                                  (fun (acc6 : rdf_graph) (y2 : rdf_term) ->
+                                    if rdf_term_eq y1 y2 then acc6
+                                    else if not (differentFrom_in_graph g y1 y2) then acc6
+                                    else
+                                      match term_to_subject y2 with
+                                      | None -> acc6
+                                      | Some y2_subj ->
+                                        let cb : subject =
+                                          S_BNode (canonical_complement_bnode c) in
+                                        let shape1 : triple =
+                                          { s = cb; p = owl_complementOf_iri; o = T_IRI c } in
+                                        let shape2 : triple =
+                                          { s = cb; p = rdf_type; o = T_IRI owl_Class } in
+                                        let memb : triple =
+                                          { s = y2_subj; p = rdf_type;
+                                            o = T_BNode (canonical_complement_bnode c) } in
+                                        add_triple_unchecked
+                                          (add_triple_unchecked
+                                            (add_triple_unchecked acc6 shape1)
+                                            shape2)
+                                          memb)
+                                  acc5
+                                  ys
+                              else acc5)
+                            acc4
+                            ys)
+                        acc3
+                        members
+                  | _ -> acc3)
+                acc2
+                classes
+            | _ -> acc2)
+          acc
+          props
+      else acc)
+    g
+    g
+
 // cls-avf1 [OWL 2 RL/RDF]: universal-restriction propagation.
 //   (_:R rdf:type owl:Restriction) AND
 //   (_:R owl:allValuesFrom D) AND
@@ -3013,18 +3144,32 @@ let owl_rule_reflexive_property (g : rdf_graph) (ig : indexed_graph) : rdf_graph
       []
       g
   in
-  // For each reflexive property P and each individual x, emit (x P x).
-  let indivs : list wf_iri = prp_rfl_individuals g in
-  List.Tot.fold_left
-    (fun (acc : rdf_graph) (p_iri : wf_iri) ->
-      List.Tot.fold_left
-        (fun (acc2 : rdf_graph) (x : wf_iri) ->
-          let new_t : triple = { s = S_IRI x; p = p_iri; o = T_IRI x } in
-          add_triple_unchecked acc2 new_t)
-        acc
-        indivs)
-    g
-    refl_props
+  // task #36 fix (2026-07-04, docs/designissues/2026-07-04-lifesci-demo-
+  // entailment-perf.md): prp_rfl_individuals walks the whole graph
+  // building a dedup'd IRI list (O(N) "is it new" scan per triple, i.e.
+  // O(N^2) worst case) — and the fold below is a no-op whenever
+  // refl_props is empty (its result is exactly `g`, unconditionally, for
+  // ANY value of indivs). On schema-free data with zero
+  // owl:ReflexiveProperty declarations, the original code still paid
+  // the full prp_rfl_individuals cost only to multiply it by an empty
+  // outer fold. Measured: 1.879s of this rule's ~1.9s wall time on the
+  // lifesci chromosome fixture (18480-triple post-growth graph) was
+  // this wasted precompute. Short-circuit before computing indivs.
+  match refl_props with
+  | [] -> g
+  | _ ->
+    // For each reflexive property P and each individual x, emit (x P x).
+    let indivs : list wf_iri = prp_rfl_individuals g in
+    List.Tot.fold_left
+      (fun (acc : rdf_graph) (p_iri : wf_iri) ->
+        List.Tot.fold_left
+          (fun (acc2 : rdf_graph) (x : wf_iri) ->
+            let new_t : triple = { s = S_IRI x; p = p_iri; o = T_IRI x } in
+            add_triple_unchecked acc2 new_t)
+          acc
+          indivs)
+      g
+      refl_props
 
 // scm-cls [OWL 2 RL/RDF, partial]: every owl:Restriction is also an
 // owl:Class.
@@ -3221,42 +3366,58 @@ let rec find_chain_endpoints (g : rdf_graph) (ig : indexed_graph) (chain : list 
 // no semantics. The n = 2 case overlaps with owl_rule_property_chain_2;
 // running both is a no-op (add_triple_unchecked dedupes).
 let owl_rule_property_chain_n (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
-  // Distinct subjects appearing in g — candidates for the path-start x.
-  let starting_subjects : list subject =
+  // task #36 fix (2026-07-04, docs/designissues/2026-07-04-lifesci-demo-
+  // entailment-perf.md): the outer fold below only ever emits when
+  // chain_t.p = owl_propertyChainAxiom — if no such triple exists in g,
+  // the fold is a no-op and returns g unchanged for ANY value of
+  // starting_subjects. The old code built starting_subjects
+  // unconditionally: an O(N) "existsb" dedup scan per triple (O(N^2)
+  // worst case) that ran even when there was zero chain-axiom vocabulary
+  // in the data. Measured: 0.393s of this rule's cost on the lifesci
+  // chromosome fixture (18480 triples, post-growth) was this wasted
+  // precompute (schema-free data has no owl:propertyChainAxiom triples
+  // at all). Guard on the (ig_pred-indexed, so cheap) chain-declaration
+  // count before paying for the dedup scan.
+  let chain_decls = bucket_lookup ig.ig_pred owl_propertyChainAxiom in
+  match chain_decls with
+  | [] -> g
+  | _ ->
+    // Distinct subjects appearing in g — candidates for the path-start x.
+    let starting_subjects : list subject =
+      List.Tot.fold_left
+        (fun (acc : list subject) (t : triple) ->
+          if List.Tot.existsb (fun s -> subject_eq s t.s) acc
+          then acc else t.s :: acc)
+        []
+        g
+    in
     List.Tot.fold_left
-      (fun (acc : list subject) (t : triple) ->
-        if List.Tot.existsb (fun s -> subject_eq s t.s) acc
-        then acc else t.s :: acc)
-      []
+      (fun (acc : rdf_graph) (chain_t : triple) ->
+        if chain_t.p = owl_propertyChainAxiom then
+          match chain_t.s, term_to_subject chain_t.o with
+          | S_IRI p_iri, Some list_subj ->
+            (match decode_chain_list g ig list_subj with
+             | Some chain ->
+               // n >= 2 only — n = 1 is subPropertyOf, n = 0 is meaningless.
+               if List.Tot.length chain >= 2 then
+                 List.Tot.fold_left
+                   (fun (acc1 : rdf_graph) (x : subject) ->
+                     let zs = find_chain_endpoints g ig chain x in
+                     List.Tot.fold_left
+                       (fun (acc2 : rdf_graph) (z_term : rdf_term) ->
+                         let new_t : triple =
+                           { s = x; p = p_iri; o = z_term } in
+                         add_triple_unchecked acc2 new_t)
+                       acc1
+                       zs)
+                   acc
+                   starting_subjects
+               else acc
+             | None -> acc)
+          | _, _ -> acc
+        else acc)
       g
-  in
-  List.Tot.fold_left
-    (fun (acc : rdf_graph) (chain_t : triple) ->
-      if chain_t.p = owl_propertyChainAxiom then
-        match chain_t.s, term_to_subject chain_t.o with
-        | S_IRI p_iri, Some list_subj ->
-          (match decode_chain_list g ig list_subj with
-           | Some chain ->
-             // n >= 2 only — n = 1 is subPropertyOf, n = 0 is meaningless.
-             if List.Tot.length chain >= 2 then
-               List.Tot.fold_left
-                 (fun (acc1 : rdf_graph) (x : subject) ->
-                   let zs = find_chain_endpoints g ig chain x in
-                   List.Tot.fold_left
-                     (fun (acc2 : rdf_graph) (z_term : rdf_term) ->
-                       let new_t : triple =
-                         { s = x; p = p_iri; o = z_term } in
-                       add_triple_unchecked acc2 new_t)
-                     acc1
-                     zs)
-                 acc
-                 starting_subjects
-             else acc
-           | None -> acc)
-        | _, _ -> acc
-      else acc)
-    g
-    g
+      g
 
 // scm-trans-from-chain (sound but not in OWL 2 RL/RDF Table 9): if
 // (P owl:propertyChainAxiom (P P)) — i.e. a chain of length 2 of P
@@ -3658,6 +3819,70 @@ let owl_rule_xsd_datatype_axioms (g : rdf_graph) (ig : indexed_graph) : rdf_grap
     in
     add_triples_if_new (add_triples_if_new g sub_triples) dt_triples
 
+// dt-rng-intersect (sound extension, not in RL Table 4): two rdfs:range
+// axioms on the same property P constrain P's values to lie in the
+// INTERSECTION of the two datatypes' value spaces (rdfs:range is not
+// exclusive — asserting it twice narrows, it does not conflict). Each
+// table entry lists datatypes whose value space is known by construction
+// to contain that intersection, so asserting them as additional ranges
+// on P is sound:
+//   short (cap 32767) ∩ unsignedInt/unsignedLong (>= 0)  ⊆ unsignedShort
+//   byte  (cap 127)   ∩ unsignedInt                       ⊆ unsignedByte
+//   nonNegativeInteger ∩ nonPositiveInteger = {0}         ⊆ byte, unsignedByte
+// The table is deliberately test-backed (the 2 W3C fixtures that need
+// it), not the full datatype product — extending it later is
+// mechanical. scm-rng2 (below) plus xsd_hierarchy_edges then finish
+// propagating the new range upward (byte -> short) on the NEXT fixpoint
+// iteration, since scm-rng2's subClassOf lookup reads the step-start ig
+// snapshot (see #4 snapshot-semantics doc) and this rule's own output
+// only lands in the live `g` thread within the current step. Targets
+// WebOnt-I5.8-008 (short ∩ unsignedInt -> unsignedShort, one step) and
+// WebOnt-I5.8-009 (nonNegativeInteger ∩ nonPositiveInteger -> byte this
+// step, byte -> short via scm-rng2 next step); see
+// docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.5.
+//
+// Complexity: bucket-indexed. Outer fold is O(|g|) filtering on
+// rdfs:range triples; find_objects_indexed is an O(1) bucket read for
+// P's other ranges; the innermost scan is over the fixed 4-entry table
+// (constant, not graph-sized) — no triple-list cross product.
+let xsd_range_intersections : list (wf_iri & wf_iri & list wf_iri) =
+  [ (xsd_short, xsd_unsignedInt,  [xsd_unsignedShort]);
+    (xsd_short, xsd_unsignedLong, [xsd_unsignedShort]);
+    (xsd_byte,  xsd_unsignedInt,  [xsd_unsignedByte]);
+    (xsd_nonNegativeInteger, xsd_nonPositiveInteger, [xsd_byte; xsd_unsignedByte]) ]
+
+let owl_rule_dt_range_intersect (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdfs_range then
+        match t.o with
+        | T_IRI d1 ->
+          let others = find_objects_indexed ig t.s rdfs_range in
+          List.Tot.fold_left
+            (fun (acc1 : rdf_graph) (d2_term : rdf_term) ->
+              match d2_term with
+              | T_IRI d2 ->
+                List.Tot.fold_left
+                  (fun (acc2 : rdf_graph) (entry : (wf_iri & wf_iri & list wf_iri)) ->
+                    let (e1, e2, outs) = entry in
+                    if (e1 = d1 && e2 = d2) || (e1 = d2 && e2 = d1) then
+                      List.Tot.fold_left
+                        (fun (acc3 : rdf_graph) (d3 : wf_iri) ->
+                          add_triple_unchecked acc3
+                            ({ s = t.s; p = rdfs_range; o = T_IRI d3 }))
+                        acc2
+                        outs
+                    else acc2)
+                  acc1
+                  xsd_range_intersections
+              | _ -> acc1)
+            acc
+            others
+        | _ -> acc
+      else acc)
+    g
+    g
+
 // OWL 2 RL/RDF scm-dom2: (P rdfs:domain C1) AND (C1 rdfs:subClassOf C2)
 // imply (P rdfs:domain C2). Mirrors rdfs9 but for property-domain instead
 // of subject-class.
@@ -3838,9 +4063,15 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   let g16 = owl_rule_cls_maxqc1 g15 ig in
   let g17 = owl_rule_cls_exactqc1 g16 ig in
   let g18 = owl_rule_cls_maxc2 g17 ig in
+  // cls-maxqc-comp: contrapositive of cls-maxqc1 — the differentFrom
+  // witness outside the single onClass slot lands in complementOf(C).
+  // After g18 so both max-side directions (sameAs-merge + complement)
+  // see the same restriction bnodes in one step. Targets
+  // New-Feature-ObjectQCR-002.
+  let g18a = owl_rule_cls_maxqc_comp g18 ig in
   // Universal-restriction rule (cls-avf1); target simple 6 when the
   // rewriter eventually lands the allValuesFrom-with-named-filler case.
-  let g19 = owl_rule_cls_avf1 g18 ig in
+  let g19 = owl_rule_cls_avf1 g18a ig in
   // prp-rfl: reflexive-property propagation.
   let g20 = owl_rule_reflexive_property g19 ig in
   // scm-cls (partial): owl:Restriction subjects are also owl:Class.
@@ -3864,10 +4095,17 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   // Tier-3: XSD datatype hierarchy + rdfs:Datatype axioms (gated on the
   // graph mentioning any XSD IRI). Targets WebOnt-I5.8-006/008/009/011.
   let g25 = owl_rule_xsd_datatype_axioms g24a ig in
+  // dt-rng-intersect: two rdfs:range axioms on one property narrow to
+  // the intersection of their value spaces (table-driven, see comment
+  // at the rule definition). Targets WebOnt-I5.8-008/-009. Slotted
+  // right after the XSD tower so the emitted intersection datatype
+  // (e.g. xsd:byte) is itself in xsd_all_datatypes / xsd_hierarchy_edges
+  // for scm-rng2 to lift further on the next fixpoint iteration.
+  let g25a = owl_rule_dt_range_intersect g25 ig in
   // Always-on core XSD Datatype declarations (xsd:integer / xsd:string).
   // Required for WebOnt-I5.8-011 which entails the declarations from an
   // empty graph (the gated rule above does not fire on empty input).
-  let g26 = owl_rule_xsd_core_datatype_axioms g25 ig in
+  let g26 = owl_rule_xsd_core_datatype_axioms g25a ig in
   // scm-dom2 / scm-rng2: propagate rdfs:domain and rdfs:range upward
   // through the rdfs:subClassOf chain. After step g25 the XSD hierarchy
   // edges are in scope, so a `:p rdfs:range xsd:byte` premise yields
