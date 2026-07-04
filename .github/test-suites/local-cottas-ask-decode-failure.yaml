@@ -1,0 +1,23 @@
+name: Local — COTTAS ASK decode-failure semantics (issue 269)
+spec: internal
+runner: tests/local/cottas_ask_decode_failure_regressions.sh
+runner_args: []
+domain: COTTAS
+foundational: false
+
+# ASK must not answer `false` when a COTTAS column fails to decode
+# (e.g. an unsupported RLE_DICTIONARY page) — "couldn't tell" must not
+# be conflated with "genuinely no match". Needs PYCOTTAS_PYTHON
+# (default: _tmp.junk/pycottas-venv/bin/python).
+
+triggers:
+  paths:
+    - formal/fstar/RDF.CottasStore.OnDiskRuntime.fst
+    - formal/fstar/RDF.CottasStore.ColumnSeq.fst
+    - formal/fstar/RDF.CottasStore.LazyDict.fst
+    - formal/fstar/RDF.CottasStore.PageCache.fst
+    - tools/corpus_pipeline.py
+    - bin/factoidal-cli/**
+    - tests/local/cottas_ask_decode_failure_regressions.sh
+
+  excludes: []

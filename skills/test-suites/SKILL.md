@@ -26,6 +26,34 @@ cover it have been run and the numbers reported in full-sentence form
 (anti-pattern #25: "631 pass, 0 fail (out of 631)", never "631/631"
 without labels).
 
+## Run only affected suites
+
+For local iteration, don't run the full ~25-minute W3C battery on
+every landing — `tools/affected-tests.sh` maps your diff to the
+suites it actually touches (via the `.github/test-suites/*.yaml`
+manifests + `tools/dispatch_test_suites.sh --diff`) and runs just
+those, with a labelled pass/fail line per suite:
+
+```bash
+tools/affected-tests.sh                 # base=merge-base(origin/claude/main, HEAD)
+                                         # head=working tree (incl. uncommitted changes)
+tools/affected-tests.sh <base>          # explicit base, head=working tree
+tools/affected-tests.sh <base> <head>   # explicit base and head (committed refs only)
+tools/affected-tests.sh --only <suite>  # force-run one named suite, bypassing diff detection
+```
+
+It prints the plan (which changed paths fired which suites), runs
+each affected suite's runner with its manifest's `runner_args`, and
+SKIPs loudly (not silently) any suite whose runner binary isn't built
+in this checkout. Touching a **foundational** path
+(`.github/test-suites/_foundational.yaml`) fires every suite — that's
+by design, not a bug in the tool.
+
+**The full battery still gates release-grade landings** — nightly CI
+(`.github/workflows/w3c-tests.yml`) and any multi-package landing
+must still run the complete suite (`./w3c-tests.sh`) before those.
+`affected-tests.sh` is a fast local signal, not a substitute.
+
 ## The one command
 
 ```bash
@@ -122,14 +150,22 @@ when 1.1 exists (Iron Rule #5).
   RDF/XML perf repros).
 - `tests/local/` — regression shell scripts:
   `sparql_parser_regressions.sh`, `sparql_negative_regressions.sh`,
-  `backend_parity_regressions.sh`, `cottas_corpus_regressions.sh`,
-  `parquet_footer_regressions.sh`, `check_pages_links.sh`.
-  Run the ones touching your area before pushing. Environment notes:
-  the COTTAS/parity/footer scripts need the pycottas venv at
-  `_tmp.junk/pycottas-venv` (the session bootstrap hook provisions
-  it); `sparql_parser_regressions.sh` additionally expects an
-  external HDT corpus at `/tmp/Corpus3` — without it, 6 of its 7
-  checks fail on environment, not on code.
+  `backend_parity_regressions.sh`, `backend_parity_full.sh`,
+  `cottas_corpus_regressions.sh`, `cottas_groupby_counts_regressions.sh`,
+  `cottas_ask_decode_failure_regressions.sh`,
+  `graph_default_semantics_regressions.sh`, `graphs_api_regressions.sh`,
+  `jsonld_regressions.sh`, `parquet_footer_regressions.sh`,
+  `serializer_unicode_regressions.sh`, `turtle_pretty_regressions.sh`,
+  `check_pages_links.sh`. Each has a `local-*` manifest in
+  `.github/test-suites/`, so `tools/affected-tests.sh --only
+  local-<name>` runs any one of them directly. Run the ones touching
+  your area before pushing. Environment notes: the COTTAS/parity/footer
+  scripts need the pycottas venv at `_tmp.junk/pycottas-venv` (the
+  session bootstrap hook provisions it); `sparql_parser_regressions.sh`
+  additionally expects an external HDT corpus at `/tmp/Corpus3` —
+  without it, 6 of its 7 checks fail on environment, not on code;
+  `check_pages_links.sh` needs a fresh Eleventy build at `docs/_site`
+  first.
 - `tests/beyond-w3c/` — cross-runtime parity: every demo-page query in
   `tests/beyond-w3c/fixtures/index.json` runs on native and
   js-of-ocaml-under-Node via `tests/beyond-w3c/bin/run-parity.py`. Any non-zero exit is an engine crash unless the
@@ -185,11 +221,15 @@ of itself** (we already commit binaries, so a
 | `dashboard-refresh.yml`, `deploy-pages.yml` | Publishing (see `site-and-dashboard`) |
 
 `.github/test-suites/*.yaml` holds one manifest per suite (runner,
-args, log path, `domain`, `foundational`, trigger paths) with
-`tools/dispatch_test_suites.sh --diff <base> <head>` computing which
-suites a change touches — the scaling plan for when OWL DL (~3000),
-JSON-LD (~800), SHACL (~400) tests are wired in. When you add a suite,
-add its manifest.
+args, log path, `domain`, `foundational`, trigger paths) — this
+covers both the W3C corpora (`rdf-*`, `sparql11-*`, `owl-profile-rl`,
+`rdfc10`, `jsonld-tordf`) and the `tests/local/*.sh` regression
+scripts (`local-*` manifests). `tools/dispatch_test_suites.sh --diff
+<base> [<head>]` computes which suites a change touches — the
+scaling plan for when OWL DL (~3000), JSON-LD (~800), SHACL (~400)
+tests are wired in — and `tools/affected-tests.sh` (see "Run only
+affected suites" above) wraps it with actual execution. When you add
+a suite (W3C or local script), add its manifest.
 
 ## Regression-pinning discipline
 

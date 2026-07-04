@@ -95,11 +95,20 @@ Caveats, all CONFIRMED by experiment or source:
 | `.checked` files | Serialized typechecked module (`--cache_checked_modules`) | `formal/fstar/*.fst.checked`, next to source; gitignored | Source **content digest** change (not mtime — CONFIRMED); any dependency's `.checked` going stale (cascades — CONFIRMED); F\* version change (PROPOSED, from F\* release practice; not tested here). NOT invalidated by `--z3rlimit_factor` change (CONFIRMED) | RDF.Bytes: 6.4s cold → 0.5s warm, 12x (CONFIRMED) |
 | ulib `.checked` | Pre-checked F\* stdlib | `~/.opam/fstar/lib/fstar/ulib.checked/` | Reinstalling/upgrading the fstar opam package | Ships with the package; stdlib never re-verified (CONFIRMED via --dep output paths) |
 | `.hints` files | Recorded z3 unsat cores for proof replay (`--record_hints` / `--use_hints`) | `Foo.fst.hints` next to source (or `--hint_dir`); JSON text | Query hash mismatch per top-level name; z3 version or `--z3seed` drift can break replay (PROPOSED) | **Measured negative here**: RDF.Bytes re-verify 6.3s plain vs 12.4s with `--use_hints` (CONFIRMED, 3 repeats). See P5 before adopting |
-| Extract-loop mtime skip | `[[ ! "$fst" -nt "$out_ml" ]]` + `EXTRACT_CHAIN_DIRTY` | build-ocaml.sh lines 325-328 | Any earlier module in the list re-extracting dirties the chain: **all later modules re-run fstar.exe** even if unrelated (CONFIRMED from source) | Skips fstar.exe startup (~0.5-1s/module × ~90 modules) when nothing changed |
+| Incremental-extract manifest | Per-module `.fst` source SHA-256 recorded from the last successful extract; `--force-full` bypasses it | `ocaml-output/.extract-state/manifest.tsv`, gitignored | Any change to a module's own `.fst` content (CONFIRMED — see P2 below); NOT invalidated by a dependency's content changing unless the dependent's own source also changes (CONFIRMED, this is the accepted trade-off) | Skips fstar.exe invocation entirely (not just codegen) for modules unrelated to the edit — replaces the old flat "everyone after this point in the list" cascade. CONFIRMED via scratch harness, see P2 |
 | Committed `.ml` + binaries | Extraction output + `bin/<platform>/` | git (iron rule #9) | Re-extraction; `ocaml-patches.sh` rewrites `.ml` in place | Fresh clone runs tests with no toolchain |
 | Compile skip | `needs_rebuild_from_sources` mtime check over all `.ml` + consumer sources | build-ocaml.sh lines 523-532 | Any single `.ml` newer than any binary → **full** recompile of everything (CONFIRMED) | Skips all ocamlopt invocations on a no-op |
 | CI opam cache | `~/.opam` via actions/cache | [w3c-tests.yml](../../.github/workflows/w3c-tests.yml), [check-extraction.yml](../../.github/workflows/check-extraction.yml) | Manual key bump only (static keys `opam-fstar-<OS>-v3` / `-v4`) | Skips ~10 min toolchain install (CONFIRMED present) |
 | CI `.checked` cache | `formal/fstar/*.fst.checked` via actions/cache | w3c-tests.yml only — **absent from check-extraction.yml** (CONFIRMED) | Key = `hashFiles('formal/fstar/*.fst','*.fsti')`; restore-keys prefix warms partial hits | Workflow comment: heavy pipeline ~25 min → ~5 min on no-.fst pushes |
+
+Per-phase wall-clock timing is now recorded on every `build-ocaml.sh`
+run: `.claude-runs/build-timings.csv` gets one appended line per phase
+(`extract-loop`, `patches`, `compile`, `test`, `js`, `wasm`,
+`wasm-factoidal`) — columns `timestamp,phase,seconds,changed_modules`,
+where `changed_modules` is the count of modules actually re-extracted
+in that run (0 for a `compile`/`js`/`wasm`-only invocation). Use this
+to see which phase actually dominates a given cycle instead of
+eyeballing terminal scrollback.
 
 Flags confirmed to exist in `fstar.exe --help` (F\* 2026.03.24):
 `--cache_checked_modules` (`-c`), `--cache_dir <dir>`, `--cache_off`,
@@ -229,21 +238,82 @@ Measurement: `time ./build-ocaml.sh extract` from `rm -f
 *.fst.checked ocaml-output/*.ml`, before vs after, plus the warm
 case and the one-module-edited case.
 
-### P2 — retire the mtime chain-dirty skip
+### P2 — retire the mtime chain-dirty skip — CONFIRMED, implemented 2026-07-04
 
-`EXTRACT_CHAIN_DIRTY` forces every module after the first re-extracted
-one to re-run fstar.exe even when unrelated (CONFIRMED, line 325).
-Under P1 this disappears: make consults the real dependency graph, so
-an edit to a leaf module re-extracts only its dependents. Standalone
-(without P1) alternative: drop the chain-dirty flag and let the
-`.checked` digest decide — the fstar.exe invocation on an untouched
-module with valid `.checked` is ~0.5-1s instead of a full re-verify,
-but ~90 of those still cost a minute-plus, so P1 is the better fix.
+Implemented in [build-ocaml.sh](../../formal/fstar/build-ocaml.sh)'s
+extract step. `EXTRACT_CHAIN_DIRTY` (which forced every module
+*positioned after* any re-extracted module in the hand-ordered list to
+re-run fstar.exe, regardless of true dependency) is gone, replaced by
+an incremental-extract manifest.
 
-Expected win: single-module edit near the top of the list stops
-paying ~90 fstar.exe startups + re-extractions. Measurement: edit
-`Util.Log.fst` (first in the list), time `./build-ocaml.sh extract`
-before/after.
+**Design.** `ocaml-output/.extract-state/manifest.tsv` records, per
+module, the SHA-256 of its `.fst` source as of the last successful
+extract (one line per module: `<fst-path>\t<sha256>`, gitignored —
+digest-keyed like `.checked`, so a missing/stale copy just costs a
+full re-extract, never a correctness bug). Before invoking fstar.exe
+on module `M`, the loop computes `M.fst`'s current hash and skips the
+invocation entirely — no fstar.exe process at all — when: (a) the
+hash matches the manifest entry, and (b) `M`'s `.ml` already exists in
+`ocaml-output/`. `--force-full` (`./build-ocaml.sh extract
+--force-full`) bypasses the manifest and reprocesses every module,
+same as the old unconditional behavior — the escape hatch for anyone
+who distrusts the manifest state.
+
+**Why this is correct despite skipping on the module's OWN hash only
+(no real dependency graph).** Verified experimentally in a scratch dir
+(`Parser.FastString.fst` → `Parser.IRI.fst`, a real one-hop dependency
+in this repo): editing `Parser.FastString.fst` (a comment-only,
+interface-preserving change) and re-verifying `Parser.IRI.fst` changes
+`Parser.IRI.fst.checked`'s hash (F* embeds each dependency's digest in
+the `.checked` file, so ANY upstream change ripples into every
+dependent's `.checked` bytes — this is why a pure "skip when
+`.checked` hash unchanged" design, floated as the "simpler" option
+before this was implemented, would NOT have skipped true dependents
+and wasn't chosen) but leaves the extracted `Parser_IRI.ml`
+**byte-identical**. Codegen output is a function of the module's own
+`.fst` content (given a fixed F* version) plus the *names* it calls in
+dependencies, not their internal proofs/implementations — so skipping
+re-codegen based on the dependent's own source hash is safe whenever
+the dependency's edit doesn't change its OCaml-visible signature. The
+residual gap — a dependency changing its extracted signature
+incompatibly, with a stale, unreprocessed dependent still referencing
+the old shape — is caught loudly at `ocamlopt` compile time (a build
+failure, not a silently wrong `.ml`), and `--force-full` is there for
+anyone who wants to bypass the manifest and reprocess everything
+regardless. `ocaml-patches.sh`'s per-patch idempotency guards (e.g.
+`89_fast_string_primitives.sh`'s "already applied, skip" check) make
+leaving an untouched, already-patched `.ml` in place safe: the
+unconditional whole-directory patch re-run at the end of extract is a
+no-op for it.
+
+Experiment transcript (scratch dir, F* 2025.12.15, z3 4.13.3):
+warm no-op invocation on an unaffected module 0.6s; the SAME module
+reverified after a genuine dependency change 3.3s (real SMT work, not
+avoidable without a full dependency-DAG scheme — see P1). A 4-run
+harness reproducing the manifest logic exactly showed: run 1 (no
+manifest) both modules processed; run 2 (nothing changed) both
+skipped; run 3 (`Parser.FastString.fst` edited) only it reprocessed,
+`Parser_IRI.ml` unchanged byte-for-byte; run 5 (`--force-full`) both
+reprocessed despite unchanged sources.
+
+**What this does NOT fix**: a module that legitimately depends on a
+changed leaf and whose own extraction is genuinely order-adjacent in
+the list still pays real fstar.exe invocation + (if actually
+type-affected) real SMT reverification cost — that cost is
+unavoidable correctness work, not the waste this proposal targets.
+True dependency-scoped parallelism/narrowing is P1's job (`--dep
+full` + `make -j`), which remains PROPOSED.
+
+Expected win (now measured directionally, not yet on the full
+~95-module list): single-module edits far from the bulk of the
+dependency graph (most of the ~95-module list — many parser/format
+modules do not depend on each other) skip fstar.exe entirely instead
+of paying chain-dirty's blanket "everyone after this point" cost.
+Modules that ARE true dependents still pay real reverification, same
+as before. Follow-up measurement: `time ./build-ocaml.sh extract`
+after touching one leaf-ish module (e.g. a single parser format) vs.
+one heavily-depended-on module (e.g. `RDF.Graph.Executable.fst`),
+before/after this change, on the full list.
 
 ### P3 — compile the common modules once, link N times
 

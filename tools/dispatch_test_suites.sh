@@ -8,7 +8,12 @@
 # Usage:
 #   tools/dispatch_test_suites.sh --diff <base-ref> <head-ref>
 #       Print the list of affected suite names, one per line.
-#   tools/dispatch_test_suites.sh --diff <base-ref> <head-ref> --verbose
+#   tools/dispatch_test_suites.sh --diff <base-ref>
+#       Same, but with <head-ref> omitted the diff is base-ref vs the
+#       WORKING TREE (single-ref `git diff`), so uncommitted (staged +
+#       unstaged) changes are included. This is what
+#       tools/affected-tests.sh uses by default.
+#   tools/dispatch_test_suites.sh --diff <base-ref> [<head-ref>] --verbose
 #       As above, plus a per-suite explanation of WHY it was selected.
 #   tools/dispatch_test_suites.sh --list
 #       Print all suites, one per line.
@@ -17,6 +22,11 @@
 #   tools/dispatch_test_suites.sh --validate
 #       Validate every manifest file (schema + path existence). Exit
 #       non-zero on any error. Suitable for use in CI as a guard.
+#   tools/dispatch_test_suites.sh --field <suite> <key>
+#       Print a scalar manifest field (name, runner, log_path, ...).
+#   tools/dispatch_test_suites.sh --list-field <suite> <key>
+#       Print a block-list manifest field (runner_args, ...), one
+#       item per line.
 #
 # Output format on --diff: one suite name per line, sorted. Empty
 # output means no suites affected. Foundational changes select ALL
@@ -110,6 +120,25 @@ read_paths_under_triggers() {
   ' "$file"
 }
 
+# read_scalar_field <yaml-file> <key>
+#   Extract a single top-level "key: value" line. Strips surrounding
+#   quotes and trailing comments. Prints nothing if the key is absent
+#   or is a block key (e.g. "runner_args:" with no inline value) — use
+#   read_paths_block for those.
+read_scalar_field() {
+  local file="$1"; local key="$2"
+  awk -v want="$key" '
+    $0 ~ "^" want ":" {
+      line = $0
+      sub("^" want ":[[:space:]]*", "", line)
+      sub(/[[:space:]]*#.*$/, "", line)
+      sub(/^["'\'']/, "", line); sub(/["'\'']$/, "", line)
+      print line
+      exit
+    }
+  ' "$file"
+}
+
 # ---------------------------------------------------------------------------
 # Glob-match: does $1 (a path) match $2 (a glob pattern with ** support)?
 # ---------------------------------------------------------------------------
@@ -130,11 +159,19 @@ glob_matches() {
 # Diff handling
 # ---------------------------------------------------------------------------
 
-# get_changed_paths <base> <head>
-#   Print one path per line that changed between base and head.
+# get_changed_paths <base> [<head>]
+#   Print one path per line that changed between base and head. If
+#   <head> is empty/omitted, diff base against the WORKING TREE
+#   instead (single-ref `git diff <base>` form), which includes
+#   uncommitted staged + unstaged changes — plain two-ref `git diff
+#   <base> <head>` only ever sees committed state.
 get_changed_paths() {
-  local base="$1"; local head="$2"
-  git -C "$REPO_ROOT" diff --name-only "$base" "$head"
+  local base="$1"; local head="${2:-}"
+  if [ -z "$head" ]; then
+    git -C "$REPO_ROOT" diff --name-only "$base"
+  else
+    git -C "$REPO_ROOT" diff --name-only "$base" "$head"
+  fi
 }
 
 # is_path_in_set <path> <newline-separated-set-of-globs>
@@ -194,6 +231,23 @@ cmd_validate() {
     echo "All manifests valid."
   fi
   return "$rc"
+}
+
+# cmd_field <suite> <key> — print a scalar manifest field's value.
+cmd_field() {
+  local suite="$1"; local key="$2"
+  local f="$TEST_SUITES_DIR/$suite.yaml"
+  [ -f "$f" ] || { echo "::error::no manifest for suite: $suite" >&2; return 1; }
+  read_scalar_field "$f" "$key"
+}
+
+# cmd_list_field <suite> <key> — print a block-list manifest field's
+# items, one per line (e.g. runner_args).
+cmd_list_field() {
+  local suite="$1"; local key="$2"
+  local f="$TEST_SUITES_DIR/$suite.yaml"
+  [ -f "$f" ] || { echo "::error::no manifest for suite: $suite" >&2; return 1; }
+  read_paths_block "$f" "$key"
 }
 
 cmd_diff() {
@@ -262,16 +316,41 @@ case "${1:-}" in
     cmd_validate
     ;;
   --diff)
-    BASE="${2:-}"; HEAD="${3:-HEAD}"; VERBOSE=0
+    BASE="${2:-}"
     if [ -z "$BASE" ]; then
-      echo "Usage: $0 --diff <base-ref> <head-ref> [--verbose]" >&2
+      echo "Usage: $0 --diff <base-ref> [<head-ref>] [--verbose]" >&2
       exit 2
     fi
-    if [ "${4:-}" = "--verbose" ]; then VERBOSE=1; fi
+    # <head-ref> is optional (defaults to the working tree, not "HEAD"
+    # — see get_changed_paths). --verbose may land in either the 3rd
+    # or 4th position depending on whether head-ref was given.
+    ARG3="${3:-}"; ARG4="${4:-}"
+    if [ "$ARG3" = "--verbose" ]; then
+      HEAD=""; VERBOSE=1
+    else
+      HEAD="$ARG3"; VERBOSE=0
+      [ "$ARG4" = "--verbose" ] && VERBOSE=1
+    fi
     cmd_diff "$BASE" "$HEAD" "$VERBOSE"
     ;;
+  --field)
+    SUITE="${2:-}"; KEY="${3:-}"
+    if [ -z "$SUITE" ] || [ -z "$KEY" ]; then
+      echo "Usage: $0 --field <suite> <key>" >&2
+      exit 2
+    fi
+    cmd_field "$SUITE" "$KEY"
+    ;;
+  --list-field)
+    SUITE="${2:-}"; KEY="${3:-}"
+    if [ -z "$SUITE" ] || [ -z "$KEY" ]; then
+      echo "Usage: $0 --list-field <suite> <key>" >&2
+      exit 2
+    fi
+    cmd_list_field "$SUITE" "$KEY"
+    ;;
   -h|--help|"")
-    sed -n '2,25p' "$0"
+    sed -n '2,34p' "$0"
     ;;
   *)
     echo "Unknown command: $1" >&2

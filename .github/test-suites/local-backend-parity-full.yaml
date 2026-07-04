@@ -1,0 +1,28 @@
+name: Local — backend parity full (every query in tests/parity/queries.json)
+spec: internal
+runner: tests/local/backend_parity_full.sh
+runner_args: []
+domain: COTTAS
+foundational: false
+
+# Corpus-driven cross-backend parity: every query in
+# tests/parity/queries.json, run on --data (in-memory) AND
+# --data-cottas, diffed. Owner directive (2026-07-04): semantic
+# compliance is claimed PER BACKEND. Slower than
+# local-backend-parity.yaml's 3-query smoke; run before
+# multi-package landings, not on every push. Needs PYCOTTAS_PYTHON
+# (default: _tmp.junk/pycottas-venv/bin/python).
+
+triggers:
+  paths:
+    - tests/parity/queries.json
+    - tests/parity/run_backend_parity.py
+    - tests/parity/fixtures/**
+    - formal/fstar/RDF.CottasStore.OnDiskRuntime.fst
+    - formal/fstar/SPARQL11.Store.fst
+    - formal/fstar/SPARQL11.Algebra.fst
+    - tools/corpus_pipeline.py
+    - bin/factoidal-cli/**
+    - tests/local/backend_parity_full.sh
+
+  excludes: []

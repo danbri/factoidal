@@ -1,0 +1,24 @@
+name: Local — COTTAS GROUP BY / COUNT(*) exactness
+spec: internal
+runner: tests/local/cottas_groupby_counts_regressions.sh
+runner_args: []
+domain: COTTAS
+foundational: false
+
+# Guards the join-order-estimate leak: on-disk GROUP BY ?g and
+# COUNT(*) must return EXACT counts, not the planner's row-count
+# estimate. Cross-checks against the in-memory backend for parity.
+# Needs PYCOTTAS_PYTHON (default: _tmp.junk/pycottas-venv/bin/python).
+
+triggers:
+  paths:
+    - formal/fstar/SPARQL.Plan.Estimate.fst
+    - formal/fstar/SPARQL.Plan.Pruning.fst
+    - formal/fstar/SPARQL.Plan.AccessPath.fst
+    - formal/fstar/RDF.CottasStore.OnDiskRuntime.fst
+    - formal/fstar/RDF.CottasStore.PageCache.fst
+    - tools/corpus_pipeline.py
+    - bin/factoidal-cli/**
+    - tests/local/cottas_groupby_counts_regressions.sh
+
+  excludes: []

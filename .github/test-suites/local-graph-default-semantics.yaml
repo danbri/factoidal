@@ -1,0 +1,24 @@
+name: Local — RDF dataset default-graph vs GRAPH semantics (issue 267)
+spec: internal
+runner: tests/local/graph_default_semantics_regressions.sh
+runner_args: []
+domain: SPARQL.QUERY
+foundational: false
+
+# Plain BGPs must match ONLY the default graph, `GRAPH ?g` ONLY named
+# graphs, with the default graph both empty and non-empty — checked
+# on BOTH the in-memory and COTTAS backends per the owner directive
+# that semantic compliance is claimed per-backend. Needs
+# PYCOTTAS_PYTHON (default: _tmp.junk/pycottas-venv/bin/python).
+
+triggers:
+  paths:
+    - formal/fstar/SPARQL11.Store.fst
+    - formal/fstar/SPARQL11.Algebra.fst
+    - formal/fstar/RDF.CottasStore.OnDiskRuntime.fst
+    - formal/fstar/RDF.Dataset.Merge.fst
+    - tools/corpus_pipeline.py
+    - bin/factoidal-cli/**
+    - tests/local/graph_default_semantics_regressions.sh
+
+  excludes: []

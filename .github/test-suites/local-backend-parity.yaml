@@ -1,0 +1,23 @@
+name: Local — backend parity smoke (3 queries, in-memory vs COTTAS)
+spec: internal
+runner: tests/local/backend_parity_regressions.sh
+runner_args: []
+domain: COTTAS
+foundational: false
+
+# Fast subset (3 fixed queries: default-graph ASK/SELECT, named-graph
+# SELECT) diffing in-memory vs COTTAS results — a quick pre-push
+# signal. For the full corpus-driven parity run see
+# local-backend-parity-full.yaml. Needs PYCOTTAS_PYTHON (default:
+# _tmp.junk/pycottas-venv/bin/python).
+
+triggers:
+  paths:
+    - tests/local/sparql/**
+    - formal/fstar/RDF.CottasStore.OnDiskRuntime.fst
+    - formal/fstar/SPARQL11.Store.fst
+    - tools/corpus_pipeline.py
+    - bin/factoidal-cli/**
+    - tests/local/backend_parity_regressions.sh
+
+  excludes: []

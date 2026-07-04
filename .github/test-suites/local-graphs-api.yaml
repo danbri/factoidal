@@ -1,0 +1,21 @@
+name: Local — graphs-first CLI (list/get/hash/diff)
+spec: internal
+runner: tests/local/graphs_api_regressions.sh
+runner_args: []
+domain: RDF
+foundational: false
+
+# Exercises `factoidal graphs list|get|hash|diff` (in-memory only,
+# slice 1 of the graphs-first CLI — see
+# docs/designissues/2026-07-05-graphs-api-design.md). Requires the
+# committed `factoidal` binary to include the `graphs` subcommand;
+# FAILs with "unknown subcommand" on a binary predating that change.
+
+triggers:
+  paths:
+    - formal/fstar/RDF.Dataset.Graphs.fst
+    - formal/fstar/RDF.Canonical.fst
+    - bin/factoidal-cli/**
+    - tests/local/graphs_api_regressions.sh
+
+  excludes: []

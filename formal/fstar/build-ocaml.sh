@@ -222,20 +222,95 @@ needs_rebuild_from_sources() {
   return 1
 }
 
+# ---------------------------------------------------------------------------
+# Per-phase wall-clock timing.
+#
+# Every fix in this project pays the full verify+extract+compile+test loop,
+# and until now nobody could say *which phase* dominated a given run without
+# eyeballing terminal scrollback. record_phase_timing() appends one CSV line
+# per phase to .claude-runs/build-timings.csv (created with a header on
+# first use) and echoes a summary line. changed_modules carries EXTRACT_COUNT
+# so a slow compile/js/wasm phase can be correlated with how many modules
+# were actually re-extracted in the same run (0 for a pure `compile`/`js`/
+# `wasm` invocation that didn't touch extract this time).
+# ---------------------------------------------------------------------------
+TIMING_CSV=".claude-runs/build-timings.csv"
+mkdir -p .claude-runs
+if [[ ! -f "$TIMING_CSV" ]]; then
+  echo "timestamp,phase,seconds,changed_modules" > "$TIMING_CSV"
+fi
+EXTRACT_COUNT=0   # global default; the extract step below overwrites it
+
+record_phase_timing() {
+  local phase="$1" start_epoch="$2" changed="${3:-0}"
+  local end_epoch elapsed ts
+  end_epoch=$(date +%s)
+  elapsed=$(( end_epoch - start_epoch ))
+  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  echo "${ts},${phase},${elapsed},${changed}" >> "$TIMING_CSV"
+  echo "  [timing] phase=${phase} seconds=${elapsed} changed_modules=${changed}"
+}
+
 echo "=== F* → OCaml → JavaScript Pipeline ==="
 echo ""
 
 # Step 1: Extract F* to OCaml
 if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   echo "--- Step 1: F* → OCaml extraction ---"
+  PHASE_START_EXTRACT=$(date +%s)
   mkdir -p "$OUTDIR"
+
+  # ---------------------------------------------------------------------
+  # Incremental-extract manifest (2026-07-04, build-speed P0).
+  #
+  # Skips invoking fstar.exe entirely for a module whose .fst content
+  # hash is unchanged since the last successful extract AND whose .ml is
+  # already present in $OUTDIR. Replaces the old EXTRACT_CHAIN_DIRTY flag,
+  # which forced every module *positioned after* any re-extracted module
+  # in this hand-ordered list to re-run fstar.exe regardless of whether it
+  # actually depended on the change (see fast-verify-extract SKILL.md P2).
+  #
+  # Safety argument (see skills/fast-verify-extract/SKILL.md, "Incremental
+  # codegen manifest"): verified experimentally in a scratch dir
+  # (Parser.FastString.fst -> Parser.IRI.fst) that a dependency-only
+  # change (Parser.FastString.fst edited, Parser.IRI.fst untouched)
+  # changes Parser.IRI.fst.checked's hash (F* embeds dependency digests)
+  # but leaves the extracted Parser_IRI.ml BYTE-IDENTICAL. Skipping
+  # invocation based on the DEPENDENT's own .fst hash being unchanged is
+  # therefore safe for the actual codegen OUTPUT in the common case
+  # (interface-preserving dependency edits); the residual risk is a
+  # dependency that changes its OCaml-level signature incompatibly
+  # without us reprocessing the (stale) dependent — this is caught loudly
+  # at `ocamlopt` compile time (a build failure, not a silent bug), and
+  # `--force-full` is the escape hatch for anyone who wants to bypass the
+  # manifest and reprocess every module regardless.
+  # ---------------------------------------------------------------------
+  EXTRACT_STATE_DIR="$OUTDIR/.extract-state"
+  mkdir -p "$EXTRACT_STATE_DIR"
+  MANIFEST_FILE="$EXTRACT_STATE_DIR/manifest.tsv"
+  touch "$MANIFEST_FILE"
+
+  FORCE_FULL=0
+  if [[ "${2:-}" == "--force-full" ]]; then
+    FORCE_FULL=1
+    echo "  --force-full: ignoring incremental-extract manifest; re-extracting every module."
+  fi
+
+  declare -A PREV_HASH=()
+  if [[ -s "$MANIFEST_FILE" ]]; then
+    while IFS=$'\t' read -r manifest_mod manifest_hash; do
+      [[ -n "$manifest_mod" ]] || continue
+      PREV_HASH["$manifest_mod"]="$manifest_hash"
+    done < "$MANIFEST_FILE"
+  fi
+  declare -A CURRENT_HASH=()
 
   # All modules extracted with full verification (no --lax)
   # Extraction MUST succeed for every module — no silent failures
   echo "  Extracting all F* modules (verified)..."
   EXTRACT_FAILED=0
-  EXTRACT_CHAIN_DIRTY=0
   EXTRACT_COUNT=0
+  EXTRACT_SKIPPED=0
   # Dependency order:
   #   RDF.Graph.Executable  -> (no deps other than Prims/Stdlib)
   #   Parquet.Footer        -> RDF.Graph.Executable
@@ -326,8 +401,13 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     if [ -f "$fst" ]; then
       out_ml="$OUTDIR/${fst%.fst}"
       out_ml="${out_ml//./_}.ml"
-      if [[ "$EXTRACT_CHAIN_DIRTY" -eq 0 ]] && [[ -f "$out_ml" ]] && [[ ! "$fst" -nt "$out_ml" ]]; then
-        echo "    $fst (up to date)"
+      FST_HASH="$(sha256sum "$fst" | awk '{print $1}')"
+
+      if [[ "$FORCE_FULL" -eq 0 ]] && [[ -f "$out_ml" ]] \
+         && [[ -n "${PREV_HASH[$fst]:-}" ]] && [[ "${PREV_HASH[$fst]}" == "$FST_HASH" ]]; then
+        echo "    $fst (up to date, skipped -- source unchanged since last extract)"
+        CURRENT_HASH["$fst"]="$FST_HASH"
+        EXTRACT_SKIPPED=$((EXTRACT_SKIPPED + 1))
         continue
       fi
       echo "    $fst"
@@ -358,8 +438,14 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
         echo "  ERROR: $fst failed to extract! (exit code $FSTAR_RC)"
         EXTRACT_FAILED=1
       else
-        EXTRACT_CHAIN_DIRTY=1
         EXTRACT_COUNT=$((EXTRACT_COUNT + 1))
+        CURRENT_HASH["$fst"]="$FST_HASH"
+        # Persist immediately (append, last-value-wins on reload) so a
+        # LATER module's failure doesn't lose this module's already-
+        # completed state on the next retry — the loop below does not
+        # break on a single module's failure (existing behavior), and
+        # this script exits 1 only after every module has been attempted.
+        printf '%s\t%s\n' "$fst" "$FST_HASH" >> "$MANIFEST_FILE"
       fi
     fi
   done
@@ -368,22 +454,40 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     echo "FATAL: One or more F* modules failed extraction. Fix errors before proceeding."
     exit 1
   fi
+
+  # Compact the manifest to one line per module (the loop above appends,
+  # so a module reprocessed across retries could have duplicate lines).
+  # Only reached on full success, so CURRENT_HASH covers every module in
+  # the extract list — reprocessed ones (fresh hash) and skipped ones
+  # (hash carried over unchanged) alike. Any module removed from the list
+  # entirely is naturally dropped here (self-cleaning manifest).
+  {
+    for manifest_mod in "${!CURRENT_HASH[@]}"; do
+      printf '%s\t%s\n' "$manifest_mod" "${CURRENT_HASH[$manifest_mod]}"
+    done
+  } > "$MANIFEST_FILE.tmp"
+  mv "$MANIFEST_FILE.tmp" "$MANIFEST_FILE"
+
   echo "  RDF:    $(wc -l < "$OUTDIR/RDF_Graph_Executable.ml") lines"
   echo "  SPARQL: $(wc -l < "$OUTDIR/SPARQL11_Algebra.ml") lines"
   if [[ "$EXTRACT_COUNT" -eq 0 ]]; then
-    echo "  Extraction outputs already up to date; no F* modules re-extracted."
+    echo "  Extraction outputs already up to date; no F* modules re-extracted (${EXTRACT_SKIPPED} skipped)."
   else
-    echo "  Re-extracted modules: $EXTRACT_COUNT"
+    echo "  Re-extracted modules: $EXTRACT_COUNT (${EXTRACT_SKIPPED} skipped as unchanged)"
   fi
+  record_phase_timing "extract-loop" "$PHASE_START_EXTRACT" "$EXTRACT_COUNT"
 
   # Apply post-extraction patches (assume-val stubs, IRI resolution, validation, etc.)
+  PHASE_START_PATCHES=$(date +%s)
   ./ocaml-patches.sh "$OUTDIR"
+  record_phase_timing "patches" "$PHASE_START_PATCHES" "$EXTRACT_COUNT"
   echo ""
 fi
 
 # Step 2: Compile native OCaml binaries
 if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   echo "--- Step 2: Compile native OCaml ---"
+  PHASE_START_COMPILE=$(date +%s)
   # Clean stale compilation artifacts to avoid signature mismatches
   rm -f "$OUTDIR"/*.cmi "$OUTDIR"/*.cmx "$OUTDIR"/*.cmo "$OUTDIR"/*.o
   cd "$OUTDIR"
@@ -755,12 +859,14 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
   fi
 
   cd ..
+  record_phase_timing "compile" "$PHASE_START_COMPILE" "$EXTRACT_COUNT"
   echo ""
 fi
 
 # Step 3: Run native tests
 if [[ "$STEP" == "all" || "$STEP" == "test" ]]; then
   echo "--- Step 3: Run native OCaml tests ---"
+  PHASE_START_TEST=$(date +%s)
   W3C_RC=0; "$OUTDIR/w3c_runner" --all 2>&1 | tee "$OUTDIR/w3c_results.log" || W3C_RC=$?
   echo "  Full results: $OUTDIR/w3c_results.log ($(wc -l < "$OUTDIR/w3c_results.log") lines)"
   # Refresh the human-readable test-results page (docs/test-results/index.html
@@ -772,12 +878,14 @@ if [[ "$STEP" == "all" || "$STEP" == "test" ]]; then
   if [[ -x ./generate-report.sh ]]; then
     ./generate-report.sh 2>&1 | tail -10
   fi
+  record_phase_timing "test" "$PHASE_START_TEST" "$EXTRACT_COUNT"
   echo ""
 fi
 
 # Step 4: Build JavaScript via js_of_ocaml
 if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
   echo "--- Step 4: OCaml → JavaScript (js_of_ocaml) ---"
+  PHASE_START_JS=$(date +%s)
   mkdir -p "$JSDIR"
   cd "$OUTDIR"
 
@@ -997,6 +1105,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
   fi
 
   cd ..
+  record_phase_timing "js" "$PHASE_START_JS" "$EXTRACT_COUNT"
   echo ""
 fi
 
@@ -1005,6 +1114,7 @@ fi
 # see the header comment for the list of missing primitives.
 if [[ "$STEP" == "wasm" ]]; then
   echo "--- Step 5: OCaml → WebAssembly (wasm_of_ocaml, experimental) ---"
+  PHASE_START_WASM=$(date +%s)
   if ! command -v wasm_of_ocaml >/dev/null 2>&1; then
     echo "  wasm_of_ocaml not on PATH; install with 'opam install wasm_of_ocaml-compiler'"
     exit 1
@@ -1050,6 +1160,7 @@ if [[ "$STEP" == "wasm" ]]; then
     fi
   fi
   cd ..
+  record_phase_timing "wasm" "$PHASE_START_WASM" "$EXTRACT_COUNT"
   echo ""
 fi
 
@@ -1059,6 +1170,7 @@ fi
 # factoidal the same way it already loads w3c-runner.wasm.js.
 if [[ "$STEP" == "wasm-factoidal" ]]; then
   echo "--- Step 5b: factoidal CLI → WebAssembly (wasm_of_ocaml, experimental) ---"
+  PHASE_START_WASM_FACTOIDAL=$(date +%s)
   if ! command -v wasm_of_ocaml >/dev/null 2>&1; then
     echo "  wasm_of_ocaml not on PATH; install with 'opam install wasm_of_ocaml-compiler'"
     exit 1
@@ -1116,6 +1228,7 @@ if [[ "$STEP" == "wasm-factoidal" ]]; then
     python3 wasm_stub_shims.py ../../../docs/fstar-extracted/factoidal-npm-entry.wasm.js
   fi
   cd ..
+  record_phase_timing "wasm-factoidal" "$PHASE_START_WASM_FACTOIDAL" "$EXTRACT_COUNT"
   echo ""
 fi
 

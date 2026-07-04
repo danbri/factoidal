@@ -1,0 +1,21 @@
+name: Local — Parquet footer / DLBA page decode
+spec: internal
+runner: tests/local/parquet_footer_regressions.sh
+runner_args: []
+domain: COTTAS
+foundational: false
+
+# Byte-level checks on a materialized COTTAS Parquet artifact's footer
+# (magic, metadata length, row count) and DELTA_LENGTH_BYTE_ARRAY page
+# encoding (first-min-delta, first-bit-width, length-stream, values)
+# via the standalone parquet_probe binary. Needs PYCOTTAS_PYTHON
+# (default: _tmp.junk/pycottas-venv/bin/python).
+
+triggers:
+  paths:
+    - formal/fstar/Parquet.Footer.fst
+    - tools/corpus_pipeline.py
+    - bin/parquet-probe/**
+    - tests/local/parquet_footer_regressions.sh
+
+  excludes: []

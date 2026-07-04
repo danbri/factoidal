@@ -1,0 +1,24 @@
+name: Local — COTTAS corpus round-trip (artifact + verify + query)
+spec: internal
+runner: tests/local/cottas_corpus_regressions.sh
+runner_args: []
+domain: COTTAS
+foundational: false
+
+# Materializes a COTTAS artifact via tools/corpus_pipeline.py, verifies
+# it with pycottas, then queries both the named-graph and
+# default-graph slices through the on-disk backend. Needs
+# PYCOTTAS_PYTHON (default: _tmp.junk/pycottas-venv/bin/python).
+
+triggers:
+  paths:
+    - formal/fstar/RDF.CottasStore.fst
+    - formal/fstar/RDF.CottasStore.OnDiskRuntime.fst
+    - formal/fstar/RDF.CottasInMem.fst
+    - formal/fstar/Parquet.Footer.fst
+    - formal/fstar/Parser.BallyhooCOTTAS.fst
+    - tools/corpus_pipeline.py
+    - bin/factoidal-cli/**
+    - tests/local/cottas_corpus_regressions.sh
+
+  excludes: []

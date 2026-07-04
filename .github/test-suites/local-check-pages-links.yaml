@@ -1,0 +1,18 @@
+name: Local — site link integrity (docs/_site)
+spec: internal
+runner: tests/local/check_pages_links.sh
+runner_args: []
+domain: SITE
+foundational: false
+
+# Every relative href/src in the built Eleventy site (docs/_site) must
+# resolve to a real file. Requires a fresh build first:
+# `cd docs && npx @11ty/eleventy --output=_site`. HTTP(S) links are
+# intentionally not probed (CI-flakiness risk).
+
+triggers:
+  paths:
+    - docs/**
+
+  excludes:
+    - docs/_site/**

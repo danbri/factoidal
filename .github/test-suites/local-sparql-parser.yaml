@@ -1,0 +1,23 @@
+name: Local — SPARQL parser regressions
+spec: internal
+runner: tests/local/sparql_parser_regressions.sh
+runner_args: []
+domain: SPARQL.QUERY
+foundational: false
+
+# Local SPARQL fixtures under tests/local/sparql/ covering parser edge
+# cases (LIMIT/OFFSET ordering, BIND/VALUES, Berlin-corpus queries)
+# that aren't already covered by the W3C syntax-query manifest. Some
+# checks need an external HDT corpus at /tmp/Corpus3 and SKIP (not
+# FAIL) when it's absent.
+
+triggers:
+  paths:
+    - formal/fstar/SPARQL11.Parser.fst
+    - formal/fstar/SPARQL11.Algebra.fst
+    - formal/fstar/Parser.Combinators.fst
+    - tests/local/sparql/**
+    - bin/factoidal-cli/**
+    - tests/local/sparql_parser_regressions.sh
+
+  excludes: []

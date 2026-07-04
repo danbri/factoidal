@@ -1,0 +1,23 @@
+name: Local — JSON-LD expanded-form regressions
+spec: internal
+runner: tests/local/jsonld_regressions.sh
+runner_args: []
+domain: RDF
+foundational: false
+
+# Phase-1 JSON-LD fixtures (tests/local/data/jsonld/): a mix of
+# context-free W3C toRdf inputs and locally authored scalar/escape
+# cases. Compared via RDFC-1.0 isomorphism, not text diff. Distinct
+# from the jsonld-tordf.yaml suite, which runs the full vendored W3C
+# manifest (837 tests) through jsonld_runner.
+
+triggers:
+  paths:
+    - formal/fstar/Parser.JSONLD.fst
+    - formal/fstar/Parser.JSON.fst
+    - formal/fstar/RDF.Canonical.fst
+    - tests/local/data/jsonld/**
+    - bin/factoidal-cli/**
+    - tests/local/jsonld_regressions.sh
+
+  excludes: []

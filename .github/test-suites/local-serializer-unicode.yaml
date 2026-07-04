@@ -1,0 +1,21 @@
+name: Local — Serializer UTF-8 passthrough (issue 271)
+spec: internal
+runner: tests/local/serializer_unicode_regressions.sh
+runner_args: []
+domain: RDF
+foundational: false
+
+# Guards the astral-codepoint crash in RDF.Canonical / RDF.NQuads.Serialize
+# escape_char (issue #271): canonical N-Quads must pass non-ASCII literal
+# content through as raw UTF-8, not \u-escape or crash on codepoints above
+# U+00FF. Exercises both `factoidal canonicalize` and `factoidal-dump-nq`.
+
+triggers:
+  paths:
+    - formal/fstar/RDF.Canonical.fst
+    - formal/fstar/RDF.NQuads.Serialize.fst
+    - bin/factoidal-cli/**
+    - bin/factoidal-dump-nq/**
+    - tests/local/serializer_unicode_regressions.sh
+
+  excludes: []

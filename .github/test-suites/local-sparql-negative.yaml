@@ -1,0 +1,21 @@
+name: Local — SPARQL negative (syntax-reject) regressions
+spec: internal
+runner: tests/local/sparql_negative_regressions.sh
+runner_args: []
+domain: SPARQL.QUERY
+foundational: false
+
+# Cases the parser must REJECT (malformed queries), sourced from
+# Jena ARQ's syntax-sparql3 negative fixtures at
+# /tmp/jena/jena-arq/testing/DAWG-Final. Errors loudly if that
+# external checkout is absent (this is a comparison-probe fixture
+# source, not vendored in-repo).
+
+triggers:
+  paths:
+    - formal/fstar/SPARQL11.Parser.fst
+    - formal/fstar/SPARQL11.Algebra.fst
+    - bin/factoidal-cli/**
+    - tests/local/sparql_negative_regressions.sh
+
+  excludes: []

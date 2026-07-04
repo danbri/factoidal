@@ -1,0 +1,23 @@
+name: Local — Turtle pretty-printer round-trip
+spec: internal
+runner: tests/local/turtle_pretty_regressions.sh
+runner_args: []
+domain: RDF
+foundational: false
+
+# `factoidal dump-turtle` round-trip gate (owner directive: serializers
+# must not be gratuitously ugly). Correctness anchor is RDFC-1.0
+# isomorphism between the original graph and
+# parse(turtle_of_graph(g)); also asserts the output actually looks
+# pretty (@prefix + ";" predicate lists). Includes a 1000-triple smoke
+# perf ceiling.
+
+triggers:
+  paths:
+    - formal/fstar/RDF.Turtle.Serialize.fst
+    - formal/fstar/Parser.Turtle.fst
+    - formal/fstar/Parser.TurtleScanner.fst
+    - bin/factoidal-cli/**
+    - tests/local/turtle_pretty_regressions.sh
+
+  excludes: []
