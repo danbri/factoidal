@@ -98,6 +98,13 @@ keeps the old path as a fallback):
 - `rif/tc/` — RIF test cases. The four RIF Core entailment tests are
   **permanent SKIPs** per `docs/claude-rules/scope.md` (reported
   skipped, not failed).
+- `json-ld/` — submodule of w3c/json-ld-api (vendored 2026-07-04; 837
+  toRdf test files + manifests). Not yet wired; the conformance
+  target is the **toRdf manifest only** (compact/flatten/frame are
+  JSON-to-JSON, out of scope for an RDF engine), and the suite's
+  "remote" context documents ship as local fixture files — see
+  `docs/designissues/2026-07-04-jsonld-program-lessons.md` before
+  touching this program.
 - `shex/`, `csvw/`, `vc/`, `did/`, `rml/` — vendored for offline use,
   **not yet wired** to any runner.
 - `third_party/data/ukparliament/` — perf-bench corpus (see
