@@ -37,6 +37,11 @@
       "require": "./index.js",
       "default": "./index.js"
     },
+    "./wasm": {
+      "types": "./wasm.d.ts",
+      "default": "./wasm.js"
+    },
+    "./rdfjs": "./rdfjs.js",
     "./browser": "./browser.js",
     "./browser-wasm": {
       "browser": "./browser-wasm.js",
@@ -51,11 +56,18 @@
     "index.js",
     "index.mjs",
     "index.d.ts",
+    "wasm.js",
+    "wasm.d.ts",
+    "rdfjs.js",
+    "lib/",
     "browser.js",
     "browser-wasm.js",
     "factoidal.js",
     "factoidal.wasm.js",
     "factoidal.wasm.assets/",
+    "factoidal-npm-entry.js",
+    "factoidal-npm-entry.wasm.js",
+    "factoidal-npm-entry.wasm.assets/",
     "version.json",
     "README.md",
     "CHANGELOG.md",
@@ -67,7 +79,8 @@
   "sideEffects": false,
   "scripts": {
     "build": "cd ../../formal/fstar && ./build-ocaml.sh npm",
-    "test": "node test/smoke.js",
+    "test": "node --test 'test/*.test.js'",
+    "test:smoke": "node test/smoke.js && node test/smoke-wasm.mjs",
     "prepublishOnly": "echo 'Do not publish yet — 0.1.0-alpha.0 is scaffolding only.' && exit 1"
   },
   "publishConfig": {

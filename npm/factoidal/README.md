@@ -2,16 +2,31 @@
 
 Formally-verified SPARQL 1.1 + RDF 1.1, for Node and the browser.
 
-The semantics live in [F*](https://www.fstar-lang.org/) and are compiled
-down via OCaml and then js_of_ocaml into the `factoidal.js` bundle
-shipped in this package. There is no hand-written SPARQL evaluator —
-the JavaScript you run here was extracted from the same `.fst`
-specifications that verify under Z3.
+The semantics live in [F*](https://www.fstar-lang.org/) and are
+compiled via OCaml and js_of_ocaml / wasm_of_ocaml into the engine
+bundles shipped in this package. There is no hand-written SPARQL
+evaluator — the JavaScript you run here was extracted from the same
+`.fst` specifications that verify under Z3.
 
-> Status: **0.1.0-alpha.0, unpublished.** This package is scaffolding
-> committed to the repo so we can iterate on the API surface before
-> cutting a real release. Nothing here has been published to the npm
-> registry yet. See `CHANGELOG.md`.
+Verification status qualifier: parser and algebra spec verified in
+F*; on-disk backend has unverified OCaml-side optimization layers
+being migrated back to F* (see fstar-purity-unwind.md).
+
+> Status: **0.1.0-alpha.0, unpublished.** Scaffolding committed to the
+> repo so the API surface can be iterated before a real release.
+> Nothing has been published to the npm registry yet. See
+> [CHANGELOG.md](CHANGELOG.md).
+
+## Why this engine
+
+- **Full SPARQL 1.1 client-side.** Query (and update, once the
+  npm-entry bundle ships) run entirely in your process — no server,
+  no endpoint.
+- **RDFC-1.0 canonicalization built in.** `canonicalize()` gives you
+  standard canonical N-Quads (rdflib and N3.js need a separate library
+  for this).
+- **RDFS / OWL-RL entailment as a query option** (`entail: 'RDFS'`).
+- **The verified core**, subject to the qualifier stated above.
 
 ## Install
 
@@ -19,197 +34,122 @@ specifications that verify under Z3.
 npm install factoidal
 ```
 
-## Usage (Node, CommonJS)
+## Quickstart
 
 ```js
-const { query } = require('factoidal');
+const { parse, query, serialize, canonicalize, dataFactory } = require('factoidal');
+// ESM: import { parse, query } from 'factoidal';
 
-const data = `
-  @prefix ex:  <http://example.org/> .
+const ds = await parse(`
+  @prefix ex:   <http://example.org/> .
   @prefix foaf: <http://xmlns.com/foaf/0.1/> .
   ex:alice foaf:name "Alice" ; foaf:knows ex:bob .
-  ex:bob   foaf:name "Bob"   .
-`;
+  ex:bob   foaf:name "Bob" .
+`);                                       // -> Dataset (RDF/JS quads)
 
-const q = `
+const rows = await query(ds, `
   PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-  SELECT ?name WHERE { ?p foaf:name ?name } ORDER BY ?name
-`;
+  SELECT ?name WHERE { ?p foaf:name ?name }
+`);                                       // -> Array<Map<string, Term>>
+for (const row of rows) console.log(row.get('name').value);
 
-(async () => {
-  const results = await query(data, q);
-  for (const row of results.results.bindings) {
-    console.log(row.name.value);
-  }
-})();
+await query(ds, 'ASK { ?s ?p ?o }');      // -> true
+await serialize(ds);                      // -> sorted N-Quads string
+await canonicalize(ds);                   // -> RDFC-1.0 canonical N-Quads
 ```
 
-## Usage (Node, ESM / TypeScript)
-
-```ts
-import { query } from 'factoidal';
-
-const r = await query(data, q);      // SparqlResultsJson
-console.log(r.results!.bindings);
-```
-
-The types ship with the package (`index.d.ts`).
-
-## Usage (Browser, ES module)
-
-```html
-<script type="module">
-  import { query } from 'https://unpkg.com/factoidal/browser.js';
-  const ttl   = '@prefix : <http://ex/> . :a :p :b .';
-  const r     = await query(ttl, 'SELECT * WHERE { ?s ?p ?o }');
-  console.log(r.results.bindings);
-</script>
-```
-
-The browser entry assumes `factoidal.js` sits alongside `browser.js`
-on the same origin. If your bundler or CDN layout differs, call
-`setFactoidalUrl('https://.../factoidal.js')` once before `query()`.
-
-## Usage (Browser with WebAssembly)
-
-For the wasm_of_ocaml build — smaller shipped bytes, faster cold
-start — use the `browser-wasm` subpath:
+For the wasm engine (Node >= 22) with the same API:
 
 ```js
-import { query } from 'factoidal/browser-wasm'
-const results = await query(
-  turtleString,
-  'SELECT * WHERE { ?s ?p ?o }',
-  { entail: 'RDFS' }
-)
+const factoidal = require('factoidal/wasm');
 ```
-
-Or via `<script type="module">`:
-
-```html
-<script type="module">
-  import { query } from 'https://unpkg.com/factoidal/browser-wasm.js';
-  const r = await query(ttl, 'ASK { ?s ?p ?o }');
-  console.log(r.boolean);
-</script>
-```
-
-The wasm build requires Wasm-GC and typed-function-references support.
-As of this writing that means:
-
-- **Chrome / Edge 119+** (landed stable Nov 2023)
-- **Node 22+**
-- **Firefox — not yet** (Wasm-GC is implemented but shipping
-  incrementally; check caniuse.com/wasm-gc before relying on it)
-
-The non-wasm `factoidal/browser` path runs everywhere ES modules do;
-use it as a fallback. `factoidal.wasm.js` must be served alongside
-the `factoidal.wasm.assets/` directory on the same origin. If you
-bundle differently, call
-`setFactoidalWasmUrl('https://.../factoidal.wasm.js')` before the
-first `query()`.
 
 ## API
 
-```ts
-query(dataString: string, queryString: string, options?: QueryOptions)
-  : Promise<SparqlResultsJson | string>
+| Function | Signature | Returns |
+| --- | --- | --- |
+| `parse` | `parse(text, {format?, baseIRI?})` | `Promise<Dataset>` |
+| `query` | `query(data, sparql, {entail?, format?})` | `Promise<Bindings[]>` (SELECT), `Promise<boolean>` (ASK), `Promise<Dataset>` (CONSTRUCT) |
+| `update` | `update(data, sparqlUpdate)` | `Promise<Dataset>` |
+| `serialize` | `serialize(data, {format?: 'nquads'\|'ntriples'})` | `Promise<string>` |
+| `canonicalize` | `canonicalize(data)` | `Promise<string>` (RDFC-1.0 canonical N-Quads) |
+| `capabilities` | `capabilities()` | `Promise<{entry, construct, update, canonicalize}>` |
+| `dataFactory` | RDF/JS DataFactory | terms with `.equals()` |
+| `Dataset` | RDF/JS DatasetCore | `size/add/delete/has/match`, iterable, `toNQuads()` |
+| `queryRaw` | `queryRaw(text, sparql, {dataFormat?, entail?, output?})` | `Promise<SparqlResultsJson\|string>` (legacy surface) |
+
+`data` is a `Dataset`, a document string (`format` defaults to
+`'turtle'`), a `{text, format}` object, or an array of those — each
+array element is loaded as its own document, so blank-node labels
+never join across documents. Input formats: Turtle, N-Triples,
+N-Quads, TriG, RDF/XML. Bindings are `Map`s from variable name to
+RDF/JS term (`NamedNode` / `BlankNode` / `Literal` with
+`language` / `datatype`).
+
+Full types: [index.d.ts](index.d.ts). RDF/JS data model + N-Quads
+converters are importable on their own via `require('factoidal/rdfjs')`.
+
+### Interop
+
+The terms and `Dataset` follow the RDF/JS data-model and DatasetCore
+specs, so quads flow into N3.js, Comunica, rdf-ext, graphy, etc.
+Convert any RDF/JS quad stream into factoidal with
+`new Dataset(quads)` and back out by iterating.
+
+### CONSTRUCT / UPDATE / canonicalize availability
+
+`capabilities()` reports what the bundled engine artifacts support.
+With only the single-shot CLI bundle (`factoidal.js`), CONSTRUCT,
+UPDATE and (on older bundles) `canonicalize()` reject with an Error
+mentioning "pending npm-entry build"; the
+`factoidal-npm-entry.js` bundle (see
+[bin/npm-entry/README.md](https://github.com/danbri/factoidal/blob/main/bin/npm-entry/README.md))
+enables all of them.
+
+## Browser
+
+The legacy SRJ-shaped `query()` is available as an ES module for
+browsers via `factoidal/browser` (js_of_ocaml) and
+`factoidal/browser-wasm` (wasm_of_ocaml, Chrome/Edge >= 119). The
+typed RDF/JS API currently targets Node; browser support for it
+arrives with the npm-entry bundle.
+
+## Limits (v0.1, stated up front)
+
+- **Memory:** the in-memory dataset costs roughly 1 KB per triple
+  (measured ~1.2 KB/quad). A 1M-triple load wants ~1.2 GB.
+- **No streaming parse:** documents are parsed whole; there is no
+  StreamRDF-style incremental interface yet.
+- **Bundle size:** the engine bundle is hundreds of KB of generated
+  JavaScript (multi-MB unminified in some configurations).
+- **Lenient Turtle parsing:** syntax errors in Turtle input currently
+  yield an empty/partial dataset rather than a thrown error (error
+  reporting is queued upstream).
+- **No JSON-LD yet** (an F*-first parser is on the roadmap), and
+  DESCRIBE is not implemented.
+- **One call at a time:** the CLI-bundle path swaps process globals
+  during a call and is not reentrant; concurrent calls in one process
+  are serialized by await-discipline, not by the library.
+
+## Engine selection
+
+- `require('factoidal')` — js_of_ocaml bundle, works on Node >= 20.
+- `require('factoidal/wasm')` — wasm_of_ocaml bundle, Node >= 22
+  (WasmGC). `wasmAvailable()` reports whether the assets are present.
+- Env overrides for development: `FACTOIDAL_JS_BUNDLE`,
+  `FACTOIDAL_WASM_BUNDLE`, `FACTOIDAL_NPM_ENTRY`,
+  `FACTOIDAL_NPM_ENTRY_WASM` (absolute paths to alternate bundles).
+
+## Tests
+
+```bash
+npm test              # node --test test/*.test.js
+npm run test:smoke    # legacy smoke tests (raw SRJ surface + wasm)
 ```
 
-| option       | values                                          | default    |
-| ------------ | ----------------------------------------------- | ---------- |
-| `dataFormat` | `'turtle' \| 'ntriples' \| 'nquads' \| 'trig' \| 'rdfxml'` | `'turtle'` |
-| `entail`     | `'none' \| 'RDFS' \| 'OWL-RL'`                  | `'none'`   |
-| `output`     | `'json' \| 'csv' \| 'tsv' \| 'xml' \| 'table' \| 'ntriples'` | `'json'`   |
-
-When `output` is `'json'`, the promise resolves to a parsed SPARQL
-Results JSON object (see [W3C
-spec](https://www.w3.org/TR/sparql11-results-json/)). For every other
-value it resolves to the raw string the CLI would have printed.
-
-The promise **rejects** on bad input (unparseable query, malformed
-RDF) or on a non-zero exit from the underlying engine. The thrown
-`Error` carries `.exitCode`, `.stdout`, and `.stderr` properties for
-diagnosis.
-
-## How this thing works
-
-```
- F* .fst    ──(fstar.exe --codegen OCaml)──►    OCaml
-                                                 │
-                                                 ├── native bin/<platform>/factoidal
-                                                 │
-                                                 └── js_of_ocaml ──► factoidal.js
-                                                                       (this bundle)
-```
-
-The `factoidal.js` file in this package is the exact same artifact
-the project ships to GitHub Pages for its
-[browser demo](https://danbri.github.io/factoidal/fstar-extracted/).
-It's a js_of_ocaml build of a command-line tool: argv in, stdout out.
-This module drives it via js_of_ocaml's fake filesystem
-(`globalThis.jsoo_fs_tmp`), overrides `process.argv`, captures
-`console.log`, and returns the parsed result.
-
-A future release will add a wasm_of_ocaml path — the API is already
-`async` so that swap-in is non-breaking.
-
-## What works / what doesn't
-
-Tested against the W3C SPARQL 1.1 conformance suite:
-
-- **Works:** `SELECT`, `ASK`, SPARQL 1.1 grammar, `FILTER`, `OPTIONAL`,
-  `UNION`, `MINUS`, `BIND`, `VALUES`, `EXISTS` / `NOT EXISTS`,
-  `DISTINCT`, `ORDER BY`, `LIMIT`, `OFFSET`, `GROUP BY`, `HAVING`,
-  all aggregates (`COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, `GROUP_CONCAT`,
-  `SAMPLE`), subqueries, property paths, 30+ built-in functions,
-  named graphs, RDFS and an OWL 2 RL Datalog subset for
-  `--entail RDFS` / `--entail OWL-RL`.
-- **SPARQL Update — pattern-matching now works** (via the `factoidal`
-  CLI only; the packaged `query()` wrapper here is query-only). The
-  engine handles `INSERT DATA`, `DELETE DATA`, `DELETE WHERE`, and
-  `DELETE / INSERT ... WHERE` (`U_Modify`). Graph-management ops
-  (`CLEAR`, `DROP`, `CREATE`, `ADD`, `MOVE`, `COPY`, `LOAD`) are
-  still in the queue.
-- **Partially works:** `CONSTRUCT` (parses and evaluates, but the
-  Turtle serializer for the result graph is still being wired up —
-  some `CONSTRUCT` queries currently return empty).
-- **Not yet:** `SERVICE` (federated query), `DESCRIBE`, Update
-  graph-management ops, SPARQL Protocol HTTP endpoint wired into
-  this npm API, **OWL-DL tableau reasoning** (now a committed roadmap
-  item — see `docs/designissues/2026-04-19-tableau-owl-plan.md` in
-  the main repo; currently we cover OWL 2 RL Datalog only).
-
-### Recently fixed (worth knowing if you used earlier alphas)
-
-- **`ASK` now returns the right answer.** Earlier alphas always
-  returned `false` because the engine routed `ASK` through the
-  `SELECT` path which discarded the pattern-evaluation result.
-  Fixed in the underlying CLI on 2026-04-19 (main-repo commit
-  `00c1a7b`). `query(..., ..., { output: undefined })` on an `ASK`
-  query now returns `{ head: {}, boolean: true | false }`.
-
-Current conformance numbers live in the main repo's `README.md` and
-`.claude-worklog.md`.
-
-### Known limitations in this JS package specifically
-
-- **Not reentrant.** The bundle is a one-shot CLI — two concurrent
-  `query()` calls in the same process will collide on the shared
-  `globalThis` state. Serialize calls if you need parallelism.
-- **Hash functions in the browser return empty strings.** MD5, SHA1,
-  SHA256, SHA384, SHA512 work under Node (via `node:crypto`) but the
-  browser shim returns `""`. The rest of SPARQL's built-in functions
-  work identically.
-- **Synchronous under the hood.** The API is `async` but the work
-  happens on the calling thread. For big datasets run it in a worker.
+Tests that need the npm-entry bundle skip with reason
+"pending npm-entry build" until it is built.
 
 ## License
 
-Apache-2.0. See the `LICENSE` file at the repo root
-([github.com/danbri/factoidal/blob/claude/main/LICENSE](https://github.com/danbri/factoidal/blob/claude/main/LICENSE)).
-A copy is included when this package is published.
-
-## Source
-
-[github.com/danbri/factoidal](https://github.com/danbri/factoidal)
+Apache-2.0. See [LICENSE](LICENSE).

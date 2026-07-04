@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+- Typed public API: `parse` -> RDF/JS `Dataset`, `query` ->
+  `Bindings[]` (Maps of variable -> RDF/JS term) | boolean | Dataset,
+  `update`, `serialize`, `canonicalize` (RDFC-1.0), `capabilities`.
+- RDF/JS data model (`rdfjs.js`): spec-compliant DataFactory + terms
+  with `.equals()`, DatasetCore `Dataset`, converters to/from the
+  engine's N-Quads interchange text. Exported as `factoidal/rdfjs`.
+- `factoidal/wasm`: same API on the wasm_of_ocaml engine (Node >= 22).
+- npm-entry ABI consumer (`bin/npm-entry/entry_jsoo.ml` in the repo):
+  persistent string/JSON ABI enabling CONSTRUCT, UPDATE and
+  canonicalize; the API falls back to argv-driving the CLI bundle
+  until that bundle is built and staged.
+- Rewritten `index.d.ts` with self-contained RDF/JS typings; the old
+  SRJ-shaped `query()` lives on as `queryRaw()`.
+- `node:test` unit suite (`npm test`); entry-dependent tests skip with
+  reason "pending npm-entry build".
+
 ## 0.1.0-alpha.0 — Initial scaffold, unpublished
 
 Directory layout committed to the main repo under `npm/factoidal/`.

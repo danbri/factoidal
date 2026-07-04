@@ -8,7 +8,10 @@
 'use strict';
 
 const assert = require('node:assert');
-const { query, version } = require('..');
+// The typed query() API replaced the raw SRJ-shaped query() in
+// 0.1.0-alpha; this smoke test exercises the legacy surface, which
+// lives on as queryRaw().
+const { queryRaw: query, version } = require('..');
 
 const DATA = `
   @prefix ex:   <http://example.org/> .
