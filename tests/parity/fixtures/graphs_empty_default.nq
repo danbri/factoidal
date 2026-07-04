@@ -1,0 +1,5 @@
+<http://x.org/a1> <http://x.org/p> "1" <http://x.org/g/one> .
+<http://x.org/a2> <http://x.org/p> "2" <http://x.org/g/one> .
+<http://x.org/a3> <http://x.org/p> "3" <http://x.org/g/one> .
+<http://x.org/b1> <http://x.org/p> "4" <http://x.org/g/two> .
+<http://x.org/b2> <http://x.org/p> "5" <http://x.org/g/two> .

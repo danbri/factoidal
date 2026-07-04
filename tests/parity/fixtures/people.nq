@@ -1,0 +1,21 @@
+<http://ex.org/alice> <http://xmlns.com/foaf/0.1/name> "Alice"@en .
+<http://ex.org/alice> <http://xmlns.com/foaf/0.1/name> "Alicia"@es .
+<http://ex.org/alice> <http://ex.org/age> "30"^^<http://www.w3.org/2001/XMLSchema#integer> .
+<http://ex.org/alice> <http://xmlns.com/foaf/0.1/mbox> <mailto:alice@example.org> .
+<http://ex.org/alice> <http://xmlns.com/foaf/0.1/knows> <http://ex.org/bob> .
+<http://ex.org/alice> <http://ex.org/addr> _:addr1 .
+_:addr1 <http://ex.org/street> "1 Main St" .
+_:addr1 <http://ex.org/city> "Springfield" .
+<http://ex.org/bob> <http://xmlns.com/foaf/0.1/name> "Bob"@en .
+<http://ex.org/bob> <http://ex.org/age> "42"^^<http://www.w3.org/2001/XMLSchema#integer> .
+<http://ex.org/bob> <http://xmlns.com/foaf/0.1/knows> <http://ex.org/carol> .
+<http://ex.org/bob> <http://ex.org/addr> _:addr2 .
+_:addr2 <http://ex.org/street> "2 Oak Ave" .
+_:addr2 <http://ex.org/city> "Shelbyville" .
+<http://ex.org/carol> <http://xmlns.com/foaf/0.1/name> "Carol" .
+<http://ex.org/carol> <http://ex.org/age> "35"^^<http://www.w3.org/2001/XMLSchema#integer> .
+<http://ex.org/carol> <http://xmlns.com/foaf/0.1/mbox> <mailto:carol@example.org> .
+<http://ex.org/carol> <http://xmlns.com/foaf/0.1/knows> <http://ex.org/dave> .
+<http://ex.org/dave> <http://xmlns.com/foaf/0.1/name> "Dave" .
+<http://ex.org/dave> <http://ex.org/age> "17"^^<http://www.w3.org/2001/XMLSchema#integer> .
+<http://ex.org/dave> <http://ex.org/score> "4.5"^^<http://www.w3.org/2001/XMLSchema#decimal> .

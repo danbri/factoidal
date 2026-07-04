@@ -1,0 +1,309 @@
+{
+  "comment": "Corpus-driven cross-backend SPARQL parity manifest. Run via tests/local/backend_parity_full.sh. Schema + policy: tests/parity/run_backend_parity.py docstring and docs/designissues/2026-07-04-backend-parity-harness.md. known_divergent MUST reference an open issue.",
+  "fixtures": {
+    "graphs_empty_default": "fixtures/graphs_empty_default.nq",
+    "graphs_mixed": "fixtures/graphs_mixed.nq",
+    "people": "fixtures/people.nq"
+  },
+  "queries": [
+    {
+      "name": "empty-default-bgp-count",
+      "fixture": "graphs_empty_default",
+      "query": "SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }",
+      "expect": {
+        "single_value": "0"
+      },
+      "known_divergent": "issue #267 \u2014 COTTAS BGP unions all quads into the default graph"
+    },
+    {
+      "name": "empty-default-graph-count",
+      "fixture": "graphs_empty_default",
+      "query": "SELECT (COUNT(*) AS ?n) WHERE { GRAPH ?g { ?s ?p ?o } }",
+      "expect": {
+        "single_value": "5"
+      }
+    },
+    {
+      "name": "empty-default-ask-bgp",
+      "fixture": "graphs_empty_default",
+      "query": "ASK { ?s ?p ?o }",
+      "expect": {
+        "boolean": false
+      },
+      "known_divergent": "issue #267 \u2014 COTTAS BGP unions all quads into the default graph"
+    },
+    {
+      "name": "empty-default-ask-graph",
+      "fixture": "graphs_empty_default",
+      "query": "ASK { GRAPH ?g { ?s ?p ?o } }",
+      "expect": {
+        "boolean": true
+      }
+    },
+    {
+      "name": "empty-default-distinct-graphs",
+      "fixture": "graphs_empty_default",
+      "query": "SELECT DISTINCT ?g WHERE { GRAPH ?g { ?s ?p ?o } }",
+      "expect": {
+        "rows": 2
+      }
+    },
+    {
+      "name": "empty-default-named-graph-iri",
+      "fixture": "graphs_empty_default",
+      "query": "SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://x.org/g/one> { ?s ?p ?o } }",
+      "expect": {
+        "single_value": "3"
+      }
+    },
+    {
+      "name": "mixed-bgp-count",
+      "fixture": "graphs_mixed",
+      "query": "SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }",
+      "expect": {
+        "single_value": "4"
+      },
+      "known_divergent": "issue #267 \u2014 COTTAS BGP unions all quads into the default graph"
+    },
+    {
+      "name": "mixed-graph-count",
+      "fixture": "graphs_mixed",
+      "query": "SELECT (COUNT(*) AS ?n) WHERE { GRAPH ?g { ?s ?p ?o } }",
+      "expect": {
+        "single_value": "5"
+      }
+    },
+    {
+      "name": "mixed-bgp-select-subjects",
+      "fixture": "graphs_mixed",
+      "query": "SELECT ?s WHERE { ?s ?p ?o }",
+      "expect": {
+        "rows": 4
+      },
+      "known_divergent": "issue #267 \u2014 COTTAS BGP unions all quads into the default graph"
+    },
+    {
+      "name": "mixed-union-default-and-graph",
+      "fixture": "graphs_mixed",
+      "query": "SELECT ?s WHERE { { ?s ?p ?o } UNION { GRAPH ?g { ?s ?p ?o } } }",
+      "expect": {
+        "rows": 9
+      },
+      "known_divergent": "issue #267 \u2014 BGP branch unions all quads on COTTAS (GRAPH branch is correct on DLBA-clean artifacts)"
+    },
+    {
+      "name": "mixed-named-graph-iri-count",
+      "fixture": "graphs_mixed",
+      "query": "SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://x.org/g/one> { ?s ?p ?o } }",
+      "expect": {
+        "single_value": "3"
+      }
+    },
+    {
+      "name": "mixed-ask-default",
+      "fixture": "graphs_mixed",
+      "query": "ASK { ?s ?p ?o }",
+      "expect": {
+        "boolean": true
+      }
+    },
+    {
+      "name": "mixed-order-by-default-objects",
+      "fixture": "graphs_mixed",
+      "query": "SELECT ?o WHERE { ?s <http://x.org/p> ?o } ORDER BY ?o",
+      "ordered": true,
+      "expect": {
+        "rows": 4
+      },
+      "known_divergent": "issue #267 \u2014 COTTAS BGP unions all quads into the default graph"
+    },
+    {
+      "name": "people-count-all",
+      "fixture": "people",
+      "query": "SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }",
+      "expect": {
+        "single_value": "21"
+      }
+    },
+    {
+      "name": "people-filter-lang-en",
+      "fixture": "people",
+      "query": "SELECT ?s ?name WHERE { ?s <http://xmlns.com/foaf/0.1/name> ?name FILTER(lang(?name) = \"en\") }",
+      "expect": {
+        "rows": 2
+      }
+    },
+    {
+      "name": "people-filter-langmatches",
+      "fixture": "people",
+      "query": "SELECT ?name WHERE { ?s <http://xmlns.com/foaf/0.1/name> ?name FILTER(langMatches(lang(?name), \"es\")) }",
+      "expect": {
+        "rows": 1
+      }
+    },
+    {
+      "name": "people-filter-age-gt",
+      "fixture": "people",
+      "query": "SELECT ?s WHERE { ?s <http://ex.org/age> ?age FILTER(?age > 30) }",
+      "expect": {
+        "rows": 2
+      }
+    },
+    {
+      "name": "people-typed-literal-object-pattern",
+      "fixture": "people",
+      "query": "SELECT ?s WHERE { ?s <http://ex.org/age> \"30\"^^<http://www.w3.org/2001/XMLSchema#integer> }",
+      "expect": {
+        "rows": 1
+      }
+    },
+    {
+      "name": "people-plain-literal-object-pattern",
+      "fixture": "people",
+      "query": "SELECT ?s WHERE { ?s <http://ex.org/street> \"1 Main St\" }",
+      "expect": {
+        "rows": 1
+      }
+    },
+    {
+      "name": "people-lang-literal-object-pattern",
+      "fixture": "people",
+      "query": "SELECT ?s WHERE { ?s <http://xmlns.com/foaf/0.1/name> \"Alice\"@en }",
+      "expect": {
+        "rows": 1
+      }
+    },
+    {
+      "name": "people-filter-decimal",
+      "fixture": "people",
+      "query": "SELECT ?s WHERE { ?s <http://ex.org/score> ?v FILTER(?v > 4.0) }",
+      "expect": {
+        "rows": 1
+      }
+    },
+    {
+      "name": "people-optional-mbox",
+      "fixture": "people",
+      "query": "SELECT ?s ?mb WHERE { ?s <http://ex.org/age> ?a OPTIONAL { ?s <http://xmlns.com/foaf/0.1/mbox> ?mb } }",
+      "expect": {
+        "rows": 4
+      }
+    },
+    {
+      "name": "people-optional-unbound-filter",
+      "fixture": "people",
+      "query": "SELECT ?s WHERE { ?s <http://ex.org/age> ?a OPTIONAL { ?s <http://xmlns.com/foaf/0.1/mbox> ?mb } FILTER(!bound(?mb)) }",
+      "expect": {
+        "rows": 2
+      }
+    },
+    {
+      "name": "people-union-mbox-knows",
+      "fixture": "people",
+      "query": "SELECT ?s WHERE { { ?s <http://xmlns.com/foaf/0.1/mbox> ?x } UNION { ?s <http://xmlns.com/foaf/0.1/knows> ?x } }",
+      "expect": {
+        "rows": 5
+      }
+    },
+    {
+      "name": "people-distinct-predicates",
+      "fixture": "people",
+      "query": "SELECT DISTINCT ?p WHERE { ?s ?p ?o }",
+      "expect": {
+        "rows": 8
+      }
+    },
+    {
+      "name": "people-order-age-limit",
+      "fixture": "people",
+      "query": "SELECT ?s ?age WHERE { ?s <http://ex.org/age> ?age } ORDER BY ?age LIMIT 2",
+      "ordered": true,
+      "expect": {
+        "rows": 2
+      }
+    },
+    {
+      "name": "people-order-desc-offset",
+      "fixture": "people",
+      "query": "SELECT ?age WHERE { ?s <http://ex.org/age> ?age } ORDER BY DESC(?age) LIMIT 2 OFFSET 1",
+      "ordered": true,
+      "expect": {
+        "rows": 2
+      }
+    },
+    {
+      "name": "people-groupby-knows-count",
+      "fixture": "people",
+      "query": "SELECT ?s (COUNT(?o) AS ?n) WHERE { ?s <http://xmlns.com/foaf/0.1/knows> ?o } GROUP BY ?s",
+      "expect": {
+        "rows": 3
+      }
+    },
+    {
+      "name": "people-sum-ages",
+      "fixture": "people",
+      "query": "SELECT (SUM(?a) AS ?total) WHERE { ?s <http://ex.org/age> ?a }",
+      "expect": {
+        "single_value": "124"
+      }
+    },
+    {
+      "name": "people-bnode-join",
+      "fixture": "people",
+      "query": "SELECT ?s ?city WHERE { ?s <http://ex.org/addr> ?b . ?b <http://ex.org/city> ?city }",
+      "expect": {
+        "rows": 2
+      }
+    },
+    {
+      "name": "people-bnode-projected",
+      "fixture": "people",
+      "query": "SELECT ?b WHERE { ?b <http://ex.org/street> ?st }",
+      "expect": {
+        "rows": 2
+      }
+    },
+    {
+      "name": "people-subquery",
+      "fixture": "people",
+      "query": "SELECT ?name WHERE { { SELECT ?s WHERE { ?s <http://ex.org/age> ?a } } ?s <http://xmlns.com/foaf/0.1/name> ?name }",
+      "expect": {
+        "rows": 5
+      }
+    },
+    {
+      "name": "people-ask-true",
+      "fixture": "people",
+      "query": "ASK { ?s <http://xmlns.com/foaf/0.1/knows> ?o }",
+      "expect": {
+        "boolean": true
+      }
+    },
+    {
+      "name": "people-ask-false",
+      "fixture": "people",
+      "query": "ASK { ?s <http://ex.org/nonexistent> ?o }",
+      "expect": {
+        "boolean": false
+      }
+    },
+    {
+      "name": "people-path-knows-plus",
+      "fixture": "people",
+      "query": "SELECT ?x WHERE { <http://ex.org/alice> <http://xmlns.com/foaf/0.1/knows>+ ?x }",
+      "expect": {
+        "rows": 3
+      },
+      "known_divergent": "issue #268 \u2014 property paths return zero rows on the CLI/backend eval path"
+    },
+    {
+      "name": "people-path-knows-name-seq",
+      "fixture": "people",
+      "query": "SELECT ?n WHERE { <http://ex.org/alice> <http://xmlns.com/foaf/0.1/knows>/<http://xmlns.com/foaf/0.1/name> ?n }",
+      "expect": {
+        "rows": 1
+      },
+      "known_divergent": "issue #268 \u2014 property paths return zero rows on the CLI/backend eval path"
+    }
+  ]
+}

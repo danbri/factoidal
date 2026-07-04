@@ -103,7 +103,7 @@ for line in (w / f"{name}.nq").read_text().splitlines():
 con = duckdb.connect()
 con.execute("CREATE TABLE t (s VARCHAR, p VARCHAR, o VARCHAR, g VARCHAR)")
 con.executemany("INSERT INTO t VALUES (?,?,?,?)", rows)
-con.execute(f"COPY t TO '{w}/{name}.cottas' (FORMAT PARQUET, COMPRESSION ZSTD, DICTIONARY_SIZE_LIMIT 1, PARQUET_VERSION V2)")
+con.execute(f"COPY t TO '{w}/{name}.cottas' (FORMAT PARQUET, COMPRESSION ZSTD, DICTIONARY_SIZE_LIMIT 0, PARQUET_VERSION V2)")
 PY
 done
 # COTTAS checks are KNOWN-FAIL pending issue #267 (default-graph
