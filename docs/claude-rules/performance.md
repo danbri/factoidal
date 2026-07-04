@@ -17,6 +17,13 @@ container):
 | 100,000 | 0.93 s | ~108k triples/s |
 | 1,000,000 | 9.66 s | ~104k triples/s |
 
+Large-file check (2026-07-04, committed linux-x86_64 binary): 500MB
+Turtle (10,117,857 triples) parses via the streaming count path in
+195s (~52k triples/s) at 971MB peak RSS; the fully-materialised
+load-and-query path measured 69s / 1.99GB RSS at 100MB (~1KB/triple),
+extrapolating to ~10GB RAM for 500MB — use `cottas-import` + the
+persistent artifact at that scale instead.
+
 Scaling is near-linear through 1M triples. Re-measure with
 `formal/fstar/bench-turtle-metrics.sh` (or the committed binary + the
 same fixtures) before quoting these; update this table when you do.
