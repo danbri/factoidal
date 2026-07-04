@@ -85,6 +85,22 @@ can verify.
 
 ## Other patterns
 
+### Comment-trap warning in every .fst / .ml brief
+
+Any brief that asks the agent to WRITE F\* or OCaml must include this
+block verbatim — a subagent hit it in production on 2026-07-04
+(`jsonld_runner.ml`: the sequence "F" + star + close-paren inside a
+block comment ended the comment early; syntax error pointed 70 lines
+away):
+
+```
+## Comment syntax (MANDATORY)
+- F* files: use // line comments ONLY for all new comments.
+- OCaml files: block comments nest. Never write *), (*, or the
+  F-star name as letter-F-then-star inside a comment - spell it
+  F-star. Same for quoting patterns like construct(*): reword.
+```
+
 ### Forbid hand-written .ml in `formal/fstar/ocaml-output/`
 
 Any agent task that involves "make this OCaml side faster / fix this

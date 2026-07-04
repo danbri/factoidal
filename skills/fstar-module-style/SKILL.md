@@ -121,12 +121,22 @@ before introducing them:
 
 ## Syntax traps (memorize these)
 
-**Comment nesting.** F\* block comments `(* ... *)` NEST. A stray `*)`
-inside — e.g. quoting `construct(*)` from ARQ algebra — closes the
-comment early and F\* reports a syntax error hundreds of lines later.
-Never put `*)` or `(*` inside a block comment; reword ("COUNT-star")
-or use `//` line comments. The same trap exists on the OCaml side:
-`(F*)` in an OCaml comment closes early — write `(F-star)`.
+**Comment rule (hard, owner-ratified 2026-07-04): all NEW F\* comments
+use `//` line syntax.** No new `(* ... *)` blocks — a multi-paragraph
+note is a run of `//` lines. Rationale: F\* block comments NEST, so a
+stray `*)` inside — e.g. quoting `construct(*)` from ARQ algebra —
+closes the comment early and F\* reports a syntax error hundreds of
+lines later. `//` makes the failure mode unrepresentable. Existing
+`(* *)` blocks may stay until a change touches them.
+
+The same nesting trap exists in hand-written OCaml consumers
+(`bin/<consumer>/*.ml`), and OCaml has NO `//` syntax, so there the
+rule is: never write `*)`, `(*`, or a bare `F` + star inside a
+comment — spell it `F-star`. This bit for real on 2026-07-04: a
+subagent wrote "(parsers belong in F&#42;)" in `jsonld_runner.ml` and the
+build failed with a bewildered syntax error 70 lines of prose later.
+Subagent briefs that ask for `.ml` or `.fst` files MUST carry this
+warning (see `subagent-prompting`).
 
 **Reserved-ish identifiers with misleading errors.** F\* rejects some
 innocuous names and points the error at the line *after* the
