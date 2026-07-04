@@ -382,7 +382,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     Parser.SRX.fst Parser.CSVResults.fst
     Parser.JSONResults.fst
     SPARQL.JSON.Escape.fst
-    Parser.JSON.fst JSONLD.Context.fst JSONLD.Expand.fst Parser.JSONLD.fst
+    Parser.JSON.fst JSONLD.Loader.fst JSONLD.Context.fst JSONLD.Expand.fst Parser.JSONLD.fst
     SPARQL.Eval.TimeBudget.fst
     SPARQL.Eval.Limits.fst
     SPARQL.HTTP.Response.fst
@@ -674,7 +674,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
     SPARQL_JSON_Escape.ml \
-    Parser_JSON.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml \
+    Parser_JSON.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml \
     SPARQL_Eval_TimeBudget.ml \
     SPARQL_Eval_Limits.ml \
     SPARQL_HTTP_Response.ml \
@@ -784,6 +784,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     "$BINDIR/owl_runner"
     "$BINDIR/rdfc10_runner"
     "$BINDIR/jsonld_runner"
+    "$BINDIR/shacl_runner"
     "$BINDIR/cottas_ondisk_smoketest"
   )
   NATIVE_SOURCES=(
@@ -795,6 +796,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     ../../../bin/factoidal-cli/factoidal_cli.ml
     ../../../bin/factoidal-http/factoidal_http_main.ml
     ../../../bin/owl-runner/owl_runner.ml
+    ../../../bin/shacl-runner/shacl_runner.ml
     ../../../bin/rdfc10-runner/rdfc10_runner.ml
     ../../../bin/jsonld-runner/jsonld_runner.ml
     ../../../bin/cottas-ondisk-smoketest/cottas_ondisk_smoketest.ml
@@ -945,6 +947,36 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     fi
     echo "  Built: bin/${PLATFORM}/jsonld_runner ($(wc -c < "$BINDIR/jsonld_runner") bytes)"
 
+    # shacl_runner — SHACL Core W3C data-shapes-test-suite runner
+    # (slice 1, issue #181). Walks
+    # third_party/testing/shacl/data-shapes-test-suite/tests/core/manifest.ttl
+    # via the F*-extracted Parser_Turtle, calls
+    # SHACL_Validation.parse_shape_from_graph + SHACL_Validation.validate,
+    # and compares only the report's sh:conforms flag against each
+    # manifest entry's expected mf:result (full report-detail
+    # isomorphism is Phase 2 follow-up). See
+    # formal/fstar/SHACL.Validation.fst section 11 for constraint
+    # coverage and what is deferred.
+    SHACL_RUNNER_RC=0
+    run_with_heartbeat "ocamlopt shacl_runner" "_ocamlopt_shacl_runner.log" -- \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      ../../../bin/shacl-runner/shacl_runner.ml \
+      -o "$BINDIR/shacl_runner" || SHACL_RUNNER_RC=$?
+    cat _ocamlopt_shacl_runner.log
+    if [[ "$SHACL_RUNNER_RC" -ne 0 ]]; then
+      echo "  ERROR: shacl_runner build failed (ocamlopt rc=$SHACL_RUNNER_RC)" >&2
+      echo "  See full log above. Build aborted." >&2
+      exit "$SHACL_RUNNER_RC"
+    fi
+    if [[ ! -x "$BINDIR/shacl_runner" ]]; then
+      echo "  ERROR: shacl_runner ocamlopt returned 0 but $BINDIR/shacl_runner is missing or not executable" >&2
+      exit 1
+    fi
+    echo "  Built: bin/${PLATFORM}/shacl_runner ($(wc -c < "$BINDIR/shacl_runner") bytes)"
+
     # factoidal_http_client — minimal HTTP/1.1 client I/O glue around
     # the F*-extracted SPARQL.HTTP.Client module. Has a module-init
     # smoke-test hook gated on FACTOIDAL_HTTP_CLIENT_SMOKE=1 in the
@@ -1079,7 +1111,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml Parser_RDFXML.ml
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
     SPARQL_JSON_Escape.ml
-    Parser_JSON.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml
+    Parser_JSON.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml
     SPARQL_Eval_TimeBudget.ml
     SPARQL_Eval_Limits.ml
     SPARQL_HTTP_Response.ml

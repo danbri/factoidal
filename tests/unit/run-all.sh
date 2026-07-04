@@ -71,10 +71,11 @@ COMMON_MODULES=(
   Parser_JSONResults
   Parser_JSON
   SPARQL11_IRI_Resolve
+  SPARQL_JSON_Escape
+  JSONLD_Loader
   JSONLD_Context
   JSONLD_Expand
   Parser_JSONLD
-  SPARQL_JSON_Escape
   SPARQL_Eval_TimeBudget
   SPARQL_Eval_Limits
   SPARQL_HTTP_Response

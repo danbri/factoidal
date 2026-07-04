@@ -4,16 +4,44 @@ module JSONLD.Context
 // JSON-LD 1.1 Context Processing — PHASE 3a (inline contexts only) + PHASE 3b
 // (@reverse term definitions, map-shaped containers, RFC 3986 base
 // resolution) + PHASE 4 (property-scoped / type-scoped contexts,
-// @propagate, @protected, graph-container container kinds).
+// @propagate, @protected, graph-container container kinds) + PHASE 6
+// (remote contexts + "@import", JSONLD.Loader wiring — issue #275).
 //
 // Implements a subset of the JSON-LD 1.1 API "Context Processing" algorithm
 // (spec section 4 / "Create Term Definition"), restricted to contexts given
-// INLINE as a JSON object value or an array of such (no remote-document
-// loading yet — see docs/designissues/2026-07-04-jsonld-program-lessons.md,
-// phase 4 "Loader assume-val", still a LATER phase despite the shared "4"
-// numbering with this file's Phase 4 feature slice — this module's Phase 4
-// is docs/designissues/2026-07-04-jsonld-program-lessons.md's phase 3
-// continued, not its phase 4 loader work).
+// INLINE as a JSON object value or an array of such, PLUS remote contexts
+// (a JString context value, or an "@import" member) via
+// JSONLD.Loader.jsonld_load_document — see "Remote contexts" below.
+//
+// Remote contexts (PHASE 6, issue #275):
+//   - a JString context value is resolved against the active context's
+//     current @base (jldctx_resolve_context_iri), loaded via
+//     jsonld_load_document, parsed as JSON, and its OWN top-level
+//     "@context" member is processed recursively against the CURRENT
+//     active context — exactly as if that member's value had appeared
+//     inline. A document that is not valid JSON, or has no top-level
+//     "@context" member, is an honest context_process failure (None).
+//   - "@import" (a context-OBJECT member, JSON-LD 1.1 API §4.1 step
+//     "Import") names a context to load and process FIRST, before this
+//     object's own (non-@import) members — jldctx_extract_import splits
+//     it out of the field list; context_process folds the imported
+//     context's fields into `ac`, then context_process_fields folds this
+//     object's remaining fields on top (later/local wins, matching the
+//     spec's "merge, local replaces imported" semantics via ordinary
+//     left-to-right term redefinition).
+//   - recursion is bounded two ways: `fuel` (jld_remote_context_fuel,
+//     decremented on every remote fetch — NOT on ordinary inline
+//     recursion, so a large inline context never runs it out; see the
+//     `%[fuel; ...]` decreases clauses below) caps chain DEPTH, and
+//     `visited` (the list of already-loaded absolute IRIs on the current
+//     chain) rejects a document that (directly or via a cycle of
+//     @import/remote-context references) tries to load itself again.
+//   - the loader itself is I/O (rule #11 ASSUME-IO): this module only
+//     calls `jsonld_load_document : string -> option string` and treats
+//     its result as an opaque (JSON, hopefully) document body; which
+//     bytes come back for which IRI is a consumer-binary concern (see
+//     JSONLD.Loader.fst's banner and
+//     minimal_regrettable_glue_code_each_with_an_open_issue/275_jsonld_document_loader.sh).
 //
 // Supported here:
 //   - simple term definitions: "term": "IRI-or-compact-IRI-or-keyword";
@@ -54,9 +82,8 @@ module JSONLD.Context
 //
 // OUT of scope (a document that needs any of these gets an honest None
 // from context_process, rather than a silently wrong active context):
-//   - remote contexts (a JString context value — Phase 4 loader, the OTHER
-//     phase 4, see banner note above);
-//   - "@import" / "@nest" as a term-def member / "@prefix";
+//   - "@import" as a TERM-DEF member (only as a context-object member,
+//     the spec's actual location for it, is supported) / "@prefix";
 //   - "@protected" / "@propagate" protecting @base / @vocab / @language
 //     themselves (only TERM definitions are protection-checked here — no
 //     toRdf fixture in this program's target slice needs vocab/base/
@@ -69,6 +96,7 @@ open Parser.FastString
 open Parser.JSON
 open RDF.Graph.Executable
 open SPARQL11.IRI.Resolve
+open JSONLD.Loader
 
 // ================================================================
 // Types
@@ -249,6 +277,54 @@ let rec jldctx_find_colon (s:string) (pos:nat) (fuel:nat)
 // mirrors resolve_iri's own is_iri-checked-result fallback.
 let jldctx_resolve (base:string) (relative:string) : string =
   if is_iri base then resolve_iri base relative else base
+
+// ================================================================
+// Remote contexts (PHASE 6, issue #275): a JString context value or an
+// "@import" member names a context by reference rather than value.
+// ================================================================
+
+// Depth budget for remote-context / "@import" chains — decremented only
+// when a fetch actually happens (see the `%[fuel; ...]` decreases clauses
+// below), so an inline context with many term definitions never
+// consumes it. 32 is generous for any realistic chain (the toRdf suite's
+// deepest chain is 2: a document's own remote context "@import"-ing one
+// further context).
+let jld_remote_context_fuel : nat = 32
+
+// Resolve a context reference (the JString context value, or an
+// "@import" member's value) against the active context's current @base,
+// per RFC 3986 §5.1. Without a @base, only an already-absolute IRI is
+// usable (mirrors jldctx_expand_fallback's own no-base behavior).
+let jldctx_resolve_context_iri (ac:active_context) (raw:string) : option string =
+  match ac.ac_base with
+  | Some b -> Some (jldctx_resolve b raw)
+  | None -> if is_iri raw then Some raw else None
+
+// Split a context object's fields into its (at most one) "@import" value
+// and the rest — mirrors JSONLD.Expand.jexp_extract_context's shape for
+// "@context" extraction from a node object's own fields.
+let jldctx_extract_import (fields:list (string & json_val))
+  : (option string & list (string & json_val)) =
+  let importval =
+    (match List.Tot.find (fun (kv:(string & json_val)) -> fst kv = "@import") fields with
+     | Some (_, JString s) -> Some s
+     | _ -> None) in
+  let rest = List.Tot.filter (fun (kv:(string & json_val)) -> fst kv <> "@import") fields in
+  (importval, rest)
+
+// Fetch `resolved`, parse it as JSON, and return its top-level
+// "@context" member's value. None on any failure: not loadable, not
+// valid JSON, or no "@context" member (JSON-LD 1.1 API §4.1's "loading
+// remote context failed" / "invalid remote context" errors — the toRdf
+// suite's negative tests for exactly these two cases, e.g. "Error
+// dereferencing a remote context" / "Invalid remote context").
+let jldctx_fetch_remote_context (resolved:string) : option json_val =
+  match jsonld_load_document resolved with
+  | None -> None
+  | Some raw ->
+    (match parse_json raw with
+     | None -> None
+     | Some doc -> json_get_field "@context" doc)
 
 // IRI Expansion (JSON-LD 1.1 API §5.1), simplified: no local-context /
 // forward-reference lookahead (terms are resolved against the ALREADY
@@ -528,35 +604,109 @@ let context_process_one_field (ac:active_context) (key:string) (value:json_val)
 // node object's own inline "@context" member always passes false.
 // ================================================================
 
+// fuel: remote-fetch depth budget (jld_remote_context_fuel at every
+// external entry point — see apply_context_with_propagate /
+// jldctx_apply_type_scoped below); decremented ONLY on an actual fetch
+// (JString branch, "@import" branch), never on ordinary inline
+// recursion — so `%[fuel; ctx]` / `%[fuel; items]` below decrease via
+// their SECOND (structural) component for every inline call, exactly
+// as the pre-remote-loading version did via plain `decreases ctx` /
+// `decreases items`, and via the FIRST component only when a fetch
+// actually consumes depth. visited: absolute IRIs already fetched on
+// this chain (cycle guard — see jldctx_fetch_remote_context's callers).
 let rec context_process (ac:active_context) (ctx:json_val) (override_protected:bool)
-  : Tot (option active_context) (decreases ctx) =
+                         (fuel:nat) (visited:list string)
+  : Tot (option active_context) (decreases %[fuel; ctx]) =
   match ctx with
   | JNull ->
     if (not override_protected) && jldctx_any_protected ac.ac_terms then None
     else Some ({ ac with ac_terms = []; ac_vocab = None; ac_language = None })
-  | JString _ -> None // remote context loading: a later phase (see banner)
-  | JArray items -> context_process_array ac items override_protected
-  | JObject fields -> context_process_fields ac fields (jldctx_scan_bool_key fields "@protected" false) override_protected
+  | JString s ->
+    // A remote context reference (JSON-LD 1.1 API §4.1's dereference
+    // step). fuel = 0 or a repeat IRI (cycle) is an honest failure.
+    if fuel = 0 then None
+    else
+      (match jldctx_resolve_context_iri ac s with
+       | None -> None
+       | Some resolved ->
+         if List.Tot.mem resolved visited then None
+         else
+           (match jldctx_fetch_remote_context resolved with
+            | None -> None
+            | Some inner -> context_process ac inner override_protected (fuel - 1) (resolved :: visited)))
+  | JArray items -> context_process_array ac items override_protected fuel visited
+  | JObject fields ->
+    (match jldctx_extract_import fields with
+     | (None, _) ->
+       context_process_fields ac fields (jldctx_scan_bool_key fields "@protected" false) override_protected fuel visited
+     | (Some importref, restfields) ->
+       // "@import" (JSON-LD 1.1 API §4.1 "Import"): load + process the
+       // imported context against `ac` FIRST, then fold this object's
+       // OWN remaining members on top of the result — local members
+       // replacing imported ones is just ordinary left-to-right term
+       // redefinition once the two are processed in that order.
+       if fuel = 0 then None
+       else
+         (match jldctx_resolve_context_iri ac importref with
+          | None -> None
+          | Some resolved ->
+            if List.Tot.mem resolved visited then None
+            else
+              (match jldctx_fetch_remote_context resolved with
+               | None -> None
+               // "@import" (unlike an ordinary remote JString context)
+               // MUST reference a document whose "@context" is a single
+               // context OBJECT — not an array, not a further string
+               // reference (JSON-LD 1.1 API §4.1: "If the top-level
+               // element ... is not a valid remote context, an invalid
+               // remote context has been detected" — the toRdf so13
+               // "@import can only reference a single context" negative).
+               | Some imported_ctx ->
+                 (match imported_ctx with
+                  | JObject _ ->
+                    (match context_process ac imported_ctx override_protected (fuel - 1) (resolved :: visited) with
+                     | None -> None
+                     | Some ac_imported ->
+                       // fuel - 1 (not fuel): restfields is a FILTERED
+                       // derivative of the original `fields`, not a direct
+                       // pattern-matched subterm, so the termination
+                       // checker cannot see it as structurally smaller;
+                       // the already-spent fetch's fuel decrement covers
+                       // this call too (this whole branch only runs once
+                       // per JObject, so it costs only 1 extra unit of the
+                       // generous 32-deep budget).
+                       context_process_fields ac_imported restfields
+                         (jldctx_scan_bool_key restfields "@protected" false) override_protected (fuel - 1) visited)
+                  | _ -> None))))
   | _ -> None
 
 and context_process_array (ac:active_context) (items:list json_val) (override_protected:bool)
-  : Tot (option active_context) (decreases items) =
+                           (fuel:nat) (visited:list string)
+  : Tot (option active_context) (decreases %[fuel; items]) =
   match items with
   | [] -> Some ac
   | hd :: tl ->
-    (match context_process ac hd override_protected with
+    (match context_process ac hd override_protected fuel visited with
      | None -> None
-     | Some ac1 -> context_process_array ac1 tl override_protected)
+     | Some ac1 -> context_process_array ac1 tl override_protected fuel visited)
 
+// fuel/visited: threaded (unchanged) only to keep this function's
+// decreases metric shape %[fuel; fields] comparable with context_process
+// / context_process_array's within the shared mutual-recursion group —
+// context_process_one_field never itself triggers a remote fetch (the
+// JString-context and "@import" cases are both handled by context_process
+// before delegating to this function), so fuel/visited are otherwise
+// inert here.
 and context_process_fields (ac:active_context) (fields:list (string & json_val))
                            (default_protected:bool) (override_protected:bool)
-  : Tot (option active_context) (decreases fields) =
+                           (fuel:nat) (visited:list string)
+  : Tot (option active_context) (decreases %[fuel; fields]) =
   match fields with
   | [] -> Some ac
   | (key, value) :: rest ->
     (match context_process_one_field ac key value default_protected override_protected with
      | None -> None
-     | Some ac1 -> context_process_fields ac1 rest default_protected override_protected)
+     | Some ac1 -> context_process_fields ac1 rest default_protected override_protected fuel visited)
 
 // ================================================================
 // @propagate-aware context application (JSON-LD 1.1 API §4/§5, the
@@ -574,7 +724,7 @@ and context_process_fields (ac:active_context) (fields:list (string & json_val))
 let apply_context_with_propagate (ac:active_context) (ctxval:json_val)
                                   (default_propagate:bool) (override_protected:bool)
   : option active_context =
-  match context_process ac ctxval override_protected with
+  match context_process ac ctxval override_protected jld_remote_context_fuel [] with
   | None -> None
   | Some ac1 ->
     let propagate = jldctx_scan_propagate ctxval default_propagate in
@@ -617,7 +767,7 @@ let rec jldctx_apply_type_scoped (ac:active_context) (types:list string) (any_no
      | Some td ->
        (match td.td_scoped_context with
         | Some scoped ->
-          (match context_process ac scoped true with
+          (match context_process ac scoped true jld_remote_context_fuel [] with
            | None -> None
            | Some ac1 ->
              let propagate = jldctx_scan_propagate scoped false in

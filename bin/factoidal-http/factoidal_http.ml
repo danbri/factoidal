@@ -40,6 +40,12 @@ open SPARQL11_Algebra
 module P = SPARQL_Protocol
 module S = SPARQL11_Store
 
+(* Issue #275 (rule #11 ASSUME-IO): explicitly realise the JSON-LD
+   documentLoader seam as an honest "no remote loading" for the HTTP
+   endpoint — see JSONLD.Loader.fst's banner and jsonld_runner.ml (the
+   ONE consumer with a real fixture-file loader). *)
+let () = JSONLD_Loader.jsonld_loader_register (fun _ -> FStar_Pervasives_Native.None)
+
 (* ============================================================================
    RDF file loading — same shape as factoidal_cli, inlined here so we don't
    link factoidal_cli.ml (which has its own [let () = ...] main).
@@ -96,12 +102,17 @@ let load_rdf_dataset ?(format=None) ?(base=None) path =
      | Some b -> Parser_TriG.parse_trig_with_base_lenient content b
      | None -> Parser_TriG.parse_trig_lenient content)
   | JSONLD ->
-    (* Phase 1: expanded form only, no @context processing — see
-       formal/fstar/Parser.JSONLD.fst module banner. *)
-    (match Parser_JSONLD.parse_jsonld content with
+    (* Context processing + document base threading per issue #275 —
+       see formal/fstar/Parser.JSONLD.fst module banner. Remote
+       contexts / "@import" are an honest FAIL here (no loader
+       registered above). *)
+    let fs_base = match base_iri with
+      | Some b -> FStar_Pervasives_Native.Some b
+      | None -> FStar_Pervasives_Native.None in
+    (match Parser_JSONLD.parse_jsonld content fs_base with
      | FStar_Pervasives_Native.Some ds -> ds
      | FStar_Pervasives_Native.None ->
-       failwith "invalid JSON-LD (Phase 1 accepts expanded form only)")
+       failwith "invalid JSON-LD (parse or unsupported feature — remote contexts need a loader this endpoint does not have)")
   | _ ->
     let triples = match fmt with
       | NT -> Parser_NTriples.parse_ntriples content

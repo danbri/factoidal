@@ -20,7 +20,13 @@ module Parser.JSONLD
 // *  already expects. A document with no @context member still     *
 // *  goes straight to jld_dataset_of_json (Phase 1 path,           *
 // *  unchanged) so the existing context-free fixtures keep working *
-// *  exactly as before.                                            *
+// *  exactly as before — UNLESS a document base IRI is supplied     *
+// *  (PHASE 6, issue #275): a document with no @context CAN still   *
+// *  carry a bare relative "@id" that only resolves against the     *
+// *  document's OWN base (the toRdf suite's option.base fixtures,   *
+// *  e.g. e076), so `parse_jsonld`'s new `base` parameter also      *
+// *  routes through JSONLD.Expand whenever it is `Some _`, seeding  *
+// *  the initial active context's `ac_base` with it.                *
 // *****************************************************************
 //
 // This is the "Deserialize JSON-LD to RDF" step of the JSON-LD 1.1
@@ -739,20 +745,26 @@ let jld_has_inline_context (root:json_val) : bool =
   | JObject fields -> List.Tot.existsb (fun (kv:(string & json_val)) -> fst kv = "@context") fields
   | _ -> false
 
-// Parse a JSON-LD document into an RDF dataset. A document whose top level
-// is a JObject carrying an inline @context is run through JSONLD.Expand
-// first (PHASE 3a: JSONLD.Context + JSONLD.Expand, inline contexts only —
-// see module banner); everything else takes the unchanged Phase 1 path
-// straight into jld_dataset_of_json, which requires EXPANDED FORM input.
-// None when the input is not valid RFC 8259 JSON, expansion hits an
-// out-of-scope feature (module banner), or the top level is not an
-// array/object.
-let parse_jsonld (input:string) : option rdf_dataset =
+// Parse a JSON-LD document into an RDF dataset. `base`: the document's
+// own base IRI (PHASE 6, issue #275 — the manifest's `option.base`, or a
+// consumer's own notion of "the IRI this document was loaded from";
+// `None` when the consumer has none to offer, e.g. a CLI reading a bare
+// file with no associated URL). A document whose top level is a JObject
+// carrying an inline @context, OR for which `base` is `Some _`, is run
+// through JSONLD.Expand first (PHASE 3a: JSONLD.Context + JSONLD.Expand
+// — see module banner), seeding the initial active context's `ac_base`
+// from `base`; a document with NEITHER an inline @context NOR a supplied
+// base takes the unchanged Phase 1 path straight into
+// jld_dataset_of_json, which requires EXPANDED FORM input. None when the
+// input is not valid RFC 8259 JSON, expansion hits an out-of-scope
+// feature (module banner), or the top level is not an array/object.
+let parse_jsonld (input:string) (base:option string) : option rdf_dataset =
   match parse_json input with
   | None -> None
   | Some root ->
-    if jld_has_inline_context root then
-      (match expand empty_active_context root with
+    if jld_has_inline_context root || Some? base then
+      let ac0 = { empty_active_context with ac_base = base } in
+      (match expand ac0 root with
        | None -> None
        | Some expanded -> jld_dataset_of_json expanded)
     else jld_dataset_of_json root

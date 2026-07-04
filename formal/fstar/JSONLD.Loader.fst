@@ -36,13 +36,32 @@ module JSONLD.Loader
 //     loader is wired up for that consumer specifically — never a
 //     silent wrong answer.
 //
-// STATUS 2026-07-04 (JSON-LD Phase 5): this module declares the
-// boundary only. JSONLD.Context's `context_process` (JString-context
-// branch, currently `None // remote context loading: a later phase`)
-// and an "@import" term-def member in JSONLD.Expand do NOT yet call
-// this — wiring both, plus the jsonld_runner.ml realisation described
-// above, is the next slice (tracked for an open GitHub issue per Iron
-// Rule #3 once a realisation lands, per this phase's task brief).
+// STATUS 2026-07-05 (JSON-LD Phase 6, issue #275): WIRED. JSONLD.Context's
+// `context_process` calls `jsonld_load_document` directly for a JString
+// context value and for an "@import" context-object member (fuel-bounded
+// remote-chain recursion + a `visited` cycle guard — see that module's
+// banner and `jld_remote_context_fuel`). `Parser.JSONLD.parse_jsonld`
+// gained a `base:option string` parameter that seeds the initial active
+// context's `ac_base`, so both remote-context resolution AND bare
+// relative "@id" values (a document with no @context at all, e.g.
+// toRdf/e076) resolve against the document's own base.
+//
+// Realised (per rule #11, one shared dispatch shape in
+// ocaml-output/JSONLD_Loader.ml, installed by
+// minimal_regrettable_glue_code_each_with_an_open_issue/275_jsonld_document_loader.sh
+// — a mutable ref cell + `jsonld_loader_register` setter, precedent:
+// 57_service_client_bind.sh's `service_endpoint_table`/`_register`
+// pattern for the SAME "one global assume-val, consumer-specific
+// realisation" shape):
+//   - bin/jsonld-runner/jsonld_runner.ml registers a loader that maps
+//     the manifest's `baseIri` prefix
+//     (https://w3c.github.io/json-ld-api/tests/) to
+//     third_party/testing/json-ld/tests/ on disk and reads the file.
+//   - bin/factoidal-cli, bin/factoidal-dump-nq, bin/factoidal-http
+//     each explicitly register `fun _ -> None` (the ref cell's own
+//     default, made explicit for rule-#11 auditability) — an honest
+//     FAIL on a document needing a remote context, until a real
+//     HTTP/file loader is wired up for that consumer specifically.
 // ============================================================================
 
 assume val jsonld_load_document : string -> option string

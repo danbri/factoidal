@@ -838,6 +838,33 @@ and expand_included_items (ac:active_context) (items:list json_val) (fuel:nat)
             | Some restout -> Some (nodeobj :: restout)))
     | _ -> None
 
+// PHASE 6 (issue #275): the TOP-LEVEL document array, unlike a nested
+// "@graph" member's contents (expand_graph_items, still lenient — a
+// non-conforming entry there is dropped per spec), is STRICT: a
+// top-level entry whose OWN context processing fails (a remote
+// context that can't be loaded, an invalid remote context, an
+// "@import" cycle, ...) must fail the WHOLE document, not silently
+// vanish from the output. Silently dropping it would turn a
+// NegativeEvaluationTest expecting "loading remote context failed"
+// into a spuriously-passing EMPTY dataset (toRdf/er05: a one-element
+// top-level array whose sole entry has an invalid remote context).
+// Mirrors expand_included_items' strict shape (no @value/@list
+// special-casing needed here: a malformed top-level entry simply
+// fails expand_node on its own terms).
+and expand_top_items (ac:active_context) (items:list json_val) (fuel:nat)
+  : Tot (option (list json_val)) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    match items with
+    | [] -> Some []
+    | v :: rest ->
+      (match expand_node ac v (fuel - 1) with
+       | None -> None
+       | Some nodeobj ->
+         (match expand_top_items ac rest (fuel - 1) with
+          | None -> None
+          | Some restout -> Some (nodeobj :: restout)))
+
 // ================================================================
 // Public API
 // ================================================================
@@ -858,5 +885,8 @@ let expand (ac:active_context) (doc:json_val) : Tot (option json_val) =
        then Some (JArray (jexp_collect_graph_values fields1))
        else Some (JArray [JObject fields1])
      | Some nodeobj -> Some (JArray [nodeobj]))
-  | JArray items -> Some (JArray (expand_graph_items ac items fuel))
+  | JArray items ->
+    (match expand_top_items ac items fuel with
+     | None -> None
+     | Some outs -> Some (JArray outs))
   | _ -> None

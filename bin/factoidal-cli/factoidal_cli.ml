@@ -17,6 +17,14 @@
 open RDF_Graph_Executable
 open SPARQL11_Algebra
 
+(* Issue #275 (rule #11 ASSUME-IO): explicitly realise the JSON-LD
+   documentLoader seam as an honest "no remote loading" for this CLI —
+   see JSONLD.Loader.fst's banner and jsonld_runner.ml (the ONE
+   consumer with a real fixture-file loader). Explicit rather than
+   relying on the ref cell's own default so the choice is auditable
+   here, not implicit. *)
+let () = JSONLD_Loader.jsonld_loader_register (fun _ -> FStar_Pervasives_Native.None)
+
 (* ============================================================================
    Output formatting
    ============================================================================ *)
@@ -144,12 +152,20 @@ let load_dataset ?(format=None) ?(base=None) path =
      | Some b -> Parser_TriG.parse_trig_with_base_lenient content b
      | None -> Parser_TriG.parse_trig_lenient content)
   | JSONLD ->
-    (* Phase 1: expanded form only, no @context processing — see
-       formal/fstar/Parser.JSONLD.fst module banner. *)
-    (match Parser_JSONLD.parse_jsonld content with
+    (* Context processing (JSONLD.Context/JSONLD.Expand) + document
+       base threading per issue #275 — see
+       formal/fstar/Parser.JSONLD.fst module banner. Remote contexts /
+       "@import" are an honest FAIL here (no loader registered — see
+       this file's top-of-file jsonld_loader_register call): the CLI
+       has no notion of "the URL this file was loaded from" beyond a
+       local file:// base. *)
+    let fs_base = match base_iri with
+      | Some b -> FStar_Pervasives_Native.Some b
+      | None -> FStar_Pervasives_Native.None in
+    (match Parser_JSONLD.parse_jsonld content fs_base with
      | FStar_Pervasives_Native.Some ds -> ds
      | FStar_Pervasives_Native.None ->
-       failwith "invalid JSON-LD (Phase 1 accepts expanded form only)")
+       failwith "invalid JSON-LD (parse or unsupported feature — remote contexts need a loader this CLI does not have)")
   | _ ->
     let triples = match fmt with
       | NT -> Parser_NTriples.parse_ntriples content
@@ -549,7 +565,7 @@ let parse_args ?args () =
 
 let known_subcommands =
   ["help"; "version"; "query"; "serve"; "dump"; "dump-nq"; "dump-turtle"; "canonicalize";
-   "count"; "test"; "cottas-import"; "cottas-info"; "graphs"]
+   "count"; "test"; "cottas-import"; "cottas-info"; "graphs"; "validate"]
 
 (* Locate a sibling binary by the same convention busybox uses: look in
    the same directory as argv[0] first, fall back to PATH. *)
@@ -639,6 +655,9 @@ let print_navigation_help () =
   Printf.printf "                   factoidal graphs get FILE IRI         dump one graph (N-Triples)\n";
   Printf.printf "                   factoidal graphs hash FILE IRI        RDFC-1.0 canonical hash\n";
   Printf.printf "                   factoidal graphs diff FILE1 FILE2     added/removed/changed graphs\n";
+  Printf.printf "  validate       SHACL Core validation (slice 1, issue #181)\n";
+  Printf.printf "                   factoidal validate --shapes shapes.ttl data.ttl\n";
+  Printf.printf "                   (see formal/fstar/SHACL.Validation.fst for constraint coverage)\n";
   Printf.printf "  cottas-import  Import RDF -> COTTAS/Parquet artifact\n";
   Printf.printf "                   factoidal cottas-import --input X.trig --corpus-root C ...\n";
   Printf.printf "                   (shim: execs python3 tools/corpus_pipeline.py)\n";
@@ -851,6 +870,70 @@ let dispatch_subcommand () =
           List.iter (fun n -> Printf.printf "~ %s\n" n) changed;
           exit 0
         | _ -> usage_graphs ())
+     | "validate" ->
+       (* SHACL Core validation (slice 1, issue #181). Consumer wiring
+          only (rule #11) — all shape parsing, target computation,
+          path evaluation, and constraint evaluation live in
+          formal/fstar/SHACL.Validation.fst. This handler just loads
+          two RDF files and prints the resulting report. *)
+       let usage_validate () =
+         Printf.eprintf
+           "Usage: factoidal validate --shapes SHAPES.ttl DATA.ttl\n";
+         exit 2
+       in
+       let rec parse_validate_args shapes_path data_path = function
+         | [] -> (shapes_path, data_path)
+         | "--shapes" :: p :: rest -> parse_validate_args (Some p) data_path rest
+         | ("--help" | "-h") :: _ -> usage_validate ()
+         | p :: rest when data_path = None -> parse_validate_args shapes_path (Some p) rest
+         | _ -> usage_validate ()
+       in
+       let (shapes_path, data_path) = parse_validate_args None None rest in
+       (match shapes_path, data_path with
+        | Some sp, Some dp ->
+          let shapes_triples =
+            try load_triples sp
+            with e ->
+              Printf.eprintf "Error parsing shapes graph %s: %s\n" sp (Printexc.to_string e);
+              exit 1
+          in
+          let data_triples =
+            try load_triples dp
+            with e ->
+              Printf.eprintf "Error parsing data graph %s: %s\n" dp (Printexc.to_string e);
+              exit 1
+          in
+          let sg = SHACL_Validation.parse_shape_from_graph shapes_triples in
+          let report = SHACL_Validation.validate data_triples sg in
+          let conforms = report.SHACL_Validation.conforms in
+          let results = report.SHACL_Validation.results in
+          let string_of_term t = RDF_Pretty.term_to_turtle t in
+          let string_of_path_opt = function
+            | FStar_Pervasives_Native.None -> "(none)"
+            | FStar_Pervasives_Native.Some (SHACL_Validation.P_Predicate p) -> p
+            | FStar_Pervasives_Native.Some (SHACL_Validation.P_Inverse (SHACL_Validation.P_Predicate p)) ->
+              "^" ^ p
+            | FStar_Pervasives_Native.Some _ -> "(complex path)"
+          in
+          let string_of_severity = function
+            | SHACL_Validation.Sev_Info -> "Info"
+            | SHACL_Validation.Sev_Warning -> "Warning"
+            | SHACL_Validation.Sev_Violation -> "Violation"
+          in
+          Printf.printf "sh:conforms %b\n" conforms;
+          List.iter
+            (fun v ->
+               Printf.printf "  [%s] focus=%s path=%s%s source=%s\n"
+                 (string_of_severity v.SHACL_Validation.v_severity)
+                 (string_of_term v.SHACL_Validation.v_focus_node)
+                 (string_of_path_opt v.SHACL_Validation.v_path)
+                 (match v.SHACL_Validation.v_value with
+                  | FStar_Pervasives_Native.Some value -> " value=" ^ string_of_term value
+                  | FStar_Pervasives_Native.None -> "")
+                 v.SHACL_Validation.v_source_shape)
+            results;
+          exit (if conforms then 0 else 1)
+        | _ -> usage_validate ())
      | "query" -> rest
      | "dump"  -> "--dump"  :: List.concat_map (fun f -> ["--data"; f]) rest
      | "dump-nq" -> "--dump-nq" :: List.concat_map (fun f -> ["--data"; f]) rest

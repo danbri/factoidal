@@ -46,7 +46,7 @@ COMMON_MODULES="RDF_Format.ml RDF_Graph_Executable.ml \
   Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml Parser_RDFXML.ml \
   RDF_List_Helpers.ml SPARQL11_IRI_Resolve.ml \
   SPARQL_JSON_Escape.ml \
-  Parser_JSON.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml \
+  Parser_JSON.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml \
   RDF_Dataset_Graphs.ml \
   fstar_pure_hashes.ml RDF_Canonical.ml"
 
