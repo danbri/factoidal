@@ -354,6 +354,8 @@ let rec parse_string_body (input:string) (pos:nat) (acc:list char) (fuel:nat)
             parse_string_body input (pos + 2) (FStar.Char.char_of_int 0x08 :: acc) (fuel - 1)
           else if esc_code = 0x66 then (* \f - form feed *)
             parse_string_body input (pos + 2) (FStar.Char.char_of_int 0x0C :: acc) (fuel - 1)
+          else if esc_code = 0x27 then (* \' - apostrophe; ECHAR ::= '\' [tbnrf"'\] *)
+            parse_string_body input (pos + 2) (FStar.Char.char_of_int 0x27 :: acc) (fuel - 1)
           else if esc_code = 0x75 then // \uXXXX
             if pos + 6 > len then ParseFail "incomplete \\u escape" pos
             else

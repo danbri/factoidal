@@ -65,15 +65,44 @@ assume val hash_sha256 : string -> string
    >= 0x80). Found 2026-07-04 via the JSON-LD scalars/escapes fixture;
    the rdf-canon suite inputs are ASCII-clean so the dashboard never
    saw either bug. *)
+// One uppercase hex digit (0..15). Out-of-range mapped to '0' to keep
+// the function total. Canonical N-Quads \uXXXX escapes use uppercase
+// hex per the rdf-canon test suite fixtures.
+let hex_digit_uc (n:nat) : FStar.Char.char =
+  if n < 10 then FStar.Char.char_of_int (0x30 + n)
+  else if n < 16 then FStar.Char.char_of_int (0x41 + (n - 10))
+  else FStar.Char.char_of_int 0x30
+
+// Control bytes 0x00-0x1F without a short mnemonic (\t \n \r \b \f),
+// plus DEL (0x7F), MUST be \uXXXX-escaped in canonical N-Quads output
+// (RDF 1.1 N-Triples canonical literal form) — leaving them as raw
+// bytes is legal N-Triples but not the canonical form the rdf-canon
+// suite's fixtures expect (2026-07-04: previously only the five
+// short-mnemonic specials were escaped, so e.g. NUL, VT, DEL passed
+// through raw, dropping/corrupting bytes relative to expected output).
 let escape_lit_special_byte (b : nat) : bool =
   b = 0x5C || b = 0x22 || b = 0x0A || b = 0x0D || b = 0x09
+  || b = 0x08 || b = 0x0C || b < 0x20 || b = 0x7F
 
 let escape_lit_byte (b : nat{escape_lit_special_byte b}) : string =
   if b = 0x5C then "\\\\"        // backslash
   else if b = 0x22 then "\\\""   // double quote
   else if b = 0x0A then "\\n"
   else if b = 0x0D then "\\r"
-  else "\\t"
+  else if b = 0x09 then "\\t"
+  else if b = 0x08 then "\\b"
+  else if b = 0x0C then "\\f"
+  else
+    // Remaining control bytes (0x00-0x1F minus the mnemonics above)
+    // and DEL (0x7F): \u00XX, uppercase hex, high nibble first.
+    let n1 = (b / 16) % 16 in
+    let n0 = b % 16 in
+    String.string_of_list [FStar.Char.char_of_int 0x5C;   // '\\'
+                            FStar.Char.char_of_int 0x75;   // 'u'
+                            FStar.Char.char_of_int 0x30;   // '0'
+                            FStar.Char.char_of_int 0x30;   // '0'
+                            hex_digit_uc n1;
+                            hex_digit_uc n0]
 
 // Copy maximal runs of non-special bytes with fs_byte_sub, splicing
 // escape strings in at special bytes. `run_start` marks the start of
@@ -491,19 +520,43 @@ let rec lookup_hfdq (b : bnode_id) (xs : list bn_hfdq_pair)
    Tag "g" marks a target appearing only in the graph slot; this lets
    a bnode-typed graph name participate in HNDQ collision-breaking
    alongside subject/object bnodes. *)
+// RDFC-1.0 4.9 step 3.1: position is s/o/g based on the slot of the
+// RELATED component itself (the "other" blank node), NOT the slot of
+// `target`. In a plain two-bnode quad the two are swapped (target
+// subject <=> related object, and vice versa); when target occupies
+// the graph slot, the related bnode is whichever of s/o is present
+// (tag "s"/"o"); when target is s/o and a *different* bnode labels
+// the graph, that related bnode's tag is "g".
 let nbr_position_tag (target : bnode_id) (q : qquad) : string =
   let (g, t) = q in
-  let s_is_target = match t.s with | S_BNode b -> b = target | _ -> false in
-  let o_is_target = match t.o with | T_BNode b -> b = target | _ -> false in
+  let s_bn = match t.s with | S_BNode b -> Some b | _ -> None in
+  let o_bn = match t.o with | T_BNode b -> Some b | _ -> None in
   let g_is_target = match g with
                     | Some gi -> is_bnode_graph_label gi
                                  && bnode_of_graph_label gi = target
                     | None -> false in
-  if s_is_target && o_is_target then "ss"  // self-loop: target both ways
-  else if s_is_target then "s"              // target is subject
-  else if o_is_target then "o"              // target is object
-  else if g_is_target then "g"              // target is the graph name
-  else "_"                                   // shouldn't happen — caller filtered
+  let so_pos =
+    match s_bn, o_bn with
+    | Some sb, Some ob ->
+      if sb = target && ob = target then Some "ss"  // self-loop: no distinct related
+      else if sb = target then Some "o"              // related occupies the object slot
+      else if ob = target then Some "s"              // related occupies the subject slot
+      else None
+    | Some sb, None -> if sb = target then None else Some "s"
+    | None, Some ob -> if ob = target then None else Some "o"
+    | None, None -> None
+  in
+  match so_pos with
+  | Some p -> p
+  | None ->
+    if g_is_target then
+      // target is the graph bnode; related is whichever s/o bnode
+      // is present (if any).
+      (match s_bn with
+       | Some _ -> "s"
+       | None -> (match o_bn with | Some _ -> "o" | None -> "_")
+      )
+    else "g"  // a different bnode labels the graph — that's the related one
 
 (* Extract the related bnode (the *other* bnode in this quad), if any.
    Returns None when the quad has no second bnode (e.g. `_:n p "lit"`)
@@ -555,6 +608,15 @@ let related_bnode (target : bnode_id) (q : qquad) : option bnode_id =
                     | None -> o_bn)
                  else Some gb
     | None -> None
+
+// RDFC-1.0 4.8 Hash Related Blank Node: input := position
+// [+ "<" + predicate + ">" if position <> "g"] + identifier; return
+// hash_algorithm(input). `identifier` is resolved by the caller
+// (already-issued "_:<label>" or the bare HFDQ fallback).
+let hash_related_blank_node (pos : string) (pred : string) (identifier : string)
+  : string =
+  let input = pos ^ (if pos <> "g" then "<" ^ pred ^ ">" else "") ^ identifier in
+  hash_sha256 input
 
 (* For a single quad mentioning `target`, build the contribution
    "<pos>|<pred>|<related_key>". `key_of` resolves the related-bnode
@@ -845,24 +907,44 @@ let rec bucket_insert (k : string) (b : bnode_id) (xs : list bucket)
    *contribution string* with no related bnode — these go into a
    distinguished bucket with key "*<pos>|<pred>|_" so they are
    incorporated into the data-string but skip permutation. *)
+// Look up `b`'s already-issued identifier, checking the *real*
+// canonical issuer first, then the per-candidate local (temporary)
+// issuer — RDFC-1.0 4.8 branches 1/2 unified, since both are just
+// "an already-issued identifier", canonical taking precedence.
+let lookup_issued2 (b : bnode_id) (canon_st : issuer_state) (local_st : issuer_state)
+  : option string =
+  match lookup_issued b canon_st.is_issued with
+  | Some lbl -> Some lbl
+  | None -> lookup_issued b local_st.is_issued
+
 let rec build_buckets_for
     (target : bnode_id)
     (qs : list qquad)
     (hfdq_table : list bn_hfdq_pair)
+    (canon_st : issuer_state)  // NEW — real canonical issuer, read-only
+                                // here (already-issued check, branch 1)
+    (local_st : issuer_state)  // NEW — this candidate's own temporary
+                                // issuer (already-issued check, branch 2)
     (acc : list bucket)
   : Tot (list bucket) (decreases qs) =
   match qs with
   | [] -> acc
   | q :: rest ->
     if not (quad_mentions_bnode target q) then
-      build_buckets_for target rest hfdq_table acc
+      build_buckets_for target rest hfdq_table canon_st local_st acc
     else
       let (_, t) = q in
       let pos = nbr_position_tag target q in
       let pred = t.p in
       let entry = (match related_bnode target q with
         | None -> None
-        | Some rb -> Some (rb, lookup_hfdq rb hfdq_table)) in
+        | Some rb ->
+          let identifier =
+            match lookup_issued2 rb canon_st local_st with
+            | Some lbl -> "_:" ^ lbl               // branch 1/2
+            | None -> lookup_hfdq rb hfdq_table     // branch 3
+          in
+          Some (rb, hash_related_blank_node pos pred identifier)) in
       let acc' = match entry with
         | None ->
           // No related bnode: encode contribution with sentinel "*"
@@ -870,11 +952,11 @@ let rec build_buckets_for
           // distinct per (pos, pred).
           let k = "*" ^ pos ^ "|" ^ pred ^ "|_" in
           bucket_insert k "_" acc
-        | Some (rb, rhash) ->
-          let k = pos ^ "|" ^ pred ^ "|" ^ rhash in
-          bucket_insert k rb acc
+        | Some (rb, related_hash) ->
+          // key is now the spec hash, not the raw preimage
+          bucket_insert related_hash rb acc
       in
-      build_buckets_for target rest hfdq_table acc'
+      build_buckets_for target rest hfdq_table canon_st local_st acc'
 
 (* Permutation enumeration: list all permutations of a list. We bound
    this at factorial(6) = 720 by truncating longer lists; for tests in
@@ -926,101 +1008,149 @@ let rec mem_bnode (b : bnode_id) (xs : list bnode_id) : bool =
    condition on (count of unissued bnodes) holds operationally;
    fuel makes that decrease syntactic for F*. *)
 
+(* RDFC-1.0 4.9 step 5.4.4: first pass over a permutation. Every
+   member contributes its "_:<label>" identifier — already-issued
+   (canonical or local) or freshly issued into `local_st` — to `path`,
+   in order, with NO separator between members (spec-literal: plain
+   concatenation, no comma, no period). Members freshly issued here
+   are recorded, in the same order, as the `recursion` list, which the
+   second pass (step 5.4.5, `walk_recursion` below) consumes. The
+   synthetic "_" sentinel (our own no-related-bnode bookkeeping —
+   RDFC-1.0's model has no such case, since Hn is only ever populated
+   for actual related bnodes) contributes nothing to either. *)
+let rec build_path_labels
+    (canon_st : issuer_state)
+    (local_st : issuer_state)
+    (perm : list bnode_id)
+    (path : string)
+    (recursion : list bnode_id)
+  : Tot (string * issuer_state * list bnode_id) (decreases perm) =
+  match perm with
+  | [] -> (path, local_st, recursion)
+  | b :: rest ->
+    if b = "_" then
+      build_path_labels canon_st local_st rest path recursion
+    else
+      match lookup_issued2 b canon_st local_st with
+      | Some lbl ->
+        build_path_labels canon_st local_st rest (path ^ "_:" ^ lbl) recursion
+      | None ->
+        let (local1, lbl) = issue_identifier local_st b in
+        build_path_labels canon_st local1 rest (path ^ "_:" ^ lbl) (recursion @ [b])
+
 (* Walk a permutation, building (path_string, updated_issuer).
    Returns None if a related bnode exits scope (defensive — the
    bucket-key construction should keep all related bnodes well-typed,
    but the recursive HNDQ may not terminate in a reasonable horizon
    for highly symmetric graphs; we abort with None and the caller
    falls back to the orig-label tiebreak). *)
+// `canon_st` is threaded unchanged through this whole mutual-recursion
+// group — RDFC-1.0's Hash N-Degree Quads algorithm only *reads* the
+// real canonical issuer (to detect bnodes already committed by prior
+// groups) during exploration; only `local_st`, this candidate's own
+// temporary issuer, grows as the walk proceeds. The real canonical
+// issuer is only ever updated afterwards, by replaying the winning
+// exploration's temporary-issuance list (see `replay_group` below).
 let rec hndq_run
     (fuel : nat)
     (qs : list qquad)
     (hfdq_table : list bn_hfdq_pair)
-    (st : issuer_state)
+    (canon_st : issuer_state)
+    (local_st : issuer_state)
     (target : bnode_id)
-  : Tot (string * issuer_state) (decreases %[fuel; 3; 0]) =
-  if fuel = 0 then ("", st)
+  : Tot (string * issuer_state) (decreases %[fuel; 4; 0]) =
+  if fuel = 0 then ("", local_st)
   else
-    let buckets = build_buckets_for target qs hfdq_table [] in
-    walk_buckets (fuel - 1) qs hfdq_table st buckets ""
+    let buckets = build_buckets_for target qs hfdq_table canon_st local_st [] in
+    walk_buckets (fuel - 1) qs hfdq_table canon_st local_st buckets ""
 
 and walk_buckets
     (fuel : nat)
     (qs : list qquad)
     (hfdq_table : list bn_hfdq_pair)
-    (st : issuer_state)
+    (canon_st : issuer_state)
+    (local_st : issuer_state)
     (buckets : list bucket)
     (data : string)
-  : Tot (string * issuer_state) (decreases %[fuel; 2; buckets]) =
+  : Tot (string * issuer_state) (decreases %[fuel; 3; buckets]) =
   match buckets with
-  | [] -> (hash_sha256 data, st)
+  | [] -> (hash_sha256 data, local_st)
   | (k, members) :: rest ->
     let data1 = data ^ k in
     let perms = permutations (take_n 6 members) in
-    let (best_hash, best_st) = best_permutation fuel qs hfdq_table st perms in
+    let (best_hash, best_st) = best_permutation fuel qs hfdq_table canon_st local_st perms in
     let data2 = data1 ^ best_hash in
-    walk_buckets fuel qs hfdq_table best_st rest data2
+    walk_buckets fuel qs hfdq_table canon_st best_st rest data2
 
 and best_permutation
     (fuel : nat)
     (qs : list qquad)
     (hfdq_table : list bn_hfdq_pair)
-    (st : issuer_state)
+    (canon_st : issuer_state)
+    (local_st : issuer_state)
     (perms : list (list bnode_id))
-  : Tot (string * issuer_state) (decreases %[fuel; 1; perms]) =
+  : Tot (string * issuer_state) (decreases %[fuel; 2; perms]) =
   match perms with
-  | [] -> ("", st)  // no permutations: empty bucket
+  | [] -> ("", local_st)  // no permutations: empty bucket
   | p :: rest ->
-    let (h, st') = walk_perm fuel qs hfdq_table st p "" in
-    pick_best fuel qs hfdq_table st rest h st'
+    let (h, st') = walk_perm fuel qs hfdq_table canon_st local_st p "" in
+    pick_best fuel qs hfdq_table canon_st local_st rest h st'
 
 and pick_best
     (fuel : nat)
     (qs : list qquad)
     (hfdq_table : list bn_hfdq_pair)
-    (st_initial : issuer_state)
+    (canon_st : issuer_state)
+    (local_st_initial : issuer_state)
     (perms : list (list bnode_id))
     (best_hash : string)
     (best_st : issuer_state)
-  : Tot (string * issuer_state) (decreases %[fuel; 1; perms]) =
+  : Tot (string * issuer_state) (decreases %[fuel; 2; perms]) =
   match perms with
   | [] -> (best_hash, best_st)
   | p :: rest ->
-    let (h, st') = walk_perm fuel qs hfdq_table st_initial p "" in
+    let (h, st') = walk_perm fuel qs hfdq_table canon_st local_st_initial p "" in
     let (best_hash', best_st') =
       if str_le h best_hash && h <> best_hash then (h, st')
       else (best_hash, best_st) in
-    pick_best fuel qs hfdq_table st_initial rest best_hash' best_st'
+    pick_best fuel qs hfdq_table canon_st local_st_initial rest best_hash' best_st'
 
 and walk_perm
     (fuel : nat)
     (qs : list qquad)
     (hfdq_table : list bn_hfdq_pair)
-    (st : issuer_state)
+    (canon_st : issuer_state)
+    (local_st : issuer_state)
     (perm : list bnode_id)
     (path : string)
-  : Tot (string * issuer_state) (decreases %[fuel; 0; perm]) =
-  match perm with
-  | [] -> (path, st)
+  : Tot (string * issuer_state) (decreases %[fuel; 1; perm]) =
+  // RDFC-1.0 4.9 steps 5.4.4 + 5.4.5: build every member's label
+  // first (no recursion yet), THEN walk only the freshly-issued
+  // members a second time, appending "_:<label><recursive-hash>" for
+  // each, in order. See `build_path_labels` / `walk_recursion` above
+  // and below.
+  let (path1, local1, recursion) = build_path_labels canon_st local_st perm path [] in
+  walk_recursion fuel qs hfdq_table canon_st local1 recursion path1
+
+and walk_recursion
+    (fuel : nat)
+    (qs : list qquad)
+    (hfdq_table : list bn_hfdq_pair)
+    (canon_st : issuer_state)
+    (local_st : issuer_state)
+    (recursion : list bnode_id)
+    (path : string)
+  : Tot (string * issuer_state) (decreases %[fuel; 0; recursion]) =
+  match recursion with
+  | [] -> (path, local_st)
   | b :: rest ->
-    if b = "_" then
-      // Sentinel for "no related bnode" — already encoded in bucket
-      // key, just append a separator and continue.
-      walk_perm fuel qs hfdq_table st rest (path ^ ".")
-    else begin
-      match lookup_issued b st.is_issued with
-      | Some lbl ->
-        let path' = path ^ "_:" ^ lbl ^ "," in
-        walk_perm fuel qs hfdq_table st rest path'
-      | None ->
-        let (st1, lbl) = issue_identifier st b in
-        // Recurse into HNDQ for `b` to extend the path.
-        let (sub_hash, st2) =
-          if fuel = 0 then ("", st1)
-          else hndq_run (fuel - 1) qs hfdq_table st1 b in
-        let path' = path ^ "_:" ^ lbl ^ "<" ^ sub_hash ^ ">," in
-        walk_perm fuel qs hfdq_table st2 rest path'
-    end
+    // `b` was already issued in `build_path_labels`'s first pass;
+    // `issue_identifier` is idempotent, so this just recovers its label.
+    let (local1, lbl) = issue_identifier local_st b in
+    let (sub_hash, local2) =
+      if fuel = 0 then ("", local1)
+      else hndq_run (fuel - 1) qs hfdq_table canon_st local1 b in
+    walk_recursion fuel qs hfdq_table canon_st local2 rest (path ^ "_:" ^ lbl ^ "<" ^ sub_hash ^ ">")
 
 (* ------------------------------------------------------------------ *)
 (* Section 6e. Top-level: unique-HFDQ first, then collision groups.
@@ -1058,38 +1188,123 @@ let rec filter_unissued (st : issuer_state) (xs : list bnode_id)
     | Some _ -> filter_unissued st rest
     | None -> b :: filter_unissued st rest
 
-(* Run HNDQ on every member of a collision group; pick the lex-smallest
-   path-hash and commit its cloned issuer as the new state. *)
-let rec process_collision_members
+(* RDFC-1.0 4.4.3 step 5.2: explore *every* member of a collision
+   group using its own fresh temporary issuer (never accumulated
+   across members — each candidate starts from a clean `empty_issuer`
+   slate, only `canon_st`, the real issuer, is shared and read-only
+   here). Returns one (hash, temporary-issued-list) pair per
+   not-yet-canonically-issued member, in original member order. *)
+let rec explore_members
+    (fuel : nat)
+    (qs : list qquad)
+    (hfdq_table : list bn_hfdq_pair)
+    (canon_st : issuer_state)
+    (members : list bnode_id)
+  : Tot (list (string * list (bnode_id * string))) (decreases members) =
+  match members with
+  | [] -> []
+  | m :: rest ->
+    (match lookup_issued m canon_st.is_issued with
+     | Some _ -> explore_members fuel qs hfdq_table canon_st rest
+     | None ->
+       let (local1, _) = issue_identifier empty_issuer m in
+       let (h, local2) = hndq_run fuel qs hfdq_table canon_st local1 m in
+       (h, local2.is_issued) :: explore_members fuel qs hfdq_table canon_st rest)
+
+(* Stable insertion sort of (hash, temp-issued-list) results by hash,
+   ascending, preserving original relative order for ties. RDFC-1.0
+   4.4.3 step 5.3 says "code point ordered by hash" but does not
+   define tie-breaking; first-explored-member-wins is a deterministic,
+   stable choice consistent across runs over the same input order. *)
+let rec insert_result_stable
+    (x : string * list (bnode_id * string))
+    (xs : list (string * list (bnode_id * string)))
+  : Tot (list (string * list (bnode_id * string))) (decreases xs) =
+  match xs with
+  | [] -> [x]
+  | (k, v) :: rest ->
+    let (xk, _) = x in
+    if str_le k xk then (k, v) :: insert_result_stable x rest
+    else x :: xs
+
+let rec sort_results_stable_acc
+    (acc : list (string * list (bnode_id * string)))
+    (xs : list (string * list (bnode_id * string)))
+  : Tot (list (string * list (bnode_id * string))) (decreases xs) =
+  match xs with
+  | [] -> acc
+  | x :: rest -> sort_results_stable_acc (insert_result_stable x acc) rest
+
+let sort_results_stable (xs : list (string * list (bnode_id * string)))
+  : list (string * list (bnode_id * string)) =
+  sort_results_stable_acc [] xs
+
+(* RDFC-1.0 4.4.3 step 5.3: for each result in ascending-hash order,
+   replay *every* identifier its exploration touched (in the order it
+   touched them) into the real canonical issuer. `issue_identifier` is
+   idempotent on an already-issued bnode, so bnodes swept up by an
+   earlier result in this same fold are safely skipped when their own
+   turn comes. *)
+let rec replay_one (canon_st : issuer_state) (temp_issued : list (bnode_id * string))
+  : Tot issuer_state (decreases temp_issued) =
+  match temp_issued with
+  | [] -> canon_st
+  | (b, _) :: rest ->
+    let (canon_st', _) = issue_identifier canon_st b in
+    replay_one canon_st' rest
+
+let rec replay_all
+    (canon_st : issuer_state)
+    (results : list (string * list (bnode_id * string)))
+  : Tot issuer_state (decreases results) =
+  match results with
+  | [] -> canon_st
+  | (_, temp_issued) :: rest ->
+    replay_all (replay_one canon_st temp_issued) rest
+
+(* Run HNDQ on every not-yet-issued member of a collision group,
+   independently (fresh local issuer each — see `explore_members`);
+   then replay each result's temporary issuance, in ascending-hash
+   order, into the real canonical issuer (`replay_all`). This assigns
+   a canonical id to *every* member of the group — not just a single
+   "winner" — matching RDFC-1.0 4.4.3 steps 5.2 + 5.3. *)
+let process_collision_members
     (fuel : nat)
     (qs : list qquad)
     (hfdq_table : list bn_hfdq_pair)
     (st : issuer_state)
     (members : list bnode_id)
-    (best_hash : string)
-    (best_st : issuer_state)
-    (have_best : bool)
-  : Tot issuer_state (decreases members) =
-  match members with
-  | [] -> if have_best then best_st else st
-  | m :: rest ->
-    // Skip if already issued during a prior member's HNDQ recursion.
-    (match lookup_issued m st.is_issued with
-     | Some _ -> process_collision_members fuel qs hfdq_table st rest
-                   best_hash best_st have_best
-     | None ->
-       let (st1, _) = issue_identifier st m in
-       let (h, st2) = hndq_run fuel qs hfdq_table st1 m in
-       let (best_hash', best_st', have_best') =
-         if not have_best then (h, st2, true)
-         else if str_le h best_hash && h <> best_hash then (h, st2, true)
-         else (best_hash, best_st, true) in
-       process_collision_members fuel qs hfdq_table st rest
-         best_hash' best_st' have_best')
+  : issuer_state =
+  let results = explore_members fuel qs hfdq_table st members in
+  let sorted = sort_results_stable results in
+  replay_all st sorted
 
 (* Walk all groups: unique → assign directly; collision → process via
-   HNDQ. Groups are passed in HFDQ-sort order. *)
-let rec walk_groups
+   HNDQ. Groups are passed in HFDQ-sort order.
+
+   RDFC-1.0 4.4.3 runs this as TWO separate full passes over the
+   hash-sorted group list, not one interleaved pass: step (4) assigns
+   every unique-hash (singleton) group its canonical id, in hash
+   order, in full BEFORE step (5) even starts; step (5) then handles
+   every remaining (collision) group, in hash order, as its own
+   complete pass. Interleaving them (processing whichever group's
+   hash sorts first, singleton or collision, in one merged walk) hands
+   out canonical numbers in the wrong relative order whenever a
+   singleton's hash falls between two collision groups' hashes, or
+   vice versa — same isomorphism, different absolute `c14nN` numbers,
+   which is exactly the failure signature this two-pass split fixes. *)
+let rec assign_singletons
+    (st : issuer_state)
+    (groups : list bucket)
+  : Tot issuer_state (decreases groups) =
+  match groups with
+  | [] -> st
+  | (_, [b]) :: rest ->
+    let (st', _) = issue_identifier st b in
+    assign_singletons st' rest
+  | (_, _) :: rest -> assign_singletons st rest  // multi-member: pass 2's job
+
+let rec process_collision_groups
     (fuel : nat)
     (qs : list qquad)
     (hfdq_table : list bn_hfdq_pair)
@@ -1098,14 +1313,21 @@ let rec walk_groups
   : Tot issuer_state (decreases groups) =
   match groups with
   | [] -> st
-  | (_, [b]) :: rest ->
-    let (st', _) = issue_identifier st b in
-    walk_groups fuel qs hfdq_table st' rest
+  | (_, [_]) :: rest -> process_collision_groups fuel qs hfdq_table st rest  // pass 1 already did this one
   | (_, members) :: rest ->
     let unissued = filter_unissued st members in
-    let st' = process_collision_members fuel qs hfdq_table st unissued
-                "" empty_issuer false in
-    walk_groups fuel qs hfdq_table st' rest
+    let st' = process_collision_members fuel qs hfdq_table st unissued in
+    process_collision_groups fuel qs hfdq_table st' rest
+
+let walk_groups
+    (fuel : nat)
+    (qs : list qquad)
+    (hfdq_table : list bn_hfdq_pair)
+    (st : issuer_state)
+    (groups : list bucket)
+  : issuer_state =
+  let st1 = assign_singletons st groups in
+  process_collision_groups fuel qs hfdq_table st1 groups
 
 (* ------------------------------------------------------------------ *)
 (* Section 8. Public entry points. *)
