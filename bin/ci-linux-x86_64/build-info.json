@@ -1,22 +1,22 @@
 {
   "platform": "linux-x86_64",
   "runner_os": "Linux",
-  "timestamp_utc": "2026-07-04T17:02:50Z",
-  "source_sha": "52c358d078f68666b1dc25adcc07c5e2d607d1eb",
+  "timestamp_utc": "2026-07-04T18:59:20Z",
+  "source_sha": "d1cc872750aa61edc7f5741b3caa40beac158487",
   "fstar_version": "F* 2025.12.15",
   "ocaml_version": "The OCaml toplevel, version 4.14.1",
   "opam_switch": "fstar",
   "binaries": {
-    "cottas_ondisk_smoketest": { "sha256": "e3e2839ad6d833e99ef884ca74b4f52bf983983c033afce56273a940446ec056", "size": 10357432 },
-    "factoidal": { "sha256": "5c81566ef8574896c4d84c763f3ab5fd22b077e802b4dc7ae0ae8fc3e78c62c2", "size": 11616384 },
-    "factoidal-dump-nq": { "sha256": "25ca2562f1eb59ce8194aa71a3d7b1ea338c16c621c300a1e9d3af53b7ef99ad", "size": 7790856 },
-    "factoidal-dump-nq.byte": { "sha256": "25406b27e5462d6e6df47c63971763de60bb8eaf3d0f1d6318826af5c71d474e", "size": 8962063 },
-    "factoidal-http": { "sha256": "a114c714aa1440ce8f8ae23d25f6bc81a0679930b4bbac3df1ee724c73fc9803", "size": 11417960 },
-    "factoidal_http_client": { "sha256": "651c5a25e312ce6fcdfb0f00bd54c0ce39dc7116d87677bb9e7f7cf0d899aa00", "size": 10357472 },
-    "jsonld_runner": { "sha256": "f605be2279e5626e804ce7f9a52654dc6a0f12cec399410e0099261088cbc93a", "size": 10376368 },
-    "owl_runner": { "sha256": "3a173ae4924f199ac69c91923a1d05239155fc8e2ed10976ebe2ca0e40d399c0", "size": 10398720 },
-    "parquet_probe": { "sha256": "ab519da3c836d6a2ea7b37b6f30535b1a126d41109fc21db9c0bb57a598db45f", "size": 10391520 },
-    "rdfc10_runner": { "sha256": "e371cd1e3f6a3dbda62338a8869e7c4129c0eb91c11e9defeff5e3c7d95ac310", "size": 10373208 },
-    "w3c_runner": { "sha256": "592720802708e7c909178296d37abcdfc01a2b7cba284090a9d22926b8948601", "size": 10524672 }
+    "cottas_ondisk_smoketest": { "sha256": "a5d950c2db5eb6868dbc3abe36e9caf25e78a8b1360ca9277a6eb55897765c8e", "size": 10388120 },
+    "factoidal": { "sha256": "1d06f10554d0cf3a86aba59af471461b5ec944344f4ae1efa293a5cd9959a925", "size": 11663096 },
+    "factoidal-dump-nq": { "sha256": "e70fe203c818d5b50b580656f2f359296aae9cc22e0599ee545a009212eb5519", "size": 7849824 },
+    "factoidal-dump-nq.byte": { "sha256": "6b80072093e237c95293362f00b60c9e3b84549ed962859d38ec6fae622b1a08", "size": 9083266 },
+    "factoidal-http": { "sha256": "50b36513f9af3b8a4613558a4365c82787bf4352d665f530fbee27886a943d4f", "size": 11464616 },
+    "factoidal_http_client": { "sha256": "675c363eae7c6e8fdafda27354b7360a4c1de5445938e09069994c61396e7e14", "size": 10388152 },
+    "jsonld_runner": { "sha256": "ebae89286f9fddf2862de77e79ba53196e67b750ae0989cce3e347c5f3a83769", "size": 10411120 },
+    "owl_runner": { "sha256": "0bd0d486c6f2898bb71217c7989b55c0ff0fd42506c2d89a9f9c1544b2e04e3f", "size": 10433464 },
+    "parquet_probe": { "sha256": "2fc9ef8eb3bb0378443af1186f20e96e1218630c46d5ebaaa59f4f13c72ed2c2", "size": 10426264 },
+    "rdfc10_runner": { "sha256": "604da627c877bb929e2bd2c4c3cae7e2cba25e23c3f42770f0e52d37d53955f0", "size": 10412056 },
+    "w3c_runner": { "sha256": "d4d01370e109f100731355f6d11b72d2c531c63b647ca8a17678338a418111c2", "size": 10555328 }
   }
 }
