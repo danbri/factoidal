@@ -296,22 +296,51 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     echo "  --force-full: ignoring incremental-extract manifest; re-extracting every module."
   fi
 
-  declare -A PREV_HASH=()
-  if [[ -s "$MANIFEST_FILE" ]]; then
-    while IFS=$'\t' read -r manifest_mod manifest_hash; do
-      [[ -n "$manifest_mod" ]] || continue
-      PREV_HASH["$manifest_mod"]="$manifest_hash"
-    done < "$MANIFEST_FILE"
-  fi
   declare -A CURRENT_HASH=()
 
   # All modules extracted with full verification (no --lax)
   # Extraction MUST succeed for every module — no silent failures
   echo "  Extracting all F* modules (verified)..."
-  EXTRACT_FAILED=0
   EXTRACT_COUNT=0
   EXTRACT_SKIPPED=0
-  # Dependency order:
+
+  # ---------------------------------------------------------------------
+  # Layered parallel verify + extract (2026-07-04, build-speed P1).
+  #
+  # ALL_MODULES below is still the enumeration + manifest-cleanup order —
+  # a module removed from it is dropped from the manifest, same
+  # "self-cleaning manifest" behavior as before. Actual scheduling no
+  # longer follows this hand order: fstar.exe --dep full computes the
+  # real dependency DAG among these modules ONCE per invocation (~0.3s
+  # measured on the full 96-module list, 2026-07-04 -- cheap enough that
+  # a no-op run still finishes in ~1s), the DAG is Kahn-layered, and each
+  # layer's modules run through a bounded parallel pool (BUILD_JOBS,
+  # default nproc, capped at nproc). A barrier separates layers: modules
+  # in one layer depend only on modules that an earlier layer has already
+  # fully processed, so no two concurrent fstar.exe invocations ever race
+  # on writing the same .checked file (the 2026-05-07 hazard documented
+  # in skills/fast-verify-extract/SKILL.md -- concurrent ad-hoc fstar.exe
+  # over overlapping modules corrupts .checked). Modules within a layer
+  # are mutually independent given everything below them is verified, so
+  # concurrent writers never target the same .checked target.
+  #
+  # Failure semantics: a layer runs to completion even if one of its
+  # modules fails (xargs does not stop early on a failing item -- it
+  # keeps launching the rest of the layer's queue), so every failure in
+  # that layer is reported together; the NEXT layer never starts once any
+  # failure is recorded (fail-fast at LAYER granularity, not module
+  # granularity -- a downstream layer may depend on the failed module's
+  # .checked, so proceeding would just cascade confusing secondary
+  # failures).
+  #
+  # The incremental-extract manifest above is untouched: a module whose
+  # source hash matches its manifest entry (and whose .ml already exists)
+  # still skips fstar.exe entirely, inline in the worker, before any
+  # process is spawned for it -- the DAG/layering only changes how the
+  # modules that DO need real work get scheduled.
+  #
+  # Dependency order (informational -- kept from the pre-P1 comment; the
+  # real schedule now comes from --dep full, not this hand annotation):
   #   RDF.Graph.Executable  -> (no deps other than Prims/Stdlib)
   #   Parquet.Footer        -> RDF.Graph.Executable
   #   Tableau               -> RDF.Graph.Executable
@@ -322,138 +351,273 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   #   RDF.CottasStore       -> RDF.Graph.Executable, Parser.BallyhooCOTTAS (issue #100 Phase A)
   #   SPARQL11.Store        -> SPARQL11.Algebra, Parser.BallyhooHDT, Parser.BallyhooCOTTAS, RDF.CottasStore
   #   SPARQL.Protocol       -> SPARQL11.Algebra, Parser.CSVResults, Parser.JSONResults
-  for fst in Util.Log.fst \
-             RDF.Format.fst \
-             RDF.Graph.Executable.fst Parquet.Footer.fst \
-             RDF.NQuads.Serialize.fst \
-             RDF.List.Helpers.fst \
-             RDF.Bytes.fst \
-             RDF.Store.Loader.fst \
-             RDF.Dataset.Graphs.fst \
-             RDF.Canonical.fst \
-             RDF.Canonical.Manifest.fst \
-             OWL.Vocabulary.fst \
-             Tableau.fst SPARQL11.IRI.Resolve.fst SPARQL11.Algebra.fst \
-             RDF.Pretty.fst \
-             OWL.QueryRewrite.fst OWL.QueryEval.fst \
-             OWL.Tests.Manifest.fst \
-             RIF.Core.Syntax.fst RIF.Core.Translation.fst \
-             SHACL.Validation.fst \
-             Parser.FastString.fst Parser.IRI.fst \
-             Parser.Combinators.fst Parser.TurtleScanner.fst SPARQL11.Parser.fst \
-             Parser.NTriples.fst Parser.Turtle.fst \
-             RDF.Turtle.Serialize.fst \
-             Parser.NQuads.fst Parser.TriG.fst \
-             Parser.XML.fst XML.Wellformedness.fst Parser.RDFXML.fst Parser.RIFXML.fst \
-             RIF.Core.Eval.fst RIF.Core.Tests.fst \
-             Parser.SRX.fst Parser.CSVResults.fst \
-             Parser.JSONResults.fst \
-             Parser.JSON.fst JSONLD.Context.fst JSONLD.Expand.fst Parser.JSONLD.fst \
-             SPARQL.JSON.Escape.fst \
-             SPARQL.Eval.TimeBudget.fst \
-             SPARQL.Eval.Limits.fst \
-             SPARQL.HTTP.Response.fst \
-             SPARQL.HTTP.Timing.fst \
-             SPARQL.HTTP.BackendInfo.fst \
-             SPARQL.HTTP.QueriesIndex.fst \
-             SPARQL.HTTP.StaticFiles.fst \
-             SPARQL.HTTP.Admin.fst \
-             SPARQL.HTTP.Routes.fst \
-             Parser.Ballyhoo.fst Parser.BallyhooBloom.fst \
-             Parser.BallyhooHDT.fst Parser.BallyhooHDTQ.fst \
-             Parser.BallyhooCOTTAS.fst \
-             RDF.CottasStore.ColumnSeq.fst \
-             RDF.CottasStore.PageCache.fst \
-             RDF.CottasStore.OnDiskIndex.fst \
-             RDF.CottasStore.DictWriter.fst \
-             RDF.CottasStore.PresenceBitmap.fst \
-             RDF.CottasStore.PresenceWriter.fst \
-             RDF.CottasStore.CompoundPresenceBitmap.fst \
-             RDF.CottasStore.CompoundPresenceWriter.fst \
-             RDF.CottasStore.OffsetsWriter.fst \
-             RDF.CottasStore.LazyDict.fst \
-             RDF.CottasStore.LazyDictRegistry.fst \
-             RDF.Store.LazyTermCache.fst \
-             RDF.Store.HDTTermCacheRegistry.fst \
-             RDF.Store.Columnar.OffsetIndex.fst \
-             SPARQL.Plan.Pruning.fst \
-             SPARQL.Plan.Estimate.fst \
-             SPARQL.Plan.Loader.fst \
-             SPARQL.Plan.AccessPath.fst \
-             RDF.CottasStore.fst \
-             RDF.CottasStore.OnDiskRuntime.fst \
-             RDF.CottasInMem.fst \
-             SPARQL11.Store.fst \
-             RDF.Store.Combine.fst \
-             RDF.Dataset.Merge.fst \
-             SPARQL.Protocol.fst \
-             SPARQL.HTTP.RunQuery.fst \
-             SPARQL.Update.Sandbox.fst \
-             SPARQL.Update.Analysis.fst \
-             SPARQL.Diagnostics.fst \
-             SPARQL.Explain.fst \
-             SPARQL.Query.Analysis.fst \
-             SPARQL.Plan.Explain.fst \
-             SPARQL.HTTP.fst \
-             SPARQL.HTTP.Client.fst \
-             SPARQL.ServiceDescription.fst \
-             SPARQL.GraphStore.fst; do
-    if [ -f "$fst" ]; then
-      out_ml="$OUTDIR/${fst%.fst}"
-      out_ml="${out_ml//./_}.ml"
-      FST_HASH="$(sha256sum "$fst" | awk '{print $1}')"
+  # ---------------------------------------------------------------------
+  ALL_MODULES=(
+    Util.Log.fst
+    RDF.Format.fst
+    RDF.Graph.Executable.fst Parquet.Footer.fst
+    RDF.NQuads.Serialize.fst
+    RDF.List.Helpers.fst
+    RDF.Bytes.fst
+    RDF.Store.Loader.fst
+    RDF.Dataset.Graphs.fst
+    RDF.Canonical.fst
+    RDF.Canonical.Manifest.fst
+    OWL.Vocabulary.fst
+    Tableau.fst SPARQL11.IRI.Resolve.fst SPARQL11.Algebra.fst
+    RDF.Pretty.fst
+    OWL.QueryRewrite.fst OWL.QueryEval.fst
+    OWL.Tests.Manifest.fst
+    RIF.Core.Syntax.fst RIF.Core.Translation.fst
+    SHACL.Validation.fst
+    Parser.FastString.fst Parser.IRI.fst
+    Parser.Combinators.fst Parser.TurtleScanner.fst SPARQL11.Parser.fst
+    Parser.NTriples.fst Parser.Turtle.fst
+    RDF.Turtle.Serialize.fst
+    Parser.NQuads.fst Parser.TriG.fst
+    Parser.XML.fst XML.Wellformedness.fst Parser.RDFXML.fst Parser.RIFXML.fst
+    RIF.Core.Eval.fst RIF.Core.Tests.fst
+    Parser.SRX.fst Parser.CSVResults.fst
+    Parser.JSONResults.fst
+    Parser.JSON.fst JSONLD.Context.fst JSONLD.Expand.fst Parser.JSONLD.fst
+    SPARQL.JSON.Escape.fst
+    SPARQL.Eval.TimeBudget.fst
+    SPARQL.Eval.Limits.fst
+    SPARQL.HTTP.Response.fst
+    SPARQL.HTTP.Timing.fst
+    SPARQL.HTTP.BackendInfo.fst
+    SPARQL.HTTP.QueriesIndex.fst
+    SPARQL.HTTP.StaticFiles.fst
+    SPARQL.HTTP.Admin.fst
+    SPARQL.HTTP.Routes.fst
+    Parser.Ballyhoo.fst Parser.BallyhooBloom.fst
+    Parser.BallyhooHDT.fst Parser.BallyhooHDTQ.fst
+    Parser.BallyhooCOTTAS.fst
+    RDF.CottasStore.ColumnSeq.fst
+    RDF.CottasStore.PageCache.fst
+    RDF.CottasStore.OnDiskIndex.fst
+    RDF.CottasStore.DictWriter.fst
+    RDF.CottasStore.PresenceBitmap.fst
+    RDF.CottasStore.PresenceWriter.fst
+    RDF.CottasStore.CompoundPresenceBitmap.fst
+    RDF.CottasStore.CompoundPresenceWriter.fst
+    RDF.CottasStore.OffsetsWriter.fst
+    RDF.CottasStore.LazyDict.fst
+    RDF.CottasStore.LazyDictRegistry.fst
+    RDF.Store.LazyTermCache.fst
+    RDF.Store.HDTTermCacheRegistry.fst
+    RDF.Store.Columnar.OffsetIndex.fst
+    SPARQL.Plan.Pruning.fst
+    SPARQL.Plan.Estimate.fst
+    SPARQL.Plan.Loader.fst
+    SPARQL.Plan.AccessPath.fst
+    RDF.CottasStore.fst
+    RDF.CottasStore.OnDiskRuntime.fst
+    RDF.CottasInMem.fst
+    SPARQL11.Store.fst
+    RDF.Store.Combine.fst
+    RDF.Dataset.Merge.fst
+    SPARQL.Protocol.fst
+    SPARQL.HTTP.RunQuery.fst
+    SPARQL.Update.Sandbox.fst
+    SPARQL.Update.Analysis.fst
+    SPARQL.Diagnostics.fst
+    SPARQL.Explain.fst
+    SPARQL.Query.Analysis.fst
+    SPARQL.Plan.Explain.fst
+    SPARQL.HTTP.fst
+    SPARQL.HTTP.Client.fst
+    SPARQL.ServiceDescription.fst
+    SPARQL.GraphStore.fst
+  )
 
-      if [[ "$FORCE_FULL" -eq 0 ]] && [[ -f "$out_ml" ]] \
-         && [[ -n "${PREV_HASH[$fst]:-}" ]] && [[ "${PREV_HASH[$fst]}" == "$FST_HASH" ]]; then
-        echo "    $fst (up to date, skipped -- source unchanged since last extract)"
-        CURRENT_HASH["$fst"]="$FST_HASH"
-        EXTRACT_SKIPPED=$((EXTRACT_SKIPPED + 1))
+  # Only modules actually present on disk are scheduled (mirrors the old
+  # per-module `if [ -f "$fst" ]` guard).
+  PRESENT_MODULES=()
+  for fst in "${ALL_MODULES[@]}"; do
+    [[ -f "$fst" ]] && PRESENT_MODULES+=("$fst")
+  done
+
+  # BUILD_JOBS: parallel fstar.exe invocations per layer. Defaults to the
+  # container's core count; an explicit override higher than nproc is
+  # clamped down to it (more workers than cores doesn't help a CPU-bound
+  # SMT workload, it just adds context-switch overhead).
+  NPROC="$(nproc 2>/dev/null || echo 4)"
+  BUILD_JOBS="${BUILD_JOBS:-$NPROC}"
+  if (( BUILD_JOBS > NPROC )); then BUILD_JOBS="$NPROC"; fi
+  if (( BUILD_JOBS < 1 )); then BUILD_JOBS=1; fi
+  echo "  BUILD_JOBS=$BUILD_JOBS (nproc=$NPROC)"
+
+  # Compute the dependency DAG once via --dep full (make-format rules),
+  # restricted to edges between modules in our own list -- ulib/Prims/
+  # FStar.* deps are dropped from the graph; F* resolves those from the
+  # pre-checked stdlib regardless of our layering.
+  DEPEND_FILE="$EXTRACT_STATE_DIR/depend.make"
+  fstar.exe --dep full "${PRESENT_MODULES[@]}" > "$DEPEND_FILE" 2> "$EXTRACT_STATE_DIR/depend.log" \
+    || { echo "FATAL: fstar.exe --dep full failed -- see $EXTRACT_STATE_DIR/depend.log" >&2; exit 1; }
+
+  declare -A MOD_SET=()
+  for m in "${PRESENT_MODULES[@]}"; do MOD_SET["$m"]=1; done
+
+  JOINED_DEPEND="$EXTRACT_STATE_DIR/depend-joined.make"
+  awk '{
+    if (sub(/\\$/, "")) { buf = buf $0 " "; next }
+    else { print buf $0; buf="" }
+  }' "$DEPEND_FILE" > "$JOINED_DEPEND"
+
+  declare -A DEPS=()
+  while IFS= read -r line; do
+    [[ "$line" == *".fst.checked:"* ]] || continue
+    target="${line%%:*}"
+    target="${target%.checked}"
+    target="${target##*/}"
+    [[ -n "${MOD_SET[$target]:-}" ]] || continue
+    rest="${line#*:}"
+    deps=""
+    for tok in $rest; do
+      case "$tok" in
+        *.fst.checked)
+          dep="${tok%.checked}"
+          dep="${dep##*/}"
+          [[ -n "${MOD_SET[$dep]:-}" ]] && deps+="$dep "
+          ;;
+      esac
+    done
+    DEPS["$target"]="$deps"
+  done < "$JOINED_DEPEND"
+
+  # Kahn-layer the DAG: layer 0 = modules with no in-list deps; layer k+1
+  # = modules whose in-list deps are all already placed in layers <= k.
+  declare -A PLACED=()
+  remaining=("${PRESENT_MODULES[@]}")
+  LAYERS=()
+  while [[ ${#remaining[@]} -gt 0 ]]; do
+    this_layer=()
+    next_remaining=()
+    for m in "${remaining[@]}"; do
+      ready=1
+      for d in ${DEPS[$m]:-}; do
+        [[ -n "${PLACED[$d]:-}" ]] || { ready=0; break; }
+      done
+      if [[ "$ready" -eq 1 ]]; then this_layer+=("$m"); else next_remaining+=("$m"); fi
+    done
+    if [[ ${#this_layer[@]} -eq 0 ]]; then
+      echo "FATAL: dependency cycle detected among: ${next_remaining[*]}" >&2
+      exit 1
+    fi
+    for m in "${this_layer[@]}"; do PLACED["$m"]=1; done
+    LAYERS+=("${this_layer[*]}")
+    remaining=("${next_remaining[@]}")
+  done
+  echo "  Dependency DAG: ${#PRESENT_MODULES[@]} modules in ${#LAYERS[@]} layer(s)"
+
+  # Per-module worker: inline manifest skip-check, then fstar.exe if
+  # needed. This runs as a forked `bash -c` under xargs -P, so it cannot
+  # share the parent's associative arrays -- it reads the manifest file
+  # directly for its own previous hash and drops its result in a
+  # per-module status file for the parent to collect after the layer's
+  # barrier (parent-side bookkeeping: EXTRACT_COUNT/EXTRACT_SKIPPED/
+  # CURRENT_HASH/MANIFEST_FILE, all unchanged in shape from before P1).
+  EXTRACT_STATUS_DIR="$EXTRACT_STATE_DIR/status"
+  mkdir -p "$EXTRACT_STATUS_DIR"
+
+  extract_worker() {
+    local fst="$1"
+    local out_ml="$OUTDIR/${fst%.fst}"
+    out_ml="${out_ml//./_}.ml"
+    local status_file="$EXTRACT_STATUS_DIR/${fst//./_}.status"
+    local fst_hash
+    fst_hash="$(sha256sum "$fst" | awk '{print $1}')"
+    local prev_hash
+    prev_hash="$(awk -F'\t' -v m="$fst" '$1==m{h=$2} END{print h}' "$MANIFEST_FILE")"
+
+    if [[ "$FORCE_FULL" -eq 0 ]] && [[ -f "$out_ml" ]] \
+       && [[ -n "$prev_hash" ]] && [[ "$prev_hash" == "$fst_hash" ]]; then
+      echo "    $fst (up to date, skipped -- source unchanged since last extract)"
+      printf '%s\tSKIP\t%s\n' "$fst" "$fst_hash" > "$status_file"
+      return 0
+    fi
+
+    echo "    [$fst]"
+    local fstar_rc=0
+    local fstar_log="$OUTDIR/_fstar_${fst%.fst}.log"
+    fstar.exe --z3version 4.13.3 --codegen OCaml --odir "$OUTDIR" \
+      --cache_checked_modules "$fst" > "$fstar_log" 2>&1 || fstar_rc=$?
+    grep -E "Extracted|Error|error" "$fstar_log" | sed "s/^/    [$fst] /" || true
+    if ! grep -q "^Extracted module" "$fstar_log"; then
+      echo "    [$fst] ERROR: failed to extract! (exit code $fstar_rc)"
+      printf '%s\tFAIL\t%s\n' "$fst" "$fst_hash" > "$status_file"
+      return 1
+    fi
+    printf '%s\tOK\t%s\n' "$fst" "$fst_hash" > "$status_file"
+    return 0
+  }
+  export -f extract_worker
+  export OUTDIR MANIFEST_FILE FORCE_FULL EXTRACT_STATUS_DIR
+
+  FAILED_MODULES=()
+  layer_idx=0
+  for layer in "${LAYERS[@]}"; do
+    read -ra layer_mods <<< "$layer"
+    echo "  -- layer $layer_idx: ${#layer_mods[@]} module(s)"
+    rm -f "$EXTRACT_STATUS_DIR"/*.status 2>/dev/null || true
+
+    # Layer heartbeat: worker output streams straight to the terminal
+    # (each line already prefixed with its module name), while a 30s
+    # pulse fires if the layer's long pole is still silent -- same
+    # watchdog rationale as run_with_heartbeat, adapted for a whole
+    # parallel layer instead of a single fstar.exe invocation.
+    LAYER_LOG="$OUTDIR/_layer_${layer_idx}.log"
+    : > "$LAYER_LOG"
+    set +e
+    ( printf '%s\n' "${layer_mods[@]}" \
+        | xargs -P "$BUILD_JOBS" -I{} bash -c 'extract_worker "$@"' _ {} \
+        2>&1 | tee -a "$LAYER_LOG" ) &
+    layer_pid=$!
+    t0=$(date +%s)
+    while kill -0 "$layer_pid" 2>/dev/null; do
+      sleep 30
+      kill -0 "$layer_pid" 2>/dev/null || break
+      echo "      …layer ${layer_idx} still running ($(( $(date +%s) - t0 ))s elapsed)"
+    done
+    wait "$layer_pid"
+    set -e
+
+    layer_failed=0
+    for m in "${layer_mods[@]}"; do
+      status_file="$EXTRACT_STATUS_DIR/${m//./_}.status"
+      if [[ ! -f "$status_file" ]]; then
+        echo "  MISSING STATUS for $m (worker crashed before writing status)" >&2
+        layer_failed=1
+        FAILED_MODULES+=("$m")
         continue
       fi
-      echo "    $fst"
-      FSTAR_RC=0
-      # Run fstar.exe with a 30s heartbeat so (a) subagents that watch
-      # this script don't hit their stream-idle watchdog during modules
-      # that take 1-2 min to verify, and (b) humans see that something
-      # is still happening. Per-module log stays under $OUTDIR so it
-      # can be grepped later for diagnostics.
-      #
-      # Per-module verification cache (#238 Step 1, 2026-05-08): the
-      # `--cache_checked_modules` flag tells F* to write a .fst.checked
-      # file next to each .fst after verification, AND to read .checked
-      # files first on re-runs (skipping re-verification when the
-      # source + transitive deps are unchanged). .checked files are
-      # gitignored (`*.fst.checked` in repo root .gitignore), so they
-      # never enter version control. CI restores the cache via
-      # actions/cache@v4 keyed on hashFiles('**/*.fst', '**/*.fsti').
-      # On a "no .fst changed" push, every module's .checked is fresh
-      # and verification is a near-no-op.
-      FSTAR_LOG="$OUTDIR/_fstar_${fst%.fst}.log"
-      run_with_heartbeat "fstar.exe $fst" "$FSTAR_LOG" -- \
-        fstar.exe --z3version 4.13.3 --codegen OCaml --odir "$OUTDIR" \
-                  --cache_checked_modules \
-                  "$fst" || FSTAR_RC=$?
-      grep -E "Extracted|Error|error" "$FSTAR_LOG" || true
-      if ! grep -q "^Extracted module" "$FSTAR_LOG"; then
-        echo "  ERROR: $fst failed to extract! (exit code $FSTAR_RC)"
-        EXTRACT_FAILED=1
-      else
-        EXTRACT_COUNT=$((EXTRACT_COUNT + 1))
-        CURRENT_HASH["$fst"]="$FST_HASH"
-        # Persist immediately (append, last-value-wins on reload) so a
-        # LATER module's failure doesn't lose this module's already-
-        # completed state on the next retry — the loop below does not
-        # break on a single module's failure (existing behavior), and
-        # this script exits 1 only after every module has been attempted.
-        printf '%s\t%s\n' "$fst" "$FST_HASH" >> "$MANIFEST_FILE"
-      fi
+      IFS=$'\t' read -r smod sstatus shash < "$status_file"
+      case "$sstatus" in
+        SKIP)
+          EXTRACT_SKIPPED=$((EXTRACT_SKIPPED + 1))
+          CURRENT_HASH["$m"]="$shash"
+          ;;
+        OK)
+          EXTRACT_COUNT=$((EXTRACT_COUNT + 1))
+          CURRENT_HASH["$m"]="$shash"
+          printf '%s\t%s\n' "$m" "$shash" >> "$MANIFEST_FILE"
+          ;;
+        FAIL)
+          layer_failed=1
+          FAILED_MODULES+=("$m")
+          ;;
+      esac
+    done
+
+    if [[ "$layer_failed" -ne 0 ]]; then
+      echo ""
+      echo "FATAL: layer ${layer_idx} had failures: ${FAILED_MODULES[*]}" >&2
+      echo "       (later layers not started -- they may depend on the failed module(s))" >&2
+      exit 1
     fi
+    layer_idx=$((layer_idx + 1))
   done
-  if [ "$EXTRACT_FAILED" -ne 0 ]; then
-    echo ""
-    echo "FATAL: One or more F* modules failed extraction. Fix errors before proceeding."
-    exit 1
-  fi
 
   # Compact the manifest to one line per module (the loop above appends,
   # so a module reprocessed across retries could have duplicate lines).
@@ -1283,6 +1447,41 @@ if [[ "$STEP" == "npm" ]]; then
     cp -R "$JSDIR/factoidal.wasm.assets" "$NPMDIR/factoidal.wasm.assets"
     echo "  Copied: $JSDIR/factoidal.wasm.assets/ → $NPMDIR/factoidal.wasm.assets/ ($(ls -1 "$NPMDIR/factoidal.wasm.assets" | wc -l | tr -d ' ') file(s))"
   fi
+
+  # npm-entry engine bundles: the persistent string/JSON ABI that
+  # powers CONSTRUCT / UPDATE / canonicalize through the package's
+  # capabilities() probe. Listed in package.json "files" from day one,
+  # but the copy was missing until 2026-07-04 -- the unit suite passed
+  # via lib/engine-js.js's repo-tree fallback path, which a published
+  # consumer does not have (found by npm pack --dry-run: the tarball
+  # shipped without them and the API silently degraded).
+  if [[ -f "$JSDIR/factoidal-npm-entry.js" ]]; then
+    cp "$JSDIR/factoidal-npm-entry.js" "$NPMDIR/factoidal-npm-entry.js"
+    echo "  Copied: $JSDIR/factoidal-npm-entry.js -> $NPMDIR/factoidal-npm-entry.js ($(wc -c < "$NPMDIR/factoidal-npm-entry.js") bytes)"
+  fi
+  if [[ -f "$JSDIR/factoidal-npm-entry.wasm.js" ]]; then
+    cp "$JSDIR/factoidal-npm-entry.wasm.js" "$NPMDIR/factoidal-npm-entry.wasm.js"
+    echo "  Copied: $JSDIR/factoidal-npm-entry.wasm.js -> $NPMDIR/factoidal-npm-entry.wasm.js ($(wc -c < "$NPMDIR/factoidal-npm-entry.wasm.js") bytes)"
+  fi
+  if [[ -d "$JSDIR/factoidal-npm-entry.wasm.assets" ]]; then
+    rm -rf "$NPMDIR/factoidal-npm-entry.wasm.assets"
+    cp -R "$JSDIR/factoidal-npm-entry.wasm.assets" "$NPMDIR/factoidal-npm-entry.wasm.assets"
+    echo "  Copied: $JSDIR/factoidal-npm-entry.wasm.assets/ -> $NPMDIR/factoidal-npm-entry.wasm.assets/ ($(ls -1 "$NPMDIR/factoidal-npm-entry.wasm.assets" | wc -l | tr -d ' ') file(s))"
+  fi
+
+  # Packaging invariant: every entry in package.json "files" must
+  # exist, or a published tarball silently ships a degraded API.
+  MISSING_PKG_FILES=$(cd "$NPMDIR" && node -e '
+    const fs = require("fs");
+    const files = JSON.parse(fs.readFileSync("package.json", "utf8")).files || [];
+    const missing = files.filter(f => !fs.existsSync(f.replace(/\/$/, "")));
+    if (missing.length) { console.log(missing.join(" ")); }
+  ')
+  if [[ -n "$MISSING_PKG_FILES" ]]; then
+    echo "  ERROR: package.json files entries missing from npm/factoidal/: $MISSING_PKG_FILES" >&2
+    exit 1
+  fi
+  echo "  Packaging invariant OK: all package.json files entries exist."
 
   if [[ -f "$JSDIR/factoidal-npm-entry.js" ]]; then
     cp "$JSDIR/factoidal-npm-entry.js" "$NPMDIR/factoidal-npm-entry.js"

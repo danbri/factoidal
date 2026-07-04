@@ -158,13 +158,18 @@ the repo's ~90-module list is much wider than 4.
 This is the standard F\* project layout (the
 [Low\*/KaRaMeL manual](https://fstarlang.github.io/lowstar/html/Setup.html)
 documents the same `--dep full` + `--cache_dir obj` +
-`--already_cached 'Prims FStar ...'` pattern). Contrast with the
-repo today: [build-ocaml.sh](../../formal/fstar/build-ocaml.sh)
-lines 250-361 run a **sequential** hand-ordered for-loop, one
-fstar.exe at a time, and [formal/fstar/Makefile](../../formal/fstar/Makefile)
-`verify` covers only 5 modules via `.verified` touch-markers and does
-**not** pass `--cache_checked_modules`, so `make verify` shares no
-cache with the extract pipeline (CONFIRMED from source).
+`--already_cached 'Prims FStar ...'` pattern) — with a bash + `xargs
+-P` scheduler in place of a generated Makefile, since P2's manifest
+skip logic didn't map cleanly onto make's mtime staleness model (see
+P1 below). [build-ocaml.sh](../../formal/fstar/build-ocaml.sh)'s
+extract step now runs this: `--dep full` once, Kahn-layered, each
+layer's modules through `xargs -P $BUILD_JOBS`, barrier between
+layers (P1, implemented 2026-07-04 — full design + scratch evidence
+below). [formal/fstar/Makefile](../../formal/fstar/Makefile) `verify`
+still covers only 5 modules via `.verified` touch-markers and does
+**not** pass `--cache_checked_modules`, so `make verify` still shares
+no cache with the extract pipeline (CONFIRMED from source, unchanged
+by P1 — see P7).
 
 ## Concurrency safety rules
 
@@ -248,23 +253,144 @@ same machine, cold and warm, with `date +%s.%N` brackets or
 [perf-benchmarking](../perf-benchmarking/SKILL.md) discipline,
 speed claims come from measurements, not assertions.
 
-### P1 — make-driven parallel verify + extract in build-ocaml.sh
+### P1 — layered parallel verify + extract in build-ocaml.sh — CONFIRMED, implemented 2026-07-04
 
-Replace the sequential extract for-loop with: (a) `fstar.exe --dep
-full <all roots> > ocaml-output/.depend` (cheap, ~seconds); (b) a
-generated or checked-in Makefile with the `%.fst.checked` pattern
-rule plus `%_ml.ml: %.fst.checked` extraction rules; (c)
-`make -j$(nproc)` for the `.checked` targets, then extraction
-targets. The module list collapses into one place (also fixing the
-three-list drift of workflow-gotchas §3 — `--dep full` computes the
-order that the for-loop currently hand-maintains). Keep the flock;
-make itself provides the one-writer-per-target guarantee inside it.
+Implemented directly in the extract loop (no separate Makefile —
+bash + `xargs -P` turned out sufficient; see "why not a generated
+Makefile" below). The design, in order:
 
-Expected win: cold full verify wall-clock divided by ~min(nproc,
-DAG width); on a 4-core box plausibly 2-3x on the ~90-module list.
-Measurement: `time ./build-ocaml.sh extract` from `rm -f
-*.fst.checked ocaml-output/*.ml`, before vs after, plus the warm
-case and the one-module-edited case.
+1. **Compute the DAG once.** `fstar.exe --dep full "${PRESENT_MODULES[@]}"`
+   produces make-format dependency rules for the whole module list in
+   one invocation (measured 0.265s on the real 96-module list,
+   2026-07-04 — cheap enough that it does not threaten the incremental
+   manifest's near-1s no-op case). The rules are joined (backslash
+   line continuations merged) and filtered down to edges *between
+   modules in our own list* — ulib/Prims/FStar.\* prerequisites are
+   dropped; F\* resolves those from the pre-checked stdlib regardless
+   of how we schedule our own modules.
+2. **Kahn-layer the DAG.** Layer 0 = modules with no in-list
+   dependency; layer k+1 = modules whose in-list deps are all already
+   placed in an earlier layer. Measured on the real 96-module list:
+   **7 layers, widths 23 / 25 / 15 / 15 / 9 / 7 / 2** — a wide, shallow
+   DAG (the module list is dominated by independent parsers/formats;
+   deep chains like `SPARQL11.Store -> RDF.CottasStore -> ...` are the
+   exception, not the rule).
+3. **Run each layer through a bounded worker pool.** `BUILD_JOBS`
+   (env override, default `nproc`, clamped to never exceed it) via
+   `printf '%s\n' "${layer_mods[@]}" | xargs -P "$BUILD_JOBS" -I{}
+   bash -c 'extract_worker "$@"' _ {}`. `extract_worker` is an
+   exported bash function doing exactly what the old inline loop body
+   did per module (manifest hash skip-check, then
+   `fstar.exe --codegen OCaml --cache_checked_modules`), but as a
+   forked process it cannot share the parent's associative arrays — it
+   reads `MANIFEST_FILE` directly for its own previous hash and writes
+   its outcome (`SKIP`/`OK`/`FAIL` + hash) to a per-module status file
+   under `ocaml-output/.extract-state/status/` for the parent to
+   collect once the layer's xargs pool drains.
+4. **Barrier between layers.** The parent waits for the whole layer
+   (backgrounded `xargs | tee` pipeline + a 30s-tick heartbeat modeled
+   on `run_with_heartbeat`, adapted to watch a whole layer instead of
+   one `fstar.exe` call) before starting the next layer's loop
+   iteration. This is what makes concurrency safe: modules in one
+   layer depend only on modules an *earlier, already-fully-processed*
+   layer wrote `.checked` for, so two concurrent `fstar.exe`
+   invocations never race on the same `.checked` target — the
+   2026-05-07 corruption hazard this skill's concurrency-safety rules
+   warn about.
+5. **Fail-fast at layer granularity, not module granularity.**
+   `xargs` does not abort early on a failing item — it keeps
+   launching the rest of the layer's queue — so every failure in a
+   layer is collected and reported together; the *next* layer never
+   starts once any failure is recorded (a downstream layer may depend
+   on the failed module's `.checked`, so proceeding would just cascade
+   confusing secondary failures).
+6. **The incremental-extract manifest (P2) is untouched in shape.**
+   `extract_worker` does the same source-hash-vs-manifest comparison
+   inline, before spawning any process, for every module — the
+   DAG/layering only changes *how* the modules that actually need
+   fstar.exe get scheduled, not the skip logic itself.
+
+**Why not a generated Makefile** (the shape floated when this was a
+PROPOSED item): a Makefile would give the same one-writer-per-target
+guarantee, but the incremental-extract manifest's skip decision needs
+custom logic (source hash vs. a TSV, not mtime) that doesn't map
+cleanly onto make's own staleness model without fighting it; the
+layered-xargs design reuses the exact skip code already validated for
+P2 and keeps the DAG-to-schedule step small and auditable in one
+script instead of splitting the pipeline across a generated file.
+
+**Scratch validation** (2026-07-04, no `--include` of the real tree —
+see the contamination hazard below; all sources copied into a
+`mktemp -d`): an 8-module mini-tree — `Parser.FastString.fst` (leaf),
+`RDF.Format.fst`, `Util.Log.fst`, `RDF.Graph.Executable.fst`,
+`RDF.List.Helpers.fst` (4 more independent leaves) in layer 0, and
+`Parser.IRI.fst` / `Parser.Combinators.fst` / `SPARQL.JSON.Escape.fst`
+(each `open Parser.FastString`) in layer 1 — confirmed by grepping
+each file's real `open` statements first, not assumed.
+
+- **(a) Layering matches the real dependency graph**: the harness's
+  own `fstar.exe --dep full` + parse + Kahn-layer step produced
+  exactly layer 0 = the 5 leaves, layer 1 = the 3 `Parser.FastString`
+  dependents — matching the `open` grep by hand.
+- **(b) Real concurrency**: layer 0's 5 modules showed overlapping
+  start/end wall-clock timestamps (e.g. `RDF.Format.fst` 938.557 to
+  939.472, `Parser.FastString.fst` 938.561 to 939.246, `Util.Log.fst`
+  938.561 to 938.910, all mid-flight simultaneously); the layer's long
+  pole was `RDF.Graph.Executable.fst` (182KB) at ~11.3s, and layer 1
+  correctly waited for it before starting.
+- **(c) Fail-fast at layer granularity**: injecting a forced failure
+  into `Parser.FastString.fst` (layer 0) still let all 5 layer-0
+  modules run to completion (4 succeeded, 1 reported failed) and then
+  stopped — layer 1's 3 modules were never attempted, exit code 1.
+- **(d) Identical output to sequential**: a fresh full extract
+  (`FORCE_FULL=1`) at `BUILD_JOBS=4` vs. the same at `BUILD_JOBS=1`
+  produced byte-identical `.ml` files for all 8 modules (`diff -rq`
+  clean) and the same 8 `.checked` files (spot-checked via
+  `sha256sum`).
+- Warm no-op rerun (nothing changed): 0.227s for all 8 modules vs.
+  15.449s cold — consistent with the existing P2 manifest behavior,
+  now running through the layered scheduler instead of a flat loop.
+
+**Real-tree no-regression check** (2026-07-04, `./build-ocaml.sh
+extract`, no `--force-full`, nothing in any `.fst` changed): exit 0,
+`Dependency DAG: 96 modules in 7 layer(s)`, `Extraction outputs
+already up to date; no F* modules re-extracted (96 skipped)` — same
+message format as before P1. Wall-clock was 3m30s (`real 3m30.671s`),
+which looks like a regression against the pre-P1 baseline of ~1s
+recorded in `.claude-runs/build-timings.csv` — **but `user 1.214s +
+sys 0.396s ≈ 1.6s`**, matching the baseline almost exactly. The
+wall-clock inflation was contention from an unrelated CPU-bound
+sibling process sharing the container's 4 cores at 99.9% for the
+entire run (confirmed via `ps aux --sort=-%cpu`, a different
+`bin/linux-x86_64/factoidal` query process, not part of this build);
+a dummy-worker stress test reproducing the exact real 7-layer/
+23-25-15-15-9-7-2-module shape completed in under a second when run
+in isolation, ruling out an algorithmic hang. **The CPU-time figure,
+not the wall-clock figure, is the correct before/after comparison
+under contention** — re-measure wall-clock on an idle container for a
+clean number; do not read 3m30s as "P1 made the no-op case slower."
+
+**Expected win, revised with real DAG shape in hand**: parallelism
+helps in proportion to layer *width*, and is bounded by the DAG's
+*critical path* (the longest chain of layers a single edit's
+dependents must pass through), not by the total module count — this
+is Amdahl's law applied to the dependency DAG rather than to
+independent work items. Concretely: an edit to a wide-fanout hub
+module (e.g. `RDF.Graph.Executable.fst`, referenced by dozens of
+downstream parsers) re-verifies only that module plus its *own*
+extraction (the P2 manifest does not force dependents to reprocess —
+see P2's documented trade-off), so P1 buys little for a single-module
+edit today. P1's payoff is a **cold or `--force-full` run**, or any
+future scheme that does force true dependent re-verification: on the
+real 96-module, 7-layer DAG, a 4-core box can in principle collapse
+the widest layer (25 modules) into `ceil(25/4) = 7` sequential
+slots instead of 25, but the *total* wall-clock win is capped by the
+sum of each layer's slowest module (the critical path through the
+7 layers), not by 96/4. Measure the cold case
+(`rm -f *.fst.checked && ./build-ocaml.sh extract --force-full`)
+before quoting a multiplier — not yet done in this container because
+of the sibling-process contention above; re-run when the container is
+idle.
 
 ### P2 — retire the mtime chain-dirty skip — CONFIRMED, implemented 2026-07-04
 

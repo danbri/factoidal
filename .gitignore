@@ -36,6 +36,7 @@ formal/fstar/ocaml-output/_ocamlopt_*.log
 formal/fstar/ocaml-output/_ocamlc_*.log
 formal/fstar/ocaml-output/_jsoo_*.log
 formal/fstar/ocaml-output/_waoc_*.log
+formal/fstar/ocaml-output/_layer_*.log
 
 # Incremental-extract manifest (build-ocaml.sh's per-module .fst content
 # hashes, used to skip fstar.exe invocation for unchanged modules). Local
