@@ -238,62 +238,100 @@ let jld_type_prepend (subj:subject) (v:json_val) (acc:list triple) : list triple
 // ================================================================
 // Expansion of node objects / property values / lists
 //
-// All functions thread (accumulator, counter) and PREPEND triples onto
-// the accumulator; the caller reverses once at the end. Fuel bounds the
-// recursion; parse_jsonld derives it from json_size, which dominates
-// every call-chain length here (one fuel unit per value, array element,
-// or object member visited).
+// All functions thread (accumulator, counter, named-graph list) and
+// PREPEND triples/named-graphs onto their accumulators; the caller
+// reverses once at the end. Fuel bounds the recursion; parse_jsonld
+// derives it from json_size, which dominates every call-chain length
+// here (one fuel unit per value, array element, or object member
+// visited).
+//
+// PHASE 4 adds `named` (list named_graph) as a fourth threaded value
+// alongside (ctr, acc): the RDF dataset model is flat (a named graph
+// cannot itself directly nest another named graph), so `named` is simply
+// a GROWING, GLOBAL list of every named graph discovered ANYWHERE in the
+// document tree — at the top level (unchanged from Phase 1/2) AND now at
+// ANY nesting depth, whenever jld_expand_node meets an "@graph" member on
+// a node object that is not the top-level document wrapper (e.g. a
+// property value produced by a graph-container term — see
+// JSONLD.Expand's banner for "@container": "@graph" et al, and
+// docs/designissues/2026-07-04-jsonld-program-lessons.md's Phase-1
+// "nested @graph below the top level" limitation this closes). `acc`
+// always means "the CURRENT graph's triples" (default graph, or whatever
+// named graph the caller is presently building via jld_expand_graph_nodes
+// — see jld_expand_node's "@graph" branch below for exactly how a nested
+// graph's own contents are separated from its enclosing graph's).
 // ================================================================
+
+// Graph name slot for a named graph. Blank-node graph names are stored
+// as the literal string "_:<label>" inside the iri-typed ng_name field —
+// the Parser.NQuads convention (see that module's header and
+// docs/designissues/2026-04-25-nquads-bnode-graph-fix.md). Defined here,
+// ahead of the mutual recursion group below, because jld_expand_node
+// (PHASE 4) now calls it directly for a nested "@graph" member's name.
+let jld_graph_name_of_subject (s:subject) : iri =
+  match s with
+  | S_IRI i -> i
+  | S_BNode b -> String.concat "" ["_:"; b]
 
 // A property value in expanded form: value object, list object, node
 // object, or node reference. Returns the term to link to (None when the
-// entry is non-conforming and must be dropped) plus updated acc/counter.
-let rec jld_expand_value (v:json_val) (ctr:nat) (acc:list triple) (fuel:nat)
-  : Tot (option rdf_term & list triple & nat) (decreases fuel) =
-  if fuel = 0 then (None, acc, ctr)
+// entry is non-conforming and must be dropped) plus updated acc/named/counter.
+let rec jld_expand_value (v:json_val) (ctr:nat) (acc:list triple) (named:list named_graph) (fuel:nat)
+  : Tot (option rdf_term & list triple & list named_graph & nat) (decreases fuel) =
+  if fuel = 0 then (None, acc, named, ctr)
   else
     match v with
     | JObject _ ->
       (match json_get_field "@value" v with
-       | Some _ -> (jld_value_object_to_term v, acc, ctr)
+       | Some _ -> (jld_value_object_to_term v, acc, named, ctr)
        | None ->
          (match json_get_field "@list" v with
           | Some lst ->
-            let (t, acc1, ctr1) = jld_expand_list (jld_as_array lst) ctr acc (fuel - 1) in
-            (Some t, acc1, ctr1)
+            let (t, acc1, named1, ctr1) = jld_expand_list (jld_as_array lst) ctr acc named (fuel - 1) in
+            (Some t, acc1, named1, ctr1)
           | None ->
-            let (osubj, acc1, ctr1) = jld_expand_node v ctr acc (fuel - 1) in
+            let (osubj, acc1, named1, ctr1) = jld_expand_node v ctr acc named (fuel - 1) in
             (match osubj with
-             | Some subj -> (Some (subject_to_term subj), acc1, ctr1)
-             | None -> (None, acc1, ctr1))))
-    | _ -> (jld_scalar_to_term v, acc, ctr)
+             | Some subj -> (Some (subject_to_term subj), acc1, named1, ctr1)
+             | None -> (None, acc1, named1, ctr1))))
+    | _ -> (jld_scalar_to_term v, acc, named, ctr)
 
 // JSON-LD 1.1 API §8.7 "List Conversion": rdf:first/rdf:rest cells,
 // rdf:nil terminator. Non-conforming entries are skipped.
-and jld_expand_list (items:list json_val) (ctr:nat) (acc:list triple) (fuel:nat)
-  : Tot (rdf_term & list triple & nat) (decreases fuel) =
-  if fuel = 0 then (T_IRI rdf_nil_iri, acc, ctr)
+and jld_expand_list (items:list json_val) (ctr:nat) (acc:list triple) (named:list named_graph) (fuel:nat)
+  : Tot (rdf_term & list triple & list named_graph & nat) (decreases fuel) =
+  if fuel = 0 then (T_IRI rdf_nil_iri, acc, named, ctr)
   else
     match items with
-    | [] -> (T_IRI rdf_nil_iri, acc, ctr)
+    | [] -> (T_IRI rdf_nil_iri, acc, named, ctr)
     | item :: rest ->
-      let (oterm, acc1, ctr1) = jld_expand_value item ctr acc (fuel - 1) in
+      let (oterm, acc1, named1, ctr1) = jld_expand_value item ctr acc named (fuel - 1) in
       (match oterm with
-       | None -> jld_expand_list rest ctr1 acc1 (fuel - 1)
+       | None -> jld_expand_list rest ctr1 acc1 named1 (fuel - 1)
        | Some t ->
          let (cell, ctr2) = jld_fresh_bnode ctr1 in
-         let (rest_term, acc2, ctr3) = jld_expand_list rest ctr2 acc1 (fuel - 1) in
+         let (rest_term, acc2, named2, ctr3) = jld_expand_list rest ctr2 acc1 named1 (fuel - 1) in
          let cell_subj = S_BNode cell in
          (T_BNode cell,
           { s = cell_subj; p = rdf_rest_iri;  o = rest_term } ::
           { s = cell_subj; p = rdf_first_iri; o = t } :: acc2,
+          named2,
           ctr3))
 
 // A node object: subject from @id (fresh bnode when absent), then every
 // member. Returns None subject (and prepends nothing) on a malformed @id.
-and jld_expand_node (v:json_val) (ctr:nat) (acc:list triple) (fuel:nat)
-  : Tot (option subject & list triple & nat) (decreases fuel) =
-  if fuel = 0 then (None, acc, ctr)
+// PHASE 4: an "@graph" member (produced by a graph-container term, or a
+// document literally nesting "@graph" below the top level) introduces a
+// FRESH, SEPARATE named graph rather than being silently dropped as an
+// unrecognized keyword — its contents are expanded via
+// jld_expand_graph_nodes into their OWN triple list (not `acc`), added to
+// `named` under this node's subject as the graph name; every OTHER
+// member of this same node object still describes the graph-name
+// resource in the ENCLOSING graph (`acc`), same as the top-level
+// "@graph" wrapper always did.
+and jld_expand_node (v:json_val) (ctr:nat) (acc:list triple) (named:list named_graph) (fuel:nat)
+  : Tot (option subject & list triple & list named_graph & nat) (decreases fuel) =
+  if fuel = 0 then (None, acc, named, ctr)
   else
     match v with
     | JObject fields ->
@@ -305,59 +343,67 @@ and jld_expand_node (v:json_val) (ctr:nat) (acc:list triple) (fuel:nat)
            let (b, ctr') = jld_fresh_bnode ctr in
            (Some (S_BNode b), ctr')) in
       (match subj_opt with
-       | None -> (None, acc, ctr1)
+       | None -> (None, acc, named, ctr1)
        | Some subj ->
-         let (acc1, ctr2) = jld_expand_fields subj fields ctr1 acc (fuel - 1) in
-         (Some subj, acc1, ctr2))
-    | _ -> (None, acc, ctr)
+         (match json_get_field "@graph" v with
+          | Some g ->
+            let (gtris, named1, ctr2) = jld_expand_graph_nodes (jld_as_array g) ctr1 [] named (fuel - 1) in
+            let ng = { ng_name = jld_graph_name_of_subject subj; ng_graph = gtris } in
+            let (acc1, named2, ctr3) = jld_expand_fields subj fields ctr2 acc (ng :: named1) (fuel - 1) in
+            (Some subj, acc1, named2, ctr3)
+          | None ->
+            let (acc1, named1, ctr2) = jld_expand_fields subj fields ctr1 acc named (fuel - 1) in
+            (Some subj, acc1, named1, ctr2)))
+    | _ -> (None, acc, named, ctr)
 
 // Members of a node object. @type emits rdf:type triples; @reverse emits
-// swapped-direction triples (jld_expand_reverse_map, PHASE 3b); other
-// keywords are skipped (@id was consumed by jld_expand_node; @graph below
-// the top level is a Phase-2 item); IRI keys emit property triples;
-// non-IRI (relative) keys are dropped.
+// swapped-direction triples (jld_expand_reverse_map, PHASE 3b); @graph
+// was already consumed by jld_expand_node (PHASE 4) before this is
+// called, so it is harmless for the keyword-skip branch below to see it
+// again; other keywords are skipped (@id was consumed by jld_expand_node);
+// IRI keys emit property triples; non-IRI (relative) keys are dropped.
 and jld_expand_fields (subj:subject) (fields:list (string & json_val))
-                      (ctr:nat) (acc:list triple) (fuel:nat)
-  : Tot (list triple & nat) (decreases fuel) =
-  if fuel = 0 then (acc, ctr)
+                      (ctr:nat) (acc:list triple) (named:list named_graph) (fuel:nat)
+  : Tot (list triple & list named_graph & nat) (decreases fuel) =
+  if fuel = 0 then (acc, named, ctr)
   else
     match fields with
-    | [] -> (acc, ctr)
+    | [] -> (acc, named, ctr)
     | (key, value) :: rest ->
-      let (acc1, ctr1) =
-        if key = "@type" then (jld_type_prepend subj value acc, ctr)
-        else if key = "@reverse" then jld_expand_reverse_map subj value ctr acc (fuel - 1)
-        else if jld_is_keyword key then (acc, ctr)
+      let (acc1, named1, ctr1) =
+        if key = "@type" then (jld_type_prepend subj value acc, named, ctr)
+        else if key = "@reverse" then jld_expand_reverse_map subj value ctr acc named (fuel - 1)
+        else if jld_is_keyword key then (acc, named, ctr)
         else if is_iri key then
-          jld_expand_property subj key (jld_as_array value) ctr acc (fuel - 1)
-        else (acc, ctr) in
-      jld_expand_fields subj rest ctr1 acc1 (fuel - 1)
+          jld_expand_property subj key (jld_as_array value) ctr acc named (fuel - 1)
+        else (acc, named, ctr) in
+      jld_expand_fields subj rest ctr1 acc1 named1 (fuel - 1)
 
 // A node object's "@reverse" member: {predIri: [items...], ...} (an
 // EXPANDED-form-only shape produced by JSONLD.Expand — see that module's
 // banner). Each predIri key must already be an absolute IRI (Expand only
 // ever produces one via expand_iri); a malformed key is dropped.
-and jld_expand_reverse_map (subj:subject) (v:json_val) (ctr:nat) (acc:list triple) (fuel:nat)
-  : Tot (list triple & nat) (decreases fuel) =
-  if fuel = 0 then (acc, ctr)
+and jld_expand_reverse_map (subj:subject) (v:json_val) (ctr:nat) (acc:list triple) (named:list named_graph) (fuel:nat)
+  : Tot (list triple & list named_graph & nat) (decreases fuel) =
+  if fuel = 0 then (acc, named, ctr)
   else
     match v with
-    | JObject entries -> jld_expand_reverse_entries subj entries ctr acc (fuel - 1)
-    | _ -> (acc, ctr)
+    | JObject entries -> jld_expand_reverse_entries subj entries ctr acc named (fuel - 1)
+    | _ -> (acc, named, ctr)
 
 and jld_expand_reverse_entries (subj:subject) (entries:list (string & json_val))
-                               (ctr:nat) (acc:list triple) (fuel:nat)
-  : Tot (list triple & nat) (decreases fuel) =
-  if fuel = 0 then (acc, ctr)
+                               (ctr:nat) (acc:list triple) (named:list named_graph) (fuel:nat)
+  : Tot (list triple & list named_graph & nat) (decreases fuel) =
+  if fuel = 0 then (acc, named, ctr)
   else
     match entries with
-    | [] -> (acc, ctr)
+    | [] -> (acc, named, ctr)
     | (prop, value) :: rest ->
-      let (acc1, ctr1) =
+      let (acc1, named1, ctr1) =
         if is_iri prop
-        then jld_expand_reverse_prop subj prop (jld_as_array value) ctr acc (fuel - 1)
-        else (acc, ctr) in
-      jld_expand_reverse_entries subj rest ctr1 acc1 (fuel - 1)
+        then jld_expand_reverse_prop subj prop (jld_as_array value) ctr acc named (fuel - 1)
+        else (acc, named, ctr) in
+      jld_expand_reverse_entries subj rest ctr1 acc1 named1 (fuel - 1)
 
 // One reverse predicate's array of item values: each item expands as a
 // node reference / node object exactly like an ordinary property value
@@ -366,59 +412,55 @@ and jld_expand_reverse_entries (subj:subject) (entries:list (string & json_val))
 // elsewhere); the emitted triple points FROM the item TO the enclosing
 // node (the direction swap that makes it a "reverse" property).
 and jld_expand_reverse_prop (subj:subject) (prop:wf_iri) (vals:list json_val)
-                            (ctr:nat) (acc:list triple) (fuel:nat)
-  : Tot (list triple & nat) (decreases fuel) =
-  if fuel = 0 then (acc, ctr)
+                            (ctr:nat) (acc:list triple) (named:list named_graph) (fuel:nat)
+  : Tot (list triple & list named_graph & nat) (decreases fuel) =
+  if fuel = 0 then (acc, named, ctr)
   else
     match vals with
-    | [] -> (acc, ctr)
+    | [] -> (acc, named, ctr)
     | v :: rest ->
-      let (osubj, acc1, ctr1) = jld_expand_node v ctr acc (fuel - 1) in
+      let (osubj, acc1, named1, ctr1) = jld_expand_node v ctr acc named (fuel - 1) in
       let acc2 =
         (match osubj with
          | Some vsubj -> { s = vsubj; p = prop; o = subject_to_term subj } :: acc1
          | None -> acc1) in
-      jld_expand_reverse_prop subj prop rest ctr1 acc2 (fuel - 1)
+      jld_expand_reverse_prop subj prop rest ctr1 acc2 named1 (fuel - 1)
 
 // The array of values of one property.
 and jld_expand_property (subj:subject) (prop:wf_iri) (vals:list json_val)
-                        (ctr:nat) (acc:list triple) (fuel:nat)
-  : Tot (list triple & nat) (decreases fuel) =
-  if fuel = 0 then (acc, ctr)
+                        (ctr:nat) (acc:list triple) (named:list named_graph) (fuel:nat)
+  : Tot (list triple & list named_graph & nat) (decreases fuel) =
+  if fuel = 0 then (acc, named, ctr)
   else
     match vals with
-    | [] -> (acc, ctr)
+    | [] -> (acc, named, ctr)
     | v :: rest ->
-      let (oterm, acc1, ctr1) = jld_expand_value v ctr acc (fuel - 1) in
+      let (oterm, acc1, named1, ctr1) = jld_expand_value v ctr acc named (fuel - 1) in
       let acc2 =
         (match oterm with
          | Some t -> { s = subj; p = prop; o = t } :: acc1
          | None -> acc1) in
-      jld_expand_property subj prop rest ctr1 acc2 (fuel - 1)
+      jld_expand_property subj prop rest ctr1 acc2 named1 (fuel - 1)
+
+// Expand every node object inside a @graph array. PHASE 4: threads
+// `named` too, since one of these nodes may itself carry a further
+// nested "@graph" member (jld_expand_node handles that) — in the SAME
+// mutual-recursion group as jld_expand_node itself now that jld_expand_node
+// calls it directly (its own "@graph"-member branch, PHASE 4), not just
+// jld_expand_top.
+and jld_expand_graph_nodes (nodes:list json_val) (ctr:nat) (acc:list triple) (named:list named_graph) (fuel:nat)
+  : Tot (list triple & list named_graph & nat) (decreases fuel) =
+  if fuel = 0 then (acc, named, ctr)
+  else
+    match nodes with
+    | [] -> (acc, named, ctr)
+    | n :: rest ->
+      let (_, acc1, named1, ctr1) = jld_expand_node n ctr acc named (fuel - 1) in
+      jld_expand_graph_nodes rest ctr1 acc1 named1 (fuel - 1)
 
 // ================================================================
 // Top level: default graph + named graphs
 // ================================================================
-
-// Graph name slot for a named graph. Blank-node graph names are stored
-// as the literal string "_:<label>" inside the iri-typed ng_name field —
-// the Parser.NQuads convention (see that module's header and
-// docs/designissues/2026-04-25-nquads-bnode-graph-fix.md).
-let jld_graph_name_of_subject (s:subject) : iri =
-  match s with
-  | S_IRI i -> i
-  | S_BNode b -> String.concat "" ["_:"; b]
-
-// Expand every node object inside a @graph array.
-let rec jld_expand_graph_nodes (nodes:list json_val) (ctr:nat) (acc:list triple) (fuel:nat)
-  : Tot (list triple & nat) (decreases fuel) =
-  if fuel = 0 then (acc, ctr)
-  else
-    match nodes with
-    | [] -> (acc, ctr)
-    | n :: rest ->
-      let (_, acc1, ctr1) = jld_expand_node n ctr acc (fuel - 1) in
-      jld_expand_graph_nodes rest ctr1 acc1 (fuel - 1)
 
 // One top-level array entry. dflt and the per-named-graph triple lists
 // are reversed accumulators; named collects named graphs in reverse.
@@ -439,15 +481,15 @@ let jld_expand_top (v:json_val) (dflt:list triple) (named:list named_graph)
        (match subj_opt with
         | None -> (dflt, named, ctr1)
         | Some gsubj ->
-          let (gtris, ctr2) = jld_expand_graph_nodes (jld_as_array g) ctr1 [] fuel in
+          let (gtris, named1, ctr2) = jld_expand_graph_nodes (jld_as_array g) ctr1 [] named fuel in
           // Non-keyword members of the container node describe the
           // graph-name resource in the DEFAULT graph.
-          let (dflt1, ctr3) = jld_expand_fields gsubj fields ctr2 dflt fuel in
+          let (dflt1, named2, ctr3) = jld_expand_fields gsubj fields ctr2 dflt named1 fuel in
           let ng = { ng_name = jld_graph_name_of_subject gsubj; ng_graph = gtris } in
-          (dflt1, ng :: named, ctr3))
+          (dflt1, ng :: named2, ctr3))
      | None ->
-       let (_, dflt1, ctr1) = jld_expand_node v ctr dflt fuel in
-       (dflt1, named, ctr1))
+       let (_, dflt1, named1, ctr1) = jld_expand_node v ctr dflt named fuel in
+       (dflt1, named1, ctr1))
   | _ -> (dflt, named, ctr)
 
 let rec jld_expand_tops (vs:list json_val) (dflt:list triple) (named:list named_graph)
