@@ -206,6 +206,27 @@ let jld_base_override entry =
   | Some opt_obj -> str_field "base" opt_obj
   | None -> None
 
+(* rdfDirection threads exactly like base above: a handful of manifest
+   entries (toRdf/di09-di12) set `option.rdfDirection` to select how a
+   "@direction"-bearing value object becomes RDF — see
+   formal/fstar/Parser.JSONLD.fst's rdf_direction_mode banner for what
+   each string means; this runner just forwards the raw manifest string
+   to parse_jsonld, which converts it. *)
+let jld_rdf_direction entry =
+  match field "option" entry with
+  | Some opt_obj -> str_field "rdfDirection" opt_obj
+  | None -> None
+
+(* expandContext (toRdf/e077): a manifest-relative path to a context
+   document to apply before the document's own inline @context —
+   resolved to an absolute test-suite IRI the SAME way test_base resolves
+   `input` below, so Parser.JSONLD's parse_jsonld can treat it as an
+   ordinary remote context reference (see that function's banner). *)
+let jld_expand_context entry =
+  match field "option" entry with
+  | Some opt_obj -> str_field "expandContext" opt_obj
+  | None -> None
+
 (* ------------------------------------------------------------------ *)
 (* Per-test record. *)
 
@@ -217,6 +238,8 @@ type test_case = {
   expect : string option;  (* manifest-relative path, e.g. "toRdf/0001-out.nq" (Positive only) *)
   spec_version : string option;
   base_override : string option;
+  rdf_direction : string option;
+  expand_context : string option;
   manifest_dir : string;
 }
 
@@ -236,6 +259,8 @@ let build_test_cases manifest_dir root =
              expect = str_field "expect" e;
              spec_version = jld_spec_version e;
              base_override = jld_base_override e;
+             rdf_direction = jld_rdf_direction e;
+             expand_context = jld_expand_context e;
              manifest_dir;
            }
          | _ -> None)
@@ -254,7 +279,17 @@ let test_base tc =
   | None -> jsonld_test_base ^ tc.input
 
 let parse_jsonld_tc tc content =
-  opt_of_fs (Parser_JSONLD.parse_jsonld content (FStar_Pervasives_Native.Some (test_base tc)))
+  let fs_rdf_direction = match tc.rdf_direction with
+    | Some s -> FStar_Pervasives_Native.Some s
+    | None -> FStar_Pervasives_Native.None in
+  (* option.expandContext is manifest-relative (e.g. "toRdf/e077-
+     context.jsonld"); resolve it the same way test_base resolves
+     `input` so the loader (registered against jsonld_test_base) can
+     fetch it. *)
+  let fs_expand_context = match tc.expand_context with
+    | Some rel -> FStar_Pervasives_Native.Some (jsonld_test_base ^ rel)
+    | None -> FStar_Pervasives_Native.None in
+  opt_of_fs (Parser_JSONLD.parse_jsonld content (FStar_Pervasives_Native.Some (test_base tc)) fs_rdf_direction fs_expand_context)
 
 let run_test tc =
   match tc.spec_version with

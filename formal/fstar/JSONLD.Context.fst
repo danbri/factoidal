@@ -148,8 +148,33 @@ type term_def = {
   // Some None: term explicitly carries no language ("@language": null).
   // Some (Some lg): term explicitly carries language lg.
   td_language       : option (option string);
+  // Same three-way shape as td_language, for "@direction" ("ltr" / "rtl").
+  td_direction      : option (option string);
+  // PHASE 7 (property-valued index, issue TBD): a term's own "@index"
+  // member ("@container": "@index" (or a container including "@graph")
+  // plus "@index": "<term-or-compact-IRI>") names a PROPERTY that
+  // JSONLD.Expand injects onto each map-entry item instead of dropping
+  // the map key as pure metadata — see that module's
+  // jexp_expand_property_index_map / jexp_index_key_field. Stored RAW
+  // (not yet IRI-expanded): resolving it, AND finding ITS OWN term
+  // definition for @type/@language/@direction coercion of the injected
+  // value, are both point-of-USE questions (the active context may
+  // define "prop" with its own "@type": "@vocab", toRdf/pi08-pi09),
+  // exactly like an ordinary property key — not a term-definition-time
+  // one.
+  td_index          : option string;
   td_scoped_context : option json_val;
   td_protected      : bool;
+  // JSON-LD 1.1 "prefix flag" (Create Term Definition step 24 / IRI
+  // Expansion's compact-IRI step): only a term whose prefix flag is true
+  // may serve as the prefix half of a compact IRI. Simple string-form
+  // definitions get TRUE iff their expanded IRI ends in a gen-delim byte
+  // (:/?#[]@ — "ex": "http://example.org/ns#" is a prefix, "ex":
+  // "http://example.org/ns" is not); object-form definitions default
+  // FALSE unless they carry an explicit "@prefix": true (toRdf/e124,
+  // e125, and the "Does not expand a Compact IRI using a non-prefix
+  // term" fixture).
+  td_prefix         : bool;
 }
 
 // ac_previous: Some ac0 marks THIS active context as the result of a
@@ -159,15 +184,20 @@ type term_def = {
 // active context (JSONLD.Expand.expand_node "pops" to it on entry). None
 // means this active context propagates normally into nested node objects.
 type active_context = {
-  ac_terms    : list (string & term_def);
-  ac_vocab    : option string;
-  ac_base     : option string;
-  ac_language : option string;
-  ac_previous : option active_context;
+  ac_terms     : list (string & term_def);
+  ac_vocab     : option string;
+  ac_base      : option string;
+  ac_language  : option string;
+  // Context-level default base direction ("@direction": "ltr"/"rtl" on a
+  // context object itself, mirrors ac_language) — None when no context in
+  // the chain has set one (or the closest one reset it via JNull).
+  ac_direction : option string;
+  ac_previous  : option active_context;
 }
 
 let empty_active_context : active_context =
-  { ac_terms = []; ac_vocab = None; ac_base = None; ac_language = None; ac_previous = None }
+  { ac_terms = []; ac_vocab = None; ac_base = None; ac_language = None;
+    ac_direction = None; ac_previous = None }
 
 // ================================================================
 // Small string / list helpers
@@ -178,6 +208,43 @@ let empty_active_context : active_context =
 // Parser.JSONLD must not be a dependency of this module).
 let jldctx_is_keyword (s:string) : bool =
   fs_byte_length s > 0 && jbyte_at s 0 = 0x40
+
+// The ACTUAL JSON-LD 1.1 keywords (JSON-LD 1.1 §1.7 "Syntax Tokens and
+// Keywords"). Distinct from "has the form of a keyword" below: the spec
+// treats a non-keyword string that merely LOOKS like one ("@ignoreMe")
+// as ignorable-with-a-warning, while genuinely at-prefixed strings that
+// do NOT look like keywords ("@", "@foo.bar") are ordinary term/IRI
+// material (toRdf/e119-e122, pr34-pr39).
+let jldctx_actual_keyword (s:string) : bool =
+  s = "@base" || s = "@container" || s = "@context" || s = "@direction"
+  || s = "@graph" || s = "@id" || s = "@import" || s = "@included"
+  || s = "@index" || s = "@json" || s = "@language" || s = "@list"
+  || s = "@nest" || s = "@none" || s = "@prefix" || s = "@propagate"
+  || s = "@protected" || s = "@reverse" || s = "@set" || s = "@type"
+  || s = "@value" || s = "@version" || s = "@vocab"
+
+let jldctx_is_alpha_byte (b:int) : bool =
+  (b >= 0x41 && b <= 0x5A) || (b >= 0x61 && b <= 0x7A)
+
+let rec jldctx_all_alpha_from (s:string) (pos:nat) (fuel:nat) : Tot bool (decreases fuel) =
+  if fuel = 0 then true
+  else
+    let n = fs_byte_length s in
+    if pos >= n then true
+    else if jldctx_is_alpha_byte (jbyte_at s pos) then jldctx_all_alpha_from s (pos + 1) (fuel - 1)
+    else false
+
+// "Has the form of a keyword" (JSON-LD 1.1 API §4.1.5 / Create Term
+// Definition): "@" followed by one or more ALPHA bytes only. "@" alone
+// (nothing after the at) and "@foo.bar" (a dot) do NOT have keyword
+// form. Includes the actual keywords themselves — callers that need
+// "keyword-LIKE but not a real keyword" use jldctx_keyword_lookalike.
+let jldctx_keyword_form (s:string) : bool =
+  let n = fs_byte_length s in
+  n >= 2 && jbyte_at s 0 = 0x40 && jldctx_all_alpha_from s 1 n
+
+let jldctx_keyword_lookalike (s:string) : bool =
+  jldctx_keyword_form s && not (jldctx_actual_keyword s)
 
 let rec jldctx_find_term (terms:list (string & term_def)) (name:string)
   : Tot (option term_def) (decreases terms) =
@@ -244,7 +311,32 @@ and jldctx_scan_propagate_items (items:list json_val) (dflt:bool) : Tot bool (de
 let term_defs_compatible (a b:term_def) : bool =
   a.td_iri = b.td_iri && a.td_type_mapping = b.td_type_mapping &&
   a.td_container = b.td_container && a.td_reverse = b.td_reverse &&
-  a.td_language = b.td_language && a.td_scoped_context = b.td_scoped_context
+  a.td_language = b.td_language && a.td_direction = b.td_direction &&
+  a.td_index = b.td_index && a.td_scoped_context = b.td_scoped_context &&
+  a.td_prefix = b.td_prefix
+
+// Any byte of `s` is a slash — used (with jldctx_find_colon) to reject
+// an explicit "@prefix" member on a term name that cannot be a prefix
+// (toRdf/er49; JSON-LD 1.1 API Create Term Definition step 24).
+let rec jldctx_slash_from (s:string) (pos:nat) (fuel:nat) : Tot bool (decreases fuel) =
+  if fuel = 0 then false
+  else
+    let n = fs_byte_length s in
+    if pos >= n then false
+    else if jbyte_at s pos = 0x2F then true
+    else jldctx_slash_from s (pos + 1) (fuel - 1)
+
+let jldctx_key_has_slash (s:string) : bool =
+  jldctx_slash_from s 0 (fs_byte_length s + 1)
+
+// Last byte of `s` is an RFC 3986 gen-delim (":" "/" "?" "#" "[" "]"
+// "@") — the JSON-LD 1.1 test for whether a simple string-form term
+// definition is usable as a compact-IRI prefix (td_prefix's doc).
+let jldctx_ends_gen_delim (s:string) : bool =
+  let n = fs_byte_length s in
+  n > 0 &&
+  (let b = jbyte_at s (n - 1) in
+   b = 0x3A || b = 0x2F || b = 0x3F || b = 0x23 || b = 0x5B || b = 0x5D || b = 0x40)
 
 // Guard applied at every term-definition site: a protected existing term
 // may only be replaced by an identical definition, UNLESS override_protected
@@ -344,7 +436,14 @@ let jldctx_expand_fallback (ac:active_context) (value:string) (vocab:bool)
      | Some b -> Some (jldctx_resolve b value)
      | None -> None)
 
-let expand_iri (ac:active_context) (value:string) (vocab:bool) : Tot (option string) =
+// `in_ctx`: true when called DURING context processing (Create Term
+// Definition — the spec's "local context is not null" condition), where
+// compact-IRI prefix lookup applies regardless of the prefix flag
+// (toRdf/e050: the term KEY "issue:raisedBy" resolves through the
+// object-form — hence flag-false — term "issue"); at expansion time
+// (in_ctx false) the flag gates prefix use ("Does not expand a Compact
+// IRI using a non-prefix term").
+let expand_iri_gen (ac:active_context) (value:string) (vocab:bool) (in_ctx:bool) : Tot (option string) =
   let n = fs_byte_length value in
   if n = 0 then
     // RFC 3986 §5.4: the EMPTY reference resolves to the base itself
@@ -354,11 +453,30 @@ let expand_iri (ac:active_context) (value:string) (vocab:bool) : Tot (option str
     // unresolvable (the suite's "Definition for the empty term"
     // negative expects empty terms to be rejected).
     (if vocab then None else jldctx_expand_fallback ac value false)
-  else if jldctx_is_keyword value then Some value
+  else if jldctx_actual_keyword value then Some value
   else
-    match jldctx_find_term ac.ac_terms value with
+    // Full-term substitution applies only vocab-relative (toRdf/e048:
+    // "Terms are ignored in @id" — an @id value equal to a defined
+    // term's name still resolves document-relative against @base, NOT
+    // through the term). Compact-IRI PREFIX lookup (the colon branch
+    // below) stays available for both modes, per the same fixture's
+    // "compact-iris:are-considered" @id.
+    let term_hit = if vocab then jldctx_find_term ac.ac_terms value else None in
+    match term_hit with
     | Some td -> Some td.td_iri
     | None ->
+      // A keyword LOOKALIKE ("@ignoreMe") expands to itself — spec-wise
+      // it expands to null with a warning, but every consumer of this
+      // function's output already drops a colon-less non-IRI string at
+      // the RDF layer (toRdf/e122: the node reference {"@id":
+      // "@ignoreMe"} and its linking triple vanish), while returning
+      // None here would instead DROP THE @id MEMBER and mint a fresh
+      // blank node — observably wrong. Context-processing call sites
+      // never see this branch (they pre-check with
+      // jldctx_keyword_lookalike before calling — see
+      // context_process_one_field / jldctx_term_obj_fields).
+      if jldctx_keyword_form value then Some value
+      else
       (match jldctx_find_colon value 0 (n + 1) with
        | None -> jldctx_expand_fallback ac value vocab
        | Some c ->
@@ -372,9 +490,24 @@ let expand_iri (ac:active_context) (value:string) (vocab:bool) : Tot (option str
               | None -> Some value
               | Some ptd ->
                 if jldctx_is_keyword ptd.td_iri then None
+                // JSON-LD 1.1 prefix flag (td_prefix's doc comment): a
+                // term not usable as a prefix leaves the compact-IRI-
+                // shaped value untouched — it already has a colon, so
+                // downstream treats it as an (odd but well-formed) IRI.
+                // Context processing (in_ctx) bypasses the gate — see
+                // this function's banner.
+                else if not (in_ctx || ptd.td_prefix) then Some value
                 else
                   let suffix = fs_byte_sub value (c + 1) (n - c - 1) in
                   Some (String.concat "" [ptd.td_iri; suffix])))
+
+// Expansion-time IRI expansion (prefix flag honored) — the widely-used
+// entry point; context processing uses jldctx_expand_iri_ctx below.
+let expand_iri (ac:active_context) (value:string) (vocab:bool) : Tot (option string) =
+  expand_iri_gen ac value vocab false
+
+let jldctx_expand_iri_ctx (ac:active_context) (value:string) (vocab:bool) : Tot (option string) =
+  expand_iri_gen ac value vocab true
 
 // ================================================================
 // @container value parsing
@@ -442,94 +575,153 @@ let rec jldctx_term_obj_fields
     (ac:active_context)
     (idf:option string) (revf:option string) (typef:option string)
     (contk:container_kind) (langf:option (option string))
+    (dirf:option (option string)) (idxf:option string)
     (ctxf:option json_val) (protf:option bool)
     (fields:list (string & json_val))
   : Tot (option (option string & option string & option string & container_kind &
-                 option (option string) & option json_val & option bool))
+                 option (option string) & option (option string) & option string &
+                 option json_val & option bool))
         (decreases fields) =
   match fields with
-  | [] -> Some (idf, revf, typef, contk, langf, ctxf, protf)
+  | [] -> Some (idf, revf, typef, contk, langf, dirf, idxf, ctxf, protf)
   | (k, v) :: rest ->
     if k = "@id" then
       (match v with
        | JString s ->
-         (match expand_iri ac s true with
-          | Some e -> jldctx_term_obj_fields ac (Some e) revf typef contk langf ctxf protf rest
+         // An @id value that LOOKS like (but is not) a keyword is
+         // ignored — the entry is skipped and the term's IRI mapping
+         // falls back to @vocab + term name (toRdf/e120's "ignoreMe":
+         // {"@id": "@ignoreMe"} -> vocab/ignoreMe). Actual keywords
+         // ("id": {"@id": "@id"}) still alias normally.
+         if jldctx_keyword_lookalike s
+         then jldctx_term_obj_fields ac idf revf typef contk langf dirf idxf ctxf protf rest
+         else
+         (match jldctx_expand_iri_ctx ac s true with
+          | Some e -> jldctx_term_obj_fields ac (Some e) revf typef contk langf dirf idxf ctxf protf rest
           | None -> None)
        | _ -> None)
     else if k = "@reverse" then
       (match v with
        | JString s ->
-         (match expand_iri ac s true with
-          | Some e -> jldctx_term_obj_fields ac idf (Some e) typef contk langf ctxf protf rest
+         (match jldctx_expand_iri_ctx ac s true with
+          | Some e -> jldctx_term_obj_fields ac idf (Some e) typef contk langf dirf idxf ctxf protf rest
           | None -> None)
        | _ -> None)
     else if k = "@type" then
       (match v with
        | JString s ->
-         (match expand_iri ac s true with
-          | Some e -> jldctx_term_obj_fields ac idf revf (Some e) contk langf ctxf protf rest
+         (match jldctx_expand_iri_ctx ac s true with
+          | Some e -> jldctx_term_obj_fields ac idf revf (Some e) contk langf dirf idxf ctxf protf rest
           | None -> None)
        | _ -> None)
     else if k = "@container" then
       (match v with
        | JString s ->
          (match jldctx_container_kind_of_string s with
-          | Some ck -> jldctx_term_obj_fields ac idf revf typef ck langf ctxf protf rest
+          | Some ck -> jldctx_term_obj_fields ac idf revf typef ck langf dirf idxf ctxf protf rest
           | None -> None)
        | JArray items ->
          (match jldctx_container_kind_of_items items with
-          | Some ck -> jldctx_term_obj_fields ac idf revf typef ck langf ctxf protf rest
+          | Some ck -> jldctx_term_obj_fields ac idf revf typef ck langf dirf idxf ctxf protf rest
           | None -> None)
        | _ -> None)
     else if k = "@language" then
       (match v with
-       | JString s -> jldctx_term_obj_fields ac idf revf typef contk (Some (Some s)) ctxf protf rest
-       | JNull -> jldctx_term_obj_fields ac idf revf typef contk (Some None) ctxf protf rest
+       | JString s -> jldctx_term_obj_fields ac idf revf typef contk (Some (Some s)) dirf idxf ctxf protf rest
+       | JNull -> jldctx_term_obj_fields ac idf revf typef contk (Some None) dirf idxf ctxf protf rest
+       | _ -> None)
+    else if k = "@direction" then
+      (match v with
+       | JString s ->
+         if s = "ltr" || s = "rtl"
+         then jldctx_term_obj_fields ac idf revf typef contk langf (Some (Some s)) idxf ctxf protf rest
+         else None
+       | JNull -> jldctx_term_obj_fields ac idf revf typef contk langf (Some None) idxf ctxf protf rest
+       | _ -> None)
+    else if k = "@index" then
+      // PHASE 7 (property-valued index): stored RAW (unresolved) — see
+      // td_index's doc comment — because the property this names must be
+      // resolved (and its OWN term definition looked up for @type/
+      // @language/@direction coercion) at the point of USE, exactly like
+      // an ordinary property key (JSONLD.Expand.jexp_index_key_field), not
+      // at term-definition time. A keyword value (toRdf/pi03: "@index":
+      // "@index") is rejected outright — keywords can never name a
+      // property.
+      (match v with
+       | JString s -> if jldctx_is_keyword s then None
+                       else jldctx_term_obj_fields ac idf revf typef contk langf dirf (Some s) ctxf protf rest
        | _ -> None)
     else if k = "@context" then
       // A property- or type-scoped context: stored RAW (unprocessed) — see
       // td_scoped_context's doc comment. Any json_val shape is accepted
       // here (even one that will later fail to process); the failure
       // surfaces at point-of-use in JSONLD.Expand, not here.
-      jldctx_term_obj_fields ac idf revf typef contk langf (Some v) protf rest
+      jldctx_term_obj_fields ac idf revf typef contk langf dirf idxf (Some v) protf rest
     else if k = "@protected" then
       (match v with
-       | JBool b -> jldctx_term_obj_fields ac idf revf typef contk langf ctxf (Some b) rest
+       | JBool b -> jldctx_term_obj_fields ac idf revf typef contk langf dirf idxf ctxf (Some b) rest
+       | _ -> None)
+    else if k = "@prefix" then
+      // Validated here (must be a boolean), CONSUMED by
+      // process_term_def_obj's separate jldctx_scan_bool_key pass —
+      // keeps this accumulator tuple from growing an eleventh slot.
+      (match v with
+       | JBool _ -> jldctx_term_obj_fields ac idf revf typef contk langf dirf idxf ctxf protf rest
        | _ -> None)
     else
-      // @index, @nest, @prefix, or any other unrecognized member: OUT of
-      // scope.
+      // @nest or any other unrecognized member: OUT of scope.
       None
 
 let process_term_def_obj (ac:active_context) (key:string) (fields:list (string & json_val))
                           (default_protected:bool) (override_protected:bool)
   : Tot (option active_context) =
-  match jldctx_term_obj_fields ac None None None CK_None None None None fields with
+  match jldctx_term_obj_fields ac None None None CK_None None None None None None fields with
   | None -> None
-  | Some (idf, revf, typef, contk, langf, ctxf, protf) ->
+  | Some (idf, revf, typef, contk, langf, dirf, idxf, ctxf, protf) ->
+    // toRdf/pi02: a term's "@index" member is only meaningful when its
+    // OWN "@container" mapping actually includes "@index" (plain or
+    // "@graph"+"@index") — anything else is a spec error, not a
+    // silently-ignored member.
+    if Some? idxf && not (contk = CK_Index || contk = CK_GraphIndex) then None
+    else
     let protected = (match protf with Some b -> b | None -> default_protected) in
+    // Object-form definitions are compact-IRI prefixes only on explicit
+    // request (td_prefix's doc comment). An EXPLICIT @prefix member is
+    // itself validated (JSON-LD 1.1 API Create Term Definition step 24):
+    // the term name may not contain a colon or slash (toRdf/er49:
+    // "./something" cannot be a prefix), and a true prefix flag may not
+    // sit on a keyword alias (toRdf/pr33: {"@id": "@type", "@prefix":
+    // true}).
+    let has_prefix_member =
+      List.Tot.existsb (fun (kv:(string & json_val)) -> fst kv = "@prefix") fields in
+    let prefix_flag = jldctx_scan_bool_key fields "@prefix" false in
+    if has_prefix_member &&
+       Some? (jldctx_find_colon key 0 (fs_byte_length key + 1)) then None
+    else if has_prefix_member && jldctx_key_has_slash key then None
+    else
     (match (idf, revf) with
      | (Some _, Some _) -> None
      | (Some iri, None) ->
+       if prefix_flag && jldctx_is_keyword iri then None
+       else
        let td = { td_iri = iri; td_type_mapping = typef; td_container = contk;
-                  td_reverse = false; td_language = langf;
-                  td_scoped_context = ctxf; td_protected = protected } in
+                  td_reverse = false; td_language = langf; td_direction = dirf; td_index = idxf;
+                  td_scoped_context = ctxf; td_protected = protected; td_prefix = prefix_flag } in
        if jldctx_check_redefine ac key td override_protected
        then Some ({ ac with ac_terms = (key, td) :: ac.ac_terms }) else None
      | (None, Some iri) ->
        let td = { td_iri = iri; td_type_mapping = typef; td_container = contk;
-                  td_reverse = true; td_language = langf;
-                  td_scoped_context = ctxf; td_protected = protected } in
+                  td_reverse = true; td_language = langf; td_direction = dirf; td_index = idxf;
+                  td_scoped_context = ctxf; td_protected = protected; td_prefix = prefix_flag } in
        if jldctx_check_redefine ac key td override_protected
        then Some ({ ac with ac_terms = (key, td) :: ac.ac_terms }) else None
      | (None, None) ->
-       (match expand_iri ac key true with
+       (match jldctx_expand_iri_ctx ac key true with
         | None -> None
         | Some iri ->
           let td = { td_iri = iri; td_type_mapping = typef; td_container = contk;
-                     td_reverse = false; td_language = langf;
-                     td_scoped_context = ctxf; td_protected = protected } in
+                     td_reverse = false; td_language = langf; td_direction = dirf; td_index = idxf;
+                     td_scoped_context = ctxf; td_protected = protected; td_prefix = prefix_flag } in
           if jldctx_check_redefine ac key td override_protected
           then Some ({ ac with ac_terms = (key, td) :: ac.ac_terms }) else None))
 
@@ -563,7 +755,20 @@ let context_process_one_field (ac:active_context) (key:string) (value:json_val)
      | _ -> None)
   else if key = "@vocab" then
     (match value with
-     | JString s -> Some ({ ac with ac_vocab = Some s })
+     | JString s ->
+       // JSON-LD 1.1 API §4.1.2: the vocab mapping value is itself
+       // IRI-expanded vocab-relative with document-relative fallback —
+       // a term or compact IRI resolves through the ACTIVE context
+       // (toRdf/e124 "ex:ns/", e125 "ex"), a relative reference with an
+       // EXISTING vocab concatenates onto it (e111/e112 "./rel2#"), and
+       // otherwise resolves against @base per RFC 3986 (e092 "" -> the
+       // base itself; e110 "/relative").
+       (match jldctx_expand_iri_ctx ac s true with
+        | Some iri -> Some ({ ac with ac_vocab = Some iri })
+        | None ->
+          (match ac.ac_base with
+           | Some b -> Some ({ ac with ac_vocab = Some (jldctx_resolve b s) })
+           | None -> None))
      | JNull -> Some ({ ac with ac_vocab = None })
      | _ -> None)
   else if key = "@language" then
@@ -571,30 +776,104 @@ let context_process_one_field (ac:active_context) (key:string) (value:json_val)
      | JString s -> Some ({ ac with ac_language = Some s })
      | JNull -> Some ({ ac with ac_language = None })
      | _ -> None)
-  else if key = "@version" then Some ac
+  else if key = "@direction" then
+    (match value with
+     | JString s ->
+       if s = "ltr" || s = "rtl" then Some ({ ac with ac_direction = Some s }) else None
+     | JNull -> Some ({ ac with ac_direction = None })
+     | _ -> None)
+  else if key = "@version" then
+    // JSON-LD 1.1 API §4.1.8: the @version member's value MUST be the
+    // number 1.1 exactly (toRdf/ep03: "@version": 1.0 is an "invalid
+    // @version value" error).
+    (match value with
+     | JNumber lex -> if lex = "1.1" then Some ac else None
+     | _ -> None)
   else if key = "@protected" then
     (match value with JBool _ -> Some ac | _ -> None)
   else if key = "@propagate" then
     (match value with JBool _ -> Some ac | _ -> None)
-  else if jldctx_is_keyword key then None
+  // A term NAME that is an actual keyword may not be redefined (keyword
+  // collision, an error); one that merely LOOKS like a keyword
+  // ("@ignoreMe") is ignored with a warning (toRdf/pr34/pr35/e119);
+  // at-prefixed names WITHOUT keyword form ("@", "@foo.bar") are
+  // ordinary terms and fall through (e119's "allowed" pair).
+  else if jldctx_actual_keyword key then None
+  else if jldctx_keyword_lookalike key then Some ac
   else
     (match value with
      | JNull ->
+       // "term": null DECOUPLES the term from @vocab (toRdf/e032): the
+       // term is not merely removed (which would re-expose the @vocab
+       // fallback at use sites) but pinned to the "@null" sentinel,
+       // which JSONLD.Expand's key handling drops (it has keyword form
+       // but is not an actual keyword — same drop path as "@ignoreMe").
        (match jldctx_find_term ac.ac_terms key with
         | Some existing ->
           if existing.td_protected && not override_protected then None
-          else Some ({ ac with ac_terms = jldctx_remove_term ac.ac_terms key })
-        | None -> Some ac)
+          else
+            let td = { td_iri = "@null"; td_type_mapping = None; td_container = CK_None;
+                       td_reverse = false; td_language = None; td_direction = None; td_index = None;
+                       td_scoped_context = None; td_protected = false; td_prefix = false } in
+            Some ({ ac with ac_terms = (key, td) :: jldctx_remove_term ac.ac_terms key })
+        | None ->
+          let td = { td_iri = "@null"; td_type_mapping = None; td_container = CK_None;
+                     td_reverse = false; td_language = None; td_direction = None; td_index = None;
+                     td_scoped_context = None; td_protected = false; td_prefix = false } in
+          Some ({ ac with ac_terms = (key, td) :: ac.ac_terms }))
      | JString s ->
-       (match expand_iri ac s true with
+       // A simple-form definition whose VALUE looks like (but is not) a
+       // keyword is ignored entirely — the term stays undefined, so its
+       // uses fall back to @vocab or get dropped (toRdf/pr36/pr37).
+       if jldctx_keyword_lookalike s then Some ac
+       else
+       (match jldctx_expand_iri_ctx ac s true with
         | None -> None
         | Some iri ->
+          // Simple string form: prefix-capable iff the expanded IRI ends
+          // in a gen-delim byte (td_prefix's doc comment).
           let td = { td_iri = iri; td_type_mapping = None; td_container = CK_None;
-                     td_reverse = false; td_language = None;
-                     td_scoped_context = None; td_protected = default_protected } in
+                     td_reverse = false; td_language = None; td_direction = None; td_index = None;
+                     td_scoped_context = None; td_protected = default_protected;
+                     td_prefix = jldctx_ends_gen_delim iri } in
           if jldctx_check_redefine ac key td override_protected
           then Some ({ ac with ac_terms = (key, td) :: ac.ac_terms }) else None)
-     | JObject termfields -> process_term_def_obj ac key termfields default_protected override_protected
+     | JObject termfields ->
+       // A term definition whose "@reverse" member has keyword FORM
+       // (actual keyword or lookalike) is ignored entirely — spec
+       // Create Term Definition's @reverse step: warning + return
+       // without creating the term (toRdf/pr38/pr39). Checked HERE
+       // (before process_term_def_obj) because "ignore the whole
+       // definition" and "malformed definition = error" need different
+       // return paths.
+       let rev_kw =
+         List.Tot.existsb
+           (fun (kv:(string & json_val)) ->
+              fst kv = "@reverse" &&
+              (match snd kv with JString rs -> jldctx_keyword_form rs | _ -> false))
+           termfields in
+       // {"@id": null} pins the term to the "@null" sentinel exactly
+       // like "term": null above (toRdf/e032's "university").
+       let id_null =
+         List.Tot.existsb
+           (fun (kv:(string & json_val)) -> fst kv = "@id" && JNull? (snd kv))
+           termfields in
+       if rev_kw then Some ac
+       else if id_null then
+         (match jldctx_find_term ac.ac_terms key with
+          | Some existing ->
+            if existing.td_protected && not override_protected then None
+            else
+              let td = { td_iri = "@null"; td_type_mapping = None; td_container = CK_None;
+                         td_reverse = false; td_language = None; td_direction = None; td_index = None;
+                         td_scoped_context = None; td_protected = false; td_prefix = false } in
+              Some ({ ac with ac_terms = (key, td) :: jldctx_remove_term ac.ac_terms key })
+          | None ->
+            let td = { td_iri = "@null"; td_type_mapping = None; td_container = CK_None;
+                       td_reverse = false; td_language = None; td_direction = None; td_index = None;
+                       td_scoped_context = None; td_protected = false; td_prefix = false } in
+            Some ({ ac with ac_terms = (key, td) :: ac.ac_terms }))
+       else process_term_def_obj ac key termfields default_protected override_protected
      | _ -> None)
 
 // ================================================================

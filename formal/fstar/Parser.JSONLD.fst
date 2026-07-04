@@ -294,6 +294,178 @@ let jcanon_document (v:json_val) : string =
   jcanon_serialize v (op_Multiply 10 (json_size v) + 32)
 
 // ================================================================
+// JSON-LD 1.1 API §8.6 "Data Round Tripping": the canonical xsd:double
+// lexical form (ECMAScript-ish "shortest form" scientific notation,
+// e.g. "5.3E0", "1.0E21") plus the integer-vs-double DEFAULT DATATYPE
+// promotion for a bare (uncoerced) JSON number.
+//
+// Two INDEPENDENT decisions determined by a JSON number lexeme's actual
+// MATHEMATICAL VALUE (not its lexical shape — toRdf/rt01's "-0e0" LOOKS
+// double-shaped, having an 'e', but its value 0 is a plain integer):
+//   - is_integral: the value has no fractional part.
+//   - magnitude_ge_1e21: abs(value) >= 1e21.
+// `force_double` (true only for an explicit "@type": xsd:double term
+// coercion — Parser.JSONLD.jld_value_object_to_term's typed branch)
+// makes the LEXICAL form double-shaped regardless of value (toRdf/0035:
+// a term coerced to xsd:double renders the PLAIN INTEGER literal "1" as
+// "1.0E0"). Independent of force_double, ANY non-integral value or
+// magnitude >= 1e21 ALSO renders double-shaped, even under a DIFFERENT
+// declared datatype (toRdf/0035: a term coerced to xsd:integer still
+// renders "9.9" as "9.9E0" — the datatype IRI is whatever the term
+// declared; only the LEXICAL FORM tracks the value's own shape). When
+// no term coercion applies at all (force_double = false, and the
+// caller — jld_scalar_to_term — has no separate datatype to keep), the
+// same use-double decision ALSO picks the DEFAULT datatype: double
+// datatype iff double-shaped rendering was used, else xsd:integer.
+// ================================================================
+
+// True for the ASCII digit bytes '0'-'9'.
+let jld_is_digit_byte (b:int) : bool = b >= 0x30 && b <= 0x39
+
+let jld_digit_val (b:int) : nat = if jld_is_digit_byte b then (b - 0x30) else 0
+
+// Position of the first 'e'/'E' byte from `pos`, or None (mirrors
+// jcanon_find_dot above, for the exponent marker instead of the dot).
+let rec jld_find_exp_pos (s:string) (pos:nat) (fuel:nat)
+  : Tot (option (p:nat{p < fs_byte_length s})) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let n = fs_byte_length s in
+    if pos >= n then None
+    else if jbyte_at s pos = 0x65 || jbyte_at s pos = 0x45 then Some pos
+    else jld_find_exp_pos s (pos + 1) (fuel - 1)
+
+// Decimal digits s[pos..endpos) (endpos exclusive) as a nat, most-
+// significant digit first. Fuel-bounded; a non-digit byte contributes 0
+// (defensive — only ever called on RFC 8259-validated JNumber lexemes).
+let rec jld_digits_to_nat (s:string) (pos:nat) (endpos:nat) (acc:nat) (fuel:nat)
+  : Tot nat (decreases fuel) =
+  if fuel = 0 then acc
+  else if pos >= endpos then acc
+  else jld_digits_to_nat s (pos + 1) endpos (op_Multiply acc 10 + jld_digit_val (jbyte_at s pos)) (fuel - 1)
+
+// The exponent's signed integer value, starting right after the 'e'/'E'
+// marker (an optional '+'/'-' then digits).
+let jld_parse_exponent (s:string) (start:nat) : int =
+  let n = fs_byte_length s in
+  if start >= n then 0
+  else
+    let b0 = jbyte_at s start in
+    if b0 = 0x2B (* + *) then jld_digits_to_nat s (start + 1) n 0 (n - start + 1)
+    else if b0 = 0x2D (* - *) then (- (jld_digits_to_nat s (start + 1) n 0 (n - start + 1)))
+    else jld_digits_to_nat s start n 0 (n - start + 1)
+
+// Decompose a validated JSON number lexeme into (is_negative,
+// int_part_start, int_part_len, frac_part_start, frac_part_len,
+// exponent). frac_part_len = 0 when there is no '.'; exponent = 0 when
+// there is no 'e'/'E'.
+let jld_number_parts (lexeme:string) : (bool & nat & nat & nat & nat & int) =
+  let n = fs_byte_length lexeme in
+  let neg = n > 0 && jbyte_at lexeme 0 = 0x2D in
+  let start0 = if neg then 1 else 0 in
+  let dotpos = jcanon_find_dot lexeme start0 (n - start0 + 1) in
+  let exppos = jld_find_exp_pos lexeme start0 (n - start0 + 1) in
+  let int_end = (match dotpos with
+                 | Some d -> d
+                 | None -> (match exppos with Some e -> e | None -> n)) in
+  let int_len = if int_end > start0 then int_end - start0 else 0 in
+  let (frac_start, frac_len) =
+    (match dotpos with
+     | Some d ->
+       let fend = (match exppos with Some e -> e | None -> n) in
+       let flen = if fend > d + 1 then fend - d - 1 else 0 in
+       (d + 1, flen)
+     | None -> (0, 0)) in
+  let exp = (match exppos with Some e -> jld_parse_exponent lexeme (e + 1) | None -> 0) in
+  (neg, start0, int_len, frac_start, frac_len, exp)
+
+// Index one past the last non-'0' byte of s (a plain, sign-free digit
+// string), scanning forward from `pos` — i.e. the length to keep after
+// stripping trailing zeros; 0 if every byte scanned is '0' (the
+// all-zero / value-is-zero case, handled by the caller).
+let rec jld_last_nonzero_len (s:string) (pos:nat) (best:nat) (fuel:nat) : Tot nat (decreases fuel) =
+  if fuel = 0 then best
+  else
+    let n = fs_byte_length s in
+    if pos >= n then best
+    else jld_last_nonzero_len s (pos + 1) (if jbyte_at s pos <> 0x30 then pos + 1 else best) (fuel - 1)
+
+// Index of the first non-'0' byte of s, or fs_byte_length s if every
+// byte is '0' (leading-zero stripping — the complementary scan to
+// jld_last_nonzero_len above).
+let rec jld_first_nonzero_pos (s:string) (pos:nat) (fuel:nat) : Tot nat (decreases fuel) =
+  if fuel = 0 then pos
+  else
+    let n = fs_byte_length s in
+    if pos >= n then pos
+    else if jbyte_at s pos <> 0x30 then pos
+    else jld_first_nonzero_pos s (pos + 1) (fuel - 1)
+
+// A string of `k` '0' bytes (for shifting an integral value's decimal
+// point right by `k` places — e.g. digits "15" with a scientific
+// exponent of 2 is the plain integer "1500").
+let rec jld_zeros (k:nat) : Tot string (decreases k) =
+  if k = 0 then "" else String.concat "" ["0"; jld_zeros (k - 1)]
+
+// The canonical lexical form of a validated JSON number lexeme, plus
+// whether it rendered double-shaped (see this section's banner for the
+// full decision table). `force_double`: true only for an explicit
+// "@type": xsd:double term coercion.
+let jld_number_canonicalize (lexeme:string) (force_double:bool) : (string & bool) =
+  let (neg, int_start, int_len, frac_start, frac_len, exp) = jld_number_parts lexeme in
+  let combined = String.concat "" [fs_byte_sub lexeme int_start int_len; fs_byte_sub lexeme frac_start frac_len] in
+  let clen = fs_byte_length combined in
+  let lead = jld_first_nonzero_pos combined 0 (clen + 1) in
+  if lead >= clen then
+    // The value is zero (every significant digit is '0', or there were
+    // none at all — a malformed lexeme, which a validated JNumber never
+    // is, defaults harmlessly to zero too).
+    (if force_double then ("0.0E0", true) else ("0", false))
+  else
+    let after_lead = fs_byte_sub combined lead (clen - lead) in
+    let exp_total = exp - frac_len in
+    let keep = jld_last_nonzero_len after_lead 0 0 (fs_byte_length after_lead + 1) in
+    let digits = fs_byte_sub after_lead 0 keep in
+    let tz = fs_byte_length after_lead - keep in
+    let exp_total1 = exp_total + tz in
+    let ndigits = fs_byte_length digits in
+    let sci_exp = exp_total1 + ndigits - 1 in
+    let is_integral = exp_total1 >= 0 in
+    let magnitude_ge_1e21 = sci_exp >= 21 in
+    let use_double = force_double || (not is_integral) || magnitude_ge_1e21 in
+    let sign_str = if neg then "-" else "" in
+    if use_double then
+      let mantissa_first = fs_byte_sub digits 0 1 in
+      let mantissa_rest = if ndigits > 1 then fs_byte_sub digits 1 (ndigits - 1) else "0" in
+      let lexical = String.concat "" [sign_str; mantissa_first; "."; mantissa_rest; "E"; string_of_int sci_exp] in
+      (lexical, true)
+    else
+      let lexical = String.concat "" [sign_str; digits; jld_zeros exp_total1] in
+      (lexical, false)
+
+// ================================================================
+// rdfDirection option (JSON-LD 1.1 API "Deserialize JSON-LD to RDF",
+// §8.6's rdfDirection processing-mode flag): how a value object's
+// "@direction" (threaded through the expanded form by JSONLD.Expand —
+// see that module's jexp_expand_value_object / expand_item) becomes RDF.
+//   - RDM_Drop (no rdfDirection option given): direction is DROPPED —
+//     the literal comes out exactly as it would with no @direction at
+//     all (language tag kept if present) — toRdf/di01-di07's default
+//     behavior.
+//   - RDM_I18nDatatype ("i18n-datatype"): the literal's datatype becomes
+//     https://www.w3.org/ns/i18n#<lang>_<dir> (lang lowercased, omitted
+//     entirely — "_<dir>" — when there is no @language), replacing
+//     rdf:langString / xsd:string — toRdf/di09-di10.
+//   - RDM_CompoundLiteral ("compound-literal"): OUT of scope here (see
+//     module banner) — jld_value_object_to_term returns None for a
+//     @direction-bearing value under this mode, an honest gap rather
+//     than silently wrong RDF (toRdf/di11-di12 stay FAIL).
+type rdf_direction_mode =
+  | RDM_Drop
+  | RDM_I18nDatatype
+  | RDM_CompoundLiteral
+
+// ================================================================
 // Small helpers
 // ================================================================
 
@@ -314,10 +486,45 @@ let jld_strip_bnode_prefix (s:string) : string =
   let n = fs_byte_length s in
   if n >= 2 then fs_byte_sub s 2 (n - 2) else s
 
+// toRdf/wf01-wf05, wf07, e123 ("well-formedness" battery): a stricter-
+// than-shared-`is_iri` gate for IRI/language-tag strings arriving from
+// JSON-LD input. RDF.Graph.Executable.is_iri (colon + non-empty) is
+// deliberately minimal — every concrete-syntax PARSER enforces its OWN
+// grammar (e.g. Parser.Turtle's IRIREF scanner rejects raw spaces via
+// its own character class) before a value ever reaches that shared
+// model; this module's jld_* pipeline had no equivalent gate of its
+// own, so a JSON string containing a raw space (or other IRI-illegal
+// byte) sailed through as a "well-formed" IRI. `jld_iri_wf` / `jld_
+// lang_tag_wf` close that gap: reject the ASCII control range
+// (0x00-0x20, which covers the plain space every wf0x fixture tests)
+// plus the handful of bytes RFC 3987 excludes from every IRI reference
+// (<>"{}|\^`). An HONEST SUBSET of full IRI-reference / BCP47
+// well-formedness (percent-encoding validity, language-subtag grammar,
+// etc. are NOT checked) — enough for the toRdf suite's negative
+// fixtures, not a general-purpose validator.
+let jld_forbidden_byte (b:int) : bool =
+  (b >= 0 && b <= 0x20) || b = 0x3C (* < *) || b = 0x3E (* > *) || b = 0x22 (* " *)
+  || b = 0x7B (* { *) || b = 0x7D (* } *) || b = 0x7C (* | *) || b = 0x5C (* \ *)
+  || b = 0x5E (* ^ *) || b = 0x60 (* ` *)
+
+let rec jld_scan_wf (s:string) (pos:nat) (fuel:nat) : Tot bool (decreases fuel) =
+  if fuel = 0 then true
+  else
+    let n = fs_byte_length s in
+    if pos >= n then true
+    else if jld_forbidden_byte (jbyte_at s pos) then false
+    else jld_scan_wf s (pos + 1) (fuel - 1)
+
+let jld_iri_wf (s:string) : bool =
+  is_iri s && jld_scan_wf s 0 (fs_byte_length s + 1)
+
+let jld_lang_tag_wf (s:string) : bool =
+  jld_scan_wf s 0 (fs_byte_length s + 1)
+
 // Expanded-form @id string -> subject. Relative IRIs yield None (dropped).
 let jld_id_to_subject (s:string) : option subject =
   if jld_is_bnode_label s then Some (S_BNode (jld_strip_bnode_prefix s))
-  else if is_iri s then Some (S_IRI s)
+  else if jld_iri_wf s then Some (S_IRI s)
   else None
 
 // Keywords all start with a commercial-at byte.
@@ -331,20 +538,6 @@ let jld_as_array (v:json_val) : list json_val =
   | JArray items -> items
   | _ -> [v]
 
-// Does a validated JSON number lexeme denote a double (fraction or
-// exponent present)? Bytes: 0x2E dot, 0x65 e, 0x45 E.
-let rec jld_scan_double_marker (s:string) (pos:nat) (fuel:nat)
-  : Tot bool (decreases fuel) =
-  if fuel = 0 then false
-  else
-    let b = jbyte_at s pos in
-    if b < 0 then false
-    else if b = 0x2E || b = 0x65 || b = 0x45 then true
-    else jld_scan_double_marker s (pos + 1) (fuel - 1)
-
-let jld_number_is_double (s:string) : bool =
-  jld_scan_double_marker s 0 (fs_byte_length s + 1)
-
 // Construct a T_Literal only if well-formed. Same shape as
 // Parser.JSONResults.mk_literal; duplicated (it is four lines) rather
 // than importing that module, whose lenient embedded JSON parser this
@@ -352,46 +545,83 @@ let jld_number_is_double (s:string) : bool =
 // Parser.JSON.
 let jld_make_literal (lexical:string) (dt:string) (lang:option string)
   : option rdf_term =
-  if is_iri dt then
+  // toRdf/e123: an invalid datatype IRI (e.g. containing a raw space) is
+  // rejected via jld_iri_wf, not the shared (minimal) is_iri; toRdf/wf05:
+  // likewise for an invalid @language value, via jld_lang_tag_wf.
+  if jld_iri_wf dt && (match lang with Some l -> jld_lang_tag_wf l | None -> true) then
     let lit : literal = { lexical_form = lexical; datatype = dt; lang_tag = lang } in
     if literal_wf lit then Some (T_Literal lit) else None
   else None
 
 // A bare JSON scalar in value position, as the Expansion algorithm would
 // wrap it: string -> xsd:string, boolean -> xsd:boolean, number ->
-// xsd:integer (no fraction/exponent) or xsd:double. Accepting bare
-// scalars keeps the context-free W3C toRdf inputs (e.g. toRdf/0001)
-// loadable even though strict expanded form array-wraps every value.
+// xsd:integer or xsd:double per jld_number_canonicalize's promotion
+// rule (the value's own magnitude/integrality, NOT its lexical shape —
+// see that function's banner). Accepting bare scalars keeps the
+// context-free W3C toRdf inputs (e.g. toRdf/0001) loadable even though
+// strict expanded form array-wraps every value.
 let jld_scalar_to_term (v:json_val) : option rdf_term =
   match v with
   | JString str -> jld_make_literal str xsd_string None
   | JBool b -> jld_make_literal (if b then "true" else "false") xsd_boolean None
   | JNumber n ->
-    if jld_number_is_double n
-    then jld_make_literal n xsd_double None
-    else jld_make_literal n xsd_integer None
+    let (lex, is_double) = jld_number_canonicalize n false in
+    jld_make_literal lex (if is_double then xsd_double else xsd_integer) None
   | _ -> None
 
 // ================================================================
 // Value objects (@value)
 // ================================================================
 
+// i18n-datatype rdfDirection encoding (JSON-LD 1.1 API §8.6): the
+// literal's datatype becomes https://www.w3.org/ns/i18n#<lang>_<dir>,
+// with the language part lowercased (toRdf/di10: "@language": "en-US"
+// -> datatype suffix "en-us_rtl", but the LEXICAL value keeps its
+// original casing) and omitted entirely (just "_<dir>") when there is
+// no @language (toRdf/di09).
+let jld_i18n_direction_iri (lang:option string) (dir:string) : string =
+  let langpart = (match lang with Some lg -> FStar.String.lowercase lg | None -> "") in
+  String.concat "" ["https://www.w3.org/ns/i18n#"; langpart; "_"; dir]
+
 // JSON-LD 1.1 API §8.6 "Object to RDF Conversion", value-object half,
 // restricted to expanded form. Returns None for non-conforming value
 // objects (both @language and @type; @language on a non-string @value;
-// null / structured @value; invalid @type IRI).
-let jld_value_object_to_term (obj:json_val) : option rdf_term =
+// null / structured @value; invalid @type IRI). `rdir`: the rdfDirection
+// processing mode (see rdf_direction_mode's doc comment above) governing
+// what a "@direction"-bearing value object (JSONLD.Expand threads
+// @direction through the expanded form exactly like @language — see
+// that module's banner) becomes at the RDF layer.
+let jld_value_object_to_term (rdir:rdf_direction_mode) (obj:json_val) : option rdf_term =
   match json_get_field "@value" obj with
   | None -> None
   | Some v ->
     let lang = json_get_string "@language" obj in
     let dt = json_get_string "@type" obj in
-    (match lang, dt with
+    let dir = json_get_string "@direction" obj in
+    (match dir, dt with
      | Some _, Some _ -> None
-     | Some lg, None ->
-       (match v with
-        | JString s -> jld_make_literal s rdf_lang_string (Some lg)
-        | _ -> None)
+     | Some d, None ->
+       (match rdir with
+        | RDM_Drop ->
+          // Direction dropped: comes out exactly as it would with no
+          // @direction present at all (toRdf/di01-di07).
+          (match v with
+           | JString s ->
+             (match lang with
+              | Some lg -> jld_make_literal s rdf_lang_string (Some lg)
+              | None -> jld_make_literal s xsd_string None)
+           | _ -> None)
+        | RDM_I18nDatatype ->
+          (match v with
+           | JString s -> jld_make_literal s (jld_i18n_direction_iri lang d) None
+           | _ -> None)
+        | RDM_CompoundLiteral ->
+          // OUT of scope (module banner): a compound-literal encoding
+          // needs a fresh blank node plus rdf:value/rdf:direction/
+          // rdf:language triples, which this function's single-term
+          // return shape cannot express — honest gap, toRdf/di11-di12
+          // stay FAIL rather than emitting silently-wrong RDF.
+          None)
      | None, Some d ->
        if d = "@json" then
          // PHASE 5: JSONLD.Expand's expand_property_items keeps the
@@ -403,9 +633,24 @@ let jld_value_object_to_term (obj:json_val) : option rdf_term =
          (match v with
           | JString s -> jld_make_literal s d None
           | JBool b -> jld_make_literal (if b then "true" else "false") d None
-          | JNumber n -> jld_make_literal n d None
+          | JNumber n ->
+            // toRdf/0035: the LEXICAL form still tracks the value's own
+            // shape (double-shaped even under a xsd:integer coercion,
+            // e.g. "9.9" -> "9.9E0"^^xsd:integer) while the DATATYPE IRI
+            // stays whatever this term declared — see
+            // jld_number_canonicalize's banner. force_double (d =
+            // xsd:double exactly) makes even an integer-shaped lexeme
+            // like "1" render as "1.0E0".
+            let (lex, _) = jld_number_canonicalize n (d = xsd_double) in
+            jld_make_literal lex d None
           | _ -> None)
-     | None, None -> jld_scalar_to_term v)
+     | None, None ->
+       (match lang with
+        | Some lg ->
+          (match v with
+           | JString s -> jld_make_literal s rdf_lang_string (Some lg)
+           | _ -> None)
+        | None -> jld_scalar_to_term v))
 
 // ================================================================
 // @type entries on node objects
@@ -413,7 +658,7 @@ let jld_value_object_to_term (obj:json_val) : option rdf_term =
 
 let jld_type_term (t:string) : option rdf_term =
   if jld_is_bnode_label t then Some (T_BNode (jld_strip_bnode_prefix t))
-  else if is_iri t then Some (T_IRI t)
+  else if jld_iri_wf t then Some (T_IRI t)
   else None
 
 let rec jld_type_prepend_items (subj:subject) (items:list json_val) (acc:list triple)
@@ -471,21 +716,21 @@ let jld_graph_name_of_subject (s:subject) : iri =
 // A property value in expanded form: value object, list object, node
 // object, or node reference. Returns the term to link to (None when the
 // entry is non-conforming and must be dropped) plus updated acc/named/counter.
-let rec jld_expand_value (v:json_val) (ctr:nat) (acc:list triple) (named:list named_graph) (fuel:nat)
+let rec jld_expand_value (rdir:rdf_direction_mode) (v:json_val) (ctr:nat) (acc:list triple) (named:list named_graph) (fuel:nat)
   : Tot (option rdf_term & list triple & list named_graph & nat) (decreases fuel) =
   if fuel = 0 then (None, acc, named, ctr)
   else
     match v with
     | JObject _ ->
       (match json_get_field "@value" v with
-       | Some _ -> (jld_value_object_to_term v, acc, named, ctr)
+       | Some _ -> (jld_value_object_to_term rdir v, acc, named, ctr)
        | None ->
          (match json_get_field "@list" v with
           | Some lst ->
-            let (t, acc1, named1, ctr1) = jld_expand_list (jld_as_array lst) ctr acc named (fuel - 1) in
+            let (t, acc1, named1, ctr1) = jld_expand_list rdir (jld_as_array lst) ctr acc named (fuel - 1) in
             (Some t, acc1, named1, ctr1)
           | None ->
-            let (osubj, acc1, named1, ctr1) = jld_expand_node v ctr acc named (fuel - 1) in
+            let (osubj, acc1, named1, ctr1) = jld_expand_node rdir v ctr acc named (fuel - 1) in
             (match osubj with
              | Some subj -> (Some (subject_to_term subj), acc1, named1, ctr1)
              | None -> (None, acc1, named1, ctr1))))
@@ -493,19 +738,19 @@ let rec jld_expand_value (v:json_val) (ctr:nat) (acc:list triple) (named:list na
 
 // JSON-LD 1.1 API §8.7 "List Conversion": rdf:first/rdf:rest cells,
 // rdf:nil terminator. Non-conforming entries are skipped.
-and jld_expand_list (items:list json_val) (ctr:nat) (acc:list triple) (named:list named_graph) (fuel:nat)
+and jld_expand_list (rdir:rdf_direction_mode) (items:list json_val) (ctr:nat) (acc:list triple) (named:list named_graph) (fuel:nat)
   : Tot (rdf_term & list triple & list named_graph & nat) (decreases fuel) =
   if fuel = 0 then (T_IRI rdf_nil_iri, acc, named, ctr)
   else
     match items with
     | [] -> (T_IRI rdf_nil_iri, acc, named, ctr)
     | item :: rest ->
-      let (oterm, acc1, named1, ctr1) = jld_expand_value item ctr acc named (fuel - 1) in
+      let (oterm, acc1, named1, ctr1) = jld_expand_value rdir item ctr acc named (fuel - 1) in
       (match oterm with
-       | None -> jld_expand_list rest ctr1 acc1 named1 (fuel - 1)
+       | None -> jld_expand_list rdir rest ctr1 acc1 named1 (fuel - 1)
        | Some t ->
          let (cell, ctr2) = jld_fresh_bnode ctr1 in
-         let (rest_term, acc2, named2, ctr3) = jld_expand_list rest ctr2 acc1 named1 (fuel - 1) in
+         let (rest_term, acc2, named2, ctr3) = jld_expand_list rdir rest ctr2 acc1 named1 (fuel - 1) in
          let cell_subj = S_BNode cell in
          (T_BNode cell,
           { s = cell_subj; p = rdf_rest_iri;  o = rest_term } ::
@@ -524,7 +769,7 @@ and jld_expand_list (items:list json_val) (ctr:nat) (acc:list triple) (named:lis
 // member of this same node object still describes the graph-name
 // resource in the ENCLOSING graph (`acc`), same as the top-level
 // "@graph" wrapper always did.
-and jld_expand_node (v:json_val) (ctr:nat) (acc:list triple) (named:list named_graph) (fuel:nat)
+and jld_expand_node (rdir:rdf_direction_mode) (v:json_val) (ctr:nat) (acc:list triple) (named:list named_graph) (fuel:nat)
   : Tot (option subject & list triple & list named_graph & nat) (decreases fuel) =
   if fuel = 0 then (None, acc, named, ctr)
   else
@@ -542,12 +787,12 @@ and jld_expand_node (v:json_val) (ctr:nat) (acc:list triple) (named:list named_g
        | Some subj ->
          (match json_get_field "@graph" v with
           | Some g ->
-            let (gtris, named1, ctr2) = jld_expand_graph_nodes (jld_as_array g) ctr1 [] named (fuel - 1) in
+            let (gtris, named1, ctr2) = jld_expand_graph_nodes rdir (jld_as_array g) ctr1 [] named (fuel - 1) in
             let ng = { ng_name = jld_graph_name_of_subject subj; ng_graph = gtris } in
-            let (acc1, named2, ctr3) = jld_expand_fields subj fields ctr2 acc (ng :: named1) (fuel - 1) in
+            let (acc1, named2, ctr3) = jld_expand_fields rdir subj fields ctr2 acc (ng :: named1) (fuel - 1) in
             (Some subj, acc1, named2, ctr3)
           | None ->
-            let (acc1, named1, ctr2) = jld_expand_fields subj fields ctr1 acc named (fuel - 1) in
+            let (acc1, named1, ctr2) = jld_expand_fields rdir subj fields ctr1 acc named (fuel - 1) in
             (Some subj, acc1, named1, ctr2)))
     | _ -> (None, acc, named, ctr)
 
@@ -557,7 +802,7 @@ and jld_expand_node (v:json_val) (ctr:nat) (acc:list triple) (named:list named_g
 // called, so it is harmless for the keyword-skip branch below to see it
 // again; other keywords are skipped (@id was consumed by jld_expand_node);
 // IRI keys emit property triples; non-IRI (relative) keys are dropped.
-and jld_expand_fields (subj:subject) (fields:list (string & json_val))
+and jld_expand_fields (rdir:rdf_direction_mode) (subj:subject) (fields:list (string & json_val))
                       (ctr:nat) (acc:list triple) (named:list named_graph) (fuel:nat)
   : Tot (list triple & list named_graph & nat) (decreases fuel) =
   if fuel = 0 then (acc, named, ctr)
@@ -567,7 +812,7 @@ and jld_expand_fields (subj:subject) (fields:list (string & json_val))
     | (key, value) :: rest ->
       let (acc1, named1, ctr1) =
         if key = "@type" then (jld_type_prepend subj value acc, named, ctr)
-        else if key = "@reverse" then jld_expand_reverse_map subj value ctr acc named (fuel - 1)
+        else if key = "@reverse" then jld_expand_reverse_map rdir subj value ctr acc named (fuel - 1)
         else if key = "@included" then
           // PHASE 5: each entry is a full node object (produced by
           // JSONLD.Expand exactly like "@graph"'s contents — see that
@@ -575,26 +820,26 @@ and jld_expand_fields (subj:subject) (fields:list (string & json_val))
           // no linking triple to `subj` — jld_expand_graph_nodes already
           // does exactly this (expand every node, threading acc), we
           // just don't route the result into a fresh named graph.
-          jld_expand_graph_nodes (jld_as_array value) ctr acc named (fuel - 1)
+          jld_expand_graph_nodes rdir (jld_as_array value) ctr acc named (fuel - 1)
         else if jld_is_keyword key then (acc, named, ctr)
-        else if is_iri key then
-          jld_expand_property subj key (jld_as_array value) ctr acc named (fuel - 1)
+        else if jld_iri_wf key then
+          jld_expand_property rdir subj key (jld_as_array value) ctr acc named (fuel - 1)
         else (acc, named, ctr) in
-      jld_expand_fields subj rest ctr1 acc1 named1 (fuel - 1)
+      jld_expand_fields rdir subj rest ctr1 acc1 named1 (fuel - 1)
 
 // A node object's "@reverse" member: {predIri: [items...], ...} (an
 // EXPANDED-form-only shape produced by JSONLD.Expand — see that module's
 // banner). Each predIri key must already be an absolute IRI (Expand only
 // ever produces one via expand_iri); a malformed key is dropped.
-and jld_expand_reverse_map (subj:subject) (v:json_val) (ctr:nat) (acc:list triple) (named:list named_graph) (fuel:nat)
+and jld_expand_reverse_map (rdir:rdf_direction_mode) (subj:subject) (v:json_val) (ctr:nat) (acc:list triple) (named:list named_graph) (fuel:nat)
   : Tot (list triple & list named_graph & nat) (decreases fuel) =
   if fuel = 0 then (acc, named, ctr)
   else
     match v with
-    | JObject entries -> jld_expand_reverse_entries subj entries ctr acc named (fuel - 1)
+    | JObject entries -> jld_expand_reverse_entries rdir subj entries ctr acc named (fuel - 1)
     | _ -> (acc, named, ctr)
 
-and jld_expand_reverse_entries (subj:subject) (entries:list (string & json_val))
+and jld_expand_reverse_entries (rdir:rdf_direction_mode) (subj:subject) (entries:list (string & json_val))
                                (ctr:nat) (acc:list triple) (named:list named_graph) (fuel:nat)
   : Tot (list triple & list named_graph & nat) (decreases fuel) =
   if fuel = 0 then (acc, named, ctr)
@@ -603,10 +848,10 @@ and jld_expand_reverse_entries (subj:subject) (entries:list (string & json_val))
     | [] -> (acc, named, ctr)
     | (prop, value) :: rest ->
       let (acc1, named1, ctr1) =
-        if is_iri prop
-        then jld_expand_reverse_prop subj prop (jld_as_array value) ctr acc named (fuel - 1)
+        if jld_iri_wf prop
+        then jld_expand_reverse_prop rdir subj prop (jld_as_array value) ctr acc named (fuel - 1)
         else (acc, named, ctr) in
-      jld_expand_reverse_entries subj rest ctr1 acc1 named1 (fuel - 1)
+      jld_expand_reverse_entries rdir subj rest ctr1 acc1 named1 (fuel - 1)
 
 // One reverse predicate's array of item values: each item expands as a
 // node reference / node object exactly like an ordinary property value
@@ -614,7 +859,7 @@ and jld_expand_reverse_entries (subj:subject) (entries:list (string & json_val))
 // and is silently dropped, same non-conforming-input leniency as
 // elsewhere); the emitted triple points FROM the item TO the enclosing
 // node (the direction swap that makes it a "reverse" property).
-and jld_expand_reverse_prop (subj:subject) (prop:wf_iri) (vals:list json_val)
+and jld_expand_reverse_prop (rdir:rdf_direction_mode) (subj:subject) (prop:wf_iri) (vals:list json_val)
                             (ctr:nat) (acc:list triple) (named:list named_graph) (fuel:nat)
   : Tot (list triple & list named_graph & nat) (decreases fuel) =
   if fuel = 0 then (acc, named, ctr)
@@ -622,15 +867,15 @@ and jld_expand_reverse_prop (subj:subject) (prop:wf_iri) (vals:list json_val)
     match vals with
     | [] -> (acc, named, ctr)
     | v :: rest ->
-      let (osubj, acc1, named1, ctr1) = jld_expand_node v ctr acc named (fuel - 1) in
+      let (osubj, acc1, named1, ctr1) = jld_expand_node rdir v ctr acc named (fuel - 1) in
       let acc2 =
         (match osubj with
          | Some vsubj -> { s = vsubj; p = prop; o = subject_to_term subj } :: acc1
          | None -> acc1) in
-      jld_expand_reverse_prop subj prop rest ctr1 acc2 named1 (fuel - 1)
+      jld_expand_reverse_prop rdir subj prop rest ctr1 acc2 named1 (fuel - 1)
 
 // The array of values of one property.
-and jld_expand_property (subj:subject) (prop:wf_iri) (vals:list json_val)
+and jld_expand_property (rdir:rdf_direction_mode) (subj:subject) (prop:wf_iri) (vals:list json_val)
                         (ctr:nat) (acc:list triple) (named:list named_graph) (fuel:nat)
   : Tot (list triple & list named_graph & nat) (decreases fuel) =
   if fuel = 0 then (acc, named, ctr)
@@ -638,12 +883,12 @@ and jld_expand_property (subj:subject) (prop:wf_iri) (vals:list json_val)
     match vals with
     | [] -> (acc, named, ctr)
     | v :: rest ->
-      let (oterm, acc1, named1, ctr1) = jld_expand_value v ctr acc named (fuel - 1) in
+      let (oterm, acc1, named1, ctr1) = jld_expand_value rdir v ctr acc named (fuel - 1) in
       let acc2 =
         (match oterm with
          | Some t -> { s = subj; p = prop; o = t } :: acc1
          | None -> acc1) in
-      jld_expand_property subj prop rest ctr1 acc2 named1 (fuel - 1)
+      jld_expand_property rdir subj prop rest ctr1 acc2 named1 (fuel - 1)
 
 // Expand every node object inside a @graph array. PHASE 4: threads
 // `named` too, since one of these nodes may itself carry a further
@@ -651,15 +896,15 @@ and jld_expand_property (subj:subject) (prop:wf_iri) (vals:list json_val)
 // mutual-recursion group as jld_expand_node itself now that jld_expand_node
 // calls it directly (its own "@graph"-member branch, PHASE 4), not just
 // jld_expand_top.
-and jld_expand_graph_nodes (nodes:list json_val) (ctr:nat) (acc:list triple) (named:list named_graph) (fuel:nat)
+and jld_expand_graph_nodes (rdir:rdf_direction_mode) (nodes:list json_val) (ctr:nat) (acc:list triple) (named:list named_graph) (fuel:nat)
   : Tot (list triple & list named_graph & nat) (decreases fuel) =
   if fuel = 0 then (acc, named, ctr)
   else
     match nodes with
     | [] -> (acc, named, ctr)
     | n :: rest ->
-      let (_, acc1, named1, ctr1) = jld_expand_node n ctr acc named (fuel - 1) in
-      jld_expand_graph_nodes rest ctr1 acc1 named1 (fuel - 1)
+      let (_, acc1, named1, ctr1) = jld_expand_node rdir n ctr acc named (fuel - 1) in
+      jld_expand_graph_nodes rdir rest ctr1 acc1 named1 (fuel - 1)
 
 // ================================================================
 // Top level: default graph + named graphs
@@ -667,7 +912,7 @@ and jld_expand_graph_nodes (nodes:list json_val) (ctr:nat) (acc:list triple) (na
 
 // One top-level array entry. dflt and the per-named-graph triple lists
 // are reversed accumulators; named collects named graphs in reverse.
-let jld_expand_top (v:json_val) (dflt:list triple) (named:list named_graph)
+let jld_expand_top (rdir:rdf_direction_mode) (v:json_val) (dflt:list triple) (named:list named_graph)
                    (ctr:nat) (fuel:nat)
   : (list triple & list named_graph & nat) =
   match v with
@@ -684,18 +929,18 @@ let jld_expand_top (v:json_val) (dflt:list triple) (named:list named_graph)
        (match subj_opt with
         | None -> (dflt, named, ctr1)
         | Some gsubj ->
-          let (gtris, named1, ctr2) = jld_expand_graph_nodes (jld_as_array g) ctr1 [] named fuel in
+          let (gtris, named1, ctr2) = jld_expand_graph_nodes rdir (jld_as_array g) ctr1 [] named fuel in
           // Non-keyword members of the container node describe the
           // graph-name resource in the DEFAULT graph.
-          let (dflt1, named2, ctr3) = jld_expand_fields gsubj fields ctr2 dflt named1 fuel in
+          let (dflt1, named2, ctr3) = jld_expand_fields rdir gsubj fields ctr2 dflt named1 fuel in
           let ng = { ng_name = jld_graph_name_of_subject gsubj; ng_graph = gtris } in
           (dflt1, ng :: named2, ctr3))
      | None ->
-       let (_, dflt1, named1, ctr1) = jld_expand_node v ctr dflt named fuel in
+       let (_, dflt1, named1, ctr1) = jld_expand_node rdir v ctr dflt named fuel in
        (dflt1, named1, ctr1))
   | _ -> (dflt, named, ctr)
 
-let rec jld_expand_tops (vs:list json_val) (dflt:list triple) (named:list named_graph)
+let rec jld_expand_tops (rdir:rdf_direction_mode) (vs:list json_val) (dflt:list triple) (named:list named_graph)
                         (ctr:nat) (fuel:nat)
   : Tot (list triple & list named_graph & nat) (decreases fuel) =
   if fuel = 0 then (dflt, named, ctr)
@@ -703,8 +948,8 @@ let rec jld_expand_tops (vs:list json_val) (dflt:list triple) (named:list named_
     match vs with
     | [] -> (dflt, named, ctr)
     | v :: rest ->
-      let (d1, n1, c1) = jld_expand_top v dflt named ctr fuel in
-      jld_expand_tops rest d1 n1 c1 (fuel - 1)
+      let (d1, n1, c1) = jld_expand_top rdir v dflt named ctr fuel in
+      jld_expand_tops rdir rest d1 n1 c1 (fuel - 1)
 
 // Is @graph the only key of an object? (Then it is the document wrapper
 // and its contents belong to the default graph.)
@@ -719,11 +964,11 @@ let rec jld_only_graph_keys (fields:list (string & json_val)) : Tot bool (decrea
 
 // Deserialize an already-parsed expanded-form JSON-LD value tree.
 // None when the top level is not an array or object.
-let jld_dataset_of_json (root:json_val) : option rdf_dataset =
+let jld_dataset_of_json (rdir:rdf_direction_mode) (root:json_val) : option rdf_dataset =
   let fuel = json_size root + 1 in
   match root with
   | JArray tops ->
-    let (d, n, _) = jld_expand_tops tops [] [] 0 fuel in
+    let (d, n, _) = jld_expand_tops rdir tops [] [] 0 fuel in
     Some (dataset_finalise { ds_default = d; ds_named = List.Tot.rev n })
   | JObject fields ->
     let tops =
@@ -732,7 +977,7 @@ let jld_dataset_of_json (root:json_val) : option rdf_dataset =
          | Some g -> jld_as_array g
          | None -> [root])
       else [root] in
-    let (d, n, _) = jld_expand_tops tops [] [] 0 fuel in
+    let (d, n, _) = jld_expand_tops rdir tops [] [] 0 fuel in
     Some (dataset_finalise { ds_default = d; ds_named = List.Tot.rev n })
   | _ -> None
 
@@ -745,26 +990,60 @@ let jld_has_inline_context (root:json_val) : bool =
   | JObject fields -> List.Tot.existsb (fun (kv:(string & json_val)) -> fst kv = "@context") fields
   | _ -> false
 
+// The rdfDirection option's raw string value (manifest's `option.
+// rdfDirection`, e.g. "i18n-datatype" / "compound-literal") to the
+// internal mode enum. `None` (the option absent) and any unrecognized
+// string both mean RDM_Drop — the JSON-LD 1.1 API default when no
+// explicit rdfDirection is given.
+let rdf_direction_mode_of_option (rdf_direction:option string) : rdf_direction_mode =
+  match rdf_direction with
+  | Some "i18n-datatype" -> RDM_I18nDatatype
+  | Some "compound-literal" -> RDM_CompoundLiteral
+  | _ -> RDM_Drop
+
 // Parse a JSON-LD document into an RDF dataset. `base`: the document's
 // own base IRI (PHASE 6, issue #275 — the manifest's `option.base`, or a
 // consumer's own notion of "the IRI this document was loaded from";
 // `None` when the consumer has none to offer, e.g. a CLI reading a bare
-// file with no associated URL). A document whose top level is a JObject
-// carrying an inline @context, OR for which `base` is `Some _`, is run
-// through JSONLD.Expand first (PHASE 3a: JSONLD.Context + JSONLD.Expand
-// — see module banner), seeding the initial active context's `ac_base`
-// from `base`; a document with NEITHER an inline @context NOR a supplied
-// base takes the unchanged Phase 1 path straight into
-// jld_dataset_of_json, which requires EXPANDED FORM input. None when the
-// input is not valid RFC 8259 JSON, expansion hits an out-of-scope
-// feature (module banner), or the top level is not an array/object.
-let parse_jsonld (input:string) (base:option string) : option rdf_dataset =
+// file with no associated URL). `rdf_direction`: the manifest's
+// `option.rdfDirection` raw string, converted via
+// rdf_direction_mode_of_option — see rdf_direction_mode's doc comment
+// for what each mode does. `expand_context`: the manifest's
+// `option.expandContext` (toRdf/e077) — an ALREADY-ABSOLUTE IRI naming a
+// context document to apply BEFORE the document's own inline @context
+// (the consumer resolves any manifest-relative path the same way it
+// resolves `base` — see bin/jsonld-runner/jsonld_runner.ml's
+// jld_rdf_direction-adjacent option threading). Realised by treating it
+// EXACTLY like an ordinary remote "@context" string reference
+// (JSONLD.Context.context_process's JString branch already does
+// "fetch document, extract its top-level @context member, process it" —
+// the whole mechanism issue #275 built for remote contexts / "@import").
+// A document whose top level is a JObject carrying an inline @context,
+// OR for which `base` or `expand_context` is `Some _`, is run through
+// JSONLD.Expand first (PHASE 3a: JSONLD.Context + JSONLD.Expand — see
+// module banner), seeding the initial active context's `ac_base` from
+// `base` and, when `expand_context` is given, pre-applying that context;
+// a document with NONE of the three takes the unchanged Phase 1 path
+// straight into jld_dataset_of_json, which requires EXPANDED FORM
+// input. None when the input is not valid RFC 8259 JSON, expansion (or
+// the expandContext pre-application) hits an out-of-scope feature
+// (module banner), or the top level is not an array/object.
+let parse_jsonld (input:string) (base:option string) (rdf_direction:option string)
+                  (expand_context:option string) : option rdf_dataset =
+  let rdir = rdf_direction_mode_of_option rdf_direction in
   match parse_json input with
   | None -> None
   | Some root ->
-    if jld_has_inline_context root || Some? base then
-      let ac0 = { empty_active_context with ac_base = base } in
-      (match expand ac0 root with
+    if jld_has_inline_context root || Some? base || Some? expand_context then
+      let ac_seed = { empty_active_context with ac_base = base } in
+      let ac0_opt =
+        (match expand_context with
+         | None -> Some ac_seed
+         | Some ctxref -> context_process ac_seed (JString ctxref) false jld_remote_context_fuel []) in
+      (match ac0_opt with
        | None -> None
-       | Some expanded -> jld_dataset_of_json expanded)
-    else jld_dataset_of_json root
+       | Some ac0 ->
+         (match expand ac0 root with
+          | None -> None
+          | Some expanded -> jld_dataset_of_json rdir expanded))
+    else jld_dataset_of_json rdir root

@@ -1,4 +1,4 @@
-<http://example.org/thing> <http://example.org/big> "1.2e3"^^<http://www.w3.org/2001/XMLSchema#double> .
+<http://example.org/thing> <http://example.org/big> "1200"^^<http://www.w3.org/2001/XMLSchema#integer> .
 <http://example.org/thing> <http://example.org/count> "42"^^<http://www.w3.org/2001/XMLSchema#integer> .
 <http://example.org/thing> <http://example.org/emptyList> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .
 <http://example.org/thing> <http://example.org/flag> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
@@ -6,5 +6,5 @@
 <http://example.org/thing> <http://example.org/label> "café 😀 tab\there \"quoted\" back\\slash" .
 <http://example.org/thing> <http://example.org/motto> "naïve — déjà vu" .
 <http://example.org/thing> <http://example.org/off> "false"^^<http://www.w3.org/2001/XMLSchema#boolean> .
-<http://example.org/thing> <http://example.org/temperature> "-2.5"^^<http://www.w3.org/2001/XMLSchema#double> .
+<http://example.org/thing> <http://example.org/temperature> "-2.5E0"^^<http://www.w3.org/2001/XMLSchema#double> .
 _:pal <http://example.org/name> "Pal" .
