@@ -94,7 +94,7 @@ Caveats, all CONFIRMED by experiment or source:
 |---|---|---|---|---|
 | `.checked` files | Serialized typechecked module (`--cache_checked_modules`) | `formal/fstar/*.fst.checked`, next to source; gitignored | Source **content digest** change (not mtime — CONFIRMED); any dependency's `.checked` going stale (cascades — CONFIRMED); F\* version change (PROPOSED, from F\* release practice; not tested here). NOT invalidated by `--z3rlimit_factor` change (CONFIRMED) | RDF.Bytes: 6.4s cold → 0.5s warm, 12x (CONFIRMED) |
 | ulib `.checked` | Pre-checked F\* stdlib | `~/.opam/fstar/lib/fstar/ulib.checked/` | Reinstalling/upgrading the fstar opam package | Ships with the package; stdlib never re-verified (CONFIRMED via --dep output paths) |
-| `.hints` files | Recorded z3 unsat cores for proof replay (`--record_hints` / `--use_hints`) | `Foo.fst.hints` next to source (or `--hint_dir`); JSON text | Query hash mismatch per top-level name; z3 version or `--z3seed` drift can break replay (PROPOSED) | **Measured negative here**: RDF.Bytes re-verify 6.3s plain vs 12.4s with `--use_hints` (CONFIRMED, 3 repeats). See P5 before adopting |
+| `.hints` files | Recorded z3 unsat cores for proof replay (`--record_hints` / `--use_hints`) | `Foo.fst.hints` next to source (or `--hint_dir`); JSON text | Query hash mismatch per top-level name; z3 version or `--z3seed` drift can break replay (PROPOSED) | **Measured negative on every module tested — REJECTED for the pipeline, 2026-07-04** (CONFIRMED, 4 modules incl. SPARQL11.Algebra, 2-3 repeats each; full table in P5). Slowdowns +20% to +80%; a hint MISS degrades gracefully (rc=0, warning line, plain-verify speed) |
 | Incremental-extract manifest | Per-module `.fst` source SHA-256 recorded from the last successful extract; `--force-full` bypasses it | `ocaml-output/.extract-state/manifest.tsv`, gitignored | Any change to a module's own `.fst` content (CONFIRMED — see P2 below); NOT invalidated by a dependency's content changing unless the dependent's own source also changes (CONFIRMED, this is the accepted trade-off) | Skips fstar.exe invocation entirely (not just codegen) for modules unrelated to the edit — replaces the old flat "everyone after this point in the list" cascade. CONFIRMED via scratch harness, see P2 |
 | Committed `.ml` + binaries | Extraction output + `bin/<platform>/` | git (iron rule #9) | Re-extraction; `ocaml-patches.sh` rewrites `.ml` in place | Fresh clone runs tests with no toolchain |
 | Compile skip | `needs_rebuild_from_sources` mtime check over all `.ml` + consumer sources | build-ocaml.sh lines 523-532 | Any single `.ml` newer than any binary → **full** recompile of everything (CONFIRMED) | Skips all ocamlopt invocations on a no-op |
@@ -121,6 +121,13 @@ experimental), `--z3refresh`, `--z3rlimit`, `--z3rlimit_factor`,
 `--z3seed`, `--z3version`. There is **no** `--z3threads` or any
 in-process query-parallelism flag (CONFIRMED by absence from
 --help). Parallelism is process-level only.
+
+Hint-flag spellings re-confirmed against F\* 2025.12.15 (this
+container's toolchain, 2026-07-04): `--record_hints`, `--use_hints`,
+`--use_hint_hashes`, `--hint_dir <dir>` ("Read/write hints to
+dir/module_name.hints"), `--hint_file <path>` (overrides hint_dir),
+`--detail_hint_replay`, plus `--reuse_hint_for <toplevel_name>` and
+the deprecated `--hint_info`.
 
 ## Dependency-driven parallel verification
 
@@ -209,6 +216,27 @@ cache with the extract pipeline (CONFIRMED from source).
 - Extraction from a valid `.checked`: 0.64s, emits only the
   command-line module's `.ml`.
 - make -j4 over a 4-module DAG: 7.2s vs 11.8s serial.
+
+Additional hints measurements (2026-07-04, F\* 2025.12.15, z3
+4.13.3, scratch-isolated copies of the sources, warm dependency
+`.checked`, comment-only edit invalidating the target's `.checked`,
+2-3 repeats per cell — full table and the rejection decision in P5):
+
+- `--record_hints` costs nothing over a plain verify (39.4s vs 39.8s
+  on SPARQL11.Algebra) and hints files are small JSON (1.9 KB for
+  SPARQL.JSON.Escape up to 274 KB for SPARQL11.Algebra).
+- **`--record_hints` silently writes NO hints file when any
+  dependency lacks a valid `.checked`** — the same gating as the
+  Warning 247 `.checked` write suppression. Verify the deps as
+  command-line targets first or the record pass is a no-op with no
+  error.
+- Scratch-experiment hazard: running `fstar.exe --include
+  <real-tree> --cache_dir <scratch>` on a scratch copy of a module
+  wrote the `.checked` files **next to the real tree's sources**,
+  not into the scratch cache dir — contaminating the main worktree
+  with `.checked` keyed to the edited scratch copy. For isolated
+  experiments, copy ALL `.fst`/`.fsti` into the scratch dir and pass
+  no `--include` of the real tree.
 
 ## Proposals not yet implemented
 
@@ -362,25 +390,52 @@ Expected win: PR-gating check-extraction drops from full-cold verify
 (~10-25 min) to near-warm on .fst-light PRs. Measurement: CI
 wall-clock on a docs-only PR and a one-module PR, before/after.
 
-### P5 — hints: measure on the expensive modules before adopting
+### P5 — hints — MEASURED AND REJECTED, 2026-07-04
 
-The one measured data point (RDF.Bytes) says hints are a 2x
-slowdown, so do not turn on `--use_hints` globally. The candidates
-where hints could pay are the modules whose SMT time dominates the
-cold build — likely `SPARQL11.Algebra.fst`, `SPARQL11.Parser.fst`,
-`RDF.Graph.Executable.fst` (the three largest). Experiment: record
-hints on the top-5 slowest modules, perturb with a comment, compare
-re-verify with/without `--use_hints` and with `--use_hint_hashes`.
-Adopt per-module (hints are per-file) only where measured faster.
-If adopted: commit the `.hints` files (they are JSON text; shipping
-them in-repo is standard F\* practice — the Low\* manual describes a
-committed `hints/` directory), keep z3 pinned at 4.13.3 and leave
-`--z3seed` at its default 0, since replay validity is tied to the
-recorded query hashes.
+The experiment this proposal asked for was run (scratch-isolated
+source copies, F\* 2025.12.15, z3 4.13.3, warm dependency
+`.checked`, comment-only edit invalidating the target's `.checked`
+so a real re-verify happens, 2-3 repeats per cell, run-to-run spread
+under 5%). `--use_hints` replay was slower than plain SMT re-verify
+on **every** module tested, including SPARQL11.Algebra — the largest
+module in the repo and the case this proposal predicted hints might
+win:
 
-Expected win: unknown until measured; potentially large on
-SMT-heavy modules, zero or negative elsewhere. Measurement plan is
-the experiment itself.
+| Module (lines) | Plain re-verify | `--use_hints` | `--use_hint_hashes` | Hints file |
+|---|---|---|---|---|
+| SPARQL.JSON.Escape (97) | 0.73-0.76s | 0.89-0.91s (+20%) | — | 1.9 KB |
+| RDF.NQuads.Serialize (152) | 0.79-0.82s | 0.95-1.01s (+21%) | — | 2.5 KB |
+| RDF.Bytes (356) | 6.57-6.72s | 11.86-12.01s (+79%) | 12.27s | 21.6 KB |
+| SPARQL11.Algebra (5777) | 40.53-40.63s | 60.68-61.38s (+50%) | 63.92s | 274 KB |
+
+This matches the earlier single data point (RDF.Bytes, 2026-07-03)
+and generalizes it: for this codebase's query profile, unsat-core
+replay overhead exceeds the SMT time it saves, at every module size
+tried. Even `--use_hint_hashes` (which *admits* queries whose hash
+matches — laxer than replay) was no faster. Recording itself is
+free (`--record_hints` 39.4s vs plain 39.8s on Algebra), and a hint
+MISS degrades gracefully (rc=0, "Unable to open hints file ... ran
+without hints" warning, plain-verify speed) — so the mechanism
+works as documented; it just loses on time here.
+
+**Decision: do not wire `--record_hints` / `--use_hints` into
+build-ocaml.sh.** The `.checked` digest cache plus the
+incremental-extract manifest (P2) remain the caching story. Note the
+interaction that motivated this experiment: the manifest skips
+fstar.exe entirely for unchanged modules, so hints could only ever
+have helped the invocations that DO run (edited modules + true
+dependents) — exactly the runs measured above, where they lose.
+
+Revisit only if: (a) the F\* toolchain is upgraded and release notes
+claim hint-replay improvements, (b) a module's proofs grow
+`--z3rlimit` bumps / long-running quantifier-heavy queries (replay
+wins are documented upstream for exactly those), or (c) CI needs
+edit-tolerant warm verification that `.checked` cannot give and is
+willing to pay the measured slowdown for it. Re-run the same
+experiment before adopting; the harness lives in this repo's
+session scratchpads and takes ~10 min to reproduce from the
+description above (copy all sources to a scratch dir — see the
+`--include` contamination hazard in the measurements section).
 
 ### P6 — warm the session container
 
@@ -391,7 +446,8 @@ pre-baking, in value order: (a) the opam switch itself in the
 container image (largest fixed cost, ~10+ min and network-dependent
 to rebuild); (b) `formal/fstar/*.fst.checked` across sessions —
 digest-keyed, so a stale restore is harmless, it just re-verifies;
-(c) `.hints` files if P5 adopts them (moot if committed to git).
+(c) ~~`.hints` files if P5 adopts them~~ (P5 measured and rejected
+hints, 2026-07-04 — nothing to persist).
 A cheap interim: have the bootstrap kick a background
 `make -j$(nproc) verify`-equivalent (post-P1) so the cache warms
 while the session reads context, honoring rule #20 (background it)
