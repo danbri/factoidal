@@ -1,7 +1,7 @@
 {
-  "name": "factoidal",
+  "name": "@danbri/foafos",
   "version": "0.1.0-alpha.0",
-  "description": "Formally-verified SPARQL 1.1 + RDF 1.1 for Node and the browser",
+  "description": "DRAFT \u2014 formally verified RDF/SPARQL engine (F*-extracted) for JS and Wasm. Placeholder name; real package setup to follow.",
   "keywords": [
     "sparql",
     "rdf",
@@ -81,9 +81,10 @@
     "build": "cd ../../formal/fstar && ./build-ocaml.sh npm",
     "test": "node --test 'test/*.test.js'",
     "test:smoke": "node test/smoke.js && node test/smoke-wasm.mjs",
-    "prepublishOnly": "echo 'Do not publish yet — 0.1.0-alpha.0 is scaffolding only.' && exit 1"
+    "prepublishOnly": "echo 'Do not publish yet \u2014 0.1.0-alpha.0 is scaffolding only.' && exit 1"
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "private": true
 }

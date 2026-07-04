@@ -1,155 +1,147 @@
-# factoidal
+# @danbri/foafos — DRAFT
 
-Formally-verified SPARQL 1.1 + RDF 1.1, for Node and the browser.
-
-The semantics live in [F*](https://www.fstar-lang.org/) and are
-compiled via OCaml and js_of_ocaml / wasm_of_ocaml into the engine
-bundles shipped in this package. There is no hand-written SPARQL
-evaluator — the JavaScript you run here was extracted from the same
-`.fst` specifications that verify under Z3.
-
-Verification status qualifier: parser and algebra spec verified in
-F*; on-disk backend has unverified OCaml-side optimization layers
-being migrated back to F* (see fstar-purity-unwind.md).
-
-> Status: **0.1.0-alpha.0, unpublished.** Scaffolding committed to the
-> repo so the API surface can be iterated before a real release.
-> Nothing has been published to the npm registry yet. See
+> **DRAFT documentation.** `@danbri/foafos` is a placeholder name —
+> not registered, not published; real package setup follows as things
+> mature (`package.json` is marked `private` to prevent accidental
+> publishing). API surface is 0.1.0-alpha and may change. See
 > [CHANGELOG.md](CHANGELOG.md).
 
-## Why this engine
+A formally verified RDF/SPARQL engine for JavaScript and WebAssembly.
+The semantics live in [F\*](https://www.fstar-lang.org/) and are
+compiled via OCaml and js_of_ocaml / wasm_of_ocaml into the engine
+bundles shipped here. There is no hand-written SPARQL evaluator — the
+JavaScript you run was extracted from the same `.fst` specifications
+that verify under Z3 and pass the W3C suites.
 
-- **Full SPARQL 1.1 client-side.** Query (and update, once the
-  npm-entry bundle ships) run entirely in your process — no server,
-  no endpoint.
-- **RDFC-1.0 canonicalization built in.** `canonicalize()` gives you
-  standard canonical N-Quads (rdflib and N3.js need a separate library
-  for this).
-- **RDFS / OWL-RL entailment as a query option** (`entail: 'RDFS'`).
-- **The verified core**, subject to the qualifier stated above.
+Verification status qualifier: parser and algebra spec verified in
+F\*; the on-disk backend has unverified OCaml-side optimization layers
+being migrated back to F\* (the npm build does not include the
+on-disk backend).
 
-## Install
+## Why this instead of N3.js / rdflib.js / Comunica?
+
+- **Full SPARQL 1.1 client-side** — query and update evaluated in
+  your process by conformance-tested code (631 of 631 W3C SPARQL
+  tests, 1031 of 1031 RDF parsing tests on the native build of the
+  same source); no server, no endpoint.
+- **RDFC-1.0 canonicalization built in**: `canonicalize()` yields
+  standard canonical N-Quads (stable under blank-node renaming — for
+  content addressing, dataset diffing, cache keys) without a separate
+  library.
+- **RDFS / OWL-RL entailment** as a query option (`entail: "RDFS"`).
+- **RDF/JS data model** (`DataFactory`, terms with `.equals`,
+  `DatasetCore`) so it composes with the existing ecosystem.
+- Provenance: every release corresponds to a gates-green commit of
+  [danbri/factoidal](https://github.com/danbri/factoidal).
+
+## Install (placeholder — not yet published)
 
 ```bash
-npm install factoidal
+npm install @danbri/foafos
 ```
 
 ## Quickstart
 
 ```js
-const { parse, query, serialize, canonicalize, dataFactory } = require('factoidal');
-// ESM: import { parse, query } from 'factoidal';
+import { parse, query, serialize, canonicalize, dataFactory }
+  from "@danbri/foafos";
 
-const ds = await parse(`
-  @prefix ex:   <http://example.org/> .
+// Parse any supported syntax into an RDF/JS DatasetCore.
+const ds = parse(`
   @prefix foaf: <http://xmlns.com/foaf/0.1/> .
-  ex:alice foaf:name "Alice" ; foaf:knows ex:bob .
-  ex:bob   foaf:name "Bob" .
-`);                                       // -> Dataset (RDF/JS quads)
+  _:a foaf:name "Alice" ; foaf:knows _:b .
+  _:b foaf:name "Bob" .
+`, { format: "turtle" });
 
-const rows = await query(ds, `
+// SELECT — bindings are Map<variableName, RDF/JS Term>.
+const rows = query(ds, `
   PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-  SELECT ?name WHERE { ?p foaf:name ?name }
-`);                                       // -> Array<Map<string, Term>>
-for (const row of rows) console.log(row.get('name').value);
+  SELECT ?name WHERE { ?p foaf:name ?name } ORDER BY ?name
+`);
+for (const b of rows) console.log(b.get("name").value); // Alice, Bob
 
-await query(ds, 'ASK { ?s ?p ?o }');      // -> true
-await serialize(ds);                      // -> sorted N-Quads string
-await canonicalize(ds);                   // -> RDFC-1.0 canonical N-Quads
+// ASK — plain boolean.
+const yes = query(ds, "ASK { ?s ?p ?o }");   // true
+
+// Canonical N-Quads (RDFC-1.0): identical output for isomorphic
+// inputs regardless of blank-node labels.
+const c14n = canonicalize(ds);
+
+// Round-trip.
+const nq = serialize(ds, { format: "nquads" });
 ```
 
-For the wasm engine (Node >= 22) with the same API:
+CommonJS: `const foafos = require("@danbri/foafos")`.
+
+### WebAssembly entry
 
 ```js
-const factoidal = require('factoidal/wasm');
+import { parse, query } from "@danbri/foafos/wasm";
+// Same API over the wasm_of_ocaml bundle; needs a Wasm-GC engine
+// (Chrome >= 119, Node >= 22). The unit suite asserts byte-parity
+// between the JS and Wasm entries on parse/SELECT/ASK.
 ```
 
-## API
+### RDF/JS interop
 
-| Function | Signature | Returns |
-| --- | --- | --- |
-| `parse` | `parse(text, {format?, baseIRI?})` | `Promise<Dataset>` |
-| `query` | `query(data, sparql, {entail?, format?})` | `Promise<Bindings[]>` (SELECT), `Promise<boolean>` (ASK), `Promise<Dataset>` (CONSTRUCT) |
-| `update` | `update(data, sparqlUpdate)` | `Promise<Dataset>` |
-| `serialize` | `serialize(data, {format?: 'nquads'\|'ntriples'})` | `Promise<string>` |
-| `canonicalize` | `canonicalize(data)` | `Promise<string>` (RDFC-1.0 canonical N-Quads) |
-| `capabilities` | `capabilities()` | `Promise<{entry, construct, update, canonicalize}>` |
-| `dataFactory` | RDF/JS DataFactory | terms with `.equals()` |
-| `Dataset` | RDF/JS DatasetCore | `size/add/delete/has/match`, iterable, `toNQuads()` |
-| `queryRaw` | `queryRaw(text, sparql, {dataFormat?, entail?, output?})` | `Promise<SparqlResultsJson\|string>` (legacy surface) |
-
-`data` is a `Dataset`, a document string (`format` defaults to
-`'turtle'`), a `{text, format}` object, or an array of those — each
-array element is loaded as its own document, so blank-node labels
-never join across documents. Input formats: Turtle, N-Triples,
-N-Quads, TriG, RDF/XML. Bindings are `Map`s from variable name to
-RDF/JS term (`NamedNode` / `BlankNode` / `Literal` with
-`language` / `datatype`).
-
-Full types: [index.d.ts](index.d.ts). RDF/JS data model + N-Quads
-converters are importable on their own via `require('factoidal/rdfjs')`.
-
-### Interop
-
-The terms and `Dataset` follow the RDF/JS data-model and DatasetCore
-specs, so quads flow into N3.js, Comunica, rdf-ext, graphy, etc.
-Convert any RDF/JS quad stream into factoidal with
-`new Dataset(quads)` and back out by iterating.
-
-### CONSTRUCT / UPDATE / canonicalize availability
-
-`capabilities()` reports what the bundled engine artifacts support.
-With only the single-shot CLI bundle (`factoidal.js`), CONSTRUCT,
-UPDATE and (on older bundles) `canonicalize()` reject with an Error
-mentioning "pending npm-entry build"; the
-`factoidal-npm-entry.js` bundle (see
-[bin/npm-entry/README.md](https://github.com/danbri/factoidal/blob/main/bin/npm-entry/README.md))
-enables all of them.
-
-## Browser
-
-The legacy SRJ-shaped `query()` is available as an ES module for
-browsers via `factoidal/browser` (js_of_ocaml) and
-`factoidal/browser-wasm` (wasm_of_ocaml, Chrome/Edge >= 119). The
-typed RDF/JS API currently targets Node; browser support for it
-arrives with the npm-entry bundle.
-
-## Limits (v0.1, stated up front)
-
-- **Memory:** the in-memory dataset costs roughly 1 KB per triple
-  (measured ~1.2 KB/quad). A 1M-triple load wants ~1.2 GB.
-- **No streaming parse:** documents are parsed whole; there is no
-  StreamRDF-style incremental interface yet.
-- **Bundle size:** the engine bundle is hundreds of KB of generated
-  JavaScript (multi-MB unminified in some configurations).
-- **Lenient Turtle parsing:** syntax errors in Turtle input currently
-  yield an empty/partial dataset rather than a thrown error (error
-  reporting is queued upstream).
-- **No JSON-LD yet** (an F*-first parser is on the roadmap), and
-  DESCRIBE is not implemented.
-- **One call at a time:** the CLI-bundle path swaps process globals
-  during a call and is not reentrant; concurrent calls in one process
-  are serialized by await-discipline, not by the library.
-
-## Engine selection
-
-- `require('factoidal')` — js_of_ocaml bundle, works on Node >= 20.
-- `require('factoidal/wasm')` — wasm_of_ocaml bundle, Node >= 22
-  (WasmGC). `wasmAvailable()` reports whether the assets are present.
-- Env overrides for development: `FACTOIDAL_JS_BUNDLE`,
-  `FACTOIDAL_WASM_BUNDLE`, `FACTOIDAL_NPM_ENTRY`,
-  `FACTOIDAL_NPM_ENTRY_WASM` (absolute paths to alternate bundles).
-
-## Tests
-
-```bash
-npm test              # node --test test/*.test.js
-npm run test:smoke    # legacy smoke tests (raw SRJ surface + wasm)
+```js
+import { dataFactory } from "@danbri/foafos";
+const { namedNode, literal, quad, blankNode } = dataFactory;
+const q = quad(blankNode("x"),
+               namedNode("http://xmlns.com/foaf/0.1/name"),
+               literal("Alice", "en"));
+// Terms implement termType/value/language/datatype/.equals per the
+// RDF/JS data-model spec; Dataset implements DatasetCore
+// (add/delete/has/match/size/iteration).
 ```
 
-Tests that need the npm-entry bundle skip with reason
-"pending npm-entry build" until it is built.
+## API (draft)
 
-## License
+| Function | Signature (informal) | Notes |
+|---|---|---|
+| `parse` | `(text, {format?, baseIRI?}) => Dataset` | formats: `turtle`, `ntriples`, `nquads`, `trig`, `rdfxml`, `jsonld`\* — auto-detected where possible. Each call is one document: blank-node labels are scoped per RDF 1.1 |
+| `query` | `(Dataset \| string, sparql, {entail?}) => Bindings[] \| boolean \| Dataset` | SELECT → array of `Map<var, Term>`; ASK → boolean; CONSTRUCT → Dataset\*\*; `entail: "RDFS" \| "OWL-RL"` |
+| `update` | `(Dataset, sparqlUpdate) => Dataset` | \*\* in-memory; no persistence |
+| `serialize` | `(Dataset, {format}) => string` | `nquads`, `ntriples` (sorted); prettier Turtle output is staged work |
+| `canonicalize` | `(Dataset \| string) => string` | RDFC-1.0 canonical N-Quads\*\* |
+| `queryRaw` | `(input, sparql) => string` | SPARQL-Results-JSON string, for callers that want the wire form |
+| `capabilities` | `() => {construct, update, canonicalize, ...}` | runtime feature probe |
+| `dataFactory` | RDF/JS DataFactory | |
+| `Dataset` | RDF/JS DatasetCore | returned by `parse`; accepted everywhere |
 
-Apache-2.0. See [LICENSE](LICENSE).
+\* JSON-LD expanded form lands with the current engine build; full
+JSON-LD 1.1 (contexts, remote `@context` via a pluggable
+`documentLoader`) is staged, tracked against the vendored W3C
+json-ld-api suite.
+\*\* CONSTRUCT, UPDATE, and `canonicalize` are probed via
+`capabilities()`: they activate automatically when the dedicated
+npm-entry engine bundle is present, and the package reports their
+absence honestly against older bundles instead of guessing.
+
+## Limits (deliberate, documented)
+
+- **In-memory only.** ~1.2 KB RAM per quad (measured); 1M quads ≈
+  1.2 GB. No streaming parse yet — inputs are whole strings.
+- Lenient Turtle parsing: `parse()` cannot yet reject syntax errors
+  (bad input can yield an empty dataset).
+- No persistence in the npm build; the on-disk store (COTTAS) is
+  native-only today.
+- Bundles are js_of_ocaml-scale (several MB). The Wasm entry trades
+  startup cost for throughput.
+
+## Testing
+
+`npm test` — unit suite covering the parse/query/serialize surface,
+the RDF/JS contract, canonicalization stability under blank-node
+renaming, and JS↔Wasm byte-parity. The engine underneath is gated on
+every landing by the full W3C suites, a cross-backend parity harness,
+and comparison probes against Apache Jena ARQ — live scores with
+dates and commit links at
+[danbri.github.io/factoidal/test-results](https://danbri.github.io/factoidal/test-results/).
+
+## Provenance & license
+
+Built from [danbri/factoidal](https://github.com/danbri/factoidal)
+(Apache-2.0). This package's JavaScript is a thin consumer layer (API
+shaping + RDF/JS conversion) containing no RDF/SPARQL semantics of
+its own — the semantics are F\*-extracted.
