@@ -1,7 +1,9 @@
 module JSONLD.Context
 
 // ============================================================================
-// JSON-LD 1.1 Context Processing — PHASE 3a (inline contexts only).
+// JSON-LD 1.1 Context Processing — PHASE 3a (inline contexts only) + PHASE 3b
+// (@reverse term definitions, map-shaped containers, RFC 3986 base
+// resolution).
 //
 // Implements a subset of the JSON-LD 1.1 API "Context Processing" algorithm
 // (spec section 4 / "Create Term Definition"), restricted to contexts given
@@ -12,30 +14,37 @@ module JSONLD.Context
 // Supported here:
 //   - simple term definitions: "term": "IRI-or-compact-IRI-or-keyword";
 //   - expanded term definitions: "term": { "@id"/"@reverse", "@type",
-//     "@container": "@list"/"@set" (or an array containing those),
-//     "@language" };
-//   - "@vocab", "@base", "@language", "@version" (accepted, ignored);
+//     "@container": "@list"/"@set"/"@index"/"@language"/"@id"/"@type" (or
+//     an array containing one of those plus "@set"), "@language" };
+//   - "@vocab", "@base", "@language", "@version" (accepted; "@base" is
+//     resolved against any previous "@base" per RFC 3986 — see
+//     jldctx_resolve below — "@version" is otherwise ignored);
 //   - compact-IRI + term-based prefix expansion (expand_iri below);
 //   - context reset via JNull;
-//   - an array of contexts, folded left to right.
+//   - an array of contexts, folded left to right;
+//   - RFC 3986 relative-IRI resolution against @base: jldctx_resolve reuses
+//     SPARQL11.IRI.Resolve.resolve_iri (a dependency-free-of-SPARQL11.Algebra
+//     utility over RDF.Graph.Executable's wf_iri only — importing it here
+//     does not invert the semantic-core/pragmatics stratification, since
+//     that module has no reverse dependency on JSONLD.*; see
+//     skills/fstar-module-style/SKILL.md).
 //
-// OUT of scope for 3a (a document that needs any of these gets an honest
+// OUT of scope for 3b (a document that needs any of these gets an honest
 // None from context_process, rather than a silently wrong active context):
 //   - remote contexts (a JString context value — Phase 4 loader);
-//   - scoped (property- or type-scoped) contexts: any unrecognized keyword
-//     inside a term-definition object (e.g. a nested "@context") or at the
-//     top level (e.g. "@protected", "@import", "@propagate");
-//   - "@container" values other than "@list" / "@set" (the map-shaped
-//     containers: @index, @language, @id, @type as containers);
-//   - full RFC 3986 relative-IRI resolution against @base (expand_iri below
-//     does a naive concatenation only — sufficient for the toRdf fixtures
-//     this phase targets, which do not exercise @base resolution).
+//   - scoped (property- or type-scoped) contexts: a nested "@context"
+//     inside a term-definition object;
+//   - "@protected" / "@import" / "@propagate" / "@nest" (as a term-def
+//     member) / "@prefix";
+//   - "@container" combinations involving "@graph" (graph containers).
 // ============================================================================
 
 open FStar.String
 open FStar.List.Tot
 open Parser.FastString
 open Parser.JSON
+open RDF.Graph.Executable
+open SPARQL11.IRI.Resolve
 
 // ================================================================
 // Types
@@ -47,10 +56,26 @@ open Parser.JSON
 // absolute IRI, or the literal keywords "@id" / "@vocab" for IRI-valued
 // coercion (@json / @none are OUT of scope: term defs requesting them are
 // rejected in process_term_def_obj below).
+// A term's "@container" mapping. CK_None also covers the explicit "@set"
+// marker (array-vs-single is already handled uniformly by callers via
+// jexp_as_array, so @set needs no distinct representation). CK_List is
+// kept as a bool-shaped case for the pre-3b callers that only ever asked
+// "is this @list"; 3b adds the four map-shaped containers.
+type container_kind =
+  | CK_None
+  | CK_List
+  | CK_Index
+  | CK_Language
+  | CK_Id
+  | CK_Type
+
+let ck_is_none (k:container_kind) : bool = match k with | CK_None -> true | _ -> false
+let ck_is_list (k:container_kind) : bool = match k with | CK_List -> true | _ -> false
+
 type term_def = {
   td_iri          : string;
   td_type_mapping : option string;
-  td_container_list : bool;
+  td_container    : container_kind;
   td_reverse      : bool;
   // None: no per-term override, use the active context's default language.
   // Some None: term explicitly carries no language ("@language": null).
@@ -94,10 +119,23 @@ let rec jldctx_find_colon (s:string) (pos:nat) (fuel:nat)
     else if jbyte_at s pos = 0x3A then Some pos
     else jldctx_find_colon s (pos + 1) (fuel - 1)
 
+// RFC 3986 reference resolution, reusing SPARQL11.IRI.Resolve.resolve_iri
+// (which takes a wf_iri base). base here is an ordinary string because
+// active_context.ac_base is populated incrementally (see the "@base"
+// handling in context_process_one_field below) and F* cannot statically
+// know it is well-formed; the runtime is_iri check refines it to wf_iri
+// for the call, with a safe fallback to the unresolved base on failure —
+// mirrors resolve_iri's own is_iri-checked-result fallback.
+let jldctx_resolve (base:string) (relative:string) : string =
+  if is_iri base then resolve_iri base relative else base
+
 // IRI Expansion (JSON-LD 1.1 API §5.1), simplified: no local-context /
 // forward-reference lookahead (terms are resolved against the ALREADY
 // built-up active context, which is enough for the sequential term
-// definitions this phase supports), no full relative-IRI resolution.
+// definitions this phase supports). @base-relative values get full RFC
+// 3986 resolution (jldctx_resolve); @vocab-relative values stay a plain
+// suffix concatenation, matching the spec's vocab-mapping IRI expansion
+// (not a reference-resolution against a base).
 let jldctx_expand_fallback (ac:active_context) (value:string) (vocab:bool)
   : Tot (option string) =
   if vocab then
@@ -106,7 +144,7 @@ let jldctx_expand_fallback (ac:active_context) (value:string) (vocab:bool)
      | None -> None)
   else
     (match ac.ac_base with
-     | Some b -> Some (String.concat "" [b; value])
+     | Some b -> Some (jldctx_resolve b value)
      | None -> None)
 
 let expand_iri (ac:active_context) (value:string) (vocab:bool) : Tot (option string) =
@@ -138,111 +176,135 @@ let expand_iri (ac:active_context) (value:string) (vocab:bool) : Tot (option str
 // @container value parsing
 // ================================================================
 
-let rec jldctx_container_items_ok (items:list json_val) : Tot bool (decreases items) =
-  match items with
-  | [] -> true
-  | JString s :: rest -> (s = "@list" || s = "@set") && jldctx_container_items_ok rest
-  | _ -> false
+// A single "@container" string entry, or None for anything unsupported
+// ("@graph" — graph containers stay out of scope for 3b — or a non-container
+// keyword).
+let jldctx_container_kind_of_string (s:string) : option container_kind =
+  if s = "@list" then Some CK_List
+  else if s = "@set" then Some CK_None
+  else if s = "@index" then Some CK_Index
+  else if s = "@language" then Some CK_Language
+  else if s = "@id" then Some CK_Id
+  else if s = "@type" then Some CK_Type
+  else None
 
-let rec jldctx_container_has_list (items:list json_val) : Tot bool (decreases items) =
+// An "@container" array (e.g. ["@index", "@set"]): every entry must parse,
+// "@graph" anywhere rejects the whole array (graph containers out of
+// scope), and the array's overall kind is the first non-CK_None entry
+// (an array of only "@set" degenerates to CK_None, same as a bare "@set").
+let rec jldctx_container_kind_of_items (items:list json_val) (acc:container_kind)
+  : Tot (option container_kind) (decreases items) =
   match items with
-  | [] -> false
-  | JString s :: rest -> s = "@list" || jldctx_container_has_list rest
-  | _ -> false
+  | [] -> Some acc
+  | JString s :: rest ->
+    if s = "@graph" then None
+    else
+      (match jldctx_container_kind_of_string s with
+       | None -> None
+       | Some k -> jldctx_container_kind_of_items rest (if ck_is_none k then acc else k))
+  | _ -> None
 
 // ================================================================
 // Expanded (object-form) term definitions
 // ================================================================
 
 // One left-to-right pass over a term-definition object's members,
-// threading the (id, reverse, type, container-is-list, language) fields
+// threading the (id, reverse, type, container-kind, language) fields
 // collected so far. None anywhere below means an unsupported / malformed
 // member — process_term_def_obj turns that into an honest context_process
 // failure rather than a silently incomplete term.
 let rec jldctx_term_obj_fields
     (ac:active_context)
     (idf:option string) (revf:option string) (typef:option string)
-    (contlist:bool) (langf:option (option string))
+    (contk:container_kind) (langf:option (option string))
     (fields:list (string & json_val))
-  : Tot (option (option string & option string & option string & bool & option (option string)))
+  : Tot (option (option string & option string & option string & container_kind & option (option string)))
         (decreases fields) =
   match fields with
-  | [] -> Some (idf, revf, typef, contlist, langf)
+  | [] -> Some (idf, revf, typef, contk, langf)
   | (k, v) :: rest ->
     if k = "@id" then
       (match v with
        | JString s ->
          (match expand_iri ac s true with
-          | Some e -> jldctx_term_obj_fields ac (Some e) revf typef contlist langf rest
+          | Some e -> jldctx_term_obj_fields ac (Some e) revf typef contk langf rest
           | None -> None)
        | _ -> None)
     else if k = "@reverse" then
       (match v with
        | JString s ->
          (match expand_iri ac s true with
-          | Some e -> jldctx_term_obj_fields ac idf (Some e) typef contlist langf rest
+          | Some e -> jldctx_term_obj_fields ac idf (Some e) typef contk langf rest
           | None -> None)
        | _ -> None)
     else if k = "@type" then
       (match v with
        | JString s ->
          (match expand_iri ac s true with
-          | Some e -> jldctx_term_obj_fields ac idf revf (Some e) contlist langf rest
+          | Some e -> jldctx_term_obj_fields ac idf revf (Some e) contk langf rest
           | None -> None)
        | _ -> None)
     else if k = "@container" then
       (match v with
        | JString s ->
-         if s = "@list" then jldctx_term_obj_fields ac idf revf typef true langf rest
-         else if s = "@set" then jldctx_term_obj_fields ac idf revf typef contlist langf rest
-         else None
+         (match jldctx_container_kind_of_string s with
+          | Some ck -> jldctx_term_obj_fields ac idf revf typef ck langf rest
+          | None -> None)
        | JArray items ->
-         if jldctx_container_items_ok items
-         then jldctx_term_obj_fields ac idf revf typef
-                (contlist || jldctx_container_has_list items) langf rest
-         else None
+         (match jldctx_container_kind_of_items items CK_None with
+          | Some ck -> jldctx_term_obj_fields ac idf revf typef ck langf rest
+          | None -> None)
        | _ -> None)
     else if k = "@language" then
       (match v with
-       | JString s -> jldctx_term_obj_fields ac idf revf typef contlist (Some (Some s)) rest
-       | JNull -> jldctx_term_obj_fields ac idf revf typef contlist (Some None) rest
+       | JString s -> jldctx_term_obj_fields ac idf revf typef contk (Some (Some s)) rest
+       | JNull -> jldctx_term_obj_fields ac idf revf typef contk (Some None) rest
        | _ -> None)
     else
       // @protected, @index, @nest, @prefix, a nested @context (scoped
-      // context), or any other unrecognized member: OUT of scope for 3a.
+      // context), or any other unrecognized member: OUT of scope for 3b.
       None
 
 let process_term_def_obj (ac:active_context) (key:string) (fields:list (string & json_val))
   : Tot (option active_context) =
-  match jldctx_term_obj_fields ac None None None false None fields with
+  match jldctx_term_obj_fields ac None None None CK_None None fields with
   | None -> None
-  | Some (idf, revf, typef, contlist, langf) ->
+  | Some (idf, revf, typef, contk, langf) ->
     (match (idf, revf) with
      | (Some _, Some _) -> None
      | (Some iri, None) ->
-       let td = { td_iri = iri; td_type_mapping = typef; td_container_list = contlist;
+       let td = { td_iri = iri; td_type_mapping = typef; td_container = contk;
                   td_reverse = false; td_language = langf } in
        Some ({ ac with ac_terms = (key, td) :: ac.ac_terms })
      | (None, Some iri) ->
-       let td = { td_iri = iri; td_type_mapping = typef; td_container_list = contlist;
+       let td = { td_iri = iri; td_type_mapping = typef; td_container = contk;
                   td_reverse = true; td_language = langf } in
        Some ({ ac with ac_terms = (key, td) :: ac.ac_terms })
      | (None, None) ->
        (match expand_iri ac key true with
         | None -> None
         | Some iri ->
-          let td = { td_iri = iri; td_type_mapping = typef; td_container_list = contlist;
+          let td = { td_iri = iri; td_type_mapping = typef; td_container = contk;
                      td_reverse = false; td_language = langf } in
           Some ({ ac with ac_terms = (key, td) :: ac.ac_terms })))
 
 // One context-object member: "@base" / "@vocab" / "@language" / "@version",
 // or an ordinary term definition (simple string form or expanded object
 // form). Any other keyword member is unsupported and fails honestly.
+//
+// "@base" resolves the new value against the PREVIOUS base (RFC 3986 §5.1.1,
+// JSON-LD 1.1 API §4/context-processing step on @base): a document with
+// nested contexts each supplying a relative "@base" chains correctly, not
+// just a single flat concatenation.
 let context_process_one_field (ac:active_context) (key:string) (value:json_val)
   : Tot (option active_context) =
   if key = "@base" then
     (match value with
-     | JString s -> Some ({ ac with ac_base = Some s })
+     | JString s ->
+       let resolved = (match ac.ac_base with
+                       | Some b -> jldctx_resolve b s
+                       | None -> s) in
+       Some ({ ac with ac_base = Some resolved })
      | JNull -> Some ({ ac with ac_base = None })
      | _ -> None)
   else if key = "@vocab" then
@@ -264,7 +326,7 @@ let context_process_one_field (ac:active_context) (key:string) (value:json_val)
        (match expand_iri ac s true with
         | None -> None
         | Some iri ->
-          let td = { td_iri = iri; td_type_mapping = None; td_container_list = false;
+          let td = { td_iri = iri; td_type_mapping = None; td_container = CK_None;
                      td_reverse = false; td_language = None } in
           Some ({ ac with ac_terms = (key, td) :: ac.ac_terms }))
      | JObject termfields -> process_term_def_obj ac key termfields

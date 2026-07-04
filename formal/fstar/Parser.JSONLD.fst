@@ -45,11 +45,23 @@ module Parser.JSONLD
 //     interpreted as the Expansion algorithm would wrap them — this
 //     leniency keeps the context-free W3C toRdf inputs loadable.
 //
+// PHASE 3b adds @reverse consumption: a node object's ("@reverse", {predIri:
+// [items...]}) field (produced by JSONLD.Expand for a term defined with
+// "@reverse", or an inline "@reverse" block — see that module's banner)
+// expands each item as an ordinary node reference / node object (exactly
+// like jld_expand_value's node-object branch) and emits a triple with the
+// item as SUBJECT, predIri as predicate, and the enclosing node as OBJECT
+// — jld_expand_reverse_map / _entries / _prop below. A node object may
+// carry more than one "@reverse" field-list entry (one inline block plus
+// one or more reverse terms); jld_expand_fields already processes every
+// field-list entry regardless of key repetition, so no merge step is
+// needed on this side either.
+//
 // Phase-2+ items deliberately NOT handled here (dropped silently, per the
 // spec's treatment of non-conforming data where possible):
 //   - @context (see banner above);
 //   - relative IRIs (dropped — is_iri requires a colon);
-//   - @reverse, @index, @included, @direction, @json (rdf:JSON literals),
+//   - @index, @included, @direction, @json (rdf:JSON literals),
 //     @graph nested below the top level, generalized RDF (blank-node
 //     predicates);
 //   - canonical lexical forms for xsd:double per the JSON-LD Data
@@ -299,10 +311,11 @@ and jld_expand_node (v:json_val) (ctr:nat) (acc:list triple) (fuel:nat)
          (Some subj, acc1, ctr2))
     | _ -> (None, acc, ctr)
 
-// Members of a node object. @type emits rdf:type triples; other keywords
-// are skipped (@id was consumed by jld_expand_node; @graph below the top
-// level is a Phase-2 item); IRI keys emit property triples; non-IRI
-// (relative) keys are dropped.
+// Members of a node object. @type emits rdf:type triples; @reverse emits
+// swapped-direction triples (jld_expand_reverse_map, PHASE 3b); other
+// keywords are skipped (@id was consumed by jld_expand_node; @graph below
+// the top level is a Phase-2 item); IRI keys emit property triples;
+// non-IRI (relative) keys are dropped.
 and jld_expand_fields (subj:subject) (fields:list (string & json_val))
                       (ctr:nat) (acc:list triple) (fuel:nat)
   : Tot (list triple & nat) (decreases fuel) =
@@ -313,11 +326,59 @@ and jld_expand_fields (subj:subject) (fields:list (string & json_val))
     | (key, value) :: rest ->
       let (acc1, ctr1) =
         if key = "@type" then (jld_type_prepend subj value acc, ctr)
+        else if key = "@reverse" then jld_expand_reverse_map subj value ctr acc (fuel - 1)
         else if jld_is_keyword key then (acc, ctr)
         else if is_iri key then
           jld_expand_property subj key (jld_as_array value) ctr acc (fuel - 1)
         else (acc, ctr) in
       jld_expand_fields subj rest ctr1 acc1 (fuel - 1)
+
+// A node object's "@reverse" member: {predIri: [items...], ...} (an
+// EXPANDED-form-only shape produced by JSONLD.Expand — see that module's
+// banner). Each predIri key must already be an absolute IRI (Expand only
+// ever produces one via expand_iri); a malformed key is dropped.
+and jld_expand_reverse_map (subj:subject) (v:json_val) (ctr:nat) (acc:list triple) (fuel:nat)
+  : Tot (list triple & nat) (decreases fuel) =
+  if fuel = 0 then (acc, ctr)
+  else
+    match v with
+    | JObject entries -> jld_expand_reverse_entries subj entries ctr acc (fuel - 1)
+    | _ -> (acc, ctr)
+
+and jld_expand_reverse_entries (subj:subject) (entries:list (string & json_val))
+                               (ctr:nat) (acc:list triple) (fuel:nat)
+  : Tot (list triple & nat) (decreases fuel) =
+  if fuel = 0 then (acc, ctr)
+  else
+    match entries with
+    | [] -> (acc, ctr)
+    | (prop, value) :: rest ->
+      let (acc1, ctr1) =
+        if is_iri prop
+        then jld_expand_reverse_prop subj prop (jld_as_array value) ctr acc (fuel - 1)
+        else (acc, ctr) in
+      jld_expand_reverse_entries subj rest ctr1 acc1 (fuel - 1)
+
+// One reverse predicate's array of item values: each item expands as a
+// node reference / node object exactly like an ordinary property value
+// (jld_expand_node — a bare literal value object has no subject identity
+// and is silently dropped, same non-conforming-input leniency as
+// elsewhere); the emitted triple points FROM the item TO the enclosing
+// node (the direction swap that makes it a "reverse" property).
+and jld_expand_reverse_prop (subj:subject) (prop:wf_iri) (vals:list json_val)
+                            (ctr:nat) (acc:list triple) (fuel:nat)
+  : Tot (list triple & nat) (decreases fuel) =
+  if fuel = 0 then (acc, ctr)
+  else
+    match vals with
+    | [] -> (acc, ctr)
+    | v :: rest ->
+      let (osubj, acc1, ctr1) = jld_expand_node v ctr acc (fuel - 1) in
+      let acc2 =
+        (match osubj with
+         | Some vsubj -> { s = vsubj; p = prop; o = subject_to_term subj } :: acc1
+         | None -> acc1) in
+      jld_expand_reverse_prop subj prop rest ctr1 acc2 (fuel - 1)
 
 // The array of values of one property.
 and jld_expand_property (subj:subject) (prop:wf_iri) (vals:list json_val)
