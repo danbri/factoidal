@@ -8,19 +8,23 @@ result_path: docs/test-results/by-suite/shacl-core.json
 domain: RDF
 foundational: false
 
-# Slice 1 of the SHACL program (issue #181; see
-# formal/fstar/SHACL.Validation.fst section 11 for constraint
-# coverage). The runner compares ONLY the report's sh:conforms flag
-# against each manifest entry's expected mf:result — full report-
-# detail isomorphism (exact sh:resultPath / sh:sourceConstraintComponent
-# matching) is Phase 2 follow-up work. Deferred by design and scored
-# as honest FAILs, not skips: sh:qualifiedValueShape /
-# qualifiedMinCount / qualifiedMaxCount / qualifiedValueShapesDisjoint
-# (sibling-shape disjointness bookkeeping), composite property paths
-# beyond predicate + inverse (sequence/alternative/zeroOrMore/
-# oneOrMore/zeroOrOne), and sh:sparql / sh:select (target/constraint
-# SPARQL dispatch — the one remaining rule-#11(c) assume val,
-# eval_sparql_target_select, unreachable this slice).
+# Phase 3 of the SHACL program (issue #181 follow-up; see
+# formal/fstar/SHACL.Validation.fst sections 11/13 for constraint
+# coverage + sh:sparql dispatch). `runner_args: []` runs the runner's
+# DEFAULT mode: full validation-report comparison, canonicalizing both
+# the expected and actual report graphs (RDF.Canonical) and comparing
+# per the suite's own "full compliance" isomorphism rule — see
+# bin/shacl-runner/shacl_runner.ml's header comment for exactly which
+# predicates are compared and the sh:resultMessage carve-out. The
+# slice-1 floor (sh:conforms boolean only) is still available via
+# `./shacl_runner --conforms-only` for local debugging; see
+# shacl-sparql.yaml for the separate sh:sparql-focused suite section
+# (node/, property/, pre-binding/ folders of the same vendored
+# manifest tree — component/ is out of scope, see that file's
+# comment). Remaining known gaps, scored as honest FAILs: sh:sparql on
+# a shape reached via sh:property (nested, not directly targeted),
+# and the SPARQL-SELECT-based TARGET form (sh:target [ sh:select ...
+# ] / T_Sparql — distinct from the sh:sparql CONSTRAINT form).
 
 triggers:
   paths:

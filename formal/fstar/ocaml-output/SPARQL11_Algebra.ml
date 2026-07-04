@@ -1147,6 +1147,38 @@ let __proj__Mkquery__item__q_values (projectee : query) :
   | { q_base; q_prefixes; q_form; q_dataset; q_pattern; q_group_by; q_having;
       q_modifier; q_values;_} -> q_values
 type having_condition = expr
+let query_with_prebound_values (q : query)
+  (vals : (var_name * RDF_Graph_Executable.rdf_term) Prims.list Prims.list) :
+  query=
+  {
+    q_base = (q.q_base);
+    q_prefixes = (q.q_prefixes);
+    q_form = (q.q_form);
+    q_dataset = (q.q_dataset);
+    q_pattern = (q.q_pattern);
+    q_group_by = (q.q_group_by);
+    q_having = (q.q_having);
+    q_modifier = (q.q_modifier);
+    q_values = (FStar_Pervasives_Native.Some vals)
+  }
+let query_form_of (q : query) : query_form= q.q_form
+let query_pattern_of (q : query) : group_graph_pattern= q.q_pattern
+let query_values_of (q : query) :
+  (var_name * RDF_Graph_Executable.rdf_term) Prims.list Prims.list
+    FStar_Pervasives_Native.option=
+  q.q_values
+let query_with_pattern (q : query) (p : group_graph_pattern) : query=
+  {
+    q_base = (q.q_base);
+    q_prefixes = (q.q_prefixes);
+    q_form = (q.q_form);
+    q_dataset = (q.q_dataset);
+    q_pattern = p;
+    q_group_by = (q.q_group_by);
+    q_having = (q.q_having);
+    q_modifier = (q.q_modifier);
+    q_values = (q.q_values)
+  }
 type graph_ref =
   | GR_Default 
   | GR_Named 

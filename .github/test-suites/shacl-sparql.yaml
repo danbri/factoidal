@@ -1,0 +1,46 @@
+name: SHACL SPARQL-based Constraints (W3C data-shapes-test-suite)
+spec: https://www.w3.org/TR/shacl/#sparql-constraints
+runner: bin/linux-x86_64/shacl_runner
+runner_args: ["third_party/testing/shacl/data-shapes-test-suite/tests/sparql/manifest.ttl"]
+manifest: third_party/testing/shacl/data-shapes-test-suite/tests/sparql/manifest.ttl
+log_path: formal/fstar/ocaml-output/shacl_sparql_results.log
+result_path: docs/test-results/by-suite/shacl-sparql.json
+domain: SHACL
+foundational: false
+
+# Phase 3 of the SHACL program (issue #181 follow-up; see
+# formal/fstar/SHACL.Validation.fst section 13 for the sh:sparql
+# dispatch: $this pre-bound via SPARQL11.Algebra.query_with_prebound_values,
+# $PATH textually substituted with the shape's own path rendered as
+# SPARQL 1.1 property-path syntax, ?value/?path/?message column
+# defaults per the vendored suite's own fixtures).
+#
+# Covers the node/, property/, and pre-binding/ folders (plain
+# sh:sparql on a directly-targeted shape). The unsupported-sparql-*
+# and pre-binding-006 fixtures deliberately use constructs this engine
+# does not support (SERVICE, MINUS, a bare VALUES block, a SELECT *
+# subquery losing the $this projection) and expect `mf:result
+# sht:Failure` — the runner passes those when
+# SHACL_Validation.validate's `report_failure` field is set.
+#
+# NOT covered (documented gaps, scored as honest FAILs):
+#   - component/ (sh:validator / sh:nodeValidator / sh:propertyValidator
+#     and custom sh:ConstraintComponent — a distinct, larger SHACL-SPARQL
+#     extensibility mechanism, not plain sh:sparql).
+#   - $shapesGraph / $currentShape pre-binding (pre-binding/shapesGraph-001.ttl).
+#   - sh:sparql on a shape reached via sh:property (nested shapes) rather
+#     than directly targeted.
+
+triggers:
+  paths:
+    - formal/fstar/SHACL.Validation.fst
+    - formal/fstar/SPARQL11.Parser.fst
+    - formal/fstar/SPARQL11.Algebra.fst
+    - formal/fstar/RDF.Graph.Executable.fst
+    - formal/fstar/RDF.Canonical.fst
+    - formal/fstar/Parser.Turtle.fst
+    - formal/fstar/minimal_regrettable_glue_code_each_with_an_open_issue/181_shacl_validate_stub.sh
+    - bin/shacl-runner/**
+    - third_party/testing/shacl/data-shapes-test-suite/**
+
+  excludes: []

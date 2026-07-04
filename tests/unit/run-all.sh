@@ -124,8 +124,8 @@ COMMON_MODULES=(
   RIF_Core_Translation
   RIF_Core_Eval
   RIF_Core_Tests
-  SHACL_Validation
   SPARQL11_Parser
+  SHACL_Validation
   SPARQL11_Store
   RDF_Store_Combine
   SPARQL_Protocol

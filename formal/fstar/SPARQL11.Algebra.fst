@@ -583,6 +583,26 @@ and query = {
   q_values   : option (list (list (var_name * rdf_term)));  (* Post-query VALUES *)
 }
 
+// Rebind a query's post-query VALUES rows. Used by SHACL.Validation for
+// sh:sparql's `$this` pre-binding (SHACL spec section 5.3): joins in the
+// pre-bound focus-node row via the SAME q_values/join mechanism
+// `eval_select_query` already uses for a real trailing VALUES clause
+// (see the `omega0`/`join` step there), rather than round-tripping the
+// focus node through SPARQL literal/IRI syntax and re-parsing it.
+// Total, one-line, no new proof obligations.
+let query_with_prebound_values (q : query) (vals : list (list (var_name * rdf_term))) : query =
+  { q with q_values = Some vals }
+
+// Companion accessors/updaters for external modules (SHACL.Validation)
+// that ALIAS this module rather than `open` it — record-field
+// projection needs the field names in scope on the caller's side, so
+// these wrappers keep call sites qualified and unambiguous.
+let query_form_of (q : query) : query_form = q.q_form
+let query_pattern_of (q : query) : group_graph_pattern = q.q_pattern
+let query_values_of (q : query) : option (list (list (var_name * rdf_term))) = q.q_values
+let query_with_pattern (q : query) (p : group_graph_pattern) : query =
+  { q with q_pattern = p }
+
 (** ====================================================================== **)
 (** Part 6b: SPARQL 1.1 Update (§3, 4) — Grammar AST only                  **)
 (**                                                                         **)

@@ -26,16 +26,115 @@ let sh_select : RDF_Graph_Executable.wf_iri=
   "http://www.w3.org/ns/shacl#select"
 let sh_Violation : RDF_Graph_Executable.wf_iri=
   "http://www.w3.org/ns/shacl#Violation"
+let sh_ValidationReport : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#ValidationReport"
+let sh_ValidationResult : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#ValidationResult"
+let sh_result : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#result"
+let sh_conforms_pred : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#conforms"
+let sh_focusNode : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#focusNode"
+let sh_resultPath : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#resultPath"
+let sh_resultSeverity : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#resultSeverity"
+let sh_resultMessage : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#resultMessage"
+let sh_sourceConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#sourceConstraintComponent"
+let sh_sourceShape : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#sourceShape"
+let sh_sourceConstraint : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#sourceConstraint"
+let sh_value_pred : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#value"
+let sh_MinCountConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#MinCountConstraintComponent"
+let sh_MaxCountConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#MaxCountConstraintComponent"
+let sh_DatatypeConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#DatatypeConstraintComponent"
+let sh_NodeKindConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#NodeKindConstraintComponent"
+let sh_ClassConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#ClassConstraintComponent"
+let sh_InConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#InConstraintComponent"
+let sh_HasValueConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#HasValueConstraintComponent"
+let sh_PatternConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#PatternConstraintComponent"
+let sh_MinLengthConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#MinLengthConstraintComponent"
+let sh_MaxLengthConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#MaxLengthConstraintComponent"
+let sh_LanguageInConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#LanguageInConstraintComponent"
+let sh_UniqueLangConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#UniqueLangConstraintComponent"
+let sh_MinInclusiveConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#MinInclusiveConstraintComponent"
+let sh_MaxInclusiveConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#MaxInclusiveConstraintComponent"
+let sh_MinExclusiveConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#MinExclusiveConstraintComponent"
+let sh_MaxExclusiveConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#MaxExclusiveConstraintComponent"
+let sh_NotConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#NotConstraintComponent"
+let sh_AndConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#AndConstraintComponent"
+let sh_OrConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#OrConstraintComponent"
+let sh_XoneConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#XoneConstraintComponent"
+let sh_NodeConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#NodeConstraintComponent"
+let sh_QualifiedMinCountConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#QualifiedMinCountConstraintComponent"
+let sh_QualifiedMaxCountConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#QualifiedMaxCountConstraintComponent"
+let sh_EqualsConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#EqualsConstraintComponent"
+let sh_DisjointConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#DisjointConstraintComponent"
+let sh_LessThanConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#LessThanConstraintComponent"
+let sh_LessThanOrEqualsConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#LessThanOrEqualsConstraintComponent"
+let sh_ClosedConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#ClosedConstraintComponent"
+let sh_SPARQLConstraintComponent : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#SPARQLConstraintComponent"
+let sh_sparql : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#sparql"
+let sh_prefixes : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#prefixes"
+let sh_declare : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#declare"
+let sh_decl_prefix : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#prefix"
+let sh_decl_namespace : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#namespace"
+let owl_imports_iri : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/2002/07/owl#imports"
 type severity =
   | Sev_Info 
   | Sev_Warning 
   | Sev_Violation 
+  | Sev_Custom of RDF_Graph_Executable.wf_iri 
 let uu___is_Sev_Info (projectee : severity) : Prims.bool=
   match projectee with | Sev_Info -> true | uu___ -> false
 let uu___is_Sev_Warning (projectee : severity) : Prims.bool=
   match projectee with | Sev_Warning -> true | uu___ -> false
 let uu___is_Sev_Violation (projectee : severity) : Prims.bool=
   match projectee with | Sev_Violation -> true | uu___ -> false
+let uu___is_Sev_Custom (projectee : severity) : Prims.bool=
+  match projectee with | Sev_Custom _0 -> true | uu___ -> false
+let __proj__Sev_Custom__item___0 (projectee : severity) :
+  RDF_Graph_Executable.wf_iri= match projectee with | Sev_Custom _0 -> _0
 type node_kind =
   | NK_BlankNode 
   | NK_IRI 
@@ -146,12 +245,15 @@ type constraint_component =
   | CC_Or of shape_ref Prims.list 
   | CC_Xone of shape_ref Prims.list 
   | CC_Node of shape_ref 
+  | CC_QualifiedMinCount of shape_ref * Prims.nat * Prims.bool 
+  | CC_QualifiedMaxCount of shape_ref * Prims.nat * Prims.bool 
   | CC_Equals of RDF_Graph_Executable.wf_iri 
   | CC_Disjoint of RDF_Graph_Executable.wf_iri 
   | CC_LessThan of RDF_Graph_Executable.wf_iri 
   | CC_LessThanOrEq of RDF_Graph_Executable.wf_iri 
   | CC_Closed of RDF_Graph_Executable.wf_iri Prims.list 
-  | CC_Sparql of Prims.string 
+  | CC_Sparql of shape_ref * Prims.string * RDF_Graph_Executable.wf_literal
+  FStar_Pervasives_Native.option 
 let uu___is_CC_MinCount (projectee : constraint_component) : Prims.bool=
   match projectee with | CC_MinCount _0 -> true | uu___ -> false
 let __proj__CC_MinCount__item___0 (projectee : constraint_component) :
@@ -247,6 +349,30 @@ let uu___is_CC_Node (projectee : constraint_component) : Prims.bool=
   match projectee with | CC_Node _0 -> true | uu___ -> false
 let __proj__CC_Node__item___0 (projectee : constraint_component) : shape_ref=
   match projectee with | CC_Node _0 -> _0
+let uu___is_CC_QualifiedMinCount (projectee : constraint_component) :
+  Prims.bool=
+  match projectee with
+  | CC_QualifiedMinCount (_0, _1, _2) -> true
+  | uu___ -> false
+let __proj__CC_QualifiedMinCount__item___0 (projectee : constraint_component)
+  : shape_ref= match projectee with | CC_QualifiedMinCount (_0, _1, _2) -> _0
+let __proj__CC_QualifiedMinCount__item___1 (projectee : constraint_component)
+  : Prims.nat= match projectee with | CC_QualifiedMinCount (_0, _1, _2) -> _1
+let __proj__CC_QualifiedMinCount__item___2 (projectee : constraint_component)
+  : Prims.bool=
+  match projectee with | CC_QualifiedMinCount (_0, _1, _2) -> _2
+let uu___is_CC_QualifiedMaxCount (projectee : constraint_component) :
+  Prims.bool=
+  match projectee with
+  | CC_QualifiedMaxCount (_0, _1, _2) -> true
+  | uu___ -> false
+let __proj__CC_QualifiedMaxCount__item___0 (projectee : constraint_component)
+  : shape_ref= match projectee with | CC_QualifiedMaxCount (_0, _1, _2) -> _0
+let __proj__CC_QualifiedMaxCount__item___1 (projectee : constraint_component)
+  : Prims.nat= match projectee with | CC_QualifiedMaxCount (_0, _1, _2) -> _1
+let __proj__CC_QualifiedMaxCount__item___2 (projectee : constraint_component)
+  : Prims.bool=
+  match projectee with | CC_QualifiedMaxCount (_0, _1, _2) -> _2
 let uu___is_CC_Equals (projectee : constraint_component) : Prims.bool=
   match projectee with | CC_Equals _0 -> true | uu___ -> false
 let __proj__CC_Equals__item___0 (projectee : constraint_component) :
@@ -270,9 +396,20 @@ let __proj__CC_Closed__item__ignored (projectee : constraint_component) :
   RDF_Graph_Executable.wf_iri Prims.list=
   match projectee with | CC_Closed ignored -> ignored
 let uu___is_CC_Sparql (projectee : constraint_component) : Prims.bool=
-  match projectee with | CC_Sparql _0 -> true | uu___ -> false
-let __proj__CC_Sparql__item___0 (projectee : constraint_component) :
-  Prims.string= match projectee with | CC_Sparql _0 -> _0
+  match projectee with
+  | CC_Sparql (constraint_node, query, message) -> true
+  | uu___ -> false
+let __proj__CC_Sparql__item__constraint_node
+  (projectee : constraint_component) : shape_ref=
+  match projectee with
+  | CC_Sparql (constraint_node, query, message) -> constraint_node
+let __proj__CC_Sparql__item__query (projectee : constraint_component) :
+  Prims.string=
+  match projectee with | CC_Sparql (constraint_node, query, message) -> query
+let __proj__CC_Sparql__item__message (projectee : constraint_component) :
+  RDF_Graph_Executable.wf_literal FStar_Pervasives_Native.option=
+  match projectee with
+  | CC_Sparql (constraint_node, query, message) -> message
 type shape =
   {
   shape_id: shape_ref ;
@@ -280,7 +417,7 @@ type shape =
   shape_path: path FStar_Pervasives_Native.option ;
   targets: target Prims.list ;
   shape_sev: severity ;
-  message: Prims.string FStar_Pervasives_Native.option ;
+  message: RDF_Graph_Executable.wf_literal FStar_Pervasives_Native.option ;
   constraints: constraint_component Prims.list ;
   property_refs: shape_ref Prims.list }
 let __proj__Mkshape__item__shape_id (projectee : shape) : shape_ref=
@@ -305,7 +442,7 @@ let __proj__Mkshape__item__shape_sev (projectee : shape) : severity=
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
       constraints; property_refs;_} -> shape_sev
 let __proj__Mkshape__item__message (projectee : shape) :
-  Prims.string FStar_Pervasives_Native.option=
+  RDF_Graph_Executable.wf_literal FStar_Pervasives_Native.option=
   match projectee with
   | { shape_id; is_property; shape_path; targets; shape_sev; message;
       constraints; property_refs;_} -> message
@@ -332,52 +469,70 @@ type violation =
   v_source_shape: shape_ref ;
   v_constraint: constraint_component ;
   v_severity: severity ;
-  v_message: Prims.string FStar_Pervasives_Native.option }
+  v_message: RDF_Graph_Executable.wf_literal FStar_Pervasives_Native.option ;
+  v_source_constraint:
+    RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option }
 let __proj__Mkviolation__item__v_focus_node (projectee : violation) :
   RDF_Graph_Executable.rdf_term=
   match projectee with
   | { v_focus_node; v_path; v_value; v_source_shape; v_constraint;
-      v_severity; v_message;_} -> v_focus_node
+      v_severity; v_message; v_source_constraint;_} -> v_focus_node
 let __proj__Mkviolation__item__v_path (projectee : violation) :
   path FStar_Pervasives_Native.option=
   match projectee with
   | { v_focus_node; v_path; v_value; v_source_shape; v_constraint;
-      v_severity; v_message;_} -> v_path
+      v_severity; v_message; v_source_constraint;_} -> v_path
 let __proj__Mkviolation__item__v_value (projectee : violation) :
   RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
   match projectee with
   | { v_focus_node; v_path; v_value; v_source_shape; v_constraint;
-      v_severity; v_message;_} -> v_value
+      v_severity; v_message; v_source_constraint;_} -> v_value
 let __proj__Mkviolation__item__v_source_shape (projectee : violation) :
   shape_ref=
   match projectee with
   | { v_focus_node; v_path; v_value; v_source_shape; v_constraint;
-      v_severity; v_message;_} -> v_source_shape
+      v_severity; v_message; v_source_constraint;_} -> v_source_shape
 let __proj__Mkviolation__item__v_constraint (projectee : violation) :
   constraint_component=
   match projectee with
   | { v_focus_node; v_path; v_value; v_source_shape; v_constraint;
-      v_severity; v_message;_} -> v_constraint
+      v_severity; v_message; v_source_constraint;_} -> v_constraint
 let __proj__Mkviolation__item__v_severity (projectee : violation) : severity=
   match projectee with
   | { v_focus_node; v_path; v_value; v_source_shape; v_constraint;
-      v_severity; v_message;_} -> v_severity
+      v_severity; v_message; v_source_constraint;_} -> v_severity
 let __proj__Mkviolation__item__v_message (projectee : violation) :
-  Prims.string FStar_Pervasives_Native.option=
+  RDF_Graph_Executable.wf_literal FStar_Pervasives_Native.option=
   match projectee with
   | { v_focus_node; v_path; v_value; v_source_shape; v_constraint;
-      v_severity; v_message;_} -> v_message
+      v_severity; v_message; v_source_constraint;_} -> v_message
+let __proj__Mkviolation__item__v_source_constraint (projectee : violation) :
+  RDF_Graph_Executable.rdf_term FStar_Pervasives_Native.option=
+  match projectee with
+  | { v_focus_node; v_path; v_value; v_source_shape; v_constraint;
+      v_severity; v_message; v_source_constraint;_} -> v_source_constraint
 type validation_report =
   {
   conforms: Prims.bool ;
-  results: violation Prims.list }
+  results: violation Prims.list ;
+  report_failure: Prims.string FStar_Pervasives_Native.option }
 let __proj__Mkvalidation_report__item__conforms
   (projectee : validation_report) : Prims.bool=
-  match projectee with | { conforms; results;_} -> conforms
+  match projectee with | { conforms; results; report_failure;_} -> conforms
 let __proj__Mkvalidation_report__item__results
   (projectee : validation_report) : violation Prims.list=
-  match projectee with | { conforms; results;_} -> results
-let conforming_report : validation_report= { conforms = true; results = [] }
+  match projectee with | { conforms; results; report_failure;_} -> results
+let __proj__Mkvalidation_report__item__report_failure
+  (projectee : validation_report) :
+  Prims.string FStar_Pervasives_Native.option=
+  match projectee with
+  | { conforms; results; report_failure;_} -> report_failure
+let conforming_report : validation_report=
+  {
+    conforms = true;
+    results = [];
+    report_failure = FStar_Pervasives_Native.None
+  }
 let mk_shape_node (id_ : shape_ref) (ts : target Prims.list)
   (cs : constraint_component Prims.list) : shape=
   {
@@ -473,6 +628,18 @@ let subject_to_shape_ref (s : RDF_Graph_Executable.subject) : shape_ref=
   match s with
   | RDF_Graph_Executable.S_IRI i -> i
   | RDF_Graph_Executable.S_BNode b -> Prims.strcat "_:" b
+let shape_ref_to_term (r : shape_ref) : RDF_Graph_Executable.rdf_term=
+  if
+    ((FStar_String.strlen r) >= (Prims.of_int (2))) &&
+      ((FStar_String.sub r Prims.int_zero (Prims.of_int (2))) = "_:")
+  then
+    RDF_Graph_Executable.T_BNode
+      (FStar_String.sub r (Prims.of_int (2))
+         ((FStar_String.strlen r) - (Prims.of_int (2))))
+  else
+    if RDF_Graph_Executable.is_iri r
+    then RDF_Graph_Executable.T_IRI r
+    else RDF_Graph_Executable.T_BNode r
 let term_lexical (t : RDF_Graph_Executable.rdf_term) :
   Prims.string FStar_Pervasives_Native.option=
   match t with
@@ -571,6 +738,14 @@ let sh_oneOrMorePath : RDF_Graph_Executable.wf_iri=
   "http://www.w3.org/ns/shacl#oneOrMorePath"
 let sh_zeroOrOnePath : RDF_Graph_Executable.wf_iri=
   "http://www.w3.org/ns/shacl#zeroOrOnePath"
+let sh_qualifiedValueShape : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#qualifiedValueShape"
+let sh_qualifiedMinCount : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#qualifiedMinCount"
+let sh_qualifiedMaxCount : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#qualifiedMaxCount"
+let sh_qualifiedValueShapesDisjoint : RDF_Graph_Executable.wf_iri=
+  "http://www.w3.org/ns/shacl#qualifiedValueShapesDisjoint"
 let sh_nk_BlankNode : RDF_Graph_Executable.wf_iri=
   "http://www.w3.org/ns/shacl#BlankNode"
 let sh_nk_IRI : RDF_Graph_Executable.wf_iri= "http://www.w3.org/ns/shacl#IRI"
@@ -618,74 +793,194 @@ let node_kind_ok (t : RDF_Graph_Executable.rdf_term) (nk : node_kind) :
 let severity_of_iri (i : RDF_Graph_Executable.wf_iri) : severity=
   if i = sh_Warning
   then Sev_Warning
-  else if i = sh_Info then Sev_Info else Sev_Violation
-let path_term_to_predicate_path (t : RDF_Graph_Executable.rdf_term) : 
-  path=
-  match t with
-  | RDF_Graph_Executable.T_IRI i -> P_Predicate i
-  | uu___ -> P_Sequence []
-let parse_path (g : RDF_Graph_Executable.rdf_graph)
+  else
+    if i = sh_Info
+    then Sev_Info
+    else if i = sh_Violation then Sev_Violation else Sev_Custom i
+let rec parse_path (g : RDF_Graph_Executable.rdf_graph)
   (t : RDF_Graph_Executable.rdf_term) (fuel : Prims.nat) : path=
-  match t with
-  | RDF_Graph_Executable.T_IRI i -> P_Predicate i
-  | RDF_Graph_Executable.T_Literal uu___ -> P_Sequence []
-  | RDF_Graph_Executable.T_BNode uu___ ->
-      (match RDF_Graph_Executable.term_to_subject t with
-       | FStar_Pervasives_Native.None -> P_Sequence []
-       | FStar_Pervasives_Native.Some s ->
-           (match RDF_Graph_Executable.find_objects g s sh_inversePath with
-            | (RDF_Graph_Executable.T_IRI ip)::[] ->
-                P_Inverse (P_Predicate ip)
-            | uu___1 ->
+  match fuel with
+  | uu___ when uu___ = Prims.int_zero -> P_Sequence []
+  | uu___ ->
+      let fuel' = fuel - Prims.int_one in
+      (match t with
+       | RDF_Graph_Executable.T_IRI i -> P_Predicate i
+       | RDF_Graph_Executable.T_Literal uu___1 -> P_Sequence []
+       | RDF_Graph_Executable.T_BNode uu___1 ->
+           (match RDF_Graph_Executable.term_to_subject t with
+            | FStar_Pervasives_Native.None -> P_Sequence []
+            | FStar_Pervasives_Native.Some s ->
                 (match RDF_Graph_Executable.find_objects g s
-                         sh_alternativePath
+                         RDF_Graph_Executable.rdf_first
                  with
-                 | alt_head::uu___2 ->
-                     P_Alternative
-                       (FStar_List_Tot_Base.map path_term_to_predicate_path
-                          (rdf_list_terms g alt_head fuel))
+                 | uu___2::uu___3 ->
+                     P_Sequence
+                       (parse_path_list g (rdf_list_terms g t fuel') fuel')
                  | [] ->
                      (match RDF_Graph_Executable.find_objects g s
-                              sh_zeroOrMorePath
+                              sh_inversePath
                       with
-                      | (RDF_Graph_Executable.T_IRI zp)::[] ->
-                          P_ZeroOrMore (P_Predicate zp)
+                      | (RDF_Graph_Executable.T_IRI ip)::[] ->
+                          P_Inverse (P_Predicate ip)
                       | uu___2 ->
                           (match RDF_Graph_Executable.find_objects g s
-                                   sh_oneOrMorePath
+                                   sh_alternativePath
                            with
-                           | (RDF_Graph_Executable.T_IRI op)::[] ->
-                               P_OneOrMore (P_Predicate op)
-                           | uu___3 ->
+                           | alt_head::uu___3 ->
+                               P_Alternative
+                                 (parse_path_list g
+                                    (rdf_list_terms g alt_head fuel') fuel')
+                           | [] ->
                                (match RDF_Graph_Executable.find_objects g s
-                                        sh_zeroOrOnePath
+                                        sh_zeroOrMorePath
                                 with
-                                | (RDF_Graph_Executable.T_IRI zop)::[] ->
-                                    P_ZeroOrOne (P_Predicate zop)
-                                | uu___4 ->
+                                | zp_term::uu___3 ->
+                                    P_ZeroOrMore (parse_path g zp_term fuel')
+                                | [] ->
                                     (match RDF_Graph_Executable.find_objects
-                                             g s
-                                             RDF_Graph_Executable.rdf_first
+                                             g s sh_oneOrMorePath
                                      with
-                                     | uu___5::uu___6 ->
-                                         P_Sequence
-                                           (FStar_List_Tot_Base.map
-                                              path_term_to_predicate_path
-                                              (rdf_list_terms g t fuel))
-                                     | [] -> P_Sequence [])))))))
+                                     | op_term::uu___3 ->
+                                         P_OneOrMore
+                                           (parse_path g op_term fuel')
+                                     | [] ->
+                                         (match RDF_Graph_Executable.find_objects
+                                                  g s sh_zeroOrOnePath
+                                          with
+                                          | zop_term::uu___3 ->
+                                              P_ZeroOrOne
+                                                (parse_path g zop_term fuel')
+                                          | [] -> P_Sequence []))))))))
+and parse_path_list (g : RDF_Graph_Executable.rdf_graph)
+  (ts : RDF_Graph_Executable.rdf_term Prims.list) (fuel : Prims.nat) :
+  path Prims.list=
+  match fuel with
+  | uu___ when uu___ = Prims.int_zero -> []
+  | uu___ ->
+      let fuel' = fuel - Prims.int_one in
+      (match ts with
+       | [] -> []
+       | t::rest -> (parse_path g t fuel') :: (parse_path_list g rest fuel'))
+let rec path_invert (p : path) : path=
+  match p with
+  | P_Predicate i -> P_Inverse (P_Predicate i)
+  | P_Inverse p' -> p'
+  | P_Sequence ps ->
+      P_Sequence (FStar_List_Tot_Base.rev (path_invert_list ps))
+  | P_Alternative ps -> P_Alternative (path_invert_list ps)
+  | P_ZeroOrMore p' -> P_ZeroOrMore (path_invert p')
+  | P_OneOrMore p' -> P_OneOrMore (path_invert p')
+  | P_ZeroOrOne p' -> P_ZeroOrOne (path_invert p')
+and path_invert_list (ps : path Prims.list) : path Prims.list=
+  match ps with
+  | [] -> []
+  | p::rest -> (path_invert p) :: (path_invert_list rest)
+let rec eval_path_fuel (g : RDF_Graph_Executable.rdf_graph)
+  (start : RDF_Graph_Executable.rdf_term) (p : path) (fuel : Prims.nat) :
+  RDF_Graph_Executable.rdf_term Prims.list=
+  match fuel with
+  | uu___ when uu___ = Prims.int_zero -> []
+  | uu___ ->
+      let fuel' = fuel - Prims.int_one in
+      (match p with
+       | P_Predicate pred ->
+           (match RDF_Graph_Executable.term_to_subject start with
+            | FStar_Pervasives_Native.Some s ->
+                RDF_Graph_Executable.find_objects g s pred
+            | FStar_Pervasives_Native.None -> [])
+       | P_Inverse (P_Predicate pred) ->
+           FStar_List_Tot_Base.map RDF_Graph_Executable.subject_to_term
+             (RDF_Graph_Executable.find_subjects g pred start)
+       | P_Inverse p' -> eval_path_fuel g start (path_invert p') fuel'
+       | P_Sequence ps -> eval_seq_fuel g [start] ps fuel'
+       | P_Alternative ps -> eval_alt_fuel g start ps fuel'
+       | P_ZeroOrMore p' ->
+           dedup_terms (start ::
+             (eval_plus_fuel g (eval_path_fuel g start p' fuel') p' fuel'))
+       | P_OneOrMore p' ->
+           dedup_terms
+             (eval_plus_fuel g (eval_path_fuel g start p' fuel') p' fuel')
+       | P_ZeroOrOne p' ->
+           dedup_terms (start :: (eval_path_fuel g start p' fuel')))
+and eval_seq_fuel (g : RDF_Graph_Executable.rdf_graph)
+  (starts : RDF_Graph_Executable.rdf_term Prims.list) (ps : path Prims.list)
+  (fuel : Prims.nat) : RDF_Graph_Executable.rdf_term Prims.list=
+  match fuel with
+  | uu___ when uu___ = Prims.int_zero -> []
+  | uu___ ->
+      let fuel' = fuel - Prims.int_one in
+      (match ps with
+       | [] -> dedup_terms starts
+       | p::rest ->
+           let nexts =
+             dedup_terms
+               (FStar_List_Tot_Base.concatMap
+                  (fun s -> eval_path_fuel g s p fuel') starts) in
+           eval_seq_fuel g nexts rest fuel')
+and eval_alt_fuel (g : RDF_Graph_Executable.rdf_graph)
+  (start : RDF_Graph_Executable.rdf_term) (ps : path Prims.list)
+  (fuel : Prims.nat) : RDF_Graph_Executable.rdf_term Prims.list=
+  match fuel with
+  | uu___ when uu___ = Prims.int_zero -> []
+  | uu___ ->
+      let fuel' = fuel - Prims.int_one in
+      dedup_terms
+        (FStar_List_Tot_Base.concatMap
+           (fun p -> eval_path_fuel g start p fuel') ps)
+and eval_plus_fuel (g : RDF_Graph_Executable.rdf_graph)
+  (frontier : RDF_Graph_Executable.rdf_term Prims.list) (p : path)
+  (fuel : Prims.nat) : RDF_Graph_Executable.rdf_term Prims.list=
+  match fuel with
+  | uu___ when uu___ = Prims.int_zero -> dedup_terms frontier
+  | uu___ ->
+      let fuel' = fuel - Prims.int_one in
+      let nexts =
+        dedup_terms
+          (FStar_List_Tot_Base.concatMap
+             (fun s -> eval_path_fuel g s p fuel') frontier) in
+      let combined = dedup_terms (FStar_List_Tot_Base.op_At frontier nexts) in
+      if
+        (FStar_List_Tot_Base.length combined) <=
+          (FStar_List_Tot_Base.length frontier)
+      then frontier
+      else eval_plus_fuel g combined p fuel'
 let eval_path (g : RDF_Graph_Executable.rdf_graph)
   (start : RDF_Graph_Executable.rdf_term) (p : path) :
   RDF_Graph_Executable.rdf_term Prims.list=
+  eval_path_fuel g start p
+    ((RDF_Graph_Executable.graph_len g) + (Prims.of_int (50)))
+let rec path_to_sparql_expr (p : path) : Prims.string=
   match p with
-  | P_Predicate pred ->
-      (match RDF_Graph_Executable.term_to_subject start with
-       | FStar_Pervasives_Native.Some s ->
-           RDF_Graph_Executable.find_objects g s pred
-       | FStar_Pervasives_Native.None -> [])
-  | P_Inverse (P_Predicate pred) ->
-      FStar_List_Tot_Base.map RDF_Graph_Executable.subject_to_term
-        (RDF_Graph_Executable.find_subjects g pred start)
-  | uu___ -> []
+  | P_Predicate i -> Prims.strcat "<" (Prims.strcat i ">")
+  | P_Inverse p' -> Prims.strcat "^" (path_to_sparql_atom p')
+  | P_Sequence ps -> path_list_to_sparql "/" ps
+  | P_Alternative ps -> path_list_to_sparql "|" ps
+  | P_ZeroOrMore p' -> Prims.strcat (path_to_sparql_atom p') "*"
+  | P_OneOrMore p' -> Prims.strcat (path_to_sparql_atom p') "+"
+  | P_ZeroOrOne p' -> Prims.strcat (path_to_sparql_atom p') "?"
+and path_to_sparql_atom (p : path) : Prims.string=
+  match p with
+  | P_Predicate i -> Prims.strcat "<" (Prims.strcat i ">")
+  | P_Inverse p' ->
+      Prims.strcat "(^" (Prims.strcat (path_to_sparql_atom p') ")")
+  | P_Sequence ps ->
+      Prims.strcat "(" (Prims.strcat (path_list_to_sparql "/" ps) ")")
+  | P_Alternative ps ->
+      Prims.strcat "(" (Prims.strcat (path_list_to_sparql "|" ps) ")")
+  | P_ZeroOrMore p' ->
+      Prims.strcat "(" (Prims.strcat (path_to_sparql_atom p') "*)")
+  | P_OneOrMore p' ->
+      Prims.strcat "(" (Prims.strcat (path_to_sparql_atom p') "+)")
+  | P_ZeroOrOne p' ->
+      Prims.strcat "(" (Prims.strcat (path_to_sparql_atom p') "?)")
+and path_list_to_sparql (sep : Prims.string) (ps : path Prims.list) :
+  Prims.string=
+  match ps with
+  | [] -> ""
+  | p::[] -> path_to_sparql_atom p
+  | p::rest ->
+      Prims.strcat (path_to_sparql_atom p)
+        (Prims.strcat sep (path_list_to_sparql sep rest))
 let shacl_class_closure_step (g : RDF_Graph_Executable.rdf_graph) :
   RDF_Graph_Executable.rdf_graph=
   let ig = RDF_Graph_Executable.build_indexed g in
@@ -840,6 +1135,121 @@ let collect_shape_ref_list (g : RDF_Graph_Executable.rdf_graph)
        match term_to_shape_ref t with
        | FStar_Pervasives_Native.Some r -> [r]
        | FStar_Pervasives_Native.None -> []) (rdf_list_terms g head fuel)
+let build_qualified_constraints (g : RDF_Graph_Executable.rdf_graph)
+  (s : RDF_Graph_Executable.subject) : constraint_component Prims.list=
+  match RDF_Graph_Executable.find_objects g s sh_qualifiedValueShape with
+  | qvs_term::uu___ ->
+      (match term_to_shape_ref qvs_term with
+       | FStar_Pervasives_Native.Some qref ->
+           let qdisjoint =
+             match first_bool
+                     (RDF_Graph_Executable.find_objects g s
+                        sh_qualifiedValueShapesDisjoint)
+             with
+             | FStar_Pervasives_Native.Some b -> b
+             | FStar_Pervasives_Native.None -> false in
+           let qmin_cc =
+             match first_int
+                     (RDF_Graph_Executable.find_objects g s
+                        sh_qualifiedMinCount)
+             with
+             | FStar_Pervasives_Native.Some n ->
+                 [CC_QualifiedMinCount (qref, n, qdisjoint)]
+             | FStar_Pervasives_Native.None -> [] in
+           let qmax_cc =
+             match first_int
+                     (RDF_Graph_Executable.find_objects g s
+                        sh_qualifiedMaxCount)
+             with
+             | FStar_Pervasives_Native.Some n ->
+                 [CC_QualifiedMaxCount (qref, n, qdisjoint)]
+             | FStar_Pervasives_Native.None -> [] in
+           FStar_List_Tot_Base.op_At qmin_cc qmax_cc
+       | FStar_Pervasives_Native.None -> [])
+  | [] -> []
+let rec declares_to_header (g : RDF_Graph_Executable.rdf_graph)
+  (decls : RDF_Graph_Executable.rdf_term Prims.list) : Prims.string=
+  match decls with
+  | [] -> ""
+  | d::rest ->
+      (match RDF_Graph_Executable.term_to_subject d with
+       | FStar_Pervasives_Native.None -> declares_to_header g rest
+       | FStar_Pervasives_Native.Some ds ->
+           let pfx =
+             match RDF_Graph_Executable.find_objects g ds sh_decl_prefix with
+             | (RDF_Graph_Executable.T_Literal l)::uu___ ->
+                 FStar_Pervasives_Native.Some
+                   (l.RDF_Graph_Executable.lexical_form)
+             | uu___ -> FStar_Pervasives_Native.None in
+           let ns =
+             match RDF_Graph_Executable.find_objects g ds sh_decl_namespace
+             with
+             | (RDF_Graph_Executable.T_Literal l)::uu___ ->
+                 FStar_Pervasives_Native.Some
+                   (l.RDF_Graph_Executable.lexical_form)
+             | uu___ -> FStar_Pervasives_Native.None in
+           (match (pfx, ns) with
+            | (FStar_Pervasives_Native.Some p, FStar_Pervasives_Native.Some
+               n) ->
+                FStar_String.concat ""
+                  ["PREFIX "; p; ": <"; n; ">\n"; declares_to_header g rest]
+            | (uu___, uu___1) -> declares_to_header g rest))
+let rec collect_declares (g : RDF_Graph_Executable.rdf_graph)
+  (frontier : RDF_Graph_Executable.rdf_term Prims.list)
+  (visited : RDF_Graph_Executable.rdf_term Prims.list) (fuel : Prims.nat) :
+  RDF_Graph_Executable.rdf_term Prims.list=
+  match fuel with
+  | uu___ when uu___ = Prims.int_zero -> []
+  | uu___ ->
+      (match frontier with
+       | [] -> []
+       | n::rest ->
+           if
+             FStar_List_Tot_Base.existsb (RDF_Graph_Executable.rdf_term_eq n)
+               visited
+           then collect_declares g rest visited (fuel - Prims.int_one)
+           else
+             (match RDF_Graph_Executable.term_to_subject n with
+              | FStar_Pervasives_Native.None ->
+                  collect_declares g rest (n :: visited)
+                    (fuel - Prims.int_one)
+              | FStar_Pervasives_Native.Some ns ->
+                  let ds = RDF_Graph_Executable.find_objects g ns sh_declare in
+                  let imps =
+                    RDF_Graph_Executable.find_objects g ns owl_imports_iri in
+                  FStar_List_Tot_Base.op_At ds
+                    (collect_declares g (FStar_List_Tot_Base.op_At imps rest)
+                       (n :: visited) (fuel - Prims.int_one))))
+let prefix_header_for (g : RDF_Graph_Executable.rdf_graph)
+  (constraint_subj : RDF_Graph_Executable.subject) : Prims.string=
+  let via_nodes =
+    RDF_Graph_Executable.find_objects g constraint_subj sh_prefixes in
+  let all_declares =
+    collect_declares g via_nodes []
+      ((RDF_Graph_Executable.graph_len g) + (Prims.of_int (10))) in
+  declares_to_header g all_declares
+let build_sparql_constraints (g : RDF_Graph_Executable.rdf_graph)
+  (s : RDF_Graph_Executable.subject) : constraint_component Prims.list=
+  FStar_List_Tot_Base.concatMap
+    (fun t ->
+       match RDF_Graph_Executable.term_to_subject t with
+       | FStar_Pervasives_Native.None -> []
+       | FStar_Pervasives_Native.Some cs ->
+           let cref = subject_to_shape_ref cs in
+           (match RDF_Graph_Executable.find_objects g cs sh_select with
+            | (RDF_Graph_Executable.T_Literal l)::uu___ ->
+                let cmsg =
+                  match RDF_Graph_Executable.find_objects g cs sh_message
+                  with
+                  | (RDF_Graph_Executable.T_Literal ml)::uu___1 ->
+                      FStar_Pervasives_Native.Some ml
+                  | uu___1 -> FStar_Pervasives_Native.None in
+                let hdr = prefix_header_for g cs in
+                [CC_Sparql
+                   (cref,
+                     (Prims.strcat hdr l.RDF_Graph_Executable.lexical_form),
+                     cmsg)]
+            | uu___ -> [])) (RDF_Graph_Executable.find_objects g s sh_sparql)
 let build_constraints (g : RDF_Graph_Executable.rdf_graph)
   (s : RDF_Graph_Executable.subject) : constraint_component Prims.list=
   let fuel = (RDF_Graph_Executable.graph_len g) + Prims.int_one in
@@ -952,6 +1362,7 @@ let build_constraints (g : RDF_Graph_Executable.rdf_graph)
          | FStar_Pervasives_Native.Some r -> [CC_Node r]
          | FStar_Pervasives_Native.None -> [])
       (RDF_Graph_Executable.find_objects g s sh_node) in
+  let qualified = build_qualified_constraints g s in
   let equals =
     FStar_List_Tot_Base.concatMap
       (fun t ->
@@ -992,6 +1403,7 @@ let build_constraints (g : RDF_Graph_Executable.rdf_graph)
           | [] -> [] in
         [CC_Closed ign]
     | uu___ -> [] in
+  let sparqls = build_sparql_constraints g s in
   FStar_List_Tot_Base.op_At mincount
     (FStar_List_Tot_Base.op_At maxcount
        (FStar_List_Tot_Base.op_At datatype
@@ -1020,14 +1432,18 @@ let build_constraints (g : RDF_Graph_Executable.rdf_graph)
                                                              (FStar_List_Tot_Base.op_At
                                                                 nodes
                                                                 (FStar_List_Tot_Base.op_At
-                                                                   equals
+                                                                   qualified
                                                                    (FStar_List_Tot_Base.op_At
+                                                                    equals
+                                                                    (FStar_List_Tot_Base.op_At
                                                                     disjoint
                                                                     (FStar_List_Tot_Base.op_At
                                                                     lessthan
                                                                     (FStar_List_Tot_Base.op_At
                                                                     lessthaneq
-                                                                    closed_))))))))))))))))))))))))
+                                                                    (FStar_List_Tot_Base.op_At
+                                                                    closed_
+                                                                    sparqls))))))))))))))))))))))))))
 let build_shape (g : RDF_Graph_Executable.rdf_graph)
   (s : RDF_Graph_Executable.subject) : shape=
   let path_objs = RDF_Graph_Executable.find_objects g s sh_path in
@@ -1046,7 +1462,7 @@ let build_shape (g : RDF_Graph_Executable.rdf_graph)
   let msg =
     match RDF_Graph_Executable.find_objects g s sh_message with
     | (RDF_Graph_Executable.T_Literal l)::uu___ ->
-        FStar_Pervasives_Native.Some (l.RDF_Graph_Executable.lexical_form)
+        FStar_Pervasives_Native.Some l
     | uu___ -> FStar_Pervasives_Native.None in
   let prefs =
     FStar_List_Tot_Base.concatMap
@@ -1107,20 +1523,191 @@ let scaled_cmp (a : (Prims.int * Prims.nat)) (b : (Prims.int * Prims.nat)) :
                 if am < bm'
                 then (Prims.of_int (-1))
                 else if am > bm' then Prims.int_one else Prims.int_zero))
+let days_from_civil (y : Prims.int) (m : Prims.int) (d : Prims.int) :
+  Prims.int=
+  let y' = if m <= (Prims.of_int (2)) then y - Prims.int_one else y in
+  let era =
+    (if y' >= Prims.int_zero then y' else y' - (Prims.of_int (399))) /
+      (Prims.of_int (400)) in
+  let yoe = y' - (era * (Prims.of_int (400))) in
+  let mp = (mod) (m + (Prims.of_int (9))) (Prims.of_int (12)) in
+  let doy =
+    (((((Prims.of_int (153)) * mp) + (Prims.of_int (2))) / (Prims.of_int (5)))
+       + d)
+      - Prims.int_one in
+  let doe =
+    (((yoe * (Prims.of_int (365))) + (yoe / (Prims.of_int (4)))) -
+       (yoe / (Prims.of_int (100))))
+      + doy in
+  ((era * (Prims.parse_int "146097")) + doe) - (Prims.parse_int "719468")
+let dt_parse_tail (tail : Prims.string) :
+  (Prims.int * Prims.int * Prims.bool) FStar_Pervasives_Native.option=
+  let len = FStar_String.strlen tail in
+  let uu___ =
+    if
+      (len >= (Prims.of_int (2))) &&
+        ((FStar_String.sub tail Prims.int_zero Prims.int_one) = ".")
+    then
+      let rec frac_end pos =
+        if pos < len
+        then
+          let c = FStar_Char.int_of_char (FStar_String.index tail pos) in
+          (if (c >= (Prims.of_int (48))) && (c <= (Prims.of_int (57)))
+           then frac_end (pos + Prims.int_one)
+           else pos)
+        else pos in
+      let fe = frac_end Prims.int_one in
+      (if fe = Prims.int_one
+       then (FStar_Pervasives_Native.None, Prims.int_zero)
+       else
+         (let dig_len =
+            if (fe - Prims.int_one) > (Prims.of_int (3))
+            then (Prims.of_int (3))
+            else fe - Prims.int_one in
+          match SPARQL11_Algebra.parse_int_string
+                  (FStar_String.sub tail Prims.int_one dig_len)
+          with
+          | FStar_Pervasives_Native.Some f ->
+              let ms =
+                if dig_len = Prims.int_one
+                then f * (Prims.of_int (100))
+                else
+                  if dig_len = (Prims.of_int (2))
+                  then f * (Prims.of_int (10))
+                  else f in
+              ((FStar_Pervasives_Native.Some ms), fe)
+          | FStar_Pervasives_Native.None ->
+              (FStar_Pervasives_Native.None, Prims.int_zero)))
+    else ((FStar_Pervasives_Native.Some Prims.int_zero), Prims.int_zero) in
+  match uu___ with
+  | (frac_ms, tz_start) ->
+      (match frac_ms with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some fms ->
+           let rest_len = len - tz_start in
+           if rest_len = Prims.int_zero
+           then FStar_Pervasives_Native.Some (fms, Prims.int_zero, false)
+           else
+             if
+               (rest_len = Prims.int_one) &&
+                 ((FStar_String.sub tail tz_start Prims.int_one) = "Z")
+             then FStar_Pervasives_Native.Some (fms, Prims.int_zero, true)
+             else
+               if rest_len = (Prims.of_int (6))
+               then
+                 (let sign_s = FStar_String.sub tail tz_start Prims.int_one in
+                  if (sign_s = "+") || (sign_s = "-")
+                  then
+                    match ((SPARQL11_Algebra.parse_int_string
+                              (FStar_String.sub tail
+                                 (tz_start + Prims.int_one)
+                                 (Prims.of_int (2)))),
+                            (SPARQL11_Algebra.parse_int_string
+                               (FStar_String.sub tail
+                                  (tz_start + (Prims.of_int (4)))
+                                  (Prims.of_int (2)))))
+                    with
+                    | (FStar_Pervasives_Native.Some th,
+                       FStar_Pervasives_Native.Some tm) ->
+                        let off =
+                          (th * (Prims.of_int (3600))) +
+                            (tm * (Prims.of_int (60))) in
+                        FStar_Pervasives_Native.Some
+                          (fms,
+                            ((if sign_s = "-"
+                              then Prims.int_zero - off
+                              else off)), true)
+                    | (uu___3, uu___4) -> FStar_Pervasives_Native.None
+                  else FStar_Pervasives_Native.None)
+               else FStar_Pervasives_Native.None)
+let dt_parse_ms (s : Prims.string) :
+  (Prims.int * Prims.bool) FStar_Pervasives_Native.option=
+  let len = FStar_String.strlen s in
+  if len < (Prims.of_int (19))
+  then FStar_Pervasives_Native.None
+  else
+    (match ((SPARQL11_Algebra.parse_int_string
+               (FStar_String.sub s Prims.int_zero (Prims.of_int (4)))),
+             (SPARQL11_Algebra.parse_int_string
+                (FStar_String.sub s (Prims.of_int (5)) (Prims.of_int (2)))),
+             (SPARQL11_Algebra.parse_int_string
+                (FStar_String.sub s (Prims.of_int (8)) (Prims.of_int (2)))),
+             (SPARQL11_Algebra.parse_int_string
+                (FStar_String.sub s (Prims.of_int (11)) (Prims.of_int (2)))),
+             (SPARQL11_Algebra.parse_int_string
+                (FStar_String.sub s (Prims.of_int (14)) (Prims.of_int (2)))),
+             (SPARQL11_Algebra.parse_int_string
+                (FStar_String.sub s (Prims.of_int (17)) (Prims.of_int (2)))))
+     with
+     | (FStar_Pervasives_Native.Some y, FStar_Pervasives_Native.Some mo,
+        FStar_Pervasives_Native.Some d, FStar_Pervasives_Native.Some h,
+        FStar_Pervasives_Native.Some mi, FStar_Pervasives_Native.Some se) ->
+         (match dt_parse_tail
+                  (FStar_String.sub s (Prims.of_int (19))
+                     (len - (Prims.of_int (19))))
+          with
+          | FStar_Pervasives_Native.Some (fms, tzoff, has_tz) ->
+              let days = days_from_civil y mo d in
+              let secs =
+                ((((days * (Prims.parse_int "86400")) +
+                     (h * (Prims.of_int (3600))))
+                    + (mi * (Prims.of_int (60))))
+                   + se)
+                  - tzoff in
+              FStar_Pervasives_Native.Some
+                (((secs * (Prims.of_int (1000))) + fms), has_tz)
+          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
+     | (uu___1, uu___2, uu___3, uu___4, uu___5, uu___6) ->
+         FStar_Pervasives_Native.None)
+let dt_cmp (a : Prims.string) (b : Prims.string) :
+  Prims.int FStar_Pervasives_Native.option=
+  match ((dt_parse_ms a), (dt_parse_ms b)) with
+  | (FStar_Pervasives_Native.Some (ma, tza), FStar_Pervasives_Native.Some
+     (mb, tzb)) ->
+      if tza = tzb
+      then
+        FStar_Pervasives_Native.Some
+          ((if ma < mb
+            then (Prims.of_int (-1))
+            else if ma > mb then Prims.int_one else Prims.int_zero))
+      else FStar_Pervasives_Native.None
+  | (uu___, uu___1) -> FStar_Pervasives_Native.None
+let both_datetimes (a : RDF_Graph_Executable.literal)
+  (b : RDF_Graph_Executable.literal) : Prims.bool=
+  (a.RDF_Graph_Executable.datatype = SPARQL11_Algebra.xsd_dateTime) &&
+    (b.RDF_Graph_Executable.datatype = SPARQL11_Algebra.xsd_dateTime)
 let numeric_cmp_le (a : RDF_Graph_Executable.literal)
   (b : RDF_Graph_Executable.literal) :
   Prims.bool FStar_Pervasives_Native.option=
-  match ((literal_to_scaled a), (literal_to_scaled b)) with
-  | (FStar_Pervasives_Native.Some sa, FStar_Pervasives_Native.Some sb) ->
-      FStar_Pervasives_Native.Some ((scaled_cmp sa sb) <= Prims.int_zero)
-  | (uu___, uu___1) -> FStar_Pervasives_Native.None
+  if both_datetimes a b
+  then
+    match dt_cmp a.RDF_Graph_Executable.lexical_form
+            b.RDF_Graph_Executable.lexical_form
+    with
+    | FStar_Pervasives_Native.Some c ->
+        FStar_Pervasives_Native.Some (c <= Prims.int_zero)
+    | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  else
+    (match ((literal_to_scaled a), (literal_to_scaled b)) with
+     | (FStar_Pervasives_Native.Some sa, FStar_Pervasives_Native.Some sb) ->
+         FStar_Pervasives_Native.Some ((scaled_cmp sa sb) <= Prims.int_zero)
+     | (uu___1, uu___2) -> FStar_Pervasives_Native.None)
 let numeric_cmp_lt (a : RDF_Graph_Executable.literal)
   (b : RDF_Graph_Executable.literal) :
   Prims.bool FStar_Pervasives_Native.option=
-  match ((literal_to_scaled a), (literal_to_scaled b)) with
-  | (FStar_Pervasives_Native.Some sa, FStar_Pervasives_Native.Some sb) ->
-      FStar_Pervasives_Native.Some ((scaled_cmp sa sb) < Prims.int_zero)
-  | (uu___, uu___1) -> FStar_Pervasives_Native.None
+  if both_datetimes a b
+  then
+    match dt_cmp a.RDF_Graph_Executable.lexical_form
+            b.RDF_Graph_Executable.lexical_form
+    with
+    | FStar_Pervasives_Native.Some c ->
+        FStar_Pervasives_Native.Some (c < Prims.int_zero)
+    | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  else
+    (match ((literal_to_scaled a), (literal_to_scaled b)) with
+     | (FStar_Pervasives_Native.Some sa, FStar_Pervasives_Native.Some sb) ->
+         FStar_Pervasives_Native.Some ((scaled_cmp sa sb) < Prims.int_zero)
+     | (uu___1, uu___2) -> FStar_Pervasives_Native.None)
 let term_lt (a : RDF_Graph_Executable.rdf_term)
   (b : RDF_Graph_Executable.rdf_term) : Prims.bool=
   match (a, b) with
@@ -1141,27 +1728,168 @@ let term_lt (a : RDF_Graph_Executable.rdf_term)
 let term_le (a : RDF_Graph_Executable.rdf_term)
   (b : RDF_Graph_Executable.rdf_term) : Prims.bool=
   (term_lt a b) || (RDF_Graph_Executable.rdf_term_eq a b)
-let list_diff (a : RDF_Graph_Executable.rdf_term Prims.list)
-  (b : RDF_Graph_Executable.rdf_term Prims.list) :
-  RDF_Graph_Executable.rdf_term Prims.list=
-  FStar_List_Tot_Base.concatMap
-    (fun x ->
-       if FStar_List_Tot_Base.existsb (RDF_Graph_Executable.rdf_term_eq x) b
-       then []
-       else [x]) a
-let list_set_eq (a : RDF_Graph_Executable.rdf_term Prims.list)
-  (b : RDF_Graph_Executable.rdf_term Prims.list) : Prims.bool=
-  (Prims.uu___is_Nil (list_diff a b)) && (Prims.uu___is_Nil (list_diff b a))
-let list_disjoint (a : RDF_Graph_Executable.rdf_term Prims.list)
-  (b : RDF_Graph_Executable.rdf_term Prims.list) : Prims.bool=
-  Prims.uu___is_Nil
-    (FStar_List_Tot_Base.concatMap
-       (fun x ->
-          if
-            FStar_List_Tot_Base.existsb (RDF_Graph_Executable.rdf_term_eq x)
-              b
-          then [x]
-          else []) a)
+let is_ascii_digit (c : FStar_Char.char) : Prims.bool=
+  let n = FStar_Char.int_of_char c in
+  (n >= (Prims.of_int (48))) && (n <= (Prims.of_int (57)))
+let is_integer_lexical (lex : Prims.string) : Prims.bool=
+  match FStar_String.list_of_string lex with
+  | [] -> false
+  | c::rest ->
+      let ci = FStar_Char.int_of_char c in
+      let digits =
+        if (ci = (Prims.of_int (43))) || (ci = (Prims.of_int (45)))
+        then rest
+        else c :: rest in
+      (Prims.uu___is_Cons digits) &&
+        (FStar_List_Tot_Base.for_all is_ascii_digit digits)
+let is_decimal_lexical (lex : Prims.string) : Prims.bool=
+  match FStar_String.list_of_string lex with
+  | [] -> false
+  | c::rest ->
+      let ci = FStar_Char.int_of_char c in
+      let body =
+        if (ci = (Prims.of_int (43))) || (ci = (Prims.of_int (45)))
+        then rest
+        else c :: rest in
+      (((Prims.uu___is_Cons body) &&
+          (FStar_List_Tot_Base.for_all
+             (fun ch ->
+                (is_ascii_digit ch) ||
+                  ((FStar_Char.int_of_char ch) = (Prims.of_int (46)))) body))
+         &&
+         ((FStar_List_Tot_Base.length
+             (FStar_List_Tot_Base.filter
+                (fun ch -> (FStar_Char.int_of_char ch) = (Prims.of_int (46)))
+                body))
+            <= Prims.int_one))
+        && (FStar_List_Tot_Base.existsb is_ascii_digit body)
+let int_lexical_in_range (lex : Prims.string)
+  (lo : Prims.int FStar_Pervasives_Native.option)
+  (hi : Prims.int FStar_Pervasives_Native.option) : Prims.bool=
+  (is_integer_lexical lex) &&
+    (match SPARQL11_Algebra.parse_int_string lex with
+     | FStar_Pervasives_Native.Some n ->
+         (match lo with
+          | FStar_Pervasives_Native.Some l -> n >= l
+          | FStar_Pervasives_Native.None -> true) &&
+           ((match hi with
+             | FStar_Pervasives_Native.Some h -> n <= h
+             | FStar_Pervasives_Native.None -> true))
+     | FStar_Pervasives_Native.None -> true)
+let literal_ill_formed (dt : RDF_Graph_Executable.wf_iri)
+  (lex : Prims.string) : Prims.bool=
+  if dt = RDF_Graph_Executable.xsd_boolean
+  then
+    Prims.op_Negation
+      ((((lex = "true") || (lex = "false")) || (lex = "1")) || (lex = "0"))
+  else
+    if dt = RDF_Graph_Executable.xsd_integer
+    then Prims.op_Negation (is_integer_lexical lex)
+    else
+      if dt = RDF_Graph_Executable.xsd_decimal
+      then Prims.op_Negation (is_decimal_lexical lex)
+      else
+        if dt = RDF_Graph_Executable.xsd_long
+        then
+          Prims.op_Negation
+            (int_lexical_in_range lex
+               (FStar_Pervasives_Native.Some
+                  (Prims.parse_int "-9223372036854775808"))
+               (FStar_Pervasives_Native.Some
+                  (Prims.parse_int "9223372036854775807")))
+        else
+          if dt = RDF_Graph_Executable.xsd_int
+          then
+            Prims.op_Negation
+              (int_lexical_in_range lex
+                 (FStar_Pervasives_Native.Some
+                    (Prims.parse_int "-2147483648"))
+                 (FStar_Pervasives_Native.Some (Prims.parse_int "2147483647")))
+          else
+            if dt = RDF_Graph_Executable.xsd_short
+            then
+              Prims.op_Negation
+                (int_lexical_in_range lex
+                   (FStar_Pervasives_Native.Some (Prims.of_int (-32768)))
+                   (FStar_Pervasives_Native.Some (Prims.of_int (32767))))
+            else
+              if dt = RDF_Graph_Executable.xsd_byte
+              then
+                Prims.op_Negation
+                  (int_lexical_in_range lex
+                     (FStar_Pervasives_Native.Some (Prims.of_int (-128)))
+                     (FStar_Pervasives_Native.Some (Prims.of_int (127))))
+              else
+                if dt = RDF_Graph_Executable.xsd_unsignedLong
+                then
+                  Prims.op_Negation
+                    (int_lexical_in_range lex
+                       (FStar_Pervasives_Native.Some Prims.int_zero)
+                       (FStar_Pervasives_Native.Some
+                          (Prims.parse_int "18446744073709551615")))
+                else
+                  if dt = RDF_Graph_Executable.xsd_unsignedInt
+                  then
+                    Prims.op_Negation
+                      (int_lexical_in_range lex
+                         (FStar_Pervasives_Native.Some Prims.int_zero)
+                         (FStar_Pervasives_Native.Some
+                            (Prims.parse_int "4294967295")))
+                  else
+                    if dt = RDF_Graph_Executable.xsd_unsignedShort
+                    then
+                      Prims.op_Negation
+                        (int_lexical_in_range lex
+                           (FStar_Pervasives_Native.Some Prims.int_zero)
+                           (FStar_Pervasives_Native.Some
+                              (Prims.parse_int "65535")))
+                    else
+                      if dt = RDF_Graph_Executable.xsd_unsignedByte
+                      then
+                        Prims.op_Negation
+                          (int_lexical_in_range lex
+                             (FStar_Pervasives_Native.Some Prims.int_zero)
+                             (FStar_Pervasives_Native.Some
+                                (Prims.of_int (255))))
+                      else
+                        if dt = RDF_Graph_Executable.xsd_nonNegativeInteger
+                        then
+                          Prims.op_Negation
+                            (int_lexical_in_range lex
+                               (FStar_Pervasives_Native.Some Prims.int_zero)
+                               FStar_Pervasives_Native.None)
+                        else
+                          if dt = RDF_Graph_Executable.xsd_positiveInteger
+                          then
+                            Prims.op_Negation
+                              (int_lexical_in_range lex
+                                 (FStar_Pervasives_Native.Some Prims.int_one)
+                                 FStar_Pervasives_Native.None)
+                          else
+                            if
+                              dt =
+                                RDF_Graph_Executable.xsd_nonPositiveInteger
+                            then
+                              Prims.op_Negation
+                                (int_lexical_in_range lex
+                                   FStar_Pervasives_Native.None
+                                   (FStar_Pervasives_Native.Some
+                                      Prims.int_zero))
+                            else
+                              if
+                                dt = RDF_Graph_Executable.xsd_negativeInteger
+                              then
+                                Prims.op_Negation
+                                  (int_lexical_in_range lex
+                                     FStar_Pervasives_Native.None
+                                     (FStar_Pervasives_Native.Some
+                                        (Prims.of_int (-1))))
+                              else
+                                if dt = SPARQL11_Algebra.xsd_dateTime
+                                then
+                                  FStar_Pervasives_Native.uu___is_None
+                                    (dt_parse_ms lex)
+                                else false
 let other_property_values (data : RDF_Graph_Executable.rdf_graph)
   (focus : RDF_Graph_Executable.rdf_term) (p : RDF_Graph_Executable.wf_iri) :
   RDF_Graph_Executable.rdf_term Prims.list=
@@ -1169,6 +1897,23 @@ let other_property_values (data : RDF_Graph_Executable.rdf_graph)
   | FStar_Pervasives_Native.Some s ->
       RDF_Graph_Executable.find_objects data s p
   | FStar_Pervasives_Native.None -> []
+let qualified_shape_ref_of (cc : constraint_component) :
+  shape_ref FStar_Pervasives_Native.option=
+  match cc with
+  | CC_QualifiedMinCount (r, uu___, uu___1) -> FStar_Pervasives_Native.Some r
+  | CC_QualifiedMaxCount (r, uu___, uu___1) -> FStar_Pervasives_Native.Some r
+  | uu___ -> FStar_Pervasives_Native.None
+let sibling_shape_refs (sg : shape Prims.list) (self_id : shape_ref) :
+  shape_ref Prims.list=
+  FStar_List_Tot_Base.concatMap
+    (fun parent ->
+       if
+         FStar_List_Tot_Base.existsb (fun r -> r = self_id)
+           parent.property_refs
+       then
+         FStar_List_Tot_Base.filter
+           (fun r -> Prims.op_Negation (r = self_id)) parent.property_refs
+       else []) sg
 let path_predicates_of_shape (sg : shape Prims.list) (s : shape) :
   RDF_Graph_Executable.wf_iri Prims.list=
   FStar_List_Tot_Base.concatMap
@@ -1179,23 +1924,8 @@ let path_predicates_of_shape (sg : shape Prims.list) (s : shape) :
             | FStar_Pervasives_Native.Some (P_Predicate p) -> [p]
             | uu___ -> [])
        | FStar_Pervasives_Native.None -> []) s.property_refs
-let closed_ok (data : RDF_Graph_Executable.rdf_graph) (sg : shape Prims.list)
-  (focus : RDF_Graph_Executable.rdf_term) (s : shape)
-  (ignored : RDF_Graph_Executable.wf_iri Prims.list) : Prims.bool=
-  match RDF_Graph_Executable.term_to_subject focus with
-  | FStar_Pervasives_Native.None -> true
-  | FStar_Pervasives_Native.Some subj ->
-      let allowed =
-        FStar_List_Tot_Base.op_At (path_predicates_of_shape sg s) ignored in
-      FStar_List_Tot_Base.for_all
-        (fun t ->
-           (Prims.op_Negation
-              (RDF_Graph_Executable.subject_eq t.RDF_Graph_Executable.s subj))
-             ||
-             (FStar_List_Tot_Base.existsb
-                (fun p -> p = t.RDF_Graph_Executable.p) allowed)) data
-let unique_lang_violates (values : RDF_Graph_Executable.rdf_term Prims.list)
-  : Prims.bool=
+let duplicated_lang_tags (values : RDF_Graph_Executable.rdf_term Prims.list)
+  : Prims.string Prims.list=
   let langs =
     FStar_List_Tot_Base.concatMap
       (fun t ->
@@ -1205,20 +1935,35 @@ let unique_lang_violates (values : RDF_Graph_Executable.rdf_term Prims.list)
               | FStar_Pervasives_Native.Some lt -> [lt]
               | FStar_Pervasives_Native.None -> [])
          | uu___ -> []) values in
-  let rec has_dup seen xs =
+  let count x =
+    FStar_List_Tot_Base.length
+      (FStar_List_Tot_Base.filter (RDF_Graph_Executable.lang_tag_eq x) langs) in
+  let rec distinct_dups seen xs =
     match xs with
-    | [] -> false
+    | [] -> []
     | x::rest ->
         if
           FStar_List_Tot_Base.existsb (RDF_Graph_Executable.lang_tag_eq x)
             seen
-        then true
-        else has_dup (x :: seen) rest in
-  has_dup [] langs
+        then distinct_dups seen rest
+        else
+          if (count x) >= (Prims.of_int (2))
+          then x :: (distinct_dups (x :: seen) rest)
+          else distinct_dups (x :: seen) rest in
+  distinct_dups [] langs
+let lang_matches_range (tag : Prims.string) (range : Prims.string) :
+  Prims.bool=
+  let t = FStar_String.lowercase tag in
+  let r = FStar_String.lowercase range in
+  let tl = FStar_String.strlen t in
+  let rl = FStar_String.strlen r in
+  (t = r) ||
+    (((tl > rl) && ((FStar_String.sub t Prims.int_zero rl) = r)) &&
+       ((FStar_String.sub t rl Prims.int_one) = "-"))
 let value_violation (focus : RDF_Graph_Executable.rdf_term)
   (path_opt : path FStar_Pervasives_Native.option) (source : shape_ref)
   (cc : constraint_component) (sev : severity)
-  (msg : Prims.string FStar_Pervasives_Native.option)
+  (msg : RDF_Graph_Executable.wf_literal FStar_Pervasives_Native.option)
   (v : RDF_Graph_Executable.rdf_term) : violation=
   {
     v_focus_node = focus;
@@ -1227,12 +1972,14 @@ let value_violation (focus : RDF_Graph_Executable.rdf_term)
     v_source_shape = source;
     v_constraint = cc;
     v_severity = sev;
-    v_message = msg
+    v_message = msg;
+    v_source_constraint = FStar_Pervasives_Native.None
   }
 let focus_violation (focus : RDF_Graph_Executable.rdf_term)
   (path_opt : path FStar_Pervasives_Native.option) (source : shape_ref)
   (cc : constraint_component) (sev : severity)
-  (msg : Prims.string FStar_Pervasives_Native.option) : violation=
+  (msg : RDF_Graph_Executable.wf_literal FStar_Pervasives_Native.option) :
+  violation=
   {
     v_focus_node = focus;
     v_path = path_opt;
@@ -1240,66 +1987,9 @@ let focus_violation (focus : RDF_Graph_Executable.rdf_term)
     v_source_shape = source;
     v_constraint = cc;
     v_severity = sev;
-    v_message = msg
+    v_message = msg;
+    v_source_constraint = FStar_Pervasives_Native.None
   }
-let eval_aggregate_constraints (data : RDF_Graph_Executable.rdf_graph)
-  (sg : shape Prims.list) (focus : RDF_Graph_Executable.rdf_term)
-  (path_opt : path FStar_Pervasives_Native.option) (source : shape_ref)
-  (sev : severity) (msg : Prims.string FStar_Pervasives_Native.option)
-  (values : RDF_Graph_Executable.rdf_term Prims.list) (s : shape) :
-  violation Prims.list=
-  FStar_List_Tot_Base.concatMap
-    (fun cc ->
-       match cc with
-       | CC_MinCount n ->
-           if (FStar_List_Tot_Base.length values) < n
-           then [focus_violation focus path_opt source cc sev msg]
-           else []
-       | CC_MaxCount n ->
-           if (FStar_List_Tot_Base.length values) > n
-           then [focus_violation focus path_opt source cc sev msg]
-           else []
-       | CC_HasValue t ->
-           if
-             FStar_List_Tot_Base.existsb (RDF_Graph_Executable.rdf_term_eq t)
-               values
-           then []
-           else [focus_violation focus path_opt source cc sev msg]
-       | CC_UniqueLang b ->
-           if b && (unique_lang_violates values)
-           then [focus_violation focus path_opt source cc sev msg]
-           else []
-       | CC_Closed ign ->
-           if closed_ok data sg focus s ign
-           then []
-           else [focus_violation focus path_opt source cc sev msg]
-       | CC_Equals p ->
-           if list_set_eq values (other_property_values data focus p)
-           then []
-           else [focus_violation focus path_opt source cc sev msg]
-       | CC_Disjoint p ->
-           if list_disjoint values (other_property_values data focus p)
-           then []
-           else [focus_violation focus path_opt source cc sev msg]
-       | CC_LessThan p ->
-           let others = other_property_values data focus p in
-           if
-             FStar_List_Tot_Base.for_all
-               (fun v ->
-                  FStar_List_Tot_Base.for_all (fun w -> term_lt v w) others)
-               values
-           then []
-           else [focus_violation focus path_opt source cc sev msg]
-       | CC_LessThanOrEq p ->
-           let others = other_property_values data focus p in
-           if
-             FStar_List_Tot_Base.for_all
-               (fun v ->
-                  FStar_List_Tot_Base.for_all (fun w -> term_le v w) others)
-               values
-           then []
-           else [focus_violation focus path_opt source cc sev msg]
-       | uu___ -> []) s.constraints
 let rec collect_shape_violations (data : RDF_Graph_Executable.rdf_graph)
   (sg : shape Prims.list) (closed_cls : RDF_Graph_Executable.rdf_graph)
   (node : RDF_Graph_Executable.rdf_term) (s : shape) (fuel : Prims.nat) :
@@ -1325,8 +2015,8 @@ let rec collect_shape_violations (data : RDF_Graph_Executable.rdf_graph)
                     s.shape_id s.shape_sev s.message v cc fuel')
                s.constraints) values in
       let agg =
-        eval_aggregate_constraints data sg node path_opt s.shape_id
-          s.shape_sev s.message values s in
+        eval_aggregate_constraints data sg closed_cls node path_opt
+          s.shape_id s.shape_sev s.message values s fuel' in
       let nested_props =
         FStar_List_Tot_Base.concatMap
           (fun v ->
@@ -1343,7 +2033,8 @@ and eval_one_constraint (data : RDF_Graph_Executable.rdf_graph)
   (sg : shape Prims.list) (closed_cls : RDF_Graph_Executable.rdf_graph)
   (focus : RDF_Graph_Executable.rdf_term)
   (path_opt : path FStar_Pervasives_Native.option) (source : shape_ref)
-  (sev : severity) (msg : Prims.string FStar_Pervasives_Native.option)
+  (sev : severity)
+  (msg : RDF_Graph_Executable.wf_literal FStar_Pervasives_Native.option)
   (v : RDF_Graph_Executable.rdf_term) (cc : constraint_component)
   (fuel : Prims.nat) : violation Prims.list=
   match fuel with
@@ -1410,7 +2101,13 @@ and eval_one_constraint (data : RDF_Graph_Executable.rdf_graph)
        | CC_Datatype dt ->
            (match v with
             | RDF_Graph_Executable.T_Literal l ->
-                if l.RDF_Graph_Executable.datatype = dt then [] else viol ()
+                if
+                  (l.RDF_Graph_Executable.datatype = dt) &&
+                    (Prims.op_Negation
+                       (literal_ill_formed dt
+                          l.RDF_Graph_Executable.lexical_form))
+                then []
+                else viol ()
             | uu___1 -> viol ())
        | CC_NodeKind nk -> if node_kind_ok v nk then [] else viol ()
        | CC_Class c ->
@@ -1456,8 +2153,8 @@ and eval_one_constraint (data : RDF_Graph_Executable.rdf_graph)
                 (match l.RDF_Graph_Executable.lang_tag with
                  | FStar_Pervasives_Native.Some lt ->
                      if
-                       FStar_List_Tot_Base.existsb
-                         (RDF_Graph_Executable.lang_tag_eq lt) langs
+                       FStar_List_Tot_Base.existsb (lang_matches_range lt)
+                         langs
                      then []
                      else viol ()
                  | FStar_Pervasives_Native.None -> viol ())
@@ -1502,7 +2199,599 @@ and eval_one_constraint (data : RDF_Graph_Executable.rdf_graph)
        | CC_LessThan uu___1 -> []
        | CC_LessThanOrEq uu___1 -> []
        | CC_Closed uu___1 -> []
-       | CC_Sparql uu___1 -> [])
+       | CC_QualifiedMinCount (uu___1, uu___2, uu___3) -> []
+       | CC_QualifiedMaxCount (uu___1, uu___2, uu___3) -> []
+       | CC_Sparql (uu___1, uu___2, uu___3) -> [])
+and eval_aggregate_constraints (data : RDF_Graph_Executable.rdf_graph)
+  (sg : shape Prims.list) (closed_cls : RDF_Graph_Executable.rdf_graph)
+  (focus : RDF_Graph_Executable.rdf_term)
+  (path_opt : path FStar_Pervasives_Native.option) (source : shape_ref)
+  (sev : severity)
+  (msg : RDF_Graph_Executable.wf_literal FStar_Pervasives_Native.option)
+  (values : RDF_Graph_Executable.rdf_term Prims.list) (s : shape)
+  (fuel : Prims.nat) : violation Prims.list=
+  match fuel with
+  | uu___ when uu___ = Prims.int_zero -> []
+  | uu___ ->
+      let fuel' = fuel - Prims.int_one in
+      let qualifying_count qref qdisjoint =
+        match lookup_shape qref sg with
+        | FStar_Pervasives_Native.None -> Prims.int_zero
+        | FStar_Pervasives_Native.Some qs ->
+            let sibling_refs = sibling_shape_refs sg source in
+            let sibling_qrefs =
+              FStar_List_Tot_Base.concatMap
+                (fun r ->
+                   match lookup_shape r sg with
+                   | FStar_Pervasives_Native.Some sib ->
+                       FStar_List_Tot_Base.concatMap
+                         (fun cc2 ->
+                            match qualified_shape_ref_of cc2 with
+                            | FStar_Pervasives_Native.Some sr -> [sr]
+                            | FStar_Pervasives_Native.None -> [])
+                         sib.constraints
+                   | FStar_Pervasives_Native.None -> []) sibling_refs in
+            let conforms_q v =
+              Prims.uu___is_Nil
+                (collect_shape_violations data sg closed_cls v qs fuel') in
+            let excluded v =
+              qdisjoint &&
+                (FStar_List_Tot_Base.existsb
+                   (fun sr ->
+                      match lookup_shape sr sg with
+                      | FStar_Pervasives_Native.Some sqs ->
+                          Prims.uu___is_Nil
+                            (collect_shape_violations data sg closed_cls v
+                               sqs fuel')
+                      | FStar_Pervasives_Native.None -> false) sibling_qrefs) in
+            FStar_List_Tot_Base.length
+              (FStar_List_Tot_Base.filter
+                 (fun v -> (conforms_q v) && (Prims.op_Negation (excluded v)))
+                 values) in
+      FStar_List_Tot_Base.concatMap
+        (fun cc ->
+           match cc with
+           | CC_MinCount n ->
+               if (FStar_List_Tot_Base.length values) < n
+               then [focus_violation focus path_opt source cc sev msg]
+               else []
+           | CC_MaxCount n ->
+               if (FStar_List_Tot_Base.length values) > n
+               then [focus_violation focus path_opt source cc sev msg]
+               else []
+           | CC_HasValue t ->
+               if
+                 FStar_List_Tot_Base.existsb
+                   (RDF_Graph_Executable.rdf_term_eq t) values
+               then []
+               else [focus_violation focus path_opt source cc sev msg]
+           | CC_UniqueLang b ->
+               if b
+               then
+                 FStar_List_Tot_Base.map
+                   (fun _lt ->
+                      focus_violation focus path_opt source cc sev msg)
+                   (duplicated_lang_tags values)
+               else []
+           | CC_Closed ign ->
+               (match RDF_Graph_Executable.term_to_subject focus with
+                | FStar_Pervasives_Native.None -> []
+                | FStar_Pervasives_Native.Some subj ->
+                    let allowed =
+                      FStar_List_Tot_Base.op_At
+                        (path_predicates_of_shape sg s) ign in
+                    FStar_List_Tot_Base.concatMap
+                      (fun t ->
+                         if
+                           (RDF_Graph_Executable.subject_eq
+                              t.RDF_Graph_Executable.s subj)
+                             &&
+                             (Prims.op_Negation
+                                (FStar_List_Tot_Base.existsb
+                                   (fun p -> p = t.RDF_Graph_Executable.p)
+                                   allowed))
+                         then
+                           [{
+                              v_focus_node = focus;
+                              v_path =
+                                (FStar_Pervasives_Native.Some
+                                   (P_Predicate (t.RDF_Graph_Executable.p)));
+                              v_value =
+                                (FStar_Pervasives_Native.Some
+                                   (t.RDF_Graph_Executable.o));
+                              v_source_shape = source;
+                              v_constraint = cc;
+                              v_severity = sev;
+                              v_message = msg;
+                              v_source_constraint =
+                                FStar_Pervasives_Native.None
+                            }]
+                         else []) data)
+           | CC_Equals p ->
+               let others = other_property_values data focus p in
+               FStar_List_Tot_Base.op_At
+                 (FStar_List_Tot_Base.concatMap
+                    (fun v ->
+                       if
+                         FStar_List_Tot_Base.existsb
+                           (RDF_Graph_Executable.rdf_term_eq v) others
+                       then []
+                       else
+                         [value_violation focus path_opt source cc sev msg v])
+                    values)
+                 (FStar_List_Tot_Base.concatMap
+                    (fun o ->
+                       if
+                         FStar_List_Tot_Base.existsb
+                           (RDF_Graph_Executable.rdf_term_eq o) values
+                       then []
+                       else
+                         [value_violation focus path_opt source cc sev msg o])
+                    others)
+           | CC_Disjoint p ->
+               let others = other_property_values data focus p in
+               FStar_List_Tot_Base.concatMap
+                 (fun v ->
+                    if
+                      FStar_List_Tot_Base.existsb
+                        (RDF_Graph_Executable.rdf_term_eq v) others
+                    then [value_violation focus path_opt source cc sev msg v]
+                    else []) values
+           | CC_LessThan p ->
+               let others = other_property_values data focus p in
+               FStar_List_Tot_Base.concatMap
+                 (fun v ->
+                    FStar_List_Tot_Base.concatMap
+                      (fun w ->
+                         if term_lt v w
+                         then []
+                         else
+                           [value_violation focus path_opt source cc sev msg
+                              v]) others) values
+           | CC_LessThanOrEq p ->
+               let others = other_property_values data focus p in
+               FStar_List_Tot_Base.concatMap
+                 (fun v ->
+                    FStar_List_Tot_Base.concatMap
+                      (fun w ->
+                         if term_le v w
+                         then []
+                         else
+                           [value_violation focus path_opt source cc sev msg
+                              v]) others) values
+           | CC_QualifiedMinCount (qref, qmin, qdisjoint) ->
+               if (qualifying_count qref qdisjoint) >= qmin
+               then []
+               else [focus_violation focus path_opt source cc sev msg]
+           | CC_QualifiedMaxCount (qref, qmax, qdisjoint) ->
+               if (qualifying_count qref qdisjoint) <= qmax
+               then []
+               else [focus_violation focus path_opt source cc sev msg]
+           | uu___1 -> []) s.constraints
+let sparql_constraints_of (s : shape) :
+  (shape_ref * Prims.string * RDF_Graph_Executable.wf_literal
+    FStar_Pervasives_Native.option) Prims.list=
+  FStar_List_Tot_Base.concatMap
+    (fun cc ->
+       match cc with | CC_Sparql (cref, q, m) -> [(cref, q, m)] | uu___ -> [])
+    s.constraints
+let substitute_path (q : Prims.string)
+  (path_opt : path FStar_Pervasives_Native.option) : Prims.string=
+  match path_opt with
+  | FStar_Pervasives_Native.Some p ->
+      SPARQL11_Algebra.string_replace_literal q "$PATH"
+        (path_to_sparql_expr p) FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.None -> q
+let subst_this_ps (t : RDF_Graph_Executable.rdf_term)
+  (ps : SPARQL11_Algebra.pattern_subject) : SPARQL11_Algebra.pattern_subject=
+  match ps with
+  | SPARQL11_Algebra.PS_Var v ->
+      if v = "this"
+      then
+        (match t with
+         | RDF_Graph_Executable.T_IRI i -> SPARQL11_Algebra.PS_IRI i
+         | RDF_Graph_Executable.T_BNode b -> SPARQL11_Algebra.PS_BNode b
+         | RDF_Graph_Executable.T_Literal uu___ -> ps)
+      else ps
+  | uu___ -> ps
+let subst_this_pt (t : RDF_Graph_Executable.rdf_term)
+  (pt : SPARQL11_Algebra.pattern_term) : SPARQL11_Algebra.pattern_term=
+  match pt with
+  | SPARQL11_Algebra.PT_Var v ->
+      if v = "this"
+      then
+        (match t with
+         | RDF_Graph_Executable.T_IRI i -> SPARQL11_Algebra.PT_IRI i
+         | RDF_Graph_Executable.T_BNode b -> SPARQL11_Algebra.PT_BNode b
+         | RDF_Graph_Executable.T_Literal l -> SPARQL11_Algebra.PT_Literal l)
+      else pt
+  | uu___ -> pt
+let subst_this_tp (t : RDF_Graph_Executable.rdf_term)
+  (tp : SPARQL11_Algebra.triple_pattern) : SPARQL11_Algebra.triple_pattern=
+  {
+    SPARQL11_Algebra.tp_s =
+      (subst_this_ps t
+         (SPARQL11_Algebra.__proj__Mktriple_pattern__item__tp_s tp));
+    SPARQL11_Algebra.tp_p =
+      (subst_this_pt t
+         (SPARQL11_Algebra.__proj__Mktriple_pattern__item__tp_p tp));
+    SPARQL11_Algebra.tp_o =
+      (subst_this_pt t
+         (SPARQL11_Algebra.__proj__Mktriple_pattern__item__tp_o tp))
+  }
+let term_to_expr_opt (t : RDF_Graph_Executable.rdf_term) :
+  SPARQL11_Algebra.expr FStar_Pervasives_Native.option=
+  match t with
+  | RDF_Graph_Executable.T_IRI i ->
+      FStar_Pervasives_Native.Some (SPARQL11_Algebra.E_IRI i)
+  | RDF_Graph_Executable.T_Literal l ->
+      FStar_Pervasives_Native.Some (SPARQL11_Algebra.E_Literal l)
+  | RDF_Graph_Executable.T_BNode uu___ -> FStar_Pervasives_Native.None
+let rec subst_this_expr (t : RDF_Graph_Executable.rdf_term)
+  (e : SPARQL11_Algebra.expr) : SPARQL11_Algebra.expr=
+  match e with
+  | SPARQL11_Algebra.E_Var v ->
+      if v = "this"
+      then
+        (match term_to_expr_opt t with
+         | FStar_Pervasives_Native.Some e' -> e'
+         | FStar_Pervasives_Native.None -> e)
+      else e
+  | SPARQL11_Algebra.E_Bound v ->
+      if v = "this" then SPARQL11_Algebra.E_BoolLit true else e
+  | SPARQL11_Algebra.E_Arith (op, a, b) ->
+      SPARQL11_Algebra.E_Arith
+        (op, (subst_this_expr t a), (subst_this_expr t b))
+  | SPARQL11_Algebra.E_UnaryMinus a ->
+      SPARQL11_Algebra.E_UnaryMinus (subst_this_expr t a)
+  | SPARQL11_Algebra.E_UnaryPlus a ->
+      SPARQL11_Algebra.E_UnaryPlus (subst_this_expr t a)
+  | SPARQL11_Algebra.E_Compare (op, a, b) ->
+      SPARQL11_Algebra.E_Compare
+        (op, (subst_this_expr t a), (subst_this_expr t b))
+  | SPARQL11_Algebra.E_And (a, b) ->
+      SPARQL11_Algebra.E_And ((subst_this_expr t a), (subst_this_expr t b))
+  | SPARQL11_Algebra.E_Or (a, b) ->
+      SPARQL11_Algebra.E_Or ((subst_this_expr t a), (subst_this_expr t b))
+  | SPARQL11_Algebra.E_Not a -> SPARQL11_Algebra.E_Not (subst_this_expr t a)
+  | SPARQL11_Algebra.E_IsIRI a ->
+      SPARQL11_Algebra.E_IsIRI (subst_this_expr t a)
+  | SPARQL11_Algebra.E_IsBlank a ->
+      SPARQL11_Algebra.E_IsBlank (subst_this_expr t a)
+  | SPARQL11_Algebra.E_IsLiteral a ->
+      SPARQL11_Algebra.E_IsLiteral (subst_this_expr t a)
+  | SPARQL11_Algebra.E_IsNumeric a ->
+      SPARQL11_Algebra.E_IsNumeric (subst_this_expr t a)
+  | SPARQL11_Algebra.E_Str a -> SPARQL11_Algebra.E_Str (subst_this_expr t a)
+  | SPARQL11_Algebra.E_Lang a ->
+      SPARQL11_Algebra.E_Lang (subst_this_expr t a)
+  | SPARQL11_Algebra.E_Datatype a ->
+      SPARQL11_Algebra.E_Datatype (subst_this_expr t a)
+  | SPARQL11_Algebra.E_IRI_fn a ->
+      SPARQL11_Algebra.E_IRI_fn (subst_this_expr t a)
+  | SPARQL11_Algebra.E_StrDt (a, b) ->
+      SPARQL11_Algebra.E_StrDt ((subst_this_expr t a), (subst_this_expr t b))
+  | SPARQL11_Algebra.E_StrLang (a, b) ->
+      SPARQL11_Algebra.E_StrLang
+        ((subst_this_expr t a), (subst_this_expr t b))
+  | SPARQL11_Algebra.E_If (a, b, c) ->
+      SPARQL11_Algebra.E_If
+        ((subst_this_expr t a), (subst_this_expr t b), (subst_this_expr t c))
+  | SPARQL11_Algebra.E_Coalesce es ->
+      SPARQL11_Algebra.E_Coalesce (subst_this_exprs t es)
+  | SPARQL11_Algebra.E_In (a, es) ->
+      SPARQL11_Algebra.E_In ((subst_this_expr t a), (subst_this_exprs t es))
+  | SPARQL11_Algebra.E_NotIn (a, es) ->
+      SPARQL11_Algebra.E_NotIn
+        ((subst_this_expr t a), (subst_this_exprs t es))
+  | SPARQL11_Algebra.E_StrLen a ->
+      SPARQL11_Algebra.E_StrLen (subst_this_expr t a)
+  | SPARQL11_Algebra.E_Substr (a, b, c) ->
+      SPARQL11_Algebra.E_Substr
+        ((subst_this_expr t a), (subst_this_expr t b),
+          ((match c with
+            | FStar_Pervasives_Native.Some x ->
+                FStar_Pervasives_Native.Some (subst_this_expr t x)
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)))
+  | SPARQL11_Algebra.E_UCase a ->
+      SPARQL11_Algebra.E_UCase (subst_this_expr t a)
+  | SPARQL11_Algebra.E_LCase a ->
+      SPARQL11_Algebra.E_LCase (subst_this_expr t a)
+  | SPARQL11_Algebra.E_StrStarts (a, b) ->
+      SPARQL11_Algebra.E_StrStarts
+        ((subst_this_expr t a), (subst_this_expr t b))
+  | SPARQL11_Algebra.E_StrEnds (a, b) ->
+      SPARQL11_Algebra.E_StrEnds
+        ((subst_this_expr t a), (subst_this_expr t b))
+  | SPARQL11_Algebra.E_Contains (a, b) ->
+      SPARQL11_Algebra.E_Contains
+        ((subst_this_expr t a), (subst_this_expr t b))
+  | SPARQL11_Algebra.E_StrBefore (a, b) ->
+      SPARQL11_Algebra.E_StrBefore
+        ((subst_this_expr t a), (subst_this_expr t b))
+  | SPARQL11_Algebra.E_StrAfter (a, b) ->
+      SPARQL11_Algebra.E_StrAfter
+        ((subst_this_expr t a), (subst_this_expr t b))
+  | SPARQL11_Algebra.E_Concat es ->
+      SPARQL11_Algebra.E_Concat (subst_this_exprs t es)
+  | SPARQL11_Algebra.E_EncodeForUri a ->
+      SPARQL11_Algebra.E_EncodeForUri (subst_this_expr t a)
+  | SPARQL11_Algebra.E_Replace (a, b, c, fl) ->
+      SPARQL11_Algebra.E_Replace
+        ((subst_this_expr t a), (subst_this_expr t b), (subst_this_expr t c),
+          ((match fl with
+            | FStar_Pervasives_Native.Some x ->
+                FStar_Pervasives_Native.Some (subst_this_expr t x)
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)))
+  | SPARQL11_Algebra.E_Regex (a, b, fl) ->
+      SPARQL11_Algebra.E_Regex
+        ((subst_this_expr t a), (subst_this_expr t b),
+          ((match fl with
+            | FStar_Pervasives_Native.Some x ->
+                FStar_Pervasives_Native.Some (subst_this_expr t x)
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)))
+  | SPARQL11_Algebra.E_Abs a -> SPARQL11_Algebra.E_Abs (subst_this_expr t a)
+  | SPARQL11_Algebra.E_Round a ->
+      SPARQL11_Algebra.E_Round (subst_this_expr t a)
+  | SPARQL11_Algebra.E_Ceil a ->
+      SPARQL11_Algebra.E_Ceil (subst_this_expr t a)
+  | SPARQL11_Algebra.E_Floor a ->
+      SPARQL11_Algebra.E_Floor (subst_this_expr t a)
+  | SPARQL11_Algebra.E_SameTerm (a, b) ->
+      SPARQL11_Algebra.E_SameTerm
+        ((subst_this_expr t a), (subst_this_expr t b))
+  | SPARQL11_Algebra.E_Exists p ->
+      SPARQL11_Algebra.E_Exists (subst_this_gp t p)
+  | SPARQL11_Algebra.E_NotExists p ->
+      SPARQL11_Algebra.E_NotExists (subst_this_gp t p)
+  | SPARQL11_Algebra.E_FunctionCall (f, es) ->
+      SPARQL11_Algebra.E_FunctionCall (f, (subst_this_exprs t es))
+  | uu___ -> e
+and subst_this_exprs (t : RDF_Graph_Executable.rdf_term)
+  (es : SPARQL11_Algebra.expr Prims.list) : SPARQL11_Algebra.expr Prims.list=
+  match es with
+  | [] -> []
+  | e::rest -> (subst_this_expr t e) :: (subst_this_exprs t rest)
+and subst_this_bgp (t : RDF_Graph_Executable.rdf_term)
+  (bgp : SPARQL11_Algebra.triple_pattern Prims.list) :
+  SPARQL11_Algebra.triple_pattern Prims.list=
+  match bgp with
+  | [] -> []
+  | tp::rest -> (subst_this_tp t tp) :: (subst_this_bgp t rest)
+and subst_this_gp (t : RDF_Graph_Executable.rdf_term)
+  (p : SPARQL11_Algebra.group_graph_pattern) :
+  SPARQL11_Algebra.group_graph_pattern=
+  match p with
+  | SPARQL11_Algebra.GP_BGP bgp ->
+      SPARQL11_Algebra.GP_BGP (subst_this_bgp t bgp)
+  | SPARQL11_Algebra.GP_Join (a, b) ->
+      SPARQL11_Algebra.GP_Join ((subst_this_gp t a), (subst_this_gp t b))
+  | SPARQL11_Algebra.GP_LeftJoin (a, b, e) ->
+      SPARQL11_Algebra.GP_LeftJoin
+        ((subst_this_gp t a), (subst_this_gp t b), (subst_this_expr t e))
+  | SPARQL11_Algebra.GP_Filter (e, a) ->
+      SPARQL11_Algebra.GP_Filter ((subst_this_expr t e), (subst_this_gp t a))
+  | SPARQL11_Algebra.GP_Union (a, b) ->
+      SPARQL11_Algebra.GP_Union ((subst_this_gp t a), (subst_this_gp t b))
+  | SPARQL11_Algebra.GP_Graph (pt, a) ->
+      SPARQL11_Algebra.GP_Graph ((subst_this_pt t pt), (subst_this_gp t a))
+  | SPARQL11_Algebra.GP_Minus (a, b) ->
+      SPARQL11_Algebra.GP_Minus ((subst_this_gp t a), (subst_this_gp t b))
+  | SPARQL11_Algebra.GP_Bind (e, v, a) ->
+      SPARQL11_Algebra.GP_Bind
+        ((subst_this_expr t e), v, (subst_this_gp t a))
+  | SPARQL11_Algebra.GP_SubSelect q ->
+      SPARQL11_Algebra.GP_SubSelect
+        (SPARQL11_Algebra.query_with_pattern q
+           (subst_this_gp t
+              (SPARQL11_Algebra.__proj__Mkquery__item__q_pattern q)))
+  | SPARQL11_Algebra.GP_PropertyPath (ps, pp, pt) ->
+      SPARQL11_Algebra.GP_PropertyPath
+        ((subst_this_ps t ps), pp, (subst_this_pt t pt))
+  | uu___ -> p
+let si_projects_this (si : SPARQL11_Algebra.select_item) : Prims.bool=
+  match si with | SPARQL11_Algebra.SI_Var v -> v = "this" | uu___ -> false
+let si_assigns_prebound (si : SPARQL11_Algebra.select_item) : Prims.bool=
+  match si with
+  | SPARQL11_Algebra.SI_Expr (uu___, v) ->
+      ((v = "this") || (v = "value")) || (v = "path")
+  | uu___ -> false
+let rec prebinding_unsupported (p : SPARQL11_Algebra.group_graph_pattern) :
+  Prims.string FStar_Pervasives_Native.option=
+  match p with
+  | SPARQL11_Algebra.GP_Minus (uu___, uu___1) ->
+      FStar_Pervasives_Native.Some
+        "MINUS is not supported with pre-bound variables"
+  | SPARQL11_Algebra.GP_Service (uu___, uu___1, uu___2) ->
+      FStar_Pervasives_Native.Some
+        "SERVICE is not supported with pre-bound variables"
+  | SPARQL11_Algebra.GP_ServiceVar (uu___, uu___1, uu___2) ->
+      FStar_Pervasives_Native.Some
+        "SERVICE is not supported with pre-bound variables"
+  | SPARQL11_Algebra.GP_Values (uu___, uu___1) ->
+      FStar_Pervasives_Native.Some
+        "VALUES is not supported with pre-bound variables"
+  | SPARQL11_Algebra.GP_Bind (uu___, v, p') ->
+      if ((v = "this") || (v = "value")) || (v = "path")
+      then FStar_Pervasives_Native.Some "assignment to a pre-bound variable"
+      else prebinding_unsupported p'
+  | SPARQL11_Algebra.GP_SubSelect q ->
+      (match SPARQL11_Algebra.__proj__Mkquery__item__q_form q with
+       | SPARQL11_Algebra.QF_Select (SPARQL11_Algebra.Select_Vars sis) ->
+           if FStar_List_Tot_Base.existsb si_assigns_prebound sis
+           then
+             FStar_Pervasives_Native.Some
+               "assignment to a pre-bound variable in a nested SELECT"
+           else
+             if FStar_List_Tot_Base.existsb si_projects_this sis
+             then
+               prebinding_unsupported
+                 (SPARQL11_Algebra.__proj__Mkquery__item__q_pattern q)
+             else
+               FStar_Pervasives_Native.Some
+                 "nested SELECT does not project $this"
+       | uu___ ->
+           FStar_Pervasives_Native.Some
+             "nested SELECT does not project $this")
+  | SPARQL11_Algebra.GP_Join (a, b) ->
+      (match prebinding_unsupported a with
+       | FStar_Pervasives_Native.Some m -> FStar_Pervasives_Native.Some m
+       | FStar_Pervasives_Native.None -> prebinding_unsupported b)
+  | SPARQL11_Algebra.GP_LeftJoin (a, b, uu___) ->
+      (match prebinding_unsupported a with
+       | FStar_Pervasives_Native.Some m -> FStar_Pervasives_Native.Some m
+       | FStar_Pervasives_Native.None -> prebinding_unsupported b)
+  | SPARQL11_Algebra.GP_Union (a, b) ->
+      (match prebinding_unsupported a with
+       | FStar_Pervasives_Native.Some m -> FStar_Pervasives_Native.Some m
+       | FStar_Pervasives_Native.None -> prebinding_unsupported b)
+  | SPARQL11_Algebra.GP_Filter (uu___, a) -> prebinding_unsupported a
+  | SPARQL11_Algebra.GP_Graph (uu___, a) -> prebinding_unsupported a
+  | uu___ -> FStar_Pervasives_Native.None
+let sparql_violations_for_focus (data : RDF_Graph_Executable.rdf_graph)
+  (focus : RDF_Graph_Executable.rdf_term) (s : shape) (cref : shape_ref)
+  (query_text : Prims.string)
+  (cmsg : RDF_Graph_Executable.wf_literal FStar_Pervasives_Native.option) :
+  (violation Prims.list * Prims.string FStar_Pervasives_Native.option)=
+  let substituted = substitute_path query_text s.shape_path in
+  match SPARQL11_Parser.parse_sparql substituted with
+  | SPARQL11_Parser.ParseErr msg ->
+      ([],
+        (FStar_Pervasives_Native.Some
+           (FStar_String.concat ""
+              ["sh:sparql query parse error ("; cref; "): "; msg])))
+  | SPARQL11_Parser.ParseOk (q, uu___) ->
+      (match if
+               FStar_Pervasives_Native.uu___is_Some
+                 (SPARQL11_Algebra.query_values_of q)
+             then
+               FStar_Pervasives_Native.Some
+                 "VALUES is not supported with pre-bound variables"
+             else
+               prebinding_unsupported (SPARQL11_Algebra.query_pattern_of q)
+       with
+       | FStar_Pervasives_Native.Some why ->
+           ([],
+             (FStar_Pervasives_Native.Some
+                (FStar_String.concat ""
+                   ["sh:sparql unsupported query ("; cref; "): "; why])))
+       | FStar_Pervasives_Native.None ->
+           let q_subst =
+             SPARQL11_Algebra.query_with_pattern q
+               (subst_this_gp focus (SPARQL11_Algebra.query_pattern_of q)) in
+           let q' =
+             SPARQL11_Algebra.query_with_prebound_values q_subst
+               [[("this", focus)]] in
+           let ds =
+             {
+               RDF_Graph_Executable.ds_default = data;
+               RDF_Graph_Executable.ds_named =
+                 (RDF_Graph_Executable.empty_dataset.RDF_Graph_Executable.ds_named)
+             } in
+           let rows = SPARQL11_Algebra.eval_select_query q' data ds in
+           let mk_violation mu =
+             let value =
+               match SPARQL11_Algebra.sm_lookup "value" mu with
+               | FStar_Pervasives_Native.Some v -> v
+               | FStar_Pervasives_Native.None -> focus in
+             let path_result =
+               match SPARQL11_Algebra.sm_lookup "path" mu with
+               | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_IRI p)
+                   -> FStar_Pervasives_Native.Some (P_Predicate p)
+               | uu___1 -> s.shape_path in
+             let row_msg =
+               match SPARQL11_Algebra.sm_lookup "message" mu with
+               | FStar_Pervasives_Native.Some (RDF_Graph_Executable.T_Literal
+                   l) -> FStar_Pervasives_Native.Some l
+               | uu___1 ->
+                   (match cmsg with
+                    | FStar_Pervasives_Native.Some uu___2 -> cmsg
+                    | FStar_Pervasives_Native.None -> s.message) in
+             {
+               v_focus_node = focus;
+               v_path = path_result;
+               v_value = (FStar_Pervasives_Native.Some value);
+               v_source_shape = (s.shape_id);
+               v_constraint = (CC_Sparql (cref, query_text, cmsg));
+               v_severity = (s.shape_sev);
+               v_message = row_msg;
+               v_source_constraint =
+                 (FStar_Pervasives_Native.Some (shape_ref_to_term cref))
+             } in
+           ((FStar_List_Tot_Base.map mk_violation rows),
+             FStar_Pervasives_Native.None))
+let rec sparql_violations_for_focus_all
+  (data : RDF_Graph_Executable.rdf_graph)
+  (focus : RDF_Graph_Executable.rdf_term) (s : shape)
+  (ccs :
+    (shape_ref * Prims.string * RDF_Graph_Executable.wf_literal
+      FStar_Pervasives_Native.option) Prims.list)
+  : (violation Prims.list * Prims.string FStar_Pervasives_Native.option)=
+  match ccs with
+  | [] -> ([], FStar_Pervasives_Native.None)
+  | (cref, qt, m)::rest ->
+      let uu___ = sparql_violations_for_focus data focus s cref qt m in
+      (match uu___ with
+       | (vs1, f1) ->
+           let uu___1 = sparql_violations_for_focus_all data focus s rest in
+           (match uu___1 with
+            | (vs2, f2) ->
+                ((FStar_List_Tot_Base.op_At vs1 vs2),
+                  ((match f1 with
+                    | FStar_Pervasives_Native.Some uu___2 -> f1
+                    | FStar_Pervasives_Native.None -> f2)))))
+let rec sparql_violations_for_foci (data : RDF_Graph_Executable.rdf_graph)
+  (foci : RDF_Graph_Executable.rdf_term Prims.list) (s : shape)
+  (ccs :
+    (shape_ref * Prims.string * RDF_Graph_Executable.wf_literal
+      FStar_Pervasives_Native.option) Prims.list)
+  : (violation Prims.list * Prims.string FStar_Pervasives_Native.option)=
+  match foci with
+  | [] -> ([], FStar_Pervasives_Native.None)
+  | fn::rest ->
+      let uu___ = sparql_violations_for_focus_all data fn s ccs in
+      (match uu___ with
+       | (vs1, f1) ->
+           let uu___1 = sparql_violations_for_foci data rest s ccs in
+           (match uu___1 with
+            | (vs2, f2) ->
+                ((FStar_List_Tot_Base.op_At vs1 vs2),
+                  ((match f1 with
+                    | FStar_Pervasives_Native.Some uu___2 -> f1
+                    | FStar_Pervasives_Native.None -> f2)))))
+let sparql_violations_for_shape (data : RDF_Graph_Executable.rdf_graph)
+  (closed_cls : RDF_Graph_Executable.rdf_graph)
+  (all_subjects : RDF_Graph_Executable.subject Prims.list) (s : shape) :
+  (violation Prims.list * Prims.string FStar_Pervasives_Native.option)=
+  let ccs = sparql_constraints_of s in
+  if Prims.uu___is_Nil ccs
+  then ([], FStar_Pervasives_Native.None)
+  else
+    (let focus_nodes =
+       dedup_terms
+         (FStar_List_Tot_Base.concatMap
+            (fun tgt -> eval_target data closed_cls all_subjects tgt)
+            s.targets) in
+     sparql_violations_for_foci data focus_nodes s ccs)
+let rec sparql_violations_for_shapes (data : RDF_Graph_Executable.rdf_graph)
+  (closed_cls : RDF_Graph_Executable.rdf_graph)
+  (all_subjects : RDF_Graph_Executable.subject Prims.list)
+  (ss : shape Prims.list) :
+  (violation Prims.list * Prims.string FStar_Pervasives_Native.option)=
+  match ss with
+  | [] -> ([], FStar_Pervasives_Native.None)
+  | s::rest ->
+      let uu___ = sparql_violations_for_shape data closed_cls all_subjects s in
+      (match uu___ with
+       | (vs1, f1) ->
+           let uu___1 =
+             sparql_violations_for_shapes data closed_cls all_subjects rest in
+           (match uu___1 with
+            | (vs2, f2) ->
+                ((FStar_List_Tot_Base.op_At vs1 vs2),
+                  ((match f1 with
+                    | FStar_Pervasives_Native.Some uu___2 -> f1
+                    | FStar_Pervasives_Native.None -> f2)))))
 let parse_shape_from_graph (g : RDF_Graph_Executable.rdf_graph) :
   shapes_graph= parse_shape_from_graph_pure g
 let validate (data : RDF_Graph_Executable.rdf_graph) (shapes : shapes_graph)
@@ -1528,10 +2817,291 @@ let validate (data : RDF_Graph_Executable.rdf_graph) (shapes : shapes_graph)
          FStar_List_Tot_Base.concatMap
            (fun fn -> collect_shape_violations data sg closed_cls fn s fuel0)
            focus_nodes) root_shapes in
-  {
-    conforms = (Prims.uu___is_Nil per_shape_violations);
-    results = per_shape_violations
-  }
+  let uu___ =
+    sparql_violations_for_shapes data closed_cls all_subjects root_shapes in
+  match uu___ with
+  | (sparql_violations, sparql_failure) ->
+      let all_results =
+        FStar_List_Tot_Base.op_At per_shape_violations sparql_violations in
+      {
+        conforms = (Prims.uu___is_Nil all_results);
+        results = all_results;
+        report_failure = sparql_failure
+      }
 let eval_sparql_target_select (data : RDF_Graph_Executable.rdf_graph)
   (query : Prims.string) : violation Prims.list=
   failwith "Not yet implemented: SHACL.Validation.eval_sparql_target_select"
+let fresh_report_bnode (prefix : Prims.string) (ctr : Prims.nat) :
+  (RDF_Graph_Executable.bnode_id * Prims.nat)=
+  ((FStar_String.concat "" [prefix; Prims.string_of_int ctr]),
+    (ctr + Prims.int_one))
+let constraint_component_iri (cc : constraint_component) :
+  RDF_Graph_Executable.wf_iri=
+  match cc with
+  | CC_MinCount uu___ -> sh_MinCountConstraintComponent
+  | CC_MaxCount uu___ -> sh_MaxCountConstraintComponent
+  | CC_Datatype uu___ -> sh_DatatypeConstraintComponent
+  | CC_NodeKind uu___ -> sh_NodeKindConstraintComponent
+  | CC_Class uu___ -> sh_ClassConstraintComponent
+  | CC_In uu___ -> sh_InConstraintComponent
+  | CC_HasValue uu___ -> sh_HasValueConstraintComponent
+  | CC_Pattern (uu___, uu___1) -> sh_PatternConstraintComponent
+  | CC_MinLength uu___ -> sh_MinLengthConstraintComponent
+  | CC_MaxLength uu___ -> sh_MaxLengthConstraintComponent
+  | CC_LanguageIn uu___ -> sh_LanguageInConstraintComponent
+  | CC_UniqueLang uu___ -> sh_UniqueLangConstraintComponent
+  | CC_MinInclusive uu___ -> sh_MinInclusiveConstraintComponent
+  | CC_MaxInclusive uu___ -> sh_MaxInclusiveConstraintComponent
+  | CC_MinExclusive uu___ -> sh_MinExclusiveConstraintComponent
+  | CC_MaxExclusive uu___ -> sh_MaxExclusiveConstraintComponent
+  | CC_Not uu___ -> sh_NotConstraintComponent
+  | CC_And uu___ -> sh_AndConstraintComponent
+  | CC_Or uu___ -> sh_OrConstraintComponent
+  | CC_Xone uu___ -> sh_XoneConstraintComponent
+  | CC_Node uu___ -> sh_NodeConstraintComponent
+  | CC_QualifiedMinCount (uu___, uu___1, uu___2) ->
+      sh_QualifiedMinCountConstraintComponent
+  | CC_QualifiedMaxCount (uu___, uu___1, uu___2) ->
+      sh_QualifiedMaxCountConstraintComponent
+  | CC_Equals uu___ -> sh_EqualsConstraintComponent
+  | CC_Disjoint uu___ -> sh_DisjointConstraintComponent
+  | CC_LessThan uu___ -> sh_LessThanConstraintComponent
+  | CC_LessThanOrEq uu___ -> sh_LessThanOrEqualsConstraintComponent
+  | CC_Closed uu___ -> sh_ClosedConstraintComponent
+  | CC_Sparql (uu___, uu___1, uu___2) -> sh_SPARQLConstraintComponent
+let severity_to_iri (s : severity) : RDF_Graph_Executable.wf_iri=
+  match s with
+  | Sev_Info -> sh_Info
+  | Sev_Warning -> sh_Warning
+  | Sev_Violation -> sh_Violation
+  | Sev_Custom i -> i
+let rec path_list_to_rdf (ps : path Prims.list) (ctr : Prims.nat) :
+  (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.triple Prims.list *
+    Prims.nat)=
+  match ps with
+  | [] ->
+      ((RDF_Graph_Executable.T_IRI RDF_Graph_Executable.rdf_nil_iri), [],
+        ctr)
+  | p::rest ->
+      let uu___ = path_to_rdf p ctr in
+      (match uu___ with
+       | (p_term, p_ts, ctr1) ->
+           let uu___1 = path_list_to_rdf rest ctr1 in
+           (match uu___1 with
+            | (rest_term, rest_ts, ctr2) ->
+                let uu___2 = fresh_report_bnode "_shacl_rpl" ctr2 in
+                (match uu___2 with
+                 | (bid, ctr3) ->
+                     let subj = RDF_Graph_Executable.S_BNode bid in
+                     ((RDF_Graph_Executable.T_BNode bid),
+                       ({
+                          RDF_Graph_Executable.s = subj;
+                          RDF_Graph_Executable.p =
+                            RDF_Graph_Executable.rdf_first;
+                          RDF_Graph_Executable.o = p_term
+                        } ::
+                       {
+                         RDF_Graph_Executable.s = subj;
+                         RDF_Graph_Executable.p =
+                           RDF_Graph_Executable.rdf_rest;
+                         RDF_Graph_Executable.o = rest_term
+                       } :: (FStar_List_Tot_Base.op_At p_ts rest_ts)), ctr3))))
+and path_to_rdf (p : path) (ctr : Prims.nat) :
+  (RDF_Graph_Executable.rdf_term * RDF_Graph_Executable.triple Prims.list *
+    Prims.nat)=
+  match p with
+  | P_Predicate i -> ((RDF_Graph_Executable.T_IRI i), [], ctr)
+  | P_Inverse p' ->
+      let uu___ = path_to_rdf p' ctr in
+      (match uu___ with
+       | (inner, its, ctr1) ->
+           let uu___1 = fresh_report_bnode "_shacl_rpi" ctr1 in
+           (match uu___1 with
+            | (bid, ctr2) ->
+                ((RDF_Graph_Executable.T_BNode bid),
+                  ({
+                     RDF_Graph_Executable.s =
+                       (RDF_Graph_Executable.S_BNode bid);
+                     RDF_Graph_Executable.p = sh_inversePath;
+                     RDF_Graph_Executable.o = inner
+                   } :: its), ctr2)))
+  | P_Sequence ps -> path_list_to_rdf ps ctr
+  | P_Alternative ps ->
+      let uu___ = path_list_to_rdf ps ctr in
+      (match uu___ with
+       | (list_term, list_ts, ctr1) ->
+           let uu___1 = fresh_report_bnode "_shacl_rpa" ctr1 in
+           (match uu___1 with
+            | (bid, ctr2) ->
+                ((RDF_Graph_Executable.T_BNode bid),
+                  ({
+                     RDF_Graph_Executable.s =
+                       (RDF_Graph_Executable.S_BNode bid);
+                     RDF_Graph_Executable.p = sh_alternativePath;
+                     RDF_Graph_Executable.o = list_term
+                   } :: list_ts), ctr2)))
+  | P_ZeroOrMore p' ->
+      let uu___ = path_to_rdf p' ctr in
+      (match uu___ with
+       | (inner, its, ctr1) ->
+           let uu___1 = fresh_report_bnode "_shacl_rpzm" ctr1 in
+           (match uu___1 with
+            | (bid, ctr2) ->
+                ((RDF_Graph_Executable.T_BNode bid),
+                  ({
+                     RDF_Graph_Executable.s =
+                       (RDF_Graph_Executable.S_BNode bid);
+                     RDF_Graph_Executable.p = sh_zeroOrMorePath;
+                     RDF_Graph_Executable.o = inner
+                   } :: its), ctr2)))
+  | P_OneOrMore p' ->
+      let uu___ = path_to_rdf p' ctr in
+      (match uu___ with
+       | (inner, its, ctr1) ->
+           let uu___1 = fresh_report_bnode "_shacl_rpom" ctr1 in
+           (match uu___1 with
+            | (bid, ctr2) ->
+                ((RDF_Graph_Executable.T_BNode bid),
+                  ({
+                     RDF_Graph_Executable.s =
+                       (RDF_Graph_Executable.S_BNode bid);
+                     RDF_Graph_Executable.p = sh_oneOrMorePath;
+                     RDF_Graph_Executable.o = inner
+                   } :: its), ctr2)))
+  | P_ZeroOrOne p' ->
+      let uu___ = path_to_rdf p' ctr in
+      (match uu___ with
+       | (inner, its, ctr1) ->
+           let uu___1 = fresh_report_bnode "_shacl_rpzo" ctr1 in
+           (match uu___1 with
+            | (bid, ctr2) ->
+                ((RDF_Graph_Executable.T_BNode bid),
+                  ({
+                     RDF_Graph_Executable.s =
+                       (RDF_Graph_Executable.S_BNode bid);
+                     RDF_Graph_Executable.p = sh_zeroOrOnePath;
+                     RDF_Graph_Executable.o = inner
+                   } :: its), ctr2)))
+let violation_to_triples (report_subj : RDF_Graph_Executable.subject)
+  (v : violation) (ctr : Prims.nat) :
+  (RDF_Graph_Executable.triple Prims.list * Prims.nat)=
+  let uu___ = fresh_report_bnode "_shacl_result" ctr in
+  match uu___ with
+  | (bid, ctr1) ->
+      let rsubj = RDF_Graph_Executable.S_BNode bid in
+      let base =
+        [{
+           RDF_Graph_Executable.s = rsubj;
+           RDF_Graph_Executable.p = RDF_Graph_Executable.rdf_type;
+           RDF_Graph_Executable.o =
+             (RDF_Graph_Executable.T_IRI sh_ValidationResult)
+         };
+        {
+          RDF_Graph_Executable.s = report_subj;
+          RDF_Graph_Executable.p = sh_result;
+          RDF_Graph_Executable.o = (RDF_Graph_Executable.T_BNode bid)
+        };
+        {
+          RDF_Graph_Executable.s = rsubj;
+          RDF_Graph_Executable.p = sh_focusNode;
+          RDF_Graph_Executable.o = (v.v_focus_node)
+        };
+        {
+          RDF_Graph_Executable.s = rsubj;
+          RDF_Graph_Executable.p = sh_resultSeverity;
+          RDF_Graph_Executable.o =
+            (RDF_Graph_Executable.T_IRI (severity_to_iri v.v_severity))
+        };
+        {
+          RDF_Graph_Executable.s = rsubj;
+          RDF_Graph_Executable.p = sh_sourceConstraintComponent;
+          RDF_Graph_Executable.o =
+            (RDF_Graph_Executable.T_IRI
+               (constraint_component_iri v.v_constraint))
+        };
+        {
+          RDF_Graph_Executable.s = rsubj;
+          RDF_Graph_Executable.p = sh_sourceShape;
+          RDF_Graph_Executable.o = (shape_ref_to_term v.v_source_shape)
+        }] in
+      let uu___1 =
+        match v.v_path with
+        | FStar_Pervasives_Native.None -> ([], ctr1)
+        | FStar_Pervasives_Native.Some p ->
+            let uu___2 = path_to_rdf p ctr1 in
+            (match uu___2 with
+             | (pterm, pts, ctr2') ->
+                 (({
+                     RDF_Graph_Executable.s = rsubj;
+                     RDF_Graph_Executable.p = sh_resultPath;
+                     RDF_Graph_Executable.o = pterm
+                   } :: pts), ctr2')) in
+      (match uu___1 with
+       | (path_ts, ctr2) ->
+           let value_ts =
+             match v.v_value with
+             | FStar_Pervasives_Native.Some vv ->
+                 [{
+                    RDF_Graph_Executable.s = rsubj;
+                    RDF_Graph_Executable.p = sh_value_pred;
+                    RDF_Graph_Executable.o = vv
+                  }]
+             | FStar_Pervasives_Native.None -> [] in
+           let msg_ts =
+             match v.v_message with
+             | FStar_Pervasives_Native.Some m ->
+                 [{
+                    RDF_Graph_Executable.s = rsubj;
+                    RDF_Graph_Executable.p = sh_resultMessage;
+                    RDF_Graph_Executable.o =
+                      (RDF_Graph_Executable.T_Literal m)
+                  }]
+             | FStar_Pervasives_Native.None -> [] in
+           let sc_ts =
+             match v.v_source_constraint with
+             | FStar_Pervasives_Native.Some sc ->
+                 [{
+                    RDF_Graph_Executable.s = rsubj;
+                    RDF_Graph_Executable.p = sh_sourceConstraint;
+                    RDF_Graph_Executable.o = sc
+                  }]
+             | FStar_Pervasives_Native.None -> [] in
+           ((FStar_List_Tot_Base.op_At base
+               (FStar_List_Tot_Base.op_At path_ts
+                  (FStar_List_Tot_Base.op_At value_ts
+                     (FStar_List_Tot_Base.op_At msg_ts sc_ts)))), ctr2))
+let rec violations_to_triples (report_subj : RDF_Graph_Executable.subject)
+  (vs : violation Prims.list) (ctr : Prims.nat) :
+  RDF_Graph_Executable.triple Prims.list=
+  match vs with
+  | [] -> []
+  | v::rest ->
+      let uu___ = violation_to_triples report_subj v ctr in
+      (match uu___ with
+       | (ts, ctr1) ->
+           FStar_List_Tot_Base.op_At ts
+             (violations_to_triples report_subj rest ctr1))
+let validation_report_to_graph (r : validation_report) :
+  RDF_Graph_Executable.rdf_graph=
+  let report_subj = RDF_Graph_Executable.S_BNode "_shacl_report0" in
+  let header =
+    [{
+       RDF_Graph_Executable.s = report_subj;
+       RDF_Graph_Executable.p = RDF_Graph_Executable.rdf_type;
+       RDF_Graph_Executable.o =
+         (RDF_Graph_Executable.T_IRI sh_ValidationReport)
+     };
+    {
+      RDF_Graph_Executable.s = report_subj;
+      RDF_Graph_Executable.p = sh_conforms_pred;
+      RDF_Graph_Executable.o =
+        (RDF_Graph_Executable.T_Literal
+           {
+             RDF_Graph_Executable.lexical_form =
+               (if r.conforms then "true" else "false");
+             RDF_Graph_Executable.datatype = RDF_Graph_Executable.xsd_boolean;
+             RDF_Graph_Executable.lang_tag = FStar_Pervasives_Native.None
+           })
+    }] in
+  FStar_List_Tot_Base.op_At header
+    (violations_to_triples report_subj r.results Prims.int_zero)

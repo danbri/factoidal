@@ -2,24 +2,24 @@
 # Issue #181: realise SHACL.Validation.eval_sparql_target_select stub.
 # https://github.com/danbri/factoidal/issues/181
 #
-# UPDATED for Phase 2 / slice 1 (SHACL Core validator, 2026-07-04):
-# `validate` and `parse_shape_from_graph` are now real F* (Tot,
-# wrapped in a thin ML entry point) — see SHACL.Validation.fst
-# sections 11a-11j. Their extracted OCaml is real code, not a
-# `failwith` stub, so this patch no longer touches them.
+# UPDATED for Phase 3 (sh:sparql constraint dispatch, 2026-07-04):
+# `validate`, `parse_shape_from_graph`, report serialization
+# (`validation_report_to_graph`), AND the sh:sparql CONSTRAINT
+# dispatch (CC_Sparql -> SPARQL11.Parser.parse_sparql +
+# SPARQL11.Algebra.eval_select_query, both Tot) are all real F* —
+# see SHACL.Validation.fst sections 11a-11k + 13. No OCaml glue
+# realises any of them.
 #
-# The ONE remaining `assume val` is `eval_sparql_target_select`
-# (sh:sparql / sh:select target + constraint dispatch into the
-# SPARQL evaluator — a genuine rule-#11(c) host call-out, not a
-# temporary gap). Slice 1 never calls it: T_Sparql targets and
-# CC_Sparql constraints both evaluate to "no result" in pure F*, so
-# the extracted `failwith "Not yet implemented: ...
-# eval_sparql_target_select"` body is unreachable in the current
-# corpus. This patch stays a no-op marker-injection (idempotent) so
-# CLAUDE.md rule #3's patch-file requirement is discharged without
-# pretending there's a real realisation yet. Wiring an actual SPARQL
-# dispatch is the natural Phase 3 follow-up once a SPARQL-target test
-# in the vendored suite actually needs it.
+# The ONE remaining `assume val` is `eval_sparql_target_select`,
+# which now covers ONLY the SPARQL-SELECT-based TARGET form
+# (`sh:target [ a sh:SPARQLTarget ; sh:select ... ]` / T_Sparql — a
+# shape's target set computed by a query, distinct from the sh:sparql
+# CONSTRAINT form that Phase 3 implemented in pure F*). Nothing calls
+# it: T_Sparql targets still evaluate to "no focus nodes" in
+# eval_target, an honest FAIL against any test needing them. This
+# patch stays a no-op marker-injection (idempotent) so CLAUDE.md rule
+# #3's patch-file requirement is discharged without pretending
+# there's a real realisation yet.
 #
 # Recovery plan reference:
 #   docs/designissues/2026-05-07-query-planning-fstar-recovery.md
