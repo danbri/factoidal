@@ -864,6 +864,22 @@ and expand_included_items (ac : JSONLD_Context.active_context)
                  | FStar_Pervasives_Native.Some restout ->
                      FStar_Pervasives_Native.Some (nodeobj :: restout)))
      | uu___1 -> FStar_Pervasives_Native.None)
+and expand_top_items (ac : JSONLD_Context.active_context)
+  (items : Parser_JSON.json_val Prims.list) (fuel : Prims.nat) :
+  Parser_JSON.json_val Prims.list FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (match items with
+     | [] -> FStar_Pervasives_Native.Some []
+     | v::rest ->
+         (match expand_node ac v (fuel - Prims.int_one) with
+          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+          | FStar_Pervasives_Native.Some nodeobj ->
+              (match expand_top_items ac rest (fuel - Prims.int_one) with
+               | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+               | FStar_Pervasives_Native.Some restout ->
+                   FStar_Pervasives_Native.Some (nodeobj :: restout))))
 let expand (ac : JSONLD_Context.active_context) (doc : Parser_JSON.json_val)
   : Parser_JSON.json_val FStar_Pervasives_Native.option=
   let fuel =
@@ -885,6 +901,8 @@ let expand (ac : JSONLD_Context.active_context) (doc : Parser_JSON.json_val)
        | FStar_Pervasives_Native.Some nodeobj ->
            FStar_Pervasives_Native.Some (Parser_JSON.JArray [nodeobj]))
   | Parser_JSON.JArray items ->
-      FStar_Pervasives_Native.Some
-        (Parser_JSON.JArray (expand_graph_items ac items fuel))
+      (match expand_top_items ac items fuel with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some outs ->
+           FStar_Pervasives_Native.Some (Parser_JSON.JArray outs))
   | uu___ -> FStar_Pervasives_Native.None

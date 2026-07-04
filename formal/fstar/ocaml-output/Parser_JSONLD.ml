@@ -693,15 +693,29 @@ let jld_has_inline_context (root : Parser_JSON.json_val) : Prims.bool=
       FStar_List_Tot_Base.existsb
         (fun kv -> (FStar_Pervasives_Native.fst kv) = "@context") fields
   | uu___ -> false
-let parse_jsonld (input : Prims.string) :
+let parse_jsonld (input : Prims.string)
+  (base : Prims.string FStar_Pervasives_Native.option) :
   RDF_Graph_Executable.rdf_dataset FStar_Pervasives_Native.option=
   match Parser_JSON.parse_json input with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some root ->
-      if jld_has_inline_context root
+      if
+        (jld_has_inline_context root) ||
+          (FStar_Pervasives_Native.uu___is_Some base)
       then
-        (match JSONLD_Expand.expand JSONLD_Context.empty_active_context root
-         with
+        let ac0 =
+          {
+            JSONLD_Context.ac_terms =
+              (JSONLD_Context.empty_active_context.JSONLD_Context.ac_terms);
+            JSONLD_Context.ac_vocab =
+              (JSONLD_Context.empty_active_context.JSONLD_Context.ac_vocab);
+            JSONLD_Context.ac_base = base;
+            JSONLD_Context.ac_language =
+              (JSONLD_Context.empty_active_context.JSONLD_Context.ac_language);
+            JSONLD_Context.ac_previous =
+              (JSONLD_Context.empty_active_context.JSONLD_Context.ac_previous)
+          } in
+        (match JSONLD_Expand.expand ac0 root with
          | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
          | FStar_Pervasives_Native.Some expanded ->
              jld_dataset_of_json expanded)

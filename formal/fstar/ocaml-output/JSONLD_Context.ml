@@ -188,6 +188,40 @@ let jldctx_resolve (base : Prims.string) (relative : Prims.string) :
   if RDF_Graph_Executable.is_iri base
   then SPARQL11_IRI_Resolve.resolve_iri base relative
   else base
+let jld_remote_context_fuel : Prims.nat= (Prims.of_int (32))
+let jldctx_resolve_context_iri (ac : active_context) (raw : Prims.string) :
+  Prims.string FStar_Pervasives_Native.option=
+  match ac.ac_base with
+  | FStar_Pervasives_Native.Some b ->
+      FStar_Pervasives_Native.Some (jldctx_resolve b raw)
+  | FStar_Pervasives_Native.None ->
+      if RDF_Graph_Executable.is_iri raw
+      then FStar_Pervasives_Native.Some raw
+      else FStar_Pervasives_Native.None
+let jldctx_extract_import
+  (fields : (Prims.string * Parser_JSON.json_val) Prims.list) :
+  (Prims.string FStar_Pervasives_Native.option * (Prims.string *
+    Parser_JSON.json_val) Prims.list)=
+  let importval =
+    match FStar_List_Tot_Base.find
+            (fun kv -> (FStar_Pervasives_Native.fst kv) = "@import") fields
+    with
+    | FStar_Pervasives_Native.Some (uu___, Parser_JSON.JString s) ->
+        FStar_Pervasives_Native.Some s
+    | uu___ -> FStar_Pervasives_Native.None in
+  let rest =
+    FStar_List_Tot_Base.filter
+      (fun kv -> (FStar_Pervasives_Native.fst kv) <> "@import") fields in
+  (importval, rest)
+let jldctx_fetch_remote_context (resolved : Prims.string) :
+  Parser_JSON.json_val FStar_Pervasives_Native.option=
+  match JSONLD_Loader.jsonld_load_document resolved with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some raw ->
+      (match Parser_JSON.parse_json raw with
+       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.Some doc ->
+           Parser_JSON.json_get_field "@context" doc)
 let jldctx_expand_fallback (ac : active_context) (value : Prims.string)
   (vocab : Prims.bool) : Prims.string FStar_Pervasives_Native.option=
   if vocab
@@ -686,7 +720,8 @@ let context_process_one_field (ac : active_context) (key : Prims.string)
                        override_protected
                  | uu___7 -> FStar_Pervasives_Native.None)
 let rec context_process (ac : active_context) (ctx : Parser_JSON.json_val)
-  (override_protected : Prims.bool) :
+  (override_protected : Prims.bool) (fuel : Prims.nat)
+  (visited : Prims.string Prims.list) :
   active_context FStar_Pervasives_Native.option=
   match ctx with
   | Parser_JSON.JNull ->
@@ -703,26 +738,77 @@ let rec context_process (ac : active_context) (ctx : Parser_JSON.json_val)
             ac_language = FStar_Pervasives_Native.None;
             ac_previous = (ac.ac_previous)
           }
-  | Parser_JSON.JString uu___ -> FStar_Pervasives_Native.None
+  | Parser_JSON.JString s ->
+      if fuel = Prims.int_zero
+      then FStar_Pervasives_Native.None
+      else
+        (match jldctx_resolve_context_iri ac s with
+         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+         | FStar_Pervasives_Native.Some resolved ->
+             if FStar_List_Tot_Base.mem resolved visited
+             then FStar_Pervasives_Native.None
+             else
+               (match jldctx_fetch_remote_context resolved with
+                | FStar_Pervasives_Native.None ->
+                    FStar_Pervasives_Native.None
+                | FStar_Pervasives_Native.Some inner ->
+                    context_process ac inner override_protected
+                      (fuel - Prims.int_one) (resolved :: visited)))
   | Parser_JSON.JArray items ->
-      context_process_array ac items override_protected
+      context_process_array ac items override_protected fuel visited
   | Parser_JSON.JObject fields ->
-      context_process_fields ac fields
-        (jldctx_scan_bool_key fields "@protected" false) override_protected
+      (match jldctx_extract_import fields with
+       | (FStar_Pervasives_Native.None, uu___) ->
+           context_process_fields ac fields
+             (jldctx_scan_bool_key fields "@protected" false)
+             override_protected fuel visited
+       | (FStar_Pervasives_Native.Some importref, restfields) ->
+           if fuel = Prims.int_zero
+           then FStar_Pervasives_Native.None
+           else
+             (match jldctx_resolve_context_iri ac importref with
+              | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+              | FStar_Pervasives_Native.Some resolved ->
+                  if FStar_List_Tot_Base.mem resolved visited
+                  then FStar_Pervasives_Native.None
+                  else
+                    (match jldctx_fetch_remote_context resolved with
+                     | FStar_Pervasives_Native.None ->
+                         FStar_Pervasives_Native.None
+                     | FStar_Pervasives_Native.Some imported_ctx ->
+                         (match imported_ctx with
+                          | Parser_JSON.JObject uu___2 ->
+                              (match context_process ac imported_ctx
+                                       override_protected
+                                       (fuel - Prims.int_one) (resolved ::
+                                       visited)
+                               with
+                               | FStar_Pervasives_Native.None ->
+                                   FStar_Pervasives_Native.None
+                               | FStar_Pervasives_Native.Some ac_imported ->
+                                   context_process_fields ac_imported
+                                     restfields
+                                     (jldctx_scan_bool_key restfields
+                                        "@protected" false)
+                                     override_protected
+                                     (fuel - Prims.int_one) visited)
+                          | uu___2 -> FStar_Pervasives_Native.None))))
   | uu___ -> FStar_Pervasives_Native.None
 and context_process_array (ac : active_context)
   (items : Parser_JSON.json_val Prims.list) (override_protected : Prims.bool)
-  : active_context FStar_Pervasives_Native.option=
+  (fuel : Prims.nat) (visited : Prims.string Prims.list) :
+  active_context FStar_Pervasives_Native.option=
   match items with
   | [] -> FStar_Pervasives_Native.Some ac
   | hd::tl ->
-      (match context_process ac hd override_protected with
+      (match context_process ac hd override_protected fuel visited with
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some ac1 ->
-           context_process_array ac1 tl override_protected)
+           context_process_array ac1 tl override_protected fuel visited)
 and context_process_fields (ac : active_context)
   (fields : (Prims.string * Parser_JSON.json_val) Prims.list)
-  (default_protected : Prims.bool) (override_protected : Prims.bool) :
+  (default_protected : Prims.bool) (override_protected : Prims.bool)
+  (fuel : Prims.nat) (visited : Prims.string Prims.list) :
   active_context FStar_Pervasives_Native.option=
   match fields with
   | [] -> FStar_Pervasives_Native.Some ac
@@ -733,12 +819,14 @@ and context_process_fields (ac : active_context)
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some ac1 ->
            context_process_fields ac1 rest default_protected
-             override_protected)
+             override_protected fuel visited)
 let apply_context_with_propagate (ac : active_context)
   (ctxval : Parser_JSON.json_val) (default_propagate : Prims.bool)
   (override_protected : Prims.bool) :
   active_context FStar_Pervasives_Native.option=
-  match context_process ac ctxval override_protected with
+  match context_process ac ctxval override_protected jld_remote_context_fuel
+          []
+  with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some ac1 ->
       let propagate = jldctx_scan_propagate ctxval default_propagate in
@@ -776,7 +864,9 @@ let rec jldctx_apply_type_scoped (ac : active_context)
        | FStar_Pervasives_Native.Some td ->
            (match td.td_scoped_context with
             | FStar_Pervasives_Native.Some scoped ->
-                (match context_process ac scoped true with
+                (match context_process ac scoped true jld_remote_context_fuel
+                         []
+                 with
                  | FStar_Pervasives_Native.None ->
                      FStar_Pervasives_Native.None
                  | FStar_Pervasives_Native.Some ac1 ->

@@ -78,7 +78,8 @@ and drives three runners:
 | `w3c_runner --rdf` | N-Triples, Turtle, N-Quads, TriG, RDF/XML, rdf-mt | `formal/fstar/ocaml-output/rdf_results.log` |
 | `owl_runner` | OWL 2 RL PositiveEntailmentTests + 7 DL catalogs, each with its own timeout budget (60s–900s) | `owl_profile_rl_results.log` |
 | `rdfc10_runner` | RDF Dataset Canonicalization (RDFC-1.0) | `rdfc10_results.log` |
-| `jsonld_runner` | W3C JSON-LD 1.1 toRdf manifest (467 tests; not yet folded into generate-report — run directly). Score 2026-07-04 end-of-day: 287 pass, 169 fail, 11 skip; remote contexts/@import (issue #275) are most of the remainder | stdout |
+| `shacl_runner` | W3C SHACL core suite (98 tests; conforms-only compare this slice). Baseline 2026-07-04: 91 pass, 7 fail - all 7 are declared slice boundaries | stdout |
+| `jsonld_runner` | W3C JSON-LD 1.1 toRdf manifest (467 tests; not yet folded into generate-report — run directly). Score 2026-07-04 night: 307 pass, 149 fail, 11 skip; remote contexts/@import (issue #275) are most of the remainder | stdout |
 
 Outputs: `docs/test-results/index.html` (dashboard),
 `latest.csv` / `latest.json` (machine-readable),

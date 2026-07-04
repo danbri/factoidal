@@ -22,6 +22,12 @@ Toward the goal in CLAUDE.md (performant, compliant RDF/S + OWL +
 SHACL + RDFC + SPARQL engine). Re-rank when one lands; a dashboard
 red always jumps the queue.
 
+Landed 2026-07-04 night wave: JSON-LD remote contexts + @import +
+document base via the JSONLD.Loader seam (issue #275 closed) - toRdf
+307 of 467; SHACL core validator slice 1 - 91 of 98 W3C core tests,
+factoidal validate --shapes as the user tool (the goal's largest gap
+is now a scored, burning-down number).
+
 Landed 2026-07-04 evening wave: RDFC-1.0 to 82 pass, 3 fail, 1 stub
 (of 86 - all remaining out of scope; within scope DONE); OWL RL PE
 25 of 30 (suite runs in 0.6s); JSON-LD toRdf 287 of 467; RDFS closure
