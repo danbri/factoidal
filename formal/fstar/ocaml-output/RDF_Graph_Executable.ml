@@ -1379,6 +1379,40 @@ let owl_rule_pdw_to_differentFrom (g : rdf_graph) (ig : indexed_graph) :
                                   add_triple_unchecked acc2 new_t)) acc1
                         o2_terms
                 else acc1) acc g) g pdw_pairs
+let owl_rule_pdw_shared_value_to_differentFrom (g : rdf_graph)
+  (ig : indexed_graph) : rdf_graph=
+  let pdw_pairs =
+    FStar_List_Tot_Base.fold_left
+      (fun acc t ->
+         if t.p = owl_propertyDisjointWith
+         then
+           match ((t.s), (t.o)) with
+           | (S_IRI p1, T_IRI p2) -> (p1, p2) :: acc
+           | uu___ -> acc
+         else acc) [] g in
+  FStar_List_Tot_Base.fold_left
+    (fun acc pair ->
+       let uu___ = pair in
+       match uu___ with
+       | (p1, p2) ->
+           FStar_List_Tot_Base.fold_left
+             (fun acc1 t1 ->
+                if t1.p = p1
+                then
+                  let ys = find_subjects_indexed ig p2 t1.o in
+                  FStar_List_Tot_Base.fold_left
+                    (fun acc2 y ->
+                       if subject_eq y t1.s
+                       then acc2
+                       else
+                         (let new_t =
+                            {
+                              s = (t1.s);
+                              p = owl_differentFrom;
+                              o = (subject_to_term y)
+                            } in
+                          add_triple_unchecked acc2 new_t)) acc1 ys
+                else acc1) acc g) g pdw_pairs
 let owl_rule_fp_diff_to_diff (g : rdf_graph) (ig : indexed_graph) :
   rdf_graph=
   let fp_props =
@@ -2645,6 +2679,89 @@ let owl_rule_all_disjoint_classes (g : rdf_graph) (ig : indexed_graph) :
                    | FStar_Pervasives_Native.None -> acc1)) acc
            (find_objects_indexed ig t.s owl_members_iri)
        else acc) g g
+let owl_AllDisjointProperties_iri : wf_iri=
+  "http://www.w3.org/2002/07/owl#AllDisjointProperties"
+let owl_AllDifferent_iri : wf_iri=
+  "http://www.w3.org/2002/07/owl#AllDifferent"
+let owl_rule_all_disjoint_properties (g : rdf_graph) (ig : indexed_graph) :
+  rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if
+         (t.p = rdf_type) &&
+           (rdf_term_eq t.o (T_IRI owl_AllDisjointProperties_iri))
+       then
+         FStar_List_Tot_Base.fold_left
+           (fun acc1 l_term ->
+              match term_to_subject l_term with
+              | FStar_Pervasives_Native.None -> acc1
+              | FStar_Pervasives_Native.Some l_subj ->
+                  (match decode_chain_list g ig l_subj with
+                   | FStar_Pervasives_Native.Some ps ->
+                       FStar_List_Tot_Base.fold_left
+                         (fun acc2 p1 ->
+                            FStar_List_Tot_Base.fold_left
+                              (fun acc3 p2 ->
+                                 if p1 = p2
+                                 then acc3
+                                 else
+                                   add_triple_unchecked acc3
+                                     {
+                                       s = (S_IRI p1);
+                                       p = owl_propertyDisjointWith;
+                                       o = (T_IRI p2)
+                                     }) acc2 ps) acc1 ps
+                   | FStar_Pervasives_Native.None -> acc1)) acc
+           (find_objects_indexed ig t.s owl_members_iri)
+       else acc) g g
+let differentFrom_canonical_pairs (ig : indexed_graph) :
+  (subject * subject) Prims.list=
+  let raw =
+    FStar_List_Tot_Base.fold_left
+      (fun acc t ->
+         if t.p = owl_differentFrom
+         then
+           match term_to_subject t.o with
+           | FStar_Pervasives_Native.Some y ->
+               (if subject_eq t.s y
+                then acc
+                else
+                  if
+                    (FStar_String.compare (subject_to_key t.s)
+                       (subject_to_key y))
+                      < Prims.int_zero
+                  then ((t.s), y) :: acc
+                  else acc)
+           | FStar_Pervasives_Native.None -> acc
+         else acc) [] ig.ig_triples in
+  let sorted = FStar_List_Tot_Base.sortWith sameas_pair_cmp raw in
+  dedup_pairs_sorted_aux FStar_Pervasives_Native.None sorted []
+let canonical_adf_bnode (k1 : Prims.string) (k2 : Prims.string) : bnode_id=
+  FStar_String.concat "" ["__rl_adf__"; k1; "__vs__"; k2]
+let canonical_adfl1_bnode (k1 : Prims.string) (k2 : Prims.string) : bnode_id=
+  FStar_String.concat "" ["__rl_adfl1__"; k1; "__vs__"; k2]
+let canonical_adfl2_bnode (k1 : Prims.string) (k2 : Prims.string) : bnode_id=
+  FStar_String.concat "" ["__rl_adfl2__"; k1; "__vs__"; k2]
+let owl_rule_differentFrom_to_allDifferent (g : rdf_graph)
+  (ig : indexed_graph) : rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc xy ->
+       let uu___ = xy in
+       match uu___ with
+       | (x, y) ->
+           let k1 = subject_to_key x in
+           let k2 = subject_to_key y in
+           let adf = S_BNode (canonical_adf_bnode k1 k2) in
+           let l1 = canonical_adfl1_bnode k1 k2 in
+           let l2 = canonical_adfl2_bnode k1 k2 in
+           add_triples_if_new acc
+             [{ s = adf; p = rdf_type; o = (T_IRI owl_AllDifferent_iri) };
+             { s = adf; p = owl_members_iri; o = (T_BNode l1) };
+             { s = (S_BNode l1); p = rdf_first; o = (subject_to_term x) };
+             { s = (S_BNode l1); p = rdf_rest; o = (T_BNode l2) };
+             { s = (S_BNode l2); p = rdf_first; o = (subject_to_term y) };
+             { s = (S_BNode l2); p = rdf_rest; o = (T_IRI rdf_nil_iri) }]) g
+    (differentFrom_canonical_pairs ig)
 let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
   let ig = build_indexed g in
   let g1 = owl_rule_equivalent_class g ig in
@@ -2668,10 +2785,13 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
   let g11 = owl_rule_sameAs_replace_predicate g10 ig in
   let g11a = owl_rule_functional g11 ig in
   let g12 = owl_rule_inverse_functional g11a ig in
-  let g12a = owl_rule_pdw_to_differentFrom g12 ig in
-  let g12b = owl_rule_fp_diff_to_diff g12a ig in
+  let g12_adp = owl_rule_all_disjoint_properties g12 ig in
+  let g12a = owl_rule_pdw_to_differentFrom g12_adp ig in
+  let g12a1 = owl_rule_pdw_shared_value_to_differentFrom g12a ig in
+  let g12b = owl_rule_fp_diff_to_diff g12a1 ig in
   let g12c = owl_rule_ifp_diff_to_diff g12b ig in
-  let g13 = owl_rule_minc1_bridge g12c ig in
+  let g12d = owl_rule_differentFrom_to_allDifferent g12c ig in
+  let g13 = owl_rule_minc1_bridge g12d ig in
   let g13a = owl_rule_svf2_existential_witness g13 ig in
   let g14 = owl_rule_cls_svf2_qualified g13a ig in
   let g15 = owl_rule_cls_minc_qual1 g14 ig in

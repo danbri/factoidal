@@ -2004,6 +2004,56 @@ let owl_rule_pdw_to_differentFrom (g : rdf_graph) (ig : indexed_graph) : rdf_gra
     g
     pdw_pairs
 
+// prp-pdw-shared-value: sibling contrapositive of prp-pdw-objects above,
+// covering the *shared-value* shape instead of the shared-subject shape.
+// Disjoint p1/p2 cannot both relate anything to the same value v (that
+// would be the prp-pdw inconsistency if the two subjects coincided), so
+// if (x p1 v) and (y p2 v) for a value v — IRI, bnode, or literal, all
+// handled by rdf_term_eq — then x and y must be distinct individuals.
+// This is the shape the *data*-property variant of AllDisjointProperties
+// needs: three different subjects sharing one literal value across three
+// pairwise-disjoint data properties, not one shared subject across two
+// disjoint object properties (that shared-subject shape is already
+// covered by owl_rule_pdw_to_differentFrom above).
+// Targets New-Feature-DisjointDataProperties-002; see
+// docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.3.
+let owl_rule_pdw_shared_value_to_differentFrom (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  let pdw_pairs : list (wf_iri & wf_iri) =
+    List.Tot.fold_left
+      (fun (acc : list (wf_iri & wf_iri)) (t : triple) ->
+        if t.p = owl_propertyDisjointWith then
+          match t.s, t.o with
+          | S_IRI p1, T_IRI p2 -> (p1, p2) :: acc
+          | _ -> acc
+        else acc)
+      []
+      g
+  in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (pair : (wf_iri & wf_iri)) ->
+      let (p1, p2) = pair in
+      // For each (x p1 v), find every (y p2 v) sharing the SAME value v
+      // (via the ig_obj-adjacent bucket lookup find_subjects_indexed) and
+      // emit (x differentFrom y) when x and y are syntactically distinct.
+      List.Tot.fold_left
+        (fun (acc1 : rdf_graph) (t1 : triple) ->
+          if t1.p = p1 then
+            let ys = find_subjects_indexed ig p2 t1.o in
+            List.Tot.fold_left
+              (fun (acc2 : rdf_graph) (y : subject) ->
+                if subject_eq y t1.s then acc2
+                else
+                  let new_t : triple =
+                    { s = t1.s; p = owl_differentFrom; o = subject_to_term y } in
+                  add_triple_unchecked acc2 new_t)
+              acc1
+              ys
+          else acc1)
+        acc
+        g)
+    g
+    pdw_pairs
+
 // prp-fp-diff: contrapositive of prp-fp. If p is functional and (y1 p x1)
 // and (y2 p x2) and (x1 differentFrom x2), then (y1 differentFrom y2).
 // (If y1 = y2, prp-fp emits (x1 sameAs x2), contradicting differentFrom.)
@@ -3990,6 +4040,138 @@ let owl_rule_all_disjoint_classes (g : rdf_graph) (ig : indexed_graph) : rdf_gra
     g
     g
 
+let owl_AllDisjointProperties_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#AllDisjointProperties");
+  "http://www.w3.org/2002/07/owl#AllDisjointProperties"
+
+let owl_AllDifferent_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#AllDifferent");
+  "http://www.w3.org/2002/07/owl#AllDifferent"
+
+// cax-adp-expand (property-side sibling of cax-adc-expand above):
+// (x rdf:type owl:AllDisjointProperties) with (x owl:members L), L an
+// all-IRI rdf list (p1 ... pn), implies pairwise
+// (pi owl:propertyDisjointWith pj) for i distinct from j. Reuses
+// decode_chain_list exactly as cax-adc-expand does; bnode/non-IRI list
+// elements make decode_chain_list return None (guard).
+// Wired before owl_rule_pdw_to_differentFrom in the closure step so the
+// pairwise propertyDisjointWith-contrapositive rules see the pairs in
+// the same step.
+// Targets New-Feature-DisjointObjectProperties-002 /
+// New-Feature-DisjointDataProperties-002; see
+// docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.3.
+//
+// Complexity: same shape as cax-adc-expand — n^2 pairwise triples per
+// AllDisjointProperties axiom, n bounded by the declared member-list
+// length (a schema-level axiom's arity, not an individual count), so
+// this rule is not #262-quadratic-in-individuals.
+let owl_rule_all_disjoint_properties (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_AllDisjointProperties_iri) then
+        List.Tot.fold_left
+          (fun (acc1 : rdf_graph) (l_term : rdf_term) ->
+            match term_to_subject l_term with
+            | None -> acc1
+            | Some l_subj ->
+              (match decode_chain_list g ig l_subj with
+               | Some ps ->
+                 List.Tot.fold_left (fun (acc2 : rdf_graph) (p1 : wf_iri) ->
+                   List.Tot.fold_left (fun (acc3 : rdf_graph) (p2 : wf_iri) ->
+                     if p1 = p2 then acc3
+                     else add_triple_unchecked acc3
+                            ({ s = S_IRI p1; p = owl_propertyDisjointWith; o = T_IRI p2 }))
+                     acc2 ps)
+                   acc1 ps
+               | None -> acc1))
+          acc (find_objects_indexed ig t.s owl_members_iri)
+      else acc)
+    g
+    g
+
+// #262-style snapshot pairs: deduplicated, canonically-ordered
+// differentFrom pairs from the step-input snapshot ig — one entry per
+// unordered pair, direction picked by string-key order so a pair and its
+// symmetric mirror (owl_rule_differentFrom_symmetry keeps both
+// directions in the closure) collapse to a single emission. Reuses
+// sameas_pair_cmp / dedup_pairs_sorted_aux verbatim: both operate purely
+// on subject pairs and carry no sameAs-specific behaviour. differentFrom
+// pair counts are quadratic in contrapositive-heavy graphs, exactly the
+// blow-up #262 diagnosed for sameAs pairs, so the materialisation rule
+// below folds over this k-choose-2-bounded list once instead of
+// rescanning the live per-step graph — the same fix shape as
+// sameas_pairs, applied to the differentFrom relation.
+let differentFrom_canonical_pairs (ig : indexed_graph) : list (subject * subject) =
+  let raw =
+    List.Tot.fold_left
+      (fun (acc : list (subject * subject)) (t : triple) ->
+        if t.p = owl_differentFrom then
+          match term_to_subject t.o with
+          | Some y ->
+            if subject_eq t.s y then acc
+            else if String.compare (subject_to_key t.s) (subject_to_key y) < 0
+            then (t.s, y) :: acc
+            else acc
+          | None -> acc
+        else acc)
+      [] ig.ig_triples
+  in
+  let sorted = List.Tot.sortWith sameas_pair_cmp raw in
+  dedup_pairs_sorted_aux None sorted []
+
+let canonical_adf_bnode (k1 k2 : string) : bnode_id =
+  String.concat "" ["__rl_adf__"; k1; "__vs__"; k2]
+let canonical_adfl1_bnode (k1 k2 : string) : bnode_id =
+  String.concat "" ["__rl_adfl1__"; k1; "__vs__"; k2]
+let canonical_adfl2_bnode (k1 k2 : string) : bnode_id =
+  String.concat "" ["__rl_adfl2__"; k1; "__vs__"; k2]
+
+// eq-diff-adf: surface every differentFrom pair as its Table 5
+// AllDifferent form — (adf rdf:type owl:AllDifferent), (adf owl:members
+// L) with L a 2-element rdf:first/rdf:rest collection over the pair. A
+// pairwise AllDifferent node is an exact reading of a 2-member
+// DifferentIndividuals axiom, and — per the runner's existential bnode
+// matcher (design doc §1) — is enough to satisfy the 3-member
+// AllDisjointProperties conclusions: each conclusion triple checks one
+// predicate/object shape at a time, so three pairwise witnesses covering
+// the same three individuals supply every rdf:first / owl:members /
+// rdf:type shape the 3-member conclusion pattern needs, without
+// requiring an isomorphic 3-member list. The __rl_ prefix keeps the
+// list bnodes out of cls-maxqc1 / svf2 / exactqc1 via
+// edge_subject_is_safe. canonical_adf_bnode is deterministic and keyed
+// only on the ordered pair, so repeat emissions across fixpoint
+// iterations are idempotent (add_triples_if_new no-ops on the repeat).
+// Targets New-Feature-DisjointObjectProperties-002 /
+// New-Feature-DisjointDataProperties-002; see
+// docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.3.
+//
+// Complexity — the #262-sensitive part of this cluster: one
+// bucket-free fold over the canonical, deduplicated differentFrom-pair
+// snapshot list (k-choose-2 for a k-node differentFrom clique — half of
+// sameas_pairs' bound, since only one direction of each pair survives
+// the key-order filter), six add_triples_if_new triples per pair, no
+// inner rescan of g or ig. See the design doc's risk note on this rule
+// and the module header comment on #262 above for why this shape
+// matters here specifically.
+let owl_rule_differentFrom_to_allDifferent (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (xy : subject * subject) ->
+      let (x, y) = xy in
+      let k1 = subject_to_key x in
+      let k2 = subject_to_key y in
+      let adf : subject = S_BNode (canonical_adf_bnode k1 k2) in
+      let l1 = canonical_adfl1_bnode k1 k2 in
+      let l2 = canonical_adfl2_bnode k1 k2 in
+      add_triples_if_new acc [
+        { s = adf;        p = rdf_type;        o = T_IRI owl_AllDifferent_iri };
+        { s = adf;        p = owl_members_iri; o = T_BNode l1 };
+        { s = S_BNode l1; p = rdf_first;       o = subject_to_term x };
+        { s = S_BNode l1; p = rdf_rest;        o = T_BNode l2 };
+        { s = S_BNode l2; p = rdf_first;       o = subject_to_term y };
+        { s = S_BNode l2; p = rdf_rest;        o = T_IRI rdf_nil_iri } ])
+    g
+    (differentFrom_canonical_pairs ig)
+
 // Apply all OWL-RL rules once. Ordering: first do "axiom-introducing" rules
 // (equivalentClass/Property expansion, owl:inverseOf flip, symmetric/
 // transitive), then sameAs rules. The fixpoint loop re-applies them until
@@ -4040,16 +4222,35 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   // prp-fp / prp-ifp: functional + inverse-functional sameAs identification.
   let g11a = owl_rule_functional g11 ig in
   let g12 = owl_rule_inverse_functional g11a ig in
+  // cax-adp-expand: owl:AllDisjointProperties + owl:members list ->
+  // pairwise owl:propertyDisjointWith. Runs before the pdw-to-
+  // differentFrom contrapositives so they see the pairs in the same
+  // step (mirrors cax-adc-expand's placement before disjointWith
+  // propagation above).
+  let g12_adp = owl_rule_all_disjoint_properties g12 ig in
   // Contrapositive rules — derive owl:differentFrom from disjointness +
   // existing differentFrom assertions. Sound Horn specialisations of the
   // OWL 2 RL/RDF inconsistency rules. Cover W3C
   // New-Feature-DisjointObjectProperties / DisjointDataProperties /
   // owl2-rl-rules-fp-differentFrom / -ifp-differentFrom.
-  let g12a = owl_rule_pdw_to_differentFrom g12 ig in
-  let g12b = owl_rule_fp_diff_to_diff g12a ig in
+  let g12a = owl_rule_pdw_to_differentFrom g12_adp ig in
+  // prp-pdw-shared-value: sibling contrapositive covering the shared-
+  // value (rather than shared-subject) disjoint-property shape; needed
+  // for the *data*-property AllDisjointProperties variant. See 2.3 in
+  // the design doc referenced at the rule definition.
+  let g12a1 = owl_rule_pdw_shared_value_to_differentFrom g12a ig in
+  let g12b = owl_rule_fp_diff_to_diff g12a1 ig in
   let g12c = owl_rule_ifp_diff_to_diff g12b ig in
+  // eq-diff-adf: surface every differentFrom pair (from all of the
+  // contrapositives above, in this same step) as a pairwise
+  // owl:AllDifferent scaffold. After the contrapositive cluster so it
+  // sees the freshly-derived differentFrom facts on the NEXT fixpoint
+  // iteration (snapshot semantics: differentFrom_canonical_pairs reads
+  // the step-input ig, not this step's g12c) while still threading the
+  // accumulator forward within this step.
+  let g12d = owl_rule_differentFrom_to_allDifferent g12c ig in
   // Restriction-membership rules (parent4 / parent5 / parent6).
-  let g13 = owl_rule_minc1_bridge g12c ig in
+  let g13 = owl_rule_minc1_bridge g12d ig in
   // svf2 existential-witness synthesis (paper-Q3 gap 1, 2026-04-25
   // Tav3): for each (_:r owl:someValuesFrom C ; owl:onProperty P) and
   // each (C' rdfs:subClassOf _:r) and (x rdf:type C'), emit
