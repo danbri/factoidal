@@ -1,0 +1,28 @@
+{
+  "timestamp": "2026-07-04T07:21:44Z",
+  "commit": "f1ff05204c9dcfef5de24a8bb582764a79bda694",
+  "platform": "linux-x86_64",
+  "runs_per_measurement": 3,
+  "cap_seconds_per_run": 120,
+  "note": "serialize_nq and canonicalize ops are end-to-end (parse included); there is no parse-once/format-many path in the committed CLI.",
+  "results": [
+    {"op":"parse","format":"nt","size":"10000","seconds_median":0.1263,"triples_per_sec":79177},
+    {"op":"parse","format":"turtle","size":"10000","seconds_median":0.1137,"triples_per_sec":87951},
+    {"op":"parse","format":"rdfxml","size":"10000","seconds_median":0.2009,"triples_per_sec":49776},
+    {"op":"parse","format":"nt","size":"100000","seconds_median":1.1940,"triples_per_sec":83752},
+    {"op":"parse","format":"turtle","size":"100000","seconds_median":1.1122,"triples_per_sec":89912},
+    {"op":"parse","format":"nt","size":"1000000","seconds_median":12.0948,"triples_per_sec":82680},
+    {"op":"parse","format":"turtle","size":"1000000","seconds_median":11.6782,"triples_per_sec":85630},
+    {"op":"serialize_nq","format":"nt","size":"10000","seconds_median":61.5564,"triples_per_sec":162},
+    {"op":"canonicalize","format":"nt","size":"10000","seconds_median":42.0670,"triples_per_sec":238}
+  ],
+  "skipped": [
+    {"op":"parse","format":"rdfxml","size":"100000","reason":""},
+    {"op":"parse","format":"rdfxml","size":"1000000","reason":""},
+    {"op":"serialize_nq","format":"nt","size":"100000","reason":""},
+    {"op":"serialize_nq","format":"nt","size":"1000000","reason":""},
+    {"op":"canonicalize","format":"nt","size":"100000","reason":""},
+    {"op":"canonicalize","format":"nt","size":"1000000","reason":""},
+    {"op":"parse","format":"trig","size":"corpus","reason":""}
+  ]
+}
