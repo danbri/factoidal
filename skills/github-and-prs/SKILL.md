@@ -210,4 +210,31 @@ gh run watch <run-id> --repo danbri/factoidal
 
 - `fstar-env` skill — toolchain setup if `fstar.exe` is missing.
 - `build-and-test` skill — local verification before opening a PR.
+- `issue-hygiene` skill — keeping issue checklists/comments in sync as
+  the PRs covered by this skill land.
 - `docs/claude-rules/anti-patterns.md` — full anti-pattern table.
+
+## Landing while CI keeps moving the branch (2026-07-04 pattern)
+
+CI pushes artifact commits to claude/main every few minutes, so a
+plain push from a long-lived local branch usually loses the race, and
+`git rebase` refuses while the tree carries in-flight (gated,
+uncommitted) work. The pattern that works:
+
+```bash
+git config user.email noreply@anthropic.com && git config user.name Claude  # once per clone
+git commit ...                        # commit locally as usual
+C=$(git rev-parse HEAD)
+git fetch origin claude/main
+WT=$(mktemp -d); git worktree add $WT origin/claude/main
+git -C $WT cherry-pick $C && git -C $WT push origin HEAD:claude/main
+git worktree remove --force $WT; git worktree prune
+```
+
+Afterwards, once the local tree is clean, realign with
+`git reset --hard origin/claude/main` — but FIRST verify the local
+commits actually exist upstream (`git log --format=%s origin/... |
+grep`), because the cherry-picked copies have different hashes and
+the stop hook will otherwise nag about "unverified" local duplicates
+forever. Never reset away a commit you have not confirmed upstream.
+

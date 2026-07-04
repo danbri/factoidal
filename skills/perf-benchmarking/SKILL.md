@@ -229,6 +229,11 @@ all started as noticed smells, not scheduled work.
 
 - Conformance scores — `test-suites` skill.
 - Building binaries — `build-and-test` skill.
+- Speed of the verify → extract → compile → test **dev loop itself**
+  (not the extracted engine's runtime speed) — `fast-verify-extract`
+  skill. This skill measures how fast the shipped binary runs a
+  query; that skill measures how fast you can get from an edited
+  `.fst` to a tested binary.
 - Publishing metrics on the site — `site-and-dashboard` skill.
 - Background-job wall-clock discipline in depth —
   `autonomous-time-discipline` skill.

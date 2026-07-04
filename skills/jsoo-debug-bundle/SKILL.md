@@ -146,3 +146,36 @@ This is consumer-tooling: it lives in `bin/`-equivalent territory
 (the public demo) and does not modify the verified F\* library
 boundary. No new `assume val`. No glue patches. Scaffolding-only,
 per CLAUDE.md rule #11.
+
+## Pairs with
+
+- `build-and-test` — the production `js_of_ocaml` step
+  (`./build-ocaml.sh js`) this skill's debug build sits alongside;
+  read that skill first if you haven't built the JS target before.
+- `workflow-gotchas-debugging` — broader dev-loop hazards (e.g. the
+  `(* *)` comment trap, module-list drift) that can also produce a
+  confusing browser-only failure; check there if the bug turns out
+  not to be a stack-trace-legibility problem at all.
+
+## Bundle-shape skew: loaders must match generated code by SHAPE
+
+A wasm_of_ocaml upgrade (6.4.1, 2026-07-04) renamed the minified
+parameter of the bundle's entry IIFE and broke THREE separate copies
+of loader code that matched it by exact string
+(`';($=>async '`): `npm/factoidal/lib/engine-wasm.js`,
+`npm/factoidal/wasm.js`, and `docs/fstar-extracted/browser-wasm.js` —
+the last one live on the public demo pages, where the failure mode
+was a HANG (the page awaits a promise the failed loader never
+created), not an error.
+
+Rules:
+- Match generated-code idioms with a shape pattern
+  (`/;\((\$|[A-Za-z_$][\w$]*)=>async /`), never a fixed minified
+  name.
+- When fixing a loader idiom, `grep -rn` the WHOLE repo for other
+  copies before declaring victory — loader code gets copy-pasted
+  between npm, docs, and test harnesses.
+- After any js_of_ocaml / wasm_of_ocaml version bump, smoke-load every
+  bundle consumer (npm test wasm-parity + the demo pages) before
+  pushing the rebuilt bundles.
+

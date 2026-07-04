@@ -1,6 +1,6 @@
 ---
 name: subagent-prompting
-description: How to write subagent prompts for the Factoidal repo so the agent's work actually lands cleanly. Use whenever you dispatch a subagent with the Agent tool, especially with `isolation: "worktree"`. Two load-bearing rules. (1) Path discipline — agents must use only paths under their worktree, not absolute paths from your prompt context. (2) Post-condition checks — agent must verify its main-worktree footprint is zero before reporting back. Pairs with workflow-gotchas-debugging (which catalogues recovery steps when these rules are violated).
+description: How to write subagent prompts for the Factoidal repo so the agent's work actually lands cleanly. Use whenever you dispatch a subagent with the Agent tool, especially with `isolation: "worktree"`. Two load-bearing rules. (1) Path discipline — agents must use only paths under their worktree, not absolute paths from your prompt context. (2) Post-condition checks — agent must verify its main-worktree footprint is zero before reporting back. Also carries MANDATORY brief inclusions for build-list edits (only while `.build-running` is absent), the F*/OCaml comment-nesting trap, and iron rule #11 (no hand-editing extracted `.ml`) — plus the one-agent-one-commit and ship-code-sketches rules. Pairs with workflow-gotchas-debugging (which catalogues recovery steps when these rules are violated).
 ---
 
 # Subagent prompting for Factoidal
@@ -168,3 +168,9 @@ For tasks that must commit + push code, always use `isolation:
 - `build-and-test` — how the agent should run `build-ocaml.sh` (and
   the new `flock` lock that prevents extract races).
 - `markdown-style` — agent commit messages and PR bodies.
+- `choosing-models` — which model/effort tier to dispatch the agent
+  on; this skill is only about what the prompt must say, not who runs
+  it.
+- `session-economy` — when to fan out to a subagent at all and how to
+  keep the parent session's context small; this skill is the prompt
+  template, not the fan-out policy.

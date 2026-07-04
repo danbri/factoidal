@@ -1,6 +1,6 @@
 ---
 name: choosing-models
-description: How to pick the model (and effort) for every subagent you spawn — especially when the orchestrating session runs on a Fable-class (top-tier) model. Core rule, from the owner: "For all coding tasks use your judgement to decide an appropriate lower power model and run that in a subagent." Use whenever dispatching an Agent, planning a fan-out, writing a Workflow, or when a session is burning top-tier tokens on work a cheaper model executes reliably.
+description: How to pick the model AND the effort dial (low/medium/high/xhigh/max) for every subagent you spawn — especially when the orchestrating session runs on a Fable-class (top-tier) model. Covers when a deliberate Fable-class subagent (not accidental inheritance) is the right call. Core rule, from the owner: "For all coding tasks use your judgement to decide an appropriate lower power model and run that in a subagent." Use whenever dispatching an Agent, planning a fan-out, writing a Workflow, or when a session is burning top-tier tokens on work a cheaper model executes reliably.
 ---
 
 # Choosing models for agents

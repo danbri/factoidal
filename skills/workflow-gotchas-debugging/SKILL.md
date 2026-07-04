@@ -1,11 +1,11 @@
 ---
 name: workflow-gotchas-debugging
-description: Diagnostic playbook for the dev-loop hazards that recur in this repo. Use when a build mysteriously fails, a fresh clone breaks where local works, an agent's work doesn't appear on its branch, the same uncommitted file keeps coming back after `git checkout`, or "stop hook fires every turn but I'm not done." These are the seven hazards we've actually hit (see "Lessons from 2026-05-07" below) plus their detection + recovery steps.
+description: Diagnostic playbook for the dev-loop hazards that recur in this repo. Use when a build mysteriously fails, a fresh clone breaks where local works, an agent's work doesn't appear on its branch, the same uncommitted file keeps coming back after `git checkout`, a secondary compile script poisons shared `.cmi`/`.cmx` files, a `set -e` + cleanup trap eats a failing build's log, or "stop hook fires every turn but I'm not done." Ten hazards total (see "Lessons from 2026-05-07" below): subagent worktree-leakage, concurrent F* extract races, source-without-build-wiring, stale doc numbers, the build-aware stop-hook gap, the `(* *)` comment trap, worktree garbage, secondary-script `.cmx` poisoning, editing build inputs mid-build, and cleanup traps eating diagnostics — plus their detection + recovery steps.
 ---
 
 # Workflow gotchas + debugging
 
-This skill catalogues the seven hazards that have actually bitten this
+This skill catalogues the ten hazards that have actually bitten this
 project in production. Each section lists symptoms, root cause, the
 recovery procedure, and (where applicable) the prevention now in place.
 
@@ -325,3 +325,15 @@ This skill is the durable form of a single bad session:
 4. New `.fst` in recent merges? → grep build-ocaml.sh for it (#3).
 5. Build-running flag set? → wait, don't commit partial.
 6. Doc number that "doesn't match what I just measured"? → stale (#4).
+
+## What this skill does NOT cover
+
+- The prevention rules themselves (path-discipline preamble,
+  post-condition check, build-lock timing, comment-trap wording) —
+  `subagent-prompting` owns the text agents must be given; this skill
+  owns what to do when those rules were skipped and the hazard fired
+  anyway.
+- Build lock / `.build-running` marker mechanics in depth —
+  `build-and-test`.
+- `.checked` cache correctness and safe parallel verification (the
+  root cause behind hazard #2) — `fast-verify-extract`.

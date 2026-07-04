@@ -1,6 +1,6 @@
 ---
 name: session-restore
-description: Restore a fresh or recycled VM/container/session to full working state in minutes, not hours — the cache inventory (toolchain-cache branch, .checked verification cache, pycottas venv, skill symlinks), what the bootstrap hook restores automatically vs what needs a command, and the never-again rules from the 2026-07-03 session that burned ~90 minutes compiling F* from source twice. Use on any fresh clone, restored VM, new sandbox, when fstar.exe or test data is missing, when a session is about to do something expensive that a previous session already did, or when adding a new cache-worthy artifact.
+description: Restore a fresh or recycled VM/container/session to full working state in minutes, not hours — the cache inventory (toolchain-cache branch, .checked verification cache, pycottas venv, skill symlinks), what the bootstrap hook restores automatically vs what needs a command, the wasm_of_ocaml/binaryen ≥116 install path (proxy-blocked release binaries, conda-forge fallback), and the never-again rules from the 2026-07-03 session that burned ~90 minutes compiling F* from source twice. Use on any fresh clone, restored VM, new sandbox, when fstar.exe or test data is missing, when a wasm build fails on a missing `wasm-merge`, when a session is about to do something expensive that a previous session already did, or when adding a new cache-worthy artifact.
 ---
 
 # Session / VM restoration: never rebuild what a previous session built

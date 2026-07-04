@@ -347,5 +347,11 @@ succeed, the toolchain is good.
 - `test-suites` skill — running the conformance suites (the committed
   binaries in `bin/<platform>/` run them with NO toolchain at all).
 - `perf-benchmarking` skill — performance measurement setup.
+- `session-restore` skill — the fuller cache inventory this skill's
+  fast path draws on: the `toolchain-cache` orphan branch (what it
+  contains, when to rebuild it), the `.checked`-cache equivalent, and
+  the wasm/binaryen install path. This skill is repair/first-principles
+  setup; `session-restore` is "what should already be there and how to
+  get it back fast."
 - `formal/roaring/src/Makefile` — example of a standalone
   `make verify` target outside the main F\* tree.

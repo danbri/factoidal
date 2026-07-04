@@ -61,7 +61,10 @@ while doing binary-based work.
 
 ## Model and effort selection for subagents
 
-Match the model tier to the task, not the project's prestige:
+This is the quick-reference version; `choosing-models` has the full
+tier table, the effort dial (low/medium/high/xhigh/max), and the
+judgement heuristics for when to escalate. Match the model tier to the
+task, not the project's prestige:
 
 | Task shape | Tier |
 |---|---|
@@ -132,4 +135,8 @@ the end in themselves.
 - The bootstrap hook internals — read `tools/sandbox-bootstrap.sh`.
 - Toolchain install — `fstar-env`.
 - Long-run wall-clock discipline — `autonomous-time-discipline`.
-- Subagent prompt templates — `subagent-prompting`.
+- Subagent prompt templates (path discipline, post-condition checks,
+  mandatory brief inclusions) — `subagent-prompting`.
+- Full model/effort tier policy and escalation judgement — this
+  skill's table is the quick version; `choosing-models` is the
+  in-depth reference.

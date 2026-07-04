@@ -1,6 +1,6 @@
 ---
 name: test-suites
-description: Run and interpret every test suite in the Factoidal project — W3C conformance (SPARQL 1.1, RDF 1.1/1.2 syntax, rdf-mt, RDF canonicalization, OWL 2), local regression scripts, cross-runtime parity (native/JS/wasm), Apache Jena ARQ comparison probes, and the policy for importing external suites. Use when the user asks to "run the tests", "check conformance", "compare against Jena", to investigate a score change, or before claiming any change is done. Testing (with perf measured separately — see perf-benchmarking) drives everything in this project.
+description: Run and interpret every test suite in the Factoidal project — W3C conformance (SPARQL 1.1, RDF 1.1/1.2 syntax, rdf-mt, RDF canonicalization, OWL 2), local regression scripts, cross-runtime parity (native/JS/wasm), Apache Jena ARQ comparison probes, running only the suites a diff touches (`tools/affected-tests.sh`), regression-pinning discipline (write the failing test before the fix, confirm it fails for the right reason), and the policy for importing external suites. Use when the user asks to "run the tests", "check conformance", "compare against Jena", to investigate a score change, when landing a bug fix and deciding which regression to write, or before claiming any change is done. Testing (with perf measured separately — see perf-benchmarking) drives everything in this project.
 ---
 
 # Test suites: what exists, how to run them, what the numbers mean
@@ -270,6 +270,10 @@ refinements from 2026-07-04:
 ## What this skill does NOT cover
 
 - Building the runners — `build-and-test` skill.
+- Making the verify/extract/compile loop itself fast — this skill's
+  `affected-tests.sh` cuts down which suites you run once you have a
+  binary; cutting down the build that produces the binary is
+  `fast-verify-extract`.
 - Timing/perf measurement — `perf-benchmarking` skill.
 - Publishing scores to the site/dashboard — `site-and-dashboard` skill.
 - Toolchain setup — `fstar-env` skill.

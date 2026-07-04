@@ -1,6 +1,6 @@
 ---
 name: fstar-module-style
-description: How Factoidal's F* source is organized and written — the semantic-core vs implementation-pragmatics split, module naming, the planned stratification of RDF.Graph.Executable and SPARQL11.Algebra, interface-file (.fsti) policy, verification requirements (no --lax, z3 4.13.3, --admit_smt_queries disclosure), F* syntax traps (comment nesting, reserved words), and KaRaMeL-compatible style. Use when creating or reorganizing .fst modules, when an F* "Syntax error" makes no sense, when deciding where a definition belongs, or when writing F* that should later extract to C.
+description: How Factoidal's F* source is organized and written — the semantic-core vs implementation-pragmatics split, module naming, the planned stratification of RDF.Graph.Executable and SPARQL11.Algebra, interface-file (.fsti) policy, verification requirements (no --lax, z3 4.13.3, --admit_smt_queries disclosure), F* syntax traps (comment nesting, reserved words), extraction-semantics traps (F*-verified totality is NOT OCaml totality — List.Tot.splitAt, split-brained string primitives, fixed fuel constants, accumulator order), and KaRaMeL-compatible style. Use when creating or reorganizing .fst modules, when an F* "Syntax error" makes no sense, when a function that verifies as Tot crashes at runtime after extraction, when deciding where a definition belongs, or when writing F* that should later extract to C.
 ---
 
 # F\* module organization and style

@@ -177,6 +177,35 @@ Monitor.
 ## See also
 
 - [`workflow-gotchas-debugging`](../workflow-gotchas-debugging/SKILL.md)
-  for the seven hazards we've actually hit and their recovery steps.
+  for the ten dev-loop hazards we've actually hit and their recovery
+  steps.
 - CLAUDE.md anti-patterns #17–#22 (timeout caps, no `tail -N`
   truncation, worklog discipline, parallel-work pickup).
+
+## Overnight operation patterns (2026-07-04, ~12h autonomous run)
+
+- **Heartbeat timer**: when scheduled triggers are unavailable (MCP
+  approval friction), a background `sleep 3300; echo HEARTBEAT` is a
+  self-wakeup — its completion notification re-invokes the session.
+  Re-arm it every time it fires. 55 min balances responsiveness
+  against noise.
+- **Stale-timer discipline**: every poll/timer you background will
+  fire eventually, often after the thing it watched already finished.
+  On wake, identify the LIVE task first (the long-running build or
+  agent), treat other notifications as no-ops, and do not re-print
+  status for stale ones. A timer whose command ends in a conditional
+  (`ls file && echo X`) exits non-zero when the condition is false
+  and arrives labelled "failed" — read the output, not the label.
+- **Container-restart drill**: the workspace, opam switch, .checked
+  cache, and pushed branches survive; RUNNING processes and their
+  locks do not. On the restart notice: `git status` (tree intact?),
+  check toolchain (`fstar.exe`, `wasm_of_ocaml` present?), remove
+  stale `.build-running`, relaunch the interrupted chain from its
+  last completed phase (logs in `.claude-runs/` say where it died).
+  Killed subagents: check their last message for confessed
+  in-flight damage (one clobbered a committed file and said so),
+  verify with git, then re-dispatch with a tightened brief.
+- **Cache-window pacing**: prefer one long timer over many short
+  polls; when a build phase reliably takes ~10 min, one 9-10 min
+  timer beats three 3-min ones (less context burn, same latency).
+

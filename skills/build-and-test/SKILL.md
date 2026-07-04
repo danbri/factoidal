@@ -228,6 +228,9 @@ Both files are gitignored (`formal/fstar/.gitignore`).
 ## Cross-references
 
 - `fstar-env` skill — toolchain setup, z3 install, opam switch.
+- `fast-verify-extract` skill — skip the full `./build-ocaml.sh` cycle
+  for a single-module change: `.checked` caching, targeted
+  verify/extract of just the edited module, and safe parallelism.
 - `docs/designissues/2026-05-07-c-build-and-roaring-plan.md` —
   KaRaMeL pilot details, krml install paths.
 - `test-suites` skill — every suite (W3C, OWL, RDFC, parity, probes)
