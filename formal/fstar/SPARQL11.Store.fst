@@ -271,6 +271,30 @@ and backend_predicate_present (gb : graph_backend) (pred : wf_iri)
   | GB_Union members ->
     union_backend_predicate_present members pred
 
+// Issue #269: did evaluating this backend involve a COTTAS on-disk
+// artifact with a column that failed to decode (e.g. an RLE_DICTIONARY
+// page the reader can't handle)? `backend_search` / `eval_pattern_backend`
+// silently treat an undecodable row group as contributing zero rows
+// (sound for callers that only consume the ROWS), so a genuinely empty
+// result and a decode failure are indistinguishable downstream — exactly
+// the ambiguity that let `ASK { ?s ?p ?o }` answer `false` instead of
+// erroring on a corpus it could not fully read. Callers that treat an
+// empty solution set as a meaningful answer (ASK) must check this first.
+let rec union_backend_decode_failure (members : list graph_backend)
+  : Tot bool (decreases members) =
+  match members with
+  | [] -> false
+  | member :: rest ->
+    backend_decode_failure member || union_backend_decode_failure rest
+
+and backend_decode_failure (gb : graph_backend) : Tot bool (decreases gb) =
+  match gb with
+  | GB_CottasOnDisk cods _ ->
+    cottas_ondisk_has_decode_failure cods.cods_handle
+  | GB_Union members ->
+    union_backend_decode_failure members
+  | _ -> false
+
 let rec lookup_named_backend (name : iri) (named : list named_graph_backend)
   : Tot (option graph_backend) (decreases named) =
   match named with
@@ -869,7 +893,26 @@ and eval_ask_query_backend_dataset (q : query) (dsb : dataset_backend)
     let omega = match q.q_values with
       | None -> omega0
       | Some vals -> join omega0 vals in
-    Some (match omega with | [] -> false | _ -> true)
+    (match omega with
+     | [] ->
+       // Issue #269: an empty solution set is only a valid `false`
+       // answer if every COTTAS on-disk backend touched by this query
+       // decoded cleanly. A column that failed to decode (e.g. an
+       // RLE_DICTIONARY page the reader can't handle) silently
+       // contributes zero rows through `eval_pattern_backend` /
+       // `backend_search` — sound for row-consuming callers, but ASK
+       // reads "zero rows" as the answer `false`, which would turn a
+       // read failure into a wrong answer with a clean exit. Report
+       // "no boolean" (None) instead — the same signal the CLI/HTTP
+       // consumers already treat as a query-evaluation error for the
+       // backend ASK path.
+       let named_backends = List.Tot.map
+         (fun (ngb : named_graph_backend) -> ngb.ngb_graph) dsb.dsb_named in
+       if backend_decode_failure dsb.dsb_default ||
+          union_backend_decode_failure named_backends
+       then None
+       else Some false
+     | _ -> Some true)
   | _ -> None
 
 // Priority 2c (Jena basic-probe regression): the algebra path rewrites

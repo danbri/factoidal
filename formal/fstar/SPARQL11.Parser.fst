@@ -3250,8 +3250,11 @@ and parse_solution_modifier (pm : prefix_map) (fuel : nat) (ts : token_stream)
             | ParseErr _ -> (None, ts))
          | _ -> (None, ts))
       | _ -> (None, ts) end in
-    // LIMIT
-    let (limit, ts) = begin match parse_peek ts with
+    // LIMIT / OFFSET: SPARQL 1.1 grammar's LimitOffsetClauses production
+    // allows either order (LimitClause OffsetClause? | OffsetClause LimitClause?).
+    // Try LIMIT first, then OFFSET, then (if LIMIT wasn't found before the
+    // OFFSET) try LIMIT again after it, so both orders parse.
+    let try_limit_clause (ts : token_stream) = begin match parse_peek ts with
       | Tok_LIMIT ->
         let ts' = parse_advance ts in
         (match parse_peek ts' with
@@ -3261,8 +3264,7 @@ and parse_solution_modifier (pm : prefix_map) (fuel : nat) (ts : token_stream)
             | None -> (None, ts'))
          | _ -> (None, ts'))
       | _ -> (None, ts) end in
-    // OFFSET
-    let (offset, ts) = begin match parse_peek ts with
+    let try_offset_clause (ts : token_stream) = begin match parse_peek ts with
       | Tok_OFFSET ->
         let ts' = parse_advance ts in
         (match parse_peek ts' with
@@ -3272,6 +3274,14 @@ and parse_solution_modifier (pm : prefix_map) (fuel : nat) (ts : token_stream)
             | None -> (None, ts'))
          | _ -> (None, ts'))
       | _ -> (None, ts) end in
+    // LIMIT
+    let (limit_before_offset, ts) = try_limit_clause ts in
+    // OFFSET
+    let (offset, ts) = try_offset_clause ts in
+    // LIMIT, if not already found ahead of OFFSET
+    let (limit, ts) = begin match limit_before_offset with
+      | Some _ -> (limit_before_offset, ts)
+      | None -> try_limit_clause ts end in
     let modifier = {
       sm_order_by = ob; sm_distinct = false; sm_reduced = false;
       sm_offset = offset; sm_limit = limit

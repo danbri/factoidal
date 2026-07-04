@@ -1187,6 +1187,30 @@ let filter_candidates_by_compound_po
      | _ -> candidates)
   | _ -> candidates
 
+// ---- Decode-failure detection (issue #269) --------------------------
+//
+// The row-group walkers below (`walk_row_groups_search` and friends)
+// treat a column-decode failure on a row group as "this row group
+// contributes zero rows" — documented at `walk_row_groups_search`'s
+// definition, and a correctness-preserving choice for callers that
+// only care about rows they COULD decode (a row group they can't
+// decode also can't contribute a false positive). But
+// `eval_ask_query_backend_dataset` reads "zero rows matched" as the
+// query answer `false`, and a column that fails to decode is not
+// evidence of `false` — it is evidence the artifact could not be
+// read. `cottas_ondisk_has_decode_failure` reuses the same eager
+// whole-column decoder the open()-time OCaml loader already treats as
+// fatal (`probe_parquet_column_decode_all_row_groups`, columns
+// 0..3 = subject/predicate/object/graph) so ASK can tell "genuinely no
+// match" apart from "couldn't tell." Only called on the branch where
+// the pattern would otherwise be answered `false`, so the extra full
+// walk is paid only when it changes the answer.
+let cottas_ondisk_has_decode_failure (h : cottas_ondisk_handle) : bool =
+  None? (probe_parquet_column_decode_all_row_groups h.coh_path 0) ||
+  None? (probe_parquet_column_decode_all_row_groups h.coh_path 1) ||
+  None? (probe_parquet_column_decode_all_row_groups h.coh_path 2) ||
+  None? (probe_parquet_column_decode_all_row_groups h.coh_path 3)
+
 // ---- Public search / estimate --------------------------------------
 
 // Phase 2.5e (issue #118): use the global-cache walks. Page cache state
