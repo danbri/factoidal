@@ -18,6 +18,9 @@
                      SPARQL11_Algebra.apply_update
      serialize    -> RDF_Canonical.canonical_nquads (sorted N-Quads)
      canonicalize -> RDF_Canonical.canonicalize_to_nquads (RDFC-1.0)
+     serialize (turtle) -> RDF_Turtle_Serialize.turtle_of_graph_auto
+                     (prefix-compacted, subject-grouped pretty-print;
+                     human-facing, not the round-trip/hash-fidelity path)
      SRJ terms    -> SPARQL_Protocol.json_term, SPARQL_JSON_Escape
 
    ABI contract (all arguments and results are strings; structure is JSON):
@@ -42,6 +45,10 @@
        -> {"ok":true,"nquads":"..."} (parse + sorted re-serialization)
      factoidalNpmEntry.canonicalizeToNQuads(nquads)
        -> {"ok":true,"nquads":"..."} (RDFC-1.0 canonical labels + sort)
+     factoidalNpmEntry.serializeTurtle(nquads)
+       -> {"ok":true,"turtle":"..."} (prefix-compacted, subject-grouped
+          pretty-print; parse(result) round-trips to the input graph,
+          but the exact text is NOT stable/canonical the way nquads is)
 
    Rich types (RDF/JS terms, Dataset objects, Maps of bindings) live on
    the JavaScript side (npm/factoidal/rdfjs.js); the js_of_ocaml string
@@ -72,6 +79,9 @@ let err_json (msg : string) : string =
 
 let ok_nquads_json (nq : string) : string =
   "{\"ok\":true,\"nquads\":" ^ jstr nq ^ "}"
+
+let ok_turtle_json (ttl : string) : string =
+  "{\"ok\":true,\"turtle\":" ^ jstr ttl ^ "}"
 
 (* Run a thunk, mapping any exception into the error envelope. *)
 let guarded (f : unit -> string) : string =
@@ -293,6 +303,16 @@ let canonicalize_to_nquads (nq : string) : string =
   guarded (fun () ->
     ok_nquads_json (RDF_Canonical.canonicalize_to_nquads (dataset_of_nquads nq)))
 
+(* RDF_Turtle_Serialize.turtle_of_graph_auto takes a single rdf_graph,
+   not a dataset — named graphs are flattened into the default graph
+   for this pretty-print path (the fidelity-preserving path is
+   serializeNQuads / canonicalizeToNQuads, which keep graph structure). *)
+let serialize_turtle (nq : string) : string =
+  guarded (fun () ->
+    let ds = dataset_of_nquads nq in
+    let g = ds.ds_default @ List.concat_map (fun ng -> ng.ng_graph) ds.ds_named in
+    ok_turtle_json (RDF_Turtle_Serialize.turtle_of_graph_auto g))
+
 (* ---------------------------------------------------------------------
    Js.export — the only js_of_ocaml-specific code. Strings cross the
    boundary via Js.to_string / Js.string (UTF-16 JS <-> UTF-8 OCaml).
@@ -321,5 +341,6 @@ let () =
           ("askDataset", s2 ask_dataset);
           ("updateDataset", s2 update_dataset);
           ("serializeNQuads", s1 serialize_nquads);
-          ("canonicalizeToNQuads", s1 canonicalize_to_nquads)
+          ("canonicalizeToNQuads", s1 canonicalize_to_nquads);
+          ("serializeTurtle", s1 serialize_turtle)
        |])

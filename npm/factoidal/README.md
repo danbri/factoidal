@@ -104,8 +104,10 @@ const q = quad(blankNode("x"),
 | `update` | `(Dataset, sparqlUpdate) => Dataset` | \*\* in-memory; no persistence |
 | `serialize` | `(Dataset, {format}) => string` | `nquads`, `ntriples` (sorted); prettier Turtle output is staged work |
 | `canonicalize` | `(Dataset \| string) => string` | RDFC-1.0 canonical N-Quads\*\* |
+| `graphs` | `(Dataset) => Array<[iri, Dataset]>` | enumerate named graphs (default graph excluded); pure enumeration, no engine round-trip |
+| `canonicalHash` | `(Dataset) => string` | RDFC-1.0 canonical hash of one graph\*\*; graph-scoped sibling of `canonicalize` — typically called with one entry of `graphs()`'s output |
 | `queryRaw` | `(input, sparql) => string` | SPARQL-Results-JSON string, for callers that want the wire form |
-| `capabilities` | `() => {construct, update, canonicalize, ...}` | runtime feature probe |
+| `capabilities` | `() => {construct, update, canonicalize, graphs, canonicalHash, ...}` | runtime feature probe |
 | `dataFactory` | RDF/JS DataFactory | |
 | `Dataset` | RDF/JS DatasetCore | returned by `parse`; accepted everywhere |
 
@@ -113,10 +115,13 @@ const q = quad(blankNode("x"),
 JSON-LD 1.1 (contexts, remote `@context` via a pluggable
 `documentLoader`) is staged, tracked against the vendored W3C
 json-ld-api suite.
-\*\* CONSTRUCT, UPDATE, and `canonicalize` are probed via
-`capabilities()`: they activate automatically when the dedicated
+\*\* CONSTRUCT, UPDATE, `canonicalize`, and `canonicalHash` are probed
+via `capabilities()`: they activate automatically when the dedicated
 npm-entry engine bundle is present, and the package reports their
 absence honestly against older bundles instead of guessing.
+`canonicalHash` rides the same engine support as `canonicalize` (it
+computes `canonicalize()` over one graph's triples); `graphs` is pure
+JS enumeration and is always available.
 
 ## Limits (deliberate, documented)
 

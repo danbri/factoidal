@@ -7,6 +7,8 @@
 //   update(data, updateText)            -> Promise<Dataset>
 //   serialize(data, {format})           -> Promise<string>
 //   canonicalize(data, {format})        -> Promise<string>   (RDFC-1.0)
+//   graphs(dataset)                     -> Array<[iri, Dataset]>  (named graphs)
+//   canonicalHash(datasetOrGraph)       -> Promise<string>   (RDFC-1.0, one graph)
 //   dataFactory                         -> RDF/JS DataFactory
 //   Dataset                             -> RDF/JS DatasetCore class
 //
@@ -137,6 +139,8 @@ module.exports = {
   update: api.update,
   serialize: api.serialize,
   canonicalize: api.canonicalize,
+  graphs: api.graphs,
+  canonicalHash: api.canonicalHash,
   capabilities: api.capabilities,
   Dataset: rdfjs.Dataset,
   dataFactory: rdfjs.dataFactory,

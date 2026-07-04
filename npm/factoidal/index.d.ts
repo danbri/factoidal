@@ -198,12 +198,33 @@ export function canonicalize(
   options?: { format?: DataFormat }
 ): Promise<string>;
 
+/**
+ * Enumerate the named graphs of an already-parsed Dataset (default
+ * graph excluded), in first-seen order. Pure enumeration over
+ * `dataset`'s own quads -- no engine round-trip, always available.
+ * `graph` is the same Dataset filtered to that one graph name (what
+ * `dataset.match(null, null, null, graphTerm)` would return).
+ */
+export function graphs(dataset: Dataset): Array<[iri: string, graph: Dataset]>;
+
+/**
+ * RDFC-1.0 canonical hash of a single graph -- the graph-scoped
+ * sibling of canonicalize(). Every quad's graph component is dropped
+ * before canonicalizing, so isomorphic graphs (including under
+ * blank-node relabeling) hash to the same string regardless of what
+ * graph name they were extracted from. Typically called with one
+ * entry of graphs()'s output.
+ */
+export function canonicalHash(datasetOrGraph: Dataset): Promise<string>;
+
 /** Feature probe for the currently available engine bundles. */
 export function capabilities(): Promise<{
   entry: boolean;
   construct: boolean;
   update: boolean;
   canonicalize: boolean;
+  graphs: boolean;
+  canonicalHash: boolean;
 }>;
 
 // ---------------------------------------------------------------------
@@ -250,6 +271,8 @@ declare const _default: {
   update: typeof update;
   serialize: typeof serialize;
   canonicalize: typeof canonicalize;
+  graphs: typeof graphs;
+  canonicalHash: typeof canonicalHash;
   capabilities: typeof capabilities;
   Dataset: typeof Dataset;
   dataFactory: DataFactory;

@@ -15,8 +15,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const factoidal = require('..');
-const { parse, query, update, serialize, canonicalize, capabilities,
-  Dataset, dataFactory: df } = factoidal;
+const { parse, query, update, serialize, canonicalize, graphs,
+  canonicalHash, capabilities, Dataset, dataFactory: df } = factoidal;
 
 const PENDING = 'pending npm-entry build';
 
@@ -223,6 +223,46 @@ test('canonicalize: isomorphic datasets get identical canonical N-Quads',
     const d1 = await parse(docA, { format: 'nquads' });
     const d2 = await parse(docA, { format: 'nquads' });
     assert.equal(await canonicalize(d1), await canonicalize(d2));
+  });
+
+test('graphs: enumerates named graphs from a parsed TriG document', async () => {
+  const ds = await parse(
+    '@prefix ex: <http://x/> . ' +
+    'ex:g1 { ex:a ex:p "one" . } ' +
+    'ex:g2 { ex:b ex:p "two" . } ' +
+    'ex:c ex:p "default" .',
+    { format: 'trig' });
+  const gs = graphs(ds);
+  assert.equal(gs.length, 2, 'default graph is excluded');
+  const names = gs.map(([iri]) => iri).sort();
+  assert.deepEqual(names, ['http://x/g1', 'http://x/g2']);
+  const g1 = gs.find(([iri]) => iri === 'http://x/g1')[1];
+  assert.ok(g1 instanceof Dataset);
+  assert.equal(g1.size, 1);
+  assert.equal([...g1][0].object.value, 'one');
+});
+
+test('canonicalHash: isomorphic graphs get identical hash under bnode relabeling',
+  async (t) => {
+    const caps = await capabilities();
+    if (!caps.canonicalHash) {
+      t.skip(`${PENDING} (or CLI bundle rebuild with --canonicalize)`);
+      return;
+    }
+    const dsA = await parse(
+      '@prefix ex: <http://x/> . ' +
+      'ex:g { _:x ex:p _:y . _:y ex:p "leaf" . }',
+      { format: 'trig' });
+    const dsB = await parse(
+      '@prefix ex: <http://x/> . ' +
+      'ex:g { _:n1 ex:p _:n2 . _:n2 ex:p "leaf" . }',
+      { format: 'trig' });
+    const [, gA] = graphs(dsA)[0];
+    const [, gB] = graphs(dsB)[0];
+    const hashA = await canonicalHash(gA);
+    const hashB = await canonicalHash(gB);
+    assert.equal(hashA, hashB);
+    assert.ok(/_:c14n/.test(hashA), 'hash is canonical c14n-labeled N-Quads');
   });
 
 test('query: CONSTRUCT returns a Dataset', async (t) => {

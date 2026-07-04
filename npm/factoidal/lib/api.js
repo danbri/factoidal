@@ -384,9 +384,67 @@ function buildApi(driver) {
   }
 
   /**
+   * Enumerate the named graphs of an already-parsed Dataset.
+   *
+   * Graphs-api design (docs/designissues/2026-07-05-graphs-api-design.md
+   * section 1.3): DatasetCore.match(null,null,null,graphNode) already
+   * gives per-graph read access, but match() alone cannot answer "what
+   * graph names exist" -- this is exactly that enumeration, and only
+   * that: it walks quads already produced by the F*-verified parser, so
+   * it needs no engine round-trip (no new RDF/SPARQL semantics, rule
+   * #11 stays satisfied trivially).
+   *
+   * @param {Dataset} dataset
+   * @returns {Array<[iri: string, graph: Dataset]>}
+   *   default graph excluded, first-seen order.
+   */
+  function graphs(dataset) {
+    if (!(dataset instanceof Dataset)) {
+      throw new TypeError('graphs: expected a Dataset');
+    }
+    const seen = new Map(); // iri -> graph term (first occurrence)
+    for (const q of dataset) {
+      const g = q.graph;
+      if (!g || g.termType === 'DefaultGraph') continue;
+      if (!seen.has(g.value)) seen.set(g.value, g);
+    }
+    const out = [];
+    for (const [iri, gTerm] of seen) {
+      out.push([iri, dataset.match(null, null, null, gTerm)]);
+    }
+    return out;
+  }
+
+  /**
+   * RDFC-1.0 canonical hash of a single graph -- the graph-scoped
+   * sibling of canonicalize(), gated via capabilities() the same way
+   * (docs/designissues/2026-07-05-graphs-api-design.md section 1.3).
+   * Accepts a whole dataset or (more usually) one entry of graphs()'s
+   * output; either way, every quad's graph component is dropped before
+   * canonicalizing, matching RDF.Canonical.fst's
+   * canonicalize_named_graph, which projects the named graph into
+   * `{ ds_default = g; ds_named = [] }` before reusing
+   * canonicalize_to_nquads unmodified.
+   *
+   * @param {Dataset} datasetOrGraph
+   * @returns {Promise<string>} canonical N-Quads text for that graph alone.
+   */
+  async function canonicalHash(datasetOrGraph) {
+    if (!(datasetOrGraph instanceof Dataset)) {
+      throw new TypeError(
+        'canonicalHash: expected a Dataset (e.g. one entry of graphs())');
+    }
+    const asDefaultGraph = new Dataset(
+      datasetOrGraph.toArray().map(
+        (q) => dataFactory.quad(q.subject, q.predicate, q.object)));
+    return canonicalize(asDefaultGraph.toNQuads(), { format: 'nquads' });
+  }
+
+  /**
    * Feature probe, for tests and downstream capability checks.
    * @returns {Promise<{entry: boolean, construct: boolean,
-   *   update: boolean, canonicalize: boolean}>}
+   *   update: boolean, canonicalize: boolean, graphs: boolean,
+   *   canonicalHash: boolean}>}
    */
   let capsCache = null;
   async function capabilities() {
@@ -398,9 +456,15 @@ function buildApi(driver) {
   async function capabilitiesUncached() {
     const e = await entry();
     if (e) {
-      return { entry: true, construct: true, update: true, canonicalize: true };
+      return {
+        entry: true, construct: true, update: true, canonicalize: true,
+        graphs: true, canonicalHash: true,
+      };
     }
     // Probe --canonicalize support on the CLI bundle with a 1-quad doc.
+    // canonicalHash rides the same engine support as canonicalize (it is
+    // canonicalize() applied to one graph's triples); graphs() is pure
+    // JS enumeration and needs no engine at all.
     let canon = false;
     try {
       const res = await run(
@@ -409,7 +473,10 @@ function buildApi(driver) {
            content: '<http://x/s> <http://x/p> "o" .\n' }]);
       canon = res.exitCode === 0;
     } catch (_) { canon = false; }
-    return { entry: false, construct: false, update: false, canonicalize: canon };
+    return {
+      entry: false, construct: false, update: false, canonicalize: canon,
+      graphs: true, canonicalHash: canon,
+    };
   }
 
   return {
@@ -418,6 +485,8 @@ function buildApi(driver) {
     update,
     serialize,
     canonicalize,
+    graphs,
+    canonicalHash,
     capabilities,
     Dataset,
     dataFactory,

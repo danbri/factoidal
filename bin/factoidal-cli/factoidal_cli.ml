@@ -30,6 +30,13 @@ let term_to_ntriples t = RDF_Pretty.term_to_ntriples t
 let term_to_turtle   t = RDF_Pretty.term_to_turtle   t
 let subject_to_string s = RDF_Pretty.subject_to_turtle s
 
+(* Turtle pretty-printer (prefix-compacted, subject-grouped) — logic
+   lives in formal/fstar/RDF.Turtle.Serialize.fst (extracted as
+   RDF_Turtle_Serialize.ml). This is the "not gratuitously ugly"
+   human-facing serializer; --dump-nq / --canonicalize stay on the
+   byte-correct N-Quads path (RDF_Canonical). *)
+let turtle_of_graph_pretty g = RDF_Turtle_Serialize.turtle_of_graph_auto g
+
 (* ============================================================================
    File I/O helpers
    ============================================================================ *)
@@ -347,6 +354,7 @@ type config = {
   mutable output_format : output_format;
   mutable dump_mode : bool;
   mutable dump_nq_mode : bool;
+  mutable dump_turtle_mode : bool;
   mutable canonicalize_mode : bool;  (* RDFC-1.0 canonical N-Quads *)
   mutable count_mode : bool;
   mutable explain_mode : bool;     (* --explain: parse + plan + estimate, no execution *)
@@ -383,6 +391,7 @@ let usage () =
   Printf.printf "RDF parsing/dump:\n";
   Printf.printf "  factoidal --dump FILE.ttl           Parse and dump as N-Triples\n";
   Printf.printf "  factoidal --dump-nq FILE.trig       Parse and dump as sorted N-Quads\n";
+  Printf.printf "  factoidal --dump-turtle FILE.nt     Parse and dump as pretty-printed Turtle\n";
   Printf.printf "  factoidal --canonicalize FILE.trig  RDFC-1.0 canonical N-Quads\n";
   Printf.printf "  factoidal --count FILE.ttl          Count triples\n";
   Printf.printf "  factoidal --dump --format rdfxml FILE.rdf\n";
@@ -410,6 +419,8 @@ let usage () =
   Printf.printf "                         Case-insensitive. All closures are F*-extracted.\n";
   Printf.printf "  --dump                 Parse RDF and dump as N-Triples\n";
   Printf.printf "  --dump-nq              Parse RDF and dump as canonical N-Quads\n";
+  Printf.printf "  --dump-turtle          Parse RDF and dump as pretty-printed Turtle\n";
+  Printf.printf "                         (prefix-compacted, subject-grouped)\n";
   Printf.printf "  --count                Parse RDF and count triples\n";
   Printf.printf "  --explain '<SPARQL>'   Plan dump without executing.\n";
   Printf.printf "                         Reports algebra tree, per-triple-pattern\n";
@@ -444,6 +455,7 @@ let parse_args ?args () =
     data_files = []; data_cottas_files = []; named_graphs = []; query_file = None;
     query_string = None; base_iri = None; input_format = None;
     output_format = Table; dump_mode = false; dump_nq_mode = false;
+    dump_turtle_mode = false;
     canonicalize_mode = false; count_mode = false;
     explain_mode = false; explain_out = None;
     help_mode = false; version_mode = false;
@@ -491,6 +503,7 @@ let parse_args ?args () =
          exit 1)
     | "--dump" :: rest -> cfg.dump_mode <- true; loop rest
     | "--dump-nq" :: rest -> cfg.dump_nq_mode <- true; loop rest
+    | "--dump-turtle" :: rest -> cfg.dump_turtle_mode <- true; loop rest
     | "--canonicalize" :: rest -> cfg.canonicalize_mode <- true; loop rest
     | "--count" :: rest -> cfg.count_mode <- true; loop rest
     | "--explain" :: q :: rest ->
@@ -535,8 +548,8 @@ let parse_args ?args () =
    `factoidal --data X --query Q.rq` stays untouched. *)
 
 let known_subcommands =
-  ["help"; "version"; "query"; "serve"; "dump"; "dump-nq"; "canonicalize";
-   "count"; "test"; "cottas-import"; "cottas-info"]
+  ["help"; "version"; "query"; "serve"; "dump"; "dump-nq"; "dump-turtle"; "canonicalize";
+   "count"; "test"; "cottas-import"; "cottas-info"; "graphs"]
 
 (* Locate a sibling binary by the same convention busybox uses: look in
    the same directory as argv[0] first, fall back to PATH. *)
@@ -617,8 +630,15 @@ let print_navigation_help () =
   Printf.printf "                   (shares Factoidal_http parser/server in-process)\n";
   Printf.printf "  dump FILE      Parse RDF and dump as N-Triples\n";
   Printf.printf "  dump-nq FILE   Parse RDF and dump as sorted N-Quads\n";
+  Printf.printf "  dump-turtle FILE  Parse RDF and dump as pretty-printed Turtle\n";
+  Printf.printf "                   (prefix-compacted, subject-grouped, auto @prefix table)\n";
   Printf.printf "  canonicalize FILE  RDFC-1.0 canonical N-Quads (canonical bnode labels)\n";
   Printf.printf "  count FILE     Parse RDF and count triples\n";
+  Printf.printf "  graphs list|get|hash|diff  Named-graph enumeration + RDFC-1.0 per-graph hash\n";
+  Printf.printf "                   factoidal graphs list FILE            list named-graph IRIs\n";
+  Printf.printf "                   factoidal graphs get FILE IRI         dump one graph (N-Triples)\n";
+  Printf.printf "                   factoidal graphs hash FILE IRI        RDFC-1.0 canonical hash\n";
+  Printf.printf "                   factoidal graphs diff FILE1 FILE2     added/removed/changed graphs\n";
   Printf.printf "  cottas-import  Import RDF -> COTTAS/Parquet artifact\n";
   Printf.printf "                   factoidal cottas-import --input X.trig --corpus-root C ...\n";
   Printf.printf "                   (shim: execs python3 tools/corpus_pipeline.py)\n";
@@ -764,9 +784,77 @@ let dispatch_subcommand () =
             Printf.printf "named graphs:       (skipped; pass --full-scan)\n"
           end;
           exit 0)
+     | "graphs" ->
+       (* Graphs-first API surface, in-memory only (slice 1):
+          docs/designissues/2026-07-05-graphs-api-design.md section 1.2.
+          Each subcommand is a thin bin/ wrapper (rule #11) over
+          RDF.Dataset.Graphs / RDF.Canonical, both F*-verified; this
+          layer only loads the file(s) and formats output. *)
+       let usage_graphs () =
+         Printf.eprintf
+           "Usage: factoidal graphs list FILE\n\
+            \       factoidal graphs get FILE IRI\n\
+            \       factoidal graphs hash FILE IRI\n\
+            \       factoidal graphs diff FILE1 FILE2\n";
+         exit 2
+       in
+       let load_one f =
+         try load_dataset f
+         with e ->
+           Printf.eprintf "Error parsing %s: %s\n" f (Printexc.to_string e);
+           exit 1
+       in
+       (* (iri, canonical-N-Quads-hash) pairs for every named graph in a
+          dataset, dropping any name not resolved by component_of (should
+          not happen: names come from the same dataset's ds_named). *)
+       let graph_hashes ds =
+         List.filter_map (fun (iri, _g) ->
+           match RDF_Canonical.canonicalize_named_graph ds iri with
+           | FStar_Pervasives_Native.Some h -> Some (iri, h)
+           | FStar_Pervasives_Native.None -> None
+         ) (RDF_Dataset_Graphs.graphs ds)
+       in
+       (match rest with
+        | ["list"; file] ->
+          let ds = load_one file in
+          List.iter (fun (iri, _g) -> Printf.printf "%s\n" iri)
+            (RDF_Dataset_Graphs.graphs ds);
+          exit 0
+        | ["get"; file; iri] ->
+          let ds = load_one file in
+          (match RDF_Dataset_Graphs.component_of ds iri with
+           | FStar_Pervasives_Native.Some g -> print_results_ntriples g; exit 0
+           | FStar_Pervasives_Native.None ->
+             Printf.eprintf "Error: no such named graph: %s\n" iri; exit 1)
+        | ["hash"; file; iri] ->
+          let ds = load_one file in
+          (match RDF_Canonical.canonicalize_named_graph ds iri with
+           | FStar_Pervasives_Native.Some s -> print_string s; exit 0
+           | FStar_Pervasives_Native.None ->
+             Printf.eprintf "Error: no such named graph: %s\n" iri; exit 1)
+        | ["diff"; file1; file2] ->
+          (* Set comparison over two already-verified strings, not new
+             RDF/SPARQL semantics -- stays in bin/ under rule #11. *)
+          let hashes1 = graph_hashes (load_one file1) in
+          let hashes2 = graph_hashes (load_one file2) in
+          let names1 = List.map fst hashes1 in
+          let names2 = List.map fst hashes2 in
+          let added = List.filter (fun n -> not (List.mem n names1)) names2 in
+          let removed = List.filter (fun n -> not (List.mem n names2)) names1 in
+          let changed = List.filter_map (fun (n, h1) ->
+            match List.assoc_opt n hashes2 with
+            | Some h2 when h2 <> h1 -> Some n
+            | _ -> None
+          ) hashes1 in
+          List.iter (fun n -> Printf.printf "+ %s\n" n) added;
+          List.iter (fun n -> Printf.printf "- %s\n" n) removed;
+          List.iter (fun n -> Printf.printf "~ %s\n" n) changed;
+          exit 0
+        | _ -> usage_graphs ())
      | "query" -> rest
      | "dump"  -> "--dump"  :: List.concat_map (fun f -> ["--data"; f]) rest
      | "dump-nq" -> "--dump-nq" :: List.concat_map (fun f -> ["--data"; f]) rest
+     | "dump-turtle" -> "--dump-turtle" :: List.concat_map (fun f -> ["--data"; f]) rest
      | "canonicalize" -> "--canonicalize" :: List.concat_map (fun f -> ["--data"; f]) rest
      | "count" -> "--count" :: List.concat_map (fun f -> ["--data"; f]) rest
      | _ -> argv_tail)  (* unreachable *)
@@ -870,6 +958,32 @@ let () =
         exit 1
     ) cfg.data_cottas_files in
     print_results_ntriples (append_preserve_order file_triples cottas_triples);
+    exit 0
+  end;
+
+  (* Dump mode: parse and emit prefix-compacted, subject-grouped Turtle.
+     Same load path as --dump; the rendering itself is
+     RDF_Turtle_Serialize.turtle_of_graph_auto (formal/fstar/
+     RDF.Turtle.Serialize.fst) — auto-derives an @prefix table from the
+     graph's own most-frequent IRI namespaces. *)
+  if cfg.dump_turtle_mode then begin
+    if cfg.data_files = [] && cfg.data_cottas_files = [] then begin
+      Printf.eprintf "Error: no data files specified (use --data FILE or just FILE)\n";
+      exit 1
+    end;
+    let file_triples = concat_map_preserve_order (fun f ->
+      try load_triples ~format:cfg.input_format ~base:cfg.base_iri f
+      with e ->
+        Printf.eprintf "Error parsing %s: %s\n" f (Printexc.to_string e);
+        exit 1
+    ) cfg.data_files in
+    let cottas_triples = concat_map_preserve_order (fun f ->
+      try cottas_all_triples f
+      with e ->
+        Printf.eprintf "Error loading COTTAS %s: %s\n" f (Printexc.to_string e);
+        exit 1
+    ) cfg.data_cottas_files in
+    print_string (turtle_of_graph_pretty (append_preserve_order file_triples cottas_triples));
     exit 0
   end;
 
