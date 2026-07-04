@@ -127,6 +127,33 @@ options)` (RDFC-1.0 — `--canonicalize`) alongside `query()`; both
 default `options.format` to `'jsonld'` since that's the playground's
 use case, but accept the same formats as `query()`'s `dataFormat`.
 
+For multi-file, multi-named-graph datasets (several documents, each
+loaded into its own named graph or the default graph) and a choice of
+extraction target, use `queryDataset(files, queryString, options)`:
+
+```js
+import { queryDataset } from 'https://danbri.github.io/factoidal/npm/foafos/browser.js';
+
+const r = await queryDataset(
+  [
+    { content: defaultGraphTtl },
+    { content: peopleTtl, graph: 'urn:x:people' },
+  ],
+  'SELECT * WHERE { GRAPH ?g { ?s ?p ?o } }',
+  { entail: 'RDFS', engine: 'js' }   // or engine: 'wasm'
+);
+```
+
+On `engine: 'wasm'` it merges the named graphs into one TriG document
+(wasm_of_ocaml's `query()` only takes a single data string) via
+`browser-wasm.js`, loaded on demand. Both `query()` and `queryDataset()`
+attach a non-enumerable `engineMs` (bundle-eval wall-clock time) to the
+returned results object — invisible to `JSON.stringify()`/`Object.keys()`
+so it never perturbs a diff against a W3C `.srx`-derived fixture, but
+readable as `result.engineMs` for timing/observability UIs. This is
+what `docs/fstar-extracted/factoidal-sparql-client.js`'s web component
+is built on, rather than duplicating the engine-invocation logic itself.
+
 ### RDF/JS interop
 
 ```js
@@ -139,6 +166,48 @@ const q = quad(blankNode("x"),
 // RDF/JS data-model spec; Dataset implements DatasetCore
 // (add/delete/has/match/size/iteration).
 ```
+
+## Functional API (fn)
+
+`factoidal/fn` is a strictly functional variant of the API above:
+every extracted engine operation is already a value-to-value
+function — `FnDataset` makes the JS surface match that instead of
+papering over it with RDF/JS's mutable `add`/`delete`. Frozen
+snapshots, free functions instead of methods (so they compose), and
+RDFC-1.0 canonical hashes as a first-class, memoized identity — the
+piece that makes dataflow-style recompute-skipping possible. Full
+design rationale (cost model, backend/streaming extension points):
+[`docs/designissues/2026-07-05-functional-dataset-api.md`](../../docs/designissues/2026-07-05-functional-dataset-api.md).
+
+```js
+const { parse, filter, hash, cell, derive } = require('@danbri/foafos/fn');
+
+const ds = await parse(`
+  @prefix foaf: <http://xmlns.com/foaf/0.1/> .
+  _:a foaf:name "Alice" ; a foaf:Person .
+  _:b foaf:name "Bob".
+`);
+
+// Every op returns a new FnDataset; ds is never touched.
+const people = filter(ds, (q) => q.predicate.value.endsWith('/type'));
+
+// Dataflow: a derive() node recomputes only when its input's content
+// hash actually changes -- not when a new (but equal-content)
+// FnDataset object is set into the cell.
+const source = cell(ds);
+const derived = derive((d) => filter(d, (q) => q.predicate.value.endsWith('name')), source);
+await derived.get();          // computes
+source.set(await parse(sameTextAsBefore));
+await derived.get();          // memoized hit -- same content, new object
+
+await hash(ds);                // sha256 hex of RDFC-1.0 canonical N-Quads
+```
+
+`fromDataset(dataset)` / `toDataset(fnDataset)` convert to and from
+the mutable RDF/JS `Dataset` above, so the two styles compose freely.
+`union`/`difference`/`filter`/`mapQuads` give set algebra without
+methods; `query`/`entail`/`canonicalize`/`graphs` mirror the plain
+API's capability gating (`capabilities()`) exactly.
 
 ## API (draft)
 

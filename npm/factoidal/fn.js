@@ -1,0 +1,516 @@
+// factoidal/fn — a strictly functional dataset API.
+//
+// Every extracted engine operation is a value-to-value function (F*
+// has no mutation to expose); RDF/JS DatasetCore's add/delete is
+// wrapper-side skeuomorphism on top of that. This module makes the JS
+// contract match the verified one: FnDataset is a frozen snapshot, all
+// operations are free functions that return new values, and content
+// identity (RDFC-1.0 canonical hash) is exposed as a first-class,
+// memoized value so callers can build dataflow graphs that skip
+// recompute when nothing actually changed.
+//
+// Design rationale, cost model, and the dataflow (cell/derive) pattern
+// are documented in
+// docs/designissues/2026-07-05-functional-dataset-api.md. Read that
+// first if any decision below looks arbitrary — none of them are.
+//
+// This module is additive: it does not change rdfjs.js or lib/api.js.
+// It wraps the already-built JS-engine api (./index.js) — no engine
+// plumbing is forked here, only a frozen data shape and pure
+// composition on top of it.
+
+'use strict';
+
+const crypto = require('node:crypto');
+
+const engineApi = require('./index.js');
+const {
+  Dataset,
+  dataFactory,
+  quadToNQuads,
+  quadsToNQuads,
+} = require('./rdfjs.js');
+
+// ---------------------------------------------------------------------
+// FnDataset — a frozen snapshot of a quad set.
+//
+// Internal representation is exactly rdfjs.js's model (an array of
+// already-frozen RDF/JS Quad terms) — the same representation
+// lib/api.js's toDocs() already treats as the engine's interchange
+// handle via toNQuads(). FnDataset adds nothing to that representation
+// except: (a) freezing the wrapper itself so no method can mutate it,
+// (b) de-duplication on construction so every FnDataset is a proper
+// *set* of quads (no duplicate tokens), and (c) lazy, memoized
+// derived values (raw N-Quads text, canonical hash) held in
+// module-level WeakMaps rather than object fields — Object.freeze(ds)
+// stays true for the whole lifetime of ds; the memo tables are a side
+// channel, not a hole in the immutability contract.
+// ---------------------------------------------------------------------
+
+// ds (FnDataset) -> string, the cheap non-canonical N-Quads
+// serialization. Computed once per instance, cached by identity.
+const NQUADS_CACHE = new WeakMap();
+// ds -> string (once settled) | Promise<string> (in flight), the
+// RDFC-1.0 canonical N-Quads text. Shared with HASH_CACHE's input so
+// two callers awaiting hash(ds) concurrently trigger one canonicalize
+// call, not two.
+const CANON_CACHE = new WeakMap();
+// ds -> string (once settled) | Promise<string> (in flight), the
+// sha256 hex digest of the canonical N-Quads text.
+const HASH_CACHE = new WeakMap();
+
+function assertFnDataset(v, who) {
+  if (!(v instanceof FnDataset)) {
+    throw new TypeError(`${who}: expected an FnDataset`);
+  }
+  return v;
+}
+
+// ---------------------------------------------------------------------
+// Backend interface — capabilities-style, mirroring lib/api.js's
+// `driver` shape (buildApi(driver) there; FnDataset(backend) here).
+// FnDataset does NOT assume its representation is an in-memory quad
+// array or an N-Quads string; it holds an opaque `_backend` satisfying
+// this interface:
+//
+//   size               : number
+//   quads()            : Iterable<Quad>   -- read access; may materialize
+//   precomputedHash    : string | null    -- skip canonicalize() if set
+//
+// Exactly one backend exists today, arrayBackend, below. It exists so
+// that a future on-disk (COTTAS) backend or a sidecar-hash backend can
+// implement this same three-member interface without any free
+// function in this module changing shape — see the design doc's
+// "future backends" section for what those would look like and why
+// filter()/mapQuads() below (which fully materialize via toArray())
+// are the concrete piece of debt such a backend would need to repay
+// with pushdown, not something this slice claims to have solved.
+// ---------------------------------------------------------------------
+
+function arrayBackend(quads) {
+  return {
+    kind: 'array',
+    size: quads.length,
+    quads: () => quads,
+    precomputedHash: null,
+  };
+}
+
+// Build a de-duplicated FnDataset from any iterable of RDF/JS quads.
+// Every public constructor path (fromDataset, union, difference,
+// filter, mapQuads, query's CONSTRUCT wrapping, builder().finish())
+// funnels through this, so "FnDataset quads never repeat" is an
+// invariant, not a hope. Always produces an arrayBackend today — a
+// COTTAS-backed constructor would be a sibling entry point, not a
+// change to this one.
+function makeFnDataset(quadsIterable) {
+  const seen = new Set();
+  const out = [];
+  for (const q of quadsIterable) {
+    const frozen = dataFactory.fromQuad(q); // normalizes + (re)freezes
+    const key = quadToNQuads(frozen);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(frozen);
+  }
+  return new FnDataset(arrayBackend(Object.freeze(out)));
+}
+
+class FnDataset {
+  /** @private use fromDataset/parse/union/... instead of `new`. */
+  constructor(backend) {
+    this._backend = backend;
+    Object.freeze(this);
+  }
+
+  get size() {
+    return this._backend.size;
+  }
+
+  [Symbol.iterator]() {
+    return this._backend.quads()[Symbol.iterator]();
+  }
+
+  /** A fresh array of this dataset's (frozen) quads. Materializes. */
+  toArray() {
+    return [...this._backend.quads()];
+  }
+
+  /**
+   * Raw N-Quads text, arrival order, not canonicalized. Cheap (pure
+   * JS serialization, no engine round-trip) for the array backend;
+   * memoized. This is *identity-adjacent*, not identity — two
+   * isomorphic datasets with different blank-node labels serialize to
+   * different text here. Use hash()/canonicalize() for
+   * label-independent identity.
+   */
+  toNQuads() {
+    let cached = NQUADS_CACHE.get(this);
+    if (cached === undefined) {
+      cached = quadsToNQuads(this.toArray());
+      NQUADS_CACHE.set(this, cached);
+    }
+    return cached;
+  }
+
+  /** Read-only quad-pattern match (RDF/JS DatasetCore shape), no engine call. */
+  match(subject, predicate, object, graph) {
+    return makeFnDataset(this.toArray().filter((q) =>
+      (!subject || subject.equals(q.subject)) &&
+      (!predicate || predicate.equals(q.predicate)) &&
+      (!object || object.equals(q.object)) &&
+      (!graph || graph.equals(q.graph))));
+  }
+}
+
+/** The empty dataset — the identity element for union() and difference(). */
+const EMPTY = new FnDataset(arrayBackend(Object.freeze([])));
+
+// ---------------------------------------------------------------------
+// Interop with the mutable RDF/JS layer.
+// ---------------------------------------------------------------------
+
+/** Snapshot a (possibly mutable) RDF/JS Dataset into an FnDataset. */
+function fromDataset(dataset) {
+  if (!(dataset instanceof Dataset)) {
+    throw new TypeError('fromDataset: expected an RDF/JS Dataset');
+  }
+  return makeFnDataset(dataset);
+}
+
+/** Materialize an FnDataset into a fresh, independently-mutable Dataset. */
+function toDataset(ds) {
+  assertFnDataset(ds, 'toDataset');
+  return new Dataset(ds.toArray());
+}
+
+// ---------------------------------------------------------------------
+// Streaming seam: builder() / fromChunks().
+//
+// This module's `parse()` needs the whole document as one string
+// (mirroring index.js's parse()); a future streaming RDF parser would
+// instead produce quads incrementally, batch by batch, without ever
+// holding the whole document in memory at once. builder() is the
+// intended integration point for that: a mutable accumulator that
+// FINALIZES into a frozen FnDataset. Everything upstream of finish()
+// (a hypothetical streaming Turtle/N-Quads reader feeding addChunk()
+// per parsed batch) is not part of this slice; everything downstream —
+// every op in this module — only ever sees the finished, immutable
+// value finish() returns, never the accumulator itself. The
+// implementation below is deliberately the trivial in-memory case
+// (accumulate an array, dedup once at finish()); it exists so the
+// call shape is settled before a real streaming parser exists.
+// ---------------------------------------------------------------------
+
+/**
+ * A mutable accumulator for incrementally-arriving quads. addChunk()
+ * accepts one quad or an iterable of quads (so a parser can hand over
+ * whatever batch size is convenient); finish() de-duplicates once and
+ * returns a frozen FnDataset. Calling either method after finish() throws.
+ */
+function builder() {
+  let pending = [];
+  let finished = false;
+  return {
+    addChunk(chunk) {
+      if (finished) throw new Error('builder: addChunk() called after finish()');
+      if (chunk && typeof chunk.termType === 'string') {
+        pending.push(chunk); // a single Quad
+      } else {
+        for (const q of chunk) pending.push(q); // an iterable of Quads
+      }
+    },
+    finish() {
+      if (finished) throw new Error('builder: finish() already called');
+      finished = true;
+      const result = makeFnDataset(pending);
+      pending = null; // release; no further mutation is possible anyway
+      return result;
+    },
+  };
+}
+
+/**
+ * Sugar over builder(): consume a (sync or async) iterable of chunks
+ * into one finished FnDataset. A streaming parser exposing an async
+ * iterator of quad batches plugs in here directly.
+ */
+async function fromChunks(chunks) {
+  const b = builder();
+  for await (const chunk of chunks) b.addChunk(chunk);
+  return b.finish();
+}
+
+// ---------------------------------------------------------------------
+// Parsing, algebra, query — all free functions.
+// ---------------------------------------------------------------------
+
+/** Parse one RDF document into an FnDataset. Mirrors index.js's parse(). */
+async function parse(text, options) {
+  return fromDataset(await engineApi.parse(text, options));
+}
+
+/** Set union, first-seen order (a's quads, then b's not already present). */
+function union(a, b) {
+  assertFnDataset(a, 'union'); assertFnDataset(b, 'union');
+  return makeFnDataset([...a, ...b]);
+}
+
+/** Quads in a that are not in b. */
+function difference(a, b) {
+  assertFnDataset(a, 'difference'); assertFnDataset(b, 'difference');
+  const bKeys = new Set(b.toArray().map(quadToNQuads));
+  return makeFnDataset(a.toArray().filter((q) => !bKeys.has(quadToNQuads(q))));
+}
+
+/** Keep quads matching quadPred(quad) => boolean. */
+function filter(ds, quadPred) {
+  assertFnDataset(ds, 'filter');
+  if (typeof quadPred !== 'function') {
+    throw new TypeError('filter: quadPred must be a function');
+  }
+  // A subset of an already-deduplicated set has no new duplicates to
+  // remove; still normalize each quad for the frozen-terms guarantee.
+  return new FnDataset(arrayBackend(Object.freeze(
+    ds.toArray().filter(quadPred).map((q) => dataFactory.fromQuad(q)))));
+}
+
+/**
+ * Transform every quad with f(quad) => quad. Output is re-deduplicated
+ * (mapQuads can collapse distinct inputs onto the same output quad —
+ * e.g. a rename that merges two subjects — and FnDataset is always a
+ * set, never a multiset).
+ */
+function mapQuads(ds, f) {
+  assertFnDataset(ds, 'mapQuads');
+  if (typeof f !== 'function') {
+    throw new TypeError('mapQuads: f must be a function');
+  }
+  return makeFnDataset(ds.toArray().map(f));
+}
+
+/**
+ * Run a SPARQL 1.1 query. SELECT -> Bindings[]; ASK -> boolean;
+ * CONSTRUCT -> FnDataset. Delegates entirely to index.js's query() —
+ * same capability gating (CONSTRUCT needs the npm-entry bundle; its
+ * absence throws the existing "pending npm-entry build" Error).
+ */
+async function query(ds, sparql, options) {
+  assertFnDataset(ds, 'query');
+  const result = await engineApi.query(toDataset(ds), sparql, options);
+  return result instanceof Dataset ? fromDataset(result) : result;
+}
+
+/**
+ * Materialize an entailment closure as a new FnDataset.
+ *
+ * Reuses query()'s existing entailment support rather than adding new
+ * engine plumbing — but *not* via CONSTRUCT: the npm-entry ABI's
+ * queryDataset has no entailment parameter (entailment closure stays
+ * on the CLI path, per lib/api.js), and the CLI path does not support
+ * CONSTRUCT at all, so "CONSTRUCT ... WHERE ... { entail }" is not
+ * reachable through the existing API today. Instead this runs
+ * `SELECT ?s ?p ?o WHERE { ?s ?p ?o }` with the entailment option
+ * (exactly the combination test/api.test.js's "query: entail RDFS
+ * infers subclass instances" already exercises) and repackages each
+ * solution row as a quad — pure JS reshaping of already-materialized
+ * bindings, not new RDF/SPARQL semantics, so it works with the CLI
+ * bundle alone (no npm-entry bundle required).
+ *
+ * Scope limitation (documented, not silent): like a bare
+ * `WHERE { ?s ?p ?o }` in SPARQL generally, this closes over the
+ * *default graph* only — named-graph triples are not restated. A
+ * named-graph-aware entail() would need `GRAPH ?g { ?s ?p ?o }` and
+ * per-graph closure semantics that the underlying query() does not
+ * define today.
+ */
+async function entail(ds, regime) {
+  assertFnDataset(ds, 'entail');
+  const rows = await engineApi.query(
+    toDataset(ds), 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
+    { entail: regime || 'none' });
+  return makeFnDataset(
+    rows.map((row) => dataFactory.quad(row.get('s'), row.get('p'), row.get('o'))));
+}
+
+/**
+ * RDFC-1.0 canonicalization: canonical N-Quads text. Needs the
+ * npm-entry bundle (same gating as index.js's canonicalize()).
+ */
+async function canonicalize(ds) {
+  assertFnDataset(ds, 'canonicalize');
+  let cached = CANON_CACHE.get(ds);
+  if (cached === undefined) {
+    const p = engineApi.canonicalize(toDataset(ds)).then((text) => {
+      CANON_CACHE.set(ds, text); // replace the in-flight promise
+      return text;
+    });
+    CANON_CACHE.set(ds, p);
+    cached = p;
+  }
+  return cached;
+}
+
+/**
+ * sha256 hex digest of canonicalize(ds). O(n log n) once (the
+ * canonicalization cost — see the design doc's cost model) and O(1)
+ * on every call after, memoized by FnDataset identity in a
+ * module-level WeakMap so the frozen object itself never changes.
+ * Concurrent callers before the first result lands share one
+ * in-flight computation.
+ *
+ * Backend hook: if `ds`'s backend already carries a
+ * `precomputedHash` (e.g. a COTTAS backend reading a `.c14n.sha256`
+ * sidecar — see the design doc's "future backends" section), that
+ * value is returned directly and canonicalize() is never called. The
+ * array backend never sets this, so today this is always a live
+ * computation; the check exists so a future backend gets the
+ * shortcut for free, without hash()'s callers changing.
+ */
+async function hash(ds) {
+  assertFnDataset(ds, 'hash');
+  if (ds._backend.precomputedHash) return ds._backend.precomputedHash;
+  const cached = HASH_CACHE.get(ds);
+  if (typeof cached === 'string') return cached;
+  if (cached) return cached; // already in flight
+  const p = canonicalize(ds).then((canon) => {
+    const hex = crypto.createHash('sha256').update(canon, 'utf8')
+      .digest('hex');
+    HASH_CACHE.set(ds, hex); // replace the in-flight promise
+    return hex;
+  });
+  HASH_CACHE.set(ds, p);
+  return p;
+}
+
+/** Already-settled hash, if any (including a backend's precomputedHash) — never triggers computation. */
+function peekHash(ds) {
+  if (ds._backend.precomputedHash) return ds._backend.precomputedHash;
+  const c = HASH_CACHE.get(ds);
+  return typeof c === 'string' ? c : null;
+}
+
+function hasBlankNode(ds) {
+  for (const q of ds) {
+    if (q.subject.termType === 'BlankNode') return true;
+    if (q.object.termType === 'BlankNode') return true;
+    if (q.graph.termType === 'BlankNode') return true;
+  }
+  return false;
+}
+
+/**
+ * Structural equality, cheapest-correct-path first (see the design
+ * doc's cost model section for the full argument):
+ *
+ *  1. Different sizes -> not equal, O(1).
+ *  2. Both sides already have a memoized hash -> compare those, O(1).
+ *  3. Exact quad-set match (same terms, same labels) -> equal, O(n).
+ *     This is sound regardless of blank nodes: identical tokens can
+ *     never be a false positive.
+ *  4. No blank nodes anywhere -> the step-3 negative is authoritative
+ *     (ground quads have no relabeling to hide behind) -> not equal.
+ *  5. Otherwise (blank nodes present, step 3 was inconclusive) ->
+ *     the only sound test left is RDFC-1.0 canonical-hash equality,
+ *     which is exactly the O(n log n) canonicalize() cost this module
+ *     tries to avoid paying twice.
+ */
+async function equals(a, b) {
+  assertFnDataset(a, 'equals'); assertFnDataset(b, 'equals');
+  if (a === b) return true;
+  if (a.size !== b.size) return false;
+  const ha = peekHash(a);
+  const hb = peekHash(b);
+  if (ha !== null && hb !== null) return ha === hb;
+  const aKeys = new Set(a.toArray().map(quadToNQuads));
+  const bTokens = b.toArray().map(quadToNQuads);
+  const exact = bTokens.length === aKeys.size &&
+    bTokens.every((t) => aKeys.has(t));
+  if (exact) return true;
+  if (!hasBlankNode(a) && !hasBlankNode(b)) return false;
+  const [h1, h2] = await Promise.all([hash(a), hash(b)]);
+  return h1 === h2;
+}
+
+/**
+ * Enumerate named graphs (default graph excluded), first-seen order.
+ * Reuses index.js's graphs() enumeration; wraps each per-graph
+ * Dataset back into an FnDataset.
+ */
+function graphs(ds) {
+  assertFnDataset(ds, 'graphs');
+  return engineApi.graphs(toDataset(ds))
+    .map(([iri, graphDataset]) => [iri, fromDataset(graphDataset)]);
+}
+
+// ---------------------------------------------------------------------
+// Dataflow seed: cell (mutable input slot) + derive (hash-keyed,
+// memoized pure recompute). Deliberately tiny and dependency-free —
+// see the design doc's §"dataflow pattern" for the worked example
+// this is extracted from.
+// ---------------------------------------------------------------------
+
+/** A minimal mutable box holding one dataflow input value. */
+function cell(initial) {
+  let value = initial;
+  return {
+    get: () => value,
+    set(v) { value = v; },
+  };
+}
+
+// A dataflow value's recompute key: FnDataset content-hash for
+// datasets (so two different FnDataset objects with the same content
+// count as "unchanged"), the value itself otherwise (primitives
+// compare by ===, which is exactly what a dataflow graph needs for
+// non-dataset inputs like a SPARQL string or a numeric parameter).
+async function keyOf(value) {
+  return value instanceof FnDataset ? hash(value) : value;
+}
+
+/**
+ * A derived dataflow node: recomputes fn(...inputCells.map(c=>c.get()))
+ * only when at least one input's content-key has changed since the
+ * last .get(). First call always computes (there is no prior key to
+ * compare against).
+ */
+function derive(fn, ...inputCells) {
+  let lastKeys = null;
+  let lastResult;
+  return {
+    async get() {
+      const values = inputCells.map((c) => c.get());
+      const keys = await Promise.all(values.map(keyOf));
+      if (lastKeys && keys.length === lastKeys.length &&
+          keys.every((k, i) => k === lastKeys[i])) {
+        return lastResult; // skip recompute — nothing actually changed
+      }
+      lastResult = await fn(...values);
+      lastKeys = keys;
+      return lastResult;
+    },
+  };
+}
+
+module.exports = {
+  FnDataset,
+  EMPTY,
+  fromDataset,
+  toDataset,
+  builder,
+  fromChunks,
+  parse,
+  union,
+  difference,
+  filter,
+  mapQuads,
+  query,
+  entail,
+  canonicalize,
+  hash,
+  equals,
+  graphs,
+  cell,
+  derive,
+  capabilities: engineApi.capabilities,
+};
