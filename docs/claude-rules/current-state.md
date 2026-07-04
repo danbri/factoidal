@@ -22,6 +22,15 @@ Toward the goal in CLAUDE.md (performant, compliant RDF/S + OWL +
 SHACL + RDFC + SPARQL engine). Re-rank when one lands; a dashboard
 red always jumps the queue.
 
+Landed 2026-07-04 evening wave: RDFC-1.0 to 82 pass, 3 fail, 1 stub
+(of 86 - all remaining out of scope; within scope DONE); OWL RL PE
+25 of 30 (suite runs in 0.6s); JSON-LD toRdf 287 of 467; RDFS closure
+33.2s to 1.39s on 27k triples (O(N^2) join order fixed); RFC 3986
+IRI resolution as the first reusable-foundations module; JSON-LD
+Playground demo + npm-on-Pages mirror; dev loop: no-op extract 48min
+to 1s, layered-parallel extraction, hints measured-and-rejected,
+affected-suite runner.
+
 Landed 2026-07-04 (all gate-evidenced on claude/main): Later the same day: JSON-LD
 Phases 3a+3b (W3C toRdf 33 -> 181 pass of 467); #269/#270 closed;
 #272 serializer speedup (dump-nq 162 -> 12069 triples/s at 10k;

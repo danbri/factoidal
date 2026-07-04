@@ -6,6 +6,19 @@ let jexp_has_field (name : Prims.string)
   (fields : (Prims.string * Parser_JSON.json_val) Prims.list) : Prims.bool=
   FStar_List_Tot_Base.existsb
     (fun kv -> (FStar_Pervasives_Native.fst kv) = name) fields
+let rec jexp_only_graph_keys
+  (fields : (Prims.string * Parser_JSON.json_val) Prims.list) : Prims.bool=
+  match fields with
+  | [] -> true
+  | (k, uu___)::rest -> (k = "@graph") && (jexp_only_graph_keys rest)
+let rec jexp_collect_graph_values
+  (fields : (Prims.string * Parser_JSON.json_val) Prims.list) :
+  Parser_JSON.json_val Prims.list=
+  match fields with
+  | [] -> []
+  | (uu___, v)::rest ->
+      FStar_List_Tot_Base.append (jexp_as_array v)
+        (jexp_collect_graph_values rest)
 let jexp_wrap_scalar (type_map : Prims.string FStar_Pervasives_Native.option)
   (v : Parser_JSON.json_val) : Parser_JSON.json_val=
   match type_map with
@@ -325,7 +338,16 @@ and expand_one_field (ac : JSONLD_Context.active_context)
             then FStar_Pervasives_Native.Some FStar_Pervasives_Native.None
             else
               if key = "@included"
-              then FStar_Pervasives_Native.None
+              then
+                (match expand_included_items ac (jexp_as_array value)
+                         (fuel - Prims.int_one)
+                 with
+                 | FStar_Pervasives_Native.None ->
+                     FStar_Pervasives_Native.None
+                 | FStar_Pervasives_Native.Some items ->
+                     FStar_Pervasives_Native.Some
+                       (FStar_Pervasives_Native.Some
+                          [("@included", (Parser_JSON.JArray items))]))
               else
                 if key = "@nest"
                 then
@@ -513,38 +535,44 @@ and expand_property_items (ac : JSONLD_Context.active_context)
        match term_opt with
        | FStar_Pervasives_Native.Some td -> td.JSONLD_Context.td_container
        | FStar_Pervasives_Native.None -> JSONLD_Context.CK_None in
-     match (ck, value) with
-     | (JSONLD_Context.CK_Index, Parser_JSON.JObject entries) ->
-         expand_property ac type_map lang_ovr
-           (jexp_flatten_map_entries entries) (fuel - Prims.int_one)
-     | (JSONLD_Context.CK_Language, Parser_JSON.JObject entries) ->
-         FStar_Pervasives_Native.Some (jexp_expand_language_map entries)
-     | (JSONLD_Context.CK_Id, Parser_JSON.JObject entries) ->
-         jexp_expand_id_map ac entries (fuel - Prims.int_one)
-     | (JSONLD_Context.CK_Type, Parser_JSON.JObject entries) ->
-         jexp_expand_type_map ac entries (fuel - Prims.int_one)
-     | (JSONLD_Context.CK_Graph, uu___1) ->
-         FStar_Pervasives_Native.Some
-           (expand_graph_container_items ac (jexp_as_array value)
-              (fuel - Prims.int_one))
-     | (JSONLD_Context.CK_GraphIndex, Parser_JSON.JObject entries) ->
-         FStar_Pervasives_Native.Some
-           (expand_graph_container_items ac
-              (jexp_flatten_map_entries entries) (fuel - Prims.int_one))
-     | (JSONLD_Context.CK_GraphIndex, uu___1) ->
-         FStar_Pervasives_Native.Some
-           (expand_graph_container_items ac (jexp_as_array value)
-              (fuel - Prims.int_one))
-     | (JSONLD_Context.CK_GraphId, Parser_JSON.JObject entries) ->
-         FStar_Pervasives_Native.Some
-           (expand_graph_id_map ac entries (fuel - Prims.int_one))
-     | (JSONLD_Context.CK_GraphId, uu___1) ->
-         FStar_Pervasives_Native.Some
-           (expand_graph_container_items ac (jexp_as_array value)
-              (fuel - Prims.int_one))
-     | (uu___1, uu___2) ->
-         expand_property ac type_map lang_ovr (jexp_as_array value)
-           (fuel - Prims.int_one))
+     if type_map = (FStar_Pervasives_Native.Some "@json")
+     then
+       FStar_Pervasives_Native.Some
+         [Parser_JSON.JObject
+            [("@value", value); ("@type", (Parser_JSON.JString "@json"))]]
+     else
+       (match (ck, value) with
+        | (JSONLD_Context.CK_Index, Parser_JSON.JObject entries) ->
+            expand_property ac type_map lang_ovr
+              (jexp_flatten_map_entries entries) (fuel - Prims.int_one)
+        | (JSONLD_Context.CK_Language, Parser_JSON.JObject entries) ->
+            FStar_Pervasives_Native.Some (jexp_expand_language_map entries)
+        | (JSONLD_Context.CK_Id, Parser_JSON.JObject entries) ->
+            jexp_expand_id_map ac entries (fuel - Prims.int_one)
+        | (JSONLD_Context.CK_Type, Parser_JSON.JObject entries) ->
+            jexp_expand_type_map ac entries (fuel - Prims.int_one)
+        | (JSONLD_Context.CK_Graph, uu___2) ->
+            FStar_Pervasives_Native.Some
+              (expand_graph_container_items ac (jexp_as_array value)
+                 (fuel - Prims.int_one))
+        | (JSONLD_Context.CK_GraphIndex, Parser_JSON.JObject entries) ->
+            FStar_Pervasives_Native.Some
+              (expand_graph_container_items ac
+                 (jexp_flatten_map_entries entries) (fuel - Prims.int_one))
+        | (JSONLD_Context.CK_GraphIndex, uu___2) ->
+            FStar_Pervasives_Native.Some
+              (expand_graph_container_items ac (jexp_as_array value)
+                 (fuel - Prims.int_one))
+        | (JSONLD_Context.CK_GraphId, Parser_JSON.JObject entries) ->
+            FStar_Pervasives_Native.Some
+              (expand_graph_id_map ac entries (fuel - Prims.int_one))
+        | (JSONLD_Context.CK_GraphId, uu___2) ->
+            FStar_Pervasives_Native.Some
+              (expand_graph_container_items ac (jexp_as_array value)
+                 (fuel - Prims.int_one))
+        | (uu___2, uu___3) ->
+            expand_property ac type_map lang_ovr (jexp_as_array value)
+              (fuel - Prims.int_one)))
 and jexp_expand_id_map (ac : JSONLD_Context.active_context)
   (entries : (Prims.string * Parser_JSON.json_val) Prims.list)
   (fuel : Prims.nat) :
@@ -810,6 +838,32 @@ and expand_graph_items (ac : JSONLD_Context.active_context)
               expand_graph_items ac rest (fuel - Prims.int_one)
           | FStar_Pervasives_Native.Some nodeobj -> nodeobj ::
               (expand_graph_items ac rest (fuel - Prims.int_one))))
+and expand_included_items (ac : JSONLD_Context.active_context)
+  (items : Parser_JSON.json_val Prims.list) (fuel : Prims.nat) :
+  Parser_JSON.json_val Prims.list FStar_Pervasives_Native.option=
+  if fuel = Prims.int_zero
+  then FStar_Pervasives_Native.None
+  else
+    (match items with
+     | [] -> FStar_Pervasives_Native.Some []
+     | (Parser_JSON.JObject fields)::rest ->
+         if
+           (jexp_has_field "@value" fields) ||
+             (jexp_has_field "@list" fields)
+         then FStar_Pervasives_Native.None
+         else
+           (match expand_node ac (Parser_JSON.JObject fields)
+                    (fuel - Prims.int_one)
+            with
+            | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+            | FStar_Pervasives_Native.Some nodeobj ->
+                (match expand_included_items ac rest (fuel - Prims.int_one)
+                 with
+                 | FStar_Pervasives_Native.None ->
+                     FStar_Pervasives_Native.None
+                 | FStar_Pervasives_Native.Some restout ->
+                     FStar_Pervasives_Native.Some (nodeobj :: restout)))
+     | uu___1 -> FStar_Pervasives_Native.None)
 let expand (ac : JSONLD_Context.active_context) (doc : Parser_JSON.json_val)
   : Parser_JSON.json_val FStar_Pervasives_Native.option=
   let fuel =
@@ -820,6 +874,14 @@ let expand (ac : JSONLD_Context.active_context) (doc : Parser_JSON.json_val)
        | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
        | FStar_Pervasives_Native.Some (Parser_JSON.JObject []) ->
            FStar_Pervasives_Native.Some (Parser_JSON.JArray [])
+       | FStar_Pervasives_Native.Some (Parser_JSON.JObject fields1) ->
+           if jexp_only_graph_keys fields1
+           then
+             FStar_Pervasives_Native.Some
+               (Parser_JSON.JArray (jexp_collect_graph_values fields1))
+           else
+             FStar_Pervasives_Native.Some
+               (Parser_JSON.JArray [Parser_JSON.JObject fields1])
        | FStar_Pervasives_Native.Some nodeobj ->
            FStar_Pervasives_Native.Some (Parser_JSON.JArray [nodeobj]))
   | Parser_JSON.JArray items ->

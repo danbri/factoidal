@@ -205,7 +205,10 @@ let expand_iri (ac : active_context) (value : Prims.string)
   (vocab : Prims.bool) : Prims.string FStar_Pervasives_Native.option=
   let n = Parser_FastString.fs_byte_length value in
   if n = Prims.int_zero
-  then FStar_Pervasives_Native.None
+  then
+    (if vocab
+     then FStar_Pervasives_Native.None
+     else jldctx_expand_fallback ac value false)
   else
     if jldctx_is_keyword value
     then FStar_Pervasives_Native.Some value

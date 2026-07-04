@@ -363,15 +363,22 @@ let nat_to_string (n : Prims.nat) : Prims.string=
   else nat_to_string_acc n "" (n + Prims.int_one)
 type issuer_state =
   {
+  is_prefix: Prims.string ;
   is_counter: Prims.nat ;
   is_issued: (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list }
+let __proj__Mkissuer_state__item__is_prefix (projectee : issuer_state) :
+  Prims.string=
+  match projectee with | { is_prefix; is_counter; is_issued;_} -> is_prefix
 let __proj__Mkissuer_state__item__is_counter (projectee : issuer_state) :
-  Prims.nat= match projectee with | { is_counter; is_issued;_} -> is_counter
+  Prims.nat=
+  match projectee with | { is_prefix; is_counter; is_issued;_} -> is_counter
 let __proj__Mkissuer_state__item__is_issued (projectee : issuer_state) :
   (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list=
-  match projectee with | { is_counter; is_issued;_} -> is_issued
+  match projectee with | { is_prefix; is_counter; is_issued;_} -> is_issued
 let empty_issuer : issuer_state=
-  { is_counter = Prims.int_zero; is_issued = [] }
+  { is_prefix = "c14n"; is_counter = Prims.int_zero; is_issued = [] }
+let empty_temp_issuer : issuer_state=
+  { is_prefix = "b"; is_counter = Prims.int_zero; is_issued = [] }
 let rec lookup_issued (b : RDF_Graph_Executable.bnode_id)
   (xs : (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list) :
   Prims.string FStar_Pervasives_Native.option=
@@ -384,9 +391,10 @@ let issue_identifier (st : issuer_state) (b : RDF_Graph_Executable.bnode_id)
   match lookup_issued b st.is_issued with
   | FStar_Pervasives_Native.Some v -> (st, v)
   | FStar_Pervasives_Native.None ->
-      let label = Prims.strcat "c14n" (nat_to_string st.is_counter) in
+      let label = Prims.strcat st.is_prefix (nat_to_string st.is_counter) in
       let st' =
         {
+          is_prefix = (st.is_prefix);
           is_counter = (st.is_counter + Prims.int_one);
           is_issued = (FStar_List_Tot_Base.op_At st.is_issued [(b, label)])
         } in
@@ -754,6 +762,42 @@ let lookup_issued2 (b : RDF_Graph_Executable.bnode_id)
   match lookup_issued b canon_st.is_issued with
   | FStar_Pervasives_Native.Some lbl -> FStar_Pervasives_Native.Some lbl
   | FStar_Pervasives_Native.None -> lookup_issued b local_st.is_issued
+let related_components (target : RDF_Graph_Executable.bnode_id) (q : qquad) :
+  (Prims.string * RDF_Graph_Executable.bnode_id) Prims.list=
+  let uu___ = q in
+  match uu___ with
+  | (uu___1, t) ->
+      let s_e =
+        match t.RDF_Graph_Executable.s with
+        | RDF_Graph_Executable.S_BNode b ->
+            if b <> target then [("s", b)] else []
+        | uu___2 -> [] in
+      let o_e =
+        match t.RDF_Graph_Executable.o with
+        | RDF_Graph_Executable.T_BNode b ->
+            if b <> target then [("o", b)] else []
+        | uu___2 -> [] in
+      let g_e =
+        match graph_bnode_of q with
+        | FStar_Pervasives_Native.Some b ->
+            if b <> target then [("g", b)] else []
+        | FStar_Pervasives_Native.None -> [] in
+      FStar_List_Tot_Base.op_At s_e (FStar_List_Tot_Base.op_At o_e g_e)
+let rec insert_related_entries
+  (entries : (Prims.string * RDF_Graph_Executable.bnode_id) Prims.list)
+  (pred : Prims.string) (hfdq_table : bn_hfdq_pair Prims.list)
+  (canon_st : issuer_state) (local_st : issuer_state)
+  (acc : bucket Prims.list) : bucket Prims.list=
+  match entries with
+  | [] -> acc
+  | (pos, rb)::rest ->
+      let identifier =
+        match lookup_issued2 rb canon_st local_st with
+        | FStar_Pervasives_Native.Some lbl -> Prims.strcat "_:" lbl
+        | FStar_Pervasives_Native.None -> lookup_hfdq rb hfdq_table in
+      let k = hash_related_blank_node pos pred identifier in
+      insert_related_entries rest pred hfdq_table canon_st local_st
+        (bucket_insert k rb acc)
 let rec build_buckets_for (target : RDF_Graph_Executable.bnode_id)
   (qs : qquad Prims.list) (hfdq_table : bn_hfdq_pair Prims.list)
   (canon_st : issuer_state) (local_st : issuer_state)
@@ -767,30 +811,10 @@ let rec build_buckets_for (target : RDF_Graph_Executable.bnode_id)
         (let uu___1 = q in
          match uu___1 with
          | (uu___2, t) ->
-             let pos = nbr_position_tag target q in
-             let pred = t.RDF_Graph_Executable.p in
-             let entry =
-               match related_bnode target q with
-               | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-               | FStar_Pervasives_Native.Some rb ->
-                   let identifier =
-                     match lookup_issued2 rb canon_st local_st with
-                     | FStar_Pervasives_Native.Some lbl ->
-                         Prims.strcat "_:" lbl
-                     | FStar_Pervasives_Native.None ->
-                         lookup_hfdq rb hfdq_table in
-                   FStar_Pervasives_Native.Some
-                     (rb, (hash_related_blank_node pos pred identifier)) in
+             let entries = related_components target q in
              let acc' =
-               match entry with
-               | FStar_Pervasives_Native.None ->
-                   let k =
-                     Prims.strcat "*"
-                       (Prims.strcat pos
-                          (Prims.strcat "|" (Prims.strcat pred "|_"))) in
-                   bucket_insert k "_" acc
-               | FStar_Pervasives_Native.Some (rb, related_hash) ->
-                   bucket_insert related_hash rb acc in
+               insert_related_entries entries t.RDF_Graph_Executable.p
+                 hfdq_table canon_st local_st acc in
              build_buckets_for target rest hfdq_table canon_st local_st acc')
 let rec remove_first (x : RDF_Graph_Executable.bnode_id)
   (xs : RDF_Graph_Executable.bnode_id Prims.list) :
@@ -832,20 +856,17 @@ let rec build_path_labels (canon_st : issuer_state) (local_st : issuer_state)
   match perm with
   | [] -> (path, local_st, recursion)
   | b::rest ->
-      if b = "_"
-      then build_path_labels canon_st local_st rest path recursion
-      else
-        (match lookup_issued2 b canon_st local_st with
-         | FStar_Pervasives_Native.Some lbl ->
-             build_path_labels canon_st local_st rest
-               (Prims.strcat path (Prims.strcat "_:" lbl)) recursion
-         | FStar_Pervasives_Native.None ->
-             let uu___1 = issue_identifier local_st b in
-             (match uu___1 with
-              | (local1, lbl) ->
-                  build_path_labels canon_st local1 rest
-                    (Prims.strcat path (Prims.strcat "_:" lbl))
-                    (FStar_List_Tot_Base.op_At recursion [b])))
+      (match lookup_issued2 b canon_st local_st with
+       | FStar_Pervasives_Native.Some lbl ->
+           build_path_labels canon_st local_st rest
+             (Prims.strcat path (Prims.strcat "_:" lbl)) recursion
+       | FStar_Pervasives_Native.None ->
+           let uu___ = issue_identifier local_st b in
+           (match uu___ with
+            | (local1, lbl) ->
+                build_path_labels canon_st local1 rest
+                  (Prims.strcat path (Prims.strcat "_:" lbl))
+                  (FStar_List_Tot_Base.op_At recursion [b])))
 let rec hndq_run (fuel : Prims.nat) (qs : qquad Prims.list)
   (hfdq_table : bn_hfdq_pair Prims.list) (canon_st : issuer_state)
   (local_st : issuer_state) (target : RDF_Graph_Executable.bnode_id) :
@@ -967,7 +988,7 @@ let rec explore_members (fuel : Prims.nat) (qs : qquad Prims.list)
        | FStar_Pervasives_Native.Some uu___ ->
            explore_members fuel qs hfdq_table canon_st rest
        | FStar_Pervasives_Native.None ->
-           let uu___ = issue_identifier empty_issuer m in
+           let uu___ = issue_identifier empty_temp_issuer m in
            (match uu___ with
             | (local1, uu___1) ->
                 let uu___2 = hndq_run fuel qs hfdq_table canon_st local1 m in
