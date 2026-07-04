@@ -97,6 +97,21 @@ stable — do not renumber.
     - `ocaml-patches.sh` accepts a directory and patches all files in sequence
     A GitHub Action checks PRs for direct edits to extracted files.
 
+    **No "mirroring" exception (owner directive, 2026-07-04).** When a
+    glue script in `experimental_ocaml_glue/` changes, do NOT hand-copy
+    the same edit into the already-patched file in `ocaml-output/` —
+    not even with identical text, not even "to save a re-extract."
+    You cannot impersonate the extractor+patch pipeline reliably;
+    getting lucky repeatedly is how the habit forms. `ocaml-output/`
+    is ephemeral and derivative: edit the glue source, re-run
+    `./build-ocaml.sh extract`, and let the pipeline regenerate the
+    file (with cached `.checked`, the re-extract is minutes, not
+    hours — see `fast-verify-extract`). War story: during the #267
+    scope-type migration a session mirrored a `match_graph` glue fix
+    into `Parser_BallyhooCOTTAS.ml` by hand; the re-extract happened
+    to reproduce it byte-identically, but that was verification after
+    the fact, not a justification.
+
 14. **Never use `|| true` to swallow command failures in shell scripts.**
     `|| true` silently hides real errors. When a command might fail and you
     need the script to continue (e.g., under `set -e`), capture the exit code

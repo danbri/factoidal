@@ -105,6 +105,32 @@ if ! ocamlfind list 2>/dev/null | grep -q zarith; then
     > "$DEPS_LOG" 2>&1 &
 fi
 
+# 5b. wasm builds: wasm_of_ocaml-compiler needs binaryen >= 116 for
+#     wasm-merge. Ubuntu apt ships binaryen 108 (no wasm-merge) and
+#     GitHub release assets are proxy-blocked; conda-forge tarballs
+#     are plain HTTPS and work (2026-07-04 lesson). Idempotent.
+if ! command -v wasm-merge >/dev/null 2>&1; then
+  log "binaryen 121 (wasm-merge) from conda-forge -> /usr/local"
+  (
+    set -e
+    BTMP="$(mktemp -d)"
+    curl -sSL --max-time 180 -o "$BTMP/binaryen.conda" \
+      "https://api.anaconda.org/download/conda-forge/binaryen/121/linux-64/binaryen-121-h5888daf_0.conda"
+    command -v zstd >/dev/null 2>&1 || apt-get install -y -qq zstd
+    python3 -c "import zipfile; zipfile.ZipFile('$BTMP/binaryen.conda').extract('pkg-binaryen-121-h5888daf_0.tar.zst', '$BTMP')"
+    mkdir -p "$BTMP/pkg"
+    tar --zstd -xf "$BTMP/pkg-binaryen-121-h5888daf_0.tar.zst" -C "$BTMP/pkg"
+    cp -a "$BTMP/pkg/bin/"* /usr/local/bin/
+    cp -a "$BTMP/pkg/lib/"* /usr/local/lib/ 2>/dev/null || true
+    ldconfig
+    rm -rf "$BTMP"
+  ) >> "$DEPS_LOG" 2>&1 || log "WARNING: binaryen install failed (wasm builds unavailable; js/native unaffected)"
+fi
+if command -v wasm-merge >/dev/null 2>&1 && ! command -v wasm_of_ocaml >/dev/null 2>&1; then
+  log "opam wasm_of_ocaml-compiler installing in background -> $DEPS_LOG"
+  nohup opam install -y wasm_of_ocaml-compiler >> "$DEPS_LOG" 2>&1 &
+fi
+
 log "fstar: $("$SWITCH_PREFIX/bin/fstar.exe" --version 2>/dev/null | head -1)"
 log "ready for verification now; compile-ready when $DEPS_LOG shows success"
 exit 0

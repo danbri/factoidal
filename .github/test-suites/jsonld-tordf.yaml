@@ -1,0 +1,38 @@
+name: JSON-LD 1.1 toRdf (Deserialize JSON-LD to RDF)
+spec: https://www.w3.org/TR/json-ld11-api/#deserialize-json-ld-to-rdf-algorithm
+runner: bin/linux-x86_64/jsonld_runner
+runner_args: []
+manifest: third_party/testing/json-ld/tests/toRdf-manifest.jsonld
+log_path: formal/fstar/ocaml-output/jsonld_results.log
+result_path: docs/test-results/by-suite/jsonld-tordf.json
+domain: RDF
+foundational: false
+
+# Phase 2 of the JSON-LD program (see
+# docs/designissues/2026-07-04-jsonld-program-lessons.md and
+# docs/designissues/2026-07-05-jsonld-phase2-runner.md). Parser.JSONLD
+# is expanded-form-only (no @context processing) — the runner scores
+# any test whose input needs context processing as FAIL, not SKIP,
+# so this number is the honest current burn-down, not a flattered
+# subset score (CLAUDE.md anti-pattern #3/#25). Only json-ld-1.0-
+# tagged tests are SKIPped (out of scope: this program targets 1.1).
+
+triggers:
+  paths:
+    # The parser under test.
+    - formal/fstar/Parser.JSONLD.fst
+    # The manifest itself is JSON-LD, parsed with the shared RFC 8259
+    # parser — a change there affects every test in this suite.
+    - formal/fstar/Parser.JSON.fst
+    # Canonicalization used for the isomorphism compare on the
+    # PositiveEvaluationTest branch.
+    - formal/fstar/RDF.Canonical.fst
+    # N-Quads parser used to load the `expect` .nq fixtures.
+    - formal/fstar/Parser.NQuads.fst
+    # The runner.
+    - bin/jsonld-runner/**
+    # Vendored W3C JSON-LD test suite (manifest + toRdf/*.jsonld/*.nq
+    # fixtures).
+    - third_party/testing/json-ld/**
+
+  excludes: []

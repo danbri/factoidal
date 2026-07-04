@@ -43,6 +43,17 @@ Classify any OCaml you meet or write
 | VIOLATION-SEM | Semantic logic in OCaml | migrate to F\*; currently at zero — keep it there |
 | MIXED | Both | split it |
 
+**"Mirroring" a glue change into `ocaml-output/` is not a loophole
+either (owner directive, 2026-07-04).** When you edit a patch script
+in `experimental_ocaml_glue/`, the ONLY way the change reaches
+`ocaml-output/` is re-running `./build-ocaml.sh extract` — never by
+hand-applying the same edit to the patched `.ml`, even byte-for-byte
+identical. The extracted OCaml is ephemeral and derivative; you
+cannot impersonate the extractor+patch pipeline reliably, and CI
+diffs will catch you when you get it subtly wrong. With a warm
+`.checked` cache the re-extract costs minutes (see
+`fast-verify-extract`), so there is no time argument.
+
 **Companion-file writers are not a loophole.** Byte layout belongs in
 F\* (`serialize : data -> Tot (list u8)` plus `parse` and a roundtrip
 lemma); the OCaml side reduces to `write_bytes`/`read_bytes`. Every

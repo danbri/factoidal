@@ -94,6 +94,15 @@ natively — they are not optional decoration.
 5. **Restoration must never block the session.** Hook steps are
    backgrounded and fail-open; a session can always run the committed
    binaries with zero toolchain.
+6. **Wasm builds need binaryen ≥ 116** (`wasm-merge` does not exist in
+   Ubuntu apt's binaryen 108, so `opam install wasm_of_ocaml-compiler`
+   fails at its runtime link step). GitHub release binaries are
+   proxy-blocked; the working source is a conda-forge tarball over
+   plain HTTPS (2026-07-04):
+   `api.anaconda.org/download/conda-forge/binaryen/121/linux-64/...conda`
+   → unzip → `tar --zstd` → copy `bin/*` + `lib/*` to `/usr/local`.
+   `tools/install-toolchain-cache.sh` step 5b does this automatically;
+   also needs apt `zstd` for the inner tarball.
 
 ## Manual restoration (non-hook harnesses, local dev)
 
