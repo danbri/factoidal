@@ -1,9 +1,32 @@
 open Prims
+type container_kind =
+  | CK_None 
+  | CK_List 
+  | CK_Index 
+  | CK_Language 
+  | CK_Id 
+  | CK_Type 
+let uu___is_CK_None (projectee : container_kind) : Prims.bool=
+  match projectee with | CK_None -> true | uu___ -> false
+let uu___is_CK_List (projectee : container_kind) : Prims.bool=
+  match projectee with | CK_List -> true | uu___ -> false
+let uu___is_CK_Index (projectee : container_kind) : Prims.bool=
+  match projectee with | CK_Index -> true | uu___ -> false
+let uu___is_CK_Language (projectee : container_kind) : Prims.bool=
+  match projectee with | CK_Language -> true | uu___ -> false
+let uu___is_CK_Id (projectee : container_kind) : Prims.bool=
+  match projectee with | CK_Id -> true | uu___ -> false
+let uu___is_CK_Type (projectee : container_kind) : Prims.bool=
+  match projectee with | CK_Type -> true | uu___ -> false
+let ck_is_none (k : container_kind) : Prims.bool=
+  match k with | CK_None -> true | uu___ -> false
+let ck_is_list (k : container_kind) : Prims.bool=
+  match k with | CK_List -> true | uu___ -> false
 type term_def =
   {
   td_iri: Prims.string ;
   td_type_mapping: Prims.string FStar_Pervasives_Native.option ;
-  td_container_list: Prims.bool ;
+  td_container: container_kind ;
   td_reverse: Prims.bool ;
   td_language:
     Prims.string FStar_Pervasives_Native.option
@@ -11,27 +34,27 @@ type term_def =
     }
 let __proj__Mkterm_def__item__td_iri (projectee : term_def) : Prims.string=
   match projectee with
-  | { td_iri; td_type_mapping; td_container_list; td_reverse; td_language;_}
-      -> td_iri
+  | { td_iri; td_type_mapping; td_container; td_reverse; td_language;_} ->
+      td_iri
 let __proj__Mkterm_def__item__td_type_mapping (projectee : term_def) :
   Prims.string FStar_Pervasives_Native.option=
   match projectee with
-  | { td_iri; td_type_mapping; td_container_list; td_reverse; td_language;_}
-      -> td_type_mapping
-let __proj__Mkterm_def__item__td_container_list (projectee : term_def) :
-  Prims.bool=
+  | { td_iri; td_type_mapping; td_container; td_reverse; td_language;_} ->
+      td_type_mapping
+let __proj__Mkterm_def__item__td_container (projectee : term_def) :
+  container_kind=
   match projectee with
-  | { td_iri; td_type_mapping; td_container_list; td_reverse; td_language;_}
-      -> td_container_list
+  | { td_iri; td_type_mapping; td_container; td_reverse; td_language;_} ->
+      td_container
 let __proj__Mkterm_def__item__td_reverse (projectee : term_def) : Prims.bool=
   match projectee with
-  | { td_iri; td_type_mapping; td_container_list; td_reverse; td_language;_}
-      -> td_reverse
+  | { td_iri; td_type_mapping; td_container; td_reverse; td_language;_} ->
+      td_reverse
 let __proj__Mkterm_def__item__td_language (projectee : term_def) :
   Prims.string FStar_Pervasives_Native.option FStar_Pervasives_Native.option=
   match projectee with
-  | { td_iri; td_type_mapping; td_container_list; td_reverse; td_language;_}
-      -> td_language
+  | { td_iri; td_type_mapping; td_container; td_reverse; td_language;_} ->
+      td_language
 type active_context =
   {
   ac_terms: (Prims.string * term_def) Prims.list ;
@@ -84,6 +107,11 @@ let rec jldctx_find_colon (s : Prims.string) (pos : Prims.nat)
        if (Parser_JSON.jbyte_at s pos) = (Prims.of_int (0x3A))
        then FStar_Pervasives_Native.Some pos
        else jldctx_find_colon s (pos + Prims.int_one) (fuel - Prims.int_one))
+let jldctx_resolve (base : Prims.string) (relative : Prims.string) :
+  Prims.string=
+  if RDF_Graph_Executable.is_iri base
+  then SPARQL11_IRI_Resolve.resolve_iri base relative
+  else base
 let jldctx_expand_fallback (ac : active_context) (value : Prims.string)
   (vocab : Prims.bool) : Prims.string FStar_Pervasives_Native.option=
   if vocab
@@ -95,7 +123,7 @@ let jldctx_expand_fallback (ac : active_context) (value : Prims.string)
   else
     (match ac.ac_base with
      | FStar_Pervasives_Native.Some b ->
-         FStar_Pervasives_Native.Some (FStar_String.concat "" [b; value])
+         FStar_Pervasives_Native.Some (jldctx_resolve b value)
      | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
 let expand_iri (ac : active_context) (value : Prims.string)
   (vocab : Prims.bool) : Prims.string FStar_Pervasives_Native.option=
@@ -145,36 +173,57 @@ let expand_iri (ac : active_context) (value : Prims.string)
                                    ((n - c) - Prims.int_one) in
                                FStar_Pervasives_Native.Some
                                  (FStar_String.concat "" [ptd.td_iri; suffix]))))))
-let rec jldctx_container_items_ok (items : Parser_JSON.json_val Prims.list) :
-  Prims.bool=
+let jldctx_container_kind_of_string (s : Prims.string) :
+  container_kind FStar_Pervasives_Native.option=
+  if s = "@list"
+  then FStar_Pervasives_Native.Some CK_List
+  else
+    if s = "@set"
+    then FStar_Pervasives_Native.Some CK_None
+    else
+      if s = "@index"
+      then FStar_Pervasives_Native.Some CK_Index
+      else
+        if s = "@language"
+        then FStar_Pervasives_Native.Some CK_Language
+        else
+          if s = "@id"
+          then FStar_Pervasives_Native.Some CK_Id
+          else
+            if s = "@type"
+            then FStar_Pervasives_Native.Some CK_Type
+            else FStar_Pervasives_Native.None
+let rec jldctx_container_kind_of_items
+  (items : Parser_JSON.json_val Prims.list) (acc : container_kind) :
+  container_kind FStar_Pervasives_Native.option=
   match items with
-  | [] -> true
+  | [] -> FStar_Pervasives_Native.Some acc
   | (Parser_JSON.JString s)::rest ->
-      ((s = "@list") || (s = "@set")) && (jldctx_container_items_ok rest)
-  | uu___ -> false
-let rec jldctx_container_has_list (items : Parser_JSON.json_val Prims.list) :
-  Prims.bool=
-  match items with
-  | [] -> false
-  | (Parser_JSON.JString s)::rest ->
-      (s = "@list") || (jldctx_container_has_list rest)
-  | uu___ -> false
+      if s = "@graph"
+      then FStar_Pervasives_Native.None
+      else
+        (match jldctx_container_kind_of_string s with
+         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+         | FStar_Pervasives_Native.Some k ->
+             jldctx_container_kind_of_items rest
+               (if ck_is_none k then acc else k))
+  | uu___ -> FStar_Pervasives_Native.None
 let rec jldctx_term_obj_fields (ac : active_context)
   (idf : Prims.string FStar_Pervasives_Native.option)
   (revf : Prims.string FStar_Pervasives_Native.option)
   (typef : Prims.string FStar_Pervasives_Native.option)
-  (contlist : Prims.bool)
+  (contk : container_kind)
   (langf :
     Prims.string FStar_Pervasives_Native.option
       FStar_Pervasives_Native.option)
   (fields : (Prims.string * Parser_JSON.json_val) Prims.list) :
   (Prims.string FStar_Pervasives_Native.option * Prims.string
     FStar_Pervasives_Native.option * Prims.string
-    FStar_Pervasives_Native.option * Prims.bool * Prims.string
+    FStar_Pervasives_Native.option * container_kind * Prims.string
     FStar_Pervasives_Native.option FStar_Pervasives_Native.option)
     FStar_Pervasives_Native.option=
   match fields with
-  | [] -> FStar_Pervasives_Native.Some (idf, revf, typef, contlist, langf)
+  | [] -> FStar_Pervasives_Native.Some (idf, revf, typef, contk, langf)
   | (k, v)::rest ->
       if k = "@id"
       then
@@ -183,7 +232,7 @@ let rec jldctx_term_obj_fields (ac : active_context)
              (match expand_iri ac s true with
               | FStar_Pervasives_Native.Some e ->
                   jldctx_term_obj_fields ac (FStar_Pervasives_Native.Some e)
-                    revf typef contlist langf rest
+                    revf typef contk langf rest
               | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None)
          | uu___ -> FStar_Pervasives_Native.None)
       else
@@ -194,8 +243,7 @@ let rec jldctx_term_obj_fields (ac : active_context)
                (match expand_iri ac s true with
                 | FStar_Pervasives_Native.Some e ->
                     jldctx_term_obj_fields ac idf
-                      (FStar_Pervasives_Native.Some e) typef contlist langf
-                      rest
+                      (FStar_Pervasives_Native.Some e) typef contk langf rest
                 | FStar_Pervasives_Native.None ->
                     FStar_Pervasives_Native.None)
            | uu___1 -> FStar_Pervasives_Native.None)
@@ -207,7 +255,7 @@ let rec jldctx_term_obj_fields (ac : active_context)
                  (match expand_iri ac s true with
                   | FStar_Pervasives_Native.Some e ->
                       jldctx_term_obj_fields ac idf revf
-                        (FStar_Pervasives_Native.Some e) contlist langf rest
+                        (FStar_Pervasives_Native.Some e) contk langf rest
                   | FStar_Pervasives_Native.None ->
                       FStar_Pervasives_Native.None)
              | uu___2 -> FStar_Pervasives_Native.None)
@@ -216,33 +264,30 @@ let rec jldctx_term_obj_fields (ac : active_context)
             then
               (match v with
                | Parser_JSON.JString s ->
-                   if s = "@list"
-                   then
-                     jldctx_term_obj_fields ac idf revf typef true langf rest
-                   else
-                     if s = "@set"
-                     then
-                       jldctx_term_obj_fields ac idf revf typef contlist
-                         langf rest
-                     else FStar_Pervasives_Native.None
+                   (match jldctx_container_kind_of_string s with
+                    | FStar_Pervasives_Native.Some ck ->
+                        jldctx_term_obj_fields ac idf revf typef ck langf
+                          rest
+                    | FStar_Pervasives_Native.None ->
+                        FStar_Pervasives_Native.None)
                | Parser_JSON.JArray items ->
-                   if jldctx_container_items_ok items
-                   then
-                     jldctx_term_obj_fields ac idf revf typef
-                       (contlist || (jldctx_container_has_list items)) langf
-                       rest
-                   else FStar_Pervasives_Native.None
+                   (match jldctx_container_kind_of_items items CK_None with
+                    | FStar_Pervasives_Native.Some ck ->
+                        jldctx_term_obj_fields ac idf revf typef ck langf
+                          rest
+                    | FStar_Pervasives_Native.None ->
+                        FStar_Pervasives_Native.None)
                | uu___3 -> FStar_Pervasives_Native.None)
             else
               if k = "@language"
               then
                 (match v with
                  | Parser_JSON.JString s ->
-                     jldctx_term_obj_fields ac idf revf typef contlist
+                     jldctx_term_obj_fields ac idf revf typef contk
                        (FStar_Pervasives_Native.Some
                           (FStar_Pervasives_Native.Some s)) rest
                  | Parser_JSON.JNull ->
-                     jldctx_term_obj_fields ac idf revf typef contlist
+                     jldctx_term_obj_fields ac idf revf typef contk
                        (FStar_Pervasives_Native.Some
                           FStar_Pervasives_Native.None) rest
                  | uu___4 -> FStar_Pervasives_Native.None)
@@ -251,11 +296,11 @@ let process_term_def_obj (ac : active_context) (key : Prims.string)
   (fields : (Prims.string * Parser_JSON.json_val) Prims.list) :
   active_context FStar_Pervasives_Native.option=
   match jldctx_term_obj_fields ac FStar_Pervasives_Native.None
-          FStar_Pervasives_Native.None FStar_Pervasives_Native.None false
+          FStar_Pervasives_Native.None FStar_Pervasives_Native.None CK_None
           FStar_Pervasives_Native.None fields
   with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-  | FStar_Pervasives_Native.Some (idf, revf, typef, contlist, langf) ->
+  | FStar_Pervasives_Native.Some (idf, revf, typef, contk, langf) ->
       (match (idf, revf) with
        | (FStar_Pervasives_Native.Some uu___, FStar_Pervasives_Native.Some
           uu___1) -> FStar_Pervasives_Native.None
@@ -264,7 +309,7 @@ let process_term_def_obj (ac : active_context) (key : Prims.string)
              {
                td_iri = iri;
                td_type_mapping = typef;
-               td_container_list = contlist;
+               td_container = contk;
                td_reverse = false;
                td_language = langf
              } in
@@ -280,7 +325,7 @@ let process_term_def_obj (ac : active_context) (key : Prims.string)
              {
                td_iri = iri;
                td_type_mapping = typef;
-               td_container_list = contlist;
+               td_container = contk;
                td_reverse = true;
                td_language = langf
              } in
@@ -299,7 +344,7 @@ let process_term_def_obj (ac : active_context) (key : Prims.string)
                   {
                     td_iri = iri;
                     td_type_mapping = typef;
-                    td_container_list = contlist;
+                    td_container = contk;
                     td_reverse = false;
                     td_language = langf
                   } in
@@ -317,11 +362,15 @@ let context_process_one_field (ac : active_context) (key : Prims.string)
   then
     match value with
     | Parser_JSON.JString s ->
+        let resolved =
+          match ac.ac_base with
+          | FStar_Pervasives_Native.Some b -> jldctx_resolve b s
+          | FStar_Pervasives_Native.None -> s in
         FStar_Pervasives_Native.Some
           {
             ac_terms = (ac.ac_terms);
             ac_vocab = (ac.ac_vocab);
-            ac_base = (FStar_Pervasives_Native.Some s);
+            ac_base = (FStar_Pervasives_Native.Some resolved);
             ac_language = (ac.ac_language)
           }
     | Parser_JSON.JNull ->
@@ -393,7 +442,7 @@ let context_process_one_field (ac : active_context) (key : Prims.string)
                         {
                           td_iri = iri;
                           td_type_mapping = FStar_Pervasives_Native.None;
-                          td_container_list = false;
+                          td_container = CK_None;
                           td_reverse = false;
                           td_language = FStar_Pervasives_Native.None
                         } in

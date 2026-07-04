@@ -1,38 +1,45 @@
 open Prims
 let hash_sha256 (s : Prims.string) : Prims.string=
   Fstar_pure_hashes.sha256 s
-let escape_lit_char (c : FStar_Char.char) : Prims.string=
-  let n = FStar_Char.int_of_char c in
-  if n = (Prims.of_int (0x5C))
+let escape_lit_special_byte (b : Prims.nat) : Prims.bool=
+  ((((b = (Prims.of_int (0x5C))) || (b = (Prims.of_int (0x22)))) ||
+      (b = (Prims.of_int (0x0A))))
+     || (b = (Prims.of_int (0x0D))))
+    || (b = (Prims.of_int (0x09)))
+let escape_lit_byte (b : Prims.nat) : Prims.string=
+  if b = (Prims.of_int (0x5C))
   then "\\\\"
   else
-    if n = (Prims.of_int (0x22))
+    if b = (Prims.of_int (0x22))
     then "\\\""
     else
-      if n = (Prims.of_int (0x0A))
+      if b = (Prims.of_int (0x0A))
       then "\\n"
-      else
-        if n = (Prims.of_int (0x0D))
-        then "\\r"
-        else
-          if n = (Prims.of_int (0x09))
-          then "\\t"
-          else FStar_String.string_of_list [c]
-let rec escape_lit_acc (s : Prims.string) (pos : Prims.nat)
-  (fuel : Prims.nat) (acc : Prims.string) : Prims.string=
-  if fuel = Prims.int_zero
-  then acc
+      else if b = (Prims.of_int (0x0D)) then "\\r" else "\\t"
+let rec escape_lit_walk (s : Prims.string) (len : Prims.nat)
+  (run_start : Prims.nat) (pos : Prims.nat) (acc : Prims.string) :
+  Prims.string=
+  if pos >= len
+  then
+    (if pos > run_start
+     then
+       Prims.strcat acc
+         (Parser_FastString.fs_byte_sub s run_start (pos - run_start))
+     else acc)
   else
-    (let len = FStar_String.strlen s in
-     if pos >= len
-     then acc
-     else
-       (let c = FStar_String.index s pos in
-        escape_lit_acc s (pos + Prims.int_one) (fuel - Prims.int_one)
-          (Prims.strcat acc (escape_lit_char c))))
+    (let b = Parser_FastString.fs_byte_at s pos in
+     if escape_lit_special_byte b
+     then
+       let run =
+         if pos > run_start
+         then Parser_FastString.fs_byte_sub s run_start (pos - run_start)
+         else "" in
+       escape_lit_walk s len (pos + Prims.int_one) (pos + Prims.int_one)
+         (Prims.strcat acc (Prims.strcat run (escape_lit_byte b)))
+     else escape_lit_walk s len run_start (pos + Prims.int_one) acc)
 let escape_lit (s : Prims.string) : Prims.string=
-  escape_lit_acc s Prims.int_zero ((FStar_String.strlen s) + Prims.int_one)
-    ""
+  escape_lit_walk s (Parser_FastString.fs_byte_length s) Prims.int_zero
+    Prims.int_zero ""
 let canon_term (t : RDF_Graph_Executable.rdf_term) : Prims.string=
   match t with
   | RDF_Graph_Executable.T_IRI i -> Prims.strcat "<" (Prims.strcat i ">")
@@ -266,16 +273,14 @@ let str_le (a : Prims.string) (b : Prims.string) : Prims.bool=
   let m = if la < lb then lb else la in
   str_le_from a b Prims.int_zero (m + Prims.int_one)
 let str_eq (a : Prims.string) (b : Prims.string) : Prims.bool= a = b
-let rec insert_sorted (x : Prims.string) (xs : Prims.string Prims.list) :
-  Prims.string Prims.list=
-  match xs with
-  | [] -> [x]
-  | hd::tl -> if str_le x hd then x :: xs else hd :: (insert_sorted x tl)
-let rec insertion_sort (xs : Prims.string Prims.list) :
-  Prims.string Prims.list=
-  match xs with | [] -> [] | hd::tl -> insert_sorted hd (insertion_sort tl)
-let rec concat_strings (xs : Prims.string Prims.list) : Prims.string=
-  match xs with | [] -> "" | hd::tl -> Prims.strcat hd (concat_strings tl)
+let str_compare (a : Prims.string) (b : Prims.string) : Prims.int=
+  if a = b
+  then Prims.int_zero
+  else if str_le a b then (Prims.of_int (-1)) else Prims.int_one
+let insertion_sort (xs : Prims.string Prims.list) : Prims.string Prims.list=
+  FStar_List_Tot_Base.sortWith str_compare xs
+let concat_strings (xs : Prims.string Prims.list) : Prims.string=
+  FStar_String.concat "" xs
 let compute_hfdq (target : RDF_Graph_Executable.bnode_id)
   (qs : qquad Prims.list) : Prims.string=
   let mentioning = quads_for_bnode target qs in
@@ -570,20 +575,22 @@ let rec insert_full_key (x : bn_full_key) (xs : bn_full_key Prims.list) :
 let rec sort_full_keys (xs : bn_full_key Prims.list) :
   bn_full_key Prims.list=
   match xs with | [] -> [] | hd::tl -> insert_full_key hd (sort_full_keys tl)
-let pair_le (a : bn_hfdq_pair) (b : bn_hfdq_pair) : Prims.bool=
+let pair_compare (a : bn_hfdq_pair) (b : bn_hfdq_pair) : Prims.int=
   let uu___ = a in
   match uu___ with
   | (oa, ha) ->
       let uu___1 = b in
       (match uu___1 with
-       | (ob, hb) -> if ha = hb then str_le oa ob else str_le ha hb)
-let rec insert_pair (x : bn_hfdq_pair) (xs : bn_hfdq_pair Prims.list) :
-  bn_hfdq_pair Prims.list=
-  match xs with
-  | [] -> [x]
-  | hd::tl -> if pair_le x hd then x :: xs else hd :: (insert_pair x tl)
-let rec sort_pairs (xs : bn_hfdq_pair Prims.list) : bn_hfdq_pair Prims.list=
-  match xs with | [] -> [] | hd::tl -> insert_pair hd (sort_pairs tl)
+       | (ob, hb) ->
+           if ha = hb
+           then
+             (if oa = ob
+              then Prims.int_zero
+              else
+                if str_le oa ob then (Prims.of_int (-1)) else Prims.int_one)
+           else if str_le ha hb then (Prims.of_int (-1)) else Prims.int_one)
+let sort_pairs (xs : bn_hfdq_pair Prims.list) : bn_hfdq_pair Prims.list=
+  FStar_List_Tot_Base.sortWith pair_compare xs
 let rec assign_in_order (st : issuer_state) (xs : bn_hfdq_pair Prims.list) :
   issuer_state=
   match xs with
@@ -924,3 +931,17 @@ let canonical_nquads (ds : RDF_Graph_Executable.rdf_dataset) : Prims.string=
   let deduped = dedup_sorted_strings sorted in concat_strings deduped
 let canonicalize_to_nquads (ds : RDF_Graph_Executable.rdf_dataset) :
   Prims.string= canonical_nquads (canonicalize ds)
+let canonicalize_named_graph (ds : RDF_Graph_Executable.rdf_dataset)
+  (name : RDF_Dataset_Graphs.graph_ref) :
+  Prims.string FStar_Pervasives_Native.option=
+  match RDF_Graph_Executable.lookup_named_graph name
+          ds.RDF_Graph_Executable.ds_named
+  with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some g ->
+      FStar_Pervasives_Native.Some
+        (canonicalize_to_nquads
+           {
+             RDF_Graph_Executable.ds_default = g;
+             RDF_Graph_Executable.ds_named = []
+           })

@@ -22,7 +22,14 @@ Toward the goal in CLAUDE.md (performant, compliant RDF/S + OWL +
 SHACL + RDFC + SPARQL engine). Re-rank when one lands; a dashboard
 red always jumps the queue.
 
-Landed 2026-07-04 (all gate-evidenced on claude/main): 2c and 2d
+Landed 2026-07-04 (all gate-evidenced on claude/main): Later the same day: JSON-LD
+Phases 3a+3b (W3C toRdf 33 -> 181 pass of 467); #269/#270 closed;
+#272 serializer speedup (dump-nq 162 -> 12069 triples/s at 10k;
+still superlinear at 100k, issue open); #273 RDF/XML overflow AND
+silent >5k-triple truncation fixed (50k parses exactly); Turtle
+pretty-printer (factoidal dump-turtle, 17/0 round-trip suite);
+graphs API slice 1 (graphs list/get/hash/diff + npm graphs()/
+canonicalHash(), 9/0); parse+serialize bench live on the dashboard. 2c and 2d
 below; #262 sameAs closure rewrite; #21 exact on-disk counts; #267
 COTTAS dataset semantics + #268 backend property paths (backend
 parity 36 of 36, zero knowns); #271 canonicalize/dump-nq UTF-8

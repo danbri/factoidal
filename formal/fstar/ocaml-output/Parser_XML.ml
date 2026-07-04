@@ -558,13 +558,14 @@ let parse_xml_declaration (input : Prims.string) (pos : Prims.nat) :
   | Parser_Combinators.ParseFail (msg, fpos) ->
       Parser_Combinators.ParseFail (msg, fpos)
 let rec parse_children (input : Prims.string) (pos : Prims.nat)
-  (fuel : Prims.nat) : xml_node Prims.list Parser_Combinators.parse_result=
+  (fuel : Prims.nat) (acc : xml_node Prims.list) :
+  xml_node Prims.list Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
-  then Parser_Combinators.ParseOk ([], pos)
+  then Parser_Combinators.ParseOk ((FStar_List_Tot_Base.rev acc), pos)
   else
     (let len = Parser_FastString.fs_byte_length input in
      if pos >= len
-     then Parser_Combinators.ParseOk ([], pos)
+     then Parser_Combinators.ParseOk ((FStar_List_Tot_Base.rev acc), pos)
      else
        (let ch = Parser_FastString.fs_byte_index input pos in
         if ch = 60
@@ -574,31 +575,21 @@ let rec parse_children (input : Prims.string) (pos : Prims.nat)
              let ch2 =
                Parser_FastString.fs_byte_index input (pos + Prims.int_one) in
              (if ch2 = 47
-              then Parser_Combinators.ParseOk ([], pos)
+              then
+                Parser_Combinators.ParseOk
+                  ((FStar_List_Tot_Base.rev acc), pos)
               else
                 if ch2 = 33
                 then
                   (match parse_xml_comment input pos with
                    | Parser_Combinators.ParseOk (comment, pos') ->
-                       (match parse_children input pos'
-                                (fuel - Prims.int_one)
-                        with
-                        | Parser_Combinators.ParseOk (rest, pos'') ->
-                            Parser_Combinators.ParseOk
-                              ((comment :: rest), pos'')
-                        | Parser_Combinators.ParseFail (msg, fpos) ->
-                            Parser_Combinators.ParseFail (msg, fpos))
+                       parse_children input pos' (fuel - Prims.int_one)
+                         (comment :: acc)
                    | Parser_Combinators.ParseFail (uu___3, uu___4) ->
                        (match parse_xml_cdata input pos with
                         | Parser_Combinators.ParseOk (cdata, pos') ->
-                            (match parse_children input pos'
-                                     (fuel - Prims.int_one)
-                             with
-                             | Parser_Combinators.ParseOk (rest, pos'') ->
-                                 Parser_Combinators.ParseOk
-                                   ((cdata :: rest), pos'')
-                             | Parser_Combinators.ParseFail (msg, fpos) ->
-                                 Parser_Combinators.ParseFail (msg, fpos))
+                            parse_children input pos' (fuel - Prims.int_one)
+                              (cdata :: acc)
                         | Parser_Combinators.ParseFail (msg, fpos) ->
                             Parser_Combinators.ParseFail (msg, fpos)))
                 else
@@ -606,21 +597,15 @@ let rec parse_children (input : Prims.string) (pos : Prims.nat)
                   then
                     (match parse_xml_pi input pos with
                      | Parser_Combinators.ParseOk (uu___4, pos') ->
-                         parse_children input pos' (fuel - Prims.int_one)
+                         parse_children input pos' (fuel - Prims.int_one) acc
                      | Parser_Combinators.ParseFail (msg, fpos) ->
                          Parser_Combinators.ParseFail (msg, fpos))
                   else
                     (match parse_xml_element input pos (fuel - Prims.int_one)
                      with
                      | Parser_Combinators.ParseOk (elem, pos') ->
-                         (match parse_children input pos'
-                                  (fuel - Prims.int_one)
-                          with
-                          | Parser_Combinators.ParseOk (rest, pos'') ->
-                              Parser_Combinators.ParseOk
-                                ((elem :: rest), pos'')
-                          | Parser_Combinators.ParseFail (msg, fpos) ->
-                              Parser_Combinators.ParseFail (msg, fpos))
+                         parse_children input pos' (fuel - Prims.int_one)
+                           (elem :: acc)
                      | Parser_Combinators.ParseFail (msg, fpos) ->
                          Parser_Combinators.ParseFail (msg, fpos)))
            else
@@ -629,15 +614,15 @@ let rec parse_children (input : Prims.string) (pos : Prims.nat)
           (match parse_xml_text input pos with
            | Parser_Combinators.ParseOk (text_node, pos') ->
                if pos' = pos
-               then Parser_Combinators.ParseOk ([], pos)
+               then
+                 Parser_Combinators.ParseOk
+                   ((FStar_List_Tot_Base.rev acc), pos)
                else
-                 (match parse_children input pos' (fuel - Prims.int_one) with
-                  | Parser_Combinators.ParseOk (rest, pos'') ->
-                      Parser_Combinators.ParseOk ((text_node :: rest), pos'')
-                  | Parser_Combinators.ParseFail (msg, fpos) ->
-                      Parser_Combinators.ParseFail (msg, fpos))
+                 parse_children input pos' (fuel - Prims.int_one) (text_node
+                   :: acc)
            | Parser_Combinators.ParseFail (uu___3, uu___4) ->
-               Parser_Combinators.ParseOk ([], pos))))
+               Parser_Combinators.ParseOk
+                 ((FStar_List_Tot_Base.rev acc), pos))))
 and parse_xml_element (input : Prims.string) (pos : Prims.nat)
   (fuel : Prims.nat) : xml_node Parser_Combinators.parse_result=
   if fuel = Prims.int_zero
@@ -668,7 +653,7 @@ and parse_xml_element (input : Prims.string) (pos : Prims.nat)
                               with
                               | Parser_Combinators.ParseOk (uu___4, pos5) ->
                                   (match parse_children input pos5
-                                           (fuel - Prims.int_one)
+                                           (fuel - Prims.int_one) []
                                    with
                                    | Parser_Combinators.ParseOk
                                        (children, pos6) ->

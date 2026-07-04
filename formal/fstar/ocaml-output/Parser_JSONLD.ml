@@ -268,17 +268,80 @@ and jld_expand_fields (subj : RDF_Graph_Executable.subject)
            if key = "@type"
            then ((jld_type_prepend subj value acc), ctr)
            else
-             if jld_is_keyword key
-             then (acc, ctr)
+             if key = "@reverse"
+             then
+               jld_expand_reverse_map subj value ctr acc
+                 (fuel - Prims.int_one)
              else
-               if RDF_Graph_Executable.is_iri key
-               then
-                 jld_expand_property subj key (jld_as_array value) ctr acc
-                   (fuel - Prims.int_one)
-               else (acc, ctr) in
+               if jld_is_keyword key
+               then (acc, ctr)
+               else
+                 if RDF_Graph_Executable.is_iri key
+                 then
+                   jld_expand_property subj key (jld_as_array value) ctr acc
+                     (fuel - Prims.int_one)
+                 else (acc, ctr) in
          (match uu___1 with
           | (acc1, ctr1) ->
               jld_expand_fields subj rest ctr1 acc1 (fuel - Prims.int_one)))
+and jld_expand_reverse_map (subj : RDF_Graph_Executable.subject)
+  (v : Parser_JSON.json_val) (ctr : Prims.nat)
+  (acc : RDF_Graph_Executable.triple Prims.list) (fuel : Prims.nat) :
+  (RDF_Graph_Executable.triple Prims.list * Prims.nat)=
+  if fuel = Prims.int_zero
+  then (acc, ctr)
+  else
+    (match v with
+     | Parser_JSON.JObject entries ->
+         jld_expand_reverse_entries subj entries ctr acc
+           (fuel - Prims.int_one)
+     | uu___1 -> (acc, ctr))
+and jld_expand_reverse_entries (subj : RDF_Graph_Executable.subject)
+  (entries : (Prims.string * Parser_JSON.json_val) Prims.list)
+  (ctr : Prims.nat) (acc : RDF_Graph_Executable.triple Prims.list)
+  (fuel : Prims.nat) : (RDF_Graph_Executable.triple Prims.list * Prims.nat)=
+  if fuel = Prims.int_zero
+  then (acc, ctr)
+  else
+    (match entries with
+     | [] -> (acc, ctr)
+     | (prop, value)::rest ->
+         let uu___1 =
+           if RDF_Graph_Executable.is_iri prop
+           then
+             jld_expand_reverse_prop subj prop (jld_as_array value) ctr acc
+               (fuel - Prims.int_one)
+           else (acc, ctr) in
+         (match uu___1 with
+          | (acc1, ctr1) ->
+              jld_expand_reverse_entries subj rest ctr1 acc1
+                (fuel - Prims.int_one)))
+and jld_expand_reverse_prop (subj : RDF_Graph_Executable.subject)
+  (prop : RDF_Graph_Executable.wf_iri)
+  (vals : Parser_JSON.json_val Prims.list) (ctr : Prims.nat)
+  (acc : RDF_Graph_Executable.triple Prims.list) (fuel : Prims.nat) :
+  (RDF_Graph_Executable.triple Prims.list * Prims.nat)=
+  if fuel = Prims.int_zero
+  then (acc, ctr)
+  else
+    (match vals with
+     | [] -> (acc, ctr)
+     | v::rest ->
+         let uu___1 = jld_expand_node v ctr acc (fuel - Prims.int_one) in
+         (match uu___1 with
+          | (osubj, acc1, ctr1) ->
+              let acc2 =
+                match osubj with
+                | FStar_Pervasives_Native.Some vsubj ->
+                    {
+                      RDF_Graph_Executable.s = vsubj;
+                      RDF_Graph_Executable.p = prop;
+                      RDF_Graph_Executable.o =
+                        (RDF_Graph_Executable.subject_to_term subj)
+                    } :: acc1
+                | FStar_Pervasives_Native.None -> acc1 in
+              jld_expand_reverse_prop subj prop rest ctr1 acc2
+                (fuel - Prims.int_one)))
 and jld_expand_property (subj : RDF_Graph_Executable.subject)
   (prop : RDF_Graph_Executable.wf_iri)
   (vals : Parser_JSON.json_val Prims.list) (ctr : Prims.nat)

@@ -874,7 +874,7 @@ let rec process_node_element (st : rdfxml_state) (node : Parser_XML.xml_node)
               let st3 = reset_li_counter st2 in
               let child_result =
                 process_property_children st3 subj children
-                  (fuel - Prims.int_one) in
+                  (fuel - Prims.int_one) [] in
               {
                 pr_triples =
                   (FStar_List_Tot_Base.op_At type_triples
@@ -885,29 +885,24 @@ let rec process_node_element (st : rdfxml_state) (node : Parser_XML.xml_node)
      | uu___1 -> empty_result st)
 and process_property_children (st : rdfxml_state)
   (subj : RDF_Graph_Executable.subject)
-  (children : Parser_XML.xml_node Prims.list) (fuel : Prims.nat) :
-  process_result=
+  (children : Parser_XML.xml_node Prims.list) (fuel : Prims.nat)
+  (acc : RDF_Graph_Executable.triple Prims.list) : process_result=
   if fuel = Prims.int_zero
-  then empty_result st
+  then { pr_triples = (FStar_List_Tot_Base.rev acc); pr_state = st }
   else
     (match children with
-     | [] -> empty_result st
+     | [] -> { pr_triples = (FStar_List_Tot_Base.rev acc); pr_state = st }
      | child::rest ->
          (match child with
           | Parser_XML.XElement (uu___1, uu___2, uu___3) ->
               let result1 =
                 process_property_element st subj child (fuel - Prims.int_one) in
-              let result2 =
-                process_property_children result1.pr_state subj rest
-                  (fuel - Prims.int_one) in
-              {
-                pr_triples =
-                  (FStar_List_Tot_Base.op_At result1.pr_triples
-                     result2.pr_triples);
-                pr_state = (result2.pr_state)
-              }
+              let acc' = FStar_List_Tot_Base.rev_acc result1.pr_triples acc in
+              process_property_children result1.pr_state subj rest
+                (fuel - Prims.int_one) acc'
           | uu___1 ->
-              process_property_children st subj rest (fuel - Prims.int_one)))
+              process_property_children st subj rest (fuel - Prims.int_one)
+                acc))
 and process_property_element (st : rdfxml_state)
   (subj : RDF_Graph_Executable.subject) (node : Parser_XML.xml_node)
   (fuel : Prims.nat) : process_result=
@@ -1004,7 +999,7 @@ and process_property_element (st : rdfxml_state)
                                let st4 = reset_li_counter st3 in
                                let child_result =
                                  process_property_children st4 bnode_subj
-                                   children (fuel - Prims.int_one) in
+                                   children (fuel - Prims.int_one) [] in
                                {
                                  pr_triples =
                                    (FStar_List_Tot_Base.op_At (link_triple ::
@@ -1327,31 +1322,25 @@ and build_collection_list (st : rdfxml_state)
                           pr_state = (rest_result.pr_state)
                         }))))
 let rec process_node_elements (st : rdfxml_state)
-  (nodes : Parser_XML.xml_node Prims.list) (fuel : Prims.nat) :
-  process_result=
+  (nodes : Parser_XML.xml_node Prims.list) (fuel : Prims.nat)
+  (acc : RDF_Graph_Executable.triple Prims.list) : process_result=
   if fuel = Prims.int_zero
-  then empty_result st
+  then { pr_triples = (FStar_List_Tot_Base.rev acc); pr_state = st }
   else
     (match nodes with
-     | [] -> empty_result st
+     | [] -> { pr_triples = (FStar_List_Tot_Base.rev acc); pr_state = st }
      | node::rest ->
          (match node with
           | Parser_XML.XElement (uu___1, uu___2, uu___3) ->
               let result1 =
                 process_node_element st node (fuel - Prims.int_one) in
               let st' = restore_scope st result1.pr_state in
-              let result2 =
-                process_node_elements st' rest (fuel - Prims.int_one) in
-              {
-                pr_triples =
-                  (FStar_List_Tot_Base.op_At result1.pr_triples
-                     result2.pr_triples);
-                pr_state = (result2.pr_state)
-              }
-          | uu___1 -> process_node_elements st rest (fuel - Prims.int_one)))
-let process_xml_tree_full (st : rdfxml_state) (root : Parser_XML.xml_node) :
-  process_result=
-  let fuel = (Prims.of_int (10000)) in
+              let acc' = FStar_List_Tot_Base.rev_acc result1.pr_triples acc in
+              process_node_elements st' rest (fuel - Prims.int_one) acc'
+          | uu___1 ->
+              process_node_elements st rest (fuel - Prims.int_one) acc))
+let process_xml_tree_full (st : rdfxml_state) (root : Parser_XML.xml_node)
+  (fuel : Prims.nat) : process_result=
   match root with
   | Parser_XML.XElement (tag, attrs, children) ->
       let st1 = update_state_from_attrs st attrs in
@@ -1361,17 +1350,19 @@ let process_xml_tree_full (st : rdfxml_state) (root : Parser_XML.xml_node) :
             full_iri = (FStar_String.concat "" [rdf_ns; "RDF"])
         | FStar_Pervasives_Native.None -> tag = "rdf:RDF" in
       if is_rdf_root
-      then process_node_elements st1 children fuel
+      then process_node_elements st1 children fuel []
       else process_node_element st1 root fuel
   | uu___ -> empty_result st
-let process_xml_tree (st : rdfxml_state) (root : Parser_XML.xml_node) :
-  RDF_Graph_Executable.triple Prims.list=
-  (process_xml_tree_full st root).pr_triples
+let process_xml_tree (st : rdfxml_state) (root : Parser_XML.xml_node)
+  (fuel : Prims.nat) : RDF_Graph_Executable.triple Prims.list=
+  (process_xml_tree_full st root fuel).pr_triples
 let parse_rdfxml_with_base (base_iri : Prims.string) (input : Prims.string) :
   RDF_Graph_Executable.triple Prims.list=
   match Parser_XML.parse_xml_document input with
   | FStar_Pervasives_Native.Some root ->
-      let st = initial_state base_iri in process_xml_tree st root
+      let st = initial_state base_iri in
+      let fuel = (FStar_String.strlen input) + Prims.int_one in
+      process_xml_tree st root fuel
   | FStar_Pervasives_Native.None -> []
 let parse_rdfxml (input : Prims.string) :
   RDF_Graph_Executable.triple Prims.list= parse_rdfxml_with_base "" input
@@ -1381,7 +1372,8 @@ let parse_rdfxml_with_base_strict (base_iri : Prims.string)
   match Parser_XML.parse_xml_document input with
   | FStar_Pervasives_Native.Some root ->
       let st = initial_state base_iri in
-      let r = process_xml_tree_full st root in
+      let fuel = (FStar_String.strlen input) + Prims.int_one in
+      let r = process_xml_tree_full st root fuel in
       if (r.pr_state).has_error
       then FStar_Pervasives_Native.None
       else FStar_Pervasives_Native.Some (r.pr_triples)
