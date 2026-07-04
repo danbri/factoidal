@@ -231,10 +231,14 @@ git -C $WT cherry-pick $C && git -C $WT push origin HEAD:claude/main
 git worktree remove --force $WT; git worktree prune
 ```
 
-Afterwards, once the local tree is clean, realign with
-`git reset --hard origin/claude/main` — but FIRST verify the local
-commits actually exist upstream (`git log --format=%s origin/... |
-grep`), because the cherry-picked copies have different hashes and
-the stop hook will otherwise nag about "unverified" local duplicates
-forever. Never reset away a commit you have not confirmed upstream.
+Afterwards, realign with `git reset --hard origin/claude/main` ONLY
+when BOTH hold: (1) the local commits verifiably exist upstream
+(`git log --format=%s origin/... | grep` — cherry-picked copies have
+different hashes, so the stop hook nags about "unverified" local
+duplicates until realigned), and (2) `git status` is COMPLETELY clean
+AND no subagent is mid-task in this tree. reset --hard discards
+other agents' uncommitted in-flight work — it did exactly that on
+2026-07-04 (an agent lost its first-pass edits mid-task and had to
+recover via reflog). With agents in flight, skip realignment
+entirely; the stop-hook nag is cosmetic, lost agent work is not.
 
