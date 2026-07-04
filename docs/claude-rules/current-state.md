@@ -16,11 +16,22 @@ This file is a **periodic refresh doc** — it goes stale within a week.
 Update after material progress (suite-score movements, new F\* modules,
 resolved `assume val`s).
 
-## Standing priorities (as of 2026-07-03)
+## Standing priorities (as of 2026-07-04)
 
 Toward the goal in CLAUDE.md (performant, compliant RDF/S + OWL +
 SHACL + RDFC + SPARQL engine). Re-rank when one lands; a dashboard
 red always jumps the queue.
+
+Landed 2026-07-04 (all gate-evidenced on claude/main): 2c and 2d
+below; #262 sameAs closure rewrite; #21 exact on-disk counts; #267
+COTTAS dataset semantics + #268 backend property paths (backend
+parity 36 of 36, zero knowns); #271 canonicalize/dump-nq UTF-8
+corruption + the mirrored-JSON-escape bug in SPARQL.JSON.Escape;
+JSON-LD Phase 1 (RFC 8259 parser + expanded-form toRdf, 10 of 10
+local fixtures) with the Phase 2 W3C-manifest runner scaffolded; PE
+slice 1 (22 of 30). Three of the four serializer-side bugs were the
+same bytes-vs-codepoints disease — the RDF.Unicode foundation module
+in item 4 is where that class of bug goes to die.
 
 1. **#118 — retire the COTTAS on-disk OCaml runtime** (718 lines of
    unverified glue on the hot path; plan doc scoped, ukparliament-bench
@@ -41,13 +52,13 @@ red always jumps the queue.
    needs rule-coverage additions in the OWL-RL rule set. Fix sketches:
    `2026-07-03-owl-rl-pe-fails-fix-sketch.md` (path to 27 pass, 2
    documented fails, 1 skip).
-2c. **Backend eval path skips the bnode-pattern rewrite** — found by
+2c. **[DONE 2026-07-04]** Backend eval path skips the bnode-pattern rewrite — found by
    the Jena probe refresh (`2026-07-03-jena-probe-refresh.md`),
    invisible to the W3C dashboard: bnode-pattern SELECT/ASK via the
    CLI's default route match 0 rows (`SPARQL11.Store.fst` ~752 misses
    the `rewrite_query_bnodes_pattern` call the algebra path makes).
    Small F\* fix; gate on the jena basic probe returning to 20 of 20.
-2d. **No per-file blank-node scoping at dataset load** — `_:x` in
+2d. **[DONE 2026-07-04]** No per-file blank-node scoping at dataset load — `_:x` in
    separately loaded files spuriously joins (`factoidal_cli.ml:112`;
    Jena graph probe 9 of 11, was 11 of 11). Bnode labels are
    document-scoped per RDF 1.1; decide loader-namespacing vs F\*
