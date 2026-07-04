@@ -1,8 +1,8 @@
 {
   "platform": "linux-x86_64",
   "runner_os": "Linux",
-  "timestamp_utc": "2026-07-04T07:47:28Z",
-  "source_sha": "8af86d369b39a76abb41f440805af35455d3bc9d",
+  "timestamp_utc": "2026-07-04T07:57:12Z",
+  "source_sha": "36b2909bfdc9a69cd338876882ef6b7b1b0adac5",
   "fstar_version": "F* 2025.12.15",
   "ocaml_version": "The OCaml toplevel, version 4.14.1",
   "opam_switch": "fstar",
@@ -13,6 +13,7 @@
     "factoidal-dump-nq.byte": { "sha256": "1f4f6c867bc1d98a644934614207af3f188ec0611f2a081d2541a5774e11e033", "size": 8707113 },
     "factoidal-http": { "sha256": "dd923450f0431e68f7ad40b2bf0772a84cba6a3dd700073926ddf6d333bb7d5c", "size": 11319560 },
     "factoidal_http_client": { "sha256": "a6576f41fbd71e2294b91922b89efb9db266ad12041d2c7e673f50da65c12ab2", "size": 10274072 },
+    "jsonld_runner": { "sha256": "9ba9809377b00f528f202230e39bce259f5f7ee46d73da5b11eb2e967bea00f5", "size": 10293200 },
     "owl_runner": { "sha256": "a8f34a284555d50fedb7c9da4ee387d7a603132dd39138b9737bd3078d733f1b", "size": 10315288 },
     "parquet_probe": { "sha256": "6861f02e885dec08f9f051811d52d114aac27723fd827a384a079e118fa941c2", "size": 10308088 },
     "rdfc10_runner": { "sha256": "23098df2a59e26ccc4e091449725038423b82759fdb5cd8605e9138960a8603a", "size": 10293880 },
