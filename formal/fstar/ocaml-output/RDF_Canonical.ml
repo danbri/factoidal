@@ -17,7 +17,7 @@ let escape_lit_char (c : FStar_Char.char) : Prims.string=
         else
           if n = (Prims.of_int (0x09))
           then "\\t"
-          else FStar_String.string_of_char c
+          else FStar_String.string_of_list [c]
 let rec escape_lit_acc (s : Prims.string) (pos : Prims.nat)
   (fuel : Prims.nat) (acc : Prims.string) : Prims.string=
   if fuel = Prims.int_zero

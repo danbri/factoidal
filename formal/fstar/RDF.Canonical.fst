@@ -39,9 +39,15 @@ assume val hash_sha256 : string -> string
 (* Section 1. Canonical N-Quads serialisation
    per RDFC-1.0 §4.7.3 / N-Triples §4. *)
 
-(* N-Triples character escaping: backslash, quote, LF, CR, TAB. We do
-   not perform full UTF-8 \uXXXX escaping here; the rdf-canon test
-   inputs are ASCII-clean for the lexical forms we care about. *)
+(* N-Triples character escaping: backslash, quote, LF, CR, TAB. Canonical
+   N-Quads keeps non-ASCII as raw UTF-8 (no \uXXXX escaping) per
+   RDFC-1.0. The pass-through arm must use string_of_list, not
+   string_of_char: the extracted string_of_char realisation is
+   byte-oriented (Char.chr) and CRASHES for codepoints above 255 while
+   silently emitting Latin-1 mojibake for 128-255, whereas
+   string_of_list UTF-8-encodes the codepoint. Found 2026-07-04 via the
+   JSON-LD scalars/escapes fixture; the rdf-canon suite inputs are
+   ASCII-clean so the dashboard never saw it. *)
 let escape_lit_char (c : FStar.Char.char) : string =
   let n = FStar.Char.int_of_char c in
   if n = 0x5C then "\\\\"        // backslash
@@ -49,7 +55,7 @@ let escape_lit_char (c : FStar.Char.char) : string =
   else if n = 0x0A then "\\n"
   else if n = 0x0D then "\\r"
   else if n = 0x09 then "\\t"
-  else FStar.String.string_of_char c
+  else FStar.String.string_of_list [c]
 
 let rec escape_lit_acc (s : string) (pos : nat) (fuel : nat) (acc : string)
   : Tot string (decreases fuel) =

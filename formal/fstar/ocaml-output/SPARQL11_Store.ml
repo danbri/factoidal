@@ -6,7 +6,7 @@ type graph_backend =
   | GB_COTTAS of Parser_BallyhooCOTTAS.cottas_dataset_store *
   RDF_Graph_Executable.iri FStar_Pervasives_Native.option 
   | GB_CottasOnDisk of RDF_CottasStore.cottas_ondisk_store *
-  RDF_Graph_Executable.iri FStar_Pervasives_Native.option 
+  RDF_CottasStore.cottas_ondisk_graph_scope 
   | GB_Union of graph_backend Prims.list 
 let uu___is_GB_List (projectee : graph_backend) : Prims.bool=
   match projectee with | GB_List _0 -> true | uu___ -> false
@@ -35,7 +35,7 @@ let __proj__GB_CottasOnDisk__item___0 (projectee : graph_backend) :
   RDF_CottasStore.cottas_ondisk_store=
   match projectee with | GB_CottasOnDisk (_0, _1) -> _0
 let __proj__GB_CottasOnDisk__item___1 (projectee : graph_backend) :
-  RDF_Graph_Executable.iri FStar_Pervasives_Native.option=
+  RDF_CottasStore.cottas_ondisk_graph_scope=
   match projectee with | GB_CottasOnDisk (_0, _1) -> _1
 let uu___is_GB_Union (projectee : graph_backend) : Prims.bool=
   match projectee with | GB_Union _0 -> true | uu___ -> false
@@ -79,7 +79,7 @@ let indexed_dataset_backend (ds : RDF_Graph_Executable.rdf_dataset) :
 let cottas_ondisk_dataset_backend
   (cods : RDF_CottasStore.cottas_ondisk_store) : dataset_backend=
   {
-    dsb_default = (GB_CottasOnDisk (cods, FStar_Pervasives_Native.None));
+    dsb_default = (GB_CottasOnDisk (cods, RDF_CottasStore.COS_DefaultOnly));
     dsb_named =
       (FStar_List_Tot_Base.map
          (fun g ->
@@ -90,7 +90,7 @@ let cottas_ondisk_dataset_backend
                   ngb_name = gname;
                   ngb_graph =
                     (GB_CottasOnDisk
-                       (cods, (FStar_Pervasives_Native.Some gname)))
+                       (cods, (RDF_CottasStore.COS_NamedGraph gname)))
                 }) (RDF_CottasStore.cottas_ondisk_named_graphs cods))
   }
 let rec union_backend_search_acc (members : graph_backend Prims.list)
@@ -121,10 +121,10 @@ and backend_search (gb : graph_backend)
              b.SPARQL11_Algebra.bo graph_name) in
       FStar_List_Tot_Base.map FStar_Pervasives_Native.fst
         (Parser_BallyhooCOTTAS.cottas_rows_to_quads cds rows)
-  | GB_CottasOnDisk (cods, graph_name) ->
+  | GB_CottasOnDisk (cods, scope) ->
       (match RDF_CottasStore.cottas_ondisk_build_bound_qp_opt cods
                b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
-               b.SPARQL11_Algebra.bo graph_name
+               b.SPARQL11_Algebra.bo scope
        with
        | FStar_Pervasives_Native.None -> []
        | FStar_Pervasives_Native.Some bound ->
@@ -162,10 +162,10 @@ and backend_search_limited (gb : graph_backend)
   (b : SPARQL11_Algebra.triple_pattern_bound) (limit : Prims.nat) :
   RDF_Graph_Executable.triple Prims.list=
   match gb with
-  | GB_CottasOnDisk (cods, graph_name) ->
+  | GB_CottasOnDisk (cods, scope) ->
       (match RDF_CottasStore.cottas_ondisk_build_bound_qp_opt cods
                b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
-               b.SPARQL11_Algebra.bo graph_name
+               b.SPARQL11_Algebra.bo scope
        with
        | FStar_Pervasives_Native.None -> []
        | FStar_Pervasives_Native.Some bound ->
@@ -201,10 +201,10 @@ and backend_estimate (gb : graph_backend)
         (Parser_BallyhooCOTTAS.cottas_build_bound_qp cds
            b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp b.SPARQL11_Algebra.bo
            graph_name)
-  | GB_CottasOnDisk (cods, graph_name) ->
+  | GB_CottasOnDisk (cods, scope) ->
       (match RDF_CottasStore.cottas_ondisk_build_bound_qp_opt cods
                b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
-               b.SPARQL11_Algebra.bo graph_name
+               b.SPARQL11_Algebra.bo scope
        with
        | FStar_Pervasives_Native.None -> Prims.int_zero
        | FStar_Pervasives_Native.Some bound ->
@@ -219,10 +219,10 @@ let rec union_backend_count_exact (members : graph_backend Prims.list)
 and backend_count_exact (gb : graph_backend)
   (b : SPARQL11_Algebra.triple_pattern_bound) : Prims.nat=
   match gb with
-  | GB_CottasOnDisk (cods, graph_name) ->
+  | GB_CottasOnDisk (cods, scope) ->
       (match RDF_CottasStore.cottas_ondisk_build_bound_qp_opt cods
                b.SPARQL11_Algebra.bs b.SPARQL11_Algebra.bp
-               b.SPARQL11_Algebra.bo graph_name
+               b.SPARQL11_Algebra.bo scope
        with
        | FStar_Pervasives_Native.None -> Prims.int_zero
        | FStar_Pervasives_Native.Some bound ->
@@ -725,7 +725,82 @@ let rec eval_pattern_backend
       (match eval_select_query_backend_on_graph q gb dsb with
        | FStar_Pervasives_Native.Some omega -> omega
        | FStar_Pervasives_Native.None -> [])
-  | SPARQL11_Algebra.GP_PropertyPath (uu___, uu___1, uu___2) -> []
+  | SPARQL11_Algebra.GP_PropertyPath (ps, pp, pt) ->
+      let materialized_graph =
+        backend_search gb
+          {
+            SPARQL11_Algebra.bs = FStar_Pervasives_Native.None;
+            SPARQL11_Algebra.bp = FStar_Pervasives_Native.None;
+            SPARQL11_Algebra.bo = FStar_Pervasives_Native.None
+          } in
+      let pairs =
+        SPARQL11_Algebra.eval_property_path_fwd pp materialized_graph in
+      let pairs1 =
+        match pp with
+        | SPARQL11_Algebra.PP_ZeroOrMore uu___ ->
+            let constant_terms =
+              RDF_List_Helpers.append_tr
+                (match ps with
+                 | SPARQL11_Algebra.PS_IRI i ->
+                     [RDF_Graph_Executable.T_IRI i]
+                 | SPARQL11_Algebra.PS_BNode b ->
+                     [RDF_Graph_Executable.T_BNode b]
+                 | SPARQL11_Algebra.PS_Var uu___1 -> [])
+                (match pt with
+                 | SPARQL11_Algebra.PT_IRI i ->
+                     [RDF_Graph_Executable.T_IRI i]
+                 | SPARQL11_Algebra.PT_BNode b ->
+                     [RDF_Graph_Executable.T_BNode b]
+                 | SPARQL11_Algebra.PT_Literal l ->
+                     [RDF_Graph_Executable.T_Literal l]
+                 | SPARQL11_Algebra.PT_Var uu___1 -> []) in
+            let has_reflexive t =
+              FStar_List_Tot_Base.existsb
+                (fun pair ->
+                   let uu___1 = pair in
+                   match uu___1 with
+                   | (s, o) ->
+                       (RDF_Graph_Executable.rdf_term_eq s t) &&
+                         (RDF_Graph_Executable.rdf_term_eq o t)) pairs in
+            let new_terms =
+              FStar_List_Tot_Base.filter
+                (fun t -> Prims.op_Negation (has_reflexive t)) constant_terms in
+            let new_reflexive =
+              FStar_List_Tot_Base.map (fun n -> (n, n)) new_terms in
+            RDF_List_Helpers.append_tr pairs new_reflexive
+        | SPARQL11_Algebra.PP_ZeroOrOne uu___ ->
+            let constant_terms =
+              RDF_List_Helpers.append_tr
+                (match ps with
+                 | SPARQL11_Algebra.PS_IRI i ->
+                     [RDF_Graph_Executable.T_IRI i]
+                 | SPARQL11_Algebra.PS_BNode b ->
+                     [RDF_Graph_Executable.T_BNode b]
+                 | SPARQL11_Algebra.PS_Var uu___1 -> [])
+                (match pt with
+                 | SPARQL11_Algebra.PT_IRI i ->
+                     [RDF_Graph_Executable.T_IRI i]
+                 | SPARQL11_Algebra.PT_BNode b ->
+                     [RDF_Graph_Executable.T_BNode b]
+                 | SPARQL11_Algebra.PT_Literal l ->
+                     [RDF_Graph_Executable.T_Literal l]
+                 | SPARQL11_Algebra.PT_Var uu___1 -> []) in
+            let has_reflexive t =
+              FStar_List_Tot_Base.existsb
+                (fun pair ->
+                   let uu___1 = pair in
+                   match uu___1 with
+                   | (s, o) ->
+                       (RDF_Graph_Executable.rdf_term_eq s t) &&
+                         (RDF_Graph_Executable.rdf_term_eq o t)) pairs in
+            let new_terms =
+              FStar_List_Tot_Base.filter
+                (fun t -> Prims.op_Negation (has_reflexive t)) constant_terms in
+            let new_reflexive =
+              FStar_List_Tot_Base.map (fun n -> (n, n)) new_terms in
+            RDF_List_Helpers.append_tr pairs new_reflexive
+        | uu___ -> pairs in
+      SPARQL11_Algebra.path_result_to_solutions ps pt pairs1
 and eval_select_query_backend_bgp (q : SPARQL11_Algebra.query)
   (gb : graph_backend) :
   SPARQL11_Algebra.solution_sequence FStar_Pervasives_Native.option=

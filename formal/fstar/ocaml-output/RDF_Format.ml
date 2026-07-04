@@ -5,6 +5,7 @@ type rdf_format =
   | NQuads 
   | TriG 
   | RDFXML 
+  | JSONLD 
 let uu___is_NT (projectee : rdf_format) : Prims.bool=
   match projectee with | NT -> true | uu___ -> false
 let uu___is_Turtle (projectee : rdf_format) : Prims.bool=
@@ -15,6 +16,8 @@ let uu___is_TriG (projectee : rdf_format) : Prims.bool=
   match projectee with | TriG -> true | uu___ -> false
 let uu___is_RDFXML (projectee : rdf_format) : Prims.bool=
   match projectee with | RDFXML -> true | uu___ -> false
+let uu___is_JSONLD (projectee : rdf_format) : Prims.bool=
+  match projectee with | JSONLD -> true | uu___ -> false
 let rdf_format_default : rdf_format= Turtle
 let format_of_extension (ext : Prims.string) :
   rdf_format FStar_Pervasives_Native.option=
@@ -51,7 +54,13 @@ let format_of_extension (ext : Prims.string) :
                     else
                       if lo = ".owl"
                       then FStar_Pervasives_Native.Some RDFXML
-                      else FStar_Pervasives_Native.None
+                      else
+                        if lo = ".jsonld"
+                        then FStar_Pervasives_Native.Some JSONLD
+                        else
+                          if lo = ".json-ld"
+                          then FStar_Pervasives_Native.Some JSONLD
+                          else FStar_Pervasives_Native.None
 let format_of_string (s : Prims.string) :
   rdf_format FStar_Pervasives_Native.option=
   let lo = FStar_String.lowercase s in
@@ -93,7 +102,16 @@ let format_of_string (s : Prims.string) :
                         else
                           if lo = "xml"
                           then FStar_Pervasives_Native.Some RDFXML
-                          else FStar_Pervasives_Native.None
+                          else
+                            if lo = "jsonld"
+                            then FStar_Pervasives_Native.Some JSONLD
+                            else
+                              if lo = "json-ld"
+                              then FStar_Pervasives_Native.Some JSONLD
+                              else
+                                if lo = "application/ld+json"
+                                then FStar_Pervasives_Native.Some JSONLD
+                                else FStar_Pervasives_Native.None
 let format_name (f : rdf_format) : Prims.string=
   match f with
   | NT -> "N-Triples"
@@ -101,6 +119,7 @@ let format_name (f : rdf_format) : Prims.string=
   | NQuads -> "N-Quads"
   | TriG -> "TriG"
   | RDFXML -> "RDF/XML"
+  | JSONLD -> "JSON-LD (expanded form)"
 let detect_format_or_default (extension : Prims.string) : rdf_format=
   match format_of_extension extension with
   | FStar_Pervasives_Native.Some f -> f

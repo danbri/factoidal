@@ -23,8 +23,14 @@ const path = require('node:path');
 
 const PKG_ROOT = path.resolve(__dirname, '..');
 
-const IIFE_MARKER = ';($=>async ';
-const IIFE_REWRITE = ';globalThis.__fwPromise=($=>async ';
+// The bundle's entry is an immediately-invoked async factory:
+//   ;(<param>=>async <arg>=>{...})(...)
+// wasm_of_ocaml minifies <param> differently across versions ('$' in
+// 6.x releases before mid-2026, 'ag' in 6.4.1), so match the shape,
+// not a fixed name, and splice in the __fwPromise capture after the
+// leading ';'.
+const IIFE_RE = /;\((\$|[A-Za-z_$][\w$]*)=>async /;
+const IIFE_CAPTURE = ';globalThis.__fwPromise=';
 
 function bundleCandidates() {
   const c = [];
@@ -65,14 +71,16 @@ function loadSource() {
   const p = resolveBundlePath();
   if (_src !== null && _srcPath === p) return _src;
   const raw = fs.readFileSync(p, 'utf8');
-  const ix = raw.indexOf(IIFE_MARKER);
-  if (ix < 0) {
+  const m = IIFE_RE.exec(raw);
+  if (!m) {
     throw new Error(
       'engine-wasm: could not locate the async IIFE marker in ' +
       'factoidal.wasm.js — the bundle shape may have changed.'
     );
   }
-  _src = raw.slice(0, ix) + IIFE_REWRITE + raw.slice(ix + IIFE_MARKER.length);
+  // Keep everything, but capture the invoked IIFE's promise:
+  // ';(' → ';globalThis.__fwPromise=('
+  _src = raw.slice(0, m.index) + IIFE_CAPTURE + raw.slice(m.index + 1);
   _srcPath = p;
   _assetsDir = path.join(path.dirname(p), 'factoidal.wasm.assets');
   return _src;

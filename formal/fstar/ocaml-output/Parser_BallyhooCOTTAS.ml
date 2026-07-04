@@ -122,12 +122,24 @@ let __proj__Mkcottas_artifact_summary__item__cas_row_groups
 type cottas_handle = unit
 type cottas_term_ref = Prims.nat
 type cottas_graph_ref = Prims.nat
+type cottas_graph_bound =
+  | CGB_Unbound 
+  | CGB_Default 
+  | CGB_Named of cottas_graph_ref 
+let uu___is_CGB_Unbound (projectee : cottas_graph_bound) : Prims.bool=
+  match projectee with | CGB_Unbound -> true | uu___ -> false
+let uu___is_CGB_Default (projectee : cottas_graph_bound) : Prims.bool=
+  match projectee with | CGB_Default -> true | uu___ -> false
+let uu___is_CGB_Named (projectee : cottas_graph_bound) : Prims.bool=
+  match projectee with | CGB_Named _0 -> true | uu___ -> false
+let __proj__CGB_Named__item___0 (projectee : cottas_graph_bound) :
+  cottas_graph_ref= match projectee with | CGB_Named _0 -> _0
 type cottas_bound_qp =
   {
   cbqp_s: cottas_term_ref FStar_Pervasives_Native.option ;
   cbqp_p: cottas_term_ref FStar_Pervasives_Native.option ;
   cbqp_o: cottas_term_ref FStar_Pervasives_Native.option ;
-  cbqp_g: cottas_graph_ref FStar_Pervasives_Native.option }
+  cbqp_g: cottas_graph_bound }
 let __proj__Mkcottas_bound_qp__item__cbqp_s (projectee : cottas_bound_qp) :
   cottas_term_ref FStar_Pervasives_Native.option=
   match projectee with | { cbqp_s; cbqp_p; cbqp_o; cbqp_g;_} -> cbqp_s
@@ -138,7 +150,7 @@ let __proj__Mkcottas_bound_qp__item__cbqp_o (projectee : cottas_bound_qp) :
   cottas_term_ref FStar_Pervasives_Native.option=
   match projectee with | { cbqp_s; cbqp_p; cbqp_o; cbqp_g;_} -> cbqp_o
 let __proj__Mkcottas_bound_qp__item__cbqp_g (projectee : cottas_bound_qp) :
-  cottas_graph_ref FStar_Pervasives_Native.option=
+  cottas_graph_bound=
   match projectee with | { cbqp_s; cbqp_p; cbqp_o; cbqp_g;_} -> cbqp_g
 type cottas_qp_row =
   {
@@ -531,11 +543,16 @@ module Ballyhoo_cottas_runtime = struct
       match expected with
       | FStar_Pervasives_Native.None -> true
       | FStar_Pervasives_Native.Some e -> Z.equal e actual in
+    (* issue #267: cbqp_g is the 3-way cottas_graph_bound. In the cache
+       rows, qr_g = None is a default-graph row (the DEFAULT sentinel),
+       Some id a named-graph row. *)
     let match_graph expected actual =
       match expected, actual with
-      | FStar_Pervasives_Native.None, _ -> true
-      | FStar_Pervasives_Native.Some e, Some a -> Z.equal e a
-      | FStar_Pervasives_Native.Some _, None -> false in
+      | CGB_Unbound, _ -> true
+      | CGB_Default, None -> true
+      | CGB_Default, Some _ -> false
+      | CGB_Named e, Some a -> Z.equal e a
+      | CGB_Named _, None -> false in
     List.fold_right (fun row acc ->
       if match_opt bound.cbqp_s row.qr_s &&
          match_opt bound.cbqp_p row.qr_p &&
@@ -648,7 +665,7 @@ let cottas_predicate_present_in_graph (ng : cottas_named_graph_store)
       cbqp_s = FStar_Pervasives_Native.None;
       cbqp_p = FStar_Pervasives_Native.Some pred_ref;
       cbqp_o = FStar_Pervasives_Native.None;
-      cbqp_g = FStar_Pervasives_Native.Some ng.cngs_ref;
+      cbqp_g = CGB_Named ng.cngs_ref;
     } > Prims.int_zero
 
 let cottas_graph_candidates_for_predicate (ds : cottas_dataset_store)
@@ -678,8 +695,11 @@ let cottas_build_bound_qp (ds : cottas_dataset_store)
        | FStar_Pervasives_Native.Some ov -> cottas_encode_object ds ov);
     cbqp_g =
       (match g with
-       | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-       | FStar_Pervasives_Native.Some gv -> cottas_encode_graph_name ds gv)
+       | FStar_Pervasives_Native.None -> CGB_Unbound
+       | FStar_Pervasives_Native.Some gv ->
+           (match cottas_encode_graph_name ds gv with
+            | FStar_Pervasives_Native.None -> CGB_Unbound
+            | FStar_Pervasives_Native.Some r -> CGB_Named r))
   }
 let cottas_row_to_quad (ds : cottas_dataset_store) (row : cottas_qp_row) :
   (RDF_Graph_Executable.triple * RDF_Graph_Executable.iri

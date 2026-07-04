@@ -45,7 +45,11 @@ let escape_char (c : FStar.Char.char) : Tot string =
   else if n = 0x0A then "\\n"
   else if n = 0x0D then "\\r"
   else if n = 0x09 then "\\t"
-  else S.string_of_char c
+  // string_of_list, NOT string_of_char: the extracted string_of_char
+  // is byte-oriented (Char.chr) — crashes for codepoints above 255,
+  // mojibake for 128-255. string_of_list UTF-8-encodes. Same bug and
+  // fix as RDF.Canonical.escape_lit_char (2026-07-04).
+  else S.string_of_list [c]
 
 let rec escape_chars_aux (cs : list FStar.Char.char)
   : Tot string (decreases cs) =
