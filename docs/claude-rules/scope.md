@@ -14,34 +14,46 @@ so future agents (and humans) don't burn cycles attempting them.
 - OWL DL via `OWL.QueryRewrite` rewriter for queryable fragments
   (`someValuesFrom`, `allValuesFrom`, `unionOf`, `intersectionOf`,
   cardinality CEs) — best-effort, not full DL classification.
+- RIF Core — the frame/BGP-shaped rule-body subset exercised by the
+  4 vendored W3C RIF test cases (see below), verified in
+  `RIF.Core.Syntax.fst` / `RIF.Core.Translation.fst` /
+  `RIF.Core.Eval.fst` + `Parser.RIFXML.fst`, driven end-to-end by
+  `bin/rif-runner/rif_runner.ml`.
 
 ## Out of scope — not planned
 
-### RIF Core (Rule Interchange Format) — **NOT PLANNED**
+### RIF Core (Rule Interchange Format) — supported subset only
 
-RIF Core is a **separate production-rule language** layered on RDF, not
-an entailment regime that fits into a verified SPARQL/OWL-RL closure
-loop. Implementing it would require a complete second rule engine and
-verification effort that is unrelated to the project's
-verified-RDF/SPARQL goal.
+RIF Core is a full production-rule language; factoidal implements only
+the fragment the 4 vendored W3C RIF test cases exercise: `Forall` /
+`Frame` / `And` / `Implies` rule bodies translated to SPARQL BGPs
+(`RIF.Core.Translation.fst`), forward-chaining fixpoint saturation
+(`RIF.Core.Eval.fst`), and single `<Import>` companion-graph
+resolution (with OWL-Direct closure applied first when the import's
+own `<profile>` declares it — see `bin/rif-runner/rif_runner.ml`'s
+`apply_import_closure`). General RIF-BLD (built-ins, list terms,
+`External` function calls) and RIF-PRD (production rules, actions,
+retraction) are **not implemented** and not planned.
 
 **Concretely:** the 4 RIF tests under
 `third_party/testing/w3c/sparql/sparql11/entailment/` (manifest IRIs
 `:rif01 :rif03 :rif04 :rif06`, all tagged `sd:entailmentRegime ent:RIF`)
-are **permanent SKIPs**. They are:
+now PASS, measured via `bin/rif-runner/rif_runner.ml` (4 pass, 0 fail
+out of 4, 2026-07-04):
 
 - `:rif01` — RIF Logical Entailment (referencing RIF XML).
 - `:rif03` — RIF Core WG tests: Frames.
-- `:rif04` — RIF Core WG tests: Modeling Brain Anatomy.
+- `:rif04` — RIF Core WG tests: Modeling Brain Anatomy (the imported
+  ontology needs OWL-Direct closure — `owl_rl_closure_with_reflexivity`
+  + `Tableau.tableau_materialise` — before the rule body's
+  `rdf:type MaterialAnatomicalEntity` check matches individuals the
+  ontology only asserts via `rdf:type Gyrus` + `rdfs:subClassOf`).
 - `:rif06` — RIF Core WG tests: RDF Combination Blank Node.
 
-These will never PASS in factoidal as long as the project scope remains
-"verified RDF/SPARQL with built-in RDFS + OWL-RL entailment." If that
-ever changes, this doc gets updated and the SKIPs become fails-to-fix.
-
-The runner should report them as `skipped` (not `fail`) so the
-entailment scoreboard reflects reality. Score lines that count RIF as
-fails are misleading.
+Any RIF document whose rule bodies or imports fall outside the
+frame/BGP + single-`<Import>` shape above is out of scope; a runner
+encountering one should report an honest FAIL/SKIP with a diagnosis,
+not force a PASS.
 
 ### Full OWL DL tableau classifier
 

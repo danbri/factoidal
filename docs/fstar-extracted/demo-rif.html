@@ -40,7 +40,11 @@
   }
   button.run:hover:not(:disabled) { background: var(--brand-dark); }
   button.run:disabled { background: #aaa; cursor: not-allowed; }
+  button.secondary { background: var(--accent); }
+  button.secondary:hover:not(:disabled) { background: #123a6b; }
   .status { color: var(--muted); font-size: 0.85em; margin-left: auto; }
+  .status.live { color: var(--ok); }
+  .status.fallback { color: var(--error); }
   .editor { margin-bottom: 1em; }
   .editor label {
     display: block; font-size: 0.82em; color: var(--muted);
@@ -83,6 +87,11 @@
     margin-right: 0.3em; border: 1px solid var(--border);
   }
   .legend .swatch.derived { background: #f0fff4; }
+  .err-box {
+    background: #fdecea; border-left: 3px solid var(--error);
+    padding: 0.6em 0.8em; font-size: 0.85em; margin: 0.8em 0;
+    white-space: pre-wrap; word-break: break-word;
+  }
   footer { text-align: center; color: var(--muted); font-size: 0.85em; padding: 2em 1em; }
   code { background: var(--surface); padding: 0.1em 0.3em; border-radius: 3px; }
   ul.notes { font-size: 0.92em; color: var(--muted); }
@@ -94,20 +103,11 @@
 <header>
   <h1>Factoidal — RIF Core forward-chaining demo</h1>
   <div class="tag">
-    A small Horn-clause rule engine, F*-verified. The page runs the
-    smoke-test program from <code>RIF.Core.Eval.fst</code> and shows
-    the saturated graph.
+    A small Horn-clause rule engine, F*-verified, running <strong>live
+    in your browser</strong> — no build-time canned output.
   </div>
-  <div class="warn">
-    Phase 2 milestone — see the
-    <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-05-07-rif-fstar-investigation.md">RIF
-    investigation note</a> and PR
-    <a href="https://github.com/danbri/factoidal/pull/220">#220</a>
-    (fuel-bounded fixpoint). Phase 3 (RIF/XML parser) is pending —
-    you cannot yet paste an arbitrary <code>.rif</code> document.
-    Until a JS bridge for <code>RIF_Core_Eval.fixpoint</code> lands,
-    this page renders the saturated graph computed at bundle init
-    from the in-source smoke program.
+  <div class="warn" id="capability-warn">
+    Loading engine…
   </div>
 </header>
 
@@ -129,113 +129,136 @@
     once against the current graph; a fuel parameter caps the number
     of rounds. The saturation lemma
     (<code>lemma_fixpoint_extends</code>) is proved: forward chaining
-    never removes a triple. Termination on this demo is by exhaustion
-    of new productions (4 rounds for the smoke program below) rather
-    than fuel cutoff.
+    never removes a triple.
   </p>
   <p>
     What the engine is not: full RIF (no Core-Plus dialects, no
     BLD / PRD, no built-ins beyond term equality, no
-    skolemisation). The body translator delegates to
-    <code>SPARQL11.Algebra.eval_bgp</code>, so rule bodies are
-    evaluated as basic graph patterns; this matches the standard
-    operational reading of RIF Core under simple entailment.
+    skolemisation, no <code>&lt;Import&gt;</code> resolution). The body
+    translator delegates to <code>SPARQL11.Algebra.eval_bgp</code>, so
+    rule bodies are evaluated as basic graph patterns; this matches the
+    standard operational reading of RIF Core under simple entailment.
   </p>
 </section>
 
 <section>
-  <h2>Input graph</h2>
-  <div class="editor">
-    <label>RDF triples (Turtle-style, read-only)</label>
-    <pre class="block" id="input-graph">@prefix ex:   &lt;ex:&gt; .
-@prefix rdf:  &lt;http://www.w3.org/1999/02/22-rdf-syntax-ns#&gt; .
-@prefix rdfs: &lt;http://www.w3.org/2000/01/rdf-schema#&gt; .
-
-ex:alice   rdf:type        ex:Student .
-ex:Student rdfs:subClassOf ex:Person  .
-ex:Person  rdfs:subClassOf ex:Agent   .</pre>
-  </div>
-
-  <h2>RIF Core program</h2>
-  <div class="editor">
-    <label>Two rules (read-only)</label>
-    <pre class="block" id="program">// Rule 1: subClassOf transitivity
-Forall ?x ?y ?z (
-  ?x rdfs:subClassOf ?z :-
-    And ( ?x rdfs:subClassOf ?y
-          ?y rdfs:subClassOf ?z )
-)
-
-// Rule 2: rdf:type propagation up the class hierarchy
-Forall ?o ?c ?d (
-  ?o # ?d :-
-    And ( ?o # ?c
-          ?c rdfs:subClassOf ?d )
-)</pre>
-  </div>
-
+  <h2>Smoke test: RIF.Core.Eval.fst's own program</h2>
+  <p style="color: var(--muted); font-size: 0.9em;">
+    This runs the exact <code>smoke_input_graph</code> /
+    <code>smoke_program</code> baked into <code>RIF.Core.Eval.fst</code>,
+    saturated live via <code>RIF_Core_Eval.fixpoint</code> in the
+    js_of_ocaml bundle — the same F* function the module's own
+    <code>assert_norm</code> checks exercise at compile time, called
+    fresh in your browser. No user input; a fixed capability probe.
+  </p>
   <div class="controls">
-    <button class="run" id="run">Run inference</button>
-    <button class="run" id="run-live" disabled style="background:#888;">Live re-run (bundle bridge pending)</button>
-    <span class="status" id="status">Ready (static smoke output).</span>
+    <button class="run" id="run-smoke">Run smoke inference</button>
+    <span class="status" id="smoke-status">Ready.</span>
   </div>
-</section>
-
-<section>
-  <h2>Saturated graph</h2>
-  <table class="triples" id="output-table" hidden>
+  <div id="smoke-error"></div>
+  <table class="triples" id="smoke-table" hidden>
     <thead><tr><th>Subject</th><th>Predicate</th><th>Object</th></tr></thead>
-    <tbody id="output-body"></tbody>
+    <tbody id="smoke-body"></tbody>
   </table>
-  <p class="legend" id="legend" hidden>
+  <p class="legend" id="smoke-legend" hidden>
     <span class="swatch derived"></span>
     Green rows are derived by forward chaining from the input.
-    <span id="row-summary"></span>
+    <span id="smoke-summary"></span>
   </p>
-  <div id="placeholder" class="legend">
-    Click <strong>Run inference</strong> to render the saturated graph.
+</section>
+
+<section>
+  <h2>Try your own RIF program</h2>
+  <p style="color: var(--muted); font-size: 0.9em;">
+    Edit the RIF-XML rules and the Turtle premise data below, then run
+    inference. The Turtle is parsed to N-Quads by the engine's own
+    Turtle parser (<code>Parser.Turtle.fst</code>, via the
+    <code>parseToDatasetJson</code> ABI export already used by the
+    SPARQL demos); the RIF-XML is parsed by
+    <code>Parser.RIFXML.fst</code>; saturation is
+    <code>RIF_Core_Eval.fixpoint</code> — the same live call the smoke
+    test above makes, just with your program and data instead of the
+    fixed one.
+  </p>
+  <div class="grid2">
+    <div class="editor">
+      <label for="rif-xml-input">RIF-XML rules</label>
+      <textarea id="rif-xml-input" spellcheck="false"></textarea>
+    </div>
+    <div class="editor">
+      <label for="rif-data-input">RDF premise data (Turtle)</label>
+      <textarea id="rif-data-input" spellcheck="false"></textarea>
+    </div>
   </div>
+  <div class="controls">
+    <button class="run secondary" id="run-custom">Run custom inference</button>
+    <button class="run secondary" id="reset-custom" style="background:#888;">Reset to sample</button>
+    <span class="status" id="custom-status">Ready.</span>
+  </div>
+  <div id="custom-error"></div>
+  <table class="triples" id="custom-table" hidden>
+    <thead><tr><th>Subject</th><th>Predicate</th><th>Object</th></tr></thead>
+    <tbody id="custom-body"></tbody>
+  </table>
+  <p class="legend" id="custom-legend" hidden>
+    <span class="swatch derived"></span>
+    Green rows are derived by forward chaining from the input.
+    <span id="custom-summary"></span>
+  </p>
 </section>
 
 <section>
   <h2>What's actually running</h2>
   <ul class="notes">
     <li>
-      The triples and rules above are encoded in
-      <code>RIF.Core.Eval.fst</code> as
-      <code>smoke_input_graph</code> and <code>smoke_program</code>;
-      the saturation result <code>smoke_saturated</code> is computed
-      at module-init when the JS bundle (<code>factoidal.js</code>)
-      loads. The static button reads pre-canned output from the F*
-      source; it stays in sync because the smoke values themselves
-      are <code>assert_norm</code>-checked at compile time.
+      <code>bin/npm-entry/entry_jsoo.ml</code> exports
+      <code>factoidalNpmEntry.rifSmoke()</code> and
+      <code>factoidalNpmEntry.rifEval(rifXml, dataNQuads)</code>. Both
+      call <code>RIF_Core_Eval.fixpoint</code> directly (fuel 8 for the
+      smoke program, fuel 100 for custom programs); <code>rifEval</code>
+      additionally calls <code>Parser_RIFXML.parse_rif_program</code>
+      to turn the RIF-XML text into a <code>rif_program</code> first.
+      Neither export re-implements any RIF/SPARQL semantics — they are
+      thin string/JSON glue around F*-extracted functions, per rule #11.
     </li>
     <li>
-      <code>RIF_Core_Eval</code> joined the js_of_ocaml link line in
-      this commit. Until <code>Js_of_ocaml.Js.export</code> bindings
-      are wired up (a small <code>factoidal_rif_jsoo.ml</code> shim),
-      JS code cannot construct fresh graphs and call
-      <code>fixpoint</code> directly. The "Live re-run" button is
-      pre-disabled and feature-gates that follow-on work.
+      This page loads <code>factoidal-npm-entry.js</code> (built from
+      that OCaml file by <code>js_of_ocaml</code>) through
+      <code>npm/factoidal/browser.js</code>'s <code>loadNpmEntry()</code>
+      — the same Pages-mirrored npm package
+      (<code>docs/npm/foafos/</code>) the
+      <a href="demo-jsonld-playground.html">JSON-LD playground</a>
+      loads its bundle from.
     </li>
     <li>
       Body atoms are translated to SPARQL BGPs via
       <code>RIF.Core.Translation</code>; bindings come from
-      <code>SPARQL11.Algebra.eval_bgp</code>. Same evaluator the
-      regular SPARQL demos use. No separate Datalog implementation.
+      <code>SPARQL11.Algebra.eval_bgp</code> inside
+      <code>RIF_Core_Eval.fire_rule</code>. Same evaluator the regular
+      SPARQL demos use. No separate Datalog implementation.
     </li>
     <li>
       Termination is fuel-bounded
       (<code>fixpoint : rdf_graph -&gt; rif_program -&gt; nat -&gt; rdf_graph</code>).
-      Convergence ends the loop early when a round produces no new
-      triple. Fuel <code>= 8</code> in the smoke run; actual rounds
-      to fixpoint <code>= 4</code>.
+      The "rounds" figure in the status line is measured by driving
+      <code>RIF_Core_Eval.one_round</code> — the same primitive
+      <code>fixpoint</code> composes internally — until it reports no
+      change; it is orchestration telemetry, not a separate
+      implementation of the saturation logic.
     </li>
     <li>
       Saturation lemma:
       <code>lemma_fixpoint_extends g p fuel</code>
       establishes <code>graph_subset g (fixpoint g p fuel)</code>.
       Forward chaining is monotone over set-semantics graphs.
+    </li>
+    <li>
+      If the bundle at <code>docs/fstar-extracted/factoidal-npm-entry.js</code>
+      predates the RIF exports (or fails to load), this page falls
+      back to a static, clearly-labelled canned rendering of the smoke
+      result and disables the custom-program panel — the same
+      honest-failure discipline the JSON-LD playground uses for
+      unsupported inputs.
     </li>
   </ul>
 </section>
@@ -250,92 +273,216 @@ Forall ?o ?c ?d (
     The RIF Core engine itself is pure F* with no <code>assume val</code>
     holes.
   </p>
+  <p style="color: var(--muted); font-size: 0.9em;">
+    RIF Core is scoped out of the entailment-regime test suite (see
+    <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/claude-rules/scope.md">docs/claude-rules/scope.md</a>):
+    the four W3C SPARQL 1.1 <code>ent:RIF</code> tests
+    (<code>rif01</code>, <code>rif03</code>, <code>rif04</code>,
+    <code>rif06</code>) are permanent SKIPs, not fails, because RIF
+    Core is "a separate production-rule language layered on RDF, not
+    an entailment regime that fits into a verified SPARQL/OWL-RL
+    closure loop." This demo exists to show the engine works, not to
+    claim those tests pass.
+  </p>
 </section>
 
 </main>
 
 <footer>
   Built from <a href="https://github.com/danbri/factoidal">github.com/danbri/factoidal</a>.
-  RIF Core engine: <code>formal/fstar/RIF.Core.{Syntax,Translation,Eval}.fst</code>.
+  RIF Core engine: <code>formal/fstar/RIF.Core.{Syntax,Translation,Eval}.fst</code>,
+  <code>formal/fstar/Parser.RIFXML.fst</code>.
 </footer>
 
-<script>
-(function () {
-  'use strict';
+<script type="module">
+import { rifSmoke, rifEval, loadNpmEntry } from '../npm/foafos/browser.js';
+import { SAMPLE_RIF_XML, SAMPLE_DATA_TTL, buildRifDemo, diffSaturatedRows }
+  from './rif-demo-client.mjs';
 
-  var $ = function (id) { return document.getElementById(id); };
-  var runBtn   = $('run');
-  var statusEl = $('status');
-  var tableEl  = $('output-table');
-  var bodyEl   = $('output-body');
-  var legendEl = $('legend');
-  var placeholderEl = $('placeholder');
-  var rowSummaryEl  = $('row-summary');
+const $ = (id) => document.getElementById(id);
 
-  // -------------------------------------------------------------------
-  // Pre-canned smoke output. Mirrors RIF.Core.Eval.smoke_saturated up
-  // to fire-order. The triples are listed in the order the F* engine
-  // actually appends them, given the rule ordering
-  //   [rule_subclassof_trans; rule_type_prop]
-  // and the per-binding append behaviour in fire_head_per_bindings.
-  // The original three are kept in their input order; new triples
-  // are appended in the order they are derived.
-  //
-  // Round 1 (subclassof_trans):
-  //   Student <= Person, Person <= Agent  =>  Student <= Agent
-  // Round 1 (type_prop):
-  //   alice # Student, Student <= Person  =>  alice # Person
-  //   alice # Student, Student <= Agent   =>  alice # Agent
-  // Round 2..N: no further triples produced (fixpoint).
-  // -------------------------------------------------------------------
-  var INPUT_TRIPLES = [
-    { s: 'ex:alice',   p: 'rdf:type',        o: 'ex:Student', derived: false },
-    { s: 'ex:Student', p: 'rdfs:subClassOf', o: 'ex:Person',  derived: false },
-    { s: 'ex:Person',  p: 'rdfs:subClassOf', o: 'ex:Agent',   derived: false },
-  ];
+const capWarn      = $('capability-warn');
+const smokeBtn      = $('run-smoke');
+const smokeStatus   = $('smoke-status');
+const smokeErrorEl  = $('smoke-error');
+const smokeTable    = $('smoke-table');
+const smokeBody     = $('smoke-body');
+const smokeLegend   = $('smoke-legend');
+const smokeSummary  = $('smoke-summary');
 
-  var DERIVED_TRIPLES = [
-    { s: 'ex:Student', p: 'rdfs:subClassOf', o: 'ex:Agent',   derived: true },
-    { s: 'ex:alice',   p: 'rdf:type',        o: 'ex:Person',  derived: true },
-    { s: 'ex:alice',   p: 'rdf:type',        o: 'ex:Agent',   derived: true },
-  ];
+const customBtn     = $('run-custom');
+const resetBtn      = $('reset-custom');
+const customStatus  = $('custom-status');
+const customErrorEl = $('custom-error');
+const customTable   = $('custom-table');
+const customBody    = $('custom-body');
+const customLegend  = $('custom-legend');
+const customSummary = $('custom-summary');
+const rifXmlInput   = $('rif-xml-input');
+const rifDataInput  = $('rif-data-input');
 
-  function renderRow(t) {
-    var tr = document.createElement('tr');
-    if (t.derived) tr.className = 'derived';
-    var cs = document.createElement('td'); cs.className = 'iri'; cs.textContent = t.s; tr.appendChild(cs);
-    var cp = document.createElement('td'); cp.className = 'iri'; cp.textContent = t.p; tr.appendChild(cp);
-    var co = document.createElement('td'); co.className = 'iri'; co.textContent = t.o; tr.appendChild(co);
-    return tr;
+rifXmlInput.value  = SAMPLE_RIF_XML;
+rifDataInput.value = SAMPLE_DATA_TTL;
+
+resetBtn.addEventListener('click', () => {
+  rifXmlInput.value  = SAMPLE_RIF_XML;
+  rifDataInput.value = SAMPLE_DATA_TTL;
+});
+
+// Turtle -> N-Quads via the engine's own parser (Parser.Turtle.fst),
+// through the same factoidalNpmEntry.parseToDatasetJson ABI export
+// the SPARQL demos already use. No Turtle parsing logic lives here.
+async function toNQuads(turtleText) {
+  const abi = await loadNpmEntry();
+  const parsed = JSON.parse(abi.parseToDatasetJson(turtleText, 'turtle', ''));
+  if (!parsed.ok) throw new Error(parsed.error || 'Turtle parse failed');
+  return parsed.nquads;
+}
+
+const demo = buildRifDemo({ rifSmoke, rifEval, toNQuads });
+
+// ---------------------------------------------------------------------
+// Capability probe: try loading the bundle and confirm it actually
+// registers rifSmoke/rifEval. STATIC_FALLBACK_REASON stays non-null
+// only when the live path is unavailable.
+// ---------------------------------------------------------------------
+let STATIC_FALLBACK_REASON = null;
+
+async function probeCapability() {
+  try {
+    const abi = await loadNpmEntry();
+    if (typeof abi.rifSmoke !== 'function' || typeof abi.rifEval !== 'function') {
+      throw new Error(
+        'factoidal-npm-entry.js loaded but lacks rifSmoke/rifEval ' +
+        '(bundle predates the RIF exports -- rebuild with formal/fstar/build-ocaml.sh js && npm)');
+    }
+    capWarn.textContent =
+      'Live engine loaded — inference below runs RIF_Core_Eval.fixpoint fresh in your browser.';
+    capWarn.style.background = '#eafaf1';
+    capWarn.style.borderLeftColor = '#2d6a4f';
+  } catch (e) {
+    STATIC_FALLBACK_REASON = e.message || String(e);
+    capWarn.textContent =
+      'Live engine unavailable (' + STATIC_FALLBACK_REASON + '). ' +
+      'Falling back to a static, clearly-labelled canned smoke result; ' +
+      'the custom-program panel is disabled.';
+    capWarn.style.background = '#fdecea';
+    capWarn.style.borderLeftColor = '#c0392b';
+    customBtn.disabled = true;
+    rifXmlInput.disabled = true;
+    rifDataInput.disabled = true;
   }
+}
 
-  function render(triples, derivedCount, rounds) {
-    bodyEl.innerHTML = '';
-    triples.forEach(function (t) { bodyEl.appendChild(renderRow(t)); });
-    placeholderEl.hidden = true;
-    tableEl.hidden = false;
-    legendEl.hidden = false;
-    rowSummaryEl.textContent =
-      ' ' + triples.length + ' triples total (' +
-      (triples.length - derivedCount) + ' input + ' +
-      derivedCount + ' derived); ' + rounds + ' rounds to fixpoint.';
+// ---------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------
+
+function renderRow(t) {
+  const tr = document.createElement('tr');
+  if (t.derived) tr.className = 'derived';
+  for (const key of ['subject', 'predicate', 'object']) {
+    const td = document.createElement('td');
+    td.className = 'iri';
+    td.textContent = t[key];
+    tr.appendChild(td);
   }
+  return tr;
+}
 
-  runBtn.addEventListener('click', function () {
-    statusEl.textContent = 'Saturating…';
-    runBtn.disabled = true;
-    // Pre-canned output. The actual computation happens at F* compile
-    // time (via assert_norm) and at JS bundle init (smoke_saturated is
-    // a module-level let in the OCaml-extracted RIF_Core_Eval module);
-    // this button just reveals the result.
-    setTimeout(function () {
-      var all = INPUT_TRIPLES.concat(DERIVED_TRIPLES);
-      render(all, DERIVED_TRIPLES.length, 4);
-      statusEl.textContent = 'Done.';
-      runBtn.disabled = false;
-    }, 80);
-  });
-})();
+function renderTable(bodyEl, tableEl, legendEl, summaryEl, rows) {
+  bodyEl.innerHTML = '';
+  rows.forEach((t) => bodyEl.appendChild(renderRow(t)));
+  tableEl.hidden = false;
+  legendEl.hidden = false;
+  const derivedCount = rows.filter((r) => r.derived).length;
+  summaryEl.textContent =
+    ' ' + rows.length + ' triples total (' + (rows.length - derivedCount) +
+    ' input + ' + derivedCount + ' derived).';
+}
+
+function nowIso() { return new Date().toISOString(); }
+
+function renderStatus(statusEl, result, wallMs) {
+  const engineMs = typeof result.engineMs === 'number' ? result.engineMs.toFixed(3) : '?';
+  statusEl.className = 'status live';
+  statusEl.textContent =
+    'Live — engine ' + engineMs + ' ms, ' + result.rounds + '/' + result.fuel +
+    ' rounds, wall ' + wallMs.toFixed(1) + ' ms — computed ' + nowIso();
+}
+
+function renderError(el, statusEl, err) {
+  statusEl.className = 'status fallback';
+  statusEl.textContent = 'Failed — computed ' + nowIso();
+  el.innerHTML = '';
+  const box = document.createElement('div');
+  box.className = 'err-box';
+  box.textContent = (err && err.message) ? err.message : String(err);
+  el.appendChild(box);
+}
+
+// ---------------------------------------------------------------------
+// Static fallback (pre-canned smoke output). Mirrors
+// RIF.Core.Eval.smoke_saturated up to fire-order; used ONLY when the
+// live bundle is unavailable. Kept identical to the values the
+// module's own assert_norm checks pin.
+// ---------------------------------------------------------------------
+const STATIC_SMOKE_ROWS = [
+  { subject: 'ex:alice',   predicate: 'rdf:type',        object: 'ex:Student', derived: false },
+  { subject: 'ex:Student', predicate: 'rdfs:subClassOf', object: 'ex:Person',  derived: false },
+  { subject: 'ex:Person',  predicate: 'rdfs:subClassOf', object: 'ex:Agent',   derived: false },
+  { subject: 'ex:Student', predicate: 'rdfs:subClassOf', object: 'ex:Agent',   derived: true },
+  { subject: 'ex:alice',   predicate: 'rdf:type',        object: 'ex:Person',  derived: true },
+  { subject: 'ex:alice',   predicate: 'rdf:type',        object: 'ex:Agent',   derived: true },
+];
+
+// ---------------------------------------------------------------------
+// Button wiring
+// ---------------------------------------------------------------------
+
+smokeBtn.addEventListener('click', async () => {
+  smokeBtn.disabled = true;
+  smokeErrorEl.innerHTML = '';
+  smokeStatus.className = 'status';
+  smokeStatus.textContent = 'Saturating…';
+  try {
+    if (STATIC_FALLBACK_REASON) {
+      // Honest static path: no live engine call happened.
+      renderTable(smokeBody, smokeTable, smokeLegend, smokeSummary, STATIC_SMOKE_ROWS);
+      smokeStatus.className = 'status fallback';
+      smokeStatus.textContent =
+        'STATIC FALLBACK (' + STATIC_FALLBACK_REASON + ') — computed ' + nowIso();
+    } else {
+      const result = await demo.runSmoke();
+      const rows = diffSaturatedRows(result.inputNquads, result.saturatedNquads);
+      renderTable(smokeBody, smokeTable, smokeLegend, smokeSummary, rows);
+      renderStatus(smokeStatus, result, result.wallMs);
+    }
+  } catch (e) {
+    renderError(smokeErrorEl, smokeStatus, e);
+  } finally {
+    smokeBtn.disabled = false;
+  }
+});
+
+customBtn.addEventListener('click', async () => {
+  customBtn.disabled = true;
+  customErrorEl.innerHTML = '';
+  customStatus.className = 'status';
+  customStatus.textContent = 'Saturating…';
+  try {
+    const result = await demo.runCustom(rifXmlInput.value, rifDataInput.value);
+    const rows = diffSaturatedRows(result.inputNquads, result.saturatedNquads);
+    renderTable(customBody, customTable, customLegend, customSummary, rows);
+    renderStatus(customStatus, result, result.wallMs);
+  } catch (e) {
+    renderError(customErrorEl, customStatus, e);
+  } finally {
+    customBtn.disabled = false;
+  }
+});
+
+probeCapability();
 </script>
 
 </body>

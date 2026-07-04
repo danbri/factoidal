@@ -49,6 +49,26 @@
        -> {"ok":true,"turtle":"..."} (prefix-compacted, subject-grouped
           pretty-print; parse(result) round-trips to the input graph,
           but the exact text is NOT stable/canonical the way nquads is)
+     factoidalNpmEntry.rifSmoke()
+       -> {"ok":true,"inputNquads":"...","saturatedNquads":"...",
+           "inputCount":N,"derivedCount":N,"rounds":N,"fuel":N,
+           "engineMs":F} | {"ok":false,"error":"..."}
+       Live re-run of RIF.Core.Eval.fst's own smoke_input_graph /
+       smoke_program via RIF_Core_Eval.fixpoint -- no user input, a
+       fixed capability probe (issue #274).
+     factoidalNpmEntry.rifEval(rifXml, dataNQuads)
+       -> {"ok":true,"inputNquads":"...","saturatedNquads":"...",
+           "inputCount":N,"derivedCount":N,"rounds":N,"fuel":N,
+           "engineMs":F} | {"ok":false,"error":"..."}
+       General entry point: rifXml is a RIF Core XML document (parsed
+       by Parser_RIFXML.parse_rif_program), dataNQuads is the premise
+       graph (parsed by Parser_NQuads.parse_nquads, default graph
+       only). Saturated via RIF_Core_Eval.fixpoint, fuel=100. Import
+       directives are not resolved (Parser_RIFXML.parse_rif_program
+       ignores them; RIF_Core_Tests.saturate_with_program has the same
+       limitation) -- rules referencing an <Import>'d graph will not
+       see those triples unless the caller merges them into dataNQuads
+       first.
 
    Rich types (RDF/JS terms, Dataset objects, Maps of bindings) live on
    the JavaScript side (npm/factoidal/rdfjs.js); the js_of_ocaml string
@@ -314,9 +334,99 @@ let serialize_turtle (nq : string) : string =
     ok_turtle_json (RDF_Turtle_Serialize.turtle_of_graph_auto g))
 
 (* ---------------------------------------------------------------------
+   RIF Core (rule #11 consumer -- exports only). All semantics come
+   from F*-extracted modules already on the link line
+   (formal/fstar/build-ocaml.sh's FSTAR_MODULES): RIF_Core_Eval.fixpoint
+   / one_round (the same verified functions the RIF.Core.Eval.fst smoke
+   test and RIF_Core_Tests.saturate_with_program use), Parser_RIFXML.
+   parse_rif_program for the XML -> rif_program parse. Body-to-BGP
+   translation (RIF_Core_Translation) happens inside RIF_Core_Eval.
+   fire_rule already, so it is not called directly here.
+   --------------------------------------------------------------------- *)
+
+let rif_graph_to_nquads (g : triple list) : string =
+  let buf = Buffer.create 1024 in
+  List.iter
+    (fun t ->
+       Buffer.add_string buf
+         (RDF_NQuads_Serialize.nq_line_for_triple_default_graph t))
+    g;
+  Buffer.contents buf
+
+(* Telemetry only -- NOT part of the saturation answer. Counts rounds
+   to fixpoint by driving RIF_Core_Eval.one_round directly: the exact
+   verified primitive that RIF_Core_Eval.fixpoint composes internally
+   (see RIF.Core.Eval.fst section 5). The saturated graph reported to
+   the caller always comes from calling RIF_Core_Eval.fixpoint itself,
+   below; this loop's own graph output is discarded once the round
+   count is known. `cap` is a defensive bound so a pathological input
+   cannot spin forever counting rounds (fixpoint's own fuel parameter
+   is the real termination guarantee for the answer). *)
+let rif_rounds_to_fixpoint g program cap =
+  let rec go g n =
+    if n >= cap then n
+    else
+      let g', changed = RIF_Core_Eval.one_round g program in
+      if changed then go g' (n + 1) else n
+  in
+  go g 0
+
+let rif_result_json
+    (input : triple list) (saturated : triple list)
+    (rounds : int) (fuel : int) (engine_ms : float) : string =
+  let derived = List.length saturated - List.length input in
+  "{\"ok\":true"
+  ^ ",\"inputNquads\":" ^ jstr (rif_graph_to_nquads input)
+  ^ ",\"saturatedNquads\":" ^ jstr (rif_graph_to_nquads saturated)
+  ^ ",\"inputCount\":" ^ string_of_int (List.length input)
+  ^ ",\"derivedCount\":" ^ string_of_int derived
+  ^ ",\"rounds\":" ^ string_of_int rounds
+  ^ ",\"fuel\":" ^ string_of_int fuel
+  ^ ",\"engineMs\":" ^ Printf.sprintf "%.3f" engine_ms
+  ^ "}"
+
+(* rifSmoke() -- live re-run of RIF.Core.Eval.fst's own smoke program.
+   No user input; a fixed capability probe demonstrating the bundle
+   actually calls the verified engine rather than replaying a canned
+   value baked in at F* compile time. *)
+let rif_smoke_json () : string =
+  guarded (fun () ->
+    let input = RIF_Core_Eval.smoke_input_graph in
+    let program = RIF_Core_Eval.smoke_program in
+    let fuel = 8 in
+    let t0 = Sys.time () in
+    let saturated = RIF_Core_Eval.fixpoint input program (Z.of_int fuel) in
+    let t1 = Sys.time () in
+    let rounds = rif_rounds_to_fixpoint input program 64 in
+    rif_result_json input saturated rounds fuel ((t1 -. t0) *. 1000.0))
+
+(* rifEval(rifXml, dataNQuads) -- general entry point: parse arbitrary
+   RIF-XML rules, saturate against an arbitrary N-Quads premise graph
+   (default graph only -- RIF Core has no named-graph notion). *)
+let rif_eval_json (rif_xml : string) (data_nquads : string) : string =
+  guarded (fun () ->
+    let ds = dataset_of_nquads data_nquads in
+    let premise = ds.ds_default in
+    match Parser_RIFXML.parse_rif_program rif_xml with
+    | FStar_Pervasives_Native.None ->
+      err_json
+        "RIF-XML parse error (Parser_RIFXML.parse_rif_program returned None)"
+    | FStar_Pervasives_Native.Some program ->
+      let fuel = 100 in
+      let t0 = Sys.time () in
+      let saturated = RIF_Core_Eval.fixpoint premise program (Z.of_int fuel) in
+      let t1 = Sys.time () in
+      let rounds = rif_rounds_to_fixpoint premise program 256 in
+      rif_result_json premise saturated rounds fuel ((t1 -. t0) *. 1000.0))
+
+(* ---------------------------------------------------------------------
    Js.export — the only js_of_ocaml-specific code. Strings cross the
    boundary via Js.to_string / Js.string (UTF-16 JS <-> UTF-8 OCaml).
    --------------------------------------------------------------------- *)
+
+let s0 (f : unit -> string) =
+  Js.Unsafe.inject
+    (Js.wrap_callback (fun () -> Js.string (f ())))
 
 let s1 (f : string -> string) =
   Js.Unsafe.inject
@@ -342,5 +452,7 @@ let () =
           ("updateDataset", s2 update_dataset);
           ("serializeNQuads", s1 serialize_nquads);
           ("canonicalizeToNQuads", s1 canonicalize_to_nquads);
-          ("serializeTurtle", s1 serialize_turtle)
+          ("serializeTurtle", s1 serialize_turtle);
+          ("rifSmoke", s0 rif_smoke_json);
+          ("rifEval", s2 rif_eval_json)
        |])

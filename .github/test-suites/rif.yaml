@@ -1,0 +1,59 @@
+name: RIF Core (vendored W3C RIF test cases via SPARQL 1.1 entailment)
+spec: https://www.w3.org/TR/rif-core/
+runner: bin/linux-x86_64/rif_runner
+runner_args: []
+manifest: third_party/testing/w3c/sparql/sparql11/entailment/manifest.ttl
+log_path: formal/fstar/ocaml-output/rif_results.log
+result_path: docs/test-results/by-suite/rif.json
+domain: RIF
+foundational: false
+
+# Standalone runner (bin/rif-runner/rif_runner.ml) for exactly the 4
+# vendored RIF Core test cases the SPARQL 1.1 entailment manifest
+# names under sd:entailmentRegime ent:RIF (:rif01 :rif03 :rif04
+# :rif06 -- see manifest above). A hardcoded 4-entry lookup table
+# (not a general manifest walker, per this suite's own scoping) maps
+# each mf:name to its third_party/testing/rif/tc/<TestName>/*.rif
+# rule document, qt:data .ttl, qt:query .rq, and mf:result .srx.
+# Pipeline: Parser_RIFXML.parse_rif_program_with_imports -> merge the
+# .ttl premise with any resolved <Import> companion .rdf graph (with
+# OWL-Direct closure applied first when the import's own <profile>
+# declares it, e.g. Modeling_Brain_Anatomy) -> RIF_Core_Eval.fixpoint
+# (fuel 100) -> the SAME SPARQL11_Parser / OWL_QueryEval /
+# SPARQL11_Algebra evaluator every other W3C-conformance runner in
+# this repo uses (not RIF.Core.Tests' simplified triple-membership
+# shims). See bin/rif-runner/rif_runner.ml's header comment and
+# docs/claude-rules/scope.md's RIF paragraph for the up-to-date
+# supported-subset statement (RIF Core frames/BGP-shaped rule bodies
+# + the two Import shapes the vendored corpus exercises; RIF-BLD/PRD
+# remain out of scope).
+
+triggers:
+  paths:
+    # RIF-XML parsing + rule evaluation (all F*-extracted).
+    - formal/fstar/Parser.RIFXML.fst
+    - formal/fstar/RIF.Core.Syntax.fst
+    - formal/fstar/RIF.Core.Translation.fst
+    - formal/fstar/RIF.Core.Eval.fst
+    # The BGP evaluator RIF_Core_Eval.fire_rule delegates to for rule
+    # bodies, and the OWL-Direct closure path this runner reuses for
+    # the Modeling_Brain_Anatomy import.
+    - formal/fstar/SPARQL11.Algebra.fst
+    - formal/fstar/RDF.Graph.Executable.fst
+    - formal/fstar/Tableau.fst
+    # The real SPARQL query parser + evaluator this runner drives the
+    # .rq files through.
+    - formal/fstar/SPARQL11.Parser.fst
+    - formal/fstar/OWL.QueryRewrite.fst
+    - formal/fstar/OWL.QueryEval.fst
+    # The runner itself.
+    - bin/rif-runner/**
+    # Vendored RIF Test Cases mirror + the 4 rifNN.{ttl,rq,srx}
+    # fixtures under the SPARQL 1.1 entailment manifest.
+    - third_party/testing/rif/tc/**
+    - third_party/testing/w3c/sparql/sparql11/entailment/rif01.*
+    - third_party/testing/w3c/sparql/sparql11/entailment/rif03.*
+    - third_party/testing/w3c/sparql/sparql11/entailment/rif04.*
+    - third_party/testing/w3c/sparql/sparql11/entailment/rif06.*
+
+  excludes: []
