@@ -425,11 +425,27 @@ let nat_to_string (n : nat) : string =
   if n = 0 then "0" else nat_to_string_acc n "" (n + 1)
 
 type issuer_state = {
+  is_prefix  : string;                   (* label prefix: "c14n" or "b" *)
   is_counter : nat;
-  is_issued  : list (bnode_id * string); (* original → canonical *)
+  is_issued  : list (bnode_id * string); (* original → issued label *)
 }
 
 let empty_issuer : issuer_state = {
+  is_prefix = "c14n";
+  is_counter = 0;
+  is_issued = [];
+}
+
+// RDFC-1.0 4.4.3 step 6.2.2: the per-candidate temporary issuer is
+// "initialized with the prefix b" — its labels ("b0", "b1", ...) are
+// spec-visible, not cosmetic: they are embedded in HNDQ path strings
+// and in Hash Related Blank Node inputs, so every HNDQ hash depends
+// on this prefix. Issuing temporaries as "c14nN" produces different
+// hashes and therefore a different (still self-consistent, but
+// non-conformant) ordering wherever a hash comparison breaks a tie
+// between non-automorphic candidates.
+let empty_temp_issuer : issuer_state = {
+  is_prefix = "b";
   is_counter = 0;
   is_issued = [];
 }
@@ -445,8 +461,9 @@ let issue_identifier (st : issuer_state) (b : bnode_id)
   match lookup_issued b st.is_issued with
   | Some v -> (st, v)
   | None ->
-    let label = "c14n" ^ nat_to_string st.is_counter in
+    let label = st.is_prefix ^ nat_to_string st.is_counter in
     let st' : issuer_state = {
+      is_prefix = st.is_prefix;
       is_counter = st.is_counter + 1;
       is_issued = st.is_issued @ [(b, label)];
     } in
@@ -899,14 +916,18 @@ let rec bucket_insert (k : string) (b : bnode_id) (xs : list bucket)
     else if str_le k k' then (k, [b]) :: xs
     else (k', members) :: bucket_insert k b rest
 
-(* Build the bucket map for `target` from its incident quads.
-   Each quad contributes a (bucket-key, related-bnode) pair when a
-   related bnode exists. The bucket key is "pos|pred|hfdq" using the
-   pre-computed hfdq_table. Quads with no related bnode (target only
-   touches IRIs/literals there) contribute their own data via a
-   *contribution string* with no related bnode — these go into a
-   distinguished bucket with key "*<pos>|<pred>|_" so they are
-   incorporated into the data-string but skip permutation. *)
+(* Build the bucket map (RDFC-1.0 4.9 steps 1-3, "hash to related
+   blank nodes map") for `target` from its incident quads.
+
+   Per 4.9 step 3.1, EVERY component of an incident quad — subject,
+   object, AND graph name — that is a blank node other than `target`
+   contributes its own Hn entry, with position tag "s"/"o"/"g" set by
+   the slot the related component itself occupies. A single quad can
+   therefore contribute up to three entries (e.g. `_:s <p> _:o _:g`
+   seen from `_:s` yields one "o" entry and one "g" entry). Quads
+   whose only blank node is `target` itself contribute NOTHING here —
+   they were fully accounted for by the first-degree hash. The bucket
+   key is the Hash Related Blank Node value (4.8). *)
 // Look up `b`'s already-issued identifier, checking the *real*
 // canonical issuer first, then the per-candidate local (temporary)
 // issuer — RDFC-1.0 4.8 branches 1/2 unified, since both are just
@@ -917,13 +938,56 @@ let lookup_issued2 (b : bnode_id) (canon_st : issuer_state) (local_st : issuer_s
   | Some lbl -> Some lbl
   | None -> lookup_issued b local_st.is_issued
 
+// RDFC-1.0 4.9 step 3.1: all blank-node components of `q` other than
+// `target`, each tagged with the slot it occupies ("s"/"o"/"g"). Note
+// a bnode appearing in two slots of the same quad yields two entries
+// (matching the spec's per-component loop), and a component equal to
+// `target` yields none.
+let related_components (target : bnode_id) (q : qquad)
+  : list (string * bnode_id) =
+  let (_, t) = q in
+  let s_e = (match t.s with
+             | S_BNode b -> if b <> target then [("s", b)] else []
+             | _ -> []) in
+  let o_e = (match t.o with
+             | T_BNode b -> if b <> target then [("o", b)] else []
+             | _ -> []) in
+  let g_e = (match graph_bnode_of q with
+             | Some b -> if b <> target then [("g", b)] else []
+             | None -> []) in
+  s_e @ (o_e @ g_e)
+
+// Fold one quad's related components into the bucket map: resolve
+// each related bnode's identifier (canonical label, then this
+// candidate's temporary label, then bare HFDQ hash — RDFC-1.0 4.8
+// step 3), hash it with position + predicate, and insert.
+let rec insert_related_entries
+    (entries : list (string * bnode_id))
+    (pred : string)
+    (hfdq_table : list bn_hfdq_pair)
+    (canon_st : issuer_state)
+    (local_st : issuer_state)
+    (acc : list bucket)
+  : Tot (list bucket) (decreases entries) =
+  match entries with
+  | [] -> acc
+  | (pos, rb) :: rest ->
+    let identifier =
+      match lookup_issued2 rb canon_st local_st with
+      | Some lbl -> "_:" ^ lbl               // branch 1/2
+      | None -> lookup_hfdq rb hfdq_table     // branch 3
+    in
+    let k = hash_related_blank_node pos pred identifier in
+    insert_related_entries rest pred hfdq_table canon_st local_st
+      (bucket_insert k rb acc)
+
 let rec build_buckets_for
     (target : bnode_id)
     (qs : list qquad)
     (hfdq_table : list bn_hfdq_pair)
-    (canon_st : issuer_state)  // NEW — real canonical issuer, read-only
+    (canon_st : issuer_state)  // real canonical issuer, read-only
                                 // here (already-issued check, branch 1)
-    (local_st : issuer_state)  // NEW — this candidate's own temporary
+    (local_st : issuer_state)  // this candidate's own temporary
                                 // issuer (already-issued check, branch 2)
     (acc : list bucket)
   : Tot (list bucket) (decreases qs) =
@@ -934,28 +998,8 @@ let rec build_buckets_for
       build_buckets_for target rest hfdq_table canon_st local_st acc
     else
       let (_, t) = q in
-      let pos = nbr_position_tag target q in
-      let pred = t.p in
-      let entry = (match related_bnode target q with
-        | None -> None
-        | Some rb ->
-          let identifier =
-            match lookup_issued2 rb canon_st local_st with
-            | Some lbl -> "_:" ^ lbl               // branch 1/2
-            | None -> lookup_hfdq rb hfdq_table     // branch 3
-          in
-          Some (rb, hash_related_blank_node pos pred identifier)) in
-      let acc' = match entry with
-        | None ->
-          // No related bnode: encode contribution with sentinel "*"
-          // prefix so it sorts before all real buckets but stays
-          // distinct per (pos, pred).
-          let k = "*" ^ pos ^ "|" ^ pred ^ "|_" in
-          bucket_insert k "_" acc
-        | Some (rb, related_hash) ->
-          // key is now the spec hash, not the raw preimage
-          bucket_insert related_hash rb acc
-      in
+      let entries = related_components target q in
+      let acc' = insert_related_entries entries t.p hfdq_table canon_st local_st acc in
       build_buckets_for target rest hfdq_table canon_st local_st acc'
 
 (* Permutation enumeration: list all permutations of a list. We bound
@@ -1014,10 +1058,7 @@ let rec mem_bnode (b : bnode_id) (xs : list bnode_id) : bool =
    in order, with NO separator between members (spec-literal: plain
    concatenation, no comma, no period). Members freshly issued here
    are recorded, in the same order, as the `recursion` list, which the
-   second pass (step 5.4.5, `walk_recursion` below) consumes. The
-   synthetic "_" sentinel (our own no-related-bnode bookkeeping —
-   RDFC-1.0's model has no such case, since Hn is only ever populated
-   for actual related bnodes) contributes nothing to either. *)
+   second pass (step 5.4.5, `walk_recursion` below) consumes. *)
 let rec build_path_labels
     (canon_st : issuer_state)
     (local_st : issuer_state)
@@ -1028,15 +1069,12 @@ let rec build_path_labels
   match perm with
   | [] -> (path, local_st, recursion)
   | b :: rest ->
-    if b = "_" then
-      build_path_labels canon_st local_st rest path recursion
-    else
-      match lookup_issued2 b canon_st local_st with
-      | Some lbl ->
-        build_path_labels canon_st local_st rest (path ^ "_:" ^ lbl) recursion
-      | None ->
-        let (local1, lbl) = issue_identifier local_st b in
-        build_path_labels canon_st local1 rest (path ^ "_:" ^ lbl) (recursion @ [b])
+    (match lookup_issued2 b canon_st local_st with
+     | Some lbl ->
+       build_path_labels canon_st local_st rest (path ^ "_:" ^ lbl) recursion
+     | None ->
+       let (local1, lbl) = issue_identifier local_st b in
+       build_path_labels canon_st local1 rest (path ^ "_:" ^ lbl) (recursion @ [b]))
 
 (* Walk a permutation, building (path_string, updated_issuer).
    Returns None if a related bnode exits scope (defensive — the
@@ -1190,7 +1228,7 @@ let rec filter_unissued (st : issuer_state) (xs : list bnode_id)
 
 (* RDFC-1.0 4.4.3 step 5.2: explore *every* member of a collision
    group using its own fresh temporary issuer (never accumulated
-   across members — each candidate starts from a clean `empty_issuer`
+   across members — each candidate starts from a clean `empty_temp_issuer`
    slate, only `canon_st`, the real issuer, is shared and read-only
    here). Returns one (hash, temporary-issued-list) pair per
    not-yet-canonically-issued member, in original member order. *)
@@ -1207,7 +1245,7 @@ let rec explore_members
     (match lookup_issued m canon_st.is_issued with
      | Some _ -> explore_members fuel qs hfdq_table canon_st rest
      | None ->
-       let (local1, _) = issue_identifier empty_issuer m in
+       let (local1, _) = issue_identifier empty_temp_issuer m in
        let (h, local2) = hndq_run fuel qs hfdq_table canon_st local1 m in
        (h, local2.is_issued) :: explore_members fuel qs hfdq_table canon_st rest)
 
