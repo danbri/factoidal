@@ -223,6 +223,10 @@ session.
   MCP plumbing rather than using F* MCP for proofs.
 - [`markdown-style`](skills/markdown-style/SKILL.md) — clickable-link
   rules + the no-sycophantic-adjectives rewrite list.
+- [`choosing-models`](skills/choosing-models/SKILL.md) — model/effort
+  selection per subagent. Core rule: for all coding tasks, judge an
+  appropriate lower-power model and run it in a subagent; Fable-class
+  sessions orchestrate, gate, and design — they don't type the code.
 - [`subagent-prompting`](skills/subagent-prompting/SKILL.md) —
   worktree path discipline + post-condition checks.
 - [`workflow-gotchas-debugging`](skills/workflow-gotchas-debugging/SKILL.md)

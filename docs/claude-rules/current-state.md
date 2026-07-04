@@ -54,10 +54,21 @@ red always jumps the queue.
    dataset-merge fix.
 3. **Shrink `--admit_smt_queries` in `SPARQL11.Parser.fst`** (~65% of
    the file admitted; the biggest verification caveat we disclose).
-4. **Stratification** — split `RDF.Graph.Executable` and
-   `SPARQL11.Algebra` per the roadmap in
+4. **Stratification + reusable foundations** — split
+   `RDF.Graph.Executable` and `SPARQL11.Algebra` per the roadmap in
    `skills/fstar-module-style/SKILL.md`; commit-sized slices, suites
-   green at each step.
+   green at each step. Owner directive 2026-07-04: the split's
+   FIRST-CLASS deliverables are reusable foundation modules shared by
+   every parser/serializer/evaluator instead of today's scatter —
+   `RDF.IRI` (RFC 3986/3987; today: SPARQL11.IRI.Resolve +
+   Parser.IRI + per-parser fragments), `XSD.Datatypes` (value spaces,
+   canonical forms, numeric promotion; today embedded in
+   SPARQL11.Algebra), `RDF.Unicode` (UTF-8/codepoints/escapes; today
+   assume-vals + per-parser char logic — the new Parser.JSON escape
+   handling should consume it), `RDF.LanguageTag` (BCP47 well-formed
+   + case-insensitive comparison — fixes the known literal_eq gap
+   where @en-US and @en-us compare unequal). JSON-LD phases 3-4 need
+   RDF.IRI + RDF.Unicode, so extraction of those two leads.
 5. **SHACL** — `SHACL.Validation.fst` is a Phase-1 skeleton with a
    stubbed validator (#181). The W3C suite is now vendored at
    `third_party/testing/shacl` (data-shapes-test-suite, core +
