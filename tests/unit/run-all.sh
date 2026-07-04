@@ -51,11 +51,11 @@ COMMON_MODULES=(
   RDF_List_Helpers
   RDF_Bytes
   RDF_Store_Loader
-  RDF_NQuads_Serialize
   Parquet_Footer
   OWL_Vocabulary
   Tableau
   Parser_FastString
+  RDF_NQuads_Serialize
   Parser_IRI
   Parser_Combinators
   Parser_TurtleScanner
@@ -70,6 +70,7 @@ COMMON_MODULES=(
   Parser_CSVResults
   Parser_JSONResults
   Parser_JSON
+  SPARQL11_IRI_Resolve
   JSONLD_Context
   JSONLD_Expand
   Parser_JSONLD
@@ -112,7 +113,6 @@ COMMON_MODULES=(
   fstar_pure_hashes
   RDF_Canonical
   RDF_Canonical_Manifest
-  SPARQL11_IRI_Resolve
   SPARQL11_Algebra
   RDF_Pretty
   OWL_QueryRewrite

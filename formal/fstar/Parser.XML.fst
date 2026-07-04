@@ -459,33 +459,37 @@ let parse_xml_declaration (input:string) (pos:nat) : parse_result (list xml_attr
 (* XML Element parser (recursive, fuel-based)                        *)
 (* ================================================================ *)
 
-let rec parse_children (input:string) (pos:nat) (fuel:nat)
+// 2026-07-04 rewrite (issue #273): every recursive branch used to do
+// `match parse_children ... with ParseOk rest pos'' -> ParseOk (x :: rest) pos''`
+// — the cons happens after the recursive call returns, so this was
+// non-tail with one stack frame per sibling node. On a flat RDF/XML
+// document (thousands of same-depth <rdf:Description> siblings, the
+// exact shape of tools/bench-parse-serialize.sh's fixture) this blew
+// the native stack above roughly 10k elements while N-Triples/Turtle
+// on the same triple count parsed fine, since those parsers are
+// already accumulator-based. `acc` accumulates children in reverse;
+// every ParseOk exit reverses once via List.Tot.rev.
+let rec parse_children (input:string) (pos:nat) (fuel:nat) (acc:list xml_node)
   : Tot (parse_result (list xml_node)) (decreases fuel) =
-  if fuel = 0 then ParseOk [] pos
+  if fuel = 0 then ParseOk (List.Tot.rev acc) pos
   else
     let len = fs_byte_length input in
-    if pos >= len then ParseOk [] pos
+    if pos >= len then ParseOk (List.Tot.rev acc) pos
     else
       let ch = fs_byte_index input pos in
       if ch = '<' then
         if pos + 1 < len then
           let ch2 = fs_byte_index input (pos + 1) in
           if ch2 = '/' then
-            ParseOk [] pos
+            ParseOk (List.Tot.rev acc) pos
           else if ch2 = '!' then
             begin match parse_xml_comment input pos with
             | ParseOk comment pos' ->
-              begin match parse_children input pos' (fuel - 1) with
-              | ParseOk rest pos'' -> ParseOk (comment :: rest) pos''
-              | ParseFail msg fpos -> ParseFail msg fpos
-              end
+              parse_children input pos' (fuel - 1) (comment :: acc)
             | ParseFail _ _ ->
               begin match parse_xml_cdata input pos with
               | ParseOk cdata pos' ->
-                begin match parse_children input pos' (fuel - 1) with
-                | ParseOk rest pos'' -> ParseOk (cdata :: rest) pos''
-                | ParseFail msg fpos -> ParseFail msg fpos
-                end
+                parse_children input pos' (fuel - 1) (cdata :: acc)
               | ParseFail msg fpos -> ParseFail msg fpos
               end
             end
@@ -494,29 +498,23 @@ let rec parse_children (input:string) (pos:nat) (fuel:nat)
                and continue with the following children. PIs aren't
                part of the RDF model. *)
             begin match parse_xml_pi input pos with
-            | ParseOk _ pos' -> parse_children input pos' (fuel - 1)
+            | ParseOk _ pos' -> parse_children input pos' (fuel - 1) acc
             | ParseFail msg fpos -> ParseFail msg fpos
             end
           else
             begin match parse_xml_element input pos (fuel - 1) with
             | ParseOk elem pos' ->
-              begin match parse_children input pos' (fuel - 1) with
-              | ParseOk rest pos'' -> ParseOk (elem :: rest) pos''
-              | ParseFail msg fpos -> ParseFail msg fpos
-              end
+              parse_children input pos' (fuel - 1) (elem :: acc)
             | ParseFail msg fpos -> ParseFail msg fpos
             end
         else ParseFail "unexpected end after '<'" pos
       else
         match parse_xml_text input pos with
         | ParseOk text_node pos' ->
-          if pos' = pos then ParseOk [] pos
+          if pos' = pos then ParseOk (List.Tot.rev acc) pos
           else
-            begin match parse_children input pos' (fuel - 1) with
-            | ParseOk rest pos'' -> ParseOk (text_node :: rest) pos''
-            | ParseFail msg fpos -> ParseFail msg fpos
-            end
-        | ParseFail _ _ -> ParseOk [] pos
+            parse_children input pos' (fuel - 1) (text_node :: acc)
+        | ParseFail _ _ -> ParseOk (List.Tot.rev acc) pos
 
 and parse_xml_element (input:string) (pos:nat) (fuel:nat)
   : Tot (parse_result xml_node) (decreases fuel) =
@@ -538,7 +536,7 @@ and parse_xml_element (input:string) (pos:nat) (fuel:nat)
             | ParseFail _ _ ->
               begin match pchar '>' input pos4 with
               | ParseOk _ pos5 ->
-                begin match parse_children input pos5 (fuel - 1) with
+                begin match parse_children input pos5 (fuel - 1) [] with
                 | ParseOk children pos6 ->
                   begin match pstring "</" input pos6 with
                   | ParseOk _ pos7 ->

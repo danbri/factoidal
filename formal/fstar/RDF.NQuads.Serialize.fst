@@ -16,8 +16,7 @@ module RDF.NQuads.Serialize
 // because the call sites have different correctness requirements.
 
 open RDF.Graph.Executable
-
-module S = FStar.String
+open Parser.FastString
 
 // ---------------------------------------------------------------
 // nq_escape_literal: escape the lexical form of an RDF literal for
@@ -36,29 +35,55 @@ module S = FStar.String
 // rigorously NT-compliant, but the existing OCaml impl is what the
 // downstream consumers (the /sandbox/dump output, w3c_runner output
 // comparison) currently expect — preserve.
+//
+// 2026-07-04 rewrite (issue #272): walk the literal BYTE-by-byte with
+// fs_byte_at / fs_byte_length (Parser.FastString — the same
+// primitives the Turtle / N-Triples / N-Quads *parsers* already use
+// on their hot loop; see that module's banner for the byte-vs-
+// codepoint safety argument) and copy maximal runs of non-special
+// bytes with one fs_byte_sub each, instead of the previous per-
+// CHARACTER `^` fold over an FStar.Char list. Same run-slicing shape
+// as SPARQL.JSON.Escape's walk_runs (the json_escape fix earlier the
+// same day). Two wins:
+//   1. O(specials + total run length) instead of O(n^2) in the
+//      literal's length for long literals.
+//   2. Byte-transparent copying means multi-byte UTF-8 sequences pass
+//      through as raw bytes, so this no longer needs the
+//      string_of_list codepoint-safety workaround the old
+//      per-char passthrough arm required (string_of_char is
+//      byte-oriented and crashes/mojibakes above 0x7F; string_of_list
+//      re-encodes each element as a codepoint — byte-copying skips
+//      both problems by never decoding to a FStar.Char in the first
+//      place).
 // ---------------------------------------------------------------
 
-let escape_char (c : FStar.Char.char) : Tot string =
-  let n = FStar.Char.int_of_char c in
-  if n = 0x5C then "\\\\"
-  else if n = 0x22 then "\\\""
-  else if n = 0x0A then "\\n"
-  else if n = 0x0D then "\\r"
-  else if n = 0x09 then "\\t"
-  // string_of_list, NOT string_of_char: the extracted string_of_char
-  // is byte-oriented (Char.chr) — crashes for codepoints above 255,
-  // mojibake for 128-255. string_of_list UTF-8-encodes. Same bug and
-  // fix as RDF.Canonical.escape_lit_char (2026-07-04).
-  else S.string_of_list [c]
+let nq_special_byte (b : nat) : bool =
+  b = 0x5C || b = 0x22 || b = 0x0A || b = 0x0D || b = 0x09
 
-let rec escape_chars_aux (cs : list FStar.Char.char)
-  : Tot string (decreases cs) =
-  match cs with
-  | [] -> ""
-  | c :: rest -> escape_char c ^ escape_chars_aux rest
+let nq_escape_byte (b : nat{nq_special_byte b}) : string =
+  if b = 0x5C then "\\\\"
+  else if b = 0x22 then "\\\""
+  else if b = 0x0A then "\\n"
+  else if b = 0x0D then "\\r"
+  else "\\t"
+
+// Copy maximal runs of non-special bytes with fs_byte_sub, splicing
+// escape strings in at special bytes. `run_start` marks the start of
+// the current unescaped run; `pos` is the scan cursor.
+let rec nq_escape_walk (s : string) (len : nat) (run_start : nat) (pos : nat) (acc : string)
+  : Tot string (decreases (len - pos)) =
+  if pos >= len then
+    (if pos > run_start then acc ^ fs_byte_sub s run_start (pos - run_start) else acc)
+  else
+    let b = fs_byte_at s pos in
+    if nq_special_byte b then
+      let run = if pos > run_start then fs_byte_sub s run_start (pos - run_start) else "" in
+      nq_escape_walk s len (pos + 1) (pos + 1) (acc ^ run ^ nq_escape_byte b)
+    else
+      nq_escape_walk s len run_start (pos + 1) acc
 
 let nq_escape_literal (s : string) : Tot string =
-  escape_chars_aux (S.list_of_string s)
+  nq_escape_walk s (fs_byte_length s) 0 0 ""
 
 // ---------------------------------------------------------------
 // nq_term_to_string : serialize an RDF term in N-Quads object form.

@@ -776,27 +776,36 @@ let rec process_node_element (st : rdfxml_state) (node : xml_node) (fuel : nat)
          property elements in the parent scope keep their own
          numbering. See rdf-containers-syntax-vs-schema-test007. *)
       let st3 = reset_li_counter st2 in
-      let child_result = process_property_children st3 subj children (fuel - 1) in
+      let child_result = process_property_children st3 subj children (fuel - 1) [] in
       { pr_triples = type_triples @ prop_attr_triples @ child_result.pr_triples;
         pr_state = restore_scope st child_result.pr_state; }
     | _ -> empty_result st
 
-and process_property_children (st : rdfxml_state) (subj : subject) (children : list xml_node) (fuel : nat)
+// 2026-07-04 rewrite (issue #273): this used to build its result via
+// `result1.pr_triples @ result2.pr_triples` after the recursive call
+// returned — non-tail, one stack frame per property child, and the
+// direct cause of the RDF/XML stack overflow above ~10k node/property
+// elements (`factoidal count FILE.rdf` crashed; N-Triples/Turtle on
+// the same input parse fine because those parsers are already
+// tail-recursive/accumulator-based). `acc` carries the triples found
+// so far in REVERSE; every base case reverses once on the way out
+// (List.Tot.rev_acc is the tail-recursive `rev`-and-prepend the
+// codebase already uses in RDF.Canonical's dedup helpers).
+and process_property_children (st : rdfxml_state) (subj : subject) (children : list xml_node) (fuel : nat) (acc : list triple)
   : Tot process_result (decreases fuel) =
-  if fuel = 0 then empty_result st
+  if fuel = 0 then { pr_triples = List.Tot.rev acc; pr_state = st }
   else
     match children with
-    | [] -> empty_result st
+    | [] -> { pr_triples = List.Tot.rev acc; pr_state = st }
     | child :: rest ->
       match child with
       | XElement _ _ _ ->
         let result1 = process_property_element st subj child (fuel - 1) in
-        let result2 = process_property_children result1.pr_state subj rest (fuel - 1) in
-        { pr_triples = result1.pr_triples @ result2.pr_triples;
-          pr_state = result2.pr_state; }
+        let acc' = List.Tot.rev_acc result1.pr_triples acc in
+        process_property_children result1.pr_state subj rest (fuel - 1) acc'
       | _ ->
         (* Skip text, comments, CDATA at this level *)
-        process_property_children st subj rest (fuel - 1)
+        process_property_children st subj rest (fuel - 1) acc
 
 and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_node) (fuel : nat)
   : Tot process_result (decreases fuel) =
@@ -863,7 +872,7 @@ and process_property_element (st : rdfxml_state) (subj : subject) (node : xml_no
             let obj_term = T_BNode bid in
             let link_triple : triple = { s = subj; p = pred_iri; o = obj_term } in
             let st4 = reset_li_counter st3 in
-            let child_result = process_property_children st4 bnode_subj children (fuel - 1) in
+            let child_result = process_property_children st4 bnode_subj children (fuel - 1) [] in
             { pr_triples = link_triple :: (reif_of pred_iri obj_term) @ child_result.pr_triples;
               pr_state = restore_scope st2 child_result.pr_state; }
           | Some "Collection" ->
@@ -1081,23 +1090,30 @@ and build_collection_list (st : rdfxml_state) (subj : subject) (pred_iri : strin
 (* [restore_scope] is defined earlier in this file; see comment near
    [reset_li_counter]. *)
 
-let rec process_node_elements (st : rdfxml_state) (nodes : list xml_node) (fuel : nat)
+// 2026-07-04 rewrite (issue #273): same non-tail -> accumulator swap
+// as process_property_children above. This is the walk over
+// top-level node elements (siblings of rdf:RDF, or of the document
+// root) — for a flat RDF/XML document (one <rdf:Description> per
+// triple, the shape tools/bench-parse-serialize.sh's fixture and the
+// W3C stress case both use) this recursion depth equals the triple
+// count directly, so it was the most exposed of the two non-tail
+// walks. `acc` accumulates in reverse; List.Tot.rev restores order.
+let rec process_node_elements (st : rdfxml_state) (nodes : list xml_node) (fuel : nat) (acc : list triple)
   : Tot process_result (decreases fuel) =
-  if fuel = 0 then empty_result st
+  if fuel = 0 then { pr_triples = List.Tot.rev acc; pr_state = st }
   else
     match nodes with
-    | [] -> empty_result st
+    | [] -> { pr_triples = List.Tot.rev acc; pr_state = st }
     | node :: rest ->
       match node with
       | XElement _ _ _ ->
         let result1 = process_node_element st node (fuel - 1) in
         let st' = restore_scope st result1.pr_state in
-        let result2 = process_node_elements st' rest (fuel - 1) in
-        { pr_triples = result1.pr_triples @ result2.pr_triples;
-          pr_state = result2.pr_state; }
+        let acc' = List.Tot.rev_acc result1.pr_triples acc in
+        process_node_elements st' rest (fuel - 1) acc'
       | _ ->
         (* Skip text/comments at top level *)
-        process_node_elements st rest (fuel - 1)
+        process_node_elements st rest (fuel - 1) acc
 
 
 (* ================================================================ *)
@@ -1105,9 +1121,22 @@ let rec process_node_elements (st : rdfxml_state) (nodes : list xml_node) (fuel 
 (* ================================================================ *)
 
 (* Full variant: returns both triples and final state (for strict-mode
-   error detection). *)
-let process_xml_tree_full (st : rdfxml_state) (root : xml_node) : process_result =
-  let fuel = 10000 in
+   error detection).
+
+   `fuel` used to be a hardcoded `10000` here, independent of document
+   size — every mutually-recursive step in this module (top-level
+   siblings, property children, collection items) shares this single
+   budget, so a document with more than ~10000 total steps would have
+   silently truncated its output at the fuel wall even once the stack-
+   overflow above is fixed by tail-recursion (tail calls fix the STACK
+   cost, not the step-BUDGET semantics of fuel = 0 meaning "stop
+   here"). Issue #273's 100k-triple acceptance case needs a fuel bound
+   that scales with the document, so callers now pass one sized from
+   the input string length — the same style Parser.XML.parse_xml_document
+   already uses for its own fuel (`len + 1`), and a safe upper bound
+   since every XML node/attribute/text run consumes at least one byte
+   of markup. *)
+let process_xml_tree_full (st : rdfxml_state) (root : xml_node) (fuel : nat) : process_result =
   match root with
   | XElement tag attrs children ->
     let st1 = update_state_from_attrs st attrs in
@@ -1119,14 +1148,14 @@ let process_xml_tree_full (st : rdfxml_state) (root : xml_node) : process_result
     in
     if is_rdf_root then
       (* Process children as node elements *)
-      process_node_elements st1 children fuel
+      process_node_elements st1 children fuel []
     else
       (* Root is a node element itself (rdf:RDF wrapper is optional) *)
       process_node_element st1 root fuel
   | _ -> empty_result st
 
-let process_xml_tree (st : rdfxml_state) (root : xml_node) : list triple =
-  (process_xml_tree_full st root).pr_triples
+let process_xml_tree (st : rdfxml_state) (root : xml_node) (fuel : nat) : list triple =
+  (process_xml_tree_full st root fuel).pr_triples
 
 
 (* ================================================================ *)
@@ -1137,7 +1166,8 @@ let parse_rdfxml_with_base (base_iri : string) (input : string) : list triple =
   match parse_xml_document input with
   | Some root ->
     let st = initial_state base_iri in
-    process_xml_tree st root
+    let fuel = String.length input + 1 in
+    process_xml_tree st root fuel
   | None -> []
 
 let parse_rdfxml (input : string) : list triple =
@@ -1151,7 +1181,8 @@ let parse_rdfxml_with_base_strict (base_iri : string) (input : string) : option 
   match parse_xml_document input with
   | Some root ->
     let st = initial_state base_iri in
-    let r = process_xml_tree_full st root in
+    let fuel = String.length input + 1 in
+    let r = process_xml_tree_full st root fuel in
     if r.pr_state.has_error then None else Some r.pr_triples
   | None -> None
 

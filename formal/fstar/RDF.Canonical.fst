@@ -29,6 +29,7 @@ module RDF.Canonical
 open FStar.String
 open FStar.List.Tot
 open RDF.Graph.Executable
+open Parser.FastString
 
 (* ------------------------------------------------------------------ *)
 (* Hash primitive — assumed external; wired to Fstar_pure_hashes.sha256
@@ -41,34 +42,56 @@ assume val hash_sha256 : string -> string
 
 (* N-Triples character escaping: backslash, quote, LF, CR, TAB. Canonical
    N-Quads keeps non-ASCII as raw UTF-8 (no \uXXXX escaping) per
-   RDFC-1.0. The pass-through arm must use string_of_list, not
-   string_of_char: the extracted string_of_char realisation is
-   byte-oriented (Char.chr) and CRASHES for codepoints above 255 while
-   silently emitting Latin-1 mojibake for 128-255, whereas
-   string_of_list UTF-8-encodes the codepoint. Found 2026-07-04 via the
-   JSON-LD scalars/escapes fixture; the rdf-canon suite inputs are
-   ASCII-clean so the dashboard never saw it. *)
-let escape_lit_char (c : FStar.Char.char) : string =
-  let n = FStar.Char.int_of_char c in
-  if n = 0x5C then "\\\\"        // backslash
-  else if n = 0x22 then "\\\""   // double quote
-  else if n = 0x0A then "\\n"
-  else if n = 0x0D then "\\r"
-  else if n = 0x09 then "\\t"
-  else FStar.String.string_of_list [c]
+   RDFC-1.0.
 
-let rec escape_lit_acc (s : string) (pos : nat) (fuel : nat) (acc : string)
-  : Tot string (decreases fuel) =
-  if fuel = 0 then acc
+   2026-07-04 rewrite (issue #272): walk the literal BYTE-by-byte with
+   fs_byte_at / fs_byte_length (Parser.FastString — the same
+   primitives the Turtle / N-Triples / N-Quads *parsers* already use
+   on their hot loop) and copy maximal runs of non-special bytes with
+   one fs_byte_sub each, instead of the previous per-CHARACTER `^`
+   fold (escape_lit_acc over FStar.String.index / String.length,
+   which is O(n^2) in the literal's length -- the profiling suspect
+   the issue named). Same run-slicing shape as SPARQL.JSON.Escape's
+   walk_runs and RDF.NQuads.Serialize.nq_escape_literal's sibling
+   rewrite (both same day).
+
+   Byte-transparent copying also means multi-byte UTF-8 sequences pass
+   through as raw bytes without ever decoding to a FStar.Char, so this
+   drops the string_of_list codepoint workaround the old pass-through
+   arm needed: the extracted string_of_char realisation is
+   byte-oriented (Char.chr) and CRASHES for codepoints above 255 while
+   silently emitting Latin-1 mojibake for 128-255, and string_of_list
+   re-encodes each list element as a codepoint (double-encoding bytes
+   >= 0x80). Found 2026-07-04 via the JSON-LD scalars/escapes fixture;
+   the rdf-canon suite inputs are ASCII-clean so the dashboard never
+   saw either bug. *)
+let escape_lit_special_byte (b : nat) : bool =
+  b = 0x5C || b = 0x22 || b = 0x0A || b = 0x0D || b = 0x09
+
+let escape_lit_byte (b : nat{escape_lit_special_byte b}) : string =
+  if b = 0x5C then "\\\\"        // backslash
+  else if b = 0x22 then "\\\""   // double quote
+  else if b = 0x0A then "\\n"
+  else if b = 0x0D then "\\r"
+  else "\\t"
+
+// Copy maximal runs of non-special bytes with fs_byte_sub, splicing
+// escape strings in at special bytes. `run_start` marks the start of
+// the current unescaped run; `pos` is the scan cursor.
+let rec escape_lit_walk (s : string) (len : nat) (run_start : nat) (pos : nat) (acc : string)
+  : Tot string (decreases (len - pos)) =
+  if pos >= len then
+    (if pos > run_start then acc ^ fs_byte_sub s run_start (pos - run_start) else acc)
   else
-    let len = String.length s in
-    if pos >= len then acc
+    let b = fs_byte_at s pos in
+    if escape_lit_special_byte b then
+      let run = if pos > run_start then fs_byte_sub s run_start (pos - run_start) else "" in
+      escape_lit_walk s len (pos + 1) (pos + 1) (acc ^ run ^ escape_lit_byte b)
     else
-      let c = String.index s pos in
-      escape_lit_acc s (pos + 1) (fuel - 1) (acc ^ escape_lit_char c)
+      escape_lit_walk s len run_start (pos + 1) acc
 
 let escape_lit (s : string) : string =
-  escape_lit_acc s 0 (String.length s + 1) ""
+  escape_lit_walk s (fs_byte_length s) 0 0 ""
 
 let canon_term (t : rdf_term) : string =
   match t with
@@ -301,25 +324,35 @@ let str_le (a b : string) : bool =
 
 let str_eq (a b : string) : bool = a = b
 
-let rec insert_sorted (x : string) (xs : list string)
-  : Tot (list string) (decreases xs) =
-  match xs with
-  | [] -> [x]
-  | hd :: tl ->
-    if str_le x hd then x :: xs
-    else hd :: insert_sorted x tl
+// Three-way comparator for FStar.List.Tot.sortWith, derived from the
+// str_le total preorder above.
+let str_compare (a b : string) : int =
+  if a = b then 0
+  else if str_le a b then -1 else 1
 
-let rec insertion_sort (xs : list string)
-  : Tot (list string) (decreases xs) =
-  match xs with
-  | [] -> []
-  | hd :: tl -> insert_sorted hd (insertion_sort tl)
+// 2026-07-04 rewrite (issue #272): this used to be a hand-rolled
+// insertion sort (insert_sorted / insertion_sort, O(n^2) always --
+// the dominant quadratic term behind dump-nq / canonicalize going
+// from 0.65s/0.46s at 1k triples to 12.9s/8.6s at 2k, per the
+// benchmark's superlinear reading). FStar.List.Tot.sortWith is a
+// partition-based (quicksort-shape) sort already proven Tot in the
+// stdlib; average case O(n log n), used here instead. Kept under the
+// `insertion_sort` name since every call site below (and none outside
+// this module -- grep-verified) just wants "sorted ascending by
+// str_le", not the algorithm.
+let insertion_sort (xs : list string) : list string =
+  List.Tot.sortWith str_compare xs
 
-let rec concat_strings (xs : list string)
-  : Tot string (decreases xs) =
-  match xs with
-  | [] -> ""
-  | hd :: tl -> hd ^ concat_strings tl
+// 2026-07-04 rewrite (issue #272): the previous definition was
+// `hd ^ concat_strings tl`, a right fold whose every step re-copies
+// the entire (still-growing) tail into a fresh string -- O(n^2) in
+// the total character count for a list of n lines (each `^` costs
+// O(len(hd) + len(tail-so-far)), summed over n steps). FStar.String's
+// `concat` extracts to OCaml's/Batteries' String.concat, which
+// computes the total length once and copies each piece exactly once
+// -- O(total length), single pass.
+let concat_strings (xs : list string) : string =
+  String.concat "" xs
 
 let compute_hfdq (target : bnode_id) (qs : list qquad) : string =
   let mentioning = quads_for_bnode target qs in
@@ -676,25 +709,20 @@ let rec sort_full_keys (xs : list bn_full_key)
   | hd :: tl -> insert_full_key hd (sort_full_keys tl)
 
 (* Legacy pair-based ordering (kept for backwards-compat / tests). *)
-let pair_le (a b : bn_hfdq_pair) : bool =
+// 2026-07-04 (issue #272): same O(n^2) -> sortWith swap as
+// insertion_sort above. Only exercised on the fuel-exhaustion
+// leftover fallback in build_canonical_mapping (rare and small in
+// practice), but the fix is free and keeps the module internally
+// consistent.
+let pair_compare (a b : bn_hfdq_pair) : int =
   let (oa, ha) = a in
   let (ob, hb) = b in
-  if ha = hb then str_le oa ob
-  else str_le ha hb
+  if ha = hb then
+    (if oa = ob then 0 else if str_le oa ob then -1 else 1)
+  else if str_le ha hb then -1 else 1
 
-let rec insert_pair (x : bn_hfdq_pair) (xs : list bn_hfdq_pair)
-  : Tot (list bn_hfdq_pair) (decreases xs) =
-  match xs with
-  | [] -> [x]
-  | hd :: tl ->
-    if pair_le x hd then x :: xs
-    else hd :: insert_pair x tl
-
-let rec sort_pairs (xs : list bn_hfdq_pair)
-  : Tot (list bn_hfdq_pair) (decreases xs) =
-  match xs with
-  | [] -> []
-  | hd :: tl -> insert_pair hd (sort_pairs tl)
+let sort_pairs (xs : list bn_hfdq_pair) : list bn_hfdq_pair =
+  List.Tot.sortWith pair_compare xs
 
 let rec assign_in_order (st : issuer_state) (xs : list bn_hfdq_pair)
   : Tot issuer_state (decreases xs) =
@@ -1146,3 +1174,18 @@ let canonical_nquads (ds : rdf_dataset) : string =
 (* Convenience: canonicalise then serialise. *)
 let canonicalize_to_nquads (ds : rdf_dataset) : string =
   canonical_nquads (canonicalize ds)
+
+// Canonicalize one named graph as a single-graph dataset -- the
+// per-graph sibling of canonicalize_to_nquads (graphs-api design doc
+// docs/designissues/2026-07-05-graphs-api-design.md section 1.1).
+// Composes two existing things (component projection via
+// lookup_named_graph, whole-dataset canonicalize_to_nquads), not a
+// new algorithm. Inherits the existing HFDQ-only limitation unchanged
+// (HNDQ not implemented, 23/86 rdf-canon fails): it adds no
+// tie-detection or decline-to-hash guard beyond what
+// canonicalize_to_nquads already does.
+let canonicalize_named_graph (ds : rdf_dataset) (name : RDF.Dataset.Graphs.graph_ref)
+    : option string =
+  match lookup_named_graph name ds.ds_named with
+  | None -> None
+  | Some g -> Some (canonicalize_to_nquads ({ ds_default = g; ds_named = [] }))
