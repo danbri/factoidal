@@ -43,12 +43,25 @@ let rename_triple (prefix : string) (t : triple) : triple =
 let rename_graph_bnodes (prefix : string) (g : rdf_graph) : rdf_graph =
   List.Tot.map (rename_triple prefix) g
 
-let rename_named_graph (prefix : string) (ng : named_graph) : named_graph =
-  { ng with ng_graph = rename_graph_bnodes prefix ng.ng_graph }
+// Graph NAMES are iri-typed (ng_name), but blank-node graph labels are
+// admitted as the literal string "_:<label>" inside that slot — the
+// Parser.NQuads convention, also used by Parser.TriG and Parser.JSONLD
+// (see docs/designissues/2026-04-25-nquads-bnode-graph-fix.md). Those
+// labels are document-scoped exactly like triple-level bnodes, so they
+// are renamed with the same prefix: a bnode used both as a graph name
+// and as a subject/object (e.g. JSON-LD toRdf/0117) keeps one identity
+// after renaming, and equal labels from different documents stay
+// disjoint.
+let rename_graph_name (prefix : string) (name : iri) : iri =
+  if String.length name >= 2 then
+    (if String.sub name 0 2 = "_:" then
+       String.concat "" ["_:"; prefix; String.sub name 2 (String.length name - 2)]
+     else name)
+  else name
 
-// Note: graph NAMES are IRIs in this model (ng_name), so only triple
-// content is renamed. If graph-name bnodes are ever admitted, this is
-// the single place to extend.
+let rename_named_graph (prefix : string) (ng : named_graph) : named_graph =
+  { ng_name = rename_graph_name prefix ng.ng_name;
+    ng_graph = rename_graph_bnodes prefix ng.ng_graph }
 let rename_dataset_bnodes (prefix : string) (ds : rdf_dataset) : rdf_dataset =
   {
     ds_default = rename_graph_bnodes prefix ds.ds_default;

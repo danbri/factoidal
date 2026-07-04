@@ -28,6 +28,7 @@ type rdf_format =
   | NQuads
   | TriG
   | RDFXML
+  | JSONLD
 
 // Default fallback when the caller can't determine the format. Matches
 // the legacy OCaml behaviour ("when in doubt, parse as Turtle").
@@ -54,6 +55,8 @@ let format_of_extension (ext : string) : option rdf_format =
   else if lo = ".xml"       then Some RDFXML
   else if lo = ".rdfxml"    then Some RDFXML
   else if lo = ".owl"       then Some RDFXML
+  else if lo = ".jsonld"    then Some JSONLD
+  else if lo = ".json-ld"   then Some JSONLD
   else                           None
 
 // Like `format_of_extension`, but for the short labels accepted on
@@ -75,6 +78,9 @@ let format_of_string (s : string) : option rdf_format =
   else if lo = "rdf/xml"    then Some RDFXML
   else if lo = "rdf"        then Some RDFXML
   else if lo = "xml"        then Some RDFXML
+  else if lo = "jsonld"     then Some JSONLD
+  else if lo = "json-ld"    then Some JSONLD
+  else if lo = "application/ld+json" then Some JSONLD
   else                           None
 
 // Verbose display name. Used in startup logs and `--format help`.
@@ -85,6 +91,7 @@ let format_name (f : rdf_format) : string =
   | NQuads -> "N-Quads"
   | TriG   -> "TriG"
   | RDFXML -> "RDF/XML"
+  | JSONLD -> "JSON-LD (expanded form)"
 
 // Convenience: detect the format of a path's extension, falling back
 // to `rdf_format_default` if the extension is unknown or absent.

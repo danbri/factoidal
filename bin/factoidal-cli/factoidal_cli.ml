@@ -60,6 +60,7 @@ type rdf_format = RDF_Format.rdf_format =
   | NQuads
   | TriG
   | RDFXML
+  | JSONLD
 
 let detect_format filename =
   RDF_Format.detect_format_or_default (Filename.extension filename)
@@ -135,6 +136,13 @@ let load_dataset ?(format=None) ?(base=None) path =
     (match base_iri with
      | Some b -> Parser_TriG.parse_trig_with_base_lenient content b
      | None -> Parser_TriG.parse_trig_lenient content)
+  | JSONLD ->
+    (* Phase 1: expanded form only, no @context processing — see
+       formal/fstar/Parser.JSONLD.fst module banner. *)
+    (match Parser_JSONLD.parse_jsonld content with
+     | FStar_Pervasives_Native.Some ds -> ds
+     | FStar_Pervasives_Native.None ->
+       failwith "invalid JSON-LD (Phase 1 accepts expanded form only)")
   | _ ->
     let triples = match fmt with
       | NT -> Parser_NTriples.parse_ntriples content
@@ -382,7 +390,7 @@ let usage () =
   Printf.printf "Options:\n";
   Printf.printf "  -d, --data FILE        Load RDF data (repeatable, \"-\" for stdin)\n";
   Printf.printf "                         Format auto-detected from extension:\n";
-  Printf.printf "                         .ttl .nt .nq .nquads .trig .rdf .xml .owl\n";
+  Printf.printf "                         .ttl .nt .nq .nquads .trig .rdf .xml .owl .jsonld\n";
   Printf.printf "      --data-cottas FILE Load a COTTAS/Parquet dataset (repeatable).\n";
   Printf.printf "                         Parsed via the F*-verified Parquet footer\n";
   Printf.printf "                         + DeltaLengthByteArray decoder; Zstd\n";
@@ -391,7 +399,8 @@ let usage () =
   Printf.printf "  -q, --query FILE       SPARQL query file\n";
   Printf.printf "  -e SPARQL              Inline SPARQL query string\n";
   Printf.printf "  -b, --base IRI         Base IRI for parsing\n";
-  Printf.printf "  -f, --format FMT       Input format: turtle, ntriples, nquads, trig, rdfxml\n";
+  Printf.printf "  -f, --format FMT       Input format: turtle, ntriples, nquads, trig, rdfxml,\n";
+  Printf.printf "                         jsonld (Phase 1: expanded form only)\n";
   Printf.printf "  -o, --output FMT       Output format: table (default), csv, ntriples, json\n";
   Printf.printf "  --entail REGIME        Apply entailment closure to loaded data before\n";
   Printf.printf "                         query evaluation. REGIME is one of:\n";
@@ -412,7 +421,8 @@ let usage () =
   Printf.printf "  --help                 This help\n";
   Printf.printf "\n";
   Printf.printf "Supported RDF formats:  Turtle (.ttl), N-Triples (.nt), N-Quads (.nq),\n";
-  Printf.printf "                        TriG (.trig), RDF/XML (.rdf, .xml, .owl)\n";
+  Printf.printf "                        TriG (.trig), RDF/XML (.rdf, .xml, .owl),\n";
+  Printf.printf "                        JSON-LD expanded form (.jsonld)\n";
   Printf.printf "Supported query forms:  SELECT, ASK, CONSTRUCT\n";
   Printf.printf "\n";
   Printf.printf "N-Quads and TriG files preserve named graph structure. Use GRAPH\n";

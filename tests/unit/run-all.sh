@@ -69,6 +69,8 @@ COMMON_MODULES=(
   Parser_SRX
   Parser_CSVResults
   Parser_JSONResults
+  Parser_JSON
+  Parser_JSONLD
   SPARQL_JSON_Escape
   SPARQL_Eval_TimeBudget
   SPARQL_Eval_Limits

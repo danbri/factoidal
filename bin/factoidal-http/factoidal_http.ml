@@ -56,6 +56,7 @@ type rdf_format = RDF_Format.rdf_format =
   | NQuads
   | TriG
   | RDFXML
+  | JSONLD
 
 let detect_format filename =
   RDF_Format.detect_format_or_default (Filename.extension filename)
@@ -94,6 +95,13 @@ let load_rdf_dataset ?(format=None) ?(base=None) path =
     (match base_iri with
      | Some b -> Parser_TriG.parse_trig_with_base_lenient content b
      | None -> Parser_TriG.parse_trig_lenient content)
+  | JSONLD ->
+    (* Phase 1: expanded form only, no @context processing — see
+       formal/fstar/Parser.JSONLD.fst module banner. *)
+    (match Parser_JSONLD.parse_jsonld content with
+     | FStar_Pervasives_Native.Some ds -> ds
+     | FStar_Pervasives_Native.None ->
+       failwith "invalid JSON-LD (Phase 1 accepts expanded form only)")
   | _ ->
     let triples = match fmt with
       | NT -> Parser_NTriples.parse_ntriples content

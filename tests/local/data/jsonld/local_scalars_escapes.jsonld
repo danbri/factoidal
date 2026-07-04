@@ -1,0 +1,18 @@
+[
+  {
+    "@id": "http://example.org/thing",
+    "http://example.org/count": [ {"@value": 42} ],
+    "http://example.org/temperature": [ {"@value": -2.5} ],
+    "http://example.org/big": [ {"@value": 1.2e3} ],
+    "http://example.org/flag": [ {"@value": true} ],
+    "http://example.org/off": [ {"@value": false} ],
+    "http://example.org/emptyList": [ {"@list": []} ],
+    "http://example.org/label": [ {"@value": "caf\u00e9 \ud83d\ude00 tab\there \"quoted\" back\\slash"} ],
+    "http://example.org/motto": [ {"@value": "naïve — déjà vu"} ],
+    "http://example.org/friend": [ {"@id": "_:pal"} ]
+  },
+  {
+    "@id": "_:pal",
+    "http://example.org/name": [ {"@value": "Pal"} ]
+  }
+]

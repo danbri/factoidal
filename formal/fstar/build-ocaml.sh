@@ -271,6 +271,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              RIF.Core.Eval.fst RIF.Core.Tests.fst \
              Parser.SRX.fst Parser.CSVResults.fst \
              Parser.JSONResults.fst \
+             Parser.JSON.fst Parser.JSONLD.fst \
              SPARQL.JSON.Escape.fst \
              SPARQL.Eval.TimeBudget.fst \
              SPARQL.Eval.Limits.fst \
@@ -398,6 +399,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
+    Parser_JSON.ml Parser_JSONLD.ml \
     SPARQL_JSON_Escape.ml \
     SPARQL_Eval_TimeBudget.ml \
     SPARQL_Eval_Limits.ml \
@@ -649,6 +651,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
       $STATIC_FLAGS \
       $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
       ../../../bin/factoidal-http-client/factoidal_http_client.ml \
       -o "$BINDIR/factoidal_http_client" || FACTOIDAL_HTTP_CLIENT_RC=$?
     cat _ocamlopt_factoidal_http_client.log 2>/dev/null || true
@@ -765,7 +768,10 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml Parser_RDFXML.ml
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
+    Parser_JSON.ml Parser_JSONLD.ml
     SPARQL_JSON_Escape.ml
+    SPARQL_Eval_TimeBudget.ml
+    SPARQL_Eval_Limits.ml
     SPARQL_HTTP_Response.ml
     SPARQL_HTTP_Timing.ml
     SPARQL_HTTP_BackendInfo.ml
@@ -816,8 +822,10 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
   JS_TARGETS=(
     w3c_runner.byte
     factoidal.byte
+    npm_entry.byte
     ../../../docs/fstar-extracted/w3c-runner.js
     ../../../docs/fstar-extracted/factoidal.js
+    ../../../docs/fstar-extracted/factoidal-npm-entry.js
   )
   JS_SOURCES=(
     "${FSTAR_MODULES[@]}"
@@ -825,6 +833,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     ../../../bin/factoidal-serve/factoidal_serve.ml
     ../../../bin/factoidal-serve/factoidal_serve_jsoo.ml
     ../../../bin/factoidal-cli/factoidal_cli.ml
+    ../../../bin/npm-entry/entry_jsoo.ml
     parquet_zstd_stubs_jsoo.c
     fstar_int_stubs.js
     fstar_hash_stubs.js
@@ -888,6 +897,17 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     fi
     grep -i error _ocamlc_factoidal.log || true
 
+    # Build npm-entry bytecode (bin/npm-entry/entry_jsoo.ml): the
+    # persistent string/JSON ABI for the npm package. Needs the
+    # js_of_ocaml library for Js.export / Js.wrap_callback.
+    run_with_heartbeat "ocamlc npm_entry.byte" "_ocamlc_npm_entry.log" -- \
+      ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c,unix,js_of_ocaml -linkpkg -w -8-14-26 \
+      -custom parquet_zstd_stubs_jsoo.c \
+      "${FSTAR_MODULES[@]}" \
+      ../../../bin/npm-entry/entry_jsoo.ml \
+      -o npm_entry.byte
+    grep -i error _ocamlc_npm_entry.log || true
+
     # Convert both to JS with zarith stubs. vendor/fzstd.umd.js is a
     # vendored MIT-licensed Zstandard decompressor (~8 KB) that registers
     # itself as globalThis.fzstd; parquet_zstd_stubs.js is our thin shim
@@ -920,6 +940,20 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
       factoidal.byte \
       -o ../../../docs/fstar-extracted/factoidal.js
     grep -v "Warning \[deprecated" _jsoo_factoidal.log | grep -v "^$" || true
+
+    run_with_heartbeat "js_of_ocaml npm-entry" "_jsoo_npm_entry.log" -- \
+      js_of_ocaml \
+      +zarith_stubs_js/biginteger.js \
+      +zarith_stubs_js/runtime.js \
+      fstar_int_stubs.js \
+      fstar_hash_stubs.js \
+      fstar_utf8_output_stubs.js \
+      vendor/fzstd.umd.js \
+      parquet_zstd_stubs.js \
+      npm_entry.byte \
+      -o ../../../docs/fstar-extracted/factoidal-npm-entry.js
+    grep -v "Warning \[deprecated" _jsoo_npm_entry.log | grep -v "^$" || true
+    echo "  Built: docs/fstar-extracted/factoidal-npm-entry.js ($(wc -c < ../../../docs/fstar-extracted/factoidal-npm-entry.js) bytes)"
 
     echo "  Built: docs/fstar-extracted/w3c-runner.js ($(wc -c < ../../../docs/fstar-extracted/w3c-runner.js) bytes)"
     echo "  Built: docs/fstar-extracted/factoidal.js   ($(wc -c < ../../../docs/fstar-extracted/factoidal.js) bytes)"
@@ -1031,6 +1065,19 @@ if [[ "$STEP" == "wasm-factoidal" ]]; then
       fi
     fi
   fi
+
+  if [[ -f npm_entry.byte ]]; then
+    run_with_heartbeat "wasm_of_ocaml npm-entry" "_waoc_npm_entry.log" -- \
+      wasm_of_ocaml compile \
+      +zarith_stubs_js/biginteger.js \
+      +zarith_stubs_js/runtime.js \
+      wasm_runtime/zarith_runtime_wasm.js \
+      wasm_runtime/zarith_runtime.wat \
+      fstar_int_stubs.js \
+      npm_entry.byte \
+      -o ../../../docs/fstar-extracted/factoidal-npm-entry.wasm.js
+    python3 wasm_stub_shims.py ../../../docs/fstar-extracted/factoidal-npm-entry.wasm.js
+  fi
   cd ..
   echo ""
 fi
@@ -1085,6 +1132,17 @@ if [[ "$STEP" == "npm" ]]; then
     rm -rf "$NPMDIR/factoidal.wasm.assets"
     cp -R "$JSDIR/factoidal.wasm.assets" "$NPMDIR/factoidal.wasm.assets"
     echo "  Copied: $JSDIR/factoidal.wasm.assets/ → $NPMDIR/factoidal.wasm.assets/ ($(ls -1 "$NPMDIR/factoidal.wasm.assets" | wc -l | tr -d ' ') file(s))"
+  fi
+
+  if [[ -f "$JSDIR/factoidal-npm-entry.js" ]]; then
+    cp "$JSDIR/factoidal-npm-entry.js" "$NPMDIR/factoidal-npm-entry.js"
+  fi
+  if [[ -f "$JSDIR/factoidal-npm-entry.wasm.js" ]]; then
+    cp "$JSDIR/factoidal-npm-entry.wasm.js" "$NPMDIR/factoidal-npm-entry.wasm.js"
+  fi
+  if [[ -d "$JSDIR/factoidal-npm-entry.wasm.assets" ]]; then
+    rm -rf "$NPMDIR/factoidal-npm-entry.wasm.assets"
+    cp -R "$JSDIR/factoidal-npm-entry.wasm.assets" "$NPMDIR/factoidal-npm-entry.wasm.assets"
   fi
 
   # Provenance stamp.

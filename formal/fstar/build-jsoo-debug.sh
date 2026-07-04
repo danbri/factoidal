@@ -46,6 +46,7 @@ FSTAR_MODULES=(
   Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml
   Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml Parser_RDFXML.ml
   Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
+  Parser_JSON.ml Parser_JSONLD.ml
   SPARQL_JSON_Escape.ml
   SPARQL_Eval_TimeBudget.ml
   SPARQL_Eval_Limits.ml
