@@ -2212,6 +2212,22 @@ let filter_candidates_by_compound_po (path : Prims.string)
                        oh rg p_id o_id) candidates)
        | uu___ -> candidates)
   | uu___ -> candidates
+let cottas_ondisk_has_decode_failure (h : cottas_ondisk_handle) : Prims.bool=
+  (((FStar_Pervasives_Native.uu___is_None
+       (Parquet_Footer.probe_parquet_column_decode_all_row_groups h.coh_path
+          Prims.int_zero))
+      ||
+      (FStar_Pervasives_Native.uu___is_None
+         (Parquet_Footer.probe_parquet_column_decode_all_row_groups
+            h.coh_path Prims.int_one)))
+     ||
+     (FStar_Pervasives_Native.uu___is_None
+        (Parquet_Footer.probe_parquet_column_decode_all_row_groups h.coh_path
+           (Prims.of_int (2)))))
+    ||
+    (FStar_Pervasives_Native.uu___is_None
+       (Parquet_Footer.probe_parquet_column_decode_all_row_groups h.coh_path
+          (Prims.of_int (3))))
 let cottas_ondisk_search (ds : cottas_ondisk_store)
   (bound : Parser_BallyhooCOTTAS.cottas_bound_qp) :
   Parser_BallyhooCOTTAS.cottas_qp_row Prims.list=

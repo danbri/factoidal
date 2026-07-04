@@ -268,6 +268,19 @@ and backend_predicate_present (gb : graph_backend)
   | GB_CottasOnDisk (cods, uu___) ->
       RDF_CottasStore.cottas_ondisk_predicate_present cods pred
   | GB_Union members -> union_backend_predicate_present members pred
+let rec union_backend_decode_failure (members : graph_backend Prims.list) :
+  Prims.bool=
+  match members with
+  | [] -> false
+  | member::rest ->
+      (backend_decode_failure member) || (union_backend_decode_failure rest)
+and backend_decode_failure (gb : graph_backend) : Prims.bool=
+  match gb with
+  | GB_CottasOnDisk (cods, uu___) ->
+      RDF_CottasStore.cottas_ondisk_has_decode_failure
+        cods.RDF_CottasStore.cods_handle
+  | GB_Union members -> union_backend_decode_failure members
+  | uu___ -> false
 let rec lookup_named_backend (name : RDF_Graph_Executable.iri)
   (named : named_graph_backend Prims.list) :
   graph_backend FStar_Pervasives_Native.option=
@@ -1013,8 +1026,16 @@ and eval_ask_query_backend_dataset (q : SPARQL11_Algebra.query)
         | FStar_Pervasives_Native.None -> omega0
         | FStar_Pervasives_Native.Some vals ->
             SPARQL11_Algebra.join omega0 vals in
-      FStar_Pervasives_Native.Some
-        ((match omega with | [] -> false | uu___ -> true))
+      (match omega with
+       | [] ->
+           let named_backends =
+             FStar_List_Tot_Base.map (fun ngb -> ngb.ngb_graph) dsb.dsb_named in
+           if
+             (backend_decode_failure dsb.dsb_default) ||
+               (union_backend_decode_failure named_backends)
+           then FStar_Pervasives_Native.None
+           else FStar_Pervasives_Native.Some false
+       | uu___ -> FStar_Pervasives_Native.Some true)
   | uu___ -> FStar_Pervasives_Native.None
 let run_select_query_backend_dataset (q : SPARQL11_Algebra.query)
   (dsb : dataset_backend) :

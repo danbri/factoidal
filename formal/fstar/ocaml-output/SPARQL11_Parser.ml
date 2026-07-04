@@ -5986,10 +5986,10 @@ and parse_solution_modifier (pm : prefix_map) (fuel : Prims.nat)
                 | uu___4 -> (FStar_Pervasives_Native.None, ts2) in
               (match uu___3 with
                | (ob, ts3) ->
-                   let uu___4 =
-                     match parse_peek ts3 with
+                   let try_limit_clause ts4 =
+                     match parse_peek ts4 with
                      | Tok_LIMIT ->
-                         let ts' = parse_advance ts3 in
+                         let ts' = parse_advance ts4 in
                          (match parse_peek ts' with
                           | Tok_INTEGER n ->
                               (match parse_int_str n with
@@ -5998,36 +5998,45 @@ and parse_solution_modifier (pm : prefix_map) (fuel : Prims.nat)
                                      (parse_advance ts'))
                                | FStar_Pervasives_Native.None ->
                                    (FStar_Pervasives_Native.None, ts'))
-                          | uu___5 -> (FStar_Pervasives_Native.None, ts'))
-                     | uu___5 -> (FStar_Pervasives_Native.None, ts3) in
-                   (match uu___4 with
-                    | (limit, ts4) ->
-                        let uu___5 =
-                          match parse_peek ts4 with
-                          | Tok_OFFSET ->
-                              let ts' = parse_advance ts4 in
-                              (match parse_peek ts' with
-                               | Tok_INTEGER n ->
-                                   (match parse_int_str n with
-                                    | FStar_Pervasives_Native.Some i ->
-                                        ((FStar_Pervasives_Native.Some i),
-                                          (parse_advance ts'))
-                                    | FStar_Pervasives_Native.None ->
-                                        (FStar_Pervasives_Native.None, ts'))
-                               | uu___6 ->
+                          | uu___4 -> (FStar_Pervasives_Native.None, ts'))
+                     | uu___4 -> (FStar_Pervasives_Native.None, ts4) in
+                   let try_offset_clause ts4 =
+                     match parse_peek ts4 with
+                     | Tok_OFFSET ->
+                         let ts' = parse_advance ts4 in
+                         (match parse_peek ts' with
+                          | Tok_INTEGER n ->
+                              (match parse_int_str n with
+                               | FStar_Pervasives_Native.Some i ->
+                                   ((FStar_Pervasives_Native.Some i),
+                                     (parse_advance ts'))
+                               | FStar_Pervasives_Native.None ->
                                    (FStar_Pervasives_Native.None, ts'))
-                          | uu___6 -> (FStar_Pervasives_Native.None, ts4) in
+                          | uu___4 -> (FStar_Pervasives_Native.None, ts'))
+                     | uu___4 -> (FStar_Pervasives_Native.None, ts4) in
+                   let uu___4 = try_limit_clause ts3 in
+                   (match uu___4 with
+                    | (limit_before_offset, ts4) ->
+                        let uu___5 = try_offset_clause ts4 in
                         (match uu___5 with
                          | (offset, ts5) ->
-                             let modifier =
-                               {
-                                 SPARQL11_Algebra.sm_order_by = ob;
-                                 SPARQL11_Algebra.sm_distinct = false;
-                                 SPARQL11_Algebra.sm_reduced = false;
-                                 SPARQL11_Algebra.sm_offset = offset;
-                                 SPARQL11_Algebra.sm_limit = limit
-                               } in
-                             ParseOk ((modifier, gb, hv), ts5))))))
+                             let uu___6 =
+                               match limit_before_offset with
+                               | FStar_Pervasives_Native.Some uu___7 ->
+                                   (limit_before_offset, ts5)
+                               | FStar_Pervasives_Native.None ->
+                                   try_limit_clause ts5 in
+                             (match uu___6 with
+                              | (limit, ts6) ->
+                                  let modifier =
+                                    {
+                                      SPARQL11_Algebra.sm_order_by = ob;
+                                      SPARQL11_Algebra.sm_distinct = false;
+                                      SPARQL11_Algebra.sm_reduced = false;
+                                      SPARQL11_Algebra.sm_offset = offset;
+                                      SPARQL11_Algebra.sm_limit = limit
+                                    } in
+                                  ParseOk ((modifier, gb, hv), ts6)))))))
 let rec tokens_only_eof (ts : token_stream) : Prims.bool=
   match ts with
   | [] -> true

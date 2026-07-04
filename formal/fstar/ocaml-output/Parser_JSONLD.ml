@@ -421,8 +421,22 @@ let jld_dataset_of_json (root : Parser_JSON.json_val) :
                   RDF_Graph_Executable.ds_named = (FStar_List_Tot_Base.rev n)
                 }))
   | uu___ -> FStar_Pervasives_Native.None
+let jld_has_inline_context (root : Parser_JSON.json_val) : Prims.bool=
+  match root with
+  | Parser_JSON.JObject fields ->
+      FStar_List_Tot_Base.existsb
+        (fun kv -> (FStar_Pervasives_Native.fst kv) = "@context") fields
+  | uu___ -> false
 let parse_jsonld (input : Prims.string) :
   RDF_Graph_Executable.rdf_dataset FStar_Pervasives_Native.option=
   match Parser_JSON.parse_json input with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-  | FStar_Pervasives_Native.Some root -> jld_dataset_of_json root
+  | FStar_Pervasives_Native.Some root ->
+      if jld_has_inline_context root
+      then
+        (match JSONLD_Expand.expand JSONLD_Context.empty_active_context root
+         with
+         | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+         | FStar_Pervasives_Native.Some expanded ->
+             jld_dataset_of_json expanded)
+      else jld_dataset_of_json root
