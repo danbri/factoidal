@@ -1,0 +1,43 @@
+name: SHACL Core (W3C data-shapes-test-suite)
+spec: https://www.w3.org/TR/shacl/
+runner: bin/linux-x86_64/shacl_runner
+runner_args: []
+manifest: third_party/testing/shacl/data-shapes-test-suite/tests/core/manifest.ttl
+log_path: formal/fstar/ocaml-output/shacl_results.log
+result_path: docs/test-results/by-suite/shacl-core.json
+domain: RDF
+foundational: false
+
+# Slice 1 of the SHACL program (issue #181; see
+# formal/fstar/SHACL.Validation.fst section 11 for constraint
+# coverage). The runner compares ONLY the report's sh:conforms flag
+# against each manifest entry's expected mf:result — full report-
+# detail isomorphism (exact sh:resultPath / sh:sourceConstraintComponent
+# matching) is Phase 2 follow-up work. Deferred by design and scored
+# as honest FAILs, not skips: sh:qualifiedValueShape /
+# qualifiedMinCount / qualifiedMaxCount / qualifiedValueShapesDisjoint
+# (sibling-shape disjointness bookkeeping), composite property paths
+# beyond predicate + inverse (sequence/alternative/zeroOrMore/
+# oneOrMore/zeroOrOne), and sh:sparql / sh:select (target/constraint
+# SPARQL dispatch — the one remaining rule-#11(c) assume val,
+# eval_sparql_target_select, unreachable this slice).
+
+triggers:
+  paths:
+    # The validator core (shape parsing, targets, paths, constraints,
+    # validation report).
+    - formal/fstar/SHACL.Validation.fst
+    # Reused for shape-graph/data-graph loading.
+    - formal/fstar/RDF.Graph.Executable.fst
+    - formal/fstar/Parser.Turtle.fst
+    # sh:pattern reuses the existing regex assume-val realisation.
+    - formal/fstar/SPARQL11.Algebra.fst
+    - formal/fstar/minimal_regrettable_glue_code_each_with_an_open_issue/181_shacl_validate_stub.sh
+    - formal/fstar/minimal_regrettable_glue_code_each_with_an_open_issue/63_regex_hash_uuid_stubs.sh
+    # The runner.
+    - bin/shacl-runner/**
+    # Vendored W3C SHACL data-shapes-test-suite (manifest + core/*.ttl
+    # fixtures).
+    - third_party/testing/shacl/data-shapes-test-suite/**
+
+  excludes: []
