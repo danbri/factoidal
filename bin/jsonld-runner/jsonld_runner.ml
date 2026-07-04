@@ -20,7 +20,7 @@
    This file only does file I/O, manifest traversal, and string
    comparison of two already-canonicalized N-Quads strings.
 
-   Per Iron Rule #7 (parsers belong in F*), the manifest itself — a
+   Per Iron Rule #7 (parsers belong in F-star), the manifest itself — a
    JSON-LD document — is parsed with the F*-extracted RFC 8259 parser
    (Parser_JSON.parse_json), not any OCaml JSON library. There is no
    hand-rolled JSON parsing in this file.

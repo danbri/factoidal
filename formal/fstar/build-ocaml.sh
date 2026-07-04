@@ -508,6 +508,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     "$BINDIR/factoidal-http"
     "$BINDIR/owl_runner"
     "$BINDIR/rdfc10_runner"
+    "$BINDIR/jsonld_runner"
     "$BINDIR/cottas_ondisk_smoketest"
   )
   NATIVE_SOURCES=(
@@ -520,6 +521,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     ../../../bin/factoidal-http/factoidal_http_main.ml
     ../../../bin/owl-runner/owl_runner.ml
     ../../../bin/rdfc10-runner/rdfc10_runner.ml
+    ../../../bin/jsonld-runner/jsonld_runner.ml
     ../../../bin/cottas-ondisk-smoketest/cottas_ondisk_smoketest.ml
     ../experimental_ocaml_glue/parquet_zstd_stubs.c
   )
@@ -640,6 +642,33 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
       exit 1
     fi
     echo "  Built: bin/${PLATFORM}/rdfc10_runner ($(wc -c < "$BINDIR/rdfc10_runner") bytes)"
+
+    # jsonld_runner — JSON-LD 1.1 toRdf manifest runner (Phase 2 of
+    # the JSON-LD program). Reads
+    # third_party/testing/json-ld/tests/toRdf-manifest.jsonld via the
+    # F*-extracted Parser_JSON, calls Parser_JSONLD.parse_jsonld
+    # (expanded-form only), and compares against expected .nq fixtures
+    # via RDF_Canonical.canonicalize_to_nquads. See
+    # docs/designissues/2026-07-05-jsonld-phase2-runner.md.
+    JSONLD_RUNNER_RC=0
+    run_with_heartbeat "ocamlopt jsonld_runner" "_ocamlopt_jsonld_runner.log" -- \
+      ocamlfind ocamlopt -package fstar.lib,str,zarith,sha,digestif.c,unix -linkpkg -w -8-14-26 \
+      $STATIC_FLAGS \
+      $COMMON_MODULES \
+      $PARQUET_NATIVE_STUBS \
+      ../../../bin/jsonld-runner/jsonld_runner.ml \
+      -o "$BINDIR/jsonld_runner" || JSONLD_RUNNER_RC=$?
+    cat _ocamlopt_jsonld_runner.log
+    if [[ "$JSONLD_RUNNER_RC" -ne 0 ]]; then
+      echo "  ERROR: jsonld_runner build failed (ocamlopt rc=$JSONLD_RUNNER_RC)" >&2
+      echo "  See full log above. Build aborted." >&2
+      exit "$JSONLD_RUNNER_RC"
+    fi
+    if [[ ! -x "$BINDIR/jsonld_runner" ]]; then
+      echo "  ERROR: jsonld_runner ocamlopt returned 0 but $BINDIR/jsonld_runner is missing or not executable" >&2
+      exit 1
+    fi
+    echo "  Built: bin/${PLATFORM}/jsonld_runner ($(wc -c < "$BINDIR/jsonld_runner") bytes)"
 
     # factoidal_http_client — minimal HTTP/1.1 client I/O glue around
     # the F*-extracted SPARQL.HTTP.Client module. Has a module-init
