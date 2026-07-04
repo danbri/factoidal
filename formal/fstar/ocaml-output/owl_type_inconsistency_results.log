@@ -1,6 +1,6 @@
 Closure regime: RL
 OWL 2 test catalog: third_party/testing/owl/type-inconsistency.rdf
-  parsed 3220 triples in 0.10s
+  parsed 3220 triples in 0.09s
 Totals: 128 test cases
   PositiveEntailmentTest:    0
   NegativeEntailmentTest:    0
@@ -135,7 +135,7 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   FAIL/unexpected-consistency  rdfbased-sem-eqdis-disprop-irrflxv
   FAIL/unexpected-consistency  rdfbased-sem-ndis-alldifferent-fw
   FAIL/unexpected-consistency  rdfbased-sem-ndis-alldifferent-fw-distinctmembers
-  FAIL/unexpected-consistency  rdfbased-sem-ndis-alldisjointclasses-fw
+  PASS  rdfbased-sem-ndis-alldisjointclasses-fw
   FAIL/unexpected-consistency  rdfbased-sem-ndis-alldisjointproperties-fw
   FAIL/unexpected-consistency  rdfbased-sem-npa-dat-fw
   FAIL/unexpected-consistency  rdfbased-sem-npa-ind-fw
@@ -143,4 +143,4 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   FAIL/unexpected-consistency  rdfbased-sem-restrict-maxqcr-inst-obj-zero
   FAIL/no-premise  string-integer-clash
 
-Profile-RL InconsistencyTests: 15 pass, 113 fail (out of 128) in 6.37s
+Profile-RL InconsistencyTests: 16 pass, 112 fail (out of 128) in 6.63s

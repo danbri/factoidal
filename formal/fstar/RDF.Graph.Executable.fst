@@ -2312,6 +2312,46 @@ let owl_rule_disjoint_with_propagation (g : rdf_graph) (ig : indexed_graph) : rd
     g
     g
 
+// Canonical complement-class bnode, one per named class. The __rl_
+// prefix keeps it excluded from the canonical-generating restriction
+// rules via bnode_is_rl_canonical / edge_subject_is_safe below.
+let canonical_complement_bnode (c : wf_iri) : bnode_id =
+  String.concat "" ["__rl_comp__"; c]
+
+// cax-dw-comp (sound extension, not in RL Table 4): from
+// (c1 owl:disjointWith c2) every c1-instance lies outside c2, i.e.
+// inside the class expression complementOf(c2). Materialise that
+// expression as a deterministic skolem bnode plus memberships. Sound
+// under the RDF-based semantics because bnodes are existentials; the
+// class-level triple (c1 owl:complementOf c2) is NOT emitted — that
+// direction stays unsound (see owl_rule_disjoint_with_propagation).
+// IRI-IRI guard per the bnode-pollution rule (parent9 lesson).
+// Targets DisjointClasses-001 / -003; see
+// docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.1.
+let owl_rule_disjoint_to_complement (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_disjointWith_iri then
+        match t.s, t.o with
+        | S_IRI c1, T_IRI c2 ->
+          if c2 = owl_Thing || c2 = owl_Nothing then acc
+          else
+            let cb : subject = S_BNode (canonical_complement_bnode c2) in
+            let shape1 : triple = { s = cb; p = owl_complementOf_iri; o = T_IRI c2 } in
+            let shape2 : triple = { s = cb; p = rdf_type; o = T_IRI owl_Class } in
+            let acc1 = add_triple_unchecked (add_triple_unchecked acc shape1) shape2 in
+            let members = find_subjects_indexed ig rdf_type (T_IRI c1) in
+            List.Tot.fold_left
+              (fun (acc2 : rdf_graph) (x : subject) ->
+                let memb : triple =
+                  { s = x; p = rdf_type; o = T_BNode (canonical_complement_bnode c2) } in
+                add_triple_unchecked acc2 memb)
+              acc1 members
+        | _, _ -> acc
+      else acc)
+    g
+    g
+
 // Existential-witness synthesis (paper-Q3 gap 1, 2026-04-25 Tav3):
 //
 // For the someValuesFrom restriction shape
@@ -3685,13 +3725,53 @@ let owl_xsd_core_datatype_axioms : list triple =
 let owl_rule_xsd_core_datatype_axioms (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   add_triples_if_new g owl_xsd_core_datatype_axioms
 
+let owl_AllDisjointClasses_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#AllDisjointClasses");
+  "http://www.w3.org/2002/07/owl#AllDisjointClasses"
+
+let owl_members_iri : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#members");
+  "http://www.w3.org/2002/07/owl#members"
+
+// cax-adc-expand: (x rdf:type owl:AllDisjointClasses) with
+// (x owl:members L), L an all-IRI rdf list (c1 ... cn), implies
+// pairwise (ci owl:disjointWith cj) for i distinct from j. Bnode
+// class expressions in L make decode_chain_list return None (guard).
+// Wired before owl_rule_disjoint_with_propagation in the closure step
+// so symmetry and cax-dw-comp see the pairs in the same step.
+// Targets DisjointClasses-003; see
+// docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.2.
+let owl_rule_all_disjoint_classes (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_AllDisjointClasses_iri) then
+        List.Tot.fold_left
+          (fun (acc1 : rdf_graph) (l_term : rdf_term) ->
+            match term_to_subject l_term with
+            | None -> acc1
+            | Some l_subj ->
+              (match decode_chain_list g ig l_subj with
+               | Some cs ->
+                 List.Tot.fold_left (fun (acc2 : rdf_graph) (c1 : wf_iri) ->
+                   List.Tot.fold_left (fun (acc3 : rdf_graph) (c2 : wf_iri) ->
+                     if c1 = c2 then acc3
+                     else add_triple_unchecked acc3
+                            ({ s = S_IRI c1; p = owl_disjointWith_iri; o = T_IRI c2 }))
+                     acc2 cs)
+                   acc1 cs
+               | None -> acc1))
+          acc (find_objects_indexed ig t.s owl_members_iri)
+      else acc)
+    g
+    g
+
 // Apply all OWL-RL rules once. Ordering: first do "axiom-introducing" rules
 // (equivalentClass/Property expansion, owl:inverseOf flip, symmetric/
 // transitive), then sameAs rules. The fixpoint loop re-applies them until
 // no change.
 let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   (* OWL-RL Commit B: build the index once per step; thread to all
-     28 rules. Snapshot semantics — see #4 of the design doc. *)
+     30 rules. Snapshot semantics — see #4 of the design doc. *)
   let ig = build_indexed g in
   let g1 = owl_rule_equivalent_class g ig in
   let g2 = owl_rule_equivalent_property g1 ig in
@@ -3701,13 +3781,21 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   let g2a = owl_rule_scm_eqc2 g2 ig in
   let g2b = owl_rule_scm_eqp2 g2a ig in
   let g3 = owl_rule_inverse_of g2b ig in
+  // cax-adc-expand: owl:AllDisjointClasses + owl:members list ->
+  // pairwise owl:disjointWith. Runs before the propagation rule so the
+  // symmetric closure and cax-dw-comp see the pairs in the same step.
+  let g3_adc = owl_rule_all_disjoint_classes g3 ig in
   // disjointWith propagation (paper-Q3 gap 3, 2026-04-25 Tav3):
   // symmetry of disjointWith + complementOf -> disjointWith (both
   // dirs). Runs early so downstream rules / the rewriter / Mem's
   // tableau bridge see the symmetric form within one closure step.
-  let g3_disj = owl_rule_disjoint_with_propagation g3 ig in
+  let g3_disj = owl_rule_disjoint_with_propagation g3_adc ig in
+  // cax-dw-comp: disjointWith -> complementOf(c2) skolem scaffold +
+  // memberships for c1-instances (sound existential extension). After
+  // g3_disj so both disjointWith directions feed it in one step.
+  let g3_comp = owl_rule_disjoint_to_complement g3_disj ig in
   // Schema-level inverseOf flip (sparqldl-11 "domain test").
-  let g3a = owl_rule_inverseOf_domain_range_flip g3_disj ig in
+  let g3a = owl_rule_inverseOf_domain_range_flip g3_comp ig in
   let g4 = owl_rule_symmetric_property g3a ig in
   let g5 = owl_rule_transitive_property g4 ig in
   // Named-equivalentClass-to-sameAs: must run BEFORE the sameAs rules

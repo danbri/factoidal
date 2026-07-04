@@ -1541,6 +1541,38 @@ let owl_rule_disjoint_with_propagation (g : rdf_graph) (ig : indexed_graph) :
                 add_triple_unchecked (add_triple_unchecked acc t1) t2
             | (uu___1, uu___2) -> acc)
          else acc) g g
+let canonical_complement_bnode (c : wf_iri) : bnode_id=
+  FStar_String.concat "" ["__rl_comp__"; c]
+let owl_rule_disjoint_to_complement (g : rdf_graph) (ig : indexed_graph) :
+  rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if t.p = owl_disjointWith_iri
+       then
+         match ((t.s), (t.o)) with
+         | (S_IRI c1, T_IRI c2) ->
+             (if (c2 = owl_Thing) || (c2 = owl_Nothing)
+              then acc
+              else
+                (let cb = S_BNode (canonical_complement_bnode c2) in
+                 let shape1 =
+                   { s = cb; p = owl_complementOf_iri; o = (T_IRI c2) } in
+                 let shape2 = { s = cb; p = rdf_type; o = (T_IRI owl_Class) } in
+                 let acc1 =
+                   add_triple_unchecked (add_triple_unchecked acc shape1)
+                     shape2 in
+                 let members = find_subjects_indexed ig rdf_type (T_IRI c1) in
+                 FStar_List_Tot_Base.fold_left
+                   (fun acc2 x ->
+                      let memb =
+                        {
+                          s = x;
+                          p = rdf_type;
+                          o = (T_BNode (canonical_complement_bnode c2))
+                        } in
+                      add_triple_unchecked acc2 memb) acc1 members))
+         | (uu___, uu___1) -> acc
+       else acc) g g
 let canonical_svf2_witness_bnode (p : wf_iri) (c : wf_iri) (x : subject) :
   bnode_id=
   FStar_String.concat ""
@@ -2427,6 +2459,40 @@ let owl_xsd_core_datatype_axioms : triple Prims.list=
   { s = (S_IRI xsd_string); p = rdf_type; o = (T_IRI rdfs_Datatype) }]
 let owl_rule_xsd_core_datatype_axioms (g : rdf_graph) (ig : indexed_graph) :
   rdf_graph= add_triples_if_new g owl_xsd_core_datatype_axioms
+let owl_AllDisjointClasses_iri : wf_iri=
+  "http://www.w3.org/2002/07/owl#AllDisjointClasses"
+let owl_members_iri : wf_iri= "http://www.w3.org/2002/07/owl#members"
+let owl_rule_all_disjoint_classes (g : rdf_graph) (ig : indexed_graph) :
+  rdf_graph=
+  FStar_List_Tot_Base.fold_left
+    (fun acc t ->
+       if
+         (t.p = rdf_type) &&
+           (rdf_term_eq t.o (T_IRI owl_AllDisjointClasses_iri))
+       then
+         FStar_List_Tot_Base.fold_left
+           (fun acc1 l_term ->
+              match term_to_subject l_term with
+              | FStar_Pervasives_Native.None -> acc1
+              | FStar_Pervasives_Native.Some l_subj ->
+                  (match decode_chain_list g ig l_subj with
+                   | FStar_Pervasives_Native.Some cs ->
+                       FStar_List_Tot_Base.fold_left
+                         (fun acc2 c1 ->
+                            FStar_List_Tot_Base.fold_left
+                              (fun acc3 c2 ->
+                                 if c1 = c2
+                                 then acc3
+                                 else
+                                   add_triple_unchecked acc3
+                                     {
+                                       s = (S_IRI c1);
+                                       p = owl_disjointWith_iri;
+                                       o = (T_IRI c2)
+                                     }) acc2 cs) acc1 cs
+                   | FStar_Pervasives_Native.None -> acc1)) acc
+           (find_objects_indexed ig t.s owl_members_iri)
+       else acc) g g
 let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
   let ig = build_indexed g in
   let g1 = owl_rule_equivalent_class g ig in
@@ -2434,8 +2500,10 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
   let g2a = owl_rule_scm_eqc2 g2 ig in
   let g2b = owl_rule_scm_eqp2 g2a ig in
   let g3 = owl_rule_inverse_of g2b ig in
-  let g3_disj = owl_rule_disjoint_with_propagation g3 ig in
-  let g3a = owl_rule_inverseOf_domain_range_flip g3_disj ig in
+  let g3_adc = owl_rule_all_disjoint_classes g3 ig in
+  let g3_disj = owl_rule_disjoint_with_propagation g3_adc ig in
+  let g3_comp = owl_rule_disjoint_to_complement g3_disj ig in
+  let g3a = owl_rule_inverseOf_domain_range_flip g3_comp ig in
   let g4 = owl_rule_symmetric_property g3a ig in
   let g5 = owl_rule_transitive_property g4 ig in
   let g5a = owl_rule_named_equivClass_to_sameAs g5 ig in

@@ -38,7 +38,7 @@ Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-someValuesFrom-002
 
-Profile-RL NegativeEntailmentTests: 19 pass, 4 fail (out of 23) in 1.41s
+Profile-RL NegativeEntailmentTests: 19 pass, 4 fail (out of 23) in 1.49s
 
 Running 23 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  New-Feature-Keys-004
@@ -65,4 +65,4 @@ Running 23 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-someValuesFrom-002
 
-Profile-RL ConsistencyTests: 23 pass, 0 fail (out of 23) in 1.57s
+Profile-RL ConsistencyTests: 23 pass, 0 fail (out of 23) in 1.65s
