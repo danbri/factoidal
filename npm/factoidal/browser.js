@@ -40,6 +40,17 @@ export function setFactoidalUrl(url) {
   _fetchPromise = null;
 }
 
+/**
+ * Current `factoidal.js` source URL. Lets a caller that wants a
+ * non-default bundle (e.g. a per-page `js-url` override, or the
+ * source-mapped debug bundle from the `jsoo-debug-bundle` skill)
+ * check before calling `setFactoidalUrl()`, so it only pays the
+ * cache-reset cost when the URL actually changes.
+ */
+export function getFactoidalUrl() {
+  return _factoidalUrl;
+}
+
 function loadFactoidalSource() {
   if (_factoidalSrc) return Promise.resolve(_factoidalSrc);
   if (_fetchPromise) return _fetchPromise;
@@ -83,18 +94,72 @@ function extForFormat(fmt) {
   return DATA_FORMAT_EXT[key];
 }
 
+// ---------------------------------------------------------------------
+// #240 byte-encoding convention: under js_of_ocaml use-js-string=true
+// (jsoo 6.x default) OCaml strings ARE the host JS strings, using a
+// "bytes-as-JS-chars" convention — each JS string char's low byte is
+// one OCaml byte, built via String.fromCharCode per UTF-8 byte. Any
+// *textual* content handed to the `factoidal.js` bundle (RDF data,
+// SPARQL query text) must be UTF-8-encoded and byte-packed into that
+// convention, or non-ASCII input desyncs BatUTF8 and throws
+// BatUChar.Out_of_range (see #240, and the `jsoo-debug-bundle` skill).
+//
+// This was previously duplicated in
+// docs/fstar-extracted/factoidal-sparql-client.js as an inline
+// `jsToBytesAsChars` helper; it now lives here as the one true
+// implementation, applied automatically by `query()` / `toRdf()` /
+// `canonicalize()` / `queryDataset()` below. It is deliberately NOT
+// applied inside `runFactoidalCli()` itself: that primitive's `files`
+// contents are sometimes genuinely opaque bytes already packed
+// one-char-per-byte by the caller (e.g. the COTTAS/Parquet demo, which
+// reads a binary `.parquet` file and packs it itself) — re-encoding
+// those through TextEncoder would corrupt them. Callers driving
+// `runFactoidalCli()` directly with *text* content should call this
+// first, same as the higher-level helpers do internally.
+// ---------------------------------------------------------------------
+const _textEncoder = (typeof TextEncoder !== 'undefined') ? new TextEncoder() : null;
+
 /**
- * Run a SPARQL query against an RDF dataset in memory. Same shape as
- * the Node entry point. See index.d.ts for the full type.
+ * UTF-8-encode a JS string and repack it into the "bytes-as-JS-chars"
+ * convention the js_of_ocaml bundle expects for text content (RDF
+ * data, SPARQL query text) passed via `jsoo_fs_tmp` or CLI argv. A
+ * no-op for pure-ASCII input.
  *
- * @param {string} dataString
- * @param {string} queryString
- * @param {object} [options]
- * @param {string} [options.dataFormat='turtle']
- * @param {string} [options.entail='none']
- * @param {string} [options.output='json']
- * @returns {Promise<object|string>}
+ * @param {string} s
+ * @returns {string}
  */
+export function encodeTextAsBundleBytes(s) {
+  if (typeof s !== 'string') return s;
+  let bytes;
+  if (_textEncoder) {
+    bytes = _textEncoder.encode(s);
+  } else {
+    // Manual UTF-8 encode for runtimes without TextEncoder.
+    const out = [];
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      if (c < 0x80) out.push(c);
+      else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
+      else if (c < 0xd800 || c >= 0xe000) {
+        out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+      } else {
+        const hi = c, lo = s.charCodeAt(++i);
+        const cp = 0x10000 + (((hi & 0x3ff) << 10) | (lo & 0x3ff));
+        out.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3f),
+                 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
+      }
+    }
+    bytes = new Uint8Array(out);
+  }
+  // Pack bytes into a JS string. fromCharCode.apply blows the arg-list
+  // limit on long inputs (~64K), so chunk.
+  let r = '';
+  for (let i = 0; i < bytes.length; i += 0x4000) {
+    r += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(bytes.length, i + 0x4000)));
+  }
+  return r;
+}
+
 /**
  * Run one CLI invocation of the js_of_ocaml `factoidal.js` bundle
  * in-browser: argv + a fake filesystem in, {stdout, stderr, exitCode}
@@ -106,14 +171,29 @@ function extForFormat(fmt) {
  * example of code written against this shape so it runs identically
  * under this browser driver and under Node's fs-based driver.
  *
+ * `files` contents are passed through byte-for-byte — no automatic
+ * UTF-8/#240 encoding here (see `encodeTextAsBundleBytes()` above);
+ * callers driving text content directly through this primitive should
+ * apply it themselves first.
+ *
  * @param {string[]} args   CLI arguments (after argv[0]/argv[1]).
  * @param {Array<{name: string, content: string}>} files
  *        Documents for the fake filesystem. Names must start with
  *        '/static/'.
- * @returns {Promise<{stdout: string, stderr: string, exitCode: number}>}
+ * @param {object} [options]
+ * @param {(src: string) => string} [options.transformSource]
+ *        Optional hook applied to the fetched bundle source before
+ *        each eval, e.g. to splice in the `?jsoo-debug=1` BatUChar
+ *        instrumentation the sparql-client web component uses for
+ *        #240 diagnostics. Not cached — safe to vary per call.
+ * @returns {Promise<{stdout: string, stderr: string, exitCode: number, engineMs: number}>}
  */
-export async function runFactoidalCli(args, files) {
-  const src = await loadFactoidalSource();
+export async function runFactoidalCli(args, files, options) {
+  const opts = options || {};
+  let src = await loadFactoidalSource();
+  if (typeof opts.transformSource === 'function') {
+    src = opts.transformSource(src);
+  }
 
   // Preserve anything we're about to overwrite.
   const orig = {
@@ -153,6 +233,7 @@ export async function runFactoidalCli(args, files) {
     globalThis.jsoo_fs_tmp = orig.jsooFs;
   }
 
+  const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
   try {
     (new Function(src))();
   } catch (e) {
@@ -160,11 +241,13 @@ export async function runFactoidalCli(args, files) {
   } finally {
     restore();
   }
+  const t1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
 
   return {
     stdout: stdoutBuf.join('\n'),
     stderr: stderrBuf.join('\n'),
     exitCode,
+    engineMs: t1 - t0,
   };
 }
 
@@ -209,13 +292,13 @@ export async function query(dataString, queryString, options) {
 
   const argv = [
     '-d', dataPath,
-    '-e', queryString,
+    '-e', encodeTextAsBundleBytes(queryString),
     '-o', output === 'json' ? 'json' : output,
   ];
   if (entail !== 'none') argv.push('--entail', entail);
 
-  const { stdout, stderr, exitCode } =
-    await runFactoidalCli(argv, [{ name: dataPath, content: dataString }]);
+  const { stdout, stderr, exitCode, engineMs } = await runFactoidalCli(
+    argv, [{ name: dataPath, content: encodeTextAsBundleBytes(dataString) }]);
 
   if (exitCode !== 0) {
     const msg =
@@ -241,7 +324,13 @@ export async function query(dataString, queryString, options) {
   }
   const jsonText = stdout.slice(firstBrace, lastBrace + 1);
   try {
-    return JSON.parse(jsonText);
+    const parsed = JSON.parse(jsonText);
+    // Non-enumerable: doesn't perturb JSON.stringify()/Object.keys()
+    // for callers that diff this against W3C .srx-derived fixtures,
+    // but is readable by callers that want engine-timing observability
+    // (e.g. the sparql-client web component's Details/timing panel).
+    Object.defineProperty(parsed, 'engineMs', { value: engineMs, enumerable: false });
+    return parsed;
   } catch (e) {
     const err = new Error(
       'factoidal JSON parse failed: ' + e.message +
@@ -268,10 +357,10 @@ async function dumpNQuads(mode, text, options) {
   const dataPath = '/static/data.' + ext;
 
   const argv = [mode, '-d', dataPath];
-  if (baseIRI) argv.push('-b', baseIRI);
+  if (baseIRI) argv.push('-b', encodeTextAsBundleBytes(baseIRI));
 
-  const { stdout, stderr, exitCode } =
-    await runFactoidalCli(argv, [{ name: dataPath, content: text }]);
+  const { stdout, stderr, exitCode } = await runFactoidalCli(
+    argv, [{ name: dataPath, content: encodeTextAsBundleBytes(text) }]);
 
   if (exitCode !== 0) {
     const msg = (stderr || stdout || `factoidal exited with code ${exitCode}`).trim();
@@ -317,11 +406,279 @@ export async function canonicalize(text, options) {
   return dumpNQuads('--canonicalize', text, options);
 }
 
+// ---------------------------------------------------------------------
+// Multi-file / multi-engine dataset queries. `query()` above only
+// takes one data string into the default graph. Multi-named-graph
+// pages (e.g. the life-sci demos, which load several Wikidata TTL
+// files each into their own named graph) need more than that; this
+// was previously duplicated per-page in
+// docs/fstar-extracted/factoidal-sparql-client.js (`_getFilePayloads` /
+// the JS-engine argv-building loop / `payloadsToTriG` for the wasm
+// path). It now lives here as the one true implementation.
+// ---------------------------------------------------------------------
+
+/**
+ * @typedef {object} DatasetFile
+ * @property {string} content    Document text.
+ * @property {string} [dataFormat='turtle']  One of DATA_FORMAT_EXT's keys.
+ * @property {string} [graph]    Named-graph IRI. Omitted/falsy loads
+ *   into the default graph (CLI `-d`); otherwise `--named IRI=path`.
+ */
+
+// Merge N (graph, content) pairs into one TriG document: directives
+// (@prefix/@base/PREFIX/BASE) are hoisted to the top and deduplicated;
+// remaining triples are wrapped in `GRAPH <iri> { ... }` for files with
+// a graph IRI, or left bare (default-graph triples section) otherwise.
+// Used for the wasm engine path, whose query() API takes a single data
+// string. Ported verbatim from factoidal-sparql-client.js's
+// payloadsToTriG. Assumes Turtle-family (`dataFormat: 'turtle'`) input
+// per file — the same assumption the original shim made.
+function mergeFilesToTrig(files) {
+  const directives = new Set();
+  const blocks = [];
+  const dirRE = /^\s*(?:@prefix|@base|PREFIX|BASE)\b[^\n]*\.\s*$/i;
+  files.forEach((f) => {
+    const bodyLines = [];
+    (f.content || '').split(/\r?\n/).forEach((line) => {
+      if (dirRE.test(line)) directives.add(line.trim());
+      else bodyLines.push(line);
+    });
+    if (f.graph) {
+      blocks.push('GRAPH <' + f.graph + '> {\n' + bodyLines.join('\n') + '\n}\n');
+    } else {
+      blocks.push(bodyLines.join('\n') + '\n');
+    }
+  });
+  return [...directives].join('\n') + '\n\n' + blocks.join('\n');
+}
+
+/**
+ * Run a SPARQL query against a multi-file, multi-named-graph dataset,
+ * on either the js_of_ocaml (`js`, default) or wasm_of_ocaml (`wasm`)
+ * extraction target.
+ *
+ * @param {DatasetFile[]} files
+ * @param {string} queryString
+ * @param {object} [options]
+ * @param {string} [options.entail='none']
+ * @param {string} [options.output='json']
+ * @param {'js'|'wasm'} [options.engine='js']
+ * @param {string} [options.wasmUrl]  Override for browser-wasm.js's
+ *   `factoidal.wasm.js` URL (see `setFactoidalWasmUrl`). Only consulted
+ *   when `options.engine === 'wasm'`.
+ * @param {(src: string) => string} [options.transformSource]  Forwarded
+ *   to `runFactoidalCli()` on the js engine path only.
+ * @returns {Promise<object|string>}
+ */
+export async function queryDataset(files, queryString, options) {
+  if (!Array.isArray(files) || files.length === 0) {
+    throw new TypeError('queryDataset: files must be a non-empty array');
+  }
+  if (typeof queryString !== 'string') {
+    throw new TypeError('queryDataset: queryString must be a string');
+  }
+
+  const opts   = options || {};
+  const entail = opts.entail || 'none';
+  const output = opts.output || 'json';
+  const engine = opts.engine || 'js';
+
+  if (!ENTAIL_VALUES.has(entail)) {
+    throw new TypeError(`queryDataset: entail must be one of ${[...ENTAIL_VALUES].join(', ')}`);
+  }
+  if (!OUTPUT_FORMATS.has(output)) {
+    throw new TypeError(`queryDataset: output must be one of ${[...OUTPUT_FORMATS].join(', ')}`);
+  }
+
+  if (engine === 'wasm') {
+    // wasm_of_ocaml's query() only accepts one data string — merge
+    // named graphs into TriG first. Dynamically imported so pages that
+    // never touch the wasm engine don't pay for loading this module.
+    const wasmMod = await import(new URL('./browser-wasm.js', import.meta.url).href);
+    // Only reset the module's cached bundle source when the URL
+    // actually changes — setFactoidalWasmUrl() unconditionally clears
+    // the cache, and this can run once per query.
+    if (opts.wasmUrl && typeof wasmMod.setFactoidalWasmUrl === 'function'
+        && (typeof wasmMod.getFactoidalWasmUrl !== 'function'
+            || wasmMod.getFactoidalWasmUrl() !== opts.wasmUrl)) {
+      wasmMod.setFactoidalWasmUrl(opts.wasmUrl);
+    }
+    const trigText = mergeFilesToTrig(files);
+    const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    const parsed = await wasmMod.query(trigText, queryString, { dataFormat: 'trig', entail, output });
+    const t1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    if (output === 'json' && parsed && typeof parsed === 'object') {
+      Object.defineProperty(parsed, 'engineMs', { value: t1 - t0, enumerable: false });
+    }
+    return parsed;
+  }
+  if (engine !== 'js') {
+    throw new TypeError(`queryDataset: engine must be 'js' or 'wasm', got '${engine}'`);
+  }
+
+  // js_of_ocaml path — multi-file via jsoo_fs_tmp, one -d/--named per
+  // file, same as the JS-engine branch of the old sparql-client shim.
+  const cliFiles = [];
+  const argv = [];
+  files.forEach((f, i) => {
+    const ext  = extForFormat(f.dataFormat || 'turtle');
+    const path = '/static/data-' + i + '.' + ext;
+    cliFiles.push({ name: path, content: encodeTextAsBundleBytes(f.content || '') });
+    if (f.graph) argv.push('--named', f.graph + '=' + path);
+    else         argv.push('-d', path);
+  });
+  argv.push('-e', encodeTextAsBundleBytes(queryString), '-o', output === 'json' ? 'json' : output);
+  if (entail !== 'none') argv.push('--entail', entail);
+
+  const { stdout, stderr, exitCode, engineMs } =
+    await runFactoidalCli(argv, cliFiles, { transformSource: opts.transformSource });
+
+  if (exitCode !== 0) {
+    const msg = (stderr || stdout || `factoidal exited with code ${exitCode}`).trim();
+    const err = new Error('SPARQL query failed: ' + msg);
+    err.exitCode = exitCode;
+    err.stderr   = stderr;
+    err.stdout   = stdout;
+    throw err;
+  }
+
+  if (output !== 'json') return stdout;
+
+  const firstBrace = stdout.indexOf('{');
+  const lastBrace  = stdout.lastIndexOf('}');
+  if (firstBrace < 0 || lastBrace < firstBrace) {
+    const err = new Error('factoidal did not produce JSON on stdout. Raw output: ' + stdout);
+    err.stdout = stdout;
+    err.stderr = stderr;
+    throw err;
+  }
+  try {
+    const parsed = JSON.parse(stdout.slice(firstBrace, lastBrace + 1));
+    Object.defineProperty(parsed, 'engineMs', { value: engineMs, enumerable: false });
+    return parsed;
+  } catch (e) {
+    const err = new Error('factoidal JSON parse failed: ' + e.message + '. Raw output: ' + stdout);
+    err.stdout = stdout;
+    err.stderr = stderr;
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------
+// npm-entry ABI loader (persistent factoidalNpmEntry object, built from
+// bin/npm-entry/entry_jsoo.ml -- see that file's header comment for the
+// full ABI contract). The CLI bundle above (runFactoidalCli / query /
+// toRdf / canonicalize) covers most of the surface with a fresh bundle
+// eval per call; a few operations (RIF Core saturation today) are only
+// exposed through this persistent ABI, so this loader fetches + evals
+// factoidal-npm-entry.js once and reads the `factoidalNpmEntry` object
+// it registers on globalThis -- same registration Node's index.js reads
+// off `module.exports.factoidalNpmEntry` / `globalThis.factoidalNpmEntry`
+// (see npm/factoidal/index.js's loadEntry()).
+// ---------------------------------------------------------------------
+
+let _npmEntryUrl = new URL('./factoidal-npm-entry.js', import.meta.url).href;
+let _npmEntryPromise = null;
+
+/**
+ * Override where `factoidal-npm-entry.js` is loaded from. Same idea as
+ * setFactoidalUrl() for the CLI bundle.
+ */
+export function setFactoidalNpmEntryUrl(url) {
+  _npmEntryUrl = url;
+  _npmEntryPromise = null;
+}
+
+/**
+ * Fetch + evaluate factoidal-npm-entry.js exactly once, returning the
+ * `factoidalNpmEntry` ABI object it registers on globalThis. Optional:
+ * everything the CLI bundle can do works without it.
+ *
+ * @returns {Promise<object>} the factoidalNpmEntry ABI object.
+ */
+export async function loadNpmEntry() {
+  if (_npmEntryPromise) return _npmEntryPromise;
+  _npmEntryPromise = fetch(_npmEntryUrl)
+    .then((r) => {
+      if (!r.ok) {
+        throw new Error(
+          `factoidal-npm-entry.js fetch failed: ${r.status} ${r.statusText}`);
+      }
+      return r.text();
+    })
+    .then((src) => {
+      (new Function(src))();
+      const abi = globalThis.factoidalNpmEntry;
+      if (!abi) {
+        throw new Error(
+          'factoidal-npm-entry.js loaded but did not register ' +
+          'factoidalNpmEntry on globalThis');
+      }
+      return abi;
+    });
+  return _npmEntryPromise;
+}
+
+/**
+ * RIF Core smoke saturation, run live: the exact premise graph and
+ * two-rule program baked into RIF.Core.Eval.fst as smoke_input_graph /
+ * smoke_program, saturated via RIF_Core_Eval.fixpoint in the loaded
+ * bundle (bin/npm-entry/entry_jsoo.ml's rifSmoke export). No user
+ * input -- a fixed capability probe (issue #274).
+ *
+ * @returns {Promise<{inputNquads:string, saturatedNquads:string,
+ *   inputCount:number, derivedCount:number, rounds:number, fuel:number,
+ *   engineMs:number}>}
+ */
+export async function rifSmoke() {
+  const abi = await loadNpmEntry();
+  if (typeof abi.rifSmoke !== 'function') {
+    throw new Error(
+      'rifSmoke: the loaded factoidal-npm-entry bundle predates the RIF exports');
+  }
+  const parsed = JSON.parse(abi.rifSmoke());
+  if (!parsed.ok) throw new Error(parsed.error || 'rifSmoke failed');
+  return parsed;
+}
+
+/**
+ * RIF Core forward-chaining saturation over caller-supplied RIF-XML
+ * rules and N-Quads premise data (default graph only -- RIF Core has
+ * no named-graph notion). Parsed via Parser_RIFXML.parse_rif_program,
+ * saturated via RIF_Core_Eval.fixpoint (bin/npm-entry/entry_jsoo.ml's
+ * rifEval export). Import directives in the RIF-XML are not resolved;
+ * merge any imported data into dataNQuads yourself first.
+ *
+ * @param {string} rifXml
+ * @param {string} dataNQuads
+ * @returns {Promise<{inputNquads:string, saturatedNquads:string,
+ *   inputCount:number, derivedCount:number, rounds:number, fuel:number,
+ *   engineMs:number}>}
+ */
+export async function rifEval(rifXml, dataNQuads) {
+  if (typeof rifXml !== 'string') {
+    throw new TypeError('rifEval: rifXml must be a string');
+  }
+  if (typeof dataNQuads !== 'string') {
+    throw new TypeError('rifEval: dataNQuads must be a string');
+  }
+  const abi = await loadNpmEntry();
+  if (typeof abi.rifEval !== 'function') {
+    throw new Error(
+      'rifEval: the loaded factoidal-npm-entry bundle predates the RIF exports');
+  }
+  const parsed = JSON.parse(abi.rifEval(rifXml, dataNQuads));
+  if (!parsed.ok) throw new Error(parsed.error || 'rifEval failed');
+  return parsed;
+}
+
 // Best-effort version export for the browser. Consumers that care
 // about the exact version should import from the package root (which
 // reads package.json).
 export const version = '0.1.0-alpha.0';
 
 export default {
-  query, toRdf, canonicalize, runFactoidalCli, setFactoidalUrl, version,
+  query, toRdf, canonicalize, runFactoidalCli, setFactoidalUrl, getFactoidalUrl,
+  encodeTextAsBundleBytes, queryDataset, version,
+  loadNpmEntry, setFactoidalNpmEntryUrl, rifSmoke, rifEval,
 };

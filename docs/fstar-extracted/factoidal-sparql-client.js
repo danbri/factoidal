@@ -26,6 +26,24 @@
 'use strict';
 
 // ---------------------------------------------------------------------
+// Engine loading + invocation goes through the npm package's browser
+// entry (npm/factoidal/browser.js, mirrored read-only to
+// docs/npm/foafos/ for GitHub Pages — see build-ocaml.sh's "npm" step
+// and the site-and-dashboard skill's demo-inventory table). This
+// component used to hand-roll its own fetch/byte-packing/eval/argv
+// logic per engine (js and wasm); that is now the package's job — one
+// loader, not two divergent shims. `../npm/foafos/browser.js` resolves
+// correctly both from docs/fstar-extracted/ (repo layout) and from the
+// built Pages site, where fstar-extracted's contents are passed
+// through to the site root and npm/foafos is passed through to
+// `/npm/foafos/` (docs/.eleventy.js) — so `import.meta.url` for this
+// script is always effectively site-root either way.
+// ---------------------------------------------------------------------
+import {
+  queryDataset, setFactoidalUrl, getFactoidalUrl,
+} from '../npm/foafos/browser.js';
+
+// ---------------------------------------------------------------------
 // <factoidal-query> — light-DOM child used to declare queries inline.
 // Rendered as nothing; its `name`, `label`, and textContent feed the
 // parent orchestrator's query list.
@@ -518,32 +536,10 @@ function resultsToTSV(json) {
   return out.join('\n') + '\n';
 }
 
-function payloadsToTriG(payloads) {
-  const directives = new Set();
-  const blocks = [];
-  const dirRE = /^\s*(?:@prefix|@base|PREFIX|BASE)\b[^\n]*\.\s*$/i;
-  payloads.forEach(p => {
-    const bodyLines = [];
-    p.content.split(/\r?\n/).forEach(line => {
-      if (dirRE.test(line)) directives.add(line.trim());
-      else bodyLines.push(line);
-    });
-    // Payloads without a declared named-graph IRI drop into the
-    // default graph (bare braces in TriG — the triples section before
-    // any GRAPH block). This matches the `-d` fallback on the JS
-    // engine path.
-    if (p.graph) {
-      blocks.push(
-        'GRAPH <' + p.graph + '> {\n' +
-        bodyLines.join('\n') +
-        '\n}\n'
-      );
-    } else {
-      blocks.push(bodyLines.join('\n') + '\n');
-    }
-  });
-  return [...directives].join('\n') + '\n\n' + blocks.join('\n');
-}
+// (TriG-merging for the wasm engine's single-data-string API now lives
+// in npm/factoidal/browser.js's queryDataset() — mergeFilesToTrig() —
+// so it isn't duplicated here. See the comment at the top of this
+// file.)
 
 // ---------------------------------------------------------------------
 // Main orchestrator element.
@@ -1368,6 +1364,47 @@ class FactoidalSparqlClient extends HTMLElement {
   }
 
   // -----------------------------------------------------------------
+  // Error-panel formatting for a rejected queryDataset() call. Two
+  // shapes reach here:
+  //   1. A normal CLI failure (bad SPARQL syntax, engine exited
+  //      non-zero) — queryDataset()/query() build a plain Error with
+  //      .message/.stderr/.stdout/.exitCode.
+  //   2. A genuinely uncaught js_of_ocaml bundle exception that
+  //      escaped runFactoidalCli()'s own try/catch (not routed through
+  //      process.exit) — the raw jsoo-encoded exception value, either
+  //      a bare array `[248, "Name", id]`, a wrapped
+  //      `[0, [248, "Failure", id], "msg"]`, or (with OCAMLRUNPARAM=b)
+  //      the same array plus a `.js_error.stack`. Ported verbatim from
+  //      this component's pre-npm-package version so #240-style
+  //      diagnostics (see the jsoo-debug-bundle skill) still surface a
+  //      real stack trace on hosts with no devtools.
+  // -----------------------------------------------------------------
+  _formatEngineError(e) {
+    if (e && typeof e === 'object' && !Array.isArray(e)
+        && (e.stderr || e.stdout || e.exitCode !== undefined) && e.message) {
+      return e.message + (e.stderr ? '\n\n' + e.stderr : '');
+    }
+    let detail = '';
+    try {
+      if (Array.isArray(e)) {
+        if (e[0] === 248) {
+          detail += '\n  ocaml_exn: ' + e[1];
+        } else if (e[0] === 0 && Array.isArray(e[1]) && e[1][0] === 248) {
+          detail += '\n  ocaml_exn: ' + e[1][1];
+          if (e.length > 2) detail += ' arg=' + JSON.stringify(e[2]).slice(0, 200);
+        }
+        if (e.js_error && e.js_error.stack) {
+          detail += '\n  stack:\n' + String(e.js_error.stack).split('\n').map(l => '    ' + l).join('\n');
+        }
+      } else if (e && typeof e === 'object') {
+        if (e.message) detail += '\n  msg: ' + e.message;
+        if (e.stack)   detail += '\n  stack:\n' + String(e.stack).split('\n').map(l => '    ' + l).join('\n');
+      }
+    } catch (_) { /* never let the diagnostic itself throw */ }
+    return '[factoidal-sparql-client] ' + (e && e.message || e) + detail;
+  }
+
+  // -----------------------------------------------------------------
   // The Run handler — faithful port of demo-lifesci.html's runBtn click.
   // -----------------------------------------------------------------
   async _onRunClick() {
@@ -1510,55 +1547,34 @@ class FactoidalSparqlClient extends HTMLElement {
       }
 
       const payloads = await this._getFilePayloads();
+      const files = payloads.map(p => ({ content: p.content, dataFormat: 'turtle', graph: p.graph }));
 
       // ----------------------------------------------------------------
-      // WASM path — via browser-wasm.js's query() API. Merge n TTL files
-      // into one TriG string since that API takes a single data string.
+      // Engine invocation — via the npm package's queryDataset()
+      // (npm/factoidal/browser.js, mirrored to ../npm/foafos/). It owns
+      // byte-packing (#240), multi-named-graph argv building (js) /
+      // TriG merge (wasm), and the eval itself; this component only
+      // resolves which bundle URL to point it at (respecting this
+      // page's js-url/wasm-url attributes and the ?jsoo-debug=1
+      // debug-bundle override) and formats errors for the panel.
       // ----------------------------------------------------------------
-      if (engine === 'wasm') {
-        try {
-          const modUrl = new URL('./browser-wasm.js', this._resolveBaseUrl()).href;
-          const mod = await import(modUrl);
-          if (typeof mod.setFactoidalWasmUrl === 'function') {
-            mod.setFactoidalWasmUrl(
-              new URL(this.wasmUrl, this._resolveBaseUrl()));
-          }
-          const trigData = payloadsToTriG(payloads);
-          const qT0 = performance.now();
-          const parsed = await mod.query(trigData, queryText, {
-            dataFormat: 'trig',
-            entail: this.entail,
-          });
-          const qMs = performance.now() - qT0;
-          finaliseStatus('Done on WASM in ' + qMs.toFixed(0) + ' ms', 'status ok');
-          this._renderResultsJSON(parsed);
-          const totalMs = performance.now() - runStart;
-          const phases = this._renderTimingBoth(totalMs, 'wasm', qMs);
-          this.dispatchEvent(new CustomEvent('factoidal:query-done', {
-            bubbles: true, composed: true,
-            detail: { engine, query: queryText, results: parsed, runMs: qMs, totalMs, phases },
-          }));
-        } catch (e) {
-          finaliseStatus('WASM error: ' + (e && e.message || e), 'status err');
-          this._renderRawError((e && e.message ? e.message : String(e))
-                               + (e && e.stderr ? '\n\n' + e.stderr : ''));
-          this.dispatchEvent(new CustomEvent('factoidal:query-error', {
-            bubbles: true, composed: true,
-            detail: { engine, query: queryText, error: e },
-          }));
-        }
-        cleanup();
-        return;
+      if (engine === 'js') {
+        const absJsUrl = new URL(this.jsUrl, this._resolveBaseUrl()).href;
+        if (getFactoidalUrl() !== absJsUrl) setFactoidalUrl(absJsUrl);
       }
 
-      // ----------------------------------------------------------------
-      // JS path — js_of_ocaml IIFE runner; multi-file via jsoo_fs_tmp.
-      // ----------------------------------------------------------------
-      const src = await this._getEngineSource('js');
-      const buf = [];
-      const origLog = console.log, origErr = console.error;
-      console.log   = (...a) => buf.push(a.join(' '));
-      console.error = (...a) => buf.push(a.join(' '));
+      // Enable js_of_ocaml's runtime backtrace recording so caught
+      // exceptions carry a real JS stack on .js_error.stack. Without
+      // OCAMLRUNPARAM=b the bundle's caml_maybe_attach_backtrace is a
+      // no-op and the throw site is invisible — see #240, the
+      // bind+strings BatUChar.Out_of_range case. Always on; cheap. A
+      // global env flag, not per-call state, so setting it once here
+      // (idempotent) is equivalent to the previous per-run init.
+      globalThis.process = globalThis.process || {};
+      globalThis.process.env = globalThis.process.env || {};
+      if (!globalThis.process.env.OCAMLRUNPARAM) {
+        globalThis.process.env.OCAMLRUNPARAM = 'b';
+      }
 
       // ?jsoo-debug=1 — surgical-instrument the debug bundle. js_of_ocaml's
       // backtrace stubs (caml_get_exception_raw_backtrace,
@@ -1566,189 +1582,53 @@ class FactoidalSparqlClient extends HTMLElement {
       // Printexc.handle_uncaught_exception path can't surface the stack
       // even with OCAMLRUNPARAM=b. We intercept at the throw site
       // instead — log the offending codepoint + JS stack via
-      // console.error, which the redirect above tees into `buf` and
-      // therefore into the on-page error panel. Independent of all
-      // OCaml-runtime backtrace plumbing; works on iOS Safari with no
-      // devtools. See #240.
-      let bundleSrc = src;
-      try {
-        const dbg = new URLSearchParams(globalThis.location?.search || '').get('jsoo-debug');
-        if (dbg === '1') {
-          const reBatUChar = /(\/\*<<src\/batUChar\.ml:55:7>>\*\/\s*throw\s+caml_maybe_attach_backtrace\s*\(\s*Out_of_range\s*,\s*1\s*\))/;
-          if (reBatUChar.test(bundleSrc)) {
-            bundleSrc = bundleSrc.replace(reBatUChar,
-              'console.error("[#240-probe BatUChar.chr] codepoint=" + n + " (0x" + n.toString(16) + ")\\nstack:\\n" + ((new Error()).stack || "<no stack>")); $1');
-            buf.push('[factoidal-sparql-client] jsoo-debug: BatUChar.chr$0 instrumented');
-          } else {
-            buf.push('[factoidal-sparql-client] jsoo-debug: BatUChar.chr$0 throw site not found — bundle layout changed, update reBatUChar');
-          }
-        }
-      } catch (_) { /* never let the diagnostic itself throw */ }
-
-      // #240: under js_of_ocaml use-js-string=true (jsoo 6.x default)
-      // OCaml strings ARE the host JS strings. The bundle stores all
-      // OCaml strings in a "bytes-as-JS-chars" convention (each JS
-      // char's low byte is one OCaml byte, built via String.fromCharCode
-      // per byte in MlBytes). Pass the same convention in: encode any
-      // content we hand to the bundle as UTF-8 bytes packed into a JS
-      // string with charCodeAt(i) === byte i. Otherwise the parser sees
-      // ü as one Unicode char, treats it as a UTF-8 4-byte leader, and
-      // BatUTF8 synthesises codepoint 0x36DB65 → BatUChar.Out_of_range.
-      const _enc_te = (typeof TextEncoder !== 'undefined') ? new TextEncoder() : null;
-      function jsToBytesAsChars(s) {
-        if (typeof s !== 'string') return s;
-        let u8;
-        if (_enc_te) {
-          u8 = _enc_te.encode(s);
-        } else {
-          // Manual UTF-8 encode for runtimes without TextEncoder.
-          const out = [];
-          for (let i = 0; i < s.length; i++) {
-            let c = s.charCodeAt(i);
-            if (c < 0x80) out.push(c);
-            else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
-            else if (c < 0xd800 || c >= 0xe000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
-            else { const hi = c, lo = s.charCodeAt(++i); const cp = 0x10000 + (((hi & 0x3ff) << 10) | (lo & 0x3ff));
-                   out.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3f), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f)); }
-          }
-          u8 = new Uint8Array(out);
-        }
-        // Pack bytes into a JS string. fromCharCode.apply blows the
-        // arg-list limit on long inputs (~64K), so chunk.
-        let r = '';
-        for (let i = 0; i < u8.length; i += 0x4000) {
-          r += String.fromCharCode.apply(null, u8.subarray(i, Math.min(u8.length, i + 0x4000)));
-        }
-        return r;
-      }
-
-      globalThis.jsoo_fs_tmp = payloads.map(p => ({ name: p.vfs, content: jsToBytesAsChars(p.content) }));
-      globalThis.process = globalThis.process || {};
-      const argv = ['node', 'factoidal'];
-      payloads.forEach(p => {
-        // If the src-data entry specifies a named-graph IRI, load it
-        // that way. Otherwise fall back to -d (default graph). The
-        // previous unconditional --named p.graph=... pushed the literal
-        // "undefined=..." for graph-less payloads, which caused the
-        // landing-page single-TTL demos to return 0 rows.
-        if (p.graph) {
-          argv.push('--named', p.graph + '=' + p.vfs);
-        } else {
-          argv.push('-d', p.vfs);
-        }
-      });
-      argv.push('-e', jsToBytesAsChars(queryText), '-o', 'json');
-      // Forward the runtime Logic selection. factoidal CLI accepts
-      // --entail {none|RDFS|OWL-RL} (case-insensitive). "none" is the
-      // default; skip the flag in that case for a tidier argv.
-      {
-        const regime = this.entail;  // reads the Logic radio
-        if (regime && regime.toLowerCase() !== 'none') {
-          argv.push('--entail', regime);
-        }
-      }
-      globalThis.process.argv = argv;
-      // Enable js_of_ocaml's runtime backtrace recording so caught
-      // exceptions carry a real JS stack on .js_error.stack. Without
-      // OCAMLRUNPARAM=b the bundle's caml_maybe_attach_backtrace is a
-      // no-op and the throw site is invisible — see #240, the
-      // bind+strings BatUChar.Out_of_range case. Always on; cheap.
-      globalThis.process.env = globalThis.process.env || {};
-      if (!globalThis.process.env.OCAMLRUNPARAM) {
-        globalThis.process.env.OCAMLRUNPARAM = 'b';
-      }
-
-      let exitCode = 0;
-      const origExit = globalThis.process.exit;
-      globalThis.process.exit = (n) => { exitCode = n | 0; throw new Error('__exit__'); };
-
-      const qT0 = performance.now();
-      try {
-        (new Function(bundleSrc))();
-      } catch (e) {
-        if (!e || e.message !== '__exit__') {
-          // Dump full stack + any js_of_ocaml exception payload so the
-          // error panel surfaces real diagnostic info on hosts without
-          // devtools (iOS Safari, mobile Chrome). Without ?jsoo-debug=1
-          // the stack is minified single letters; with it, the stack
-          // resolves to OCaml frame names + /*<<src/file.ml:N:C>>*/
-          // markers that point at the throw site.
-          // js_of_ocaml exceptions:
-          //   - bare exception:  [248, "Name", id]                — array
-          //   - exception+arg:   [0, [248, "Failure", id], "msg"] — array
-          //   - with backtrace:  same array, plus .js_error = Error()
-          // The JS stack is on .js_error.stack (only present when the
-          // bundle was started with OCAMLRUNPARAM=b — see the env init
-          // above). For wrapped exceptions [0, exn, arg], the inner
-          // exn is at e[1] and the argument at e[2].
-          let detail = '';
-          try {
-            if (Array.isArray(e)) {
-              if (e[0] === 248) {
-                detail += '\n  ocaml_exn: ' + e[1];
-              } else if (e[0] === 0 && Array.isArray(e[1]) && e[1][0] === 248) {
-                detail += '\n  ocaml_exn: ' + e[1][1];
-                if (e.length > 2) detail += ' arg=' + JSON.stringify(e[2]).slice(0, 200);
-              }
-              if (e.js_error && e.js_error.stack) {
-                detail += '\n  stack:\n' + String(e.js_error.stack).split('\n').map(l => '    ' + l).join('\n');
-              }
-            } else if (e && typeof e === 'object') {
-              if (e.message) detail += '\n  msg: ' + e.message;
-              if (e.stack)   detail += '\n  stack:\n' + String(e.stack).split('\n').map(l => '    ' + l).join('\n');
+      // console.error (queryDataset -> runFactoidalCli captures it into
+      // the thrown error's `.stderr` on a genuine failure). Independent
+      // of all OCaml-runtime backtrace plumbing; works on iOS Safari
+      // with no devtools. See #240.
+      const transformSource = (engine !== 'js') ? undefined : (bundleSrc) => {
+        try {
+          const dbg = new URLSearchParams(globalThis.location?.search || '').get('jsoo-debug');
+          if (dbg === '1') {
+            const reBatUChar = /(\/\*<<src\/batUChar\.ml:55:7>>\*\/\s*throw\s+caml_maybe_attach_backtrace\s*\(\s*Out_of_range\s*,\s*1\s*\))/;
+            if (reBatUChar.test(bundleSrc)) {
+              return bundleSrc.replace(reBatUChar,
+                'console.error("[#240-probe BatUChar.chr] codepoint=" + n + " (0x" + n.toString(16) + ")\\nstack:\\n" + ((new Error()).stack || "<no stack>")); $1');
             }
-          } catch (_) { /* never let the diagnostic itself throw */ }
-          buf.push('\n[factoidal-sparql-client] ' + (e && e.message || e) + detail);
-          exitCode = 1;
-        }
-      } finally {
-        globalThis.process.exit = origExit;
-      }
-      const qMs = performance.now() - qT0;
+          }
+        } catch (_) { /* never let the diagnostic itself throw */ }
+        return bundleSrc;
+      };
 
-      console.log = origLog; console.error = origErr;
-      const out = buf.join('\n').replace(/\n+$/, '');
-
-      if (exitCode !== 0) {
-        finaliseStatus('JS error after ' + qMs.toFixed(0) + ' ms', 'status err');
-        this._renderRawError(out || '(no output, exit ' + exitCode + ')');
+      try {
+        const parsed = await queryDataset(files, queryText, {
+          entail: this.entail,
+          output: 'json',
+          engine,
+          wasmUrl: engine === 'wasm'
+            ? new URL(this.wasmUrl, this._resolveBaseUrl()).href
+            : undefined,
+          transformSource,
+        });
+        const qMs = (typeof parsed.engineMs === 'number') ? parsed.engineMs : (performance.now() - runStart);
+        finaliseStatus('Done on ' + engine.toUpperCase() + ' in ' + qMs.toFixed(0) + ' ms', 'status ok');
+        this._renderResultsJSON(parsed);
+        const totalMs = performance.now() - runStart;
+        const phases = this._renderTimingBoth(totalMs, engine, qMs);
+        this.dispatchEvent(new CustomEvent('factoidal:query-done', {
+          bubbles: true, composed: true,
+          detail: { engine, query: queryText, results: parsed, runMs: qMs, totalMs, phases },
+        }));
+      } catch (e) {
+        finaliseStatus(engine.toUpperCase() + ' error: ' + (e && e.message || e), 'status err');
+        this._renderRawError(this._formatEngineError(e));
         this.dispatchEvent(new CustomEvent('factoidal:query-error', {
           bubbles: true, composed: true,
-          detail: { engine, query: queryText, error: new Error(out || 'exit ' + exitCode) },
+          detail: { engine, query: queryText, error: e },
         }));
-        cleanup();
-        return;
       }
-
-      const first = out.indexOf('{'), last = out.lastIndexOf('}');
-      if (first < 0 || last < first) {
-        this._renderRawError(out);
-        this.dispatchEvent(new CustomEvent('factoidal:query-error', {
-          bubbles: true, composed: true,
-          detail: { engine, query: queryText, error: new Error('no JSON on stdout') },
-        }));
-        cleanup();
-        return;
-      }
-      let parsed;
-      try { parsed = JSON.parse(out.slice(first, last + 1)); }
-      catch {
-        this._renderRawError(out);
-        this.dispatchEvent(new CustomEvent('factoidal:query-error', {
-          bubbles: true, composed: true,
-          detail: { engine, query: queryText, error: new Error('malformed JSON on stdout') },
-        }));
-        cleanup();
-        return;
-      }
-      finaliseStatus('Done on JS in ' + qMs.toFixed(0) + ' ms', 'status ok');
-      this._renderResultsJSON(parsed);
-      const totalMs = performance.now() - runStart;
-      const phases = this._renderTimingBoth(totalMs, 'js', qMs);
-      this.dispatchEvent(new CustomEvent('factoidal:query-done', {
-        bubbles: true, composed: true,
-        detail: { engine, query: queryText, results: parsed, runMs: qMs, totalMs, phases },
-      }));
+      cleanup();
+      return;
     } catch (e) {
       finaliseStatus('Error: ' + (e && e.message || e), 'status err');
       this._renderRawError(e && e.stack || String(e));

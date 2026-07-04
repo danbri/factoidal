@@ -1,5 +1,7 @@
 // Reproduce the browser invocation path in Node.
-// Mirrors factoidal-sparql-client.js around line 1556-1597.
+// Mirrors npm/factoidal/browser.js's runFactoidalCli() (formerly
+// duplicated inline in factoidal-sparql-client.js before that
+// component was rewired to call the npm package directly).
 const fs = require('fs');
 const path = require('path');
 

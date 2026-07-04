@@ -63,19 +63,26 @@ let _wasmJsSrc = null;          // cached transformed source
 let _fetchPromise = null;
 let _nodeFsFallback = null;     // test-only: (assetSubPath) => Buffer|Uint8Array
 
-const IIFE_MARKER = ';($=>async ';
-const IIFE_REWRITE = ';globalThis.__fwPromise=($=>async ';
+// The bundle's entry is an immediately-invoked async factory:
+//   ;(<param>=>async <arg>=>{...})(...)
+// wasm_of_ocaml minifies <param> differently across versions ('$'
+// before mid-2026, 'ag' in 6.4.1) - match the shape, not a fixed
+// name, and splice the __fwPromise capture in after the leading ';'.
+// (Synced from docs/fstar-extracted/browser-wasm.js, which carried
+// this fix first — the npm package copy had drifted behind it.)
+const IIFE_RE = /;\((\$|[A-Za-z_$][\w$]*)=>async /;
+const IIFE_CAPTURE = ';globalThis.__fwPromise=';
 
 function rewriteBundle(src) {
-  const ix = src.indexOf(IIFE_MARKER);
-  if (ix < 0) {
+  const m = IIFE_RE.exec(src);
+  if (!m) {
     // Unexpected bundle shape. Bail loudly.
     throw new Error(
       "browser-wasm: could not locate the async IIFE marker in " +
       "factoidal.wasm.js. The bundle shape may have changed."
     );
   }
-  return src.slice(0, ix) + IIFE_REWRITE + src.slice(ix + IIFE_MARKER.length);
+  return src.slice(0, m.index) + IIFE_CAPTURE + src.slice(m.index + 1);
 }
 
 /**
@@ -86,6 +93,15 @@ export function setFactoidalWasmUrl(url) {
   _wasmJsUrl = url;
   _wasmJsSrc = null;
   _fetchPromise = null;
+}
+
+/**
+ * Current `factoidal.wasm.js` source URL. Mirrors browser.js's
+ * `getFactoidalUrl()` — lets a caller check before overriding so it
+ * only pays the cache-reset cost when the URL actually changes.
+ */
+export function getFactoidalWasmUrl() {
+  return _wasmJsUrl;
 }
 
 /**
@@ -472,4 +488,4 @@ export async function query(dataString, queryString, options) {
 
 export const version = '0.1.0-alpha.0';
 
-export default { query, version, setFactoidalWasmUrl };
+export default { query, version, setFactoidalWasmUrl, getFactoidalWasmUrl };

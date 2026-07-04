@@ -163,7 +163,9 @@ SELECT ?s ?p ?o WHERE {
   Zstandard decompression.
 </footer>
 
-<script>
+<script type="module">
+import { runFactoidalCli, setFactoidalUrl, getFactoidalUrl } from '../npm/foafos/browser.js';
+
 (function () {
   'use strict';
 
@@ -175,24 +177,25 @@ SELECT ?s ?p ?o WHERE {
   var outputWrap = $('output-wrap');
 
   // -------------------------------------------------------------------
-  // factoidal.js loader — same pattern as docs/fstar-extracted/index.html.
+  // Engine loading goes through the npm package's browser entry
+  // (npm/factoidal/browser.js, mirrored to ../npm/foafos/ for GitHub
+  // Pages) via runFactoidalCli() -- the same primitive the JSON-LD
+  // playground and RIF demos use. This page still owns the
+  // COTTAS-specific plumbing (--data-cottas, Parquet byte-packing)
+  // since that isn't part of the shared query()/queryDataset() text
+  // helpers; runFactoidalCli's raw argv+files contract is exactly
+  // what a binary payload like this needs (no auto UTF-8 encoding
+  // that would corrupt the bytes -- see browser.js's
+  // encodeTextAsBundleBytes() doc comment).
   // -------------------------------------------------------------------
-  var factoidalSource = null;
-  var fetchPromise = null;
-  function getFactoidal() {
-    if (factoidalSource) return Promise.resolve(factoidalSource);
-    if (fetchPromise) return fetchPromise;
-    fetchPromise = fetch('./factoidal.js')
-      .then(function (r) {
-        if (!r.ok) throw new Error('factoidal.js HTTP ' + r.status);
-        return r.text();
-      })
-      .then(function (text) { factoidalSource = text; return text; });
-    return fetchPromise;
-  }
+  var jsUrl = new URL('./factoidal.js', import.meta.url).href;
+  if (getFactoidalUrl() !== jsUrl) setFactoidalUrl(jsUrl);
 
-  getFactoidal()
-    .then(function () { statusEl.textContent = 'Ready.'; runBtn.disabled = false; })
+  fetch(jsUrl, { method: 'HEAD' })
+    .then(function (r) {
+      if (!r.ok) throw new Error('factoidal.js HTTP ' + r.status);
+      statusEl.textContent = 'Ready.'; runBtn.disabled = false;
+    })
     .catch(function (e) { statusEl.textContent = 'factoidal.js failed to load: ' + e.message; });
 
   // -------------------------------------------------------------------
@@ -321,59 +324,25 @@ SELECT ?s ?p ?o WHERE {
         for (var i = 0; i < bytes.length; i++) chars[i] = String.fromCharCode(bytes[i]);
         var content = chars.join('');
 
-        globalThis.jsoo_fs_tmp = [{ name: virtPath, content: content }];
-        globalThis.process = globalThis.process || {};
-        globalThis.process.argv = ['node', 'factoidal',
-          '--data-cottas', virtPath,
-          '-e', queryEl.value,
-          '-o', 'json'];
-
-        // Capture stdout/stderr into a buffer (factoidal writes JSON to
-        // stdout). console.log is js_of_ocaml's stdout in the browser.
-        var buf_out = [];
-        var origLog = console.log;
-        var origErr = console.error;
-        console.log = function () { buf_out.push(Array.prototype.slice.call(arguments).join(' ')); };
-        console.error = function () { buf_out.push(Array.prototype.slice.call(arguments).join(' ')); };
-
-        var exitCode = 0;
-        var origExit = globalThis.process.exit;
-        globalThis.process.exit = function (n) {
-          exitCode = n | 0;
-          throw new Error('__factoidal_exit__');
-        };
-
         statusEl.textContent = 'Running SPARQL…';
-        return getFactoidal().then(function (src) {
-          try {
-            // eslint-disable-next-line no-new-func
-            (new Function(src))();
-          } catch (e) {
-            if (!e || e.message !== '__factoidal_exit__') {
-              buf_out.push('[demo] ' + (e && e.message ? e.message : String(e)));
-              exitCode = 1;
-            }
-          } finally {
-            console.log = origLog;
-            console.error = origErr;
-            globalThis.process.exit = origExit;
-          }
-          return { out: buf_out.join('\n'), exitCode: exitCode };
-        });
+        return runFactoidalCli(
+          ['--data-cottas', virtPath, '-e', queryEl.value, '-o', 'json'],
+          [{ name: virtPath, content: content }]
+        );
       })
       .then(function (result) {
         if (result.exitCode !== 0) {
-          renderError(result.out || '(exit ' + result.exitCode + ')');
+          renderError(result.stderr || result.stdout || '(exit ' + result.exitCode + ')');
           statusEl.textContent = 'Finished with errors.';
           return;
         }
         // factoidal may emit diagnostic lines before the JSON. Grab from
         // the first '{' through the last '}'.
-        var s = result.out;
+        var s = result.stdout;
         var first = s.indexOf('{');
         var last = s.lastIndexOf('}');
         if (first < 0 || last < first) {
-          renderError(s || '(no output)');
+          renderError((result.stderr ? result.stderr + '\n\n' : '') + (s || '(no output)'));
           statusEl.textContent = 'Finished — no JSON found.';
           return;
         }
