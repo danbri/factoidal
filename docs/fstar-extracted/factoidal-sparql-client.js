@@ -59,6 +59,8 @@ const STYLES = `
   --fc-brand-dark: #1b4332;
   --fc-error: #c0392b;
   --fc-ok: #2d6a4f;
+  --fc-warn: #8a5a00;
+  --fc-warn-bg: #fdf3d8;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   color: var(--fc-fg);
   line-height: 1.5;
@@ -140,6 +142,11 @@ textarea {
 }
 .status.ok  { color: var(--fc-ok); }
 .status.err { color: var(--fc-error); }
+.logic-warn {
+  font-size: 0.85em; color: var(--fc-warn);
+  background: var(--fc-warn-bg); border-radius: 4px;
+  padding: 0.4em 0.7em; margin: 0.4em 0 0.8em;
+}
 .out { margin-top: 1em; }
 .out.empty {
   color: var(--fc-muted); padding: 1em; text-align: center;
@@ -796,6 +803,11 @@ class FactoidalSparqlClient extends HTMLElement {
     this._logicBox.className = 'radio-group';
     this._logicBox.setAttribute('role', 'radiogroup');
     this._logicBox.setAttribute('aria-label', 'Logic (entailment regime)');
+    // Delegated listener: attached once on the persistent container (its
+    // innerHTML is rebuilt by _renderLogicToggle, but the span itself
+    // survives), so switching RDFS/OWL-RL on/off updates the perf notice
+    // below without re-registering handlers on every render.
+    this._logicBox.addEventListener('change', () => this._updateLogicWarning());
     row1.appendChild(this._logicBox);
 
     this._statusEl = document.createElement('span');
@@ -805,6 +817,21 @@ class FactoidalSparqlClient extends HTMLElement {
     row1.appendChild(this._statusEl);
 
     this._shadow.appendChild(row1);
+
+    // Perf notice for RDFS/OWL-RL: the entailment closure is
+    // recomputed from scratch on every Run (no caching across queries)
+    // and executes synchronously on the main thread, so it blocks page
+    // interaction until it completes. Measured on the three-graph
+    // lifesci demo dataset (~43K triples, native factoidal binary):
+    // RDFS closure ~40-55s per query; OWL-RL closure is markedly slower
+    // still (see docs/designissues/2026-07-04-lifesci-demo-entailment-perf.md).
+    // Hidden when Logic = none (the default). Kept as a plain warning
+    // rather than a blocking confirm so the flow stays uninterrupted.
+    this._logicWarnEl = document.createElement('div');
+    this._logicWarnEl.className = 'logic-warn';
+    this._logicWarnEl.setAttribute('part', 'logic-warning');
+    this._logicWarnEl.style.display = 'none';
+    this._shadow.appendChild(this._logicWarnEl);
 
     // Query textarea
     this._queryEl = document.createElement('textarea');
@@ -950,8 +977,13 @@ class FactoidalSparqlClient extends HTMLElement {
     logics.forEach(l => {
       const label = document.createElement('label');
       label.title =
-        l === 'RDFS'   ? 'RDFS entailment closure + reflexivity axioms'
-      : l === 'OWL-RL' ? 'OWL 2 RL Datalog subset (includes RDFS)'
+        l === 'RDFS'   ? 'RDFS entailment closure + reflexivity axioms — '
+                         + 'recomputed from scratch on every Run; can take '
+                         + 'tens of seconds or more on multi-thousand-triple '
+                         + 'graphs and blocks the page meanwhile'
+      : l === 'OWL-RL' ? 'OWL 2 RL Datalog subset (includes RDFS) — '
+                         + 'recomputed from scratch on every Run; markedly '
+                         + 'slower than RDFS and blocks the page meanwhile'
       :                  'No entailment — query the raw data';
       const input = document.createElement('input');
       input.type = 'radio';
@@ -965,6 +997,34 @@ class FactoidalSparqlClient extends HTMLElement {
       label.appendChild(span);
       this._logicBox.appendChild(label);
     });
+
+    this._updateLogicWarning();
+  }
+
+  // Show/hide the perf notice below the Logic radios. Called on
+  // initial render and on every 'change' of the Logic radio group (see
+  // the delegated listener registered on this._logicBox above).
+  _updateLogicWarning() {
+    if (!this._logicWarnEl) return;
+    const regime = this.entail;
+    if (!regime || regime.toLowerCase() === 'none') {
+      this._logicWarnEl.style.display = 'none';
+      this._logicWarnEl.textContent = '';
+      return;
+    }
+    this._logicWarnEl.style.display = '';
+    this._logicWarnEl.textContent =
+      regime === 'OWL-RL'
+      ? '⚠ OWL-RL entailment recomputes the full closure from scratch on '
+        + 'every Run, synchronously on the main thread — no caching across '
+        + 'queries. On datasets this size it can take minutes and the page '
+        + 'will stop responding until it finishes. That is expected, not a '
+        + 'crash; give it time or switch Logic back to None for fast queries.'
+      : '⚠ RDFS entailment recomputes the full closure from scratch on '
+        + 'every Run, synchronously on the main thread — no caching across '
+        + 'queries. On datasets this size it measures tens of seconds and '
+        + 'the page will stop responding until it finishes. That is '
+        + 'expected, not a crash.';
   }
 
   _onQueryChange() {
@@ -1393,9 +1453,19 @@ class FactoidalSparqlClient extends HTMLElement {
     this._statusEl.innerHTML =
       '<span class="spinner" aria-hidden="true"></span>Running on ' + engine.toUpperCase() + '…';
     this._outEl.className = 'out running';
+    // For local (non-remote) engines the entailment closure — when Logic
+    // is RDFS/OWL-RL — runs synchronously on the main thread and is the
+    // dominant cost by a wide margin (see the perf notice under the
+    // Logic radios). Say so here too, since this message is what stays
+    // on screen while the tab is unresponsive.
+    const localRegime = this.endpoint ? 'none' : (this.entail || 'none');
+    const progressSub = (localRegime && localRegime.toLowerCase() !== 'none')
+      ? 'Fetching data, parsing, computing ' + localRegime + ' entailment closure, evaluating… '
+        + 'this can take a while and the page will not respond until it completes.'
+      : 'Fetching data, parsing, evaluating…';
     this._outEl.innerHTML =
       '<div class="progress-label">Running on ' + engine.toUpperCase() + '…</div>' +
-      '<div class="progress-sub">Fetching data, parsing, evaluating…</div>' +
+      '<div class="progress-sub">' + progressSub + '</div>' +
       '<div class="progress-bar" role="progressbar" aria-label="query in progress"></div>';
     // Yield one animation frame so the "Running…" state paints before we
     // hog the main thread with parse+eval.
