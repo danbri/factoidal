@@ -1,20 +1,21 @@
 {
   "platform": "linux-x86_64",
   "runner_os": "Linux",
-  "timestamp_utc": "2026-07-04T06:23:01Z",
-  "source_sha": "310536707142f9d6a52d04d9c80ecc160a850803",
+  "timestamp_utc": "2026-07-04T07:47:28Z",
+  "source_sha": "8af86d369b39a76abb41f440805af35455d3bc9d",
   "fstar_version": "F* 2025.12.15",
   "ocaml_version": "The OCaml toplevel, version 4.14.1",
   "opam_switch": "fstar",
   "binaries": {
-    "cottas_ondisk_smoketest": { "sha256": "d965deacfb1b1a61b7790e0213adbf14d5de64f77b62c5f0b5b7d0474daba43b", "size": 10202608 },
-    "factoidal": { "sha256": "83fb4f1b2e4182868fdd20e984b617803b4b8feddd5fc3d49971920361b5b6b1", "size": 11415760 },
-    "factoidal-dump-nq": { "sha256": "f749509a99f22da53c94184ac57f14575c11e057d5ee4854799a30c2caed5745", "size": 7229536 },
-    "factoidal-dump-nq.byte": { "sha256": "4349e43c8aa57f834d1b16f12e91bfb92a7cabf9ba27e98eecfc806fb982e886", "size": 8055824 },
-    "factoidal-http": { "sha256": "c3eceaba37ac08bdf27026b229852ecb5df86bbb1ae9b816935f72f5a72b767a", "size": 11233952 },
-    "owl_runner": { "sha256": "f1400ad4a3ca8339af250df48f69c0c940c5635d90b8bba48b75c31e5c415a62", "size": 10247984 },
-    "parquet_probe": { "sha256": "0b669ff5a0ecd2763dd84afc44f75ebd40242509a08850e8e575a1323e689c4d", "size": 10236656 },
-    "rdfc10_runner": { "sha256": "9aef6abbe7fdc658ed0bb65c74baca8589936eaf1b368b4f97c038f7c4f1eea7", "size": 10222480 },
-    "w3c_runner": { "sha256": "087ba9dbd94a4fda9d187c482eb82738aeb4253de1a430c6c803eb032ee04103", "size": 10369816 }
+    "cottas_ondisk_smoketest": { "sha256": "5c8c43fa0ed9a4950f75a80ff88c19c7f97861c6ef41b4f20dca23c711a4ec1e", "size": 10274008 },
+    "factoidal": { "sha256": "f1fdad8bebd033c676cd52a82a38b67875a807a5518515156e2a2ea3a1eb15de", "size": 11502256 },
+    "factoidal-dump-nq": { "sha256": "63d0d73f50a61e8a937f073ee867bef8d50550456fd45bb8f4e7609f5bed073e", "size": 7633808 },
+    "factoidal-dump-nq.byte": { "sha256": "1f4f6c867bc1d98a644934614207af3f188ec0611f2a081d2541a5774e11e033", "size": 8707113 },
+    "factoidal-http": { "sha256": "dd923450f0431e68f7ad40b2bf0772a84cba6a3dd700073926ddf6d333bb7d5c", "size": 11319560 },
+    "factoidal_http_client": { "sha256": "a6576f41fbd71e2294b91922b89efb9db266ad12041d2c7e673f50da65c12ab2", "size": 10274072 },
+    "owl_runner": { "sha256": "a8f34a284555d50fedb7c9da4ee387d7a603132dd39138b9737bd3078d733f1b", "size": 10315288 },
+    "parquet_probe": { "sha256": "6861f02e885dec08f9f051811d52d114aac27723fd827a384a079e118fa941c2", "size": 10308088 },
+    "rdfc10_runner": { "sha256": "23098df2a59e26ccc4e091449725038423b82759fdb5cd8605e9138960a8603a", "size": 10293880 },
+    "w3c_runner": { "sha256": "d2460aaab5680b41bbedbfa2026cb001601eed37ae2e80f6eec0758d59765364", "size": 10441248 }
   }
 }
