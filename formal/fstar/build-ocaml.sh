@@ -271,7 +271,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
              RIF.Core.Eval.fst RIF.Core.Tests.fst \
              Parser.SRX.fst Parser.CSVResults.fst \
              Parser.JSONResults.fst \
-             Parser.JSON.fst Parser.JSONLD.fst \
+             Parser.JSON.fst JSONLD.Context.fst JSONLD.Expand.fst Parser.JSONLD.fst \
              SPARQL.JSON.Escape.fst \
              SPARQL.Eval.TimeBudget.fst \
              SPARQL.Eval.Limits.fst \
@@ -399,7 +399,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
-    Parser_JSON.ml Parser_JSONLD.ml \
+    Parser_JSON.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml \
     SPARQL_JSON_Escape.ml \
     SPARQL_Eval_TimeBudget.ml \
     SPARQL_Eval_Limits.ml \
@@ -797,7 +797,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml Parser_RDFXML.ml
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml
-    Parser_JSON.ml Parser_JSONLD.ml
+    Parser_JSON.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml
     SPARQL_JSON_Escape.ml
     SPARQL_Eval_TimeBudget.ml
     SPARQL_Eval_Limits.ml

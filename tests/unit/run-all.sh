@@ -70,6 +70,8 @@ COMMON_MODULES=(
   Parser_CSVResults
   Parser_JSONResults
   Parser_JSON
+  JSONLD_Context
+  JSONLD_Expand
   Parser_JSONLD
   SPARQL_JSON_Escape
   SPARQL_Eval_TimeBudget

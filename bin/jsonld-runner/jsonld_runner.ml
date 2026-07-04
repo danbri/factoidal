@@ -205,15 +205,15 @@ let run_test tc =
     (match read_file input_path with
      | None -> Fail (Printf.sprintf "input file not found: %s" input_path)
      | Some content ->
-       if contains_substring ~needle:"@context" content then
-         (* Phase 1 (Parser.JSONLD) has no @context processing — see
-            the module banner. Scored FAIL, not SKIP: per anti-pattern
-            #3/#25 the score must show the real burn-down, and a SKIP
-            here would flatter the number. This also correctly covers
-            NegativeEvaluationTest inputs whose invalidity depends on
-            context processing we cannot detect. *)
-         Fail "input requires @context processing (Phase 1: expanded-form only, no context support; Phase 3 JSONLD.Context lands this)"
-       else
+       (* Phase 3a (JSONLD.Context / JSONLD.Expand, 2026-07-04) added
+          inline @context processing, so the Phase-1-era blanket
+          "@context means FAIL" pre-check is gone: parse_jsonld itself
+          now either handles the context or returns None, and the
+          normal compare below scores the result honestly. Features
+          still out of scope (remote contexts, @reverse, container
+          maps, ...) surface as parse_jsonld None -> FAIL. *)
+       ignore (contains_substring ~needle:"@context" content);
+       (
          match tc.kind with
          | K_Positive ->
            (match tc.expect with
@@ -242,7 +242,7 @@ let run_test tc =
            (match opt_of_fs (Parser_JSONLD.parse_jsonld content) with
             | None -> Pass
             | Some _ -> Fail "parse_jsonld succeeded but a parse failure was expected (see manifest expectErrorCode)")
-         | K_Unknown -> Skip "unrecognized @type for a toRdf test entry")
+         | K_Unknown -> Skip "unrecognized @type for a toRdf test entry"))
 
 (* ------------------------------------------------------------------ *)
 (* Manifest load + suite run. *)

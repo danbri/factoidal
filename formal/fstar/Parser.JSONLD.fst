@@ -1,19 +1,26 @@
 module Parser.JSONLD
 
 // ============================================================================
-// JSON-LD deserialization to RDF — PHASE 1: EXPANDED FORM ONLY.
+// JSON-LD deserialization to RDF.
 //
 // *****************************************************************
-// *  NO @context PROCESSING IN THIS MODULE.                       *
-// *  Input MUST already be in JSON-LD EXPANDED FORM (the output   *
-// *  of the JSON-LD 1.1 Expansion algorithm): an array of node    *
-// *  objects whose keys are absolute IRIs or keywords, and whose  *
-// *  property values are arrays of node objects / node references *
-// *  / value objects / list objects. Any @context member is NOT   *
-// *  interpreted; compact IRIs and terms are NOT resolved.        *
-// *  Context processing + expansion is Phase 3 of the JSON-LD     *
-// *  program (JSONLD.Context / JSONLD.Expand) — see               *
-// *  docs/designissues/2026-07-04-jsonld-program-lessons.md.      *
+// *  THIS MODULE'S jld_* PIPELINE CONSUMES EXPANDED FORM ONLY.    *
+// *  An array of node objects whose keys are absolute IRIs or     *
+// *  keywords, and whose property values are arrays of node       *
+// *  objects / node references / value objects / list objects.    *
+// *  It does not itself interpret @context, resolve compact IRIs, *
+// *  or resolve terms.                                            *
+// *                                                                *
+// *  PHASE 3a (JSONLD.Context / JSONLD.Expand, see                *
+// *  docs/designissues/2026-07-04-jsonld-program-lessons.md) adds  *
+// *  an expansion step in front: parse_jsonld below now runs       *
+// *  JSONLD.Expand.expand over any document carrying an inline     *
+// *  @context before handing the result to jld_dataset_of_json —   *
+// *  it produces exactly the expanded-form json_val this module    *
+// *  already expects. A document with no @context member still     *
+// *  goes straight to jld_dataset_of_json (Phase 1 path,           *
+// *  unchanged) so the existing context-free fixtures keep working *
+// *  exactly as before.                                            *
 // *****************************************************************
 //
 // This is the "Deserialize JSON-LD to RDF" step of the JSON-LD 1.1
@@ -63,6 +70,8 @@ open FStar.List.Tot
 open Parser.FastString
 open RDF.Graph.Executable
 open Parser.JSON
+open JSONLD.Context
+open JSONLD.Expand
 
 // ================================================================
 // RDF vocabulary constants
@@ -421,10 +430,29 @@ let jld_dataset_of_json (root:json_val) : option rdf_dataset =
     Some (dataset_finalise { ds_default = d; ds_named = List.Tot.rev n })
   | _ -> None
 
-// Parse a JSON-LD EXPANDED FORM document (see module banner: no @context
-// processing) into an RDF dataset. None when the input is not valid
-// RFC 8259 JSON or the top level is not an array/object.
+// True when a top-level JSON object document carries an inline @context
+// member. A top-level JArray never carries a shared @context (JSON-LD
+// @context only applies within an object) and keeps going straight down
+// the expanded-form Phase 1 path.
+let jld_has_inline_context (root:json_val) : bool =
+  match root with
+  | JObject fields -> List.Tot.existsb (fun (kv:(string & json_val)) -> fst kv = "@context") fields
+  | _ -> false
+
+// Parse a JSON-LD document into an RDF dataset. A document whose top level
+// is a JObject carrying an inline @context is run through JSONLD.Expand
+// first (PHASE 3a: JSONLD.Context + JSONLD.Expand, inline contexts only —
+// see module banner); everything else takes the unchanged Phase 1 path
+// straight into jld_dataset_of_json, which requires EXPANDED FORM input.
+// None when the input is not valid RFC 8259 JSON, expansion hits an
+// out-of-scope feature (module banner), or the top level is not an
+// array/object.
 let parse_jsonld (input:string) : option rdf_dataset =
   match parse_json input with
   | None -> None
-  | Some root -> jld_dataset_of_json root
+  | Some root ->
+    if jld_has_inline_context root then
+      (match expand empty_active_context root with
+       | None -> None
+       | Some expanded -> jld_dataset_of_json expanded)
+    else jld_dataset_of_json root

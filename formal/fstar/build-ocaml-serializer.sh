@@ -42,7 +42,7 @@ COMMON_MODULES="RDF_Format.ml RDF_Graph_Executable.ml \
   Parser_FastString.ml Parser_IRI.ml \
   Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
   Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml Parser_RDFXML.ml \
-  Parser_JSON.ml Parser_JSONLD.ml \
+  Parser_JSON.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml \
   fstar_pure_hashes.ml RDF_Canonical.ml"
 
 NATIVE_LOG="_ocamlopt_factoidal_dump_nq.log"
