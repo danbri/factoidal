@@ -50,6 +50,7 @@ and drives three runners:
 | `w3c_runner --rdf` | N-Triples, Turtle, N-Quads, TriG, RDF/XML, rdf-mt | `formal/fstar/ocaml-output/rdf_results.log` |
 | `owl_runner` | OWL 2 RL PositiveEntailmentTests + 7 DL catalogs, each with its own timeout budget (60s–900s) | `owl_profile_rl_results.log` |
 | `rdfc10_runner` | RDF Dataset Canonicalization (RDFC-1.0) | `rdfc10_results.log` |
+| `jsonld_runner` | W3C JSON-LD 1.1 toRdf manifest (467 tests; not yet folded into generate-report — run directly). Baseline 2026-07-04: 33 pass, 423 fail, 11 skip — @context tests score FAIL by design until Phases 3-4 land | stdout |
 
 Outputs: `docs/test-results/index.html` (dashboard),
 `latest.csv` / `latest.json` (machine-readable),
