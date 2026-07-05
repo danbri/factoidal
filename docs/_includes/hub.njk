@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }} — Factoidal</title>
+<style>
+  /* Mobile-first: base rules target a ~390px phone; the only
+     widening is the max-width cap. No rule may cause page-level
+     horizontal scroll — wide tables/code scroll inside their own
+     box (overflow-x: auto). */
+  body { font-family: system-ui, -apple-system, sans-serif; max-width: 820px; margin: 1em auto; padding: 0 1em; line-height: 1.6; color: #333; background: #fff; overflow-wrap: break-word; }
+  @media (min-width: 720px) { body { margin: 2em auto; } }
+  h1 { border-bottom: 2px solid #2d6a4f; padding-bottom: 0.3em; }
+  h2 { margin-top: 1.8em; }
+  a { color: #2d6a4f; }
+  nav { margin-bottom: 1.5em; font-size: 0.95em; }
+  nav a { display: inline-block; padding: 0.5em 0.9em 0.5em 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; display: block; overflow-x: auto; }
+  @media (min-width: 720px) { table { display: table; overflow-x: visible; } }
+  th, td { border: 1px solid #ddd; padding: 0.4em 0.8em; text-align: left; }
+  th { background: #f5f5f5; }
+  pre { background: #f8f8f8; padding: 1em; overflow-x: auto; border-radius: 4px; }
+  code { background: #f0f0f0; padding: 0.15em 0.3em; border-radius: 3px; font-size: 0.9em; }
+  pre code { background: none; padding: 0; }
+  footer { margin-top: 3em; border-top: 1px solid #ddd; padding-top: 1em; font-size: 0.9em; color: #666; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #121417; color: #d6dbe1; }
+    a { color: #7fd0a7; }
+    h1 { border-bottom-color: #7fd0a7; }
+    th { background: #1d2126; }
+    th, td { border-color: #333a42; }
+    pre { background: #1a1e23; }
+    code { background: #22272d; }
+    footer { border-top-color: #333a42; color: #98a2ad; }
+  }
+  ul.post-series li.placeholder { color: #888; }
+  ul.post-series li.placeholder::after { content: " (planned)"; font-style: italic; }
+
+  /* Observable cell convention: a fenced ```observable-js block gets
+     turned into a live cell rendered in the .observable-cell div the
+     runtime script inserts right after it. See README below the
+     fenced-block markup on this page, and hub-cells.js. */
+  pre:has(> code.language-observable-js) {
+    border-left: 3px solid #2d6a4f;
+  }
+  .observable-cell {
+    margin: 0 0 1.4em;
+    padding: 0.8em 1em;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: #fff;
+    min-height: 1.4em;
+  }
+  .observable-cell::before {
+    content: "\21b3 live cell output";
+    display: block;
+    font-size: 0.75em;
+    color: #888;
+    margin-bottom: 0.4em;
+  }
+  .observable-cell.observable-cell-error {
+    border-color: #c0392b;
+    color: #c0392b;
+    white-space: pre-wrap;
+    font-family: ui-monospace, monospace;
+    font-size: 0.85em;
+  }
+  .observable-cell { overflow-x: auto; }
+  .observable-cell svg { max-width: 100%; height: auto; }
+  @media (prefers-color-scheme: dark) {
+    .observable-cell { background: #1a1e23; border-color: #333a42; }
+    .observable-cell.observable-cell-error { border-color: #e07060; color: #e07060; }
+  }
+</style>
+</head>
+<body>
+<nav>
+  <a href="{{ '/' | url }}">Home</a>
+  <a href="{{ '/web/hub/' | url }}">Hub</a>
+  <a href="{{ '/test-results/' | url }}">Test Results</a>
+  <a href="https://github.com/danbri/factoidal">GitHub</a>
+</nav>
+{{ content | safe }}
+<footer>
+Factoidal — verified RDF/SPARQL from F*. Interactive cells on this
+page run entirely in your browser via the F*-extracted engine and a
+vendored Observable runtime — no server, no CDN.
+</footer>
+
+<!--
+  Runtime wiring for the ```observable-js cell convention. Loaded as a
+  module so import specifiers resolve; all imports are same-origin
+  Pages paths (respecting the /factoidal/ pathPrefix via the `url`
+  filter), never a CDN. See third_party/observable/README.md and
+  docs/web/hub/README.md for the convention this implements.
+-->
+<script type="module">
+import { Runtime } from "{{ '/vendor/observable/runtime.esm.js' | url }}";
+import { Inspector } from "{{ '/vendor/observable/inspector.esm.js' | url }}";
+import * as Factoidal from "{{ '/npm/foafos/browser.js' | url }}";
+import * as d3 from "{{ '/vendor/observable/d3.esm.js' | url }}";
+import * as Plot from "{{ '/vendor/observable/plot.esm.js' | url }}";
+import * as stdlib from "{{ '/vendor/observable/stdlib.esm.js' | url }}";
+
+const runtime = new Runtime();
+const main = runtime.module();
+
+// Fixed bindings every cell gets access to, by parameter name — this
+// is the whole "standard library" a hub post can rely on. Extend this
+// list (and the mirrored `new Function(...)` parameter list below)
+// deliberately; it's the interface post-authoring (wave B) writes
+// against.
+const CELL_BINDINGS = ["Factoidal", "d3", "Plot", "html", "md"];
+main.variable().define("Factoidal", [], () => Factoidal);
+main.variable().define("d3", [], () => d3);
+main.variable().define("Plot", [], () => Plot);
+main.variable().define("html", [], () => stdlib.html);
+main.variable().define("md", [], () => stdlib.md);
+
+function mountCell(codeEl, index) {
+  const pre = codeEl.closest("pre") || codeEl.parentElement;
+  const source = codeEl.textContent;
+  const container = document.createElement("div");
+  container.className = "observable-cell";
+  container.setAttribute("data-hub-cell", String(index));
+  pre.insertAdjacentElement("afterend", container);
+
+  const name = "hubCell" + index;
+  let fn;
+  try {
+    // Each cell body is an async function body: write a `return`
+    // statement to produce the value the Inspector renders (or
+    // mutate the DOM directly via a passed-in element -- Inspector
+    // handles DOM-Node return values by inserting them as-is).
+    fn = new Function(
+      ...CELL_BINDINGS,
+      "return (async () => {\n" + source + "\n})();"
+    );
+  } catch (err) {
+    container.classList.add("observable-cell-error");
+    container.textContent = "Cell parse error: " + err.message;
+    return;
+  }
+
+  try {
+    main.variable(new Inspector(container)).define(name, CELL_BINDINGS, fn);
+  } catch (err) {
+    container.classList.add("observable-cell-error");
+    container.textContent = "Cell define error: " + err.message;
+  }
+}
+
+document
+  .querySelectorAll("pre > code.language-observable-js")
+  .forEach((codeEl, index) => mountCell(codeEl, index));
+</script>
+</body>
+</html>

@@ -35,9 +35,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Install Eleventy
-        working-directory: docs
-        run: npm ci
+      - name: Install Eleventy (offline, vendored)
+        # third_party/eleventy/npm-cache is a vendored npm cache
+        # (134 packages, no registry access needed) so the Pages
+        # build never depends on npmjs.org being reachable. See
+        # third_party/eleventy/README.md.
+        run: third_party/eleventy/install.sh docs
       - name: Build
         working-directory: docs
         run: npx @11ty/eleventy --output=_site

@@ -35,8 +35,15 @@ third_party/
 │   └── rml/        submodule: https://github.com/kg-construct/rml-test-cases
 │                   (RML mapping tests; upstream repo archived but the
 │                   test corpus is stable)
-└── apache/         reserved for Apache-family test assets
-                    (e.g. Jena ARQ test corpus, when vendored)
+├── apache/         reserved for Apache-family test assets
+│                   (e.g. Jena ARQ test corpus, when vendored)
+├── eleventy/       vendored npm cache: @11ty/eleventy + full dep tree
+│                   (134 packages), so the docs/ Pages build runs
+│                   offline via `npm ci --offline`. See its README.md.
+└── observable/     vendored ESM bundles for the documentation hub:
+                    @observablehq/{runtime,inspector,stdlib,plot} + d3,
+                    esbuild-bundled into self-contained modules (no
+                    CDN, no bare-specifier imports). See its README.md.
 ```
 
 ## Status: vendored vs wired up
@@ -65,9 +72,13 @@ next intended consumer.
 git submodule add <url> third_party/<category>/<name>
 ```
 
-Current categories: `testing/` (corpora and harnesses). Add a new
-category folder when vendoring a different kind of asset (e.g.
-`third_party/libraries/` for a vendored C library).
+Current categories: `testing/` (corpora and harnesses), `eleventy/`
+and `observable/` (vendored npm libraries backing the site build and
+the documentation hub — each vendored via an install/build script
+rather than a submodule, since npm packages don't need the full git
+history a submodule would carry). Add a new category folder when
+vendoring a different kind of asset (e.g. `third_party/libraries/`
+for a vendored C library).
 
 Update this README when you add a category or a submodule.
 

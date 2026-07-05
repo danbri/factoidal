@@ -14,6 +14,14 @@ module.exports = function(eleventyConfig) {
   // demo-jsonld-playground.html, which is the proof this loads.
   eleventyConfig.addPassthroughCopy("npm");
 
+  // Pass-through the vendored Observable browser bundles
+  // (third_party/observable/dist/, esbuild-bundled self-contained ESM —
+  // see its README.md) so the documentation hub can load them
+  // same-origin from Pages at /vendor/observable/*.esm.js. The source
+  // of truth stays under third_party/ (one copy, license-documented);
+  // this passthrough is the only thing that puts bytes under docs/.
+  eleventyConfig.addPassthroughCopy({ "../third_party/observable/dist": "vendor/observable" });
+
   // Pass-through the test-results directory so the machine-readable CSV/JSON
   // artifacts and the history/ subdirectory land on GitHub Pages alongside
   // index.html. Without this, /factoidal/test-results/latest.csv 404s even

@@ -17,6 +17,10 @@ Built with Eleventy (11ty) from `docs/`; published at
 `https://danbri.github.io/factoidal/`.
 
 - Local build: `cd docs && npm ci && npx @11ty/eleventy --output=_site`
+  (or, fully offline, no registry access needed:
+  `third_party/eleventy/install.sh docs && cd docs && npx @11ty/eleventy --output=_site`
+  — `third_party/eleventy/` vendors Eleventy 3.1.2 and its full
+  dependency tree as an npm cache; see its README.md).
 - Deploy: `.github/workflows/deploy-pages.yml`, triggered by pushes to
   `docs/**` on the main lines AND by `workflow_run` completion of
   "Dashboard Refresh" / "W3C Test Suite" (bot commits made with
