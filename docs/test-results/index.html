@@ -5,44 +5,63 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Factoidal — W3C test results</title>
 <style>
+  /*
+   * Mobile-first (owner directive 2026-07-05): base rules below target a
+   * ~390px phone viewport and widen via min-width media queries. Nothing
+   * in this file should require horizontal scrolling of the page itself —
+   * wide content (raw logs, long paths) lives inside its own
+   * overflow-x:auto container (see the "pre" rule below).
+   */
   :root {
-    --fg: #222; --muted: #666; --bg: #fff; --surface: #f7f7f7;
+    --fg: #1a1a1a; --muted: #666; --bg: #fff; --surface: #f7f7f7;
     --border: #e0e0e0; --brand: #2d6a4f; --brand-dark: #1b4332;
-    --ok: #2d6a4f; --warn: #d97706; --err: #c0392b;
+    --ok: #2d6a4f; --ok-tint: #e8f3ee;
+    --warn: #b45309; --warn-tint: #fdf1e2;
+    --err: #c0392b; --err-tint: #fbe9e7;
+    --skip: #6b7280; --skip-tint: #eef0f2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fg: #e8e8e8; --muted: #a3a3a3; --bg: #14181a; --surface: #1d2224;
+      --border: #333c3f; --brand: #7fc9a3; --brand-dark: #9fd9bd;
+      --ok: #6fbf8f; --ok-tint: #16261e;
+      --warn: #e8a13d; --warn-tint: #2b2113;
+      --err: #e2685c; --err-tint: #2c1917;
+      --skip: #9aa4ab; --skip-tint: #22282b;
+    }
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
+  html { font-size: 100%; } /* 1rem/1em = 16px equivalent, never shrunk below this in body copy */
   body {
     font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
     color: var(--fg); background: var(--bg); line-height: 1.55;
+    overflow-x: hidden; /* belt-and-braces: no component should ever push the page wider than the viewport */
   }
+  a { color: var(--brand-dark); }
+
   header {
     background: var(--surface);
-    border-bottom: 1px solid var(--border); padding: 1.2em 1em;
-    position: relative;
+    border-bottom: 1px solid var(--border); padding: 1em 1em;
   }
-  header .inner { max-width: 900px; margin: 0 auto; position: relative; }
-  header h1 { margin: 0 0 0.15em; font-size: 1.3em; color: var(--brand-dark); }
-  header p  { margin: 0; color: var(--muted); font-size: 0.9em; }
-  header nav { margin-top: 0.7em; font-size: 0.9em; }
-  header nav a { margin-right: 1.2em; color: var(--brand-dark); }
+  header .inner { max-width: 900px; margin: 0 auto; }
+  header h1 { margin: 0 0 0.3em; font-size: 1.3rem; color: var(--brand-dark); }
+  header p  { margin: 0; color: var(--muted); font-size: 0.95rem; }
+  header nav { margin-top: 0.8em; font-size: 0.95rem; }
+  header nav a { margin-right: 1.1em; display: inline-block; padding: 0.3em 0; }
 
-  /* Top-right freshness panel — both timestamps in one place, no scroll.
-     "Rendered" = when this HTML was last regenerated (lightweight,
-     updates per push). "Tests" = when the underlying *_results.log
-     last changed (heavy pipeline; may lag). When both match, the
-     test data is current with the page; when they differ, the gap
-     tells you how stale the data is. */
+  /* Freshness panel — both timestamps in one place. "Rendered" = when
+     this HTML was last regenerated. "Tests" = when the underlying
+     *_results.log last changed. Mobile-first: a plain block under the
+     title. Widens to an absolutely-positioned top-right pill once
+     there's room (min-width breakpoint below). */
   .rendered-pill {
-    position: absolute;
-    top: 0; right: 0;
     background: var(--bg); border: 1px solid var(--border);
     border-radius: 6px;
-    padding: 0.35em 0.7em;
-    font-size: 0.74em; color: var(--muted);
-    line-height: 1.35;
-    white-space: nowrap;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    padding: 0.5em 0.7em;
+    margin: 0.8em 0 0;
+    font-size: 0.82rem; color: var(--muted);
+    line-height: 1.4;
   }
   .rendered-pill .row { display: block; }
   .rendered-pill strong { color: var(--brand-dark); font-weight: 600; }
@@ -51,53 +70,85 @@
     color: var(--muted); font-weight: 400;
   }
   .rendered-pill.stale strong.tests { color: var(--warn); }
-  @media (max-width: 720px) {
-    .rendered-pill {
-      position: static;
-      display: inline-block;
-      margin-top: 0.6em;
-    }
-  }
-  main { max-width: 900px; margin: 0 auto; padding: 1.5em 1em; }
+
+  main { max-width: 900px; margin: 0 auto; padding: 1em 0.8em; }
 
   .summary {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 0.8em; margin: 0 0 1.5em;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 0.6em; margin: 0 0 1.2em;
   }
   .tile {
     background: var(--surface); border: 1px solid var(--border);
-    border-radius: 4px; padding: 0.7em 0.9em;
+    border-radius: 6px; padding: 0.7em 0.8em;
   }
-  .tile .label { color: var(--muted); font-size: 0.8em; margin-bottom: 0.1em; }
-  .tile .value { font-size: 1.4em; font-weight: 600; line-height: 1; }
-  .tile .value small { font-size: 0.6em; font-weight: 400; color: var(--muted); }
+  .tile .label { color: var(--muted); font-size: 0.82rem; margin-bottom: 0.15em; }
+  .tile .value { font-size: 1.3rem; font-weight: 600; line-height: 1.2; }
+  .tile .value small { font-size: 0.62em; font-weight: 400; color: var(--muted); }
   .tile.ok   .value { color: var(--ok); }
   .tile.err  .value { color: var(--err); }
   .tile.warn .value { color: var(--warn); }
 
   .caveat {
-    border-left: 3px solid #9ca3af;
+    border-left: 4px solid var(--skip);
     background: var(--surface);
-    padding: 0.7em 1em; margin: 0 0 1.5em; border-radius: 0 4px 4px 0;
-    font-size: 0.9em; color: #444;
+    padding: 0.8em 1em; margin: 0 0 1.2em; border-radius: 0 6px 6px 0;
+    font-size: 0.92rem;
   }
   .caveat strong { color: var(--brand-dark); }
 
-  h2 { margin: 1.8em 0 0.5em; font-size: 1.1em; color: var(--brand-dark); }
+  /* Colour legend — explains green/amber/grey once, up top, referenced
+     by every family section below. Wraps naturally on narrow screens. */
+  .legend {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 0.9em 1em; margin: 0 0 1.4em;
+  }
+  .legend-title { margin: 0 0 0.5em; font-weight: 600; color: var(--brand-dark); }
+  .legend-list { list-style: none; margin: 0 0 0.6em; padding: 0; }
+  .legend-list li {
+    display: flex; align-items: flex-start; gap: 0.5em;
+    margin: 0.35em 0; font-size: 0.92rem;
+  }
+  .legend-note { margin: 0; font-size: 0.85rem; color: var(--muted); }
+  .dot {
+    flex: none; width: 0.85em; height: 0.85em; border-radius: 50%;
+    margin-top: 0.25em;
+  }
+  .dot.green { background: var(--ok); }
+  .dot.amber { background: var(--warn); }
+  .dot.grey  { background: var(--skip); }
+
+  /* --- Family section cards ------------------------------------------- */
+  .family {
+    border: 1px solid var(--border); border-left-width: 5px;
+    border-radius: 8px; padding: 0.9em 1em; margin: 0 0 1.2em;
+    background: var(--bg);
+  }
+  .family.green { border-left-color: var(--ok); }
+  .family.amber { border-left-color: var(--warn); }
+  .family.grey  { border-left-color: var(--skip); }
+  .family h2 { margin: 0 0 0.35em; font-size: 1.08rem; color: var(--brand-dark); }
+  .fam-headline {
+    margin: 0 0 0.7em; font-size: 0.92rem; color: var(--muted);
+    padding-left: 0.9em; border-left: 3px solid var(--border);
+  }
+  .fam-headline.green { border-left-color: var(--ok); }
+  .fam-headline.amber { border-left-color: var(--warn); }
+  .fam-headline.grey  { border-left-color: var(--skip); }
+
   h2 .inline-numbers {
-    font-weight: 400; color: var(--muted); font-size: 0.85em;
-    margin-left: 0.4em;
+    display: block; font-weight: 400; color: var(--muted); font-size: 0.85rem;
+    margin: 0.2em 0 0;
   }
   h2 .inline-numbers a {
     color: inherit; text-decoration: underline; text-decoration-style: dotted;
   }
   h2 .inline-numbers a:hover { color: var(--brand-dark); }
 
-  /* Per-REC subsection headings inside SPARQL 1.1 / RDF 1.1 sections */
+  /* Per-REC subsection headings inside SPARQL 1.1 / RDF 1.1 families */
   h3.rec-subhead {
-    margin: 1.0em 0 0.3em; font-size: 0.95em; font-weight: 500;
-    color: var(--brand-dark); border-bottom: 1px solid var(--card-border);
-    padding-bottom: 0.15em;
+    margin: 1.0em 0 0.35em; font-size: 0.95rem; font-weight: 600;
+    color: var(--brand-dark); border-bottom: 1px solid var(--border);
+    padding-bottom: 0.2em;
   }
   h3.rec-subhead a {
     color: inherit; text-decoration: none; border-bottom: 1px dotted var(--muted);
@@ -105,75 +156,122 @@
   h3.rec-subhead a:hover { color: var(--brand); border-bottom-color: var(--brand); }
 
   .failure-detail {
-    margin: 0.4em 0 1em;
-    padding: 0.4em 0.8em;
-    border-left: 3px solid var(--muted);
-    background: rgba(0,0,0,0.02);
+    margin: 0.5em 0 1em;
+    padding: 0.6em 0.8em;
+    border-left: 4px solid var(--muted);
+    background: var(--surface);
     border-radius: 3px;
-    font-size: 0.85em;
+    font-size: 0.88rem;
   }
-  .failure-detail summary { cursor: pointer; color: var(--muted); }
+  .failure-detail summary {
+    cursor: pointer; color: var(--muted); padding: 0.4em 0;
+    min-height: 44px; display: flex; align-items: center;
+  }
   .failure-detail summary:hover { color: var(--brand-dark); }
   .failure-detail ul {
-    margin: 0.5em 0 0; padding-left: 1.4em;
+    margin: 0.5em 0 0; padding-left: 1.3em;
     font-family: ui-monospace, Menlo, Consolas, monospace;
-    font-size: 0.88em;
+    font-size: 0.85rem;
   }
-  .failure-detail li { margin: 0.2em 0; line-height: 1.4; }
+  .failure-detail li { margin: 0.3em 0; line-height: 1.4; overflow-wrap: anywhere; }
 
-  .suites { display: flex; flex-direction: column; gap: 0.2em; margin: 0 0 1em; }
+  /* --- Suite rows: mobile-first single column, meter always full-width - */
+  .suites { display: flex; flex-direction: column; gap: 0.5em; margin: 0 0 0.6em; }
   .suite-row {
-    display: grid;
-    grid-template-columns: 13em 1fr 8em;
-    align-items: center; gap: 0.8em;
-    padding: 0.3em 0.7em;
-    border-radius: 3px;
-    font-size: 0.9em;
+    display: flex; flex-direction: column; gap: 0.35em;
+    padding: 0.55em 0.7em;
+    border-radius: 6px;
+    background: var(--surface);
+    font-size: 0.95rem;
   }
-  .suite-row .suite-name { font-family: ui-monospace, Menlo, Consolas, monospace;
-                           font-size: 0.88em; }
-  .suite-row .suite-bar {
-    height: 0.6em; background: var(--border); border-radius: 2px; overflow: hidden;
-  }
-  .suite-row .suite-bar .fill {
-    height: 100%; background: var(--ok);
+  .suite-row .suite-name {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.92rem; font-weight: 600; overflow-wrap: anywhere;
   }
   .suite-row .suite-numbers {
     font-family: ui-monospace, Menlo, Consolas, monospace;
-    font-size: 0.85em; text-align: right;
+    font-size: 0.85rem; color: var(--muted);
   }
   .suite-row .suite-numbers .p { color: var(--ok); font-weight: 600; }
   .suite-row .suite-numbers .f { color: var(--err); font-weight: 600; }
   .suite-row .suite-numbers small { color: var(--muted); font-weight: 400; }
-  .suite-row.perfect       .suite-bar .fill { background: var(--ok); }
-  .suite-row.near-perfect  .suite-bar .fill { background: #65a30d; }
-  .suite-row.mixed         .suite-bar .fill { background: var(--warn); }
-  .suite-row.skipped       .suite-bar .fill { background: #9ca3af; }
+  .suite-row.green { background: var(--ok-tint); }
+  .suite-row.amber { background: var(--warn-tint); }
+  .suite-row.grey  { background: var(--skip-tint); }
 
-  @media (max-width: 520px) {
-    .suite-row { grid-template-columns: 1fr auto; grid-template-rows: auto auto; }
-    .suite-row .suite-bar { grid-column: 1 / span 2; }
-    .suite-row .suite-numbers { grid-column: 2; grid-row: 1; }
+  /* Stacked pass/fail/skip meter — one definition, used by every suite
+     row on the page. Always full-width of its row. */
+  .meter {
+    display: flex; width: 100%; height: 0.85em;
+    background: var(--border); border-radius: 3px; overflow: hidden;
+  }
+  .meter .seg { height: 100%; }
+  .meter .seg-pass { background: var(--ok); }
+  .meter .seg-fail { background: var(--err); }
+  .meter .seg-skip { background: var(--skip); }
+
+  .suite-prov {
+    margin: -0.25em 0 0.15em; font-size: 0.78rem; color: var(--muted);
+    overflow-wrap: anywhere;
+  }
+  .suite-prov a { color: var(--brand-dark); }
+  .suite-prov code {
+    background: var(--surface); padding: 0.05em 0.3em; border-radius: 3px;
+    font-size: 0.95em;
   }
 
-  details { margin: 1em 0; background: var(--surface); border-radius: 4px;
-            padding: 0.5em 0.8em; border: 1px solid var(--border); }
-  details summary { cursor: pointer; font-weight: 500; color: var(--muted);
-                    font-size: 0.9em; }
-  details pre { background: var(--bg); padding: 0.5em 0.7em;
-                border: 1px solid var(--border); border-radius: 3px;
-                font-size: 0.82em; overflow-x: auto; margin: 0.4em 0 0; }
-  details ul { margin: 0.4em 0 0; padding-left: 1.3em; font-size: 0.9em; }
-  details code { background: var(--bg); padding: 0.1em 0.3em;
-                 border: 1px solid var(--border); border-radius: 2px;
-                 font-size: 0.88em; }
+  details {
+    margin: 1em 0; background: var(--surface); border-radius: 6px;
+    padding: 0.4em 0.8em; border: 1px solid var(--border);
+  }
+  details summary {
+    cursor: pointer; font-weight: 500; color: var(--muted);
+    font-size: 0.95rem; padding: 0.7em 0.2em;
+    min-height: 44px; display: flex; align-items: center;
+  }
+  details pre {
+    background: var(--bg); padding: 0.6em 0.7em;
+    border: 1px solid var(--border); border-radius: 4px;
+    font-size: 0.8rem; overflow-x: auto; margin: 0.4em 0 0.6em;
+    white-space: pre;
+  }
+  details ul { margin: 0.4em 0 0.6em; padding-left: 1.2em; font-size: 0.92rem; }
+  details li { overflow-wrap: anywhere; }
+  details code {
+    background: var(--bg); padding: 0.1em 0.3em;
+    border: 1px solid var(--border); border-radius: 2px;
+    font-size: 0.88em; overflow-wrap: anywhere;
+  }
 
   footer {
-    max-width: 900px; margin: 2em auto 3em; padding: 1em;
-    color: var(--muted); font-size: 0.82em; border-top: 1px solid var(--border);
+    max-width: 900px; margin: 2em auto 3em; padding: 1em 0.8em;
+    color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--border);
   }
   footer code { background: var(--surface); padding: 0.1em 0.4em; border-radius: 3px; }
-  footer a { color: var(--brand-dark); }
+
+  /* --- Widen past phone width ------------------------------------------ */
+  @media (min-width: 640px) {
+    main { padding: 1.5em 1em; }
+    header { padding: 1.2em 1em; }
+    .family { padding: 1em 1.2em; }
+    .suite-row {
+      display: grid;
+      grid-template-columns: 15em 1fr 9em;
+      align-items: center; gap: 0.8em;
+    }
+    .suite-row .suite-numbers { text-align: right; }
+    .suite-prov { margin: -0.3em 0 0.3em 0.2em; }
+  }
+  @media (min-width: 760px) {
+    header { position: relative; }
+    header .inner { position: relative; padding-right: 13em; }
+    .rendered-pill {
+      position: absolute; top: 0; right: 0; margin: 0;
+      white-space: nowrap;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+    }
+    h2 .inline-numbers { display: inline; margin-left: 0.5em; }
+  }
 </style>
 </head>
 <body>
@@ -181,11 +279,11 @@
 <header>
   <div class="inner">
     <div class="rendered-pill" title="Rendered = when this page was last regenerated. Tests = when the *_results.log files inside the repository were last updated. Both UTC.">
-      <span class="row"><span class="label">Rendered</span><strong>2026-07-05 18:17 UTC</strong></span>
-      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-05 17:17 UTC</strong></span>
+      <span class="row"><span class="label">Rendered</span><strong>2026-07-05 19:27 UTC</strong></span>
+      <span class="row"><span class="label">Tests</span><strong class="tests">2026-07-05 19:22 UTC</strong></span>
     </div>
     <h1>W3C test results</h1>
-    <p>Per-suite pass/fail counts against the W3C SPARQL 1.1 and RDF 1.1 conformance suites.</p>
+    <p>Pass/fail/skip counts against every standards suite this project measures: RDF 1.1, SPARQL 1.1, RDFS/OWL 2, SHACL, ShEx, RIF Core, RML, JSON-LD 1.1, and Verifiable Credentials 2.0.</p>
     <nav>
       <a href="/factoidal/">Home</a>
       <a href="/factoidal/fstar-extracted/">Demos</a>
@@ -221,295 +319,311 @@
 
 <div class="caveat">
   <strong>Scope.</strong> These counts measure conformance only — whether the
-  engine produces the expected result on each W3C-supplied fixture. They say
-  nothing about performance, memory use, scale, or real-world query shape.
-  Skipped tests are features not yet implemented (mostly HTTP-protocol /
-  federated-query endpoints). Raw per-suite logs and machine-readable artifacts
-  are linked below.
+  engine produces the expected result on each vendored fixture. They say
+  nothing about performance, memory use, scale, or real-world query shape
+  (see the parse/serialize throughput section below for that, measured
+  separately). Skipped tests are features not yet implemented or explicitly
+  out of scope for the current stage. Raw per-suite logs and machine-readable
+  artifacts are linked at the bottom of the page.
 </div>
 
-<h2>SPARQL 1.1 <span class="inline-numbers">631 pass · <a href="#sparql-failures">0 fail</a> · <a href="#sparql-skips">0 skip</a></span></h2>
-<div class="suites">
+<div class="legend">
+  <p class="legend-title">How to read this page</p>
+  <ul class="legend-list">
+    <li><span class="dot green"></span><strong>Green</strong> — full pass: every runnable test in the suite passes.</li>
+    <li><span class="dot amber"></span><strong>Amber</strong> — partial: at least one fail, but every residual fail is diagnosed in writing (a link sits next to the row).</li>
+    <li><span class="dot grey"></span><strong>Grey</strong> — not measured this run, or out of scope for this suite (e.g. skipped fixtures, a roadmap item with no runner yet).</li>
+  </ul>
+  <p class="legend-note">Each suite row shows a stacked meter: the green segment is the pass proportion, red is fail, grey is skip — all measured against that suite's own total, so proportions are comparable across suites of very different sizes.</p>
+</div>
+
+<section class="family green" id="sparql11">
+  <h2>SPARQL 1.1</h2>
+  <p class="fam-headline green">631 pass, 0 fail, 0 skip (of 631) across Query, Update, Protocol, Federated Query, Service Description, and Entailment Regimes.</p>
+  <details open>
+    <summary>Suites in this family (tap to collapse)</summary>
+    <div class="suites">
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/sparql11-query/" target="_blank" rel="noopener">SPARQL 1.1 Query Language</a></h3>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">aggregates</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">47</span>/<span class="f">0</span>
+          <span class="p">47 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">bind</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">10</span>/<span class="f">0</span>
+          <span class="p">10 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">bindings</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">11</span>/<span class="f">0</span>
+          <span class="p">11 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">cast</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">6</span>/<span class="f">0</span>
+          <span class="p">6 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">construct</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">7</span>/<span class="f">0</span>
+          <span class="p">7 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">csv-tsv-res</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">6</span>/<span class="f">0</span>
+          <span class="p">6 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">exists</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">6</span>/<span class="f">0</span>
+          <span class="p">6 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">functions</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">75</span>/<span class="f">0</span>
+          <span class="p">75 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">grouping</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">6</span>/<span class="f">0</span>
+          <span class="p">6 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">json-res</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">4</span>/<span class="f">0</span>
+          <span class="p">4 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">negation</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">12</span>/<span class="f">0</span>
+          <span class="p">12 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">project-expression</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">7</span>/<span class="f">0</span>
+          <span class="p">7 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">property-path</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">33</span>/<span class="f">0</span>
+          <span class="p">33 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">subquery</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">14</span>/<span class="f">0</span>
+          <span class="p">14 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">syntax-query</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">94</span>/<span class="f">0</span>
+          <span class="p">94 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/sparql11-update/" target="_blank" rel="noopener">SPARQL 1.1 Update</a></h3>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">add</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">8</span>/<span class="f">0</span>
+          <span class="p">8 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">basic-update</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">13</span>/<span class="f">0</span>
+          <span class="p">13 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">clear</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">4</span>/<span class="f">0</span>
+          <span class="p">4 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">copy</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">6</span>/<span class="f">0</span>
+          <span class="p">6 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">delete</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">19</span>/<span class="f">0</span>
+          <span class="p">19 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">delete-data</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">6</span>/<span class="f">0</span>
+          <span class="p">6 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">delete-insert</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">17</span>/<span class="f">0</span>
+          <span class="p">17 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">delete-where</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">6</span>/<span class="f">0</span>
+          <span class="p">6 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">drop</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">4</span>/<span class="f">0</span>
+          <span class="p">4 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">move</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">6</span>/<span class="f">0</span>
+          <span class="p">6 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">syntax-update-1</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">54</span>/<span class="f">0</span>
+          <span class="p">54 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">syntax-update-2</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">1</span>/<span class="f">0</span>
+          <span class="p">1 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">update-silent</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">13</span>/<span class="f">0</span>
+          <span class="p">13 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/sparql11-protocol/" target="_blank" rel="noopener">SPARQL 1.1 Protocol</a></h3>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">http-rdf-update</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">19</span>/<span class="f">0</span>
+          <span class="p">19 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">protocol</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">34</span>/<span class="f">0</span>
+          <span class="p">34 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/sparql11-federated-query/" target="_blank" rel="noopener">SPARQL 1.1 Federated Query</a></h3>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">service</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">7</span>/<span class="f">0</span>
+          <span class="p">7 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">syntax-fed</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">3</span>/<span class="f">0</span>
+          <span class="p">3 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/sparql11-service-description/" target="_blank" rel="noopener">SPARQL 1.1 Service Description</a></h3>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">service-description</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">3</span>/<span class="f">0</span>
+          <span class="p">3 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/sparql11-entailment/" target="_blank" rel="noopener">SPARQL 1.1 Entailment Regimes</a></h3>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">entailment <small style="font-weight:normal;color:var(--muted)">(SPARQL 1.1 regime — RDFS / D-entailment, 70 tests)</small></div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">70</span>/<span class="f">0</span>
+          <span class="p">70 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-</div>
-<details id="sparql-failures" class="failure-detail">
+    </div>
+  </details>
+  <details id="sparql-failures" class="failure-detail">
   <summary>SPARQL 1.1 failures (click to expand)</summary>
   <ul>
 <li>(none)</li>
@@ -522,65 +636,89 @@
 <li>(none)</li>
   </ul>
 </details>
+</section>
 
-<h2>RDF 1.1 <span class="inline-numbers">1031 pass · <a href="#rdf-failures">0 fail</a></span></h2>
-<div class="suites">
+<section class="family green" id="rdf-core">
+  <h2>RDF 1.1 core</h2>
+  <p class="fam-headline green">1117 pass, 0 fail, 0 skip (of 1117) across N-Triples, Turtle, N-Quads, TriG, RDF/XML, RDF 1.1 Semantics (rdf-mt), and RDFC-1.0 canonicalization.</p>
+  <details open>
+    <summary>Suites in this family (tap to collapse)</summary>
+    <div class="suites">
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/n-triples/" target="_blank" rel="noopener">RDF 1.1 N-Triples</a></h3>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">rdf-n-triples</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">70</span>/<span class="f">0</span>
+          <span class="p">70 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/turtle/" target="_blank" rel="noopener">RDF 1.1 Turtle</a></h3>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">rdf-turtle</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">313</span>/<span class="f">0</span>
+          <span class="p">313 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/n-quads/" target="_blank" rel="noopener">RDF 1.1 N-Quads</a></h3>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">rdf-n-quads</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">87</span>/<span class="f">0</span>
+          <span class="p">87 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/trig/" target="_blank" rel="noopener">RDF 1.1 TriG</a></h3>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">rdf-trig</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">356</span>/<span class="f">0</span>
+          <span class="p">356 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/rdf-syntax-grammar/" target="_blank" rel="noopener">RDF 1.1 RDF/XML</a></h3>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">rdf-xml</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">166</span>/<span class="f">0</span>
+          <span class="p">166 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
   <h3 class="rec-subhead"><a href="https://www.w3.org/TR/rdf11-mt/" target="_blank" rel="noopener">RDF 1.1 Semantics</a></h3>
-      <div class="suite-row perfect">
+      <div class="suite-row green">
         <div class="suite-name">rdf-mt</div>
-        <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
         <div class="suite-numbers">
-          <span class="p">39</span>/<span class="f">0</span>
+          <span class="p">39 pass</span>, <span class="f">0 fail</span>
           <small></small>
         </div>
       </div>
-</div>
-<details id="rdf-failures" class="failure-detail">
+  <h3 class="rec-subhead"><a href="https://www.w3.org/TR/rdf-canon/" target="_blank" rel="noopener">RDF Dataset Canonicalization (RDFC-1.0)</a></h3>
+<div class="suite-row green">
+    <div class="suite-name">RDFC-1.0 (eval + Map + NegEval)</div>
+    <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+    <div class="suite-numbers">
+      <span class="p">86 pass</span>, <span class="f">0 fail</span>
+      <small>(of 86)</small>
+    </div>
+  </div>
+  <p class="suite-prov">
+    Runner: <code>bin/rdfc10-runner</code> (<code>bin/linux-x86_64/rdfc10_runner</code>) &middot;
+    Suite: <code>third_party/testing/rdf-canon/</code> &middot;
+    Algorithm: F&#42; <code>formal/fstar/RDF.Canonical.fst</code> (Hash First Degree Quads +
+    full Hash N-Degree Quads permutation enumeration), verified with no
+    <code>--lax</code> and no <code>--admit_smt_queries</code>. Eval tests compare the
+    canonical N-Quads form bytewise; Map tests compare the bnode&rarr;canonical-id
+    mapping structurally; NegEval tests are bounded by an HNDQ work budget.
+  </p>
+    </div>
+  </details>
+  <details id="rdf-failures" class="failure-detail">
   <summary>RDF 1.1 failures (click to expand)</summary>
   <ul>
 <li>(none)</li>
@@ -593,7 +731,14 @@
 <li>(none)</li>
   </ul>
 </details>
+</section>
 
+<section class="family amber" id="owl2">
+  <h2>Reasoning: RDFS / OWL 2</h2>
+  <p class="fam-headline amber">profile-RL PositiveEntailmentTests: 28 pass, 2 fail (of 30); six further OWL 2 catalogs (NegEnt/Cons/Inc + 4 DL catalogs) scored below, RIF Core scored in its own family.</p>
+  <details open>
+    <summary>Suites in this family (tap to collapse)</summary>
+    <div class="suites">
 <h2>OWL 2 <span class="inline-numbers">28+ pass via owl_runner across 7 catalogs (profile-RL/EL/QL + 4 DL) &middot; live scoring</span></h2>
 <p style="margin: 0.3em 0 0.6em; color: var(--muted); font-size: 0.85em;">
   <strong>Scope.</strong> The OWL 2 W3C Test Cases catalog (~3378
@@ -633,263 +778,215 @@
   Tableau (Phase 2.3d).
 </p>
 <div class="suites">
-  <div class="suite-row near-perfect">
+  <div class="suite-row amber">
     <div class="suite-name">profile-RL PosEnt</div>
-    <div class="suite-bar"><div class="fill" style="width:93%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:93.33%"></div><div class="seg seg-fail" style="width:6.67%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">28</span>/<span class="f">2</span>
-      <small>of 30</small>
+      <span class="p">28 pass</span>, <span class="f">2 fail</span>
+      <small>(of 30)</small>
     </div>
   </div>
-  <div class="suite-row perfect">
+  <div class="suite-row green">
     <div class="suite-name">profile-RL NegEnt</div>
-    <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">6</span>/<span class="f">0</span>
-      <small>of 6</small>
+      <span class="p">6 pass</span>, <span class="f">0 fail</span>
+      <small>(of 6)</small>
     </div>
   </div>
-  <div class="suite-row perfect">
+  <div class="suite-row green">
     <div class="suite-name">profile-RL Consistency</div>
-    <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">76</span>/<span class="f">0</span>
-      <small>of 76</small>
+      <span class="p">76 pass</span>, <span class="f">0 fail</span>
+      <small>(of 76)</small>
     </div>
   </div>
-  <div class="suite-row perfect">
+  <div class="suite-row green">
     <div class="suite-name">profile-RL Inconsistency</div>
-    <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">14</span>/<span class="f">0</span>
-      <small>of 14</small>
+      <span class="p">14 pass</span>, <span class="f">0 fail</span>
+      <small>(of 14)</small>
     </div>
   </div>
-  <div class="suite-row mixed">
+  <div class="suite-row amber">
     <div class="suite-name">type-PosEnt PE</div>
-    <div class="suite-bar"><div class="fill" style="width:45%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:45.10%"></div><div class="seg seg-fail" style="width:54.90%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">92</span>/<span class="f">112</span>
-      <small>of 204</small>
+      <span class="p">92 pass</span>, <span class="f">112 fail</span>
+      <small>(of 204)</small>
     </div>
-  </div><div class="suite-row near-perfect">
+  </div><div class="suite-row amber">
     <div class="suite-name">type-PosEnt Cons</div>
-    <div class="suite-bar"><div class="fill" style="width:91%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:91.18%"></div><div class="seg seg-fail" style="width:8.82%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">186</span>/<span class="f">18</span>
-      <small>of 204</small>
+      <span class="p">186 pass</span>, <span class="f">18 fail</span>
+      <small>(of 204)</small>
     </div>
-  </div><div class="suite-row mixed">
+  </div><div class="suite-row grey">
     <div class="suite-name">type-NegEnt PE</div>
-    <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:0%"></div><div class="seg seg-fail" style="width:0%"></div><div class="seg seg-skip" style="width:0%"></div></div>
     <div class="suite-numbers">
-      <span class="p">0</span>/<span class="f">0</span>
-      <small>of 0</small>
+      <span class="p">0 pass</span>, <span class="f">0 fail</span>
+      <small>(of 0)</small>
     </div>
-  </div><div class="suite-row near-perfect">
+  </div><div class="suite-row amber">
     <div class="suite-name">type-NegEnt NE</div>
-    <div class="suite-bar"><div class="fill" style="width:96%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:95.65%"></div><div class="seg seg-fail" style="width:4.35%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">22</span>/<span class="f">1</span>
-      <small>of 23</small>
+      <span class="p">22 pass</span>, <span class="f">1 fail</span>
+      <small>(of 23)</small>
     </div>
-  </div><div class="suite-row perfect">
+  </div><div class="suite-row green">
     <div class="suite-name">type-NegEnt Cons</div>
-    <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">23</span>/<span class="f">0</span>
-      <small>of 23</small>
+      <span class="p">23 pass</span>, <span class="f">0 fail</span>
+      <small>(of 23)</small>
     </div>
-  </div><div class="suite-row mixed">
+  </div><div class="suite-row amber">
     <div class="suite-name">type-Cons PE</div>
-    <div class="suite-bar"><div class="fill" style="width:45%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:45.10%"></div><div class="seg seg-fail" style="width:54.90%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">92</span>/<span class="f">112</span>
-      <small>of 204</small>
+      <span class="p">92 pass</span>, <span class="f">112 fail</span>
+      <small>(of 204)</small>
     </div>
-  </div><div class="suite-row near-perfect">
+  </div><div class="suite-row amber">
     <div class="suite-name">type-Cons NE</div>
-    <div class="suite-bar"><div class="fill" style="width:96%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:95.65%"></div><div class="seg seg-fail" style="width:4.35%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">22</span>/<span class="f">1</span>
-      <small>of 23</small>
+      <span class="p">22 pass</span>, <span class="f">1 fail</span>
+      <small>(of 23)</small>
     </div>
-  </div><div class="suite-row near-perfect">
+  </div><div class="suite-row amber">
     <div class="suite-name">type-Cons Cons</div>
-    <div class="suite-bar"><div class="fill" style="width:94%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:93.64%"></div><div class="seg seg-fail" style="width:6.36%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">324</span>/<span class="f">22</span>
-      <small>of 346</small>
+      <span class="p">324 pass</span>, <span class="f">22 fail</span>
+      <small>(of 346)</small>
     </div>
-  </div><div class="suite-row mixed">
+  </div><div class="suite-row grey">
     <div class="suite-name">type-Inc PE</div>
-    <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:0%"></div><div class="seg seg-fail" style="width:0%"></div><div class="seg seg-skip" style="width:0%"></div></div>
     <div class="suite-numbers">
-      <span class="p">0</span>/<span class="f">0</span>
-      <small>of 0</small>
+      <span class="p">0 pass</span>, <span class="f">0 fail</span>
+      <small>(of 0)</small>
     </div>
-  </div><div class="suite-row mixed">
+  </div><div class="suite-row amber">
     <div class="suite-name">type-Inc Inc</div>
-    <div class="suite-bar"><div class="fill" style="width:29%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:29.06%"></div><div class="seg seg-fail" style="width:70.94%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">34</span>/<span class="f">83</span>
-      <small>of 117</small>
+      <span class="p">34 pass</span>, <span class="f">83 fail</span>
+      <small>(of 117)</small>
     </div>
-  </div><div class="suite-row mixed">
+  </div><div class="suite-row amber">
     <div class="suite-name">profile-EL PE</div>
-    <div class="suite-bar"><div class="fill" style="width:72%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:72.41%"></div><div class="seg seg-fail" style="width:27.59%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">21</span>/<span class="f">8</span>
-      <small>of 29</small>
+      <span class="p">21 pass</span>, <span class="f">8 fail</span>
+      <small>(of 29)</small>
     </div>
-  </div><div class="suite-row perfect">
+  </div><div class="suite-row green">
     <div class="suite-name">profile-EL NE</div>
-    <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">6</span>/<span class="f">0</span>
-      <small>of 6</small>
+      <span class="p">6 pass</span>, <span class="f">0 fail</span>
+      <small>(of 6)</small>
     </div>
-  </div><div class="suite-row perfect">
+  </div><div class="suite-row green">
     <div class="suite-name">profile-EL Cons</div>
-    <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">72</span>/<span class="f">0</span>
-      <small>of 72</small>
+      <span class="p">72 pass</span>, <span class="f">0 fail</span>
+      <small>(of 72)</small>
     </div>
-  </div><div class="suite-row mixed">
+  </div><div class="suite-row amber">
     <div class="suite-name">profile-EL Inc</div>
-    <div class="suite-bar"><div class="fill" style="width:64%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:64.29%"></div><div class="seg seg-fail" style="width:35.71%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">9</span>/<span class="f">5</span>
-      <small>of 14</small>
+      <span class="p">9 pass</span>, <span class="f">5 fail</span>
+      <small>(of 14)</small>
     </div>
-  </div><div class="suite-row mixed">
+  </div><div class="suite-row amber">
     <div class="suite-name">profile-QL PE</div>
-    <div class="suite-bar"><div class="fill" style="width:80%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:80.00%"></div><div class="seg seg-fail" style="width:20.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">16</span>/<span class="f">4</span>
-      <small>of 20</small>
+      <span class="p">16 pass</span>, <span class="f">4 fail</span>
+      <small>(of 20)</small>
     </div>
-  </div><div class="suite-row perfect">
+  </div><div class="suite-row green">
     <div class="suite-name">profile-QL NE</div>
-    <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">3</span>/<span class="f">0</span>
-      <small>of 3</small>
+      <span class="p">3 pass</span>, <span class="f">0 fail</span>
+      <small>(of 3)</small>
     </div>
-  </div><div class="suite-row perfect">
+  </div><div class="suite-row green">
     <div class="suite-name">profile-QL Cons</div>
-    <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">58</span>/<span class="f">0</span>
-      <small>of 58</small>
+      <span class="p">58 pass</span>, <span class="f">0 fail</span>
+      <small>(of 58)</small>
     </div>
-  </div><div class="suite-row perfect">
+  </div><div class="suite-row green">
     <div class="suite-name">profile-QL Inc</div>
-    <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">6</span>/<span class="f">0</span>
-      <small>of 6</small>
+      <span class="p">6 pass</span>, <span class="f">0 fail</span>
+      <small>(of 6)</small>
     </div>
-  </div><div class="suite-row mixed">
+  </div><div class="suite-row amber">
     <div class="suite-name">sem-Direct PE</div>
-    <div class="suite-bar"><div class="fill" style="width:45%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:45.10%"></div><div class="seg seg-fail" style="width:54.90%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">92</span>/<span class="f">112</span>
-      <small>of 204</small>
+      <span class="p">92 pass</span>, <span class="f">112 fail</span>
+      <small>(of 204)</small>
     </div>
-  </div><div class="suite-row near-perfect">
+  </div><div class="suite-row amber">
     <div class="suite-name">sem-Direct NE</div>
-    <div class="suite-bar"><div class="fill" style="width:96%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:95.65%"></div><div class="seg seg-fail" style="width:4.35%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">22</span>/<span class="f">1</span>
-      <small>of 23</small>
+      <span class="p">22 pass</span>, <span class="f">1 fail</span>
+      <small>(of 23)</small>
     </div>
-  </div><div class="suite-row near-perfect">
+  </div><div class="suite-row amber">
     <div class="suite-name">sem-Direct Cons</div>
-    <div class="suite-bar"><div class="fill" style="width:94%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:93.62%"></div><div class="seg seg-fail" style="width:6.38%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">323</span>/<span class="f">22</span>
-      <small>of 345</small>
+      <span class="p">323 pass</span>, <span class="f">22 fail</span>
+      <small>(of 345)</small>
     </div>
-  </div><div class="suite-row mixed">
+  </div><div class="suite-row amber">
     <div class="suite-name">sem-Direct Inc</div>
-    <div class="suite-bar"><div class="fill" style="width:29%"></div></div>
+    <div class="meter"><div class="seg seg-pass" style="width:29.06%"></div><div class="seg seg-fail" style="width:70.94%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
     <div class="suite-numbers">
-      <span class="p">34</span>/<span class="f">83</span>
-      <small>of 117</small>
+      <span class="p">34 pass</span>, <span class="f">83 fail</span>
+      <small>(of 117)</small>
     </div>
   </div>
-  <div class="suite-row perfect">
-    <div class="suite-name">RIF Core</div>
-    <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
-    <div class="suite-numbers">
-      <span class="p">4</span>/<span class="f">0</span>
-      <small>of 4</small>
-    </div>
-  </div>
-  <div class="suite-row skipped">
+  <div class="suite-row grey">
     <div class="suite-name">syntax-dl</div>
-    <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
+    <div class="meter"><div class="seg seg-skip" style="width:100%"></div></div>
     <div class="suite-numbers">
       <span style="color:var(--muted)">&mdash;</span>
       <small>646 tests &middot; runner not wired (engine: DL syntactic-profile checker pending)</small>
     </div>
   </div>
-  <div class="suite-row skipped">
+  <div class="suite-row grey">
     <div class="suite-name">GeoSPARQL</div>
-    <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
+    <div class="meter"><div class="seg seg-skip" style="width:100%"></div></div>
     <div class="suite-numbers">
       <span style="color:var(--muted)">&mdash;</span>
       <small>? tests &middot; vendoring + runner pending (see <a href='https://github.com/danbri/factoidal/issues/239'>#239</a>)</small>
     </div>
   </div>
-  <div class="suite-row skipped">
-    <div class="suite-name">JSON-LD 1.1</div>
-    <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
-    <div class="suite-numbers">
-      <span style="color:var(--muted)">&mdash;</span>
-      <small>? tests &middot; vendoring + runner pending (W3C suite ~250 tests)</small>
-    </div>
-  </div>
-  <div class="suite-row skipped">
-    <div class="suite-name">CSVW</div>
-    <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
-    <div class="suite-numbers">
-      <span style="color:var(--muted)">&mdash;</span>
-      <small>? tests &middot; vendored at third_party/testing/csvw; runner pending</small>
-    </div>
-  </div>
-  <div class="suite-row skipped">
-    <div class="suite-name">ShEx</div>
-    <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
-    <div class="suite-numbers">
-      <span style="color:var(--muted)">&mdash;</span>
-      <small>? tests &middot; vendored at third_party/testing/shex; runner pending</small>
-    </div>
-  </div>
-  <div class="suite-row skipped">
+  <div class="suite-row grey">
     <div class="suite-name">DID</div>
-    <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
+    <div class="meter"><div class="seg seg-skip" style="width:100%"></div></div>
     <div class="suite-numbers">
       <span style="color:var(--muted)">&mdash;</span>
       <small>? tests &middot; vendored at third_party/testing/did; runner pending</small>
-    </div>
-  </div>
-  <div class="suite-row skipped">
-    <div class="suite-name">VC</div>
-    <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
-    <div class="suite-numbers">
-      <span style="color:var(--muted)">&mdash;</span>
-      <small>? tests &middot; vendored at third_party/testing/vc; runner pending</small>
-    </div>
-  </div>
-  <div class="suite-row skipped">
-    <div class="suite-name">RML</div>
-    <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
-    <div class="suite-numbers">
-      <span style="color:var(--muted)">&mdash;</span>
-      <small>? tests &middot; vendored at third_party/testing/rml; mapping engine pending</small>
     </div>
   </div>
 </div>
@@ -909,38 +1006,134 @@
   point at adjacent W3C/OGC suites we want to add: GeoSPARQL (#239),
   JSON-LD 1.1, CSVW, ShEx, DID, VC, RML.
 </p>
+    </div>
+  </details>
+  
+</section>
 
-<h2>RDFC-1.0 <span class="inline-numbers">86 pass &middot; 0 fail &middot; 0 stub &middot; of 86 total</span></h2>
-<div class="suites">
-  <div class="suite-row perfect">
-    <div class="suite-name">eval (HFDQ)</div>
-    <div class="suite-bar"><div class="fill" style="width:100%"></div></div>
-    <div class="suite-numbers">
-      <span class="p">86</span>/<span class="f">0</span>
-      <small>of 86</small>
+<section class="family amber" id="shapes">
+  <h2>Shapes: SHACL / ShEx</h2>
+  <p class="fam-headline amber">1301 pass, 1 fail, 0 skip (of 1302) across SHACL Core, SHACL SPARQL-based Constraints, and ShEx validation.</p>
+  <details open>
+    <summary>Suites in this family (tap to collapse)</summary>
+    <div class="suites">
+      <div class="suite-row green">
+        <div class="suite-name">SHACL Core</div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>98 pass, 0 fail, 0 skip (of 98)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>bin/shacl-runner</code> (<code>bin/linux-x86_64/shacl_runner</code>) &middot; Suite: <code>third_party/testing/shacl/data-shapes-test-suite/tests/core/</code></p>
+      <div class="suite-row green">
+        <div class="suite-name">SHACL SPARQL-based Constraints</div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>22 pass, 0 fail, 0 skip (of 22)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>bin/shacl-runner</code> (<code>bin/linux-x86_64/shacl_runner tests/sparql/manifest.ttl</code>) &middot; Suite: <code>third_party/testing/shacl/data-shapes-test-suite/tests/sparql/</code></p>
+      <div class="suite-row amber">
+        <div class="suite-name">ShEx Validation</div>
+        <div class="meter"><div class="seg seg-pass" style="width:99.92%"></div><div class="seg seg-fail" style="width:0.08%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>1181 pass, 1 fail, 0 skip (of 1182)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>bin/shex-runner</code> (<code>bin/linux-x86_64/shex_runner</code>) &middot; Suite: <code>third_party/testing/shex/</code> (shexSpec/shexTest, ShExJ-first) &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/.github/test-suites/shex.yaml" target="_blank" rel="noopener">diagnosis: the 1 mismatch is an upstream fixture defect (start2RefS2.json p1/p2), not an engine bug</a></p>
     </div>
-  </div>
-  <div class="suite-row skipped">
-    <div class="suite-name">map / negative-eval</div>
-    <div class="suite-bar"><div class="fill" style="width:0%"></div></div>
-    <div class="suite-numbers">
-      <small>0 stub &mdash; runner does not emit map JSON / HNDQ termination guard</small>
+  </details>
+  
+</section>
+
+<section class="family amber" id="rules">
+  <h2>Rules: RIF Core</h2>
+  <p class="fam-headline amber">34 pass, 4 fail, 12 skip (of 50) — Part 1 (4 vendored SPARQL-manifest cases) + Part 2 (46-test W3C RIF Core dialect corpus).</p>
+  <details open>
+    <summary>Suites in this family (tap to collapse)</summary>
+    <div class="suites">
+      <div class="suite-row amber">
+        <div class="suite-name">RIF Core — combined (Part 1 + Part 2)</div>
+        <div class="meter"><div class="seg seg-pass" style="width:68.00%"></div><div class="seg seg-fail" style="width:8.00%"></div><div class="seg seg-skip" style="width:24.00%"></div></div>
+        <div class="suite-numbers"><small>34 pass, 4 fail, 12 skip (of 50)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>bin/rif-runner</code> (<code>bin/linux-x86_64/rif_runner</code>) &middot; Suites: <code>third_party/testing/rif/tc/</code> + <code>third_party/testing/rif-core-suite/</code> &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/bin/rif-runner/README.md" target="_blank" rel="noopener">diagnosis: 1 corpus data defect (malformed xsd:string IRI in the official W3C zip) + 3 labelled engine KNOWN-GAPs, see bin/rif-runner/README.md</a></p>
+      <div class="suite-row green">
+        <div class="suite-name">RIF Core — Part 1 (4 vendored SPARQL-manifest cases)</div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>4 pass, 0 fail, 0 skip (of 4)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>bin/rif-runner</code> &middot; Suite: <code>third_party/testing/rif/tc/</code> (the same 4 cases are also scored independently as the &ldquo;RIF Core&rdquo; row under SPARQL 1.1 Entailment Regimes above, via <code>w3c_runner</code>'s entailment dispatch — both pipelines agree)</p>
+      <div class="suite-row amber">
+        <div class="suite-name">RIF Core — Part 2 (W3C Core_v1.22 corpus)</div>
+        <div class="meter"><div class="seg seg-pass" style="width:65.22%"></div><div class="seg seg-fail" style="width:8.70%"></div><div class="seg seg-skip" style="width:26.09%"></div></div>
+        <div class="suite-numbers"><small>30 pass, 4 fail, 12 skip (of 46)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>bin/rif-runner</code> &middot; Suite: <code>third_party/testing/rif-core-suite/Core_v1.22/Approved/</code> &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/claude-rules/scope.md" target="_blank" rel="noopener">diagnosis: docs/claude-rules/scope.md RIF section — every skip names the exact missing builtin/feature</a></p>
     </div>
-  </div>
-</div>
-<p style="margin: 0.3em 0 1em; color: var(--muted); font-size: 0.85em;">
-  <strong>RDFC-1.0 (W3C RDF Dataset Canonicalization):</strong>
-  We vendor the full W3C RDFC-1.0 Test Cases at
-  <code>third_party/testing/rdf-canon/</code>. The canonical-labelling
-  algorithm lives in F&#42; at <code>formal/fstar/RDF.Canonical.fst</code>
-  &mdash; <em>Hash First Degree Quads (HFDQ)</em> phase verifies cleanly
-  with no <code>--lax</code> and no <code>--admit_smt_queries</code>.
-  Eval tests check the canonical N-Quads form bytewise. Phase 2 work
-  (HNDQ &mdash; Hash N-Degree Quads with bounded permutation
-  enumeration) closes the remaining symmetric-cycle eval tests. Map
-  tests are STUB pending a runner-side bnode &rarr; canonical-id JSON
-  emitter; NegEval tests need an HNDQ termination guard.
-</p>
+  </details>
+  
+</section>
+
+<section class="family green" id="mapping">
+  <h2>Mapping: RML / CSVW</h2>
+  <p class="fam-headline green">76 pass, 0 fail, 0 skip (of 76) on RML rml-core; CSVW is prose-only below (no committed runner yet).</p>
+  <details open>
+    <summary>Suites in this family (tap to collapse)</summary>
+    <div class="suites">
+      <div class="suite-row green">
+        <div class="suite-name">RML rml-core</div>
+        <div class="meter"><div class="seg seg-pass" style="width:100.00%"></div><div class="seg seg-fail" style="width:0.00%"></div><div class="seg seg-skip" style="width:0.00%"></div></div>
+        <div class="suite-numbers"><small>76 pass, 0 fail, 0 skip (of 76)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>bin/rml-runner</code> (<code>bin/linux-x86_64/rml_runner</code>) &middot; Suite: <code>third_party/testing/rml-modules/rml-core/</code></p>
+      <div class="suite-row grey">
+        <div class="suite-name">CSVW (Stage 1 metadata decode)</div>
+        <div class="meter"><div class="seg seg-skip" style="width:100%"></div></div>
+        <div class="suite-numbers"><small>in progress &mdash; not wired into this dashboard</small></div>
+      </div>
+      <p class="suite-prov">
+        No committed runner or <code>*_results.log</code> yet, so this row is not
+        scored. A scratch driver over <code>third_party/testing/csvw/tests</code>
+        decodes 286 of 293 metadata documents to structured metadata (the other 7
+        are 3 correctly-rejected malformed fixtures, 1 out-of-scope empty-table-group
+        edge case, 2 out-of-scope schema-by-reference fixtures needing HTTP fetch,
+        and 1 genuine decoder gap) — see
+        <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-csvw-program-plan.md" target="_blank" rel="noopener">the CSVW program plan</a>
+        for the staged roadmap.
+      </p>
+    </div>
+  </details>
+  
+</section>
+
+<section class="family amber" id="jsonld11">
+  <h2>JSON-LD 1.1</h2>
+  <p class="fam-headline amber">460 pass, 1 fail, 6 skip (of 467) against the W3C JSON-LD 1.1 toRdf manifest.</p>
+  <details open>
+    <summary>Suites in this family (tap to collapse)</summary>
+    <div class="suites">
+      <div class="suite-row amber">
+        <div class="suite-name">JSON-LD 1.1 toRdf</div>
+        <div class="meter"><div class="seg seg-pass" style="width:98.50%"></div><div class="seg seg-fail" style="width:0.21%"></div><div class="seg seg-skip" style="width:1.28%"></div></div>
+        <div class="suite-numbers"><small>460 pass, 1 fail, 6 skip (of 467)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>bin/jsonld-runner</code> (<code>bin/linux-x86_64/jsonld_runner</code>) &middot; Suite: <code>third_party/testing/json-ld/</code> (toRdf manifest) &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-docs-hub-plan.md" target="_blank" rel="noopener">diagnosis: the 1 fail is the documented Ryu-class float-formatting case; the 6 skips are JSON-LD 1.0-only fixtures, out of scope for this 1.1 program</a></p>
+    </div>
+  </details>
+  
+</section>
+
+<section class="family amber" id="vc2">
+  <h2>Verifiable Credentials 2.0</h2>
+  <p class="fam-headline amber">80 pass, 34 fail, 6 skip (of 120) — structural Stage 1 checks only; no cryptographic proof verification.</p>
+  <details open>
+    <summary>Suites in this family (tap to collapse)</summary>
+    <div class="suites">
+      <div class="suite-row amber">
+        <div class="suite-name">VC Data Model 2.0 — structural (Stage 1)</div>
+        <div class="meter"><div class="seg seg-pass" style="width:66.67%"></div><div class="seg seg-fail" style="width:28.33%"></div><div class="seg seg-skip" style="width:5.00%"></div></div>
+        <div class="suite-numbers"><small>80 pass, 34 fail, 6 skip (of 120)</small></div>
+      </div>
+      <p class="suite-prov">Runner: <code>bin/vc-runner</code> (<code>bin/linux-x86_64/vc_runner</code>) &middot; Suite: <code>third_party/testing/vc/tests/input/</code> (structural fixtures, filename-encoded verdicts) &middot; <a href="https://github.com/danbri/factoidal/blob/claude/main/docs/designissues/2026-07-05-vc-program-plan.md" target="_blank" rel="noopener">diagnosis: all 34 fails are documented Stage 2 deferrals (issuer shape, validFrom/validUntil ordering, credentialStatus/credentialSchema/etc. inner shapes) — see the VC program plan</a></p>
+    </div>
+  </details>
+  
+</section>
 
 
 
@@ -953,9 +1146,9 @@
     <li><a href="perf-parse-serialize.json"><code>perf-parse-serialize.json</code></a> — parse/serialize/canonicalize throughput (if present; produced by <code>tools/bench-parse-serialize.sh</code>, not this script)</li>
   </ul>
   <p style="margin: 0.6em 0 0; color: var(--muted); font-size: 0.9em;">
-    The raw runner logs (including per-test FAIL lines with diffs) are committed to
-    <code>formal/fstar/ocaml-output/sparql_results.log</code> and
-    <code>formal/fstar/ocaml-output/rdf_results.log</code>.
+    The raw runner logs (including per-test FAIL lines with diffs) are committed under
+    <code>formal/fstar/ocaml-output/*_results.log</code> — one file per suite, named to
+    match each suite's <code>.github/test-suites/&lt;suite&gt;.yaml</code> manifest.
   </p>
 </details>
 
@@ -1005,6 +1198,14 @@
   rdf-trig                            pass:356 fail:0 skip:0 unsupported:0
   rdf-turtle                          pass:313 fail:0 skip:0 unsupported:0
   rdf-xml                             pass:166 fail:0 skip:0 unsupported:0</pre>
+  <h3 style="font-size: 0.95em; margin: 0.8em 0 0.3em;">Shapes / Rules / Mapping / JSON-LD / VC</h3>
+  <pre>shacl-core:   98 pass, 0 fail, 0 skip (of 98) — present=1
+shacl-sparql: 22 pass, 0 fail, 0 skip (of 22) — present=1
+shex:         1181 pass, 1 fail, 0 skip (of 1182) — present=1
+jsonld-tordf: 460 pass, 1 fail, 6 skip (of 467) — present=1
+rml-core:     76 pass, 0 fail, 0 skip (of 76) — present=1
+rif-core:     34 pass, 4 fail, 12 skip (of 50) — present=1
+vc-stage1:    80 pass, 34 fail, 6 skip (of 120) — present=1</pre>
 </details>
 
 <details>
@@ -1022,9 +1223,9 @@
 </main>
 
 <footer>
-  Generated <strong>2026-07-05 18:17 UTC</strong> from commit
-  <code><a href="https://github.com/danbri/factoidal/commit/b4249260755d74eb0c2d5e0eec38bf96b5842181">b424926</a></code>
-  on branch <code>claude/main</code> — &ldquo;Artifacts for the step-5 landing&rdquo;.
+  Generated <strong>2026-07-05 19:27 UTC</strong> from commit
+  <code><a href="https://github.com/danbri/factoidal/commit/041a13e3b2de18c4de01d4b78e59afd4d3778d0f">041a13e3</a></code>
+  on branch <code>claude/main</code> — &ldquo;Artifacts for the step-6 landing: rebuilt native binaries&rdquo;.
   Re-run locally: <code>cd formal/fstar &amp;&amp; ./generate-report.sh --run</code>.
 </footer>
 
