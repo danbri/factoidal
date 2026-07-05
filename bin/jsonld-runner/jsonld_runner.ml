@@ -227,6 +227,17 @@ let jld_expand_context entry =
   | Some opt_obj -> str_field "expandContext" opt_obj
   | None -> None
 
+(* PHASE 8: option.processingMode (toRdf/c029, ep02, tn01, er21, so01,
+   pi01, ter42 — the ~10-test "processingMode json-ld-1.0" negative
+   battery). Forwarded verbatim to Parser.JSONLD's parse_jsonld, which
+   treats exactly the string "json-ld-1.0" as 1.0 mode and anything
+   else (including absence) as the 1.1 default — see that function's
+   banner and JSONLD.Context.active_context's ac_mode10 doc comment. *)
+let jld_processing_mode entry =
+  match field "option" entry with
+  | Some opt_obj -> str_field "processingMode" opt_obj
+  | None -> None
+
 (* ------------------------------------------------------------------ *)
 (* Per-test record. *)
 
@@ -240,6 +251,7 @@ type test_case = {
   base_override : string option;
   rdf_direction : string option;
   expand_context : string option;
+  processing_mode : string option;
   manifest_dir : string;
 }
 
@@ -261,6 +273,7 @@ let build_test_cases manifest_dir root =
              base_override = jld_base_override e;
              rdf_direction = jld_rdf_direction e;
              expand_context = jld_expand_context e;
+             processing_mode = jld_processing_mode e;
              manifest_dir;
            }
          | _ -> None)
@@ -289,7 +302,10 @@ let parse_jsonld_tc tc content =
   let fs_expand_context = match tc.expand_context with
     | Some rel -> FStar_Pervasives_Native.Some (jsonld_test_base ^ rel)
     | None -> FStar_Pervasives_Native.None in
-  opt_of_fs (Parser_JSONLD.parse_jsonld content (FStar_Pervasives_Native.Some (test_base tc)) fs_rdf_direction fs_expand_context)
+  let fs_processing_mode = match tc.processing_mode with
+    | Some s -> FStar_Pervasives_Native.Some s
+    | None -> FStar_Pervasives_Native.None in
+  opt_of_fs (Parser_JSONLD.parse_jsonld content (FStar_Pervasives_Native.Some (test_base tc)) fs_rdf_direction fs_expand_context fs_processing_mode)
 
 let run_test tc =
   match tc.spec_version with

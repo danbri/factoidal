@@ -162,7 +162,7 @@ let load_dataset ?(format=None) ?(base=None) path =
     let fs_base = match base_iri with
       | Some b -> FStar_Pervasives_Native.Some b
       | None -> FStar_Pervasives_Native.None in
-    (match Parser_JSONLD.parse_jsonld content fs_base FStar_Pervasives_Native.None FStar_Pervasives_Native.None with
+    (match Parser_JSONLD.parse_jsonld content fs_base FStar_Pervasives_Native.None FStar_Pervasives_Native.None FStar_Pervasives_Native.None with
      | FStar_Pervasives_Native.Some ds -> ds
      | FStar_Pervasives_Native.None ->
        failwith "invalid JSON-LD (parse or unsupported feature — remote contexts need a loader this CLI does not have)")

@@ -1028,14 +1028,28 @@ let rdf_direction_mode_of_option (rdf_direction:option string) : rdf_direction_m
 // input. None when the input is not valid RFC 8259 JSON, expansion (or
 // the expandContext pre-application) hits an out-of-scope feature
 // (module banner), or the top level is not an array/object.
+//
+// `processing_mode` (PHASE 8): the manifest's `option.processingMode`
+// raw string ("json-ld-1.0" / "json-ld-1.1" / absent). `Some
+// "json-ld-1.0"` seeds the active context's `ac_mode10 = true` (see
+// JSONLD.Context.active_context's ac_mode10 doc comment) so
+// JSONLD.Context's context-processing checks reject 1.1-only
+// constructs (@propagate, @import, @protected, @index, scoped
+// @context, @type: @none/@json, @graph/@id/@type/array-shaped
+// @container, and redefining the @type keyword) exactly as the JSON-LD
+// 1.1 API Create Term Definition / Context Processing algorithms
+// require — toRdf/c029, ep02, tn01, er21. Any other value (including
+// None, the default) behaves as JSON-LD 1.1 (ac_mode10 = false),
+// unchanged from before this parameter existed.
 let parse_jsonld (input:string) (base:option string) (rdf_direction:option string)
-                  (expand_context:option string) : option rdf_dataset =
+                  (expand_context:option string) (processing_mode:option string) : option rdf_dataset =
   let rdir = rdf_direction_mode_of_option rdf_direction in
+  let mode10 = (match processing_mode with Some "json-ld-1.0" -> true | _ -> false) in
   match parse_json input with
   | None -> None
   | Some root ->
     if jld_has_inline_context root || Some? base || Some? expand_context then
-      let ac_seed = { empty_active_context with ac_base = base } in
+      let ac_seed = { empty_active_context with ac_base = base; ac_mode10 = mode10 } in
       let ac0_opt =
         (match expand_context with
          | None -> Some ac_seed

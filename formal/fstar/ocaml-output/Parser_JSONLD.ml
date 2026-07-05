@@ -952,9 +952,14 @@ let rdf_direction_mode_of_option
 let parse_jsonld (input : Prims.string)
   (base : Prims.string FStar_Pervasives_Native.option)
   (rdf_direction : Prims.string FStar_Pervasives_Native.option)
-  (expand_context : Prims.string FStar_Pervasives_Native.option) :
+  (expand_context : Prims.string FStar_Pervasives_Native.option)
+  (processing_mode : Prims.string FStar_Pervasives_Native.option) :
   RDF_Graph_Executable.rdf_dataset FStar_Pervasives_Native.option=
   let rdir = rdf_direction_mode_of_option rdf_direction in
+  let mode10 =
+    match processing_mode with
+    | FStar_Pervasives_Native.Some "json-ld-1.0" -> true
+    | uu___ -> false in
   match Parser_JSON.parse_json input with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some root ->
@@ -975,7 +980,8 @@ let parse_jsonld (input : Prims.string)
             JSONLD_Context.ac_direction =
               (JSONLD_Context.empty_active_context.JSONLD_Context.ac_direction);
             JSONLD_Context.ac_previous =
-              (JSONLD_Context.empty_active_context.JSONLD_Context.ac_previous)
+              (JSONLD_Context.empty_active_context.JSONLD_Context.ac_previous);
+            JSONLD_Context.ac_mode10 = mode10
           } in
         let ac0_opt =
           match expand_context with

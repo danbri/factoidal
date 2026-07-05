@@ -63,10 +63,17 @@ module JSONLD.Context
 //     every sibling term def per jldctx_scan_bool_key, and as a per-term
 //     override): redefining a protected term with a DIFFERENT definition
 //     is an honest context_process failure (None) UNLESS the caller passes
-//     override_protected = true (property-/type-scoped context application
-//     always does, per spec — see JSONLD.Expand.apply_property_scoped_context
-//     / apply_type_scoped_contexts); redefining with an IDENTICAL
-//     definition is always allowed (term_defs_compatible);
+//     override_protected = true — ONLY property-scoped context application
+//     does that unconditionally (JSONLD.Expand.apply_property_scoped_context,
+//     per spec); type-scoped context application
+//     (jldctx_apply_type_scoped) passes override_protected = false, same
+//     as an ordinary embedded/inline context — the JSON-LD 1.1 API
+//     Expansion algorithm's @type-key loop never mentions override
+//     protected at all, so it takes the Context Processing algorithm's
+//     default (false). Redefining with an IDENTICAL definition is always
+//     allowed regardless (term_defs_compatible), and the STORED
+//     definition retains the EXISTING protected flag in that case
+//     (jldctx_resolve_redefine — toRdf/pr42);
 //   - compact-IRI + term-based prefix expansion (expand_iri below);
 //   - context reset via JNull, INCLUDING the protected-term-nullification
 //     check (a null context that would silently drop a protected term is
@@ -193,11 +200,25 @@ type active_context = {
   // the chain has set one (or the closest one reset it via JNull).
   ac_direction : option string;
   ac_previous  : option active_context;
+  // PHASE 8 (processingMode, issue TBD): true when this active context is
+  // being built under the JSON-LD 1.0 processing mode (the manifest's
+  // `option.processingMode: "json-ld-1.0"` — toRdf/c029, ep02, tn01,
+  // er21, pi01, so01). False (JSON-LD 1.1, the default) unless the
+  // caller of parse_jsonld explicitly asked for 1.0. Carried as a FIELD
+  // of active_context (rather than a fresh parameter threaded through
+  // every Context/Expand function) since active_context is already the
+  // one value every context-processing and expansion call passes down —
+  // piggy-backing here needs zero signature changes in JSONLD.Expand.fst.
+  // 1.1-only constructs (this module's own `context_process_one_field` /
+  // `jldctx_term_obj_fields` / the "@import" branch of `context_process`)
+  // check this flag and fail honestly rather than silently accepting
+  // 1.1-only syntax under a declared 1.0 processing mode.
+  ac_mode10    : bool;
 }
 
 let empty_active_context : active_context =
   { ac_terms = []; ac_vocab = None; ac_base = None; ac_language = None;
-    ac_direction = None; ac_previous = None }
+    ac_direction = None; ac_previous = None; ac_mode10 = false }
 
 // ================================================================
 // Small string / list helpers
@@ -338,17 +359,31 @@ let jldctx_ends_gen_delim (s:string) : bool =
   (let b = jbyte_at s (n - 1) in
    b = 0x3A || b = 0x2F || b = 0x3F || b = 0x23 || b = 0x5B || b = 0x5D || b = 0x40)
 
-// Guard applied at every term-definition site: a protected existing term
-// may only be replaced by an identical definition, UNLESS override_protected
-// is set (property-/type-scoped context application always passes true —
-// JSONLD.Expand.apply_property_scoped_context / apply_type_scoped_contexts).
-let jldctx_check_redefine (ac:active_context) (key:string) (new_td:term_def) (override_protected:bool) : bool =
+// The term_def to ACTUALLY store for a redefinition site: a protected
+// existing term may only be replaced by an identical definition, UNLESS
+// override_protected is set (property-scoped context application always
+// passes true — JSONLD.Expand.apply_property_scoped_context; type-scoped
+// context application (jldctx_apply_type_scoped) passes false, per that
+// function's own comment — it gets NO blanket override right). Beyond a
+// plain allow/reject bool, JSON-LD 1.1 API Create Term Definition's protected-redefinition
+// step doesn't just allow a compatible redefinition through, it says "Set
+// definition to previous definition to retain the value of protected" —
+// i.e. the STORED definition is the OLD (existing) one, not the new one,
+// so a later, still-compatible redefinition that happens to omit its own
+// "@protected" entry (defaulting to false) does not silently un-protect
+// the term (toRdf/pr42: a protected term redefined identically by a
+// context object with no "@protected" member must stay protected, so
+// that a THIRD, incompatible redefinition still errors). Every other
+// path (no existing term, or override_protected/unprotected-existing)
+// stores new_td unchanged, matching the ordinary "later wins" rule.
+let jldctx_resolve_redefine (ac:active_context) (key:string) (new_td:term_def) (override_protected:bool)
+  : option term_def =
   match jldctx_find_term ac.ac_terms key with
-  | None -> true
+  | None -> Some new_td
   | Some existing ->
     if existing.td_protected && not override_protected
-    then term_defs_compatible existing new_td
-    else true
+    then (if term_defs_compatible existing new_td then Some existing else None)
+    else Some new_td
 
 // Position of the first colon byte in s, scanning from pos, or None.
 let rec jldctx_find_colon (s:string) (pos:nat) (fuel:nat)
@@ -611,16 +646,33 @@ let rec jldctx_term_obj_fields
       (match v with
        | JString s ->
          (match jldctx_expand_iri_ctx ac s true with
-          | Some e -> jldctx_term_obj_fields ac idf revf (Some e) contk langf dirf idxf ctxf protf rest
+          // JSON-LD 1.1 API Create Term Definition: "If the expanded type
+          // is @json or @none, and processing mode is json-ld-1.0, an
+          // invalid type mapping error has been detected" (toRdf/tn01 —
+          // "@type: @none is illegal in 1.0").
+          | Some e ->
+            if ac.ac_mode10 && (e = "@json" || e = "@none") then None
+            else jldctx_term_obj_fields ac idf revf (Some e) contk langf dirf idxf ctxf protf rest
           | None -> None)
        | _ -> None)
     else if k = "@container" then
+      // JSON-LD 1.1 API Create Term Definition: "If the container value
+      // is @graph, @id, or @type, or is otherwise not a string [i.e. an
+      // array], generate an invalid container mapping error and abort
+      // processing if processing mode is json-ld-1.0" (toRdf/ter21 —
+      // "Invalid container mapping"). @list/@set/@index/@language single-
+      // string containers stay legal in 1.0; every array-shaped
+      // "@container" value is 1.1-only.
       (match v with
        | JString s ->
          (match jldctx_container_kind_of_string s with
-          | Some ck -> jldctx_term_obj_fields ac idf revf typef ck langf dirf idxf ctxf protf rest
+          | Some ck ->
+            if ac.ac_mode10 && (ck = CK_Graph || ck = CK_Id || ck = CK_Type) then None
+            else jldctx_term_obj_fields ac idf revf typef ck langf dirf idxf ctxf protf rest
           | None -> None)
        | JArray items ->
+         if ac.ac_mode10 then None
+         else
          (match jldctx_container_kind_of_items items with
           | Some ck -> jldctx_term_obj_fields ac idf revf typef ck langf dirf idxf ctxf protf rest
           | None -> None)
@@ -647,6 +699,11 @@ let rec jldctx_term_obj_fields
       // at term-definition time. A keyword value (toRdf/pi03: "@index":
       // "@index") is rejected outright — keywords can never name a
       // property.
+      // "@index" is 1.1-only (Create Term Definition: "If processing mode
+      // is json-ld-1.0 or container mapping does not include @index, an
+      // invalid term definition has been detected").
+      if ac.ac_mode10 then None
+      else
       (match v with
        | JString s -> if jldctx_is_keyword s then None
                        else jldctx_term_obj_fields ac idf revf typef contk langf dirf (Some s) ctxf protf rest
@@ -655,9 +712,18 @@ let rec jldctx_term_obj_fields
       // A property- or type-scoped context: stored RAW (unprocessed) — see
       // td_scoped_context's doc comment. Any json_val shape is accepted
       // here (even one that will later fail to process); the failure
-      // surfaces at point-of-use in JSONLD.Expand, not here.
-      jldctx_term_obj_fields ac idf revf typef contk langf dirf idxf (Some v) protf rest
+      // surfaces at point-of-use in JSONLD.Expand, not here. 1.1-only
+      // (Create Term Definition: "If processing mode is json-ld-1.0, an
+      // invalid term definition has been detected").
+      if ac.ac_mode10 then None
+      else jldctx_term_obj_fields ac idf revf typef contk langf dirf idxf (Some v) protf rest
     else if k = "@protected" then
+      // "@protected" (the per-term override) is 1.1-only (Create Term
+      // Definition: "If value has an @protected entry ... If processing
+      // mode is json-ld-1.0, an invalid term definition has been
+      // detected").
+      if ac.ac_mode10 then None
+      else
       (match v with
        | JBool b -> jldctx_term_obj_fields ac idf revf typef contk langf dirf idxf ctxf (Some b) rest
        | _ -> None)
@@ -707,14 +773,16 @@ let process_term_def_obj (ac:active_context) (key:string) (fields:list (string &
        let td = { td_iri = iri; td_type_mapping = typef; td_container = contk;
                   td_reverse = false; td_language = langf; td_direction = dirf; td_index = idxf;
                   td_scoped_context = ctxf; td_protected = protected; td_prefix = prefix_flag } in
-       if jldctx_check_redefine ac key td override_protected
-       then Some ({ ac with ac_terms = (key, td) :: ac.ac_terms }) else None
+       (match jldctx_resolve_redefine ac key td override_protected with
+        | Some final_td -> Some ({ ac with ac_terms = (key, final_td) :: ac.ac_terms })
+        | None -> None)
      | (None, Some iri) ->
        let td = { td_iri = iri; td_type_mapping = typef; td_container = contk;
                   td_reverse = true; td_language = langf; td_direction = dirf; td_index = idxf;
                   td_scoped_context = ctxf; td_protected = protected; td_prefix = prefix_flag } in
-       if jldctx_check_redefine ac key td override_protected
-       then Some ({ ac with ac_terms = (key, td) :: ac.ac_terms }) else None
+       (match jldctx_resolve_redefine ac key td override_protected with
+        | Some final_td -> Some ({ ac with ac_terms = (key, final_td) :: ac.ac_terms })
+        | None -> None)
      | (None, None) ->
        (match jldctx_expand_iri_ctx ac key true with
         | None -> None
@@ -722,8 +790,9 @@ let process_term_def_obj (ac:active_context) (key:string) (fields:list (string &
           let td = { td_iri = iri; td_type_mapping = typef; td_container = contk;
                      td_reverse = false; td_language = langf; td_direction = dirf; td_index = idxf;
                      td_scoped_context = ctxf; td_protected = protected; td_prefix = prefix_flag } in
-          if jldctx_check_redefine ac key td override_protected
-          then Some ({ ac with ac_terms = (key, td) :: ac.ac_terms }) else None))
+          (match jldctx_resolve_redefine ac key td override_protected with
+           | Some final_td -> Some ({ ac with ac_terms = (key, final_td) :: ac.ac_terms })
+           | None -> None)))
 
 // One context-object member: "@base" / "@vocab" / "@language" / "@version" /
 // "@protected" / "@propagate", or an ordinary term definition (simple
@@ -785,14 +854,74 @@ let context_process_one_field (ac:active_context) (key:string) (value:json_val)
   else if key = "@version" then
     // JSON-LD 1.1 API §4.1.8: the @version member's value MUST be the
     // number 1.1 exactly (toRdf/ep03: "@version": 1.0 is an "invalid
-    // @version value" error).
+    // @version value" error); AND, separately, "@version": 1.1 while
+    // the processing mode is explicitly json-ld-1.0 is its own
+    // "processing mode conflict" error (toRdf/tep02), distinct from the
+    // invalid-value case above.
     (match value with
-     | JNumber lex -> if lex = "1.1" then Some ac else None
+     | JNumber lex ->
+       if lex <> "1.1" then None
+       else if ac.ac_mode10 then None
+       else Some ac
      | _ -> None)
   else if key = "@protected" then
     (match value with JBool _ -> Some ac | _ -> None)
   else if key = "@propagate" then
-    (match value with JBool _ -> Some ac | _ -> None)
+    // "@propagate" is 1.1-only (JSON-LD 1.1 API §4.1: "If context has an
+    // @propagate entry: if processing mode is json-ld-1.0, an invalid
+    // context entry error has been detected" — toRdf/tc029).
+    if ac.ac_mode10 then None
+    else (match value with JBool _ -> Some ac | _ -> None)
+  else if key = "@type" then
+    // JSON-LD 1.1 API Create Term Definition: redefining the KEYWORD
+    // "@type" itself is illegal in 1.0 outright, and even in 1.1 the
+    // value MUST be a map containing at least one of — and ONLY —
+    // an "@container": "@set" entry and/or an "@protected" entry; an
+    // EMPTY map has neither and is itself a keyword-redefinition error
+    // (toRdf/ec02 "Term definition on @type with empty map"), and any
+    // other shape is the same error (toRdf/ter42 "Keywords may not be
+    // redefined in 1.0" once mode10 already catches it, and any
+    // 1.1-mode shape violation). toRdf/tpr30 "Keywords may be
+    // protected" is the positive case a valid shape must accept.
+    //
+    // The @type keyword's own container-@set-ness and protected-ness
+    // ARE tracked — as an ordinary term_def stored under the literal
+    // key "@type" in ac_terms — so a LATER redefinition of the
+    // keyword is subject to the exact same protected-term-redefinition
+    // rule as any other term (toRdf/tpr32 "Protected @type cannot be
+    // overridden": a first context marks @type protected with
+    // @container:@set, a second context (also protected, but WITHOUT
+    // @container:@set) is a DIFFERENT, hence rejected, redefinition).
+    // This is safe to store under an ordinary-term-shaped key: "@type"
+    // can never be looked up via jldctx_find_term as an ordinary
+    // term (expand_iri_gen returns Some value for any actual keyword
+    // BEFORE ever consulting ac_terms), so this pseudo-entry is only
+    // ever read back by this very branch.
+    if ac.ac_mode10 then None
+    else
+      (match value with
+       | JObject tfields ->
+         let non_empty = (match tfields with | [] -> false | _ -> true) in
+         let shape_ok =
+           non_empty &&
+           List.Tot.for_all
+             (fun (kv:(string & json_val)) ->
+                (fst kv = "@container" && (match snd kv with JString "@set" -> true | _ -> false)) ||
+                (fst kv = "@protected" && JBool? (snd kv)))
+             tfields in
+         if not shape_ok then None
+         else
+           let has_set = List.Tot.existsb (fun (kv:(string & json_val)) -> fst kv = "@container") tfields in
+           let protected = jldctx_scan_bool_key tfields "@protected" false in
+           let td = { td_iri = "@type"; td_type_mapping = None;
+                      td_container = (if has_set then CK_Type else CK_None);
+                      td_reverse = false; td_language = None; td_direction = None;
+                      td_index = None; td_scoped_context = None;
+                      td_protected = protected; td_prefix = false } in
+           (match jldctx_resolve_redefine ac "@type" td override_protected with
+            | None -> None
+            | Some final_td -> Some ({ ac with ac_terms = ("@type", final_td) :: ac.ac_terms }))
+       | _ -> None)
   // A term NAME that is an actual keyword may not be redefined (keyword
   // collision, an error); one that merely LOOKS like a keyword
   // ("@ignoreMe") is ignored with a warning (toRdf/pr34/pr35/e119);
@@ -836,8 +965,9 @@ let context_process_one_field (ac:active_context) (key:string) (value:json_val)
                      td_reverse = false; td_language = None; td_direction = None; td_index = None;
                      td_scoped_context = None; td_protected = default_protected;
                      td_prefix = jldctx_ends_gen_delim iri } in
-          if jldctx_check_redefine ac key td override_protected
-          then Some ({ ac with ac_terms = (key, td) :: ac.ac_terms }) else None)
+          (match jldctx_resolve_redefine ac key td override_protected with
+           | Some final_td -> Some ({ ac with ac_terms = (key, final_td) :: ac.ac_terms })
+           | None -> None))
      | JObject termfields ->
        // A term definition whose "@reverse" member has keyword FORM
        // (actual keyword or lookalike) is ignored entirely — spec
@@ -924,7 +1054,11 @@ let rec context_process (ac:active_context) (ctx:json_val) (override_protected:b
        // OWN remaining members on top of the result — local members
        // replacing imported ones is just ordinary left-to-right term
        // redefinition once the two are processed in that order.
-       if fuel = 0 then None
+       // 1.1-only ("If context has an @import entry: if processing mode
+       // is json-ld-1.0, an invalid context entry error has been
+       // detected" — toRdf/tso01).
+       if ac.ac_mode10 then None
+       else if fuel = 0 then None
        else
          (match jldctx_resolve_context_iri ac importref with
           | None -> None
@@ -1063,7 +1197,26 @@ let rec jldctx_apply_type_scoped (ac0:active_context) (ac_acc:active_context) (t
      | Some td ->
        (match td.td_scoped_context with
         | Some scoped ->
-          (match context_process ac_acc scoped true jld_remote_context_fuel [] with
+          // override_protected is FALSE here (NOT true): the JSON-LD 1.1
+          // API Expansion algorithm's @type-key loop invokes the Context
+          // Processing algorithm passing only active context, the type's
+          // local context, base URL, and false for propagate — override
+          // protected is NOT mentioned at that call site, so it takes its
+          // DEFAULT value, which the Context Processing algorithm
+          // overview states is false. Only PROPERTY-scoped context
+          // application (JSONLD.Expand.apply_property_scoped_context)
+          // explicitly passes true for override protected — type-scoped
+          // contexts get no blanket override right; a type-scoped context
+          // may still redefine a protected term when the new definition
+          // is IDENTICAL (term_defs_compatible, checked inside
+          // jldctx_resolve_redefine regardless of
+          // override_protected), but a DIFFERENT redefinition, or a null
+          // reset that would drop protection, is now an honest failure
+          // (toRdf/pr17, pr18, pr20, pr21 — all Negative "protected
+          // terms must not be silently overridden by a type-scoped
+          // context" fixtures that this blanket `true` used to pass
+          // incorrectly).
+          (match context_process ac_acc scoped false jld_remote_context_fuel [] with
            | None -> None
            | Some ac1 ->
              let propagate = jldctx_scan_propagate scoped false in
