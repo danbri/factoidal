@@ -13,21 +13,40 @@ foundational: false
 # (commit 37ae500: triple-expression matching, disjoint-predicate fast
 # path). ShExJ-first (the vendored corpus's canonical ShExC `.shex`
 # schema references are swapped for their same-basename `.json` twin —
-# see bin/shex-runner/shex_runner.ml's header for the mapping and the
-# 4/346 known-missing twins); Logic-conformant only (boolean pass/fail,
-# no ValidationResult/error-report structure matching — the suite's own
-# README calls those tiers experimental); manifest-only shape maps (the
-# 3 `sht:ShapeMap`-trait fixtures using `sht:map` instead of `sht:focus`
-# SKIP, out of scope per the plan's scope cuts).
+# see bin/shex-runner/shex_runner.ml's header for the mapping). As of
+# the 2026-07-05 SKIP-elimination pass the runner also handles:
+#   - manifest-only shape maps (`sht:trait sht:ShapeMap` fixtures using
+#     `sht:map`/JSON-per-entry `mf:result` instead of a single
+#     `sht:focus`/`sht:shape`/boolean verdict) — parsed via the
+#     F*-extracted Parser_JSON, each map entry validated separately and
+#     checked against its own expected per-entry result;
+#   - the 3 schemas (extends-abstract-multi-empty, extends-closed-
+#     diamond, extends-closed-3diamond-split — 23 fixtures) that are
+#     genuinely ShExC-only upstream (checked against shexSpec/shexTest
+#     master, not just a stale pin): hand-translated ShExJ twins live
+#     in tests/shex-shexj-twins/ (NOT the submodule), with provenance
+#     documented in that directory's README. The runner falls back
+#     there only when the submodule has no twin for a schema.
+# 0 schemas now lack any twin; 0 fixtures SKIP for "no sht:focus".
+# Logic-conformant only (boolean pass/fail, no ValidationResult/error-
+# report structure matching — the suite's own README calls those tiers
+# experimental).
 #
 # The runner reports FOUR buckets, not two: PASS / MISMATCH (a real
 # wrong verdict) / DEFERRED (ShEx.Validation.validate_focus returned
 # `None` — Stage 4/5 territory: TE_OneOf, cardinality-wrapped groups,
 # overlapping-signature siblings, shapeExprRef recursion, fuel
-# exhaustion) / SKIP (couldn't even be attempted — missing ShExJ twin,
-# missing data/schema/focus fields). DEFERRED is an honest scope gap,
-# not a wrong answer — see ShEx.Validation.fst's file-header doc
-# comment for the `option bool` convention this bucketing mirrors.
+# exhaustion, or — as of the extends twins above — Stage 6 `extends`/
+# `abstract` semantics not yet landed in ShEx.Validation.fst) / SKIP
+# (couldn't even be attempted — missing data/schema file on disk, a
+# decode exception). DEFERRED is an honest scope gap, not a wrong
+# answer — see ShEx.Validation.fst's file-header doc comment for the
+# `option bool` convention this bucketing mirrors. Measured against
+# ShEx_Validation.ml built 2026-07-05 07:4x UTC (whatever revision was
+# current in ocaml-output at rebuild time — see shex_runner.ml's git
+# history / the sibling agent's stage-6 landing for the exact commit):
+# 1026 pass, 11 mismatch, 145 deferred, 0 skipped (out of 1182), up
+# from 1022 pass, 11 mismatch, 123 deferred, 26 skipped.
 
 triggers:
   paths:
@@ -51,5 +70,8 @@ triggers:
     # Vendored shexSpec/shexTest (manifest + validation/*.ttl +
     # schemas/*.json fixtures).
     - third_party/testing/shex/**
+    # Hand-translated ShExJ twins for the schemas that are genuinely
+    # ShExC-only upstream (see that directory's README for provenance).
+    - tests/shex-shexj-twins/**
 
   excludes: []

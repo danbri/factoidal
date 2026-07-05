@@ -1,0 +1,123 @@
+{
+    "_provenance": "Hand-translated ShExJ twin of third_party/testing/shex/schemas/extends-closed-3diamond-split.shex (vendored ShExC-only fixture, no upstream .json twin). See tests/shex-shexj-twins/README.md for the translation method and cross-checks. Extra keys such as this one are ignored by ShEx.Schema.fst's field-specific json_get_field lookups.",
+    "@context": "http://www.w3.org/ns/shex.jsonld",
+    "type": "Schema",
+    "shapes": [
+        {
+            "type": "ShapeDecl",
+            "id": "http://a.example/G0",
+            "shapeExpr": {
+                "type": "Shape",
+                "closed": true,
+                "expression": {
+                    "type": "TripleConstraint",
+                    "predicate": "http://a.example/p",
+                    "valueExpr": {
+                        "type": "NodeConstraint",
+                        "values": [
+                            { "value": "G0A" },
+                            { "value": "G0B" },
+                            { "value": "G0C" }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "type": "ShapeDecl",
+            "id": "http://a.example/G0-0",
+            "shapeExpr": {
+                "type": "Shape",
+                "extends": [
+                    "http://a.example/G0"
+                ],
+                "closed": true,
+                "expression": {
+                    "type": "TripleConstraint",
+                    "predicate": "http://a.example/p",
+                    "valueExpr": {
+                        "type": "NodeConstraint",
+                        "values": [
+                            { "value": "G0-0A" },
+                            { "value": "G0-0B" },
+                            { "value": "G0-0C" }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "type": "ShapeDecl",
+            "id": "http://a.example/G0-0-0",
+            "shapeExpr": {
+                "type": "Shape",
+                "extends": [
+                    "http://a.example/G0",
+                    "http://a.example/G0-0"
+                ],
+                "closed": true,
+                "expression": {
+                    "type": "TripleConstraint",
+                    "predicate": "http://a.example/p",
+                    "valueExpr": {
+                        "type": "NodeConstraint",
+                        "values": [
+                            { "value": "G0-0-0A" },
+                            { "value": "G0-0-0B" },
+                            { "value": "G0-0-0C" }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "type": "ShapeDecl",
+            "id": "http://a.example/G0_0-0",
+            "shapeExpr": {
+                "type": "Shape",
+                "extends": [
+                    "http://a.example/G0",
+                    "http://a.example/G0-0"
+                ],
+                "closed": true,
+                "expression": {
+                    "type": "TripleConstraint",
+                    "predicate": "http://a.example/p",
+                    "valueExpr": {
+                        "type": "NodeConstraint",
+                        "values": [
+                            { "value": "G0_0-0A" },
+                            { "value": "G0_0-0B" },
+                            { "value": "G0_0-0C" }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "type": "ShapeDecl",
+            "id": "http://a.example/BOTTOM",
+            "shapeExpr": {
+                "type": "Shape",
+                "extends": [
+                    "http://a.example/G0",
+                    "http://a.example/G0-0-0",
+                    "http://a.example/G0_0-0"
+                ],
+                "closed": true,
+                "expression": {
+                    "type": "TripleConstraint",
+                    "predicate": "http://a.example/p",
+                    "valueExpr": {
+                        "type": "NodeConstraint",
+                        "values": [
+                            { "value": "BOTTOMA" },
+                            { "value": "BOTTOMB" },
+                            { "value": "BOTTOMC" }
+                        ]
+                    }
+                }
+            }
+        }
+    ]
+}
