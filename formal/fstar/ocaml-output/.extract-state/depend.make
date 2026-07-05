@@ -1121,6 +1121,7 @@ ShEx.Schema.fst.checked: \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked \
+	Parser.IRI.fst.checked \
 	Parser.JSON.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked \
@@ -1137,6 +1138,7 @@ ShEx_Schema.krml: \
 
 ShEx_Schema.cmx: \
 	ShEx_Schema.ml \
+	Parser_IRI.cmx \
 	Parser_JSON.cmx
 
 SPARQL.HTTP.Response.fst.checked: \

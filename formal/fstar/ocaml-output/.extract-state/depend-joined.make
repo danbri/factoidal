@@ -492,7 +492,7 @@ SPARQL_Plan_Loader.krml:  	SPARQL.Plan.Loader.fst.checked
 
 SPARQL_Plan_Loader.cmx:  	SPARQL_Plan_Loader.ml
 
-ShEx.Schema.fst.checked:  	ShEx.Schema.fst  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked  	Parser.JSON.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
+ShEx.Schema.fst.checked:  	ShEx.Schema.fst  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked  	Parser.IRI.fst.checked  	Parser.JSON.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
 
 ShEx_Schema.ml:  	ShEx.Schema.fst.checked
 
@@ -500,7 +500,7 @@ ShEx_Schema.fs:  	ShEx.Schema.fst.checked
 
 ShEx_Schema.krml:  	ShEx.Schema.fst.checked
 
-ShEx_Schema.cmx:  	ShEx_Schema.ml  	Parser_JSON.cmx
+ShEx_Schema.cmx:  	ShEx_Schema.ml  	Parser_IRI.cmx  	Parser_JSON.cmx
 
 SPARQL.HTTP.Response.fst.checked:  	SPARQL.HTTP.Response.fst  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked  	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
 

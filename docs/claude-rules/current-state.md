@@ -1,6 +1,19 @@
 # Current State (Honest Assessment)
 
-Last refreshed: 2026-07-05 (ShEx-completion wave A: **1115 pass, 42
+Last refreshed: 2026-07-05 (ShEx-completion wave B: **1176 pass, 6
+mismatch, 0 deferred, 0 skipped (of 1182)**. Runner side: focus
+base-resolution fix (+25), recursive cycle-safe Imports (+17),
+ShapeExternal (+4), bnode shape labels (+2), base-threaded schema
+decoding (+2). Semantics side: diamond-dedup ancestor resolution,
+running-intersection chain matching, unbounded-completion
+restriction, abstract shapes per the inheritance paper's Definition
+4 (+12). The 6 remainders: 1 upstream fixture defect
+(start2RefS2.json has p1 where the canonical .shex has p2) + 5
+vitals-RESTRICTS tracing to a distinct same-predicate exact-valued
+TripleConstraint pairing gap in tc_choose_acc — one focused
+follow-up. All floors held.)
+
+Previous (ShEx-completion wave A: **1115 pass, 42
 mismatch, 25 deferred, 0 skipped (of 1182)** — stage 4 backtracking
 partition search, stage 5 recursion (coinductive visited-stack),
 stage 6 EXTENDS per the inheritance-semantics paper, SemActs with
