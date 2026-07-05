@@ -139,6 +139,12 @@ let test_input_ontology   = test_ns ^ "rdfXmlInputOntology"
    docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7. *)
 let test_normative_syntax = test_ns ^ "normativeSyntax"
 let test_syntax_functional = test_ns ^ "FUNCTIONAL"
+(* OWL 2 Functional Syntax literals — read alongside the rdfXml* ones
+   so run_positive_entailment / run_inconsistency_test can attempt the
+   Parser_OWLFunctional path when no rdfXml premise/conclusion exists.
+   See docs/designissues/2026-07-05-owl-functional-syntax-plan.md. *)
+let test_fs_premise    = test_ns ^ "fsPremiseOntology"
+let test_fs_conclusion = test_ns ^ "fsConclusionOntology"
 let pos_entailment_iri = test_ns ^ "PositiveEntailmentTest"
 let neg_entailment_iri = test_ns ^ "NegativeEntailmentTest"
 let consistency_iri    = test_ns ^ "ConsistencyTest"
@@ -205,6 +211,13 @@ type test_case_info = {
   profiles    : StrSet.t;          (* set of test:profile values *)
   premise     : string option;     (* test:rdfXmlPremiseOntology literal *)
   conclusion  : string option;     (* test:rdfXmlConclusionOntology literal *)
+  fs_premise    : string option;   (* test:fsPremiseOntology literal (OWL 2
+                                       Functional Syntax) — read alongside
+                                       rdfXml* so entries with ONLY a
+                                       functional-syntax premise can still
+                                       be scored via Parser_OWLFunctional
+                                       instead of an automatic skip. *)
+  fs_conclusion : string option;   (* test:fsConclusionOntology literal *)
   normative_syntax : StrSet.t;     (* test:normativeSyntax objects, e.g.
                                        &test;FUNCTIONAL / &test;RDFXML *)
   semantics   : StrSet.t;          (* test:semantics objects, e.g.
@@ -221,6 +234,8 @@ let empty_info iri = {
   profiles = StrSet.empty;
   premise = None;
   conclusion = None;
+  fs_premise = None;
+  fs_conclusion = None;
   normative_syntax = StrSet.empty;
   semantics = StrSet.empty;
   imports = StrSet.empty;
@@ -290,6 +305,18 @@ let build_index (graph : triple list) : test_case_info list * (string, string) H
            match object_literal_opt t.o with
            | Some lex ->
              let info = { info with conclusion = Some lex } in
+             Hashtbl.replace tbl subj info
+           | None -> ()
+         end else if t.p = test_fs_premise then begin
+           match object_literal_opt t.o with
+           | Some lex ->
+             let info = { info with fs_premise = Some lex } in
+             Hashtbl.replace tbl subj info
+           | None -> ()
+         end else if t.p = test_fs_conclusion then begin
+           match object_literal_opt t.o with
+           | Some lex ->
+             let info = { info with fs_conclusion = Some lex } in
              Hashtbl.replace tbl subj info
            | None -> ()
          end else if t.p = test_non_conclusion then begin
@@ -428,13 +455,14 @@ type outcome =
   | Fail_no_conclusion
   (* Catalog entry provides only a functional-syntax premise
      (test:fsPremiseOntology, test:normativeSyntax FUNCTIONAL) with no
-     test:rdfXmlPremiseOntology at all — this runner only reads rdfXml*
-     literals (rule #4: parsers belong in F*; no functional-syntax
-     parser exists yet). Distinct from Fail_no_premise so the score
-     reports an honest "unsupported input syntax" outcome instead of
-     silently counting a syntax gap as a semantic failure. Counted
-     outside the pass/fail denominator. See
-     docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7. *)
+     test:rdfXmlPremiseOntology at all, AND that functional-syntax text
+     is either absent or uses a construct beyond Parser_OWLFunctional's
+     narrow grammar subset (2026-07-05 — see
+     docs/designissues/2026-07-05-owl-functional-syntax-plan.md).
+     Distinct from Fail_no_premise so the score reports an honest
+     "unsupported input syntax" outcome instead of silently counting a
+     syntax gap as a semantic failure. Counted outside the pass/fail
+     denominator. *)
   | Skip_functional_syntax_only
 
 let outcome_tag = function
@@ -604,6 +632,35 @@ let load_imports_into_premise
     info.imports
     g_p
 
+(* OWL 2 Functional Syntax path for PositiveEntailmentTest (2026-07-05).
+   See docs/designissues/2026-07-05-owl-functional-syntax-plan.md.
+   `Parser_OWLFunctional.parse_functional_syntax` returns `None` on any
+   construct outside its narrow grammar subset (clean parse failure,
+   rule: no fixture-string special-casing) — that case falls back to
+   the pre-existing Skip_functional_syntax_only in the caller, exactly
+   preserving today's honest-skip behaviour for fixtures that use more
+   of Functional Syntax than this parser covers. `Some outcome` means
+   the ontology parsed in-subset and was scored (PASS or FAIL) — a
+   parse success is never silently downgraded back to a skip, per
+   anti-pattern #3 (misleading test scores). *)
+let run_positive_entailment_functional_syntax
+      (fs_p_lex : string) (fs_c_lex : string) : outcome option =
+  match (try Parser_OWLFunctional.parse_functional_syntax fs_p_lex with _ -> None) with
+  | None -> None
+  | Some g_p ->
+    match (try Parser_OWLFunctional.parse_functional_syntax fs_c_lex with _ -> None) with
+    | None -> None
+    | Some g_c ->
+      let closure = try apply_closure g_p with _ -> g_p in
+      let rec check = function
+        | [] -> Pass
+        | t :: rest ->
+          if conclusion_triple_in_closure closure t
+          then check rest
+          else Fail_conclusion_miss t
+      in
+      Some (check g_c)
+
 let run_positive_entailment
       (info : test_case_info)
       (imports_lookup : (string, string) Hashtbl.t) : outcome =
@@ -611,9 +668,18 @@ let run_positive_entailment
     (match info.identifier with Some id -> id | None -> info.iri);
   match info.premise, info.conclusion with
   | None, _ ->
-    if StrSet.mem test_syntax_functional info.normative_syntax
-    then Skip_functional_syntax_only
-    else Fail_no_premise
+    (match info.fs_premise, info.fs_conclusion with
+     | Some fs_p_lex, Some fs_c_lex ->
+       (match run_positive_entailment_functional_syntax fs_p_lex fs_c_lex with
+        | Some outcome -> outcome
+        | None ->
+          if StrSet.mem test_syntax_functional info.normative_syntax
+          then Skip_functional_syntax_only
+          else Fail_no_premise)
+     | _ ->
+       if StrSet.mem test_syntax_functional info.normative_syntax
+       then Skip_functional_syntax_only
+       else Fail_no_premise)
   | _, None -> Fail_no_conclusion
   | Some p_lex, Some c_lex ->
     let p_src = expand_catalog_entities p_lex in
@@ -737,25 +803,47 @@ let run_consistency_test
       else Pass
     end
 
+(* OWL 2 Functional Syntax path for InconsistencyTest (2026-07-05).
+   Same contract as run_positive_entailment_functional_syntax: `None`
+   means the premise used a construct outside Parser_OWLFunctional's
+   subset (falls back to the honest skip in the caller); `Some outcome`
+   means it parsed in-subset and was scored via the same is_inconsistent
+   predicate the rdfXml path already uses. *)
+let run_inconsistency_test_functional_syntax (fs_p_lex : string) : outcome option =
+  match (try Parser_OWLFunctional.parse_functional_syntax fs_p_lex with _ -> None) with
+  | None -> None
+  | Some g_p ->
+    let closure = try apply_closure g_p with _ -> g_p in
+    if RDF_Graph_Executable.is_inconsistent closure
+    then Some Pass
+    else Some Fail_unexpected_consistency
+
 (* InconsistencyTest: premise is asserted INCONSISTENT. Pass iff closure
    contains an inconsistency marker.
 
    Some catalog entries (functionality-clash, string-integer-clash,
    "Plus and Minus Zero are Distinct") provide only test:fsPremiseOntology
-   (OWL 2 Functional Syntax) with no test:rdfXmlPremiseOntology — same
-   "unsupported input syntax" gap run_positive_entailment already carves
-   out as Skip_functional_syntax_only (rule #4: no functional-syntax
-   parser yet). Without this check they scored FAIL/no-premise, which
-   anti-pattern #3 calls out as a misleading score: the engine never got
-   a chance to reason about them at all. *)
+   (OWL 2 Functional Syntax) with no test:rdfXmlPremiseOntology. As of
+   2026-07-05 these are attempted via Parser_OWLFunctional (see the
+   design doc); only a premise that uses a construct beyond that
+   parser's narrow subset still falls back to Skip_functional_syntax_only. *)
 let run_inconsistency_test
       (info : test_case_info)
       (imports_lookup : (string, string) Hashtbl.t) : outcome =
   match info.premise with
   | None ->
-    if StrSet.mem test_syntax_functional info.normative_syntax
-    then Skip_functional_syntax_only
-    else Fail_no_premise
+    (match info.fs_premise with
+     | Some fs_p_lex ->
+       (match run_inconsistency_test_functional_syntax fs_p_lex with
+        | Some outcome -> outcome
+        | None ->
+          if StrSet.mem test_syntax_functional info.normative_syntax
+          then Skip_functional_syntax_only
+          else Fail_no_premise)
+     | None ->
+       if StrSet.mem test_syntax_functional info.normative_syntax
+       then Skip_functional_syntax_only
+       else Fail_no_premise)
   | Some p_lex ->
     let p_src = expand_catalog_entities p_lex in
     let base = info.iri in
@@ -807,7 +895,7 @@ let print_outcome verbose info outcome =
         silently omits its cause is exactly the "misleading test score"
         anti-pattern #3 warns about. *)
      Printf.printf
-       "      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 functional syntax) with test:normativeSyntax FUNCTIONAL; this runner reads only test:rdfXmlPremiseOntology literals (no functional-syntax parser yet, see docs/designissues/2026-07-03-owl-rl-pe-fails-fix-sketch.md, 2.7)\n"
+       "      reason: unsupported input syntax — catalog entry provides only test:fsPremiseOntology (OWL 2 Functional Syntax) with test:normativeSyntax FUNCTIONAL, and either no fs premise/conclusion literal is present or it uses Functional-Syntax constructs beyond Parser_OWLFunctional's narrow subset (Prefix/Ontology/Declaration + ~6 axiom forms; see docs/designissues/2026-07-05-owl-functional-syntax-plan.md)\n"
    | _ -> ());
   if verbose then begin
     match outcome with

@@ -376,6 +376,7 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
     Parser.FastString.fst Parser.IRI.fst
     Parser.Combinators.fst Parser.TurtleScanner.fst SPARQL11.Parser.fst
     Parser.NTriples.fst Parser.Turtle.fst
+    Parser.OWLFunctional.fst
     RDF.Turtle.Serialize.fst
     Parser.NQuads.fst Parser.TriG.fst
     Parser.XML.fst XML.Wellformedness.fst Parser.RDFXML.fst Parser.RIFXML.fst
@@ -672,6 +673,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     Parser_FastString.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml \
     RDF_NQuads_Serialize.ml \
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml \
+    Parser_OWLFunctional.ml \
     RDF_Turtle_Serialize.ml \
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml Parser_RDFXML.ml \
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml \
@@ -1141,6 +1143,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     Parser_FastString.ml SPARQL11_IRI_Resolve.ml Parser_IRI.ml
     RDF_NQuads_Serialize.ml
     Parser_Combinators.ml Parser_TurtleScanner.ml Parser_NTriples.ml Parser_Turtle.ml
+    Parser_OWLFunctional.ml
     RDF_Turtle_Serialize.ml
     Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml Parser_RDFXML.ml
     Parser_SRX.ml Parser_CSVResults.ml Parser_JSONResults.ml

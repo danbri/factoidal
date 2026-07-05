@@ -26,3 +26,18 @@
 [submodule "third_party/testing/json-ld"]
 	path = third_party/testing/json-ld
 	url = https://github.com/w3c/json-ld-api.git
+[submodule "third_party/testing/rml-modules/rml-core"]
+	path = third_party/testing/rml-modules/rml-core
+	url = https://github.com/kg-construct/rml-core.git
+[submodule "third_party/testing/rml-modules/rml-io"]
+	path = third_party/testing/rml-modules/rml-io
+	url = https://github.com/kg-construct/rml-io.git
+[submodule "third_party/testing/rml-modules/rml-cc"]
+	path = third_party/testing/rml-modules/rml-cc
+	url = https://github.com/kg-construct/rml-cc.git
+[submodule "third_party/testing/rml-modules/rml-fnml"]
+	path = third_party/testing/rml-modules/rml-fnml
+	url = https://github.com/kg-construct/rml-fnml.git
+[submodule "third_party/testing/rml-modules/rml-star"]
+	path = third_party/testing/rml-modules/rml-star
+	url = https://github.com/kg-construct/rml-star.git
