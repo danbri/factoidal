@@ -1,5 +1,21 @@
 # 2026-07-05 — A skimmable foundational core: RDF.Graph.Executable and SPARQL11.Algebra stratification
 
+> **Owner addition (2026-07-05, axiomatic triples):** the RDF/RDFS
+> axiomatic triple sets that W3C publishes at the namespace documents
+> and in RDF Semantics §9 (e.g. `rdfs:range rdfs:range rdfs:Class .`)
+> currently have no declarative representation in the tree — their
+> consequences are hard-coded as closure rules
+> (`rdfs_rule_range` et al.), reflexivity axioms are harvested
+> programmatically, and OWL 2 RL's Table 5 is a generating code block
+> with omissions documented only in comments. The `RDF.Vocabulary`
+> module proposed below gains a companion `RDF.Vocabulary.Axioms`:
+> the finite axiomatic tables as literal F\* triple lists, auditable
+> line-by-line against the spec text, consumed by the closures as a
+> seed graph. Only the genuinely infinite families (`rdf:_n`
+> container membership) stay rule-generated, with a comment citing
+> the spec's own note on infinitude. Gate: rdf-mt + OWL catalog
+> scores byte-exact after the switch.
+
 ## Status
 
 Design proposal, no code changes. Extends the roadmap in

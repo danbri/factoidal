@@ -185,6 +185,9 @@ session.
   bootstrap contract, token prudence, subagent model/effort selection,
   and how to pick the next piece of work. **Read first in autonomous
   sessions.**
+- [`session-cost-accounting`](skills/session-cost-accounting/SKILL.md)
+  — measure a session's real cost incl. subagent children
+  (`tools/session-cost.sh`, agentsview recipe + traps).
 - [`session-restore`](skills/session-restore/SKILL.md) — restore a
   fresh/recycled VM to working state in minutes: cache-branch
   inventory (toolchain-cache, checked-cache), what the hook restores
