@@ -1406,6 +1406,24 @@ let owl_propertyDisjointWith : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#propertyDisjointWith");
   "http://www.w3.org/2002/07/owl#propertyDisjointWith"
 
+// owl:NegativePropertyAssertion reification vocabulary (OWL 2 RL/RDF
+// rules prp-npa1 / prp-npa2 — Table 8 no-consequent clash rules).
+let owl_sourceIndividual : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#sourceIndividual");
+  "http://www.w3.org/2002/07/owl#sourceIndividual"
+
+let owl_assertionProperty : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#assertionProperty");
+  "http://www.w3.org/2002/07/owl#assertionProperty"
+
+let owl_targetIndividual : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#targetIndividual");
+  "http://www.w3.org/2002/07/owl#targetIndividual"
+
+let owl_targetValue : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/2002/07/owl#targetValue");
+  "http://www.w3.org/2002/07/owl#targetValue"
+
 // Check whether a predicate is one of the OWL predicates that we treat
 // specially (used to block no-op rule applications where we would re-emit
 // a triple that is already present).
@@ -3527,34 +3545,81 @@ let owl_rule_named_sameAs_to_equivClass (g : rdf_graph) (ig : indexed_graph) : r
 
 // Named-equivalentClass-to-sameAs (dual of owl_rule_named_sameAs_to_equivClass):
 // if (C owl:equivalentClass D) where C and D are both IRIs and both
-// already typed as owl:Class, emit
+// already typed as owl:Class, AND at least one of C/D carries some
+// OTHER property assertion (beyond rdf:type / owl:equivalentClass /
+// rdfs:subClassOf / owl:sameAs-reflexivity), emit
 //   (C owl:sameAs D) and (D owl:sameAs C).
 //
 // IRI-only / class-typed guard: mirrors the sibling rule above and
 // avoids feeding the bnode chain that `owl_rule_equivalent_class`
 // deliberately blocks (anonymous CE bnodes are existentials, not
-// individuals). Sound under OWL Full / RL where `owl:Class ⊆ rdfs:Class`
-// and named classes are individuals; extensional class equality between
-// named classes implies the underlying individual identity.
+// individuals).
 //
-// Drives the OWL 2 RL annotation-propagation pattern: once we have
-// (c1 sameAs c2), the existing eq-rep-s/p/o rules copy every triple
-// carrying c1 (including annotation triples like rdfs:comment or
-// user-declared owl:AnnotationProperty assertions) onto c2 and back.
+// The "extra property" guard is load-bearing, not cosmetic: this rule
+// is a Datalog approximation of the OWL 2 Direct-Semantics rule for
+// symmetric attachment of an *axiom annotation* on an EquivalentClasses
+// axiom (the annotation can be rendered in RDF/XML on either named
+// class's node and both encodings denote the same annotated axiom
+// under Direct semantics). That approximation only has work to do when
+// there is an annotation/property triple to symmetrize. A *bare*
+// (C equivalentClass D) with no other triple on C or D has nothing to
+// symmetrize, and collapsing C and D to owl:sameAs unconditionally is
+// unsound: WebOnt-I4.6-004 is exactly a NegativeEntailmentTest that a
+// bare equivalentClass premise must NOT entail C sameAs D (sameAs is
+// strictly stronger than equivalentClass — the RL-rule-table has no
+// eqc-to-sameAs rule at all). Without the guard this rule falsely
+// entailed I4.6-004's negated conclusion.
+//
+// Drives the OWL 2 RL annotation-propagation pattern for the guarded
+// case: once we have (c1 sameAs c2), the existing eq-rep-s/p/o rules
+// copy every triple carrying c1 (including annotation triples like
+// rdfs:comment or user-declared owl:AnnotationProperty assertions)
+// onto c2 and back.
 //
 // Targets WebOnt-I4.6-005-Direct and WebOnt-equivalentClass-008-Direct
-// (cluster I+J of docs/designissues/2026-05-07-owl2-rl-next-steps.md).
+// (cluster I+J of docs/designissues/2026-05-07-owl2-rl-next-steps.md)
+// without falsely entailing WebOnt-I4.6-004's negated conclusion. The
+// RDF-based-semantics siblings of the -Direct tests (WebOnt-I4.6-005,
+// WebOnt-equivalentClass-008) share an *identical* premise and
+// candidate conclusion triple with their -Direct counterpart but
+// expect the OPPOSITE entailment outcome (RDF-based semantics does not
+// treat the annotation as axiom-attached, so it must NOT propagate).
+// A single semantics-oblivious closure cannot satisfy both readings of
+// the same triple pattern simultaneously — this is a genuine DIRECT-
+// vs-RDF-BASED-semantics distinction the runner does not model (see
+// bin/owl-runner/owl_runner.ml, "regime" — chosen per catalog, not per
+// test:semantics annotation). WebOnt-I4.6-005 and
+// WebOnt-equivalentClass-008 stay unfixed under RL closure alone;
+// fixing them requires the runner to dispatch per test:semantics,
+// which is out of scope here (see #post-2026-07 OWL RL catalog audit).
 let owl_rule_named_equivClass_to_sameAs (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
   let is_class (i : wf_iri) : bool =
     let types = find_objects_indexed ig (S_IRI i) rdf_type in
     List.Tot.existsb (fun (x : rdf_term) -> rdf_term_eq x (T_IRI owl_Class)) types
+  in
+  // has_extra_property: does i carry some triple whose predicate is
+  // not one of the class-hood / equivalentClass-axiom / derived-
+  // subClassOf / sameAs-reflexivity predicates? Scans the step-input
+  // snapshot g (not the live accumulator), matching this file's
+  // snapshot-semantics convention for single-pass rule bodies.
+  let has_extra_property (i : wf_iri) : bool =
+    List.Tot.existsb
+      (fun (t : triple) ->
+        match t.s with
+        | S_IRI si ->
+          si = i &&
+          t.p <> rdf_type && t.p <> owl_equivalentClass &&
+          t.p <> rdfs_subClassOf && t.p <> owl_sameAs
+        | S_BNode _ -> false)
+      g
   in
   List.Tot.fold_left
     (fun (acc : rdf_graph) (t : triple) ->
       if t.p = owl_equivalentClass then
         match t.s, t.o with
         | S_IRI c_iri, T_IRI d_iri ->
-          if c_iri <> d_iri && is_class c_iri && is_class d_iri then
+          if c_iri <> d_iri && is_class c_iri && is_class d_iri &&
+             (has_extra_property c_iri || has_extra_property d_iri) then
             let t1 : triple =
               { s = S_IRI c_iri; p = owl_sameAs; o = T_IRI d_iri } in
             let t2 : triple =
@@ -3616,6 +3681,46 @@ let collect_haskey_axioms (g : rdf_graph) (ig : indexed_graph) : list (wf_iri & 
         | _, _ -> acc
       else acc)
     []
+    g
+
+// cls-int1 (OWL 2 RL/RDF rule table): if (C owl:intersectionOf (C1 ... Cn))
+// — a well-formed rdf:List of NAMED classes rooted at C's intersectionOf
+// object — and (x rdf:type C), then (x rdf:type Ci) for every i. C itself
+// may be a bnode (the usual anonymous-class-expression shape) or an IRI;
+// only the LIST ELEMENTS are required to be IRIs (mirrors decode_iri_list's
+// IRI-only contract, matching hasKey's reuse of the same decoder). Combined
+// with cls-eqc1 (equivalentClass -> subClassOf, already implemented) and
+// rdfs9 (subClassOf membership propagation, already implemented), this
+// closes: `Unsatisfiable owl:equivalentClass IntersectionOf(c, d)`,
+// `x rdf:type Unsatisfiable` ==> `x rdf:type c` AND `x rdf:type d`.
+// Targets WebOnt-description-logic-101/103/104 (Heinsohn TBox
+// incoherency-via-disjoint-concept tests): once x is typed into both c and
+// its complement's disjoint partner d, the cls-com clash below (or the
+// existing disjointWith-share-instance check) fires.
+let owl_rule_cls_int1 (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  let fuel : nat = List.Tot.length g in
+  List.Tot.fold_left
+    (fun (acc : rdf_graph) (t : triple) ->
+      if t.p = owl_intersectionOf_iri then
+        match term_to_subject t.o with
+        | None -> acc
+        | Some list_subj ->
+          (match decode_iri_list g ig list_subj fuel with
+           | None -> acc
+           | Some members ->
+             let xs = find_subjects_indexed ig rdf_type (subject_to_term t.s) in
+             List.Tot.fold_left
+               (fun (acc1 : rdf_graph) (x : subject) ->
+                 List.Tot.fold_left
+                   (fun (acc2 : rdf_graph) (ci : wf_iri) ->
+                     let new_t : triple = { s = x; p = rdf_type; o = T_IRI ci } in
+                     add_triple_unchecked acc2 new_t)
+                   acc1
+                   members)
+               acc
+               xs)
+      else acc)
+    g
     g
 
 // Find all named-individual subjects (IRIs only) typed as `cls` in `g`.
@@ -4277,6 +4382,10 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   let g20 = owl_rule_reflexive_property g19 ig in
   // scm-cls (partial): owl:Restriction subjects are also owl:Class.
   let g21 = owl_rule_scm_cls_restriction g20 ig in
+  // cls-int1: owl:intersectionOf membership propagation (x rdf:type
+  // IntersectionOf(C1..Cn) => x rdf:type Ci for each i). Targets
+  // WebOnt-description-logic-101/103/104.
+  let g21a = owl_rule_cls_int1 g21 ig in
   // Tier-2: prp-spo2 (n=2 chain composition), then prp-spo2 (n>=3
   // generalised chain), then scm-trans-from-chain (chain (P P)
   // recognises P as transitive), then named-sameAs-to-eqClass.
@@ -4284,7 +4393,7 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   // covers arbitrary chain length and is idempotent on n=2 inputs
   // (add_triple_unchecked dedupes). Cluster A of OWL 2 RL next-steps
   // (issue #207).
-  let g22 = owl_rule_property_chain_2 g21 ig in
+  let g22 = owl_rule_property_chain_2 g21a ig in
   let g22a = owl_rule_property_chain_n g22 ig in
   let g23 = owl_rule_chain_to_transitive g22a ig in
   let g24 = owl_rule_named_sameAs_to_equivClass g23 ig in
@@ -4449,147 +4558,6 @@ let owl_rl_closure_with_reflexivity (g : rdf_graph) (fuel : nat) : Tot rdf_graph
   let with_thing = add_triples_if_new rdfs_closed thing_axioms in
   owl_rl_closure with_thing fuel
 
-// ---- Inconsistency detection on a closed graph ---------------------------
-//
-// OWL 2 RL/RDF inconsistency markers (Table 7 of the spec). A saturated
-// closure is inconsistent iff at least one of:
-//
-//   (1) Some triple `?x rdf:type owl:Nothing` exists. cax-dw, cls-com,
-//       and similar rules emit this when a class-disjointness or
-//       complement violation fires.
-//   (2) Some pair `(a, b)` has BOTH `a owl:sameAs b` and
-//       `a owl:differentFrom b` (or vice versa). eq-diff1 / fp / ifp
-//       contrapositives emit differentFrom that contradicts sameAs.
-//   (3) Some `?x` has `?x rdf:type ?C` and `?x rdf:type ?D` where
-//       `?C owl:disjointWith ?D` (cax-dw not yet emitted as Nothing in
-//       our closure — checked here directly).
-//
-// O(n^2) in the closure size for (2), O(n^3) worst case for (3).
-// Acceptable on OWL test catalogs whose per-test closures are
-// hundreds of triples max.
-let has_disjoint_with (g : rdf_graph) (c1 : rdf_term) (c2 : rdf_term) : Tot bool =
-  List.Tot.existsb
-    (fun (t : triple) ->
-      t.p = owl_disjointWith_iri &&
-      ((rdf_term_eq (subject_to_term t.s) c1 && rdf_term_eq t.o c2) ||
-       (rdf_term_eq (subject_to_term t.s) c2 && rdf_term_eq t.o c1)))
-    g
-
-// rdf:type marker is `rdf_type` (defined elsewhere in this module).
-let is_inconsistent (g : rdf_graph) : Tot bool =
-  // (1) Some `?x rdf:type owl:Nothing`.
-  let has_nothing =
-    List.Tot.existsb
-      (fun (t : triple) ->
-        t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_Nothing))
-      g
-  in
-  if has_nothing then true
-  else
-    // (2) Some pair has both sameAs and differentFrom.
-    let has_sameAs_diff_clash =
-      List.Tot.existsb
-        (fun (t : triple) ->
-          t.p = owl_sameAs &&
-          differentFrom_in_graph g (subject_to_term t.s) t.o)
-        g
-    in
-    if has_sameAs_diff_clash then true
-    else
-      // (3) Disjoint classes share an instance. We look for two
-      // rdf:type triples on the same subject whose objects are
-      // disjoint per owl:disjointWith.
-      let has_disjoint_class_clash =
-        List.Tot.existsb
-          (fun (t1 : triple) ->
-            t1.p = rdf_type &&
-            List.Tot.existsb
-              (fun (t2 : triple) ->
-                t2.p = rdf_type &&
-                subject_eq t1.s t2.s &&
-                not (rdf_term_eq t1.o t2.o) &&
-                has_disjoint_with g t1.o t2.o)
-              g)
-          g
-      in
-      if has_disjoint_class_clash then true
-      else
-        // (4) Irreflexive property violation. P is declared
-        // owl:IrreflexiveProperty AND there exists `?x P ?x`. Per OWL 2
-        // RL/RDF rules (cax-irf), this is inconsistent.
-        let has_irreflexive_violation =
-          List.Tot.existsb
-            (fun (decl : triple) ->
-              decl.p = rdf_type &&
-              rdf_term_eq decl.o (T_IRI owl_IrreflexiveProperty) &&
-              // decl.s is the IRI of the irreflexive property; look
-              // for any triple `?x decl.s ?x` (subject = object).
-              (match decl.s with
-               | S_IRI prop_iri ->
-                 List.Tot.existsb
-                   (fun (use : triple) ->
-                     use.p = prop_iri &&
-                     rdf_term_eq (subject_to_term use.s) use.o)
-                   g
-               | _ -> false))
-            g
-        in
-        if has_irreflexive_violation then true
-        else
-          // (5) Asymmetric property violation. P is declared
-          // owl:AsymmetricProperty AND there exists `?x P ?y` AND
-          // `?y P ?x` (with ?x ≠ ?y syntactically — same subject is
-          // the irreflexive case in (4)).
-          List.Tot.existsb
-            (fun (decl : triple) ->
-              decl.p = rdf_type &&
-              rdf_term_eq decl.o (T_IRI owl_AsymmetricProperty) &&
-              (match decl.s with
-               | S_IRI prop_iri ->
-                 List.Tot.existsb
-                   (fun (t1 : triple) ->
-                     t1.p = prop_iri &&
-                     List.Tot.existsb
-                       (fun (t2 : triple) ->
-                         t2.p = prop_iri &&
-                         rdf_term_eq (subject_to_term t1.s) t2.o &&
-                         rdf_term_eq t1.o (subject_to_term t2.s))
-                       g)
-                   g
-               | _ -> false))
-            g
-
-// ---- Top-level entailment dispatch ----------------------------------------
-
-// An opaque-looking regime tag. Kept as a string so we don't have to extend
-// the extracted OCaml type environment — the w3c_runner selects a value
-// based on the manifest-declared regime list.
-let regime_rdf : string = "RDF"
-let regime_rdfs : string = "RDFS"
-let regime_owl_rl : string = "OWL-RL"
-// OWL-Direct is the DL-semantics regime. Stage (a) of the tableau
-// (Tableau.fst) is a skeleton: we run the existing OWL-RL Datalog
-// closure as the baseline (sound wrt OWL-Direct), and for any goals
-// it doesn't entail the caller MAY consult owl_tableau_entails. The
-// tableau currently returns None for everything non-trivial, so the
-// observable behaviour of OWL-Direct and OWL-RL is identical until
-// later tableau stages land. See docs/designissues/2026-04-19-
-// tableau-owl-plan.md §5.
-let regime_owl_direct : string = "OWL-Direct"
-
-// entailment_closure : dispatch on regime name, apply the appropriate
-// closure. Unknown / unsupported regimes return the graph unchanged.
-let entailment_closure (regime : string) (g : rdf_graph) (fuel : nat) : Tot rdf_graph =
-  if regime = regime_owl_rl then owl_rl_closure_with_reflexivity g fuel
-  else if regime = regime_owl_direct then
-    // OWL-Direct stage (a): start from the OWL-RL Datalog closure. The
-    // tableau in Tableau.fst is a wiring point only — it doesn't
-    // materialise new triples in this commit.
-    owl_rl_closure_with_reflexivity g fuel
-  else if regime = regime_rdfs then rdfs_closure_with_reflexivity g fuel
-  else if regime = regime_rdf then rdfs_closure g fuel
-  else g
-
 (** ======================================================================== *)
 (** 20. Datatype Value Equivalence                                           *)
 (** ======================================================================== *)
@@ -4708,3 +4676,290 @@ let datatype_value_eq (l1 l2 : literal) : bool =
     (* Different datatypes — not value-equal
        (cross-type numeric promotion is not yet handled) *)
     false
+
+// ---- Inconsistency detection on a closed graph ---------------------------
+//
+// OWL 2 RL/RDF inconsistency markers (Table 7 of the spec). A saturated
+// closure is inconsistent iff at least one of:
+//
+//   (1) Some triple `?x rdf:type owl:Nothing` exists. cax-dw, cls-com,
+//       and similar rules emit this when a class-disjointness or
+//       complement violation fires.
+//   (2) Some pair `(a, b)` has BOTH `a owl:sameAs b` and
+//       `a owl:differentFrom b` (or vice versa). eq-diff1 / fp / ifp
+//       contrapositives emit differentFrom that contradicts sameAs.
+//   (3) Some `?x` has `?x rdf:type ?C` and `?x rdf:type ?D` where
+//       `?C owl:disjointWith ?D` (cax-dw not yet emitted as Nothing in
+//       our closure — checked here directly).
+//
+// O(n^2) in the closure size for (2), O(n^3) worst case for (3).
+// Acceptable on OWL test catalogs whose per-test closures are
+// hundreds of triples max.
+let has_disjoint_with (g : rdf_graph) (c1 : rdf_term) (c2 : rdf_term) : Tot bool =
+  List.Tot.existsb
+    (fun (t : triple) ->
+      t.p = owl_disjointWith_iri &&
+      ((rdf_term_eq (subject_to_term t.s) c1 && rdf_term_eq t.o c2) ||
+       (rdf_term_eq (subject_to_term t.s) c2 && rdf_term_eq t.o c1)))
+    g
+
+// rdf:type marker is `rdf_type` (defined elsewhere in this module).
+let is_inconsistent (g : rdf_graph) : Tot bool =
+  // (1) Some `?x rdf:type owl:Nothing`.
+  let has_nothing =
+    List.Tot.existsb
+      (fun (t : triple) ->
+        t.p = rdf_type && rdf_term_eq t.o (T_IRI owl_Nothing))
+      g
+  in
+  if has_nothing then true
+  else
+    // (2) Some pair has both sameAs and differentFrom.
+    let has_sameAs_diff_clash =
+      List.Tot.existsb
+        (fun (t : triple) ->
+          t.p = owl_sameAs &&
+          differentFrom_in_graph g (subject_to_term t.s) t.o)
+        g
+    in
+    if has_sameAs_diff_clash then true
+    else
+      // (3) Disjoint classes share an instance. We look for two
+      // rdf:type triples on the same subject whose objects are
+      // disjoint per owl:disjointWith.
+      let has_disjoint_class_clash =
+        List.Tot.existsb
+          (fun (t1 : triple) ->
+            t1.p = rdf_type &&
+            List.Tot.existsb
+              (fun (t2 : triple) ->
+                t2.p = rdf_type &&
+                subject_eq t1.s t2.s &&
+                not (rdf_term_eq t1.o t2.o) &&
+                has_disjoint_with g t1.o t2.o)
+              g)
+          g
+      in
+      if has_disjoint_class_clash then true
+      else
+        // (4) Irreflexive property violation. P is declared
+        // owl:IrreflexiveProperty AND there exists `?x P ?x`. Per OWL 2
+        // RL/RDF rules (cax-irf), this is inconsistent.
+        let has_irreflexive_violation =
+          List.Tot.existsb
+            (fun (decl : triple) ->
+              decl.p = rdf_type &&
+              rdf_term_eq decl.o (T_IRI owl_IrreflexiveProperty) &&
+              // decl.s is the IRI of the irreflexive property; look
+              // for any triple `?x decl.s ?x` (subject = object).
+              (match decl.s with
+               | S_IRI prop_iri ->
+                 List.Tot.existsb
+                   (fun (use : triple) ->
+                     use.p = prop_iri &&
+                     rdf_term_eq (subject_to_term use.s) use.o)
+                   g
+               | _ -> false))
+            g
+        in
+        if has_irreflexive_violation then true
+        else
+          // (5) Asymmetric property violation. P is declared
+          // owl:AsymmetricProperty AND there exists `?x P ?y` AND
+          // `?y P ?x` (with ?x ≠ ?y syntactically — same subject is
+          // the irreflexive case in (4)).
+          let has_asymmetric_violation =
+            List.Tot.existsb
+              (fun (decl : triple) ->
+                decl.p = rdf_type &&
+                rdf_term_eq decl.o (T_IRI owl_AsymmetricProperty) &&
+                (match decl.s with
+                 | S_IRI prop_iri ->
+                   List.Tot.existsb
+                     (fun (t1 : triple) ->
+                       t1.p = prop_iri &&
+                       List.Tot.existsb
+                         (fun (t2 : triple) ->
+                           t2.p = prop_iri &&
+                           rdf_term_eq (subject_to_term t1.s) t2.o &&
+                           rdf_term_eq t1.o (subject_to_term t2.s))
+                         g)
+                     g
+                 | _ -> false))
+              g
+          in
+          if has_asymmetric_violation then true
+          else
+            // (6) prp-pdw direct clash (OWL 2 RL/RDF "Table 8" no-
+            // consequent clash rules): T(p1, owl:propertyDisjointWith,
+            // p2), T(s, p1, y), T(s, p2, y) — same subject, same
+            // value, two disjoint properties — is an immediate
+            // inconsistency, no derived triple needed. This covers the
+            // literal-valued shape (y a literal) that
+            // owl_rule_pdw_to_differentFrom cannot cover: that rule's
+            // contrapositive only fires when y can convert to a
+            // `subject` (IRI/bnode), since owl:differentFrom is
+            // undefined over literals — but here y is directly shared
+            // (rdf_term_eq), so no differentFrom detour is needed at
+            // all. Targets New-Feature-DisjointDataProperties-001.
+            let is_pdw_pair (p1 : wf_iri) (p2 : wf_iri) : bool =
+              List.Tot.existsb
+                (fun (pdw : triple) ->
+                  pdw.p = owl_propertyDisjointWith &&
+                  (match pdw.s, pdw.o with
+                   | S_IRI ps, T_IRI po -> (ps = p1 && po = p2) || (ps = p2 && po = p1)
+                   | _ -> false))
+                g
+            in
+            let has_pdw_direct_clash =
+              List.Tot.existsb
+                (fun (t1 : triple) ->
+                  List.Tot.existsb
+                    (fun (t2 : triple) ->
+                      t1.p <> t2.p &&
+                      subject_eq t1.s t2.s &&
+                      rdf_term_eq t1.o t2.o &&
+                      is_pdw_pair t1.p t2.p)
+                    g)
+                g
+            in
+            if has_pdw_direct_clash then true
+            else
+              // (7) prp-fp literal clash: P is owl:FunctionalProperty
+              // and (x P l1), (x P l2) for two literals l1 <> l2 by
+              // *value* (datatype_value_eq, not raw lexical form — a
+              // functional xsd:integer property asserting "5" and "05"
+              // for the same subject is NOT a clash, they're the same
+              // value). owl_rule_functional already handles the IRI/
+              // bnode-object case by emitting owl:sameAs (caught by
+              // marker (2) if it also contradicts a differentFrom);
+              // for literal objects sameAs is undefined, so the clash
+              // must be detected directly here instead. Targets
+              // New-Feature-Keys-006 (hasName is FunctionalProperty,
+              // Peter hasName "Peter" and "Kichwa-Tembo" — distinct
+              // string values).
+              let has_fp_literal_clash =
+                List.Tot.existsb
+                  (fun (decl : triple) ->
+                    decl.p = rdf_type &&
+                    rdf_term_eq decl.o (T_IRI owl_FunctionalProperty) &&
+                    (match decl.s with
+                     | S_IRI prop_iri ->
+                       List.Tot.existsb
+                         (fun (t1 : triple) ->
+                           t1.p = prop_iri &&
+                           (match t1.o with
+                            | T_Literal l1 ->
+                              List.Tot.existsb
+                                (fun (t2 : triple) ->
+                                  t2.p = prop_iri &&
+                                  subject_eq t1.s t2.s &&
+                                  (match t2.o with
+                                   | T_Literal l2 -> not (datatype_value_eq l1 l2)
+                                   | _ -> false))
+                                g
+                            | _ -> false))
+                         g
+                     | _ -> false))
+                  g
+              in
+              if has_fp_literal_clash then true
+              else
+                // (8) prp-npa1 / prp-npa2 (OWL 2 RL/RDF "Table 8"
+                // no-consequent clash rules): a reified
+                // owl:NegativePropertyAssertion node — T(x,
+                // owl:sourceIndividual, i1), T(x, owl:assertionProperty,
+                // p), T(x, owl:targetIndividual|owl:targetValue, tgt) —
+                // clashes directly with a POSITIVE triple T(i1, p, tgt)
+                // asserted anywhere in the graph. Targets New-Feature-
+                // NegativeDataPropertyAssertion-001 and New-Feature-
+                // NegativeObjectPropertyAssertion-001.
+                let has_npa_clash =
+                  List.Tot.existsb
+                    (fun (npa : triple) ->
+                      npa.p = owl_sourceIndividual &&
+                      (match term_to_subject npa.o with
+                       | None -> false
+                       | Some i1 ->
+                         List.Tot.existsb
+                           (fun (ap : triple) ->
+                             subject_eq ap.s npa.s && ap.p = owl_assertionProperty &&
+                             (match ap.o with
+                              | T_IRI p ->
+                                List.Tot.existsb
+                                  (fun (tgt : triple) ->
+                                    subject_eq tgt.s npa.s &&
+                                    (tgt.p = owl_targetIndividual || tgt.p = owl_targetValue) &&
+                                    List.Tot.existsb
+                                      (fun (pos : triple) ->
+                                        pos.p = p && subject_eq pos.s i1 &&
+                                        rdf_term_eq pos.o tgt.o)
+                                      g)
+                                  g
+                              | _ -> false))
+                           g))
+                    g
+                in
+                if has_npa_clash then true
+                else
+                  // (9) cls-com (OWL 2 RL/RDF "Table 8" no-consequent
+                  // clash rule): T(c1, owl:complementOf, c2), T(x,
+                  // rdf:type, c1), T(x, rdf:type, c2) => false. Checked
+                  // directly (not via the disjointWith conversion in
+                  // owl_rule_disjoint_with_propagation, which is
+                  // IRI-IRI-only and misses the common anonymous-class-
+                  // expression shape `C rdfs:subClassOf [owl:complementOf
+                  // D]` where c1 is a bnode). Combined with rdfs9
+                  // (subClassOf membership propagation, already
+                  // implemented) and cls-int1 above, this closes the
+                  // Heinsohn TBox incoherency shape: x rdf:type
+                  // Unsatisfiable, Unsatisfiable equivalentClass
+                  // IntersectionOf(c, d), c rdfs:subClassOf
+                  // [owl:complementOf d] ==> x rdf:type c AND x rdf:type
+                  // d AND x rdf:type [owl:complementOf d] => clash.
+                  // Targets WebOnt-description-logic-101/103/104.
+                  List.Tot.existsb
+                    (fun (comp : triple) ->
+                      comp.p = owl_complementOf_iri &&
+                      List.Tot.existsb
+                        (fun (t1 : triple) ->
+                          t1.p = rdf_type && rdf_term_eq t1.o (subject_to_term comp.s) &&
+                          List.Tot.existsb
+                            (fun (t2 : triple) ->
+                              t2.p = rdf_type && subject_eq t1.s t2.s &&
+                              rdf_term_eq t2.o comp.o)
+                            g)
+                        g)
+                    g
+
+// ---- Top-level entailment dispatch ----------------------------------------
+
+// An opaque-looking regime tag. Kept as a string so we don't have to extend
+// the extracted OCaml type environment — the w3c_runner selects a value
+// based on the manifest-declared regime list.
+let regime_rdf : string = "RDF"
+let regime_rdfs : string = "RDFS"
+let regime_owl_rl : string = "OWL-RL"
+// OWL-Direct is the DL-semantics regime. Stage (a) of the tableau
+// (Tableau.fst) is a skeleton: we run the existing OWL-RL Datalog
+// closure as the baseline (sound wrt OWL-Direct), and for any goals
+// it doesn't entail the caller MAY consult owl_tableau_entails. The
+// tableau currently returns None for everything non-trivial, so the
+// observable behaviour of OWL-Direct and OWL-RL is identical until
+// later tableau stages land. See docs/designissues/2026-04-19-
+// tableau-owl-plan.md §5.
+let regime_owl_direct : string = "OWL-Direct"
+
+// entailment_closure : dispatch on regime name, apply the appropriate
+// closure. Unknown / unsupported regimes return the graph unchanged.
+let entailment_closure (regime : string) (g : rdf_graph) (fuel : nat) : Tot rdf_graph =
+  if regime = regime_owl_rl then owl_rl_closure_with_reflexivity g fuel
+  else if regime = regime_owl_direct then
+    // OWL-Direct stage (a): start from the OWL-RL Datalog closure. The
+    // tableau in Tableau.fst is a wiring point only — it doesn't
+    // materialise new triples in this commit.
+    owl_rl_closure_with_reflexivity g fuel
+  else if regime = regime_rdfs then rdfs_closure_with_reflexivity g fuel
+  else if regime = regime_rdf then rdfs_closure g fuel
+  else g
+

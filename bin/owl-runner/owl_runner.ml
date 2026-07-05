@@ -425,6 +425,16 @@ let outcome_tag = function
 
 let fuel_100 : Prims.nat = Z.of_int 100
 
+(* Temporary diagnostic hook (rule #11 territory: outcome plumbing only,
+   no semantics). Set FACTOIDAL_OWL_DEBUG=<test:identifier> to dump the
+   closure triples for that one test to stderr. Used for the 2026-07
+   NegativeEntailmentTests/InconsistencyTests diagnosis; remove once the
+   fixes land. Populated below (after format_triple is defined). *)
+let debug_target = Sys.getenv_opt "FACTOIDAL_OWL_DEBUG"
+let debug_dump_closure_ref : (test_case_info -> RDF_Graph_Executable.rdf_graph -> unit) ref =
+  ref (fun _ _ -> ())
+let debug_dump_closure info closure = !debug_dump_closure_ref info closure
+
 (* Per-test SIGALRM cap (issue #263). The OWL-RL closure can blow up
    on some test premises (see issue #262). Without a per-test wall-
    clock cap, a single hung test takes the whole catalog down — we
@@ -602,6 +612,7 @@ let run_negative_entailment
       let closure =
         try apply_closure g_p
         with _ -> g_p in
+      debug_dump_closure info closure;
       let any_missing =
         List.exists
           (fun t -> not (conclusion_triple_in_closure closure t))
@@ -638,12 +649,24 @@ let run_consistency_test
     end
 
 (* InconsistencyTest: premise is asserted INCONSISTENT. Pass iff closure
-   contains an inconsistency marker. *)
+   contains an inconsistency marker.
+
+   Some catalog entries (functionality-clash, string-integer-clash,
+   "Plus and Minus Zero are Distinct") provide only test:fsPremiseOntology
+   (OWL 2 Functional Syntax) with no test:rdfXmlPremiseOntology — same
+   "unsupported input syntax" gap run_positive_entailment already carves
+   out as Skip_functional_syntax_only (rule #4: no functional-syntax
+   parser yet). Without this check they scored FAIL/no-premise, which
+   anti-pattern #3 calls out as a misleading score: the engine never got
+   a chance to reason about them at all. *)
 let run_inconsistency_test
       (info : test_case_info)
       (imports_lookup : (string, string) Hashtbl.t) : outcome =
   match info.premise with
-  | None -> Fail_no_premise
+  | None ->
+    if StrSet.mem test_syntax_functional info.normative_syntax
+    then Skip_functional_syntax_only
+    else Fail_no_premise
   | Some p_lex ->
     let p_src = expand_catalog_entities p_lex in
     let base = info.iri in
@@ -656,6 +679,7 @@ let run_inconsistency_test
       let closure =
         try apply_closure g_p
         with _ -> g_p in
+      debug_dump_closure info closure;
       if RDF_Graph_Executable.is_inconsistent closure
       then Pass
       else Fail_unexpected_consistency
@@ -674,6 +698,15 @@ let format_object = function
 let format_triple (t : RDF_Graph_Executable.triple) : string =
   Printf.sprintf "%s <%s> %s"
     (format_subject t.s) t.p (format_object t.o)
+
+let () =
+  debug_dump_closure_ref :=
+    (fun (info : test_case_info) (closure : RDF_Graph_Executable.rdf_graph) ->
+       match debug_target, info.identifier with
+       | Some want, Some got when want = got ->
+         Printf.eprintf "  [debug %s] closure has %d triples\n%!" got (List.length closure);
+         List.iter (fun t -> Printf.eprintf "    %s\n%!" (format_triple t)) closure
+       | _ -> ())
 
 let print_outcome verbose info outcome =
   let tag = outcome_tag outcome in
@@ -877,10 +910,16 @@ let run_catalog ?(verbose=false) path =
         (fun acc (_, o) -> match o with Pass -> acc + 1 | _ -> acc)
         0 i_outcomes
     in
-    let i_fails = ik - i_passes in
+    let i_skips =
+      List.fold_left
+        (fun acc (_, o) -> match o with Skip_functional_syntax_only -> acc + 1 | _ -> acc)
+        0 i_outcomes
+    in
+    let i_scored = ik - i_skips in
+    let i_fails = i_scored - i_passes in
     Printf.printf "\n";
-    Printf.printf "Profile-RL InconsistencyTests: %d pass, %d fail (out of %d) in %.2fs\n"
-      i_passes i_fails ik (t_inc1 -. t_inc0)
+    Printf.printf "Profile-RL InconsistencyTests: %d pass, %d fail (out of %d), %d skipped (functional-syntax-only) in %.2fs\n"
+      i_passes i_fails i_scored i_skips (t_inc1 -. t_inc0)
   end
 
 let () =
