@@ -9,9 +9,10 @@ A home for longer-form, interactive write-ups about how Factoidal
 works — RDF/SPARQL concepts demonstrated by running the real
 F\*-extracted engine in your browser, not by prose alone.
 
-This is scaffolding: the layout, the interactive-cell convention, and
-this index page. The posts themselves are wave B — the list below is
-placeholders.
+Three posts are published below, each with live runnable cells. The
+rest of the series (see
+[the series plan](../../designissues/2026-07-05-docs-hub-plan/) for
+the full map and vocabulary strategy) is still planned.
 
 ## How the interactive cells work
 
@@ -24,16 +25,32 @@ runs it through a vendored
 reactive-execution model observablehq.com notebooks use, vendored
 under `third_party/observable/` so nothing loads from a CDN.
 
-Each cell's function body receives five fixed bindings by parameter
+Each cell's function body receives six fixed bindings by parameter
 name:
 
 | Name | What it is |
 |---|---|
-| `Factoidal` | the npm package (`../npm/foafos/browser.js`) — `query`, `queryDataset`, `toRdf`, `canonicalize`, etc., running the F\*-extracted engine in-browser |
+| `Factoidal` | the raw npm package entry (`../npm/foafos/browser.js`) — `query`, `queryDataset`, `toRdf`, `canonicalize`, etc., running the F\*-extracted engine in-browser. Single-shot: strings in, SPARQL-JSON out. |
+| `fn` | the typed cell-facing API — `fn.parse()` returns a `Dataset` you can iterate and check `.size` on, `fn.query()` returns `Map<string, Term>[]` / `boolean` / another `Dataset` depending on the query form. Most posts below use this. |
 | `d3` | vendored `d3` 7.9.0, for hand-rolled charts |
 | `Plot` | vendored `@observablehq/plot` 0.6.17, for declarative charts |
 | `html` | vendored `@observablehq/stdlib`'s tagged-template HTML helper |
 | `md` | vendored `@observablehq/stdlib`'s tagged-template Markdown helper |
+
+The full cell-authoring contract — the `fn` typed API in detail, why
+it's an adapter rather than a direct import, and the testing
+discipline every live cell is held to — is documented in
+[`README.md`](README/).
+
+<!-- Note: linked as a pre-resolved `README/` path, not `./README.md`.
+     docs/.eleventy.js's mdlink-to-slug transform assumes every page
+     it rewrites links on is nested one pretty-URL directory below its
+     source's directory (true for the three posts, which each get
+     their own subdirectory) -- but this page IS the directory index
+     (`web/hub/index.md` serves at `/web/hub/`, no nesting), so the
+     transform's blanket `../` prefix would point one level too high.
+     A `.md`-suffixed link here would resolve to a broken URL. -->
+
 
 Write a `return` statement to produce the value the Inspector renders
 (a string, number, DOM node, or `Plot`/`html` output all work — the
@@ -57,14 +74,28 @@ fenced-block convention, and the npm-packaged engine — is working end
 to end. `tests/web-demos/hub_smoke.sh` asserts exactly this,
 headlessly.
 
-## Planned post series
+## The series
 
 <ul class="post-series">
-  <li class="placeholder">Why RDF terms need three kinds of equality</li>
-  <li class="placeholder">SPARQL property paths, one operator at a time</li>
-  <li class="placeholder">What RDF Dataset Canonicalization (RDFC-1.0) actually proves</li>
-  <li class="placeholder">Reading an OWL 2 RL closure as it happens</li>
+  <li><a href="./01-triples-rdf-from-first-principles/">Triples: RDF from first principles</a> — RDF terms/triples, Turtle parsing (foaf)</li>
+  <li><a href="./02-asking-questions-sparql/">Asking questions: SPARQL</a> — SELECT/ASK/CONSTRUCT, property paths (wikidata)</li>
+  <li><a href="./03-schemas-that-infer-rdfs-owl/">Schemas that infer: RDFS and OWL 2 RL</a> — RDFS + OWL 2 RL closure (schema.org)</li>
+  <li class="placeholder">All the syntaxes: N-Triples, N-Quads, TriG, RDF/XML</li>
+  <li class="placeholder">Mutating and serving data: SPARQL Update, Protocol, Graph Store</li>
+  <li class="placeholder">Concept schemes: SKOS and its integrity conditions</li>
+  <li class="placeholder">Shapes that validate: SHACL</li>
+  <li class="placeholder">Shapes, the other dialect: ShEx</li>
+  <li class="placeholder">JSON-LD: RDF as JSON</li>
+  <li class="placeholder">Canonical graphs: RDFC-1.0 and content addressing</li>
+  <li class="placeholder">Mapping tables to triples: RML</li>
+  <li class="placeholder">Rules over RDF: RIF</li>
+  <li class="placeholder">The RDF/JS API</li>
+  <li class="placeholder">The functional dataset API</li>
+  <li class="placeholder">How fast: the performance story</li>
+  <li class="placeholder">The verified-in-F* story</li>
 </ul>
 
-(Titles are working placeholders for wave B — see the tracker issue
-for the documentation-hub effort.)
+(Placeholder titles come straight from
+[the series plan](../../designissues/2026-07-05-docs-hub-plan/)'s
+series map, which also names each post's central vocabulary, live
+elements, and pinning test file.)

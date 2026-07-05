@@ -1,12 +1,13 @@
 // Pins every code sample in
-// docs/web/hub-drafts/03-schemas-that-infer-rdfs-owl.md.
+// docs/web/hub/03-schemas-that-infer-rdfs-owl.md.
 
-import { NPM_FACTOIDAL_INDEX } from './_helpers.mjs';
+import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell } from './_helpers.mjs';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const factoidal = (await import(NPM_FACTOIDAL_INDEX)).default;
+const POST_FILE = '03-schemas-that-infer-rdfs-owl.md';
 
 const RDFS_TTL = `
   @prefix schema: <https://schema.org/> .
@@ -59,4 +60,38 @@ test('post03: OWL-RL entailment derives foaf:Person and owl:Thing via equivalent
     'http://xmlns.com/foaf/0.1/Person',
     'https://schema.org/Person',
   ]);
+});
+
+// ---------------------------------------------------------------------
+// Cell-pinning tests: extract the exact ```observable-js source shipped
+// on the page and execute it via the same new Function(...) construction
+// docs/_includes/hub.njk's mountCell() uses, against the real
+// npm/factoidal typed API (fn === factoidal here; the live page instead
+// binds `fn` to the in-browser adapter — see docs/web/hub/README.md).
+// ---------------------------------------------------------------------
+
+const cells = extractObservableCells(POST_FILE);
+
+test('post03: post has at least 2 live cells', () => {
+  assert.ok(cells.length >= 2, `expected >= 2 live cells, found ${cells.length}`);
+});
+
+test('post03 cell 1 (RDFS toggle): schema:Thing appears only with entailment', async () => {
+  const result = await runObservableCell(cells[0], { fn: factoidal });
+  assert.deepEqual(result, {
+    withoutEntailment: ['https://schema.org/Person'],
+    withRDFS: ['https://schema.org/Person', 'https://schema.org/Thing'],
+  });
+});
+
+test('post03 cell 2 (OWL-RL toggle): equivalentClass only fires under OWL-RL', async () => {
+  const result = await runObservableCell(cells[1], { fn: factoidal });
+  assert.deepEqual(result, {
+    withRDFS: ['https://schema.org/Person'],
+    withOWLRL: [
+      'http://www.w3.org/2002/07/owl#Thing',
+      'http://xmlns.com/foaf/0.1/Person',
+      'https://schema.org/Person',
+    ],
+  });
 });

@@ -107,13 +107,176 @@ import * as stdlib from "{{ '/vendor/observable/stdlib.esm.js' | url }}";
 const runtime = new Runtime();
 const main = runtime.module();
 
+// ---------------------------------------------------------------------
+// `fn` — the typed, Dataset-returning cell surface.
+//
+// `Factoidal` (browser.js) is a raw, single-shot CLI wrapper: strings
+// in, SPARQL-JSON out (no Dataset, no Map<string, Term> bindings). The
+// typed API most hub posts are written against (`parse()` -> Dataset,
+// `query()` -> Bindings[] | boolean | Dataset) lives in
+// npm/factoidal/index.js, but that module is Node-only (CommonJS
+// `require`, `node:fs`, `node:crypto`) and cannot load in a browser
+// `<script type="module">` context. Rather than fork the engine or
+// re-mirror a browser build of it (both out of scope — see
+// docs/web/hub/README.md), this adapter reshapes `Factoidal`'s raw
+// CLI calls into the same external contract, entirely client-side:
+// parse() returns a small frozen Dataset-like wrapper over the
+// engine's own N-Quads dump; query() sniffs the query form (same
+// heuristic as npm/factoidal/lib/api.js's sniffQueryForm) to decide
+// whether to return an array of Map<string, Term> (SELECT), a
+// boolean (ASK), or another Dataset-like wrapper (CONSTRUCT). See
+// docs/web/hub/README.md for the full contract every post's cells are
+// written against.
+// ---------------------------------------------------------------------
+
+const XSD_STRING = "http://www.w3.org/2001/XMLSchema#string";
+const RDF_LANGSTRING = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString";
+
+function parseNQuadsTerm(str, i) {
+  while (i < str.length && (str[i] === " " || str[i] === "\t")) i++;
+  if (str[i] === "<") {
+    const end = str.indexOf(">", i);
+    return [{ termType: "NamedNode", value: str.slice(i + 1, end) }, end + 1];
+  }
+  if (str[i] === "_" && str[i + 1] === ":") {
+    let j = i + 2;
+    while (j < str.length && !/\s/.test(str[j])) j++;
+    return [{ termType: "BlankNode", value: str.slice(i + 2, j) }, j];
+  }
+  if (str[i] === '"') {
+    let j = i + 1;
+    let lex = "";
+    while (str[j] !== '"') {
+      if (str[j] === "\\") { lex += str[j] + str[j + 1]; j += 2; }
+      else { lex += str[j]; j++; }
+    }
+    j++; // closing quote
+    lex = lex
+      .replace(/\\"/g, '"').replace(/\\n/g, "\n")
+      .replace(/\\t/g, "\t").replace(/\\r/g, "\r")
+      .replace(/\\\\/g, "\\");
+    let datatype = XSD_STRING;
+    let language = "";
+    if (str[j] === "@") {
+      let k = j + 1;
+      while (k < str.length && /[a-zA-Z0-9-]/.test(str[k])) k++;
+      language = str.slice(j + 1, k);
+      datatype = RDF_LANGSTRING;
+      j = k;
+    } else if (str[j] === "^" && str[j + 1] === "^") {
+      const start = j + 3; // skip ^^<
+      const end = str.indexOf(">", start);
+      datatype = str.slice(start, end);
+      j = end + 1;
+    }
+    return [
+      { termType: "Literal", value: lex, language, datatype: { termType: "NamedNode", value: datatype } },
+      j,
+    ];
+  }
+  throw new Error("parseNQuads: unrecognized term at offset " + i + " in: " + str);
+}
+
+function parseNQuadsLine(line) {
+  const terms = [];
+  let i = 0;
+  while (terms.length < 4) {
+    while (i < line.length && (line[i] === " " || line[i] === "\t")) i++;
+    if (line[i] === "." && (i + 1 >= line.length || /\s/.test(line[i + 1]))) break;
+    const [term, next] = parseNQuadsTerm(line, i);
+    terms.push(term);
+    i = next;
+  }
+  const [subject, predicate, object, graph] = terms;
+  return { subject, predicate, object, graph: graph || null };
+}
+
+// Parse N-Triples/N-Quads text (as produced by Factoidal.toRdf() /
+// Factoidal.query({output: 'ntriples'})) into an array of quad-shaped
+// objects: {subject, predicate, object, graph}, each term
+// {termType, value, [language], [datatype]} — the same shape RDF/JS
+// terms expose for the fields these hub posts read.
+function parseNQuads(text) {
+  return text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0 && !l.startsWith("#"))
+    .map(parseNQuadsLine);
+}
+
+class FnDataset {
+  constructor(nquadsText) {
+    this._text = nquadsText;
+    this._quads = parseNQuads(nquadsText);
+  }
+  get size() { return this._quads.length; }
+  [Symbol.iterator]() { return this._quads[Symbol.iterator](); }
+  toNQuads() { return this._text; }
+}
+
+// Same heuristic as npm/factoidal/lib/api.js's sniffQueryForm: blank
+// out IRIs/comments first so '#' inside a PREFIX IRI or a keyword
+// appearing inside a string literal can't hide/fake the query verb.
+function sniffQueryForm(sparql) {
+  const cleaned = String(sparql).replace(/<[^>]*>/g, " ").replace(/#[^\n]*/g, " ");
+  const m = cleaned.match(/\b(select|ask|construct|describe)\b/i);
+  return m ? m[1].toLowerCase() : "select";
+}
+
+function srjTermToFn(t) {
+  if (t.type === "uri") return { termType: "NamedNode", value: t.value };
+  if (t.type === "bnode") return { termType: "BlankNode", value: t.value };
+  // 'literal' | 'typed-literal'
+  const language = t["xml:lang"] || "";
+  const datatype = t.datatype || (language ? RDF_LANGSTRING : XSD_STRING);
+  return { termType: "Literal", value: t.value, language, datatype: { termType: "NamedNode", value: datatype } };
+}
+
+const fn = {
+  /**
+   * Parse an RDF document into an FnDataset (mirrors
+   * npm/factoidal/index.js's `parse(text, {format}) -> Dataset`).
+   */
+  async parse(text, options) {
+    const opts = options || {};
+    const nq = await Factoidal.toRdf(text, { format: opts.format || "turtle", baseIRI: opts.baseIRI });
+    return new FnDataset(nq);
+  },
+  /**
+   * Query an FnDataset (mirrors npm/factoidal/index.js's
+   * `query(data, sparql, {entail}) -> Bindings[] | boolean | Dataset`).
+   */
+  async query(dataset, sparql, options) {
+    const opts = options || {};
+    const entail = opts.entail || "none";
+    const form = sniffQueryForm(sparql);
+    if (form === "construct" || form === "describe") {
+      const nt = await Factoidal.query(dataset.toNQuads(), sparql, {
+        dataFormat: "nquads", entail, output: "ntriples",
+      });
+      return new FnDataset(nt);
+    }
+    const result = await Factoidal.query(dataset.toNQuads(), sparql, {
+      dataFormat: "nquads", entail, output: "json",
+    });
+    if (form === "ask") return !!result.boolean;
+    const rows = (result.results && result.results.bindings) || [];
+    return rows.map((row) => {
+      const map = new Map();
+      for (const [name, term] of Object.entries(row)) map.set(name, srjTermToFn(term));
+      return map;
+    });
+  },
+};
+
 // Fixed bindings every cell gets access to, by parameter name — this
 // is the whole "standard library" a hub post can rely on. Extend this
 // list (and the mirrored `new Function(...)` parameter list below)
 // deliberately; it's the interface post-authoring (wave B) writes
-// against.
-const CELL_BINDINGS = ["Factoidal", "d3", "Plot", "html", "md"];
+// against. See docs/web/hub/README.md for the full contract.
+const CELL_BINDINGS = ["Factoidal", "fn", "d3", "Plot", "html", "md"];
 main.variable().define("Factoidal", [], () => Factoidal);
+main.variable().define("fn", [], () => fn);
 main.variable().define("d3", [], () => d3);
 main.variable().define("Plot", [], () => Plot);
 main.variable().define("html", [], () => stdlib.html);

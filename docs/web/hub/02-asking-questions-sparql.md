@@ -1,10 +1,11 @@
 ---
 title: "Asking questions: SPARQL"
 description: "SELECT, ASK, CONSTRUCT, and property paths over a small Wikidata-shaped dataset, run live against the F*-extracted SPARQL 1.1 evaluator."
+layout: hub.njk
 series: docs-hub
 series_order: 2
 vocab: wikidata
-status: draft
+status: published
 tests: tests/hub/post02_test.mjs
 ---
 
@@ -39,24 +40,35 @@ wd:Q36180 rdfs:label "writer" .
 
 Five triples: one entity (Douglas Adams, `wd:Q42`) with a label, an
 instance-of edge, an occupation edge, and labels for the two things it
-points at.
+points at. Every cell below parses that same Turtle text and queries
+it live, using the `fn` typed API (see [`README.md`](./README.md) for
+the cell-authoring contract).
 
 ## SELECT
 
-```js
-import factoidal from "@danbri/foafos";
+```observable-js
+const ttl = `
+  @prefix wd:   <http://www.wikidata.org/entity/> .
+  @prefix wdt:  <http://www.wikidata.org/prop/direct/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 
-const dataset = await factoidal.parse(ttl); // the Turtle above
+  wd:Q42 rdfs:label "Douglas Adams" ;
+    wdt:P31  wd:Q5 ;
+    wdt:P106 wd:Q36180 .
 
-const rows = await factoidal.query(dataset, `
+  wd:Q5     rdfs:label "human" .
+  wd:Q36180 rdfs:label "writer" .
+`;
+const dataset = await fn.parse(ttl);
+
+const rows = await fn.query(dataset, `
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
   SELECT ?label WHERE {
     <http://www.wikidata.org/entity/Q42> ?p ?o .
     OPTIONAL { ?o rdfs:label ?label }
   }
 `);
-rows.length;
-// => 3  (one row per outgoing edge from Q42: label, instance-of, occupation)
+return `${rows.length} row(s)`; // one per outgoing edge from Q42: label, instance-of, occupation
 ```
 
 `query()` returns an array of `Map<string, Term>` — one map per
@@ -66,12 +78,25 @@ solution row, keyed by variable name.
 
 A yes/no question — does this fact exist:
 
-```js
-await factoidal.query(dataset, `
+```observable-js
+const ttl = `
+  @prefix wd:   <http://www.wikidata.org/entity/> .
+  @prefix wdt:  <http://www.wikidata.org/prop/direct/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+  wd:Q42 rdfs:label "Douglas Adams" ;
+    wdt:P31  wd:Q5 ;
+    wdt:P106 wd:Q36180 .
+
+  wd:Q5     rdfs:label "human" .
+  wd:Q36180 rdfs:label "writer" .
+`;
+const dataset = await fn.parse(ttl);
+
+return await fn.query(dataset, `
   PREFIX wdt: <http://www.wikidata.org/prop/direct/>
   ASK { <http://www.wikidata.org/entity/Q42> wdt:P106 <http://www.wikidata.org/entity/Q36180> }
 `);
-// => true
 ```
 
 ## Property paths
@@ -81,14 +106,27 @@ occupation." Alternation (`|`), sequence (`/`), and transitive closure
 (`+`, `*`) all compose the same way the property-path suite (33 pass,
 0 fail of 33) tests them:
 
-```js
-const types = await factoidal.query(dataset, `
+```observable-js
+const ttl = `
+  @prefix wd:   <http://www.wikidata.org/entity/> .
+  @prefix wdt:  <http://www.wikidata.org/prop/direct/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+  wd:Q42 rdfs:label "Douglas Adams" ;
+    wdt:P31  wd:Q5 ;
+    wdt:P106 wd:Q36180 .
+
+  wd:Q5     rdfs:label "human" .
+  wd:Q36180 rdfs:label "writer" .
+`;
+const dataset = await fn.parse(ttl);
+
+const types = await fn.query(dataset, `
   PREFIX wd:  <http://www.wikidata.org/entity/>
   PREFIX wdt: <http://www.wikidata.org/prop/direct/>
   SELECT ?type WHERE { wd:Q42 (wdt:P31|wdt:P106) ?type }
 `);
-types.map(r => r.get('type').value);
-// => ['http://www.wikidata.org/entity/Q5', 'http://www.wikidata.org/entity/Q36180']
+return types.map((r) => r.get("type").value);
 ```
 
 Both the instance-of target (`Q5`, human) and the occupation target
@@ -104,17 +142,28 @@ zero additional hops here; the syntax is identical either way.
 
 SELECT returns bindings; CONSTRUCT returns a new graph:
 
-```js
-const derived = await factoidal.query(dataset, `
+```observable-js
+const ttl = `
+  @prefix wd:   <http://www.wikidata.org/entity/> .
+  @prefix wdt:  <http://www.wikidata.org/prop/direct/> .
+  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+  wd:Q42 rdfs:label "Douglas Adams" ;
+    wdt:P31  wd:Q5 ;
+    wdt:P106 wd:Q36180 .
+
+  wd:Q5     rdfs:label "human" .
+  wd:Q36180 rdfs:label "writer" .
+`;
+const dataset = await fn.parse(ttl);
+
+const derived = await fn.query(dataset, `
   PREFIX wdt:  <http://www.wikidata.org/prop/direct/>
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
   CONSTRUCT { ?person <http://example.org/hasOccupationLabel> ?label }
   WHERE { ?person wdt:P106 ?occ . ?occ rdfs:label ?label }
 `);
-derived.size;
-// => 1
-derived.toNQuads();
-// => '<http://www.wikidata.org/entity/Q42> <http://example.org/hasOccupationLabel> "writer" .\n'
+return { size: derived.size, nquads: derived.toNQuads() };
 ```
 
 `WHERE` joins the occupation edge to the occupation's label; `CONSTRUCT`
@@ -129,5 +178,7 @@ happens when the graph itself, not the query, is the thing doing the
 implying — types nobody asserted, derived from a subclass axiom or an
 `owl:equivalentClass` mapping.
 
-Every code sample above is pinned in
-[`tests/hub/post02_test.mjs`](../../../tests/hub/post02_test.mjs).
+Every live cell above is pinned in
+[`tests/hub/post02_test.mjs`](../../../tests/hub/post02_test.mjs) —
+the exact same source, executed against the real `npm/factoidal`
+typed API instead of the in-browser `fn` adapter.

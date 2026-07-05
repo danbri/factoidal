@@ -1,10 +1,11 @@
 ---
 title: "Schemas that infer: RDFS and OWL 2 RL"
 description: "Types nobody asserted, derived live from an rdfs:subClassOf axiom and an owl:equivalentClass mapping over schema.org data."
+layout: hub.njk
 series: docs-hub
 series_order: 3
 vocab: schema.org
-status: draft
+status: published
 tests: tests/hub/post03_test.mjs
 ---
 
@@ -14,7 +15,8 @@ OWL 2 RL are both entailment regimes: given a set of asserted triples
 plus some schema-level axioms (subclass relationships, equivalences),
 a *closure* computation derives additional triples that were never
 written down. Factoidal's SPARQL evaluator can materialize either
-closure on demand via the `entail` option.
+closure on demand via the `entail` option — the two cells below run
+that closure live, side by side with the plain (no-entailment) result.
 
 ## RDFS: subClassOf
 
@@ -30,17 +32,25 @@ ex:alice a schema:Person .
 One instance (`ex:alice`, a `schema:Person`), one subclass axiom. Ask
 what type `ex:alice` has, twice — with and without RDFS entailment:
 
-```js
-import factoidal from "@danbri/foafos";
+```observable-js
+const ttl = `
+  @prefix schema: <https://schema.org/> .
+  @prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+  @prefix ex:     <http://example.org/> .
 
-const dataset = await factoidal.parse(ttl); // the Turtle above
+  schema:Person rdfs:subClassOf schema:Thing .
+  ex:alice a schema:Person .
+`;
+const dataset = await fn.parse(ttl);
 const q = `SELECT ?type WHERE { <http://example.org/alice> a ?type }`;
 
-await factoidal.query(dataset, q);
-// => [ Map { 'type' => NamedNode('https://schema.org/Person') } ]
+const plain = await fn.query(dataset, q);
+const withRdfs = await fn.query(dataset, q, { entail: "RDFS" });
 
-await factoidal.query(dataset, q, { entail: 'RDFS' });
-// => [ ...Person, ...Thing ]  -- schema:Thing appears, though never asserted
+return {
+  withoutEntailment: plain.map((r) => r.get("type").value),
+  withRDFS: withRdfs.map((r) => r.get("type").value).sort(),
+};
 ```
 
 Plain SELECT sees exactly what's written: `ex:alice a schema:Person`.
@@ -65,14 +75,26 @@ schema:Person owl:equivalentClass foaf:Person .
 ex:alice a schema:Person .
 ```
 
-```js
-const dataset2 = await factoidal.parse(ttl2); // the Turtle above
+```observable-js
+const ttl2 = `
+  @prefix schema: <https://schema.org/> .
+  @prefix foaf:   <http://xmlns.com/foaf/0.1/> .
+  @prefix owl:    <http://www.w3.org/2002/07/owl#> .
+  @prefix ex:     <http://example.org/> .
 
-await factoidal.query(dataset2, q, { entail: 'RDFS' });
-// => [ ...Person ]  -- RDFS doesn't know equivalentClass; no change
+  schema:Person owl:equivalentClass foaf:Person .
+  ex:alice a schema:Person .
+`;
+const dataset2 = await fn.parse(ttl2);
+const q = `SELECT ?type WHERE { <http://example.org/alice> a ?type }`;
 
-await factoidal.query(dataset2, q, { entail: 'OWL-RL' });
-// => [ ...schema.org/Person, ...foaf/Person, ...owl#Thing ]
+const withRdfs = await fn.query(dataset2, q, { entail: "RDFS" });
+const withOwlRl = await fn.query(dataset2, q, { entail: "OWL-RL" });
+
+return {
+  withRDFS: withRdfs.map((r) => r.get("type").value),
+  withOWLRL: withOwlRl.map((r) => r.get("type").value).sort(),
+};
 ```
 
 `entail: 'RDFS'` leaves the result unchanged — `owl:equivalentClass`
@@ -108,5 +130,7 @@ protocol, then SKOS, SHACL, and ShEx. See the
 [series plan](../../designissues/2026-07-05-docs-hub-plan.md) for the
 full map.
 
-Every code sample above is pinned in
-[`tests/hub/post03_test.mjs`](../../../tests/hub/post03_test.mjs).
+Every live cell above is pinned in
+[`tests/hub/post03_test.mjs`](../../../tests/hub/post03_test.mjs) —
+the exact same source, executed against the real `npm/factoidal`
+typed API instead of the in-browser `fn` adapter.

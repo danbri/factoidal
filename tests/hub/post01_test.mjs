@@ -1,15 +1,16 @@
 // Pins every code sample in
-// docs/web/hub-drafts/01-triples-rdf-from-first-principles.md.
+// docs/web/hub/01-triples-rdf-from-first-principles.md.
 //
 // node:test, requiring the committed npm/factoidal bundles (no F*
 // toolchain needed) — mirrors npm/factoidal/test's own harness style.
 
-import { NPM_FACTOIDAL_INDEX } from './_helpers.mjs';
+import { NPM_FACTOIDAL_INDEX, extractObservableCells, runObservableCell } from './_helpers.mjs';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const factoidal = (await import(NPM_FACTOIDAL_INDEX)).default;
+const POST_FILE = '01-triples-rdf-from-first-principles.md';
 
 test('post01: foaf:knows Turtle parses to 5 triples', async () => {
   const turtle = `
@@ -68,4 +69,40 @@ test('post01: blank-node subject is a genuine BlankNode term', async () => {
   for (const q of ds2) {
     assert.equal(q.subject.value, first.subject.value);
   }
+});
+
+// ---------------------------------------------------------------------
+// Cell-pinning tests: extract the exact ```observable-js source shipped
+// on the page and execute it via the same new Function(...) construction
+// docs/_includes/hub.njk's mountCell() uses, against the real
+// npm/factoidal typed API (fn === factoidal here; the live page instead
+// binds `fn` to the in-browser adapter — see docs/web/hub/README.md).
+// ---------------------------------------------------------------------
+
+const cells = extractObservableCells(POST_FILE);
+
+test('post01: post has at least 2 live cells', () => {
+  assert.ok(cells.length >= 2, `expected >= 2 live cells, found ${cells.length}`);
+});
+
+test('post01 cell 1 (parse + size): returns 5', async () => {
+  const result = await runObservableCell(cells[0], { fn: factoidal });
+  assert.equal(result, 5);
+});
+
+test('post01 cell 2 (iterate quads): 5 lines, 2 Literal, 3 NamedNode', async () => {
+  const result = await runObservableCell(cells[1], { fn: factoidal });
+  const lines = result.split('\n');
+  assert.equal(lines.length, 5);
+  assert.equal(lines.filter((l) => l.endsWith('(Literal)')).length, 2);
+  assert.equal(lines.filter((l) => l.endsWith('(NamedNode)')).length, 3);
+});
+
+test('post01 cell 3 (blank node): size 2, BlankNode subject, shared across both triples', async () => {
+  const result = await runObservableCell(cells[2], { fn: factoidal });
+  assert.deepEqual(result, {
+    size: 2,
+    subjectTermType: 'BlankNode',
+    sameSubjectOnBothTriples: true,
+  });
 });
