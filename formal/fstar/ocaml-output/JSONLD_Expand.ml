@@ -900,7 +900,7 @@ and expand_property_items (ac : JSONLD_Context.active_context)
             jexp_expand_type_map ac entries (fuel - Prims.int_one)
         | (JSONLD_Context.CK_Graph, uu___2) ->
             FStar_Pervasives_Native.Some
-              (expand_graph_container_items ac (jexp_as_array value)
+              (expand_graph_container_items_plain ac (jexp_as_array value)
                  (fuel - Prims.int_one))
         | (JSONLD_Context.CK_GraphIndex, Parser_JSON.JObject entries) ->
             (match idx_prop with
@@ -1146,6 +1146,25 @@ and expand_graph_container_items (ac : JSONLD_Context.active_context)
           | FStar_Pervasives_Native.Some nodeobj ->
               (jexp_ensure_graph_object nodeobj) ::
               (expand_graph_container_items ac rest (fuel - Prims.int_one))))
+and expand_graph_container_items_plain (ac : JSONLD_Context.active_context)
+  (items : Parser_JSON.json_val Prims.list) (fuel : Prims.nat) :
+  Parser_JSON.json_val Prims.list=
+  if fuel = Prims.int_zero
+  then []
+  else
+    (match items with
+     | [] -> []
+     | v::rest ->
+         (match expand_node ac v (fuel - Prims.int_one) with
+          | FStar_Pervasives_Native.None ->
+              expand_graph_container_items_plain ac rest
+                (fuel - Prims.int_one)
+          | FStar_Pervasives_Native.Some nodeobj ->
+              (Parser_JSON.JObject
+                 [("@graph", (Parser_JSON.JArray [nodeobj]))])
+              ::
+              (expand_graph_container_items_plain ac rest
+                 (fuel - Prims.int_one))))
 and expand_graph_id_map (ac : JSONLD_Context.active_context)
   (entries : (Prims.string * Parser_JSON.json_val) Prims.list)
   (fuel : Prims.nat) : Parser_JSON.json_val Prims.list=

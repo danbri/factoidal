@@ -79,9 +79,16 @@ module JSONLD.Expand
 //     object (CK_GraphId additionally sets that wrapper's "@id" from the
 //     map key; CK_GraphIndex flattens the index map first, DROPPING the
 //     index key — toRdf/m013-m014 — same as a plain @index container's
-//     key). Parser.JSONLD's PHASE 4 update interprets an "@graph" member
-//     found on ANY node object (not just the top level) as introducing a
-//     fresh, separate named graph in the dataset.
+//     key). The bare CK_Graph case (no @id/@index) wraps UNCONDITIONALLY
+//     — even a value that already carries its own "@graph" member gets a
+//     SECOND wrapper (expand_graph_container_items_plain; toRdf/e081,
+//     e095,e102-e104) — while CK_GraphId/CK_GraphIndex wrap only when the
+//     value is NOT already a graph object (expand_graph_container_items,
+//     jexp_ensure_graph_object; toRdf/e087,e101,e105-e107). Parser.JSONLD's
+//     PHASE 4 update interprets an "@graph" member found on ANY node
+//     object (not just the top level) as introducing a fresh, separate
+//     named graph in the dataset, recursing through arbitrarily many
+//     nested "@graph" layers the double-wrap can produce.
 //   - PHASE 5 @included: a node object's "@included" member (or a term
 //     whose mapping resolves to that keyword, e.g. toRdf/in03 — routed
 //     through expand_aliased_field exactly like a "@nest" alias) is
@@ -999,7 +1006,7 @@ and expand_property_items (ac:active_context) (term_opt:option term_def) (value:
       if jexp_language_map_valid entries then Some (jexp_expand_language_map entries) else None
     | CK_Id, JObject entries -> jexp_expand_id_map ac entries (fuel - 1)
     | CK_Type, JObject entries -> jexp_expand_type_map ac entries (fuel - 1)
-    | CK_Graph, _ -> Some (expand_graph_container_items ac (jexp_as_array value) (fuel - 1))
+    | CK_Graph, _ -> Some (expand_graph_container_items_plain ac (jexp_as_array value) (fuel - 1))
     | CK_GraphIndex, JObject entries ->
       (match idx_prop with
        | Some name -> jexp_expand_graph_index_map ac name entries (fuel - 1)
@@ -1179,6 +1186,18 @@ and jexp_expand_type_map (ac:active_context) (entries:list (string & json_val)) 
 // contents are always nodes), wrapped in a fresh, @id-less
 // {"@graph": [<node>]} object. Non-conforming (non-object) entries are
 // dropped, matching this module's established leniency elsewhere.
+//
+// This CONDITIONAL ("ensure" — skip the wrap if the node already carries
+// its own "@graph" member) variant is for the "@graph"+"@id" /
+// "@graph"+"@index" containers ONLY (expand_graph_id_map_one directly,
+// and the CK_GraphIndex/CK_GraphId non-map-value fallback dispatch in
+// expand_property_items) — JSON-LD 1.1 API's Container Mapping "@graph"
+// step reads "if the expanded item is not already a graph object, wrap
+// it in one" ONLY for the branch that also "includes @id" or "@index";
+// toRdf/e087,e101,e106,e105,e107 (Do-not-double-wrap fixtures) pin this.
+// The PLAIN "@container": "@graph" case (no @id/@index) is UNCONDITIONAL
+// instead — see expand_graph_container_items_plain below, used only by
+// the bare CK_Graph dispatch arm.
 and expand_graph_container_items (ac:active_context) (items:list json_val) (fuel:nat)
   : Tot (list json_val) (decreases fuel) =
   if fuel = 0 then []
@@ -1189,6 +1208,35 @@ and expand_graph_container_items (ac:active_context) (items:list json_val) (fuel
       (match expand_node ac v (fuel - 1) with
        | None -> expand_graph_container_items ac rest (fuel - 1)
        | Some nodeobj -> jexp_ensure_graph_object nodeobj :: expand_graph_container_items ac rest (fuel - 1))
+
+// Plain "@container": "@graph" (no @id/@index alongside): every item is
+// wrapped in a FRESH {"@graph": [<node>]} object UNCONDITIONALLY, even
+// when the node ALREADY carries its own "@graph" member from an explicit
+// source "@graph" key (toRdf/e081,e095,e102,e103,e104: "Creates/Expand an
+// @graph container if value is a graph" — the JSON-LD 1.1 API spec's
+// Container Mapping step for this case omits the "@id"/"@index" branch's
+// "if the expanded item is not already a graph object" guard, so a
+// user-supplied graph object gets wrapped a SECOND time). The doubled
+// wrap produces an intermediate node object whose ONLY member is
+// "@graph" — Parser.JSONLD's jld_expand_node already recurses through
+// arbitrarily many such nested "@graph" layers generically (each layer
+// becomes its own named graph in `named`; the outer/middle layer's own
+// triple list is empty since it has no other members), so the doubled
+// wrap here is sufficient by itself to reproduce the spec's "reference
+// used by the enclosing property differs from the actual graph name"
+// behavior — no special-casing needed on the RDF-emission side. See
+// docs/designissues/2026-07-04-jsonld-program-lessons.md and this
+// module's banner for the wave-9 diagnosis this closes.
+and expand_graph_container_items_plain (ac:active_context) (items:list json_val) (fuel:nat)
+  : Tot (list json_val) (decreases fuel) =
+  if fuel = 0 then []
+  else
+    match items with
+    | [] -> []
+    | v :: rest ->
+      (match expand_node ac v (fuel - 1) with
+       | None -> expand_graph_container_items_plain ac rest (fuel - 1)
+       | Some nodeobj -> JObject [("@graph", JArray [nodeobj])] :: expand_graph_container_items_plain ac rest (fuel - 1))
 
 // "@graph"+"@id" containers (toRdf/e085/e086/m015/m016): the map key
 // becomes the WRAPPER's "@id" (the graph's own name), not the inner
