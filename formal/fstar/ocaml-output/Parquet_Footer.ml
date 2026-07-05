@@ -158,29 +158,93 @@ let parquet_read_tail (path : Prims.string) (count : Prims.nat) :
       let start = S.(file_len - want) in
       FStar_Pervasives_Native.Some (String.sub buf start want)
 
+(* Precomputed two-hex-char string per byte value (0x00 .. 0xFF).
+   `Printf.sprintf "%02X"` re-parses its format string on every call;
+   in the per-byte `String.iter` loop below that cost dominates for
+   footer-sized (KB) buffers called repeatedly. Table lookup is the
+   same output, just without the per-byte format-string overhead. *)
+let __mim2_hex_byte_table : string array =
+  Array.init 256 (fun i -> Printf.sprintf "%02X" i)
+
 (* Hex-encode a raw string. Buffer-once so the ~250MB row-group
    payloads don't trigger O(N^2) string concat. *)
 let __mim2_hex_encode raw =
   let module S = Stdlib in
   let b = Buffer.create S.(2 * String.length raw) in
   String.iter
-    (fun ch -> Buffer.add_string b (Printf.sprintf "%02X" (Char.code ch)))
+    (fun ch -> Buffer.add_string b __mim2_hex_byte_table.(Char.code ch))
     raw;
   Buffer.contents b
 
+(* Mim3 (2026-07-05, docs/designissues/2026-07-05-disk-backed-db-perf-review.md):
+   memoize the hex-encoded TAIL (the Parquet footer, in practice) per
+   (path, count). `footer.pf_footer_len` is the same value for the whole
+   life of a (write-once) COTTAS artifact, so every one of the ~15
+   `probe_parquet_*` call sites in this module that re-derives a
+   row-group/column-chunk locator from scratch — once per (row_group,
+   column) pair walked, e.g. by `probe_parquet_column_decode_all_row_groups`
+   or an unpruned per-row-group search — was re-reading AND re-hex-
+   encoding the entire footer from scratch on every single call. Because
+   the footer's metadata length itself grows roughly linearly with
+   row-group count (more row groups = more column-chunk stat structs),
+   and the number of per-row-group probe calls during an unpruned column
+   walk also grows linearly with row-group count, the unmemoized cost
+   was quadratic-ish in row-group count for a fixed corpus size (measured:
+   50,000-quad fixture, 2 vs 25 row groups, same clustered content, only
+   ROW_GROUP_SIZE changed: 0.60s -> 10.3s, ~17x; gene corpus 8 vs 44
+   groups: 73ms -> 1,877ms, ~24-25x). This cache turns every probe after
+   the first for a given (path, count) into an O(1) hashtable hit instead
+   of an O(footer_size) re-encode. Pure memoization of a deterministic,
+   already-cached-bytes (Mim2) computation — no new decode/interpretation
+   logic; the returned hex strings are byte-identical to the unmemoized
+   path. Rule #11(c)/#15 compliant. *)
+(* `open Prims` (top of this file) shadows `int` to mean `Prims.int`
+   (= Z.t); the cache keys need plain OCaml machine ints (what
+   `Z.to_int` returns), so qualify explicitly with `Stdlib.Int.t`
+   (same pattern as `Cottas_ondisk_runtime.pint` in
+   experimental_ocaml_glue/cottas_ondisk_runtime.sh). *)
+let __mim2_tail_hex_cache : (string * Stdlib.Int.t, string) Hashtbl.t = Hashtbl.create 17
+let __mim2_range_hex_cache : (string * Stdlib.Int.t * Stdlib.Int.t, string) Hashtbl.t = Hashtbl.create 257
+
 let parquet_read_tail_hex (path : Prims.string) (count : Prims.nat) :
   Prims.string FStar_Pervasives_Native.option=
-  match parquet_read_tail path count with
-  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-  | FStar_Pervasives_Native.Some raw -> FStar_Pervasives_Native.Some (__mim2_hex_encode raw)
+  let key = (path, Z.to_int count) in
+  match Hashtbl.find_opt __mim2_tail_hex_cache key with
+  | Some hex -> FStar_Pervasives_Native.Some hex
+  | None ->
+    match parquet_read_tail path count with
+    | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+    | FStar_Pervasives_Native.Some raw ->
+      let hex = __mim2_hex_encode raw in
+      Hashtbl.add __mim2_tail_hex_cache key hex;
+      FStar_Pervasives_Native.Some hex
 (* parquet_read_range_hex: depends on helpers defined earlier in
-   the tail_impl block (Mim2 byte cache for issue #100 Phases B+C). *)
+   the tail_impl block (Mim2 byte cache for issue #100 Phases B+C).
+
+   Mim3 (2026-07-05, docs/designissues/2026-07-05-disk-backed-db-perf-review.md
+   roadmap item "characterise and fix the on-disk reader's per-row-group
+   cost"): memoize the *hex-encoded* result per (path, start, count), not
+   just the raw bytes. `Parquet.Footer.probe_parquet_column_chunk_in_row_group_locator`
+   re-derives a column chunk's byte offsets from the footer on every single
+   (row_group, column) probe, and every higher-level per-row-group probe
+   (page header size/offset/num_values/etc.) re-reads its own small range
+   at the same offset independently. Without this cache, a query that
+   walks every row group of a column (e.g. no presence-bitmap pruning
+   because the bound predicate is present in every group) re-hex-encodes
+   the SAME parquet-page byte ranges once per sibling probe function. *)
 
 let parquet_read_range_hex (path : Prims.string) (start : Prims.nat) (count : Prims.nat) :
   Prims.string FStar_Pervasives_Native.option=
-  match parquet_read_range path start count with
-  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-  | FStar_Pervasives_Native.Some raw -> FStar_Pervasives_Native.Some (__mim2_hex_encode raw)
+  let key = (path, Z.to_int start, Z.to_int count) in
+  match Hashtbl.find_opt __mim2_range_hex_cache key with
+  | Some hex -> FStar_Pervasives_Native.Some hex
+  | None ->
+    match parquet_read_range path start count with
+    | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+    | FStar_Pervasives_Native.Some raw ->
+      let hex = __mim2_hex_encode raw in
+      Hashtbl.add __mim2_range_hex_cache key hex;
+      FStar_Pervasives_Native.Some hex
 
 external parquet_zstd_decompress_hex_runtime :
   Prims.string -> Prims.string -> Prims.string FStar_Pervasives_Native.option

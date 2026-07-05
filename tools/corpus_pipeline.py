@@ -1351,10 +1351,17 @@ def materialize_nq_cottas_corpus(args: argparse.Namespace) -> int:
     # not faster -- the current on-disk reader pays a per-row-group cost
     # that scales worse than linearly with row-group count on this
     # corpus size, which swamps any prune-selectivity gain from more/
-    # smaller groups. Until that reader-side cost is characterised and
-    # fixed, --row-group-size defaults to DuckDB's own default so
-    # clustering is evaluated on row *order* alone, not confounded with
-    # row-group count.
+    # smaller groups.
+    #
+    # Follow-up (2026-07-05, same doc, item 2): characterised and
+    # PARTIALLY fixed. The dominant re-hex-encoding-the-footer-per-probe
+    # cost is now memoized (OCaml I/O glue, Parquet_Footer.ml's Mim3
+    # cache) -- ~23% faster at 44 groups on gene (1.88s -> ~1.45s) -- but
+    # a second, larger cost remains uncached (an O(row_groups) structural
+    # walk inside Parquet.Footer.fst itself, not OCaml-glue-fixable; see
+    # the doc). 44 groups is therefore still ~20x slower than 8 on an
+    # unpruned (universal-predicate) query, so --row-group-size still
+    # defaults to DuckDB's own default until that second cost is closed.
     row_group_size = getattr(args, "row_group_size", None) or 122880
 
     try:

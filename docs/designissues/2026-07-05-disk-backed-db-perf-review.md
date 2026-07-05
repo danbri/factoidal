@@ -666,6 +666,111 @@ whether a design doc is needed first.
       smaller, more homogeneous groups — the change that would let a
       shape-confined predicate actually "kill most row groups" instead
       of the ~11-17% wins measured here.
+
+      **CHARACTERISED and PARTIALLY FIXED 2026-07-05 (this session,
+      follow-up).** Reproduced small first, per the redispatch brief:
+      a 50,000-quad fixture (first 50k lines of the gene corpus's
+      N-Quads, `--row-order cs`, identical clustered content, only
+      `ROW_GROUP_SIZE` varied: 30,000 -> 2 row groups, 2,048 (DuckDB's
+      vector-size floor) -> 25 row groups) reproduced the effect at
+      small scale before touching the gene corpus: a full-scan query
+      (`?s <rdf:type> "no-such-object"`, forcing every touched row
+      group to be decoded with zero matches) went from 0.60 s at 2
+      groups to 10.3 s at 25 groups, ~17×, on a fixture 18× smaller
+      than gene. `strace -c` showed the cost is **not** I/O (2-3
+      `read()` syscalls total per run; the whole file is mmap'd once
+      via the existing `__mim2_file_bytes_cache`) — it is CPU-bound.
+
+      Root cause, read directly from the OCaml realisation of the
+      `assume val`s in `Parquet.Footer.fst`
+      (`experimental_ocaml_glue/parquet_footer_runtime.sh`):
+      `parquet_read_tail_hex`/`parquet_read_range_hex` cache the raw
+      file **bytes** per path (the pre-existing "Mim2" cache, added for
+      issue #100) but re-**hex-encode** the requested byte range from
+      scratch on every single call, using `Printf.sprintf "%02X"` per
+      byte inside a `String.iter` loop — no memoization of the
+      hex-encoded result itself. Every one of the ~15
+      `probe_parquet_*` call sites in `Parquet.Footer.fst` that locates
+      a (row_group, column) pair — via
+      `probe_parquet_column_chunk_in_row_group_locator`, called once
+      per row group whenever a column is walked in full (the
+      lazy-dictionary `collect_distinct` path at first use, or an
+      unpruned per-row-group search when the bound predicate is
+      present in every row group, as `rdf:type` is on gene's 12
+      characteristic sets) — re-reads and re-hex-encodes the **entire
+      Parquet footer** from scratch. Measured directly: the fixture's
+      footer metadata length grows from 1,638 bytes at 2 row groups to
+      18,703 bytes at 25 row groups (roughly linear in row-group count,
+      since each row group adds ~4 more column-chunk stat structs to
+      the footer). Because both (a) the footer size and (b) the number
+      of per-row-group locate calls during an unpruned column walk grow
+      with row-group count, the unmemoized cost is quadratic-ish in
+      row-group count for a fixed corpus size — the exact mechanism
+      behind the 24-25× (gene, 8→44 groups) and 17× (this fixture,
+      2→25 groups) slowdowns.
+
+      **Fix shipped**, OCaml I/O-glue side only, no F\* or decode-logic
+      change (rule #11(c)/#15: pure memoization of a deterministic
+      computation over already-cached bytes; returned hex strings are
+      byte-identical to the unmemoized path, confirmed by diffing
+      query output before/after): `parquet_footer_runtime.sh` now (1)
+      memoizes `parquet_read_tail_hex` per `(path, count)` and
+      `parquet_read_range_hex` per `(path, start, count)` in two new
+      "Mim3" hashtables, so every probe after the first for a given
+      key is an O(1) hit instead of an O(footer_size) re-encode, and
+      (2) replaces the per-byte `Printf.sprintf "%02X"` hex encoder
+      with a precomputed 256-entry lookup table (same output, no
+      per-call format-string parsing). Applied by re-extracting just
+      `Parquet.Footer.fst` (unchanged .fst, so `--cache_checked_modules`
+      made this sub-second — no re-verification needed) and re-running
+      `ocaml-patches.sh` + `build-ocaml.sh compile`.
+
+      **Measured improvement** (both scales, query output byte-
+      identical pre/post-fix): the 50,000-quad fixture's full-scan
+      query went from 10.3 s to 8.0 s at 25 groups (2 groups unchanged
+      at 0.60 s) — ratio 17.2× → 13.3×. On the actual gene corpus
+      (888,949 quads, `factoidal serve` + HTTP `/query`, 3 warm runs
+      each, companions valid/mmap'd, matching this doc's own §"Query
+      measurements" methodology above): `?s rdf:type ?o LIMIT 5` at 8
+      row groups is unchanged (71-74 ms vs the previously-recorded
+      73-81 ms, within noise); at 44 row groups it improved from
+      1,877-1,885 ms to 1,437-1,462 ms — **about 23% faster**, ratio
+      24.4× → ~19.8×. Correctness unaffected: `COUNT(*)` = 888,949
+      (exact) and the `Q100085837` subject point lookup return
+      identical bindings on both the 8- and 44-group builds, post-fix.
+      Regression floors after the fix (repo root only — other cwds
+      show a misleading 629/2 for the SPARQL suite): SPARQL suite 631
+      pass, 0 fail (of 631); RDF suite 1,031 pass, 0 fail (of 1,031);
+      `tests/unit/run-all.sh` 28 file(s) pass, 0 file(s) fail (of 28);
+      `tests/local/cottas_row_order_regressions.sh` 9 checks, 9 pass, 0
+      fail; `tests/local/cottas_corpus_regressions.sh` 4 checks, 4
+      pass, 0 fail.
+
+      **Not closed — the remaining ~20× is a second, larger, non-
+      commit-sized issue, characterised but not fixed this round.**
+      The Mim3 cache removes the *re-hex-encoding* cost but not the
+      per-locate *structural walk*: `probe_parquet_column_chunk_in_row_group_locator`
+      still calls `nth_compact_list_element_start_hex`, whose inner
+      `loop` walks and decodes (skips) `rg_index` preceding
+      compact-protocol row-group structs **on every single call**,
+      fresh, with no memoization of "row group N starts at hex offset
+      X" across calls. Summed over every row group touched during an
+      unpruned column walk, this is still O(row_groups²) even with the
+      footer bytes/hex now cached — which is why the fixture's ratio
+      only fell to 13.3× (not to something close to the 12.5× row-
+      group-count ratio a clean O(n) cost would give) and gene's ratio
+      only fell to ~19.8× (not close to the 5.5× row-group-count
+      ratio). Unlike the Mim3 fix, this one is **not** OCaml I/O glue:
+      the repeated walk lives inside `Parquet.Footer.fst` itself (a
+      verified F\* function, not an `assume val` realisation), so
+      closing it means adding a new F\* function that computes every
+      row group's start offset in a single linear pass over the footer
+      once per file (e.g. `probe_parquet_row_group_offsets_all : path
+      -> option (list nat)`), re-pointing the ~15 per-row-group probe
+      call sites at an O(1) index into that list, and re-verifying
+      `Parquet.Footer.fst` under z3 4.13.3 — real F\* work, not a
+      caching patch, and out of scope for this redispatch. Filing as
+      the next item in this list.
    3. Re-run this whole comparison against the UK Parliament corpus
       (absent from this sandbox, per §0's caveat) once it is
       reachable, since gene's 8-row-group / 12-CS / 6-predicate shape
