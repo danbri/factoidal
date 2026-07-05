@@ -1285,33 +1285,35 @@ let rec jldctx_sort_strings (xs : Prims.string Prims.list) :
   match xs with
   | [] -> []
   | x::rest -> jldctx_insert_sorted x (jldctx_sort_strings rest)
-let rec jldctx_apply_type_scoped (ac : active_context)
-  (types : Prims.string Prims.list) (any_non_propagating : Prims.bool) :
+let rec jldctx_apply_type_scoped (ac0 : active_context)
+  (ac_acc : active_context) (types : Prims.string Prims.list)
+  (any_non_propagating : Prims.bool) :
   (active_context * Prims.bool) FStar_Pervasives_Native.option=
   match types with
-  | [] -> FStar_Pervasives_Native.Some (ac, any_non_propagating)
+  | [] -> FStar_Pervasives_Native.Some (ac_acc, any_non_propagating)
   | t::rest ->
-      (match jldctx_find_term ac.ac_terms t with
+      (match jldctx_find_term ac0.ac_terms t with
        | FStar_Pervasives_Native.Some td ->
            (match td.td_scoped_context with
             | FStar_Pervasives_Native.Some scoped ->
-                (match context_process ac scoped true jld_remote_context_fuel
-                         []
+                (match context_process ac_acc scoped true
+                         jld_remote_context_fuel []
                  with
                  | FStar_Pervasives_Native.None ->
                      FStar_Pervasives_Native.None
                  | FStar_Pervasives_Native.Some ac1 ->
                      let propagate = jldctx_scan_propagate scoped false in
-                     jldctx_apply_type_scoped ac1 rest
+                     jldctx_apply_type_scoped ac0 ac1 rest
                        (any_non_propagating || (Prims.op_Negation propagate)))
             | FStar_Pervasives_Native.None ->
-                jldctx_apply_type_scoped ac rest any_non_propagating)
+                jldctx_apply_type_scoped ac0 ac_acc rest any_non_propagating)
        | FStar_Pervasives_Native.None ->
-           jldctx_apply_type_scoped ac rest any_non_propagating)
+           jldctx_apply_type_scoped ac0 ac_acc rest any_non_propagating)
 let apply_type_scoped_contexts (ac0 : active_context)
   (raw_types : Prims.string Prims.list) :
   active_context FStar_Pervasives_Native.option=
-  match jldctx_apply_type_scoped ac0 (jldctx_sort_strings raw_types) false
+  match jldctx_apply_type_scoped ac0 ac0 (jldctx_sort_strings raw_types)
+          false
   with
   | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
   | FStar_Pervasives_Native.Some (ac1, any_non_propagating) ->

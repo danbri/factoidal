@@ -362,13 +362,31 @@ let rec jexp_raw_type_strings_of_items (items:list json_val) : Tot (list string)
   | JString s :: rest -> s :: jexp_raw_type_strings_of_items rest
   | _ :: rest -> jexp_raw_type_strings_of_items rest
 
-let rec jexp_raw_type_strings (fields:list (string & json_val)) : Tot (list string) (decreases fields) =
+// toRdf/c020/c021/c024/c025: the node's own type member need not be the
+// LITERAL "@type" key — a keyword-ALIAS term (e.g. these fixtures'
+// "type": "@type") names it just as well, per JSON-LD 1.1's ordinary
+// term-aliasing rules. ac0 (this node's pre-type-scope context, the same
+// snapshot expand_typed_ac folds scoped contexts onto) is what resolves
+// such an alias — checked via expand_iri exactly like expand_one_field's
+// ordinary-key fallback resolves a term to a keyword. Missing this alias
+// case means a node using "type" (aliased) instead of the bare "@type"
+// keyword never triggers ITS type-scoped context at all: expand_typed_ac
+// would silently leave ac0 unchanged, even though the SAME node's field
+// loop later still finds and emits the rdf:type triple correctly via
+// expand_aliased_field's separate literal-"@type" dispatch — the type
+// VALUE gets expanded either way, but the type-scoped CONTEXT (which
+// governs how the node's OTHER fields resolve) was silently skipped
+// without this check.
+let rec jexp_raw_type_strings (ac0:active_context) (fields:list (string & json_val)) : Tot (list string) (decreases fields) =
   match fields with
   | [] -> []
   | (k, v) :: rest ->
-    if k = "@type"
-    then List.Tot.append (jexp_raw_type_strings_of_items (jexp_as_array v)) (jexp_raw_type_strings rest)
-    else jexp_raw_type_strings rest
+    let is_type_key =
+      k = "@type" ||
+      (match expand_iri ac0 k true with Some e -> e = "@type" | None -> false) in
+    if is_type_key
+    then List.Tot.append (jexp_raw_type_strings_of_items (jexp_as_array v)) (jexp_raw_type_strings ac0 rest)
+    else jexp_raw_type_strings ac0 rest
 
 // Apply every type-scoped context named by this node object's OWN @type
 // member(s) (fields1, i.e. AFTER @context extraction but before any
@@ -377,7 +395,7 @@ let rec jexp_raw_type_strings (fields:list (string & json_val)) : Tot (list stri
 // with no @type (or none of its type terms carrying a scoped context)
 // leaves ac0 unchanged.
 let expand_typed_ac (ac0:active_context) (fields:list (string & json_val)) : option active_context =
-  match jexp_raw_type_strings fields with
+  match jexp_raw_type_strings ac0 fields with
   | [] -> Some ac0
   | types -> apply_type_scoped_contexts ac0 types
 
@@ -542,18 +560,59 @@ let rec jexp_inject_index_items (index_iri:string) (keyval:json_val) (items:list
 //     rather than conses).
 // ================================================================
 
+// toRdf/c015/c020/c021: the JSON-LD 1.1 API's node-object pop-check
+// (Expansion algorithm, "Otherwise element is a map" branch) exempts TWO
+// shapes of object from the "does not apply when processing new node
+// objects" pop, checked against the keys as IRI-expanded through the
+// INCOMING (not-yet-popped) active context `ac` — "where entries are IRI
+// expanded" in the spec text:
+//   - an object consisting of EXACTLY one entry whose key expands to
+//     "@id" — a bare node REFERENCE ({"@id": "#subject-reference-id"})
+//     sitting in property position stays under the current context
+//     (toRdf/c015's "subjectReference", vs. its sibling "nestedNode",
+//     TWO entries, which DOES pop);
+//   - an object containing ANY entry whose key expands to "@value" — a
+//     VALUE object (toRdf/c020: Type's scoped context aliases "value" to
+//     "@value"; {"value": "value", "type": "value-type"} must be read as
+//     a value object using THAT alias, which only exists in the
+//     un-popped `ac` — popping first would lose the alias and
+//     misinterpret it as an ordinary node object).
+// jexp_any_key_expands_to reuses expand_iri's vocab-relative (true) key
+// resolution — the same mode expand_one_field's ordinary-key fallback
+// uses — since object keys are always property/keyword names, never
+// document-relative values.
+let rec jexp_any_key_expands_to (ac:active_context) (fields:list (string & json_val)) (kw:string)
+  : Tot bool (decreases fields) =
+  match fields with
+  | [] -> false
+  | (k, _) :: rest ->
+    (match expand_iri ac k true with
+     | Some e -> e = kw || jexp_any_key_expands_to ac rest kw
+     | None -> jexp_any_key_expands_to ac rest kw)
+
+let jexp_is_single_id_object (ac:active_context) (fields:list (string & json_val)) : bool =
+  match fields with
+  | [(k, _)] -> (match expand_iri ac k true with Some e -> e = "@id" | None -> false)
+  | _ -> false
+
 let rec expand_node (ac:active_context) (v:json_val) (fuel:nat)
   : Tot (option json_val) (decreases fuel) =
   if fuel = 0 then None
   else
-    // PHASE 4: pop back to the pre-scope active context if the INCOMING ac
-    // is the result of a non-propagating context application (a
-    // type-scoped context by default, or any scoped/inline context with
-    // an explicit "@propagate": false) — see this module's banner and
-    // JSONLD.Context.apply_type_scoped_contexts.
-    let ac_popped = (match ac.ac_previous with Some prev -> prev | None -> ac) in
     match v with
     | JObject fields ->
+      // PHASE 4: pop back to the pre-scope active context if the INCOMING ac
+      // is the result of a non-propagating context application (a
+      // type-scoped context by default, or any scoped/inline context with
+      // an explicit "@propagate": false) — see this module's banner and
+      // JSONLD.Context.apply_type_scoped_contexts — UNLESS this object is a
+      // single-"@id"-entry node reference or contains a "@value"-expanding
+      // entry (jexp_is_single_id_object / jexp_any_key_expands_to above),
+      // either of which is exempt from the pop.
+      let ac_popped =
+        if jexp_is_single_id_object ac fields || jexp_any_key_expands_to ac fields "@value"
+        then ac
+        else (match ac.ac_previous with Some prev -> prev | None -> ac) in
       let (ctxval, fields1) = jexp_extract_context fields in
       let ac0_opt =
         (match ctxval with
@@ -565,23 +624,35 @@ let rec expand_node (ac:active_context) (v:json_val) (fuel:nat)
          (match expand_typed_ac ac0 fields1 with
           | None -> None
           | Some ac_typed ->
-            (match expand_fields_list ac_typed fields1 (fuel - 1) with
+            (match expand_fields_list ac_typed ac0 fields1 (fuel - 1) with
              | None -> None
              | Some outfields -> Some (JObject outfields))))
     | _ -> None
 
-and expand_fields_list (ac:active_context) (fields:list (string & json_val)) (fuel:nat)
+// ac0: this node's FIXED pre-type-scope active context (the JSON-LD 1.1
+// API's "type-scoped context" — see JSONLD.Context.jldctx_apply_type_scoped's
+// banner), threaded alongside the effective `ac` purely so expand_one_field's
+// "@type" branch (and expand_aliased_field, for a keyword-ALIAS of @type,
+// e.g. toRdf/c020's "type": "@type") can expand the @type VALUE strings
+// against it instead of against `ac` — per spec, @type's own values are
+// IRI-expanded using "type-scoped context" (the fixed snapshot), never the
+// active context AS UPDATED by folding this node's own type-scoped
+// contexts (toRdf/c014: Type's scoped context is `{"@context": [null]}`,
+// which nullifies @vocab — expanding "Type" itself against that nullified
+// context loses the vocab mapping and falls back to a wrong
+// document-relative IRI instead of the correct vocab-relative one).
+and expand_fields_list (ac:active_context) (ac0:active_context) (fields:list (string & json_val)) (fuel:nat)
   : Tot (option (list (string & json_val))) (decreases fuel) =
   if fuel = 0 then None
   else
     match fields with
     | [] -> Some []
     | (key, value) :: rest ->
-      (match expand_one_field ac key value (fuel - 1) with
+      (match expand_one_field ac ac0 key value (fuel - 1) with
        | None -> None
-       | Some None -> expand_fields_list ac rest (fuel - 1)
+       | Some None -> expand_fields_list ac ac0 rest (fuel - 1)
        | Some (Some outkvs) ->
-         (match expand_fields_list ac rest (fuel - 1) with
+         (match expand_fields_list ac ac0 rest (fuel - 1) with
           | None -> None
           | Some restout -> Some (List.Tot.append outkvs restout)))
 
@@ -599,7 +670,7 @@ and expand_fields_list (ac:active_context) (fields:list (string & json_val)) (fu
 // contexts) — UNLESS its term definition carries "@reverse" (used
 // forward), in which case it folds into an ("@reverse", ...) output field
 // instead of a plain property (expand_reverse_property).
-and expand_one_field (ac:active_context) (key:string) (value:json_val) (fuel:nat)
+and expand_one_field (ac:active_context) (ac0:active_context) (key:string) (value:json_val) (fuel:nat)
   : Tot (option (option (list (string & json_val)))) (decreases fuel) =
   if fuel = 0 then None
   else if key = "@id" then
@@ -611,8 +682,11 @@ and expand_one_field (ac:active_context) (key:string) (value:json_val) (fuel:nat
      | _ -> None)
   else if key = "@type" then
     // toRdf/er28: a non-string @type entry is an "invalid type value".
+    // ac0 (NOT ac): see expand_fields_list's banner — @type's own values
+    // expand against the pre-type-scope snapshot, not this node's
+    // type-scoped-and-folded active context.
     (if jexp_type_entries_all_strings (jexp_as_array value)
-     then Some (Some [("@type", JArray (expand_type_values ac value))])
+     then Some (Some [("@type", JArray (expand_type_values ac0 value))])
      else None)
   else if key = "@graph" then
     Some (Some [("@graph", JArray (expand_graph_items ac (jexp_as_array value) (fuel - 1)))])
@@ -637,11 +711,11 @@ and expand_one_field (ac:active_context) (key:string) (value:json_val) (fuel:nat
   else if key = "@nest" then
     (match value with
      | JObject nfields ->
-       (match expand_fields_list ac nfields (fuel - 1) with
+       (match expand_fields_list ac ac0 nfields (fuel - 1) with
         | None -> None
         | Some outs -> Some (Some outs))
      | JArray items ->
-       (match expand_nest_array ac items (fuel - 1) with
+       (match expand_nest_array ac ac0 items (fuel - 1) with
         | None -> None
         | Some outs -> Some (Some outs))
      | _ -> None)
@@ -658,7 +732,7 @@ and expand_one_field (ac:active_context) (key:string) (value:json_val) (fuel:nat
      | Some prop_iri ->
        let term_opt = jldctx_find_term ac.ac_terms key in
        if jldctx_actual_keyword prop_iri then
-         expand_aliased_field ac term_opt prop_iri value (fuel - 1)
+         expand_aliased_field ac ac0 term_opt prop_iri value (fuel - 1)
        else if jldctx_keyword_form prop_iri then
          // A term whose mapping RESOLVED to a keyword lookalike (can
          // only happen via a prefix/vocab concatenation, since lookalike
@@ -676,17 +750,17 @@ and expand_one_field (ac:active_context) (key:string) (value:json_val) (fuel:nat
 // PHASE 4: "@nest": [ {...}, {...} ] — every array entry's fields merge
 // into the enclosing node object in turn (toRdf/n007/n008); a
 // non-object array entry is a malformed @nest value (spec error).
-and expand_nest_array (ac:active_context) (items:list json_val) (fuel:nat)
+and expand_nest_array (ac:active_context) (ac0:active_context) (items:list json_val) (fuel:nat)
   : Tot (option (list (string & json_val))) (decreases fuel) =
   if fuel = 0 then None
   else
     match items with
     | [] -> Some []
     | JObject nfields :: rest ->
-      (match expand_fields_list ac nfields (fuel - 1) with
+      (match expand_fields_list ac ac0 nfields (fuel - 1) with
        | None -> None
        | Some outs ->
-         (match expand_nest_array ac rest (fuel - 1) with
+         (match expand_nest_array ac ac0 rest (fuel - 1) with
           | None -> None
           | Some restouts -> Some (List.Tot.append outs restouts)))
     | _ -> None
@@ -1009,14 +1083,17 @@ and expand_graph_id_map_one (ac:active_context) (k:string) (items:list json_val)
 // keyword would. PHASE 4: term_opt carries the ALIASING term's own
 // definition, so its property-scoped @context (if any — toRdf/c037/c038
 // tie a scoped context to a "@nest"-mapped term) is applied FIRST, same
-// as an ordinary property.
-and expand_aliased_field (ac:active_context) (term_opt:option term_def) (canon_key:string) (value:json_val) (fuel:nat)
+// as an ordinary property. ac0: passed straight through unchanged (this
+// node's fixed pre-type-scope snapshot — see expand_fields_list's banner)
+// so a keyword ALIAS of @type (toRdf/c020's "type": "@type") gets the
+// exact same ac0-based value expansion as a literal "@type" key.
+and expand_aliased_field (ac:active_context) (ac0:active_context) (term_opt:option term_def) (canon_key:string) (value:json_val) (fuel:nat)
   : Tot (option (option (list (string & json_val)))) (decreases fuel) =
   if fuel = 0 then None
   else
     match apply_property_scoped_context ac term_opt with
     | None -> None
-    | Some ac_eff -> expand_one_field ac_eff canon_key value (fuel - 1)
+    | Some ac_eff -> expand_one_field ac_eff ac0 canon_key value (fuel - 1)
 
 // The array of raw values for one property (already array-wrapped by the
 // caller via jexp_as_array).

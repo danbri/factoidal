@@ -1037,30 +1037,49 @@ let rec jldctx_sort_strings (xs:list string) : Tot (list string) (decreases xs) 
   | [] -> []
   | x :: rest -> jldctx_insert_sorted x (jldctx_sort_strings rest)
 
-let rec jldctx_apply_type_scoped (ac:active_context) (types:list string) (any_non_propagating:bool)
+// ac0: FIXED snapshot of the active context as it stood before ANY
+// type-scoped modification — the JSON-LD 1.1 API's "type-scoped context"
+// (Expansion algorithm step "Initialize type-scoped context to active
+// context" — this variable name is intentionally the SAME across every
+// recursive call below, never the evolving accumulator). Every type
+// NAME's own term definition (hence whether IT carries a scoped context)
+// is looked up against this fixed ac0, never against ac_acc — otherwise
+// an EARLIER type's scoped context can nullify or redefine the term
+// entries that a LATER type's own name needs to resolve through (toRdf/
+// c018: "Bar"'s scoped context is `[null, {"prop": ...}]` — the leading
+// null wipes ac_terms; looking "Foo" up in that wiped accumulator instead
+// of ac0 would silently skip Foo's scoped context entirely, which is
+// exactly the bug this two-parameter shape prevents).
+// ac_acc: the evolving accumulator ("active context" in the spec text)
+// that each type's scoped context is folded ONTO, in ascending
+// lexicographic order of the type names (toRdf/c011/c018: later-sorted
+// types shadow earlier ones' term redefinitions in the final result).
+let rec jldctx_apply_type_scoped (ac0:active_context) (ac_acc:active_context) (types:list string) (any_non_propagating:bool)
   : Tot (option (active_context & bool)) (decreases types) =
   match types with
-  | [] -> Some (ac, any_non_propagating)
+  | [] -> Some (ac_acc, any_non_propagating)
   | t :: rest ->
-    (match jldctx_find_term ac.ac_terms t with
+    (match jldctx_find_term ac0.ac_terms t with
      | Some td ->
        (match td.td_scoped_context with
         | Some scoped ->
-          (match context_process ac scoped true jld_remote_context_fuel [] with
+          (match context_process ac_acc scoped true jld_remote_context_fuel [] with
            | None -> None
            | Some ac1 ->
              let propagate = jldctx_scan_propagate scoped false in
-             jldctx_apply_type_scoped ac1 rest (any_non_propagating || not propagate))
-        | None -> jldctx_apply_type_scoped ac rest any_non_propagating)
-     | None -> jldctx_apply_type_scoped ac rest any_non_propagating)
+             jldctx_apply_type_scoped ac0 ac1 rest (any_non_propagating || not propagate))
+        | None -> jldctx_apply_type_scoped ac0 ac_acc rest any_non_propagating)
+     | None -> jldctx_apply_type_scoped ac0 ac_acc rest any_non_propagating)
 
 // raw_types: the @type value's string entries AS WRITTEN (not yet
 // IRI-expanded — term lookup for type-scoped contexts happens by term
 // NAME against ac0, per spec). ac0: the active context BEFORE any
 // type-scoped modification (after this node's own inline @context, if
-// any, but before @type is consulted).
+// any, but before @type is consulted) — passed as BOTH arguments to
+// jldctx_apply_type_scoped's initial call since the accumulator starts
+// out equal to the fixed snapshot.
 let apply_type_scoped_contexts (ac0:active_context) (raw_types:list string) : option active_context =
-  match jldctx_apply_type_scoped ac0 (jldctx_sort_strings raw_types) false with
+  match jldctx_apply_type_scoped ac0 ac0 (jldctx_sort_strings raw_types) false with
   | None -> None
   | Some (ac1, any_non_propagating) ->
     Some (if any_non_propagating then { ac1 with ac_previous = Some ac0 } else ac1)
