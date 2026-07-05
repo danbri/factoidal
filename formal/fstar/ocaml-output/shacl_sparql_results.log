@@ -1,0 +1,54 @@
+  [1/22] Test of sh:optional 001 ok
+  [2/22] Test of sh:propertyValidator with SELECT 001 ok
+  [3/22] Test of sh:validator 001 ok
+  [4/22] Test of sh:prefixes 001 ok
+  [5/22] Test of sh:sparql at node shape 001 ok
+  [6/22] Test of sh:sparql at node shape 002 ok
+  [7/22] Test of sh:sparql at node shape 003 ok
+  [8/22] Test of sh:sparql at property shape 001 ok
+  [9/22] Test of pre-binding in FILTER ok
+  [10/22] Test of pre-binding in UNION ok
+  [11/22] Test of pre-binding in inner {...} blocks ok
+  [12/22] Test of pre-binding in BIND expressions ok
+  [13/22] Test of pre-binding in BGP and FILTER ok
+  [14/22] Test of pre-binding in nested SELECT ok
+  [15/22] Test of pre-binding in nested SELECT ok
+  [16/22] Test of $shapesGraph and $currentShape ok
+  [17/22] Test of unsupported MINUS ok
+  [18/22] Test of unsupported VALUES ok
+  [19/22] Test of unsupported SERVICE ok
+  [20/22] Test of unsupported SELECT ok
+  [21/22] Test of unsupported AS ?prebound ok
+  [22/22] Test of ASK trying to reassign ?value ok
+=== SHACL W3C Test Runner (full report comparison) ===
+Manifest: third_party/testing/shacl/data-shapes-test-suite/tests/sparql/manifest.ttl
+
+Totals: 22 test entries
+
+  PASS: Test of sh:optional 001
+  PASS: Test of sh:propertyValidator with SELECT 001
+  PASS: Test of sh:validator 001
+  PASS: Test of sh:prefixes 001
+  PASS: Test of sh:sparql at node shape 001
+  PASS: Test of sh:sparql at node shape 002
+  PASS: Test of sh:sparql at node shape 003
+  PASS: Test of sh:sparql at property shape 001
+  PASS: Test of pre-binding in FILTER
+  PASS: Test of pre-binding in UNION
+  PASS: Test of pre-binding in inner {...} blocks
+  PASS: Test of pre-binding in BIND expressions
+  PASS: Test of pre-binding in BGP and FILTER
+  PASS: Test of pre-binding in nested SELECT
+  PASS: Test of pre-binding in nested SELECT
+  PASS: Test of $shapesGraph and $currentShape
+  PASS: Test of unsupported MINUS
+  PASS: Test of unsupported VALUES
+  PASS: Test of unsupported SERVICE
+  PASS: Test of unsupported SELECT
+  PASS: Test of unsupported AS ?prebound
+  PASS: Test of ASK trying to reassign ?value
+
+========================================
+TOTAL: 22 pass, 0 fail, 0 skip (out of 22)
+========================================
+shacl-sparql: 22 pass, 0 fail, 0 skip (out of 22)

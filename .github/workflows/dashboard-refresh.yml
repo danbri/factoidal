@@ -40,6 +40,9 @@ on:
       - 'bin/ci-linux-x86_64/**'
       - 'bin/ci-darwin-arm64/**'
       - 'formal/fstar/ocaml-output-ci/**'
+      # Deliberately NOT ignoring the *_results.log files (old or new,
+      # 2026-07-05 wave) — a commit that updates one of those IS new test
+      # data, and this workflow's whole job is to pick that up quickly.
   workflow_dispatch:
 
 permissions:
@@ -80,6 +83,20 @@ jobs:
             echo "::error::no committed *_results.log inputs found; nothing to refresh"
             exit 0
           fi
+          # 2026-07-05 wave: SHACL / ShEx / JSON-LD / RML / RIF Core / VC.
+          # Informational only — these are newer, optional suites (like
+          # rdfc10/owl above, they're populated by a manual `./w3c-tests.sh`
+          # run + commit today, not this workflow or the heavy pipeline's
+          # native-shadow job) — a missing log here just means the
+          # corresponding dashboard family renders "not measured this
+          # run", never a hard error.
+          for log in shacl_results.log shacl_sparql_results.log \
+                     shex_results.log jsonld_results.log rml_results.log \
+                     rif_results.log vc_results.log; do
+            if [ ! -f "formal/fstar/ocaml-output/$log" ]; then
+              echo "::notice::optional input not present (renders as 'not measured this run'): formal/fstar/ocaml-output/$log"
+            fi
+          done
           echo "Inputs present (some files may be missing — generate-report.sh handles partial inputs)."
 
       - name: Regenerate dashboard

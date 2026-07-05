@@ -22,6 +22,19 @@ on:
       - 'formal/fstar/ocaml-output/rdf_results.log'
       - 'formal/fstar/ocaml-output/rdfc10_results.log'
       - 'formal/fstar/ocaml-output/owl_profile_rl_results.log'
+      # 2026-07-05 wave: SHACL / ShEx / JSON-LD / RML / RIF Core / VC.
+      # Same rationale as the four entries above — these suites aren't
+      # (yet) run by this workflow's native-shadow job either (a manual
+      # `./w3c-tests.sh` run + commit populates them, same pattern as
+      # rdfc10/owl_profile_rl today), so a commit that only touches one
+      # of these logs shouldn't burn a ~25-minute heavy-pipeline run.
+      - 'formal/fstar/ocaml-output/shacl_results.log'
+      - 'formal/fstar/ocaml-output/shacl_sparql_results.log'
+      - 'formal/fstar/ocaml-output/shex_results.log'
+      - 'formal/fstar/ocaml-output/jsonld_results.log'
+      - 'formal/fstar/ocaml-output/rml_results.log'
+      - 'formal/fstar/ocaml-output/rif_results.log'
+      - 'formal/fstar/ocaml-output/vc_results.log'
   schedule:
     # Two safety-net runs at 04:00 and 05:00 UTC. Each entry below
     # gates itself on "≥30 minutes of quiet on the head ref"; if

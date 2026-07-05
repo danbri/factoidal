@@ -1,0 +1,244 @@
+  [1/120] credential-context-combo1-ok.json ok
+  [2/120] credential-context-combo2-ok.json ok
+  [3/120] credential-context-combo3-fail.json ok
+  [4/120] credential-context-combo4-fail.json ok
+  [5/120] credential-evidence-missing-type-fail.json FAIL
+  [6/120] credential-evidence-ok.json ok
+  [7/120] credential-evidences-ok.json ok
+  [8/120] credential-id-multi-fail.json FAIL
+  [9/120] credential-id-nonidentifier-fail.json FAIL
+  [10/120] credential-id-not-url-fail.json FAIL
+  [11/120] credential-id-other-ok.json ok
+  [12/120] credential-id-single-ok.json ok
+  [13/120] credential-id-subject-multi-fail.json FAIL
+  [14/120] credential-id-subject-single-ok.json ok
+  [15/120] credential-issuer-no-url-fail.json FAIL
+  [16/120] credential-issuer-null-fail.json FAIL
+  [17/120] credential-issuer-object-id-no-url-fail.json FAIL
+  [18/120] credential-issuer-object-id-null-fail.json FAIL
+  [19/120] credential-issuer-object-ok.json ok
+  [20/120] credential-missing-base-context-fail-or-inject.json skip
+  [21/120] credential-missing-required-type-fail.json ok
+  [22/120] credential-no-context-fail-or-inject.json skip
+  [23/120] credential-no-issuer-fail.json ok
+  [24/120] credential-no-subject-fail.json ok
+  [25/120] credential-no-type-fail.json ok
+  [26/120] credential-ok.json ok
+  [27/120] credential-optional-type-ok.json ok
+  [28/120] credential-proof-missing-type-fail.json FAIL
+  [29/120] credential-proof-ok.json ok
+  [30/120] credential-redef-type-fail.json FAIL
+  [31/120] credential-redef-type2-fail.json FAIL
+  [32/120] credential-refresh-no-type-fail.json FAIL
+  [33/120] credential-refresh-ok.json ok
+  [34/120] credential-refresh-type-ok.json ok
+  [35/120] credential-refreshs-ok.json ok
+  [36/120] credential-schema-no-id-fail.json FAIL
+  [37/120] credential-schema-no-type-fail.json FAIL
+  [38/120] credential-schema-non-url-id-fail.json FAIL
+  [39/120] credential-schema-ok.json ok
+  [40/120] credential-schema-type-ok.json ok
+  [41/120] credential-schemas-ok.json ok
+  [42/120] credential-status-missing-id-ok.json ok
+  [43/120] credential-status-missing-type-fail.json FAIL
+  [44/120] credential-status-multiple-id-fail.json FAIL
+  [45/120] credential-status-nonurl-id-fail.json FAIL
+  [46/120] credential-status-ok.json ok
+  [47/120] credential-status-type-nonurl-fail.json FAIL
+  [48/120] credential-subject-multiple-empty-fail.json ok
+  [49/120] credential-subject-multiple-ok.json ok
+  [50/120] credential-subject-no-claims-fail.json ok
+  [51/120] credential-termsofuse-id-ok.json ok
+  [52/120] credential-termsofuse-missing-type-fail.json FAIL
+  [53/120] credential-termsofuse-no-type-fail.json FAIL
+  [54/120] credential-termsofuse-ok.json ok
+  [55/120] credential-termsofuses-ok.json ok
+  [56/120] credential-type-mapped-nonurl-fail.json FAIL
+  [57/120] credential-type-mapped-url-ok.json ok
+  [58/120] credential-type-unmapped-fail.json FAIL
+  [59/120] credential-type-url-ok.json ok
+  [60/120] credential-type-urls-order-1-ok.json ok
+  [61/120] credential-type-urls-order-2-ok.json ok
+  [62/120] credential-validUntil-validFrom-fail.json FAIL
+  [63/120] credential-validUntil-validFrom-ok.json ok
+  [64/120] credential-validfrom-far-future-ok.json ok
+  [65/120] credential-validfrom-invalid-fail.json FAIL
+  [66/120] credential-validfrom-ms-ok.json ok
+  [67/120] credential-validfrom-tz-ok.json ok
+  [68/120] credential-validuntil-invalid-fail.json FAIL
+  [69/120] credential-validuntil-ms-ok.json ok
+  [70/120] credential-validuntil-ok.json ok
+  [71/120] credential-validuntil-tz-ok.json ok
+  [72/120] credential-description-extra-prop-en-fail.json FAIL
+  [73/120] credential-description-language-direction-en-ok.json ok
+  [74/120] credential-description-language-en-ok.json ok
+  [75/120] credential-description-ok.json ok
+  [76/120] credential-description-optional-ok.json ok
+  [77/120] credential-multi-language-description-ok.json ok
+  [78/120] credential-multi-language-name-ok.json ok
+  [79/120] credential-name-extra-prop-en-fail.json FAIL
+  [80/120] credential-name-language-direction-en-ok.json ok
+  [81/120] credential-name-language-en-ok.json ok
+  [82/120] credential-name-ok.json ok
+  [83/120] credential-name-optional-ok.json ok
+  [84/120] issuer-description-extra-prop-en-fail.json FAIL
+  [85/120] issuer-description-language-direction-en-ok.json ok
+  [86/120] issuer-description-language-en-ok.json ok
+  [87/120] issuer-description-ok.json ok
+  [88/120] issuer-description-optional-ok.json ok
+  [89/120] issuer-multi-language-description-ok.json ok
+  [90/120] issuer-multi-language-name-ok.json ok
+  [91/120] issuer-name-extra-prop-en-fail.json FAIL
+  [92/120] issuer-name-language-direction-en-ok.json ok
+  [93/120] issuer-name-language-en-ok.json ok
+  [94/120] issuer-name-ok.json ok
+  [95/120] issuer-name-optional-ok.json ok
+  [96/120] presentation-context-combo1-ok.json ok
+  [97/120] presentation-context-combo2-ok.json ok
+  [98/120] presentation-context-order-fail.json ok
+  [99/120] presentation-enveloped-vc-missing-type-fail.json ok
+  [100/120] presentation-enveloped-vc-ok.json ok
+  [101/120] presentation-holder-fail.json FAIL
+  [102/120] presentation-holder-name-fail.json FAIL
+  [103/120] presentation-holder-object-fail.json FAIL
+  [104/120] presentation-holder-object-ok.json ok
+  [105/120] presentation-holder-ok.json ok
+  [106/120] presentation-id-ok.json ok
+  [107/120] presentation-missing-base-context-fail.json ok
+  [108/120] presentation-missing-required-type-fail.json ok
+  [109/120] presentation-multiple-vc-ok.json ok
+  [110/120] presentation-no-context-fail-or-inject.json skip
+  [111/120] presentation-no-type-fail.json ok
+  [112/120] presentation-ok.json ok
+  [113/120] presentation-optional-type-ok.json ok
+  [114/120] presentation-self-asserted-vc-holder-mismatch.json skip
+  [115/120] presentation-self-asserted-vc-issuer-mismatch.json skip
+  [116/120] presentation-self-asserted-vc-no-holder.json skip
+  [117/120] presentation-self-asserted-vc-ok.json ok
+  [118/120] presentation-vc-as-string-fail.json ok
+  [119/120] presentation-vc-missing-required-type-fail.json ok
+  [120/120] presentation-vc-ok.json ok
+=== VC Data Model 2.0 Structural Fixture Runner (Stage 1) ===
+Fixture dir: /home/user/factoidal/third_party/testing/vc/tests/input
+
+Totals: 120 fixture files
+
+  PASS: credential-context-combo1-ok.json
+  PASS: credential-context-combo2-ok.json
+  PASS: credential-context-combo3-fail.json
+  PASS: credential-context-combo4-fail.json
+  FAIL: credential-evidence-missing-type-fail.json — expected a structural FAIL, got Pass
+  PASS: credential-evidence-ok.json
+  PASS: credential-evidences-ok.json
+  FAIL: credential-id-multi-fail.json — expected a structural FAIL, got Pass
+  FAIL: credential-id-nonidentifier-fail.json — expected a structural FAIL, got Pass
+  FAIL: credential-id-not-url-fail.json — expected a structural FAIL, got Pass
+  PASS: credential-id-other-ok.json
+  PASS: credential-id-single-ok.json
+  FAIL: credential-id-subject-multi-fail.json — expected a structural FAIL, got Pass
+  PASS: credential-id-subject-single-ok.json
+  FAIL: credential-issuer-no-url-fail.json — expected a structural FAIL, got Pass
+  FAIL: credential-issuer-null-fail.json — expected a structural FAIL, got Pass
+  FAIL: credential-issuer-object-id-no-url-fail.json — expected a structural FAIL, got Pass
+  FAIL: credential-issuer-object-id-null-fail.json — expected a structural FAIL, got Pass
+  PASS: credential-issuer-object-ok.json
+  PASS: credential-missing-required-type-fail.json
+  PASS: credential-no-issuer-fail.json
+  PASS: credential-no-subject-fail.json
+  PASS: credential-no-type-fail.json
+  PASS: credential-ok.json
+  PASS: credential-optional-type-ok.json
+  FAIL: credential-proof-missing-type-fail.json — expected a structural FAIL, got Pass
+  PASS: credential-proof-ok.json
+  FAIL: credential-redef-type-fail.json — expected a structural FAIL, got Pass
+  FAIL: credential-redef-type2-fail.json — expected a structural FAIL, got Pass
+  FAIL: credential-refresh-no-type-fail.json — expected a structural FAIL, got Pass
+  PASS: credential-refresh-ok.json
+  PASS: credential-refresh-type-ok.json
+  PASS: credential-refreshs-ok.json
+  FAIL: credential-schema-no-id-fail.json — expected a structural FAIL, got Pass
+  FAIL: credential-schema-no-type-fail.json — expected a structural FAIL, got Pass
+  FAIL: credential-schema-non-url-id-fail.json — expected a structural FAIL, got Pass
+  PASS: credential-schema-ok.json
+  PASS: credential-schema-type-ok.json
+  PASS: credential-schemas-ok.json
+  PASS: credential-status-missing-id-ok.json
+  FAIL: credential-status-missing-type-fail.json — expected a structural FAIL, got Pass
+  FAIL: credential-status-multiple-id-fail.json — expected a structural FAIL, got Pass
+  FAIL: credential-status-nonurl-id-fail.json — expected a structural FAIL, got Pass
+  PASS: credential-status-ok.json
+  FAIL: credential-status-type-nonurl-fail.json — expected a structural FAIL, got Pass
+  PASS: credential-subject-multiple-empty-fail.json
+  PASS: credential-subject-multiple-ok.json
+  PASS: credential-subject-no-claims-fail.json
+  PASS: credential-termsofuse-id-ok.json
+  FAIL: credential-termsofuse-missing-type-fail.json — expected a structural FAIL, got Pass
+  FAIL: credential-termsofuse-no-type-fail.json — expected a structural FAIL, got Pass
+  PASS: credential-termsofuse-ok.json
+  PASS: credential-termsofuses-ok.json
+  FAIL: credential-type-mapped-nonurl-fail.json — expected a structural FAIL, got Pass
+  PASS: credential-type-mapped-url-ok.json
+  FAIL: credential-type-unmapped-fail.json — expected a structural FAIL, got Pass
+  PASS: credential-type-url-ok.json
+  PASS: credential-type-urls-order-1-ok.json
+  PASS: credential-type-urls-order-2-ok.json
+  FAIL: credential-validUntil-validFrom-fail.json — expected a structural FAIL, got Pass
+  PASS: credential-validUntil-validFrom-ok.json
+  PASS: credential-validfrom-far-future-ok.json
+  FAIL: credential-validfrom-invalid-fail.json — expected a structural FAIL, got Pass
+  PASS: credential-validfrom-ms-ok.json
+  PASS: credential-validfrom-tz-ok.json
+  FAIL: credential-validuntil-invalid-fail.json — expected a structural FAIL, got Pass
+  PASS: credential-validuntil-ms-ok.json
+  PASS: credential-validuntil-ok.json
+  PASS: credential-validuntil-tz-ok.json
+  FAIL: credential-description-extra-prop-en-fail.json — expected a structural FAIL, got Pass
+  PASS: credential-description-language-direction-en-ok.json
+  PASS: credential-description-language-en-ok.json
+  PASS: credential-description-ok.json
+  PASS: credential-description-optional-ok.json
+  PASS: credential-multi-language-description-ok.json
+  PASS: credential-multi-language-name-ok.json
+  FAIL: credential-name-extra-prop-en-fail.json — expected a structural FAIL, got Pass
+  PASS: credential-name-language-direction-en-ok.json
+  PASS: credential-name-language-en-ok.json
+  PASS: credential-name-ok.json
+  PASS: credential-name-optional-ok.json
+  FAIL: issuer-description-extra-prop-en-fail.json — expected a structural FAIL, got Pass
+  PASS: issuer-description-language-direction-en-ok.json
+  PASS: issuer-description-language-en-ok.json
+  PASS: issuer-description-ok.json
+  PASS: issuer-description-optional-ok.json
+  PASS: issuer-multi-language-description-ok.json
+  PASS: issuer-multi-language-name-ok.json
+  FAIL: issuer-name-extra-prop-en-fail.json — expected a structural FAIL, got Pass
+  PASS: issuer-name-language-direction-en-ok.json
+  PASS: issuer-name-language-en-ok.json
+  PASS: issuer-name-ok.json
+  PASS: issuer-name-optional-ok.json
+  PASS: presentation-context-combo1-ok.json
+  PASS: presentation-context-combo2-ok.json
+  PASS: presentation-context-order-fail.json
+  PASS: presentation-enveloped-vc-missing-type-fail.json
+  PASS: presentation-enveloped-vc-ok.json
+  FAIL: presentation-holder-fail.json — expected a structural FAIL, got Pass
+  FAIL: presentation-holder-name-fail.json — expected a structural FAIL, got Pass
+  FAIL: presentation-holder-object-fail.json — expected a structural FAIL, got Pass
+  PASS: presentation-holder-object-ok.json
+  PASS: presentation-holder-ok.json
+  PASS: presentation-id-ok.json
+  PASS: presentation-missing-base-context-fail.json
+  PASS: presentation-missing-required-type-fail.json
+  PASS: presentation-multiple-vc-ok.json
+  PASS: presentation-no-type-fail.json
+  PASS: presentation-ok.json
+  PASS: presentation-optional-type-ok.json
+  PASS: presentation-self-asserted-vc-ok.json
+  PASS: presentation-vc-as-string-fail.json
+  PASS: presentation-vc-missing-required-type-fail.json
+  PASS: presentation-vc-ok.json
+
+========================================
+TOTAL: 80 pass, 34 fail, 6 skip (out of 120)
+========================================
+vc-credential-structural: 80 pass, 34 fail, 6 skip (out of 120)
