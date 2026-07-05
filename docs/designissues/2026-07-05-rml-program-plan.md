@@ -271,7 +271,7 @@ deferred with RML-star.
 
 | Stage | Deliverable | Predicted coverage | Gate |
 |---|---|---|---|
-| 1 | Vendor 5 submodules (retire `third_party/testing/rml`'s deprecated pin) + `RML.Mapping.fst` skeleton (TriplesMap/LogicalSource/TermMap AST, Turtle-graph decoder) | Structural parse of `rml-core`'s 76 mapping documents; no pass/fail signal yet | none |
+| 1 | **DONE.** Vendor 5 submodules (`third_party/testing/rml`'s deprecated pin left untouched, per the executing session's brief, rather than retired) + `RML.Mapping.fst` skeleton (TriplesMap/LogicalSource/TermMap AST, Turtle-graph decoder) | Structural parse of `rml-core`'s 76 mapping documents; no pass/fail signal yet — **measured**: 73/76 decode to >=1 TriplesMap; the remaining 3 (`RMLTC0023b/c/e`, all `metadata.csv error=true` "invalid IRI template" fixtures) contain a Turtle-illegal string escape (`\a`, not in Turtle's ECHAR set) that makes the whole document invalid Turtle — the vendored Turtle parser correctly parses 0 triples for those 3, which is the correct outcome for an `error=true` fixture, not a decoder gap. All 76 accounted for. | none |
 | 2 | `RML.Sources.fst` JSON logical source (JSONPath subset) + `RML.Eval.fst` basic term maps (template/reference/constant, IRI/Literal/BlankNode termType, no joins) | Majority of `rml-core`'s 76 tests (single-triples-map, no-join fixtures) | Stage 1 |
 | 3 | CSV tokenizer + CSV logical source wired into `RML.Sources` | `rml-io`'s CSV-sourced `RMLSTC0*` tests (~10 of 32) + all 20 of `rml-fnml`'s CSV fixtures become reachable once Stage 7 lands | Stage 2 |
 | 4 | XPath subset + XML logical source | `rml-io`'s XML-sourced `RMLSTC0*` tests (~7 of 32) | Stage 2 |
@@ -330,7 +330,15 @@ JSON-LD programs' Stage 1 shape.
    No `kg-construct/rml-lv` test-cases repo was found during this
    research pass — check again before Stage 1 lands; if it exists
    with a nontrivial suite, decide whether it folds into this plan or
-   stays a follow-up.
+   stays a follow-up. **Correction (Stage 1 execution, 2026-07-05):**
+   `kg-construct/rml-lv` (the spec/ontology repo, not a separate
+   `-test-cases` repo — same one-repo-per-module shape as rml-core
+   etc.) does carry its own `test-cases/` directory: 41 `RMLLVTC00*`
+   fixtures (`manifest.ttl` + `metadata.csv`, same shape as the other
+   five modules), scratch-cloned and inventoried but not vendored as
+   part of this Stage 1 commit (out of the five-submodule scope this
+   session's brief set). Revisit folding it in as a sixth submodule in
+   a follow-up stage.
 2. **Whether `RML.Mapping.fst`'s Turtle-graph decoder should share
    code with `ShEx.Schema.fst`'s eventual Turtle-vocabulary reading**
    (ShEx is JSON-first per its own plan, so this may not materialize)
