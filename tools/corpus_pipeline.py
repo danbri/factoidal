@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import random
 import re
 import shlex
 import shutil
@@ -1098,6 +1099,164 @@ def materialize_graph_hdt_corpus(args: argparse.Namespace) -> int:
     return 0
 
 
+def resolve_factoidal_query_bin() -> str:
+    """Locate the main `factoidal` CLI binary (the one with `query`,
+    `--data-cottas`, `--explain`) -- distinct from resolve_factoidal_bin()
+    above, which prefers the `-dump-nq` front end for RDF-to-N-Quads
+    conversion. Sidecar-at-import (build_cottas_sidecars_eager below)
+    specifically needs the query binary, because that is the one whose
+    `--explain` path opens the COTTAS store and pre-warms the on-disk
+    companion indexes."""
+    env_bin = os.environ.get("FACTOIDAL_QUERY_BIN")
+    if env_bin:
+        return env_bin
+    repo_root = Path(__file__).resolve().parent.parent
+    bindir = repo_root / "bin" / detect_platform_tag()
+    candidate = bindir / "factoidal"
+    if candidate.exists():
+        return str(candidate)
+    found = shutil.which("factoidal")
+    if found:
+        return found
+    raise RuntimeError(
+        "factoidal query binary not found; set FACTOIDAL_QUERY_BIN=/path/to/factoidal "
+        "or build bin/<platform>/factoidal."
+    )
+
+
+# Companion sidecar file suffixes written by
+# RDF_CottasStore.Cottas_companion_writer / Cottas_compound_po_writer
+# (formal/fstar/experimental_ocaml_glue/cottas_ondisk_z*.sh), one .dict +
+# .presence pair per column (s, p, o, g), plus the Lamed3 predicate
+# offsets index and the compound (p,o) presence bitmap.
+COTTAS_SIDECAR_SUFFIXES = [
+    ".s.dict", ".s.presence",
+    ".p.dict", ".p.presence",
+    ".o.dict", ".o.presence",
+    ".g.dict", ".g.presence",
+    ".p.offsets",
+    ".po.presence",
+]
+
+
+def build_cottas_sidecars_eager(cottas_path: Path) -> list[str]:
+    """Force-build the .dict/.presence/.offsets/.po.presence companion
+    sidecars next to `cottas_path` at import time, instead of leaving
+    them to be built lazily the first time a server (factoidal-http)
+    opens the store (docs/designissues/2026-07-05-disk-backed-db-perf-
+    review.md §1.2/§3 item 5).
+
+    Rule-#11 / anti-pattern-#4 note: the sidecar *writer* logic lives in
+    OCaml glue patched into RDF_CottasStore.ml (Cottas_companion_writer,
+    Cottas_companion_boot.prewarm_via_companions, Cottas_compound_po_writer
+    -- formal/fstar/experimental_ocaml_glue/cottas_ondisk_z*.sh) and is
+    already wired into two binaries: factoidal-http (server boot,
+    bin/factoidal-http/factoidal_http.ml:prewarm_cottas_columns) and the
+    main `factoidal` CLI's `--explain` mode
+    (bin/factoidal-explain/factoidal_explain.ml:explain_query, which calls
+    `cottas_ondisk_open` then `Cottas_companion_boot.prewarm_via_companions`
+    before printing a plan, specifically so the explain path itself isn't
+    paying a cold-start tax). Rather than reimplementing that walk in
+    Python, this function shells out to
+    `factoidal query --data-cottas <path> --explain '<trivial query>'` --
+    prewarm runs as a side effect of opening the store for the explain
+    path, and the companions are written to *disk* (not just populated as
+    in-memory Hashtbls) because prewarm_via_companions calls
+    build_companion_pair / build_offsets_file / build_compound_po_file
+    whenever the corresponding sidecar file is absent. The explain text
+    output is discarded; only the on-disk side effect (the sidecar files)
+    is wanted. No new OCaml logic is added by this function.
+    """
+    factoidal_bin = resolve_factoidal_query_bin()
+    trivial_query = "SELECT * WHERE { ?s ?p ?o } LIMIT 1"
+    cmd = [
+        factoidal_bin, "query",
+        "--data-cottas", str(cottas_path),
+        "--explain", trivial_query,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=570)
+    if result.returncode != 0:
+        pretty = " ".join(shlex.quote(part) for part in cmd)
+        raise RuntimeError(
+            f"Sidecar-build via --explain failed (rc={result.returncode}): {pretty}\n"
+            f"stderr:\n{result.stderr}"
+        )
+    return [
+        suffix for suffix in COTTAS_SIDECAR_SUFFIXES
+        if Path(str(cottas_path) + suffix).exists()
+    ]
+
+
+def write_cottas_clustered(
+    nq_path: Path,
+    cottas_path: Path,
+    row_group_size: int,
+    index_label: str = "cs",
+) -> None:
+    """Write a COTTAS/Parquet file that preserves the row order of
+    `nq_path` exactly, instead of pycottas.rdf2cottas's behaviour of
+    always re-sorting rows by the `index` permutation's column letters
+    (pycottas 1.1.0 `__init__.py` `rdf2cottas`: `ORDER BY <index chars>`,
+    which cannot preserve a producer-chosen order -- see
+    docs/designissues/2026-07-03-e1-cs-clustering-results.md §1). Used
+    for the characteristic-set-clustered row order (`--row-order cs`):
+    the caller pre-sorts `nq_path` (tools/cs_cluster_nq.py) by
+    `(CS(s), s, p, o, g)` and this function must not re-sort it.
+
+    Mirrors rdf2cottas's schema, DISTINCT-quad dedup semantics, and
+    Parquet write options (ZSTD level 22, PARQUET_VERSION v2,
+    KV_METADATA) with two deltas: (1) a `seq` column carries the
+    pre-sorted row position through a GROUP BY-based dedupe (DISTINCT
+    alone does not guarantee output order matches input order), and
+    (2) ROW_GROUP_SIZE is passed explicitly instead of left at DuckDB's
+    122,880-row default, since the whole point of this ordering is to
+    give the row-group prune cascade (Yod6/Tet3/Lamed3/compound-po)
+    smaller, CS-homogeneous groups to skip.
+    """
+    import duckdb
+    import pyoxigraph
+
+    con = duckdb.connect(":memory:")
+    con.execute("SET preserve_insertion_order = false; SET enable_progress_bar = false;")
+    con.execute(
+        "CREATE TABLE quads (seq BIGINT, s VARCHAR NOT NULL, p VARCHAR NOT NULL, "
+        "o VARCHAR NOT NULL, g VARCHAR)"
+    )
+
+    def flush(rows: list[list[str]], seqs: list[int]) -> None:
+        if not rows:
+            return
+        import pandas as pd
+        df = pd.DataFrame.from_records(rows, columns=["st", "pt", "ot", "gt"])
+        df.insert(0, "seqt", seqs)
+        table = f"tmp_quads_{random.randint(0, 1_000_000)}"
+        con.register(table, df)
+        con.execute(f"INSERT INTO quads (SELECT seqt, st, pt, ot, gt FROM {table})")
+        con.unregister(table)
+
+    rows: list[list[str]] = []
+    seqs: list[int] = []
+    seq = 0
+    for quad in pyoxigraph.parse(str(nq_path), base_iri=None, mime_type="application/n-quads"):
+        rows.append([str(term) for term in quad])
+        seqs.append(seq)
+        seq += 1
+        if len(rows) >= 1_000_000:
+            flush(rows, seqs)
+            rows, seqs = [], []
+    flush(rows, seqs)
+
+    export_query = (
+        "COPY (SELECT s, p, o, g FROM ("
+        "  SELECT s, p, o, g, MIN(seq) AS first_seq FROM quads GROUP BY s, p, o, g"
+        ") ORDER BY first_seq) "
+        f"TO '{cottas_path}' (FORMAT PARQUET, COMPRESSION ZSTD, COMPRESSION_LEVEL 22, "
+        f"PARQUET_VERSION v2, ROW_GROUP_SIZE {int(row_group_size)}, "
+        f"KV_METADATA {{index: '{index_label}'}})"
+    )
+    con.execute(export_query)
+
+
 def materialize_nq_cottas_corpus(args: argparse.Namespace) -> int:
     corpus_root = Path(args.corpus_root)
     toc_dir = corpus_root / "toc"
@@ -1182,6 +1341,22 @@ def materialize_nq_cottas_corpus(args: argparse.Namespace) -> int:
 
     write_factbin(factbin_path, parsed_rows)
 
+    row_order = getattr(args, "row_order", "producer")
+    # Default matches DuckDB's own default (pycottas.rdf2cottas leaves
+    # ROW_GROUP_SIZE unset, so DuckDB picks 122,880) rather than a smaller
+    # value. Measured on the gene corpus (2026-07-05,
+    # docs/designissues/2026-07-05-disk-backed-db-perf-review.md roadmap
+    # item 3): shrinking to 20,000 rows/group (44 groups instead of 8)
+    # made every query ~24x SLOWER (73ms -> 1.88s for the same query),
+    # not faster -- the current on-disk reader pays a per-row-group cost
+    # that scales worse than linearly with row-group count on this
+    # corpus size, which swamps any prune-selectivity gain from more/
+    # smaller groups. Until that reader-side cost is characterised and
+    # fixed, --row-group-size defaults to DuckDB's own default so
+    # clustering is evaluated on row *order* alone, not confounded with
+    # row-group count.
+    row_group_size = getattr(args, "row_group_size", None) or 122880
+
     try:
         import pycottas
     except ImportError as exc:
@@ -1189,9 +1364,48 @@ def materialize_nq_cottas_corpus(args: argparse.Namespace) -> int:
             "pycottas is required for true COTTAS output; install it and rerun"
         ) from exc
 
-    pycottas.rdf2cottas(str(data_nq_path), str(cottas_path), index=args.index, disk=args.disk)
+    if row_order == "cs":
+        # Characteristic-set row clustering (E1,
+        # docs/designissues/2026-07-03-shapes-canon-storage-strategies.md
+        # §5, results in
+        # docs/designissues/2026-07-03-e1-cs-clustering-results.md, wired
+        # into this pipeline per
+        # docs/designissues/2026-07-05-disk-backed-db-perf-review.md
+        # roadmap item 3). pycottas.rdf2cottas cannot preserve a
+        # producer-chosen row order (it always re-sorts by the `index`
+        # permutation's columns), so re-order data.nq via
+        # tools/cs_cluster_nq.py and write the Parquet ourselves with
+        # write_cottas_clustered, which mirrors rdf2cottas's schema/
+        # dedup/compression settings but keeps the clustered row order.
+        clustered_nq_path = chunk_dir / "data.cs-clustered.nq"
+        cluster_stats_path = chunk_dir / "cs-cluster-stats.log"
+        cluster_cmd = [
+            sys.executable,
+            str(Path(__file__).resolve().parent / "cs_cluster_nq.py"),
+            "--stats",
+            str(data_nq_path),
+        ]
+        print(f"Clustering rows by characteristic set of subject: {' '.join(cluster_cmd)}", file=sys.stderr)
+        with clustered_nq_path.open("w", encoding="utf-8") as out:
+            cluster_result = subprocess.run(cluster_cmd, stdout=out, stderr=subprocess.PIPE, text=True, timeout=570)
+        write_text(cluster_stats_path, cluster_result.stderr)
+        if cluster_result.returncode != 0:
+            raise RuntimeError(
+                f"cs_cluster_nq.py failed (rc={cluster_result.returncode}): {cluster_result.stderr}"
+            )
+        print(cluster_result.stderr, file=sys.stderr)
+        write_cottas_clustered(clustered_nq_path, cottas_path, row_group_size, index_label="cs")
+    else:
+        pycottas.rdf2cottas(str(data_nq_path), str(cottas_path), index=args.index, disk=args.disk)
+
     verified = pycottas.verify(str(cottas_path))
     info = pycottas.info(str(cottas_path))
+
+    sidecars_built: list[str] = []
+    if getattr(args, "build_sidecars", False):
+        print(f"Building COTTAS sidecars eagerly at import time for {cottas_path} …", file=sys.stderr)
+        sidecars_built = build_cottas_sidecars_eager(cottas_path)
+        print(f"  sidecars present: {sidecars_built}", file=sys.stderr)
 
     mime_by_format = {
         "nq": "application/n-quads",
@@ -1212,6 +1426,9 @@ def materialize_nq_cottas_corpus(args: argparse.Namespace) -> int:
         "quad_count": quad_count,
         "graph_count": len(graph_values),
         "index": args.index.lower(),
+        "row_order": row_order,
+        "row_group_size": row_group_size if row_order == "cs" else None,
+        "sidecars_built": sidecars_built,
         "verified": verified,
         "cottas_info": info,
         "files": {
@@ -1253,6 +1470,8 @@ def materialize_nq_cottas_corpus(args: argparse.Namespace) -> int:
     print(f"quads={quad_count}")
     print(f"graphs={len(graph_values)}")
     print(f"verified={verified}")
+    print(f"row_order={row_order}")
+    print(f"sidecars_built={sidecars_built}")
     print(f"toc={toc_path}")
     return 0
 
@@ -1321,9 +1540,46 @@ def build_parser() -> argparse.ArgumentParser:
             "python prefers pyoxigraph and falls back to rdflib; auto tries factoidal first."
         ),
     )
-    cottas_parser.add_argument("--index", default="spog", help="COTTAS index permutation, e.g. spo or spog")
+    cottas_parser.add_argument("--index", default="spog", help="COTTAS index permutation, e.g. spo or spog (used when --row-order producer)")
     cottas_parser.add_argument("--disk", action="store_true", help="Use a disk-backed DuckDB database during pycottas conversion")
     cottas_parser.add_argument("--version", default="v1")
+    cottas_parser.add_argument(
+        "--row-order",
+        choices=["producer", "cs"],
+        default="producer",
+        help=(
+            "producer (default): unchanged behaviour, pycottas.rdf2cottas sorts by "
+            "--index's column letters. cs: cluster rows by (characteristic-set-of-"
+            "subject, s, p, o, g) via tools/cs_cluster_nq.py before writing, so the "
+            "row-group prune cascade (Yod6/Tet3/Lamed3/compound-po) gets predicate-"
+            "homogeneous row groups instead of every predicate spread across every "
+            "group (docs/designissues/2026-07-05-disk-backed-db-perf-review.md "
+            "roadmap item 3; experiment writeup in "
+            "docs/designissues/2026-07-03-e1-cs-clustering-results.md)."
+        ),
+    )
+    cottas_parser.add_argument(
+        "--row-group-size",
+        type=int,
+        default=None,
+        help=(
+            "Parquet ROW_GROUP_SIZE (rows/group) when --row-order cs. Defaults to "
+            "DuckDB's own default (122880) if unset -- measured smaller values "
+            "regress query latency on the current reader (see corpus_pipeline.py "
+            "materialize_nq_cottas_corpus comment); only override this if you have "
+            "measured the effect on your corpus."
+        ),
+    )
+    cottas_parser.add_argument(
+        "--build-sidecars",
+        action="store_true",
+        help=(
+            "Eagerly build the .dict/.presence/.p.offsets/.po.presence companion "
+            "sidecars right after writing data.cottas, instead of leaving them to "
+            "be built lazily the first time a server opens the store. Invokes the "
+            "existing factoidal --explain prewarm path (no new OCaml logic)."
+        ),
+    )
     cottas_parser.set_defaults(func=materialize_nq_cottas_corpus)
 
     return parser

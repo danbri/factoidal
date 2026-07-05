@@ -430,6 +430,198 @@ whether a design doc is needed first.
    (Python) glue for E1; sidecar-at-import is glue + existing F\* writers.
    Design doc exists (shapes-canon §5-E1); measure prune kill-rate
    before/after.
+
+   **DONE 2026-07-05 (this session, producer-side, gene corpus).**
+   `tools/corpus_pipeline.py materialize-nq-cottas-corpus` gained
+   `--row-order {producer,cs}` and `--build-sidecars`
+   (`write_cottas_clustered` + `build_cottas_sidecars_eager`, both new
+   functions in that file). Default behaviour (`--row-order producer`,
+   no `--build-sidecars`) is byte-for-byte unchanged, so every existing
+   caller (`tests/local/cottas_corpus_regressions.sh`,
+   `backend_parity_regressions.sh`, `tools/backend_benchmark.py`, …) is
+   untouched.
+
+   **Ordering chosen: `(CS(s), s, p, o, g)` characteristic-set
+   clustering, not plain `(p, s, o, g)`.** CS clustering subsumes most
+   of a POS-style predicate sort's benefit for bound-predicate scans
+   (predicates confined to one shape still land in a small set of row
+   groups) while additionally preserving subject locality, which a
+   pure predicate sort destroys — a subject's own triples would be
+   scattered across up to *n*-predicates-many row groups under POS
+   order, making every subject point-lookup and every star join
+   (`?s p1 ?a . ?s p2 ?b`) a multi-row-group scan. This is exactly the
+   E1 write-up's own conclusion
+   ([`2026-07-03-shapes-canon-storage-strategies.md`](2026-07-03-shapes-canon-storage-strategies.md)
+   §4, item 1) and the 2026-07-03 prototype's own recommendation
+   ([`2026-07-03-e1-cs-clustering-results.md`](2026-07-03-e1-cs-clustering-results.md)
+   §7). Implementation: `cs_cluster_nq.py` (already existed, unchanged)
+   re-sorts the normalised `data.nq` into `data.cs-clustered.nq`; a new
+   `write_cottas_clustered` writes the Parquet directly via DuckDB
+   (mirroring `pycottas.rdf2cottas`'s schema/dedup/compression options)
+   because `pycottas.rdf2cottas` cannot preserve a producer-chosen row
+   order — it always re-`ORDER BY`s by the `index` string's column
+   letters (confirmed in the venv's `pycottas/__init__.py`; this is the
+   same finding the E1 prototype made).
+
+   **Row-group size: kept at DuckDB's own default (122,880 rows/group,
+   8 groups on gene), not reduced.** The task brief asked to "set a
+   row-group size that gives multiple groups" (today's SPOG build
+   already produces 8, i.e. already "multiple"); the natural next step
+   — shrink `ROW_GROUP_SIZE` to raise row-group *count* so CS
+   partitions map onto fewer, more homogeneous groups — was tried
+   (20,000 rows/group → 44 groups) and **measured to regress query
+   latency by roughly 24×** (`?s rdf:type ?o LIMIT 5`: 73–74 ms at 8
+   groups vs. 1,877–1,885 ms at 44 groups, same clustered row content,
+   only `ROW_GROUP_SIZE` changed — isolated by rebuilding the identical
+   clustered `.nq` at both row-group sizes). The same query at 8 groups
+   with CS-clustered content matched the SPOG baseline almost exactly
+   (78 ms). Conclusion: the current on-disk reader pays a per-row-group
+   cost that does not stay flat as row-group count rises on an
+   889K-quad corpus, and that cost dominates any pruning gain from
+   finer-grained groups. This is exactly the kind of "prune cascade
+   needs a small wiring/reader change" this round was scoped to
+   *describe, not fix* (see the four-bullet gap list below) —
+   `--row-group-size` defaults to 122,880 and is documented in
+   `corpus_pipeline.py` as unsafe to lower until that cost is
+   characterised.
+
+   **Sidecars at import: wired, but only half the lazy-boot cost is
+   actually avoided — a pre-existing reader bug limits the other
+   half.** `build_cottas_sidecars_eager` shells out to
+   `factoidal query --data-cottas <path> --explain '<trivial query>'`
+   (no new OCaml/F\*): opening a COTTAS store for `--explain`
+   already calls `Cottas_companion_boot.prewarm_via_companions`
+   (`bin/factoidal-explain/factoidal_explain.ml`), the same call
+   `factoidal-http` makes at server boot
+   (`bin/factoidal-http/factoidal_http.ml:prewarm_cottas_columns`), so
+   this reuses the existing writer rather than reimplementing it.
+   Measured on gene (server boot via `factoidal serve --data-cottas`,
+   HTTP `/query`, `resource.getrusage` + wall-clock): building all
+   sidecars lazily at first server boot costs **~101 s** (57.2 s for
+   the four `Cottas_companion_writer` `.{s,p,o,g}.dict`/`.presence`
+   pairs — the Yod6/Tet3 per-column presence bitmaps — + 1.4 s for the
+   Lamed3 `.p.offsets` file + 40.0 s for the compound-po
+   `.po.presence` bitmap). Eager-at-import only recovers **~41 s of
+   that ~101 s** (the offsets + compound-po pieces), because
+   **`Cottas_companion_boot.companions_present_and_valid`
+   (`formal/fstar/ocaml-output/RDF_CottasStore.ml:3292-3317`, from the
+   `cottas_ondisk_zzzzz_ondisk_index.sh` patch) reports "header verify
+   FAILED" for the four dict/presence companions on every single
+   invocation, even immediately after writing them in the same
+   process** — reproduced with the unmodified producer/SPOG path too
+   (this is not something the clustering/eager-sidecar change
+   introduced), so every server boot rebuilds those four files
+   unconditionally regardless of whether they were built eagerly.
+   `.p.offsets` and `.po.presence` have their own, correctly-working
+   "already present, skip" checks (`ensure_offsets_built`,
+   `existing_file_matches`) and do benefit from eager building. **Not
+   fixed this round** (producer-side-only constraint; the bug is in
+   OCaml boot-wiring / F\* header validators, out of scope for "no new
+   OCaml logic this round") — filing as a followup is the right next
+   step; described here rather than patched.
+
+   **Query measurements (gene corpus, 888,949 quads, 8 row groups both
+   builds, `factoidal serve` + HTTP `/query`, 3 warm runs each,
+   median-equivalent — all three runs agreed to within 2 ms):**
+
+   | query | SPOG (today) | CS-clustered (this change) | delta |
+   |---|---:|---:|---:|
+   | `?s rdf:type ?o LIMIT 5` (the review's own case) | 73–81 ms | 80–82 ms | ~flat |
+   | rare/shape-confined predicate (`wdt:P682`, 4 quads, present in only 2 of 12 characteristic sets) | 94–97 ms | 83–93 ms | ~11% faster |
+   | subject point lookup (`<Q100085837> ?p ?o`, 3 result triples) | 193–199 ms | 159–163 ms | ~17% faster |
+   | `COUNT(*)` (full scan, default graph) | 32 ms | 31–37 ms | ~flat |
+
+   The `?s rdf:type ?o` case — the review's own headline query — shows
+   **no material change**, and this is explained, not just observed:
+   every one of gene's 12 characteristic sets includes `rdf:type` (91,871
+   of 91,871 subjects have a type triple), so CS clustering cannot
+   confine this predicate to a subset of row groups — the mechanism the
+   roadmap description assumed only pays off for shape-*specific*
+   predicates, and `rdf:type` on this corpus is universal, not
+   shape-specific. The rare predicate and the point lookup, which
+   *are* shape/subject-specific, show the expected modest wins. This
+   is a smaller effect than the roadmap language ("kills most row
+   groups") implied, because gene's 8 row groups (vs. parliament's 26)
+   leave little room for CS-confinement to matter, and item 2 above
+   (the row-group-size regression) rules out compensating with more,
+   smaller groups this round.
+
+   **Correctness:** `COUNT(*)` == 888,949 on both builds (exact,
+   confirmed via the HTTP endpoint's SPARQL-JSON response); the point
+   lookup returns byte-identical bindings on both builds; the g21
+   fixture's `GRAPH ?g { ?s ?p ?o } GROUP BY ?g` returns identical
+   per-graph counts (g1=500, g2=300, g3=7) on both a SPOG and a
+   CS-clustered build of the same 818-quad input. New regression:
+   [`tests/local/cottas_row_order_regressions.sh`](../../tests/local/cottas_row_order_regressions.sh)
+   (8 checks, 8 pass, 0 fail) builds a SPOG and a CS-clustered artifact
+   from the same 5-quad fixture
+   (`tests/local/data/cottas_sample.nq`, shared with
+   `cottas_corpus_regressions.sh`) and pins: artifact files exist, all
+   10 sidecar files exist after `--build-sidecars`, named-graph
+   SELECT/default-graph ASK/`COUNT(*)`/`GRAPH ?g GROUP BY` all agree
+   between the two builds, and the raw Parquet row count is 5 on both
+   (clustering is a pure permutation, no rows dropped or duplicated).
+   `cottas_corpus_regressions.sh` (the pre-existing, untouched-path
+   suite) still passes 4/4.
+
+   **Size and cost, honestly reported (gene, 888,949 quads):**
+
+   | metric | SPOG (today) | CS-clustered + eager sidecars | delta |
+   |---|---:|---:|---:|
+   | `data.cottas` size | 1,012,509 B (1.139 B/quad) | 1,037,905 B (1.168 B/quad) | **+2.5% larger**, not smaller |
+   | sidecar files total | 0 B (built lazily elsewhere) | 13,642,038 B (13.6 MB, 10 files) | new cost, shipped with the artifact |
+   | import wall time | 28.96 s | 144.08 s | +115 s (includes the ~101 s eager-sidecar build, run once at import instead of at every cold server boot) |
+   | import peak RSS | 1,789.4 MiB | 1,882.8 MiB | +93.4 MiB |
+
+   The file-size result contradicts the E1 prototype's synthetic-corpus
+   finding (−3.3% vs. SPOG there); on gene it is **+2.5% larger**. This
+   is corpus-dependent, not a measurement error: gene's characteristic-
+   set distribution is dominated by one CS (742,734 of 888,949 quads,
+   83.5%, over 12 total CS's), unlike the E1 prototype's evenly-split
+   4-shape synthetic corpus, and Wikidata's arbitrary `Q`-number
+   subject IRIs give SPOG's plain lexicographic-subject sort no
+   correlation with shape to begin with — so there is little headroom
+   for CS clustering to add compression on top of SPOG here, and
+   assembling the DuckDB row-group dictionaries in CS order instead of
+   subject order cost slightly more than it saved. The E1 doc's own
+   caveat ("corpora whose subject IRIs do not correlate with structure
+   should show a larger clustered-vs-spog gap … parliament sits in
+   between") did not anticipate a *negative* gap; gene demonstrates one
+   is possible, and this should be re-checked against parliament rather
+   than assumed away.
+
+   **Floors (unchanged, confirmed 2026-07-05 after this change, no F\*/
+   OCaml touched — `git status` shows only `tools/corpus_pipeline.py`
+   modified and `tests/local/cottas_row_order_regressions.sh` added):**
+   RDF suite 1,031 pass, 0 fail (of 1,031, via `w3c_runner --rdf`).
+   SPARQL suite 629 pass, 2 fail (of 631, via `w3c_runner`) — the 2
+   fails are the `:rif01`/`:rif03` RIF-entailment-regime manifest
+   entries, which `docs/claude-rules/scope.md` documents as passing
+   only through the dedicated `rif_runner` (4 pass, 0 fail of 4), not
+   the general SPARQL `w3c_runner`; this is pre-existing and unrelated
+   to this change. `tests/unit/run-all.sh` (run from repo root, per its
+   `Sys.getcwd()`-relative fixture paths): 28 file(s) pass, 0 file(s)
+   fail (of 28).
+
+   **What was NOT done this round, on purpose (per the task's
+   producer-side-only, no-new-F\*-logic constraint), and should be the
+   next items:**
+   1. Fix `Cottas_companion_boot.companions_present_and_valid`'s
+      always-fails header check for the four dict/presence
+      companions, so eager-at-import actually saves the full ~101 s
+      instead of ~41 s.
+   2. Characterise and fix the on-disk reader's per-row-group cost
+      that made 44 row groups 24× slower than 8, so `--row-group-size`
+      can be safely lowered to let CS partitions map onto more,
+      smaller, more homogeneous groups — the change that would let a
+      shape-confined predicate actually "kill most row groups" instead
+      of the ~11-17% wins measured here.
+   3. Re-run this whole comparison against the UK Parliament corpus
+      (absent from this sandbox, per §0's caveat) once it is
+      reachable, since gene's 8-row-group / 12-CS / 6-predicate shape
+      is a poor structural match for the "kills most row groups"
+      mechanism the roadmap describes — parliament's 26 row groups and
+      232 predicates is the corpus this technique was designed for.
 4. **Make the in-memory query path bound memory (push aggregation /
    point-lookup through a streaming store scan).** *Win:* measured — a
    1-row answer costs 731 MiB today (§2.c); target O(working-set+result).

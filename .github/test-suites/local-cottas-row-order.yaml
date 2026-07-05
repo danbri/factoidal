@@ -1,0 +1,29 @@
+name: Local — COTTAS row-order clustering + eager sidecar build
+spec: internal
+runner: tests/local/cottas_row_order_regressions.sh
+runner_args: []
+domain: COTTAS
+foundational: false
+
+# Builds a SPOG (producer-order) and a characteristic-set-clustered
+# (--row-order cs --build-sidecars) COTTAS artifact from the same
+# fixture and asserts query answers agree, sidecars exist after eager
+# build, and no rows are dropped/duplicated by the row permutation.
+# See docs/designissues/2026-07-05-disk-backed-db-perf-review.md
+# roadmap item 3. Needs PYCOTTAS_PYTHON (default:
+# _tmp.junk/pycottas-venv/bin/python).
+
+triggers:
+  paths:
+    - formal/fstar/RDF.CottasStore.fst
+    - formal/fstar/RDF.CottasStore.OnDiskRuntime.fst
+    - formal/fstar/RDF.CottasStore.OnDiskIndex.fst
+    - formal/fstar/Parquet.Footer.fst
+    - formal/fstar/Parser.BallyhooCOTTAS.fst
+    - tools/corpus_pipeline.py
+    - tools/cs_cluster_nq.py
+    - bin/factoidal-cli/**
+    - bin/factoidal-explain/**
+    - tests/local/cottas_row_order_regressions.sh
+
+  excludes: []
