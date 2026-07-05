@@ -376,6 +376,17 @@ let values_ok (values : list shex_value_set_value) (t : rdf_term) : bool =
 // constrained"), matching ShExJ's "all present members constrain" reading.
 // ================================================================
 
+// This function's query is right at the default rlimit boundary (F* itself
+// reports "verification condition succeeded after splitting it to localize
+// potential errors" even before the bump below) — adding `XSD.Datatypes.
+// strip_leading_plus`/`int_lexical_in_range`'s `+`-stripping fix (2026-07-05,
+// the `nonPositiveInteger-p1_fail`/`negativeInteger-p0_fail` gap-closure)
+// changed that dependency's digest enough to flip this already-marginal
+// query from "succeeds after splitting" to "fails outright" at the default
+// rlimit. `--z3rlimit_factor 4` (measured: this exact factor recovers a
+// clean pass) restores headroom without loosening what is actually proved.
+#push-options "--z3rlimit_factor 4"
+
 let node_constraint_matches (nc : shex_node_constraint) (t : rdf_term) : bool =
   let nk_ok = match nc.nc_node_kind with None -> true | Some nk -> shex_node_kind_ok nk t in
   let dt_ok = match nc.nc_datatype with None -> true | Some dt -> shex_datatype_ok dt t in
@@ -449,110 +460,288 @@ let node_constraint_matches (nc : shex_node_constraint) (t : rdf_term) : bool =
   nk_ok && dt_ok && vs_ok && length_ok && minlength_ok && maxlength_ok && pattern_ok &&
   mininclusive_ok && maxinclusive_ok && minexclusive_ok && maxexclusive_ok &&
   totaldigits_ok && fractiondigits_ok
+#pop-options
 
 // ================================================================
-// Stage 3: triple-expression matching — arc signatures + the
-// disjoint-predicate fast path. All structural (no `fuel`; a decoded
-// `shex_triple_expr` is a genuine finite tree, unlike the JSON decoders that
-// needed fuel because `json_val` recursion isn't visibly structural to F*).
+// Stage 4/5/6 (this revision, 2026-07-05 program-plan follow-up):
+// general nondeterministic partition-matching search, replacing Stage 3's
+// disjoint-predicate-only fast path; SE_Ref recursion (visited-stack,
+// coinductive assume-satisfied-on-reentry); tripleExprRef ("Include")
+// resolution via a schema-wide id table; EXTENDS (shape inheritance)
+// merge; SemAct dispatch for the shex.io/extensions/Test/ extension.
+//
+// TERMINATION ARGUMENT (module banner requirement): every function below
+// that is mutually recursive with `matches_shape_expr` shares ONE
+// `fuel:nat` decreasing metric (the same idiom Stage 2/3 already used for
+// shapeExprRef/valueExpr mutual recursion) — EVERY recursive call in the
+// group passes `fuel - 1` or less, so F*'s termination checker accepts
+// the whole group uniformly. Two recursions are ALSO structurally
+// decreasing on their own (the pool list in `tc_choose_acc`, the
+// candidate list in `classify_candidates`) but this module does not rely
+// on that for termination — `decreases fuel` alone is the proof
+// obligation actually discharged, so the fuel budget `validate_focus`
+// seeds must be large enough to cover the DEPTH of any single recursive
+// chain: schema shape-decl hops (SE_Ref/tripleExprRef chases) PLUS the
+// length of the candidate pool a `TripleConstraint`'s subset-enumeration
+// walks PLUS EXTENDS-chain depth. Note carefully: the pool-subset search
+// is combinatorially BROAD (up to 2^n branches for n ambiguous
+// same-predicate candidates — the plan's documented "acceptable now
+// because test fixtures are small" tradeoff) but NOT deep — each
+// individual branch's fuel-decrease is bounded by the pool length, not by
+// 2^n, because every branch gets its OWN `fuel - 1` copy rather than
+// sharing one counter across siblings. `validate_focus` sizes fuel off
+// the graph's triple count and schema's shape count with a generous
+// multiplicative margin (not a bare unexplained constant) — see its own
+// comment.
+//
+// RECURSION SEMANTICS: `SE_Ref` carries a `visited : list (string &
+// rdf_term)` stack of (shape-label, focus-term) pairs currently being
+// checked. Re-entering the SAME pair (`visited_mem`) short-circuits to
+// `Some true` — the coinductive "assume satisfied while checking whether
+// it's satisfied" reading of shex.io/shex-semantics SS5.7 ("Validation of
+// recursive schemas"), sound for POSITIVE recursion (no negation on the
+// cycle). This module does NOT implement the spec's full
+// stratification/SCC-rejection algorithm for NEGATED cycles (the
+// `negativeStructure` corpus testing that rejection, e.g.
+// `Cycle1Negation1`, ships ONLY as ShExC fixtures with no ShExJ twin —
+// unreachable via this program's ShExJ-only scope per the plan doc's
+// scope cut 1 — so there is no reachable test this gap could silently
+// mis-score). Every ShapeReference/RecursiveData-tagged fixture in the
+// reachable ShExJ corpus is non-negated (a plain reference cycle, e.g.
+// `1bnodeRefORRefMinlength.json`'s `S1 -> S1` self-reference via
+// ShapeOr/ShapeAnd), so assume-true-on-reentry gives the correct verdict
+// for all of them: termination is guaranteed by the visited-stack (a
+// repeat pair short-circuits before any further fuel is spent), NOT by
+// fuel alone for genuinely-cyclic schemas — fuel remains the backstop for
+// non-repeating unbounded chains (e.g. an infinite list-shaped graying
+// walk that never actually cycles, which the fuel bound simply reports as
+// `None`/deferred rather than looping forever).
+//
+// EXTENDS (shape inheritance, ShEx 2.1 draft SS)): a `Shape` whose
+// `sh_extends` is non-empty has its OWN triple expression (if any) and
+// EVERY extended shape's triple expression(s) — resolved recursively
+// through `ShapeAnd`/`shapeExprRef` chains via `flatten_se_for_extends`,
+// bottoming out at `Shape`/`NodeConstraint`/opaque-shapeExpr leaves —
+// merged into ONE combined list and fed through the SAME partition search
+// as a plain multi-child `EachOf` (this is what makes counts split
+// correctly between an ancestor's inherited share and the derived
+// shape's own share — see `ExtendsRepeatedP-pass`'s worked example in the
+// design notes: A requires exactly 2 `:p` triples, C's own expression
+// requires exactly 1 more, and the search finds the partition that
+// gives A its 2 and leaves C 1, out of 3 total). `extra`/`closed` are
+// combined by concatenation/OR across the whole chain. Non-`Shape`/
+// non-`ShapeAnd` components encountered while flattening (bare
+// `NodeConstraint`s, `ShapeOr`, `ShapeNot`) do not contribute triple
+// expressions — they become opaque "node checks" verified independently
+// against the focus term itself (`ef_checks`, folded in via the existing
+// `matches_all` AND-combinator), which is how `AND3G`'s per-ancestor
+// regex-pattern `NodeConstraint`s (checked on the focus IRI itself, not
+// on any triple) get enforced without being mistaken for triple-claiming
+// constraints.
+//
+// SEMANTIC ACTIONS: this module recognizes exactly one extension IRI,
+// `http://shex.io/extensions/Test/` (the shexTest suite's own
+// logic-conformance probe — NOT arbitrary code execution). Per the
+// plan's scope note, only `print(...)` / `fail(...)` dispatch matters for
+// Logic-conformant pass/fail: `print(...)` is a pure no-op (this module
+// never needs to actually emit the printed text — Result-conformant
+// output matching is out of scope), `fail(...)` unconditionally turns
+// whatever construct it's attached to (a `TripleConstraint`, a `Group`,
+// a `Shape`, or the schema's own `startActs`) into a failure, REGARDLESS
+// of what the underlying structural check would have found. An unknown
+// extension IRI is inert (neither print nor fail semantics apply) —
+// exactly the "no assume-val" pure-F* extension seam the plan calls for,
+// since dispatch is a total function over a closed set of known
+// extension IRIs.
 // ================================================================
 
-// The set of (inverse, predicate) pairs a triple expression can consume —
-// direction-aware per the plan's design sketch, since an `inverse`
-// TripleConstraint on predicate `p` draws from a disjoint pool of triples
-// (arcsIn) from a non-inverse TripleConstraint on the same `p` (arcsOut), so
-// they are never in conflict even though they share a predicate string.
-// `None` = "cannot compute a safe signature": a tripleExprRef (unresolved —
-// no schema-wide tripleExpr-by-id table exists yet, unlike shapeExprRef's
-// `sch_shapes`) or a `OneOf` (ambiguity resolution is Stage 4's backtracking
-// slow path, never approximated here).
-let rec te_signature (te : shex_triple_expr) : Tot (option (list (bool & string))) (decreases te) =
-  match te with
-  | TE_Ref _ -> None
-  | TE_OneOf _ -> None
-  | TE_TripleConstraint tc -> Some [(tc.tc_inverse, tc.tc_predicate)]
-  | TE_EachOf grp ->
-    // A cardinality-wrapped EachOf (`gr_min`/`gr_max` present — the
-    // "RepeatedGroup"/"Greedy" corpus trait) needs the Stage 4 repetition
-    // search even when its children are individually disjoint, because a
-    // single T splits into k copies of the whole group rather than one
-    // partition — signature disjointness alone does not decide it.
-    if Some? grp.gr_min || Some? grp.gr_max then None
-    else te_signature_list grp.gr_expressions
-and te_signature_list (tes : list shex_triple_expr) : Tot (option (list (bool & string))) (decreases tes) =
-  match tes with
-  | [] -> Some []
-  | hd :: tl ->
-    (match te_signature hd, te_signature_list tl with
-     | Some s1, Some s2 -> Some (List.Tot.append s1 s2)
-     | _, _ -> None)
+let shex_test_extension_iri : string = "http://shex.io/extensions/Test/"
 
-let sig_mem (x : bool & string) (l : list (bool & string)) : bool =
-  List.Tot.existsb (fun y -> fst x = fst y && snd x = snd y) l
-
-let rec sig_disjoint (a b : list (bool & string)) : Tot bool (decreases a) =
-  match a with
+let rec shex_list_has_prefix (l pfx : list FStar.Char.char) : Tot bool (decreases pfx) =
+  match pfx with
   | [] -> true
-  | hd :: tl -> not (sig_mem hd b) && sig_disjoint tl b
+  | pc :: ptl ->
+    (match l with
+     | [] -> false
+     | lc :: ltl -> pc = lc && shex_list_has_prefix ltl ptl)
 
-// Whole-tree fast-path validity: every node is signature-computable (no
-// OneOf/Ref/cardinality-wrapped-group anywhere) AND every EachOf's children
-// are pairwise disjoint — checked at every nesting level, so two
-// TripleConstraints sharing a predicate are caught at their nearest common
-// EachOf ancestor no matter how deep either is nested (the union computed by
-// `te_signature` on each side carries the shared predicate up to that
-// ancestor's disjointness check).
-let rec te_fastpath_ok (te : shex_triple_expr) : Tot bool (decreases te) =
+let rec shex_list_contains_sub (l sub : list FStar.Char.char) : Tot bool (decreases l) =
+  if shex_list_has_prefix l sub then true
+  else match l with
+       | [] -> false
+       | _ :: tl -> shex_list_contains_sub tl sub
+
+let shex_string_contains (s sub : string) : bool =
+  shex_list_contains_sub (String.list_of_string s) (String.list_of_string sub)
+
+let semact_says_fail (sa : shex_sem_act) : bool =
+  sa.sa_name = shex_test_extension_iri &&
+  (match sa.sa_code with
+   | Some code -> shex_string_contains code "fail("
+   | None -> false)
+
+let rec any_semact_fails (l : list shex_sem_act) : Tot bool (decreases l) =
+  match l with
+  | [] -> false
+  | hd :: tl -> semact_says_fail hd || any_semact_fails tl
+
+// ================================================================
+// Recursion: (shape-label, focus-term) visited stack.
+// ================================================================
+
+type shex_visited = list (string & rdf_term)
+
+let visited_mem (label : string) (t : rdf_term) (v : shex_visited) : bool =
+  List.Tot.existsb (fun (entry : (string & rdf_term)) -> fst entry = label && rdf_term_eq (snd entry) t) v
+
+let rec lookup_shape_decl (decls : list shex_shape_decl) (label : string)
+  : Tot (option shex_shape_decl) (decreases decls) =
+  match decls with
+  | [] -> None
+  | hd :: tl -> if hd.sd_id = label then Some hd else lookup_shape_decl tl label
+
+// ================================================================
+// tripleExprRef ("Include") resolution: a schema-wide (id -> tripleExpr)
+// table, built once per `validate_focus` call by walking every shapeExpr
+// reachable from `sch_shapes` (a tripleExpr's "id" can be declared on a
+// TripleConstraint or a Group anywhere in the tree, including inside
+// another shape's own `expression` — `2EachInclude1.json`'s `S2e` id
+// lives on a TripleConstraint inside `S2`'s expression, referenced via a
+// bare-string TE_Ref from INSIDE `S1`'s EachOf). Purely structural
+// recursion over the AST (no external json_val fuel issue here — this is
+// already-decoded F* data), so no `fuel` parameter needed; kept as its
+// own small mutual-recursion group, separate from the big fuel-threaded
+// group below (it never calls into it).
+// ================================================================
+
+let rec se_collect_ids (se : shex_shape_expr) : Tot (list (string & shex_triple_expr)) (decreases se) =
+  match se with
+  | SE_Ref _ -> []
+  | SE_ShapeAnd ses -> se_collect_ids_list ses
+  | SE_ShapeOr ses -> se_collect_ids_list ses
+  | SE_ShapeNot se' -> se_collect_ids se'
+  | SE_NodeConstraint _ -> []
+  | SE_ShapeExternal -> []
+  | SE_Shape sh ->
+    (match sh.sh_expression with
+     | None -> []
+     | Some te -> te_collect_ids te)
+and se_collect_ids_list (ses : list shex_shape_expr) : Tot (list (string & shex_triple_expr)) (decreases ses) =
+  match ses with
+  | [] -> []
+  | hd :: tl -> se_collect_ids hd @ se_collect_ids_list tl
+and te_collect_ids (te : shex_triple_expr) : Tot (list (string & shex_triple_expr)) (decreases te) =
   match te with
-  | TE_TripleConstraint _ -> true
-  | TE_Ref _ -> false
-  | TE_OneOf _ -> false
+  | TE_Ref _ -> []
+  | TE_TripleConstraint tc ->
+    let self = match tc.tc_id with Some id -> [(id, te)] | None -> [] in
+    let inner = match tc.tc_value_expr with Some se -> se_collect_ids se | None -> [] in
+    self @ inner
   | TE_EachOf grp ->
-    if Some? grp.gr_min || Some? grp.gr_max then false
-    else te_fastpath_ok_list grp.gr_expressions
-and te_fastpath_ok_list (tes : list shex_triple_expr) : Tot bool (decreases tes) =
+    let self = match grp.gr_id with Some id -> [(id, te)] | None -> [] in
+    self @ te_collect_ids_list grp.gr_expressions
+  | TE_OneOf grp ->
+    let self = match grp.gr_id with Some id -> [(id, te)] | None -> [] in
+    self @ te_collect_ids_list grp.gr_expressions
+and te_collect_ids_list (tes : list shex_triple_expr) : Tot (list (string & shex_triple_expr)) (decreases tes) =
   match tes with
-  | [] -> true
-  | hd :: tl ->
-    te_fastpath_ok hd && te_fastpath_ok_list tl &&
-    (match te_signature hd, te_signature_list tl with
-     | Some s1, Some s2 -> sig_disjoint s1 s2
-     | _, _ -> false)
+  | [] -> []
+  | hd :: tl -> te_collect_ids hd @ te_collect_ids_list tl
 
-// Predicates a triple expression definitely claims (non-inverse only — an
-// `inverse` TripleConstraint's triples have the FOCUS node as OBJECT, not
-// subject, so they never appear in `arcsOut(focus)` and are irrelevant to
-// the `closed`/`extra` check below, which is defined over arcsOut only).
-// `None` propagates conservatively through TE_Ref/TE_OneOf: since we cannot
-// know what predicates an unresolved/ambiguous subtree would ultimately
-// claim, a `closed` check must not risk a false "unclaimed" verdict against
-// it — see `matches_shape`, which defers (`None`) rather than guessing
-// `Some false` whenever `claimed_opt` is `None`.
-let rec te_claimed_predicates (te : shex_triple_expr) : Tot (option (list string)) (decreases te) =
-  match te with
-  | TE_TripleConstraint tc -> Some (if tc.tc_inverse then [] else [tc.tc_predicate])
-  | TE_EachOf grp -> te_claimed_predicates_list grp.gr_expressions
-  | TE_OneOf _ -> None
-  | TE_Ref _ -> None
-and te_claimed_predicates_list (tes : list shex_triple_expr) : Tot (option (list string)) (decreases tes) =
-  match tes with
-  | [] -> Some []
-  | hd :: tl ->
-    (match te_claimed_predicates hd, te_claimed_predicates_list tl with
-     | Some a, Some b -> Some (List.Tot.append a b)
-     | _, _ -> None)
+let rec shape_decl_list_collect_ids (decls : list shex_shape_decl)
+  : Tot (list (string & shex_triple_expr)) (decreases decls) =
+  match decls with
+  | [] -> []
+  | hd :: tl -> se_collect_ids hd.sd_expr @ shape_decl_list_collect_ids tl
+
+let rec lookup_te_id (tab : list (string & shex_triple_expr)) (id : string)
+  : Tot (option shex_triple_expr) (decreases tab) =
+  match tab with
+  | [] -> None
+  | (k, v) :: tl -> if k = id then Some v else lookup_te_id tl id
+
+// ================================================================
+// EXTENDS flattening: resolves a shapeExpr (an `sh_extends` target, or a
+// nested ShapeAnd conjunct) down to its contributed triple-expressions,
+// extra/closed flags, and opaque node-level checks. Independent of the
+// big fuel-threaded matching group below (never calls `matches_shape_expr`
+// — it only inspects AST shape, never evaluates against a focus term), so
+// kept as its own small fuel-bounded mutual group (fuel bounds the
+// extends-chain / ShapeAnd-nesting depth it walks).
+// ================================================================
+
+noeq type extends_flat = {
+  ef_tes    : list shex_triple_expr;
+  ef_extra  : list string;
+  ef_closed : bool;
+  ef_checks : list shex_shape_expr;
+}
+
+let ef_empty : extends_flat = { ef_tes = []; ef_extra = []; ef_closed = false; ef_checks = [] }
+
+let ef_combine (a b : extends_flat) : extends_flat =
+  { ef_tes    = a.ef_tes @ b.ef_tes;
+    ef_extra  = a.ef_extra @ b.ef_extra;
+    ef_closed = a.ef_closed || b.ef_closed;
+    ef_checks = a.ef_checks @ b.ef_checks }
+
+let rec flatten_se_for_extends (decls : list shex_shape_decl) (se : shex_shape_expr) (fuel : nat)
+  : Tot (option extends_flat) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let fuel' = fuel - 1 in
+    match se with
+    | SE_Shape sh ->
+      let own_tes = match sh.sh_expression with Some te -> [te] | None -> [] in
+      if Nil? sh.sh_extends then
+        Some ({ ef_tes = own_tes; ef_extra = sh.sh_extra; ef_closed = sh.sh_closed; ef_checks = [] })
+      else
+        (match resolve_extends decls sh.sh_extends fuel' with
+         | None -> None
+         | Some parent ->
+           Some (ef_combine ({ ef_tes = own_tes; ef_extra = sh.sh_extra; ef_closed = sh.sh_closed; ef_checks = [] }) parent))
+    | SE_ShapeAnd ses -> flatten_se_list_for_extends decls ses fuel'
+    | SE_Ref label ->
+      (match lookup_shape_decl decls label with
+       | Some sd -> flatten_se_for_extends decls sd.sd_expr fuel'
+       | None -> None)
+    | SE_NodeConstraint _ -> Some ({ ef_empty with ef_checks = [se] })
+    | SE_ShapeOr _ -> Some ({ ef_empty with ef_checks = [se] })
+    | SE_ShapeNot _ -> Some ({ ef_empty with ef_checks = [se] })
+    | SE_ShapeExternal -> Some ({ ef_empty with ef_checks = [se] })
+and flatten_se_list_for_extends (decls : list shex_shape_decl) (ses : list shex_shape_expr) (fuel : nat)
+  : Tot (option extends_flat) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let fuel' = fuel - 1 in
+    match ses with
+    | [] -> Some ef_empty
+    | hd :: tl ->
+      (match flatten_se_for_extends decls hd fuel', flatten_se_list_for_extends decls tl fuel' with
+       | Some a, Some b -> Some (ef_combine a b)
+       | _, _ -> None)
+and resolve_extends (decls : list shex_shape_decl) (labels : list string) (fuel : nat)
+  : Tot (option extends_flat) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let fuel' = fuel - 1 in
+    match labels with
+    | [] -> Some ef_empty
+    | hd :: tl ->
+      (match lookup_shape_decl decls hd with
+       | None -> None
+       | Some sd ->
+         (match flatten_se_for_extends decls sd.sd_expr fuel', resolve_extends decls tl fuel' with
+          | Some a, Some b -> Some (ef_combine a b)
+          | _, _ -> None))
 
 // Gathers the "other endpoint" terms of the focus node's arcs relevant to
 // one TripleConstraint — arcsOut (focus is subject) for a non-inverse
-// constraint, arcsIn (focus is object) for an inverse one. Not part of the
-// fuel-threaded mutual group: `find_objects`/`find_subjects` are already
-// `Tot` (RDF.Graph.Executable), so this is a plain helper. `tc_predicate`
-// arrives as an unrefined `string` from the decoder (untrusted JSON input,
-// same situation `shex_datatype_ok` documents) — the `is_iri` guard promotes
-// it to `wf_iri` inside the branch where the refinement is known to hold; a
-// malformed non-IRI predicate string simply yields zero candidates, which
-// can only make the shape LESS likely to match (fails closed), never
-// silently accept something the spec requires rejecting.
+// constraint, arcsIn (focus is object) for an inverse one. `tc_predicate`
+// arrives as an unrefined `string` from the decoder (untrusted JSON
+// input) — the `is_iri` guard promotes it to `wf_iri` inside the branch
+// where the refinement is known to hold; a malformed non-IRI predicate
+// string simply yields zero candidates (fails closed).
 let shex_gather_candidates (g : rdf_graph) (focus : rdf_term) (inverse : bool) (pred : string)
   : list rdf_term =
   if not (is_iri pred) then []
@@ -569,50 +758,185 @@ let triples_with_subject (g : rdf_graph) (s : subject) : list triple =
   List.Tot.filter (fun (tr : triple) -> subject_eq tr.s s) g
 
 // ================================================================
-// Schema-aware boolean-combinator layer: ShapeAnd/ShapeOr/ShapeNot/
-// shapeExprRef/Shape over shapeExprs, now graph-aware (Stage 3's `Shape`
-// case needs the data graph to look up the focus node's arcs; Stage 2's
-// combinators didn't need one and are otherwise unchanged, just threading
-// `g` through). `ShapeExternal` and an unresolvable shapeExprRef still
-// return `None`.
+// Pool plumbing: a "candidate pool" is the list of (inverse, predicate,
+// other-endpoint-term) triples relevant to a triple-expression subtree —
+// gathered ONCE (per mentioned (inverse,predicate) pair, deduplicated) at
+// the point a Shape's expression is evaluated, then threaded through the
+// nondeterministic search below. Plain structural recursion, no `fuel`.
 // ================================================================
 
-let rec lookup_shape_decl (decls : list shex_shape_decl) (label : string)
-  : Tot (option shex_shape_decl) (decreases decls) =
-  match decls with
-  | [] -> None
-  | hd :: tl -> if hd.sd_id = label then Some hd else lookup_shape_decl tl label
+type pool_elem = bool & string & rdf_term
+type pool_t = list pool_elem
 
-// `option bool`: None = outside this stage's reach or fuel exhausted;
-// Some b = a definite verdict. ShapeAnd/ShapeOr/EachOf are all
-// short-circuit-aware — see the file banner comment for why a concrete
-// false/true outranks a sibling `None` instead of the whole
-// conjunction/disjunction collapsing to None. This whole group shares one
-// fuel-decreasing metric because `matches_shape_expr` (SE_Ref/SE_Shape) and
-// `matches_triple_expr_value` (TripleConstraint valueExpr) call each other —
-// genuine mutual recursion that isn't visibly structural (a shapeExprRef or
-// a NodeConstraint's own recursion depth isn't bounded by any single AST's
-// size), same fuel idiom Stage 2 already used.
-let rec matches_shape_expr (decls : list shex_shape_decl) (se : shex_shape_expr) (t : rdf_term) (g : rdf_graph) (fuel : nat)
+let pair_mem (x : bool & string) (l : list (bool & string)) : bool =
+  List.Tot.existsb (fun (y : bool & string) -> fst x = fst y && snd x = snd y) l
+
+let rec dedup_pairs (l : list (bool & string)) : Tot (list (bool & string)) (decreases l) =
+  match l with
+  | [] -> []
+  | hd :: tl -> if pair_mem hd tl then dedup_pairs tl else hd :: dedup_pairs tl
+
+let rec gather_pool (g : rdf_graph) (focus : rdf_term) (pairs : list (bool & string))
+  : Tot pool_t (decreases pairs) =
+  match pairs with
+  | [] -> []
+  | (inv, pred) :: tl ->
+    let cands = shex_gather_candidates g focus inv pred in
+    List.Tot.map (fun (tm : rdf_term) -> (inv, pred, tm)) cands @ gather_pool g focus tl
+
+// ================================================================
+// OneOf branch-result combination: given each branch's own
+// `option (list pool_t)` outcome (None = deferred, Some [] = definitely
+// no valid completion, Some (_::_) = at least one valid completion), the
+// combined verdict for the WHOLE OneOf follows the same "a definite
+// success wins over an unresolved sibling" short-circuit discipline the
+// rest of this module uses (matches_any's `Some true, _ -> Some true`):
+// any branch with a nonempty `Some` makes the combination a definite
+// (unioned) success; failing that, any `None` makes the combination
+// unresolved; only when EVERY branch is conclusively `Some []` is the
+// combination a definite empty result.
+// ================================================================
+
+let rec has_any_none (l : list (option (list pool_t))) : Tot bool (decreases l) =
+  match l with
+  | [] -> false
+  | None :: _ -> true
+  | Some _ :: tl -> has_any_none tl
+
+let rec has_any_nonempty_some (l : list (option (list pool_t))) : Tot bool (decreases l) =
+  match l with
+  | [] -> false
+  | Some (_ :: _) :: _ -> true
+  | _ :: tl -> has_any_nonempty_some tl
+
+let rec collect_nonempty_some (l : list (option (list pool_t))) : Tot (list pool_t) (decreases l) =
+  match l with
+  | [] -> []
+  | Some xs :: tl -> xs @ collect_nonempty_some tl
+  | None :: tl -> collect_nonempty_some tl
+
+let combine_oneof (l : list (option (list pool_t))) : option (list pool_t) =
+  if has_any_nonempty_some l then Some (collect_nonempty_some l)
+  else if has_any_none l then None
+  else Some []
+
+// ================================================================
+// Ambiguous-pair detection: a (inverse,predicate) pair is "ambiguous"
+// when MORE THAN ONE leaf `TripleConstraint` in the combined
+// triple-expression list claims it (e.g. `Pstar.json`'s `S1`: two
+// TripleConstraints both on predicate `:a`, one requiring `P`-typed
+// values and one requiring `T`-typed values — `pt1`/`pt2` satisfy
+// BOTH). `eval_expr_list_over_pool` computes this ONCE (from the very
+// same undeduped `te_mentioned_pairs_list` multiset it already needs for
+// `gather_pool`) and threads it down so `tc_choose_acc` knows, per
+// candidate, whether "leave this GOOD candidate unclaimed" is a
+// meaningful choice (some OTHER sibling on the SAME pair might claim it
+// instead) or a spurious escape hatch. This is what keeps
+// `1val2IRIREFExtra1_fail-iri2` correctly rejecting: `S1`'s SOLE
+// claimant of `p1` has no sibling to hand an excess good candidate to,
+// so leaving one unclaimed is never offered — the full good-count is
+// forced through `[min,max]`, and `extra` never gets a chance to
+// launder an over-count of GOOD matches (it only ever tolerates BAD
+// leftovers, via the "not is_good" branch, which is unconditional
+// regardless of ambiguity).
+// ================================================================
+
+let rec pair_count (x : bool & string) (l : list (bool & string)) : Tot nat (decreases l) =
+  match l with
+  | [] -> 0
+  | hd :: tl -> (if fst x = fst hd && snd x = snd hd then 1 else 0) + pair_count x tl
+
+let rec ambiguous_pairs_of (l : list (bool & string)) : Tot (list (bool & string)) (decreases l) =
+  match l with
+  | [] -> []
+  | hd :: tl -> if pair_count hd tl > 0 then hd :: ambiguous_pairs_of tl else ambiguous_pairs_of tl
+
+// ================================================================
+// Repeated-group (RepeatedOneOf/RepeatedGroup/"Greedy" trait) support:
+// this corpus's cardinality-wrapped `EachOf`/`OneOf` groups all wrap a
+// flat list of plain `TripleConstraint` children on pairwise-distinct
+// (inverse,predicate) pairs (verified against every reachable fixture —
+// `open3Onedotclosecard2`, `open3Onedotclosecard23`,
+// `open4Onedotclosecard23`, `open2Eachdotclosecard25c1dot`,
+// `open3Eachdotclosecard23`(+`Annot3Code2`)) — never a same-predicate
+// ambiguous repeat. So instead of the general round-based
+// unroll-and-search (which the plan's design sketch describes for the
+// fully general case), this module uses the cheaper counting shortcut:
+// gather each child's own (good, bad) split directly (no cross-child
+// ambiguity is possible once the pairs are distinct), then for an
+// `EachOf`-repeat require every child's good-count to be the SAME `k`
+// (one child-tuple per repetition) with `k` in `[gmin,gmax]`; for a
+// `OneOf`-repeat require the SUM of all children's good-counts to be in
+// `[gmin,gmax]` (each repetition independently picks any one
+// alternative). A repeated group whose children are anything other than
+// plain, pairwise-distinct `TripleConstraint`s (not present in the
+// reachable corpus) honestly defers (`None`) rather than guessing.
+// ================================================================
+
+let rec tc_pairs_of (tes : list shex_triple_expr) : Tot (list (bool & string)) (decreases tes) =
+  match tes with
+  | [] -> []
+  | TE_TripleConstraint tc :: tl -> (tc.tc_inverse, tc.tc_predicate) :: tc_pairs_of tl
+  | _ :: tl -> tc_pairs_of tl
+
+let rec all_tc (tes : list shex_triple_expr) : Tot bool (decreases tes) =
+  match tes with
+  | [] -> true
+  | TE_TripleConstraint _ :: tl -> all_tc tl
+  | _ -> false
+
+let rec pairs_distinct (l : list (bool & string)) : Tot bool (decreases l) =
+  match l with
+  | [] -> true
+  | hd :: tl -> not (pair_mem hd tl) && pairs_distinct tl
+
+let distinct_child_pairs (tes : list shex_triple_expr) : bool =
+  all_tc tes && pairs_distinct (tc_pairs_of tes)
+
+let rec all_equal_nat (l : list nat) : Tot bool (decreases l) =
+  match l with
+  | [] -> true
+  | x :: tl ->
+    (match tl with
+     | [] -> true
+     | y :: _ -> x = y && all_equal_nat tl)
+
+let rec sum_nat (l : list nat) : Tot nat (decreases l) =
+  match l with
+  | [] -> 0
+  | hd :: tl -> hd + sum_nat tl
+
+// ================================================================
+// The big mutually-recursive matching group. See the module banner for
+// the fuel/termination argument and the `option bool` / `option (list
+// pool_t)` conventions (None = outside this module's reach or fuel
+// exhausted, never a guessed verdict).
+// ================================================================
+
+let rec matches_shape_expr (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (se : shex_shape_expr) (t : rdf_term) (g : rdf_graph) (fuel : nat)
   : Tot (option bool) (decreases fuel) =
   if fuel = 0 then None
   else
     let fuel' = fuel - 1 in
     match se with
     | SE_NodeConstraint nc -> Some (node_constraint_matches nc t)
-    | SE_ShapeAnd ses -> matches_all decls ses t g fuel'
-    | SE_ShapeOr ses  -> matches_any decls ses t g fuel'
+    | SE_ShapeAnd ses -> matches_all decls idtab visited ses t g fuel'
+    | SE_ShapeOr ses -> matches_any decls idtab visited ses t g fuel'
     | SE_ShapeNot se' ->
-      (match matches_shape_expr decls se' t g fuel' with
+      (match matches_shape_expr decls idtab visited se' t g fuel' with
        | Some b -> Some (not b)
        | None -> None)
     | SE_Ref label ->
-      (match lookup_shape_decl decls label with
-       | Some sd -> matches_shape_expr decls sd.sd_expr t g fuel'
-       | None -> None)
-    | SE_Shape sh -> matches_shape decls sh t g fuel'
+      if visited_mem label t visited then Some true
+      else
+        (match lookup_shape_decl decls label with
+         | Some sd -> matches_shape_expr decls idtab ((label, t) :: visited) sd.sd_expr t g fuel'
+         | None -> None)
+    | SE_Shape sh -> matches_shape decls idtab visited sh t g fuel'
     | SE_ShapeExternal -> None
-and matches_all (decls : list shex_shape_decl) (ses : list shex_shape_expr) (t : rdf_term) (g : rdf_graph) (fuel : nat)
+and matches_all (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (ses : list shex_shape_expr) (t : rdf_term) (g : rdf_graph) (fuel : nat)
   : Tot (option bool) (decreases fuel) =
   if fuel = 0 then None
   else
@@ -620,12 +944,13 @@ and matches_all (decls : list shex_shape_decl) (ses : list shex_shape_expr) (t :
     match ses with
     | [] -> Some true
     | hd :: tl ->
-      (match matches_shape_expr decls hd t g fuel', matches_all decls tl t g fuel' with
+      (match matches_shape_expr decls idtab visited hd t g fuel', matches_all decls idtab visited tl t g fuel' with
        | Some false, _ -> Some false
        | _, Some false -> Some false
        | Some true, Some true -> Some true
        | _, _ -> None)
-and matches_any (decls : list shex_shape_decl) (ses : list shex_shape_expr) (t : rdf_term) (g : rdf_graph) (fuel : nat)
+and matches_any (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (ses : list shex_shape_expr) (t : rdf_term) (g : rdf_graph) (fuel : nat)
   : Tot (option bool) (decreases fuel) =
   if fuel = 0 then None
   else
@@ -633,175 +958,475 @@ and matches_any (decls : list shex_shape_decl) (ses : list shex_shape_expr) (t :
     match ses with
     | [] -> Some false
     | hd :: tl ->
-      (match matches_shape_expr decls hd t g fuel', matches_any decls tl t g fuel' with
+      (match matches_shape_expr decls idtab visited hd t g fuel', matches_any decls idtab visited tl t g fuel' with
        | Some true, _ -> Some true
        | _, Some true -> Some true
        | Some false, Some false -> Some false
        | _, _ -> None)
-// A `Shape`'s verdict is the AND of its expression result (vacuously true
-// when `sh_expression` is absent) and its `closed`/`extra` result (vacuously
-// true when `sh_closed` is false) — both computed independently below, then
-// combined with the same short-circuit-aware AND as `matches_all`, so a
-// definite `closed` violation is `Some false` even if the expression itself
-// could not be fully decided (and vice versa).
-and matches_shape (decls : list shex_shape_decl) (sh : shex_shape) (t : rdf_term) (g : rdf_graph) (fuel : nat)
+and matches_shape (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (sh : shex_shape) (t : rdf_term) (g : rdf_graph) (fuel : nat)
   : Tot (option bool) (decreases fuel) =
   if fuel = 0 then None
-  // A shape with a non-empty `extends` (shape inheritance / triple-
-  // expression merge, `ShEx.Extends.fst`, Stage 6) cannot be evaluated by
-  // looking at `sh_expression` alone — the inherited shape(s)' triple
-  // expressions are merged in first. Evaluating just the derived shape's
-  // OWN (unmerged) expression would silently accept/reject based on a
-  // strictly smaller constraint set than the schema actually specifies —
-  // exactly the kind of guessed-wrong verdict this module's `None`
-  // discipline exists to prevent. Caught by the Stage 3 measurement run
-  // (every `Extends`-tagged manifest entry mismatched before this guard).
-  else if not (Nil? sh.sh_extends) then None
   else
     let fuel' = fuel - 1 in
-    let arcs_out = match term_to_subject t with
-      | None -> []             // a Literal can never be a subject — empty arcsOut
-      | Some s -> triples_with_subject g s in
-    let expr_result =
-      match sh.sh_expression with
-      | None -> Some true
-      | Some te ->
-        if te_fastpath_ok te
-        then matches_triple_expr_value decls te t g sh.sh_extra fuel'
-        else None in
-    let claimed_opt = match sh.sh_expression with
-      | None -> Some []
-      | Some te -> te_claimed_predicates te in
-    let closed_result =
-      if not sh.sh_closed then Some true
-      else
-        match claimed_opt with
-        | None -> None
-        | Some claimed ->
-          Some (List.Tot.for_all
-                  (fun (tr : triple) ->
-                     List.Tot.mem (tr.p <: string) claimed || List.Tot.mem (tr.p <: string) sh.sh_extra)
-                  arcs_out) in
-    (match expr_result, closed_result with
-     | Some false, _ -> Some false
-     | _, Some false -> Some false
-     | Some true, Some true -> Some true
-     | _, _ -> None)
-// One TripleConstraint leaf, or an EachOf's conjunction of children — see
-// the file banner + `te_fastpath_ok`'s docs for why every leaf reached here
-// is guaranteed a unique (direction, predicate) claim within the whole tree
-// (its caller already verified `te_fastpath_ok` for the ENTIRE tree before
-// the first call), so each leaf can query the graph directly by predicate
-// without tracking a shared "remaining pool" the way an ambiguous OneOf
-// search (Stage 4) would need to. `extra` is the enclosing Shape's field,
-// threaded down unchanged to every leaf. IMPORTANT: `closed` is deliberately
-// NOT consulted here — per the spec's satisfies(n,Shape,G), "closed" only
-// bounds triples whose predicate is not mentioned ANYWHERE in the
-// expression at all (handled separately in `matches_shape`'s
-// `closed_result`); a predicate a TripleConstraint DOES mention must have
-// ALL its candidate triples accounted for (either inside the matched
-// [min,max] subset, or tolerated as leftover because the predicate is
-// explicitly listed in `extra`) regardless of whether the Shape itself is
-// closed. Getting this wrong (treating `not closed` as ALSO granting
-// leftover tolerance to a mentioned predicate) was caught by the Stage 3
-// measurement run: it wrongly PASSED `1dotRef1_overReferrer` (a
-// `sht:ValidationFailure` fixture — <n1> has two `p1` arcs against a
-// `{p1 @<S2>}` shape with default [1,1] cardinality and no `extra`) because
-// the shape isn't `closed`.
-//
-// A second Stage 3 measurement finding refines what `extra` tolerates:
-// `extra` only ever excuses candidates that FAIL `valueExpr` (`bad_count`)
-// from counting against `[min,max]` — it does NOT lift the upper bound on
-// candidates that DO satisfy `valueExpr` (`good_count`). `1val2IRIREFExtra1_
-// fail-iri2` (`EXTRA <p1> {p1 [<o1> <o2>]}` on two `p1` arcs, BOTH values
-// in the value set, default max 1) is a `sht:ValidationFailure` — extra
-// cannot rescue an over-count of GOOD matches, only tolerate BAD leftovers.
-// `1dotExtra1_fail-iri2` (`EXTRA <p1> {p1 .}`, no valueExpr so every
-// candidate is vacuously "good", two arcs, max 1) fails the same way — the
-// corpus's own `VapidExtra` trait tag names exactly this case. So
-// `good_count` is ALWAYS bound by `[min,max]` regardless of `extra`;
-// `extra` only relaxes the requirement that `bad_count = 0`.
-and matches_triple_expr_value
-    (decls : list shex_shape_decl) (te : shex_triple_expr) (focus : rdf_term) (g : rdf_graph)
-    (extra : list string) (fuel : nat)
+    // EXTENDS: per the "Shape Expressions with Inheritance" formalization
+    // (arxiv 2503.24299, Table 3 line 18 — the `M = M' ⊎ ⊎_x M_x` partition
+    // rule, cross-checked against this corpus's TWO distinct ShExJ encoding
+    // idioms), this is a TWO-TIER split, not a flat N-way partition:
+    //   - `sh.sh_expression` (when the SAME Shape object carries both
+    //     `extends` and `expression` together — e.g. `ExtendsRepeatedP`'s
+    //     `<C> EXT @<B> { :p }`) is `h`, the derived shape's own NEW
+    //     triple-consuming content — it gets a GENUINE DISJOINT share,
+    //     exclusive of whatever the ancestor chain consumes.
+    //   - the WHOLE resolved ancestor chain (`resolve_extends`'s `ef_tes`
+    //     — every ancestor's own contribution, however deep) is `restr`-like:
+    //     evaluated SHARED (non-exclusive) against whatever pool is LEFT
+    //     after `h`'s share is removed — every chain member independently
+    //     gets to see that SAME leftover pool, because the formal rule
+    //     checks a restriction against `⋃_{z∈anc(x)} M_z` (the UNION of
+    //     ancestor shares), not a fresh disjoint slice. This is why
+    //     `AND3G`'s A/B/D chain (`@<A> AND {...}`-style — `sh_expression =
+    //     None` at the extends-declaring node, the "AND {...}" restriction
+    //     living in a SEPARATE ShapeAnd sibling) all correctly see the SAME
+    //     single triple simultaneously, while `ExtendsRepeatedP`'s C (its
+    //     OWN `sh_expression` set directly alongside `extends`) correctly
+    //     gets an EXCLUSIVE share disjoint from what A/B's chain consumes.
+    if Nil? sh.sh_extends then
+      let own_te_list = match sh.sh_expression with Some te -> [te] | None -> [] in
+      matches_shape_flat decls idtab visited own_te_list sh.sh_extra sh.sh_closed [] sh sh.sh_semacts t g fuel'
+    else
+      (match resolve_extends decls sh.sh_extends fuel' with
+       | None -> None
+       | Some chain ->
+         let all_extra = sh.sh_extra @ chain.ef_extra in
+         let all_closed = sh.sh_closed || chain.ef_closed in
+         let node_checks_result =
+           if Nil? chain.ef_checks then Some true
+           else matches_all decls idtab visited chain.ef_checks t g fuel' in
+         let arcs_out = match term_to_subject t with None -> [] | Some s -> triples_with_subject g s in
+         let own_pairs_opt = match sh.sh_expression with None -> Some [] | Some te -> te_mentioned_pairs idtab te fuel' in
+         let chain_pairs_opt = te_mentioned_pairs_list idtab chain.ef_tes fuel' in
+         (match own_pairs_opt, chain_pairs_opt with
+          | None, _ -> None
+          | _, None -> None
+          | Some own_pairs, Some chain_pairs ->
+            let all_pairs = own_pairs @ chain_pairs in
+            let closed_result =
+              if not all_closed then Some true
+              else
+                let mentioned_preds = List.Tot.map snd (List.Tot.filter (fun (p : bool & string) -> not (fst p)) all_pairs) in
+                Some (List.Tot.for_all
+                        (fun (tr : triple) -> List.Tot.mem (tr.p <: string) mentioned_preds || List.Tot.mem (tr.p <: string) all_extra)
+                        arcs_out)
+            in
+            let pool0 = gather_pool g t (dedup_pairs all_pairs) in
+            let own_chain_ambiguous = ambiguous_pairs_of all_pairs in
+            let expr_result = eval_own_vs_chain decls idtab visited own_chain_ambiguous sh.sh_expression chain.ef_tes all_extra pool0 g fuel' in
+            let combined =
+              match node_checks_result, closed_result, expr_result with
+              | Some false, _, _ -> Some false
+              | _, Some false, _ -> Some false
+              | _, _, Some false -> Some false
+              | Some true, Some true, Some true -> Some true
+              | _, _, _ -> None
+            in
+            (match combined with
+             | Some true -> Some (not (any_semact_fails sh.sh_semacts))
+             | other -> other)))
+// Non-EXTENDS Shape evaluation (the Stage 3 behaviour, factored out so
+// `matches_shape`'s `sh_extends = []` branch and the EXTENDS branch share
+// the SAME closed/extra/node-check plumbing — kept as a single-element
+// `own_te_list` plus empty `chain_tes` call into `eval_own_vs_chain`'s
+// sibling machinery would also work, but this direct form avoids a
+// spurious 2-way split for the overwhelmingly common no-extends case).
+and matches_shape_flat (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (own_te_list : list shex_triple_expr) (extra : list string) (closed : bool)
+    (node_checks : list shex_shape_expr) (sh : shex_shape) (semacts : list shex_sem_act)
+    (t : rdf_term) (g : rdf_graph) (fuel : nat)
   : Tot (option bool) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let fuel' = fuel - 1 in
+    let node_checks_result = if Nil? node_checks then Some true else matches_all decls idtab visited node_checks t g fuel' in
+    let arcs_out = match term_to_subject t with None -> [] | Some s -> triples_with_subject g s in
+    let mentioned_opt = te_mentioned_pairs_list idtab own_te_list fuel' in
+    let closed_result =
+      if not closed then Some true
+      else
+        match mentioned_opt with
+        | None -> None
+        | Some pairs ->
+          let mentioned_preds = List.Tot.map snd (List.Tot.filter (fun (p : bool & string) -> not (fst p)) pairs) in
+          Some (List.Tot.for_all
+                  (fun (tr : triple) -> List.Tot.mem (tr.p <: string) mentioned_preds || List.Tot.mem (tr.p <: string) extra)
+                  arcs_out)
+    in
+    let expr_result = eval_expr_list_over_pool decls idtab visited own_te_list extra t g fuel' in
+    let combined =
+      match node_checks_result, closed_result, expr_result with
+      | Some false, _, _ -> Some false
+      | _, Some false, _ -> Some false
+      | _, _, Some false -> Some false
+      | Some true, Some true, Some true -> Some true
+      | _, _, _ -> None
+    in
+    (match combined with
+     | Some true -> Some (not (any_semact_fails semacts))
+     | other -> other)
+// Two-way split between a shape's OWN triple-consuming expression (when
+// present — EXCLUSIVE share, disjoint from the chain) and the resolved
+// ancestor chain (SHARED, non-exclusive amongst its own members — see
+// `matches_shape`'s doc comment).
+and eval_own_vs_chain (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (ambiguous : list (bool & string)) (own_te_opt : option shex_triple_expr)
+    (chain_tes : list shex_triple_expr) (extra : list string) (pool : pool_t) (g : rdf_graph) (fuel : nat)
+  : Tot (option bool) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let fuel' = fuel - 1 in
+    match own_te_opt with
+    | None -> matches_chain_shared decls idtab visited ambiguous chain_tes extra pool g fuel'
+    | Some own_te ->
+      (match search_te decls idtab visited ambiguous own_te pool g fuel' with
+       | None -> None
+       | Some leftovers -> combine_own_vs_chain_results decls idtab visited ambiguous chain_tes extra leftovers g fuel')
+and combine_own_vs_chain_results (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (ambiguous : list (bool & string)) (chain_tes : list shex_triple_expr)
+    (extra : list string) (leftovers : list pool_t) (g : rdf_graph) (fuel : nat)
+  : Tot (option bool) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let fuel' = fuel - 1 in
+    match leftovers with
+    | [] -> Some false
+    | lo :: tl ->
+      (match matches_chain_shared decls idtab visited ambiguous chain_tes extra lo g fuel',
+             combine_own_vs_chain_results decls idtab visited ambiguous chain_tes extra tl g fuel' with
+       | Some true, _ -> Some true
+       | _, Some true -> Some true
+       | Some false, Some false -> Some false
+       | _, _ -> None)
+// Chain members evaluated SHARED: each independently gets the FULL pool
+// handed to the chain tier (no consumption threading between siblings —
+// this is what lets an ancestor's own bound and a further restriction's
+// bound both be satisfied by the SAME triple, per `AND3G`'s worked
+// example in the file banner / `matches_shape`'s doc comment).
+and matches_chain_shared (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (ambiguous : list (bool & string)) (chain_tes : list shex_triple_expr)
+    (extra : list string) (pool : pool_t) (g : rdf_graph) (fuel : nat)
+  : Tot (option bool) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let fuel' = fuel - 1 in
+    match chain_tes with
+    | [] -> Some true
+    | hd :: tl ->
+      (match search_te decls idtab visited ambiguous hd pool g fuel' with
+       | None -> None
+       | Some leftovers ->
+         let this_ok =
+           List.Tot.existsb
+             (fun (lo : pool_t) -> List.Tot.for_all (fun (e : pool_elem) -> let (inv, pred, _) = e in inv || List.Tot.mem pred extra) lo)
+             leftovers in
+         (match matches_chain_shared decls idtab visited ambiguous tl extra pool g fuel' with
+          | None -> None
+          | Some rest_ok -> Some (this_ok && rest_ok)))
+// Combined-triple-expression-list evaluator: gathers the pool for every
+// (inverse,predicate) pair mentioned anywhere in `tes` (own expression +
+// EXTENDS-merged ancestors, see `matches_shape`), runs the general search
+// treating `tes` as an implicit EachOf, and accepts if ANY resulting
+// leftover has every non-inverse entry's predicate covered by `extra`
+// (inverse leftovers never matter here — `closed`/`extra` are defined
+// over the focus's OWN outgoing arcs only, per shex.io-semantics; a
+// mentioned inverse predicate's OWN [min,max] bound was already enforced
+// inside the search itself, same as a non-inverse one).
+and eval_expr_list_over_pool (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (tes : list shex_triple_expr) (extra : list string)
+    (t : rdf_term) (g : rdf_graph) (fuel : nat)
+  : Tot (option bool) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let fuel' = fuel - 1 in
+    if Nil? tes then Some true
+    else
+      match te_mentioned_pairs_list idtab tes fuel' with
+      | None -> None
+      | Some pairs ->
+        let pool0 = gather_pool g t (dedup_pairs pairs) in
+        let ambiguous = ambiguous_pairs_of pairs in
+        (match search_eachof_list decls idtab visited ambiguous tes pool0 g fuel' with
+         | None -> None
+         | Some leftovers ->
+           Some (List.Tot.existsb
+                   (fun (lo : pool_t) ->
+                      List.Tot.for_all (fun (e : pool_elem) -> let (inv, pred, _) = e in inv || List.Tot.mem pred extra) lo)
+                   leftovers))
+// The set of (inverse,predicate) pairs a triple expression can consume —
+// used both to size the candidate pool (`gather_pool`) and to compute
+// which predicates are "mentioned" for the closed-shape check. `None`
+// only when a `tripleExprRef` genuinely fails to resolve via `idtab`
+// (never for `OneOf`/cardinality — unlike Stage 3's `te_signature`, this
+// module handles those directly, so ambiguity is no longer a reason to
+// bail out at the signature-computation stage).
+and te_mentioned_pairs (idtab : list (string & shex_triple_expr)) (te : shex_triple_expr) (fuel : nat)
+  : Tot (option (list (bool & string))) (decreases fuel) =
   if fuel = 0 then None
   else
     let fuel' = fuel - 1 in
     match te with
-    | TE_Ref _ -> None
-    | TE_OneOf _ -> None
-    | TE_TripleConstraint tc ->
-      let others = shex_gather_candidates g focus tc.tc_inverse tc.tc_predicate in
-      (match shex_check_others decls others tc.tc_value_expr g fuel' with
-       | None -> None
-       | Some bools ->
-         let n_total = List.Tot.length others in
-         let good_count = List.Tot.length (List.Tot.filter (fun b -> b) bools) in
-         let bad_count = n_total - good_count in
-         let allowed_extra = List.Tot.mem tc.tc_predicate extra in
-         let bad_ok = bad_count = 0 || allowed_extra in
-         Some (bad_ok && good_count >= tc.tc_min &&
-               (tc.tc_max = (-1) || good_count <= tc.tc_max)))
-    | TE_EachOf grp -> matches_triple_expr_list decls grp.gr_expressions focus g extra fuel'
-and matches_triple_expr_list
-    (decls : list shex_shape_decl) (tes : list shex_triple_expr) (focus : rdf_term) (g : rdf_graph)
-    (extra : list string) (fuel : nat)
-  : Tot (option bool) (decreases fuel) =
+    | TE_TripleConstraint tc -> Some [(tc.tc_inverse, tc.tc_predicate)]
+    | TE_Ref id ->
+      (match lookup_te_id idtab id with
+       | Some resolved -> te_mentioned_pairs idtab resolved fuel'
+       | None -> None)
+    | TE_EachOf grp -> te_mentioned_pairs_list idtab grp.gr_expressions fuel'
+    | TE_OneOf grp -> te_mentioned_pairs_list idtab grp.gr_expressions fuel'
+and te_mentioned_pairs_list (idtab : list (string & shex_triple_expr)) (tes : list shex_triple_expr) (fuel : nat)
+  : Tot (option (list (bool & string))) (decreases fuel) =
   if fuel = 0 then None
   else
     let fuel' = fuel - 1 in
     match tes with
-    | [] -> Some true
+    | [] -> Some []
     | hd :: tl ->
-      (match matches_triple_expr_value decls hd focus g extra fuel',
-             matches_triple_expr_list decls tl focus g extra fuel' with
-       | Some false, _ -> Some false
-       | _, Some false -> Some false
-       | Some true, Some true -> Some true
+      (match te_mentioned_pairs idtab hd fuel', te_mentioned_pairs_list idtab tl fuel' with
+       | Some a, Some b -> Some (a @ b)
        | _, _ -> None)
-// Per-candidate valueExpr check (absent valueExpr = vacuously satisfied).
-// Any `None` anywhere in the list propagates conservatively — the caller
-// cannot safely decide [min,max]/good-vs-bad bookkeeping without a definite
-// verdict for every candidate.
-and shex_check_others
-    (decls : list shex_shape_decl) (others : list rdf_term) (ve : option shex_shape_expr)
+// One TripleConstraint claiming a valid sub-selection of `pool` (its own
+// (inverse,predicate) candidates only — everything else passes through to
+// leftover untouched). Enumerates EVERY way of splitting the CURRENT
+// predicate's candidates into "claimed" (must satisfy valueExpr) vs
+// "left as leftover" (claimed-but-excess-good, or bad, are both left as
+// leftover — see file banner cross-reference to the Stage 3 `extra`/
+// `VapidExtra` findings, which this subsumes rather than special-cases),
+// keeping only completions whose final claimed count is in
+// `[tc_min,tc_max]`. A `fail(...)` Test-extension SemAct on this
+// TripleConstraint forces every completion to collapse to "no valid way"
+// (`Some []`), regardless of the structural search result.
+and tc_choose_acc (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (ambiguous : list (bool & string)) (tc : shex_triple_constraint) (pool : pool_t) (chosen : nat)
     (g : rdf_graph) (fuel : nat)
-  : Tot (option (list bool)) (decreases fuel) =
+  : Tot (option (list pool_t)) (decreases fuel) =
   if fuel = 0 then None
   else
     let fuel' = fuel - 1 in
-    match others with
-    | [] -> Some []
+    match pool with
+    | [] ->
+      if chosen >= tc.tc_min && (tc.tc_max = (-1) || chosen <= tc.tc_max)
+      then Some [[]] else Some []
+    | (inv, pred, tm) :: tl ->
+      if not (inv = tc.tc_inverse && pred = tc.tc_predicate) then
+        (match tc_choose_acc decls idtab visited ambiguous tc tl chosen g fuel' with
+         | None -> None
+         | Some rests -> Some (List.Tot.map (fun (r : pool_t) -> (inv, pred, tm) :: r) rests))
+      else
+        let good_opt =
+          match tc.tc_value_expr with
+          | None -> Some true
+          | Some se -> matches_shape_expr decls idtab visited se tm g fuel' in
+        (match good_opt with
+         | None -> None
+         | Some is_good ->
+           // A BAD candidate may always be left as leftover (tolerated
+           // later via `extra`, or claimable by a sibling constraint on
+           // the SAME predicate with a different, more permissive
+           // valueExpr). A GOOD candidate may only be "left" (rather
+           // than unconditionally counted) when this (inverse,predicate)
+           // pair is genuinely ambiguous elsewhere in the combined
+           // expression — otherwise every good candidate is forced into
+           // the count, so an over-max good-count can never be
+           // laundered into leftover-plus-extra (see `1val2IRIREFExtra1_
+           // fail-iri2`'s doc comment on `ambiguous_pairs_of`).
+           let offer_leave = (not is_good) || pair_mem (inv, pred) ambiguous in
+           let leave_opt =
+             if offer_leave then
+               (match tc_choose_acc decls idtab visited ambiguous tc tl chosen g fuel' with
+                | None -> None
+                | Some leave_rests -> Some (List.Tot.map (fun (r : pool_t) -> (inv, pred, tm) :: r) leave_rests))
+             else Some [] in
+           (match leave_opt with
+            | None -> None
+            | Some leave_opts ->
+              if is_good then
+                (match tc_choose_acc decls idtab visited ambiguous tc tl (chosen + 1) g fuel' with
+                 | None -> None
+                 | Some take_rests -> Some (leave_opts @ take_rests))
+              else Some leave_opts))
+// Classifies a repeated-group child TripleConstraint's own candidate
+// sub-pool into (good-count, bad-leftover-list) — no [min,max] bound
+// applied here (the repeated group's OWN gmin/gmax governs the total
+// across repetitions; see `search_repeated_group`).
+and classify_candidates (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (ve : option shex_shape_expr) (items : pool_t) (g : rdf_graph) (fuel : nat)
+  : Tot (option (nat & pool_t)) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let fuel' = fuel - 1 in
+    match items with
+    | [] -> Some (0, [])
     | hd :: tl ->
-      let this_ok = match ve with
-        | None -> Some true
-        | Some se -> matches_shape_expr decls se hd g fuel' in
-      (match this_ok, shex_check_others decls tl ve g fuel' with
-       | Some b, Some rest -> Some (b :: rest)
+      let (inv, pred, tm) = hd in
+      let good_opt = match ve with None -> Some true | Some se -> matches_shape_expr decls idtab visited se tm g fuel' in
+      (match good_opt with
+       | None -> None
+       | Some is_good ->
+         (match classify_candidates decls idtab visited ve tl g fuel' with
+          | None -> None
+          | Some (cnt, badl) -> if is_good then Some (cnt + 1, badl) else Some (cnt, hd :: badl)))
+and count_children (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (tes : list shex_triple_expr) (pool : pool_t) (g : rdf_graph) (fuel : nat)
+  : Tot (option (list nat & pool_t)) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let fuel' = fuel - 1 in
+    match tes with
+    | [] -> Some ([], pool)
+    | TE_TripleConstraint tc :: tl ->
+      let matching, rest = List.Tot.partition (fun (e : pool_elem) -> let (inv, pred, _) = e in inv = tc.tc_inverse && pred = tc.tc_predicate) pool in
+      (match classify_candidates decls idtab visited tc.tc_value_expr matching g fuel' with
+       | None -> None
+       | Some (good_count, bad_list) ->
+         (match count_children decls idtab visited tl rest g fuel' with
+          | None -> None
+          | Some (counts, leftover) -> Some (good_count :: counts, bad_list @ leftover)))
+    | _ -> None
+and search_repeated_group (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (grp : shex_group) (pool : pool_t) (g : rdf_graph) (fuel : nat) (is_eachof : bool)
+  : Tot (option (list pool_t)) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let fuel' = fuel - 1 in
+    if not (distinct_child_pairs grp.gr_expressions) then None
+    else
+      match count_children decls idtab visited grp.gr_expressions pool g fuel' with
+      | None -> None
+      | Some (counts, leftover) ->
+        let gmin = (match grp.gr_min with Some n -> n | None -> 1) in
+        let gmax = (match grp.gr_max with Some n -> n | None -> 1) in
+        let total_count = sum_nat counts in
+        if is_eachof then
+          (if not (all_equal_nat counts) then Some []
+           else
+             (match counts with
+              | hd :: _ -> if hd >= gmin && (gmax = (-1) || hd <= gmax) then Some [leftover] else Some []
+              | [] -> if 0 >= gmin && (gmax = (-1) || 0 <= gmax) then Some [leftover] else Some []))
+        else
+          (if total_count >= gmin && (gmax = (-1) || total_count <= gmax) then Some [leftover] else Some [])
+// The general search: `te` against `pool`, returning every possible
+// leftover-pool after a successful match (empty list = definitely no way
+// to match; `None` = outside this module's reach or fuel exhausted).
+and search_te (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (ambiguous : list (bool & string)) (te : shex_triple_expr) (pool : pool_t) (g : rdf_graph) (fuel : nat)
+  : Tot (option (list pool_t)) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let fuel' = fuel - 1 in
+    match te with
+    | TE_TripleConstraint tc ->
+      (match tc_choose_acc decls idtab visited ambiguous tc pool 0 g fuel' with
+       | None -> None
+       | Some results -> if any_semact_fails tc.tc_semacts then Some [] else Some results)
+    | TE_Ref id ->
+      (match lookup_te_id idtab id with
+       | Some resolved -> search_te decls idtab visited ambiguous resolved pool g fuel'
+       | None -> None)
+    | TE_EachOf grp ->
+      let raw =
+        if Some? grp.gr_min || Some? grp.gr_max
+        then search_repeated_group decls idtab visited grp pool g fuel' true
+        else search_eachof_list decls idtab visited ambiguous grp.gr_expressions pool g fuel' in
+      (match raw with
+       | None -> None
+       | Some results -> if any_semact_fails grp.gr_semacts then Some [] else Some results)
+    | TE_OneOf grp ->
+      let raw =
+        if Some? grp.gr_min || Some? grp.gr_max
+        then search_repeated_group decls idtab visited grp pool g fuel' false
+        else search_oneof_list decls idtab visited ambiguous grp.gr_expressions pool g fuel' in
+      (match raw with
+       | None -> None
+       | Some results -> if any_semact_fails grp.gr_semacts then Some [] else Some results)
+// EachOf: sequential thread — each child's leftover states feed the next
+// child (this is what makes an ambiguous shared-predicate split between
+// TWO DIFFERENT children of the SAME EachOf correct: the first child's
+// "leave it for later" branch produces a state the second child can then
+// claim from).
+and search_eachof_list (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (ambiguous : list (bool & string)) (tes : list shex_triple_expr) (pool : pool_t) (g : rdf_graph) (fuel : nat)
+  : Tot (option (list pool_t)) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let fuel' = fuel - 1 in
+    match tes with
+    | [] -> Some [pool]
+    | hd :: tl ->
+      (match search_te decls idtab visited ambiguous hd pool g fuel' with
+       | None -> None
+       | Some states -> thread_states decls idtab visited ambiguous tl states g fuel')
+and thread_states (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (ambiguous : list (bool & string)) (tl : list shex_triple_expr) (states : list pool_t) (g : rdf_graph) (fuel : nat)
+  : Tot (option (list pool_t)) (decreases fuel) =
+  if fuel = 0 then None
+  else
+    let fuel' = fuel - 1 in
+    match states with
+    | [] -> Some []
+    | s :: srest ->
+      (match search_eachof_list decls idtab visited ambiguous tl s g fuel', thread_states decls idtab visited ambiguous tl srest g fuel' with
+       | Some a, Some b -> Some (a @ b)
        | _, _ -> None)
+// OneOf: try every child independently against the SAME pool, union the
+// definite successes (see `combine_oneof`'s doc comment for why a
+// definite success from one branch outranks an unresolved sibling).
+and search_oneof_list (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (ambiguous : list (bool & string)) (tes : list shex_triple_expr) (pool : pool_t) (g : rdf_graph) (fuel : nat)
+  : Tot (option (list pool_t)) (decreases fuel) =
+  if fuel = 0 then None
+  else combine_oneof (search_te_list_map decls idtab visited ambiguous tes pool g (fuel - 1))
+and search_te_list_map (decls : list shex_shape_decl) (idtab : list (string & shex_triple_expr))
+    (visited : shex_visited) (ambiguous : list (bool & string)) (tes : list shex_triple_expr) (pool : pool_t) (g : rdf_graph) (fuel : nat)
+  : Tot (list (option (list pool_t))) (decreases fuel) =
+  if fuel = 0 then []
+  else
+    let fuel' = fuel - 1 in
+    match tes with
+    | [] -> []
+    | hd :: tl -> search_te decls idtab visited ambiguous hd pool g fuel' :: search_te_list_map decls idtab visited ambiguous tl pool g fuel'
 
-// Top-level entry point: validate one focus node against a schema, either
-// by an explicit shape label (the manifest's `sht:shape`) or the schema's
-// own `start` shapeExpr (`sht:shape` absent). Fuel is derived from the
-// schema's own shape count (a hop through `SE_Ref` visits at most that many
-// distinct decls before repeating, and ShapeAnd/ShapeOr nesting in the
-// corpus is shallow) rather than a bare unexplained constant.
-// Fuel is derived from both the schema's own shape count (a hop through
-// `SE_Ref` visits at most that many distinct decls before repeating) AND the
-// graph's triple count (Stage 3's `shex_check_others` decrements fuel once
-// per candidate triple it value-checks, on top of the AST-recursion steps
-// Stage 2 already budgeted for) — a safe generous bound, not a bare
-// unexplained constant. Test-suite data graphs are small (plan doc: "a
-// handful of triples per focus node"), so this stays cheap in practice.
+// ================================================================
+// Top-level entry point (SIGNATURE UNCHANGED from Stage 2/3 — the
+// consumer contract `bin/shex-runner/shex_runner.ml` calls this exact
+// name/shape and must not be touched here). Schema-level `startActs`
+// (`sch_start_acts`) are evaluated once per call, per the corpus's own
+// `startCode1fail_abort`/`startCode1startReffail_abort`/
+// `startCode3fail_abort` fixtures — a `fail(...)` there aborts the WHOLE
+// validation regardless of which shape label is targeted (all three
+// fixtures explicitly target shape `S1` via `sht:shape`, not the
+// schema's `start` production, confirming startActs fire independent of
+// the start-vs-explicit-shape distinction for this suite's Test
+// extension). Fuel is sized generously off both the schema's shape count
+// (SE_Ref/EXTENDS-chain hop bound) and the graph's triple count squared
+// (the general search's subset-enumeration depth is bounded by a single
+// predicate's candidate-pool length, which is at most the graph's triple
+// count; the extra quadratic term is headroom for deeply-nested
+// EachOf/OneOf trees each re-walking a pool of that size, not a
+// measured requirement — test-suite data graphs are a handful of
+// triples per plan doc, so this stays cheap in practice).
+// ================================================================
+
 let validate_focus (schema : shex_schema) (shape_id : option string) (t : rdf_term) (g : rdf_graph) : option bool =
-  let fuel = 100 + op_Multiply 20 (List.Tot.length schema.sch_shapes) + op_Multiply 10 (List.Tot.length g) in
-  match shape_id with
-  | Some label ->
-    (match lookup_shape_decl schema.sch_shapes label with
-     | Some sd -> matches_shape_expr schema.sch_shapes sd.sd_expr t g fuel
-     | None -> None)
-  | None ->
-    (match schema.sch_start with
-     | Some se -> matches_shape_expr schema.sch_shapes se t g fuel
-     | None -> None)
+  if any_semact_fails schema.sch_start_acts then Some false
+  else
+    let idtab = shape_decl_list_collect_ids schema.sch_shapes in
+    let n_shapes = List.Tot.length schema.sch_shapes in
+    let n_graph = List.Tot.length g in
+    let fuel = 300 + op_Multiply 50 n_shapes + op_Multiply 30 n_graph + op_Multiply 5 (op_Multiply n_graph n_graph) in
+    match shape_id with
+    | Some label ->
+      (match lookup_shape_decl schema.sch_shapes label with
+       | Some sd -> matches_shape_expr schema.sch_shapes idtab [] sd.sd_expr t g fuel
+       | None -> None)
+    | None ->
+      (match schema.sch_start with
+       | Some se -> matches_shape_expr schema.sch_shapes idtab [] se t g fuel
+       | None -> None)

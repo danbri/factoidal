@@ -301,13 +301,28 @@ let is_float_lexical (lex : string) : bool =
      | Some e -> is_signed_digits_chars e)
 
 // Integer-family range check: well-formed integer lexical whose value
-// sits inside [lo, hi] (None = unbounded on that side). parse_int_string
-// accepts an optional leading '-' but not '+'; '+'-signed literals are
-// flagged conservatively-well-formed by skipping the range check only
-// when the parse fails on an is_integer_lexical-accepted string.
+// sits inside [lo, hi] (None = unbounded on that side). `parse_int_string`
+// (SPARQL11.Algebra's shared parser) accepts an optional leading '-' but
+// not '+', even though XSD's integer lexical space explicitly permits a
+// leading '+' sign — strip it locally before parsing (this module's own
+// concern, not a change to the shared parser) so a `+`-signed literal
+// still gets its range checked instead of falling through the
+// "parse failed, treat as vacuously in range" escape hatch. This closes
+// a gap the ShEx `datatypes.shex` corpus's `nonPositiveInteger-p1_fail`
+// (`"+1"^^xsd:nonPositiveInteger`, must be rejected: value 1 > 0) and
+// `negativeInteger-p0_fail` (`"+0"^^xsd:negativeInteger`, value 0 is not
+// < 0) fixtures both surfaced — before this fix, both `+`-prefixed
+// literals were wrongly treated as well-formed (in range) because
+// `parse_int_string` returned `None` on the unstrippped `+`-prefixed
+// string, hitting the `None -> true` fallback below.
+let strip_leading_plus (lex : string) : string =
+  if String.length lex > 0 && String.sub lex 0 1 = "+"
+  then String.sub lex 1 (String.length lex - 1)
+  else lex
+
 let int_lexical_in_range (lex : string) (lo hi : option int) : bool =
   is_integer_lexical lex &&
-  (match parse_int_string lex with
+  (match parse_int_string (strip_leading_plus lex) with
    | Some n ->
      (match lo with Some l -> n >= l | None -> true) &&
      (match hi with Some h -> n <= h | None -> true)

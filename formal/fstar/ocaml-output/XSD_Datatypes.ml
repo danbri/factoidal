@@ -294,11 +294,19 @@ let is_float_lexical (lex : Prims.string) : Prims.bool=
            ((match exp_opt with
              | FStar_Pervasives_Native.None -> true
              | FStar_Pervasives_Native.Some e -> is_signed_digits_chars e)))
+let strip_leading_plus (lex : Prims.string) : Prims.string=
+  if
+    ((FStar_String.strlen lex) > Prims.int_zero) &&
+      ((FStar_String.sub lex Prims.int_zero Prims.int_one) = "+")
+  then
+    FStar_String.sub lex Prims.int_one
+      ((FStar_String.strlen lex) - Prims.int_one)
+  else lex
 let int_lexical_in_range (lex : Prims.string)
   (lo : Prims.int FStar_Pervasives_Native.option)
   (hi : Prims.int FStar_Pervasives_Native.option) : Prims.bool=
   (is_integer_lexical lex) &&
-    (match parse_int_string lex with
+    (match parse_int_string (strip_leading_plus lex) with
      | FStar_Pervasives_Native.Some n ->
          (match lo with
           | FStar_Pervasives_Native.Some l -> n >= l
