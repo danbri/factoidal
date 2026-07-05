@@ -13,9 +13,27 @@ PROJECT="${1:-factoidal}"
 uvx agentsview sync >/dev/null 2>&1 || true
 uvx agentsview session list --project "$PROJECT" --include-children --json 2>/dev/null | python3 -c "
 import sys, json, subprocess
+from datetime import datetime, timezone, timedelta
 d = json.load(sys.stdin)
 ss = d if isinstance(d, list) else d.get('sessions', d.get('items', []))
 ids = [s['id'] for s in ss]
+
+def parse_ts(ts):
+    if not ts: return None
+    return datetime.fromisoformat(ts.replace('Z', '+00:00'))
+
+# Session start: use started_at (earliest message), NOT created_at
+# (DB-row insertion time — a trap: it reads as 'just now' after any
+# resync). Report UTC + US-Eastern (owner's stated tz this week).
+starts = [parse_ts(s.get('started_at')) for s in ss]
+starts = [t for t in starts if t]
+if starts:
+    t0 = min(starts)
+    est = t0.astimezone(timezone(timedelta(hours=-4), 'EDT'))
+    now = datetime.now(timezone.utc)
+    hrs = (now - t0).total_seconds() / 3600
+    print(f'session began: {t0.strftime(\"%Y-%m-%d %H:%M:%S UTC\")} '
+          f'({est.strftime(\"%Y-%m-%d %H:%M %Z\")}) — {hrs:.1f}h wall clock')
 rows, total, out_tok = [], 0.0, 0
 for i in ids:
     r = subprocess.run(['uvx','agentsview','session','usage', i, '--json'],

@@ -32,6 +32,18 @@ tokens, and the top-10 sessions by cost.
    `peak_context_tokens`, `models` (list).
 4. Sum `cost_usd` across all ids.
 
+## Session start time
+
+The wrapper's first line reports when the session began, with
+timezone: `session began: 2026-07-03 17:05:39 UTC (2026-07-03 13:05
+EDT) — 42.9h wall clock`. Source field: **`started_at`** from
+`session list`/`session get` (earliest message timestamp). Do NOT use
+`created_at` — that is the DB row's insertion time and reads as
+"just now" after any resync. The wrapper prints UTC plus US-Eastern
+(the owner's stated working timezone); adjust the offset in
+`tools/session-cost.sh` if that changes (note EST/EDT: July is
+UTC-4).
+
 ## Traps
 
 - **Main-session usage alone under-counts badly.** On 2026-07-05 the
