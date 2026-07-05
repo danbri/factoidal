@@ -143,6 +143,23 @@ let pos_entailment_iri = test_ns ^ "PositiveEntailmentTest"
 let neg_entailment_iri = test_ns ^ "NegativeEntailmentTest"
 let consistency_iri    = test_ns ^ "ConsistencyTest"
 let inconsistency_iri  = test_ns ^ "InconsistencyTest"
+(* test:semantics — Direct vs RDF-Based semantics dispatch (2026-07-05).
+   Some catalog entries carry BOTH &test;DIRECT and &test;RDF-BASED
+   (the two readings agree on that test); a few carry only one. The
+   two -Direct/RDF-Based sibling pairs over an identical premise +
+   candidate triple (WebOnt-I4.6-005 / -Direct,
+   WebOnt-equivalentClass-008 / -Direct) are exactly the case where
+   they disagree — see RDF.Graph.Executable.fst's
+   owl_rule_named_equivClass_to_sameAs_mode header comment for the RDF
+   semantics behind the split. Plumbing only: this runner reads the
+   annotation and picks which F* closure entry point to call
+   (owl_rl_closure_with_reflexivity vs. its _mode sibling); the
+   dispatch RULE (which OWL-RL rule fires under which semantics) is
+   entirely in RDF.Graph.Executable.fst, per rule #7 (parsers/logic
+   belong in F-star). *)
+let test_semantics = test_ns ^ "semantics"
+let test_semantics_direct_iri = test_ns ^ "DIRECT"
+let test_semantics_rdf_based_iri = test_ns ^ "RDF-BASED"
 
 let subject_iri_opt (s : subject) : string option =
   match s with
@@ -190,6 +207,8 @@ type test_case_info = {
   conclusion  : string option;     (* test:rdfXmlConclusionOntology literal *)
   normative_syntax : StrSet.t;     (* test:normativeSyntax objects, e.g.
                                        &test;FUNCTIONAL / &test;RDFXML *)
+  semantics   : StrSet.t;          (* test:semantics objects, e.g.
+                                       &test;DIRECT / &test;RDF-BASED *)
   imports     : StrSet.t;          (* test:importedOntology link IRIs (catalog
                                        node IRIs that carry test:rdfXmlInputOntology
                                        literals); resolved at run time *)
@@ -203,6 +222,7 @@ let empty_info iri = {
   premise = None;
   conclusion = None;
   normative_syntax = StrSet.empty;
+  semantics = StrSet.empty;
   imports = StrSet.empty;
 }
 
@@ -252,6 +272,12 @@ let build_index (graph : triple list) : test_case_info list * (string, string) H
            match object_iri_opt t.o with
            | Some obj ->
              let info = { info with normative_syntax = StrSet.add obj info.normative_syntax } in
+             Hashtbl.replace tbl subj info
+           | None -> ()
+         end else if t.p = test_semantics then begin
+           match object_iri_opt t.o with
+           | Some obj ->
+             let info = { info with semantics = StrSet.add obj info.semantics } in
              Hashtbl.replace tbl subj info
            | None -> ()
          end else if t.p = test_premise then begin
@@ -511,6 +537,48 @@ let apply_closure (g : RDF_Graph_Executable.rdf_graph)
        g
      | _ -> g)
 
+(* test:semantics dispatch (2026-07-05) — see the constant definitions
+   above and RDF.Graph.Executable.fst's owl_rule_named_equivClass_to_
+   sameAs_mode header comment for the RDF semantics this encodes.
+
+   owl_semantics_mode_for reduces a TestCase's test:semantics set to
+   the F* dispatch key: RDF-Based ONLY (no DIRECT alongside it) means
+   the RDF-Based reading is the one under test, so pass
+   owl_semantics_rdf_based; every other case (DIRECT-only, both, or no
+   test:semantics annotation at all) keeps the historical default
+   (owl_semantics_direct — unconditional rule firing), matching this
+   runner's behaviour before this dispatch existed. *)
+let owl_semantics_mode_for (info : test_case_info) : string =
+  if StrSet.mem test_semantics_rdf_based_iri info.semantics
+     && not (StrSet.mem test_semantics_direct_iri info.semantics)
+  then RDF_Graph_Executable.owl_semantics_rdf_based
+  else RDF_Graph_Executable.owl_semantics_direct
+
+let apply_closure_with_semantics
+      (g : RDF_Graph_Executable.rdf_graph) (mode : string)
+  : RDF_Graph_Executable.rdf_graph =
+  match !regime with
+  | Regime_RL ->
+    (try with_owl_cap (fun () ->
+       RDF_Graph_Executable.owl_rl_closure_with_reflexivity_mode g fuel_100 mode)
+     with
+     | Owl_closure_timeout ->
+       Printf.eprintf "  [owl_closure_timeout] RL closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
+         owl_closure_cap_seconds;
+       g
+     | _ -> g)
+  | Regime_DL ->
+    (try with_owl_cap (fun () ->
+       let g1 = RDF_Graph_Executable.owl_rl_closure_with_reflexivity_mode g fuel_100 mode in
+       let g2 = Tableau.tableau_materialise g1 in
+       RDF_Graph_Executable.owl_rl_closure_with_reflexivity_mode g2 fuel_100 mode)
+     with
+     | Owl_closure_timeout ->
+       Printf.eprintf "  [owl_closure_timeout] DL closure exceeded %.0fs cap; falling back to un-closed graph\n%!"
+         owl_closure_cap_seconds;
+       g
+     | _ -> g)
+
 (* Parse and merge imported-ontology literals into the premise graph
    before closure. Each imports_lookup hit gives us an RDF/XML literal
    whose triples should be added to g_p, so the closure sees the union
@@ -581,10 +649,13 @@ let run_positive_entailment
    negative-entailment assertion is refuted and the test fails.
 
    Same closure path as PositiveEntailmentTest (owl_rl_closure_with_
-   reflexivity). RL-only — to certify a NEGATIVE entailment under a
-   stronger regime (DL/EL/QL), the closure must be COMPLETE for that
-   regime. RL closure is sound but incomplete for full DL, so a
-   "missing triple under RL closure" doesn't necessarily mean
+   reflexivity), except the closure's semantics mode is now dispatched
+   per-test from the catalog's test:semantics annotation (see
+   owl_semantics_mode_for above) rather than always using the
+   historical default. RL-only — to certify a NEGATIVE entailment
+   under a stronger regime (DL/EL/QL), the closure must be COMPLETE
+   for that regime. RL closure is sound but incomplete for full DL, so
+   a "missing triple under RL closure" doesn't necessarily mean
    "non-entailed under DL". For the profile-RL.rdf catalog, the
    tests are scoped to RL semantics, so this is exact. For DL
    catalogs the user should expect false-positives until tableau-
@@ -609,8 +680,9 @@ let run_negative_entailment
     if g_p = [] then Fail_parse_premise
     else if g_c = [] then Fail_parse_conclusion
     else begin
+      let sem_mode = owl_semantics_mode_for info in
       let closure =
-        try apply_closure g_p
+        try apply_closure_with_semantics g_p sem_mode
         with _ -> g_p in
       debug_dump_closure info closure;
       let any_missing =
@@ -625,12 +697,29 @@ let run_negative_entailment
 (* ConsistencyTest: premise is asserted CONSISTENT. Pass iff closure has
    no inconsistency marker (per F*'s is_inconsistent in
    RDF.Graph.Executable: no rdf:type owl:Nothing, no sameAs/differentFrom
-   conflict, no disjoint-class instance). No conclusion expected. *)
+   conflict, no disjoint-class instance). No conclusion expected.
+
+   2026-07-05: New-Feature-ObjectPropertyChain-BJP-002 is a
+   ConsistencyTest whose ONLY premise serialization is functional
+   syntax (test:fsPremiseOntology / test:normativeSyntax=FUNCTIONAL,
+   no test:rdfXmlPremiseOntology) — the identical "unsupported input
+   syntax" gap run_positive_entailment and run_inconsistency_test
+   already carve out as Skip_functional_syntax_only. This path was
+   missing that carve-out, so the same catalog entry scored
+   FAIL/no-premise here while correctly SKIPping in the PE and
+   Inconsistency runs — an inconsistent (and per anti-pattern #3,
+   misleading) harness verdict on one test across three runs. This is
+   the ONLY item behind the "Consistency 75/1" score; adding the
+   matching carve-out is a harness-honesty fix (classification, not
+   semantics), not an RDF/SPARQL rule change. *)
 let run_consistency_test
       (info : test_case_info)
       (imports_lookup : (string, string) Hashtbl.t) : outcome =
   match info.premise with
-  | None -> Fail_no_premise
+  | None ->
+    if StrSet.mem test_syntax_functional info.normative_syntax
+    then Skip_functional_syntax_only
+    else Fail_no_premise
   | Some p_lex ->
     let p_src = expand_catalog_entities p_lex in
     let base = info.iri in
@@ -888,10 +977,16 @@ let run_catalog ?(verbose=false) path =
         (fun acc (_, o) -> match o with Pass -> acc + 1 | _ -> acc)
         0 c_outcomes
     in
-    let c_fails = ck - c_passes in
+    let c_skips =
+      List.fold_left
+        (fun acc (_, o) -> match o with Skip_functional_syntax_only -> acc + 1 | _ -> acc)
+        0 c_outcomes
+    in
+    let c_scored = ck - c_skips in
+    let c_fails = c_scored - c_passes in
     Printf.printf "\n";
-    Printf.printf "Profile-RL ConsistencyTests: %d pass, %d fail (out of %d) in %.2fs\n"
-      c_passes c_fails ck (t_cons1 -. t_cons0)
+    Printf.printf "Profile-RL ConsistencyTests: %d pass, %d fail (out of %d), %d skipped (functional-syntax-only) in %.2fs\n"
+      c_passes c_fails c_scored c_skips (t_cons1 -. t_cons0)
   end;
 
   let inc_tests =

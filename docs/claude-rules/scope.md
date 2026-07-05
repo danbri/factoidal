@@ -60,10 +60,87 @@ not force a PASS.
 The `Tableau.fst` module sketches stages (a)–(e) but a complete
 DL tableau (skolemisation, disjunction blocking, complementOf
 contrapositive, fresh-individual witnesses) is not the project goal.
-Specific DL-only entailment tests (`paper-sparqldl-Q3`,
-`WebOnt-I5.26-010`, the OWL 2 RL fp/ifp-differentFrom contrapositive
-cases) are tracked in #58 and the OWL-RL triage doc but are not in the
-current critical path.
+Specific DL-only entailment tests (`paper-sparqldl-Q3`, the OWL 2 RL
+fp/ifp-differentFrom contrapositive cases) are tracked in #58 and the
+OWL-RL triage doc but are not in the current critical path.
+`WebOnt-I5.26-010` is tracked separately below (comprehension
+entailment, not a tableau gap).
+
+### OWL 1 Full comprehension-principle entailments — WebOnt-I5.5-005, WebOnt-I5.26-010
+
+These are the 2 permanent failures in the `profile-RL.rdf` /
+`profile-EL.rdf` / `profile-QL.rdf` PositiveEntailmentTest catalogs
+(27 pass, 2 fail of 29 RDF/XML tests, as of 2026-07-05; see
+`bin/owl-runner/owl_runner.ml`). Re-derived and confirmed 2026-07-05
+against the catalog's own `test:description` text (both tests carry
+`test:species FULL` and `test:species DL` alongside `RL`/`EL`/`QL`
+profile tags — the W3C catalog cross-lists them for profile
+identification even though the entailment itself is an OWL 1 Full
+phenomenon):
+
+- **WebOnt-I5.5-005.** Premise: `Class(a)` (bare class declaration,
+  nothing else). Conclusion: `_:b owl:unionOf (a)` — an anonymous
+  class equal to `ObjectUnionOf(a)` exists. Catalog description,
+  verbatim: *"This test exhibits the effect of the comprehension
+  principles in OWL Full. The conclusion ontology only contains a
+  class declaration, ObjectUnionOf class expression does not appear
+  in an axiom."*
+- **WebOnt-I5.26-010.** Premise: `ObjectProperty(p)` (bare property
+  declaration, nothing else). Conclusion:
+  `_:n owl:onProperty p ; owl:minCardinality 1 ; rdf:type
+  owl:Restriction` — the restriction `p minCardinality 1` exists as a
+  class expression. Catalog description, verbatim: *"This is
+  trivially true given that first:p is an individualvaluedPropertyID"*
+  — "trivially true" refers to OWL Full's comprehension guarantee
+  that every describable class/property expression denotes something,
+  not to any RDF-level derivation.
+
+**Why neither is a missing RL rule or a matcher bug.** Both premises
+assert nothing about any individual, and neither premise graph
+contains a `unionOf`/`Restriction`/`onProperty`/`minCardinality`
+triple naming a bnode the conclusion could structurally match — the
+conclusion asserts the *bare existence* of a class expression node
+with no premise-side antecedent to hang a Horn rule off of. OWL 1
+Full's comprehension conditions (informally: "for every describable
+class expression, some resource denotes it") guaranteed these
+entailments; OWL 2's RDF-Based Semantics demoted comprehension to an
+*informative, non-normative* appendix, and OWL 2 RL's PR1 completeness
+theorem was never proved over bnode-only conclusions in the first
+place (RL is a Horn/Datalog fragment: every rule has a premise-side
+antecedent pattern, and comprehension entailments have none). No sound
+Horn rule over `{Class(a)}` or `{ObjectProperty(p)}` alone produces
+these triples — anything that did would have to fire on literally
+every named class/property in every graph, unconditionally, since
+there is nothing else in the premise to gate on.
+
+**A "fix" would be a triple generator, not a semantic rule**: for
+every named class C, unconditionally emit a singleton-`unionOf`
+scaffold (`_:x owl:unionOf (C)` + the `rdf:List` triples, 4 triples);
+for every named object property P, unconditionally emit a
+`minCardinality 1` restriction scaffold (`_:y owl:onProperty P ;
+owl:minCardinality 1 ; rdf:type owl:Restriction`, 3 triples). This is
+not the `owl_rule_named_equivClass_to_sameAs`-style narrow rewrite
+(CLAUDE.md "Known sound-but-narrow rewrites") because it has no guard
+condition to narrow — the trigger is "class exists" / "property
+exists" with no other premise fact required, so it manufactures the
+same junk triples on **every** graph unconditionally, growing every
+closure regardless of whether the query at hand cares about
+comprehension at all (the opposite of the #262 closure-size
+direction, and unlike the sound-but-narrow rewrite it has no sibling
+NegativeEntailmentTest keeping it in check — nothing would ever make
+these two scaffolds NOT fire).
+
+**Disposition: intentionally not implemented, permanent scope
+exclusion.** Do not attempt an anchor/scaffold hack to pass these two
+— re-verify this reasoning (does the premise gain a real antecedent
+fact in a future catalog revision? does OWL 2 RL gain a comprehension
+rule in a future profile revision?) before revisiting, but as of the
+OWL 2 RL/RDF specification these are out of scope. If a future OWL 1
+Full compatibility mode is ever built as its own opt-in regime
+(distinct from OWL 2 RL/Direct), the generator shape above is the
+starting point and must itself be documented as a comprehension-mode
+rewrite, gated so it never leaks into the OWL 2 RL/Direct closures
+scored by the floors in `skills/test-suites/SKILL.md`.
 
 ### Non-monotonic / negation-as-failure inference
 

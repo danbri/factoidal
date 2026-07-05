@@ -3590,9 +3590,43 @@ let owl_rule_named_sameAs_to_equivClass (g : rdf_graph) (ig : indexed_graph) : r
 // bin/owl-runner/owl_runner.ml, "regime" — chosen per catalog, not per
 // test:semantics annotation). WebOnt-I4.6-005 and
 // WebOnt-equivalentClass-008 stay unfixed under RL closure alone;
-// fixing them requires the runner to dispatch per test:semantics,
-// which is out of scope here (see #post-2026-07 OWL RL catalog audit).
-let owl_rule_named_equivClass_to_sameAs (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+// fixing them requires the runner to dispatch per test:semantics.
+//
+// 2026-07-05: that per-test:semantics dispatch is now wired. The
+// catalog itself tells us which reading applies: every TestCase in
+// profile-RL.rdf carries one or more test:semantics values (&test;DIRECT,
+// &test;RDF-BASED). WebOnt-I4.6-005-Direct / WebOnt-equivalentClass-008-
+// Direct carry ONLY test:semantics=DIRECT; their RDF-Based-semantics
+// siblings WebOnt-I4.6-005 / WebOnt-equivalentClass-008 carry ONLY
+// test:semantics=RDF-BASED over the identical premise + candidate
+// triple, and expect the OPPOSITE verdict. `owl_semantics_mode` below
+// is that dispatch key, threaded through a "_mode"-suffixed sibling of
+// each closure entry point (owl_rule_named_equivClass_to_sameAs_mode /
+// owl_rl_closure_step_mode / owl_rl_closure_mode /
+// owl_rl_closure_with_reflexivity_mode). The original arity-preserving
+// entry points (owl_rule_named_equivClass_to_sameAs, owl_rl_closure_step,
+// owl_rl_closure, owl_rl_closure_with_reflexivity) become one-line
+// wrappers that pass owl_semantics_direct — bitwise the same behaviour
+// as before this change, so w3c_runner.ml / factoidal_cli.ml /
+// rif_runner.ml / the tests/unit/ timing harnesses (all of which call
+// the unmodified 2-arg entry points) are unaffected. Only
+// bin/owl-runner/owl_runner.ml's NegativeEntailmentTest path calls the
+// mode-aware entry, selecting owl_semantics_rdf_based when the catalog
+// entry's test:semantics set is {RDF-BASED} and does not also contain
+// DIRECT.
+let owl_semantics_direct : string = "DIRECT"
+let owl_semantics_rdf_based : string = "RDF-BASED"
+
+let owl_rule_named_equivClass_to_sameAs_mode
+    (g : rdf_graph) (ig : indexed_graph) (mode : string) : rdf_graph =
+  // Under RDF-Based semantics a named owl:equivalentClass axiom
+  // identifies class EXTENSIONS only — it does not license collapsing
+  // the two class resources to owl:sameAs, so an annotation triple
+  // asserted on one side must NOT be copied to the other. Suppress the
+  // whole rule in that mode; every other mode (including the
+  // owl_semantics_direct default) keeps the historical unconditional
+  // behaviour below.
+  if mode = owl_semantics_rdf_based then g else
   let is_class (i : wf_iri) : bool =
     let types = find_objects_indexed ig (S_IRI i) rdf_type in
     List.Tot.existsb (fun (x : rdf_term) -> rdf_term_eq x (T_IRI owl_Class)) types
@@ -3630,6 +3664,11 @@ let owl_rule_named_equivClass_to_sameAs (g : rdf_graph) (ig : indexed_graph) : r
       else acc)
     g
     g
+
+// Arity-preserving wrapper — see the 2026-07-05 note above. Every
+// existing caller of this name keeps working unmodified.
+let owl_rule_named_equivClass_to_sameAs (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
+  owl_rule_named_equivClass_to_sameAs_mode g ig owl_semantics_direct
 
 // ---- Tier-3: prp-key (HasKey) — OWL 2 RL Cluster B -------------------------
 //
@@ -4281,7 +4320,12 @@ let owl_rule_differentFrom_to_allDifferent (g : rdf_graph) (ig : indexed_graph) 
 // (equivalentClass/Property expansion, owl:inverseOf flip, symmetric/
 // transitive), then sameAs rules. The fixpoint loop re-applies them until
 // no change.
-let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
+//
+// `mode` (owl_semantics_direct / owl_semantics_rdf_based, 2026-07-05)
+// reaches exactly one rule below (owl_rule_named_equivClass_to_sameAs_mode
+// at g5a) — see that rule's header comment for why. Every other rule is
+// semantics-mode-invariant.
+let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   (* OWL-RL Commit B: build the index once per step; thread to all
      30 rules. Snapshot semantics — see #4 of the design doc. *)
   let ig = build_indexed g in
@@ -4315,7 +4359,7 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   // the same step, propagating annotation properties from one named
   // class to its equivalent. Targets WebOnt-I4.6-005-Direct and
   // WebOnt-equivalentClass-008-Direct (cluster I+J).
-  let g5a = owl_rule_named_equivClass_to_sameAs g5 ig in
+  let g5a = owl_rule_named_equivClass_to_sameAs_mode g5 ig mode in
   let g6 = owl_rule_sameAs_reflexivity g5a ig in
   let g7 = owl_rule_sameAs_symmetry g6 ig in
   // eq-diff-sym: differentFrom is symmetric.
@@ -4424,23 +4468,42 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
   let g28 = owl_rule_scm_rng2 g27 ig in
   (* #259 followup: collapse duplicates introduced by the unchecked
      prepends inside each rule. Single O(N log N) pass per closure step. *)
-  
+
 graph_dedup_sort g28
+
+// Arity-preserving wrapper — see the 2026-07-05 note above
+// owl_rl_closure_step_mode. Every existing caller of this name
+// (owl_rl_closure below, the tests/unit/ timing harnesses) keeps
+// working unmodified, with mode fixed at owl_semantics_direct — the
+// historical unconditional-fire behaviour.
+let owl_rl_closure_step (g : rdf_graph) : rdf_graph =
+  owl_rl_closure_step_mode g owl_semantics_direct
 
 // Interleaved OWL-RL + RDFS fixpoint. RDFS rules run every iteration so
 // that triples introduced by cls-eqc1/2 and prp-eqp1/2 get propagated
 // through rdfs:subClassOf and rdfs:subPropertyOf chains. Terminates when
 // no new triples are added or fuel is exhausted.
-let rec owl_rl_closure (g : rdf_graph) (fuel : nat) : Tot rdf_graph (decreases fuel) =
+//
+// `mode` threads unchanged through every fixpoint iteration — the
+// catalog's test:semantics annotation is a property of the TEST, not
+// of any one closure step, so it never varies mid-computation.
+let rec owl_rl_closure_mode (g : rdf_graph) (fuel : nat) (mode : string) : Tot rdf_graph (decreases fuel) =
   match fuel with
   | 0 -> g
   | _ ->
     let next_fuel : nat = fuel - 1 in
-    let g_owl = owl_rl_closure_step g in
+    let g_owl = owl_rl_closure_step_mode g mode in
     let g_rdfs = rdfs_closure_step g_owl in
     if graph_len g_rdfs = graph_len g
     then g
-    else owl_rl_closure g_rdfs next_fuel
+    else owl_rl_closure_mode g_rdfs next_fuel mode
+
+// Arity-preserving wrapper — see the 2026-07-05 note above
+// owl_rl_closure_step_mode. w3c_runner.ml / factoidal_cli.ml /
+// rif_runner.ml / entailment_closure below all call this unmodified
+// name and keep the historical unconditional-fire behaviour.
+let owl_rl_closure (g : rdf_graph) (fuel : nat) : Tot rdf_graph =
+  owl_rl_closure_mode g fuel owl_semantics_direct
 
 // ---- Group E: owl:Thing / owl:Nothing universal axioms --------------------
 //
@@ -4552,11 +4615,24 @@ let owl_thing_axioms (g : rdf_graph) : rdf_graph =
 // axioms: first compute the RDFS closure with reflexivity, harvest the
 // Thing/Nothing axioms against the resulting graph, then iterate
 // OWL-RL + RDFS together to a fixpoint.
-let owl_rl_closure_with_reflexivity (g : rdf_graph) (fuel : nat) : Tot rdf_graph =
+//
+// `owl_rl_closure_with_reflexivity_mode` (2026-07-05) is the mode-aware
+// entry point: bin/owl-runner/owl_runner.ml's NegativeEntailmentTest
+// path calls it directly with the catalog's test:semantics dispatch
+// (owl_semantics_direct / owl_semantics_rdf_based). The plain 2-arg
+// `owl_rl_closure_with_reflexivity` below is an arity-preserving
+// wrapper fixed at owl_semantics_direct — every other caller
+// (w3c_runner.ml, factoidal_cli.ml, rif_runner.ml, entailment_closure
+// just below, owl_runner.ml's PositiveEntailmentTest / ConsistencyTest
+// / InconsistencyTest paths) is unaffected by this change.
+let owl_rl_closure_with_reflexivity_mode (g : rdf_graph) (fuel : nat) (mode : string) : Tot rdf_graph =
   let rdfs_closed = rdfs_closure_with_reflexivity g fuel in
   let thing_axioms = owl_thing_axioms rdfs_closed in
   let with_thing = add_triples_if_new rdfs_closed thing_axioms in
-  owl_rl_closure with_thing fuel
+  owl_rl_closure_mode with_thing fuel mode
+
+let owl_rl_closure_with_reflexivity (g : rdf_graph) (fuel : nat) : Tot rdf_graph =
+  owl_rl_closure_with_reflexivity_mode g fuel owl_semantics_direct
 
 (** ======================================================================== *)
 (** 20. Datatype Value Equivalence                                           *)

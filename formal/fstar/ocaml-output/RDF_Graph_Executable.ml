@@ -2372,41 +2372,51 @@ let owl_rule_named_sameAs_to_equivClass (g : rdf_graph) (ig : indexed_graph)
               else acc)
          | (uu___, uu___1) -> acc
        else acc) g g
+let owl_semantics_direct : Prims.string= "DIRECT"
+let owl_semantics_rdf_based : Prims.string= "RDF-BASED"
+let owl_rule_named_equivClass_to_sameAs_mode (g : rdf_graph)
+  (ig : indexed_graph) (mode : Prims.string) : rdf_graph=
+  if mode = owl_semantics_rdf_based
+  then g
+  else
+    (let is_class i =
+       let types = find_objects_indexed ig (S_IRI i) rdf_type in
+       FStar_List_Tot_Base.existsb (fun x -> rdf_term_eq x (T_IRI owl_Class))
+         types in
+     let has_extra_property i =
+       FStar_List_Tot_Base.existsb
+         (fun t ->
+            match t.s with
+            | S_IRI si ->
+                ((((si = i) && (t.p <> rdf_type)) &&
+                    (t.p <> owl_equivalentClass))
+                   && (t.p <> rdfs_subClassOf))
+                  && (t.p <> owl_sameAs)
+            | S_BNode uu___1 -> false) g in
+     FStar_List_Tot_Base.fold_left
+       (fun acc t ->
+          if t.p = owl_equivalentClass
+          then
+            match ((t.s), (t.o)) with
+            | (S_IRI c_iri, T_IRI d_iri) ->
+                (if
+                   (((c_iri <> d_iri) && (is_class c_iri)) &&
+                      (is_class d_iri))
+                     &&
+                     ((has_extra_property c_iri) ||
+                        (has_extra_property d_iri))
+                 then
+                   let t1 =
+                     { s = (S_IRI c_iri); p = owl_sameAs; o = (T_IRI d_iri) } in
+                   let t2 =
+                     { s = (S_IRI d_iri); p = owl_sameAs; o = (T_IRI c_iri) } in
+                   add_triple_unchecked (add_triple_unchecked acc t1) t2
+                 else acc)
+            | (uu___1, uu___2) -> acc
+          else acc) g g)
 let owl_rule_named_equivClass_to_sameAs (g : rdf_graph) (ig : indexed_graph)
   : rdf_graph=
-  let is_class i =
-    let types = find_objects_indexed ig (S_IRI i) rdf_type in
-    FStar_List_Tot_Base.existsb (fun x -> rdf_term_eq x (T_IRI owl_Class))
-      types in
-  let has_extra_property i =
-    FStar_List_Tot_Base.existsb
-      (fun t ->
-         match t.s with
-         | S_IRI si ->
-             ((((si = i) && (t.p <> rdf_type)) &&
-                 (t.p <> owl_equivalentClass))
-                && (t.p <> rdfs_subClassOf))
-               && (t.p <> owl_sameAs)
-         | S_BNode uu___ -> false) g in
-  FStar_List_Tot_Base.fold_left
-    (fun acc t ->
-       if t.p = owl_equivalentClass
-       then
-         match ((t.s), (t.o)) with
-         | (S_IRI c_iri, T_IRI d_iri) ->
-             (if
-                (((c_iri <> d_iri) && (is_class c_iri)) && (is_class d_iri))
-                  &&
-                  ((has_extra_property c_iri) || (has_extra_property d_iri))
-              then
-                let t1 =
-                  { s = (S_IRI c_iri); p = owl_sameAs; o = (T_IRI d_iri) } in
-                let t2 =
-                  { s = (S_IRI d_iri); p = owl_sameAs; o = (T_IRI c_iri) } in
-                add_triple_unchecked (add_triple_unchecked acc t1) t2
-              else acc)
-         | (uu___, uu___1) -> acc
-       else acc) g g
+  owl_rule_named_equivClass_to_sameAs_mode g ig owl_semantics_direct
 let rec decode_iri_list (g : rdf_graph) (ig : indexed_graph)
   (head_subj : subject) (fuel : Prims.nat) :
   wf_iri Prims.list FStar_Pervasives_Native.option=
@@ -2805,7 +2815,8 @@ let owl_rule_differentFrom_to_allDifferent (g : rdf_graph)
              { s = (S_BNode l2); p = rdf_first; o = (subject_to_term y) };
              { s = (S_BNode l2); p = rdf_rest; o = (T_IRI rdf_nil_iri) }]) g
     (differentFrom_canonical_pairs ig)
-let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
+let owl_rl_closure_step_mode (g : rdf_graph) (mode : Prims.string) :
+  rdf_graph=
   let ig = build_indexed g in
   let g1 = owl_rule_equivalent_class g ig in
   let g2 = owl_rule_equivalent_property g1 ig in
@@ -2818,7 +2829,7 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
   let g3a = owl_rule_inverseOf_domain_range_flip g3_comp ig in
   let g4 = owl_rule_symmetric_property g3a ig in
   let g5 = owl_rule_transitive_property g4 ig in
-  let g5a = owl_rule_named_equivClass_to_sameAs g5 ig in
+  let g5a = owl_rule_named_equivClass_to_sameAs_mode g5 ig mode in
   let g6 = owl_rule_sameAs_reflexivity g5a ig in
   let g7 = owl_rule_sameAs_symmetry g6 ig in
   let g7a = owl_rule_differentFrom_symmetry g7 ig in
@@ -2856,16 +2867,21 @@ let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
   let g26 = owl_rule_xsd_core_datatype_axioms g25a ig in
   let g27 = owl_rule_scm_dom2 g26 ig in
   let g28 = owl_rule_scm_rng2 g27 ig in graph_dedup_sort g28
-let rec owl_rl_closure (g : rdf_graph) (fuel : Prims.nat) : rdf_graph=
+let owl_rl_closure_step (g : rdf_graph) : rdf_graph=
+  owl_rl_closure_step_mode g owl_semantics_direct
+let rec owl_rl_closure_mode (g : rdf_graph) (fuel : Prims.nat)
+  (mode : Prims.string) : rdf_graph=
   match fuel with
   | uu___ when uu___ = Prims.int_zero -> g
   | uu___ ->
       let next_fuel = fuel - Prims.int_one in
-      let g_owl = owl_rl_closure_step g in
+      let g_owl = owl_rl_closure_step_mode g mode in
       let g_rdfs = rdfs_closure_step g_owl in
       if (graph_len g_rdfs) = (graph_len g)
       then g
-      else owl_rl_closure g_rdfs next_fuel
+      else owl_rl_closure_mode g_rdfs next_fuel mode
+let owl_rl_closure (g : rdf_graph) (fuel : Prims.nat) : rdf_graph=
+  owl_rl_closure_mode g fuel owl_semantics_direct
 let owl_thing_subject_iris (g : rdf_graph) : wf_iri Prims.list=
   FStar_List_Tot_Base.fold_left
     (fun acc t ->
@@ -2918,12 +2934,14 @@ let owl_thing_axioms (g : rdf_graph) : rdf_graph=
              (FStar_List_Tot_Base.op_At predicate_domain_triples
                 (FStar_List_Tot_Base.op_At predicate_range_triples
                    (FStar_List_Tot_Base.op_At individual_triples self_axioms))))))
-let owl_rl_closure_with_reflexivity (g : rdf_graph) (fuel : Prims.nat) :
-  rdf_graph=
+let owl_rl_closure_with_reflexivity_mode (g : rdf_graph) (fuel : Prims.nat)
+  (mode : Prims.string) : rdf_graph=
   let rdfs_closed = rdfs_closure_with_reflexivity g fuel in
   let thing_axioms = owl_thing_axioms rdfs_closed in
   let with_thing = add_triples_if_new rdfs_closed thing_axioms in
-  owl_rl_closure with_thing fuel
+  owl_rl_closure_mode with_thing fuel mode
+let owl_rl_closure_with_reflexivity (g : rdf_graph) (fuel : Prims.nat) :
+  rdf_graph= owl_rl_closure_with_reflexivity_mode g fuel owl_semantics_direct
 let is_digit (c : FStar_Char.char) : Prims.bool=
   let code = FStar_Char.int_of_char c in
   (code >= (Prims.of_int (0x30))) && (code <= (Prims.of_int (0x39)))
