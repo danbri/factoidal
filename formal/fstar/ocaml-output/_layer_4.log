@@ -1,12 +1,16 @@
-    RDF.Turtle.Serialize.fst (up to date, skipped -- source unchanged since last extract)
     OWL.QueryEval.fst (up to date, skipped -- source unchanged since last extract)
-    SHACL.Validation.fst (up to date, skipped -- source unchanged since last extract)
+    RDF.Turtle.Serialize.fst (up to date, skipped -- source unchanged since last extract)
     Parser.TriG.fst (up to date, skipped -- source unchanged since last extract)
-    [ShEx.Validation.fst]
-    JSONLD.Expand.fst (up to date, skipped -- source unchanged since last extract)
-    RIF.Core.Eval.fst (up to date, skipped -- source unchanged since last extract)
+    SHACL.Validation.fst (up to date, skipped -- source unchanged since last extract)
+    [RIF.Core.Builtins.fst]
+    RIF.Core.Conformance.fst (up to date, skipped -- source unchanged since last extract)
+    [JSONLD.Expand.fst]
+    ShEx.Validation.fst (up to date, skipped -- source unchanged since last extract)
     Parser.Ballyhoo.fst (up to date, skipped -- source unchanged since last extract)
+    [RML.Eval.fst]
     SPARQL.Plan.Pruning.fst (up to date, skipped -- source unchanged since last extract)
     RDF.CottasStore.fst (up to date, skipped -- source unchanged since last extract)
     SPARQL.Explain.fst (up to date, skipped -- source unchanged since last extract)
-    [ShEx.Validation.fst] Extracted module ShEx.Validation
+    [RML.Eval.fst] Extracted module RML.Eval
+    [RIF.Core.Builtins.fst] Extracted module RIF.Core.Builtins
+    [JSONLD.Expand.fst] Extracted module JSONLD.Expand

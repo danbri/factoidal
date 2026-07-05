@@ -2,7 +2,7 @@
 # Executable: "/root/.opam/fstar/bin/fstar.exe"
 # Hash: 89901492c020c74b82d811d27f3149c222d9b8b5
 # Running in directory "/home/user/factoidal/formal/fstar"
-# Command line arguments: "["fstar.exe", "--dep", "full", "Util.Log.fst", "RDF.Format.fst", "RDF.Graph.Executable.fst", "Parquet.Footer.fst", "RDF.NQuads.Serialize.fst", "RDF.List.Helpers.fst", "RDF.Bytes.fst", "RDF.Store.Loader.fst", "RDF.Dataset.Graphs.fst", "RDF.Canonical.fst", "RDF.Canonical.Manifest.fst", "OWL.Vocabulary.fst", "OWL.DirectMapping.Filter.fst", "Tableau.fst", "SPARQL11.IRI.Resolve.fst", "SPARQL11.Algebra.fst", "XSD.Datatypes.fst", "RDF.Pretty.fst", "OWL.QueryRewrite.fst", "OWL.QueryEval.fst", "OWL.Tests.Manifest.fst", "RIF.Core.Syntax.fst", "RIF.Core.Translation.fst", "SHACL.Validation.fst", "Parser.FastString.fst", "Parser.IRI.fst", "Parser.Combinators.fst", "Parser.TurtleScanner.fst", "SPARQL11.Parser.fst", "Parser.NTriples.fst", "Parser.Turtle.fst", "Parser.OWLFunctional.fst", "RDF.Turtle.Serialize.fst", "Parser.NQuads.fst", "Parser.TriG.fst", "Parser.XML.fst", "XML.Wellformedness.fst", "Parser.RDFXML.fst", "Parser.RIFXML.fst", "RIF.Core.Eval.fst", "RIF.Core.Tests.fst", "Parser.SRX.fst", "Parser.CSVResults.fst", "Parser.JSONResults.fst", "SPARQL.JSON.Escape.fst", "Parser.JSON.fst", "JSONLD.Loader.fst", "JSONLD.Context.fst", "JSONLD.Expand.fst", "Parser.JSONLD.fst", "ShEx.Schema.fst", "ShEx.Validation.fst", "SPARQL.Eval.TimeBudget.fst", "SPARQL.Eval.Limits.fst", "SPARQL.HTTP.Response.fst", "SPARQL.HTTP.Timing.fst", "SPARQL.HTTP.BackendInfo.fst", "SPARQL.HTTP.QueriesIndex.fst", "SPARQL.HTTP.StaticFiles.fst", "SPARQL.HTTP.Admin.fst", "SPARQL.HTTP.Routes.fst", "Parser.Ballyhoo.fst", "Parser.BallyhooBloom.fst", "Parser.BallyhooHDT.fst", "Parser.BallyhooHDTQ.fst", "Parser.BallyhooCOTTAS.fst", "RDF.CottasStore.ColumnSeq.fst", "RDF.CottasStore.PageCache.fst", "RDF.CottasStore.OnDiskIndex.fst", "RDF.CottasStore.DictWriter.fst", "RDF.CottasStore.PresenceBitmap.fst", "RDF.CottasStore.PresenceWriter.fst", "RDF.CottasStore.CompoundPresenceBitmap.fst", "RDF.CottasStore.CompoundPresenceWriter.fst", "RDF.CottasStore.OffsetsWriter.fst", "RDF.CottasStore.LazyDict.fst", "RDF.CottasStore.LazyDictRegistry.fst", "RDF.Store.LazyTermCache.fst", "RDF.Store.HDTTermCacheRegistry.fst", "RDF.Store.Columnar.OffsetIndex.fst", "SPARQL.Plan.Pruning.fst", "SPARQL.Plan.Estimate.fst", "SPARQL.Plan.Loader.fst", "SPARQL.Plan.AccessPath.fst", "RDF.CottasStore.fst", "RDF.CottasStore.OnDiskRuntime.fst", "RDF.CottasInMem.fst", "SPARQL11.Store.fst", "RDF.Store.Combine.fst", "RDF.Dataset.Merge.fst", "SPARQL.Protocol.fst", "SPARQL.HTTP.RunQuery.fst", "SPARQL.Update.Sandbox.fst", "SPARQL.Update.Analysis.fst", "SPARQL.Diagnostics.fst", "SPARQL.Explain.fst", "SPARQL.Query.Analysis.fst", "SPARQL.Plan.Explain.fst", "SPARQL.HTTP.fst", "SPARQL.HTTP.Client.fst", "SPARQL.ServiceDescription.fst", "SPARQL.GraphStore.fst"]"
+# Command line arguments: "["fstar.exe", "--dep", "full", "Util.Log.fst", "RDF.Format.fst", "RDF.Graph.Executable.fst", "Parquet.Footer.fst", "RDF.NQuads.Serialize.fst", "RDF.List.Helpers.fst", "RDF.Bytes.fst", "RDF.Store.Loader.fst", "RDF.Dataset.Graphs.fst", "RDF.Canonical.fst", "RDF.Canonical.Manifest.fst", "OWL.Vocabulary.fst", "OWL.DirectMapping.Filter.fst", "Tableau.fst", "SPARQL11.IRI.Resolve.fst", "SPARQL11.Algebra.fst", "XSD.Datatypes.fst", "RDF.Pretty.fst", "OWL.QueryRewrite.fst", "OWL.QueryEval.fst", "OWL.Tests.Manifest.fst", "RIF.Core.Syntax.fst", "RIF.Core.Translation.fst", "SHACL.Validation.fst", "Parser.FastString.fst", "Parser.IRI.fst", "Parser.Combinators.fst", "Parser.TurtleScanner.fst", "SPARQL11.Parser.fst", "Parser.NTriples.fst", "Parser.Turtle.fst", "Parser.OWLFunctional.fst", "RDF.Turtle.Serialize.fst", "Parser.NQuads.fst", "Parser.TriG.fst", "Parser.XML.fst", "XML.Wellformedness.fst", "Parser.RDFXML.fst", "Parser.RIFXML.fst", "RIF.Core.Builtins.fst", "RIF.Core.Conformance.fst", "RIF.Core.Eval.fst", "RIF.Core.Tests.fst", "Parser.SRX.fst", "Parser.CSVResults.fst", "Parser.JSONResults.fst", "SPARQL.JSON.Escape.fst", "Parser.JSON.fst", "JSONLD.Loader.fst", "JSONLD.Context.fst", "JSONLD.Expand.fst", "Parser.JSONLD.fst", "ShEx.Schema.fst", "ShEx.Validation.fst", "RML.Mapping.fst", "RML.Sources.fst", "RML.Eval.fst", "SPARQL.Eval.TimeBudget.fst", "SPARQL.Eval.Limits.fst", "SPARQL.HTTP.Response.fst", "SPARQL.HTTP.Timing.fst", "SPARQL.HTTP.BackendInfo.fst", "SPARQL.HTTP.QueriesIndex.fst", "SPARQL.HTTP.StaticFiles.fst", "SPARQL.HTTP.Admin.fst", "SPARQL.HTTP.Routes.fst", "Parser.Ballyhoo.fst", "Parser.BallyhooBloom.fst", "Parser.BallyhooHDT.fst", "Parser.BallyhooHDTQ.fst", "Parser.BallyhooCOTTAS.fst", "RDF.CottasStore.ColumnSeq.fst", "RDF.CottasStore.PageCache.fst", "RDF.CottasStore.OnDiskIndex.fst", "RDF.CottasStore.DictWriter.fst", "RDF.CottasStore.PresenceBitmap.fst", "RDF.CottasStore.PresenceWriter.fst", "RDF.CottasStore.CompoundPresenceBitmap.fst", "RDF.CottasStore.CompoundPresenceWriter.fst", "RDF.CottasStore.OffsetsWriter.fst", "RDF.CottasStore.LazyDict.fst", "RDF.CottasStore.LazyDictRegistry.fst", "RDF.Store.LazyTermCache.fst", "RDF.Store.HDTTermCacheRegistry.fst", "RDF.Store.Columnar.OffsetIndex.fst", "SPARQL.Plan.Pruning.fst", "SPARQL.Plan.Estimate.fst", "SPARQL.Plan.Loader.fst", "SPARQL.Plan.AccessPath.fst", "RDF.CottasStore.fst", "RDF.CottasStore.OnDiskRuntime.fst", "RDF.CottasInMem.fst", "SPARQL11.Store.fst", "RDF.Store.Combine.fst", "RDF.Dataset.Merge.fst", "SPARQL.Protocol.fst", "SPARQL.HTTP.RunQuery.fst", "SPARQL.Update.Sandbox.fst", "SPARQL.Update.Analysis.fst", "SPARQL.Diagnostics.fst", "SPARQL.Explain.fst", "SPARQL.Query.Analysis.fst", "SPARQL.Plan.Explain.fst", "SPARQL.HTTP.fst", "SPARQL.HTTP.Client.fst", "SPARQL.ServiceDescription.fst", "SPARQL.GraphStore.fst"]"
 
 /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Stubs.Tactics.V2.Builtins.fsti.checked: \
 	/root/.opam/fstar/lib/fstar/ulib/FStar.Stubs.Tactics.V2.Builtins.fsti \
@@ -345,8 +345,9 @@ FStar_Reflection_Types.krml: \
 
 RIF.Core.Translation.fst.checked: \
 	RIF.Core.Translation.fst \
-	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked \
 	RIF.Core.Syntax.fst.checked \
 	SPARQL11.Algebra.fst.checked \
 	RDF.Graph.Executable.fst.checked \
@@ -416,6 +417,33 @@ Parser_RDFXML.cmx: \
 	Parser_XML.cmx \
 	Parser_Combinators.cmx
 
+RIF.Core.Builtins.fst.checked: \
+	RIF.Core.Builtins.fst \
+	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked \
+	XSD.Datatypes.fst.checked \
+	SPARQL11.Algebra.fst.checked \
+	RDF.Graph.Executable.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
+
+RIF_Core_Builtins.ml: \
+	RIF.Core.Builtins.fst.checked
+
+RIF_Core_Builtins.fs: \
+	RIF.Core.Builtins.fst.checked
+
+RIF_Core_Builtins.krml: \
+	RIF.Core.Builtins.fst.checked
+
+RIF_Core_Builtins.cmx: \
+	RIF_Core_Builtins.ml \
+	XSD_Datatypes.cmx \
+	SPARQL11_Algebra.cmx \
+	RDF_Graph_Executable.cmx
+
 /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Classical.Sugar.fst.checked: \
 	/root/.opam/fstar/lib/fstar/ulib/FStar.Classical.Sugar.fst \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Classical.Sugar.fsti.checked \
@@ -463,6 +491,37 @@ FStar_Pervasives_Native.ml: \
 
 FStar_Pervasives_Native.krml: \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked
+
+RML.Eval.fst.checked: \
+	RML.Eval.fst \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked \
+	SPARQL11.Algebra.fst.checked \
+	Parser.JSON.fst.checked \
+	RML.Sources.fst.checked \
+	RML.Mapping.fst.checked \
+	RDF.Graph.Executable.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
+
+RML_Eval.ml: \
+	RML.Eval.fst.checked
+
+RML_Eval.fs: \
+	RML.Eval.fst.checked
+
+RML_Eval.krml: \
+	RML.Eval.fst.checked
+
+RML_Eval.cmx: \
+	RML_Eval.ml \
+	SPARQL11_Algebra.cmx \
+	Parser_JSON.cmx \
+	RML_Sources.cmx \
+	RML_Mapping.cmx \
+	RDF_Graph_Executable.cmx
 
 /root/.opam/fstar/lib/fstar/ulib.checked/FStar.Preorder.fst.checked: \
 	/root/.opam/fstar/lib/fstar/ulib/FStar.Preorder.fst \
@@ -600,6 +659,7 @@ RDF_NQuads_Serialize.cmx: \
 
 RIF.Core.Syntax.fst.checked: \
 	RIF.Core.Syntax.fst \
+	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
 	RDF.Graph.Executable.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
@@ -665,8 +725,9 @@ RDF_Pretty.cmx: \
 RIF.Core.Eval.fst.checked: \
 	RIF.Core.Eval.fst \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Classical.fsti.checked \
-	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
+	RIF.Core.Builtins.fst.checked \
 	RIF.Core.Translation.fst.checked \
 	RIF.Core.Syntax.fst.checked \
 	SPARQL11.Algebra.fst.checked \
@@ -685,6 +746,7 @@ RIF_Core_Eval.krml: \
 
 RIF_Core_Eval.cmx: \
 	RIF_Core_Eval.ml \
+	RIF_Core_Builtins.cmx \
 	RIF_Core_Translation.cmx \
 	RIF_Core_Syntax.cmx \
 	SPARQL11_Algebra.cmx \
@@ -1342,6 +1404,30 @@ JSONLD_Expand.cmx: \
 	/root/.opam/fstar/lib/fstar/ulib/FStar.Math.Lemmas.fsti \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Mul.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
+
+RML.Mapping.fst.checked: \
+	RML.Mapping.fst \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
+	RDF.Graph.Executable.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.All.fsti.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
+
+RML_Mapping.ml: \
+	RML.Mapping.fst.checked
+
+RML_Mapping.fs: \
+	RML.Mapping.fst.checked
+
+RML_Mapping.krml: \
+	RML.Mapping.fst.checked
+
+RML_Mapping.cmx: \
+	RML_Mapping.ml \
+	RDF_Graph_Executable.cmx
 
 SPARQL.HTTP.Client.fst.checked: \
 	SPARQL.HTTP.Client.fst \
@@ -2220,6 +2306,35 @@ RDF_Canonical_Manifest.krml: \
 RDF_Canonical_Manifest.cmx: \
 	RDF_Canonical_Manifest.ml
 
+RIF.Core.Conformance.fst.checked: \
+	RIF.Core.Conformance.fst \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
+	RIF.Core.Syntax.fst.checked \
+	Parser.RIFXML.fst.checked \
+	Parser.XML.fst.checked \
+	RDF.Graph.Executable.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
+
+RIF_Core_Conformance.ml: \
+	RIF.Core.Conformance.fst.checked
+
+RIF_Core_Conformance.fs: \
+	RIF.Core.Conformance.fst.checked
+
+RIF_Core_Conformance.krml: \
+	RIF.Core.Conformance.fst.checked
+
+RIF_Core_Conformance.cmx: \
+	RIF_Core_Conformance.ml \
+	RIF_Core_Syntax.cmx \
+	Parser_RIFXML.cmx \
+	Parser_XML.cmx \
+	RDF_Graph_Executable.cmx
+
 Util.Log.fst.checked: \
 	Util.Log.fst \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
@@ -2333,8 +2448,8 @@ FStar_IndefiniteDescription.krml: \
 
 Parser.JSONLD.fst.checked: \
 	Parser.JSONLD.fst \
-	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
 	JSONLD.Expand.fst.checked \
 	JSONLD.Context.fst.checked \
 	SPARQL.JSON.Escape.fst.checked \
@@ -3088,6 +3203,29 @@ JSONLD_Context.cmx: \
 	Parser_JSON.cmx \
 	Parser_FastString.cmx
 
+RML.Sources.fst.checked: \
+	RML.Sources.fst \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/Prims.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Char.fsti.checked \
+	Parser.JSON.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.fst.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.String.fsti.checked \
+	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Prelude.fsti.checked
+
+RML_Sources.ml: \
+	RML.Sources.fst.checked
+
+RML_Sources.fs: \
+	RML.Sources.fst.checked
+
+RML_Sources.krml: \
+	RML.Sources.fst.checked
+
+RML_Sources.cmx: \
+	RML_Sources.ml \
+	Parser_JSON.cmx
+
 /root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.Base.fst.checked: \
 	/root/.opam/fstar/lib/fstar/ulib/FStar.List.Tot.Base.fst \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Classical.Sugar.fsti.checked \
@@ -3305,10 +3443,15 @@ ALL_FST_FILES= \
 	RDF.Store.LazyTermCache.fst \
 	RDF.Store.Loader.fst \
 	RDF.Turtle.Serialize.fst \
+	RIF.Core.Builtins.fst \
+	RIF.Core.Conformance.fst \
 	RIF.Core.Eval.fst \
 	RIF.Core.Syntax.fst \
 	RIF.Core.Tests.fst \
 	RIF.Core.Translation.fst \
+	RML.Eval.fst \
+	RML.Mapping.fst \
+	RML.Sources.fst \
 	SHACL.Validation.fst \
 	SPARQL.Diagnostics.fst \
 	SPARQL.Eval.Limits.fst \
@@ -3399,6 +3542,7 @@ ALL_CHECKED_FILES= \
 	SPARQL.HTTP.RunQuery.fst.checked \
 	RDF.CottasStore.ColumnSeq.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.List.Tot.Base.fst.checked \
+	RML.Sources.fst.checked \
 	JSONLD.Context.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Seq.fst.checked \
 	RDF.Store.Columnar.OffsetIndex.fst.checked \
@@ -3455,6 +3599,7 @@ ALL_CHECKED_FILES= \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Float.fsti.checked \
 	RDF.CottasStore.PageCache.fst.checked \
 	Util.Log.fst.checked \
+	RIF.Core.Conformance.fst.checked \
 	RDF.Canonical.Manifest.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Monotonic.Witnessed.fsti.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.BitVector.fst.checked \
@@ -3503,6 +3648,7 @@ ALL_CHECKED_FILES= \
 	XML.Wellformedness.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Classical.Sugar.fsti.checked \
 	SPARQL.HTTP.Client.fst.checked \
+	RML.Mapping.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Math.Lemmas.fsti.checked \
 	JSONLD.Expand.fst.checked \
 	RDF.CottasStore.LazyDict.fst.checked \
@@ -3552,9 +3698,11 @@ ALL_CHECKED_FILES= \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Stubs.Syntax.Syntax.fsti.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Stubs.Errors.Msg.fsti.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Preorder.fst.checked \
+	RML.Eval.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Pervasives.Native.fst.checked \
 	XSD.Datatypes.fst.checked \
 	/root/.opam/fstar/lib/fstar/ulib.checked/FStar.Classical.Sugar.fst.checked \
+	RIF.Core.Builtins.fst.checked \
 	Parser.RDFXML.fst.checked \
 	RDF.CottasStore.PresenceBitmap.fst.checked \
 	RIF.Core.Translation.fst.checked \
@@ -3616,15 +3764,19 @@ ALL_FS_FILES= \
 	XML_Wellformedness.fs \
 	Parser_Combinators.fs \
 	Parser_TurtleScanner.fs \
+	RIF_Core_Builtins.fs \
+	RML_Mapping.fs \
 	SPARQL_Eval_TimeBudget.fs \
 	SPARQL_HTTP_Routes.fs \
+	Parser_JSON.fs \
+	RML_Sources.fs \
+	RML_Eval.fs \
 	RDF_CottasStore_OffsetsWriter.fs \
 	RIF_Core_Translation.fs \
 	RDF_Format.fs \
 	SPARQL_Eval_Limits.fs \
 	SPARQL_ServiceDescription.fs \
 	JSONLD_Loader.fs \
-	Parser_JSON.fs \
 	JSONLD_Context.fs \
 	Parser_NTriples.fs \
 	Parser_NQuads.fs \
@@ -3667,12 +3819,13 @@ ALL_FS_FILES= \
 	ShEx_Validation.fs \
 	Parser_CSVResults.fs \
 	JSONLD_Expand.fs \
+	Parser_RIFXML.fs \
+	RIF_Core_Conformance.fs \
 	SPARQL_Plan_Pruning.fs \
 	RDF_Store_Columnar_OffsetIndex.fs \
 	SPARQL_Plan_AccessPath.fs \
 	Parser_BallyhooHDTQ.fs \
 	RDF_Store_Combine.fs \
-	Parser_RIFXML.fs \
 	RIF_Core_Tests.fs \
 	SPARQL_GraphStore.fs \
 	Parser_JSONLD.fs \
@@ -3720,15 +3873,19 @@ ALL_ML_FILES= \
 	XML_Wellformedness.ml \
 	Parser_Combinators.ml \
 	Parser_TurtleScanner.ml \
+	RIF_Core_Builtins.ml \
+	RML_Mapping.ml \
 	SPARQL_Eval_TimeBudget.ml \
 	SPARQL_HTTP_Routes.ml \
+	Parser_JSON.ml \
+	RML_Sources.ml \
+	RML_Eval.ml \
 	RDF_CottasStore_OffsetsWriter.ml \
 	RIF_Core_Translation.ml \
 	RDF_Format.ml \
 	SPARQL_Eval_Limits.ml \
 	SPARQL_ServiceDescription.ml \
 	JSONLD_Loader.ml \
-	Parser_JSON.ml \
 	JSONLD_Context.ml \
 	Parser_NTriples.ml \
 	Parser_NQuads.ml \
@@ -3771,12 +3928,13 @@ ALL_ML_FILES= \
 	ShEx_Validation.ml \
 	Parser_CSVResults.ml \
 	JSONLD_Expand.ml \
+	Parser_RIFXML.ml \
+	RIF_Core_Conformance.ml \
 	SPARQL_Plan_Pruning.ml \
 	RDF_Store_Columnar_OffsetIndex.ml \
 	SPARQL_Plan_AccessPath.ml \
 	Parser_BallyhooHDTQ.ml \
 	RDF_Store_Combine.ml \
-	Parser_RIFXML.ml \
 	RIF_Core_Tests.ml \
 	SPARQL_GraphStore.ml \
 	Parser_JSONLD.ml \
@@ -3874,6 +4032,12 @@ ALL_KRML_FILES= \
 	Parser_BallyhooCOTTAS.krml \
 	RDF_CottasStore.krml \
 	RDF_CottasInMem.krml \
+	RIF_Core_Builtins.krml \
+	RML_Mapping.krml \
+	Parser_Combinators.krml \
+	Parser_JSON.krml \
+	RML_Sources.krml \
+	RML_Eval.krml \
 	RDF_CottasStore_OffsetsWriter.krml \
 	RIF_Core_Syntax.krml \
 	RIF_Core_Translation.krml \
@@ -3884,8 +4048,6 @@ ALL_KRML_FILES= \
 	RDF_Dataset_Graphs.krml \
 	RDF_Canonical.krml \
 	JSONLD_Loader.krml \
-	Parser_Combinators.krml \
-	Parser_JSON.krml \
 	JSONLD_Context.krml \
 	SPARQL_JSON_Escape.krml \
 	SPARQL_Explain.krml \
@@ -3906,10 +4068,11 @@ ALL_KRML_FILES= \
 	ShEx_Validation.krml \
 	Parser_CSVResults.krml \
 	JSONLD_Expand.krml \
+	Parser_RIFXML.krml \
+	RIF_Core_Conformance.krml \
 	SPARQL_Protocol.krml \
 	SPARQL_Plan_Pruning.krml \
 	SPARQL_GraphStore.krml \
-	Parser_RIFXML.krml \
 	RIF_Core_Tests.krml \
 	Parser_JSONLD.krml \
 	SPARQL_HTTP_QueriesIndex.krml \

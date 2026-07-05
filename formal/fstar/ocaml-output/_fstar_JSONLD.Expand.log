@@ -1,15 +1,3 @@
-* Warning 241 at JSONLD.Context.fst(0,0-0,0):
-  - Unable to load JSONLD.Context.fst.checked since checked file
-    JSONLD.Context.fst.checked is stale (dependence hash mismatch, use --debug
-    CheckedFiles for more details); will recheck JSONLD.Context.fst (suppressing
-    this warning for further modules)
-
 Extracted module JSONLD.Expand
-* Warning 247 at JSONLD.Expand.fst(0,0-0,0):
-  - Checked file JSONLD.Expand.fst.checked was not written.
-  - Reason:
-      checked file JSONLD.Context.fst.checked is stale (dependence hash
-      mismatch, use --debug CheckedFiles for more details)
-
 Verified module: JSONLD.Expand
 All verification conditions discharged successfully

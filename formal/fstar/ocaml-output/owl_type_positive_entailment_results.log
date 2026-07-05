@@ -206,7 +206,7 @@
   [pe-running] somevaluesfrom2bnode
 Closure regime: RL
 OWL 2 test catalog: third_party/testing/owl/type-positive-entailment.rdf
-  parsed 5400 triples in 0.21s
+  parsed 5400 triples in 0.34s
 Totals: 206 test cases
   PositiveEntailmentTest:    206
   NegativeEntailmentTest:    0
@@ -424,7 +424,7 @@ Running 206 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (f
   FAIL  rdfbased-sem-restrict-somevalues-inst-subj
   FAIL  somevaluesfrom2bnode
 
-Profile-RL PositiveEntailmentTests: 92 pass, 112 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 39.01s
+Profile-RL PositiveEntailmentTests: 92 pass, 112 fail (out of 204 RDF/XML tests), 2 skipped (functional-syntax-only) in 38.26s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 206 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
@@ -637,4 +637,4 @@ Running 206 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-somevalues-inst-subj
   PASS  somevaluesfrom2bnode
 
-Profile-RL ConsistencyTests: 186 pass, 18 fail (out of 204), 2 skipped (functional-syntax-only) in 29.53s
+Profile-RL ConsistencyTests: 186 pass, 18 fail (out of 204), 2 skipped (functional-syntax-only) in 31.98s

@@ -1,3 +1,13 @@
+* Warning 241 at XSD.Datatypes.fst(0,0-0,0):
+  - Unable to load XSD.Datatypes.fst.checked since checked file
+    XSD.Datatypes.fst.checked is stale (digest mismatch for XSD.Datatypes.fst);
+    will recheck XSD.Datatypes.fst (suppressing this warning for further
+    modules)
+
 Extracted module RIF.Core.Eval
+* Warning 247 at RIF.Core.Eval.fst(0,0-0,0):
+  - Checked file RIF.Core.Eval.fst.checked was not written.
+  - Reason: checked file RIF.Core.Builtins.fst.checked does not exist
+
 Verified module: RIF.Core.Eval
 All verification conditions discharged successfully

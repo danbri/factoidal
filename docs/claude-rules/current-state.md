@@ -1,6 +1,24 @@
 # Current State (Honest Assessment)
 
-Last refreshed: 2026-07-05 (ShEx-completion wave B: **1176 pass, 6
+Last refreshed: 2026-07-05 (goal wave: **ShEx 1181 pass, 1 mismatch
+(upstream fixture defect), 0 deferred, 0 skipped (of 1182)** —
+descendant-witness semantics from the inheritance paper, verified by
+differential probe against @shexjs/validator. **RML rml-core 76
+pass, 0 fail (of 76)** — joins (index-paired joinless RefObjectMaps
+per spec), error-fixture validations, battery-visible rml_runner.
+**RIF 34 pass, 4 labelled fails, 12 precise skips (of 50)** — DTB
+builtins module, safeness/conformance checker, import-rejection
+table; every entry scored or construct-named. **JSON-LD 437 pass,
+22 fail, 8 skip (of 467)** — 29 flips (CTD negatives, nested lists,
+@import merge, forward refs, misc); all 22 residual fails diagnosed
+with module owners. KaRaMeL pipeline GREEN: krml installed
+(~12 min recipe re-validated), 4 modules F-star->C->gcc with a 10/10
+demo (tools/karamel-c-build.sh); SPARQL11.Algebra monomorphization
+overflow confirms the stratification need. Bundle modularity
+measured: parse-only entry 59KB gz vs 144KB full. Unit list gained
+the new RIF modules (25/25). Floors held.)
+
+Previous (ShEx-completion wave B: **1176 pass, 6
 mismatch, 0 deferred, 0 skipped (of 1182)**. Runner side: focus
 base-resolution fix (+25), recursive cycle-safe Imports (+17),
 ShapeExternal (+4), bnode shape labels (+2), base-threaded schema

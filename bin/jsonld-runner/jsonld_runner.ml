@@ -28,10 +28,21 @@
    Scope (see docs/designissues/2026-07-04-jsonld-program-lessons.md
    and docs/designissues/2026-07-05-jsonld-phase2-runner.md):
      - toRdf manifest only (not compact/flatten/frame/fromRdf/html).
-     - Tests tagged option.specVersion == "json-ld-1.0" are SKIPPED —
-       this program targets JSON-LD 1.1 only (CLAUDE.md iron rule #5's
-       sibling policy for JSON-LD: never default to a superseded
-       version's manifest when a newer one exists).
+     - option.specVersion == "json-ld-1.0" (11 tests: t0118, te014,
+       te026, te038, te071, te115, te116, ter02, ter03, ter24, ter32)
+       used to be a blanket SKIP. As of the 2026-07-05 IRI-resolution/
+       JCS/skip-policy pass, option.specVersion now threads into
+       parse_jsonld's processing_mode exactly like option.processingMode
+       already did (see jld_processing_mode below) — so every one of
+       these 11 actually RUNS through the normal Positive/Negative
+       comparison instead of being skipped sight-unseen. Measuring the
+       real result (not just "specVersion says 1.0, skip it") showed 3
+       of the 11 are honestly gettable with this program's 1.1-plus-
+       ac_mode10-gating engine: te026, ter02, ter03 (see jld_1_0_still_skip
+       below for exactly why each of the other 8 still needs GENUINE
+       1.0-mode semantics this engine does not implement, and stays
+       skipped with a fixture-specific reason instead of the old
+       one-size-fits-all message).
 
    PHASE 6 (issue #275): remote contexts / "@import" + document base.
    This runner is the ONE consumer that realises
@@ -302,16 +313,84 @@ let parse_jsonld_tc tc content =
   let fs_expand_context = match tc.expand_context with
     | Some rel -> FStar_Pervasives_Native.Some (jsonld_test_base ^ rel)
     | None -> FStar_Pervasives_Native.None in
-  let fs_processing_mode = match tc.processing_mode with
-    | Some s -> FStar_Pervasives_Native.Some s
-    | None -> FStar_Pervasives_Native.None in
+  (* option.processingMode (PHASE 8) and option.specVersion (the 11-test
+     battery documented at this file's top) are two different manifest
+     fields that both mean "run under this JSON-LD processing mode" —
+     forward whichever is present (processingMode taking precedence on
+     the theoretical case a manifest entry sets both) so parse_jsonld's
+     ac_mode10 gating sees "json-ld-1.0" for either spelling. *)
+  let fs_processing_mode = match tc.processing_mode, tc.spec_version with
+    | Some s, _ -> FStar_Pervasives_Native.Some s
+    | None, Some sv -> FStar_Pervasives_Native.Some sv
+    | None, None -> FStar_Pervasives_Native.None in
   opt_of_fs (Parser_JSONLD.parse_jsonld content (FStar_Pervasives_Native.Some (test_base tc)) fs_rdf_direction fs_expand_context fs_processing_mode)
 
+(* The specVersion=json-ld-1.0 battery (11 tests), split on hard evidence
+   (2026-07-05): each of these 8 was actually RUN (not blanket-skipped)
+   against this program's 1.1-plus-ac_mode10 engine and produced the
+   WRONG result — a false FAIL, not a false PASS — because the fixture
+   exercises a genuine 1.0-only semantic this engine does not implement.
+   The other 3 specVersion=json-ld-1.0 IDs (te026, ter02, ter03) are NOT
+   listed here: they were measured to PASS for real under normal
+   Positive/Negative comparison, so they now run like any other test
+   (no skip, no special-casing) — see this file's top-of-file comment.
+   Kept as an explicit ID allowlist (not a blanket specVersion check)
+   precisely so this list has to be edited, not silently widened, the
+   next time someone touches 1.0-only handling. *)
+let jld_1_0_still_skip (id : string) : string option =
+  match id with
+  | "#t0118" ->
+    Some "option.specVersion=json-ld-1.0 + produceGeneralizedRdf:true — \
+          this program's list/property conversion always drops \
+          blank-node-IRI predicates (the 1.1 default); the 1.0 \
+          generalized-RDF flag's keep-them behavior isn't implemented \
+          (measured: canonical N-Quads differ)."
+  | "#te014" ->
+    Some "option.specVersion=json-ld-1.0 — \"@set of @value objects \
+          with keyword aliases\" exercises how 1.0 shapes an aliased \
+          @set/@value combination differently from 1.1; under this \
+          program's (1.1) processing parse_jsonld returns None \
+          (measured, not a false skip)."
+  | "#te038" ->
+    Some "option.specVersion=json-ld-1.0 — \"Drop blank node predicates \
+          by default\" is the 1.0-only default (1.1's default keeps \
+          them, matching this program's engine); measured: canonical \
+          N-Quads differ."
+  | "#te071" ->
+    Some "option.specVersion=json-ld-1.0 — 1.0's stricter restriction on \
+          redefining a term that looks like a compact IRI differs from \
+          1.1's more permissive rule this program implements; measured: \
+          canonical N-Quads differ."
+  | "#te115" ->
+    Some "option.specVersion=json-ld-1.0 (NegativeEvaluationTest) — 1.0 \
+          treats a relative IRI property expanded under @vocab: '' as \
+          an error; 1.1 (this program) legitimately ACCEPTS the same \
+          input (toRdf/e124's sibling positive test pins this), so \
+          running it unskipped scores 'parse succeeded, failure \
+          expected' — a real 1.1-vs-1.0 semantic gap, not a false skip."
+  | "#te116" ->
+    Some "option.specVersion=json-ld-1.0 (NegativeEvaluationTest) — same \
+          shape as te115 (relative IRI property under a relative, \
+          non-empty @vocab): 1.1 (this program) accepts what 1.0 \
+          rejects; measured 'parse succeeded, failure expected'."
+  | "#ter24" ->
+    Some "option.specVersion=json-ld-1.0 (NegativeEvaluationTest) — \
+          \"List of lists (from array)\": 1.0 rejects a list-of-lists \
+          formed by an array nested directly in @list; 1.1 (this \
+          program) legitimately coerces it, so this needs a genuine \
+          1.0-mode array-nesting restriction, not just ac_mode10's \
+          existing @index/@context/@json gates; measured 'parse \
+          succeeded, failure expected'."
+  | "#ter32" ->
+    Some "option.specVersion=json-ld-1.0 (NegativeEvaluationTest) — a \
+          second \"List of lists (from array)\" fixture; same gap as \
+          ter24."
+  | _ -> None
+
 let run_test tc =
-  match tc.spec_version with
-  | Some "json-ld-1.0" ->
-    Skip "option.specVersion=json-ld-1.0 (this program targets JSON-LD 1.1)"
-  | _ ->
+  match jld_1_0_still_skip tc.id with
+  | Some reason -> Skip reason
+  | None ->
     let input_path = Filename.concat tc.manifest_dir tc.input in
     (match read_file input_path with
      | None -> Fail (Printf.sprintf "input file not found: %s" input_path)

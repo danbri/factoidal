@@ -1,15 +1,3 @@
-* Warning 241 at SPARQL11.IRI.Resolve.fst(0,0-0,0):
-  - Unable to load SPARQL11.IRI.Resolve.fst.checked since checked file
-    SPARQL11.IRI.Resolve.fst.checked is stale (dependence hash mismatch, use
-    --debug CheckedFiles for more details); will recheck
-    SPARQL11.IRI.Resolve.fst (suppressing this warning for further modules)
-
 Extracted module Parser.JSONLD
-* Warning 247 at Parser.JSONLD.fst(0,0-0,0):
-  - Checked file Parser.JSONLD.fst.checked was not written.
-  - Reason:
-      checked file JSONLD.Context.fst.checked is stale (digest mismatch for
-      JSONLD.Context.fst)
-
 Verified module: Parser.JSONLD
 All verification conditions discharged successfully

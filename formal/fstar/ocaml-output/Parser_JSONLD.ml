@@ -9,41 +9,6 @@ let rdf_nil_iri : RDF_Graph_Executable.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"
 let rdf_json_iri : RDF_Graph_Executable.wf_iri=
   "http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON"
-let rec jcanon_mantissa_all_zero (s : Prims.string) (pos : Prims.nat)
-  (fuel : Prims.nat) : Prims.bool=
-  if fuel = Prims.int_zero
-  then true
-  else
-    (let n = Parser_FastString.fs_byte_length s in
-     if pos >= n
-     then true
-     else
-       (let b = Parser_JSON.jbyte_at s pos in
-        if
-          (((((b = (Prims.of_int (0x2E))) || (b = (Prims.of_int (0x65)))) ||
-               (b = (Prims.of_int (0x45))))
-              || (b = (Prims.of_int (0x2B))))
-             || (b = (Prims.of_int (0x2D))))
-            || (b = (Prims.of_int (0x30)))
-        then
-          jcanon_mantissa_all_zero s (pos + Prims.int_one)
-            (fuel - Prims.int_one)
-        else false))
-let rec jcanon_has_exp_marker (s : Prims.string) (pos : Prims.nat)
-  (fuel : Prims.nat) : Prims.bool=
-  if fuel = Prims.int_zero
-  then false
-  else
-    (let n = Parser_FastString.fs_byte_length s in
-     if pos >= n
-     then false
-     else
-       (let b = Parser_JSON.jbyte_at s pos in
-        if (b = (Prims.of_int (0x65))) || (b = (Prims.of_int (0x45)))
-        then true
-        else
-          jcanon_has_exp_marker s (pos + Prims.int_one)
-            (fuel - Prims.int_one)))
 let rec jcanon_find_dot (s : Prims.string) (pos : Prims.nat)
   (fuel : Prims.nat) : Prims.nat FStar_Pervasives_Native.option=
   if fuel = Prims.int_zero
@@ -56,103 +21,6 @@ let rec jcanon_find_dot (s : Prims.string) (pos : Prims.nat)
        if (Parser_JSON.jbyte_at s pos) = (Prims.of_int (0x2E))
        then FStar_Pervasives_Native.Some pos
        else jcanon_find_dot s (pos + Prims.int_one) (fuel - Prims.int_one))
-let rec jcanon_all_zero_from (s : Prims.string) (pos : Prims.nat)
-  (fuel : Prims.nat) : Prims.bool=
-  if fuel = Prims.int_zero
-  then true
-  else
-    (let n = Parser_FastString.fs_byte_length s in
-     if pos >= n
-     then true
-     else
-       if (Parser_JSON.jbyte_at s pos) = (Prims.of_int (0x30))
-       then
-         jcanon_all_zero_from s (pos + Prims.int_one) (fuel - Prims.int_one)
-       else false)
-let jcanon_number (lexeme : Prims.string) : Prims.string=
-  let n = Parser_FastString.fs_byte_length lexeme in
-  if jcanon_mantissa_all_zero lexeme Prims.int_zero (n + Prims.int_one)
-  then "0"
-  else
-    if jcanon_has_exp_marker lexeme Prims.int_zero (n + Prims.int_one)
-    then lexeme
-    else
-      (match jcanon_find_dot lexeme Prims.int_zero (n + Prims.int_one) with
-       | FStar_Pervasives_Native.None -> lexeme
-       | FStar_Pervasives_Native.Some dot ->
-           if jcanon_all_zero_from lexeme (dot + Prims.int_one) (n - dot)
-           then Parser_FastString.fs_byte_sub lexeme Prims.int_zero dot
-           else lexeme)
-let jcanon_string (s : Prims.string) : Prims.string=
-  FStar_String.concat "" ["\""; SPARQL_JSON_Escape.json_escape s; "\""]
-let rec jcanon_insert_sorted (kv : (Prims.string * Parser_JSON.json_val))
-  (xs : (Prims.string * Parser_JSON.json_val) Prims.list) :
-  (Prims.string * Parser_JSON.json_val) Prims.list=
-  match xs with
-  | [] -> [kv]
-  | (k2, v2)::rest ->
-      if RDF_Graph_Executable.string_lt (FStar_Pervasives_Native.fst kv) k2
-      then kv :: xs
-      else (k2, v2) :: (jcanon_insert_sorted kv rest)
-let rec jcanon_sort_fields
-  (fields : (Prims.string * Parser_JSON.json_val) Prims.list) :
-  (Prims.string * Parser_JSON.json_val) Prims.list=
-  match fields with
-  | [] -> []
-  | kv::rest -> jcanon_insert_sorted kv (jcanon_sort_fields rest)
-let rec jcanon_serialize (v : Parser_JSON.json_val) (fuel : Prims.nat) :
-  Prims.string=
-  if fuel = Prims.int_zero
-  then "null"
-  else
-    (match v with
-     | Parser_JSON.JNull -> "null"
-     | Parser_JSON.JBool b -> if b then "true" else "false"
-     | Parser_JSON.JNumber lex -> jcanon_number lex
-     | Parser_JSON.JString s -> jcanon_string s
-     | Parser_JSON.JArray items ->
-         FStar_String.concat ""
-           ["["; jcanon_serialize_items items (fuel - Prims.int_one); "]"]
-     | Parser_JSON.JObject fields ->
-         FStar_String.concat ""
-           ["{";
-           jcanon_serialize_fields (jcanon_sort_fields fields)
-             (fuel - Prims.int_one);
-           "}"])
-and jcanon_serialize_items (items : Parser_JSON.json_val Prims.list)
-  (fuel : Prims.nat) : Prims.string=
-  if fuel = Prims.int_zero
-  then ""
-  else
-    (match items with
-     | [] -> ""
-     | x::[] -> jcanon_serialize x (fuel - Prims.int_one)
-     | x::rest ->
-         FStar_String.concat ""
-           [jcanon_serialize x (fuel - Prims.int_one);
-           ",";
-           jcanon_serialize_items rest (fuel - Prims.int_one)])
-and jcanon_serialize_fields
-  (fields : (Prims.string * Parser_JSON.json_val) Prims.list)
-  (fuel : Prims.nat) : Prims.string=
-  if fuel = Prims.int_zero
-  then ""
-  else
-    (match fields with
-     | [] -> ""
-     | (k, v)::[] ->
-         FStar_String.concat ""
-           [jcanon_string k; ":"; jcanon_serialize v (fuel - Prims.int_one)]
-     | (k, v)::rest ->
-         FStar_String.concat ""
-           [jcanon_string k;
-           ":";
-           jcanon_serialize v (fuel - Prims.int_one);
-           ",";
-           jcanon_serialize_fields rest (fuel - Prims.int_one)])
-let jcanon_document (v : Parser_JSON.json_val) : Prims.string=
-  jcanon_serialize v
-    (((Prims.of_int (10)) * (Parser_JSON.json_size v)) + (Prims.of_int (32)))
 let jld_is_digit_byte (b : Prims.int) : Prims.bool=
   (b >= (Prims.of_int (0x30))) && (b <= (Prims.of_int (0x39)))
 let jld_digit_val (b : Prims.int) : Prims.nat=
@@ -270,6 +138,136 @@ let rec jld_zeros (k : Prims.nat) : Prims.string=
   if k = Prims.int_zero
   then ""
   else FStar_String.concat "" ["0"; jld_zeros (k - Prims.int_one)]
+let jcanon_number (lexeme : Prims.string) : Prims.string=
+  let uu___ = jld_number_parts lexeme in
+  match uu___ with
+  | (neg, int_start, int_len, frac_start, frac_len, exp) ->
+      let combined =
+        FStar_String.concat ""
+          [Parser_FastString.fs_byte_sub lexeme int_start int_len;
+          Parser_FastString.fs_byte_sub lexeme frac_start frac_len] in
+      let clen = Parser_FastString.fs_byte_length combined in
+      let lead =
+        jld_first_nonzero_pos combined Prims.int_zero (clen + Prims.int_one) in
+      if lead >= clen
+      then "0"
+      else
+        (let after_lead =
+           Parser_FastString.fs_byte_sub combined lead (clen - lead) in
+         let exp_total = exp - frac_len in
+         let keep =
+           jld_last_nonzero_len after_lead Prims.int_zero Prims.int_zero
+             ((Parser_FastString.fs_byte_length after_lead) + Prims.int_one) in
+         let digits =
+           Parser_FastString.fs_byte_sub after_lead Prims.int_zero keep in
+         let tz = (Parser_FastString.fs_byte_length after_lead) - keep in
+         let exp_total1 = exp_total + tz in
+         let k = Parser_FastString.fs_byte_length digits in
+         let sci_exp = (exp_total1 + k) - Prims.int_one in
+         let n = sci_exp + Prims.int_one in
+         let sign_str = if neg then "-" else "" in
+         if (k <= n) && (n <= (Prims.of_int (21)))
+         then FStar_String.concat "" [sign_str; digits; jld_zeros (n - k)]
+         else
+           if (Prims.int_zero < n) && (n <= (Prims.of_int (21)))
+           then
+             FStar_String.concat ""
+               [sign_str;
+               Parser_FastString.fs_byte_sub digits Prims.int_zero n;
+               ".";
+               Parser_FastString.fs_byte_sub digits n (k - n)]
+           else
+             if ((Prims.of_int (-6)) < n) && (n <= Prims.int_zero)
+             then
+               FStar_String.concat ""
+                 [sign_str; "0."; jld_zeros (- n); digits]
+             else
+               (let mantissa =
+                  if k <= Prims.int_one
+                  then digits
+                  else
+                    FStar_String.concat ""
+                      [Parser_FastString.fs_byte_sub digits Prims.int_zero
+                         Prims.int_one;
+                      ".";
+                      Parser_FastString.fs_byte_sub digits Prims.int_one
+                        (k - Prims.int_one)] in
+                let e = n - Prims.int_one in
+                let exp_str =
+                  if e >= Prims.int_zero
+                  then FStar_String.concat "" ["+"; Prims.string_of_int e]
+                  else Prims.string_of_int e in
+                FStar_String.concat "" [sign_str; mantissa; "e"; exp_str]))
+let jcanon_string (s : Prims.string) : Prims.string=
+  FStar_String.concat "" ["\""; SPARQL_JSON_Escape.json_escape s; "\""]
+let rec jcanon_insert_sorted (kv : (Prims.string * Parser_JSON.json_val))
+  (xs : (Prims.string * Parser_JSON.json_val) Prims.list) :
+  (Prims.string * Parser_JSON.json_val) Prims.list=
+  match xs with
+  | [] -> [kv]
+  | (k2, v2)::rest ->
+      if RDF_Graph_Executable.string_lt (FStar_Pervasives_Native.fst kv) k2
+      then kv :: xs
+      else (k2, v2) :: (jcanon_insert_sorted kv rest)
+let rec jcanon_sort_fields
+  (fields : (Prims.string * Parser_JSON.json_val) Prims.list) :
+  (Prims.string * Parser_JSON.json_val) Prims.list=
+  match fields with
+  | [] -> []
+  | kv::rest -> jcanon_insert_sorted kv (jcanon_sort_fields rest)
+let rec jcanon_serialize (v : Parser_JSON.json_val) (fuel : Prims.nat) :
+  Prims.string=
+  if fuel = Prims.int_zero
+  then "null"
+  else
+    (match v with
+     | Parser_JSON.JNull -> "null"
+     | Parser_JSON.JBool b -> if b then "true" else "false"
+     | Parser_JSON.JNumber lex -> jcanon_number lex
+     | Parser_JSON.JString s -> jcanon_string s
+     | Parser_JSON.JArray items ->
+         FStar_String.concat ""
+           ["["; jcanon_serialize_items items (fuel - Prims.int_one); "]"]
+     | Parser_JSON.JObject fields ->
+         FStar_String.concat ""
+           ["{";
+           jcanon_serialize_fields (jcanon_sort_fields fields)
+             (fuel - Prims.int_one);
+           "}"])
+and jcanon_serialize_items (items : Parser_JSON.json_val Prims.list)
+  (fuel : Prims.nat) : Prims.string=
+  if fuel = Prims.int_zero
+  then ""
+  else
+    (match items with
+     | [] -> ""
+     | x::[] -> jcanon_serialize x (fuel - Prims.int_one)
+     | x::rest ->
+         FStar_String.concat ""
+           [jcanon_serialize x (fuel - Prims.int_one);
+           ",";
+           jcanon_serialize_items rest (fuel - Prims.int_one)])
+and jcanon_serialize_fields
+  (fields : (Prims.string * Parser_JSON.json_val) Prims.list)
+  (fuel : Prims.nat) : Prims.string=
+  if fuel = Prims.int_zero
+  then ""
+  else
+    (match fields with
+     | [] -> ""
+     | (k, v)::[] ->
+         FStar_String.concat ""
+           [jcanon_string k; ":"; jcanon_serialize v (fuel - Prims.int_one)]
+     | (k, v)::rest ->
+         FStar_String.concat ""
+           [jcanon_string k;
+           ":";
+           jcanon_serialize v (fuel - Prims.int_one);
+           ",";
+           jcanon_serialize_fields rest (fuel - Prims.int_one)])
+let jcanon_document (v : Parser_JSON.json_val) : Prims.string=
+  jcanon_serialize v
+    (((Prims.of_int (10)) * (Parser_JSON.json_size v)) + (Prims.of_int (32)))
 let jld_number_canonicalize (lexeme : Prims.string)
   (force_double : Prims.bool) : (Prims.string * Prims.bool)=
   let uu___ = jld_number_parts lexeme in
@@ -597,32 +595,32 @@ and jld_expand_list (rdir : rdf_direction_mode)
            jld_expand_value rdir item ctr acc named (fuel - Prims.int_one) in
          (match uu___1 with
           | (oterm, acc1, named1, ctr1) ->
-              (match oterm with
-               | FStar_Pervasives_Native.None ->
-                   jld_expand_list rdir rest ctr1 acc1 named1
-                     (fuel - Prims.int_one)
-               | FStar_Pervasives_Native.Some t ->
-                   let uu___2 = jld_fresh_bnode ctr1 in
-                   (match uu___2 with
-                    | (cell, ctr2) ->
-                        let uu___3 =
-                          jld_expand_list rdir rest ctr2 acc1 named1
-                            (fuel - Prims.int_one) in
-                        (match uu___3 with
-                         | (rest_term, acc2, named2, ctr3) ->
-                             let cell_subj =
-                               RDF_Graph_Executable.S_BNode cell in
-                             ((RDF_Graph_Executable.T_BNode cell),
-                               ({
-                                  RDF_Graph_Executable.s = cell_subj;
-                                  RDF_Graph_Executable.p = rdf_rest_iri;
-                                  RDF_Graph_Executable.o = rest_term
-                                } ::
-                               {
-                                 RDF_Graph_Executable.s = cell_subj;
-                                 RDF_Graph_Executable.p = rdf_first_iri;
-                                 RDF_Graph_Executable.o = t
-                               } :: acc2), named2, ctr3))))))
+              let uu___2 = jld_fresh_bnode ctr1 in
+              (match uu___2 with
+               | (cell, ctr2) ->
+                   let uu___3 =
+                     jld_expand_list rdir rest ctr2 acc1 named1
+                       (fuel - Prims.int_one) in
+                   (match uu___3 with
+                    | (rest_term, acc2, named2, ctr3) ->
+                        let cell_subj = RDF_Graph_Executable.S_BNode cell in
+                        let acc3 =
+                          {
+                            RDF_Graph_Executable.s = cell_subj;
+                            RDF_Graph_Executable.p = rdf_rest_iri;
+                            RDF_Graph_Executable.o = rest_term
+                          } :: acc2 in
+                        let acc4 =
+                          match oterm with
+                          | FStar_Pervasives_Native.Some t ->
+                              {
+                                RDF_Graph_Executable.s = cell_subj;
+                                RDF_Graph_Executable.p = rdf_first_iri;
+                                RDF_Graph_Executable.o = t
+                              } :: acc3
+                          | FStar_Pervasives_Native.None -> acc3 in
+                        ((RDF_Graph_Executable.T_BNode cell), acc4, named2,
+                          ctr3)))))
 and jld_expand_node (rdir : rdf_direction_mode) (v : Parser_JSON.json_val)
   (ctr : Prims.nat) (acc : RDF_Graph_Executable.triple Prims.list)
   (named : RDF_Graph_Executable.named_graph Prims.list) (fuel : Prims.nat) :

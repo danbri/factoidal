@@ -139,11 +139,15 @@ let rdf_json_iri : wf_iri =
 // PHASE 5: JSON canonicalization for @type: @json (rdf:JSON) literals —
 // an RFC 8785 JCS SUBSET.
 //
-// Exact for this suite's fixtures: booleans, null, plain-integer and
-// simple-decimal numbers (see jcanon_number below for the two special
-// cases handled), strings (via SPARQL.JSON.Escape.json_escape — the
-// same "\b\f\n\r\t\"\\, else \u00xy for other controls, everything else
-// byte-transparent" rule JCS mandates), and object-key sorting (via
+// Exact for this suite's fixtures: booleans, null, numbers whose
+// validated JNumber digit string already IS the shortest round-trip
+// decimal for its nearest binary64 double (see jcanon_number below —
+// covers plain integers, simple decimals, and ECMAScript-notation
+// conversion: "1E30" -> "1e+30", "2e-3" -> "0.002", trailing-zero
+// stripping "4.50" -> "4.5", small-magnitude scientific "1e-27"), plus
+// strings (via SPARQL.JSON.Escape.json_escape — the same "\b\f\n\r\t\"
+// \\, else \u00xy for other controls, everything else byte-transparent"
+// rule JCS mandates), and object-key sorting (via
 // RDF.Graph.Executable.string_lt, i.e. plain byte-order comparison —
 // equal to Unicode codepoint order for valid UTF-8, which is what JCS's
 // "sort by UTF-16 code unit" reduces to for every key in this suite;
@@ -151,51 +155,20 @@ let rdf_json_iri : wf_iri =
 // U+10000+, against a BMP character in U+E000..U+FFFF, which no
 // toRdf/js* fixture exercises).
 //
-// NOT exact: genuine ECMAScript Number::toString formatting (shortest
-// round-trip decimal selection; exponential notation for magnitudes
-// >= 1e21 or < 1e-6, e.g. "1E30" -> "1e+30", "2e-3" -> "0.002") is not
-// implemented — this codebase represents JSON numbers as validated
-// lexeme strings (Parser.JSON.JNumber), not floats, and reimplementing
-// float-to-shortest-decimal from scratch is out of scope for this
-// phase. A lexeme needing real reformatting canonicalizes verbatim,
+// NOT exact: a lexeme with MORE significant digits than distinguish
+// between adjacent binary64 doubles (toRdf/js12's
+// "333333333.33333329", 17 significant digits) needs the actual
+// nearest-binary64-then-shortest-round-trip computation — a Ryu/Grisu-
+// class algorithm operating on the true IEEE 754 value — to know WHICH
+// digits the shortest form keeps; jcanon_number does not attempt that
+// (this codebase represents JSON numbers as validated lexeme strings,
+// Parser.JSON.JNumber, not floats, and implementing binary64 rounding
+// from scratch is out of scope for this phase). Such a lexeme's own
+// digit string passes through the ECMAScript notation rules unchanged,
 // which is an HONEST gap (the N-Quads comparison fails visibly,
-// toRdf/js12) rather than a silently wrong literal.
+// toRdf/js12 stays FAIL on this account) rather than a silently wrong
+// literal.
 // ================================================================
-
-// True when every byte of `s`, from `pos`, is one of the JSON-number
-// separator/sign/exponent-marker bytes or the digit '0' — i.e. the
-// lexeme denotes the value zero (e.g. "0", "0.0", "0.0e0"). Does NOT
-// distinguish mantissa digits from exponent digits, so a lexeme like
-// "0e5" (zero mantissa, non-zero exponent — still the value zero) is
-// handled correctly by accident (all its digits happen to be zero
-// too) but a hypothetical "0e1" would also pass (correctly, it's still
-// zero) while something exponent-bearing with a genuinely non-zero
-// exponent AND all-zero mantissa digits, e.g. "0e12", still resolves
-// correctly since '1' and '2' are digits, not zero, so this returns
-// false and the number falls through to jcanon_number's verbatim path
-// — the one honest gap this creates is such a lexeme not collapsing to
-// "0" (it stays a spelled-out non-canonical zero), not a WRONG value.
-let rec jcanon_mantissa_all_zero (s:string) (pos:nat) (fuel:nat) : Tot bool (decreases fuel) =
-  if fuel = 0 then true
-  else
-    let n = fs_byte_length s in
-    if pos >= n then true
-    else
-      let b = jbyte_at s pos in
-      if b = 0x2E (* . *) || b = 0x65 (* e *) || b = 0x45 (* E *)
-         || b = 0x2B (* + *) || b = 0x2D (* - *) || b = 0x30 (* 0 *)
-      then jcanon_mantissa_all_zero s (pos + 1) (fuel - 1)
-      else false
-
-let rec jcanon_has_exp_marker (s:string) (pos:nat) (fuel:nat) : Tot bool (decreases fuel) =
-  if fuel = 0 then false
-  else
-    let n = fs_byte_length s in
-    if pos >= n then false
-    else
-      let b = jbyte_at s pos in
-      if b = 0x65 || b = 0x45 then true
-      else jcanon_has_exp_marker s (pos + 1) (fuel - 1)
 
 let rec jcanon_find_dot (s:string) (pos:nat) (fuel:nat)
   : Tot (option (p:nat{p < fs_byte_length s})) (decreases fuel) =
@@ -205,119 +178,6 @@ let rec jcanon_find_dot (s:string) (pos:nat) (fuel:nat)
     if pos >= n then None
     else if jbyte_at s pos = 0x2E then Some pos
     else jcanon_find_dot s (pos + 1) (fuel - 1)
-
-let rec jcanon_all_zero_from (s:string) (pos:nat) (fuel:nat) : Tot bool (decreases fuel) =
-  if fuel = 0 then true
-  else
-    let n = fs_byte_length s in
-    if pos >= n then true
-    else if jbyte_at s pos = 0x30 then jcanon_all_zero_from s (pos + 1) (fuel - 1)
-    else false
-
-// The two canonicalizations this phase implements exactly: an all-zero
-// value (any exponent/sign decoration) collapses to "0"; a plain
-// decimal (no exponent) whose fractional part is all zero digits drops
-// the fraction (e.g. "56.0" -> "56"). Everything else — including any
-// exponent-bearing non-zero lexeme — passes through verbatim (see
-// banner above for why).
-let jcanon_number (lexeme:string) : string =
-  let n = fs_byte_length lexeme in
-  if jcanon_mantissa_all_zero lexeme 0 (n + 1) then "0"
-  else if jcanon_has_exp_marker lexeme 0 (n + 1) then lexeme
-  else
-    match jcanon_find_dot lexeme 0 (n + 1) with
-    | None -> lexeme
-    | Some dot ->
-      if jcanon_all_zero_from lexeme (dot + 1) (n - dot) then fs_byte_sub lexeme 0 dot
-      else lexeme
-
-// JCS string: double-quoted, JSON-escaped per SPARQL.JSON.Escape's rule
-// (identical to RFC 8785 §3.2.2.2's mandatory escape set).
-let jcanon_string (s:string) : string =
-  String.concat "" ["\""; SPARQL.JSON.Escape.json_escape s; "\""]
-
-// Insertion-sort an object's fields by key, RFC 8785 §3.2.3 ("sort by
-// code point" — see banner above for the UTF-16-vs-codepoint caveat).
-let rec jcanon_insert_sorted (kv:(string & json_val)) (xs:list (string & json_val))
-  : Tot (list (string & json_val)) (decreases xs) =
-  match xs with
-  | [] -> [kv]
-  | (k2, v2) :: rest ->
-    if string_lt (fst kv) k2 then kv :: xs
-    else (k2, v2) :: jcanon_insert_sorted kv rest
-
-let rec jcanon_sort_fields (fields:list (string & json_val))
-  : Tot (list (string & json_val)) (decreases fields) =
-  match fields with
-  | [] -> []
-  | kv :: rest -> jcanon_insert_sorted kv (jcanon_sort_fields rest)
-
-// The JCS document itself: object keys sorted (jcanon_sort_fields),
-// arrays kept in their given order, no whitespace between tokens (JCS
-// mandates the tightest separators: ',' and ':' with nothing else).
-// Fuel is a generous over-provision (matches JSONLD.Expand.expand's own
-// "4 * json_size + 48" style — not a tight bound, just enough that a
-// real, if deeply nested, JSON-literal fixture never trips the fuel=0
-// safety net).
-let rec jcanon_serialize (v:json_val) (fuel:nat) : Tot string (decreases fuel) =
-  if fuel = 0 then "null"
-  else
-    match v with
-    | JNull -> "null"
-    | JBool b -> if b then "true" else "false"
-    | JNumber lex -> jcanon_number lex
-    | JString s -> jcanon_string s
-    | JArray items -> String.concat "" ["["; jcanon_serialize_items items (fuel - 1); "]"]
-    | JObject fields ->
-      String.concat "" ["{"; jcanon_serialize_fields (jcanon_sort_fields fields) (fuel - 1); "}"]
-
-and jcanon_serialize_items (items:list json_val) (fuel:nat) : Tot string (decreases fuel) =
-  if fuel = 0 then ""
-  else
-    match items with
-    | [] -> ""
-    | [x] -> jcanon_serialize x (fuel - 1)
-    | x :: rest ->
-      String.concat "" [jcanon_serialize x (fuel - 1); ","; jcanon_serialize_items rest (fuel - 1)]
-
-and jcanon_serialize_fields (fields:list (string & json_val)) (fuel:nat) : Tot string (decreases fuel) =
-  if fuel = 0 then ""
-  else
-    match fields with
-    | [] -> ""
-    | [(k, v)] -> String.concat "" [jcanon_string k; ":"; jcanon_serialize v (fuel - 1)]
-    | (k, v) :: rest ->
-      String.concat "" [jcanon_string k; ":"; jcanon_serialize v (fuel - 1);
-                         ","; jcanon_serialize_fields rest (fuel - 1)]
-
-let jcanon_document (v:json_val) : string =
-  jcanon_serialize v (op_Multiply 10 (json_size v) + 32)
-
-// ================================================================
-// JSON-LD 1.1 API §8.6 "Data Round Tripping": the canonical xsd:double
-// lexical form (ECMAScript-ish "shortest form" scientific notation,
-// e.g. "5.3E0", "1.0E21") plus the integer-vs-double DEFAULT DATATYPE
-// promotion for a bare (uncoerced) JSON number.
-//
-// Two INDEPENDENT decisions determined by a JSON number lexeme's actual
-// MATHEMATICAL VALUE (not its lexical shape — toRdf/rt01's "-0e0" LOOKS
-// double-shaped, having an 'e', but its value 0 is a plain integer):
-//   - is_integral: the value has no fractional part.
-//   - magnitude_ge_1e21: abs(value) >= 1e21.
-// `force_double` (true only for an explicit "@type": xsd:double term
-// coercion — Parser.JSONLD.jld_value_object_to_term's typed branch)
-// makes the LEXICAL form double-shaped regardless of value (toRdf/0035:
-// a term coerced to xsd:double renders the PLAIN INTEGER literal "1" as
-// "1.0E0"). Independent of force_double, ANY non-integral value or
-// magnitude >= 1e21 ALSO renders double-shaped, even under a DIFFERENT
-// declared datatype (toRdf/0035: a term coerced to xsd:integer still
-// renders "9.9" as "9.9E0" — the datatype IRI is whatever the term
-// declared; only the LEXICAL FORM tracks the value's own shape). When
-// no term coercion applies at all (force_double = false, and the
-// caller — jld_scalar_to_term — has no separate datatype to keep), the
-// same use-double decision ALSO picks the DEFAULT datatype: double
-// datatype iff double-shaped rendering was used, else xsd:integer.
-// ================================================================
 
 // True for the ASCII digit bytes '0'-'9'.
 let jld_is_digit_byte (b:int) : bool = b >= 0x30 && b <= 0x39
@@ -406,6 +266,154 @@ let rec jld_first_nonzero_pos (s:string) (pos:nat) (fuel:nat) : Tot nat (decreas
 // exponent of 2 is the plain integer "1500").
 let rec jld_zeros (k:nat) : Tot string (decreases k) =
   if k = 0 then "" else String.concat "" ["0"; jld_zeros (k - 1)]
+
+// RFC 8785 (JCS) number serialization — ECMAScript Number::toString
+// applied to the JSON number's value (JCS §3.2.2.3). Normalizes the
+// lexeme to (sign, significant-digit string `digits` with no leading or
+// trailing zeros, decimal exponent `n` such that the value equals
+// 0.<digits> * 10^n — same decomposition jld_number_canonicalize below
+// uses for the XSD canonical form), then applies the ECMA-262
+// Number::toString formatting rules verbatim (current-spec numbering
+// 6.1.6.1.20, steps 8-10; k = number of significant digits):
+//   - k <= n <= 21: `digits` followed by (n - k) zeros, no decimal point
+//     (an integer value written out in full, e.g. digits "15" n 4 -> "1500").
+//   - 0 < n <= 21:  first n digits of `digits`, then ".", then the rest.
+//   - -6 < n <= 0:  "0.", then (-n) zeros, then `digits`.
+//   - otherwise:    exponential — first digit, then "." + the rest (if
+//     more than one significant digit), then "e", an EXPLICIT sign, and
+//     |n - 1|.
+// See this section's banner for the honest gap (lexemes needing real
+// binary64 rounding, not just notation conversion).
+let jcanon_number (lexeme:string) : string =
+  let (neg, int_start, int_len, frac_start, frac_len, exp) = jld_number_parts lexeme in
+  let combined = String.concat "" [fs_byte_sub lexeme int_start int_len; fs_byte_sub lexeme frac_start frac_len] in
+  let clen = fs_byte_length combined in
+  let lead = jld_first_nonzero_pos combined 0 (clen + 1) in
+  if lead >= clen then
+    // The value is zero (JCS §3.2.2.3: negative zero also serializes as
+    // "0" — `combined` already excludes the sign, so this collapses
+    // both "0"/"0.0" and "-0"/"-0.0e5" alike).
+    "0"
+  else
+    let after_lead = fs_byte_sub combined lead (clen - lead) in
+    let exp_total = exp - frac_len in
+    let keep = jld_last_nonzero_len after_lead 0 0 (fs_byte_length after_lead + 1) in
+    let digits = fs_byte_sub after_lead 0 keep in
+    let tz = fs_byte_length after_lead - keep in
+    let exp_total1 = exp_total + tz in
+    let k = fs_byte_length digits in
+    let sci_exp = exp_total1 + k - 1 in
+    let n = sci_exp + 1 in
+    let sign_str = if neg then "-" else "" in
+    if k <= n && n <= 21 then
+      String.concat "" [sign_str; digits; jld_zeros (n - k)]
+    else if 0 < n && n <= 21 then
+      String.concat "" [sign_str; fs_byte_sub digits 0 n; "."; fs_byte_sub digits n (k - n)]
+    else if (-6) < n && n <= 0 then
+      String.concat "" [sign_str; "0."; jld_zeros (- n); digits]
+    else
+      let mantissa =
+        (if k <= 1 then digits
+         else String.concat "" [fs_byte_sub digits 0 1; "."; fs_byte_sub digits 1 (k - 1)]) in
+      let e = n - 1 in
+      let exp_str = (if e >= 0 then String.concat "" ["+"; string_of_int e] else string_of_int e) in
+      String.concat "" [sign_str; mantissa; "e"; exp_str]
+
+// JCS string: double-quoted, JSON-escaped per SPARQL.JSON.Escape's rule
+// (identical to RFC 8785 §3.2.2.2's mandatory escape set).
+let jcanon_string (s:string) : string =
+  String.concat "" ["\""; SPARQL.JSON.Escape.json_escape s; "\""]
+
+// Insertion-sort an object's fields by key, RFC 8785 §3.2.3 ("sort by
+// code point" — see banner above for the UTF-16-vs-codepoint caveat).
+let rec jcanon_insert_sorted (kv:(string & json_val)) (xs:list (string & json_val))
+  : Tot (list (string & json_val)) (decreases xs) =
+  match xs with
+  | [] -> [kv]
+  | (k2, v2) :: rest ->
+    if string_lt (fst kv) k2 then kv :: xs
+    else (k2, v2) :: jcanon_insert_sorted kv rest
+
+let rec jcanon_sort_fields (fields:list (string & json_val))
+  : Tot (list (string & json_val)) (decreases fields) =
+  match fields with
+  | [] -> []
+  | kv :: rest -> jcanon_insert_sorted kv (jcanon_sort_fields rest)
+
+// The JCS document itself: object keys sorted (jcanon_sort_fields),
+// arrays kept in their given order, no whitespace between tokens (JCS
+// mandates the tightest separators: ',' and ':' with nothing else).
+// Fuel is a generous over-provision (matches JSONLD.Expand.expand's own
+// "4 * json_size + 48" style — not a tight bound, just enough that a
+// real, if deeply nested, JSON-literal fixture never trips the fuel=0
+// safety net).
+let rec jcanon_serialize (v:json_val) (fuel:nat) : Tot string (decreases fuel) =
+  if fuel = 0 then "null"
+  else
+    match v with
+    | JNull -> "null"
+    | JBool b -> if b then "true" else "false"
+    | JNumber lex -> jcanon_number lex
+    | JString s -> jcanon_string s
+    | JArray items -> String.concat "" ["["; jcanon_serialize_items items (fuel - 1); "]"]
+    | JObject fields ->
+      String.concat "" ["{"; jcanon_serialize_fields (jcanon_sort_fields fields) (fuel - 1); "}"]
+
+and jcanon_serialize_items (items:list json_val) (fuel:nat) : Tot string (decreases fuel) =
+  if fuel = 0 then ""
+  else
+    match items with
+    | [] -> ""
+    | [x] -> jcanon_serialize x (fuel - 1)
+    | x :: rest ->
+      String.concat "" [jcanon_serialize x (fuel - 1); ","; jcanon_serialize_items rest (fuel - 1)]
+
+and jcanon_serialize_fields (fields:list (string & json_val)) (fuel:nat) : Tot string (decreases fuel) =
+  if fuel = 0 then ""
+  else
+    match fields with
+    | [] -> ""
+    | [(k, v)] -> String.concat "" [jcanon_string k; ":"; jcanon_serialize v (fuel - 1)]
+    | (k, v) :: rest ->
+      String.concat "" [jcanon_string k; ":"; jcanon_serialize v (fuel - 1);
+                         ","; jcanon_serialize_fields rest (fuel - 1)]
+
+let jcanon_document (v:json_val) : string =
+  jcanon_serialize v (op_Multiply 10 (json_size v) + 32)
+
+// ================================================================
+// JSON-LD 1.1 API §8.6 "Data Round Tripping": the canonical xsd:double
+// lexical form (ECMAScript-ish "shortest form" scientific notation,
+// e.g. "5.3E0", "1.0E21") plus the integer-vs-double DEFAULT DATATYPE
+// promotion for a bare (uncoerced) JSON number.
+//
+// Two INDEPENDENT decisions determined by a JSON number lexeme's actual
+// MATHEMATICAL VALUE (not its lexical shape — toRdf/rt01's "-0e0" LOOKS
+// double-shaped, having an 'e', but its value 0 is a plain integer):
+//   - is_integral: the value has no fractional part.
+//   - magnitude_ge_1e21: abs(value) >= 1e21.
+// `force_double` (true only for an explicit "@type": xsd:double term
+// coercion — Parser.JSONLD.jld_value_object_to_term's typed branch)
+// makes the LEXICAL form double-shaped regardless of value (toRdf/0035:
+// a term coerced to xsd:double renders the PLAIN INTEGER literal "1" as
+// "1.0E0"). Independent of force_double, ANY non-integral value or
+// magnitude >= 1e21 ALSO renders double-shaped, even under a DIFFERENT
+// declared datatype (toRdf/0035: a term coerced to xsd:integer still
+// renders "9.9" as "9.9E0" — the datatype IRI is whatever the term
+// declared; only the LEXICAL FORM tracks the value's own shape). When
+// no term coercion applies at all (force_double = false, and the
+// caller — jld_scalar_to_term — has no separate datatype to keep), the
+// same use-double decision ALSO picks the DEFAULT datatype: double
+// datatype iff double-shaped rendering was used, else xsd:integer.
+//
+// The digit-extraction helpers this section used to define here
+// (jld_is_digit_byte .. jld_zeros) moved UP to just before jcanon_number
+// (JCS canonicalization section, above) — jcanon_number's RFC 8785
+// number formatting needs the exact same "normalize to (sign, sig-digit-
+// string, decimal exponent)" decomposition this xsd:double canonicalizer
+// does, so the two share one normalization pass instead of duplicating
+// it. Nothing in this section's OWN logic changed.
+// ================================================================
 
 // The canonical lexical form of a validated JSON number lexeme, plus
 // whether it rendered double-shaped (see this section's banner for the
@@ -736,8 +744,21 @@ let rec jld_expand_value (rdir:rdf_direction_mode) (v:json_val) (ctr:nat) (acc:l
              | None -> (None, acc1, named1, ctr1))))
     | _ -> (jld_scalar_to_term v, acc, named, ctr)
 
-// JSON-LD 1.1 API §8.7 "List Conversion": rdf:first/rdf:rest cells,
-// rdf:nil terminator. Non-conforming entries are skipped.
+// JSON-LD 1.1 API §8.3 "List to RDF Conversion": ONE rdf:first/rdf:rest
+// cell per original @list ARRAY MEMBER — allocated unconditionally
+// (the algorithm's step 2 pre-allocates a blank node per item BEFORE
+// attempting each item's own Object-to-RDF conversion), chained via
+// rdf:rest regardless of whether any individual member's conversion
+// succeeds; only the rdf:first triple for a cell is conditional on that
+// member's conversion producing a term (step 4c: "If result is not
+// null, append..."). A member that fails to become a term (e.g.
+// toRdf/li12/li14: a @type:@id-coerced list item whose value can't
+// resolve to a well-formed absolute IRI under an invalid/absent @base)
+// still gets its bnode cell and rdf:rest link — it just carries no
+// rdf:first triple. Previously this dropped the whole cell (skipping
+// straight to the next item), which under-counts cells and, for a
+// single-item list, wrongly collapses the property object straight to
+// rdf:nil instead of to a one-cell "gap" list.
 and jld_expand_list (rdir:rdf_direction_mode) (items:list json_val) (ctr:nat) (acc:list triple) (named:list named_graph) (fuel:nat)
   : Tot (rdf_term & list triple & list named_graph & nat) (decreases fuel) =
   if fuel = 0 then (T_IRI rdf_nil_iri, acc, named, ctr)
@@ -746,17 +767,14 @@ and jld_expand_list (rdir:rdf_direction_mode) (items:list json_val) (ctr:nat) (a
     | [] -> (T_IRI rdf_nil_iri, acc, named, ctr)
     | item :: rest ->
       let (oterm, acc1, named1, ctr1) = jld_expand_value rdir item ctr acc named (fuel - 1) in
-      (match oterm with
-       | None -> jld_expand_list rdir rest ctr1 acc1 named1 (fuel - 1)
-       | Some t ->
-         let (cell, ctr2) = jld_fresh_bnode ctr1 in
-         let (rest_term, acc2, named2, ctr3) = jld_expand_list rdir rest ctr2 acc1 named1 (fuel - 1) in
-         let cell_subj = S_BNode cell in
-         (T_BNode cell,
-          { s = cell_subj; p = rdf_rest_iri;  o = rest_term } ::
-          { s = cell_subj; p = rdf_first_iri; o = t } :: acc2,
-          named2,
-          ctr3))
+      let (cell, ctr2) = jld_fresh_bnode ctr1 in
+      let (rest_term, acc2, named2, ctr3) = jld_expand_list rdir rest ctr2 acc1 named1 (fuel - 1) in
+      let cell_subj = S_BNode cell in
+      let acc3 = { s = cell_subj; p = rdf_rest_iri; o = rest_term } :: acc2 in
+      let acc4 = (match oterm with
+                  | Some t -> { s = cell_subj; p = rdf_first_iri; o = t } :: acc3
+                  | None -> acc3) in
+      (T_BNode cell, acc4, named2, ctr3)
 
 // A node object: subject from @id (fresh bnode when absent), then every
 // member. Returns None subject (and prepends nothing) on a malformed @id.

@@ -1,15 +1,3 @@
-* Warning 241 at RIF.Core.Syntax.fst(0,0-0,0):
-  - Unable to load RIF.Core.Syntax.fst.checked since checked file
-    RIF.Core.Syntax.fst.checked is stale (dependence hash mismatch, use --debug
-    CheckedFiles for more details); will recheck RIF.Core.Syntax.fst
-    (suppressing this warning for further modules)
-
 Extracted module Parser.RIFXML
-* Warning 247 at Parser.RIFXML.fst(0,0-0,0):
-  - Checked file Parser.RIFXML.fst.checked was not written.
-  - Reason:
-      checked file RIF.Core.Syntax.fst.checked is stale (dependence hash
-      mismatch, use --debug CheckedFiles for more details)
-
 Verified module: Parser.RIFXML
 All verification conditions discharged successfully
