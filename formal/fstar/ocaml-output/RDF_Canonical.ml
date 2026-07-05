@@ -188,42 +188,8 @@ let bnodes_in_quad (qq : qquad) : RDF_Graph_Executable.bnode_id Prims.list=
             if is_bnode_graph_label gi then [bnode_of_graph_label gi] else []
         | FStar_Pervasives_Native.None -> [] in
       FStar_List_Tot_Base.op_At l1 (FStar_List_Tot_Base.op_At l2 l3)
-let rec mem_string (x : Prims.string) (xs : Prims.string Prims.list) :
-  Prims.bool=
-  match xs with | [] -> false | hd::tl -> (hd = x) || (mem_string x tl)
-let rec dedup_strings_acc (acc : Prims.string Prims.list)
-  (xs : Prims.string Prims.list) : Prims.string Prims.list=
-  match xs with
-  | [] -> FStar_List_Tot_Base.rev acc
-  | hd::tl ->
-      if mem_string hd acc
-      then dedup_strings_acc acc tl
-      else dedup_strings_acc (hd :: acc) tl
-let dedup_strings (xs : Prims.string Prims.list) : Prims.string Prims.list=
-  dedup_strings_acc [] xs
 let qquad_key (q : qquad) : Prims.string=
   let uu___ = q in match uu___ with | (g, t) -> canon_quad g t
-let rec dedup_qquads_acc (acc : qquad Prims.list)
-  (seen : Prims.string Prims.list) (qs : qquad Prims.list) :
-  qquad Prims.list=
-  match qs with
-  | [] -> FStar_List_Tot_Base.rev acc
-  | q::rest ->
-      let k = qquad_key q in
-      if mem_string k seen
-      then dedup_qquads_acc acc seen rest
-      else dedup_qquads_acc (q :: acc) (k :: seen) rest
-let dedup_qquads (qs : qquad Prims.list) : qquad Prims.list=
-  dedup_qquads_acc [] [] qs
-let rec all_bnodes_acc (acc : RDF_Graph_Executable.bnode_id Prims.list)
-  (qs : qquad Prims.list) : RDF_Graph_Executable.bnode_id Prims.list=
-  match qs with
-  | [] -> acc
-  | q::rest ->
-      all_bnodes_acc (FStar_List_Tot_Base.op_At acc (bnodes_in_quad q)) rest
-let dataset_bnodes (ds : RDF_Graph_Executable.rdf_dataset) :
-  RDF_Graph_Executable.bnode_id Prims.list=
-  dedup_strings (all_bnodes_acc [] (dataset_quads ds))
 let rewrite_subject_for_hfdq (target : RDF_Graph_Executable.bnode_id)
   (s : RDF_Graph_Executable.subject) : RDF_Graph_Executable.subject=
   match s with
@@ -392,6 +358,155 @@ let insertion_sort (xs : Prims.string Prims.list) : Prims.string Prims.list=
   merge_sort_with_fuel xs ((str_list_length xs) + Prims.int_one)
 let concat_strings (xs : Prims.string Prims.list) : Prims.string=
   FStar_String.concat "" xs
+let rec generic_list_length_acc :
+  'a . 'a Prims.list -> Prims.nat -> Prims.nat =
+  fun xs acc ->
+    match xs with
+    | [] -> acc
+    | uu___::tl -> generic_list_length_acc tl (acc + Prims.int_one)
+let generic_list_length (xs : 'a Prims.list) : Prims.nat=
+  generic_list_length_acc xs Prims.int_zero
+let rec generic_split_at_acc :
+  'a .
+    Prims.nat ->
+      'a Prims.list -> 'a Prims.list -> ('a Prims.list * 'a Prims.list)
+  =
+  fun n xs acc ->
+    match xs with
+    | [] -> ((FStar_List_Tot_Base.rev acc), [])
+    | hd::tl ->
+        if n = Prims.int_zero
+        then ((FStar_List_Tot_Base.rev acc), xs)
+        else generic_split_at_acc (n - Prims.int_one) tl (hd :: acc)
+let rec generic_merge_acc :
+  'a .
+    ('a -> 'a -> Prims.bool) ->
+      'a Prims.list ->
+        'a Prims.list -> Prims.nat -> 'a Prims.list -> 'a Prims.list
+  =
+  fun le xs ys fuel acc ->
+    if fuel = Prims.int_zero
+    then
+      FStar_List_Tot_Base.op_At (FStar_List_Tot_Base.rev acc)
+        (FStar_List_Tot_Base.op_At xs ys)
+    else
+      (match (xs, ys) with
+       | ([], []) -> FStar_List_Tot_Base.rev acc
+       | ([], hd::tl) ->
+           generic_merge_acc le [] tl (fuel - Prims.int_one) (hd :: acc)
+       | (hd::tl, []) ->
+           generic_merge_acc le tl [] (fuel - Prims.int_one) (hd :: acc)
+       | (hx::tx, hy::ty) ->
+           if le hx hy
+           then generic_merge_acc le tx ys (fuel - Prims.int_one) (hx :: acc)
+           else generic_merge_acc le xs ty (fuel - Prims.int_one) (hy :: acc))
+let rec generic_merge_sort_with_fuel :
+  'a .
+    ('a -> 'a -> Prims.bool) -> 'a Prims.list -> Prims.nat -> 'a Prims.list
+  =
+  fun le xs depth_fuel ->
+    match xs with
+    | [] -> []
+    | uu___::[] -> xs
+    | uu___::uu___1::uu___2 ->
+        if depth_fuel = Prims.int_zero
+        then xs
+        else
+          (let n = generic_list_length xs in
+           let uu___4 = generic_split_at_acc (n / (Prims.of_int (2))) xs [] in
+           match uu___4 with
+           | (left, right) ->
+               let sorted_left =
+                 generic_merge_sort_with_fuel le left
+                   (depth_fuel - Prims.int_one) in
+               let sorted_right =
+                 generic_merge_sort_with_fuel le right
+                   (depth_fuel - Prims.int_one) in
+               let fuel =
+                 (generic_list_length sorted_left) +
+                   (generic_list_length sorted_right) in
+               generic_merge_acc le sorted_left sorted_right fuel [])
+let generic_stable_sort (le : 'a -> 'a -> Prims.bool) (xs : 'a Prims.list) :
+  'a Prims.list=
+  generic_merge_sort_with_fuel le xs
+    ((generic_list_length xs) + Prims.int_one)
+let rec tag_qquads_with_key (qs : qquad Prims.list)
+  (acc : (Prims.string * qquad) Prims.list) :
+  (Prims.string * qquad) Prims.list=
+  match qs with
+  | [] -> acc
+  | q::rest -> tag_qquads_with_key rest (((qquad_key q), q) :: acc)
+let keyed_qquad_le (a : (Prims.string * qquad)) (b : (Prims.string * qquad))
+  : Prims.bool=
+  str_le (FStar_Pervasives_Native.fst a) (FStar_Pervasives_Native.fst b)
+let rec dedup_sorted_keyed_qquads_acc
+  (xs : (Prims.string * qquad) Prims.list) (acc : qquad Prims.list) :
+  qquad Prims.list=
+  match xs with
+  | [] -> FStar_List_Tot_Base.rev acc
+  | (uu___, q)::[] -> FStar_List_Tot_Base.rev (q :: acc)
+  | (k1, q1)::(k2, q2)::rest ->
+      if k1 = k2
+      then dedup_sorted_keyed_qquads_acc ((k2, q2) :: rest) acc
+      else dedup_sorted_keyed_qquads_acc ((k2, q2) :: rest) (q1 :: acc)
+let dedup_qquads (qs : qquad Prims.list) : qquad Prims.list=
+  dedup_sorted_keyed_qquads_acc
+    (generic_stable_sort keyed_qquad_le (tag_qquads_with_key qs [])) []
+let rec dedup_sorted_strings2_acc (xs : Prims.string Prims.list)
+  (acc : Prims.string Prims.list) : Prims.string Prims.list=
+  match xs with
+  | [] -> FStar_List_Tot_Base.rev acc
+  | x::[] -> FStar_List_Tot_Base.rev (x :: acc)
+  | x::y::rest ->
+      if x = y
+      then dedup_sorted_strings2_acc (y :: rest) acc
+      else dedup_sorted_strings2_acc (y :: rest) (x :: acc)
+let dedup_strings (xs : Prims.string Prims.list) : Prims.string Prims.list=
+  dedup_sorted_strings2_acc (generic_stable_sort str_le xs) []
+let rec all_bnodes_acc (acc : RDF_Graph_Executable.bnode_id Prims.list)
+  (qs : qquad Prims.list) : RDF_Graph_Executable.bnode_id Prims.list=
+  match qs with
+  | [] -> acc
+  | q::rest ->
+      all_bnodes_acc (FStar_List_Tot_Base.rev_acc (bnodes_in_quad q) acc)
+        rest
+let dataset_bnodes (ds : RDF_Graph_Executable.rdf_dataset) :
+  RDF_Graph_Executable.bnode_id Prims.list=
+  dedup_strings
+    (FStar_List_Tot_Base.rev (all_bnodes_acc [] (dataset_quads ds)))
+let rec tag_bnodes_with_quad (bs : RDF_Graph_Executable.bnode_id Prims.list)
+  (q : qquad) (acc : (RDF_Graph_Executable.bnode_id * qquad) Prims.list) :
+  (RDF_Graph_Executable.bnode_id * qquad) Prims.list=
+  match bs with
+  | [] -> acc
+  | b::rest -> tag_bnodes_with_quad rest q ((b, q) :: acc)
+let rec qquad_bnode_pairs_acc (qs : qquad Prims.list)
+  (acc : (RDF_Graph_Executable.bnode_id * qquad) Prims.list) :
+  (RDF_Graph_Executable.bnode_id * qquad) Prims.list=
+  match qs with
+  | [] -> acc
+  | q::rest ->
+      qquad_bnode_pairs_acc rest
+        (tag_bnodes_with_quad (dedup_strings (bnodes_in_quad q)) q acc)
+let bnq_pair_le (a : (RDF_Graph_Executable.bnode_id * qquad))
+  (b : (RDF_Graph_Executable.bnode_id * qquad)) : Prims.bool=
+  str_le (FStar_Pervasives_Native.fst a) (FStar_Pervasives_Native.fst b)
+let rec group_sorted_bnq_acc
+  (xs : (RDF_Graph_Executable.bnode_id * qquad) Prims.list)
+  (cur_b : RDF_Graph_Executable.bnode_id) (cur_qs : qquad Prims.list)
+  (acc : (RDF_Graph_Executable.bnode_id * qquad Prims.list) Prims.list) :
+  (RDF_Graph_Executable.bnode_id * qquad Prims.list) Prims.list=
+  match xs with
+  | [] -> FStar_List_Tot_Base.rev ((cur_b, cur_qs) :: acc)
+  | (b, q)::rest ->
+      if b = cur_b
+      then group_sorted_bnq_acc rest cur_b (q :: cur_qs) acc
+      else group_sorted_bnq_acc rest b [q] ((cur_b, cur_qs) :: acc)
+let bnode_quads_index (qs : qquad Prims.list) :
+  (RDF_Graph_Executable.bnode_id * qquad Prims.list) Prims.list=
+  match generic_stable_sort bnq_pair_le (qquad_bnode_pairs_acc qs []) with
+  | [] -> []
+  | (b0, q0)::rest -> group_sorted_bnq_acc rest b0 [q0] []
 let compute_hfdq (alg : hash_algorithm)
   (target : RDF_Graph_Executable.bnode_id) (qs : qquad Prims.list) :
   Prims.string=
@@ -478,12 +593,31 @@ let issue_identifier (st : issuer_state) (b : RDF_Graph_Executable.bnode_id)
           is_issued = (FStar_List_Tot_Base.op_At st.is_issued [(b, label)])
         } in
       (st', label)
+let issue_fresh (st : issuer_state) (b : RDF_Graph_Executable.bnode_id) :
+  issuer_state=
+  let label = Prims.strcat st.is_prefix (nat_to_string st.is_counter) in
+  {
+    is_prefix = (st.is_prefix);
+    is_counter = (st.is_counter + Prims.int_one);
+    is_issued = ((b, label) :: (st.is_issued))
+  }
 type bn_hfdq_pair = (RDF_Graph_Executable.bnode_id * Prims.string)
-let rec compute_all_hfdq (alg : hash_algorithm) (qs : qquad Prims.list)
-  (bs : RDF_Graph_Executable.bnode_id Prims.list) : bn_hfdq_pair Prims.list=
-  match bs with
+let compute_hfdq_from_quads (alg : hash_algorithm)
+  (target : RDF_Graph_Executable.bnode_id) (qs : qquad Prims.list) :
+  Prims.string=
+  let rendered = render_all_for_hfdq target qs in
+  let sorted = insertion_sort rendered in
+  apply_hash alg (concat_strings sorted)
+let rec compute_all_hfdq_from_index (alg : hash_algorithm)
+  (idx : (RDF_Graph_Executable.bnode_id * qquad Prims.list) Prims.list) :
+  bn_hfdq_pair Prims.list=
+  match idx with
   | [] -> []
-  | b::rest -> (b, (compute_hfdq alg b qs)) :: (compute_all_hfdq alg qs rest)
+  | (b, qlist)::rest -> (b, (compute_hfdq_from_quads alg b qlist)) ::
+      (compute_all_hfdq_from_index alg rest)
+let compute_all_hfdq (alg : hash_algorithm) (qs : qquad Prims.list) :
+  bn_hfdq_pair Prims.list=
+  compute_all_hfdq_from_index alg (bnode_quads_index qs)
 let rec lookup_hfdq (b : RDF_Graph_Executable.bnode_id)
   (xs : bn_hfdq_pair Prims.list) : Prims.string=
   match xs with
@@ -763,26 +897,70 @@ let rec assign_full_in_order (st : issuer_state)
   | k::rest ->
       let uu___ = issue_identifier st k.bk_orig in
       (match uu___ with | (st', uu___1) -> assign_full_in_order st' rest)
-let relabel_subject
-  (mapping : (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list)
+type bn_lookup_tree =
+  | BLT_Leaf 
+  | BLT_Node of (bn_lookup_tree * RDF_Graph_Executable.bnode_id *
+  Prims.string * bn_lookup_tree) 
+let uu___is_BLT_Leaf (projectee : bn_lookup_tree) : Prims.bool=
+  match projectee with | BLT_Leaf -> true | uu___ -> false
+let uu___is_BLT_Node (projectee : bn_lookup_tree) : Prims.bool=
+  match projectee with | BLT_Node _0 -> true | uu___ -> false
+let __proj__BLT_Node__item___0 (projectee : bn_lookup_tree) :
+  (bn_lookup_tree * RDF_Graph_Executable.bnode_id * Prims.string *
+    bn_lookup_tree)=
+  match projectee with | BLT_Node _0 -> _0
+let rec bn_lookup_tree_of_sorted (xs : bn_hfdq_pair Prims.list)
+  (n : Prims.nat) : bn_lookup_tree=
+  if n = Prims.int_zero
+  then BLT_Leaf
+  else
+    (let mid = n / (Prims.of_int (2)) in
+     let uu___1 = generic_split_at_acc mid xs [] in
+     match uu___1 with
+     | (left, rest) ->
+         (match rest with
+          | [] -> BLT_Leaf
+          | (k, v)::right ->
+              BLT_Node
+                ((bn_lookup_tree_of_sorted left mid), k, v,
+                  (bn_lookup_tree_of_sorted right ((n - mid) - Prims.int_one)))))
+let build_bn_lookup_tree
+  (mapping : (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list) :
+  bn_lookup_tree=
+  let sorted =
+    generic_stable_sort
+      (fun a b ->
+         str_le (FStar_Pervasives_Native.fst a)
+           (FStar_Pervasives_Native.fst b)) mapping in
+  bn_lookup_tree_of_sorted sorted (generic_list_length sorted)
+let rec bn_lookup_tree_find (b : RDF_Graph_Executable.bnode_id)
+  (t : bn_lookup_tree) : Prims.string FStar_Pervasives_Native.option=
+  match t with
+  | BLT_Leaf -> FStar_Pervasives_Native.None
+  | BLT_Node (l, k, v, r) ->
+      if b = k
+      then FStar_Pervasives_Native.Some v
+      else
+        if str_le b k
+        then bn_lookup_tree_find b l
+        else bn_lookup_tree_find b r
+let relabel_subject (mapping : bn_lookup_tree)
   (s : RDF_Graph_Executable.subject) : RDF_Graph_Executable.subject=
   match s with
   | RDF_Graph_Executable.S_IRI uu___ -> s
   | RDF_Graph_Executable.S_BNode b ->
-      (match lookup_issued b mapping with
+      (match bn_lookup_tree_find b mapping with
        | FStar_Pervasives_Native.Some lbl -> RDF_Graph_Executable.S_BNode lbl
        | FStar_Pervasives_Native.None -> s)
-let relabel_term
-  (mapping : (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list)
+let relabel_term (mapping : bn_lookup_tree)
   (t : RDF_Graph_Executable.rdf_term) : RDF_Graph_Executable.rdf_term=
   match t with
   | RDF_Graph_Executable.T_BNode b ->
-      (match lookup_issued b mapping with
+      (match bn_lookup_tree_find b mapping with
        | FStar_Pervasives_Native.Some lbl -> RDF_Graph_Executable.T_BNode lbl
        | FStar_Pervasives_Native.None -> t)
   | uu___ -> t
-let relabel_triple
-  (mapping : (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list)
+let relabel_triple (mapping : bn_lookup_tree)
   (t : RDF_Graph_Executable.triple) : RDF_Graph_Executable.triple=
   {
     RDF_Graph_Executable.s =
@@ -790,22 +968,19 @@ let relabel_triple
     RDF_Graph_Executable.p = (t.RDF_Graph_Executable.p);
     RDF_Graph_Executable.o = (relabel_term mapping t.RDF_Graph_Executable.o)
   }
-let relabel_graph
-  (mapping : (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list)
+let relabel_graph (mapping : bn_lookup_tree)
   (g : RDF_Graph_Executable.rdf_graph) : RDF_Graph_Executable.rdf_graph=
   FStar_List_Tot_Base.map (relabel_triple mapping) g
-let relabel_graph_name
-  (mapping : (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list)
+let relabel_graph_name (mapping : bn_lookup_tree)
   (gi : RDF_Graph_Executable.iri) : RDF_Graph_Executable.iri=
   if is_bnode_graph_label gi
   then
     let lbl = bnode_of_graph_label gi in
-    match lookup_issued lbl mapping with
+    match bn_lookup_tree_find lbl mapping with
     | FStar_Pervasives_Native.Some new_lbl -> Prims.strcat "_:" new_lbl
     | FStar_Pervasives_Native.None -> gi
   else gi
-let relabel_named_graph
-  (mapping : (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list)
+let relabel_named_graph (mapping : bn_lookup_tree)
   (ng : RDF_Graph_Executable.named_graph) : RDF_Graph_Executable.named_graph=
   {
     RDF_Graph_Executable.ng_name =
@@ -816,11 +991,12 @@ let relabel_named_graph
 let relabel_dataset
   (mapping : (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list)
   (ds : RDF_Graph_Executable.rdf_dataset) : RDF_Graph_Executable.rdf_dataset=
+  let tree = build_bn_lookup_tree mapping in
   {
     RDF_Graph_Executable.ds_default =
-      (relabel_graph mapping ds.RDF_Graph_Executable.ds_default);
+      (relabel_graph tree ds.RDF_Graph_Executable.ds_default);
     RDF_Graph_Executable.ds_named =
-      (FStar_List_Tot_Base.map (relabel_named_graph mapping)
+      (FStar_List_Tot_Base.map (relabel_named_graph tree)
          ds.RDF_Graph_Executable.ds_named)
   }
 type bucket = (Prims.string * RDF_Graph_Executable.bnode_id Prims.list)
@@ -1040,17 +1216,30 @@ and walk_recursion (alg : hash_algorithm) (fuel : Prims.nat)
                      (Prims.strcat "_:"
                         (Prims.strcat lbl
                            (Prims.strcat "<" (Prims.strcat sub_hash ">")))))))
-let rec group_by_hfdq_aux (bs : RDF_Graph_Executable.bnode_id Prims.list)
-  (table : bn_hfdq_pair Prims.list) (acc : bucket Prims.list) :
-  bucket Prims.list=
-  match bs with
-  | [] -> acc
-  | b::rest ->
-      let h = lookup_hfdq b table in
-      group_by_hfdq_aux rest table (bucket_insert h b acc)
+let hfdq_pair_le (a : bn_hfdq_pair) (b : bn_hfdq_pair) : Prims.bool=
+  let uu___ = a in
+  match uu___ with
+  | (uu___1, ha) ->
+      let uu___2 = b in (match uu___2 with | (uu___3, hb) -> str_le ha hb)
+let rec group_sorted_hfdq_acc (xs : bn_hfdq_pair Prims.list)
+  (cur_h : Prims.string)
+  (cur_members : RDF_Graph_Executable.bnode_id Prims.list)
+  (acc : bucket Prims.list) : bucket Prims.list=
+  match xs with
+  | [] ->
+      FStar_List_Tot_Base.rev ((cur_h, (FStar_List_Tot_Base.rev cur_members))
+        :: acc)
+  | (b, h)::rest ->
+      if h = cur_h
+      then group_sorted_hfdq_acc rest cur_h (b :: cur_members) acc
+      else
+        group_sorted_hfdq_acc rest h [b]
+          ((cur_h, (FStar_List_Tot_Base.rev cur_members)) :: acc)
 let group_by_hfdq (bs : RDF_Graph_Executable.bnode_id Prims.list)
   (table : bn_hfdq_pair Prims.list) : bucket Prims.list=
-  group_by_hfdq_aux bs table []
+  match generic_stable_sort hfdq_pair_le table with
+  | [] -> []
+  | (b0, h0)::rest -> group_sorted_hfdq_acc rest h0 [b0] []
 let rec filter_unissued (st : issuer_state)
   (xs : RDF_Graph_Executable.bnode_id Prims.list) :
   RDF_Graph_Executable.bnode_id Prims.list=
@@ -1148,9 +1337,7 @@ let rec assign_singletons (st : issuer_state) (groups : bucket Prims.list) :
   issuer_state=
   match groups with
   | [] -> st
-  | (uu___, b::[])::rest ->
-      let uu___1 = issue_identifier st b in
-      (match uu___1 with | (st', uu___2) -> assign_singletons st' rest)
+  | (uu___, b::[])::rest -> assign_singletons (issue_fresh st b) rest
   | (uu___, uu___1)::rest -> assign_singletons st rest
 let rec process_collision_groups (alg : hash_algorithm) (fuel : Prims.nat)
   (qs : qquad Prims.list) (hfdq_table : bn_hfdq_pair Prims.list)
@@ -1173,11 +1360,14 @@ let build_canonical_mapping_alg (alg : hash_algorithm)
   (RDF_Graph_Executable.bnode_id * Prims.string) Prims.list=
   let qs = dedup_qquads (dataset_quads ds) in
   let bs = dataset_bnodes ds in
-  let hfdq_table = compute_all_hfdq alg qs bs in
+  let hfdq_table = compute_all_hfdq alg qs in
   let groups = group_by_hfdq bs hfdq_table in
   let fuel = (FStar_List_Tot_Base.length bs) + Prims.int_one in
   let final_state = walk_groups alg fuel qs hfdq_table empty_issuer groups in
-  let leftover = filter_unissued final_state bs in
+  let issued_count = FStar_List_Tot_Base.length final_state.is_issued in
+  let bs_count = FStar_List_Tot_Base.length bs in
+  let leftover =
+    if issued_count = bs_count then [] else filter_unissued final_state bs in
   let leftover_pairs =
     FStar_List_Tot_Base.map (fun b -> (b, (lookup_hfdq b hfdq_table)))
       leftover in

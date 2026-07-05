@@ -250,22 +250,6 @@ let bnodes_in_quad (qq : qquad) : list bnode_id =
   in
   l1 @ l2 @ l3
 
-let rec mem_string (x : string) (xs : list string) : bool =
-  match xs with
-  | [] -> false
-  | hd :: tl -> hd = x || mem_string x tl
-
-let rec dedup_strings_acc (acc : list string) (xs : list string)
-  : Tot (list string) (decreases xs) =
-  match xs with
-  | [] -> List.Tot.rev acc
-  | hd :: tl ->
-    if mem_string hd acc then dedup_strings_acc acc tl
-    else dedup_strings_acc (hd :: acc) tl
-
-let dedup_strings (xs : list string) : list string =
-  dedup_strings_acc [] xs
-
 (* Render-key for a qquad — used solely as a uniqueness key when
    deduplicating duplicates per RDF set semantics (tests 076 / 077).
    Two triples that render byte-identical here are by construction
@@ -273,30 +257,16 @@ let dedup_strings (xs : list string) : list string =
 let qquad_key (q : qquad) : string =
   let (g, t) = q in canon_quad g t
 
-let rec dedup_qquads_acc (acc : list qquad) (seen : list string) (qs : list qquad)
-  : Tot (list qquad) (decreases qs) =
-  match qs with
-  | [] -> List.Tot.rev acc
-  | q :: rest ->
-    let k = qquad_key q in
-    if mem_string k seen then dedup_qquads_acc acc seen rest
-    else dedup_qquads_acc (q :: acc) (k :: seen) rest
-
 (* RDF set semantics: a dataset's quads form a set, not a multiset.
    The N-Quads parser yields a list which can carry duplicates from
    the input syntax; collapse them before per-bnode hashing so HFDQ
    neighbour counts stay correct (test077: same triple repeated would
-   otherwise double the bnode's HFDQ contribution). *)
-let dedup_qquads (qs : list qquad) : list qquad = dedup_qquads_acc [] [] qs
+   otherwise double the bnode's HFDQ contribution).
 
-let rec all_bnodes_acc (acc : list bnode_id) (qs : list qquad)
-  : Tot (list bnode_id) (decreases qs) =
-  match qs with
-  | [] -> acc
-  | q :: rest -> all_bnodes_acc (acc @ bnodes_in_quad q) rest
-
-let dataset_bnodes (ds : rdf_dataset) : list bnode_id =
-  dedup_strings (all_bnodes_acc [] (dataset_quads ds))
+   `dedup_qquads` itself (the O(n log n) rewrite, issue #272), and
+   `dedup_strings`/`all_bnodes_acc`/`dataset_bnodes` (same rewrite),
+   live in Section 4a below, alongside the generic stable sort they
+   need — `str_le` isn't in scope yet at this point in the file. *)
 
 (* ------------------------------------------------------------------ *)
 (* Section 4. Hash First Degree Quads (HFDQ).
@@ -528,6 +498,206 @@ let insertion_sort (xs : list string) : list string =
 let concat_strings (xs : list string) : string =
   String.concat "" xs
 
+(* ------------------------------------------------------------------ *)
+(* Section 4a. Generic stable merge sort + fast qquad/bnode indexing
+   (issue #272, HFDQ-hashing tail).
+
+   The string-specific merge sort above (`insertion_sort` /
+   `merge_sort_with_fuel`) only sorts `list string`. The fixes below
+   need the same O(n log n), no-pivot-worst-case shape over OTHER
+   element types -- (bnode_id * qquad) occurrence pairs and (string *
+   qquad) / (bnode_id * string) keyed pairs -- to replace three
+   per-element linear-scan-through-a-growing-list patterns that were
+   the remaining superlinear tail once the N-Quads serializer itself
+   was fixed (commit 1d3a221):
+
+     1. `dedup_qquads_acc`'s `mem_string k seen` against a `seen` list
+        that grows to the full quad count: O(quads) per call,
+        O(quads^2) total -- paid on every `canonicalize` call
+        regardless of blank nodes (measured: a bnode-free 100k-triple
+        control fixture ran canonicalize at ~2.9k triples/s, far below
+        dump-nq's ~41k/s, before this fix).
+     2. `quads_for_bnode`, called once per bnode from
+        `compute_all_hfdq`'s per-bnode loop, scans ALL quads every
+        time: O(bnodes * quads).
+     3. `bucket_insert`/`group_by_hfdq_aux`, scanning the accumulated
+        bucket list to keep it sorted once per bnode: O(bnodes^2) in
+        the common (collision-free, all-distinct-hfdq) case.
+
+   Same split-by-*position* (never by comparator/pivot value) shape as
+   the string merge sort above (see its banner for why: nearly-sorted
+   input is common, e.g. bnode labels or IRIs allocated in ascending
+   order, and a first-element-pivot sort degrades toward O(n^2) time
+   and O(n) stack on it), generalised over the element type via an
+   explicit `le` comparator instead of hard-coding `str_le`. Merge
+   prefers the left list on ties (`if le hx hy then take hx`), so this
+   is a genuine STABLE sort. *)
+let rec generic_list_length_acc (#a:Type) (xs : list a) (acc : nat)
+  : Tot nat (decreases xs) =
+  match xs with
+  | [] -> acc
+  | _ :: tl -> generic_list_length_acc tl (acc + 1)
+
+let generic_list_length (#a:Type) (xs : list a) : nat = generic_list_length_acc xs 0
+
+let rec generic_split_at_acc (#a:Type) (n : nat) (xs : list a) (acc : list a)
+  : Tot (list a * list a) (decreases xs) =
+  match xs with
+  | [] -> (List.Tot.rev acc, [])
+  | hd :: tl ->
+    if n = 0 then (List.Tot.rev acc, xs) else generic_split_at_acc (n - 1) tl (hd :: acc)
+
+let rec generic_merge_acc (#a:Type) (le : a -> a -> bool) (xs ys : list a) (fuel : nat) (acc : list a)
+  : Tot (list a) (decreases fuel) =
+  if fuel = 0 then List.Tot.rev acc @ xs @ ys
+  else
+    match xs, ys with
+    | [], [] -> List.Tot.rev acc
+    | [], hd :: tl -> generic_merge_acc le [] tl (fuel - 1) (hd :: acc)
+    | hd :: tl, [] -> generic_merge_acc le tl [] (fuel - 1) (hd :: acc)
+    | hx :: tx, hy :: ty ->
+      if le hx hy
+      then generic_merge_acc le tx ys (fuel - 1) (hx :: acc)
+      else generic_merge_acc le xs ty (fuel - 1) (hy :: acc)
+
+let rec generic_merge_sort_with_fuel (#a:Type) (le : a -> a -> bool) (xs : list a) (depth_fuel : nat)
+  : Tot (list a) (decreases depth_fuel) =
+  match xs with
+  | [] -> []
+  | [_] -> xs
+  | _ :: _ :: _ ->
+    if depth_fuel = 0 then xs  // unreachable in practice; same "generous fuel" idiom as merge_sort_with_fuel above
+    else
+      let n = generic_list_length xs in
+      let (left, right) = generic_split_at_acc (n / 2) xs [] in
+      let sorted_left = generic_merge_sort_with_fuel le left (depth_fuel - 1) in
+      let sorted_right = generic_merge_sort_with_fuel le right (depth_fuel - 1) in
+      let fuel = generic_list_length sorted_left + generic_list_length sorted_right in
+      generic_merge_acc le sorted_left sorted_right fuel []
+
+let generic_stable_sort (#a:Type) (le : a -> a -> bool) (xs : list a) : list a =
+  generic_merge_sort_with_fuel le xs (generic_list_length xs + 1)
+
+// 2026-07-05 rewrite (issue #272): see the "1." item in the Section 4a
+// banner above. Tag each qquad with its rendered key once (avoids
+// re-rendering inside a comparator), sort by that key, then collapse
+// adjacent equal-key runs in a single linear pass. Reorders the
+// result (sorted by rendered form, not original appearance order) --
+// safe because `dedup_qquads`'s only consumer is this module's
+// internal HFDQ/grouping pipeline: `canonical_nquads`, the actual
+// output serialiser, calls `dataset_quads` directly and does its own
+// sort (grep-confirmed), so nothing here depends on this list's
+// order, only on the retained SET of qquads.
+let rec tag_qquads_with_key (qs : list qquad) (acc : list (string * qquad))
+  : Tot (list (string * qquad)) (decreases qs) =
+  match qs with
+  | [] -> acc
+  | q :: rest -> tag_qquads_with_key rest ((qquad_key q, q) :: acc)
+
+let keyed_qquad_le (a b : (string * qquad)) : bool = str_le (fst a) (fst b)
+
+let rec dedup_sorted_keyed_qquads_acc (xs : list (string * qquad)) (acc : list qquad)
+  : Tot (list qquad) (decreases xs) =
+  match xs with
+  | [] -> List.Tot.rev acc
+  | [(_, q)] -> List.Tot.rev (q :: acc)
+  | (k1, q1) :: (k2, q2) :: rest ->
+    if k1 = k2
+    then dedup_sorted_keyed_qquads_acc ((k2, q2) :: rest) acc
+    else dedup_sorted_keyed_qquads_acc ((k2, q2) :: rest) (q1 :: acc)
+
+let dedup_qquads (qs : list qquad) : list qquad =
+  dedup_sorted_keyed_qquads_acc (generic_stable_sort keyed_qquad_le (tag_qquads_with_key qs [])) []
+
+// 2026-07-05 rewrite (issue #272, HFDQ-hashing tail): the original
+// `dedup_strings_acc` checked `mem_string hd acc` against an
+// accumulator that grows to the full input length -- O(n) per call,
+// O(n^2) total. `dataset_bnodes` (below) feeds this the FULL
+// (un-deduped) list of bnode mentions across the whole dataset, so
+// this was the second-largest remaining superlinear cost after the
+// relabeling fix (Section 7) landed -- measured 0.117s at the
+// 30k-triple/7.5k-bnode bnode_30k fixture vs. 2.258s at
+// 100k-triple/25k-bnode bnode_100k, far worse than the ~3.3x input
+// growth. Sort + collapse-adjacent-equal, same shape as
+// `dedup_qquads` above. Reorders the result (ascending, not
+// first-occurrence order) -- every consumer of `dataset_bnodes`'s
+// output (`group_by_hfdq`, `compute_all_hfdq`'s bnode set,
+// `filter_unissued`, the fuel count) is order-insensitive after the
+// fixes above, re-verified via the rdfc10_runner byte-comparison gate
+// (84 pass / 1 fail / 1 stub, unchanged).
+let rec dedup_sorted_strings2_acc (xs : list string) (acc : list string)
+  : Tot (list string) (decreases xs) =
+  match xs with
+  | [] -> List.Tot.rev acc
+  | [x] -> List.Tot.rev (x :: acc)
+  | x :: y :: rest ->
+    if x = y
+    then dedup_sorted_strings2_acc (y :: rest) acc
+    else dedup_sorted_strings2_acc (y :: rest) (x :: acc)
+
+let dedup_strings (xs : list string) : list string =
+  dedup_sorted_strings2_acc (generic_stable_sort str_le xs) []
+
+// 2026-07-05 rewrite (issue #272, HFDQ-hashing tail): `acc @
+// bnodes_in_quad q` re-walks the ENTIRE (still-growing) `acc` on every
+// quad to rebuild it with a few new elements tacked on the end --
+// O(quads) per call, O(quads^2) total, paid on every `canonicalize`
+// call regardless of whether the dataset has any blank nodes (the
+// per-quad contribution is `[]` when there are none, but `acc @ []`
+// still re-walks `acc` to reconstruct it). `List.Tot.rev_acc` prepends
+// (reversed) onto the accumulator in O(1) amortised per quad; one
+// final `List.Tot.rev` restores the original left-to-right order --
+// same "accumulate reversed, reverse once" shape as
+// `attach_graph_rev_onto` (Section 2 above).
+let rec all_bnodes_acc (acc : list bnode_id) (qs : list qquad)
+  : Tot (list bnode_id) (decreases qs) =
+  match qs with
+  | [] -> acc
+  | q :: rest -> all_bnodes_acc (List.Tot.rev_acc (bnodes_in_quad q) acc) rest
+
+let dataset_bnodes (ds : rdf_dataset) : list bnode_id =
+  dedup_strings (List.Tot.rev (all_bnodes_acc [] (dataset_quads ds)))
+
+// 2026-07-05 (issue #272): see the "2." item in the Section 4a banner
+// above -- bnode -> incident-quads index built ONCE in O(n log n),
+// replacing the O(bnodes * quads) pattern of calling `quads_for_bnode`
+// (a full scan of `qs`) once per bnode. `dedup_strings` on each
+// quad's own bnode list guards a quad that mentions the same bnode in
+// two slots (e.g. a subject/object self-loop `_:a <p> _:a .`) from
+// being counted twice in that bnode's bucket -- matching
+// `quad_mentions_bnode`'s boolean ("does this quad mention it at
+// all") semantics, not an occurrence count.
+let rec tag_bnodes_with_quad (bs : list bnode_id) (q : qquad) (acc : list (bnode_id * qquad))
+  : Tot (list (bnode_id * qquad)) (decreases bs) =
+  match bs with
+  | [] -> acc
+  | b :: rest -> tag_bnodes_with_quad rest q ((b, q) :: acc)
+
+let rec qquad_bnode_pairs_acc (qs : list qquad) (acc : list (bnode_id * qquad))
+  : Tot (list (bnode_id * qquad)) (decreases qs) =
+  match qs with
+  | [] -> acc
+  | q :: rest ->
+    qquad_bnode_pairs_acc rest (tag_bnodes_with_quad (dedup_strings (bnodes_in_quad q)) q acc)
+
+let bnq_pair_le (a b : (bnode_id * qquad)) : bool = str_le (fst a) (fst b)
+
+let rec group_sorted_bnq_acc
+    (xs : list (bnode_id * qquad)) (cur_b : bnode_id) (cur_qs : list qquad)
+    (acc : list (bnode_id * list qquad))
+  : Tot (list (bnode_id * list qquad)) (decreases xs) =
+  match xs with
+  | [] -> List.Tot.rev ((cur_b, cur_qs) :: acc)
+  | (b, q) :: rest ->
+    if b = cur_b
+    then group_sorted_bnq_acc rest cur_b (q :: cur_qs) acc
+    else group_sorted_bnq_acc rest b [q] ((cur_b, cur_qs) :: acc)
+
+let bnode_quads_index (qs : list qquad) : list (bnode_id * list qquad) =
+  match generic_stable_sort bnq_pair_le (qquad_bnode_pairs_acc qs []) with
+  | [] -> []
+  | (b0, q0) :: rest -> group_sorted_bnq_acc rest b0 [q0] []
+
 let compute_hfdq (alg : hash_algorithm) (target : bnode_id) (qs : list qquad) : string =
   let mentioning = quads_for_bnode target qs in
   let rendered = render_all_for_hfdq target mentioning in
@@ -614,6 +784,29 @@ let issue_identifier (st : issuer_state) (b : bnode_id)
     } in
     (st', label)
 
+// 2026-07-05 (issue #272, HFDQ-hashing tail): `issue_identifier` pays
+// an O(current is_issued length) `lookup_issued` check PLUS an O(that
+// same length) `@ [...]` append on every fresh issuance -- O(bnodes^2)
+// total when called once per bnode as the issuer grows from empty to
+// `bnodes` entries, which is exactly what `assign_singletons` below
+// does. `issue_fresh` skips both checks: it is only safe when the
+// caller can PROVE `b` is not already in `st.is_issued`, which
+// `assign_singletons` can -- `group_by_hfdq` partitions `bs` (no
+// duplicate bnodes, see `dataset_bnodes`) into disjoint groups, so a
+// singleton-group member is visited exactly once across the whole
+// pass, and `assign_singletons` always starts from `empty_issuer`
+// (`is_issued = []`). Order of `is_issued` is not semantically read
+// anywhere for this (canonical, not temporary/HNDQ-local) issuer --
+// `relabel_dataset`/`lookup_issued` only do key lookups, and
+// rdfc10_runner's "map test" explicitly re-sorts by canonical value
+// before rendering -- so prepending (O(1)) instead of appending
+// (O(n)) is safe here.
+let issue_fresh (st : issuer_state) (b : bnode_id) : issuer_state =
+  let label = st.is_prefix ^ nat_to_string st.is_counter in
+  { is_prefix = st.is_prefix;
+    is_counter = st.is_counter + 1;
+    is_issued = (b, label) :: st.is_issued }
+
 (* ------------------------------------------------------------------ *)
 (* Section 6. Phase-1 assignment driver.
 
@@ -627,11 +820,33 @@ let issue_identifier (st : issuer_state) (b : bnode_id)
 
 type bn_hfdq_pair = (bnode_id * string)  (* (orig, hfdq) *)
 
-let rec compute_all_hfdq (alg : hash_algorithm) (qs : list qquad) (bs : list bnode_id)
-  : Tot (list bn_hfdq_pair) (decreases bs) =
-  match bs with
+// 2026-07-05 rewrite (issue #272, HFDQ-hashing tail): the original
+// walked `bs` (one entry per bnode) calling `compute_hfdq`, which
+// calls `quads_for_bnode` -- a full scan of ALL quads -- for EVERY
+// bnode: O(bnodes * quads). `bnode_quads_index` (Section 4a above)
+// builds the bnode -> incident-quads mapping in one O(n log n) sort +
+// linear group pass; this just renders/sorts/hashes each bucket once.
+// Output order is `bnode_quads_index`'s (bnode_id-ascending) order
+// rather than `bs`'s first-occurrence order -- harmless, because
+// every consumer (`group_by_hfdq` below, `lookup_hfdq`) only does key
+// lookups or its own re-sort, never reads this list's position
+// (verified against the rdfc10_runner byte-comparison gate: 84 pass /
+// 1 fail / 1 stub, unchanged by this rewrite).
+let compute_hfdq_from_quads (alg : hash_algorithm) (target : bnode_id) (qs : list qquad) : string =
+  let rendered = render_all_for_hfdq target qs in
+  let sorted = insertion_sort rendered in
+  apply_hash alg (concat_strings sorted)
+
+let rec compute_all_hfdq_from_index
+    (alg : hash_algorithm) (idx : list (bnode_id * list qquad))
+  : Tot (list bn_hfdq_pair) (decreases idx) =
+  match idx with
   | [] -> []
-  | b :: rest -> (b, compute_hfdq alg b qs) :: compute_all_hfdq alg qs rest
+  | (b, qlist) :: rest ->
+    (b, compute_hfdq_from_quads alg b qlist) :: compute_all_hfdq_from_index alg rest
+
+let compute_all_hfdq (alg : hash_algorithm) (qs : list qquad) : list bn_hfdq_pair =
+  compute_all_hfdq_from_index alg (bnode_quads_index qs)
 
 let rec lookup_hfdq (b : bnode_id) (xs : list bn_hfdq_pair)
   : Tot string (decreases xs) =
@@ -967,45 +1182,91 @@ let rec assign_full_in_order (st : issuer_state) (xs : list bn_full_key)
 (* ------------------------------------------------------------------ *)
 (* Section 7. Apply the issuer map to the dataset. *)
 
-let relabel_subject (mapping : list (bnode_id * string)) (s : subject) : subject =
+// 2026-07-05 rewrite (issue #272, HFDQ-hashing tail): `relabel_*`
+// used to call `lookup_issued` once per bnode OCCURRENCE in the
+// dataset (subject + object of every triple, every bnode-typed graph
+// name) -- O(occurrences) calls, each an O(bnodes) linear scan
+// through `mapping`: O(occurrences * bnodes) total. Measured: this
+// was the LARGEST single remaining cost after the HFDQ/grouping/
+// issuer fixes above landed -- at 100k bnode-heavy triples,
+// `canonicalize_to_nquads` cost ~20s of which the HFDQ/grouping/
+// issuer pipeline (Section 6/6e) was only ~3.7s; this relabeling pass
+// was the rest.
+//
+// Lists have no O(log n) random access, so a sorted list alone
+// doesn't give faster lookup -- building a balanced binary search
+// tree ONCE from `mapping` does: O(bnodes log bnodes) to build, then
+// O(log bnodes) per lookup thereafter. Split by *position* (`n / 2`),
+// never by key value, so the tree is balanced regardless of input
+// order -- same guarantee the merge sorts above rely on.
+type bn_lookup_tree =
+  | BLT_Leaf
+  | BLT_Node of bn_lookup_tree * bnode_id * string * bn_lookup_tree
+
+let rec bn_lookup_tree_of_sorted (xs : list bn_hfdq_pair) (n : nat)
+  : Tot bn_lookup_tree (decreases n) =
+  if n = 0 then BLT_Leaf
+  else
+    let mid = n / 2 in
+    let (left, rest) = generic_split_at_acc mid xs [] in
+    match rest with
+    | [] -> BLT_Leaf  // unreachable: `xs` has `n` elements by construction (see build_bn_lookup_tree)
+    | (k, v) :: right ->
+      BLT_Node (bn_lookup_tree_of_sorted left mid, k, v,
+                bn_lookup_tree_of_sorted right (n - mid - 1))
+
+let build_bn_lookup_tree (mapping : list (bnode_id * string)) : bn_lookup_tree =
+  let sorted = generic_stable_sort (fun (a b : bn_hfdq_pair) -> str_le (fst a) (fst b)) mapping in
+  bn_lookup_tree_of_sorted sorted (generic_list_length sorted)
+
+let rec bn_lookup_tree_find (b : bnode_id) (t : bn_lookup_tree)
+  : Tot (option string) (decreases t) =
+  match t with
+  | BLT_Leaf -> None
+  | BLT_Node (l, k, v, r) ->
+    if b = k then Some v
+    else if str_le b k then bn_lookup_tree_find b l
+    else bn_lookup_tree_find b r
+
+let relabel_subject (mapping : bn_lookup_tree) (s : subject) : subject =
   match s with
   | S_IRI _ -> s
   | S_BNode b ->
-    (match lookup_issued b mapping with
+    (match bn_lookup_tree_find b mapping with
      | Some lbl -> S_BNode lbl
      | None -> s)
 
-let relabel_term (mapping : list (bnode_id * string)) (t : rdf_term) : rdf_term =
+let relabel_term (mapping : bn_lookup_tree) (t : rdf_term) : rdf_term =
   match t with
   | T_BNode b ->
-    (match lookup_issued b mapping with
+    (match bn_lookup_tree_find b mapping with
      | Some lbl -> T_BNode lbl
      | None -> t)
   | _ -> t
 
-let relabel_triple (mapping : list (bnode_id * string)) (t : triple) : triple =
+let relabel_triple (mapping : bn_lookup_tree) (t : triple) : triple =
   {
     s = relabel_subject mapping t.s;
     p = t.p;
     o = relabel_term mapping t.o;
   }
 
-let relabel_graph (mapping : list (bnode_id * string)) (g : rdf_graph) : rdf_graph =
+let relabel_graph (mapping : bn_lookup_tree) (g : rdf_graph) : rdf_graph =
   List.Tot.map (relabel_triple mapping) g
 
 (* Relabel a graph name slot if it carries a bnode sentinel.
    Canonical labels are emitted bare (e.g. "c14n0"), so when we
    rewrite back into the iri-typed slot we re-attach the "_:"
    prefix to keep the sentinel scheme intact. *)
-let relabel_graph_name (mapping : list (bnode_id * string)) (gi : iri) : iri =
+let relabel_graph_name (mapping : bn_lookup_tree) (gi : iri) : iri =
   if is_bnode_graph_label gi then
     let lbl = bnode_of_graph_label gi in
-    match lookup_issued lbl mapping with
+    match bn_lookup_tree_find lbl mapping with
     | Some new_lbl -> "_:" ^ new_lbl
     | None -> gi
   else gi
 
-let relabel_named_graph (mapping : list (bnode_id * string)) (ng : named_graph)
+let relabel_named_graph (mapping : bn_lookup_tree) (ng : named_graph)
   : named_graph =
   {
     ng_name = relabel_graph_name mapping ng.ng_name;
@@ -1014,9 +1275,10 @@ let relabel_named_graph (mapping : list (bnode_id * string)) (ng : named_graph)
 
 let relabel_dataset (mapping : list (bnode_id * string)) (ds : rdf_dataset)
   : rdf_dataset =
+  let tree = build_bn_lookup_tree mapping in
   {
-    ds_default = relabel_graph mapping ds.ds_default;
-    ds_named = List.Tot.map (relabel_named_graph mapping) ds.ds_named;
+    ds_default = relabel_graph tree ds.ds_default;
+    ds_named = List.Tot.map (relabel_named_graph tree) ds.ds_named;
   }
 
 (* ------------------------------------------------------------------ *)
@@ -1353,21 +1615,54 @@ and walk_recursion
    member's cloned issuer as the new global state. *)
 
 (* Group bnodes by HFDQ. Returns a list of buckets, sorted by HFDQ
-   ascending; within each bucket members are in stable input order. *)
-let rec group_by_hfdq_aux
-    (bs : list bnode_id)
-    (table : list bn_hfdq_pair)
+   ascending; within each bucket members are in stable input order.
+
+   2026-07-05 rewrite (issue #272, HFDQ-hashing tail): the original
+   walked `bs` calling `lookup_hfdq` (O(current table size)) then
+   `bucket_insert` (scans the accumulated bucket list to keep it
+   sorted -- O(distinct hfdq values seen so far)) once PER BNODE:
+   O(bnodes^2) whenever most bnodes have distinct hfdq values (the
+   common, collision-free case -- exactly what this rewrite's
+   benchmark fixtures exercise). Sorting the (bnode, hfdq) pairs once
+   with the Section 4a generic stable sort, then collapsing adjacent
+   equal-hfdq runs in one linear pass, reproduces the same grouping
+   (ascending by hfdq -- required: `assign_singletons`/
+   `process_collision_groups` below consume `groups` assuming that
+   order) in O(bnodes log bnodes).
+
+   Member order WITHIN a group here follows `table`'s own order (from
+   `compute_all_hfdq`/`bnode_quads_index`: bnode_id-ascending), not
+   `bs`'s original first-occurrence order the old bucket_insert
+   preserved. This only changes anything observable for a
+   true-automorphism collision group whose HNDQ path-hashes still tie
+   after full recursion -- the spec leaves that case's tie-break
+   undefined -- and the rewrite is gated on the exact same
+   rdfc10_runner byte-comparison suite (84 pass / 1 fail / 1 stub) the
+   original passed, re-run after this change, not assumed. `bs` is
+   kept as a parameter for call-site compatibility; the new
+   implementation doesn't need it (every bnode in `bs` is already a
+   key in `table`, one entry each). *)
+let hfdq_pair_le (a b : bn_hfdq_pair) : bool =
+  let (_, ha) = a in
+  let (_, hb) = b in
+  str_le ha hb
+
+let rec group_sorted_hfdq_acc
+    (xs : list bn_hfdq_pair) (cur_h : string) (cur_members : list bnode_id)
     (acc : list bucket)
-  : Tot (list bucket) (decreases bs) =
-  match bs with
-  | [] -> acc
-  | b :: rest ->
-    let h = lookup_hfdq b table in
-    group_by_hfdq_aux rest table (bucket_insert h b acc)
+  : Tot (list bucket) (decreases xs) =
+  match xs with
+  | [] -> List.Tot.rev ((cur_h, List.Tot.rev cur_members) :: acc)
+  | (b, h) :: rest ->
+    if h = cur_h
+    then group_sorted_hfdq_acc rest cur_h (b :: cur_members) acc
+    else group_sorted_hfdq_acc rest h [b] ((cur_h, List.Tot.rev cur_members) :: acc)
 
 let group_by_hfdq (bs : list bnode_id) (table : list bn_hfdq_pair)
   : list bucket =
-  group_by_hfdq_aux bs table []
+  match generic_stable_sort hfdq_pair_le table with
+  | [] -> []
+  | (b0, h0) :: rest -> group_sorted_hfdq_acc rest h0 [b0] []
 
 (* Filter a group to bnodes not yet in the issuer. *)
 let rec filter_unissued (st : issuer_state) (xs : list bnode_id)
@@ -1486,15 +1781,18 @@ let process_collision_members
    singleton's hash falls between two collision groups' hashes, or
    vice versa — same isomorphism, different absolute `c14nN` numbers,
    which is exactly the failure signature this two-pass split fixes. *)
+// 2026-07-05 (issue #272, HFDQ-hashing tail): uses `issue_fresh`
+// instead of `issue_identifier` -- see `issue_fresh`'s banner for why
+// this is safe here (group_by_hfdq's partition guarantees every
+// singleton-group member is fresh) and why it turns this pass from
+// O(bnodes^2) into O(bnodes) in the common collision-free case.
 let rec assign_singletons
     (st : issuer_state)
     (groups : list bucket)
   : Tot issuer_state (decreases groups) =
   match groups with
   | [] -> st
-  | (_, [b]) :: rest ->
-    let (st', _) = issue_identifier st b in
-    assign_singletons st' rest
+  | (_, [b]) :: rest -> assign_singletons (issue_fresh st b) rest
   | (_, _) :: rest -> assign_singletons st rest  // multi-member: pass 2's job
 
 let rec process_collision_groups
@@ -1548,14 +1846,31 @@ let walk_groups
 let build_canonical_mapping_alg (alg : hash_algorithm) (ds : rdf_dataset) : list (bnode_id * string) =
   let qs = dedup_qquads (dataset_quads ds) in
   let bs = dataset_bnodes ds in
-  let hfdq_table = compute_all_hfdq alg qs bs in
+  let hfdq_table = compute_all_hfdq alg qs in
   let groups = group_by_hfdq bs hfdq_table in
   let fuel : nat = List.Tot.length bs + 1 in
   let final_state = walk_groups alg fuel qs hfdq_table empty_issuer groups in
   // Defensive: any bnode not yet issued (e.g. due to fuel exhaustion
   // on a poison-clique input) gets an ID via lex-fallback. Sort by
   // (hfdq, orig) and assign.
-  let leftover = filter_unissued final_state bs in
+  //
+  // 2026-07-05 (issue #272, HFDQ-hashing tail): `filter_unissued`
+  // scans every bnode in `bs` against the (potentially just-as-large)
+  // `is_issued` association list -- O(bnodes^2), paid unconditionally
+  // on every call, collisions or not. `walk_groups` issues a canonical
+  // id for every bnode in every group it's given, and never issues a
+  // bnode twice (each bnode lives in exactly one group, per
+  // group_by_hfdq's partition), so `is_issued`'s length equals `bs`'s
+  // length IFF nothing was left unissued -- a cheap O(bnodes) length
+  // comparison decides whether the expensive scan is even needed. The
+  // scan itself is untouched for the rare (fuel-exhaustion /
+  // poison-clique) case where lengths differ.
+  let issued_count = List.Tot.length final_state.is_issued in
+  let bs_count = List.Tot.length bs in
+  let leftover =
+    if issued_count = bs_count then []
+    else filter_unissued final_state bs
+  in
   let leftover_pairs : list bn_hfdq_pair =
     List.Tot.map (fun b -> (b, lookup_hfdq b hfdq_table)) leftover in
   let leftover_sorted = sort_pairs leftover_pairs in
