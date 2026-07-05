@@ -1,0 +1,85 @@
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+
+# SKOS's own OWL axioms (SKOS Reference, http://www.w3.org/TR/skos-reference/skos.rdf),
+# transcribed as data so this project's generic OWL 2 RL closure
+# (RDF.Graph.Executable.fst: rdfs7 for rdfs:subPropertyOf, prp-trp
+# for owl:TransitiveProperty, prp-symp for owl:SymmetricProperty,
+# prp-inv1/prp-inv2 for owl:inverseOf) derives SKOS entailments —
+# broaderTransitive materialization, related's symmetry, the mapping-
+# property ladder — with zero SKOS-specific engine code. Load this
+# file alongside a SKOS dataset and run with --entail owl-rl:
+#
+#   factoidal query --data DATA.ttl --data skos-axioms.ttl \
+#     --entail owl-rl --query queries/s27-related-broadertransitive-materialized.rq
+#
+# This is a subset of skos.rdf: only the axioms that drive OWL-RL
+# entailment (transitive/symmetric/inverse/subPropertyOf). The class
+# and property *disjointness* triples from skos.rdf (S9, S37) are
+# NOT included here: this project's closure does not implement
+# cax-dw (owl:disjointWith -> inconsistency) as a query-time signal,
+# and — more importantly — the SKOS Reference itself does not encode
+# S13/S27/S46 as owl:disjointWith axioms in skos.rdf at all, precisely
+# because doing so is unsafe in the presence of the subPropertyOf
+# ladder below (e.g. skos:broadMatch is a sub-property of both
+# skos:mappingRelation and skos:broader, so blindly asserting
+# skos:exactMatch owl:disjointWith skos:broadMatch as an OWL axiom
+# would make many real-world SKOS graphs OWL-inconsistent rather than
+# merely "failing an integrity check"). That is why the Reference
+# calls these six conditions "integrity conditions" rather than
+# axioms, and why this skill checks them with SHACL / SPARQL instead
+# of leaning on OWL-RL to reject them. See SKILL.md.
+
+# --- semantic relations: inverses -----------------------------------
+skos:broader owl:inverseOf skos:narrower .
+skos:broaderTransitive owl:inverseOf skos:narrowerTransitive .
+skos:hasTopConcept owl:inverseOf skos:topConceptOf .
+
+# --- semantic relations: characteristics ----------------------------
+skos:broaderTransitive rdf:type owl:TransitiveProperty .
+skos:narrowerTransitive rdf:type owl:TransitiveProperty .
+skos:related rdf:type owl:SymmetricProperty .
+
+# --- semantic relations: subproperty ladder -------------------------
+skos:broader rdfs:subPropertyOf skos:broaderTransitive .
+skos:narrower rdfs:subPropertyOf skos:narrowerTransitive .
+skos:broaderTransitive rdfs:subPropertyOf skos:semanticRelation .
+skos:narrowerTransitive rdfs:subPropertyOf skos:semanticRelation .
+skos:related rdfs:subPropertyOf skos:semanticRelation .
+skos:topConceptOf rdfs:subPropertyOf skos:inScheme .
+
+# --- mapping relations: inverses -------------------------------------
+skos:broadMatch owl:inverseOf skos:narrowMatch .
+
+# --- mapping relations: characteristics -------------------------------
+skos:exactMatch rdf:type owl:TransitiveProperty .
+skos:exactMatch rdf:type owl:SymmetricProperty .
+skos:closeMatch rdf:type owl:SymmetricProperty .
+skos:relatedMatch rdf:type owl:SymmetricProperty .
+
+# --- mapping relations: subproperty ladder ----------------------------
+skos:exactMatch rdfs:subPropertyOf skos:closeMatch .
+skos:closeMatch rdfs:subPropertyOf skos:mappingRelation .
+skos:broadMatch rdfs:subPropertyOf skos:mappingRelation .
+skos:broadMatch rdfs:subPropertyOf skos:broader .
+skos:narrowMatch rdfs:subPropertyOf skos:mappingRelation .
+skos:narrowMatch rdfs:subPropertyOf skos:narrower .
+skos:relatedMatch rdfs:subPropertyOf skos:mappingRelation .
+skos:relatedMatch rdfs:subPropertyOf skos:related .
+skos:mappingRelation rdfs:subPropertyOf skos:semanticRelation .
+
+# --- label properties: subproperty ladder -----------------------------
+skos:prefLabel rdfs:subPropertyOf rdfs:label .
+skos:altLabel rdfs:subPropertyOf rdfs:label .
+skos:hiddenLabel rdfs:subPropertyOf rdfs:label .
+
+# --- note properties: subproperty ladder (not integrity-relevant, ----
+# --- included for completeness / future note-property checks) --------
+skos:changeNote rdfs:subPropertyOf skos:note .
+skos:definition rdfs:subPropertyOf skos:note .
+skos:editorialNote rdfs:subPropertyOf skos:note .
+skos:example rdfs:subPropertyOf skos:note .
+skos:historyNote rdfs:subPropertyOf skos:note .
+skos:scopeNote rdfs:subPropertyOf skos:note .

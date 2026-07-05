@@ -1,0 +1,48 @@
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix ex:   <http://example.org/skos-integrity/animals#> .
+@prefix ext:  <http://example.org/skos-integrity/external#> .
+
+# sample-vocab.ttl with exactly one deliberate violation per integrity
+# condition, isolated and commented VIOLATION-S<n> so each can be
+# traced to the check that is supposed to catch it. Everything not
+# marked VIOLATION is identical to sample-vocab.ttl (still valid).
+
+ex:scheme a skos:ConceptScheme ;
+    a skos:Concept ;                       # VIOLATION-S9: ConceptScheme/Concept not disjoint
+    skos:prefLabel "Animals"@en ;
+    skos:hasTopConcept ex:Animal .
+
+ex:Animal a skos:Concept ;
+    skos:inScheme ex:scheme ;
+    skos:topConceptOf ex:scheme ;
+    skos:prefLabel "Animal"@en ;
+    skos:prefLabel "Creature"@en ;          # VIOLATION-S14: 2nd prefLabel, same @en tag
+    skos:prefLabel "Animal"@en-GB .
+
+ex:Mammal a skos:Concept ;
+    skos:inScheme ex:scheme ;
+    skos:prefLabel "Mammal"@en ;
+    skos:broader ex:Animal .
+
+ex:Cat a skos:Concept ;
+    skos:inScheme ex:scheme ;
+    skos:prefLabel "Cat"@en ;
+    skos:altLabel "Feline"@en ;
+    skos:hiddenLabel "Kat"@en ;
+    skos:broader ex:Mammal ;
+    skos:exactMatch ext:Cat ;
+    skos:broadMatch ext:Cat .              # VIOLATION-S46: exactMatch + broadMatch, same pair
+
+ex:Dog a skos:Concept ;
+    skos:inScheme ex:scheme ;
+    skos:prefLabel "Dog"@en ;
+    skos:altLabel "Dog"@en ;               # VIOLATION-S13: same value as prefLabel, same resource
+    skos:broader ex:Mammal ;
+    skos:broader ex:Cat ;                  # VIOLATION-S27 (paired with the related triple below):
+    skos:related ex:Cat .                   #   related and broader(Transitive) hold for the same pair
+
+ex:PetsCollection a skos:Collection ;
+    a skos:Concept ;                       # VIOLATION-S37: Collection/Concept not disjoint
+    skos:prefLabel "Pets"@en ;
+    skos:member ex:Cat ;
+    skos:member ex:Dog .

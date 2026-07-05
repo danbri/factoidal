@@ -1,0 +1,7 @@
+# S9 (SKOS Reference 4.4): skos:ConceptScheme is disjoint with
+# skos:Concept. Direct rdf:type check, no closure needed.
+# Run: factoidal query --data DATA.ttl --query THIS.rq
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+ASK {
+  ?x a skos:ConceptScheme , skos:Concept .
+}

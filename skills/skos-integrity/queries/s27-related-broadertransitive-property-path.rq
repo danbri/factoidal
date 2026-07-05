@@ -1,0 +1,14 @@
+# S27 (SKOS Reference 8.4): skos:related is disjoint with the
+# property skos:broaderTransitive. broaderTransitive is rarely
+# asserted directly (skos:broader is its usual, unmaterialized,
+# sub-property) so this variant walks the transitive closure of
+# skos:broader with a property path instead of requiring an OWL-RL
+# pass first. Checks both directions because skos:related is
+# symmetric in the SKOS model but that symmetry is also usually
+# left to entailment rather than asserted twice in the data.
+# Run: factoidal query --data DATA.ttl --query THIS.rq
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+ASK {
+  ?a skos:related ?b .
+  { ?a skos:broader+ ?b } UNION { ?b skos:broader+ ?a }
+}

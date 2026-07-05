@@ -1,0 +1,15 @@
+# S13 (SKOS Reference 5.4.1): skos:prefLabel, skos:altLabel and
+# skos:hiddenLabel are pairwise disjoint properties — the same
+# resource must not carry the same literal value under two of the
+# three. Reports every offending (resource, value, prop1, prop2)
+# triple; empty result set == condition holds.
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+SELECT DISTINCT ?resource ?value ?p1 ?p2 WHERE {
+  VALUES (?p1 ?p2) {
+    (skos:prefLabel skos:altLabel)
+    (skos:prefLabel skos:hiddenLabel)
+    (skos:altLabel skos:hiddenLabel)
+  }
+  ?resource ?p1 ?value .
+  ?resource ?p2 ?value .
+}

@@ -23,6 +23,23 @@ so future agents (and humans) don't burn cycles attempting them.
 
 ## Out of scope — not planned
 
+### RDFa and Microdata — web-platform territory (owner decision, 2026-07-05)
+
+RDFa Core/HTML+RDFa and HTML Microdata are the only Rec-track RDF
+extraction syntaxes with zero implementation here. Deliberate: they
+require HTML parsing and web-platform semantics ("we don't go near
+'web platform' yet" — owner, 2026-07-05). Revisit only if the project
+grows a browser-ingestion story.
+
+### RDF 1.2 / RDF-star — deferred to v1 by design (owner decision, 2026-07-05)
+
+No quoted-triple term type exists in the tree (this is also the known
+blocker for RML-star's 20 tests, noted in the RML program plan).
+Deliberate sequencing: "when we get to our own v1 we will be ready" —
+the foundational refactor's `RDF.Term` module is where a quoted-triple
+constructor would land, so the refactor is the prerequisite, not this
+being forgotten.
+
 ### RIF Core (Rule Interchange Format) — supported subset only
 
 RIF Core is a full production-rule language; factoidal implements only

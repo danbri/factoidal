@@ -1,0 +1,44 @@
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix ex:   <http://example.org/skos-integrity/animals#> .
+@prefix ext:  <http://example.org/skos-integrity/external#> .
+
+# A tiny, valid SKOS vocabulary used by the skos-integrity skill.
+# Every check in SKILL.md's Commands section runs against this file
+# and MUST report zero violations. Its broken twin,
+# sample-vocab-broken.ttl, adds exactly one violation per condition
+# and nothing else, so the same commands can be diffed side by side.
+
+ex:scheme a skos:ConceptScheme ;
+    skos:prefLabel "Animals"@en ;
+    skos:hasTopConcept ex:Animal .
+
+ex:Animal a skos:Concept ;
+    skos:inScheme ex:scheme ;
+    skos:topConceptOf ex:scheme ;
+    skos:prefLabel "Animal"@en ;
+    skos:prefLabel "Animal"@en-GB .
+
+ex:Mammal a skos:Concept ;
+    skos:inScheme ex:scheme ;
+    skos:prefLabel "Mammal"@en ;
+    skos:broader ex:Animal .
+
+ex:Cat a skos:Concept ;
+    skos:inScheme ex:scheme ;
+    skos:prefLabel "Cat"@en ;
+    skos:altLabel "Feline"@en ;
+    skos:hiddenLabel "Kat"@en ;
+    skos:broader ex:Mammal ;
+    skos:exactMatch ext:Cat .
+
+ex:Dog a skos:Concept ;
+    skos:inScheme ex:scheme ;
+    skos:prefLabel "Dog"@en ;
+    skos:broader ex:Mammal ;
+    skos:related ex:Cat .
+
+# A skos:Collection, kept disjoint from Concept/ConceptScheme (S37 holds).
+ex:PetsCollection a skos:Collection ;
+    skos:prefLabel "Pets"@en ;
+    skos:member ex:Cat ;
+    skos:member ex:Dog .

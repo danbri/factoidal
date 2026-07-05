@@ -188,6 +188,11 @@ session.
 - [`session-cost-accounting`](skills/session-cost-accounting/SKILL.md)
   — measure a session's real cost incl. subagent children
   (`tools/session-cost.sh`, agentsview recipe + traps).
+- [`skos-integrity`](skills/skos-integrity/SKILL.md) — check a SKOS
+  vocabulary against the SKOS Reference integrity conditions using
+  the SHACL validator, SPARQL property paths, and OWL-RL closure;
+  ships shapes, queries, SKOS OWL axioms, and a valid/broken sample
+  vocabulary pair.
 - [`session-restore`](skills/session-restore/SKILL.md) — restore a
   fresh/recycled VM to working state in minutes: cache-branch
   inventory (toolchain-cache, checked-cache), what the hook restores

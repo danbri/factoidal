@@ -1,0 +1,18 @@
+# S27 (SKOS Reference 8.4): skos:related is disjoint with the
+# property skos:broaderTransitive. This is the literal reading of
+# the condition — it only works once skos:broaderTransitive has
+# actually been materialized, e.g. by loading skos-axioms.ttl
+# alongside the data and running the OWL-RL closure:
+#
+#   factoidal query --data DATA.ttl --data ../skos-axioms.ttl \
+#     --entail owl-rl --query THIS.rq
+#
+# The OWL-RL closure (RDF.Graph.Executable.fst: rdfs7 for
+# rdfs:subPropertyOf, prp-trp for owl:TransitiveProperty) derives
+# skos:broaderTransitive generically from skos-axioms.ttl's
+# declarations — no SKOS-specific engine code involved.
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+ASK {
+  ?a skos:related ?b .
+  ?a skos:broaderTransitive ?b .
+}

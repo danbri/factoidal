@@ -1,0 +1,104 @@
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix si:   <http://example.org/skos-integrity/shapes#> .
+
+# SHACL shapes for the SKOS Reference (W3C Rec., 18 Aug 2009)
+# integrity conditions that are pairwise property-disjointness,
+# per-language cardinality, or class disjointness — none of which
+# need transitive-path evaluation, so SHACL Core expresses them
+# directly. Run with:
+#
+#   bin/linux-x86_64/factoidal validate \
+#     --shapes skills/skos-integrity/skos-shapes.ttl \
+#     skills/skos-integrity/sample-vocab.ttl
+#
+# S27 (skos:related vs skos:broaderTransitive) and, in the general
+# case, S46 across the full mapping-property ladder need property
+# paths or closure — see queries/ instead. S46's direct pairwise form
+# (exactMatch vs broadMatch/relatedMatch on the same subject) is
+# expressible in SHACL too and is included below.
+
+# --- S13: skos:prefLabel, skos:altLabel and skos:hiddenLabel are ---
+# --- pairwise disjoint properties (SKOS Reference 5.4.1). ---------
+si:LabelDisjointnessShape
+    a sh:NodeShape ;
+    sh:targetSubjectsOf skos:prefLabel , skos:altLabel , skos:hiddenLabel ;
+    sh:property [
+        sh:path skos:prefLabel ;
+        sh:disjoint skos:altLabel ;
+        sh:message "S13: skos:prefLabel and skos:altLabel share a value on this resource" ;
+    ] ;
+    sh:property [
+        sh:path skos:prefLabel ;
+        sh:disjoint skos:hiddenLabel ;
+        sh:message "S13: skos:prefLabel and skos:hiddenLabel share a value on this resource" ;
+    ] ;
+    sh:property [
+        sh:path skos:altLabel ;
+        sh:disjoint skos:hiddenLabel ;
+        sh:message "S13: skos:altLabel and skos:hiddenLabel share a value on this resource" ;
+    ] .
+
+# --- S14: a resource has no more than one value of skos:prefLabel ---
+# --- per language tag (SKOS Reference 5.4.2). ----------------------
+si:UniquePrefLabelPerLanguageShape
+    a sh:NodeShape ;
+    sh:targetSubjectsOf skos:prefLabel ;
+    sh:property [
+        sh:path skos:prefLabel ;
+        sh:uniqueLang "true"^^xsd:boolean ;
+        sh:message "S14: more than one skos:prefLabel for the same language tag" ;
+    ] .
+
+# --- S9: skos:ConceptScheme is disjoint with skos:Concept ----------
+# --- (SKOS Reference 4.4). -----------------------------------------
+si:ConceptSchemeNotConceptShape
+    a sh:NodeShape ;
+    sh:targetClass skos:ConceptScheme ;
+    sh:not [
+        a sh:NodeShape ;
+        sh:class skos:Concept ;
+    ] ;
+    sh:message "S9: a skos:ConceptScheme is also typed skos:Concept" .
+
+# --- S37: skos:Collection is disjoint with each of skos:Concept and-
+# --- skos:ConceptScheme (SKOS Reference 9.4). ----------------------
+si:CollectionNotConceptShape
+    a sh:NodeShape ;
+    sh:targetClass skos:Collection ;
+    sh:not [
+        a sh:NodeShape ;
+        sh:class skos:Concept ;
+    ] ;
+    sh:message "S37: a skos:Collection is also typed skos:Concept" .
+
+si:CollectionNotConceptSchemeShape
+    a sh:NodeShape ;
+    sh:targetClass skos:Collection ;
+    sh:not [
+        a sh:NodeShape ;
+        sh:class skos:ConceptScheme ;
+    ] ;
+    sh:message "S37: a skos:Collection is also typed skos:ConceptScheme" .
+
+# --- S46 (pairwise form): skos:exactMatch is disjoint with each of--
+# --- skos:broadMatch and skos:relatedMatch on the same subject------
+# --- (SKOS Reference 10.4). No path closure needed here: this ------
+# --- catches the direct-assertion clash. The narrowMatch case is----
+# --- the inverse and is covered by the SPARQL query variant, which--
+# --- also covers the case where the clash only appears after -------
+# --- skos:broadMatch / skos:narrowMatch's inverseOf is materialized-
+si:ExactMatchNotBroadMatchShape
+    a sh:NodeShape ;
+    sh:targetSubjectsOf skos:exactMatch ;
+    sh:property [
+        sh:path skos:exactMatch ;
+        sh:disjoint skos:broadMatch ;
+        sh:message "S46: skos:exactMatch and skos:broadMatch share a value on this resource" ;
+    ] ;
+    sh:property [
+        sh:path skos:exactMatch ;
+        sh:disjoint skos:relatedMatch ;
+        sh:message "S46: skos:exactMatch and skos:relatedMatch share a value on this resource" ;
+    ] .

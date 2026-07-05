@@ -1,0 +1,10 @@
+# S14 (SKOS Reference 5.4.2): a resource has no more than one value
+# of skos:prefLabel per language tag. Reports every resource/language
+# pair with 2+ distinct prefLabel literals; empty == condition holds.
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+SELECT ?resource ?lang (COUNT(DISTINCT ?label) AS ?count) WHERE {
+  ?resource skos:prefLabel ?label .
+  BIND(LANG(?label) AS ?lang)
+}
+GROUP BY ?resource ?lang
+HAVING (COUNT(DISTINCT ?label) > 1)

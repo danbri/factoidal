@@ -1,0 +1,11 @@
+# S46 (SKOS Reference 10.4): skos:exactMatch is disjoint with each
+# of the properties skos:broadMatch and skos:relatedMatch. This
+# variant also catches the skos:narrowMatch inverse case
+# (skos:broadMatch owl:inverseOf skos:narrowMatch) with a property
+# path instead of requiring closure: ?b skos:narrowMatch ?a is the
+# same mapping pair as ?a skos:broadMatch ?b.
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+SELECT DISTINCT ?a ?b WHERE {
+  ?a skos:exactMatch ?b .
+  { ?a skos:broadMatch ?b } UNION { ?a skos:relatedMatch ?b } UNION { ?b skos:narrowMatch ?a }
+}

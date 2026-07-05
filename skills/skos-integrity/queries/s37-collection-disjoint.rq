@@ -1,0 +1,8 @@
+# S37 (SKOS Reference 9.4): skos:Collection is disjoint with each of
+# skos:Concept and skos:ConceptScheme. Direct rdf:type check.
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+ASK {
+  ?x a skos:Collection .
+  ?x a ?other .
+  FILTER(?other = skos:Concept || ?other = skos:ConceptScheme)
+}
