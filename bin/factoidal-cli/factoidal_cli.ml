@@ -904,7 +904,7 @@ let dispatch_subcommand () =
               exit 1
           in
           let sg = SHACL_Validation.parse_shape_from_graph shapes_triples in
-          let report = SHACL_Validation.validate data_triples sg in
+          let report = SHACL_Validation.validate data_triples shapes_triples sg in
           let conforms = report.SHACL_Validation.conforms in
           let results = report.SHACL_Validation.results in
           let string_of_term t = RDF_Pretty.term_to_turtle t in

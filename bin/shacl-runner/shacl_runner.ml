@@ -391,7 +391,7 @@ let run_test_conforms_only (tc : test_case) : outcome =
   | Some data, Some shapes_g, Some expect ->
     (try
        let sg = SHACL_Validation.parse_shape_from_graph shapes_g in
-       let report = SHACL_Validation.validate data sg in
+       let report = SHACL_Validation.validate data shapes_g sg in
        let got = report.SHACL_Validation.conforms in
        if got = expect then Pass
        else Fail (Printf.sprintf "expected sh:conforms %b, got %b" expect got)
@@ -407,7 +407,7 @@ let run_test_report (tc : test_case) : outcome =
   | Some data, Some shapes_g ->
     (try
        let sg = SHACL_Validation.parse_shape_from_graph shapes_g in
-       let report = SHACL_Validation.validate data sg in
+       let report = SHACL_Validation.validate data shapes_g sg in
        if tc.tc_expect_failure then
          (match report.SHACL_Validation.report_failure with
           | Some _ -> Pass

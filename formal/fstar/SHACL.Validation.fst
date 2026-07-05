@@ -57,6 +57,13 @@ module Alg = SPARQL11.Algebra
 // pure F* rather than the ML host call-out originally planned in
 // section 12.
 module Parser11 = SPARQL11.Parser
+// XSD.Datatypes (slice 1, current-state.md item 4 / #235): numeric
+// comparison, xsd:dateTime ordering, and XSD ill-formed-literal
+// detection MOVED there from this module — see
+// docs/designissues/2026-07-05-xsd-datatypes-module.md. Only `term_lt`/
+// `term_le` (which also need rdf_term_eq/string_lt from this module's
+// RDF.Graph.Executable import) stayed behind, calling into XSD below.
+module XSD = XSD.Datatypes
 
 // ------------------------------------------------------------------
 // 1. SHACL vocabulary — well-formed IRI constants we will need at
@@ -257,6 +264,35 @@ let owl_imports_iri : wf_iri =
   assert_norm (is_iri "http://www.w3.org/2002/07/owl#imports");
   "http://www.w3.org/2002/07/owl#imports"
 
+// SHACL-SPARQL custom constraint component vocabulary (SHACL spec
+// section 6: sh:ConstraintComponent / sh:parameter / sh:validator /
+// sh:nodeValidator / sh:propertyValidator). sh:ask is new; sh:select
+// is already defined above (section 1) and reused. No IRI constant is
+// needed for sh:ConstraintComponent / sh:Parameter / sh:SPARQLAskValidator
+// / sh:SPARQLSelectValidator themselves — component/validator/parameter
+// nodes are recognised STRUCTURALLY (presence of sh:parameter plus a
+// validator predicate; presence of sh:ask/sh:select on the validator),
+// not by rdf:type, deliberately sidestepping RDFS subclass reasoning —
+// see CC_Custom's doc comment for why.
+let sh_parameter : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#parameter");
+  "http://www.w3.org/ns/shacl#parameter"
+let sh_validator : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#validator");
+  "http://www.w3.org/ns/shacl#validator"
+let sh_nodeValidator : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#nodeValidator");
+  "http://www.w3.org/ns/shacl#nodeValidator"
+let sh_propertyValidator : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#propertyValidator");
+  "http://www.w3.org/ns/shacl#propertyValidator"
+let sh_ask : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#ask");
+  "http://www.w3.org/ns/shacl#ask"
+let sh_optional : wf_iri =
+  assert_norm (is_iri "http://www.w3.org/ns/shacl#optional");
+  "http://www.w3.org/ns/shacl#optional"
+
 // ------------------------------------------------------------------
 // 2. Severity. SHACL defines three; default is sh:Violation.
 // ------------------------------------------------------------------
@@ -396,6 +432,42 @@ noeq type constraint_component =
   // section 13), and the constraint node's own sh:message (distinct
   // from — and takes priority over — the owning shape's sh:message).
   | CC_Sparql       : constraint_node:shape_ref -> query:string -> message:option wf_literal -> constraint_component
+  // SHACL-SPARQL custom constraint components (sh:ConstraintComponent
+  // with sh:parameter + sh:validator/sh:nodeValidator/sh:propertyValidator,
+  // SHACL spec section 6). Carries: the component's own IRI (reported
+  // as sh:sourceConstraintComponent — components anchored on a blank
+  // node are not supported here; every vendored suite fixture anchors
+  // its custom component on an IRI), whether the CHOSEN validator (per
+  // the node/property selection order in `choose_validator`) is a
+  // SPARQLAskValidator (true) or SPARQLSelectValidator (false) —
+  // detected structurally by sh:ask/sh:select presence on the
+  // validator node, not by rdf:type, deliberately sidestepping RDFS
+  // subclass reasoning over user-defined validator/component subclasses
+  // (component/validator-001.ttl declares BOTH `ex:ConstraintComponent
+  // rdfs:subClassOf sh:ConstraintComponent` and `ex:SPARQLAskValidator
+  // rdfs:subClassOf sh:SPARQLAskValidator`, neither of which this
+  // module follows — the structural signature alone is what makes a
+  // node a constraint component / an ASK validator here), the fully
+  // prefix-headered query text (sh:prefixes/sh:declare already
+  // resolved, same convention as CC_Sparql), and the parameter
+  // bindings already resolved against THIS shape's own triples at
+  // parse time (sh:parameter's sh:path used as a predicate directly on
+  // the shape node — SHACL spec 6.1's parameter-declares-a-property
+  // mechanism — with the SPARQL variable name being the sh:path IRI's
+  // local name). Only constructed when every non-optional parameter
+  // has a bound value AND at least one parameter (mandatory or
+  // optional) is actually bound on this shape — see
+  // `component_applies_and_params`'s doc comment for why the latter
+  // guard exists. No `message` field: unlike CC_Sparql's own
+  // sh:message (which DOES feed sh:resultMessage), a custom
+  // component's validator-level sh:message is deliberately NOT
+  // defaulted into sh:resultMessage here —
+  // component/propertyValidator-select-001.ttl's validator carries a
+  // sh:message but the expected report has no sh:resultMessage at all,
+  // so the only sound default is the owning shape's own sh:message
+  // (already threaded through via `s.message`, same as every other
+  // constraint kind).
+  | CC_Custom       : component:wf_iri -> is_ask:bool -> query:string -> params:list (string & rdf_term) -> constraint_component
 
 // ------------------------------------------------------------------
 // 7. Shape. A single record covers both NodeShape and PropertyShape:
@@ -1265,6 +1337,153 @@ let build_sparql_constraints (g : rdf_graph) (s : subject) : list constraint_com
           | _ -> []))
     (find_objects g s sh_sparql)
 
+// --- SHACL-SPARQL custom constraint components (SHACL spec section 6) -
+//
+// A constraint-component definition is any subject with at least one
+// sh:parameter triple AND at least one of sh:validator /
+// sh:nodeValidator / sh:propertyValidator — recognised structurally,
+// not via rdf:type/rdfs:subClassOf sh:ConstraintComponent (see
+// CC_Custom's doc comment for why: the vendored suite's own fixtures
+// route the "real" typing through user-defined subclasses this module
+// does not follow, and the structural signature is unambiguous and
+// safe — no core-suite shape uses sh:parameter for anything else).
+//
+// A shape S "uses" a component C (SHACL 6.1) iff, for every one of C's
+// non-optional parameters, S has at least one triple whose predicate
+// is that parameter's sh:path — see `component_applies_and_params`.
+
+// SPARQL variable name for a parameter is the local name of its
+// sh:path IRI (the maximal trailing run of characters after the last
+// '#' or '/') — e.g. sh:path ex:test1 -> variable $test1/?test1.
+// Structurally recursive on the character list; no fuel needed.
+let rec find_last_name_sep (cs : list FStar.Char.char) (idx : nat) (last : option nat)
+  : Tot (option nat) (decreases cs) =
+  match cs with
+  | [] -> last
+  | c :: rest ->
+    let ci = FStar.Char.int_of_char c in
+    if ci = 35 (* '#' *) || ci = 47 (* '/' *)
+    then find_last_name_sep rest (idx + 1) (Some idx)
+    else find_last_name_sep rest (idx + 1) last
+
+let local_name_of_iri (iri : string) : string =
+  match find_last_name_sep (String.list_of_string iri) 0 None with
+  | None -> iri
+  | Some pos ->
+    let len = String.length iri in
+    if pos + 1 >= len then "" else String.sub iri (pos + 1) (len - pos - 1)
+
+let is_custom_component_def (g : rdf_graph) (subj : subject) : bool =
+  Cons? (find_objects g subj sh_parameter) &&
+  (Cons? (find_objects g subj sh_validator) ||
+   Cons? (find_objects g subj sh_nodeValidator) ||
+   Cons? (find_objects g subj sh_propertyValidator))
+
+noeq type custom_param = {
+  cp_path     : wf_iri;
+  cp_name     : string;
+  cp_optional : bool;
+}
+
+let parse_custom_param (g : rdf_graph) (t : rdf_term) : option custom_param =
+  match term_to_subject t with
+  | None -> None
+  | Some ps ->
+    (match find_objects g ps sh_path with
+     | (T_IRI p) :: _ ->
+       let opt = (match first_bool (find_objects g ps sh_optional) with Some b -> b | None -> false) in
+       Some ({ cp_path = p; cp_name = local_name_of_iri p; cp_optional = opt })
+     | _ -> None)
+
+let build_custom_params (g : rdf_graph) (comp_subj : subject) : list custom_param =
+  List.Tot.concatMap
+    (fun t -> match parse_custom_param g t with Some cp -> [cp] | None -> [])
+    (find_objects g comp_subj sh_parameter)
+
+// Does shape `s` use this parameter list, and if so what are the
+// resolved (variable-name, value) bindings? Requires (a) every
+// non-optional parameter has >=1 value on `s` (else the component
+// does not apply at all — component/optional-001.ttl's IncompleteShape
+// has ex:optionalParam but no ex:requiredParam, so the component must
+// not fire for it) and (b) at least one parameter — mandatory or
+// optional — is actually bound (else a component whose parameters are
+// ALL optional would vacuously "apply" to every shape in the graph,
+// which no vendored fixture exercises and which would be an unsound
+// over-approximation). Structurally recursive on `ps` — no fuel
+// needed (fixed parameter list, no graph traversal).
+let rec custom_params_applicable (g : rdf_graph) (s : subject) (ps : list custom_param) (any_bound : bool)
+  : Tot (option (list (string & rdf_term) & bool)) (decreases ps)
+  =
+  match ps with
+  | [] -> Some ([], any_bound)
+  | p :: rest ->
+    (match find_objects g s p.cp_path with
+     | (v :: _) ->
+       (match custom_params_applicable g s rest true with
+        | Some (acc, ab) -> Some ((p.cp_name, v) :: acc, ab)
+        | None -> None)
+     | [] -> if p.cp_optional then custom_params_applicable g s rest any_bound else None)
+
+let component_applies_and_params (g : rdf_graph) (s : subject) (params : list custom_param)
+  : option (list (string & rdf_term))
+  =
+  match custom_params_applicable g s params false with
+  | Some (bindings, true) -> Some bindings
+  | _ -> None
+
+// Recognise the validator's kind structurally (sh:ask vs sh:select
+// presence — see CC_Custom's doc comment) and prefix-header its query
+// text, same convention as CC_Sparql's own sh:select handling.
+let validator_query_of (g : rdf_graph) (val_term : rdf_term) : option (bool & string) =
+  match term_to_subject val_term with
+  | None -> None
+  | Some vs ->
+    (match find_objects g vs sh_ask with
+     | (T_Literal l) :: _ -> Some (true, prefix_header_for g vs ^ l.lexical_form)
+     | _ ->
+       (match find_objects g vs sh_select with
+        | (T_Literal l) :: _ -> Some (false, prefix_header_for g vs ^ l.lexical_form)
+        | _ -> None))
+
+// Validator selection order (SHACL spec section 6): a value for
+// sh:nodeValidator (node-shape context) / sh:propertyValidator
+// (property-shape context) is used in preference to the generic
+// sh:validator, which is the fallback for both contexts.
+let choose_validator (g : rdf_graph) (comp_subj : subject) (is_property : bool) : option (bool & string) =
+  let generic () : option (bool & string) =
+    (match find_objects g comp_subj sh_validator with
+     | (v :: _) -> validator_query_of g v
+     | [] -> None) in
+  let specific = if is_property then find_objects g comp_subj sh_propertyValidator
+                 else find_objects g comp_subj sh_nodeValidator in
+  match specific with
+  | (v :: _) -> (match validator_query_of g v with Some r -> Some r | None -> generic ())
+  | [] -> generic ()
+
+// Every custom-component definition anywhere in the shapes graph that
+// shape `s` uses (SHACL 6.1). Recomputes `distinct_subjects g` per
+// shape — fine at W3C-fixture scale (the same idiom `build_qualified_constraints`
+// and `build_sparql_constraints` use for their own per-shape graph
+// scans); a from-scratch registry keyed by shapes-graph identity would
+// be premature here.
+let build_custom_constraints (g : rdf_graph) (s : subject) (is_prop : bool) : list constraint_component =
+  let comp_subjs = List.Tot.filter (is_custom_component_def g) (distinct_subjects g) in
+  List.Tot.concatMap
+    (fun comp_subj ->
+       let params = build_custom_params g comp_subj in
+       if Nil? params then []
+       else
+         match component_applies_and_params g s params with
+         | None -> []
+         | Some bindings ->
+           (match choose_validator g comp_subj is_prop with
+            | None -> []
+            | Some (is_ask, query_text) ->
+              (match comp_subj with
+               | S_IRI ci -> [CC_Custom ci is_ask query_text bindings]
+               | S_BNode _ -> [])))
+    comp_subjs
+
 // Large flat let-chain over ~25 independent constraint predicates;
 // the default rlimit/single-query proof strategy times out on the
 // combined VC even though each binding is individually trivial.
@@ -1373,7 +1592,7 @@ let build_shape (g : rdf_graph) (s : subject) : shape =
     targets = build_targets g s;
     shape_sev = sev;
     message = msg;
-    constraints = build_constraints g s;
+    constraints = build_constraints g s @ build_custom_constraints g s is_prop;
     property_refs = prefs;
   }
 
@@ -1382,141 +1601,21 @@ let parse_shape_from_graph_pure (g : rdf_graph) : shapes_graph =
   let shape_subs = List.Tot.filter (is_shape_establishing g) subs in
   { shapes = List.Tot.map (build_shape g) shape_subs }
 
-// --- 11g. Numeric comparison for min/maxInclusive/Exclusive ----------
+// --- 11g/XSD ill-formed literal detection: MOVED to XSD.Datatypes ----
 //
-// Reuses SPARQL11.Algebra's decimal/double lexical parser (rule #8:
-// double-aware parsing, not bare int) rather than re-deriving one.
+// current-state.md item 4 / #235 slice 1
+// (docs/designissues/2026-07-05-xsd-datatypes-module.md): numeric
+// comparison for min/maxInclusive/Exclusive, xsd:dateTime ordering, and
+// the ill-formed-literal detector all now live in XSD.Datatypes.fst.
+// Thin re-export aliases below keep every existing call site in this
+// file (the aggregate-constraint helpers further down, plus term_lt
+// immediately below) unchanged.
 
-let literal_to_scaled (l : literal) : option (int & nat) =
-  if l.datatype = xsd_double then Alg.parse_double_to_scaled l.lexical_form
-  else if l.datatype = xsd_integer || l.datatype = xsd_decimal then Alg.parse_to_scaled l.lexical_form
-  else None
-
-let scaled_cmp (a b : (int & nat)) : int =
-  let (am, asc) = a in
-  let (bm, bsc) = b in
-  if asc = bsc then (if am < bm then -1 else if am > bm then 1 else 0)
-  else if asc < bsc then
-    (let am' = op_Multiply am (Alg.pow10 (bsc - asc)) in
-     if am' < bm then -1 else if am' > bm then 1 else 0)
-  else
-    (let bm' = op_Multiply bm (Alg.pow10 (asc - bsc)) in
-     if am < bm' then -1 else if am > bm' then 1 else 0)
-
-// --- xsd:dateTime ordering (Phase 3 — core/node/minInclusive-002/003).
-//
-// Parses "YYYY-MM-DDTHH:MM:SS(.fraction)?(Z|+HH:MM|-HH:MM)?" into a
-// millisecond position on the proleptic Gregorian timeline plus a
-// has-timezone flag. Two dateTimes are comparable only when both have
-// a timezone or neither does — XML Schema's partial order makes
-// mixed tz/naive comparison indeterminate (within +/-14h), and the
-// min/maxInclusive/Exclusive textual definitions turn "cannot be
-// compared" into a violation, which is exactly what the two suite
-// fixtures expect. `days_from_civil` is the standard civil-date
-// day-count algorithm; every intermediate here is non-negative for
-// 4-digit years (the only years XSD's lexical form admits without an
-// expanded-year sign), so F*'s int division/modulus never see
-// negative operands.
-
-let days_from_civil (y m d : int) : int =
-  let y' = if m <= 2 then y - 1 else y in
-  let era = (if y' >= 0 then y' else y' - 399) / 400 in
-  let yoe = y' - op_Multiply era 400 in
-  let mp = (m + 9) % 12 in
-  let doy = (op_Multiply 153 mp + 2) / 5 + d - 1 in
-  let doe = op_Multiply yoe 365 + yoe / 4 - yoe / 100 + doy in
-  op_Multiply era 146097 + doe - 719468
-
-// Parse the fraction+timezone tail (everything after the seconds
-// field): optional ".<digits>" then one of "", "Z", "+HH:MM",
-// "-HH:MM". Returns (fraction_ms, tz_offset_seconds, has_tz).
-let dt_parse_tail (tail : string) : option (int & int & bool) =
-  let len = String.length tail in
-  // Split off the fraction, if any.
-  let (frac_ms, tz_start) =
-    if len >= 2 && String.sub tail 0 1 = "." then
-      // take up to 3 fraction digits for millisecond precision
-      let rec frac_end (pos : nat{pos <= len}) : Tot (r:nat{pos <= r /\ r <= len}) (decreases (len - pos)) =
-        if pos < len then
-          (let c = FStar.Char.int_of_char (String.index tail pos) in
-           if c >= 48 && c <= 57 then frac_end (pos + 1) else pos)
-        else pos
-      in
-      let fe = frac_end 1 in
-      if fe = 1 then (None, 0)  // "." with no digits: ill-formed
-      else
-        let dig_len : nat = if fe - 1 > 3 then 3 else fe - 1 in
-        (match Alg.parse_int_string (String.sub tail 1 dig_len) with
-         | Some f ->
-           let ms = if dig_len = 1 then op_Multiply f 100
-                    else if dig_len = 2 then op_Multiply f 10
-                    else f in
-           (Some ms, fe)
-         | None -> (None, 0))
-    else (Some 0, 0)
-  in
-  match frac_ms with
-  | None -> None
-  | Some fms ->
-    let rest_len = len - tz_start in
-    if rest_len = 0 then Some (fms, 0, false)
-    else if rest_len = 1 && String.sub tail tz_start 1 = "Z" then Some (fms, 0, true)
-    else if rest_len = 6 then
-      let sign_s = String.sub tail tz_start 1 in
-      if sign_s = "+" || sign_s = "-" then
-        (match Alg.parse_int_string (String.sub tail (tz_start + 1) 2),
-               Alg.parse_int_string (String.sub tail (tz_start + 4) 2) with
-         | Some th, Some tm ->
-           let off = op_Multiply th 3600 + op_Multiply tm 60 in
-           Some (fms, (if sign_s = "-" then 0 - off else off), true)
-         | _, _ -> None)
-      else None
-    else None
-
-let dt_parse_ms (s : string) : option (int & bool) =
-  let len = String.length s in
-  if len < 19 then None
-  else
-    match Alg.parse_int_string (String.sub s 0 4),
-          Alg.parse_int_string (String.sub s 5 2),
-          Alg.parse_int_string (String.sub s 8 2),
-          Alg.parse_int_string (String.sub s 11 2),
-          Alg.parse_int_string (String.sub s 14 2),
-          Alg.parse_int_string (String.sub s 17 2) with
-    | Some y, Some mo, Some d, Some h, Some mi, Some se ->
-      (match dt_parse_tail (String.sub s 19 (len - 19)) with
-       | Some (fms, tzoff, has_tz) ->
-         let days = days_from_civil y mo d in
-         let secs = op_Multiply days 86400 + op_Multiply h 3600 + op_Multiply mi 60 + se - tzoff in
-         Some (op_Multiply secs 1000 + fms, has_tz)
-       | None -> None)
-    | _, _, _, _, _, _ -> None
-
-let dt_cmp (a b : string) : option int =
-  match dt_parse_ms a, dt_parse_ms b with
-  | Some (ma, tza), Some (mb, tzb) ->
-    if tza = tzb then Some (if ma < mb then -1 else if ma > mb then 1 else 0)
-    else None
-  | _, _ -> None
-
-let both_datetimes (a b : literal) : bool =
-  a.datatype = Alg.xsd_dateTime && b.datatype = Alg.xsd_dateTime
-
-let numeric_cmp_le (a b : literal) : option bool =
-  if both_datetimes a b
-  then (match dt_cmp a.lexical_form b.lexical_form with Some c -> Some (c <= 0) | None -> None)
-  else
-    match literal_to_scaled a, literal_to_scaled b with
-    | Some sa, Some sb -> Some (scaled_cmp sa sb <= 0)
-    | _, _ -> None
-
-let numeric_cmp_lt (a b : literal) : option bool =
-  if both_datetimes a b
-  then (match dt_cmp a.lexical_form b.lexical_form with Some c -> Some (c < 0) | None -> None)
-  else
-    match literal_to_scaled a, literal_to_scaled b with
-    | Some sa, Some sb -> Some (scaled_cmp sa sb < 0)
-    | _, _ -> None
+let literal_to_scaled = XSD.literal_to_scaled
+let scaled_cmp = XSD.scaled_cmp
+let numeric_cmp_le = XSD.numeric_cmp_le
+let numeric_cmp_lt = XSD.numeric_cmp_lt
+let literal_ill_formed = XSD.literal_ill_formed
 
 // Only numeric-vs-numeric or same-datatype lexical ordering count as
 // "properly comparable"; mismatched non-numeric datatypes are NOT
@@ -1533,72 +1632,6 @@ let term_lt (a b : rdf_term) : bool =
   | _, _ -> false
 
 let term_le (a b : rdf_term) : bool = term_lt a b || rdf_term_eq a b
-
-// --- XSD ill-formed literal detection (Phase 3) -----------------------
-//
-// SHACL sh:datatype: "A literal matches a datatype if the literal's
-// datatype has the same IRI and, for the datatypes supported by
-// SPARQL 1.1, is not an ill-typed literal." Exercised by
-// core/node/datatype-001 ("aldi"^^xsd:integer),
-// core/property/datatype-ill-formed ("300"^^xsd:byte, "c"^^xsd:byte)
-// and core/property/or-datatypes-001 ("none"^^xsd:boolean).
-// Conservative by construction: datatypes not listed are never
-// flagged, so this can only ADD violations the spec requires, not
-// invent ones it doesn't.
-
-let is_ascii_digit (c : FStar.Char.char) : bool =
-  let n = FStar.Char.int_of_char c in n >= 48 && n <= 57
-
-let is_integer_lexical (lex : string) : bool =
-  match String.list_of_string lex with
-  | [] -> false
-  | c :: rest ->
-    let ci = FStar.Char.int_of_char c in
-    let digits = if ci = 43 || ci = 45 then rest else c :: rest in
-    Cons? digits && List.Tot.for_all is_ascii_digit digits
-
-let is_decimal_lexical (lex : string) : bool =
-  match String.list_of_string lex with
-  | [] -> false
-  | c :: rest ->
-    let ci = FStar.Char.int_of_char c in
-    let body = if ci = 43 || ci = 45 then rest else c :: rest in
-    Cons? body &&
-    List.Tot.for_all (fun ch -> is_ascii_digit ch || FStar.Char.int_of_char ch = 46) body &&
-    List.Tot.length (List.Tot.filter (fun ch -> FStar.Char.int_of_char ch = 46) body) <= 1 &&
-    List.Tot.existsb is_ascii_digit body
-
-// Integer-family range check: well-formed integer lexical whose value
-// sits inside [lo, hi] (None = unbounded on that side). parse_int_string
-// accepts an optional leading '-' but not '+'; '+'-signed literals are
-// flagged conservatively-well-formed by skipping the range check only
-// when the parse fails on an is_integer_lexical-accepted string.
-let int_lexical_in_range (lex : string) (lo hi : option int) : bool =
-  is_integer_lexical lex &&
-  (match Alg.parse_int_string lex with
-   | Some n ->
-     (match lo with Some l -> n >= l | None -> true) &&
-     (match hi with Some h -> n <= h | None -> true)
-   | None -> true)
-
-let literal_ill_formed (dt : wf_iri) (lex : string) : bool =
-  if dt = xsd_boolean then not (lex = "true" || lex = "false" || lex = "1" || lex = "0")
-  else if dt = xsd_integer then not (is_integer_lexical lex)
-  else if dt = xsd_decimal then not (is_decimal_lexical lex)
-  else if dt = xsd_long then not (int_lexical_in_range lex (Some (0 - 9223372036854775808)) (Some 9223372036854775807))
-  else if dt = xsd_int then not (int_lexical_in_range lex (Some (0 - 2147483648)) (Some 2147483647))
-  else if dt = xsd_short then not (int_lexical_in_range lex (Some (0 - 32768)) (Some 32767))
-  else if dt = xsd_byte then not (int_lexical_in_range lex (Some (0 - 128)) (Some 127))
-  else if dt = xsd_unsignedLong then not (int_lexical_in_range lex (Some 0) (Some 18446744073709551615))
-  else if dt = xsd_unsignedInt then not (int_lexical_in_range lex (Some 0) (Some 4294967295))
-  else if dt = xsd_unsignedShort then not (int_lexical_in_range lex (Some 0) (Some 65535))
-  else if dt = xsd_unsignedByte then not (int_lexical_in_range lex (Some 0) (Some 255))
-  else if dt = xsd_nonNegativeInteger then not (int_lexical_in_range lex (Some 0) None)
-  else if dt = xsd_positiveInteger then not (int_lexical_in_range lex (Some 1) None)
-  else if dt = xsd_nonPositiveInteger then not (int_lexical_in_range lex None (Some 0))
-  else if dt = xsd_negativeInteger then not (int_lexical_in_range lex None (Some (0 - 1)))
-  else if dt = Alg.xsd_dateTime then None? (dt_parse_ms lex)
-  else false
 
 // --- 11h. Aggregate (per-focus-node) constraint helpers --------------
 //
@@ -1848,7 +1881,8 @@ and eval_one_constraint (data : rdf_graph) (sg : list shape) (closed_cls : rdf_g
      | CC_Closed _ -> []         // aggregate
      | CC_QualifiedMinCount _ _ _ -> []  // aggregate
      | CC_QualifiedMaxCount _ _ _ -> []  // aggregate
-     | CC_Sparql _ _ _ -> [])    // per-focus-node, not per-value — real dispatch is section 13's sparql_violations_for_shape, run as a separate pass over `validate`'s root_shapes (never inside this per-value/per-constraint judgment)
+     | CC_Sparql _ _ _ -> []     // per-focus-node, not per-value — real dispatch is section 13's sparql_violations_for_shape, run as a separate pass over `validate`'s root_shapes (never inside this per-value/per-constraint judgment)
+     | CC_Custom _ _ _ _ -> [])  // own dispatch (custom_violations_for_occurrence below) — needs a separate `option string` failure channel this Tot-list-only judgment has no room for, same reason CC_Sparql is dispatched separately
 
 // `eval_aggregate_constraints` — folded into this `and` group (see the
 // section comment above) because CC_QualifiedMinCount/MaxCount need to
@@ -2021,20 +2055,31 @@ and eval_aggregate_constraints (data : rdf_graph) (sg : list shape) (closed_cls 
 //                       sh:message, then no message.
 //
 // NOT wired (both honest FAILs against the suite, never a silent
-// wrong PASS — see `pre-binding/shapesGraph-001.ttl`,
-// `component/*.ttl`):
-//   - $shapesGraph / $currentShape pre-binding (needs a GRAPH-clause-
-//     visible copy of the shapes graph threaded into `ds`).
+// wrong PASS — see `pre-binding/shapesGraph-001.ttl`):
+//   - $shapesGraph / $currentShape pre-binding. Unlike every other gap
+//     in this list, this ISN'T reachable with the state already
+//     threaded through `validate`: `GRAPH $shapesGraph { ... }` needs
+//     an actual named graph in `ds` holding a copy of the SHAPES
+//     graph's own triples, but `validate` only ever receives the
+//     already-parsed `shapes_graph` AST (section 7's `shape` records),
+//     never the raw RDF triples `parse_shape_from_graph_pure` consumed
+//     to build them — there is nothing to key a named graph with. That
+//     needs a `validate` signature change (an extra raw-shapes-graph
+//     parameter, threaded from `shacl_runner`/`factoidal_cli` through
+//     to here) deliberately deferred rather than done as a drive-by
+//     alongside custom constraint components.
 //   - sh:sparql on a shape reached via sh:property (nested shapes) —
 //     only ROOT shapes (shapes with their own sh:target*) are
-//     dispatched; a nested property shape's sh:sparql constraint is
-//     silently skipped (its `values` never get walked for CC_Sparql,
-//     though its OTHER constraints still evaluate normally via
-//     `collect_shape_violations`'s existing nested_props walk).
-//   - sh:validator / sh:nodeValidator / sh:propertyValidator / custom
-//     sh:ConstraintComponent (SHACL-SPARQL extensibility, the
-//     `component/` test folder) — a distinct, larger mechanism from
-//     plain sh:sparql; not attempted this slice.
+//     dispatched for the PLAIN sh:sparql form (CC_Sparql) below; a
+//     nested property shape's sh:sparql constraint is silently skipped
+//     (its `values` never get walked for CC_Sparql, though its OTHER
+//     constraints still evaluate normally via `collect_shape_violations`'s
+//     existing nested_props walk). Custom constraint components
+//     (CC_Custom, section 11l further down) do NOT share this
+//     limitation — `custom_violations_for_occurrence` walks nested
+//     sh:property shapes explicitly, since `component/propertyValidator-
+//     select-001.ttl` and `pre-binding/unsupported-sparql-006.ttl` both
+//     require it.
 //
 // A SELECT query that fails to parse (SERVICE, MINUS, VALUES-block,
 // and other constructs some `unsupported-sparql-*.ttl` fixtures use
@@ -2067,10 +2112,17 @@ let substitute_path (q : string) (path_opt : option path) : string =
 // so a FILTER-only query over a bnode focus finds no rows — sound by
 // omission.
 
-let subst_this_ps (t : rdf_term) (ps : Alg.pattern_subject) : Alg.pattern_subject =
+// Generalized over a variable `name` (originally hardcoded to "this";
+// generalized for the custom-constraint-component parameter
+// substitution added alongside CC_Custom — sh:parameter's $paramName /
+// component/optional-001.ttl's $requiredParam/?optionalParam need the
+// exact same AST-substitution mechanism $this already uses, so this is
+// the one substitution engine parameterized over the variable being
+// substituted rather than a second copy of the whole walk).
+let subst_var_ps (name : string) (t : rdf_term) (ps : Alg.pattern_subject) : Alg.pattern_subject =
   match ps with
   | Alg.PS_Var v ->
-    if v = "this" then
+    if v = name then
       (match t with
        | T_IRI i -> Alg.PS_IRI i
        | T_BNode b -> Alg.PS_BNode b
@@ -2078,10 +2130,10 @@ let subst_this_ps (t : rdf_term) (ps : Alg.pattern_subject) : Alg.pattern_subjec
     else ps
   | _ -> ps
 
-let subst_this_pt (t : rdf_term) (pt : Alg.pattern_term) : Alg.pattern_term =
+let subst_var_pt (name : string) (t : rdf_term) (pt : Alg.pattern_term) : Alg.pattern_term =
   match pt with
   | Alg.PT_Var v ->
-    if v = "this" then
+    if v = name then
       (match t with
        | T_IRI i -> Alg.PT_IRI i
        | T_BNode b -> Alg.PT_BNode b
@@ -2089,11 +2141,11 @@ let subst_this_pt (t : rdf_term) (pt : Alg.pattern_term) : Alg.pattern_term =
     else pt
   | _ -> pt
 
-let subst_this_tp (t : rdf_term) (tp : Alg.triple_pattern) : Alg.triple_pattern =
+let subst_var_tp (name : string) (t : rdf_term) (tp : Alg.triple_pattern) : Alg.triple_pattern =
   Alg.Mktriple_pattern
-    (subst_this_ps t (Alg.Mktriple_pattern?.tp_s tp))
-    (subst_this_pt t (Alg.Mktriple_pattern?.tp_p tp))
-    (subst_this_pt t (Alg.Mktriple_pattern?.tp_o tp))
+    (subst_var_ps name t (Alg.Mktriple_pattern?.tp_s tp))
+    (subst_var_pt name t (Alg.Mktriple_pattern?.tp_p tp))
+    (subst_var_pt name t (Alg.Mktriple_pattern?.tp_o tp))
 
 let term_to_expr_opt (t : rdf_term) : option Alg.expr =
   match t with
@@ -2106,88 +2158,103 @@ let term_to_expr_opt (t : rdf_term) : option Alg.expr =
 // unchanged. Mutually recursive with the pattern walk because of
 // EXISTS / NOT EXISTS and subqueries; all recursive calls are on
 // strict subterms, so no fuel is needed.
-let rec subst_this_expr (t : rdf_term) (e : Alg.expr) : Tot Alg.expr (decreases e) =
+let rec subst_var_expr (name : string) (t : rdf_term) (e : Alg.expr) : Tot Alg.expr (decreases e) =
   match e with
-  | Alg.E_Var v -> if v = "this" then (match term_to_expr_opt t with Some e' -> e' | None -> e) else e
-  | Alg.E_Bound v -> if v = "this" then Alg.E_BoolLit true else e
-  | Alg.E_Arith op a b -> Alg.E_Arith op (subst_this_expr t a) (subst_this_expr t b)
-  | Alg.E_UnaryMinus a -> Alg.E_UnaryMinus (subst_this_expr t a)
-  | Alg.E_UnaryPlus a -> Alg.E_UnaryPlus (subst_this_expr t a)
-  | Alg.E_Compare op a b -> Alg.E_Compare op (subst_this_expr t a) (subst_this_expr t b)
-  | Alg.E_And a b -> Alg.E_And (subst_this_expr t a) (subst_this_expr t b)
-  | Alg.E_Or a b -> Alg.E_Or (subst_this_expr t a) (subst_this_expr t b)
-  | Alg.E_Not a -> Alg.E_Not (subst_this_expr t a)
-  | Alg.E_IsIRI a -> Alg.E_IsIRI (subst_this_expr t a)
-  | Alg.E_IsBlank a -> Alg.E_IsBlank (subst_this_expr t a)
-  | Alg.E_IsLiteral a -> Alg.E_IsLiteral (subst_this_expr t a)
-  | Alg.E_IsNumeric a -> Alg.E_IsNumeric (subst_this_expr t a)
-  | Alg.E_Str a -> Alg.E_Str (subst_this_expr t a)
-  | Alg.E_Lang a -> Alg.E_Lang (subst_this_expr t a)
-  | Alg.E_Datatype a -> Alg.E_Datatype (subst_this_expr t a)
-  | Alg.E_IRI_fn a -> Alg.E_IRI_fn (subst_this_expr t a)
-  | Alg.E_StrDt a b -> Alg.E_StrDt (subst_this_expr t a) (subst_this_expr t b)
-  | Alg.E_StrLang a b -> Alg.E_StrLang (subst_this_expr t a) (subst_this_expr t b)
-  | Alg.E_If a b c -> Alg.E_If (subst_this_expr t a) (subst_this_expr t b) (subst_this_expr t c)
-  | Alg.E_Coalesce es -> Alg.E_Coalesce (subst_this_exprs t es)
-  | Alg.E_In a es -> Alg.E_In (subst_this_expr t a) (subst_this_exprs t es)
-  | Alg.E_NotIn a es -> Alg.E_NotIn (subst_this_expr t a) (subst_this_exprs t es)
-  | Alg.E_StrLen a -> Alg.E_StrLen (subst_this_expr t a)
+  | Alg.E_Var v -> if v = name then (match term_to_expr_opt t with Some e' -> e' | None -> e) else e
+  | Alg.E_Bound v -> if v = name then Alg.E_BoolLit true else e
+  | Alg.E_Arith op a b -> Alg.E_Arith op (subst_var_expr name t a) (subst_var_expr name t b)
+  | Alg.E_UnaryMinus a -> Alg.E_UnaryMinus (subst_var_expr name t a)
+  | Alg.E_UnaryPlus a -> Alg.E_UnaryPlus (subst_var_expr name t a)
+  | Alg.E_Compare op a b -> Alg.E_Compare op (subst_var_expr name t a) (subst_var_expr name t b)
+  | Alg.E_And a b -> Alg.E_And (subst_var_expr name t a) (subst_var_expr name t b)
+  | Alg.E_Or a b -> Alg.E_Or (subst_var_expr name t a) (subst_var_expr name t b)
+  | Alg.E_Not a -> Alg.E_Not (subst_var_expr name t a)
+  | Alg.E_IsIRI a -> Alg.E_IsIRI (subst_var_expr name t a)
+  | Alg.E_IsBlank a -> Alg.E_IsBlank (subst_var_expr name t a)
+  | Alg.E_IsLiteral a -> Alg.E_IsLiteral (subst_var_expr name t a)
+  | Alg.E_IsNumeric a -> Alg.E_IsNumeric (subst_var_expr name t a)
+  | Alg.E_Str a -> Alg.E_Str (subst_var_expr name t a)
+  | Alg.E_Lang a -> Alg.E_Lang (subst_var_expr name t a)
+  | Alg.E_Datatype a -> Alg.E_Datatype (subst_var_expr name t a)
+  | Alg.E_IRI_fn a -> Alg.E_IRI_fn (subst_var_expr name t a)
+  | Alg.E_StrDt a b -> Alg.E_StrDt (subst_var_expr name t a) (subst_var_expr name t b)
+  | Alg.E_StrLang a b -> Alg.E_StrLang (subst_var_expr name t a) (subst_var_expr name t b)
+  | Alg.E_If a b c -> Alg.E_If (subst_var_expr name t a) (subst_var_expr name t b) (subst_var_expr name t c)
+  | Alg.E_Coalesce es -> Alg.E_Coalesce (subst_var_exprs name t es)
+  | Alg.E_In a es -> Alg.E_In (subst_var_expr name t a) (subst_var_exprs name t es)
+  | Alg.E_NotIn a es -> Alg.E_NotIn (subst_var_expr name t a) (subst_var_exprs name t es)
+  | Alg.E_StrLen a -> Alg.E_StrLen (subst_var_expr name t a)
   | Alg.E_Substr a b c ->
-    Alg.E_Substr (subst_this_expr t a) (subst_this_expr t b)
-      (match c with Some x -> Some (subst_this_expr t x) | None -> None)
-  | Alg.E_UCase a -> Alg.E_UCase (subst_this_expr t a)
-  | Alg.E_LCase a -> Alg.E_LCase (subst_this_expr t a)
-  | Alg.E_StrStarts a b -> Alg.E_StrStarts (subst_this_expr t a) (subst_this_expr t b)
-  | Alg.E_StrEnds a b -> Alg.E_StrEnds (subst_this_expr t a) (subst_this_expr t b)
-  | Alg.E_Contains a b -> Alg.E_Contains (subst_this_expr t a) (subst_this_expr t b)
-  | Alg.E_StrBefore a b -> Alg.E_StrBefore (subst_this_expr t a) (subst_this_expr t b)
-  | Alg.E_StrAfter a b -> Alg.E_StrAfter (subst_this_expr t a) (subst_this_expr t b)
-  | Alg.E_Concat es -> Alg.E_Concat (subst_this_exprs t es)
-  | Alg.E_EncodeForUri a -> Alg.E_EncodeForUri (subst_this_expr t a)
+    Alg.E_Substr (subst_var_expr name t a) (subst_var_expr name t b)
+      (match c with Some x -> Some (subst_var_expr name t x) | None -> None)
+  | Alg.E_UCase a -> Alg.E_UCase (subst_var_expr name t a)
+  | Alg.E_LCase a -> Alg.E_LCase (subst_var_expr name t a)
+  | Alg.E_StrStarts a b -> Alg.E_StrStarts (subst_var_expr name t a) (subst_var_expr name t b)
+  | Alg.E_StrEnds a b -> Alg.E_StrEnds (subst_var_expr name t a) (subst_var_expr name t b)
+  | Alg.E_Contains a b -> Alg.E_Contains (subst_var_expr name t a) (subst_var_expr name t b)
+  | Alg.E_StrBefore a b -> Alg.E_StrBefore (subst_var_expr name t a) (subst_var_expr name t b)
+  | Alg.E_StrAfter a b -> Alg.E_StrAfter (subst_var_expr name t a) (subst_var_expr name t b)
+  | Alg.E_Concat es -> Alg.E_Concat (subst_var_exprs name t es)
+  | Alg.E_EncodeForUri a -> Alg.E_EncodeForUri (subst_var_expr name t a)
   | Alg.E_Replace a b c fl ->
-    Alg.E_Replace (subst_this_expr t a) (subst_this_expr t b) (subst_this_expr t c)
-      (match fl with Some x -> Some (subst_this_expr t x) | None -> None)
+    Alg.E_Replace (subst_var_expr name t a) (subst_var_expr name t b) (subst_var_expr name t c)
+      (match fl with Some x -> Some (subst_var_expr name t x) | None -> None)
   | Alg.E_Regex a b fl ->
-    Alg.E_Regex (subst_this_expr t a) (subst_this_expr t b)
-      (match fl with Some x -> Some (subst_this_expr t x) | None -> None)
-  | Alg.E_Abs a -> Alg.E_Abs (subst_this_expr t a)
-  | Alg.E_Round a -> Alg.E_Round (subst_this_expr t a)
-  | Alg.E_Ceil a -> Alg.E_Ceil (subst_this_expr t a)
-  | Alg.E_Floor a -> Alg.E_Floor (subst_this_expr t a)
-  | Alg.E_SameTerm a b -> Alg.E_SameTerm (subst_this_expr t a) (subst_this_expr t b)
-  | Alg.E_Exists p -> Alg.E_Exists (subst_this_gp t p)
-  | Alg.E_NotExists p -> Alg.E_NotExists (subst_this_gp t p)
-  | Alg.E_FunctionCall f es -> Alg.E_FunctionCall f (subst_this_exprs t es)
+    Alg.E_Regex (subst_var_expr name t a) (subst_var_expr name t b)
+      (match fl with Some x -> Some (subst_var_expr name t x) | None -> None)
+  | Alg.E_Abs a -> Alg.E_Abs (subst_var_expr name t a)
+  | Alg.E_Round a -> Alg.E_Round (subst_var_expr name t a)
+  | Alg.E_Ceil a -> Alg.E_Ceil (subst_var_expr name t a)
+  | Alg.E_Floor a -> Alg.E_Floor (subst_var_expr name t a)
+  | Alg.E_SameTerm a b -> Alg.E_SameTerm (subst_var_expr name t a) (subst_var_expr name t b)
+  | Alg.E_Exists p -> Alg.E_Exists (subst_var_gp name t p)
+  | Alg.E_NotExists p -> Alg.E_NotExists (subst_var_gp name t p)
+  | Alg.E_FunctionCall f es -> Alg.E_FunctionCall f (subst_var_exprs name t es)
   | _ -> e
 
-and subst_this_exprs (t : rdf_term) (es : list Alg.expr) : Tot (list Alg.expr) (decreases es) =
+and subst_var_exprs (name : string) (t : rdf_term) (es : list Alg.expr) : Tot (list Alg.expr) (decreases es) =
   match es with
   | [] -> []
-  | e :: rest -> subst_this_expr t e :: subst_this_exprs t rest
+  | e :: rest -> subst_var_expr name t e :: subst_var_exprs name t rest
 
-and subst_this_bgp (t : rdf_term) (bgp : list Alg.triple_pattern) : Tot (list Alg.triple_pattern) (decreases bgp) =
+and subst_var_bgp (name : string) (t : rdf_term) (bgp : list Alg.triple_pattern) : Tot (list Alg.triple_pattern) (decreases bgp) =
   match bgp with
   | [] -> []
-  | tp :: rest -> subst_this_tp t tp :: subst_this_bgp t rest
+  | tp :: rest -> subst_var_tp name t tp :: subst_var_bgp name t rest
 
-and subst_this_gp (t : rdf_term) (p : Alg.group_graph_pattern) : Tot Alg.group_graph_pattern (decreases p) =
+and subst_var_gp (name : string) (t : rdf_term) (p : Alg.group_graph_pattern) : Tot Alg.group_graph_pattern (decreases p) =
   match p with
-  | Alg.GP_BGP bgp -> Alg.GP_BGP (subst_this_bgp t bgp)
-  | Alg.GP_Join a b -> Alg.GP_Join (subst_this_gp t a) (subst_this_gp t b)
-  | Alg.GP_LeftJoin a b e -> Alg.GP_LeftJoin (subst_this_gp t a) (subst_this_gp t b) (subst_this_expr t e)
-  | Alg.GP_Filter e a -> Alg.GP_Filter (subst_this_expr t e) (subst_this_gp t a)
-  | Alg.GP_Union a b -> Alg.GP_Union (subst_this_gp t a) (subst_this_gp t b)
-  | Alg.GP_Graph pt a -> Alg.GP_Graph (subst_this_pt t pt) (subst_this_gp t a)
-  | Alg.GP_Minus a b -> Alg.GP_Minus (subst_this_gp t a) (subst_this_gp t b)
-  | Alg.GP_Bind e v a -> Alg.GP_Bind (subst_this_expr t e) v (subst_this_gp t a)
+  | Alg.GP_BGP bgp -> Alg.GP_BGP (subst_var_bgp name t bgp)
+  | Alg.GP_Join a b -> Alg.GP_Join (subst_var_gp name t a) (subst_var_gp name t b)
+  | Alg.GP_LeftJoin a b e -> Alg.GP_LeftJoin (subst_var_gp name t a) (subst_var_gp name t b) (subst_var_expr name t e)
+  | Alg.GP_Filter e a -> Alg.GP_Filter (subst_var_expr name t e) (subst_var_gp name t a)
+  | Alg.GP_Union a b -> Alg.GP_Union (subst_var_gp name t a) (subst_var_gp name t b)
+  | Alg.GP_Graph pt a -> Alg.GP_Graph (subst_var_pt name t pt) (subst_var_gp name t a)
+  | Alg.GP_Minus a b -> Alg.GP_Minus (subst_var_gp name t a) (subst_var_gp name t b)
+  | Alg.GP_Bind e v a -> Alg.GP_Bind (subst_var_expr name t e) v (subst_var_gp name t a)
   // The Mkquery?.q_pattern projector (rather than the query_pattern_of
   // accessor) keeps the recursive argument a visible subterm of `q`
   // for the termination checker.
-  | Alg.GP_SubSelect q -> Alg.GP_SubSelect (Alg.query_with_pattern q (subst_this_gp t (Alg.Mkquery?.q_pattern q)))
-  | Alg.GP_PropertyPath ps pp pt -> Alg.GP_PropertyPath (subst_this_ps t ps) pp (subst_this_pt t pt)
+  | Alg.GP_SubSelect q -> Alg.GP_SubSelect (Alg.query_with_pattern q (subst_var_gp name t (Alg.Mkquery?.q_pattern q)))
+  | Alg.GP_PropertyPath ps pp pt -> Alg.GP_PropertyPath (subst_var_ps name t ps) pp (subst_var_pt name t pt)
   // VALUES / SERVICE are rejected by prebinding_unsupported before we
   // ever substitute; leave them untouched here.
   | _ -> p
+
+// $this pre-binding (SHACL section 5.3) is `subst_var_gp "this"`.
+let subst_this_gp (t : rdf_term) (p : Alg.group_graph_pattern) : Alg.group_graph_pattern =
+  subst_var_gp "this" t p
+
+// Fold a whole binding list (name, value) through the AST substitution
+// above — used by the custom-constraint-component dispatch below to
+// apply $this / $value / every bound sh:parameter variable in one
+// pass. Order doesn't matter: each step only ever rewrites occurrences
+// of ITS OWN variable name, never another's.
+let rec subst_vars_gp (binds : list (string & rdf_term)) (p : Alg.group_graph_pattern)
+  : Tot Alg.group_graph_pattern (decreases binds) =
+  match binds with
+  | [] -> p
+  | (name, t) :: rest -> subst_vars_gp rest (subst_var_gp name t p)
 
 // --- Pre-binding well-formedness (SHACL section 5.3.2) ---------------
 //
@@ -2243,8 +2310,19 @@ let rec prebinding_unsupported (p : Alg.group_graph_pattern) : Tot (option strin
 // the violations produced (one per non-conforming SELECT solution)
 // plus an optional failure message (Some iff the query failed to
 // parse — in which case the violation list is always []).
+// Internal-only IRI used to key the shapes-graph-as-named-graph entry
+// threaded into `ds` for $shapesGraph/GRAPH resolution (SHACL section
+// 5.3.1's $shapesGraph/$currentShape pre-binding — pre-binding/
+// shapesGraph-001.ttl's `GRAPH $shapesGraph { $currentShape ex:property
+// 42 }`). Never appears in a validation report — purely an internal
+// dataset key — so any well-formed IRI works; picked to be obviously
+// synthetic and never collide with a real vendored-suite IRI.
+let shacl_internal_shapes_graph_iri : wf_iri =
+  assert_norm (is_iri "http://factoidal.example/shacl-internal#shapesGraph");
+  "http://factoidal.example/shacl-internal#shapesGraph"
+
 let sparql_violations_for_focus
-  (data : rdf_graph) (focus : rdf_term) (s : shape)
+  (data : rdf_graph) (shapes_raw : rdf_graph) (focus : rdf_term) (s : shape)
   (cref : shape_ref) (query_text : string) (cmsg : option wf_literal)
   : Tot (list violation & option string)
   =
@@ -2262,9 +2340,21 @@ let sparql_violations_for_focus
      | Some why ->
        ([], Some (String.concat "" ["sh:sparql unsupported query ("; cref; "): "; why]))
      | None ->
-    let q_subst = Alg.query_with_pattern q (subst_this_gp focus (Alg.query_pattern_of q)) in
-    let q' = Alg.query_with_prebound_values q_subst [[("this", focus)]] in
-    let ds = { empty_dataset with ds_default = data } in
+    // $this / $shapesGraph / $currentShape are all pre-bound the same
+    // way (subst_vars_gp, generalized from $this's own AST substitution
+    // — see its doc comment). $shapesGraph resolves via a named-graph
+    // entry keyed by `shacl_internal_shapes_graph_iri` holding a copy
+    // of the RAW shapes graph triples (`shapes_raw`, threaded in from
+    // `validate`); $currentShape is this constraint's OWNING shape's
+    // own id.
+    let binds =
+      [("this", focus);
+       ("shapesGraph", T_IRI shacl_internal_shapes_graph_iri);
+       ("currentShape", shape_ref_to_term s.shape_id)] in
+    let q_subst = Alg.query_with_pattern q (subst_vars_gp binds (Alg.query_pattern_of q)) in
+    let q' = Alg.query_with_prebound_values q_subst [binds] in
+    let ds = { ds_default = data;
+               ds_named = [{ ng_name = shacl_internal_shapes_graph_iri; ng_graph = shapes_raw }] } in
     let rows = Alg.eval_select_query q' data ds in
     let mk_violation (mu : solution_mapping) : violation =
       let value = (match Alg.sm_lookup "value" mu with Some v -> v | None -> focus) in
@@ -2284,48 +2374,248 @@ let sparql_violations_for_focus
     (List.Tot.map mk_violation rows, None))
 
 let rec sparql_violations_for_focus_all
-  (data : rdf_graph) (focus : rdf_term) (s : shape)
+  (data : rdf_graph) (shapes_raw : rdf_graph) (focus : rdf_term) (s : shape)
   (ccs : list (shape_ref & string & option wf_literal))
   : Tot (list violation & option string) (decreases ccs)
   =
   match ccs with
   | [] -> ([], None)
   | (cref, qt, m) :: rest ->
-    let (vs1, f1) = sparql_violations_for_focus data focus s cref qt m in
-    let (vs2, f2) = sparql_violations_for_focus_all data focus s rest in
+    let (vs1, f1) = sparql_violations_for_focus data shapes_raw focus s cref qt m in
+    let (vs2, f2) = sparql_violations_for_focus_all data shapes_raw focus s rest in
     (vs1 @ vs2, (match f1 with Some _ -> f1 | None -> f2))
 
 let rec sparql_violations_for_foci
-  (data : rdf_graph) (foci : list rdf_term) (s : shape)
+  (data : rdf_graph) (shapes_raw : rdf_graph) (foci : list rdf_term) (s : shape)
   (ccs : list (shape_ref & string & option wf_literal))
   : Tot (list violation & option string) (decreases foci)
   =
   match foci with
   | [] -> ([], None)
   | fn :: rest ->
-    let (vs1, f1) = sparql_violations_for_focus_all data fn s ccs in
-    let (vs2, f2) = sparql_violations_for_foci data rest s ccs in
+    let (vs1, f1) = sparql_violations_for_focus_all data shapes_raw fn s ccs in
+    let (vs2, f2) = sparql_violations_for_foci data shapes_raw rest s ccs in
     (vs1 @ vs2, (match f1 with Some _ -> f1 | None -> f2))
 
 let sparql_violations_for_shape
-  (data : rdf_graph) (closed_cls : rdf_graph) (all_subjects : list subject) (s : shape)
+  (data : rdf_graph) (shapes_raw : rdf_graph) (closed_cls : rdf_graph) (all_subjects : list subject) (s : shape)
   : Tot (list violation & option string)
   =
   let ccs = sparql_constraints_of s in
   if Nil? ccs then ([], None)
   else
     let focus_nodes = dedup_terms (List.Tot.concatMap (fun tgt -> eval_target data closed_cls all_subjects tgt) s.targets) in
-    sparql_violations_for_foci data focus_nodes s ccs
+    sparql_violations_for_foci data shapes_raw focus_nodes s ccs
 
 let rec sparql_violations_for_shapes
-  (data : rdf_graph) (closed_cls : rdf_graph) (all_subjects : list subject) (ss : list shape)
+  (data : rdf_graph) (shapes_raw : rdf_graph) (closed_cls : rdf_graph) (all_subjects : list subject) (ss : list shape)
   : Tot (list violation & option string) (decreases ss)
   =
   match ss with
   | [] -> ([], None)
   | s :: rest ->
-    let (vs1, f1) = sparql_violations_for_shape data closed_cls all_subjects s in
-    let (vs2, f2) = sparql_violations_for_shapes data closed_cls all_subjects rest in
+    let (vs1, f1) = sparql_violations_for_shape data shapes_raw closed_cls all_subjects s in
+    let (vs2, f2) = sparql_violations_for_shapes data shapes_raw closed_cls all_subjects rest in
+    (vs1 @ vs2, (match f1 with Some _ -> f1 | None -> f2))
+
+// --- 11l. SHACL-SPARQL custom constraint component dispatch ----------
+//
+// A CC_Custom's chosen validator is either a SPARQLAskValidator (run
+// once per VALUE NODE, spec 6.4.1 — violation iff the ASK evaluates to
+// false) or a SPARQLSelectValidator (run once per FOCUS NODE, spec
+// 6.4.2 — each SELECT solution row IS a violation, identical in shape
+// to CC_Sparql's own dispatch above). Both reuse `subst_vars_gp` for
+// $this/$value/$paramName AST substitution and `prebinding_unsupported`
+// / `query_values_of` for the SAME SHACL 5.3.2 well-formedness gate
+// sh:sparql already enforces — `unsupported-sparql-006.ttl`'s ASK
+// validator illegally BINDs ?value, which `prebinding_unsupported`'s
+// existing "assignment to a pre-bound variable" check already rejects
+// (v = "value" is already one of its three protected names), so no
+// new rejection logic was needed for that fixture.
+//
+// Value nodes and nested sh:property traversal are recomputed here
+// rather than reusing `collect_shape_violations`: that judgment
+// returns `Tot (list violation)` with no room for the `option string`
+// failure channel a malformed custom-component query needs (same
+// reason CC_Sparql itself is dispatched as a separate pass, not folded
+// into `eval_one_constraint`) — but UNLIKE CC_Sparql (root shapes
+// only), `propertyValidator-select-001.ttl` and
+// `unsupported-sparql-006.ttl` both invoke their custom component on a
+// shape reached ONLY via a parent's sh:property, so this pass walks
+// nested property shapes the same way `collect_shape_violations` does.
+
+let eval_custom_component_ask
+  (data : rdf_graph) (focus : rdf_term) (v : rdf_term) (s : shape) (cc : constraint_component)
+  (query_text : string) (params : list (string & rdf_term))
+  : Tot (option violation & option string)
+  =
+  let substituted = substitute_path query_text s.shape_path in
+  match Parser11.parse_sparql substituted with
+  | Parser11.ParseErr msg ->
+    (None, Some (String.concat "" ["custom constraint component query parse error: "; msg]))
+  | Parser11.ParseOk q _ ->
+    (match (if Some? (Alg.query_values_of q)
+            then Some "VALUES is not supported with pre-bound variables"
+            else prebinding_unsupported (Alg.query_pattern_of q)) with
+     | Some why ->
+       (None, Some (String.concat "" ["custom constraint component unsupported query: "; why]))
+     | None ->
+       let binds = [("this", focus); ("value", v)] @ params in
+       let q_subst = Alg.query_with_pattern q (subst_vars_gp binds (Alg.query_pattern_of q)) in
+       let q' = Alg.query_with_prebound_values q_subst [binds] in
+       let ds = { empty_dataset with ds_default = data } in
+       let ok = Alg.eval_ask_query q' data ds in
+       if ok then (None, None)
+       else
+         (Some ({ v_focus_node = focus; v_path = s.shape_path; v_value = Some v;
+                  v_source_shape = s.shape_id; v_constraint = cc; v_severity = s.shape_sev;
+                  v_message = s.message; v_source_constraint = None }),
+          None))
+
+let rec eval_custom_component_ask_values
+  (data : rdf_graph) (focus : rdf_term) (s : shape) (cc : constraint_component)
+  (query_text : string) (params : list (string & rdf_term)) (values : list rdf_term)
+  : Tot (list violation & option string) (decreases values)
+  =
+  match values with
+  | [] -> ([], None)
+  | v :: rest ->
+    let (vo, f1) = eval_custom_component_ask data focus v s cc query_text params in
+    let (vs2, f2) = eval_custom_component_ask_values data focus s cc query_text params rest in
+    ((match vo with Some vv -> [vv] | None -> []) @ vs2, (match f1 with Some _ -> f1 | None -> f2))
+
+// SPARQLSelectValidator: run once per FOCUS (the query's own BGP
+// determines ?value, same as sh:sparql/CC_Sparql). Unlike
+// propertyValidator-select-001's validator sh:message, which the
+// expected report does NOT surface (see CC_Custom's doc comment), the
+// row default falls back straight to the owning shape's own
+// sh:message — never to any component/validator-level message.
+let eval_custom_component_select
+  (data : rdf_graph) (focus : rdf_term) (s : shape) (cc : constraint_component)
+  (query_text : string) (params : list (string & rdf_term))
+  : Tot (list violation & option string)
+  =
+  let substituted = substitute_path query_text s.shape_path in
+  match Parser11.parse_sparql substituted with
+  | Parser11.ParseErr msg ->
+    ([], Some (String.concat "" ["custom constraint component query parse error: "; msg]))
+  | Parser11.ParseOk q _ ->
+    (match (if Some? (Alg.query_values_of q)
+            then Some "VALUES is not supported with pre-bound variables"
+            else prebinding_unsupported (Alg.query_pattern_of q)) with
+     | Some why ->
+       ([], Some (String.concat "" ["custom constraint component unsupported query: "; why]))
+     | None ->
+       let binds = ("this", focus) :: params in
+       let q_subst = Alg.query_with_pattern q (subst_vars_gp binds (Alg.query_pattern_of q)) in
+       let q' = Alg.query_with_prebound_values q_subst [binds] in
+       let ds = { empty_dataset with ds_default = data } in
+       let rows = Alg.eval_select_query q' data ds in
+       let mk_violation (mu : solution_mapping) : violation =
+         let value = (match Alg.sm_lookup "value" mu with Some vv -> vv | None -> focus) in
+         let path_result =
+           (match Alg.sm_lookup "path" mu with
+            | Some (T_IRI p) -> Some (P_Predicate p)
+            | _ -> s.shape_path) in
+         let row_msg =
+           (match Alg.sm_lookup "message" mu with
+            | Some (T_Literal l) -> Some l
+            | _ -> s.message) in
+         { v_focus_node = focus; v_path = path_result; v_value = Some value;
+           v_source_shape = s.shape_id; v_constraint = cc; v_severity = s.shape_sev;
+           v_message = row_msg; v_source_constraint = None }
+       in
+       (List.Tot.map mk_violation rows, None))
+
+let eval_one_custom_component
+  (data : rdf_graph) (focus : rdf_term) (s : shape) (values : list rdf_term) (cc : constraint_component)
+  : Tot (list violation & option string)
+  =
+  match cc with
+  | CC_Custom _ is_ask query_text params ->
+    if is_ask
+    then eval_custom_component_ask_values data focus s cc query_text params values
+    else eval_custom_component_select data focus s cc query_text params
+  | _ -> ([], None)
+
+let rec eval_custom_components
+  (data : rdf_graph) (focus : rdf_term) (s : shape) (values : list rdf_term) (ccs : list constraint_component)
+  : Tot (list violation & option string) (decreases ccs)
+  =
+  match ccs with
+  | [] -> ([], None)
+  | cc :: rest ->
+    let (vs1, f1) = eval_one_custom_component data focus s values cc in
+    let (vs2, f2) = eval_custom_components data focus s values rest in
+    (vs1 @ vs2, (match f1 with Some _ -> f1 | None -> f2))
+
+// Walks sh:property nested shapes exactly like `collect_shape_violations`
+// (values-then-property_refs recursion) — see the section doc comment
+// for why this is a deliberate, small duplication of that traversal
+// SHAPE (not its constraint semantics) rather than a shared helper.
+// `--split_queries always` makes explicit what F* otherwise falls back
+// to implicitly for this VC (Warning 349) — own push-options, not
+// file-wide, per the file's established idiom (see `build_constraints`).
+#push-options "--split_queries always"
+let rec custom_violations_for_occurrence
+  (data : rdf_graph) (sg : list shape) (node : rdf_term) (s : shape) (fuel : nat)
+  : Tot (list violation & option string) (decreases fuel)
+  =
+  match fuel with
+  | 0 -> ([], None)
+  | _ ->
+    let fuel' = fuel - 1 in
+    let values =
+      if s.is_property
+      then (match s.shape_path with Some p -> eval_path data node p | None -> [])
+      else [node] in
+    let customs =
+      List.Tot.concatMap (fun cc -> match cc with CC_Custom _ _ _ _ -> [cc] | _ -> []) s.constraints in
+    let (own_vs, own_f) =
+      if Nil? customs then ([], None) else eval_custom_components data node s values customs in
+    let nested_pairs =
+      List.Tot.concatMap
+        (fun v ->
+           List.Tot.concatMap
+             (fun pref ->
+                match lookup_shape pref sg with
+                | None -> []
+                | Some ps -> [custom_violations_for_occurrence data sg v ps fuel'])
+             s.property_refs)
+        values
+    in
+    let nested_vs = List.Tot.concatMap fst nested_pairs in
+    let nested_f = List.Tot.fold_left (fun acc p -> match acc with Some _ -> acc | None -> snd p) None nested_pairs in
+    (own_vs @ nested_vs, (match own_f with Some _ -> own_f | None -> nested_f))
+#pop-options
+
+let rec custom_violations_for_foci
+  (data : rdf_graph) (sg : list shape) (foci : list rdf_term) (s : shape) (fuel : nat)
+  : Tot (list violation & option string) (decreases foci)
+  =
+  match foci with
+  | [] -> ([], None)
+  | fn :: rest ->
+    let (vs1, f1) = custom_violations_for_occurrence data sg fn s fuel in
+    let (vs2, f2) = custom_violations_for_foci data sg rest s fuel in
+    (vs1 @ vs2, (match f1 with Some _ -> f1 | None -> f2))
+
+let custom_violations_for_shape
+  (data : rdf_graph) (closed_cls : rdf_graph) (all_subjects : list subject) (sg : list shape) (s : shape) (fuel : nat)
+  : Tot (list violation & option string)
+  =
+  let focus_nodes = dedup_terms (List.Tot.concatMap (fun tgt -> eval_target data closed_cls all_subjects tgt) s.targets) in
+  custom_violations_for_foci data sg focus_nodes s fuel
+
+let rec custom_violations_for_shapes
+  (data : rdf_graph) (closed_cls : rdf_graph) (all_subjects : list subject) (sg : list shape) (ss : list shape) (fuel : nat)
+  : Tot (list violation & option string) (decreases ss)
+  =
+  match ss with
+  | [] -> ([], None)
+  | s :: rest ->
+    let (vs1, f1) = custom_violations_for_shape data closed_cls all_subjects sg s fuel in
+    let (vs2, f2) = custom_violations_for_shapes data closed_cls all_subjects sg rest fuel in
     (vs1 @ vs2, (match f1 with Some _ -> f1 | None -> f2))
 
 // --- 11j. Top-level entry points --------------------------------------
@@ -2333,7 +2623,15 @@ let rec sparql_violations_for_shapes
 let parse_shape_from_graph (g : rdf_graph) : ML shapes_graph =
   parse_shape_from_graph_pure g
 
-let validate (data : rdf_graph) (shapes : shapes_graph) : ML validation_report =
+// `shapes_raw` is the UNPARSED shapes-graph RDF triples
+// `parse_shape_from_graph`/`parse_shape_from_graph_pure` consumed to
+// build `shapes` — needed ONLY for $shapesGraph pre-binding (see
+// `shacl_internal_shapes_graph_iri`'s doc comment above); every other
+// judgment in `validate` works off the already-parsed `shapes_graph`
+// AST, as before. Callers already have this graph in hand (it's the
+// same value they pass to `parse_shape_from_graph`) — see
+// `bin/shacl-runner/shacl_runner.ml` / `bin/factoidal-cli/factoidal_cli.ml`.
+let validate (data : rdf_graph) (shapes_raw : rdf_graph) (shapes : shapes_graph) : ML validation_report =
   let sg = shapes.shapes in
   let closed_cls = shacl_class_closure data (graph_len data + 20) in
   let all_subjects = distinct_subjects data in
@@ -2348,9 +2646,12 @@ let validate (data : rdf_graph) (shapes : shapes_graph) : ML validation_report =
       root_shapes
   in
   let (sparql_violations, sparql_failure) =
-    sparql_violations_for_shapes data closed_cls all_subjects root_shapes in
-  let all_results = per_shape_violations @ sparql_violations in
-  { conforms = Nil? all_results; results = all_results; report_failure = sparql_failure }
+    sparql_violations_for_shapes data shapes_raw closed_cls all_subjects root_shapes in
+  let (custom_violations, custom_failure) =
+    custom_violations_for_shapes data closed_cls all_subjects sg root_shapes fuel0 in
+  let all_results = per_shape_violations @ sparql_violations @ custom_violations in
+  { conforms = Nil? all_results; results = all_results;
+    report_failure = (match sparql_failure with Some _ -> sparql_failure | None -> custom_failure) }
 
 // ------------------------------------------------------------------
 // 12. Remaining assume val (narrowed scope, Phase 3 update).
@@ -2442,6 +2743,7 @@ let constraint_component_iri (cc : constraint_component) : wf_iri =
   | CC_LessThanOrEq _ -> sh_LessThanOrEqualsConstraintComponent
   | CC_Closed _ -> sh_ClosedConstraintComponent
   | CC_Sparql _ _ _ -> sh_SPARQLConstraintComponent
+  | CC_Custom comp _ _ _ -> comp
 
 let severity_to_iri (s : severity) : wf_iri =
   match s with
